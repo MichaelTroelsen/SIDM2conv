@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -Command \"Copy-Item ''C:\\Users\\mit\\Downloads\\sidfactory2-master\\sidfactory2-master\\SIDFactoryII\\drivers\\sf2driver11_00.prg'' -Destination ''C:\\Users\\mit\\claude\\c64server\\SIDM2\\''\")",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nInitial commit: SID to SID Factory II converter\n\nFeatures:\n- SID file parser (PSID/RSID format)\n- Laxity player format analyzer\n- SF2 file writer with template approach\n- Deep analysis tools for reverse engineering\n- Comprehensive unit tests (17 tests)\n\nTools:\n- sid_to_sf2.py: Main converter\n- analyze_sid.py: Deep analysis\n- laxity_analyzer.py: Laxity format analysis\n- test_converter.py: Unit tests\n\nDocumentation:\n- README.md: Usage, format descriptions, architecture\n- CONTRIBUTING.md: Development guidelines, test rules\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git commit:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

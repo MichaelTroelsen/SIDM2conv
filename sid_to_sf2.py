@@ -161,9 +161,11 @@ class LaxityPlayerAnalyzer:
         Find and extract sequence data from the SID file.
 
         Based on analysis, Laxity player sequence data appears to use format:
-        - Command/duration byte (0xC0-0xCF)
-        - Instrument byte (0x80=none, 0x81-0x9F)
-        - Note byte (0x00-0x60, 0x7E=rest, 0x7F=end)
+        - Command/duration byte (0xC0-0xCF range, or 0x80-0x9F)
+        - Instrument byte (0x80=none, 0x81-0x9F=instrument, or note continuation)
+        - Note byte (0x00-0x60, 0x7E=rest/tie, 0x7F=end)
+
+        The detection uses a scoring system to identify high-quality sequences.
         """
         sequences = []
 
@@ -173,41 +175,107 @@ class LaxityPlayerAnalyzer:
 
         checked = set()
 
+        # First pass: identify potential sequence start points
+        candidates = []
+
         for addr in range(data_start + 0x800, data_end - 32):
             if addr in checked:
                 continue
 
             score = 0
+            confidence = 0
             events = []
 
             # Try to read sequence events
             pos = addr
+            consecutive_valid = 0
+            max_consecutive = 0
+
             while pos < data_end - 3:
                 b1 = self.get_byte(pos)
                 b2 = self.get_byte(pos + 1)
                 b3 = self.get_byte(pos + 2)
 
-                # Check if this looks like valid event data
-                is_cmd = 0xC0 <= b1 <= 0xCF or b1 in (0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8A, 0x8B, 0x8C, 0x8D, 0x8E, 0x8F, 0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9A, 0x9B, 0x9C, 0x9D, 0x9E, 0x9F)
-                is_note = b3 <= 0x60 or b3 in (0x7E, 0x7F)
+                # Scoring criteria for valid triplets
+                triplet_score = 0
 
-                if is_note:
-                    score += 1
+                # Check note byte (most reliable indicator)
+                if b3 <= 0x60:  # Valid note
+                    triplet_score += 3
+                elif b3 == 0x7E:  # Rest/tie
+                    triplet_score += 4
+                elif b3 == 0x7F:  # End marker
+                    triplet_score += 5
+                else:
+                    triplet_score -= 5
+
+                # Check command/duration byte
+                if 0xC0 <= b1 <= 0xCF:  # Command range
+                    triplet_score += 2
+                elif 0x80 <= b1 <= 0x9F:  # Instrument/duration
+                    triplet_score += 2
+                elif b1 <= 0x60:  # Could be note (different format)
+                    triplet_score += 1
+
+                # Check instrument byte
+                if b2 == 0x80:  # No instrument change
+                    triplet_score += 1
+                elif 0x81 <= b2 <= 0x9F:  # Instrument change
+                    triplet_score += 2
+                elif 0x90 <= b2 <= 0x97:  # Tie note
+                    triplet_score += 2
+
+                # Valid triplet threshold
+                if triplet_score >= 4:
+                    score += triplet_score
+                    consecutive_valid += 1
+                    max_consecutive = max(max_consecutive, consecutive_valid)
                     events.append((b1, b2, b3))
 
                     # Mark as checked
                     for i in range(3):
                         checked.add(pos + i)
 
-                    if b3 == 0x7F:  # End marker
+                    if b3 == 0x7F:  # End marker found
+                        confidence += 10
                         break
 
                     pos += 3
                 else:
-                    break
+                    consecutive_valid = 0
+                    # Allow one bad triplet before giving up
+                    if len(events) > 0 and events[-1][2] != 0x7F:
+                        break
+                    pos += 1
 
-            if score >= 8:  # At least 8 events
+            # Calculate overall confidence
+            if events:
+                confidence += min(len(events), 20)  # More events = more confident
+                confidence += max_consecutive * 2  # Consecutive valid = good
+                confidence += score // 10
+
+                # Bonus for ending with end marker
+                if events and events[-1][2] == 0x7F:
+                    confidence += 5
+
+            # Only keep sequences with sufficient confidence
+            if confidence >= 15 and len(events) >= 4:
+                candidates.append((addr, events, confidence))
+
+        # Sort by confidence and take best sequences
+        candidates.sort(key=lambda x: x[2], reverse=True)
+
+        # Remove overlapping sequences (keep higher confidence ones)
+        used_ranges = set()
+        for addr, events, confidence in candidates:
+            # Check if this range overlaps with already selected sequence
+            seq_range = set(range(addr, addr + len(events) * 3))
+            if not seq_range & used_ranges:
                 sequences.append((addr, events))
+                used_ranges.update(seq_range)
+
+                if len(sequences) >= 50:  # Limit total sequences
+                    break
 
         return sequences
 
@@ -453,16 +521,57 @@ class LaxityPlayerAnalyzer:
         extracted.instruments.append(basic_instrument)
 
 
+@dataclass
+class SF2DriverInfo:
+    """Parsed SF2 driver header information"""
+    # Descriptor
+    driver_type: int = 0
+    driver_size: int = 0
+    driver_name: str = ""
+    driver_version_major: int = 0
+    driver_version_minor: int = 0
+
+    # Music data pointers
+    track_count: int = 3
+    orderlist_ptrs_lo: int = 0
+    orderlist_ptrs_hi: int = 0
+    sequence_count: int = 0
+    sequence_ptrs_lo: int = 0
+    sequence_ptrs_hi: int = 0
+    orderlist_size: int = 0
+    orderlist_start: int = 0
+    sequence_size: int = 0
+    sequence_start: int = 0
+
+    # Table addresses (for instruments, commands, etc.)
+    table_addresses: dict = None
+
+    def __post_init__(self):
+        if self.table_addresses is None:
+            self.table_addresses = {}
+
+
 class SF2Writer:
     """Write SID Factory II .sf2 project files"""
 
     # SF2 file format constants
+    SF2_FILE_ID = 0x1337
     SF2_DRIVER_VERSION = 11  # Use driver version 11
+
+    # Header block IDs
+    BLOCK_DESCRIPTOR = 1
+    BLOCK_DRIVER_COMMON = 2
+    BLOCK_DRIVER_TABLES = 3
+    BLOCK_INSTRUMENT_DESC = 4
+    BLOCK_MUSIC_DATA = 5
+    BLOCK_END = 0xFF
 
     def __init__(self, extracted_data: ExtractedData):
         self.data = extracted_data
         self.output = bytearray()
         self.template_path = None
+        self.driver_info = SF2DriverInfo()
+        self.load_address = 0
 
     def write(self, filepath: str):
         """Write the SF2 file"""
@@ -527,36 +636,229 @@ class SF2Writer:
 
         return None
 
+    def _parse_sf2_header(self):
+        """Parse the SF2 driver header to find data locations"""
+        if len(self.output) < 4:
+            return False
+
+        # Get load address (first 2 bytes)
+        self.load_address = struct.unpack('<H', self.output[0:2])[0]
+
+        # Check for SF2 file ID at load address
+        file_id = struct.unpack('<H', self.output[2:4])[0]
+        if file_id != self.SF2_FILE_ID:
+            print(f"Warning: File ID {file_id:04X} != expected {self.SF2_FILE_ID:04X}")
+            return False
+
+        print(f"Parsing SF2 header (load address: ${self.load_address:04X})")
+
+        # Parse header blocks starting at offset 4
+        offset = 4
+        while offset < len(self.output) - 2:
+            block_id = self.output[offset]
+            if block_id == self.BLOCK_END:
+                break
+
+            block_size = self.output[offset + 1]
+            block_data = self.output[offset + 2:offset + 2 + block_size]
+
+            if block_id == self.BLOCK_DESCRIPTOR:
+                self._parse_descriptor_block(block_data)
+            elif block_id == self.BLOCK_MUSIC_DATA:
+                self._parse_music_data_block(block_data)
+            elif block_id == self.BLOCK_DRIVER_TABLES:
+                self._parse_tables_block(block_data)
+
+            offset += 2 + block_size
+
+        return True
+
+    def _parse_descriptor_block(self, data: bytes):
+        """Parse descriptor block"""
+        if len(data) < 3:
+            return
+
+        self.driver_info.driver_type = data[0]
+        self.driver_info.driver_size = struct.unpack('<H', data[1:3])[0]
+
+        # Find null-terminated driver name
+        name_end = 3
+        while name_end < len(data) and data[name_end] != 0:
+            name_end += 1
+
+        self.driver_info.driver_name = data[3:name_end].decode('latin-1', errors='replace')
+
+        print(f"  Driver: {self.driver_info.driver_name}")
+
+    def _parse_music_data_block(self, data: bytes):
+        """Parse music data block to find sequence/orderlist locations"""
+        if len(data) < 18:
+            return
+
+        idx = 0
+
+        # Track count
+        self.driver_info.track_count = data[idx]
+        idx += 1
+
+        # Order list pointers
+        self.driver_info.orderlist_ptrs_lo = struct.unpack('<H', data[idx:idx+2])[0]
+        idx += 2
+        self.driver_info.orderlist_ptrs_hi = struct.unpack('<H', data[idx:idx+2])[0]
+        idx += 2
+
+        # Sequence count
+        self.driver_info.sequence_count = data[idx]
+        idx += 1
+
+        # Sequence pointers
+        self.driver_info.sequence_ptrs_lo = struct.unpack('<H', data[idx:idx+2])[0]
+        idx += 2
+        self.driver_info.sequence_ptrs_hi = struct.unpack('<H', data[idx:idx+2])[0]
+        idx += 2
+
+        # Order list size and start
+        self.driver_info.orderlist_size = struct.unpack('<H', data[idx:idx+2])[0]
+        idx += 2
+        self.driver_info.orderlist_start = struct.unpack('<H', data[idx:idx+2])[0]
+        idx += 2
+
+        # Sequence size and start
+        self.driver_info.sequence_size = struct.unpack('<H', data[idx:idx+2])[0]
+        idx += 2
+        self.driver_info.sequence_start = struct.unpack('<H', data[idx:idx+2])[0]
+
+        print(f"  Tracks: {self.driver_info.track_count}")
+        print(f"  Sequences: {self.driver_info.sequence_count}")
+        print(f"  Sequence start: ${self.driver_info.sequence_start:04X}")
+        print(f"  Orderlist start: ${self.driver_info.orderlist_start:04X}")
+
+    def _parse_tables_block(self, data: bytes):
+        """Parse table definitions block"""
+        # Tables block contains multiple table definitions
+        # Each has type, ID, name, address, dimensions, etc.
+        pass  # Simplified for now
+
+    def _addr_to_offset(self, addr: int) -> int:
+        """Convert C64 address to file offset"""
+        return addr - self.load_address + 2  # +2 for load address header
+
     def _inject_music_data_into_template(self):
         """Inject extracted music data into a template SF2 file"""
-        # The template already has proper structure, we just need to update metadata
-        # and potentially some music data areas
-
         print("Injecting music data into template...")
         print(f"Template size: {len(self.output)} bytes")
 
-        # Update song title in auxiliary data (if present)
-        # Auxiliary data is stored after the main driver/music data
-        # For now, we'll leave the template mostly intact
+        # Parse the SF2 header to find data locations
+        if not self._parse_sf2_header():
+            print("Warning: Could not parse SF2 header, using fallback")
+            self._print_extraction_summary()
+            return
 
-        # Note: A full implementation would:
-        # 1. Parse the driver header to find data locations
-        # 2. Replace sequence data
-        # 3. Replace orderlist data
-        # 4. Replace instrument data
-        # 5. Update pointers
+        # Inject sequence data
+        if self.data.sequences and self.driver_info.sequence_start:
+            self._inject_sequences()
 
-        # For this initial version, we're creating a proof-of-concept
-        # that demonstrates the data extraction capability
+        # Inject orderlist data
+        if self.data.orderlists and self.driver_info.orderlist_start:
+            self._inject_orderlists()
 
-        print("Note: Template-based injection preserves existing structure")
-        print("      Extracted data analysis is included for reference")
+        # Print summary
+        self._print_extraction_summary()
 
-        # Print what we extracted
+    def _inject_sequences(self):
+        """Inject sequence data into the SF2 file"""
+        print("\n  Injecting sequences...")
+
+        seq_start = self._addr_to_offset(self.driver_info.sequence_start)
+        ptr_lo_offset = self._addr_to_offset(self.driver_info.sequence_ptrs_lo)
+        ptr_hi_offset = self._addr_to_offset(self.driver_info.sequence_ptrs_hi)
+
+        if seq_start >= len(self.output) or seq_start < 0:
+            print(f"    Warning: Invalid sequence start offset {seq_start}")
+            return
+
+        # Write sequence data
+        current_addr = self.driver_info.sequence_start
+        sequences_written = 0
+
+        for i, seq in enumerate(self.data.sequences[:127]):  # Max 127 sequences
+            if i >= self.driver_info.sequence_count:
+                break
+
+            # Update pointer table
+            if ptr_lo_offset + i < len(self.output):
+                self.output[ptr_lo_offset + i] = current_addr & 0xFF
+            if ptr_hi_offset + i < len(self.output):
+                self.output[ptr_hi_offset + i] = (current_addr >> 8) & 0xFF
+
+            # Write sequence events
+            seq_offset = self._addr_to_offset(current_addr)
+            for event in seq:
+                if seq_offset + 2 < len(self.output):
+                    self.output[seq_offset] = event.instrument
+                    self.output[seq_offset + 1] = event.command
+                    self.output[seq_offset + 2] = event.note
+                    seq_offset += 3
+                    current_addr += 3
+
+            # Add end marker
+            if seq_offset < len(self.output):
+                self.output[seq_offset] = 0x7F
+                current_addr += 1
+
+            sequences_written += 1
+
+        print(f"    Written {sequences_written} sequences")
+
+    def _inject_orderlists(self):
+        """Inject orderlist data into the SF2 file"""
+        print("  Injecting orderlists...")
+
+        ol_start = self._addr_to_offset(self.driver_info.orderlist_start)
+        ptr_lo_offset = self._addr_to_offset(self.driver_info.orderlist_ptrs_lo)
+        ptr_hi_offset = self._addr_to_offset(self.driver_info.orderlist_ptrs_hi)
+
+        if ol_start >= len(self.output) or ol_start < 0:
+            print(f"    Warning: Invalid orderlist start offset {ol_start}")
+            return
+
+        current_addr = self.driver_info.orderlist_start
+        tracks_written = 0
+
+        for track, orderlist in enumerate(self.data.orderlists[:3]):  # Max 3 tracks
+            # Update pointer table
+            if ptr_lo_offset + track < len(self.output):
+                self.output[ptr_lo_offset + track] = current_addr & 0xFF
+            if ptr_hi_offset + track < len(self.output):
+                self.output[ptr_hi_offset + track] = (current_addr >> 8) & 0xFF
+
+            # Write orderlist entries
+            ol_offset = self._addr_to_offset(current_addr)
+            for transposition, seq_idx in orderlist:
+                if ol_offset + 1 < len(self.output):
+                    self.output[ol_offset] = transposition
+                    self.output[ol_offset + 1] = seq_idx
+                    ol_offset += 2
+                    current_addr += 2
+
+            # Add loop marker (loop to start)
+            if ol_offset + 1 < len(self.output):
+                self.output[ol_offset] = 0xFF  # Loop marker
+                self.output[ol_offset + 1] = 0x00  # Loop to position 0
+                current_addr += 2
+
+            tracks_written += 1
+
+        print(f"    Written {tracks_written} orderlists")
+
+    def _print_extraction_summary(self):
+        """Print summary of extracted data"""
         if self.data.sequences:
             print(f"\n  Extracted {len(self.data.sequences)} sequences:")
             for i, seq in enumerate(self.data.sequences[:5]):
                 print(f"    Sequence {i}: {len(seq)} events")
+            if len(self.data.sequences) > 5:
+                print(f"    ... and {len(self.data.sequences) - 5} more")
 
         if self.data.instruments:
             print(f"\n  Extracted {len(self.data.instruments)} instruments")
