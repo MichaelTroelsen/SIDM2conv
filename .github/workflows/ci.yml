@@ -1,0 +1,185 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ master, main, develop ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Display Python version
+      run: python --version
+
+    - name: Run unit tests
+      run: python -m unittest test_converter -v
+
+    - name: Run converter smoke test
+      run: |
+        python sid_to_sf2.py Unboxed_Ending_8580.sid test_output.sf2
+        python -c "import os; assert os.path.exists('test_output.sf2'), 'Output file not created'"
+
+  lint:
+    name: Code Quality
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install linting tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 pylint
+
+    - name: Run flake8
+      run: |
+        # Stop on syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Warnings for other issues
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Run pylint
+      run: |
+        pylint --exit-zero --disable=C0114,C0115,C0116 *.py
+
+  docs:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Check README exists and has content
+      run: |
+        if [ ! -f README.md ]; then
+          echo "ERROR: README.md not found"
+          exit 1
+        fi
+        if [ ! -s README.md ]; then
+          echo "ERROR: README.md is empty"
+          exit 1
+        fi
+        echo "README.md exists and has content"
+
+    - name: Check CONTRIBUTING exists
+      run: |
+        if [ ! -f CONTRIBUTING.md ]; then
+          echo "ERROR: CONTRIBUTING.md not found"
+          exit 1
+        fi
+        echo "CONTRIBUTING.md exists"
+
+    - name: Check for required documentation sections
+      run: |
+        # Check README has key sections
+        grep -q "## Usage" README.md || (echo "Missing Usage section" && exit 1)
+        grep -q "## File Formats" README.md || (echo "Missing File Formats section" && exit 1)
+        grep -q "## Development" README.md || (echo "Missing Development section" && exit 1)
+        echo "All required documentation sections present"
+
+    - name: Check Python docstrings
+      run: |
+        python -c "
+        import ast
+        import sys
+
+        files = ['sid_to_sf2.py', 'analyze_sid.py', 'laxity_analyzer.py']
+        errors = []
+
+        for filename in files:
+            with open(filename, 'r') as f:
+                tree = ast.parse(f.read())
+
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+                    if not ast.get_docstring(node):
+                        errors.append(f'{filename}: {node.name} missing docstring')
+
+        if errors:
+            print('Missing docstrings:')
+            for err in errors[:10]:  # Show first 10
+                print(f'  - {err}')
+            if len(errors) > 10:
+                print(f'  ... and {len(errors) - 10} more')
+            # Warning only, don't fail
+            print('WARNING: Some functions missing docstrings')
+        else:
+            print('All functions have docstrings')
+        "
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install bandit
+      run: pip install bandit
+
+    - name: Run security scan
+      run: bandit -r . -ll -ii -x ./test_converter.py
+
+  release:
+    name: Create Release
+    needs: [test, lint, docs]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Get version
+      id: version
+      run: |
+        VERSION=$(date +'%Y.%m.%d')-$(git rev-parse --short HEAD)
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Create archive
+      run: |
+        mkdir -p release
+        cp sid_to_sf2.py release/
+        cp analyze_sid.py release/
+        cp laxity_analyzer.py release/
+        cp test_converter.py release/
+        cp README.md release/
+        cp CONTRIBUTING.md release/
+        cp Unboxed_Ending_8580.sid release/
+        cd release && zip -r ../sid-to-sf2-${{ steps.version.outputs.version }}.zip .
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: sid-to-sf2-${{ steps.version.outputs.version }}
+        path: sid-to-sf2-*.zip

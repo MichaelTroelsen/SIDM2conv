@@ -214,6 +214,40 @@ All 17 tests should pass:
 - Integration tests with real SID file
 - SF2 writing tests
 
+### CI/CD Pipeline
+
+#### Local CI
+
+Run all checks locally before pushing:
+
+```bash
+# Run checks only
+python scripts/ci_local.py
+
+# Run checks and push to git
+python scripts/ci_local.py --push --message "Your commit message"
+
+# Windows batch file
+scripts\run_ci.bat --push -m "Your commit message"
+```
+
+The local CI performs:
+1. Python syntax check
+2. Docstring validation
+3. Documentation checks
+4. Unit tests (17 tests)
+5. Smoke test with real SID file
+
+#### GitHub Actions
+
+The project includes a GitHub Actions workflow (`.github/workflows/ci.yml`) that runs:
+
+- **Tests**: Runs on multiple Python versions (3.8-3.12) and OS (Ubuntu, Windows)
+- **Linting**: flake8 and pylint checks
+- **Documentation**: Validates README sections and docstrings
+- **Security**: Bandit security scan
+- **Release**: Creates release artifacts on master push
+
 ### Project Structure
 
 ```
