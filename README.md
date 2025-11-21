@@ -1,0 +1,301 @@
+# SID to SID Factory II Converter
+
+A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files.
+
+## Overview
+
+This converter analyzes SID files that use Laxity's player routine and attempts to extract the music data for conversion to the SID Factory II editable format. It was specifically developed for `Unboxed_Ending_8580.sid` by DRAX (Thomas Mogensen) with player by Laxity (Thomas Egeskov Petersen).
+
+**Note**: This is an experimental reverse-engineering tool. Results may require manual refinement in SID Factory II.
+
+## Installation
+
+No external dependencies required - uses Python standard library only.
+
+```bash
+# Requires Python 3.7+
+python --version
+```
+
+## Usage
+
+### Basic Conversion
+
+```bash
+python sid_to_sf2.py <input.sid> [output.sf2]
+```
+
+Example:
+```bash
+python sid_to_sf2.py Unboxed_Ending_8580.sid output.sf2
+```
+
+### Deep Analysis
+
+```bash
+python analyze_sid.py <input.sid>
+```
+
+### Laxity Format Analysis
+
+```bash
+python laxity_analyzer.py <input.sid>
+```
+
+## File Formats
+
+### PSID/RSID Format (Input)
+
+The SID file format is the standard for distributing Commodore 64 music. It contains:
+
+#### Header Structure (Version 2)
+
+| Offset | Size | Description |
+|--------|------|-------------|
+| $00-$03 | 4 | Magic ID: "PSID" or "RSID" |
+| $04-$05 | 2 | Version (big-endian) |
+| $06-$07 | 2 | Data offset |
+| $08-$09 | 2 | Load address (0 = embedded in data) |
+| $0A-$0B | 2 | Init address |
+| $0C-$0D | 2 | Play address |
+| $0E-$0F | 2 | Number of songs |
+| $10-$11 | 2 | Start song |
+| $12-$15 | 4 | Speed flags |
+| $16-$35 | 32 | Song name (null-terminated) |
+| $36-$55 | 32 | Author name |
+| $56-$75 | 32 | Copyright info |
+| $76-$7B | 6 | V2+ flags and SID addresses |
+| $7C+ | - | C64 program data |
+
+The C64 data section contains compiled 6502 machine code with the player routine and encoded music data.
+
+### Laxity Player Format
+
+Laxity (Thomas Egeskov Petersen) created both the player routine used in many SID files and SID Factory II itself. His player format encodes music data in a proprietary structure.
+
+#### Memory Layout (Unboxed_Ending_8580.sid)
+
+| Address | Content |
+|---------|---------|
+| $1000 | JMP $1040 (init routine) |
+| $1003 | JMP $10C6 (play routine) |
+| $1006-$103F | Header data and text |
+| $1040-$10C5 | Init routine |
+| $10C6-$17FF | Player code |
+| $1800-$19DF | Tables and configuration |
+| $19E0-$1A5F | Instrument definitions |
+| $1A60-$1DFF | Data tables |
+| $1E00-$219F | Sequence/pattern data |
+
+#### Sequence Data Format
+
+Based on analysis, Laxity player sequences appear to use a triplet format:
+
+| Byte | Description | Range |
+|------|-------------|-------|
+| 1 | Command/Duration | $C0-$CF (commands), $80-$9F (duration/instrument) |
+| 2 | Instrument | $80 (none), $81-$9F (instrument 1-31) |
+| 3 | Note | $00-$60 (notes), $7E (rest), $7F (end marker) |
+
+Common command bytes:
+- `$C2` - Duration/gate command
+- `$C8`, `$C9` - Effect commands
+- `$CE`, `$CF` - Special commands
+
+#### Instrument Table Format
+
+Instruments appear to be 6 bytes each:
+
+| Byte | Description |
+|------|-------------|
+| 0 | Attack/Decay |
+| 1 | Sustain/Release |
+| 2 | Waveform ($11=tri, $21=saw, $41=pulse, $81=noise) |
+| 3 | Pulse width low |
+| 4 | Pulse width high |
+| 5 | Additional parameters |
+
+### SID Factory II Format (Output)
+
+SF2 files are PRG files containing a driver plus structured music data. The format uses a block-based header system.
+
+#### File Structure
+
+| Section | Description |
+|---------|-------------|
+| Load address | 2 bytes (little-endian) |
+| Driver code | Player routine (~2KB) |
+| Header blocks | Configuration and pointers |
+| Music data | Sequences, orderlists, tables |
+| Auxiliary data | Metadata and descriptions |
+
+#### Header Block IDs
+
+| ID | Description |
+|----|-------------|
+| 1 | Descriptor (driver info) |
+| 2 | Driver Common (addresses) |
+| 3 | Driver Tables (table definitions) |
+| 4 | Instrument Descriptor |
+| 5 | Music Data (pointers) |
+| 6 | Table Color Rules |
+| 7 | Insert/Delete Rules |
+| 8 | Action Rules |
+| 9 | Instrument Data Descriptor |
+| 255 | End marker |
+
+#### Music Data Structure
+
+The MusicData block defines:
+- Track count (typically 3 for SID)
+- Order list pointers (low/high tables)
+- Sequence pointers (low/high tables)
+- Order list and sequence data locations
+
+#### SF2 Event Format
+
+SF2 sequences use a different triplet order than the Laxity player:
+
+| Byte | Description | Range |
+|------|-------------|-------|
+| 1 | Instrument | $80 (--), $A0-$BF (instrument+$A0) |
+| 2 | Command | $80 (--), $C0+ (command index+$C0) |
+| 3 | Note | $00-$5D (notes), $7E (+++), $7F (end) |
+
+#### Table Types
+
+| Type | Description |
+|------|-------------|
+| Instruments | ADSR, waveform, pulse settings |
+| Commands | Effect definitions (slide, vibrato, etc.) |
+| Wave | Waveform table |
+| Pulse | Pulse width modulation |
+| Filter | Filter settings |
+| HR (High Resolution) | Fine-tuning |
+| Arpeggio | Arpeggio patterns |
+| Tempo | Speed settings |
+| Init | Initialization data |
+
+## Converter Architecture
+
+### Components
+
+1. **SIDParser** - Parses PSID/RSID headers and extracts C64 data
+2. **LaxityPlayerAnalyzer** - Analyzes player format and extracts music data
+3. **SF2Writer** - Generates SF2 files using template approach
+
+### Data Flow
+
+```
+SID File → SIDParser → LaxityPlayerAnalyzer → ExtractedData → SF2Writer → SF2 File
+```
+
+### Extraction Process
+
+1. Parse PSID header for metadata and addresses
+2. Load C64 data into virtual memory
+3. Scan for sequence data patterns
+4. Identify instrument tables
+5. Extract and convert to SF2 format
+6. Generate output using template
+
+## Development
+
+### Running Tests
+
+```bash
+python -m unittest test_converter -v
+```
+
+All 17 tests should pass:
+- SID parsing tests
+- Memory access tests
+- Data structure tests
+- Integration tests with real SID file
+- SF2 writing tests
+
+### Project Structure
+
+```
+SIDM2/
+├── sid_to_sf2.py        # Main converter
+├── analyze_sid.py       # Deep analysis tool
+├── laxity_analyzer.py   # Laxity format analyzer
+├── test_converter.py    # Unit tests
+├── README.md            # This file
+├── CONTRIBUTING.md      # Contribution guidelines
+├── Unboxed_Ending_8580.sid  # Sample input
+└── sf2driver11_00.prg   # SF2 driver (optional)
+```
+
+### Adding New Features
+
+1. Create feature branch
+2. Write tests first (TDD approach)
+3. Implement feature
+4. Update documentation
+5. Run all tests
+6. Submit pull request
+
+## Limitations
+
+### Current Limitations
+
+- **Template-based output**: Uses existing SF2 file as template
+- **Incomplete data injection**: Extracted data shown but not fully injected
+- **Single player support**: Optimized for Laxity player only
+- **Manual refinement needed**: Output may require editing in SF2
+
+### Why Full Conversion is Difficult
+
+1. **Compiled format**: SID files contain machine code, not source data
+2. **Player-specific encoding**: Each player routine uses different formats
+3. **Lost information**: Compilation process discards editable structure
+4. **Complex mapping**: Laxity player → SF2 format requires reverse engineering
+
+## Results
+
+### Unboxed_Ending_8580.sid Analysis
+
+- **Load address**: $1000
+- **Data size**: 4512 bytes
+- **Sequences extracted**: 13
+- **Instruments extracted**: 32
+- **Orderlists created**: 3
+
+### Output
+
+The converter generates an SF2 file that:
+- Is loadable in SID Factory II
+- Contains extracted sequence data
+- Has basic instrument definitions
+- Requires manual refinement for playability
+
+## Future Improvements
+
+1. **Full data injection**: Replace template data with extracted music
+2. **Pointer table parsing**: Properly identify and use pointer tables
+3. **Multiple player support**: Add support for other common players
+4. **Better heuristics**: Improve sequence/instrument detection
+5. **Validation**: Verify extracted data integrity
+
+## References
+
+- [SID Factory II GitHub](https://github.com/Chordian/sidfactory2)
+- [High Voltage SID Collection](https://www.hvsc.c64.org/)
+- [PSID File Format](https://www.hvsc.c64.org/download/C64Music/DOCUMENTS/SID_file_format.txt)
+- [Codebase64 SID Programming](https://codebase64.org/doku.php?id=base:sid_programming)
+
+## Credits
+
+- **DRAX** (Thomas Mogensen) - Composer of Unboxed Ending
+- **Laxity** (Thomas Egeskov Petersen) - Player routine and SID Factory II creator
+- **SID Factory II Team** - For the excellent music editor
+
+## License
+
+This tool is provided for educational and personal use. Please respect the copyrights of original music and software.
+
+---
+
+*This converter was created to help preserve and study Commodore 64 music.*
