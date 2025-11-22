@@ -1,0 +1,1034 @@
+;---------------------------------------
+; JCH NewPlayer v21.G5.........01-02-98
+; by GLOVER/SAMAR/CRYSTAL SOUND
+;---------------------------------------
+;sound:
+;
+;00:attack/delay
+;01:sustain/release
+;02:wavetab speed first pos/second pos.
+;03:fx
+;04:resonans/filter type
+;05:filtertab number
+;06:pulsetab number
+;07:wavetab number
+;fx:
+;01:drum effect
+;02:filter no restart
+;04:pulse no restart
+;
+;supertab:
+;
+;0h,lo slide up
+;1h,lo slide down
+;2x,yy vibrato1 x-speed,yy-add
+;3?,sr sustain/release
+;4?,xy x,y point to half speed!
+;5?,xx filter frq add
+;60-7f,xx new filter point in a sound
+;80-9f,xx new pulser point in a sound
+;a0-bf,xx new waveform point in a sound
+;c0-df,xx new wavespeed point in a sound
+;e?,?x volume tune.
+;fx,yz vibrato2 x-feel,y-speed,z-add
+;---------------------------------------
+
+         *= $09e0
+
+         ldy #0
+         ldx #>s0
+sfx      lda #<s0
+         sta lobyt,y
+         txa
+         sta hibyt,y
+         inx
+         iny
+         bpl sfx
+         rts
+
+         *= $0f00
+
+dinit    lda #0
+         jsr init
+
+         sei
+         ldx #0
+         stx $dc0e
+         stx $d019
+         stx $d020
+         stx drs2+1
+         inx
+         stx $d01a
+         lda #<drun
+         sta $0314
+         lda #>drun
+         sta $0315
+         lda #$fa
+         sta $d012
+         cli
+         rts
+
+drun     lda #$1b
+         sta $d011
+         lda $d012
+         sta drs1+1
+         dec $d020
+         jsr drive
+         inc $d020
+         lda $d012
+drs1     sbc #0
+         sta drs1+1
+drs2     cmp #0
+         bcc fast
+         sta drs2+1
+
+fast     lda $dc01
+         cmp #$fd
+         bne dend
+         jsr drive
+         jmp fast
+
+dend     cmp #$fb
+         bne dend2
+         lda #0
+         sta drs2+1
+
+dend2    ldy #0
+         lda drs1+1
+         jsr wh
+         lda drs2+1
+         jsr wh
+
+         inc $d019
+         jmp $ea31
+;--------
+wh       pha
+         lsr a
+         lsr a
+         lsr a
+         lsr a
+         tax
+         lda th,x
+         sta $0400,y
+         iny
+         pla
+         and #$0f
+         tax
+         lda th,x
+         sta $0400,y
+         iny
+         rts
+th       .text "0123456789"
+;--------
+         *= $0fa0
+
+ofa0     .word voicon
+ofa2     .word vol+1
+ofa4     .word credits
+ofa6     .word tpoin
+ofa8     .word sinit
+ofaa     .word main
+ofac     .word getinit
+ofae     .word getinit
+ofb0     .word get3
+ofb2     .word getins
+ofb4     .word real
+ofb6     .word setsid
+ofb8     .word notes
+ofba     .word fintun
+ofbc     .word arp1
+ofbe     .word arp2
+ofc0     .word filttab
+ofc2     .word pulstab
+ofc4     .word instr
+ofc6     .word v1
+ofc8     .word v2
+ofca     .word v3
+ofcc     .word lobyt
+ofce     .word hibyt
+ofd0     .word supertab
+ofd2     .word s00
+ofd4     .word shspeed
+ofd6     .word s02
+ofd8     .word voice
+ofda     .word gat
+ofdc     .word nog
+ofde     .word trans
+ofe0     .word sflag
+ofe2     .word not
+ofe4     .word vhzl
+ofe6     .word vhzh
+ofe8     .word next
+ofea     .word insnr
+ofec     .word synth
+
+version  .text "21.g5"
+
+info     .byte %00001101
+               ;    ^^^^
+               ;    4210
+               ;
+               ;2=0FD8 points to 'VOICE'
+               ;('S03' was kicked out!)
+               ;
+               ;1=fix byte 6 AND 7 in
+               ;the instrument table.
+               ;
+               ;0=fix $7F-$XX pointers.
+;---------------------------------------
+tab      = $02
+
+         *= $1000
+
+init     jmp sinit
+drive    jmp main
+
+voicon   .byte 1,1,1     ; on/off flags
+shspeed  .byte 0
+fltcyc   .byte 0
+reson    .byte $0f
+tt1      .byte 0,0,0
+tt2      .byte 0,0,0
+
+         .byte $fc,$3e   ;_kendetegn til
+                         ; delux driver
+         .text "player 21.g5"
+
+credits  .byte 0
+         .text "player & music "
+         .text "by glover/s/cs!-"
+;--------
+sinit    asl a
+         asl a
+         asl a
+         tay
+
+         lda #<tpoin
+         clc
+         ldx tpoin+7,y
+         bpl *+4
+         adc #8
+         sta si1a+1
+         adc #1
+         sta si1b+1
+         lda #>tpoin
+         sta si1a+2
+         adc #0
+         sta si1b+2
+
+         ldx #bufend-buf
+         lda #0
+         sta half+1
+si0      sta buf-1,x
+         sta $d400-1,x
+         dex
+         bne si0
+
+si1      lda tpoin,y
+         sta kbyl,x
+si1a     lda tpoin,y
+         sta kbyl2,x
+         lda tpoin+1,y
+         sta kbyh,x
+si1b     lda tpoin+1,y
+         sta kbyh2,x
+         iny
+         iny
+         inx
+         cpx #3
+         bne si1
+         inx
+         stx speed+1
+         lda filttab
+         sta shspeed
+         lda #$0f
+         sta f18+1
+         sta vol+1
+         rts
+;---------------------------------------
+main     ldx #2
+
+f17      lda #0
+         sta $d417
+f18      lda #$00
+         sta $d418
+
+         dec speed+1
+         bpl m0
+half     ldy #0
+         lda filttab,y
+         sta speed+1
+         sta shspeed
+         tya
+         eor #1
+         sta half+1
+
+m0       lda voicon,x
+         bne speed
+         jmp next
+
+speed    lda #0
+         bne m1
+         dec dtim,x
+         bpl m3
+         jmp getins
+
+m1       cmp #3
+         bne m1a
+         ldy dtim,x
+         beq gettrk
+         bne m3
+m1a      cmp #2
+         bne m2
+         ldy dtim,x
+         beq getinit
+         bne m3
+
+m2       cmp #1
+         bne m3
+         lda dtim,x
+         bne m3
+         jmp endtabs
+
+m3       jmp real
+;---------------------------------------
+gettrk   lda kbyl,x
+         sta tab
+         lda kbyh,x
+         sta tab+1
+
+         lda (tab),y
+         bpl seq3
+
+seq2     sta trans,x
+         inc kbyl,x
+         bne *+5
+         inc kbyh,x
+         iny
+         lda (tab),y
+
+seq3     tay
+         lda lobyt,y
+         sta tt1,x
+         lda hibyt,y
+         sta tt2,x
+
+         ldy voice,x
+         lda sr,x
+         sta $d406,y
+         lda ad,x
+         sta $d405,y
+
+         jmp real
+;---------------------------------------
+getinit
+         lda tt1,x
+         sta getpt+1
+         lda tt2,x
+         sta getpt+2
+
+get3     ldy seq,x
+getpt    lda !0,y
+         bpl get33
+
+         cmp #$a0
+         bcs get4
+         sta dgem,x
+         and #$10
+         sta nog,x
+         iny
+         bne getpt
+
+get4     cmp #$c0
+         bcs get5
+         sta fflag,x
+         sta insnr,x
+         lda #0
+         sta sust,x
+         iny
+         bne getpt
+
+get5     asl a
+         and #$7f
+         sta scom,x
+         iny
+         bne getpt
+
+get33    beq com2
+         cmp #$7e
+         beq com0
+
+         sta shnot,x
+
+         lda #0
+         sta shsflag,x
+         sta shvflag,x
+
+         tya
+         sta seq,x
+
+         lda nog,x
+         bne com1
+         ldy voice,x
+         lda supertab+1
+         sta $d406,y
+         sta sr,x
+         lda supertab
+         sta $d405,y
+         sta ad,x
+         lda #$fe
+         sta gat,x
+         sta skip+1
+         jmp slide
+
+com0     sta nog,x
+         tya
+         sta seq,x
+com1     lda #$ff
+         sta shgat,x
+         jmp real
+
+com2     lda #$fe
+         sta shgat,x
+         sta nog,x
+         tya
+         sta seq,x
+         jmp real
+;---------------------------------------
+endtabs  lda tt1,x
+         sta tab
+         lda tt2,x
+         sta tab+1
+
+         inc seq,x
+         ldy seq,x
+         lda (tab),y
+         cmp #$7f
+         bne et1
+         lda #0
+         sta seq,x
+
+         inc kbyl,x
+         lda kbyl,x
+         sta ent+1
+         bne *+5
+         inc kbyh,x
+         lda kbyh,x
+         sta ent+2
+ent      lda !0
+         cmp #$ff
+         bne et1
+         lda kbyl2,x
+         sta kbyl,x
+         lda kbyh2,x
+         sta kbyh,x
+;--------
+et1      ldy scom,x
+         bne sc1
+         jmp real
+
+sc1      lda supertab+0,y
+         sta tab
+         and #$f0
+
+         cmp #$20
+         beq sc2
+         bcs sc3
+         sta slddir,x
+         lda supertab+1,y
+         sta sldadl,x
+         lda tab
+         and #$0f
+         sta sldadh,x
+         lda #0
+         sta shvflag,x
+         lda #1
+         sta shsflag,x
+         jmp scend
+
+sc2      sta shvflag,x
+         lda tab
+         and #$0f
+         sta shvspd,x
+         lsr a
+         sta vspd,x
+         lda supertab+1,y
+         sta vadl,x
+         lda #0
+         sta vfeel,x
+         sta shvfeel,x
+         sta vhzl,x
+         sta vhzh,x
+         sta vdir,x
+         sta vadh,x
+         jmp scend
+
+sc3      cmp #$30
+         bne sc4
+         lda supertab+1,y
+         sta sust,x
+         jmp scend
+
+sc4      cmp #$40
+         bne sc5
+         lda supertab+1,y
+         sta tab
+         lsr a
+         lsr a
+         lsr a
+         lsr a
+         ldy #0
+         sta filttab,y
+         lda tab
+         and #$0f
+         sta filttab+1,y
+         jmp scend
+
+sc5      cmp #$50
+         bne sc6
+         lda supertab+1,y
+         sta shfrq+1
+         jmp scend
+
+sc6      cmp #$80
+         bcs sc7
+         lda supertab+1,y
+         sta tab+1
+         lda tab
+         asl a
+         asl a
+         asl a
+         tay
+         lda tab+1
+         sta instr+5,y
+         jmp scend
+
+sc7      cmp #$a0
+         bcs sc8
+         lda supertab+1,y
+         sta tab+1
+         lda tab
+         asl a
+         asl a
+         asl a
+         tay
+         lda tab+1
+         sta instr+6,y
+         jmp scend
+
+sc8      cmp #$c0
+         beq sc9
+         bcs sc10
+         lda supertab+1,y
+         sta tab+1
+         lda tab
+         asl a
+         asl a
+         asl a
+         tay
+         lda tab+1
+         sta instr+7,y
+         bcs scend
+
+sc9      lda supertab+1,y
+         sta tab+1
+         lda tab
+         asl a
+         asl a
+         asl a
+         tay
+         lda tab+1
+         sta instr+2,y
+         bcc scend
+
+sc10     cmp #$e0
+         bne sc11
+         lda f18+1
+         and #$f0
+         ora supertab+1,y
+         sta f18+1
+         bpl scend
+
+sc11     sta shvflag,x
+         lda #0
+         sta vhzl,x
+         sta vhzh,x
+         sta vdir,x
+         sta vfeel,x
+         lda tab
+         and #$0f
+         sta shvfeel,x
+         lda supertab+1,y
+         lsr a
+         lsr a
+         lsr a
+         lsr a
+         sta shvspd,x
+         sec
+         sbc #1
+         sta vspd,x
+         lda supertab+1,y
+         and #$0f
+         sta tab
+         lda trans,x
+         clc
+         adc shnot,x
+         asl a
+         tay
+         lda notes+2,y
+         sec
+         sbc notes+0,y
+         sta tab+1
+         lda notes+3,y
+         sbc notes+1,y
+         ldy tab
+         beq sc11b
+sc11a    lsr a
+         ror tab+1
+         dey
+         bne sc11a
+sc11b    sta vadh,x
+         lda tab+1
+         sta vadl,x
+;--------
+scend    lda #0
+         sta scom,x
+         jmp slide
+;---------------------------------------
+getins   lda dgem,x
+         and #$0f
+         sta dtim,x
+
+         lda trans,x
+         clc
+         adc shnot,x
+         asl a
+         sta not,x
+         lda shgat,x
+         sta gat,x
+
+         lda shvflag,x
+         sta vflag,x
+         lda shsflag,x
+         sta sflag,x
+         bne gi1
+         sta shzl,x
+         sta shzh,x
+
+gi1      lda fflag,x
+         beq shfrq
+         lda #0
+         sta fflag,x
+         lda insnr,x
+         asl a
+         asl a
+         asl a
+         tay
+         lda instr+4,y
+         beq shfrq
+         lda #0
+         sta shfrq+1
+shfrq    lda #0
+         sta frq+1
+
+         lda nog,x
+         beq gett
+         lda #0
+         sta nog,x
+         jmp real
+;--------
+synth    ldy insnr,x
+         asl not,x       ; specially for
+         lda f18+1       ; the editor!!!
+         sta $d418
+         lda f17+1
+         sta $d417
+         lda #0
+         sta sust,x
+         sta sflag,x
+         sta vflag,x
+         sta frq+1
+         beq getu
+;--------
+gett     lda #$ff
+         sta gat,x
+
+         lda insnr,x
+         asl a
+         asl a
+         asl a
+         tay
+getu     sty tab+1
+         lda instr+3,y
+         and #%00000100
+         bne gt1
+         sta plscyc,x
+         lda instr+6,y
+         sta plspoi,x
+
+gt1      ldy tab+1
+         lda instr+4,y
+         bne gt2
+         lda f17+1
+         and bitoff,x
+         sta f17+1
+         jmp gt4
+gt2      and #$f0
+         sta tab
+         lda f17+1
+         and #$0f
+         ora biton,x
+         ora tab
+         sta f17+1
+         lda instr+3,y
+         and #%00000010
+         bne gt4
+         sta fltcyc
+         lda instr+4,y
+         asl a
+         asl a
+         asl a
+         asl a
+vol      ora #0
+         sta f18+1
+         lda instr+5,y
+         sta fltpoi+1
+gt3      stx filter+1
+
+gt4      ldy tab+1
+         lda instr+7,y
+         sta sampoi,x
+         lda instr+2,y
+         lsr a
+         lsr a
+         lsr a
+         lsr a
+         sta samspd,x
+         lda instr+2,y
+         and #$0f
+         sta samspd2,x
+         lda instr+3,y
+         and #%00000001
+         sta drum,x
+
+         ldy tab+1
+         lda sust,x
+         bne *+5
+         lda instr+1,y
+         ldy voice,x
+         sta $d406,y
+         sta sr,x
+         ldy tab+1
+         lda instr,y
+         ldy voice,x
+         sta $d405,y
+         sta ad,x
+         lda #9
+         sta $d404,y
+         jmp next
+;--------
+
+real     = *
+pulse    dec plscyc,x
+         bpl pls2
+         ldy plspoi,x
+         lda pulstab+1,y
+         sta plsadd,x
+         lda pulstab+2,y
+         sta plsdir,x
+         and #$7f
+         sta plscyc,x
+         lda pulstab+3,y
+         sta plspoi,x
+         lda pulstab+0,y
+         cmp #$ff
+         bcs pls2
+         ldy voice,x
+         sta plshi,x
+         sta $d403,y
+         and #$f0
+         sta plslo,x
+         sta $d402,y
+         bcc slide
+pls2     ldy voice,x
+         lda plsdir,x
+         bmi plsdw
+         lda plslo,x
+         clc
+         adc plsadd,x
+         sta plslo,x
+         sta $d402,y
+         lda plshi,x
+         adc #0
+         sta plshi,x
+         sta $d403,y
+         jmp slide
+plsdw    lda plslo,x
+         sec
+         sbc plsadd,x
+         sta plslo,x
+         sta $d402,y
+         lda plshi,x
+         sbc #0
+         sta plshi,x
+         sta $d403,y
+;--------
+slide    lda sflag,x
+         beq vibrato
+         lda slddir,x
+         bne slddw
+         lda shzl,x
+         clc
+         adc sldadl,x
+         sta shzl,x
+         sta hzl+1
+         lda shzh,x
+         adc sldadh,x
+         sta shzh,x
+         sta hzh+1
+         jmp filter
+slddw    lda shzl,x
+         sec
+         sbc sldadl,x
+         sta shzl,x
+         sta hzl+1
+         lda shzh,x
+         sbc sldadh,x
+         sta shzh,x
+         sta hzh+1
+;--------
+vibrato  lda vflag,x
+         beq filter
+skip     lda #0
+         bne filter
+         dec vspd,x
+         bpl vib1
+         lda shvspd,x
+         sta vspd,x
+         lda shvfeel,x
+         sta vfeel,x
+         lda vdir,x
+         eor #$ff
+         sta vdir,x
+         bne vibdw
+vib1     lda vdir,x
+         bne vibdw
+         lda vhzl,x
+         clc
+         adc vadl,x
+         sta vhzl,x
+         sta hzl+1
+         lda vhzh,x
+         adc vadh,x
+         sta vhzh,x
+         sta hzh+1
+         jmp vib2
+vibdw    lda vhzl,x
+         sec
+         sbc vadl,x
+         sta vhzl,x
+         sta hzl+1
+         lda vhzh,x
+         sbc vadh,x
+         sta vhzh,x
+         sta hzh+1
+vib2     lda vadl,x
+         clc
+         adc vfeel,x
+         sta vadl,x
+         bcc *+5
+         inc vadh,x
+;--------
+filter   cpx #0
+         bne waveform
+         dec fltcyc
+         bpl fhh
+fltpoi   ldy #0
+         lda filttab+1,y
+         sta fad+1
+         lda filttab+2,y
+         sta fltcyc
+         lda filttab+3,y
+         sta fltpoi+1
+         lda filttab+0,y
+         cmp #$ff
+         bne fl1
+fhh      lda #$00
+         clc
+fad      adc #$00
+fl1      sta fhh+1
+         clc
+frq      adc #0
+         sta $d416
+;--------
+waveform ldy sampoi,x
+         lda drum,x
+         beq wv0
+         lda arp1,y
+         cmp #$7f
+         bne wv
+         lda arp2,y
+         sta sampoi,x
+         tay
+         lda arp1,y
+wv       sta tab
+         lda #0
+         beq wv3
+wv0      lda arp1,y
+         cmp #$7f
+         bne wv1
+         lda arp2,y
+         sta sampoi,x
+         tay
+         lda arp1,y
+wv1      asl a
+         bcs wv2
+         adc not,x
+wv2      tay
+         lda notes+1,y
+         sta tab
+         lda notes+0,y
+wv3      ldy voice,x
+         clc
+hzl      adc #0
+         sta $d400,y
+         lda tab
+hzh      adc #0
+         sta $d401,y
+         ldy sampoi,x
+         lda arp2,y
+         ldy voice,x
+         and gat,x
+         sta $d404,y
+         dec samspd,x
+         bpl setsid
+         lda samspd2,x
+         sta samspd,x
+         inc sampoi,x
+;--------
+setsid   lda #0
+         sta hzl+1
+         sta hzh+1
+         sta skip+1
+;--------
+next     dex
+         bmi *+5
+         jmp m0
+
+         rts
+;--------
+notes    .word $0116,$0127,$0138,$014b
+         .word $015f,$0173,$018a,$01a1
+         .word $01ba,$01d4,$01f0,$020e
+         .word $022d,$024e,$0271,$0296
+         .word $02bd,$02e7,$0313,$0342
+         .word $0374,$03a9,$03e0,$041b
+         .word $045a,$049b,$04e2,$052c
+         .word $057b,$05ce,$0627,$0685
+         .word $06e8,$0751,$07c1,$0837
+         .word $08b4,$0937,$09c4,$0a57
+         .word $0af5,$0b9c,$0c4e,$0d09
+         .word $0dd0,$0ea3,$0f82,$106e
+         .word $1168,$126e,$1388,$14af
+         .word $15eb,$1739,$189c,$1a13
+         .word $1ba1,$1d46,$1f04,$20dc
+         .word $22d0,$24dc,$2710,$295e
+         .word $2bd6,$2e72,$3138,$3426
+         .word $3742,$3a8c,$3e08,$41b8
+         .word $45a0,$49b8,$4e20,$52bc
+         .word $57ac,$5ce4,$6270,$684c
+         .word $6e84,$7518,$7c10,$8370
+         .word $8b40,$9370,$9c40,$a578
+         .word $af58,$b9c8,$c4e0,$d098
+         .word $dd08,$ea30,$f820,$fd2e
+;--------
+kbyl     .byte 0,0,0
+kbyh     .byte 0,0,0
+kbyl2    .byte 0,0,0
+kbyh2    .byte 0,0,0
+fintun   .byte $00,$00,$00
+voice    .byte $00,$07,$0e
+biton    .byte $01,$02,$04
+bitoff   .byte $fe,$fd,$fb
+buf      = *
+samspd   .byte 0,0,0
+samspd2  .byte 0,0,0
+plslo    .byte 0,0,0
+plshi    .byte 0,0,0
+plspoi   .byte 0,0,0
+plsadd   .byte 0,0,0
+plscyc   .byte 0,0,0
+plsdir   .byte 0,0,0
+seq      .byte 0,0,0
+nog      .byte 0,0,0
+shnot    .byte 0,0,0
+shgat    .byte 0,0,0
+dtim     .byte 0,0,0
+dgem     .byte 0,0,0
+sflag    .byte 0,0,0
+shsflag  .byte 0,0,0
+slddir   .byte 0,0,0
+sldadl   .byte 0,0,0
+sldadh   .byte 0,0,0
+shzl     .byte 0,0,0
+shzh     .byte 0,0,0
+vflag    .byte 0,0,0
+shvflag  .byte 0,0,0
+vfeel    .byte 0,0,0
+shvfeel  .byte 0,0,0
+vspd     .byte 0,0,0
+shvspd   .byte 0,0,0
+vadl     .byte 0,0,0
+vadh     .byte 0,0,0
+vdir     .byte 0,0,0
+vhzl     .byte 0,0,0
+vhzh     .byte 0,0,0
+scom     .byte 0,0,0
+sust     .byte 0,0,0
+drum     .byte 0,0,0
+sampoi   .byte 0,0,0
+not      .byte 0,0,0
+trans    .byte 0,0,0
+gat      .byte 0,0,0
+insnr    .byte 0,0,0
+fflag    .byte 0,0,0
+ad       .byte 0,0,0
+sr       .byte 0,0,0
+bufend   = *
+;--------
+         .byte $fc,$3c;_ TPOIN marks to
+         .byte $00    ;  help relocator
+               ;^
+               ;this byte (changed by
+               ;packer) shows the total
+               ;number of tpoin sets!
+;--------
+tpoin    .word v1,v2,v3
+         .byte 4,7
+arp1     *= tpoin+$0100
+arp2     *= arp1+$0100
+filttab  *= arp2+$0100
+         .byte 3,3
+pulstab  *= filttab+$0100
+instr    *= pulstab+$0100
+lobyt    *= instr+$0100
+hibyt    *= lobyt+$0100
+supertab *= hibyt+$0100
+         .byte $0f,$00
+v1       *= supertab+$0100
+         .byte $8c,$00,$ff
+v2       *= v1+$0400
+         .byte $8c,$00,$ff
+v3       *= v2+$0400
+         .byte $8c,$00,$ff
+         *= v3+$0400
+s00      .byte $73,$00
+s0       .byte $80,$80,$80,$00,$7f
+         *= s00+$0100
+s01      .byte $73,$00
+s1       .byte $80,$80,$80,$00,$7f
+         *= s01+$0100
+s02      .byte $73,$00
+s2       .byte $80,$80,$80,$00,$7f
+
+                     

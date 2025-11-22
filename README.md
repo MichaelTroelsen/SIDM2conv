@@ -22,13 +22,25 @@ python --version
 ### Basic Conversion
 
 ```bash
-python sid_to_sf2.py <input.sid> [output.sf2]
+python sid_to_sf2.py <input.sid> [output.sf2] [--driver {np20,driver11}]
 ```
 
-Example:
+Examples:
 ```bash
+# Convert using NP20 driver (default, recommended for Laxity files)
 python sid_to_sf2.py Unboxed_Ending_8580.sid output.sf2
+
+# Convert using NP20 driver explicitly
+python sid_to_sf2.py Unboxed_Ending_8580.sid output.sf2 --driver np20
+
+# Convert using Driver 11
+python sid_to_sf2.py Unboxed_Ending_8580.sid output.sf2 --driver driver11
 ```
+
+### Driver Selection
+
+- **np20** (default) - JCH NewPlayer 20 driver, most similar to Laxity format
+- **driver11** - Standard SF2 Driver 11, more features but different instrument format
 
 ### Deep Analysis
 
@@ -69,51 +81,101 @@ The SID file format is the standard for distributing Commodore 64 music. It cont
 
 The C64 data section contains compiled 6502 machine code with the player routine and encoded music data.
 
-### Laxity Player Format
+### JCH NewPlayer v21 Format (Laxity Player)
 
-Laxity (Thomas Egeskov Petersen) created both the player routine used in many SID files and SID Factory II itself. His player format encodes music data in a proprietary structure.
+JCH NewPlayer v21 was coded by Laxity (Thomas Egeskov Petersen) of Vibrants in 2005. This is the player routine used in many SID files and is directly related to SID Factory II, which Laxity also created.
 
-#### Memory Layout (Unboxed_Ending_8580.sid)
+#### Instrument Format (8 bytes)
 
-| Address | Content |
-|---------|---------|
-| $1000 | JMP $1040 (init routine) |
-| $1003 | JMP $10C6 (play routine) |
-| $1006-$103F | Header data and text |
-| $1040-$10C5 | Init routine |
-| $10C6-$17FF | Player code |
-| $1800-$19DF | Tables and configuration |
-| $19E0-$1A5F | Instrument definitions |
-| $1A60-$1DFF | Data tables |
-| $1E00-$219F | Sequence/pattern data |
-
-#### Sequence Data Format
-
-Based on analysis, Laxity player sequences appear to use a triplet format:
-
-| Byte | Description | Range |
+| Byte | Description | Notes |
 |------|-------------|-------|
-| 1 | Command/Duration | $C0-$CF (commands), $80-$9F (duration/instrument) |
-| 2 | Instrument | $80 (none), $81-$9F (instrument 1-31) |
-| 3 | Note | $00-$60 (notes), $7E (rest), $7F (end marker) |
+| 0 | AD (Attack/Decay) | Standard SID ADSR |
+| 1 | SR (Sustain/Release) | Standard SID ADSR |
+| 2 | Restart Options / Wave Count Speed | See below |
+| 3 | Filter Setting | Low nibble: pass band, High nibble: resonance |
+| 4 | Filter Table Pointer | 0 = no filter program |
+| 5 | Pulse Table Pointer | Index into pulse table |
+| 6 | Pulse Property | Bit 0: reset on instrument only, Bit 1: filter reset control |
+| 7 | Wave Table Pointer | Index into wave table |
 
-Common command bytes:
-- `$C2` - Duration/gate command
-- `$C8`, `$C9` - Effect commands
-- `$CE`, `$CF` - Special commands
+##### Restart Options (Byte 2)
 
-#### Instrument Table Format
+- Low nibble: Wave count speed
+- High nibble: Instrument restart mode
+  - `$8x` - Hard restart (fixed)
+  - `$4x` - Soft restart (gate off only, no silence)
+  - `$2x` - Laxity hard restart (requires bit 7 set: `$Ax` or `$Bx`)
+  - `$1x` - Wave generator reset enable
+  - `$00` - Gate off 3 frames before next note
 
-Instruments appear to be 6 bytes each:
+#### Wave Table Format
+
+Two bytes per entry:
 
 | Byte | Description |
 |------|-------------|
-| 0 | Attack/Decay |
-| 1 | Sustain/Release |
-| 2 | Waveform ($11=tri, $21=saw, $41=pulse, $81=noise) |
-| 3 | Pulse width low |
-| 4 | Pulse width high |
-| 5 | Additional parameters |
+| 0 | Note offset ($80+ = absolute, $7F = jump, $7E = stop) |
+| 1 | Waveform ($11=tri, $21=saw, $41=pulse, $81=noise) |
+
+Special note offsets:
+- `$7F xx` - Jump to index xx
+- `$7E` - Stop processing, keep last entry
+- `$80` - Recalculate base note + transpose (for "Hubbard slide" effects)
+
+#### Pulse Table Format (4 bytes per entry)
+
+| Byte | Description |
+|------|-------------|
+| 0 | Pulse value ($FF = keep current) |
+| 1 | Count value |
+| 2 | Duration (bits 0-6) and direction (bit 7) |
+| 3 | Next pulse table entry (absolute index) |
+
+#### Filter Table Format (4 bytes per entry)
+
+| Byte | Description |
+|------|-------------|
+| 0 | Filter value ($FF = keep current) |
+| 1 | Count value |
+| 2 | Duration |
+| 3 | Next filter table entry (absolute index) |
+
+The first entry (4 bytes) is used for alternative speed (break speeds).
+
+#### Super Commands
+
+| Command | Description |
+|---------|-------------|
+| `$0x yy` | Slide up speed $xyy |
+| `$2x yy` | Slide down speed $xyy |
+| `$4x yy` | Invoke instrument x with alternative wave pointer yy |
+| `$60 xy` | Vibrato (x=frequency, y=amplitude) |
+| `$8x xx` | Portamento speed $xxx |
+| `$9x yy` | Set D=x and SR=yy (persistent) |
+| `$Ax yy` | Set D=x and SR=yy directly (until next note) |
+| `$C0 xx` | Set channel wave pointer directly to xx |
+| `$Dx yy` | Set filter/pulse (x=0: filter ptr, x=1: filter value, x=2: pulse ptr) |
+| `$E0 xx` | Set speed to xx |
+| `$F0 xx` | Set master volume |
+
+#### Speed Settings
+
+- Speeds below $02 use alternative speed lookup in filter table
+- Speed lookup table contains up to 4 entries (wraps around)
+- Write $00 as wrap-around mark for shorter tables
+
+#### Memory Layout (Typical Laxity SID)
+
+| Address | Content |
+|---------|---------|
+| $1000 | JMP init_routine |
+| $1003 | JMP play_routine |
+| $1006-$103F | Header data and text |
+| $1040-$10C5 | Init routine |
+| $10C6-$17FF | Player code |
+| $1800-$19FF | Tables and configuration |
+| $1A00+ | Instrument table (interleaved AD/SR/CTRL) |
+| ... | Orderlists and sequences |
 
 ### SID Factory II Format (Output)
 
@@ -176,6 +238,90 @@ SF2 sequences use a different triplet order than the Laxity player:
 | Tempo | Speed settings |
 | Init | Initialization data |
 
+### SF2 Driver Formats
+
+#### NP20 Driver (NewPlayer 20 - Recommended)
+
+The NP20 driver is derived from JCH NewPlayer and is the closest match to Laxity's format. Load address: `$0D7E`.
+
+##### NP20 Instrument Format (8 bytes, column-major)
+
+| Column | Description |
+|--------|-------------|
+| 0 | AD (Attack/Decay) |
+| 1 | SR (Sustain/Release) |
+| 2 | Wave table index |
+| 3 | Pulse table index |
+| 4 | Filter table index |
+| 5 | Command |
+| 6 | Vibrato |
+| 7 | Command value |
+
+##### NP20 Commands (2 columns)
+
+| Column | Description |
+|--------|-------------|
+| 0 | Command byte |
+| 1 | Parameter value |
+
+#### Driver 11 (Standard SF2 Driver)
+
+The standard SID Factory II driver with more features but a different instrument format. Load address: `$0D7E`.
+
+##### Driver 11 Instrument Format (6 bytes, column-major)
+
+| Column | Description | Notes |
+|--------|-------------|-------|
+| 0 | AD (Attack/Decay) | Standard SID ADSR |
+| 1 | SR (Sustain/Release) | Standard SID ADSR |
+| 2 | Flags | `$80`=hard restart, `$40`=filter, `$20`=filter enable, `$10`=osc reset, `$0x`=HR index |
+| 3 | Filter table index | |
+| 4 | Pulse table index | |
+| 5 | Wave table index | |
+
+##### Driver 11 Commands (3 columns)
+
+| Column | Description |
+|--------|-------------|
+| 0 | Command byte |
+| 1 | Parameter 1 |
+| 2 | Parameter 2 |
+
+### Format Mapping
+
+When converting from Laxity SID to SF2, the following mappings are applied:
+
+#### Laxity → NP20 Mapping
+
+| Laxity | NP20 Column | Notes |
+|--------|-------------|-------|
+| AD | 0 | Direct copy |
+| SR | 1 | Direct copy |
+| Wave table ptr | 2 | Converted to wave table index |
+| Pulse table ptr | 3 | Direct copy |
+| Filter ptr | 4 | Direct copy |
+| - | 5-7 | Set to 0 (no command/vibrato) |
+
+#### Laxity → Driver 11 Mapping
+
+| Laxity | Driver 11 Column | Notes |
+|--------|------------------|-------|
+| AD | 0 | Direct copy |
+| SR | 1 | Direct copy |
+| Restart options | 2 | Converted to flags |
+| Filter ptr | 3 | Direct copy |
+| Pulse table ptr | 4 | Direct copy |
+| Wave table ptr | 5 | Converted to wave table index |
+
+#### Wave Table Index Mapping
+
+| Waveform | Index |
+|----------|-------|
+| Saw ($21) | 0 |
+| Pulse ($41) | 2 |
+| Triangle ($11) | 4 |
+| Noise ($81) | 6 |
+
 ## Converter Architecture
 
 ### Components
@@ -204,15 +350,17 @@ SID File → SIDParser → LaxityPlayerAnalyzer → ExtractedData → SF2Writer 
 ### Running Tests
 
 ```bash
-python -m unittest test_converter -v
+python test_converter.py
 ```
 
-All 17 tests should pass:
+All 34 tests should pass:
 - SID parsing tests
 - Memory access tests
 - Data structure tests
-- Integration tests with real SID file
+- Integration tests with real SID files
 - SF2 writing tests
+- Instrument encoding tests
+- Feature validation tests (instruments, commands, tempo, tables)
 
 ### CI/CD Pipeline
 

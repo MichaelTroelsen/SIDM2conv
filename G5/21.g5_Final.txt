@@ -1,0 +1,247 @@
+
+JCH NewPlayer v21.b5 Instructions
+=================================
+
+9th of May 2005
+JCH NewPlayer v21.b5 was coded by Laxity of Vibrants.
+
+Updates in 21.g5 Final
+----------------------
+
+- Fixed the periodical retrig bug, in liveplay mode.
+- Implemented stop ($fe in pattern list). Forgot that completely in pre .g5. DOH!
+
+Updates in 21.g4 Final
+----------------------
+
+- Fixed a bug in the vibrato feel, that caused an overflow and made the note go out of tune.. 
+- Fixed the syncroniztion (initialization) bug.
+
+
+Updates in Beta 02
+------------------
+
+- Super command $dx $yy set filter/pulse was wrongly documented in Beta 01 text file!.
+- Super command $dx $yy now also accepts a x=2 value where yy will be set as the active
+  pulse program for the current channel
+- F2 preview has been fixed to work. Still has a bug, the last note event will repeast every
+  two or three seconds if no input was registered by the player. This is a bit annoying, but
+  the live play feature works, so you can preview your instruments etc. Pressing F2 in the editor
+  will not clear the sid channels, so it's a good idea to stop the currently playing song (f3) before
+  pressing F2.
+- A bug in the super command $dx has been fixed, that would cause the tempo to change if the $xx value
+  of the command was set to $f0 or above!
+
+
+Preface
+-------
+
+Yeah, well.. Another NewPlayer, 14 years after 20.g4!.. Guess they call it nostalgia.
+
+First of all I need to bow deeply for JCH. Never realized how great and comprehensive music/composition system he created. It's versatile, consistent and just brilliant. I've had a bit of struggle getting this player to work with the editor and as it is at the moment, the "liveplay" function doesn't work (That's using F2 or shift-p in the editor). Seems that the  
+editor does some code modification (in real-time) that I've not yet been able to work out. JCH NewPlayer v21 is coded from scratch, started on the 26th of January 2005.
+
+21.g2 uses up to about $1f-$20 scanlines, some tunes less depending what effect are applied. That said there still is a possibility to go WAY beyond the $20 scanlines if all voices uses a vibrato with the smallest possible amplitude. This is because the vibrato calculates the relative frequency delta and shifts this in a loop according to the amplitude. The smaller amplitude, the more shifts - this obviously takes more cpu time. Vibrato in more channels obviously also costs cpu time.
+
+I've tried to keep the layout of instruments, wave-tables, filter-tables and pulse-tables the same as 20.g4. Especially because it actually works perfectly in 20.g4, so no need to change that at all.
+
+My main motivation for coding this player was to get rid of a tie-note problem with 20.g4 that I experienced when trying to make a tune for the X-2004 event (Never got it any music done, though!). I could probably have just fixed it in 20.g4, but I kind of got carried away I guess. 
+
+One thing I haven't adapted from the 20.g4 player is the note off wave pointer. This effect can be accomplished by using the direct wave pointer super command ($c0 xx). I've also disregarded the high-frequency setting in the instrument, but I could implement this on request if it's REALLY important. ;)
+
+
+Instrument setup:
+=================
+
+00 AD
+00 SR
+00 Restart options / Wave count speed 
+
+   low nibble  - wave count speed
+   high nibble - Instrument restart mode
+   $8x - Hard restart (fixed)
+   $4x - Soft restart (only gate off, but there's not silence inserted)
+   $2x - Laxity hard restart (only works with bit 7 set as well.. That'd be $ax or $bx (reset enabled)).
+	 This hard restart is adapted from my old player (anno 1989) and works a little different than the
+         usual hard restart. The attack/decay part of the ADSR is not touched when hard restarting. 
+	 Therefore the attack/decay of the instrument can be used to control the hard restart.
+   $1x - Wave generator reset enable. 
+   
+   $8x & $1x can be combined. $4x cannot be combined with any other restart
+   setting.
+
+   A value of $00 will gate off 3 frames before next note and set a silent
+   gate on value on the 3rd frame.! 
+
+00 Filter setting (non-zero will enable filter on the channel(S) where the instrument
+                   is being used)
+
+   low nibble  - Pass band
+   high nibble - Resonance
+
+00 Filter table pointer. 
+
+   If this one is set to $00 and filter setting (previous byte) is set to a non-zero 
+   value, the filter table routine will be disabled (can be overwritten by a 
+   super-command) and the current filter value set will be applied to the instrument.
+
+00 Pulse table pointer
+00 Pulse property
+
+   bit 0 - Pulse table routine is only reset when instrument is set, not on other
+   events.
+   bit 1 - Filter table routine is only reset when instrument is set, not on note
+   events. You can still alter the filter pointer using the super command $dx yy
+
+00 Wave table pointer
+
+
+Wavetable
+=========
+
+Works as 20.g4.
+
+xx yy - One tick in the entry list, 2 bytes pr. tick.
+
+xx = note offset. If bit 7 is set ($80+), these notes are absolute and transpose will
+     not be applied. Actually a value of $80 is special. See the notes on vibrato and
+     slides further down in the document.
+yy = waveform
+
+if xx is $7f (jump to index command), yy will point to the index which the wave table routine will pickup.
+
+if xx is $7e processing of the wave table stops, and the last valid entry will remain.
+
+
+Pulse
+=====
+
+Works as 20.g4.
+
+xx yy zz qq - One entry, 4 bytes.
+
+xx = Pulse settings (high nibble is low part of the pulse, and low nibble is the high
+     part), a value of $ff will skip setting of the pulse value and keep the current.
+yy = Count value
+zz = Duration (bits 0-6) and direction (bit 7).
+qq = Next pulse table entry (note that this is an absolute index value!)
+
+
+Filter
+======
+
+Works as 20.g4
+
+The first entry (4-bytes) in the filter table is used for alternative speed.
+
+xx yy zz qq - One entry, 4 bytes.
+
+xx = Filter value, a value of $ff will skip setting the filter value and keep the
+     current. 
+yy = Count value
+zz = Duration
+qq = Next filter table entry (note that this is an absolute index value!)
+
+Super table
+===========
+
+There are a few super-commands that have the ability to work directly on channel, but not influence the instrument setup. Those commands are one-shot commands and will only working the scope of setting the super command until the next note on event (Marked with a D).  
+
+	implemented:
+	------------
+
+	- 0x yy (D) Slide up speed $xyy
+
+	- 1? ??     Free
+
+	- 2x yy (D) Slide down speed $xyy
+
+	- 3? ??     Free
+
+	- 4x yy     (40-5f) Invoke instrument with alternative wave table pointer.
+		    Instrument is x (00-1f) yy is the wave table pointer
+
+	- 60 xy (D) Vibrato, x=frequency - y=amplitude. Vibrato is canceled when 
+		    another note event is received or a slide super command.
+
+	- 7? ??     Free
+
+	- 8x xx     Portamento, speed $xxx.
+
+	- 9x yy     set D=x and SR=yy (This setting will remain until set otherwise or
+                    an instrument is set on the track.) 
+
+	- ax yy (D) set D=x and SR=yy directly (This will set the sustain/release value 
+                    directly. The next time you set a note the sustain/release value 
+                    will revert to what ever it was before.)
+
+	- b? ??     Free
+
+	- c0 xx (D) set channel wave pointer directly to xx. (This command will set the
+                    play-cursor of the wave-table routine directly, it will not have 
+                    any effect on the instrument settings which will remain unchanged 
+                    for the next upcoming note event.)
+
+	- dx yy (D) set filter/pulse. (x=0 and x=1 syntax was wrongly documented in beta 1)
+                        If x=0, yy=pointer to filter table.
+                        If x=1, yy=absolute filter value - any running filter 
+			envelope will be cancelled. 
+                        If x=2, yy=pointer to pulse table. (New in beta 2)
+
+	- e0 xx set speed to xx
+
+	- f0 xx set master volume
+
+	
+
+Speed
+=====
+
+The player cannot handle any speeds below $02, so speeds $00 and $01 work as alternative speeds and look up the actual speed values in the first entry of the filter table. I call these "break speeds". The speed look up table can contain a max of 4 entries, which will wrap around automatically. If shorter half speed tables are desirable, write $00 as a wrap around mark. (i.e. $06 $04 $00 .. ). That means if you "swap" a 20.g4 tune that uses "half-speeds" as JCH calls it, you have to set a wrap mark at position 2 of the speed look up table. Speeds set to $01 in the table will automatically be clamped to $02 in the player, so it won't crash. Neither will it crach if the first entry is $00.. I'll just play the tune at speed $02 as well.
+
+
+Vibrato and slides
+==================
+
+A note on how vibrato and slide work. In 21.g0+ you can only apply vibrato and slides to a note offset with zero in the wave table. That means that all non zero note values in the wave table will be disregarded as vibrato and slide targets. F.ex.
+
+This will work perfectly with slides and vibrato.
+
+00 - $c0 $81
+01 - $00 $41
+02 - $7f $01
+
+
+
+This one will NOT work with slide and vibrato as the note is offset by 1. 
+
+00 - $c0 $81
+01 - $01 $41
+02 - $7f $01
+
+As a matter of fact, the frequency of the base note + transpose (as set in the track list) will always be kept in the scope of the current note, but only output on wave table entry with an offset of zero. This means that it can be used for some nice effects. 
+
+There's one special case with the wave table where an offset of $80 is used. In this case the base note value + current transpose is recalculated and output. This does NOT mean that the internally stored frequency value is overwritten (which is actually the same, but can be altered by slide and vibrato). This enables you to make effects like the good old "Hubbard slide" (where every second frame plays the note and every other frame a continuous slide up or down). F.ex.
+
+00 - $00 $21
+01 - $80 $21
+02 - $7f $00
+
+If you apply a slide to this one, you'll get a "Hubbard slide". 
+
+
+
+Notes on 21.g4
+==============
+
+If you set an instrument using the Ixx command in the editor but do not set a "note on" in that same "tick", the new instrument setting will be cached until the next "note on" event in that channel is encountered.
+Super commands, however, are always executed on the fly.
+
+A note of causion. If you set a vibrato on a note that already plays a vibrato there's
+a high risk of the note going out of key, as the vibrato calculations aren't reset at that point.
+
+
+Known and possible bugs in 21.g4
+================================
+
+- Break speed using $02 handles hard restart incorrectly, and a note played a tick after an other (when speed is at the 2 fragment) will come out wrong.

@@ -221,6 +221,7 @@ def check_documentation():
         with open('README.md', 'r', encoding='utf-8') as f:
             content = f.read()
 
+        # Required main sections
         required_sections = [
             '## Usage',
             '## File Formats',
@@ -233,6 +234,41 @@ def check_documentation():
                 print_success(f"README.md contains '{section}'")
             else:
                 print_warning(f"README.md missing '{section}'")
+
+        # Required player format documentation
+        required_format_docs = [
+            ('### JCH NewPlayer', 'JCH NewPlayer v21 format documentation'),
+            ('#### Instrument Format', 'Instrument format tables'),
+            ('### SF2 Driver Formats', 'SF2 driver format documentation'),
+            ('#### NP20 Driver', 'NP20 driver documentation'),
+            ('#### Driver 11', 'Driver 11 documentation'),
+            ('### Format Mapping', 'Format mapping documentation'),
+        ]
+
+        format_doc_passed = True
+        for pattern, description in required_format_docs:
+            if pattern in content:
+                print_success(f"README.md contains {description}")
+            else:
+                print_error(f"README.md missing {description}")
+                format_doc_passed = False
+                all_passed = False
+
+        if format_doc_passed:
+            print_success("All player format documentation present")
+
+        # Check for key format details
+        key_details = [
+            ('AD (Attack/Decay)', 'AD/SR documentation'),
+            ('Wave table', 'Wave table documentation'),
+            ('column-major', 'Column-major format note'),
+        ]
+
+        for pattern, description in key_details:
+            if pattern in content:
+                print_success(f"README.md includes {description}")
+            else:
+                print_warning(f"README.md should include {description}")
 
         print_success("README.md exists and has content")
     else:
