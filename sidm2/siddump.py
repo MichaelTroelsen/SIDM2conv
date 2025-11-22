@@ -2,12 +2,16 @@
 Siddump integration for extracting ADSR and waveform data.
 """
 
+import logging
 import os
 import subprocess
 import re
+from typing import Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 
-def extract_from_siddump(sid_path, playback_time=60):
+def extract_from_siddump(sid_path: str, playback_time: int = 60) -> Optional[Dict]:
     """
     Run siddump on a SID file and extract actual ADSR and waveform values.
 
@@ -119,11 +123,11 @@ def extract_from_siddump(sid_path, playback_time=60):
         }
 
     except subprocess.TimeoutExpired:
-        print(f"Warning: siddump timed out after {playback_time}s")
+        logger.warning(f"siddump timed out after {playback_time}s")
         return None
     except FileNotFoundError:
-        print(f"Warning: siddump.exe not found at {siddump_exe}")
+        logger.warning(f"siddump.exe not found at {siddump_exe}")
         return None
     except Exception as e:
-        print(f"Warning: siddump extraction failed: {e}")
+        logger.warning(f"siddump extraction failed: {e}")
         return None

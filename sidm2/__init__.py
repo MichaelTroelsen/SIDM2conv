@@ -23,6 +23,7 @@ from .sequence_extraction import analyze_sequence_commands, extract_command_para
 from .laxity_analyzer import LaxityPlayerAnalyzer
 from .sf2_writer import SF2Writer
 from .siddump import extract_from_siddump
+from .logging_config import setup_logging, get_logger
 
 __all__ = [
     # Version info
@@ -54,6 +55,10 @@ __all__ = [
 
     # Writer
     'SF2Writer',
+
+    # Logging
+    'setup_logging',
+    'get_logger',
 
     # Exceptions
     'SIDError',

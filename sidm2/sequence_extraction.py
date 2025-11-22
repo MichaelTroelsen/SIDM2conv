@@ -2,8 +2,10 @@
 Sequence and command extraction functions.
 """
 
+from typing import Dict, List, Set, Tuple
 
-def get_command_names():
+
+def get_command_names() -> List[str]:
     """
     Return list of command names for SF2 command table.
     Based on JCH NewPlayer v21 super commands.
@@ -28,15 +30,19 @@ def get_command_names():
     ]
 
 
-def analyze_sequence_commands(raw_sequences):
+def analyze_sequence_commands(raw_sequences: List[bytes]) -> Dict:
     """
     Analyze commands used in sequences and extract command statistics.
 
-    Returns dict with:
-    - commands_used: set of command indices used
-    - command_counts: dict of command index -> count
-    - command_contexts: dict of command index -> list of (seq_idx, note_before)
-    - set_adsr_values: list of (AD, SR) tuples from Set ADSR commands
+    Args:
+        raw_sequences: List of raw sequence byte arrays
+
+    Returns:
+        Dict with:
+        - commands_used: set of command indices used
+        - command_counts: dict of command index -> count
+        - command_contexts: dict of command index -> list of (seq_idx, note_before)
+        - set_adsr_values: list of (AD, SR) tuples from Set ADSR commands
     """
     result = {
         'commands_used': set(),
@@ -74,10 +80,17 @@ def analyze_sequence_commands(raw_sequences):
     return result
 
 
-def extract_command_parameters(data, load_addr, raw_sequences):
+def extract_command_parameters(data: bytes, load_addr: int, raw_sequences: List[bytes]) -> List[Tuple[int, int]]:
     """
     Extract command parameters based on usage in sequences.
-    Returns list of (command_idx, parameter_value) tuples.
+
+    Args:
+        data: C64 program data
+        load_addr: Memory load address
+        raw_sequences: List of raw sequence byte arrays
+
+    Returns:
+        List of (command_idx, parameter_value) tuples
     """
     command_params = []
 

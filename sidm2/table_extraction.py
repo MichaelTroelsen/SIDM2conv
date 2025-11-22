@@ -3,6 +3,8 @@ Table extraction functions for Laxity SID files.
 """
 
 from collections import Counter
+from typing import Dict, List, Optional, Tuple
+
 from .constants import (
     OPCODE_BYTES, COMMON_AD_VALUES, COMMON_SR_VALUES,
     VALID_FILTER_SETTINGS, VALID_RESTART_OPTIONS,
@@ -14,13 +16,19 @@ from .constants import (
 )
 
 
-def find_sid_register_tables(data, load_addr):
+def find_sid_register_tables(data: bytes, load_addr: int) -> Dict[int, int]:
     """
     Find table addresses for each SID register by tracing
     STA $D4xx,Y instructions back to their LDA source.
-    Returns dict mapping SID register offset to table address.
+
+    Args:
+        data: C64 program data
+        load_addr: Memory load address
+
+    Returns:
+        Dict mapping SID register offset to table address
     """
-    tables = {}
+    tables: Dict[int, int] = {}
 
     for i in range(len(data) - 3):
         # STA $D4xx,Y (99 lo hi)
@@ -45,11 +53,18 @@ def find_sid_register_tables(data, load_addr):
     return tables
 
 
-def find_table_addresses_from_player(data, load_addr):
+def find_table_addresses_from_player(data: bytes, load_addr: int) -> Dict[str, int]:
     """
     Find table addresses by tracing the player code.
+
+    Args:
+        data: C64 program data
+        load_addr: Memory load address
+
+    Returns:
+        Dict with keys 'pulse', 'filter', 'wave' mapping to addresses
     """
-    tables = {}
+    tables: Dict[str, int] = {}
 
     pulse_candidates = []
     filter_candidates = []
@@ -94,10 +109,18 @@ def find_table_addresses_from_player(data, load_addr):
     return tables
 
 
-def find_instrument_table(data, load_addr, verbose=False):
+def find_instrument_table(data: bytes, load_addr: int, verbose: bool = False) -> Optional[int]:
     """
     Find the instrument table in Laxity format.
     Instruments are 8 bytes each, typically in $1900-$1B00 range.
+
+    Args:
+        data: C64 program data
+        load_addr: Memory load address
+        verbose: Enable verbose output
+
+    Returns:
+        Address of instrument table, or None if not found
     """
     best_addr = 0
     best_score = 0
@@ -211,7 +234,7 @@ def find_instrument_table(data, load_addr, verbose=False):
     return best_addr if best_addr else None
 
 
-def find_wave_table_from_player_code(data, load_addr):
+def find_wave_table_from_player_code(data: bytes, load_addr: int) -> Optional[int]:
     """
     Find wave table addresses by analyzing player code.
     Returns (note_addr, wave_addr) or (None, None) if not found.
@@ -278,7 +301,7 @@ def find_wave_table_from_player_code(data, load_addr):
     return (None, None)
 
 
-def find_and_extract_wave_table(data, load_addr, verbose=False, siddump_waveforms=None):
+def find_and_extract_wave_table(data: bytes, load_addr: int, verbose: bool = False, siddump_waveforms: Optional[List[int]] = None) -> Tuple[Optional[int], List[Tuple[int, int]]]:
     """
     Find and extract wave table from Laxity SID.
     Returns (address, entries) where entries is list of (note_offset, waveform).
@@ -399,7 +422,7 @@ def find_and_extract_wave_table(data, load_addr, verbose=False, siddump_waveform
     return best_addr, best_entries
 
 
-def find_and_extract_pulse_table(data, load_addr, pulse_ptrs=None, avoid_addr=0):
+def find_and_extract_pulse_table(data: bytes, load_addr: int, pulse_ptrs: Optional[set] = None, avoid_addr: int = 0) -> Tuple[Optional[int], List[bytes]]:
     """
     Find and extract pulse table from Laxity SID.
     Returns (address, entries) where entries is list of 4-byte tuples.
@@ -487,7 +510,7 @@ def find_and_extract_pulse_table(data, load_addr, pulse_ptrs=None, avoid_addr=0)
     return best_addr, best_entries
 
 
-def find_and_extract_filter_table(data, load_addr, filter_ptrs=None, avoid_addr=0):
+def find_and_extract_filter_table(data: bytes, load_addr: int, filter_ptrs: Optional[set] = None, avoid_addr: int = 0) -> Tuple[Optional[int], List[bytes]]:
     """
     Find and extract filter table from Laxity SID.
     Returns (address, entries) where entries is list of 4-byte tuples.
@@ -542,7 +565,7 @@ def find_and_extract_filter_table(data, load_addr, filter_ptrs=None, avoid_addr=
     return best_addr, best_entries
 
 
-def extract_all_laxity_tables(data, load_addr):
+def extract_all_laxity_tables(data: bytes, load_addr: int) -> Dict[str, any]:
     """
     Extract ALL tables from Laxity SID file.
     Returns dict with instruments, wave_table, pulse_table, filter_table.

@@ -726,9 +726,9 @@ All files now achieve 100% validation score with siddump ADSR merging and improv
 
 | # | Improvement | Status | Effort | Impact | Description |
 |---|-------------|--------|--------|--------|-------------|
-| 36 | Implement proper logging | 🔄 Pending | 2-3h | High | Replace ~70+ print() calls with Python logging module |
-| 37 | Add type hints | 🔄 Pending | 4-6h | High | Add type annotations to all public functions in sidm2/ |
-| 38 | Error handling in extraction | 🔄 Pending | 6-8h | Critical | Raise specific exceptions instead of returning None |
+| 36 | Implement proper logging | ✅ Done | 2-3h | High | Replace ~70+ print() calls with Python logging module |
+| 37 | Add type hints | ✅ Done | 4-6h | High | Add type annotations to all public functions in sidm2/ |
+| 38 | Error handling in extraction | ✅ Done | 6-8h | Critical | Raise specific exceptions instead of returning None |
 | 39 | Subprocess error handling | 🔄 Pending | 3-4h | Medium | Proper error handling for siddump.exe, player-id.exe |
 | 40 | Data validation | 🔄 Pending | 5-6h | Critical | Validate SequenceEvent, ExtractedData at creation |
 | 41 | Test coverage for edge cases | 🔄 Pending | 4-5h | High | Add tests for corrupted files, empty data, missing templates |

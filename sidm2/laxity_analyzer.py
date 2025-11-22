@@ -2,8 +2,11 @@
 Laxity player analyzer for extracting music data.
 """
 
+import logging
 from typing import List, Tuple
 from .models import PSIDHeader, SequenceEvent, ExtractedData
+
+logger = logging.getLogger(__name__)
 from .table_extraction import (
     extract_all_laxity_tables,
     find_and_extract_wave_table,
@@ -237,10 +240,10 @@ class LaxityPlayerAnalyzer:
         init_addr = self.header.init_address
         play_addr = self.header.play_address
 
-        print(f"Init address: ${init_addr:04X}")
-        print(f"Play address: ${play_addr:04X}")
-        print(f"Load address: ${self.load_address:04X}")
-        print(f"Data size: {len(self.data)} bytes")
+        logger.debug(f"Init address: ${init_addr:04X}")
+        logger.debug(f"Play address: ${play_addr:04X}")
+        logger.debug(f"Load address: ${self.load_address:04X}")
+        logger.debug(f"Data size: {len(self.data)} bytes")
 
         self._find_pointer_tables(tables)
         self._find_sequence_data(tables)
@@ -290,7 +293,7 @@ class LaxityPlayerAnalyzer:
                 tables['resolved_pointers'] = best[3]
                 tables['ptr_lo_addr'] = best[0]
                 tables['ptr_hi_addr'] = best[1]
-            print(f"Found {len(candidates)} potential pointer table pairs")
+            logger.debug(f"Found {len(candidates)} potential pointer table pairs")
 
     def _find_sequence_data(self, tables: dict):
         """Find sequence data patterns"""
@@ -318,7 +321,7 @@ class LaxityPlayerAnalyzer:
 
         if sequence_candidates:
             tables['sequence_regions'] = sequence_candidates[:20]
-            print(f"Found {len(sequence_candidates)} potential sequence regions")
+            logger.debug(f"Found {len(sequence_candidates)} potential sequence regions")
 
     def extract_music_data(self) -> ExtractedData:
         """Extract music data from the SID file using Laxity parser"""
@@ -380,22 +383,22 @@ class LaxityPlayerAnalyzer:
         # Validate
         self._validate_extracted_data(extracted)
 
-        print(f"Extracted {len(extracted.sequences)} sequences (via Laxity parser)")
-        print(f"Extracted {len(extracted.instruments)} instruments")
-        print(f"Created {len(extracted.orderlists)} orderlists")
+        logger.info(f"Extracted {len(extracted.sequences)} sequences (via Laxity parser)")
+        logger.info(f"Extracted {len(extracted.instruments)} instruments")
+        logger.info(f"Created {len(extracted.orderlists)} orderlists")
         for i, ol in enumerate(extracted.orderlists):
             seq_indices = [idx for _, idx in ol]
-            print(f"  Voice {i+1}: sequences {seq_indices}")
-        print(f"Tempo: {extracted.tempo}")
+            logger.debug(f"  Voice {i+1}: sequences {seq_indices}")
+        logger.info(f"Tempo: {extracted.tempo}")
         if extracted.multi_speed > 1:
-            print(f"Multi-speed: {extracted.multi_speed}x")
-        print(f"Filter table: {len(extracted.filtertable)} bytes")
-        print(f"Pulse table: {len(extracted.pulsetable)} bytes")
+            logger.info(f"Multi-speed: {extracted.multi_speed}x")
+        logger.debug(f"Filter table: {len(extracted.filtertable)} bytes")
+        logger.debug(f"Pulse table: {len(extracted.pulsetable)} bytes")
 
         if extracted.validation_errors:
-            print(f"Validation warnings: {len(extracted.validation_errors)}")
+            logger.warning(f"Validation warnings: {len(extracted.validation_errors)}")
             for err in extracted.validation_errors[:5]:
-                print(f"  - {err}")
+                logger.warning(f"  - {err}")
 
         return extracted
 

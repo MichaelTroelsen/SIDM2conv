@@ -2,13 +2,22 @@
 Instrument extraction functions for Laxity SID files.
 """
 
+from typing import Dict, List, Optional, Tuple
+
 from .table_extraction import find_instrument_table, find_and_extract_wave_table
 
 
-def extract_laxity_instruments(data, load_addr, wave_table=None):
+def extract_laxity_instruments(data: bytes, load_addr: int, wave_table: Optional[List[Tuple[int, int]]] = None) -> List[Dict]:
     """
     Extract actual instrument data from Laxity SID file.
-    Returns list of instrument dicts with full 8-byte Laxity format.
+
+    Args:
+        data: C64 program data
+        load_addr: Memory load address
+        wave_table: Optional wave table entries
+
+    Returns:
+        List of instrument dicts with full 8-byte Laxity format
     """
     instruments = []
 
@@ -138,10 +147,17 @@ def extract_laxity_instruments(data, load_addr, wave_table=None):
     return instruments
 
 
-def extract_laxity_wave_table(data, load_addr, siddump_waveforms=None):
+def extract_laxity_wave_table(data: bytes, load_addr: int, siddump_waveforms: Optional[List[int]] = None) -> List[Tuple[int, int]]:
     """
     Extract wave table data from Laxity SID file.
-    Returns list of (note_offset, waveform) tuples matching SF2 format.
+
+    Args:
+        data: C64 program data
+        load_addr: Memory load address
+        siddump_waveforms: Optional list of waveforms from siddump
+
+    Returns:
+        List of (note_offset, waveform) tuples matching SF2 format
     """
     wave_addr, wave_entries = find_and_extract_wave_table(data, load_addr, siddump_waveforms=siddump_waveforms)
 

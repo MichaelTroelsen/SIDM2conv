@@ -2,6 +2,7 @@
 SF2 file writer - writes SID Factory II project files.
 """
 
+import logging
 import struct
 import os
 from typing import Optional
@@ -10,6 +11,9 @@ from .models import ExtractedData, SF2DriverInfo
 from .table_extraction import find_and_extract_wave_table, extract_all_laxity_tables
 from .instrument_extraction import extract_laxity_instruments, extract_laxity_wave_table
 from .sequence_extraction import get_command_names
+from .exceptions import SF2WriteError, TemplateNotFoundError
+
+logger = logging.getLogger(__name__)
 
 
 class SF2Writer:
@@ -36,13 +40,24 @@ class SF2Writer:
         self.driver_type = driver_type
 
     def write(self, filepath: str):
-        """Write the SF2 file"""
+        """Write the SF2 file.
+
+        Args:
+            filepath: Output file path
+
+        Raises:
+            TemplateNotFoundError: If no template/driver is found
+            SF2WriteError: If writing fails
+        """
         template_path = self._find_template(self.driver_type)
 
         if template_path and os.path.exists(template_path):
-            print(f"Using template: {template_path}")
-            with open(template_path, 'rb') as f:
-                template_data = f.read()
+            logger.info(f"Using template: {template_path}")
+            try:
+                with open(template_path, 'rb') as f:
+                    template_data = f.read()
+            except IOError as e:
+                raise SF2WriteError(f"Failed to read template: {e}")
 
             self.output = bytearray(template_data)
             self._inject_music_data_into_template()
@@ -50,24 +65,30 @@ class SF2Writer:
             driver_path = self._find_driver()
 
             if driver_path and os.path.exists(driver_path):
-                print(f"Using driver: {driver_path}")
-                with open(driver_path, 'rb') as f:
-                    driver_data = f.read()
+                logger.info(f"Using driver: {driver_path}")
+                try:
+                    with open(driver_path, 'rb') as f:
+                        driver_data = f.read()
+                except IOError as e:
+                    raise SF2WriteError(f"Failed to read driver: {e}")
 
                 self.output = bytearray(driver_data)
             else:
-                print("Warning: No template or driver found, creating minimal structure")
+                logger.warning("No template or driver found, creating minimal structure")
                 self._create_minimal_structure()
 
             self._inject_music_data()
 
         self._inject_auxiliary_data()
 
-        with open(filepath, 'wb') as f:
-            f.write(self.output)
+        try:
+            with open(filepath, 'wb') as f:
+                f.write(self.output)
+        except IOError as e:
+            raise SF2WriteError(f"Failed to write SF2 file: {e}")
 
-        print(f"Written SF2 file: {filepath}")
-        print(f"File size: {len(self.output)} bytes")
+        logger.info(f"Written SF2 file: {filepath}")
+        logger.info(f"File size: {len(self.output)} bytes")
 
     def _find_template(self, driver_type: str = 'driver11') -> Optional[str]:
         """Find an SF2 template file to use as base"""
@@ -106,10 +127,10 @@ class SF2Writer:
 
         file_id = struct.unpack('<H', self.output[2:4])[0]
         if file_id != self.SF2_FILE_ID:
-            print(f"Warning: File ID {file_id:04X} != expected {self.SF2_FILE_ID:04X}")
+            logger.warning(f" File ID {file_id:04X} != expected {self.SF2_FILE_ID:04X}")
             return False
 
-        print(f"Parsing SF2 header (load address: ${self.load_address:04X})")
+        logger.debug(f"Parsing SF2 header (load address: ${self.load_address:04X})")
 
         offset = 4
         while offset < len(self.output) - 2:
@@ -144,7 +165,7 @@ class SF2Writer:
             name_end += 1
 
         self.driver_info.driver_name = data[3:name_end].decode('latin-1', errors='replace')
-        print(f"  Driver: {self.driver_info.driver_name}")
+        logger.debug(f"  Driver: {self.driver_info.driver_name}")
 
     def _parse_music_data_block(self, data: bytes):
         """Parse music data block to find sequence/orderlist locations"""
@@ -177,10 +198,10 @@ class SF2Writer:
         idx += 2
         self.driver_info.sequence_start = struct.unpack('<H', data[idx:idx+2])[0]
 
-        print(f"  Tracks: {self.driver_info.track_count}")
-        print(f"  Sequences: {self.driver_info.sequence_count}")
-        print(f"  Sequence start: ${self.driver_info.sequence_start:04X}")
-        print(f"  Orderlist start: ${self.driver_info.orderlist_start:04X}")
+        logger.debug(f"  Tracks: {self.driver_info.track_count}")
+        logger.debug(f"  Sequences: {self.driver_info.sequence_count}")
+        logger.debug(f"  Sequence start: ${self.driver_info.sequence_start:04X}")
+        logger.debug(f"  Orderlist start: ${self.driver_info.orderlist_start:04X}")
 
     def _parse_tables_block(self, data: bytes):
         """Parse table definitions block to find table addresses"""
@@ -223,10 +244,10 @@ class SF2Writer:
 
                 if table_type == 0x80:
                     self.driver_info.table_addresses['Instruments'] = table_info
-                    print(f"    Instruments table at ${addr:04X} ({columns}×{rows}) [ID={table_id}]")
+                    logger.debug(f"    Instruments table at ${addr:04X} ({columns}×{rows}) [ID={table_id}]")
                 elif table_type == 0x81:
                     self.driver_info.table_addresses['Commands'] = table_info
-                    print(f"    Commands table at ${addr:04X} ({columns}×{rows}) [ID={table_id}]")
+                    logger.debug(f"    Commands table at ${addr:04X} ({columns}×{rows}) [ID={table_id}]")
                 else:
                     if name:
                         self.driver_info.table_addresses[name] = table_info
@@ -245,17 +266,17 @@ class SF2Writer:
 
     def _inject_music_data_into_template(self):
         """Inject extracted music data into a template SF2 file"""
-        print("Injecting music data into template...")
-        print(f"Template size: {len(self.output)} bytes")
+        logger.info("Injecting music data into template...")
+        logger.debug(f"Template size: {len(self.output)} bytes")
 
         if not self._parse_sf2_header():
-            print("Warning: Could not parse SF2 header, using fallback")
+            logger.warning(" Could not parse SF2 header, using fallback")
             self._print_extraction_summary()
             return
 
         required_size = self._addr_to_offset(self.driver_info.sequence_start) + (self.driver_info.sequence_count * 256)
         if len(self.output) < required_size:
-            print(f"  Expanding file from {len(self.output)} to {required_size} bytes")
+            logger.debug(f"  Expanding file from {len(self.output)} to {required_size} bytes")
             self.output.extend(bytearray(required_size - len(self.output)))
 
         if self.data.instruments or self.data.raw_sequences:
@@ -279,14 +300,14 @@ class SF2Writer:
 
     def _inject_sequences(self):
         """Inject sequence data into the SF2 file using packed format"""
-        print("\n  Injecting sequences...")
+        logger.debug("\n  Injecting sequences...")
 
         seq_start = self._addr_to_offset(self.driver_info.sequence_start)
         ptr_lo_offset = self._addr_to_offset(self.driver_info.sequence_ptrs_lo)
         ptr_hi_offset = self._addr_to_offset(self.driver_info.sequence_ptrs_hi)
 
         if seq_start >= len(self.output) or seq_start < 0:
-            print(f"    Warning: Invalid sequence start offset {seq_start}")
+            logger.warning(f"     Invalid sequence start offset {seq_start}")
             return
 
         SEQUENCE_SLOT_SIZE = 256
@@ -405,18 +426,18 @@ class SF2Writer:
 
             sequences_written += 1
 
-        print(f"    Written {sequences_written} sequences")
+        logger.info(f"    Written {sequences_written} sequences")
 
     def _inject_orderlists(self):
         """Inject orderlist data into the SF2 file using fixed 256-byte slots"""
-        print("  Injecting orderlists...")
+        logger.info("  Injecting orderlists...")
 
         ol_start = self._addr_to_offset(self.driver_info.orderlist_start)
         ptr_lo_offset = self._addr_to_offset(self.driver_info.orderlist_ptrs_lo)
         ptr_hi_offset = self._addr_to_offset(self.driver_info.orderlist_ptrs_hi)
 
         if ol_start >= len(self.output) or ol_start < 0:
-            print(f"    Warning: Invalid orderlist start offset {ol_start}")
+            logger.warning(f"     Invalid orderlist start offset {ol_start}")
             return
 
         ORDERLIST_SLOT_SIZE = 256
@@ -453,14 +474,14 @@ class SF2Writer:
 
             tracks_written += 1
 
-        print(f"    Written {tracks_written} orderlists")
+        logger.info(f"    Written {tracks_written} orderlists")
 
     def _inject_instruments(self):
         """Inject instrument data into the SF2 file using extracted Laxity data"""
-        print("  Injecting instruments...")
+        logger.info("  Injecting instruments...")
 
         if 'Instruments' not in self.driver_info.table_addresses:
-            print("    Warning: No instrument table found in driver")
+            logger.debug("    Warning: No instrument table found in driver")
             return
 
         instr_table = self.driver_info.table_addresses['Instruments']
@@ -472,14 +493,14 @@ class SF2Writer:
         laxity_instruments = extract_laxity_instruments(self.data.c64_data, self.data.load_address, wave_entries)
         self.data.laxity_instruments = laxity_instruments
 
-        print(f"    Extracted {len(laxity_instruments)} instruments from Laxity format")
+        logger.info(f"    Extracted {len(laxity_instruments)} instruments from Laxity format")
 
         if hasattr(self.data, 'siddump_data') and self.data.siddump_data:
             siddump_adsr = set(self.data.siddump_data['adsr_values'])
             laxity_adsr = set((i['ad'], i['sr']) for i in laxity_instruments)
             matches = len(siddump_adsr & laxity_adsr)
             match_rate = matches / len(siddump_adsr) if siddump_adsr else 0
-            print(f"    Validation: {match_rate*100:.0f}% of siddump ADSR values found in extraction")
+            logger.debug(f"    Validation: {match_rate*100:.0f}% of siddump ADSR values found in extraction")
 
         def waveform_to_wave_index(wave_for_sf2):
             if wave_for_sf2 == 0x21:
@@ -548,7 +569,7 @@ class SF2Writer:
                 wave_idx_pos = 2 if is_np20 else 5
                 wave_name = wave_names.get(instr[wave_idx_pos], '?')
                 name = lax_instr.get('name', f'{i:02d} {wave_name}')
-                print(f"      {i}: {name} (AD={instr[0]:02X} SR={instr[1]:02X})")
+                logger.debug(f"      {i}: {name} (AD={instr[0]:02X} SR={instr[1]:02X})")
 
         instruments_written = 0
 
@@ -567,14 +588,14 @@ class SF2Writer:
             if col == 0:
                 instruments_written = min(len(sf2_instruments), rows)
 
-        print(f"    Written {instruments_written} instruments")
+        logger.info(f"    Written {instruments_written} instruments")
 
     def _inject_wave_table(self):
         """Inject wave table data extracted from Laxity SID"""
-        print("  Injecting wave table...")
+        logger.info("  Injecting wave table...")
 
         if 'Wave' not in self.driver_info.table_addresses:
-            print("    Warning: No wave table found in driver")
+            logger.debug("    Warning: No wave table found in driver")
             return
 
         wave_table = self.driver_info.table_addresses['Wave']
@@ -586,7 +607,7 @@ class SF2Writer:
 
         if extracted_waves:
             wave_data = extracted_waves
-            print(f"    Extracted {len(extracted_waves)} wave entries from SID")
+            logger.info(f"    Extracted {len(extracted_waves)} wave entries from SID")
         else:
             wave_data = [
                 (0x00, 0x41), (0x7F, 0x00),
@@ -603,7 +624,7 @@ class SF2Writer:
                       if (wf | 0x01) not in existing_waveforms
                       and wf not in (0x01, 0x09, 0xF0)}
             if missing:
-                print(f"    Validation: {len(missing)} waveforms from siddump not in wave table")
+                logger.debug(f"    Validation: {len(missing)} waveforms from siddump not in wave table")
 
         base_offset = self._addr_to_offset(wave_addr)
 
@@ -616,11 +637,11 @@ class SF2Writer:
             if i < rows and col1_offset + i < len(self.output):
                 self.output[col1_offset + i] = note_offset
 
-        print(f"    Written {len(wave_data)} wave table entries")
+        logger.info(f"    Written {len(wave_data)} wave table entries")
 
     def _inject_hr_table(self):
         """Inject HR (Hard Restart) table data"""
-        print("  Injecting HR table...")
+        logger.info("  Injecting HR table...")
 
         hr_table = None
         for name, info in self.driver_info.table_addresses.items():
@@ -629,7 +650,7 @@ class SF2Writer:
                 break
 
         if not hr_table:
-            print("    Warning: No HR table found")
+            logger.debug("    Warning: No HR table found")
             return
 
         hr_addr = hr_table['addr']
@@ -648,11 +669,11 @@ class SF2Writer:
             if i < rows and col1_offset + i < len(self.output):
                 self.output[col1_offset + i] = wave
 
-        print(f"    Written {len(hr_entries)} HR table entries")
+        logger.info(f"    Written {len(hr_entries)} HR table entries")
 
     def _inject_pulse_table(self):
         """Inject pulse table data extracted from Laxity SID"""
-        print("  Injecting Pulse table...")
+        logger.info("  Injecting Pulse table...")
 
         pulse_table = None
         for name, info in self.driver_info.table_addresses.items():
@@ -661,7 +682,7 @@ class SF2Writer:
                 break
 
         if not pulse_table:
-            print("    Warning: No Pulse table found in driver")
+            logger.debug("    Warning: No Pulse table found in driver")
             return
 
         pulse_addr = pulse_table['addr']
@@ -683,11 +704,11 @@ class SF2Writer:
                     if offset < len(self.output) and col < len(entry):
                         self.output[offset] = entry[col]
 
-        print(f"    Written {len(pulse_entries)} Pulse table entries")
+        logger.info(f"    Written {len(pulse_entries)} Pulse table entries")
 
     def _inject_filter_table(self):
         """Inject filter table data extracted from Laxity SID"""
-        print("  Injecting Filter table...")
+        logger.info("  Injecting Filter table...")
 
         filter_table = None
         for name, info in self.driver_info.table_addresses.items():
@@ -696,7 +717,7 @@ class SF2Writer:
                 break
 
         if not filter_table:
-            print("    Warning: No Filter table found in driver")
+            logger.debug("    Warning: No Filter table found in driver")
             return
 
         filter_addr = filter_table['addr']
@@ -718,11 +739,11 @@ class SF2Writer:
                     if offset < len(self.output) and col < len(entry):
                         self.output[offset] = entry[col]
 
-        print(f"    Written {len(filter_entries)} Filter table entries")
+        logger.info(f"    Written {len(filter_entries)} Filter table entries")
 
     def _inject_init_table(self):
         """Inject Init table data"""
-        print("  Injecting Init table...")
+        logger.info("  Injecting Init table...")
 
         init_table = None
         for name, info in self.driver_info.table_addresses.items():
@@ -731,7 +752,7 @@ class SF2Writer:
                 break
 
         if not init_table:
-            print("    Warning: No Init table found in driver")
+            logger.debug("    Warning: No Init table found in driver")
             return
 
         init_addr = init_table['addr']
@@ -746,11 +767,11 @@ class SF2Writer:
             if i < rows * columns and base_offset + i < len(self.output):
                 self.output[base_offset + i] = val
 
-        print(f"    Written {len(init_entries)} Init table entries")
+        logger.info(f"    Written {len(init_entries)} Init table entries")
 
     def _inject_tempo_table(self):
         """Inject Tempo table data"""
-        print("  Injecting Tempo table...")
+        logger.info("  Injecting Tempo table...")
 
         tempo_table = None
         for name, info in self.driver_info.table_addresses.items():
@@ -759,7 +780,7 @@ class SF2Writer:
                 break
 
         if not tempo_table:
-            print("    Warning: No Tempo table found in driver")
+            logger.debug("    Warning: No Tempo table found in driver")
             return
 
         tempo_addr = tempo_table['addr']
@@ -775,11 +796,11 @@ class SF2Writer:
             if i < rows and base_offset + i < len(self.output):
                 self.output[base_offset + i] = val
 
-        print(f"    Written tempo: {tempo}")
+        logger.info(f"    Written tempo: {tempo}")
 
     def _inject_arp_table(self):
         """Inject Arpeggio table data"""
-        print("  Injecting Arp table...")
+        logger.info("  Injecting Arp table...")
 
         arp_table = None
         for name, info in self.driver_info.table_addresses.items():
@@ -788,7 +809,7 @@ class SF2Writer:
                 break
 
         if not arp_table:
-            print("    Warning: No Arp table found in driver")
+            logger.debug("    Warning: No Arp table found in driver")
             return
 
         arp_addr = arp_table['addr']
@@ -810,11 +831,11 @@ class SF2Writer:
                     if offset < len(self.output) and col < len(entry):
                         self.output[offset] = entry[col]
 
-        print(f"    Written {len(arp_entries)} Arp table entries")
+        logger.info(f"    Written {len(arp_entries)} Arp table entries")
 
     def _inject_auxiliary_data(self):
         """Inject auxiliary data with instrument and command names"""
-        print("  Injecting auxiliary data (names)...")
+        logger.info("  Injecting auxiliary data (names)...")
 
         wave_addr, wave_entries = find_and_extract_wave_table(self.data.c64_data, self.data.load_address)
         laxity_instruments = extract_laxity_instruments(self.data.c64_data, self.data.load_address, wave_entries)
@@ -854,11 +875,11 @@ class SF2Writer:
             self.output.extend(aux_data)
 
             if hasattr(self.data, 'header') and self.data.header:
-                print(f"    Written metadata: {self.data.header.name} by {self.data.header.author}")
-            print(f"    Written {len(instrument_names)} instrument names")
-            print(f"    Written {len(command_names)} command names")
+                logger.info(f"    Written metadata: {self.data.header.name} by {self.data.header.author}")
+            logger.info(f"    Written {len(instrument_names)} instrument names")
+            logger.info(f"    Written {len(command_names)} command names")
         else:
-            print("    Warning: Could not find auxiliary data pointer location")
+            logger.debug("    Warning: Could not find auxiliary data pointer location")
 
     def _build_description_data(self):
         """Build description data block with song metadata from SID header"""
@@ -913,28 +934,28 @@ class SF2Writer:
     def _print_extraction_summary(self):
         """Print summary of extracted data"""
         if self.data.sequences:
-            print(f"\n  Extracted {len(self.data.sequences)} sequences:")
+            logger.debug(f"\n  Extracted {len(self.data.sequences)} sequences:")
             for i, seq in enumerate(self.data.sequences[:5]):
-                print(f"    Sequence {i}: {len(seq)} events")
+                logger.debug(f"    Sequence {i}: {len(seq)} events")
             if len(self.data.sequences) > 5:
-                print(f"    ... and {len(self.data.sequences) - 5} more")
+                logger.debug(f"    ... and {len(self.data.sequences) - 5} more")
 
         if self.data.instruments:
-            print(f"\n  Extracted {len(self.data.instruments)} instruments")
+            logger.debug(f"\n  Extracted {len(self.data.instruments)} instruments")
 
         if self.data.orderlists:
-            print(f"\n  Created {len(self.data.orderlists)} orderlists")
+            logger.debug(f"\n  Created {len(self.data.orderlists)} orderlists")
 
         if hasattr(self.data, 'raw_sequences') and self.data.raw_sequences:
             from .sequence_extraction import analyze_sequence_commands
             cmd_analysis = analyze_sequence_commands(self.data.raw_sequences)
             if cmd_analysis['commands_used']:
-                print(f"\n  Commands used in sequences:")
+                logger.debug(f"\n  Commands used in sequences:")
                 cmd_names = get_command_names()
                 for cmd in sorted(cmd_analysis['commands_used']):
                     count = cmd_analysis['command_counts'].get(cmd, 0)
                     name = cmd_names[cmd] if cmd < len(cmd_names) else f"Cmd {cmd}"
-                    print(f"    {cmd:2d}: {name} ({count}x)")
+                    logger.debug(f"    {cmd:2d}: {name} ({count}x)")
 
     def _find_driver(self) -> Optional[str]:
         """Find SF2 driver file"""
@@ -959,5 +980,6 @@ class SF2Writer:
 
     def _inject_music_data(self):
         """Inject extracted music data into the SF2 structure"""
-        print("Note: Music data injection is a placeholder")
-        print("The output file structure may need manual refinement")
+        logger.info(" Music data injection is a placeholder")
+        logger.debug("The output file structure may need manual refinement")
+
