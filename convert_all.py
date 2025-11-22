@@ -17,6 +17,117 @@ import sys
 import argparse
 import subprocess
 from datetime import datetime
+import re
+
+
+def run_player_id(sid_path):
+    """Run player-id.exe on a SID file and return the detected player."""
+    player_id_exe = os.path.join('tools', 'player-id.exe')
+
+    if not os.path.exists(player_id_exe):
+        return "player-id.exe not found"
+
+    try:
+        result = subprocess.run(
+            [player_id_exe, sid_path],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        # Parse output to find player name
+        for line in result.stdout.split('\n'):
+            if sid_path in line or os.path.basename(sid_path) in line:
+                # Line format: "filename    PlayerName"
+                parts = line.strip().split()
+                if len(parts) >= 2:
+                    return parts[-1]
+
+        return "Unknown"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
+def generate_info_file(sf2_dir, sid_file, output_file, converter_output, player_name,
+                       sequences, instruments, orderlists, file_size, driver_type):
+    """Generate an info text file for a converted SID."""
+    info_file = os.path.join(sf2_dir, sid_file[:-4] + '_info.txt')
+
+    # Extract more details from converter output
+    sid_name = ""
+    sid_author = ""
+    sid_copyright = ""
+    load_addr = ""
+    init_addr = ""
+    play_addr = ""
+    data_size = ""
+    tempo = ""
+    instrument_names = []
+
+    for line in converter_output.split('\n'):
+        if line.startswith('Name:'):
+            sid_name = line.split(':', 1)[1].strip()
+        elif line.startswith('Author:'):
+            sid_author = line.split(':', 1)[1].strip()
+        elif line.startswith('Copyright:'):
+            sid_copyright = line.split(':', 1)[1].strip()
+        elif 'Load address:' in line:
+            load_addr = line.split(':', 1)[1].strip()
+        elif 'Init address:' in line:
+            init_addr = line.split(':', 1)[1].strip()
+        elif 'Play address:' in line:
+            play_addr = line.split(':', 1)[1].strip()
+        elif 'Data size:' in line:
+            data_size = line.split(':', 1)[1].strip()
+        elif 'Tempo:' in line:
+            tempo = line.split(':', 1)[1].strip()
+        elif re.match(r'\s+\d+:', line) and '(AD=' in line:
+            # Instrument line like "      0: 00 Lead Saw (AD=07 SR=B9)"
+            instrument_names.append(line.strip())
+
+    # Write info file
+    with open(info_file, 'w', encoding='utf-8') as f:
+        f.write(f"SID to SF2 Conversion Info\n")
+        f.write(f"=" * 50 + "\n\n")
+
+        f.write(f"Source File\n")
+        f.write(f"-" * 50 + "\n")
+        f.write(f"Filename:      {sid_file}\n")
+        f.write(f"Name:          {sid_name}\n")
+        f.write(f"Author:        {sid_author}\n")
+        f.write(f"Copyright:     {sid_copyright}\n")
+        f.write(f"Player:        {player_name}\n")
+        f.write(f"\n")
+
+        f.write(f"Memory Layout\n")
+        f.write(f"-" * 50 + "\n")
+        f.write(f"Load address:  {load_addr}\n")
+        f.write(f"Init address:  {init_addr}\n")
+        f.write(f"Play address:  {play_addr}\n")
+        f.write(f"Data size:     {data_size}\n")
+        f.write(f"\n")
+
+        f.write(f"Conversion Result\n")
+        f.write(f"-" * 50 + "\n")
+        f.write(f"Output file:   {output_file}\n")
+        f.write(f"File size:     {file_size:,} bytes\n")
+        f.write(f"Driver:        {driver_type}\n")
+        f.write(f"Tempo:         {tempo}\n")
+        f.write(f"Sequences:     {sequences}\n")
+        f.write(f"Instruments:   {instruments}\n")
+        f.write(f"Orderlists:    {orderlists}\n")
+        f.write(f"\n")
+
+        if instrument_names:
+            f.write(f"Instrument List\n")
+            f.write(f"-" * 50 + "\n")
+            for instr in instrument_names:
+                f.write(f"{instr}\n")
+            f.write(f"\n")
+
+        f.write(f"Generated:     {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+
+    return info_file
 
 
 def convert_all(driver_type='np20', sid_dir='SID', sf2_dir='SF2'):
@@ -62,6 +173,10 @@ def convert_all(driver_type='np20', sid_dir='SID', sf2_dir='SF2'):
 
         print(f"[{i}/{len(sid_files)}] Converting {sid_file}...")
 
+        # Run player-id.exe first
+        player_name = run_player_id(input_path)
+        print(f"       Player: {player_name}")
+
         # Run converter
         result = subprocess.run(
             [sys.executable, 'sid_to_sf2.py', input_path, output_path, '--driver', driver_type],
@@ -76,6 +191,7 @@ def convert_all(driver_type='np20', sid_dir='SID', sf2_dir='SF2'):
             # Extract key info from output
             sequences = 0
             instruments = 0
+            orderlists = 3
             for line in result.stdout.split('\n'):
                 if 'Extracted' in line and 'sequences' in line:
                     try:
@@ -87,8 +203,20 @@ def convert_all(driver_type='np20', sid_dir='SID', sf2_dir='SF2'):
                         instruments = int(line.split()[1])
                     except (ValueError, IndexError):
                         pass
+                elif 'Created' in line and 'orderlists' in line:
+                    try:
+                        orderlists = int(line.split()[1])
+                    except (ValueError, IndexError):
+                        pass
+
+            # Generate info file
+            info_file = generate_info_file(
+                sf2_dir, sid_file, output_file, result.stdout,
+                player_name, sequences, instruments, orderlists, size, driver_type
+            )
 
             print(f"       -> {output_file} ({size:,} bytes, {sequences} seq, {instruments} instr)")
+            print(f"       -> {os.path.basename(info_file)}")
             success_count += 1
         else:
             print(f"       -> FAILED")
