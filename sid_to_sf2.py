@@ -160,14 +160,35 @@ def extract_laxity_instruments(data, load_addr):
             wave_name = "Saw"
         elif ctrl & 0x10:
             wave_for_sf2 = 0x11  # tri
-            wave_name = "Triangle"
+            wave_name = "Tri"
         else:
             # No waveform bits set - use default pulse
             wave_for_sf2 = 0x41
             wave_name = "Pulse"
 
-        # Create descriptive name
-        name = f"Instr {i:02d} {wave_name}"
+        # Create descriptive name based on ADSR characteristics
+        attack = (ad >> 4) & 0x0F
+        decay = ad & 0x0F
+        sustain = (sr >> 4) & 0x0F
+        release = sr & 0x0F
+
+        # Determine sound character from ADSR
+        if attack == 0 and decay <= 2:
+            char = "Perc"  # Percussive
+        elif attack >= 8:
+            char = "Pad"   # Slow attack = pad
+        elif sustain >= 10:
+            char = "Lead"  # High sustain = lead
+        elif release <= 2:
+            char = "Stab"  # Short release = stab
+        else:
+            char = ""
+
+        # Build name: "00 Lead Pulse" or "01 Perc Noise"
+        if char:
+            name = f"{i:02d} {char} {wave_name}"
+        else:
+            name = f"{i:02d} {wave_name}"
 
         instruments.append({
             'index': i,
@@ -179,6 +200,110 @@ def extract_laxity_instruments(data, load_addr):
         })
 
     return instruments
+
+
+def extract_laxity_wave_table(data, load_addr):
+    """
+    Extract wave table data from Laxity SID file.
+
+    JCH NewPlayer wave table format (2 bytes per entry):
+    - Byte 0: Note offset ($7F=jump, $7E=end, $80=recalc, else offset)
+    - Byte 1: Waveform ($11=tri, $21=saw, $41=pulse, $81=noise)
+
+    Returns list of (waveform, note_offset) tuples.
+    """
+    # Try to find wave table by looking for characteristic patterns
+    # Wave tables typically have sequences like: waveform, 00, waveform, 00, 7F, xx
+
+    wave_entries = []
+
+    # Look for wave table start - typically after instrument table
+    # Common patterns: starts with a waveform byte followed by 00 or 80
+
+    for start in range(0x800, min(len(data) - 32, 0x1800)):
+        # Check for wave table pattern
+        b0 = data[start]
+        b1 = data[start + 1] if start + 1 < len(data) else 0
+
+        # Valid waveform values
+        if b0 in [0x11, 0x21, 0x41, 0x81]:
+            # Check if this looks like a wave table
+            # Scan for end marker (7F or 7E)
+            found_entries = []
+            pos = start
+            valid = True
+
+            while pos < min(start + 64, len(data) - 1):
+                wave = data[pos]
+                note = data[pos + 1] if pos + 1 < len(data) else 0
+
+                if wave == 0x7F:
+                    # End/jump marker
+                    found_entries.append((wave, note))
+                    break
+                elif wave == 0x7E:
+                    # Stop marker
+                    found_entries.append((wave, note))
+                    break
+                elif wave in [0x11, 0x21, 0x41, 0x81]:
+                    # Valid waveform
+                    found_entries.append((wave, note))
+                    pos += 2
+                elif wave == 0x00:
+                    # End of table
+                    break
+                else:
+                    # Invalid - not a wave table
+                    valid = False
+                    break
+
+            if valid and len(found_entries) >= 2:
+                wave_entries = found_entries
+                break
+
+    # If no wave table found, create default entries for basic waveforms
+    if not wave_entries:
+        wave_entries = [
+            # Saw wave (index 0)
+            (0x21, 0x00),
+            (0x7F, 0x00),
+            # Pulse wave (index 2)
+            (0x41, 0x00),
+            (0x7F, 0x02),
+            # Triangle wave (index 4)
+            (0x11, 0x00),
+            (0x7F, 0x04),
+            # Noise wave (index 6)
+            (0x81, 0x00),
+            (0x7F, 0x06),
+        ]
+
+    return wave_entries
+
+
+def get_command_names():
+    """
+    Return list of command names for SF2 command table.
+    Based on JCH NewPlayer v21 super commands.
+    """
+    return [
+        "Slide Up",      # 0
+        "Slide Down",    # 1
+        "Vibrato",       # 2
+        "Portamento",    # 3
+        "Set ADSR",      # 4
+        "Set Filter",    # 5
+        "Set Wave",      # 6
+        "Set Pulse",     # 7
+        "Set Speed",     # 8
+        "Set Volume",    # 9
+        "Arpeggio",      # A
+        "Note Cut",      # B
+        "Legato",        # C
+        "Retrigger",     # D
+        "Delay",         # E
+        "End",           # F
+    ]
 
 
 @dataclass
@@ -1513,13 +1638,15 @@ class SF2Writer:
             else:
                 sf2_instruments.append([0x09, 0xA0, 0x00, 0x00, 0x00, 0x00])
 
-        # Print extracted instruments
-        for i, instr in enumerate(sf2_instruments[:len(laxity_instruments)]):
-            wave_names = {0x00: 'saw', 0x02: 'pulse', 0x04: 'tri', 0x06: 'noise'}
-            # Wave index position depends on format: NP20 = byte 2, Driver 11 = byte 5
-            wave_idx_pos = 2 if is_np20 else 5
-            wave_name = wave_names.get(instr[wave_idx_pos], '?')
-            print(f"      {i}: AD={instr[0]:02X} SR={instr[1]:02X} Wave={wave_name}")
+        # Print extracted instruments with names
+        for i, lax_instr in enumerate(laxity_instruments):
+            if i < len(sf2_instruments):
+                instr = sf2_instruments[i]
+                wave_names = {0x00: 'saw', 0x02: 'pulse', 0x04: 'tri', 0x06: 'noise'}
+                wave_idx_pos = 2 if is_np20 else 5
+                wave_name = wave_names.get(instr[wave_idx_pos], '?')
+                name = lax_instr.get('name', f'{i:02d} {wave_name}')
+                print(f"      {i}: {name} (AD={instr[0]:02X} SR={instr[1]:02X})")
 
         # Write instruments in column-major format
         # Column 0 (all AD bytes), then Column 1 (all SR bytes), etc.
@@ -1543,7 +1670,7 @@ class SF2Writer:
         print(f"    Written {instruments_written} instruments")
 
     def _inject_wave_table(self):
-        """Inject wave table data"""
+        """Inject wave table data extracted from Laxity SID"""
         print("  Injecting wave table...")
 
         if 'Wave' not in self.driver_info.table_addresses:
@@ -1558,16 +1685,16 @@ class SF2Writer:
         # Wave table format (2 columns, column-major):
         # Column 0: Waveform (11=tri, 21=saw, 41=pulse, 81=noise) or 7F=end
         # Column 1: Note offset/command (80=no offset, 00=standard, 7F=loop marker)
-        #
-        # Based on working SF2 analysis:
-        # - Entry starts at index, ends with 7F marker
-        # - Second byte of 7F row is loop-back index
 
-        # Create wave table entries based on working SF2 patterns
+        # Extract wave table from Laxity SID
+        extracted_waves = extract_laxity_wave_table(self.data.c64_data, self.data.load_address)
+
+        # Build wave table with standard entries for each waveform
+        # Each instrument points to an index in this table
         wave_data = [
-            # Entry 0: Saw (similar to working SF2)
-            (0x21, 0x80),  # Row 0: Saw wave
-            (0x7F, 0x00),  # Row 1: End, no loop
+            # Entry 0: Saw
+            (0x21, 0x00),  # Row 0: Saw wave, no transpose
+            (0x7F, 0x00),  # Row 1: End, loop to start
             # Entry 2: Pulse
             (0x41, 0x00),  # Row 2: Pulse wave
             (0x7F, 0x02),  # Row 3: End, loop to row 2
@@ -1578,6 +1705,14 @@ class SF2Writer:
             (0x81, 0x00),  # Row 6: Noise wave
             (0x7F, 0x06),  # Row 7: End, loop to row 6
         ]
+
+        # If we extracted wave entries from Laxity, add them after the basic entries
+        if len(extracted_waves) > 8:
+            # Add extracted entries starting at index 8
+            for i, (wave, note) in enumerate(extracted_waves):
+                if len(wave_data) < rows:
+                    wave_data.append((wave, note))
+            print(f"    Extracted {len(extracted_waves)} wave entries from SID")
 
         # Write wave table in column-major format
         base_offset = self._addr_to_offset(wave_addr)
@@ -1593,7 +1728,7 @@ class SF2Writer:
             if i < rows and col1_offset + i < len(self.output):
                 self.output[col1_offset + i] = note
 
-        print(f"    Written {len(wave_data)//2} wave table entries")
+        print(f"    Written {len(wave_data)} wave table entries")
 
     def _inject_hr_table(self):
         """Inject HR (Hard Restart) table data - this defines the actual waveforms"""
