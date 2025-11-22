@@ -628,14 +628,17 @@ class SF2Writer:
 
         base_offset = self._addr_to_offset(wave_addr)
 
+        # SF2 wave table format is column-major:
+        # Column 0: Note offset ($7F = jump, $7E = hold, $00-$7D = relative, $80+ = absolute)
+        # Column 1: Waveform ($11=tri, $21=saw, $41=pulse, $81=noise)
         for i, (note_offset, waveform) in enumerate(wave_data):
             if i < rows and base_offset + i < len(self.output):
-                self.output[base_offset + i] = waveform
+                self.output[base_offset + i] = note_offset
 
         col1_offset = base_offset + rows
         for i, (note_offset, waveform) in enumerate(wave_data):
             if i < rows and col1_offset + i < len(self.output):
-                self.output[col1_offset + i] = note_offset
+                self.output[col1_offset + i] = waveform
 
         logger.info(f"    Written {len(wave_data)} wave table entries")
 
