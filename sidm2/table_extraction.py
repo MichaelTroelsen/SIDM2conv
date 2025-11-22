@@ -425,9 +425,17 @@ def find_and_extract_wave_table(data: bytes, load_addr: int, verbose: bool = Fal
 def find_and_extract_pulse_table(data: bytes, load_addr: int, pulse_ptrs: Optional[set] = None, avoid_addr: int = 0) -> Tuple[Optional[int], List[bytes]]:
     """
     Find and extract pulse table from Laxity SID.
+
+    Pulse table format (4 bytes per entry, Y-indexed with stride 4):
+    - Byte 0: Initial pulse value (hi nibble -> pulse lo, lo nibble -> pulse hi), $FF = keep
+    - Byte 1: Add/subtract value per frame
+    - Byte 2: Duration (bits 0-6) + direction (bit 7: 0=add, 1=subtract)
+    - Byte 3: Next entry index (pre-multiplied by 4)
+
     Returns (address, entries) where entries is list of 4-byte tuples.
     """
     # First try to find pulse table by analyzing player code references
+    # Look for LDA $xxxx,Y patterns in the typical pulse table address range
     pulse_refs = []
     for i in range(min(len(data) - 2, 0x900)):
         if data[i] == 0xB9:  # LDA absolute,Y
@@ -438,6 +446,7 @@ def find_and_extract_pulse_table(data: bytes, load_addr: int, pulse_ptrs: Option
                 pulse_refs.append(addr)
 
     if pulse_refs:
+        # Use minimum address as base (pulse table columns are at +0, +1, +2, +3)
         base_addr = min(pulse_refs)
         base_off = base_addr - load_addr
 
@@ -452,15 +461,23 @@ def find_and_extract_pulse_table(data: bytes, load_addr: int, pulse_ptrs: Option
             dur = data[off + 2]
             nxt = data[off + 3]
 
-            if val > 0x0F and val != 0xFF:
-                break
+            # Validate entry - next index should be divisible by 4 and reasonable
+            # or loop back to a previous entry
+            if nxt != 0 and (nxt % 4 != 0 or nxt > 64):
+                # Allow if it's looping back
+                if nxt not in [j * 4 for j in range(i + 1)]:
+                    break
 
             entries.append((val, cnt, dur, nxt))
+
+            # Stop if we've found a reasonable number of entries
+            if i >= 2 and nxt == i * 4:  # Self-loop
+                break
 
         if entries:
             return (base_addr, entries)
 
-    # Fallback to pattern matching
+    # Fallback to pattern matching with improved scoring
     best_addr = 0
     best_entries = []
     best_score = 0
@@ -484,21 +501,38 @@ def find_and_extract_pulse_table(data: bytes, load_addr: int, pulse_ptrs: Option
             duration = data[pos + 2]
             next_idx = data[pos + 3]
 
-            if pulse_val <= 0x0F or pulse_val == 0xFF:
+            # Score based on pulse table characteristics
+            # Pulse value can be anything (including $FF for keep current)
+            if pulse_val == 0xFF:
+                score += 2  # Common "keep current" value
+            elif pulse_val <= 0x0F:
+                score += 1  # Small initial values common
+
+            # Count (add/sub value) typically $00-$80
+            if count <= 0x80:
+                score += 1
+
+            # Duration (bits 0-6) should be reasonable, bit 7 is direction
+            dur_clean = duration & 0x7F
+            if 0 < dur_clean <= 0x40:
                 score += 2
+            elif dur_clean == 0:
+                score += 1  # Immediate
 
-            if count <= 127 and duration <= 127:
-                score += 1
-
-            if next_idx < 32 or next_idx == 0xFF:
-                score += 1
+            # Next index should be divisible by 4 (Y*4 indexing)
+            if next_idx % 4 == 0 and next_idx < 128:
+                score += 3
+            elif next_idx == 0:
+                score += 2  # Loop to start
 
             entries.append((pulse_val, count, duration, next_idx))
 
-            if next_idx in seen_indices or next_idx == entry_idx:
-                score += 3
+            # Check for loop back (common pattern)
+            entry_y = entry_idx * 4
+            if next_idx in seen_indices or next_idx == entry_y:
+                score += 5  # Bonus for valid loop
                 break
-            seen_indices.add(entry_idx)
+            seen_indices.add(entry_y)
 
             pos += 4
 

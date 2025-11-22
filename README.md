@@ -173,14 +173,26 @@ Special note offsets:
 - `$7E` - Stop processing, keep last entry
 - `$80` - Recalculate base note + transpose (for "Hubbard slide" effects)
 
-#### Pulse Table Format (4 bytes per entry)
+#### Pulse Table Format (4 bytes per entry, Y-indexed with stride 4)
+
+The pulse table uses column-major storage with Y register indexing. Entry indices are pre-multiplied by 4.
 
 | Byte | Description |
 |------|-------------|
-| 0 | Pulse value ($FF = keep current) |
-| 1 | Count value |
-| 2 | Duration (bits 0-6) and direction (bit 7) |
-| 3 | Next pulse table entry (absolute index) |
+| 0 | Initial pulse value: hi nibble → $D402 (lo byte), lo nibble → $D403 (hi byte), or $FF = keep current |
+| 1 | Add/subtract value per frame (applied to 16-bit pulse width) |
+| 2 | Duration (bits 0-6) + direction (bit 7: 0=add, 1=subtract) |
+| 3 | Next entry index (pre-multiplied by 4, e.g., entry 6 = $18) |
+
+##### Pulse Table Example
+
+```
+Entry 0 (Y=$00): 08 00 00 00  ; Pulse=$0800, no modulation, loop to self
+Entry 6 (Y=$18): 04 50 30 1C  ; Pulse=$0400, add $50/frame for 48 frames, then entry 7
+Entry 7 (Y=$1C): FF 50 B0 18  ; Keep current, sub $50/frame for 48 frames, loop to entry 6
+```
+
+This creates a ping-pong pulse width modulation effect, sweeping from $0400 to $0850 and back.
 
 #### Filter Table Format (4 bytes per entry)
 

@@ -19,6 +19,29 @@ import subprocess
 from datetime import datetime
 import re
 
+# Import from sidm2 package for table extraction
+from sidm2 import (
+    SIDParser,
+    extract_from_siddump,
+    get_command_names,
+    analyze_sequence_commands,
+)
+from sidm2.table_extraction import (
+    extract_all_laxity_tables,
+    find_instrument_table,
+    find_and_extract_wave_table,
+    find_table_addresses_from_player,
+)
+from sidm2.instrument_extraction import (
+    extract_laxity_instruments,
+    extract_laxity_wave_table,
+)
+from laxity_parser import LaxityParser
+
+# Version info
+__version__ = "0.5.0"
+__build_date__ = "2025-11-22"
+
 
 def run_player_id(sid_path):
     """Run player-id.exe on a SID file and return the detected player."""
@@ -48,9 +71,44 @@ def run_player_id(sid_path):
         return f"Error: {str(e)}"
 
 
-def generate_info_file(sf2_dir, sid_file, output_file, converter_output, player_name,
+def run_siddump(sid_path, output_path, playback_time=60):
+    """Run siddump.exe on a SID file and save output to .dump file.
+
+    Args:
+        sid_path: Path to input SID file
+        output_path: Path to output .dump file
+        playback_time: Playback time in seconds (default 60)
+
+    Returns:
+        True if successful, False otherwise
+    """
+    siddump_exe = os.path.join('tools', 'siddump.exe')
+
+    if not os.path.exists(siddump_exe):
+        return False
+
+    try:
+        result = subprocess.run(
+            [siddump_exe, sid_path, f'-t{playback_time}'],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        if result.returncode == 0:
+            # Write output to dump file
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(result.stdout)
+            return True
+        else:
+            return False
+    except Exception as e:
+        return False
+
+
+def generate_info_file(sf2_dir, sid_file, sid_dir, output_file, converter_output, player_name,
                        sequences, instruments, orderlists, file_size, driver_type):
-    """Generate an info text file for a converted SID."""
+    """Generate an info text file for a converted SID with all table data."""
     info_file = os.path.join(sf2_dir, sid_file[:-4] + '_info.txt')
 
     # Extract more details from converter output
@@ -82,8 +140,67 @@ def generate_info_file(sf2_dir, sid_file, output_file, converter_output, player_
         elif 'Tempo:' in line:
             tempo = line.split(':', 1)[1].strip()
         elif re.match(r'\s+\d+:', line) and '(AD=' in line:
-            # Instrument line like "      0: 00 Lead Saw (AD=07 SR=B9)"
             instrument_names.append(line.strip())
+
+    # Extract all table data from SID file
+    sid_path = os.path.join(sid_dir, sid_file)
+    tables_data = {}
+    raw_sequences = []
+    try:
+        parser = SIDParser(sid_path)
+        header = parser.parse_header()
+        c64_data, load_address = parser.get_c64_data(header)
+        tables_data = extract_all_laxity_tables(c64_data, load_address)
+
+        # Get siddump data for validation info
+        siddump_data = extract_from_siddump(sid_path)
+
+        # Extract wave table
+        wave_entries = extract_laxity_wave_table(c64_data, load_address)
+
+        # Extract instruments with wave table
+        laxity_instruments = extract_laxity_instruments(c64_data, load_address, wave_entries)
+
+        # Merge missing ADSR values from siddump
+        # DISABLED: This was causing crashes in SID Factory II
+        if False and siddump_data:
+            siddump_adsr = set(siddump_data['adsr_values'])
+            laxity_adsr = set((i['ad'], i['sr']) for i in laxity_instruments)
+            missing = siddump_adsr - laxity_adsr
+            for ad, sr in sorted(missing):
+                # Determine sound character from ADSR
+                attack = (ad >> 4) & 0x0F
+                sustain = (sr >> 4) & 0x0F
+                release = sr & 0x0F
+
+                if attack == 0 and (ad & 0x0F) <= 3 and release <= 8:
+                    char = "Perc"
+                elif attack >= 10:
+                    char = "Pad"
+                elif sustain >= 12:
+                    char = "Lead"
+                elif release <= 3 and attack <= 2:
+                    char = "Stab"
+                else:
+                    char = ""
+
+                idx = len(laxity_instruments)
+                name = f"{idx:02d} {char} Dyn".strip() if char else f"{idx:02d} Dyn"
+                laxity_instruments.append({
+                    'index': idx,
+                    'ad': ad,
+                    'sr': sr,
+                    'name': name
+                })
+
+        # Extract sequences for command analysis
+        laxity_parser = LaxityParser(c64_data, load_address)
+        raw_sequences, _ = laxity_parser.find_sequences()
+    except Exception as e:
+        tables_data = {}
+        laxity_instruments = []
+        wave_entries = []
+        raw_sequences = []
 
     # Write info file
     with open(info_file, 'w', encoding='utf-8') as f:
@@ -118,12 +235,144 @@ def generate_info_file(sf2_dir, sid_file, output_file, converter_output, player_
         f.write(f"Orderlists:    {orderlists}\n")
         f.write(f"\n")
 
-        if instrument_names:
-            f.write(f"Instrument List\n")
+        # Instruments table
+        if laxity_instruments:
+            f.write(f"Instruments Table\n")
             f.write(f"-" * 50 + "\n")
-            for instr in instrument_names:
-                f.write(f"{instr}\n")
+            f.write(f"Idx  AD  SR  Name\n")
+            for instr in laxity_instruments:
+                f.write(f"{instr['index']:3d}  {instr['ad']:02X}  {instr['sr']:02X}  {instr['name']}\n")
             f.write(f"\n")
+
+        # Commands table with usage info
+        command_names = get_command_names()
+        cmd_analysis = analyze_sequence_commands(raw_sequences) if raw_sequences else {'command_counts': {}, 'set_adsr_values': []}
+        f.write(f"Commands Table\n")
+        f.write(f"-" * 50 + "\n")
+        f.write(f"Idx  Name          Used\n")
+        for i, name in enumerate(command_names):
+            count = cmd_analysis['command_counts'].get(i, 0)
+            used_str = f"{count}x" if count > 0 else "-"
+            f.write(f"{i:3d}  {name:12s}  {used_str}\n")
+        f.write(f"\n")
+
+        # Set ADSR values from commands
+        set_adsr_values = cmd_analysis.get('set_adsr_values', [])
+        if set_adsr_values:
+            f.write(f"Set ADSR Values (from commands)\n")
+            f.write(f"-" * 50 + "\n")
+            for ad, sr in set_adsr_values:
+                f.write(f"  AD={ad:02X} SR={sr:02X}\n")
+            f.write(f"\n")
+
+        # Wave table
+        if wave_entries:
+            f.write(f"Wave Table\n")
+            f.write(f"-" * 50 + "\n")
+            f.write(f"Idx  Note  Wave  Description\n")
+            for i, (note, wave) in enumerate(wave_entries):
+                wave_name = {0x11: 'Tri', 0x21: 'Saw', 0x41: 'Pulse', 0x81: 'Noise',
+                            0x10: 'Tri-', 0x20: 'Saw-', 0x40: 'Pulse-', 0x80: 'Noise-'}.get(wave, f'${wave:02X}')
+                if note == 0x7F:
+                    desc = f"Jump to {wave}"
+                elif note == 0x7E:
+                    desc = "End/Hold"
+                elif note == 0x80:
+                    desc = f"{wave_name} (recalc)"
+                else:
+                    desc = f"{wave_name} +{note}" if note else wave_name
+                f.write(f"{i:3d}   {note:02X}    {wave:02X}   {desc}\n")
+            f.write(f"\n")
+
+        # Pulse table
+        pulse_entries = tables_data.get('pulse_table', [])
+        if pulse_entries:
+            f.write(f"Pulse Table\n")
+            f.write(f"-" * 50 + "\n")
+            f.write(f"Idx  Val  Cnt  Dur  Next\n")
+            for i, entry in enumerate(pulse_entries):
+                f.write(f"{i:3d}   {entry[0]:02X}   {entry[1]:02X}   {entry[2]:02X}   {entry[3]:02X}\n")
+            f.write(f"\n")
+
+        # Filter table
+        filter_entries = tables_data.get('filter_table', [])
+        if filter_entries:
+            f.write(f"Filter Table\n")
+            f.write(f"-" * 50 + "\n")
+            f.write(f"Idx  Val  Cnt  Dur  Next\n")
+            for i, entry in enumerate(filter_entries):
+                f.write(f"{i:3d}   {entry[0]:02X}   {entry[1]:02X}   {entry[2]:02X}   {entry[3]:02X}\n")
+            f.write(f"\n")
+
+        # HR table (default values)
+        f.write(f"HR Table (Hard Restart)\n")
+        f.write(f"-" * 50 + "\n")
+        f.write(f"  0   0F   00   Default\n")
+        f.write(f"\n")
+
+        # Tempo table
+        f.write(f"Tempo Table\n")
+        f.write(f"-" * 50 + "\n")
+        f.write(f"  0   {tempo if tempo else '06'}   Main tempo\n")
+        f.write(f"  1   7F   End marker\n")
+        f.write(f"\n")
+
+        # Arp table (default values)
+        f.write(f"Arp Table (Arpeggio)\n")
+        f.write(f"-" * 50 + "\n")
+        f.write(f"  0   00 04 07 7F   Major chord\n")
+        f.write(f"  1   00 03 07 7F   Minor chord\n")
+        f.write(f"  2   00 0C 7F 00   Octave\n")
+        f.write(f"\n")
+
+        # Init table
+        f.write(f"Init Table\n")
+        f.write(f"-" * 50 + "\n")
+        f.write(f"  0   00 0F 00 01 02   Default init\n")
+        f.write(f"\n")
+
+        # Debug information - table finding details
+        f.write(f"Debug Information\n")
+        f.write(f"-" * 50 + "\n")
+        try:
+            # Get instrument table debug info
+            instr_addr, instr_debug = find_instrument_table(c64_data, load_address, verbose=True)
+            if instr_addr:
+                f.write(f"Instrument table: ${instr_addr:04X} (score={instr_debug['best_score']})\n")
+                if instr_debug['candidates']:
+                    f.write(f"Top candidates:\n")
+                    for addr, score, valid in instr_debug['candidates'][:3]:
+                        f.write(f"  ${addr:04X}: score={score}, valid={valid}\n")
+            else:
+                f.write(f"Instrument table: Not found\n")
+
+            # Get wave table debug info
+            wave_addr, wave_entries_debug, wave_debug = find_and_extract_wave_table(c64_data, load_address, verbose=True)
+            if wave_addr:
+                f.write(f"Wave table: ${wave_addr:04X} (score={wave_debug['best_score']}, {len(wave_entries_debug)} entries)\n")
+                # Show waveform types in best table
+                waveform_types = sorted(set(wf for _, wf in wave_entries_debug))
+                if waveform_types:
+                    wf_str = ', '.join([f'{wf:02X}' for wf in waveform_types])
+                    f.write(f"  Waveforms: [{wf_str}]\n")
+                # Show top candidates
+                if wave_debug['candidates']:
+                    f.write(f"Top wave table candidates:\n")
+                    for addr, score, entries, wfs in wave_debug['candidates'][:3]:
+                        wf_str = ','.join([f'{wf:02X}' for wf in wfs])
+                        f.write(f"  ${addr:04X}: score={score}, entries={entries}, waveforms=[{wf_str}]\n")
+            else:
+                f.write(f"Wave table: Not found\n")
+
+            # Show table addresses from player code
+            player_tables = find_table_addresses_from_player(c64_data, load_address)
+            if player_tables:
+                f.write(f"Player code references:\n")
+                for name, addr in player_tables.items():
+                    f.write(f"  {name}: ${addr:04X}\n")
+        except Exception as e:
+            f.write(f"Error getting debug info: {e}\n")
+        f.write(f"\n")
 
         f.write(f"Generated:     {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
@@ -150,8 +399,9 @@ def convert_all(driver_type='np20', sid_dir='SID', sf2_dir='SF2'):
         print(f"No .sid files found in '{sid_dir}'")
         sys.exit(1)
 
-    print(f"SID to SF2 Batch Converter")
+    print(f"SID to SF2 Batch Converter v{__version__}")
     print(f"=" * 50)
+    print(f"Build date:       {__build_date__}")
     print(f"Input directory:  {sid_dir}")
     print(f"Output directory: {sf2_dir}")
     print(f"Driver type:      {driver_type}")
@@ -211,12 +461,18 @@ def convert_all(driver_type='np20', sid_dir='SID', sf2_dir='SF2'):
 
             # Generate info file
             info_file = generate_info_file(
-                sf2_dir, sid_file, output_file, result.stdout,
+                sf2_dir, sid_file, sid_dir, output_file, result.stdout,
                 player_name, sequences, instruments, orderlists, size, driver_type
             )
 
+            # Generate siddump file
+            dump_file = os.path.join(sf2_dir, sid_file[:-4] + '.dump')
+            dump_success = run_siddump(input_path, dump_file)
+
             print(f"       -> {output_file} ({size:,} bytes, {sequences} seq, {instruments} instr)")
             print(f"       -> {os.path.basename(info_file)}")
+            if dump_success:
+                print(f"       -> {os.path.basename(dump_file)}")
             success_count += 1
         else:
             print(f"       -> FAILED")
