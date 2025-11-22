@@ -1,5 +1,7 @@
 # SID to SID Factory II Converter
 
+**Version 0.4.0** | Build Date: 2025-11-22
+
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files.
 
 ## Overview
@@ -52,6 +54,55 @@ python analyze_sid.py <input.sid>
 
 ```bash
 python laxity_analyzer.py <input.sid>
+```
+
+### Batch Conversion
+
+Convert all SID files in a directory:
+
+```bash
+python convert_all.py [--driver {np20,driver11}] [--input SID] [--output SF2]
+```
+
+Examples:
+```bash
+# Convert all SIDs in SID folder to SF2 folder (default)
+python convert_all.py
+
+# Use driver11 instead of np20
+python convert_all.py --driver driver11
+
+# Custom input/output directories
+python convert_all.py --input my_sids --output converted
+```
+
+The batch converter generates three files per SID:
+- `.sf2` - SID Factory II project file
+- `_info.txt` - Detailed extraction info with all tables
+- `.dump` - SID register dump (60 seconds of playback)
+
+#### Info File Contents
+
+The `_info.txt` file contains comprehensive extraction data:
+
+- **Source File**: Filename, name, author, copyright, detected player
+- **Memory Layout**: Load/init/play addresses, data size
+- **Conversion Result**: Output file, size, driver, tempo, sequence/instrument counts
+- **Instruments Table**: All extracted instruments with AD/SR values and names
+- **Commands Table**: All 16 commands with usage counts from sequences
+- **Wave Table**: Waveform entries with note offsets and descriptions
+- **Pulse Table**: Pulse width modulation entries
+- **Filter Table**: Filter sweep entries
+- **HR/Tempo/Arp/Init Tables**: Additional configuration tables
+
+Example Commands Table output:
+```
+Idx  Name          Used
+  0  Slide Up      -
+  1  Slide Down    53x
+  2  Vibrato       13x
+  3  Portamento    -
+  ...
 ```
 
 ## File Formats
@@ -313,14 +364,63 @@ When converting from Laxity SID to SF2, the following mappings are applied:
 | Pulse table ptr | 4 | Direct copy |
 | Wave table ptr | 5 | Converted to wave table index |
 
-#### Wave Table Index Mapping
+#### SF2 Wave Table Format
 
-| Waveform | Index |
-|----------|-------|
-| Saw ($21) | 0 |
-| Pulse ($41) | 2 |
-| Triangle ($11) | 4 |
-| Noise ($81) | 6 |
+The SF2 wave table uses a column-major storage format with 2 columns:
+
+| Column | Description |
+|--------|-------------|
+| 0 | Note offset / Control byte |
+| 1 | Waveform value |
+
+##### Column 0 - Note Offset / Control Bytes
+
+| Value | Description |
+|-------|-------------|
+| $00 | No transpose (play base note) |
+| $01-$7D | Semitone offset (positive transpose) |
+| $7E | End/Hold - stop processing, keep last entry |
+| $7F | Jump - next byte is target index |
+| $80 | Recalculate base note + transpose (for Hubbard slide effects) |
+| $81-$FF | Absolute note values (no transpose applied) |
+
+##### Column 1 - Waveform Values
+
+| Value | Description |
+|-------|-------------|
+| $11 | Triangle + Gate |
+| $21 | Sawtooth + Gate |
+| $41 | Pulse + Gate |
+| $81 | Noise + Gate |
+| $10/$20/$40/$80 | Same waveforms without gate (gate off) |
+
+##### Wave Table Example
+
+```
+Index  Col0  Col1  Description
+  0    $00   $41   Note offset 0, Pulse+Gate
+  1    $7F   $00   Jump to index 0 (loop)
+  2    $00   $21   Note offset 0, Saw+Gate
+  3    $7F   $02   Jump to index 2 (loop)
+  4    $00   $11   Note offset 0, Tri+Gate
+  5    $7F   $04   Jump to index 4 (loop)
+```
+
+Instruments reference wave table entries by their index. The wave table allows complex sequences like:
+- Waveform changes over time (attack transient with noise, then pulse)
+- Arpeggio effects using note offsets
+- Hard restart patterns
+
+#### Default Wave Table Index Mapping
+
+When converting from Laxity format, instruments using simple waveforms are mapped to default wave table indices:
+
+| Waveform | Default Index | Wave Table Entry |
+|----------|---------------|------------------|
+| Pulse ($41) | 0 | Loop at index 0 |
+| Saw ($21) | 2 | Loop at index 2 |
+| Triangle ($11) | 4 | Loop at index 4 |
+| Noise ($81) | 6 | Loop at index 6 |
 
 ## Converter Architecture
 
@@ -350,10 +450,14 @@ SID File → SIDParser → LaxityPlayerAnalyzer → ExtractedData → SF2Writer 
 ### Running Tests
 
 ```bash
+# Run unit tests
 python test_converter.py
+
+# Run SF2 format validation (aux pointer check)
+python test_sf2_format.py
 ```
 
-All 34 tests should pass:
+All 34 unit tests should pass:
 - SID parsing tests
 - Memory access tests
 - Data structure tests
@@ -361,6 +465,10 @@ All 34 tests should pass:
 - SF2 writing tests
 - Instrument encoding tests
 - Feature validation tests (instruments, commands, tempo, tables)
+
+The SF2 format test validates:
+- **Aux pointer validation**: Ensures aux pointer doesn't point to valid aux data (which crashes SID Factory II)
+- **File structure comparison**: Compares orderlist and sequence pointers with templates
 
 ### CI/CD Pipeline
 
@@ -401,14 +509,70 @@ The project includes a GitHub Actions workflow (`.github/workflows/ci.yml`) that
 ```
 SIDM2/
 ├── sid_to_sf2.py        # Main converter
+├── convert_all.py       # Batch converter
 ├── analyze_sid.py       # Deep analysis tool
 ├── laxity_analyzer.py   # Laxity format analyzer
+├── laxity_parser.py     # Laxity format parser
 ├── test_converter.py    # Unit tests
+├── test_sf2_format.py   # SF2 format validation tests
 ├── README.md            # This file
 ├── CONTRIBUTING.md      # Contribution guidelines
-├── Unboxed_Ending_8580.sid  # Sample input
-└── sf2driver11_00.prg   # SF2 driver (optional)
+├── SID/                 # Input SID files
+├── SF2/                 # Output SF2 files
+└── tools/               # Analysis tools
+    ├── siddump.exe      # SID register dump tool
+    ├── player-id.exe    # Player identification tool
+    └── cpu.c            # 6502 CPU emulator source
 ```
+
+## Tools
+
+### siddump
+
+A 6502 CPU emulator that executes SID player code and captures register writes. Source code in `tools/cpu.c` and `tools/siddump.c`.
+
+```bash
+tools/siddump.exe <sidfile> [options]
+```
+
+Options:
+- `-a<value>` - Subtune number (default 0)
+- `-t<value>` - Playback time in seconds (default 60)
+- `-f<value>` - First frame to display
+- `-l` - Low-resolution mode
+- `-n<value>` - Note spacing
+- `-p<value>` - Pattern spacing
+- `-s` - Time in minutes:seconds:frame format
+- `-z` - Include CPU cycles and raster time
+- `-c<hex>` - Recalibrate frequency table
+- `-d<hex>` - Calibration note (default $B0 = middle C)
+
+Output shows per-frame SID register state:
+- 3 voices: Frequency, Note, Waveform, ADSR, Pulse width
+- Filter: Cutoff, Resonance/Control, Type, Volume
+
+### player-id
+
+Identifies the player routine used in a SID file.
+
+```bash
+tools/player-id.exe <sidfile>
+```
+
+### 6502 CPU Emulator
+
+The `cpu.c` file contains a complete 6502 CPU emulator with:
+- All standard opcodes (ADC, SBC, AND, ORA, EOR, etc.)
+- Common illegal opcodes (LAX)
+- Accurate cycle counting with page-crossing penalties
+- Decimal mode support for ADC/SBC
+
+Key registers:
+- `pc` - Program Counter (16-bit)
+- `a`, `x`, `y` - Accumulator and index registers (8-bit)
+- `sp` - Stack pointer (8-bit)
+- `flags` - N, V, B, D, I, Z, C status flags
+- `mem[0x10000]` - 64KB memory
 
 ### Adding New Features
 
@@ -421,12 +585,33 @@ SIDM2/
 
 ## Limitations
 
+### Extracted Tables
+
+The converter now extracts and injects all major table types:
+
+| Table | Status | Description |
+|-------|--------|-------------|
+| Instruments | ✓ Full | 8-byte Laxity format with ADSR, wave/pulse/filter pointers |
+| Wave | ✓ Full | Note offset + waveform pairs with jump/end markers |
+| Pulse | ✓ Full | 4-byte entries: value, count, duration, next index |
+| Filter | ✓ Full | 4-byte entries: value, count, duration, next index |
+| Commands | ✓ Names | Command names injected via auxiliary data |
+| HR | ✓ Basic | Hard restart table with default values |
+| Tempo | ✓ Full | Speed value extracted from SID |
+| Arp | ✓ Default | Default arpeggio patterns (major, minor, octave) |
+| Init | - | Not available in NP20 driver |
+
 ### Current Limitations
 
-- **Template-based output**: Uses existing SF2 file as template
-- **Incomplete data injection**: Extracted data shown but not fully injected
-- **Single player support**: Optimized for Laxity player only
+- **Single player support**: Optimized for Laxity NewPlayer v21 only
+- **Some tables use defaults**: Init and Arp may need manual editing
 - **Manual refinement needed**: Output may require editing in SF2
+
+### Known Issues
+
+- **Aux pointer compatibility**: SF2 files have aux pointer set to $0000 to prevent SID Factory II crashes
+- **Driver 11 instruments**: Converted instruments may differ from manually created ones in original SF2 project files
+- **Multi-speed tunes**: Songs with multiple play calls per frame may not play at correct speed
 
 ### Why Full Conversion is Difficult
 
@@ -453,13 +638,146 @@ The converter generates an SF2 file that:
 - Has basic instrument definitions
 - Requires manual refinement for playability
 
-## Future Improvements
+## Improvements Roadmap
 
-1. **Full data injection**: Replace template data with extracted music
-2. **Pointer table parsing**: Properly identify and use pointer tables
-3. **Multiple player support**: Add support for other common players
-4. **Better heuristics**: Improve sequence/instrument detection
-5. **Validation**: Verify extracted data integrity
+### Completed (v0.4.0)
+
+| # | Feature | Status | Description |
+|---|---------|--------|-------------|
+| 1 | Fix Omniphunk ADSR extraction | ✅ Done | Siddump ADSR merging achieves 100% accuracy |
+| 2 | Ring Modulation waveform support | ✅ Done | Added 0x14, 0x15, 0x34, 0x35 with ring mod bit |
+| 3 | Improve pulse table extraction | ✅ Done | Better pulse modulation pattern detection |
+| 26 | Fix SF2 aux pointer crash | ✅ Done | Aux pointer no longer points to valid aux data |
+| 27 | SF2 format validation test | ✅ Done | test_sf2_format.py validates aux pointer safety |
+
+### Completed (v0.3.0)
+
+| # | Feature | Status | Description |
+|---|---------|--------|-------------|
+| 13 | SF2 metadata from SID header | ✅ Done | Song name, author, copyright embedded in SF2 |
+| 17 | Improved instrument naming | ✅ Done | Better heuristics (Bass, Lead, Pad, Perc, Stab, Pluck) + waveform type |
+| 21 | Cross-reference validation | ✅ Done | Validates wave table, instruments, sequences, orderlists |
+| 15 | Validation report file | ✅ Done | Outputs detailed report to SF2/validation_report.txt |
+| 11 | Wave table debug info | ✅ Done | Shows top candidates and scores in info files |
+| 1 | Fix Clarencio wave table | ✅ Done | Improved scoring algorithm with variety bonus |
+
+### High Priority - Next Improvements
+
+| # | Feature | Status | Description |
+|---|---------|--------|-------------|
+| 4 | Multi-speed tune support | 🔄 Pending | Handle tunes with multiple play calls per frame |
+| 5 | Proper filter table extraction | 🔄 Pending | Filter sweeps and resonance settings |
+| 28 | Support more player formats | 🔄 Pending | Add support for GoatTracker, JCH, DMC players |
+| 29 | Sequence optimization | 🔄 Pending | Remove redundant commands, optimize sequence data |
+| 30 | Better loop detection | 🔄 Pending | Detect and mark proper loop points in orderlists |
+
+### Medium Priority
+
+| # | Feature | Status | Description |
+|---|---------|--------|-------------|
+| 6 | Auto-detect player variant | 🔄 Pending | Distinguish NP20, NP21, other Laxity versions |
+| 7 | Additional Laxity commands | 🔄 Pending | Support unmapped sequence commands |
+| 8 | Better Set ADSR matching | 🔄 Pending | Track dynamic ADSR changes in sequences |
+| 9 | Tempo detection | 🔄 Pending | Extract actual tempo from song data |
+| 10 | Vibrato parameters | 🔄 Pending | Extract depth/speed settings |
+| 11 | Portamento parameters | 🔄 Pending | Extract slide speed from commands |
+| 12 | Hard restart timing | 🔄 Pending | Detect different HR timing per song |
+| 31 | GUI interface | 🔄 Pending | Simple tkinter GUI for batch conversion |
+| 32 | Direct SF2 editing | 🔄 Pending | Modify existing SF2 files without full reconversion |
+
+### Low Priority
+
+| # | Feature | Status | Description |
+|---|---------|--------|-------------|
+| 14 | Sequence deduplication | 🔄 Pending | Detect and merge duplicate sequences |
+| 15 | Subtune support | 🔄 Pending | Handle SID files with multiple songs |
+| 16 | Orderlist loop detection | 🔄 Pending | Identify loop points for proper playback |
+| 18 | Command usage statistics | 🔄 Pending | Show which SF2 commands are used |
+| 19 | Combined waveform transitions | 🔄 Pending | Handle Tri+Saw, Tri+Pulse in wave table |
+| 20 | Pulse width range detection | 🔄 Pending | Determine min/max pulse per instrument |
+| 33 | Export to other formats | 🔄 Pending | Export to GoatTracker .sng or MIDI |
+| 34 | Batch validation report | 🔄 Pending | Generate HTML report for all conversions |
+| 35 | Instrument preset library | 🔄 Pending | Common C64 instrument presets |
+
+### Validation Enhancements
+
+| # | Feature | Status | Description |
+|---|---------|--------|-------------|
+| 22 | Validate command parameters | 🔄 Pending | Check slide/vibrato values in valid ranges |
+| 23 | Note range validation | 🔄 Pending | Ensure notes are within playable range |
+| 24 | Filter cutoff validation | 🔄 Pending | Compare filter table against usage |
+| 25 | Timing accuracy check | 🔄 Pending | Frame-by-frame output timing comparison |
+
+### Current Validation Scores
+
+| Song | Score | Issues |
+|------|-------|--------|
+| Angular | 100% | 0 |
+| Clarencio_extended | 100% | 0 |
+| Ocean_Reloaded | 100% | 0 |
+| Omniphunk | 100% | 0 |
+| Phoenix_Code_End_Tune | 100% | 0 |
+| Unboxed_Ending_8580 | 100% | 0 |
+| **Average** | **100%** | |
+
+All files now achieve 100% validation score with siddump ADSR merging and improved wave table extraction.
+
+### Code Quality Improvements
+
+| # | Improvement | Status | Effort | Impact | Description |
+|---|-------------|--------|--------|--------|-------------|
+| 36 | Implement proper logging | 🔄 Pending | 2-3h | High | Replace ~70+ print() calls with Python logging module |
+| 37 | Add type hints | 🔄 Pending | 4-6h | High | Add type annotations to all public functions in sidm2/ |
+| 38 | Error handling in extraction | 🔄 Pending | 6-8h | Critical | Raise specific exceptions instead of returning None |
+| 39 | Subprocess error handling | 🔄 Pending | 3-4h | Medium | Proper error handling for siddump.exe, player-id.exe |
+| 40 | Data validation | 🔄 Pending | 5-6h | Critical | Validate SequenceEvent, ExtractedData at creation |
+| 41 | Test coverage for edge cases | 🔄 Pending | 4-5h | High | Add tests for corrupted files, empty data, missing templates |
+| 42 | Configuration system | 🔄 Pending | 3-4h | Medium | ConversionOptions class for customizable SF2 generation |
+
+### Architecture Improvements (Completed)
+
+| # | Improvement | Status | Description |
+|---|-------------|--------|-------------|
+| 43 | Modularize sid_to_sf2.py | ✅ Done | Extracted to sidm2/ package (3600→139 lines) |
+| 44 | Consolidate duplicate scripts | ✅ Done | Removed 13 duplicate analysis scripts |
+| 45 | Extract constants | ✅ Done | Magic numbers moved to sidm2/constants.py |
+| 46 | Add documentation | ✅ Done | Created docs/ folder with comprehensive guides |
+| 47 | SF2Writer modularization | ✅ Done | Extracted ~960 lines to sidm2/sf2_writer.py |
+
+## Changelog
+
+### v0.4.0 (2025-11-22)
+- Fixed SF2 crash issue caused by aux pointer pointing to valid aux data
+- Added aux pointer validation test (`test_sf2_format.py`)
+- Added Ring Modulation waveform support ($14, $15, $34, $35)
+- Improved ADSR extraction with siddump merging
+- Improved pulse table extraction scoring
+- All converted files now pass SF2 format validation
+- Current validation status: All files load in SID Factory II
+
+### v0.3.0 (2025-11-22)
+- Added SF2 metadata embedding (song name, author, copyright)
+- Improved instrument naming with ADSR heuristics and waveform types
+- Added cross-reference validation for wave tables and sequences
+- Added validation report file output
+- Added wave table debug info with candidate scores
+- Fixed wave table extraction scoring algorithm
+- Added variety bonus for better wave table selection
+- Added sync waveform support (0x42, 0x43, etc.)
+- Current average validation score: 91.2%
+
+### v0.2.0 (2025-11-21)
+- Full table extraction (instruments, wave, pulse, filter)
+- Batch conversion support with convert_all.py
+- Info file generation with detailed extraction data
+- siddump integration for validation
+- Validation script for comparing extraction vs playback
+
+### v0.1.0 (2025-11-20)
+- Initial release
+- Basic SID to SF2 conversion
+- Laxity NewPlayer v21 support
+- NP20 and Driver11 template support
 
 ## References
 

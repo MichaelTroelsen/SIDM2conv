@@ -49,9 +49,27 @@ SIDM2/
 ## Running Tests
 
 ```bash
-python -m pytest test_converter.py -v
-python -m pytest test_sf2_format.py -v
+python test_converter.py
+python test_sf2_format.py
 ```
+
+## CI/CD Rules
+
+**IMPORTANT: Always follow these rules when making changes:**
+
+### 1. Always Run Tests
+Before committing any code changes, you MUST:
+- Run `python test_converter.py` and ensure all tests pass
+- Run `python test_sf2_format.py` for format validation tests
+- If tests fail, fix the issues before committing
+
+### 2. Always Update Documentation
+When making code changes, you MUST update relevant documentation:
+- Update `README.md` if adding/changing features or CLI options
+- Update `CLAUDE.md` if changing project structure or conventions
+- Update `docs/` files if changing architecture or API
+- Keep version numbers in sync across files
+- Update improvement status in README when completing items
 
 ## Common Tasks
 
@@ -112,22 +130,23 @@ LAXITY_INIT_PATTERN = [0xA9, 0x00, 0x8D]  # LDA #$00, STA
 
 ## Improvement Opportunities
 
-### High Priority
-- Modularize `sid_to_sf2.py` into separate files
-- Add proper exception handling (specific types)
+See README.md for full improvement list with status tracking.
+
+### Completed ✅
+- Modularize `sid_to_sf2.py` into separate files (sidm2 package)
 - Consolidate duplicate analysis scripts
 - Extract magic numbers to constants
+- Add comprehensive documentation
 
-### Medium Priority
-- Add support for additional player formats
-- Complete table extraction (Init, Arp, HR)
-- Add parallel batch processing
-- Document scoring algorithms
+### In Progress 🔄
+- Add proper logging instead of print statements
+- Add type hints to all public functions
+- Error handling in critical extraction functions
 
-### Testing Gaps
-- No error handling tests
-- No batch converter tests
-- No edge case coverage
+### Pending
+- Test coverage for edge cases
+- Configuration system for SF2 generation
+- Support for additional player formats
 
 ## Dependencies
 
