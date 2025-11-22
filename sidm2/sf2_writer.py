@@ -609,16 +609,18 @@ class SF2Writer:
             wave_data = extracted_waves
             logger.info(f"    Extracted {len(extracted_waves)} wave entries from SID")
         else:
+            # Default: (col0, col1) = (waveform, note) or (0x7F, target)
             wave_data = [
-                (0x00, 0x41), (0x7F, 0x00),
-                (0x00, 0x21), (0x7F, 0x02),
-                (0x00, 0x11), (0x7F, 0x04),
-                (0x00, 0x81), (0x7F, 0x06),
+                (0x41, 0x00), (0x7F, 0x00),  # Pulse, jump to 0
+                (0x21, 0x00), (0x7F, 0x02),  # Saw, jump to 2
+                (0x11, 0x00), (0x7F, 0x04),  # Tri, jump to 4
+                (0x81, 0x00), (0x7F, 0x06),  # Noise, jump to 6
             ]
 
         if hasattr(self.data, 'siddump_data') and self.data.siddump_data:
             siddump_waveforms = set(self.data.siddump_data['waveforms'])
-            existing_waveforms = set(wf for _, wf in wave_data)
+            # Waveform is in column 0 (first element), except for $7F jump commands
+            existing_waveforms = set(col0 for col0, _ in wave_data if col0 != 0x7F)
             missing = siddump_waveforms - existing_waveforms
             missing = {wf for wf in missing
                       if (wf | 0x01) not in existing_waveforms
@@ -629,16 +631,17 @@ class SF2Writer:
         base_offset = self._addr_to_offset(wave_addr)
 
         # SF2 wave table format is column-major:
-        # Column 0: Note offset ($7F = jump, $7E = hold, $00-$7D = relative, $80+ = absolute)
-        # Column 1: Waveform ($11=tri, $21=saw, $41=pulse, $81=noise)
-        for i, (note_offset, waveform) in enumerate(wave_data):
+        # Column 0: Waveform ($11=tri, $21=saw, $41=pulse, $81=noise) or $7F for jump
+        # Column 1: Note offset or jump target
+        # Extraction returns (col0, col1) tuples
+        for i, (col0, col1) in enumerate(wave_data):
             if i < rows and base_offset + i < len(self.output):
-                self.output[base_offset + i] = note_offset
+                self.output[base_offset + i] = col0
 
         col1_offset = base_offset + rows
-        for i, (note_offset, waveform) in enumerate(wave_data):
+        for i, (col0, col1) in enumerate(wave_data):
             if i < rows and col1_offset + i < len(self.output):
-                self.output[col1_offset + i] = waveform
+                self.output[col1_offset + i] = col1
 
         logger.info(f"    Written {len(wave_data)} wave table entries")
 

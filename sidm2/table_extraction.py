@@ -304,7 +304,15 @@ def find_wave_table_from_player_code(data: bytes, load_addr: int) -> Optional[in
 def find_and_extract_wave_table(data: bytes, load_addr: int, verbose: bool = False, siddump_waveforms: Optional[List[int]] = None) -> Tuple[Optional[int], List[Tuple[int, int]]]:
     """
     Find and extract wave table from Laxity SID.
-    Returns (address, entries) where entries is list of (note_offset, waveform).
+    Returns (address, entries) where entries is list of (waveform, note_offset).
+
+    SF2 Factory II wave table format:
+    - Column 0: Waveform ($11=tri, $21=saw, $41=pulse, $81=noise) or $7F for jump
+    - Column 1: Note offset or jump target
+
+    Special commands:
+    - $7F xx = Jump to entry xx
+    - $7E = Hold/stop
     """
     # First try to find wave table by analyzing player code
     note_addr, wave_addr = find_wave_table_from_player_code(data, load_addr)
@@ -324,7 +332,13 @@ def find_and_extract_wave_table(data: bytes, load_addr: int, verbose: bool = Fal
                 entries.append((note_val, wave_val))
                 break
 
-            entries.append((note_val, wave_val))
+            # SF2 format: (first_col, second_col)
+            # For $7F commands: first_col=$7F, second_col=target
+            # For normal entries: first_col=waveform, second_col=note
+            if note_val == 0x7F:
+                entries.append((note_val, wave_val))  # Jump command
+            else:
+                entries.append((wave_val, note_val))  # Swap: waveform first, note second
 
             if i > 8 and wave_val not in WAVE_TABLE_WAVEFORMS:
                 break

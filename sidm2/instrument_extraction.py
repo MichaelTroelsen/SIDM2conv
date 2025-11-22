@@ -165,15 +165,16 @@ def extract_laxity_wave_table(data: bytes, load_addr: int, siddump_waveforms: Op
         return wave_entries
 
     # Default entries for basic waveforms
+    # Format: (col0, col1) where col0=waveform or $7F, col1=note or target
     if not wave_entries or len(wave_entries) < 4:
         wave_entries = [
-            (0x00, 0x41),  # Pulse
+            (0x41, 0x00),  # Pulse, note=0
             (0x7F, 0x00),  # Jump to 0
-            (0x00, 0x21),  # Saw
+            (0x21, 0x00),  # Saw, note=0
             (0x7F, 0x02),  # Jump to 2
-            (0x00, 0x11),  # Triangle
+            (0x11, 0x00),  # Triangle, note=0
             (0x7F, 0x04),  # Jump to 4
-            (0x00, 0x81),  # Noise
+            (0x81, 0x00),  # Noise, note=0
             (0x7F, 0x06),  # Jump to 6
         ]
 
