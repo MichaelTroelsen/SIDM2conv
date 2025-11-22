@@ -301,6 +301,99 @@ SF2 sequences use a different triplet order than the Laxity player:
 | Tempo | Speed settings |
 | Init | Initialization data |
 
+#### SF2 Table Details
+
+##### Commands Table
+The commands table is referenced from the middle numeric column in sequences. Because of this, **it is not possible to insert or delete rows** - all commands must be edited in place.
+
+Press F12 in SID Factory II to open an expanded overlay showing the commands offered by the currently loaded driver (displayed in magenta).
+
+##### Instruments Table
+Instruments are referenced from the left numeric column in sequences - like commands, **you cannot insert or delete rows**.
+
+The number of bytes and their purpose depends on the currently loaded driver, but typically includes:
+- ADSR values (Attack, Decay, Sustain, Release)
+- Index pointers to support tables (wave, pulse, filter)
+
+**Tip**: Place cursor on an index pointer value and press Ctrl+Enter to jump to that row in the referenced table.
+
+##### Wave Table
+The wave table sets the waveform (left column) and semitone offset (right column).
+
+Format: `WW NN` where:
+- `WW` = Waveform ($11=tri, $21=saw, $41=pulse, $81=noise)
+- `NN` = Semitone offset (e.g., $0C = +12 semitones = one octave higher)
+
+Special values:
+- Add $80 to the note value for **static/absolute notes** (great for drums)
+- `7F xx` = Jump to row xx (e.g., `7F 02` wraps to row 3)
+
+##### Pulse Table
+The pulse table defines pulse width modulation for waveform $41 and combined waveforms. It controls:
+- Range of pulse width sweep
+- Speed of the sweep effect
+
+Press F12 for an expanded overlay explaining pulse commands (displayed in pink).
+
+Some drivers use a simpler one or two byte pulsating effect defined directly in the instrument.
+
+##### Filter Table
+The filter table defines filter cutoff range and sweep speeds. Unlike pulse, **the SID filter is a global effect** applied to channels via a bit mask:
+
+| Bit | Value | Channel |
+|-----|-------|---------|
+| 0 | 1 | Channel 1 |
+| 1 | 2 | Channel 2 |
+| 2 | 4 | Channel 3 |
+
+Examples:
+- 3 (1+2) = Filter on channels 1 and 2
+- 4 = Filter on channel 3 only
+- 7 (1+2+4) = Filter on all channels
+
+Press F12 for filter command details (displayed in orange).
+
+Note: Some drivers have no filter capabilities.
+
+##### Arpeggio Table
+The arpeggio table creates chord effects by rapidly cycling through semitone offsets. Values are added to the note in the sequence.
+
+Press F12 for arpeggio details (displayed in green).
+
+In driver 11, arpeggio only affects wave table entries where the semitone value is $00. Other values ignore arpeggio.
+
+##### Init Table
+The init table points to a tempo table row and sets the main volume (e.g., `00 0F` for maximum volume). Multiple entries support multi-songs.
+
+Press F12 for init details (displayed in white outline).
+
+##### HR (Hard Restart) Table
+Hard restart defeats the SID chip's "ADSR bug" - a timing issue that causes notes to stumble when playing rapid sequences (called "the school band effect" by Martin Galway).
+
+**How it works**: The driver gates off and resets ADSR values a few frames before the next note triggers. In most SF2 drivers, this happens exactly 2 frames before.
+
+Example: A note lasting 15 frames will:
+1. Play with instrument ADSR for 13 frames
+2. Hard restart takes over for final 2 frames
+3. Gates off and applies HR table ADSR (typically `0F 00` for fast decay)
+4. Next note triggers with stable ADSR
+
+The HR table defines this pre-note ADSR. Default value `0F 00` brings notes down quickly. Advanced users can experiment with different values or create multiple HR entries for different instruments.
+
+Press F12 for HR details (displayed in cyan).
+
+##### Tempo Table
+The tempo table defines song speed as **frames per row**. Frames update at 50Hz (PAL) or 60Hz (NTSC).
+
+- Smaller values = faster tempo
+- Minimum practical value is usually $02 (due to hard restart timing)
+- Chain multiple values with `7F` wrap to create shuffle rhythms or fractional speeds (e.g., 2½)
+
+Example tempo chains:
+- `02 7F 00` = Constant speed 2
+- `02 03 7F 00` = Alternating 2-3 for shuffle feel
+- `02 02 03 7F 00` = 2⅓ average speed
+
 ### SF2 Driver Formats
 
 #### NP20 Driver (NewPlayer 20 - Recommended)
