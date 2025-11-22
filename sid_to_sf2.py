@@ -1442,10 +1442,10 @@ class SF2Writer:
         # SF2 Driver 11 instrument format (6 bytes per instrument, column-major):
         # Byte 0: AD (Attack/Decay)
         # Byte 1: SR (Sustain/Release)
-        # Byte 2: Wave table index (0x00 = use table 0, 0x80 = no wave table)
-        # Byte 3: Pulse table index
-        # Byte 4: Filter table index
-        # Byte 5: HR (Hard Restart) table index
+        # Byte 2: Flags (80=hard restart, 40=filter, 20=filter enable, 10=osc reset, 0X=HR index)
+        # Byte 3: Filter table index
+        # Byte 4: Pulse table index
+        # Byte 5: Wave table index
 
         # Extract actual instruments from the Laxity SID data
         laxity_instruments = extract_laxity_instruments(self.data.c64_data, self.data.load_address)
@@ -1471,14 +1471,17 @@ class SF2Writer:
         for lax_instr in laxity_instruments:
             wave_idx = waveform_to_wave_index(lax_instr['wave_for_sf2'])
 
-            # Format: AD, SR, Wave index, Pulse index, Filter index, HR index
+            # Format: AD, SR, Flags, Filter index, Pulse index, Wave index
+            # Flags: 0x10 = oscillator reset (good for percussive sounds)
+            flags = 0x00
+
             sf2_instr = [
                 lax_instr['ad'],
                 lax_instr['sr'],
-                wave_idx,
-                0x00,  # Pulse index
-                0x00,  # Filter index
-                0x00   # HR index
+                flags,      # Flags
+                0x00,       # Filter table index
+                0x00,       # Pulse table index
+                wave_idx    # Wave table index
             ]
             sf2_instruments.append(sf2_instr)
 
@@ -1489,7 +1492,7 @@ class SF2Writer:
         # Print extracted instruments
         for i, instr in enumerate(sf2_instruments[:len(laxity_instruments)]):
             wave_names = {0x00: 'saw', 0x02: 'pulse', 0x04: 'tri', 0x06: 'noise'}
-            wave_name = wave_names.get(instr[2], '?')
+            wave_name = wave_names.get(instr[5], '?')  # Wave index is now byte 5
             print(f"      {i}: AD={instr[0]:02X} SR={instr[1]:02X} Wave={wave_name}")
 
         # Write instruments in column-major format
