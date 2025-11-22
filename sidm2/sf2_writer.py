@@ -454,7 +454,14 @@ class SF2Writer:
             ol_offset = self._addr_to_offset(current_addr)
             last_trans = -1
 
-            for transposition, seq_idx in orderlist:
+            for item in orderlist:
+                # Handle both formats: simple int or (transposition, seq_idx) tuple
+                if isinstance(item, tuple):
+                    transposition, seq_idx = item
+                else:
+                    transposition = 0  # Default transposition
+                    seq_idx = item
+
                 sf2_trans = 0xA0 + (transposition if transposition < 32 else transposition - 256)
                 sf2_trans = max(0x80, min(0xBF, sf2_trans))
 
@@ -521,6 +528,10 @@ class SF2Writer:
             wave_ptr = lax_instr.get('wave_ptr', 0)
             pulse_ptr = lax_instr.get('pulse_ptr', 0)
             filter_ptr = lax_instr.get('filter_ptr', 0)
+
+            # Convert Laxity pulse_ptr from Y*4 indexing to direct index
+            if pulse_ptr != 0 and pulse_ptr % 4 == 0:
+                pulse_ptr = pulse_ptr // 4
 
             if wave_ptr == 0:
                 wave_ptr = waveform_to_wave_index(lax_instr['wave_for_sf2'])
@@ -703,12 +714,19 @@ class SF2Writer:
 
         base_offset = self._addr_to_offset(pulse_addr)
 
+        # Convert from Laxity format (Y*4 indexing) to SF2 format (direct indexing)
+        # Laxity: (val, cnt, dur, next_y) where next_y is pre-multiplied by 4
+        # SF2: (val, cnt, dur, next_idx) where next_idx is direct entry number
         for col in range(min(columns, 4)):
             for i, entry in enumerate(pulse_entries):
                 if i < rows:
                     offset = base_offset + (col * rows) + i
                     if offset < len(self.output) and col < len(entry):
-                        self.output[offset] = entry[col]
+                        value = entry[col]
+                        # Convert next index from Y*4 to direct index
+                        if col == 3 and value != 0:  # Next entry column
+                            value = value // 4 if value % 4 == 0 else value
+                        self.output[offset] = value
 
         logger.info(f"    Written {len(pulse_entries)} Pulse table entries")
 
