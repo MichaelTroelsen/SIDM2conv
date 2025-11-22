@@ -1000,17 +1000,18 @@ class SF2Writer:
     BLOCK_MUSIC_DATA = 5
     BLOCK_END = 0xFF
 
-    def __init__(self, extracted_data: ExtractedData):
+    def __init__(self, extracted_data: ExtractedData, driver_type: str = 'np20'):
         self.data = extracted_data
         self.output = bytearray()
         self.template_path = None
         self.driver_info = SF2DriverInfo()
         self.load_address = 0
+        self.driver_type = driver_type
 
     def write(self, filepath: str):
         """Write the SF2 file"""
         # Try to find and use a template SF2 file
-        template_path = self._find_template()
+        template_path = self._find_template(self.driver_type)
 
         if template_path and os.path.exists(template_path):
             print(f"Using template: {template_path}")
@@ -1047,16 +1048,26 @@ class SF2Writer:
         print(f"Written SF2 file: {filepath}")
         print(f"File size: {len(self.output)} bytes")
 
-    def _find_template(self) -> Optional[str]:
-        """Find an SF2 template file to use as base"""
-        # Look for template files in common locations
-        search_paths = [
-            # Check for existing SF2 files in the project
-            'template.sf2',
-            # Check SID Factory II installation paths
-            r'C:\Users\mit\Downloads\sidfactory2-master\sidfactory2-master\SIDFactoryII\music\Driver 11 Test - Arpeggio.sf2',
-        ]
+    def _find_template(self, driver_type: str = 'driver11') -> Optional[str]:
+        """Find an SF2 template file to use as base
 
+        Args:
+            driver_type: 'driver11' for standard driver, 'np20' for NewPlayer 20
+        """
+        # Define template paths for different drivers
+        driver_templates = {
+            'driver11': [
+                'template.sf2',
+                r'C:\Users\mit\Downloads\sidfactory2-master\sidfactory2-master\SIDFactoryII\music\Driver 11 Test - Arpeggio.sf2',
+            ],
+            'np20': [
+                'template_np20.sf2',
+                r'C:\Users\mit\Downloads\sidfactory2-master\sidfactory2-master\SIDFactoryII\drivers\sf2driver_np20_00.prg',
+                r'C:\Users\mit\Downloads\SIDFactoryII_Win32_20231002\drivers\sf2driver_np20_00.prg',
+            ],
+        }
+
+        search_paths = driver_templates.get(driver_type, driver_templates['driver11'])
         base_dir = os.path.dirname(os.path.abspath(__file__))
 
         for path in search_paths:
@@ -1436,16 +1447,12 @@ class SF2Writer:
 
         instr_table = self.driver_info.table_addresses['Instruments']
         instr_addr = instr_table['addr']
-        columns = instr_table['columns']  # Should be 6 for Driver 11
+        columns = instr_table['columns']  # 6 for Driver 11, 8 for NP20
         rows = instr_table['rows']  # Should be 32
 
-        # SF2 Driver 11 instrument format (6 bytes per instrument, column-major):
-        # Byte 0: AD (Attack/Decay)
-        # Byte 1: SR (Sustain/Release)
-        # Byte 2: Flags (80=hard restart, 40=filter, 20=filter enable, 10=osc reset, 0X=HR index)
-        # Byte 3: Filter table index
-        # Byte 4: Pulse table index
-        # Byte 5: Wave table index
+        # Instrument format depends on driver:
+        # Driver 11 (6 bytes): AD, SR, Flags, Filter, Pulse, Wave
+        # NP20 (8 bytes): AD, SR, Wave, Pulse, Filter, Cmd, Vibrato, CmdVal
 
         # Extract actual instruments from the Laxity SID data
         laxity_instruments = extract_laxity_instruments(self.data.c64_data, self.data.load_address)
@@ -1468,31 +1475,50 @@ class SF2Writer:
 
         # Build instrument list from extracted data
         sf2_instruments = []
+        is_np20 = columns == 8  # NP20 uses 8 columns
+
         for lax_instr in laxity_instruments:
             wave_idx = waveform_to_wave_index(lax_instr['wave_for_sf2'])
 
-            # Format: AD, SR, Flags, Filter index, Pulse index, Wave index
-            # Flags: 0x10 = oscillator reset (good for percussive sounds)
-            flags = 0x00
-
-            sf2_instr = [
-                lax_instr['ad'],
-                lax_instr['sr'],
-                flags,      # Flags
-                0x00,       # Filter table index
-                0x00,       # Pulse table index
-                wave_idx    # Wave table index
-            ]
+            if is_np20:
+                # NP20 format (8 bytes): AD, SR, Wave, Pulse, Filter, Cmd, Vibrato, CmdVal
+                sf2_instr = [
+                    lax_instr['ad'],
+                    lax_instr['sr'],
+                    wave_idx,   # Wave table index
+                    0x00,       # Pulse table index
+                    0x00,       # Filter table index
+                    0x00,       # Command
+                    0x00,       # Vibrato
+                    0x00        # Command value
+                ]
+            else:
+                # Driver 11 format (6 bytes): AD, SR, Flags, Filter, Pulse, Wave
+                # Flags: 0x10 = oscillator reset (good for percussive sounds)
+                flags = 0x00
+                sf2_instr = [
+                    lax_instr['ad'],
+                    lax_instr['sr'],
+                    flags,      # Flags
+                    0x00,       # Filter table index
+                    0x00,       # Pulse table index
+                    wave_idx    # Wave table index
+                ]
             sf2_instruments.append(sf2_instr)
 
         # Fill remaining slots with defaults
         while len(sf2_instruments) < 16:
-            sf2_instruments.append([0x09, 0xA0, 0x00, 0x00, 0x00, 0x00])
+            if is_np20:
+                sf2_instruments.append([0x09, 0xA0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+            else:
+                sf2_instruments.append([0x09, 0xA0, 0x00, 0x00, 0x00, 0x00])
 
         # Print extracted instruments
         for i, instr in enumerate(sf2_instruments[:len(laxity_instruments)]):
             wave_names = {0x00: 'saw', 0x02: 'pulse', 0x04: 'tri', 0x06: 'noise'}
-            wave_name = wave_names.get(instr[5], '?')  # Wave index is now byte 5
+            # Wave index position depends on format: NP20 = byte 2, Driver 11 = byte 5
+            wave_idx_pos = 2 if is_np20 else 5
+            wave_name = wave_names.get(instr[wave_idx_pos], '?')
             print(f"      {i}: AD={instr[0]:02X} SR={instr[1]:02X} Wave={wave_name}")
 
         # Write instruments in column-major format
@@ -1704,17 +1730,24 @@ def analyze_sid_file(filepath: str):
     return extracted
 
 
-def convert_sid_to_sf2(input_path: str, output_path: str):
-    """Convert a SID file to SF2 format"""
+def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = 'np20'):
+    """Convert a SID file to SF2 format
+
+    Args:
+        input_path: Path to input SID file
+        output_path: Path for output SF2 file
+        driver_type: 'driver11' for standard driver, 'np20' for NewPlayer 20
+    """
     print(f"Converting: {input_path}")
     print(f"Output: {output_path}")
+    print(f"Driver: {driver_type}")
     print()
 
     # Analyze the SID file
     extracted = analyze_sid_file(input_path)
 
     # Write the SF2 file
-    writer = SF2Writer(extracted)
+    writer = SF2Writer(extracted, driver_type=driver_type)
     writer.write(output_path)
 
     print()
@@ -1728,18 +1761,25 @@ def convert_sid_to_sf2(input_path: str, output_path: str):
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("SID to SF2 Converter")
-        print("Usage: python sid_to_sf2.py <input.sid> [output.sf2]")
-        print()
-        print("Example:")
-        print("  python sid_to_sf2.py Unboxed_Ending_8580.sid output.sf2")
-        sys.exit(1)
+    import argparse
 
-    input_file = sys.argv[1]
+    parser = argparse.ArgumentParser(
+        description='SID to SF2 Converter - Convert Laxity SID files to SID Factory II format'
+    )
+    parser.add_argument('input', help='Input SID file')
+    parser.add_argument('output', nargs='?', help='Output SF2 file (default: input name with .sf2)')
+    parser.add_argument(
+        '--driver', '-d',
+        choices=['np20', 'driver11'],
+        default='np20',
+        help='Target driver type (default: np20 - NewPlayer 20, similar to Laxity)'
+    )
 
-    if len(sys.argv) >= 3:
-        output_file = sys.argv[2]
+    args = parser.parse_args()
+
+    input_file = args.input
+    if args.output:
+        output_file = args.output
     else:
         # Generate output filename
         base = os.path.splitext(input_file)[0]
@@ -1749,7 +1789,7 @@ def main():
         print(f"Error: Input file not found: {input_file}")
         sys.exit(1)
 
-    convert_sid_to_sf2(input_file, output_file)
+    convert_sid_to_sf2(input_file, output_file, driver_type=args.driver)
 
 
 if __name__ == '__main__':
