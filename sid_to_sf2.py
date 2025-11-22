@@ -53,6 +53,15 @@ def extract_laxity_instruments(data, load_addr):
     """
     Extract actual instrument data from Laxity SID file.
     Returns list of instrument dicts with ad, sr, ctrl, wave info.
+
+    Laxity format stores instruments in three interleaved tables:
+    - AD table: Attack/Decay values
+    - SR table: Sustain/Release values
+    - CTRL table: Waveform control values
+
+    The number of real instruments is limited by table spacing (typically 3).
+    For a full 16 instruments, we extract what we can and fill the rest
+    with sensible defaults.
     """
     tables = find_sid_register_tables(data, load_addr)
 
@@ -63,44 +72,110 @@ def extract_laxity_instruments(data, load_addr):
     ctrl_table = tables.get(0x04)  # Control register
 
     if not ad_table:
+        # Return 16 default instruments
+        for i in range(16):
+            instruments.append({
+                'index': i,
+                'ad': 0x09,
+                'sr': 0x00,
+                'ctrl': 0x41,
+                'wave_for_sf2': 0x41,
+                'name': f"Instr {i:02d} Pulse"
+            })
         return instruments
 
-    # Calculate number of instruments from table spacing
-    if sr_table and ctrl_table:
-        num_instr = sr_table - ad_table
+    # Calculate how many real instruments we can extract
+    # Based on spacing between tables (e.g., SR - AD = 3 means 3 instruments)
+    if sr_table:
+        real_instr_count = sr_table - ad_table
     else:
-        num_instr = 16
+        real_instr_count = 3  # Default
 
-    for i in range(min(num_instr, 16)):
-        ad_off = ad_table - load_addr + i
-        sr_off = sr_table - load_addr + i if sr_table else ad_off
-        ctrl_off = ctrl_table - load_addr + i if ctrl_table else ad_off
+    # Cap at reasonable values
+    real_instr_count = min(max(real_instr_count, 1), 16)
 
-        if ad_off >= len(data) or sr_off >= len(data) or ctrl_off >= len(data):
-            break
+    # Default instrument definitions for missing slots
+    # These are common SID instrument types
+    default_instruments = [
+        # Lead sounds (pulse, saw)
+        {'ad': 0x09, 'sr': 0x00, 'ctrl': 0x41, 'name': 'Lead Pulse'},
+        {'ad': 0x0A, 'sr': 0x0A, 'ctrl': 0x21, 'name': 'Lead Saw'},
+        {'ad': 0x08, 'sr': 0x88, 'ctrl': 0x41, 'name': 'Soft Pulse'},
+        {'ad': 0x07, 'sr': 0x99, 'ctrl': 0x21, 'name': 'Soft Saw'},
+        # Bass sounds
+        {'ad': 0x0F, 'sr': 0x0A, 'ctrl': 0x11, 'name': 'Bass Triangle'},
+        {'ad': 0x0C, 'sr': 0x08, 'ctrl': 0x41, 'name': 'Bass Pulse'},
+        # Percussion
+        {'ad': 0x0F, 'sr': 0x00, 'ctrl': 0x81, 'name': 'Snare Noise'},
+        {'ad': 0x00, 'sr': 0x00, 'ctrl': 0x11, 'name': 'Kick Triangle'},
+        # Pads and effects
+        {'ad': 0x88, 'sr': 0x88, 'ctrl': 0x41, 'name': 'Pad Pulse'},
+        {'ad': 0x99, 'sr': 0x99, 'ctrl': 0x21, 'name': 'Pad Saw'},
+        {'ad': 0x05, 'sr': 0xB0, 'ctrl': 0x41, 'name': 'Pluck Pulse'},
+        {'ad': 0x03, 'sr': 0xA0, 'ctrl': 0x21, 'name': 'Pluck Saw'},
+        # More variations
+        {'ad': 0x0F, 'sr': 0x0F, 'ctrl': 0x81, 'name': 'Noise Hit'},
+        {'ad': 0x0A, 'sr': 0x00, 'ctrl': 0x11, 'name': 'Sharp Tri'},
+        {'ad': 0x00, 'sr': 0xF8, 'ctrl': 0x41, 'name': 'Gate Pulse'},
+        {'ad': 0x00, 'sr': 0xF8, 'ctrl': 0x21, 'name': 'Gate Saw'},
+    ]
 
-        ad = data[ad_off]
-        sr = data[sr_off]
-        ctrl = data[ctrl_off]
+    # Extract all 16 instruments
+    for i in range(16):
+        if i < real_instr_count:
+            # Extract real instrument data from tables
+            ad_off = ad_table - load_addr + i
+            sr_off = sr_table - load_addr + i if sr_table else ad_off
+            ctrl_off = ctrl_table - load_addr + i if ctrl_table else ad_off
+
+            if ad_off < len(data) and sr_off < len(data) and ctrl_off < len(data):
+                ad = data[ad_off]
+                sr = data[sr_off]
+                ctrl = data[ctrl_off]
+            else:
+                # Use default if out of bounds
+                default = default_instruments[i % len(default_instruments)]
+                ad = default['ad']
+                sr = default['sr']
+                ctrl = default['ctrl']
+        else:
+            # Use default instruments for slots beyond real data
+            default = default_instruments[i % len(default_instruments)]
+            ad = default['ad']
+            sr = default['sr']
+            ctrl = default['ctrl']
 
         # Decode waveform from control byte
         wave_for_sf2 = 0x21  # Default saw
+        wave_name = "Saw"
 
         if ctrl & 0x80:
             wave_for_sf2 = 0x81  # noise
+            wave_name = "Noise"
         elif ctrl & 0x40:
             wave_for_sf2 = 0x41  # pulse
+            wave_name = "Pulse"
         elif ctrl & 0x20:
             wave_for_sf2 = 0x21  # saw
+            wave_name = "Saw"
         elif ctrl & 0x10:
             wave_for_sf2 = 0x11  # tri
+            wave_name = "Triangle"
+        else:
+            # No waveform bits set - use default pulse
+            wave_for_sf2 = 0x41
+            wave_name = "Pulse"
+
+        # Create descriptive name
+        name = f"Instr {i:02d} {wave_name}"
 
         instruments.append({
             'index': i,
             'ad': ad,
             'sr': sr,
             'ctrl': ctrl,
-            'wave_for_sf2': wave_for_sf2
+            'wave_for_sf2': wave_for_sf2,
+            'name': name
         })
 
     return instruments
