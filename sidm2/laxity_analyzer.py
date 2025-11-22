@@ -149,6 +149,87 @@ class LaxityPlayerAnalyzer:
 
         return commands
 
+    def extract_instruments(self) -> List[bytes]:
+        """Extract instrument data from the SID file.
+
+        Returns list of 8-byte instrument definitions in SF2 format:
+        [AD, SR, Wave, Pulse Lo, Pulse Hi, Filter, unused, unused]
+        """
+        instruments = []
+
+        # Try to find instrument table
+        from .table_extraction import find_instrument_table
+        instr_addr = find_instrument_table(self.data, self.load_address)
+
+        if instr_addr:
+            instr_offset = instr_addr - self.load_address
+
+            # Extract up to 32 instruments (8 bytes each in Laxity format)
+            for i in range(32):
+                off = instr_offset + (i * 8)
+                if off + 8 <= len(self.data):
+                    # Read Laxity 8-byte format
+                    laxity_instr = self.data[off:off + 8]
+                    ad = laxity_instr[0]
+                    sr = laxity_instr[1]
+
+                    # Stop if we hit empty instrument
+                    if ad == 0 and sr == 0 and laxity_instr[7] == 0 and i > 0:
+                        break
+
+                    # Convert to SF2 8-byte format
+                    # [AD, SR, Wave, Pulse Lo, Pulse Hi, Filter, unused, unused]
+                    wave = 0x41  # Default pulse
+                    sf2_instr = bytes([ad, sr, wave, 0x00, 0x08, 0x00, 0x00, 0x00])
+                    instruments.append(sf2_instr)
+                else:
+                    break
+
+        # Return at least one default instrument
+        if not instruments:
+            instruments.append(bytes([0x09, 0x00, 0x41, 0x00, 0x08, 0x00, 0x00, 0x00]))
+
+        return instruments
+
+    def map_command(self, cmd_byte: int) -> Tuple[int, str]:
+        """Map a command byte to its command number and name.
+
+        Args:
+            cmd_byte: Command byte from sequence data
+
+        Returns:
+            Tuple of (command_number, command_name)
+        """
+        # Command names from Laxity/JCH format
+        command_names = {
+            0xC0: "Set duration",
+            0xC1: "Slide up",
+            0xC2: "Slide down",
+            0xC3: "Set ADSR",
+            0xC4: "Set wave",
+            0xC5: "Vibrato",
+            0xC6: "Portamento",
+            0xC7: "Set filter",
+            0xC8: "Set pulse",
+            0xC9: "Arpeggio",
+            0xCA: "Note delay",
+            0xCB: "Note cut",
+            0xCC: "Legato on",
+            0xCD: "Legato off",
+            0xCE: "Set tempo",
+            0xCF: "End",
+        }
+
+        # Duration commands (0x80-0xBF)
+        if 0x80 <= cmd_byte <= 0xBF:
+            return (cmd_byte, "Duration")
+
+        # Super commands (0xC0-0xCF)
+        if cmd_byte in command_names:
+            return (cmd_byte, command_names[cmd_byte])
+
+        return (cmd_byte, f"Unknown ${cmd_byte:02X}")
+
     def find_data_tables(self) -> dict:
         """Attempt to identify data tables in the Laxity player format."""
         tables = {}

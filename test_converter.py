@@ -7,7 +7,7 @@ import unittest
 import os
 import tempfile
 import struct
-from sid_to_sf2 import (
+from sidm2 import (
     SIDParser, PSIDHeader, LaxityPlayerAnalyzer, SF2Writer,
     ExtractedData, SequenceEvent
 )
