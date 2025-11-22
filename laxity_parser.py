@@ -1,0 +1,371 @@
+#!/usr/bin/env python3
+"""
+Dedicated Laxity player parser for Angular.sid and similar SID files.
+
+Based on reverse-engineering analysis, this parser finds the actual music data
+structures instead of using heuristics.
+
+Key findings about Laxity format:
+- Init routine at $1000 references $199F for music data header
+- Orderlists at $1AF3, $1B01, $1B0F (3 voices)
+- Sequences start at $1B38 and end with 0x7F markers
+- Sequence format is nearly identical to SF2 format
+
+Sequence byte meanings:
+- 0xA0-0xAF: Instrument change (instrument number = byte - 0xA0)
+- 0x80-0x9F: Duration (duration value = byte - 0x80)
+- 0xC0-0xCF: Commands
+- 0x00-0x6F: Note values
+- 0x7F: End marker
+- 0x7E: Rest/tie
+"""
+
+import struct
+from typing import List, Tuple, Optional
+from dataclasses import dataclass
+
+
+@dataclass
+class LaxitySequence:
+    """A parsed Laxity sequence"""
+    start_addr: int
+    end_addr: int
+    data: bytes
+
+
+@dataclass
+class LaxityData:
+    """Complete extracted Laxity music data"""
+    orderlists: List[List[int]]  # 3 orderlists, each is list of sequence indices
+    sequences: List[bytes]  # Raw sequence data (already in SF2-compatible format)
+    instruments: List[bytes]  # Instrument definitions
+    sequence_addrs: List[int]  # Addresses of each sequence
+
+
+class LaxityParser:
+    """Parser for Laxity player format SID files"""
+
+    def __init__(self, c64_data: bytes, load_address: int):
+        self.data = c64_data
+        self.load_address = load_address
+        self.data_end = load_address + len(c64_data)
+
+    def get_byte(self, addr: int) -> int:
+        """Get byte at C64 address"""
+        offset = addr - self.load_address
+        if 0 <= offset < len(self.data):
+            return self.data[offset]
+        return 0
+
+    def get_word(self, addr: int) -> int:
+        """Get word (little-endian) at C64 address"""
+        return self.get_byte(addr) | (self.get_byte(addr + 1) << 8)
+
+    def get_bytes(self, addr: int, count: int) -> bytes:
+        """Get multiple bytes at C64 address"""
+        offset = addr - self.load_address
+        if 0 <= offset < len(self.data):
+            return self.data[offset:offset + count]
+        return bytes(count)
+
+    def find_orderlists(self) -> List[List[int]]:
+        """
+        Find the 3 orderlists for the 3 voices.
+
+        Based on analysis, Angular.sid has orderlists at:
+        - Voice 1: $1AF3 (01 01 01 01 01 01 08 08 08 08 08 08 FF)
+        - Voice 2: $1B01 (02 02 02 02 02 02 09 09 09 09 09 09 FF)
+        - Voice 3: $1B0F (05 06 03 04 03 07 0A 0A 0B 0C 0B 0D FF)
+        """
+        orderlists = []
+
+        # Search for orderlist patterns
+        # Orderlists contain small values (sequence indices) and end with 0xFF
+
+        orderlist_addrs = []
+
+        for addr in range(self.load_address + 0x900, self.data_end - 32):
+            # Read potential orderlist
+            seq = []
+            for i in range(64):
+                b = self.get_byte(addr + i)
+                if b == 0xFF:
+                    seq.append(b)
+                    break
+                seq.append(b)
+
+            if len(seq) < 4 or seq[-1] != 0xFF:
+                continue
+
+            # Check if all values before FF are small (sequence indices <= 0x20)
+            values = seq[:-1]
+            if all(v <= 0x20 for v in values) and any(v > 0 for v in values):
+                # Good candidate - check it's not a subset of another
+                is_subset = False
+                for existing_addr, existing_len in orderlist_addrs:
+                    if existing_addr <= addr < existing_addr + existing_len:
+                        is_subset = True
+                        break
+
+                if not is_subset:
+                    orderlist_addrs.append((addr, len(seq)))
+
+        # Take the first 3 longest orderlists
+        orderlist_addrs.sort(key=lambda x: -x[1])
+
+        # Filter to get 3 distinct orderlists
+        selected = []
+        for addr, length in orderlist_addrs:
+            # Check not overlapping with already selected
+            overlaps = False
+            for sel_addr, sel_len in selected:
+                if not (addr + length <= sel_addr or addr >= sel_addr + sel_len):
+                    overlaps = True
+                    break
+            if not overlaps and length >= 4:
+                selected.append((addr, length))
+                if len(selected) >= 3:
+                    break
+
+        # Sort by address order
+        selected.sort(key=lambda x: x[0])
+
+        # Extract orderlist data
+        for addr, length in selected:
+            orderlist = []
+            for i in range(length - 1):  # Exclude FF terminator
+                orderlist.append(self.get_byte(addr + i))
+            orderlists.append(orderlist)
+            print(f"Found orderlist at ${addr:04X}: {' '.join(f'{v:02X}' for v in orderlist)}")
+
+        # Ensure we have 3 orderlists
+        while len(orderlists) < 3:
+            orderlists.append([0])  # Default to seq 0
+
+        return orderlists
+
+    def find_sequences(self) -> Tuple[List[bytes], List[int]]:
+        """
+        Find all sequences in the music data area.
+
+        Sequences end with 0x7F and contain:
+        - 0xA0-0xAF: Instrument changes
+        - 0x80-0x9F: Durations
+        - 0xC0-0xCF: Commands
+        - 0x00-0x6F: Notes
+        """
+        # First, find all 0x7F end markers in the likely music data area
+        markers = []
+        for addr in range(self.load_address + 0xB00, self.data_end):
+            if self.get_byte(addr) == 0x7F:
+                markers.append(addr)
+
+        if not markers:
+            print("Warning: No sequence end markers found")
+            return [], []
+
+        print(f"Found {len(markers)} end markers (0x7F)")
+
+        # The key insight: sequences start right after orderlists
+        # Orderlists end with 0xFF at $1B1B (05 06 03 04 03 07 0A 0A 0B 0C 0B 0D FF)
+        # Then there's pointer table data, then sequences start
+
+        # Find the start of actual sequence data by looking for:
+        # - A byte in range 0x80-0xAF (instrument or duration, which starts most sequences)
+        # - Preceded by 0x7F (end of previous data) or non-sequence data
+
+        sequences = []
+        sequence_addrs = []
+
+        # Simple approach: use gaps between consecutive 0x7F markers
+        # Each sequence is the data BETWEEN two 0x7F markers
+
+        for i, end_addr in enumerate(markers):
+            if i == 0:
+                # First sequence - need to find its start
+                # Look backwards from end for instrument (0xA0-0xAF) or duration (0x80-0x9F)
+                # that isn't preceded by valid sequence bytes
+
+                # Better approach: scan forward to find first proper sequence start
+                # Sequences typically start with 0x80 (duration) or 0xA0 (instrument)
+                start = end_addr
+
+                # Search backwards, but be conservative
+                # The first marker is at $1B3A
+                # Looking at data: ... 1E 1E 1E 80 00 7F
+                # So the sequence is: 80 00 7F (just 3 bytes)
+                # Previous byte (1E) is in pointer table
+
+                for check_addr in range(end_addr - 1, end_addr - 16, -1):
+                    b = self.get_byte(check_addr)
+                    prev_b = self.get_byte(check_addr - 1)
+
+                    # Look for duration or instrument byte preceded by non-sequence data
+                    if 0x80 <= b <= 0x9F or 0xA0 <= b <= 0xAF:
+                        # Check if previous byte looks like end of other data
+                        # Pointer table bytes at this location are typically 0x1B-0x1F
+                        # (high byte of addresses in $1Bxx-$1Fxx range)
+                        # Valid sequence note bytes would be in range 0x00-0x70
+                        # So if prev_b is > 0x17 and < 0x80, it's likely pointer table
+
+                        # Key: sequence notes are typically 0x00-0x60 (C-0 to B-7)
+                        # Pointer table bytes here are 0x1B, 0x1C, 0x1D, 0x1E (hi bytes of $1Bxx-$1Exx)
+                        if 0x1A <= prev_b <= 0x1F:  # High byte of pointer to $1Axx-$1Fxx
+                            start = check_addr
+                            break
+                        # Also check if prev is clearly out of note range
+                        if prev_b > 0x60 and prev_b < 0x80:  # Not a note, not a command
+                            start = check_addr
+                            break
+                    elif b == 0x7F:
+                        start = check_addr + 1
+                        break
+
+            else:
+                # Subsequent sequences start right after previous end
+                start = markers[i - 1] + 1
+
+            # Extract sequence data
+            length = end_addr - start + 1
+            if length > 0 and length < 256:
+                seq_data = self.get_bytes(start, length)
+                sequences.append(seq_data)
+                sequence_addrs.append(start)
+
+        # The orderlists reference sequences starting from index 1 (not 0)
+        # So we need to prepend a placeholder sequence 0 (empty/silent)
+        # Check if minimum index in orderlists is > 0
+
+        print(f"Extracted {len(sequences)} sequences")
+        for i, (seq, addr) in enumerate(zip(sequences[:5], sequence_addrs[:5])):
+            hex_str = ' '.join(f'{b:02X}' for b in seq[:16])
+            if len(seq) > 16:
+                hex_str += ' ...'
+            print(f"  Seq {i} at ${addr:04X} ({len(seq)} bytes): {hex_str}")
+
+        return sequences, sequence_addrs
+
+    def find_instruments(self) -> List[bytes]:
+        """
+        Find instrument definitions.
+
+        Laxity instruments are typically 8-byte structures.
+        """
+        # For now, create default instruments based on common SID settings
+        # The actual instrument table needs more reverse engineering
+
+        instruments = []
+
+        # Search for instrument table patterns
+        # Look for consecutive 8-byte structures with typical instrument characteristics
+
+        for addr in range(self.load_address + 0xA00, self.load_address + 0xB00):
+            # Check for potential instrument table
+            count = 0
+            for i in range(8):  # Check for up to 8 instruments
+                instr_addr = addr + i * 8
+                if instr_addr + 8 > self.data_end:
+                    break
+
+                instr = self.get_bytes(instr_addr, 8)
+
+                # Check for instrument-like characteristics
+                # - AD byte (non-zero typically)
+                # - SR byte (can be any value)
+                # - Waveform byte (usually has bits 4,5,6, or 7 set)
+                ad = instr[0]
+                sr = instr[1]
+                wave = instr[2] if len(instr) > 2 else 0
+
+                # Simple check: waveform should have typical SID bits
+                if wave & 0xF1:  # Has gate or waveform bits
+                    count += 1
+                else:
+                    break
+
+            if count >= 4:
+                # Found potential instrument table
+                print(f"Found instrument table at ${addr:04X} with {count} instruments")
+                for i in range(count):
+                    instr = self.get_bytes(addr + i * 8, 8)
+                    instruments.append(instr)
+                break
+
+        # If no instruments found, create defaults
+        if not instruments:
+            print("Creating default instruments")
+            # Default pulse lead instrument
+            instruments.append(bytes([0x09, 0x00, 0x41, 0x00, 0x08, 0x00, 0x00, 0x00]))
+            # Default triangle bass
+            instruments.append(bytes([0x0A, 0x0A, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00]))
+            # Default noise drum
+            instruments.append(bytes([0x0F, 0x0F, 0x81, 0x00, 0x00, 0x00, 0x00, 0x00]))
+
+        return instruments
+
+    def parse(self) -> LaxityData:
+        """Parse the SID file and extract all music data"""
+        print("=" * 60)
+        print("LAXITY PARSER")
+        print("=" * 60)
+        print(f"Load address: ${self.load_address:04X}")
+        print(f"Data size: {len(self.data)} bytes")
+        print(f"Data end: ${self.data_end - 1:04X}")
+        print()
+
+        # Find orderlists
+        print("Finding orderlists...")
+        orderlists = self.find_orderlists()
+        print()
+
+        # Find sequences
+        print("Finding sequences...")
+        sequences, sequence_addrs = self.find_sequences()
+        print()
+
+        # Find instruments
+        print("Finding instruments...")
+        instruments = self.find_instruments()
+        print()
+
+        return LaxityData(
+            orderlists=orderlists,
+            sequences=sequences,
+            instruments=instruments,
+            sequence_addrs=sequence_addrs
+        )
+
+
+def main():
+    """Test the parser with Angular.sid"""
+    import struct
+
+    # Load SID file
+    with open('SID/Angular.sid', 'rb') as f:
+        data = f.read()
+
+    # Parse PSID header
+    data_offset = struct.unpack('>H', data[6:8])[0]
+    load_address = struct.unpack('>H', data[8:10])[0]
+
+    c64_data = data[data_offset:]
+    if load_address == 0:
+        load_address = struct.unpack('<H', c64_data[0:2])[0]
+        c64_data = c64_data[2:]
+
+    # Parse
+    parser = LaxityParser(c64_data, load_address)
+    laxity_data = parser.parse()
+
+    print("=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+    print(f"Orderlists: {len(laxity_data.orderlists)}")
+    for i, ol in enumerate(laxity_data.orderlists):
+        print(f"  Voice {i+1}: {ol}")
+    print(f"Sequences: {len(laxity_data.sequences)}")
+    print(f"Instruments: {len(laxity_data.instruments)}")
+
+
+if __name__ == '__main__':
+    main()

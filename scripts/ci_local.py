@@ -136,14 +136,15 @@ def run_smoke_test():
     """Run smoke test with actual SID file"""
     print_header("Running Smoke Test")
 
-    # Check if input file exists
-    if not os.path.exists('Unboxed_Ending_8580.sid'):
-        print_warning("Unboxed_Ending_8580.sid not found, skipping smoke test")
+    # Check if input file exists in SID directory
+    sid_file = os.path.join('SID', 'Unboxed_Ending_8580.sid')
+    if not os.path.exists(sid_file):
+        print_warning(f"{sid_file} not found, skipping smoke test")
         return True
 
     # Run converter
     success = run_command(
-        f"{sys.executable} sid_to_sf2.py Unboxed_Ending_8580.sid ci_test_output.sf2",
+        f"{sys.executable} sid_to_sf2.py {sid_file} ci_test_output.sf2",
         "Converter smoke test"
     )
 
@@ -160,6 +161,53 @@ def run_smoke_test():
             return False
 
     return False
+
+
+def convert_all_sid_files():
+    """Convert all SID files to SF2 and save in SF2 directory"""
+    print_header("Converting All SID Files to SF2")
+
+    sid_dir = 'SID'
+    sf2_dir = 'SF2'
+
+    # Check directories exist
+    if not os.path.exists(sid_dir):
+        print_warning(f"{sid_dir} directory not found, skipping conversion")
+        return True
+
+    # Create SF2 directory if it doesn't exist
+    if not os.path.exists(sf2_dir):
+        os.makedirs(sf2_dir)
+        print_success(f"Created {sf2_dir} directory")
+
+    # Get list of SID files
+    sid_files = [f for f in os.listdir(sid_dir) if f.endswith('.sid')]
+    if not sid_files:
+        print_warning("No SID files found")
+        return True
+
+    # Convert each file
+    all_success = True
+    for sid_file in sid_files:
+        input_path = os.path.join(sid_dir, sid_file)
+        output_file = sid_file.replace('.sid', '.sf2')
+        output_path = os.path.join(sf2_dir, output_file)
+
+        success = run_command(
+            f"{sys.executable} sid_to_sf2.py {input_path} {output_path}",
+            f"Converting {sid_file}",
+            check=False
+        )
+
+        if success and os.path.exists(output_path):
+            size = os.path.getsize(output_path)
+            print_success(f"{output_file}: {size} bytes")
+        else:
+            print_error(f"Failed to convert {sid_file}")
+            all_success = False
+
+    print(f"\nConverted {len(sid_files)} SID files to SF2 directory")
+    return all_success
 
 
 def check_documentation():
@@ -312,6 +360,7 @@ def main():
     if not args.skip_tests:
         results['tests'] = run_tests()
         results['smoke'] = run_smoke_test()
+        results['conversion'] = convert_all_sid_files()
     else:
         print_warning("Skipping tests")
 

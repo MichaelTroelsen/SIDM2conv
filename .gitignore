@@ -37,10 +37,13 @@ env/
 .DS_Store
 Thumbs.db
 
-# Output files (keep examples)
-*.sf2
-!template.sf2
+# Output files
+# SF2/*.sf2  # Uncomment to ignore converted files
 
 # Temporary files
 *.tmp
 *.temp
+*.bak
+
+# Claude Code local settings
+.claude/settings.local.json

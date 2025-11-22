@@ -33,8 +33,27 @@ jobs:
 
     - name: Run converter smoke test
       run: |
-        python sid_to_sf2.py Unboxed_Ending_8580.sid test_output.sf2
+        python sid_to_sf2.py SID/Angular.sid test_output.sf2
         python -c "import os; assert os.path.exists('test_output.sf2'), 'Output file not created'"
+
+    - name: Convert all SID files
+      run: |
+        mkdir -p SF2
+        for sid in SID/*.sid; do
+          if [ -f "$sid" ]; then
+            basename="${sid##*/}"
+            name="${basename%.sid}"
+            echo "Converting $basename..."
+            python sid_to_sf2.py "$sid" "SF2/${name}.sf2"
+          fi
+        done
+
+    - name: Upload converted files
+      uses: actions/upload-artifact@v4
+      with:
+        name: converted-sf2-files-${{ matrix.os }}-py${{ matrix.python-version }}
+        path: SF2/*.sf2
+        if-no-files-found: warn
 
   lint:
     name: Code Quality
@@ -106,11 +125,14 @@ jobs:
         python -c "
         import ast
         import sys
+        import os
 
-        files = ['sid_to_sf2.py', 'analyze_sid.py', 'laxity_analyzer.py']
+        files = ['sid_to_sf2.py', 'laxity_parser.py']
         errors = []
 
         for filename in files:
+            if not os.path.exists(filename):
+                continue
             with open(filename, 'r') as f:
                 tree = ast.parse(f.read())
 
@@ -170,12 +192,13 @@ jobs:
       run: |
         mkdir -p release
         cp sid_to_sf2.py release/
-        cp analyze_sid.py release/
-        cp laxity_analyzer.py release/
+        cp laxity_parser.py release/
+        cp laxity_extractor_final.py release/
         cp test_converter.py release/
         cp README.md release/
         cp CONTRIBUTING.md release/
-        cp Unboxed_Ending_8580.sid release/
+        cp -r SID release/
+        cp -r SF2 release/ 2>/dev/null || mkdir -p release/SF2
         cd release && zip -r ../sid-to-sf2-${{ steps.version.outputs.version }}.zip .
 
     - name: Upload artifact

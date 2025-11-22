@@ -15,6 +15,95 @@ import sys
 import os
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
+from laxity_parser import LaxityParser
+
+
+def find_sid_register_tables(data, load_addr):
+    """
+    Find table addresses for each SID register by tracing
+    STA $D4xx,Y instructions back to their LDA source.
+    Returns dict mapping SID register offset to table address.
+    """
+    tables = {}
+
+    for i in range(len(data) - 3):
+        # STA $D4xx,Y (99 lo hi)
+        if data[i] == 0x99:
+            addr = data[i + 1] | (data[i + 2] << 8)
+            if not (0xD400 <= addr <= 0xD418):
+                continue
+
+            reg = addr - 0xD400
+
+            # Look backwards for LDA table,X
+            for j in range(1, 30):
+                if i - j < 0:
+                    break
+
+                # LDA $xxxx,X (BD lo hi)
+                if data[i - j] == 0xBD:
+                    table = data[i - j + 1] | (data[i - j + 2] << 8)
+                    tables[reg] = table
+                    break
+
+    return tables
+
+
+def extract_laxity_instruments(data, load_addr):
+    """
+    Extract actual instrument data from Laxity SID file.
+    Returns list of instrument dicts with ad, sr, ctrl, wave info.
+    """
+    tables = find_sid_register_tables(data, load_addr)
+
+    instruments = []
+
+    ad_table = tables.get(0x05)  # AD register
+    sr_table = tables.get(0x06)  # SR register
+    ctrl_table = tables.get(0x04)  # Control register
+
+    if not ad_table:
+        return instruments
+
+    # Calculate number of instruments from table spacing
+    if sr_table and ctrl_table:
+        num_instr = sr_table - ad_table
+    else:
+        num_instr = 16
+
+    for i in range(min(num_instr, 16)):
+        ad_off = ad_table - load_addr + i
+        sr_off = sr_table - load_addr + i if sr_table else ad_off
+        ctrl_off = ctrl_table - load_addr + i if ctrl_table else ad_off
+
+        if ad_off >= len(data) or sr_off >= len(data) or ctrl_off >= len(data):
+            break
+
+        ad = data[ad_off]
+        sr = data[sr_off]
+        ctrl = data[ctrl_off]
+
+        # Decode waveform from control byte
+        wave_for_sf2 = 0x21  # Default saw
+
+        if ctrl & 0x80:
+            wave_for_sf2 = 0x81  # noise
+        elif ctrl & 0x40:
+            wave_for_sf2 = 0x41  # pulse
+        elif ctrl & 0x20:
+            wave_for_sf2 = 0x21  # saw
+        elif ctrl & 0x10:
+            wave_for_sf2 = 0x11  # tri
+
+        instruments.append({
+            'index': i,
+            'ad': ad,
+            'sr': sr,
+            'ctrl': ctrl,
+            'wave_for_sf2': wave_for_sf2
+        })
+
+    return instruments
 
 
 @dataclass
@@ -61,6 +150,31 @@ class ExtractedData:
     wavetable: bytes
     pulsetable: bytes
     filtertable: bytes
+    # New fields for improvements
+    tempo: int = 6  # Default tempo (6 = ~7.5 rows per second at 50Hz)
+    commands: List[bytes] = None  # Command/effect definitions
+    pointer_tables: dict = None  # Parsed pointer table info
+    validation_errors: List[str] = None  # Validation results
+    raw_sequences: List[bytes] = None  # Raw sequence bytes for direct copy
+
+    def __post_init__(self):
+        if self.commands is None:
+            self.commands = []
+        if self.pointer_tables is None:
+            self.pointer_tables = {}
+        if self.validation_errors is None:
+            self.validation_errors = []
+        if self.raw_sequences is None:
+            self.raw_sequences = []
+
+
+@dataclass
+class LaxityCommand:
+    """Mapping of Laxity command to SF2 command"""
+    laxity_cmd: int
+    sf2_cmd: int
+    name: str
+    parameters: int = 0
 
 
 class SIDParser:
@@ -280,18 +394,55 @@ class LaxityPlayerAnalyzer:
         return sequences
 
     def extract_instruments(self) -> List[bytes]:
-        """Extract instrument definitions"""
+        """Extract instrument definitions with improved detection"""
         instruments = []
 
-        # Look for instrument table patterns around $19E0-$1A30
-        # Based on analysis, instruments appear to be 6 bytes each
-        for addr in range(0x19E0, 0x1A30):
-            # Try to identify instrument entries
-            wave = self.get_byte(self.load_address - 0x1000 + addr + 2)
-            if wave in (0x11, 0x21, 0x41, 0x81, 0x10, 0x20, 0x40, 0x80):
+        # Look for instrument table patterns around $19E0-$1A60
+        # Based on analysis, instruments are typically 8 bytes each in SF2
+        # Laxity format: AD, SR, Wave, PulseLo, PulseHi, ...
+
+        # First, try to find the instrument table by looking for waveform patterns
+        best_addr = None
+        best_count = 0
+
+        for start_addr in range(0x19C0, 0x1A40):
+            count = 0
+            for i in range(32):  # Check up to 32 instruments
+                addr = start_addr + i * 6  # 6 bytes per instrument in Laxity
+                offset = addr - self.load_address
+                if offset < 0 or offset >= len(self.data) - 6:
+                    break
+
+                # Check waveform byte (byte 2)
+                wave = self.get_byte(addr + 2)
+                if wave in (0x11, 0x21, 0x41, 0x81, 0x10, 0x20, 0x40, 0x80,
+                           0x12, 0x22, 0x42, 0x82, 0x14, 0x24, 0x44, 0x84):
+                    # Verify ADSR values are reasonable
+                    ad = self.get_byte(addr)
+                    sr = self.get_byte(addr + 1)
+                    if ad <= 0xFF and sr <= 0xFF:
+                        count += 1
+                else:
+                    break
+
+            if count > best_count:
+                best_count = count
+                best_addr = start_addr
+
+        # Extract instruments from best location
+        if best_addr and best_count >= 1:
+            for i in range(best_count):
+                addr = best_addr + i * 6
+                # Convert 6-byte Laxity to 8-byte SF2 format
                 instr = bytes([
-                    self.get_byte(self.load_address - 0x1000 + addr + i)
-                    for i in range(6)
+                    self.get_byte(addr),      # Attack/Decay
+                    self.get_byte(addr + 1),  # Sustain/Release
+                    self.get_byte(addr + 2),  # Waveform
+                    self.get_byte(addr + 3),  # Pulse Lo
+                    self.get_byte(addr + 4),  # Pulse Hi
+                    self.get_byte(addr + 5) if addr + 5 - self.load_address < len(self.data) else 0,
+                    0x00,  # Padding
+                    0x00   # Padding
                 ])
                 instruments.append(instr)
 
@@ -329,7 +480,7 @@ class LaxityPlayerAnalyzer:
         return tables
 
     def _find_pointer_tables(self, tables: dict):
-        """Find low/high byte pointer tables"""
+        """Find low/high byte pointer tables with improved analysis"""
         # Scan through memory looking for potential pointer tables
         # These usually appear as pairs of tables with related values
 
@@ -361,20 +512,168 @@ class LaxityPlayerAnalyzer:
 
                     # Check if these form valid pointers
                     valid_pointers = 0
+                    resolved_ptrs = []
                     for i in range(16):
                         ptr = values[i] | (hi_values[i] << 8)
                         if data_start <= ptr < data_end:
                             valid_pointers += 1
+                            resolved_ptrs.append(ptr)
 
                     if valid_pointers >= 8:
-                        candidates.append((addr, hi_addr, valid_pointers))
+                        candidates.append((addr, hi_addr, valid_pointers, resolved_ptrs))
 
         # Sort by number of valid pointers
         candidates.sort(key=lambda x: x[2], reverse=True)
 
         if candidates:
             tables['pointer_tables'] = candidates[:5]
+            # Store resolved pointers for use in extraction
+            if candidates:
+                best = candidates[0]
+                tables['resolved_pointers'] = best[3]
+                tables['ptr_lo_addr'] = best[0]
+                tables['ptr_hi_addr'] = best[1]
             print(f"Found {len(candidates)} potential pointer table pairs")
+
+    def extract_tempo(self) -> int:
+        """Extract tempo/speed from the SID file"""
+        # Laxity player typically stores tempo in a specific location
+        # Common tempo values: 3-12 (lower = faster)
+
+        # Search for tempo patterns near init routine
+        init_offset = self.header.init_address - self.load_address
+
+        # Look for LDA #$xx, STA tempo_addr pattern
+        for i in range(init_offset, min(init_offset + 200, len(self.data) - 5)):
+            if self.data[i] == 0xA9:  # LDA immediate
+                value = self.data[i + 1]
+                # Reasonable tempo range
+                if 1 <= value <= 20:
+                    # Check if followed by STA
+                    if self.data[i + 2] in (0x85, 0x8D):  # STA zp or STA abs
+                        return value
+
+        # Default tempo
+        return 6
+
+    def extract_filter_table(self) -> bytes:
+        """Extract filter modulation table"""
+        # Filter tables typically contain cutoff frequency patterns
+        # Look for patterns with values in filter range (0-2047 split across bytes)
+
+        filter_data = bytearray()
+
+        # Search for filter table patterns
+        for addr in range(0x1A00, 0x1C00):
+            offset = addr - self.load_address
+            if offset < 0 or offset >= len(self.data) - 64:
+                continue
+
+            # Check for filter-like patterns
+            # Filter tables often have smoothly changing values
+            is_filter = True
+            prev_val = None
+            for i in range(32):
+                val = self.get_byte(addr + i)
+                if prev_val is not None:
+                    # Filter values typically change gradually
+                    if abs(val - prev_val) > 32:
+                        is_filter = False
+                        break
+                prev_val = val
+
+            if is_filter:
+                filter_data = bytes([self.get_byte(addr + i) for i in range(64)])
+                break
+
+        return bytes(filter_data)
+
+    def extract_pulse_table(self) -> bytes:
+        """Extract pulse width modulation table"""
+        # Pulse tables contain PWM patterns (0-4095 range)
+
+        pulse_data = bytearray()
+
+        # Search for pulse table patterns
+        for addr in range(0x1A00, 0x1C00):
+            offset = addr - self.load_address
+            if offset < 0 or offset >= len(self.data) - 64:
+                continue
+
+            # Check for pulse-like patterns
+            # Pulse tables often have oscillating values for PWM effect
+            oscillation_count = 0
+            prev_val = self.get_byte(addr)
+            direction = 0
+
+            for i in range(1, 32):
+                val = self.get_byte(addr + i)
+                new_dir = 1 if val > prev_val else (-1 if val < prev_val else 0)
+                if new_dir != 0 and new_dir != direction:
+                    oscillation_count += 1
+                    direction = new_dir
+                prev_val = val
+
+            # Good pulse table has multiple oscillations
+            if oscillation_count >= 4:
+                pulse_data = bytes([self.get_byte(addr + i) for i in range(64)])
+                break
+
+        return bytes(pulse_data)
+
+    def map_command(self, laxity_cmd: int) -> Tuple[int, str]:
+        """Map Laxity command byte to SF2 command"""
+        # Command mapping table based on Laxity player analysis
+        command_map = {
+            0xC0: (0xC0, "Set duration"),
+            0xC1: (0xC1, "Set instrument"),
+            0xC2: (0xC2, "Gate control"),
+            0xC3: (0xC3, "Slide up"),
+            0xC4: (0xC4, "Slide down"),
+            0xC5: (0xC5, "Vibrato"),
+            0xC6: (0xC6, "Portamento"),
+            0xC7: (0xC7, "Arpeggio"),
+            0xC8: (0xC8, "Filter on"),
+            0xC9: (0xC9, "Filter off"),
+            0xCA: (0xCA, "Pulse program"),
+            0xCB: (0xCB, "Wave program"),
+            0xCC: (0xCC, "ADSR change"),
+            0xCD: (0xCD, "Tempo change"),
+            0xCE: (0xCE, "Pattern break"),
+            0xCF: (0xCF, "Loop/Jump"),
+        }
+
+        if laxity_cmd in command_map:
+            return command_map[laxity_cmd]
+        elif 0x80 <= laxity_cmd <= 0x9F:
+            # Duration/gate commands
+            return (0x80 + (laxity_cmd & 0x1F), "Duration")
+        else:
+            return (0x80, "None")
+
+    def extract_commands(self) -> List[bytes]:
+        """Extract command/effect definitions"""
+        commands = []
+
+        # Look for command table patterns
+        # Commands typically follow instrument table
+        for addr in range(0x1A60, 0x1C00):
+            offset = addr - self.load_address
+            if offset < 0 or offset >= len(self.data) - 32:
+                continue
+
+            # Check for command-like patterns
+            # Commands often have specific byte patterns
+            cmd_data = bytes([self.get_byte(addr + i) for i in range(8)])
+
+            # Simple heuristic: commands often start with specific values
+            if cmd_data[0] in range(0x00, 0x10):
+                commands.append(cmd_data)
+
+                if len(commands) >= 32:
+                    break
+
+        return commands
 
     def _find_sequence_data(self, tables: dict):
         """Find sequence data patterns"""
@@ -416,16 +715,18 @@ class LaxityPlayerAnalyzer:
             print(f"Found {len(sequence_candidates)} potential sequence regions")
 
     def extract_music_data(self) -> ExtractedData:
-        """Extract music data from the SID file"""
+        """Extract music data from the SID file using Laxity parser"""
+
+        # Use the dedicated Laxity parser for accurate extraction
+        laxity = LaxityParser(self.data, self.load_address)
+        laxity_data = laxity.parse()
+
+        # Extract other data using existing methods
         tables = self.find_data_tables()
-
-        # Find sequence data
-        raw_sequences = self.find_sequence_data()
-        print(f"Found {len(raw_sequences)} potential sequences")
-
-        # Extract instruments
-        raw_instruments = self.extract_instruments()
-        print(f"Found {len(raw_instruments)} potential instruments")
+        tempo = self.extract_tempo()
+        filter_table = self.extract_filter_table()
+        pulse_table = self.extract_pulse_table()
+        commands = self.extract_commands()
 
         # Create extracted data structure
         extracted = ExtractedData(
@@ -436,60 +737,118 @@ class LaxityPlayerAnalyzer:
             orderlists=[],
             instruments=[],
             wavetable=b'',
-            pulsetable=b'',
-            filtertable=b''
+            pulsetable=pulse_table,
+            filtertable=filter_table,
+            tempo=tempo,
+            commands=commands,
+            pointer_tables=tables
         )
 
-        # Convert raw sequences to SF2 format
-        for addr, events in raw_sequences[:50]:  # Limit to 50 sequences
+        # Store raw sequences directly - Laxity format is compatible with SF2!
+        # Both use the same byte ranges:
+        # - 0xA0-0xAF: instrument
+        # - 0x80-0x9F: duration
+        # - 0xC0-0xCF: command
+        # - 0x00-0x6F: note
+        # - 0x7F: end marker
+        #
+        # We'll convert to SequenceEvent format for the data structure,
+        # but the SF2Writer will write the raw bytes.
+
+        # Store raw sequence bytes for direct copying to SF2
+        extracted.raw_sequences = laxity_data.sequences
+
+        # Also create SequenceEvent representation for compatibility
+        for raw_seq in laxity_data.sequences:
             seq = []
-            for cmd, instr, note in events:
-                # Convert Laxity format to SF2 format
-                # Laxity: cmd, instr, note
-                # SF2: instrument, command, note
-
-                # Map instrument byte
-                if 0x80 <= instr <= 0x9F:
-                    sf2_instr = instr  # Keep as-is for now
-                else:
-                    sf2_instr = 0x80  # No instrument change
-
-                # Map command byte
-                if 0xC0 <= cmd <= 0xCF:
-                    sf2_cmd = cmd  # Duration/command
-                else:
-                    sf2_cmd = 0x80  # No command
-
-                # Note stays the same
-                sf2_note = note
-
-                seq.append(SequenceEvent(sf2_instr, sf2_cmd, sf2_note))
-
+            # Count actual notes for event count (control bytes don't need events)
+            for b in raw_seq:
+                if b <= 0x70 or b == 0x7E or b == 0x7F:
+                    # This is a note, rest, or end marker - create event
+                    seq.append(SequenceEvent(0x80, 0x00, b))
             if seq:
                 extracted.sequences.append(seq)
 
-        # Add instruments
-        for instr_data in raw_instruments[:32]:  # Limit to 32 instruments
-            extracted.instruments.append(instr_data)
-
-        # Create basic orderlists (3 voices)
-        for voice in range(3):
+        # Convert Laxity orderlists to expected format
+        # Laxity orderlist is just sequence indices
+        # SF2 orderlist is (transposition, sequence_index)
+        for orderlist_indices in laxity_data.orderlists:
             orderlist = []
-            # Distribute sequences across voices
-            start = voice * (len(extracted.sequences) // 3)
-            for i in range(min(8, len(extracted.sequences) // 3)):
-                seq_idx = start + i
-                if seq_idx < len(extracted.sequences):
-                    orderlist.append((0, seq_idx))  # No transposition
+            for seq_idx in orderlist_indices:
+                orderlist.append((0, seq_idx))  # No transposition
             if not orderlist:
                 orderlist.append((0, 0))
             extracted.orderlists.append(orderlist)
 
-        print(f"Extracted {len(extracted.sequences)} sequences")
+        # Use Laxity-extracted instruments
+        for instr_data in laxity_data.instruments:
+            extracted.instruments.append(instr_data)
+
+        # Validate extracted data
+        self._validate_extracted_data(extracted)
+
+        print(f"Extracted {len(extracted.sequences)} sequences (via Laxity parser)")
         print(f"Extracted {len(extracted.instruments)} instruments")
         print(f"Created {len(extracted.orderlists)} orderlists")
+        for i, ol in enumerate(extracted.orderlists):
+            seq_indices = [idx for _, idx in ol]
+            print(f"  Voice {i+1}: sequences {seq_indices}")
+        print(f"Tempo: {extracted.tempo}")
+        print(f"Filter table: {len(extracted.filtertable)} bytes")
+        print(f"Pulse table: {len(extracted.pulsetable)} bytes")
+
+        if extracted.validation_errors:
+            print(f"Validation warnings: {len(extracted.validation_errors)}")
+            for err in extracted.validation_errors[:5]:
+                print(f"  - {err}")
 
         return extracted
+
+    def _validate_extracted_data(self, extracted: ExtractedData):
+        """Validate extracted data for integrity (#7)"""
+        errors = []
+
+        # Validate sequences
+        for i, seq in enumerate(extracted.sequences):
+            if len(seq) == 0:
+                errors.append(f"Sequence {i} is empty")
+            elif len(seq) > 256:
+                errors.append(f"Sequence {i} too long ({len(seq)} events)")
+
+            for j, event in enumerate(seq):
+                # Check note range
+                if event.note > 0x7F and event.note not in (0x7E, 0x7F):
+                    errors.append(f"Seq {i} event {j}: invalid note ${event.note:02X}")
+
+        # Validate instruments
+        for i, instr in enumerate(extracted.instruments):
+            if len(instr) < 6:
+                errors.append(f"Instrument {i} too short ({len(instr)} bytes)")
+
+            # Check waveform
+            if len(instr) >= 3:
+                wave = instr[2]
+                valid_waves = (0x00, 0x10, 0x11, 0x20, 0x21, 0x40, 0x41, 0x80, 0x81,
+                              0x12, 0x14, 0x22, 0x24, 0x42, 0x44, 0x82, 0x84)
+                if wave not in valid_waves and wave != 0:
+                    errors.append(f"Instrument {i}: unusual waveform ${wave:02X}")
+
+        # Validate orderlists
+        for i, orderlist in enumerate(extracted.orderlists):
+            if len(orderlist) == 0:
+                errors.append(f"Orderlist {i} is empty")
+
+            for j, (trans, seq_idx) in enumerate(orderlist):
+                if seq_idx >= len(extracted.sequences):
+                    errors.append(f"Orderlist {i} entry {j}: invalid seq index {seq_idx}")
+                if trans > 127:
+                    errors.append(f"Orderlist {i} entry {j}: invalid transposition {trans}")
+
+        # Validate tempo
+        if extracted.tempo < 1 or extracted.tempo > 31:
+            errors.append(f"Unusual tempo value: {extracted.tempo}")
+
+        extracted.validation_errors = errors
 
     def _extract_with_heuristics(self, extracted: ExtractedData, tables: dict):
         """Use heuristics to extract music data"""
@@ -734,10 +1093,73 @@ class SF2Writer:
         print(f"  Orderlist start: ${self.driver_info.orderlist_start:04X}")
 
     def _parse_tables_block(self, data: bytes):
-        """Parse table definitions block"""
-        # Tables block contains multiple table definitions
-        # Each has type, ID, name, address, dimensions, etc.
-        pass  # Simplified for now
+        """Parse table definitions block to find table addresses"""
+        idx = 0
+
+        while idx < len(data):
+            if idx >= len(data):
+                break
+
+            table_type = data[idx]
+            if table_type == 0xFF:
+                break
+
+            # Format: type(1), id(1), textfieldsize(1), name(null-terminated),
+            # datalayout(1), properties(1), insertdeleteruleid(1),
+            # enteractionruleid(1), colorruleid(1),
+            # address(2), columns(2), rows(2), visiblerowcount(1)
+
+            if idx + 3 > len(data):
+                break
+
+            table_id = data[idx + 1]
+            text_field_size = data[idx + 2]
+
+            # Find null-terminated name
+            name_start = idx + 3
+            name_end = name_start
+            while name_end < len(data) and data[name_end] != 0:
+                name_end += 1
+            name = data[name_start:name_end].decode('latin-1', errors='replace')
+
+            # Parse remaining fields after null terminator
+            pos = name_end + 1
+            if pos + 12 <= len(data):
+                addr = struct.unpack('<H', data[pos+5:pos+7])[0]
+                columns = struct.unpack('<H', data[pos+7:pos+9])[0]
+                rows = struct.unpack('<H', data[pos+9:pos+11])[0]
+
+                # Store table info
+                table_info = {
+                    'type': table_type,
+                    'id': table_id,
+                    'addr': addr,
+                    'columns': columns,
+                    'rows': rows,
+                    'name': name
+                }
+
+                # Store by type and name
+                if table_type == 0x80:  # Instruments
+                    self.driver_info.table_addresses['Instruments'] = table_info
+                    print(f"    Instruments table at ${addr:04X} ({columns}×{rows})")
+                elif table_type == 0x81:  # Commands
+                    self.driver_info.table_addresses['Commands'] = table_info
+                    print(f"    Commands table at ${addr:04X} ({columns}×{rows})")
+                else:
+                    # Generic table - store by name (first letter only for common tables)
+                    if name:
+                        self.driver_info.table_addresses[name] = table_info
+                        # Also store by first letter for common tables
+                        first_char = name[0] if name else ''
+                        if first_char in ['W', 'P', 'F', 'A', 'T']:
+                            # Wave, Pulse, Filter, Arp, Tempo
+                            key_map = {'W': 'Wave', 'P': 'Pulse', 'F': 'Filter', 'A': 'Arp', 'T': 'Tempo'}
+                            self.driver_info.table_addresses[key_map.get(first_char, first_char)] = table_info
+
+                idx = pos + 12
+            else:
+                break
 
     def _addr_to_offset(self, addr: int) -> int:
         """Convert C64 address to file offset"""
@@ -754,6 +1176,13 @@ class SF2Writer:
             self._print_extraction_summary()
             return
 
+        # Ensure file is large enough for all sequences (128 * 256 bytes = 32KB for sequences)
+        # Sequence area starts at sequence_start, needs space for sequence_count slots
+        required_size = self._addr_to_offset(self.driver_info.sequence_start) + (self.driver_info.sequence_count * 256)
+        if len(self.output) < required_size:
+            print(f"  Expanding file from {len(self.output)} to {required_size} bytes")
+            self.output.extend(bytearray(required_size - len(self.output)))
+
         # Inject sequence data
         if self.data.sequences and self.driver_info.sequence_start:
             self._inject_sequences()
@@ -762,11 +1191,21 @@ class SF2Writer:
         if self.data.orderlists and self.driver_info.orderlist_start:
             self._inject_orderlists()
 
+        # Inject instruments
+        if self.data.instruments or self.data.raw_sequences:
+            self._inject_instruments()
+
+        # Inject wave table
+        self._inject_wave_table()
+
+        # Inject HR table (defines waveforms for instruments)
+        self._inject_hr_table()
+
         # Print summary
         self._print_extraction_summary()
 
     def _inject_sequences(self):
-        """Inject sequence data into the SF2 file"""
+        """Inject sequence data into the SF2 file using packed format"""
         print("\n  Injecting sequences...")
 
         seq_start = self._addr_to_offset(self.driver_info.sequence_start)
@@ -777,13 +1216,16 @@ class SF2Writer:
             print(f"    Warning: Invalid sequence start offset {seq_start}")
             return
 
-        # Write sequence data
-        current_addr = self.driver_info.sequence_start
+        # SF2 uses FIXED 256-byte slots for each sequence
+        SEQUENCE_SLOT_SIZE = 256
         sequences_written = 0
 
         for i, seq in enumerate(self.data.sequences[:127]):  # Max 127 sequences
             if i >= self.driver_info.sequence_count:
                 break
+
+            # Each sequence goes in its own 256-byte slot
+            current_addr = self.driver_info.sequence_start + (i * SEQUENCE_SLOT_SIZE)
 
             # Update pointer table
             if ptr_lo_offset + i < len(self.output):
@@ -791,27 +1233,63 @@ class SF2Writer:
             if ptr_hi_offset + i < len(self.output):
                 self.output[ptr_hi_offset + i] = (current_addr >> 8) & 0xFF
 
-            # Write sequence events
-            seq_offset = self._addr_to_offset(current_addr)
-            for event in seq:
-                if seq_offset + 2 < len(self.output):
-                    self.output[seq_offset] = event.instrument
-                    self.output[seq_offset + 1] = event.command
-                    self.output[seq_offset + 2] = event.note
-                    seq_offset += 3
-                    current_addr += 3
+            # Pack sequence data
+            # SF2 format: [CMD] [INSTR] [DURATION] NOTE NOTE NOTE ... 0x7F
+            # - 0xC0-0xFF: Command (only when changed)
+            # - 0xA0-0xBF: Instrument (only when changed)
+            # - 0x80-0x9F: Duration (only when changed, applies to all following notes)
+            # - 0x00-0x6F: Note values
+            # - 0x7E: Note on (retrigger)
+            # - 0x7F: End marker
 
-            # Add end marker
-            if seq_offset < len(self.output):
-                self.output[seq_offset] = 0x7F
-                current_addr += 1
+            seq_offset = self._addr_to_offset(current_addr)
+
+            # Write raw sequence bytes directly - they're already in SF2 format!
+            # Laxity format uses same byte ranges as SF2:
+            # - 0xA0-0xAF: Instrument
+            # - 0x80-0x9F: Duration
+            # - 0xC0-0xCF: Command
+            # - 0x00-0x6F: Note
+            # - 0x7E: Rest/tie
+            # - 0x7F: End marker
+
+            if hasattr(self.data, 'raw_sequences') and i < len(self.data.raw_sequences):
+                # Use raw sequence bytes directly
+                raw_seq = self.data.raw_sequences[i]
+                for b in raw_seq:
+                    if seq_offset < len(self.output):
+                        self.output[seq_offset] = b
+                        seq_offset += 1
+            else:
+                # Fallback: write from SequenceEvent (legacy code)
+                for event in seq:
+                    if event.instrument != 0x80 and seq_offset < len(self.output):
+                        self.output[seq_offset] = event.instrument
+                        seq_offset += 1
+
+                    if event.command != 0x00 and seq_offset < len(self.output):
+                        self.output[seq_offset] = event.command
+                        seq_offset += 1
+
+                    if seq_offset < len(self.output):
+                        self.output[seq_offset] = event.note
+                        seq_offset += 1
+
+                    if event.note == 0x7F:
+                        break
+
+                # Ensure end marker
+                if seq_offset > 0 and seq_offset < len(self.output):
+                    if self.output[seq_offset - 1] != 0x7F:
+                        self.output[seq_offset] = 0x7F
+                        seq_offset += 1
 
             sequences_written += 1
 
         print(f"    Written {sequences_written} sequences")
 
     def _inject_orderlists(self):
-        """Inject orderlist data into the SF2 file"""
+        """Inject orderlist data into the SF2 file using fixed 256-byte slots"""
         print("  Injecting orderlists...")
 
         ol_start = self._addr_to_offset(self.driver_info.orderlist_start)
@@ -822,34 +1300,241 @@ class SF2Writer:
             print(f"    Warning: Invalid orderlist start offset {ol_start}")
             return
 
-        current_addr = self.driver_info.orderlist_start
+        # SF2 uses FIXED 256-byte slots for each orderlist
+        ORDERLIST_SLOT_SIZE = 256
         tracks_written = 0
 
         for track, orderlist in enumerate(self.data.orderlists[:3]):  # Max 3 tracks
+            # Each orderlist goes in its own 256-byte slot
+            current_addr = self.driver_info.orderlist_start + (track * ORDERLIST_SLOT_SIZE)
+
             # Update pointer table
             if ptr_lo_offset + track < len(self.output):
                 self.output[ptr_lo_offset + track] = current_addr & 0xFF
             if ptr_hi_offset + track < len(self.output):
                 self.output[ptr_hi_offset + track] = (current_addr >> 8) & 0xFF
 
-            # Write orderlist entries
-            ol_offset = self._addr_to_offset(current_addr)
-            for transposition, seq_idx in orderlist:
-                if ol_offset + 1 < len(self.output):
-                    self.output[ol_offset] = transposition
-                    self.output[ol_offset + 1] = seq_idx
-                    ol_offset += 2
-                    current_addr += 2
+            # Write orderlist in PACKED format
+            # SF2 format: Only write transposition when it changes
+            # - 0x80-0xBF: Transposition (0xA0 = center/no transpose)
+            # - 0x00-0x7F: Sequence index
+            # - 0xFE: End marker (no loop)
+            # - 0xFF + byte: End with loop to packed index
 
-            # Add loop marker (loop to start)
+            ol_offset = self._addr_to_offset(current_addr)
+            last_trans = -1
+
+            for transposition, seq_idx in orderlist:
+                # Convert transposition to SF2 format (0xA0 = center)
+                # transposition 0 -> 0xA0, -31 -> 0x81, +31 -> 0xBF
+                sf2_trans = 0xA0 + (transposition if transposition < 32 else transposition - 256)
+                sf2_trans = max(0x80, min(0xBF, sf2_trans))
+
+                # Write transposition only if changed
+                if sf2_trans != last_trans:
+                    if ol_offset < len(self.output):
+                        self.output[ol_offset] = sf2_trans
+                        ol_offset += 1
+                        last_trans = sf2_trans
+
+                # Write sequence index
+                if ol_offset < len(self.output):
+                    self.output[ol_offset] = seq_idx & 0x7F  # Ensure valid range
+                    ol_offset += 1
+
+            # Add loop marker (0xFF + loop index in packed data)
             if ol_offset + 1 < len(self.output):
                 self.output[ol_offset] = 0xFF  # Loop marker
-                self.output[ol_offset + 1] = 0x00  # Loop to position 0
-                current_addr += 2
+                self.output[ol_offset + 1] = 0x00  # Loop to byte 0 (start of packed data)
 
             tracks_written += 1
 
         print(f"    Written {tracks_written} orderlists")
+
+    def _inject_instruments(self):
+        """Inject instrument data into the SF2 file using extracted Laxity data"""
+        print("  Injecting instruments...")
+
+        if 'Instruments' not in self.driver_info.table_addresses:
+            print("    Warning: No instrument table found in driver")
+            return
+
+        instr_table = self.driver_info.table_addresses['Instruments']
+        instr_addr = instr_table['addr']
+        columns = instr_table['columns']  # Should be 6 for Driver 11
+        rows = instr_table['rows']  # Should be 32
+
+        # SF2 Driver 11 instrument format (6 bytes per instrument, column-major):
+        # Byte 0: AD (Attack/Decay)
+        # Byte 1: SR (Sustain/Release)
+        # Byte 2: Wave table index (0x00 = use table 0, 0x80 = no wave table)
+        # Byte 3: Pulse table index
+        # Byte 4: Filter table index
+        # Byte 5: HR (Hard Restart) table index
+
+        # Extract actual instruments from the Laxity SID data
+        laxity_instruments = extract_laxity_instruments(self.data.c64_data, self.data.load_address)
+
+        print(f"    Extracted {len(laxity_instruments)} instruments from Laxity format")
+
+        # Map waveform values to wave table indices
+        # Our wave table: 0=saw, 2=pulse, 4=tri, 6=noise
+        def waveform_to_wave_index(wave_for_sf2):
+            if wave_for_sf2 == 0x21:  # saw
+                return 0x00
+            elif wave_for_sf2 == 0x41:  # pulse
+                return 0x02
+            elif wave_for_sf2 == 0x11:  # tri
+                return 0x04
+            elif wave_for_sf2 == 0x81:  # noise
+                return 0x06
+            else:
+                return 0x00  # default saw
+
+        # Build instrument list from extracted data
+        sf2_instruments = []
+        for lax_instr in laxity_instruments:
+            wave_idx = waveform_to_wave_index(lax_instr['wave_for_sf2'])
+
+            # Format: AD, SR, Wave index, Pulse index, Filter index, HR index
+            sf2_instr = [
+                lax_instr['ad'],
+                lax_instr['sr'],
+                wave_idx,
+                0x00,  # Pulse index
+                0x00,  # Filter index
+                0x00   # HR index
+            ]
+            sf2_instruments.append(sf2_instr)
+
+        # Fill remaining slots with defaults
+        while len(sf2_instruments) < 16:
+            sf2_instruments.append([0x09, 0xA0, 0x00, 0x00, 0x00, 0x00])
+
+        # Print extracted instruments
+        for i, instr in enumerate(sf2_instruments[:len(laxity_instruments)]):
+            wave_names = {0x00: 'saw', 0x02: 'pulse', 0x04: 'tri', 0x06: 'noise'}
+            wave_name = wave_names.get(instr[2], '?')
+            print(f"      {i}: AD={instr[0]:02X} SR={instr[1]:02X} Wave={wave_name}")
+
+        # Write instruments in column-major format
+        # Column 0 (all AD bytes), then Column 1 (all SR bytes), etc.
+        instruments_written = 0
+
+        for col in range(columns):
+            for row in range(rows):
+                offset = self._addr_to_offset(instr_addr) + col * rows + row
+
+                if offset >= len(self.output):
+                    continue
+
+                if row < len(sf2_instruments) and col < len(sf2_instruments[row]):
+                    self.output[offset] = sf2_instruments[row][col]
+                else:
+                    self.output[offset] = 0
+
+            if col == 0:
+                instruments_written = min(len(sf2_instruments), rows)
+
+        print(f"    Written {instruments_written} instruments")
+
+    def _inject_wave_table(self):
+        """Inject wave table data"""
+        print("  Injecting wave table...")
+
+        if 'Wave' not in self.driver_info.table_addresses:
+            print("    Warning: No wave table found")
+            return
+
+        wave_table = self.driver_info.table_addresses['Wave']
+        wave_addr = wave_table['addr']
+        columns = wave_table['columns']  # Should be 2
+        rows = wave_table['rows']  # Should be 256
+
+        # Wave table format (2 columns, column-major):
+        # Column 0: Waveform (11=tri, 21=saw, 41=pulse, 81=noise) or 7F=end
+        # Column 1: Note offset/command (80=no offset, 00=standard, 7F=loop marker)
+        #
+        # Based on working SF2 analysis:
+        # - Entry starts at index, ends with 7F marker
+        # - Second byte of 7F row is loop-back index
+
+        # Create wave table entries based on working SF2 patterns
+        wave_data = [
+            # Entry 0: Saw (similar to working SF2)
+            (0x21, 0x80),  # Row 0: Saw wave
+            (0x7F, 0x00),  # Row 1: End, no loop
+            # Entry 2: Pulse
+            (0x41, 0x00),  # Row 2: Pulse wave
+            (0x7F, 0x02),  # Row 3: End, loop to row 2
+            # Entry 4: Triangle
+            (0x11, 0x00),  # Row 4: Triangle wave
+            (0x7F, 0x04),  # Row 5: End, loop to row 4
+            # Entry 6: Noise
+            (0x81, 0x00),  # Row 6: Noise wave
+            (0x7F, 0x06),  # Row 7: End, loop to row 6
+        ]
+
+        # Write wave table in column-major format
+        base_offset = self._addr_to_offset(wave_addr)
+
+        # Write column 0 (waveforms)
+        for i, (wave, note) in enumerate(wave_data):
+            if i < rows and base_offset + i < len(self.output):
+                self.output[base_offset + i] = wave
+
+        # Write column 1 (note offsets)
+        col1_offset = base_offset + rows
+        for i, (wave, note) in enumerate(wave_data):
+            if i < rows and col1_offset + i < len(self.output):
+                self.output[col1_offset + i] = note
+
+        print(f"    Written {len(wave_data)//2} wave table entries")
+
+    def _inject_hr_table(self):
+        """Inject HR (Hard Restart) table data - this defines the actual waveforms"""
+        print("  Injecting HR table...")
+
+        # HR table is named 'HR' in the template
+        hr_table = None
+        for name, info in self.driver_info.table_addresses.items():
+            if 'HR' in name:
+                hr_table = info
+                break
+
+        if not hr_table:
+            print("    Warning: No HR table found")
+            return
+
+        hr_addr = hr_table['addr']
+        columns = hr_table['columns']  # Should be 2
+        rows = hr_table['rows']  # Should be 16
+
+        # HR table format (2 columns):
+        # Column 0: Frame count / settings
+        # Column 1: Waveform or other setting
+        # Based on working SF2, HR entry 0 is just "0F 00"
+
+        # Create HR entries - simple version like working SF2
+        hr_entries = [
+            # HR 0: Default (used by instruments with Wave=0x80)
+            (0x0F, 0x00),
+        ]
+
+        base_offset = self._addr_to_offset(hr_addr)
+
+        # Write column 0 (frame counts)
+        for i, (frames, wave) in enumerate(hr_entries):
+            if i < rows and base_offset + i < len(self.output):
+                self.output[base_offset + i] = frames
+
+        # Write column 1 (waveforms)
+        col1_offset = base_offset + rows
+        for i, (frames, wave) in enumerate(hr_entries):
+            if i < rows and col1_offset + i < len(self.output):
+                self.output[col1_offset + i] = wave
+
+        print(f"    Written {len(hr_entries)} HR table entries")
 
     def _print_extraction_summary(self):
         """Print summary of extracted data"""

@@ -295,12 +295,12 @@ class TestIntegration(unittest.TestCase):
     """Integration tests with real SID file"""
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\Unboxed_Ending_8580.sid"),
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
         "Real SID file not found"
     )
     def test_parse_real_sid_file(self):
         """Test parsing the actual Unboxed_Ending_8580.sid file"""
-        sid_path = r"C:\Users\mit\claude\c64server\SIDM2\Unboxed_Ending_8580.sid"
+        sid_path = r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"
         parser = SIDParser(sid_path)
         header = parser.parse_header()
 
@@ -311,12 +311,12 @@ class TestIntegration(unittest.TestCase):
         self.assertEqual(header.copyright, '2018 Bonzai')
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\Unboxed_Ending_8580.sid"),
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
         "Real SID file not found"
     )
     def test_extract_c64_data(self):
         """Test extracting C64 data from real file"""
-        sid_path = r"C:\Users\mit\claude\c64server\SIDM2\Unboxed_Ending_8580.sid"
+        sid_path = r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"
         parser = SIDParser(sid_path)
         header = parser.parse_header()
         c64_data, load_address = parser.get_c64_data(header)
@@ -329,12 +329,12 @@ class TestIntegration(unittest.TestCase):
         self.assertEqual(c64_data[3], 0x4C)  # JMP
 
     @unittest.skipUnless(
-        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\Unboxed_Ending_8580.sid"),
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
         "Real SID file not found"
     )
     def test_analyze_real_file(self):
         """Test analyzing the real SID file"""
-        sid_path = r"C:\Users\mit\claude\c64server\SIDM2\Unboxed_Ending_8580.sid"
+        sid_path = r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"
         parser = SIDParser(sid_path)
         header = parser.parse_header()
         c64_data, load_address = parser.get_c64_data(header)
@@ -378,6 +378,375 @@ class TestInstrumentEncoding(unittest.TestCase):
         self.assertEqual(len(instrument), 8)
         self.assertEqual(instrument[0], 0x09)  # AD
         self.assertEqual(instrument[2], 0x41)  # Wave
+
+
+class TestNewFeatures(unittest.TestCase):
+    """Tests for new improvement features"""
+
+    SID_DIR = r"C:\Users\mit\claude\c64server\SIDM2\SID"
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "Real SID file not found"
+    )
+    def test_tempo_extraction(self):
+        """Test tempo detection (#8)"""
+        sid_path = os.path.join(self.SID_DIR, "Unboxed_Ending_8580.sid")
+        parser = SIDParser(sid_path)
+        header = parser.parse_header()
+        c64_data, load_address = parser.get_c64_data(header)
+
+        analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+        tempo = analyzer.extract_tempo()
+
+        # Tempo should be in valid range
+        self.assertGreaterEqual(tempo, 1)
+        self.assertLessEqual(tempo, 31)
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "Real SID file not found"
+    )
+    def test_filter_table_extraction(self):
+        """Test filter table extraction (#9)"""
+        sid_path = os.path.join(self.SID_DIR, "Unboxed_Ending_8580.sid")
+        parser = SIDParser(sid_path)
+        header = parser.parse_header()
+        c64_data, load_address = parser.get_c64_data(header)
+
+        analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+        filter_table = analyzer.extract_filter_table()
+
+        # Filter table should be bytes
+        self.assertIsInstance(filter_table, bytes)
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "Real SID file not found"
+    )
+    def test_pulse_table_extraction(self):
+        """Test pulse width table extraction (#10)"""
+        sid_path = os.path.join(self.SID_DIR, "Unboxed_Ending_8580.sid")
+        parser = SIDParser(sid_path)
+        header = parser.parse_header()
+        c64_data, load_address = parser.get_c64_data(header)
+
+        analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+        pulse_table = analyzer.extract_pulse_table()
+
+        # Pulse table should be bytes
+        self.assertIsInstance(pulse_table, bytes)
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "Real SID file not found"
+    )
+    def test_command_mapping(self):
+        """Test command/effect mapping (#6)"""
+        sid_path = os.path.join(self.SID_DIR, "Unboxed_Ending_8580.sid")
+        parser = SIDParser(sid_path)
+        header = parser.parse_header()
+        c64_data, load_address = parser.get_c64_data(header)
+
+        analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+
+        # Test known command mappings
+        cmd, name = analyzer.map_command(0xC0)
+        self.assertEqual(cmd, 0xC0)
+        self.assertEqual(name, "Set duration")
+
+        cmd, name = analyzer.map_command(0xC5)
+        self.assertEqual(cmd, 0xC5)
+        self.assertEqual(name, "Vibrato")
+
+        # Test duration command
+        cmd, name = analyzer.map_command(0x85)
+        self.assertEqual(name, "Duration")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "Real SID file not found"
+    )
+    def test_validation(self):
+        """Test data validation (#7)"""
+        sid_path = os.path.join(self.SID_DIR, "Unboxed_Ending_8580.sid")
+        parser = SIDParser(sid_path)
+        header = parser.parse_header()
+        c64_data, load_address = parser.get_c64_data(header)
+
+        analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+        extracted = analyzer.extract_music_data()
+
+        # Validation should produce a list (possibly empty)
+        self.assertIsInstance(extracted.validation_errors, list)
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "Real SID file not found"
+    )
+    def test_pointer_table_parsing(self):
+        """Test pointer table parsing (#3)"""
+        sid_path = os.path.join(self.SID_DIR, "Unboxed_Ending_8580.sid")
+        parser = SIDParser(sid_path)
+        header = parser.parse_header()
+        c64_data, load_address = parser.get_c64_data(header)
+
+        analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+        extracted = analyzer.extract_music_data()
+
+        # Pointer tables should be a dict
+        self.assertIsInstance(extracted.pointer_tables, dict)
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "Real SID file not found"
+    )
+    def test_improved_instrument_extraction(self):
+        """Test improved instrument extraction (#5)"""
+        sid_path = os.path.join(self.SID_DIR, "Unboxed_Ending_8580.sid")
+        parser = SIDParser(sid_path)
+        header = parser.parse_header()
+        c64_data, load_address = parser.get_c64_data(header)
+
+        analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+        instruments = analyzer.extract_instruments()
+
+        # Should find some instruments
+        self.assertGreater(len(instruments), 0)
+
+        # Each instrument should be 8 bytes (SF2 format)
+        for instr in instruments:
+            self.assertEqual(len(instr), 8)
+
+            # Waveform byte should be valid
+            wave = instr[2]
+            valid_waves = (0x00, 0x10, 0x11, 0x20, 0x21, 0x40, 0x41, 0x80, 0x81,
+                         0x12, 0x14, 0x22, 0x24, 0x42, 0x44, 0x82, 0x84)
+            self.assertIn(wave, valid_waves)
+
+    def test_extracted_data_new_fields(self):
+        """Test that ExtractedData has new fields"""
+        header = PSIDHeader(
+            magic='PSID', version=2, data_offset=0x7C,
+            load_address=0x1000, init_address=0x1000, play_address=0x1003,
+            songs=1, start_song=1, speed=0, name='Test', author='Author',
+            copyright='2024'
+        )
+
+        extracted = ExtractedData(
+            header=header,
+            c64_data=b'\x00' * 100,
+            load_address=0x1000,
+            sequences=[],
+            orderlists=[],
+            instruments=[],
+            wavetable=b'',
+            pulsetable=b'',
+            filtertable=b''
+        )
+
+        # Check new fields exist and have defaults
+        self.assertEqual(extracted.tempo, 6)
+        self.assertIsInstance(extracted.commands, list)
+        self.assertIsInstance(extracted.pointer_tables, dict)
+        self.assertIsInstance(extracted.validation_errors, list)
+
+
+class TestAllSIDFiles(unittest.TestCase):
+    """Test conversion with all SID files in the SID directory"""
+
+    SID_DIR = r"C:\Users\mit\claude\c64server\SIDM2\SID"
+
+    @classmethod
+    def setUpClass(cls):
+        """Check if SID directory exists"""
+        if not os.path.exists(cls.SID_DIR):
+            raise unittest.SkipTest(f"SID directory not found: {cls.SID_DIR}")
+
+    def test_all_sid_files_parseable(self):
+        """Test that all SID files in directory can be parsed"""
+        sid_files = [f for f in os.listdir(self.SID_DIR) if f.endswith('.sid')]
+        self.assertGreater(len(sid_files), 0, "No SID files found in directory")
+
+        for sid_file in sid_files:
+            with self.subTest(sid_file=sid_file):
+                sid_path = os.path.join(self.SID_DIR, sid_file)
+                parser = SIDParser(sid_path)
+                header = parser.parse_header()
+
+                # Verify basic header fields
+                self.assertIn(header.magic, ['PSID', 'RSID'])
+                self.assertGreaterEqual(header.version, 1)
+                self.assertGreater(header.songs, 0)
+
+    def test_all_sid_files_extractable(self):
+        """Test that C64 data can be extracted from all SID files"""
+        sid_files = [f for f in os.listdir(self.SID_DIR) if f.endswith('.sid')]
+
+        for sid_file in sid_files:
+            with self.subTest(sid_file=sid_file):
+                sid_path = os.path.join(self.SID_DIR, sid_file)
+                parser = SIDParser(sid_path)
+                header = parser.parse_header()
+                c64_data, load_address = parser.get_c64_data(header)
+
+                # Verify valid data extracted
+                self.assertGreater(len(c64_data), 0)
+                self.assertGreaterEqual(load_address, 0x0400)
+                self.assertLess(load_address, 0xFFFF)
+
+    def test_all_sid_files_analyzable(self):
+        """Test that all SID files can be analyzed"""
+        sid_files = [f for f in os.listdir(self.SID_DIR) if f.endswith('.sid')]
+
+        for sid_file in sid_files:
+            with self.subTest(sid_file=sid_file):
+                sid_path = os.path.join(self.SID_DIR, sid_file)
+                parser = SIDParser(sid_path)
+                header = parser.parse_header()
+                c64_data, load_address = parser.get_c64_data(header)
+
+                analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+                extracted = analyzer.extract_music_data()
+
+                # Verify extracted data structure
+                self.assertIsNotNone(extracted)
+                self.assertEqual(len(extracted.orderlists), 3)
+
+    def test_all_sid_files_convertible(self):
+        """Test that all SID files can be converted to SF2"""
+        sid_files = [f for f in os.listdir(self.SID_DIR) if f.endswith('.sid')]
+        test_dir = tempfile.mkdtemp()
+
+        try:
+            for sid_file in sid_files:
+                with self.subTest(sid_file=sid_file):
+                    sid_path = os.path.join(self.SID_DIR, sid_file)
+                    output_path = os.path.join(test_dir, sid_file.replace('.sid', '.sf2'))
+
+                    # Parse and analyze
+                    parser = SIDParser(sid_path)
+                    header = parser.parse_header()
+                    c64_data, load_address = parser.get_c64_data(header)
+
+                    analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+                    extracted = analyzer.extract_music_data()
+
+                    # Write SF2
+                    writer = SF2Writer(extracted)
+                    writer.write(output_path)
+
+                    # Verify output exists and has content
+                    self.assertTrue(os.path.exists(output_path))
+                    self.assertGreater(os.path.getsize(output_path), 0)
+        finally:
+            import shutil
+            shutil.rmtree(test_dir)
+
+    def test_all_sid_files_tempo_extraction(self):
+        """Test tempo extraction for all SID files (#8)"""
+        sid_files = [f for f in os.listdir(self.SID_DIR) if f.endswith('.sid')]
+
+        for sid_file in sid_files:
+            with self.subTest(sid_file=sid_file):
+                sid_path = os.path.join(self.SID_DIR, sid_file)
+                parser = SIDParser(sid_path)
+                header = parser.parse_header()
+                c64_data, load_address = parser.get_c64_data(header)
+
+                analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+                tempo = analyzer.extract_tempo()
+
+                # Tempo should be in valid range
+                self.assertGreaterEqual(tempo, 1)
+                self.assertLessEqual(tempo, 31)
+
+    def test_all_sid_files_instrument_extraction(self):
+        """Test instrument extraction for all SID files (#5)"""
+        sid_files = [f for f in os.listdir(self.SID_DIR) if f.endswith('.sid')]
+
+        for sid_file in sid_files:
+            with self.subTest(sid_file=sid_file):
+                sid_path = os.path.join(self.SID_DIR, sid_file)
+                parser = SIDParser(sid_path)
+                header = parser.parse_header()
+                c64_data, load_address = parser.get_c64_data(header)
+
+                analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+                instruments = analyzer.extract_instruments()
+
+                # Should find at least one instrument
+                self.assertGreaterEqual(len(instruments), 1)
+
+                # Each instrument should be 8 bytes
+                for instr in instruments:
+                    self.assertEqual(len(instr), 8)
+
+    def test_all_sid_files_validation(self):
+        """Test validation for all SID files (#7)"""
+        sid_files = [f for f in os.listdir(self.SID_DIR) if f.endswith('.sid')]
+
+        for sid_file in sid_files:
+            with self.subTest(sid_file=sid_file):
+                sid_path = os.path.join(self.SID_DIR, sid_file)
+                parser = SIDParser(sid_path)
+                header = parser.parse_header()
+                c64_data, load_address = parser.get_c64_data(header)
+
+                analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+                extracted = analyzer.extract_music_data()
+
+                # Validation errors should be a list
+                self.assertIsInstance(extracted.validation_errors, list)
+
+                # Check extracted data has valid structure
+                self.assertGreater(len(extracted.sequences), 0)
+                self.assertEqual(len(extracted.orderlists), 3)
+
+    def test_all_sid_files_tables_extraction(self):
+        """Test filter and pulse table extraction for all SID files (#9, #10)"""
+        sid_files = [f for f in os.listdir(self.SID_DIR) if f.endswith('.sid')]
+
+        for sid_file in sid_files:
+            with self.subTest(sid_file=sid_file):
+                sid_path = os.path.join(self.SID_DIR, sid_file)
+                parser = SIDParser(sid_path)
+                header = parser.parse_header()
+                c64_data, load_address = parser.get_c64_data(header)
+
+                analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+
+                # Extract tables
+                filter_table = analyzer.extract_filter_table()
+                pulse_table = analyzer.extract_pulse_table()
+
+                # Tables should be bytes
+                self.assertIsInstance(filter_table, bytes)
+                self.assertIsInstance(pulse_table, bytes)
+
+    def test_all_sid_files_command_mapping(self):
+        """Test command mapping for all SID files (#6)"""
+        sid_files = [f for f in os.listdir(self.SID_DIR) if f.endswith('.sid')]
+
+        for sid_file in sid_files:
+            with self.subTest(sid_file=sid_file):
+                sid_path = os.path.join(self.SID_DIR, sid_file)
+                parser = SIDParser(sid_path)
+                header = parser.parse_header()
+                c64_data, load_address = parser.get_c64_data(header)
+
+                analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+                extracted = analyzer.extract_music_data()
+
+                # Check that commands were extracted
+                self.assertIsInstance(extracted.commands, list)
+
+                # Verify sequences have mapped commands
+                for seq in extracted.sequences:
+                    for event in seq:
+                        # Command should be valid
+                        self.assertGreaterEqual(event.command, 0)
+                        self.assertLessEqual(event.command, 0xFF)
 
 
 if __name__ == '__main__':

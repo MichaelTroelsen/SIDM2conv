@@ -1,0 +1,230 @@
+{
+  "Angular.sid": {
+    "load_addr": 4096,
+    "tables": {
+      "0": 4108,
+      "1": 4111,
+      "6": 6532,
+      "5": 6529,
+      "2": 6523,
+      "3": 6526,
+      "4": 6535
+    },
+    "instruments": [
+      {
+        "index": 0,
+        "ad": 3,
+        "sr": 248,
+        "ctrl": 65,
+        "wave_name": "pulse",
+        "wave_for_sf2": 65
+      },
+      {
+        "index": 1,
+        "ad": 1,
+        "sr": 152,
+        "ctrl": 32,
+        "wave_name": "saw",
+        "wave_for_sf2": 33
+      },
+      {
+        "index": 2,
+        "ad": 0,
+        "sr": 40,
+        "ctrl": 33,
+        "wave_name": "saw",
+        "wave_for_sf2": 33
+      }
+    ]
+  },
+  "Clarencio_extended.sid": {
+    "load_addr": 4096,
+    "tables": {
+      "0": 4108,
+      "1": 4111,
+      "6": 6421,
+      "5": 6418,
+      "2": 6412,
+      "3": 6415,
+      "4": 6424
+    },
+    "instruments": [
+      {
+        "index": 0,
+        "ad": 2,
+        "sr": 168,
+        "ctrl": 65,
+        "wave_name": "pulse",
+        "wave_for_sf2": 65
+      },
+      {
+        "index": 1,
+        "ad": 3,
+        "sr": 155,
+        "ctrl": 33,
+        "wave_name": "saw",
+        "wave_for_sf2": 33
+      },
+      {
+        "index": 2,
+        "ad": 6,
+        "sr": 221,
+        "ctrl": 65,
+        "wave_name": "pulse",
+        "wave_for_sf2": 65
+      }
+    ]
+  },
+  "Ocean_Reloaded.sid": {
+    "load_addr": 4096,
+    "tables": {
+      "0": 4108,
+      "1": 4111,
+      "6": 6447,
+      "5": 6444,
+      "2": 6438,
+      "3": 6441,
+      "4": 6450
+    },
+    "instruments": [
+      {
+        "index": 0,
+        "ad": 3,
+        "sr": 137,
+        "ctrl": 32,
+        "wave_name": "saw",
+        "wave_for_sf2": 33
+      },
+      {
+        "index": 1,
+        "ad": 0,
+        "sr": 0,
+        "ctrl": 32,
+        "wave_name": "saw",
+        "wave_for_sf2": 33
+      },
+      {
+        "index": 2,
+        "ad": 0,
+        "sr": 0,
+        "ctrl": 32,
+        "wave_name": "saw",
+        "wave_for_sf2": 33
+      }
+    ]
+  },
+  "Omniphunk.sid": {
+    "load_addr": 4096,
+    "tables": {
+      "0": 4108,
+      "1": 4111,
+      "6": 6532,
+      "5": 6529,
+      "2": 6523,
+      "3": 6526,
+      "4": 6535
+    },
+    "instruments": [
+      {
+        "index": 0,
+        "ad": 15,
+        "sr": 0,
+        "ctrl": 16,
+        "wave_name": "tri",
+        "wave_for_sf2": 17
+      },
+      {
+        "index": 1,
+        "ad": 2,
+        "sr": 166,
+        "ctrl": 64,
+        "wave_name": "pulse",
+        "wave_for_sf2": 65
+      },
+      {
+        "index": 2,
+        "ad": 0,
+        "sr": 79,
+        "ctrl": 65,
+        "wave_name": "pulse",
+        "wave_for_sf2": 65
+      }
+    ]
+  },
+  "Phoenix_Code_End_Tune.sid": {
+    "load_addr": 4096,
+    "tables": {
+      "0": 4108,
+      "1": 4111,
+      "6": 6421,
+      "5": 6418,
+      "2": 6412,
+      "3": 6415,
+      "4": 6424
+    },
+    "instruments": [
+      {
+        "index": 0,
+        "ad": 15,
+        "sr": 1,
+        "ctrl": 17,
+        "wave_name": "tri",
+        "wave_for_sf2": 17
+      },
+      {
+        "index": 1,
+        "ad": 0,
+        "sr": 221,
+        "ctrl": 65,
+        "wave_name": "pulse",
+        "wave_for_sf2": 65
+      },
+      {
+        "index": 2,
+        "ad": 7,
+        "sr": 157,
+        "ctrl": 65,
+        "wave_name": "pulse",
+        "wave_for_sf2": 65
+      }
+    ]
+  },
+  "Unboxed_Ending_8580.sid": {
+    "load_addr": 4096,
+    "tables": {
+      "0": 4108,
+      "1": 4111,
+      "6": 6426,
+      "5": 6423,
+      "2": 6417,
+      "3": 6420,
+      "4": 6429
+    },
+    "instruments": [
+      {
+        "index": 0,
+        "ad": 7,
+        "sr": 185,
+        "ctrl": 33,
+        "wave_name": "saw",
+        "wave_for_sf2": 33
+      },
+      {
+        "index": 1,
+        "ad": 1,
+        "sr": 217,
+        "ctrl": 65,
+        "wave_name": "pulse",
+        "wave_for_sf2": 65
+      },
+      {
+        "index": 2,
+        "ad": 7,
+        "sr": 203,
+        "ctrl": 65,
+        "wave_name": "pulse",
+        "wave_for_sf2": 65
+      }
+    ]
+  }
+}
