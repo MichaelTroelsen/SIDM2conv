@@ -192,6 +192,177 @@ class TestSequenceEvent(unittest.TestCase):
         self.assertEqual(event.note, 0x30)
 
 
+class TestSequenceParsingEdgeCases(unittest.TestCase):
+    """Tests for sequence parsing edge cases in LaxityPlayerAnalyzer"""
+
+    def _parse_raw_sequence(self, raw_seq):
+        """
+        Helper to parse a raw sequence using the same logic as LaxityPlayerAnalyzer.
+        Returns list of SequenceEvent objects.
+        """
+        seq = []
+        current_instr = 0x80  # No change
+        current_cmd = 0x00    # No command
+        i = 0
+        while i < len(raw_seq):
+            b = raw_seq[i]
+
+            # Instrument change: 0xA0-0xBF
+            if 0xA0 <= b <= 0xBF:
+                current_instr = b
+                i += 1
+                continue
+
+            # Command: 0xC0-0xCF (followed by parameter byte)
+            elif 0xC0 <= b <= 0xCF:
+                current_cmd = b
+                i += 1
+                # Skip parameter byte
+                if i < len(raw_seq):
+                    i += 1
+                continue
+
+            # Duration/timing: 0x80-0x8F
+            elif 0x80 <= b <= 0x8F:
+                seq.append(SequenceEvent(current_instr, current_cmd, b))
+                current_instr = 0x80
+                current_cmd = 0x00
+                i += 1
+                continue
+
+            # Note or control byte: 0x00-0x7F
+            elif b <= 0x7F:
+                seq.append(SequenceEvent(current_instr, current_cmd, b))
+                current_instr = 0x80
+                current_cmd = 0x00
+                i += 1
+                continue
+
+            else:
+                i += 1
+
+        return seq
+
+    def test_instrument_byte_lower_bound(self):
+        """Test instrument byte at lower boundary 0xA0"""
+        raw = [0xA0, 0x30]  # Instrument 0, note C-4
+        events = self._parse_raw_sequence(raw)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].instrument, 0xA0)
+        self.assertEqual(events[0].note, 0x30)
+
+    def test_instrument_byte_upper_bound(self):
+        """Test instrument byte at upper boundary 0xBF"""
+        raw = [0xBF, 0x30]  # Instrument 31, note C-4
+        events = self._parse_raw_sequence(raw)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].instrument, 0xBF)
+
+    def test_command_byte_with_parameter(self):
+        """Test command byte properly skips parameter"""
+        raw = [0xC5, 0x10, 0x30]  # Command 5 with param 0x10, then note
+        events = self._parse_raw_sequence(raw)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].command, 0xC5)
+        self.assertEqual(events[0].note, 0x30)
+
+    def test_command_byte_range(self):
+        """Test all command bytes 0xC0-0xCF are handled"""
+        for cmd in [0xC0, 0xC7, 0xCF]:
+            raw = [cmd, 0x00, 0x30]  # Command with param, then note
+            events = self._parse_raw_sequence(raw)
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0].command, cmd)
+
+    def test_duration_byte_creates_event(self):
+        """Test duration bytes 0x80-0x8F create events"""
+        raw = [0x80]  # Duration/timing byte
+        events = self._parse_raw_sequence(raw)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].note, 0x80)
+
+    def test_duration_byte_upper_bound(self):
+        """Test duration byte at upper boundary 0x8F"""
+        raw = [0x8F]
+        events = self._parse_raw_sequence(raw)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].note, 0x8F)
+
+    def test_note_value_zero(self):
+        """Test note value 0x00 (lowest note)"""
+        raw = [0x00]
+        events = self._parse_raw_sequence(raw)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].note, 0x00)
+
+    def test_gate_on_byte(self):
+        """Test gate on sustain byte 0x7E"""
+        raw = [0x7E]
+        events = self._parse_raw_sequence(raw)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].note, 0x7E)
+
+    def test_end_marker_byte(self):
+        """Test end marker byte 0x7F"""
+        raw = [0x7F]
+        events = self._parse_raw_sequence(raw)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].note, 0x7F)
+
+    def test_instrument_resets_after_note(self):
+        """Test that instrument resets to 0x80 after being used"""
+        raw = [0xA0, 0x30, 0x35]  # Instrument, note, note
+        events = self._parse_raw_sequence(raw)
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0].instrument, 0xA0)
+        self.assertEqual(events[1].instrument, 0x80)  # Reset
+
+    def test_command_resets_after_note(self):
+        """Test that command resets to 0x00 after being used"""
+        raw = [0xC5, 0x10, 0x30, 0x35]  # Command, param, note, note
+        events = self._parse_raw_sequence(raw)
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0].command, 0xC5)
+        self.assertEqual(events[1].command, 0x00)  # Reset
+
+    def test_instrument_followed_by_command(self):
+        """Test instrument byte followed by command byte"""
+        raw = [0xA0, 0xC5, 0x10, 0x30]  # Instrument, command, param, note
+        events = self._parse_raw_sequence(raw)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].instrument, 0xA0)
+        self.assertEqual(events[0].command, 0xC5)
+        self.assertEqual(events[0].note, 0x30)
+
+    def test_multiple_instruments_in_sequence(self):
+        """Test multiple instrument changes in same sequence"""
+        raw = [0xA0, 0x30, 0xA5, 0x35]  # Instrument 0, note, instrument 5, note
+        events = self._parse_raw_sequence(raw)
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0].instrument, 0xA0)
+        self.assertEqual(events[1].instrument, 0xA5)
+
+    def test_empty_sequence(self):
+        """Test empty sequence returns empty list"""
+        raw = []
+        events = self._parse_raw_sequence(raw)
+        self.assertEqual(len(events), 0)
+
+    def test_only_instrument_no_note(self):
+        """Test sequence with only instrument byte (no note)"""
+        raw = [0xA0]  # Instrument only
+        events = self._parse_raw_sequence(raw)
+        self.assertEqual(len(events), 0)  # No event created without note
+
+    def test_gap_bytes_0x90_to_0x9F(self):
+        """Test bytes in gap range 0x90-0x9F are skipped"""
+        raw = [0x90, 0x30]  # Gap byte, then note
+        events = self._parse_raw_sequence(raw)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].note, 0x30)
+        self.assertEqual(events[0].instrument, 0x80)  # No instrument set
+
+
 class TestExtractedData(unittest.TestCase):
     """Tests for extracted data structure"""
 
