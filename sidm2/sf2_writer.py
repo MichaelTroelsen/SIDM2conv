@@ -334,98 +334,23 @@ class SF2Writer:
 
             seq_offset = self._addr_to_offset(current_addr)
 
-            if hasattr(self.data, 'raw_sequences') and i < len(self.data.raw_sequences):
-                raw_seq = self.data.raw_sequences[i]
-                j = 0
-                while j < len(raw_seq):
-                    b = raw_seq[j]
+            # Use parsed SequenceEvent objects for proper SF2 triplet format
+            # (instrument, command, note) - this ensures all 3 columns are populated
+            for event in seq:
+                if event.instrument != 0x80 and seq_offset < len(self.output):
+                    self.output[seq_offset] = event.instrument
+                    seq_offset += 1
 
-                    if 0xC0 <= b <= 0xCF:
-                        cmd = b - 0xC0
+                if event.command != 0x00 and seq_offset < len(self.output):
+                    self.output[seq_offset] = event.command
+                    seq_offset += 1
 
-                        if seq_offset < len(self.output):
-                            self.output[seq_offset] = b
-                            seq_offset += 1
+                if seq_offset < len(self.output):
+                    self.output[seq_offset] = event.note
+                    seq_offset += 1
 
-                        if j + 1 < len(raw_seq):
-                            param = raw_seq[j + 1]
-
-                            if cmd in (0, 1):  # Slide Up/Down
-                                speed_hi = 0x00
-                                speed_lo = param
-                                if seq_offset < len(self.output):
-                                    self.output[seq_offset] = speed_hi
-                                    seq_offset += 1
-                                if seq_offset < len(self.output):
-                                    self.output[seq_offset] = speed_lo
-                                    seq_offset += 1
-                                j += 2
-                            elif cmd == 2:  # Vibrato
-                                freq = (param >> 4) & 0x0F
-                                amp = param & 0x0F
-                                sf2_freq = freq
-                                sf2_amp = 0x10 - amp if amp > 0 else 0x10
-                                if seq_offset < len(self.output):
-                                    self.output[seq_offset] = sf2_freq
-                                    seq_offset += 1
-                                if seq_offset < len(self.output):
-                                    self.output[seq_offset] = sf2_amp
-                                    seq_offset += 1
-                                j += 2
-                            elif cmd == 3:  # Portamento
-                                speed_hi = 0x00
-                                speed_lo = param
-                                if seq_offset < len(self.output):
-                                    self.output[seq_offset] = speed_hi
-                                    seq_offset += 1
-                                if seq_offset < len(self.output):
-                                    self.output[seq_offset] = speed_lo
-                                    seq_offset += 1
-                                j += 2
-                            elif cmd == 4:  # Set ADSR
-                                if hasattr(self.data, 'laxity_instruments') and param < len(self.data.laxity_instruments):
-                                    instr = self.data.laxity_instruments[param]
-                                    ad = instr.get('ad', 0x09)
-                                    sr = instr.get('sr', 0x00)
-                                else:
-                                    ad = 0x09
-                                    sr = 0x00
-
-                                if seq_offset < len(self.output):
-                                    self.output[seq_offset] = ad
-                                    seq_offset += 1
-                                if seq_offset < len(self.output):
-                                    self.output[seq_offset] = sr
-                                    seq_offset += 1
-                                j += 2
-                            else:
-                                if seq_offset < len(self.output):
-                                    self.output[seq_offset] = param
-                                    seq_offset += 1
-                                j += 2
-                        else:
-                            j += 1
-                    else:
-                        if seq_offset < len(self.output):
-                            self.output[seq_offset] = b
-                            seq_offset += 1
-                        j += 1
-            else:
-                for event in seq:
-                    if event.instrument != 0x80 and seq_offset < len(self.output):
-                        self.output[seq_offset] = event.instrument
-                        seq_offset += 1
-
-                    if event.command != 0x00 and seq_offset < len(self.output):
-                        self.output[seq_offset] = event.command
-                        seq_offset += 1
-
-                    if seq_offset < len(self.output):
-                        self.output[seq_offset] = event.note
-                        seq_offset += 1
-
-                    if event.note == 0x7F:
-                        break
+                if event.note == 0x7F:
+                    break
 
                 if seq_offset > 0 and seq_offset < len(self.output):
                     if self.output[seq_offset - 1] != 0x7F:

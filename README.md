@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 
-**Version 0.4.0** | Build Date: 2025-11-22
+**Version 0.5.0** | Build Date: 2025-11-23
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files.
 
@@ -982,6 +982,15 @@ All files now achieve 100% validation score with siddump ADSR merging and improv
 | 47 | SF2Writer modularization | ✅ Done | Extracted ~960 lines to sidm2/sf2_writer.py |
 
 ## Changelog
+
+### v0.5.0 (2025-11-23)
+- Fixed sequence parsing to properly handle instrument bytes (0xA0-0xBF) and command bytes (0xC0-0xCF)
+- Added arpeggio table extraction from Laxity sequences
+- Added instrument table pointer bounds validation (wave_ptr, pulse_ptr, filter_ptr)
+- Added full conversion pipeline integration tests
+- Expanded test coverage from 34 to 57 tests
+- Added automated editor validation for all converted files
+- Added GitHub Actions CI/CD workflow
 
 ### v0.4.0 (2025-11-22)
 - Fixed SF2 crash issue caused by aux pointer pointing to valid aux data
