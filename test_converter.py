@@ -222,15 +222,19 @@ class TestSequenceParsingEdgeCases(unittest.TestCase):
                     i += 1
                 continue
 
-            # Duration/timing: 0x80-0x8F
-            elif 0x80 <= b <= 0x8F:
+            # Duration/timing: 0x80-0x9F (Laxity uses full range)
+            elif 0x80 <= b <= 0x9F:
                 # Duration bytes modify timing - skip in SF2 (timing handled differently)
                 i += 1
                 continue
 
             # Note or control byte: 0x00-0x7F
             elif b <= 0x7F:
-                seq.append(SequenceEvent(current_instr, current_cmd, b))
+                # Clamp high notes to SF2 max (0x5D = B-7), but keep control bytes
+                note = b
+                if note > 0x5D and note not in (0x7E, 0x7F):
+                    note = 0x5D  # Clamp to B-7
+                seq.append(SequenceEvent(current_instr, current_cmd, note))
                 current_instr = 0x80
                 current_cmd = 0x00
                 i += 1
