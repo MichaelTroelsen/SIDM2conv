@@ -1,0 +1,2 @@
+# SID to SF2 Converter - Core Dependencies
+# No external dependencies required - uses Python standard library only
