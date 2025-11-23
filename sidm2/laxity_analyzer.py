@@ -527,4 +527,30 @@ class LaxityPlayerAnalyzer:
         if extracted.tempo < 1 or extracted.tempo > 31:
             errors.append(f"Unusual tempo value: {extracted.tempo}")
 
+        # Validate instrument table linkage
+        # Calculate table sizes (each table entry is 2 bytes in SF2 format)
+        wave_table_size = len(extracted.wavetable) // 2 if extracted.wavetable else 0
+        pulse_table_size = len(extracted.pulsetable) // 4 if extracted.pulsetable else 0
+        filter_table_size = len(extracted.filtertable) // 4 if extracted.filtertable else 0
+
+        for i, instr in enumerate(extracted.instruments):
+            if len(instr) >= 8:
+                # Laxity format: byte 4=filter_ptr, byte 5=pulse_ptr, byte 7=wave_ptr
+                filter_ptr = instr[4]
+                pulse_ptr = instr[5]
+                wave_ptr = instr[7]
+
+                # Check wave_ptr bounds
+                if wave_table_size > 0 and wave_ptr >= wave_table_size:
+                    errors.append(f"Instrument {i}: wave_ptr {wave_ptr} exceeds wave table size {wave_table_size}")
+
+                # Check pulse_ptr bounds (Laxity uses Y*4 indexing)
+                pulse_idx = pulse_ptr // 4 if pulse_ptr % 4 == 0 and pulse_ptr > 0 else pulse_ptr
+                if pulse_table_size > 0 and pulse_idx >= pulse_table_size:
+                    errors.append(f"Instrument {i}: pulse_ptr {pulse_ptr} (idx {pulse_idx}) exceeds pulse table size {pulse_table_size}")
+
+                # Check filter_ptr bounds
+                if filter_table_size > 0 and filter_ptr > 0 and filter_ptr >= filter_table_size:
+                    errors.append(f"Instrument {i}: filter_ptr {filter_ptr} exceeds filter table size {filter_table_size}")
+
         extracted.validation_errors = errors

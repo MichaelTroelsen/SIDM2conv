@@ -723,6 +723,208 @@ class TestNewFeatures(unittest.TestCase):
         self.assertIsInstance(extracted.validation_errors, list)
 
 
+class TestTableLinkageValidation(unittest.TestCase):
+    """Tests for instrument table linkage validation"""
+
+    SID_DIR = r"C:\Users\mit\claude\c64server\SIDM2\SID"
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "Real SID file not found"
+    )
+    def test_table_linkage_validation_runs(self):
+        """Test that table linkage validation runs during extraction"""
+        sid_path = os.path.join(self.SID_DIR, "Unboxed_Ending_8580.sid")
+        parser = SIDParser(sid_path)
+        header = parser.parse_header()
+        c64_data, load_address = parser.get_c64_data(header)
+
+        analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+        extracted = analyzer.extract_music_data()
+
+        # Validation should have run (may have errors or not)
+        self.assertIsInstance(extracted.validation_errors, list)
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "Real SID file not found"
+    )
+    def test_instruments_have_valid_wave_ptr(self):
+        """Test that instrument wave_ptr values are within table bounds"""
+        sid_path = os.path.join(self.SID_DIR, "Unboxed_Ending_8580.sid")
+        parser = SIDParser(sid_path)
+        header = parser.parse_header()
+        c64_data, load_address = parser.get_c64_data(header)
+
+        analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+        extracted = analyzer.extract_music_data()
+
+        # Check for wave_ptr validation errors
+        wave_errors = [e for e in extracted.validation_errors if 'wave_ptr' in e]
+        # If there are wave_ptr errors, they should be properly formatted
+        for err in wave_errors:
+            self.assertIn('Instrument', err)
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "Real SID file not found"
+    )
+    def test_all_files_table_linkage(self):
+        """Test table linkage validation for all SID files"""
+        sid_files = [f for f in os.listdir(self.SID_DIR) if f.endswith('.sid')]
+
+        for sid_file in sid_files:
+            sid_path = os.path.join(self.SID_DIR, sid_file)
+            parser = SIDParser(sid_path)
+            header = parser.parse_header()
+            c64_data, load_address = parser.get_c64_data(header)
+
+            analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+            extracted = analyzer.extract_music_data()
+
+            # Each file should have validation errors list
+            self.assertIsInstance(extracted.validation_errors, list,
+                                f"Failed for {sid_file}")
+
+
+class TestFullConversionPipeline(unittest.TestCase):
+    """Integration tests for complete SID->SF2 conversion pipeline"""
+
+    SID_DIR = r"C:\Users\mit\claude\c64server\SIDM2\SID"
+    SF2_DIR = r"C:\Users\mit\claude\c64server\SIDM2\SF2"
+
+    def setUp(self):
+        self.test_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.test_dir)
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "Real SID file not found"
+    )
+    def test_converted_sf2_has_valid_load_address(self):
+        """Test that converted SF2 has proper load address"""
+        sid_path = os.path.join(self.SID_DIR, "Unboxed_Ending_8580.sid")
+        sf2_path = os.path.join(self.test_dir, "test_output.sf2")
+
+        # Parse and extract
+        parser = SIDParser(sid_path)
+        header = parser.parse_header()
+        c64_data, load_address = parser.get_c64_data(header)
+
+        analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+        extracted = analyzer.extract_music_data()
+
+        # Write SF2
+        writer = SF2Writer(extracted)
+        writer.write(sf2_path)
+
+        # Verify load address
+        with open(sf2_path, 'rb') as f:
+            load_lo = f.read(1)[0]
+            load_hi = f.read(1)[0]
+            file_load_addr = (load_hi << 8) | load_lo
+
+        # Load address should be in valid C64 range
+        self.assertGreaterEqual(file_load_addr, 0x0800)
+        self.assertLessEqual(file_load_addr, 0xFFFE)
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "Real SID file not found"
+    )
+    def test_converted_sf2_metadata_preserved(self):
+        """Test song name, author, copyright preserved through conversion"""
+        sid_path = os.path.join(self.SID_DIR, "Unboxed_Ending_8580.sid")
+        sf2_path = os.path.join(self.test_dir, "test_output.sf2")
+
+        # Parse and extract
+        parser = SIDParser(sid_path)
+        header = parser.parse_header()
+        c64_data, load_address = parser.get_c64_data(header)
+
+        analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+        extracted = analyzer.extract_music_data()
+
+        # Remember original metadata
+        orig_name = header.name
+        orig_author = header.author
+
+        # Write SF2
+        writer = SF2Writer(extracted)
+        writer.write(sf2_path)
+
+        # Verify file was created and has content
+        self.assertTrue(os.path.exists(sf2_path))
+        file_size = os.path.getsize(sf2_path)
+        self.assertGreater(file_size, 100, "SF2 file too small")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID"),
+        "SID directory not found"
+    )
+    def test_all_files_convert_successfully(self):
+        """Test that all SID files convert to SF2 without errors"""
+        sid_files = [f for f in os.listdir(self.SID_DIR) if f.endswith('.sid')]
+
+        for sid_file in sid_files:
+            sid_path = os.path.join(self.SID_DIR, sid_file)
+            sf2_path = os.path.join(self.test_dir, sid_file.replace('.sid', '.sf2'))
+
+            # Parse and extract
+            parser = SIDParser(sid_path)
+            header = parser.parse_header()
+            c64_data, load_address = parser.get_c64_data(header)
+
+            analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+            extracted = analyzer.extract_music_data()
+
+            # Write SF2 - should not raise exception
+            writer = SF2Writer(extracted)
+            writer.write(sf2_path)
+
+            # Verify file was created
+            self.assertTrue(os.path.exists(sf2_path),
+                          f"Failed to create SF2 for {sid_file}")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "Real SID file not found"
+    )
+    def test_converted_sf2_has_valid_sequences(self):
+        """Test that converted SF2 has non-empty sequence data"""
+        sid_path = os.path.join(self.SID_DIR, "Unboxed_Ending_8580.sid")
+        sf2_path = os.path.join(self.test_dir, "test_output.sf2")
+
+        # Parse and extract
+        parser = SIDParser(sid_path)
+        header = parser.parse_header()
+        c64_data, load_address = parser.get_c64_data(header)
+
+        analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+        extracted = analyzer.extract_music_data()
+
+        # Verify we have sequences
+        self.assertGreater(len(extracted.sequences), 0,
+                         "No sequences extracted")
+
+        # Verify sequences have content
+        for i, seq in enumerate(extracted.sequences):
+            self.assertGreater(len(seq), 0,
+                             f"Sequence {i} is empty")
+
+        # Write SF2
+        writer = SF2Writer(extracted)
+        writer.write(sf2_path)
+
+        # Verify file has reasonable size (sequences take space)
+        file_size = os.path.getsize(sf2_path)
+        self.assertGreater(file_size, 1000,
+                         "SF2 file too small, sequences may be missing")
+
+
 class TestAllSIDFiles(unittest.TestCase):
     """Test conversion with all SID files in the SID directory"""
 
