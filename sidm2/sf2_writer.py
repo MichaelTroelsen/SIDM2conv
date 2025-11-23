@@ -334,28 +334,42 @@ class SF2Writer:
 
             seq_offset = self._addr_to_offset(current_addr)
 
-            # Use parsed SequenceEvent objects for proper SF2 triplet format
-            # (instrument, command, note) - this ensures all 3 columns are populated
+            # SF2 sequences use packed format: only write instrument/command when they change
+            # Format: [instr] [cmd] note [instr] [cmd] note ... 0x7F
+            # Where instrument bytes are 0xA0-0xBF and command bytes are 0x01-0x3F
+            rows_written = 0
             for event in seq:
+                # Skip duration bytes (0x80-0x9F) - they shouldn't be in note field
+                if 0x80 <= event.note <= 0x9F:
+                    continue
+
+                # Write instrument change if not "no change" (0x80)
                 if event.instrument != 0x80 and seq_offset < len(self.output):
                     self.output[seq_offset] = event.instrument
                     seq_offset += 1
 
+                # Write command if present (non-zero)
                 if event.command != 0x00 and seq_offset < len(self.output):
-                    self.output[seq_offset] = event.command
+                    # Convert Laxity command (0xC0-0xCF) to SF2 command (0x01-0x10)
+                    sf2_cmd = (event.command & 0x0F) + 1 if 0xC0 <= event.command <= 0xCF else event.command
+                    self.output[seq_offset] = sf2_cmd
                     seq_offset += 1
 
+                # Always write note
                 if seq_offset < len(self.output):
                     self.output[seq_offset] = event.note
                     seq_offset += 1
+                    rows_written += 1
 
+                # Stop at end marker
                 if event.note == 0x7F:
                     break
 
-                if seq_offset > 0 and seq_offset < len(self.output):
-                    if self.output[seq_offset - 1] != 0x7F:
+            # Ensure sequence ends with 0x7F
+            if rows_written > 0 and seq_offset > 0:
+                if self.output[seq_offset - 1] != 0x7F:
+                    if seq_offset < len(self.output):
                         self.output[seq_offset] = 0x7F
-                        seq_offset += 1
 
             sequences_written += 1
 

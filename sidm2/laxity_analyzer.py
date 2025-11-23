@@ -434,7 +434,9 @@ class LaxityPlayerAnalyzer:
 
                 # Duration/timing: 0x80-0x9F (Laxity uses full range)
                 elif 0x80 <= b <= 0x9F:
-                    # Duration bytes modify timing - skip in SF2 (timing handled differently)
+                    # Duration bytes set timing for subsequent notes
+                    # Skip them - SF2 handles timing via tempo table, not inline bytes
+                    # Note: In full conversion, this would map to SF2 row timing
                     i += 1
                     continue
 
