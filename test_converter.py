@@ -224,9 +224,7 @@ class TestSequenceParsingEdgeCases(unittest.TestCase):
 
             # Duration/timing: 0x80-0x8F
             elif 0x80 <= b <= 0x8F:
-                seq.append(SequenceEvent(current_instr, current_cmd, b))
-                current_instr = 0x80
-                current_cmd = 0x00
+                # Duration bytes modify timing - skip in SF2 (timing handled differently)
                 i += 1
                 continue
 
@@ -275,18 +273,16 @@ class TestSequenceParsingEdgeCases(unittest.TestCase):
             self.assertEqual(events[0].command, cmd)
 
     def test_duration_byte_creates_event(self):
-        """Test duration bytes 0x80-0x8F create events"""
-        raw = [0x80]  # Duration/timing byte
+        """Test duration bytes 0x80-0x8F are skipped (timing only)"""
+        raw = [0x80]  # Duration/timing byte - should be skipped in SF2
         events = self._parse_raw_sequence(raw)
-        self.assertEqual(len(events), 1)
-        self.assertEqual(events[0].note, 0x80)
+        self.assertEqual(len(events), 0)  # Duration bytes are skipped
 
     def test_duration_byte_upper_bound(self):
-        """Test duration byte at upper boundary 0x8F"""
+        """Test duration byte at upper boundary 0x8F is skipped"""
         raw = [0x8F]
         events = self._parse_raw_sequence(raw)
-        self.assertEqual(len(events), 1)
-        self.assertEqual(events[0].note, 0x8F)
+        self.assertEqual(len(events), 0)  # Duration bytes are skipped
 
     def test_note_value_zero(self):
         """Test note value 0x00 (lowest note)"""

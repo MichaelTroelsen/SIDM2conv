@@ -434,10 +434,7 @@ class LaxityPlayerAnalyzer:
 
                 # Duration/timing: 0x80-0x8F
                 elif 0x80 <= b <= 0x8F:
-                    # Duration bytes modify timing, treat as rest/gate
-                    seq.append(SequenceEvent(current_instr, current_cmd, b))
-                    current_instr = 0x80  # Reset to "no change" after use
-                    current_cmd = 0x00
+                    # Duration bytes modify timing - skip in SF2 (timing handled differently)
                     i += 1
                     continue
 
