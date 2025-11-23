@@ -59,6 +59,7 @@ class ExtractedData:
     validation_errors: List[str] = None
     raw_sequences: List[bytes] = None
     siddump_data: dict = None  # Data from siddump extraction
+    arp_table: List[Tuple[int, int, int, int]] = None  # Extracted arpeggio table
 
     def __post_init__(self):
         if self.commands is None:

@@ -2,7 +2,7 @@
 Sequence and command extraction functions.
 """
 
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Set, Tuple, Optional
 
 
 def get_command_names() -> List[str]:
@@ -261,3 +261,216 @@ def build_sf2_command_table(command_params: List[Tuple[int, int, int]]) -> List[
         commands.append((0, 0, 0))
 
     return commands[:64]
+
+
+def extract_arpeggio_indices(raw_sequences: List[bytes]) -> Set[int]:
+    """
+    Extract arpeggio table indices used in sequences.
+
+    Scans for Laxity arpeggio commands (high nibble 0x3) and extracts
+    the following parameter byte as the arpeggio table index.
+
+    Args:
+        raw_sequences: List of raw sequence byte arrays
+
+    Returns:
+        Set of arpeggio table indices used
+    """
+    arp_indices = set()
+
+    for seq in raw_sequences:
+        i = 0
+        while i < len(seq) - 1:
+            byte = seq[i]
+
+            # Laxity arpeggio command: $3x yy where yy is arpeggio index
+            # In some variants it's $C3 yy (0xC3 = command 3)
+            if byte == 0xC3:  # Command 3 = Arpeggio
+                arp_idx = seq[i + 1]
+                if arp_idx < 32:  # Valid arpeggio index range
+                    arp_indices.add(arp_idx)
+                i += 2
+            elif (byte & 0xF0) == 0x30:  # $3x yy format
+                arp_idx = seq[i + 1]
+                if arp_idx < 32:
+                    arp_indices.add(arp_idx)
+                i += 2
+            else:
+                i += 1
+
+    return arp_indices
+
+
+def find_arpeggio_table_in_memory(
+    data: bytes,
+    load_addr: int,
+    arp_indices: Set[int],
+    verbose: bool = False
+) -> Tuple[Optional[int], List[Tuple[int, ...]]]:
+    """
+    Find and extract arpeggio table from C64 memory.
+
+    Uses pattern matching to find sequences of semitone values that
+    match common arpeggio patterns (major, minor, octave, etc.).
+
+    Args:
+        data: C64 program data
+        load_addr: Memory load address
+        arp_indices: Set of arpeggio indices used in sequences
+        verbose: Enable debug output
+
+    Returns:
+        Tuple of (table_address, list of arpeggio entries)
+        Each entry is a tuple of semitone values ending with 0x7F
+    """
+    # Common arpeggio patterns to search for
+    known_patterns = [
+        (0x00, 0x04, 0x07, 0x7F),  # Major chord
+        (0x00, 0x03, 0x07, 0x7F),  # Minor chord
+        (0x00, 0x0C, 0x7F),        # Octave
+        (0x00, 0x07, 0x7F),        # Fifth
+        (0x00, 0x05, 0x07, 0x7F),  # Sus4 chord
+        (0x00, 0x04, 0x08, 0x7F),  # Augmented
+        (0x00, 0x03, 0x06, 0x7F),  # Diminished
+    ]
+
+    best_addr = None
+    best_score = 0
+    best_entries = []
+
+    # Search in typical data range
+    search_start = 0x600
+    search_end = min(len(data), 0x1A00)
+
+    for offset in range(search_start, search_end - 16):
+        score = 0
+        entries = []
+
+        # Try to parse as arpeggio table starting here
+        pos = offset
+        entry_count = 0
+
+        while pos < len(data) - 4 and entry_count < 32:
+            # Check for valid arpeggio entry pattern
+            entry = []
+            entry_pos = pos
+
+            # Read semitone values until terminator
+            while entry_pos < len(data) and len(entry) < 8:
+                byte = data[entry_pos]
+
+                # Valid semitone values: 0x00-0x7D
+                if byte <= 0x7D:
+                    entry.append(byte)
+                    entry_pos += 1
+                # Terminator/loop marker
+                elif byte == 0x7F:
+                    entry.append(byte)
+                    entry_pos += 1
+                    break
+                # Jump command (0x7E or 0x7F followed by target)
+                elif byte == 0x7E:
+                    entry.append(byte)
+                    if entry_pos + 1 < len(data):
+                        entry.append(data[entry_pos + 1])
+                        entry_pos += 2
+                    break
+                else:
+                    # Invalid byte for arpeggio
+                    break
+
+            if len(entry) >= 2 and entry[-1] in (0x7F, 0x7E):
+                # Valid entry found
+                entries.append(tuple(entry))
+
+                # Score this entry
+                entry_tuple = tuple(entry)
+
+                # Check against known patterns
+                for pattern in known_patterns:
+                    if entry_tuple == pattern:
+                        score += 20
+                        break
+                    # Partial match
+                    if entry_tuple[:3] == pattern[:3]:
+                        score += 10
+                        break
+
+                # Valid semitone range bonus
+                for val in entry[:-1]:  # Exclude terminator
+                    if 0 <= val <= 24:  # Reasonable semitone offset
+                        score += 1
+
+                # Proper terminator
+                if entry[-1] == 0x7F:
+                    score += 3
+
+                pos = entry_pos
+                entry_count += 1
+            else:
+                # Invalid entry, stop parsing
+                break
+
+        # Bonus for having multiple valid entries
+        if len(entries) >= 3:
+            score += len(entries) * 2
+
+        # Bonus if we have entries for indices used in sequences
+        if arp_indices and len(entries) >= max(arp_indices, default=0) + 1:
+            score += 10
+
+        if score > best_score and len(entries) >= 1:
+            best_score = score
+            best_addr = load_addr + offset
+            best_entries = entries
+
+    if verbose and best_addr:
+        print(f"    Found arpeggio table at ${best_addr:04X} with {len(best_entries)} entries (score: {best_score})")
+
+    return best_addr, best_entries
+
+
+def build_sf2_arp_table(
+    extracted_entries: List[Tuple[int, ...]],
+    max_entries: int = 32
+) -> List[Tuple[int, int, int, int]]:
+    """
+    Build SF2 arpeggio table from extracted entries.
+
+    SF2 arpeggio format: 4 columns per entry
+    - Each column contains a semitone offset (0x00-0x7D) or jump/end marker
+
+    Args:
+        extracted_entries: List of extracted arpeggio tuples
+        max_entries: Maximum number of entries (default 32)
+
+    Returns:
+        List of 4-tuple arpeggio entries padded to max_entries
+    """
+    # Default patterns for padding
+    defaults = [
+        (0x00, 0x04, 0x07, 0x7F),  # Major chord
+        (0x00, 0x03, 0x07, 0x7F),  # Minor chord
+        (0x00, 0x0C, 0x7F, 0x00),  # Octave
+    ]
+
+    result = []
+
+    # Convert extracted entries to 4-column format
+    for entry in extracted_entries[:max_entries]:
+        if len(entry) >= 4:
+            result.append((entry[0], entry[1], entry[2], entry[3]))
+        elif len(entry) == 3:
+            result.append((entry[0], entry[1], entry[2], 0x00))
+        elif len(entry) == 2:
+            result.append((entry[0], entry[1], 0x7F, 0x00))
+        else:
+            result.append((0x00, 0x7F, 0x00, 0x00))
+
+    # Pad with defaults if needed
+    default_idx = 0
+    while len(result) < max_entries:
+        result.append(defaults[default_idx % len(defaults)])
+        default_idx += 1
+
+    return result[:max_entries]

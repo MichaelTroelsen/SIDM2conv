@@ -10,7 +10,14 @@ from typing import Optional
 from .models import ExtractedData, SF2DriverInfo
 from .table_extraction import find_and_extract_wave_table, extract_all_laxity_tables
 from .instrument_extraction import extract_laxity_instruments, extract_laxity_wave_table
-from .sequence_extraction import get_command_names, extract_command_parameters, build_sf2_command_table
+from .sequence_extraction import (
+    get_command_names,
+    extract_command_parameters,
+    build_sf2_command_table,
+    extract_arpeggio_indices,
+    find_arpeggio_table_in_memory,
+    build_sf2_arp_table
+)
 from .exceptions import SF2WriteError, TemplateNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -847,11 +854,47 @@ class SF2Writer:
         columns = arp_table['columns']
         rows = arp_table['rows']
 
-        arp_entries = [
-            (0x00, 0x04, 0x07, 0x7F),
-            (0x00, 0x03, 0x07, 0x7F),
-            (0x00, 0x0C, 0x7F, 0x00),
-        ]
+        # Use extracted arpeggio table if available, otherwise try to extract
+        if hasattr(self.data, 'arp_table') and self.data.arp_table:
+            arp_entries = self.data.arp_table
+            logger.info(f"    Using {len(arp_entries)} extracted arpeggio entries")
+        elif hasattr(self.data, 'raw_sequences') and self.data.raw_sequences:
+            # Try to extract arpeggio table from raw sequences
+            arp_indices = extract_arpeggio_indices(self.data.raw_sequences)
+            if arp_indices:
+                logger.debug(f"    Found arpeggio indices: {sorted(arp_indices)}")
+                _, extracted_entries = find_arpeggio_table_in_memory(
+                    self.data.c64_data,
+                    self.data.load_address,
+                    arp_indices
+                )
+                if extracted_entries:
+                    arp_entries = build_sf2_arp_table(extracted_entries)
+                    logger.info(f"    Extracted {len(extracted_entries)} arpeggio patterns")
+                else:
+                    # Use defaults
+                    arp_entries = [
+                        (0x00, 0x04, 0x07, 0x7F),  # Major chord
+                        (0x00, 0x03, 0x07, 0x7F),  # Minor chord
+                        (0x00, 0x0C, 0x7F, 0x00),  # Octave
+                    ]
+                    logger.debug("    No arpeggio table found, using defaults")
+            else:
+                # No arpeggios used, use defaults
+                arp_entries = [
+                    (0x00, 0x04, 0x07, 0x7F),  # Major chord
+                    (0x00, 0x03, 0x07, 0x7F),  # Minor chord
+                    (0x00, 0x0C, 0x7F, 0x00),  # Octave
+                ]
+                logger.debug("    No arpeggio commands in sequences, using defaults")
+        else:
+            # Default arpeggio patterns
+            arp_entries = [
+                (0x00, 0x04, 0x07, 0x7F),  # Major chord
+                (0x00, 0x03, 0x07, 0x7F),  # Minor chord
+                (0x00, 0x0C, 0x7F, 0x00),  # Octave
+            ]
+            logger.debug("    Using default arpeggio patterns")
 
         base_offset = self._addr_to_offset(arp_addr)
 
