@@ -12,12 +12,25 @@ This converter analyzes SID files that use Laxity's player routine and attempts 
 
 ## Installation
 
-No external dependencies required - uses Python standard library only.
+No external dependencies required for basic conversion - uses Python standard library only.
 
 ```bash
 # Requires Python 3.7+
 python --version
 ```
+
+### Optional Dependencies for Automated Testing
+
+To run the automated editor validation tests, install additional dependencies:
+
+```bash
+pip install -r requirements-test.txt
+```
+
+This includes:
+- `pyautogui` - Keyboard/mouse automation
+- `Pillow` - Screenshot capture
+- `pywin32` - Windows API integration
 
 ## Usage
 
@@ -173,6 +186,8 @@ Special note offsets:
 - `$7E` - Stop processing, keep last entry
 - `$80` - Recalculate base note + transpose (for "Hubbard slide" effects)
 
+**Note**: Laxity format stores (note, waveform) but SF2 format stores (waveform, note). The converter swaps these bytes during conversion, except for `$7F` jump commands which remain as ($7F, target).
+
 #### Pulse Table Format (4 bytes per entry, Y-indexed with stride 4)
 
 The pulse table uses column-major storage with Y register indexing. Entry indices are pre-multiplied by 4.
@@ -183,6 +198,10 @@ The pulse table uses column-major storage with Y register indexing. Entry indice
 | 1 | Add/subtract value per frame (applied to 16-bit pulse width) |
 | 2 | Duration (bits 0-6) + direction (bit 7: 0=add, 1=subtract) |
 | 3 | Next entry index (pre-multiplied by 4, e.g., entry 6 = $18) |
+
+**Index Conversion**: When converting to SF2, all Y*4 indices must be divided by 4. This applies to:
+- Pulse table "next" column (byte 3)
+- Instrument pulse_ptr field
 
 ##### Pulse Table Example
 
@@ -207,17 +226,23 @@ The first entry (4 bytes) is used for alternative speed (break speeds).
 
 #### Super Commands
 
+*Complete reference from JCH NewPlayer v21.g5 Final - (D) = Direct command, lasts until next note*
+
 | Command | Description |
 |---------|-------------|
-| `$0x yy` | Slide up speed $xyy |
-| `$2x yy` | Slide down speed $xyy |
-| `$4x yy` | Invoke instrument x with alternative wave pointer yy |
-| `$60 xy` | Vibrato (x=frequency, y=amplitude) |
+| `$0x yy` | (D) Slide up speed $xyy |
+| `$1? ??` | Free |
+| `$2x yy` | (D) Slide down speed $xyy |
+| `$3? ??` | Free |
+| `$4x yy` | Invoke instrument x (00-1f) with alternative wave pointer yy |
+| `$60 xy` | (D) Vibrato (x=frequency, y=amplitude) - canceled by note or slide |
+| `$7? ??` | Free |
 | `$8x xx` | Portamento speed $xxx |
-| `$9x yy` | Set D=x and SR=yy (persistent) |
-| `$Ax yy` | Set D=x and SR=yy directly (until next note) |
-| `$C0 xx` | Set channel wave pointer directly to xx |
-| `$Dx yy` | Set filter/pulse (x=0: filter ptr, x=1: filter value, x=2: pulse ptr) |
+| `$9x yy` | Set D=x and SR=yy (persistent until instrument change) |
+| `$Ax yy` | (D) Set D=x and SR=yy directly (until next note) |
+| `$b? ??` | Free |
+| `$C0 xx` | (D) Set channel wave pointer directly to xx |
+| `$Dx yy` | (D) Set filter/pulse (x=0: filter ptr, x=1: filter value, x=2: pulse ptr) |
 | `$E0 xx` | Set speed to xx |
 | `$F0 xx` | Set master volume |
 
@@ -226,6 +251,13 @@ The first entry (4 bytes) is used for alternative speed (break speeds).
 - Speeds below $02 use alternative speed lookup in filter table
 - Speed lookup table contains up to 4 entries (wraps around)
 - Write $00 as wrap-around mark for shorter tables
+- Speeds of $01 in table are clamped to $02
+
+#### Vibrato and Slide Special Cases
+
+Vibrato and slides only apply to wave table entries with note offset = $00.
+
+Special value $80 in wave table recalculates base note + transpose (enables "Hubbard slide" effect).
 
 #### Memory Layout (Typical Laxity SID)
 
@@ -406,12 +438,12 @@ The NP20 driver is derived from JCH NewPlayer and is the closest match to Laxity
 |--------|-------------|
 | 0 | AD (Attack/Decay) |
 | 1 | SR (Sustain/Release) |
-| 2 | Wave table index |
-| 3 | Pulse table index |
-| 4 | Filter table index |
-| 5 | Command |
-| 6 | Vibrato |
-| 7 | Command value |
+| 2 | Reserved |
+| 3 | Reserved |
+| 4 | Wave table index |
+| 5 | Pulse table index |
+| 6 | Filter table index |
+| 7 | Reserved |
 
 ##### NP20 Commands (2 columns)
 
@@ -453,10 +485,11 @@ When converting from Laxity SID to SF2, the following mappings are applied:
 |--------|-------------|-------|
 | AD | 0 | Direct copy |
 | SR | 1 | Direct copy |
-| Wave table ptr | 2 | Converted to wave table index |
-| Pulse table ptr | 3 | Direct copy |
-| Filter ptr | 4 | Direct copy |
-| - | 5-7 | Set to 0 (no command/vibrato) |
+| - | 2-3 | Reserved (set to 0) |
+| Wave table ptr | 4 | Direct copy |
+| Pulse table ptr | 5 | Divided by 4 (Y*4 to direct index) |
+| Filter ptr | 6 | Direct copy |
+| - | 7 | Reserved (set to 0) |
 
 #### Laxity → Driver 11 Mapping
 
@@ -475,21 +508,12 @@ The SF2 wave table uses a column-major storage format with 2 columns:
 
 | Column | Description |
 |--------|-------------|
-| 0 | Note offset / Control byte |
-| 1 | Waveform value |
+| 0 | Waveform value / Control byte ($7F) |
+| 1 | Note offset / Jump target |
 
-##### Column 0 - Note Offset / Control Bytes
+**Important**: SF2 format stores waveform in column 0 and note in column 1. For `$7F` jump commands, column 0 contains `$7F` and column 1 contains the target index.
 
-| Value | Description |
-|-------|-------------|
-| $00 | No transpose (play base note) |
-| $01-$7D | Semitone offset (positive transpose) |
-| $7E | End/Hold - stop processing, keep last entry |
-| $7F | Jump - next byte is target index |
-| $80 | Recalculate base note + transpose (for Hubbard slide effects) |
-| $81-$FF | Absolute note values (no transpose applied) |
-
-##### Column 1 - Waveform Values
+##### Column 0 - Waveform / Control Values
 
 | Value | Description |
 |-------|-------------|
@@ -498,16 +522,27 @@ The SF2 wave table uses a column-major storage format with 2 columns:
 | $41 | Pulse + Gate |
 | $81 | Noise + Gate |
 | $10/$20/$40/$80 | Same waveforms without gate (gate off) |
+| $7F | Jump command - column 1 contains target index |
+
+##### Column 1 - Note Offset / Jump Target
+
+| Value | Description |
+|-------|-------------|
+| $00 | No transpose (play base note) |
+| $01-$7D | Semitone offset (positive transpose) |
+| $80 | Recalculate base note + transpose (for Hubbard slide effects) |
+| $81-$FF | Absolute note values (no transpose applied) |
+| (with $7F) | Jump target index |
 
 ##### Wave Table Example
 
 ```
 Index  Col0  Col1  Description
-  0    $00   $41   Note offset 0, Pulse+Gate
+  0    $41   $00   Pulse+Gate, Note offset 0
   1    $7F   $00   Jump to index 0 (loop)
-  2    $00   $21   Note offset 0, Saw+Gate
+  2    $21   $00   Saw+Gate, Note offset 0
   3    $7F   $02   Jump to index 2 (loop)
-  4    $00   $11   Note offset 0, Tri+Gate
+  4    $11   $00   Tri+Gate, Note offset 0
   5    $7F   $04   Jump to index 4 (loop)
 ```
 
@@ -526,6 +561,64 @@ When converting from Laxity format, instruments using simple waveforms are mappe
 | Saw ($21) | 2 | Loop at index 2 |
 | Triangle ($11) | 4 | Loop at index 4 |
 | Noise ($81) | 6 | Loop at index 6 |
+
+### SF2 Format Quick Reference
+
+*Based on the official SID Factory II User Manual (2023-09-30)*
+
+#### Key Concepts
+
+**SF2 files are C64 PRG files** - They can run on a C64/emulator with `SYS4093` and also load in the SF2 editor.
+
+**Driver-dependent format** - Table layouts vary by driver. We target **Driver 11** (luxury, full features).
+
+**Template-based** - SF2 files contain driver code plus music data injected into specific offsets.
+
+#### Control Bytes Summary
+
+| Byte | Context | Description |
+|------|---------|-------------|
+| $7F | Tables | End/jump marker |
+| $7E | Sequences | Gate on (+++) |
+| $A0 | Order list | No transpose (default) |
+
+#### Gate System
+
+SF2 uses explicit gate control (different from GoatTracker/CheeseCutter):
+
+- `+++` - Gate on (sustain note)
+- `---` - Gate off (release)
+- `**` - Tie note (no envelope restart)
+
+#### Hard Restart
+
+Prevents the SID "ADSR bug" (Martin Galway's "school band effect"):
+- Driver gates off 2 frames before next note
+- Applies HR table ADSR (default: `$0F $00`)
+- Stabilizes envelope timing
+
+#### Sequence Packing
+
+- Sequences packed in real-time as you edit
+- Can be up to 1024 rows (if packed <256 bytes)
+- Contiguous stacking per track (like Tetris)
+
+#### Available Drivers
+
+| Driver | Description |
+|--------|-------------|
+| 11 | Standard luxury (default) - full features |
+| 12 | Extremely simple - basic effects only |
+| 13 | Rob Hubbard emulation |
+| 15/16 | Tiny drivers for size-constrained projects |
+
+#### Multi-Song Support
+
+- F7 opens song management
+- Each song has own tempo/volume in Init table
+- All songs share sequences and table data
+
+For complete format details, see [docs/SF2_FORMAT_SPEC.md](docs/SF2_FORMAT_SPEC.md).
 
 ## Converter Architecture
 
@@ -560,7 +653,41 @@ python test_converter.py
 
 # Run SF2 format validation (aux pointer check)
 python test_sf2_format.py
+
+# Run automated editor validation (requires SID Factory II)
+python test_sf2_editor.py
 ```
+
+### Automated Editor Validation
+
+The `test_sf2_editor.py` script validates converted SF2 files by loading them in SID Factory II:
+
+```bash
+# Test all SF2 files in SF2/ directory
+python test_sf2_editor.py
+
+# Test specific file
+python test_sf2_editor.py SF2/Angular.sf2
+
+# Convert SID files first, then test
+python test_sf2_editor.py --convert-first
+
+# Skip HTML report generation
+python test_sf2_editor.py --no-report
+```
+
+The test performs:
+1. Launches SID Factory II with each SF2 file
+2. Sends space key to start playback
+3. Captures screenshot to `SF2/screenshots/`
+4. Terminates editor process
+5. Generates HTML report at `SF2/validation_report.html`
+
+**Configuration**: Set `Editor.Skip.Intro = 1` in the SID Factory II `config.ini` for faster testing.
+
+**Requirements**:
+- SID Factory II installed (default path: `C:\Users\mit\Downloads\sidfactory2-master\sidfactory2-master\artifacts\`)
+- Test dependencies: `pip install -r requirements-test.txt`
 
 All 34 unit tests should pass:
 - SID parsing tests
@@ -620,10 +747,13 @@ SIDM2/
 ├── laxity_parser.py     # Laxity format parser
 ├── test_converter.py    # Unit tests
 ├── test_sf2_format.py   # SF2 format validation tests
+├── test_sf2_editor.py   # Automated editor validation
+├── requirements-test.txt # Test dependencies
 ├── README.md            # This file
 ├── CONTRIBUTING.md      # Contribution guidelines
 ├── SID/                 # Input SID files
 ├── SF2/                 # Output SF2 files
+│   └── screenshots/     # Editor screenshots from validation
 └── tools/               # Analysis tools
     ├── siddump.exe      # SID register dump tool
     ├── player-id.exe    # Player identification tool
