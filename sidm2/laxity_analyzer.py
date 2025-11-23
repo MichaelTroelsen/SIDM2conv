@@ -402,11 +402,57 @@ class LaxityPlayerAnalyzer:
         extracted.raw_sequences = laxity_data.sequences
 
         # Create SequenceEvent representation
+        # Parse Laxity sequence format properly:
+        # - 0xA0-0xBF: instrument change (instrument = byte - 0xA0 + 0xA0 for SF2)
+        # - 0xC0-0xCF: command bytes
+        # - 0x80-0x8F: duration/timing
+        # - 0x00-0x6F: note values
+        # - 0x7E: gate on (sustain)
+        # - 0x7F: end marker
         for raw_seq in laxity_data.sequences:
             seq = []
-            for b in raw_seq:
-                if b <= 0x70 or b == 0x7E or b == 0x7F:
-                    seq.append(SequenceEvent(0x80, 0x00, b))
+            current_instr = 0x80  # No change
+            current_cmd = 0x00    # No command
+            i = 0
+            while i < len(raw_seq):
+                b = raw_seq[i]
+
+                # Instrument change: 0xA0-0xBF
+                if 0xA0 <= b <= 0xBF:
+                    current_instr = b  # Keep as-is for SF2 format
+                    i += 1
+                    continue
+
+                # Command: 0xC0-0xCF (followed by parameter byte)
+                elif 0xC0 <= b <= 0xCF:
+                    current_cmd = b
+                    i += 1
+                    # Skip parameter byte
+                    if i < len(raw_seq):
+                        i += 1
+                    continue
+
+                # Duration/timing: 0x80-0x8F
+                elif 0x80 <= b <= 0x8F:
+                    # Duration bytes modify timing, treat as rest/gate
+                    seq.append(SequenceEvent(current_instr, current_cmd, b))
+                    current_instr = 0x80  # Reset to "no change" after use
+                    current_cmd = 0x00
+                    i += 1
+                    continue
+
+                # Note or control byte: 0x00-0x7F
+                elif b <= 0x7F:
+                    seq.append(SequenceEvent(current_instr, current_cmd, b))
+                    current_instr = 0x80  # Reset to "no change" after use
+                    current_cmd = 0x00
+                    i += 1
+                    continue
+
+                else:
+                    # Unknown byte, skip
+                    i += 1
+
             if seq:
                 extracted.sequences.append(seq)
 
