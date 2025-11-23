@@ -190,6 +190,103 @@ def test_sequence_format():
             print(f"  [{i:02d}] 0x{b:02X} - UNKNOWN")
         i += 1
 
+def validate_sf2_aux_pointer(filepath):
+    """
+    Validate that SF2 file doesn't have aux pointer pointing to valid aux data.
+    SID Factory II crashes when loading files with valid aux data pointers.
+
+    Returns: (is_valid, message)
+    """
+    import struct
+
+    with open(filepath, 'rb') as f:
+        data = f.read()
+
+    if len(data) < 0x300:
+        return (False, f"File too small: {len(data)} bytes")
+
+    load_addr = struct.unpack('<H', data[:2])[0]
+    file_size = len(data)
+    max_addr = load_addr + file_size - 2
+
+    # Aux pointer is at memory address $0FFB
+    aux_ptr_offset = 0x0FFB - load_addr + 2
+
+    if aux_ptr_offset >= len(data) - 2:
+        return (False, f"Aux pointer offset 0x{aux_ptr_offset:04X} outside file")
+
+    aux_ptr = struct.unpack('<H', data[aux_ptr_offset:aux_ptr_offset+2])[0]
+
+    # Check if pointer points within file
+    if aux_ptr > max_addr:
+        return (True, f"Aux pointer ${aux_ptr:04X} is beyond file (OK - ignored by SF2)")
+
+    # Calculate file offset of aux data
+    aux_file_offset = aux_ptr - load_addr + 2
+
+    if aux_file_offset >= len(data):
+        return (True, f"Aux offset 0x{aux_file_offset:04X} beyond file (OK - ignored by SF2)")
+
+    # Check if it points to valid aux data (Type 4 or 5)
+    first_byte = data[aux_file_offset]
+
+    if first_byte == 4 or first_byte == 5:
+        # Verify it's actually valid aux data by checking version and size
+        if aux_file_offset + 5 <= len(data):
+            version = struct.unpack('<H', data[aux_file_offset+1:aux_file_offset+3])[0]
+            size = struct.unpack('<H', data[aux_file_offset+3:aux_file_offset+5])[0]
+
+            if 0 < version <= 10 and 0 < size < 0x2000:
+                return (False, f"CRASH RISK: Aux pointer ${aux_ptr:04X} points to valid aux data (Type={first_byte}, Version={version}, Size={size})")
+
+    return (True, f"Aux pointer ${aux_ptr:04X} points to non-aux data (byte 0x{first_byte:02X}) - SF2 will ignore it")
+
+
+def test_all_sf2_files():
+    """Test all SF2 files in the SF2 directory for aux pointer issues"""
+    import os
+
+    print(f"\n{'='*60}")
+    print("SF2 AUX POINTER VALIDATION")
+    print(f"{'='*60}")
+
+    sf2_dir = 'SF2'
+    if not os.path.exists(sf2_dir):
+        print(f"Directory not found: {sf2_dir}")
+        return False
+
+    all_valid = True
+    files_checked = 0
+
+    for filename in sorted(os.listdir(sf2_dir)):
+        if filename.endswith('.sf2'):
+            filepath = os.path.join(sf2_dir, filename)
+            is_valid, message = validate_sf2_aux_pointer(filepath)
+
+            status = "PASS" if is_valid else "FAIL"
+            print(f"\n{filename}: [{status}]")
+            print(f"  {message}")
+
+            if not is_valid:
+                all_valid = False
+            files_checked += 1
+
+    print(f"\n{'='*60}")
+    print(f"Total files checked: {files_checked}")
+    print(f"Result: {'ALL PASSED' if all_valid else 'SOME FAILED'}")
+    print(f"{'='*60}")
+
+    return all_valid
+
+
 if __name__ == '__main__':
-    compare_formats()
-    test_sequence_format()
+    # Run aux pointer validation first
+    aux_valid = test_all_sf2_files()
+
+    # Only run other tests if aux validation passes
+    if aux_valid:
+        compare_formats()
+        test_sequence_format()
+    else:
+        print("\nSkipping other tests due to aux pointer validation failures")
+        sys.exit(1)

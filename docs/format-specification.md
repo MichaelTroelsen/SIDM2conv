@@ -23,6 +23,34 @@
 | $79 | 1 | Page length (v2+) |
 | $7A | 2 | Reserved (v2+) |
 
+### Concrete Example: Angular.sid
+
+```
+Offset  Hex              Value        Field
+------  ---------------  -----------  ----------------
+$00-03  50 53 49 44      "PSID"       Magic ID
+$04-05  00 02            2            Version
+$06-07  00 7C            $007C        Data offset (124)
+$08-09  00 00            0            Load address (from data)
+$0A-0B  10 00            $1000        Init address
+$0C-0D  10 03            $1003        Play address
+$0E-0F  00 01            1            Number of songs
+$10-11  00 01            1            Start song
+$12-15  00 00 00 00      0            Speed flags (VBI)
+$16-35  "Angular"                     Song name
+$36-55  "Thomas Mogensen (DRAX)"      Author
+$56-75  "2017 Camelot/Vibrants"       Copyright
+$76-77  00 24            $0024        Flags (PAL, 6581)
+$7C-7D  00 10            $1000        Load addr (little-endian)
+```
+
+**Notes:**
+- Header values are big-endian (except load address in data section)
+- Load address $0000 in header means read from first 2 bytes of data
+- C64 data starts at offset $7E and loads to $1000
+
+See `docs/SID_FILE_ANALYSIS.md` for complete binary analysis.
+
 ### Version Differences
 
 **Version 1:**
@@ -253,26 +281,38 @@ Control codes:
 
 ## Siddump Output Format
 
-Text format from siddump.exe:
+Text format from siddump.exe (see `docs/SIDDUMP_ANALYSIS.md` for full source analysis):
 
 ```
-| Frame | Freq Note/Abs WF ADSR  | Freq Note/Abs WF ADSR  | Freq Note/Abs WF ADSR  | FCut RC  |
-+-------+-----------------------+-----------------------+-----------------------+---------+
-|  0001 | 0000 ... .. 00 0000  | 0000 ... .. 00 0000  | 0000 ... .. 00 0000  | 0000 00  |
-|  0002 | 1CD6 C-4 +0 41 09F0  | 0000 ... .. 00 0000  | 0000 ... .. 00 0000  | 0400 8F  |
+| Frame | Freq Note/Abs WF ADSR Pul | Freq Note/Abs WF ADSR Pul | Freq Note/Abs WF ADSR Pul | FCut RC Typ V |
++-------+---------------------------+---------------------------+---------------------------+---------------+
+|     0 | 0000  ... ..  00 0000 000 | 0000  ... ..  00 0000 000 | 0000  ... ..  00 0000 000 | 0000 00 Off 0 |
+|     1 | 1CD6  C-4 B0  41 09F0 800 | 0000  ... ..  00 0000 000 | 0E6B  C-3 A4  21 08A0 000 | 0400 8F Low F |
 ```
 
 ### Column Descriptions
 
 **Per Voice (3 voices):**
-- `Freq`: 16-bit frequency value
-- `Note/Abs`: Note name (C-0 to B-7) + detune
-- `WF`: Waveform byte
-- `ADSR`: Attack/Decay + Sustain/Release
+- `Freq`: 16-bit frequency value ($D400/$D401)
+- `Note`: Note name (C-0 to B-7)
+- `Abs`: Absolute note value ($80-$DF)
+- `WF`: Waveform byte ($D404)
+- `ADSR`: Attack/Decay + Sustain/Release ($D405/$D406)
+- `Pul`: Pulse width 12-bit ($D402/$D403)
 
 **Filter:**
-- `FCut`: Filter cutoff (11-bit)
-- `RC`: Resonance (4 bits) + routing/mode (4 bits)
+- `FCut`: Filter cutoff ($D415/$D416)
+- `RC`: Resonance/routing ($D417)
+- `Typ`: Filter type (Off/Low/Bnd/Hi/L+B/L+H/B+H/LBH)
+- `V`: Master volume ($D418 low nibble)
+
+### Special Notations
+
+- `....` = Same as previous frame
+- `...` = No note/data
+- `(C-4 B0)` = Note changed without gate trigger
+- `(+ 000A)` = Frequency sliding up
+- `(- 0010)` = Frequency sliding down
 
 ### Parsing Example
 

@@ -52,6 +52,7 @@ class ExtractedData:
     filtertable: bytes
     # New fields for improvements
     tempo: int = 6  # Default tempo (6 = ~7.5 rows per second at 50Hz)
+    init_volume: int = 0x0F  # Initial master volume (0-15)
     multi_speed: int = 1  # Multi-speed: 1 = normal, 2 = 2x, 4 = 4x speed
     commands: List[bytes] = None
     pointer_tables: dict = None

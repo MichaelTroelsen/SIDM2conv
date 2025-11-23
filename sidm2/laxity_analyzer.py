@@ -60,6 +60,47 @@ class LaxityPlayerAnalyzer:
 
         return 6
 
+    def extract_init_volume(self) -> int:
+        """Extract initial master volume from the SID init routine.
+
+        Searches for patterns like:
+        - LDA #$0F; STA $D418 (volume 15)
+        - LDA #$xF; STA $D418 (volume x)
+
+        Returns:
+            Initial volume (0-15), defaults to 15 if not found
+        """
+        init_offset = self.header.init_address - self.load_address
+
+        # Search for STA $D418 pattern (8D 18 D4) in init routine
+        for i in range(init_offset, min(init_offset + 300, len(self.data) - 5)):
+            # Check for STA $D418
+            if (self.data[i] == 0x8D and
+                self.data[i + 1] == 0x18 and
+                self.data[i + 2] == 0xD4):
+
+                # Look backwards for LDA immediate
+                for j in range(i - 1, max(i - 10, init_offset), -1):
+                    if self.data[j] == 0xA9:  # LDA immediate
+                        value = self.data[j + 1]
+                        # Volume is low nibble
+                        volume = value & 0x0F
+                        logger.debug(f"    Found init volume: ${value:02X} -> volume {volume}")
+                        return volume
+
+        # Alternative: search for LDA #$xF followed by STA to any address
+        # Some players store volume in a variable first
+        for i in range(init_offset, min(init_offset + 200, len(self.data) - 3)):
+            if self.data[i] == 0xA9:  # LDA immediate
+                value = self.data[i + 1]
+                # Check if this looks like a volume value (low nibble)
+                if (value & 0xF0) == 0 and value > 0:
+                    # Check if next instruction is a store
+                    if self.data[i + 2] in (0x85, 0x8D):  # STA
+                        return value & 0x0F
+
+        return 0x0F  # Default to max volume
+
     def detect_multi_speed(self) -> int:
         """Detect if this is a multi-speed tune"""
         play_addr = self.header.play_address
@@ -333,6 +374,7 @@ class LaxityPlayerAnalyzer:
         # Extract other data
         tables = self.find_data_tables()
         tempo = self.extract_tempo()
+        init_volume = self.extract_init_volume()
         multi_speed = self.detect_multi_speed()
         filter_table = self.extract_filter_table()
         pulse_table = self.extract_pulse_table()
@@ -350,6 +392,7 @@ class LaxityPlayerAnalyzer:
             pulsetable=pulse_table,
             filtertable=filter_table,
             tempo=tempo,
+            init_volume=init_volume,
             multi_speed=multi_speed,
             commands=commands,
             pointer_tables=tables

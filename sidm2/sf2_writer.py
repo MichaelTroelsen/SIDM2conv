@@ -10,7 +10,7 @@ from typing import Optional
 from .models import ExtractedData, SF2DriverInfo
 from .table_extraction import find_and_extract_wave_table, extract_all_laxity_tables
 from .instrument_extraction import extract_laxity_instruments, extract_laxity_wave_table
-from .sequence_extraction import get_command_names
+from .sequence_extraction import get_command_names, extract_command_parameters, build_sf2_command_table
 from .exceptions import SF2WriteError, TemplateNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -295,6 +295,7 @@ class SF2Writer:
         self._inject_init_table()
         self._inject_tempo_table()
         self._inject_arp_table()
+        self._inject_commands()
 
         self._print_extraction_summary()
 
@@ -537,14 +538,16 @@ class SF2Writer:
                 wave_ptr = waveform_to_wave_index(lax_instr['wave_for_sf2'])
 
             if is_np20:
+                # NP20 instrument format (8 columns):
+                # 0: AD, 1: SR, 2: ???, 3: ???, 4: Wave, 5: Pulse, 6: Filter, 7: ???
                 sf2_instr = [
                     lax_instr['ad'],
                     lax_instr['sr'],
+                    0x00,
+                    0x00,
                     wave_ptr,
                     pulse_ptr,
                     filter_ptr,
-                    0x00,
-                    0x00,
                     0x00
                 ]
             else:
@@ -783,7 +786,11 @@ class SF2Writer:
         columns = init_table['columns']
         rows = init_table['rows']
 
-        init_entries = [0x00, 0x0F, 0x00, 0x01, 0x02]
+        # Get extracted init volume or use default
+        init_volume = getattr(self.data, 'init_volume', 0x0F)
+
+        # Init table entries: tempo, volume, voice 0 instr, voice 1 instr, voice 2 instr
+        init_entries = [0x00, init_volume, 0x00, 0x01, 0x02]
 
         base_offset = self._addr_to_offset(init_addr)
 
@@ -791,7 +798,7 @@ class SF2Writer:
             if i < rows * columns and base_offset + i < len(self.output):
                 self.output[base_offset + i] = val
 
-        logger.info(f"    Written {len(init_entries)} Init table entries")
+        logger.info(f"    Written {len(init_entries)} Init table entries (volume={init_volume})")
 
     def _inject_tempo_table(self):
         """Inject Tempo table data"""
@@ -856,6 +863,59 @@ class SF2Writer:
                         self.output[offset] = entry[col]
 
         logger.info(f"    Written {len(arp_entries)} Arp table entries")
+
+    def _inject_commands(self):
+        """Inject command table data extracted from Laxity sequences"""
+        logger.info("  Injecting Commands table...")
+
+        if 'Commands' not in self.driver_info.table_addresses:
+            logger.debug("    Warning: No Commands table found in driver")
+            return
+
+        cmd_table = self.driver_info.table_addresses['Commands']
+        cmd_addr = cmd_table['addr']
+        columns = cmd_table['columns']
+        rows = cmd_table['rows']
+
+        # Extract command parameters from raw sequences
+        if hasattr(self.data, 'raw_sequences') and self.data.raw_sequences:
+            command_params = extract_command_parameters(
+                self.data.c64_data,
+                self.data.load_address,
+                self.data.raw_sequences
+            )
+
+            # Build the full 64-entry command table
+            sf2_commands = build_sf2_command_table(command_params)
+
+            logger.info(f"    Extracted {len(command_params)} unique commands from sequences")
+        else:
+            # Default commands if no sequences available
+            sf2_commands = [(0, 0, 0)] * 64
+            logger.debug("    Using default command table (no sequences available)")
+
+        # Write commands to SF2 file
+        # SF2 command table: 3 columns (type, param1, param2), 64 rows
+        # Format is column-major: all types first, then all param1s, then all param2s
+        base_offset = self._addr_to_offset(cmd_addr)
+
+        commands_written = 0
+        for col in range(min(columns, 3)):
+            for row in range(min(rows, 64)):
+                offset = base_offset + (col * rows) + row
+                if offset < len(self.output) and row < len(sf2_commands):
+                    cmd_type, param1, param2 = sf2_commands[row]
+                    if col == 0:
+                        self.output[offset] = cmd_type
+                    elif col == 1:
+                        self.output[offset] = param1
+                    else:
+                        self.output[offset] = param2
+
+                    if col == 0:
+                        commands_written += 1
+
+        logger.info(f"    Written {commands_written} command entries")
 
     def _inject_auxiliary_data(self):
         """Inject auxiliary data with instrument and command names"""
