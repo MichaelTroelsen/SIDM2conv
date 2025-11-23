@@ -44,6 +44,18 @@ Thumbs.db
 *.tmp
 *.temp
 *.bak
+nul
+
+# Debug output files
+SF2/*.dump
+SF2/*_info.txt
+SF2/*_siddump*.txt
+SF2/*_disasm.txt
+SID/*.wav
+
+# Development tools (not for distribution)
+learnings/
+validate_extraction.py
 
 # Claude Code local settings
 .claude/settings.local.json
