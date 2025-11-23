@@ -23,6 +23,15 @@ from .sequence_extraction import analyze_sequence_commands, extract_command_para
 from .laxity_analyzer import LaxityPlayerAnalyzer
 from .sf2_writer import SF2Writer
 from .siddump import extract_from_siddump
+from .note_utils import (
+    laxity_note_to_name,
+    note_name_to_laxity,
+    extract_notes_from_siddump,
+    extract_first_notes_from_siddump,
+    extract_notes_from_sequences,
+    compare_notes,
+    generate_note_comparison_report,
+)
 from .logging_config import setup_logging, get_logger
 
 __all__ = [
@@ -52,6 +61,15 @@ __all__ = [
     'extract_command_parameters',
     'get_command_names',
     'extract_from_siddump',
+
+    # Note utilities
+    'laxity_note_to_name',
+    'note_name_to_laxity',
+    'extract_notes_from_siddump',
+    'extract_first_notes_from_siddump',
+    'extract_notes_from_sequences',
+    'compare_notes',
+    'generate_note_comparison_report',
 
     # Writer
     'SF2Writer',

@@ -25,6 +25,7 @@ from sidm2 import (
     extract_from_siddump,
     get_command_names,
     analyze_sequence_commands,
+    generate_note_comparison_report,
 )
 from sidm2.table_extraction import (
     extract_all_laxity_tables,
@@ -36,6 +37,7 @@ from sidm2.instrument_extraction import (
     extract_laxity_instruments,
     extract_laxity_wave_table,
 )
+from sidm2.laxity_analyzer import LaxityPlayerAnalyzer
 from laxity_parser import LaxityParser
 
 # Version info
@@ -196,11 +198,17 @@ def generate_info_file(sf2_dir, sid_file, sid_dir, output_file, converter_output
         # Extract sequences for command analysis
         laxity_parser = LaxityParser(c64_data, load_address)
         raw_sequences, _ = laxity_parser.find_sequences()
+
+        # Extract parsed sequences for note comparison
+        analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+        extracted_data = analyzer.extract_music_data()
+        parsed_sequences = extracted_data.sequences if extracted_data else []
     except Exception as e:
         tables_data = {}
         laxity_instruments = []
         wave_entries = []
         raw_sequences = []
+        parsed_sequences = []
 
     # Write info file
     with open(info_file, 'w', encoding='utf-8') as f:
@@ -374,6 +382,25 @@ def generate_info_file(sf2_dir, sid_file, sid_dir, output_file, converter_output
             f.write(f"Error getting debug info: {e}\n")
         f.write(f"\n")
 
+        # Note comparison analysis - read dump file if it exists
+        dump_file_path = os.path.join(sf2_dir, sid_file[:-4] + '.dump')
+        if parsed_sequences and os.path.exists(dump_file_path):
+            try:
+                with open(dump_file_path, 'r', encoding='utf-8') as dump_f:
+                    dump_content = dump_f.read()
+                note_report = generate_note_comparison_report(dump_content, parsed_sequences)
+                f.write(note_report)
+            except Exception as e:
+                f.write(f"Note Comparison Analysis\n")
+                f.write(f"-" * 50 + "\n")
+                f.write(f"Error generating note comparison: {e}\n")
+                f.write(f"\n")
+        elif parsed_sequences:
+            f.write(f"Note Comparison Analysis\n")
+            f.write(f"-" * 50 + "\n")
+            f.write(f"No siddump file available for comparison\n")
+            f.write(f"\n")
+
         f.write(f"Generated:     {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
     return info_file
@@ -459,15 +486,15 @@ def convert_all(driver_type='np20', sid_dir='SID', sf2_dir='SF2'):
                     except (ValueError, IndexError):
                         pass
 
-            # Generate info file
+            # Generate siddump file FIRST (needed for note comparison in info file)
+            dump_file = os.path.join(sf2_dir, sid_file[:-4] + '.dump')
+            dump_success = run_siddump(input_path, dump_file)
+
+            # Generate info file (uses dump file for note comparison)
             info_file = generate_info_file(
                 sf2_dir, sid_file, sid_dir, output_file, result.stdout,
                 player_name, sequences, instruments, orderlists, size, driver_type
             )
-
-            # Generate siddump file
-            dump_file = os.path.join(sf2_dir, sid_file[:-4] + '.dump')
-            dump_success = run_siddump(input_path, dump_file)
 
             print(f"       -> {output_file} ({size:,} bytes, {sequences} seq, {instruments} instr)")
             print(f"       -> {os.path.basename(info_file)}")

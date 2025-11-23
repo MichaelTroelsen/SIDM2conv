@@ -458,7 +458,6 @@ class SF2Writer:
         is_np20 = columns == 8
 
         for lax_instr in laxity_instruments:
-            # Laxity wave_ptr is a direct row index - use as-is
             wave_ptr = lax_instr.get('wave_ptr', 0)
             pulse_ptr = lax_instr.get('pulse_ptr', 0)
             filter_ptr = lax_instr.get('filter_ptr', 0)
@@ -466,6 +465,9 @@ class SF2Writer:
             # Convert Laxity pulse_ptr from Y*4 indexing to direct index
             if pulse_ptr != 0 and pulse_ptr % 4 == 0:
                 pulse_ptr = pulse_ptr // 4
+
+            if wave_ptr == 0:
+                wave_ptr = waveform_to_wave_index(lax_instr['wave_for_sf2'])
 
             if is_np20:
                 # NP20 instrument format (8 columns):
