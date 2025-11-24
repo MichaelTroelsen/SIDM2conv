@@ -51,8 +51,8 @@ from laxity_parser import LaxityParser
 from validate_extraction import parse_dump_file
 
 # Version info
-__version__ = "0.5.0"
-__build_date__ = "2025-11-22"
+__version__ = "0.5.1"
+__build_date__ = "2025-11-24"
 
 
 def run_player_id(sid_path):

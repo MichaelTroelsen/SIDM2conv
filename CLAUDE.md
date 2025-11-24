@@ -20,7 +20,7 @@ python convert_all.py
 SIDM2/
 ├── sid_to_sf2.py          # Main converter
 ├── convert_all.py         # Batch conversion script
-├── test_converter.py      # Unit tests (57 tests)
+├── test_converter.py      # Unit tests (69 tests)
 ├── test_sf2_format.py     # Format validation tests
 ├── laxity_parser.py       # Dedicated Laxity player parser
 ├── SID/                   # Input SID files

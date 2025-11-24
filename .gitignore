@@ -51,7 +51,18 @@ SF2/*.dump
 SF2/*_info.txt
 SF2/*_siddump*.txt
 SF2/*_disasm.txt
+SF2/confidence_overview.txt
+SF2/validation_report.html
+SF2/screenshots/
 SID/*.wav
+
+# Test/coverage artifacts
+.coveragerc
+pytest.ini
+.pytest_cache/
+htmlcov/
+coverage.xml
+extracted_instruments.json
 
 # Development tools (not for distribution)
 learnings/
