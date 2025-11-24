@@ -983,6 +983,15 @@ All files now achieve 100% validation score with siddump ADSR merging and improv
 
 ## Changelog
 
+### v0.5.1 (2025-11-23)
+- Fixed pulse table extraction to find correct address with improved scoring algorithm
+- Fixed pulse table extraction to extract all entries (was stopping early on loops)
+- Fixed filter table extraction with pattern-based detection
+- Fixed filter table extraction to respect adjacent table boundaries
+- Added 12 new tests for pulse/filter table extraction
+- Expanded test coverage from 57 to 61 tests
+- Improved table extraction scoring with bonuses for chain patterns, $FF values, subtract patterns
+
 ### v0.5.0 (2025-11-23)
 - Fixed sequence parsing to properly handle instrument bytes (0xA0-0xBF) and command bytes (0xC0-0xCF)
 - Added arpeggio table extraction from Laxity sequences

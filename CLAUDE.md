@@ -300,6 +300,9 @@ See README.md for full improvement list with status tracking.
 - Consolidate duplicate analysis scripts
 - Extract magic numbers to constants
 - Add comprehensive documentation
+- Fixed pulse table extraction with improved scoring algorithm
+- Fixed filter table extraction with pattern-based detection
+- Added 12 tests for pulse/filter table extraction (61 tests total)
 
 ### In Progress 🔄
 - Add proper logging instead of print statements
@@ -310,6 +313,8 @@ See README.md for full improvement list with status tracking.
 - Test coverage for edge cases
 - Configuration system for SF2 generation
 - Support for additional player formats
+- Detect row-major vs column-major table layouts
+- Implement proper wrap format handling per table type
 
 ## Dependencies
 

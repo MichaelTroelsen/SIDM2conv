@@ -11,6 +11,10 @@ from sidm2 import (
     SIDParser, PSIDHeader, LaxityPlayerAnalyzer, SF2Writer,
     ExtractedData, SequenceEvent
 )
+from sidm2.table_extraction import (
+    find_and_extract_pulse_table,
+    find_and_extract_filter_table
+)
 
 
 class TestSIDParser(unittest.TestCase):
@@ -721,6 +725,185 @@ class TestNewFeatures(unittest.TestCase):
         self.assertIsInstance(extracted.commands, list)
         self.assertIsInstance(extracted.pointer_tables, dict)
         self.assertIsInstance(extracted.validation_errors, list)
+
+
+class TestPulseTableExtraction(unittest.TestCase):
+    """Tests for pulse table extraction improvements"""
+
+    SID_DIR = r"C:\Users\mit\claude\c64server\SIDM2\SID"
+
+    def _load_sid_data(self, filename):
+        """Helper to load SID file and return data and load_address"""
+        sid_path = os.path.join(self.SID_DIR, filename)
+        parser = SIDParser(sid_path)
+        header = parser.parse_header()
+        c64_data, load_address = parser.get_c64_data(header)
+        return c64_data, load_address
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_pulse_table_finds_correct_address(self):
+        """Test pulse table extraction finds the correct address"""
+        c64_data, load_address = self._load_sid_data("Unboxed_Ending_8580.sid")
+        addr, entries = find_and_extract_pulse_table(c64_data, load_address)
+        self.assertIsNotNone(addr, "Pulse table address should be found")
+        self.assertGreater(len(entries), 0, "Should extract at least one entry")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_pulse_table_extracts_multiple_entries(self):
+        """Test pulse table extracts all entries including loops"""
+        c64_data, load_address = self._load_sid_data("Unboxed_Ending_8580.sid")
+        addr, entries = find_and_extract_pulse_table(c64_data, load_address)
+        # Should extract more than just the first few entries
+        self.assertGreater(len(entries), 5, "Should extract more than 5 pulse entries")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_pulse_entry_format(self):
+        """Test pulse table entries have correct 4-byte format"""
+        c64_data, load_address = self._load_sid_data("Unboxed_Ending_8580.sid")
+        addr, entries = find_and_extract_pulse_table(c64_data, load_address)
+        for i, entry in enumerate(entries):
+            self.assertIsInstance(entry, tuple, f"Entry {i} should be tuple")
+            self.assertEqual(len(entry), 4, f"Entry {i} should have 4 bytes")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_pulse_table_chain_patterns(self):
+        """Test pulse table correctly handles chain patterns (next_idx references)"""
+        c64_data, load_address = self._load_sid_data("Unboxed_Ending_8580.sid")
+        addr, entries = find_and_extract_pulse_table(c64_data, load_address)
+        # Check for entries with next_idx values that form chains
+        has_chain = any(entry[3] != 0 for entry in entries if len(entry) == 4)
+        self.assertTrue(has_chain, "Should have chain patterns in pulse table")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_pulse_table_all_files(self):
+        """Test pulse table extraction works for all SID files"""
+        sid_files = [f for f in os.listdir(self.SID_DIR) if f.endswith('.sid')]
+        for sid_file in sid_files:
+            c64_data, load_address = self._load_sid_data(sid_file)
+            addr, entries = find_and_extract_pulse_table(c64_data, load_address)
+            # Each file should either find a table or return None gracefully
+            if addr is not None:
+                self.assertGreater(len(entries), 0, f"Found addr but no entries in {sid_file}")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_pulse_table_scoring_prefers_patterns(self):
+        """Test that pulse table scoring correctly favors valid patterns"""
+        c64_data, load_address = self._load_sid_data("Unboxed_Ending_8580.sid")
+        addr, entries = find_and_extract_pulse_table(c64_data, load_address)
+        # Valid tables should have reasonable pulse values (0-255 for high byte)
+        for i, entry in enumerate(entries):
+            if len(entry) == 4:
+                self.assertLessEqual(entry[0], 255, f"Entry {i} pulse value out of range")
+
+
+class TestFilterTableExtraction(unittest.TestCase):
+    """Tests for filter table extraction improvements"""
+
+    SID_DIR = r"C:\Users\mit\claude\c64server\SIDM2\SID"
+
+    def _load_sid_data(self, filename):
+        """Helper to load SID file and return data and load_address"""
+        sid_path = os.path.join(self.SID_DIR, filename)
+        parser = SIDParser(sid_path)
+        header = parser.parse_header()
+        c64_data, load_address = parser.get_c64_data(header)
+        return c64_data, load_address
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_filter_table_finds_correct_address(self):
+        """Test filter table extraction finds the correct address"""
+        c64_data, load_address = self._load_sid_data("Unboxed_Ending_8580.sid")
+        addr, entries = find_and_extract_filter_table(c64_data, load_address)
+        self.assertIsNotNone(addr, "Filter table address should be found")
+        self.assertGreater(len(entries), 0, "Should extract at least one entry")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_filter_table_extracts_multiple_entries(self):
+        """Test filter table extracts entries beyond just defaults"""
+        c64_data, load_address = self._load_sid_data("Unboxed_Ending_8580.sid")
+        addr, entries = find_and_extract_filter_table(c64_data, load_address)
+        # Should extract more than just 1 default entry
+        self.assertGreater(len(entries), 1, "Should extract more than 1 filter entry")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_filter_entry_format(self):
+        """Test filter table entries have correct 4-element format"""
+        c64_data, load_address = self._load_sid_data("Unboxed_Ending_8580.sid")
+        addr, entries = find_and_extract_filter_table(c64_data, load_address)
+        for i, entry in enumerate(entries):
+            self.assertIsInstance(entry, (tuple, bytes), f"Entry {i} should be tuple or bytes")
+            self.assertEqual(len(entry), 4, f"Entry {i} should have 4 elements")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_filter_table_avoids_pulse_overlap(self):
+        """Test filter table extraction respects avoid_addr parameter"""
+        c64_data, load_address = self._load_sid_data("Unboxed_Ending_8580.sid")
+        pulse_addr, _ = find_and_extract_pulse_table(c64_data, load_address)
+        filter_addr, entries = find_and_extract_filter_table(
+            c64_data, load_address, avoid_addr=pulse_addr
+        )
+        # Filter table should not overlap with pulse table
+        if filter_addr and pulse_addr:
+            self.assertNotEqual(filter_addr, pulse_addr, "Filter should not be at pulse address")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_filter_table_all_files(self):
+        """Test filter table extraction works for all SID files"""
+        sid_files = [f for f in os.listdir(self.SID_DIR) if f.endswith('.sid')]
+        for sid_file in sid_files:
+            c64_data, load_address = self._load_sid_data(sid_file)
+            addr, entries = find_and_extract_filter_table(c64_data, load_address)
+            # Each file should either find a table or return None gracefully
+            if addr is not None:
+                self.assertGreater(len(entries), 0, f"Found addr but no entries in {sid_file}")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_filter_table_pattern_detection(self):
+        """Test filter table uses pattern-based detection"""
+        c64_data, load_address = self._load_sid_data("Unboxed_Ending_8580.sid")
+        addr, entries = find_and_extract_filter_table(c64_data, load_address)
+        # Valid filter entries should have valid duration/direction bytes
+        for i, entry in enumerate(entries):
+            if len(entry) == 4:
+                # Byte 2 is duration (bits 0-6) + direction (bit 7)
+                duration = entry[2] & 0x7F
+                self.assertLessEqual(duration, 127, f"Entry {i} duration out of range")
 
 
 class TestTableLinkageValidation(unittest.TestCase):

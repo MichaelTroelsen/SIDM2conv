@@ -98,21 +98,33 @@ class SF2Writer:
         logger.info(f"File size: {len(self.output)} bytes")
 
     def _find_template(self, driver_type: str = 'driver11') -> Optional[str]:
-        """Find an SF2 template file to use as base"""
+        """Find an SF2 template file to use as base
+
+        Args:
+            driver_type: Driver to use - 'driver11' (d11) or 'np20' (default)
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
         driver_templates = {
             'driver11': [
+                os.path.join(base_dir, 'G5', 'drivers', 'sf2driver11_05.prg'),
+                os.path.join(base_dir, 'G5', 'drivers', 'sf2driver11_00.prg'),
                 'template.sf2',
                 r'C:\Users\mit\Downloads\sidfactory2-master\sidfactory2-master\SIDFactoryII\music\Driver 11 Test - Arpeggio.sf2',
             ],
             'np20': [
+                os.path.join(base_dir, 'G5', 'drivers', 'sf2driver_np20_00.prg'),
                 'template_np20.sf2',
                 r'C:\Users\mit\Downloads\sidfactory2-master\sidfactory2-master\SIDFactoryII\drivers\sf2driver_np20_00.prg',
                 r'C:\Users\mit\Downloads\SIDFactoryII_Win32_20231002\drivers\sf2driver_np20_00.prg',
             ],
         }
 
+        # Support shorthand aliases
+        if driver_type in ('d11', '11'):
+            driver_type = 'driver11'
+
         search_paths = driver_templates.get(driver_type, driver_templates['driver11'])
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
         for path in search_paths:
             if os.path.isabs(path):
@@ -471,6 +483,11 @@ class SF2Writer:
         sf2_instruments = []
         is_np20 = columns == 8
 
+        # Get valid wave entry points for validation
+        from .table_extraction import get_valid_wave_entry_points
+        valid_wave_points = get_valid_wave_entry_points(wave_entries) if wave_entries else {0}
+        wave_table_size = len(wave_entries) if wave_entries else 0
+
         for lax_instr in laxity_instruments:
             wave_ptr = lax_instr.get('wave_ptr', 0)
             pulse_ptr = lax_instr.get('pulse_ptr', 0)
@@ -482,6 +499,17 @@ class SF2Writer:
 
             if wave_ptr == 0:
                 wave_ptr = waveform_to_wave_index(lax_instr['wave_for_sf2'])
+
+            # Validate wave pointer - must be within wave table bounds and at valid entry point
+            if wave_table_size > 0 and wave_ptr >= wave_table_size:
+                # Find closest valid entry point that's within bounds
+                valid_in_bounds = [p for p in valid_wave_points if p < wave_table_size]
+                if valid_in_bounds:
+                    # Find the closest valid entry point
+                    wave_ptr = min(valid_in_bounds, key=lambda p: abs(p - wave_ptr))
+                else:
+                    wave_ptr = 0
+                logger.debug(f"    Clamped wave_ptr for instrument {lax_instr['index']} to {wave_ptr}")
 
             if is_np20:
                 # NP20 instrument format (8 columns):
@@ -622,7 +650,10 @@ class SF2Writer:
         hr_addr = hr_table['addr']
         rows = hr_table['rows']
 
-        hr_entries = [(0x0F, 0x00)]
+        # Use extracted HR table or default
+        hr_entries = getattr(self.data, 'hr_table', None)
+        if not hr_entries:
+            hr_entries = [(0x0F, 0x00)]  # Default fallback
 
         base_offset = self._addr_to_offset(hr_addr)
 
@@ -635,7 +666,7 @@ class SF2Writer:
             if i < rows and col1_offset + i < len(self.output):
                 self.output[col1_offset + i] = wave
 
-        logger.info(f"    Written {len(hr_entries)} HR table entries")
+        logger.info(f"    Written {len(hr_entries)} HR table entries (frames={hr_entries[0][0]})")
 
     def _inject_pulse_table(self):
         """Inject pulse table data extracted from Laxity SID"""
@@ -732,11 +763,12 @@ class SF2Writer:
         columns = init_table['columns']
         rows = init_table['rows']
 
-        # Get extracted init volume or use default
-        init_volume = getattr(self.data, 'init_volume', 0x0F)
-
-        # Init table entries: tempo, volume, voice 0 instr, voice 1 instr, voice 2 instr
-        init_entries = [0x00, init_volume, 0x00, 0x01, 0x02]
+        # Use extracted init table or build from defaults
+        init_entries = getattr(self.data, 'init_table', None)
+        if not init_entries:
+            # Fallback to building from init_volume
+            init_volume = getattr(self.data, 'init_volume', 0x0F)
+            init_entries = [0x00, init_volume, 0x00, 0x01, 0x02]
 
         base_offset = self._addr_to_offset(init_addr)
 
@@ -744,6 +776,7 @@ class SF2Writer:
             if i < rows * columns and base_offset + i < len(self.output):
                 self.output[base_offset + i] = val
 
+        init_volume = init_entries[1] if len(init_entries) > 1 else 0x0F
         logger.info(f"    Written {len(init_entries)} Init table entries (volume={init_volume})")
 
     def _inject_tempo_table(self):
@@ -764,6 +797,15 @@ class SF2Writer:
         rows = tempo_table['rows']
 
         tempo = self.data.tempo if hasattr(self.data, 'tempo') else 6
+        multi_speed = getattr(self.data, 'multi_speed', 1)
+
+        # Adjust tempo for multi-speed tunes
+        # Multi-speed tunes call the play routine multiple times per frame
+        # To maintain correct playback speed, we divide tempo by multi-speed factor
+        if multi_speed > 1:
+            adjusted_tempo = max(1, tempo // multi_speed)
+            logger.info(f"    Multi-speed tune detected ({multi_speed}x), adjusting tempo: {tempo} -> {adjusted_tempo}")
+            tempo = adjusted_tempo
 
         tempo_entries = [tempo, 0x7F]
 

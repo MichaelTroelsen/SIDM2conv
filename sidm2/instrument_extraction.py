@@ -57,12 +57,22 @@ def extract_laxity_instruments(data: bytes, load_addr: int, wave_table: Optional
 
             real_instr_count = i + 1
 
-            restart = instr_data[2]
-            filter_setting = instr_data[3]
-            filter_ptr = instr_data[4]
-            pulse_ptr = instr_data[5]
-            pulse_property = instr_data[6]
+            # Laxity instrument format (8 bytes):
+            # 0: AD, 1: SR, 2-4: flags/unknown, 5: Pulse param, 6: Pulse Ptr, 7: Wave Ptr
+            pulse_param = instr_data[5]
+            pulse_ptr = instr_data[6]
             wave_ptr = instr_data[7]
+            filter_ptr = 0  # Filter pointer not directly in instrument table
+
+            # Flags/control bytes (bytes 2-4)
+            flags1 = instr_data[2]
+            flags2 = instr_data[3]
+            flags3 = instr_data[4]
+
+            # Keep compatibility fields
+            restart = flags1  # Use first flag byte as restart value
+            filter_setting = flags3  # Use third flag byte as filter setting
+            pulse_property = 0
 
             wave_name = "Wave"
             wave_for_sf2 = 0x41

@@ -12,6 +12,10 @@ from .table_extraction import (
     find_and_extract_wave_table,
     find_and_extract_pulse_table,
     find_and_extract_filter_table,
+    extract_hr_table,
+    extract_init_table,
+    extract_arp_table,
+    extract_command_table,
 )
 from .instrument_extraction import extract_laxity_instruments, extract_laxity_wave_table
 from .sequence_extraction import get_command_names, analyze_sequence_commands
@@ -102,11 +106,30 @@ class LaxityPlayerAnalyzer:
         return 0x0F  # Default to max volume
 
     def detect_multi_speed(self) -> int:
-        """Detect if this is a multi-speed tune"""
+        """Detect if this is a multi-speed tune.
+
+        Multi-speed tunes call the play routine multiple times per frame.
+        Detection methods:
+        1. Check PSID speed flag (bit indicates CIA timer usage)
+        2. Count JSR instructions to play address
+        3. Look for CIA timer setup patterns
+
+        Returns:
+            1 = normal (1x per frame)
+            2 = 2x per frame
+            4 = 4x per frame
+        """
+        # Check PSID header speed flag
+        # speed=0 means VBlank (50/60 Hz), speed=1 means CIA timer
+        if hasattr(self.header, 'speed') and self.header.speed == 1:
+            # CIA timer - likely multi-speed
+            logger.debug("    PSID speed flag indicates CIA timer")
+
         play_addr = self.header.play_address
         play_lo = play_addr & 0xFF
         play_hi = (play_addr >> 8) & 0xFF
 
+        # Count JSR instructions to play address
         jsr_count = 0
         for i in range(len(self.data) - 3):
             if self.data[i] == 0x20:  # JSR
@@ -115,35 +138,43 @@ class LaxityPlayerAnalyzer:
                 if target_lo == play_lo and target_hi == play_hi:
                     jsr_count += 1
 
+        # Look for CIA timer setup patterns
+        # Common pattern: LDA #$xx, STA $DC04 (timer low), LDA #$xx, STA $DC05 (timer high)
+        cia_timer_detected = False
+        for i in range(len(self.data) - 6):
+            # Check for STA $DC04 or STA $DC05 (CIA timer registers)
+            if (self.data[i] == 0x8D and
+                self.data[i + 1] in (0x04, 0x05) and
+                self.data[i + 2] == 0xDC):
+                cia_timer_detected = True
+                break
+
+        # Determine multi-speed factor
         if jsr_count >= 4:
             return 4
         elif jsr_count >= 2:
+            return 2
+        elif cia_timer_detected and hasattr(self.header, 'speed') and self.header.speed == 1:
+            # CIA timer but no multiple JSRs - assume 2x
             return 2
 
         return 1
 
     def extract_filter_table(self) -> bytes:
-        """Extract filter modulation table"""
+        """Extract filter modulation table from Laxity SID.
+
+        Returns bytes in SF2 format: 4 bytes per entry (cutoff, step, duration, next).
+        """
+        addr, entries = find_and_extract_filter_table(self.data, self.load_address)
+
+        if not entries:
+            return b''
+
+        # Convert list of (cutoff, step, duration, next) tuples to bytes
         filter_data = bytearray()
-
-        for addr in range(0x1A00, 0x1C00):
-            offset = addr - self.load_address
-            if offset < 0 or offset >= len(self.data) - 64:
-                continue
-
-            is_filter = True
-            prev_val = None
-            for i in range(32):
-                val = self.get_byte(addr + i)
-                if prev_val is not None:
-                    if abs(val - prev_val) > 32:
-                        is_filter = False
-                        break
-                prev_val = val
-
-            if is_filter:
-                filter_data = bytes([self.get_byte(addr + i) for i in range(64)])
-                break
+        for entry in entries:
+            for byte_val in entry:
+                filter_data.append(byte_val)
 
         return bytes(filter_data)
 
@@ -173,6 +204,27 @@ class LaxityPlayerAnalyzer:
                 break
 
         return bytes(pulse_data)
+
+    def extract_wave_table(self) -> bytes:
+        """Extract wave table from Laxity SID.
+
+        Returns bytes in SF2 format: (note_offset, waveform) pairs.
+        """
+        from .table_extraction import find_and_extract_wave_table
+
+        addr, entries = find_and_extract_wave_table(self.data, self.load_address)
+
+        if not entries:
+            return b''
+
+        # Convert list of (waveform, note_offset) tuples to bytes
+        # SF2 format is (note_offset, waveform) pairs
+        wave_data = bytearray()
+        for waveform, note_offset in entries:
+            wave_data.append(note_offset)
+            wave_data.append(waveform)
+
+        return bytes(wave_data)
 
     def extract_commands(self) -> List[bytes]:
         """Extract command/effect definitions"""
@@ -378,7 +430,16 @@ class LaxityPlayerAnalyzer:
         multi_speed = self.detect_multi_speed()
         filter_table = self.extract_filter_table()
         pulse_table = self.extract_pulse_table()
+        wave_table = self.extract_wave_table()
         commands = self.extract_commands()
+
+        # Extract HR and Init tables
+        hr_table = extract_hr_table(self.data, self.load_address, self.header.init_address)
+        init_table = extract_init_table(self.data, self.load_address, self.header.init_address,
+                                        tempo, init_volume)
+
+        # Extract arpeggio table
+        arp_table = extract_arp_table(self.data, self.load_address)
 
         # Create extracted data structure
         extracted = ExtractedData(
@@ -388,14 +449,17 @@ class LaxityPlayerAnalyzer:
             sequences=[],
             orderlists=[],
             instruments=[],
-            wavetable=b'',
+            wavetable=wave_table,
             pulsetable=pulse_table,
             filtertable=filter_table,
             tempo=tempo,
             init_volume=init_volume,
             multi_speed=multi_speed,
             commands=commands,
-            pointer_tables=tables
+            pointer_tables=tables,
+            hr_table=hr_table,
+            init_table=init_table,
+            arp_table=arp_table
         )
 
         # Store raw sequences

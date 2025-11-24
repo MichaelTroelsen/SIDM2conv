@@ -60,6 +60,8 @@ class ExtractedData:
     raw_sequences: List[bytes] = None
     siddump_data: dict = None  # Data from siddump extraction
     arp_table: List[Tuple[int, int, int, int]] = None  # Extracted arpeggio table
+    hr_table: List[Tuple[int, int]] = None  # Extracted HR (Hard Restart) table
+    init_table: List[int] = None  # Extracted Init table [tempo, volume, instr0, instr1, instr2]
 
     def __post_init__(self):
         if self.commands is None:
