@@ -67,7 +67,7 @@ def analyze_sid_file(filepath: str):
     return extracted
 
 
-def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = 'np20'):
+def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = 'driver11'):
     """Convert a SID file to SF2 format
 
     Args:
@@ -178,8 +178,8 @@ def main():
     driver_group.add_argument(
         '--driver', '-d',
         choices=['np20', 'driver11'],
-        default='np20',
-        help='Target driver type (default: np20 - NewPlayer 20, similar to Laxity)'
+        default='driver11',
+        help='Target driver type (default: driver11 - recommended for best compatibility)'
     )
     driver_group.add_argument(
         '--both', '-b',

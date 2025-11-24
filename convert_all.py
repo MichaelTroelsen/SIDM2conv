@@ -24,7 +24,10 @@ import os
 import sys
 import argparse
 import subprocess
+import logging
 from datetime import datetime
+from pathlib import Path
+from typing import Optional, Dict, List, Tuple
 import re
 
 # Import from sidm2 package for table extraction
@@ -47,6 +50,7 @@ from sidm2.instrument_extraction import (
     extract_laxity_wave_table,
 )
 from sidm2.laxity_analyzer import LaxityPlayerAnalyzer
+from sidm2.exceptions import TableExtractionError
 from laxity_parser import LaxityParser
 from validate_extraction import parse_dump_file
 
@@ -54,9 +58,19 @@ from validate_extraction import parse_dump_file
 __version__ = "0.5.1"
 __build_date__ = "2025-11-24"
 
+# Setup logging
+logger = logging.getLogger(__name__)
 
-def run_player_id(sid_path):
-    """Run player-id.exe on a SID file and return the detected player."""
+
+def run_player_id(sid_path: str) -> str:
+    """Run player-id.exe on a SID file and return the detected player.
+
+    Args:
+        sid_path: Path to the SID file
+
+    Returns:
+        Detected player name or error message
+    """
     player_id_exe = os.path.join('tools', 'player-id.exe')
 
     if not os.path.exists(player_id_exe):
@@ -79,11 +93,17 @@ def run_player_id(sid_path):
                     return parts[-1]
 
         return "Unknown"
-    except Exception as e:
+    except subprocess.TimeoutExpired:
+        return "Error: player-id timed out"
+    except subprocess.CalledProcessError as e:
+        return f"Error: player-id failed with code {e.returncode}"
+    except FileNotFoundError:
+        return "Error: player-id.exe not found"
+    except (OSError, IOError) as e:
         return f"Error: {str(e)}"
 
 
-def run_siddump(sid_path, output_path, playback_time=60):
+def run_siddump(sid_path: str, output_path: str, playback_time: int = 60) -> bool:
     """Run siddump.exe on a SID file and save output to .dump file.
 
     Args:
@@ -114,12 +134,21 @@ def run_siddump(sid_path, output_path, playback_time=60):
             return True
         else:
             return False
-    except Exception as e:
+    except subprocess.TimeoutExpired:
+        logger.warning(f"siddump timed out for {sid_path}")
+        return False
+    except subprocess.CalledProcessError as e:
+        logger.warning(f"siddump failed with code {e.returncode}")
+        return False
+    except (FileNotFoundError, OSError, IOError) as e:
+        logger.warning(f"Failed to run siddump or write output: {e}")
         return False
 
 
-def generate_info_file(sf2_dir, sid_file, sid_dir, output_files, converter_output, player_name,
-                       sequences, instruments, orderlists, file_sizes, driver_types):
+def generate_info_file(sf2_dir: str, sid_file: str, sid_dir: str, output_files: Dict[str, str],
+                       converter_output: str, player_name: str, sequences: List,
+                       instruments: List, orderlists: List, file_sizes: Dict[str, int],
+                       driver_types: List[str]) -> None:
     """Generate an info text file for a converted SID with all table data.
 
     Args:
@@ -232,7 +261,16 @@ def generate_info_file(sf2_dir, sid_file, sid_dir, output_files, converter_outpu
         confidence = None
         if extracted_data:
             confidence = calculate_extraction_confidence(extracted_data, c64_data, load_address)
-    except Exception as e:
+    except (TableExtractionError, ValueError, IndexError, KeyError) as e:
+        logger.warning(f"Failed to extract table data: {e}")
+        tables_data = {}
+        laxity_instruments = []
+        wave_entries = []
+        raw_sequences = []
+        parsed_sequences = []
+        confidence = None
+    except (OSError, IOError) as e:
+        logger.warning(f"File I/O error during extraction: {e}")
         tables_data = {}
         laxity_instruments = []
         wave_entries = []
@@ -599,25 +637,30 @@ def convert_all(sid_dir='SID', sf2_dir='SF2'):
 
     Generates both NP20 (G4) and Driver 11 versions for each SID file.
     """
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(levelname)s: %(message)s'
+    )
 
     # Always generate both driver types
     driver_types = ['np20', 'driver11']
 
     # Check if SID directory exists
     if not os.path.exists(sid_dir):
-        print(f"Error: SID directory '{sid_dir}' not found")
+        logger.error(f"SID directory '{sid_dir}' not found")
         sys.exit(1)
 
     # Create SF2 directory if it doesn't exist
     if not os.path.exists(sf2_dir):
         os.makedirs(sf2_dir)
-        print(f"Created output directory: {sf2_dir}")
+        logger.info(f"Created output directory: {sf2_dir}")
 
     # Get list of SID files
     sid_files = [f for f in os.listdir(sid_dir) if f.lower().endswith('.sid')]
 
     if not sid_files:
-        print(f"No .sid files found in '{sid_dir}'")
+        logger.warning(f"No .sid files found in '{sid_dir}'")
         sys.exit(1)
 
     print(f"SID to SF2 Batch Converter v{__version__}")

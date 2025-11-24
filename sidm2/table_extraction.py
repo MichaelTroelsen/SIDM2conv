@@ -14,6 +14,7 @@ from .constants import (
     WAVE_TABLE_ADDR_MIN, WAVE_TABLE_ADDR_MAX,
     PULSE_TABLE_ADDR_MIN, PULSE_TABLE_ADDR_MAX,
 )
+from .exceptions import TableExtractionError
 
 
 def get_valid_wave_entry_points(wave_table: List[Tuple[int, int]]) -> set:
@@ -72,28 +73,40 @@ def find_sid_register_tables(data: bytes, load_addr: int) -> Dict[int, int]:
 
     Returns:
         Dict mapping SID register offset to table address
+
+    Raises:
+        TableExtractionError: If data is invalid or too small
     """
+    if not data or len(data) < 4:
+        raise TableExtractionError(f"Data too small for table extraction: {len(data) if data else 0} bytes")
+
     tables: Dict[int, int] = {}
 
-    for i in range(len(data) - 3):
-        # STA $D4xx,Y (99 lo hi)
-        if data[i] == 0x99:
-            addr = data[i + 1] | (data[i + 2] << 8)
-            if not (0xD400 <= addr <= 0xD418):
-                continue
+    try:
+        for i in range(len(data) - 3):
+            # STA $D4xx,Y (99 lo hi)
+            if data[i] == 0x99:
+                if i + 2 >= len(data):
+                    continue
 
-            reg = addr - 0xD400
+                addr = data[i + 1] | (data[i + 2] << 8)
+                if not (0xD400 <= addr <= 0xD418):
+                    continue
 
-            # Look backwards for LDA table,X
-            for j in range(1, 30):
-                if i - j < 0:
-                    break
+                reg = addr - 0xD400
 
-                # LDA $xxxx,X (BD lo hi)
-                if data[i - j] == 0xBD:
-                    table = data[i - j + 1] | (data[i - j + 2] << 8)
-                    tables[reg] = table
-                    break
+                # Look backwards for LDA table,X
+                for j in range(1, 30):
+                    if i - j < 0:
+                        break
+
+                    # LDA $xxxx,X (BD lo hi)
+                    if i - j + 2 < len(data) and data[i - j] == 0xBD:
+                        table = data[i - j + 1] | (data[i - j + 2] << 8)
+                        tables[reg] = table
+                        break
+    except IndexError as e:
+        raise TableExtractionError(f"Index error while searching for SID register tables: {e}")
 
     return tables
 
@@ -108,23 +121,35 @@ def find_table_addresses_from_player(data: bytes, load_addr: int) -> Dict[str, i
 
     Returns:
         Dict with keys 'pulse', 'filter', 'wave' mapping to addresses
+
+    Raises:
+        TableExtractionError: If data is invalid or too small
     """
+    if not data or len(data) < 6:
+        raise TableExtractionError(f"Data too small for player code analysis: {len(data) if data else 0} bytes")
+
     tables: Dict[str, int] = {}
 
     pulse_candidates = []
     filter_candidates = []
     wave_candidates = []
 
-    for i in range(len(data) - 5):
-        # LDA absolute,X (BD) or LDA absolute,Y (B9)
-        if data[i] in (0xBD, 0xB9):
-            addr = data[i + 1] | (data[i + 2] << 8)
+    try:
+        for i in range(len(data) - 5):
+            # LDA absolute,X (BD) or LDA absolute,Y (B9)
+            if data[i] in (0xBD, 0xB9):
+                if i + 2 >= len(data):
+                    continue
 
-            # Check if in reasonable range for tables
-            if load_addr <= addr < load_addr + len(data):
-                # Look ahead for STA to SID
-                for j in range(3, 20):
-                    if i + j + 2 < len(data):
+                addr = data[i + 1] | (data[i + 2] << 8)
+
+                # Check if in reasonable range for tables
+                if load_addr <= addr < load_addr + len(data):
+                    # Look ahead for STA to SID
+                    for j in range(3, 20):
+                        if i + j + 2 >= len(data):
+                            break
+
                         if data[i + j] in (0x8D, 0x99, 0x9D):  # STA variants
                             sta_addr = data[i + j + 1] | (data[i + j + 2] << 8)
 
@@ -140,16 +165,21 @@ def find_table_addresses_from_player(data: bytes, load_addr: int) -> Dict[str, i
                             elif sta_addr in (0xD404, 0xD40B, 0xD412):
                                 wave_candidates.append(addr)
                                 break
+    except IndexError as e:
+        raise TableExtractionError(f"Index error while analyzing player code: {e}")
 
     # Use most common candidates
-    if pulse_candidates:
-        tables['pulse'] = Counter(pulse_candidates).most_common(1)[0][0]
+    try:
+        if pulse_candidates:
+            tables['pulse'] = Counter(pulse_candidates).most_common(1)[0][0]
 
-    if filter_candidates:
-        tables['filter'] = Counter(filter_candidates).most_common(1)[0][0]
+        if filter_candidates:
+            tables['filter'] = Counter(filter_candidates).most_common(1)[0][0]
 
-    if wave_candidates:
-        tables['wave'] = Counter(wave_candidates).most_common(1)[0][0]
+        if wave_candidates:
+            tables['wave'] = Counter(wave_candidates).most_common(1)[0][0]
+    except (IndexError, ValueError) as e:
+        raise TableExtractionError(f"Error selecting table candidates: {e}")
 
     return tables
 
@@ -167,7 +197,13 @@ def find_instrument_table(data: bytes, load_addr: int, verbose: bool = False, wa
 
     Returns:
         Address of instrument table, or None if not found
+
+    Raises:
+        TableExtractionError: If data is invalid or too small
     """
+    if not data or len(data) < 128:
+        raise TableExtractionError(f"Data too small for instrument table search: {len(data) if data else 0} bytes")
+
     best_addr = 0
     best_score = 0
     candidates = []
@@ -175,34 +211,39 @@ def find_instrument_table(data: bytes, load_addr: int, verbose: bool = False, wa
     # Get valid wave entry points if wave table is provided
     valid_wave_points = None
     if wave_table:
-        valid_wave_points = get_valid_wave_entry_points(wave_table)
+        try:
+            valid_wave_points = get_valid_wave_entry_points(wave_table)
+        except (IndexError, ValueError) as e:
+            # Continue without wave pointer validation if wave table is malformed
+            valid_wave_points = None
 
     search_start = SEARCH_START_OFFSET
     search_end = min(len(data) - 128, SEARCH_END_OFFSET)
 
-    for offset in range(search_start, search_end):
-        score = 0
-        valid_instruments = 0
+    try:
+        for offset in range(search_start, search_end):
+            score = 0
+            valid_instruments = 0
 
-        # Check up to 8 consecutive potential instruments
-        for i in range(8):
-            off = offset + (i * 8)
-            if off + 8 > len(data):
-                break
+            # Check up to 8 consecutive potential instruments
+            for i in range(8):
+                off = offset + (i * 8)
+                if off + 8 > len(data):
+                    break
 
-            # Laxity instrument format (8 bytes):
-            # 0: AD, 1: SR, 2-4: flags/unknown, 5: Pulse param, 6: Pulse Ptr, 7: Wave Ptr
-            ad = data[off]
-            sr = data[off + 1]
-            pulse_param = data[off + 5]
-            pulse_ptr = data[off + 6]
-            wave_ptr = data[off + 7]
-            filter_ptr = 0  # Filter pointer not directly in instrument table
+                # Laxity instrument format (8 bytes):
+                # 0: AD, 1: SR, 2-4: flags/unknown, 5: Pulse param, 6: Pulse Ptr, 7: Wave Ptr
+                ad = data[off]
+                sr = data[off + 1]
+                pulse_param = data[off + 5]
+                pulse_ptr = data[off + 6]
+                wave_ptr = data[off + 7]
+                filter_ptr = 0  # Filter pointer not directly in instrument table
 
-            # Flags/control bytes (bytes 2-4)
-            flags1 = data[off + 2]
-            flags2 = data[off + 3]
-            flags3 = data[off + 4]
+                # Flags/control bytes (bytes 2-4)
+                flags1 = data[off + 2]
+                flags2 = data[off + 3]
+                flags3 = data[off + 4]
 
             # Compatibility
             restart = flags1
@@ -287,14 +328,17 @@ def find_instrument_table(data: bytes, load_addr: int, verbose: bool = False, wa
                 valid_instruments += 1
                 score += instr_score
 
-        # Require minimum valid instruments
-        if valid_instruments >= MIN_VALID_INSTRUMENTS:
-            addr = load_addr + offset
-            if verbose:
-                candidates.append((addr, score, valid_instruments))
-            if score > best_score:
-                best_score = score
-                best_addr = addr
+            # Require minimum valid instruments
+            if valid_instruments >= MIN_VALID_INSTRUMENTS:
+                addr = load_addr + offset
+                if verbose:
+                    candidates.append((addr, score, valid_instruments))
+                if score > best_score:
+                    best_score = score
+                    best_addr = addr
+
+    except IndexError as e:
+        raise TableExtractionError(f"Index error while searching for instrument table: {e}")
 
     if verbose:
         candidates.sort(key=lambda x: x[1], reverse=True)
@@ -387,9 +431,19 @@ def find_and_extract_wave_table(data: bytes, load_addr: int, verbose: bool = Fal
     Special commands:
     - $7F xx = Jump to entry xx
     - $7E = Hold/stop
+
+    Raises:
+        TableExtractionError: If data is invalid or too small
     """
-    # First try to find wave table by analyzing player code
-    note_addr, wave_addr = find_wave_table_from_player_code(data, load_addr)
+    if not data or len(data) < 64:
+        raise TableExtractionError(f"Data too small for wave table extraction: {len(data) if data else 0} bytes")
+
+    try:
+        # First try to find wave table by analyzing player code
+        note_addr, wave_addr = find_wave_table_from_player_code(data, load_addr)
+    except (IndexError, ValueError) as e:
+        # Fall back to pattern matching if player code analysis fails
+        note_addr, wave_addr = None, None
 
     if note_addr and wave_addr:
         note_off = note_addr - load_addr
@@ -423,80 +477,84 @@ def find_and_extract_wave_table(data: bytes, load_addr: int, verbose: bool = Fal
             return (note_addr, entries)
 
     # Fall back to pattern matching
-    valid_waveforms = VALID_WAVEFORMS.copy()
-    if siddump_waveforms:
-        valid_waveforms.update(siddump_waveforms)
-
-    best_addr = 0
-    best_entries = []
-    best_score = 0
-    candidates = []
-
-    for start in range(0x600, min(len(data) - 64, 0x1600)):
-        entries = []
-        pos = start
-        score = 0
-
-        while pos < min(start + 256, len(data) - 1):
-            note_offset = data[pos]
-            waveform = data[pos + 1] if pos + 1 < len(data) else 0
-
-            if note_offset == 0x7F:
-                entries.append((note_offset, waveform))
-                score += 5
-                break
-            elif note_offset == 0x7E:
-                entries.append((note_offset, waveform))
-                score += 5
-                break
-            elif waveform in valid_waveforms:
-                entries.append((note_offset, waveform))
-                score += 3
-                pos += 2
-            else:
-                break
-
-        has_terminator = len(entries) >= 2 and entries[-1][0] in (0x7E, 0x7F)
-
-        if len(entries) < 2:
-            continue
-
-        waveform_set = {wf for _, wf in entries}
-
-        if has_terminator:
-            score += len(entries) * 2
-
-        if len(waveform_set) == 1 and len(entries) > 8:
-            penalty = min(len(entries) * 2, 150)
-            score -= penalty
-
-        variety_bonus = len(waveform_set) * 5
-        score += variety_bonus
-
+    try:
+        valid_waveforms = VALID_WAVEFORMS.copy()
         if siddump_waveforms:
-            matched = waveform_set & siddump_waveforms
-            score += len(matched) * 10
-            match_ratio = len(matched) / len(siddump_waveforms) if siddump_waveforms else 0
-            if match_ratio >= 0.5:
-                score += 20
-            if match_ratio >= 0.75:
-                score += 30
+            valid_waveforms.update(siddump_waveforms)
 
-        if verbose:
-            waveform_types = sorted(waveform_set)
-            addr = load_addr + start
-            candidates.append((addr, score, len(entries), waveform_types))
+        best_addr = 0
+        best_entries = []
+        best_score = 0
+        candidates = []
 
-        if score > best_score or (score == best_score and score > 0):
-            if score == best_score and best_entries:
-                current_variety = len({wf for _, wf in entries})
-                best_variety = len({wf for _, wf in best_entries})
-                if current_variety <= best_variety:
-                    continue
+        for start in range(0x600, min(len(data) - 64, 0x1600)):
+            entries = []
+            pos = start
+            score = 0
 
-            best_score = score
-            best_addr = load_addr + start
-            best_entries = entries
+            while pos < min(start + 256, len(data) - 1):
+                note_offset = data[pos]
+                waveform = data[pos + 1] if pos + 1 < len(data) else 0
+
+                if note_offset == 0x7F:
+                    entries.append((note_offset, waveform))
+                    score += 5
+                    break
+                elif note_offset == 0x7E:
+                    entries.append((note_offset, waveform))
+                    score += 5
+                    break
+                elif waveform in valid_waveforms:
+                    entries.append((note_offset, waveform))
+                    score += 3
+                    pos += 2
+                else:
+                    break
+
+            has_terminator = len(entries) >= 2 and entries[-1][0] in (0x7E, 0x7F)
+
+            if len(entries) < 2:
+                continue
+
+            waveform_set = {wf for _, wf in entries}
+
+            if has_terminator:
+                score += len(entries) * 2
+
+            if len(waveform_set) == 1 and len(entries) > 8:
+                penalty = min(len(entries) * 2, 150)
+                score -= penalty
+
+            variety_bonus = len(waveform_set) * 5
+            score += variety_bonus
+
+            if siddump_waveforms:
+                matched = waveform_set & siddump_waveforms
+                score += len(matched) * 10
+                match_ratio = len(matched) / len(siddump_waveforms) if siddump_waveforms else 0
+                if match_ratio >= 0.5:
+                    score += 20
+                if match_ratio >= 0.75:
+                    score += 30
+
+            if verbose:
+                waveform_types = sorted(waveform_set)
+                addr = load_addr + start
+                candidates.append((addr, score, len(entries), waveform_types))
+
+            if score > best_score or (score == best_score and score > 0):
+                if score == best_score and best_entries:
+                    current_variety = len({wf for _, wf in entries})
+                    best_variety = len({wf for _, wf in best_entries})
+                    if current_variety <= best_variety:
+                        continue
+
+                best_score = score
+                best_addr = load_addr + start
+                best_entries = entries
+
+    except IndexError as e:
+        raise TableExtractionError(f"Index error while extracting wave table: {e}")
 
     if verbose:
         candidates.sort(key=lambda x: x[1], reverse=True)
@@ -521,7 +579,13 @@ def find_and_extract_pulse_table(data: bytes, load_addr: int, pulse_ptrs: Option
     - Byte 3: Next entry index (pre-multiplied by 4)
 
     Returns (address, entries) where entries is list of 4-byte tuples.
+
+    Raises:
+        TableExtractionError: If data is invalid or too small
     """
+    if not data or len(data) < 64:
+        raise TableExtractionError(f"Data too small for pulse table extraction: {len(data) if data else 0} bytes")
+
     # First try pattern-based detection which is more reliable
     # Key insight: look for the characteristic pattern where first entry
     # has a non-zero pulse value and next=0, followed by entries with chains
@@ -704,7 +768,13 @@ def find_and_extract_filter_table(data: bytes, load_addr: int, filter_ptrs: Opti
     - Byte 3: Next entry index (pre-multiplied by 4)
 
     Returns (address, entries) where entries is list of 4-byte tuples.
+
+    Raises:
+        TableExtractionError: If data is invalid or too small
     """
+    if not data or len(data) < 64:
+        raise TableExtractionError(f"Data too small for filter table extraction: {len(data) if data else 0} bytes")
+
     best_addr = 0
     best_entries = []
     best_score = 0

@@ -456,10 +456,64 @@ class SF2Writer:
         rows = instr_table['rows']
 
         wave_addr, wave_entries = find_and_extract_wave_table(self.data.c64_data, self.data.load_address)
-        laxity_instruments = extract_laxity_instruments(self.data.c64_data, self.data.load_address, wave_entries)
+
+        # Use instruments from laxity_parser (already in self.data.instruments as raw bytes)
+        # Convert them to the format expected by SF2
+        laxity_instruments = []
+        for i, instr_bytes in enumerate(self.data.instruments[:16]):
+            if len(instr_bytes) >= 8:
+                # Laxity instrument format (8 bytes):
+                # 0: AD, 1: SR, 2-4: flags/unknown, 5: Pulse param, 6: Pulse Ptr, 7: Wave Ptr
+                ad = instr_bytes[0]
+                sr = instr_bytes[1]
+                restart = instr_bytes[2]
+                filter_setting = instr_bytes[4]
+                pulse_ptr = instr_bytes[6]
+                wave_ptr = instr_bytes[7]
+                filter_ptr = 0  # Not directly in instrument table
+
+                # Determine waveform from wave table
+                wave_for_sf2 = 0x41  # Default pulse
+                if wave_entries and wave_ptr < len(wave_entries):
+                    waveform, _ = wave_entries[wave_ptr]
+                    wave_for_sf2 = waveform
+
+                laxity_instruments.append({
+                    'index': i,
+                    'ad': ad,
+                    'sr': sr,
+                    'restart': restart,
+                    'filter_setting': filter_setting,
+                    'filter_ptr': filter_ptr,
+                    'pulse_ptr': pulse_ptr,
+                    'pulse_property': 0,
+                    'wave_ptr': wave_ptr,
+                    'ctrl': 0x41,
+                    'wave_for_sf2': wave_for_sf2,
+                    'name': f"{i:02d} Instr"
+                })
+
+        # Fill remaining slots with defaults
+        while len(laxity_instruments) < 16:
+            i = len(laxity_instruments)
+            laxity_instruments.append({
+                'index': i,
+                'ad': 0x09,
+                'sr': 0x00,
+                'restart': 0x00,
+                'filter_setting': 0x00,
+                'filter_ptr': 0x00,
+                'pulse_ptr': 0x00,
+                'pulse_property': 0x00,
+                'wave_ptr': 0x00,
+                'ctrl': 0x41,
+                'wave_for_sf2': 0x41,
+                'name': f"{i:02d} Pulse"
+            })
+
         self.data.laxity_instruments = laxity_instruments
 
-        logger.info(f"    Extracted {len(laxity_instruments)} instruments from Laxity format")
+        logger.info(f"    Converted {len(self.data.instruments)} Laxity instruments from parser")
 
         if hasattr(self.data, 'siddump_data') and self.data.siddump_data:
             siddump_adsr = set(self.data.siddump_data['adsr_values'])
@@ -554,7 +608,7 @@ class SF2Writer:
             if i < len(sf2_instruments):
                 instr = sf2_instruments[i]
                 wave_names = {0x00: 'saw', 0x02: 'pulse', 0x04: 'tri', 0x06: 'noise'}
-                wave_idx_pos = 2 if is_np20 else 5
+                wave_idx_pos = 4 if is_np20 else 5  # Fixed: NP20 wave ptr is at col 4, not 2
                 wave_name = wave_names.get(instr[wave_idx_pos], '?')
                 name = lax_instr.get('name', f'{i:02d} {wave_name}')
                 logger.debug(f"      {i}: {name} (AD={instr[0]:02X} SR={instr[1]:02X})")

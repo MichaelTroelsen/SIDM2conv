@@ -51,21 +51,53 @@ class LaxityParser:
         self.data_end = load_address + len(c64_data)
 
     def get_byte(self, addr: int) -> int:
-        """Get byte at C64 address"""
+        """Get byte at C64 address.
+
+        Args:
+            addr: C64 memory address
+
+        Returns:
+            Byte value at address, or 0 if out of bounds
+        """
         offset = addr - self.load_address
         if 0 <= offset < len(self.data):
             return self.data[offset]
         return 0
 
     def get_word(self, addr: int) -> int:
-        """Get word (little-endian) at C64 address"""
+        """Get word (little-endian) at C64 address.
+
+        Args:
+            addr: C64 memory address
+
+        Returns:
+            16-bit word value (little-endian)
+        """
+        if addr < self.load_address or addr + 1 >= self.data_end:
+            return 0
         return self.get_byte(addr) | (self.get_byte(addr + 1) << 8)
 
     def get_bytes(self, addr: int, count: int) -> bytes:
-        """Get multiple bytes at C64 address"""
+        """Get multiple bytes at C64 address.
+
+        Args:
+            addr: C64 memory address
+            count: Number of bytes to read
+
+        Returns:
+            Bytes read, or zero-filled bytes if out of bounds
+        """
+        if count < 0:
+            raise ValueError(f"Invalid byte count: {count}")
+
         offset = addr - self.load_address
         if 0 <= offset < len(self.data):
-            return self.data[offset:offset + count]
+            end_offset = min(offset + count, len(self.data))
+            result = self.data[offset:end_offset]
+            # Pad with zeros if we couldn't read all requested bytes
+            if len(result) < count:
+                result = result + bytes(count - len(result))
+            return result
         return bytes(count)
 
     def find_orderlists(self) -> List[List[int]]:
@@ -147,6 +179,11 @@ class LaxityParser:
     def find_sequences(self) -> Tuple[List[bytes], List[int]]:
         """
         Find all sequences in the music data area.
+
+        Returns:
+            Tuple of (sequence_list, address_list) where:
+            - sequence_list: List of raw sequence bytes
+            - address_list: List of sequence start addresses
 
         Sequences end with 0x7F and contain:
         - 0xA0-0xAF: Instrument changes

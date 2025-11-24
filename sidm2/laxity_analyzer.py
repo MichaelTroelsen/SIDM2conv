@@ -52,7 +52,29 @@ class LaxityPlayerAnalyzer:
         return self.get_byte(addr) | (self.get_byte(addr + 1) << 8)
 
     def extract_tempo(self) -> int:
-        """Extract tempo/speed from the SID file"""
+        """Extract tempo/speed from the SID file.
+
+        Laxity uses break speeds: first 4 bytes of filter table contain
+        alternative speed lookup. Speed values 0-1 index into this table.
+        """
+        # Check filter table for break speeds (Laxity format)
+        # Filter table is typically at $1A1E, first 4 bytes are break speeds
+        filter_offset = 0x1A1E - self.load_address
+        if 0 <= filter_offset < len(self.data) - 4:
+            # Read first 4 bytes (break speed table)
+            break_speeds = [self.data[filter_offset + i] for i in range(4)]
+            # Filter out wrapping markers ($00) and invalid values
+            valid_speeds = [s for s in break_speeds if 1 <= s <= 20]
+            if valid_speeds:
+                # Use the most common non-zero speed
+                from collections import Counter
+                speed_counts = Counter(valid_speeds)
+                most_common_speed = speed_counts.most_common(1)[0][0]
+                logger.debug(f"    Found break speeds in filter table: {break_speeds}")
+                logger.debug(f"    Using most common speed: {most_common_speed}")
+                return most_common_speed
+
+        # Fallback to init routine search
         init_offset = self.header.init_address - self.load_address
 
         for i in range(init_offset, min(init_offset + 200, len(self.data) - 5)):
@@ -468,8 +490,8 @@ class LaxityPlayerAnalyzer:
         # Create SequenceEvent representation
         # Parse Laxity sequence format properly:
         # - 0xA0-0xBF: instrument change (instrument = byte - 0xA0 + 0xA0 for SF2)
-        # - 0xC0-0xCF: command bytes
-        # - 0x80-0x8F: duration/timing
+        # - 0xC0-0xCF: command bytes (followed by parameter byte)
+        # - 0x80-0x9F: duration/timing (number of frames)
         # - 0x00-0x6F: note values
         # - 0x7E: gate on (sustain)
         # - 0x7F: end marker
@@ -477,7 +499,10 @@ class LaxityPlayerAnalyzer:
             seq = []
             current_instr = 0x80  # No change
             current_cmd = 0x00    # No command
+            current_cmd_param = 0x00  # Command parameter
+            current_duration = 1  # Default duration (1 frame)
             i = 0
+
             while i < len(raw_seq):
                 b = raw_seq[i]
 
@@ -491,16 +516,18 @@ class LaxityPlayerAnalyzer:
                 elif 0xC0 <= b <= 0xCF:
                     current_cmd = b
                     i += 1
-                    # Skip parameter byte
+                    # Extract parameter byte
                     if i < len(raw_seq):
+                        current_cmd_param = raw_seq[i]
+                        logger.debug(f"    Extracted command ${b:02X} with param ${current_cmd_param:02X}")
                         i += 1
                     continue
 
                 # Duration/timing: 0x80-0x9F (Laxity uses full range)
+                # 0x80 = 1 frame, 0x81 = 2 frames, ..., 0x9F = 32 frames
                 elif 0x80 <= b <= 0x9F:
-                    # Duration bytes set timing for subsequent notes
-                    # Skip them - SF2 handles timing via tempo table, not inline bytes
-                    # Note: In full conversion, this would map to SF2 row timing
+                    current_duration = b - 0x80 + 1
+                    logger.debug(f"    Set duration to {current_duration} frames")
                     i += 1
                     continue
 
@@ -510,14 +537,28 @@ class LaxityPlayerAnalyzer:
                     note = b
                     if note > 0x5D and note not in (0x7E, 0x7F):
                         note = 0x5D  # Clamp to B-7
+
+                    # Add note event with current instrument/command
                     seq.append(SequenceEvent(current_instr, current_cmd, note))
+
+                    # Expand duration: add gate-on events (0x7E) for sustain
+                    # Skip expansion for control bytes (0x7E, 0x7F)
+                    if note not in (0x7E, 0x7F) and current_duration > 1:
+                        for _ in range(current_duration - 1):
+                            # Gate on event: no instrument/command change, note = 0x7E (sustain)
+                            seq.append(SequenceEvent(0x80, 0x00, 0x7E))
+
+                    # Reset state after note
                     current_instr = 0x80  # Reset to "no change" after use
                     current_cmd = 0x00
+                    current_cmd_param = 0x00
+                    current_duration = 1  # Reset to default
                     i += 1
                     continue
 
                 else:
                     # Unknown byte, skip
+                    logger.debug(f"    Unknown byte ${b:02X} at offset {i}, skipping")
                     i += 1
 
             if seq:
