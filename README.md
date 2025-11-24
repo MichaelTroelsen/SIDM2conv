@@ -820,6 +820,73 @@ Key registers:
 5. Run all tests
 6. Submit pull request
 
+## Extraction Confidence Scoring
+
+The converter uses heuristic-based confidence scoring to identify and extract music data tables from SID files. Each table type has specific scoring criteria.
+
+### Wave Table Confidence
+
+Wave tables are scored based on:
+
+| Criterion | Points | Description |
+|-----------|--------|-------------|
+| Valid waveforms | +3 each | Standard waveforms ($11, $21, $41, $81) |
+| Valid note offsets | +1-2 | Offsets in range 0-24 semitones |
+| Loop markers | +5 | $7F jump commands for looping |
+| End markers | +3 | $7E stop commands |
+| Variety bonus | +5 | Multiple different waveforms |
+| Chain patterns | +2 | Valid jump targets |
+
+**Minimum threshold**: Score ≥ 15 to accept extracted table.
+
+### Pulse Table Confidence
+
+Pulse tables use 4-byte entries scored on:
+
+| Criterion | Points | Description |
+|-----------|--------|-------------|
+| Valid initial value | +2 | $FF (keep) or valid pulse width |
+| Moderate add values | +3 | Values 1-15 for smooth modulation |
+| Chain patterns | +3 | Valid loop references |
+| Duration values | +1 | Reasonable duration (1-64) |
+| Subtract patterns | +2 | Negative modulation for PWM |
+
+**Minimum threshold**: Score ≥ 10 and at least 2 valid entries.
+
+### Filter Table Confidence
+
+Filter tables use 4-byte entries scored similarly:
+
+| Criterion | Points | Description |
+|-----------|--------|-------------|
+| Valid filter values | +2 | Cutoff frequency bytes |
+| Moderate deltas | +3 | Smooth sweep values (1-15) |
+| Chain patterns | +3 | Valid loop references |
+| Duration values | +1 | Reasonable duration |
+
+**Minimum threshold**: Score ≥ 10 and at least 2 valid entries.
+
+### Arpeggio Table Confidence
+
+Arpeggio tables are 4-byte entries (note1, note2, note3, speed) scored on:
+
+| Criterion | Points | Description |
+|-----------|--------|-------------|
+| Valid note offsets | +2 each | Values 0-24 (2 octave range) |
+| Common chord patterns | +3 | Major (0,4,7), minor (0,3,7) |
+| Speed values | +1 | Reasonable speed (0-15) |
+| Structure validity | +2 | Consistent entry format |
+
+**Minimum threshold**: Score ≥ 15 with at least 2 valid entries.
+
+### Command Table Detection
+
+Commands are detected by analyzing sequence bytes in the $C0-$DF range:
+
+- Counts command usage across all sequences
+- Maps to standard SF2 command names (Slide, Vibrato, Portamento, etc.)
+- Falls back to default command table if no usage detected
+
 ## Limitations
 
 ### Extracted Tables
