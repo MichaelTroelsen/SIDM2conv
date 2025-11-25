@@ -873,6 +873,24 @@ def convert_all(sid_dir='SID', output_dir='output', roundtrip=False, roundtrip_d
                     except Exception as e:
                         print(f"       -> Pack failed: {str(e)[:40]}")
 
+                # Quick accuracy validation (10 seconds)
+                validation_results = None
+                if exported_sid.exists() and original_sid_copy.exists():
+                    try:
+                        from sidm2.validation import quick_validate, get_accuracy_grade
+                        validation_results = quick_validate(
+                            str(original_sid_copy),
+                            str(exported_sid),
+                            duration=10  # Quick validation for pipeline
+                        )
+                        if validation_results:
+                            acc = validation_results['overall_accuracy']
+                            grade = get_accuracy_grade(acc)
+                            print(f"       -> Accuracy: {acc:5.1f}% [{grade}]")
+                    except Exception:
+                        # Silent failure - don't break pipeline
+                        pass
+
                 # Always render WAV files (not just for roundtrip)
                 original_wav = original_dir / f"{base_name}.wav"
                 exported_wav = new_dir / f"{base_name}_exported.wav"
@@ -951,6 +969,20 @@ def convert_all(sid_dir='SID', output_dir='output', roundtrip=False, roundtrip_d
                     (new_dir / f"{base_name}_exported.dump").exists()
                 ])
                 print(f"       -> Validation: {validation_count}/6 artifacts | PSID: {psid_status}")
+
+                # Append accuracy validation to info file
+                if validation_results and info_file:
+                    try:
+                        from sidm2.validation import generate_accuracy_summary
+                        with open(info_file, 'a') as f:
+                            f.write("\n\n")
+                            f.write("=" * 70 + "\n")
+                            f.write("ACCURACY VALIDATION\n")
+                            f.write("=" * 70 + "\n")
+                            f.write(generate_accuracy_summary(validation_results))
+                            f.write("\n")
+                    except Exception:
+                        pass  # Silent failure
 
             success_count += 1
         else:
