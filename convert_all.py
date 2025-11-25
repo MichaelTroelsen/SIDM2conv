@@ -873,36 +873,37 @@ def convert_all(sid_dir='SID', output_dir='output', roundtrip=False, roundtrip_d
                     except Exception as e:
                         print(f"       -> Pack failed: {str(e)[:40]}")
 
-                # Step 3 & 4: Render both original and exported to WAV
+                # Always render WAV files (not just for roundtrip)
                 original_wav = original_dir / f"{base_name}.wav"
                 exported_wav = new_dir / f"{base_name}_exported.wav"
 
                 sid2wav_exe = Path('tools/SID2WAV.EXE')
                 if sid2wav_exe.exists():
-                    # Original WAV - syntax: sid2wav [-16 -s -t<sec>] <input.sid> [output.wav]
-                    try:
-                        wav_result = subprocess.run(
-                            [str(sid2wav_exe.absolute()),
-                             '-16', '-s',  # 16-bit stereo
-                             f'-t{roundtrip_duration}',  # Duration
-                             str(original_sid_copy),
-                             str(original_wav)],
-                            capture_output=True,
-                            text=True,
-                            timeout=60
-                        )
-                        if wav_result.returncode == 0 and original_wav.exists():
-                            print(f"       -> Original WAV ({original_wav.stat().st_size:,} bytes)")
-                    except Exception as e:
-                        print(f"       -> WAV render failed: {str(e)[:30]}")
+                    # Render original SID to WAV (30 seconds by default)
+                    if original_sid_copy.exists():
+                        try:
+                            wav_result = subprocess.run(
+                                [str(sid2wav_exe.absolute()),
+                                 '-16', '-s',  # 16-bit stereo
+                                 '-t30',  # 30 seconds
+                                 str(original_sid_copy),
+                                 str(original_wav)],
+                                capture_output=True,
+                                text=True,
+                                timeout=60
+                            )
+                            if wav_result.returncode == 0 and original_wav.exists():
+                                print(f"       -> Original WAV ({original_wav.stat().st_size:,} bytes)")
+                        except Exception as e:
+                            print(f"       -> Original WAV failed: {str(e)[:30]}")
 
-                    # Exported WAV
+                    # Render exported SID to WAV
                     if exported_sid.exists():
                         try:
                             wav_result = subprocess.run(
                                 [str(sid2wav_exe.absolute()),
                                  '-16', '-s',  # 16-bit stereo
-                                 f'-t{roundtrip_duration}',  # Duration
+                                 '-t30',  # 30 seconds
                                  str(exported_sid),
                                  str(exported_wav)],
                                 capture_output=True,
@@ -914,7 +915,7 @@ def convert_all(sid_dir='SID', output_dir='output', roundtrip=False, roundtrip_d
                         except Exception as e:
                             print(f"       -> Exported WAV failed: {str(e)[:30]}")
 
-                # Step 5: Siddump comparison (already have original dump, create exported dump)
+                # Step 3: Siddump comparison (already have original dump, create exported dump)
                 if exported_sid.exists():
                     exported_dump = new_dir / f"{base_name}_exported.dump"
                     run_siddump(str(exported_sid), str(exported_dump), roundtrip_duration)
