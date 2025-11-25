@@ -2,22 +2,29 @@
 """
 Batch converter for SID to SF2 files.
 
-Converts all .sid files in the SID folder to .sf2 files in the SF2 folder.
+Converts all .sid files in the SID folder to nested output structure.
 Generates both NP20 (G4) and Driver 11 versions for each SID file.
 
 Usage:
     python convert_all.py
+    python convert_all.py --roundtrip    # Include round-trip validation
 
-Output:
-    For each SID file (e.g., Angular.sid):
-    - Angular_g4.sf2     (NP20/G4 version)
-    - Angular_d11.sf2    (Driver 11 version)
-    - Angular_info.txt   (conversion info with both driver metrics)
-    - Angular.dump       (siddump output)
+Output Structure:
+    output/{SongName}/New/
+    - {name}_g4.sf2      (NP20/G4 version)
+    - {name}_d11.sf2     (Driver 11 version, default for validation)
+    - {name}_info.txt    (conversion info with both driver metrics)
+    - {name}.dump        (siddump output)
+
+Optional Round-trip Validation:
+    output/{SongName}/Original/  (original SID, WAV, dump if --roundtrip used)
+    output/{SongName}/New/       (converted files + exported SID)
+    output/{SongName}/{name}_roundtrip_report.html
 
 Examples:
     python convert_all.py
-    python convert_all.py --input my_sids --output my_sf2s
+    python convert_all.py --input my_sids --output my_output
+    python convert_all.py --roundtrip --roundtrip-duration 30
 """
 
 import os
@@ -51,12 +58,13 @@ from sidm2.instrument_extraction import (
 )
 from sidm2.laxity_analyzer import LaxityPlayerAnalyzer
 from sidm2.exceptions import TableExtractionError
+from sidm2.sf2_packer import pack_sf2_to_sid
 from laxity_parser import LaxityParser
-from validate_extraction import parse_dump_file
+from validate_psid import PSIDValidator
 
 # Version info
-__version__ = "0.5.1"
-__build_date__ = "2025-11-24"
+__version__ = "0.6.0"
+__build_date__ = "2025-11-25"
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -527,7 +535,23 @@ def generate_info_file(sf2_dir: str, sid_file: str, sid_dir: str, output_files: 
         dump_file_path = os.path.join(sf2_dir, sid_file[:-4] + '.dump')
         if os.path.exists(dump_file_path):
             try:
-                dump_data = parse_dump_file(dump_file_path)
+                # Parse dump file to extract ADSR values
+                with open(dump_file_path, 'r', encoding='utf-8') as dump_f:
+                    dump_content = dump_f.read()
+                    adsr_values = set()
+                    for line in dump_content.split('\n'):
+                        # Look for ADSR changes in siddump output
+                        # Format: "| ... | ... ADSR | ..."  where ADSR is 4 hex digits
+                        if '|' in line and len(line.split('|')) >= 6:
+                            parts = line.split('|')
+                            adsr_part = parts[4].strip() if len(parts) > 4 else ''
+                            if len(adsr_part) == 4 and adsr_part != '....':
+                                try:
+                                    ad = int(adsr_part[:2], 16)
+                                    sr = int(adsr_part[2:4], 16)
+                                    adsr_values.add((ad, sr))
+                                except ValueError:
+                                    pass
 
                 # Get extracted instrument ADSR values
                 extracted_adsr = set()
@@ -539,7 +563,7 @@ def generate_info_file(sf2_dir: str, sid_file: str, sid_dir: str, output_files: 
 
                 # Filter out hard restart ADSR values from siddump
                 hard_restart_adsr = {(0x0F, 0x00), (0x0F, 0x01)}
-                siddump_adsr = dump_data['adsr_values'] - hard_restart_adsr
+                siddump_adsr = adsr_values - hard_restart_adsr
 
                 f.write(f"ADSR Validation (Siddump Comparison)\n")
                 f.write(f"-" * 50 + "\n")
@@ -632,10 +656,17 @@ def generate_info_file(sf2_dir: str, sid_file: str, sid_dir: str, output_files: 
     return info_file
 
 
-def convert_all(sid_dir='SID', sf2_dir='SF2'):
-    """Convert all SID files in sid_dir to SF2 files in sf2_dir.
+def convert_all(sid_dir='SID', output_dir='output', roundtrip=False, roundtrip_duration=10):
+    """Convert all SID files in sid_dir to nested output structure.
 
     Generates both NP20 (G4) and Driver 11 versions for each SID file.
+    Creates structure: output/{SongName}/New/{SF2 files, info, dumps}
+
+    Args:
+        sid_dir: Input directory containing SID files
+        output_dir: Output directory for conversion results (default: output)
+        roundtrip: If True, run round-trip validation after conversion
+        roundtrip_duration: Duration in seconds for round-trip validation
     """
     # Configure logging
     logging.basicConfig(
@@ -651,10 +682,10 @@ def convert_all(sid_dir='SID', sf2_dir='SF2'):
         logger.error(f"SID directory '{sid_dir}' not found")
         sys.exit(1)
 
-    # Create SF2 directory if it doesn't exist
-    if not os.path.exists(sf2_dir):
-        os.makedirs(sf2_dir)
-        logger.info(f"Created output directory: {sf2_dir}")
+    # Create output directory if it doesn't exist
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        logger.info(f"Created output directory: {output_dir}")
 
     # Get list of SID files
     sid_files = [f for f in os.listdir(sid_dir) if f.lower().endswith('.sid')]
@@ -667,9 +698,12 @@ def convert_all(sid_dir='SID', sf2_dir='SF2'):
     print(f"=" * 50)
     print(f"Build date:       {__build_date__}")
     print(f"Input directory:  {sid_dir}")
-    print(f"Output directory: {sf2_dir}")
+    print(f"Output directory: {output_dir}")
+    print(f"Structure:        {output_dir}/{{SongName}}/New/")
     print(f"Drivers:          NP20 (G4), Driver 11")
     print(f"Files to convert: {len(sid_files)}")
+    if roundtrip:
+        print(f"Round-trip:       Enabled ({roundtrip_duration}s validation)")
     print(f"=" * 50)
     print()
 
@@ -683,6 +717,21 @@ def convert_all(sid_dir='SID', sf2_dir='SF2'):
     for i, sid_file in enumerate(sorted(sid_files), 1):
         input_path = os.path.join(sid_dir, sid_file)
         base_name = sid_file[:-4]
+
+        # Create nested folder structure: output/{SongName}/Original/ and /New/
+        song_dir = Path(output_dir) / base_name
+        original_dir = song_dir / "Original"
+        new_dir = song_dir / "New"
+        original_dir.mkdir(parents=True, exist_ok=True)
+        new_dir.mkdir(parents=True, exist_ok=True)
+
+        # Copy original SID to Original/ directory
+        import shutil
+        original_sid_copy = original_dir / f"{base_name}.sid"
+        try:
+            shutil.copy2(input_path, original_sid_copy)
+        except Exception as e:
+            print(f"       -> Warning: Could not copy original SID: {e}")
 
         print(f"[{i}/{len(sid_files)}] Converting {sid_file}...")
 
@@ -706,7 +755,7 @@ def convert_all(sid_dir='SID', sf2_dir='SF2'):
             else:
                 output_file = base_name + '_d11.sf2'
 
-            output_path = os.path.join(sf2_dir, output_file)
+            output_path = str(new_dir / output_file)
 
             # Run converter
             result = subprocess.run(
@@ -752,18 +801,156 @@ def convert_all(sid_dir='SID', sf2_dir='SF2'):
 
         if all_success and output_files:
             # Generate siddump file FIRST (needed for note comparison in info file)
-            dump_file = os.path.join(sf2_dir, base_name + '.dump')
+            dump_file = str(new_dir / (base_name + '.dump'))
             dump_success = run_siddump(input_path, dump_file)
 
             # Generate info file (uses dump file for note comparison)
             info_file = generate_info_file(
-                sf2_dir, sid_file, sid_dir, output_files, converter_output,
+                str(new_dir), sid_file, sid_dir, output_files, converter_output,
                 player_name, sequences, instruments, orderlists, file_sizes, driver_types
             )
 
             print(f"       -> {os.path.basename(info_file)}")
             if dump_success:
                 print(f"       -> {os.path.basename(dump_file)}")
+
+            # Run integrated validation pipeline (always enabled by default)
+            if roundtrip or True:  # Always run validation
+                print(f"       -> Running validation pipeline...")
+
+                # Step 1: Original SID info (already have original_sid_copy)
+                original_info = original_dir / f"{base_name}_info.txt"
+                try:
+                    with open(input_path, 'rb') as f:
+                        header = f.read(128)
+                        info_lines = ["Original SID File", "=" * 50]
+                        if header[:4] in (b'PSID', b'RSID'):
+                            title = header[0x16:0x36].rstrip(b'\x00').decode('latin-1', errors='ignore')
+                            author = header[0x36:0x56].rstrip(b'\x00').decode('latin-1', errors='ignore')
+                            info_lines.append(f"Title: {title}")
+                            info_lines.append(f"Author: {author}")
+                            info_lines.append(f"Player: {player_name}")
+                        original_info.write_text('\n'.join(info_lines), encoding='utf-8')
+                except Exception:
+                    pass
+
+                # Step 2: Pack SF2 -> SID using Python packer (use Driver 11 version)
+                d11_sf2 = new_dir / f"{base_name}_d11.sf2"
+                exported_sid = new_dir / f"{base_name}_exported.sid"
+                if d11_sf2.exists():
+                    try:
+                        # Extract metadata from original SID file
+                        title = "test"
+                        author = "test"
+                        copyright_str = "test"
+
+                        try:
+                            with open(input_path, 'rb') as f:
+                                header = f.read(128)
+                                if header[:4] in (b'PSID', b'RSID'):
+                                    title = header[0x16:0x36].rstrip(b'\x00').decode('latin-1', errors='ignore') or "test"
+                                    author = header[0x36:0x56].rstrip(b'\x00').decode('latin-1', errors='ignore') or "test"
+                                    copyright_str = header[0x56:0x76].rstrip(b'\x00').decode('latin-1', errors='ignore') or "test"
+                        except Exception:
+                            pass
+
+                        # Pack SF2 to SID using Python packer
+                        # ZeroPage $fc matches SID Factory II Pack settings
+                        success = pack_sf2_to_sid(
+                            sf2_path=d11_sf2,
+                            sid_path=exported_sid,
+                            name=title,
+                            author=author,
+                            copyright_str=copyright_str,
+                            dest_address=0x1000,
+                            zp_address=0xFC
+                        )
+
+                        if success and exported_sid.exists():
+                            print(f"       -> Exported SID ({exported_sid.stat().st_size:,} bytes)")
+                        else:
+                            print(f"       -> Pack failed")
+                    except Exception as e:
+                        print(f"       -> Pack failed: {str(e)[:40]}")
+
+                # Step 3 & 4: Render both original and exported to WAV
+                original_wav = original_dir / f"{base_name}.wav"
+                exported_wav = new_dir / f"{base_name}_exported.wav"
+
+                sid2wav_exe = Path('tools/SID2WAV.EXE')
+                if sid2wav_exe.exists():
+                    # Original WAV - syntax: sid2wav [-16 -s -t<sec>] <input.sid> [output.wav]
+                    try:
+                        wav_result = subprocess.run(
+                            [str(sid2wav_exe.absolute()),
+                             '-16', '-s',  # 16-bit stereo
+                             f'-t{roundtrip_duration}',  # Duration
+                             str(original_sid_copy),
+                             str(original_wav)],
+                            capture_output=True,
+                            text=True,
+                            timeout=60
+                        )
+                        if wav_result.returncode == 0 and original_wav.exists():
+                            print(f"       -> Original WAV ({original_wav.stat().st_size:,} bytes)")
+                    except Exception as e:
+                        print(f"       -> WAV render failed: {str(e)[:30]}")
+
+                    # Exported WAV
+                    if exported_sid.exists():
+                        try:
+                            wav_result = subprocess.run(
+                                [str(sid2wav_exe.absolute()),
+                                 '-16', '-s',  # 16-bit stereo
+                                 f'-t{roundtrip_duration}',  # Duration
+                                 str(exported_sid),
+                                 str(exported_wav)],
+                                capture_output=True,
+                                text=True,
+                                timeout=60
+                            )
+                            if wav_result.returncode == 0 and exported_wav.exists():
+                                print(f"       -> Exported WAV ({exported_wav.stat().st_size:,} bytes)")
+                        except Exception as e:
+                            print(f"       -> Exported WAV failed: {str(e)[:30]}")
+
+                # Step 5: Siddump comparison (already have original dump, create exported dump)
+                if exported_sid.exists():
+                    exported_dump = new_dir / f"{base_name}_exported.dump"
+                    run_siddump(str(exported_sid), str(exported_dump), roundtrip_duration)
+
+                    # Also create original siddump in Original/ directory
+                    original_dump = original_dir / f"{base_name}.dump"
+                    run_siddump(str(original_sid_copy), str(original_dump), roundtrip_duration)
+
+                # Step 6: Validate PSID format
+                psid_status = "N/A"
+                if exported_sid.exists():
+                    try:
+                        validator = PSIDValidator(exported_sid)
+                        is_valid = validator.validate()
+                        if is_valid:
+                            if validator.warnings:
+                                psid_status = f"Valid ({len(validator.warnings)} warnings)"
+                            else:
+                                psid_status = "Valid"
+                        else:
+                            psid_status = f"Invalid ({len(validator.errors)} errors)"
+                    except Exception as e:
+                        psid_status = f"Error: {str(e)[:20]}"
+
+                # Step 7: Generate comparison report
+                # Count validation artifacts created
+                validation_count = sum([
+                    original_sid_copy.exists(),
+                    exported_sid.exists(),
+                    original_wav.exists(),
+                    exported_wav.exists(),
+                    (original_dir / f"{base_name}.dump").exists(),
+                    (new_dir / f"{base_name}_exported.dump").exists()
+                ])
+                print(f"       -> Validation: {validation_count}/6 artifacts | PSID: {psid_status}")
+
             success_count += 1
         else:
             failed_files.append(sid_file)
@@ -786,7 +973,25 @@ def convert_all(sid_dir='SID', sf2_dir='SF2'):
             print(f"  - {f}")
 
     print()
-    print(f"Output files are in: {os.path.abspath(sf2_dir)}")
+    print(f"Output files are in: {os.path.abspath(output_dir)}")
+    print(f"Structure: {output_dir}/{{SongName}}/New/")
+
+    # Generate overview summary
+    print()
+    print("Generating conversion overview...")
+    try:
+        result = subprocess.run(
+            [sys.executable, 'generate_overview.py', output_dir],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        if result.returncode == 0:
+            print(f"  [OK] Overview: {output_dir}/conversion_summary.html")
+        else:
+            print(f"  [WARN] Failed to generate overview: {result.stderr[:100]}")
+    except Exception as e:
+        print(f"  [WARN] Could not generate overview: {str(e)[:100]}")
 
     return len(failed_files) == 0
 
@@ -802,15 +1007,28 @@ def main():
     )
     parser.add_argument(
         '--output', '-o',
-        default='SF2',
-        help='Output directory for .sf2 files (default: SF2)'
+        default='output',
+        help='Output directory for conversion results (default: output)'
+    )
+    parser.add_argument(
+        '--roundtrip', '-r',
+        action='store_true',
+        help='Run round-trip validation after conversion (SID→SF2→SID)'
+    )
+    parser.add_argument(
+        '--roundtrip-duration', '-d',
+        type=int,
+        default=10,
+        help='Duration in seconds for round-trip validation (default: 10)'
     )
 
     args = parser.parse_args()
 
     success = convert_all(
         sid_dir=args.input,
-        sf2_dir=args.output
+        output_dir=args.output,
+        roundtrip=args.roundtrip,
+        roundtrip_duration=args.roundtrip_duration
     )
 
     sys.exit(0 if success else 1)

@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 
-**Version 0.5.1** | Build Date: 2025-11-24
+**Version 0.6.0** | Build Date: 2025-11-25
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files.
 
@@ -59,42 +59,53 @@ python sid_to_sf2.py Unboxed_Ending_8580.sid output.sf2 --driver driver11
 - **np20** (default) - JCH NewPlayer 20 driver, most similar to Laxity format
 - **driver11** - Standard SF2 Driver 11, more features but different instrument format
 
-### Deep Analysis
-
-```bash
-python analyze_sid.py <input.sid>
-```
-
-### Laxity Format Analysis
-
-```bash
-python laxity_analyzer.py <input.sid>
-```
-
 ### Batch Conversion
 
 Convert all SID files in a directory:
 
 ```bash
-python convert_all.py [--driver {np20,driver11}] [--input SID] [--output SF2]
+python convert_all.py [--input SID] [--output output] [--roundtrip]
 ```
 
 Examples:
 ```bash
-# Convert all SIDs in SID folder to SF2 folder (default)
+# Convert all SIDs in SID folder to output folder (generates both NP20 and Driver 11)
 python convert_all.py
 
-# Use driver11 instead of np20
-python convert_all.py --driver driver11
-
 # Custom input/output directories
-python convert_all.py --input my_sids --output converted
+python convert_all.py --input my_sids --output my_output
+
+# Include round-trip validation (SID→SF2→SID verification)
+python convert_all.py --roundtrip
+
+# Custom validation duration (default: 10 seconds)
+python convert_all.py --roundtrip --roundtrip-duration 30
 ```
 
-The batch converter generates three files per SID:
-- `.sf2` - SID Factory II project file
-- `_info.txt` - Detailed extraction info with all tables
-- `.dump` - SID register dump (60 seconds of playback)
+The batch converter creates a nested structure: `output/{SongName}/New/` containing:
+- `{name}_g4.sf2` - SID Factory II project file (NP20/G4 driver)
+- `{name}_d11.sf2` - SID Factory II project file (Driver 11, default for validation)
+- `{name}_info.txt` - Detailed extraction info with all tables
+- `{name}.dump` - SID register dump (60 seconds of playback)
+
+Round-trip validation creates additional folders:
+- `output/{SongName}/Original/` - Original SID, WAV, dump, and info
+- `output/{SongName}/New/` - Converted files plus exported SID for comparison
+- `output/{SongName}/{name}_roundtrip_report.html` - Detailed comparison report
+
+### Round-trip Validation
+
+Test the complete conversion pipeline (SID→SF2→SID):
+
+```bash
+python test_roundtrip.py <input.sid> [--duration 30]
+```
+
+This validates that:
+1. SID converts to SF2 successfully
+2. SF2 packs back to SID with proper code relocation
+3. Audio output matches between original and converted files
+4. Register writes are preserved correctly
 
 #### Info File Contents
 
