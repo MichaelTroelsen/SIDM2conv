@@ -101,52 +101,133 @@ class SIDRegisterCapture:
             return False
 
     def _parse_siddump_output(self, output: str):
-        """Parse siddump output into frame-by-frame register data"""
-        current_frame = {}
-        frame_cycle = 0
+        """Parse siddump table format output into frame-by-frame register data
 
+        Table format example:
+        | Frame | Freq Note/Abs WF ADSR Pul | Freq Note/Abs WF ADSR Pul | Freq Note/Abs WF ADSR Pul | FCut RC Typ V | Cycl RL RB |
+        +-------+---------------------------+---------------------------+---------------------------+---------------+------------+
+        |     0 | 0000  ... ..  00 0000 000 | 0000  ... ..  00 0000 000 | 0000  ... ..  00 0000 000 | 0000 00 Off 0 | 1521 19 1B |
+        |     1 | FD2E (B-7 DF) 80 .... 800 | FD2F (B-7 DF) 80 .... 800 | FD30 (B-7 DF) 80 .... 800 | .... F1 ... F | 1520 19 1B |
+        """
         for line in output.split('\n'):
             line = line.strip()
-            if not line:
+            if not line or line.startswith('+'):
                 continue
 
-            # Look for register writes: "D400: 01 02 03 ..."
-            if line.startswith('D4'):
-                parts = line.split(':')
-                if len(parts) == 2:
-                    addr_str = parts[0].strip()
-                    values_str = parts[1].strip()
+            # Skip header row
+            if '| Frame |' in line:
+                continue
 
-                    try:
-                        base_addr = int(addr_str, 16)
-                        values = [int(v, 16) for v in values_str.split() if v]
+            # Parse data rows (start with |)
+            if line.startswith('|'):
+                parts = [p.strip() for p in line.split('|')[1:]]  # Skip first empty element
+                if len(parts) < 5:  # Need at least frame + 3 voices + filter
+                    continue
 
-                        # Record each register value
-                        for offset, value in enumerate(values):
-                            reg = (base_addr - 0xD400 + offset) & 0xFF
-                            if reg < 0x19:  # Valid SID register
-                                current_frame[reg] = value
-                                self.register_history[reg].append({
-                                    'frame': self.stats['total_frames'],
-                                    'cycle': frame_cycle,
-                                    'value': value
-                                })
-                                self.stats['total_writes'] += 1
-                    except ValueError:
-                        continue
+                try:
+                    # Extract frame number
+                    frame_num = int(parts[0])
 
-            # Check for frame boundaries (look for cycle counts)
-            elif line.startswith('Cycle:') or line.startswith('Frame:'):
-                if current_frame:
-                    self.frames.append(current_frame.copy())
+                    # Parse voice data (3 voices)
+                    frame_data = {}
+                    for voice_idx in range(3):
+                        voice_data = parts[1 + voice_idx].split()
+                        if len(voice_data) >= 5:
+                            # Parse frequency (hex value)
+                            freq_str = voice_data[0]
+                            if freq_str != '....':
+                                try:
+                                    freq = int(freq_str, 16)
+                                    reg_base = voice_idx * 7
+                                    frame_data[reg_base + 0] = freq & 0xFF  # Freq Lo
+                                    frame_data[reg_base + 1] = (freq >> 8) & 0xFF  # Freq Hi
+                                except ValueError:
+                                    pass
+
+                            # Parse waveform (3rd position after note info)
+                            wf_idx = 2 if '(' in voice_data[1] else 1
+                            if wf_idx < len(voice_data):
+                                wf_str = voice_data[wf_idx]
+                                if wf_str != '..' and wf_str != '....':
+                                    try:
+                                        wf = int(wf_str, 16)
+                                        frame_data[voice_idx * 7 + 4] = wf  # Control register
+                                    except ValueError:
+                                        pass
+
+                            # Parse ADSR (4th position)
+                            adsr_idx = wf_idx + 1
+                            if adsr_idx < len(voice_data):
+                                adsr_str = voice_data[adsr_idx]
+                                if adsr_str != '....':
+                                    try:
+                                        if len(adsr_str) == 4:
+                                            ad = int(adsr_str[:2], 16)
+                                            sr = int(adsr_str[2:], 16)
+                                            frame_data[voice_idx * 7 + 5] = ad  # Attack/Decay
+                                            frame_data[voice_idx * 7 + 6] = sr  # Sustain/Release
+                                    except ValueError:
+                                        pass
+
+                            # Parse pulse width (5th position)
+                            pw_idx = adsr_idx + 1
+                            if pw_idx < len(voice_data):
+                                pw_str = voice_data[pw_idx]
+                                if pw_str != '...' and pw_str != '....':
+                                    try:
+                                        pw = int(pw_str, 16)
+                                        frame_data[voice_idx * 7 + 2] = pw & 0xFF  # PW Lo
+                                        frame_data[voice_idx * 7 + 3] = (pw >> 8) & 0x0F  # PW Hi
+                                    except ValueError:
+                                        pass
+
+                    # Parse filter data (4th column)
+                    if len(parts) > 4:
+                        filter_data = parts[4].split()
+                        if len(filter_data) >= 4:
+                            # Filter cutoff
+                            fcut_str = filter_data[0]
+                            if fcut_str != '....':
+                                try:
+                                    fcut = int(fcut_str, 16)
+                                    frame_data[0x15] = fcut & 0xFF  # Filter Lo (3 bits)
+                                    frame_data[0x16] = (fcut >> 8) & 0x07  # Filter Hi
+                                except ValueError:
+                                    pass
+
+                            # Resonance/Filter
+                            if len(filter_data) > 1:
+                                rc_str = filter_data[1]
+                                if rc_str != '..':
+                                    try:
+                                        frame_data[0x17] = int(rc_str, 16)  # Res/Filt
+                                    except ValueError:
+                                        pass
+
+                            # Volume
+                            if len(filter_data) > 3:
+                                vol_str = filter_data[3]
+                                if vol_str != '.':
+                                    try:
+                                        frame_data[0x18] = int(vol_str, 16)  # Mode/Vol
+                                    except ValueError:
+                                        pass
+
+                    # Store frame
+                    self.frames.append(frame_data)
                     self.stats['total_frames'] += 1
-                    current_frame = {}
-                    frame_cycle = 0
 
-        # Add last frame
-        if current_frame:
-            self.frames.append(current_frame)
-            self.stats['total_frames'] += 1
+                    # Update register history
+                    for reg, value in frame_data.items():
+                        self.register_history[reg].append({
+                            'frame': frame_num,
+                            'value': value
+                        })
+                        self.stats['total_writes'] += 1
+
+                except (ValueError, IndexError) as e:
+                    # Skip malformed lines
+                    continue
 
         print(f"  Captured {self.stats['total_frames']} frames")
         print(f"  Total register writes: {self.stats['total_writes']}")
@@ -658,26 +739,26 @@ def generate_html_report(original: SIDRegisterCapture, exported: SIDRegisterCapt
 
     # Generate recommendations based on accuracy
     if comparison['overall_accuracy'] >= 99:
-        html += "            <li>✅ <strong>Excellent!</strong> Conversion is nearly perfect. Minor tweaks may achieve 100% accuracy.</li>\n"
+        html += "            <li>[OK] <strong>Excellent!</strong> Conversion is nearly perfect. Minor tweaks may achieve 100% accuracy.</li>\n"
     elif comparison['overall_accuracy'] >= 95:
-        html += "            <li>⚠️ Very good accuracy. Review the differences list to identify remaining issues.</li>\n"
+        html += "            <li>[!] Very good accuracy. Review the differences list to identify remaining issues.</li>\n"
     elif comparison['overall_accuracy'] >= 80:
-        html += "            <li>⚠️ Good accuracy but significant differences remain. Focus on register write sequences.</li>\n"
+        html += "            <li>[!] Good accuracy but significant differences remain. Focus on register write sequences.</li>\n"
     else:
-        html += "            <li>❌ Low accuracy. Major issues in conversion pipeline. Review SF2 table extraction and packing logic.</li>\n"
+        html += "            <li>[X] Low accuracy. Major issues in conversion pipeline. Review SF2 table extraction and packing logic.</li>\n"
 
     # Specific recommendations
     if comparison['frame_accuracy'] < 90:
-        html += "            <li>🔍 Frame-level accuracy is low. Check timing and frame synchronization.</li>\n"
+        html += "            <li>[!] Frame-level accuracy is low. Check timing and frame synchronization.</li>\n"
 
     if comparison['filter_accuracy'] < 90:
-        html += "            <li>🔍 Filter accuracy is low. Review filter table extraction and cutoff/resonance values.</li>\n"
+        html += "            <li>[!] Filter accuracy is low. Review filter table extraction and cutoff/resonance values.</li>\n"
 
     for voice_name, voice_data in comparison['voice_accuracy'].items():
         if voice_data['frequency_accuracy'] < 90:
-            html += f"            <li>🔍 {voice_name} frequency accuracy is low. Check note frequency calculation.</li>\n"
+            html += f"            <li>[!] {voice_name} frequency accuracy is low. Check note frequency calculation.</li>\n"
         if voice_data['waveform_accuracy'] < 90:
-            html += f"            <li>🔍 {voice_name} waveform accuracy is low. Check wave table and control register handling.</li>\n"
+            html += f"            <li>[!] {voice_name} waveform accuracy is low. Check wave table and control register handling.</li>\n"
 
     html += """
         </ul>
@@ -689,7 +770,7 @@ def generate_html_report(original: SIDRegisterCapture, exported: SIDRegisterCapt
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(html)
 
-    print(f"\n✅ HTML report generated: {output_path}")
+    print(f"\n[OK] HTML report generated: {output_path}")
 
 
 def main():
@@ -779,13 +860,13 @@ def main():
 
     # Return exit code based on accuracy
     if comparison_results['overall_accuracy'] >= 99:
-        print("✅ SUCCESS: 99%+ accuracy achieved!")
+        print("[OK] SUCCESS: 99%+ accuracy achieved!")
         return 0
     elif comparison_results['overall_accuracy'] >= 95:
-        print("⚠️  GOOD: 95%+ accuracy achieved")
+        print("[!] GOOD: 95%+ accuracy achieved")
         return 0
     else:
-        print("❌ NEEDS WORK: Accuracy below 95%")
+        print("[X] NEEDS WORK: Accuracy below 95%")
         return 1
 
 
