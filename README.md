@@ -691,14 +691,63 @@ The test performs:
 - SID Factory II installed (default path: `C:\Users\mit\Downloads\sidfactory2-master\sidfactory2-master\artifacts\`)
 - Test dependencies: `pip install -r requirements-test.txt`
 
-All 34 unit tests should pass:
-- SID parsing tests
+### Round-trip Validation
+
+The `test_roundtrip.py` script performs complete round-trip validation by converting SID → SF2 → SID and comparing audio output:
+
+```bash
+# Test Angular.sid with 30 seconds duration
+python test_roundtrip.py SID/Angular.sid
+
+# Custom duration (seconds)
+python test_roundtrip.py SID/Angular.sid --duration 60
+
+# Verbose output
+python test_roundtrip.py SID/Angular.sid --verbose
+```
+
+The validation performs 7 steps automatically:
+
+1. **SID → SF2**: Converts original SID to SF2 using `sid_to_sf2.py`
+2. **SF2 → SID**: Packs SF2 back to SID using `sf2pack` with full 6502 code relocation
+3. **Original WAV**: Renders original SID to WAV using `SID2WAV.EXE`
+4. **Exported WAV**: Renders exported SID to WAV using `SID2WAV.EXE`
+5. **Original Siddump**: Analyzes original SID register writes using `siddump.exe`
+6. **Exported Siddump**: Analyzes exported SID register writes using `siddump.exe`
+7. **HTML Report**: Generates detailed comparison report
+
+**Output files** (in `roundtrip_output/`):
+- `*_converted.sf2` - SF2 conversion from original SID
+- `*_exported.sid` - SID packed from SF2 (with code relocation)
+- `*_original.wav` - Audio from original SID
+- `*_exported.wav` - Audio from exported SID
+- `*_original.dump` - Register dump from original SID
+- `*_exported.dump` - Register dump from exported SID
+- `*_roundtrip_report.html` - Detailed comparison report
+
+**Key Features**:
+- Full 6502 code relocation (343 absolute + 114 zero page address patches)
+- Frame-by-frame SID register comparison
+- WAV file size validation
+- Detailed HTML report with metrics
+
+**Requirements**:
+- `tools/sf2pack/sf2pack.exe` - SF2 to SID packer (built from source)
+- `tools/SID2WAV.EXE` - SID to WAV renderer
+- `tools/siddump.exe` - SID register analyzer
+
+All 69 unit tests should pass:
+- SID parsing tests (7 tests)
 - Memory access tests
 - Data structure tests
 - Integration tests with real SID files
-- SF2 writing tests
+- SF2 writing tests (2 tests)
 - Instrument encoding tests
 - Feature validation tests (instruments, commands, tempo, tables)
+- Pulse table extraction tests (5 tests)
+- Filter table extraction tests (7 tests)
+- Sequence parsing edge cases (18 tests)
+- Table linkage validation (3 tests)
 
 The SF2 format test validates:
 - **Aux pointer validation**: Ensures aux pointer doesn't point to valid aux data (which crashes SID Factory II)
@@ -795,6 +844,41 @@ Identifies the player routine used in a SID file.
 ```bash
 tools/player-id.exe <sidfile>
 ```
+
+### sf2pack
+
+SF2 to SID packer with full 6502 code relocation. Converts SF2 files back to playable SID format.
+
+```bash
+tools/sf2pack/sf2pack.exe <input.sf2> <output.sid> [options]
+```
+
+Options:
+- `--address ADDR` - Target load address (hex, default: 0x1000)
+- `--zp ZP` - Target zero page base (hex, default: 0x02)
+- `--title TITLE` - Set PSID title metadata
+- `--author AUTHOR` - Set PSID author metadata
+- `--copyright TEXT` - Set PSID copyright metadata
+- `-v, --verbose` - Verbose output with relocation stats
+
+**Key Features**:
+- Full 6502 instruction-by-instruction code scanning
+- Relocates absolute addresses (am_ABS, am_ABX, am_ABY, am_IND)
+- Adjusts zero page addresses (am_ZP, am_ZPX, am_ZPY, am_IZX, am_IZY)
+- Protects ROM addresses ($D000-$DFFF) from modification
+- Exports as PSID v2 format with metadata
+
+**Example output**:
+```
+Processing driver code:
+  Driver: $d7e - $157e
+  Address delta: 282
+  ZP: $2 -> $2
+  Relocations: 343 absolute, 114 zero page
+  Packed size: 8834 bytes
+```
+
+See `tools/sf2pack/README.md` for architecture details and source code documentation.
 
 ### 6502 CPU Emulator
 

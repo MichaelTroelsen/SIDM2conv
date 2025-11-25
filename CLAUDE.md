@@ -22,10 +22,16 @@ SIDM2/
 ├── convert_all.py         # Batch conversion script
 ├── test_converter.py      # Unit tests (69 tests)
 ├── test_sf2_format.py     # Format validation tests
+├── test_roundtrip.py      # Round-trip validation (SID→SF2→SID)
 ├── laxity_parser.py       # Dedicated Laxity player parser
 ├── SID/                   # Input SID files
 ├── SF2/                   # Output SF2 files + dumps
-├── tools/                 # External tools (siddump.exe, player-id.exe)
+├── roundtrip_output/      # Round-trip validation results
+├── tools/                 # External tools
+│   ├── siddump.exe        # SID register dump tool
+│   ├── player-id.exe      # Player identification
+│   ├── SID2WAV.EXE        # SID to WAV renderer
+│   └── sf2pack/           # SF2 to SID packer with 6502 relocation
 ├── G5/                    # Driver templates
 │   ├── drivers/           # SF2 driver PRG files (11, 12, 13, 14, 15, 16, NP20)
 │   ├── examples/          # Example SF2 files for each driver
@@ -50,8 +56,21 @@ SIDM2/
 ### External Tools
 - `tools/siddump.exe` - Dumps SID register writes (6502 emulator)
 - `tools/player-id.exe` - Identifies SID player type
+- `tools/SID2WAV.EXE` - Converts SID to WAV audio files
+- `tools/sf2pack/` - SF2 to SID packer with full 6502 code relocation
+  - `sf2pack.exe` - Main packer executable
+  - `packer_simple.cpp` - Core relocation logic (343 abs + 114 ZP relocations)
+  - `opcodes.cpp` - Complete 256-opcode 6502 lookup table
+  - `c64memory.cpp` - 64KB memory management
+  - `psidfile.cpp` - PSID v2 file export
 - `tools/cpu.c` - 6502 CPU emulator source
 - `tools/siddump.c` - Siddump main program source
+
+### Validation Tools
+- `test_roundtrip.py` - Complete SID→SF2→SID round-trip validation
+  - Performs 7-step automated testing
+  - Generates HTML reports with detailed comparisons
+  - Uses siddump for register-level verification
 
 ### Siddump Tool Details
 
@@ -126,6 +145,18 @@ When making code changes, you MUST update relevant documentation:
 1. Run `tools/siddump.exe SID/file.sid > SF2/file.dump`
 2. Check dump for register patterns
 3. Review `SF2/file_info.txt` for table addresses
+
+### Round-trip validation
+1. Run `python test_roundtrip.py SID/file.sid`
+2. Check `roundtrip_output/file_roundtrip_report.html` for results
+3. Compare `file_original.dump` and `file_exported.dump` for register differences
+4. Listen to `file_original.wav` and `file_exported.wav` for audio quality
+
+### Packing SF2 back to SID
+1. Build sf2pack: `cd tools/sf2pack && mingw32-make`
+2. Pack file: `tools/sf2pack/sf2pack.exe SF2/file.sf2 output.sid --title "Title" --author "Author"`
+3. Test with VICE: Load output.sid in C64 emulator
+4. Verify relocation with `-v` flag for detailed stats
 
 ## Known Limitations
 
