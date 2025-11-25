@@ -8,10 +8,18 @@ SID to SF2 Converter - Converts Commodore 64 SID music files to SID Factory II (
 
 ```bash
 # Convert single file
-python sid_to_sf2.py SID/input.sid SF2/output.sf2
+python sid_to_sf2.py SID/input.sid output/SongName/New/output.sf2
 
-# Batch convert all SID files
+# Batch convert all SID files (generates both NP20 and Driver 11 versions)
+# Creates structure: output/{SongName}/New/{files}
 python convert_all.py
+
+# Batch convert with round-trip validation
+python convert_all.py --roundtrip
+
+# Test single file round-trip (SID→SF2→SID)
+# Creates structure: output/{SongName}/Original/ and /New/
+python test_roundtrip.py SID/input.sid
 ```
 
 ## Project Structure
@@ -19,19 +27,27 @@ python convert_all.py
 ```
 SIDM2/
 ├── sid_to_sf2.py          # Main converter
-├── convert_all.py         # Batch conversion script
+├── convert_all.py         # Batch conversion script (with SF2→SID export)
 ├── test_converter.py      # Unit tests (69 tests)
 ├── test_sf2_format.py     # Format validation tests
 ├── test_roundtrip.py      # Round-trip validation (SID→SF2→SID)
 ├── laxity_parser.py       # Dedicated Laxity player parser
+├── validate_psid.py       # PSID header validation utility
+├── PACK_STATUS.md         # SF2 packer status and test results
+├── sidm2/                 # Core package
+│   ├── sf2_packer.py      # SF2 to SID packer (NEW v0.6.0)
+│   ├── cpu6502.py         # 6502 CPU emulator for pointer relocation
+│   └── ...                # Other modules
 ├── SID/                   # Input SID files
-├── SF2/                   # Output SF2 files + dumps
-├── roundtrip_output/      # Round-trip validation results
+├── output/                # Output folder with nested structure
+│   └── {SongName}/        # Per-song directory
+│       ├── Original/      # Original SID, WAV, dump (round-trip only)
+│       └── New/           # Converted SF2 + exported SID files
 ├── tools/                 # External tools
 │   ├── siddump.exe        # SID register dump tool
 │   ├── player-id.exe      # Player identification
 │   ├── SID2WAV.EXE        # SID to WAV renderer
-│   └── sf2pack/           # SF2 to SID packer with 6502 relocation
+│   └── sf2pack/           # C++ SF2 to SID packer (reference)
 ├── G5/                    # Driver templates
 │   ├── drivers/           # SF2 driver PRG files (11, 12, 13, 14, 15, 16, NP20)
 │   ├── examples/          # Example SF2 files for each driver
@@ -53,11 +69,20 @@ SIDM2/
 - `SF2Writer` class - Writes SF2 format using templates
 - Table extraction functions for wave, pulse, filter tables
 
+### Python SF2 Packer (`sidm2/sf2_packer.py`) - NEW in v0.6.0
+- Pure Python implementation of SF2 to SID packing
+- Generates VSID-compatible SID files with correct sound playback
+- Uses `sidm2/cpu6502.py` for 6502 instruction-level pointer relocation
+- Integrated into `convert_all.py` for automatic SID export
+- Average output size: ~3,800 bytes (comparable to manual exports)
+- See `PACK_STATUS.md` for implementation details and test results
+
 ### External Tools
 - `tools/siddump.exe` - Dumps SID register writes (6502 emulator)
 - `tools/player-id.exe` - Identifies SID player type
 - `tools/SID2WAV.EXE` - Converts SID to WAV audio files
-- `tools/sf2pack/` - SF2 to SID packer with full 6502 code relocation
+- `validate_psid.py` - PSID header validation utility
+- `tools/sf2pack/` - C++ SF2 to SID packer (reference implementation)
   - `sf2pack.exe` - Main packer executable
   - `packer_simple.cpp` - Core relocation logic (343 abs + 114 ZP relocations)
   - `opcodes.cpp` - Complete 256-opcode 6502 lookup table
@@ -68,9 +93,11 @@ SIDM2/
 
 ### Validation Tools
 - `test_roundtrip.py` - Complete SID→SF2→SID round-trip validation
-  - Performs 7-step automated testing
+  - Performs 8-step automated testing (setup, convert, pack, render WAVs, siddump both, report)
   - Generates HTML reports with detailed comparisons
   - Uses siddump for register-level verification
+  - Organized output: `roundtrip_output/{SongName}/Original/` and `roundtrip_output/{SongName}/New/`
+- `convert_all.py --roundtrip` - Batch conversion with integrated round-trip validation
 
 ### Siddump Tool Details
 
