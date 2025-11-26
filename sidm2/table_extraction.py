@@ -779,11 +779,48 @@ def find_and_extract_filter_table(data: bytes, load_addr: int, filter_ptrs: Opti
     if not data or len(data) < 64:
         raise TableExtractionError(f"Data too small for filter table extraction: {len(data) if data else 0} bytes")
 
+    # Try known Laxity NewPlayer v21 address first: $1A1E
+    LAXITY_FILTER_ADDR = 0x1A1E
+    if load_addr <= LAXITY_FILTER_ADDR and LAXITY_FILTER_ADDR < load_addr + len(data):
+        laxity_offset = LAXITY_FILTER_ADDR - load_addr
+        if laxity_offset + 16 < len(data):
+            # Try extracting from known address
+            entries = []
+            pos = laxity_offset
+            for entry_idx in range(16):
+                if pos + 4 > len(data):
+                    break
+
+                filter_val = data[pos]
+                # Check for end marker (0x7F)
+                if filter_val == 0x7F:
+                    break
+
+                count = data[pos + 1]
+                duration = data[pos + 2]
+                next_idx = data[pos + 3]
+
+                # Validate Y*4 format for next index
+                if next_idx != 0 and (next_idx % 4 != 0 or next_idx > 64):
+                    break
+
+                entries.append((filter_val, count, duration, next_idx))
+
+                # Stop at end marker (all zeros)
+                if filter_val == 0 and count == 0 and duration == 0 and next_idx == 0 and entry_idx > 0:
+                    break
+
+                pos += 4
+
+            # If we extracted a reasonable table from known address, use it
+            if len(entries) >= 2:
+                return LAXITY_FILTER_ADDR, entries
+
     best_addr = 0
     best_entries = []
     best_score = 0
 
-    # Search in the typical range for Laxity filter tables
+    # Fallback: Search in the typical range for Laxity filter tables
     # Extended range to cover larger SID files (some go up to $2F63)
     for start in range(0x600, min(len(data) - 64, 0x2000)):
         addr = load_addr + start
