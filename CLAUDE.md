@@ -93,6 +93,15 @@ SIDM2/
 
 ### Validation Tools
 
+#### Multi-File Validation Report (NEW in v0.6.1)
+- `generate_validation_report.py` - Comprehensive validation report generator
+  - Validates all SID files in a directory
+  - Generates HTML report (`output/validation_report.html`) with statistics and analysis
+  - Identifies systematic vs file-specific validation issues
+  - Categorizes warnings (Instrument Pointer Bounds, Note Range, etc.)
+  - Current status: 16 test files validated with improved boundary checking
+  - False-positive warnings reduced by 50% for Angular.sid (4→2)
+
 #### SID Accuracy Validation (NEW in v0.6.0)
 - `validate_sid_accuracy.py` - Frame-by-frame register comparison tool
   - Compares original SID vs exported SID using siddump register captures

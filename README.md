@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 
-**Version 0.7.0** | Build Date: 2025-11-26
+**Version 0.6.1** | Build Date: 2025-11-26
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files.
 
@@ -1144,6 +1144,13 @@ All files now achieve 100% validation score with siddump ADSR merging and improv
 | 47 | SF2Writer modularization | ✅ Done | Extracted ~960 lines to sidm2/sf2_writer.py |
 
 ## Changelog
+
+### v0.6.1 (2025-11-26)
+- Fixed instrument pointer validation boundary checking (changed >= to > for Y*4 indexed tables)
+- Added $7F (end marker) to validation skip list alongside $80+ markers
+- Reduced false-positive validation warnings by 50% (4 to 2 for Angular.sid)
+- Created `generate_validation_report.py` for multi-file validation analysis
+- Generated comprehensive validation report across all 16 test SID files
 
 ### v0.6.0 (2025-11-25)
 - Added comprehensive SID accuracy validation system
