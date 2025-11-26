@@ -577,10 +577,11 @@ class LaxityPlayerAnalyzer:
                 errors.append(f"Sequence {i} too long ({len(seq)} events)")
 
             for j, event in enumerate(seq):
-                if event.note > 0x5D and event.note not in (0x7E, 0x7F):
+                # Valid SF2 note values: $00-$5D (notes), $7E (gate on), $7F (end), $80 (gate off)
+                if event.note > 0x5D and event.note not in (0x7E, 0x7F, 0x80):
                     if event.note <= 0x70:
                         errors.append(f"Seq {i} event {j}: note ${event.note:02X} out of range")
-                    elif event.note > 0x7F:
+                    elif event.note > 0x80:
                         errors.append(f"Seq {i} event {j}: invalid note ${event.note:02X}")
 
         # Validate instruments
