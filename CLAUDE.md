@@ -92,6 +92,31 @@ SIDM2/
 - `tools/siddump.c` - Siddump main program source
 
 ### Validation Tools
+
+#### SID Accuracy Validation (NEW in v0.6.0)
+- `validate_sid_accuracy.py` - Frame-by-frame register comparison tool
+  - Compares original SID vs exported SID using siddump register captures
+  - Measures Overall (weighted), Frame, Voice, Register, and Filter accuracy
+  - Default 30-second validation for detailed analysis
+  - Generates accuracy reports with grades (EXCELLENT/GOOD/FAIR/POOR)
+  - See `docs/VALIDATION_SYSTEM.md` for architecture details
+
+- `sidm2/validation.py` - Lightweight validation module for pipeline integration
+  - `quick_validate()` - 10-second validation for batch processing
+  - `generate_accuracy_summary()` - Formats results for info.txt files
+  - `get_accuracy_grade()` - Converts accuracy to quality grade
+  - Integrated into `convert_all.py` automatically
+
+- Accuracy metrics formula:
+  ```
+  Overall = Frame×0.40 + Voice×0.30 + Register×0.20 + Filter×0.10
+  ```
+
+- Baseline accuracy (v0.6.0):
+  - Angular.sid: 9.0% overall (POOR)
+  - Target: 99% overall (see `docs/ACCURACY_ROADMAP.md`)
+
+#### Round-trip Validation
 - `test_roundtrip.py` - Complete SID→SF2→SID round-trip validation
   - Performs 8-step automated testing (setup, convert, pack, render WAVs, siddump both, report)
   - Generates HTML reports with detailed comparisons
@@ -390,6 +415,8 @@ See README.md for full improvement list with status tracking.
 - `docs/SF2_SOURCE_ANALYSIS.md` - SF2 editor source code analysis
 - `docs/LAXITY_PLAYER_ANALYSIS.md` - Disassembled Laxity player walkthrough
 - `docs/SIDDUMP_ANALYSIS.md` - Siddump tool source code analysis
+- `docs/VALIDATION_SYSTEM.md` - Three-tier validation architecture (NEW v0.6.0)
+- `docs/ACCURACY_ROADMAP.md` - Plan to reach 99% accuracy (NEW v0.6.0)
 - `docs/format-specification.md` - PSID/RSID and Laxity formats
 - SID Factory II User Manual (2023-09-30) - Official documentation
 

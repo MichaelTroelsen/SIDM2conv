@@ -1145,6 +1145,17 @@ All files now achieve 100% validation score with siddump ADSR merging and improv
 
 ## Changelog
 
+### v0.6.0 (2025-11-25)
+- Added comprehensive SID accuracy validation system
+- Created `validate_sid_accuracy.py` for frame-by-frame register comparison
+- Created `sidm2/validation.py` module for pipeline integration
+- Integrated 10-second quick validation into convert_all.py pipeline
+- Added ACCURACY VALIDATION section to all info.txt files
+- Fixed siddump table parser to correctly capture register states
+- Established baseline accuracy metrics (9% overall for Angular.sid)
+- Created comprehensive validation system documentation
+- Removed Unicode emojis for Windows console compatibility
+
 ### v0.5.1 (2025-11-23)
 - Fixed pulse table extraction to find correct address with improved scoring algorithm
 - Fixed pulse table extraction to extract all entries (was stopping early on loops)
