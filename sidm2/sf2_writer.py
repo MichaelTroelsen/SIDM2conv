@@ -13,6 +13,7 @@ from .instrument_extraction import extract_laxity_instruments, extract_laxity_wa
 from .sequence_extraction import (
     get_command_names,
     extract_command_parameters,
+    build_command_index_map,
     build_sf2_command_table,
     extract_arpeggio_indices,
     find_arpeggio_table_in_memory,
@@ -349,9 +350,14 @@ class SF2Writer:
             # SF2 sequences use packed format: only write instrument/command when they change
             # Format: [instr] [cmd] note [instr] [cmd] note ... 0x7F
             # Where instrument bytes are 0xA0-0xBF and command bytes are 0x01-0x3F
+            #
+            # Phase 1: Sequences now come pre-formatted from sequence_translator with:
+            # - Proper SF2 command indices (0-63) from command_index_map
+            # - Gate markers (0x7E sustain, 0x80 gate-off) already inserted
+            # - Duration expansion already applied
             rows_written = 0
             for event in seq:
-                # Skip duration bytes (0x80-0x9F) - they shouldn't be in note field
+                # Skip duration bytes (0x80-0x9F) - shouldn't appear but be safe
                 if 0x80 <= event.note <= 0x9F:
                     continue
 
@@ -360,14 +366,13 @@ class SF2Writer:
                     self.output[seq_offset] = event.instrument
                     seq_offset += 1
 
-                # Write command if present (non-zero)
-                if event.command != 0x00 and seq_offset < len(self.output):
-                    # Convert Laxity command (0xC0-0xCF) to SF2 command (0x01-0x10)
-                    sf2_cmd = (event.command & 0x0F) + 1 if 0xC0 <= event.command <= 0xCF else event.command
-                    self.output[seq_offset] = sf2_cmd
+                # Write command index directly (Phase 1: already mapped to 0-63)
+                # event.command is either 0x80 (no change) or 0-63 (command index)
+                if event.command != 0x80 and seq_offset < len(self.output):
+                    self.output[seq_offset] = event.command
                     seq_offset += 1
 
-                # Always write note
+                # Always write note (including gate markers 0x7E, 0x80)
                 if seq_offset < len(self.output):
                     self.output[seq_offset] = event.note
                     seq_offset += 1
@@ -954,7 +959,19 @@ class SF2Writer:
         rows = cmd_table['rows']
 
         # Extract command parameters from raw sequences
-        if hasattr(self.data, 'raw_sequences') and self.data.raw_sequences:
+        # Phase 1: Use pre-built command_index_map if available (from sequence_translator)
+        if hasattr(self.data, 'command_index_map') and self.data.command_index_map:
+            # Convert command_index_map to SF2 command table format
+            # command_index_map is {(type, param1, param2): index}
+            # We need to build array where sf2_commands[index] = (type, param1, param2)
+            sf2_commands = [(0, 0, 0)] * 64
+            for (cmd_type, param1, param2), index in self.data.command_index_map.items():
+                if 0 <= index < 64:
+                    sf2_commands[index] = (cmd_type, param1, param2)
+
+            logger.info(f"    Using pre-built command table with {len(self.data.command_index_map)} entries (Phase 1)")
+        elif hasattr(self.data, 'raw_sequences') and self.data.raw_sequences:
+            # Legacy path: extract from raw sequences
             command_params = extract_command_parameters(
                 self.data.c64_data,
                 self.data.load_address,
@@ -964,7 +981,7 @@ class SF2Writer:
             # Build the full 64-entry command table
             sf2_commands = build_sf2_command_table(command_params)
 
-            logger.info(f"    Extracted {len(command_params)} unique commands from sequences")
+            logger.info(f"    Extracted {len(command_params)} unique commands from sequences (legacy)")
         else:
             # Default commands if no sequences available
             sf2_commands = [(0, 0, 0)] * 64

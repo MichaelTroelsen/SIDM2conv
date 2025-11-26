@@ -62,6 +62,8 @@ class ExtractedData:
     arp_table: List[Tuple[int, int, int, int]] = None  # Extracted arpeggio table
     hr_table: List[Tuple[int, int]] = None  # Extracted HR (Hard Restart) table
     init_table: List[int] = None  # Extracted Init table [tempo, volume, instr0, instr1, instr2]
+    frequency_table: object = None  # Laxity frequency table for note translation
+    command_index_map: dict = None  # Mapping of (type, param1, param2) -> command index (0-63)
 
     def __post_init__(self):
         if self.commands is None:

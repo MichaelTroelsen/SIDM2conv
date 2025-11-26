@@ -18,7 +18,17 @@ from .table_extraction import (
     extract_command_table,
 )
 from .instrument_extraction import extract_laxity_instruments, extract_laxity_wave_table
-from .sequence_extraction import get_command_names, analyze_sequence_commands
+from .sequence_extraction import (
+    get_command_names,
+    analyze_sequence_commands,
+    extract_command_parameters,
+    build_command_index_map,
+)
+from .sequence_translator import (
+    extract_laxity_frequency_table,
+    LaxitySequenceParser,
+    SF2SequenceBuilder,
+)
 
 # Import LaxityParser from the existing module
 import sys
@@ -463,6 +473,9 @@ class LaxityPlayerAnalyzer:
         # Extract arpeggio table
         arp_table = extract_arp_table(self.data, self.load_address)
 
+        # Extract frequency table for note translation
+        frequency_table = extract_laxity_frequency_table(self.data, self.load_address)
+
         # Create extracted data structure
         extracted = ExtractedData(
             header=self.header,
@@ -481,88 +494,41 @@ class LaxityPlayerAnalyzer:
             pointer_tables=tables,
             hr_table=hr_table,
             init_table=init_table,
-            arp_table=arp_table
+            arp_table=arp_table,
+            frequency_table=frequency_table
         )
 
         # Store raw sequences
         extracted.raw_sequences = laxity_data.sequences
 
-        # Create SequenceEvent representation
-        # Parse Laxity sequence format properly:
-        # - 0xA0-0xBF: instrument change (instrument = byte - 0xA0 + 0xA0 for SF2)
-        # - 0xC0-0xCF: command bytes (followed by parameter byte)
-        # - 0x80-0x9F: duration/timing (number of frames)
-        # - 0x00-0x6F: note values
-        # - 0x7E: gate on (sustain)
-        # - 0x7F: end marker
+        # Build command index map from all sequences (Phase 1: Day 1)
+        # Extract command parameters from raw sequences
+        cmd_params_list = extract_command_parameters(
+            self.data,
+            self.load_address,
+            laxity_data.sequences
+        )
+
+        # Build command index map from unique command tuples
+        command_index_map = build_command_index_map(cmd_params_list)
+        extracted.command_index_map = command_index_map
+
+        logger.debug(f"Built command index map with {len(command_index_map)} entries")
+
+        # Initialize sequence translator (Phase 1: Day 1-2)
+        laxity_parser = LaxitySequenceParser()
+        sf2_builder = SF2SequenceBuilder(frequency_table, command_index_map)
+
+        # Translate sequences using new translator (Phase 1: Day 2-3)
         for raw_seq in laxity_data.sequences:
-            seq = []
-            current_instr = 0x80  # No change
-            current_cmd = 0x00    # No command
-            current_cmd_param = 0x00  # Command parameter
-            current_duration = 1  # Default duration (1 frame)
-            i = 0
+            # Parse Laxity format
+            lax_events = laxity_parser.parse_sequence(raw_seq)
 
-            while i < len(raw_seq):
-                b = raw_seq[i]
+            # Translate to SF2 format
+            sf2_events = sf2_builder.build_sequence(lax_events)
 
-                # Instrument change: 0xA0-0xBF
-                if 0xA0 <= b <= 0xBF:
-                    current_instr = b  # Keep as-is for SF2 format
-                    i += 1
-                    continue
-
-                # Command: 0xC0-0xCF (followed by parameter byte)
-                elif 0xC0 <= b <= 0xCF:
-                    current_cmd = b
-                    i += 1
-                    # Extract parameter byte
-                    if i < len(raw_seq):
-                        current_cmd_param = raw_seq[i]
-                        logger.debug(f"    Extracted command ${b:02X} with param ${current_cmd_param:02X}")
-                        i += 1
-                    continue
-
-                # Duration/timing: 0x80-0x9F (Laxity uses full range)
-                # 0x80 = 1 frame, 0x81 = 2 frames, ..., 0x9F = 32 frames
-                elif 0x80 <= b <= 0x9F:
-                    current_duration = b - 0x80 + 1
-                    logger.debug(f"    Set duration to {current_duration} frames")
-                    i += 1
-                    continue
-
-                # Note or control byte: 0x00-0x7F
-                elif b <= 0x7F:
-                    # Clamp high notes to SF2 max (0x5D = B-7), but keep control bytes
-                    note = b
-                    if note > 0x5D and note not in (0x7E, 0x7F):
-                        note = 0x5D  # Clamp to B-7
-
-                    # Add note event with current instrument/command
-                    seq.append(SequenceEvent(current_instr, current_cmd, note))
-
-                    # Expand duration: add gate-on events (0x7E) for sustain
-                    # Skip expansion for control bytes (0x7E, 0x7F)
-                    if note not in (0x7E, 0x7F) and current_duration > 1:
-                        for _ in range(current_duration - 1):
-                            # Gate on event: no instrument/command change, note = 0x7E (sustain)
-                            seq.append(SequenceEvent(0x80, 0x00, 0x7E))
-
-                    # Reset state after note
-                    current_instr = 0x80  # Reset to "no change" after use
-                    current_cmd = 0x00
-                    current_cmd_param = 0x00
-                    current_duration = 1  # Reset to default
-                    i += 1
-                    continue
-
-                else:
-                    # Unknown byte, skip
-                    logger.debug(f"    Unknown byte ${b:02X} at offset {i}, skipping")
-                    i += 1
-
-            if seq:
-                extracted.sequences.append(seq)
+            if sf2_events:
+                extracted.sequences.append(sf2_events)
 
         # Convert orderlists
         for orderlist_indices in laxity_data.orderlists:
