@@ -619,15 +619,18 @@ class LaxityPlayerAnalyzer:
                 wave_ptr = instr[7]
 
                 # Check wave_ptr bounds (direct index)
-                if wave_table_size > 0 and wave_ptr >= wave_table_size:
+                # Skip validation if ptr >= 0x80 (unused/marker value)
+                if wave_table_size > 0 and wave_ptr < 0x80 and wave_ptr >= wave_table_size:
                     errors.append(f"Instrument {i}: wave_ptr {wave_ptr} exceeds wave table size {wave_table_size}")
 
                 # Check pulse_ptr bounds (Laxity uses Y*4 indexing, so ptr must be < total bytes)
-                if pulse_bytes > 0 and pulse_ptr >= pulse_bytes:
+                # Skip validation if ptr >= 0x80 (unused/marker value)
+                if pulse_bytes > 0 and pulse_ptr < 0x80 and pulse_ptr >= pulse_bytes:
                     errors.append(f"Instrument {i}: pulse_ptr {pulse_ptr} exceeds pulse table bytes {pulse_bytes}")
 
                 # Check filter_ptr bounds (similar to pulse)
-                if filter_bytes > 0 and filter_ptr > 0 and filter_ptr >= filter_bytes:
+                # Skip validation if ptr >= 0x80 (unused/marker value)
+                if filter_bytes > 0 and filter_ptr > 0 and filter_ptr < 0x80 and filter_ptr >= filter_bytes:
                     errors.append(f"Instrument {i}: filter_ptr {filter_ptr} exceeds filter table bytes {filter_bytes}")
 
         extracted.validation_errors = errors
