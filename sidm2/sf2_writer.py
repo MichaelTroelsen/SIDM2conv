@@ -757,9 +757,7 @@ class SF2Writer:
                     offset = base_offset + (col * rows) + i
                     if offset < len(self.output) and col < len(entry):
                         value = entry[col]
-                        # Convert next index from Y*4 to direct index
-                        if col == 3 and value != 0:  # Next entry column
-                            value = value // 4 if value % 4 == 0 else value
+                        # Index already converted during extraction (Y*4 → direct)
                         self.output[offset] = value
 
         logger.info(f"    Written {len(pulse_entries)} Pulse table entries")

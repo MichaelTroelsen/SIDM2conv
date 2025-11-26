@@ -496,22 +496,24 @@ def find_and_extract_wave_table(data: bytes, load_addr: int, verbose: bool = Fal
                 note_offset = data[pos]
                 waveform = data[pos + 1] if pos + 1 < len(data) else 0
 
+                # SF2 format requires (waveform, note_offset) order - swap from Laxity format
                 if note_offset == 0x7F:
-                    entries.append((note_offset, waveform))
+                    entries.append((waveform, note_offset))
                     score += 5
                     break
                 elif note_offset == 0x7E:
-                    entries.append((note_offset, waveform))
+                    entries.append((waveform, note_offset))
                     score += 5
                     break
                 elif waveform in valid_waveforms:
-                    entries.append((note_offset, waveform))
+                    entries.append((waveform, note_offset))
                     score += 3
                     pos += 2
                 else:
                     break
 
-            has_terminator = len(entries) >= 2 and entries[-1][0] in (0x7E, 0x7F)
+            # After byte swap, note_offset is at index [1]
+            has_terminator = len(entries) >= 2 and entries[-1][1] in (0x7E, 0x7F)
 
             if len(entries) < 2:
                 continue
@@ -660,7 +662,9 @@ def find_and_extract_pulse_table(data: bytes, load_addr: int, pulse_ptrs: Option
                 elif pulse_val == 0 and count == 0 and duration == 0 and next_idx == 0:
                     entry_score -= 5  # Strong penalty for all-zero first entry
 
-            entries.append((pulse_val, count, duration, next_idx))
+            # Convert Laxity Y*4 index format to SF2 direct index format
+            direct_idx = next_idx // 4 if next_idx % 4 == 0 and next_idx != 0 else next_idx
+            entries.append((pulse_val, count, duration, direct_idx))
             score += entry_score
 
             # Track next indices for scoring (but don't break on loops)
