@@ -49,8 +49,8 @@ def convert_and_validate(sid_file: Path) -> Dict:
             component_scores = {k: v for k, v in extracted.confidence.items() if k != 'overall'}
 
         return {
-            'name': header.get('name', sid_file.stem),
-            'author': header.get('author', 'Unknown'),
+            'name': getattr(header, 'name', sid_file.stem),
+            'author': getattr(header, 'author', 'Unknown'),
             'warnings': extracted.validation_errors if hasattr(extracted, 'validation_errors') else [],
             'confidence': overall_score,
             'component_scores': component_scores,
