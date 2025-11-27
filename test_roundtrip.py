@@ -25,24 +25,38 @@ from datetime import datetime
 
 
 class RoundtripValidator:
-    def __init__(self, sid_file, output_dir="roundtrip_output", duration=30, verbose=False):
+    def __init__(self, sid_file, output_dir="output", duration=30, verbose=False):
         self.sid_file = Path(sid_file)
         self.output_dir = Path(output_dir)
         self.duration = duration
         self.verbose = verbose
         self.base_name = self.sid_file.stem
 
-        # Create output directory
-        self.output_dir.mkdir(exist_ok=True)
+        # Create nested directory structure: PlayerName/Original and PlayerName/New
+        self.song_dir = self.output_dir / self.base_name
+        self.original_dir = self.song_dir / "Original"
+        self.new_dir = self.song_dir / "New"
 
-        # Output files
-        self.sf2_file = self.output_dir / f"{self.base_name}_converted.sf2"
-        self.exported_sid = self.output_dir / f"{self.base_name}_exported.sid"
-        self.original_wav = self.output_dir / f"{self.base_name}_original.wav"
-        self.exported_wav = self.output_dir / f"{self.base_name}_exported.wav"
-        self.original_dump = self.output_dir / f"{self.base_name}_original.dump"
-        self.exported_dump = self.output_dir / f"{self.base_name}_exported.dump"
-        self.report_file = self.output_dir / f"{self.base_name}_roundtrip_report.html"
+        # Create all directories
+        self.original_dir.mkdir(parents=True, exist_ok=True)
+        self.new_dir.mkdir(parents=True, exist_ok=True)
+
+        # Output files - organized by Original vs New
+        # Original files
+        self.original_sid_copy = self.original_dir / f"{self.base_name}.sid"
+        self.original_wav = self.original_dir / f"{self.base_name}.wav"
+        self.original_dump = self.original_dir / f"{self.base_name}.dump"
+        self.original_info = self.original_dir / f"{self.base_name}_info.txt"
+
+        # New files
+        self.sf2_file = self.new_dir / f"{self.base_name}_converted.sf2"
+        self.exported_sid = self.new_dir / f"{self.base_name}_exported.sid"
+        self.exported_wav = self.new_dir / f"{self.base_name}_exported.wav"
+        self.exported_dump = self.new_dir / f"{self.base_name}_exported.dump"
+        self.exported_info = self.new_dir / f"{self.base_name}_info.txt"
+
+        # Report at song level
+        self.report_file = self.song_dir / f"{self.base_name}_roundtrip_report.html"
 
         self.results = {
             'sid_file': str(self.sid_file),
@@ -73,9 +87,71 @@ class RoundtripValidator:
         except Exception as e:
             return False, str(e)
 
+    def step0_setup_original_files(self):
+        """Step 0: Copy original SID and create info file"""
+        print("\n[0/7] Setting up original files...")
+
+        # Copy original SID to Original directory
+        import shutil
+        try:
+            shutil.copy2(self.sid_file, self.original_sid_copy)
+            print(f"  [OK] Copied {self.sid_file.name} to Original/")
+        except Exception as e:
+            print(f"  [FAIL] Failed to copy original SID: {e}")
+            return False
+
+        # Create original info file with SID metadata
+        try:
+            info_lines = []
+            info_lines.append(f"Original SID File Information")
+            info_lines.append(f"=" * 50)
+            info_lines.append(f"Filename: {self.sid_file.name}")
+            info_lines.append(f"Path: {self.sid_file}")
+            info_lines.append(f"Size: {self.sid_file.stat().st_size} bytes")
+            info_lines.append(f"Modified: {datetime.fromtimestamp(self.sid_file.stat().st_mtime)}")
+            info_lines.append(f"")
+            info_lines.append(f"Test Configuration")
+            info_lines.append(f"-" * 50)
+            info_lines.append(f"Test Date: {datetime.now()}")
+            info_lines.append(f"Duration: {self.duration} seconds")
+            info_lines.append(f"")
+
+            # Try to extract PSID header info
+            try:
+                with open(self.sid_file, 'rb') as f:
+                    header = f.read(128)
+                    if header[:4] == b'PSID' or header[:4] == b'RSID':
+                        magic = header[:4].decode('ascii')
+                        version = int.from_bytes(header[4:6], 'big')
+                        info_lines.append(f"SID Format")
+                        info_lines.append(f"-" * 50)
+                        info_lines.append(f"Type: {magic}")
+                        info_lines.append(f"Version: {version}")
+
+                        # Extract title, author, copyright (32 bytes each, starting at offset 0x16)
+                        title = header[0x16:0x36].rstrip(b'\x00').decode('latin-1', errors='ignore')
+                        author = header[0x36:0x56].rstrip(b'\x00').decode('latin-1', errors='ignore')
+                        copyright_text = header[0x56:0x76].rstrip(b'\x00').decode('latin-1', errors='ignore')
+
+                        if title:
+                            info_lines.append(f"Title: {title}")
+                        if author:
+                            info_lines.append(f"Author: {author}")
+                        if copyright_text:
+                            info_lines.append(f"Copyright: {copyright_text}")
+            except Exception as e:
+                info_lines.append(f"Note: Could not extract SID header: {e}")
+
+            self.original_info.write_text('\n'.join(info_lines), encoding='utf-8')
+            print(f"  [OK] Created {self.original_info.name}")
+        except Exception as e:
+            print(f"  [WARN] Could not create info file: {e}")
+
+        return True
+
     def step1_convert_sid_to_sf2(self):
         """Step 1: Convert SID -> SF2"""
-        print("\n[1/7] Converting SID -> SF2...")
+        print("\n[1/8] Converting SID -> SF2...")
 
         cmd = [
             'python', 'sid_to_sf2.py',
@@ -103,7 +179,7 @@ class RoundtripValidator:
 
     def step2_pack_sf2_to_sid(self):
         """Step 2: Pack SF2 -> SID using sf2pack"""
-        print("\n[2/7] Packing SF2 -> SID (with relocation)...")
+        print("\n[2/8] Packing SF2 -> SID (with relocation)...")
 
         cmd = [
             str(Path('tools/sf2pack/sf2pack.exe').absolute()),
@@ -148,7 +224,7 @@ class RoundtripValidator:
 
     def step3_render_original_wav(self):
         """Step 3: Render original SID -> WAV"""
-        print("\n[3/7] Rendering original SID -> WAV...")
+        print("\n[3/8] Rendering original SID -> WAV...")
 
         cmd = [
             str(Path('tools/SID2WAV.EXE').absolute()),
@@ -179,7 +255,7 @@ class RoundtripValidator:
 
     def step4_render_exported_wav(self):
         """Step 4: Render exported SID -> WAV"""
-        print("\n[4/7] Rendering exported SID -> WAV...")
+        print("\n[4/8] Rendering exported SID -> WAV...")
 
         cmd = [
             str(Path('tools/SID2WAV.EXE').absolute()),
@@ -210,7 +286,7 @@ class RoundtripValidator:
 
     def step5_siddump_original(self):
         """Step 5: Analyze original SID with siddump"""
-        print("\n[5/7] Analyzing original SID with siddump...")
+        print("\n[5/8] Analyzing original SID with siddump...")
 
         cmd = [
             str(Path('tools/siddump.exe').absolute()),
@@ -236,7 +312,7 @@ class RoundtripValidator:
 
     def step6_siddump_exported(self):
         """Step 6: Analyze exported SID with siddump"""
-        print("\n[6/7] Analyzing exported SID with siddump...")
+        print("\n[6/8] Analyzing exported SID with siddump...")
 
         cmd = [
             str(Path('tools/siddump.exe').absolute()),
@@ -262,7 +338,7 @@ class RoundtripValidator:
 
     def step7_generate_report(self):
         """Step 7: Generate detailed HTML report"""
-        print("\n[7/7] Generating detailed report...")
+        print("\n[7/8] Generating detailed report...")
 
         # Compare file sizes
         comparison = self.compare_results()
@@ -411,10 +487,21 @@ class RoundtripValidator:
             if step_key == 'sf2pack' and 'relocation_info' in step:
                 output_info += f"<br><small>{step['relocation_info']}</small>"
 
+            # Get relative path for display
+            output_file = step.get('output_file', 'N/A')
+            if output_file != 'N/A':
+                file_path = Path(output_file)
+                # Show relative path from song directory
+                try:
+                    rel_path = file_path.relative_to(self.song_dir)
+                    output_file = str(rel_path).replace('\\', '/')
+                except ValueError:
+                    output_file = file_path.name
+
             html += f"""
             <tr>
                 <td><strong>{description}</strong></td>
-                <td>{step.get('output_file', 'N/A')}</td>
+                <td>{output_file}</td>
                 <td class="{status_class}">{status_text}</td>
                 <td>{output_info}</td>
             </tr>
@@ -491,21 +578,29 @@ class RoundtripValidator:
         <ul class="file-list">
 """
 
-        for file_path in [self.sf2_file, self.exported_sid, self.original_wav,
-                         self.exported_wav, self.original_dump, self.exported_dump]:
+        for file_path in [self.original_sid_copy, self.sf2_file, self.exported_sid,
+                         self.original_wav, self.exported_wav, self.original_dump,
+                         self.exported_dump, self.original_info, self.exported_info]:
             if file_path.exists():
                 size = file_path.stat().st_size
                 size_str = f"{size / 1024:.1f} KB" if size > 1024 else f"{size} bytes"
-                html += f"            <li>{file_path.name} - {size_str}</li>\n"
+                # Show relative path from song directory
+                try:
+                    rel_path = file_path.relative_to(self.song_dir)
+                    display_path = str(rel_path).replace('\\', '/')
+                except ValueError:
+                    display_path = file_path.name
+                html += f"            <li>{display_path} - {size_str}</li>\n"
 
         html += f"""
         </ul>
 
         <h2> Next Steps</h2>
         <ul>
-            <li>Listen to <code>{self.original_wav.name}</code> and <code>{self.exported_wav.name}</code> to compare audio quality</li>
-            <li>Review <code>{self.original_dump.name}</code> vs <code>{self.exported_dump.name}</code> for register differences</li>
-            <li>Test <code>{self.exported_sid.name}</code> in a SID player (VICE, sidplayfp, etc.)</li>
+            <li>Listen to <code>Original/{self.base_name}.wav</code> and <code>New/{self.base_name}_exported.wav</code> to compare audio quality</li>
+            <li>Review <code>Original/{self.base_name}.dump</code> vs <code>New/{self.base_name}_exported.dump</code> for register differences</li>
+            <li>Test <code>New/{self.base_name}_exported.sid</code> in a SID player (VICE, sidplayfp, etc.)</li>
+            <li>Load <code>New/{self.base_name}_converted.sf2</code> in SID Factory II to verify it plays correctly</li>
         </ul>
 
         <p style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #7f8c8d;">
@@ -526,6 +621,7 @@ class RoundtripValidator:
 
         # Run all steps
         steps = [
+            self.step0_setup_original_files,
             self.step1_convert_sid_to_sf2,
             self.step2_pack_sf2_to_sid,
             self.step3_render_original_wav,

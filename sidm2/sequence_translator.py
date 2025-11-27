@@ -255,6 +255,8 @@ class LaxitySequenceParser:
         Check if byte is a Laxity command byte.
 
         Laxity commands: $0x, $2x, $60, $8x, $9x, $ax, $c0, $dx, $e0, $f0
+
+        NOTE: Excludes $80-$9F which are duration bytes in sequence context.
         """
         high_nibble = (byte >> 4) & 0x0F
 
@@ -267,17 +269,17 @@ class LaxitySequenceParser:
         # $60 = vibrato (exact match)
         elif byte == 0x60:
             return True
-        # $8x = portamento
-        elif high_nibble == 0x8:
+        # $8x = portamento (but NOT $80-$9F which are duration bytes)
+        elif high_nibble == 0x8 and not (0x80 <= byte <= 0x9F):
             return True
-        # $9x = set ADSR (persistent)
-        elif high_nibble == 0x9:
+        # $9x = set ADSR (persistent) (but NOT $80-$9F which are duration bytes)
+        elif high_nibble == 0x9 and not (0x80 <= byte <= 0x9F):
             return True
         # $ax = set ADSR (local)
         elif high_nibble == 0xA:
             return True
-        # $c0 = set wave pointer (exact match)
-        elif byte == 0xC0:
+        # $Cx = various control commands ($C0-$CF)
+        elif 0xC0 <= byte <= 0xCF:
             return True
         # $dx = filter/pulse control
         elif high_nibble == 0xD:
@@ -285,8 +287,8 @@ class LaxitySequenceParser:
         # $e0 = set speed (exact match)
         elif byte == 0xE0:
             return True
-        # $f0 = set volume (exact match)
-        elif byte == 0xF0:
+        # $Fx = volume and special commands ($F0-$FF)
+        elif 0xF0 <= byte <= 0xFF:
             return True
         else:
             return False

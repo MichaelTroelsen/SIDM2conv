@@ -1,8 +1,10 @@
 # Audio Quality Analysis: SID to SF2 Conversion Issues
 
+> **Note**: This is historical documentation. The `compare_audio.py` script mentioned in this document has been removed. Use `test_roundtrip.py` for audio and register comparison instead.
+
 **Date**: 2025-11-24
-**Status**: CRITICAL - Audio output doesn't match original SID files
-**Priority**: HIGH - Core functionality issue
+**Status**: HISTORICAL - See test_roundtrip.py for current validation
+**Priority**: Document archived for reference
 
 ---
 

@@ -1305,6 +1305,146 @@ class TestAllSIDFiles(unittest.TestCase):
                         self.assertLessEqual(event.command, 0xFF)
 
 
+class TestLaxityFrequencyTable(unittest.TestCase):
+    """Tests for Laxity frequency table extraction and note conversion"""
+
+    def setUp(self):
+        """Set up test data with known frequency table"""
+        # Create minimal C64 data with frequency table at $1833
+        self.load_addr = 0x1000
+        freq_table_offset = 0x1833 - self.load_addr  # Offset in data
+
+        # Create data buffer large enough to contain frequency table
+        self.c64_data = bytearray(freq_table_offset + (96 * 2))
+
+        # Fill with known frequency values for testing
+        # C-0 (MIDI 24) = ~16.35 Hz -> SID freq ~1112 (0x0458)
+        # A-4 (MIDI 69) = 440 Hz -> SID freq ~7492 (0x1D44)
+        # C-5 (MIDI 72) = ~523.25 Hz -> SID freq ~8910 (0x22CE)
+
+        # Entry 0: C-0 frequency (0x0458 = 1112)
+        self.c64_data[freq_table_offset + 0] = 0x58
+        self.c64_data[freq_table_offset + 1] = 0x04
+
+        # Entry 45: A-4 frequency (0x1D44 = 7492)
+        self.c64_data[freq_table_offset + 45 * 2] = 0x44
+        self.c64_data[freq_table_offset + 45 * 2 + 1] = 0x1D
+
+        # Entry 48: C-5 frequency (0x22CE = 8910)
+        self.c64_data[freq_table_offset + 48 * 2] = 0xCE
+        self.c64_data[freq_table_offset + 48 * 2 + 1] = 0x22
+
+    def test_frequency_table_extraction(self):
+        """Test extraction of frequency table from C64 data"""
+        from sidm2.sequence_translator import LaxityFrequencyTable
+
+        freq_table = LaxityFrequencyTable(bytes(self.c64_data), self.load_addr)
+
+        # Should extract 96 frequencies
+        self.assertEqual(len(freq_table.frequencies), 96)
+
+        # Verify known values
+        self.assertEqual(freq_table.frequencies[0], 0x0458)  # C-0
+        self.assertEqual(freq_table.frequencies[45], 0x1D44)  # A-4
+        self.assertEqual(freq_table.frequencies[48], 0x22CE)  # C-5
+
+    def test_frequency_to_sf2_note_conversion(self):
+        """Test SID frequency to SF2 note number conversion"""
+        from sidm2.sequence_translator import LaxityFrequencyTable
+
+        freq_table = LaxityFrequencyTable(bytes(self.c64_data), self.load_addr)
+
+        # Test A-4 (440 Hz) -> should convert to MIDI note 69
+        # SF2 range is C-0 to B-7 = MIDI 0-93 = 0x00-0x5D
+        note_a4 = freq_table.frequency_to_sf2_note(0x1D44)
+        self.assertGreaterEqual(note_a4, 67)  # Around MIDI 69 (A-4)
+        self.assertLessEqual(note_a4, 71)
+
+        # C-5 (MIDI 72)
+        note_c5 = freq_table.frequency_to_sf2_note(0x22CE)
+        self.assertGreaterEqual(note_c5, 70)  # Around MIDI 72 (C-5)
+        self.assertLessEqual(note_c5, 74)
+
+    def test_translate_laxity_note(self):
+        """Test translation of Laxity note indices to SF2 notes"""
+        from sidm2.sequence_translator import LaxityFrequencyTable, SF2_GATE_ON, SF2_END
+
+        freq_table = LaxityFrequencyTable(bytes(self.c64_data), self.load_addr)
+
+        # Test control bytes pass through
+        self.assertEqual(freq_table.translate_laxity_note(0x00), SF2_GATE_ON)  # Rest
+        self.assertEqual(freq_table.translate_laxity_note(SF2_GATE_ON), SF2_GATE_ON)
+        self.assertEqual(freq_table.translate_laxity_note(SF2_END), SF2_END)
+
+        # Test note lookup
+        note = freq_table.translate_laxity_note(45)  # A-4 index
+        self.assertGreaterEqual(note, 0)
+        self.assertLessEqual(note, 93)  # 0x5D
+
+    def test_frequency_edge_cases(self):
+        """Test edge cases for frequency conversion"""
+        from sidm2.sequence_translator import LaxityFrequencyTable
+
+        freq_table = LaxityFrequencyTable(bytes(self.c64_data), self.load_addr)
+
+        # Zero frequency
+        self.assertEqual(freq_table.frequency_to_sf2_note(0), 0)
+
+        # Very high frequency (should clamp to max)
+        self.assertEqual(freq_table.frequency_to_sf2_note(0xFFFF), 93)
+
+        # Very low frequency (should clamp to min)
+        self.assertEqual(freq_table.frequency_to_sf2_note(1), 0)
+
+
+class TestCommandIndexMap(unittest.TestCase):
+    """Tests for command index mapping"""
+
+    def test_build_command_index_map(self):
+        """Test building stable command index mapping"""
+        from sidm2.sequence_extraction import build_command_index_map
+
+        # Command parameters: (type, param1, param2)
+        commands = [
+            (0, 0x01, 0x20),  # Slide up
+            (1, 0x04, 0x08),  # Vibrato
+            (0, 0x01, 0x20),  # Duplicate - should reuse index 0
+            (2, 0x02, 0x00),  # Portamento
+            (9, 0xF0, 0xA0),  # Set ADSR
+        ]
+
+        index_map = build_command_index_map(commands)
+
+        # Should have 4 unique commands
+        self.assertEqual(len(index_map), 4)
+
+        # Same command should map to same index
+        self.assertEqual(index_map[(0, 0x01, 0x20)], 0)
+
+        # Different commands should have different indices
+        self.assertNotEqual(index_map[(1, 0x04, 0x08)], index_map[(2, 0x02, 0x00)])
+
+        # Indices should be sequential starting from 0
+        indices = sorted(index_map.values())
+        self.assertEqual(indices, [0, 1, 2, 3])
+
+    def test_command_index_map_limit(self):
+        """Test that command index map respects 64-entry limit"""
+        from sidm2.sequence_extraction import build_command_index_map
+
+        # Create 70 unique commands
+        commands = [(0, i, 0) for i in range(70)]
+
+        index_map = build_command_index_map(commands)
+
+        # Should cap at 64 entries
+        self.assertEqual(len(index_map), 64)
+
+        # Indices should be 0-63
+        self.assertEqual(max(index_map.values()), 63)
+        self.assertEqual(min(index_map.values()), 0)
+
+
 if __name__ == '__main__':
     # Run tests with verbosity
     unittest.main(verbosity=2)

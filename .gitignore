@@ -38,6 +38,7 @@ env/
 Thumbs.db
 
 # Output files
+output/
 # SF2/*.sf2  # Uncomment to ignore converted files
 
 # Temporary files
