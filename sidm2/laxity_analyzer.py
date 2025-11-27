@@ -595,7 +595,8 @@ class LaxityPlayerAnalyzer:
                 errors.append(f"Orderlist {i} is empty")
 
             for j, (trans, seq_idx) in enumerate(orderlist):
-                if seq_idx >= len(extracted.sequences):
+                # seq_idx 0xFF is end marker, skip validation for that
+                if seq_idx < 0xFF and seq_idx >= len(extracted.sequences):
                     errors.append(f"Orderlist {i} entry {j}: invalid seq index {seq_idx}")
 
         # Validate tempo
@@ -623,16 +624,22 @@ class LaxityPlayerAnalyzer:
                 if wave_table_size > 0 and wave_ptr < 0x7F and wave_ptr > wave_table_size:
                     errors.append(f"Instrument {i}: wave_ptr {wave_ptr} exceeds wave table size {wave_table_size}")
 
-                # Check pulse_ptr bounds (Laxity uses Y*4 indexing, so ptr must be <= total bytes)
+                # Check pulse_ptr bounds
+                # In extracted format, pointers are already converted to indices (not Y*4)
+                # Valid range: 0 to pulse_bytes-1
                 # Skip validation if ptr >= 0x7F (marker values: 0x7F=end, 0x80+=unused)
-                # Note: Using > instead of >= because Laxity allows pointers at table boundary
-                if pulse_bytes > 0 and pulse_ptr < 0x7F and pulse_ptr > pulse_bytes:
-                    errors.append(f"Instrument {i}: pulse_ptr {pulse_ptr} exceeds pulse table bytes {pulse_bytes}")
+                if pulse_bytes > 0 and pulse_ptr < 0x7F:
+                    # Allow pointers up to and including the table size (edge case: pointer at boundary)
+                    if pulse_ptr > pulse_bytes:
+                        errors.append(f"Instrument {i}: pulse_ptr {pulse_ptr} exceeds pulse table size {pulse_bytes}")
 
                 # Check filter_ptr bounds (similar to pulse)
+                # In extracted format, pointers are already converted to indices (not Y*4)
                 # Skip validation if ptr >= 0x7F (marker values: 0x7F=end, 0x80+=unused)
-                # Note: Using > instead of >= because Laxity allows pointers at table boundary
-                if filter_bytes > 0 and filter_ptr > 0 and filter_ptr < 0x7F and filter_ptr > filter_bytes:
-                    errors.append(f"Instrument {i}: filter_ptr {filter_ptr} exceeds filter table bytes {filter_bytes}")
+                # Also skip ptr=0 (often used as "no filter")
+                if filter_bytes > 0 and filter_ptr > 0 and filter_ptr < 0x7F:
+                    # Allow pointers up to and including the table size (edge case: pointer at boundary)
+                    if filter_ptr > filter_bytes:
+                        errors.append(f"Instrument {i}: filter_ptr {filter_ptr} exceeds filter table size {filter_bytes}")
 
         extracted.validation_errors = errors
