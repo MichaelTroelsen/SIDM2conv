@@ -8,10 +8,18 @@ SID to SF2 Converter - Converts Commodore 64 SID music files to SID Factory II (
 
 ```bash
 # Convert single file
-python sid_to_sf2.py SID/input.sid SF2/output.sf2
+python sid_to_sf2.py SID/input.sid output/SongName/New/output.sf2
 
-# Batch convert all SID files
+# Batch convert all SID files (generates both NP20 and Driver 11 versions)
+# Creates structure: output/{SongName}/New/{files}
 python convert_all.py
+
+# Batch convert with round-trip validation
+python convert_all.py --roundtrip
+
+# Test single file round-trip (SID→SF2→SID)
+# Creates structure: output/{SongName}/Original/ and /New/
+python test_roundtrip.py SID/input.sid
 ```
 
 ## Project Structure
@@ -19,13 +27,27 @@ python convert_all.py
 ```
 SIDM2/
 ├── sid_to_sf2.py          # Main converter
-├── convert_all.py         # Batch conversion script
-├── test_converter.py      # Unit tests (57 tests)
+├── convert_all.py         # Batch conversion script (with SF2→SID export)
+├── test_converter.py      # Unit tests (69 tests)
 ├── test_sf2_format.py     # Format validation tests
+├── test_roundtrip.py      # Round-trip validation (SID→SF2→SID)
 ├── laxity_parser.py       # Dedicated Laxity player parser
+├── validate_psid.py       # PSID header validation utility
+├── PACK_STATUS.md         # SF2 packer status and test results
+├── sidm2/                 # Core package
+│   ├── sf2_packer.py      # SF2 to SID packer (NEW v0.6.0)
+│   ├── cpu6502.py         # 6502 CPU emulator for pointer relocation
+│   └── ...                # Other modules
 ├── SID/                   # Input SID files
-├── SF2/                   # Output SF2 files + dumps
-├── tools/                 # External tools (siddump.exe, player-id.exe)
+├── output/                # Output folder with nested structure
+│   └── {SongName}/        # Per-song directory
+│       ├── Original/      # Original SID, WAV, dump (round-trip only)
+│       └── New/           # Converted SF2 + exported SID files
+├── tools/                 # External tools
+│   ├── siddump.exe        # SID register dump tool
+│   ├── player-id.exe      # Player identification
+│   ├── SID2WAV.EXE        # SID to WAV renderer
+│   └── sf2pack/           # C++ SF2 to SID packer (reference)
 ├── G5/                    # Driver templates
 │   ├── drivers/           # SF2 driver PRG files (11, 12, 13, 14, 15, 16, NP20)
 │   ├── examples/          # Example SF2 files for each driver
@@ -47,11 +69,69 @@ SIDM2/
 - `SF2Writer` class - Writes SF2 format using templates
 - Table extraction functions for wave, pulse, filter tables
 
+### Python SF2 Packer (`sidm2/sf2_packer.py`) - NEW in v0.6.0
+- Pure Python implementation of SF2 to SID packing
+- Generates VSID-compatible SID files with correct sound playback
+- Uses `sidm2/cpu6502.py` for 6502 instruction-level pointer relocation
+- Integrated into `convert_all.py` for automatic SID export
+- Average output size: ~3,800 bytes (comparable to manual exports)
+- See `PACK_STATUS.md` for implementation details and test results
+
 ### External Tools
 - `tools/siddump.exe` - Dumps SID register writes (6502 emulator)
 - `tools/player-id.exe` - Identifies SID player type
+- `tools/SID2WAV.EXE` - Converts SID to WAV audio files
+- `validate_psid.py` - PSID header validation utility
+- `tools/sf2pack/` - C++ SF2 to SID packer (reference implementation)
+  - `sf2pack.exe` - Main packer executable
+  - `packer_simple.cpp` - Core relocation logic (343 abs + 114 ZP relocations)
+  - `opcodes.cpp` - Complete 256-opcode 6502 lookup table
+  - `c64memory.cpp` - 64KB memory management
+  - `psidfile.cpp` - PSID v2 file export
 - `tools/cpu.c` - 6502 CPU emulator source
 - `tools/siddump.c` - Siddump main program source
+
+### Validation Tools
+
+#### Multi-File Validation Report (NEW in v0.6.1)
+- `generate_validation_report.py` - Comprehensive validation report generator
+  - Validates all SID files in a directory
+  - Generates HTML report (`output/validation_report.html`) with statistics and analysis
+  - Identifies systematic vs file-specific validation issues
+  - Categorizes warnings (Instrument Pointer Bounds, Note Range, etc.)
+  - Current status: 16 test files validated with improved boundary checking
+  - False-positive warnings reduced by 50% for Angular.sid (4→2)
+
+#### SID Accuracy Validation (NEW in v0.6.0)
+- `validate_sid_accuracy.py` - Frame-by-frame register comparison tool
+  - Compares original SID vs exported SID using siddump register captures
+  - Measures Overall (weighted), Frame, Voice, Register, and Filter accuracy
+  - Default 30-second validation for detailed analysis
+  - Generates accuracy reports with grades (EXCELLENT/GOOD/FAIR/POOR)
+  - See `docs/VALIDATION_SYSTEM.md` for architecture details
+
+- `sidm2/validation.py` - Lightweight validation module for pipeline integration
+  - `quick_validate()` - 10-second validation for batch processing
+  - `generate_accuracy_summary()` - Formats results for info.txt files
+  - `get_accuracy_grade()` - Converts accuracy to quality grade
+  - Integrated into `convert_all.py` automatically
+
+- Accuracy metrics formula:
+  ```
+  Overall = Frame×0.40 + Voice×0.30 + Register×0.20 + Filter×0.10
+  ```
+
+- Baseline accuracy (v0.6.0):
+  - Angular.sid: 9.0% overall (POOR)
+  - Target: 99% overall (see `docs/ACCURACY_ROADMAP.md`)
+
+#### Round-trip Validation
+- `test_roundtrip.py` - Complete SID→SF2→SID round-trip validation
+  - Performs 8-step automated testing (setup, convert, pack, render WAVs, siddump both, report)
+  - Generates HTML reports with detailed comparisons
+  - Uses siddump for register-level verification
+  - Organized output: `roundtrip_output/{SongName}/Original/` and `roundtrip_output/{SongName}/New/`
+- `convert_all.py --roundtrip` - Batch conversion with integrated round-trip validation
 
 ### Siddump Tool Details
 
@@ -126,6 +206,18 @@ When making code changes, you MUST update relevant documentation:
 1. Run `tools/siddump.exe SID/file.sid > SF2/file.dump`
 2. Check dump for register patterns
 3. Review `SF2/file_info.txt` for table addresses
+
+### Round-trip validation
+1. Run `python test_roundtrip.py SID/file.sid`
+2. Check `roundtrip_output/file_roundtrip_report.html` for results
+3. Compare `file_original.dump` and `file_exported.dump` for register differences
+4. Listen to `file_original.wav` and `file_exported.wav` for audio quality
+
+### Packing SF2 back to SID
+1. Build sf2pack: `cd tools/sf2pack && mingw32-make`
+2. Pack file: `tools/sf2pack/sf2pack.exe SF2/file.sf2 output.sid --title "Title" --author "Author"`
+3. Test with VICE: Load output.sid in C64 emulator
+4. Verify relocation with `-v` flag for detailed stats
 
 ## Known Limitations
 
@@ -300,6 +392,9 @@ See README.md for full improvement list with status tracking.
 - Consolidate duplicate analysis scripts
 - Extract magic numbers to constants
 - Add comprehensive documentation
+- Fixed pulse table extraction with improved scoring algorithm
+- Fixed filter table extraction with pattern-based detection
+- Added 12 tests for pulse/filter table extraction (61 tests total)
 
 ### In Progress 🔄
 - Add proper logging instead of print statements
@@ -310,6 +405,8 @@ See README.md for full improvement list with status tracking.
 - Test coverage for edge cases
 - Configuration system for SF2 generation
 - Support for additional player formats
+- Detect row-major vs column-major table layouts
+- Implement proper wrap format handling per table type
 
 ## Dependencies
 
@@ -327,6 +424,8 @@ See README.md for full improvement list with status tracking.
 - `docs/SF2_SOURCE_ANALYSIS.md` - SF2 editor source code analysis
 - `docs/LAXITY_PLAYER_ANALYSIS.md` - Disassembled Laxity player walkthrough
 - `docs/SIDDUMP_ANALYSIS.md` - Siddump tool source code analysis
+- `docs/VALIDATION_SYSTEM.md` - Three-tier validation architecture (NEW v0.6.0)
+- `docs/ACCURACY_ROADMAP.md` - Plan to reach 99% accuracy (NEW v0.6.0)
 - `docs/format-specification.md` - PSID/RSID and Laxity formats
 - SID Factory II User Manual (2023-09-30) - Official documentation
 

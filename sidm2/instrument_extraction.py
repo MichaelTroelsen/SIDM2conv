@@ -5,6 +5,7 @@ Instrument extraction functions for Laxity SID files.
 from typing import Dict, List, Optional, Tuple
 
 from .table_extraction import find_instrument_table, find_and_extract_wave_table
+from .exceptions import TableExtractionError
 
 
 def extract_laxity_instruments(data: bytes, load_addr: int, wave_table: Optional[List[Tuple[int, int]]] = None) -> List[Dict]:
@@ -18,10 +19,20 @@ def extract_laxity_instruments(data: bytes, load_addr: int, wave_table: Optional
 
     Returns:
         List of instrument dicts with full 8-byte Laxity format
+
+    Raises:
+        TableExtractionError: If data is invalid or instrument extraction fails
     """
+    if not data or len(data) < 128:
+        raise TableExtractionError(f"Data too small for instrument extraction: {len(data) if data else 0} bytes")
+
     instruments = []
 
-    instr_addr = find_instrument_table(data, load_addr)
+    try:
+        instr_addr = find_instrument_table(data, load_addr, wave_table=wave_table)
+    except TableExtractionError:
+        # If table extraction fails, return default instruments
+        instr_addr = None
 
     if not instr_addr:
         # Return 16 default instruments
@@ -44,11 +55,20 @@ def extract_laxity_instruments(data: bytes, load_addr: int, wave_table: Optional
 
     instr_offset = instr_addr - load_addr
 
+    if instr_offset < 0 or instr_offset >= len(data):
+        raise TableExtractionError(f"Invalid instrument table offset: {instr_offset}")
+
     real_instr_count = 0
-    for i in range(32):
-        off = instr_offset + (i * 8)
-        if off + 8 <= len(data):
+    try:
+        for i in range(32):
+            off = instr_offset + (i * 8)
+            if off + 8 > len(data):
+                break
+
             instr_data = data[off:off + 8]
+            if len(instr_data) < 8:
+                raise TableExtractionError(f"Insufficient data for instrument {i} at offset {off}")
+
             ad = instr_data[0]
             sr = instr_data[1]
 
@@ -57,12 +77,22 @@ def extract_laxity_instruments(data: bytes, load_addr: int, wave_table: Optional
 
             real_instr_count = i + 1
 
-            restart = instr_data[2]
-            filter_setting = instr_data[3]
-            filter_ptr = instr_data[4]
-            pulse_ptr = instr_data[5]
-            pulse_property = instr_data[6]
+            # Laxity instrument format (8 bytes):
+            # 0: AD, 1: SR, 2-4: flags/unknown, 5: Pulse param, 6: Pulse Ptr, 7: Wave Ptr
+            pulse_param = instr_data[5]
+            pulse_ptr = instr_data[6]
             wave_ptr = instr_data[7]
+            filter_ptr = 0  # Filter pointer not directly in instrument table
+
+            # Flags/control bytes (bytes 2-4)
+            flags1 = instr_data[2]
+            flags2 = instr_data[3]
+            flags3 = instr_data[4]
+
+            # Keep compatibility fields
+            restart = flags1  # Use first flag byte as restart value
+            filter_setting = flags3  # Use third flag byte as filter setting
+            pulse_property = 0
 
             wave_name = "Wave"
             wave_for_sf2 = 0x41
@@ -124,8 +154,9 @@ def extract_laxity_instruments(data: bytes, load_addr: int, wave_table: Optional
                 'wave_for_sf2': wave_for_sf2,
                 'name': name
             })
-        else:
-            break
+
+    except IndexError as e:
+        raise TableExtractionError(f"Index error while extracting instruments: {e}")
 
     # Fill remaining slots with defaults
     for i in range(real_instr_count, 16):
@@ -158,8 +189,18 @@ def extract_laxity_wave_table(data: bytes, load_addr: int, siddump_waveforms: Op
 
     Returns:
         List of (note_offset, waveform) tuples matching SF2 format
+
+    Raises:
+        TableExtractionError: If data is invalid or wave table extraction fails
     """
-    wave_addr, wave_entries = find_and_extract_wave_table(data, load_addr, siddump_waveforms=siddump_waveforms)
+    if not data or len(data) < 64:
+        raise TableExtractionError(f"Data too small for wave table extraction: {len(data) if data else 0} bytes")
+
+    try:
+        wave_addr, wave_entries = find_and_extract_wave_table(data, load_addr, siddump_waveforms=siddump_waveforms)
+    except TableExtractionError:
+        # Fall back to default entries if extraction fails
+        wave_entries = []
 
     if wave_entries and len(wave_entries) >= 4:
         return wave_entries

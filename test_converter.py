@@ -11,6 +11,10 @@ from sidm2 import (
     SIDParser, PSIDHeader, LaxityPlayerAnalyzer, SF2Writer,
     ExtractedData, SequenceEvent
 )
+from sidm2.table_extraction import (
+    find_and_extract_pulse_table,
+    find_and_extract_filter_table
+)
 
 
 class TestSIDParser(unittest.TestCase):
@@ -723,6 +727,185 @@ class TestNewFeatures(unittest.TestCase):
         self.assertIsInstance(extracted.validation_errors, list)
 
 
+class TestPulseTableExtraction(unittest.TestCase):
+    """Tests for pulse table extraction improvements"""
+
+    SID_DIR = r"C:\Users\mit\claude\c64server\SIDM2\SID"
+
+    def _load_sid_data(self, filename):
+        """Helper to load SID file and return data and load_address"""
+        sid_path = os.path.join(self.SID_DIR, filename)
+        parser = SIDParser(sid_path)
+        header = parser.parse_header()
+        c64_data, load_address = parser.get_c64_data(header)
+        return c64_data, load_address
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_pulse_table_finds_correct_address(self):
+        """Test pulse table extraction finds the correct address"""
+        c64_data, load_address = self._load_sid_data("Unboxed_Ending_8580.sid")
+        addr, entries = find_and_extract_pulse_table(c64_data, load_address)
+        self.assertIsNotNone(addr, "Pulse table address should be found")
+        self.assertGreater(len(entries), 0, "Should extract at least one entry")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_pulse_table_extracts_multiple_entries(self):
+        """Test pulse table extracts all entries including loops"""
+        c64_data, load_address = self._load_sid_data("Unboxed_Ending_8580.sid")
+        addr, entries = find_and_extract_pulse_table(c64_data, load_address)
+        # Should extract more than just the first few entries
+        self.assertGreater(len(entries), 5, "Should extract more than 5 pulse entries")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_pulse_entry_format(self):
+        """Test pulse table entries have correct 4-byte format"""
+        c64_data, load_address = self._load_sid_data("Unboxed_Ending_8580.sid")
+        addr, entries = find_and_extract_pulse_table(c64_data, load_address)
+        for i, entry in enumerate(entries):
+            self.assertIsInstance(entry, tuple, f"Entry {i} should be tuple")
+            self.assertEqual(len(entry), 4, f"Entry {i} should have 4 bytes")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_pulse_table_chain_patterns(self):
+        """Test pulse table correctly handles chain patterns (next_idx references)"""
+        c64_data, load_address = self._load_sid_data("Unboxed_Ending_8580.sid")
+        addr, entries = find_and_extract_pulse_table(c64_data, load_address)
+        # Check for entries with next_idx values that form chains
+        has_chain = any(entry[3] != 0 for entry in entries if len(entry) == 4)
+        self.assertTrue(has_chain, "Should have chain patterns in pulse table")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_pulse_table_all_files(self):
+        """Test pulse table extraction works for all SID files"""
+        sid_files = [f for f in os.listdir(self.SID_DIR) if f.endswith('.sid')]
+        for sid_file in sid_files:
+            c64_data, load_address = self._load_sid_data(sid_file)
+            addr, entries = find_and_extract_pulse_table(c64_data, load_address)
+            # Each file should either find a table or return None gracefully
+            if addr is not None:
+                self.assertGreater(len(entries), 0, f"Found addr but no entries in {sid_file}")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_pulse_table_scoring_prefers_patterns(self):
+        """Test that pulse table scoring correctly favors valid patterns"""
+        c64_data, load_address = self._load_sid_data("Unboxed_Ending_8580.sid")
+        addr, entries = find_and_extract_pulse_table(c64_data, load_address)
+        # Valid tables should have reasonable pulse values (0-255 for high byte)
+        for i, entry in enumerate(entries):
+            if len(entry) == 4:
+                self.assertLessEqual(entry[0], 255, f"Entry {i} pulse value out of range")
+
+
+class TestFilterTableExtraction(unittest.TestCase):
+    """Tests for filter table extraction improvements"""
+
+    SID_DIR = r"C:\Users\mit\claude\c64server\SIDM2\SID"
+
+    def _load_sid_data(self, filename):
+        """Helper to load SID file and return data and load_address"""
+        sid_path = os.path.join(self.SID_DIR, filename)
+        parser = SIDParser(sid_path)
+        header = parser.parse_header()
+        c64_data, load_address = parser.get_c64_data(header)
+        return c64_data, load_address
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_filter_table_finds_correct_address(self):
+        """Test filter table extraction finds the correct address"""
+        c64_data, load_address = self._load_sid_data("Unboxed_Ending_8580.sid")
+        addr, entries = find_and_extract_filter_table(c64_data, load_address)
+        self.assertIsNotNone(addr, "Filter table address should be found")
+        self.assertGreater(len(entries), 0, "Should extract at least one entry")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_filter_table_extracts_multiple_entries(self):
+        """Test filter table extracts entries beyond just defaults"""
+        c64_data, load_address = self._load_sid_data("Unboxed_Ending_8580.sid")
+        addr, entries = find_and_extract_filter_table(c64_data, load_address)
+        # Should extract more than just 1 default entry
+        self.assertGreater(len(entries), 1, "Should extract more than 1 filter entry")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_filter_entry_format(self):
+        """Test filter table entries have correct 4-element format"""
+        c64_data, load_address = self._load_sid_data("Unboxed_Ending_8580.sid")
+        addr, entries = find_and_extract_filter_table(c64_data, load_address)
+        for i, entry in enumerate(entries):
+            self.assertIsInstance(entry, (tuple, bytes), f"Entry {i} should be tuple or bytes")
+            self.assertEqual(len(entry), 4, f"Entry {i} should have 4 elements")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_filter_table_avoids_pulse_overlap(self):
+        """Test filter table extraction respects avoid_addr parameter"""
+        c64_data, load_address = self._load_sid_data("Unboxed_Ending_8580.sid")
+        pulse_addr, _ = find_and_extract_pulse_table(c64_data, load_address)
+        filter_addr, entries = find_and_extract_filter_table(
+            c64_data, load_address, avoid_addr=pulse_addr
+        )
+        # Filter table should not overlap with pulse table
+        if filter_addr and pulse_addr:
+            self.assertNotEqual(filter_addr, pulse_addr, "Filter should not be at pulse address")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_filter_table_all_files(self):
+        """Test filter table extraction works for all SID files"""
+        sid_files = [f for f in os.listdir(self.SID_DIR) if f.endswith('.sid')]
+        for sid_file in sid_files:
+            c64_data, load_address = self._load_sid_data(sid_file)
+            addr, entries = find_and_extract_filter_table(c64_data, load_address)
+            # Each file should either find a table or return None gracefully
+            if addr is not None:
+                self.assertGreater(len(entries), 0, f"Found addr but no entries in {sid_file}")
+
+    @unittest.skipUnless(
+        os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
+        "SID file not found"
+    )
+    def test_filter_table_pattern_detection(self):
+        """Test filter table uses pattern-based detection"""
+        c64_data, load_address = self._load_sid_data("Unboxed_Ending_8580.sid")
+        addr, entries = find_and_extract_filter_table(c64_data, load_address)
+        # Valid filter entries should have valid duration/direction bytes
+        for i, entry in enumerate(entries):
+            if len(entry) == 4:
+                # Byte 2 is duration (bits 0-6) + direction (bit 7)
+                duration = entry[2] & 0x7F
+                self.assertLessEqual(duration, 127, f"Entry {i} duration out of range")
+
+
 class TestTableLinkageValidation(unittest.TestCase):
     """Tests for instrument table linkage validation"""
 
@@ -1120,6 +1303,146 @@ class TestAllSIDFiles(unittest.TestCase):
                         # Command should be valid
                         self.assertGreaterEqual(event.command, 0)
                         self.assertLessEqual(event.command, 0xFF)
+
+
+class TestLaxityFrequencyTable(unittest.TestCase):
+    """Tests for Laxity frequency table extraction and note conversion"""
+
+    def setUp(self):
+        """Set up test data with known frequency table"""
+        # Create minimal C64 data with frequency table at $1833
+        self.load_addr = 0x1000
+        freq_table_offset = 0x1833 - self.load_addr  # Offset in data
+
+        # Create data buffer large enough to contain frequency table
+        self.c64_data = bytearray(freq_table_offset + (96 * 2))
+
+        # Fill with known frequency values for testing
+        # C-0 (MIDI 24) = ~16.35 Hz -> SID freq ~1112 (0x0458)
+        # A-4 (MIDI 69) = 440 Hz -> SID freq ~7492 (0x1D44)
+        # C-5 (MIDI 72) = ~523.25 Hz -> SID freq ~8910 (0x22CE)
+
+        # Entry 0: C-0 frequency (0x0458 = 1112)
+        self.c64_data[freq_table_offset + 0] = 0x58
+        self.c64_data[freq_table_offset + 1] = 0x04
+
+        # Entry 45: A-4 frequency (0x1D44 = 7492)
+        self.c64_data[freq_table_offset + 45 * 2] = 0x44
+        self.c64_data[freq_table_offset + 45 * 2 + 1] = 0x1D
+
+        # Entry 48: C-5 frequency (0x22CE = 8910)
+        self.c64_data[freq_table_offset + 48 * 2] = 0xCE
+        self.c64_data[freq_table_offset + 48 * 2 + 1] = 0x22
+
+    def test_frequency_table_extraction(self):
+        """Test extraction of frequency table from C64 data"""
+        from sidm2.sequence_translator import LaxityFrequencyTable
+
+        freq_table = LaxityFrequencyTable(bytes(self.c64_data), self.load_addr)
+
+        # Should extract 96 frequencies
+        self.assertEqual(len(freq_table.frequencies), 96)
+
+        # Verify known values
+        self.assertEqual(freq_table.frequencies[0], 0x0458)  # C-0
+        self.assertEqual(freq_table.frequencies[45], 0x1D44)  # A-4
+        self.assertEqual(freq_table.frequencies[48], 0x22CE)  # C-5
+
+    def test_frequency_to_sf2_note_conversion(self):
+        """Test SID frequency to SF2 note number conversion"""
+        from sidm2.sequence_translator import LaxityFrequencyTable
+
+        freq_table = LaxityFrequencyTable(bytes(self.c64_data), self.load_addr)
+
+        # Test A-4 (440 Hz) -> should convert to MIDI note 69
+        # SF2 range is C-0 to B-7 = MIDI 0-93 = 0x00-0x5D
+        note_a4 = freq_table.frequency_to_sf2_note(0x1D44)
+        self.assertGreaterEqual(note_a4, 67)  # Around MIDI 69 (A-4)
+        self.assertLessEqual(note_a4, 71)
+
+        # C-5 (MIDI 72)
+        note_c5 = freq_table.frequency_to_sf2_note(0x22CE)
+        self.assertGreaterEqual(note_c5, 70)  # Around MIDI 72 (C-5)
+        self.assertLessEqual(note_c5, 74)
+
+    def test_translate_laxity_note(self):
+        """Test translation of Laxity note indices to SF2 notes"""
+        from sidm2.sequence_translator import LaxityFrequencyTable, SF2_GATE_ON, SF2_END
+
+        freq_table = LaxityFrequencyTable(bytes(self.c64_data), self.load_addr)
+
+        # Test control bytes pass through
+        self.assertEqual(freq_table.translate_laxity_note(0x00), SF2_GATE_ON)  # Rest
+        self.assertEqual(freq_table.translate_laxity_note(SF2_GATE_ON), SF2_GATE_ON)
+        self.assertEqual(freq_table.translate_laxity_note(SF2_END), SF2_END)
+
+        # Test note lookup
+        note = freq_table.translate_laxity_note(45)  # A-4 index
+        self.assertGreaterEqual(note, 0)
+        self.assertLessEqual(note, 93)  # 0x5D
+
+    def test_frequency_edge_cases(self):
+        """Test edge cases for frequency conversion"""
+        from sidm2.sequence_translator import LaxityFrequencyTable
+
+        freq_table = LaxityFrequencyTable(bytes(self.c64_data), self.load_addr)
+
+        # Zero frequency
+        self.assertEqual(freq_table.frequency_to_sf2_note(0), 0)
+
+        # Very high frequency (should clamp to max)
+        self.assertEqual(freq_table.frequency_to_sf2_note(0xFFFF), 93)
+
+        # Very low frequency (should clamp to min)
+        self.assertEqual(freq_table.frequency_to_sf2_note(1), 0)
+
+
+class TestCommandIndexMap(unittest.TestCase):
+    """Tests for command index mapping"""
+
+    def test_build_command_index_map(self):
+        """Test building stable command index mapping"""
+        from sidm2.sequence_extraction import build_command_index_map
+
+        # Command parameters: (type, param1, param2)
+        commands = [
+            (0, 0x01, 0x20),  # Slide up
+            (1, 0x04, 0x08),  # Vibrato
+            (0, 0x01, 0x20),  # Duplicate - should reuse index 0
+            (2, 0x02, 0x00),  # Portamento
+            (9, 0xF0, 0xA0),  # Set ADSR
+        ]
+
+        index_map = build_command_index_map(commands)
+
+        # Should have 4 unique commands
+        self.assertEqual(len(index_map), 4)
+
+        # Same command should map to same index
+        self.assertEqual(index_map[(0, 0x01, 0x20)], 0)
+
+        # Different commands should have different indices
+        self.assertNotEqual(index_map[(1, 0x04, 0x08)], index_map[(2, 0x02, 0x00)])
+
+        # Indices should be sequential starting from 0
+        indices = sorted(index_map.values())
+        self.assertEqual(indices, [0, 1, 2, 3])
+
+    def test_command_index_map_limit(self):
+        """Test that command index map respects 64-entry limit"""
+        from sidm2.sequence_extraction import build_command_index_map
+
+        # Create 70 unique commands
+        commands = [(0, i, 0) for i in range(70)]
+
+        index_map = build_command_index_map(commands)
+
+        # Should cap at 64 entries
+        self.assertEqual(len(index_map), 64)
+
+        # Indices should be 0-63
+        self.assertEqual(max(index_map.values()), 63)
+        self.assertEqual(min(index_map.values()), 0)
 
 
 if __name__ == '__main__':

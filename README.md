@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 
-**Version 0.5.0** | Build Date: 2025-11-23
+**Version 0.6.2** | Build Date: 2025-11-27
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files.
 
@@ -59,42 +59,53 @@ python sid_to_sf2.py Unboxed_Ending_8580.sid output.sf2 --driver driver11
 - **np20** (default) - JCH NewPlayer 20 driver, most similar to Laxity format
 - **driver11** - Standard SF2 Driver 11, more features but different instrument format
 
-### Deep Analysis
-
-```bash
-python analyze_sid.py <input.sid>
-```
-
-### Laxity Format Analysis
-
-```bash
-python laxity_analyzer.py <input.sid>
-```
-
 ### Batch Conversion
 
 Convert all SID files in a directory:
 
 ```bash
-python convert_all.py [--driver {np20,driver11}] [--input SID] [--output SF2]
+python convert_all.py [--input SID] [--output output] [--roundtrip]
 ```
 
 Examples:
 ```bash
-# Convert all SIDs in SID folder to SF2 folder (default)
+# Convert all SIDs in SID folder to output folder (generates both NP20 and Driver 11)
 python convert_all.py
 
-# Use driver11 instead of np20
-python convert_all.py --driver driver11
-
 # Custom input/output directories
-python convert_all.py --input my_sids --output converted
+python convert_all.py --input my_sids --output my_output
+
+# Include round-trip validation (SID→SF2→SID verification)
+python convert_all.py --roundtrip
+
+# Custom validation duration (default: 10 seconds)
+python convert_all.py --roundtrip --roundtrip-duration 30
 ```
 
-The batch converter generates three files per SID:
-- `.sf2` - SID Factory II project file
-- `_info.txt` - Detailed extraction info with all tables
-- `.dump` - SID register dump (60 seconds of playback)
+The batch converter creates a nested structure: `output/{SongName}/New/` containing:
+- `{name}_g4.sf2` - SID Factory II project file (NP20/G4 driver)
+- `{name}_d11.sf2` - SID Factory II project file (Driver 11, default for validation)
+- `{name}_info.txt` - Detailed extraction info with all tables
+- `{name}.dump` - SID register dump (60 seconds of playback)
+
+Round-trip validation creates additional folders:
+- `output/{SongName}/Original/` - Original SID, WAV, dump, and info
+- `output/{SongName}/New/` - Converted files plus exported SID for comparison
+- `output/{SongName}/{name}_roundtrip_report.html` - Detailed comparison report
+
+### Round-trip Validation
+
+Test the complete conversion pipeline (SID→SF2→SID):
+
+```bash
+python test_roundtrip.py <input.sid> [--duration 30]
+```
+
+This validates that:
+1. SID converts to SF2 successfully
+2. SF2 packs back to SID with proper code relocation
+3. Audio output matches between original and converted files
+4. Register writes are preserved correctly
 
 #### Info File Contents
 
@@ -691,14 +702,63 @@ The test performs:
 - SID Factory II installed (default path: `C:\Users\mit\Downloads\sidfactory2-master\sidfactory2-master\artifacts\`)
 - Test dependencies: `pip install -r requirements-test.txt`
 
-All 34 unit tests should pass:
-- SID parsing tests
+### Round-trip Validation
+
+The `test_roundtrip.py` script performs complete round-trip validation by converting SID → SF2 → SID and comparing audio output:
+
+```bash
+# Test Angular.sid with 30 seconds duration
+python test_roundtrip.py SID/Angular.sid
+
+# Custom duration (seconds)
+python test_roundtrip.py SID/Angular.sid --duration 60
+
+# Verbose output
+python test_roundtrip.py SID/Angular.sid --verbose
+```
+
+The validation performs 7 steps automatically:
+
+1. **SID → SF2**: Converts original SID to SF2 using `sid_to_sf2.py`
+2. **SF2 → SID**: Packs SF2 back to SID using `sf2pack` with full 6502 code relocation
+3. **Original WAV**: Renders original SID to WAV using `SID2WAV.EXE`
+4. **Exported WAV**: Renders exported SID to WAV using `SID2WAV.EXE`
+5. **Original Siddump**: Analyzes original SID register writes using `siddump.exe`
+6. **Exported Siddump**: Analyzes exported SID register writes using `siddump.exe`
+7. **HTML Report**: Generates detailed comparison report
+
+**Output files** (in `roundtrip_output/`):
+- `*_converted.sf2` - SF2 conversion from original SID
+- `*_exported.sid` - SID packed from SF2 (with code relocation)
+- `*_original.wav` - Audio from original SID
+- `*_exported.wav` - Audio from exported SID
+- `*_original.dump` - Register dump from original SID
+- `*_exported.dump` - Register dump from exported SID
+- `*_roundtrip_report.html` - Detailed comparison report
+
+**Key Features**:
+- Full 6502 code relocation (343 absolute + 114 zero page address patches)
+- Frame-by-frame SID register comparison
+- WAV file size validation
+- Detailed HTML report with metrics
+
+**Requirements**:
+- `tools/sf2pack/sf2pack.exe` - SF2 to SID packer (built from source)
+- `tools/SID2WAV.EXE` - SID to WAV renderer
+- `tools/siddump.exe` - SID register analyzer
+
+All 69 unit tests should pass:
+- SID parsing tests (7 tests)
 - Memory access tests
 - Data structure tests
 - Integration tests with real SID files
-- SF2 writing tests
+- SF2 writing tests (2 tests)
 - Instrument encoding tests
 - Feature validation tests (instruments, commands, tempo, tables)
+- Pulse table extraction tests (5 tests)
+- Filter table extraction tests (7 tests)
+- Sequence parsing edge cases (18 tests)
+- Table linkage validation (3 tests)
 
 The SF2 format test validates:
 - **Aux pointer validation**: Ensures aux pointer doesn't point to valid aux data (which crashes SID Factory II)
@@ -796,6 +856,41 @@ Identifies the player routine used in a SID file.
 tools/player-id.exe <sidfile>
 ```
 
+### sf2pack
+
+SF2 to SID packer with full 6502 code relocation. Converts SF2 files back to playable SID format.
+
+```bash
+tools/sf2pack/sf2pack.exe <input.sf2> <output.sid> [options]
+```
+
+Options:
+- `--address ADDR` - Target load address (hex, default: 0x1000)
+- `--zp ZP` - Target zero page base (hex, default: 0x02)
+- `--title TITLE` - Set PSID title metadata
+- `--author AUTHOR` - Set PSID author metadata
+- `--copyright TEXT` - Set PSID copyright metadata
+- `-v, --verbose` - Verbose output with relocation stats
+
+**Key Features**:
+- Full 6502 instruction-by-instruction code scanning
+- Relocates absolute addresses (am_ABS, am_ABX, am_ABY, am_IND)
+- Adjusts zero page addresses (am_ZP, am_ZPX, am_ZPY, am_IZX, am_IZY)
+- Protects ROM addresses ($D000-$DFFF) from modification
+- Exports as PSID v2 format with metadata
+
+**Example output**:
+```
+Processing driver code:
+  Driver: $d7e - $157e
+  Address delta: 282
+  ZP: $2 -> $2
+  Relocations: 343 absolute, 114 zero page
+  Packed size: 8834 bytes
+```
+
+See `tools/sf2pack/README.md` for architecture details and source code documentation.
+
 ### 6502 CPU Emulator
 
 The `cpu.c` file contains a complete 6502 CPU emulator with:
@@ -819,6 +914,73 @@ Key registers:
 4. Update documentation
 5. Run all tests
 6. Submit pull request
+
+## Extraction Confidence Scoring
+
+The converter uses heuristic-based confidence scoring to identify and extract music data tables from SID files. Each table type has specific scoring criteria.
+
+### Wave Table Confidence
+
+Wave tables are scored based on:
+
+| Criterion | Points | Description |
+|-----------|--------|-------------|
+| Valid waveforms | +3 each | Standard waveforms ($11, $21, $41, $81) |
+| Valid note offsets | +1-2 | Offsets in range 0-24 semitones |
+| Loop markers | +5 | $7F jump commands for looping |
+| End markers | +3 | $7E stop commands |
+| Variety bonus | +5 | Multiple different waveforms |
+| Chain patterns | +2 | Valid jump targets |
+
+**Minimum threshold**: Score ≥ 15 to accept extracted table.
+
+### Pulse Table Confidence
+
+Pulse tables use 4-byte entries scored on:
+
+| Criterion | Points | Description |
+|-----------|--------|-------------|
+| Valid initial value | +2 | $FF (keep) or valid pulse width |
+| Moderate add values | +3 | Values 1-15 for smooth modulation |
+| Chain patterns | +3 | Valid loop references |
+| Duration values | +1 | Reasonable duration (1-64) |
+| Subtract patterns | +2 | Negative modulation for PWM |
+
+**Minimum threshold**: Score ≥ 10 and at least 2 valid entries.
+
+### Filter Table Confidence
+
+Filter tables use 4-byte entries scored similarly:
+
+| Criterion | Points | Description |
+|-----------|--------|-------------|
+| Valid filter values | +2 | Cutoff frequency bytes |
+| Moderate deltas | +3 | Smooth sweep values (1-15) |
+| Chain patterns | +3 | Valid loop references |
+| Duration values | +1 | Reasonable duration |
+
+**Minimum threshold**: Score ≥ 10 and at least 2 valid entries.
+
+### Arpeggio Table Confidence
+
+Arpeggio tables are 4-byte entries (note1, note2, note3, speed) scored on:
+
+| Criterion | Points | Description |
+|-----------|--------|-------------|
+| Valid note offsets | +2 each | Values 0-24 (2 octave range) |
+| Common chord patterns | +3 | Major (0,4,7), minor (0,3,7) |
+| Speed values | +1 | Reasonable speed (0-15) |
+| Structure validity | +2 | Consistent entry format |
+
+**Minimum threshold**: Score ≥ 15 with at least 2 valid entries.
+
+### Command Table Detection
+
+Commands are detected by analyzing sequence bytes in the $C0-$DF range:
+
+- Counts command usage across all sequences
+- Maps to standard SF2 command names (Slide, Vibrato, Portamento, etc.)
+- Falls back to default command table if no usage detected
 
 ## Limitations
 
@@ -982,6 +1144,33 @@ All files now achieve 100% validation score with siddump ADSR merging and improv
 | 47 | SF2Writer modularization | ✅ Done | Extracted ~960 lines to sidm2/sf2_writer.py |
 
 ## Changelog
+
+### v0.6.1 (2025-11-26)
+- Fixed instrument pointer validation boundary checking (changed >= to > for Y*4 indexed tables)
+- Added $7F (end marker) to validation skip list alongside $80+ markers
+- Reduced false-positive validation warnings by 50% (4 to 2 for Angular.sid)
+- Created `generate_validation_report.py` for multi-file validation analysis
+- Generated comprehensive validation report across all 16 test SID files
+
+### v0.6.0 (2025-11-25)
+- Added comprehensive SID accuracy validation system
+- Created `validate_sid_accuracy.py` for frame-by-frame register comparison
+- Created `sidm2/validation.py` module for pipeline integration
+- Integrated 10-second quick validation into convert_all.py pipeline
+- Added ACCURACY VALIDATION section to all info.txt files
+- Fixed siddump table parser to correctly capture register states
+- Established baseline accuracy metrics (9% overall for Angular.sid)
+- Created comprehensive validation system documentation
+- Removed Unicode emojis for Windows console compatibility
+
+### v0.5.1 (2025-11-23)
+- Fixed pulse table extraction to find correct address with improved scoring algorithm
+- Fixed pulse table extraction to extract all entries (was stopping early on loops)
+- Fixed filter table extraction with pattern-based detection
+- Fixed filter table extraction to respect adjacent table boundaries
+- Added 12 new tests for pulse/filter table extraction
+- Expanded test coverage from 57 to 61 tests
+- Improved table extraction scoring with bonuses for chain patterns, $FF values, subtract patterns
 
 ### v0.5.0 (2025-11-23)
 - Fixed sequence parsing to properly handle instrument bytes (0xA0-0xBF) and command bytes (0xC0-0xCF)

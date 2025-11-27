@@ -1,0 +1,319 @@
+PRG2SID 1.25 (/) iAN CooG/HVSC
+Automatically attaches a PSID header to a ripped (prg) tune.
+
+Identifies some players and sets init/play accordingly, also patches
+the header and code if needed.
+
+Default init/play addresses are $1000/1003 (actually loadaddress/loadaddress+3)
+and are set like that for all unknown players.
+
+Usage: p2s <filename.prg> [load_addr] [6/8] [P/N] [Title] [Author] [Release]
+                          [Songs] [Startsong]
+
+Output name will always have input base name plus .sid extension, whether
+input name has an extension or not. If input file is already a PSID/RSID file,
+won't be processed.
+
+You can override the loadaddress by specifying the new one as 2nd parameter, to
+avoid the need to cut the file manually up to the music file start address.
+
+For example if you have an unpacked prg ranging from $0801 to $9fff generated
+by UNP64, and the music is located at $1000, use:
+
+p2s your_unpacked_file.prg $1000
+
+New loadaddress must be contained between real loadaddress and end file address,
+and can be specified in decimal or hex (use prefix $ or 0x). It will be ignored
+if the value is out of range.
+
+Other optional parameters 3 and 4:
+6 for 6581 (default) or 8 for 8580.
+P for PAL  (default) or N for NTSC.
+
+Title, Author, Release must be 32 chars or less.
+
+Song and StartSong are by default set to 1, values can be from 1 to 255.
+
+Identified players (assuming loadaddress is $1000):
+
+20CC v1          - 0ffa/10xx, variable, adds init at $0ffa, 3 versions
+20CC v2          - 0ffb/1000, adds init at $0ffb
+AMP 1.x          - 13xx/13xx, variable
+AMP 2.x          - 157e/14ce, sometime 1568, forced JMPs to 1000/1003
+Anvil            - 1003/1006, normally it's 1000/1003
+Ariston          - 0ffa/1001, adds init at $0ffa, 2 versions covered
+Arne/AFL         - 1000/1009,
+Audial Arts      - 0fff/1003, adds TAY at $0fff (loadaddr-1)
+Bappalander      - 1000/1018
+Bappalander/S.Lab- 1003/1000 SpaceLab is the same as Bappalander with diff header.
+Bjerregaard v1   - 0fff/10xx, adds TAX at $0fff (loadaddr-1), variable playaddr
+Bjerregaard v2   - 109b/10a1, should handle any position inside $10xx
+Boogaloo         - 1003/1000
+Burgstaller v1   - 1003/1000
+Burgstaller v2   - 1003/1000
+Burgstaller v3   - 1003/1000
+Burgstaller v4   - 1003/1000
+Comptech 2.x/LoS - 1003/1000, if needed, else leaves 1000/1003
+Cybertracker/EXE - 53a2/53e2, loadaddr must be $0800
+DMC 4.x patched  - 1000/1003, patch at $0ff9
+Deenen           - 1006/1000, can also be 1000/1003, only special case covered.
+Deflemask v2-v11 - 110f/1117, adds JMPs at $1000/1003
+Deflemask v12    - 1103/1006, adds JMPs at $1000/1003 when possible
+Deflemask v12/bs - 1106/1000, bank switching player for large files (7)
+Digitalizer 2.x  - 1003/1006, normally it's 1000/1003
+DoubleTracker    - 1048/1021, 2x speed at 1000
+Electrosound     - 1b00/1a65, patches 3 jmp $ea31 and installs init at $1b00 (1)
+FAME v1          - 10xx/10xx, variable
+FAME v2          - 10xx/10xx, variable
+FAME v3          - 1003/1000
+FlexSid          - 1000/1010
+FlexSid-bare     - 1000/100c
+Frank Hammer     - 1000/1006
+FutureComposer   - 1000/1006, patches the unneeded inc $d020/bit $d020
+FutureComposerAlt- 1000/102a, altered version by Markus Schneider.
+FutureComposer3.x- 1000/1006, one version patched with lda #$02 before $1000
+FutureComposer4.x- 1000/1006, patches usage of $01xx to $02xx (v4.0/v4.1)
+GMC/Superiors    - 18ea/14ea
+GoatTrk+MultiSpd - 0ff6/1003
+GroovyBits       - 1003/1000, 2 versions covered
+GRG Tiny2        - 1xxx/1xxx, variable
+GRG Tiny4        - 1xxx/1xxx, variable
+Griff            - 1047/10e0, adds TAY at $1047 and JMPs at $1000/1003
+Griff/LightVoices- 0fff/1003, adds TAY at $0fff (loadaddr-1)
+Guy Shavitt      - 1000/1006
+Heathcliff v1    - 1009/1000, 2 versions covered
+Heathcliff v2    - 1006/1000
+Heathcliff v3    - 1003/1000
+Henrik Jensen    - 100f/1015, can also be 1011/1017
+Hubbard v1       - 100x/10xx, variable from 1000/1006 up to 100d/1013
+Hubbard v2       - 1000/1012
+Hubbard v3       - 155f/103f, ACE_II and hacks.
+Hubbard v4       - 1xxx/1xxx, adds JMPs at $1000/1003 if there's space.
+Hubbard v5       - 1xxx/1xxx, adds JMPs at $1000/1003 if there's space.
+ICC/The Voice    - 1003/1000, can also be 1000/1003, only special case covered.
+JO/Vibrants v1   - 10xx/10xx, variable, often 1000/1009. adds TAX before init.
+JO/Vibrants v2   - 10xx/10xx, variable, often 1003/1006
+Laxity v1        - 1000/1006
+Laxity v2        - 1000/1006, can have data before $1000
+Laxity v3        - 1000/1006
+Laxity v4        - 1000/1006
+LordsOfSonics/MS - 1003/1000
+Master Composer  - 1xxx/1xxx, variable (3)
+Matt Gray        - 0ffa/1002, patches init at $0ffa.
+MegaVision       - 1000/103e, patches init at $1000.
+Mike/LSD v1      - 1006/1003
+Mike/LSD v2      - 1006/1003
+MoN/Cyb2         - 1000/1006
+MoN/JTS          - 1000/1003, actually 110a/112c, patched at $1000
+MoN/RWE          - 1000/1006
+Mssiah           - 5c20/0000, RSID (8)
+MusicAssembler   - 1048/1021, or 1000/1003 if they're already correct
+MusicMixer       - 1041/107a, or 1000/1003 if they're already correct
+NordicBeat       - 1006/1003, adds TAX+jmp $1000 at $1006 (loadaddr+6)
+Parsec/LoS       - 1003/1000, 2 versions
+PollyTracker     - 080d/0000, RSID+samples (6)
+Polyanna         - 154d/0000, RSID+realtime samples, patches code at $154d
+Power Music      - 0ff9/1002, patches init at $0ff9.
+Prosonix v1      - 1000/1009
+Prosonix v2      - 1000/1009
+Prosonix v3      - 1000/1006
+Quantum SoundTrk - 080d/0000, RSID
+Roland Hermans   - 1006/1000, can also be 1000/1003, only special case covered.
+SidDuzzIt 0.98   - 0fff/1003, adds TAX at $0fff (loadaddr-1) if needed.
+SidDuzzIt 2.07   - 0fff/1003, adds TAX at $0fff (loadaddr-1) if needed.
+SidDuzzIt 2.1    - 0fff/1003, adds TAX at $0fff (loadaddr-1) if needed.
+SidFactory       - 1000/1006, can also be 1000/1009
+SidFactory II    - 1000/1006, can also be 1000/1009
+SkylineTech/Danne- 1003/1000, patches usage of $01xx to $02xx
+Soedesoft v1     - 1000/1106, 1029/1106 actually, removes CLI and jmp $ea31
+Soedesoft v2     - 1000/1006, removes CLI
+Soedesoft v3     - 1003/1006
+Sosperec         - 10fc/1100, adds TAX+jmp $1103 at $10fc
+System6581 v1    - 0ff9/0ffe, adds init/play at $0ff9-0fff
+System6581 v2    - 0ff9/0ffe, adds init/play at $0ff9-0fff
+TFMX/Huelsbeck   - 1009/1000
+TFMX/MasterComp. - 1003/1000
+TFX 1.0          - 1106/1100
+TrackPlayer      - 1140/1287
+Zardax v1        - 1000/1006, normally it's 1000/1003
+Zardax v2        - 1000/1006, normally it's 1000/1003
+Ubik's Music     - c600/c603, variable, code added for init/play (4)
+XTracker_V4.1    - 1003/1000, 3 versions
+Yip Megasound    - 1000/102e, also 10xx/10xx+2e
+ReflexTracker    - c006/0000, RSID+samples
+Soundmaker3/UA   - 1000/1006  (5)
+Soundmaker4/Arne - 1000/1006 or 1020/1026
+Whittaker        - 1xxx/1xxx, variable (9)
+Winterberg       - 102a/105a, patches JMP $ea31 with RTS
+SoundMonitor     - c000/c020, adds init at $c000, patches JMP $ea31 with RTS (2)
+StarBars v1.1/1.2- 09bb/0000, RSID
+StarBars v1.3/1.4- 080d/0000, RSID
+DUSAT/RockMon2   - c000/0000, RSID+samples, patch at $c000 (2)
+DUSAT/RockMon3   - c000/0000, RSID+samples, patch at $c000 (2)
+DUSAT/RockMon3h  - ce30/0000, RSID+samples (2)
+DUSAT/RockMon4   - 9fd0/0000, RSID+samples (2)
+DUSAT/RockMon5   - c000/0000, RSID+samples, patch at $c000 (2)
+MusicMaster1.3/BB- c000/0000, RSID+samples, patch at $c000 (2)
+BeatBox/KarlXII  - c000/0000, RSID+samples, patch at $c000 (2)
+Digitronix       - c000/0000, RSID+samples, patch at $c000 (2)
+
+(1)
+Electrosound tune speed must be manually found from the prg being ripped.
+Search for STA $02ff or POKE 767. The default setting is for one subtune, the
+value is at $1b15 and must be changed with the correct speed. For more subtunes
+just add the speed values after $1b15 as it's indexed with the subtune number.
+
+(2)
+Special cases with fixed init/play address but variable loadaddress.
+Doesn't cover manual relocs or hacks at other addresses.
+
+(3)
+Scans whole file to find the entry pattern, AD 04 D4 29 FE 8D 04 D4 etc,
+then patches code to allow setting init/play, code is added at entry-$0d.
+Before p2s v0.71, Master Composer tunes were ripped leaving the internal IRQ
+player, but Sidplay64 couldn't play them due to a missing CLI, NOPped by error.
+Just rerip with p2s 0.71 or later to patch them with proper init/play.
+From p2s 1.11 they're also fixed for a bug in the end of tune code, thanks to
+Professor Chaos/HVSC.
+
+(4)
+Scans whole file to find the entry pattern AD xx xx 30 03 D0 22 60 18 29 7F A2,
+usually at $c666, then patches an init/play routine at $c600/c603.
+
+(5)
+A-Man/5_Dimension is also identified as Soundmaker3/UA due to generic ID.
+
+(6)
+Of course load address must be $080d or lower, player address is always there
+due to the size of samples, will be hardly found relocated anywhere else..
+
+(7)
+Deflemask v12 improves slightly the data compression over v2, and if data goes
+over $a000, a different player is used, which does bank-switching during reads.
+This player doesn't have space to patch JMPs at $1000, so the actual init/play
+addresses are set in sid header directly.
+
+(8)
+Mssiah prgs need to be unpacked first with:
+unp64 -R$950 name.prg
+or, if dumped in other ways, the memory dump should be starting at $5c7c, or
+less, as the player code starts there. The init code is provided by Inge/HVSC.
+More patches made by me include moving the data buffer from $1200 to $5b00, to
+gain more freepages, and nopping the screen writes.
+RSID is needed as they never play correcly as normal PSID with the provided
+PSID header at $5c00, which is incorrect in any case.
+Stereo tunes are detected. RSID version will be set to 3 and 2nd SID address
+will be forced to $D500. Byte at $7186 controls which address is used:
+0=single, 1=$DE00, 2=$DF00, 3=$D500.
+
+(9)
+Scans for init and play address which can be variable, found so far they can be
+from $0120 to $131 bytes apart. 2 Variants covered.
+
+
+-----------------
+Fixes since v0.80
+-----------------
+- better handling of filename, in case path contains a "." now the extension of
+  generated sid file is correctly appended.
+- every player detection now checks for a minimal filesize, for example a
+  Future composer tune can't be less than 0x200 bytes and so on.
+- new players identified:
+  Ariston       , adds init at $0ffa, 2 versions covered
+  Henrik Jensen
+  Hubbard v3    , ACE_II and hacks
+  Hubbard v4    , adds JMPs at $1000/1003 if there's space.
+  Hubbard v5    , adds JMPs at $1000/1003 if there's space.
+  ICC/The Voice , only special case 1003/1000 covered.
+  MegaVision    , patches init at $1000.
+  Roland Hermans, only special case 1006/1000 covered.
+  Winterberg    , replaces irq installer with init/play
+- changed players IDs:
+  BeatBox/KarlXII: was wrongly attributed to Gaunt
+  GMC/Superiors  : Now identifies tunes starting from $1014 (1000-1013 stripped)
+  Heathcliff v1  : Relaxed id to find more, 1 byte could have been different.
+  MusicAssembler : Now identifies tunes starting from $1021 (1000-1020 stripped)
+  MusicMixer     : Now identifies tunes starting from $1029 (1000-1028 stripped)
+  SidDuzzIt 2.07 : TAX added in init only if needed, some hacks already have it.
+
+-----------------
+Fixes since v0.90
+-----------------
+- new players identified:
+  Burgstaller v1/v2/v3/v4 (slight differences in init)
+  Deflemask v2/v12 (adds JMPs at $1000 when possible)
+  Digitronix
+  SkylineTech/Danne (automatic remap of $01xx buffer to $02xx)
+- Cybertracker/EXE, removed JSR $4D00 (rasterbars), reported by Groepaz.
+- Future Composer 4.x (packed), automatic remap of $01xx buffer to $02xx, makes
+  GRG's SidPlay64 happy.
+- Parsec/LoS: added 1 variant with slightly offset code.
+- Winterberg, added $dc04 setting.
+
+-----------------
+Fixes since v0.97
+-----------------
+- added a little safeguard on creation of target sid: in case the input file
+  is too large, the sid would exceed $ffff.
+- added parameters 3 & 4 to set sidmodel and PAL/NTSC in output sid header.
+- added an autofixer for Arne/AFL player, there is a potentially dangerous
+  LDA $DD0E that would prevent setting volume, now nopped automatically.
+- new players identified:
+  MoN/Cyb2
+  Polyanna
+  SidFactory
+
+-----------------
+Fixes since v1.00
+-----------------
+- new players identified:
+  Mssiah (init code by Inge/HVSC)
+  GoatTracker+MultiSpeed ($0ff6 instead of $1000)
+  SidFactory II (v1 & v2)
+
+-----------------
+Fixes since v1.05
+-----------------
+- Added a Makefile, because gcc -o p2s.exe p2s.c was too hard for someone...
+- Exe compiled for Windows 64 bit (I am using mingw64 now to compile)
+- Added optional parameters Title, Author, Release (suggested by Wisdom/Crescent)
+- new players identified:
+  FlexSid
+  FlexSid-bare
+  GRG Tiny4
+
+-----------------
+Fixes since v1.08
+-----------------
+- Added optional parameters Subtunes and StartSong (suggested by Encore/Undone)
+- MusicAssembler & MusicMixer init/play addresses now are checked at $1000/$1003
+  and kept if the 2 JMPs are correct, else they are set in the sid header to
+  the actual addresses.
+- Master Composer bug in the end of tune code fixed, thanks to Prof Chaos/HVSC.
+- new players identified:
+  SidFactory II (v3)
+  StarBars (v1.1/1.2/1.3/1.4)
+- improved detections:
+  SidFactory II (v1 & v2), more variants
+
+-----------------
+Fixes since v1.15
+-----------------
+- parameter 4 only allowed capital "N" for setting NTSC flag, now also lowercase.
+- StarBars 1.4: the examples provided in 1.4 are actually made with a previous
+  beta version, while the code in the actual composer is slightly different.
+  Now both 1.4beta and 1.4 release prgs are correctly identified and patched.
+- GRG Tiny4: Workaround to support more variants.
+- new players identified:
+  DMC 4.x patched (only those needing a patch at $0ff9)
+  Anvil
+  Whittaker (2 variants)
+
+-----------------
+Fixes since v1.20
+-----------------
+- new players identified:
+  Frank Hammer
+  DoubleTracker (2x MusicAssembler)
+  Quantum SoundTracker 1.0 (& demo version)
+  SidFactory II (v4)

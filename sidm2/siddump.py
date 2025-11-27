@@ -24,6 +24,7 @@ def extract_from_siddump(sid_path: str, playback_time: int = 60) -> Optional[Dic
     siddump_exe = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'tools', 'siddump.exe')
 
     if not os.path.exists(siddump_exe):
+        logger.warning(f"siddump.exe not found at {siddump_exe}")
         return None
 
     try:
@@ -35,6 +36,9 @@ def extract_from_siddump(sid_path: str, playback_time: int = 60) -> Optional[Dic
         )
 
         if result.returncode != 0:
+            logger.error(f"siddump failed for {sid_path}: return code {result.returncode}")
+            if result.stderr:
+                logger.error(f"siddump stderr: {result.stderr}")
             return None
 
         # Parse siddump output
@@ -123,11 +127,11 @@ def extract_from_siddump(sid_path: str, playback_time: int = 60) -> Optional[Dic
         }
 
     except subprocess.TimeoutExpired:
-        logger.warning(f"siddump timed out after {playback_time}s")
+        logger.warning(f"siddump timed out after {playback_time}s for {sid_path}")
         return None
-    except FileNotFoundError:
-        logger.warning(f"siddump.exe not found at {siddump_exe}")
+    except FileNotFoundError as e:
+        logger.error(f"File not found during siddump for {sid_path}: {e}")
         return None
     except Exception as e:
-        logger.warning(f"siddump extraction failed: {e}")
+        logger.error(f"siddump extraction failed for {sid_path}: {e}")
         return None

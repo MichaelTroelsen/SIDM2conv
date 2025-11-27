@@ -234,6 +234,30 @@ def extract_command_parameters(data: bytes, load_addr: int, raw_sequences: List[
     return command_params
 
 
+def build_command_index_map(command_params: List[Tuple[int, int, int]]) -> Dict[Tuple[int, int, int], int]:
+    """
+    Build stable command index mapping from parameters.
+
+    Assigns each unique (type, param1, param2) tuple a stable index (0-63)
+    for use in SF2 sequences. This mapping allows sequences to reference
+    commands by index rather than embedding parameters inline.
+
+    Args:
+        command_params: List of (type, param1, param2) tuples extracted from sequences
+
+    Returns:
+        Dictionary mapping (type, param1, param2) -> index (0-63)
+    """
+    index_map = {}
+
+    # Assign indices sequentially to unique command tuples
+    for cmd_tuple in command_params:
+        if cmd_tuple not in index_map and len(index_map) < 64:
+            index_map[cmd_tuple] = len(index_map)
+
+    return index_map
+
+
 def build_sf2_command_table(command_params: List[Tuple[int, int, int]]) -> List[Tuple[int, int, int]]:
     """
     Build SF2 command table from extracted parameters.

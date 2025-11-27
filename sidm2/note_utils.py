@@ -153,13 +153,20 @@ def extract_first_notes_from_siddump(dump_content: str, max_frames: int = 300) -
     return result
 
 
-def extract_notes_from_sequences(sequences: list, max_notes: int = 100) -> List[str]:
+def extract_notes_from_sequences(
+    sequences: list,
+    max_notes: int = 100,
+    instruments: list = None,
+    wave_table: list = None
+) -> List[str]:
     """
     Extract note names from parsed sequence events.
 
     Args:
         sequences: List of List[SequenceEvent]
         max_notes: Maximum notes to extract per sequence
+        instruments: Optional list of instrument bytes (for wave table lookup)
+        wave_table: Optional list of (waveform, note_offset) tuples
 
     Returns:
         List of note names
@@ -168,11 +175,41 @@ def extract_notes_from_sequences(sequences: list, max_notes: int = 100) -> List[
 
     for seq in sequences:
         seq_notes = []
+        current_instr_idx = 0  # Default instrument
+
         for event in seq:
+            # Track instrument changes
+            # Instrument bytes are 0xA0-0xBF in SF2 format
+            if 0xA0 <= event.instrument <= 0xBF:
+                current_instr_idx = event.instrument - 0xA0
+
             note = event.note
             # Skip control bytes (0x7E, 0x7F) and duration bytes (0x80-0x9F)
             if 0 <= note <= 0x5D:
-                note_name = laxity_note_to_name(note)
+                # Apply wave table transposition if available
+                transposed_note = note
+                if instruments and wave_table and current_instr_idx < len(instruments):
+                    instr = instruments[current_instr_idx]
+                    if len(instr) >= 8:
+                        wave_ptr = instr[7]  # Wave pointer in Laxity format
+                        if wave_ptr < len(wave_table):
+                            # Get the first entry's note offset
+                            waveform, note_offset = wave_table[wave_ptr]
+                            # Note offset is signed (-128 to 127)
+                            # Values > 0x7F are negative (e.g., 0x81 = -127)
+                            if note_offset > 0x7F:
+                                # Convert to signed
+                                note_offset = note_offset - 256
+                            else:
+                                # For small positive values, it's relative to C-0
+                                # If note_offset is 0x40-0x7F, it's an absolute offset
+                                if note_offset >= 0x40:
+                                    note_offset = note_offset - 0x40
+                                # Otherwise keep as-is for relative offset
+
+                            transposed_note = max(0, min(0x5D, note + note_offset))
+
+                note_name = laxity_note_to_name(transposed_note)
                 seq_notes.append(note_name)
 
             if len(seq_notes) >= max_notes:
@@ -219,7 +256,9 @@ def compare_notes(dump_notes: List[str], seq_notes: List[str]) -> Dict:
 def generate_note_comparison_report(
     dump_content: str,
     sequences: list,
-    max_frames: int = 300
+    max_frames: int = 300,
+    instruments: list = None,
+    wave_table: list = None
 ) -> str:
     """
     Generate a note comparison report between siddump and sequences.
@@ -228,6 +267,8 @@ def generate_note_comparison_report(
         dump_content: Raw siddump file content
         sequences: List of List[SequenceEvent]
         max_frames: Maximum frames to analyze from siddump
+        instruments: Optional list of instrument bytes (for wave table lookup)
+        wave_table: Optional list of (waveform, note_offset) tuples
 
     Returns:
         Formatted report string
@@ -238,8 +279,8 @@ def generate_note_comparison_report(
     # Get unique notes per channel from siddump
     dump_notes = extract_first_notes_from_siddump(dump_content, max_frames)
 
-    # Extract notes from sequences
-    seq_notes = extract_notes_from_sequences(sequences)
+    # Extract notes from sequences (with optional wave table transposition)
+    seq_notes = extract_notes_from_sequences(sequences, 100, instruments, wave_table)
 
     # Count total siddump notes (non-'---')
     total_dump_notes = 0

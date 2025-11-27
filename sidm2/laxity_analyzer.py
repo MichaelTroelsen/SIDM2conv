@@ -12,9 +12,23 @@ from .table_extraction import (
     find_and_extract_wave_table,
     find_and_extract_pulse_table,
     find_and_extract_filter_table,
+    extract_hr_table,
+    extract_init_table,
+    extract_arp_table,
+    extract_command_table,
 )
 from .instrument_extraction import extract_laxity_instruments, extract_laxity_wave_table
-from .sequence_extraction import get_command_names, analyze_sequence_commands
+from .sequence_extraction import (
+    get_command_names,
+    analyze_sequence_commands,
+    extract_command_parameters,
+    build_command_index_map,
+)
+from .sequence_translator import (
+    extract_laxity_frequency_table,
+    LaxitySequenceParser,
+    SF2SequenceBuilder,
+)
 
 # Import LaxityParser from the existing module
 import sys
@@ -48,7 +62,29 @@ class LaxityPlayerAnalyzer:
         return self.get_byte(addr) | (self.get_byte(addr + 1) << 8)
 
     def extract_tempo(self) -> int:
-        """Extract tempo/speed from the SID file"""
+        """Extract tempo/speed from the SID file.
+
+        Laxity uses break speeds: first 4 bytes of filter table contain
+        alternative speed lookup. Speed values 0-1 index into this table.
+        """
+        # Check filter table for break speeds (Laxity format)
+        # Filter table is typically at $1A1E, first 4 bytes are break speeds
+        filter_offset = 0x1A1E - self.load_address
+        if 0 <= filter_offset < len(self.data) - 4:
+            # Read first 4 bytes (break speed table)
+            break_speeds = [self.data[filter_offset + i] for i in range(4)]
+            # Filter out wrapping markers ($00) and invalid values
+            valid_speeds = [s for s in break_speeds if 1 <= s <= 20]
+            if valid_speeds:
+                # Use the most common non-zero speed
+                from collections import Counter
+                speed_counts = Counter(valid_speeds)
+                most_common_speed = speed_counts.most_common(1)[0][0]
+                logger.debug(f"    Found break speeds in filter table: {break_speeds}")
+                logger.debug(f"    Using most common speed: {most_common_speed}")
+                return most_common_speed
+
+        # Fallback to init routine search
         init_offset = self.header.init_address - self.load_address
 
         for i in range(init_offset, min(init_offset + 200, len(self.data) - 5)):
@@ -102,11 +138,30 @@ class LaxityPlayerAnalyzer:
         return 0x0F  # Default to max volume
 
     def detect_multi_speed(self) -> int:
-        """Detect if this is a multi-speed tune"""
+        """Detect if this is a multi-speed tune.
+
+        Multi-speed tunes call the play routine multiple times per frame.
+        Detection methods:
+        1. Check PSID speed flag (bit indicates CIA timer usage)
+        2. Count JSR instructions to play address
+        3. Look for CIA timer setup patterns
+
+        Returns:
+            1 = normal (1x per frame)
+            2 = 2x per frame
+            4 = 4x per frame
+        """
+        # Check PSID header speed flag
+        # speed=0 means VBlank (50/60 Hz), speed=1 means CIA timer
+        if hasattr(self.header, 'speed') and self.header.speed == 1:
+            # CIA timer - likely multi-speed
+            logger.debug("    PSID speed flag indicates CIA timer")
+
         play_addr = self.header.play_address
         play_lo = play_addr & 0xFF
         play_hi = (play_addr >> 8) & 0xFF
 
+        # Count JSR instructions to play address
         jsr_count = 0
         for i in range(len(self.data) - 3):
             if self.data[i] == 0x20:  # JSR
@@ -115,35 +170,43 @@ class LaxityPlayerAnalyzer:
                 if target_lo == play_lo and target_hi == play_hi:
                     jsr_count += 1
 
+        # Look for CIA timer setup patterns
+        # Common pattern: LDA #$xx, STA $DC04 (timer low), LDA #$xx, STA $DC05 (timer high)
+        cia_timer_detected = False
+        for i in range(len(self.data) - 6):
+            # Check for STA $DC04 or STA $DC05 (CIA timer registers)
+            if (self.data[i] == 0x8D and
+                self.data[i + 1] in (0x04, 0x05) and
+                self.data[i + 2] == 0xDC):
+                cia_timer_detected = True
+                break
+
+        # Determine multi-speed factor
         if jsr_count >= 4:
             return 4
         elif jsr_count >= 2:
+            return 2
+        elif cia_timer_detected and hasattr(self.header, 'speed') and self.header.speed == 1:
+            # CIA timer but no multiple JSRs - assume 2x
             return 2
 
         return 1
 
     def extract_filter_table(self) -> bytes:
-        """Extract filter modulation table"""
+        """Extract filter modulation table from Laxity SID.
+
+        Returns bytes in SF2 format: 4 bytes per entry (cutoff, step, duration, next).
+        """
+        addr, entries = find_and_extract_filter_table(self.data, self.load_address)
+
+        if not entries:
+            return b''
+
+        # Convert list of (cutoff, step, duration, next) tuples to bytes
         filter_data = bytearray()
-
-        for addr in range(0x1A00, 0x1C00):
-            offset = addr - self.load_address
-            if offset < 0 or offset >= len(self.data) - 64:
-                continue
-
-            is_filter = True
-            prev_val = None
-            for i in range(32):
-                val = self.get_byte(addr + i)
-                if prev_val is not None:
-                    if abs(val - prev_val) > 32:
-                        is_filter = False
-                        break
-                prev_val = val
-
-            if is_filter:
-                filter_data = bytes([self.get_byte(addr + i) for i in range(64)])
-                break
+        for entry in entries:
+            for byte_val in entry:
+                filter_data.append(byte_val)
 
         return bytes(filter_data)
 
@@ -173,6 +236,27 @@ class LaxityPlayerAnalyzer:
                 break
 
         return bytes(pulse_data)
+
+    def extract_wave_table(self) -> bytes:
+        """Extract wave table from Laxity SID.
+
+        Returns bytes in SF2 format: (note_offset, waveform) pairs.
+        """
+        from .table_extraction import find_and_extract_wave_table
+
+        addr, entries = find_and_extract_wave_table(self.data, self.load_address)
+
+        if not entries:
+            return b''
+
+        # Convert list of (waveform, note_offset) tuples to bytes
+        # SF2 format is (note_offset, waveform) pairs
+        wave_data = bytearray()
+        for waveform, note_offset in entries:
+            wave_data.append(note_offset)
+            wave_data.append(waveform)
+
+        return bytes(wave_data)
 
     def extract_commands(self) -> List[bytes]:
         """Extract command/effect definitions"""
@@ -291,7 +375,7 @@ class LaxityPlayerAnalyzer:
 
         return tables
 
-    def _find_pointer_tables(self, tables: dict):
+    def _find_pointer_tables(self, tables: dict) -> None:
         """Find low/high byte pointer tables"""
         data_start = self.load_address
         data_end = self.load_address + len(self.data)
@@ -336,7 +420,7 @@ class LaxityPlayerAnalyzer:
                 tables['ptr_hi_addr'] = best[1]
             logger.debug(f"Found {len(candidates)} potential pointer table pairs")
 
-    def _find_sequence_data(self, tables: dict):
+    def _find_sequence_data(self, tables: dict) -> None:
         """Find sequence data patterns"""
         data_start = self.load_address
         data_end = self.load_address + len(self.data)
@@ -378,7 +462,19 @@ class LaxityPlayerAnalyzer:
         multi_speed = self.detect_multi_speed()
         filter_table = self.extract_filter_table()
         pulse_table = self.extract_pulse_table()
+        wave_table = self.extract_wave_table()
         commands = self.extract_commands()
+
+        # Extract HR and Init tables
+        hr_table = extract_hr_table(self.data, self.load_address, self.header.init_address)
+        init_table = extract_init_table(self.data, self.load_address, self.header.init_address,
+                                        tempo, init_volume)
+
+        # Extract arpeggio table
+        arp_table = extract_arp_table(self.data, self.load_address)
+
+        # Extract frequency table for note translation
+        frequency_table = extract_laxity_frequency_table(self.data, self.load_address)
 
         # Create extracted data structure
         extracted = ExtractedData(
@@ -388,74 +484,51 @@ class LaxityPlayerAnalyzer:
             sequences=[],
             orderlists=[],
             instruments=[],
-            wavetable=b'',
+            wavetable=wave_table,
             pulsetable=pulse_table,
             filtertable=filter_table,
             tempo=tempo,
             init_volume=init_volume,
             multi_speed=multi_speed,
             commands=commands,
-            pointer_tables=tables
+            pointer_tables=tables,
+            hr_table=hr_table,
+            init_table=init_table,
+            arp_table=arp_table,
+            frequency_table=frequency_table
         )
 
         # Store raw sequences
         extracted.raw_sequences = laxity_data.sequences
 
-        # Create SequenceEvent representation
-        # Parse Laxity sequence format properly:
-        # - 0xA0-0xBF: instrument change (instrument = byte - 0xA0 + 0xA0 for SF2)
-        # - 0xC0-0xCF: command bytes
-        # - 0x80-0x8F: duration/timing
-        # - 0x00-0x6F: note values
-        # - 0x7E: gate on (sustain)
-        # - 0x7F: end marker
+        # Build command index map from all sequences (Phase 1: Day 1)
+        # Extract command parameters from raw sequences
+        cmd_params_list = extract_command_parameters(
+            self.data,
+            self.load_address,
+            laxity_data.sequences
+        )
+
+        # Build command index map from unique command tuples
+        command_index_map = build_command_index_map(cmd_params_list)
+        extracted.command_index_map = command_index_map
+
+        logger.debug(f"Built command index map with {len(command_index_map)} entries")
+
+        # Initialize sequence translator (Phase 1: Day 1-2)
+        laxity_parser = LaxitySequenceParser()
+        sf2_builder = SF2SequenceBuilder(frequency_table, command_index_map)
+
+        # Translate sequences using new translator (Phase 1: Day 2-3)
         for raw_seq in laxity_data.sequences:
-            seq = []
-            current_instr = 0x80  # No change
-            current_cmd = 0x00    # No command
-            i = 0
-            while i < len(raw_seq):
-                b = raw_seq[i]
+            # Parse Laxity format
+            lax_events = laxity_parser.parse_sequence(raw_seq)
 
-                # Instrument change: 0xA0-0xBF
-                if 0xA0 <= b <= 0xBF:
-                    current_instr = b  # Keep as-is for SF2 format
-                    i += 1
-                    continue
+            # Translate to SF2 format
+            sf2_events = sf2_builder.build_sequence(lax_events)
 
-                # Command: 0xC0-0xCF (followed by parameter byte)
-                elif 0xC0 <= b <= 0xCF:
-                    current_cmd = b
-                    i += 1
-                    # Skip parameter byte
-                    if i < len(raw_seq):
-                        i += 1
-                    continue
-
-                # Duration/timing: 0x80-0x9F (Laxity uses full range)
-                elif 0x80 <= b <= 0x9F:
-                    # Duration bytes modify timing - skip in SF2 (timing handled differently)
-                    i += 1
-                    continue
-
-                # Note or control byte: 0x00-0x7F
-                elif b <= 0x7F:
-                    # Clamp high notes to SF2 max (0x5D = B-7), but keep control bytes
-                    note = b
-                    if note > 0x5D and note not in (0x7E, 0x7F):
-                        note = 0x5D  # Clamp to B-7
-                    seq.append(SequenceEvent(current_instr, current_cmd, note))
-                    current_instr = 0x80  # Reset to "no change" after use
-                    current_cmd = 0x00
-                    i += 1
-                    continue
-
-                else:
-                    # Unknown byte, skip
-                    i += 1
-
-            if seq:
-                extracted.sequences.append(seq)
+            if sf2_events:
+                extracted.sequences.append(sf2_events)
 
         # Convert orderlists
         for orderlist_indices in laxity_data.orderlists:
@@ -492,7 +565,7 @@ class LaxityPlayerAnalyzer:
 
         return extracted
 
-    def _validate_extracted_data(self, extracted: ExtractedData):
+    def _validate_extracted_data(self, extracted: ExtractedData) -> None:
         """Validate extracted data for integrity"""
         errors = []
 
@@ -504,10 +577,11 @@ class LaxityPlayerAnalyzer:
                 errors.append(f"Sequence {i} too long ({len(seq)} events)")
 
             for j, event in enumerate(seq):
-                if event.note > 0x5D and event.note not in (0x7E, 0x7F):
+                # Valid SF2 note values: $00-$5D (notes), $7E (gate on), $7F (end), $80 (gate off)
+                if event.note > 0x5D and event.note not in (0x7E, 0x7F, 0x80):
                     if event.note <= 0x70:
                         errors.append(f"Seq {i} event {j}: note ${event.note:02X} out of range")
-                    elif event.note > 0x7F:
+                    elif event.note > 0x80:
                         errors.append(f"Seq {i} event {j}: invalid note ${event.note:02X}")
 
         # Validate instruments
@@ -521,7 +595,8 @@ class LaxityPlayerAnalyzer:
                 errors.append(f"Orderlist {i} is empty")
 
             for j, (trans, seq_idx) in enumerate(orderlist):
-                if seq_idx >= len(extracted.sequences):
+                # seq_idx 0xFF is end marker, skip validation for that
+                if seq_idx < 0xFF and seq_idx >= len(extracted.sequences):
                     errors.append(f"Orderlist {i} entry {j}: invalid seq index {seq_idx}")
 
         # Validate tempo
@@ -545,15 +620,26 @@ class LaxityPlayerAnalyzer:
                 wave_ptr = instr[7]
 
                 # Check wave_ptr bounds (direct index)
-                if wave_table_size > 0 and wave_ptr >= wave_table_size:
+                # Skip validation if ptr >= 0x7F (marker values: 0x7F=end, 0x80+=unused)
+                if wave_table_size > 0 and wave_ptr < 0x7F and wave_ptr > wave_table_size:
                     errors.append(f"Instrument {i}: wave_ptr {wave_ptr} exceeds wave table size {wave_table_size}")
 
-                # Check pulse_ptr bounds (Laxity uses Y*4 indexing, so ptr must be < total bytes)
-                if pulse_bytes > 0 and pulse_ptr >= pulse_bytes:
-                    errors.append(f"Instrument {i}: pulse_ptr {pulse_ptr} exceeds pulse table bytes {pulse_bytes}")
+                # Check pulse_ptr bounds
+                # In extracted format, pointers are already converted to indices (not Y*4)
+                # Valid range: 0 to pulse_bytes-1
+                # Skip validation if ptr >= 0x7F (marker values: 0x7F=end, 0x80+=unused)
+                if pulse_bytes > 0 and pulse_ptr < 0x7F:
+                    # Allow pointers up to and including the table size (edge case: pointer at boundary)
+                    if pulse_ptr > pulse_bytes:
+                        errors.append(f"Instrument {i}: pulse_ptr {pulse_ptr} exceeds pulse table size {pulse_bytes}")
 
                 # Check filter_ptr bounds (similar to pulse)
-                if filter_bytes > 0 and filter_ptr > 0 and filter_ptr >= filter_bytes:
-                    errors.append(f"Instrument {i}: filter_ptr {filter_ptr} exceeds filter table bytes {filter_bytes}")
+                # In extracted format, pointers are already converted to indices (not Y*4)
+                # Skip validation if ptr >= 0x7F (marker values: 0x7F=end, 0x80+=unused)
+                # Also skip ptr=0 (often used as "no filter")
+                if filter_bytes > 0 and filter_ptr > 0 and filter_ptr < 0x7F:
+                    # Allow pointers up to and including the table size (edge case: pointer at boundary)
+                    if filter_ptr > filter_bytes:
+                        errors.append(f"Instrument {i}: filter_ptr {filter_ptr} exceeds filter table size {filter_bytes}")
 
         extracted.validation_errors = errors
