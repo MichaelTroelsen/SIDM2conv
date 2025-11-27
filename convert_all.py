@@ -63,8 +63,8 @@ from laxity_parser import LaxityParser
 from validate_psid import PSIDValidator
 
 # Version info
-__version__ = "0.6.0"
-__build_date__ = "2025-11-25"
+__version__ = "0.6.2"
+__build_date__ = "2025-11-27"
 
 # Setup logging
 logger = logging.getLogger(__name__)
