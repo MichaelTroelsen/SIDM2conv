@@ -3,7 +3,7 @@ Table extraction functions for Laxity SID files.
 """
 
 from collections import Counter
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from .constants import (
     OPCODE_BYTES, COMMON_AD_VALUES, COMMON_SR_VALUES,
@@ -184,7 +184,7 @@ def find_table_addresses_from_player(data: bytes, load_addr: int) -> Dict[str, i
     return tables
 
 
-def find_instrument_table(data: bytes, load_addr: int, verbose: bool = False, wave_table: Optional[List[Tuple[int, int]]] = None) -> Optional[int]:
+def find_instrument_table(data: bytes, load_addr: int, verbose: bool = False, wave_table: Optional[List[Tuple[int, int]]] = None) -> Union[Optional[int], Tuple[Optional[int], Dict[str, Any]]]:
     """
     Find the instrument table in Laxity format.
     Instruments are 8 bytes each, typically in $1900-$1B00 range.
@@ -352,7 +352,7 @@ def find_instrument_table(data: bytes, load_addr: int, verbose: bool = False, wa
     return best_addr if best_addr else None
 
 
-def find_wave_table_from_player_code(data: bytes, load_addr: int) -> Optional[int]:
+def find_wave_table_from_player_code(data: bytes, load_addr: int) -> Tuple[Optional[int], Optional[int]]:
     """
     Find wave table addresses by analyzing player code.
     Returns (note_addr, wave_addr) or (None, None) if not found.
@@ -1235,7 +1235,7 @@ def extract_command_table(data: bytes, load_addr: int, sequences: list = None) -
     return default_commands
 
 
-def extract_all_laxity_tables(data: bytes, load_addr: int) -> Dict[str, any]:
+def extract_all_laxity_tables(data: bytes, load_addr: int) -> Dict[str, Any]:
     """
     Extract ALL tables from Laxity SID file.
     Returns dict with instruments, wave_table, pulse_table, filter_table.

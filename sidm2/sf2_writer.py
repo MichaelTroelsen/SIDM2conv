@@ -39,7 +39,7 @@ class SF2Writer:
     BLOCK_MUSIC_DATA = 5
     BLOCK_END = 0xFF
 
-    def __init__(self, extracted_data: ExtractedData, driver_type: str = 'np20'):
+    def __init__(self, extracted_data: ExtractedData, driver_type: str = 'np20') -> None:
         self.data = extracted_data
         self.output = bytearray()
         self.template_path = None
@@ -47,7 +47,7 @@ class SF2Writer:
         self.load_address = 0
         self.driver_type = driver_type
 
-    def write(self, filepath: str):
+    def write(self, filepath: str) -> None:
         """Write the SF2 file.
 
         Args:
@@ -138,7 +138,7 @@ class SF2Writer:
 
         return None
 
-    def _parse_sf2_header(self):
+    def _parse_sf2_header(self) -> bool:
         """Parse the SF2 driver header to find data locations"""
         if len(self.output) < 4:
             return False
@@ -172,7 +172,7 @@ class SF2Writer:
 
         return True
 
-    def _parse_descriptor_block(self, data: bytes):
+    def _parse_descriptor_block(self, data: bytes) -> None:
         """Parse descriptor block"""
         if len(data) < 3:
             return
@@ -187,7 +187,7 @@ class SF2Writer:
         self.driver_info.driver_name = data[3:name_end].decode('latin-1', errors='replace')
         logger.debug(f"  Driver: {self.driver_info.driver_name}")
 
-    def _parse_music_data_block(self, data: bytes):
+    def _parse_music_data_block(self, data: bytes) -> None:
         """Parse music data block to find sequence/orderlist locations"""
         if len(data) < 18:
             return
@@ -223,7 +223,7 @@ class SF2Writer:
         logger.debug(f"  Sequence start: ${self.driver_info.sequence_start:04X}")
         logger.debug(f"  Orderlist start: ${self.driver_info.orderlist_start:04X}")
 
-    def _parse_tables_block(self, data: bytes):
+    def _parse_tables_block(self, data: bytes) -> None:
         """Parse table definitions block to find table addresses"""
         idx = 0
 
@@ -284,7 +284,7 @@ class SF2Writer:
         """Convert C64 address to file offset"""
         return addr - self.load_address + 2
 
-    def _inject_music_data_into_template(self):
+    def _inject_music_data_into_template(self) -> None:
         """Inject extracted music data into a template SF2 file"""
         logger.info("Injecting music data into template...")
         logger.debug(f"Template size: {len(self.output)} bytes")
@@ -319,7 +319,7 @@ class SF2Writer:
 
         self._print_extraction_summary()
 
-    def _inject_sequences(self):
+    def _inject_sequences(self) -> None:
         """Inject sequence data into the SF2 file using packed format"""
         logger.debug("\n  Injecting sequences...")
 
@@ -392,7 +392,7 @@ class SF2Writer:
 
         logger.info(f"    Written {sequences_written} sequences")
 
-    def _inject_orderlists(self):
+    def _inject_orderlists(self) -> None:
         """Inject orderlist data into the SF2 file using fixed 256-byte slots"""
         logger.info("  Injecting orderlists...")
 
@@ -447,7 +447,7 @@ class SF2Writer:
 
         logger.info(f"    Written {tracks_written} orderlists")
 
-    def _inject_instruments(self):
+    def _inject_instruments(self) -> None:
         """Inject instrument data into the SF2 file using extracted Laxity data"""
         logger.info("  Injecting instruments...")
 
@@ -527,7 +527,7 @@ class SF2Writer:
             match_rate = matches / len(siddump_adsr) if siddump_adsr else 0
             logger.debug(f"    Validation: {match_rate*100:.0f}% of siddump ADSR values found in extraction")
 
-        def waveform_to_wave_index(wave_for_sf2):
+        def waveform_to_wave_index(wave_for_sf2) -> int:
             if wave_for_sf2 == 0x21:
                 return 0x00
             elif wave_for_sf2 == 0x41:
@@ -637,7 +637,7 @@ class SF2Writer:
 
         logger.info(f"    Written {instruments_written} instruments")
 
-    def _inject_wave_table(self):
+    def _inject_wave_table(self) -> None:
         """Inject wave table data extracted from Laxity SID"""
         logger.info("  Injecting wave table...")
 
@@ -692,7 +692,7 @@ class SF2Writer:
 
         logger.info(f"    Written {len(wave_data)} wave table entries")
 
-    def _inject_hr_table(self):
+    def _inject_hr_table(self) -> None:
         """Inject HR (Hard Restart) table data"""
         logger.info("  Injecting HR table...")
 
@@ -727,7 +727,7 @@ class SF2Writer:
 
         logger.info(f"    Written {len(hr_entries)} HR table entries (frames={hr_entries[0][0]})")
 
-    def _inject_pulse_table(self):
+    def _inject_pulse_table(self) -> None:
         """Inject pulse table data extracted from Laxity SID"""
         logger.info("  Injecting Pulse table...")
 
@@ -767,7 +767,7 @@ class SF2Writer:
 
         logger.info(f"    Written {len(pulse_entries)} Pulse table entries")
 
-    def _inject_filter_table(self):
+    def _inject_filter_table(self) -> None:
         """Inject filter table data extracted from Laxity SID"""
         logger.info("  Injecting Filter table...")
 
@@ -802,7 +802,7 @@ class SF2Writer:
 
         logger.info(f"    Written {len(filter_entries)} Filter table entries")
 
-    def _inject_init_table(self):
+    def _inject_init_table(self) -> None:
         """Inject Init table data"""
         logger.info("  Injecting Init table...")
 
@@ -836,7 +836,7 @@ class SF2Writer:
         init_volume = init_entries[1] if len(init_entries) > 1 else 0x0F
         logger.info(f"    Written {len(init_entries)} Init table entries (volume={init_volume})")
 
-    def _inject_tempo_table(self):
+    def _inject_tempo_table(self) -> None:
         """Inject Tempo table data"""
         logger.info("  Injecting Tempo table...")
 
@@ -874,7 +874,7 @@ class SF2Writer:
 
         logger.info(f"    Written tempo: {tempo}")
 
-    def _inject_arp_table(self):
+    def _inject_arp_table(self) -> None:
         """Inject Arpeggio table data"""
         logger.info("  Injecting Arp table...")
 
@@ -945,7 +945,7 @@ class SF2Writer:
 
         logger.info(f"    Written {len(arp_entries)} Arp table entries")
 
-    def _inject_commands(self):
+    def _inject_commands(self) -> None:
         """Inject command table data extracted from Laxity sequences"""
         logger.info("  Injecting Commands table...")
 
@@ -1010,7 +1010,7 @@ class SF2Writer:
 
         logger.info(f"    Written {commands_written} command entries")
 
-    def _inject_auxiliary_data(self):
+    def _inject_auxiliary_data(self) -> None:
         """Inject auxiliary data with instrument and command names"""
         logger.info("  Injecting auxiliary data (names)...")
 
@@ -1058,7 +1058,7 @@ class SF2Writer:
         else:
             logger.debug("    Warning: Could not find auxiliary data pointer location")
 
-    def _build_description_data(self):
+    def _build_description_data(self) -> Optional[bytearray]:
         """Build description data block with song metadata from SID header"""
         if not hasattr(self.data, 'header') or not self.data.header:
             return None
@@ -1083,7 +1083,7 @@ class SF2Writer:
 
         return data
 
-    def _build_table_text_data(self, instrument_names, command_names, instr_table_id=1, cmd_table_id=0):
+    def _build_table_text_data(self, instrument_names, command_names, instr_table_id=1, cmd_table_id=0) -> bytearray:
         """Build the table text data block"""
         data = bytearray()
 
@@ -1108,7 +1108,7 @@ class SF2Writer:
 
         return data
 
-    def _print_extraction_summary(self):
+    def _print_extraction_summary(self) -> None:
         """Print summary of extracted data"""
         if self.data.sequences:
             logger.debug(f"\n  Extracted {len(self.data.sequences)} sequences:")
@@ -1151,11 +1151,11 @@ class SF2Writer:
 
         return None
 
-    def _create_minimal_structure(self):
+    def _create_minimal_structure(self) -> None:
         """Create a minimal SF2-like structure"""
         self.output = bytearray(8192)
 
-    def _inject_music_data(self):
+    def _inject_music_data(self) -> None:
         """Inject extracted music data into the SF2 structure"""
         logger.info(" Music data injection is a placeholder")
         logger.debug("The output file structure may need manual refinement")

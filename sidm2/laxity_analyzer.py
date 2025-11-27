@@ -375,7 +375,7 @@ class LaxityPlayerAnalyzer:
 
         return tables
 
-    def _find_pointer_tables(self, tables: dict):
+    def _find_pointer_tables(self, tables: dict) -> None:
         """Find low/high byte pointer tables"""
         data_start = self.load_address
         data_end = self.load_address + len(self.data)
@@ -420,7 +420,7 @@ class LaxityPlayerAnalyzer:
                 tables['ptr_hi_addr'] = best[1]
             logger.debug(f"Found {len(candidates)} potential pointer table pairs")
 
-    def _find_sequence_data(self, tables: dict):
+    def _find_sequence_data(self, tables: dict) -> None:
         """Find sequence data patterns"""
         data_start = self.load_address
         data_end = self.load_address + len(self.data)
@@ -565,7 +565,7 @@ class LaxityPlayerAnalyzer:
 
         return extracted
 
-    def _validate_extracted_data(self, extracted: ExtractedData):
+    def _validate_extracted_data(self, extracted: ExtractedData) -> None:
         """Validate extracted data for integrity"""
         errors = []
 
