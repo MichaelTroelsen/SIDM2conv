@@ -4,7 +4,7 @@ Round-trip validation test: SID → SF2 → SID
 
 Complete automated testing workflow:
 1. Convert SID → SF2 (sid_to_sf2.py)
-2. Pack SF2 → SID (sf2pack.exe)
+2. Pack SF2 → SID (Python sf2_packer)
 3. Render original SID → WAV (SID2WAV.EXE)
 4. Render exported SID → WAV (SID2WAV.EXE)
 5. Compare with siddump analysis
@@ -22,6 +22,8 @@ import argparse
 import json
 from pathlib import Path
 from datetime import datetime
+
+from sidm2.sf2_packer import pack_sf2_to_sid
 
 
 class RoundtripValidator:
@@ -178,47 +180,35 @@ class RoundtripValidator:
         return success
 
     def step2_pack_sf2_to_sid(self):
-        """Step 2: Pack SF2 -> SID using sf2pack"""
+        """Step 2: Pack SF2 -> SID using Python packer"""
         print("\n[2/8] Packing SF2 -> SID (with relocation)...")
 
-        cmd = [
-            str(Path('tools/sf2pack/sf2pack.exe').absolute()),
-            str(self.sf2_file),
-            str(self.exported_sid),
-            '--address', '0x1000',
-            '--zp', '0x02',
-            '--title', self.base_name,
-            '--author', 'Roundtrip Test',
-            '--copyright', datetime.now().strftime('%Y')
-        ]
-
-        if self.verbose:
-            cmd.append('-v')
-
-        success, output = self.run_command(cmd, "Running sf2pack.exe")
+        try:
+            success = pack_sf2_to_sid(
+                self.sf2_file,
+                self.exported_sid,
+                name=self.base_name,
+                author='Roundtrip Test',
+                copyright_str=datetime.now().strftime('%Y'),
+                dest_address=0x1000,
+                zp_address=0xFC
+            )
+        except Exception as e:
+            success = False
+            output = str(e)
 
         self.results['steps']['sf2pack'] = {
             'success': success,
             'output_file': str(self.exported_sid),
             'exists': self.exported_sid.exists(),
             'size': self.exported_sid.stat().st_size if self.exported_sid.exists() else 0,
-            'output': output
+            'output': 'Python packer (sidm2.sf2_packer)'
         }
-
-        # Extract relocation stats from output
-        if 'Relocations:' in output:
-            for line in output.split('\n'):
-                if 'Relocations:' in line:
-                    self.results['steps']['sf2pack']['relocation_info'] = line.strip()
-                    break
 
         if success and self.exported_sid.exists():
             print(f"  [OK] Created {self.exported_sid} ({self.exported_sid.stat().st_size} bytes)")
-            if 'relocation_info' in self.results['steps']['sf2pack']:
-                print(f"  {self.results['steps']['sf2pack']['relocation_info']}")
         else:
             print(f"  [FAIL] Failed to pack SF2")
-            print(f"  Error: {output}")
 
         return success
 
@@ -483,9 +473,9 @@ class RoundtripValidator:
                 else:
                     output_info = f"{size} bytes"
 
-            # Add relocation info for sf2pack
-            if step_key == 'sf2pack' and 'relocation_info' in step:
-                output_info += f"<br><small>{step['relocation_info']}</small>"
+            # Add packer info for sf2pack
+            if step_key == 'sf2pack':
+                output_info += f"<br><small>Python packer</small>"
 
             # Get relative path for display
             output_file = step.get('output_file', 'N/A')
