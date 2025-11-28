@@ -23,7 +23,7 @@ from sidm2.models import SequenceEvent
 logger = logging.getLogger(__name__)
 
 # Laxity NewPlayer v21 constants
-LAXITY_FREQ_TABLE_ADDR = 0x1833  # Frequency table (96 notes × 2 bytes)
+LAXITY_FREQ_TABLE_ADDR = 0x1835  # Frequency table (96 notes × 2 bytes) - starts at $1835, not $1833!
 LAXITY_FREQ_TABLE_SIZE = 96
 
 # PAL C64 SID clock frequency
@@ -134,9 +134,8 @@ class LaxityFrequencyTable:
             SF2 note number or control byte
         """
         # Control bytes pass through
-        if lax_note == 0x00:
-            return SF2_GATE_ON  # Rest -> gate on (sustain)
-        elif lax_note == SF2_GATE_ON:
+        # NOTE: $00 is a valid note (C-0), NOT a rest! Rest is $7E (SF2_GATE_ON)
+        if lax_note == SF2_GATE_ON:
             return SF2_GATE_ON  # Gate continue
         elif lax_note == SF2_END:
             return SF2_END  # End marker

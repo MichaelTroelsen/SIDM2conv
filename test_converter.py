@@ -1310,9 +1310,9 @@ class TestLaxityFrequencyTable(unittest.TestCase):
 
     def setUp(self):
         """Set up test data with known frequency table"""
-        # Create minimal C64 data with frequency table at $1833
+        # Create minimal C64 data with frequency table at $1835
         self.load_addr = 0x1000
-        freq_table_offset = 0x1833 - self.load_addr  # Offset in data
+        freq_table_offset = 0x1835 - self.load_addr  # Offset in data
 
         # Create data buffer large enough to contain frequency table
         self.c64_data = bytearray(freq_table_offset + (96 * 2))
@@ -1372,9 +1372,12 @@ class TestLaxityFrequencyTable(unittest.TestCase):
         freq_table = LaxityFrequencyTable(bytes(self.c64_data), self.load_addr)
 
         # Test control bytes pass through
-        self.assertEqual(freq_table.translate_laxity_note(0x00), SF2_GATE_ON)  # Rest
-        self.assertEqual(freq_table.translate_laxity_note(SF2_GATE_ON), SF2_GATE_ON)
-        self.assertEqual(freq_table.translate_laxity_note(SF2_END), SF2_END)
+        # Note: $00 is a valid note (C-0), NOT a rest! $7E is the rest marker
+        note_c0 = freq_table.translate_laxity_note(0x00)
+        self.assertGreaterEqual(note_c0, 0)  # $00 translates to a valid note
+        self.assertLessEqual(note_c0, 93)
+        self.assertEqual(freq_table.translate_laxity_note(SF2_GATE_ON), SF2_GATE_ON)  # $7E = rest
+        self.assertEqual(freq_table.translate_laxity_note(SF2_END), SF2_END)  # $7F = end
 
         # Test note lookup
         note = freq_table.translate_laxity_note(45)  # A-4 index
