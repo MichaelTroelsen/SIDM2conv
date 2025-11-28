@@ -40,6 +40,7 @@ class LaxityData:
     sequences: List[bytes]  # Raw sequence data (already in SF2-compatible format)
     instruments: List[bytes]  # Instrument definitions
     sequence_addrs: List[int]  # Addresses of each sequence
+    command_table: List[Tuple[int, int]] = None  # Command table entries (cmd_byte, param_byte)
 
 
 class LaxityParser:
@@ -282,46 +283,110 @@ class LaxityParser:
 
         return sequences, sequence_addrs
 
+    def find_instrument_table_from_code(self) -> Optional[int]:
+        """Find instrument table by analyzing player code LDA patterns.
+
+        Laxity player reads instrument data using LDA $xxxx,Y instructions
+        for bytes 0-7 of the instrument structure. This finds addresses
+        where multiple bytes in an 8-byte structure are accessed.
+
+        Returns:
+            Address of instrument table, or None if not found
+        """
+        # Look for LDA abs,Y (0xB9) instructions accessing consecutive addresses
+        lda_targets = {}
+        for i in range(len(self.data) - 3):
+            if self.data[i] == 0xB9:  # LDA abs,Y
+                addr = (self.data[i+2] << 8) | self.data[i+1]
+                if 0x1900 <= addr <= 0x1C00:  # Data region
+                    lda_targets[addr] = lda_targets.get(addr, 0) + 1
+
+        # Find addresses that are part of an 8-byte structure
+        best_addr = None
+        best_score = 0
+        for base in range(0x1900, 0x1B00):
+            # Check how many bytes in the 8-byte structure are accessed
+            accessed = sum(1 for offset in range(8) if (base + offset) in lda_targets)
+            if accessed > best_score:
+                best_score = accessed
+                best_addr = base
+
+        # Only return if we have high confidence (7+ of 8 bytes accessed)
+        if best_score >= 7 and best_addr:
+            return best_addr
+        return None
+
     def find_instruments(self) -> List[bytes]:
         """
         Find instrument definitions.
 
-        Laxity instruments are typically 8-byte structures.
+        Laxity instruments are 8-byte structures with format:
+        - Byte 0: AD (Attack/Decay)
+        - Byte 1: SR (Sustain/Release)
+        - Byte 2-6: Flags/params
+        - Byte 7: Wave table pointer
         """
-        # For now, create default instruments based on common SID settings
-        # The actual instrument table needs more reverse engineering
-
         instruments = []
 
-        # Search for instrument table patterns
-        # Look for consecutive 8-byte structures with typical instrument characteristics
+        # Method 1: Analyze player code to find instrument table address
+        instr_addr = self.find_instrument_table_from_code()
 
+        if instr_addr:
+            print(f"Found instrument table at ${instr_addr:04X} (via code analysis)")
+            instr_offset = instr_addr - self.load_address
+
+            # Extract instruments until we hit empty/invalid data
+            for i in range(32):
+                off = instr_offset + (i * 8)
+                if off + 8 > len(self.data):
+                    break
+
+                instr = self.get_bytes(self.load_address + off, 8)
+                ad = instr[0]
+                sr = instr[1]
+                wave_ptr = instr[7]
+
+                # Stop if we hit empty instrument (but not for first one)
+                if i > 0 and ad == 0 and sr == 0 and wave_ptr == 0:
+                    break
+
+                # Validate: reasonable ADSR and wave pointer
+                sustain = (sr >> 4) & 0xF
+                if ad < 0x40 and wave_ptr < 64:  # Reasonable values
+                    instruments.append(instr)
+                elif i == 0:  # Keep first instrument even if unusual
+                    instruments.append(instr)
+                else:
+                    break
+
+            if instruments:
+                print(f"Extracted {len(instruments)} instruments")
+                return instruments
+
+        # Method 2: Fallback - search for instrument-like patterns
+        print("Falling back to pattern-based instrument search")
         for addr in range(self.load_address + 0xA00, self.load_address + 0xB00):
-            # Check for potential instrument table
             count = 0
-            for i in range(8):  # Check for up to 8 instruments
+            for i in range(8):
                 instr_addr = addr + i * 8
                 if instr_addr + 8 > self.data_end:
                     break
 
                 instr = self.get_bytes(instr_addr, 8)
-
-                # Check for instrument-like characteristics
-                # - AD byte (non-zero typically)
-                # - SR byte (can be any value)
-                # - Waveform byte (usually has bits 4,5,6, or 7 set)
                 ad = instr[0]
                 sr = instr[1]
-                wave = instr[2] if len(instr) > 2 else 0
+                wave_ptr = instr[7]
 
-                # Simple check: waveform should have typical SID bits
-                if wave & 0xF1:  # Has gate or waveform bits
+                # Better validation: check ADSR and wave pointer
+                sustain = (sr >> 4) & 0xF
+                if ad < 0x20 and sustain >= 0x04 and wave_ptr < 64:
+                    count += 1
+                elif count == 0 and ad != 0:  # First instrument can be unusual
                     count += 1
                 else:
                     break
 
-            if count >= 4:
-                # Found potential instrument table
+            if count >= 3:
                 print(f"Found instrument table at ${addr:04X} with {count} instruments")
                 for i in range(count):
                     instr = self.get_bytes(addr + i * 8, 8)
@@ -331,14 +396,69 @@ class LaxityParser:
         # If no instruments found, create defaults
         if not instruments:
             print("Creating default instruments")
-            # Default pulse lead instrument
             instruments.append(bytes([0x09, 0x00, 0x41, 0x00, 0x08, 0x00, 0x00, 0x00]))
-            # Default triangle bass
             instruments.append(bytes([0x0A, 0x0A, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00]))
-            # Default noise drum
             instruments.append(bytes([0x0F, 0x0F, 0x81, 0x00, 0x00, 0x00, 0x00, 0x00]))
 
         return instruments
+
+    def find_command_table(self, sequences: List[bytes]) -> List[Tuple[int, int]]:
+        """
+        Extract command table from Laxity player at $1ADB.
+
+        Laxity sequences use $C0-$FF bytes as command INDICES into this table.
+        Each command entry is 2 bytes: (command_byte, param_byte).
+
+        The command_byte format depends on the command type:
+        - $0x = Slide up, speed hi nibble
+        - $2x = Slide down, speed hi nibble
+        - $60 = Vibrato, param = freq|amp
+        - $8x = Portamento, speed hi nibble
+        - $9x = Set ADSR persistent
+        - $Ax = Set ADSR local
+        - $C0 = Set wave pointer
+        - $Dx = Filter/pulse control
+        - $E0 = Set speed
+        - $F0 = Set volume
+
+        Args:
+            sequences: List of raw sequences to determine which commands are used
+
+        Returns:
+            List of (cmd_byte, param_byte) tuples, indexed by command index
+        """
+        # Command table is at $1ADB in Laxity NewPlayer v21
+        CMD_TABLE_ADDR = 0x1ADB
+        MAX_COMMANDS = 64  # Up to 64 command entries
+
+        # Find which command indices are used in sequences
+        used_indices = set()
+        for seq in sequences:
+            for b in seq:
+                if 0xC0 <= b <= 0xFF:
+                    cmd_idx = (b & 0x3F)  # Index calculation
+                    used_indices.add(cmd_idx)
+
+        if not used_indices:
+            print("No commands found in sequences")
+            return []
+
+        max_idx = max(used_indices)
+        print(f"Found command indices in sequences: {sorted(used_indices)}")
+        print(f"Command table at ${CMD_TABLE_ADDR:04X}, reading {max_idx + 1} entries")
+
+        # Read command table entries
+        command_table = []
+        for i in range(max_idx + 1):
+            entry_addr = CMD_TABLE_ADDR + (i * 2)
+            cmd_byte = self.get_byte(entry_addr)
+            param_byte = self.get_byte(entry_addr + 1)
+            command_table.append((cmd_byte, param_byte))
+
+            if i in used_indices:
+                print(f"  Cmd {i}: ${cmd_byte:02X} ${param_byte:02X}")
+
+        return command_table
 
     def parse(self) -> LaxityData:
         """Parse the SID file and extract all music data"""
@@ -365,11 +485,17 @@ class LaxityParser:
         instruments = self.find_instruments()
         print()
 
+        # Find command table
+        print("Finding command table...")
+        command_table = self.find_command_table(sequences)
+        print()
+
         return LaxityData(
             orderlists=orderlists,
             sequences=sequences,
             instruments=instruments,
-            sequence_addrs=sequence_addrs
+            sequence_addrs=sequence_addrs,
+            command_table=command_table
         )
 
 

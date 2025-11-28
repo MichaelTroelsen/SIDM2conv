@@ -516,7 +516,9 @@ class LaxityPlayerAnalyzer:
         logger.debug(f"Built command index map with {len(command_index_map)} entries")
 
         # Initialize sequence translator (Phase 1: Day 1-2)
-        laxity_parser = LaxitySequenceParser()
+        # Pass command table from Laxity parser for proper command index lookup
+        command_table = getattr(laxity_data, 'command_table', None) or []
+        laxity_parser = LaxitySequenceParser(command_table)
         sf2_builder = SF2SequenceBuilder(frequency_table, command_index_map)
 
         # Translate sequences using new translator (Phase 1: Day 2-3)
