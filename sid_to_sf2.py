@@ -30,6 +30,9 @@ from sidm2 import (
     get_command_names,
 )
 
+# Import configuration system
+from sidm2.config import ConversionConfig, get_default_config
+
 # Also import laxity_parser for backward compatibility
 from laxity_parser import LaxityParser
 
@@ -37,28 +40,37 @@ from laxity_parser import LaxityParser
 logger = logging.getLogger(__name__)
 
 
-def analyze_sid_file(filepath: str):
-    """Analyze a SID file and print detailed information"""
+def analyze_sid_file(filepath: str, config: ConversionConfig = None):
+    """Analyze a SID file and print detailed information
+
+    Args:
+        filepath: Path to SID file
+        config: Optional configuration (uses defaults if None)
+    """
+    if config is None:
+        config = get_default_config()
+
     parser = SIDParser(filepath)
     header = parser.parse_header()
     c64_data, load_address = parser.get_c64_data(header)
 
-    logger.info("=" * 60)
-    logger.info("SID File Analysis")
-    logger.info("=" * 60)
-    logger.info(f"File: {filepath}")
-    logger.info(f"Format: {header.magic} v{header.version}")
-    logger.info(f"Name: {header.name}")
-    logger.info(f"Author: {header.author}")
-    logger.info(f"Copyright: {header.copyright}")
-    logger.info(f"Songs: {header.songs}")
-    logger.info(f"Start song: {header.start_song}")
-    logger.info(f"Load address: ${load_address:04X}")
-    logger.info(f"Init address: ${header.init_address:04X}")
-    logger.info(f"Play address: ${header.play_address:04X}")
-    logger.info(f"Data size: {len(c64_data)} bytes")
-    logger.info(f"End address: ${load_address + len(c64_data) - 1:04X}")
-    logger.info("=" * 60)
+    if config.extraction.verbose or logger.level <= logging.INFO:
+        logger.info("=" * 60)
+        logger.info("SID File Analysis")
+        logger.info("=" * 60)
+        logger.info(f"File: {filepath}")
+        logger.info(f"Format: {header.magic} v{header.version}")
+        logger.info(f"Name: {header.name}")
+        logger.info(f"Author: {header.author}")
+        logger.info(f"Copyright: {header.copyright}")
+        logger.info(f"Songs: {header.songs}")
+        logger.info(f"Start song: {header.start_song}")
+        logger.info(f"Load address: ${load_address:04X}")
+        logger.info(f"Init address: ${header.init_address:04X}")
+        logger.info(f"Play address: ${header.play_address:04X}")
+        logger.info(f"Data size: {len(c64_data)} bytes")
+        logger.info(f"End address: ${load_address + len(c64_data) - 1:04X}")
+        logger.info("=" * 60)
 
     # Analyze the data
     analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
@@ -67,13 +79,14 @@ def analyze_sid_file(filepath: str):
     return extracted
 
 
-def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = 'driver11'):
+def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = None, config: ConversionConfig = None):
     """Convert a SID file to SF2 format
 
     Args:
         input_path: Path to input SID file
-        output_path: Path for output SF2 file
-        driver_type: 'driver11' for standard driver, 'np20' for NewPlayer 20
+        output_path: Path for output SF2 file (or None to use config naming pattern)
+        driver_type: 'driver11' for standard driver, 'np20' for NewPlayer 20 (or None to use config)
+        config: Optional configuration (uses defaults if None)
 
     Raises:
         FileNotFoundError: If input file doesn't exist
@@ -81,12 +94,20 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = 'dr
         IOError: If unable to write output file
     """
     try:
+        # Load or use default configuration
+        if config is None:
+            config = get_default_config()
+
+        # Use config values as defaults
+        if driver_type is None:
+            driver_type = config.driver.default_driver
+
         # Validate input
         if not os.path.exists(input_path):
             raise FileNotFoundError(f"Input file not found: {input_path}")
 
-        if driver_type not in ['driver11', 'np20']:
-            raise ValueError(f"Unknown driver type: {driver_type}. Must be 'driver11' or 'np20'")
+        if driver_type not in config.driver.available_drivers:
+            raise ValueError(f"Unknown driver type: {driver_type}. Must be one of {config.driver.available_drivers}")
 
         logger.info(f"Converting: {input_path}")
         logger.info(f"Output: {output_path}")
@@ -94,31 +115,41 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = 'dr
 
         # Analyze the SID file
         try:
-            extracted = analyze_sid_file(input_path)
+            extracted = analyze_sid_file(input_path, config=config)
         except Exception as e:
             logger.error(f"Failed to analyze SID file: {e}")
             raise ValueError(f"Invalid or corrupted SID file: {e}")
 
         # Try to extract actual data from siddump
-        try:
-            siddump_data = extract_from_siddump(input_path, playback_time=60)
-            if siddump_data:
-                extracted.siddump_data = siddump_data
-                logger.info(f"  Siddump extraction: {len(siddump_data['adsr_values'])} ADSR values, "
-                      f"{len(siddump_data['waveforms'])} waveforms")
-            else:
+        if config.extraction.use_siddump:
+            try:
+                siddump_data = extract_from_siddump(input_path, playback_time=config.extraction.siddump_duration)
+                if siddump_data:
+                    extracted.siddump_data = siddump_data
+                    logger.info(f"  Siddump extraction: {len(siddump_data['adsr_values'])} ADSR values, "
+                          f"{len(siddump_data['waveforms'])} waveforms")
+                else:
+                    extracted.siddump_data = None
+            except Exception as e:
+                logger.warning(f"Siddump extraction failed (non-critical): {e}")
                 extracted.siddump_data = None
-        except Exception as e:
-            logger.warning(f"Siddump extraction failed (non-critical): {e}")
+        else:
             extracted.siddump_data = None
 
         # Ensure output directory exists
         output_dir = os.path.dirname(output_path)
         if output_dir and not os.path.exists(output_dir):
-            try:
-                os.makedirs(output_dir, exist_ok=True)
-            except OSError as e:
-                raise IOError(f"Cannot create output directory {output_dir}: {e}")
+            if config.output.create_dirs:
+                try:
+                    os.makedirs(output_dir, exist_ok=True)
+                except OSError as e:
+                    raise IOError(f"Cannot create output directory {output_dir}: {e}")
+            else:
+                raise IOError(f"Output directory does not exist: {output_dir}")
+
+        # Check if output file already exists
+        if os.path.exists(output_path) and not config.output.overwrite:
+            raise IOError(f"Output file already exists (use --overwrite or config.output.overwrite=true): {output_path}")
 
         # Write the SF2 file
         try:
@@ -144,12 +175,13 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = 'dr
         raise RuntimeError(f"Conversion failed: {e}")
 
 
-def convert_sid_to_both_drivers(input_path: str, output_dir: str = None):
+def convert_sid_to_both_drivers(input_path: str, output_dir: str = None, config: ConversionConfig = None):
     """Convert a SID file to both NP20 and Driver 11 formats
 
     Args:
         input_path: Path to input SID file
-        output_dir: Output directory (default: same as input)
+        output_dir: Output directory (default: same as input or config.output.output_dir)
+        config: Optional configuration (uses defaults if None)
 
     Returns:
         Dict with output file paths and sizes
@@ -160,38 +192,49 @@ def convert_sid_to_both_drivers(input_path: str, output_dir: str = None):
         IOError: If unable to write output files
     """
     try:
+        # Load or use default configuration
+        if config is None:
+            config = get_default_config()
+
         # Validate input
         if not os.path.exists(input_path):
             raise FileNotFoundError(f"Input file not found: {input_path}")
 
         base_name = os.path.splitext(os.path.basename(input_path))[0]
 
-        if output_dir:
+        # Determine output directory
+        if output_dir is None:
+            output_dir = config.output.output_dir or os.path.dirname(input_path) or '.'
+
+        if config.output.create_dirs:
             try:
                 os.makedirs(output_dir, exist_ok=True)
             except OSError as e:
                 raise IOError(f"Cannot create output directory {output_dir}: {e}")
-        else:
-            output_dir = os.path.dirname(input_path) or '.'
+        elif not os.path.exists(output_dir):
+            raise IOError(f"Output directory does not exist: {output_dir}")
 
         # Analyze the SID file once
         try:
-            extracted = analyze_sid_file(input_path)
+            extracted = analyze_sid_file(input_path, config=config)
         except Exception as e:
             logger.error(f"Failed to analyze SID file: {e}")
             raise ValueError(f"Invalid or corrupted SID file: {e}")
 
         # Try to extract actual data from siddump
-        try:
-            siddump_data = extract_from_siddump(input_path, playback_time=60)
-            if siddump_data:
-                extracted.siddump_data = siddump_data
-                logger.info(f"  Siddump extraction: {len(siddump_data['adsr_values'])} ADSR values, "
-                      f"{len(siddump_data['waveforms'])} waveforms")
-            else:
+        if config.extraction.use_siddump:
+            try:
+                siddump_data = extract_from_siddump(input_path, playback_time=config.extraction.siddump_duration)
+                if siddump_data:
+                    extracted.siddump_data = siddump_data
+                    logger.info(f"  Siddump extraction: {len(siddump_data['adsr_values'])} ADSR values, "
+                          f"{len(siddump_data['waveforms'])} waveforms")
+                else:
+                    extracted.siddump_data = None
+            except Exception as e:
+                logger.warning(f"Siddump extraction failed (non-critical): {e}")
                 extracted.siddump_data = None
-        except Exception as e:
-            logger.warning(f"Siddump extraction failed (non-critical): {e}")
+        else:
             extracted.siddump_data = None
 
         results = {}
@@ -205,6 +248,12 @@ def convert_sid_to_both_drivers(input_path: str, output_dir: str = None):
                 else:
                     output_file = os.path.join(output_dir, f"{base_name}_d11.sf2")
                     driver_label = "Driver 11"
+
+                # Check if output file already exists
+                if os.path.exists(output_file) and not config.output.overwrite:
+                    logger.warning(f"Skipping {driver_type}: file already exists: {output_file}")
+                    results[driver_type] = {'skipped': True, 'path': output_file}
+                    continue
 
                 # Write the SF2 file
                 writer = SF2Writer(extracted, driver_type=driver_type)
@@ -222,7 +271,7 @@ def convert_sid_to_both_drivers(input_path: str, output_dir: str = None):
                 results[driver_type] = {'error': str(e)}
 
         # Check if at least one conversion succeeded
-        if all('error' in v for v in results.values()):
+        if all('error' in v or 'skipped' in v for v in results.values()):
             raise IOError("Failed to generate any SF2 files")
 
         return results
@@ -239,26 +288,29 @@ def convert_sid_to_both_drivers(input_path: str, output_dir: str = None):
 def main():
     import argparse
 
-    # Set up logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(message)s',
-        handlers=[logging.StreamHandler(sys.stdout)]
-    )
-
     parser = argparse.ArgumentParser(
         description='SID to SF2 Converter - Convert Laxity SID files to SID Factory II format'
     )
     parser.add_argument('input', help='Input SID file')
     parser.add_argument('output', nargs='?', help='Output SF2 file (default: input name with .sf2)')
 
+    # Configuration
+    parser.add_argument(
+        '--config', '-c',
+        help='Configuration file path (JSON format, see sidm2_config.example.json)'
+    )
+    parser.add_argument(
+        '--overwrite',
+        action='store_true',
+        help='Overwrite existing output files'
+    )
+
     # Driver selection - mutually exclusive
     driver_group = parser.add_mutually_exclusive_group()
     driver_group.add_argument(
         '--driver', '-d',
         choices=['np20', 'driver11'],
-        default='driver11',
-        help='Target driver type (default: driver11 - recommended for best compatibility)'
+        help='Target driver type (default: from config or driver11)'
     )
     driver_group.add_argument(
         '--both', '-b',
@@ -268,7 +320,7 @@ def main():
 
     parser.add_argument(
         '--output-dir', '-o',
-        help='Output directory for --both mode (default: same as input)'
+        help='Output directory for --both mode (default: from config or same as input)'
     )
     parser.add_argument(
         '--verbose', '-v',
@@ -278,9 +330,38 @@ def main():
 
     args = parser.parse_args()
 
-    # Set logging level
+    # Load configuration
+    if args.config:
+        if not os.path.exists(args.config):
+            print(f"Error: Configuration file not found: {args.config}")
+            sys.exit(1)
+        try:
+            config = ConversionConfig.load(args.config)
+        except Exception as e:
+            print(f"Error: Failed to load configuration: {e}")
+            sys.exit(1)
+    else:
+        config = get_default_config()
+
+    # Override config with CLI arguments
+    if args.overwrite:
+        config.output.overwrite = True
+
     if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
+        config.logging.level = 'DEBUG'
+        config.extraction.verbose = True
+
+    # Set up logging based on configuration
+    log_level = getattr(logging, config.logging.level)
+    handlers = [logging.StreamHandler(sys.stdout)]
+    if config.logging.log_file:
+        handlers.append(logging.FileHandler(config.logging.log_file))
+
+    logging.basicConfig(
+        level=log_level,
+        format=config.logging.log_format,
+        handlers=handlers
+    )
 
     input_file = args.input
 
@@ -288,20 +369,33 @@ def main():
         logger.error(f"Error: Input file not found: {input_file}")
         sys.exit(1)
 
-    if args.both:
-        # Generate both driver versions
-        output_dir = args.output_dir or os.path.dirname(input_file) or '.'
-        convert_sid_to_both_drivers(input_file, output_dir)
-    else:
-        # Single driver mode
-        if args.output:
-            output_file = args.output
+    try:
+        if args.both:
+            # Generate both driver versions
+            output_dir = args.output_dir
+            convert_sid_to_both_drivers(input_file, output_dir, config=config)
         else:
-            # Generate output filename
-            base = os.path.splitext(input_file)[0]
-            output_file = base + ".sf2"
+            # Single driver mode
+            if args.output:
+                output_file = args.output
+            else:
+                # Generate output filename
+                base = os.path.splitext(input_file)[0]
+                output_file = base + ".sf2"
 
-        convert_sid_to_sf2(input_file, output_file, driver_type=args.driver)
+            # Use CLI driver arg or fall back to config
+            driver_type = args.driver
+            convert_sid_to_sf2(input_file, output_file, driver_type=driver_type, config=config)
+
+    except (FileNotFoundError, ValueError, IOError) as e:
+        logger.error(f"Error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        if config.logging.level == 'DEBUG':
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
 
 
 if __name__ == '__main__':
