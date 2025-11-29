@@ -108,6 +108,7 @@ class SF2Writer:
 
         driver_templates = {
             'driver11': [
+                os.path.join(base_dir, 'G5', 'drivers', 'sf2driver11_03.prg'),
                 os.path.join(base_dir, 'G5', 'drivers', 'sf2driver11_05.prg'),
                 os.path.join(base_dir, 'G5', 'drivers', 'sf2driver11_00.prg'),
                 'template.sf2',
@@ -294,9 +295,12 @@ class SF2Writer:
             self._print_extraction_summary()
             return
 
-        required_size = self._addr_to_offset(self.driver_info.sequence_start) + (self.driver_info.sequence_count * 256)
+        # PACKED MODE: Don't pre-allocate fixed 256-byte slots
+        # Sequences will dynamically extend the buffer as needed during injection
+        # Just ensure we have space up to the sequence start address
+        required_size = self._addr_to_offset(self.driver_info.sequence_start) + 256  # Small initial buffer
         if len(self.output) < required_size:
-            logger.debug(f"  Expanding file from {len(self.output)} to {required_size} bytes")
+            logger.debug(f"  Ensuring minimum file size: {required_size} bytes")
             self.output.extend(bytearray(required_size - len(self.output)))
 
         if self.data.instruments or self.data.raw_sequences:
@@ -320,7 +324,7 @@ class SF2Writer:
         self._print_extraction_summary()
 
     def _inject_sequences(self) -> None:
-        """Inject sequence data into the SF2 file using packed format"""
+        """Inject sequence data into the SF2 file using packed variable-length format (Tetris-style)"""
         logger.debug("\n  Injecting sequences...")
 
         seq_start = self._addr_to_offset(self.driver_info.sequence_start)
@@ -331,21 +335,38 @@ class SF2Writer:
             logger.warning(f"     Invalid sequence start offset {seq_start}")
             return
 
-        SEQUENCE_SLOT_SIZE = 256
+        # PACKED MODE: Calculate actual size needed for each sequence
+        # Sequences are written contiguously (Tetris-style stacking)
+        # Only write sequences with actual data (skip empty placeholders)
         sequences_written = 0
+        current_offset = seq_start  # Track current write position
+        current_addr = self.driver_info.sequence_start  # Current address in C64 memory
 
-        for i, seq in enumerate(self.data.sequences[:127]):
-            if i >= self.driver_info.sequence_count:
+        # Determine max sequence to write (up to driver limit or actual sequences)
+        max_sequences = min(len(self.data.sequences), 256)
+
+        for i in range(max_sequences):
+            if i >= len(self.data.sequences):
                 break
 
-            current_addr = self.driver_info.sequence_start + (i * SEQUENCE_SLOT_SIZE)
+            seq = self.data.sequences[i]
 
+            # Skip empty placeholder sequences (just end marker with 0x80 persistence)
+            if len(seq) == 1 and seq[0].note == 0x7F and seq[0].instrument == 0x80 and seq[0].command == 0x80:
+                # Write null pointer for empty sequence
+                if ptr_lo_offset + i < len(self.output):
+                    self.output[ptr_lo_offset + i] = 0x00
+                if ptr_hi_offset + i < len(self.output):
+                    self.output[ptr_hi_offset + i] = 0x00
+                continue
+
+            # Write sequence pointer (points to where this sequence will be written)
             if ptr_lo_offset + i < len(self.output):
                 self.output[ptr_lo_offset + i] = current_addr & 0xFF
             if ptr_hi_offset + i < len(self.output):
                 self.output[ptr_hi_offset + i] = (current_addr >> 8) & 0xFF
 
-            seq_offset = self._addr_to_offset(current_addr)
+            seq_offset = current_offset  # Write at current packed position
 
             # SF2 sequences use packed format: only write instrument/command when they change
             # Format: [instr] [cmd] note [instr] [cmd] note ... 0x7F
@@ -355,28 +376,35 @@ class SF2Writer:
             # - Proper SF2 command indices (0-63) from command_index_map
             # - Gate markers (0x7E sustain, 0x80 gate-off) already inserted
             # - Duration expansion already applied
+
+            sequence_start_offset = seq_offset  # Remember where this sequence started
             rows_written = 0
+
+            # Ensure we have enough space - resize output buffer if needed
+            estimated_size = len(seq) * 3 + 10  # Conservative estimate
+            if seq_offset + estimated_size > len(self.output):
+                self.output.extend(bytearray(seq_offset + estimated_size - len(self.output)))
+
             for event in seq:
                 # Skip duration bytes (0x80-0x9F) - shouldn't appear but be safe
                 if 0x80 <= event.note <= 0x9F:
                     continue
 
                 # Write instrument change if not "no change" (0x80)
-                if event.instrument != 0x80 and seq_offset < len(self.output):
+                if event.instrument != 0x80:
                     self.output[seq_offset] = event.instrument
                     seq_offset += 1
 
                 # Write command index directly (Phase 1: already mapped to 0-63)
                 # event.command is either 0x80 (no change) or 0-63 (command index)
-                if event.command != 0x80 and seq_offset < len(self.output):
+                if event.command != 0x80:
                     self.output[seq_offset] = event.command
                     seq_offset += 1
 
                 # Always write note (including gate markers 0x7E, 0x80)
-                if seq_offset < len(self.output):
-                    self.output[seq_offset] = event.note
-                    seq_offset += 1
-                    rows_written += 1
+                self.output[seq_offset] = event.note
+                seq_offset += 1
+                rows_written += 1
 
                 # Stop at end marker
                 if event.note == 0x7F:
@@ -385,12 +413,19 @@ class SF2Writer:
             # Ensure sequence ends with 0x7F
             if rows_written > 0 and seq_offset > 0:
                 if self.output[seq_offset - 1] != 0x7F:
-                    if seq_offset < len(self.output):
-                        self.output[seq_offset] = 0x7F
+                    self.output[seq_offset] = 0x7F
+                    seq_offset += 1
+
+            # Calculate actual bytes written for this sequence
+            bytes_written = seq_offset - sequence_start_offset
+
+            # Update position for next sequence (pack them tightly)
+            current_offset = seq_offset
+            current_addr += bytes_written
 
             sequences_written += 1
 
-        logger.info(f"    Written {sequences_written} sequences")
+        logger.info(f"    Written {sequences_written} sequences (packed, total {current_offset - seq_start} bytes)")
 
     def _inject_orderlists(self) -> None:
         """Inject orderlist data into the SF2 file using fixed 256-byte slots"""

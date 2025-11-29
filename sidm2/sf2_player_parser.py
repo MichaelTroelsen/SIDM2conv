@@ -289,6 +289,109 @@ class SF2PlayerParser:
 
         return tables
 
+    def _extract_sequences_from_sf2(self, sf2_data: bytes, load_addr: int) -> Tuple[List[List[SequenceEvent]], List[List[Tuple[int, int]]]]:
+        """Extract sequences and orderlists from SF2 file.
+
+        Args:
+            sf2_data: SF2 file content
+            load_addr: Load address of SF2 file
+
+        Returns:
+            Tuple of (sequences, orderlists)
+        """
+        # Driver 11 sequence data starts at offset $0903 (from load address)
+        # Format: 3 voices × (orderlist + sequences)
+
+        sequence_offset = 0x0903 - load_addr + 2  # +2 for load address bytes
+
+        sequences = []
+        orderlists = [[], [], []]  # 3 voices
+
+        # Read sequence data for all 3 voices
+        offset = sequence_offset
+
+        # First, read orderlists for all 3 voices
+        for voice in range(3):
+            orderlist = []
+            while offset < len(sf2_data) - 1:
+                transpose = sf2_data[offset]
+                seq_idx = sf2_data[offset + 1]
+                offset += 2
+
+                # End marker: transpose = 0xFF or sequence = 0xFF
+                if transpose == 0xFF or seq_idx == 0xFF:
+                    break
+
+                orderlist.append((transpose, seq_idx))
+
+            orderlists[voice] = orderlist
+            logger.debug(f"Voice {voice}: Extracted {len(orderlist)} orderlist entries")
+
+        # Now extract all unique sequences
+        # Sequences are stored contiguously after orderlists, but referenced by sparse indices
+        # We need to extract ONLY the sequences actually used and map them to correct indices
+
+        # Find all sequence indices used in orderlists (sorted order)
+        used_sequences = set()
+        for orderlist in orderlists:
+            for _, seq_idx in orderlist:
+                used_sequences.add(seq_idx)
+
+        used_seq_indices = sorted(used_sequences)
+        logger.debug(f"Found {len(used_seq_indices)} unique sequences: {used_seq_indices}")
+
+        # Extract sequences contiguously and map to sparse indices
+        # The Nth sequence in the file maps to the Nth index in used_seq_indices
+        extracted_sequences = {}  # sparse_idx -> sequence
+
+        for file_position, sparse_idx in enumerate(used_seq_indices):
+            if offset >= len(sf2_data) - 2:
+                logger.warning(f"Ran out of data at sequence {file_position} (index {sparse_idx})")
+                break
+
+            sequence = []
+            seq_start = offset
+
+            while offset < len(sf2_data) - 2:
+                instr = sf2_data[offset]
+                cmd = sf2_data[offset + 1]
+                note = sf2_data[offset + 2]
+                offset += 3
+
+                # Preserve persistence encoding (keep 0x80 markers as-is)
+                event = SequenceEvent(
+                    instrument=instr,
+                    command=cmd,
+                    note=note
+                )
+                sequence.append(event)
+
+                # End of sequence marker
+                if note == 0x7F:
+                    break
+
+            if sequence:
+                extracted_sequences[sparse_idx] = sequence
+                logger.debug(f"File position {file_position} -> Sequence index {sparse_idx}: {len(sequence)} events, {offset - seq_start} bytes")
+            else:
+                logger.warning(f"Empty sequence at position {file_position} (index {sparse_idx})")
+                break
+
+        # Build final sequence list with sparse indexing
+        # Only include indices that are actually used
+        max_seq = max(used_seq_indices) if used_seq_indices else 0
+        sequences = []
+        for i in range(max_seq + 1):
+            if i in extracted_sequences:
+                sequences.append(extracted_sequences[i])
+            else:
+                # Unused index - insert minimal empty sequence
+                sequences.append([SequenceEvent(instrument=0x80, command=0x80, note=0x7F)])
+
+        logger.info(f"Extracted {len(extracted_sequences)} sequences (max index {max_seq}) and {sum(len(ol) for ol in orderlists)} orderlist entries from SF2")
+
+        return sequences, orderlists
+
     def _build_extracted_data(self, tables: Dict[str, SF2TableLocation]) -> ExtractedData:
         """Build ExtractedData from found tables."""
         # Get table data
@@ -312,10 +415,18 @@ class SF2PlayerParser:
                 ])
                 instruments.append(instr)
 
-        # For now, sequences and orderlists need more work to extract
-        # They're stored in a packed format that needs the music data block
+        # Extract sequences and orderlists from SF2 reference if available
         sequences: List[List[SequenceEvent]] = []
         orderlists: List[List[Tuple[int, int]]] = []
+
+        if self.sf2_reference_path and self.sf2_reference_path.exists():
+            try:
+                with open(self.sf2_reference_path, 'rb') as f:
+                    sf2_data = f.read()
+                sf2_load_addr = sf2_data[0] | (sf2_data[1] << 8)
+                sequences, orderlists = self._extract_sequences_from_sf2(sf2_data, sf2_load_addr)
+            except Exception as e:
+                logger.warning(f"Failed to extract sequences from SF2 reference: {e}")
 
         return ExtractedData(
             header=self.psid_header,
