@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 
-**Version 0.6.2** | Build Date: 2025-11-27
+**Version 0.6.2** | Build Date: 2025-11-29
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files.
 
@@ -1144,6 +1144,31 @@ All files now achieve 100% validation score with siddump ADSR merging and improv
 | 47 | SF2Writer modularization | ✅ Done | Extracted ~960 lines to sidm2/sf2_writer.py |
 
 ## Changelog
+
+### v0.6.2 (2025-11-29)
+- Added Python 6502 CPU emulator (`sidm2/cpu6502_emulator.py`, 1,242 lines)
+  - Complete instruction set implementation with all addressing modes
+  - SID register write capture for validation
+  - Frame-by-frame state tracking
+  - Based on siddump.c architecture
+- Added SID player module (`sidm2/sid_player.py`, 560 lines)
+  - PSID/RSID header parsing
+  - Note detection and frequency analysis
+  - Siddump-compatible frame dump output
+  - Command-line interface: `python -m sidm2.sid_player <sidfile> [seconds]`
+- Added SF2 player parser (`sidm2/sf2_player_parser.py`, 389 lines)
+  - Parser for SF2-exported SID files
+  - Pattern-based table extraction with SF2 reference
+  - Heuristic extraction mode (in development)
+- Added SF2 player parser test suite (`test_sf2_player_parser.py`)
+  - Validates parser with multiple SID files
+  - 15/15 header parsing success rate
+- Fixed SF2 driver address detection
+  - Now reads init/play addresses from SF2 header (offsets 0x31, 0x33)
+  - Replaced offset-based heuristics with header structure parsing
+- Fixed siddump parser ADSR and pulse width parsing
+  - Corrected column index calculation for register parsing
+- Total new code: 2,341 lines enabling Python-based SID validation
 
 ### v0.6.1 (2025-11-26)
 - Fixed instrument pointer validation boundary checking (changed >= to > for Y*4 indexed tables)
