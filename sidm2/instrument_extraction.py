@@ -2,10 +2,13 @@
 Instrument extraction functions for Laxity SID files.
 """
 
+import logging
 from typing import Dict, List, Optional, Tuple
 
 from .table_extraction import find_instrument_table, find_and_extract_wave_table
 from .exceptions import TableExtractionError
+
+logger = logging.getLogger(__name__)
 
 
 def extract_laxity_instruments(data: bytes, load_addr: int, wave_table: Optional[List[Tuple[int, int]]] = None) -> List[Dict]:
@@ -18,13 +21,14 @@ def extract_laxity_instruments(data: bytes, load_addr: int, wave_table: Optional
         wave_table: Optional wave table entries
 
     Returns:
-        List of instrument dicts with full 8-byte Laxity format
+        List of instrument dicts with full 8-byte Laxity format (empty list for small data)
 
     Raises:
-        TableExtractionError: If data is invalid or instrument extraction fails
+        TableExtractionError: If data is invalid (but not for size constraints)
     """
     if not data or len(data) < 128:
-        raise TableExtractionError(f"Data too small for instrument extraction: {len(data) if data else 0} bytes")
+        logger.warning(f"Data too small for instrument extraction: {len(data) if data else 0} bytes, returning empty list")
+        return []
 
     instruments = []
 

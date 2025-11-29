@@ -2,6 +2,7 @@
 Table extraction functions for Laxity SID files.
 """
 
+import logging
 from collections import Counter
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -15,6 +16,8 @@ from .constants import (
     PULSE_TABLE_ADDR_MIN, PULSE_TABLE_ADDR_MAX,
 )
 from .exceptions import TableExtractionError
+
+logger = logging.getLogger(__name__)
 
 
 def get_valid_wave_entry_points(wave_table: List[Tuple[int, int]]) -> set:
