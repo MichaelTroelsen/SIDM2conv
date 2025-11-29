@@ -1448,6 +1448,130 @@ class TestCommandIndexMap(unittest.TestCase):
         self.assertEqual(min(index_map.values()), 0)
 
 
+class TestErrorHandling(unittest.TestCase):
+    """Tests for error handling edge cases"""
+
+    def test_convert_sid_to_sf2_file_not_found(self):
+        """Test that FileNotFoundError is raised for missing input file"""
+        from sid_to_sf2 import convert_sid_to_sf2
+
+        with self.assertRaises(FileNotFoundError) as cm:
+            convert_sid_to_sf2('nonexistent.sid', 'output.sf2')
+
+        self.assertIn('not found', str(cm.exception))
+
+    def test_convert_sid_to_sf2_invalid_driver(self):
+        """Test that ValueError is raised for invalid driver type"""
+        from sid_to_sf2 import convert_sid_to_sf2
+
+        # Use an existing SID file for this test
+        sid_file = 'SID/Angular.sid'
+        if os.path.exists(sid_file):
+            with self.assertRaises(ValueError) as cm:
+                convert_sid_to_sf2(sid_file, 'output.sf2', driver_type='invalid')
+
+            self.assertIn('Unknown driver type', str(cm.exception))
+
+    def test_laxity_parser_small_data(self):
+        """Test that parser handles data < 256 bytes gracefully"""
+        from laxity_parser import LaxityParser
+
+        # Create minimal data
+        small_data = bytes(100)
+
+        parser = LaxityParser(small_data, 0x1000)
+
+        # Should raise ValueError for too-small data
+        with self.assertRaises(ValueError) as cm:
+            parser.parse()
+
+        self.assertIn('too small', str(cm.exception).lower())
+
+    def test_laxity_parser_empty_data(self):
+        """Test that parser handles empty data"""
+        from laxity_parser import LaxityParser
+
+        parser = LaxityParser(bytes(0), 0x1000)
+
+        with self.assertRaises(ValueError):
+            parser.parse()
+
+    def test_laxity_parser_extraction_failures_use_defaults(self):
+        """Test that parser provides defaults when extraction fails"""
+        from laxity_parser import LaxityParser
+
+        # Create data large enough to pass initial validation but with no valid structures
+        # Use random-ish data that won't contain valid orderlists/sequences
+        data = bytes([i % 256 for i in range(1000)])
+
+        parser = LaxityParser(data, 0x1000)
+        result = parser.parse()
+
+        # Should return LaxityData with defaults, not raise exception
+        self.assertIsNotNone(result)
+        self.assertEqual(len(result.orderlists), 3)  # Default 3 orderlists
+        self.assertGreaterEqual(len(result.instruments), 1)  # At least default instrument
+
+    def test_find_instrument_table_small_data(self):
+        """Test that find_instrument_table returns None for small data"""
+        from sidm2.table_extraction import find_instrument_table
+
+        small_data = bytes(50)
+        result = find_instrument_table(small_data, 0x1000)
+
+        self.assertIsNone(result)
+
+    def test_extract_laxity_instruments_small_data(self):
+        """Test that extract_laxity_instruments returns empty list for small data"""
+        from sidm2.instrument_extraction import extract_laxity_instruments
+
+        small_data = bytes(50)
+        result = extract_laxity_instruments(small_data, 0x1000)
+
+        self.assertEqual(result, [])
+
+    def test_convert_sid_to_both_drivers_file_not_found(self):
+        """Test that convert_sid_to_both_drivers raises FileNotFoundError"""
+        from sid_to_sf2 import convert_sid_to_both_drivers
+
+        with self.assertRaises(FileNotFoundError):
+            convert_sid_to_both_drivers('nonexistent.sid')
+
+    def test_get_byte_out_of_bounds(self):
+        """Test that get_byte returns 0 for out-of-bounds access"""
+        from laxity_parser import LaxityParser
+
+        data = bytes([0x01, 0x02, 0x03])
+        parser = LaxityParser(data, 0x1000)
+
+        # Access beyond data
+        self.assertEqual(parser.get_byte(0x1010), 0)
+        self.assertEqual(parser.get_byte(0x0FFF), 0)  # Before load address
+
+    def test_get_word_boundary(self):
+        """Test that get_word handles boundary conditions"""
+        from laxity_parser import LaxityParser
+
+        data = bytes([0xAB, 0xCD])
+        parser = LaxityParser(data, 0x1000)
+
+        # Valid read
+        self.assertEqual(parser.get_word(0x1000), 0xCDAB)  # Little-endian
+
+        # Out of bounds
+        self.assertEqual(parser.get_word(0x1001), 0)  # Only 1 byte available
+
+    def test_get_bytes_negative_count(self):
+        """Test that get_bytes raises ValueError for negative count"""
+        from laxity_parser import LaxityParser
+
+        data = bytes([0x01, 0x02, 0x03])
+        parser = LaxityParser(data, 0x1000)
+
+        with self.assertRaises(ValueError):
+            parser.get_bytes(0x1000, -1)
+
+
 if __name__ == '__main__':
     # Run tests with verbosity
     unittest.main(verbosity=2)
