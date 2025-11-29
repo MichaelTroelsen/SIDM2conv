@@ -35,9 +35,13 @@ SIDM2/
 ├── validate_psid.py       # PSID header validation utility
 ├── PACK_STATUS.md         # SF2 packer status and test results
 ├── sidm2/                 # Core package
-│   ├── sf2_packer.py      # SF2 to SID packer (NEW v0.6.0)
+│   ├── sf2_packer.py      # SF2 to SID packer (v0.6.0)
 │   ├── cpu6502.py         # 6502 CPU emulator for pointer relocation
+│   ├── cpu6502_emulator.py # Full 6502 emulator with SID capture (v0.6.2)
+│   ├── sid_player.py      # SID file player and analyzer (v0.6.2)
+│   ├── sf2_player_parser.py # SF2-exported SID parser (v0.6.2)
 │   └── ...                # Other modules
+├── test_sf2_player_parser.py # SF2 player parser tests
 ├── SID/                   # Input SID files
 ├── output/                # Output folder with nested structure
 │   └── {SongName}/        # Per-song directory
@@ -76,6 +80,40 @@ SIDM2/
 - Integrated into `convert_all.py` for automatic SID export
 - Average output size: ~3,800 bytes (comparable to manual exports)
 - See `PACK_STATUS.md` for implementation details and test results
+
+### Python SID Emulation & Analysis Modules - NEW in v0.6.2
+
+#### CPU 6502 Emulator (`sidm2/cpu6502_emulator.py`)
+- Full 6502 CPU emulator implementation (1,242 lines)
+- Complete instruction set with all addressing modes
+- SID register write capture for validation
+- Frame-by-frame state tracking
+- Tested with real SID files (Angular.sid, etc.)
+- Based on siddump.c architecture
+- Usage: `from sidm2.cpu6502_emulator import CPU6502Emulator`
+
+#### SID Player (`sidm2/sid_player.py`)
+- High-level SID file player and analyzer (560 lines)
+- PSID/RSID header parsing
+- Note detection and frequency analysis
+- Siddump-compatible frame dump output
+- Playback result analysis
+- Usage: `python -m sidm2.sid_player <sidfile> [seconds]`
+
+#### SF2 Player Parser (`sidm2/sf2_player_parser.py`)
+- Parser for SF2-exported SID files (389 lines)
+- Pattern-based table extraction with SF2 reference
+- Heuristic extraction mode (in development)
+- Tested with 15 SIDSF2player files
+- Header parsing: 100% success rate
+- Table extraction: Works with matching SF2 reference
+- Usage: `from sidm2.sf2_player_parser import SF2PlayerParser`
+
+#### Test Suite (`test_sf2_player_parser.py`)
+- Validation tests for SF2 player parser
+- Tests multiple SID files with/without reference
+- Reports extraction success rates
+- Example output structure validation
 
 ### External Tools
 - `tools/siddump.exe` - Dumps SID register writes (6502 emulator)
