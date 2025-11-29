@@ -74,33 +74,74 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = 'dr
         input_path: Path to input SID file
         output_path: Path for output SF2 file
         driver_type: 'driver11' for standard driver, 'np20' for NewPlayer 20
+
+    Raises:
+        FileNotFoundError: If input file doesn't exist
+        ValueError: If file format is invalid or driver_type is unknown
+        IOError: If unable to write output file
     """
-    logger.info(f"Converting: {input_path}")
-    logger.info(f"Output: {output_path}")
-    logger.info(f"Driver: {driver_type}")
+    try:
+        # Validate input
+        if not os.path.exists(input_path):
+            raise FileNotFoundError(f"Input file not found: {input_path}")
 
-    # Analyze the SID file
-    extracted = analyze_sid_file(input_path)
+        if driver_type not in ['driver11', 'np20']:
+            raise ValueError(f"Unknown driver type: {driver_type}. Must be 'driver11' or 'np20'")
 
-    # Try to extract actual data from siddump
-    siddump_data = extract_from_siddump(input_path, playback_time=60)
-    if siddump_data:
-        extracted.siddump_data = siddump_data
-        logger.info(f"  Siddump extraction: {len(siddump_data['adsr_values'])} ADSR values, "
-              f"{len(siddump_data['waveforms'])} waveforms")
-    else:
-        extracted.siddump_data = None
+        logger.info(f"Converting: {input_path}")
+        logger.info(f"Output: {output_path}")
+        logger.info(f"Driver: {driver_type}")
 
-    # Write the SF2 file
-    writer = SF2Writer(extracted, driver_type=driver_type)
-    writer.write(output_path)
+        # Analyze the SID file
+        try:
+            extracted = analyze_sid_file(input_path)
+        except Exception as e:
+            logger.error(f"Failed to analyze SID file: {e}")
+            raise ValueError(f"Invalid or corrupted SID file: {e}")
 
-    logger.info("Conversion complete!")
-    logger.info("IMPORTANT NOTES:")
-    logger.info("- This is an experimental converter")
-    logger.info("- The output file may need manual editing in SID Factory II")
-    logger.info("- Complex music data extraction is still in development")
-    logger.info("- Consider this a starting point for further refinement")
+        # Try to extract actual data from siddump
+        try:
+            siddump_data = extract_from_siddump(input_path, playback_time=60)
+            if siddump_data:
+                extracted.siddump_data = siddump_data
+                logger.info(f"  Siddump extraction: {len(siddump_data['adsr_values'])} ADSR values, "
+                      f"{len(siddump_data['waveforms'])} waveforms")
+            else:
+                extracted.siddump_data = None
+        except Exception as e:
+            logger.warning(f"Siddump extraction failed (non-critical): {e}")
+            extracted.siddump_data = None
+
+        # Ensure output directory exists
+        output_dir = os.path.dirname(output_path)
+        if output_dir and not os.path.exists(output_dir):
+            try:
+                os.makedirs(output_dir, exist_ok=True)
+            except OSError as e:
+                raise IOError(f"Cannot create output directory {output_dir}: {e}")
+
+        # Write the SF2 file
+        try:
+            writer = SF2Writer(extracted, driver_type=driver_type)
+            writer.write(output_path)
+        except Exception as e:
+            logger.error(f"Failed to write SF2 file: {e}")
+            raise IOError(f"Cannot write output file {output_path}: {e}")
+
+        logger.info("Conversion complete!")
+        logger.info("IMPORTANT NOTES:")
+        logger.info("- This is an experimental converter")
+        logger.info("- The output file may need manual editing in SID Factory II")
+        logger.info("- Complex music data extraction is still in development")
+        logger.info("- Consider this a starting point for further refinement")
+
+    except (FileNotFoundError, ValueError, IOError):
+        # Re-raise expected errors
+        raise
+    except Exception as e:
+        # Catch any unexpected errors
+        logger.error(f"Unexpected error during conversion: {e}")
+        raise RuntimeError(f"Conversion failed: {e}")
 
 
 def convert_sid_to_both_drivers(input_path: str, output_dir: str = None):
@@ -112,49 +153,87 @@ def convert_sid_to_both_drivers(input_path: str, output_dir: str = None):
 
     Returns:
         Dict with output file paths and sizes
+
+    Raises:
+        FileNotFoundError: If input file doesn't exist
+        ValueError: If file format is invalid
+        IOError: If unable to write output files
     """
-    base_name = os.path.splitext(os.path.basename(input_path))[0]
+    try:
+        # Validate input
+        if not os.path.exists(input_path):
+            raise FileNotFoundError(f"Input file not found: {input_path}")
 
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
-    else:
-        output_dir = os.path.dirname(input_path) or '.'
+        base_name = os.path.splitext(os.path.basename(input_path))[0]
 
-    # Analyze the SID file once
-    extracted = analyze_sid_file(input_path)
-
-    # Try to extract actual data from siddump
-    siddump_data = extract_from_siddump(input_path, playback_time=60)
-    if siddump_data:
-        extracted.siddump_data = siddump_data
-        logger.info(f"  Siddump extraction: {len(siddump_data['adsr_values'])} ADSR values, "
-              f"{len(siddump_data['waveforms'])} waveforms")
-    else:
-        extracted.siddump_data = None
-
-    results = {}
-
-    # Generate both driver versions
-    for driver_type in ['np20', 'driver11']:
-        if driver_type == 'np20':
-            output_file = os.path.join(output_dir, f"{base_name}_g4.sf2")
-            driver_label = "NP20 (G4)"
+        if output_dir:
+            try:
+                os.makedirs(output_dir, exist_ok=True)
+            except OSError as e:
+                raise IOError(f"Cannot create output directory {output_dir}: {e}")
         else:
-            output_file = os.path.join(output_dir, f"{base_name}_d11.sf2")
-            driver_label = "Driver 11"
+            output_dir = os.path.dirname(input_path) or '.'
 
-        # Write the SF2 file
-        writer = SF2Writer(extracted, driver_type=driver_type)
-        writer.write(output_file)
+        # Analyze the SID file once
+        try:
+            extracted = analyze_sid_file(input_path)
+        except Exception as e:
+            logger.error(f"Failed to analyze SID file: {e}")
+            raise ValueError(f"Invalid or corrupted SID file: {e}")
 
-        size = os.path.getsize(output_file)
-        results[driver_type] = {
-            'path': output_file,
-            'size': size
-        }
-        logger.info(f"  -> {os.path.basename(output_file)} ({driver_label}, {size:,} bytes)")
+        # Try to extract actual data from siddump
+        try:
+            siddump_data = extract_from_siddump(input_path, playback_time=60)
+            if siddump_data:
+                extracted.siddump_data = siddump_data
+                logger.info(f"  Siddump extraction: {len(siddump_data['adsr_values'])} ADSR values, "
+                      f"{len(siddump_data['waveforms'])} waveforms")
+            else:
+                extracted.siddump_data = None
+        except Exception as e:
+            logger.warning(f"Siddump extraction failed (non-critical): {e}")
+            extracted.siddump_data = None
 
-    return results
+        results = {}
+
+        # Generate both driver versions
+        for driver_type in ['np20', 'driver11']:
+            try:
+                if driver_type == 'np20':
+                    output_file = os.path.join(output_dir, f"{base_name}_g4.sf2")
+                    driver_label = "NP20 (G4)"
+                else:
+                    output_file = os.path.join(output_dir, f"{base_name}_d11.sf2")
+                    driver_label = "Driver 11"
+
+                # Write the SF2 file
+                writer = SF2Writer(extracted, driver_type=driver_type)
+                writer.write(output_file)
+
+                size = os.path.getsize(output_file)
+                results[driver_type] = {
+                    'path': output_file,
+                    'size': size
+                }
+                logger.info(f"  -> {os.path.basename(output_file)} ({driver_label}, {size:,} bytes)")
+            except Exception as e:
+                logger.error(f"Failed to generate {driver_type} version: {e}")
+                # Continue with next driver type instead of failing completely
+                results[driver_type] = {'error': str(e)}
+
+        # Check if at least one conversion succeeded
+        if all('error' in v for v in results.values()):
+            raise IOError("Failed to generate any SF2 files")
+
+        return results
+
+    except (FileNotFoundError, ValueError, IOError):
+        # Re-raise expected errors
+        raise
+    except Exception as e:
+        # Catch any unexpected errors
+        logger.error(f"Unexpected error during conversion: {e}")
+        raise RuntimeError(f"Conversion failed: {e}")
 
 
 def main():

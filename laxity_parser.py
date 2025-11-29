@@ -464,37 +464,81 @@ class LaxityParser:
         return command_table
 
     def parse(self) -> LaxityData:
-        """Parse the SID file and extract all music data"""
-        logger.debug("=" * 60)
-        logger.info("LAXITY PARSER")
-        logger.debug("=" * 60)
-        logger.info(f"Load address: ${self.load_address:04X}")
-        logger.debug(f"Data size: {len(self.data)} bytes")
-        logger.debug(f"Data end: ${self.data_end - 1:04X}")
+        """Parse the SID file and extract all music data
 
-        # Find orderlists
-        logger.info("Finding orderlists...")
-        orderlists = self.find_orderlists()
+        Returns:
+            LaxityData with extracted music components
 
-        # Find sequences
-        logger.info("Finding sequences...")
-        sequences, sequence_addrs = self.find_sequences()
+        Raises:
+            ValueError: If data is too small or invalid format
+            RuntimeError: If extraction fails
+        """
+        try:
+            # Validate data size
+            if len(self.data) < 256:
+                raise ValueError(f"Data too small: {len(self.data)} bytes (minimum 256 bytes required)")
 
-        # Find instruments
-        logger.info("Finding instruments...")
-        instruments = self.find_instruments()
+            logger.debug("=" * 60)
+            logger.info("LAXITY PARSER")
+            logger.debug("=" * 60)
+            logger.info(f"Load address: ${self.load_address:04X}")
+            logger.debug(f"Data size: {len(self.data)} bytes")
+            logger.debug(f"Data end: ${self.data_end - 1:04X}")
 
-        # Find command table
-        logger.info("Finding command table...")
-        command_table = self.find_command_table(sequences)
+            # Find orderlists
+            logger.info("Finding orderlists...")
+            try:
+                orderlists = self.find_orderlists()
+            except Exception as e:
+                logger.error(f"Failed to find orderlists: {e}")
+                # Provide default orderlists
+                orderlists = [[0], [0], [0]]
+                logger.warning("Using default orderlists")
 
-        return LaxityData(
-            orderlists=orderlists,
-            sequences=sequences,
-            instruments=instruments,
-            sequence_addrs=sequence_addrs,
-            command_table=command_table
-        )
+            # Find sequences
+            logger.info("Finding sequences...")
+            try:
+                sequences, sequence_addrs = self.find_sequences()
+            except Exception as e:
+                logger.error(f"Failed to find sequences: {e}")
+                # Provide minimal default sequences
+                sequences = [bytes([0x7F])]  # Empty sequence
+                sequence_addrs = [self.load_address]
+                logger.warning("Using default sequences")
+
+            # Find instruments
+            logger.info("Finding instruments...")
+            try:
+                instruments = self.find_instruments()
+            except Exception as e:
+                logger.error(f"Failed to find instruments: {e}")
+                # Provide default instruments
+                instruments = [bytes([0x09, 0x00, 0x41, 0x00, 0x08, 0x00, 0x00, 0x00])]
+                logger.warning("Using default instruments")
+
+            # Find command table
+            logger.info("Finding command table...")
+            try:
+                command_table = self.find_command_table(sequences)
+            except Exception as e:
+                logger.error(f"Failed to find command table: {e}")
+                command_table = []
+                logger.warning("Using empty command table")
+
+            return LaxityData(
+                orderlists=orderlists,
+                sequences=sequences,
+                instruments=instruments,
+                sequence_addrs=sequence_addrs,
+                command_table=command_table
+            )
+
+        except ValueError:
+            # Re-raise validation errors
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error during parsing: {e}")
+            raise RuntimeError(f"Failed to parse Laxity data: {e}")
 
 
 def main():

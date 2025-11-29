@@ -199,10 +199,11 @@ def find_instrument_table(data: bytes, load_addr: int, verbose: bool = False, wa
         Address of instrument table, or None if not found
 
     Raises:
-        TableExtractionError: If data is invalid or too small
+        TableExtractionError: If data is invalid
     """
     if not data or len(data) < 128:
-        raise TableExtractionError(f"Data too small for instrument table search: {len(data) if data else 0} bytes")
+        logger.warning(f"Data too small for instrument table search: {len(data) if data else 0} bytes")
+        return None
 
     best_addr = 0
     best_score = 0
