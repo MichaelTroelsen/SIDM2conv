@@ -68,6 +68,16 @@ extracted_instruments.json
 # Development tools (not for distribution)
 learnings/
 validate_extraction.py
+analyze_sf2_sid.py
+compare_sids.py
+
+# Validation and test output
+validation_*.html
+comparison_report.html
+roundtrip_output/
+
+# Test data
+SIDSF2player/
 
 # Claude Code local settings
 .claude/settings.local.json
