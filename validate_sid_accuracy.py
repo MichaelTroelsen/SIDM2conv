@@ -144,8 +144,15 @@ class SIDRegisterCapture:
                                 except ValueError:
                                     pass
 
-                            # Parse waveform (3rd position after note info)
-                            wf_idx = 2 if '(' in voice_data[1] else 1
+                            # Parse waveform, ADSR, and pulse width
+                            # Siddump format: "FD2E (B-7 DF) 80 .... 800" or "FD2E  B-7 DF  81 .... ..."
+                            # When split by spaces, note info always takes 2 tokens (indices 1-2)
+                            # So: waveform=index 3, ADSR=index 4, pulse=index 5
+                            wf_idx = 3
+                            adsr_idx = 4
+                            pw_idx = 5
+
+                            # Parse waveform
                             if wf_idx < len(voice_data):
                                 wf_str = voice_data[wf_idx]
                                 if wf_str != '..' and wf_str != '....':
@@ -155,8 +162,7 @@ class SIDRegisterCapture:
                                     except ValueError:
                                         pass
 
-                            # Parse ADSR (4th position)
-                            adsr_idx = wf_idx + 1
+                            # Parse ADSR
                             if adsr_idx < len(voice_data):
                                 adsr_str = voice_data[adsr_idx]
                                 if adsr_str != '....':
@@ -169,8 +175,7 @@ class SIDRegisterCapture:
                                     except ValueError:
                                         pass
 
-                            # Parse pulse width (5th position)
-                            pw_idx = adsr_idx + 1
+                            # Parse pulse width
                             if pw_idx < len(voice_data):
                                 pw_str = voice_data[pw_idx]
                                 if pw_str != '...' and pw_str != '....':

@@ -184,30 +184,38 @@ class SF2File:
             self.title = strings[-1]
 
     def _detect_driver_addresses(self):
-        """Detect init and play addresses from driver code"""
-        # SF2 drivers follow standard patterns:
-        # - Driver 11: Init at offset +0, Play at offset +3
-        # - NP20: Init at offset +0, Play at offset +0xA1
+        """Read init and play addresses from SF2 DriverCommon structure.
 
-        # The SF2 file format stores the driver starting at load_address
-        # For PSID export, init/play offsets are added to the driver address
+        The SF2 header has a DRIVER_COMMON block (type=2) that contains:
+        - m_InitAddress: Address of driver init routine
+        - m_UpdateAddress: Address of driver play routine
 
-        # Default: Driver 11 style (most common)
-        init_offset = 0
-        play_offset = 3
+        For Driver 11, these are stored at file offset 0x31 (init) and 0x33 (play)
+        in little-endian format.
 
-        # Try to detect NP20 by looking for specific code patterns
-        if len(self.data) > 0xA3:
-            # Check if there's a JSR or JMP around offset +0xA1
-            offset = 0xA1 + 2  # Account for load address bytes
-            if offset < len(self.data):
-                opcode = self.data[offset]
-                if opcode in (0x20, 0x4C):  # JSR or JMP
-                    play_offset = 0xA1
-                    logger.debug("  Detected NP20-style driver")
+        Driver code is typically at $1000 (not at load_address $0D7E).
+        """
+        # Default fallback: Driver code at $1000
+        self.init_address = 0x1000
+        self.play_address = 0x1003
 
-        self.init_address = self.load_address + init_offset
-        self.play_address = self.load_address + play_offset
+        # Try to read from SF2 header structure
+        # The DriverCommon block addresses are at file offset 0x31 and 0x33
+        # (these are stored in little-endian format)
+        if len(self.data) >= 0x36:
+            # File offset 0x31: Init address (little-endian)
+            init = self.data[0x31] | (self.data[0x32] << 8)
+
+            # File offset 0x33: Play address (little-endian)
+            play = self.data[0x33] | (self.data[0x34] << 8)
+
+            # Sanity check: addresses should be in reasonable range
+            if 0x1000 <= init <= 0x2000 and 0x1000 <= play <= 0x2000:
+                self.init_address = init
+                self.play_address = play
+                logger.debug(f"  Read from header: init=${init:04X} play=${play:04X}")
+            else:
+                logger.debug(f"  Header addresses out of range (${init:04X}, ${play:04X}), using defaults")
 
     def get_prg_data(self) -> bytes:
         """Get raw PRG data (including load address)"""
