@@ -1,0 +1,32 @@
+{
+  "driver": {
+    "default_driver": "driver11",
+    "generate_both": false,
+    "available_drivers": [
+      "driver11",
+      "np20"
+    ]
+  },
+  "output": {
+    "output_dir": null,
+    "naming_pattern": "{name}_d11.sf2",
+    "overwrite": false,
+    "create_dirs": true
+  },
+  "extraction": {
+    "verbose": false,
+    "validation_level": "normal",
+    "use_siddump": true,
+    "siddump_duration": 60,
+    "max_sequence_length": 256,
+    "max_instruments": 32,
+    "max_wave_entries": 128,
+    "max_pulse_entries": 64,
+    "max_filter_entries": 64
+  },
+  "logging": {
+    "level": "INFO",
+    "log_file": null,
+    "log_format": "%(levelname)s: %(message)s"
+  }
+}
