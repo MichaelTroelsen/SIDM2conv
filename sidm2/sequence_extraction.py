@@ -2,7 +2,10 @@
 Sequence and command extraction functions.
 """
 
+import logging
 from typing import Dict, List, Set, Tuple, Optional
+
+logger = logging.getLogger(__name__)
 
 
 def get_command_names() -> List[str]:
@@ -449,7 +452,7 @@ def find_arpeggio_table_in_memory(
             best_entries = entries
 
     if verbose and best_addr:
-        print(f"    Found arpeggio table at ${best_addr:04X} with {len(best_entries)} entries (score: {best_score})")
+        logger.info(f"    Found arpeggio table at ${best_addr:04X} with {len(best_entries)} entries (score: {best_score})")
 
     return best_addr, best_entries
 

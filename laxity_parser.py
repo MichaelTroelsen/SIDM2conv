@@ -21,8 +21,11 @@ Sequence byte meanings:
 """
 
 import struct
+import logging
 from typing import List, Tuple, Optional
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -169,7 +172,7 @@ class LaxityParser:
             for i in range(length - 1):  # Exclude FF terminator
                 orderlist.append(self.get_byte(addr + i))
             orderlists.append(orderlist)
-            print(f"Found orderlist at ${addr:04X}: {' '.join(f'{v:02X}' for v in orderlist)}")
+            logger.debug(f"Found orderlist at ${addr:04X}: {' '.join(f'{v:02X}' for v in orderlist)}")
 
         # Ensure we have 3 orderlists
         while len(orderlists) < 3:
@@ -199,10 +202,10 @@ class LaxityParser:
                 markers.append(addr)
 
         if not markers:
-            print("Warning: No sequence end markers found")
+            logger.warning("No sequence end markers found")
             return [], []
 
-        print(f"Found {len(markers)} end markers (0x7F)")
+        logger.info(f"Found {len(markers)} end markers (0x7F)")
 
         # The key insight: sequences start right after orderlists
         # Orderlists end with 0xFF at $1B1B (05 06 03 04 03 07 0A 0A 0B 0C 0B 0D FF)
@@ -274,12 +277,12 @@ class LaxityParser:
         # So we need to prepend a placeholder sequence 0 (empty/silent)
         # Check if minimum index in orderlists is > 0
 
-        print(f"Extracted {len(sequences)} sequences")
+        logger.info(f"Extracted {len(sequences)} sequences")
         for i, (seq, addr) in enumerate(zip(sequences[:5], sequence_addrs[:5])):
             hex_str = ' '.join(f'{b:02X}' for b in seq[:16])
             if len(seq) > 16:
                 hex_str += ' ...'
-            print(f"  Seq {i} at ${addr:04X} ({len(seq)} bytes): {hex_str}")
+            logger.debug(f"  Seq {i} at ${addr:04X} ({len(seq)} bytes): {hex_str}")
 
         return sequences, sequence_addrs
 
@@ -332,7 +335,7 @@ class LaxityParser:
         instr_addr = self.find_instrument_table_from_code()
 
         if instr_addr:
-            print(f"Found instrument table at ${instr_addr:04X} (via code analysis)")
+            logger.info(f"Found instrument table at ${instr_addr:04X} (via code analysis)")
             instr_offset = instr_addr - self.load_address
 
             # Extract instruments until we hit empty/invalid data
@@ -360,11 +363,11 @@ class LaxityParser:
                     break
 
             if instruments:
-                print(f"Extracted {len(instruments)} instruments")
+                logger.info(f"Extracted {len(instruments)} instruments")
                 return instruments
 
         # Method 2: Fallback - search for instrument-like patterns
-        print("Falling back to pattern-based instrument search")
+        logger.info("Falling back to pattern-based instrument search")
         for addr in range(self.load_address + 0xA00, self.load_address + 0xB00):
             count = 0
             for i in range(8):
@@ -387,7 +390,7 @@ class LaxityParser:
                     break
 
             if count >= 3:
-                print(f"Found instrument table at ${addr:04X} with {count} instruments")
+                logger.info(f"Found instrument table at ${addr:04X} with {count} instruments")
                 for i in range(count):
                     instr = self.get_bytes(addr + i * 8, 8)
                     instruments.append(instr)
@@ -395,7 +398,7 @@ class LaxityParser:
 
         # If no instruments found, create defaults
         if not instruments:
-            print("Creating default instruments")
+            logger.info("Creating default instruments")
             instruments.append(bytes([0x09, 0x00, 0x41, 0x00, 0x08, 0x00, 0x00, 0x00]))
             instruments.append(bytes([0x0A, 0x0A, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00]))
             instruments.append(bytes([0x0F, 0x0F, 0x81, 0x00, 0x00, 0x00, 0x00, 0x00]))
@@ -440,12 +443,12 @@ class LaxityParser:
                     used_indices.add(cmd_idx)
 
         if not used_indices:
-            print("No commands found in sequences")
+            logger.info("No commands found in sequences")
             return []
 
         max_idx = max(used_indices)
-        print(f"Found command indices in sequences: {sorted(used_indices)}")
-        print(f"Command table at ${CMD_TABLE_ADDR:04X}, reading {max_idx + 1} entries")
+        logger.info(f"Found command indices in sequences: {sorted(used_indices)}")
+        logger.debug(f"Command table at ${CMD_TABLE_ADDR:04X}, reading {max_idx + 1} entries")
 
         # Read command table entries
         command_table = []
@@ -456,39 +459,34 @@ class LaxityParser:
             command_table.append((cmd_byte, param_byte))
 
             if i in used_indices:
-                print(f"  Cmd {i}: ${cmd_byte:02X} ${param_byte:02X}")
+                logger.debug(f"  Cmd {i}: ${cmd_byte:02X} ${param_byte:02X}")
 
         return command_table
 
     def parse(self) -> LaxityData:
         """Parse the SID file and extract all music data"""
-        print("=" * 60)
-        print("LAXITY PARSER")
-        print("=" * 60)
-        print(f"Load address: ${self.load_address:04X}")
-        print(f"Data size: {len(self.data)} bytes")
-        print(f"Data end: ${self.data_end - 1:04X}")
-        print()
+        logger.debug("=" * 60)
+        logger.info("LAXITY PARSER")
+        logger.debug("=" * 60)
+        logger.info(f"Load address: ${self.load_address:04X}")
+        logger.debug(f"Data size: {len(self.data)} bytes")
+        logger.debug(f"Data end: ${self.data_end - 1:04X}")
 
         # Find orderlists
-        print("Finding orderlists...")
+        logger.info("Finding orderlists...")
         orderlists = self.find_orderlists()
-        print()
 
         # Find sequences
-        print("Finding sequences...")
+        logger.info("Finding sequences...")
         sequences, sequence_addrs = self.find_sequences()
-        print()
 
         # Find instruments
-        print("Finding instruments...")
+        logger.info("Finding instruments...")
         instruments = self.find_instruments()
-        print()
 
         # Find command table
-        print("Finding command table...")
+        logger.info("Finding command table...")
         command_table = self.find_command_table(sequences)
-        print()
 
         return LaxityData(
             orderlists=orderlists,

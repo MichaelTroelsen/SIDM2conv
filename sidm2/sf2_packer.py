@@ -8,10 +8,13 @@ Replicates SID Factory II's Pack utility (F6):
 """
 
 import struct
+import logging
 from pathlib import Path
 from typing import Optional, List, Dict, Tuple
 from dataclasses import dataclass
 from .cpu6502 import CPU6502
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -329,15 +332,15 @@ class SF2Packer:
         )
 
         if not driver_section:
-            print(f"WARNING: Driver section not found (driver_top=${self.driver_top:04X})")
+            logger.warning(f"Driver section not found (driver_top=${self.driver_top:04X})")
             return
 
-        print(f"\nRelocating driver code pointers:")
-        print(f"  Driver section: src=${driver_section.source_address:04X} dest=${driver_section.dest_address:04X}")
-        print(f"  Address delta: {address_delta:+d}")
-        print(f"  Section ranges:")
+        logger.info(f"Relocating driver code pointers:")
+        logger.debug(f"  Driver section: src=${driver_section.source_address:04X} dest=${driver_section.dest_address:04X}")
+        logger.debug(f"  Address delta: {address_delta:+d}")
+        logger.debug(f"  Section ranges:")
         for s in self.data_sections:
-            print(f"    ${s.source_address:04X}-${s.source_address + len(s.data):04X} -> ${s.dest_address:04X}")
+            logger.debug(f"    ${s.source_address:04X}-${s.source_address + len(s.data):04X} -> ${s.dest_address:04X}")
 
         # Disassemble driver code
         cpu = CPU6502(bytes(driver_section.data))
@@ -361,9 +364,9 @@ class SF2Packer:
                         # Address is within this section - relocate it
                         offset_in_section = instr.operand - section_start
                         new_operand = section.dest_address + offset_in_section
-                        # Print all $22xx relocations for debugging
+                        # Log all $22xx relocations for debugging
                         if 0x2200 <= instr.operand < 0x2300 or reloc_count < 5:
-                            print(f"  Relocating: ${instr.operand:04X} -> ${new_operand:04X} (in section ${section.source_address:04X})")
+                            logger.debug(f"  Relocating: ${instr.operand:04X} -> ${new_operand:04X} (in section ${section.source_address:04X})")
                         reloc_count += 1
                         break
 
@@ -377,7 +380,7 @@ class SF2Packer:
                 new_bytes = bytes([instr.opcode, lo, hi])
                 relocated_data[instr.address:instr.address + len(new_bytes)] = new_bytes
 
-        print(f"  Total relocations: {reloc_count}")
+        logger.info(f"  Total relocations: {reloc_count}")
         driver_section.data = bytes(relocated_data)
 
     def pack(self, dest_address: int = 0x1000,
@@ -543,5 +546,5 @@ def pack_sf2_to_sid(sf2_path: Path, sid_path: Path,
         return True
 
     except Exception as e:
-        print(f"Pack error: {e}")
+        logger.error(f"Pack error: {e}")
         return False
