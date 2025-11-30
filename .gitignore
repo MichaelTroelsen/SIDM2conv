@@ -81,3 +81,4 @@ SIDSF2player/
 
 # Claude Code local settings
 .claude/settings.local.json
+file_inventory.json
