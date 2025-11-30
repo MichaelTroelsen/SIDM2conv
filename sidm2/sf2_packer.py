@@ -122,25 +122,24 @@ class SF2Packer:
     def read_driver_addresses(self) -> Tuple[int, int]:
         """Read init and play addresses from SF2 DriverCommon structure.
 
-        The DriverCommon structure is at file offset 0x30:
-        - File offset 0x00-0x01: Load address
+        The SF2 file format:
+        - File offset 0x00-0x01: Load address (little-endian)
         - File offset 0x02+: Data starting at load_address
-        - File offset 0x30: Unknown (2 bytes)
-        - File offset 0x32: m_InitAddress (2 bytes, little-endian)
-        - File offset 0x34: m_UpdateAddress/Play (2 bytes, little-endian)
+        - File offset 0x31-0x32: m_InitAddress (little-endian)
+        - File offset 0x33-0x34: m_UpdateAddress/Play (little-endian)
 
-        Since file offset 0x02 = memory[load_address],
-        file offset 0x32 = memory[load_address + 0x30]
+        To convert file offset to memory offset:
+        file_offset = memory_offset + 2 (skip 2-byte load address header)
 
         Returns:
             Tuple of (init_address, play_address)
         """
-        # File offset 0x32 = memory[load_address + 0x30]
-        # SF2 stores addresses in big-endian
-        init_address = self._read_word_be(self.load_address + 0x30)
+        # File offset 0x31 = memory[load_address + (0x31 - 0x02)] = memory[load_address + 0x2F]
+        # SF2 stores addresses in little-endian
+        init_address = self._read_word(self.load_address + 0x2F)
 
-        # File offset 0x34 = memory[load_address + 0x32]
-        play_address = self._read_word_be(self.load_address + 0x32)
+        # File offset 0x33 = memory[load_address + (0x33 - 0x02)] = memory[load_address + 0x31]
+        play_address = self._read_word(self.load_address + 0x31)
 
         return init_address, play_address
 
@@ -428,8 +427,12 @@ class SF2Packer:
         # Step 5: Create output
         packed_data = self.create_output_data(dest_address)
 
-        # PSID init address is always the load address
-        init_address = dest_address
+        # Read the actual init address from the SF2 file
+        init_address, _ = self.read_driver_addresses()
+
+        # Adjust init address if driver relocated
+        if address_delta != 0:
+            init_address += address_delta
 
         return packed_data, init_address, play_address
 

@@ -5,7 +5,7 @@ Converts Commodore 64 SID music files to SID Factory II format.
 """
 
 __version__ = "0.6.3"
-__build_date__ = "2025-11-28"
+__build_date__ = "2025-11-30"
 
 from .constants import *
 from .exceptions import *

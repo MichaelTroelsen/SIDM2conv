@@ -10,8 +10,8 @@ Note: This is a complex reverse-engineering task. Results may require manual
 refinement in SID Factory II.
 """
 
-__version__ = "0.6.2"
-__build_date__ = "2025-11-27"
+__version__ = "0.6.3"
+__build_date__ = "2025-11-30"
 
 import logging
 import os
@@ -91,13 +91,19 @@ def analyze_sid_file(filepath: str, config: ConversionConfig = None, sf2_referen
     if config is None:
         config = get_default_config()
 
-    # Detect player type
-    player_type = detect_player_type(filepath)
-    is_sf2_exported = player_type.startswith("SidFactory_II")
-
+    # Parse SID header and extract C64 data first
     parser = SIDParser(filepath)
     header = parser.parse_header()
     c64_data, load_address = parser.get_c64_data(header)
+
+    # Detect player type
+    player_type = detect_player_type(filepath)
+
+    # Check for SF2 marker ($1337) - this is the definitive indicator
+    # Files WITH marker have embedded SF2 structure → use SF2PlayerParser
+    # Files WITHOUT marker are either original Laxity or packed binaries → use LaxityParser
+    # Note: player-id is unreliable for newly packed SF2 files, so prioritize marker check
+    is_sf2_exported = b'\x37\x13' in c64_data
 
     if config.extraction.verbose or logger.level <= logging.INFO:
         logger.info("=" * 60)

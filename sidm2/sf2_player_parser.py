@@ -454,24 +454,37 @@ class SF2PlayerParser:
     def extract_heuristic(self) -> ExtractedData:
         """Extract data using heuristics (without SF2 reference).
 
-        This is more challenging as we need to find tables without
-        knowing their exact content.
+        For SF2-exported SIDs, the SF2 data structure is embedded in the C64 memory.
+        We can extract it by finding the SF2 file marker ($1337) and parsing the structure.
         """
         if not self.psid_header:
             self.parse_sid_header()
 
         logger.info("Extracting SF2 player data using heuristics...")
 
-        # SF2 driver 11 has a characteristic structure
-        # The init routine at init_address typically sets up playback
-        # Play routine follows shortly after
+        # Try to find SF2 file marker ($1337) in C64 data
+        sf2_marker_addr = self.find_pattern(b'\x37\x13')  # Little-endian $1337
 
-        # Look for table patterns
-        # Wave table: pairs of (waveform, note_offset), ends with 0x7F
-        # Pulse table: groups of 4 bytes (value, delta, duration, next)
-        # Filter table: groups of 4 bytes
+        if sf2_marker_addr:
+            logger.info(f"  Found SF2 marker at ${sf2_marker_addr:04X}")
+            # SF2 marker is at offset +2 from load address
+            # This means we have a complete SF2 structure embedded
 
-        # For now, return empty data - heuristic extraction needs more work
+            # Extract the SF2 structure from C64 memory
+            # The structure starts at load_address and continues for the file size
+            sf2_data = self.c64_data
+
+            # Use the existing template-based extraction but on the embedded SF2 data
+            # Create a temporary SF2 file in memory and extract from it
+            try:
+                return self._extract_from_embedded_sf2(sf2_data)
+            except Exception as e:
+                logger.warning(f"Failed to extract from embedded SF2: {e}")
+                # Fall through to empty return
+        else:
+            logger.warning("No SF2 marker found - file may not be SF2-exported")
+
+        # Return empty data if extraction fails
         return ExtractedData(
             header=self.psid_header,
             c64_data=self.c64_data,
@@ -482,6 +495,60 @@ class SF2PlayerParser:
             wavetable=b'',
             pulsetable=b'',
             filtertable=b'',
+        )
+
+    def _extract_from_embedded_sf2(self, sf2_data: bytes) -> ExtractedData:
+        """Extract music data from SF2 structure embedded in SID file.
+
+        Args:
+            sf2_data: Raw SF2 structure data from C64 memory
+
+        Returns:
+            ExtractedData with sequences, instruments, and tables
+        """
+        # Import SF2 reader to parse the embedded structure
+        from .sf2_reader import SF2Reader
+
+        logger.info("  Extracting from embedded SF2 structure...")
+
+        # Find marker position in the data
+        marker_pos = sf2_data.find(b'\x37\x13')  # Little-endian $1337
+        if marker_pos == -1:
+            raise ValueError("SF2 marker not found in data")
+
+        # Extract SF2 structure starting from 2 bytes before marker (load address)
+        # The SF2 structure format: [load_addr_lo, load_addr_hi, $37, $13, blocks...]
+        sf2_structure = sf2_data[marker_pos - 2:]
+        logger.debug(f"  Extracting SF2 structure from offset {marker_pos - 2} ({len(sf2_structure)} bytes)")
+
+        # Create SF2 reader on the extracted structure
+        reader = SF2Reader(sf2_structure, self.load_address)
+
+        # Extract all tables
+        sequences = reader.extract_sequences()
+        orderlists = reader.extract_orderlists()
+        instruments = reader.extract_instruments()
+        wavetable = reader.extract_wave_table()
+        pulsetable = reader.extract_pulse_table()
+        filtertable = reader.extract_filter_table()
+
+        logger.info(f"  Extracted {len(sequences)} sequences")
+        logger.info(f"  Extracted {len(orderlists)} orderlists ({len(orderlists[0]) if orderlists else 0} voice 1)")
+        logger.info(f"  Extracted {len(instruments)} instruments")
+        logger.info(f"  Extracted {len(wavetable)} wave table bytes")
+        logger.info(f"  Extracted {len(pulsetable)} pulse table bytes")
+        logger.info(f"  Extracted {len(filtertable)} filter table bytes")
+
+        return ExtractedData(
+            header=self.psid_header,
+            c64_data=self.c64_data,
+            load_address=self.load_address,
+            sequences=sequences,
+            orderlists=orderlists,
+            instruments=instruments,
+            wavetable=wavetable,
+            pulsetable=pulsetable,
+            filtertable=filtertable,
         )
 
 

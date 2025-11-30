@@ -30,11 +30,8 @@ from .sequence_translator import (
     SF2SequenceBuilder,
 )
 
-# Import LaxityParser from the existing module
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from laxity_parser import LaxityParser
+# Import LaxityParser from the sidm2 package
+from .laxity_parser import LaxityParser
 
 
 class LaxityPlayerAnalyzer:
