@@ -6,11 +6,11 @@
 
 ---
 
-## CRITICAL FINDING: Wave Table Extraction Failure
+## CRITICAL FINDING: Wave Table Extraction Failure **[PARTIALLY FIXED]**
 
-### The Problem
+### The Problem (FIXED)
 
-When converting Broware.sid (and likely the other 7 failing files), the converter shows:
+When converting Broware.sid (and likely the other 7 failing files), the converter showed:
 
 ```
 WARNING: Note index $43 exceeds table size 0
@@ -18,30 +18,62 @@ WARNING: Note index $45 exceeds table size 0
 ... (many more warnings)
 ```
 
-**Root Cause**: The wave table has **size 0** when sequences are being validated, even though:
-- Sequences ARE extracted (1 sequence found) ✓
-- Instruments ARE extracted (8 instruments) ✓
-- Later, 6 wave entries ARE extracted ✓
+**Root Cause**: The wave table and frequency table extraction assumed files loaded at $1000,
+but Broware loads at $A000, causing:
+- Player code analysis to search wrong memory range ($1900-$1B00 instead of $A900-$AB00)
+- Frequency table extraction to return empty array
+- Result: All notes failed validation with "exceeds table size 0"
 
-### The Sequence
+### The Fix (COMPLETED)
 
-1. Parser extracts sequence data with note values ($43, $45, etc.)
-2. Parser tries to validate notes against wave table
-3. **Wave table is empty at this point** (size 0)
-4. Warnings are generated
-5. Later, wave table is actually extracted (6 entries found)
+**Commit**: c7464d9 - "fix: Calculate table addresses relative to load address"
 
-### Why This Causes 5% Accuracy
+Changes:
+1. `find_wave_table_from_player_code()`: Calculate search range relative to load_addr
+2. `_extract_frequency_table()`: Calculate offset relative to $1000 typical load
 
-The sequence has notes referencing wave table entries that don't exist (or are in wrong order):
-- Sequence has 1106 events
-- Many reference wave table entries that were at index $43, $45, etc.
-- But wave table only has 6 entries (indices 0-5)
+**Result**:
+- ✅ Wave table: 11 entries extracted (was 6 from fallback)
+- ✅ Frequency table: 96 entries extracted (was 0)
+- ✅ All "exceeds table size 0" warnings ELIMINATED
 
-**Result**: The converted SF2 has:
-- Correct structure (sequences, instruments)
-- But **wrong note mappings** because wave table is incomplete/incorrect
-- When exported back to SID, notes play at wrong pitches or don't play at all
+### NEW FINDING: Accuracy Still 5.00% Despite Fix
+
+**Even with correct wave table extraction, accuracy remains 5.00%!**
+
+Critical metric comparison:
+- Original SID: **2673 register writes** in 500 frames (10 seconds)
+- Exported SID: **25 register writes** in 500 frames
+- **99% reduction in register writes** → Almost no sound output!
+
+This reveals the **real problem**:
+- Sequence has 1106 events (extracted correctly) ✓
+- Wave table has 11 entries (extracted correctly) ✓
+- Instruments have 8 entries (extracted correctly) ✓
+- **BUT**: Exported SID barely writes to SID registers
+
+### Root Cause Analysis (NEW)
+
+The problem is NOT just table extraction. Possible causes:
+
+1. **Wave table entries are wrong** - 11 entries found, but are they the RIGHT 11?
+   - Expected: 30-70 entries for typical Laxity files
+   - Found: Only 11 entries
+   - May be extracting wrong part of wave table
+
+2. **Sequence conversion broken** - 1106 events aren't generating register writes
+   - Notes might reference wrong wave table indices
+   - Commands might not be converting correctly
+   - Duration/timing might be wrong
+
+3. **Instrument setup broken** - ADSR/wave pointers might be incorrect
+   - Instruments extracted but pointers might be wrong
+   - Wave table pointers might not align with extracted table
+
+4. **SF2 Packer bugs** - Python packer might have issues
+   - Driver code might not be executing correctly
+   - Relocation might be broken
+   - Player init/play might not be called
 
 ---
 
