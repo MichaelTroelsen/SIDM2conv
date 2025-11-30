@@ -14,6 +14,7 @@ from .constants import (
     VALID_WAVEFORMS, WAVE_TABLE_WAVEFORMS,
     WAVE_TABLE_ADDR_MIN, WAVE_TABLE_ADDR_MAX,
     PULSE_TABLE_ADDR_MIN, PULSE_TABLE_ADDR_MAX,
+    TYPICAL_LOAD_ADDRESS,
 )
 from .exceptions import TableExtractionError
 
@@ -361,6 +362,16 @@ def find_wave_table_from_player_code(data: bytes, load_addr: int) -> Tuple[Optio
     Find wave table addresses by analyzing player code.
     Returns (note_addr, wave_addr) or (None, None) if not found.
     """
+    # Calculate search range relative to load address
+    # For $1000 load: $1900-$1B00
+    # For $A000 load: $B900-$BB00
+    relative_min = WAVE_TABLE_ADDR_MIN - TYPICAL_LOAD_ADDRESS
+    relative_max = WAVE_TABLE_ADDR_MAX - TYPICAL_LOAD_ADDRESS
+    addr_min = load_addr + relative_min
+    addr_max = load_addr + relative_max
+
+    logger.info(f"Player code analysis: Searching for LDA refs in range ${addr_min:04X}-${addr_max:04X}")
+
     # Search for LDA absolute,Y (opcode B9) instructions
     lda_refs = []
     for i in range(min(len(data) - 2, 0x900)):
@@ -368,8 +379,11 @@ def find_wave_table_from_player_code(data: bytes, load_addr: int) -> Tuple[Optio
             lo = data[i + 1]
             hi = data[i + 2]
             addr = hi * 256 + lo
-            if WAVE_TABLE_ADDR_MIN <= addr <= WAVE_TABLE_ADDR_MAX:
+            if addr_min <= addr <= addr_max:
                 lda_refs.append((load_addr + i, addr))
+                logger.debug(f"  Found LDA ${addr:04X},Y at code offset ${i:04X}")
+
+    logger.info(f"Player code analysis: Found {len(lda_refs)} LDA references in range")
 
     # Group references by address
     addr_counts = {}
@@ -377,6 +391,8 @@ def find_wave_table_from_player_code(data: bytes, load_addr: int) -> Tuple[Optio
         addr_counts[table_addr] = addr_counts.get(table_addr, 0) + 1
 
     sorted_addrs = sorted(addr_counts.items(), key=lambda x: x[1], reverse=True)
+    if sorted_addrs:
+        logger.info(f"Player code analysis: Top addresses referenced: {sorted_addrs[:5]}")
 
     if len(sorted_addrs) >= 2:
         all_addrs = [addr for addr, count in sorted_addrs]
@@ -442,11 +458,18 @@ def find_and_extract_wave_table(data: bytes, load_addr: int, verbose: bool = Fal
     if not data or len(data) < 64:
         raise TableExtractionError(f"Data too small for wave table extraction: {len(data) if data else 0} bytes")
 
+    logger.info(f"Wave table search: load_addr=${load_addr:04X}, data_len={len(data)}")
+
     try:
         # First try to find wave table by analyzing player code
         note_addr, wave_addr = find_wave_table_from_player_code(data, load_addr)
+        if note_addr and wave_addr:
+            logger.info(f"Player code analysis: note_addr=${note_addr:04X}, wave_addr=${wave_addr:04X}")
+        else:
+            logger.info("Player code analysis: Could not find wave table addresses")
     except (IndexError, ValueError) as e:
         # Fall back to pattern matching if player code analysis fails
+        logger.info(f"Player code analysis failed: {e}, falling back to pattern matching")
         note_addr, wave_addr = None, None
 
     if note_addr and wave_addr:
@@ -476,9 +499,13 @@ def find_and_extract_wave_table(data: bytes, load_addr: int, verbose: bool = Fal
                 break
 
         if entries and len(entries) >= 4:
+            logger.info(f"Player code method: Found {len(entries)} wave entries at ${note_addr:04X}")
+            logger.debug(f"First 10 entries: {entries[:10]}")
             if verbose:
                 return (note_addr, entries, {'note_addr': note_addr, 'wave_addr': wave_addr})
             return (note_addr, entries)
+        else:
+            logger.info(f"Player code method: Only found {len(entries)} entries (need 4+), trying pattern matching")
 
     # Fall back to pattern matching
     try:
@@ -561,6 +588,12 @@ def find_and_extract_wave_table(data: bytes, load_addr: int, verbose: bool = Fal
 
     except IndexError as e:
         raise TableExtractionError(f"Index error while extracting wave table: {e}")
+
+    logger.info(f"Pattern matching: Found {len(best_entries)} wave entries at ${best_addr:04X} (score={best_score})")
+    if best_entries:
+        logger.info(f"Wave table entries: {best_entries}")  # Show ALL entries
+    else:
+        logger.warning("Wave table extraction returned EMPTY - this will cause note validation errors!")
 
     if verbose:
         candidates.sort(key=lambda x: x[1], reverse=True)

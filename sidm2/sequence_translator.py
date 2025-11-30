@@ -74,14 +74,24 @@ class LaxityFrequencyTable:
         logger.debug(f"Extracted {len(self.frequencies)} frequency table entries")
 
     def _extract_frequency_table(self, c64_data: bytes, load_addr: int) -> List[int]:
-        """Extract 96-entry frequency table from $1833."""
-        if load_addr > LAXITY_FREQ_TABLE_ADDR:
-            logger.warning(f"Load address ${load_addr:04X} > freq table address ${LAXITY_FREQ_TABLE_ADDR:04X}")
-            return []
+        """
+        Extract 96-entry frequency table from Laxity player.
 
-        offset = LAXITY_FREQ_TABLE_ADDR - load_addr
-        if offset + (LAXITY_FREQ_TABLE_SIZE * 2) > len(c64_data):
-            logger.warning(f"Frequency table extends beyond data (offset ${offset:04X})")
+        The frequency table is at offset $0835 from load address (typically $1835 for $1000 load).
+        For non-standard load addresses (e.g., $A000), we calculate the offset relative to $1000.
+        """
+        # Calculate offset relative to typical load address ($1000)
+        typical_load = 0x1000
+        freq_offset = LAXITY_FREQ_TABLE_ADDR - typical_load  # $0835
+
+        # Apply offset to actual load address
+        freq_addr = load_addr + freq_offset
+        offset = freq_addr - load_addr  # Just freq_offset, but clearer
+
+        logger.debug(f"Frequency table: load_addr=${load_addr:04X}, freq_addr=${freq_addr:04X}, offset=${offset:04X}")
+
+        if offset < 0 or offset + (LAXITY_FREQ_TABLE_SIZE * 2) > len(c64_data):
+            logger.warning(f"Frequency table at offset ${offset:04X} extends beyond data (len={len(c64_data)})")
             return []
 
         frequencies = []
