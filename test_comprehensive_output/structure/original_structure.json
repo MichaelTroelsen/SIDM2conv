@@ -1,0 +1,58 @@
+{
+  "file": "Driver 11 Test - Arpeggio.sid",
+  "duration": 5,
+  "total_frames": 0,
+  "voices": {
+    "1": {
+      "note_events": [],
+      "activity": [],
+      "unique_notes": 0,
+      "total_notes": 0
+    },
+    "2": {
+      "note_events": [],
+      "activity": [],
+      "unique_notes": 0,
+      "total_notes": 0
+    },
+    "3": {
+      "note_events": [],
+      "activity": [],
+      "unique_notes": 0,
+      "total_notes": 0
+    }
+  },
+  "instruments": {},
+  "patterns": {
+    "1": [],
+    "2": [],
+    "3": []
+  },
+  "filter_usage": {
+    "total_changes": 0,
+    "changes": []
+  },
+  "statistics": {
+    "total_frames": 0,
+    "duration": 5,
+    "voices": {
+      "1": {
+        "total_notes": 0,
+        "unique_notes": 0,
+        "activity_percentage": 0.0
+      },
+      "2": {
+        "total_notes": 0,
+        "unique_notes": 0,
+        "activity_percentage": 0.0
+      },
+      "3": {
+        "total_notes": 0,
+        "unique_notes": 0,
+        "activity_percentage": 0.0
+      }
+    },
+    "total_instruments": 0,
+    "filter_changes": 0
+  }
+}

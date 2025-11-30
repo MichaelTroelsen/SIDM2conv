@@ -4,7 +4,7 @@ SID to SF2 Converter Package
 Converts Commodore 64 SID music files to SID Factory II format.
 """
 
-__version__ = "0.6.4"
+__version__ = "0.6.5"
 __build_date__ = "2025-11-30"
 
 from .constants import *
@@ -46,6 +46,8 @@ from .player_base import (
     get_laxity_profile,
 )
 from .players import LaxityPlayerAnalyzerV2, LAXITY_PROFILE
+from .wav_comparison import WAVComparator, quick_wav_compare
+from .sid_structure_analyzer import SIDStructureAnalyzer, analyze_and_compare
 
 __all__ = [
     # Version info
@@ -110,4 +112,10 @@ __all__ = [
     'get_laxity_profile',
     'LaxityPlayerAnalyzerV2',
     'LAXITY_PROFILE',
+
+    # Validation tools
+    'WAVComparator',
+    'quick_wav_compare',
+    'SIDStructureAnalyzer',
+    'analyze_and_compare',
 ]

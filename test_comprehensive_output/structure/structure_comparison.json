@@ -1,0 +1,31 @@
+{
+  "voice_comparison": {
+    "1": {
+      "similarity": 60.0,
+      "note_count_diff": 0,
+      "unique_notes_diff": 0,
+      "matching_notes": 0,
+      "total_compared": 0
+    },
+    "2": {
+      "similarity": 60.0,
+      "note_count_diff": 0,
+      "unique_notes_diff": 0,
+      "matching_notes": 0,
+      "total_compared": 0
+    },
+    "3": {
+      "similarity": 60.0,
+      "note_count_diff": 0,
+      "unique_notes_diff": 0,
+      "matching_notes": 0,
+      "total_compared": 0
+    }
+  },
+  "instrument_comparison": {
+    "similarity": 0.0,
+    "matching": 0,
+    "total_unique": 0
+  },
+  "overall_similarity": 42.0
+}
