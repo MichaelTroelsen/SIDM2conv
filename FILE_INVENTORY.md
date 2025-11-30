@@ -1,0 +1,369 @@
+# SIDM2 File Inventory
+Generated: 2025-11-30 16:50:00
+
+## Purpose
+This inventory categorizes all project files with their purpose and recommendations for cleanup.
+Files are marked as:
+- 🟢 **Active** - Core functionality, recently updated (Nov 2025)
+- 🟡 **Old** - Not recently updated, review for cleanup
+
+**Note**: This file is auto-generated. Run `python update_inventory.py` to refresh.
+
+---
+
+## Root Scripts
+
+| File | Size (bytes) | Last Modified | Status |
+|------|--------------|---------------|--------|
+| batch_validate_sidsf2player.py | 8,797 | 2025-11-30 | 🟢 Active |
+| convert_all.py - Batch converter (v0.6.3) | 45,718 | 2025-11-30 | 🟢 Active |
+| sid_to_sf2.py - Main SID to SF2 converter (v0.6.3) | 18,824 | 2025-11-30 | 🟢 Active |
+| update_inventory.py - Auto-generates FILE_INVENTORY.md | 6,485 | 2025-11-30 | 🟢 Active |
+| analyze_sf2_sid.py | 15,029 | 2025-11-29 | 🟢 Active |
+| convert_all_sidsf2player.py | 3,386 | 2025-11-29 | 🟢 Active |
+| laxity_parser.py | 22,179 | 2025-11-29 | 🟢 Active |
+| compare_sids.py | 13,279 | 2025-11-28 | 🟢 Active |
+| generate_overview.py | 13,190 | 2025-11-27 | 🟢 Active |
+| generate_validation_report.py | 18,327 | 2025-11-27 | 🟢 Active |
+| sf2_to_sid.py - SF2 to SID packer (v1.0.0) | 10,857 | 2025-11-27 | 🟢 Active |
+| validate_conversion.py - Conversion validation | 17,569 | 2025-11-27 | 🟢 Active |
+| validate_psid.py - PSID header validator | 13,315 | 2025-11-27 | 🟢 Active |
+| validate_sid_accuracy.py - Frame-by-frame accuracy checker | 33,839 | 2025-11-27 | 🟢 Active |
+
+## Core Package (sidm2/)
+
+| File | Size (bytes) | Last Modified | Status |
+|------|--------------|---------------|--------|
+| sidm2/laxity_parser.py | 12,395 | 2025-11-30 | 🟢 Active |
+| sidm2/sf2_packer.py | 19,921 | 2025-11-30 | 🟢 Active |
+| sidm2/sf2_player_parser.py | 22,393 | 2025-11-30 | 🟢 Active |
+| sidm2/sf2_reader.py | 8,310 | 2025-11-30 | 🟢 Active |
+| sidm2/__init__.py | 2,911 | 2025-11-30 | 🟢 Active |
+| sidm2/config.py | 7,000 | 2025-11-29 | 🟢 Active |
+| sidm2/instrument_extraction.py | 7,687 | 2025-11-29 | 🟢 Active |
+| sidm2/laxity_analyzer.py | 25,782 | 2025-11-29 | 🟢 Active |
+| sidm2/sequence_extraction.py | 17,161 | 2025-11-29 | 🟢 Active |
+| sidm2/sf2_writer.py | 49,893 | 2025-11-29 | 🟢 Active |
+| sidm2/table_extraction.py | 49,613 | 2025-11-29 | 🟢 Active |
+| sidm2/cpu6502_emulator.py | 41,080 | 2025-11-28 | 🟢 Active |
+| sidm2/sequence_translator.py | 18,419 | 2025-11-28 | 🟢 Active |
+| sidm2/sid_player.py | 19,184 | 2025-11-28 | 🟢 Active |
+| sidm2/confidence.py | 26,766 | 2025-11-27 | 🟢 Active |
+| sidm2/cpu6502.py | 12,422 | 2025-11-27 | 🟢 Active |
+| sidm2/models.py | 4,221 | 2025-11-27 | 🟢 Active |
+| sidm2/note_utils.py | 11,248 | 2025-11-27 | 🟢 Active |
+| sidm2/player_base.py | 9,826 | 2025-11-27 | 🟢 Active |
+| sidm2/siddump.py | 4,862 | 2025-11-27 | 🟢 Active |
+| sidm2/validation.py | 13,302 | 2025-11-27 | 🟢 Active |
+| sidm2/players/laxity.py | 3,359 | 2025-11-27 | 🟢 Active |
+| sidm2/players/__init__.py | 293 | 2025-11-27 | 🟢 Active |
+| sidm2/constants.py | 3,148 | 2025-11-22 | 🟢 Active |
+| sidm2/exceptions.py | 658 | 2025-11-22 | 🟢 Active |
+| sidm2/logging_config.py | 1,253 | 2025-11-22 | 🟢 Active |
+| sidm2/sid_parser.py | 3,474 | 2025-11-22 | 🟢 Active |
+
+## Tests
+
+| File | Size (bytes) | Last Modified | Status |
+|------|--------------|---------------|--------|
+| SIDSF2player/test_sidsf2player_batch.py | 3,971 | 2025-11-30 | 🟢 Active |
+| test_config.py | 8,943 | 2025-11-29 | 🟢 Active |
+| test_converter.py | 63,532 | 2025-11-29 | 🟢 Active |
+| test_sf2_player_parser.py | 5,693 | 2025-11-29 | 🟢 Active |
+| test_roundtrip.py | 26,692 | 2025-11-28 | 🟢 Active |
+| test_sf2_editor.py | 16,160 | 2025-11-23 | 🟢 Active |
+| test_sf2_format.py | 9,632 | 2025-11-22 | 🟢 Active |
+
+## Documentation
+
+| File | Size (bytes) | Last Modified | Status |
+|------|--------------|---------------|--------|
+| CLAUDE.md | 21,092 | 2025-11-30 | 🟢 Active |
+| FILE_INVENTORY.md | 21,590 | 2025-11-30 | 🟢 Active |
+| SIDSF2PLAYER_VALIDATION_REPORT.md | 9,919 | 2025-11-30 | 🟢 Active |
+| README.md | 47,502 | 2025-11-29 | 🟢 Active |
+| PACK_STATUS.md | 5,555 | 2025-11-27 | 🟢 Active |
+| TODO_VALIDATION.md | 9,222 | 2025-11-27 | 🟢 Active |
+| docs/ACCURACY_ROADMAP.md | 11,655 | 2025-11-27 | 🟢 Active |
+| docs/AUDIO_QUALITY_ANALYSIS.md | 15,312 | 2025-11-27 | 🟢 Active |
+| docs/PHASE1_COMPLETION_REPORT.md | 12,673 | 2025-11-27 | 🟢 Active |
+| docs/ROUNDTRIP_VALIDATION_FINDINGS.md | 6,325 | 2025-11-27 | 🟢 Active |
+| docs/SF2_TO_SID_LIMITATIONS.md | 7,185 | 2025-11-27 | 🟢 Active |
+| docs/VALIDATION_SYSTEM.md | 23,744 | 2025-11-27 | 🟢 Active |
+| docs/VALIDATION_TOOL.md | 8,506 | 2025-11-27 | 🟢 Active |
+| docs/VALIDATION_WORKFLOW.md | 9,182 | 2025-11-27 | 🟢 Active |
+| tools/sf2export/README.md | 5,077 | 2025-11-27 | 🟢 Active |
+| tools/sf2pack/README.md | 6,624 | 2025-11-27 | 🟢 Active |
+| docs/CONVERSION_STRATEGY.md | 15,397 | 2025-11-23 | 🟢 Active |
+| docs/DRIVER_REFERENCE.md | 9,725 | 2025-11-23 | 🟢 Active |
+| docs/format-specification.md | 10,858 | 2025-11-23 | 🟢 Active |
+| docs/laxity_newplayer_v21_format.md | 9,367 | 2025-11-23 | 🟢 Active |
+| docs/LAXITY_PLAYER_ANALYSIS.md | 13,335 | 2025-11-23 | 🟢 Active |
+| docs/SF2_CLASSES.md | 8,564 | 2025-11-23 | 🟢 Active |
+| docs/SF2_FORMAT_SPEC.md | 14,208 | 2025-11-23 | 🟢 Active |
+| docs/SF2_SOURCE_ANALYSIS.md | 11,949 | 2025-11-23 | 🟢 Active |
+| docs/SIDDUMP_ANALYSIS.md | 12,569 | 2025-11-23 | 🟢 Active |
+| docs/SID_FILE_ANALYSIS.md | 8,328 | 2025-11-23 | 🟢 Active |
+| docs/api-reference.md | 9,056 | 2025-11-22 | 🟢 Active |
+| docs/architecture.md | 7,786 | 2025-11-22 | 🟢 Active |
+| docs/developer-guide.md | 11,797 | 2025-11-22 | 🟢 Active |
+| docs/sid-registers.md | 5,809 | 2025-11-22 | 🟢 Active |
+| CONTRIBUTING.md | 6,626 | 2025-11-21 | 🟢 Active |
+
+## Tools
+
+| File | Size (bytes) | Last Modified | Status |
+|------|--------------|---------------|--------|
+| tools/prg2sid/Makefile | 1,783 | 2025-11-27 | 🟢 Active |
+| tools/prg2sid/p2s.c | 117,179 | 2025-11-27 | 🟢 Active |
+| tools/prg2sid/p2s.txt | 14,272 | 2025-11-27 | 🟢 Active |
+| tools/prg2sid/Release/p2s.exe | 84,992 | 2025-11-27 | 🟢 Active |
+| tools/sf2export/Makefile | 808 | 2025-11-27 | 🟢 Active |
+| tools/sf2export/sf2export.cpp | 9,897 | 2025-11-27 | 🟢 Active |
+| tools/sf2export/sf2export.exe | 2,468,196 | 2025-11-27 | 🟢 Active |
+| tools/sf2pack/c64memory.cpp | 2,884 | 2025-11-27 | 🟢 Active |
+| tools/sf2pack/c64memory.h | 1,443 | 2025-11-27 | 🟢 Active |
+| tools/sf2pack/c64memory.o | 4,997 | 2025-11-27 | 🟢 Active |
+| tools/sf2pack/Makefile | 953 | 2025-11-27 | 🟢 Active |
+| tools/sf2pack/opcodes.cpp | 4,980 | 2025-11-27 | 🟢 Active |
+| tools/sf2pack/opcodes.h | 1,136 | 2025-11-27 | 🟢 Active |
+| tools/sf2pack/opcodes.o | 3,420 | 2025-11-27 | 🟢 Active |
+| tools/sf2pack/packer_simple.cpp | 5,814 | 2025-11-27 | 🟢 Active |
+| tools/sf2pack/packer_simple.h | 1,381 | 2025-11-27 | 🟢 Active |
+| tools/sf2pack/packer_simple.o | 6,700 | 2025-11-27 | 🟢 Active |
+| tools/sf2pack/psidfile.cpp | 3,473 | 2025-11-27 | 🟢 Active |
+| tools/sf2pack/psidfile.h | 2,305 | 2025-11-27 | 🟢 Active |
+| tools/sf2pack/psidfile.o | 8,506 | 2025-11-27 | 🟢 Active |
+| tools/sf2pack/sf2pack.cpp | 7,912 | 2025-11-27 | 🟢 Active |
+| tools/sf2pack/sf2pack.exe | 2,480,208 | 2025-11-27 | 🟢 Active |
+| tools/sf2pack/sf2pack.o | 21,663 | 2025-11-27 | 🟢 Active |
+| tools/cpu.c | 27,991 | 2025-11-22 | 🟢 Active |
+| tools/cpu.h | 204 | 2025-11-22 | 🟢 Active |
+| tools/player-id.exe | 470,544 | 2025-11-22 | 🟢 Active |
+| tools/readme.txt | 6,227 | 2025-11-22 | 🟢 Active |
+| tools/SID2WAV.EXE | 196,608 | 2025-11-22 | 🟢 Active |
+| tools/siddump.c | 16,214 | 2025-11-22 | 🟢 Active |
+| tools/siddump.exe | 50,702 | 2025-11-22 | 🟢 Active |
+| tools/sidid.cfg | 76,622 | 2025-11-22 | 🟢 Active |
+| tools/sidid.nfo | 44,879 | 2025-11-22 | 🟢 Active |
+| tools/Signature_File_Format.txt | 6,956 | 2025-11-22 | 🟢 Active |
+| tools/tedid.cfg | 878 | 2025-11-22 | 🟢 Active |
+| tools/Unboxed_Ending_8580.sid | 4,638 | 2025-11-21 | 🟢 Active |
+
+## Templates (G5/)
+
+| File | Size (bytes) | Last Modified | Status |
+|------|--------------|---------------|--------|
+| G5/desktop.ini | 80 | 2025-11-22 | 🟢 Active |
+| G5/NewPlayer v21.G5 Final/21.g5 clean.prg | 8,353 | 2025-11-22 | 🟢 Active |
+| G5/NewPlayer v21.G5 Final/desktop.ini | 68 | 2025-11-22 | 🟢 Active |
+| G5/siddump108/cpu.c | 27,991 | 2025-11-22 | 🟢 Active |
+| G5/siddump108/cpu.h | 204 | 2025-11-22 | 🟢 Active |
+| G5/siddump108/Makefile | 114 | 2025-11-22 | 🟢 Active |
+| G5/siddump108/readme.txt | 2,006 | 2025-11-22 | 🟢 Active |
+| G5/siddump108/siddump.c | 16,214 | 2025-11-22 | 🟢 Active |
+| G5/siddump108/siddump.exe | 50,702 | 2025-11-22 | 🟢 Active |
+| G5/21g5.txt | 20,569 | 2024-11-10 | 🟡 Old |
+| G5/21.g5_Final.d64 | 174,848 | 2024-11-08 | 🟡 Old |
+| G5/21.g5_Final.txt | 11,072 | 2024-11-08 | 🟡 Old |
+| G5/NewPlayer v21.G5 Final/21.g5_Demos_Final.d64 | 174,848 | 2024-11-08 | 🟡 Old |
+| G5/NewPlayer v21.G5 Final/21.g5_Final.d64 | 174,848 | 2024-11-08 | 🟡 Old |
+| G5/NewPlayer v21.G5 Final/21.g5_Final.txt | 11,072 | 2024-11-08 | 🟡 Old |
+| G5/NewPlayer v21.G5 Final/NP-PACK5.5.d64 | 174,848 | 2024-11-08 | 🟡 Old |
+| G5/drivers/sf2driver11_00.prg | 6,577 | 2024-08-20 | 🟡 Old |
+| G5/drivers/sf2driver11_01.prg | 6,665 | 2024-08-20 | 🟡 Old |
+| G5/drivers/sf2driver11_02.prg | 6,721 | 2024-08-20 | 🟡 Old |
+| G5/drivers/sf2driver11_03.prg | 6,768 | 2024-08-20 | 🟡 Old |
+| G5/drivers/sf2driver11_04.prg | 6,799 | 2024-08-20 | 🟡 Old |
+| G5/drivers/sf2driver11_04_01.prg | 6,817 | 2024-08-20 | 🟡 Old |
+| G5/drivers/sf2driver11_05.prg | 6,726 | 2024-08-20 | 🟡 Old |
+| G5/drivers/sf2driver12_00.prg | 3,273 | 2024-08-20 | 🟡 Old |
+| G5/drivers/sf2driver12_00_01.prg | 3,291 | 2024-08-20 | 🟡 Old |
+| G5/drivers/sf2driver13_00.prg | 3,577 | 2024-08-20 | 🟡 Old |
+| G5/drivers/sf2driver13_00_01.prg | 3,595 | 2024-08-20 | 🟡 Old |
+| G5/drivers/sf2driver14_00.prg | 5,696 | 2024-08-20 | 🟡 Old |
+| G5/drivers/sf2driver14_00_01.prg | 5,714 | 2024-08-20 | 🟡 Old |
+| G5/drivers/sf2driver15_00.prg | 3,585 | 2024-08-20 | 🟡 Old |
+| G5/drivers/sf2driver15_01.prg | 3,585 | 2024-08-20 | 🟡 Old |
+| G5/drivers/sf2driver15_02.prg | 3,618 | 2024-08-20 | 🟡 Old |
+| G5/drivers/sf2driver16_00.prg | 3,334 | 2024-08-20 | 🟡 Old |
+| G5/drivers/sf2driver16_01.prg | 3,334 | 2024-08-20 | 🟡 Old |
+| G5/drivers/sf2driver16_01_01.prg | 3,350 | 2024-08-20 | 🟡 Old |
+| G5/drivers/sf2driver_np20_00.prg | 5,345 | 2024-08-20 | 🟡 Old |
+| G5/examples/Driver 11 Test - Arpeggio.sf2 | 7,656 | 2024-08-20 | 🟡 Old |
+| G5/examples/Driver 11 Test - Filter.sf2 | 7,866 | 2024-08-20 | 🟡 Old |
+| G5/examples/Driver 11 Test - Polyphonic.sf2 | 8,649 | 2024-08-20 | 🟡 Old |
+| G5/examples/Driver 11 Test - Tie Notes.sf2 | 8,464 | 2024-08-20 | 🟡 Old |
+| G5/examples/Driver 12 Test - The Barber.sf2 | 4,829 | 2024-08-20 | 🟡 Old |
+| G5/examples/Driver 13 Test - Hubbard.sf2 | 5,904 | 2024-08-20 | 🟡 Old |
+| G5/examples/Driver 14 Test - Heavy.sf2 | 10,434 | 2024-08-20 | 🟡 Old |
+| G5/examples/Driver 14 Test - Long Sequence.sf2 | 7,266 | 2024-08-20 | 🟡 Old |
+| G5/examples/Driver 14 Test - Medieval.sf2 | 8,018 | 2024-08-20 | 🟡 Old |
+| G5/examples/Driver 15 Test - Mood.sf2 | 9,289 | 2024-08-20 | 🟡 Old |
+| G5/examples/Driver 16 Test - Busy.sf2 | 5,315 | 2024-08-20 | 🟡 Old |
+| G5/siddump108.zip | 27,858 | 2024-08-15 | 🟡 Old |
+
+## Example Files (SID/)
+
+| File | Size (bytes) | Last Modified | Status |
+|------|--------------|---------------|--------|
+| SID/Balance.sid | 4,087 | 2025-11-27 | 🟢 Active |
+| SID/Beast.sid | 3,880 | 2025-11-27 | 🟢 Active |
+| SID/Blue.sid | 4,442 | 2025-11-27 | 🟢 Active |
+| SID/Cascade.sid | 3,880 | 2025-11-27 | 🟢 Active |
+| SID/Chaser.sid | 4,508 | 2025-11-27 | 🟢 Active |
+| SID/Colorama.sid | 4,187 | 2025-11-27 | 🟢 Active |
+| SID/Cycles.sid | 4,869 | 2025-11-27 | 🟢 Active |
+| SID/Delicate.sid | 4,331 | 2025-11-27 | 🟢 Active |
+| SID/Dreams.sid | 3,965 | 2025-11-27 | 🟢 Active |
+| SID/Dreamy.sid | 3,793 | 2025-11-27 | 🟢 Active |
+| SID/Angular.sid | 3,907 | 2025-11-21 | 🟢 Active |
+| SID/Clarencio_extended.sid | 8,162 | 2025-11-21 | 🟢 Active |
+| SID/Ocean_Reloaded.sid | 6,680 | 2025-11-21 | 🟢 Active |
+| SID/Omniphunk.sid | 4,484 | 2025-11-21 | 🟢 Active |
+| SID/Phoenix_Code_End_Tune.sid | 4,514 | 2025-11-21 | 🟢 Active |
+| SID/Unboxed_Ending_8580.sid | 4,638 | 2025-11-21 | 🟢 Active |
+
+## Player Files (SIDSF2player/)
+
+| File | Size (bytes) | Last Modified | Status |
+|------|--------------|---------------|--------|
+| SIDSF2player/Angular_test_exported2.sid | 8,006 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/arpeggio_validation.html | 11,717 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/Broware_debug.sf2 | 7,488 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/Broware_fixed.sf2 | 10,560 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/Broware_fixed_exported.sid | 10,682 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/debug_packer.py | 639 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/official_tie_notes_cpp.sid | 8,557 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/official_tie_notes_FIXED2.sid | 8,586 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/parse_sf2_blocks.py | 1,411 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/polyphonic_cpp.sid | 8,706 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/polyphonic_test.sid | 8,771 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/test_angular_debug.sf2 | 7,884 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/test_arpeggio_cpp.sf2 | 7,457 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/test_arp_check.sf2 | 7,473 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/test_arp_check2.sf2 | 7,473 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/test_broware_analysis.sf2 | 7,488 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/test_broware_fixed.sf2 | 7,488 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/test_broware_packed_only.sid | 6,965 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/test_validation_arp.sf2 | 7,473 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/test_validation_arp_exported.sid | 7,595 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/batch_validation_20251130_162328.json | 17,872 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/batch_validation_20251130_163942.json | 11,317 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Aint_Somebody/Aint_Somebody.sf2 | 7,492 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Aint_Somebody/Aint_Somebody_exported.sid | 7,614 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Aint_Somebody/Aint_Somebody_validation.html | 22,127 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Angular_test_exported/Angular_test_exported.sf2 | 7,454 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Angular_test_exported/Angular_test_exported_exported.sid | 7,576 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Angular_test_exported/Angular_test_exported_validation.html | 11,715 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Angular_test_exported2/Angular_test_exported2.sf2 | 7,454 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Angular_test_exported2/Angular_test_exported2_exported.sid | 7,576 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Angular_test_exported2/Angular_test_exported2_validation.html | 11,717 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Arpeggio_cpp/Arpeggio_cpp.sf2 | 7,457 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Arpeggio_cpp/Arpeggio_cpp_exported.sid | 7,579 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Arpeggio_cpp/Arpeggio_cpp_validation.html | 11,697 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Broware/Broware.sf2 | 7,488 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Broware/Broware_exported.sid | 7,610 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Broware/Broware_validation.html | 22,150 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Broware_fixed_exported/Broware_fixed_exported.sf2 | 7,454 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Broware_fixed_exported/Broware_fixed_exported_exported.sid | 7,576 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Broware_fixed_exported/Broware_fixed_exported_validation.html | 11,717 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Cocktail_to_Go_tune_3/Cocktail_to_Go_tune_3.sf2 | 7,501 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Cocktail_to_Go_tune_3/Cocktail_to_Go_tune_3_exported.sid | 7,623 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Cocktail_to_Go_tune_3/Cocktail_to_Go_tune_3_validation.html | 22,663 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Driver 11 Test - Arpeggio/Driver 11 Test - Arpeggio.sf2 | 7,473 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Driver 11 Test - Arpeggio/Driver 11 Test - Arpeggio_exported.sid | 7,595 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Driver 11 Test - Arpeggio/Driver 11 Test - Arpeggio_validation.html | 11,723 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Driver 11 Test - Filter/Driver 11 Test - Filter.sf2 | 7,471 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Driver 11 Test - Filter/Driver 11 Test - Filter_exported.sid | 7,593 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Driver 11 Test - Filter/Driver 11 Test - Filter_validation.html | 11,719 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Driver 11 Test - Polyphonic/Driver 11 Test - Polyphonic.sf2 | 7,475 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Driver 11 Test - Polyphonic/Driver 11 Test - Polyphonic_exported.sid | 7,597 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Driver 11 Test - Polyphonic/Driver 11 Test - Polyphonic_validation.html | 11,727 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Driver 11 Test - Tie Notes/Driver 11 Test - Tie Notes.sf2 | 7,474 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Driver 11 Test - Tie Notes/Driver 11 Test - Tie Notes_exported.sid | 7,596 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Driver 11 Test - Tie Notes/Driver 11 Test - Tie Notes_validation.html | 11,725 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Expand_Side_1/Expand_Side_1.sf2 | 7,491 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Expand_Side_1/Expand_Side_1_exported.sid | 7,613 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Expand_Side_1/Expand_Side_1_validation.html | 22,112 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Halloweed_4_tune_3/Halloweed_4_tune_3.sf2 | 7,492 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Halloweed_4_tune_3/Halloweed_4_tune_3_exported.sid | 7,614 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Halloweed_4_tune_3/Halloweed_4_tune_3_validation.html | 22,282 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/I_Have_Extended_Intros/I_Have_Extended_Intros.sf2 | 10,520 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/I_Have_Extended_Intros/I_Have_Extended_Intros_exported.sid | 10,642 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/I_Have_Extended_Intros/I_Have_Extended_Intros_validation.html | 22,153 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/official_tie_notes/official_tie_notes.sf2 | 7,464 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/official_tie_notes/official_tie_notes_exported.sid | 7,586 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/official_tie_notes/official_tie_notes_validation.html | 11,709 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/official_tie_notes_cpp/official_tie_notes_cpp.sf2 | 7,458 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/official_tie_notes_cpp/official_tie_notes_cpp_exported.sid | 7,580 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/official_tie_notes_cpp/official_tie_notes_cpp_validation.html | 11,717 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/official_tie_notes_fixed/official_tie_notes_fixed.sf2 | 7,464 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/official_tie_notes_fixed/official_tie_notes_fixed_exported.sid | 7,586 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/official_tie_notes_fixed/official_tie_notes_fixed_validation.html | 11,721 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/official_tie_notes_FIXED2/official_tie_notes_FIXED2.sf2 | 7,464 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/official_tie_notes_FIXED2/official_tie_notes_FIXED2_exported.sid | 7,586 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/official_tie_notes_FIXED2/official_tie_notes_FIXED2_validation.html | 11,723 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/polyphonic_cpp/polyphonic_cpp.sf2 | 7,454 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/polyphonic_cpp/polyphonic_cpp_exported.sid | 7,576 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/polyphonic_cpp/polyphonic_cpp_validation.html | 11,701 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/polyphonic_test/polyphonic_test.sf2 | 7,456 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/polyphonic_test/polyphonic_test_exported.sid | 7,578 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/polyphonic_test/polyphonic_test_validation.html | 11,703 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Staying_Alive/Staying_Alive.sf2 | 7,485 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Staying_Alive/Staying_Alive_exported.sid | 7,607 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Staying_Alive/Staying_Alive_validation.html | 22,039 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Stinsens_Last_Night_of_89/Stinsens_Last_Night_of_89.sf2 | 7,505 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Stinsens_Last_Night_of_89/Stinsens_Last_Night_of_89_exported.sid | 7,627 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Stinsens_Last_Night_of_89/Stinsens_Last_Night_of_89_validation.html | 22,347 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Stinsen_repacked/Stinsen_repacked.sf2 | 7,462 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Stinsen_repacked/Stinsen_repacked_exported.sid | 7,584 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/Stinsen_repacked/Stinsen_repacked_validation.html | 11,705 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/test_broware_packed_only/test_broware_packed_only.sf2 | 7,460 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/test_broware_packed_only/test_broware_packed_only_exported.sid | 7,582 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/test_broware_packed_only/test_broware_packed_only_validation.html | 11,721 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/test_validation_arp_exported/test_validation_arp_exported.sf2 | 7,454 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/test_validation_arp_exported/test_validation_arp_exported_exported.sid | 7,576 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/test_validation_arp_exported/test_validation_arp_exported_validation.html | 11,729 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/tie_notes_test/tie_notes_test.sf2 | 7,464 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/tie_notes_test/tie_notes_test_exported.sid | 7,586 | 2025-11-30 | 🟢 Active |
+| SIDSF2player/validation_results/tie_notes_test/tie_notes_test_validation.html | 11,701 | 2025-11-30 | 🟢 Active |
+
+## Configuration
+
+| File | Size (bytes) | Last Modified | Status |
+|------|--------------|---------------|--------|
+| .gitignore | 1,057 | 2025-11-29 | 🟢 Active |
+| sidm2_config.example.json | 699 | 2025-11-29 | 🟢 Active |
+| .github/workflows/ci.yml | 6,514 | 2025-11-27 | 🟢 Active |
+| .github/workflows/test.yml | 1,055 | 2025-11-27 | 🟢 Active |
+| pytest.ini | 475 | 2025-11-23 | 🟢 Active |
+| learnings/desktop.ini | 80 | 2025-11-23 | 🟢 Active |
+
+---
+
+## Cleanup Recommendations
+
+### Safe to Remove (if confirmed unused)
+1. **output/** directory contents - Can be regenerated
+2. **roundtrip_output/** directory contents - Can be regenerated
+
+### Keep Everything Else
+- All sidm2/ package files are core functionality
+- All test files are part of the test suite
+- All documentation provides valuable reference
+- All G5/ templates are required for conversion
+- All SID/ example files are test references
+
+---
+
+## Usage
+
+To update this inventory, run:
+```bash
+python update_inventory.py
+```
+
+---
+
+Last updated: 2025-11-30 16:50:00

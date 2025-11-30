@@ -120,15 +120,16 @@ class LaxityParser:
 
             # The orderlist for Laxity is typically just one sequence per voice
             # (more complex songs might have multiple sequences chained)
-            if seq_addr >= self.load_address and seq_addr < self.load_address + len(self.data):
-                sequence_addresses.add(seq_addr)
 
-                # For now, simple orderlist: just reference to this one sequence
-                # The sequence index will be the position in our sequences list
-                # We'll map addresses to indices after extracting all sequences
+            # Check if sequence address is valid (non-zero and within C64 addressable space)
+            if seq_addr > 0 and seq_addr < 0x10000:
+                # Try to extract sequence - it might be within loaded data at a different offset
+                # Some SID files use relocated players where sequences are at unexpected addresses
+                sequence_addresses.add(seq_addr)
                 orderlists[voice].append(seq_addr)  # Store address for now
+                logger.debug(f"Voice {voice}: sequence at ${seq_addr:04X}")
             else:
-                logger.warning(f"Voice {voice}: sequence address ${seq_addr:04X} out of range")
+                logger.warning(f"Voice {voice}: invalid sequence address ${seq_addr:04X}")
 
         # Extract each unique sequence
         addr_to_index = {}
@@ -171,11 +172,30 @@ class LaxityParser:
         Returns:
             Sequence data as bytes
         """
-        if address < self.load_address or address >= self.load_address + len(self.data):
-            logger.warning(f"Sequence address ${address:04X} out of range")
-            return b''
+        # Try multiple strategies to locate the sequence data
 
-        offset = address - self.load_address
+        # Strategy 1: Address is within loaded data range (standard case)
+        if address >= self.load_address and address < self.load_address + len(self.data):
+            offset = address - self.load_address
+            return self._extract_sequence_from_offset(offset, address)
+
+        # Strategy 2: Address might be a direct offset into the data (relocated player)
+        # Some SID files store sequences using offsets that appear to be low addresses
+        if address < len(self.data):
+            logger.debug(f"Trying sequence at ${address:04X} as direct data offset")
+            return self._extract_sequence_from_offset(address, address)
+
+        # Strategy 3: Address might be relative to a different base
+        # Try interpreting as offset from start of data
+        if address < 0x2000:  # Reasonable offset range
+            logger.debug(f"Trying sequence at ${address:04X} as relative offset")
+            return self._extract_sequence_from_offset(address, address)
+
+        logger.warning(f"Could not locate sequence at ${address:04X}")
+        return b''
+
+    def _extract_sequence_from_offset(self, offset: int, address: int) -> bytes:
+        """Extract sequence data from a specific offset in the loaded data"""
         sequence = bytearray()
         max_length = 10000  # Safety limit
 
@@ -191,7 +211,12 @@ class LaxityParser:
         if len(sequence) >= max_length:
             logger.warning(f"Sequence at ${address:04X} exceeded max length, truncating")
 
-        return bytes(sequence)
+        if len(sequence) > 0 and sequence[-1] == 0x7F:
+            logger.debug(f"Successfully extracted {len(sequence)} byte sequence from ${address:04X}")
+            return bytes(sequence)
+        else:
+            logger.debug(f"No valid sequence found at ${address:04X} (no end marker)")
+            return b''
 
     def _extract_instruments(self) -> List[bytes]:
         """
