@@ -233,6 +233,19 @@ When making code changes, you MUST update relevant documentation:
 - Keep version numbers in sync across files
 - Update improvement status in README when completing items
 
+### 3. Always Update File Inventory
+After making structural changes (adding/removing files, reorganizing), you MUST:
+- Run `python update_inventory.py` to regenerate FILE_INVENTORY.md
+- Review the updated inventory for any cleanup opportunities
+- Commit the updated FILE_INVENTORY.md with your changes
+
+**When to update inventory:**
+- After adding new files to the project
+- After removing or moving files
+- After major refactoring
+- Before creating releases
+- When cleaning up old files
+
 ## Common Tasks
 
 ### Adding a new SID file
