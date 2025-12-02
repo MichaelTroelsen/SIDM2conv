@@ -27,6 +27,10 @@ python test_roundtrip.py SID/input.sid
 ```
 SIDM2/
 ├── sid_to_sf2.py          # Main converter
+├── sf2_to_sid.py          # SF2 to SID exporter
+├── disassemble_sid.py     # 6502/6510 disassembler for SID files
+├── extract_addresses.py   # Extract data structure addresses from SID files
+├── format_tables.py       # Generate hex table views of music data
 ├── convert_all.py         # Batch conversion script (with SF2→SID export)
 ├── test_converter.py      # Unit tests (69 tests)
 ├── test_sf2_format.py     # Format validation tests
@@ -57,11 +61,13 @@ SIDM2/
 │   ├── examples/          # Example SF2 files for each driver
 │   └── NewPlayer v21.G5 Final/  # Laxity source format template
 ├── docs/                  # Documentation
-│   ├── SF2_FORMAT_SPEC.md       # Complete SF2 format specification
-│   ├── CONVERSION_STRATEGY.md   # Laxity to SF2 mapping
-│   ├── DRIVER_REFERENCE.md      # All driver specifications
-│   ├── SF2_SOURCE_ANALYSIS.md   # SF2 editor source code analysis
-│   └── format-specification.md  # PSID/RSID formats
+│   ├── SF2_FORMAT_SPEC.md           # Complete SF2 format specification
+│   ├── SF2_DRIVER11_DISASSEMBLY.md  # SF2 Driver 11 player analysis
+│   ├── STINSENS_PLAYER_DISASSEMBLY.md # Laxity NewPlayer v21 analysis
+│   ├── CONVERSION_STRATEGY.md       # Laxity to SF2 mapping
+│   ├── DRIVER_REFERENCE.md          # All driver specifications
+│   ├── SF2_SOURCE_ANALYSIS.md       # SF2 editor source code analysis
+│   └── format-specification.md      # PSID/RSID formats
 └── learnings/             # Reference materials and source docs
 ```
 
@@ -233,6 +239,15 @@ When making code changes, you MUST update relevant documentation:
 - Keep version numbers in sync across files
 - Update improvement status in README when completing items
 
+**IMPORTANT: Update Documentation with Knowledge Gained**
+When working on tasks, you MUST document any new knowledge or discoveries:
+- If you create new scripts or tools, add them to the Project Structure
+- If you discover new conversion steps, update the Common Tasks section
+- If you find better workflows, document them in CLAUDE.md
+- If you learn specifics about the SID/SF2 format, update relevant docs
+- Keep the documentation current with actual working practices
+- Document complete pipelines and all outputs they generate
+
 ### 3. Always Update File Inventory
 After making structural changes (adding/removing files, reorganizing), you MUST:
 - Run `python update_inventory.py` to regenerate FILE_INVENTORY.md
@@ -248,27 +263,96 @@ After making structural changes (adding/removing files, reorganizing), you MUST:
 
 ## Common Tasks
 
-### Adding a new SID file
+### Complete Conversion Pipeline (Recommended)
+
+For a thorough conversion with all outputs and validation data:
+
+```bash
+# 1. Convert SID to SF2
+python sid_to_sf2.py SID/Song.sid output/Song/New/Song_d11.sf2
+
+# 2. Generate siddump from original SID
+tools/siddump.exe SID/Song.sid -t30 > output/Song/New/Song_original.dump
+
+# 3. Generate WAV from original SID
+tools/SID2WAV.EXE -t30 -16 SID/Song.sid output/Song/New/Song_original.wav
+
+# 4. Export SF2 back to SID
+python sf2_to_sid.py output/Song/New/Song_d11.sf2 output/Song/New/Song_d11.sid
+
+# 5. Generate siddump from exported SID
+tools/siddump.exe output/Song/New/Song_d11.sid -t30 > output/Song/New/Song_exported.dump
+
+# 6. Generate WAV from exported SID
+tools/SID2WAV.EXE -t30 -16 output/Song/New/Song_d11.sid output/Song/New/Song_exported.wav
+
+# 7. Generate hexdumps for binary comparison
+xxd SID/Song.sid > output/Song/New/Song_original.hex
+xxd output/Song/New/Song_d11.sid > output/Song/New/Song_converted.hex
+
+# 8. Extract data structure addresses
+python extract_addresses.py SID/Song.sid
+```
+
+**Pipeline Outputs (9 files):**
+1. `Song_d11.sf2` - SF2 format file
+2. `Song_d11.sid` - Exported SID file
+3. `Song_original.dump` - Original SID register dump
+4. `Song_exported.dump` - Exported SID register dump
+5. `Song_original.wav` - Original audio (30s)
+6. `Song_exported.wav` - Exported audio (30s)
+7. `Song_original.hex` - Original SID hexdump
+8. `Song_converted.hex` - Converted SID hexdump
+9. `info.txt` - Comprehensive conversion report with address mapping
+
+**What Each File Provides:**
+- `.sf2` - Editable music data in SID Factory II format
+- `.sid` - Playable SID file for emulators
+- `.dump` - Register-level comparison for accuracy validation
+- `.wav` - Audio comparison for quality validation
+- `.hex` - Byte-level binary comparison for debugging
+- `info.txt` - Complete metadata, addresses, and validation warnings
+
+### Quick Single File Conversion
 1. Place .sid file in `SID/` directory
-2. Run `python sid_to_sf2.py SID/file.sid SF2/file.sf2`
-3. Check `SF2/file_info.txt` for extraction details
+2. Run `python sid_to_sf2.py SID/file.sid output/SongName/New/file.sf2`
+3. Check `output/SongName/New/info.txt` for extraction details
 
-### Debugging extraction issues
-1. Run `tools/siddump.exe SID/file.sid > SF2/file.dump`
+### Extracting Data Structure Addresses
+Use `extract_addresses.py` to analyze SID file memory layout:
+
+```bash
+python extract_addresses.py SID/file.sid
+```
+
+This extracts start/end addresses for:
+- Player code (init/play routines)
+- Sequences, Orderlists, Instruments
+- Wave, Pulse, Filter, Arpeggio tables
+- Tempo, Command tables, Sequence pointers
+
+Addresses are automatically included in `info.txt` during conversion.
+
+### Debugging Extraction Issues
+1. Run `tools/siddump.exe SID/file.sid > output/file.dump`
 2. Check dump for register patterns
-3. Review `SF2/file_info.txt` for table addresses
+3. Run `python extract_addresses.py SID/file.sid` to verify table locations
+4. Review `output/SongName/New/info.txt` for warnings and addresses
+5. Compare hexdumps to identify specific byte differences
 
-### Round-trip validation
+### Round-Trip Validation
 1. Run `python test_roundtrip.py SID/file.sid`
 2. Check `roundtrip_output/file_roundtrip_report.html` for results
 3. Compare `file_original.dump` and `file_exported.dump` for register differences
 4. Listen to `file_original.wav` and `file_exported.wav` for audio quality
 
-### Packing SF2 back to SID
+### Manual SF2 to SID Packing (Reference Implementation)
 1. Build sf2pack: `cd tools/sf2pack && mingw32-make`
 2. Pack file: `tools/sf2pack/sf2pack.exe SF2/file.sf2 output.sid --title "Title" --author "Author"`
 3. Test with VICE: Load output.sid in C64 emulator
 4. Verify relocation with `-v` flag for detailed stats
+
+Note: The Python `sf2_to_sid.py` is now the recommended method for SF2→SID conversion.
 
 ## Known Limitations
 
@@ -470,10 +554,11 @@ See README.md for full improvement list with status tracking.
 - `README.md` - Comprehensive format documentation
 - `CONTRIBUTING.md` - Contribution guidelines
 - `docs/SF2_FORMAT_SPEC.md` - Complete SF2 format specification
+- `docs/SF2_DRIVER11_DISASSEMBLY.md` - Complete SF2 Driver 11 player analysis (NEW)
+- `docs/STINSENS_PLAYER_DISASSEMBLY.md` - Laxity NewPlayer v21 disassembly (NEW)
 - `docs/CONVERSION_STRATEGY.md` - Laxity to SF2 mapping details
 - `docs/DRIVER_REFERENCE.md` - All driver specifications (11-16)
 - `docs/SF2_SOURCE_ANALYSIS.md` - SF2 editor source code analysis
-- `docs/LAXITY_PLAYER_ANALYSIS.md` - Disassembled Laxity player walkthrough
 - `docs/SIDDUMP_ANALYSIS.md` - Siddump tool source code analysis
 - `docs/VALIDATION_SYSTEM.md` - Three-tier validation architecture (NEW v0.6.0)
 - `docs/ACCURACY_ROADMAP.md` - Plan to reach 99% accuracy (NEW v0.6.0)
