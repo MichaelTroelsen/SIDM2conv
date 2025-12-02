@@ -195,6 +195,17 @@ def generate_info_file(original_sid_path, converted_sf2_path, output_dir, title_
     output.append(f"File Size: {len(converted_data):,} bytes")
     output.append("")
 
+    # Original SID file preservation
+    output.append("=" * 80)
+    output.append("Original SID File (Preserved)")
+    output.append("=" * 80)
+    output.append(f"Source: {original_sid_path}")
+    source_size = Path(original_sid_path).stat().st_size
+    output.append(f"Size: {source_size:,} bytes")
+    output.append(f"Copied to: {song_name_clean}.sid")
+    output.append(f"Location: Same directory as this info.txt")
+    output.append("")
+
     # Tool information section
     output.append("=" * 80)
     output.append("Pipeline Tools Used")
