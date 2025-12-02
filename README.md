@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 
-**Version 0.6.2** | Build Date: 2025-11-29
+**Version 0.6.3** | Build Date: 2025-12-02
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files.
 
@@ -85,8 +85,14 @@ python convert_all.py --roundtrip --roundtrip-duration 30
 The batch converter creates a nested structure: `output/{SongName}/New/` containing:
 - `{name}_g4.sf2` - SID Factory II project file (NP20/G4 driver)
 - `{name}_d11.sf2` - SID Factory II project file (Driver 11, default for validation)
-- `{name}_info.txt` - Detailed extraction info with all tables
-- `{name}.dump` - SID register dump (60 seconds of playback)
+- `{name}_d11.sid` - Exported SID file from SF2 (for validation)
+- `{name}_info.txt` - Detailed extraction info with data structure addresses
+- `{name}_original.dump` - Original SID register dump (30 seconds)
+- `{name}_exported.dump` - Exported SID register dump (30 seconds)
+- `{name}_original.wav` - Original audio render (16-bit, 30 seconds)
+- `{name}_exported.wav` - Exported audio render (16-bit, 30 seconds)
+- `{name}_original.hex` - Original SID hexdump (16 bytes/line)
+- `{name}_converted.hex` - Converted SID hexdump (16 bytes/line)
 
 Round-trip validation creates additional folders:
 - `output/{SongName}/Original/` - Original SID, WAV, dump, and info
@@ -107,13 +113,57 @@ This validates that:
 3. Audio output matches between original and converted files
 4. Register writes are preserved correctly
 
+### Address Extraction
+
+Extract memory addresses of all data structures from a SID file:
+
+```bash
+python extract_addresses.py <input.sid>
+```
+
+This analyzes the SID file and displays start/end addresses for:
+- **Player Code**: Init and play routines
+- **Sequences**: Music pattern data
+- **Orderlists**: Playback order per voice
+- **Instruments**: ADSR and table pointers
+- **Wave Table**: Waveform and note data (split into notes/waveforms)
+- **Pulse Table**: PWM programs
+- **Filter Table**: Filter sweep programs
+- **Arpeggio Table**: Chord patterns
+- **Tempo**: Speed control data
+- **Command Table**: Effect commands
+- **Sequence Pointers**: Voice-to-sequence mapping
+
+Address information is automatically included in the `info.txt` file during conversion for reference and debugging.
+
 #### Info File Contents
 
 The `_info.txt` file contains comprehensive extraction data:
 
-- **Source File**: Filename, name, author, copyright, detected player
+- **Source File**: Filename, name, author, copyright, detected player (via player-id.exe)
 - **Memory Layout**: Load/init/play addresses, data size
+- **Original SID Data Structure Addresses**: Start/end addresses for all music data:
+  - Player code (init/play routines)
+  - Sequences, Orderlists, Instruments
+  - Wave, Pulse, Filter, Arpeggio tables
+  - Tempo, Command tables, Sequence pointers
 - **Conversion Result**: Output file, size, driver, tempo, sequence/instrument counts
+- **Original SID File (Preserved)**: Source path, size, copied location
+- **Pipeline Tools Used**: Documentation of all tools used in conversion:
+  - player-id.exe: Player identification with detected type
+  - sid_to_sf2.py: Conversion tool
+  - siddump.exe: Register dump (6502 emulation)
+  - SID2WAV.EXE: Audio rendering
+  - xxd: Hexdump generation
+  - extract_addresses.py: Memory address extraction
+  - generate_info.py: Report generation
+- **Table Addresses in SF2**: SF2 format memory layout
+- **Extraction Details**: Wave table analysis, siddump results
+- **Validation Warnings**: Pointer bounds issues, sequence problems
+- **Original SID Data Tables (Hex View)**: 16-byte hexdumps with addresses:
+  - Commands, Instruments, Wave, Pulse, Filter, Arp tables
+- **Converted SF2 Data Tables (Hex View)**: 16-byte hexdumps with addresses:
+  - Commands, Instruments, Wave, Pulse, Filter, Arpeggio, Tempo tables
 - **Instruments Table**: All extracted instruments with AD/SR values and names
 - **Commands Table**: All 16 commands with usage counts from sequences
 - **Wave Table**: Waveform entries with note offsets and descriptions
@@ -856,6 +906,44 @@ Identifies the player routine used in a SID file.
 tools/player-id.exe <sidfile>
 ```
 
+**Usage in Pipeline**: Automatically called by `generate_info.py` to detect player type using signature database (`tools/sidid.cfg`).
+
+### generate_info.py
+
+Generates comprehensive info.txt reports with full pipeline documentation.
+
+```bash
+python generate_info.py <original_sid> <converted_sf2> <output_dir> [title_override]
+```
+
+**Features**:
+- Parses SID headers to extract metadata
+- Runs player-id.exe for accurate player identification
+- Documents all pipeline tools used (siddump, SID2WAV, xxd, etc.)
+- Generates hex table views of all music data (16 bytes/row)
+- Shows memory address maps for both original and SF2 formats
+- Copies source SID file to output directory with consistent naming
+- Optional title override for consistent filenames (useful for SF2-packed files)
+
+**Output Sections**:
+- Source File Information (with player-id.exe detection)
+- Conversion Results
+- Original SID File (Preserved) - source, size, location
+- Pipeline Tools Used - complete tool documentation
+- Table Addresses in SF2
+- Original SID Data Structure Addresses
+- Original SID Data Tables (Hex View)
+- Converted SF2 Data Tables (Hex View)
+
+**Example**:
+```bash
+# Generate info.txt with player identification
+python generate_info.py SID/song.sid output/song.sf2 output/
+
+# Override title for consistent naming (SF2-packed files)
+python generate_info.py output/song_d11.sid output/song_repacked.sf2 output/ "Original Song Title"
+```
+
 ### sf2pack
 
 SF2 to SID packer with full 6502 code relocation. Converts SF2 files back to playable SID format.
@@ -1144,6 +1232,48 @@ All files now achieve 100% validation score with siddump ADSR merging and improv
 | 47 | SF2Writer modularization | ✅ Done | Extracted ~960 lines to sidm2/sf2_writer.py |
 
 ## Changelog
+
+### v0.6.3 (2025-12-02)
+
+**Pipeline Enhancement & Documentation**
+
+- Added `generate_info.py` - Comprehensive info.txt generator (318 lines)
+  - Automatic player identification via player-id.exe integration
+  - Complete pipeline tools documentation
+  - Hex table views of all music data (16 bytes/row with addresses)
+  - Memory address maps for original and SF2 formats
+  - Automatic source SID file preservation with consistent naming
+  - Optional title override for SF2-packed files
+- Added `disassemble_sid.py` - Complete 6502/6510 disassembler (272 lines)
+  - Full instruction set support (56+ opcodes)
+  - Branch target calculation for relative addressing
+  - Unlimited output for complete player analysis
+- Added `extract_addresses.py` - Music data structure address extraction (273 lines)
+  - Locates all table addresses in memory
+  - Outputs formatted address ranges
+- Added `format_tables.py` - Hex table visualization (437 lines)
+  - Generates 16-byte hex dumps with addresses
+  - Side-by-side original vs converted comparison
+- Created comprehensive player documentation
+  - `docs/SF2_DRIVER11_DISASSEMBLY.md` - Complete SF2 Driver 11 analysis (8.3 KB)
+  - `docs/STINSENS_PLAYER_DISASSEMBLY.md` - Laxity NewPlayer v21 analysis (17 KB)
+  - Memory maps, annotated routines, table formats, architecture comparisons
+- Enhanced info.txt output with new sections:
+  - "Original SID File (Preserved)" - Source path, size, copied location
+  - "Pipeline Tools Used" - Complete tool documentation with parameters
+  - "Original SID Data Tables (Hex View)" - 16-byte hexdumps with addresses
+  - "Converted SF2 Data Tables (Hex View)" - 16-byte hexdumps with addresses
+- Pipeline improvements:
+  - Source SID file automatically copied to output directory
+  - Consistent filename generation using song metadata (not input filename)
+  - Player detection via signature database (tools/sidid.cfg)
+  - All outputs use unified naming convention
+- Updated documentation:
+  - README.md: Added generate_info.py, player-id integration docs
+  - CLAUDE.md: Updated with new tools and documentation files
+  - FILE_INVENTORY.md: Regenerated with latest file structure
+
+**Quality:** All tools tested with Stinsens_Last_Night_of_89.sid and SF2-packed round-trip
 
 ### v0.6.2 (2025-11-29)
 - Added Python 6502 CPU emulator (`sidm2/cpu6502_emulator.py`, 1,242 lines)

@@ -162,7 +162,7 @@ def generate_info_file(original_sid_path, converted_sf2_path, output_dir, title_
     output.append("SID to SF2 Conversion Report")
     output.append("=" * 80)
     output.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    output.append(f"Converter: SIDM2 SID to SF2 Converter v0.6.2")
+    output.append(f"Converter: SIDM2 SID to SF2 Converter v0.6.3")
     output.append("")
 
     # Source file information
