@@ -4,6 +4,7 @@
 import struct
 import sys
 import subprocess
+import shutil
 from pathlib import Path
 from datetime import datetime
 
@@ -344,7 +345,13 @@ def generate_info_file(original_sid_path, converted_sf2_path, output_dir, title_
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(output))
 
+    # Copy original SID file to output directory
+    source_sid = Path(original_sid_path)
+    dest_sid = Path(output_dir) / f"{song_name_clean}.sid"
+    shutil.copy2(source_sid, dest_sid)
+
     print(f"Generated: {output_path}")
+    print(f"Copied SID: {dest_sid}")
     print(f"Song name: {song_name}")
     print(f"Output files should use base name: {song_name_clean}")
 
