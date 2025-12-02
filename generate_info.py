@@ -121,8 +121,15 @@ def extract_table(sid_data, load_addr, start_addr, end_addr):
     return sid_data[offset_start:offset_end]
 
 
-def generate_info_file(original_sid_path, converted_sf2_path, output_dir):
-    """Generate comprehensive info.txt file."""
+def generate_info_file(original_sid_path, converted_sf2_path, output_dir, title_override=None):
+    """Generate comprehensive info.txt file.
+
+    Args:
+        original_sid_path: Path to original SID file
+        converted_sf2_path: Path to converted SF2 file
+        output_dir: Output directory for info.txt
+        title_override: Optional title to use instead of SID header title (for consistent naming)
+    """
 
     # Read SID files
     with open(original_sid_path, 'rb') as f:
@@ -140,7 +147,8 @@ def generate_info_file(original_sid_path, converted_sf2_path, output_dir):
     conv_music_data = converted_data[conv_header['header_size']:]
 
     # Get song name for filenames (sanitized)
-    song_name = orig_header['name'] if orig_header['name'] else "Unknown"
+    # Use override if provided, otherwise use header
+    song_name = title_override if title_override else (orig_header['name'] if orig_header['name'] else "Unknown")
     song_name_clean = song_name.replace("'", "").replace(" ", "_").replace("/", "_")
 
     # Identify player type using player-id.exe
@@ -345,11 +353,12 @@ def generate_info_file(original_sid_path, converted_sf2_path, output_dir):
 
 if __name__ == '__main__':
     if len(sys.argv) < 4:
-        print("Usage: python generate_info.py <original_sid> <converted_sf2> <output_dir>")
+        print("Usage: python generate_info.py <original_sid> <converted_sf2> <output_dir> [title_override]")
         sys.exit(1)
 
     original_sid = sys.argv[1]
     converted_sf2 = sys.argv[2]
     output_dir = sys.argv[3]
+    title_override = sys.argv[4] if len(sys.argv) > 4 else None
 
-    generate_info_file(original_sid, converted_sf2, output_dir)
+    generate_info_file(original_sid, converted_sf2, output_dir, title_override)
