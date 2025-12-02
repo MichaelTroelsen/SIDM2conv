@@ -3,6 +3,7 @@
 
 import struct
 import sys
+import subprocess
 from pathlib import Path
 from datetime import datetime
 
@@ -43,6 +44,38 @@ def parse_psid_header(data):
         'data_size': data_size,
         'end_addr': end_addr
     }
+
+
+def identify_player(sid_path):
+    """Run player-id.exe to identify the player type."""
+    try:
+        # Get absolute paths
+        player_id_path = Path(__file__).parent / 'tools' / 'player-id.exe'
+        sid_path_abs = Path(sid_path).resolve()
+
+        result = subprocess.run(
+            [str(player_id_path), str(sid_path_abs)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=Path(__file__).parent  # Set working directory to script location
+        )
+
+        # Parse output to find player type
+        # Format: "filename.sid                        PlayerType"
+        lines = result.stdout.split('\n')
+        for line in lines:
+            if '.sid' in line.lower() and not line.strip().startswith('Detected'):
+                # Extract player type from the line
+                parts = line.split()
+                if len(parts) >= 2:
+                    # Player type is the last part(s) of the line
+                    player_type = ' '.join(parts[1:])
+                    return player_type.strip()
+
+        return "Unknown"
+    except Exception as e:
+        return f"Unknown (error: {e})"
 
 
 def format_hex_table(data, name="Table", start_addr=None, end_addr=None):
@@ -110,8 +143,8 @@ def generate_info_file(original_sid_path, converted_sf2_path, output_dir):
     song_name = orig_header['name'] if orig_header['name'] else "Unknown"
     song_name_clean = song_name.replace("'", "").replace(" ", "_").replace("/", "_")
 
-    # Determine player type
-    player_type = "SidFactory_II/Laxity" if orig_header['load_addr'] < 0x1000 else "Laxity (NewPlayer v21)"
+    # Identify player type using player-id.exe
+    player_type = identify_player(original_sid_path)
 
     output = []
 
@@ -164,6 +197,10 @@ def generate_info_file(original_sid_path, converted_sf2_path, output_dir):
     output.append(f"    Output: {song_name_clean}_d11.sf2")
     output.append("")
     output.append("Analysis:")
+    output.append(f"  - player-id.exe: Player identification")
+    output.append(f"    Detected: {player_type}")
+    output.append(f"    Using:    tools/sidid.cfg")
+    output.append("")
     output.append(f"  - siddump.exe: SID register dump (6502 emulation)")
     output.append(f"    Output: {song_name_clean}_original.dump")
     output.append(f"    Time:   15 seconds @ 50Hz")
