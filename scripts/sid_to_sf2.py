@@ -10,8 +10,8 @@ Note: This is a complex reverse-engineering task. Results may require manual
 refinement in SID Factory II.
 """
 
-__version__ = "0.6.5"
-__build_date__ = "2025-11-30"
+__version__ = "0.7.0"
+__build_date__ = "2025-12-07"
 
 import logging
 import os
@@ -38,7 +38,7 @@ from sidm2.sf2_player_parser import SF2PlayerParser
 from sidm2.config import ConversionConfig, get_default_config
 
 # Also import laxity_parser for backward compatibility
-from laxity_parser import LaxityParser
+from scripts.laxity_parser import LaxityParser
 
 # Configure logging
 logger = logging.getLogger(__name__)

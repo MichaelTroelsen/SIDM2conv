@@ -1,0 +1,64 @@
+--- SIDwinder-0.2.6/src/SIDEmulator.cpp.orig
++++ SIDwinder-0.2.6/src/SIDEmulator.cpp
+@@ -46,6 +46,12 @@
+             cpu_->setOnSIDWriteCallback([this, enableTracking, &options](u16 addr, u8 value) {
+                 // Record the write in our tracker if tracking is enabled
+                 if (enableTracking) {
+                     writeTracker_.recordWrite(addr, value);
+                 }
++
++                // Log to trace file if tracing is enabled
++                if (options.traceEnabled && traceLogger_) {
++                    traceLogger_->logWrite(addr, value);
++                }
+
+                 // Record the write in our pattern finder if pattern detection is enabled
+                 if (options.patternDetectionEnabled) {
+@@ -121,7 +127,7 @@
+         framesExecuted_ = 0;
+
+         // Now enable register tracking and pattern detection if requested
+-        if (options.registerTrackingEnabled || options.patternDetectionEnabled) {
++        if (options.registerTrackingEnabled || options.patternDetectionEnabled || options.traceEnabled) {
+             cpu_->executeFunction(playAddr);    //; do "play" for the first frame .. because some SIDs output differently on the first frame
+             temporaryTrackingEnabled = true;
+             updateSIDCallback(true);
+
+--- SIDwinder-0.2.6/src/app/TraceLogger.h.orig
++++ SIDwinder-0.2.6/src/app/TraceLogger.h
+@@ -49,6 +49,13 @@
+         void logFrameMarker();
+
+         /**
++         * @brief Log a SID register write
++         * @param addr Register address
++         * @param value Value written
++         */
++        void logWrite(u16 addr, u8 value);
++
++        /**
+          * @brief Flush the log to disk
+          */
+         void flushLog();
+
+--- SIDwinder-0.2.6/src/app/TraceLogger.cpp.orig
++++ SIDwinder-0.2.6/src/app/TraceLogger.cpp
+@@ -48,6 +48,17 @@
+         }
+     }
+
++    void TraceLogger::logWrite(u16 addr, u8 value) {
++        if (!isOpen_) return;
++
++        if (format_ == TraceFormat::Text) {
++            writeTextRecord(addr, value);
++        }
++        else {
++            TraceRecord record(addr, value);
++            writeBinaryRecord(record);
++        }
++    }
++
+     void TraceLogger::flushLog() {
+         if (isOpen_) {
+             file_.flush();

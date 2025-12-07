@@ -258,7 +258,14 @@ def convert_sf2_to_sid(sf2_path: str, sid_path: str) -> bool:
     )
 
     # Build PSID file: [PSID header][C64 data]
-    psid_data = header.to_bytes() + sf2.get_c64_data()
+    c64_data = sf2.get_c64_data()
+    psid_data = header.to_bytes() + c64_data
+
+    # Debug: Show first bytes of data
+    logger.info(f"  DEBUG: SF2 file size: {len(sf2.data):,} bytes")
+    logger.info(f"  DEBUG: SF2 first 16 bytes: {' '.join(f'{b:02x}' for b in sf2.data[:16])}")
+    logger.info(f"  DEBUG: C64 data size: {len(c64_data):,} bytes")
+    logger.info(f"  DEBUG: C64 first 16 bytes: {' '.join(f'{b:02x}' for b in c64_data[:16])}")
 
     # Write PSID file
     with open(sid_path, 'wb') as f:
@@ -266,7 +273,7 @@ def convert_sf2_to_sid(sf2_path: str, sid_path: str) -> bool:
 
     logger.info(f"  Created: {sid_path} ({len(psid_data):,} bytes)")
     logger.info(f"  Header: 124 bytes")
-    logger.info(f"  Data: {len(sf2.get_c64_data()):,} bytes")
+    logger.info(f"  Data: {len(c64_data):,} bytes")
     logger.info(f"  Load: ${sf2.load_address:04X}")
     logger.info(f"  Init: ${sf2.init_address:04X}")
     logger.info(f"  Play: ${sf2.play_address:04X}")

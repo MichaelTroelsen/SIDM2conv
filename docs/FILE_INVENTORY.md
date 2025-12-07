@@ -1,5 +1,5 @@
 # SIDM2 File Inventory
-Generated: 2025-12-07 12:55:48
+Generated: 2025-12-02 15:42:39
 
 ## Purpose
 This inventory categorizes all project files with their purpose and recommendations for cleanup.
@@ -11,56 +11,49 @@ Files are marked as:
 
 ---
 
-## Main Entry Point
+## Root Scripts
 
 | File | Size (bytes) | Last Modified | Status |
 |------|--------------|---------------|--------|
-| complete_pipeline_with_validation.py | 26,248 | 2025-12-07 | 🟢 Active |
-
-## Scripts (scripts/)
-
-| File | Size (bytes) | Last Modified | Status |
-|------|--------------|---------------|--------|
-| scripts/convert_all.py - Batch converter (v0.6.3) | 44,663 | 2025-12-07 | 🟢 Active |
-| scripts/sid_to_sf2.py - Main SID to SF2 converter (v0.6.3) | 18,351 | 2025-12-07 | 🟢 Active |
-| scripts/update_inventory.py - Auto-generates FILE_INVENTORY.md | 7,032 | 2025-12-07 | 🟢 Active |
-| scripts/__init__.py | 908 | 2025-12-07 | 🟢 Active |
-| scripts/extract_sf2_properly.py | 4,997 | 2025-12-06 | 🟢 Active |
-| scripts/sf2_to_sid.py - SF2 to SID packer (v1.0.0) | 11,243 | 2025-12-04 | 🟢 Active |
-| scripts/disassemble_sid.py | 9,428 | 2025-12-02 | 🟢 Active |
-| scripts/extract_addresses.py | 8,336 | 2025-12-02 | 🟢 Active |
-| scripts/format_tables.py | 15,340 | 2025-12-02 | 🟢 Active |
-| scripts/generate_info.py | 14,310 | 2025-12-02 | 🟢 Active |
-| scripts/batch_validate_sidsf2player.py | 8,797 | 2025-11-30 | 🟢 Active |
-| scripts/comprehensive_validate.py | 19,027 | 2025-11-30 | 🟢 Active |
-| scripts/validate_structure.py | 10,512 | 2025-11-30 | 🟢 Active |
-| scripts/convert_all_sidsf2player.py | 3,386 | 2025-11-29 | 🟢 Active |
-| scripts/laxity_parser.py | 22,179 | 2025-11-29 | 🟢 Active |
-| scripts/generate_validation_report.py | 18,327 | 2025-11-27 | 🟢 Active |
-| scripts/validate_conversion.py - Conversion validation | 17,569 | 2025-11-27 | 🟢 Active |
-| scripts/validate_psid.py - PSID header validator | 13,315 | 2025-11-27 | 🟢 Active |
-| scripts/validate_sid_accuracy.py - Frame-by-frame accuracy checker | 33,839 | 2025-11-27 | 🟢 Active |
-| scripts/ci_local.py | 12,287 | 2025-11-22 | 🟢 Active |
+| disassemble_sid.py | 9,428 | 2025-12-02 | 🟢 Active |
+| extract_addresses.py | 8,336 | 2025-12-02 | 🟢 Active |
+| format_tables.py | 15,340 | 2025-12-02 | 🟢 Active |
+| generate_info.py | 14,310 | 2025-12-02 | 🟢 Active |
+| batch_validate_sidsf2player.py | 8,797 | 2025-11-30 | 🟢 Active |
+| comprehensive_validate.py | 19,027 | 2025-11-30 | 🟢 Active |
+| convert_all.py - Batch converter (v0.6.3) | 44,647 | 2025-11-30 | 🟢 Active |
+| sid_to_sf2.py - Main SID to SF2 converter (v0.6.3) | 18,343 | 2025-11-30 | 🟢 Active |
+| update_inventory.py - Auto-generates FILE_INVENTORY.md | 6,485 | 2025-11-30 | 🟢 Active |
+| validate_structure.py | 10,512 | 2025-11-30 | 🟢 Active |
+| analyze_sf2_sid.py | 15,029 | 2025-11-29 | 🟢 Active |
+| convert_all_sidsf2player.py | 3,386 | 2025-11-29 | 🟢 Active |
+| laxity_parser.py | 22,179 | 2025-11-29 | 🟢 Active |
+| compare_sids.py | 13,279 | 2025-11-28 | 🟢 Active |
+| generate_overview.py | 13,190 | 2025-11-27 | 🟢 Active |
+| generate_validation_report.py | 18,327 | 2025-11-27 | 🟢 Active |
+| sf2_to_sid.py - SF2 to SID packer (v1.0.0) | 10,857 | 2025-11-27 | 🟢 Active |
+| validate_conversion.py - Conversion validation | 17,569 | 2025-11-27 | 🟢 Active |
+| validate_psid.py - PSID header validator | 13,315 | 2025-11-27 | 🟢 Active |
+| validate_sid_accuracy.py - Frame-by-frame accuracy checker | 33,839 | 2025-11-27 | 🟢 Active |
 
 ## Core Package (sidm2/)
 
 | File | Size (bytes) | Last Modified | Status |
 |------|--------------|---------------|--------|
-| sidm2/sf2_packer.py | 26,550 | 2025-12-06 | 🟢 Active |
-| sidm2/instrument_extraction.py | 7,770 | 2025-12-04 | 🟢 Active |
-| sidm2/sf2_writer.py | 55,677 | 2025-12-04 | 🟢 Active |
-| sidm2/sf2_packed_reader.py | 11,817 | 2025-12-02 | 🟢 Active |
 | sidm2/laxity_analyzer.py | 26,397 | 2025-12-01 | 🟢 Active |
 | sidm2/table_extraction.py | 55,267 | 2025-12-01 | 🟢 Active |
 | sidm2/laxity_parser.py | 12,395 | 2025-11-30 | 🟢 Active |
 | sidm2/sequence_translator.py | 18,907 | 2025-11-30 | 🟢 Active |
+| sidm2/sf2_packer.py | 21,657 | 2025-11-30 | 🟢 Active |
 | sidm2/sf2_player_parser.py | 22,393 | 2025-11-30 | 🟢 Active |
 | sidm2/sf2_reader.py | 8,310 | 2025-11-30 | 🟢 Active |
+| sidm2/sf2_writer.py | 54,281 | 2025-11-30 | 🟢 Active |
 | sidm2/sid_structure_analyzer.py | 18,483 | 2025-11-30 | 🟢 Active |
 | sidm2/sid_structure_extractor.py | 22,670 | 2025-11-30 | 🟢 Active |
 | sidm2/wav_comparison.py | 10,706 | 2025-11-30 | 🟢 Active |
 | sidm2/__init__.py | 3,183 | 2025-11-30 | 🟢 Active |
 | sidm2/config.py | 7,000 | 2025-11-29 | 🟢 Active |
+| sidm2/instrument_extraction.py | 7,687 | 2025-11-29 | 🟢 Active |
 | sidm2/sequence_extraction.py | 17,161 | 2025-11-29 | 🟢 Active |
 | sidm2/cpu6502_emulator.py | 41,080 | 2025-11-28 | 🟢 Active |
 | sidm2/sid_player.py | 19,184 | 2025-11-28 | 🟢 Active |
@@ -82,53 +75,40 @@ Files are marked as:
 
 | File | Size (bytes) | Last Modified | Status |
 |------|--------------|---------------|--------|
-| scripts/test_converter.py | 63,604 | 2025-12-07 | 🟢 Active |
-| scripts/test_complete_pipeline.py | 14,014 | 2025-12-03 | 🟢 Active |
-| scripts/test_config.py | 8,943 | 2025-11-29 | 🟢 Active |
-| scripts/test_sf2_player_parser.py | 5,693 | 2025-11-29 | 🟢 Active |
-| scripts/test_roundtrip.py | 26,692 | 2025-11-28 | 🟢 Active |
-| scripts/test_sf2_editor.py | 16,160 | 2025-11-23 | 🟢 Active |
-| scripts/test_sf2_format.py | 9,632 | 2025-11-22 | 🟢 Active |
+| SIDSF2player/test_sidsf2player_batch.py | 3,971 | 2025-11-30 | 🟢 Active |
+| test_config.py | 8,943 | 2025-11-29 | 🟢 Active |
+| test_converter.py | 63,532 | 2025-11-29 | 🟢 Active |
+| test_sf2_player_parser.py | 5,693 | 2025-11-29 | 🟢 Active |
+| test_roundtrip.py | 26,692 | 2025-11-28 | 🟢 Active |
+| test_sf2_editor.py | 16,160 | 2025-11-23 | 🟢 Active |
+| test_sf2_format.py | 9,632 | 2025-11-22 | 🟢 Active |
 
 ## Documentation
 
 | File | Size (bytes) | Last Modified | Status |
 |------|--------------|---------------|--------|
-| CLAUDE.md | 33,547 | 2025-12-07 | 🟢 Active |
-| README.md | 65,022 | 2025-12-07 | 🟢 Active |
-| docs/COMPLETE_DOCUMENTATION_INDEX.md | 14,120 | 2025-12-06 | 🟢 Active |
-| docs/PIPELINE_EXECUTION_REPORT.md | 12,153 | 2025-12-06 | 🟢 Active |
-| docs/PIPELINE_RESULTS_2025-12-06.md | 3,613 | 2025-12-06 | 🟢 Active |
-| docs/PIPELINE_RESULTS_SUMMARY.md | 6,521 | 2025-12-06 | 🟢 Active |
-| docs/PIPELINE_TIMING.md | 1,458 | 2025-12-06 | 🟢 Active |
-| docs/SIDWINDER_INTEGRATION_SUMMARY.md | 11,156 | 2025-12-06 | 🟢 Active |
-| docs/SIDWINDER_LIMITATIONS.md | 3,995 | 2025-12-06 | 🟢 Active |
-| docs/SIDWINDER_REBUILD_GUIDE.md | 8,048 | 2025-12-06 | 🟢 Active |
-| docs/WAVE_TABLE_PACKING.md | 6,897 | 2025-12-04 | 🟢 Active |
-| docs/ANNOTATED_DISASSEMBLY_INTEGRATION.md | 12,612 | 2025-12-03 | 🟢 Active |
-| docs/SF2PACKED_STINSENS_ANNOTATED_DISASSEMBLY.md | 45,673 | 2025-12-03 | 🟢 Active |
-| docs/SF2PACKED_STINSENS_COMPLETE_DISASSEMBLY.md | 178,898 | 2025-12-03 | 🟢 Active |
-| docs/STINSENS_PLAYER_DISASSEMBLY.md | 23,492 | 2025-12-03 | 🟢 Active |
-| docs/del_SF2_DRIVER11_DISASSEMBLY.md | 14,995 | 2025-12-02 | 🟢 Active |
-| docs/FILE_INVENTORY.md | 16,764 | 2025-12-02 | 🟢 Active |
-| docs/SF2_REVERSE_ENGINEERING_ANALYSIS.md | 7,524 | 2025-12-02 | 🟢 Active |
-| docs/SF2_REVERSE_ENGINEERING_FINDINGS.md | 11,298 | 2025-12-02 | 🟢 Active |
-| docs/SF2_REVERSE_ENGINEERING_SUCCESS.md | 7,586 | 2025-12-02 | 🟢 Active |
+| CLAUDE.md | 24,873 | 2025-12-02 | 🟢 Active |
+| FILE_INVENTORY.md | 16,280 | 2025-12-02 | 🟢 Active |
+| README.md | 51,401 | 2025-12-02 | 🟢 Active |
+| docs/SF2_DRIVER11_DISASSEMBLY.md | 14,995 | 2025-12-02 | 🟢 Active |
+| docs/STINSENS_PLAYER_DISASSEMBLY.md | 17,186 | 2025-12-02 | 🟢 Active |
+| ANALYSIS_FINDINGS.md | 10,454 | 2025-11-30 | 🟢 Active |
+| COMPREHENSIVE_VALIDATION_SYSTEM.md | 10,627 | 2025-11-30 | 🟢 Active |
+| SIDSF2PLAYER_VALIDATION_REPORT.md | 9,919 | 2025-11-30 | 🟢 Active |
 | TODO.md | 8,249 | 2025-11-30 | 🟢 Active |
-| docs/ANALYSIS_FINDINGS.md | 10,454 | 2025-11-30 | 🟢 Active |
-| docs/COMPREHENSIVE_VALIDATION_SYSTEM.md | 10,627 | 2025-11-30 | 🟢 Active |
-| docs/SIDSF2PLAYER_VALIDATION_REPORT.md | 9,919 | 2025-11-30 | 🟢 Active |
-| docs/TODO_WAV_VALIDATION.md | 10,372 | 2025-11-30 | 🟢 Active |
+| TODO_WAV_VALIDATION.md | 10,372 | 2025-11-30 | 🟢 Active |
+| PACK_STATUS.md | 5,555 | 2025-11-27 | 🟢 Active |
+| TODO_VALIDATION.md | 9,222 | 2025-11-27 | 🟢 Active |
 | docs/ACCURACY_ROADMAP.md | 11,655 | 2025-11-27 | 🟢 Active |
 | docs/AUDIO_QUALITY_ANALYSIS.md | 15,312 | 2025-11-27 | 🟢 Active |
-| docs/PACK_STATUS.md | 5,555 | 2025-11-27 | 🟢 Active |
 | docs/PHASE1_COMPLETION_REPORT.md | 12,673 | 2025-11-27 | 🟢 Active |
 | docs/ROUNDTRIP_VALIDATION_FINDINGS.md | 6,325 | 2025-11-27 | 🟢 Active |
 | docs/SF2_TO_SID_LIMITATIONS.md | 7,185 | 2025-11-27 | 🟢 Active |
-| docs/TODO_VALIDATION.md | 9,222 | 2025-11-27 | 🟢 Active |
 | docs/VALIDATION_SYSTEM.md | 23,744 | 2025-11-27 | 🟢 Active |
 | docs/VALIDATION_TOOL.md | 8,506 | 2025-11-27 | 🟢 Active |
 | docs/VALIDATION_WORKFLOW.md | 9,182 | 2025-11-27 | 🟢 Active |
+| tools/sf2export/README.md | 5,077 | 2025-11-27 | 🟢 Active |
+| tools/sf2pack/README.md | 6,624 | 2025-11-27 | 🟢 Active |
 | docs/CONVERSION_STRATEGY.md | 15,397 | 2025-11-23 | 🟢 Active |
 | docs/DRIVER_REFERENCE.md | 9,725 | 2025-11-23 | 🟢 Active |
 | docs/format-specification.md | 10,858 | 2025-11-23 | 🟢 Active |
@@ -149,45 +129,11 @@ Files are marked as:
 
 | File | Size (bytes) | Last Modified | Status |
 |------|--------------|---------------|--------|
-| tools/= | 58 | 2025-12-06 | 🟢 Active |
-| tools/angular_test.asm | 108,218 | 2025-12-06 | 🟢 Active |
-| tools/mit.log | 283 | 2025-12-06 | 🟢 Active |
-| tools/mit.txt | 540,009 | 2025-12-06 | 🟢 Active |
-| tools/SIDwinder.cfg | 1,574 | 2025-12-06 | 🟢 Active |
-| tools/SIDwinder.exe | 1,889,280 | 2025-12-06 | 🟢 Active |
-| tools/SIDwinder.log | 217 | 2025-12-06 | 🟢 Active |
-| tools/SIDWINDER_FIXES_APPLIED.md | 1,560 | 2025-12-06 | 🟢 Active |
-| tools/SIDWINDER_QUICK_REFERENCE.md | 9,822 | 2025-12-06 | 🟢 Active |
-| tools/sidwinder_trace_fix.patch | 2,308 | 2025-12-06 | 🟢 Active |
-| tools/trace.bin | 240,008 | 2025-12-06 | 🟢 Active |
-| tools/mit | 58 | 2025-12-05 | 🟢 Active |
-| tools/mit.asm | 115,912 | 2025-12-05 | 🟢 Active |
-| tools/README.md | 352 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/Default/Default.asm | 1,479 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/INC/FreqTable.asm | 5,121 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/INC/MemoryPreservation.asm | 3,214 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/INC/NMIFix.asm | 231 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/INC/StableRasterSetup.asm | 2,937 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinBars/CharSet.map | 1,792 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinBars/RaistlinBars.asm | 29,705 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinBars/WaterSprites.map | 512 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinBarsWithLogo/CharSet.map | 1,792 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinBarsWithLogo/RaistlinBarsWithLogo.asm | 28,985 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinBarsWithLogo/WaterSprites.map | 512 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinMirrorBars/CharSet.map | 1,792 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinMirrorBars/RaistlinMirrorBars.asm | 25,008 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinMirrorBarsWithLogo/CharSet.map | 1,792 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinMirrorBarsWithLogo/RaistlinMirrorBarsWithLogo.asm | 25,373 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinMirrorBarsWithLogo/SoundbarSine.bin | 128 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinMirrorBarsWithLogo/WaterSprites.map | 512 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/SimpleBitmap/SimpleBitmap.asm | 9,736 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/SimpleRaster/SimpleRaster.asm | 6,595 | 2025-12-05 | 🟢 Active |
 | tools/prg2sid/Makefile | 1,783 | 2025-11-27 | 🟢 Active |
 | tools/prg2sid/p2s.c | 117,179 | 2025-11-27 | 🟢 Active |
 | tools/prg2sid/p2s.txt | 14,272 | 2025-11-27 | 🟢 Active |
 | tools/prg2sid/Release/p2s.exe | 84,992 | 2025-11-27 | 🟢 Active |
 | tools/sf2export/Makefile | 808 | 2025-11-27 | 🟢 Active |
-| tools/sf2export/README.md | 5,077 | 2025-11-27 | 🟢 Active |
 | tools/sf2export/sf2export.cpp | 9,897 | 2025-11-27 | 🟢 Active |
 | tools/sf2export/sf2export.exe | 2,468,196 | 2025-11-27 | 🟢 Active |
 | tools/sf2pack/c64memory.cpp | 2,884 | 2025-11-27 | 🟢 Active |
@@ -203,7 +149,6 @@ Files are marked as:
 | tools/sf2pack/psidfile.cpp | 3,473 | 2025-11-27 | 🟢 Active |
 | tools/sf2pack/psidfile.h | 2,305 | 2025-11-27 | 🟢 Active |
 | tools/sf2pack/psidfile.o | 8,506 | 2025-11-27 | 🟢 Active |
-| tools/sf2pack/README.md | 6,624 | 2025-11-27 | 🟢 Active |
 | tools/sf2pack/sf2pack.cpp | 7,912 | 2025-11-27 | 🟢 Active |
 | tools/sf2pack/sf2pack.exe | 2,480,208 | 2025-11-27 | 🟢 Active |
 | tools/sf2pack/sf2pack.o | 21,663 | 2025-11-27 | 🟢 Active |
@@ -217,7 +162,6 @@ Files are marked as:
 | tools/sidid.cfg | 76,622 | 2025-11-22 | 🟢 Active |
 | tools/sidid.nfo | 44,879 | 2025-11-22 | 🟢 Active |
 | tools/Signature_File_Format.txt | 6,956 | 2025-11-22 | 🟢 Active |
-| tools/Stinsens_Last_Night_of_89.sid | 6,201 | 2025-11-22 | 🟢 Active |
 | tools/tedid.cfg | 878 | 2025-11-22 | 🟢 Active |
 
 ## Templates (G5/)
@@ -299,14 +243,12 @@ Files are marked as:
 
 | File | Size (bytes) | Last Modified | Status |
 |------|--------------|---------------|--------|
-| SIDSF2player/SF2packed_new1_Stiensens_last_night_of_89.sid | 6,201 | 2025-12-04 | 🟢 Active |
-| SIDSF2player/SF2packed_Stinsens_Last_Night_of_89.sid | 6,201 | 2025-12-02 | 🟢 Active |
+| SIDSF2player/SF2packed Stinsens_Last_Night_of_89.sid | 6,201 | 2025-12-02 | 🟢 Active |
 | SIDSF2player/debug_packer.py | 639 | 2025-11-30 | 🟢 Active |
 | SIDSF2player/parse_sf2_blocks.py | 1,411 | 2025-11-30 | 🟢 Active |
 | SIDSF2player/polyphonic_cpp.sid | 8,706 | 2025-11-30 | 🟢 Active |
 | SIDSF2player/polyphonic_test.sid | 8,771 | 2025-11-30 | 🟢 Active |
 | SIDSF2player/test_broware_packed_only.sid | 6,965 | 2025-11-30 | 🟢 Active |
-| SIDSF2player/test_sidsf2player_batch.py | 3,971 | 2025-11-30 | 🟢 Active |
 | SIDSF2player/Aint_Somebody.sid | 5,162 | 2025-11-29 | 🟢 Active |
 | SIDSF2player/batch_convert_sidsf2player.py | 2,416 | 2025-11-29 | 🟢 Active |
 | SIDSF2player/Broware.sid | 6,732 | 2025-11-29 | 🟢 Active |
@@ -354,9 +296,9 @@ Files are marked as:
 
 To update this inventory, run:
 ```bash
-python scripts/update_inventory.py
+python update_inventory.py
 ```
 
 ---
 
-Last updated: 2025-12-07 12:55:48
+Last updated: 2025-12-02 15:42:39

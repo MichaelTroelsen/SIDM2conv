@@ -8,36 +8,48 @@ SID to SF2 Converter - Converts Commodore 64 SID music files to SID Factory II (
 
 ```bash
 # Convert single file
-python sid_to_sf2.py SID/input.sid output/SongName/New/output.sf2
+python scripts/sid_to_sf2.py SID/input.sid output/SongName/New/output.sf2
 
 # Batch convert all SID files (generates both NP20 and Driver 11 versions)
 # Creates structure: output/{SongName}/New/{files}
-python convert_all.py
+python scripts/convert_all.py
 
 # Batch convert with round-trip validation
-python convert_all.py --roundtrip
+python scripts/convert_all.py --roundtrip
 
 # Test single file round-trip (SID→SF2→SID)
 # Creates structure: output/{SongName}/Original/ and /New/
-python test_roundtrip.py SID/input.sid
+python scripts/test_roundtrip.py SID/input.sid
+
+# Complete pipeline with full validation (NEW in v1.0)
+# Processes all SID files with ALL 7 pipeline steps:
+# 1. SID→SF2 conversion  2. SF2→SID packing  3. Siddump generation
+# 4. WAV rendering  5. Hexdump generation  6. Info.txt reports  7. Validation
+python complete_pipeline_with_validation.py
 ```
 
 ## Project Structure
 
 ```
 SIDM2/
-├── sid_to_sf2.py          # Main converter
-├── sf2_to_sid.py          # SF2 to SID exporter
-├── disassemble_sid.py     # 6502/6510 disassembler for SID files
-├── extract_addresses.py   # Extract data structure addresses from SID files
-├── format_tables.py       # Generate hex table views of music data
-├── convert_all.py         # Batch conversion script (with SF2→SID export)
-├── test_converter.py      # Unit tests (69 tests)
-├── test_sf2_format.py     # Format validation tests
-├── test_roundtrip.py      # Round-trip validation (SID→SF2→SID)
-├── laxity_parser.py       # Dedicated Laxity player parser
-├── validate_psid.py       # PSID header validation utility
-├── PACK_STATUS.md         # SF2 packer status and test results
+├── complete_pipeline_with_validation.py  # Complete 10-step pipeline (main entry point)
+├── scripts/               # All conversion and utility scripts
+│   ├── sid_to_sf2.py          # Main converter
+│   ├── sf2_to_sid.py          # SF2 to SID exporter
+│   ├── disassemble_sid.py     # 6502/6510 disassembler for SID files
+│   ├── extract_addresses.py   # Extract data structure addresses from SID files
+│   ├── format_tables.py       # Generate hex table views of music data
+│   ├── convert_all.py         # Batch conversion script (with SF2→SID export)
+│   ├── test_converter.py      # Unit tests (69 tests)
+│   ├── test_sf2_format.py     # Format validation tests
+│   ├── test_roundtrip.py      # Round-trip validation (SID→SF2→SID)
+│   ├── test_complete_pipeline.py  # Pipeline validation tests
+│   ├── laxity_parser.py       # Dedicated Laxity player parser
+│   ├── validate_psid.py       # PSID header validation utility
+│   ├── validate_sid_accuracy.py # SID accuracy validation
+│   ├── generate_info.py       # Info.txt generation
+│   ├── generate_validation_report.py # Validation report generator
+│   └── ...                # Other utility scripts
 ├── sidm2/                 # Core package
 │   ├── sf2_packer.py      # SF2 to SID packer (v0.6.0)
 │   ├── cpu6502.py         # 6502 CPU emulator for pointer relocation
@@ -45,12 +57,12 @@ SIDM2/
 │   ├── sid_player.py      # SID file player and analyzer (v0.6.2)
 │   ├── sf2_player_parser.py # SF2-exported SID parser (v0.6.2)
 │   └── ...                # Other modules
-├── test_sf2_player_parser.py # SF2 player parser tests
 ├── SID/                   # Input SID files
 ├── output/                # Output folder with nested structure
 │   └── {SongName}/        # Per-song directory
 │       ├── Original/      # Original SID, WAV, dump (round-trip only)
 │       └── New/           # Converted SF2 + exported SID files
+├── docs/                  # Documentation files
 ├── tools/                 # External tools
 │   ├── siddump.exe        # SID register dump tool
 │   ├── player-id.exe      # Player identification
@@ -85,6 +97,11 @@ SIDM2/
 - Uses `sidm2/cpu6502.py` for 6502 instruction-level pointer relocation
 - Integrated into `convert_all.py` for automatic SID export
 - Average output size: ~3,800 bytes (comparable to manual exports)
+- **Known Limitation**: Pointer relocation bug affects SIDwinder disassembly
+  - Affects 17/18 files in pipeline testing (94%)
+  - Files play correctly in VICE, SID2WAV, siddump, and other emulators
+  - Only impacts SIDwinder's strict CPU emulation
+  - Under investigation - see `PIPELINE_EXECUTION_REPORT.md` for details
 - See `PACK_STATUS.md` for implementation details and test results
 
 ### Python SID Emulation & Analysis Modules - NEW in v0.6.2
@@ -125,6 +142,13 @@ SIDM2/
 - `tools/siddump.exe` - Dumps SID register writes (6502 emulator)
 - `tools/player-id.exe` - Identifies SID player type
 - `tools/SID2WAV.EXE` - Converts SID to WAV audio files
+- `tools/SIDwinder.exe` - SID file processor (v0.2.6)
+  - **Disassembly**: Converts SID to assembly (✅ Working - integrated in pipeline)
+  - **Trace**: SID register write tracer (⚠️ Has bugs - fix available, needs rebuild)
+  - **Player**: Links SID with visualization players
+  - **Relocate**: Moves SID to different memory addresses
+  - Source: `C:\Users\mit\Downloads\SIDwinder-0.2.6\SIDwinder-0.2.6\src`
+  - Patch file: `tools/sidwinder_trace_fix.patch` (fixes trace functionality)
 - `validate_psid.py` - PSID header validation utility
 - `tools/sf2pack/` - C++ SF2 to SID packer (reference implementation)
   - `sf2pack.exe` - Main packer executable
@@ -177,6 +201,106 @@ SIDM2/
   - Organized output: `roundtrip_output/{SongName}/Original/` and `roundtrip_output/{SongName}/New/`
 - `convert_all.py --roundtrip` - Batch conversion with integrated round-trip validation
 
+#### Complete Pipeline with Validation - NEW in v1.0 (Updated v1.2)
+
+`complete_pipeline_with_validation.py` - Comprehensive 10-step conversion pipeline
+
+**Purpose**: Batch process all SID files with complete validation and analysis
+
+**The 10 Pipeline Steps**:
+1. **SID → SF2 Conversion**: Smart detection uses reference/template/Laxity methods
+2. **SF2 → SID Packing**: Generates playable SID files from SF2
+3. **Siddump Generation**: Creates register dumps for original + exported SIDs
+4. **WAV Rendering**: Renders 30-second audio files for original + exported SIDs
+5. **Hexdump Generation**: Creates xxd-format hex dumps for binary analysis
+6. **SIDwinder Trace**: SID register trace for original + exported SIDs (NEW v1.2 - requires rebuilt SIDwinder)
+7. **Info.txt Reports**: Generates comprehensive conversion reports with metadata
+8. **Annotated Disassembly**: Python-based disassembly with annotations
+9. **SIDwinder Disassembly**: Professional disassembly using SIDwinder (NEW in v1.1)
+10. **Validation Check**: Verifies all required files were generated correctly
+
+**Output Structure**:
+```
+output/SIDSF2player_Complete_Pipeline/
+├── {filename}/
+│   ├── Original/
+│   │   ├── {filename}_original.dump    # Siddump register capture
+│   │   ├── {filename}_original.wav     # Audio rendering
+│   │   ├── {filename}_original.hex     # Binary hexdump
+│   │   └── {filename}_original.txt     # SIDwinder trace (NEW - needs rebuild)
+│   └── New/
+│       ├── {filename}.sf2                   # Converted SF2 file
+│       ├── {filename}_exported.sid          # Packed SID file
+│       ├── {filename}_exported.dump         # Siddump register capture
+│       ├── {filename}_exported.wav          # Audio rendering
+│       ├── {filename}_exported.hex          # Binary hexdump
+│       ├── {filename}_exported.txt          # SIDwinder trace (NEW - needs rebuild)
+│       ├── {filename}_exported_disassembly.md  # Annotated disassembly
+│       ├── {filename}_exported_sidwinder.asm   # SIDwinder disassembly (see limitation*)
+│       └── info.txt                         # Comprehensive report
+```
+
+*Note: SIDwinder disassembly currently only works for original SID files due to a pointer relocation bug in the packer.
+
+**Smart File Type Detection**:
+- **SF2-packed**: `load=$1000`, `init=$1000`, `play=$1003`
+- **Laxity format**: High load addresses (`>=$A000`) or Laxity init patterns
+- Automatically selects appropriate conversion method
+
+**Conversion Methods**:
+- **REFERENCE**: Uses original SF2 as template (100% table accuracy)
+- **TEMPLATE**: Uses generic SF2 template (variable accuracy)
+- **LAXITY**: Parses original Laxity NewPlayer format
+
+**Validation System**:
+- Checks for all 13 required files (9 in New/, 4 in Original/)
+- Reports missing files and completion status
+- Status: COMPLETE (all files), PARTIAL (some missing)
+- Note: Trace files require rebuilt SIDwinder.exe to generate
+
+**Unit Tests**: `test_complete_pipeline.py` (19 tests)
+- File requirements validation
+- Pipeline validation with real output
+- File type identification (SF2-packed vs Laxity)
+- Output file integrity (size, format)
+- Directory structure validation
+- Header parsing tests
+
+**Usage**:
+```bash
+python complete_pipeline_with_validation.py
+```
+
+**Test Suite**:
+```bash
+python scripts/test_complete_pipeline.py -v
+```
+
+**Latest Execution Results** (2025-12-06):
+- **Total Files Processed**: 18 SID files
+- **Complete Success**: 1/18 (5.6%) - All 13 files generated
+- **Partial Success**: 17/18 (94.4%) - 12/13 files generated (missing .asm)
+- **Step Success Rates**:
+  - Steps 1-5, 7-8: 100% success (conversion, dumps, WAV, hexdump, info, Python disassembly)
+  - Step 6 (SIDwinder trace): 100% file generation (empty until rebuild)
+  - Step 9 (SIDwinder disassembly): 5.6% success (packer bug affects 17 files)
+  - Step 10 (Validation): 94.4% partial completion
+
+**Known Limitation - SIDwinder Disassembly of Exported SIDs**:
+- **Impact**: 17/18 exported SID files fail disassembly with "Execution at $0000" error
+- **Root Cause**: Pointer relocation bug in `sidm2/sf2_packer.py` - likely indirect jumps or jump table data
+- **Scope**: Only affects SIDwinder's strict emulation; files play correctly in VICE, SID2WAV, and siddump
+- **Workaround**: Original SID files disassemble successfully with SIDwinder
+- **Status**: Known limitation - requires dedicated debugging session with CPU trace analysis
+- **Note**: This does not affect music playback or most validation operations
+
+**SIDwinder Trace Status**:
+- Files generated successfully (36/36)
+- Content empty until SIDwinder.exe rebuilt with patches
+- See `tools/SIDWINDER_QUICK_REFERENCE.md` for rebuild instructions
+
+See `PIPELINE_EXECUTION_REPORT.md` for comprehensive execution analysis.
+
 ### Siddump Tool Details
 
 Siddump emulates a 6502 CPU to run SID files and capture register writes frame-by-frame:
@@ -192,6 +316,59 @@ tools/siddump.exe SID/file.sid -z -t30
 **Key options:** `-a<n>` (subtune), `-t<n>` (seconds), `-z` (cycles)
 
 See `docs/SIDDUMP_ANALYSIS.md` for full source code analysis.
+
+### SIDwinder Tool Details
+
+SIDwinder (v0.2.6) is a comprehensive C64 SID file processor with multiple capabilities:
+
+```bash
+# Disassemble SID to assembly code (WORKING - integrated in pipeline)
+tools/SIDwinder.exe -disassemble SID/file.sid output.asm
+
+# Trace SID register writes (BROKEN - fix available)
+tools/SIDwinder.exe -trace=output.txt SID/file.sid
+
+# Create player PRG with visualizations
+tools/SIDwinder.exe -player=RaistlinBars music.sid music.prg
+
+# Relocate SID to different address
+tools/SIDwinder.exe -relocate=$2000 input.sid output.sid
+```
+
+**Disassembly Features**:
+- Generates KickAssembler-compatible source code
+- Includes metadata (title, author, copyright) as comments
+- Labels data blocks and code sections
+- Integrated into complete_pipeline_with_validation.py
+- Output: `.asm` files with full 6502 disassembly
+
+**Trace Bug & Fix**:
+The `-trace` command currently produces empty output due to two bugs:
+1. SID write callback not enabled for trace-only commands (line 124 in SIDEmulator.cpp)
+2. TraceLogger missing public `logWrite()` method
+
+**Status**: ✅ Source code patched | ⚠️ Needs rebuild | 🔧 Integrated in pipeline
+
+A complete fix is available in `tools/sidwinder_trace_fix.patch` and has been applied to the source files. To rebuild:
+
+```bash
+cd C:\Users\mit\Downloads\SIDwinder-0.2.6\SIDwinder-0.2.6
+
+# Source files already patched, just rebuild:
+build.bat
+
+# Copy new executable to tools
+copy build\Release\SIDwinder.exe C:\Users\mit\claude\c64server\SIDM2\tools\
+```
+
+**Pipeline Integration**:
+- ✅ Trace generation added to `complete_pipeline_with_validation.py` (Step 6)
+- Generates `.txt` files for both original and exported SIDs
+- 30-second traces (1500 frames @ 50Hz)
+- Will work automatically once SIDwinder.exe is rebuilt
+- Shows "[WARN - needs rebuilt SIDwinder]" until rebuild is complete
+
+See `tools/sidwinder_trace_fix.patch` for patch details.
 
 ## Supported Formats
 
@@ -217,8 +394,8 @@ See `docs/SID_FILE_ANALYSIS.md` for binary structure analysis using Angular.sid.
 ## Running Tests
 
 ```bash
-python test_converter.py
-python test_sf2_format.py
+python scripts/test_converter.py
+python scripts/test_sf2_format.py
 ```
 
 ## CI/CD Rules
@@ -227,8 +404,8 @@ python test_sf2_format.py
 
 ### 1. Always Run Tests
 Before committing any code changes, you MUST:
-- Run `python test_converter.py` and ensure all tests pass
-- Run `python test_sf2_format.py` for format validation tests
+- Run `python scripts/test_converter.py` and ensure all tests pass
+- Run `python scripts/test_sf2_format.py` for format validation tests
 - If tests fail, fix the issues before committing
 
 ### 2. Always Update Documentation
@@ -269,7 +446,7 @@ For a thorough conversion with all outputs and validation data:
 
 ```bash
 # 1. Convert SID to SF2
-python sid_to_sf2.py SID/Song.sid output/Song/New/Song_d11.sf2
+python scripts/sid_to_sf2.py SID/Song.sid output/Song/New/Song_d11.sf2
 
 # 2. Generate siddump from original SID
 tools/siddump.exe SID/Song.sid -t30 > output/Song/New/Song_original.dump
@@ -278,7 +455,7 @@ tools/siddump.exe SID/Song.sid -t30 > output/Song/New/Song_original.dump
 tools/SID2WAV.EXE -t30 -16 SID/Song.sid output/Song/New/Song_original.wav
 
 # 4. Export SF2 back to SID
-python sf2_to_sid.py output/Song/New/Song_d11.sf2 output/Song/New/Song_d11.sid
+python scripts/sf2_to_sid.py output/Song/New/Song_d11.sf2 output/Song/New/Song_d11.sid
 
 # 5. Generate siddump from exported SID
 tools/siddump.exe output/Song/New/Song_d11.sid -t30 > output/Song/New/Song_exported.dump
@@ -291,7 +468,7 @@ xxd SID/Song.sid > output/Song/New/Song_original.hex
 xxd output/Song/New/Song_d11.sid > output/Song/New/Song_converted.hex
 
 # 8. Extract data structure addresses
-python extract_addresses.py SID/Song.sid
+python scripts/extract_addresses.py SID/Song.sid
 ```
 
 **Pipeline Outputs (9 files):**
@@ -315,14 +492,14 @@ python extract_addresses.py SID/Song.sid
 
 ### Quick Single File Conversion
 1. Place .sid file in `SID/` directory
-2. Run `python sid_to_sf2.py SID/file.sid output/SongName/New/file.sf2`
+2. Run `python scripts/sid_to_sf2.py SID/file.sid output/SongName/New/file.sf2`
 3. Check `output/SongName/New/info.txt` for extraction details
 
 ### Extracting Data Structure Addresses
 Use `extract_addresses.py` to analyze SID file memory layout:
 
 ```bash
-python extract_addresses.py SID/file.sid
+python scripts/extract_addresses.py SID/file.sid
 ```
 
 This extracts start/end addresses for:
@@ -336,7 +513,7 @@ Addresses are automatically included in `info.txt` during conversion.
 ### Debugging Extraction Issues
 1. Run `tools/siddump.exe SID/file.sid > output/file.dump`
 2. Check dump for register patterns
-3. Run `python extract_addresses.py SID/file.sid` to verify table locations
+3. Run `python scripts/extract_addresses.py SID/file.sid` to verify table locations
 4. Review `output/SongName/New/info.txt` for warnings and addresses
 5. Compare hexdumps to identify specific byte differences
 

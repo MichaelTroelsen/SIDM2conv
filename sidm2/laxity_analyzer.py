@@ -237,9 +237,18 @@ class LaxityPlayerAnalyzer:
     def extract_wave_table(self) -> bytes:
         """Extract wave table from Laxity SID.
 
-        Returns bytes in SF2 format: (note_offset, waveform) pairs.
+        Returns bytes in SF2 format: (waveform, note_offset) pairs.
         """
         from .table_extraction import find_and_extract_wave_table
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # DEBUG: Show what's in self.data at offset $0914
+        offset = 0x0914
+        if offset + 16 <= len(self.data):
+            debug_data = ' '.join(f'${self.data[offset+i]:02X}' for i in range(16))
+            logger.info(f"DEBUG laxity_analyzer: self.data at offset ${offset:04X}: {debug_data}")
+            logger.info(f"DEBUG laxity_analyzer: len(self.data)={len(self.data)}, load_address=${self.load_address:04X}")
 
         addr, entries = find_and_extract_wave_table(self.data, self.load_address)
 
@@ -247,11 +256,11 @@ class LaxityPlayerAnalyzer:
             return b''
 
         # Convert list of (waveform, note_offset) tuples to bytes
-        # SF2 format is (note_offset, waveform) pairs
+        # SF2 format is (waveform, note_offset) pairs - FIXED byte order
         wave_data = bytearray()
         for waveform, note_offset in entries:
-            wave_data.append(note_offset)
-            wave_data.append(waveform)
+            wave_data.append(waveform)    # FIXED: waveform first (was note_offset)
+            wave_data.append(note_offset)  # FIXED: note_offset second (was waveform)
 
         return bytes(wave_data)
 

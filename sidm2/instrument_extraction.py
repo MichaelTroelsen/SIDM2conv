@@ -192,7 +192,8 @@ def extract_laxity_wave_table(data: bytes, load_addr: int, siddump_waveforms: Op
         siddump_waveforms: Optional list of waveforms from siddump
 
     Returns:
-        List of (note_offset, waveform) tuples matching SF2 format
+        List of (waveform, note_offset) tuples from editor display format
+        These will be converted to column-major format when written to SF2
 
     Raises:
         TableExtractionError: If data is invalid or wave table extraction fails

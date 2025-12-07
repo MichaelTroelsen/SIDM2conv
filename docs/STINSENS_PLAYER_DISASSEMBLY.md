@@ -221,6 +221,8 @@ $10D0  90 08         BCC    $10DA          ; If below $C0, handle as command
 
 ### Instrument Table Format
 
+Location: **$1A6B-$1AAB** (64 bytes, 8 instruments × 8 bytes)
+
 Each instrument is 8 bytes:
 
 ```asm
@@ -237,7 +239,33 @@ Each instrument is 8 bytes:
 ; Offset 7: Vibrato/Other settings
 ```
 
+#### Hex Dump (from Stinsen's Last Night of '89)
+
+```
+Address: $1A6B-$1AAB  Size: 64 bytes  Count: 8 instruments
+================================================================================
+00: 25 25 25 25 26 26 27 a0 0e 0f 0f 0f 0f 11 01 05
+10: 01 04 ac 02 03 a0 13 14 13 15 0e 11 01 05 01 04
+20: ac 02 1b a0 13 14 13 15 1c 1c 1c 1c ac 02 1f 20
+30: ff 00 a0 00 12 06 06 06 07 25 25 16 17 06 06 18
+```
+
+#### Decoded Instruments
+
+| Inst | AD   | SR   | Wave | Pulse | Filter | Arp  | Flags | Vib  |
+|------|------|------|------|-------|--------|------|-------|------|
+| 0    | $25  | $25  | $25  | $25   | $26    | $26  | $27   | $A0  |
+| 1    | $0E  | $0F  | $0F  | $0F   | $0F    | $11  | $01   | $05  |
+| 2    | $01  | $04  | $AC  | $02   | $03    | $A0  | $13   | $14  |
+| 3    | $13  | $15  | $0E  | $11   | $01    | $05  | $01   | $04  |
+| 4    | $AC  | $02  | $1B  | $A0   | $13    | $14  | $13   | $15  |
+| 5    | $1C  | $1C  | $1C  | $1C   | $AC    | $02  | $1F   | $20  |
+| 6    | $FF  | $00  | $A0  | $00   | $12    | $06  | $06   | $06  |
+| 7    | $07  | $25  | $25  | $16   | $17    | $06  | $06   | $18  |
+
 ### Wave Table Format
+
+Location: **$1914-$1954** (64 bytes total, split into 2×32 byte arrays)
 
 The wave table is split into two parallel arrays:
 
@@ -259,6 +287,115 @@ The wave table is split into two parallel arrays:
 ;     $08 = Noise
 ;   Bit 4: Gate bit
 ;   Bits 5-7: Additional control flags
+```
+
+#### Hex Dump (from Stinsen's Last Night of '89)
+
+```
+Address: $1914-$1954  Size: 64 bytes (32 notes + 32 waveforms)
+================================================================================
+00: 9a 00 07 c4 ac c0 bc 0c c0 00 0f c0 00 76 74 14
+10: b4 12 00 18 00 00 1b 00 1d c5 00 20 00 22 c0 00
+20: 25 00 27 00 29 c7 ae a5 c0 2e 00 30 88 00 81 00
+30: 00 0f 7f 88 7f 88 0f 0f 00 7f 88 00 0f 00 7f 86
+```
+
+**Structure breakdown:**
+- Bytes $00-$1F (0-31): Note offsets / Waveform control bytes
+- Bytes $20-$3F (32-63): Waveform selection bytes
+
+### Pulse Table Format
+
+Location: **$1A3B-$1A7B** (64 bytes, 16 entries × 4 bytes)
+
+The pulse table controls pulse width modulation (PWM) programs. Each entry is 4 bytes:
+
+```asm
+;===============================================================================
+; Pulse Table Entry Format (4 bytes per entry)
+;===============================================================================
+; Byte 0: Initial pulse width value (bits 0-7 of 12-bit value)
+; Byte 1: Delta (change per frame)
+; Byte 2: Duration (frames to run)
+; Byte 3: Next entry (chain to another pulse program)
+;
+; Special values:
+;   $7F in byte 0 = End of pulse program
+;   $00 delta = Static pulse width (no modulation)
+```
+
+#### Hex Dump (from Stinsen's Last Night of '89)
+
+```
+Address: $1A3B-$1A7B  Size: 64 bytes  Count: 16 entries
+================================================================================
+00: ba db a7 b9 cd 25 f3 b1 62 ad b9 c0 e1 31 af 30
+10: 1a 1a 1a 1b 1b 1c 1c 1d 1d 1e 1f 1f 1f 1f 20 20
+20: 20 20 20 20 20 21 21 21 21 22 22 22 23 23 24 25
+30: 25 25 25 25 26 26 27 a0 0e 0f 0f 0f 0f 11 01 05
+```
+
+### Filter Table Format
+
+Location: **$1A1E-$1A4E** (48 bytes, 16 entries × 3 bytes)
+
+The filter table contains filter cutoff and resonance programs:
+
+```asm
+;===============================================================================
+; Filter Table Entry Format (3 bytes per entry)
+;===============================================================================
+; Byte 0: Filter cutoff frequency (0-255)
+; Byte 1: Resonance setting (bits 4-7) + filter routing (bits 0-3)
+;         Bits 0-3: Voice enable (bit 0=V1, bit 1=V2, bit 2=V3)
+;         Bit 3: External input enable
+;         Bits 4-7: Resonance (0-15)
+; Byte 2: Filter type/mode
+;         Bit 0: Low-pass
+;         Bit 1: Band-pass
+;         Bit 2: High-pass
+```
+
+#### Hex Dump (from Stinsen's Last Night of '89)
+
+```
+Address: $1A1E-$1A4E  Size: 48 bytes  Count: 16 entries
+================================================================================
+00: 70 9b b3 1a 1a 1a d1 d5 f7 97 ec 57 ba 3b fc ae
+10: 30 47 5e 75 28 4c 6e 80 99 a9 cb 2e 99 ba db a7
+20: b9 cd 25 f3 b1 62 ad b9 c0 e1 31 af 30 1a 1a 1a
+```
+
+### Arpeggio Table Format
+
+Location: **$1A8B-$1ACB** (64 bytes, 16 entries × 4 bytes)
+
+The arpeggio table contains note offset patterns for creating chords:
+
+```asm
+;===============================================================================
+; Arpeggio Table Entry Format (4 bytes per entry)
+;===============================================================================
+; Bytes 0-3: Semitone offsets applied in sequence
+;   Each byte is a signed offset (-128 to +127 semitones)
+;   Applied cyclically to base note
+;
+; Common patterns:
+;   00 04 07 = Major chord (root, major 3rd, perfect 5th)
+;   00 03 07 = Minor chord (root, minor 3rd, perfect 5th)
+;   00 00 0C = Octave arpeggio
+;   $7F = End marker / Hold last offset
+```
+
+#### Hex Dump (from Stinsen's Last Night of '89)
+
+```
+Address: $1A8B-$1ACB  Size: 64 bytes  Count: 16 entries
+================================================================================
+00: ac 02 1b a0 13 14 13 15 1c 1c 1c 1c ac 02 1f 20
+10: ff 00 a0 00 12 06 06 06 07 25 25 16 17 06 06 18
+20: 25 25 06 06 06 06 1d 21 ff 00 a0 0a 0a 0b 0c a2
+30: 0a a0 10 08 09 19 ac 0d a0 0b 10 08 09 1a ac 0d
 ```
 
 ### SID Register Updates
@@ -305,6 +442,27 @@ The command table at $1ADB contains 64 commands × 3 bytes each:
 ; $0D xx = Set tempo/speed
 ; $0E xx = Set volume
 ```
+
+#### Hex Dump (from Stinsen's Last Night of '89)
+
+```
+Address: $1ADB-$1B9B  Size: 192 bytes  Count: 64 commands × 3 bytes
+================================================================================
+00: 39 39 c4 a9 39 c4 a0 83 39 80 39 00 83 39 c5 81
+10: 3a c5 a9 3a c4 a0 85 39 c4 a9 81 39 39 7f ca a0
+20: 81 30 30 80 30 00 ca a9 81 30 ca a0 83 30 cb 80
+30: 2b 00 c4 85 2d c4 a9 81 2d d0 2d 2d c4 a0 80 2d
+40: 00 81 2d c4 a9 2d ca a0 2e 2e 80 2e 00 ca a9 81
+50: 2e ca a0 83 2e cb 80 29 00 c4 85 2b c4 a9 81 2b
+60: d0 2b 2b c4 a0 80 2b 00 81 2b c4 a9 2b ca a0 2d
+70: 2d 80 2d 00 ca a9 81 2d ca a0 83 2d cb 80 28 00
+80: c6 85 29 80 29 00 c6 a9 81 29 c6 a0 80 29 00 81
+90: 29 c6 a9 29 29 ca a0 2b 2b 80 2b 00 ca a9 81 2b
+a0: ca a0 83 2b cb 80 26 00 cc 85 29 cc a9 81 29 d0
+b0: 29 29 cc a0 80 29 00 29 00 cc a9 81 29 7f cb a9
+```
+
+**Note:** Command bytes are organized in groups of 3 (type, param1, param2). Special markers like $7F indicate end-of-table, and $80-$FF ranges are used for extended command parameters.
 
 ## Player Execution Flow
 

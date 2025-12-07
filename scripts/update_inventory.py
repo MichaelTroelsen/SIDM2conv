@@ -22,7 +22,8 @@ def generate_inventory():
     """Generate complete file inventory"""
 
     inventory = {
-        'Root Scripts': [],
+        'Main Entry Point': [],
+        'Scripts (scripts/)': [],
         'Core Package (sidm2/)': [],
         'Tests': [],
         'Documentation': [],
@@ -36,7 +37,7 @@ def generate_inventory():
     # Scan project files
     for root, dirs, files in os.walk('.'):
         # Skip certain directories
-        dirs[:] = [d for d in dirs if d not in ['.git', '__pycache__', '.pytest_cache', 'node_modules', 'output', 'roundtrip_output', '.claude']]
+        dirs[:] = [d for d in dirs if d not in ['.git', '__pycache__', '.pytest_cache', 'node_modules', 'output', 'roundtrip_output', '.claude', 'temp']]
 
         for file in files:
             filepath = os.path.join(root, file)
@@ -55,9 +56,16 @@ def generate_inventory():
                 # Categorize
                 if 'sidm2/' in relpath and file.endswith('.py'):
                     inventory['Core Package (sidm2/)'].append((relpath, size, mtime, status))
-                elif file.startswith('test_') and file.endswith('.py'):
-                    inventory['Tests'].append((relpath, size, mtime, status))
-                elif '/docs/' in relpath or file.endswith('.md'):
+                elif 'scripts/' in relpath and file.endswith('.py'):
+                    # Separate test scripts
+                    if file.startswith('test_'):
+                        inventory['Tests'].append((relpath, size, mtime, status))
+                    else:
+                        inventory['Scripts (scripts/)'].append((relpath, size, mtime, status))
+                elif '/docs/' in relpath or (file.endswith('.md') and 'docs/' in relpath):
+                    inventory['Documentation'].append((relpath, size, mtime, status))
+                elif file.endswith('.md') and '/' not in relpath:
+                    # Root markdown files
                     inventory['Documentation'].append((relpath, size, mtime, status))
                 elif 'tools/' in relpath:
                     inventory['Tools'].append((relpath, size, mtime, status))
@@ -70,7 +78,8 @@ def generate_inventory():
                 elif file.endswith(('.json', '.yml', '.yaml', '.toml', '.ini', '.cfg', '.gitignore')):
                     inventory['Configuration'].append((relpath, size, mtime, status))
                 elif '/' not in relpath and file.endswith('.py'):
-                    inventory['Root Scripts'].append((relpath, size, mtime, status))
+                    # Main entry point script
+                    inventory['Main Entry Point'].append((relpath, size, mtime, status))
 
             except (OSError, PermissionError):
                 continue
@@ -145,7 +154,7 @@ def write_inventory_markdown(inventory):
         '',
         'To update this inventory, run:',
         '```bash',
-        'python update_inventory.py',
+        'python scripts/update_inventory.py',
         '```',
         '',
         '---',

@@ -361,7 +361,63 @@ def find_wave_table_from_player_code(data: bytes, load_addr: int) -> Tuple[Optio
     """
     Find wave table addresses by analyzing player code.
     Returns (note_addr, wave_addr) or (None, None) if not found.
+
+    Uses known Laxity NewPlayer v21 memory layout as fallback:
+    - Wave note offsets: load_addr + $09AD
+    - Wave waveforms: load_addr + $09E7
     """
+    # First try: Use known Laxity NewPlayer v21 addresses
+    # Try multiple known Laxity layouts and pick the best match
+    LAXITY_LAYOUTS = [
+        # (note_offset, wave_offset, name)
+        (0x0935, 0x0914, "Stinsens layout"),     # $1935/$1914 - Stinsens.sid
+        (0x09AD, 0x09E7, "Angular layout"),      # $19AD/$19E7 - Angular.sid
+    ]
+
+    logger.info(f"  Data length={len(data)}, load_addr=${load_addr:04X}")
+
+    valid_waves = {0x01, 0x10, 0x11, 0x12, 0x13, 0x15, 0x20, 0x21, 0x40, 0x41, 0x80, 0x81, 0x03, 0x04, 0xFF}
+
+    best_layout = None
+    best_wave_count = 0
+    best_note_addr = None
+    best_wave_addr = None
+
+    for note_offset, wave_offset, layout_name in LAXITY_LAYOUTS:
+        note_addr = load_addr + note_offset
+        wave_addr = load_addr + wave_offset
+        note_off = note_addr - load_addr
+        wave_off = wave_addr - load_addr
+
+        # Validate these addresses are within data bounds
+        if note_off >= 0 and wave_off >= 0 and wave_off < len(data) - 32 and note_off < len(data) - 32:
+            # Check if waveform data looks valid (has typical SID waveforms)
+            wave_count = 0
+            for i in range(min(32, len(data) - wave_off)):
+                if data[wave_off + i] in valid_waves:
+                    wave_count += 1
+
+            # DEBUG: Show actual data at this offset
+            if wave_count < 8:
+                actual_data = ' '.join(f'${data[wave_off+i]:02X}' for i in range(min(16, len(data)-wave_off)))
+                logger.info(f"Player code analysis: {layout_name} has {wave_count}/32 valid waveforms (offset=${wave_off:04X}, data: {actual_data})")
+            else:
+                logger.info(f"Player code analysis: {layout_name} has {wave_count}/32 valid waveforms")
+
+            # Track the best match
+            if wave_count > best_wave_count:
+                best_wave_count = wave_count
+                best_layout = layout_name
+                best_note_addr = note_addr
+                best_wave_addr = wave_addr
+
+    # If we found at least 8 valid waveforms in the best layout, use it
+    if best_wave_count >= 8:
+        logger.info(f"Player code analysis: Using known Laxity NP21 {best_layout}: note=${best_note_addr:04X}, wave=${best_wave_addr:04X}")
+        logger.info(f"  Validated {best_wave_count} waveforms at wave address")
+        return (best_note_addr, best_wave_addr)
+
+    # Second try: LDA reference search (original method)
     # Calculate search range relative to load address
     # For $1000 load: $1900-$1B00
     # For $A000 load: $B900-$BB00
@@ -477,30 +533,51 @@ def find_and_extract_wave_table(data: bytes, load_addr: int, verbose: bool = Fal
         wave_off = wave_addr - load_addr
 
         entries = []
-        for i in range(64):
+        invalid_count = 0
+        max_invalid = 5  # INCREASED: Allow up to 5 consecutive invalid entries before stopping
+        consecutive_zeros = 0  # NEW: track consecutive zero pairs
+
+        # INCREASED: Scan up to 256 entries to capture larger wave tables
+        for i in range(256):
             if note_off + i >= len(data) or wave_off + i >= len(data):
                 break
             note_val = data[note_off + i]
             wave_val = data[wave_off + i]
 
-            if note_val == 0x7F and wave_val == 0:
-                entries.append((note_val, wave_val))
-                break
+            # Check for definite end marker: THREE consecutive zero pairs (was two)
+            if note_val == 0 and wave_val == 0:
+                consecutive_zeros += 1
+                if consecutive_zeros >= 3:  # THREE zeros = definite end
+                    break
+                entries.append((wave_val, note_val))
+                continue
+            else:
+                consecutive_zeros = 0  # Reset counter when non-zero found
 
             # SF2 format: (first_col, second_col)
             # For $7F commands: first_col=$7F, second_col=target
             # For normal entries: first_col=waveform, second_col=note
             if note_val == 0x7F:
-                entries.append((note_val, wave_val))  # Jump command
+                entries.append((note_val, wave_val))  # Jump command - don't break, might be mid-table
+                invalid_count = 0  # Reset invalid counter
             else:
                 entries.append((wave_val, note_val))  # Swap: waveform first, note second
 
-            if i > 8 and wave_val not in WAVE_TABLE_WAVEFORMS:
-                break
+                # Check validity, but be permissive for first 32 entries
+                if i >= 32 and wave_val not in WAVE_TABLE_WAVEFORMS:
+                    invalid_count += 1
+                    if invalid_count >= max_invalid:
+                        # Remove the last invalid entries before breaking
+                        entries = entries[:-max_invalid]
+                        break
+                else:
+                    invalid_count = 0
 
         if entries and len(entries) >= 4:
             logger.info(f"Player code method: Found {len(entries)} wave entries at ${note_addr:04X}")
             logger.debug(f"First 10 entries: {entries[:10]}")
+            if len(entries) < 32:
+                logger.warning(f"Wave table only has {len(entries)} entries (expected 32+) - may be incomplete")
             if verbose:
                 return (note_addr, entries, {'note_addr': note_addr, 'wave_addr': wave_addr})
             return (note_addr, entries)

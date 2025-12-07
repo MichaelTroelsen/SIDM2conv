@@ -1453,7 +1453,7 @@ class TestErrorHandling(unittest.TestCase):
 
     def test_convert_sid_to_sf2_file_not_found(self):
         """Test that FileNotFoundError is raised for missing input file"""
-        from sid_to_sf2 import convert_sid_to_sf2
+        from scripts.sid_to_sf2 import convert_sid_to_sf2
 
         with self.assertRaises(FileNotFoundError) as cm:
             convert_sid_to_sf2('nonexistent.sid', 'output.sf2')
@@ -1462,7 +1462,7 @@ class TestErrorHandling(unittest.TestCase):
 
     def test_convert_sid_to_sf2_invalid_driver(self):
         """Test that ValueError is raised for invalid driver type"""
-        from sid_to_sf2 import convert_sid_to_sf2
+        from scripts.sid_to_sf2 import convert_sid_to_sf2
 
         # Use an existing SID file for this test
         sid_file = 'SID/Angular.sid'
@@ -1474,7 +1474,7 @@ class TestErrorHandling(unittest.TestCase):
 
     def test_laxity_parser_small_data(self):
         """Test that parser handles data < 256 bytes gracefully"""
-        from laxity_parser import LaxityParser
+        from scripts.laxity_parser import LaxityParser
 
         # Create minimal data
         small_data = bytes(100)
@@ -1489,7 +1489,7 @@ class TestErrorHandling(unittest.TestCase):
 
     def test_laxity_parser_empty_data(self):
         """Test that parser handles empty data"""
-        from laxity_parser import LaxityParser
+        from scripts.laxity_parser import LaxityParser
 
         parser = LaxityParser(bytes(0), 0x1000)
 
@@ -1498,7 +1498,7 @@ class TestErrorHandling(unittest.TestCase):
 
     def test_laxity_parser_extraction_failures_use_defaults(self):
         """Test that parser provides defaults when extraction fails"""
-        from laxity_parser import LaxityParser
+        from scripts.laxity_parser import LaxityParser
 
         # Create data large enough to pass initial validation but with no valid structures
         # Use random-ish data that won't contain valid orderlists/sequences
@@ -1532,14 +1532,14 @@ class TestErrorHandling(unittest.TestCase):
 
     def test_convert_sid_to_both_drivers_file_not_found(self):
         """Test that convert_sid_to_both_drivers raises FileNotFoundError"""
-        from sid_to_sf2 import convert_sid_to_both_drivers
+        from scripts.sid_to_sf2 import convert_sid_to_both_drivers
 
         with self.assertRaises(FileNotFoundError):
             convert_sid_to_both_drivers('nonexistent.sid')
 
     def test_get_byte_out_of_bounds(self):
         """Test that get_byte returns 0 for out-of-bounds access"""
-        from laxity_parser import LaxityParser
+        from scripts.laxity_parser import LaxityParser
 
         data = bytes([0x01, 0x02, 0x03])
         parser = LaxityParser(data, 0x1000)
@@ -1550,7 +1550,7 @@ class TestErrorHandling(unittest.TestCase):
 
     def test_get_word_boundary(self):
         """Test that get_word handles boundary conditions"""
-        from laxity_parser import LaxityParser
+        from scripts.laxity_parser import LaxityParser
 
         data = bytes([0xAB, 0xCD])
         parser = LaxityParser(data, 0x1000)
@@ -1563,7 +1563,7 @@ class TestErrorHandling(unittest.TestCase):
 
     def test_get_bytes_negative_count(self):
         """Test that get_bytes raises ValueError for negative count"""
-        from laxity_parser import LaxityParser
+        from scripts.laxity_parser import LaxityParser
 
         data = bytes([0x01, 0x02, 0x03])
         parser = LaxityParser(data, 0x1000)

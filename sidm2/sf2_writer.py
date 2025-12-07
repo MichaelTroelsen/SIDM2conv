@@ -67,6 +67,7 @@ class SF2Writer:
             except IOError as e:
                 raise SF2WriteError(f"Failed to read template: {e}")
 
+            logger.info(f"  Template size: {len(template_data)} bytes")
             self.output = bytearray(template_data)
             self._inject_music_data_into_template()
         else:
@@ -80,12 +81,14 @@ class SF2Writer:
                 except IOError as e:
                     raise SF2WriteError(f"Failed to read driver: {e}")
 
+                logger.info(f"  Driver size: {len(driver_data)} bytes")
                 self.output = bytearray(driver_data)
             else:
                 logger.warning("No template or driver found, creating minimal structure")
                 self._create_minimal_structure()
 
             self._inject_music_data()
+            self._update_table_definitions()
 
         self._inject_auxiliary_data()
 
@@ -108,11 +111,14 @@ class SF2Writer:
 
         driver_templates = {
             'driver11': [
+                # PREFER SF2 EXAMPLE FILES - they have correct table addresses!
+                os.path.join(base_dir, 'G5', 'examples', 'Driver 11 Test - Arpeggio.sf2'),
+                r'C:\Users\mit\Downloads\sidfactory2-master\sidfactory2-master\SIDFactoryII\music\Driver 11 Test - Arpeggio.sf2',
+                'template.sf2',
+                # .prg driver files have WRONG table addresses - use as fallback only
                 os.path.join(base_dir, 'G5', 'drivers', 'sf2driver11_03.prg'),
                 os.path.join(base_dir, 'G5', 'drivers', 'sf2driver11_05.prg'),
                 os.path.join(base_dir, 'G5', 'drivers', 'sf2driver11_00.prg'),
-                'template.sf2',
-                r'C:\Users\mit\Downloads\sidfactory2-master\sidfactory2-master\SIDFactoryII\music\Driver 11 Test - Arpeggio.sf2',
             ],
             'np20': [
                 os.path.join(base_dir, 'G5', 'drivers', 'sf2driver_np20_00.prg'),
@@ -265,17 +271,19 @@ class SF2Writer:
 
                 if table_type == 0x80:
                     self.driver_info.table_addresses['Instruments'] = table_info
-                    logger.debug(f"    Instruments table at ${addr:04X} ({columns}×{rows}) [ID={table_id}]")
+                    logger.info(f"    Instruments table at ${addr:04X} ({columns}×{rows}) [ID={table_id}]")
                 elif table_type == 0x81:
                     self.driver_info.table_addresses['Commands'] = table_info
-                    logger.debug(f"    Commands table at ${addr:04X} ({columns}×{rows}) [ID={table_id}]")
+                    logger.info(f"    Commands table at ${addr:04X} ({columns}×{rows}) [ID={table_id}]")
                 else:
                     if name:
                         self.driver_info.table_addresses[name] = table_info
                         first_char = name[0] if name else ''
                         if first_char in ['W', 'P', 'F', 'A', 'T']:
                             key_map = {'W': 'Wave', 'P': 'Pulse', 'F': 'Filter', 'A': 'Arp', 'T': 'Tempo'}
-                            self.driver_info.table_addresses[key_map.get(first_char, first_char)] = table_info
+                            mapped_name = key_map.get(first_char, first_char)
+                            self.driver_info.table_addresses[mapped_name] = table_info
+                            logger.info(f"    {mapped_name} table (\"{name}\") at ${addr:04X} ({columns}×{rows}) [type=${table_type:02X}, ID={table_id}]")
 
                 idx = pos + 12
             else:
@@ -385,6 +393,12 @@ class SF2Writer:
             if seq_offset + estimated_size > len(self.output):
                 self.output.extend(bytearray(seq_offset + estimated_size - len(self.output)))
 
+            # SF2 format requires DURATION byte (0x80-0x9F) before each note
+            # Format: [instrument?] [command?] [DURATION] [note]
+            # For now, use default duration of 0x80 (duration=0, no tie)
+            # TODO: Add proper duration tracking to SequenceEvent structure
+            DEFAULT_DURATION = 0x80
+
             for event in seq:
                 # Skip duration bytes (0x80-0x9F) - shouldn't appear but be safe
                 if 0x80 <= event.note <= 0x9F:
@@ -401,7 +415,12 @@ class SF2Writer:
                     self.output[seq_offset] = event.command
                     seq_offset += 1
 
-                # Always write note (including gate markers 0x7E, 0x80)
+                # *** CRITICAL FIX: Write duration byte (REQUIRED by SF2 format) ***
+                # Duration bytes are 0x80-0x9F where lower 4 bits = ticks, bit 4 = tie flag
+                self.output[seq_offset] = DEFAULT_DURATION
+                seq_offset += 1
+
+                # Write note (including gate markers 0x7E, 0x80)
                 self.output[seq_offset] = event.note
                 seq_offset += 1
                 rows_written += 1
@@ -685,11 +704,16 @@ class SF2Writer:
         columns = wave_table['columns']
         rows = wave_table['rows']
 
+        logger.info(f"    Wave table address: ${wave_addr:04X}, columns={columns}, rows={rows}")
+        logger.info(f"    Extracting from c64_data (len={len(self.data.c64_data)}), load_address=${self.data.load_address:04X}")
+        logger.info(f"    First 16 bytes of c64_data: {self.data.c64_data[:16].hex(' ').upper()}")
+
         extracted_waves = extract_laxity_wave_table(self.data.c64_data, self.data.load_address)
 
         if extracted_waves:
             wave_data = extracted_waves
             logger.info(f"    Extracted {len(extracted_waves)} wave entries from SID")
+            logger.info(f"    First 5 entries: {extracted_waves[:5]}")
         else:
             # Default: (col0, col1) = (waveform, note) or (0x7F, target)
             wave_data = [
@@ -712,20 +736,40 @@ class SF2Writer:
 
         base_offset = self._addr_to_offset(wave_addr)
 
-        # SF2 wave table format is column-major:
-        # Column 0: Waveform ($11=tri, $21=saw, $41=pulse, $81=noise) or $7F for jump
-        # Column 1: Note offset or jump target
-        # Extraction returns (col0, col1) tuples
-        for i, (col0, col1) in enumerate(wave_data):
+        logger.info(f"    Base offset: ${base_offset:04X} ({base_offset}), load_addr=${self.load_address:04X}")
+
+        # SF2 wave table format is column-major storage:
+        # Bytes 0-31 (Column 0): Note offsets
+        # Bytes 32-63 (Column 1): Waveforms ($11=tri, $21=saw, $41=pulse, $81=noise) or $7F for jump
+        # Extraction returns (waveform, note) tuples - we need to swap order when writing
+
+        # Write Column 0: Note offsets (bytes 0-31)
+        logger.info(f"    Writing notes: rows={rows}, base_offset=${base_offset:04X}, file_size={len(self.output)}, wave_data_len={len(wave_data)}")
+        notes_written = 0
+        for i, (waveform, note) in enumerate(wave_data):
             if i < rows and base_offset + i < len(self.output):
-                self.output[base_offset + i] = col0
+                old_val = self.output[base_offset + i]  # Capture old value
+                self.output[base_offset + i] = note
+                notes_written += 1
+                if i < 3:  # Log first 3 for debugging
+                    logger.info(f"      [{i}] Wrote note ${note:02X} at offset ${base_offset+i:04X} (was ${old_val:02X})")
+            elif i < rows:
+                logger.warning(f"    Skipping wave entry {i}: offset ${base_offset+i:04X} out of bounds (file size {len(self.output)})")
+        logger.info(f"    Wrote {notes_written} note offsets")
 
-        col1_offset = base_offset + rows
-        for i, (col0, col1) in enumerate(wave_data):
-            if i < rows and col1_offset + i < len(self.output):
-                self.output[col1_offset + i] = col1
+        # Write Column 1: Waveforms (bytes 32-63)
+        waveform_offset = base_offset + rows
+        logger.debug(f"    Writing waveforms: waveform_offset=${waveform_offset:04X}")
+        waveforms_written = 0
+        for i, (waveform, note) in enumerate(wave_data):
+            if i < rows and waveform_offset + i < len(self.output):
+                self.output[waveform_offset + i] = waveform
+                waveforms_written += 1
+                if i < 5:  # Log first 5 for debugging
+                    logger.debug(f"      [{i}] Writing wave ${waveform:02X} at offset ${waveform_offset+i:04X}")
+        logger.debug(f"    Wrote {waveforms_written} waveforms")
 
-        logger.info(f"    Written {len(wave_data)} wave table entries")
+        logger.info(f"    Written {len(wave_data)} wave table entries (column-major: notes first, then waveforms)")
 
     def _inject_hr_table(self) -> None:
         """Inject HR (Hard Restart) table data"""
@@ -1044,6 +1088,72 @@ class SF2Writer:
                         commands_written += 1
 
         logger.info(f"    Written {commands_written} command entries")
+
+    def _update_table_definitions(self) -> None:
+        """Update table definition headers with actual data sizes"""
+        logger.info("  Updating table definitions...")
+
+        # Table definitions start at offset 0x31 from load address
+        table_defs_offset = 0x31
+        idx = table_defs_offset
+
+        while idx < len(self.output):
+            if idx >= len(self.output):
+                break
+
+            table_type = self.output[idx]
+            if table_type == 0xFF:  # End marker
+                break
+
+            if idx + 3 > len(self.output):
+                break
+
+            table_id = self.output[idx + 1]
+
+            # Find null-terminated name
+            name_start = idx + 3
+            name_end = name_start
+            while name_end < len(self.output) and self.output[name_end] != 0:
+                name_end += 1
+
+            if name_end >= len(self.output):
+                break
+
+            name = bytes(self.output[name_start:name_end]).decode('latin-1', errors='replace')
+
+            # Table header is after null terminator
+            pos = name_end + 1
+            if pos + 12 > len(self.output):
+                break
+
+            # Update Instruments table (type 0x80)
+            if table_type == 0x80:
+                # Get actual dimensions from driver_info
+                if 'Instruments' in self.driver_info.table_addresses:
+                    table_info = self.driver_info.table_addresses['Instruments']
+                    actual_cols = table_info['columns']
+                    actual_rows = table_info['rows']
+
+                    # Update columns at pos+7, pos+8 (little-endian word)
+                    struct.pack_into('<H', self.output, pos + 7, actual_cols)
+                    # Update rows at pos+9, pos+10 (little-endian word)
+                    struct.pack_into('<H', self.output, pos + 9, actual_rows)
+
+                    logger.info(f"    Updated Instruments table definition: {actual_cols}x{actual_rows}")
+
+            # Update Commands table (type 0x81)
+            elif table_type == 0x81:
+                if 'Commands' in self.driver_info.table_addresses:
+                    table_info = self.driver_info.table_addresses['Commands']
+                    actual_cols = table_info['columns']
+                    actual_rows = table_info['rows']
+
+                    struct.pack_into('<H', self.output, pos + 7, actual_cols)
+                    struct.pack_into('<H', self.output, pos + 9, actual_rows)
+
+                    logger.info(f"    Updated Commands table definition: {actual_cols}x{actual_rows}")
+
+            idx = pos + 12
 
     def _inject_auxiliary_data(self) -> None:
         """Inject auxiliary data with instrument and command names"""
