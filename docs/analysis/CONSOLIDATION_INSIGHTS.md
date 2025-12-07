@@ -173,6 +173,13 @@ Actually is: "Interpret semantics and transpile formats"
 
 **Priority**: HIGH - Core conversion quality issue
 
+**UPDATE 2025-12-07**: Wave table dual format discovery confirms byte-swap semantics:
+- SF2-packed files contain TWO wave tables stored sequentially
+- Table 1 ($0958): (waveform, note) pairs - SF2 format
+- Table 2 ($098A): Note offsets only - optimization for driver
+- Confirmed in SF2packed_Stinsens_Last_Night_of_89.sid analysis
+- See [WAVE_TABLE_DUAL_FORMAT.md](../solutions/WAVE_TABLE_DUAL_FORMAT.md) for details
+
 ---
 
 ### 6. Validation Tools Exist But Aren't Systematized
