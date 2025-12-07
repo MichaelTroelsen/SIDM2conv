@@ -739,37 +739,37 @@ class SF2Writer:
         logger.info(f"    Base offset: ${base_offset:04X} ({base_offset}), load_addr=${self.load_address:04X}")
 
         # SF2 wave table format is column-major storage:
-        # Bytes 0-31 (Column 0): Note offsets
-        # Bytes 32-63 (Column 1): Waveforms ($11=tri, $21=saw, $41=pulse, $81=noise) or $7F for jump
-        # Extraction returns (waveform, note) tuples - we need to swap order when writing
+        # Bytes 0-255 (Column 0): Waveforms ($11=tri, $21=saw, $41=pulse, $81=noise) or $7F for jump
+        # Bytes 256-511 (Column 1): Note offsets
+        # Extraction returns (waveform, note) tuples - write waveforms first, then notes
 
-        # Write Column 0: Note offsets (bytes 0-31)
-        logger.info(f"    Writing notes: rows={rows}, base_offset=${base_offset:04X}, file_size={len(self.output)}, wave_data_len={len(wave_data)}")
-        notes_written = 0
+        # Write Column 0: Waveforms (bytes 0-255)
+        logger.info(f"    Writing waveforms: rows={rows}, base_offset=${base_offset:04X}, file_size={len(self.output)}, wave_data_len={len(wave_data)}")
+        waveforms_written = 0
         for i, (waveform, note) in enumerate(wave_data):
             if i < rows and base_offset + i < len(self.output):
                 old_val = self.output[base_offset + i]  # Capture old value
-                self.output[base_offset + i] = note
-                notes_written += 1
+                self.output[base_offset + i] = waveform
+                waveforms_written += 1
                 if i < 3:  # Log first 3 for debugging
-                    logger.info(f"      [{i}] Wrote note ${note:02X} at offset ${base_offset+i:04X} (was ${old_val:02X})")
+                    logger.info(f"      [{i}] Wrote waveform ${waveform:02X} at offset ${base_offset+i:04X} (was ${old_val:02X})")
             elif i < rows:
                 logger.warning(f"    Skipping wave entry {i}: offset ${base_offset+i:04X} out of bounds (file size {len(self.output)})")
-        logger.info(f"    Wrote {notes_written} note offsets")
+        logger.info(f"    Wrote {waveforms_written} waveforms")
 
-        # Write Column 1: Waveforms (bytes 32-63)
-        waveform_offset = base_offset + rows
-        logger.debug(f"    Writing waveforms: waveform_offset=${waveform_offset:04X}")
-        waveforms_written = 0
+        # Write Column 1: Note offsets (bytes 256-511)
+        note_offset = base_offset + rows
+        logger.debug(f"    Writing notes: note_offset=${note_offset:04X}")
+        notes_written = 0
         for i, (waveform, note) in enumerate(wave_data):
-            if i < rows and waveform_offset + i < len(self.output):
-                self.output[waveform_offset + i] = waveform
-                waveforms_written += 1
+            if i < rows and note_offset + i < len(self.output):
+                self.output[note_offset + i] = note
+                notes_written += 1
                 if i < 5:  # Log first 5 for debugging
-                    logger.debug(f"      [{i}] Writing wave ${waveform:02X} at offset ${waveform_offset+i:04X}")
-        logger.debug(f"    Wrote {waveforms_written} waveforms")
+                    logger.debug(f"      [{i}] Writing note ${note:02X} at offset ${note_offset+i:04X}")
+        logger.debug(f"    Wrote {notes_written} note offsets")
 
-        logger.info(f"    Written {len(wave_data)} wave table entries (column-major: notes first, then waveforms)")
+        logger.info(f"    Written {len(wave_data)} wave table entries (column-major: waveforms first, then notes)")
 
     def _inject_hr_table(self) -> None:
         """Inject HR (Hard Restart) table data"""
