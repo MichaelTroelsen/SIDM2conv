@@ -1,0 +1,4 @@
+===== SIDwinder Log Started at 2025-12-06 14:11:02 =====
+[2025-12-06 14:11:02] [DEBUG] Using embedded load address: $1000
+[2025-12-06 14:11:03] [ERROR] Unsupported output format: 
+[2025-12-06 14:11:03] [ERROR] Error occurred during SID emulation on Stinsens_Last_Night_of_89.sid

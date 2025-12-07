@@ -10,7 +10,7 @@ Note: This is a complex reverse-engineering task. Results may require manual
 refinement in SID Factory II.
 """
 
-__version__ = "0.7.0"
+__version__ = "0.7.1"
 __build_date__ = "2025-12-07"
 
 import logging

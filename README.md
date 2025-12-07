@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 
-**Version 0.7.0** | Build Date: 2025-12-07 | Scripts Reorganization & Inventory System
+**Version 0.7.1** | Build Date: 2025-12-07 | Documentation Consolidation (46→25 files)
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files.
 

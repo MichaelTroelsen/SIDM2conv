@@ -63,7 +63,7 @@ from scripts.laxity_parser import LaxityParser
 from scripts.validate_psid import PSIDValidator
 
 # Version info
-__version__ = "0.7.0"
+__version__ = "0.7.1"
 __build_date__ = "2025-12-07"
 
 # Setup logging
