@@ -370,7 +370,7 @@ def find_wave_table_from_player_code(data: bytes, load_addr: int) -> Tuple[Optio
     # Try multiple known Laxity layouts and pick the best match
     LAXITY_LAYOUTS = [
         # (note_offset, wave_offset, name)
-        (0x0935, 0x0914, "Stinsens layout"),     # $1935/$1914 - Stinsens.sid
+        (0x090C, 0x08DA, "Stinsens layout"),     # $190C/$18DA - Stinsens.sid (skip 2-byte header at $18D8)
         (0x09AD, 0x09E7, "Angular layout"),      # $19AD/$19E7 - Angular.sid
     ]
 
