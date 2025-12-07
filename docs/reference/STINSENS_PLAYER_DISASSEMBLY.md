@@ -265,106 +265,319 @@ Address: $1A6B-$1AAB  Size: 64 bytes  Count: 8 instruments
 
 ### Wave Table Format
 
-Location: **$1914-$1954** (64 bytes total, split into 2×32 byte arrays)
+**Location**: Two separate sequential tables (not interleaved)
 
-The wave table is split into two parallel arrays:
+**Table 1 - Waveforms** at **$18DA** (DataBlock_6 + $239):
+- Waveform bytes (triangle, pulse, sawtooth, noise)
+- End marker: $7F
+
+**Table 2 - Note Offsets** at **$190C** (DataBlock_6 + $26B):
+- Note offset bytes (0-95 or transpose markers)
+- Special values: $00 = base note, $80-$FF = transpose
 
 ```asm
 ;===============================================================================
-; Wave Table Structure
+; Wave Table Structure (2 Tables - Laxity NewPlayer v21)
 ;===============================================================================
-; $1914-$1933: Note offsets (32 entries)
-;   Each byte is a note offset (0-95) or special marker:
-;   $7F = Loop marker
-;   $7E = Gate on (sustain)
-;   $80 = Note offset special (recalculate frequency)
+; Table 1: Waveforms at $18DA (DataBlock_6 + $239)
+;   Each byte is a waveform value:
+;     Bits 0-3: Waveform type
+;       $01 = Triangle
+;       $02 = Sawtooth
+;       $04 = Pulse
+;       $08 = Noise
+;     Bit 4: Gate bit
+;     $7F = End marker
 ;
-; $1934-$1953: Waveforms (32 entries)
-;   Bits 0-3: Waveform type
-;     $01 = Triangle
-;     $02 = Sawtooth
-;     $04 = Pulse
-;     $08 = Noise
-;   Bit 4: Gate bit
-;   Bits 5-7: Additional control flags
+; Table 2: Note Offsets at $190C (DataBlock_6 + $26B)
+;   Each byte is a note offset or transpose marker:
+;     $00 = Base note (no offset)
+;     $01-$5F = Note offset (0-95)
+;     $80-$FF = Transpose markers
+;     $C0 = Common transpose value
+```
+
+#### Read Instructions (from disassembly analysis):
+
+```asm
+; Address $1543-$156F - Wave table read routine
+ldy wave_index                  ; Y = current wave entry index
+
+; Read waveform from Table 1
+lda DataBlock_6 + $239,Y        ; $1543: Read waveform from $18DA
+sta DataBlock_6 + $14B,X        ; Store for voice X
+
+; Read note offset from Table 2
+lda DataBlock_6 + $26B,Y        ; $154A: Read note offset from $190C
+beq use_previous                ; If $00, skip frequency update
+cmp #$81                        ; Check for transpose marker
+bcs handle_transpose
+clc
+adc DataBlock_6 + $118,X        ; Add transpose value
+
+handle_transpose:
+and #$7F                        ; Mask to 7 bits
+tay                             ; Use as frequency table index
+lda DataBlock_6 + $60,Y         ; Read freq low from $1701
+sta DataBlock_6 + $13F,X
+lda DataBlock_6,Y               ; Read freq high from $16A1
+sta DataBlock_6 + $142,X
 ```
 
 #### Hex Dump (from Stinsen's Last Night of '89)
 
+**Table 1 - Waveforms at $18DA**:
 ```
-Address: $1914-$1954  Size: 64 bytes (32 notes + 32 waveforms)
-================================================================================
-00: 9a 00 07 c4 ac c0 bc 0c c0 00 0f c0 00 76 74 14
-10: b4 12 00 18 00 00 1b 00 1d c5 00 20 00 22 c0 00
-20: 25 00 27 00 29 c7 ae a5 c0 2e 00 30 88 00 81 00
-30: 00 0f 7f 88 7f 88 0f 0f 00 7f 88 00 0f 00 7f 86
+21 21 41 7F 81 41 41 41 7F 81 41 80 80 7F 81 01
+7F 81 15 11 11 7F 81 7F 21 7F 21 11 7F 51 7F 15
+40 7F 53 7F 81 01 7F 41 7F 20 7F 81 41 40 80 7F
+13 7F
 ```
 
-**Structure breakdown:**
-- Bytes $00-$1F (0-31): Note offsets / Waveform control bytes
-- Bytes $20-$3F (32-63): Waveform selection bytes
+**Table 2 - Note Offsets at $190C**:
+```
+80 80 00 02 C0 A1 9A 00 07 C4 AC C0 BC 0C C0 00
+0F C0 00 76 74 14 B4 12 00 18 00 00 1B 00 1D C5
+00 20 00 22 C0 00 25 00 27 00 29 C7 AE A5 C0 2E
+00 30
+```
+
+**SF2 Format** (for comparison): Interleaves these into (waveform, note) pairs at $0958
 
 ### Pulse Table Format
 
-Location: **$1A3B-$1A7B** (64 bytes, 16 entries × 4 bytes)
+**Location**: Three separate sequential tables (not interleaved)
 
-The pulse table controls pulse width modulation (PWM) programs. Each entry is 4 bytes:
+**Table 1 - Pulse High/Delta High** at **$193E** (DataBlock_6 + $29D):
+- Pulse width high byte or delta high
+- Negative (bit 7=1) = absolute set
+- Positive (bit 7=0) = delta to add
+
+**Table 2 - Pulse Low/Delta Low** at **$1957** (DataBlock_6 + $2B6):
+- Pulse width low byte or delta low
+- Always paired with Table 1 value
+
+**Table 3 - Duration** at **$1970** (DataBlock_6 + $2CF):
+- Number of frames to hold this pulse value
+- Also contains loop markers
 
 ```asm
 ;===============================================================================
-; Pulse Table Entry Format (4 bytes per entry)
+; Pulse Table Structure (3 Tables - Laxity NewPlayer v21)
 ;===============================================================================
-; Byte 0: Initial pulse width value (bits 0-7 of 12-bit value)
-; Byte 1: Delta (change per frame)
-; Byte 2: Duration (frames to run)
-; Byte 3: Next entry (chain to another pulse program)
+; Table 1: Pulse High at $193E (DataBlock_6 + $29D)
+;   Pulse width high byte or delta:
+;     Bit 7 = 1 (negative): Absolute pulse set mode
+;     Bit 7 = 0 (positive): Delta mode (add to current)
+;     $7F = End marker
 ;
-; Special values:
-;   $7F in byte 0 = End of pulse program
-;   $00 delta = Static pulse width (no modulation)
+; Table 2: Pulse Low at $1957 (DataBlock_6 + $2B6)
+;   Pulse width low byte or delta low:
+;     Always used in conjunction with Table 1
+;     8-bit value combined with Table 1 for 16-bit pulse
+;
+; Table 3: Duration at $1970 (DataBlock_6 + $2CF)
+;   Duration in frames:
+;     How many frames to hold this pulse value
+;     Also used for loop point markers
+```
+
+#### Read Instructions (from disassembly analysis):
+
+```asm
+; Address $14F2-$152F - Pulse table read routine
+ldy DataBlock_6 + $121,X        ; Y = pulse entry index
+
+; Read pulse high byte from Table 1
+lda DataBlock_6 + $29D,Y        ; $14F5: Read pulse high from $193E
+cmp #$7F                        ; Check end marker
+bne process_pulse
+
+; Check loop point from Table 3
+lda DataBlock_6 + $2CF,Y        ; $14FC: Read duration/loop from $1970
+cmp DataBlock_6 + $121,X
+beq done
+sta DataBlock_6 + $121,X
+tay
+
+process_pulse:
+lda DataBlock_6 + $29D,Y        ; $1508: Read pulse value again
+bpl delta_mode                  ; Branch if positive (delta)
+
+; Absolute set mode
+sta DataBlock_6 + $148,X        ; Store pulse high
+
+; Read pulse low byte from Table 2
+lda DataBlock_6 + $2B6,Y        ; $1510: Read pulse low from $1957
+sta DataBlock_6 + $145,X        ; Store pulse low
+jmp update_duration
+
+delta_mode:
+; Add delta to current pulse
+sta ZP_0                        ; Save high delta
+lda DataBlock_6 + $145,X        ; Get current pulse low
+clc
+adc DataBlock_6 + $2B6,Y        ; $151F: Add delta from Table 2
+sta DataBlock_6 + $145,X
+lda DataBlock_6 + $148,X
+adc ZP_0                        ; Add high delta
+sta DataBlock_6 + $148,X
+
+update_duration:
+inc DataBlock_6 + $124,X        ; Increment frame counter
+lda DataBlock_6 + $124,X
+cmp DataBlock_6 + $2CF,Y        ; $1533: Compare with duration
+bcc done
+inc DataBlock_6 + $121,X        ; Next pulse entry
+lda #$00
+sta DataBlock_6 + $124,X        ; Reset counter
 ```
 
 #### Hex Dump (from Stinsen's Last Night of '89)
 
+**Table 1 - Pulse High at $193E**:
 ```
-Address: $1A3B-$1A7B  Size: 64 bytes  Count: 16 entries
-================================================================================
-00: ba db a7 b9 cd 25 f3 b1 62 ad b9 c0 e1 31 af 30
-10: 1a 1a 1a 1b 1b 1c 1c 1d 1d 1e 1f 1f 1f 1f 20 20
-20: 20 20 20 20 20 21 21 21 21 22 22 22 23 23 24 25
-30: 25 25 25 25 26 26 27 a0 0e 0f 0f 0f 0f 11 01 05
+88 00 81 00 00 0F 7F 88 7F 88 0F 0F 00 7F 88 00 0F 00 7F
 ```
+
+**Table 2 - Pulse Low at $1957**:
+```
+(Need to extract from original file - paired with Table 1)
+```
+
+**Table 3 - Duration at $1970**:
+```
+00 00 70 40 10 F0 00 00 00 00 A0 F0 10 00 00 80 F0 10 00
+```
+
+**SF2 Format** (for comparison): Interleaves Table 1+2 into pairs at $09BC, keeps Table 3 at $09D5
 
 ### Filter Table Format
 
-Location: **$1A1E-$1A4E** (48 bytes, 16 entries × 3 bytes)
+**Location**: Three separate sequential tables (not interleaved)
 
-The filter table contains filter cutoff and resonance programs:
+**Table 1 - Filter High/Resonance** at **$1989** (DataBlock_6 + $2E8):
+- Filter cutoff high nibble (bits 3-0)
+- Resonance (bits 6-4) when negative
+- Negative (bit 7=1) = absolute set
+- Positive (bit 7=0) = delta to add
+
+**Table 2 - Filter Low** at **$19A3** (DataBlock_6 + $302):
+- Filter cutoff low byte or delta low
+- 8-bit value combined with Table 1
+
+**Table 3 - Duration/Routing** at **$19BD** (DataBlock_6 + $31C):
+- Voice routing bits (which voices use filter)
+- Duration (how many frames)
+- Loop markers
 
 ```asm
 ;===============================================================================
-; Filter Table Entry Format (3 bytes per entry)
+; Filter Table Structure (3 Tables - Laxity NewPlayer v21)
 ;===============================================================================
-; Byte 0: Filter cutoff frequency (0-255)
-; Byte 1: Resonance setting (bits 4-7) + filter routing (bits 0-3)
-;         Bits 0-3: Voice enable (bit 0=V1, bit 1=V2, bit 2=V3)
-;         Bit 3: External input enable
-;         Bits 4-7: Resonance (0-15)
-; Byte 2: Filter type/mode
-;         Bit 0: Low-pass
-;         Bit 1: Band-pass
-;         Bit 2: High-pass
+; Table 1: Filter High/Resonance at $1989 (DataBlock_6 + $2E8)
+;   When negative (bit 7=1) - Absolute set mode:
+;     Bits 6-4: Resonance (0-7)
+;     Bits 3-0: Filter cutoff high nibble
+;   When positive (bit 7=0) - Delta mode:
+;     Bits 6-0: Delta to add to filter high
+;
+; Table 2: Filter Low at $19A3 (DataBlock_6 + $302)
+;   Filter cutoff low byte or delta low:
+;     8-bit value for full 12-bit filter cutoff
+;     Combined as: cutoff = (high_nibble << 8) | low_byte
+;
+; Table 3: Duration/Routing at $19BD (DataBlock_6 + $31C)
+;   Voice routing and duration:
+;     Bits 7-4: Voice routing (which voices filtered)
+;     Bits 3-0: Duration in frames or loop marker
+```
+
+#### Read Instructions (from disassembly analysis):
+
+```asm
+; Address $15EF-$1690 - Filter table read routine
+ldy DataBlock_6 + $ED           ; Y = filter entry index
+dec DataBlock_6 + $EC           ; Decrement duration
+bpl continue                    ; Continue if not expired
+
+iny                             ; Move to next entry
+
+; Read filter high from Table 1
+lda DataBlock_6 + $2E8,Y        ; $15FF: Read filter high from $1989
+cmp #$7F                        ; Check end marker
+bne process_filter
+
+; Check loop point from Table 3
+tya
+cmp DataBlock_6 + $31C,Y        ; $1607: Compare with loop point
+bne jump_to_loop
+lda #$00
+sta DataBlock_6 + $EB           ; Disable filter
+jmp done
+
+jump_to_loop:
+lda DataBlock_6 + $31C,Y        ; $1614: Read loop point
+tay
+
+process_filter:
+lda DataBlock_6 + $2E8,Y        ; $1618: Read filter value
+bpl delta_mode                  ; Branch if positive
+
+; Absolute set mode - extract resonance and filter
+and #$70                        ; Extract resonance (bits 6-4)
+sta DataBlock_6 + $E5           ; Store resonance
+lda DataBlock_6 + $2E8,Y        ; Read again
+and #$0F                        ; Extract filter high nibble
+sta DataBlock_6 + $E9
+
+; Read filter low from Table 2
+lda DataBlock_6 + $302,Y        ; $162A: Read filter low from $19A3
+sta DataBlock_6 + $E8
+
+; Read duration/routing from Table 3
+lda DataBlock_6 + $31C,Y        ; $1630: Read duration/routing from $19BD
+sta DataBlock_6 + $E6           ; Store routing bits
+jmp write_sid
+
+delta_mode:
+; Read duration and add delta
+lda DataBlock_6 + $31C,Y        ; $1639: Read duration
+sta DataBlock_6 + $EC           ; Store counter
+
+lda DataBlock_6 + $E8           ; Get current filter low
+clc
+adc DataBlock_6 + $302,Y        ; $1643: Add delta from Table 2
+sta DataBlock_6 + $E8
+lda DataBlock_6 + $E9           ; Get current filter high
+adc DataBlock_6 + $2E8,Y        ; $164C: Add delta from Table 1
+sta DataBlock_6 + $E9
+
+write_sid:
+; Filter cutoff is divided by 16 before writing to SID
+; SID registers: $D415 (high 3 bits), $D416 (low 8 bits)
+; $D417 (routing + volume), $D418 (resonance + mode)
 ```
 
 #### Hex Dump (from Stinsen's Last Night of '89)
 
+**Table 1 - Filter High/Resonance at $1989**:
 ```
-Address: $1A1E-$1A4E  Size: 48 bytes  Count: 16 entries
-================================================================================
-00: 70 9b b3 1a 1a 1a d1 d5 f7 97 ec 57 ba 3b fc ae
-10: 30 47 5e 75 28 4c 6e 80 99 a9 cb 2e 99 ba db a7
-20: b9 cd 25 f3 b1 62 ad b9 c0 e1 31 af 30 1a 1a 1a
+(Need to extract from original file)
 ```
+
+**Table 2 - Filter Low at $19A3**:
+```
+(Need to extract from original file)
+```
+
+**Table 3 - Duration/Routing at $19BD**:
+```
+(Need to extract from original file)
+```
+
+**Note**: Filter cutoff is stored as 12-bit value but divided by 16 before
+writing to SID ($D415 gets 3 bits, $D416 gets 8 bits for 11-bit SID cutoff)
 
 ### Arpeggio Table Format
 

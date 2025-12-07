@@ -278,21 +278,24 @@ def generate_info_file(original_sid_path, converted_sf2_path, output_dir, title_
         output.append("  Count: 8 instruments")
         output.append("")
 
-        output.append("Wave Table (split format):")
-        output.append("  Notes:     $1914 - $1934 (32 bytes)")
-        output.append("  Waveforms: $1934 - $1954 (32 bytes)")
+        output.append("Wave Table (2 separate tables - Laxity format):")
+        output.append("  Table 1 - Waveforms:    $18DA (DataBlock+$239)")
+        output.append("  Table 2 - Note Offsets: $190C (DataBlock+$26B)")
+        output.append("  Note: SF2 interleaves these into (waveform,note) pairs")
         output.append("")
 
-        output.append("Pulse Table:")
-        output.append("  Start: $1A3B")
-        output.append("  End:   $1A7B")
-        output.append("  Size:  64 bytes")
+        output.append("Pulse Table (3 separate tables - Laxity format):")
+        output.append("  Table 1 - Pulse High/Delta:  $193E (DataBlock+$29D)")
+        output.append("  Table 2 - Pulse Low/Delta:   $1957 (DataBlock+$2B6)")
+        output.append("  Table 3 - Duration:           $1970 (DataBlock+$2CF)")
+        output.append("  Note: SF2 interleaves T1+T2 into pairs, keeps T3 separate")
         output.append("")
 
-        output.append("Filter Table:")
-        output.append("  Start: $1A1E")
-        output.append("  End:   $1A4E")
-        output.append("  Size:  48 bytes")
+        output.append("Filter Table (3 separate tables - Laxity format):")
+        output.append("  Table 1 - Filter High/Resonance: $1989 (DataBlock+$2E8)")
+        output.append("  Table 2 - Filter Low:            $19A3 (DataBlock+$302)")
+        output.append("  Table 3 - Duration/Routing:      $19BD (DataBlock+$31C)")
+        output.append("  Note: SF2 interleaves T1+T2 into pairs, keeps T3 separate")
         output.append("")
 
         output.append("Command Table:")
@@ -307,13 +310,18 @@ def generate_info_file(original_sid_path, converted_sf2_path, output_dir, title_
     output.append("=" * 80)
 
     if orig_header['load_addr'] >= 0x1000:
-        # Laxity format tables
+        # Laxity format tables (3-table structure)
         tables = [
             ("Commands", 0x1ADB, 0x1B9B),
             ("Instruments", 0x1A6B, 0x1AAB),
-            ("Wave", 0x1914, 0x1954),
-            ("Pulse", 0x1A3B, 0x1A7B),
-            ("Filter", 0x1A1E, 0x1A4E),
+            ("Wave T1 - Waveforms", 0x18DA, 0x1910),
+            ("Wave T2 - Note Offsets", 0x190C, 0x1940),
+            ("Pulse T1 - High/Delta", 0x193E, 0x1960),
+            ("Pulse T2 - Low/Delta", 0x1957, 0x1970),
+            ("Pulse T3 - Duration", 0x1970, 0x1990),
+            ("Filter T1 - High/Resonance", 0x1989, 0x19A3),
+            ("Filter T2 - Low", 0x19A3, 0x19BD),
+            ("Filter T3 - Duration/Routing", 0x19BD, 0x19D7),
             ("Arp", 0x1A8B, 0x1ACB),
         ]
     else:
