@@ -45,7 +45,8 @@
       "Bash(tail:*)",
       "Bash(while read f)",
       "Bash(paste:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(git reset:*)"
     ],
     "deny": [],
     "ask": []

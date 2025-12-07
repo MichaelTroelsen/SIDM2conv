@@ -1,5 +1,5 @@
 # SIDM2 File Inventory
-Generated: 2025-12-07 12:55:48
+Generated: 2025-12-07 14:07:50
 
 ## Purpose
 This inventory categorizes all project files with their purpose and recommendations for cleanup.
@@ -46,6 +46,7 @@ Files are marked as:
 
 | File | Size (bytes) | Last Modified | Status |
 |------|--------------|---------------|--------|
+| sidm2/__init__.py | 3,183 | 2025-12-07 | 🟢 Active |
 | sidm2/sf2_packer.py | 26,550 | 2025-12-06 | 🟢 Active |
 | sidm2/instrument_extraction.py | 7,770 | 2025-12-04 | 🟢 Active |
 | sidm2/sf2_writer.py | 55,677 | 2025-12-04 | 🟢 Active |
@@ -59,7 +60,6 @@ Files are marked as:
 | sidm2/sid_structure_analyzer.py | 18,483 | 2025-11-30 | 🟢 Active |
 | sidm2/sid_structure_extractor.py | 22,670 | 2025-11-30 | 🟢 Active |
 | sidm2/wav_comparison.py | 10,706 | 2025-11-30 | 🟢 Active |
-| sidm2/__init__.py | 3,183 | 2025-11-30 | 🟢 Active |
 | sidm2/config.py | 7,000 | 2025-11-29 | 🟢 Active |
 | sidm2/sequence_extraction.py | 17,161 | 2025-11-29 | 🟢 Active |
 | sidm2/cpu6502_emulator.py | 41,080 | 2025-11-28 | 🟢 Active |
@@ -95,54 +95,36 @@ Files are marked as:
 | File | Size (bytes) | Last Modified | Status |
 |------|--------------|---------------|--------|
 | CLAUDE.md | 33,547 | 2025-12-07 | 🟢 Active |
-| README.md | 65,022 | 2025-12-07 | 🟢 Active |
-| docs/COMPLETE_DOCUMENTATION_INDEX.md | 14,120 | 2025-12-06 | 🟢 Active |
-| docs/PIPELINE_EXECUTION_REPORT.md | 12,153 | 2025-12-06 | 🟢 Active |
-| docs/PIPELINE_RESULTS_2025-12-06.md | 3,613 | 2025-12-06 | 🟢 Active |
-| docs/PIPELINE_RESULTS_SUMMARY.md | 6,521 | 2025-12-06 | 🟢 Active |
-| docs/PIPELINE_TIMING.md | 1,458 | 2025-12-06 | 🟢 Active |
-| docs/SIDWINDER_INTEGRATION_SUMMARY.md | 11,156 | 2025-12-06 | 🟢 Active |
-| docs/SIDWINDER_LIMITATIONS.md | 3,995 | 2025-12-06 | 🟢 Active |
-| docs/SIDWINDER_REBUILD_GUIDE.md | 8,048 | 2025-12-06 | 🟢 Active |
-| docs/WAVE_TABLE_PACKING.md | 6,897 | 2025-12-04 | 🟢 Active |
-| docs/ANNOTATED_DISASSEMBLY_INTEGRATION.md | 12,612 | 2025-12-03 | 🟢 Active |
-| docs/SF2PACKED_STINSENS_ANNOTATED_DISASSEMBLY.md | 45,673 | 2025-12-03 | 🟢 Active |
-| docs/SF2PACKED_STINSENS_COMPLETE_DISASSEMBLY.md | 178,898 | 2025-12-03 | 🟢 Active |
-| docs/STINSENS_PLAYER_DISASSEMBLY.md | 23,492 | 2025-12-03 | 🟢 Active |
-| docs/del_SF2_DRIVER11_DISASSEMBLY.md | 14,995 | 2025-12-02 | 🟢 Active |
+| FILE_INVENTORY.md | 21,232 | 2025-12-07 | 🟢 Active |
+| README.md | 65,023 | 2025-12-07 | 🟢 Active |
+| TODO.md | 27,843 | 2025-12-07 | 🟢 Active |
+| docs/INDEX.md | 4,592 | 2025-12-07 | 🟢 Active |
+| docs/analysis/TECHNICAL_ANALYSIS.md | 14,166 | 2025-12-07 | 🟢 Active |
+| docs/guides/SIDWINDER_GUIDE.md | 7,060 | 2025-12-07 | 🟢 Active |
+| docs/INDEX_OLD.md | 14,120 | 2025-12-06 | 🟢 Active |
+| docs/archive/2025-12-06/PIPELINE_EXECUTION_REPORT.md | 12,153 | 2025-12-06 | 🟢 Active |
+| docs/archive/2025-12-06/PIPELINE_RESULTS_2025-12-06.md | 3,613 | 2025-12-06 | 🟢 Active |
+| docs/archive/2025-12-06/PIPELINE_RESULTS_SUMMARY.md | 6,521 | 2025-12-06 | 🟢 Active |
+| docs/archive/2025-12-06/PIPELINE_TIMING.md | 1,458 | 2025-12-06 | 🟢 Active |
+| docs/reference/WAVE_TABLE_PACKING.md | 6,897 | 2025-12-04 | 🟢 Active |
+| docs/archive/ANNOTATED_DISASSEMBLY_INTEGRATION.md | 12,612 | 2025-12-03 | 🟢 Active |
+| docs/archive/SF2PACKED_STINSENS_ANNOTATED_DISASSEMBLY.md | 45,673 | 2025-12-03 | 🟢 Active |
+| docs/archive/SF2PACKED_STINSENS_COMPLETE_DISASSEMBLY.md | 178,898 | 2025-12-03 | 🟢 Active |
+| docs/reference/STINSENS_PLAYER_DISASSEMBLY.md | 23,492 | 2025-12-03 | 🟢 Active |
 | docs/FILE_INVENTORY.md | 16,764 | 2025-12-02 | 🟢 Active |
-| docs/SF2_REVERSE_ENGINEERING_ANALYSIS.md | 7,524 | 2025-12-02 | 🟢 Active |
-| docs/SF2_REVERSE_ENGINEERING_FINDINGS.md | 11,298 | 2025-12-02 | 🟢 Active |
-| docs/SF2_REVERSE_ENGINEERING_SUCCESS.md | 7,586 | 2025-12-02 | 🟢 Active |
-| TODO.md | 8,249 | 2025-11-30 | 🟢 Active |
-| docs/ANALYSIS_FINDINGS.md | 10,454 | 2025-11-30 | 🟢 Active |
-| docs/COMPREHENSIVE_VALIDATION_SYSTEM.md | 10,627 | 2025-11-30 | 🟢 Active |
-| docs/SIDSF2PLAYER_VALIDATION_REPORT.md | 9,919 | 2025-11-30 | 🟢 Active |
-| docs/TODO_WAV_VALIDATION.md | 10,372 | 2025-11-30 | 🟢 Active |
-| docs/ACCURACY_ROADMAP.md | 11,655 | 2025-11-27 | 🟢 Active |
-| docs/AUDIO_QUALITY_ANALYSIS.md | 15,312 | 2025-11-27 | 🟢 Active |
-| docs/PACK_STATUS.md | 5,555 | 2025-11-27 | 🟢 Active |
-| docs/PHASE1_COMPLETION_REPORT.md | 12,673 | 2025-11-27 | 🟢 Active |
-| docs/ROUNDTRIP_VALIDATION_FINDINGS.md | 6,325 | 2025-11-27 | 🟢 Active |
-| docs/SF2_TO_SID_LIMITATIONS.md | 7,185 | 2025-11-27 | 🟢 Active |
-| docs/TODO_VALIDATION.md | 9,222 | 2025-11-27 | 🟢 Active |
-| docs/VALIDATION_SYSTEM.md | 23,744 | 2025-11-27 | 🟢 Active |
-| docs/VALIDATION_TOOL.md | 8,506 | 2025-11-27 | 🟢 Active |
-| docs/VALIDATION_WORKFLOW.md | 9,182 | 2025-11-27 | 🟢 Active |
-| docs/CONVERSION_STRATEGY.md | 15,397 | 2025-11-23 | 🟢 Active |
-| docs/DRIVER_REFERENCE.md | 9,725 | 2025-11-23 | 🟢 Active |
-| docs/format-specification.md | 10,858 | 2025-11-23 | 🟢 Active |
-| docs/laxity_newplayer_v21_format.md | 9,367 | 2025-11-23 | 🟢 Active |
-| docs/LAXITY_PLAYER_ANALYSIS.md | 13,335 | 2025-11-23 | 🟢 Active |
-| docs/SF2_CLASSES.md | 8,564 | 2025-11-23 | 🟢 Active |
-| docs/SF2_FORMAT_SPEC.md | 14,208 | 2025-11-23 | 🟢 Active |
-| docs/SF2_SOURCE_ANALYSIS.md | 11,949 | 2025-11-23 | 🟢 Active |
-| docs/SIDDUMP_ANALYSIS.md | 12,569 | 2025-11-23 | 🟢 Active |
-| docs/SID_FILE_ANALYSIS.md | 8,328 | 2025-11-23 | 🟢 Active |
-| docs/api-reference.md | 9,056 | 2025-11-22 | 🟢 Active |
-| docs/architecture.md | 7,786 | 2025-11-22 | 🟢 Active |
-| docs/developer-guide.md | 11,797 | 2025-11-22 | 🟢 Active |
-| docs/sid-registers.md | 5,809 | 2025-11-22 | 🟢 Active |
+| docs/archive/SIDSF2PLAYER_VALIDATION_REPORT.md | 9,919 | 2025-11-30 | 🟢 Active |
+| docs/analysis/ACCURACY_ROADMAP.md | 11,655 | 2025-11-27 | 🟢 Active |
+| docs/analysis/PACK_STATUS.md | 5,555 | 2025-11-27 | 🟢 Active |
+| docs/archive/PHASE1_COMPLETION_REPORT.md | 12,673 | 2025-11-27 | 🟢 Active |
+| docs/archive/ROUNDTRIP_VALIDATION_FINDINGS.md | 6,325 | 2025-11-27 | 🟢 Active |
+| docs/guides/VALIDATION_GUIDE.md | 23,744 | 2025-11-27 | 🟢 Active |
+| docs/reference/SF2_TO_SID_LIMITATIONS.md | 7,185 | 2025-11-27 | 🟢 Active |
+| docs/reference/CONVERSION_STRATEGY.md | 15,397 | 2025-11-23 | 🟢 Active |
+| docs/reference/DRIVER_REFERENCE.md | 9,725 | 2025-11-23 | 🟢 Active |
+| docs/reference/format-specification.md | 10,858 | 2025-11-23 | 🟢 Active |
+| docs/reference/SF2_CLASSES.md | 8,564 | 2025-11-23 | 🟢 Active |
+| docs/reference/SF2_FORMAT_SPEC.md | 14,208 | 2025-11-23 | 🟢 Active |
+| docs/reference/sid-registers.md | 5,809 | 2025-11-22 | 🟢 Active |
 | CONTRIBUTING.md | 6,626 | 2025-11-21 | 🟢 Active |
 
 ## Tools
@@ -326,6 +308,7 @@ Files are marked as:
 
 | File | Size (bytes) | Last Modified | Status |
 |------|--------------|---------------|--------|
+| SIDwinder.cfg | 1,574 | 2025-12-07 | 🟢 Active |
 | .gitignore | 1,077 | 2025-11-30 | 🟢 Active |
 | sidm2_config.example.json | 699 | 2025-11-29 | 🟢 Active |
 | .github/workflows/ci.yml | 6,514 | 2025-11-27 | 🟢 Active |
@@ -359,4 +342,4 @@ python scripts/update_inventory.py
 
 ---
 
-Last updated: 2025-12-07 12:55:48
+Last updated: 2025-12-07 14:07:50
