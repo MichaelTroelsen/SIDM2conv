@@ -14,6 +14,8 @@ Complete reference for all Python modules and scripts in the SIDM2 project.
 | `sid_player.py` | SID file player and analyzer | v0.6.2 | 560 |
 | `sf2_player_parser.py` | SF2-exported SID parser | v0.6.2 | 389 |
 | `siddump_extractor.py` | Runtime sequence extraction | v1.3 | 438 |
+| `gate_inference.py` | Waveform-based gate detection | v1.5.0 | 306 |
+| `accuracy.py` | Accuracy calculation module | v1.4.1 | 437 |
 | `validation.py` | Validation utilities | v0.6.0 | ~200 |
 
 ### Main Scripts (`scripts/`)
@@ -406,6 +408,175 @@ sf2_sequence = convert_pattern_to_sequence(pattern)
 - Runs after initial SF2 conversion
 - Injects runtime sequences into SF2 file
 - Significantly improves sequence accuracy
+
+---
+
+## Gate Inference (`sidm2/gate_inference.py`)
+
+**Version**: v1.5.0
+**Purpose**: Waveform-based gate detection for accurate ADSR envelope control
+**Lines**: 306
+
+### Overview
+
+Gate inference analyzes SID register writes from siddump output to infer proper SF2 gate markers. The SID chip's gate bit (waveform register bit 0) controls ADSR envelopes, while SF2 uses explicit gate markers (0x7E gate-on, 0x80 gate-off).
+
+**Accuracy Impact**: +10-15% potential improvement for files with valid orderlists
+
+### Architecture
+
+Three-tier inference system:
+
+1. **Simple Inference** - Pattern-based gate detection (no siddump data needed)
+2. **Waveform-Based Inference** - Analyzes actual SID register writes
+3. **Accuracy Analysis** - Validates inference quality
+
+### Key Classes
+
+#### WaveformEvent
+```python
+@dataclass
+class WaveformEvent:
+    """Represents a waveform control register write from siddump."""
+    frame: int          # Frame number
+    voice: int          # Voice number (0-2)
+    waveform: int       # Waveform control byte
+    frequency: int      # Frequency value (0-65535)
+    note: Optional[str] # Note string from siddump (e.g., "C-3")
+
+    @property
+    def gate_on(self) -> bool:
+        """Check if gate bit is set."""
+        return bool(self.waveform & GATE_BIT)
+
+    @property
+    def waveform_type(self) -> int:
+        """Get waveform type (without gate bit)."""
+        return self.waveform & 0xFE
+```
+
+#### WaveformGateAnalyzer
+```python
+class WaveformGateAnalyzer:
+    """Analyzes siddump waveform data to infer gate markers."""
+
+    def __init__(self, siddump_data: Optional[Dict] = None):
+        """Initialize with optional siddump data."""
+
+    def infer_gates_simple(self, events: List[SequenceEvent]) -> List[SequenceEvent]:
+        """Enhanced pattern-based gate inference.
+
+        Improvements:
+        - Detects note changes (not just presence)
+        - Handles sustained notes properly
+        - Avoids redundant gate markers
+        """
+
+    def infer_gates_from_waveforms(
+        self,
+        events: List[SequenceEvent],
+        voice: int = 0,
+        frames_per_event: int = 1
+    ) -> List[SequenceEvent]:
+        """Infer gates from actual waveform data.
+
+        Uses siddump waveform history to detect gate changes and insert
+        proper SF2 gate markers at exact frames where SID gate bit changed.
+        """
+
+    def analyze_gate_accuracy(
+        self,
+        original_events: List[SequenceEvent],
+        inferred_events: List[SequenceEvent]
+    ) -> Dict[str, float]:
+        """Compare inferred gates against expected gates for accuracy."""
+```
+
+### Gate Detection Strategy
+
+**SID Waveform Register Format**:
+```
+Bit 7  6  5  4  3  2  1  0
+    |  |  |  |  |  |  |  |
+    |  |  |  |  |  |  |  └─ Gate bit (0=off, 1=on)
+    |  |  |  |  |  |  └──── Sync bit
+    |  |  |  |  |  └─────── Ring modulation
+    |  |  |  |  └────────── Test bit (hard reset)
+    |  |  |  └───────────── Triangle waveform
+    |  |  └──────────────── Sawtooth waveform
+    |  └─────────────────── Pulse waveform
+    └────────────────────── Noise waveform
+```
+
+**Detection Process**:
+1. Monitor waveform control register (SID $04, $0B, $12)
+2. Detect gate bit changes (0→1, 1→0)
+3. Detect waveform changes requiring gate resets
+4. Correlate with frequency changes for note triggers
+5. Insert SF2 gate markers at proper timing
+
+**SF2 Gate Markers**:
+- `0x7E` - Gate on (+++)  - Start attack/sustain
+- `0x80` - Gate off (---) - Start release
+- `0x7F` - End marker
+
+### Integration Points
+
+**Static Extraction** (`sequence_translator.py`):
+```python
+def _insert_gate_markers_enhanced(self, events: List[SequenceEvent]) -> List[SequenceEvent]:
+    """Enhanced gate marker insertion with improved detection."""
+    from .gate_inference import WaveformGateAnalyzer
+
+    analyzer = WaveformGateAnalyzer()
+    return analyzer.infer_gates_simple(events)
+```
+
+**Runtime Extraction** (`siddump_extractor.py`):
+```python
+def convert_pattern_to_sequence(pattern: List[Dict],
+                               use_waveform_gates: bool = True) -> List[List[int]]:
+    """Convert pattern to SF2 sequence with waveform-based gate detection."""
+
+    # Track waveform state
+    prev_gate_state = False
+    prev_waveform = 0
+
+    for event in pattern:
+        waveform = event.get('wave', 0)
+        current_gate = bool(waveform & GATE_BIT)
+        waveform_changed = (waveform & 0xFE) != (prev_waveform & 0xFE)
+
+        # Insert gate-off if gate bit changed or waveform changed
+        if prev_gate_state and (not current_gate or waveform_changed):
+            sequence.append([NO_CHANGE, NO_CHANGE, GATE_OFF])
+```
+
+### Testing Results
+
+**Implementation Status**: ✅ Complete and working
+
+**Test Methodology**: Complete pipeline on 18 test files
+
+**Gate Inference Working**:
+- Sequence event counts increased (281 → 293 events)
+- Gate markers properly inserted at note boundaries
+- Waveform transitions detected and handled
+- No errors or regressions
+
+**Blocked by Orderlist Bug**:
+- 6/18 files (33%) have 0% accuracy
+- All orderlist entries reference sequence index 0
+- Causes "invalid sequence address $0000" errors
+- Gate inference cannot help until orderlists are fixed
+
+**Next Priority**: Fix orderlist generation to unlock gate inference benefits
+
+### See Also
+
+- **Implementation details** → `docs/GATE_INFERENCE_IMPLEMENTATION.md`
+- **SID register reference** → `docs/SID_REGISTERS_REFERENCE.md`
+- **Accuracy roadmap** → `docs/ACCURACY_ROADMAP.md`
 
 ---
 
