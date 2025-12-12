@@ -50,12 +50,15 @@ The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2)
 
 ## Known Limitations
 
-### ⚠️ SIDwinder Disassembly of Exported SIDs
-- **Impact**: 17/18 exported SID files fail SIDwinder disassembly
-- **Cause**: Pointer relocation bug in `sf2_packer.py`
-- **Scope**: Only affects SIDwinder's strict CPU emulation
-- **Workaround**: Files play correctly in VICE, SID2WAV, siddump
-- **Status**: Known issue, requires debugging session
+### ✅ SIDwinder Disassembly of Exported SIDs (RESOLVED)
+- **Previous Issue**: 17/18 files failed disassembly (Dec 6, 2024)
+- **Current Status**: All 18/18 files now disassemble successfully (Dec 11+)
+- **Resolution**: Fixed overlapping sections bug in `sf2_packer.py` (Dec 12, 2024)
+- **Note**: SIDwinder emulation warnings (infinite loops) are normal - they occur
+  during init/play routine emulation due to timing wait loops, but disassembly
+  still completes successfully
+- **Verification**: All files play correctly in VICE, SID2WAV, siddump, AND
+  generate complete .asm disassembly files
 
 ### ⚠️ SIDwinder Trace
 - **Impact**: Trace files generated but empty
@@ -215,10 +218,10 @@ output/SIDSF2player_Complete_Pipeline/{filename}/
    - Status: Awaiting user validation
 
 ### Short Term
-1. **Fix pointer relocation bug**
-   - Debug sf2_packer.py with CPU trace
-   - Fix indirect jumps or jump table handling
-   - Target: SIDwinder disassembly of exported SIDs
+1. ✅ **~~Fix pointer relocation bug~~** (COMPLETED Dec 12, 2024)
+   - Fixed overlapping sections in sf2_packer.py
+   - All 18/18 files now disassemble successfully
+   - Commit: b697d02
 
 2. **Rebuild SIDwinder**
    - Apply trace fix patches
