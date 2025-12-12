@@ -1880,7 +1880,7 @@ def main():
         injected_orderlists = None
         injected_used_sequences = None
         try:
-            sequences, orderlists = extract_sequences_from_siddump(str(sid_file), seconds=10, max_sequences=39)
+            sequences, orderlists = extract_sequences_from_siddump(str(sid_file), seconds=10, max_sequences=256)
             if sequences and orderlists:
                 # Inject into SF2 file using proper format-compliant function
                 success, used_seqs, seqs, ords = inject_siddump_sequences(output_sf2, sequences, orderlists)

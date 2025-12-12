@@ -359,6 +359,8 @@ def extract_sequences_from_siddump(sid_file: str, seconds: int = 30, max_sequenc
     # Detect patterns for each voice
     all_sequences = []
     orderlists = []
+    global_seq_offset = 0  # Track global sequence index offset
+    voice_sequence_counts = []  # Track how many sequences each voice contributed
 
     for voice_num in range(3):
         voice_events = voices[voice_num]
@@ -373,22 +375,36 @@ def extract_sequences_from_siddump(sid_file: str, seconds: int = 30, max_sequenc
             if seq:
                 voice_sequences.append(seq)
 
-        # Create orderlist for this voice
+        voice_sequence_counts.append(len(voice_sequences))
+        all_sequences.extend(voice_sequences)
+
+    # Truncate sequences FIRST if too many
+    total_sequences = len(all_sequences)
+    if total_sequences > max_sequences:
+        print(f"Warning: {total_sequences} sequences detected, truncating to {max_sequences}")
+        all_sequences = all_sequences[:max_sequences]
+    else:
+        # Pad to max_sequences if too few
+        while len(all_sequences) < max_sequences:
+            all_sequences.append([[0x00, 0x00, 0x7F]])  # Empty sequence
+
+    # Now create orderlists with correct truncation
+    global_seq_offset = 0
+    for voice_num in range(3):
+        # Calculate how many sequences from this voice are in the final list
+        voice_seq_count = voice_sequence_counts[voice_num]
+        sequences_remaining = max(0, len(all_sequences) - global_seq_offset)
+        available_sequences = min(voice_seq_count, sequences_remaining)
+
+        # Create orderlist for sequences that actually exist
         orderlist = []
-        for seq_idx in range(len(voice_sequences)):
+        for i in range(available_sequences):
             orderlist.append(0xA0)  # Default transpose
-            orderlist.append(seq_idx)
+            orderlist.append(global_seq_offset + i)  # Use global index!
         orderlist.append(0x7F)  # End marker
 
         orderlists.append(orderlist)
-        all_sequences.extend(voice_sequences)
-
-    # Pad to max_sequences
-    while len(all_sequences) < max_sequences:
-        all_sequences.append([[0x00, 0x00, 0x7F]])  # Empty sequence
-
-    # Truncate if too many
-    all_sequences = all_sequences[:max_sequences]
+        global_seq_offset += available_sequences  # Only advance by what we actually used!
 
     print(f"Extracted {len(all_sequences)} sequences total")
 
