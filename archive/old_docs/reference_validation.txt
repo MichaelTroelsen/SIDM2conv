@@ -1,0 +1,121 @@
+Verifying SF2 file: learnings/Stinsen - Last Night Of 89.sf2
+
+Load address: $0D7E
+File size: 17252 bytes
+
+================================================================================
+WAVE TABLE at $1924 (2 columns × 256 rows, column-major)
+================================================================================
+Column 0 (Waveforms) - first 10 bytes:
+  00 00 00 00 00 00 00 00 00 00
+  Expected: 21 21 41 7F 81 41 41 41 7F 81
+
+Column 1 (Notes) - first 10 bytes (offset +256):
+  00 00 00 00 00 00 00 00 00 00
+  Expected: 80 80 00 02 C0 A1 9A 00 07 C4
+
+  Waveforms: FAIL
+  Notes:     FAIL
+
+================================================================================
+PULSE TABLE at $1B24 (4 columns × 256 rows, column-major)
+================================================================================
+Column 0 - first 10 bytes (offset +0):
+  00 00 00 00 00 00 00 00 00 00
+Column 1 - first 10 bytes (offset +256):
+  00 00 00 00 00 00 00 00 00 00
+Column 2 - first 10 bytes (offset +512):
+  00 00 00 00 00 00 00 00 00 00
+Column 3 - first 10 bytes (offset +768):
+  00 00 00 00 00 00 00 00 00 00
+
+  Format: Col0=Value, Col1=Delta, Col2=Duration, Col3=Next
+
+================================================================================
+FILTER TABLE at $1E24 (4 columns × 256 rows, column-major)
+================================================================================
+Column 0 - first 10 bytes (offset +0):
+  00 00 00 00 00 00 00 00 00 00
+Column 1 - first 10 bytes (offset +256):
+  00 00 00 00 00 00 00 00 00 00
+Column 2 - first 10 bytes (offset +512):
+  00 00 00 00 00 00 00 00 00 00
+Column 3 - first 10 bytes (offset +768):
+  00 00 00 00 00 00 00 00 00 00
+
+  Format: Col0=Cutoff, Col1=Count, Col2=Duration, Col3=Next
+
+================================================================================
+INSTRUMENTS TABLE at $1784 (6 columns × 32 rows, column-major)
+================================================================================
+Column 0 - first 8 bytes (offset +0):
+  01 0F 10 F2 00 29 10 00
+Column 1 - first 8 bytes (offset +32):
+  00 00 1A 00 01 08 1A 00
+Column 2 - first 8 bytes (offset +64):
+  05 0B 14 06 00 00 03 01
+Column 3 - first 8 bytes (offset +96):
+  02 04 B0 B0 10 21 83 E4
+Column 4 - first 8 bytes (offset +128):
+  00 00 00 00 00 00 00 00
+Column 5 - first 8 bytes (offset +160):
+  00 00 00 00 00 00 00 00
+
+  Format: Col0=AD, Col1=SR, Col2=Flags, Col3=Filter, Col4=Pulse, Col5=Wave
+
+================================================================================
+COMMANDS TABLE at $1844 (3 columns × 64 rows)
+================================================================================
+First 30 bytes (checking layout):
+  00 10 20 A0 E0 D0 00 00 05 00 00 00 00 00 00 00 00 00 00 00 00 00 00 3A F7 F6 07 F7 67 88
+
+  Format: Col0=Command, Col1=Param1, Col2=Param2
+
+================================================================================
+TEMPO TABLE at $2224 (1 column × 256 rows)
+================================================================================
+First 20 bytes:
+  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+
+  Format: Speed values (frames per row), $7F XX = wrap to row XX
+
+================================================================================
+HR TABLE at $1684 (2 columns × 32 rows, column-major)
+================================================================================
+Column 0 (AD) - first 8 bytes:
+  17 0D 86 17 8D 18 D4 AD
+
+Column 1 (SR) - first 8 bytes (offset +32):
+  01 01 01 01 01 01 01 01
+
+  Format: Col0=Attack/Decay, Col1=Sustain/Release
+  Default: 0F 00 (fast attack, no sustain)
+
+================================================================================
+INIT TABLE at $1664 (2 bytes)
+================================================================================
+  Bytes: 6A AA
+
+  Byte 0 (Tempo ptr): $6A (row 106)
+  Byte 1 (Volume):    $AA (0-15, F=max)
+
+================================================================================
+ARP TABLE at $2124 (1 column × 256 rows)
+================================================================================
+First 20 bytes:
+  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+
+  Format: Semitone offsets for chord patterns
+
+================================================================================
+VERIFICATION SUMMARY
+================================================================================
+  WAVE: FAIL
+  PULSE: PASS
+  FILTER: PASS
+  INSTRUMENTS: PASS
+  COMMANDS: PASS
+  TEMPO: PASS
+  HR: PASS
+  INIT: PASS
+  ARP: PASS

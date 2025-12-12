@@ -64,6 +64,7 @@ class ExtractedData:
     init_table: List[int] = None  # Extracted Init table [tempo, volume, instr0, instr1, instr2]
     frequency_table: object = None  # Laxity frequency table for note translation
     command_index_map: dict = None  # Mapping of (type, param1, param2) -> command index (0-63)
+    extraction_addresses: dict = None  # Addresses where tables were extracted from: {table_name: (start_addr, end_addr, length)}
 
     def __post_init__(self):
         if self.commands is None:
@@ -74,6 +75,8 @@ class ExtractedData:
             self.validation_errors = []
         if self.raw_sequences is None:
             self.raw_sequences = []
+        if self.extraction_addresses is None:
+            self.extraction_addresses = {}
 
 
 @dataclass

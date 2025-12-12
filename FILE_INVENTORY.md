@@ -1,345 +1,934 @@
-# SIDM2 File Inventory
-Generated: 2025-12-07 14:07:50
+# File Inventory
 
-## Purpose
-This inventory categorizes all project files with their purpose and recommendations for cleanup.
-Files are marked as:
-- 🟢 **Active** - Core functionality, recently updated (Nov 2025)
-- 🟡 **Old** - Not recently updated, review for cleanup
+**Last Updated**: 2025-12-11 16:10:13
 
-**Note**: This file is auto-generated. Run `python update_inventory.py` to refresh.
+## Repository Structure
 
----
-
-## Main Entry Point
-
-| File | Size (bytes) | Last Modified | Status |
-|------|--------------|---------------|--------|
-| complete_pipeline_with_validation.py | 26,248 | 2025-12-07 | 🟢 Active |
-
-## Scripts (scripts/)
-
-| File | Size (bytes) | Last Modified | Status |
-|------|--------------|---------------|--------|
-| scripts/convert_all.py - Batch converter (v0.6.3) | 44,663 | 2025-12-07 | 🟢 Active |
-| scripts/sid_to_sf2.py - Main SID to SF2 converter (v0.6.3) | 18,351 | 2025-12-07 | 🟢 Active |
-| scripts/update_inventory.py - Auto-generates FILE_INVENTORY.md | 7,032 | 2025-12-07 | 🟢 Active |
-| scripts/__init__.py | 908 | 2025-12-07 | 🟢 Active |
-| scripts/extract_sf2_properly.py | 4,997 | 2025-12-06 | 🟢 Active |
-| scripts/sf2_to_sid.py - SF2 to SID packer (v1.0.0) | 11,243 | 2025-12-04 | 🟢 Active |
-| scripts/disassemble_sid.py | 9,428 | 2025-12-02 | 🟢 Active |
-| scripts/extract_addresses.py | 8,336 | 2025-12-02 | 🟢 Active |
-| scripts/format_tables.py | 15,340 | 2025-12-02 | 🟢 Active |
-| scripts/generate_info.py | 14,310 | 2025-12-02 | 🟢 Active |
-| scripts/batch_validate_sidsf2player.py | 8,797 | 2025-11-30 | 🟢 Active |
-| scripts/comprehensive_validate.py | 19,027 | 2025-11-30 | 🟢 Active |
-| scripts/validate_structure.py | 10,512 | 2025-11-30 | 🟢 Active |
-| scripts/convert_all_sidsf2player.py | 3,386 | 2025-11-29 | 🟢 Active |
-| scripts/laxity_parser.py | 22,179 | 2025-11-29 | 🟢 Active |
-| scripts/generate_validation_report.py | 18,327 | 2025-11-27 | 🟢 Active |
-| scripts/validate_conversion.py - Conversion validation | 17,569 | 2025-11-27 | 🟢 Active |
-| scripts/validate_psid.py - PSID header validator | 13,315 | 2025-11-27 | 🟢 Active |
-| scripts/validate_sid_accuracy.py - Frame-by-frame accuracy checker | 33,839 | 2025-11-27 | 🟢 Active |
-| scripts/ci_local.py | 12,287 | 2025-11-22 | 🟢 Active |
-
-## Core Package (sidm2/)
-
-| File | Size (bytes) | Last Modified | Status |
-|------|--------------|---------------|--------|
-| sidm2/__init__.py | 3,183 | 2025-12-07 | 🟢 Active |
-| sidm2/sf2_packer.py | 26,550 | 2025-12-06 | 🟢 Active |
-| sidm2/instrument_extraction.py | 7,770 | 2025-12-04 | 🟢 Active |
-| sidm2/sf2_writer.py | 55,677 | 2025-12-04 | 🟢 Active |
-| sidm2/sf2_packed_reader.py | 11,817 | 2025-12-02 | 🟢 Active |
-| sidm2/laxity_analyzer.py | 26,397 | 2025-12-01 | 🟢 Active |
-| sidm2/table_extraction.py | 55,267 | 2025-12-01 | 🟢 Active |
-| sidm2/laxity_parser.py | 12,395 | 2025-11-30 | 🟢 Active |
-| sidm2/sequence_translator.py | 18,907 | 2025-11-30 | 🟢 Active |
-| sidm2/sf2_player_parser.py | 22,393 | 2025-11-30 | 🟢 Active |
-| sidm2/sf2_reader.py | 8,310 | 2025-11-30 | 🟢 Active |
-| sidm2/sid_structure_analyzer.py | 18,483 | 2025-11-30 | 🟢 Active |
-| sidm2/sid_structure_extractor.py | 22,670 | 2025-11-30 | 🟢 Active |
-| sidm2/wav_comparison.py | 10,706 | 2025-11-30 | 🟢 Active |
-| sidm2/config.py | 7,000 | 2025-11-29 | 🟢 Active |
-| sidm2/sequence_extraction.py | 17,161 | 2025-11-29 | 🟢 Active |
-| sidm2/cpu6502_emulator.py | 41,080 | 2025-11-28 | 🟢 Active |
-| sidm2/sid_player.py | 19,184 | 2025-11-28 | 🟢 Active |
-| sidm2/confidence.py | 26,766 | 2025-11-27 | 🟢 Active |
-| sidm2/cpu6502.py | 12,422 | 2025-11-27 | 🟢 Active |
-| sidm2/models.py | 4,221 | 2025-11-27 | 🟢 Active |
-| sidm2/note_utils.py | 11,248 | 2025-11-27 | 🟢 Active |
-| sidm2/player_base.py | 9,826 | 2025-11-27 | 🟢 Active |
-| sidm2/siddump.py | 4,862 | 2025-11-27 | 🟢 Active |
-| sidm2/validation.py | 13,302 | 2025-11-27 | 🟢 Active |
-| sidm2/players/laxity.py | 3,359 | 2025-11-27 | 🟢 Active |
-| sidm2/players/__init__.py | 293 | 2025-11-27 | 🟢 Active |
-| sidm2/constants.py | 3,148 | 2025-11-22 | 🟢 Active |
-| sidm2/exceptions.py | 658 | 2025-11-22 | 🟢 Active |
-| sidm2/logging_config.py | 1,253 | 2025-11-22 | 🟢 Active |
-| sidm2/sid_parser.py | 3,474 | 2025-11-22 | 🟢 Active |
-
-## Tests
-
-| File | Size (bytes) | Last Modified | Status |
-|------|--------------|---------------|--------|
-| scripts/test_converter.py | 63,604 | 2025-12-07 | 🟢 Active |
-| scripts/test_complete_pipeline.py | 14,014 | 2025-12-03 | 🟢 Active |
-| scripts/test_config.py | 8,943 | 2025-11-29 | 🟢 Active |
-| scripts/test_sf2_player_parser.py | 5,693 | 2025-11-29 | 🟢 Active |
-| scripts/test_roundtrip.py | 26,692 | 2025-11-28 | 🟢 Active |
-| scripts/test_sf2_editor.py | 16,160 | 2025-11-23 | 🟢 Active |
-| scripts/test_sf2_format.py | 9,632 | 2025-11-22 | 🟢 Active |
-
-## Documentation
-
-| File | Size (bytes) | Last Modified | Status |
-|------|--------------|---------------|--------|
-| CLAUDE.md | 33,547 | 2025-12-07 | 🟢 Active |
-| FILE_INVENTORY.md | 21,232 | 2025-12-07 | 🟢 Active |
-| README.md | 65,023 | 2025-12-07 | 🟢 Active |
-| TODO.md | 27,843 | 2025-12-07 | 🟢 Active |
-| docs/INDEX.md | 4,592 | 2025-12-07 | 🟢 Active |
-| docs/analysis/TECHNICAL_ANALYSIS.md | 14,166 | 2025-12-07 | 🟢 Active |
-| docs/guides/SIDWINDER_GUIDE.md | 7,060 | 2025-12-07 | 🟢 Active |
-| docs/INDEX_OLD.md | 14,120 | 2025-12-06 | 🟢 Active |
-| docs/archive/2025-12-06/PIPELINE_EXECUTION_REPORT.md | 12,153 | 2025-12-06 | 🟢 Active |
-| docs/archive/2025-12-06/PIPELINE_RESULTS_2025-12-06.md | 3,613 | 2025-12-06 | 🟢 Active |
-| docs/archive/2025-12-06/PIPELINE_RESULTS_SUMMARY.md | 6,521 | 2025-12-06 | 🟢 Active |
-| docs/archive/2025-12-06/PIPELINE_TIMING.md | 1,458 | 2025-12-06 | 🟢 Active |
-| docs/reference/WAVE_TABLE_PACKING.md | 6,897 | 2025-12-04 | 🟢 Active |
-| docs/archive/ANNOTATED_DISASSEMBLY_INTEGRATION.md | 12,612 | 2025-12-03 | 🟢 Active |
-| docs/archive/SF2PACKED_STINSENS_ANNOTATED_DISASSEMBLY.md | 45,673 | 2025-12-03 | 🟢 Active |
-| docs/archive/SF2PACKED_STINSENS_COMPLETE_DISASSEMBLY.md | 178,898 | 2025-12-03 | 🟢 Active |
-| docs/reference/STINSENS_PLAYER_DISASSEMBLY.md | 23,492 | 2025-12-03 | 🟢 Active |
-| docs/FILE_INVENTORY.md | 16,764 | 2025-12-02 | 🟢 Active |
-| docs/archive/SIDSF2PLAYER_VALIDATION_REPORT.md | 9,919 | 2025-11-30 | 🟢 Active |
-| docs/analysis/ACCURACY_ROADMAP.md | 11,655 | 2025-11-27 | 🟢 Active |
-| docs/analysis/PACK_STATUS.md | 5,555 | 2025-11-27 | 🟢 Active |
-| docs/archive/PHASE1_COMPLETION_REPORT.md | 12,673 | 2025-11-27 | 🟢 Active |
-| docs/archive/ROUNDTRIP_VALIDATION_FINDINGS.md | 6,325 | 2025-11-27 | 🟢 Active |
-| docs/guides/VALIDATION_GUIDE.md | 23,744 | 2025-11-27 | 🟢 Active |
-| docs/reference/SF2_TO_SID_LIMITATIONS.md | 7,185 | 2025-11-27 | 🟢 Active |
-| docs/reference/CONVERSION_STRATEGY.md | 15,397 | 2025-11-23 | 🟢 Active |
-| docs/reference/DRIVER_REFERENCE.md | 9,725 | 2025-11-23 | 🟢 Active |
-| docs/reference/format-specification.md | 10,858 | 2025-11-23 | 🟢 Active |
-| docs/reference/SF2_CLASSES.md | 8,564 | 2025-11-23 | 🟢 Active |
-| docs/reference/SF2_FORMAT_SPEC.md | 14,208 | 2025-11-23 | 🟢 Active |
-| docs/reference/sid-registers.md | 5,809 | 2025-11-22 | 🟢 Active |
-| CONTRIBUTING.md | 6,626 | 2025-11-21 | 🟢 Active |
-
-## Tools
-
-| File | Size (bytes) | Last Modified | Status |
-|------|--------------|---------------|--------|
-| tools/= | 58 | 2025-12-06 | 🟢 Active |
-| tools/angular_test.asm | 108,218 | 2025-12-06 | 🟢 Active |
-| tools/mit.log | 283 | 2025-12-06 | 🟢 Active |
-| tools/mit.txt | 540,009 | 2025-12-06 | 🟢 Active |
-| tools/SIDwinder.cfg | 1,574 | 2025-12-06 | 🟢 Active |
-| tools/SIDwinder.exe | 1,889,280 | 2025-12-06 | 🟢 Active |
-| tools/SIDwinder.log | 217 | 2025-12-06 | 🟢 Active |
-| tools/SIDWINDER_FIXES_APPLIED.md | 1,560 | 2025-12-06 | 🟢 Active |
-| tools/SIDWINDER_QUICK_REFERENCE.md | 9,822 | 2025-12-06 | 🟢 Active |
-| tools/sidwinder_trace_fix.patch | 2,308 | 2025-12-06 | 🟢 Active |
-| tools/trace.bin | 240,008 | 2025-12-06 | 🟢 Active |
-| tools/mit | 58 | 2025-12-05 | 🟢 Active |
-| tools/mit.asm | 115,912 | 2025-12-05 | 🟢 Active |
-| tools/README.md | 352 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/Default/Default.asm | 1,479 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/INC/FreqTable.asm | 5,121 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/INC/MemoryPreservation.asm | 3,214 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/INC/NMIFix.asm | 231 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/INC/StableRasterSetup.asm | 2,937 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinBars/CharSet.map | 1,792 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinBars/RaistlinBars.asm | 29,705 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinBars/WaterSprites.map | 512 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinBarsWithLogo/CharSet.map | 1,792 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinBarsWithLogo/RaistlinBarsWithLogo.asm | 28,985 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinBarsWithLogo/WaterSprites.map | 512 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinMirrorBars/CharSet.map | 1,792 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinMirrorBars/RaistlinMirrorBars.asm | 25,008 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinMirrorBarsWithLogo/CharSet.map | 1,792 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinMirrorBarsWithLogo/RaistlinMirrorBarsWithLogo.asm | 25,373 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinMirrorBarsWithLogo/SoundbarSine.bin | 128 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/RaistlinMirrorBarsWithLogo/WaterSprites.map | 512 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/SimpleBitmap/SimpleBitmap.asm | 9,736 | 2025-12-05 | 🟢 Active |
-| tools/SIDPlayers/SimpleRaster/SimpleRaster.asm | 6,595 | 2025-12-05 | 🟢 Active |
-| tools/prg2sid/Makefile | 1,783 | 2025-11-27 | 🟢 Active |
-| tools/prg2sid/p2s.c | 117,179 | 2025-11-27 | 🟢 Active |
-| tools/prg2sid/p2s.txt | 14,272 | 2025-11-27 | 🟢 Active |
-| tools/prg2sid/Release/p2s.exe | 84,992 | 2025-11-27 | 🟢 Active |
-| tools/sf2export/Makefile | 808 | 2025-11-27 | 🟢 Active |
-| tools/sf2export/README.md | 5,077 | 2025-11-27 | 🟢 Active |
-| tools/sf2export/sf2export.cpp | 9,897 | 2025-11-27 | 🟢 Active |
-| tools/sf2export/sf2export.exe | 2,468,196 | 2025-11-27 | 🟢 Active |
-| tools/sf2pack/c64memory.cpp | 2,884 | 2025-11-27 | 🟢 Active |
-| tools/sf2pack/c64memory.h | 1,443 | 2025-11-27 | 🟢 Active |
-| tools/sf2pack/c64memory.o | 4,997 | 2025-11-27 | 🟢 Active |
-| tools/sf2pack/Makefile | 953 | 2025-11-27 | 🟢 Active |
-| tools/sf2pack/opcodes.cpp | 4,980 | 2025-11-27 | 🟢 Active |
-| tools/sf2pack/opcodes.h | 1,136 | 2025-11-27 | 🟢 Active |
-| tools/sf2pack/opcodes.o | 3,420 | 2025-11-27 | 🟢 Active |
-| tools/sf2pack/packer_simple.cpp | 5,814 | 2025-11-27 | 🟢 Active |
-| tools/sf2pack/packer_simple.h | 1,381 | 2025-11-27 | 🟢 Active |
-| tools/sf2pack/packer_simple.o | 6,700 | 2025-11-27 | 🟢 Active |
-| tools/sf2pack/psidfile.cpp | 3,473 | 2025-11-27 | 🟢 Active |
-| tools/sf2pack/psidfile.h | 2,305 | 2025-11-27 | 🟢 Active |
-| tools/sf2pack/psidfile.o | 8,506 | 2025-11-27 | 🟢 Active |
-| tools/sf2pack/README.md | 6,624 | 2025-11-27 | 🟢 Active |
-| tools/sf2pack/sf2pack.cpp | 7,912 | 2025-11-27 | 🟢 Active |
-| tools/sf2pack/sf2pack.exe | 2,480,208 | 2025-11-27 | 🟢 Active |
-| tools/sf2pack/sf2pack.o | 21,663 | 2025-11-27 | 🟢 Active |
-| tools/cpu.c | 27,991 | 2025-11-22 | 🟢 Active |
-| tools/cpu.h | 204 | 2025-11-22 | 🟢 Active |
-| tools/player-id.exe | 470,544 | 2025-11-22 | 🟢 Active |
-| tools/readme.txt | 6,227 | 2025-11-22 | 🟢 Active |
-| tools/SID2WAV.EXE | 196,608 | 2025-11-22 | 🟢 Active |
-| tools/siddump.c | 16,214 | 2025-11-22 | 🟢 Active |
-| tools/siddump.exe | 50,702 | 2025-11-22 | 🟢 Active |
-| tools/sidid.cfg | 76,622 | 2025-11-22 | 🟢 Active |
-| tools/sidid.nfo | 44,879 | 2025-11-22 | 🟢 Active |
-| tools/Signature_File_Format.txt | 6,956 | 2025-11-22 | 🟢 Active |
-| tools/Stinsens_Last_Night_of_89.sid | 6,201 | 2025-11-22 | 🟢 Active |
-| tools/tedid.cfg | 878 | 2025-11-22 | 🟢 Active |
-
-## Templates (G5/)
-
-| File | Size (bytes) | Last Modified | Status |
-|------|--------------|---------------|--------|
-| G5/desktop.ini | 80 | 2025-11-22 | 🟢 Active |
-| G5/NewPlayer v21.G5 Final/21.g5 clean.prg | 8,353 | 2025-11-22 | 🟢 Active |
-| G5/NewPlayer v21.G5 Final/desktop.ini | 68 | 2025-11-22 | 🟢 Active |
-| G5/siddump108/cpu.c | 27,991 | 2025-11-22 | 🟢 Active |
-| G5/siddump108/cpu.h | 204 | 2025-11-22 | 🟢 Active |
-| G5/siddump108/Makefile | 114 | 2025-11-22 | 🟢 Active |
-| G5/siddump108/readme.txt | 2,006 | 2025-11-22 | 🟢 Active |
-| G5/siddump108/siddump.c | 16,214 | 2025-11-22 | 🟢 Active |
-| G5/siddump108/siddump.exe | 50,702 | 2025-11-22 | 🟢 Active |
-| G5/21g5.txt | 20,569 | 2024-11-10 | 🟡 Old |
-| G5/21.g5_Final.d64 | 174,848 | 2024-11-08 | 🟡 Old |
-| G5/21.g5_Final.txt | 11,072 | 2024-11-08 | 🟡 Old |
-| G5/NewPlayer v21.G5 Final/21.g5_Demos_Final.d64 | 174,848 | 2024-11-08 | 🟡 Old |
-| G5/NewPlayer v21.G5 Final/21.g5_Final.d64 | 174,848 | 2024-11-08 | 🟡 Old |
-| G5/NewPlayer v21.G5 Final/21.g5_Final.txt | 11,072 | 2024-11-08 | 🟡 Old |
-| G5/NewPlayer v21.G5 Final/NP-PACK5.5.d64 | 174,848 | 2024-11-08 | 🟡 Old |
-| G5/drivers/sf2driver11_00.prg | 6,577 | 2024-08-20 | 🟡 Old |
-| G5/drivers/sf2driver11_01.prg | 6,665 | 2024-08-20 | 🟡 Old |
-| G5/drivers/sf2driver11_02.prg | 6,721 | 2024-08-20 | 🟡 Old |
-| G5/drivers/sf2driver11_03.prg | 6,768 | 2024-08-20 | 🟡 Old |
-| G5/drivers/sf2driver11_04.prg | 6,799 | 2024-08-20 | 🟡 Old |
-| G5/drivers/sf2driver11_04_01.prg | 6,817 | 2024-08-20 | 🟡 Old |
-| G5/drivers/sf2driver11_05.prg | 6,726 | 2024-08-20 | 🟡 Old |
-| G5/drivers/sf2driver12_00.prg | 3,273 | 2024-08-20 | 🟡 Old |
-| G5/drivers/sf2driver12_00_01.prg | 3,291 | 2024-08-20 | 🟡 Old |
-| G5/drivers/sf2driver13_00.prg | 3,577 | 2024-08-20 | 🟡 Old |
-| G5/drivers/sf2driver13_00_01.prg | 3,595 | 2024-08-20 | 🟡 Old |
-| G5/drivers/sf2driver14_00.prg | 5,696 | 2024-08-20 | 🟡 Old |
-| G5/drivers/sf2driver14_00_01.prg | 5,714 | 2024-08-20 | 🟡 Old |
-| G5/drivers/sf2driver15_00.prg | 3,585 | 2024-08-20 | 🟡 Old |
-| G5/drivers/sf2driver15_01.prg | 3,585 | 2024-08-20 | 🟡 Old |
-| G5/drivers/sf2driver15_02.prg | 3,618 | 2024-08-20 | 🟡 Old |
-| G5/drivers/sf2driver16_00.prg | 3,334 | 2024-08-20 | 🟡 Old |
-| G5/drivers/sf2driver16_01.prg | 3,334 | 2024-08-20 | 🟡 Old |
-| G5/drivers/sf2driver16_01_01.prg | 3,350 | 2024-08-20 | 🟡 Old |
-| G5/drivers/sf2driver_np20_00.prg | 5,345 | 2024-08-20 | 🟡 Old |
-| G5/examples/Driver 11 Test - Arpeggio.sf2 | 7,656 | 2024-08-20 | 🟡 Old |
-| G5/examples/Driver 11 Test - Filter.sf2 | 7,866 | 2024-08-20 | 🟡 Old |
-| G5/examples/Driver 11 Test - Polyphonic.sf2 | 8,649 | 2024-08-20 | 🟡 Old |
-| G5/examples/Driver 11 Test - Tie Notes.sf2 | 8,464 | 2024-08-20 | 🟡 Old |
-| G5/examples/Driver 12 Test - The Barber.sf2 | 4,829 | 2024-08-20 | 🟡 Old |
-| G5/examples/Driver 13 Test - Hubbard.sf2 | 5,904 | 2024-08-20 | 🟡 Old |
-| G5/examples/Driver 14 Test - Heavy.sf2 | 10,434 | 2024-08-20 | 🟡 Old |
-| G5/examples/Driver 14 Test - Long Sequence.sf2 | 7,266 | 2024-08-20 | 🟡 Old |
-| G5/examples/Driver 14 Test - Medieval.sf2 | 8,018 | 2024-08-20 | 🟡 Old |
-| G5/examples/Driver 15 Test - Mood.sf2 | 9,289 | 2024-08-20 | 🟡 Old |
-| G5/examples/Driver 16 Test - Busy.sf2 | 5,315 | 2024-08-20 | 🟡 Old |
-| G5/siddump108.zip | 27,858 | 2024-08-15 | 🟡 Old |
-
-## Example Files (SID/)
-
-| File | Size (bytes) | Last Modified | Status |
-|------|--------------|---------------|--------|
-| SID/Stinsens_Last_Night_of_89.sid | 6,201 | 2025-12-02 | 🟢 Active |
-| SID/Balance.sid | 4,087 | 2025-11-27 | 🟢 Active |
-| SID/Beast.sid | 3,880 | 2025-11-27 | 🟢 Active |
-| SID/Blue.sid | 4,442 | 2025-11-27 | 🟢 Active |
-| SID/Cascade.sid | 3,880 | 2025-11-27 | 🟢 Active |
-| SID/Chaser.sid | 4,508 | 2025-11-27 | 🟢 Active |
-| SID/Colorama.sid | 4,187 | 2025-11-27 | 🟢 Active |
-| SID/Cycles.sid | 4,869 | 2025-11-27 | 🟢 Active |
-| SID/Delicate.sid | 4,331 | 2025-11-27 | 🟢 Active |
-| SID/Dreams.sid | 3,965 | 2025-11-27 | 🟢 Active |
-| SID/Dreamy.sid | 3,793 | 2025-11-27 | 🟢 Active |
-| SID/Angular.sid | 3,907 | 2025-11-21 | 🟢 Active |
-| SID/Clarencio_extended.sid | 8,162 | 2025-11-21 | 🟢 Active |
-| SID/Ocean_Reloaded.sid | 6,680 | 2025-11-21 | 🟢 Active |
-| SID/Omniphunk.sid | 4,484 | 2025-11-21 | 🟢 Active |
-| SID/Phoenix_Code_End_Tune.sid | 4,514 | 2025-11-21 | 🟢 Active |
-| SID/Unboxed_Ending_8580.sid | 4,638 | 2025-11-21 | 🟢 Active |
-
-## Player Files (SIDSF2player/)
-
-| File | Size (bytes) | Last Modified | Status |
-|------|--------------|---------------|--------|
-| SIDSF2player/SF2packed_new1_Stiensens_last_night_of_89.sid | 6,201 | 2025-12-04 | 🟢 Active |
-| SIDSF2player/SF2packed_Stinsens_Last_Night_of_89.sid | 6,201 | 2025-12-02 | 🟢 Active |
-| SIDSF2player/debug_packer.py | 639 | 2025-11-30 | 🟢 Active |
-| SIDSF2player/parse_sf2_blocks.py | 1,411 | 2025-11-30 | 🟢 Active |
-| SIDSF2player/polyphonic_cpp.sid | 8,706 | 2025-11-30 | 🟢 Active |
-| SIDSF2player/polyphonic_test.sid | 8,771 | 2025-11-30 | 🟢 Active |
-| SIDSF2player/test_broware_packed_only.sid | 6,965 | 2025-11-30 | 🟢 Active |
-| SIDSF2player/test_sidsf2player_batch.py | 3,971 | 2025-11-30 | 🟢 Active |
-| SIDSF2player/Aint_Somebody.sid | 5,162 | 2025-11-29 | 🟢 Active |
-| SIDSF2player/batch_convert_sidsf2player.py | 2,416 | 2025-11-29 | 🟢 Active |
-| SIDSF2player/Broware.sid | 6,732 | 2025-11-29 | 🟢 Active |
-| SIDSF2player/Cocktail_to_Go_tune_3.sid | 4,544 | 2025-11-29 | 🟢 Active |
-| SIDSF2player/Driver 11 Test - Arpeggio.sid | 7,104 | 2025-11-29 | 🟢 Active |
-| SIDSF2player/Driver 11 Test - Filter.sid | 7,315 | 2025-11-29 | 🟢 Active |
-| SIDSF2player/Driver 11 Test - Polyphonic.sid | 8,064 | 2025-11-29 | 🟢 Active |
-| SIDSF2player/Driver 11 Test - Tie Notes.sid | 7,954 | 2025-11-29 | 🟢 Active |
-| SIDSF2player/Expand_Side_1.sid | 6,823 | 2025-11-29 | 🟢 Active |
-| SIDSF2player/Halloweed_4_tune_3.sid | 5,698 | 2025-11-29 | 🟢 Active |
-| SIDSF2player/I_Have_Extended_Intros.sid | 3,809 | 2025-11-29 | 🟢 Active |
-| SIDSF2player/Staying_Alive.sid | 5,092 | 2025-11-29 | 🟢 Active |
-| SIDSF2player/tie_notes_test.sid | 8,586 | 2025-11-29 | 🟢 Active |
-| SIDSF2player/Stinsens_Last_Night_of_89.sid | 6,201 | 2025-11-22 | 🟢 Active |
-
-## Configuration
-
-| File | Size (bytes) | Last Modified | Status |
-|------|--------------|---------------|--------|
-| SIDwinder.cfg | 1,574 | 2025-12-07 | 🟢 Active |
-| .gitignore | 1,077 | 2025-11-30 | 🟢 Active |
-| sidm2_config.example.json | 699 | 2025-11-29 | 🟢 Active |
-| .github/workflows/ci.yml | 6,514 | 2025-11-27 | 🟢 Active |
-| .github/workflows/test.yml | 1,055 | 2025-11-27 | 🟢 Active |
-| pytest.ini | 475 | 2025-11-23 | 🟢 Active |
-| learnings/desktop.ini | 80 | 2025-11-23 | 🟢 Active |
-
----
-
-## Cleanup Recommendations
-
-### Safe to Remove (if confirmed unused)
-1. **output/** directory contents - Can be regenerated
-2. **roundtrip_output/** directory contents - Can be regenerated
-
-### Keep Everything Else
-- All sidm2/ package files are core functionality
-- All test files are part of the test suite
-- All documentation provides valuable reference
-- All G5/ templates are required for conversion
-- All SID/ example files are test references
-
----
-
-## Usage
-
-To update this inventory, run:
-```bash
-python scripts/update_inventory.py
+```
+SIDM2/
+├── CHANGELOG.md (7.9KB)
+├── CLAUDE.md (14.3KB)
+├── cleanup_md_files.py (2.9KB)
+├── complete_pipeline_with_validation.py (68.6KB)
+├── CONSOLIDATION_COMPLETE.md (9.3KB)
+├── CONTRIBUTING.md (6.5KB)
+├── debug_music_data_block.py (4.5KB)
+├── file_inventory.json (0B)
+├── FILE_INVENTORY.md (48.3KB)
+├── KNOWLEDGE_CONSOLIDATION.md (15.2KB)
+├── pytest.ini (475B)
+├── README.md (63.5KB)
+├── requirements-test.txt (92B)
+├── requirements.txt (115B)
+├── sequence_voice_0.bin (2.0KB)
+├── sequence_voice_1.bin (23B)
+├── sequence_voice_2.bin (29B)
+├── sf2_music_data_extracted.pkl (2.1KB)
+├── sf2_sequences_extracted.pkl (3.4KB)
+├── SF2_VALIDATION_STATUS.md (5.0KB)
+├── sidm2_config.example.json (699B)
+├── SIDwinder.cfg (1.5KB)
+├── STATUS.md (9.1KB)
+├── stinsens_original.dump (163.0KB)
+├── test_stinsen_injection.py (4.2KB)
+├── update_inventory.py (4.9KB)
+├── validate_sf2.py (4.6KB)
+├── archive/
+│   ├── README.md (4.3KB)
+│   ├── 2025-12-11/
+│   │   ├── CLEANUP_SUMMARY.md (7.2KB)
+│   │   ├── FILE_MANAGEMENT_RULES.md (3.0KB)
+│   │   ├── SIDDUMP_INTEGRATION_SUMMARY.md (11.1KB)
+│   ├── experiments/
+│   │   ├── analyze_all_sequence_candidates.py (4.7KB)
+│   │   ├── analyze_gap_for_sequences.py (4.2KB)
+│   │   ├── analyze_orderlist_as_sequences.py (3.9KB)
+│   │   ├── analyze_packed_sid_structure.py (5.3KB)
+│   │   ├── analyze_sequences_smart.py (9.2KB)
+│   │   ├── analyze_sf2_structure.py (1.7KB)
+│   │   ├── apply_siddump_trace_patch.py (6.0KB)
+│   │   ├── assemble_complete_sf2.py (10.5KB)
+│   │   ├── check_sequence_pointers.py (4.3KB)
+│   │   ├── compare_sf2_and_sid_bytes.py (4.7KB)
+│   │   ├── convert_orderlist_to_driver11.py (3.9KB)
+│   │   ├── convert_sf2packed_to_sf2.py (6.3KB)
+│   │   ├── convert_siddump_to_sf2_sequences.py (6.3KB)
+│   │   ├── create_proper_sf2.py (5.3KB)
+│   │   ├── dump_memory_regions.py (2.7KB)
+│   │   ├── expand_orderlist_to_fixed_rows.py (3.8KB)
+│   │   ├── extract_and_inject_sequences.py (4.7KB)
+│   │   ├── extract_sequences_correct.py (3.9KB)
+│   │   ├── extract_three_voice_sequences.py (5.5KB)
+│   │   ├── extract_with_sf2_reader.py (2.3KB)
+│   │   ├── final_sequence_hunt.py (4.4KB)
+│   │   ├── find_remaining_sequences.py (4.1KB)
+│   │   ├── find_sequence_pointer_table.py (6.2KB)
+│   │   ├── find_sequences_by_comparison.py (5.9KB)
+│   │   ├── find_sequences_simple.py (5.2KB)
+│   │   ├── find_sf2_sequences_relocated.py (5.3KB)
+│   │   ├── inject_sequences_correct.py (4.2KB)
+│   │   ├── inject_sequences_final.py (7.1KB)
+│   │   ├── inject_sequences_into_reference.py (4.9KB)
+│   │   ├── parse_music_data_block.py (6.0KB)
+│   │   ├── parse_siddump_table.py (7.8KB)
+│   │   ├── pipeline_single.py (15.2KB)
+│   │   ├── reconstruct_from_siddump.py (9.1KB)
+│   │   ├── reverse_engineer_sf2_packed.py (4.8KB)
+│   │   ├── trace_sequence_reads.py (7.1KB)
+│   │   ├── understand_sf2_format.py (2.7KB)
+│   │   ├── validate_sequence_candidate.py (8.2KB)
+│   ├── old_analysis/
+│   │   ├── FILTER_TABLE_EXTRACTION_SUCCESS.md (6.4KB)
+│   │   ├── FILTER_TABLE_READ_ANALYSIS.md (8.2KB)
+│   │   ├── PULSE_TABLE_ANALYSIS.md (2.9KB)
+│   │   ├── PULSE_TABLE_FIX_SUMMARY.md (3.1KB)
+│   │   ├── PULSE_TABLE_READ_ANALYSIS.md (6.9KB)
+│   │   ├── STINSENS_TODO.md (2.5KB)
+│   │   ├── TODO.md (9.6KB)
+│   │   ├── WAVE_TABLE_READ_ANALYSIS.md (5.3KB)
+│   ├── old_docs/
+│   │   ├── COMPLETE_SF2_RECONSTRUCTION_SUMMARY.md (9.8KB)
+│   │   ├── FINAL_STATUS_AND_RECOMMENDATIONS.md (6.1KB)
+│   │   ├── FINAL_UNDERSTANDING.md (4.2KB)
+│   │   ├── NEXT_STEPS.md (2.3KB)
+│   │   ├── reference_validation.txt (4.5KB)
+│   │   ├── RETRODEBUGGER_SEQUENCE_INVESTIGATION.md (5.4KB)
+│   │   ├── SEQUENCE_EXTRACTION_FINAL_REPORT.md (6.0KB)
+│   │   ├── SEQUENCE_EXTRACTION_STATE.md (10.8KB)
+│   │   ├── SEQUENCE_INVESTIGATION_SUMMARY.md (2.9KB)
+│   │   ├── sequences_extracted.txt (5.3KB)
+│   │   ├── SF2_FORMAT_SOLVED.md (8.4KB)
+│   │   ├── SIDDUMP_EXTRACTION_SUCCESS.md (6.3KB)
+│   │   ├── SIDDUMP_TRACE_STATUS.md (3.5KB)
+│   │   ├── STINSEN_CONVERSION_STATUS.md (9.1KB)
+│   │   ├── stinsens_pipeline_verification.txt (4.6KB)
+│   │   ├── test_direct_verification.txt (4.5KB)
+│   │   ├── test_pipeline_integration_verification.txt (4.5KB)
+│   │   ├── understand_player_architecture.md (4.0KB)
+│   └── temp_investigations/
+│       ├── RETRODEBUGGER_INVESTIGATION.md (3.8KB)
+├── docs/
+│   ├── ARCHITECTURE.md (20.3KB)
+│   ├── COMPONENTS_REFERENCE.md (16.0KB)
+│   ├── FILE_INVENTORY.md (16.4KB)
+│   ├── IMPROVEMENT_PLAN.md (13.8KB)
+│   ├── INDEX.md (4.5KB)
+│   ├── SF2_DEEP_DIVE.md (31.4KB)
+│   ├── SID_REGISTERS_REFERENCE.md (8.4KB)
+│   ├── SIDDUMP_DEEP_DIVE.md (26.2KB)
+│   ├── TOOLS_REFERENCE.md (13.6KB)
+│   ├── analysis/
+│   │   ├── ACCURACY_ROADMAP.md (11.4KB)
+│   │   ├── CONSOLIDATION_INSIGHTS.md (14.6KB)
+│   │   ├── PACK_STATUS.md (5.4KB)
+│   │   ├── TECHNICAL_ANALYSIS.md (13.8KB)
+│   ├── archive/
+│   │   ├── ANNOTATED_DISASSEMBLY_INTEGRATION.md (12.3KB)
+│   │   ├── PHASE1_COMPLETION_REPORT.md (12.4KB)
+│   │   ├── ROUNDTRIP_VALIDATION_FINDINGS.md (6.2KB)
+│   │   ├── SF2PACKED_STINSENS_ANNOTATED_DISASSEMBLY.md (44.6KB)
+│   │   ├── SF2PACKED_STINSENS_COMPLETE_DISASSEMBLY.md (174.7KB)
+│   │   ├── SIDSF2PLAYER_VALIDATION_REPORT.md (9.7KB)
+│   │   └── 2025-12-06/
+│   │       ├── PIPELINE_EXECUTION_REPORT.md (11.9KB)
+│   │       ├── PIPELINE_RESULTS_2025-12-06.md (3.5KB)
+│   │       ├── PIPELINE_RESULTS_SUMMARY.md (6.4KB)
+│   │       ├── PIPELINE_TIMING.md (1.4KB)
+│   ├── guides/
+│   │   ├── SIDWINDER_GUIDE.md (6.9KB)
+│   │   ├── VALIDATION_GUIDE.md (23.2KB)
+│   ├── reference/
+│   │   ├── CONVERSION_STRATEGY.md (15.0KB)
+│   │   ├── DRIVER_REFERENCE.md (9.5KB)
+│   │   ├── format-specification.md (10.6KB)
+│   │   ├── SF2_CLASSES.md (8.4KB)
+│   │   ├── SF2_FORMAT_SPEC.md (13.9KB)
+│   │   ├── SF2_TO_SID_LIMITATIONS.md (7.0KB)
+│   │   ├── sid-registers.md (5.7KB)
+│   │   ├── STINSENS_PLAYER_DISASSEMBLY.md (29.5KB)
+│   │   ├── WAVE_TABLE_PACKING.md (6.7KB)
+│   └── solutions/
+│       ├── THREE_TABLE_FORMAT_DISCOVERY.md (10.6KB)
+│       ├── WAVE_TABLE_DUAL_FORMAT.md (6.4KB)
+├── G5/
+│   ├── 21.g5_Final.d64 (170.8KB)
+│   ├── 21.g5_Final.txt (10.8KB)
+│   ├── 21g5.txt (20.1KB)
+│   ├── desktop.ini (80B)
+│   ├── siddump108.zip (27.2KB)
+│   ├── drivers/
+│   │   ├── sf2driver11_00.prg (6.4KB)
+│   │   ├── sf2driver11_01.prg (6.5KB)
+│   │   ├── sf2driver11_02.prg (6.6KB)
+│   │   ├── sf2driver11_03.prg (6.6KB)
+│   │   ├── sf2driver11_04.prg (6.6KB)
+│   │   ├── sf2driver11_04_01.prg (6.7KB)
+│   │   ├── sf2driver11_05.prg (6.6KB)
+│   │   ├── sf2driver12_00.prg (3.2KB)
+│   │   ├── sf2driver12_00_01.prg (3.2KB)
+│   │   ├── sf2driver13_00.prg (3.5KB)
+│   │   ├── sf2driver13_00_01.prg (3.5KB)
+│   │   ├── sf2driver14_00.prg (5.6KB)
+│   │   ├── sf2driver14_00_01.prg (5.6KB)
+│   │   ├── sf2driver15_00.prg (3.5KB)
+│   │   ├── sf2driver15_01.prg (3.5KB)
+│   │   ├── sf2driver15_02.prg (3.5KB)
+│   │   ├── sf2driver16_00.prg (3.3KB)
+│   │   ├── sf2driver16_01.prg (3.3KB)
+│   │   ├── sf2driver16_01_01.prg (3.3KB)
+│   │   ├── sf2driver_np20_00.prg (5.2KB)
+│   ├── examples/
+│   │   ├── Driver 11 Test - Arpeggio.sf2 (7.5KB)
+│   │   ├── Driver 11 Test - Filter.sf2 (7.7KB)
+│   │   ├── Driver 11 Test - Polyphonic.sf2 (8.4KB)
+│   │   ├── Driver 11 Test - Tie Notes.sf2 (8.3KB)
+│   │   ├── Driver 12 Test - The Barber.sf2 (4.7KB)
+│   │   ├── Driver 13 Test - Hubbard.sf2 (5.8KB)
+│   │   ├── Driver 14 Test - Heavy.sf2 (10.2KB)
+│   │   ├── Driver 14 Test - Long Sequence.sf2 (7.1KB)
+│   │   ├── Driver 14 Test - Medieval.sf2 (7.8KB)
+│   │   ├── Driver 15 Test - Mood.sf2 (9.1KB)
+│   │   ├── Driver 16 Test - Busy.sf2 (5.2KB)
+│   ├── NewPlayer v21.G5 Final/
+│   │   ├── 21.g5 clean.prg (8.2KB)
+│   │   ├── 21.g5_Demos_Final.d64 (170.8KB)
+│   │   ├── 21.g5_Final.d64 (170.8KB)
+│   │   ├── 21.g5_Final.txt (10.8KB)
+│   │   ├── desktop.ini (68B)
+│   │   ├── NP-PACK5.5.d64 (170.8KB)
+│   └── siddump108/
+│       ├── cpu.c (27.3KB)
+│       ├── cpu.h (204B)
+│       ├── Makefile (114B)
+│       ├── readme.txt (2.0KB)
+│       ├── siddump.c (15.8KB)
+│       ├── siddump.exe (49.5KB)
+├── learnings/
+│   ├── 21.g5 clean.prg (8.2KB)
+│   ├── 21.g5_Final.txt (10.8KB)
+│   ├── 21g5.txt (20.1KB)
+│   ├── Commodore_64_Programmers_Reference_Guide_1983_Commodore_a.pdf (14.1MB)
+│   ├── Commodore_64_Programmers_Reference_Guide_1983_Commodore_full.pdf (41.8MB)
+│   ├── converter.txt (3.0KB)
+│   ├── desktop.ini (80B)
+│   ├── Driver 11 Test - Arpeggio.sf2 (7.5KB)
+│   ├── Driver 11 Test - Filter.sf2 (7.7KB)
+│   ├── Driver 11 Test - Polyphonic.sf2 (8.4KB)
+│   ├── Driver 11 Test - Tie Notes.sf2 (8.3KB)
+│   ├── Driver 12 Test - The Barber.sf2 (4.7KB)
+│   ├── Driver 13 Test - Hubbard.sf2 (5.8KB)
+│   ├── Driver 14 Test - Heavy.sf2 (10.2KB)
+│   ├── Driver 14 Test - Long Sequence.sf2 (7.1KB)
+│   ├── Driver 14 Test - Medieval.sf2 (7.8KB)
+│   ├── Driver 15 Test - Mood.sf2 (9.1KB)
+│   ├── Driver 16 Test - Busy.sf2 (5.2KB)
+│   ├── faq.txt (1.5KB)
+│   ├── Laxity - Stinsen - Last Night Of 89.sf2 (16.8KB)
+│   ├── Mapping the Commodore 64 II.pdf (2.0MB)
+│   ├── notes.txt (14.1KB)
+│   ├── notes_driver11.txt (4.1KB)
+│   ├── notes_driver12.txt (594B)
+│   ├── notes_driver13.txt (970B)
+│   ├── notes_driver14.txt (1.9KB)
+│   ├── notes_driver15.txt (1.8KB)
+│   ├── notes_driver16.txt (1.1KB)
+│   ├── sidmitlearn.txt (24.2KB)
+│   ├── Stinsens_Last_Night_of_89.sid (6.1KB)
+│   ├── user_manual.pdf (1.7MB)
+│   └── drivers/
+│       ├── sf2driver11_00.prg (6.4KB)
+│       ├── sf2driver11_01.prg (6.5KB)
+│       ├── sf2driver11_02.prg (6.6KB)
+│       ├── sf2driver11_03.prg (6.6KB)
+│       ├── sf2driver11_04.prg (6.6KB)
+│       ├── sf2driver11_04_01.prg (6.7KB)
+│       ├── sf2driver11_05.prg (6.6KB)
+│       ├── sf2driver12_00.prg (3.2KB)
+│       ├── sf2driver12_00_01.prg (3.2KB)
+│       ├── sf2driver13_00.prg (3.5KB)
+│       ├── sf2driver13_00_01.prg (3.5KB)
+│       ├── sf2driver14_00.prg (5.6KB)
+│       ├── sf2driver14_00_01.prg (5.6KB)
+│       ├── sf2driver15_00.prg (3.5KB)
+│       ├── sf2driver15_01.prg (3.5KB)
+│       ├── sf2driver15_02.prg (3.5KB)
+│       ├── sf2driver16_00.prg (3.3KB)
+│       ├── sf2driver16_01.prg (3.3KB)
+│       ├── sf2driver16_01_01.prg (3.3KB)
+│       ├── sf2driver_np20_00.prg (5.2KB)
+├── output/
+│   ├── EXTRACTION_VALIDATION_REPORT.md (5.2KB)
+│   ├── sequences_combined_correct.bin (126B)
+│   ├── sequences_extracted.bin (670B)
+│   ├── SIDSF2PLAYER_COMPLETE_EXTRACTION_REPORT.md (11.8KB)
+│   ├── SIDSF2PLAYER_COMPLETE_PIPELINE_REPORT.md (14.1KB)
+│   ├── SIDSF2PLAYER_EXTRACTION_REPORT.md (6.5KB)
+│   ├── Stinsens_Last_Night_of_89_reconstructed.sf2 (3.9KB)
+│   ├── Stinsens_Last_Night_of_89_WITH_ORDERLISTS_EXPANDED.sf2 (8.2KB)
+│   ├── Stinsens_Last_Night_of_89_WITH_SEQUENCES.sf2 (8.2KB)
+│   ├── Stinsens_Last_Night_of_89_WITH_SEQUENCES_CORRECT.sf2 (8.2KB)
+│   ├── Stinsens_with_siddump_sequences.sf2 (16.8KB)
+│   ├── track1_sequences.bin (43B)
+│   ├── track2_sequences.bin (24B)
+│   ├── track3_sequences.bin (59B)
+│   ├── voice1_sequences.bin (3.7KB)
+│   ├── voice2_sequences.bin (0B)
+│   ├── voice3_sequences.bin (0B)
+│   ├── SIDSF2player_Complete_Pipeline/
+│   │   ├── Aint_Somebody/
+│   │   │   ├── New/
+│   │   │   │   ├── Aint_Somebody.sf2 (16.3KB)
+│   │   │   │   ├── Aint_Somebody.sid (5.0KB)
+│   │   │   │   ├── Aint_Somebody_exported.dump (133B)
+│   │   │   │   ├── Aint_Somebody_exported.hex (68.3KB)
+│   │   │   │   ├── Aint_Somebody_exported.sid (15.8KB)
+│   │   │   │   ├── Aint_Somebody_exported.txt (276.9KB)
+│   │   │   │   ├── Aint_Somebody_exported.wav (1.3MB)
+│   │   │   │   ├── Aint_Somebody_exported_disassembly.md (59.8KB)
+│   │   │   │   ├── Aint_Somebody_exported_sidwinder.asm (115.5KB)
+│   │   │   │   ├── info.txt (35.6KB)
+│   │   │   └── Original/
+│   │   │       ├── Aint_Somebody_original.dump (54.6KB)
+│   │   │       ├── Aint_Somebody_original.hex (21.8KB)
+│   │   │       ├── Aint_Somebody_original.txt (7.0MB)
+│   │   │       ├── Aint_Somebody_original.wav (1.3MB)
+│   │   │       ├── Aint_Somebody_original_sidwinder.asm (104.0KB)
+│   │   ├── Broware/
+│   │   │   ├── New/
+│   │   │   │   ├── Broware.sf2 (10.1KB)
+│   │   │   │   ├── Broware.sid (6.6KB)
+│   │   │   │   ├── Broware_exported.dump (54.6KB)
+│   │   │   │   ├── Broware_exported.hex (47.3KB)
+│   │   │   │   ├── Broware_exported.sid (11.0KB)
+│   │   │   │   ├── Broware_exported.txt (276.9KB)
+│   │   │   │   ├── Broware_exported.wav (1.3MB)
+│   │   │   │   ├── Broware_exported_disassembly.md (61.3KB)
+│   │   │   │   ├── Broware_exported_sidwinder.asm (79.9KB)
+│   │   │   │   ├── info.txt (15.1KB)
+│   │   │   └── Original/
+│   │   │       ├── Broware_original.dump (54.6KB)
+│   │   │       ├── Broware_original.hex (28.4KB)
+│   │   │       ├── Broware_original.txt (7.0MB)
+│   │   │       ├── Broware_original.wav (1.3MB)
+│   │   │       ├── Broware_original_sidwinder.asm (117.9KB)
+│   │   ├── Cocktail_to_Go_tune_3/
+│   │   │   ├── New/
+│   │   │   │   ├── Cocktail_to_Go_(tune_3).sid (4.4KB)
+│   │   │   │   ├── Cocktail_to_Go_tune_3.sf2 (16.3KB)
+│   │   │   │   ├── Cocktail_to_Go_tune_3_exported.dump (122B)
+│   │   │   │   ├── Cocktail_to_Go_tune_3_exported.hex (68.3KB)
+│   │   │   │   ├── Cocktail_to_Go_tune_3_exported.sid (15.8KB)
+│   │   │   │   ├── Cocktail_to_Go_tune_3_exported.txt (276.9KB)
+│   │   │   │   ├── Cocktail_to_Go_tune_3_exported.wav (1.3MB)
+│   │   │   │   ├── Cocktail_to_Go_tune_3_exported_disassembly.md (59.7KB)
+│   │   │   │   ├── Cocktail_to_Go_tune_3_exported_sidwinder.asm (114.1KB)
+│   │   │   │   ├── info.txt (32.1KB)
+│   │   │   └── Original/
+│   │   │       ├── Cocktail_to_Go_tune_3_original.dump (54.6KB)
+│   │   │       ├── Cocktail_to_Go_tune_3_original.hex (19.1KB)
+│   │   │       ├── Cocktail_to_Go_tune_3_original.txt (7.0MB)
+│   │   │       ├── Cocktail_to_Go_tune_3_original.wav (1.3MB)
+│   │   │       ├── Cocktail_to_Go_tune_3_original_sidwinder.asm (107.3KB)
+│   │   ├── Driver 11 Test - Arpeggio/
+│   │   │   ├── New/
+│   │   │   │   ├── Driver 11 Test - Arpeggio.sf2 (7.5KB)
+│   │   │   │   ├── Driver 11 Test - Arpeggio_exported.dump (54.6KB)
+│   │   │   │   ├── Driver 11 Test - Arpeggio_exported.hex (31.3KB)
+│   │   │   │   ├── Driver 11 Test - Arpeggio_exported.sid (7.2KB)
+│   │   │   │   ├── Driver 11 Test - Arpeggio_exported.txt (276.9KB)
+│   │   │   │   ├── Driver 11 Test - Arpeggio_exported.wav (1.3MB)
+│   │   │   │   ├── Driver 11 Test - Arpeggio_exported_disassembly.md (61.5KB)
+│   │   │   │   ├── Driver 11 Test - Arpeggio_exported_sidwinder.asm (52.6KB)
+│   │   │   │   ├── Driver_11_Test_-_Arpeggio.sid (6.9KB)
+│   │   │   │   ├── info.txt (7.8KB)
+│   │   │   └── Original/
+│   │   │       ├── Driver 11 Test - Arpeggio_original.dump (54.6KB)
+│   │   │       ├── Driver 11 Test - Arpeggio_original.hex (29.9KB)
+│   │   │       ├── Driver 11 Test - Arpeggio_original.txt (276.9KB)
+│   │   │       ├── Driver 11 Test - Arpeggio_original.wav (1.3MB)
+│   │   │       ├── Driver 11 Test - Arpeggio_original_sidwinder.asm (50.3KB)
+│   │   ├── Driver 11 Test - Filter/
+│   │   │   ├── New/
+│   │   │   │   ├── Driver 11 Test - Filter.sf2 (7.7KB)
+│   │   │   │   ├── Driver 11 Test - Filter_exported.dump (54.6KB)
+│   │   │   │   ├── Driver 11 Test - Filter_exported.hex (32.1KB)
+│   │   │   │   ├── Driver 11 Test - Filter_exported.sid (7.4KB)
+│   │   │   │   ├── Driver 11 Test - Filter_exported.txt (276.9KB)
+│   │   │   │   ├── Driver 11 Test - Filter_exported.wav (1.3MB)
+│   │   │   │   ├── Driver 11 Test - Filter_exported_disassembly.md (61.4KB)
+│   │   │   │   ├── Driver 11 Test - Filter_exported_sidwinder.asm (54.0KB)
+│   │   │   │   ├── Driver_11_Test_-_Filter.sid (7.1KB)
+│   │   │   │   ├── info.txt (7.8KB)
+│   │   │   └── Original/
+│   │   │       ├── Driver 11 Test - Filter_original.dump (54.6KB)
+│   │   │       ├── Driver 11 Test - Filter_original.hex (30.8KB)
+│   │   │       ├── Driver 11 Test - Filter_original.txt (276.9KB)
+│   │   │       ├── Driver 11 Test - Filter_original.wav (1.3MB)
+│   │   │       ├── Driver 11 Test - Filter_original_sidwinder.asm (51.8KB)
+│   │   ├── Driver 11 Test - Polyphonic/
+│   │   │   ├── New/
+│   │   │   │   ├── Driver 11 Test - Polyphonic.sf2 (8.4KB)
+│   │   │   │   ├── Driver 11 Test - Polyphonic_exported.dump (54.6KB)
+│   │   │   │   ├── Driver 11 Test - Polyphonic_exported.hex (35.3KB)
+│   │   │   │   ├── Driver 11 Test - Polyphonic_exported.sid (8.2KB)
+│   │   │   │   ├── Driver 11 Test - Polyphonic_exported.txt (276.9KB)
+│   │   │   │   ├── Driver 11 Test - Polyphonic_exported.wav (1.3MB)
+│   │   │   │   ├── Driver 11 Test - Polyphonic_exported_disassembly.md (61.5KB)
+│   │   │   │   ├── Driver 11 Test - Polyphonic_exported_sidwinder.asm (59.3KB)
+│   │   │   │   ├── Driver_11_Test_-_Polyphonic.sid (7.9KB)
+│   │   │   │   ├── info.txt (7.9KB)
+│   │   │   └── Original/
+│   │   │       ├── Driver 11 Test - Polyphonic_original.dump (54.6KB)
+│   │   │       ├── Driver 11 Test - Polyphonic_original.hex (34.0KB)
+│   │   │       ├── Driver 11 Test - Polyphonic_original.txt (276.9KB)
+│   │   │       ├── Driver 11 Test - Polyphonic_original.wav (1.3MB)
+│   │   │       ├── Driver 11 Test - Polyphonic_original_sidwinder.asm (57.0KB)
+│   │   ├── Driver 11 Test - Tie Notes/
+│   │   │   ├── New/
+│   │   │   │   ├── Driver 11 Test - Tie Notes.sf2 (8.3KB)
+│   │   │   │   ├── Driver 11 Test - Tie Notes_exported.dump (54.6KB)
+│   │   │   │   ├── Driver 11 Test - Tie Notes_exported.hex (34.8KB)
+│   │   │   │   ├── Driver 11 Test - Tie Notes_exported.sid (8.1KB)
+│   │   │   │   ├── Driver 11 Test - Tie Notes_exported.txt (1.4MB)
+│   │   │   │   ├── Driver 11 Test - Tie Notes_exported.wav (1.3MB)
+│   │   │   │   ├── Driver 11 Test - Tie Notes_exported_disassembly.md (61.5KB)
+│   │   │   │   ├── Driver 11 Test - Tie Notes_exported_sidwinder.asm (60.2KB)
+│   │   │   │   ├── Driver_11_Test_-_Tie_Notes.sid (7.8KB)
+│   │   │   │   ├── info.txt (7.9KB)
+│   │   │   └── Original/
+│   │   │       ├── Driver 11 Test - Tie Notes_original.dump (54.6KB)
+│   │   │       ├── Driver 11 Test - Tie Notes_original.hex (33.5KB)
+│   │   │       ├── Driver 11 Test - Tie Notes_original.txt (276.9KB)
+│   │   │       ├── Driver 11 Test - Tie Notes_original.wav (1.3MB)
+│   │   │       ├── Driver 11 Test - Tie Notes_original_sidwinder.asm (56.3KB)
+│   │   ├── Expand_Side_1/
+│   │   │   ├── New/
+│   │   │   │   ├── Expand_Side_1.sf2 (16.3KB)
+│   │   │   │   ├── Expand_Side_1.sid (6.7KB)
+│   │   │   │   ├── Expand_Side_1_exported.dump (122B)
+│   │   │   │   ├── Expand_Side_1_exported.hex (68.7KB)
+│   │   │   │   ├── Expand_Side_1_exported.sid (15.9KB)
+│   │   │   │   ├── Expand_Side_1_exported.txt (276.9KB)
+│   │   │   │   ├── Expand_Side_1_exported.wav (1.3MB)
+│   │   │   │   ├── Expand_Side_1_exported_disassembly.md (55.5KB)
+│   │   │   │   ├── Expand_Side_1_exported_sidwinder.asm (115.4KB)
+│   │   │   │   ├── info.txt (34.4KB)
+│   │   │   └── Original/
+│   │   │       ├── Expand_Side_1_original.dump (54.6KB)
+│   │   │       ├── Expand_Side_1_original.hex (28.8KB)
+│   │   │       ├── Expand_Side_1_original.txt (7.0MB)
+│   │   │       ├── Expand_Side_1_original.wav (1.3MB)
+│   │   │       ├── Expand_Side_1_original_sidwinder.asm (115.2KB)
+│   │   ├── Halloweed_4_tune_3/
+│   │   │   ├── New/
+│   │   │   │   ├── Halloweed_4_(tune_3).sid (5.6KB)
+│   │   │   │   ├── Halloweed_4_tune_3.sf2 (16.3KB)
+│   │   │   │   ├── Halloweed_4_tune_3_exported.dump (133B)
+│   │   │   │   ├── Halloweed_4_tune_3_exported.hex (68.3KB)
+│   │   │   │   ├── Halloweed_4_tune_3_exported.sid (15.8KB)
+│   │   │   │   ├── Halloweed_4_tune_3_exported.txt (276.9KB)
+│   │   │   │   ├── Halloweed_4_tune_3_exported.wav (1.3MB)
+│   │   │   │   ├── Halloweed_4_tune_3_exported_disassembly.md (60.5KB)
+│   │   │   │   ├── Halloweed_4_tune_3_exported_sidwinder.asm (116.2KB)
+│   │   │   │   ├── info.txt (34.3KB)
+│   │   │   └── Original/
+│   │   │       ├── Halloweed_4_tune_3_original.dump (54.6KB)
+│   │   │       ├── Halloweed_4_tune_3_original.hex (24.0KB)
+│   │   │       ├── Halloweed_4_tune_3_original.txt (7.0MB)
+│   │   │       ├── Halloweed_4_tune_3_original.wav (1.3MB)
+│   │   │       ├── Halloweed_4_tune_3_original_sidwinder.asm (112.3KB)
+│   │   ├── I_Have_Extended_Intros/
+│   │   │   ├── New/
+│   │   │   │   ├── I_Have_Extended_Intros.sf2 (10.1KB)
+│   │   │   │   ├── I_Have_Extended_Intros.sid (3.7KB)
+│   │   │   │   ├── I_Have_Extended_Intros_exported.dump (54.6KB)
+│   │   │   │   ├── I_Have_Extended_Intros_exported.hex (42.6KB)
+│   │   │   │   ├── I_Have_Extended_Intros_exported.sid (9.9KB)
+│   │   │   │   ├── I_Have_Extended_Intros_exported.txt (276.9KB)
+│   │   │   │   ├── I_Have_Extended_Intros_exported.wav (1.3MB)
+│   │   │   │   ├── I_Have_Extended_Intros_exported_disassembly.md (61.5KB)
+│   │   │   │   ├── I_Have_Extended_Intros_exported_sidwinder.asm (72.1KB)
+│   │   │   │   ├── info.txt (15.3KB)
+│   │   │   └── Original/
+│   │   │       ├── I_Have_Extended_Intros_original.dump (54.6KB)
+│   │   │       ├── I_Have_Extended_Intros_original.hex (16.1KB)
+│   │   │       ├── I_Have_Extended_Intros_original.txt (6.9MB)
+│   │   │       ├── I_Have_Extended_Intros_original.wav (1.3MB)
+│   │   │       ├── I_Have_Extended_Intros_original_sidwinder.asm (69.7KB)
+│   │   ├── polyphonic_cpp/
+│   │   │   ├── New/
+│   │   │   │   ├── info.txt (7.6KB)
+│   │   │   │   ├── Polyphonic.sid (8.5KB)
+│   │   │   │   ├── polyphonic_cpp.sf2 (7.5KB)
+│   │   │   │   ├── polyphonic_cpp_exported.dump (54.7KB)
+│   │   │   │   ├── polyphonic_cpp_exported.hex (31.3KB)
+│   │   │   │   ├── polyphonic_cpp_exported.sid (7.2KB)
+│   │   │   │   ├── polyphonic_cpp_exported.txt (276.9KB)
+│   │   │   │   ├── polyphonic_cpp_exported.wav (1.3MB)
+│   │   │   │   ├── polyphonic_cpp_exported_disassembly.md (136.5KB)
+│   │   │   │   ├── polyphonic_cpp_exported_sidwinder.asm (52.2KB)
+│   │   │   └── Original/
+│   │   │       ├── polyphonic_cpp_original.dump (54.6KB)
+│   │   │       ├── polyphonic_cpp_original.hex (36.7KB)
+│   │   │       ├── polyphonic_cpp_original.txt (0B)
+│   │   │       ├── polyphonic_cpp_original.wav (1.3MB)
+│   │   ├── polyphonic_test/
+│   │   │   ├── New/
+│   │   │   │   ├── info.txt (7.7KB)
+│   │   │   │   ├── Plug.sid (8.6KB)
+│   │   │   │   ├── polyphonic_test.sf2 (7.5KB)
+│   │   │   │   ├── polyphonic_test_exported.dump (54.6KB)
+│   │   │   │   ├── polyphonic_test_exported.hex (31.3KB)
+│   │   │   │   ├── polyphonic_test_exported.sid (7.2KB)
+│   │   │   │   ├── polyphonic_test_exported.txt (276.9KB)
+│   │   │   │   ├── polyphonic_test_exported.wav (1.3MB)
+│   │   │   │   ├── polyphonic_test_exported_disassembly.md (61.3KB)
+│   │   │   │   ├── polyphonic_test_exported_sidwinder.asm (53.1KB)
+│   │   │   └── Original/
+│   │   │       ├── polyphonic_test_original.dump (54.6KB)
+│   │   │       ├── polyphonic_test_original.hex (37.0KB)
+│   │   │       ├── polyphonic_test_original.txt (27B)
+│   │   │       ├── polyphonic_test_original.wav (1.3MB)
+│   │   ├── SF2packed_new1_Stiensens_last_night_of_89/
+│   │   │   ├── New/
+│   │   │   │   ├── 89.sid (6.1KB)
+│   │   │   │   ├── info.txt (31.7KB)
+│   │   │   │   ├── SF2packed_new1_Stiensens_last_night_of_89.sf2 (15.0KB)
+│   │   │   │   ├── SF2packed_new1_Stiensens_last_night_of_89_exported.dump (54.6KB)
+│   │   │   │   ├── SF2packed_new1_Stiensens_last_night_of_89_exported.hex (62.9KB)
+│   │   │   │   ├── SF2packed_new1_Stiensens_last_night_of_89_exported.sid (14.6KB)
+│   │   │   │   ├── SF2packed_new1_Stiensens_last_night_of_89_exported.txt (276.9KB)
+│   │   │   │   ├── SF2packed_new1_Stiensens_last_night_of_89_exported.wav (1.3MB)
+│   │   │   │   ├── SF2packed_new1_Stiensens_last_night_of_89_exported_disassembly.md (59.7KB)
+│   │   │   │   ├── SF2packed_new1_Stiensens_last_night_of_89_exported_sidwinder.asm (105.7KB)
+│   │   │   └── Original/
+│   │   │       ├── SF2packed_new1_Stiensens_last_night_of_89_original.dump (54.6KB)
+│   │   │       ├── SF2packed_new1_Stiensens_last_night_of_89_original.hex (26.1KB)
+│   │   │       ├── SF2packed_new1_Stiensens_last_night_of_89_original.txt (7.0MB)
+│   │   │       ├── SF2packed_new1_Stiensens_last_night_of_89_original.wav (1.3MB)
+│   │   │       ├── SF2packed_new1_Stiensens_last_night_of_89_original_sidwinder.asm (113.1KB)
+│   │   ├── SF2packed_Stinsens_Last_Night_of_89/
+│   │   │   ├── New/
+│   │   │   │   ├── info.txt (31.6KB)
+│   │   │   │   ├── SF2packed_Stinsens_Last_Night_of_89.sf2 (15.0KB)
+│   │   │   │   ├── SF2packed_Stinsens_Last_Night_of_89_exported.dump (54.6KB)
+│   │   │   │   ├── SF2packed_Stinsens_Last_Night_of_89_exported.hex (62.9KB)
+│   │   │   │   ├── SF2packed_Stinsens_Last_Night_of_89_exported.sid (14.6KB)
+│   │   │   │   ├── SF2packed_Stinsens_Last_Night_of_89_exported.txt (276.9KB)
+│   │   │   │   ├── SF2packed_Stinsens_Last_Night_of_89_exported_sidwinder.asm (105.7KB)
+│   │   │   └── Original/
+│   │   │       ├── SF2packed_Stinsens_Last_Night_of_89_original.dump (54.6KB)
+│   │   │       ├── SF2packed_Stinsens_Last_Night_of_89_original.hex (26.1KB)
+│   │   │       ├── SF2packed_Stinsens_Last_Night_of_89_original.txt (7.0MB)
+│   │   │       ├── SF2packed_Stinsens_Last_Night_of_89_original_sidwinder.asm (113.2KB)
+│   │   ├── Staying_Alive/
+│   │   │   ├── New/
+│   │   │   │   ├── info.txt (15.2KB)
+│   │   │   │   ├── Staying_Alive.sf2 (7.9KB)
+│   │   │   │   ├── Staying_Alive.sid (5.0KB)
+│   │   │   │   ├── Staying_Alive_exported.dump (54.6KB)
+│   │   │   │   ├── Staying_Alive_exported.hex (33.3KB)
+│   │   │   │   ├── Staying_Alive_exported.sid (7.7KB)
+│   │   │   │   ├── Staying_Alive_exported.txt (276.9KB)
+│   │   │   │   ├── Staying_Alive_exported.wav (1.3MB)
+│   │   │   │   ├── Staying_Alive_exported_disassembly.md (61.4KB)
+│   │   │   │   ├── Staying_Alive_exported_sidwinder.asm (56.6KB)
+│   │   │   └── Original/
+│   │   │       ├── Staying_Alive_original.dump (54.6KB)
+│   │   │       ├── Staying_Alive_original.hex (21.5KB)
+│   │   │       ├── Staying_Alive_original.txt (7.0MB)
+│   │   │       ├── Staying_Alive_original.wav (1.3MB)
+│   │   │       ├── Staying_Alive_original_sidwinder.asm (108.0KB)
+│   │   ├── Stinsens_Last_Night_of_89/
+│   │   │   ├── New/
+│   │   │   │   ├── info.txt (31.5KB)
+│   │   │   │   ├── Stinsens_Last_Night_of_89.sf2 (15.0KB)
+│   │   │   │   ├── Stinsens_Last_Night_of_89_exported.dump (54.6KB)
+│   │   │   │   ├── Stinsens_Last_Night_of_89_exported.hex (62.9KB)
+│   │   │   │   ├── Stinsens_Last_Night_of_89_exported.sid (14.6KB)
+│   │   │   │   ├── Stinsens_Last_Night_of_89_exported.txt (276.9KB)
+│   │   │   │   ├── Stinsens_Last_Night_of_89_exported_sidwinder.asm (105.8KB)
+│   │   │   └── Original/
+│   │   │       ├── Stinsens_Last_Night_of_89_original.dump (54.6KB)
+│   │   │       ├── Stinsens_Last_Night_of_89_original.hex (26.1KB)
+│   │   │       ├── Stinsens_Last_Night_of_89_original.txt (7.0MB)
+│   │   │       ├── Stinsens_Last_Night_of_89_original_sidwinder.asm (113.2KB)
+│   │   ├── test_broware_packed_only/
+│   │   │   ├── New/
+│   │   │   │   ├── Broware_Test.sid (6.8KB)
+│   │   │   │   ├── info.txt (7.8KB)
+│   │   │   │   ├── test_broware_packed_only.sf2 (7.5KB)
+│   │   │   │   ├── test_broware_packed_only_exported.dump (54.6KB)
+│   │   │   │   ├── test_broware_packed_only_exported.hex (31.3KB)
+│   │   │   │   ├── test_broware_packed_only_exported.sid (7.2KB)
+│   │   │   │   ├── test_broware_packed_only_exported.txt (276.9KB)
+│   │   │   │   ├── test_broware_packed_only_exported.wav (1.3MB)
+│   │   │   │   ├── test_broware_packed_only_exported_disassembly.md (59.4KB)
+│   │   │   │   ├── test_broware_packed_only_exported_sidwinder.asm (53.1KB)
+│   │   │   └── Original/
+│   │   │       ├── test_broware_packed_only_original.dump (54.6KB)
+│   │   │       ├── test_broware_packed_only_original.hex (29.4KB)
+│   │   │       ├── test_broware_packed_only_original.txt (276.9KB)
+│   │   │       ├── test_broware_packed_only_original.wav (1.3MB)
+│   │   │       ├── test_broware_packed_only_original_sidwinder.asm (49.4KB)
+│   │   └── tie_notes_test/
+│   │       ├── New/
+│   │       │   ├── Gliss._reset.sid (8.4KB)
+│   │       │   ├── info.txt (7.7KB)
+│   │       │   ├── tie_notes_test.sf2 (7.5KB)
+│   │       │   ├── tie_notes_test_exported.dump (54.6KB)
+│   │       │   ├── tie_notes_test_exported.hex (31.4KB)
+│   │       │   ├── tie_notes_test_exported.sid (7.3KB)
+│   │       │   ├── tie_notes_test_exported.txt (1.4MB)
+│   │       │   ├── tie_notes_test_exported.wav (1.3MB)
+│   │       │   ├── tie_notes_test_exported_disassembly.md (61.4KB)
+│   │       │   ├── tie_notes_test_exported_sidwinder.asm (54.7KB)
+│   │       └── Original/
+│   │           ├── tie_notes_test_original.dump (54.6KB)
+│   │           ├── tie_notes_test_original.hex (36.2KB)
+│   │           ├── tie_notes_test_original.txt (27B)
+│   │           ├── tie_notes_test_original.wav (1.3MB)
+│   └── Test_NoSiddump/
+├── scripts/
+│   ├── __init__.py (908B)
+│   ├── batch_validate_sidsf2player.py (8.6KB)
+│   ├── ci_local.py (12.0KB)
+│   ├── comprehensive_validate.py (18.6KB)
+│   ├── convert_all.py (43.6KB)
+│   ├── convert_all_sidsf2player.py (3.3KB)
+│   ├── disassemble_sid.py (9.2KB)
+│   ├── extract_addresses.py (8.1KB)
+│   ├── extract_sf2_properly.py (20.1KB)
+│   ├── format_tables.py (15.0KB)
+│   ├── generate_info.py (17.4KB)
+│   ├── generate_validation_report.py (17.9KB)
+│   ├── laxity_parser.py (21.7KB)
+│   ├── run_ci.bat (150B)
+│   ├── sf2_to_sid.py (11.0KB)
+│   ├── sid_to_sf2.py (17.9KB)
+│   ├── test_complete_pipeline.py (13.7KB)
+│   ├── test_config.py (8.7KB)
+│   ├── test_converter.py (62.1KB)
+│   ├── test_roundtrip.py (26.1KB)
+│   ├── test_sf2_editor.py (15.8KB)
+│   ├── test_sf2_format.py (9.4KB)
+│   ├── test_sf2_player_parser.py (5.6KB)
+│   ├── update_inventory.py (6.9KB)
+│   ├── validate_conversion.py (17.2KB)
+│   ├── validate_psid.py (13.0KB)
+│   ├── validate_sid_accuracy.py (33.0KB)
+│   ├── validate_structure.py (10.3KB)
+├── SF2/
+├── SID/
+│   ├── Angular.sid (3.8KB)
+│   ├── Angular_original.wav (2.5MB)
+│   ├── Balance.sid (4.0KB)
+│   ├── Beast.sid (3.8KB)
+│   ├── Blue.sid (4.3KB)
+│   ├── Cascade.sid (3.8KB)
+│   ├── Chaser.sid (4.4KB)
+│   ├── Clarencio_extended.sid (8.0KB)
+│   ├── Colorama.sid (4.1KB)
+│   ├── Cycles.sid (4.8KB)
+│   ├── Delicate.sid (4.2KB)
+│   ├── Dreams.sid (3.9KB)
+│   ├── Dreamy.sid (3.7KB)
+│   ├── Ocean_Reloaded.sid (6.5KB)
+│   ├── Omniphunk.sid (4.4KB)
+│   ├── Phoenix_Code_End_Tune.sid (4.4KB)
+│   ├── Stinsens_Last_Night_of_89.sid (6.1KB)
+│   ├── Unboxed_Ending_8580.sid (4.5KB)
+├── sidm2/
+│   ├── __init__.py (3.1KB)
+│   ├── confidence.py (26.1KB)
+│   ├── config.py (6.8KB)
+│   ├── constants.py (3.1KB)
+│   ├── cpu6502.py (12.1KB)
+│   ├── cpu6502_emulator.py (40.1KB)
+│   ├── exceptions.py (658B)
+│   ├── instrument_extraction.py (7.6KB)
+│   ├── laxity_analyzer.py (25.8KB)
+│   ├── laxity_parser.py (12.1KB)
+│   ├── logging_config.py (1.2KB)
+│   ├── models.py (4.1KB)
+│   ├── note_utils.py (11.0KB)
+│   ├── player_base.py (9.6KB)
+│   ├── sequence_extraction.py (16.8KB)
+│   ├── sequence_translator.py (18.5KB)
+│   ├── sf2_packed_reader.py (11.5KB)
+│   ├── sf2_packer.py (25.9KB)
+│   ├── sf2_player_parser.py (21.9KB)
+│   ├── sf2_reader.py (8.1KB)
+│   ├── sf2_writer.py (54.4KB)
+│   ├── sid_parser.py (3.4KB)
+│   ├── sid_player.py (18.7KB)
+│   ├── sid_structure_analyzer.py (18.0KB)
+│   ├── sid_structure_extractor.py (22.1KB)
+│   ├── siddump.py (4.7KB)
+│   ├── siddump_extractor.py (12.7KB)
+│   ├── table_extraction.py (54.0KB)
+│   ├── validation.py (13.0KB)
+│   ├── wav_comparison.py (10.5KB)
+│   └── players/
+│       ├── __init__.py (293B)
+│       ├── laxity.py (3.3KB)
+├── SIDSF2player/
+│   ├── Aint_Somebody.sid (5.0KB)
+│   ├── batch_convert_sidsf2player.py (2.4KB)
+│   ├── Broware.sid (6.6KB)
+│   ├── Cocktail_to_Go_tune_3.sid (4.4KB)
+│   ├── debug_packer.py (639B)
+│   ├── Driver 11 Test - Arpeggio.sid (6.9KB)
+│   ├── Driver 11 Test - Filter.sid (7.1KB)
+│   ├── Driver 11 Test - Polyphonic.sid (7.9KB)
+│   ├── Driver 11 Test - Tie Notes.sid (7.8KB)
+│   ├── Expand_Side_1.sid (6.7KB)
+│   ├── Halloweed_4_tune_3.sid (5.6KB)
+│   ├── I_Have_Extended_Intros.sid (3.7KB)
+│   ├── parse_sf2_blocks.py (1.4KB)
+│   ├── polyphonic_cpp.sid (8.5KB)
+│   ├── polyphonic_test.sid (8.6KB)
+│   ├── SF2packed_new1_Stiensens_last_night_of_89.sid (6.1KB)
+│   ├── SF2packed_Stinsens_Last_Night_of_89.sid (6.1KB)
+│   ├── Staying_Alive.sid (5.0KB)
+│   ├── Stinsens_Last_Night_of_89.dump (12.1MB)
+│   ├── Stinsens_Last_Night_of_89.sid (6.1KB)
+│   ├── test_broware_packed_only.sid (6.8KB)
+│   ├── test_sidsf2player_batch.py (3.9KB)
+│   ├── tie_notes_test.sid (8.4KB)
+├── temp/
+│   ├── add_timing_tracking.py (1.3KB)
+│   ├── analyze_pipeline_timing.py (1.4KB)
+│   ├── analyze_sf2_sid.py (14.7KB)
+│   ├── analyze_sidwinder_limits.py (2.1KB)
+│   ├── annotating_disassembler.py (41.5KB)
+│   ├── compare_sf2_reverse_engineering.py (7.6KB)
+│   ├── compare_sf2_tables.py (5.9KB)
+│   ├── compare_sids.py (13.0KB)
+│   ├── complete_pipeline_parallel.py (6.7KB)
+│   ├── complete_pipeline_with_validation_parallel.py (25.8KB)
+│   ├── debug_broware.py (2.3KB)
+│   ├── debug_packer.py (2.1KB)
+│   ├── extract_all_sidsf2player.py (3.2KB)
+│   ├── extract_all_sidsf2player_smart.py (7.0KB)
+│   ├── extract_sf2_from_packed_sid.py (9.9KB)
+│   ├── find_sf2_tables.py (5.7KB)
+│   ├── generate_complete_disassembly.py (9.7KB)
+│   ├── generate_dumps_and_wavs.sh (3.0KB)
+│   ├── generate_overview.py (12.9KB)
+│   ├── pack_stinsen.py (761B)
+│   ├── process_sidsf2player_complete.py (12.2KB)
+│   ├── run_pipeline_fast.sh (286B)
+│   ├── SIDwinder.cfg (1.5KB)
+│   ├── test3.asm (51.8KB)
+│   ├── test_sidwinder_debug.sh (658B)
+│   ├── trace.bin (5.7MB)
+│   ├── verify_wave_packing.py (5.5KB)
+│   ├── wave_table_packing_demo.py (6.1KB)
+├── temp-exp/
+│   ├── analyze_orderlist_references.py (6.0KB)
+│   ├── analyze_pulse_table.py (6.7KB)
+│   ├── analyze_sequence_structure.py (5.5KB)
+│   ├── analyze_sf2_sequence_layout.py (3.9KB)
+│   ├── check_exact_bytes.py (1.4KB)
+│   ├── check_filter_in_sf2.py (953B)
+│   ├── check_pipeline_file.py (2.2KB)
+│   ├── check_reference.py (1.3KB)
+│   ├── check_template_pulse.py (566B)
+│   ├── examine_table_boundaries.py (4.6KB)
+│   ├── extract_sequence_table.py (5.6KB)
+│   ├── extract_sequences.py (7.3KB)
+│   ├── final_verification.py (1.5KB)
+│   ├── find_filter_all_cols.py (2.4KB)
+│   ├── find_filter_table.py (3.2KB)
+│   ├── find_sequence_pointer_table.py (4.8KB)
+│   ├── find_sequence_start.py (4.4KB)
+│   ├── find_wave_table.py (2.0KB)
+│   ├── fix_pulse_table.py (5.1KB)
+│   ├── fix_pulse_table_correct.py (5.0KB)
+│   ├── read_sequence_pointers.py (4.0KB)
+│   ├── search_wave_pattern.py (2.0KB)
+│   ├── show_column3.py (1.2KB)
+│   ├── show_complete_track_analysis.py (5.0KB)
+│   ├── show_pulse_extraction.py (1.9KB)
+│   ├── test_direct_file_extraction.py (828B)
+│   ├── test_filter_extraction.py (2.0KB)
+│   ├── test_pulse_extraction_debug.py (1.6KB)
+│   ├── test_wave_pulse_extraction.py (3.8KB)
+│   ├── test_write_pulse.py (1.3KB)
+│   ├── verify_all_tables.py (8.2KB)
+│   ├── verify_pipeline_pulse.py (2.0KB)
+│   ├── verify_pulse_match.py (936B)
+│   ├── verify_sequences.py (10.4KB)
+│   ├── verify_track_extraction.py (8.6KB)
+│   └── output/
+└── tools/
+    ├── = (58B)
+    ├── angular_test.asm (105.7KB)
+    ├── build_siddump_trace.bat (1.4KB)
+    ├── BUILD_SIDDUMP_TRACE.md (4.5KB)
+    ├── cpu.c (28.2KB)
+    ├── cpu.h (204B)
+    ├── cpu_trace.c (3.8KB)
+    ├── mit (58B)
+    ├── mit.asm (113.2KB)
+    ├── mit.txt (527.4KB)
+    ├── player-id.exe (459.5KB)
+    ├── README.md (352B)
+    ├── readme.txt (6.1KB)
+    ├── RETRODEBUGGER_ANALYSIS.md (23.7KB)
+    ├── SID2WAV.EXE (192.0KB)
+    ├── siddump.c (16.3KB)
+    ├── siddump.exe (49.5KB)
+    ├── siddump_trace.patch (2.7KB)
+    ├── SIDDUMP_TRACE_SIMPLE.md (3.6KB)
+    ├── sidid.cfg (74.8KB)
+    ├── sidid.nfo (43.8KB)
+    ├── SIDwinder.cfg (1.5KB)
+    ├── SIDwinder.exe (1.8MB)
+    ├── SIDWINDER_ANALYSIS.md (18.0KB)
+    ├── SIDWINDER_FIXES_APPLIED.md (1.5KB)
+    ├── SIDWINDER_QUICK_REFERENCE.md (6.4KB)
+    ├── sidwinder_trace_fix.patch (2.3KB)
+    ├── Signature_File_Format.txt (6.8KB)
+    ├── Stinsens_Last_Night_of_89.sid (6.1KB)
+    ├── tedid.cfg (878B)
+    ├── trace.bin (234.4KB)
+    ├── prg2sid/
+    │   ├── Makefile (1.7KB)
+    │   ├── p2s.c (114.4KB)
+    │   ├── p2s.txt (13.9KB)
+    │   └── Release/
+    │       ├── p2s.exe (83.0KB)
+    ├── RetroDebugger v0.64.68/
+    │   ├── basic (8.0KB)
+    │   ├── chargen (4.0KB)
+    │   ├── kernal (8.0KB)
+    │   ├── README.md (5.2KB)
+    │   ├── RetroDebugger.exe (18.5MB)
+    │   ├── docs/
+    │   │   ├── README-C64-65XE-NES-Debugger.txt (72.9KB)
+    │   │   ├── release-notes.txt (13.2KB)
+    │   └── tools/
+    │       └── c64d-champ/
+    │           ├── c64d-champ.rb (37.4KB)
+    ├── sf2export/
+    │   ├── Makefile (808B)
+    │   ├── README.md (5.0KB)
+    │   ├── sf2export.cpp (9.7KB)
+    │   ├── sf2export.exe (2.4MB)
+    ├── sf2pack/
+    │   ├── c64memory.cpp (2.8KB)
+    │   ├── c64memory.h (1.4KB)
+    │   ├── c64memory.o (4.9KB)
+    │   ├── Makefile (953B)
+    │   ├── opcodes.cpp (4.9KB)
+    │   ├── opcodes.h (1.1KB)
+    │   ├── opcodes.o (3.3KB)
+    │   ├── packer_simple.cpp (5.7KB)
+    │   ├── packer_simple.h (1.3KB)
+    │   ├── packer_simple.o (6.5KB)
+    │   ├── psidfile.cpp (3.4KB)
+    │   ├── psidfile.h (2.3KB)
+    │   ├── psidfile.o (8.3KB)
+    │   ├── README.md (6.5KB)
+    │   ├── sf2pack.cpp (7.7KB)
+    │   ├── sf2pack.exe (2.4MB)
+    │   ├── sf2pack.o (21.2KB)
+    ├── SIDPlayers/
+    │   ├── Default/
+    │   │   ├── Default.asm (1.4KB)
+    │   ├── INC/
+    │   │   ├── FreqTable.asm (5.0KB)
+    │   │   ├── MemoryPreservation.asm (3.1KB)
+    │   │   ├── NMIFix.asm (231B)
+    │   │   ├── StableRasterSetup.asm (2.9KB)
+    │   ├── RaistlinBars/
+    │   │   ├── CharSet.map (1.8KB)
+    │   │   ├── RaistlinBars.asm (29.0KB)
+    │   │   ├── WaterSprites.map (512B)
+    │   ├── RaistlinBarsWithLogo/
+    │   │   ├── CharSet.map (1.8KB)
+    │   │   ├── RaistlinBarsWithLogo.asm (28.3KB)
+    │   │   ├── WaterSprites.map (512B)
+    │   ├── RaistlinMirrorBars/
+    │   │   ├── CharSet.map (1.8KB)
+    │   │   ├── RaistlinMirrorBars.asm (24.4KB)
+    │   ├── RaistlinMirrorBarsWithLogo/
+    │   │   ├── CharSet.map (1.8KB)
+    │   │   ├── RaistlinMirrorBarsWithLogo.asm (24.8KB)
+    │   │   ├── SoundbarSine.bin (128B)
+    │   │   ├── WaterSprites.map (512B)
+    │   ├── SimpleBitmap/
+    │   │   ├── SimpleBitmap.asm (9.5KB)
+    │   └── SimpleRaster/
+    │       ├── SimpleRaster.asm (6.4KB)
+    ├── temp/
+    └── tools/
 ```
 
----
+## File Categories
 
-Last updated: 2025-12-07 14:07:50
+### Root (Production)
+- **Scripts**: Main conversion pipeline scripts
+- **Documentation**: Core project documentation
+
+### temp-exp/ (Experimental)
+- **Purpose**: ALL experimental and debug work
+- **Scripts**: Test, debug, analysis scripts
+- **Rule**: Can be deleted/archived when no longer needed
+
+### archived/ (Old Documentation)
+- **Purpose**: Superseded but potentially useful documents
+- **Contents**: Old analysis, completed experiments
+- **Rule**: Can be cleaned up periodically
+
+### sidm2/ (Core Package)
+- **Purpose**: Core Python modules and utilities
+- **Contents**: Parser, writer, extraction modules
+
+### docs/ (Official Documentation)
+- **Purpose**: Format specs, disassembly, conversion strategies
+- **Contents**: Markdown documentation files
+
+### output/ (Production Outputs)
+- **Purpose**: Final conversion outputs
+- **Rule**: Experimental outputs go to temp-exp/output/
+
+### SID/ (Input Files)
+- **Purpose**: Source SID music files for conversion
+
+### tools/ (External Tools)
+- **Purpose**: External binaries (siddump, player-id, etc.)
+
+## Management Rules
+
+See `FILE_MANAGEMENT_RULES.md` for complete rules.
+
+### Quick Rules
+1. Production scripts → Root
+2. Experiments → temp-exp/
+3. Old docs → archived/
+4. Update inventory after changes: `python update_inventory.py`
+
+### New Experiment Workflow
+```bash
+# Work in temp-exp
+cd temp-exp
+# Create your experiment
+vim my_experiment.py
+# Run it
+python my_experiment.py
+
+# If successful and production-ready:
+mv my_experiment.py ../
+python ../update_inventory.py
+
+# If failed or temporary:
+# Just delete it or leave in temp-exp for reference
+```
+
+## Cleanup Schedule
+- **After each feature**: Clean temp-exp/
+- **Weekly**: Review temp-exp/ for deletable files
+- **Monthly**: Archive old experiments

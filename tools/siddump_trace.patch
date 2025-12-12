@@ -1,0 +1,128 @@
+--- siddump.c.orig	2025-12-08
++++ siddump.c	2025-12-08
+@@ -4,6 +4,11 @@
+ #include <math.h>
+ #include <ctype.h>
+ #include "cpu.h"
++
++// Memory trace globals
++int trace_enabled = 0;
++int trace_frame = -1;
++FILE *trace_log = NULL;
+
+ #define MAX_INSTR 0x100000
+
+@@ -306,6 +311,15 @@
+     }
+   }
+
++  // Open trace log file if -trace option given
++  for (c = 1; c < argc; c++)
++  {
++    if (!strcmp(argv[c], "-trace"))
++    {
++      trace_log = fopen("siddump_trace.txt", "w");
++      trace_enabled = 1;
++    }
++  }
++
+   // Calculate frames
+   if (!rows)
+   {
+@@ -314,6 +328,11 @@
+   else
+     frames = rows;
+
++  if (trace_enabled && trace_log)
++  {
++    fprintf(trace_log, "SIDDUMP MEMORY TRACE\n");
++    fprintf(trace_log, "Format: Frame PC MemAddr Value\n\n");
++  }
+
+   // Print info & execute
+   printf("Load address: $%04x Init address: $%04x Play address: $%04x\n", loadaddress, initaddress, playaddress);
+@@ -356,6 +375,11 @@
+
+     for (counter = 0; counter < spacing; counter++)
+     {
++      // Enable tracing for first 10 frames
++      if (trace_enabled && frames < 10)
++      {
++        trace_frame = frames;
++      }
++      cpuexecute(playaddress);
+     }
+
+@@ -520,6 +544,11 @@
+     }
+   }
+
++  if (trace_log)
++  {
++    fclose(trace_log);
++  }
++
+   return 0;
+ }
+
+--- cpu.h.orig	2025-12-08
++++ cpu.h	2025-12-08
+@@ -6,6 +6,11 @@
+ extern unsigned char x;
+ extern unsigned char y;
+ extern unsigned char sp;
++
++// Memory trace externs
++extern int trace_enabled;
++extern int trace_frame;
++extern FILE *trace_log;
+
+ void cpuinit(void);
+ void cpureset(void);
+--- cpu.c.orig	2025-12-08
++++ cpu.c	2025-12-08
+@@ -1,5 +1,11 @@
+ #include <stdio.h>
+ #include <stdlib.h>
++#include "cpu.h"
++
++// Memory trace globals (defined in siddump.c)
++extern int trace_enabled;
++extern int trace_frame;
++extern FILE *trace_log;
+
+ #define FN 0x80
+ #define FV 0x40
+@@ -8,7 +14,30 @@
+ #define FI 0x04
+ #define FZ 0x02
+ #define FC 0x01
++
++// Tracked memory read function
++static inline unsigned char mem_read_tracked(unsigned short address)
++{
++  unsigned char value = mem[address];
++
++  // Log reads in music data range ($1800-$1C00) during first 10 frames
++  if (trace_enabled && trace_log && trace_frame >= 0 && trace_frame < 10)
++  {
++    if (address >= 0x1800 && address < 0x1C00)
++    {
++      extern unsigned short pc;
++      fprintf(trace_log, "F%02d PC:%04X -> [%04X]=%02X\n",
++              trace_frame, pc, address, value);
++      fflush(trace_log);
++    }
++  }
++
++  return value;
++}
+
++// Replace direct memory access with tracked version
++#define MEM(address) mem_read_tracked(address)
++
++/* Original:
+ #define MEM(address) (mem[address])
++*/
+ #define LO() (MEM(pc))
+ #define HI() (MEM(pc+1))

@@ -5,6 +5,12 @@
 #include <ctype.h>
 #include "cpu.h"
 
+// Memory trace globals
+int trace_enabled = 0;
+int trace_frame = -1;
+FILE *trace_log = NULL;
+
+
 #define MAX_INSTR 0x100000
 
 typedef struct
@@ -161,6 +167,22 @@ int main(int argc, char **argv)
   }
 
   // Usage display
+  
+  // Check for -trace option
+  for (c = 1; c < argc; c++)
+  {
+    if (!strcmp(argv[c], "-trace"))
+    {
+      trace_log = fopen("siddump_trace.txt", "w");
+      trace_enabled = 1;
+      if (trace_log)
+      {
+        fprintf(trace_log, "SIDDUMP MEMORY TRACE\n");
+        fprintf(trace_log, "Format: Frame PC MemAddr Value\n\n");
+      }
+    }
+  }
+
   if ((argc < 2) || (usage))
   {
     printf("Usage: SIDDUMP <sidfile> [options]\n"
@@ -494,6 +516,12 @@ int main(int argc, char **argv)
     // Advance to next frame
     frames++;
   }
+
+  if (trace_log)
+  {
+    fclose(trace_log);
+  }
+
   return 0;
 }
 

@@ -189,15 +189,15 @@ class LaxityPlayerAnalyzer:
 
         return 1
 
-    def extract_filter_table(self) -> bytes:
+    def extract_filter_table(self) -> tuple:
         """Extract filter modulation table from Laxity SID.
 
-        Returns bytes in SF2 format: 4 bytes per entry (cutoff, step, duration, next).
+        Returns (bytes, address) tuple where bytes is SF2 format: 4 bytes per entry (cutoff, step, duration, next).
         """
         addr, entries = find_and_extract_filter_table(self.data, self.load_address)
 
         if not entries:
-            return b''
+            return b'', None
 
         # Convert list of (cutoff, step, duration, next) tuples to bytes
         filter_data = bytearray()
@@ -205,7 +205,7 @@ class LaxityPlayerAnalyzer:
             for byte_val in entry:
                 filter_data.append(byte_val)
 
-        return bytes(filter_data)
+        return bytes(filter_data), addr
 
     def extract_pulse_table(self) -> bytes:
         """Extract pulse width modulation table"""
@@ -234,10 +234,10 @@ class LaxityPlayerAnalyzer:
 
         return bytes(pulse_data)
 
-    def extract_wave_table(self) -> bytes:
+    def extract_wave_table(self) -> tuple:
         """Extract wave table from Laxity SID.
 
-        Returns bytes in SF2 format: (waveform, note_offset) pairs.
+        Returns (bytes, address) tuple where bytes is SF2 format: (waveform, note_offset) pairs.
         """
         from .table_extraction import find_and_extract_wave_table
         import logging
@@ -253,7 +253,7 @@ class LaxityPlayerAnalyzer:
         addr, entries = find_and_extract_wave_table(self.data, self.load_address)
 
         if not entries:
-            return b''
+            return b'', None
 
         # Convert list of (waveform, note_offset) tuples to bytes
         # SF2 format is (waveform, note_offset) pairs - FIXED byte order
@@ -262,7 +262,7 @@ class LaxityPlayerAnalyzer:
             wave_data.append(waveform)    # FIXED: waveform first (was note_offset)
             wave_data.append(note_offset)  # FIXED: note_offset second (was waveform)
 
-        return bytes(wave_data)
+        return bytes(wave_data), addr
 
     def extract_commands(self) -> List[bytes]:
         """Extract command/effect definitions"""
@@ -466,9 +466,9 @@ class LaxityPlayerAnalyzer:
         tempo = self.extract_tempo()
         init_volume = self.extract_init_volume()
         multi_speed = self.detect_multi_speed()
-        filter_table = self.extract_filter_table()
+        filter_table, filter_addr = self.extract_filter_table()
         pulse_table = self.extract_pulse_table()
-        wave_table = self.extract_wave_table()
+        wave_table, wave_addr = self.extract_wave_table()
         commands = self.extract_commands()
 
         # Extract HR and Init tables
@@ -481,6 +481,82 @@ class LaxityPlayerAnalyzer:
 
         # Extract frequency table for note translation
         frequency_table = extract_laxity_frequency_table(self.data, self.load_address)
+
+        # Build extraction addresses dictionary
+        extraction_addresses = {}
+        if wave_addr:
+            wave_end = wave_addr + len(wave_table)
+            extraction_addresses['wave'] = (wave_addr, wave_end, len(wave_table))
+        if filter_addr:
+            filter_end = filter_addr + len(filter_table)
+            extraction_addresses['filter'] = (filter_addr, filter_end, len(filter_table))
+
+        # Find instrument table address by searching for extracted data
+        if laxity_data.instruments and len(laxity_data.instruments) > 0:
+            first_instr = laxity_data.instruments[0]
+            # Search for this instrument in the data
+            for i in range(len(self.data) - len(first_instr)):
+                if self.data[i:i+len(first_instr)] == first_instr:
+                    instr_addr = self.load_address + i
+                    instr_size = len(laxity_data.instruments) * 8
+                    instr_end = instr_addr + instr_size
+                    extraction_addresses['instruments'] = (instr_addr, instr_end, instr_size)
+                    logger.info(f"Found instrument table at ${instr_addr:04X}")
+                    break
+
+        # Find command table address (if we have commands)
+        if laxity_data.command_table and len(laxity_data.command_table) > 0:
+            # Command table is stored as list of tuples, convert to bytes for searching
+            # Each command is 2 bytes: (cmd_byte, param_byte)
+            first_cmd = bytes([laxity_data.command_table[0][0], laxity_data.command_table[0][1]])
+            for i in range(len(self.data) - 2):
+                if self.data[i:i+2] == first_cmd:
+                    cmd_addr = self.load_address + i
+                    cmd_size = len(laxity_data.command_table) * 2
+                    cmd_end = cmd_addr + cmd_size
+                    extraction_addresses['commands'] = (cmd_addr, cmd_end, cmd_size)
+                    logger.info(f"Found command table at ${cmd_addr:04X}")
+                    break
+
+        # Find tempo table (if available from init_table)
+        if init_table and len(init_table) > 0:
+            tempo_value = init_table[0] if len(init_table) > 0 else tempo
+            # Tempo table is typically a single byte that repeats
+            # Search for it in known tempo table range
+            for addr in range(0x1A00, 0x1C00):
+                offset = addr - self.load_address
+                if 0 <= offset < len(self.data):
+                    if self.data[offset] == tempo_value:
+                        # Found potential tempo table
+                        tempo_size = 1
+                        tempo_end = addr + tempo_size
+                        extraction_addresses['tempo'] = (addr, tempo_end, tempo_size)
+                        logger.info(f"Found tempo value at ${addr:04X}")
+                        break
+
+        # Find arpeggio table (if we have arp data)
+        if arp_table and len(arp_table) > 0:
+            # Arpeggio table has specific format (4 bytes per entry)
+            first_arp = bytes([arp_table[0][0], arp_table[0][1], arp_table[0][2], arp_table[0][3]])
+            for i in range(len(self.data) - 4):
+                if self.data[i:i+4] == first_arp:
+                    arp_addr = self.load_address + i
+                    arp_size = len(arp_table) * 4
+                    arp_end = arp_addr + arp_size
+                    extraction_addresses['arpeggio'] = (arp_addr, arp_end, arp_size)
+                    logger.info(f"Found arpeggio table at ${arp_addr:04X}")
+                    break
+
+        # Find pulse table address (if we have pulse data)
+        if len(pulse_table) > 0:
+            from .table_extraction import find_and_extract_pulse_table
+            try:
+                pulse_addr, _ = find_and_extract_pulse_table(self.data, self.load_address)
+                if pulse_addr:
+                    pulse_end = pulse_addr + len(pulse_table)
+                    extraction_addresses['pulse'] = (pulse_addr, pulse_end, len(pulse_table))
+            except Exception as e:
+                logger.debug(f"Could not find pulse address: {e}")
 
         # Create extracted data structure
         extracted = ExtractedData(
@@ -501,7 +577,8 @@ class LaxityPlayerAnalyzer:
             hr_table=hr_table,
             init_table=init_table,
             arp_table=arp_table,
-            frequency_table=frequency_table
+            frequency_table=frequency_table,
+            extraction_addresses=extraction_addresses
         )
 
         # Store raw sequences

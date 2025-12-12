@@ -388,7 +388,10 @@ class SF2Packer:
                 self._write_word(ptr_addr, new_ptr)
 
     def process_driver_code(self, address_map: dict, address_delta: int):
-        """Relocate absolute addresses in driver code.
+        """Relocate absolute addresses in driver code using robust scanning.
+
+        Uses instruction size table for reliable scanning that handles
+        unknown/illegal opcodes without getting out of sync.
 
         Args:
             address_map: Dictionary mapping source addresses to destination addresses
@@ -400,53 +403,66 @@ class SF2Packer:
         for s in self.data_sections:
             logger.debug(f"    ${s.source_address:04X}-${s.source_address + len(s.data):04X} -> ${s.dest_address:04X} ({'code' if s.is_code else 'data'})")
 
-        # Process each code section separately
+        # Calculate overall relocatable range (from first to last section)
+        if not self.data_sections:
+            return
+
+        code_start = min(s.source_address for s in self.data_sections)
+        code_end = max(s.source_address + len(s.data) for s in self.data_sections)
+
+        logger.debug(f"  Relocatable range: ${code_start:04X}-${code_end:04X}")
+
+        # Process each code section separately using robust scanning
         total_reloc_count = 0
         for section in self.data_sections:
-            # Skip data-only sections - they don't need pointer relocation
+            # Skip data-only sections - they don't contain instructions to scan
             if not section.is_code:
                 logger.debug(f"  Skipping data section at ${section.source_address:04X}")
                 continue
 
-            logger.debug(f"  Processing code section at ${section.source_address:04X} ({len(section.data)} bytes)")
+            logger.debug(f"  Scanning code section at ${section.source_address:04X} ({len(section.data)} bytes)")
 
-            # Disassemble this code section
+            # Use robust scanning with instruction size table
             cpu = CPU6502(bytes(section.data))
-            instructions = cpu.disassemble(0, len(section.data))
+            relocatable_addrs = cpu.scan_relocatable_addresses(
+                0, len(section.data),
+                code_start, code_end
+            )
 
-            # Relocate absolute addresses
+            # Relocate all found addresses
             relocated_data = bytearray(section.data)
             reloc_count = 0
 
-            for instr in instructions:
-                if instr.is_relocatable():
-                    # Check if this address falls within a relocated section
-                    new_operand = None
+            for offset, old_address in relocatable_addrs:
+                # Find which section this address points to
+                new_address = None
 
-                    # Check all data sections to see if address falls within their range
-                    for other_section in self.data_sections:
-                        section_start = other_section.source_address
-                        section_end = other_section.source_address + len(other_section.data)
+                for other_section in self.data_sections:
+                    section_start = other_section.source_address
+                    section_end = other_section.source_address + len(other_section.data)
 
-                        if section_start <= instr.operand < section_end:
-                            # Address is within this section - relocate it
-                            offset_in_section = instr.operand - section_start
-                            new_operand = other_section.dest_address + offset_in_section
-                            # Log all $22xx relocations for debugging
-                            if 0x2200 <= instr.operand < 0x2300 or reloc_count < 5:
-                                logger.debug(f"  Relocating: ${instr.operand:04X} -> ${new_operand:04X} (in section ${other_section.source_address:04X})")
-                            reloc_count += 1
-                            break
+                    if section_start <= old_address < section_end:
+                        # Address is within this section - relocate it
+                        offset_in_section = old_address - section_start
+                        new_address = other_section.dest_address + offset_in_section
 
-                    if new_operand is None:
-                        # Not in any section - apply fixed delta for internal driver references
-                        new_operand = (instr.operand + address_delta) & 0xFFFF
+                        # Log relocations for debugging
+                        if reloc_count < 10 or (reloc_count % 50 == 0):
+                            logger.debug(f"    [{reloc_count:3d}] ${old_address:04X} -> ${new_address:04X} (section ${other_section.source_address:04X})")
+                        reloc_count += 1
+                        break
 
-                    # Generate relocated instruction bytes manually
-                    lo = new_operand & 0xFF
-                    hi = (new_operand >> 8) & 0xFF
-                    new_bytes = bytes([instr.opcode, lo, hi])
-                    relocated_data[instr.address:instr.address + len(new_bytes)] = new_bytes
+                if new_address is None:
+                    # Not in any known section - apply fixed delta
+                    # This handles internal driver references
+                    new_address = (old_address + address_delta) & 0xFFFF
+                    if reloc_count < 5:
+                        logger.debug(f"    [{reloc_count:3d}] ${old_address:04X} -> ${new_address:04X} (fixed delta)")
+                    reloc_count += 1
+
+                # Write relocated address (little-endian)
+                relocated_data[offset] = new_address & 0xFF
+                relocated_data[offset + 1] = (new_address >> 8) & 0xFF
 
             logger.debug(f"  Section relocations: {reloc_count}")
             section.data = bytes(relocated_data)

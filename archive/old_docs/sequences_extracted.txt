@@ -1,0 +1,161 @@
+EXTRACTED SEQUENCES FROM SIDDUMP
+================================================================================
+
+Source: Stinsens_Last_Night_of_89.sid
+Method: Runtime behavior analysis (siddump)
+Date: 2025-12-09
+
+================================================================================
+SEQUENCE SUMMARY
+================================================================================
+
+Total Sequences: 39 (19 from music + 20 empty padding)
+Total Orderlists: 3 (one per voice)
+
+Voice 0: 7 sequences (Seq 0-6)
+Voice 1: 7 sequences (Seq 7-13)
+Voice 2: 5 sequences (Seq 14-18)
+Empty: 20 sequences (Seq 19-38)
+
+================================================================================
+SEQUENCE 0 - Voice 0, Pattern 0
+================================================================================
+
+Entry  Inst Cmd  Note  Note Name
+-----  ---- ---  ----  ---------
+  0    00   00   41    F-5  (65)
+  1    00   00   41    F-5  (65)
+  2    00   00   40    E-5  (64)
+  3    00   00   40    E-5  (64)
+  4    00   00   40    E-5  (64)
+  5    00   00   3E    D-5  (62)
+  6    00   00   3E    D-5  (62)
+  7    00   00   3E    D-5  (62)
+  8    00   00   3E    D-5  (62)
+  9    00   00   3E    D-5  (62)
+ 10    00   00   3C    C-5  (60)
+ 11    00   00   3C    C-5  (60)
+ 12    00   00   3C    C-5  (60)
+ 13    00   00   3C    C-5  (60)
+ 14    00   00   3C    C-5  (60)
+ 15    00   00   7F    END
+
+Size: 16 entries (48 bytes)
+
+================================================================================
+SEQUENCE 1 - Voice 0, Pattern 1
+================================================================================
+
+Entry  Inst Cmd  Note  Note Name
+-----  ---- ---  ----  ---------
+  0    00   00   3C    C-5  (60)
+  1    00   00   3C    C-5  (60)
+  2    00   00   3C    C-5  (60)
+  3    00   00   3C    C-5  (60)
+  4    00   00   3C    C-5  (60)
+  5    00   00   3C    C-5  (60)
+  6    00   00   3C    C-5  (60)
+  7    00   00   3C    C-5  (60)
+  8    00   00   3C    C-5  (60)
+  9    00   00   3C    C-5  (60)
+ 10    00   00   3C    C-5  (60)
+ 11    00   00   3C    C-5  (60)
+ 12    00   00   3C    C-5  (60)
+ 13    00   00   3C    C-5  (60)
+ 14    00   00   3C    C-5  (60)
+ 15    00   00   7F    END
+
+Size: 16 entries (48 bytes)
+
+================================================================================
+ORDERLISTS
+================================================================================
+
+Voice 0 Orderlist (16 bytes):
+  Entry  Transpose  Sequence
+  -----  ---------  --------
+    0      A0         00      (Sequence 0)
+    1      A0         01      (Sequence 1)
+    2      A0         02      (Sequence 2)
+    3      A0         03      (Sequence 3)
+    4      A0         04      (Sequence 4)
+    5      A0         05      (Sequence 5)
+    6      A0         06      (Sequence 6)
+    7      A0         7F      (END)
+
+Voice 1 Orderlist (16 bytes):
+  Entry  Transpose  Sequence
+  -----  ---------  --------
+    0      A0         07      (Sequence 7)
+    1      A0         08      (Sequence 8)
+    2      A0         09      (Sequence 9)
+    3      A0         0A      (Sequence 10)
+    4      A0         0B      (Sequence 11)
+    5      A0         0C      (Sequence 12)
+    6      A0         0D      (Sequence 13)
+    7      A0         7F      (END)
+
+Voice 2 Orderlist (12 bytes):
+  Entry  Transpose  Sequence
+  -----  ---------  --------
+    0      A0         0E      (Sequence 14)
+    1      A0         0F      (Sequence 15)
+    2      A0         10      (Sequence 16)
+    3      A0         11      (Sequence 17)
+    4      A0         12      (Sequence 18)
+    5      A0         7F      (END)
+
+================================================================================
+STATISTICS
+================================================================================
+
+Voice Events Captured: 2,058 total
+  - Voice 0: 1,198 events (110 notes)
+  - Voice 1: 426 events (112 notes)
+  - Voice 2: 434 events (76 notes)
+
+Pattern Detection:
+  - Chunk size: 16 notes
+  - Total unique patterns: 19
+  - Padded to: 39 sequences (SF2 requirement)
+
+Note Range:
+  - Lowest:  C-5 (0x3C = 60)
+  - Highest: F-5 (0x41 = 65)
+  - Range: 6 semitones
+
+================================================================================
+FORMAT NOTES
+================================================================================
+
+SF2 Sequence Format:
+  [Instrument byte] [Command byte] [Note byte]
+
+Note Encoding:
+  - C-0 = 0
+  - C#0 = 1
+  - ...
+  - C-5 = 60 (octave 5 × 12 + 0)
+  - F-5 = 65 (octave 5 × 12 + 5)
+  - ...
+  - 0x7F = End marker
+  - 0x80 = Gate off (---)
+  - 0x7E = Gate on (+++)
+
+Transpose Values:
+  - 0xA0 = No transpose (default)
+  - 0xA1-0xBF = Transpose up (1-31 semitones)
+  - 0x80-0x9F = Transpose down (1-32 semitones)
+
+================================================================================
+NEXT STEPS
+================================================================================
+
+1. Fix SF2 file structure to use proper block format
+2. Load template from G5/examples/Driver 11.02.sf2
+3. Inject sequences into Block 5 (Music Data)
+4. Test in SID Factory II editor
+5. If sound is wrong, extract actual tables (wave, pulse, filter, instruments)
+   from SID file instead of using defaults
+
+================================================================================

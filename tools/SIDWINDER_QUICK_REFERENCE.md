@@ -1,337 +1,245 @@
-# SIDwinder Quick Reference
+# SIDwinder v0.2.6 - Quick Reference Guide
 
-## Status
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| 🔧 Disassemble | ✅ WORKING | Integrated in pipeline (Step 9) |
-| 📊 Trace | ⚠️ NEEDS REBUILD | Integrated in pipeline (Step 6) |
-| 🎮 Player | ✅ WORKING | Not in pipeline (manual use) |
-| 📍 Relocate | ✅ WORKING | Not in pipeline (manual use) |
+**Analysis Date:** December 11, 2025
 
 ---
 
-## Commands
+## Critical Discovery: Trace Bug Fixed in Source
 
-### Disassemble (WORKING - In Pipeline)
+**Status:** ✅ Fixed in source code (Dec 6, 2024) | ⚠️ Needs executable rebuild
+
+**Three Bugs Fixed:**
+1. `TraceLogger.cpp` - Added missing `logWrite()` method
+2. `SIDEmulator.cpp` - Added trace logger callback in SID write handler
+3. `SIDEmulator.cpp` - Added `|| options.traceEnabled` to enable callbacks for trace-only commands
+
+**Action Required:**
 ```bash
-# Basic usage
-tools/SIDwinder.exe -disassemble input.sid output.asm
-
-# Example
-tools/SIDwinder.exe -disassemble SID/Angular.sid output/Angular.asm
-
-# Output: KickAssembler-compatible .asm file
-```
-
-### Trace (NEEDS REBUILD - In Pipeline)
-```bash
-# Text format (recommended) - .txt extension
-tools/SIDwinder.exe -trace=output.txt input.sid
-
-# Binary format - .bin extension
-tools/SIDwinder.exe -trace=output.bin input.sid
-
-# Custom duration (30 seconds = 1500 frames @ 50Hz)
-tools/SIDwinder.exe -trace=output.txt -seconds=30 input.sid
-
-# Example
-tools/SIDwinder.exe -trace=angular.txt SID/Angular.sid
-```
-
-**Current behavior:** Files created but only contain "FRAME: " markers (empty)
-**After rebuild:** Will contain register write data:
-```
-FRAME: D400:$29,D401:$FD,D404:$11,D405:$03,D406:$F8,...
-FRAME: D400:$7B,D401:$05,D404:$41,...
-```
-
-### Player (WORKING - Manual)
-```bash
-# Default player (SimpleRaster)
-tools/SIDwinder.exe -player music.sid music.prg
-
-# Specific player
-tools/SIDwinder.exe -player=RaistlinBars music.sid music.prg
-tools/SIDwinder.exe -player=SimpleBitmap music.sid music.prg
-
-# With custom logo
-tools/SIDwinder.exe -player=RaistlinBarsWithLogo \
-  -define KoalaFile="logo.kla" music.sid music.prg
-
-# Custom player address
-tools/SIDwinder.exe -player -playeraddr=$3000 music.sid music.prg
-```
-
-**Available Players:**
-- `SimpleRaster` - Default raster player
-- `SimpleBitmap` - Bitmap-based player
-- `RaistlinBars` - Spectrum analyzer
-- `RaistlinBarsWithLogo` - With logo support
-- `RaistlinMirrorBarsWithLogo` - Mirrored bars
-
-### Relocate (WORKING - Manual)
-```bash
-# Basic relocation
-tools/SIDwinder.exe -relocate=$2000 input.sid output.sid
-
-# Skip verification (faster)
-tools/SIDwinder.exe -relocate=$3000 -noverify input.sid output.sid
-
-# With metadata override
-tools/SIDwinder.exe -relocate=$2000 \
-  -sidname="New Title" \
-  -sidauthor="New Author" \
-  input.sid output.sid
-```
-
----
-
-## Common Options
-
-### Metadata Overrides
-```bash
--sidname="Song Title"           # Override title
--sidauthor="Artist Name"        # Override author
--sidcopyright="(C) 2025 Name"   # Override copyright
-```
-
-### General Options
-```bash
--verbose                # Verbose output
--force                  # Overwrite existing files
--log=file.log          # Custom log file
--frames=N              # Number of frames (for trace)
-```
-
----
-
-## Pipeline Integration
-
-### Automatic Usage
-
-The pipeline uses SIDwinder automatically in **2 places**:
-
-#### Step 6: Trace Generation (files created, empty until rebuild)
-```python
-# Original SID trace
-generate_sidwinder_trace(sid_file, original_trace, seconds=30)
-# Output: output/{song}/Original/{song}_original.txt
-
-# Exported SID trace
-generate_sidwinder_trace(exported_sid, exported_trace, seconds=30)
-# Output: output/{song}/New/{song}_exported.txt
-```
-
-#### Step 9: Disassembly Generation (working for original SIDs)
-```python
-# Original SID disassembly (NEW - works perfectly)
-generate_sidwinder_disassembly(sid_file, orig_asm_file)
-# Output: output/{song}/Original/{song}_original_sidwinder.asm
-
-# Exported SID disassembly (limited - packer bug)
-generate_sidwinder_disassembly(exported_sid, exp_asm_file)
-# Output: output/{song}/New/{song}_exported_sidwinder.asm
-```
-
-### Manual Testing
-
-Test before rebuilding:
-```bash
-# Disassembly (works now)
-tools/SIDwinder.exe -disassemble SID/Angular.sid test.asm
-cat test.asm | head -50
-
-# Trace (needs rebuild)
-tools/SIDwinder.exe -trace=test.txt SID/Angular.sid
-cat test.txt | head -50
-# Currently shows only: FRAME: FRAME: FRAME: ...
-# After rebuild shows: FRAME: D400:$29,D401:$FD,...
-```
-
----
-
-## File Locations
-
-| File | Location | Purpose |
-|------|----------|---------|
-| Executable | `tools/SIDwinder.exe` | Main program |
-| Source | `C:\Users\mit\Downloads\SIDwinder-0.2.6\SIDwinder-0.2.6\src\` | Source code |
-| Patches | `tools/sidwinder_trace_fix.patch` | Trace fixes |
-| Build script | `C:\Users\mit\Downloads\SIDwinder-0.2.6\SIDwinder-0.2.6\build.bat` | Rebuild |
-| Config | `tools/SIDwinder.cfg` | Auto-generated config |
-| Log | `tools/SIDwinder.log` | Error log |
-
----
-
-## Rebuild (To Activate Trace)
-
-**See SIDWINDER_REBUILD_GUIDE.md for complete instructions!**
-
-**Quick rebuild:**
-```cmd
-# 1. Install CMake: https://cmake.org/download/
-# 2. Install C++ compiler (Visual Studio Build Tools or MinGW)
-# 3. Rebuild SIDwinder
 cd C:\Users\mit\Downloads\SIDwinder-0.2.6\SIDwinder-0.2.6
 build.bat
 copy build\Release\SIDwinder.exe C:\Users\mit\claude\c64server\SIDM2\tools\
 ```
 
-**Verify trace is working:**
+---
+
+## Command Quick Reference
+
+### Disassembly ✅ WORKING
 ```bash
-tools/SIDwinder.exe -trace=verify.txt SID/Angular.sid
-grep -c "D400" verify.txt
-# Should show: 1000+ (many register writes)
-# Currently shows: 0 (no register writes, only "FRAME: " markers)
+SIDwinder.exe -disassemble input.sid output.asm
 ```
+- Generates KickAssembler source code
+- Auto-generates labels
+- Includes metadata as comments
+- **Pipeline Status:** Integrated in Step 9
 
-**Why rebuild is needed:**
-- Source code IS patched with trace fixes (3 files)
-- Executable (tools/SIDwinder.exe) is from BEFORE patches
-- Needs rebuild to activate logWrite() functionality
-
----
-
-## Output Formats
-
-### Disassembly (.asm)
-```asm
-//; ------------------------------------------
-//; Generated by SIDwinder 0.2.6
-//; Name: Angular
-//; Author: Thomas Mogensen (DRAX)
-//; ------------------------------------------
-
-.const SIDLoad = $1000
-.const SID0 = $D400
-
-* = SIDLoad
-    jmp Label_0
-    jmp Label_4
-...
-```
-
-### Trace (.txt)
-**After rebuild:**
-```
-FRAME: D400:$29,D401:$FD,D404:$11,D405:$03,D406:$F8,D407:$09,...
-FRAME: D400:$7B,D401:$05,D404:$41,D407:$09,D408:$10,D40B:$10,...
-```
-
-**Current (before rebuild):**
-```
-FRAME:
-FRAME:
-FRAME:
-```
-
-### Trace (.bin)
-- Binary format (4 bytes per record)
-- Address (2) + Value (1) + Unused (1)
-- Frame marker: 0xFFFFFFFF
-- Currently: Only 0xFF bytes (empty frames)
-
----
-
-## Troubleshooting
-
-### Trace shows only "FRAME:" markers
-**Cause:** Unpatched executable
-**Fix:** Rebuild SIDwinder with patches
-
-### "Unsupported output format" error
-**Cause:** Internal bug (doesn't affect file generation)
-**Fix:** Ignore error, check if file was created
-
-### Empty trace file
-**Cause:** Same as above
-**Fix:** Rebuild needed
-
-### Player files not found
-**Cause:** Missing SIDPlayers directory
-**Fix:** Ensure `tools/SIDPlayers/` exists
-
----
-
-## Complete Pipeline Output
-
-The complete pipeline generates **14 files per SID** (5 in Original/, 9 in New/):
-
-### Original/ Directory (5 files)
-1. `{filename}_original.dump` - Siddump register capture ✅
-2. `{filename}_original.hex` - Binary hexdump (xxd) ✅
-3. `{filename}_original.txt` - **SIDwinder trace** ⚠️ (empty until rebuild)
-4. `{filename}_original.wav` - 30-second audio ✅
-5. `{filename}_original_sidwinder.asm` - **SIDwinder disassembly** ✅
-
-### New/ Directory (9 files)
-1. `{filename}.sf2` - Converted SF2 file ✅
-2. `{filename}_exported.sid` - Packed SID file ✅
-3. `{filename}_exported.dump` - Siddump register capture ✅
-4. `{filename}_exported.hex` - Binary hexdump ✅
-5. `{filename}_exported.txt` - **SIDwinder trace** ⚠️ (empty until rebuild)
-6. `{filename}_exported.wav` - 30-second audio ✅
-7. `{filename}_exported_disassembly.md` - Python disassembly ✅
-8. `{filename}_exported_sidwinder.asm` - **SIDwinder disassembly** ⚠️ (limited)
-9. `info.txt` - Comprehensive conversion report ✅
-
-**Status Legend:**
-- ✅ Working perfectly
-- ⚠️ Needs rebuild (trace) or limited by packer (disassembly)
-
----
-
-## Tips
-
-1. **Always use absolute paths** in Python scripts
-2. **Ignore SIDwinder exit codes** - check file existence instead
-3. **Text format preferred** for traces (easier to read/diff)
-4. **30 seconds = 1500 frames** @ 50Hz PAL timing
-5. **Compare with siddump** for validation
-6. **Original SIDs disassemble perfectly** - exported SIDs have limitations
-
----
-
-## Examples
-
-### Complete Workflow
+### Trace ⚠️ FIXED - NEEDS REBUILD
 ```bash
-# 1. Disassemble (works now)
-tools/SIDwinder.exe -disassemble SID/song.sid output/song.asm
+# Binary format (compact)
+SIDwinder.exe -trace=output.bin input.sid
 
-# 2. Trace (after rebuild - see SIDWINDER_REBUILD_GUIDE.md)
-tools/SIDwinder.exe -trace=output/song.txt -seconds=30 SID/song.sid
+# Text format (readable)
+SIDwinder.exe -trace=output.txt -traceformat=text input.sid
 
-# 3. Create player (manual use)
-tools/SIDwinder.exe -player=RaistlinBars SID/song.sid output/song.prg
+# Custom frame count
+SIDwinder.exe -trace=output.bin -frames=1500 input.sid
+```
+- Records SID register writes frame-by-frame
+- Binary: struct records with frame markers
+- Text: `FRAME: D400:$00,D401:$08,D404:$11,...`
+- **Pipeline Status:** Integrated in Step 6 (will work after rebuild)
 
-# 4. Relocate (manual use)
-tools/SIDwinder.exe -relocate=$2000 SID/song.sid output/song_relocated.sid
+### Player (Not Yet Integrated)
+```bash
+# Basic player
+SIDwinder.exe -player input.sid output.prg
+
+# Custom player with definitions
+SIDwinder.exe -player=RaistlinBars -define BgColor=$02 input.sid output.prg
+
+# With logo
+SIDwinder.exe -player=RaistlinBarsWithLogo -define LogoFile="logo.kla" input.sid output.prg
+```
+- Creates standalone .prg with visualization
+- Optional compression with Exomizer
+- User-definable parameters
+
+### Relocate (Not Yet Integrated)
+```bash
+# Simple relocation
+SIDwinder.exe -relocate=$3000 -noverify input.sid output.sid
+
+# With verification (trace comparison)
+SIDwinder.exe -relocate=$3000 input.sid output.sid
+```
+- Moves SID to new memory address
+- Optional trace-based verification
+- Frame-by-frame difference reports
+
+---
+
+## Metadata Override Options
+
+All commands support:
+```bash
+-sidname="Title"
+-sidauthor="Author"
+-sidcopyright="(C) 2025"
+-sidloadaddr=$1000
+-sidinitaddr=$1000
+-sidplayaddr=$1003
 ```
 
-### Pipeline Equivalent
+---
+
+## Configuration File: SIDwinder.cfg
+
+**Location:** Current dir, exe dir, or `~/.config/SIDwinder/`
+
+**Key Settings:**
+```ini
+logFile=SIDwinder.log
+logLevel=3                    # 0-3 (Error to Debug)
+emulationFrames=1500          # 30 sec @ 50Hz
+playerName=RaistlinBars
+playerAddress=$4000
+kickAssPath=tools/KickAss.jar
+exomizerPath=tools/exomizer.exe
+```
+
+---
+
+## Integration Status in SIDM2 Pipeline
+
+| Command | Status | Pipeline Step | Notes |
+|---------|--------|---------------|-------|
+| Disassembly | ✅ Working | Step 9 | Generates .asm files |
+| Trace | ⚠️ Fixed, needs rebuild | Step 6 | Will work after rebuild |
+| Player | ⏳ Available | - | Future integration opportunity |
+| Relocate | ⏳ Available | - | Could validate packer |
+
+---
+
+## Why Rebuild Is Important
+
+**Current State:**
+- Trace files are generated but empty
+- Pipeline shows "[WARN - needs rebuilt SIDwinder]"
+- Missing validation data
+
+**After Rebuild:**
+- Complete frame-by-frame SID register traces
+- Can compare original vs exported SIDs
+- Debug packer pointer relocation issues
+- Validate conversion accuracy
+
+**Benefits:**
+- Complete Step 6 of pipeline (currently incomplete)
+- Enable trace comparison for validation
+- Provide debugging data for "Execution at $0000" issues
+- Improve conversion quality metrics
+
+---
+
+## Source Code Modifications (Dec 6, 2024)
+
+### File 1: app/TraceLogger.cpp
+**Added:** Public `logWrite()` method (lines 51-61)
+```cpp
+void TraceLogger::logWrite(u16 addr, u8 value) {
+    if (!isOpen_) return;
+    if (format_ == TraceFormat::Text) {
+        writeTextRecord(addr, value);
+    } else {
+        TraceRecord record(addr, value);
+        writeBinaryRecord(record);
+    }
+}
+```
+
+### File 2: SIDEmulator.cpp
+**Change 1:** Added trace logging to callback (lines 52-55)
+```cpp
+// Log to trace file if tracing is enabled
+if (options.traceEnabled && traceLogger_) {
+    traceLogger_->logWrite(addr, value);
+}
+```
+
+**Change 2:** Enable callback for trace commands (line 129)
+```cpp
+// Added: || options.traceEnabled
+if (options.registerTrackingEnabled || options.patternDetectionEnabled || options.traceEnabled) {
+```
+
+---
+
+## Future Integration Opportunities
+
+### 1. Pattern Recognition
+- Use `SIDPatternFinder` to improve table extraction
+- Automatically identify music data structures
+- Validate extraction accuracy
+
+### 2. Trace Comparison
+- Use `TraceLogger::compareTraceLogs()` for validation
+- Frame-by-frame difference reports
+- Debug packer issues
+
+### 3. Player Generation
+- Create standalone players from SF2 files
+- Add visualization to exported SIDs
+- Generate demo-ready .prg files
+
+### 4. Relocation Verification
+- Validate SF2→SID packing accuracy
+- Ensure pointer relocations are correct
+- Bit-perfect reproduction testing
+
+---
+
+## Verification After Rebuild
+
 ```bash
-# Does disassemble + trace automatically (steps 6 & 9 in pipeline)
-# Also does conversion, siddump, WAV, hexdump, info.txt, validation
+# Test trace functionality
+tools/SIDwinder.exe -trace=test.txt -traceformat=text SID/Angular.sid
+
+# Check output
+cat test.txt
+# Should contain: FRAME: D400:$00,D401:$08,...
+# NOT empty!
+
+# Run full pipeline
 python complete_pipeline_with_validation.py
 
-# Generates 14 files per SID:
-# - 5 files in Original/ (including SIDwinder disassembly & trace)
-# - 9 files in New/ (including both Python & SIDwinder disassembly)
+# Check trace files
+ls output/SIDSF2player_Complete_Pipeline/*/Original/*_original.txt
+ls output/SIDSF2player_Complete_Pipeline/*/New/*_exported.txt
+# Should contain frame data, not be empty
 ```
 
 ---
 
-## Related Documentation
+## Summary
 
-- **Rebuild Guide**: `SIDWINDER_REBUILD_GUIDE.md` - Complete CMake installation and build instructions
-- **Integration Summary**: `SIDWINDER_INTEGRATION_SUMMARY.md` - Integration work summary
-- **Pipeline Report**: `PIPELINE_EXECUTION_REPORT.md` - Latest execution results
-- **Main Docs**: `README.md` (SIDwinder Integration section)
-- **Technical Details**: `CLAUDE.md` (SIDwinder Tool Details section)
-- **Documentation Index**: `COMPLETE_DOCUMENTATION_INDEX.md` - Navigation hub
+**SIDwinder Capabilities:**
+- ✅ Professional 6502 disassembler with auto-labeling
+- ✅ SID register trace logger (fixed, needs rebuild)
+- ✅ Music player generator with visualization
+- ✅ SID relocation with verification
+
+**Immediate Action:**
+1. Rebuild SIDwinder.exe to activate trace fixes
+2. Verify trace output contains data
+3. Complete pipeline Step 6 validation
+4. Use trace comparison for packer debugging
+
+**Long-Term Value:**
+- Complete validation system for SF2→SID conversion
+- Debugging tools for pointer relocation issues
+- Foundation for advanced analysis features
+- Player generation for demo releases
 
 ---
 
-*Quick Reference - Updated 2025-12-06 - Pipeline v1.2*
+**For detailed analysis, see:** `SIDWINDER_ANALYSIS.md`

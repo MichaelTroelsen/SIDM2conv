@@ -4,7 +4,7 @@ COMPLETE SID CONVERSION PIPELINE WITH VALIDATION
 
 Found 18 SID files
 Output directory: output\SIDSF2player_Complete_Pipeline
-Started: 2025-12-06 19:10:04
+Started: 2025-12-09 21:48:48
 
 Pipeline Steps:
   [1] SID -> SF2 conversion
@@ -25,65 +25,36 @@ Pipeline Steps:
   Name: Ain't Somebody
 
   [1/12] Converting SID -> SF2...
-Packed SID: load=$1000, size=5,036
+Packed SID: load=$1000, init=$1000, play=$1009
 Original SF2: load=$0D7E, size=7,656
 
 Extracting tables from packed SID and injecting into original structure:
 
-Instruments     $1040: 5/192 (  2.6%) - injected
-Commands        $1100: 9/224 (  4.0%) - injected
-Wave            $11E0: 21/512 (  4.1%) - injected
-Pulse           $13E0: 11/768 (  1.4%) - injected
-Filter          $16E0: 121/768 ( 15.8%) - injected
-Arpeggio        $19E0: 3/256 (  1.2%) - injected
-Tempo           $1AE0: 21/256 (  8.2%) - injected
+Instruments     $1784: extracted from 6 consecutive columns at $087B
+Instruments     $1784: 20 entries (6-column extraction) - injected
+Commands        $1844: extracted from 3 consecutive columns at $08F3
+Commands        $1844: 33 entries (3-column extraction) - injected
+Wave            $1924: extracted from 2 consecutive columns at $0958
+Wave            $1924: 50 entries (2-column conversion) - injected
+Pulse           $1B24: extracted from 3 consecutive columns at $09BC
+Pulse           $1B24: 25 entries (3->4 column conversion) - injected
+Filter          $1E24: extracted from 3 consecutive columns at $0A07
+Filter          $1E24: 26 entries (3->4 column conversion) - injected
+Arpeggio        $2124: extracted from 1 column at $0A55
+Arpeggio        $2124: 66 entries (1-column extraction) - injected
+Tempo           $2224: extracted from 1 column at $0A97
+Tempo           $2224: 4 entries (1-column extraction) - injected
+
+Updating DriverCommon with correct addresses:
+  Init: $16B0 (was $1006)
+  Play: $16B9 (was $16C8)
 
 Created: output\SIDSF2player_Complete_Pipeline\Aint_Somebody\New\Aint_Somebody.sf2
 Size: 7,656 bytes
         [OK] Method: TEMPLATE
 
   [2/12] Packing SF2 -> SID...
-        [OK] Size: 13044 bytes
-
-  [3/12] Generating siddumps...
-        Original: [OK]
-        Exported: [OK]
-
-  [4/12] Rendering WAV files... [SKIPPED - use SID2WAV manually if needed]
-
-  [5/12] Generating hexdumps...
-        Original: [OK]
-        Exported: [OK]
-
-  [6/12] Generating SIDwinder traces...
-        Original: [OK]
-        Exported: [WARN - needs rebuilt SIDwinder]
-
-  [7/12] Generating info.txt...
-        [OK]
-
-  [8/12] Generating annotated disassembly...
-        [OK]
-
-  [9/12] Generating SIDwinder disassembly...
-        Original: [OK]
-        Exported: [ERROR]
-
-  [10/12] Validating completion...
-        Files: 13/14
-        Missing: New/Aint_Somebody_exported_sidwinder.asm...
-        Status: [PARTIAL]
-
-[2/18] Processing: Broware.sid
---------------------------------------------------------------------------------
-  Type: LAXITY
-  Name: Broware
-
-  [1/12] Converting SID -> SF2...
-        [OK] Method: LAXITY
-
-  [2/12] Packing SF2 -> SID...
-        [OK] Size: 10703 bytes
+        [OK] Size: 7417 bytes
 
   [3/12] Generating siddumps...
         Original: [OK]
@@ -100,10 +71,10 @@ Size: 7,656 bytes
         Exported: [OK]
 
   [7/12] Generating info.txt...
-        [OK]
+        [ERROR]
 
   [8/12] Generating annotated disassembly...
-        [OK]
+        [ERROR]
 
   [9/12] Generating SIDwinder disassembly...
         Original: [OK]
@@ -113,31 +84,50 @@ Size: 7,656 bytes
         Files: 14/14
         Status: [COMPLETE]
 
+[2/18] Processing: Broware.sid
+--------------------------------------------------------------------------------
+  Type: LAXITY
+  Name: Broware
+
+  [1/12] Converting SID -> SF2...
+        [ERROR] Conversion failed
+
 [3/18] Processing: Cocktail_to_Go_tune_3.sid
 --------------------------------------------------------------------------------
   Type: SF2_PACKED
   Name: Cocktail to Go (tune 3)
 
   [1/12] Converting SID -> SF2...
-Packed SID: load=$1000, size=4,418
+Packed SID: load=$1000, init=$1000, play=$1009
 Original SF2: load=$0D7E, size=7,656
 
 Extracting tables from packed SID and injecting into original structure:
 
-Instruments     $1040: 17/192 (  8.9%) - injected
-Commands        $1100: 5/224 (  2.2%) - injected
-Wave            $11E0: 15/512 (  2.9%) - injected
-Pulse           $13E0: 9/768 (  1.2%) - injected
-Filter          $16E0: 198/768 ( 25.8%) - injected
-Arpeggio        $19E0: 21/256 (  8.2%) - injected
-Tempo           $1AE0: 32/256 ( 12.5%) - injected
+Instruments     $1784: extracted from 6 consecutive columns at $087B
+Instruments     $1784: 20 entries (6-column extraction) - injected
+Commands        $1844: extracted from 3 consecutive columns at $08F3
+Commands        $1844: 33 entries (3-column extraction) - injected
+Wave            $1924: extracted from 2 consecutive columns at $0958
+Wave            $1924: 50 entries (2-column conversion) - injected
+Pulse           $1B24: extracted from 3 consecutive columns at $09BC
+Pulse           $1B24: 25 entries (3->4 column conversion) - injected
+Filter          $1E24: extracted from 3 consecutive columns at $0A07
+Filter          $1E24: 26 entries (3->4 column conversion) - injected
+Arpeggio        $2124: extracted from 1 column at $0A55
+Arpeggio        $2124: 66 entries (1-column extraction) - injected
+Tempo           $2224: extracted from 1 column at $0A97
+Tempo           $2224: 4 entries (1-column extraction) - injected
+
+Updating DriverCommon with correct addresses:
+  Init: $16DC (was $1006)
+  Play: $16E5 (was $16C8)
 
 Created: output\SIDSF2player_Complete_Pipeline\Cocktail_to_Go_tune_3\New\Cocktail_to_Go_tune_3.sf2
 Size: 7,656 bytes
         [OK] Method: TEMPLATE
 
   [2/12] Packing SF2 -> SID...
-        [OK] Size: 13060 bytes
+        [OK] Size: 7417 bytes
 
   [3/12] Generating siddumps...
         Original: [OK]
@@ -154,10 +144,10 @@ Size: 7,656 bytes
         Exported: [OK]
 
   [7/12] Generating info.txt...
-        [OK]
+        [ERROR]
 
   [8/12] Generating annotated disassembly...
-        [OK]
+        [ERROR]
 
   [9/12] Generating SIDwinder disassembly...
         Original: [OK]
@@ -173,25 +163,36 @@ Size: 7,656 bytes
   Name: Driver 11 Test - Arpeggio
 
   [1/12] Converting SID -> SF2...
-Packed SID: load=$1000, size=6,978
+Packed SID: load=$1000, init=$1000, play=$16CC
 Original SF2: load=$0D7E, size=7,656
 
 Extracting tables from packed SID and injecting into original structure:
 
-Instruments     $1040: 192/192 (100.0%) - injected
-Commands        $1100: 224/224 (100.0%) - injected
-Wave            $11E0: 512/512 (100.0%) - injected
-Pulse           $13E0: 768/768 (100.0%) - injected
-Filter          $16E0: 768/768 (100.0%) - injected
-Arpeggio        $19E0: 256/256 (100.0%) - injected
-Tempo           $1AE0: 256/256 (100.0%) - injected
+Instruments     $1784: extracted from 6 consecutive columns at $087B
+Instruments     $1784: 20 entries (6-column extraction) - injected
+Commands        $1844: extracted from 3 consecutive columns at $08F3
+Commands        $1844: 33 entries (3-column extraction) - injected
+Wave            $1924: extracted from 2 consecutive columns at $0958
+Wave            $1924: 50 entries (2-column conversion) - injected
+Pulse           $1B24: extracted from 3 consecutive columns at $09BC
+Pulse           $1B24: 25 entries (3->4 column conversion) - injected
+Filter          $1E24: extracted from 3 consecutive columns at $0A07
+Filter          $1E24: 26 entries (3->4 column conversion) - injected
+Arpeggio        $2124: extracted from 1 column at $0A55
+Arpeggio        $2124: 66 entries (1-column extraction) - injected
+Tempo           $2224: extracted from 1 column at $0A97
+Tempo           $2224: 4 entries (1-column extraction) - injected
+
+Updating DriverCommon with correct addresses:
+  Init: $15E4 (was $1006)
+  Play: $15ED (was $16C8)
 
 Created: output\SIDSF2player_Complete_Pipeline\Driver 11 Test - Arpeggio\New\Driver 11 Test - Arpeggio.sf2
 Size: 7,656 bytes
         [OK] Method: REFERENCE
 
   [2/12] Packing SF2 -> SID...
-        [OK] Size: 6900 bytes
+        [OK] Size: 7417 bytes
 
   [3/12] Generating siddumps...
         Original: [OK]
@@ -208,10 +209,10 @@ Size: 7,656 bytes
         Exported: [OK]
 
   [7/12] Generating info.txt...
-        [OK]
+        [ERROR]
 
   [8/12] Generating annotated disassembly...
-        [OK]
+        [ERROR]
 
   [9/12] Generating SIDwinder disassembly...
         Original: [OK]
@@ -227,25 +228,36 @@ Size: 7,656 bytes
   Name: Driver 11 Test - Filter
 
   [1/12] Converting SID -> SF2...
-Packed SID: load=$1000, size=7,189
+Packed SID: load=$1000, init=$1000, play=$16CC
 Original SF2: load=$0D7E, size=7,866
 
 Extracting tables from packed SID and injecting into original structure:
 
-Instruments     $1040: 192/192 (100.0%) - injected
-Commands        $1100: 224/224 (100.0%) - injected
-Wave            $11E0: 512/512 (100.0%) - injected
-Pulse           $13E0: 768/768 (100.0%) - injected
-Filter          $16E0: 768/768 (100.0%) - injected
-Arpeggio        $19E0: 256/256 (100.0%) - injected
-Tempo           $1AE0: 256/256 (100.0%) - injected
+Instruments     $1784: extracted from 6 consecutive columns at $087B
+Instruments     $1784: 20 entries (6-column extraction) - injected
+Commands        $1844: extracted from 3 consecutive columns at $08F3
+Commands        $1844: 33 entries (3-column extraction) - injected
+Wave            $1924: extracted from 2 consecutive columns at $0958
+Wave            $1924: 50 entries (2-column conversion) - injected
+Pulse           $1B24: extracted from 3 consecutive columns at $09BC
+Pulse           $1B24: 25 entries (3->4 column conversion) - injected
+Filter          $1E24: extracted from 3 consecutive columns at $0A07
+Filter          $1E24: 26 entries (3->4 column conversion) - injected
+Arpeggio        $2124: extracted from 1 column at $0A55
+Arpeggio        $2124: 66 entries (1-column extraction) - injected
+Tempo           $2224: extracted from 1 column at $0A97
+Tempo           $2224: 4 entries (1-column extraction) - injected
+
+Updating DriverCommon with correct addresses:
+  Init: $15E4 (was $1006)
+  Play: $15ED (was $16C8)
 
 Created: output\SIDSF2player_Complete_Pipeline\Driver 11 Test - Filter\New\Driver 11 Test - Filter.sf2
 Size: 7,866 bytes
         [OK] Method: REFERENCE
 
   [2/12] Packing SF2 -> SID...
-        [OK] Size: 7111 bytes
+        [OK] Size: 7628 bytes
 
   [3/12] Generating siddumps...
         Original: [OK]
@@ -262,10 +274,10 @@ Size: 7,866 bytes
         Exported: [OK]
 
   [7/12] Generating info.txt...
-        [OK]
+        [ERROR]
 
   [8/12] Generating annotated disassembly...
-        [OK]
+        [ERROR]
 
   [9/12] Generating SIDwinder disassembly...
         Original: [OK]
@@ -281,25 +293,36 @@ Size: 7,866 bytes
   Name: Driver 11 Test - Polyphonic
 
   [1/12] Converting SID -> SF2...
-Packed SID: load=$1000, size=7,938
+Packed SID: load=$1000, init=$1000, play=$16CC
 Original SF2: load=$0D7E, size=8,649
 
 Extracting tables from packed SID and injecting into original structure:
 
-Instruments     $1040: 192/192 (100.0%) - injected
-Commands        $1100: 224/224 (100.0%) - injected
-Wave            $11E0: 512/512 (100.0%) - injected
-Pulse           $13E0: 768/768 (100.0%) - injected
-Filter          $16E0: 768/768 (100.0%) - injected
-Arpeggio        $19E0: 256/256 (100.0%) - injected
-Tempo           $1AE0: 256/256 (100.0%) - injected
+Instruments     $1784: extracted from 6 consecutive columns at $087B
+Instruments     $1784: 20 entries (6-column extraction) - injected
+Commands        $1844: extracted from 3 consecutive columns at $08F3
+Commands        $1844: 33 entries (3-column extraction) - injected
+Wave            $1924: extracted from 2 consecutive columns at $0958
+Wave            $1924: 50 entries (2-column conversion) - injected
+Pulse           $1B24: extracted from 3 consecutive columns at $09BC
+Pulse           $1B24: 25 entries (3->4 column conversion) - injected
+Filter          $1E24: extracted from 3 consecutive columns at $0A07
+Filter          $1E24: 26 entries (3->4 column conversion) - injected
+Arpeggio        $2124: extracted from 1 column at $0A55
+Arpeggio        $2124: 66 entries (1-column extraction) - injected
+Tempo           $2224: extracted from 1 column at $0A97
+Tempo           $2224: 4 entries (1-column extraction) - injected
+
+Updating DriverCommon with correct addresses:
+  Init: $15E4 (was $1006)
+  Play: $15ED (was $16C8)
 
 Created: output\SIDSF2player_Complete_Pipeline\Driver 11 Test - Polyphonic\New\Driver 11 Test - Polyphonic.sf2
 Size: 8,649 bytes
         [OK] Method: REFERENCE
 
   [2/12] Packing SF2 -> SID...
-        [OK] Size: 7860 bytes
+        [OK] Size: 8377 bytes
 
   [3/12] Generating siddumps...
         Original: [OK]
@@ -316,10 +339,10 @@ Size: 8,649 bytes
         Exported: [OK]
 
   [7/12] Generating info.txt...
-        [OK]
+        [ERROR]
 
   [8/12] Generating annotated disassembly...
-        [OK]
+        [ERROR]
 
   [9/12] Generating SIDwinder disassembly...
         Original: [OK]
@@ -335,25 +358,36 @@ Size: 8,649 bytes
   Name: Driver 11 Test - Tie Notes
 
   [1/12] Converting SID -> SF2...
-Packed SID: load=$1000, size=7,828
+Packed SID: load=$1000, init=$1000, play=$16CC
 Original SF2: load=$0D7E, size=8,464
 
 Extracting tables from packed SID and injecting into original structure:
 
-Instruments     $1040: 192/192 (100.0%) - injected
-Commands        $1100: 224/224 (100.0%) - injected
-Wave            $11E0: 512/512 (100.0%) - injected
-Pulse           $13E0: 768/768 (100.0%) - injected
-Filter          $16E0: 768/768 (100.0%) - injected
-Arpeggio        $19E0: 256/256 (100.0%) - injected
-Tempo           $1AE0: 256/256 (100.0%) - injected
+Instruments     $1784: extracted from 6 consecutive columns at $087B
+Instruments     $1784: 20 entries (6-column extraction) - injected
+Commands        $1844: extracted from 3 consecutive columns at $08F3
+Commands        $1844: 33 entries (3-column extraction) - injected
+Wave            $1924: extracted from 2 consecutive columns at $0958
+Wave            $1924: 50 entries (2-column conversion) - injected
+Pulse           $1B24: extracted from 3 consecutive columns at $09BC
+Pulse           $1B24: 25 entries (3->4 column conversion) - injected
+Filter          $1E24: extracted from 3 consecutive columns at $0A07
+Filter          $1E24: 26 entries (3->4 column conversion) - injected
+Arpeggio        $2124: extracted from 1 column at $0A55
+Arpeggio        $2124: 66 entries (1-column extraction) - injected
+Tempo           $2224: extracted from 1 column at $0A97
+Tempo           $2224: 4 entries (1-column extraction) - injected
+
+Updating DriverCommon with correct addresses:
+  Init: $15E4 (was $1006)
+  Play: $15ED (was $16C8)
 
 Created: output\SIDSF2player_Complete_Pipeline\Driver 11 Test - Tie Notes\New\Driver 11 Test - Tie Notes.sf2
 Size: 8,464 bytes
         [OK] Method: REFERENCE
 
   [2/12] Packing SF2 -> SID...
-        [OK] Size: 7750 bytes
+        [OK] Size: 8267 bytes
 
   [3/12] Generating siddumps...
         Original: [OK]
@@ -370,10 +404,10 @@ Size: 8,464 bytes
         Exported: [OK]
 
   [7/12] Generating info.txt...
-        [OK]
+        [ERROR]
 
   [8/12] Generating annotated disassembly...
-        [OK]
+        [ERROR]
 
   [9/12] Generating SIDwinder disassembly...
         Original: [OK]
@@ -389,25 +423,36 @@ Size: 8,464 bytes
   Name: Expand Side 1
 
   [1/12] Converting SID -> SF2...
-Packed SID: load=$1000, size=6,697
+Packed SID: load=$1000, init=$1000, play=$1009
 Original SF2: load=$0D7E, size=7,656
 
 Extracting tables from packed SID and injecting into original structure:
 
-Instruments     $1040: 12/192 (  6.2%) - injected
-Commands        $1100: 24/224 ( 10.7%) - injected
-Wave            $11E0: 38/512 (  7.4%) - injected
-Pulse           $13E0: 19/768 (  2.5%) - injected
-Filter          $16E0: 257/768 ( 33.5%) - injected
-Arpeggio        $19E0: 10/256 (  3.9%) - injected
-Tempo           $1AE0: 7/256 (  2.7%) - injected
+Instruments     $1784: extracted from 6 consecutive columns at $087B
+Instruments     $1784: 20 entries (6-column extraction) - injected
+Commands        $1844: extracted from 3 consecutive columns at $08F3
+Commands        $1844: 33 entries (3-column extraction) - injected
+Wave            $1924: extracted from 2 consecutive columns at $0958
+Wave            $1924: 50 entries (2-column conversion) - injected
+Pulse           $1B24: extracted from 3 consecutive columns at $09BC
+Pulse           $1B24: 25 entries (3->4 column conversion) - injected
+Filter          $1E24: extracted from 3 consecutive columns at $0A07
+Filter          $1E24: 26 entries (3->4 column conversion) - injected
+Arpeggio        $2124: extracted from 1 column at $0A55
+Arpeggio        $2124: 66 entries (1-column extraction) - injected
+Tempo           $2224: extracted from 1 column at $0A97
+Tempo           $2224: 4 entries (1-column extraction) - injected
+
+Updating DriverCommon with correct addresses:
+  Init: $15F5 (was $1006)
+  Play: $15FE (was $16C8)
 
 Created: output\SIDSF2player_Complete_Pipeline\Expand_Side_1\New\Expand_Side_1.sf2
 Size: 7,656 bytes
         [OK] Method: TEMPLATE
 
   [2/12] Packing SF2 -> SID...
-        [OK] Size: 7596 bytes
+        [OK] Size: 7512 bytes
 
   [3/12] Generating siddumps...
         Original: [OK]
@@ -424,105 +469,10 @@ Size: 7,656 bytes
         Exported: [OK]
 
   [7/12] Generating info.txt...
-        [OK]
+        [ERROR]
 
   [8/12] Generating annotated disassembly...
-        [OK]
-
-  [9/12] Generating SIDwinder disassembly...
-        Original: [OK]
-        Exported: [ERROR]
-
-  [10/12] Validating completion...
-        Files: 13/14
-        Missing: New/Expand_Side_1_exported_sidwinder.asm...
-        Status: [PARTIAL]
-
-[9/18] Processing: Halloweed_4_tune_3.sid
---------------------------------------------------------------------------------
-  Type: SF2_PACKED
-  Name: Halloweed 4 (tune 3)
-
-  [1/12] Converting SID -> SF2...
-Packed SID: load=$1000, size=5,572
-Original SF2: load=$0D7E, size=7,656
-
-Extracting tables from packed SID and injecting into original structure:
-
-Instruments     $1040: 51/192 ( 26.6%) - injected
-Commands        $1100: 16/224 (  7.1%) - injected
-Wave            $11E0: 19/512 (  3.7%) - injected
-Pulse           $13E0: 18/768 (  2.3%) - injected
-Filter          $16E0: 144/768 ( 18.8%) - injected
-Arpeggio        $19E0: 30/256 ( 11.7%) - injected
-Tempo           $1AE0: 36/256 ( 14.1%) - injected
-
-Created: output\SIDSF2player_Complete_Pipeline\Halloweed_4_tune_3\New\Halloweed_4_tune_3.sf2
-Size: 7,656 bytes
-        [OK] Method: TEMPLATE
-
-  [2/12] Packing SF2 -> SID...
-        [OK] Size: 13044 bytes
-
-  [3/12] Generating siddumps...
-        Original: [OK]
-        Exported: [OK]
-
-  [4/12] Rendering WAV files... [SKIPPED - use SID2WAV manually if needed]
-
-  [5/12] Generating hexdumps...
-        Original: [OK]
-        Exported: [OK]
-
-  [6/12] Generating SIDwinder traces...
-        Original: [OK]
-        Exported: [WARN - needs rebuilt SIDwinder]
-
-  [7/12] Generating info.txt...
-        [OK]
-
-  [8/12] Generating annotated disassembly...
-        [OK]
-
-  [9/12] Generating SIDwinder disassembly...
-        Original: [OK]
-        Exported: [ERROR]
-
-  [10/12] Validating completion...
-        Files: 13/14
-        Missing: New/Halloweed_4_tune_3_exported_sidwinder.asm...
-        Status: [PARTIAL]
-
-[10/18] Processing: I_Have_Extended_Intros.sid
---------------------------------------------------------------------------------
-  Type: LAXITY
-  Name: I Have Extended Intros
-
-  [1/12] Converting SID -> SF2...
-        [OK] Method: LAXITY
-
-  [2/12] Packing SF2 -> SID...
-        [OK] Size: 9602 bytes
-
-  [3/12] Generating siddumps...
-        Original: [OK]
-        Exported: [OK]
-
-  [4/12] Rendering WAV files... [SKIPPED - use SID2WAV manually if needed]
-
-  [5/12] Generating hexdumps...
-        Original: [OK]
-        Exported: [OK]
-
-  [6/12] Generating SIDwinder traces...
-        Original: [OK]
-        Exported: [OK]
-
-  [7/12] Generating info.txt...
-        [OK]
-
-  [8/12] Generating annotated disassembly...
-        [OK]
+        [ERROR]
 
   [9/12] Generating SIDwinder disassembly...
         Original: [OK]
@@ -532,31 +482,115 @@ Size: 7,656 bytes
         Files: 14/14
         Status: [COMPLETE]
 
+[9/18] Processing: Halloweed_4_tune_3.sid
+--------------------------------------------------------------------------------
+  Type: SF2_PACKED
+  Name: Halloweed 4 (tune 3)
+
+  [1/12] Converting SID -> SF2...
+Packed SID: load=$1000, init=$1000, play=$1006
+Original SF2: load=$0D7E, size=7,656
+
+Extracting tables from packed SID and injecting into original structure:
+
+Instruments     $1784: extracted from 6 consecutive columns at $087B
+Instruments     $1784: 20 entries (6-column extraction) - injected
+Commands        $1844: extracted from 3 consecutive columns at $08F3
+Commands        $1844: 33 entries (3-column extraction) - injected
+Wave            $1924: extracted from 2 consecutive columns at $0958
+Wave            $1924: 50 entries (2-column conversion) - injected
+Pulse           $1B24: extracted from 3 consecutive columns at $09BC
+Pulse           $1B24: 25 entries (3->4 column conversion) - injected
+Filter          $1E24: extracted from 3 consecutive columns at $0A07
+Filter          $1E24: 26 entries (3->4 column conversion) - injected
+Arpeggio        $2124: extracted from 1 column at $0A55
+Arpeggio        $2124: 66 entries (1-column extraction) - injected
+Tempo           $2224: extracted from 1 column at $0A97
+Tempo           $2224: 4 entries (1-column extraction) - injected
+
+Updating DriverCommon with correct addresses:
+  Init: $1681 (was $1006)
+  Play: $168A (was $16C8)
+
+Created: output\SIDSF2player_Complete_Pipeline\Halloweed_4_tune_3\New\Halloweed_4_tune_3.sf2
+Size: 7,656 bytes
+        [OK] Method: TEMPLATE
+
+  [2/12] Packing SF2 -> SID...
+        [OK] Size: 7417 bytes
+
+  [3/12] Generating siddumps...
+        Original: [OK]
+        Exported: [OK]
+
+  [4/12] Rendering WAV files... [SKIPPED - use SID2WAV manually if needed]
+
+  [5/12] Generating hexdumps...
+        Original: [OK]
+        Exported: [OK]
+
+  [6/12] Generating SIDwinder traces...
+        Original: [OK]
+        Exported: [OK]
+
+  [7/12] Generating info.txt...
+        [ERROR]
+
+  [8/12] Generating annotated disassembly...
+        [ERROR]
+
+  [9/12] Generating SIDwinder disassembly...
+        Original: [OK]
+        Exported: [OK]
+
+  [10/12] Validating completion...
+        Files: 14/14
+        Status: [COMPLETE]
+
+[10/18] Processing: I_Have_Extended_Intros.sid
+--------------------------------------------------------------------------------
+  Type: LAXITY
+  Name: I Have Extended Intros
+
+  [1/12] Converting SID -> SF2...
+        [ERROR] Conversion failed
+
 [11/18] Processing: polyphonic_cpp.sid
 --------------------------------------------------------------------------------
   Type: SF2_PACKED
   Name: Polyphonic
 
   [1/12] Converting SID -> SF2...
-Packed SID: load=$1000, size=8,580
+Packed SID: load=$1000, init=$1000, play=$1003
 Original SF2: load=$0D7E, size=7,656
 
 Extracting tables from packed SID and injecting into original structure:
 
-Instruments     $1040: 1/192 (  0.5%) - injected
-Commands        $1100: 4/224 (  1.8%) - injected
-Wave            $11E0: 7/512 (  1.4%) - injected
-Pulse           $13E0: 22/768 (  2.9%) - injected
-Filter          $16E0: 705/768 ( 91.8%) - injected
-Arpeggio        $19E0: 253/256 ( 98.8%) - injected
-Tempo           $1AE0: 256/256 (100.0%) - injected
+Instruments     $1784: extracted from 6 consecutive columns at $087B
+Instruments     $1784: 20 entries (6-column extraction) - injected
+Commands        $1844: extracted from 3 consecutive columns at $08F3
+Commands        $1844: 33 entries (3-column extraction) - injected
+Wave            $1924: extracted from 2 consecutive columns at $0958
+Wave            $1924: 50 entries (2-column conversion) - injected
+Pulse           $1B24: extracted from 3 consecutive columns at $09BC
+Pulse           $1B24: 25 entries (3->4 column conversion) - injected
+Filter          $1E24: extracted from 3 consecutive columns at $0A07
+Filter          $1E24: 26 entries (3->4 column conversion) - injected
+Arpeggio        $2124: extracted from 1 column at $0A55
+Arpeggio        $2124: 66 entries (1-column extraction) - injected
+Tempo           $2224: extracted from 1 column at $0A97
+Tempo           $2224: 4 entries (1-column extraction) - injected
+
+Updating DriverCommon with correct addresses:
+  Init: $1000 (was $1006)
+  Play: $1003 (was $16C8)
 
 Created: output\SIDSF2player_Complete_Pipeline\polyphonic_cpp\New\polyphonic_cpp.sf2
 Size: 7,656 bytes
         [OK] Method: TEMPLATE
 
   [2/12] Packing SF2 -> SID...
-        [OK] Size: 6900 bytes
+        [OK] Size: 7417 bytes
 
   [3/12] Generating siddumps...
         Original: [OK]
@@ -573,10 +607,10 @@ Size: 7,656 bytes
         Exported: [OK]
 
   [7/12] Generating info.txt...
-        [OK]
+        [ERROR]
 
   [8/12] Generating annotated disassembly...
-        [OK]
+        [ERROR]
 
   [9/12] Generating SIDwinder disassembly...
         Original: [ERROR]
@@ -593,25 +627,29 @@ Size: 7,656 bytes
   Name: Plug
 
   [1/12] Converting SID -> SF2...
-Packed SID: load=$0D7E, size=8,647
+Packed SID: load=$0D7E, init=$1006, play=$16C8
 Original SF2: load=$0D7E, size=7,656
 
 Extracting tables from packed SID and injecting into original structure:
 
-Instruments     $1040: 192/192 (100.0%) - injected
-Commands        $1100: 224/224 (100.0%) - injected
-Wave            $11E0: 511/512 ( 99.8%) - injected
-Pulse           $13E0: 767/768 ( 99.9%) - injected
-Filter          $16E0: 670/768 ( 87.2%) - injected
-Arpeggio        $19E0: 243/256 ( 94.9%) - injected
-Tempo           $1AE0: 246/256 ( 96.1%) - injected
+Instruments     $1784: 175/192 ( 91.1%) - injected
+Commands        $1844: 174/192 ( 90.6%) - injected
+Wave            $1924: 483/512 ( 94.3%) - injected
+Pulse           $1B24: 997/1024 ( 97.4%) - injected
+Filter          $1E24: 1008/1024 ( 98.4%) - injected
+Arpeggio        $2124: 256/256 (100.0%) - injected
+Tempo           $2224: 253/256 ( 98.8%) - injected
+
+Updating DriverCommon with correct addresses:
+  Init: $1006 (was $1006)
+  Play: $16C8 (was $16C8)
 
 Created: output\SIDSF2player_Complete_Pipeline\polyphonic_test\New\polyphonic_test.sf2
 Size: 7,656 bytes
         [OK] Method: TEMPLATE
 
   [2/12] Packing SF2 -> SID...
-        [OK] Size: 6900 bytes
+        [OK] Size: 7417 bytes
 
   [3/12] Generating siddumps...
         Original: [OK]
@@ -628,10 +666,10 @@ Size: 7,656 bytes
         Exported: [OK]
 
   [7/12] Generating info.txt...
-        [OK]
+        [ERROR]
 
   [8/12] Generating annotated disassembly...
-        [OK]
+        [ERROR]
 
   [9/12] Generating SIDwinder disassembly...
         Original: [ERROR]
@@ -648,25 +686,36 @@ Size: 7,656 bytes
   Name: 89
 
   [1/12] Converting SID -> SF2...
-Packed SID: load=$1000, size=6,075
+Packed SID: load=$1000, init=$1000, play=$1006
 Original SF2: load=$0D7E, size=7,656
 
 Extracting tables from packed SID and injecting into original structure:
 
-Instruments     $1040: 133/192 ( 69.3%) - injected
-Commands        $1100: 90/224 ( 40.2%) - injected
-Wave            $11E0: 26/512 (  5.1%) - injected
-Pulse           $13E0: 19/768 (  2.5%) - injected
-Filter          $16E0: 144/768 ( 18.8%) - injected
-Arpeggio        $19E0: 19/256 (  7.4%) - injected
-Tempo           $1AE0: 24/256 (  9.4%) - injected
+Instruments     $1784: extracted from 6 consecutive columns at $087B
+Instruments     $1784: 20 entries (6-column extraction) - injected
+Commands        $1844: extracted from 3 consecutive columns at $08F3
+Commands        $1844: 33 entries (3-column extraction) - injected
+Wave            $1924: extracted from 2 consecutive columns at $0958
+Wave            $1924: 50 entries (2-column conversion) - injected
+Pulse           $1B24: extracted from 3 consecutive columns at $09BC
+Pulse           $1B24: 25 entries (3->4 column conversion) - injected
+Filter          $1E24: extracted from 3 consecutive columns at $0A07
+Filter          $1E24: 26 entries (3->4 column conversion) - injected
+Arpeggio        $2124: extracted from 1 column at $0A55
+Arpeggio        $2124: 66 entries (1-column extraction) - injected
+Tempo           $2224: extracted from 1 column at $0A97
+Tempo           $2224: 4 entries (1-column extraction) - injected
+
+Updating DriverCommon with correct addresses:
+  Init: $1692 (was $1006)
+  Play: $169B (was $16C8)
 
 Created: output\SIDSF2player_Complete_Pipeline\SF2packed_new1_Stiensens_last_night_of_89\New\SF2packed_new1_Stiensens_last_night_of_89.sf2
 Size: 7,656 bytes
         [OK] Method: TEMPLATE
 
   [2/12] Packing SF2 -> SID...
-        [OK] Size: 13044 bytes
+        [OK] Size: 7417 bytes
 
   [3/12] Generating siddumps...
         Original: [OK]
@@ -683,10 +732,10 @@ Size: 7,656 bytes
         Exported: [OK]
 
   [7/12] Generating info.txt...
-        [OK]
+        [ERROR]
 
   [8/12] Generating annotated disassembly...
-        [OK]
+        [ERROR]
 
   [9/12] Generating SIDwinder disassembly...
         Original: [OK]
@@ -702,25 +751,36 @@ Size: 7,656 bytes
   Name: Stinsen 89 SF2 packed
 
   [1/12] Converting SID -> SF2...
-Packed SID: load=$1000, size=6,075
+Packed SID: load=$1000, init=$1000, play=$1006
 Original SF2: load=$0D7E, size=7,656
 
 Extracting tables from packed SID and injecting into original structure:
 
-Instruments     $1040: 133/192 ( 69.3%) - injected
-Commands        $1100: 90/224 ( 40.2%) - injected
-Wave            $11E0: 26/512 (  5.1%) - injected
-Pulse           $13E0: 19/768 (  2.5%) - injected
-Filter          $16E0: 163/768 ( 21.2%) - injected
-Arpeggio        $19E0: 19/256 (  7.4%) - injected
-Tempo           $1AE0: 24/256 (  9.4%) - injected
+Instruments     $1784: extracted from 6 consecutive columns at $087B
+Instruments     $1784: 20 entries (6-column extraction) - injected
+Commands        $1844: extracted from 3 consecutive columns at $08F3
+Commands        $1844: 33 entries (3-column extraction) - injected
+Wave            $1924: extracted from 2 consecutive columns at $0958
+Wave            $1924: 50 entries (2-column conversion) - injected
+Pulse           $1B24: extracted from 3 consecutive columns at $09BC
+Pulse           $1B24: 25 entries (3->4 column conversion) - injected
+Filter          $1E24: extracted from 3 consecutive columns at $0A07
+Filter          $1E24: 26 entries (3->4 column conversion) - injected
+Arpeggio        $2124: extracted from 1 column at $0A55
+Arpeggio        $2124: 66 entries (1-column extraction) - injected
+Tempo           $2224: extracted from 1 column at $0A97
+Tempo           $2224: 4 entries (1-column extraction) - injected
+
+Updating DriverCommon with correct addresses:
+  Init: $1692 (was $1006)
+  Play: $169B (was $16C8)
 
 Created: output\SIDSF2player_Complete_Pipeline\SF2packed_Stinsens_Last_Night_of_89\New\SF2packed_Stinsens_Last_Night_of_89.sf2
 Size: 7,656 bytes
         [OK] Method: TEMPLATE
 
   [2/12] Packing SF2 -> SID...
-        [OK] Size: 13044 bytes
+        [OK] Size: 7417 bytes
 
   [3/12] Generating siddumps...
         Original: [OK]
@@ -737,10 +797,10 @@ Size: 7,656 bytes
         Exported: [OK]
 
   [7/12] Generating info.txt...
-        [OK]
+        [ERROR]
 
   [8/12] Generating annotated disassembly...
-        [OK]
+        [ERROR]
 
   [9/12] Generating SIDwinder disassembly...
         Original: [OK]
@@ -756,10 +816,44 @@ Size: 7,656 bytes
   Name: Staying Alive
 
   [1/12] Converting SID -> SF2...
-        [OK] Method: LAXITY
+        [ERROR] Conversion failed
+
+[16/18] Processing: Stinsens_Last_Night_of_89.sid
+--------------------------------------------------------------------------------
+  Type: SF2_PACKED
+  Name: Stinsen's Last Night of '89
+
+  [1/12] Converting SID -> SF2...
+Packed SID: load=$1000, init=$1000, play=$1006
+Original SF2: load=$0D7E, size=7,656
+
+Extracting tables from packed SID and injecting into original structure:
+
+Instruments     $1784: extracted from 6 consecutive columns at $087B
+Instruments     $1784: 20 entries (6-column extraction) - injected
+Commands        $1844: extracted from 3 consecutive columns at $08F3
+Commands        $1844: 33 entries (3-column extraction) - injected
+Wave            $1924: extracted from 2 consecutive columns at $0958
+Wave            $1924: 50 entries (2-column conversion) - injected
+Pulse           $1B24: extracted from 3 consecutive columns at $09BC
+Pulse           $1B24: 25 entries (3->4 column conversion) - injected
+Filter          $1E24: extracted from 3 consecutive columns at $0A07
+Filter          $1E24: 26 entries (3->4 column conversion) - injected
+Arpeggio        $2124: extracted from 1 column at $0A55
+Arpeggio        $2124: 66 entries (1-column extraction) - injected
+Tempo           $2224: extracted from 1 column at $0A97
+Tempo           $2224: 4 entries (1-column extraction) - injected
+
+Updating DriverCommon with correct addresses:
+  Init: $1692 (was $1006)
+  Play: $169B (was $16C8)
+
+Created: output\SIDSF2player_Complete_Pipeline\Stinsens_Last_Night_of_89\New\Stinsens_Last_Night_of_89.sf2
+Size: 7,656 bytes
+        [OK] Method: TEMPLATE
 
   [2/12] Packing SF2 -> SID...
-        [OK] Size: 7393 bytes
+        [OK] Size: 7417 bytes
 
   [3/12] Generating siddumps...
         Original: [OK]
@@ -776,10 +870,76 @@ Size: 7,656 bytes
         Exported: [OK]
 
   [7/12] Generating info.txt...
-        [OK]
+        [ERROR]
 
   [8/12] Generating annotated disassembly...
-        [OK]
+        [ERROR]
+
+  [9/12] Generating SIDwinder disassembly...
+        Original: [OK]
+        Exported: [OK]
+
+  [10/12] Validating completion...
+        Files: 10/14
+        Missing: New/Stinsens_Last_Night_of_89_exported.wav, New/info.txt, New/Stinsens_Last_Night_of_89_exported_disassembly.md...
+        Status: [PARTIAL]
+
+[17/18] Processing: test_broware_packed_only.sid
+--------------------------------------------------------------------------------
+  Type: SF2_PACKED
+  Name: Broware Test
+
+  [1/12] Converting SID -> SF2...
+Packed SID: load=$1000, init=$1000, play=$1003
+Original SF2: load=$0D7E, size=7,656
+
+Extracting tables from packed SID and injecting into original structure:
+
+Instruments     $1784: extracted from 6 consecutive columns at $087B
+Instruments     $1784: 20 entries (6-column extraction) - injected
+Commands        $1844: extracted from 3 consecutive columns at $08F3
+Commands        $1844: 33 entries (3-column extraction) - injected
+Wave            $1924: extracted from 2 consecutive columns at $0958
+Wave            $1924: 50 entries (2-column conversion) - injected
+Pulse           $1B24: extracted from 3 consecutive columns at $09BC
+Pulse           $1B24: 25 entries (3->4 column conversion) - injected
+Filter          $1E24: extracted from 3 consecutive columns at $0A07
+Filter          $1E24: 26 entries (3->4 column conversion) - injected
+Arpeggio        $2124: extracted from 1 column at $0A55
+Arpeggio        $2124: 66 entries (1-column extraction) - injected
+Tempo           $2224: extracted from 1 column at $0A97
+Tempo           $2224: 4 entries (1-column extraction) - injected
+
+Updating DriverCommon with correct addresses:
+  Init: $169A (was $1006)
+  Play: $16A3 (was $16C8)
+
+Created: output\SIDSF2player_Complete_Pipeline\test_broware_packed_only\New\test_broware_packed_only.sf2
+Size: 7,656 bytes
+        [OK] Method: TEMPLATE
+
+  [2/12] Packing SF2 -> SID...
+        [OK] Size: 7417 bytes
+
+  [3/12] Generating siddumps...
+        Original: [OK]
+        Exported: [OK]
+
+  [4/12] Rendering WAV files... [SKIPPED - use SID2WAV manually if needed]
+
+  [5/12] Generating hexdumps...
+        Original: [OK]
+        Exported: [OK]
+
+  [6/12] Generating SIDwinder traces...
+        Original: [OK]
+        Exported: [OK]
+
+  [7/12] Generating info.txt...
+        [ERROR]
+
+  [8/12] Generating annotated disassembly...
+        [ERROR]
 
   [9/12] Generating SIDwinder disassembly...
         Original: [OK]
@@ -789,141 +949,35 @@ Size: 7,656 bytes
         Files: 14/14
         Status: [COMPLETE]
 
-[16/18] Processing: Stinsens_Last_Night_of_89.sid
---------------------------------------------------------------------------------
-  Type: SF2_PACKED
-  Name: Stinsen's Last Night of '89
-
-  [1/12] Converting SID -> SF2...
-Packed SID: load=$1000, size=6,075
-Original SF2: load=$0D7E, size=17,252
-
-Extracting tables from packed SID and injecting into original structure:
-
-Instruments     $1040: 180/192 ( 93.8%) - injected
-Commands        $1100: 213/224 ( 95.1%) - injected
-Wave            $11E0: 466/512 ( 91.0%) - injected
-Pulse           $13E0: 724/768 ( 94.3%) - injected
-Filter          $16E0: 342/768 ( 44.5%) - injected
-Arpeggio        $19E0: 8/256 (  3.1%) - injected
-Tempo           $1AE0: 21/256 (  8.2%) - injected
-
-Created: output\SIDSF2player_Complete_Pipeline\Stinsens_Last_Night_of_89\New\Stinsens_Last_Night_of_89.sf2
-Size: 17,252 bytes
-        [OK] Method: REFERENCE
-
-  [2/12] Packing SF2 -> SID...
-        [OK] Size: 22669 bytes
-
-  [3/12] Generating siddumps...
-        Original: [OK]
-        Exported: [OK]
-
-  [4/12] Rendering WAV files... [SKIPPED - use SID2WAV manually if needed]
-
-  [5/12] Generating hexdumps...
-        Original: [OK]
-        Exported: [OK]
-
-  [6/12] Generating SIDwinder traces...
-        Original: [OK]
-        Exported: [WARN - needs rebuilt SIDwinder]
-
-  [7/12] Generating info.txt...
-        [OK]
-
-  [8/12] Generating annotated disassembly...
-        [OK]
-
-  [9/12] Generating SIDwinder disassembly...
-        Original: [OK]
-        Exported: [ERROR]
-
-  [10/12] Validating completion...
-        Files: 12/14
-        Missing: New/Stinsens_Last_Night_of_89_exported.wav, New/Stinsens_Last_Night_of_89_exported_sidwinder.asm...
-        Status: [PARTIAL]
-
-[17/18] Processing: test_broware_packed_only.sid
---------------------------------------------------------------------------------
-  Type: SF2_PACKED
-  Name: Broware Test
-
-  [1/12] Converting SID -> SF2...
-Packed SID: load=$1000, size=6,839
-Original SF2: load=$0D7E, size=7,656
-
-Extracting tables from packed SID and injecting into original structure:
-
-Instruments     $1040: 136/192 ( 70.8%) - injected
-Commands        $1100: 89/224 ( 39.7%) - injected
-Wave            $11E0: 25/512 (  4.9%) - injected
-Pulse           $13E0: 21/768 (  2.7%) - injected
-Filter          $16E0: 567/768 ( 73.8%) - injected
-Arpeggio        $19E0: 247/256 ( 96.5%) - injected
-Tempo           $1AE0: 253/256 ( 98.8%) - injected
-
-Created: output\SIDSF2player_Complete_Pipeline\test_broware_packed_only\New\test_broware_packed_only.sf2
-Size: 7,656 bytes
-        [OK] Method: TEMPLATE
-
-  [2/12] Packing SF2 -> SID...
-        [OK] Size: 6900 bytes
-
-  [3/12] Generating siddumps...
-        Original: [OK]
-        Exported: [OK]
-
-  [4/12] Rendering WAV files... [SKIPPED - use SID2WAV manually if needed]
-
-  [5/12] Generating hexdumps...
-        Original: [OK]
-        Exported: [OK]
-
-  [6/12] Generating SIDwinder traces...
-        Original: [OK]
-        Exported: [WARN - needs rebuilt SIDwinder]
-
-  [7/12] Generating info.txt...
-        [OK]
-
-  [8/12] Generating annotated disassembly...
-        [OK]
-
-  [9/12] Generating SIDwinder disassembly...
-        Original: [OK]
-        Exported: [ERROR]
-
-  [10/12] Validating completion...
-        Files: 13/14
-        Missing: New/test_broware_packed_only_exported_sidwinder.asm...
-        Status: [PARTIAL]
-
 [18/18] Processing: tie_notes_test.sid
 --------------------------------------------------------------------------------
   Type: SF2_PACKED
   Name: Gliss. reset
 
   [1/12] Converting SID -> SF2...
-Packed SID: load=$0D7E, size=8,462
+Packed SID: load=$0D7E, init=$1006, play=$16C8
 Original SF2: load=$0D7E, size=7,656
 
 Extracting tables from packed SID and injecting into original structure:
 
-Instruments     $1040: 192/192 (100.0%) - injected
-Commands        $1100: 224/224 (100.0%) - injected
-Wave            $11E0: 511/512 ( 99.8%) - injected
-Pulse           $13E0: 766/768 ( 99.7%) - injected
-Filter          $16E0: 647/768 ( 84.2%) - injected
-Arpeggio        $19E0: 244/256 ( 95.3%) - injected
-Tempo           $1AE0: 253/256 ( 98.8%) - injected
+Instruments     $1784: 175/192 ( 91.1%) - injected
+Commands        $1844: 174/192 ( 90.6%) - injected
+Wave            $1924: 486/512 ( 94.9%) - injected
+Pulse           $1B24: 1015/1024 ( 99.1%) - injected
+Filter          $1E24: 1008/1024 ( 98.4%) - injected
+Arpeggio        $2124: 256/256 (100.0%) - injected
+Tempo           $2224: 255/256 ( 99.6%) - injected
+
+Updating DriverCommon with correct addresses:
+  Init: $1006 (was $1006)
+  Play: $16C8 (was $16C8)
 
 Created: output\SIDSF2player_Complete_Pipeline\tie_notes_test\New\tie_notes_test.sf2
 Size: 7,656 bytes
         [OK] Method: TEMPLATE
 
   [2/12] Packing SF2 -> SID...
-        [OK] Size: 6939 bytes
+        [OK] Size: 7456 bytes
 
   [3/12] Generating siddumps...
         Original: [OK]
@@ -940,10 +994,10 @@ Size: 7,656 bytes
         Exported: [OK]
 
   [7/12] Generating info.txt...
-        [OK]
+        [ERROR]
 
   [8/12] Generating annotated disassembly...
-        [OK]
+        [ERROR]
 
   [9/12] Generating SIDwinder disassembly...
         Original: [ERROR]
@@ -959,10 +1013,10 @@ PIPELINE SUMMARY
 ================================================================================
 
 Total files: 18
-  Complete: 10/18
-  Partial:  8/18
+  Complete: 11/18
+  Partial:  7/18
 
 ================================================================================
-Completed: 2025-12-06 19:18:42
+Completed: 2025-12-09 21:51:28
 Output: output\SIDSF2player_Complete_Pipeline
 ================================================================================

@@ -257,6 +257,52 @@ def generate_info_file(original_sid_path, converted_sf2_path, output_dir, title_
     output.append("  - Init: $1664 (2 bytes)")
     output.append("")
 
+    # SF2-Packed to Driver 11 memory map (if SF2-packed format detected)
+    if orig_header['load_addr'] == 0x1000 and orig_header['init_addr'] == 0x1000:
+        output.append("=" * 80)
+        output.append("SF2-PACKED TO DRIVER 11 FORMAT - TABLE MEMORY MAP")
+        output.append("=" * 80)
+        output.append("")
+        output.append("Table           Source (SF2-packed)      Destination (Driver 11)       Conversion")
+        output.append("                File Offset Range        Memory Addr   Size")
+        output.append("-" * 80)
+
+        # Table definitions: (name, src_start, src_end, cols, bytes_per_col, dst_addr, dst_size)
+        table_map = [
+            ("Instruments", 0x087B, 0x08F2, 6, 20, 0x1784, 192),
+            ("Commands", 0x08F3, 0x0955, 3, 33, 0x1844, 192),
+            ("Wave", 0x0958, 0x09BB, 2, 50, 0x1924, 512),
+            ("Pulse", 0x09BC, 0x0A06, 3, 25, 0x1B24, 768),
+            ("Filter", 0x0A07, 0x0A54, 3, 26, 0x1E24, 768),
+            ("Arpeggio", 0x0A55, 0x0A96, 1, 66, 0x2124, 256),
+            ("Tempo", 0x0A97, 0x0A9A, 1, 4, 0x2224, 128),
+        ]
+
+        for name, src_start, src_end, cols, bytes_per_col, dst_addr, dst_size in table_map:
+            src_size = src_end - src_start + 1
+            src_range = f"${src_start:04X} - ${src_end:04X}"
+            src_size_str = f"({src_size}B)"
+            dst_size_str = f"{dst_size}B"
+            conversion = f"{cols} col x {bytes_per_col}B"
+
+            line = f"{name:<15} {src_range:>17} {src_size_str:>8} ${dst_addr:04X}      {dst_size_str:<9} {conversion:>18}"
+            output.append(line)
+
+        output.append("-" * 80)
+        output.append("")
+        output.append("Summary:")
+        output.append("  Source: PSID header area ($0000-$0FFF) - compact column storage")
+        output.append("  Destination: Driver 11 memory ($1784-$23A3) - fixed-size column-major arrays")
+        output.append("  Total extracted: 542 bytes -> converted to 2,816 bytes (with zero-padding)")
+        output.append("")
+        output.append("Notes:")
+        output.append("  - SF2-packed format stores tables compactly in PSID header (before $1000)")
+        output.append("  - Driver 11 uses fixed-size arrays with zero-padding for unused rows")
+        output.append("  - Column-major storage: data organized by columns, not rows")
+        output.append("  - File offsets are absolute positions in the PSID file")
+        output.append("  - Memory addresses are where tables reside in C64 memory at runtime")
+        output.append("")
+
     # Original SID data structure addresses (for Laxity format)
     if orig_header['load_addr'] >= 0x1000:
         output.append("=" * 80)

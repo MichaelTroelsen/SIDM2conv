@@ -288,6 +288,62 @@ OPCODE_TABLE = {
     0x98: ('TYA', AddressingMode.IMP),
 }
 
+# Complete 256-byte instruction size table for ALL 6502 opcodes
+# Includes documented and undocumented/illegal opcodes
+# 1 = 1 byte (implied/accumulator), 2 = 2 bytes (immediate/zp/relative), 3 = 3 bytes (absolute)
+INSTRUCTION_SIZES = [
+    1,2,0,0,2,2,2,0,1,2,1,0,3,3,3,0,  # $00-$0F
+    2,2,0,0,2,2,2,0,1,3,1,0,3,3,3,0,  # $10-$1F
+    3,2,0,0,2,2,2,0,1,2,1,0,3,3,3,0,  # $20-$2F
+    2,2,0,0,2,2,2,0,1,3,1,0,3,3,3,0,  # $30-$3F
+    1,2,0,0,2,2,2,0,1,2,1,0,3,3,3,0,  # $40-$4F
+    2,2,0,0,2,2,2,0,1,3,1,0,3,3,3,0,  # $50-$5F
+    1,2,0,0,2,2,2,0,1,2,1,0,3,3,3,0,  # $60-$6F
+    2,2,0,0,2,2,2,0,1,3,1,0,3,3,3,0,  # $70-$7F
+    2,2,0,0,2,2,2,0,1,2,1,0,3,3,3,0,  # $80-$8F
+    2,2,0,0,2,2,2,0,1,3,1,0,3,3,3,0,  # $90-$9F
+    2,2,2,0,2,2,2,0,1,2,1,0,3,3,3,0,  # $A0-$AF
+    2,2,0,0,2,2,2,0,1,3,1,0,3,3,3,0,  # $B0-$BF
+    2,2,0,0,2,2,2,0,1,2,1,0,3,3,3,0,  # $C0-$CF
+    2,2,0,0,2,2,2,0,1,3,1,0,3,3,3,0,  # $D0-$DF
+    2,2,0,0,2,2,2,0,1,2,1,0,3,3,3,0,  # $E0-$EF
+    2,2,0,0,2,2,2,0,1,3,1,0,3,3,3,0,  # $F0-$FF
+]
+
+# Set of opcodes that use absolute addressing modes (need relocation)
+# Includes ABS ($xxxx), ABX ($xxxx,X), ABY ($xxxx,Y), IND (JMP ($xxxx))
+RELOCATABLE_OPCODES = {
+    # ABS mode opcodes (column 4 and 12, some in column 8)
+    0x0D, 0x0E,  # ORA/ASL abs
+    0x2C, 0x2D, 0x2E,  # BIT/AND/ROL abs
+    0x4C, 0x4D, 0x4E,  # JMP/EOR/LSR abs
+    0x6C, 0x6D, 0x6E,  # JMP ind/ADC/ROR abs
+    0x8C, 0x8D, 0x8E,  # STY/STA/STX abs
+    0xAC, 0xAD, 0xAE,  # LDY/LDA/LDX abs
+    0xCC, 0xCD, 0xCE,  # CPY/CMP/DEC abs
+    0xEC, 0xED, 0xEE,  # CPX/SBC/INC abs
+    0x20,  # JSR abs
+    # ABX mode opcodes (column 13)
+    0x1D, 0x1E,  # ORA/ASL abs,X
+    0x3D, 0x3E,  # AND/ROL abs,X
+    0x5D, 0x5E,  # EOR/LSR abs,X
+    0x7D, 0x7E,  # ADC/ROR abs,X
+    0x9D,  # STA abs,X
+    0xBC, 0xBD,  # LDY/LDA abs,X
+    0xDD, 0xDE,  # CMP/DEC abs,X
+    0xFD, 0xFE,  # SBC/INC abs,X
+    # ABY mode opcodes (column 9)
+    0x19,  # ORA abs,Y
+    0x39,  # AND abs,Y
+    0x59,  # EOR abs,Y
+    0x79,  # ADC abs,Y
+    0x99,  # STA abs,Y
+    0xB9,  # LDA abs,Y
+    0xBE,  # LDX abs,Y
+    0xD9,  # CMP abs,Y
+    0xF9,  # SBC abs,Y
+}
+
 
 class CPU6502:
     """6502 CPU disassembler for code relocation."""
@@ -381,3 +437,52 @@ class CPU6502:
         hi = (new_operand >> 8) & 0xFF
 
         return bytes([instr.opcode, lo, hi])
+
+    def scan_relocatable_addresses(self, start_addr: int, end_addr: int,
+                                  code_start: int, code_end: int) -> list[Tuple[int, int]]:
+        """Scan for relocatable addresses using instruction size table.
+
+        This is more robust than full disassembly because it handles unknown
+        opcodes correctly using the size table.
+
+        Args:
+            start_addr: Start of code section (relative to memory array)
+            end_addr: End of code section (exclusive)
+            code_start: Start of relocatable memory range (absolute address)
+            code_end: End of relocatable memory range (absolute address)
+
+        Returns:
+            List of (offset, address) tuples where:
+                offset = byte offset in memory array where address is stored
+                address = the address value that needs relocation
+        """
+        relocatable_addrs = []
+        pc = start_addr
+
+        while pc < end_addr and pc < len(self.memory):
+            opcode = self.memory[pc]
+            size = INSTRUCTION_SIZES[opcode]
+
+            # Handle unknown/illegal opcodes (size=0)
+            if size == 0:
+                pc += 1
+                continue
+
+            # Check if this is a 3-byte instruction with absolute addressing
+            if size == 3 and opcode in RELOCATABLE_OPCODES:
+                # Read the 16-bit address operand
+                if pc + 2 < len(self.memory):
+                    addr_lo = self.memory[pc + 1]
+                    addr_hi = self.memory[pc + 2]
+                    address = (addr_hi << 8) | addr_lo
+
+                    # Only relocate if address is within relocatable range
+                    # AND not a hardware register (e.g., SID at $D400-$D7FF)
+                    if code_start <= address < code_end:
+                        # Don't relocate SID/VIC/CIA hardware addresses
+                        if not (0xD000 <= address < 0xE000):
+                            relocatable_addrs.append((pc + 1, address))
+
+            pc += size
+
+        return relocatable_addrs

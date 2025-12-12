@@ -1,6 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// Memory trace globals (defined in siddump.c)
+extern int trace_enabled;
+extern int trace_frame;
+extern FILE *trace_log;
+
+
 #define FN 0x80
 #define FV 0x40
 #define FB 0x10
@@ -9,7 +15,34 @@
 #define FZ 0x02
 #define FC 0x01
 
+
+// Tracked memory read function
+static inline unsigned char mem_read_tracked(unsigned short address)
+{
+  extern unsigned char mem[];
+  extern unsigned short pc;
+  unsigned char value = mem[address];
+
+  // Log reads in music data range ($1800-$1C00) during first 10 frames
+  if (trace_enabled && trace_log && trace_frame >= 0 && trace_frame < 10)
+  {
+    if (address >= 0x1800 && address < 0x1C00)
+    {
+      fprintf(trace_log, "F%02d PC:%04X -> [%04X]=%02X\n",
+              trace_frame, pc, address, value);
+      fflush(trace_log);
+    }
+  }
+
+  return value;
+}
+
+// Replace direct memory access with tracked version
+#define MEM(address) mem_read_tracked(address)
+
+/* Original:
 #define MEM(address) (mem[address])
+*/
 #define LO() (MEM(pc))
 #define HI() (MEM(pc+1))
 #define FETCH() (MEM(pc++))
