@@ -256,9 +256,9 @@ def detect_patterns(voice_events: List[Dict]) -> List[List[Dict]]:
     return patterns
 
 
-def convert_pattern_to_sequence(pattern: List[Dict], default_instrument: int = 0) -> List[List[int]]:
+def convert_pattern_to_sequence(pattern: List[Dict], default_instrument: int = 0, use_waveform_gates: bool = True) -> List[List[int]]:
     """
-    Convert a pattern to SF2 sequence format.
+    Convert a pattern to SF2 sequence format with enhanced gate detection.
 
     SF2 uses a gate on/off system:
     - 0x7F in note column = end marker
@@ -267,8 +267,9 @@ def convert_pattern_to_sequence(pattern: List[Dict], default_instrument: int = 0
     - 0x80+ in instrument/command = no change (--)
 
     Args:
-        pattern: List of events in pattern
+        pattern: List of events in pattern (from siddump with waveform data)
         default_instrument: Default instrument number
+        use_waveform_gates: Use waveform register data for gate detection
 
     Returns:
         List of [instrument, command, note] entries
@@ -280,30 +281,43 @@ def convert_pattern_to_sequence(pattern: List[Dict], default_instrument: int = 0
     GATE_ON = 0x7E    # +++ (gate on)
     GATE_OFF = 0x80   # --- (gate off)
     END_MARKER = 0x7F # End of sequence
+    GATE_BIT = 0x01   # SID waveform register gate bit
+
+    prev_gate_state = False
+    prev_waveform = 0
 
     for i, event in enumerate(pattern):
         note_num = parse_note_string(event['note'])
+        waveform = event.get('wave', 0) if use_waveform_gates else 0
+
+        # Extract gate bit from waveform register
+        current_gate = bool(waveform & GATE_BIT) if use_waveform_gates else True
+
+        # Detect waveform changes (excluding gate bit)
+        waveform_changed = (waveform & 0xFE) != (prev_waveform & 0xFE) if use_waveform_gates else False
+
         if note_num is not None:
+            # Insert gate-off if we were in gate-on state and either:
+            # - Gate bit changed to 0
+            # - Waveform changed (requires gate reset)
+            if prev_gate_state and (not current_gate or waveform_changed):
+                sequence.append([NO_CHANGE, NO_CHANGE, GATE_OFF])
+                prev_gate_state = False
+
             # Add note trigger with instrument and command
             sequence.append([default_instrument, 0x00, note_num])
 
-            # Add gate on (+++) to sustain the note
-            # Use NO_CHANGE for instrument and command
-            sequence.append([NO_CHANGE, NO_CHANGE, GATE_ON])
+            # Add gate on if gate bit is set or we're starting a new note
+            if current_gate or not use_waveform_gates:
+                sequence.append([NO_CHANGE, NO_CHANGE, GATE_ON])
+                prev_gate_state = True
 
-            # Check if this is the last note - if not, add gate off before next note
-            is_last = (i == len(pattern) - 1)
-            if not is_last:
-                # Look ahead to see if next event has a note
-                has_next_note = False
-                for next_event in pattern[i+1:]:
-                    if parse_note_string(next_event['note']) is not None:
-                        has_next_note = True
-                        break
+        # Detect gate-off from waveform register changes
+        elif use_waveform_gates and prev_gate_state and not current_gate:
+            sequence.append([NO_CHANGE, NO_CHANGE, GATE_OFF])
+            prev_gate_state = False
 
-                # Add gate off before next note
-                if has_next_note:
-                    sequence.append([NO_CHANGE, NO_CHANGE, GATE_OFF])
+        prev_waveform = waveform
 
     # Add end marker
     if sequence:

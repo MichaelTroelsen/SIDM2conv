@@ -450,8 +450,8 @@ class SF2SequenceBuilder:
             translated = self.translate_event(lax_event)
             sf2_events.extend(translated)
 
-        # Insert gate-off markers between notes (will be improved in Day 2)
-        sf2_events = self._insert_gate_markers(sf2_events)
+        # Insert gate markers with enhanced inference (v1.5.0)
+        sf2_events = self._insert_gate_markers_enhanced(sf2_events)
 
         # Ensure sequence ends with $7F
         if not sf2_events or sf2_events[-1].note != SF2_END:
@@ -496,6 +496,30 @@ class SF2SequenceBuilder:
             prev_was_note = is_new_note
 
         return result
+
+    def _insert_gate_markers_enhanced(self, events: List[SequenceEvent]) -> List[SequenceEvent]:
+        """
+        Enhanced gate marker insertion with improved detection.
+
+        Improvements over simple version:
+        1. Detects actual note changes (not just presence)
+        2. Adds gate-on after note triggers
+        3. Inserts gate-off before note changes
+        4. Avoids redundant markers
+
+        This provides better ADSR envelope control and note separation.
+
+        Args:
+            events: List of SF2 events
+
+        Returns:
+            Events with enhanced gate markers
+        """
+        from .gate_inference import WaveformGateAnalyzer
+
+        # Use enhanced simple inference (no siddump data needed for static extraction)
+        analyzer = WaveformGateAnalyzer()
+        return analyzer.infer_gates_simple(events)
 
 
 def extract_laxity_frequency_table(c64_data: bytes, load_addr: int) -> LaxityFrequencyTable:
