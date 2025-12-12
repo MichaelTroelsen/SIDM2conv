@@ -7,7 +7,7 @@ Can work with:
 - Pre-generated siddump output files (for pipeline integration)
 - Live SID files (runs siddump automatically)
 
-Version: 1.4.1
+Version: 1.4.1 (baseline)
 Date: 2025-12-12
 
 Usage:
