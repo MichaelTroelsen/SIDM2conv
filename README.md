@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 
-**Version 0.7.1** | Build Date: 2025-12-07 | Documentation Consolidation (46→25 files)
+**Version 1.7.0** | Build Date: 2025-12-12 | NP20 Driver Support + Format Compatibility Research
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files.
 
@@ -142,13 +142,15 @@ This processes all SID files with complete validation, analysis, and documentati
 
 **Known Limitation**: *SIDwinder disassembly currently works only for original SID files due to a pointer relocation limitation in the SF2 packer. Exported SIDs play correctly in all emulators but trigger SIDwinder's strict CPU emulation checks.
 
-#### Latest Results (2025-12-06):
+#### Latest Results (2025-12-12):
 - **18 SID files processed** in ~2.5 minutes
 - **Complete success**: 5.6% (all 13 files)
 - **Partial success**: 94.4% (12/13 files - missing .asm due to limitation above)
 - **Core pipeline**: 100% success (Steps 1-8, 10)
-- **SIDwinder trace**: 100% file generation (content requires rebuild)
+- **WAV rendering**: 97% success (35/36 files - 1 timeout)
+- **SIDwinder trace**: ✅ 100% working (rebuilt with fixes)
 - **SIDwinder disassembly**: Works for original SIDs, limited for exported SIDs
+- **Average accuracy**: 45.39% (7 files at 100%, 10 LAXITY files at 1-8%)
 
 See `PIPELINE_EXECUTION_REPORT.md` for detailed analysis and `tools/SIDWINDER_QUICK_REFERENCE.md` for SIDwinder commands.
 
@@ -158,17 +160,17 @@ See `PIPELINE_EXECUTION_REPORT.md` for detailed analysis and `tools/SIDWINDER_QU
 
 #### Features:
 - **Disassemble**: Converts SID to KickAssembler source (✅ Working - integrated)
-- **Trace**: SID register write tracer (⚠️ Requires rebuild - source patched)
+- **Trace**: SID register write tracer (✅ Working - rebuilt on 2025-12-06)
 - **Player**: Links SID with visualization players (🔧 Manual use)
 - **Relocate**: Moves SID to different memory addresses (🔧 Manual use)
 
 #### Quick Commands:
 
 ```bash
-# Disassemble SID to assembly (WORKING NOW)
+# Disassemble SID to assembly
 tools/SIDwinder.exe -disassemble SID/file.sid output.asm
 
-# Trace SID register writes (NEEDS REBUILD)
+# Trace SID register writes (generates 7-13 MB trace files)
 tools/SIDwinder.exe -trace=output.txt SID/file.sid
 
 # Create visualizer player
@@ -180,18 +182,11 @@ tools/SIDwinder.exe -relocate=$2000 input.sid output.sid
 
 #### Integration Status:
 - ✅ **Disassembly**: Fully integrated in complete pipeline (Step 9)
-- ✅ **Trace**: Integrated in pipeline (Step 6) - files generated, content pending rebuild
-- ✅ **Source Patches**: Applied to fix trace functionality
-- ⚠️ **Executable Rebuild**: Required to activate trace content generation
+- ✅ **Trace**: Fully working and integrated in pipeline (Step 6)
+- ✅ **Source Patches**: Applied and executable rebuilt on 2025-12-06
+- ✅ **Trace Output**: Generates 7-13 MB files with frame-by-frame register writes
 
-#### Rebuild Instructions:
-```cmd
-cd C:\Users\mit\Downloads\SIDwinder-0.2.6\SIDwinder-0.2.6
-build.bat
-copy build\Release\SIDwinder.exe C:\Users\mit\claude\c64server\SIDM2\tools\
-```
-
-See `SIDWINDER_REBUILD_GUIDE.md` for detailed instructions and `SIDWINDER_INTEGRATION_SUMMARY.md` for complete implementation details.
+**Note**: SIDwinder.exe has been rebuilt with trace fixes applied. See `tools/SIDWINDER_FIXES_APPLIED.md` for patch details and `SIDWINDER_REBUILD_GUIDE.md` for rebuild instructions.
 
 ### Round-trip Validation
 
@@ -206,6 +201,29 @@ This validates that:
 2. SF2 packs back to SID with proper code relocation
 3. Audio output matches between original and converted files
 4. Register writes are preserved correctly
+
+### Waveform Analysis (v0.7.2)
+
+Generate interactive HTML reports with waveform visualizations and audio comparison:
+
+```bash
+# Analyze all files in pipeline output
+python scripts/analyze_waveforms.py output/SIDSF2player_Complete_Pipeline
+
+# Analyze specific song directory
+python scripts/analyze_waveforms.py output/MySong
+```
+
+Each report includes:
+- **Embedded Audio Players** - Play original and exported WAV files side-by-side
+- **Waveform Visualizations** - HTML5 canvas charts showing audio waveforms
+- **Similarity Metrics** - Correlation coefficient, RMSE, match rate
+- **File Statistics** - Sample rates, bit depth, duration, peak/average amplitudes
+- **Analysis Notes** - Explanation of expected differences between players
+
+Output: `{SongName}_waveform_analysis.html` in each song directory
+
+**Note**: Uses Python standard library only (wave module), no NumPy/Matplotlib required.
 
 ### Address Extraction
 
@@ -1348,11 +1366,40 @@ The converter now extracts and injects all major table types:
 - **Some tables use defaults**: Init and Arp may need manual editing
 - **Manual refinement needed**: Output may require editing in SF2
 
+### Player Format Compatibility
+
+**IMPORTANT**: Conversion accuracy varies significantly based on source player format:
+
+| Source Format | Target Driver | Accuracy | Status |
+|---------------|---------------|----------|--------|
+| **SF2-Exported SID** | Driver 11 | **100%** | ✅ Perfect roundtrip |
+| **Driver 11 Test Files** | Driver 11 | **100%** | ✅ Reference extraction |
+| **Laxity NewPlayer v21** | Driver 11 | **1-8%** | ⚠️ Experimental |
+| **Laxity NewPlayer v21** | NP20 | **1-8%** | ⚠️ Experimental |
+
+**Why LAXITY Files Have Low Accuracy**:
+
+Despite JCH reverse-engineering Laxity's player in 1988, the formats are **fundamentally incompatible**:
+
+- **Different Sequence Encoding**: Laxity uses proprietary format, JCH NP20 uses paired-byte (AA, BB) format
+- **Different Memory Layouts**: Tables at different addresses with different organization
+- **Different Player Architecture**: Incompatible runtime behavior and state management
+
+**What the 1-8% Represents**:
+- Universal C64 frequency table matches (notes are standard)
+- Random waveform coincidences
+- **NOT** faithful music reproduction
+
+**Recommendation**: Use LAXITY conversions for experimental purposes only. For production use, stick to SF2-originated files which achieve 100% accuracy.
+
+**See Also**: `LAXITY_NP20_RESEARCH_REPORT.md` for comprehensive format analysis and findings.
+
 ### Known Issues
 
 - **Aux pointer compatibility**: SF2 files have aux pointer set to $0000 to prevent SID Factory II crashes
 - **Driver 11 instruments**: Converted instruments may differ from manually created ones in original SF2 project files
 - **Multi-speed tunes**: Songs with multiple play calls per frame may not play at correct speed
+- **LAXITY format incompatibility**: Direct Laxity→SF2 conversion limited by fundamental player format differences (see Player Format Compatibility above)
 
 ### Why Full Conversion is Difficult
 
@@ -1463,6 +1510,51 @@ The converter generates an SF2 file that:
 
 All files now achieve 100% validation score with siddump ADSR merging and improved wave table extraction.
 
+### Audio Comparison (v0.7.0)
+
+The pipeline now includes **WAV-based audio comparison** to measure conversion accuracy based on actual sound output, which is more meaningful for LAXITY→SF2 conversions where the player code changes.
+
+#### Comparison Methods
+
+| Method | Measures | When Meaningful | Example Use Case |
+|--------|----------|----------------|------------------|
+| **Audio Comparison** | WAV file similarity (Pearson correlation) | Always meaningful | LAXITY→SF2 (different players) |
+| **Register Comparison** | SID register write patterns | Only when same player | SF2→SF2 (same player) |
+
+#### Audio Comparison Metrics
+
+- **Correlation**: Pearson correlation coefficient [0.0, 1.0] where 1.0 = perfect match
+- **RMSE**: Root mean square error [0.0, 2.0] where 0.0 = perfect match
+- **Accuracy**: Correlation converted to percentage [0.0, 100.0%]
+
+#### Expected Accuracy Ranges
+
+| Conversion Type | Register Accuracy | Audio Accuracy | Notes |
+|----------------|-------------------|----------------|-------|
+| **LAXITY → SF2** | 1-8% | 95%+ expected | Low register accuracy is normal (different players) |
+| **SF2 → SF2** | 99%+ | N/A | Same player, register comparison meaningful |
+
+#### Known Limitation: SID2WAV v1.8
+
+**Problem**: SID2WAV v1.8 does not support SF2 Driver 11 player format, producing silent WAV output for all SF2-packed files.
+
+**Impact**: Audio comparison unavailable for LAXITY→SF2 conversions (exported file is silent).
+
+**Detection**: Pipeline automatically detects SF2-packed files and displays informative messages:
+- WAV rendering step shows: `[INFO] SF2-packed file detected - SID2WAV v1.8 does not support SF2 Driver 11`
+- Audio comparison step shows: `[SKIP] Audio comparison unavailable - SID2WAV v1.8 does not support SF2 Driver 11`
+- `info.txt` file includes: `Audio Accuracy: N/A` with full explanation
+
+**Future Enhancement**: VICE emulator integration for proper SF2 WAV rendering (see Option B in accuracy roadmap).
+
+#### Implementation Details
+
+See `sidm2/audio_comparison.py` for implementation:
+- `calculate_correlation()`: Pearson correlation coefficient calculation
+- `calculate_rmse()`: Root mean square error calculation
+- `compare_wav_files()`: Main comparison function with format validation
+- `calculate_audio_accuracy()`: Pipeline entry point (returns accuracy % or None)
+
 ### Code Quality Improvements
 
 | # | Improvement | Status | Effort | Impact | Description |
@@ -1486,6 +1578,33 @@ All files now achieve 100% validation score with siddump ADSR merging and improv
 | 47 | SF2Writer modularization | ✅ Done | Extracted ~960 lines to sidm2/sf2_writer.py |
 
 ## Changelog
+
+### v0.7.2 (2025-12-12)
+
+**WAV Rendering Fix + Waveform Analysis Tool**
+
+- Fixed WAV rendering in complete pipeline (0% → 97% success rate)
+  - Corrected SID2WAV.EXE command-line argument order
+  - Fixed `-o` flag misuse (song number, not output file)
+  - Added automatic file cleanup before rendering
+  - Added `-16` flag for 16-bit audio quality
+- Fixed player detection bug (detect_player_type → identify_sid_type)
+- Added waveform analysis tool (`scripts/analyze_waveforms.py`, 450+ lines)
+  - Interactive HTML reports with embedded audio players
+  - HTML5 canvas waveform visualizations
+  - Similarity metrics (correlation, RMSE, match rate)
+  - File statistics comparison
+  - Uses Python standard library only (no NumPy/Matplotlib)
+- Updated SIDwinder trace status (✅ fully working, rebuilt 2025-12-06)
+- Pipeline validation results (2025-12-12):
+  - 18 SID files processed
+  - WAV rendering: 35/36 files (97%)
+  - SIDwinder trace: 36/36 files (100%)
+  - Average accuracy: 45.39% (7 files at 100%, 10 LAXITY files at 1-8%)
+- Generated 17 waveform analysis HTML reports
+- Updated documentation to reflect current pipeline status
+
+**Quality:** All pipeline steps tested and validated on 18 SID files
 
 ### v0.6.3 (2025-12-02)
 

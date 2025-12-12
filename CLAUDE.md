@@ -50,6 +50,7 @@ SIDM2/
 │   ├── generate_validation_report.py # Multi-file validation reports
 │   ├── run_validation.py      # Validation system runner (v1.4)
 │   ├── generate_dashboard.py  # Dashboard generator (v1.4)
+│   ├── analyze_waveforms.py   # Waveform analysis & HTML report generator (v0.7.2)
 │   ├── disassemble_sid.py     # 6502 disassembler
 │   ├── extract_addresses.py   # Extract data structure addresses
 │   ├── validation/            # Validation system modules (v1.4)
@@ -234,6 +235,34 @@ GitHub Actions workflow automatically validates every PR and push:
 - Artifacts include interactive dashboard
 - Validation results committed to `validation/`
 
+### Waveform Analysis (v0.7.2)
+
+Generate interactive HTML reports with audio waveform visualization:
+
+```bash
+# Analyze all files in pipeline output
+python scripts/analyze_waveforms.py output/SIDSF2player_Complete_Pipeline
+
+# Analyze specific song directory
+python scripts/analyze_waveforms.py output/MySong
+```
+
+**Outputs** (per song):
+- `{SongName}_waveform_analysis.html` - Interactive HTML report with:
+  - Embedded audio players (original + exported WAV files)
+  - HTML5 canvas waveform visualizations
+  - Similarity metrics (correlation, RMSE, match rate)
+  - File statistics comparison table
+  - Analysis notes explaining expected differences
+
+**Features**:
+- Uses Python standard library only (wave module)
+- No NumPy/Matplotlib dependency
+- Self-contained HTML files
+- ~450 lines of code
+
+**Use Case**: Visual comparison of original (Laxity) vs exported (SF2) audio output. Expected to show differences since different players are used.
+
 ---
 
 ## CI/CD Rules
@@ -324,6 +353,12 @@ HR_DEFAULT_SR = 0x00     # No sustain, no release
 
 ## Known Limitations
 
+- **Player Format Compatibility** (v1.7.0):
+  - **SF2-Exported SIDs**: 100% accuracy ✅ (perfect roundtrip)
+  - **Laxity NewPlayer v21 → Driver 11**: 1-8% accuracy ⚠️ (experimental)
+  - **Laxity NewPlayer v21 → NP20**: 1-8% accuracy ⚠️ (experimental)
+  - **Root Cause**: Fundamental format incompatibility between Laxity and JCH NewPlayer
+  - **See**: `LAXITY_NP20_RESEARCH_REPORT.md` for detailed analysis
 - **Only supports Laxity NewPlayer v21** - Other player formats not supported
 - **Single subtune per file** - Multi-song SIDs not supported
 - **Init, Arp, HR tables use defaults** - Not extracted from original
@@ -455,10 +490,13 @@ Assistant: [Use EnterPlanMode to explore and design approach first]
 
 ## Version History
 
+- **v1.7.0** (2025-12-12) - NP20 driver support + Format compatibility research
+- **v0.7.2** (2025-12-12) - WAV rendering fix + Waveform analysis tool
+- **v1.6.0** (2025-12-12) - Runtime table building implementation
 - **v1.5.0** (2025-12-12) - Waveform-based gate inference system
 - **v1.4.1** (2025-12-12) - Accuracy validation baseline (71.0% average)
 - **v1.3** (2025-12-11) - Added siddump_extractor.py for runtime sequence extraction
-- **v1.2** (2025-12-06) - Added SIDwinder trace to pipeline (requires rebuild)
+- **v1.2** (2025-12-06) - Added SIDwinder trace to pipeline (now working - rebuilt)
 - **v1.1** (2025-12-06) - Added SIDwinder disassembly to pipeline
 - **v1.0** (2025-12-05) - Complete pipeline with 11 steps
 - **v0.6.2** (2025-11-28) - Added CPU emulator, SID player, SF2 parser modules
