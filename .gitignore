@@ -45,7 +45,12 @@ output/
 *.tmp
 *.temp
 *.bak
+*.log
+*.pkl
+*.bin
+*.dump
 nul
+temp-exp/
 
 # Debug output files
 SF2/*.dump
@@ -70,6 +75,7 @@ learnings/
 validate_extraction.py
 analyze_sf2_sid.py
 compare_sids.py
+tools/RetroDebugger*/
 
 # Validation and test output
 validation_*.html
