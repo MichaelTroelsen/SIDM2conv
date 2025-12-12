@@ -66,6 +66,7 @@ SIDM2/
 │   ├── sid_player.py      # SID file player and analyzer (v0.6.2)
 │   ├── sf2_player_parser.py # SF2-exported SID parser (v0.6.2)
 │   ├── siddump_extractor.py # Runtime sequence extraction (v1.3)
+│   ├── gate_inference.py  # Waveform-based gate detection (v1.5.0)
 │   ├── accuracy.py        # Accuracy calculation module (v1.4.1)
 │   └── validation.py      # Validation utilities (v0.6.0)
 │
@@ -412,6 +413,7 @@ python scripts/test_complete_pipeline.py -v
 ### Validation and Testing
 - **docs/VALIDATION_SYSTEM.md** - Three-tier validation architecture (v0.6.0)
 - **docs/VALIDATION_DASHBOARD_DESIGN.md** - Dashboard & regression tracking system (v1.4)
+- **docs/GATE_INFERENCE_IMPLEMENTATION.md** - Waveform-based gate detection (v1.5.0)
 - **docs/ACCURACY_ROADMAP.md** - Plan to reach 99% accuracy (v0.6.0)
 - **PIPELINE_EXECUTION_REPORT.md** - Complete pipeline execution analysis
 
@@ -453,6 +455,8 @@ Assistant: [Use EnterPlanMode to explore and design approach first]
 
 ## Version History
 
+- **v1.5.0** (2025-12-12) - Waveform-based gate inference system
+- **v1.4.1** (2025-12-12) - Accuracy validation baseline (71.0% average)
 - **v1.3** (2025-12-11) - Added siddump_extractor.py for runtime sequence extraction
 - **v1.2** (2025-12-06) - Added SIDwinder trace to pipeline (requires rebuild)
 - **v1.1** (2025-12-06) - Added SIDwinder disassembly to pipeline
@@ -481,7 +485,7 @@ Assistant: [Use EnterPlanMode to explore and design approach first]
 - **SID register questions** → `docs/SID_REGISTERS_REFERENCE.md`
 - **Format questions** → `docs/SF2_FORMAT_SPEC.md`, `docs/format-specification.md`
 - **Validation questions** → `docs/VALIDATION_SYSTEM.md`
-- **Accuracy questions** → `docs/ACCURACY_ROADMAP.md`
+- **Gate inference questions** → `docs/GATE_INFERENCE_IMPLEMENTATION.md`
 
 **Documentation structure optimized for AI assistants**:
 - **CLAUDE.md** (this file) - Quick reference loaded on every conversation
