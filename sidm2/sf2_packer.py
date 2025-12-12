@@ -251,14 +251,15 @@ class SF2Packer:
 
         # Driver 11 embedded table addresses (data-only sections)
         # These should NOT be disassembled - they're pure data tables
+        # NOTE: Arpeggio ($19E0) and Tempo ($1AE0) are NOT included here because they
+        # overlap with wave table columns (wave_notes at $19D9, wave_waveforms at $1AD9).
+        # They'll be included in the continuous code section instead.
         data_tables = [
             (0x1040, 0x0C0, "Instruments"),    # 192 bytes
             (0x1100, 0x0E0, "Commands"),       # 224 bytes
             (0x11E0, 0x200, "Wave"),           # 512 bytes
             (0x13E0, 0x300, "Pulse"),          # 768 bytes
             (0x16E0, 0x300, "Filter"),         # 768 bytes
-            (0x19E0, 0x100, "Arpeggio"),       # 256 bytes
-            (0x1AE0, 0x100, "Tempo"),          # 256 bytes
         ]
 
         # Wave table column addresses (from SF2 file analysis)
@@ -412,27 +413,30 @@ class SF2Packer:
 
         logger.debug(f"  Relocatable range: ${code_start:04X}-${code_end:04X}")
 
-        # Process each code section separately using robust scanning
+        # Process each section (both code and data) separately
         total_reloc_count = 0
         for section in self.data_sections:
-            # Skip data-only sections - they don't contain instructions to scan
-            if not section.is_code:
-                logger.debug(f"  Skipping data section at ${section.source_address:04X}")
-                continue
-
-            logger.debug(f"  Scanning code section at ${section.source_address:04X} ({len(section.data)} bytes)")
-
-            # Use robust scanning with instruction size table
-            cpu = CPU6502(bytes(section.data))
-            relocatable_addrs = cpu.scan_relocatable_addresses(
-                0, len(section.data),
-                code_start, code_end
-            )
-
-            # Relocate all found addresses
             relocated_data = bytearray(section.data)
             reloc_count = 0
 
+            if section.is_code:
+                # CODE SECTION: Use instruction scanning to find relocatable addresses
+                logger.debug(f"  Scanning code section at ${section.source_address:04X} ({len(section.data)} bytes)")
+
+                # Use robust scanning with instruction size table
+                cpu = CPU6502(bytes(section.data))
+                relocatable_addrs = cpu.scan_relocatable_addresses(
+                    0, len(section.data),
+                    code_start, code_end
+                )
+            else:
+                # DATA SECTION: Skip - data tables don't contain executable code pointers
+                # Tables like Instruments, Wave, Pulse, Filter contain music data, not pointers
+                # Scanning them would create false positives (relocating note values, etc.)
+                logger.debug(f"  Skipping data section at ${section.source_address:04X} (pure data, no code pointers)")
+                relocatable_addrs = []
+
+            # Relocate all found addresses
             for offset, old_address in relocatable_addrs:
                 # Find which section this address points to
                 new_address = None
