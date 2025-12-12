@@ -1,199 +1,147 @@
 #!/usr/bin/env python3
 """
-Search for the sequence pointer table.
+Find the sequence pointer table.
 
-We need to find a table with 39 entries (78 bytes) that maps
-sequence numbers 0-38 to their memory addresses.
+We need 39 pointers (for sequences 0x00-0x26).
+Pointers are likely 2 bytes each (little-endian addresses).
+Total size: 39 * 2 = 78 bytes.
 
-Could be in two formats:
-1. Interleaved: [lo0, hi0, lo1, hi1, ..., lo38, hi38] (78 bytes)
-2. Split: [lo0, lo1, ..., lo38, hi0, hi1, ..., hi38] (78 bytes)
+The pointer table should be somewhere before the sequence data.
 """
 
-def mem_to_file_offset(mem_addr):
-    """Convert memory address to file offset."""
-    return 0x7E + (mem_addr - 0x1000)
-
-def file_to_mem_addr(file_offset):
-    """Convert file offset to memory address."""
-    return 0x1000 + (file_offset - 0x7E)
-
-def try_interleaved_format(data, offset, count=39):
-    """Try reading pointers in interleaved format."""
-    pointers = []
-    for i in range(count):
-        ptr_offset = offset + i * 2
-        if ptr_offset + 1 >= len(data):
-            return None
-
-        lo = data[ptr_offset]
-        hi = data[ptr_offset + 1]
-        ptr = lo | (hi << 8)
-        pointers.append(ptr)
-
-    return pointers
-
-def try_split_format(data, offset, count=39):
-    """Try reading pointers in split format."""
-    if offset + count * 2 >= len(data):
-        return None
-
-    low_bytes = data[offset:offset + count]
-    high_bytes = data[offset + count:offset + count * 2]
-
-    pointers = []
-    for i in range(count):
-        ptr = low_bytes[i] | (high_bytes[i] << 8)
-        pointers.append(ptr)
-
-    return pointers
-
-def score_pointer_table(pointers):
+def find_pointer_table(data, expected_count=39):
     """
-    Score a potential pointer table.
+    Search for a table of pointers.
 
-    Good indicators:
-    - Pointers in valid range ($1000-$2000)
-    - Generally increasing (sequences stored sequentially)
-    - No duplicates (each sequence unique)
+    Characteristics:
+    - expected_count consecutive 2-byte pointers
+    - Pointers should be in increasing order (mostly)
+    - Pointers should point to reasonable addresses (0x1000-0x2000 range?)
     """
-    if not pointers:
-        return 0
+    print(f"Searching for pointer table with {expected_count} entries...\n")
 
-    score = 0
-
-    # Check valid range
-    valid_count = sum(1 for p in pointers if 0x1000 <= p <= 0x2000)
-    score += valid_count * 2
-
-    # Check for mostly increasing
-    increasing = sum(1 for i in range(len(pointers)-1) if pointers[i+1] >= pointers[i])
-    score += increasing
-
-    # Check for no duplicates
-    if len(set(pointers)) == len(pointers):
-        score += 20  # Bonus for all unique
-
-    # Penalty for out of range
-    out_of_range = sum(1 for p in pointers if p < 0x1000 or p > 0x2000)
-    score -= out_of_range * 5
-
-    return score
-
-def search_for_pointer_table(data, num_sequences=39):
-    """Search entire file for pointer table candidates."""
     candidates = []
 
-    # Search every 2-byte aligned position
-    for offset in range(0x200, len(data) - num_sequences * 2, 2):
-        # Try both formats
-        interleaved = try_interleaved_format(data, offset, num_sequences)
-        split = try_split_format(data, offset, num_sequences)
+    # Search range: likely between orderlist end and tempo table
+    # Or before tempo table
+    search_start = 0x0700
+    search_end = 0x0B00
 
-        for fmt_name, pointers in [('interleaved', interleaved), ('split', split)]:
-            if not pointers:
-                continue
+    for start in range(search_start, search_end - (expected_count * 2), 2):
+        # Read expected_count pointers
+        pointers = []
+        valid = True
 
-            score = score_pointer_table(pointers)
+        for i in range(expected_count):
+            offset = start + (i * 2)
+            if offset + 1 >= len(data):
+                valid = False
+                break
 
-            # Only keep high-scoring candidates
-            if score > 50:  # Threshold
-                candidates.append({
-                    'offset': offset,
-                    'format': fmt_name,
-                    'pointers': pointers,
-                    'score': score
-                })
+            lo = data[offset]
+            hi = data[offset + 1]
+            ptr = lo | (hi << 8)
 
-    # Sort by score
-    candidates.sort(key=lambda x: x['score'], reverse=True)
+            pointers.append(ptr)
+
+            # Basic validation: pointers should be reasonable
+            if ptr < 0x1000 or ptr > 0x2000:
+                valid = False
+                break
+
+        if not valid:
+            continue
+
+        # Check if pointers are mostly increasing
+        increasing_count = 0
+        for i in range(len(pointers) - 1):
+            if pointers[i+1] >= pointers[i]:
+                increasing_count += 1
+
+        increasing_percent = (increasing_count / (len(pointers) - 1)) * 100 if len(pointers) > 1 else 0
+
+        if increasing_percent > 70:  # Most pointers should be increasing
+            candidates.append({
+                'start': start,
+                'pointers': pointers,
+                'increasing_percent': increasing_percent
+            })
 
     return candidates
 
-def main():
-    sid_file = 'SID/Stinsens_Last_Night_of_89.sid'
+def analyze_candidates(candidates, data):
+    """Analyze pointer table candidates."""
+    print(f"Found {len(candidates)} pointer table candidates:\n")
 
-    print("=" * 70)
-    print("SEARCHING FOR SEQUENCE POINTER TABLE")
-    print("=" * 70)
-    print()
-
-    with open(sid_file, 'rb') as f:
-        data = f.read()
-
-    print(f"File: {sid_file}")
-    print(f"Size: {len(data)} bytes")
-    print(f"Looking for: 39 pointers (78 bytes)")
-    print()
-
-    print("Searching...")
-    candidates = search_for_pointer_table(data, 39)
-
-    print(f"Found {len(candidates)} candidates")
-    print()
-
-    if not candidates:
-        print("No good candidates found!")
-        print()
-        print("Trying with lower threshold...")
-        # Retry with lower threshold
-        candidates = []
-        for offset in range(0x200, len(data) - 39 * 2, 2):
-            interleaved = try_interleaved_format(data, offset, 39)
-            split = try_split_format(data, offset, 39)
-
-            for fmt_name, pointers in [('interleaved', interleaved), ('split', split)]:
-                if not pointers:
-                    continue
-
-                score = score_pointer_table(pointers)
-
-                if score > 30:  # Lower threshold
-                    candidates.append({
-                        'offset': offset,
-                        'format': fmt_name,
-                        'pointers': pointers,
-                        'score': score
-                    })
-
-        candidates.sort(key=lambda x: x['score'], reverse=True)
-        print(f"Found {len(candidates)} candidates with lower threshold")
-        print()
-
-    # Show top 5 candidates
     for i, cand in enumerate(candidates[:5]):
-        print(f"Candidate {i+1}:")
-        print(f"  File offset: 0x{cand['offset']:04X}")
-        print(f"  Memory addr: ${file_to_mem_addr(cand['offset']):04X}")
-        print(f"  Format: {cand['format']}")
-        print(f"  Score: {cand['score']}")
-        print()
+        print(f"Candidate {i+1}: Offset 0x{cand['start']:04X}")
+        print(f"  Increasing: {cand['increasing_percent']:.1f}%")
+        print(f"  Pointer range: ${cand['pointers'][0]:04X} - ${cand['pointers'][-1]:04X}")
 
         # Show first 10 pointers
         print(f"  First 10 pointers:")
         for j in range(min(10, len(cand['pointers']))):
             ptr = cand['pointers'][j]
-            file_off = mem_to_file_offset(ptr)
-            print(f"    Seq {j:02d} -> ${ptr:04X} (file 0x{file_off:04X})")
-        print()
+            file_offset = ptr - 0x1000 + 2  # Convert memory addr to file offset
+            print(f"    Seq {j:02X}: ${ptr:04X} (file offset 0x{file_offset:04X})")
 
-        # Show range
-        min_ptr = min(cand['pointers'])
-        max_ptr = max(cand['pointers'])
-        print(f"  Pointer range: ${min_ptr:04X} - ${max_ptr:04X}")
-        print(f"  File range: 0x{mem_to_file_offset(min_ptr):04X} - 0x{mem_to_file_offset(max_ptr):04X}")
-        print()
+        # Check if pointed-to locations look like sequence data
+        print(f"  Validating pointed-to data:")
+        valid_count = 0
+        for j in range(min(10, len(cand['pointers']))):
+            ptr = cand['pointers'][j]
+            file_offset = ptr - 0x1000 + 2
 
-        # Check if this makes sense relative to orderlists
-        orderlist_start = 0x1A70
-        print(f"  Orderlists start at: ${orderlist_start:04X}")
-        if max_ptr < orderlist_start:
-            print(f"  [OK] All pointers BEFORE orderlists (sequences should come first)")
-        else:
-            print(f"  [PROBLEM] Some pointers AFTER orderlists")
-        print()
-        print("=" * 70)
-        print()
+            if file_offset >= 0 and file_offset + 6 < len(data):
+                # Check if this looks like sequence data (3-byte entries)
+                inst = data[file_offset]
+                cmd = data[file_offset+1]
+                note = data[file_offset+2]
+
+                inst_valid = inst <= 0x1F or inst >= 0x80
+                note_valid = note <= 0x5F or note in [0x7E, 0x7F, 0x80]
+
+                if inst_valid and note_valid:
+                    valid_count += 1
+                    status = "OK"
+                else:
+                    status = "BAD"
+
+                print(f"    Seq {j:02X}: [{inst:02X}] [{cmd:02X}] [{note:02X}] - {status}")
+
+        print(f"  Valid sequences: {valid_count}/10\n")
+
+def main():
+    sid_file = 'SID/Stinsens_Last_Night_of_89.sid'
+
+    print("=" * 70)
+    print("SEQUENCE POINTER TABLE SEARCH")
+    print("=" * 70 + "\n")
+
+    with open(sid_file, 'rb') as f:
+        data = f.read()
+
+    load_addr = data[0x7C] | (data[0x7D] << 8)
+    print(f"File: {sid_file}")
+    print(f"Load address: ${load_addr:04X}")
+    print(f"File size: {len(data)} bytes\n")
+
+    # Search for pointer table
+    candidates = find_pointer_table(data, expected_count=39)
+
+    if candidates:
+        analyze_candidates(candidates, data)
+    else:
+        print("No pointer table candidates found.\n")
+        print("Trying with relaxed criteria...")
+
+        # Try with fewer sequences
+        for count in [30, 25, 20]:
+            print(f"\nTrying with {count} sequences...")
+            candidates = find_pointer_table(data, expected_count=count)
+            if candidates:
+                analyze_candidates(candidates, data)
+                break
 
 if __name__ == '__main__':
     main()

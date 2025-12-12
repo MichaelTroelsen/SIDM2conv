@@ -1,20 +1,20 @@
 # File Inventory
 
-**Last Updated**: 2025-12-12 07:12:32
+**Last Updated**: 2025-12-12 09:23:47
 
 ## Repository Structure
 
 ```
 SIDM2/
 ├── CHANGELOG.md (7.9KB)
-├── CLAUDE.md (14.3KB)
+├── CLAUDE.md (17.8KB)
 ├── cleanup_md_files.py (2.9KB)
-├── complete_pipeline_with_validation.py (82.7KB)
+├── complete_pipeline_with_validation.py (85.8KB)
 ├── CONSOLIDATION_COMPLETE.md (9.3KB)
 ├── CONTRIBUTING.md (6.5KB)
 ├── debug_music_data_block.py (4.5KB)
 ├── file_inventory.json (0B)
-├── FILE_INVENTORY.md (48.4KB)
+├── FILE_INVENTORY.md (132.4KB)
 ├── KNOWLEDGE_CONSOLIDATION.md (15.2KB)
 ├── pytest.ini (475B)
 ├── README.md (63.5KB)
@@ -28,8 +28,12 @@ SIDM2/
 ├── SF2_VALIDATION_STATUS.md (5.0KB)
 ├── sidm2_config.example.json (699B)
 ├── SIDwinder.cfg (1.5KB)
-├── STATUS.md (9.1KB)
+├── STATUS.md (11.6KB)
 ├── stinsens_original.dump (163.0KB)
+├── test_cocktail.asm (114.1KB)
+├── test_expand.asm (115.4KB)
+├── test_expand_FIXED.asm (115.5KB)
+├── test_expand_FIXED3.asm (111.8KB)
 ├── test_stinsen_injection.py (4.2KB)
 ├── update_inventory.py (4.9KB)
 ├── validate_sf2.py (4.6KB)
@@ -117,6 +121,7 @@ SIDM2/
 │   ├── SID_REGISTERS_REFERENCE.md (8.4KB)
 │   ├── SIDDUMP_DEEP_DIVE.md (26.2KB)
 │   ├── TOOLS_REFERENCE.md (13.6KB)
+│   ├── VALIDATION_DASHBOARD_DESIGN.md (14.8KB)
 │   ├── analysis/
 │   │   ├── ACCURACY_ROADMAP.md (11.4KB)
 │   │   ├── CONSOLIDATION_INSIGHTS.md (14.6KB)
@@ -1683,6 +1688,9 @@ SIDM2/
 │   │   │   │   ├── Expand_Side_1_exported.wav (1.3MB)
 │   │   │   │   ├── Expand_Side_1_exported_disassembly.md (55.5KB)
 │   │   │   │   ├── Expand_Side_1_exported_sidwinder.asm (115.4KB)
+│   │   │   │   ├── Expand_Side_1_FIXED.sid (15.9KB)
+│   │   │   │   ├── Expand_Side_1_FIXED2.sid (15.9KB)
+│   │   │   │   ├── Expand_Side_1_FIXED3.sid (15.4KB)
 │   │   │   │   ├── info.txt (52.0KB)
 │   │   │   └── Original/
 │   │   │       ├── Expand_Side_1_original.dump (54.6KB)
@@ -1888,10 +1896,12 @@ SIDM2/
 │   ├── extract_addresses.py (8.1KB)
 │   ├── extract_sf2_properly.py (20.1KB)
 │   ├── format_tables.py (15.0KB)
+│   ├── generate_dashboard.py (7.7KB)
 │   ├── generate_info.py (17.4KB)
 │   ├── generate_validation_report.py (17.9KB)
 │   ├── laxity_parser.py (21.7KB)
 │   ├── run_ci.bat (150B)
+│   ├── run_validation.py (9.7KB)
 │   ├── sf2_to_sid.py (11.0KB)
 │   ├── sid_to_sf2.py (17.9KB)
 │   ├── test_complete_pipeline.py (13.7KB)
@@ -1906,6 +1916,12 @@ SIDM2/
 │   ├── validate_psid.py (13.0KB)
 │   ├── validate_sid_accuracy.py (33.0KB)
 │   ├── validate_structure.py (10.3KB)
+│   └── validation/
+│       ├── __init__.py (70B)
+│       ├── dashboard.py (12.4KB)
+│       ├── database.py (11.1KB)
+│       ├── metrics.py (7.4KB)
+│       ├── regression.py (15.1KB)
 ├── SF2/
 ├── SID/
 │   ├── Angular.sid (3.8KB)
@@ -1928,6 +1944,7 @@ SIDM2/
 │   ├── Unboxed_Ending_8580.sid (4.5KB)
 ├── sidm2/
 │   ├── __init__.py (3.1KB)
+│   ├── accuracy.py (16.2KB)
 │   ├── confidence.py (26.1KB)
 │   ├── config.py (6.8KB)
 │   ├── constants.py (3.1KB)
@@ -1945,7 +1962,7 @@ SIDM2/
 │   ├── sequence_extraction.py (16.8KB)
 │   ├── sequence_translator.py (18.5KB)
 │   ├── sf2_packed_reader.py (11.5KB)
-│   ├── sf2_packer.py (26.5KB)
+│   ├── sf2_packer.py (27.0KB)
 │   ├── sf2_player_parser.py (21.9KB)
 │   ├── sf2_reader.py (8.1KB)
 │   ├── sf2_writer.py (54.4KB)
@@ -2051,109 +2068,113 @@ SIDM2/
 │   ├── verify_sequences.py (10.4KB)
 │   ├── verify_track_extraction.py (8.6KB)
 │   └── output/
-└── tools/
-    ├── = (58B)
-    ├── angular_test.asm (105.7KB)
-    ├── build_siddump_trace.bat (1.4KB)
-    ├── BUILD_SIDDUMP_TRACE.md (4.5KB)
-    ├── cpu.c (28.2KB)
-    ├── cpu.h (204B)
-    ├── cpu_trace.c (3.8KB)
-    ├── mit (58B)
-    ├── mit.asm (113.2KB)
-    ├── mit.txt (527.4KB)
-    ├── player-id.exe (459.5KB)
-    ├── README.md (352B)
-    ├── readme.txt (6.1KB)
-    ├── RETRODEBUGGER_ANALYSIS.md (23.7KB)
-    ├── SID2WAV.EXE (192.0KB)
-    ├── siddump.c (16.3KB)
-    ├── siddump.exe (49.5KB)
-    ├── siddump_trace.patch (2.7KB)
-    ├── SIDDUMP_TRACE_SIMPLE.md (3.6KB)
-    ├── sidid.cfg (74.8KB)
-    ├── sidid.nfo (43.8KB)
-    ├── SIDwinder.cfg (1.5KB)
-    ├── SIDwinder.exe (1.8MB)
-    ├── SIDWINDER_ANALYSIS.md (18.0KB)
-    ├── SIDWINDER_FIXES_APPLIED.md (1.5KB)
-    ├── SIDWINDER_QUICK_REFERENCE.md (6.4KB)
-    ├── sidwinder_trace_fix.patch (2.3KB)
-    ├── Signature_File_Format.txt (6.8KB)
-    ├── Stinsens_Last_Night_of_89.sid (6.1KB)
-    ├── tedid.cfg (878B)
-    ├── trace.bin (234.4KB)
-    ├── prg2sid/
-    │   ├── Makefile (1.7KB)
-    │   ├── p2s.c (114.4KB)
-    │   ├── p2s.txt (13.9KB)
-    │   └── Release/
-    │       ├── p2s.exe (83.0KB)
-    ├── RetroDebugger v0.64.68/
-    │   ├── basic (8.0KB)
-    │   ├── chargen (4.0KB)
-    │   ├── kernal (8.0KB)
-    │   ├── README.md (5.2KB)
-    │   ├── RetroDebugger.exe (18.5MB)
-    │   ├── docs/
-    │   │   ├── README-C64-65XE-NES-Debugger.txt (72.9KB)
-    │   │   ├── release-notes.txt (13.2KB)
-    │   └── tools/
-    │       └── c64d-champ/
-    │           ├── c64d-champ.rb (37.4KB)
-    ├── sf2export/
-    │   ├── Makefile (808B)
-    │   ├── README.md (5.0KB)
-    │   ├── sf2export.cpp (9.7KB)
-    │   ├── sf2export.exe (2.4MB)
-    ├── sf2pack/
-    │   ├── c64memory.cpp (2.8KB)
-    │   ├── c64memory.h (1.4KB)
-    │   ├── c64memory.o (4.9KB)
-    │   ├── Makefile (953B)
-    │   ├── opcodes.cpp (4.9KB)
-    │   ├── opcodes.h (1.1KB)
-    │   ├── opcodes.o (3.3KB)
-    │   ├── packer_simple.cpp (5.7KB)
-    │   ├── packer_simple.h (1.3KB)
-    │   ├── packer_simple.o (6.5KB)
-    │   ├── psidfile.cpp (3.4KB)
-    │   ├── psidfile.h (2.3KB)
-    │   ├── psidfile.o (8.3KB)
-    │   ├── README.md (6.5KB)
-    │   ├── sf2pack.cpp (7.7KB)
-    │   ├── sf2pack.exe (2.4MB)
-    │   ├── sf2pack.o (21.2KB)
-    ├── SIDPlayers/
-    │   ├── Default/
-    │   │   ├── Default.asm (1.4KB)
-    │   ├── INC/
-    │   │   ├── FreqTable.asm (5.0KB)
-    │   │   ├── MemoryPreservation.asm (3.1KB)
-    │   │   ├── NMIFix.asm (231B)
-    │   │   ├── StableRasterSetup.asm (2.9KB)
-    │   ├── RaistlinBars/
-    │   │   ├── CharSet.map (1.8KB)
-    │   │   ├── RaistlinBars.asm (29.0KB)
-    │   │   ├── WaterSprites.map (512B)
-    │   ├── RaistlinBarsWithLogo/
-    │   │   ├── CharSet.map (1.8KB)
-    │   │   ├── RaistlinBarsWithLogo.asm (28.3KB)
-    │   │   ├── WaterSprites.map (512B)
-    │   ├── RaistlinMirrorBars/
-    │   │   ├── CharSet.map (1.8KB)
-    │   │   ├── RaistlinMirrorBars.asm (24.4KB)
-    │   ├── RaistlinMirrorBarsWithLogo/
-    │   │   ├── CharSet.map (1.8KB)
-    │   │   ├── RaistlinMirrorBarsWithLogo.asm (24.8KB)
-    │   │   ├── SoundbarSine.bin (128B)
-    │   │   ├── WaterSprites.map (512B)
-    │   ├── SimpleBitmap/
-    │   │   ├── SimpleBitmap.asm (9.5KB)
-    │   └── SimpleRaster/
-    │       ├── SimpleRaster.asm (6.4KB)
-    ├── temp/
-    └── tools/
+├── tools/
+│   ├── = (58B)
+│   ├── angular_test.asm (105.7KB)
+│   ├── build_siddump_trace.bat (1.4KB)
+│   ├── BUILD_SIDDUMP_TRACE.md (4.5KB)
+│   ├── cpu.c (28.2KB)
+│   ├── cpu.h (204B)
+│   ├── cpu_trace.c (3.8KB)
+│   ├── mit (58B)
+│   ├── mit.asm (113.2KB)
+│   ├── mit.txt (527.4KB)
+│   ├── player-id.exe (459.5KB)
+│   ├── README.md (352B)
+│   ├── readme.txt (6.1KB)
+│   ├── RETRODEBUGGER_ANALYSIS.md (23.7KB)
+│   ├── SID2WAV.EXE (192.0KB)
+│   ├── siddump.c (16.3KB)
+│   ├── siddump.exe (49.5KB)
+│   ├── siddump_trace.patch (2.7KB)
+│   ├── SIDDUMP_TRACE_SIMPLE.md (3.6KB)
+│   ├── sidid.cfg (74.8KB)
+│   ├── sidid.nfo (43.8KB)
+│   ├── SIDwinder.cfg (1.5KB)
+│   ├── SIDwinder.exe (1.8MB)
+│   ├── SIDWINDER_ANALYSIS.md (18.0KB)
+│   ├── SIDWINDER_FIXES_APPLIED.md (1.5KB)
+│   ├── SIDWINDER_QUICK_REFERENCE.md (6.4KB)
+│   ├── sidwinder_trace_fix.patch (2.3KB)
+│   ├── Signature_File_Format.txt (6.8KB)
+│   ├── Stinsens_Last_Night_of_89.sid (6.1KB)
+│   ├── tedid.cfg (878B)
+│   ├── trace.bin (234.4KB)
+│   ├── prg2sid/
+│   │   ├── Makefile (1.7KB)
+│   │   ├── p2s.c (114.4KB)
+│   │   ├── p2s.txt (13.9KB)
+│   │   └── Release/
+│   │       ├── p2s.exe (83.0KB)
+│   ├── RetroDebugger v0.64.68/
+│   │   ├── basic (8.0KB)
+│   │   ├── chargen (4.0KB)
+│   │   ├── kernal (8.0KB)
+│   │   ├── README.md (5.2KB)
+│   │   ├── RetroDebugger.exe (18.5MB)
+│   │   ├── docs/
+│   │   │   ├── README-C64-65XE-NES-Debugger.txt (72.9KB)
+│   │   │   ├── release-notes.txt (13.2KB)
+│   │   └── tools/
+│   │       └── c64d-champ/
+│   │           ├── c64d-champ.rb (37.4KB)
+│   ├── sf2export/
+│   │   ├── Makefile (808B)
+│   │   ├── README.md (5.0KB)
+│   │   ├── sf2export.cpp (9.7KB)
+│   │   ├── sf2export.exe (2.4MB)
+│   ├── sf2pack/
+│   │   ├── c64memory.cpp (2.8KB)
+│   │   ├── c64memory.h (1.4KB)
+│   │   ├── c64memory.o (4.9KB)
+│   │   ├── Makefile (953B)
+│   │   ├── opcodes.cpp (4.9KB)
+│   │   ├── opcodes.h (1.1KB)
+│   │   ├── opcodes.o (3.3KB)
+│   │   ├── packer_simple.cpp (5.7KB)
+│   │   ├── packer_simple.h (1.3KB)
+│   │   ├── packer_simple.o (6.5KB)
+│   │   ├── psidfile.cpp (3.4KB)
+│   │   ├── psidfile.h (2.3KB)
+│   │   ├── psidfile.o (8.3KB)
+│   │   ├── README.md (6.5KB)
+│   │   ├── sf2pack.cpp (7.7KB)
+│   │   ├── sf2pack.exe (2.4MB)
+│   │   ├── sf2pack.o (21.2KB)
+│   ├── SIDPlayers/
+│   │   ├── Default/
+│   │   │   ├── Default.asm (1.4KB)
+│   │   ├── INC/
+│   │   │   ├── FreqTable.asm (5.0KB)
+│   │   │   ├── MemoryPreservation.asm (3.1KB)
+│   │   │   ├── NMIFix.asm (231B)
+│   │   │   ├── StableRasterSetup.asm (2.9KB)
+│   │   ├── RaistlinBars/
+│   │   │   ├── CharSet.map (1.8KB)
+│   │   │   ├── RaistlinBars.asm (29.0KB)
+│   │   │   ├── WaterSprites.map (512B)
+│   │   ├── RaistlinBarsWithLogo/
+│   │   │   ├── CharSet.map (1.8KB)
+│   │   │   ├── RaistlinBarsWithLogo.asm (28.3KB)
+│   │   │   ├── WaterSprites.map (512B)
+│   │   ├── RaistlinMirrorBars/
+│   │   │   ├── CharSet.map (1.8KB)
+│   │   │   ├── RaistlinMirrorBars.asm (24.4KB)
+│   │   ├── RaistlinMirrorBarsWithLogo/
+│   │   │   ├── CharSet.map (1.8KB)
+│   │   │   ├── RaistlinMirrorBarsWithLogo.asm (24.8KB)
+│   │   │   ├── SoundbarSine.bin (128B)
+│   │   │   ├── WaterSprites.map (512B)
+│   │   ├── SimpleBitmap/
+│   │   │   ├── SimpleBitmap.asm (9.5KB)
+│   │   └── SimpleRaster/
+│   │       ├── SimpleRaster.asm (6.4KB)
+│   ├── temp/
+│   └── tools/
+└── validation/
+    ├── dashboard.html (18.1KB)
+    ├── database.sqlite (20.0KB)
+    ├── SUMMARY.md (1.4KB)
 ```
 
 ## File Categories

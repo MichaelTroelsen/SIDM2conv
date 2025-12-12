@@ -25,8 +25,12 @@ python scripts/convert_all.py --roundtrip
 # Test single file round-trip (SID→SF2→SID)
 python scripts/test_roundtrip.py SID/input.sid
 
-# Complete pipeline with full validation (11 steps: conversion, packing, dumps, WAV, hex, trace, info, disassembly, validation)
+# Complete pipeline with full validation (11+ steps: conversion, packing, dumps, accuracy, WAV, hex, trace, info, disassembly, validation)
+# NEW in v1.4.1: Automatic accuracy calculation integrated!
 python complete_pipeline_with_validation.py
+
+# CI/CD workflow runs automatically on PR/push (v1.4.2)
+# See .github/workflows/validation.yml
 ```
 
 ---
@@ -44,8 +48,15 @@ SIDM2/
 │   ├── test_roundtrip.py      # Round-trip validation (SID→SF2→SID)
 │   ├── validate_sid_accuracy.py # Frame-by-frame accuracy validation
 │   ├── generate_validation_report.py # Multi-file validation reports
+│   ├── run_validation.py      # Validation system runner (v1.4)
+│   ├── generate_dashboard.py  # Dashboard generator (v1.4)
 │   ├── disassemble_sid.py     # 6502 disassembler
 │   ├── extract_addresses.py   # Extract data structure addresses
+│   ├── validation/            # Validation system modules (v1.4)
+│   │   ├── database.py        # SQLite validation tracking
+│   │   ├── metrics.py         # Metrics collection
+│   │   ├── regression.py      # Regression detection
+│   │   └── dashboard.py       # HTML dashboard generation
 │   └── test_*.py              # Unit tests (69 converter tests, 12 format tests, 19 pipeline tests)
 │
 ├── sidm2/                 # Core Python package
@@ -55,6 +66,7 @@ SIDM2/
 │   ├── sid_player.py      # SID file player and analyzer (v0.6.2)
 │   ├── sf2_player_parser.py # SF2-exported SID parser (v0.6.2)
 │   ├── siddump_extractor.py # Runtime sequence extraction (v1.3)
+│   ├── accuracy.py        # Accuracy calculation module (v1.4.1)
 │   └── validation.py      # Validation utilities (v0.6.0)
 │
 ├── tools/                 # External tools
@@ -70,9 +82,18 @@ SIDM2/
 │       ├── Original/      # Original SID, WAV, dump (round-trip only)
 │       └── New/           # Converted SF2 + exported SID files
 │
+├── validation/            # Validation system data (v1.4)
+│   ├── database.sqlite    # SQLite validation history
+│   ├── dashboard.html     # Interactive HTML dashboard
+│   └── SUMMARY.md         # Markdown summary (git-friendly)
+│
 ├── G5/                    # Driver templates
 │   ├── drivers/           # SF2 driver PRG files (11, 12, 13, 14, 15, 16, NP20)
 │   └── examples/          # Example SF2 files for each driver
+│
+├── .github/               # GitHub configuration (v1.4.2)
+│   └── workflows/
+│       └── validation.yml # CI/CD validation workflow
 │
 ├── docs/                  # Documentation (see Documentation Index below)
 └── learnings/             # Reference materials and source docs
@@ -137,6 +158,80 @@ xxd SID/file.sid > original.hex
 xxd output/file.sid > converted.hex
 diff original.hex converted.hex
 ```
+
+### Validation System (v1.4)
+
+Systematic validation with regression tracking and HTML dashboard:
+
+```bash
+# Run validation on all pipeline outputs
+python scripts/run_validation.py --notes "After bug fix"
+
+# Run with regression detection against previous run
+python scripts/run_validation.py --baseline 1 --notes "Regression check"
+
+# Generate interactive HTML dashboard
+python scripts/generate_dashboard.py
+
+# Generate both HTML and markdown summary
+python scripts/generate_dashboard.py --markdown validation/SUMMARY.md
+
+# Compare two validation runs
+python scripts/run_validation.py --compare 1 2
+
+# Quick validation (subset of files)
+python scripts/run_validation.py --quick
+
+# Export results to JSON for CI/CD
+python scripts/run_validation.py --export results.json
+```
+
+**Outputs**:
+- `validation/database.sqlite` - SQLite database with complete history
+- `validation/dashboard.html` - Interactive dashboard with charts
+- `validation/SUMMARY.md` - Git-friendly markdown summary
+
+**Features**:
+- Tracks 9 pipeline steps per file (conversion → disassembly)
+- Regression detection (accuracy drops, step failures, size increases)
+- Trend visualization with Chart.js
+- Pass rates, aggregate metrics, file-by-file results
+- Configurable thresholds (5% accuracy, 20% size)
+
+### Automated CI/CD (v1.4.2)
+
+GitHub Actions workflow automatically validates every PR and push:
+
+```yaml
+# .github/workflows/validation.yml runs automatically on:
+# - Pull requests to master/main
+# - Pushes to master/main
+```
+
+**What it does**:
+- Runs validation on existing pipeline outputs
+- Compares against baseline (previous commit)
+- Detects regressions and blocks PR if found
+- Posts validation summary as PR comment
+- Auto-commits validation results to master (with [skip ci])
+- Uploads dashboard as artifact
+
+**Regression Rules**:
+- Accuracy drops >5%: ❌ FAIL
+- Step failures (pass → fail): ❌ FAIL
+- File size increases >20%: ⚠️ WARN
+- New warnings: ⚠️ WARN
+
+**Workflow triggers on changes to**:
+- `sidm2/**` - Core modules
+- `scripts/**` - Pipeline scripts
+- `complete_pipeline_with_validation.py`
+- `.github/workflows/validation.yml`
+
+**Viewing Results**:
+- PR comment shows validation summary
+- Artifacts include interactive dashboard
+- Validation results committed to `validation/`
 
 ---
 
@@ -316,6 +411,7 @@ python scripts/test_complete_pipeline.py -v
 
 ### Validation and Testing
 - **docs/VALIDATION_SYSTEM.md** - Three-tier validation architecture (v0.6.0)
+- **docs/VALIDATION_DASHBOARD_DESIGN.md** - Dashboard & regression tracking system (v1.4)
 - **docs/ACCURACY_ROADMAP.md** - Plan to reach 99% accuracy (v0.6.0)
 - **PIPELINE_EXECUTION_REPORT.md** - Complete pipeline execution analysis
 
