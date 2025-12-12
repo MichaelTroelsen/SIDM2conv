@@ -60,12 +60,13 @@ The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2)
 - **Verification**: All files play correctly in VICE, SID2WAV, siddump, AND
   generate complete .asm disassembly files
 
-### ⚠️ SIDwinder Trace
-- **Impact**: Trace files generated but empty
-- **Cause**: SIDwinder bugs (patch available)
-- **Fix**: Rebuild SIDwinder.exe with patches
-- **Patch File**: `tools/sidwinder_trace_fix.patch`
-- **Status**: Waiting for rebuild
+### ✅ SIDwinder Trace (RESOLVED)
+- **Previous Issue**: Trace files generated but empty (Dec 6, 2024)
+- **Current Status**: Trace functionality fully working (Dec 12, 2024)
+- **Resolution**: Patches already applied, SIDwinder.exe already rebuilt (Dec 6)
+- **Verification**: Test trace generates 60K+ lines of register data
+- **Usage**: `tools/SIDwinder.exe -trace=output.txt input.sid`
+- **Note**: The patched executable was already in tools/ directory
 
 ### ⚠️ Accuracy
 - **Current**: 9.0% overall accuracy (Angular.sid baseline)
@@ -223,10 +224,11 @@ output/SIDSF2player_Complete_Pipeline/{filename}/
    - All 18/18 files now disassemble successfully
    - Commit: b697d02
 
-2. **Rebuild SIDwinder**
-   - Apply trace fix patches
-   - Generate working trace files
-   - Enable Step 6 trace analysis
+2. ✅ **~~Rebuild SIDwinder~~** (COMPLETED - was already done Dec 6)
+   - Patches already applied to source
+   - SIDwinder.exe already rebuilt with trace fixes
+   - Trace generates 60K+ lines per file
+   - Pipeline Step 6 ready to use
 
 ### Medium Term
 1. **Improve accuracy**
