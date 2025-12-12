@@ -299,8 +299,15 @@ def extract_sf2_tables(sf2_path):
         return {}
 
 
-def generate_info_txt_comprehensive(sid_path, sf2_path, output_dir):
-    """Generate comprehensive info.txt with all useful information."""
+def generate_info_txt_comprehensive(sid_path, sf2_path, output_dir, accuracy_metrics=None):
+    """Generate comprehensive info.txt with all useful information.
+
+    Args:
+        sid_path: Path to original SID file
+        sf2_path: Path to SF2 file
+        output_dir: Output directory for info.txt
+        accuracy_metrics: Optional dict with accuracy metrics from sidm2.accuracy
+    """
     try:
         info_path = output_dir / 'info.txt'
 
@@ -731,6 +738,51 @@ Contact: (project maintainer info if applicable)
                     sf2_info += "\n\n" + "-" * 80 + "\n\n"
 
             info_content += sf2_info
+
+        # Append accuracy metrics if available
+        if accuracy_metrics:
+            accuracy_section = f"""
+================================================================================
+ACCURACY VALIDATION RESULTS
+================================================================================
+
+Conversion Method: {accuracy_metrics.get('conversion_method', 'N/A')}
+Overall Accuracy: {accuracy_metrics['overall_accuracy']:.2f}%
+
+Frame-by-Frame Accuracy: {accuracy_metrics['frame_accuracy']:.2f}%
+Filter Accuracy: {accuracy_metrics['filter_accuracy']:.2f}%
+
+Voice Accuracy:
+"""
+            for voice_name, voice_data in accuracy_metrics.get('voice_accuracy', {}).items():
+                accuracy_section += f"  {voice_name.capitalize()}:\n"
+                accuracy_section += f"    Frequency: {voice_data['frequency']:.2f}%\n"
+                accuracy_section += f"    Waveform:  {voice_data['waveform']:.2f}%\n"
+
+            accuracy_section += f"\nRegister-Level Accuracy (Top 10):\n"
+            # Sort registers by accuracy
+            sorted_regs = sorted(
+                accuracy_metrics.get('register_accuracy', {}).items(),
+                key=lambda x: x[1],
+                reverse=True
+            )[:10]
+            for reg_name, reg_acc in sorted_regs:
+                accuracy_section += f"  {reg_name:<30} {reg_acc:>6.2f}%\n"
+
+            accuracy_section += f"""
+Accuracy Notes:
+- Overall accuracy is calculated as weighted combination of frame, voice, register, and filter accuracy
+- Frame accuracy: % of frames with exact register matches
+- Voice accuracy: Frequency and waveform accuracy per voice
+- Register accuracy: Per-register write accuracy
+- Filter accuracy: Filter cutoff/resonance/mode accuracy
+
+Target: 99% overall accuracy
+Current: {accuracy_metrics['overall_accuracy']:.2f}%
+
+================================================================================
+"""
+            info_content += accuracy_section
 
         with open(info_path, 'w', encoding='utf-8') as f:
             f.write(info_content)
@@ -1872,6 +1924,24 @@ def main():
         print(f'        Exported: {"[OK]" if exp_dump_ok else "[ERROR]"}')
         result['steps']['siddump'] = {'orig': orig_dump_ok, 'exp': exp_dump_ok}
 
+        # STEP 3.5: Calculate Accuracy
+        print(f'\n  [3.5/12] Calculating accuracy from dumps...')
+        accuracy_metrics = None
+        if orig_dump_ok and exp_dump_ok:
+            from sidm2.accuracy import calculate_accuracy_from_dumps
+            try:
+                accuracy_metrics = calculate_accuracy_from_dumps(str(orig_dump), str(exp_dump))
+                if accuracy_metrics:
+                    overall = accuracy_metrics['overall_accuracy']
+                    print(f'        Overall Accuracy: {overall:.2f}%')
+                    result['accuracy'] = accuracy_metrics
+                else:
+                    print(f'        [WARN] Accuracy calculation failed')
+            except Exception as e:
+                print(f'        [WARN] Accuracy calculation error: {e}')
+        else:
+            print(f'        [SKIP] Dumps not available for comparison')
+
         # STEP 4: WAV
         print(f'\n  [4/12] Rendering WAV files...')
         orig_wav = original_dir / f'{basename}_original.wav'
@@ -1910,7 +1980,7 @@ def main():
 
         # STEP 7: Info.txt
         print(f'\n  [7/12] Generating info.txt...')
-        info_ok = generate_info_txt_comprehensive(sid_file, output_sf2, new_dir)
+        info_ok = generate_info_txt_comprehensive(sid_file, output_sf2, new_dir, accuracy_metrics)
 
         # Append sequence information if siddump injection was successful
         if injected_sequences and injected_orderlists and injected_used_sequences:

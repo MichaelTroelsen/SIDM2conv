@@ -1,0 +1,210 @@
+name: Validation & Regression Detection
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'sidm2/**'
+      - 'scripts/**'
+      - 'complete_pipeline_with_validation.py'
+      - '.github/workflows/validation.yml'
+  pull_request:
+    branches: [master, main]
+    paths:
+      - 'sidm2/**'
+      - 'scripts/**'
+      - 'complete_pipeline_with_validation.py'
+
+jobs:
+  validate:
+    name: Run Validation System
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # Need previous commit for baseline comparison
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Check pipeline outputs exist
+        id: check_outputs
+        run: |
+          if (Test-Path "output\SIDSF2player_Complete_Pipeline") {
+            echo "outputs_exist=true" >> $env:GITHUB_OUTPUT
+            $fileCount = (Get-ChildItem -Path "output\SIDSF2player_Complete_Pipeline" -Directory).Count
+            echo "file_count=$fileCount" >> $env:GITHUB_OUTPUT
+            echo "Found $fileCount pipeline output directories"
+          } else {
+            echo "outputs_exist=false" >> $env:GITHUB_OUTPUT
+            echo "file_count=0" >> $env:GITHUB_OUTPUT
+            echo "::warning::Pipeline outputs not found. Validation will be skipped."
+          }
+        shell: powershell
+
+      - name: Get baseline database
+        if: steps.check_outputs.outputs.outputs_exist == 'true' && github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          # Try to get baseline from previous commit
+          git show HEAD~1:validation/database.sqlite > validation/database_baseline.sqlite 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            echo "Baseline database retrieved from previous commit"
+          } else {
+            echo "::warning::No baseline database found for comparison"
+          }
+        shell: powershell
+
+      - name: Run validation
+        if: steps.check_outputs.outputs.outputs_exist == 'true'
+        id: validation
+        run: |
+          $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+          $notes = "CI run - commit ${{ github.sha }} - $timestamp"
+
+          python scripts/run_validation.py --notes "$notes"
+
+          if ($LASTEXITCODE -eq 0) {
+            echo "validation_success=true" >> $env:GITHUB_OUTPUT
+          } else {
+            echo "validation_success=false" >> $env:GITHUB_OUTPUT
+            echo "::error::Validation failed"
+          }
+        shell: powershell
+
+      - name: Detect regressions
+        if: |
+          steps.check_outputs.outputs.outputs_exist == 'true' &&
+          steps.validation.outputs.validation_success == 'true' &&
+          github.event_name == 'pull_request'
+        id: regression
+        continue-on-error: true
+        run: |
+          # Check if baseline exists
+          if (Test-Path "validation\database_baseline.sqlite") {
+            # Get run IDs
+            $baseline_run = python -c "import sqlite3; conn = sqlite3.connect('validation/database_baseline.sqlite'); cursor = conn.cursor(); cursor.execute('SELECT MAX(run_id) FROM validation_runs'); print(cursor.fetchone()[0])"
+            $current_run = python -c "import sqlite3; conn = sqlite3.connect('validation/database.sqlite'); cursor = conn.cursor(); cursor.execute('SELECT MAX(run_id) FROM validation_runs'); print(cursor.fetchone()[0])"
+
+            echo "Comparing baseline run $baseline_run with current run $current_run"
+
+            # Run comparison
+            python scripts/run_validation.py --compare $baseline_run $current_run > regression_report.txt
+
+            # Check for regressions
+            $hasRegressions = Select-String -Path "regression_report.txt" -Pattern "REGRESSION" -Quiet
+
+            if ($hasRegressions) {
+              echo "regressions_found=true" >> $env:GITHUB_OUTPUT
+              echo "::error::Regressions detected!"
+              Get-Content regression_report.txt
+            } else {
+              echo "regressions_found=false" >> $env:GITHUB_OUTPUT
+              echo "No regressions found"
+            }
+          } else {
+            echo "regressions_found=false" >> $env:GITHUB_OUTPUT
+            echo "::warning::No baseline for comparison, skipping regression detection"
+          }
+        shell: powershell
+
+      - name: Generate dashboard
+        if: steps.check_outputs.outputs.outputs_exist == 'true' && steps.validation.outputs.validation_success == 'true'
+        run: |
+          python scripts/generate_dashboard.py --markdown validation/SUMMARY.md
+
+          if ($LASTEXITCODE -eq 0) {
+            echo "Dashboard generated successfully"
+          } else {
+            echo "::warning::Dashboard generation failed"
+          }
+        shell: powershell
+
+      - name: Upload validation artifacts
+        if: steps.check_outputs.outputs.outputs_exist == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-results
+          path: |
+            validation/dashboard.html
+            validation/SUMMARY.md
+            validation/database.sqlite
+          retention-days: 30
+
+      - name: Comment on PR with validation summary
+        if: |
+          github.event_name == 'pull_request' &&
+          steps.check_outputs.outputs.outputs_exist == 'true' &&
+          steps.validation.outputs.validation_success == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            let summary = '';
+
+            // Read validation summary if it exists
+            if (fs.existsSync('validation/SUMMARY.md')) {
+              summary = fs.readFileSync('validation/SUMMARY.md', 'utf8');
+            } else {
+              summary = '## Validation Results\n\nValidation completed but summary not available.';
+            }
+
+            // Add regression info if available
+            if ('${{ steps.regression.outputs.regressions_found }}' === 'true') {
+              summary += '\n\n## ⚠️ Regressions Detected\n\n';
+              if (fs.existsSync('regression_report.txt')) {
+                const report = fs.readFileSync('regression_report.txt', 'utf8');
+                summary += '```\n' + report + '\n```';
+              }
+            }
+
+            // Add artifact link
+            summary += '\n\n📊 [View Interactive Dashboard](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})';
+
+            // Post comment
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+
+      - name: Fail if regressions detected
+        if: steps.regression.outputs.regressions_found == 'true'
+        run: |
+          echo "::error::Regressions detected - failing build"
+          exit 1
+        shell: powershell
+
+      - name: Commit validation results (master only)
+        if: |
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/master' &&
+          steps.check_outputs.outputs.outputs_exist == 'true' &&
+          steps.validation.outputs.validation_success == 'true'
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+          git add validation/
+
+          # Check if there are changes to commit
+          $changes = git diff --cached --name-only
+          if ($changes) {
+            git commit -m "chore: Update validation results [skip ci]
+
+            - Run ID: $(python -c "import sqlite3; conn = sqlite3.connect('validation/database.sqlite'); cursor = conn.cursor(); cursor.execute('SELECT MAX(run_id) FROM validation_runs'); print(cursor.fetchone()[0])")
+            - Commit: ${{ github.sha }}
+            - Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+
+            git push
+            echo "Validation results committed"
+          } else {
+            echo "No changes to commit"
+          }
+        shell: powershell

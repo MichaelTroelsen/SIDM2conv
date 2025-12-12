@@ -1,7 +1,7 @@
 # Project Status Overview
 
-**Last Updated**: 2025-12-10
-**Current Version**: v1.3.0
+**Last Updated**: 2025-12-12
+**Current Version**: v1.4.2
 **Status**: Active Development
 
 ---
@@ -107,19 +107,63 @@ The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2)
 
 ---
 
-## Recent Changes (v1.3.0)
+## Recent Changes
 
-### Added
+### v1.4.2 (2025-12-12)
+#### Added
+- **CI/CD Integration** - Automated validation on every PR
+  - `.github/workflows/validation.yml` - GitHub Actions workflow
+  - Runs validation on existing pipeline outputs
+  - Detects regressions and blocks failing PRs
+  - Auto-commits validation results to master
+  - Posts validation summary on PRs with regression alerts
+  - Artifact uploads for dashboard and results
+
+#### Documentation
+- CI/CD workflow fully documented with inline comments
+
+### v1.4.1 (2025-12-12)
+#### Added
+- **Accuracy Calculation Integration** - Automatic accuracy tracking
+  - `sidm2/accuracy.py` - Reusable accuracy calculation module
+  - Integrated into `complete_pipeline_with_validation.py` as Step 3.5
+  - Calculates accuracy from existing dumps (zero overhead)
+  - Adds accuracy section to info.txt with detailed metrics
+  - Overall, Frame, Voice, Register, and Filter accuracy percentages
+  - Validation dashboard automatically displays accuracy from info.txt
+
+#### Testing
+- Tested on polyphonic_test: 100% accuracy
+- Tested on Stinsens: 1.59% accuracy (baseline established)
+
+### v1.4.0 (2025-12-12)
+#### Added
+- **Validation Dashboard System** - Complete systematic validation with HTML dashboard
+  - `scripts/run_validation.py` - Validation runner with SQLite tracking
+  - `scripts/generate_dashboard.py` - Interactive HTML dashboard generator
+  - `scripts/validation/` - Database, metrics, regression detection modules
+  - Tracks 9 pipeline steps per file, pass rates, aggregate metrics
+  - Regression detection with configurable thresholds
+  - Trend visualization with Chart.js
+- `validation/dashboard.html` - Interactive dashboard
+- `validation/SUMMARY.md` - Git-friendly validation summary
+- `validation/database.sqlite` - SQLite validation history
+
+#### Documentation
+- `docs/VALIDATION_DASHBOARD_DESIGN.md` - Complete validation system design
+
+### v1.3.0 (2025-12-11)
+#### Added
 - **Siddump integration** for runtime sequence extraction
 - New module: `sidm2/siddump_extractor.py`
 - Hybrid extraction approach (static + runtime)
 - Proper SF2 gate on/off implementation
 
-### Fixed
+#### Fixed
 - Critical bug causing SF2 editor crashes
 - Sequence format now compliant with SF2 manual
 
-### Documentation
+#### Documentation
 - `CHANGELOG.md` - Complete version history
 - `SIDDUMP_INTEGRATION_SUMMARY.md` - Technical details
 - `archive/` - Cleaned up experimental files
