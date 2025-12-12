@@ -161,7 +161,7 @@ def convert_sid_to_sf2(sid_path, output_sf2, file_type, reference_sf2=None):
         env['PYTHONPATH'] = os.getcwd()
 
         result = subprocess.run(
-            ['python', 'scripts/sid_to_sf2.py', str(sid_path), str(output_sf2), '--overwrite'],
+            ['python', 'scripts/sid_to_sf2.py', str(sid_path), str(output_sf2), '--driver', 'np20', '--overwrite'],
             capture_output=True,
             text=True,
             timeout=60,
@@ -202,12 +202,89 @@ def run_siddump(sid_path, output_dump, seconds=10):
         print(f"    [WARN] Siddump failed: {e}")
         return False
 
+def render_wav_with_vice(sid_path, output_wav, seconds=30, sample_rate=44100):
+    """
+    Render SID to WAV using VICE emulator.
+
+    This method works for both Laxity and SF2 files, solving the SID2WAV v1.8
+    limitation where SF2 Driver 11 files produce silent output.
+
+    Args:
+        sid_path: Path to SID file
+        output_wav: Path to output WAV file
+        seconds: Recording duration in seconds (default 30)
+        sample_rate: Sample rate in Hz (default 44100)
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        # VICE x64sc path
+        vice_path = Path('C:/Users/mit/Downloads/GTK3VICE-3.8-win64/GTK3VICE-3.8-win64/bin/x64sc.exe')
+
+        if not vice_path.exists():
+            print(f"    [WARN] VICE not found at {vice_path}")
+            return False
+
+        # Calculate cycles for PAL C64 (985,248 cycles/second)
+        # PAL: 312 lines × 63 cycles × 50 Hz = 985,248 cycles/sec
+        cycles = int(985248 * seconds)
+
+        print(f"    [INFO] Using VICE emulator for WAV rendering")
+        print(f"    [INFO] Duration: {seconds}s ({cycles:,} cycles @ PAL timing)")
+
+        # Construct VICE command
+        result = subprocess.run([
+            str(vice_path),
+            '-console',                    # Console mode (headless)
+            '-sound',                       # Enable sound
+            '-warp',                        # Fast emulation
+            '-sounddev', 'dummy',           # Dummy sound device (no audio output)
+            '-soundrecdev', 'wav',          # WAV recording driver
+            '-soundrecarg', str(output_wav), # Output WAV file
+            '-soundrate', str(sample_rate), # Sample rate
+            '-autostart', str(sid_path),    # Autostart SID file
+            '+confirmonexit',               # Don't ask for confirmation on exit
+            '-limitcycles', str(cycles)     # Run for specific cycles then quit
+        ],
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+
+        # Check if WAV file was created
+        if Path(output_wav).exists() and Path(output_wav).stat().st_size > 0:
+            print(f"    [OK] VICE rendering successful: {output_wav}")
+            return True
+        else:
+            print(f"    [WARN] VICE rendering failed - no output file created")
+            if result.stderr:
+                print(f"    [STDERR] {result.stderr[:200]}")
+            return False
+
+    except subprocess.TimeoutExpired:
+        print(f"    [WARN] VICE rendering timed out after 120 seconds")
+        return False
+    except Exception as e:
+        print(f"    [WARN] VICE rendering failed: {e}")
+        return False
+
 def render_wav(sid_path, output_wav, seconds=30):
     """Render SID to WAV."""
     try:
+        # Detect if this is an SF2-packed file
+        player_type = identify_sid_type(sid_path)
+        if player_type == 'SF2_PACKED':
+            print(f"    [INFO] SF2-packed file detected - SID2WAV v1.8 does not support SF2 Driver 11")
+            print(f"    [INFO] WAV rendering will produce silent output (audio comparison unavailable)")
+            print(f"    [INFO] Future enhancement: VICE integration for proper SF2 rendering")
+
         sid2wav_tool = Path('tools') / 'SID2WAV.EXE'
+        # Remove existing WAV file if it exists (SID2WAV won't overwrite)
+        if Path(output_wav).exists():
+            Path(output_wav).unlink()
         result = subprocess.run(
-            [str(sid2wav_tool), str(sid_path), '-o', str(output_wav), f'-t{seconds}'],
+            [str(sid2wav_tool), f'-t{seconds}', '-16', str(sid_path), str(output_wav)],
             capture_output=True,
             text=True,
             timeout=120
@@ -789,19 +866,40 @@ Contact: (project maintainer info if applicable)
 
         # Append accuracy metrics if available
         if accuracy_metrics:
-            accuracy_section = f"""
+            # Build accuracy section with audio accuracy prominently displayed
+            accuracy_section = """
 ================================================================================
 ACCURACY VALIDATION RESULTS
 ================================================================================
 
-Conversion Method: {accuracy_metrics.get('conversion_method', 'N/A')}
-Overall Accuracy: {accuracy_metrics['overall_accuracy']:.2f}%
-
-Frame-by-Frame Accuracy: {accuracy_metrics['frame_accuracy']:.2f}%
-Filter Accuracy: {accuracy_metrics['filter_accuracy']:.2f}%
-
-Voice Accuracy:
 """
+            # Audio accuracy (most meaningful for LAXITY conversions)
+            if 'audio_accuracy' in accuracy_metrics:
+                accuracy_section += f"Audio Accuracy (WAV comparison): {accuracy_metrics['audio_accuracy']:.2f}%\n"
+                accuracy_section += "  ↳ Measures actual sound output similarity (player-independent)\n\n"
+            elif accuracy_metrics.get('conversion_method') == 'LAXITY':
+                # Audio accuracy unavailable - likely SF2 limitation
+                accuracy_section += "Audio Accuracy (WAV comparison): N/A\n"
+                accuracy_section += "  ↳ Audio comparison unavailable - SID2WAV v1.8 does not support SF2 Driver 11\n"
+                accuracy_section += "  ↳ Exported file uses SF2 Driver 11 player (LAXITY→SF2 conversion)\n"
+                accuracy_section += "  ↳ Future enhancement: VICE integration for proper SF2 WAV rendering\n\n"
+
+            # Register-level accuracy (only meaningful when using same player)
+            if 'overall_accuracy' in accuracy_metrics:
+                accuracy_section += f"Register-Level Accuracy: {accuracy_metrics['overall_accuracy']:.2f}%\n"
+                accuracy_section += f"  ↳ Conversion Method: {accuracy_metrics.get('conversion_method', 'N/A')}\n"
+                if 'audio_accuracy' in accuracy_metrics and accuracy_metrics.get('conversion_method') == 'LAXITY':
+                    accuracy_section += "  ↳ Note: Low register accuracy expected (different players: Laxity vs SF2)\n"
+                accuracy_section += "\n"
+
+            # Detailed register metrics (if available)
+            if 'frame_accuracy' in accuracy_metrics:
+                accuracy_section += f"Frame-by-Frame Accuracy: {accuracy_metrics['frame_accuracy']:.2f}%\n"
+            if 'filter_accuracy' in accuracy_metrics:
+                accuracy_section += f"Filter Accuracy: {accuracy_metrics['filter_accuracy']:.2f}%\n"
+
+            if 'voice_accuracy' in accuracy_metrics:
+                accuracy_section += "\nVoice Accuracy:\n"
             for voice_name, voice_data in accuracy_metrics.get('voice_accuracy', {}).items():
                 accuracy_section += f"  {voice_name.capitalize()}:\n"
                 accuracy_section += f"    Frequency: {voice_data['frequency']:.2f}%\n"
@@ -817,19 +915,31 @@ Voice Accuracy:
             for reg_name, reg_acc in sorted_regs:
                 accuracy_section += f"  {reg_name:<30} {reg_acc:>6.2f}%\n"
 
-            accuracy_section += f"""
-Accuracy Notes:
-- Overall accuracy is calculated as weighted combination of frame, voice, register, and filter accuracy
-- Frame accuracy: % of frames with exact register matches
-- Voice accuracy: Frequency and waveform accuracy per voice
-- Register accuracy: Per-register write accuracy
-- Filter accuracy: Filter cutoff/resonance/mode accuracy
+            # Build notes section
+            accuracy_section += "\nAccuracy Notes:\n"
 
-Target: 99% overall accuracy
-Current: {accuracy_metrics['overall_accuracy']:.2f}%
+            if 'audio_accuracy' in accuracy_metrics:
+                accuracy_section += "- Audio accuracy: Measures actual sound output similarity (WAV files)\n"
+                accuracy_section += "  → Player-independent metric comparing final rendered audio\n"
+                accuracy_section += "  → Most meaningful for conversions with different players\n"
 
-================================================================================
-"""
+            if 'overall_accuracy' in accuracy_metrics:
+                accuracy_section += "- Register-level accuracy: SID register write comparison\n"
+                accuracy_section += "  → Frame accuracy: % of frames with exact register matches\n"
+                accuracy_section += "  → Voice accuracy: Frequency and waveform accuracy per voice\n"
+                accuracy_section += "  → Filter accuracy: Filter cutoff/resonance/mode accuracy\n"
+                if accuracy_metrics.get('conversion_method') == 'LAXITY':
+                    accuracy_section += "  → Note: Low values expected (original=Laxity, exported=SF2 Driver 11)\n"
+
+            # Display target/current
+            if 'audio_accuracy' in accuracy_metrics:
+                accuracy_section += f"\nTarget Audio Accuracy: 95%+\n"
+                accuracy_section += f"Current Audio Accuracy: {accuracy_metrics['audio_accuracy']:.2f}%\n"
+            elif 'overall_accuracy' in accuracy_metrics:
+                accuracy_section += f"\nTarget Register Accuracy: 99%\n"
+                accuracy_section += f"Current Register Accuracy: {accuracy_metrics['overall_accuracy']:.2f}%\n"
+
+            accuracy_section += "\n" + "=" * 80 + "\n"
             info_content += accuracy_section
 
         with open(info_path, 'w', encoding='utf-8') as f:
@@ -1258,9 +1368,9 @@ def format_sequences_for_info_txt(sequences, orderlists, used_sequences):
     return "\n".join(output)
 
 
-def inject_siddump_sequences(sf2_path, sequences, orderlists):
+def inject_siddump_sequences(sf2_path, sequences, orderlists, tables=None):
     """
-    Inject siddump-extracted sequences into SF2 file.
+    Inject siddump-extracted sequences and runtime-built tables into SF2 file.
 
     Properly implements SF2 format requirements:
     1. Parse complete Music Data block to get SequenceSize and pointer addresses
@@ -1268,8 +1378,15 @@ def inject_siddump_sequences(sf2_path, sequences, orderlists):
     3. Write each sequence to its fixed SequenceSize allocation
     4. Update sequence pointer tables
     5. Same for orderlists
+    6. Inject runtime-built instrument/pulse/filter tables
 
     Based on SF2 deep dive analysis of sf2_interface.cpp and driver_info.cpp.
+
+    Args:
+        sf2_path: Path to SF2 file
+        sequences: List of sequences to inject
+        orderlists: List of orderlists to inject
+        tables: Dict with 'instruments', 'pulse', 'filter' keys (optional)
 
     Returns:
         Tuple of (success: bool, used_sequences: set, sequences: list, orderlists: list)
@@ -1472,6 +1589,77 @@ def inject_siddump_sequences(sf2_path, sequences, orderlists):
             sf2_data[ptr_hi_offset] = (order_addr >> 8) & 0xFF
 
         print(f"        Wrote {len(orderlists[:music_info['track_count']])} orderlists")
+
+        # Inject runtime-built tables if provided
+        if tables is not None:
+            print(f"\n        Injecting runtime-built tables...")
+
+            # Detect driver type from SF2 file
+            driver_name = "unknown"
+            try:
+                # Search for driver name in file (NP20 or Driver 11)
+                if b'NP20' in sf2_data[:1024]:
+                    driver_name = "NP20"
+                elif b'Driver' in sf2_data[:1024] or b'DRIVER' in sf2_data[:1024]:
+                    driver_name = "Driver11"
+            except:
+                pass
+
+            # Driver-specific table offsets (relative to load address)
+            # Based on JCH 20.G4 format spec and SF2 Driver 11 documentation
+            if driver_name == "NP20":
+                # NP20 (JCH NewPlayer 20) offsets from JCH 20.G4 format spec
+                # Absolute addresses: Instrument=$1CCB, Pulse=$1BCB, Filter=$1ACB
+                # Load address: $0D7E
+                INSTRUMENT_TABLE_OFFSET = 0x0F4D  # $1CCB - $0D7E
+                PULSE_TABLE_OFFSET = 0x0E4D       # $1BCB - $0D7E
+                FILTER_TABLE_OFFSET = 0x0D4D      # $1ACB - $0D7E
+                print(f"        Using NP20 table offsets")
+            else:
+                # Driver 11 (default SF2 driver) offsets
+                INSTRUMENT_TABLE_OFFSET = 0x0A03
+                PULSE_TABLE_OFFSET = 0x0D03
+                FILTER_TABLE_OFFSET = 0x0F03
+                print(f"        Using Driver 11 table offsets")
+
+            # Write instrument table (8 bytes per entry)
+            if 'instruments' in tables and tables['instruments']:
+                instrument_table = tables['instruments']
+                inst_addr = load_addr + INSTRUMENT_TABLE_OFFSET
+                inst_file_offset = mem_to_file(inst_addr)
+
+                for idx, inst_entry in enumerate(instrument_table):
+                    entry_offset = inst_file_offset + (idx * 8)
+                    if entry_offset + 8 <= len(sf2_data):
+                        sf2_data[entry_offset:entry_offset + 8] = bytes(inst_entry)
+
+                print(f"        Wrote {len(instrument_table)} instruments to ${inst_addr:04X}")
+
+            # Write pulse table (4 bytes per entry)
+            if 'pulse' in tables and tables['pulse']:
+                pulse_table = tables['pulse']
+                pulse_addr = load_addr + PULSE_TABLE_OFFSET
+                pulse_file_offset = mem_to_file(pulse_addr)
+
+                for idx, pulse_entry in enumerate(pulse_table):
+                    entry_offset = pulse_file_offset + (idx * 4)
+                    if entry_offset + 4 <= len(sf2_data):
+                        sf2_data[entry_offset:entry_offset + 4] = bytes(pulse_entry)
+
+                print(f"        Wrote {len(pulse_table)} pulse entries to ${pulse_addr:04X}")
+
+            # Write filter table (4 bytes per entry)
+            if 'filter' in tables and tables['filter']:
+                filter_table = tables['filter']
+                filter_addr = load_addr + FILTER_TABLE_OFFSET
+                filter_file_offset = mem_to_file(filter_addr)
+
+                for idx, filter_entry in enumerate(filter_table):
+                    entry_offset = filter_file_offset + (idx * 4)
+                    if entry_offset + 4 <= len(sf2_data):
+                        sf2_data[entry_offset:entry_offset + 4] = bytes(filter_entry)
+
+                print(f"        Wrote {len(filter_table)} filter entries to ${filter_addr:04X}")
 
         # Write back to file
         with open(sf2_path, 'wb') as f:
@@ -1927,18 +2115,21 @@ def main():
         injected_sequences = None
         injected_orderlists = None
         injected_used_sequences = None
+        runtime_tables = None
         try:
-            sequences, orderlists = extract_sequences_from_siddump(str(sid_file), seconds=10, max_sequences=256)
+            sequences, orderlists, tables = extract_sequences_from_siddump(str(sid_file), seconds=10, max_sequences=256)
             if sequences and orderlists:
                 # Inject into SF2 file using proper format-compliant function
-                success, used_seqs, seqs, ords = inject_siddump_sequences(output_sf2, sequences, orderlists)
+                success, used_seqs, seqs, ords = inject_siddump_sequences(output_sf2, sequences, orderlists, tables)
                 if success:
                     print(f'        [OK] Injected {len(sequences)} sequences from runtime analysis')
+                    print(f'        [OK] Runtime tables: {len(tables["instruments"])} instruments, {len(tables["pulse"])} pulse, {len(tables["filter"])} filter')
                     result['steps']['siddump_sequences'] = {'success': True, 'count': len(sequences)}
                     # Save for info.txt
                     injected_sequences = seqs
                     injected_orderlists = ords
                     injected_used_sequences = used_seqs
+                    runtime_tables = tables
                 else:
                     print(f'        [WARN] Injection failed, using static extraction only')
                     result['steps']['siddump_sequences'] = {'success': False}
@@ -2001,6 +2192,33 @@ def main():
         print(f'        Original: {"[OK]" if orig_wav_ok else "[ERROR]"}')
         print(f'        Exported: {"[OK]" if exp_wav_ok else "[ERROR]"}')
         result['steps']['wav'] = {'orig': orig_wav_ok, 'exp': exp_wav_ok}
+
+        # STEP 4.5: Calculate Audio Accuracy
+        print(f'\n  [4.5/12] Calculating audio accuracy from WAV files...')
+        audio_accuracy = None
+        if orig_wav_ok and exp_wav_ok:
+            from sidm2.audio_comparison import calculate_audio_accuracy
+            try:
+                audio_accuracy = calculate_audio_accuracy(str(orig_wav), str(exp_wav), verbose=True)
+                if audio_accuracy is not None:
+                    print(f'        Audio Accuracy: {audio_accuracy:.2f}%')
+                    # Add audio accuracy to accuracy_metrics
+                    if accuracy_metrics is None:
+                        accuracy_metrics = {}
+                    accuracy_metrics['audio_accuracy'] = audio_accuracy
+                    result['audio_accuracy'] = audio_accuracy
+                else:
+                    print(f'        [WARN] Audio accuracy calculation failed')
+            except Exception as e:
+                print(f'        [WARN] Audio accuracy calculation error: {e}')
+        else:
+            # Check if it's because of SF2-packed file
+            player_type = identify_sid_type(exported_sid) if exported_sid.exists() else None
+            if player_type == 'SF2_PACKED':
+                print(f'        [SKIP] Audio comparison unavailable - SID2WAV v1.8 does not support SF2 Driver 11')
+                print(f'        [INFO] Exported WAV is silent (LAXITY→SF2 conversion uses different player)')
+            else:
+                print(f'        [SKIP] WAV files not available for comparison')
 
         # STEP 5: Hexdump
         print(f'\n  [5/12] Generating hexdumps...')
