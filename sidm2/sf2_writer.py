@@ -830,6 +830,13 @@ class SF2Writer:
         if not pulse_entries:
             pulse_entries = [(0x08, 0x01, 0x40, 0x00)]
 
+        # Pad pulse table to minimum size to avoid missing entry errors
+        # Neutral entry: 0xFF=keep value, 0x00=no modulation, 0x00=instant, 0x00=no chain
+        MIN_PULSE_ENTRIES = 16
+        neutral_entry = (0xFF, 0x00, 0x00, 0x00)
+        while len(pulse_entries) < MIN_PULSE_ENTRIES:
+            pulse_entries.append(neutral_entry)
+
         base_offset = self._addr_to_offset(pulse_addr)
 
         # Convert from Laxity format (Y*4 indexing) to SF2 format (direct indexing)
@@ -844,7 +851,7 @@ class SF2Writer:
                         # Index already converted during extraction (Y*4 → direct)
                         self.output[offset] = value
 
-        logger.info(f"    Written {len(pulse_entries)} Pulse table entries")
+        logger.info(f"    Written {len(pulse_entries)} Pulse table entries (padded from {len(laxity_tables.get('pulse_table', []))})")
 
     def _inject_filter_table(self) -> None:
         """Inject filter table data extracted from Laxity SID"""
@@ -870,6 +877,13 @@ class SF2Writer:
         if not filter_entries:
             filter_entries = [(0x40, 0x01, 0x20, 0x00)]
 
+        # Pad filter table to minimum size to avoid missing entry errors
+        # Neutral entry: 0x00=no filter, 0x00=no modulation, 0x00=instant, 0x00=no chain
+        MIN_FILTER_ENTRIES = 16
+        neutral_entry = (0x00, 0x00, 0x00, 0x00)
+        while len(filter_entries) < MIN_FILTER_ENTRIES:
+            filter_entries.append(neutral_entry)
+
         base_offset = self._addr_to_offset(filter_addr)
 
         for col in range(min(columns, 4)):
@@ -879,7 +893,7 @@ class SF2Writer:
                     if offset < len(self.output) and col < len(entry):
                         self.output[offset] = entry[col]
 
-        logger.info(f"    Written {len(filter_entries)} Filter table entries")
+        logger.info(f"    Written {len(filter_entries)} Filter table entries (padded from {len(laxity_tables.get('filter_table', []))})")
 
     def _inject_init_table(self) -> None:
         """Inject Init table data"""
