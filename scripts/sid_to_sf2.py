@@ -18,6 +18,12 @@ import os
 import sys
 import subprocess
 
+# Add parent directory to path so sidm2 module can be found
+script_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(script_dir)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
 # Import all components from the sidm2 package
 from sidm2 import (
     PSIDHeader,

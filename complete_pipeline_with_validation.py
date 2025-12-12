@@ -25,6 +25,7 @@ import subprocess
 from pathlib import Path
 import sys
 import time
+import os
 from datetime import datetime
 
 # Import existing tools
@@ -63,7 +64,44 @@ SF2_REFERENCES = {
 }
 
 def identify_sid_type(sid_path):
-    """Identify if SID is SF2-packed or Laxity format."""
+    """Identify if SID is SF2-packed or Laxity format using player-id.exe."""
+    # First, use player-id.exe for accurate detection
+    try:
+        player_id_path = os.path.join(os.getcwd(), 'tools', 'player-id.exe')
+        result = subprocess.run(
+            [player_id_path, str(sid_path)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=os.getcwd()
+        )
+
+        # Parse output to find player type
+        for line in result.stdout.splitlines():
+            if str(sid_path) in line or os.path.basename(str(sid_path)) in line:
+                parts = line.split()
+                if len(parts) >= 2:
+                    player_type = parts[-1]
+
+                    # Map player type to conversion method
+                    if 'Laxity' in player_type or 'NewPlayer' in player_type:
+                        return 'LAXITY'
+                    elif 'SidFactory' in player_type:
+                        # Check if it's an SF2-exported file or original SF2 format
+                        # SF2-exported files will have init=0x1000, play=0x1003
+                        with open(sid_path, 'rb') as f:
+                            data = f.read()
+                        init_addr = struct.unpack('>H', data[10:12])[0]
+                        play_addr = struct.unpack('>H', data[12:14])[0]
+                        if init_addr == 0x1000 and play_addr == 0x1003:
+                            return 'SF2_PACKED'
+                        else:
+                            return 'LAXITY'  # Original Laxity file
+
+    except Exception as e:
+        print(f"Warning: player-id.exe detection failed: {e}")
+
+    # Fallback to heuristics if player detection fails
     with open(sid_path, 'rb') as f:
         data = f.read()
 
@@ -71,7 +109,6 @@ def identify_sid_type(sid_path):
     if magic not in ['PSID', 'RSID']:
         return 'UNKNOWN'
 
-    version = struct.unpack('>H', data[4:6])[0]
     data_offset = struct.unpack('>H', data[6:8])[0]
     load_addr = struct.unpack('>H', data[8:10])[0]
     init_addr = struct.unpack('>H', data[10:12])[0]
@@ -88,15 +125,18 @@ def identify_sid_type(sid_path):
     if actual_load >= 0xA000:
         return 'LAXITY'
 
+    # SF2-exported files have specific init/play addresses
     if actual_load == 0x1000:
         if init_addr == 0x1000 and play_addr == 0x1003:
             return 'SF2_PACKED'
 
+    # Search for Laxity pattern in entire music data (not just first 100 bytes)
     laxity_pattern = bytes([0xA9, 0x00, 0x8D])
-    if laxity_pattern in music_data[:100]:
+    if laxity_pattern in music_data:
         return 'LAXITY'
 
-    return 'SF2_PACKED'
+    # Default to LAXITY if uncertain (better than SF2_PACKED)
+    return 'LAXITY'
 
 def parse_sid_header(sid_path):
     """Parse SID header for metadata."""
@@ -116,12 +156,20 @@ def convert_sid_to_sf2(sid_path, output_sf2, file_type, reference_sf2=None):
         extract_sf2_properly(str(sid_path), str(reference_sf2), str(output_sf2))
         return 'REFERENCE', True
     elif file_type == 'LAXITY':
+        # Set PYTHONPATH to include current directory so sidm2 module can be found
+        env = os.environ.copy()
+        env['PYTHONPATH'] = os.getcwd()
+
         result = subprocess.run(
-            ['python', 'sid_to_sf2.py', str(sid_path), str(output_sf2), '--overwrite'],
+            ['python', 'scripts/sid_to_sf2.py', str(sid_path), str(output_sf2), '--overwrite'],
             capture_output=True,
             text=True,
-            timeout=60
+            timeout=60,
+            env=env,
+            cwd=os.getcwd()
         )
+        if result.returncode != 0:
+            print(f"        [ERROR] LAXITY conversion failed: {result.stderr}")
         return 'LAXITY', result.returncode == 0
     else:
         template_sf2 = Path('G5/examples/Driver 11 Test - Arpeggio.sf2')
