@@ -167,7 +167,7 @@ def convert_sid_to_sf2(sid_path, output_sf2, file_type, reference_sf2=None):
         env['PYTHONPATH'] = os.getcwd()
 
         result = subprocess.run(
-            ['python', 'scripts/sid_to_sf2.py', str(sid_path), str(output_sf2), '--driver', 'np20', '--overwrite'],
+            ['python', 'scripts/sid_to_sf2.py', str(sid_path), str(output_sf2), '--driver', 'laxity', '--overwrite'],
             capture_output=True,
             text=True,
             timeout=60,

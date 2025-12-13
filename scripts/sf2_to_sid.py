@@ -193,8 +193,16 @@ class SF2File:
         For Driver 11, these are stored at file offset 0x31 (init) and 0x33 (play)
         in little-endian format.
 
-        Driver code is typically at $1000 (not at load_address $0D7E).
+        For Laxity driver (load address $0D7E), use known entry points.
         """
+        # Laxity driver detection
+        if self.load_address == 0x0D7E:
+            # Laxity driver has fixed entry points
+            self.init_address = 0x0D80  # Load + 2
+            self.play_address = 0x0D83  # Load + 5
+            logger.debug(f"  Detected Laxity driver (load=$0D7E)")
+            return
+
         # Default fallback: Driver code at $1000
         self.init_address = 0x1000
         self.play_address = 0x1003
@@ -210,7 +218,8 @@ class SF2File:
             play = self.data[0x33] | (self.data[0x34] << 8)
 
             # Sanity check: addresses should be in reasonable range
-            if 0x1000 <= init <= 0x2000 and 0x1000 <= play <= 0x2000:
+            # Updated to support Laxity driver which loads at $0D7E (below $1000)
+            if 0x0800 <= init <= 0x2000 and 0x0800 <= play <= 0x2000:
                 self.init_address = init
                 self.play_address = play
                 logger.debug(f"  Read from header: init=${init:04X} play=${play:04X}")

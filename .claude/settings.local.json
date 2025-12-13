@@ -87,7 +87,9 @@
       "Bash(set PYTHONPATH=%CD%)",
       "Bash(cmd.exe /c build_driver.bat)",
       "Bash(/c/debugger/64tass/64tass.exe:*)",
-      "Bash(C:/debugger/64tass/64tass.exe --output drivers/laxity/sf2driver_laxity_00.prg --cbm-prg drivers/laxity/laxity_driver.asm)"
+      "Bash(C:/debugger/64tass/64tass.exe --output drivers/laxity/sf2driver_laxity_00.prg --cbm-prg drivers/laxity/laxity_driver.asm)",
+      "Bash(do echo \"=== $file ===\")",
+      "Bash(do tools/player-id.exe \"$file\")"
     ],
     "deny": [],
     "ask": []
