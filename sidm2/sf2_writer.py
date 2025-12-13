@@ -1354,9 +1354,81 @@ class SF2Writer:
         def addr_to_offset(addr: int) -> int:
             return addr - load_addr + 2  # +2 for PRG load address bytes
 
-        # Laxity music data addresses (where relocated player expects them)
-        # Original Laxity orderlists at $1900, after -$0200 relocation = $1700
-        orderlist_start = 0x1700
+        #  ===== POINTER PATCHING FOR RELOCATED LAXITY PLAYER =====
+        # The relocated Laxity player contains hardcoded pointers to orderlist/sequence locations
+        # Original addresses after -$0200 relocation: $1698-$1898
+        # We need to inject at $1900-$1B00 (to avoid SF2 header conflict at $1700)
+        # So we must patch all instructions that reference $1698-$1A98 to point to $1900-$1B00
+
+        logger.info("  Patching orderlist pointers in relocated player...")
+
+        # Define all pointer patches (from trace_orderlist_access.py output)
+        # Format: (file_offset, old_lo, old_hi, new_lo, new_hi)
+        # NOTE: "old" addresses are AFTER -$0200 relocation (driver template is already relocated)
+        pointer_patches = [
+            # Sequence/data references (after -$0200 relocation)
+            (0x01C6, 0xD8, 0x16, 0x40, 0x19),  # $16D8 -> $1940
+            (0x01CC, 0xD9, 0x16, 0x41, 0x19),  # $16D9 -> $1941
+            (0x02AD, 0xB7, 0x16, 0x1F, 0x19),  # $16B7 -> $191F (11 instances)
+            (0x02BE, 0xB7, 0x16, 0x1F, 0x19),
+            (0x02D4, 0xB7, 0x16, 0x1F, 0x19),
+            (0x02ED, 0xB7, 0x16, 0x1F, 0x19),
+            (0x0300, 0xB7, 0x16, 0x1F, 0x19),
+            (0x030E, 0xB7, 0x16, 0x1F, 0x19),
+            (0x0335, 0xB7, 0x16, 0x1F, 0x19),
+            (0x0347, 0xB7, 0x16, 0x1F, 0x19),
+            (0x0353, 0xB7, 0x16, 0x1F, 0x19),
+            (0x0361, 0xB7, 0x16, 0x1F, 0x19),
+            (0x0372, 0xB7, 0x16, 0x1F, 0x19),
+            (0x0380, 0xB7, 0x16, 0x1F, 0x19),
+            (0x057A, 0x3E, 0x17, 0xA6, 0x19),  # $173E -> $19A6 (2 instances)
+            (0x058D, 0x3E, 0x17, 0xA6, 0x19),
+            (0x0581, 0x70, 0x17, 0xD8, 0x19),  # $1770 -> $19D8 (2 instances)
+            (0x05B8, 0x70, 0x17, 0xD8, 0x19),
+            (0x0595, 0x57, 0x17, 0xBF, 0x19),  # $1757 -> $19BF
+            (0x05C8, 0xDA, 0x16, 0x42, 0x19),  # $16DA -> $1942 (2 instances)
+            (0x05D6, 0xDA, 0x16, 0x42, 0x19),
+            (0x05CF, 0x0C, 0x17, 0x74, 0x19),  # $170C -> $1974 (2 instances)
+            (0x05DC, 0x0C, 0x17, 0x74, 0x19),
+            (0x0684, 0x89, 0x17, 0xF1, 0x19),  # $1789 -> $19F1 (3 instances)
+            (0x069D, 0x89, 0x17, 0xF1, 0x19),
+            (0x06A7, 0x89, 0x17, 0xF1, 0x19),
+            (0x068C, 0xBD, 0x17, 0x25, 0x1A),  # $17BD -> $1A25 (4 instances)
+            (0x0699, 0xBD, 0x17, 0x25, 0x1A),
+            (0x06B5, 0xBD, 0x17, 0x25, 0x1A),
+            (0x06BE, 0xBD, 0x17, 0x25, 0x1A),
+            (0x06AF, 0xA3, 0x17, 0x0B, 0x1A),  # $17A3 -> $1A0B
+            (0x052A, 0xD7, 0x17, 0x3F, 0x1A),  # $17D7 -> $1A3F
+            # Table references (after -$0200 relocation)
+            (0x00DE, 0x19, 0x18, 0x81, 0x1A),  # $1819 -> $1A81 (3 instances - instrument table)
+            (0x00E5, 0x19, 0x18, 0x81, 0x1A),
+            (0x0394, 0x19, 0x18, 0x81, 0x1A),
+            (0x0103, 0x1C, 0x18, 0x84, 0x1A),  # $181C -> $1A84
+            (0x0108, 0x1F, 0x18, 0x87, 0x1A),  # $181F -> $1A87
+            (0x038A, 0x1A, 0x18, 0x82, 0x1A),  # $181A -> $1A82
+            (0x0141, 0x22, 0x18, 0x8A, 0x1A),  # $1822 -> $1A8A
+            (0x0146, 0x49, 0x18, 0xB1, 0x1A),  # $1849 -> $1AB1
+        ]
+
+        # Apply patches
+        patches_applied = 0
+        for file_offset, old_lo, old_hi, new_lo, new_hi in pointer_patches:
+            if file_offset + 1 < len(self.output):
+                # Verify old values match (safety check)
+                current_lo = self.output[file_offset]
+                current_hi = self.output[file_offset + 1]
+
+                if current_lo == old_lo and current_hi == old_hi:
+                    self.output[file_offset] = new_lo
+                    self.output[file_offset + 1] = new_hi
+                    patches_applied += 1
+                else:
+                    logger.warning(f"    Patch mismatch at ${file_offset:04X}: expected {old_lo:02X} {old_hi:02X}, found {current_lo:02X} {current_hi:02X}")
+
+        logger.info(f"  Applied {patches_applied} pointer patches")
+
+        # Now inject orderlists at the safe location $1900-$1B00
+        orderlist_start = 0x1900
 
         # Calculate file offsets
         orderlist_offset = addr_to_offset(orderlist_start)
