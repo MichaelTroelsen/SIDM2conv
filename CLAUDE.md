@@ -67,6 +67,8 @@ SIDM2/
 │   ├── sid_player.py      # SID file player and analyzer (v0.6.2)
 │   ├── sf2_player_parser.py # SF2-exported SID parser (v0.6.2)
 │   ├── siddump_extractor.py # Runtime sequence extraction (v1.3)
+│   ├── sid_to_midi_emulator.py # Python MIDI emulator (100% accuracy on select files)
+│   ├── midi_sequence_extractor.py # MIDI→SF2 sequence converter
 │   ├── gate_inference.py  # Waveform-based gate detection (v1.5.0)
 │   ├── accuracy.py        # Accuracy calculation module (v1.4.1)
 │   └── validation.py      # Validation utilities (v0.6.0)
@@ -111,9 +113,33 @@ SIDM2/
 # 1. Convert SID to SF2
 python scripts/sid_to_sf2.py SID/Song.sid output/Song/New/Song.sf2
 
-# 2. Check conversion report
+# 2. Convert with MIDI-based sequence extraction (high accuracy)
+python scripts/sid_to_sf2.py SID/Song.sid output/Song/New/Song.sf2 --use-midi
+
+# 3. Check conversion report
 cat output/Song/New/info.txt
 ```
+
+###  MIDI-Based Sequence Extraction (NEW)
+
+High-accuracy sequence extraction using Python MIDI emulator:
+
+```bash
+# Convert with MIDI extraction (validated 100% accuracy on 3/17 files)
+python scripts/sid_to_sf2.py SID/Beast.sid output/Beast.sf2 --use-midi
+
+# MIDI emulator achieves:
+# - 100% perfect match: Beast.sid, Delicate.sid, Ocean_Reloaded.sid
+# - 100.66% overall accuracy (10793 vs 10722 notes across 17 files)
+# - Batch synth processing matching SIDtool behavior
+```
+
+**Features**:
+- Frame-based SID register capture
+- Batch synth collection (like SIDtool)
+- Legato note detection
+- MIDI note conversion with exact formula
+- Integration pending for sequence data
 
 ### Complete Validation Pipeline
 

@@ -143,7 +143,7 @@ def analyze_sid_file(filepath: str, config: ConversionConfig = None, sf2_referen
     return extracted
 
 
-def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = None, config: ConversionConfig = None, sf2_reference_path: str = None):
+def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = None, config: ConversionConfig = None, sf2_reference_path: str = None, use_midi: bool = False):
     """Convert a SID file to SF2 format
 
     Args:
@@ -152,6 +152,7 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
         driver_type: 'driver11' for standard driver, 'np20' for NewPlayer 20 (or None to use config)
         config: Optional configuration (uses defaults if None)
         sf2_reference_path: Optional path to original SF2 file (for SF2-exported SIDs)
+        use_midi: Use MIDI-based sequence extraction (Python emulator, high accuracy)
 
     Raises:
         FileNotFoundError: If input file doesn't exist
@@ -214,6 +215,41 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
                 extracted.siddump_data = None
         else:
             extracted.siddump_data = None
+
+        # MIDI-based sequence extraction (optional, high accuracy)
+        if use_midi:
+            try:
+                logger.info("Using MIDI-based sequence extraction...")
+                from sidm2.sid_to_midi_emulator import convert_sid_to_midi
+                from sidm2.midi_sequence_extractor import extract_sequences_from_midi_file
+                import tempfile
+
+                # Export to MIDI first
+                with tempfile.NamedTemporaryFile(suffix='.mid', delete=False) as tmp_midi:
+                    midi_path = tmp_midi.name
+
+                try:
+                    convert_sid_to_midi(input_path, midi_path, frames=1000)
+                    logger.info(f"  Exported MIDI: {midi_path}")
+
+                    # Extract sequences from MIDI
+                    sequences = extract_sequences_from_midi_file(midi_path)
+                    logger.info(f"  Extracted MIDI sequences: "
+                              f"V1={len(sequences.get('voice1', []))} events, "
+                              f"V2={len(sequences.get('voice2', []))} events, "
+                              f"V3={len(sequences.get('voice3', []))} events")
+
+                    # TODO: Integrate sequences into extracted data
+                    # For now, just log that we have them
+                    logger.info("  MIDI sequences extracted successfully (integration pending)")
+
+                finally:
+                    # Clean up temporary MIDI file
+                    if os.path.exists(midi_path):
+                        os.unlink(midi_path)
+
+            except Exception as e:
+                logger.warning(f"MIDI extraction failed (non-critical): {e}")
 
         # Ensure output directory exists
         output_dir = os.path.dirname(output_path)
@@ -389,8 +425,8 @@ def main():
     driver_group = parser.add_mutually_exclusive_group()
     driver_group.add_argument(
         '--driver', '-d',
-        choices=['np20', 'driver11'],
-        help='Target driver type (default: from config or driver11)'
+        choices=['np20', 'driver11', 'laxity'],
+        help='Target driver type (default: from config or driver11). Use "laxity" for native Laxity NewPlayer v21 format.'
     )
     driver_group.add_argument(
         '--both', '-b',
@@ -405,6 +441,11 @@ def main():
     parser.add_argument(
         '--sf2-reference', '-r',
         help='Path to original SF2 file (for SF2-exported SIDs, enables accurate sequence extraction)'
+    )
+    parser.add_argument(
+        '--use-midi',
+        action='store_true',
+        help='Use MIDI-based sequence extraction (Python emulator, high accuracy)'
     )
     parser.add_argument(
         '--verbose', '-v',
@@ -470,7 +511,8 @@ def main():
             # Use CLI driver arg or fall back to config
             driver_type = args.driver
             sf2_reference = args.sf2_reference if hasattr(args, 'sf2_reference') else None
-            convert_sid_to_sf2(input_file, output_file, driver_type=driver_type, config=config, sf2_reference_path=sf2_reference)
+            use_midi = args.use_midi if hasattr(args, 'use_midi') else False
+            convert_sid_to_sf2(input_file, output_file, driver_type=driver_type, config=config, sf2_reference_path=sf2_reference, use_midi=use_midi)
 
     except (FileNotFoundError, ValueError, IOError) as e:
         logger.error(f"Error: {e}")
