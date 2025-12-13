@@ -6,7 +6,7 @@
 
 ## Overview
 
-This project has access to four external source code repositories containing complete implementations of critical C64 tools and emulators. These repositories provide deep technical reference for understanding SID music format, emulation, debugging, and the SID Factory II editor.
+This project has access to five external source code repositories containing complete implementations of critical C64 tools and emulators. These repositories provide deep technical reference for understanding SID music format, emulation, debugging, and the SID Factory II editor.
 
 **Access**: These repositories are configured in `.claude/settings.local.json` under `permissions.additionalDirectories`
 
@@ -129,7 +129,49 @@ This repository contains the **complete assembly source code for all SF2 drivers
 
 ---
 
-## 4. VICE Emulator
+## 4. sidtool
+
+**Path**: `C:\Users\mit\Downloads\sidtool-master\sidtool-master`
+
+**Description**: Ruby-based command-line tool for analyzing and manipulating SID files. Provides utilities for SID file inspection, MIDI conversion, and music synthesis.
+
+**Key Features**:
+- SID file parsing and analysis
+- MIDI file conversion
+- Ruby code generation for playback
+- SID chip state emulation
+- Voice and synthesis management
+
+**Relevance to SIDM2**:
+- Reference implementation for SID file parsing (Ruby)
+- MIDI conversion approach
+- SID state machine patterns
+- Voice handling and synthesis
+
+**Key Source Directories**:
+```
+sidtool-master/sidtool-master/
+├── lib/sidtool/      - Main library code
+│   ├── file_reader.rb     - SID file parser
+│   ├── sid.rb             - SID file representation
+│   ├── state.rb           - SID chip state
+│   ├── voice.rb           - Voice handling
+│   ├── synth.rb           - Synthesis engine
+│   ├── midi_file_writer.rb - MIDI export
+│   └── ruby_file_writer.rb - Ruby code gen
+├── bin/              - Command-line executables
+└── spec/             - Test specifications
+```
+
+**Use Cases**:
+- Understanding SID file structure
+- Reference for player identification
+- Extraction algorithm reference
+- Format conversion techniques
+
+---
+
+## 5. VICE Emulator
 
 **Path**: `C:\Users\mit\Downloads\vice-3.9`
 
@@ -235,6 +277,7 @@ C:\Users\mit\Downloads\SID-Depacker\
 | **VICE** | Used for testing (x64sc.exe), SID emulation reference | ✅ Analysis complete |
 | **RetroDebugger** | Documented in `RETRODEBUGGER_ANALYSIS.md` | ✅ Analysis complete |
 | **SID-Depacker** | Referenced for packer implementation | ⚠️ Not fully integrated |
+| **sidtool** | Reference for SID analysis and manipulation | ⚠️ Available for reference |
 
 ### Next Steps
 
@@ -328,6 +371,11 @@ When searching these repositories, use these patterns:
 - Depackers: `src/**/*.cpp`
 - Packer definitions: `packers/**/*`
 
+**sidtool**:
+- Library code: `lib/sidtool/**/*.rb`
+- Executables: `bin/*`
+- Tests: `spec/**/*.rb`
+
 ---
 
 ## Version Information
@@ -337,6 +385,7 @@ When searching these repositories, use these patterns:
 | RetroDebugger | master branch | Downloaded snapshot |
 | SID-Depacker | Current | Downloaded snapshot |
 | SID Factory II | master branch | Downloaded snapshot |
+| sidtool | master branch | Downloaded snapshot |
 | VICE | 3.9 | Official release |
 
 **Note**: These are local snapshots. Check original repositories for updates.
@@ -395,12 +444,13 @@ When searching these repositories, use these patterns:
 
 ## Summary
 
-You now have access to **four critical C64 development repositories**:
+You now have access to **five critical C64 development repositories**:
 
 1. ✅ **RetroDebugger** - Real-time debugging and SID monitoring
 2. ✅ **SID-Depacker** - Packing/unpacking reference
 3. ✅ **SID Factory II** - **Complete editor source (CRITICAL for custom driver)**
-4. ✅ **VICE** - Reference C64/SID emulation
+4. ✅ **sidtool** - SID file analysis and manipulation tools
+5. ✅ **VICE** - Reference C64/SID emulation
 
 **Most Important**: The **SID Factory II source code** contains the complete assembly source for all drivers. This is essential for creating a custom Laxity driver.
 
