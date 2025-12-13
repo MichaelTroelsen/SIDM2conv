@@ -1514,6 +1514,116 @@ class SF2Writer:
                 logger.debug(f"    Sequence {seq_idx}: {len(seq_bytes)} bytes at ${current_offset:04X}")
                 current_offset += len(seq_bytes)
 
-        logger.info(f"  Laxity music data injection complete")
+        # Inject tables after sequences
+        # Memory layout: $1900-$1B00 (orderlists), $1B00+ (sequences), then tables
+
+        # Calculate table injection addresses based on pointer patches
+        # All patches add +$0268 offset to relocated addresses
+        # Instrument table: original $1A19, relocated $1819, patched -> $1A81
+        # So inject at $1A81 (not $1A00!)
+        instrument_table_start = 0x1A81  # Matches patched pointer $1819 -> $1A81
+        wave_table_start = 0x1942        # Matches patched pointer $16DA -> $1942
+        pulse_table_start = 0x1E00       # Estimated (no specific patches found yet)
+        filter_table_start = 0x1F00      # Estimated (no specific patches found yet)
+
+        # Inject wave table - FIXED: Laxity uses TWO SEPARATE ARRAYS, not interleaved pairs
+        if hasattr(self.data, 'wavetable') and self.data.wavetable:
+            # De-interleave SF2 format (waveform, note_offset pairs) into two arrays
+            wave_data = self.data.wavetable
+
+            # Extract waveforms and note offsets from interleaved pairs
+            waveforms = bytearray()
+            note_offsets = bytearray()
+
+            for i in range(0, len(wave_data), 2):
+                if i + 1 < len(wave_data):
+                    waveform = wave_data[i] if isinstance(wave_data[i], int) else wave_data[i][0]
+                    note_offset = wave_data[i+1] if isinstance(wave_data[i+1], int) else wave_data[i+1][0]
+                    waveforms.append(waveform)
+                    note_offsets.append(note_offset)
+
+            # Laxity format: Two separate arrays with 50-byte offset
+            # Based on pointer patches: waveforms at $1942, note offsets at $1974
+            waveform_addr = wave_table_start  # $1942
+            note_offset_addr = wave_table_start + 0x32  # $1974 ($1942 + 50 bytes)
+
+            # Calculate file offsets
+            waveform_file_offset = addr_to_offset(waveform_addr)
+            note_offset_file_offset = addr_to_offset(note_offset_addr)
+
+            # Ensure file is large enough
+            max_offset = max(waveform_file_offset + len(waveforms),
+                           note_offset_file_offset + len(note_offsets))
+            if len(self.output) < max_offset:
+                self.output.extend(bytearray(max_offset - len(self.output)))
+
+            # Write waveforms array
+            for i, byte in enumerate(waveforms):
+                self.output[waveform_file_offset + i] = byte
+
+            # Write note offsets array
+            for i, byte in enumerate(note_offsets):
+                self.output[note_offset_file_offset + i] = byte
+
+            logger.info(f"  Injected wave table (Laxity format):")
+            logger.info(f"    Waveforms: {len(waveforms)} bytes at ${waveform_addr:04X}")
+            logger.info(f"    Note offsets: {len(note_offsets)} bytes at ${note_offset_addr:04X}")
+
+        # Inject pulse table
+        if hasattr(self.data, 'pulsetable') and self.data.pulsetable:  # RE-ENABLED after wave fix
+            pulse_offset = addr_to_offset(pulse_table_start)
+            pulse_data = self.data.pulsetable
+
+            # Ensure file is large enough
+            if len(self.output) < pulse_offset + len(pulse_data):
+                self.output.extend(bytearray(pulse_offset + len(pulse_data) - len(self.output)))
+
+            # Write pulse table
+            for i, byte in enumerate(pulse_data):
+                if isinstance(byte, (int, bytes)):
+                    self.output[pulse_offset + i] = byte if isinstance(byte, int) else byte[0]
+
+            logger.info(f"  Injected pulse table: {len(pulse_data)} bytes at ${pulse_table_start:04X}")
+
+        # Inject filter table
+        if hasattr(self.data, 'filtertable') and self.data.filtertable:  # RE-ENABLED after wave fix
+            filter_offset = addr_to_offset(filter_table_start)
+            filter_data = self.data.filtertable
+
+            # Ensure file is large enough
+            if len(self.output) < filter_offset + len(filter_data):
+                self.output.extend(bytearray(filter_offset + len(filter_data) - len(self.output)))
+
+            # Write filter table
+            for i, byte in enumerate(filter_data):
+                if isinstance(byte, (int, bytes)):
+                    self.output[filter_offset + i] = byte if isinstance(byte, int) else byte[0]
+
+            logger.info(f"  Injected filter table: {len(filter_data)} bytes at ${filter_table_start:04X}")
+
+        # Inject instrument table
+        if self.data.instruments and len(self.data.instruments) > 0:  # RE-ENABLED for testing
+            instr_offset = addr_to_offset(instrument_table_start)
+
+            # Laxity instruments are 8 bytes each
+            instr_data = bytearray()
+            for instr in self.data.instruments:
+                if isinstance(instr, (list, tuple)):
+                    for byte in instr[:8]:  # 8 bytes per instrument
+                        instr_data.append(byte if isinstance(byte, int) else ord(byte))
+                elif isinstance(instr, bytes):
+                    instr_data.extend(instr[:8])
+
+            # Ensure file is large enough
+            if len(self.output) < instr_offset + len(instr_data):
+                self.output.extend(bytearray(instr_offset + len(instr_data) - len(self.output)))
+
+            # Write instrument table
+            for i, byte in enumerate(instr_data):
+                self.output[instr_offset + i] = byte
+
+            logger.info(f"  Injected instrument table: {len(instr_data)} bytes ({len(self.data.instruments)} instruments) at ${instrument_table_start:04X}")
+
+        logger.info(f"  Laxity music data injection complete (with tables)")
         logger.info(f"  Total file size: {len(self.output)} bytes")
 
