@@ -87,19 +87,22 @@ def identify_sid_type(sid_path):
                     player_type = parts[-1]
 
                     # Map player type to conversion method
-                    if 'Laxity' in player_type or 'NewPlayer' in player_type:
-                        return 'LAXITY'
-                    elif 'SidFactory' in player_type:
-                        # Check if it's an SF2-exported file or original SF2 format
-                        # SF2-exported files will have init=0x1000, play=0x1003
+                    # Check for SidFactory FIRST (before Laxity) because SF2-exported
+                    # files may be identified as "SidFactory_II/Laxity"
+                    if 'SidFactory' in player_type:
+                        # Both SF2-exported and Laxity files may be identified as "SidFactory_II/Laxity"
+                        # Distinguish by checking init address:
+                        # - SF2-exported files have init=0x1000 (standard SF2 init)
+                        # - Laxity originals have init=0xA000 or other addresses
                         with open(sid_path, 'rb') as f:
                             data = f.read()
                         init_addr = struct.unpack('>H', data[10:12])[0]
-                        play_addr = struct.unpack('>H', data[12:14])[0]
-                        if init_addr == 0x1000 and play_addr == 0x1003:
+                        if init_addr == 0x1000:
                             return 'SF2_PACKED'
                         else:
-                            return 'LAXITY'  # Original Laxity file
+                            return 'LAXITY'  # Original Laxity file with different init
+                    elif 'Laxity' in player_type or 'NewPlayer' in player_type:
+                        return 'LAXITY'
 
     except Exception as e:
         print(f"Warning: player-id.exe detection failed: {e}")

@@ -733,15 +733,15 @@ python scripts/convert_all.py --roundtrip
 ### Overview
 
 **Version**: v1.3
-**Purpose**: Comprehensive 11-step conversion pipeline with full validation
+**Purpose**: Comprehensive 12-step conversion pipeline with full validation
 
 See `docs/ARCHITECTURE.md` for detailed pipeline architecture.
 
 ### Quick Reference
 
-**Steps**: 11 (SID→SF2, siddump sequences, SF2→SID, dumps, WAV, hex, trace, info, disassembly, validation)
+**Steps**: 12 (SID→SF2, siddump sequences, SF2→SID, dumps, WAV, hex, trace, info, disassembly, MIDI comparison, validation, summary)
 
-**Output**: 13 files per SID (9 in New/, 4 in Original/)
+**Output**: 16 files per SID (11 in New/, 5 in Original/)
 
 **Usage**:
 ```bash

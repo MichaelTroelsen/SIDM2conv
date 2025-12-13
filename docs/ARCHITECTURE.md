@@ -522,7 +522,7 @@ Break speed sequence:
 
 ## Complete Pipeline Architecture
 
-### The 11 Pipeline Steps
+### The 12 Pipeline Steps
 
 #### Step 1: SID → SF2 Conversion
 - Smart file type detection (SF2-packed vs Laxity)
@@ -585,10 +585,22 @@ Break speed sequence:
 - Works correctly on original SIDs
 
 #### Step 10: Validation Check
-- Verifies all 13 required files generated
+- Verifies all 16 required files generated (11 New + 5 Original)
 - Reports: COMPLETE (all files) or PARTIAL (some missing)
 - Identifies missing files
 - Generates summary statistics
+
+#### Step 11: MIDI Comparison (NEW v1.2)
+- Exports SID to MIDI using Python MIDI emulator
+- Generates `{filename}_python.mid`
+- Creates comparison report `{filename}_midi_comparison.txt`
+- 100.66% overall accuracy (3 perfect matches)
+- See `docs/MIDI_VALIDATION_SUMMARY.md` for details
+
+#### Step 12: Final Summary
+- Displays pipeline completion status
+- Reports total file count
+- Shows any warnings or errors
 
 ### Output Structure
 
@@ -596,20 +608,23 @@ Break speed sequence:
 output/SIDSF2player_Complete_Pipeline/
 └── {filename}/
     ├── Original/
-    │   ├── {filename}_original.dump    # Siddump capture
-    │   ├── {filename}_original.wav     # Audio
-    │   ├── {filename}_original.hex     # Hexdump
-    │   └── {filename}_original.txt     # SIDwinder trace
+    │   ├── {filename}_original.dump         # Siddump capture
+    │   ├── {filename}_original.wav          # Audio
+    │   ├── {filename}_original.hex          # Hexdump
+    │   ├── {filename}_original.txt          # SIDwinder trace
+    │   └── {filename}_original_sidwinder.asm # SIDwinder disassembly
     └── New/
-        ├── {filename}.sf2                   # SF2 file
-        ├── {filename}_exported.sid          # Packed SID
-        ├── {filename}_exported.dump         # Siddump capture
-        ├── {filename}_exported.wav          # Audio
-        ├── {filename}_exported.hex          # Hexdump
-        ├── {filename}_exported.txt          # SIDwinder trace
-        ├── {filename}_exported_disassembly.md  # Python disasm
-        ├── {filename}_exported_sidwinder.asm   # SIDwinder disasm
-        └── info.txt                         # Comprehensive report
+        ├── {filename}.sf2                       # SF2 file
+        ├── {filename}_exported.sid              # Packed SID
+        ├── {filename}_exported.dump             # Siddump capture
+        ├── {filename}_exported.wav              # Audio
+        ├── {filename}_exported.hex              # Hexdump
+        ├── {filename}_exported.txt              # SIDwinder trace
+        ├── {filename}_exported_disassembly.md   # Python disasm
+        ├── {filename}_exported_sidwinder.asm    # SIDwinder disasm
+        ├── {filename}_python.mid                # Python MIDI export (NEW v1.2)
+        ├── {filename}_midi_comparison.txt       # MIDI validation (NEW v1.2)
+        └── info.txt                             # Comprehensive report
 ```
 
 ### File Type Detection
@@ -646,12 +661,12 @@ has_laxity_init_pattern(memory)
 
 ### Validation System
 
-Checks for 13 required files:
-- 4 in Original/ (.dump, .wav, .hex, .txt)
-- 9 in New/ (.sf2, .sid, .dump, .wav, .hex, .txt, .md, .asm, info.txt)
+Checks for 16 required files:
+- 5 in Original/ (.dump, .wav, .hex, .txt, .asm)
+- 11 in New/ (.sf2, .sid, .dump, .wav, .hex, .txt, .md, .asm, .mid, .txt, info.txt)
 
 **Status**:
-- **COMPLETE**: All 13 files present
+- **COMPLETE**: All 16 files present
 - **PARTIAL**: Some files missing (reports which ones)
 
 ### Known Limitations
