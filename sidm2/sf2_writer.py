@@ -69,7 +69,12 @@ class SF2Writer:
 
             logger.info(f"  Template size: {len(template_data)} bytes")
             self.output = bytearray(template_data)
-            self._inject_music_data_into_template()
+
+            # Use Laxity-specific injection for Laxity driver
+            if self.driver_type == 'laxity':
+                self._inject_laxity_music_data()
+            else:
+                self._inject_music_data_into_template()
         else:
             driver_path = self._find_driver()
 
@@ -125,6 +130,9 @@ class SF2Writer:
                 'template_np20.sf2',
                 r'C:\Users\mit\Downloads\sidfactory2-master\sidfactory2-master\SIDFactoryII\drivers\sf2driver_np20_00.prg',
                 r'C:\Users\mit\Downloads\SIDFactoryII_Win32_20231002\drivers\sf2driver_np20_00.prg',
+            ],
+            'laxity': [
+                os.path.join(base_dir, 'drivers', 'laxity', 'sf2driver_laxity_00.prg'),
             ],
         }
 
@@ -1318,4 +1326,117 @@ class SF2Writer:
         """Inject extracted music data into the SF2 structure"""
         logger.info(" Music data injection is a placeholder")
         logger.debug("The output file structure may need manual refinement")
+
+    def _inject_laxity_music_data(self) -> None:
+        """Inject music data into Laxity driver (native format, no conversion)
+
+        Laxity Driver Memory Layout:
+            $0D7E-$0DFF: SF2 Wrapper
+            $0E00-$16FF: Relocated Laxity Player (with embedded default tables)
+            $1700-$18FF: SF2 Header Blocks
+            $1900+:      Music Data (orderlists, sequences)
+
+        Tables are already in the relocated player, so we only inject:
+            - Orderlists at $1900 (3 tracks × 256 bytes max)
+            - Sequences after orderlists
+        """
+        logger.info("Injecting Laxity music data (native format)...")
+
+        # Get load address from PRG file (first 2 bytes)
+        if len(self.output) < 2:
+            logger.error("  Output file too small to contain load address")
+            return
+
+        load_addr = struct.unpack('<H', self.output[0:2])[0]
+        logger.debug(f"  Load address: ${load_addr:04X}")
+
+        # Helper to convert memory address to file offset
+        def addr_to_offset(addr: int) -> int:
+            return addr - load_addr + 2  # +2 for PRG load address bytes
+
+        # Laxity music data addresses (after relocated player and headers)
+        orderlist_start = 0x1900
+
+        # Calculate file offsets
+        orderlist_offset = addr_to_offset(orderlist_start)
+
+        # Ensure file is large enough
+        min_size = orderlist_offset + (3 * 256) + 1024  # Orderlists + sequences
+        if len(self.output) < min_size:
+            logger.debug(f"  Extending file to {min_size} bytes")
+            self.output.extend(bytearray(min_size - len(self.output)))
+
+        logger.info(f"  Orderlist offset: ${orderlist_offset:04X} (mem: ${orderlist_start:04X})")
+
+        # Inject orderlists (3 tracks, native Laxity format)
+        if self.data.orderlists and len(self.data.orderlists) > 0:
+            logger.info(f"  Injecting {len(self.data.orderlists)} orderlists...")
+
+            for track_idx, orderlist in enumerate(self.data.orderlists[:3]):  # Max 3 tracks
+                track_offset = orderlist_offset + (track_idx * 256)
+
+                # Write orderlist entries (native Laxity format)
+                for i, entry in enumerate(orderlist[:256]):  # Max 256 entries
+                    if isinstance(entry, dict):
+                        # Extract sequence index and transpose
+                        seq_idx = entry.get('sequence', 0)
+                        transpose = entry.get('transpose', 0xA0)  # Default no transpose
+
+                        # Laxity orderlist format: [sequence_idx, transpose]
+                        self.output[track_offset + i] = seq_idx & 0xFF
+                    elif isinstance(entry, int):
+                        # Direct sequence index
+                        self.output[track_offset + i] = entry & 0xFF
+                    else:
+                        self.output[track_offset + i] = 0x00
+
+                # Mark end with 0xFF if needed
+                if len(orderlist) < 256:
+                    self.output[track_offset + len(orderlist)] = 0xFF
+
+                logger.debug(f"    Track {track_idx+1}: {len(orderlist)} entries at ${track_offset:04X}")
+
+        # Inject sequences after orderlists
+        sequence_start = orderlist_start + (3 * 256)  # After 3 orderlist tracks
+        sequence_offset = addr_to_offset(sequence_start)
+
+        if self.data.sequences and len(self.data.sequences) > 0:
+            logger.info(f"  Injecting {len(self.data.sequences)} sequences...")
+            current_offset = sequence_offset
+
+            for seq_idx, sequence in enumerate(self.data.sequences):
+                if not sequence:
+                    continue
+
+                # Write sequence data (native Laxity format)
+                seq_bytes = bytearray()
+
+                for event in sequence:
+                    if isinstance(event, dict):
+                        # Extract note/command
+                        note = event.get('note', 0)
+                        duration = event.get('duration', 1)
+                        gate = event.get('gate', False)
+
+                        # Laxity sequence format varies, use simple note encoding
+                        if gate:
+                            seq_bytes.append(0x7E)  # Gate on marker
+                        seq_bytes.append(note & 0x7F)
+
+                    elif isinstance(event, int):
+                        seq_bytes.append(event & 0xFF)
+
+                # Write sequence end marker
+                seq_bytes.append(0x7F)
+
+                # Copy to output
+                for i, byte in enumerate(seq_bytes):
+                    if current_offset + i < len(self.output):
+                        self.output[current_offset + i] = byte
+
+                logger.debug(f"    Sequence {seq_idx}: {len(seq_bytes)} bytes at ${current_offset:04X}")
+                current_offset += len(seq_bytes)
+
+        logger.info(f"  Laxity music data injection complete")
+        logger.info(f"  Total file size: {len(self.output)} bytes")
 

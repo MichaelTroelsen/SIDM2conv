@@ -25,7 +25,7 @@ class DriverConfig:
     generate_both: bool = False
 
     # Available driver types
-    available_drivers: List[str] = field(default_factory=lambda: ['driver11', 'np20'])
+    available_drivers: List[str] = field(default_factory=lambda: ['driver11', 'np20', 'laxity'])
 
     def validate(self):
         """Validate driver configuration"""
