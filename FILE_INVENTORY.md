@@ -1,6 +1,6 @@
 # File Inventory
 
-**Last Updated**: 2025-12-13 20:22:44
+**Last Updated**: 2025-12-13 20:43:08
 
 ## Repository Structure
 
@@ -8,14 +8,14 @@
 SIDM2/
 ├── CHANGELOG.md (7.9KB)
 ├── check_pulse_data.py (1.3KB)
-├── CLAUDE.md (21.3KB)
+├── CLAUDE.md (21.6KB)
 ├── cleanup_md_files.py (2.9KB)
-├── complete_pipeline_with_validation.py (99.7KB)
+├── complete_pipeline_with_validation.py (102.8KB)
 ├── CONSOLIDATION_COMPLETE.md (9.3KB)
 ├── CONTRIBUTING.md (6.5KB)
 ├── external-repositories.md (14.3KB)
 ├── file_inventory.json (0B)
-├── FILE_INVENTORY.md (140.4KB)
+├── FILE_INVENTORY.md (139.0KB)
 ├── KNOWLEDGE_CONSOLIDATION.md (15.2KB)
 ├── KNOWLEDGE_CONSOLIDATION_NP20_RESEARCH.md (29.8KB)
 ├── LAXITY_ACCURACY_ANALYSIS.md (7.1KB)
@@ -23,7 +23,7 @@ SIDM2/
 ├── LAXITY_NP20_RESEARCH_REPORT.md (23.5KB)
 ├── nul (0B)
 ├── pytest.ini (475B)
-├── README.md (69.4KB)
+├── README.md (69.7KB)
 ├── requirements-test.txt (92B)
 ├── requirements.txt (115B)
 ├── RUNTIME_TABLE_BUILDING_IMPLEMENTATION.md (13.3KB)
@@ -168,6 +168,7 @@ SIDM2/
 │   ├── IMPROVEMENT_PLAN.md (13.8KB)
 │   ├── INDEX.md (4.5KB)
 │   ├── MIDI_COMPARISON_RESULTS.md (11.9KB)
+│   ├── MIDI_VALIDATION_SUMMARY.md (12.3KB)
 │   ├── SF2_DEEP_DIVE.md (31.4KB)
 │   ├── SID_REGISTERS_REFERENCE.md (8.4KB)
 │   ├── SIDDUMP_DEEP_DIVE.md (26.2KB)
@@ -1663,7 +1664,9 @@ SIDM2/
 │   │   │   │   ├── Aint_Somebody_exported.wav (2.5MB)
 │   │   │   │   ├── Aint_Somebody_exported_disassembly.md (59.8KB)
 │   │   │   │   ├── Aint_Somebody_exported_sidwinder.asm (262.0KB)
-│   │   │   │   ├── info.txt (105.3KB)
+│   │   │   │   ├── Aint_Somebody_midi_comparison.txt (567B)
+│   │   │   │   ├── Aint_Somebody_python.mid (6.7KB)
+│   │   │   │   ├── info.txt (105.6KB)
 │   │   │   └── Original/
 │   │   │       ├── Aint_Somebody_original.dump (54.6KB)
 │   │   │       ├── Aint_Somebody_original.hex (21.8KB)
@@ -1682,7 +1685,7 @@ SIDM2/
 │   │   │   │   ├── Broware_exported.wav (2.5MB)
 │   │   │   │   ├── Broware_exported_disassembly.md (61.3KB)
 │   │   │   │   ├── Broware_exported_sidwinder.asm (244.0KB)
-│   │   │   │   ├── info.txt (96.2KB)
+│   │   │   │   ├── info.txt (96.5KB)
 │   │   │   └── Original/
 │   │   │       ├── Broware_original.dump (54.6KB)
 │   │   │       ├── Broware_original.hex (28.4KB)
@@ -1700,8 +1703,10 @@ SIDM2/
 │   │   │   │   ├── Cocktail_to_Go_tune_3_exported.txt (276.9KB)
 │   │   │   │   ├── Cocktail_to_Go_tune_3_exported.wav (2.5MB)
 │   │   │   │   ├── Cocktail_to_Go_tune_3_exported_disassembly.md (59.7KB)
-│   │   │   │   ├── Cocktail_to_Go_tune_3_exported_sidwinder.asm (136.0KB)
-│   │   │   │   ├── info.txt (62.4KB)
+│   │   │   │   ├── Cocktail_to_Go_tune_3_exported_sidwinder.asm (135.7KB)
+│   │   │   │   ├── Cocktail_to_Go_tune_3_midi_comparison.txt (583B)
+│   │   │   │   ├── Cocktail_to_Go_tune_3_python.mid (5.7KB)
+│   │   │   │   ├── info.txt (62.7KB)
 │   │   │   └── Original/
 │   │   │       ├── Cocktail_to_Go_tune_3_original.dump (54.6KB)
 │   │   │       ├── Cocktail_to_Go_tune_3_original.hex (19.1KB)
@@ -1719,14 +1724,15 @@ SIDM2/
 │   │   │   │   ├── Driver 11 Test - Arpeggio_exported.wav (2.5MB)
 │   │   │   │   ├── Driver 11 Test - Arpeggio_exported_disassembly.md (61.5KB)
 │   │   │   │   ├── Driver 11 Test - Arpeggio_exported_sidwinder.asm (49.0KB)
+│   │   │   │   ├── Driver 11 Test - Arpeggio_midi_comparison.txt (591B)
 │   │   │   │   ├── Driver_11_Test_-_Arpeggio.sid (6.9KB)
-│   │   │   │   ├── info.txt (26.3KB)
+│   │   │   │   ├── info.txt (26.7KB)
 │   │   │   └── Original/
 │   │   │       ├── Driver 11 Test - Arpeggio_original.dump (54.6KB)
 │   │   │       ├── Driver 11 Test - Arpeggio_original.hex (29.9KB)
 │   │   │       ├── Driver 11 Test - Arpeggio_original.txt (276.9KB)
 │   │   │       ├── Driver 11 Test - Arpeggio_original.wav (2.5MB)
-│   │   │       ├── Driver 11 Test - Arpeggio_original_sidwinder.asm (50.2KB)
+│   │   │       ├── Driver 11 Test - Arpeggio_original_sidwinder.asm (50.3KB)
 │   │   ├── Driver 11 Test - Filter/
 │   │   │   ├── Driver 11 Test - Filter_waveform_analysis.html (11.0KB)
 │   │   │   ├── New/
@@ -1738,14 +1744,15 @@ SIDM2/
 │   │   │   │   ├── Driver 11 Test - Filter_exported.wav (2.5MB)
 │   │   │   │   ├── Driver 11 Test - Filter_exported_disassembly.md (61.4KB)
 │   │   │   │   ├── Driver 11 Test - Filter_exported_sidwinder.asm (50.4KB)
+│   │   │   │   ├── Driver 11 Test - Filter_midi_comparison.txt (587B)
 │   │   │   │   ├── Driver_11_Test_-_Filter.sid (7.1KB)
-│   │   │   │   ├── info.txt (26.5KB)
+│   │   │   │   ├── info.txt (26.8KB)
 │   │   │   └── Original/
 │   │   │       ├── Driver 11 Test - Filter_original.dump (54.6KB)
 │   │   │       ├── Driver 11 Test - Filter_original.hex (30.8KB)
 │   │   │       ├── Driver 11 Test - Filter_original.txt (276.9KB)
 │   │   │       ├── Driver 11 Test - Filter_original.wav (2.5MB)
-│   │   │       ├── Driver 11 Test - Filter_original_sidwinder.asm (51.7KB)
+│   │   │       ├── Driver 11 Test - Filter_original_sidwinder.asm (51.8KB)
 │   │   ├── Driver 11 Test - Polyphonic/
 │   │   │   ├── Driver 11 Test - Polyphonic_waveform_analysis.html (11.0KB)
 │   │   │   ├── New/
@@ -1757,8 +1764,9 @@ SIDM2/
 │   │   │   │   ├── Driver 11 Test - Polyphonic_exported.wav (2.5MB)
 │   │   │   │   ├── Driver 11 Test - Polyphonic_exported_disassembly.md (61.5KB)
 │   │   │   │   ├── Driver 11 Test - Polyphonic_exported_sidwinder.asm (55.7KB)
+│   │   │   │   ├── Driver 11 Test - Polyphonic_midi_comparison.txt (595B)
 │   │   │   │   ├── Driver_11_Test_-_Polyphonic.sid (7.9KB)
-│   │   │   │   ├── info.txt (26.4KB)
+│   │   │   │   ├── info.txt (26.7KB)
 │   │   │   └── Original/
 │   │   │       ├── Driver 11 Test - Polyphonic_original.dump (54.6KB)
 │   │   │       ├── Driver 11 Test - Polyphonic_original.hex (34.0KB)
@@ -1776,14 +1784,15 @@ SIDM2/
 │   │   │   │   ├── Driver 11 Test - Tie Notes_exported.wav (2.5MB)
 │   │   │   │   ├── Driver 11 Test - Tie Notes_exported_disassembly.md (61.5KB)
 │   │   │   │   ├── Driver 11 Test - Tie Notes_exported_sidwinder.asm (56.6KB)
+│   │   │   │   ├── Driver 11 Test - Tie Notes_midi_comparison.txt (593B)
 │   │   │   │   ├── Driver_11_Test_-_Tie_Notes.sid (7.8KB)
-│   │   │   │   ├── info.txt (26.4KB)
+│   │   │   │   ├── info.txt (26.7KB)
 │   │   │   └── Original/
 │   │   │       ├── Driver 11 Test - Tie Notes_original.dump (54.6KB)
 │   │   │       ├── Driver 11 Test - Tie Notes_original.hex (33.5KB)
 │   │   │       ├── Driver 11 Test - Tie Notes_original.txt (276.9KB)
 │   │   │       ├── Driver 11 Test - Tie Notes_original.wav (2.5MB)
-│   │   │       ├── Driver 11 Test - Tie Notes_original_sidwinder.asm (56.2KB)
+│   │   │       ├── Driver 11 Test - Tie Notes_original_sidwinder.asm (56.3KB)
 │   │   ├── Expand_Side_1/
 │   │   │   ├── Expand_Side_1_waveform_analysis.html (12.3KB)
 │   │   │   ├── New/
@@ -1799,7 +1808,9 @@ SIDM2/
 │   │   │   │   ├── Expand_Side_1_FIXED.sid (15.9KB)
 │   │   │   │   ├── Expand_Side_1_FIXED2.sid (15.9KB)
 │   │   │   │   ├── Expand_Side_1_FIXED3.sid (15.4KB)
-│   │   │   │   ├── info.txt (91.4KB)
+│   │   │   │   ├── Expand_Side_1_midi_comparison.txt (567B)
+│   │   │   │   ├── Expand_Side_1_python.mid (6.1KB)
+│   │   │   │   ├── info.txt (91.7KB)
 │   │   │   └── Original/
 │   │   │       ├── Expand_Side_1_original.dump (54.6KB)
 │   │   │       ├── Expand_Side_1_original.hex (28.8KB)
@@ -1818,7 +1829,9 @@ SIDM2/
 │   │   │   │   ├── Halloweed_4_tune_3_exported.wav (2.5MB)
 │   │   │   │   ├── Halloweed_4_tune_3_exported_disassembly.md (60.5KB)
 │   │   │   │   ├── Halloweed_4_tune_3_exported_sidwinder.asm (213.4KB)
-│   │   │   │   ├── info.txt (87.3KB)
+│   │   │   │   ├── Halloweed_4_tune_3_midi_comparison.txt (577B)
+│   │   │   │   ├── Halloweed_4_tune_3_python.mid (5.3KB)
+│   │   │   │   ├── info.txt (87.6KB)
 │   │   │   └── Original/
 │   │   │       ├── Halloweed_4_tune_3_original.dump (54.6KB)
 │   │   │       ├── Halloweed_4_tune_3_original.hex (24.0KB)
@@ -1837,7 +1850,9 @@ SIDM2/
 │   │   │   │   ├── I_Have_Extended_Intros_exported.wav (2.5MB)
 │   │   │   │   ├── I_Have_Extended_Intros_exported_disassembly.md (61.5KB)
 │   │   │   │   ├── I_Have_Extended_Intros_exported_sidwinder.asm (278.1KB)
-│   │   │   │   ├── info.txt (112.1KB)
+│   │   │   │   ├── I_Have_Extended_Intros_midi_comparison.txt (585B)
+│   │   │   │   ├── I_Have_Extended_Intros_python.mid (7.6KB)
+│   │   │   │   ├── info.txt (112.5KB)
 │   │   │   └── Original/
 │   │   │       ├── I_Have_Extended_Intros_original.dump (54.6KB)
 │   │   │       ├── I_Have_Extended_Intros_original.hex (16.1KB)

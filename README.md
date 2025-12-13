@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 
-**Version 1.7.0** | Build Date: 2025-12-12 | NP20 Driver Support + Format Compatibility Research
+**Version 1.7.1** | Build Date: 2025-12-13 | 12-Step Pipeline + MIDI Validation
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files.
 
@@ -101,7 +101,7 @@ Round-trip validation creates additional folders:
 
 ### Complete Pipeline with Validation (v1.2)
 
-**NEW**: Comprehensive 10-step pipeline with SIDwinder integration for complete analysis and validation:
+**NEW**: Comprehensive 12-step pipeline with MIDI validation and SIDwinder integration for complete analysis and validation:
 
 ```bash
 python complete_pipeline_with_validation.py
@@ -111,6 +111,7 @@ This processes all SID files with complete validation, analysis, and documentati
 
 #### Pipeline Steps:
 1. **SID → SF2 Conversion** - Smart detection (SF2-packed/Template/Laxity methods)
+1.5. **Siddump Sequence Extraction** - Runtime analysis for accurate sequences
 2. **SF2 → SID Packing** - Generates playable SID files
 3. **Siddump Generation** - Register dumps (original + exported SIDs)
 4. **WAV Rendering** - 30-second audio (original + exported)
@@ -119,9 +120,10 @@ This processes all SID files with complete validation, analysis, and documentati
 7. **Info.txt Reports** - Comprehensive conversion metadata
 8. **Annotated Disassembly** - Python-based code analysis
 9. **SIDwinder Disassembly** - Professional KickAssembler output (original SIDs only*)
-10. **Validation Check** - Verifies all 13 required files generated
+10. **Validation Check** - Verifies all required files generated
+11. **MIDI Comparison** - Python MIDI emulator validation and comparison report
 
-#### Output Structure (13 files per SID):
+#### Output Structure (15 files per SID):
 
 **Original/** (4 files):
 - `{name}_original.dump` - Siddump register capture
@@ -129,7 +131,7 @@ This processes all SID files with complete validation, analysis, and documentati
 - `{name}_original.hex` - Binary hexdump
 - `{name}_original.txt` - SIDwinder trace (empty until rebuild)
 
-**New/** (9 files):
+**New/** (11 files):
 - `{name}.sf2` - Converted SF2 file
 - `{name}_exported.sid` - Packed SID file
 - `{name}_exported.dump` - Siddump register capture
@@ -138,14 +140,16 @@ This processes all SID files with complete validation, analysis, and documentati
 - `{name}_exported.txt` - SIDwinder trace (empty until rebuild)
 - `{name}_exported_disassembly.md` - Annotated disassembly
 - `{name}_exported_sidwinder.asm` - SIDwinder disassembly*
+- `{name}_python.mid` - Python MIDI emulator output
+- `{name}_midi_comparison.txt` - MIDI validation report
 - `info.txt` - Comprehensive conversion report
 
 **Known Limitation**: *SIDwinder disassembly currently works only for original SID files due to a pointer relocation limitation in the SF2 packer. Exported SIDs play correctly in all emulators but trigger SIDwinder's strict CPU emulation checks.
 
-#### Latest Results (2025-12-12):
+#### Latest Results (2025-12-13):
 - **18 SID files processed** in ~2.5 minutes
-- **Complete success**: 5.6% (all 13 files)
-- **Partial success**: 94.4% (12/13 files - missing .asm due to limitation above)
+- **Complete success**: 5.6% (all 15 files)
+- **Partial success**: 94.4% (13-14/15 files - missing .asm due to limitation above)
 - **Core pipeline**: 100% success (Steps 1-8, 10)
 - **WAV rendering**: 97% success (35/36 files - 1 timeout)
 - **SIDwinder trace**: ✅ 100% working (rebuilt with fixes)
@@ -967,7 +971,7 @@ SIDM2/
 ├── sid_to_sf2.py                      # Main SID → SF2 converter
 ├── sf2_to_sid.py                      # SF2 → SID exporter
 ├── convert_all.py                     # Batch converter (both drivers)
-├── complete_pipeline_with_validation.py # Complete 10-step pipeline (v1.2)
+├── complete_pipeline_with_validation.py # Complete 12-step pipeline (v1.2)
 ├── test_roundtrip.py                  # Round-trip validation
 ├── test_converter.py                  # Unit tests (69 tests)
 ├── test_sf2_format.py                 # SF2 format validation
