@@ -1354,8 +1354,9 @@ class SF2Writer:
         def addr_to_offset(addr: int) -> int:
             return addr - load_addr + 2  # +2 for PRG load address bytes
 
-        # Laxity music data addresses (after relocated player and headers)
-        orderlist_start = 0x1900
+        # Laxity music data addresses (where relocated player expects them)
+        # Original Laxity orderlists at $1900, after -$0200 relocation = $1700
+        orderlist_start = 0x1700
 
         # Calculate file offsets
         orderlist_offset = addr_to_offset(orderlist_start)
@@ -1375,6 +1376,10 @@ class SF2Writer:
             for track_idx, orderlist in enumerate(self.data.orderlists[:3]):  # Max 3 tracks
                 track_offset = orderlist_offset + (track_idx * 256)
 
+                # Initialize full 256-byte block with $00
+                for i in range(256):
+                    self.output[track_offset + i] = 0x00
+
                 # Write orderlist entries (native Laxity format)
                 for i, entry in enumerate(orderlist[:256]):  # Max 256 entries
                     if isinstance(entry, dict):
@@ -1390,7 +1395,7 @@ class SF2Writer:
                     else:
                         self.output[track_offset + i] = 0x00
 
-                # Mark end with 0xFF if needed
+                # Mark end with 0xFF
                 if len(orderlist) < 256:
                     self.output[track_offset + len(orderlist)] = 0xFF
 
