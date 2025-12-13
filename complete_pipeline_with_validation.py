@@ -14,10 +14,11 @@ This script implements the COMPLETE pipeline with ALL required steps:
 8. Annotated disassembly generation (exported SID)
 9. SIDwinder disassembly generation (exported SID)
 10. Validation to ensure all expected files exist
+11. SIDtool MIDI comparison (Python emulator validation) - NEW!
 
 Author: SIDM2 Project
-Date: 2025-12-09
-Version: 1.1 - Added siddump-based sequence extraction
+Date: 2025-12-13
+Version: 1.2 - Added SIDtool MIDI comparison for Python emulator validation
 """
 
 import struct
@@ -44,6 +45,8 @@ NEW_FILES = [
     'info.txt',                          # Step 7: Complete conversion report
     '{basename}_exported_disassembly.md', # Step 8: Annotated disassembly
     '{basename}_exported_sidwinder.asm',  # Step 9: SIDwinder disassembly
+    '{basename}_python.mid',             # Step 11a: Python MIDI export
+    '{basename}_midi_comparison.txt',    # Step 11b: MIDI comparison report
 ]
 
 ORIGINAL_FILES = [
@@ -689,6 +692,11 @@ Step 10: Validation
   Checks: All required output files
   Verification: File integrity, size validation
 
+Step 11: SIDtool MIDI Comparison
+  Tool: Python MIDI emulator + test_midi_comparison.py
+  Output: Python MIDI file, comparison report
+  Purpose: Validate Python emulator accuracy against reference
+
 ================================================================================
 OUTPUT FILE STRUCTURE
 ================================================================================
@@ -709,6 +717,8 @@ New/ directory:
   {sid_path.stem}_exported.txt        - SIDwinder trace
   {sid_path.stem}_exported_disassembly.md - Annotated disassembly
   {sid_path.stem}_exported_sidwinder.asm  - SIDwinder disassembly
+  {sid_path.stem}_python.mid          - Python MIDI emulator output
+  {sid_path.stem}_midi_comparison.txt - MIDI comparison report
   info.txt                            - This comprehensive report
 
 ================================================================================
@@ -2046,6 +2056,7 @@ def main():
     print('  [8] Annotated disassembly generation')
     print('  [9] SIDwinder disassembly generation (original + exported)')
     print('  [10] Validation check')
+    print('  [11] SIDtool MIDI comparison (Python emulator validation)')
     print()
 
     results = []
@@ -2295,6 +2306,54 @@ def main():
         if validation['missing']:
             print(f'        Missing: {", ".join(validation["missing"][:3])}...')
         print(f'        Status: {"[COMPLETE]" if validation["complete"] else "[PARTIAL]"}')
+
+        # STEP 11: SIDtool MIDI Comparison
+        print(f'\n  [11/12] SIDtool MIDI comparison...')
+        python_midi = new_dir / f'{basename}_python.mid'
+        midi_comparison = new_dir / f'{basename}_midi_comparison.txt'
+
+        midi_comparison_ok = False
+        try:
+            # Export with Python MIDI emulator
+            from sidm2.sid_to_midi_emulator import convert_sid_to_midi
+            convert_sid_to_midi(str(sid_file), str(python_midi), frames=1000)
+
+            # Run comparison using test_midi_comparison.py
+            # This will compare Python output with SIDtool if available
+            comparison_result = subprocess.run(
+                [sys.executable, 'scripts/test_midi_comparison.py', str(sid_file), '--python-only'],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=os.getcwd()
+            )
+
+            # Save comparison results
+            with open(midi_comparison, 'w', encoding='utf-8') as f:
+                f.write('='*80 + '\n')
+                f.write('PYTHON MIDI EMULATOR VALIDATION\n')
+                f.write('='*80 + '\n\n')
+                f.write(f'SID File: {filename}\n')
+                f.write(f'Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n\n')
+                f.write(comparison_result.stdout)
+                if comparison_result.stderr:
+                    f.write('\n\nErrors:\n')
+                    f.write(comparison_result.stderr)
+
+            midi_comparison_ok = python_midi.exists() and midi_comparison.exists()
+            print(f'        Python MIDI: {"[OK]" if python_midi.exists() else "[ERROR]"}')
+            print(f'        Comparison: {"[OK]" if midi_comparison.exists() else "[ERROR]"}')
+
+        except Exception as e:
+            print(f'        [WARN] MIDI comparison failed: {e}')
+            # Create minimal comparison file
+            try:
+                with open(midi_comparison, 'w', encoding='utf-8') as f:
+                    f.write(f'MIDI comparison failed: {e}\n')
+            except:
+                pass
+
+        result['steps']['midi_comparison'] = {'success': midi_comparison_ok}
 
         results.append(result)
 

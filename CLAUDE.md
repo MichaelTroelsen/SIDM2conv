@@ -25,7 +25,8 @@ python scripts/convert_all.py --roundtrip
 # Test single file round-trip (SID→SF2→SID)
 python scripts/test_roundtrip.py SID/input.sid
 
-# Complete pipeline with full validation (11+ steps: conversion, packing, dumps, accuracy, WAV, hex, trace, info, disassembly, validation)
+# Complete pipeline with full validation (12 steps: conversion, packing, dumps, accuracy, WAV, hex, trace, info, disassembly, validation, MIDI comparison)
+# NEW in v1.2: SIDtool MIDI comparison integrated for Python emulator validation!
 # NEW in v1.4.1: Automatic accuracy calculation integrated!
 python complete_pipeline_with_validation.py
 
@@ -39,7 +40,7 @@ python complete_pipeline_with_validation.py
 
 ```
 SIDM2/
-├── complete_pipeline_with_validation.py  # Complete 11-step pipeline (main entry point)
+├── complete_pipeline_with_validation.py  # Complete 12-step pipeline with MIDI validation (main entry point)
 │
 ├── scripts/               # Conversion and utility scripts
 │   ├── sid_to_sf2.py          # Main SID→SF2 converter
@@ -51,6 +52,8 @@ SIDM2/
 │   ├── run_validation.py      # Validation system runner (v1.4)
 │   ├── generate_dashboard.py  # Dashboard generator (v1.4)
 │   ├── analyze_waveforms.py   # Waveform analysis & HTML report generator (v0.7.2)
+│   ├── test_midi_comparison.py # Python MIDI emulator vs SIDtool comparison
+│   ├── compare_musical_content.py # Musical content validator (note sequences)
 │   ├── disassemble_sid.py     # 6502 disassembler
 │   ├── extract_addresses.py   # Extract data structure addresses
 │   ├── validation/            # Validation system modules (v1.4)
