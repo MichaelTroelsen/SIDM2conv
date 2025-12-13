@@ -52,6 +52,10 @@ output/
 nul
 temp-exp/
 
+# Test output files (root directory)
+/test_*.sf2
+/test_*.wav
+
 # Debug output files
 SF2/*.dump
 SF2/*_info.txt

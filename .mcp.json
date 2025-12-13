@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "mcp-c64": {
+      "command": "npx",
+      "args": ["-y", "mcp-c64"],
+      "env": {
+        "ASSEMBLER": "C:\\debugger\\64tass\\64tass.exe",
+        "TOKENIZER": "C:\\winvice\\bin\\petcat.exe",
+        "EMULATOR": "C:\\winvice\\bin\\x64sc.exe",
+        "ASM_PATH": "C:\\c64-projects\\asm",
+        "BASIC_PATH": "C:\\c64-projects\\basic"
+      }
+    }
+  }
+}

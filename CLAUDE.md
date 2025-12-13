@@ -400,6 +400,11 @@ python scripts/test_complete_pipeline.py -v
 - **CLAUDE.md** (this file) - AI assistant quick reference
 - **README.md** - Comprehensive project documentation
 - **CONTRIBUTING.md** - Contribution guidelines
+- **external-repositories.md** - External source code repositories (NEW)
+  - SID Factory II complete source (with driver assembly code)
+  - VICE emulator source
+  - RetroDebugger source
+  - SID-Depacker source
 
 ### Core Documentation
 - **docs/ARCHITECTURE.md** - Complete system architecture (NEW)
@@ -439,6 +444,12 @@ python scripts/test_complete_pipeline.py -v
 - **docs/format-specification.md** - PSID/RSID formats
 
 ### Analysis and Source Code
+- **sourcerepository.md** - Complete source code repository index (NEW)
+  - C/C++ source (sf2pack, siddump, sf2export, prg2sid)
+  - 6502 assembly source (Laxity NewPlayer v21, SID players)
+  - Python conversion algorithms
+  - Codebase64 archive (100+ projects)
+  - Build configurations and disk images
 - **docs/SF2_SOURCE_ANALYSIS.md** - SF2 editor source code analysis
 - **docs/SIDDUMP_ANALYSIS.md** - Siddump source code analysis
 - **tools/SIDWINDER_ANALYSIS.md** - SIDwinder v0.2.6 source analysis (600+ lines)

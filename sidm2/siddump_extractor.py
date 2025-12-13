@@ -187,6 +187,130 @@ def parse_siddump_output(siddump_text: str) -> Dict[int, List]:
     return voices
 
 
+def build_instrument_table_from_events(voices: Dict[int, List]) -> Tuple[List[List[int]], Dict]:
+    """
+    Build instrument table from runtime ADSR values.
+
+    Args:
+        voices: Dict mapping voice number to list of events
+
+    Returns:
+        (instrument_table, adsr_to_index) tuple
+        - instrument_table: List of 8-byte instrument entries
+        - adsr_to_index: Dict mapping (ad, sr) tuple to instrument index
+    """
+    # Collect unique ADSR combinations
+    adsr_values = set()
+    for voice_events in voices.values():
+        for event in voice_events:
+            adsr = event.get('adsr')
+            if adsr is not None:
+                ad = (adsr >> 8) & 0xFF  # High byte = AD
+                sr = adsr & 0xFF          # Low byte = SR
+                adsr_values.add((ad, sr))
+
+    # Sort for deterministic output
+    adsr_values = sorted(adsr_values)
+
+    # Build instrument table (8 bytes per entry)
+    instrument_table = []
+    adsr_to_index = {}
+
+    for idx, (ad, sr) in enumerate(adsr_values):
+        # Format: [AD, SR, wave_count_speed, filter_setting, filter_ptr, pulse_ptr, pulse_prop, wave_ptr]
+        instrument_entry = [
+            ad,      # Byte 0: Attack/Decay
+            sr,      # Byte 1: Sustain/Release
+            0x00,    # Byte 2: Wave count speed (default)
+            0x00,    # Byte 3: Filter setting (default)
+            0x00,    # Byte 4: Filter table pointer (default)
+            0x00,    # Byte 5: Pulse table pointer (will be updated later)
+            0x00,    # Byte 6: Pulse property (default)
+            0x00     # Byte 7: Wave table pointer (default)
+        ]
+        instrument_table.append(instrument_entry)
+        adsr_to_index[(ad, sr)] = idx
+
+    # Add default instrument if none found
+    if not instrument_table:
+        instrument_table.append([0x0F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+        adsr_to_index[(0x0F, 0x00)] = 0
+
+    print(f"Built instrument table: {len(instrument_table)} instruments from {len(adsr_values)} unique ADSR combinations")
+    return instrument_table, adsr_to_index
+
+
+def build_pulse_table_from_events(voices: Dict[int, List]) -> Tuple[List[List[int]], Dict]:
+    """
+    Build pulse table from runtime pulse values.
+
+    Args:
+        voices: Dict mapping voice number to list of events
+
+    Returns:
+        (pulse_table, pulse_to_index) tuple
+        - pulse_table: List of 4-byte pulse entries
+        - pulse_to_index: Dict mapping pulse value to pulse table index
+    """
+    # Collect unique pulse values
+    pulse_values = set()
+    for voice_events in voices.values():
+        for event in voice_events:
+            pulse = event.get('pulse')
+            if pulse is not None:
+                pulse_values.add(pulse)
+
+    # Sort for deterministic output
+    pulse_values = sorted(pulse_values)
+
+    # Build pulse table (4 bytes per entry)
+    pulse_table = []
+    pulse_to_index = {}
+
+    for idx, pulse_val in enumerate(pulse_values):
+        # Extract hi and lo bytes from 12-bit pulse value
+        pulse_hi = (pulse_val >> 8) & 0x0F
+        pulse_lo = pulse_val & 0xFF
+
+        # Pack into nibbles as per format: hi nibble=lo byte, lo nibble=hi byte
+        packed_value = (pulse_lo & 0xF0) | pulse_hi
+
+        # Format: [initial_value, delta, duration, next]
+        pulse_entry = [
+            packed_value,  # Byte 0: Initial pulse value (packed)
+            0x00,          # Byte 1: Add/subtract value (no modulation)
+            0x00,          # Byte 2: Duration (loop to self)
+            idx * 4        # Byte 3: Next entry (loop to self, Y-indexed)
+        ]
+        pulse_table.append(pulse_entry)
+        pulse_to_index[pulse_val] = idx
+
+    # Add default pulse entry if none found
+    if not pulse_table:
+        pulse_table.append([0x08, 0x00, 0x00, 0x00])  # Default pulse $0800
+        pulse_to_index[0x800] = 0
+
+    print(f"Built pulse table: {len(pulse_table)} entries from {len(pulse_values)} unique pulse values")
+    return pulse_table, pulse_to_index
+
+
+def build_filter_table() -> List[List[int]]:
+    """
+    Build minimal filter table (siddump doesn't capture filter values yet).
+
+    Returns:
+        filter_table: List of 4-byte filter entries
+    """
+    # Create minimal default filter table
+    # Format: [filter_value, count, duration, next]
+    filter_table = [
+        [0xFF, 0x00, 0x00, 0x00],  # Entry 0: Keep current, no modulation
+    ]
+
+    print(f"Built filter table: {len(filter_table)} default entries")
+    return filter_table
+
+
 def parse_note_string(note_str: str) -> Optional[int]:
     """
     Parse note string like "F-5" to SF2 note number.
@@ -256,7 +380,8 @@ def detect_patterns(voice_events: List[Dict]) -> List[List[Dict]]:
     return patterns
 
 
-def convert_pattern_to_sequence(pattern: List[Dict], default_instrument: int = 0, use_waveform_gates: bool = True) -> List[List[int]]:
+def convert_pattern_to_sequence(pattern: List[Dict], default_instrument: int = 0, use_waveform_gates: bool = True,
+                               adsr_to_index: Optional[Dict] = None, pulse_to_index: Optional[Dict] = None) -> List[List[int]]:
     """
     Convert a pattern to SF2 sequence format with enhanced gate detection.
 
@@ -270,6 +395,8 @@ def convert_pattern_to_sequence(pattern: List[Dict], default_instrument: int = 0
         pattern: List of events in pattern (from siddump with waveform data)
         default_instrument: Default instrument number
         use_waveform_gates: Use waveform register data for gate detection
+        adsr_to_index: Dict mapping (ad, sr) to instrument index
+        pulse_to_index: Dict mapping pulse value to pulse table index
 
     Returns:
         List of [instrument, command, note] entries
@@ -285,6 +412,7 @@ def convert_pattern_to_sequence(pattern: List[Dict], default_instrument: int = 0
 
     prev_gate_state = False
     prev_waveform = 0
+    prev_instrument = default_instrument
 
     for i, event in enumerate(pattern):
         note_num = parse_note_string(event['note'])
@@ -296,16 +424,27 @@ def convert_pattern_to_sequence(pattern: List[Dict], default_instrument: int = 0
         # Detect waveform changes (excluding gate bit)
         waveform_changed = (waveform & 0xFE) != (prev_waveform & 0xFE) if use_waveform_gates else False
 
+        # Determine instrument from ADSR value if mappings provided
+        instrument = default_instrument
+        if adsr_to_index is not None and event.get('adsr') is not None:
+            adsr = event['adsr']
+            ad = (adsr >> 8) & 0xFF
+            sr = adsr & 0xFF
+            instrument = adsr_to_index.get((ad, sr), default_instrument)
+
         if note_num is not None:
             # Insert gate-off if we were in gate-on state and either:
             # - Gate bit changed to 0
             # - Waveform changed (requires gate reset)
-            if prev_gate_state and (not current_gate or waveform_changed):
+            # - Instrument changed (requires gate reset)
+            instrument_changed = (instrument != prev_instrument)
+            if prev_gate_state and (not current_gate or waveform_changed or instrument_changed):
                 sequence.append([NO_CHANGE, NO_CHANGE, GATE_OFF])
                 prev_gate_state = False
 
             # Add note trigger with instrument and command
-            sequence.append([default_instrument, 0x00, note_num])
+            sequence.append([instrument, 0x00, note_num])
+            prev_instrument = instrument
 
             # Add gate on if gate bit is set or we're starting a new note
             if current_gate or not use_waveform_gates:
@@ -326,9 +465,9 @@ def convert_pattern_to_sequence(pattern: List[Dict], default_instrument: int = 0
     return sequence
 
 
-def extract_sequences_from_siddump(sid_file: str, seconds: int = 30, max_sequences: int = 39) -> Tuple[List, List]:
+def extract_sequences_from_siddump(sid_file: str, seconds: int = 30, max_sequences: int = 39) -> Tuple[List, List, Dict]:
     """
-    Extract sequences and orderlists from SID file using siddump.
+    Extract sequences, orderlists, and tables from SID file using siddump.
 
     Args:
         sid_file: Path to SID file
@@ -336,9 +475,10 @@ def extract_sequences_from_siddump(sid_file: str, seconds: int = 30, max_sequenc
         max_sequences: Maximum number of sequences to extract
 
     Returns:
-        (sequences, orderlists) tuple
+        (sequences, orderlists, tables) tuple
         sequences: List of sequences (each is list of [inst, cmd, note])
         orderlists: List of 3 orderlists (one per voice)
+        tables: Dict with 'instruments', 'pulse', 'filter' keys
     """
     print(f"Running siddump on {sid_file}...")
 
@@ -346,7 +486,7 @@ def extract_sequences_from_siddump(sid_file: str, seconds: int = 30, max_sequenc
     siddump_output = run_siddump(sid_file, seconds)
     if not siddump_output:
         print("Failed to get siddump output")
-        return [], []
+        return [], [], {}
 
     # Parse output
     voices = parse_siddump_output(siddump_output)
@@ -355,6 +495,18 @@ def extract_sequences_from_siddump(sid_file: str, seconds: int = 30, max_sequenc
     for voice_num, events in voices.items():
         note_events = [e for e in events if e['note'] != "..."]
         print(f"  Voice {voice_num}: {len(events)} events ({len(note_events)} with notes)")
+
+    # Build tables from runtime data
+    print("\nBuilding tables from runtime data...")
+    instrument_table, adsr_to_index = build_instrument_table_from_events(voices)
+    pulse_table, pulse_to_index = build_pulse_table_from_events(voices)
+    filter_table = build_filter_table()
+
+    tables = {
+        'instruments': instrument_table,
+        'pulse': pulse_table,
+        'filter': filter_table
+    }
 
     # Detect patterns for each voice
     all_sequences = []
@@ -368,10 +520,10 @@ def extract_sequences_from_siddump(sid_file: str, seconds: int = 30, max_sequenc
 
         print(f"Voice {voice_num}: detected {len(patterns)} patterns")
 
-        # Convert patterns to sequences
+        # Convert patterns to sequences with runtime-built table mappings
         voice_sequences = []
         for pattern in patterns:
-            seq = convert_pattern_to_sequence(pattern)
+            seq = convert_pattern_to_sequence(pattern, adsr_to_index=adsr_to_index, pulse_to_index=pulse_to_index)
             if seq:
                 voice_sequences.append(seq)
 
@@ -407,8 +559,9 @@ def extract_sequences_from_siddump(sid_file: str, seconds: int = 30, max_sequenc
         global_seq_offset += available_sequences  # Only advance by what we actually used!
 
     print(f"Extracted {len(all_sequences)} sequences total")
+    print(f"Runtime-built tables: {len(instrument_table)} instruments, {len(pulse_table)} pulse entries, {len(filter_table)} filter entries")
 
-    return all_sequences, orderlists
+    return all_sequences, orderlists, tables
 
 
 def save_extracted_data(sequences: List, orderlists: List, output_file: str = "sf2_music_data_extracted.pkl"):

@@ -9,7 +9,12 @@ sid_file = "SIDSF2player/Aint_Somebody.sid"
 print(f"Testing orderlist generation for: {sid_file}")
 print("="*80)
 
-sequences, orderlists = extract_sequences_from_siddump(sid_file, seconds=10, max_sequences=256)
+sequences, orderlists, tables = extract_sequences_from_siddump(sid_file, seconds=10, max_sequences=256)
+
+print(f"\nRuntime-built tables:")
+print(f"  Instruments: {len(tables['instruments'])}")
+print(f"  Pulse entries: {len(tables['pulse'])}")
+print(f"  Filter entries: {len(tables['filter'])}")
 
 print(f"\nTotal sequences extracted: {len(sequences)}")
 print(f"Number of orderlists: {len(orderlists)}")
