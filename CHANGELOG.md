@@ -7,6 +7,116 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.0] - 2025-12-14
+
+### Added - SIDdecompiler Player Structure Analysis
+- **Pipeline Integration**: SIDdecompiler analysis as Step 1.6
+  - Automated player structure analysis for all processed SID files
+  - Player type detection (NewPlayer v21/Laxity recognition)
+  - Memory layout analysis with address ranges
+  - Complete 6502 disassembly generation
+  - Automated report generation (ASM + analysis report)
+- **New Module**: `sidm2/siddecompiler.py` (543 lines)
+  - Python wrapper for SIDdecompiler.exe
+  - `SIDdecompilerAnalyzer` class with subprocess wrapper
+  - Table extraction from assembly output (filter, pulse, instrument, wave)
+  - Player detection (NewPlayer v21, JCH, Hubbard players)
+  - Memory map parsing and analysis
+  - Report generation with player info and statistics
+  - Dataclasses: `MemoryRegion`, `TableInfo`, `PlayerInfo`
+- **New Tool**: `tools/SIDdecompiler.exe` (334 KB)
+  - Emulation-based 6502 disassembler
+  - Based on siddump emulator (same engine as siddump.exe)
+  - Relocation support for address mapping
+  - Rob Hubbard player detection
+  - Conservative approach (only marks executed code)
+- **Analysis Output**: New `analysis/` directory per file
+  - `{basename}_siddecompiler.asm` - Complete disassembly (30-60KB)
+  - `{basename}_analysis_report.txt` - Player info & statistics (650 bytes)
+- **Pipeline Enhancement**: Updated from 12 to 13 steps
+  - Step 1: SID → SF2 conversion
+  - Step 1.5: Siddump sequence extraction
+  - **Step 1.6: SIDdecompiler analysis** ← NEW
+  - Step 2: SF2 → SID packing
+  - Steps 3-11: Dumps, WAV, hex, trace, info, disassembly, validation, MIDI
+- **Validation**: `ANALYSIS_FILES` list for expected outputs
+  - Validates analysis/ directory contents
+  - Checks for both ASM and report files
+  - Integrated into pipeline completion validation
+
+### Changed
+- **complete_pipeline_with_validation.py**: Updated to v1.3
+  - Added `SIDdecompilerAnalyzer` import
+  - Added `ANALYSIS_FILES` list (2 file types)
+  - Updated step numbering from [N/12] to [N/13]
+  - Added Step 1.6 execution code with error handling
+  - Updated `validate_pipeline_completion()` to check analysis/ directory
+- **CLAUDE.md**: Updated documentation
+  - Quick Start: Updated pipeline description (12 → 13 steps)
+  - Project Structure: Updated pipeline description
+  - Added `siddecompiler.py` to sidm2/ modules
+  - Added `SIDdecompiler.exe` to tools/
+
+### Testing
+- **Tested on**: 15/18 files in complete pipeline
+- **Laxity Detection**: 5/5 files correctly identified as "NewPlayer v21 (Laxity)"
+  - Aint_Somebody.sid, Broware.sid, Cocktail_to_Go_tune_3.sid
+  - Expand_Side_1.sid, I_Have_Extended_Intros.sid
+- **SF2-Exported Detection**: 10 files detected as "Unknown" (expected)
+  - Driver 11 Test files, SF2packed files, other converted files
+- **Success Rate**: 83% (15/18 analyzed successfully)
+
+### Documentation
+- **SIDDECOMPILER_INTEGRATION_RESULTS.md**: Comprehensive test results
+  - Analysis results by file (player type, memory ranges)
+  - Example analysis reports
+  - Integration success metrics
+  - Phase 1 completion status
+  - Next steps (Phases 2-4)
+- **docs/analysis/SIDDECOMPILER_INTEGRATION_ANALYSIS.md**: Implementation analysis
+  - SIDdecompiler capabilities and features
+  - JCH NewPlayer v21.G5 source code analysis
+  - Integration plan (4 phases)
+  - Memory layouts and table structures
+  - Code structure and examples
+- **docs/reference/SID_DEPACKER_INVENTORY.md**: Tool inventory
+  - Complete catalog of SID music tools
+  - Source code locations and file counts
+  - Tool descriptions and capabilities
+  - Updated after SID-Wizard suite removal (1,177 → 788 files)
+- **test_siddecompiler_integration.py**: Integration test script
+  - Tests Step 1.6 on single SID file
+  - Validates player detection and table extraction
+  - Verifies output file generation
+
+### Fixed
+- None (new feature integration)
+
+### Phase 1 Status
+- ✅ **Complete**: Basic integration and validation successful
+- ✅ Created sidm2/siddecompiler.py wrapper module (543 lines)
+- ✅ Added run_siddecompiler() function with subprocess wrapper
+- ✅ Implemented extract_tables() to parse assembly output
+- ✅ Tested wrapper module on sample SID file
+- ✅ Integrated into complete_pipeline_with_validation.py as Step 1.6
+- ✅ Tested SIDdecompiler integration on 18 Laxity files
+
+### Next Steps (Phases 2-4)
+- **Phase 2**: Enhanced player structure analyzer
+  - Improve detection of Unknown players
+  - Parse memory layout visually
+  - Generate structure reports with table addresses
+- **Phase 3**: Auto-detection integration
+  - Replace hardcoded table addresses with auto-detected addresses
+  - Validate table formats automatically
+  - Auto-detect table sizes
+- **Phase 4**: Validation & documentation
+  - Compare auto vs manual addresses
+  - Measure accuracy impact
+  - Update documentation with findings
+
+---
+
 ## [2.2.0] - 2025-12-14
 
 ### Added - File Inventory Integration
