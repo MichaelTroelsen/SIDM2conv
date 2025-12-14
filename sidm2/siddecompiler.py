@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
+from sidm2.table_validator import TableValidator, TableValidationResult
+
 
 @dataclass
 class MemoryRegion:
@@ -935,6 +937,43 @@ class SIDdecompilerAnalyzer:
             f.write(report)
 
         return True, report
+
+    def validate_tables(self,
+                       tables: Dict[str, 'TableInfo'],
+                       player_type: Optional[str] = None,
+                       memory_end: int = 0xFFFF) -> TableValidationResult:
+        """
+        Validate extracted tables for consistency and correctness
+
+        Args:
+            tables: Dictionary of TableInfo objects (from extract_tables)
+            player_type: Optional player type for format-specific validation
+            memory_end: Upper memory boundary (default: $FFFF)
+
+        Returns:
+            TableValidationResult with all findings
+        """
+        validator = TableValidator()
+        return validator.validate_tables(tables, player_type, memory_end)
+
+    def validate_and_report(self,
+                           tables: Dict[str, 'TableInfo'],
+                           player_type: Optional[str] = None,
+                           memory_end: int = 0xFFFF) -> str:
+        """
+        Validate tables and generate detailed report
+
+        Args:
+            tables: Dictionary of TableInfo objects
+            player_type: Optional player type
+            memory_end: Upper memory boundary
+
+        Returns:
+            Formatted validation report string
+        """
+        validator = TableValidator()
+        result = validator.validate_tables(tables, player_type, memory_end)
+        return validator.generate_report(result)
 
 
 def main():
