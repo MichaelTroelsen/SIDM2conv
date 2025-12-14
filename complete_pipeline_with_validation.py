@@ -889,20 +889,20 @@ ACCURACY VALIDATION RESULTS
             # Audio accuracy (most meaningful for LAXITY conversions)
             if 'audio_accuracy' in accuracy_metrics:
                 accuracy_section += f"Audio Accuracy (WAV comparison): {accuracy_metrics['audio_accuracy']:.2f}%\n"
-                accuracy_section += "  ↳ Measures actual sound output similarity (player-independent)\n\n"
+                accuracy_section += "  -> Measures actual sound output similarity (player-independent)\n\n"
             elif accuracy_metrics.get('conversion_method') == 'LAXITY':
                 # Audio accuracy unavailable - likely SF2 limitation
                 accuracy_section += "Audio Accuracy (WAV comparison): N/A\n"
-                accuracy_section += "  ↳ Audio comparison unavailable - SID2WAV v1.8 does not support SF2 Driver 11\n"
-                accuracy_section += "  ↳ Exported file uses SF2 Driver 11 player (LAXITY→SF2 conversion)\n"
-                accuracy_section += "  ↳ Future enhancement: VICE integration for proper SF2 WAV rendering\n\n"
+                accuracy_section += "  -> Audio comparison unavailable - SID2WAV v1.8 does not support SF2 Driver 11\n"
+                accuracy_section += "  -> Exported file uses SF2 Driver 11 player (LAXITY->SF2 conversion)\n"
+                accuracy_section += "  -> Future enhancement: VICE integration for proper SF2 WAV rendering\n\n"
 
             # Register-level accuracy (only meaningful when using same player)
             if 'overall_accuracy' in accuracy_metrics:
                 accuracy_section += f"Register-Level Accuracy: {accuracy_metrics['overall_accuracy']:.2f}%\n"
-                accuracy_section += f"  ↳ Conversion Method: {accuracy_metrics.get('conversion_method', 'N/A')}\n"
+                accuracy_section += f"  -> Conversion Method: {accuracy_metrics.get('conversion_method', 'N/A')}\n"
                 if 'audio_accuracy' in accuracy_metrics and accuracy_metrics.get('conversion_method') == 'LAXITY':
-                    accuracy_section += "  ↳ Note: Low register accuracy expected (different players: Laxity vs SF2)\n"
+                    accuracy_section += "  -> Note: Low register accuracy expected (different players: Laxity vs SF2)\n"
                 accuracy_section += "\n"
 
             # Detailed register metrics (if available)
@@ -2230,7 +2230,7 @@ def main():
             player_type = identify_sid_type(exported_sid) if exported_sid.exists() else None
             if player_type == 'SF2_PACKED':
                 print(f'        [SKIP] Audio comparison unavailable - SID2WAV v1.8 does not support SF2 Driver 11')
-                print(f'        [INFO] Exported WAV is silent (LAXITY→SF2 conversion uses different player)')
+                print(f'        [INFO] Exported WAV is silent (LAXITY->SF2 conversion uses different player)')
             else:
                 print(f'        [SKIP] WAV files not available for comparison')
 
