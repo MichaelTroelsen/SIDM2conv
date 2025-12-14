@@ -590,10 +590,11 @@ class TestNewFeatures(unittest.TestCase):
         c64_data, load_address = parser.get_c64_data(header)
 
         analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
-        filter_table = analyzer.extract_filter_table()
+        filter_table, filter_addr = analyzer.extract_filter_table()
 
-        # Filter table should be bytes
+        # Filter table should be bytes, address should be int or None
         self.assertIsInstance(filter_table, bytes)
+        self.assertIsInstance(filter_addr, (int, type(None)))
 
     @unittest.skipUnless(
         os.path.exists(r"C:\Users\mit\claude\c64server\SIDM2\SID\Unboxed_Ending_8580.sid"),
@@ -1273,11 +1274,12 @@ class TestAllSIDFiles(unittest.TestCase):
                 analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
 
                 # Extract tables
-                filter_table = analyzer.extract_filter_table()
+                filter_table, filter_addr = analyzer.extract_filter_table()
                 pulse_table = analyzer.extract_pulse_table()
 
                 # Tables should be bytes
                 self.assertIsInstance(filter_table, bytes)
+                self.assertIsInstance(filter_addr, (int, type(None)))
                 self.assertIsInstance(pulse_table, bytes)
 
     def test_all_sid_files_command_mapping(self):
