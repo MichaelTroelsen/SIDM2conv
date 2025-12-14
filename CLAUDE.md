@@ -13,8 +13,14 @@ SID to SF2 Converter - Converts Commodore 64 SID music files (Laxity NewPlayer v
 ## Quick Start
 
 ```bash
-# Convert single file
+# Convert single file (auto-detects format)
 python scripts/sid_to_sf2.py SID/input.sid output/SongName/New/output.sf2
+
+# Convert Laxity SID with high accuracy (99.93% frame accuracy - v1.8.0)
+python scripts/sid_to_sf2.py input.sid output.sf2 --driver laxity
+
+# Quick validation test for Laxity driver
+python test_laxity_accuracy.py
 
 # Batch convert all SID files (generates both NP20 and Driver 11 versions)
 python scripts/convert_all.py
@@ -28,6 +34,7 @@ python scripts/test_roundtrip.py SID/input.sid
 # Complete pipeline with full validation (12 steps: conversion, packing, dumps, accuracy, WAV, hex, trace, info, disassembly, validation, MIDI comparison)
 # NEW in v1.2: SIDtool MIDI comparison integrated for Python emulator validation!
 # NEW in v1.4.1: Automatic accuracy calculation integrated!
+# NEW in v1.8.0: Laxity driver support with 99.93% accuracy!
 python complete_pipeline_with_validation.py
 
 # CI/CD workflow runs automatically on PR/push (v1.4.2)
@@ -382,12 +389,13 @@ HR_DEFAULT_SR = 0x00     # No sustain, no release
 
 ## Known Limitations
 
-- **Player Format Compatibility** (v1.7.0):
+- **Player Format Compatibility** (v1.8.0 - UPDATED):
   - **SF2-Exported SIDs**: 100% accuracy ✅ (perfect roundtrip)
-  - **Laxity NewPlayer v21 → Driver 11**: 1-8% accuracy ⚠️ (experimental)
-  - **Laxity NewPlayer v21 → NP20**: 1-8% accuracy ⚠️ (experimental)
-  - **Root Cause**: Fundamental format incompatibility between Laxity and JCH NewPlayer
-  - **See**: `LAXITY_NP20_RESEARCH_REPORT.md` for detailed analysis
+  - **Laxity NewPlayer v21 → Laxity Driver**: **99.93% accuracy** ✅ (production ready)
+  - **Laxity NewPlayer v21 → Driver 11**: 1-8% accuracy ⚠️ (use Laxity driver instead)
+  - **Laxity NewPlayer v21 → NP20**: 1-8% accuracy ⚠️ (use Laxity driver instead)
+  - **Root Cause**: Format incompatibility solved with custom Laxity driver
+  - **See**: `docs/LAXITY_DRIVER_IMPLEMENTATION.md` for complete documentation
 - **Only supports Laxity NewPlayer v21** - Other player formats not supported
 - **Single subtune per file** - Multi-song SIDs not supported
 - **Init, Arp, HR tables use defaults** - Not extracted from original
@@ -436,7 +444,7 @@ python scripts/test_complete_pipeline.py -v
   - SID-Depacker source
 
 ### Core Documentation
-- **docs/ARCHITECTURE.md** - Complete system architecture (NEW)
+- **docs/ARCHITECTURE.md** - Complete system architecture
   - Conversion flow (8 steps)
   - Table extraction strategy
   - SF2 template-based approach
@@ -446,7 +454,15 @@ python scripts/test_complete_pipeline.py -v
   - Complete pipeline (11 steps)
   - SF2 driver reference
 
-- **docs/COMPONENTS_REFERENCE.md** - Python modules reference (NEW)
+- **docs/LAXITY_DRIVER_IMPLEMENTATION.md** - Laxity driver complete guide (v1.8.0)
+  - Implementation overview (Phases 1-6)
+  - Wave table format fix (99.93% accuracy breakthrough)
+  - Memory layout and pointer patching
+  - Validation results and production readiness
+  - Usage guide and troubleshooting
+  - See also: `docs/implementation/` for detailed technical docs
+
+- **docs/COMPONENTS_REFERENCE.md** - Python modules reference
   - Core converter (sid_to_sf2.py)
   - SF2 Packer (sf2_packer.py v0.6.0)
   - CPU 6502 Emulator (cpu6502_emulator.py v0.6.2)
@@ -530,6 +546,7 @@ Assistant: [Use EnterPlanMode to explore and design approach first]
 
 ## Version History
 
+- **v1.8.0** (2025-12-14) - **Laxity driver with 99.93% accuracy** (production ready)
 - **v1.7.0** (2025-12-12) - NP20 driver support + Format compatibility research
 - **v0.7.2** (2025-12-12) - WAV rendering fix + Waveform analysis tool
 - **v1.6.0** (2025-12-12) - Runtime table building implementation
