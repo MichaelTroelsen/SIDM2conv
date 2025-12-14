@@ -247,12 +247,33 @@ class CleanupTool:
         print(f"\n[COMPLETE] Cleanup finished! {len(self.files_to_clean)} files and {len(self.dirs_to_clean)} directories removed.")
         print(f"           Backup list: {backup_list}")
 
+    def scan_experiments(self):
+        """Scan experiments directory"""
+        print("[+] Scanning experiments directory...")
+
+        experiments_dir = self.root_dir / 'experiments'
+        if not experiments_dir.exists():
+            return
+
+        # Find all experiment subdirectories
+        for exp_dir in experiments_dir.iterdir():
+            if exp_dir.is_dir() and exp_dir.name not in ['TEMPLATE', 'ARCHIVE', '.git']:
+                # Check if it has a cleanup script (indicates it's a real experiment)
+                if (exp_dir / 'cleanup.sh').exists() or (exp_dir / 'cleanup.bat').exists():
+                    # Calculate size
+                    size = sum(f.stat().st_size for f in exp_dir.rglob('*') if f.is_file())
+                    if size > 0:  # Only include if it has content
+                        self.dirs_to_clean.append(exp_dir)
+                        self.total_size += size
+
 def main():
     parser = argparse.ArgumentParser(description='SIDM2 Project Cleanup Tool')
     parser.add_argument('--scan', action='store_true', help='Scan and show what would be cleaned')
     parser.add_argument('--clean', action='store_true', help='Actually remove files')
     parser.add_argument('--force', action='store_true', help='Skip confirmation')
     parser.add_argument('--output-only', action='store_true', help='Clean only output directory')
+    parser.add_argument('--experiments', action='store_true', help='Clean only experiments directory')
+    parser.add_argument('--all', action='store_true', help='Clean everything (root + output + experiments)')
 
     args = parser.parse_args()
 
@@ -262,9 +283,16 @@ def main():
 
     tool = CleanupTool()
 
-    # Scan
-    if args.output_only:
+    # Scan based on flags
+    if args.experiments:
+        tool.scan_experiments()
+    elif args.output_only:
         tool.scan_output_dirs()
+    elif args.all:
+        tool.scan_root_files()
+        tool.scan_output_dirs()
+        tool.scan_temp_outputs()
+        tool.scan_experiments()
     else:
         tool.scan_root_files()
         tool.scan_output_dirs()
