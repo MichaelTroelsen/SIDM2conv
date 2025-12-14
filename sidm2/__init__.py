@@ -21,6 +21,7 @@ from .table_extraction import (
 from .instrument_extraction import extract_laxity_instruments, extract_laxity_wave_table
 from .sequence_extraction import analyze_sequence_commands, extract_command_parameters, get_command_names
 from .laxity_analyzer import LaxityPlayerAnalyzer
+from .martin_galway_analyzer import MartinGalwayAnalyzer
 from .sf2_writer import SF2Writer
 from .siddump import extract_from_siddump
 from .note_utils import (
@@ -63,6 +64,7 @@ __all__ = [
     # Parsers
     'SIDParser',
     'LaxityPlayerAnalyzer',
+    'MartinGalwayAnalyzer',
 
     # Extraction functions
     'find_instrument_table',

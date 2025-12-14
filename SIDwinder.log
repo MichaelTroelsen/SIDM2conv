@@ -1,7 +1,1 @@
-===== SIDwinder Log Started at 2025-12-14 19:36:53 =====
-[2025-12-14 19:36:53] [WARNING] Init/play routine attempted KERNAL ROM call - skipping
-[2025-12-14 19:36:53] [ERROR] Function execution aborted after 30000 steps - possible infinite loop
-[2025-12-14 19:36:53] [ERROR] Last PC: $1003, SP: $F3
-[2025-12-14 19:36:53] [ERROR] Recent PC history: $1003 $1003 $1003 $1003 $1003 $1003 $1003 $1003 
-[2025-12-14 19:36:53] [ERROR] SID emulation failed
-[2025-12-14 19:36:53] [ERROR] Failed to disassemble output\SIDSF2player_Complete_Pipeline\tie_notes_test\New\tie_notes_test_exported.sid
+===== SIDwinder Log Started at 2025-12-14 21:36:22 =====
