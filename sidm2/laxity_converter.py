@@ -6,6 +6,7 @@ Handles SID to SF2 conversion using custom Laxity driver.
 
 import struct
 from pathlib import Path
+from sidm2.sf2_header_generator import SF2HeaderGenerator
 
 
 class LaxityConverter:
@@ -24,17 +25,25 @@ class LaxityConverter:
     def __init__(self):
         """Initialize converter."""
         self.driver = None
+        self.headers = None
         self.load_driver()
+        self.load_headers()
     
     def load_driver(self):
         """Load Laxity driver template."""
         if not self.DRIVER_PATH.exists():
             raise FileNotFoundError(f"Driver not found: {self.DRIVER_PATH}")
-        
+
         with open(self.DRIVER_PATH, 'rb') as f:
             self.driver = bytearray(f.read())
-        
+
         print(f"Loaded Laxity driver: {len(self.driver)} bytes")
+
+    def load_headers(self):
+        """Generate SF2 header blocks."""
+        gen = SF2HeaderGenerator(driver_size=len(self.driver))
+        self.headers = gen.generate_complete_headers()
+        print(f"Generated SF2 headers: {len(self.headers)} bytes")
     
     def inject_tables(self, sf2_data, laxity_data):
         """Inject Laxity tables into SF2 driver."""
