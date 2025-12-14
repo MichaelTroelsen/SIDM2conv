@@ -7,6 +7,115 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.0] - 2025-12-14
+
+### Added - File Inventory Integration
+- **Automatic Inventory Updates**: `cleanup.py --update-inventory` flag
+  - Calls `update_inventory.py` after successful cleanup
+  - Updates `docs/FILE_INVENTORY.md` automatically
+  - Shows file count summary in cleanup output
+  - Integrated into all cleanup workflows (daily, weekly, releases)
+- **Documentation**:
+  - Updated `docs/guides/CLEANUP_SYSTEM.md` to v2.2
+  - Added File Inventory Management section
+  - Updated all cleanup schedule examples to include `--update-inventory`
+  - Added inventory tracking benefits and usage guide
+
+### Changed
+- `update_inventory.py` now writes to `docs/FILE_INVENTORY.md` (was root)
+- All cleanup workflows now recommend `--update-inventory` flag
+- Repository structure documentation maintained automatically
+
+### Fixed
+- Removed duplicate `FILE_INVENTORY.md` from root directory
+- Cleanup tool no longer flags `FILE_INVENTORY.md` as misplaced doc
+
+---
+
+## [2.1.0] - 2025-12-14
+
+### Added - Documentation Organization
+- **Misplaced Documentation Detection**: Automatic MD file organization
+  - Scans root directory for non-standard markdown files
+  - Pattern-based mapping to appropriate `docs/` subdirectories
+  - Integrated into standard cleanup scan (step 4/4)
+- **Documentation Mapping Rules**:
+  - `*_ANALYSIS.md` → `docs/analysis/`
+  - `*_IMPLEMENTATION.md` → `docs/implementation/`
+  - `*_STATUS.md` → `docs/analysis/`
+  - `*_NOTES.md` → `docs/guides/`
+  - `*_CONSOLIDATION*.md` → `docs/archive/`
+  - Repository references → `docs/reference/`
+- **Standard Root Docs** (protected from cleanup):
+  - `README.md`, `CONTRIBUTING.md`, `CHANGELOG.md`, `CLAUDE.md`
+- **Documentation**:
+  - Updated `docs/guides/CLEANUP_SYSTEM.md` to v2.1
+  - Added Documentation Organization section with mapping table
+  - Added benefits and workflow examples
+
+### Changed
+- Moved 13 MD files from root to organized `docs/` locations
+- Root directory now has only 4 standard documentation files
+- Cleanup scan now includes 4 steps (was 3)
+
+---
+
+## [2.0.0] - 2025-12-14
+
+### Added - Cleanup System
+- **`cleanup.py`**: Comprehensive automated cleanup tool (312 lines)
+  - 4-phase scan: root files, output dirs, temp outputs, misplaced docs
+  - Pattern-based detection for test, temp, backup, experiment files
+  - Output directory cleanup (`test_*`, `Test_*`, `midi_comparison`)
+  - Experiment directory management
+  - Safety features: confirmation, backups, protected files
+  - Multiple modes: `--scan`, `--clean`, `--force`, `--all`, `--experiments`, `--output-only`
+- **`new_experiment.py`**: Experiment template generator (217 lines)
+  - Creates structured experiment directories
+  - Generates template scripts (Python + README)
+  - Includes self-cleanup scripts (bash + batch)
+  - Automatic `.gitkeep` for output directories
+- **`experiments/` Directory**: Dedicated space for temporary work
+  - Gitignored (entire directory excluded from commits)
+  - Self-contained experiments with built-in cleanup
+  - Optional ARCHIVE subdirectory for valuable findings
+  - Complete workflow documentation in `experiments/README.md`
+- **`update_inventory.py`**: File inventory generator
+  - Scans complete repository structure
+  - Generates formatted file tree with sizes
+  - Tracks files in root and subdirectories
+  - Creates `FILE_INVENTORY.md` with category summaries
+- **Documentation**:
+  - `docs/guides/CLEANUP_SYSTEM.md` - Complete cleanup guide (v2.0)
+  - `experiments/README.md` - Experiment workflow guide
+  - Updated `.gitignore` with cleanup patterns
+  - Updated `CLAUDE.md` with Project Maintenance section
+
+### Features
+- ✅ Test file detection (`test_*.py`, `test_*.log`, `test_*.sf2`, etc.)
+- ✅ Temporary file detection (`temp_*`, `tmp_*`, `*.tmp`, `*.temp`)
+- ✅ Backup file detection (`*_backup.*`, `*.bak`, `*.backup`)
+- ✅ Output directory cleanup (test directories)
+- ✅ Experiment management with self-cleanup
+- ✅ Automatic backup creation (`cleanup_backup_*.txt`)
+- ✅ Protected files (production scripts, validation data)
+- ✅ Git history preservation (uses `git mv` for moves)
+
+### Workflow
+```bash
+# Daily cleanup
+python cleanup.py --scan
+python cleanup.py --clean
+
+# Create experiment
+python new_experiment.py "my_test"
+
+# Update inventory
+python update_inventory.py
+```
+
+---
+
 ## [1.3.0] - 2025-12-10
 
 ### Added - Siddump Integration
