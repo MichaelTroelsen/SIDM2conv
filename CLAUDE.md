@@ -817,3 +817,24 @@ Assistant: [Use EnterPlanMode to explore and design approach first]
 - **CLAUDE.md** (this file) - Quick reference loaded on every conversation
 - **docs/*** - Detailed documentation loaded on-demand
 - **Clear navigation** - Links to detailed docs when more info needed
+
+---
+
+## Version History
+
+- **v2.0.0** (2025-12-14) - Production Ready Release! 100% validated on 286 real Laxity SID files. Complete Laxity driver with SF2 table editing. Zero failures, 6.4 files/sec throughput. Full documentation.
+- **v1.9.0** (2025-12-14) - Phase 6 Complete: SF2 table editing implementation, header generator, batch test tool
+- **v1.8.0** (2025-12-13) - Phase 5 Complete: Laxity driver API integration, conversion pipeline support
+- **v1.7.0** (2025-12-12) - NP20 driver support + Format compatibility research
+- **v0.7.2** (2025-12-12) - WAV rendering fix + Waveform analysis tool
+- **v1.6.0** (2025-12-12) - Runtime table building implementation
+- **v1.5.0** (2025-12-12) - Waveform-based gate inference system
+- **v1.4.1** (2025-12-12) - Accuracy validation baseline (71.0% average)
+- **v1.3** (2025-12-11) - Added siddump_extractor.py for runtime sequence extraction
+- **v1.2** (2025-12-06) - Added SIDwinder trace to pipeline (now working - rebuilt)
+- **v1.1** (2025-12-06) - Added SIDwinder disassembly to pipeline
+- **v1.0** (2025-12-05) - Complete pipeline with 11 steps
+- **v0.6.2** (2025-11-28) - Added CPU emulator, SID player, SF2 parser modules
+- **v0.6.1** (2025-11-25) - Multi-file validation reports
+- **v0.6.0** (2025-11-20) - Python SF2 packer, accuracy validation system
+- **v0.5.0** (2025-10-15) - Initial working converter
