@@ -48,6 +48,9 @@ python complete_pipeline_with_validation.py
 ```
 SIDM2/
 ├── complete_pipeline_with_validation.py  # Complete 12-step pipeline with MIDI validation (main entry point)
+├── cleanup.py                            # Automated cleanup tool (v2.2)
+├── new_experiment.py                     # Experiment template generator
+├── update_inventory.py                   # File inventory updater
 │
 ├── scripts/               # Conversion and utility scripts
 │   ├── sid_to_sf2.py          # Main SID→SF2 converter
@@ -109,7 +112,16 @@ SIDM2/
 │   └── workflows/
 │       └── validation.yml # CI/CD validation workflow
 │
+├── experiments/           # Temporary experiments (gitignored, v2.0)
+│   ├── README.md          # Experiment workflow guide
+│   ├── {experiment}/      # Individual experiments with self-cleanup
+│   └── ARCHIVE/           # Valuable findings (optional)
+│
 ├── docs/                  # Documentation (see Documentation Index below)
+│   ├── FILE_INVENTORY.md  # Repository structure tracking
+│   └── guides/
+│       └── CLEANUP_SYSTEM.md  # Cleanup system guide (v2.2)
+│
 └── learnings/             # Reference materials and source docs
 ```
 
@@ -298,6 +310,141 @@ python scripts/analyze_waveforms.py output/MySong
 - ~450 lines of code
 
 **Use Case**: Visual comparison of original (Laxity) vs exported (SF2) audio output. Expected to show differences since different players are used.
+
+---
+
+## Project Maintenance
+
+### Cleanup System (v2.2)
+
+Comprehensive automated cleanup system for managing experimental files, documentation organization, and file inventory:
+
+```bash
+# Quick scan (shows what would be cleaned)
+python cleanup.py --scan
+
+# Clean root + output directories
+python cleanup.py --clean
+
+# Clean with automatic inventory update (recommended)
+python cleanup.py --clean --update-inventory
+
+# Clean everything (root + output + experiments)
+python cleanup.py --all --clean --update-inventory
+
+# Force mode (no confirmation)
+python cleanup.py --clean --force --update-inventory
+```
+
+**Features**:
+- ✅ **Test file detection** - `test_*.py`, `test_*.log`, etc.
+- ✅ **Temporary file detection** - `temp_*`, `tmp_*`, `*.tmp`
+- ✅ **Output directory cleanup** - `output/test_*`, `output/Test_*`
+- ✅ **Experiment management** - `experiments/` subdirectories
+- ✅ **Misplaced doc detection** - Auto-organizes MD files to `docs/`
+- ✅ **File inventory updates** - Auto-updates `docs/FILE_INVENTORY.md`
+- ✅ **Safety features** - Confirmation, backups, protected files
+
+**Scan Output**:
+```
+[1/4] Scanning root directory...
+[2/4] Scanning output directory...
+[3/4] Scanning for temporary outputs...
+[4/4] Scanning for misplaced documentation...
+
+Total items: 15 files + 5 directories
+Total size: 2.5 MB
+```
+
+### Experiment Workflow
+
+Create structured experiments with automatic cleanup:
+
+```bash
+# Create new experiment
+python new_experiment.py "wave_table_analysis"
+
+# Or with description
+python new_experiment.py "filter_fix" --description "Test filter format conversion"
+```
+
+**Creates**:
+```
+experiments/wave_table_analysis/
+├── experiment.py       # Template script
+├── README.md          # Documentation template
+├── output/            # Generated files
+├── cleanup.sh         # Unix cleanup script
+└── cleanup.bat        # Windows cleanup script
+```
+
+**Workflow**:
+1. Create experiment: `python new_experiment.py "my_test"`
+2. Work in `experiments/my_test/`
+3. Run: `python experiments/my_test/experiment.py`
+4. Document findings in `README.md`
+5. Cleanup: `cd experiments/my_test && ./cleanup.bat`
+
+**If successful**:
+- Move code to `scripts/` or `sidm2/`
+- Archive findings in `experiments/ARCHIVE/`
+- Clean up with: `python cleanup.py --experiments --clean`
+
+### Documentation Organization
+
+Standard root documentation (always kept in root):
+- `README.md` - Main project documentation
+- `CONTRIBUTING.md` - Contribution guidelines
+- `CHANGELOG.md` - Version history
+- `CLAUDE.md` - AI assistant quick reference
+
+**All other MD files** are automatically detected as misplaced and suggested for `docs/`:
+- `*_ANALYSIS.md` → `docs/analysis/`
+- `*_IMPLEMENTATION.md` → `docs/implementation/`
+- `*_STATUS.md` → `docs/analysis/`
+- `*_NOTES.md` → `docs/guides/`
+- And more (see `docs/guides/CLEANUP_SYSTEM.md`)
+
+### File Inventory Management
+
+Automatically track repository structure:
+
+```bash
+# Update inventory manually
+python update_inventory.py
+
+# Auto-update during cleanup (recommended)
+python cleanup.py --clean --update-inventory
+```
+
+**Tracks**:
+- Complete file tree with sizes
+- Category summaries
+- Management rules
+- Last updated timestamp
+
+**Location**: `docs/FILE_INVENTORY.md`
+
+### Cleanup Schedule
+
+**Daily** (if active development):
+```bash
+python cleanup.py --clean --update-inventory
+```
+
+**Weekly**:
+```bash
+python cleanup.py --all --clean --update-inventory
+```
+
+**Before releases**:
+```bash
+python cleanup.py --all --clean --force --update-inventory
+git add -A
+git commit -m "chore: Cleanup before release"
+```
+
+**Documentation**: See `docs/guides/CLEANUP_SYSTEM.md` for complete guide.
 
 ---
 
