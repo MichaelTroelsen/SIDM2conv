@@ -234,11 +234,11 @@ class CleanupTool:
         print(f"Total size: {self.total_size / (1024 * 1024):.1f} MB")
         print("="*80)
 
-    def clean(self, force=False):
+    def clean(self, force=False, update_inventory=False):
         """Actually remove the files and directories"""
         if not self.files_to_clean and not self.dirs_to_clean:
             print("\n[OK] Nothing to clean!")
-            return
+            return False
 
         # Confirmation
         if not force:
@@ -247,7 +247,7 @@ class CleanupTool:
             response = input("\nProceed? (yes/no): ")
             if response.lower() != 'yes':
                 print("Cleanup cancelled.")
-                return
+                return False
 
         # Create backup list
         backup_list = self.root_dir / f'cleanup_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.txt'
@@ -283,6 +283,30 @@ class CleanupTool:
 
         print(f"\n[COMPLETE] Cleanup finished! {len(self.files_to_clean)} files and {len(self.dirs_to_clean)} directories removed.")
         print(f"           Backup list: {backup_list}")
+
+        # Update inventory if requested
+        if update_inventory:
+            print("\n[INVENTORY] Updating FILE_INVENTORY.md...")
+            try:
+                import subprocess
+                result = subprocess.run(
+                    [sys.executable, 'update_inventory.py'],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                if result.returncode == 0:
+                    print("[INVENTORY] Updated successfully")
+                    # Show summary from output
+                    for line in result.stdout.strip().split('\n'):
+                        if line.startswith('[OK]') or line.startswith('    '):
+                            print(f"            {line}")
+                else:
+                    print(f"[INVENTORY] Update failed: {result.stderr}")
+            except Exception as e:
+                print(f"[INVENTORY] Update failed: {e}")
+
+        return True
 
     def scan_experiments(self):
         """Scan experiments directory"""
@@ -337,6 +361,7 @@ def main():
     parser.add_argument('--output-only', action='store_true', help='Clean only output directory')
     parser.add_argument('--experiments', action='store_true', help='Clean only experiments directory')
     parser.add_argument('--all', action='store_true', help='Clean everything (root + output + experiments)')
+    parser.add_argument('--update-inventory', action='store_true', help='Update FILE_INVENTORY.md after cleanup')
 
     args = parser.parse_args()
 
@@ -368,9 +393,13 @@ def main():
 
     # Clean if requested
     if args.clean:
-        tool.clean(force=args.force)
+        cleaned = tool.clean(force=args.force, update_inventory=args.update_inventory)
+        if cleaned and args.update_inventory:
+            print("\n[TIP] FILE_INVENTORY.md has been updated")
     else:
         print("\n[TIP] To clean these files, run: python cleanup.py --clean")
+        if args.update_inventory:
+            print("[TIP] Add --update-inventory to auto-update FILE_INVENTORY.md after cleanup")
 
 if __name__ == '__main__':
     main()

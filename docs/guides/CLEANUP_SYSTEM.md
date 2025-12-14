@@ -1,6 +1,6 @@
 # SIDM2 Cleanup System - Complete Guide
 
-**Version**: 2.1
+**Version**: 2.2
 **Date**: 2025-12-14
 
 ---
@@ -15,6 +15,7 @@ This project now has a comprehensive cleanup system with:
 ✅ **Updated .gitignore** (prevents committing experiments)
 ✅ **Self-cleaning experiments** (each has cleanup script)
 ✅ **Misplaced documentation detection** (auto-organizes MD files)
+✅ **Automatic inventory updates** (keeps FILE_INVENTORY.md current)
 ✅ **Complete documentation** (`docs/CLEANUP_GUIDE.md`)
 
 ---
@@ -70,6 +71,9 @@ python cleanup.py --scan
 # Clean root + output (default)
 python cleanup.py --clean
 
+# Clean and auto-update FILE_INVENTORY.md (recommended)
+python cleanup.py --clean --update-inventory
+
 # Clean only output directory
 python cleanup.py --output-only --clean
 
@@ -79,9 +83,11 @@ python cleanup.py --experiments --clean
 # Clean everything (root + output + experiments)
 python cleanup.py --all --clean
 
-# Force mode (no confirmation)
-python cleanup.py --clean --force
+# Force mode (no confirmation) with inventory update
+python cleanup.py --clean --force --update-inventory
 ```
+
+**New in v2.2**: The `--update-inventory` flag automatically updates `FILE_INVENTORY.md` after successful cleanup, keeping it in sync with the repository state.
 
 ### Current Cleanup Results
 
@@ -171,6 +177,72 @@ git mv LAXITY_ACCURACY_ANALYSIS.md docs/analysis/LAXITY_ACCURACY_ANALYSIS.md
 ✅ **Prevents clutter** - Detects misplaced docs during regular cleanup scans
 ✅ **Git history preserved** - Uses `git mv` when cleanup tool moves files
 ✅ **Clear categories** - Analysis, implementation, guides, reference, archive
+
+---
+
+## File Inventory Management (NEW in v2.2)
+
+### Automatic Inventory Updates
+
+The cleanup system can automatically update `FILE_INVENTORY.md` after cleanup operations to keep it in sync with the repository state.
+
+**How It Works**:
+
+```bash
+# Clean with automatic inventory update
+python cleanup.py --clean --update-inventory
+
+# Output shows:
+# [COMPLETE] Cleanup finished! 15 files and 5 directories removed.
+#            Backup list: cleanup_backup_20251214_120500.txt
+#
+# [INVENTORY] Updating FILE_INVENTORY.md...
+# [INVENTORY] Updated successfully
+#             [OK] Updated FILE_INVENTORY.md
+#             Files in root: 20
+#             Subdirectories: 16
+```
+
+### When to Update Inventory
+
+**Automatically** (recommended):
+- After cleanup operations: `--clean --update-inventory`
+- Before releases: `--all --clean --force --update-inventory`
+
+**Manually**:
+```bash
+# Update inventory manually anytime
+python update_inventory.py
+```
+
+### What's Tracked
+
+`FILE_INVENTORY.md` contains:
+- ✅ **Complete file tree** - All files and directories
+- ✅ **File sizes** - Human-readable format (B, KB, MB)
+- ✅ **Category summaries** - Purpose of each directory
+- ✅ **Management rules** - Quick reference for organization
+- ✅ **Last updated timestamp** - When inventory was generated
+
+### Benefits
+
+✅ **Always current** - Inventory stays in sync with repository
+✅ **Easy tracking** - See what changed after cleanup
+✅ **Git-friendly** - Track file organization changes
+✅ **Automated** - No manual maintenance needed
+
+### Integration with Cleanup Schedule
+
+```bash
+# Daily cleanup (with inventory)
+python cleanup.py --clean --update-inventory
+
+# Weekly full cleanup (with inventory)
+python cleanup.py --all --clean --update-inventory
+
+# Before releases (forced, with inventory)
+python cleanup.py --all --clean --force --update-inventory
+```
 
 ---
 
@@ -300,8 +372,8 @@ SIDM2/
 # Quick scan
 python cleanup.py --scan
 
-# Clean if > 10 MB
-python cleanup.py --clean
+# Clean if > 10 MB (with inventory update)
+python cleanup.py --clean --update-inventory
 ```
 
 ### Weekly
@@ -309,34 +381,28 @@ python cleanup.py --clean
 # Full scan
 python cleanup.py --all --scan
 
-# Clean experiments
-python cleanup.py --experiments --clean
+# Clean experiments (with inventory)
+python cleanup.py --experiments --clean --update-inventory
 
-# Clean output tests
-python cleanup.py --output-only --clean
+# Clean output tests (with inventory)
+python cleanup.py --output-only --clean --update-inventory
 ```
 
 ### Monthly
 ```bash
-# Full cleanup
-python cleanup.py --all --clean
-
-# Update file inventory
-python update_inventory.py
+# Full cleanup (with inventory)
+python cleanup.py --all --clean --update-inventory
 ```
 
 ### Before Releases
 ```bash
-# Clean everything
-python cleanup.py --all --clean --force
+# Clean everything (forced, with inventory)
+python cleanup.py --all --clean --force --update-inventory
 
 # Delete entire output (regenerate later)
 rm -rf output/
 
-# Update inventory
-python update_inventory.py
-
-# Commit clean state
+# Commit clean state (inventory already updated)
 git add -A
 git commit -m "chore: Cleanup before release"
 ```
@@ -498,11 +564,12 @@ The cleanup system provides:
 
 ✅ **Automated detection** of experimental/temporary files
 ✅ **Documentation organization** (auto-detects misplaced MD files)
+✅ **File inventory management** (auto-updates FILE_INVENTORY.md)
 ✅ **Dedicated experiments/** directory for temporary work
 ✅ **Self-cleaning experiments** with built-in cleanup scripts
 ✅ **Safety features** (confirmation, backups, protected files)
 ✅ **Clear organization** (production vs experiments vs docs)
-✅ **Simple workflow** (create → develop → cleanup)
+✅ **Simple workflow** (create → develop → cleanup → track)
 
 **Goal**: Keep the project clean and organized by making cleanup automatic and easy.
 
@@ -511,18 +578,21 @@ The cleanup system provides:
 ## Quick Commands
 
 ```bash
-# Most common cleanup
-python cleanup.py --clean
+# Most common cleanup (with inventory update)
+python cleanup.py --clean --update-inventory
 
 # Create new experiment
 python new_experiment.py "my_experiment"
 
-# Clean experiments
-python cleanup.py --experiments --clean
+# Clean experiments (with inventory)
+python cleanup.py --experiments --clean --update-inventory
 
-# Nuclear option (delete all generated files)
-python cleanup.py --all --clean --force
+# Nuclear option (delete all generated files, update inventory)
+python cleanup.py --all --clean --force --update-inventory
 rm -rf output/
+
+# Update inventory manually
+python update_inventory.py
 ```
 
 ---
