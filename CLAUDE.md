@@ -31,8 +31,9 @@ python scripts/convert_all.py --roundtrip
 # Test single file round-trip (SID→SF2→SID)
 python scripts/test_roundtrip.py SID/input.sid
 
-# Complete pipeline with full validation (12 steps: conversion, packing, dumps, accuracy, WAV, hex, trace, info, disassembly, validation, MIDI comparison)
+# Complete pipeline with full validation (13 steps: conversion, sequence extraction, player analysis, packing, dumps, accuracy, WAV, hex, trace, info, disassembly, validation, MIDI comparison)
 # NEW in v1.2: SIDtool MIDI comparison integrated for Python emulator validation!
+# NEW in v1.3: SIDdecompiler player structure analysis integrated!
 # NEW in v1.4.1: Automatic accuracy calculation integrated!
 # NEW in v1.8.0: Laxity driver support with 99.93% accuracy!
 python complete_pipeline_with_validation.py
@@ -47,7 +48,7 @@ python complete_pipeline_with_validation.py
 
 ```
 SIDM2/
-├── complete_pipeline_with_validation.py  # Complete 12-step pipeline with MIDI validation (main entry point)
+├── complete_pipeline_with_validation.py  # Complete 13-step pipeline with player analysis + MIDI validation (main entry point)
 ├── cleanup.py                            # Automated cleanup tool (v2.2)
 ├── new_experiment.py                     # Experiment template generator
 ├── update_inventory.py                   # File inventory updater
@@ -80,6 +81,7 @@ SIDM2/
 │   ├── sid_player.py      # SID file player and analyzer (v0.6.2)
 │   ├── sf2_player_parser.py # SF2-exported SID parser (v0.6.2)
 │   ├── siddump_extractor.py # Runtime sequence extraction (v1.3)
+│   ├── siddecompiler.py   # SIDdecompiler wrapper for player analysis (v1.3)
 │   ├── sid_to_midi_emulator.py # Python MIDI emulator (100% accuracy on select files)
 │   ├── midi_sequence_extractor.py # MIDI→SF2 sequence converter
 │   ├── gate_inference.py  # Waveform-based gate detection (v1.5.0)
@@ -88,6 +90,7 @@ SIDM2/
 │
 ├── tools/                 # External tools
 │   ├── siddump.exe        # SID register dump tool (6502 emulation)
+│   ├── SIDdecompiler.exe  # Emulation-based disassembler (player structure analysis)
 │   ├── player-id.exe      # Player type identification
 │   ├── SID2WAV.EXE        # SID to WAV renderer
 │   ├── SIDwinder.exe      # SID processor (disassembly, trace, player, relocate)

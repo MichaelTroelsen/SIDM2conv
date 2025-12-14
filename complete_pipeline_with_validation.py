@@ -4,21 +4,22 @@ Complete SID Conversion Pipeline with Validation
 
 This script implements the COMPLETE pipeline with ALL required steps:
 1. SID → SF2 conversion (tables from static extraction)
-1.5 Siddump sequence extraction (sequences from runtime analysis) - NEW!
+1.5 Siddump sequence extraction (sequences from runtime analysis)
+1.6 SIDdecompiler analysis (player structure analysis) - NEW!
 2. SF2 → SID packing
 3. Siddump generation (original + exported)
 4. WAV rendering (original + exported)
 5. Hexdump generation (original SID + exported SID) - xxd format
-6. SIDwinder trace generation (original + exported) - NEW: requires rebuilt SIDwinder
+6. SIDwinder trace generation (original + exported)
 7. Info.txt generation with all metadata and analysis
 8. Annotated disassembly generation (exported SID)
 9. SIDwinder disassembly generation (exported SID)
 10. Validation to ensure all expected files exist
-11. SIDtool MIDI comparison (Python emulator validation) - NEW!
+11. SIDtool MIDI comparison (Python emulator validation)
 
 Author: SIDM2 Project
-Date: 2025-12-13
-Version: 1.2 - Added SIDtool MIDI comparison for Python emulator validation
+Date: 2025-12-14
+Version: 1.3 - Added SIDdecompiler analysis for player structure detection
 """
 
 import struct
@@ -33,6 +34,7 @@ from datetime import datetime
 from scripts.extract_sf2_properly import extract_sf2_properly
 from sidm2.sf2_packer import pack_sf2_to_sid
 from sidm2.siddump_extractor import extract_sequences_from_siddump
+from sidm2.siddecompiler import SIDdecompilerAnalyzer
 
 # Required files per conversion - separated by directory
 NEW_FILES = [
@@ -55,6 +57,11 @@ ORIGINAL_FILES = [
     '{basename}_original.hex',           # Step 5a: Hexdump original
     '{basename}_original.txt',           # Step 6a: SIDwinder trace original
     '{basename}_original_sidwinder.asm', # Step 9a: SIDwinder disassembly original
+]
+
+ANALYSIS_FILES = [
+    '{basename}_siddecompiler.asm',      # Step 1.6a: SIDdecompiler disassembly
+    '{basename}_analysis_report.txt',    # Step 1.6b: Player structure analysis report
 ]
 
 # Mapping of SID files to their corresponding SF2 reference files
@@ -1193,6 +1200,15 @@ def validate_pipeline_completion(output_dir, basename):
         if not file_path.exists():
             missing_files.append(f'Original/{filename}')
 
+    # Check analysis/ directory
+    analysis_dir = output_dir / 'analysis'
+    for file_template in ANALYSIS_FILES:
+        filename = file_template.format(basename=basename)
+        file_path = analysis_dir / filename
+        expected_files.append(file_path)
+        if not file_path.exists():
+            missing_files.append(f'analysis/{filename}')
+
     total = len(expected_files)
     success = total - len(missing_files)
 
@@ -2050,6 +2066,7 @@ def main():
     print('Pipeline Steps:')
     print('  [1] SID -> SF2 conversion (static table extraction)')
     print('  [1.5] Siddump sequence extraction (runtime analysis)')
+    print('  [1.6] SIDdecompiler analysis (player structure analysis)')
     print('  [2] SF2 -> SID packing')
     print('  [3] Siddump generation (original + exported)')
     print('  [4] WAV rendering (original + exported)')
@@ -2101,7 +2118,7 @@ def main():
         }
 
         # STEP 1: SID -> SF2
-        print(f'\n  [1/12] Converting SID -> SF2 (tables)...')
+        print(f'\n  [1/13] Converting SID -> SF2 (tables)...')
         output_sf2 = new_dir / f'{basename}.sf2'
 
         reference_sf2 = None
@@ -2125,7 +2142,7 @@ def main():
             continue
 
         # STEP 1.5: Extract sequences from siddump (runtime analysis)
-        print(f'\n  [1.5/12] Extracting sequences from siddump...')
+        print(f'\n  [1.5/13] Extracting sequences from siddump...')
         injected_sequences = None
         injected_orderlists = None
         injected_used_sequences = None
@@ -2154,8 +2171,37 @@ def main():
             print(f'        [WARN] Siddump extraction failed: {e}')
             result['steps']['siddump_sequences'] = {'success': False}
 
+        # STEP 1.6: SIDdecompiler Analysis
+        print(f'\n  [1.6/13] Running SIDdecompiler analysis...')
+        analysis_dir = file_output / 'analysis'
+        analysis_dir.mkdir(parents=True, exist_ok=True)
+
+        player_info = None
+        detected_tables = None
+        try:
+            analyzer = SIDdecompilerAnalyzer()
+            success, report = analyzer.analyze_and_report(sid_file, analysis_dir)
+            if success:
+                print(f'        [OK] Analysis complete')
+                # Extract player info and tables from analyzer
+                asm_file = analysis_dir / f'{basename}_siddecompiler.asm'
+                if asm_file.exists():
+                    player_info = analyzer.detect_player(asm_file, "")
+                    detected_tables = analyzer.extract_tables(asm_file)
+                    if player_info:
+                        print(f'        Player: {player_info.type}')
+                    if detected_tables:
+                        print(f'        Tables: {len(detected_tables)} detected')
+                result['steps']['siddecompiler'] = {'success': True}
+            else:
+                print(f'        [WARN] Analysis failed')
+                result['steps']['siddecompiler'] = {'success': False}
+        except Exception as e:
+            print(f'        [WARN] SIDdecompiler error: {e}')
+            result['steps']['siddecompiler'] = {'success': False}
+
         # STEP 2: SF2 -> SID
-        print(f'\n  [2/12] Packing SF2 -> SID...')
+        print(f'\n  [2/13] Packing SF2 -> SID...')
         exported_sid = new_dir / f'{basename}_exported.sid'
 
         if pack_sf2_to_sid_safe(output_sf2, exported_sid, name, author, copyright_str):
@@ -2166,7 +2212,7 @@ def main():
             result['steps']['packing'] = {'success': False}
 
         # STEP 3: Siddump
-        print(f'\n  [3/12] Generating siddumps...')
+        print(f'\n  [3/13] Generating siddumps...')
         orig_dump = original_dir / f'{basename}_original.dump'
         exp_dump = new_dir / f'{basename}_exported.dump'
 
@@ -2178,7 +2224,7 @@ def main():
         result['steps']['siddump'] = {'orig': orig_dump_ok, 'exp': exp_dump_ok}
 
         # STEP 3.5: Calculate Accuracy
-        print(f'\n  [3.5/12] Calculating accuracy from dumps...')
+        print(f'\n  [3.5/13] Calculating accuracy from dumps...')
         accuracy_metrics = None
         if orig_dump_ok and exp_dump_ok:
             from sidm2.accuracy import calculate_accuracy_from_dumps
@@ -2196,7 +2242,7 @@ def main():
             print(f'        [SKIP] Dumps not available for comparison')
 
         # STEP 4: WAV
-        print(f'\n  [4/12] Rendering WAV files...')
+        print(f'\n  [4/13] Rendering WAV files...')
         orig_wav = original_dir / f'{basename}_original.wav'
         exp_wav = new_dir / f'{basename}_exported.wav'
 
@@ -2208,7 +2254,7 @@ def main():
         result['steps']['wav'] = {'orig': orig_wav_ok, 'exp': exp_wav_ok}
 
         # STEP 4.5: Calculate Audio Accuracy
-        print(f'\n  [4.5/12] Calculating audio accuracy from WAV files...')
+        print(f'\n  [4.5/13] Calculating audio accuracy from WAV files...')
         audio_accuracy = None
         if orig_wav_ok and exp_wav_ok:
             from sidm2.audio_comparison import calculate_audio_accuracy
@@ -2235,7 +2281,7 @@ def main():
                 print(f'        [SKIP] WAV files not available for comparison')
 
         # STEP 5: Hexdump
-        print(f'\n  [5/12] Generating hexdumps...')
+        print(f'\n  [5/13] Generating hexdumps...')
         orig_hex = original_dir / f'{basename}_original.hex'
         exp_hex = new_dir / f'{basename}_exported.hex'
 
@@ -2247,7 +2293,7 @@ def main():
         result['steps']['hexdump'] = {'orig': orig_hex_ok, 'exp': exp_hex_ok}
 
         # STEP 6: SIDwinder Trace
-        print(f'\n  [6/12] Generating SIDwinder traces...')
+        print(f'\n  [6/13] Generating SIDwinder traces...')
         orig_trace = original_dir / f'{basename}_original.txt'
         exp_trace = new_dir / f'{basename}_exported.txt'
 
@@ -2259,7 +2305,7 @@ def main():
         result['steps']['trace'] = {'orig': orig_trace_ok, 'exp': exp_trace_ok}
 
         # STEP 7: Info.txt
-        print(f'\n  [7/12] Generating info.txt...')
+        print(f'\n  [7/13] Generating info.txt...')
         info_ok = generate_info_txt_comprehensive(sid_file, output_sf2, new_dir, accuracy_metrics)
 
         # Append sequence information if siddump injection was successful
@@ -2282,14 +2328,14 @@ def main():
         result['steps']['info'] = {'success': info_ok}
 
         # STEP 8: Annotated Disassembly
-        print(f'\n  [8/12] Generating annotated disassembly...')
+        print(f'\n  [8/13] Generating annotated disassembly...')
         disasm_md = new_dir / f'{basename}_exported_disassembly.md'
         disasm_ok = generate_annotated_disassembly(exported_sid, disasm_md) if exported_sid.exists() else False
         print(f'        {"[OK]" if disasm_ok else "[ERROR]"}')
         result['steps']['disassembly'] = {'success': disasm_ok}
 
         # STEP 9: SIDwinder Disassembly
-        print(f'\n  [9/12] Generating SIDwinder disassembly...')
+        print(f'\n  [9/13] Generating SIDwinder disassembly...')
         orig_sidwinder_asm = original_dir / f'{basename}_original_sidwinder.asm'
         sidwinder_asm = new_dir / f'{basename}_exported_sidwinder.asm'
 
@@ -2301,7 +2347,7 @@ def main():
         result['steps']['sidwinder_disasm'] = {'orig': orig_sidwinder_ok, 'exp': exp_sidwinder_ok}
 
         # STEP 10: Validation
-        print(f'\n  [10/12] Validating completion...')
+        print(f'\n  [10/13] Validating completion...')
         validation = validate_pipeline_completion(file_output, basename)
         result['validation'] = validation
 
@@ -2311,7 +2357,7 @@ def main():
         print(f'        Status: {"[COMPLETE]" if validation["complete"] else "[PARTIAL]"}')
 
         # STEP 11: SIDtool MIDI Comparison
-        print(f'\n  [11/12] SIDtool MIDI comparison...')
+        print(f'\n  [11/13] SIDtool MIDI comparison...')
         python_midi = new_dir / f'{basename}_python.mid'
         midi_comparison = new_dir / f'{basename}_midi_comparison.txt'
 
