@@ -158,8 +158,8 @@ python ../update_inventory.py
 - **Monthly**: Archive old experiments
 """
 
-    # Write inventory
-    inventory_path = base_path / "FILE_INVENTORY.md"
+    # Write inventory to docs/
+    inventory_path = base_path / "docs" / "FILE_INVENTORY.md"
     inventory_path.write_text(inventory, encoding='utf-8')
 
     print(f"[OK] Updated {inventory_path}")
