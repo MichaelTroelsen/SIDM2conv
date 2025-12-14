@@ -104,7 +104,8 @@
       "Bash(do echo \"=== $file ===\" grep -A 5 \"Load Address\\|Init Address\\|Play Address\\|Type:\" \"output/SIDSF2player_Complete_Pipeline/$file/analysis/$file_analysis_report.txt\")",
       "Bash(wc:*)",
       "Bash(set PYTHONPATH=.)",
-      "Bash(./tools/player-id.exe:*)"
+      "Bash(./tools/player-id.exe:*)",
+      "Bash(timeout 300 python:*)"
     ],
     "deny": [],
     "ask": []

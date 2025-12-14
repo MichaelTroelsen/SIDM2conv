@@ -1,0 +1,9 @@
+LAXITY PLAYER EXTRACTION ANALYSIS
+============================================================
+
+Reference SID: Laxity\Stinsens_Last_Night_of_89.sid
+Player Size: 1,979 bytes ($07BB)
+
+ABSOLUTE ADDRESSES: 110
+ZERO PAGE USAGE: 28 locations
+ESTIMATED TABLES: 0

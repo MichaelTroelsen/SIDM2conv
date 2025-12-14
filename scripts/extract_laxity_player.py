@@ -1,195 +1,166 @@
 #!/usr/bin/env python3
-"""
-Extract Laxity NewPlayer v21 Binary
+"""Extract Laxity NewPlayer v21 code from reference SID file."""
 
-Extracts the Laxity player code and tables from a reference SID file
-for use in building a custom SF2 driver.
-
-Author: SIDM2 Project
-Date: 2025-12-13
-"""
-
-import sys
 import struct
+import sys
 from pathlib import Path
 
-
-def parse_sid_header(sid_path):
-    """Parse SID file header to get load address and data offset."""
-    with open(sid_path, 'rb') as f:
-        data = f.read()
-
-    # Check magic
-    magic = data[0:4].decode('ascii', errors='ignore')
-    if magic not in ['PSID', 'RSID']:
-        raise ValueError(f"Not a valid SID file: {magic}")
-
-    # Parse header
-    version = struct.unpack('>H', data[4:6])[0]
-    data_offset = struct.unpack('>H', data[6:8])[0]
-    load_addr = struct.unpack('>H', data[8:10])[0]
-    init_addr = struct.unpack('>H', data[10:12])[0]
-    play_addr = struct.unpack('>H', data[12:14])[0]
-
-    print(f"SID File: {sid_path.name}")
-    print(f"  Magic: {magic}")
-    print(f"  Version: {version}")
-    print(f"  Data Offset: 0x{data_offset:04X}")
-    print(f"  Load Address: 0x{load_addr:04X}")
-    print(f"  Init Address: 0x{init_addr:04X}")
-    print(f"  Play Address: 0x{play_addr:04X}")
-
-    return data, data_offset, load_addr, init_addr, play_addr
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
-def extract_player(sid_path, output_path, start_addr=0x1000, end_addr=0x1CFF):
-    """
-    Extract Laxity player binary from SID file.
+def extract_player_from_sid(sid_file: str, output_file: str = None) -> bytes:
+    """Extract Laxity player code from SID file."""
+    with open(sid_file, 'rb') as f:
+        header = f.read(126)
+        music_data = f.read()  # Read while file is still open!
 
-    Standard Laxity NewPlayer v21 layout:
-    - $1000-$10A0: Init routine
-    - $10A1-$1A1D: Play routine and helper functions
-    - $1A1E-$1A3A: Filter table (29 bytes)
-    - $1A3B-$1A6A: Pulse table (48 bytes)
-    - $1A6B-$1ACA: Instruments table (96 bytes)
-    - $1ACB+: Wave table (variable length)
+    if header[0:4] not in [b'PSID', b'RSID']:
+        raise ValueError("Not a valid SID file")
 
-    Args:
-        sid_path: Path to reference SID file
-        output_path: Path for output binary
-        start_addr: Start address of player code (default 0x1000)
-        end_addr: End address of player + tables (default 0x1CFF, ~3.25KB)
-    """
-    data, data_offset, load_addr, init_addr, play_addr = parse_sid_header(sid_path)
+    load_addr = struct.unpack('>H', header[8:10])[0]
+    init_addr = struct.unpack('>H', header[10:12])[0]
+    play_addr = struct.unpack('>H', header[12:14])[0]
 
-    # Verify this is a standard Laxity file
-    if init_addr != 0x1000:
-        print(f"\nWARNING: Init address is 0x{init_addr:04X}, not standard 0x1000")
-        print(f"This may not be a standard Laxity NewPlayer v21 file!")
-        response = input("Continue anyway? (y/n): ")
-        if response.lower() != 'y':
-            print("Extraction cancelled.")
-            return None
+    print(f"SID Header Info:")
+    print(f"  Load Address: ${load_addr:04X}")
+    print(f"  Init Address: ${init_addr:04X}")
+    print(f"  Play Address: ${play_addr:04X}")
 
-    # Calculate extraction range
-    sid_data = data[data_offset:]
+    if load_addr == 0x0000:
+        player_start = 0x1000
+    else:
+        player_start = init_addr - load_addr
 
-    # If load_addr is 0, data starts at the address embedded in first 2 bytes
-    if load_addr == 0:
-        load_addr = struct.unpack('<H', sid_data[0:2])[0]
-        sid_data = sid_data[2:]  # Skip the embedded load address
-        print(f"  Actual Load Address: 0x{load_addr:04X} (from embedded)")
+    player_end = player_start + 0x0A00
 
-    # Calculate byte offsets
-    start_offset = start_addr - load_addr
-    end_offset = end_addr - load_addr + 1
+    if player_end > len(music_data):
+        player_end = len(music_data)
 
-    if start_offset < 0 or end_offset > len(sid_data):
-        print(f"\nERROR: Extraction range out of bounds!")
-        print(f"  Requested: 0x{start_addr:04X} - 0x{end_addr:04X}")
-        print(f"  Available: 0x{load_addr:04X} - 0x{load_addr + len(sid_data):04X}")
-        return None
+    player_code = music_data[player_start:player_end]
 
-    # Extract player binary
-    player_binary = sid_data[start_offset:end_offset]
+    print(f"\nExtraction:")
+    print(f"  Player Start Offset: ${player_start:04X}")
+    print(f"  Player End Offset:   ${player_end:04X}")
+    print(f"  Player Size:         {len(player_code):,} bytes (${len(player_code):04X})")
 
-    print(f"\nExtraction Summary:")
-    print(f"  Address Range: 0x{start_addr:04X} - 0x{end_addr:04X}")
-    print(f"  Size: {len(player_binary)} bytes ({len(player_binary) / 1024:.2f} KB)")
-    print(f"  Output: {output_path}")
+    if output_file:
+        with open(output_file, 'wb') as f:
+            f.write(player_code)
+        print(f"  Output File:         {output_file}")
 
-    # Write to file
-    with open(output_path, 'wb') as f:
-        f.write(player_binary)
-
-    print(f"\n✓ Laxity player extracted successfully!")
-
-    return player_binary
+    return player_code
 
 
-def analyze_player_structure(player_binary, base_addr=0x1000):
-    """Quick analysis of extracted player binary."""
-    print(f"\n{'='*70}")
-    print("PLAYER STRUCTURE ANALYSIS")
-    print(f"{'='*70}")
+def analyze_player_code(player_code: bytes) -> dict:
+    """Analyze extracted player code for relocation information."""
+    analysis = {
+        'absolute_addresses': [],
+        'zero_page_usage': set(),
+        'entry_points': [],
+        'size': len(player_code),
+        'estimated_tables': {}
+    }
 
-    # Check for known Laxity patterns
-    print(f"\nSearching for Laxity player signatures...")
+    for offset in range(len(player_code) - 1):
+        lo = player_code[offset]
+        hi = player_code[offset + 1]
+        addr = (hi << 8) | lo
 
-    # LDA #$00, STA pattern (common in init)
-    init_pattern = bytes([0xA9, 0x00, 0x8D])
-    if init_pattern in player_binary[:0x50]:
-        offset = player_binary[:0x50].index(init_pattern)
-        print(f"  ✓ Found init pattern at offset 0x{offset:04X} (addr 0x{base_addr + offset:04X})")
+        if 0x1000 <= addr <= 0x1AFF:
+            analysis['absolute_addresses'].append({
+                'offset': offset,
+                'address': addr,
+            })
 
-    # Look for SID register writes (STA $D4xx)
-    sid_writes = 0
-    for i in range(len(player_binary) - 2):
-        if player_binary[i] == 0x8D:  # STA absolute
-            addr = struct.unpack('<H', player_binary[i+1:i+3])[0]
-            if 0xD400 <= addr <= 0xD41C:  # SID register range
-                sid_writes += 1
+    common_table_addrs = {
+        0x1A1E: 'Filter table',
+        0x1A3B: 'Pulse table',
+        0x1A6B: 'Instruments table',
+        0x1ACB: 'Wave table',
+    }
 
-    print(f"  ✓ Found {sid_writes} SID register writes (STA $D4xx)")
+    analysis['estimated_tables'] = {
+        addr: desc for addr, desc in common_table_addrs.items()
+        if any(ref['address'] == addr for ref in analysis['absolute_addresses'])
+    }
 
-    # Estimate code vs data sections
-    print(f"\nEstimated layout (assuming base address 0x{base_addr:04X}):")
-    print(f"  Code section: 0x{base_addr:04X} - ~0x{base_addr + 0xA00:04X}")
-    print(f"  Table section: ~0x{base_addr + 0xA1E:04X} - 0x{base_addr + len(player_binary):04X}")
+    zero_page_refs = set()
+    for offset in range(len(player_code) - 1):
+        opcode = player_code[offset]
+        operand = player_code[offset + 1] if offset + 1 < len(player_code) else 0
 
-    # Show first 32 bytes (hex dump)
-    print(f"\nFirst 32 bytes (init routine start):")
-    for i in range(0, min(32, len(player_binary)), 16):
-        hex_str = ' '.join(f'{b:02x}' for b in player_binary[i:i+16])
-        addr_str = f"  {base_addr + i:04X}:"
-        print(f"{addr_str} {hex_str}")
+        if opcode in [0xA5, 0xA6, 0xA4, 0x85, 0x86, 0x84, 0xE5, 0xE4, 0xE6, 0xC5, 0xC4, 0xC6]:
+            if operand < 0xFF:
+                zero_page_refs.add(operand)
 
-    print(f"\n{'='*70}")
+    analysis['zero_page_usage'] = sorted(zero_page_refs)
+
+    entry_points = []
+    for offset in range(len(player_code)):
+        if player_code[offset] == 0x60:  # RTS
+            entry_points.append(offset)
+
+    analysis['entry_points'] = entry_points[:10]
+
+    return analysis
 
 
 def main():
-    """Main extraction workflow."""
-    if len(sys.argv) < 2:
-        print("Usage: python extract_laxity_player.py <sid_file> [output_file] [end_addr]")
-        print("\nExample:")
-        print("  python extract_laxity_player.py SIDSF2player/Stinsens.sid")
-        print("  python extract_laxity_player.py SIDSF2player/Stinsens.sid drivers/laxity/player.bin 0x1DFF")
+    """Main entry point"""
+    reference_sid = Path('./Laxity/Stinsens_Last_Night_of_89.sid')
+
+    if not reference_sid.exists():
+        print(f"Error: Reference file not found: {reference_sid}")
+        laxity_dir = Path('./Laxity')
+        if laxity_dir.exists():
+            for sid_file in sorted(laxity_dir.glob('*.sid'))[:5]:
+                print(f"  - {sid_file.name}")
         return
 
-    sid_path = Path(sys.argv[1])
-    if not sid_path.exists():
-        print(f"ERROR: File not found: {sid_path}")
-        return
+    print(f"Extracting player from: {reference_sid}")
+    print()
 
-    # Default output path
-    output_path = Path("drivers/laxity/laxity_player_reference.bin")
-    if len(sys.argv) >= 3:
-        output_path = Path(sys.argv[2])
-
-    # Default end address (covers player + tables, ~3.25KB)
-    end_addr = 0x1CFF
-    if len(sys.argv) >= 4:
-        end_addr = int(sys.argv[3], 16) if sys.argv[3].startswith('0x') else int(sys.argv[3])
-
-    # Ensure output directory exists
+    output_path = Path('./drivers/laxity/laxity_player_reference.bin')
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Extract player
-    player_binary = extract_player(sid_path, output_path, end_addr=end_addr)
+    try:
+        player_code = extract_player_from_sid(str(reference_sid), str(output_path))
 
-    if player_binary:
-        # Analyze structure
-        analyze_player_structure(player_binary)
+        print()
+        print("Analyzing player code...")
+        analysis = analyze_player_code(player_code)
 
-        print(f"\n{'='*70}")
-        print("NEXT STEPS:")
-        print(f"{'='*70}")
-        print("1. Disassemble with SIDwinder:")
-        print(f"   tools/SIDwinder.exe disassemble {sid_path}")
-        print("\n2. Analyze relocation requirements:")
-        print(f"   python scripts/analyze_laxity_relocation.py {output_path}")
-        print("\n3. Build relocation engine (Phase 3)")
-        print(f"{'='*70}")
+        print(f"\nAnalysis Results:")
+        print(f"  Player Size: {analysis['size']:,} bytes")
+        print(f"  Absolute Address References: {len(analysis['absolute_addresses'])}")
+        print(f"  Zero Page Usage: {len(analysis['zero_page_usage'])} locations")
+        if analysis['zero_page_usage']:
+            print(f"    Addresses: {' '.join(f'${z:02X}' for z in analysis['zero_page_usage'])}")
+        print(f"  Entry Points (RTS): {len(analysis['entry_points'])}")
+        if analysis['estimated_tables']:
+            print(f"  Estimated Tables Found:")
+            for addr, desc in sorted(analysis['estimated_tables'].items()):
+                print(f"    ${addr:04X}: {desc}")
+
+        report_path = Path('./drivers/laxity/extraction_analysis.txt')
+        with open(report_path, 'w') as f:
+            f.write("LAXITY PLAYER EXTRACTION ANALYSIS\n")
+            f.write("=" * 60 + "\n\n")
+            f.write(f"Reference SID: {reference_sid}\n")
+            f.write(f"Player Size: {analysis['size']:,} bytes (${analysis['size']:04X})\n\n")
+            f.write(f"ABSOLUTE ADDRESSES: {len(analysis['absolute_addresses'])}\n")
+            f.write(f"ZERO PAGE USAGE: {len(analysis['zero_page_usage'])} locations\n")
+            f.write(f"ESTIMATED TABLES: {len(analysis['estimated_tables'])}\n")
+
+        print(f"\nAnalysis saved to: {report_path}")
+        print(f"\n=== Phase 1 Complete ===")
+        print(f"Player extracted to: {output_path}")
+        print(f"Analysis report: {report_path}")
+
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 if __name__ == '__main__':
