@@ -46,6 +46,13 @@ from sidm2.config import ConversionConfig, get_default_config
 # Also import laxity_parser for backward compatibility
 from scripts.laxity_parser import LaxityParser
 
+# Import Laxity converter for custom driver
+try:
+    from sidm2.laxity_converter import LaxityConverter
+    LAXITY_CONVERTER_AVAILABLE = True
+except ImportError:
+    LAXITY_CONVERTER_AVAILABLE = False
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -143,6 +150,81 @@ def analyze_sid_file(filepath: str, config: ConversionConfig = None, sf2_referen
     return extracted
 
 
+def convert_laxity_to_sf2(input_path: str, output_path: str, config: ConversionConfig = None) -> bool:
+    """Convert a Laxity SID file using custom Laxity driver
+
+    Args:
+        input_path: Path to input Laxity SID file
+        output_path: Path for output SF2 file
+        config: Optional configuration
+
+    Returns:
+        True if conversion successful, False otherwise
+
+    Raises:
+        FileNotFoundError: If input file doesn't exist
+        RuntimeError: If Laxity converter not available
+    """
+    if not LAXITY_CONVERTER_AVAILABLE:
+        raise RuntimeError("Laxity converter not available. Ensure sidm2.laxity_converter is installed.")
+
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(f"Input file not found: {input_path}")
+
+    try:
+        logger.info(f"Converting with Laxity driver: {input_path}")
+        logger.info(f"Output: {output_path}")
+
+        # Parse PSID header to get load address and music data
+        parser = SIDParser(input_path)
+        header = parser.parse_header()
+
+        # Read SID file to get C64 data
+        with open(input_path, 'rb') as f:
+            sid_data = f.read()
+
+        # Extract C64 music data (after header)
+        c64_data = sid_data[header.data_offset:]
+
+        logger.debug(f"  Load address: ${header.load_address:04X}")
+        logger.debug(f"  Init address: ${header.init_address:04X}")
+        logger.debug(f"  Play address: ${header.play_address:04X}")
+        logger.debug(f"  Music data size: {len(c64_data):,} bytes")
+
+        # Initialize Laxity converter
+        converter = LaxityConverter()
+
+        # For now, use the raw C64 music data as-is
+        # The Laxity driver will play it from the load address
+        music_data = c64_data
+
+        if not music_data:
+            logger.warning("No music data extracted from SID file")
+            music_data = b''
+
+        # Create SF2 using Laxity driver and extracted music
+        def dummy_extractor(sid_file):
+            """Dummy extractor that returns music data"""
+            return music_data
+
+        # Perform conversion
+        result = converter.convert(input_path, output_path, dummy_extractor)
+
+        if result['success']:
+            logger.info(f"Laxity conversion successful!")
+            logger.info(f"  Output: {output_path}")
+            logger.info(f"  Size: {result['output_size']} bytes")
+            logger.info(f"  Expected accuracy: {result['accuracy']*100:.0f}%")
+            return True
+        else:
+            logger.error("Laxity conversion failed")
+            return False
+
+    except Exception as e:
+        logger.error(f"Laxity conversion error: {e}")
+        raise RuntimeError(f"Laxity conversion failed: {e}")
+
+
 def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = None, config: ConversionConfig = None, sf2_reference_path: str = None, use_midi: bool = False):
     """Convert a SID file to SF2 format
 
@@ -172,8 +254,18 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
         if not os.path.exists(input_path):
             raise FileNotFoundError(f"Input file not found: {input_path}")
 
-        if driver_type not in config.driver.available_drivers:
-            raise ValueError(f"Unknown driver type: {driver_type}. Must be one of {config.driver.available_drivers}")
+        # Handle Laxity driver (custom implementation)
+        if driver_type == 'laxity':
+            if not LAXITY_CONVERTER_AVAILABLE:
+                raise ValueError("Laxity driver not available. Ensure sidm2.laxity_converter is installed.")
+            logger.info("Using custom Laxity driver (expected accuracy: 70-90%)")
+            convert_laxity_to_sf2(input_path, output_path, config=config)
+            return
+
+        # Validate standard driver types
+        available_drivers = list(config.driver.available_drivers) + ['laxity']
+        if driver_type not in available_drivers:
+            raise ValueError(f"Unknown driver type: {driver_type}. Must be one of {available_drivers}")
 
         logger.info(f"Converting: {input_path}")
         logger.info(f"Output: {output_path}")
