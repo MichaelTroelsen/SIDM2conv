@@ -259,8 +259,7 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
             if not LAXITY_CONVERTER_AVAILABLE:
                 raise ValueError("Laxity driver not available. Ensure sidm2.laxity_converter is installed.")
             logger.info("Using custom Laxity driver (expected accuracy: 70-90%)")
-            convert_laxity_to_sf2(input_path, output_path, config=config)
-            return
+            return convert_laxity_to_sf2(input_path, output_path, config=config)
 
         # Validate standard driver types
         available_drivers = list(config.driver.available_drivers) + ['laxity']

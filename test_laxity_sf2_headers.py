@@ -208,7 +208,7 @@ def test_conversion_output(test_file):
     output_file = "test_output_temp.sf2"
 
     try:
-        result = convert_sid_to_sf2(test_file, output_file, driver='laxity')
+        result = convert_sid_to_sf2(test_file, output_file, driver_type='laxity')
         if not result:
             print(f"  [FAIL] Conversion failed")
             return False
