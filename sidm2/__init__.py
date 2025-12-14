@@ -22,6 +22,9 @@ from .instrument_extraction import extract_laxity_instruments, extract_laxity_wa
 from .sequence_extraction import analyze_sequence_commands, extract_command_parameters, get_command_names
 from .laxity_analyzer import LaxityPlayerAnalyzer
 from .martin_galway_analyzer import MartinGalwayAnalyzer
+from .galway_memory_analyzer import GalwayMemoryAnalyzer
+from .galway_table_extractor import GalwayTableExtractor, ExtractedTable
+from .galway_format_converter import GalwayFormatConverter
 from .sf2_writer import SF2Writer
 from .siddump import extract_from_siddump
 from .note_utils import (
@@ -65,6 +68,10 @@ __all__ = [
     'SIDParser',
     'LaxityPlayerAnalyzer',
     'MartinGalwayAnalyzer',
+    'GalwayMemoryAnalyzer',
+    'GalwayTableExtractor',
+    'ExtractedTable',
+    'GalwayFormatConverter',
 
     # Extraction functions
     'find_instrument_table',
