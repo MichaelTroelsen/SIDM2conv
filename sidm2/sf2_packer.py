@@ -429,6 +429,25 @@ class SF2Packer:
                     0, len(section.data),
                     code_start, code_end
                 )
+
+                # CRITICAL FIX (Phase 2): Protect entry stubs from relocation
+                # Entry stubs at offsets 0-2 (init JMP) and 3-5 (play JMP) must NOT be relocated
+                # because they will be patched manually later with correct targets
+                # This applies to the FIRST CODE SECTION (driver code), regardless of its original address
+                if hasattr(self, '_first_code_section_processed'):
+                    pass  # Not the first section, normal processing
+                else:
+                    # First code section - protect entry stubs
+                    self._first_code_section_processed = True
+                    protected_offsets = {1, 2, 4, 5}
+                    original_count = len(relocatable_addrs)
+                    relocatable_addrs = [
+                        (offset, addr) for offset, addr in relocatable_addrs
+                        if offset not in protected_offsets
+                    ]
+                    filtered = original_count - len(relocatable_addrs)
+                    if filtered > 0:
+                        logger.info(f"  Protected {filtered} entry stub JMP target bytes from relocation (first code section at ${section.source_address:04X})")
             else:
                 # DATA SECTION: Skip - data tables don't contain executable code pointers
                 # Tables like Instruments, Wave, Pulse, Filter contain music data, not pointers
@@ -485,29 +504,42 @@ class SF2Packer:
         Returns:
             Tuple of (packed_data, init_address, play_address)
         """
-        # Step 0: Read play address - try multiple sources for robustness
-        # Priority: 1) Entry stub JMP, 2) DriverCommon (verified), 3) Heuristic
+        # Step 0: Read init/play addresses with robust validation
+        # Read from DriverCommon structure (most reliable source) and verify validity
 
-        play_address = None
+        init_dc, play_dc = self.read_driver_addresses()
 
-        # Try 1: Read from entry stub JMP at driver_top + 3
-        if self.memory[self.driver_top + 3] == 0x4C:  # JMP opcode
-            play_address = self._read_word(self.driver_top + 4)
-            logger.debug(f"Play address from entry stub JMP: ${play_address:04X}")
+        logger.debug(f"DriverCommon addresses: init=${init_dc:04X} play=${play_dc:04X}")
+
+        # Verify init address points to valid code
+        init_code = bytes(self.memory[init_dc:init_dc+8])
+        if len(set(init_code)) > 2:  # At least 3 different byte values
+            init_address = init_dc
+            logger.info(f"Init address from DriverCommon (verified): ${init_address:04X}")
         else:
-            # Try 2: Read from DriverCommon and verify it's valid code
-            _, play_dc = self.read_driver_addresses()
-
-            # Verify by checking if it points to reasonable code (not all same bytes)
-            test_bytes = bytes(self.memory[play_dc:play_dc+8])
-            if len(set(test_bytes)) > 2:  # At least 3 different byte values
-                play_address = play_dc
-                logger.debug(f"Play address from DriverCommon (verified): ${play_address:04X}")
+            # Init address looks corrupted, try fallback
+            logger.warning(f"Init address at ${init_dc:04X} appears invalid (all zeros or same bytes)")
+            if self.memory[self.driver_top] == 0x4C:  # JMP opcode at entry stub
+                init_address = self.driver_top
+                logger.warning(f"Using entry stub address for init: ${init_address:04X}")
             else:
-                # DriverCommon looks corrupted (all same bytes)
-                logger.warning(f"DriverCommon play address ${play_dc:04X} appears corrupted")
+                # Last resort: standard PSID convention
+                init_address = self.driver_top
+                logger.warning(f"Using standard PSID init address: ${init_address:04X}")
 
-                # Try 3: Use standard PSID convention (load + 3)
+        # Verify play address points to valid code
+        play_code = bytes(self.memory[play_dc:play_dc+8])
+        if len(set(play_code)) > 2:  # At least 3 different byte values
+            play_address = play_dc
+            logger.info(f"Play address from DriverCommon (verified): ${play_address:04X}")
+        else:
+            # Play address looks corrupted, try fallback
+            logger.warning(f"Play address at ${play_dc:04X} appears invalid (all zeros or same bytes)")
+            if self.memory[self.driver_top + 3] == 0x4C:  # JMP opcode at play entry stub
+                play_address = self.driver_top + 3
+                logger.warning(f"Using entry stub address for play: ${play_address:04X}")
+            else:
+                # Last resort: standard PSID convention
                 play_address = self.driver_top + 3
                 logger.warning(f"Using standard PSID play address: ${play_address:04X}")
 
@@ -533,26 +565,22 @@ class SF2Packer:
         # Always process driver code to relocate pointers to moved tables
         self.process_driver_code(address_map, address_delta)
 
-        # Adjust play address only if driver itself relocated
-        if address_delta != 0 and play_address < 0x1000:
-            play_address += address_delta
+        # Adjust both addresses only if driver itself relocated
+        # (addresses were already validated and computed above)
+        if address_delta != 0:
+            init_address += address_delta
+            if play_address < 0x1000:  # Only adjust if it's an address, not a direct offset
+                play_address += address_delta
 
         # Step 5: Create output
         packed_data = bytearray(self.create_output_data(dest_address))
-
-        # Read the actual init address from the SF2 file
-        init_address, _ = self.read_driver_addresses()
-
-        # Adjust init address if driver relocated
-        if address_delta != 0:
-            init_address += address_delta
 
         # Step 6: Fix JMP instruction targets at entry stubs
         # The driver code starts with entry stubs at offset 0 and 3 from load address
         # These originally point to SF2 init/play addresses, but we need to update them
         # to point to the new relocated init/play addresses
         # JMP instruction format: 4C <lo> <hi>
-        logger.info(f"Fixing entry stub JMP instructions:")
+        logger.info(f"Patching entry stub JMP instructions (validated addresses):")
         logger.info(f"  Init address: ${init_address:04X}")
         logger.info(f"  Play address: ${play_address:04X}")
 
