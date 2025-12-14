@@ -1,0 +1,52 @@
+LAXITY SF2 DRIVER - HEADER BLOCK DESIGN
+==============================
+
+Generated: 2025-12-14
+
+MEMORY LAYOUT:
+$0D7E-$0DFF  (130 bytes)   SF2 Wrapper (entry points, JSR to player)
+$0E00-$16FF  (2.3 KB)      Relocated Laxity Player code
+$1700-$18FF  (512 bytes)   SF2 Header Blocks
+    $1700-$173F            Driver Descriptor
+    $1740-$177F            Driver Common
+    $1780-$18FF            Table Descriptors
+$1900+                      Music Data (sequences, tables)
+
+
+TABLE DEFINITIONS:
+====================================
+Name              Address  Entries  Size
+====================================
+Sequences         $1900    3        variable
+Filter            $1A1E    32       128 bytes
+Pulse             $1A3B    64       256 bytes
+Instruments       $1A6B    32       256 bytes
+Wave              $1ACB    128      256 bytes
+
+
+HEADER BLOCK STRUCTURE:
+
+1. Driver Descriptor ($1700-$173F, 64 bytes)
+   - File ID: 0x1337 (SF2 driver)
+   - Entry Init: $0D7E
+   - Entry Play: $0D81
+   - Entry Stop: $0D84
+
+2. Driver Common ($1740-$177F, 64 bytes)
+   - Sequence Table: $1900
+   - Instrument Table: $1A6B
+   - Wave Table: $1ACB
+   - Pulse Table: $1A3B
+   - Filter Table: $1A1E
+
+3. Table Descriptors ($1780-$18FF, 128 bytes)
+   - 5 tables x 16 bytes per descriptor
+   - Defines format, size, indexing
+
+
+PHASE 2 COMPLETE
+================
+- Header block structure designed
+- Table memory layout defined
+- Entry points documented
+- Ready for Python header generator (Phase 3)
