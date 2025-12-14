@@ -639,11 +639,85 @@ def create_psid_header(name: str, author: str, copyright_str: str,
     return bytes(header)
 
 
+def validate_sid_file(sid_data: bytes, init_addr: int, play_addr: int,
+                      load_addr: int = 0x1000) -> Tuple[bool, str]:
+    """Validate SID file by running emulation test.
+
+    Tests:
+    - Init routine executes without crash/timeout
+    - Play routine runs 5 frames successfully
+    - SID register writes detected (not silent)
+    - No infinite loops or $0000 crashes
+
+    Args:
+        sid_data: Complete SID file data (PSID header + C64 code)
+        init_addr: Init routine address (from PSID header)
+        play_addr: Play routine address (from PSID header)
+        load_addr: Load address for memory layout (default $1000)
+
+    Returns:
+        (is_valid, error_message) - error_message empty string if valid
+    """
+    from .cpu6502_emulator import CPU6502Emulator
+
+    try:
+        # Extract C64 data (skip 124-byte PSID header)
+        c64_data = sid_data[124:]
+
+        # Create emulator with instruction limit
+        cpu = CPU6502Emulator(capture_writes=True)
+        cpu.load_memory(c64_data, load_addr)
+        cpu.max_instructions = 100000  # Prevent infinite loops
+
+        # Test 1: Init routine
+        logger.info("  Validating init routine...")
+        cpu.reset(pc=init_addr, a=0, x=0, y=0)
+        instr_count = cpu.run_until_return()
+
+        if instr_count == 0:
+            return False, "Init routine: immediate crash (BRK/RTI at entry)"
+        if instr_count >= cpu.max_instructions:
+            return False, f"Init routine: timeout (>{cpu.max_instructions} instructions)"
+        if cpu.pc == 0:
+            return False, "Init routine: jumped to $0000"
+
+        # Test 2: Play routine (5 frames)
+        logger.info("  Validating play routine...")
+        cpu.sid_writes.clear()
+
+        for frame in range(5):
+            cpu.current_frame = frame
+            cpu.reset(pc=play_addr, a=0, x=0, y=0)
+            instr_count = cpu.run_until_return()
+
+            if instr_count >= cpu.max_instructions:
+                return False, f"Play routine: timeout at frame {frame}"
+            if cpu.pc == 0:
+                return False, f"Play routine: jumped to $0000 at frame {frame}"
+
+        # Test 3: Check SID writes
+        if len(cpu.sid_writes) == 0:
+            return False, "No SID register writes detected (silent output)"
+
+        # Test 4: Check frequency writes
+        freq_writes = [w for w in cpu.sid_writes
+                       if w.address in (0xD400, 0xD401, 0xD407, 0xD408, 0xD40E, 0xD40F)]
+        if len(freq_writes) == 0:
+            return False, "No frequency register writes (invalid SID data)"
+
+        logger.info(f"  Validation passed: {len(cpu.sid_writes)} SID writes detected")
+        return True, ""
+
+    except Exception as e:
+        return False, f"Emulation error: {str(e)}"
+
+
 def pack_sf2_to_sid(sf2_path: Path, sid_path: Path,
                    name: str = "test", author: str = "test",
                    copyright_str: str = "test",
                    dest_address: int = 0x1000,
-                   zp_address: int = 0xFC) -> bool:
+                   zp_address: int = 0xFC,
+                   validate: bool = True) -> bool:
     """Pack SF2 file to compact PSID format.
 
     Args:
@@ -654,6 +728,7 @@ def pack_sf2_to_sid(sf2_path: Path, sid_path: Path,
         copyright_str: Copyright info
         dest_address: Load address (default $1000)
         zp_address: Zero page address (default $FC)
+        validate: If True, validate SID using emulation before writing (default True)
 
     Returns:
         True if successful, False otherwise
@@ -679,11 +754,29 @@ def pack_sf2_to_sid(sf2_path: Path, sid_path: Path,
             play_address=psid_play_addr   # Use entry stub, not internal routine
         )
 
+        # Combine header and data for validation and writing
+        output_data = header + packed_data
+
+        # VALIDATION STEP (NEW - Phase 1)
+        if validate:
+            logger.info("Validating packed SID file...")
+            is_valid, error_msg = validate_sid_file(
+                output_data,
+                psid_init_addr,
+                psid_play_addr,
+                dest_address
+            )
+
+            if not is_valid:
+                logger.error(f"Validation failed: {error_msg}")
+                logger.error("SID file not written (use validate=False to override)")
+                return False
+
         # Write output file (old-style: header + data, no PRG bytes)
         with open(sid_path, 'wb') as f:
-            f.write(header)
-            f.write(packed_data)
+            f.write(output_data)
 
+        logger.info(f"Successfully packed SID: {sid_path}")
         return True
 
     except Exception as e:
