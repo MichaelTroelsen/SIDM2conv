@@ -25,6 +25,7 @@ from .martin_galway_analyzer import MartinGalwayAnalyzer
 from .galway_memory_analyzer import GalwayMemoryAnalyzer
 from .galway_table_extractor import GalwayTableExtractor, ExtractedTable
 from .galway_format_converter import GalwayFormatConverter
+from .galway_table_injector import GalwayTableInjector, GalwayConversionIntegrator
 from .sf2_writer import SF2Writer
 from .siddump import extract_from_siddump
 from .note_utils import (
@@ -72,6 +73,8 @@ __all__ = [
     'GalwayTableExtractor',
     'ExtractedTable',
     'GalwayFormatConverter',
+    'GalwayTableInjector',
+    'GalwayConversionIntegrator',
 
     # Extraction functions
     'find_instrument_table',
