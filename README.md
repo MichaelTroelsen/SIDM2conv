@@ -128,6 +128,7 @@ This processes all SID files with complete validation, analysis, and documentati
 #### Pipeline Steps:
 1. **SID → SF2 Conversion** - Smart detection (SF2-packed/Template/Laxity methods)
 1.5. **Siddump Sequence Extraction** - Runtime analysis for accurate sequences
+**1.6. SIDdecompiler Player Analysis** (NEW in v1.4) - Automated player type detection and memory layout analysis
 2. **SF2 → SID Packing** - Generates playable SID files
 3. **Siddump Generation** - Register dumps (original + exported SIDs)
 4. **WAV Rendering** - 30-second audio (original + exported)
@@ -173,6 +174,52 @@ This processes all SID files with complete validation, analysis, and documentati
 - **Average accuracy**: 45.39% (7 files at 100%, 10 LAXITY files at 1-8%)
 
 See `PIPELINE_EXECUTION_REPORT.md` for detailed analysis and `tools/SIDWINDER_QUICK_REFERENCE.md` for SIDwinder commands.
+
+### SIDdecompiler Integration (v1.4 - NEW)
+
+**Automated Player Analysis and Memory Layout Visualization** (NEW in v1.4)
+
+The SIDdecompiler integration provides comprehensive player type detection and memory layout analysis:
+
+**Key Features**:
+- ✅ **100% Player Detection Accuracy** - Correctly identifies Laxity NewPlayer v21
+- ✅ **Automated Analysis** - Runs as Step 1.6 in the pipeline
+- ✅ **Memory Layout Visualization** - ASCII memory maps showing code, data, and tables
+- ✅ **Table Detection** - Identifies filter, pulse, instrument, and wave tables
+- ✅ **Structure Reports** - Comprehensive analysis with addresses and statistics
+- ✅ **Hybrid Validation** - Manual extraction + auto validation for error prevention
+
+**Production Recommendation**:
+- Use for automated player type detection (100% accurate)
+- Use for memory layout debugging and visualization
+- Use for table address validation
+- Manual table extraction remains primary method (proven reliable)
+
+**Output Files**:
+- `analysis/{name}_siddecompiler.asm` - Complete 6502 disassembly
+- `analysis/{name}_analysis_report.txt` - Player info and memory layout analysis
+
+**Example Analysis Report**:
+```
+Player Information:
+  Type: NewPlayer v21 (Laxity)
+  Memory Range: $A000-$B9A7 (6,568 bytes)
+
+Memory Layout:
+$A000-$B9A7 [████████████████████████████████████████] Player Code (6,568 bytes)
+
+Detected Tables:
+  Filter Table: $1A1E (128 bytes)
+  Pulse Table: $1A3B (256 bytes)
+  Instrument Table: $1A6B (256 bytes)
+  Wave Table: $1ACB (variable)
+```
+
+**Documentation**:
+- Complete implementation guide: `docs/SIDDECOMPILER_INTEGRATION.md`
+- Phase 2 enhancements: `docs/analysis/PHASE2_ENHANCEMENTS_SUMMARY.md`
+- Phase 3-4 analysis: `docs/analysis/PHASE3_4_VALIDATION_REPORT.md`
+- Lessons learned: `docs/SIDDECOMPILER_LESSONS_LEARNED.md`
 
 ### SIDwinder Integration
 
