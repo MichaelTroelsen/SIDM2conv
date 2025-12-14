@@ -1,17 +1,15 @@
 # File Inventory
 
-**Last Updated**: 2025-12-14 10:05:42
+**Last Updated**: 2025-12-14 10:34:54
 
 ## Repository Structure
 
 ```
 SIDM2/
-├── CHANGELOG.md (7.9KB)
+├── CHANGELOG.md (12.2KB)
 ├── check_pulse_data.py (1.3KB)
-├── CLAUDE.md (22.5KB)
+├── CLAUDE.md (26.9KB)
 ├── cleanup.py (14.8KB)
-├── cleanup_backup_20251214_093809.txt (2.1KB)
-├── cleanup_backup_20251214_100542.txt (167B)
 ├── cleanup_md_files.py (2.9KB)
 ├── complete_pipeline_with_validation.py (100.7KB)
 ├── CONTRIBUTING.md (6.5KB)
@@ -146,7 +144,7 @@ SIDM2/
 │   ├── ARCHITECTURE.md (21.0KB)
 │   ├── CLEANUP_GUIDE.md (7.9KB)
 │   ├── COMPONENTS_REFERENCE.md (21.9KB)
-│   ├── FILE_INVENTORY.md (139.1KB)
+│   ├── FILE_INVENTORY.md (139.2KB)
 │   ├── GATE_INFERENCE_IMPLEMENTATION.md (11.9KB)
 │   ├── HYBRID_PIPELINE_SUCCESS.md (12.1KB)
 │   ├── IMPROVEMENT_PLAN.md (13.8KB)
