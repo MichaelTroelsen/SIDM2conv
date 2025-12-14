@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 
-**Version 1.8.0** | Build Date: 2025-12-14 | Laxity Driver Complete + 286 Files Converted + Full Collection Validated ✅
+**Version 1.9.0** | Build Date: 2025-12-14 | Phase 6 Complete - SF2 Table Editing + Editor Integration ✅
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files.
 
@@ -107,6 +107,18 @@ $0E00-$16FF   Relocated Laxity Player (1,979 bytes)
 $1700-$18FF   SF2 Header Blocks (512 bytes)
 $1900+        Music Data (sequences, tables)
 ```
+
+**Phase 6: SF2 Table Editing Support** ✅ NEW
+- **SF2 Header Generation**: Automatic header block generation (194 bytes)
+- **Table Descriptors**: All 5 Laxity tables defined for editor integration
+  - Instruments (32×8 entries)
+  - Wave table (128×2 entries)
+  - Pulse parameters (64×4 entries)
+  - Filter parameters (32×4 entries)
+  - Sequences (255 entries)
+- **Editor Integration**: Tables visible and editable in SID Factory II
+- **Status**: ✅ Implementation complete (awaiting manual SID Factory II validation)
+- **Documentation**: See `docs/LAXITY_PHASE6_FINAL_REPORT.md`
 
 #### Validation Results
 
