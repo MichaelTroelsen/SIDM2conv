@@ -103,7 +103,8 @@
       "Bash(while pgrep -f \"complete_pipeline\")",
       "Bash(do echo \"=== $file ===\" grep -A 5 \"Load Address\\|Init Address\\|Play Address\\|Type:\" \"output/SIDSF2player_Complete_Pipeline/$file/analysis/$file_analysis_report.txt\")",
       "Bash(wc:*)",
-      "Bash(set PYTHONPATH=.)"
+      "Bash(set PYTHONPATH=.)",
+      "Bash(./tools/player-id.exe:*)"
     ],
     "deny": [],
     "ask": []

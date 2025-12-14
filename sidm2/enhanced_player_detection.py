@@ -6,9 +6,12 @@ Provides comprehensive player type identification for SID files including:
 - SID Factory II drivers (Driver 11, NP20)
 - Laxity NewPlayer variants
 - Custom and unknown players
+
+Uses player-id.exe for reliable detection of known player types.
 """
 
 import struct
+import subprocess
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -67,7 +70,16 @@ class EnhancedPlayerDetector:
 
     def __init__(self):
         """Initialize detector"""
-        pass
+        # Try to find player-id.exe
+        self.player_id_exe = None
+        for potential_path in [
+            Path('./tools/player-id.exe'),
+            Path('tools/player-id.exe'),
+            Path('C:/Users/mit/claude/c64server/SIDM2/tools/player-id.exe'),
+        ]:
+            if potential_path.exists():
+                self.player_id_exe = str(potential_path)
+                break
 
     def detect_player(self, sid_file: Path) -> Tuple[str, float]:
         """
@@ -83,6 +95,12 @@ class EnhancedPlayerDetector:
             return "Unknown", 0.0
 
         try:
+            # Try player-id.exe first (most reliable)
+            if self.player_id_exe:
+                player, confidence = self._detect_with_player_id_exe(sid_file)
+                if player != "Unknown":
+                    return player, confidence
+
             # Parse PSID header
             with open(sid_file, 'rb') as f:
                 header = f.read(126)
@@ -125,6 +143,43 @@ class EnhancedPlayerDetector:
 
         except Exception as e:
             return "Unknown", 0.0
+
+    def _detect_with_player_id_exe(self, sid_file: Path) -> Tuple[str, float]:
+        """Detect using player-id.exe tool"""
+        try:
+            result = subprocess.run(
+                [self.player_id_exe, str(sid_file)],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            if result.returncode == 0:
+                # Parse output for detected player
+                for line in result.stdout.split('\n'):
+                    # Look for lines with player name after filename
+                    parts = line.split()
+                    if len(parts) >= 2 and str(sid_file.name) in line:
+                        # Extract player name (usually last non-empty part)
+                        player_name = parts[-1].strip()
+                        if player_name and player_name != 'Processing...':
+                            return player_name, 0.95  # High confidence for tool results
+
+                # Also check summary section
+                if 'Detected players' in result.stdout:
+                    for line in result.stdout.split('\n'):
+                        # Look for player name followed by count
+                        if line.strip() and not line.startswith('---') and not line.startswith('Detected') and not line.startswith('Summary') and not line.startswith('Identified') and not line.startswith('Unidentified') and not line.startswith('Total') and not line.startswith('Processing') and not line.startswith('Using config'):
+                            parts = line.split()
+                            if len(parts) >= 2 and parts[-1].isdigit():
+                                # This is likely a detected player line
+                                player_name = ' '.join(parts[:-1]).strip()
+                                if player_name and player_name not in ['files', 'files,', 'Count', 'count']:
+                                    return player_name, 0.95
+        except Exception as e:
+            pass
+
+        return "Unknown", 0.0
 
     def _detect_by_code_size(self, sid_file: Path, init_addr: int) -> Tuple[str, float]:
         """Detect by disassembly code size"""
