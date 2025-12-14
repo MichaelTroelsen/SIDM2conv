@@ -51,10 +51,31 @@ output/
 *.dump
 nul
 temp-exp/
+temp_*
+tmp_*
+*_temp.*
+*_tmp.*
+
+# Experiments and scratch files
+experiments/
+experiment_*
+debug_*
+scratch_*
+/test_*.py           # Root test files (not scripts/test_*.py)
+/test_*.log
+/test_*.html
+/test_*.txt
+test_output.log
+pipeline_*.log
+
+# Cleanup backup lists
+cleanup_backup_*.txt
 
 # Test output files (root directory)
 /test_*.sf2
+/test_*.sid
 /test_*.wav
+/test_*.dump
 
 # Debug output files
 SF2/*.dump
