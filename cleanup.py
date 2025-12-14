@@ -74,6 +74,43 @@ KEEP_FILES = [
     'SIDwinder.log',  # Keep main log
 ]
 
+# Standard root documentation files (should stay in root)
+STANDARD_ROOT_DOCS = [
+    'README.md',
+    'CONTRIBUTING.md',
+    'CHANGELOG.md',
+    'CLAUDE.md',
+]
+
+# Misplaced documentation mapping (root → docs/)
+MISPLACED_DOC_MAPPING = {
+    # Analysis and research reports
+    '*_ANALYSIS.md': 'docs/analysis/',
+    '*_RESEARCH*.md': 'docs/analysis/',
+    '*_REPORT.md': 'docs/reference/',
+
+    # Implementation documents
+    '*_IMPLEMENTATION.md': 'docs/implementation/',
+
+    # Status and validation documents
+    'STATUS.md': 'docs/',
+    '*_STATUS.md': 'docs/analysis/',
+    '*_NOTES.md': 'docs/guides/',
+
+    # Consolidation and knowledge documents
+    '*_CONSOLIDATION*.md': 'docs/archive/',
+    'CONSOLIDATION_*.md': 'docs/archive/',
+    'KNOWLEDGE_*.md': 'docs/archive/',
+
+    # System and guide documents
+    '*_SYSTEM.md': 'docs/guides/',
+    'VALIDATION_*.md': 'docs/guides/',
+
+    # Repository references
+    'external-repositories.md': 'docs/reference/',
+    'sourcerepository.md': 'docs/reference/',
+}
+
 # Directories to ALWAYS keep
 KEEP_DIRS = [
     'output/SIDSF2player_Complete_Pipeline',  # Main pipeline output
@@ -114,7 +151,7 @@ class CleanupTool:
 
     def scan_root_files(self):
         """Scan root directory for cleanup candidates"""
-        print("\n[1/3] Scanning root directory...")
+        print("\n[1/4] Scanning root directory...")
 
         for category, patterns in CLEANUP_PATTERNS.items():
             for pattern in patterns:
@@ -125,7 +162,7 @@ class CleanupTool:
 
     def scan_output_dirs(self):
         """Scan output directory for test/experiment directories"""
-        print("[2/3] Scanning output directory...")
+        print("[2/4] Scanning output directory...")
 
         output_dir = self.root_dir / 'output'
         if not output_dir.exists():
@@ -141,7 +178,7 @@ class CleanupTool:
 
     def scan_temp_outputs(self):
         """Scan for temporary output files in root"""
-        print("[3/3] Scanning for temporary outputs...")
+        print("[3/4] Scanning for temporary outputs...")
 
         # Look for orphaned output files
         for ext in ['.sf2', '.sid', '.dump', '.wav', '.hex']:
@@ -266,6 +303,32 @@ class CleanupTool:
                         self.dirs_to_clean.append(exp_dir)
                         self.total_size += size
 
+    def scan_misplaced_docs(self):
+        """Scan root directory for misplaced documentation files"""
+        print("[4/4] Scanning for misplaced documentation...")
+
+        import fnmatch
+
+        # Find all .md files in root
+        for md_file in self.root_dir.glob('*.md'):
+            if md_file.is_file():
+                # Skip standard root documentation
+                if md_file.name in STANDARD_ROOT_DOCS:
+                    continue
+
+                # Check against misplaced doc patterns
+                for pattern, target_dir in MISPLACED_DOC_MAPPING.items():
+                    if fnmatch.fnmatch(md_file.name, pattern):
+                        # Add to files to clean with special category
+                        self.files_to_clean.append((md_file, f'misplaced_doc -> {target_dir}'))
+                        self.total_size += md_file.stat().st_size
+                        break
+                else:
+                    # No pattern match - generic misplaced doc
+                    if md_file.name not in STANDARD_ROOT_DOCS:
+                        self.files_to_clean.append((md_file, 'misplaced_doc -> docs/'))
+                        self.total_size += md_file.stat().st_size
+
 def main():
     parser = argparse.ArgumentParser(description='SIDM2 Project Cleanup Tool')
     parser.add_argument('--scan', action='store_true', help='Scan and show what would be cleaned')
@@ -293,10 +356,12 @@ def main():
         tool.scan_output_dirs()
         tool.scan_temp_outputs()
         tool.scan_experiments()
+        tool.scan_misplaced_docs()
     else:
         tool.scan_root_files()
         tool.scan_output_dirs()
         tool.scan_temp_outputs()
+        tool.scan_misplaced_docs()
 
     # Report
     tool.print_report()

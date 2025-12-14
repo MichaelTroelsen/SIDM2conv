@@ -1,6 +1,6 @@
 # SIDM2 Cleanup System - Complete Guide
 
-**Version**: 2.0
+**Version**: 2.1
 **Date**: 2025-12-14
 
 ---
@@ -14,6 +14,7 @@ This project now has a comprehensive cleanup system with:
 ✅ **Experiment template system** (`new_experiment.py`)
 ✅ **Updated .gitignore** (prevents committing experiments)
 ✅ **Self-cleaning experiments** (each has cleanup script)
+✅ **Misplaced documentation detection** (auto-organizes MD files)
 ✅ **Complete documentation** (`docs/CLEANUP_GUIDE.md`)
 
 ---
@@ -97,6 +98,79 @@ Directories to clean: 18
 
 Total size: 2.5 MB
 ```
+
+---
+
+## Documentation Organization (NEW in v2.1)
+
+### Automatic Misplaced Documentation Detection
+
+The cleanup system now automatically detects documentation files that are in the wrong location and suggests where they should go.
+
+**Standard Root Documentation** (always kept in root):
+- `README.md` - Main project documentation
+- `CONTRIBUTING.md` - Contribution guidelines
+- `CHANGELOG.md` - Version history
+- `CLAUDE.md` - AI assistant quick reference
+
+**All other .md files in root are considered misplaced** and will be detected during cleanup.
+
+### How It Works
+
+```bash
+# Default scan includes misplaced docs check
+python cleanup.py --scan
+
+# Output shows misplaced files with suggested locations
+[4/4] Scanning for misplaced documentation...
+
+[FILES TO CLEAN]
+  Misplaced Doc -> Docs/Analysis/ (3 files):
+    - LAXITY_ACCURACY_ANALYSIS.md (45.2 KB)
+    - LAXITY_DRIVER_RESEARCH_SUMMARY.md (23.1 KB)
+    - SF2_VALIDATION_STATUS.md (12.8 KB)
+
+  Misplaced Doc -> Docs/Implementation/ (1 files):
+    - RUNTIME_TABLE_BUILDING_IMPLEMENTATION.md (18.4 KB)
+```
+
+### Documentation Mapping Rules
+
+The cleanup system uses pattern matching to suggest appropriate locations:
+
+| File Pattern | Suggested Location | Example |
+|--------------|-------------------|---------|
+| `*_ANALYSIS.md` | `docs/analysis/` | `LAXITY_ACCURACY_ANALYSIS.md` |
+| `*_RESEARCH*.md` | `docs/analysis/` | `LAXITY_DRIVER_RESEARCH_SUMMARY.md` |
+| `*_REPORT.md` | `docs/reference/` | `LAXITY_NP20_RESEARCH_REPORT.md` |
+| `*_IMPLEMENTATION.md` | `docs/implementation/` | `RUNTIME_TABLE_BUILDING_IMPLEMENTATION.md` |
+| `STATUS.md` | `docs/` | `STATUS.md` |
+| `*_STATUS.md` | `docs/analysis/` | `SF2_VALIDATION_STATUS.md` |
+| `*_NOTES.md` | `docs/guides/` | `VALIDATION_SYSTEM_NOTES.md` |
+| `*_CONSOLIDATION*.md` | `docs/archive/` | `KNOWLEDGE_CONSOLIDATION.md` |
+| `*_SYSTEM.md` | `docs/guides/` | `CLEANUP_SYSTEM.md` |
+| `external-repositories.md` | `docs/reference/` | `external-repositories.md` |
+| `sourcerepository.md` | `docs/reference/` | `sourcerepository.md` |
+
+### Manual Documentation Organization
+
+To organize misplaced docs manually:
+
+```bash
+# Move using git to preserve history
+git mv ROOT_FILE.md docs/appropriate_location/ROOT_FILE.md
+
+# Example
+git mv LAXITY_ACCURACY_ANALYSIS.md docs/analysis/LAXITY_ACCURACY_ANALYSIS.md
+```
+
+### Benefits
+
+✅ **Keeps root directory clean** - Only 4 standard MD files in root
+✅ **Organized documentation** - Files automatically categorized
+✅ **Prevents clutter** - Detects misplaced docs during regular cleanup scans
+✅ **Git history preserved** - Uses `git mv` when cleanup tool moves files
+✅ **Clear categories** - Analysis, implementation, guides, reference, archive
 
 ---
 
@@ -210,6 +284,9 @@ SIDM2/
 | Production | `scripts/` | None | `sid_to_sf2.py` | ✅ YES |
 | Unit Tests | `scripts/` | `test_` | `test_converter.py` | ✅ YES |
 | Experiments | `experiments/` | Any | `wave_fix/` | ⚠️ Temporary |
+| Documentation | Root | Standard only | `README.md`, `CLAUDE.md` | ✅ YES |
+| Documentation | `docs/` | Any | `ARCHITECTURE.md` | ✅ YES |
+| Misplaced Docs | Root | Analysis/Status/etc | `*_ANALYSIS.md` | ⚠️ Move to docs/ |
 | Test Files | Root | `test_` | `test_debug.py` | ❌ Clean |
 | Temp Files | Root | `temp_`, `tmp_` | `temp_output.wav` | ❌ Clean |
 | Logs | Root | `*.log` | `pipeline.log` | ❌ Clean |
@@ -420,10 +497,11 @@ CLEANUP_SYSTEM.md (this file) # Quick reference
 The cleanup system provides:
 
 ✅ **Automated detection** of experimental/temporary files
+✅ **Documentation organization** (auto-detects misplaced MD files)
 ✅ **Dedicated experiments/** directory for temporary work
 ✅ **Self-cleaning experiments** with built-in cleanup scripts
 ✅ **Safety features** (confirmation, backups, protected files)
-✅ **Clear organization** (production vs experiments)
+✅ **Clear organization** (production vs experiments vs docs)
 ✅ **Simple workflow** (create → develop → cleanup)
 
 **Goal**: Keep the project clean and organized by making cleanup automatic and easy.
