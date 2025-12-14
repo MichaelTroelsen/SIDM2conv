@@ -331,7 +331,14 @@ class SIDdecompilerAnalyzer:
 
     def detect_player(self, asm_file: Path, stdout: str = '') -> PlayerInfo:
         """
-        Detect player type from disassembly
+        Enhanced player type detection from disassembly
+
+        Detects:
+        - Laxity NewPlayer v21 (original SIDs)
+        - SF2 Driver 11 (exported from SID Factory II)
+        - SF2 NP20 Driver (NewPlayer v20 driver)
+        - JCH NewPlayer variants
+        - Rob Hubbard players
 
         Args:
             asm_file: Path to assembly file
@@ -348,7 +355,40 @@ class SIDdecompilerAnalyzer:
         with open(asm_file, 'r', encoding='utf-8', errors='ignore') as f:
             content = f.read()
 
-        # Extract header information
+        # SF2 Driver Detection Patterns
+        sf2_patterns = {
+            'Driver 11': [
+                'DriverCommon',
+                'sf2driver',
+                '; SID Factory II Driver 11',
+                'DRIVER_VERSION = 11'
+            ],
+            'NP20 Driver': [
+                'np20driver',
+                'NewPlayer 20 Driver',
+                'NP20_',
+                'DRIVER_VERSION = 20'
+            ],
+            'Driver 12': ['DRIVER_VERSION = 12'],
+            'Driver 13': ['DRIVER_VERSION = 13'],
+            'Driver 14': ['DRIVER_VERSION = 14'],
+            'Driver 15': ['DRIVER_VERSION = 15'],
+            'Driver 16': ['DRIVER_VERSION = 16'],
+        }
+
+        # Check for SF2 drivers first
+        content_lower = content.lower()
+        for driver_name, patterns in sf2_patterns.items():
+            for pattern in patterns:
+                if pattern.lower() in content_lower:
+                    player_info.type = f"SF2 {driver_name}"
+                    # Extract version if found
+                    version_match = re.search(r'DRIVER_VERSION\s*=\s*(\d+)', content, re.IGNORECASE)
+                    if version_match:
+                        player_info.version = version_match.group(1)
+                    return player_info  # SF2 drivers are definitive
+
+        # Extract header information for author-based detection
         for line in content.split('\n')[:20]:  # Check first 20 lines
             if 'Name:' in line:
                 pass  # Could extract name
@@ -363,19 +403,33 @@ class SIDdecompilerAnalyzer:
                     player_info.type = "Rob Hubbard Player"
 
         # Look for player signatures in code
-        content_lower = content.lower()
-
         if 'player 21.g5' in content_lower:
             player_info.type = "NewPlayer v21.G5"
             player_info.version = "21.G5"
         elif 'player 21.g4' in content_lower:
             player_info.type = "NewPlayer v21.G4"
             player_info.version = "21.G4"
-        elif 'player 20' in content_lower:
+        elif 'player 21' in content_lower or 'newplayer v21' in content_lower:
+            player_info.type = "NewPlayer v21 (Laxity)"
+            player_info.version = "21"
+        elif 'player 20' in content_lower or 'newplayer v20' in content_lower:
             player_info.type = "NewPlayer v20"
             player_info.version = "20"
         elif 'newplayer' in content_lower:
             player_info.type = "JCH NewPlayer (variant)"
+
+        # Check for common Laxity code patterns
+        laxity_patterns = [
+            r'lda\s+#\$00\s+sta\s+\$d404',  # Laxity init pattern
+            r'ldy\s+#\$07.*bpl\s+.*ldx\s+#\$18',  # Laxity voice init
+            r'jsr\s+.*filter.*jsr\s+.*pulse',  # Laxity table processing
+        ]
+
+        if player_info.type == "Unknown":
+            for pattern in laxity_patterns:
+                if re.search(pattern, content, re.IGNORECASE | re.MULTILINE):
+                    player_info.type = "NewPlayer v21 (Laxity) - pattern match"
+                    break
 
         # Extract addresses from stdout
         if stdout:
@@ -402,6 +456,238 @@ class SIDdecompilerAnalyzer:
                         player_info.memory_end = int(matches[1], 16)
 
         return player_info
+
+    def parse_memory_layout(self, asm_file: Path, player_info: PlayerInfo,
+                           tables: Dict[str, TableInfo]) -> List[MemoryRegion]:
+        """
+        Parse memory layout from disassembly to create visual memory map
+
+        Args:
+            asm_file: Path to assembly file
+            player_info: Detected player information
+            tables: Extracted tables
+
+        Returns:
+            List of MemoryRegion objects sorted by address
+        """
+        regions = []
+
+        if not asm_file.exists():
+            return regions
+
+        with open(asm_file, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read()
+
+        # Add player code region
+        if player_info.memory_start and player_info.memory_end:
+            regions.append(MemoryRegion(
+                start=player_info.memory_start,
+                end=player_info.memory_end,
+                type='code',
+                name='Player Code'
+            ))
+
+        # Add table regions
+        for table_name, table in tables.items():
+            if table.size:
+                regions.append(MemoryRegion(
+                    start=table.address,
+                    end=table.address + table.size - 1,
+                    type='table',
+                    name=table.name
+                ))
+            else:
+                # Estimate size if not known
+                regions.append(MemoryRegion(
+                    start=table.address,
+                    end=table.address + 127,  # Estimate
+                    type='table',
+                    name=f"{table.name} (estimated)"
+                ))
+
+        # Look for data sections in disassembly
+        data_pattern = re.compile(r'^\s*\$([0-9A-Fa-f]{4}):\s+\.byte', re.MULTILINE)
+        for match in data_pattern.finditer(content):
+            addr = int(match.group(1), 16)
+            # Only add if not overlapping with existing regions
+            overlaps = any(r.start <= addr <= r.end for r in regions)
+            if not overlaps:
+                regions.append(MemoryRegion(
+                    start=addr,
+                    end=addr + 15,  # Estimate 16 bytes
+                    type='data',
+                    name='Data block'
+                ))
+
+        # Sort by address
+        regions.sort(key=lambda r: r.start)
+
+        # Merge adjacent regions of same type
+        merged = []
+        current = None
+        for region in regions:
+            if current is None:
+                current = region
+            elif (current.type == region.type and
+                  current.name == region.name and
+                  region.start <= current.end + 1):
+                # Merge adjacent regions
+                current.end = max(current.end, region.end)
+            else:
+                merged.append(current)
+                current = region
+
+        if current:
+            merged.append(current)
+
+        return merged
+
+    def generate_memory_map(self, regions: List[MemoryRegion]) -> str:
+        """
+        Generate visual ASCII memory map from memory regions
+
+        Args:
+            regions: List of MemoryRegion objects
+
+        Returns:
+            Formatted ASCII memory map string
+        """
+        if not regions:
+            return "No memory regions to visualize"
+
+        lines = []
+        lines.append("Memory Layout:")
+        lines.append("=" * 70)
+        lines.append("")
+
+        # Calculate total range
+        min_addr = min(r.start for r in regions)
+        max_addr = max(r.end for r in regions)
+        total_size = max_addr - min_addr + 1
+
+        # Visual representation
+        for region in regions:
+            size = region.end - region.start + 1
+            name_str = region.name if region.name else region.type
+            type_marker = {
+                'code': '█',
+                'data': '▒',
+                'table': '░',
+                'variable': '·'
+            }.get(region.type, '?')
+
+            # Create visual bar (max 40 chars)
+            bar_len = min(40, max(1, int(40 * size / total_size)))
+            bar = type_marker * bar_len
+
+            lines.append(f"${region.start:04X}-${region.end:04X} [{bar:40s}] {name_str} ({size} bytes)")
+
+        lines.append("")
+        lines.append("Legend: █ Code  ▒ Data  ░ Tables")
+        lines.append("=" * 70)
+
+        return '\n'.join(lines)
+
+    def generate_enhanced_report(self,
+                                 sid_file: Path,
+                                 asm_file: Path,
+                                 stdout: str,
+                                 tables: Dict[str, TableInfo],
+                                 player_info: PlayerInfo,
+                                 regions: List[MemoryRegion]) -> str:
+        """
+        Generate enhanced analysis report with memory maps and structure details
+
+        Args:
+            sid_file: Original SID file
+            asm_file: Generated assembly file
+            stdout: SIDdecompiler output
+            tables: Extracted tables
+            player_info: Detected player info
+            regions: Memory regions
+
+        Returns:
+            Formatted enhanced report string
+        """
+        report = []
+        report.append("=" * 70)
+        report.append("SIDdecompiler Enhanced Analysis Report")
+        report.append("=" * 70)
+        report.append(f"File: {sid_file.name}")
+        report.append(f"Output: {asm_file.name}")
+        report.append("")
+
+        # Player information
+        report.append("Player Information:")
+        report.append(f"  Type: {player_info.type}")
+        if player_info.version:
+            report.append(f"  Version: {player_info.version}")
+        if player_info.load_addr is not None:
+            report.append(f"  Load Address: ${player_info.load_addr:04X}")
+        if player_info.init_addr is not None:
+            report.append(f"  Init Address: ${player_info.init_addr:04X}")
+        if player_info.play_addr is not None:
+            report.append(f"  Play Address: ${player_info.play_addr:04X}")
+        if player_info.memory_start is not None and player_info.memory_end is not None:
+            size = player_info.memory_end - player_info.memory_start + 1
+            report.append(f"  Memory Range: ${player_info.memory_start:04X}-${player_info.memory_end:04X} ({size} bytes)")
+        report.append("")
+
+        # Memory layout visualization
+        if regions:
+            report.append(self.generate_memory_map(regions))
+            report.append("")
+
+        # Table information with addresses
+        if tables:
+            report.append("Detected Tables (with addresses):")
+            report.append("-" * 70)
+
+            # Group by type
+            by_type = {}
+            for table in tables.values():
+                table_type = table.type or 'unknown'
+                if table_type not in by_type:
+                    by_type[table_type] = []
+                by_type[table_type].append(table)
+
+            for table_type in sorted(by_type.keys()):
+                report.append(f"  {table_type.capitalize()} Tables:")
+                for table in sorted(by_type[table_type], key=lambda t: t.address):
+                    size_str = f" ({table.size} bytes)" if table.size else ""
+                    report.append(f"    ${table.address:04X}: {table.name}{size_str}")
+                report.append("")
+        else:
+            report.append("No tables detected")
+            report.append("")
+
+        # Structure summary
+        if regions:
+            report.append("Structure Summary:")
+            report.append(f"  Total regions: {len(regions)}")
+            code_regions = [r for r in regions if r.type == 'code']
+            table_regions = [r for r in regions if r.type == 'table']
+            data_regions = [r for r in regions if r.type == 'data']
+            if code_regions:
+                total_code = sum(r.end - r.start + 1 for r in code_regions)
+                report.append(f"  Code regions: {len(code_regions)} ({total_code} bytes)")
+            if table_regions:
+                total_tables = sum(r.end - r.start + 1 for r in table_regions)
+                report.append(f"  Table regions: {len(table_regions)} ({total_tables} bytes)")
+            if data_regions:
+                total_data = sum(r.end - r.start + 1 for r in data_regions)
+                report.append(f"  Data regions: {len(data_regions)} ({total_data} bytes)")
+            report.append("")
+
+        # Statistics from stdout
+        report.append("Analysis Statistics:")
+        for line in stdout.split('\n'):
+            if 'TraceNode' in line or 'pairs' in line or 'operands' in line:
+                report.append(f"  {line.strip()}")
+
+        report.append("=" * 70)
+
+        return '\n'.join(report)
 
     def generate_report(self,
                        sid_file: Path,
@@ -514,14 +800,16 @@ class SIDdecompilerAnalyzer:
 
         tables = self.extract_tables(asm_file)
         player_info = self.detect_player(asm_file, stdout)
+        regions = self.parse_memory_layout(asm_file, player_info, tables)
 
-        # Generate report
-        report = self.generate_report(
+        # Generate enhanced report with memory layout
+        report = self.generate_enhanced_report(
             sid_file=sid_file,
             asm_file=asm_file,
             stdout=stdout,
             tables=tables,
-            player_info=player_info
+            player_info=player_info,
+            regions=regions
         )
 
         # Save report
