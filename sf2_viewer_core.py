@@ -312,13 +312,16 @@ class SF2Parser:
                 result.append(f"[0x{code:02X}]")
         return ''.join(result).strip()
 
-    def _infer_table_name(self, table_type: int, table_id: int, raw_name: str) -> str:
-        """Infer table name from type and ID if raw name is unavailable.
+    def _infer_table_name(self, table_type: int, table_id: int, raw_name: str,
+                         row_count: int = 0, column_count: int = 0) -> str:
+        """Infer table name from type, ID, and dimensions if raw name is unavailable.
 
         Args:
             table_type: Table type byte
             table_id: Table ID byte
             raw_name: Raw name from descriptor
+            row_count: Number of rows (optional, for dimension-based inference)
+            column_count: Number of columns (optional, for dimension-based inference)
 
         Returns:
             Best guess for table name
@@ -333,6 +336,8 @@ class SF2Parser:
             # Check for specific table type patterns
             if table_type == 0x81:
                 return "Instruments"
+            elif table_type == 0x80:
+                return "Commands"
             elif table_type == 0x40:
                 return "Commands"
             elif table_type == 0x01:
@@ -343,8 +348,30 @@ class SF2Parser:
                 return "Filter"
             elif table_type == 0x20:
                 return "Arpeggio"
-            elif table_type == 0x00 and table_id == 0:
-                return "Sequence Data"
+            elif table_type == 0x00:
+                # For generic tables (type 0x00), try to infer from dimensions
+                if row_count > 0 and column_count > 0:
+                    # Common table dimension patterns
+                    if (row_count == 128 or row_count == 256) and (column_count == 2 or column_count == 3):
+                        return "Wave"
+                    elif (row_count == 64 or row_count == 256) and column_count == 4:
+                        return "Pulse"
+                    elif (row_count == 64 or row_count == 256) and column_count == 4:
+                        return "Filter"
+                    elif row_count == 32 and column_count == 2:
+                        return "Arpeggio"
+                    elif (row_count == 256 or row_count == 128) and column_count == 1:
+                        return "Tempo"
+                    elif row_count == 16 and column_count == 2:
+                        return "HR"
+                    elif row_count == 32 and column_count == 1:
+                        return "Init"
+
+                # Fallback for type 0x00
+                if table_id == 0:
+                    return "Sequence Data"
+                else:
+                    return f"Table[0x{table_type:02X}] ({row_count}x{column_count})"
 
             # Generic fallback
             return f"Table[0x{table_type:02X}]"
@@ -517,7 +544,9 @@ class SF2Parser:
             column_count = stored_column_count
 
             # Try to infer better name if raw name is unclear
-            final_name = self._infer_table_name(table_type, table_id, name_raw)
+            # Pass dimensions for type 0x00 table identification
+            final_name = self._infer_table_name(table_type, table_id, name_raw,
+                                               row_count, column_count)
 
             descriptor = TableDescriptor(
                 type=table_type,
