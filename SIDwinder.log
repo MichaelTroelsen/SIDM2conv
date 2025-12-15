@@ -1,1 +1,6 @@
-===== SIDwinder Log Started at 2025-12-15 14:56:15 =====
+===== SIDwinder Log Started at 2025-12-15 17:03:49 =====
+[2025-12-15 17:03:49] [ERROR] RSID file format detected: "Galway_Martin\Arkanoid.sid"
+[2025-12-15 17:03:49] [ERROR] RSID files require a true C64 environment and cannot be emulated by SIDwinder.
+[2025-12-15 17:03:49] [ERROR] Please use a PSID formatted file instead.
+[2025-12-15 17:03:49] [ERROR] Failed to load SID file: Galway_Martin\Arkanoid.sid
+[2025-12-15 17:03:49] [ERROR] Failed to disassemble Galway_Martin\Arkanoid.sid
