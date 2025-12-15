@@ -33,6 +33,58 @@ class TableDataLayout(Enum):
     COLUMN_MAJOR = 0x01   # Column by column: row0col0, row0col1, row1col0...
 
 
+class Driver11TableDimensions:
+    """Implicit table dimensions and layouts for Driver 11 (per SID Factory II specification).
+
+    Table dimensions and layouts are defined by the driver, not stored in the SF2 file descriptor.
+    The descriptor stores these, but they should match the driver's spec.
+    """
+
+    # Map table type to (row_count, column_count)
+    DIMENSIONS = {
+        0x81: (32, 6),      # Instruments: 32 instruments × 6 bytes each
+        0x01: (128, 2),     # Wave: 128 rows × 2 bytes each
+        0x02: (64, 4),      # Pulse: 64 rows × 4 bytes each
+        0x03: (64, 4),      # Filter: 64 rows × 4 bytes each
+        0x20: (32, 2),      # Arpeggio: 32 arpeggios × 2 bytes each
+        0x40: (32, 3),      # Commands: 32 commands × 3 bytes each
+    }
+
+    # Map table type to data layout (0=row-major, 1=column-major)
+    LAYOUTS = {
+        0x81: 1,  # Instruments: column-major
+        0x01: 1,  # Wave: column-major
+        0x02: 1,  # Pulse: column-major
+        0x03: 1,  # Filter: column-major
+        0x20: 1,  # Arpeggio: column-major
+        0x40: 1,  # Commands: column-major
+    }
+
+    @staticmethod
+    def get_dimensions(table_type: int) -> Tuple[int, int]:
+        """Get correct dimensions for a table type.
+
+        Args:
+            table_type: SF2 table type byte
+
+        Returns:
+            Tuple of (row_count, column_count), or (0, 0) if unknown
+        """
+        return Driver11TableDimensions.DIMENSIONS.get(table_type, (0, 0))
+
+    @staticmethod
+    def get_layout(table_type: int) -> int:
+        """Get correct data layout for a table type.
+
+        Args:
+            table_type: SF2 table type byte
+
+        Returns:
+            0 for row-major, 1 for column-major
+        """
+        return Driver11TableDimensions.LAYOUTS.get(table_type, 0)
+
+
 @dataclass
 class TableDescriptor:
     """Describes a music table (instruments, waves, etc.)"""
@@ -393,28 +445,32 @@ class SF2Parser:
 
         pos = 0
         while pos < len(data):
-            # Need at least 3 bytes for type, id, and name_length
-            if pos + 3 > len(data):
+            # Need at least 4 bytes: type, id, text_field_size, and at least null terminator for name
+            if pos + 4 > len(data):
                 break
 
             table_type = data[pos + 0]
             table_id = data[pos + 1]
-            name_length = data[pos + 2]  # Includes null terminator
+            text_field_size = data[pos + 2]  # NOT the name length - just text field size
 
-            # Check if name_length is valid (max 255 bytes)
-            # and we have enough data for the full descriptor
-            if pos + 3 + name_length + 12 > len(data):
-                # Not enough data for this descriptor
-                if name_length == 0xFF:
-                    # 0xFF marks end of table descriptors
-                    break
-                # Try to continue anyway, might be last descriptor
-                if pos + 3 + name_length > len(data):
-                    break
+            # Check for end marker
+            if table_type == 0xFF:
+                break
 
-            # Read name bytes (excluding null terminator)
+            # Name starts at pos + 3 and continues until we find a null terminator
             name_start = pos + 3
-            name_bytes = data[name_start:name_start + name_length - 1]
+
+            # Find the null terminator
+            null_pos = name_start
+            while null_pos < len(data) and data[null_pos] != 0:
+                null_pos += 1
+
+            if null_pos >= len(data):
+                # Corrupt data - no null terminator found
+                break
+
+            # Extract name (bytes from name_start to null_pos, excluding the null)
+            name_bytes = data[name_start:null_pos]
             try:
                 # Use ASCII decoding per SF2 specification
                 name_raw = name_bytes.decode('ascii')
@@ -423,33 +479,42 @@ class SF2Parser:
                 name_raw = name_bytes.decode('latin-1')
                 name_raw = self._clean_string(name_raw)
 
-            # Position of remaining fields (after null terminator)
-            field_start = name_start + name_length
+            # Position of remaining fields (right after the null terminator)
+            field_start = null_pos + 1
 
-            # Verify we have enough data for remaining fields
+            # Verify we have enough data for remaining 12 fixed bytes
             if field_start + 12 > len(data):
                 break
 
-            # Read all remaining fields at correct offsets
+            # Read DataLayout (1B) @ field_start + 0
+            layout_value = data[field_start + 0]
             try:
-                data_layout = TableDataLayout(data[field_start + 0])
+                data_layout = TableDataLayout(layout_value)
             except ValueError:
                 # Default to ROW_MAJOR if invalid
                 data_layout = TableDataLayout.ROW_MAJOR
 
+            # Read flags, rule IDs (1B each) @ field_start + 1-4
             flags = data[field_start + 1]
             insert_delete_rule = data[field_start + 2]
             enter_action_rule = data[field_start + 3]
             color_rule = data[field_start + 4]
 
-            # Address is 2 bytes little-endian
+            # Address is 2 bytes little-endian @ field_start + 5
             address = struct.unpack('<H', data[field_start + 5:field_start + 7])[0]
 
-            # CRITICAL FIX: Column count and row count are 2-byte little-endian values
-            # NOT single bytes!
-            column_count = struct.unpack('<H', data[field_start + 7:field_start + 9])[0]
-            row_count = struct.unpack('<H', data[field_start + 9:field_start + 11])[0]
-            visible_rows = data[field_start + 11]
+            # ColumnCount is 2 bytes little-endian @ field_start + 7
+            # RowCount is 2 bytes little-endian @ field_start + 9
+            stored_column_count = struct.unpack('<H', data[field_start + 7:field_start + 9])[0]
+            stored_row_count = struct.unpack('<H', data[field_start + 9:field_start + 11])[0]
+
+            # VisibleRowCount is 1 byte @ field_start + 11
+            visible_rows = data[field_start + 11] if field_start + 11 < len(data) else 0
+
+            # Use the stored dimensions from the file (they ARE correct for this file)
+            # User's test file has 19 instruments (0x13), stored values should be trusted
+            row_count = stored_row_count
+            column_count = stored_column_count
 
             # Try to infer better name if raw name is unclear
             final_name = self._infer_table_name(table_type, table_id, name_raw)
@@ -467,8 +532,8 @@ class SF2Parser:
 
             self.table_descriptors.append(descriptor)
             logger.debug(
-                f"Table: {final_name} (type=0x{table_type:02X}, "
-                f"id={table_id}) at ${address:04X} ({row_count}x{column_count})"
+                f"Table: {final_name} (type=0x{table_type:02X}, id={table_id}) "
+                f"@ ${address:04X} dims={row_count}x{column_count} layout={'CM' if data_layout == TableDataLayout.COLUMN_MAJOR else 'RM'}"
             )
 
             # Move to next descriptor (3 header + name_length + 12 fixed fields)
