@@ -453,34 +453,40 @@ class SF2ViewerWindow(QMainWindow):
         self.table_info.setText('\n'.join(info_lines))
 
     def update_all_tables(self):
-        """Update the all tables combined view with improved formatting and colors"""
+        """Update the all tables combined view with tables in pairs (2 columns)"""
         if not self.parser or not self.parser.table_descriptors:
             self.all_tables_display.setPlainText("No tables loaded")
             return
 
-        # Get all table data
-        tables_data = {}
+        # Get all table data - preserve order and handle duplicate names
+        tables_data = []
+        table_names = []
         for descriptor in self.parser.table_descriptors:
             table_data = self.parser.get_table_data(descriptor)
-            tables_data[descriptor.name] = (descriptor, table_data)
+            tables_data.append((descriptor, table_data))
+            table_names.append(descriptor.name)
 
         if not tables_data:
             self.all_tables_display.setPlainText("No table data available")
             return
 
-        # Determine how many rows to display (max of all tables)
-        max_rows = max(len(data[1]) for data in tables_data.values())
+        # Define table order preference: start with Commands and Instruments, then others
+        order_preference = ["Commands", "Instruments", "Arpeggio", "HR", "Tempo", "Wave"]
 
-        # Sort tables by name for consistent ordering
-        sorted_tables = sorted(tables_data.keys())
+        # Create list of (index, name) tuples sorted by preference
+        indexed_tables = [(i, name) for i, name in enumerate(table_names)]
 
-        # Calculate column widths - 24 chars per table (name + data)
-        col_width = 24
+        # Sort by preference order, then by index for ties
+        def sort_key(item):
+            idx, name = item
+            try:
+                pref_order = order_preference.index(name)
+            except ValueError:
+                pref_order = len(order_preference)
+            return (pref_order, idx)
 
-        # Build header line with table names
-        header = ""
-        for table_name in sorted_tables:
-            header += f"{table_name:^{col_width}}"
+        sorted_indices = sorted(indexed_tables, key=sort_key)
+        sorted_tables = [(idx, table_names[idx]) for idx, _ in sorted_indices]
 
         # Create formatted document with colors
         from PyQt6.QtGui import QTextDocument, QTextCursor, QTextCharFormat, QBrush, QColor
@@ -488,55 +494,86 @@ class SF2ViewerWindow(QMainWindow):
         doc = QTextDocument()
         cursor = QTextCursor(doc)
 
-        # Add title
-        title_format = QTextCharFormat()
-        title_format.setFontWeight(75)  # Bold
-        title_format.setForeground(QBrush(QColor(100, 150, 255)))  # Blue
-        cursor.setCharFormat(title_format)
-        cursor.insertText("SF2 All Tables View\n")
-        cursor.insertText("=" * (col_width * len(sorted_tables)) + "\n")
+        # Define colors for text - black font
+        font_color = QColor(0, 0, 0)  # Black text
+        header_color = QColor(0, 100, 200)  # Blue for table headers
 
-        # Add header with table names
-        header_format = QTextCharFormat()
-        header_format.setFontWeight(75)  # Bold
-        header_format.setForeground(QBrush(QColor(200, 200, 200)))
-        cursor.setCharFormat(header_format)
-        cursor.insertText(header + "\n")
-        cursor.insertText("=" * (col_width * len(sorted_tables)) + "\n")
+        # Column widths for side-by-side display
+        col_width = 50  # Width for left and right columns
+        spacing = "    "  # Spacing between columns
 
-        # Define colors for alternating rows
-        color_normal = QColor(200, 200, 200)
-        color_alternate = QColor(150, 200, 150)
+        # Process tables in pairs
+        for i in range(0, len(sorted_tables), 2):
+            # Add row with headers for both tables
+            header_format = QTextCharFormat()
+            header_format.setFontWeight(75)  # Bold
+            header_format.setForeground(QBrush(header_color))
+            header_format.setFontFamily("Courier New")
+            header_format.setFontPointSize(9)
+            cursor.setCharFormat(header_format)
 
-        # Add data rows
-        for row_idx in range(max_rows):
-            # Alternate row colors
-            is_alternate = row_idx % 2 == 1
-            row_color = color_alternate if is_alternate else color_normal
+            # Left table header
+            left_idx, left_name = sorted_tables[i]
+            left_descriptor = tables_data[left_idx][0]
+            left_header = f"{left_name} Table ({left_descriptor.row_count}x{left_descriptor.column_count})"
 
-            row_format = QTextCharFormat()
-            row_format.setForeground(QBrush(row_color))
-            row_format.setFontFamily("Courier New")
-            row_format.setFontPointSize(8)
+            # Right table header (if exists)
+            right_header = ""
+            if i + 1 < len(sorted_tables):
+                right_idx, right_name = sorted_tables[i + 1]
+                right_descriptor = tables_data[right_idx][0]
+                right_header = f"{right_name} Table ({right_descriptor.row_count}x{right_descriptor.column_count})"
 
-            cursor.setCharFormat(row_format)
+            cursor.insertText(f"\n{left_header:<{col_width}}{spacing}{right_header}\n")
 
-            # Build row data
-            for table_name in sorted_tables:
-                descriptor, table_data = tables_data[table_name]
+            # Add separator line
+            separator_format = QTextCharFormat()
+            separator_format.setForeground(QBrush(font_color))
+            separator_format.setFontFamily("Courier New")
+            cursor.setCharFormat(separator_format)
+            cursor.insertText("=" * (col_width * 2 + len(spacing)) + "\n")
 
-                if row_idx < len(table_data):
-                    # Format row as hex bytes with row number
-                    row_bytes = ' '.join(f"{val:02X}" for val in table_data[row_idx])
-                    row_text = f"{row_idx:02X}: {row_bytes}"
-                else:
-                    row_text = ""
+            # Add data rows
+            data_format = QTextCharFormat()
+            data_format.setForeground(QBrush(font_color))
+            data_format.setFontFamily("Courier New")
+            data_format.setFontPointSize(8)
+            cursor.setCharFormat(data_format)
 
-                # Pad to column width
-                row_text = f"{row_text:<{col_width}}"
-                cursor.insertText(row_text)
+            # Get both table data
+            left_idx, left_name = sorted_tables[i]
+            left_descriptor, left_table_data = tables_data[left_idx]
+            max_left_rows = len(left_table_data)
 
-            cursor.insertText("\n")
+            right_table_data = []
+            max_right_rows = 0
+            if i + 1 < len(sorted_tables):
+                right_idx, right_name = sorted_tables[i + 1]
+                right_descriptor, right_table_data = tables_data[right_idx]
+                max_right_rows = len(right_table_data)
+
+            # Determine max rows for this pair
+            max_rows = max(max_left_rows, max_right_rows)
+
+            # Add data rows side by side
+            for row_idx in range(max_rows):
+                # Left table row
+                left_row_text = ""
+                if row_idx < len(left_table_data):
+                    row_bytes = ' '.join(f"{val:02X}" for val in left_table_data[row_idx])
+                    left_row_text = f"{row_idx:02X}: {row_bytes}"
+                left_row_text = f"{left_row_text:<{col_width}}"
+
+                # Right table row
+                right_row_text = ""
+                if row_idx < len(right_table_data):
+                    row_bytes = ' '.join(f"{val:02X}" for val in right_table_data[row_idx])
+                    right_row_text = f"{row_idx:02X}: {row_bytes}"
+                right_row_text = f"{right_row_text:<{col_width}}"
+
+                # Combine and insert
+                combined_text = f"{left_row_text}{spacing}{right_row_text}\n"
+                cursor.insertText(combined_text)
 
         self.all_tables_display.setDocument(doc)
 
