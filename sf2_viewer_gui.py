@@ -453,13 +453,10 @@ class SF2ViewerWindow(QMainWindow):
         self.table_info.setText('\n'.join(info_lines))
 
     def update_all_tables(self):
-        """Update the all tables combined view with hex dump format"""
+        """Update the all tables combined view with improved formatting and colors"""
         if not self.parser or not self.parser.table_descriptors:
-            self.all_tables_display.setText("No tables loaded")
+            self.all_tables_display.setPlainText("No tables loaded")
             return
-
-        # Build output with all tables side-by-side
-        output_lines = []
 
         # Get all table data
         tables_data = {}
@@ -468,47 +465,80 @@ class SF2ViewerWindow(QMainWindow):
             tables_data[descriptor.name] = (descriptor, table_data)
 
         if not tables_data:
-            self.all_tables_display.setText("No table data available")
+            self.all_tables_display.setPlainText("No table data available")
             return
 
         # Determine how many rows to display (max of all tables)
         max_rows = max(len(data[1]) for data in tables_data.values())
 
+        # Sort tables by name for consistent ordering
+        sorted_tables = sorted(tables_data.keys())
+
+        # Calculate column widths - 24 chars per table (name + data)
+        col_width = 24
+
         # Build header line with table names
         header = ""
-        col_positions = {}
-        pos = 0
-        for table_name in tables_data.keys():
-            col_positions[table_name] = pos
-            # Each column is 20 chars wide (name + spacing)
-            header += f"{table_name:20}"
-            pos += 20
+        for table_name in sorted_tables:
+            header += f"{table_name:^{col_width}}"
 
-        output_lines.append(header)
-        output_lines.append("=" * len(header))
+        # Create formatted document with colors
+        from PyQt6.QtGui import QTextDocument, QTextCursor, QTextCharFormat, QBrush, QColor
 
-        # Build data rows
+        doc = QTextDocument()
+        cursor = QTextCursor(doc)
+
+        # Add title
+        title_format = QTextCharFormat()
+        title_format.setFontWeight(75)  # Bold
+        title_format.setForeground(QBrush(QColor(100, 150, 255)))  # Blue
+        cursor.setCharFormat(title_format)
+        cursor.insertText("SF2 All Tables View\n")
+        cursor.insertText("=" * (col_width * len(sorted_tables)) + "\n")
+
+        # Add header with table names
+        header_format = QTextCharFormat()
+        header_format.setFontWeight(75)  # Bold
+        header_format.setForeground(QBrush(QColor(200, 200, 200)))
+        cursor.setCharFormat(header_format)
+        cursor.insertText(header + "\n")
+        cursor.insertText("=" * (col_width * len(sorted_tables)) + "\n")
+
+        # Define colors for alternating rows
+        color_normal = QColor(200, 200, 200)
+        color_alternate = QColor(150, 200, 150)
+
+        # Add data rows
         for row_idx in range(max_rows):
-            row_str = ""
-            for table_name in tables_data.keys():
+            # Alternate row colors
+            is_alternate = row_idx % 2 == 1
+            row_color = color_alternate if is_alternate else color_normal
+
+            row_format = QTextCharFormat()
+            row_format.setForeground(QBrush(row_color))
+            row_format.setFontFamily("Courier New")
+            row_format.setFontPointSize(8)
+
+            cursor.setCharFormat(row_format)
+
+            # Build row data
+            for table_name in sorted_tables:
                 descriptor, table_data = tables_data[table_name]
 
                 if row_idx < len(table_data):
-                    # Format row as hex bytes
+                    # Format row as hex bytes with row number
                     row_bytes = ' '.join(f"{val:02X}" for val in table_data[row_idx])
-                    # Add row number at start
-                    if row_idx == 0:
-                        row_str += f"{row_idx:02X}: {row_bytes:16}"
-                    else:
-                        row_str += f"{row_idx:02X}: {row_bytes:16}"
+                    row_text = f"{row_idx:02X}: {row_bytes}"
                 else:
-                    row_str += " " * 20
+                    row_text = ""
 
-                row_str += " "
+                # Pad to column width
+                row_text = f"{row_text:<{col_width}}"
+                cursor.insertText(row_text)
 
-            output_lines.append(row_str.rstrip())
+            cursor.insertText("\n")
 
-        self.all_tables_display.setText('\n'.join(output_lines))
+        self.all_tables_display.setDocument(doc)
 
     def update_memory_map(self):
         """Update the memory map tab"""
