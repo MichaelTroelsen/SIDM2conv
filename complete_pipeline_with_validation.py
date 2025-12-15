@@ -2326,20 +2326,21 @@ def main():
         # STEP 3.5: Calculate Accuracy
         print(f'\n  [3.5/13] Calculating accuracy from dumps...')
         accuracy_metrics = None
-        if orig_dump_ok and exp_dump_ok:
-            from sidm2.accuracy import calculate_accuracy_from_dumps
-            try:
-                accuracy_metrics = calculate_accuracy_from_dumps(str(orig_dump), str(exp_dump))
-                if accuracy_metrics:
-                    overall = accuracy_metrics['overall_accuracy']
-                    print(f'        Overall Accuracy: {overall:.2f}%')
-                    result['accuracy'] = accuracy_metrics
-                else:
-                    print(f'        [WARN] Accuracy calculation failed')
-            except Exception as e:
-                print(f'        [WARN] Accuracy calculation error: {e}')
-        else:
-            print(f'        [SKIP] Dumps not available for comparison')
+        with PipelineTimer('3_5_accuracy', result):
+            if orig_dump_ok and exp_dump_ok:
+                from sidm2.accuracy import calculate_accuracy_from_dumps
+                try:
+                    accuracy_metrics = calculate_accuracy_from_dumps(str(orig_dump), str(exp_dump))
+                    if accuracy_metrics:
+                        overall = accuracy_metrics['overall_accuracy']
+                        print(f'        Overall Accuracy: {overall:.2f}%')
+                        result['accuracy'] = accuracy_metrics
+                    else:
+                        print(f'        [WARN] Accuracy calculation failed')
+                except Exception as e:
+                    print(f'        [WARN] Accuracy calculation error: {e}')
+            else:
+                print(f'        [SKIP] Dumps not available for comparison')
 
         # STEP 4: WAV
         print(f'\n  [4/13] Rendering WAV files...')
@@ -2392,8 +2393,9 @@ def main():
         orig_hex = original_dir / f'{basename}_original.hex'
         exp_hex = new_dir / f'{basename}_exported.hex'
 
-        orig_hex_ok = generate_hexdump(sid_file, orig_hex)
-        exp_hex_ok = generate_hexdump(exported_sid, exp_hex) if exported_sid.exists() else False
+        with PipelineTimer('5_hexdump', result):
+            orig_hex_ok = generate_hexdump(sid_file, orig_hex)
+            exp_hex_ok = generate_hexdump(exported_sid, exp_hex) if exported_sid.exists() else False
 
         print(f'        Original: {"[OK]" if orig_hex_ok else "[ERROR]"}')
         print(f'        Exported: {"[OK]" if exp_hex_ok else "[ERROR]"}')
