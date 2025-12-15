@@ -313,7 +313,7 @@ class SF2Parser:
         return ''.join(result).strip()
 
     def _infer_table_name(self, table_type: int, table_id: int, raw_name: str,
-                         row_count: int = 0, column_count: int = 0) -> str:
+                         row_count: int = 0, column_count: int = 0, address: int = 0) -> str:
         """Infer table name from type, ID, and dimensions if raw name is unavailable.
 
         Args:
@@ -322,6 +322,7 @@ class SF2Parser:
             raw_name: Raw name from descriptor
             row_count: Number of rows (optional, for dimension-based inference)
             column_count: Number of columns (optional, for dimension-based inference)
+            address: Table address in memory (optional, for disambiguation)
 
         Returns:
             Best guess for table name
@@ -352,12 +353,21 @@ class SF2Parser:
                 # For generic tables (type 0x00), try to infer from dimensions
                 if row_count > 0 and column_count > 0:
                     # Common table dimension patterns
-                    if (row_count == 128 or row_count == 256) and (column_count == 2 or column_count == 3):
+                    if row_count == 256 and column_count == 3:
+                        # Distinguish between Wave, Pulse, Filter using address
+                        # If address provided, use it to disambiguate
+                        if address > 0:
+                            # Use address to determine type
+                            if address >= 0x1EDB:  # Filter threshold (higher address)
+                                return "Filter"
+                            elif address >= 0x1BDB:  # Pulse threshold
+                                return "Pulse"
+                        # Default to Wave if no address or can't determine
+                        return "Wave"
+                    elif (row_count == 128 or row_count == 256) and column_count == 2:
                         return "Wave"
                     elif (row_count == 64 or row_count == 256) and column_count == 4:
                         return "Pulse"
-                    elif (row_count == 64 or row_count == 256) and column_count == 4:
-                        return "Filter"
                     elif row_count == 32 and column_count == 2:
                         return "Arpeggio"
                     elif (row_count == 256 or row_count == 128) and column_count == 1:
@@ -544,9 +554,9 @@ class SF2Parser:
             column_count = stored_column_count
 
             # Try to infer better name if raw name is unclear
-            # Pass dimensions for type 0x00 table identification
+            # Pass dimensions and address for type 0x00 table identification
             final_name = self._infer_table_name(table_type, table_id, name_raw,
-                                               row_count, column_count)
+                                               row_count, column_count, address)
 
             descriptor = TableDescriptor(
                 type=table_type,
