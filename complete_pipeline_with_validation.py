@@ -2268,53 +2268,56 @@ def main():
 
         player_info = None
         detected_tables = None
-        try:
-            analyzer = SIDdecompilerAnalyzer()
-            success, report = analyzer.analyze_and_report(sid_file, analysis_dir)
-            if success:
-                print(f'        [OK] Analysis complete')
-                # Extract player info and tables from analyzer
-                asm_file = analysis_dir / f'{basename}_siddecompiler.asm'
-                if asm_file.exists():
-                    player_info = analyzer.detect_player(asm_file, "")
-                    detected_tables = analyzer.extract_tables(asm_file)
-                    if player_info:
-                        print(f'        Player: {player_info.type}')
-                    if detected_tables:
-                        print(f'        Tables: {len(detected_tables)} detected')
-                result['steps']['siddecompiler'] = {'success': True}
-            else:
-                print(f'        [WARN] Analysis failed')
+        with PipelineTimer('1_6_siddecompiler', result):
+            try:
+                analyzer = SIDdecompilerAnalyzer()
+                success, report = analyzer.analyze_and_report(sid_file, analysis_dir)
+                if success:
+                    print(f'        [OK] Analysis complete')
+                    # Extract player info and tables from analyzer
+                    asm_file = analysis_dir / f'{basename}_siddecompiler.asm'
+                    if asm_file.exists():
+                        player_info = analyzer.detect_player(asm_file, "")
+                        detected_tables = analyzer.extract_tables(asm_file)
+                        if player_info:
+                            print(f'        Player: {player_info.type}')
+                        if detected_tables:
+                            print(f'        Tables: {len(detected_tables)} detected')
+                    result['steps']['siddecompiler'] = {'success': True}
+                else:
+                    print(f'        [WARN] Analysis failed')
+                    result['steps']['siddecompiler'] = {'success': False}
+            except Exception as e:
+                print(f'        [WARN] SIDdecompiler error: {e}')
                 result['steps']['siddecompiler'] = {'success': False}
-        except Exception as e:
-            print(f'        [WARN] SIDdecompiler error: {e}')
-            result['steps']['siddecompiler'] = {'success': False}
 
         # STEP 2: SF2 -> SID
         print(f'\n  [2/13] Packing SF2 -> SID...')
         exported_sid = new_dir / f'{basename}_exported.sid'
 
         # For Galway files, skip re-export because format is incompatible
-        if file_type == 'GALWAY':
-            print(f'        [SKIP] Galway format cannot be re-exported through SF2 pipeline')
-            print(f'        [INFO] Using original SID for all comparison steps instead')
-            result['steps']['packing'] = {'success': False, 'reason': 'Galway format incompatible with SF2 re-export'}
-            # Set exported_sid to original SID for subsequent steps
-            exported_sid = sid_file
-        elif pack_sf2_to_sid_safe(output_sf2, exported_sid, name, author, copyright_str):
-            print(f'        [OK] Size: {exported_sid.stat().st_size} bytes')
-            result['steps']['packing'] = {'success': True}
-        else:
-            print(f'        [ERROR] Packing failed')
-            result['steps']['packing'] = {'success': False}
+        with PipelineTimer('2_packing', result):
+            if file_type == 'GALWAY':
+                print(f'        [SKIP] Galway format cannot be re-exported through SF2 pipeline')
+                print(f'        [INFO] Using original SID for all comparison steps instead')
+                result['steps']['packing'] = {'success': False, 'reason': 'Galway format incompatible with SF2 re-export'}
+                # Set exported_sid to original SID for subsequent steps
+                exported_sid = sid_file
+            elif pack_sf2_to_sid_safe(output_sf2, exported_sid, name, author, copyright_str):
+                print(f'        [OK] Size: {exported_sid.stat().st_size} bytes')
+                result['steps']['packing'] = {'success': True}
+            else:
+                print(f'        [ERROR] Packing failed')
+                result['steps']['packing'] = {'success': False}
 
         # STEP 3: Siddump
         print(f'\n  [3/13] Generating siddumps...')
         orig_dump = original_dir / f'{basename}_original.dump'
         exp_dump = new_dir / f'{basename}_exported.dump'
 
-        orig_dump_ok = run_siddump(sid_file, orig_dump, seconds=10)
-        exp_dump_ok = run_siddump(exported_sid, exp_dump, seconds=10) if exported_sid.exists() else False
+        with PipelineTimer('3_siddump', result):
+            orig_dump_ok = run_siddump(sid_file, orig_dump, seconds=10)
+            exp_dump_ok = run_siddump(exported_sid, exp_dump, seconds=10) if exported_sid.exists() else False
 
         print(f'        Original: {"[OK]" if orig_dump_ok else "[ERROR]"}')
         print(f'        Exported: {"[OK]" if exp_dump_ok else "[ERROR]"}')
