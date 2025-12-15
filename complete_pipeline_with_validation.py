@@ -2404,8 +2404,9 @@ def main():
         orig_trace = original_dir / f'{basename}_original.txt'
         exp_trace = new_dir / f'{basename}_exported.txt'
 
-        orig_trace_ok = generate_sidwinder_trace(sid_file, orig_trace, seconds=30)
-        exp_trace_ok = generate_sidwinder_trace(exported_sid, exp_trace, seconds=30) if exported_sid.exists() else False
+        with PipelineTimer('6_trace', result):
+            orig_trace_ok = generate_sidwinder_trace(sid_file, orig_trace, seconds=30)
+            exp_trace_ok = generate_sidwinder_trace(exported_sid, exp_trace, seconds=30) if exported_sid.exists() else False
 
         print(f'        Original: {"[OK]" if orig_trace_ok else "[WARN - needs rebuilt SIDwinder]"}')
         print(f'        Exported: {"[OK]" if exp_trace_ok else "[WARN - needs rebuilt SIDwinder]"}')
@@ -2413,23 +2414,24 @@ def main():
 
         # STEP 7: Info.txt
         print(f'\n  [7/13] Generating info.txt...')
-        info_ok = generate_info_txt_comprehensive(sid_file, output_sf2, new_dir, accuracy_metrics)
+        with PipelineTimer('7_info', result):
+            info_ok = generate_info_txt_comprehensive(sid_file, output_sf2, new_dir, accuracy_metrics)
 
-        # Append sequence information if siddump injection was successful
-        if injected_sequences and injected_orderlists and injected_used_sequences:
-            try:
-                info_txt_path = new_dir / 'info.txt'
-                sequence_info = format_sequences_for_info_txt(
-                    injected_sequences,
-                    injected_orderlists,
-                    injected_used_sequences
-                )
-                with open(info_txt_path, 'a', encoding='utf-8') as f:
-                    f.write('\n\n')
-                    f.write(sequence_info)
-                print(f'        [OK] Added sequence debugging info')
-            except Exception as e:
-                print(f'        [WARN] Could not append sequence info: {e}')
+            # Append sequence information if siddump injection was successful
+            if injected_sequences and injected_orderlists and injected_used_sequences:
+                try:
+                    info_txt_path = new_dir / 'info.txt'
+                    sequence_info = format_sequences_for_info_txt(
+                        injected_sequences,
+                        injected_orderlists,
+                        injected_used_sequences
+                    )
+                    with open(info_txt_path, 'a', encoding='utf-8') as f:
+                        f.write('\n\n')
+                        f.write(sequence_info)
+                    print(f'        [OK] Added sequence debugging info')
+                except Exception as e:
+                    print(f'        [WARN] Could not append sequence info: {e}')
 
         print(f'        {"[OK]" if info_ok else "[ERROR]"}')
         result['steps']['info'] = {'success': info_ok}
@@ -2437,7 +2439,8 @@ def main():
         # STEP 8: Annotated Disassembly
         print(f'\n  [8/13] Generating annotated disassembly...')
         disasm_md = new_dir / f'{basename}_exported_disassembly.md'
-        disasm_ok = generate_annotated_disassembly(exported_sid, disasm_md) if exported_sid.exists() else False
+        with PipelineTimer('8_disassembly', result):
+            disasm_ok = generate_annotated_disassembly(exported_sid, disasm_md) if exported_sid.exists() else False
         print(f'        {"[OK]" if disasm_ok else "[ERROR]"}')
         result['steps']['disassembly'] = {'success': disasm_ok}
 
@@ -2446,8 +2449,9 @@ def main():
         orig_sidwinder_asm = original_dir / f'{basename}_original_sidwinder.asm'
         sidwinder_asm = new_dir / f'{basename}_exported_sidwinder.asm'
 
-        orig_sidwinder_ok = generate_sidwinder_disassembly(sid_file, orig_sidwinder_asm)
-        exp_sidwinder_ok = generate_sidwinder_disassembly(exported_sid, sidwinder_asm) if exported_sid.exists() else False
+        with PipelineTimer('9_sidwinder_disasm', result):
+            orig_sidwinder_ok = generate_sidwinder_disassembly(sid_file, orig_sidwinder_asm)
+            exp_sidwinder_ok = generate_sidwinder_disassembly(exported_sid, sidwinder_asm) if exported_sid.exists() else False
 
         print(f'        Original: {"[OK]" if orig_sidwinder_ok else "[ERROR]"}')
         print(f'        Exported: {"[OK]" if exp_sidwinder_ok else "[ERROR]"}')
@@ -2455,7 +2459,8 @@ def main():
 
         # STEP 10: Validation
         print(f'\n  [10/13] Validating completion...')
-        validation = validate_pipeline_completion(file_output, basename)
+        with PipelineTimer('10_validation', result):
+            validation = validate_pipeline_completion(file_output, basename)
         result['validation'] = validation
 
         print(f'        Files: {validation["success"]}/{validation["total"]}')
@@ -2474,14 +2479,15 @@ def main():
             python_midi = new_dir / f'{basename}_python.mid'
             midi_comparison = new_dir / f'{basename}_midi_comparison.txt'
 
-            try:
-                # Export with Python MIDI emulator
-                from sidm2.sid_to_midi_emulator import convert_sid_to_midi
-                convert_sid_to_midi(str(sid_file), str(python_midi), frames=1000)
+            with PipelineTimer('11_midi', result):
+                try:
+                    # Export with Python MIDI emulator
+                    from sidm2.sid_to_midi_emulator import convert_sid_to_midi
+                    convert_sid_to_midi(str(sid_file), str(python_midi), frames=1000)
 
-                # Generate simple comparison report instead of calling test_midi_comparison.py
-                # (test_midi_comparison.py expects different path format)
-                comparison_text = f"""Python MIDI Export: {python_midi.name}
+                    # Generate simple comparison report instead of calling test_midi_comparison.py
+                    # (test_midi_comparison.py expects different path format)
+                    comparison_text = f"""Python MIDI Export: {python_midi.name}
 Frames: 1000
 Export Status: {'Success' if python_midi.exists() else 'Failed'}
 File Size: {python_midi.stat().st_size if python_midi.exists() else 0} bytes
@@ -2490,36 +2496,36 @@ Note: This file contains MIDI output from the Python SID emulator.
 For detailed comparison with SIDtool, run:
   python scripts/test_midi_comparison.py "{sid_file}"
 """
-                comparison_result = type('obj', (object,), {
-                    'stdout': comparison_text,
-                    'stderr': '',
-                    'returncode': 0
-                })()
+                    comparison_result = type('obj', (object,), {
+                        'stdout': comparison_text,
+                        'stderr': '',
+                        'returncode': 0
+                    })()
 
-                # Save comparison results
-                with open(midi_comparison, 'w', encoding='utf-8') as f:
-                    f.write('='*80 + '\n')
-                    f.write('PYTHON MIDI EMULATOR VALIDATION\n')
-                    f.write('='*80 + '\n\n')
-                    f.write(f'SID File: {filename}\n')
-                    f.write(f'Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n\n')
-                    f.write(comparison_result.stdout)
-                    if comparison_result.stderr:
-                        f.write('\n\nErrors:\n')
-                        f.write(comparison_result.stderr)
-
-                midi_comparison_ok = python_midi.exists() and midi_comparison.exists()
-                print(f'        Python MIDI: {"[OK]" if python_midi.exists() else "[ERROR]"}')
-                print(f'        Comparison: {"[OK]" if midi_comparison.exists() else "[ERROR]"}')
-
-            except Exception as e:
-                print(f'        [WARN] MIDI comparison failed: {e}')
-                # Create minimal comparison file
-                try:
+                    # Save comparison results
                     with open(midi_comparison, 'w', encoding='utf-8') as f:
-                        f.write(f'MIDI comparison failed: {e}\n')
-                except:
-                    pass
+                        f.write('='*80 + '\n')
+                        f.write('PYTHON MIDI EMULATOR VALIDATION\n')
+                        f.write('='*80 + '\n\n')
+                        f.write(f'SID File: {filename}\n')
+                        f.write(f'Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n\n')
+                        f.write(comparison_result.stdout)
+                        if comparison_result.stderr:
+                            f.write('\n\nErrors:\n')
+                            f.write(comparison_result.stderr)
+
+                    midi_comparison_ok = python_midi.exists() and midi_comparison.exists()
+                    print(f'        Python MIDI: {"[OK]" if python_midi.exists() else "[ERROR]"}')
+                    print(f'        Comparison: {"[OK]" if midi_comparison.exists() else "[ERROR]"}')
+
+                except Exception as e:
+                    print(f'        [WARN] MIDI comparison failed: {e}')
+                    # Create minimal comparison file
+                    try:
+                        with open(midi_comparison, 'w', encoding='utf-8') as f:
+                            f.write(f'MIDI comparison failed: {e}\n')
+                    except:
+                        pass
 
             result['steps']['midi_comparison'] = {'success': midi_comparison_ok}
 
