@@ -28,6 +28,10 @@ from pathlib import Path
 import sys
 import time
 import os
+
+# Global flags for pipeline optimization
+SKIP_WAV = False
+SKIP_MIDI = False
 from datetime import datetime
 
 # Import existing tools
@@ -2096,16 +2100,46 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
 
 def main():
-    sidsf2_dir = Path('SIDSF2player')
-    output_base = Path('output/SIDSF2player_Complete_Pipeline')
+    # Parse command line arguments
+    import argparse
+    parser = argparse.ArgumentParser(description='Complete SID Conversion Pipeline')
+    parser.add_argument('sid_file', nargs='?', help='Single SID file to process (or directory with SID files)')
+    parser.add_argument('--skip-wav', action='store_true', help='Skip WAV rendering')
+    parser.add_argument('--skip-midi', action='store_true', help='Skip MIDI comparison')
+    parser.add_argument('--workers', type=int, default=1, help='Number of parallel workers (ignored, for compatibility)')
+    args = parser.parse_args()
 
-    sid_files = sorted(sidsf2_dir.glob('*.sid'))
+    # Determine SID files and output directory
+    if args.sid_file:
+        sid_path = Path(args.sid_file)
+        if sid_path.is_file():
+            # Single file
+            sid_files = [sid_path]
+            output_base = Path('output') / sid_path.stem
+        else:
+            # Directory
+            sid_files = sorted(sid_path.glob('*.sid'))
+            output_base = Path('output') / sid_path.name
+    else:
+        # Default to SIDSF2player directory
+        sidsf2_dir = Path('SIDSF2player')
+        output_base = Path('output/SIDSF2player_Complete_Pipeline')
+        sid_files = sorted(sidsf2_dir.glob('*.sid'))
+
+    # Store skip flags in global scope for use in pipeline
+    global SKIP_WAV, SKIP_MIDI
+    SKIP_WAV = args.skip_wav
+    SKIP_MIDI = args.skip_midi
 
     print('='*80)
     print('COMPLETE SID CONVERSION PIPELINE WITH VALIDATION')
     print('='*80)
     print(f'\nFound {len(sid_files)} SID files')
     print(f'Output directory: {output_base}')
+    if SKIP_WAV:
+        print('[FAST] WAV rendering SKIPPED')
+    if SKIP_MIDI:
+        print('[FAST] MIDI comparison SKIPPED')
     print(f'Started: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
     print()
     print('Pipeline Steps:')
@@ -2249,7 +2283,14 @@ def main():
         print(f'\n  [2/13] Packing SF2 -> SID...')
         exported_sid = new_dir / f'{basename}_exported.sid'
 
-        if pack_sf2_to_sid_safe(output_sf2, exported_sid, name, author, copyright_str):
+        # For Galway files, skip re-export because format is incompatible
+        if file_type == 'GALWAY':
+            print(f'        [SKIP] Galway format cannot be re-exported through SF2 pipeline')
+            print(f'        [INFO] Using original SID for all comparison steps instead')
+            result['steps']['packing'] = {'success': False, 'reason': 'Galway format incompatible with SF2 re-export'}
+            # Set exported_sid to original SID for subsequent steps
+            exported_sid = sid_file
+        elif pack_sf2_to_sid_safe(output_sf2, exported_sid, name, author, copyright_str):
             print(f'        [OK] Size: {exported_sid.stat().st_size} bytes')
             result['steps']['packing'] = {'success': True}
         else:
@@ -2288,20 +2329,27 @@ def main():
 
         # STEP 4: WAV
         print(f'\n  [4/13] Rendering WAV files...')
-        orig_wav = original_dir / f'{basename}_original.wav'
-        exp_wav = new_dir / f'{basename}_exported.wav'
+        orig_wav_ok = False
+        exp_wav_ok = False
 
-        orig_wav_ok = render_wav(sid_file, orig_wav, seconds=30)
-        exp_wav_ok = render_wav(exported_sid, exp_wav, seconds=30) if exported_sid.exists() else False
+        if SKIP_WAV:
+            print(f'        [SKIP] WAV rendering disabled (--skip-wav)')
+            result['steps']['wav'] = {'orig': False, 'exp': False}
+        else:
+            orig_wav = original_dir / f'{basename}_original.wav'
+            exp_wav = new_dir / f'{basename}_exported.wav'
 
-        print(f'        Original: {"[OK]" if orig_wav_ok else "[ERROR]"}')
-        print(f'        Exported: {"[OK]" if exp_wav_ok else "[ERROR]"}')
-        result['steps']['wav'] = {'orig': orig_wav_ok, 'exp': exp_wav_ok}
+            orig_wav_ok = render_wav(sid_file, orig_wav, seconds=30)
+            exp_wav_ok = render_wav(exported_sid, exp_wav, seconds=30) if exported_sid.exists() else False
+
+            print(f'        Original: {"[OK]" if orig_wav_ok else "[ERROR]"}')
+            print(f'        Exported: {"[OK]" if exp_wav_ok else "[ERROR]"}')
+            result['steps']['wav'] = {'orig': orig_wav_ok, 'exp': exp_wav_ok}
 
         # STEP 4.5: Calculate Audio Accuracy
         print(f'\n  [4.5/13] Calculating audio accuracy from WAV files...')
         audio_accuracy = None
-        if orig_wav_ok and exp_wav_ok:
+        if not SKIP_WAV and orig_wav_ok and exp_wav_ok:
             from sidm2.audio_comparison import calculate_audio_accuracy
             try:
                 audio_accuracy = calculate_audio_accuracy(str(orig_wav), str(exp_wav), verbose=True)
@@ -2403,18 +2451,23 @@ def main():
 
         # STEP 11: SIDtool MIDI Comparison
         print(f'\n  [11/13] SIDtool MIDI comparison...')
-        python_midi = new_dir / f'{basename}_python.mid'
-        midi_comparison = new_dir / f'{basename}_midi_comparison.txt'
-
         midi_comparison_ok = False
-        try:
-            # Export with Python MIDI emulator
-            from sidm2.sid_to_midi_emulator import convert_sid_to_midi
-            convert_sid_to_midi(str(sid_file), str(python_midi), frames=1000)
 
-            # Generate simple comparison report instead of calling test_midi_comparison.py
-            # (test_midi_comparison.py expects different path format)
-            comparison_text = f"""Python MIDI Export: {python_midi.name}
+        if SKIP_MIDI:
+            print(f'        [SKIP] MIDI comparison disabled (--skip-midi)')
+            result['steps']['midi'] = {'success': False}
+        else:
+            python_midi = new_dir / f'{basename}_python.mid'
+            midi_comparison = new_dir / f'{basename}_midi_comparison.txt'
+
+            try:
+                # Export with Python MIDI emulator
+                from sidm2.sid_to_midi_emulator import convert_sid_to_midi
+                convert_sid_to_midi(str(sid_file), str(python_midi), frames=1000)
+
+                # Generate simple comparison report instead of calling test_midi_comparison.py
+                # (test_midi_comparison.py expects different path format)
+                comparison_text = f"""Python MIDI Export: {python_midi.name}
 Frames: 1000
 Export Status: {'Success' if python_midi.exists() else 'Failed'}
 File Size: {python_midi.stat().st_size if python_midi.exists() else 0} bytes
@@ -2423,38 +2476,38 @@ Note: This file contains MIDI output from the Python SID emulator.
 For detailed comparison with SIDtool, run:
   python scripts/test_midi_comparison.py "{sid_file}"
 """
-            comparison_result = type('obj', (object,), {
-                'stdout': comparison_text,
-                'stderr': '',
-                'returncode': 0
-            })()
+                comparison_result = type('obj', (object,), {
+                    'stdout': comparison_text,
+                    'stderr': '',
+                    'returncode': 0
+                })()
 
-            # Save comparison results
-            with open(midi_comparison, 'w', encoding='utf-8') as f:
-                f.write('='*80 + '\n')
-                f.write('PYTHON MIDI EMULATOR VALIDATION\n')
-                f.write('='*80 + '\n\n')
-                f.write(f'SID File: {filename}\n')
-                f.write(f'Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n\n')
-                f.write(comparison_result.stdout)
-                if comparison_result.stderr:
-                    f.write('\n\nErrors:\n')
-                    f.write(comparison_result.stderr)
-
-            midi_comparison_ok = python_midi.exists() and midi_comparison.exists()
-            print(f'        Python MIDI: {"[OK]" if python_midi.exists() else "[ERROR]"}')
-            print(f'        Comparison: {"[OK]" if midi_comparison.exists() else "[ERROR]"}')
-
-        except Exception as e:
-            print(f'        [WARN] MIDI comparison failed: {e}')
-            # Create minimal comparison file
-            try:
+                # Save comparison results
                 with open(midi_comparison, 'w', encoding='utf-8') as f:
-                    f.write(f'MIDI comparison failed: {e}\n')
-            except:
-                pass
+                    f.write('='*80 + '\n')
+                    f.write('PYTHON MIDI EMULATOR VALIDATION\n')
+                    f.write('='*80 + '\n\n')
+                    f.write(f'SID File: {filename}\n')
+                    f.write(f'Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n\n')
+                    f.write(comparison_result.stdout)
+                    if comparison_result.stderr:
+                        f.write('\n\nErrors:\n')
+                        f.write(comparison_result.stderr)
 
-        result['steps']['midi_comparison'] = {'success': midi_comparison_ok}
+                midi_comparison_ok = python_midi.exists() and midi_comparison.exists()
+                print(f'        Python MIDI: {"[OK]" if python_midi.exists() else "[ERROR]"}')
+                print(f'        Comparison: {"[OK]" if midi_comparison.exists() else "[ERROR]"}')
+
+            except Exception as e:
+                print(f'        [WARN] MIDI comparison failed: {e}')
+                # Create minimal comparison file
+                try:
+                    with open(midi_comparison, 'w', encoding='utf-8') as f:
+                        f.write(f'MIDI comparison failed: {e}\n')
+                except:
+                    pass
+
+            result['steps']['midi_comparison'] = {'success': midi_comparison_ok}
 
         results.append(result)
 

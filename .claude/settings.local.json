@@ -111,7 +111,9 @@
       "Bash(git tag:*)",
       "Bash(gh release delete:*)",
       "Bash(xargs:*)",
-      "Bash(du:*)"
+      "Bash(du:*)",
+      "Bash(do echo \"=== $f ===\")",
+      "Bash(time python:*)"
     ],
     "deny": [],
     "ask": []
