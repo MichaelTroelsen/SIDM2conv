@@ -64,10 +64,23 @@ python sf2_viewer_gui.py
 
 **Features:**
 - Drag-and-drop SF2 file loading
-- Multi-tab interface (Overview, Header Blocks, Tables, Memory Map)
+- Multi-tab interface (8 tabs):
+  - Overview: File info and validation
+  - Header Blocks: SF2 block structure
+  - Tables: Music data tables (spreadsheet view)
+  - Memory Map: Visual memory layout
+  - OrderList: Sequence playback order
+  - Sequences: Step-by-step sequence data
+  - **Visualization (NEW)**: Waveform, filter, and envelope graphs
+  - **Playback (NEW)**: Audio preview with play/pause/volume
 - View all SF2 block types and table data
 - File validation summary
 - Professional PyQt6 GUI matching SID Factory II layout
+
+**New Features (v2.1):**
+- **Visualization Tab**: Graph waveforms, filter curves, and ADSR envelopes
+- **Playback Tab**: Convert SF2→SID→WAV and play audio with volume control
+- Real-time position tracking and status display
 
 **Documentation:** See `SF2_VIEWER_README.md` for complete usage guide
 
@@ -82,15 +95,17 @@ SIDM2/
 ├── new_experiment.py                     # Experiment template generator
 ├── update_inventory.py                   # File inventory updater
 │
-├── SIDM2/                 # SF2 Viewer Application (NEW - v2.0.0)
-│   ├── sf2_viewer_core.py     # SF2 format parser (450 lines)
-│   ├── sf2_viewer_gui.py      # PyQt6 GUI application (700 lines)
-│   ├── launch_sf2_viewer.py   # Python launcher with auto-install (90 lines)
-│   ├── launch_sf2_viewer.bat  # Windows batch launcher with dependency check
-│   ├── test_sf2_viewer.py     # Test suite (160 lines, 100% pass rate)
-│   ├── SF2_VIEWER_README.md   # User guide and documentation (400+ lines)
+├── SIDM2/                 # SF2 Viewer Application (v2.1 - Visualization + Playback)
+│   ├── sf2_viewer_core.py              # SF2 format parser (450 lines)
+│   ├── sf2_viewer_gui.py               # PyQt6 GUI application (900 lines) - UPDATED
+│   ├── sf2_visualization_widgets.py    # Visualization widgets (300 lines) - NEW
+│   ├── sf2_playback.py                 # Playback engine (200 lines) - NEW
+│   ├── launch_sf2_viewer.py            # Python launcher with auto-install (90 lines)
+│   ├── launch_sf2_viewer.bat           # Windows batch launcher with dependency check
+│   ├── test_sf2_viewer.py              # Test suite (160 lines, 100% pass rate)
+│   ├── SF2_VIEWER_README.md            # User guide and documentation (500+ lines) - UPDATED
 │   ├── SF2_VIEWER_IMPLEMENTATION_SUMMARY.md # Technical summary
-│   ├── VIEWER_COMPLETE.txt    # Completion summary
+│   ├── VIEWER_COMPLETE.txt             # Completion summary
 │
 ├── scripts/               # Conversion and utility scripts
 │   ├── sid_to_sf2.py          # Main SID→SF2 converter
@@ -816,6 +831,7 @@ Assistant: [Use EnterPlanMode to explore and design approach first]
 
 ## Version History
 
+- **v2.1.0** (2025-12-15) - **Visualization and Playback** - Added waveform/filter/envelope visualization and audio preview with playback controls
 - **v2.0.0** (2025-12-15) - **SF2 Viewer released** - Professional PyQt6 GUI for viewing SF2 files
 - **v1.8.0** (2025-12-14) - **Laxity driver with 99.93% accuracy** (production ready)
 - **v1.7.0** (2025-12-12) - NP20 driver support + Format compatibility research
