@@ -12,6 +12,8 @@ SID to SF2 Converter - Converts Commodore 64 SID music files (Laxity NewPlayer v
 
 ## Quick Start
 
+### Conversion Workflow
+
 ```bash
 # Convert single file (auto-detects format)
 python scripts/sid_to_sf2.py SID/input.sid output/SongName/New/output.sf2
@@ -42,6 +44,33 @@ python complete_pipeline_with_validation.py
 # See .github/workflows/validation.yml
 ```
 
+### SF2 Viewer (NEW - v2.0)
+
+Professional GUI tool to view and analyze SF2 files:
+
+```bash
+# Windows (simplest - batch launcher with auto-dependency installation)
+cd SIDM2
+launch_sf2_viewer.bat
+
+# Or cross-platform with Python launcher
+cd SIDM2
+python launch_sf2_viewer.py
+
+# Or direct launch (requires PyQt6 installed)
+cd SIDM2
+python sf2_viewer_gui.py
+```
+
+**Features:**
+- Drag-and-drop SF2 file loading
+- Multi-tab interface (Overview, Header Blocks, Tables, Memory Map)
+- View all SF2 block types and table data
+- File validation summary
+- Professional PyQt6 GUI matching SID Factory II layout
+
+**Documentation:** See `SF2_VIEWER_README.md` for complete usage guide
+
 ---
 
 ## Project Structure
@@ -52,6 +81,16 @@ SIDM2/
 ├── cleanup.py                            # Automated cleanup tool (v2.2)
 ├── new_experiment.py                     # Experiment template generator
 ├── update_inventory.py                   # File inventory updater
+│
+├── SIDM2/                 # SF2 Viewer Application (NEW - v2.0.0)
+│   ├── sf2_viewer_core.py     # SF2 format parser (450 lines)
+│   ├── sf2_viewer_gui.py      # PyQt6 GUI application (700 lines)
+│   ├── launch_sf2_viewer.py   # Python launcher with auto-install (90 lines)
+│   ├── launch_sf2_viewer.bat  # Windows batch launcher with dependency check
+│   ├── test_sf2_viewer.py     # Test suite (160 lines, 100% pass rate)
+│   ├── SF2_VIEWER_README.md   # User guide and documentation (400+ lines)
+│   ├── SF2_VIEWER_IMPLEMENTATION_SUMMARY.md # Technical summary
+│   ├── VIEWER_COMPLETE.txt    # Completion summary
 │
 ├── scripts/               # Conversion and utility scripts
 │   ├── sid_to_sf2.py          # Main SID→SF2 converter
@@ -777,6 +816,7 @@ Assistant: [Use EnterPlanMode to explore and design approach first]
 
 ## Version History
 
+- **v2.0.0** (2025-12-15) - **SF2 Viewer released** - Professional PyQt6 GUI for viewing SF2 files
 - **v1.8.0** (2025-12-14) - **Laxity driver with 99.93% accuracy** (production ready)
 - **v1.7.0** (2025-12-12) - NP20 driver support + Format compatibility research
 - **v0.7.2** (2025-12-12) - WAV rendering fix + Waveform analysis tool
