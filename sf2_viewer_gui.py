@@ -80,6 +80,10 @@ class SF2ViewerWindow(QMainWindow):
         self.tables_tab = self.create_tables_tab()
         self.tabs.addTab(self.tables_tab, "Tables")
 
+        # Tab 3.5: All Tables Combined
+        self.all_tables_tab = self.create_all_tables_tab()
+        self.tabs.addTab(self.all_tables_tab, "All Tables")
+
         # Tab 4: Memory Map
         self.memory_tab = self.create_memory_tab()
         self.tabs.addTab(self.memory_tab, "Memory Map")
@@ -218,6 +222,19 @@ class SF2ViewerWindow(QMainWindow):
         combo.addItem("Select a table...")
         return combo
 
+    def create_all_tables_tab(self) -> QWidget:
+        """Create tab showing all tables combined in hex dump format"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        # Text display for all tables
+        self.all_tables_display = QTextEdit()
+        self.all_tables_display.setReadOnly(True)
+        self.all_tables_display.setFont(QFont("Courier New", 9))
+        layout.addWidget(self.all_tables_display)
+
+        return widget
+
     def create_memory_tab(self) -> QWidget:
         """Create the memory map tab"""
         widget = QWidget()
@@ -276,6 +293,7 @@ class SF2ViewerWindow(QMainWindow):
             self.update_overview()
             self.update_blocks()
             self.update_tables()
+            self.update_all_tables()
             self.update_memory_map()
             self.update_orderlist()
             self.update_sequences()
@@ -406,19 +424,20 @@ class SF2ViewerWindow(QMainWindow):
         # Get table data
         table_data = self.parser.get_table_data(descriptor)
 
-        # Display table
+        # Display table with hex row numbers and no "0x" prefix
         self.table_widget.setRowCount(len(table_data))
         self.table_widget.setColumnCount(len(table_data[0]) if table_data else 0)
 
         for row_idx, row_data in enumerate(table_data):
             for col_idx, value in enumerate(row_data):
-                item = QTableWidgetItem(f"0x{value:02X}")
+                # Display hex values without "0x" prefix
+                item = QTableWidgetItem(f"{value:02X}")
                 item.setFont(QFont("Courier", 9))
                 self.table_widget.setItem(row_idx, col_idx, item)
 
-        # Set headers
+        # Set headers - columns as C0, C1, etc. and rows as hex (00, 01, etc.)
         self.table_widget.setHorizontalHeaderLabels([f"C{i}" for i in range(len(table_data[0]))] if table_data else [])
-        self.table_widget.setVerticalHeaderLabels([f"R{i}" for i in range(len(table_data))])
+        self.table_widget.setVerticalHeaderLabels([f"{i:02X}" for i in range(len(table_data))])
 
         # Info
         info_lines = [
@@ -432,6 +451,64 @@ class SF2ViewerWindow(QMainWindow):
         ]
 
         self.table_info.setText('\n'.join(info_lines))
+
+    def update_all_tables(self):
+        """Update the all tables combined view with hex dump format"""
+        if not self.parser or not self.parser.table_descriptors:
+            self.all_tables_display.setText("No tables loaded")
+            return
+
+        # Build output with all tables side-by-side
+        output_lines = []
+
+        # Get all table data
+        tables_data = {}
+        for descriptor in self.parser.table_descriptors:
+            table_data = self.parser.get_table_data(descriptor)
+            tables_data[descriptor.name] = (descriptor, table_data)
+
+        if not tables_data:
+            self.all_tables_display.setText("No table data available")
+            return
+
+        # Determine how many rows to display (max of all tables)
+        max_rows = max(len(data[1]) for data in tables_data.values())
+
+        # Build header line with table names
+        header = ""
+        col_positions = {}
+        pos = 0
+        for table_name in tables_data.keys():
+            col_positions[table_name] = pos
+            # Each column is 20 chars wide (name + spacing)
+            header += f"{table_name:20}"
+            pos += 20
+
+        output_lines.append(header)
+        output_lines.append("=" * len(header))
+
+        # Build data rows
+        for row_idx in range(max_rows):
+            row_str = ""
+            for table_name in tables_data.keys():
+                descriptor, table_data = tables_data[table_name]
+
+                if row_idx < len(table_data):
+                    # Format row as hex bytes
+                    row_bytes = ' '.join(f"{val:02X}" for val in table_data[row_idx])
+                    # Add row number at start
+                    if row_idx == 0:
+                        row_str += f"{row_idx:02X}: {row_bytes:16}"
+                    else:
+                        row_str += f"{row_idx:02X}: {row_bytes:16}"
+                else:
+                    row_str += " " * 20
+
+                row_str += " "
+
+            output_lines.append(row_str.rstrip())
+
+        self.all_tables_display.setText('\n'.join(output_lines))
 
     def update_memory_map(self):
         """Update the memory map tab"""
