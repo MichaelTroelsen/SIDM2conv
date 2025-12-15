@@ -39,6 +39,7 @@ from scripts.extract_sf2_properly import extract_sf2_properly
 from sidm2.sf2_packer import pack_sf2_to_sid
 from sidm2.siddump_extractor import extract_sequences_from_siddump
 from sidm2.siddecompiler import SIDdecompilerAnalyzer
+from sidm2.pipeline_timing import PipelineTimer, generate_timing_reports
 
 # Import Martin Galway analyzer for player detection
 try:
@@ -2115,11 +2116,19 @@ def main():
         if sid_path.is_file():
             # Single file
             sid_files = [sid_path]
-            output_base = Path('output') / sid_path.stem
+            # Check if file is from Galway_Martin
+            if 'galway' in sid_path.parent.name.lower():
+                output_base = Path('output/galway') / sid_path.stem
+            else:
+                output_base = Path('output') / sid_path.stem
         else:
             # Directory
             sid_files = sorted(sid_path.glob('*.sid'))
-            output_base = Path('output') / sid_path.name
+            # Check if directory is Galway_Martin
+            if 'galway' in sid_path.name.lower():
+                output_base = Path('output/galway')
+            else:
+                output_base = Path('output') / sid_path.name
     else:
         # Default to SIDSF2player directory
         sidsf2_dir = Path('SIDSF2player')
@@ -2204,21 +2213,22 @@ def main():
         if filename in SF2_REFERENCES:
             reference_sf2 = Path(SF2_REFERENCES[filename])
 
-        try:
-            method, success = convert_sid_to_sf2(sid_file, output_sf2, file_type, reference_sf2)
-            if success:
-                print(f'        [OK] Method: {method}')
-                result['steps']['conversion'] = {'success': True, 'method': method}
-            else:
-                print(f'        [ERROR] Conversion failed')
+        with PipelineTimer('1_conversion', result):
+            try:
+                method, success = convert_sid_to_sf2(sid_file, output_sf2, file_type, reference_sf2)
+                if success:
+                    print(f'        [OK] Method: {method}')
+                    result['steps']['conversion'] = {'success': True, 'method': method}
+                else:
+                    print(f'        [ERROR] Conversion failed')
+                    result['steps']['conversion'] = {'success': False}
+                    results.append(result)
+                    continue
+            except Exception as e:
+                print(f'        [ERROR] {e}')
                 result['steps']['conversion'] = {'success': False}
                 results.append(result)
                 continue
-        except Exception as e:
-            print(f'        [ERROR] {e}')
-            result['steps']['conversion'] = {'success': False}
-            results.append(result)
-            continue
 
         # STEP 1.5: Extract sequences from siddump (runtime analysis)
         print(f'\n  [1.5/13] Extracting sequences from siddump...')
@@ -2226,29 +2236,30 @@ def main():
         injected_orderlists = None
         injected_used_sequences = None
         runtime_tables = None
-        try:
-            sequences, orderlists, tables = extract_sequences_from_siddump(str(sid_file), seconds=10, max_sequences=256)
-            if sequences and orderlists:
-                # Inject into SF2 file using proper format-compliant function
-                success, used_seqs, seqs, ords = inject_siddump_sequences(output_sf2, sequences, orderlists, tables)
-                if success:
-                    print(f'        [OK] Injected {len(sequences)} sequences from runtime analysis')
-                    print(f'        [OK] Runtime tables: {len(tables["instruments"])} instruments, {len(tables["pulse"])} pulse, {len(tables["filter"])} filter')
-                    result['steps']['siddump_sequences'] = {'success': True, 'count': len(sequences)}
-                    # Save for info.txt
-                    injected_sequences = seqs
-                    injected_orderlists = ords
-                    injected_used_sequences = used_seqs
-                    runtime_tables = tables
+        with PipelineTimer('1_5_siddump_extraction', result):
+            try:
+                sequences, orderlists, tables = extract_sequences_from_siddump(str(sid_file), seconds=10, max_sequences=256)
+                if sequences and orderlists:
+                    # Inject into SF2 file using proper format-compliant function
+                    success, used_seqs, seqs, ords = inject_siddump_sequences(output_sf2, sequences, orderlists, tables)
+                    if success:
+                        print(f'        [OK] Injected {len(sequences)} sequences from runtime analysis')
+                        print(f'        [OK] Runtime tables: {len(tables["instruments"])} instruments, {len(tables["pulse"])} pulse, {len(tables["filter"])} filter')
+                        result['steps']['siddump_sequences'] = {'success': True, 'count': len(sequences)}
+                        # Save for info.txt
+                        injected_sequences = seqs
+                        injected_orderlists = ords
+                        injected_used_sequences = used_seqs
+                        runtime_tables = tables
+                    else:
+                        print(f'        [WARN] Injection failed, using static extraction only')
+                        result['steps']['siddump_sequences'] = {'success': False}
                 else:
-                    print(f'        [WARN] Injection failed, using static extraction only')
+                    print(f'        [WARN] No sequences extracted, using static extraction only')
                     result['steps']['siddump_sequences'] = {'success': False}
-            else:
-                print(f'        [WARN] No sequences extracted, using static extraction only')
+            except Exception as e:
+                print(f'        [WARN] Siddump extraction failed: {e}')
                 result['steps']['siddump_sequences'] = {'success': False}
-        except Exception as e:
-            print(f'        [WARN] Siddump extraction failed: {e}')
-            result['steps']['siddump_sequences'] = {'success': False}
 
         # STEP 1.6: SIDdecompiler Analysis
         print(f'\n  [1.6/13] Running SIDdecompiler analysis...')
@@ -2537,6 +2548,20 @@ For detailed comparison with SIDtool, run:
     print('GENERATING COMPREHENSIVE REPORTS')
     print('='*80)
     generate_pipeline_reports(results, output_base)
+
+    # Generate timing reports
+    print()
+    print('='*80)
+    print('GENERATING TIMING REPORTS')
+    print('='*80)
+    try:
+        timing_reports = generate_timing_reports(results, output_base)
+        print(f'[OK] Timing reports generated successfully')
+        print(f'     Files tracked: {len(results)}')
+        print(f'     HTML report: {timing_reports["html"]}')
+        print(f'     JSON report: {timing_reports["json"]}')
+    except Exception as e:
+        print(f'[WARN] Could not generate timing reports: {e}')
 
 if __name__ == '__main__':
     main()
