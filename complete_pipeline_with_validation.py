@@ -36,6 +36,13 @@ from sidm2.sf2_packer import pack_sf2_to_sid
 from sidm2.siddump_extractor import extract_sequences_from_siddump
 from sidm2.siddecompiler import SIDdecompilerAnalyzer
 
+# Import Martin Galway analyzer for player detection
+try:
+    from sidm2 import MartinGalwayAnalyzer
+    GALWAY_AVAILABLE = True
+except ImportError:
+    GALWAY_AVAILABLE = False
+
 # Required files per conversion - separated by directory
 NEW_FILES = [
     '{basename}.sf2',                    # Step 1: SID → SF2
@@ -74,8 +81,19 @@ SF2_REFERENCES = {
 }
 
 def identify_sid_type(sid_path):
-    """Identify if SID is SF2-packed or Laxity format using player-id.exe."""
-    # First, use player-id.exe for accurate detection
+    """Identify if SID is SF2-packed, Martin Galway, or Laxity format using player-id.exe and heuristics."""
+    # First, check if this might be Martin Galway based on author field
+    with open(sid_path, 'rb') as f:
+        data = f.read()
+
+    author = data[0x36:0x56].decode('ascii', errors='ignore').strip('\x00')
+    galway_indicators = ['martin galway', 'galway', 'm. galway', 'martin g']
+    for indicator in galway_indicators:
+        if indicator in author.lower():
+            print(f"  [DEBUG] Martin Galway detected from author: {author}")
+            return 'GALWAY'
+
+    # Then use player-id.exe for accurate detection
     try:
         player_id_path = os.path.join(os.getcwd(), 'tools', 'player-id.exe')
         result = subprocess.run(
@@ -134,6 +152,16 @@ def identify_sid_type(sid_path):
 
     music_data = data[data_offset:]
 
+    # Martin Galway files typically have variable load addresses (low addresses like 0x0C00, 0x0800)
+    # They are PSID/RSID format with game-specific layouts
+    # Check for typical Galway load addresses
+    if actual_load in [0x0800, 0x0900, 0x0C00, 0x0D00, 0x1000, 0x4000]:
+        # Could be Galway, but need to check if it's not Laxity or SF2
+        if actual_load < 0xA000 and init_addr != 0x1000:
+            # Likely Martin Galway (variable load address, not standard SF2 or Laxity)
+            print(f"  [DEBUG] Martin Galway detected from load address: ${actual_load:04X}")
+            return 'GALWAY'
+
     # High load addresses indicate Laxity format
     if actual_load >= 0xA000:
         return 'LAXITY'
@@ -148,8 +176,9 @@ def identify_sid_type(sid_path):
     if laxity_pattern in music_data:
         return 'LAXITY'
 
-    # Default to LAXITY if uncertain (better than SF2_PACKED)
-    return 'LAXITY'
+    # Default to Galway if uncertain (try Galway conversion)
+    # This allows us to try Galway conversion on unknown player types
+    return 'GALWAY'
 
 def parse_sid_header(sid_path):
     """Parse SID header for metadata."""
@@ -184,6 +213,22 @@ def convert_sid_to_sf2(sid_path, output_sf2, file_type, reference_sf2=None):
         if result.returncode != 0:
             print(f"        [ERROR] LAXITY conversion failed: {result.stderr}")
         return 'LAXITY', result.returncode == 0
+    elif file_type == 'GALWAY':
+        # Set PYTHONPATH to include current directory so sidm2 module can be found
+        env = os.environ.copy()
+        env['PYTHONPATH'] = os.getcwd()
+
+        result = subprocess.run(
+            ['python', 'scripts/sid_to_sf2.py', str(sid_path), str(output_sf2), '--driver', 'galway', '--overwrite'],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env=env,
+            cwd=os.getcwd()
+        )
+        if result.returncode != 0:
+            print(f"        [ERROR] GALWAY conversion failed: {result.stderr}")
+        return 'GALWAY', result.returncode == 0
     else:
         template_sf2 = Path('G5/examples/Driver 11 Test - Arpeggio.sf2')
         extract_sf2_properly(str(sid_path), str(template_sf2), str(output_sf2))

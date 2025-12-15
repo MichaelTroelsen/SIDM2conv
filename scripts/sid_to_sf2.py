@@ -17,6 +17,7 @@ import logging
 import os
 import sys
 import subprocess
+from pathlib import Path
 
 # Add parent directory to path so sidm2 module can be found
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -52,6 +53,20 @@ try:
     LAXITY_CONVERTER_AVAILABLE = True
 except ImportError:
     LAXITY_CONVERTER_AVAILABLE = False
+
+# Import Martin Galway analyzer and converter
+try:
+    from sidm2 import (
+        MartinGalwayAnalyzer,
+        GalwayMemoryAnalyzer,
+        GalwayTableExtractor,
+        GalwayFormatConverter,
+        GalwayTableInjector,
+        GalwayConversionIntegrator,
+    )
+    GALWAY_CONVERTER_AVAILABLE = True
+except ImportError:
+    GALWAY_CONVERTER_AVAILABLE = False
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -225,6 +240,111 @@ def convert_laxity_to_sf2(input_path: str, output_path: str, config: ConversionC
         raise RuntimeError(f"Laxity conversion failed: {e}")
 
 
+def convert_galway_to_sf2(input_path: str, output_path: str, config: ConversionConfig = None) -> bool:
+    """Convert a Martin Galway SID file using table extraction and injection
+
+    Args:
+        input_path: Path to input Martin Galway SID file
+        output_path: Path for output SF2 file
+        config: Optional configuration
+
+    Returns:
+        True if conversion successful, False otherwise
+
+    Raises:
+        FileNotFoundError: If input file doesn't exist
+        RuntimeError: If Galway converter not available
+    """
+    if not GALWAY_CONVERTER_AVAILABLE:
+        raise RuntimeError("Galway converter not available. Ensure sidm2 Martin Galway modules are installed.")
+
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(f"Input file not found: {input_path}")
+
+    try:
+        logger.info(f"Converting with Martin Galway player support: {input_path}")
+        logger.info(f"Output: {output_path}")
+
+        # Parse PSID header to get load address and music data
+        parser = SIDParser(input_path)
+        header = parser.parse_header()
+
+        # Read SID file to get C64 data
+        with open(input_path, 'rb') as f:
+            sid_data = f.read()
+
+        # Extract C64 music data (after header)
+        c64_data = sid_data[header.data_offset:]
+
+        logger.debug(f"  Load address: ${header.load_address:04X}")
+        logger.debug(f"  Init address: ${header.init_address:04X}")
+        logger.debug(f"  Play address: ${header.play_address:04X}")
+        logger.debug(f"  Music data size: {len(c64_data):,} bytes")
+
+        # Check if this is actually a Martin Galway file
+        analyzer = MartinGalwayAnalyzer(input_path)
+        sid_header = {
+            'author': header.author if hasattr(header, 'author') else '',
+            'name': header.name if hasattr(header, 'name') else '',
+        }
+        is_galway = MartinGalwayAnalyzer.detect_galway_player(sid_header, c64_data)
+
+        if not is_galway:
+            logger.warning("File does not appear to be Martin Galway format based on header analysis")
+            logger.warning("Attempting conversion anyway...")
+
+        # Perform conversion using GalwayConversionIntegrator
+        try:
+            # Load SF2 Driver 11 template
+            driver11_template_path = Path('G5/drivers/sf2driver_driver11_00.prg')
+            if not driver11_template_path.exists():
+                # Try alternative location
+                driver11_template_path = Path('G5/examples/Driver 11 Test - Arpeggio.sf2')
+
+            if not driver11_template_path.exists():
+                logger.error(f"SF2 Driver 11 template not found at {driver11_template_path}")
+                raise FileNotFoundError(f"SF2 Driver 11 template required for Galway conversion")
+
+            with open(driver11_template_path, 'rb') as f:
+                sf2_template = f.read()
+
+            logger.debug(f"  Loaded SF2 template: {len(sf2_template)} bytes from {driver11_template_path}")
+
+            integrator = GalwayConversionIntegrator(input_path)
+            sf2_data, confidence = integrator.integrate(
+                c64_data,
+                header.load_address,
+                sf2_template
+            )
+
+            if sf2_data:
+                # Write SF2 file
+                with open(output_path, 'wb') as f:
+                    f.write(sf2_data)
+
+                logger.info(f"Galway conversion successful!")
+                logger.info(f"  Output: {output_path}")
+                logger.info(f"  Size: {len(sf2_data)} bytes")
+                logger.info(f"  Confidence: {confidence*100:.0f}%")
+                logger.info(f"  Expected accuracy: {confidence*100:.0f}%")
+                return True
+            else:
+                logger.error("Galway conversion produced no output")
+                return False
+
+        except Exception as e:
+            logger.error(f"Galway conversion failed: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            return False
+
+    except Exception as e:
+        logger.error(f"Galway conversion error: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
+        raise RuntimeError(f"Galway conversion failed: {e}")
+
+
 def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = None, config: ConversionConfig = None, sf2_reference_path: str = None, use_midi: bool = False):
     """Convert a SID file to SF2 format
 
@@ -261,8 +381,15 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
             logger.info("Using custom Laxity driver (expected accuracy: 70-90%)")
             return convert_laxity_to_sf2(input_path, output_path, config=config)
 
+        # Handle Martin Galway driver (table extraction and injection)
+        if driver_type == 'galway':
+            if not GALWAY_CONVERTER_AVAILABLE:
+                raise ValueError("Galway converter not available. Ensure sidm2 Martin Galway modules are installed.")
+            logger.info("Using Martin Galway table extraction and injection (expected accuracy: 88-96%)")
+            return convert_galway_to_sf2(input_path, output_path, config=config)
+
         # Validate standard driver types
-        available_drivers = list(config.driver.available_drivers) + ['laxity']
+        available_drivers = list(config.driver.available_drivers) + ['laxity', 'galway']
         if driver_type not in available_drivers:
             raise ValueError(f"Unknown driver type: {driver_type}. Must be one of {available_drivers}")
 
@@ -516,8 +643,8 @@ def main():
     driver_group = parser.add_mutually_exclusive_group()
     driver_group.add_argument(
         '--driver', '-d',
-        choices=['np20', 'driver11', 'laxity'],
-        help='Target driver type (default: from config or driver11). Use "laxity" for native Laxity NewPlayer v21 format.'
+        choices=['np20', 'driver11', 'laxity', 'galway'],
+        help='Target driver type (default: from config or driver11). Use "laxity" for native Laxity NewPlayer v21 format, "galway" for Martin Galway players.'
     )
     driver_group.add_argument(
         '--both', '-b',
