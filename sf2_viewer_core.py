@@ -234,6 +234,72 @@ class SF2Parser:
             logger.error(f"Parse error: {e}")
             return False
 
+    def _clean_string(self, s: str) -> str:
+        """Clean non-printable characters from string.
+
+        Replaces control characters (0x00-0x1F, 0x7F-0x9F) with their hex representation
+        and keeps printable ASCII/Latin-1 characters (0x20-0x7E, 0xA0-0xFF).
+
+        Args:
+            s: Raw string with possible non-printable characters
+
+        Returns:
+            Cleaned string with non-printable characters replaced with [0xNN] notation
+        """
+        result = []
+        for char in s:
+            code = ord(char)
+            # Keep printable ASCII (0x20-0x7E) and extended Latin-1 (0xA0-0xFF)
+            if (0x20 <= code <= 0x7E) or (0xA0 <= code <= 0xFF):
+                result.append(char)
+            # Replace control characters with hex notation
+            elif code == 0x00:  # Skip null terminator
+                break
+            else:
+                # Replace with [0xNN] notation for visibility
+                result.append(f"[0x{code:02X}]")
+        return ''.join(result).strip()
+
+    def _infer_table_name(self, table_type: int, table_id: int, raw_name: str) -> str:
+        """Infer table name from type and ID if raw name is unavailable.
+
+        Args:
+            table_type: Table type byte
+            table_id: Table ID byte
+            raw_name: Raw name from descriptor
+
+        Returns:
+            Best guess for table name
+        """
+        # If raw name is just control characters or very short, try to infer
+        # Remove hex notation [0xNN] patterns
+        import re
+        cleaned = re.sub(r'\[0x[0-9A-Fa-f]{2}\]', '', raw_name)
+        printable_chars = ''.join(c for c in cleaned if 0x20 <= ord(c) <= 0x7E)
+
+        if not printable_chars or len(printable_chars) <= 1:
+            # Check for specific table type patterns
+            if table_type == 0x81:
+                return "Instruments"
+            elif table_type == 0x40:
+                return "Commands"
+            elif table_type == 0x01:
+                return "Wave"
+            elif table_type == 0x02:
+                return "Pulse"
+            elif table_type == 0x03:
+                return "Filter"
+            elif table_type == 0x20:
+                return "Arpeggio"
+            elif table_type == 0x00 and table_id == 0:
+                return "Sequence Data"
+
+            # Generic fallback
+            return f"Table[0x{table_type:02X}]"
+
+        # Otherwise use the cleaned name
+        return raw_name
+
     def _parse_descriptor_block(self):
         """Parse Block 1: Descriptor (driver info)"""
         if BlockType.DESCRIPTOR not in self.blocks:
@@ -252,7 +318,9 @@ class SF2Parser:
         if name_end == -1:
             name_end = len(data)
 
-        driver_name = data[3:name_end].decode('ascii', errors='ignore')
+        # Use latin-1 to preserve all bytes, then clean non-printable characters
+        driver_name_raw = data[3:name_end].decode('latin-1')
+        driver_name = self._clean_string(driver_name_raw)
 
         self.driver_info = {
             'type': driver_type,
@@ -320,7 +388,9 @@ class SF2Parser:
             if name_end == -1:
                 name_end = len(data)
 
-            name = data[name_start:name_end].decode('ascii', errors='ignore')
+            # Use latin-1 to preserve all bytes, then clean non-printable characters
+            name_raw = data[name_start:name_end].decode('latin-1')
+            name = self._clean_string(name_raw)
             pos = name_end + 1
 
             if pos + 10 > len(data):
@@ -340,10 +410,13 @@ class SF2Parser:
             column_count = data[pos + 7]
             row_count = data[pos + 8]
 
+            # Try to infer better name if raw name is unclear
+            final_name = self._infer_table_name(table_type, table_id, name)
+
             descriptor = TableDescriptor(
                 type=table_type,
                 id=table_id,
-                name=name,
+                name=final_name,
                 data_layout=data_layout,
                 address=address,
                 column_count=column_count,
