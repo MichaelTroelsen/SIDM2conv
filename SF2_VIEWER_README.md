@@ -31,6 +31,7 @@ A comprehensive Python-based viewer for SID Factory II (.sf2) files with a moder
 
 - Python 3.8 or higher
 - PyQt6 (installed via pip)
+- PyQt6-Multimedia (for audio playback features - optional but recommended)
 
 ### Quick Setup
 
@@ -105,8 +106,10 @@ python launch_sf2_viewer.py
 
 3. **Install Dependencies**
    ```bash
-   pip install PyQt6
+   pip install PyQt6 PyQt6-Multimedia
    ```
+
+   (PyQt6-Multimedia is required for audio playback features)
 
 4. **Navigate to SIDM2 Directory**
    ```bash
@@ -195,6 +198,66 @@ python launch_sf2_viewer.py
 - **Visual Memory Layout**: ASCII text representation of memory organization
 - **Table Locations**: Where each table is stored in memory
 - **Critical Addresses**: Init, Play, Stop routine locations
+
+#### OrderList Tab
+- **OrderList Display**: Complete list of sequences in playback order
+- **Visual Representation**: First 16 entries with "..." if more follow
+- **Structure Information**: Shows sequence indices separated by spaces
+
+#### Sequences Tab
+- **Sequence Selector**: Dropdown to choose which sequence to view
+- **Sequence Table**: Step-by-step breakdown of each sequence
+  - Step number
+  - Note/pitch values (C-0, C#-0, etc.)
+  - Command names (e.g., "Tempo", "Filter", "Wave")
+  - Command parameters
+  - Duration in ticks
+- **Sequence Info**: Total number of steps in the sequence
+
+#### Visualization Tab
+- **Table Selector**: Choose which table to visualize (Wave, Filter, Pulse, Instruments)
+- **Waveform Display**:
+  - Shows waveform as connected line graph
+  - Displays byte values (0-255) on Y-axis
+  - Sample index on X-axis
+  - Center line for zero reference
+  - Grid for easy reading
+- **Filter Response Curve**:
+  - Displays filter cutoff frequency progression
+  - Shows 11-bit cutoff values (0-2047)
+  - Orange colored curve
+  - Useful for visualizing filter modulation effects
+- **ADSR Envelope**:
+  - Shows Attack/Decay/Sustain/Release envelope shape
+  - Displays 4-bit ADSR parameters (0-15 each)
+  - Attack phase: 0→15
+  - Decay phase: 15→sustain level
+  - Sustain phase: hold at level
+  - Release phase: level→0
+  - Labeled phase markers
+
+#### Playback Tab
+- **Play/Pause/Stop Controls**:
+  - Play Full Song: Convert SF2→SID→WAV and play audio
+  - Pause: Pause/resume playback
+  - Stop: Stop playback and cleanup
+- **Volume Control**:
+  - Slider from 0-100%
+  - Real-time volume adjustment
+  - Percentage display
+- **Position Display**:
+  - Current position and total duration in MM:SS format
+  - Updates in real-time during playback
+  - Default 30-second render (configurable)
+- **Status Log**:
+  - Shows conversion steps (SF2→SID, SID→WAV)
+  - Displays playback status messages
+  - Error messages for troubleshooting
+
+**Note:** Playback requires:
+- PyQt6-Multimedia library
+- tools/SID2WAV.EXE converter
+- scripts/sf2_to_sid.py exporter
 
 ## File Format Details
 

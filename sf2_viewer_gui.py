@@ -15,7 +15,7 @@ try:
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
         QSplitter, QTabWidget, QTableWidget, QTableWidgetItem, QTreeWidget, QTreeWidgetItem,
         QLabel, QPushButton, QFileDialog, QHeaderView, QTextEdit, QScrollArea,
-        QStatusBar, QMenuBar, QMenu, QMessageBox, QComboBox
+        QStatusBar, QMenuBar, QMenu, QMessageBox, QComboBox, QSlider
     )
     from PyQt6.QtCore import Qt, QMimeData, QUrl, QSize, QTimer
     from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QIcon, QFont, QColor
@@ -27,6 +27,8 @@ except ImportError:
     sys.exit(1)
 
 from sf2_viewer_core import SF2Parser, BlockType, TableDataLayout
+from sf2_visualization_widgets import WaveformWidget, FilterResponseWidget, EnvelopeWidget
+from sf2_playback import SF2PlaybackEngine
 
 
 class SF2ViewerWindow(QMainWindow):
@@ -89,6 +91,23 @@ class SF2ViewerWindow(QMainWindow):
         # Tab 6: Sequences
         self.sequences_tab = self.create_sequences_tab()
         self.tabs.addTab(self.sequences_tab, "Sequences")
+
+        # Tab 7: Visualization
+        self.visualization_tab = self.create_visualization_tab()
+        self.tabs.addTab(self.visualization_tab, "Visualization")
+
+        # Tab 8: Playback
+        self.playback_tab = self.create_playback_tab()
+        self.tabs.addTab(self.playback_tab, "Playback")
+
+        # Create playback engine
+        try:
+            self.playback_engine = SF2PlaybackEngine()
+            self.playback_engine.playback_error.connect(self.on_playback_error)
+            self.playback_engine.position_changed.connect(self.on_playback_position)
+        except RuntimeError as e:
+            print(f"Playback disabled: {e}")
+            self.playback_engine = None
 
         # Status bar
         self.statusBar().showMessage("Ready")
@@ -260,6 +279,12 @@ class SF2ViewerWindow(QMainWindow):
             self.update_memory_map()
             self.update_orderlist()
             self.update_sequences()
+            self.update_visualization()
+
+            # Enable playback
+            if self.playback_engine:
+                self.play_btn.setEnabled(True)
+                self.playback_info.setText(f"Ready to play: {Path(file_path).name}")
 
             self.statusBar().showMessage(f"Loaded: {file_path}")
 
@@ -559,6 +584,229 @@ class SF2ViewerWindow(QMainWindow):
             "Professional viewer for SID Factory II SF2 files\n"
             "Display driver information, tables, sequences, orderlists, and memory layout\n\n"
             "Drag and drop an SF2 file to view its contents"
+        )
+
+    def create_visualization_tab(self) -> QWidget:
+        """Create the visualization tab"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        # Table selector
+        selector_layout = QHBoxLayout()
+        selector_layout.addWidget(QLabel("Select Table:"))
+        self.viz_table_combo = QComboBox()
+        self.viz_table_combo.currentIndexChanged.connect(self.on_viz_table_selected)
+        selector_layout.addWidget(self.viz_table_combo)
+        selector_layout.addStretch()
+        layout.addLayout(selector_layout)
+
+        # Waveform display
+        layout.addWidget(QLabel("Waveform:"))
+        self.waveform_widget = WaveformWidget()
+        layout.addWidget(self.waveform_widget)
+
+        # Filter display
+        layout.addWidget(QLabel("Filter Response:"))
+        self.filter_widget = FilterResponseWidget()
+        layout.addWidget(self.filter_widget)
+
+        # Envelope display
+        layout.addWidget(QLabel("ADSR Envelope:"))
+        self.envelope_widget = EnvelopeWidget()
+        layout.addWidget(self.envelope_widget)
+
+        return widget
+
+    def update_visualization(self):
+        """Update the visualization tab"""
+        if not self.parser:
+            return
+
+        # Populate table selector with wave/filter/pulse/instrument tables
+        self.viz_table_combo.blockSignals(True)
+        self.viz_table_combo.clear()
+
+        for desc in self.parser.table_descriptors:
+            if desc.name in ["Wave", "Filter", "Pulse", "Instruments"]:
+                self.viz_table_combo.addItem(f"{desc.name} Table", desc)
+
+        self.viz_table_combo.blockSignals(False)
+
+        # Select first table
+        if self.viz_table_combo.count() > 0:
+            self.viz_table_combo.setCurrentIndex(0)
+
+    def on_viz_table_selected(self, index: int):
+        """Handle visualization table selection"""
+        if index < 0 or not self.parser:
+            return
+
+        descriptor = self.viz_table_combo.itemData(index)
+        if not descriptor:
+            return
+
+        table_data = self.parser.get_table_data(descriptor)
+
+        if descriptor.name == "Wave":
+            # Show first row as waveform
+            if table_data:
+                self.waveform_widget.set_data(table_data[0])
+
+        elif descriptor.name == "Filter":
+            # Extract cutoff values (column 0)
+            cutoff_data = [row[0] if row else 0 for row in table_data]
+            self.filter_widget.set_data(cutoff_data)
+
+        elif descriptor.name == "Pulse":
+            # Show pulse width progression (column 0)
+            pulse_data = [row[0] if row else 0 for row in table_data]
+            self.waveform_widget.set_data(pulse_data)
+
+        elif descriptor.name == "Instruments":
+            # Show first instrument envelope
+            if table_data and len(table_data[0]) >= 2:
+                ad_byte = table_data[0][0]
+                sr_byte = table_data[0][1]
+                attack = (ad_byte >> 4) & 0x0F
+                decay = ad_byte & 0x0F
+                sustain = (sr_byte >> 4) & 0x0F
+                release = sr_byte & 0x0F
+                self.envelope_widget.set_envelope(attack, decay, sustain, release)
+
+    def create_playback_tab(self) -> QWidget:
+        """Create the playback tab"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        # Info label
+        self.playback_info = QLabel("Load an SF2 file to enable playback")
+        layout.addWidget(self.playback_info)
+
+        # Playback controls
+        controls_layout = QHBoxLayout()
+
+        self.play_btn = QPushButton("Play Full Song")
+        self.play_btn.clicked.connect(self.on_play_clicked)
+        self.play_btn.setEnabled(False)
+        controls_layout.addWidget(self.play_btn)
+
+        self.pause_btn = QPushButton("Pause")
+        self.pause_btn.clicked.connect(self.on_pause_clicked)
+        self.pause_btn.setEnabled(False)
+        controls_layout.addWidget(self.pause_btn)
+
+        self.stop_btn = QPushButton("Stop")
+        self.stop_btn.clicked.connect(self.on_stop_clicked)
+        self.stop_btn.setEnabled(False)
+        controls_layout.addWidget(self.stop_btn)
+
+        controls_layout.addStretch()
+        layout.addLayout(controls_layout)
+
+        # Volume control
+        volume_layout = QHBoxLayout()
+        volume_layout.addWidget(QLabel("Volume:"))
+        self.volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self.volume_slider.setRange(0, 100)
+        self.volume_slider.setValue(70)
+        self.volume_slider.setMaximumWidth(200)
+        self.volume_slider.valueChanged.connect(self.on_volume_changed)
+        volume_layout.addWidget(self.volume_slider)
+        self.volume_label = QLabel("70%")
+        volume_layout.addWidget(self.volume_label)
+        volume_layout.addStretch()
+        layout.addLayout(volume_layout)
+
+        # Position display
+        self.position_label = QLabel("Position: 00:00 / 00:30")
+        layout.addWidget(self.position_label)
+
+        # Status
+        self.playback_status = QTextEdit()
+        self.playback_status.setReadOnly(True)
+        self.playback_status.setMaximumHeight(150)
+        self.playback_status.setFont(QFont("Courier", 9))
+        layout.addWidget(QLabel("Status:"))
+        layout.addWidget(self.playback_status)
+
+        layout.addStretch()
+        return widget
+
+    def on_play_clicked(self):
+        """Handle play button click"""
+        if not self.current_file or not self.playback_engine:
+            self.playback_status.append("ERROR: No file loaded or playback engine unavailable")
+            return
+
+        self.playback_status.clear()
+        self.playback_status.append("Converting SF2 to audio...\n")
+        self.playback_status.append("Step 1: Exporting SF2 to SID format...")
+        self.playback_status.append("Step 2: Converting SID to WAV audio...")
+        self.playback_status.append("Step 3: Loading audio player...\n")
+
+        success = self.playback_engine.play_sf2(self.current_file)
+
+        if success:
+            self.playback_status.append("✓ Playback started!")
+            self.play_btn.setEnabled(False)
+            self.pause_btn.setEnabled(True)
+            self.stop_btn.setEnabled(True)
+        else:
+            self.play_btn.setEnabled(True)
+            self.pause_btn.setEnabled(False)
+            self.stop_btn.setEnabled(False)
+
+    def on_pause_clicked(self):
+        """Handle pause button click"""
+        if self.playback_engine:
+            if self.playback_engine.is_playing():
+                self.playback_engine.pause()
+                self.playback_status.append("Playback paused.")
+                self.play_btn.setText("Resume")
+                self.play_btn.setEnabled(True)
+                self.pause_btn.setEnabled(False)
+            else:
+                self.playback_engine.resume()
+                self.playback_status.append("Playback resumed.")
+                self.play_btn.setText("Play Full Song")
+                self.play_btn.setEnabled(False)
+                self.pause_btn.setEnabled(True)
+
+    def on_stop_clicked(self):
+        """Handle stop button click"""
+        if self.playback_engine:
+            self.playback_engine.stop()
+            self.play_btn.setText("Play Full Song")
+            self.play_btn.setEnabled(True)
+            self.pause_btn.setEnabled(False)
+            self.stop_btn.setEnabled(False)
+            self.playback_status.append("Playback stopped.")
+
+    def on_volume_changed(self, value: int):
+        """Handle volume slider change"""
+        if self.playback_engine:
+            self.playback_engine.set_volume(value)
+            self.volume_label.setText(f"{value}%")
+
+    def on_playback_error(self, error: str):
+        """Handle playback errors"""
+        self.playback_status.append(f"ERROR: {error}")
+        self.play_btn.setEnabled(True)
+        self.play_btn.setText("Play Full Song")
+        self.pause_btn.setEnabled(False)
+        self.stop_btn.setEnabled(False)
+
+    def on_playback_position(self, position_ms: int):
+        """Update position display"""
+        duration_ms = self.playback_engine.get_duration() if self.playback_engine else 30000
+        seconds = position_ms // 1000
+        minutes = seconds // 60
+        seconds = seconds % 60
+        total_seconds = duration_ms // 1000
+        total_minutes = total_seconds // 60
+        total_seconds = total_seconds % 60
+        self.position_label.setText(
+            f"Position: {minutes:02d}:{seconds:02d} / {total_minutes:02d}:{total_seconds:02d}"
         )
 
 
