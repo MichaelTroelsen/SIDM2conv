@@ -368,7 +368,24 @@ class SF2Parser:
         )
 
     def _parse_driver_tables_block(self):
-        """Parse Block 3: Driver Tables (table descriptors)"""
+        """Parse Block 3: Driver Tables (table descriptors)
+
+        Per SF2 specification, each table descriptor has:
+        - Type (1 byte) at offset 0x00
+        - ID (1 byte) at offset 0x01
+        - Name Length (1 byte) at offset 0x02 (includes null terminator)
+        - Name (variable length) at offset 0x03
+        - Data Layout, Flags, Rules (5 bytes)
+        - Address (2 bytes little-endian)
+        - Column Count (2 bytes little-endian)
+        - Row Count (2 bytes little-endian)
+        - Visible Rows (1 byte)
+        Total fixed portion: 12 bytes after name
+
+        This implementation correctly reads the name length field to determine
+        variable-length name portion, then reads all remaining fields at the
+        correct offsets.
+        """
         if BlockType.DRIVER_TABLES not in self.blocks:
             return
 
@@ -376,42 +393,66 @@ class SF2Parser:
 
         pos = 0
         while pos < len(data):
-            if pos + 12 > len(data):
+            # Need at least 3 bytes for type, id, and name_length
+            if pos + 3 > len(data):
                 break
 
-            table_type = data[pos]
+            table_type = data[pos + 0]
             table_id = data[pos + 1]
+            name_length = data[pos + 2]  # Includes null terminator
 
-            # Find name (null-terminated)
-            name_start = pos + 2
-            name_end = data.find(b'\x00', name_start)
-            if name_end == -1:
-                name_end = len(data)
+            # Check if name_length is valid (max 255 bytes)
+            # and we have enough data for the full descriptor
+            if pos + 3 + name_length + 12 > len(data):
+                # Not enough data for this descriptor
+                if name_length == 0xFF:
+                    # 0xFF marks end of table descriptors
+                    break
+                # Try to continue anyway, might be last descriptor
+                if pos + 3 + name_length > len(data):
+                    break
 
-            # Use latin-1 to preserve all bytes, then clean non-printable characters
-            name_raw = data[name_start:name_end].decode('latin-1')
-            name = self._clean_string(name_raw)
-            pos = name_end + 1
+            # Read name bytes (excluding null terminator)
+            name_start = pos + 3
+            name_bytes = data[name_start:name_start + name_length - 1]
+            try:
+                # Use ASCII decoding per SF2 specification
+                name_raw = name_bytes.decode('ascii')
+            except UnicodeDecodeError:
+                # Fall back to latin-1 if ASCII fails, then clean
+                name_raw = name_bytes.decode('latin-1')
+                name_raw = self._clean_string(name_raw)
 
-            if pos + 10 > len(data):
+            # Position of remaining fields (after null terminator)
+            field_start = name_start + name_length
+
+            # Verify we have enough data for remaining fields
+            if field_start + 12 > len(data):
                 break
 
-            # Handle invalid data layout values
+            # Read all remaining fields at correct offsets
             try:
-                data_layout = TableDataLayout(data[pos])
+                data_layout = TableDataLayout(data[field_start + 0])
             except ValueError:
                 # Default to ROW_MAJOR if invalid
                 data_layout = TableDataLayout.ROW_MAJOR
-            flags = data[pos + 1]
-            insert_delete_rule = data[pos + 2]
-            enter_action_rule = data[pos + 3]
-            color_rule = data[pos + 4]
-            address = struct.unpack('<H', data[pos + 5:pos + 7])[0]
-            column_count = data[pos + 7]
-            row_count = data[pos + 8]
+
+            flags = data[field_start + 1]
+            insert_delete_rule = data[field_start + 2]
+            enter_action_rule = data[field_start + 3]
+            color_rule = data[field_start + 4]
+
+            # Address is 2 bytes little-endian
+            address = struct.unpack('<H', data[field_start + 5:field_start + 7])[0]
+
+            # CRITICAL FIX: Column count and row count are 2-byte little-endian values
+            # NOT single bytes!
+            column_count = struct.unpack('<H', data[field_start + 7:field_start + 9])[0]
+            row_count = struct.unpack('<H', data[field_start + 9:field_start + 11])[0]
+            visible_rows = data[field_start + 11]
 
             # Try to infer better name if raw name is unclear
-            final_name = self._infer_table_name(table_type, table_id, name)
+            final_name = self._infer_table_name(table_type, table_id, name_raw)
 
             descriptor = TableDescriptor(
                 type=table_type,
@@ -425,9 +466,13 @@ class SF2Parser:
             )
 
             self.table_descriptors.append(descriptor)
-            logger.debug(f"Table: {name} at ${address:04X} ({row_count}x{column_count})")
+            logger.debug(
+                f"Table: {final_name} (type=0x{table_type:02X}, "
+                f"id={table_id}) at ${address:04X} ({row_count}x{column_count})"
+            )
 
-            pos += 9
+            # Move to next descriptor (3 header + name_length + 12 fixed fields)
+            pos = field_start + 12
 
     def get_table_data(self, descriptor: TableDescriptor) -> List[List[int]]:
         """Extract table data from memory"""

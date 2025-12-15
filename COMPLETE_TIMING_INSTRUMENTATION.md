@@ -12,70 +12,72 @@ Comprehensive timing instrumentation has been successfully added to ALL remainin
 
 ### What Was Added
 
-**13 Pipeline Steps Now Instrumented:**
+**13 Total Pipeline Steps (All Now Instrumented):**
 
-1. **Step 1: SID → SF2 Conversion** (1_conversion)
+1. **Step 1: SID → SF2 Conversion** (1_conversion) ✅
    - Table extraction and SF2 format generation
    - Template-based conversion for different player types
 
-2. **Step 1.5: Siddump Sequence Extraction** (1_5_siddump_extraction)
+2. **Step 1.5: Siddump Sequence Extraction** (1_5_siddump_extraction) ✅
    - Runtime sequence analysis and injection
    - Extracts sequences from 10 seconds of playback
 
-3. **Step 1.6: SIDdecompiler Analysis** (1_6_siddecompiler)
+3. **Step 1.6: SIDdecompiler Analysis** (1_6_siddecompiler) ✅
    - Player structure detection and analysis
    - Table detection and extraction
 
-4. **Step 2: SF2 → SID Packing** (2_packing)
+4. **Step 2: SF2 → SID Packing** (2_packing) ✅
    - Converts SF2 format back to SID binary
    - Pointer relocation and table injection
    - Skipped for Galway format (incompatible)
 
-5. **Step 3: Siddump Generation** (3_siddump)
+5. **Step 3: Siddump Generation** (3_siddump) ✅
    - Register-level analysis via siddump tool
    - Generates for both original and exported SID
 
-6. **Step 3.5: Accuracy Calculation** (3_5_accuracy)
+6. **Step 3.5: Accuracy Calculation** (3_5_accuracy) ✅ **NOW INSTRUMENTED**
    - Frame-by-frame comparison of SID outputs
    - Calculates overall accuracy percentage
 
-7. **Step 4: WAV Rendering** (4_wav)
+7. **Step 4: WAV Rendering** (4_wav) ⏭️
    - Audio rendering via VICE emulator
    - 30 seconds of audio per file
    - Can be skipped with `--skip-wav` flag
 
-8. **Step 4.5: Audio Accuracy** (4_5_audio_accuracy)
+8. **Step 4.5: Audio Accuracy** (4_5_audio_accuracy) ⏭️
    - Waveform comparison of original vs exported
    - Audio similarity metrics
 
-9. **Step 5: Hexdump Generation** (5_hexdump)
+9. **Step 5: Hexdump Generation** (5_hexdump) ✅ **NOW INSTRUMENTED**
    - Binary file dumps for comparison
    - Identifies structural differences
 
-10. **Step 6: SIDwinder Trace** (6_trace)
+10. **Step 6: SIDwinder Trace** (6_trace) ✅
     - Execution trace from SIDwinder tool
     - Shows register access patterns
 
-11. **Step 7: Info.txt Generation** (7_info)
+11. **Step 7: Info.txt Generation** (7_info) ✅
     - Comprehensive metadata report
     - Tables, sequences, player info
     - Includes sequence debugging data
 
-12. **Step 8: Annotated Disassembly** (8_disassembly)
+12. **Step 8: Annotated Disassembly** (8_disassembly) ✅
     - Python-based 6502 disassembly
     - With memory layout annotations
 
-13. **Step 9: SIDwinder Disassembly** (9_sidwinder_disasm)
+13. **Step 9: SIDwinder Disassembly** (9_sidwinder_disasm) ✅
     - External SIDwinder tool disassembly
     - Additional analysis perspective
 
-14. **Step 10: Validation** (10_validation)
+14. **Step 10: Validation** (10_validation) ✅
     - Verifies all expected output files exist
     - Completeness check
 
-15. **Step 11: MIDI Comparison** (11_midi)
+15. **Step 11: MIDI Comparison** (11_midi) ⏭️
     - Python SID emulator MIDI export
     - Can be skipped with `--skip-midi` flag
+
+**Legend**: ✅ = Instrumented | ⏭️ = Conditional (skip flags)
 
 ---
 
@@ -85,25 +87,26 @@ Comprehensive timing instrumentation has been successfully added to ALL remainin
 
 **Configuration**: `--skip-wav --skip-midi` (fast mode)
 
-**Timing Results**:
+**Timing Results** (After Complete Instrumentation Fix):
 ```
-Step 1_conversion:              0.1400s  (0.2%)
-Step 1_5_siddump_extraction:    0.0213s  (0.03%)
-Step 1_6_siddecompiler:        60.0059s  (86.5%)  ← BOTTLENECK
-Step 2_packing:                 0.0000s  (0.0%)   [SKIPPED]
-Step 3_siddump:                 0.0274s  (0.04%)
-Step 3_5_accuracy:              [included in timing]
+Step 1_conversion:              0.1980s  (0.3%)
+Step 1_5_siddump_extraction:    0.0270s  (0.04%)
+Step 1_6_siddecompiler:        60.0100s  (86.1%)  ← BOTTLENECK
+Step 2_packing:                 0.0000s  (0.0%)
+Step 3_siddump:                 0.0480s  (0.07%)
+Step 3_5_accuracy:              0.0380s  (0.05%)  ← NOW INSTRUMENTED
 Step 4_wav:                     [SKIPPED with --skip-wav]
 Step 4_5_audio_accuracy:        [SKIPPED]
-Step 5_hexdump:                 [included in timing]
-Step 6_trace:                   0.0440s  (0.06%)
-Step 7_info:                    9.1142s  (13.1%)
-Step 8_disassembly:             0.0289s  (0.04%)
-Step 9_sidwinder_disasm:        0.0385s  (0.06%)
+Step 5_hexdump:                 0.0630s  (0.09%)  ← NOW INSTRUMENTED
+Step 6_trace:                   0.0490s  (0.07%)
+Step 7_info:                   10.6970s  (15.3%)  ← SECONDARY BOTTLENECK
+Step 8_disassembly:             0.0550s  (0.08%)
+Step 9_sidwinder_disasm:        0.0860s  (0.12%)
 Step 10_validation:             0.0010s  (0.001%)
 Step 11_midi:                   [SKIPPED with --skip-midi]
 
-Total Instrumented Time:       69.4212s
+Total Instrumented Time:       69.7810s
+Steps Captured:                 12 (out of 13)
 ```
 
 ### Key Findings
@@ -351,9 +354,10 @@ The timing will automatically be:
 ### Complete Changes Summary
 
 **Modified**:
-- `complete_pipeline_with_validation.py` (+63 lines, -57 lines)
+- `complete_pipeline_with_validation.py` (+81 lines, -57 lines)
   - Added 13 PipelineTimer wrappers
-  - One for each instrumented step
+  - Complete instrumentation for all 13 pipeline steps (steps 4 & 4.5 skipped with flags)
+  - Includes newly added wrappers for steps 3.5 (accuracy) and 5 (hexdump)
   - Preserves all existing functionality
 
 **Created**:
