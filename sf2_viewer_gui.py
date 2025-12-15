@@ -15,7 +15,7 @@ try:
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
         QSplitter, QTabWidget, QTableWidget, QTableWidgetItem, QTreeWidget, QTreeWidgetItem,
         QLabel, QPushButton, QFileDialog, QHeaderView, QTextEdit, QScrollArea,
-        QStatusBar, QMenuBar, QMenu, QMessageBox
+        QStatusBar, QMenuBar, QMenu, QMessageBox, QComboBox
     )
     from PyQt6.QtCore import Qt, QMimeData, QUrl, QSize, QTimer
     from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QIcon, QFont, QColor
@@ -81,6 +81,14 @@ class SF2ViewerWindow(QMainWindow):
         # Tab 4: Memory Map
         self.memory_tab = self.create_memory_tab()
         self.tabs.addTab(self.memory_tab, "Memory Map")
+
+        # Tab 5: OrderList
+        self.orderlist_tab = self.create_orderlist_tab()
+        self.tabs.addTab(self.orderlist_tab, "OrderList")
+
+        # Tab 6: Sequences
+        self.sequences_tab = self.create_sequences_tab()
+        self.tabs.addTab(self.sequences_tab, "Sequences")
 
         # Status bar
         self.statusBar().showMessage("Ready")
@@ -250,6 +258,8 @@ class SF2ViewerWindow(QMainWindow):
             self.update_blocks()
             self.update_tables()
             self.update_memory_map()
+            self.update_orderlist()
+            self.update_sequences()
 
             self.statusBar().showMessage(f"Loaded: {file_path}")
 
@@ -417,14 +427,137 @@ class SF2ViewerWindow(QMainWindow):
 
         return '\n'.join(lines)
 
+    def create_orderlist_tab(self) -> QWidget:
+        """Create the orderlist viewer tab"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        # OrderList info
+        info_layout = QHBoxLayout()
+        self.orderlist_info = QLabel()
+        info_layout.addWidget(self.orderlist_info)
+        info_layout.addStretch()
+        layout.addLayout(info_layout)
+
+        # OrderList table
+        self.orderlist_table = QTableWidget()
+        self.orderlist_table.setColumnCount(3)
+        self.orderlist_table.setHorizontalHeaderLabels(["Index", "Seq #", "Note"])
+        self.orderlist_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.orderlist_table.setMaximumHeight(300)
+        layout.addWidget(self.orderlist_table)
+
+        # OrderList visualization
+        self.orderlist_text = QTextEdit()
+        self.orderlist_text.setReadOnly(True)
+        self.orderlist_text.setFont(QFont("Courier", 9))
+        layout.addWidget(self.orderlist_text)
+
+        return widget
+
+    def create_sequences_tab(self) -> QWidget:
+        """Create the sequences viewer tab"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        # Sequence selector
+        seq_layout = QHBoxLayout()
+        seq_layout.addWidget(QLabel("Select Sequence:"))
+        self.sequence_combo = QComboBox()
+        self.sequence_combo.currentIndexChanged.connect(self.on_sequence_selected)
+        seq_layout.addWidget(self.sequence_combo)
+        seq_layout.addStretch()
+        layout.addLayout(seq_layout)
+
+        # Sequence info
+        self.sequence_info = QLabel()
+        layout.addWidget(self.sequence_info)
+
+        # Sequence data table
+        self.sequence_table = QTableWidget()
+        self.sequence_table.setColumnCount(6)
+        self.sequence_table.setHorizontalHeaderLabels(["Step", "Note", "Cmd", "Param1", "Param2", "Duration"])
+        self.sequence_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self.sequence_table)
+
+        return widget
+
+    def update_orderlist(self):
+        """Update the orderlist tab"""
+        if not self.parser or not self.parser.music_data_info:
+            self.orderlist_info.setText("No orderlist data available")
+            return
+
+        # Update info
+        info = f"OrderList at ${self.parser.music_data_info.orderlist_address:04X} | {len(self.parser.orderlist)} entries"
+        self.orderlist_info.setText(info)
+
+        # Update table
+        self.orderlist_table.setRowCount(len(self.parser.orderlist))
+        for i, seq_idx in enumerate(self.parser.orderlist):
+            self.orderlist_table.setItem(i, 0, QTableWidgetItem(f"{i}"))
+            self.orderlist_table.setItem(i, 1, QTableWidgetItem(f"0x{seq_idx:02X}"))
+            note = "END" if seq_idx == 0x7F else f"Seq {seq_idx}"
+            self.orderlist_table.setItem(i, 2, QTableWidgetItem(note))
+
+        # Update visualization
+        ol_str = " ".join(f"{x:02X}" for x in self.parser.orderlist[:16])
+        if len(self.parser.orderlist) > 16:
+            ol_str += f" ... ({len(self.parser.orderlist)} total)"
+        self.orderlist_text.setText(f"OrderList:\n{ol_str}\n\nStructure: Sequence indices separated by spaces, terminated by 7F (END)")
+
+    def update_sequences(self):
+        """Update the sequences tab"""
+        if not self.parser or not self.parser.sequences:
+            self.sequence_combo.clear()
+            self.sequence_info.setText("No sequence data available")
+            return
+
+        # Update sequence selector
+        self.sequence_combo.blockSignals(True)
+        self.sequence_combo.clear()
+        for seq_idx in sorted(self.parser.sequences.keys()):
+            seq = self.parser.sequences[seq_idx]
+            self.sequence_combo.addItem(f"Sequence {seq_idx} ({len(seq)} steps)", seq_idx)
+        self.sequence_combo.blockSignals(False)
+
+        # Select first sequence
+        if self.sequence_combo.count() > 0:
+            self.sequence_combo.setCurrentIndex(0)
+
+    def on_sequence_selected(self, index: int):
+        """Handle sequence selection"""
+        if index < 0 or not self.parser:
+            return
+
+        seq_idx = self.sequence_combo.itemData(index)
+        if seq_idx not in self.parser.sequences:
+            return
+
+        seq_data = self.parser.sequences[seq_idx]
+
+        # Update info
+        info = f"Sequence {seq_idx}: {len(seq_data)} steps"
+        self.sequence_info.setText(info)
+
+        # Update table
+        self.sequence_table.setRowCount(len(seq_data))
+        for step, entry in enumerate(seq_data):
+            self.sequence_table.setItem(step, 0, QTableWidgetItem(f"{step}"))
+            self.sequence_table.setItem(step, 1, QTableWidgetItem(entry.note_name()))
+            self.sequence_table.setItem(step, 2, QTableWidgetItem(entry.command_name()))
+            self.sequence_table.setItem(step, 3, QTableWidgetItem(f"0x{entry.param1:02X}"))
+            self.sequence_table.setItem(step, 4, QTableWidgetItem(f"0x{entry.param2:02X}"))
+            self.sequence_table.setItem(step, 5, QTableWidgetItem(f"{entry.duration}"))
+
     def show_about(self):
         """Show about dialog"""
         QMessageBox.about(
             self,
             "About SF2 Viewer",
-            "SF2 Viewer v1.0\n\n"
+            "SF2 Viewer v2.0\n\n"
             "Professional viewer for SID Factory II SF2 files\n"
-            "Display driver information, tables, sequences, and memory layout\n\n"
+            "Display driver information, tables, sequences, orderlists, and memory layout\n\n"
             "Drag and drop an SF2 file to view its contents"
         )
 

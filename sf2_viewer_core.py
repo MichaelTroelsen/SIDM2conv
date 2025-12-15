@@ -94,6 +94,61 @@ class DriverCommonAddresses:
         }
 
 
+@dataclass
+class SequenceEntry:
+    """Single entry in a music sequence"""
+    note: int        # 0x00-0x6F (MIDI notes), 0x7E (note off), 0x7F (end)
+    command: int     # 0x00-0x0F (no command to 15 standard commands)
+    param1: int      # First parameter (varies by command)
+    param2: int      # Second parameter (varies by command)
+    duration: int    # How many ticks this entry lasts
+
+    def note_name(self) -> str:
+        """Convert note value to name"""
+        if self.note == 0x7E:
+            return "---"
+        elif self.note == 0x7F:
+            return "END"
+        else:
+            notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+            octave = self.note // 12
+            note = self.note % 12
+            return f"{notes[note]}-{octave}"
+
+    def command_name(self) -> str:
+        """Convert command byte to name"""
+        commands = {
+            0x00: "---",
+            0x01: "Inst",
+            0x02: "Vol",
+            0x03: "Arp",
+            0x04: "Port",
+            0x05: "Vib",
+            0x06: "Trem",
+            0x07: "Duty",
+            0x08: "Filt",
+            0x09: "Res",
+            0x0A: "HRst",
+            0x0B: "Skip",
+            0x0C: "Dly",
+            0x0D: "Gate",
+            0x0E: "Res",
+            0x0F: "End"
+        }
+        return commands.get(self.command, f"Cmd{self.command:02X}")
+
+
+@dataclass
+class MusicDataInfo:
+    """Information extracted from Music Data block"""
+    num_tracks: int
+    orderlist_address: int
+    sequence_data_address: int
+    sequence_index_address: int
+    default_sequence_length: int
+    default_tempo: int
+
+
 class SF2Parser:
     """Parse and extract data from SF2 files"""
 
@@ -112,6 +167,9 @@ class SF2Parser:
         self.driver_info = {}
         self.driver_common: Optional[DriverCommonAddresses] = None
         self.table_descriptors: List[TableDescriptor] = []
+        self.music_data_info: Optional[MusicDataInfo] = None
+        self.orderlist: List[int] = []
+        self.sequences: Dict[int, List[SequenceEntry]] = {}
         self.memory = bytearray(65536)
 
         self.parse()
@@ -166,6 +224,9 @@ class SF2Parser:
             self._parse_descriptor_block()
             self._parse_driver_common_block()
             self._parse_driver_tables_block()
+            self._parse_music_data_block()
+            self._parse_orderlist()
+            self._parse_sequences()
 
             return True
 
@@ -316,23 +377,161 @@ class SF2Parser:
 
         return table_data
 
-    def get_sequences(self, max_count: int = 32) -> List[List[int]]:
-        """Extract sequences from music data block"""
+    def _parse_music_data_block(self):
+        """Parse Block 5: Music Data (sequence/orderlist organization)"""
         if BlockType.MUSIC_DATA not in self.blocks:
-            return []
+            return
 
         offset, data = self.blocks[BlockType.MUSIC_DATA]
 
-        if len(data) < 4:
-            return []
+        if len(data) < 10:
+            logger.warning("Music Data block too small")
+            return
 
-        # Music data block contains pointers to sequences
-        sequences = []
+        try:
+            num_tracks = struct.unpack('<H', data[0:2])[0]
+            orderlist_addr = struct.unpack('<H', data[2:4])[0]
+            seq_data_addr = struct.unpack('<H', data[4:6])[0]
+            seq_idx_addr = struct.unpack('<H', data[6:8])[0]
+            default_len = data[8]
+            default_tempo = data[9]
 
-        # Typically first 2 bytes are track count, next are track pointers
-        # Actual sequence data comes later
+            self.music_data_info = MusicDataInfo(
+                num_tracks=num_tracks,
+                orderlist_address=orderlist_addr,
+                sequence_data_address=seq_data_addr,
+                sequence_index_address=seq_idx_addr,
+                default_sequence_length=default_len,
+                default_tempo=default_tempo
+            )
 
-        return sequences
+            logger.info(f"Music Data: {num_tracks} tracks, OrderList=${orderlist_addr:04X}, Seq Data=${seq_data_addr:04X}")
+
+        except Exception as e:
+            logger.error(f"Error parsing music data block: {e}")
+
+    def _parse_orderlist(self):
+        """Extract orderlist from memory"""
+        if not self.music_data_info:
+            return
+
+        addr = self.music_data_info.orderlist_address
+        self.orderlist = []
+
+        # Read orderlist until we find 0x7F (end marker)
+        for i in range(256):  # Max 256 entries
+            if addr + i >= len(self.memory):
+                break
+
+            byte = self.memory[addr + i]
+            self.orderlist.append(byte)
+
+            if byte == 0x7F:  # End marker
+                break
+
+        logger.info(f"OrderList: {len(self.orderlist)} entries (up to first 0x7F)")
+
+    def _parse_sequences(self):
+        """Extract all sequences from memory"""
+        if not self.music_data_info:
+            return
+
+        self.sequences = {}
+
+        # Try to parse up to 128 sequences
+        for seq_idx in range(self.MAX_SEQUENCES):
+            seq_data = self._parse_sequence(seq_idx)
+            if seq_data:
+                self.sequences[seq_idx] = seq_data
+            else:
+                # Stop if we can't parse a sequence
+                if seq_idx > 32:  # At least try first 32
+                    break
+
+        logger.info(f"Parsed {len(self.sequences)} sequences")
+
+    def _parse_sequence(self, sequence_index: int) -> Optional[List[SequenceEntry]]:
+        """Parse a single sequence from memory"""
+        if not self.music_data_info:
+            return None
+
+        try:
+            # Get sequence address from sequence index table
+            idx_table_addr = self.music_data_info.sequence_index_address
+            seq_addr_offset = idx_table_addr + (sequence_index * 2)
+
+            if seq_addr_offset + 2 > len(self.memory):
+                return None
+
+            # Read address from index table (little-endian)
+            seq_addr = self.memory[seq_addr_offset] | (self.memory[seq_addr_offset + 1] << 8)
+
+            if seq_addr == 0 or seq_addr >= 0x10000:
+                return None
+
+            # Parse sequence entries
+            entries = []
+            pos = seq_addr
+
+            for step in range(256):  # Max 256 steps per sequence
+                if pos >= len(self.memory):
+                    break
+
+                note = self.memory[pos]
+
+                # End marker
+                if note == 0x7F:
+                    entries.append(SequenceEntry(
+                        note=0x7F,
+                        command=0,
+                        param1=0,
+                        param2=0,
+                        duration=0
+                    ))
+                    break
+
+                # Parse command and parameters
+                command = self.memory[pos + 1] if pos + 1 < len(self.memory) else 0
+                duration = self.memory[pos + 3] if pos + 3 < len(self.memory) else 0
+
+                # Parameter count depends on command
+                if command in [0x03, 0x04, 0x05, 0x06, 0x07, 0x08]:
+                    # Two-parameter commands
+                    param1 = self.memory[pos + 2] if pos + 2 < len(self.memory) else 0
+                    param2 = self.memory[pos + 3] if pos + 3 < len(self.memory) else 0
+                    duration = self.memory[pos + 4] if pos + 4 < len(self.memory) else 0
+                    pos += 5
+                elif command in [0x01, 0x02, 0x0B, 0x0C, 0x0D, 0x09]:
+                    # Single-parameter commands
+                    param1 = self.memory[pos + 2] if pos + 2 < len(self.memory) else 0
+                    param2 = 0
+                    pos += 4
+                else:
+                    # No parameters
+                    param1 = 0
+                    param2 = 0
+                    pos += 3
+
+                entries.append(SequenceEntry(
+                    note=note,
+                    command=command,
+                    param1=param1,
+                    param2=param2,
+                    duration=duration
+                ))
+
+                if len(entries) > 256:  # Safety limit
+                    break
+
+            return entries if entries else None
+
+        except Exception as e:
+            logger.debug(f"Error parsing sequence {sequence_index}: {e}")
+            return None
+
+    def get_sequences(self, max_count: int = 32) -> List[List[int]]:
+        """Extract sequences from music data block (legacy method)"""
+        return []
 
     def get_memory_map(self) -> str:
         """Generate a visual memory map"""
