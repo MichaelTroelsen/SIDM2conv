@@ -622,11 +622,23 @@ class SF2Parser:
             return
 
         try:
-            # For Laxity driver files, the Music Data block contains 6502 machine code
-            # The OrderList is located at file offset 0x1766
-            # which maps to C64 memory address: load_address + (0x1766 - 2)
-            orderlist_file_offset = 0x1766
-            orderlist_addr = self.load_address + (orderlist_file_offset - 2)  # Convert to C64 address
+            # For Laxity driver files, the OrderList has 3 columns stored separately:
+            # Column 1 (sequences/offsets): file offset 0x1766 → C64 address
+            # Column 2 (values): file offset 0x1866 (0x100 bytes later) → C64 address
+            # Column 3 (values): file offset 0x1966 (0x100 bytes later) → C64 address
+            # Each column is 256 bytes with up to 256 entries (one byte per entry per column)
+
+            # SF2 file structure: bytes 0-3 are header, bytes 4+ start at load_address
+            # Therefore: C64_addr = load_address + (file_offset - 4)
+
+            col1_file_offset = 0x1766
+            col1_addr = self.load_address + (col1_file_offset - 4)
+            col2_addr = self.load_address + (0x1866 - 4)
+            col3_addr = self.load_address + (0x1966 - 4)
+
+            # Store col1 address as the primary orderlist_address for accessing the data
+            # Caller should read all 3 columns to get complete OrderList entries
+            orderlist_addr = col1_addr
 
             # For now, use placeholder values for other fields
             num_tracks = 0x03  # Default
@@ -644,7 +656,11 @@ class SF2Parser:
                 default_tempo=default_tempo
             )
 
-            logger.info(f"Music Data: {num_tracks} tracks, OrderList offset=0x{orderlist_file_offset:04X} (C64: 0x{orderlist_addr:04X}), Seq Data=0x{seq_data_addr:04X}")
+            # Store additional OrderList column addresses for GUI to use
+            self.orderlist_col2_addr = col2_addr
+            self.orderlist_col3_addr = col3_addr
+
+            logger.info(f"Music Data: OrderList 3-column structure at Col1=0x{col1_addr:04X}, Col2=0x{col2_addr:04X}, Col3=0x{col3_addr:04X}")
 
         except Exception as e:
             logger.error(f"Error parsing music data block: {e}")

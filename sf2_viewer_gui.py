@@ -690,45 +690,60 @@ class SF2ViewerWindow(QMainWindow):
         return widget
 
     def update_orderlist(self):
-        """Update the orderlist tab - display with 3 columns per row"""
+        """Update the orderlist tab - display 3-column OrderList structure"""
         if not self.parser or not self.parser.music_data_info:
             self.orderlist_info.setText("No orderlist data available")
             return
 
-        # Get orderlist address
-        addr = self.parser.music_data_info.orderlist_address
+        # Get orderlist addresses (3 columns stored separately)
+        addr_col1 = self.parser.music_data_info.orderlist_address
+        addr_col2 = getattr(self.parser, 'orderlist_col2_addr', addr_col1 + 0x100)
+        addr_col3 = getattr(self.parser, 'orderlist_col3_addr', addr_col1 + 0x200)
 
         # Update info
-        info = f"OrderList at ${addr:04X}"
+        info = f"OrderList (3 columns): Col1=${addr_col1:04X} Col2=${addr_col2:04X} Col3=${addr_col3:04X}"
         self.orderlist_info.setText(info)
 
-        # Read orderlist from memory (3 bytes per row - 3 columns per entry)
-        # Format: [transpose] [value] [value] or similar 3-byte entries
+        # Read orderlist columns from memory
+        # Each column contains one byte per entry (256 bytes max = 256 entries)
         ol_text = ""
         row_num = 0
-        row_offset = 0
 
-        while row_offset < min(256, len(self.parser.memory) - addr) and row_num < 32:
-            # Get 3 bytes for this row
+        for row_idx in range(256):
+            if row_num >= 32:
+                ol_text += f"... (showing first 32 entries)\n"
+                break
+
+            # Get one byte from each column
             bytes_in_row = []
-            for j in range(3):
-                if addr + row_offset + j < len(self.parser.memory):
-                    bytes_in_row.append(self.parser.memory[addr + row_offset + j])
-                else:
+
+            # Column 1
+            if addr_col1 + row_idx < len(self.parser.memory):
+                bytes_in_row.append(self.parser.memory[addr_col1 + row_idx])
+            else:
+                break
+
+            # Column 2
+            if addr_col2 + row_idx < len(self.parser.memory):
+                bytes_in_row.append(self.parser.memory[addr_col2 + row_idx])
+            else:
+                bytes_in_row.append(0)
+
+            # Column 3
+            if addr_col3 + row_idx < len(self.parser.memory):
+                bytes_in_row.append(self.parser.memory[addr_col3 + row_idx])
+            else:
+                bytes_in_row.append(0)
+
+            if len(bytes_in_row) == 3:
+                # Format as: XXXX: YY YY YY
+                hex_bytes = ' '.join(f'{b:02X}' for b in bytes_in_row)
+                ol_text += f"{row_idx:04X}: {hex_bytes}\n"
+                row_num += 1
+
+                # Stop at 0xFF marker (end marker)
+                if bytes_in_row[0] == 0xFF:
                     break
-
-            if not bytes_in_row:
-                break
-
-            # Format as: XXXX: YY YY YY (with relative offset from OrderList start)
-            hex_bytes = ' '.join(f'{b:02X}' for b in bytes_in_row)
-            ol_text += f"{row_offset:04X}: {hex_bytes}\n"
-            row_num += 1
-            row_offset += 3
-
-            # Stop at FF marker (loop/end marker typically)
-            if len(bytes_in_row) > 0 and bytes_in_row[0] == 0xFF:
-                break
 
         self.orderlist_text.setText(ol_text if ol_text else "OrderList is empty or contains only zeros")
 
