@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 
-**Version 2.0.0** | Build Date: 2025-12-14 | Production Ready - 100% Validated on 286 Files ✅✅✅
+**Version 2.1.0** | Build Date: 2025-12-16 | Production Ready - Visualization & Playback ✅✅✅
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files.
 
@@ -464,6 +464,241 @@ Each report includes:
 Output: `{SongName}_waveform_analysis.html` in each song directory
 
 **Note**: Uses Python standard library only (wave module), no NumPy/Matplotlib required.
+
+## SF2 Viewer (NEW in v2.1) 🎵
+
+**Professional GUI for viewing and analyzing SID Factory II (.sf2) files with visualization and audio playback.**
+
+### Features
+
+#### 🎨 Visualization Tools
+- **Waveform Display**: View waveform samples as connected line graphs with grid
+- **Filter Curves**: Visualize filter cutoff frequency progression (11-bit, 0-2047)
+- **ADSR Envelopes**: Display Attack/Decay/Sustain/Release shapes with phase labels
+- **Real-time Updates**: Automatic visualization when selecting different tables
+- **No External Dependencies**: Uses only PyQt6 QPainter (no NumPy/Matplotlib)
+
+#### 🔊 Audio Playback
+- **Play Full Song**: Convert SF2→SID→WAV and play with audio output
+- **Playback Controls**: Play, Pause/Resume, Stop with proper state management
+- **Volume Control**: 0-100% volume slider with real-time adjustment
+- **Position Tracking**: MM:SS format with live duration display
+- **Status Log**: Shows conversion steps (SF2→SID, SID→WAV) and error messages
+- **Clean Shutdown**: Automatic temporary file cleanup on stop
+
+#### 📊 Multi-Tab Interface
+1. **Overview**: File validation summary and metadata
+2. **Header Blocks**: SF2 block structure with hex dump details
+3. **Tables**: Spreadsheet view of all music tables
+4. **All Tables**: Combined view of all tables with alignment
+5. **Memory Map**: Visual ASCII layout of memory organization
+6. **OrderList**: 3-column sequence playback order (Laxity format)
+7. **Visualization** (NEW): Waveform, filter, and envelope graphs
+8. **Playback** (NEW): Audio preview with full controls
+
+#### ✨ Smart Features
+- **Drag-and-Drop**: Load SF2 files directly onto the window
+- **File Browser**: Standard dialog for file selection
+- **Auto-Disabled Tabs**: Sequences tab disabled for Laxity files (not available)
+- **8-Tab Interface**: All SF2 data accessible and viewable
+- **Professional Layout**: PyQt6 modern UI matching SID Factory II design
+
+### Installation
+
+#### Windows (Easiest - Batch Launcher)
+
+```bash
+cd SIDM2
+launch_sf2_viewer.bat
+```
+
+The launcher will:
+- Check if Python is installed
+- Check if PyQt6 is installed
+- Offer to install PyQt6 if missing
+- Launch the SF2 Viewer automatically
+
+#### macOS/Linux
+
+```bash
+# Install PyQt6
+pip install PyQt6 PyQt6-Multimedia
+
+# Navigate to SIDM2 directory
+cd SIDM2
+
+# Run the viewer
+python sf2_viewer_gui.py
+```
+
+Or use the Python launcher:
+
+```bash
+cd SIDM2
+python launch_sf2_viewer.py
+```
+
+### Usage
+
+#### Loading Files
+
+1. **Drag and Drop**: Drag an SF2 file onto the window
+2. **Browse Button**: Click "Browse..." to select a file
+3. **File Menu**: Use File → Open SF2 File...
+
+#### Visualization Tab
+
+1. Load an SF2 file
+2. Go to "Visualization" tab
+3. Select table from dropdown (Wave, Filter, Pulse, Instruments)
+4. View real-time visualization with grid and labels
+
+**Supported Visualizations**:
+- **Wave Table**: Waveform samples (0-255) as line graph
+- **Filter Table**: Cutoff frequency curves (0-2047)
+- **Pulse Table**: Pulse width progression
+- **Instruments Table**: ADSR envelope for first instrument
+
+#### Playback Tab
+
+1. Load an SF2 file
+2. Go to "Playback" tab
+3. Click "Play Full Song" to start conversion and playback
+4. Use "Pause" to pause/resume playback
+5. Use "Stop" to stop and clean up temporary files
+6. Adjust volume slider for real-time volume control
+
+**Playback Process**:
+```
+SF2 File
+  ↓
+scripts/sf2_to_sid.py (export to SID)
+  ↓
+tools/SID2WAV.EXE (render to audio)
+  ↓
+PyQt6 QMediaPlayer (playback)
+```
+
+### Technical Architecture
+
+#### Modules
+
+- **`sf2_viewer_core.py`** (450 lines): SF2 format parser
+  - Complete SF2 file parsing
+  - All block type support
+  - Table data extraction
+  - Memory map generation
+
+- **`sf2_visualization_widgets.py`** (300 lines): Custom visualization widgets
+  - WaveformWidget: Line graph rendering
+  - FilterResponseWidget: Frequency curve display
+  - EnvelopeWidget: ADSR shape visualization
+  - Antialiased drawing with proper scaling
+
+- **`sf2_playback.py`** (150 lines): Audio playback engine
+  - SF2 conversion pipeline
+  - PyQt6 QMediaPlayer integration
+  - Volume control and position tracking
+  - Temporary file management
+
+- **`sf2_viewer_gui.py`** (900 lines): PyQt6 main application
+  - 8-tab interface with specialized panels
+  - File loading (drag-drop and browse)
+  - Tab update methods for each data type
+  - Sequence validation for Laxity files
+
+#### Dependencies
+
+- **Python**: 3.8+
+- **PyQt6**: GUI framework
+- **PyQt6-Multimedia**: Audio playback (optional, required for playback tab)
+- **External Tools**: scripts/sf2_to_sid.py, tools/SID2WAV.EXE
+
+#### Data Flow
+
+```
+SF2 File
+  ↓
+SF2Parser (parse structure, extract tables)
+  ↓
+TableDescriptor (identify tables)
+  ↓
+get_table_data() (format table data)
+  ↓
+Visualization Widgets (render graphics)
+```
+
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+O | Open file |
+| Ctrl+Q | Quit |
+| Ctrl+Tab | Switch tabs |
+
+### Troubleshooting
+
+#### "PyQt6 is required"
+Install with: `pip install PyQt6 PyQt6-Multimedia`
+
+#### "Failed to parse SF2 file"
+- Verify file is valid SF2 format (magic ID 0x1337)
+- Check file is not corrupted
+- Try with a known good SF2 file first
+
+#### "Playback not working"
+- Ensure PyQt6-Multimedia is installed: `pip install PyQt6-Multimedia`
+- Check tools/SID2WAV.EXE exists and is executable
+- Verify scripts/sf2_to_sid.py is present
+
+#### Sequences tab is disabled
+- This is normal for Laxity driver files
+- Laxity files don't store playable sequences in SF2 format
+- Musical information is in OrderList and Commands tables instead
+
+### Example: Viewing Laxity Files
+
+```bash
+# Launch viewer
+cd SIDM2
+python sf2_viewer_gui.py
+
+# Load file
+# Drag and drop: Laxity - Stinsen - Last Night Of 89.sf2
+
+# View tabs:
+# - Overview: File info and validation
+# - Header Blocks: 9 SF2 blocks with metadata
+# - Tables: All 9 tables (Instruments, Wave, Filter, etc.)
+# - Memory Map: Visual memory layout
+# - OrderList: 3-column structure (Col1, Col2, Col3)
+# - Visualization: Waveform, filter, envelope graphs
+# - Playback: Play music with volume and position controls
+```
+
+### Known Limitations
+
+1. **Sequences Tab**: Disabled for Laxity files
+   - Sequences not properly stored in SF2 format
+   - Use OrderList + Commands tables instead
+
+2. **Playback Duration**: Fixed at 30 seconds
+   - Can be adjusted in `sf2_playback.py` `play_sf2()` method
+   - Change `-t30` parameter in SID2WAV.EXE call
+
+3. **Audio Quality**: Depends on SID2WAV.EXE
+   - Renders at 16-bit, standard sample rate
+   - Quality matches tool's capabilities
+
+### Future Enhancements
+
+- [ ] Configurable playback duration
+- [ ] Real-time waveform analysis
+- [ ] Export visualizations to images
+- [ ] Waterfall plot for large tables
+- [ ] MIDI export from sequence data
+- [ ] Sequence visualization when available
+- [ ] Theme customization (dark mode)
 
 ### Address Extraction
 
@@ -2133,6 +2368,45 @@ See `sidm2/audio_comparison.py` for implementation:
 | 47 | SF2Writer modularization | ✅ Done | Extracted ~960 lines to sidm2/sf2_writer.py |
 
 ## Changelog
+
+### v2.1.0 (2025-12-16)
+
+**Visualization and Playback Features**
+
+- **NEW SF2 Viewer Visualization Tab**:
+  - WaveformWidget: Display waveform samples as connected line graphs with grid
+  - FilterResponseWidget: Show 11-bit filter cutoff frequency curves (0-2047)
+  - EnvelopeWidget: Visualize ADSR envelope shapes with phase labels
+  - Real-time updates when selecting different table types
+  - No external dependencies (PyQt6 QPainter only)
+
+- **NEW SF2 Viewer Playback Tab**:
+  - Full SF2→SID→WAV audio playback pipeline
+  - Play/Pause/Stop controls with proper state management
+  - Volume slider (0-100%) with real-time adjustment
+  - Position tracking in MM:SS format
+  - Status log showing conversion steps
+  - Automatic temporary file cleanup
+
+- **Sequence Tab Management**:
+  - Auto-detection of Laxity driver files
+  - Sequences tab automatically disabled for files without valid sequence data
+  - 96% empty sequence threshold for Laxity driver detection
+  - Prevents user confusion with unavailable features
+
+- **Core Parser Fixes**:
+  - Fixed Music Data block parsing to extract correct sequence addresses
+  - Sequence Data Address (offset 4-5) now extracted from block
+  - Sequence Index Address (offset 6-7) now extracted from block
+  - Replaced hardcoded placeholder values with actual data extraction
+
+- **New Modules** (650+ lines):
+  - `sf2_visualization_widgets.py`: Custom PyQt6 visualization widgets
+  - `sf2_playback.py`: Audio playback engine with conversion pipeline
+
+- **Updated Modules**:
+  - `sf2_viewer_gui.py`: Added visualization and playback tabs (+100 lines)
+  - `sf2_viewer_core.py`: Fixed Music Data block parsing (+40 lines)
 
 ### v0.7.2 (2025-12-12)
 
