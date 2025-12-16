@@ -369,7 +369,12 @@ class SF2Parser:
                     elif (row_count == 64 or row_count == 256) and column_count == 4:
                         return "Pulse"
                     elif row_count == 32 and column_count == 2:
-                        return "Arpeggio"
+                        # Use address to distinguish between Arpeggio and Init
+                        # Init is typically at lower addresses
+                        if address > 0 and address < 0x1900:
+                            return "Init"
+                        else:
+                            return "Arpeggio"
                     elif row_count == 256 and column_count == 1:
                         # Distinguish between Arpeggio and Tempo using address
                         if address > 0 and address < 0x22DB:
