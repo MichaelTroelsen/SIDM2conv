@@ -370,7 +370,13 @@ class SF2Parser:
                         return "Pulse"
                     elif row_count == 32 and column_count == 2:
                         return "Arpeggio"
-                    elif (row_count == 256 or row_count == 128) and column_count == 1:
+                    elif row_count == 256 and column_count == 1:
+                        # Distinguish between Arpeggio and Tempo using address
+                        if address > 0 and address < 0x22DB:
+                            return "Arpeggio"
+                        else:
+                            return "Tempo"
+                    elif row_count == 128 and column_count == 1:
                         return "Tempo"
                     elif row_count == 16 and column_count == 2:
                         return "HR"
