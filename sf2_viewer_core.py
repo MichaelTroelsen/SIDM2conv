@@ -232,9 +232,9 @@ class SequenceEntry:
 
 
 def unpack_sequence(packed_data: bytes) -> List[Dict]:
-    """Unpack a sequence from SID Factory II packed format.
+    """Unpack a sequence from SID Factory II packed format (Laxity compatible).
 
-    Packed format (from SID Factory II editor source):
+    Packed format (from SID Factory II editor source and Laxity player disassembly):
     - Byte value 0xC0-0xFF: Command byte (bits 0-5 = command index)
     - Byte value 0xA0-0xBF: Instrument byte (bits 0-4 = instrument index)
     - Byte value 0x80-0x9F: Duration byte
@@ -244,7 +244,10 @@ def unpack_sequence(packed_data: bytes) -> List[Dict]:
       - 0x00: Gate off
       - 0x01-0x6F: Note values
       - 0x7E: Gate on (sustain)
-    - Byte value 0x7F: End of sequence marker
+    - Byte value 0x7F: End of sequence marker / Jump marker
+
+    CRITICAL FIX: Use elif chains to avoid overlapping range checks!
+    Laxity player checks: if >= 0xC0 -> cmd, elif >= 0xA0 -> instr, elif >= 0x80 -> dur, else -> note
 
     Returns list of event dicts with keys: 'note', 'instrument', 'command', 'duration', 'tie'
     """
@@ -259,30 +262,45 @@ def unpack_sequence(packed_data: bytes) -> List[Dict]:
         value = packed_data[i]
         i += 1
 
-        # End marker
+        # End marker or jump marker
         if value == 0x7F:
             break
+
+        # CRITICAL: Use ELIF chains to avoid range overlap!
+        # Check ranges from highest to lowest (matches Laxity player logic)
 
         # Command byte (0xC0-0xFF)
         if value >= 0xC0:
             current_command = value
-            value = packed_data[i] if i < len(packed_data) else 0
-            i += 1
+            # Get next byte for the actual data
+            if i < len(packed_data):
+                value = packed_data[i]
+                i += 1
+            else:
+                break  # No data after command, stop
 
         # Instrument byte (0xA0-0xBF)
-        if value >= 0xA0:
+        if value >= 0xA0 and value < 0xC0:  # Explicitly exclude command range
             current_instrument = value
-            value = packed_data[i] if i < len(packed_data) else 0
-            i += 1
+            # Get next byte for the actual data
+            if i < len(packed_data):
+                value = packed_data[i]
+                i += 1
+            else:
+                break  # No data after instrument, stop
 
         # Duration byte (0x80-0x9F)
-        if value >= 0x80:
+        if value >= 0x80 and value < 0xA0:  # Explicitly exclude instrument range
             current_duration = value & 0x0F
             current_tie = bool(value & 0x10)
-            value = packed_data[i] if i < len(packed_data) else 0
-            i += 1
+            # Get next byte for the actual note
+            if i < len(packed_data):
+                value = packed_data[i]
+                i += 1
+            else:
+                break  # No data after duration, stop
 
-        # Note byte (0x00-0x7E)
+        # Note byte (0x00-0x7F, but 0x7F is end marker so really 0x00-0x7E)
         note = value
 
         # Add event
@@ -852,6 +870,154 @@ class SF2Parser:
 
         logger.info(f"OrderList: {len(self.orderlist)} entries (up to first 0x7F)")
 
+    def _detect_laxity_offset_table_structure(self) -> Optional[int]:
+        """Detect Laxity offset table structure in SF2 file.
+
+        Laxity SF2 files contain:
+        - Offset table with header (3 bytes: typically 24 25 26)
+        - Padding block (0xE1 bytes, ~100-175 bytes)
+        - Index table (sequential entries, ~128 bytes)
+        - Actual sequence data (starts around 0x1772 with 0xA0 marker)
+
+        Returns: File offset where real sequence data begins (typically 0x1772)
+        """
+        # Look for offset table structure starting around 0x1600
+        search_start = 0x1600
+        search_end = min(len(self.data), 0x1800)
+
+        for table_start in range(search_start, search_end - 200):
+            # Look for 0xE1 padding block (at least 100 consecutive 0xE1 bytes)
+            # These are typically found after a 3-byte header
+            padding_start = table_start + 3
+            e1_count = 0
+
+            # Count consecutive 0xE1 bytes
+            for i in range(padding_start, min(padding_start + 200, len(self.data))):
+                if self.data[i] == 0xE1:
+                    e1_count += 1
+                else:
+                    break
+
+            # Need at least 100 consecutive 0xE1 bytes (actual padding is ~128 bytes)
+            if e1_count < 100:
+                continue  # Not enough padding, try next position
+
+            # After padding, there should be an index table (approximately 128-150 bytes)
+            # Real sequence data typically starts ~150 bytes after padding ends
+            # The index table contains sequential values, so we need to skip it entirely
+            index_start = padding_start + e1_count
+
+            # Skip the entire index table (~128-150 bytes) to find real sequence data
+            # Real data should start shortly after
+            potential_data_start = index_start + 140  # Skip ~140 bytes for index table
+
+            if potential_data_start < len(self.data):
+                # Verify this looks like real packed sequence data
+                # Should see valid note and/or control bytes
+                has_valid_pattern = False
+                for check in range(potential_data_start, min(potential_data_start + 20, len(self.data))):
+                    byte = self.data[check]
+                    # Look for pattern of valid packed sequence data
+                    if 0x01 <= byte <= 0x7F or 0xA0 <= byte <= 0xFF:
+                        # Count how many valid bytes we see
+                        valid_count = 0
+                        for verify in range(potential_data_start, min(potential_data_start + 10, len(self.data))):
+                            b = self.data[verify]
+                            if 0x01 <= b <= 0x7F or 0xA0 <= b <= 0xFF:
+                                valid_count += 1
+                        if valid_count >= 5:  # Need at least 5 valid consecutive bytes
+                            has_valid_pattern = True
+                            break
+
+                if has_valid_pattern:
+                    logger.info(f"Detected Laxity offset table: header at 0x{table_start:04X}, "
+                              f"padding {e1_count} bytes (0x{padding_start:04X}-0x{index_start:04X}), "
+                              f"index table ~140 bytes, real data at 0x{potential_data_start:04X}")
+                    return potential_data_start
+
+        logger.debug("Laxity offset table detection failed: no valid structure found")
+        return None
+
+    def _parse_packed_sequences_laxity_sf2(self) -> bool:
+        """Parse sequences from Laxity SF2 files using offset table structure.
+
+        Handles the special Laxity SF2 file format where:
+        - Offset table is at file offset ~0x1662
+        - Followed by 0xE1 padding (~175 bytes)
+        - Followed by index table (~128 bytes)
+        - Real sequence data starts at ~0x1772
+        """
+        # Detect where real sequence data starts
+        seq_data_offset = self._detect_laxity_offset_table_structure()
+        if seq_data_offset is None:
+            logger.warning("Could not detect Laxity offset table structure")
+            return False
+
+        self.sequences = {}
+        seq_idx = 0
+        offset = seq_data_offset
+
+        logger.info(f"Parsing Laxity SF2 sequences from offset 0x{seq_data_offset:04X}")
+
+        # Parse sequences from correct offset
+        while offset < len(self.data) and seq_idx < self.MAX_SEQUENCES:
+            # Skip padding bytes (anything not a valid sequence start)
+            while offset < len(self.data):
+                byte = self.data[offset]
+                # Valid packed sequence start: 0xA0-0xBF (instrument), 0x01-0x7E (note), or 0xC0-0xFF (command)
+                if (0x01 <= byte <= 0x7E or 0xA0 <= byte <= 0xFF):
+                    break
+                offset += 1
+
+            if offset >= len(self.data):
+                break
+
+            # Extract sequence bytes until 0x7F terminator
+            seq_start = offset
+            seq_bytes = bytearray()
+
+            while offset < len(self.data):
+                byte = self.data[offset]
+                seq_bytes.append(byte)
+                offset += 1
+
+                if byte == 0x7F:  # End of sequence marker
+                    break
+
+            if not seq_bytes or len(seq_bytes) < 5:
+                # Too short to be valid sequence
+                continue
+
+            if seq_bytes[-1] != 0x7F:
+                # Sequence doesn't end with proper terminator
+                break
+
+            # Unpack and convert to SequenceEntry format
+            events = unpack_sequence(bytes(seq_bytes))
+            entries = []
+            for event in events:
+                entry = SequenceEntry(
+                    note=event['note'],
+                    instrument=event['instrument'],
+                    command=event['command'],
+                    param1=0,
+                    param2=0,
+                    duration=event['duration']
+                )
+                entries.append(entry)
+
+            if entries:
+                self.sequences[seq_idx] = entries
+                logger.info(f"Sequence {seq_idx}: {len(seq_bytes)} packed bytes -> {len(entries)} entries")
+                seq_idx += 1
+
+            # Stop if parsed enough sequences or reached file end
+            if seq_idx > 1 and offset > seq_data_offset + 1200:
+                break
+
+        logger.info(f"Parsed {len(self.sequences)} sequences from Laxity SF2 offset table structure")
+        return len(self.sequences) > 0
+
     def _find_packed_sequences(self) -> Optional[int]:
         """Find packed sequence data in file (for Laxity driver files).
 
@@ -1087,9 +1253,16 @@ class SF2Parser:
 
         self.sequences = {}
 
-        # First priority: Try Laxity parser if this is a Laxity driver SF2
+        # First priority: Try Laxity driver SF2 parser (for Laxity NewPlayer in SF2 container)
         if self._detect_laxity_driver():
             self.is_laxity_driver = True
+
+            # Try new Laxity SF2 parser (handles offset table structure)
+            if self._parse_packed_sequences_laxity_sf2():
+                logger.info(f"Successfully parsed {len(self.sequences)} sequences using Laxity SF2 parser")
+                return
+
+            # Fallback: Try original Laxity parser
             if self._parse_laxity_sequences():
                 logger.info(f"Successfully parsed {len(self.sequences)} sequences using Laxity parser")
                 return
@@ -1098,6 +1271,12 @@ class SF2Parser:
                 self.sequences = {}  # Clear any partial results
 
         # Second priority: Try generic packed sequences (for other SF2 formats with packed sequences)
+        if self._parse_packed_sequences_laxity_sf2():
+            if self.sequences:
+                logger.info(f"Successfully parsed {len(self.sequences)} sequences using Laxity SF2 offset table parser")
+                return
+            self.sequences = {}  # Clear if no sequences found
+
         if self._find_packed_sequences() is not None:
             self._parse_packed_sequences()
             if self.sequences:
