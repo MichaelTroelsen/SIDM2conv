@@ -788,33 +788,29 @@ class SF2ViewerWindow(QMainWindow):
     def _has_valid_sequences(self) -> bool:
         """Check if loaded SF2 file has valid sequence data
 
-        For Laxity driver files, sequences are not properly stored in the SF2 format.
-        Sequences are disabled for Laxity files since they cannot be reliably extracted.
-        Returns False for Laxity drivers to disable the sequences tab.
+        Returns True if the SF2 file has usable sequences (either traditional format
+        or packed format like Laxity driver files). Returns False if sequences are
+        unavailable or invalid.
         """
         if not self.parser or not self.parser.sequences:
             return False
 
-        # Check if this is a Laxity driver file
-        # Laxity driver files don't store real sequences in SF2 format
-        # Musical information is stored in: OrderList, Commands, Wave, Filter, etc.
-        if self.parser.music_data_info:
-            # For Laxity files, sequences are not available
-            # Check if we have mostly empty sequences (typical for Laxity)
-            total_entries = 0
-            empty_entries = 0
-
-            for seq_idx, seq_data in self.parser.sequences.items():
+        # Count non-empty sequences with meaningful data
+        non_empty_sequences = 0
+        for seq_idx, seq_data in self.parser.sequences.items():
+            if seq_data:  # Has sequence data
+                # Check if it has any non-zero notes or commands
+                has_meaningful_data = False
                 for entry in seq_data:
-                    total_entries += 1
-                    if entry.note == 0 and entry.command == 0 and entry.duration == 0:
-                        empty_entries += 1
+                    if entry.note != 0 or entry.command != 0:
+                        has_meaningful_data = True
+                        break
 
-            # If more than 90% of entries are empty, it's likely a Laxity file
-            if total_entries > 0 and empty_entries / total_entries > 0.90:
-                return False
+                if has_meaningful_data:
+                    non_empty_sequences += 1
 
-        return False  # Default: sequences not available
+        # If we found at least one sequence with meaningful data, enable the tab
+        return non_empty_sequences > 0
 
     def show_about(self):
         """Show about dialog"""

@@ -190,6 +190,83 @@ class SequenceEntry:
         return commands.get(self.command, f"Cmd{self.command:02X}")
 
 
+def unpack_sequence(packed_data: bytes) -> List[Dict]:
+    """Unpack a sequence from SID Factory II packed format.
+
+    Packed format (from SID Factory II editor source):
+    - Byte value 0xC0-0xFF: Command byte (bits 0-5 = command index)
+    - Byte value 0xA0-0xBF: Instrument byte (bits 0-4 = instrument index)
+    - Byte value 0x80-0x9F: Duration byte
+      - Bits 0-3: duration (0-15 frames)
+      - Bit 4: tie note flag (no gate retrigger)
+    - Byte value 0x00-0x7E: Note value
+      - 0x00: Gate off
+      - 0x01-0x6F: Note values
+      - 0x7E: Gate on (sustain)
+    - Byte value 0x7F: End of sequence marker
+
+    Returns list of event dicts with keys: 'note', 'instrument', 'command', 'duration', 'tie'
+    """
+    events = []
+    i = 0
+    current_instrument = None
+    current_command = None
+    current_duration = 0
+    current_tie = False
+
+    while i < len(packed_data):
+        value = packed_data[i]
+        i += 1
+
+        # End marker
+        if value == 0x7F:
+            break
+
+        # Command byte (0xC0-0xFF)
+        if value >= 0xC0:
+            current_command = value & 0x3F
+            value = packed_data[i] if i < len(packed_data) else 0
+            i += 1
+
+        # Instrument byte (0xA0-0xBF)
+        if value >= 0xA0:
+            current_instrument = value & 0x1F
+            value = packed_data[i] if i < len(packed_data) else 0
+            i += 1
+
+        # Duration byte (0x80-0x9F)
+        if value >= 0x80:
+            current_duration = value & 0x0F
+            current_tie = bool(value & 0x10)
+            value = packed_data[i] if i < len(packed_data) else 0
+            i += 1
+
+        # Note byte (0x00-0x7E)
+        note = value
+
+        # Add event
+        events.append({
+            'note': note,
+            'instrument': current_instrument,
+            'command': current_command,
+            'duration': current_duration,
+            'tie': current_tie
+        })
+
+        # Add sustain events for duration
+        for _ in range(current_duration):
+            sustain_note = 0x7E if note != 0x00 else 0x00
+            events.append({
+                'note': sustain_note,
+                'instrument': None,
+                'command': None,
+                'duration': 0,
+                'tie': False
+            })
+
+    return events
+
+
 @dataclass
 class MusicDataInfo:
     """Information extracted from Music Data block"""
@@ -699,6 +776,117 @@ class SF2Parser:
 
         logger.info(f"OrderList: {len(self.orderlist)} entries (up to first 0x7F)")
 
+    def _find_packed_sequences(self) -> Optional[int]:
+        """Find packed sequence data in file (for Laxity driver files).
+
+        Laxity files store sequences in packed format at a fixed location.
+        This method searches for the start of sequence data by looking for
+        patterns that indicate packed sequence format.
+
+        Returns: File offset of first sequence if found, None otherwise
+        """
+        # Look for patterns that indicate packed sequence data
+        # Start searching after the Music Data block (typically after 0x1000)
+        search_start = 0x1600  # Typical location for Laxity sequence data
+        search_end = min(len(self.data), 0x2000)
+
+        for offset in range(search_start, search_end - 20):
+            # Skip all-zero regions (padding/empty blocks)
+            # Check for at least one non-zero byte in first 10 bytes
+            has_non_zero = any(b != 0x00 for b in self.data[offset:offset+10])
+            if not has_non_zero:
+                continue
+
+            # Valid packed sequence must start with meaningful data:
+            # - 0xA0-0xBF (instrument command), or
+            # - 0xC0-0xFF (effect command), or
+            # - 0x01-0x7E (note value, not gate off)
+            byte = self.data[offset]
+            if not (0x01 <= byte <= 0x7E or 0x80 <= byte <= 0xFF or 0xA0 <= byte <= 0xBF or 0xC0 <= byte <= 0xFF):
+                continue
+
+            # Look for end marker (0x7F) within reasonable distance
+            for end_offset in range(offset + 4, min(offset + 256, search_end)):
+                if self.data[end_offset] == 0x7F:
+                    # Check if this looks like a valid sequence
+                    seq_length = end_offset - offset + 1
+                    if seq_length >= 5:  # Minimum valid sequence
+                        # Verify it has packed sequence patterns
+                        has_packed_patterns = False
+                        for check_offset in range(offset, end_offset):
+                            b = self.data[check_offset]
+                            if 0xA0 <= b <= 0xBF or 0xC0 <= b <= 0xFF:
+                                has_packed_patterns = True
+                                break
+
+                        if has_packed_patterns or seq_length > 30:  # Good candidate
+                            logger.info(f"Found packed sequences at file offset 0x{offset:04X} (length {seq_length})")
+                            return offset
+                    break
+
+        return None
+
+    def _parse_packed_sequences(self):
+        """Parse sequences from packed format data (Laxity driver files)."""
+        seq_offset = self._find_packed_sequences()
+        if seq_offset is None:
+            return
+
+        # Convert file offset to memory address
+        seq_data_addr = self.load_address + (seq_offset - 4)
+
+        self.sequences = {}
+        seq_idx = 0
+        offset = seq_offset
+
+        # Parse sequences until we reach end of file or run out of sequences
+        while offset < len(self.data) and seq_idx < self.MAX_SEQUENCES:
+            # Extract one sequence (bytes until 0x7F end marker)
+            seq_start = offset
+            seq_bytes = bytearray()
+
+            while offset < len(self.data):
+                byte = self.data[offset]
+                seq_bytes.append(byte)
+                offset += 1
+
+                if byte == 0x7F:  # End marker
+                    break
+
+            if not seq_bytes or seq_bytes[-1] != 0x7F:
+                # Invalid sequence, stop parsing
+                break
+
+            # Skip padding (consecutive zeros)
+            while offset < len(self.data) and self.data[offset] == 0x00:
+                offset += 1
+
+            # Unpack and convert to SequenceEntry format
+            events = unpack_sequence(bytes(seq_bytes))
+
+            # Convert unpacked events to SequenceEntry objects
+            entries = []
+            for event in events:
+                entry = SequenceEntry(
+                    note=event['note'],
+                    command=event['command'] if event['command'] is not None else 0,
+                    param1=0,
+                    param2=0,
+                    duration=event['duration']
+                )
+                entries.append(entry)
+
+            if entries:
+                self.sequences[seq_idx] = entries
+
+            seq_idx += 1
+
+            # Stop if we've found a reasonable number of sequences or hit end
+            if offset >= len(self.data) or (seq_idx > 1 and offset > seq_offset + 1000):
+                break
+
+        logger.info(f"Parsed {len(self.sequences)} packed sequences from offset 0x{seq_offset:04X}")
+
     def _parse_sequences(self):
         """Extract all sequences from memory"""
         if not self.music_data_info:
@@ -706,6 +894,12 @@ class SF2Parser:
 
         self.sequences = {}
 
+        # First, try to find and parse packed sequences (for Laxity driver files)
+        if self._find_packed_sequences() is not None:
+            self._parse_packed_sequences()
+            return
+
+        # If no packed sequences found, try traditional indexed sequence parsing
         # Try to parse up to 128 sequences
         for seq_idx in range(self.MAX_SEQUENCES):
             seq_data = self._parse_sequence(seq_idx)

@@ -113,7 +113,8 @@
       "Bash(xargs:*)",
       "Bash(du:*)",
       "Bash(do echo \"=== $f ===\")",
-      "Bash(time python:*)"
+      "Bash(time python:*)",
+      "Bash(/c/Python314/python:*)"
     ],
     "deny": [],
     "ask": []
