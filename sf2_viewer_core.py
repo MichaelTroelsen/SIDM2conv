@@ -624,7 +624,9 @@ class SF2Parser:
         try:
             # For Laxity driver files, the Music Data block contains 6502 machine code
             # The OrderList is located at file offset 0x1766
-            orderlist_addr = 0x1766  # File offset where OrderList data is stored
+            # which maps to C64 memory address: load_address + (0x1766 - 2)
+            orderlist_file_offset = 0x1766
+            orderlist_addr = self.load_address + (orderlist_file_offset - 2)  # Convert to C64 address
 
             # For now, use placeholder values for other fields
             num_tracks = 0x03  # Default
@@ -642,7 +644,7 @@ class SF2Parser:
                 default_tempo=default_tempo
             )
 
-            logger.info(f"Music Data: {num_tracks} tracks, OrderList offset=0x{orderlist_addr:04X}, Seq Data=0x{seq_data_addr:04X}")
+            logger.info(f"Music Data: {num_tracks} tracks, OrderList offset=0x{orderlist_file_offset:04X} (C64: 0x{orderlist_addr:04X}), Seq Data=0x{seq_data_addr:04X}")
 
         except Exception as e:
             logger.error(f"Error parsing music data block: {e}")
