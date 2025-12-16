@@ -690,7 +690,7 @@ class SF2ViewerWindow(QMainWindow):
         return widget
 
     def update_orderlist(self):
-        """Update the orderlist tab - display in hex dump format"""
+        """Update the orderlist tab - display with 3 columns per row"""
         if not self.parser or not self.parser.music_data_info:
             self.orderlist_info.setText("No orderlist data available")
             return
@@ -702,27 +702,32 @@ class SF2ViewerWindow(QMainWindow):
         info = f"OrderList at ${addr:04X}"
         self.orderlist_info.setText(info)
 
-        # Read orderlist from memory (3 bytes per row typically)
+        # Read orderlist from memory (3 bytes per row - 3 columns per entry)
+        # Format: [transpose] [value] [value] or similar 3-byte entries
         ol_text = ""
         row_num = 0
-        for i in range(0, min(256, len(self.parser.memory) - addr), 3):
+        row_offset = 0
+
+        while row_offset < min(256, len(self.parser.memory) - addr) and row_num < 32:
             # Get 3 bytes for this row
             bytes_in_row = []
             for j in range(3):
-                if addr + i + j < len(self.parser.memory):
-                    bytes_in_row.append(self.parser.memory[addr + i + j])
+                if addr + row_offset + j < len(self.parser.memory):
+                    bytes_in_row.append(self.parser.memory[addr + row_offset + j])
+                else:
+                    break
 
-            if bytes_in_row:
-                # Format as: XXXX: YY YY YY
-                hex_bytes = ' '.join(f'{b:02X}' for b in bytes_in_row)
-                ol_text += f"{addr + i:04X}: {hex_bytes}\n"
-                row_num += 1
-
-            # Stop at first END marker (0x7F) or after 32 rows
-            if bytes_in_row and bytes_in_row[0] == 0x7F and row_num > 1:
+            if not bytes_in_row:
                 break
-            if row_num >= 32:
-                ol_text += f"... (showing first 32 entries)\n"
+
+            # Format as: XXXX: YY YY YY (with relative offset from OrderList start)
+            hex_bytes = ' '.join(f'{b:02X}' for b in bytes_in_row)
+            ol_text += f"{row_offset:04X}: {hex_bytes}\n"
+            row_num += 1
+            row_offset += 3
+
+            # Stop at FF marker (loop/end marker typically)
+            if len(bytes_in_row) > 0 and bytes_in_row[0] == 0xFF:
                 break
 
         self.orderlist_text.setText(ol_text if ol_text else "OrderList is empty or contains only zeros")
