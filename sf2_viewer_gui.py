@@ -705,15 +705,12 @@ class SF2ViewerWindow(QMainWindow):
         self.orderlist_info.setText(info)
 
         # Read orderlist columns from memory
+        # Skip first 2 rows (padding/metadata), start from row 2
         # Each column contains one byte per entry (256 bytes max = 256 entries)
         ol_text = ""
-        row_num = 0
+        display_row = 0
 
-        for row_idx in range(256):
-            if row_num >= 32:
-                ol_text += f"... (showing first 32 entries)\n"
-                break
-
+        for row_idx in range(2, 256):  # Start from row 2 (skip padding rows 0-1)
             # Get one byte from each column
             bytes_in_row = []
 
@@ -736,10 +733,10 @@ class SF2ViewerWindow(QMainWindow):
                 bytes_in_row.append(0)
 
             if len(bytes_in_row) == 3:
-                # Format as: XXXX: YY YY YY
+                # Format as: XXXX: YY YY YY (using display row number, not actual row_idx)
                 hex_bytes = ' '.join(f'{b:02X}' for b in bytes_in_row)
-                ol_text += f"{row_idx:04X}: {hex_bytes}\n"
-                row_num += 1
+                ol_text += f"{display_row:04X}: {hex_bytes}\n"
+                display_row += 1
 
                 # Stop at 0xFF marker (end marker)
                 if bytes_in_row[0] == 0xFF:
