@@ -622,6 +622,23 @@ class SF2Parser:
             return
 
         try:
+            # Music Data block structure (18 bytes for Laxity):
+            # [0-1]    : Unknown (0xDB03)
+            # [2-3]    : Unknown (0xDE23)
+            # [4-5]    : Sequence Data Address (0x8023) - little-endian
+            # [6-7]    : Sequence Index Address (0x23E1) - little-endian
+            # [8-9]    : Default Sequence Length (0x2461 = 0x61 = 97) - little-endian
+            # [10-11]  : Unknown (0x0100)
+            # [12-13]  : Unknown (0x24E1) - might be related address
+            # [14-15]  : Unknown (0x0100)
+            # [16-17]  : Unknown (0x27E1)
+
+            # Extract sequence addresses from block
+            seq_data_addr = data[4] | (data[5] << 8) if len(data) >= 6 else 0x8023
+            seq_idx_addr = data[6] | (data[7] << 8) if len(data) >= 8 else 0x23E1
+            default_len = data[8] if len(data) >= 9 else 0x61
+            default_tempo = data[9] if len(data) >= 10 else 0x18
+
             # For Laxity driver files, the OrderList has 3 columns stored separately:
             # Column 1 (sequences/offsets): file offset 0x1766 → C64 address
             # Column 2 (values): file offset 0x1866 (0x100 bytes later) → C64 address
@@ -640,12 +657,8 @@ class SF2Parser:
             # Caller should read all 3 columns to get complete OrderList entries
             orderlist_addr = col1_addr
 
-            # For now, use placeholder values for other fields
-            num_tracks = 0x03  # Default
-            seq_data_addr = 0x8023  # Placeholder
-            seq_idx_addr = 0x23E1   # Placeholder
-            default_len = 0x61  # Default sequence length
-            default_tempo = 0x18  # Default tempo
+            # Extract number of tracks from first byte
+            num_tracks = data[0] if len(data) >= 1 else 0x03
 
             self.music_data_info = MusicDataInfo(
                 num_tracks=num_tracks,
@@ -660,7 +673,7 @@ class SF2Parser:
             self.orderlist_col2_addr = col2_addr
             self.orderlist_col3_addr = col3_addr
 
-            logger.info(f"Music Data: OrderList 3-column structure at Col1=0x{col1_addr:04X}, Col2=0x{col2_addr:04X}, Col3=0x{col3_addr:04X}")
+            logger.info(f"Music Data: OrderList at 0x{col1_addr:04X}, SeqIdx=0x{seq_idx_addr:04X}, SeqData=0x{seq_data_addr:04X}, SeqLen={default_len}")
 
         except Exception as e:
             logger.error(f"Error parsing music data block: {e}")
