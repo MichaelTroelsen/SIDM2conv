@@ -1,23 +1,16 @@
-"""Custom visualization widgets for SF2 Viewer.
-
-Provides interactive visualizations for:
-- Waveforms (256 sample data)
-- Filter cutoff frequency curves (11-bit values)
-- ADSR envelopes (4-bit attack/decay/sustain/release)
+#!/usr/bin/env python3
+"""
+SF2 Visualization Widgets - Custom PyQt6 widgets for displaying waveforms, filters, and envelopes
 """
 
+from typing import List, Optional
 from PyQt6.QtWidgets import QWidget
 from PyQt6.QtGui import QPainter, QPen, QColor, QFont
 from PyQt6.QtCore import Qt, QPoint
-from typing import List
 
 
 class WaveformWidget(QWidget):
-    """Draw waveform from wave table data.
-
-    Displays a waveform as a connected line graph with proper scaling
-    for byte values (0-255).
-    """
+    """Display waveform data as a connected line graph"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -25,45 +18,38 @@ class WaveformWidget(QWidget):
         self.setMinimumHeight(200)
 
     def set_data(self, data: List[int]):
-        """Update waveform data and repaint.
-
-        Args:
-            data: List of byte values (0-255) representing the waveform
-        """
+        """Update waveform data and repaint"""
         self.data = data
         self.update()
 
     def paintEvent(self, event):
-        """Draw waveform as connected lines."""
+        """Draw waveform as connected lines"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        if not self.data:
-            # Draw empty state
-            painter.setPen(QPen(QColor(128, 128, 128), 1))
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter,
-                           "No waveform data")
+        if not self.data or len(self.data) < 2:
+            painter.drawText(10, 30, "No waveform data available")
             return
 
         width = self.width()
         height = self.height()
 
-        if len(self.data) < 2:
+        # Safety check: ensure we have some space
+        if width < 10 or height < 10:
             return
 
-        # Calculate scaling
         x_scale = width / (len(self.data) - 1) if len(self.data) > 1 else 1
-        y_scale = height / 256.0  # Byte values 0-255
+        y_scale = height / 256  # 0-255 byte values
 
-        # Draw center line (zero crossing reference)
-        painter.setPen(QPen(QColor(200, 200, 200), 1))
-        painter.drawLine(0, height // 2, width, height // 2)
+        # Draw center line (zero reference)
+        painter.setPen(QPen(QColor(200, 200, 200), 1, Qt.PenStyle.DashLine))
+        center_y = height // 2
+        painter.drawLine(0, center_y, width, center_y)
 
         # Draw grid lines
-        painter.setPen(QPen(QColor(220, 220, 220), 1, Qt.PenStyle.DotLine))
-        for i in range(1, 8):
-            y = int((height / 8) * i)
-            painter.drawLine(0, y, width, y)
+        painter.setPen(QPen(QColor(230, 230, 230), 1))
+        for i in range(0, height, 40):
+            painter.drawLine(0, i, width, i)
 
         # Draw waveform
         painter.setPen(QPen(QColor(0, 100, 255), 2))
@@ -74,19 +60,15 @@ class WaveformWidget(QWidget):
             y2 = int(height - (self.data[i + 1] * y_scale))
             painter.drawLine(x1, y1, x2, y2)
 
-        # Draw axis labels
+        # Draw value labels
         painter.setPen(QPen(QColor(0, 0, 0), 1))
-        font = QFont("Arial", 8)
-        painter.setFont(font)
-        painter.drawText(5, 15, f"Max: 255")
-        painter.drawText(5, height - 5, f"Min: 0")
+        painter.setFont(QFont("Courier", 8))
+        painter.drawText(10, 15, f"Samples: {len(self.data)}")
+        painter.drawText(10, 30, f"Min: 0x00, Max: 0xFF")
 
 
 class FilterResponseWidget(QWidget):
-    """Draw filter cutoff frequency curve.
-
-    Displays filter cutoff values (11-bit, 0-2047) as a frequency response curve.
-    """
+    """Display filter cutoff frequency curve"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -94,48 +76,40 @@ class FilterResponseWidget(QWidget):
         self.setMinimumHeight(200)
 
     def set_data(self, cutoff_data: List[int]):
-        """Update filter cutoff data and repaint.
-
-        Args:
-            cutoff_data: List of cutoff frequency values (0-2047)
-        """
+        """Update filter cutoff data and repaint"""
         self.cutoff_data = cutoff_data
         self.update()
 
     def paintEvent(self, event):
-        """Draw filter response curve."""
+        """Draw filter cutoff frequency response curve"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        if not self.cutoff_data:
-            # Draw empty state
-            painter.setPen(QPen(QColor(128, 128, 128), 1))
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter,
-                           "No filter data")
+        if not self.cutoff_data or len(self.cutoff_data) < 2:
+            painter.drawText(10, 30, "No filter data available")
             return
 
         width = self.width()
         height = self.height()
 
-        if len(self.cutoff_data) < 2:
+        # Safety check
+        if width < 10 or height < 10:
             return
 
-        # Calculate scaling (11-bit cutoff: 0-2047)
         x_scale = width / (len(self.cutoff_data) - 1) if len(self.cutoff_data) > 1 else 1
-        y_scale = height / 2048.0
-
-        # Draw grid
-        painter.setPen(QPen(QColor(220, 220, 220), 1, Qt.PenStyle.DotLine))
-        for i in range(1, 8):
-            y = int((height / 8) * i)
-            painter.drawLine(0, y, width, y)
+        y_scale = height / 2048  # 11-bit cutoff (0-2047)
 
         # Draw center line
-        painter.setPen(QPen(QColor(200, 200, 200), 1))
+        painter.setPen(QPen(QColor(200, 200, 200), 1, Qt.PenStyle.DashLine))
         painter.drawLine(0, height // 2, width, height // 2)
 
-        # Draw cutoff frequency curve (orange for filter)
-        painter.setPen(QPen(QColor(255, 140, 0), 2))
+        # Draw grid lines
+        painter.setPen(QPen(QColor(230, 230, 230), 1))
+        for i in range(0, height, 40):
+            painter.drawLine(0, i, width, i)
+
+        # Draw frequency curve
+        painter.setPen(QPen(QColor(255, 100, 0), 2))
         for i in range(len(self.cutoff_data) - 1):
             x1 = int(i * x_scale)
             y1 = int(height - (self.cutoff_data[i] * y_scale))
@@ -143,20 +117,15 @@ class FilterResponseWidget(QWidget):
             y2 = int(height - (self.cutoff_data[i + 1] * y_scale))
             painter.drawLine(x1, y1, x2, y2)
 
-        # Draw axis labels
+        # Draw value labels
         painter.setPen(QPen(QColor(0, 0, 0), 1))
-        font = QFont("Arial", 8)
-        painter.setFont(font)
-        painter.drawText(5, 15, "Cutoff: 2047")
-        painter.drawText(5, height - 5, "Cutoff: 0")
+        painter.setFont(QFont("Courier", 8))
+        painter.drawText(10, 15, f"Samples: {len(self.cutoff_data)}")
+        painter.drawText(10, 30, f"Range: 0-2047 (11-bit)")
 
 
 class EnvelopeWidget(QWidget):
-    """Draw ADSR envelope visualization.
-
-    Displays Attack/Decay/Sustain/Release envelope shape based on 4-bit
-    values (0-15 for each parameter).
-    """
+    """Display ADSR envelope visualization"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -167,115 +136,96 @@ class EnvelopeWidget(QWidget):
         self.setMinimumHeight(200)
 
     def set_envelope(self, attack: int, decay: int, sustain: int, release: int):
-        """Set ADSR values.
-
-        Args:
-            attack: Attack time (4-bit: 0-15)
-            decay: Decay time (4-bit: 0-15)
-            sustain: Sustain level (4-bit: 0-15)
-            release: Release time (4-bit: 0-15)
-        """
-        self.attack = max(0, min(15, attack))
-        self.decay = max(0, min(15, decay))
-        self.sustain = max(0, min(15, sustain))
-        self.release = max(0, min(15, release))
+        """Set ADSR values (4-bit each: 0-15)"""
+        self.attack = attack & 0x0F
+        self.decay = decay & 0x0F
+        self.sustain = sustain & 0x0F
+        self.release = release & 0x0F
         self.update()
 
     def paintEvent(self, event):
-        """Draw ADSR envelope shape."""
+        """Draw ADSR envelope shape"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         width = self.width()
         height = self.height()
-        margin = 40
 
-        # Draw background grid
-        painter.setPen(QPen(QColor(240, 240, 240), 1))
-        painter.fillRect(self.rect(), QColor(255, 255, 255))
-
-        # Scale times for visualization
-        attack_time = max(1, self.attack * 2)
-        decay_time = max(1, self.decay * 2)
-        sustain_time = 80
-        release_time = max(1, self.release * 2)
-
-        total_time = attack_time + decay_time + sustain_time + release_time
-
-        # Calculate dimensions within margins
-        plot_width = width - (2 * margin)
-        plot_height = height - (2 * margin)
-
-        if plot_width <= 0 or plot_height <= 0:
+        # Safety check
+        if width < 50 or height < 50:
             return
 
-        x_scale = plot_width / total_time if total_time > 0 else 1
-        y_scale = plot_height / 15.0  # 0-15 sustain level
+        # ADSR envelope shape:
+        # Attack: 0 -> max (0.15 * time_scale)
+        # Decay: max -> sustain (0.15 * time_scale)
+        # Sustain: hold at sustain level (0.40 * time_scale)
+        # Release: sustain -> 0 (0.30 * time_scale)
 
-        # Starting point (on baseline)
-        x_offset = margin
-        y_offset = height - margin
+        time_scale = 100  # pixels per time unit
 
-        sustain_level_px = y_offset - (self.sustain * y_scale)
+        attack_x = self.attack * time_scale if self.attack > 0 else 5
+        decay_x = self.decay * time_scale if self.decay > 0 else 5
+        sustain_x = 150  # Fixed sustain phase
+        release_x = self.release * time_scale if self.release > 0 else 5
 
-        # Draw ADSR envelope
-        painter.setPen(QPen(QColor(0, 200, 0), 3))
+        total_time = attack_x + decay_x + sustain_x + release_x
+        x_scale = (width - 40) / total_time if total_time > 0 else 1
+
+        sustain_level = height - 50 - (self.sustain / 15.0 * (height - 100))
+        max_level = 30
+
+        # Build envelope points
         points = []
+        x_pos = 20
 
-        # Starting point (level 0)
-        x_start = x_offset
-        y_start = y_offset
-        points.append(QPoint(int(x_start), int(y_start)))
+        # Attack phase (0 -> max)
+        points.append(QPoint(x_pos, height - 30))
+        x_pos += int(attack_x * x_scale)
+        points.append(QPoint(x_pos, max_level))
 
-        # Attack phase: 0 -> 15
-        x_attack_end = x_start + (attack_time * x_scale)
-        y_attack_end = y_offset - (15 * y_scale)
-        points.append(QPoint(int(x_attack_end), int(y_attack_end)))
+        # Decay phase (max -> sustain)
+        x_pos += int(decay_x * x_scale)
+        points.append(QPoint(x_pos, int(sustain_level)))
 
-        # Decay phase: 15 -> sustain
-        x_decay_end = x_attack_end + (decay_time * x_scale)
-        y_decay_end = sustain_level_px
-        points.append(QPoint(int(x_decay_end), int(y_decay_end)))
+        # Sustain phase (hold)
+        x_pos += int(sustain_x * x_scale)
+        points.append(QPoint(x_pos, int(sustain_level)))
 
-        # Sustain phase: hold at sustain level
-        x_sustain_end = x_decay_end + (sustain_time * x_scale)
-        y_sustain_end = sustain_level_px
-        points.append(QPoint(int(x_sustain_end), int(y_sustain_end)))
+        # Release phase (sustain -> 0)
+        x_pos += int(release_x * x_scale)
+        points.append(QPoint(x_pos, height - 30))
 
-        # Release phase: sustain -> 0
-        x_release_end = x_sustain_end + (release_time * x_scale)
-        y_release_end = y_offset
-        points.append(QPoint(int(x_release_end), int(y_release_end)))
-
-        # Draw the envelope lines
+        # Draw envelope curve
+        painter.setPen(QPen(QColor(0, 200, 0), 2))
         for i in range(len(points) - 1):
             painter.drawLine(points[i], points[i + 1])
 
         # Draw phase labels
         painter.setPen(QPen(QColor(100, 100, 100), 1))
-        font = QFont("Arial", 8)
-        painter.setFont(font)
+        painter.setFont(QFont("Courier", 8))
 
-        label_y = y_offset + 20
-        painter.drawText(int(x_start + (attack_time * x_scale) / 2 - 10), int(label_y), "A")
-        painter.drawText(int(x_attack_end + (decay_time * x_scale) / 2 - 10), int(label_y), "D")
-        painter.drawText(int(x_decay_end + (sustain_time * x_scale) / 2 - 10), int(label_y), "S")
-        painter.drawText(int(x_sustain_end + (release_time * x_scale) / 2 - 10), int(label_y), "R")
+        # Attack label
+        if len(points) > 0:
+            label_x = (points[0].x() + points[1].x()) // 2
+            painter.drawText(label_x - 15, height - 5, "A")
 
-        # Draw parameter values
+        # Decay label
+        if len(points) > 1:
+            label_x = (points[1].x() + points[2].x()) // 2
+            painter.drawText(label_x - 15, height - 5, "D")
+
+        # Sustain label
+        if len(points) > 2:
+            label_x = (points[2].x() + points[3].x()) // 2
+            painter.drawText(label_x - 15, height - 5, "S")
+
+        # Release label
+        if len(points) > 3:
+            label_x = (points[3].x() + points[4].x()) // 2
+            painter.drawText(label_x - 15, height - 5, "R")
+
+        # Draw ADSR values
         painter.setPen(QPen(QColor(0, 0, 0), 1))
-        font = QFont("Arial", 9)
-        font.setBold(True)
-        painter.setFont(font)
-
-        value_text = f"A:{self.attack:2d}  D:{self.decay:2d}  S:{self.sustain:2d}  R:{self.release:2d}"
-        painter.drawText(margin, 20, value_text)
-
-        # Draw axes
-        painter.setPen(QPen(QColor(0, 0, 0), 1))
-        painter.drawLine(x_offset, y_offset, x_offset + plot_width, y_offset)  # X-axis
-        painter.drawLine(x_offset, y_offset, x_offset, y_offset - plot_height)  # Y-axis
-
-        # Draw axis labels
-        painter.drawText(x_offset - 30, y_offset + 5, "Time")
-        painter.drawText(x_offset - 35, y_offset - plot_height, "Level")
+        painter.setFont(QFont("Courier", 9))
+        painter.drawText(width - 120, 15, f"A: {self.attack:2d}  D: {self.decay:2d}")
+        painter.drawText(width - 120, 30, f"S: {self.sustain:2d}  R: {self.release:2d}")
