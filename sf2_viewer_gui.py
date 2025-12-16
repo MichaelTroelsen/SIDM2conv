@@ -690,28 +690,42 @@ class SF2ViewerWindow(QMainWindow):
         return widget
 
     def update_orderlist(self):
-        """Update the orderlist tab"""
+        """Update the orderlist tab - display in hex dump format"""
         if not self.parser or not self.parser.music_data_info:
             self.orderlist_info.setText("No orderlist data available")
             return
 
+        # Get orderlist address
+        addr = self.parser.music_data_info.orderlist_address
+
         # Update info
-        info = f"OrderList at ${self.parser.music_data_info.orderlist_address:04X} | {len(self.parser.orderlist)} entries"
+        info = f"OrderList at ${addr:04X}"
         self.orderlist_info.setText(info)
 
-        # Update table
-        self.orderlist_table.setRowCount(len(self.parser.orderlist))
-        for i, seq_idx in enumerate(self.parser.orderlist):
-            self.orderlist_table.setItem(i, 0, QTableWidgetItem(f"{i}"))
-            self.orderlist_table.setItem(i, 1, QTableWidgetItem(f"0x{seq_idx:02X}"))
-            note = "END" if seq_idx == 0x7F else f"Seq {seq_idx}"
-            self.orderlist_table.setItem(i, 2, QTableWidgetItem(note))
+        # Read orderlist from memory (3 bytes per row typically)
+        ol_text = ""
+        row_num = 0
+        for i in range(0, min(256, len(self.parser.memory) - addr), 3):
+            # Get 3 bytes for this row
+            bytes_in_row = []
+            for j in range(3):
+                if addr + i + j < len(self.parser.memory):
+                    bytes_in_row.append(self.parser.memory[addr + i + j])
 
-        # Update visualization
-        ol_str = " ".join(f"{x:02X}" for x in self.parser.orderlist[:16])
-        if len(self.parser.orderlist) > 16:
-            ol_str += f" ... ({len(self.parser.orderlist)} total)"
-        self.orderlist_text.setText(f"OrderList:\n{ol_str}\n\nStructure: Sequence indices separated by spaces, terminated by 7F (END)")
+            if bytes_in_row:
+                # Format as: XXXX: YY YY YY
+                hex_bytes = ' '.join(f'{b:02X}' for b in bytes_in_row)
+                ol_text += f"{addr + i:04X}: {hex_bytes}\n"
+                row_num += 1
+
+            # Stop at first END marker (0x7F) or after 32 rows
+            if bytes_in_row and bytes_in_row[0] == 0x7F and row_num > 1:
+                break
+            if row_num >= 32:
+                ol_text += f"... (showing first 32 entries)\n"
+                break
+
+        self.orderlist_text.setText(ol_text if ol_text else "OrderList is empty or contains only zeros")
 
     def update_sequences(self):
         """Update the sequences tab"""
