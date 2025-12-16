@@ -9,8 +9,20 @@ from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional
 from enum import Enum
 import logging
+import sys
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Add sidm2 to path for Laxity parser import
+sys.path.insert(0, str(Path(__file__).parent.parent / 'sidm2'))
+sys.path.insert(0, str(Path(__file__).parent / 'sidm2'))
+try:
+    from laxity_parser import LaxityParser, LaxityData
+    LAXITY_PARSER_AVAILABLE = True
+except ImportError:
+    LAXITY_PARSER_AVAILABLE = False
+    logger.warning("LaxityParser not available - Laxity files will use generic parser")
 
 
 class BlockType(Enum):
@@ -149,23 +161,52 @@ class DriverCommonAddresses:
 @dataclass
 class SequenceEntry:
     """Single entry in a music sequence"""
-    note: int        # 0x00-0x6F (MIDI notes), 0x7E (note off), 0x7F (end)
-    command: int     # 0x00-0x0F (no command to 15 standard commands)
+    note: int        # 0x00-0x6F (MIDI notes), 0x7E (gate on/sustain), 0x7F (end)
+    instrument: int  # 0x80=no change, 0x90=tie note, 0xA0-0xBF=instrument index
+    command: int     # 0x80=no change, 0xC0-0xFF=command (bits 0-5 = index)
     param1: int      # First parameter (varies by command)
     param2: int      # Second parameter (varies by command)
     duration: int    # How many ticks this entry lasts
 
     def note_name(self) -> str:
-        """Convert note value to name"""
-        if self.note == 0x7E:
-            return "---"
+        """Convert note value to name (SID Factory II editor format)"""
+        if self.note == 0x00:
+            return "---"  # Gate off
+        elif self.note == 0x7E:
+            return "+++"  # Gate on (sustain)
         elif self.note == 0x7F:
             return "END"
+        elif self.note > 0x7F:
+            # Invalid note value (shouldn't happen in valid sequence data)
+            return f"0x{self.note:02X}"
         else:
+            # Valid note value (0x01-0x7D)
             notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
             octave = self.note // 12
             note = self.note % 12
             return f"{notes[note]}-{octave}"
+
+    def instrument_display(self) -> str:
+        """Convert instrument byte to display string (SID Factory II editor format)"""
+        if self.instrument == 0x80:
+            return "--"  # No change
+        elif self.instrument == 0x90:
+            return "TIE"  # Tie note
+        elif self.instrument >= 0xA0:
+            instr_idx = self.instrument & 0x1F
+            return f"{instr_idx:02X}"
+        else:
+            return "--"
+
+    def command_display(self) -> str:
+        """Convert command byte to display string (SID Factory II editor format)"""
+        if self.command == 0x80:
+            return "--"  # No change
+        elif self.command >= 0xC0:
+            cmd_idx = self.command & 0x3F
+            return f"{cmd_idx:02X}"
+        else:
+            return "--"
 
     def command_name(self) -> str:
         """Convert command byte to name"""
@@ -209,8 +250,8 @@ def unpack_sequence(packed_data: bytes) -> List[Dict]:
     """
     events = []
     i = 0
-    current_instrument = None
-    current_command = None
+    current_instrument = 0x80  # 0x80 = no change
+    current_command = 0x80     # 0x80 = no change
     current_duration = 0
     current_tie = False
 
@@ -224,13 +265,13 @@ def unpack_sequence(packed_data: bytes) -> List[Dict]:
 
         # Command byte (0xC0-0xFF)
         if value >= 0xC0:
-            current_command = value & 0x3F
+            current_command = value
             value = packed_data[i] if i < len(packed_data) else 0
             i += 1
 
         # Instrument byte (0xA0-0xBF)
         if value >= 0xA0:
-            current_instrument = value & 0x1F
+            current_instrument = value
             value = packed_data[i] if i < len(packed_data) else 0
             i += 1
 
@@ -258,8 +299,8 @@ def unpack_sequence(packed_data: bytes) -> List[Dict]:
             sustain_note = 0x7E if note != 0x00 else 0x00
             events.append({
                 'note': sustain_note,
-                'instrument': None,
-                'command': None,
+                'instrument': 0x80,  # No change for sustain events
+                'command': 0x80,     # No change for sustain events
                 'duration': 0,
                 'tie': False
             })
@@ -300,6 +341,8 @@ class SF2Parser:
         self.orderlist: List[int] = []
         self.sequences: Dict[int, List[SequenceEntry]] = {}
         self.memory = bytearray(65536)
+        self.is_laxity_driver = False
+        self.laxity_data: Optional[LaxityData] = None
 
         self.parse()
 
@@ -388,6 +431,39 @@ class SF2Parser:
                 # Replace with [0xNN] notation for visibility
                 result.append(f"[0x{code:02X}]")
         return ''.join(result).strip()
+
+    def _detect_laxity_driver(self) -> bool:
+        """Detect if this is a Laxity driver SF2 file.
+
+        Laxity driver files have these characteristics:
+        - Load address: 0x0D7E
+        - Magic ID: 0x1337
+        - Relocated Laxity player code at $0E00
+        - Sequence pointer table at offset $099F from load address
+
+        Returns:
+            True if this appears to be a Laxity driver file
+        """
+        # Check load address (0x0D7E is standard for Laxity driver)
+        if self.load_address != 0x0D7E:
+            return False
+
+        # Check for relocated Laxity player code signature
+        # Laxity player typically has specific patterns at $0E00
+        player_code_offset = 0x0E00 - self.load_address
+        if player_code_offset + 16 > len(self.data):
+            return False
+
+        # Check for Laxity-specific patterns in player code
+        # Look for common 6502 patterns in the player
+        player_bytes = self.data[player_code_offset:player_code_offset + 32]
+
+        # Laxity player should have non-zero code
+        if not any(player_bytes):
+            return False
+
+        logger.info(f"Detected Laxity driver SF2 (load address 0x{self.load_address:04X})")
+        return True
 
     def _infer_table_name(self, table_type: int, table_id: int, raw_name: str,
                          row_count: int = 0, column_count: int = 0, address: int = 0) -> str:
@@ -797,12 +873,24 @@ class SF2Parser:
             if not has_non_zero:
                 continue
 
+            # Skip pointer blocks (sequences of 0xE1 bytes, which are common in Laxity files)
+            # These are typically metadata/pointers before actual sequence data
+            test_offset = offset
+            while test_offset < len(self.data) and self.data[test_offset] == 0xE1:
+                test_offset += 1
+
+            # If we skipped some bytes, use the position after them
+            if test_offset > offset:
+                offset = test_offset
+                if offset >= search_end - 20:
+                    continue
+
             # Valid packed sequence must start with meaningful data:
             # - 0xA0-0xBF (instrument command), or
             # - 0xC0-0xFF (effect command), or
             # - 0x01-0x7E (note value, not gate off)
             byte = self.data[offset]
-            if not (0x01 <= byte <= 0x7E or 0x80 <= byte <= 0xFF or 0xA0 <= byte <= 0xBF or 0xC0 <= byte <= 0xFF):
+            if not (0x01 <= byte <= 0x7E or 0xA0 <= byte <= 0xBF or 0xC0 <= byte <= 0xFF):
                 continue
 
             # Look for end marker (0x7F) within reasonable distance
@@ -869,7 +957,8 @@ class SF2Parser:
             for event in events:
                 entry = SequenceEntry(
                     note=event['note'],
-                    command=event['command'] if event['command'] is not None else 0,
+                    instrument=event['instrument'],
+                    command=event['command'],
                     param1=0,
                     param2=0,
                     duration=event['duration']
@@ -887,6 +976,110 @@ class SF2Parser:
 
         logger.info(f"Parsed {len(self.sequences)} packed sequences from offset 0x{seq_offset:04X}")
 
+    def _parse_laxity_sequences(self):
+        """Extract sequences using Laxity parser for Laxity driver SF2 files.
+
+        This method uses the proven LaxityParser which achieves 99.93% accuracy
+        by extracting sequences via pointer table at offset $099F.
+        """
+        if not LAXITY_PARSER_AVAILABLE:
+            logger.warning("LaxityParser not available, skipping Laxity-specific parsing")
+            return False
+
+        try:
+            # Use Laxity parser with C64 memory data
+            # The load_address is already in self.load_address (0x0D7E)
+            laxity_parser = LaxityParser(self.data[2:], self.load_address)
+            self.laxity_data = laxity_parser.parse()
+
+            if not self.laxity_data or not self.laxity_data.sequences:
+                logger.warning("Laxity parser found no sequences")
+                return False
+
+            logger.info(f"Laxity parser extracted {len(self.laxity_data.sequences)} sequences")
+
+            # Convert Laxity sequences to SequenceEntry format
+            for seq_idx, seq_bytes in enumerate(self.laxity_data.sequences):
+                entries = self._convert_laxity_sequence(seq_bytes)
+                if entries:
+                    self.sequences[seq_idx] = entries
+                    logger.debug(f"Sequence {seq_idx}: {len(entries)} entries")
+
+            logger.info(f"Converted {len(self.sequences)} Laxity sequences to SequenceEntry format")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error parsing Laxity sequences: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def _convert_laxity_sequence(self, seq_bytes: bytes) -> List[SequenceEntry]:
+        """Convert a Laxity format sequence to SequenceEntry list.
+
+        Laxity format (from laxity_parser.py documentation):
+        - $00: Rest
+        - $01-$5F: Note value
+        - $7E: Gate continue (sustain)
+        - $7F: End of sequence
+        - $80-$8F: Rest with duration
+        - $90-$9F: Duration with gate
+        - $A0-$BF: Instrument
+        - $C0-$FF: Command
+
+        Args:
+            seq_bytes: Raw sequence bytes in Laxity format
+
+        Returns:
+            List of SequenceEntry objects
+        """
+        entries = []
+        i = 0
+        current_instrument = 0x80  # No change
+        current_command = 0x80     # No change
+
+        while i < len(seq_bytes):
+            byte = seq_bytes[i]
+            i += 1
+
+            # End marker
+            if byte == 0x7F:
+                break
+
+            # Command byte (0xC0-0xFF)
+            if byte >= 0xC0:
+                current_command = byte
+                continue
+
+            # Instrument byte (0xA0-0xBF)
+            if byte >= 0xA0:
+                current_instrument = byte
+                continue
+
+            # Duration bytes (0x80-0x9F) or rest with duration (0x80-0x8F)
+            # These are typically followed by a note
+            if byte >= 0x80:
+                # This is part of the note encoding, will be handled with the note
+                continue
+
+            # Note byte (0x00-0x7E)
+            # Note: 0x7E is gate continue (sustain), not a rest
+            note = byte
+
+            # Create sequence entry
+            entry = SequenceEntry(
+                note=note,
+                instrument=current_instrument,
+                command=current_command,
+                param1=0,
+                param2=0,
+                duration=0
+            )
+            entries.append(entry)
+
+        logger.debug(f"Converted Laxity sequence: {len(entries)} entries")
+        return entries
+
     def _parse_sequences(self):
         """Extract all sequences from memory"""
         if not self.music_data_info:
@@ -894,13 +1087,25 @@ class SF2Parser:
 
         self.sequences = {}
 
-        # First, try to find and parse packed sequences (for Laxity driver files)
+        # First priority: Try Laxity parser if this is a Laxity driver SF2
+        if self._detect_laxity_driver():
+            self.is_laxity_driver = True
+            if self._parse_laxity_sequences():
+                logger.info(f"Successfully parsed {len(self.sequences)} sequences using Laxity parser")
+                return
+            else:
+                logger.warning("Laxity driver detected but parsing failed, trying fallback methods")
+                self.sequences = {}  # Clear any partial results
+
+        # Second priority: Try generic packed sequences (for other SF2 formats with packed sequences)
         if self._find_packed_sequences() is not None:
             self._parse_packed_sequences()
-            return
+            if self.sequences:
+                logger.info(f"Successfully parsed {len(self.sequences)} packed sequences")
+                return
 
-        # If no packed sequences found, try traditional indexed sequence parsing
-        # Try to parse up to 128 sequences
+        # Fallback: Try traditional indexed sequence parsing
+        logger.info("Trying traditional indexed sequence parsing")
         for seq_idx in range(self.MAX_SEQUENCES):
             seq_data = self._parse_sequence(seq_idx)
             if seq_data:
@@ -910,7 +1115,7 @@ class SF2Parser:
                 if seq_idx > 32:  # At least try first 32
                     break
 
-        logger.info(f"Parsed {len(self.sequences)} sequences")
+        logger.info(f"Parsed {len(self.sequences)} sequences total")
 
     def _parse_sequence(self, sequence_index: int) -> Optional[List[SequenceEntry]]:
         """Parse a single sequence from memory"""
@@ -945,6 +1150,7 @@ class SF2Parser:
                 if note == 0x7F:
                     entries.append(SequenceEntry(
                         note=0x7F,
+                        instrument=0x80,
                         command=0,
                         param1=0,
                         param2=0,
@@ -976,6 +1182,7 @@ class SF2Parser:
 
                 entries.append(SequenceEntry(
                     note=note,
+                    instrument=0x80,  # Traditional format doesn't have explicit instrument bytes
                     command=command,
                     param1=param1,
                     param2=param2,

@@ -761,7 +761,7 @@ class SF2ViewerWindow(QMainWindow):
             self.sequence_combo.setCurrentIndex(0)
 
     def on_sequence_selected(self, index: int):
-        """Handle sequence selection - display in SID Factory II editor format"""
+        """Handle sequence selection - display sequence data in 3-track parallel format"""
         if index < 0 or not self.parser:
             return
 
@@ -771,26 +771,53 @@ class SF2ViewerWindow(QMainWindow):
 
         seq_data = self.parser.sequences[seq_idx]
 
-        # Update info
-        info = f"Sequence {seq_idx}: {len(seq_data)} steps"
+        # Display all sequences in 3-track parallel format (matching SID Factory II)
+        # The parsing method differs (Laxity vs packed), but the display is the same
+        self._display_sequence_3track_parallel(seq_idx, seq_data)
+
+    def _display_sequence_3track_parallel(self, seq_idx: int, seq_data: list):
+        """Display sequence data in 3-track parallel format (matching SID Factory II editor)"""
+        # Update info - calculate number of "steps" (groups of 3 entries for 3 tracks)
+        num_steps = (len(seq_data) + 2) // 3  # Round up division
+        format_type = "Laxity driver" if (hasattr(self.parser, 'is_laxity_driver') and self.parser.is_laxity_driver) else "Traditional"
+        info = f"Sequence {seq_idx}: {len(seq_data)} events ({num_steps} steps × 3 tracks) - {format_type}"
         self.sequence_info.setText(info)
 
-        # Format sequence data like SID Factory II editor
-        # Display as rows with columns: Step | Instrument | Note | Command | Params
+        # Format sequence data like SID Factory II editor with 3 parallel tracks
+        # Packed format stores sequences with 3 tracks interleaved:
+        # Entry 0, 1, 2 = Track 1, 2, 3 at Step 0
+        # Entry 3, 4, 5 = Track 1, 2, 3 at Step 1, etc.
         seq_text = ""
 
-        # Header
-        seq_text += "Step | Instr | Note    | Command | Param1 | Param2 | Duration\n"
-        seq_text += "-----+-------+---------+---------+--------+--------+----------\n"
+        # Header with better spacing to match editor
+        seq_text += "      Track 1              Track 2              Track 3\n"
+        seq_text += "Step  In Cmd Note         In Cmd Note         In Cmd Note\n"
+        seq_text += "----  ---- --- --------  ---- --- --------  ---- --- --------\n"
 
-        # Data rows
-        for step, entry in enumerate(seq_data):
-            instr = f"0x{entry.note:02X}" if entry.note != 0 else "---"
-            note_name = entry.note_name()
-            cmd_name = entry.command_name()
+        # Data rows - group by 3 for parallel track display
+        step = 0
+        for i in range(0, len(seq_data), 3):
+            entry1 = seq_data[i]
+            entry2 = seq_data[i + 1] if i + 1 < len(seq_data) else None
+            entry3 = seq_data[i + 2] if i + 2 < len(seq_data) else None
 
-            seq_text += f"{step:04X} | {instr:5s} | {note_name:7s} | {cmd_name:7s} | "
-            seq_text += f"0x{entry.param1:02X}   | 0x{entry.param2:02X}   | {entry.duration:8d}\n"
+            # Format each track's data: "In Cmd Note" where each is 4 chars wide
+            def format_entry(entry):
+                if entry is None:
+                    return " -- ---  --------"
+                instr = entry.instrument_display()
+                cmd = entry.command_display()
+                note = entry.note_name()
+                # Width: In(4) + Cmd(4) + Note(9) + spaces = 4+4+9 = 17 chars
+                return f"{instr:>2s}  {cmd:>2s}  {note:>8s}"
+
+            track1_str = format_entry(entry1)
+            track2_str = format_entry(entry2)
+            track3_str = format_entry(entry3)
+
+            # Build the row with 3 tracks, each with wider spacing
+            seq_text += f"{step:04X}  {track1_str}  {track2_str}  {track3_str}\n"
+            step += 1
 
         self.sequence_text.setText(seq_text)
 
