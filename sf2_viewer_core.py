@@ -779,10 +779,16 @@ class SF2Parser:
                 lines.append(f"    {desc.name:20s}: ${desc.address:04X} ({desc.row_count}x{desc.column_count})")
 
         if self.driver_common:
-            lines.append("\n  Critical Addresses:")
+            lines.append("\n  Driver Addresses:")
             lines.append(f"    Init:   ${self.driver_common.init_address:04X}")
             lines.append(f"    Play:   ${self.driver_common.play_address:04X}")
             lines.append(f"    Stop:   ${self.driver_common.stop_address:04X}")
+
+        if self.music_data_info:
+            lines.append("\n  Music Data Addresses:")
+            lines.append(f"    OrderList:        ${self.music_data_info.orderlist_address:04X}")
+            lines.append(f"    Sequence Data:    ${self.music_data_info.sequence_data_address:04X}")
+            lines.append(f"    Sequence Index:   ${self.music_data_info.sequence_index_address:04X}")
 
         return '\n'.join(lines)
 
