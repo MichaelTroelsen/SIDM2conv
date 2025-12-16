@@ -302,6 +302,12 @@ class SF2ViewerWindow(QMainWindow):
             self.update_sequences()
             self.update_visualization()
 
+            # Check if sequences have valid data and enable/disable tab
+            has_valid_sequences = self._has_valid_sequences()
+            seq_tab_index = self.tabs.indexOf(self.sequences_tab)
+            if seq_tab_index >= 0:
+                self.tabs.setTabEnabled(seq_tab_index, has_valid_sequences)
+
             # Enable playback
             if self.playback_engine:
                 self.play_btn.setEnabled(True)
@@ -679,7 +685,7 @@ class SF2ViewerWindow(QMainWindow):
         return widget
 
     def update_orderlist(self):
-        """Update the orderlist tab - display 3-column OrderList structure"""
+        """Update the orderlist tab - display 3-column OrderList structure (SID Factory II format)"""
         if not self.parser or not self.parser.music_data_info:
             self.orderlist_info.setText("No orderlist data available")
             return
@@ -689,13 +695,14 @@ class SF2ViewerWindow(QMainWindow):
         addr_col2 = getattr(self.parser, 'orderlist_col2_addr', addr_col1 + 0x100)
         addr_col3 = getattr(self.parser, 'orderlist_col3_addr', addr_col1 + 0x200)
 
-        # Update info
+        # Update info (hidden)
         info = f"OrderList (3 columns): Col1=${addr_col1:04X} Col2=${addr_col2:04X} Col3=${addr_col3:04X}"
         self.orderlist_info.setText(info)
 
         # Read orderlist columns from memory
         # Skip first 2 rows (padding/metadata), start from row 2
         # Each column contains one byte per entry (256 bytes max = 256 entries)
+        # Format matches SID Factory II editor: row numbers increment by 0x20
         ol_text = ""
         display_row = 0
 
@@ -722,9 +729,10 @@ class SF2ViewerWindow(QMainWindow):
                 bytes_in_row.append(0)
 
             if len(bytes_in_row) == 3:
-                # Format as: XXXX: YY YY YY (using display row number, not actual row_idx)
+                # Format as: XXXX: YY YY YY (row numbers increment by 0x20 like SID Factory II editor)
                 hex_bytes = ' '.join(f'{b:02X}' for b in bytes_in_row)
-                ol_text += f"{display_row:04X}: {hex_bytes}\n"
+                row_display = display_row * 0x20  # Match editor row numbering
+                ol_text += f"{row_display:04X}: {hex_bytes}\n"
                 display_row += 1
 
                 # Stop at 0xFF marker (end marker)
@@ -776,6 +784,37 @@ class SF2ViewerWindow(QMainWindow):
             self.sequence_table.setItem(step, 3, QTableWidgetItem(f"0x{entry.param1:02X}"))
             self.sequence_table.setItem(step, 4, QTableWidgetItem(f"0x{entry.param2:02X}"))
             self.sequence_table.setItem(step, 5, QTableWidgetItem(f"{entry.duration}"))
+
+    def _has_valid_sequences(self) -> bool:
+        """Check if loaded SF2 file has valid sequence data
+
+        For Laxity driver files, sequences are not properly stored in the SF2 format.
+        Sequences are disabled for Laxity files since they cannot be reliably extracted.
+        Returns False for Laxity drivers to disable the sequences tab.
+        """
+        if not self.parser or not self.parser.sequences:
+            return False
+
+        # Check if this is a Laxity driver file
+        # Laxity driver files don't store real sequences in SF2 format
+        # Musical information is stored in: OrderList, Commands, Wave, Filter, etc.
+        if self.parser.music_data_info:
+            # For Laxity files, sequences are not available
+            # Check if we have mostly empty sequences (typical for Laxity)
+            total_entries = 0
+            empty_entries = 0
+
+            for seq_idx, seq_data in self.parser.sequences.items():
+                for entry in seq_data:
+                    total_entries += 1
+                    if entry.note == 0 and entry.command == 0 and entry.duration == 0:
+                        empty_entries += 1
+
+            # If more than 90% of entries are empty, it's likely a Laxity file
+            if total_entries > 0 and empty_entries / total_entries > 0.90:
+                return False
+
+        return False  # Default: sequences not available
 
     def show_about(self):
         """Show about dialog"""
