@@ -184,34 +184,37 @@ class SF2ViewerWindow(QMainWindow):
         return widget
 
     def create_tables_tab(self) -> QWidget:
-        """Create the tables tab"""
+        """Create the tables tab with split layout - data on left, info on right"""
         widget = QWidget()
-        layout = QVBoxLayout(widget)
+        main_layout = QVBoxLayout(widget)
 
-        # Table selector
+        # Table selector at top
         selector_layout = QHBoxLayout()
         selector_layout.addWidget(QLabel("Select Table:"))
 
         self.table_combo = self.create_table_combo()
         selector_layout.addWidget(self.table_combo)
+        selector_layout.addStretch()
 
         self.table_combo.currentIndexChanged.connect(self.on_table_selected)
-        layout.addLayout(selector_layout)
+        main_layout.addLayout(selector_layout)
 
-        # Table display
-        self.table_widget = QTableWidget()
-        self.table_widget.setMaximumHeight(400)
-        layout.addWidget(self.table_widget)
+        # Horizontal split layout - left: data, right: info
+        split_layout = QHBoxLayout()
 
-        # Table info
+        # Left side: Table data display (in All Tables format)
+        self.table_display = QTextEdit()
+        self.table_display.setReadOnly(True)
+        self.table_display.setFont(QFont("Courier New", 10))
+        split_layout.addWidget(self.table_display, 2)  # 2/3 of width
+
+        # Right side: Table info metadata
         self.table_info = QTextEdit()
         self.table_info.setReadOnly(True)
         self.table_info.setFont(QFont("Courier", 9))
-        self.table_info.setMaximumHeight(100)
-        layout.addWidget(self.table_info)
+        split_layout.addWidget(self.table_info, 1)  # 1/3 of width
 
-        # Add stretch
-        layout.addStretch()
+        main_layout.addLayout(split_layout)
 
         return widget
 
@@ -411,9 +414,9 @@ class SF2ViewerWindow(QMainWindow):
             self.table_combo.addItem(f"{desc.name} ({desc.row_count}x{desc.column_count})", desc)
 
     def on_table_selected(self, index):
-        """Handle table selection"""
+        """Handle table selection - display in All Tables format"""
         if index <= 0 or not self.parser:
-            self.table_widget.clearContents()
+            self.table_display.clear()
             self.table_info.clear()
             return
 
@@ -424,22 +427,53 @@ class SF2ViewerWindow(QMainWindow):
         # Get table data
         table_data = self.parser.get_table_data(descriptor)
 
-        # Display table with hex row numbers and no "0x" prefix
-        self.table_widget.setRowCount(len(table_data))
-        self.table_widget.setColumnCount(len(table_data[0]) if table_data else 0)
+        # Create formatted document like All Tables view
+        from PyQt6.QtGui import QTextDocument, QTextCursor, QTextCharFormat, QBrush, QColor
+
+        doc = QTextDocument()
+        cursor = QTextCursor(doc)
+
+        # Define colors and formatting
+        font_color = QColor(0, 0, 0)  # Black text
+        header_color = QColor(100, 150, 255)  # Light blue for headers
+
+        # Add title with table name
+        title_format = QTextCharFormat()
+        title_format.setFontWeight(75)
+        title_format.setForeground(QBrush(header_color))
+        title_format.setFontFamily("Courier New")
+        title_format.setFontPointSize(11)
+        cursor.setCharFormat(title_format)
+        cursor.insertText(f"{descriptor.name}\n")
+
+        # Add separator
+        separator_format = QTextCharFormat()
+        separator_format.setForeground(QBrush(font_color))
+        separator_format.setFontFamily("Courier New")
+        separator_format.setFontPointSize(10)
+        cursor.setCharFormat(separator_format)
+        cursor.insertText("=" * 60 + "\n")
+
+        # Add data rows with row numbers
+        data_format = QTextCharFormat()
+        data_format.setForeground(QBrush(font_color))
+        data_format.setFontFamily("Courier New")
+        data_format.setFontPointSize(10)
+        cursor.setCharFormat(data_format)
 
         for row_idx, row_data in enumerate(table_data):
-            for col_idx, value in enumerate(row_data):
-                # Display hex values without "0x" prefix
-                item = QTableWidgetItem(f"{value:02X}")
-                item.setFont(QFont("Courier", 9))
-                self.table_widget.setItem(row_idx, col_idx, item)
+            # Check if all values in row are zero
+            if all(val == 0 for val in row_data):
+                continue  # Skip all-zero rows
 
-        # Set headers - columns as C0, C1, etc. and rows as hex (00, 01, etc.)
-        self.table_widget.setHorizontalHeaderLabels([f"C{i}" for i in range(len(table_data[0]))] if table_data else [])
-        self.table_widget.setVerticalHeaderLabels([f"{i:02X}" for i in range(len(table_data))])
+            # Format row with row number and hex values
+            row_bytes = ' '.join(f"{val:02X}" for val in row_data)
+            row_line = f"{row_idx:02X}: {row_bytes}\n"
+            cursor.insertText(row_line)
 
-        # Info
+        self.table_display.setDocument(doc)
+
+        # Display table info on the right
         info_lines = [
             f"Table: {descriptor.name}",
             f"Address: ${descriptor.address:04X}",
@@ -453,7 +487,7 @@ class SF2ViewerWindow(QMainWindow):
         self.table_info.setText('\n'.join(info_lines))
 
     def update_all_tables(self):
-        """Update the all tables combined view with tables in pairs (2 columns)"""
+        """Update the all tables combined view with proper grid layout and spacing"""
         if not self.parser or not self.parser.table_descriptors:
             self.all_tables_display.setPlainText("No tables loaded")
             return
@@ -470,8 +504,8 @@ class SF2ViewerWindow(QMainWindow):
             self.all_tables_display.setPlainText("No table data available")
             return
 
-        # Define table order preference: start with Commands and Instruments, then others
-        order_preference = ["Commands", "Instruments", "Arpeggio", "HR", "Tempo", "Wave"]
+        # Define table order preference and grouping
+        order_preference = ["Commands", "Instruments", "Wave", "Pulse", "Filter", "Arpeggio", "Tempo", "HR", "Init"]
 
         # Create list of (index, name) tuples sorted by preference
         indexed_tables = [(i, name) for i, name in enumerate(table_names)]
@@ -488,92 +522,96 @@ class SF2ViewerWindow(QMainWindow):
         sorted_indices = sorted(indexed_tables, key=sort_key)
         sorted_tables = [(idx, table_names[idx]) for idx, _ in sorted_indices]
 
-        # Create formatted document with colors
+        # Create formatted document
         from PyQt6.QtGui import QTextDocument, QTextCursor, QTextCharFormat, QBrush, QColor
 
         doc = QTextDocument()
         cursor = QTextCursor(doc)
 
-        # Define colors for text - black font
+        # Define colors and formatting
         font_color = QColor(0, 0, 0)  # Black text
-        header_color = QColor(0, 100, 200)  # Blue for table headers
+        header_color = QColor(100, 150, 255)  # Light blue for headers
 
-        # Column widths for side-by-side display
-        col_width = 50  # Width for left and right columns
-        spacing = "    "  # Spacing between columns
+        # Calculate column width based on table data - ensure columns are wide enough
+        # For Commands (32x6): "00: 05 3A 80 00 09 00" = 21 chars
+        # For Instruments (64x3): "00: 02 01 00" = 13 chars
+        col_width_large = 26  # For Commands/Instruments
+        col_width_small = 18  # For other tables
+        spacing = "  "  # Spacing between columns
 
-        # Process tables in pairs
-        for i in range(0, len(sorted_tables), 2):
-            # Add row with headers for both tables
+        # Group tables: Commands/Instruments pair (large), then others in grid
+        groups = [
+            (sorted_tables[0:2], "Commands & Instruments", col_width_large),  # First 2 tables
+            (sorted_tables[2:], "All Tables", col_width_small)  # Remaining tables
+        ]
+
+        for group_idx, (group_tables, group_title, col_w) in enumerate(groups):
+            if not group_tables:
+                continue
+
+            # Add spacing before section (skip for first section)
+            if group_idx > 0:
+                cursor.insertText("\n")
+
+            # Add header line with table names
             header_format = QTextCharFormat()
-            header_format.setFontWeight(75)  # Bold
+            header_format.setFontWeight(75)
             header_format.setForeground(QBrush(header_color))
             header_format.setFontFamily("Courier New")
-            header_format.setFontPointSize(9)
+            header_format.setFontPointSize(10)
             cursor.setCharFormat(header_format)
 
-            # Left table header
-            left_idx, left_name = sorted_tables[i]
-            left_descriptor = tables_data[left_idx][0]
-            left_header = f"{left_name} Table ({left_descriptor.row_count}x{left_descriptor.column_count})"
+            header_line = ""
+            for table_idx, table_name in group_tables:
+                header_line += f"{table_name:<{col_w}}{spacing}"
+            cursor.insertText(header_line + "\n")
 
-            # Right table header (if exists)
-            right_header = ""
-            if i + 1 < len(sorted_tables):
-                right_idx, right_name = sorted_tables[i + 1]
-                right_descriptor = tables_data[right_idx][0]
-                right_header = f"{right_name} Table ({right_descriptor.row_count}x{right_descriptor.column_count})"
-
-            cursor.insertText(f"\n{left_header:<{col_width}}{spacing}{right_header}\n")
-
-            # Add separator line
+            # Add separator
             separator_format = QTextCharFormat()
             separator_format.setForeground(QBrush(font_color))
             separator_format.setFontFamily("Courier New")
+            separator_format.setFontPointSize(10)
             cursor.setCharFormat(separator_format)
-            cursor.insertText("=" * (col_width * 2 + len(spacing)) + "\n")
+            separator_line = "=" * (col_w * len(group_tables) + len(spacing) * (len(group_tables) - 1))
+            cursor.insertText(separator_line + "\n")
+
+            # Determine max rows for this group
+            max_rows = 0
+            for table_idx, _ in group_tables:
+                descriptor, table_data = tables_data[table_idx]
+                max_rows = max(max_rows, len(table_data))
 
             # Add data rows
             data_format = QTextCharFormat()
             data_format.setForeground(QBrush(font_color))
             data_format.setFontFamily("Courier New")
-            data_format.setFontPointSize(8)
+            data_format.setFontPointSize(10)
             cursor.setCharFormat(data_format)
 
-            # Get both table data
-            left_idx, left_name = sorted_tables[i]
-            left_descriptor, left_table_data = tables_data[left_idx]
-            max_left_rows = len(left_table_data)
-
-            right_table_data = []
-            max_right_rows = 0
-            if i + 1 < len(sorted_tables):
-                right_idx, right_name = sorted_tables[i + 1]
-                right_descriptor, right_table_data = tables_data[right_idx]
-                max_right_rows = len(right_table_data)
-
-            # Determine max rows for this pair
-            max_rows = max(max_left_rows, max_right_rows)
-
-            # Add data rows side by side
             for row_idx in range(max_rows):
-                # Left table row
-                left_row_text = ""
-                if row_idx < len(left_table_data):
-                    row_bytes = ' '.join(f"{val:02X}" for val in left_table_data[row_idx])
-                    left_row_text = f"{row_idx:02X}: {row_bytes}"
-                left_row_text = f"{left_row_text:<{col_width}}"
+                row_parts = []
+                all_zero = True  # Track if all columns have all-zero data
 
-                # Right table row
-                right_row_text = ""
-                if row_idx < len(right_table_data):
-                    row_bytes = ' '.join(f"{val:02X}" for val in right_table_data[row_idx])
-                    right_row_text = f"{row_idx:02X}: {row_bytes}"
-                right_row_text = f"{right_row_text:<{col_width}}"
+                for table_idx, table_name in group_tables:
+                    descriptor, table_data = tables_data[table_idx]
 
-                # Combine and insert
-                combined_text = f"{left_row_text}{spacing}{right_row_text}\n"
-                cursor.insertText(combined_text)
+                    if row_idx < len(table_data):
+                        # Check if this row is all zeros
+                        row_is_zero = all(val == 0 for val in table_data[row_idx])
+                        if not row_is_zero:
+                            all_zero = False
+
+                        row_bytes = ' '.join(f"{val:02X}" for val in table_data[row_idx])
+                        row_text = f"{row_idx:02X}: {row_bytes}"
+                    else:
+                        row_text = ""
+
+                    row_parts.append(f"{row_text:<{col_w}}")
+
+                # Skip rows where all columns have all-zero data
+                if not all_zero:
+                    row_line = spacing.join(row_parts) + "\n"
+                    cursor.insertText(row_line)
 
         self.all_tables_display.setDocument(doc)
 
