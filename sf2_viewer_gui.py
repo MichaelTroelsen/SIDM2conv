@@ -639,26 +639,15 @@ class SF2ViewerWindow(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        # OrderList info
-        info_layout = QHBoxLayout()
-        self.orderlist_info = QLabel()
-        info_layout.addWidget(self.orderlist_info)
-        info_layout.addStretch()
-        layout.addLayout(info_layout)
-
-        # OrderList table
-        self.orderlist_table = QTableWidget()
-        self.orderlist_table.setColumnCount(3)
-        self.orderlist_table.setHorizontalHeaderLabels(["Index", "Seq #", "Note"])
-        self.orderlist_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.orderlist_table.setMaximumHeight(300)
-        layout.addWidget(self.orderlist_table)
-
-        # OrderList visualization
+        # OrderList data display (moved to top)
         self.orderlist_text = QTextEdit()
         self.orderlist_text.setReadOnly(True)
         self.orderlist_text.setFont(QFont("Courier", 9))
         layout.addWidget(self.orderlist_text)
+
+        # OrderList info (hidden, but available for internal use)
+        self.orderlist_info = QLabel()
+        self.orderlist_info.setVisible(False)
 
         return widget
 
