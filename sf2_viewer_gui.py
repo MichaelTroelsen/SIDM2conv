@@ -675,12 +675,12 @@ class SF2ViewerWindow(QMainWindow):
         self.sequence_info = QLabel()
         layout.addWidget(self.sequence_info)
 
-        # Sequence data table
-        self.sequence_table = QTableWidget()
-        self.sequence_table.setColumnCount(6)
-        self.sequence_table.setHorizontalHeaderLabels(["Step", "Note", "Cmd", "Param1", "Param2", "Duration"])
-        self.sequence_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        layout.addWidget(self.sequence_table)
+        # Sequence data text view (like OrderList for better performance with large sequences)
+        self.sequence_text = QTextEdit()
+        self.sequence_text.setReadOnly(True)
+        self.sequence_text.setFont(QFont("Courier", 10))
+        self.sequence_text.setStyleSheet("background-color: #000033; color: #FFFF00; border: 1px solid #0066FF;")
+        layout.addWidget(self.sequence_text)
 
         return widget
 
@@ -761,7 +761,7 @@ class SF2ViewerWindow(QMainWindow):
             self.sequence_combo.setCurrentIndex(0)
 
     def on_sequence_selected(self, index: int):
-        """Handle sequence selection"""
+        """Handle sequence selection - display in SID Factory II editor format"""
         if index < 0 or not self.parser:
             return
 
@@ -775,15 +775,24 @@ class SF2ViewerWindow(QMainWindow):
         info = f"Sequence {seq_idx}: {len(seq_data)} steps"
         self.sequence_info.setText(info)
 
-        # Update table
-        self.sequence_table.setRowCount(len(seq_data))
+        # Format sequence data like SID Factory II editor
+        # Display as rows with columns: Step | Instrument | Note | Command | Params
+        seq_text = ""
+
+        # Header
+        seq_text += "Step | Instr | Note    | Command | Param1 | Param2 | Duration\n"
+        seq_text += "-----+-------+---------+---------+--------+--------+----------\n"
+
+        # Data rows
         for step, entry in enumerate(seq_data):
-            self.sequence_table.setItem(step, 0, QTableWidgetItem(f"{step}"))
-            self.sequence_table.setItem(step, 1, QTableWidgetItem(entry.note_name()))
-            self.sequence_table.setItem(step, 2, QTableWidgetItem(entry.command_name()))
-            self.sequence_table.setItem(step, 3, QTableWidgetItem(f"0x{entry.param1:02X}"))
-            self.sequence_table.setItem(step, 4, QTableWidgetItem(f"0x{entry.param2:02X}"))
-            self.sequence_table.setItem(step, 5, QTableWidgetItem(f"{entry.duration}"))
+            instr = f"0x{entry.note:02X}" if entry.note != 0 else "---"
+            note_name = entry.note_name()
+            cmd_name = entry.command_name()
+
+            seq_text += f"{step:04X} | {instr:5s} | {note_name:7s} | {cmd_name:7s} | "
+            seq_text += f"0x{entry.param1:02X}   | 0x{entry.param2:02X}   | {entry.duration:8d}\n"
+
+        self.sequence_text.setText(seq_text)
 
     def _has_valid_sequences(self) -> bool:
         """Check if loaded SF2 file has valid sequence data
