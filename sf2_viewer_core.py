@@ -262,6 +262,11 @@ def unpack_sequence(packed_data: bytes) -> List[Dict]:
         value = packed_data[i]
         i += 1
 
+        # Skip Laxity SF2 padding bytes (0xE1 = invalid/filler in offset table)
+        # These should not be interpreted as sequence data
+        if value == 0xE1:
+            continue
+
         # End marker or jump marker
         if value == 0x7F:
             break
@@ -873,69 +878,55 @@ class SF2Parser:
     def _detect_laxity_offset_table_structure(self) -> Optional[int]:
         """Detect Laxity offset table structure in SF2 file.
 
-        Laxity SF2 files contain:
-        - Offset table with header (3 bytes: typically 24 25 26)
-        - Padding block (0xE1 bytes, ~100-175 bytes)
-        - Index table (sequential entries, ~128 bytes)
-        - Actual sequence data (starts around 0x1772 with 0xA0 marker)
+        Laxity SF2 files contain a complex header structure with padding and index tables.
+        The REAL sequence data starts at the first location where we find:
+        - Valid packed sequence data (0xA0-0xFF or 0x01-0x7E bytes)
+        - Followed by a 0x7F terminator within reasonable distance (50-2000 bytes)
+        - The data before 0x7F contains valid packed format patterns
 
-        Returns: File offset where real sequence data begins (typically 0x1772)
+        Returns: File offset where real sequence data begins
         """
-        # Look for offset table structure starting around 0x1600
+        # Look for real sequences by finding valid 0x7F terminators with packed data before them
         search_start = 0x1600
-        search_end = min(len(self.data), 0x1800)
+        search_end = min(len(self.data), 0x2000)
 
-        for table_start in range(search_start, search_end - 200):
-            # Look for 0xE1 padding block (at least 100 consecutive 0xE1 bytes)
-            # These are typically found after a 3-byte header
-            padding_start = table_start + 3
-            e1_count = 0
+        # Find all potential sequence starts (positions with valid packed markers)
+        candidates = []
 
-            # Count consecutive 0xE1 bytes
-            for i in range(padding_start, min(padding_start + 200, len(self.data))):
-                if self.data[i] == 0xE1:
-                    e1_count += 1
-                else:
-                    break
+        for offset in range(search_start, search_end - 50):
+            byte = self.data[offset]
 
-            # Need at least 100 consecutive 0xE1 bytes (actual padding is ~128 bytes)
-            if e1_count < 100:
-                continue  # Not enough padding, try next position
+            # Look for bytes that could start a sequence:
+            # 0xA0-0xBF (instrument), 0xC0-0xFF (command), or 0x01-0x7E (note)
+            if not (0x01 <= byte <= 0x7E or 0xA0 <= byte <= 0xFF):
+                continue
 
-            # After padding, there should be an index table (approximately 128-150 bytes)
-            # Real sequence data typically starts ~150 bytes after padding ends
-            # The index table contains sequential values, so we need to skip it entirely
-            index_start = padding_start + e1_count
+            # For each candidate, look for a 0x7F terminator within 50-2000 bytes
+            for end_search in range(offset + 50, min(offset + 2000, search_end)):
+                if self.data[end_search] == 0x7F:
+                    # Verify this looks like real sequence data
+                    # Should have multiple valid packed bytes between offset and 0x7F
+                    valid_bytes = 0
+                    for check in range(offset, end_search):
+                        b = self.data[check]
+                        if (0x01 <= b <= 0x7F or 0xA0 <= b <= 0xFF):
+                            valid_bytes += 1
 
-            # Skip the entire index table (~128-150 bytes) to find real sequence data
-            # Real data should start shortly after
-            potential_data_start = index_start + 140  # Skip ~140 bytes for index table
+                    # Need substantial valid data (at least 20% of range should be valid)
+                    if valid_bytes > (end_search - offset) * 0.2:
+                        candidates.append((offset, end_search - offset))
+                        break
 
-            if potential_data_start < len(self.data):
-                # Verify this looks like real packed sequence data
-                # Should see valid note and/or control bytes
-                has_valid_pattern = False
-                for check in range(potential_data_start, min(potential_data_start + 20, len(self.data))):
-                    byte = self.data[check]
-                    # Look for pattern of valid packed sequence data
-                    if 0x01 <= byte <= 0x7F or 0xA0 <= byte <= 0xFF:
-                        # Count how many valid bytes we see
-                        valid_count = 0
-                        for verify in range(potential_data_start, min(potential_data_start + 10, len(self.data))):
-                            b = self.data[verify]
-                            if 0x01 <= b <= 0x7F or 0xA0 <= b <= 0xFF:
-                                valid_count += 1
-                        if valid_count >= 5:  # Need at least 5 valid consecutive bytes
-                            has_valid_pattern = True
-                            break
+        if candidates:
+            # Return the earliest candidate (first real sequence)
+            candidates.sort()
+            first_offset = candidates[0][0]
+            logger.info(f"Detected Laxity offset table structure")
+            logger.info(f"First sequence at offset 0x{first_offset:04X}")
+            logger.info(f"Found {len(candidates)} sequence candidates")
+            return first_offset
 
-                if has_valid_pattern:
-                    logger.info(f"Detected Laxity offset table: header at 0x{table_start:04X}, "
-                              f"padding {e1_count} bytes (0x{padding_start:04X}-0x{index_start:04X}), "
-                              f"index table ~140 bytes, real data at 0x{potential_data_start:04X}")
-                    return potential_data_start
-
-        logger.debug("Laxity offset table detection failed: no valid structure found")
+        logger.debug("Laxity offset table detection failed: no valid sequence data found")
         return None
 
     def _parse_packed_sequences_laxity_sf2(self) -> bool:
