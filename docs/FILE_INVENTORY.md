@@ -1,14 +1,15 @@
 # File Inventory
 
-**Last Updated**: 2025-12-15 18:50:26
+**Last Updated**: 2025-12-17 17:50:43
 
 ## Repository Structure
 
 ```
 SIDM2/
-├── add_timing_instrumentation.py (1.3KB)
+├── aggregate_galway_timings.py (9.6KB)
 ├── analyze_broware_structure.py (3.9KB)
 ├── analyze_driver_headers.py (5.4KB)
+├── analyze_raw_bytes.py (2.1KB)
 ├── analyze_sf2_layout.py (2.6KB)
 ├── build_laxity_driver_with_headers.py (3.2KB)
 ├── CHANGELOG.md (22.6KB)
@@ -17,28 +18,34 @@ SIDM2/
 ├── cleanup.py (14.8KB)
 ├── cleanup_backup_20251214_210642.txt (1.8KB)
 ├── cleanup_backup_20251215_185025.txt (1.8KB)
+├── cleanup_backup_20251217_175042.txt (2.4KB)
 ├── cleanup_md_files.py (2.9KB)
-├── complete_pipeline_with_validation.py (108.4KB)
+├── complete_pipeline_with_validation.py (111.9KB)
 ├── CONTRIBUTING.md (6.5KB)
 ├── convert_all_laxity.py (4.1KB)
+├── display_sequences.py (1.7KB)
 ├── file_inventory.json (0B)
+├── FINAL_EXECUTIVE_SUMMARY.txt (7.0KB)
 ├── GALWAY_PIPELINE_TIMING_REPORT.html (13.8KB)
 ├── generate_galway_timing_report.py (10.9KB)
 ├── investigate_entry_stubs.py (2.2KB)
 ├── launch_sf2_viewer.bat (1.8KB)
 ├── launch_sf2_viewer.py (1.8KB)
+├── launch_with_laxity_file.py (1.7KB)
 ├── new_experiment.py (6.2KB)
 ├── nul (0B)
 ├── parallel_galway_pipeline.py (5.4KB)
 ├── pipeline_with_timings.py (7.4KB)
 ├── pytest.ini (475B)
-├── README.md (87.5KB)
+├── README.md (96.1KB)
 ├── requirements-test.txt (92B)
 ├── requirements.txt (115B)
-├── sf2_playback.py (6.2KB)
-├── sf2_viewer_core.py (18.9KB)
-├── sf2_viewer_gui.py (29.0KB)
-├── sf2_visualization_widgets.py (9.3KB)
+├── run_viewer.py (2.1KB)
+├── run_viewer_with_log.py (2.9KB)
+├── sf2_playback.py (5.0KB)
+├── sf2_viewer_core.py (53.3KB)
+├── sf2_viewer_gui.py (40.4KB)
+├── sf2_visualization_widgets.py (7.7KB)
 ├── sidm2_config.example.json (699B)
 ├── SIDwinder.cfg (1.5KB)
 ├── test_laxity_accuracy.py (3.3KB)
@@ -46,6 +53,7 @@ SIDM2/
 ├── trace_scanning.py (3.2KB)
 ├── update_inventory.py (4.9KB)
 ├── validate_sf2.py (4.6KB)
+├── verify_gui_display.py (6.3KB)
 ├── VIEWER_COMPLETE.txt (6.9KB)
 ├── archive/
 │   ├── README.md (4.3KB)
@@ -167,7 +175,7 @@ SIDM2/
 │   ├── CLEANUP_GUIDE.md (7.9KB)
 │   ├── COMPONENTS_REFERENCE.md (21.9KB)
 │   ├── DRIVER_DETECTION_RESEARCH.md (19.8KB)
-│   ├── FILE_INVENTORY.md (186.9KB)
+│   ├── FILE_INVENTORY.md (247.0KB)
 │   ├── GATE_INFERENCE_IMPLEMENTATION.md (11.9KB)
 │   ├── HYBRID_PIPELINE_SUCCESS.md (12.1KB)
 │   ├── IMPROVEMENT_PLAN.md (13.8KB)
@@ -199,6 +207,7 @@ SIDM2/
 │   │   ├── CONVERSION_GUIDE.md (3.2KB)
 │   │   ├── DRIVER_FEATURES_COMPARISON.md (4.3KB)
 │   │   ├── DRIVER_LIMITATIONS.md (2.6KB)
+│   │   ├── GALWAY_BATCH_TIMING_RESULTS.md (10.5KB)
 │   │   ├── LAXITY_ACCURACY_ANALYSIS.md (7.1KB)
 │   │   ├── LAXITY_DRIVER_IMPLEMENTATION_PLAN.md (15.4KB)
 │   │   ├── LAXITY_DRIVER_RESEARCH_SUMMARY.md (10.4KB)
@@ -815,6 +824,7 @@ SIDM2/
 │   │   ├── download_codebase64.html (7.2KB)
 │   │   ├── history.html (7.5KB)
 │   │   ├── logo.png (3.6KB)
+│   │   ├── nul (0B)
 │   │   ├── source_conversion.html (17.1KB)
 │   │   ├── start.html (10.3KB)
 │   │   ├── vic.html (30.4KB)
@@ -2082,16 +2092,18 @@ SIDM2/
 │       ├── sf2driver16_01_01.prg (3.3KB)
 │       ├── sf2driver_np20_00.prg (5.2KB)
 ├── output/
-│   ├── EXTRACTION_VALIDATION_REPORT.md (728B)
-│   ├── SIDSF2PLAYER_COMPLETE_EXTRACTION_REPORT.md (967B)
+│   ├── EXTRACTION_VALIDATION_REPORT.md (732B)
+│   ├── SIDSF2PLAYER_COMPLETE_EXTRACTION_REPORT.md (971B)
 │   ├── SIDSF2PLAYER_COMPLETE_PIPELINE_REPORT.md (3.3KB)
-│   ├── SIDSF2PLAYER_EXTRACTION_REPORT.md (418B)
+│   ├── SIDSF2PLAYER_EXTRACTION_REPORT.md (422B)
 │   ├── galway/
+│   │   ├── AGGREGATE_TIMING_REPORT.html (13.5KB)
+│   │   ├── AGGREGATE_TIMING_REPORT.json (30.5KB)
 │   │   ├── TIMING_REPORT.html (15.3KB)
 │   │   ├── TIMING_REPORT.md (3.0KB)
 │   │   ├── Arkanoid/
-│   │   │   ├── TIMING_REPORT.html (6.1KB)
-│   │   │   ├── timing_report.json (1.0KB)
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Arkanoid/
 │   │   │       ├── analysis/
 │   │   │       ├── New/
@@ -2107,6 +2119,8 @@ SIDM2/
 │   │   │           ├── Arkanoid_original.hex (41.4KB)
 │   │   │           ├── Arkanoid_original.txt (0B)
 │   │   ├── Arkanoid_alternative_drums/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Arkanoid_alternative_drums/
 │   │   │       ├── analysis/
 │   │   │       ├── New/
@@ -2122,6 +2136,8 @@ SIDM2/
 │   │   │           ├── Arkanoid_alternative_drums_original.hex (34.4KB)
 │   │   │           ├── Arkanoid_alternative_drums_original.txt (0B)
 │   │   ├── Athena/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Athena/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Athena_analysis_report.txt (1.1KB)
@@ -2135,7 +2151,7 @@ SIDM2/
 │   │   │       │   ├── Athena_exported_sidwinder.asm (67.1KB)
 │   │   │       │   ├── Athena_midi_comparison.txt (538B)
 │   │   │       │   ├── Athena_python.mid (1.3KB)
-│   │   │       │   ├── info.txt (66.4KB)
+│   │   │       │   ├── info.txt (66.1KB)
 │   │   │       └── Original/
 │   │   │           ├── Athena_original.dump (54.6KB)
 │   │   │           ├── Athena_original.hex (35.9KB)
@@ -2143,6 +2159,8 @@ SIDM2/
 │   │   │           ├── Athena_original.wav (2.5MB)
 │   │   │           ├── Athena_original_sidwinder.asm (67.1KB)
 │   │   ├── Combat_School/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.6KB)
 │   │   │   └── Combat_School/
 │   │   │       ├── analysis/
 │   │   │       ├── New/
@@ -2158,6 +2176,8 @@ SIDM2/
 │   │   │           ├── Combat_School_original.hex (48.0KB)
 │   │   │           ├── Combat_School_original.txt (0B)
 │   │   ├── Comic_Bakery/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Comic_Bakery/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Comic_Bakery_analysis_report.txt (1.1KB)
@@ -2171,7 +2191,7 @@ SIDM2/
 │   │   │       │   ├── Comic_Bakery_exported_sidwinder.asm (195.5KB)
 │   │   │       │   ├── Comic_Bakery_midi_comparison.txt (556B)
 │   │   │       │   ├── Comic_Bakery_python.mid (2.2KB)
-│   │   │       │   ├── info.txt (78.1KB)
+│   │   │       │   ├── info.txt (77.8KB)
 │   │   │       └── Original/
 │   │   │           ├── Comic_Bakery_original.dump (54.6KB)
 │   │   │           ├── Comic_Bakery_original.hex (36.1KB)
@@ -2179,6 +2199,8 @@ SIDM2/
 │   │   │           ├── Comic_Bakery_original.wav (2.5MB)
 │   │   │           ├── Comic_Bakery_original_sidwinder.asm (195.5KB)
 │   │   ├── Commando_High-Score/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Commando_High-Score/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Commando_High-Score_analysis_report.txt (1.1KB)
@@ -2192,7 +2214,7 @@ SIDM2/
 │   │   │       │   ├── Commando_High-Score_exported_sidwinder.asm (144.8KB)
 │   │   │       │   ├── Commando_High-Score_midi_comparison.txt (577B)
 │   │   │       │   ├── Commando_High-Score_python.mid (1.1KB)
-│   │   │       │   ├── info.txt (27.9KB)
+│   │   │       │   ├── info.txt (27.6KB)
 │   │   │       └── Original/
 │   │   │           ├── Commando_High-Score_original.dump (54.6KB)
 │   │   │           ├── Commando_High-Score_original.hex (17.0KB)
@@ -2200,6 +2222,8 @@ SIDM2/
 │   │   │           ├── Commando_High-Score_original.wav (2.5MB)
 │   │   │           ├── Commando_High-Score_original_sidwinder.asm (144.8KB)
 │   │   ├── Daley_Thompsons_Decathlon_loader/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Daley_Thompsons_Decathlon_loader/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Daley_Thompsons_Decathlon_loader_analysis_report.txt (1.1KB)
@@ -2213,7 +2237,7 @@ SIDM2/
 │   │   │       │   ├── Daley_Thompsons_Decathlon_loader_exported_sidwinder.asm (25.5KB)
 │   │   │       │   ├── Daley_Thompsons_Decathlon_loader_midi_comparison.txt (616B)
 │   │   │       │   ├── Daley_Thompsons_Decathlon_loader_python.mid (1.9KB)
-│   │   │       │   ├── info.txt (93.2KB)
+│   │   │       │   ├── info.txt (92.9KB)
 │   │   │       └── Original/
 │   │   │           ├── Daley_Thompsons_Decathlon_loader_original.dump (54.6KB)
 │   │   │           ├── Daley_Thompsons_Decathlon_loader_original.hex (8.7KB)
@@ -2221,6 +2245,8 @@ SIDM2/
 │   │   │           ├── Daley_Thompsons_Decathlon_loader_original.wav (2.5MB)
 │   │   │           ├── Daley_Thompsons_Decathlon_loader_original_sidwinder.asm (25.5KB)
 │   │   ├── Game_Over/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Game_Over/
 │   │   │       ├── analysis/
 │   │   │       ├── New/
@@ -2236,6 +2262,8 @@ SIDM2/
 │   │   │           ├── Game_Over_original.hex (36.1KB)
 │   │   │           ├── Game_Over_original.txt (0B)
 │   │   ├── Green_Beret/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Green_Beret/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Green_Beret_analysis_report.txt (1.1KB)
@@ -2248,13 +2276,15 @@ SIDM2/
 │   │   │       │   ├── Green_Beret_exported.wav (2.5MB)
 │   │   │       │   ├── Green_Beret_midi_comparison.txt (552B)
 │   │   │       │   ├── Green_Beret_python.mid (801B)
-│   │   │       │   ├── info.txt (31.8KB)
+│   │   │       │   ├── info.txt (31.5KB)
 │   │   │       └── Original/
 │   │   │           ├── Green_Beret_original.dump (54.6KB)
 │   │   │           ├── Green_Beret_original.hex (52.8KB)
 │   │   │           ├── Green_Beret_original.txt (2.1KB)
 │   │   │           ├── Green_Beret_original.wav (2.5MB)
 │   │   ├── Helikopter_Jagd/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Helikopter_Jagd/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Helikopter_Jagd_analysis_report.txt (1.1KB)
@@ -2268,7 +2298,7 @@ SIDM2/
 │   │   │       │   ├── Helikopter_Jagd_exported_sidwinder.asm (178.4KB)
 │   │   │       │   ├── Helikopter_Jagd_midi_comparison.txt (565B)
 │   │   │       │   ├── Helikopter_Jagd_python.mid (2.0KB)
-│   │   │       │   ├── info.txt (83.2KB)
+│   │   │       │   ├── info.txt (82.9KB)
 │   │   │       └── Original/
 │   │   │           ├── Helikopter_Jagd_original.dump (54.6KB)
 │   │   │           ├── Helikopter_Jagd_original.hex (32.6KB)
@@ -2276,6 +2306,8 @@ SIDM2/
 │   │   │           ├── Helikopter_Jagd_original.wav (2.5MB)
 │   │   │           ├── Helikopter_Jagd_original_sidwinder.asm (178.4KB)
 │   │   ├── Highlander/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Highlander/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Highlander_analysis_report.txt (1.1KB)
@@ -2289,7 +2321,7 @@ SIDM2/
 │   │   │       │   ├── Highlander_exported_sidwinder.asm (180.8KB)
 │   │   │       │   ├── Highlander_midi_comparison.txt (550B)
 │   │   │       │   ├── Highlander_python.mid (1.9KB)
-│   │   │       │   ├── info.txt (34.2KB)
+│   │   │       │   ├── info.txt (33.9KB)
 │   │   │       └── Original/
 │   │   │           ├── Highlander_original.dump (54.6KB)
 │   │   │           ├── Highlander_original.hex (25.5KB)
@@ -2297,6 +2329,8 @@ SIDM2/
 │   │   │           ├── Highlander_original.wav (2.5MB)
 │   │   │           ├── Highlander_original_sidwinder.asm (180.8KB)
 │   │   ├── Hunchback_II/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Hunchback_II/
 │   │   │       ├── analysis/
 │   │   │       ├── New/
@@ -2308,7 +2342,7 @@ SIDM2/
 │   │   │       │   ├── Hunchback_II_exported_sidwinder.asm (56.1KB)
 │   │   │       │   ├── Hunchback_II_midi_comparison.txt (555B)
 │   │   │       │   ├── Hunchback_II_python.mid (279B)
-│   │   │       │   ├── info.txt (28.4KB)
+│   │   │       │   ├── info.txt (28.1KB)
 │   │   │       └── Original/
 │   │   │           ├── Hunchback_II_original.dump (54.6KB)
 │   │   │           ├── Hunchback_II_original.hex (16.8KB)
@@ -2316,6 +2350,8 @@ SIDM2/
 │   │   │           ├── Hunchback_II_original.wav (2.5MB)
 │   │   │           ├── Hunchback_II_original_sidwinder.asm (56.1KB)
 │   │   ├── Hyper_Sports/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Hyper_Sports/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Hyper_Sports_analysis_report.txt (1.1KB)
@@ -2328,19 +2364,21 @@ SIDM2/
 │   │   │       │   ├── Hyper_Sports_exported.wav (2.5MB)
 │   │   │       │   ├── Hyper_Sports_midi_comparison.txt (555B)
 │   │   │       │   ├── Hyper_Sports_python.mid (127B)
-│   │   │       │   ├── info.txt (28.0KB)
+│   │   │       │   ├── info.txt (27.7KB)
 │   │   │       └── Original/
 │   │   │           ├── Hyper_Sports_original.dump (54.6KB)
 │   │   │           ├── Hyper_Sports_original.hex (35.0KB)
 │   │   │           ├── Hyper_Sports_original.txt (8.6MB)
 │   │   │           ├── Hyper_Sports_original.wav (2.5MB)
 │   │   ├── Insects_in_Space/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Insects_in_Space/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Insects_in_Space_analysis_report.txt (1.1KB)
 │   │   │       │   ├── Insects_in_Space_siddecompiler.asm (40.3KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (27.3KB)
+│   │   │       │   ├── info.txt (27.0KB)
 │   │   │       │   ├── Insects_in_Space.sf2 (7.5KB)
 │   │   │       │   ├── Insects_in_Space_exported.dump (54.6KB)
 │   │   │       │   ├── Insects_in_Space_exported.hex (17.8KB)
@@ -2356,10 +2394,12 @@ SIDM2/
 │   │   │           ├── Insects_in_Space_original.wav (2.5MB)
 │   │   │           ├── Insects_in_Space_original_sidwinder.asm (107.9KB)
 │   │   ├── Kong_Strikes_Back/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Kong_Strikes_Back/
 │   │   │       ├── analysis/
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (50.7KB)
+│   │   │       │   ├── info.txt (50.4KB)
 │   │   │       │   ├── Kong_Strikes_Back.sf2 (16.8KB)
 │   │   │       │   ├── Kong_Strikes_Back_exported.dump (54.6KB)
 │   │   │       │   ├── Kong_Strikes_Back_exported.hex (17.0KB)
@@ -2375,12 +2415,14 @@ SIDM2/
 │   │   │           ├── Kong_Strikes_Back_original.wav (2.5MB)
 │   │   │           ├── Kong_Strikes_Back_original_sidwinder.asm (83.1KB)
 │   │   ├── Match_Day/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Match_Day/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Match_Day_analysis_report.txt (1.1KB)
 │   │   │       │   ├── Match_Day_siddecompiler.asm (45.8KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (59.8KB)
+│   │   │       │   ├── info.txt (59.5KB)
 │   │   │       │   ├── Match_Day.sf2 (21.0KB)
 │   │   │       │   ├── Match_Day_exported.dump (54.6KB)
 │   │   │       │   ├── Match_Day_exported.hex (19.8KB)
@@ -2396,12 +2438,14 @@ SIDM2/
 │   │   │           ├── Match_Day_original.wav (2.5MB)
 │   │   │           ├── Match_Day_original_sidwinder.asm (144.7KB)
 │   │   ├── Miami_Vice/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Miami_Vice/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Miami_Vice_analysis_report.txt (1.1KB)
 │   │   │       │   ├── Miami_Vice_siddecompiler.asm (61.3KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (104.0KB)
+│   │   │       │   ├── info.txt (103.7KB)
 │   │   │       │   ├── Miami_Vice.sf2 (37.0KB)
 │   │   │       │   ├── Miami_Vice_exported.dump (54.6KB)
 │   │   │       │   ├── Miami_Vice_exported.hex (28.6KB)
@@ -2417,12 +2461,14 @@ SIDM2/
 │   │   │           ├── Miami_Vice_original.wav (2.5MB)
 │   │   │           ├── Miami_Vice_original_sidwinder.asm (175.5KB)
 │   │   ├── MicroProse_Soccer_indoor/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── MicroProse_Soccer_indoor/
 │   │   │       ├── analysis/
 │   │   │       │   ├── MicroProse_Soccer_indoor_analysis_report.txt (1.1KB)
 │   │   │       │   ├── MicroProse_Soccer_indoor_siddecompiler.asm (345.1KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (83.9KB)
+│   │   │       │   ├── info.txt (83.6KB)
 │   │   │       │   ├── MicroProse_Soccer_indoor.sf2 (31.5KB)
 │   │   │       │   ├── MicroProse_Soccer_indoor_exported.dump (54.6KB)
 │   │   │       │   ├── MicroProse_Soccer_indoor_exported.hex (19.9KB)
@@ -2438,6 +2484,8 @@ SIDM2/
 │   │   │           ├── MicroProse_Soccer_indoor_original.wav (2.5MB)
 │   │   │           ├── MicroProse_Soccer_indoor_original_sidwinder.asm (99.9KB)
 │   │   ├── MicroProse_Soccer_intro/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── MicroProse_Soccer_intro/
 │   │   │       ├── analysis/
 │   │   │       ├── New/
@@ -2453,12 +2501,14 @@ SIDM2/
 │   │   │           ├── MicroProse_Soccer_intro_original.hex (18.3KB)
 │   │   │           ├── MicroProse_Soccer_intro_original.txt (0B)
 │   │   ├── MicroProse_Soccer_outdoor/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── MicroProse_Soccer_outdoor/
 │   │   │       ├── analysis/
 │   │   │       │   ├── MicroProse_Soccer_outdoor_analysis_report.txt (1.1KB)
 │   │   │       │   ├── MicroProse_Soccer_outdoor_siddecompiler.asm (33.8KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (84.4KB)
+│   │   │       │   ├── info.txt (84.1KB)
 │   │   │       │   ├── MicroProse_Soccer_outdoor.sf2 (31.5KB)
 │   │   │       │   ├── MicroProse_Soccer_outdoor_exported.dump (54.6KB)
 │   │   │       │   ├── MicroProse_Soccer_outdoor_exported.hex (15.7KB)
@@ -2474,12 +2524,14 @@ SIDM2/
 │   │   │           ├── MicroProse_Soccer_outdoor_original.wav (2.5MB)
 │   │   │           ├── MicroProse_Soccer_outdoor_original_sidwinder.asm (91.9KB)
 │   │   ├── MicroProse_Soccer_V1/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── MicroProse_Soccer_V1/
 │   │   │       ├── analysis/
 │   │   │       │   ├── MicroProse_Soccer_V1_analysis_report.txt (1.1KB)
 │   │   │       │   ├── MicroProse_Soccer_V1_siddecompiler.asm (363.3KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (84.2KB)
+│   │   │       │   ├── info.txt (83.9KB)
 │   │   │       │   ├── MicroProse_Soccer_V1.sf2 (31.5KB)
 │   │   │       │   ├── MicroProse_Soccer_V1_exported.dump (54.7KB)
 │   │   │       │   ├── MicroProse_Soccer_V1_exported.hex (23.0KB)
@@ -2493,12 +2545,14 @@ SIDM2/
 │   │   │           ├── MicroProse_Soccer_V1_original.txt (225B)
 │   │   │           ├── MicroProse_Soccer_V1_original.wav (2.5MB)
 │   │   ├── Mikie/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Mikie/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Mikie_analysis_report.txt (1.1KB)
 │   │   │       │   ├── Mikie_siddecompiler.asm (499.4KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (62.4KB)
+│   │   │       │   ├── info.txt (62.1KB)
 │   │   │       │   ├── Mikie.sf2 (21.8KB)
 │   │   │       │   ├── Mikie_exported.dump (54.6KB)
 │   │   │       │   ├── Mikie_exported.hex (55.4KB)
@@ -2512,12 +2566,14 @@ SIDM2/
 │   │   │           ├── Mikie_original.txt (1.6KB)
 │   │   │           ├── Mikie_original.wav (2.5MB)
 │   │   ├── Neverending_Story/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Neverending_Story/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Neverending_Story_analysis_report.txt (1.1KB)
 │   │   │       │   ├── Neverending_Story_siddecompiler.asm (196.3KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (28.9KB)
+│   │   │       │   ├── info.txt (28.6KB)
 │   │   │       │   ├── Neverending_Story.sf2 (7.5KB)
 │   │   │       │   ├── Neverending_Story_exported.dump (54.6KB)
 │   │   │       │   ├── Neverending_Story_exported.hex (20.1KB)
@@ -2533,12 +2589,14 @@ SIDM2/
 │   │   │           ├── Neverending_Story_original.wav (2.5MB)
 │   │   │           ├── Neverending_Story_original_sidwinder.asm (135.9KB)
 │   │   ├── Ocean_Loader_1/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Ocean_Loader_1/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Ocean_Loader_1_analysis_report.txt (1.1KB)
 │   │   │       │   ├── Ocean_Loader_1_siddecompiler.asm (48.6KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (71.2KB)
+│   │   │       │   ├── info.txt (70.9KB)
 │   │   │       │   ├── Ocean_Loader_1.sf2 (26.0KB)
 │   │   │       │   ├── Ocean_Loader_1_exported.dump (54.6KB)
 │   │   │       │   ├── Ocean_Loader_1_exported.hex (22.3KB)
@@ -2554,12 +2612,14 @@ SIDM2/
 │   │   │           ├── Ocean_Loader_1_original.wav (2.5MB)
 │   │   │           ├── Ocean_Loader_1_original_sidwinder.asm (151.5KB)
 │   │   ├── Ocean_Loader_2/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Ocean_Loader_2/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Ocean_Loader_2_analysis_report.txt (1.1KB)
 │   │   │       │   ├── Ocean_Loader_2_siddecompiler.asm (30.2KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (71.2KB)
+│   │   │       │   ├── info.txt (70.9KB)
 │   │   │       │   ├── Ocean_Loader_2.sf2 (26.0KB)
 │   │   │       │   ├── Ocean_Loader_2_exported.dump (54.6KB)
 │   │   │       │   ├── Ocean_Loader_2_exported.hex (14.5KB)
@@ -2575,12 +2635,14 @@ SIDM2/
 │   │   │           ├── Ocean_Loader_2_original.wav (2.5MB)
 │   │   │           ├── Ocean_Loader_2_original_sidwinder.asm (100.5KB)
 │   │   ├── Parallax/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Parallax/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Parallax_analysis_report.txt (1.1KB)
 │   │   │       │   ├── Parallax_siddecompiler.asm (67.5KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (37.0KB)
+│   │   │       │   ├── info.txt (36.7KB)
 │   │   │       │   ├── Parallax.sf2 (10.5KB)
 │   │   │       │   ├── Parallax_exported.dump (54.6KB)
 │   │   │       │   ├── Parallax_exported.hex (30.7KB)
@@ -2596,12 +2658,14 @@ SIDM2/
 │   │   │           ├── Parallax_original.wav (2.5MB)
 │   │   │           ├── Parallax_original_sidwinder.asm (187.1KB)
 │   │   ├── Ping_Pong/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Ping_Pong/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Ping_Pong_analysis_report.txt (1.1KB)
 │   │   │       │   ├── Ping_Pong_siddecompiler.asm (57.5KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (62.0KB)
+│   │   │       │   ├── info.txt (61.8KB)
 │   │   │       │   ├── Ping_Pong.sf2 (22.0KB)
 │   │   │       │   ├── Ping_Pong_exported.dump (54.6KB)
 │   │   │       │   ├── Ping_Pong_exported.hex (26.1KB)
@@ -2617,12 +2681,14 @@ SIDM2/
 │   │   │           ├── Ping_Pong_original.wav (2.5MB)
 │   │   │           ├── Ping_Pong_original_sidwinder.asm (136.8KB)
 │   │   ├── Rambo_First_Blood_Part_II/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Rambo_First_Blood_Part_II/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Rambo_First_Blood_Part_II_analysis_report.txt (1.1KB)
 │   │   │       │   ├── Rambo_First_Blood_Part_II_siddecompiler.asm (305.1KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (65.3KB)
+│   │   │       │   ├── info.txt (65.0KB)
 │   │   │       │   ├── Rambo_First_Blood_Part_II.sf2 (23.0KB)
 │   │   │       │   ├── Rambo_First_Blood_Part_II_exported.dump (54.6KB)
 │   │   │       │   ├── Rambo_First_Blood_Part_II_exported.hex (70.7KB)
@@ -2638,12 +2704,14 @@ SIDM2/
 │   │   │           ├── Rambo_First_Blood_Part_II_original.wav (2.5MB)
 │   │   │           ├── Rambo_First_Blood_Part_II_original_sidwinder.asm (120.8KB)
 │   │   ├── Rastan/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Rastan/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Rastan_analysis_report.txt (1.1KB)
 │   │   │       │   ├── Rastan_siddecompiler.asm (136.2KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (58.2KB)
+│   │   │       │   ├── info.txt (57.9KB)
 │   │   │       │   ├── Rastan.sf2 (20.0KB)
 │   │   │       │   ├── Rastan_exported.dump (54.6KB)
 │   │   │       │   ├── Rastan_exported.hex (27.6KB)
@@ -2657,12 +2725,14 @@ SIDM2/
 │   │   │           ├── Rastan_original.txt (0B)
 │   │   │           ├── Rastan_original.wav (2.5MB)
 │   │   ├── Rolands_Ratrace/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Rolands_Ratrace/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Rolands_Ratrace_analysis_report.txt (1.1KB)
 │   │   │       │   ├── Rolands_Ratrace_siddecompiler.asm (65.5KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (66.3KB)
+│   │   │       │   ├── info.txt (66.0KB)
 │   │   │       │   ├── Rolands_Ratrace.sf2 (23.5KB)
 │   │   │       │   ├── Rolands_Ratrace_exported.dump (54.6KB)
 │   │   │       │   ├── Rolands_Ratrace_exported.hex (30.8KB)
@@ -2678,12 +2748,14 @@ SIDM2/
 │   │   │           ├── Rolands_Ratrace_original.wav (2.5MB)
 │   │   │           ├── Rolands_Ratrace_original_sidwinder.asm (138.9KB)
 │   │   ├── Short_Circuit/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Short_Circuit/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Short_Circuit_analysis_report.txt (1.1KB)
 │   │   │       │   ├── Short_Circuit_siddecompiler.asm (377.5KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (96.1KB)
+│   │   │       │   ├── info.txt (95.8KB)
 │   │   │       │   ├── Short_Circuit.sf2 (34.0KB)
 │   │   │       │   ├── Short_Circuit_exported.dump (54.6KB)
 │   │   │       │   ├── Short_Circuit_exported.hex (40.3KB)
@@ -2699,12 +2771,14 @@ SIDM2/
 │   │   │           ├── Short_Circuit_original.wav (2.5MB)
 │   │   │           ├── Short_Circuit_original_sidwinder.asm (231.9KB)
 │   │   ├── Slap_Fight/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Slap_Fight/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Slap_Fight_analysis_report.txt (1.1KB)
 │   │   │       │   ├── Slap_Fight_siddecompiler.asm (58.4KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (28.5KB)
+│   │   │       │   ├── info.txt (28.2KB)
 │   │   │       │   ├── Slap_Fight.sf2 (7.5KB)
 │   │   │       │   ├── Slap_Fight_exported.dump (54.6KB)
 │   │   │       │   ├── Slap_Fight_exported.hex (26.7KB)
@@ -2720,12 +2794,14 @@ SIDM2/
 │   │   │           ├── Slap_Fight_original.wav (2.5MB)
 │   │   │           ├── Slap_Fight_original_sidwinder.asm (136.0KB)
 │   │   ├── Street_Hawk/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Street_Hawk/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Street_Hawk_analysis_report.txt (1.1KB)
 │   │   │       │   ├── Street_Hawk_siddecompiler.asm (94.7KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (37.8KB)
+│   │   │       │   ├── info.txt (37.5KB)
 │   │   │       │   ├── Street_Hawk.sf2 (11.0KB)
 │   │   │       │   ├── Street_Hawk_exported.dump (54.6KB)
 │   │   │       │   ├── Street_Hawk_exported.hex (43.1KB)
@@ -2741,12 +2817,14 @@ SIDM2/
 │   │   │           ├── Street_Hawk_original.wav (2.5MB)
 │   │   │           ├── Street_Hawk_original_sidwinder.asm (246.7KB)
 │   │   ├── Street_Hawk_Prototype/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Street_Hawk_Prototype/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Street_Hawk_Prototype_analysis_report.txt (1.1KB)
 │   │   │       │   ├── Street_Hawk_Prototype_siddecompiler.asm (53.1KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (30.5KB)
+│   │   │       │   ├── info.txt (30.2KB)
 │   │   │       │   ├── Street_Hawk_Prototype.sf2 (8.0KB)
 │   │   │       │   ├── Street_Hawk_Prototype_exported.dump (54.6KB)
 │   │   │       │   ├── Street_Hawk_Prototype_exported.hex (24.1KB)
@@ -2762,10 +2840,12 @@ SIDM2/
 │   │   │           ├── Street_Hawk_Prototype_original.wav (2.5MB)
 │   │   │           ├── Street_Hawk_Prototype_original_sidwinder.asm (160.9KB)
 │   │   ├── Swag/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Swag/
 │   │   │       ├── analysis/
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (58.5KB)
+│   │   │       │   ├── info.txt (58.2KB)
 │   │   │       │   ├── Swag.sf2 (20.8KB)
 │   │   │       │   ├── Swag_exported.dump (54.6KB)
 │   │   │       │   ├── Swag_exported.hex (12.3KB)
@@ -2781,12 +2861,14 @@ SIDM2/
 │   │   │           ├── Swag_original.wav (2.5MB)
 │   │   │           ├── Swag_original_sidwinder.asm (65.9KB)
 │   │   ├── Terra_Cresta/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Terra_Cresta/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Terra_Cresta_analysis_report.txt (1.1KB)
 │   │   │       │   ├── Terra_Cresta_siddecompiler.asm (229.4KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (53.2KB)
+│   │   │       │   ├── info.txt (52.9KB)
 │   │   │       │   ├── Terra_Cresta.sf2 (18.0KB)
 │   │   │       │   ├── Terra_Cresta_exported.dump (54.6KB)
 │   │   │       │   ├── Terra_Cresta_exported.hex (37.9KB)
@@ -2802,12 +2884,14 @@ SIDM2/
 │   │   │           ├── Terra_Cresta_original.wav (2.5MB)
 │   │   │           ├── Terra_Cresta_original_sidwinder.asm (234.5KB)
 │   │   ├── Times_of_Lore/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Times_of_Lore/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Times_of_Lore_analysis_report.txt (1.1KB)
 │   │   │       │   ├── Times_of_Lore_siddecompiler.asm (333.8KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (36.4KB)
+│   │   │       │   ├── info.txt (36.1KB)
 │   │   │       │   ├── Times_of_Lore.sf2 (10.5KB)
 │   │   │       │   ├── Times_of_Lore_exported.dump (54.6KB)
 │   │   │       │   ├── Times_of_Lore_exported.hex (56.1KB)
@@ -2823,12 +2907,14 @@ SIDM2/
 │   │   │           ├── Times_of_Lore_original.wav (2.5MB)
 │   │   │           ├── Times_of_Lore_original_sidwinder.asm (171.6KB)
 │   │   ├── Wizball/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Wizball/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Wizball_analysis_report.txt (1.1KB)
 │   │   │       │   ├── Wizball_siddecompiler.asm (79.3KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (27.0KB)
+│   │   │       │   ├── info.txt (26.7KB)
 │   │   │       │   ├── Wizball.sf2 (7.5KB)
 │   │   │       │   ├── Wizball_exported.dump (54.6KB)
 │   │   │       │   ├── Wizball_exported.hex (35.6KB)
@@ -2844,12 +2930,14 @@ SIDM2/
 │   │   │           ├── Wizball_original.wav (2.5MB)
 │   │   │           ├── Wizball_original_sidwinder.asm (135.3KB)
 │   │   ├── Yie_Ar_Kung_Fu/
+│   │   │   ├── TIMING_REPORT.html (10.3KB)
+│   │   │   ├── timing_report.json (3.7KB)
 │   │   │   └── Yie_Ar_Kung_Fu/
 │   │   │       ├── analysis/
 │   │   │       │   ├── Yie_Ar_Kung_Fu_analysis_report.txt (1.1KB)
 │   │   │       │   ├── Yie_Ar_Kung_Fu_siddecompiler.asm (72.4KB)
 │   │   │       ├── New/
-│   │   │       │   ├── info.txt (28.9KB)
+│   │   │       │   ├── info.txt (28.6KB)
 │   │   │       │   ├── Yie_Ar_Kung_Fu.sf2 (7.5KB)
 │   │   │       │   ├── Yie_Ar_Kung_Fu_exported.dump (54.6KB)
 │   │   │       │   ├── Yie_Ar_Kung_Fu_exported.hex (33.4KB)
@@ -2865,12 +2953,14 @@ SIDM2/
 │   │   │           ├── Yie_Ar_Kung_Fu_original.wav (2.5MB)
 │   │   │           ├── Yie_Ar_Kung_Fu_original_sidwinder.asm (101.0KB)
 │   │   └── Yie_Ar_Kung_Fu_II/
+│   │       ├── TIMING_REPORT.html (10.3KB)
+│   │       ├── timing_report.json (3.7KB)
 │   │       └── Yie_Ar_Kung_Fu_II/
 │   │           ├── analysis/
 │   │           │   ├── Yie_Ar_Kung_Fu_II_analysis_report.txt (1.1KB)
 │   │           │   ├── Yie_Ar_Kung_Fu_II_siddecompiler.asm (75.2KB)
 │   │           ├── New/
-│   │           │   ├── info.txt (28.7KB)
+│   │           │   ├── info.txt (28.4KB)
 │   │           │   ├── Yie_Ar_Kung_Fu_II.sf2 (7.5KB)
 │   │           │   ├── Yie_Ar_Kung_Fu_II_exported.dump (54.6KB)
 │   │           │   ├── Yie_Ar_Kung_Fu_II_exported.hex (34.0KB)
