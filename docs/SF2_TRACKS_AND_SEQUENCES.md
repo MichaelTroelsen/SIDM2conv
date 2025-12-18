@@ -1,5 +1,16 @@
 # SID Factory II - Tracks and Sequences Format
 
+> **📄 Document Metadata**
+> **Created From**: Web scraping of official SID Factory II tutorials
+> **Source URLs**:
+> - https://blog.chordian.net/2022/08/27/composing-in-sid-factory-ii-part-1-introduction/
+> - https://blog.chordian.net/2022/08/27/composing-in-sid-factory-ii-part-2-sequences/
+> - https://blog.chordian.net/2022/08/27/composing-in-sid-factory-ii-part-3-tracks/
+>
+> **Date Created**: 2025-12-17
+> **Last Updated**: 2025-12-17
+> **Update Check**: Recommended every 6 months
+
 ## Overview
 
 SID Factory II uses a dual-level system:

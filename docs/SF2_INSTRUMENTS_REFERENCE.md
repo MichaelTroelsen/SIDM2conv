@@ -1,5 +1,15 @@
 # SID Factory II - Instruments Reference
 
+> **📄 Document Metadata**
+> **Created From**: Web scraping of official SID Factory II tutorials
+> **Source URLs**:
+> - https://blog.chordian.net/2022/08/27/composing-in-sid-factory-ii-part-1-introduction/
+> - https://blog.chordian.net/2022/08/27/composing-in-sid-factory-ii-part-4-instruments/
+>
+> **Date Created**: 2025-12-17
+> **Last Updated**: 2025-12-17
+> **Update Check**: Recommended every 6 months
+
 ## Overview
 
 Instruments in SID Factory II define how notes sound on the Commodore 64's SID chip. Each instrument is a 6-byte structure that controls envelope, waveform, and effects.
