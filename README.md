@@ -1583,7 +1583,10 @@ Prevents the SID "ADSR bug" (Martin Galway's "school band effect"):
 - Each song has own tempo/volume in Init table
 - All songs share sequences and table data
 
-For complete format details, see [docs/SF2_FORMAT_SPEC.md](docs/SF2_FORMAT_SPEC.md).
+For complete format details, see:
+- [docs/SF2_FORMAT_SPEC.md](docs/SF2_FORMAT_SPEC.md) - Complete SF2 format specification
+- [docs/SF2_TRACKS_AND_SEQUENCES.md](docs/SF2_TRACKS_AND_SEQUENCES.md) - Tracks and sequences format guide
+- [docs/SF2_INSTRUMENTS_REFERENCE.md](docs/SF2_INSTRUMENTS_REFERENCE.md) - Instruments format guide
 
 ## Converter Architecture
 
@@ -2456,9 +2459,11 @@ See `sidm2/audio_comparison.py` for implementation:
 - Added `format_tables.py` - Hex table visualization (437 lines)
   - Generates 16-byte hex dumps with addresses
   - Side-by-side original vs converted comparison
-- Created comprehensive player documentation
+- Created comprehensive player and format documentation
   - `docs/SF2_DRIVER11_DISASSEMBLY.md` - Complete SF2 Driver 11 analysis (8.3 KB)
   - `docs/STINSENS_PLAYER_DISASSEMBLY.md` - Laxity NewPlayer v21 analysis (17 KB)
+  - `docs/SF2_TRACKS_AND_SEQUENCES.md` - Tracks and sequences format guide (433 lines)
+  - `docs/SF2_INSTRUMENTS_REFERENCE.md` - Instruments format guide (595 lines)
   - Memory maps, annotated routines, table formats, architecture comparisons
 - Enhanced info.txt output with new sections:
   - "Original SID File (Preserved)" - Source path, size, copied location

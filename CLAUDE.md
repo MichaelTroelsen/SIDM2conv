@@ -44,7 +44,7 @@ python complete_pipeline_with_validation.py
 # See .github/workflows/validation.yml
 ```
 
-### SF2 Viewer (NEW - v2.0)
+### SF2 Viewer (NEW - v2.1)
 
 Professional GUI tool to view and analyze SF2 files:
 
@@ -64,6 +64,7 @@ python sf2_viewer_gui.py
 
 **Features:**
 - Drag-and-drop SF2 file loading
+- **Recent Files menu** for quick access to last 10 files
 - Multi-tab interface (8 tabs):
   - Overview: File info and validation
   - Header Blocks: SF2 block structure
@@ -71,18 +72,18 @@ python sf2_viewer_gui.py
   - Memory Map: Visual memory layout
   - OrderList: Sequence playback order
   - Sequences: Step-by-step sequence data
-  - **Visualization (NEW)**: Waveform, filter, and envelope graphs
-  - **Playback (NEW)**: Audio preview with play/pause/volume
+  - **Visualization**: Waveform, filter, and envelope graphs
+  - **Playback**: Audio preview with play/pause/volume
 - View all SF2 block types and table data
 - File validation summary
 - Professional PyQt6 GUI matching SID Factory II layout
 
 **New Features (v2.1):**
+- **Recent Files Menu**: Quick access to last 10 opened files with persistent storage
 - **Visualization Tab**: Graph waveforms, filter curves, and ADSR envelopes
 - **Playback Tab**: Convert SF2→SID→WAV and play audio with volume control
 - Real-time position tracking and status display
 
-**Documentation:** See `SF2_VIEWER_README.md` for complete usage guide
 
 ---
 
@@ -95,15 +96,14 @@ SIDM2/
 ├── new_experiment.py                     # Experiment template generator
 ├── update_inventory.py                   # File inventory updater
 │
-├── SIDM2/                 # SF2 Viewer Application (v2.1 - Visualization + Playback)
+├── SIDM2/                 # SF2 Viewer Application (v2.1 - Recent Files + Visualization + Playback)
 │   ├── sf2_viewer_core.py              # SF2 format parser (450 lines)
-│   ├── sf2_viewer_gui.py               # PyQt6 GUI application (900 lines) - UPDATED
-│   ├── sf2_visualization_widgets.py    # Visualization widgets (300 lines) - NEW
-│   ├── sf2_playback.py                 # Playback engine (200 lines) - NEW
+│   ├── sf2_viewer_gui.py               # PyQt6 GUI application (1000+ lines) - UPDATED with Recent Files
+│   ├── sf2_visualization_widgets.py    # Visualization widgets (300 lines)
+│   ├── sf2_playback.py                 # Playback engine (200 lines)
 │   ├── launch_sf2_viewer.py            # Python launcher with auto-install (90 lines)
 │   ├── launch_sf2_viewer.bat           # Windows batch launcher with dependency check
 │   ├── test_sf2_viewer.py              # Test suite (160 lines, 100% pass rate)
-│   ├── SF2_VIEWER_README.md            # User guide and documentation (500+ lines) - UPDATED
 │   ├── SF2_VIEWER_IMPLEMENTATION_SUMMARY.md # Technical summary
 │   ├── VIEWER_COMPLETE.txt             # Completion summary
 │
@@ -767,6 +767,24 @@ python scripts/test_complete_pipeline.py -v
 ### Format Specifications
 - **docs/SID_REGISTERS_REFERENCE.md** - SID chip register quick reference (NEW)
 - **docs/SF2_FORMAT_SPEC.md** - Complete SF2 format specification
+- **docs/SF2_TRACKS_AND_SEQUENCES.md** - Tracks and sequences format guide (NEW)
+  - OrderList format (XXYY: transpose + sequence)
+  - Sequence entry format (AA BB CCC: instrument + command + note)
+  - Gate control system (+++ sustain vs note retrigger)
+  - 3-track parallel system for SID voices
+  - Sequence storage and interleaving
+  - Track operations and keyboard shortcuts
+  - Official SID Factory II tutorial references
+- **docs/SF2_INSTRUMENTS_REFERENCE.md** - Instruments format guide (NEW)
+  - 6-byte instrument structure
+  - ADSR envelope system (Attack/Decay/Sustain/Release)
+  - Hard Restart mechanism (bit 7, 2-tick pre-gate-off)
+  - Test Bit / Oscillator Reset (bit 4)
+  - Waveforms (Triangle 11, Sawtooth 21, Pulse 41, Noise 81)
+  - Wave table system with loop commands
+  - Pulse width tables
+  - Practical examples (snare drum, ADSR patterns)
+  - Official SID Factory II tutorial references
 - **docs/SF2_DRIVER11_DISASSEMBLY.md** - SF2 Driver 11 player analysis
 - **docs/STINSENS_PLAYER_DISASSEMBLY.md** - Laxity NewPlayer v21 analysis
 - **docs/CONVERSION_STRATEGY.md** - Laxity to SF2 mapping details
@@ -831,7 +849,7 @@ Assistant: [Use EnterPlanMode to explore and design approach first]
 
 ## Version History
 
-- **v2.1.0** (2025-12-15) - **Visualization and Playback** - Added waveform/filter/envelope visualization and audio preview with playback controls
+- **v2.1.0** (2025-12-17) - **Recent Files + Visualization + Playback** - Added Recent Files menu with persistent storage (10 files), waveform/filter/envelope visualization, and audio playback controls
 - **v2.0.0** (2025-12-15) - **SF2 Viewer released** - Professional PyQt6 GUI for viewing SF2 files
 - **v1.8.0** (2025-12-14) - **Laxity driver with 99.93% accuracy** (production ready)
 - **v1.7.0** (2025-12-12) - NP20 driver support + Format compatibility research
@@ -865,7 +883,9 @@ Assistant: [Use EnterPlanMode to explore and design approach first]
 - **Module API questions** → `docs/COMPONENTS_REFERENCE.md`
 - **Tool usage questions** → `docs/TOOLS_REFERENCE.md`
 - **SID register questions** → `docs/SID_REGISTERS_REFERENCE.md`
-- **Format questions** → `docs/SF2_FORMAT_SPEC.md`, `docs/format-specification.md`
+- **SF2 format questions** → `docs/SF2_FORMAT_SPEC.md`, `docs/format-specification.md`
+- **SF2 tracks/sequences** → `docs/SF2_TRACKS_AND_SEQUENCES.md`
+- **SF2 instruments** → `docs/SF2_INSTRUMENTS_REFERENCE.md`
 - **Validation questions** → `docs/VALIDATION_SYSTEM.md`
 - **Gate inference questions** → `docs/GATE_INFERENCE_IMPLEMENTATION.md`
 

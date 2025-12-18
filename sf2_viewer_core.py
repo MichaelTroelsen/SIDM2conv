@@ -230,6 +230,12 @@ class SequenceEntry:
         }
         return commands.get(self.command, f"Cmd{self.command:02X}")
 
+    def param_display(self) -> str:
+        """Display parameter value (param1) in hex"""
+        if self.param1 == 0:
+            return "--"
+        return f"{self.param1:02x}"
+
 
 def unpack_sequence(packed_data: bytes) -> List[Dict]:
     """Unpack a sequence from SID Factory II packed format (Laxity compatible).

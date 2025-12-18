@@ -6,6 +6,7 @@ Display SF2 files with the same layout as the SID Factory II editor
 
 import sys
 import os
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -17,7 +18,7 @@ try:
         QLabel, QPushButton, QFileDialog, QHeaderView, QTextEdit, QScrollArea,
         QStatusBar, QMenuBar, QMenu, QMessageBox, QComboBox, QSlider
     )
-    from PyQt6.QtCore import Qt, QMimeData, QUrl, QSize, QTimer
+    from PyQt6.QtCore import Qt, QMimeData, QUrl, QSize, QTimer, QSettings
     from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QIcon, QFont, QColor
     PYQT6_AVAILABLE = True
 except ImportError:
@@ -30,20 +31,30 @@ from sf2_viewer_core import SF2Parser, BlockType, TableDataLayout
 from sf2_visualization_widgets import WaveformWidget, FilterResponseWidget, EnvelopeWidget
 from sf2_playback import SF2PlaybackEngine
 
+# Constants
+MAX_RECENT_FILES = 10
+
 
 class SF2ViewerWindow(QMainWindow):
     """Main window for SF2 viewer application"""
 
-    def __init__(self):
+    def __init__(self, file_to_load: Optional[str] = None):
         super().__init__()
-        self.setWindowTitle("SID Factory II SF2 Viewer")
+        self.setWindowTitle("SID Factory II SF2 Viewer v2.1")
         self.setGeometry(100, 100, 1600, 1000)
 
         self.parser: Optional[SF2Parser] = None
         self.current_file = None
+        self.settings = QSettings("Anthropic", "SF2Viewer")
+        self.recent_menu = None
 
         self.init_ui()
         self.setup_drag_drop()
+        self.update_recent_files_menu()
+
+        # Load file if provided as argument
+        if file_to_load and os.path.isfile(file_to_load):
+            self.load_file(file_to_load)
 
     def init_ui(self):
         """Initialize the user interface"""
@@ -128,6 +139,9 @@ class SF2ViewerWindow(QMainWindow):
 
         open_action = file_menu.addAction("Open SF2 File...")
         open_action.triggered.connect(self.browse_file)
+
+        # Recent Files submenu
+        self.recent_menu = file_menu.addMenu("Recent Files")
 
         file_menu.addSeparator()
 
@@ -314,9 +328,92 @@ class SF2ViewerWindow(QMainWindow):
                 self.playback_info.setText(f"Ready to play: {Path(file_path).name}")
 
             self.statusBar().showMessage(f"Loaded: {file_path}")
+            self.add_recent_file(file_path)
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load file: {e}")
+
+    def load_recent_files(self) -> list:
+        """Load recent files list from settings"""
+        try:
+            recent_json = self.settings.value("recent_files", "[]")
+            recent = json.loads(recent_json) if isinstance(recent_json, str) else []
+
+            # Filter out non-existent files
+            recent = [f for f in recent if os.path.isfile(f)]
+
+            # Return at most MAX_RECENT_FILES
+            return recent[:MAX_RECENT_FILES]
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    def save_recent_files(self, files: list):
+        """Save recent files list to settings"""
+        recent_json = json.dumps(files[:MAX_RECENT_FILES])
+        self.settings.setValue("recent_files", recent_json)
+
+    def add_recent_file(self, file_path: str):
+        """Add file to recent files list"""
+        recent = self.load_recent_files()
+
+        # Remove if already exists (will move to top)
+        if file_path in recent:
+            recent.remove(file_path)
+
+        # Insert at beginning
+        recent.insert(0, file_path)
+
+        # Trim to max size
+        recent = recent[:MAX_RECENT_FILES]
+
+        # Save and update menu
+        self.save_recent_files(recent)
+        self.update_recent_files_menu()
+
+    def clear_recent_files(self):
+        """Clear all recent files"""
+        self.settings.remove("recent_files")
+        self.update_recent_files_menu()
+
+    def update_recent_files_menu(self):
+        """Rebuild recent files submenu"""
+        if not self.recent_menu:
+            return
+
+        # Clear existing actions
+        self.recent_menu.clear()
+
+        # Load recent files
+        recent = self.load_recent_files()
+
+        if not recent:
+            # Show "No recent files" as disabled menu item
+            no_recent = self.recent_menu.addAction("No recent files")
+            no_recent.setEnabled(False)
+        else:
+            # Add action for each recent file
+            for file_path in recent:
+                action = self.recent_menu.addAction(Path(file_path).name)
+                action.setToolTip(file_path)
+                action.triggered.connect(lambda checked=False, fp=file_path: self.open_recent_file(fp))
+
+            # Add separator and clear action
+            self.recent_menu.addSeparator()
+            clear_action = self.recent_menu.addAction("Clear Recent Files")
+            clear_action.triggered.connect(self.clear_recent_files)
+
+    def open_recent_file(self, file_path: str):
+        """Open a file from recent files list"""
+        if os.path.isfile(file_path):
+            self.load_file(file_path)
+        else:
+            QMessageBox.warning(self, "File Not Found", f"File not found:\n{file_path}")
+            # Remove from recent files
+            recent = self.load_recent_files()
+            if file_path in recent:
+                recent.remove(file_path)
+                self.save_recent_files(recent)
+                self.update_recent_files_menu()
 
     def update_overview(self):
         """Update the overview tab"""
@@ -700,13 +797,12 @@ class SF2ViewerWindow(QMainWindow):
         self.orderlist_info.setText(info)
 
         # Read orderlist columns from memory
-        # Skip first 2 rows (padding/metadata), start from row 2
+        # Read all entries starting from offset 0 (not offset 2)
         # Each column contains one byte per entry (256 bytes max = 256 entries)
         # Format matches SID Factory II editor: row numbers increment by 0x20
         ol_text = ""
-        display_row = 0
 
-        for row_idx in range(2, 256):  # Start from row 2 (skip padding rows 0-1)
+        for row_idx in range(0, 256):  # Start from row 0 (include all entries)
             # Get one byte from each column
             bytes_in_row = []
 
@@ -729,11 +825,13 @@ class SF2ViewerWindow(QMainWindow):
                 bytes_in_row.append(0)
 
             if len(bytes_in_row) == 3:
-                # Format as: XXXX: YY YY YY (row numbers increment by 0x20 like SID Factory II editor)
-                hex_bytes = ' '.join(f'{b:02X}' for b in bytes_in_row)
-                row_display = display_row * 0x20  # Match editor row numbering
+                # Format with spaces for zero bytes: XXXX: YY YY YY or YY    YY if column is zero
+                col1_str = f"{bytes_in_row[0]:02X}" if bytes_in_row[0] != 0 else "  "
+                col2_str = f"{bytes_in_row[1]:02X}" if bytes_in_row[1] != 0 else "  "
+                col3_str = f"{bytes_in_row[2]:02X}" if bytes_in_row[2] != 0 else "  "
+                hex_bytes = f"{col1_str} {col2_str} {col3_str}"
+                row_display = row_idx * 0x20  # Match editor row numbering
                 ol_text += f"{row_display:04X}: {hex_bytes}\n"
-                display_row += 1
 
                 # Stop at 0xFF marker (end marker)
                 if bytes_in_row[0] == 0xFF:
@@ -789,10 +887,10 @@ class SF2ViewerWindow(QMainWindow):
         # Entry 3, 4, 5 = Track 1, 2, 3 at Step 1, etc.
         seq_text = ""
 
-        # Header with better spacing to match editor
-        seq_text += "      Track 1              Track 2              Track 3\n"
-        seq_text += "Step  In Cmd Note         In Cmd Note         In Cmd Note\n"
-        seq_text += "----  ---- --- --------  ---- --- --------  ---- --- --------\n"
+        # Header with 3 columns to match SID Factory II: Instrument (2), Command (2), Note (3)
+        seq_text += "      Track 1           Track 2           Track 3\n"
+        seq_text += "Step  In Cmd Note       In Cmd Note       In Cmd Note\n"
+        seq_text += "----  -- --- ----       -- --- ----       -- --- ----\n"
 
         # Data rows - group by 3 for parallel track display
         step = 0
@@ -801,22 +899,22 @@ class SF2ViewerWindow(QMainWindow):
             entry2 = seq_data[i + 1] if i + 1 < len(seq_data) else None
             entry3 = seq_data[i + 2] if i + 2 < len(seq_data) else None
 
-            # Format each track's data: "In Cmd Note" where each is 4 chars wide
+            # Format each track's data: "In Cmd Note" (Instrument=2, Command=2, Note=3)
             def format_entry(entry):
                 if entry is None:
-                    return " -- ---  --------"
-                instr = entry.instrument_display()
-                cmd = entry.command_display()
-                note = entry.note_name()
-                # Width: In(4) + Cmd(4) + Note(9) + spaces = 4+4+9 = 17 chars
-                return f"{instr:>2s}  {cmd:>2s}  {note:>8s}"
+                    return "-- --- ----"
+                instr = entry.instrument_display()  # 2 chars
+                cmd = entry.command_display()       # 2 chars
+                note = entry.note_name()            # 3+ chars, we'll take first 4
+                # Format: "In Cmd Note" with exact spacing
+                return f"{instr:2s} {cmd:>2s} {note:4s}"
 
             track1_str = format_entry(entry1)
             track2_str = format_entry(entry2)
             track3_str = format_entry(entry3)
 
-            # Build the row with 3 tracks, each with wider spacing
-            seq_text += f"{step:04X}  {track1_str}  {track2_str}  {track3_str}\n"
+            # Build the row with 3 tracks
+            seq_text += f"{step:04X}  {track1_str}       {track2_str}       {track3_str}\n"
             step += 1
 
         self.sequence_text.setText(seq_text)
@@ -853,10 +951,14 @@ class SF2ViewerWindow(QMainWindow):
         QMessageBox.about(
             self,
             "About SF2 Viewer",
-            "SF2 Viewer v2.0\n\n"
+            "SF2 Viewer v2.1\n\n"
             "Professional viewer for SID Factory II SF2 files\n"
             "Display driver information, tables, sequences, orderlists, and memory layout\n\n"
-            "Drag and drop an SF2 file to view its contents"
+            "Features:\n"
+            "• Drag and drop SF2 files to view\n"
+            "• Recent Files menu for quick access\n"
+            "• Audio playback and waveform visualization\n"
+            "• Complete SF2 structure analysis"
         )
 
     def create_visualization_tab(self) -> QWidget:
@@ -1084,9 +1186,15 @@ class SF2ViewerWindow(QMainWindow):
 
 
 def main():
-    """Main entry point"""
+    """Main entry point - accepts optional SF2 file path as argument"""
     app = QApplication(sys.argv)
-    window = SF2ViewerWindow()
+
+    # Check if a file path was provided as argument
+    file_to_load = None
+    if len(sys.argv) > 1:
+        file_to_load = sys.argv[1]
+
+    window = SF2ViewerWindow(file_to_load)
     window.show()
     sys.exit(app.exec())
 
