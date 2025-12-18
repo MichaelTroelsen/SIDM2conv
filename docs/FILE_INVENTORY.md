@@ -1,6 +1,6 @@
 # File Inventory
 
-**Last Updated**: 2025-12-18 17:48:29
+**Last Updated**: 2025-12-18 18:01:12
 
 ## Repository Structure
 
@@ -49,6 +49,7 @@ SIDM2/
 ├── sf2_visualization_widgets.py (7.7KB)
 ├── sidm2_config.example.json (699B)
 ├── SIDwinder.cfg (1.5KB)
+├── start-all.bat (1.2KB)
 ├── test_laxity_accuracy.py (3.3KB)
 ├── test_siddecompiler_output.asm (51.8KB)
 ├── trace_scanning.py (3.2KB)
@@ -176,7 +177,7 @@ SIDM2/
 │   ├── CLEANUP_GUIDE.md (7.9KB)
 │   ├── COMPONENTS_REFERENCE.md (21.9KB)
 │   ├── DRIVER_DETECTION_RESEARCH.md (19.8KB)
-│   ├── FILE_INVENTORY.md (253.4KB)
+│   ├── FILE_INVENTORY.md (252.1KB)
 │   ├── GATE_INFERENCE_IMPLEMENTATION.md (11.9KB)
 │   ├── HYBRID_PIPELINE_SUCCESS.md (12.1KB)
 │   ├── IMPROVEMENT_PLAN.md (13.8KB)
@@ -193,9 +194,9 @@ SIDM2/
 │   ├── ROADMAP.md (13.2KB)
 │   ├── SF2_DEEP_DIVE.md (31.4KB)
 │   ├── SF2_HEADER_BLOCK_ANALYSIS.md (11.4KB)
-│   ├── SF2_INSTRUMENTS_REFERENCE.md (14.5KB)
+│   ├── SF2_INSTRUMENTS_REFERENCE.md (14.9KB)
 │   ├── SF2_KNOWLEDGE_CONSOLIDATION.md (12.7KB)
-│   ├── SF2_TRACKS_AND_SEQUENCES.md (12.0KB)
+│   ├── SF2_TRACKS_AND_SEQUENCES.md (12.5KB)
 │   ├── SID_REGISTERS_REFERENCE.md (8.4KB)
 │   ├── SIDDECOMPILER_INTEGRATION.md (16.4KB)
 │   ├── SIDDECOMPILER_LESSONS_LEARNED.md (12.9KB)
