@@ -323,6 +323,11 @@ def unpack_sequence(packed_data: bytes) -> List[Dict]:
             'tie': current_tie
         })
 
+        # Reset instrument and command after using them
+        # They should only appear on the step where they're set, then revert to "no change" (0x80)
+        current_instrument = 0x80
+        current_command = 0x80
+
         # Add sustain events for duration
         for _ in range(current_duration):
             sustain_note = 0x7E if note != 0x00 else 0x00
@@ -335,6 +340,53 @@ def unpack_sequence(packed_data: bytes) -> List[Dict]:
             })
 
     return events
+
+
+def detect_sequence_format(events: List[Dict]) -> str:
+    """Detect if sequence is single-track or 3-track interleaved.
+
+    Returns:
+        'single' - Single continuous track
+        'interleaved' - 3 tracks interleaved
+
+    Detection heuristics:
+    1. Very short sequences (<50 events) are likely single-track
+    2. Check for repeating instrument patterns every 3 entries (suggests interleaving)
+    3. Check if instruments/commands appear in groups of 3
+    """
+    if len(events) < 50:
+        # Short sequences are typically single-track
+        return 'single'
+
+    # Count how many events have instruments/commands set
+    inst_positions = [i for i, e in enumerate(events) if e['instrument'] != 0x80]
+    cmd_positions = [i for i, e in enumerate(events) if e['command'] != 0x80]
+
+    if not inst_positions and not cmd_positions:
+        # No instruments or commands, can't determine - assume interleaved
+        return 'interleaved'
+
+    # Check if instruments appear in multiples of 3 positions
+    # For interleaved format, instruments for each track would be at positions 0,3,6,... or 1,4,7,... or 2,5,8,...
+    positions = inst_positions + cmd_positions
+
+    # Count positions modulo 3
+    mod_counts = {0: 0, 1: 0, 2: 0}
+    for pos in positions:
+        mod_counts[pos % 3] += 1
+
+    # If >80% of positions are in one modulo group, it's likely single-track
+    max_count = max(mod_counts.values())
+    if max_count > len(positions) * 0.8:
+        return 'single'
+
+    # If positions are evenly distributed across all 3 modulo groups, it's interleaved
+    min_count = min(mod_counts.values())
+    if min_count > len(positions) * 0.2:
+        return 'interleaved'
+
+    # Default to interleaved for longer sequences
+    return 'interleaved'
 
 
 @dataclass
@@ -369,6 +421,7 @@ class SF2Parser:
         self.music_data_info: Optional[MusicDataInfo] = None
         self.orderlist: List[int] = []
         self.sequences: Dict[int, List[SequenceEntry]] = {}
+        self.sequence_formats: Dict[int, str] = {}  # Maps sequence idx to 'single' or 'interleaved'
         self.memory = bytearray(65536)
         self.is_laxity_driver = False
         self.laxity_data: Optional[LaxityData] = None
@@ -936,62 +989,73 @@ class SF2Parser:
         return None
 
     def _parse_packed_sequences_laxity_sf2(self) -> bool:
-        """Parse sequences from Laxity SF2 files using offset table structure.
+        """Parse sequences from Laxity SF2 files using comprehensive scan.
 
-        Handles the special Laxity SF2 file format where:
-        - Offset table is at file offset ~0x1662
-        - Followed by 0xE1 padding (~175 bytes)
-        - Followed by index table (~128 bytes)
-        - Real sequence data starts at ~0x1772
+        Scans entire file for all sequences marked with 0x7F terminators.
+        This ensures all sequences are found, regardless of layout.
         """
-        # Detect where real sequence data starts
-        seq_data_offset = self._detect_laxity_offset_table_structure()
-        if seq_data_offset is None:
-            logger.warning("Could not detect Laxity offset table structure")
-            return False
-
         self.sequences = {}
-        seq_idx = 0
-        offset = seq_data_offset
 
-        logger.info(f"Parsing Laxity SF2 sequences from offset 0x{seq_data_offset:04X}")
+        logger.info(f"Scanning file for all packed sequences (Laxity SF2)")
 
-        # Parse sequences from correct offset
-        while offset < len(self.data) and seq_idx < self.MAX_SEQUENCES:
-            # Skip padding bytes (anything not a valid sequence start)
-            while offset < len(self.data):
-                byte = self.data[offset]
-                # Valid packed sequence start: 0xA0-0xBF (instrument), 0x01-0x7E (note), or 0xC0-0xFF (command)
-                if (0x01 <= byte <= 0x7E or 0xA0 <= byte <= 0xFF):
-                    break
+        # Scan entire file for sequences
+        # Start after header blocks (around 0x1000)
+        offset = 0x1000
+        seq_candidates = []
+
+        while offset < len(self.data) - 10:
+            byte = self.data[offset]
+
+            # Check if this could be a sequence start
+            # Valid packed sequence start: 0xA0-0xBF (instrument), 0x01-0x7E (note), or 0xC0-0xFF (command)
+            if not (0x01 <= byte <= 0x7E or 0xA0 <= byte <= 0xFF):
                 offset += 1
+                continue
 
-            if offset >= len(self.data):
-                break
-
-            # Extract sequence bytes until 0x7F terminator
+            # Try to extract sequence from here
             seq_start = offset
             seq_bytes = bytearray()
+            temp_offset = offset
 
-            while offset < len(self.data):
-                byte = self.data[offset]
+            while temp_offset < len(self.data) and len(seq_bytes) < 2000:
+                byte = self.data[temp_offset]
                 seq_bytes.append(byte)
-                offset += 1
+                temp_offset += 1
 
                 if byte == 0x7F:  # End of sequence marker
                     break
 
-            if not seq_bytes or len(seq_bytes) < 5:
-                # Too short to be valid sequence
-                continue
+            # Validate this looks like a real sequence
+            if len(seq_bytes) >= 10 and seq_bytes[-1] == 0x7F:
+                # Check if packed data looks valid
+                valid_bytes = 0
+                for b in seq_bytes[:-1]:  # Exclude 0x7F terminator
+                    if 0x01 <= b <= 0x7F or 0xA0 <= b <= 0xFF:
+                        valid_bytes += 1
 
-            if seq_bytes[-1] != 0x7F:
-                # Sequence doesn't end with proper terminator
+                # At least 70% of bytes should be valid packed format
+                if valid_bytes > len(seq_bytes) * 0.7:
+                    seq_candidates.append({
+                        'offset': seq_start,
+                        'bytes': bytes(seq_bytes),
+                        'length': len(seq_bytes)
+                    })
+                    offset = temp_offset  # Skip past this sequence
+                    continue
+
+            offset += 1
+
+        # Now unpack all valid sequences
+        logger.info(f"Found {len(seq_candidates)} sequence candidates")
+
+        for idx, cand in enumerate(seq_candidates):
+            if idx >= self.MAX_SEQUENCES:
                 break
 
-            # Unpack and convert to SequenceEntry format
-            events = unpack_sequence(bytes(seq_bytes))
+            # Unpack sequence
+            events = unpack_sequence(cand['bytes'])
             entries = []
+
             for event in events:
                 entry = SequenceEntry(
                     note=event['note'],
@@ -1004,15 +1068,15 @@ class SF2Parser:
                 entries.append(entry)
 
             if entries:
-                self.sequences[seq_idx] = entries
-                logger.info(f"Sequence {seq_idx}: {len(seq_bytes)} packed bytes -> {len(entries)} entries")
-                seq_idx += 1
+                self.sequences[idx] = entries
 
-            # Stop if parsed enough sequences or reached file end
-            if seq_idx > 1 and offset > seq_data_offset + 1200:
-                break
+                # Detect sequence format (single-track or 3-track interleaved)
+                seq_format = detect_sequence_format(events)
+                self.sequence_formats[idx] = seq_format
 
-        logger.info(f"Parsed {len(self.sequences)} sequences from Laxity SF2 offset table structure")
+                logger.info(f"Sequence {idx}: {cand['length']} packed bytes -> {len(entries)} entries (offset 0x{cand['offset']:04X}, format={seq_format})")
+
+        logger.info(f"Parsed {len(self.sequences)} sequences from Laxity SF2 file")
         return len(self.sequences) > 0
 
     def _find_packed_sequences(self) -> Optional[int]:

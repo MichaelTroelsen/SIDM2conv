@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 
-**Version 2.1.0** | Build Date: 2025-12-16 | Production Ready - Visualization & Playback ✅✅✅
+**Version 2.2.0** | Build Date: 2025-12-18 | Production Ready - Text Export & Single-Track Sequences ✅✅✅
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files.
 
@@ -767,6 +767,145 @@ Idx  Name          Used
   3  Portamento    -
   ...
 ```
+
+## SF2 Text Exporter (NEW in v2.2) 📝
+
+**Export all SF2 data to human-readable text files for validation, debugging, and learning.**
+
+### Overview
+
+The SF2 Text Exporter extracts complete SF2 file contents and exports them to human-readable text files. This creates "ground truth" reference files for:
+- **Validating SID→SF2 conversions** - Compare text exports to identify differences
+- **Debugging conversion issues** - Examine exact data structures
+- **Learning SF2 format** - Study actual data through examples
+- **Creating test cases** - Reference files for automated testing
+
+### Usage
+
+```bash
+# Export single file (auto-generate output directory)
+python sf2_to_text_exporter.py "file.sf2"
+# Output: output/{filename}_export/
+
+# Export to specific directory
+python sf2_to_text_exporter.py "file.sf2" output/my_export
+
+# Example
+python sf2_to_text_exporter.py "learnings/Laxity - Stinsen.sf2"
+# Output: output/Laxity - Stinsen_export/
+```
+
+### Exported Files (12+ per SF2)
+
+**Core Data:**
+- `orderlist.txt` - Sequence playback order (3 tracks)
+- `sequence_XX.txt` - Individual sequences (auto-detects single/interleaved format)
+- `instruments.txt` - Instrument definitions (AD, SR, waveform, tables, HR)
+
+**Table Data:**
+- `wave.txt` - Wave table sequences
+- `pulse.txt` - Pulse width sequences
+- `filter.txt` - Filter cutoff sequences
+- `arp.txt` - Arpeggio table (placeholder)
+
+**Reference:**
+- `tempo.txt` - Tempo information
+- `hr.txt` - Hard Restart reference
+- `init.txt` - Init values reference
+- `commands.txt` - Command reference
+- `summary.txt` - Statistics and file list
+
+### Example Output
+
+**sequence_08.txt** (single-track format):
+```
+SEQUENCE $08 (8)
+================================================================================
+Format: single
+Length: 32 entries
+
+Step  | Inst | Cmd  | Note
+------|------|------|------
+0000  | 0B   | --   | F-3
+0001  | --   | --   | +++
+0002  | --   | 02   | +++
+0003  | --   | --   | +++
+0004  | --   | --   | F-3
+...
+```
+
+**orderlist.txt**:
+```
+ORDER LIST
+================================================================================
+Format: Step | Track 1 | Track 2 | Track 3
+        Each entry: TT SS (TT=transpose, SS=sequence)
+
+Step  | Track 1    | Track 2    | Track 3
+------|------------|------------|------------
+0000  | -- A6      | -- 00      | -- 00
+0001  | -- A0      | -- A0      | -- A0
+0002  | -- 0E      | -- 00      | -- 0A
+...
+```
+
+### Use Cases
+
+#### 1. Validate SID→SF2 Conversions
+
+```bash
+# Export reference SF2
+python sf2_to_text_exporter.py reference.sf2 output/reference
+
+# Convert SID→SF2
+python scripts/sid_to_sf2.py input.sid converted.sf2
+
+# Export converted SF2
+python sf2_to_text_exporter.py converted.sf2 output/converted
+
+# Compare
+diff output/reference/sequence_08.txt output/converted/sequence_08.txt
+```
+
+#### 2. Debug Conversion Issues
+
+```bash
+# Export problematic SF2
+python sf2_to_text_exporter.py problem.sf2 debug/
+
+# Check format detection
+cat debug/summary.txt
+
+# Examine specific sequences
+cat debug/sequence_0A.txt
+```
+
+#### 3. Learn SF2 Format
+
+```bash
+# Export various examples
+python sf2_to_text_exporter.py examples/*.sf2
+
+# Study structure differences
+# Compare single-track vs interleaved sequences
+```
+
+### Features
+
+- ✅ **Auto-format detection** - Single-track vs 3-track interleaved sequences
+- ✅ **Hex notation** - Shows "Sequence $0A" format matching SID Factory II
+- ✅ **Human-readable** - Aligned columns, clear headers
+- ✅ **Comprehensive** - All data structures exported
+- ✅ **Fast** - Exports <1 second per file
+- ✅ **Zero dependencies** - Uses existing sf2_viewer_core.py parser
+
+### Documentation
+
+See `SF2_TEXT_EXPORTER_README.md` for complete documentation including:
+- Detailed usage examples
+- Output format specifications
+- Troubleshooting guide
+- Integration with validation workflows
 
 ## Laxity Driver (NEW)
 
@@ -2371,6 +2510,41 @@ See `sidm2/audio_comparison.py` for implementation:
 | 47 | SF2Writer modularization | ✅ Done | Extracted ~960 lines to sidm2/sf2_writer.py |
 
 ## Changelog
+
+### v2.2.0 (2025-12-18)
+
+**SF2 Text Exporter and Single-track Sequence Support**
+
+- **NEW SF2 Text Exporter Tool**:
+  - Export all SF2 data to human-readable text files
+  - 12+ file types: orderlist, sequences, instruments, tables, references
+  - Auto-detects single-track vs 3-track interleaved sequences
+  - Perfect for validation, debugging, and learning SF2 format
+  - <1 second export time, zero external dependencies
+  - Human-readable format with hex notation matching SID Factory II
+
+- **Single-track Sequence Support in SF2 Viewer**:
+  - Auto-detects single-track vs 3-track interleaved sequence formats
+  - Displays each format appropriately (continuous vs parallel tracks)
+  - 96.9% Track 3 accuracy achieved (vs 42.9% before fix)
+  - Format detection using heuristics (length, pattern analysis)
+
+- **Hex Notation in SF2 Viewer**:
+  - Sequence display shows "Sequence 10 ($0A)" format
+  - Matches SID Factory II editor convention
+  - Applied to both single-track and interleaved sequences
+
+- **Bug Fixes**:
+  - Fixed instrument/command carryover in sequence unpacker
+  - Fixed parser to detect all 22 sequences (vs 3 before)
+  - Comprehensive file scanning (removed 1200-byte limit)
+
+- **Documentation Updates**:
+  - SF2_TEXT_EXPORTER_README.md - Complete usage guide
+  - SF2_TEXT_EXPORTER_IMPLEMENTATION.md - Technical details
+  - SINGLE_TRACK_IMPLEMENTATION_SUMMARY.md - Format detection docs
+  - TRACK3_CURRENT_STATE.md - Current status summary
+  - TODO.md - Updated task list with priorities
 
 ### v2.1.0 (2025-12-16)
 

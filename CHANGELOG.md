@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.0] - 2025-12-18
+
+### Added - SF2 Text Exporter & Single-track Sequences
+
+#### SF2 Text Exporter Tool
+- **NEW: Complete SF2 data export to text files** (`sf2_to_text_exporter.py`, 600 lines)
+  - Exports 12+ file types per SF2: orderlist, sequences, instruments, tables, references
+  - Auto-detects single-track vs 3-track interleaved sequence formats
+  - Human-readable format with hex notation ($0A) matching SID Factory II
+  - Export time: <1 second per file
+  - Zero external dependencies (uses sf2_viewer_core.py)
+  - Perfect for validation, debugging, and learning SF2 format
+
+- **Exported Files**:
+  - `orderlist.txt` - 3-track sequence playback order
+  - `sequence_XX.txt` - Individual sequences (one per sequence)
+  - `instruments.txt` - Instrument definitions with decoded waveforms
+  - `wave.txt`, `pulse.txt`, `filter.txt` - Table data
+  - `tempo.txt`, `hr.txt`, `init.txt`, `arp.txt` - Reference info
+  - `commands.txt` - Command reference guide
+  - `summary.txt` - Statistics and file list
+
+#### SF2 Viewer Enhancements
+- **Single-track sequence support**:
+  - Auto-detects single-track vs 3-track interleaved formats
+  - Format detection using heuristics (sequence length, pattern analysis, modulo-3 distribution)
+  - Displays each format appropriately (continuous vs parallel tracks)
+  - Track 3 accuracy: 96.9% (vs 42.9% before fix)
+
+- **Hex notation display**:
+  - Sequence info shows "Sequence 10 ($0A)" format
+  - Matches SID Factory II editor convention
+  - Applied to both single-track and interleaved displays
+
+### Fixed
+- **Sequence unpacker bug**: Instrument/command values no longer carry over to subsequent events
+- **Parser detection**: Now finds all 22 sequences (vs 3 before)
+- **File scanning**: Removed 1200-byte limit, comprehensive scan implemented
+
+### Documentation
+- Added `SF2_TEXT_EXPORTER_README.md` - Complete usage guide (280 lines)
+- Added `SF2_TEXT_EXPORTER_IMPLEMENTATION.md` - Technical details (380 lines)
+- Added `SINGLE_TRACK_IMPLEMENTATION_SUMMARY.md` - Format detection docs
+- Added `TRACK3_CURRENT_STATE.md` - Current status summary
+- Updated `TODO.md` - Task list with priorities
+- Updated `CLAUDE.md` - v2.2 features and tools
+- Updated `README.md` - SF2 Text Exporter section and changelog
+
 ## [1.4.0] - 2025-12-14
 
 ### Added - SIDdecompiler Enhanced Analysis & Validation (Phases 2-4)

@@ -1,0 +1,188 @@
+====================================================================================================
+TRACK 3 COMPARISON REPORT
+====================================================================================================
+
+SF2 File:     C:\Users\mit\claude\c64server\SIDM2\learnings\Laxity - Stinsen - Last Night Of 89.sf2
+Reference:    track_3.txt
+Sequence:     0
+
+Total Steps:  41
+Matches:      0 (0.0%)
+Differences:  41 (100.0%)
+
+SIDE-BY-SIDE COMPARISON:
+----------------------------------------------------------------------------------------------------
+
+Step  | EXTRACTED (SF2)      | REFERENCE (Expected) | Status
+      | In  Cmd  Note        | In  Cmd  Note        |
+------|----------------------|----------------------|--------
+0000  | --  --  D-3          | 0b  --  F-3          | DIFF
+0001  | --  --  F-3          | --  --  +++          | DIFF
+0002  | --  --  G#-3         | --  02  +++          | DIFF
+0003  | --  --  B-3          | --  --  +++          | DIFF
+0004  | --  --  D-4          | --  --  F-3          | DIFF
+0005  | --  --  F-4          | --  --  +++          | DIFF
+0006  | --  --  G#-4         | --  --  F-4          | DIFF
+0007  | --  --  B-4          | --  --  +++          | DIFF
+0008  | --  --  D-5          | --  --  +++          | DIFF
+0009  | --  --  F-5          | --  --  +++          | DIFF
+000A  | --  --  G#-5         | --  --  F-3          | DIFF
+000B  | --  --  B-5          | --  --  +++          | DIFF
+000C  | --  --  D-6          | --  --  +++          | DIFF
+000D  | --  --  F-6          | --  --  +++          | DIFF
+000E  | --  --  G#-6         | --  --  F-3          | DIFF
+000F  | --  --  B-6          | --  --  +++          | DIFF
+0010  | --  --  D-7          | --  02  +++          | DIFF
+0011  | --  --  F-7          | --  --  +++          | DIFF
+0012  | --  --  G#-7         | --  --  F-3          | DIFF
+0013  | --  --  B-7          | --  --  +++          | DIFF
+0014  | --  --  D-8          | --  --  F-3          | DIFF
+0015  | --  --  F-8          | --  --  +++          | DIFF
+0016  | --  --  G#-8         | --  --  F-4          | DIFF
+0017  | --  --  B-8          | --  --  +++          | DIFF
+0018  | --  --  D-9          | --  12  +++          | DIFF
+0019  | --  --  F-9          | --  --  +++          | DIFF
+001A  | --  --  G#-9         | --  --  F-3          | DIFF
+001B  | --  --  B-9          | --  --  +++          | DIFF
+001C  | --  --  D-10         | --  --  +++          | DIFF
+001D  | --  --  F-10         | --  --  +++          | DIFF
+001E  | ---  --- ------      | --  --  D#3          | MISS
+001F  | ---  --- ------      | --  --  +++          | MISS
+0020  | ---  --- ------      | 0b  --  F-3          | MISS
+0021  | ---  --- ------      | --  --  +++          | MISS
+0022  | ---  --- ------      | --  02  +++          | MISS
+0023  | ---  --- ------      | --  --  +++          | MISS
+0024  | ---  --- ------      | --  --  F-3          | MISS
+0025  | ---  --- ------      | --  --  +++          | MISS
+0026  | ---  --- ------      | --  --  F-4          | MISS
+0027  | ---  --- ------      | --  --  +++          | MISS
+0028  | ---  --- ------      | --  --  +++          | MISS
+
+
+DETAILED DIFFERENCES:
+----------------------------------------------------------------------------------------------------
+
+Step 0000: MISMATCH
+  Extracted: Inst=--  (80), Cmd=--  (80), Note=D-3    (26)
+  Reference: Inst=0b , Cmd=-- , Note=F-3   
+  Raw line:  a00a 0b -- F-3
+    > Instrument: -- != 0b
+    > Note: D-3 != F-3
+
+Step 0001: MISMATCH
+  Extracted: Inst=--  (80), Cmd=--  (80), Note=F-3    (29)
+  Reference: Inst=-- , Cmd=-- , Note=+++   
+  Raw line:  -- -- +++
+    > Note: F-3 != +++
+
+Step 0002: MISMATCH
+  Extracted: Inst=--  (80), Cmd=--  (80), Note=G#-3   (2C)
+  Reference: Inst=-- , Cmd=02 , Note=+++   
+  Raw line:  -- 02 +++
+    > Command: -- != 02
+    > Note: G#-3 != +++
+
+Step 0003: MISMATCH
+  Extracted: Inst=--  (80), Cmd=--  (80), Note=B-3    (2F)
+  Reference: Inst=-- , Cmd=-- , Note=+++   
+  Raw line:  -- -- +++
+    > Note: B-3 != +++
+
+Step 0004: MISMATCH
+  Extracted: Inst=--  (80), Cmd=--  (80), Note=D-4    (32)
+  Reference: Inst=-- , Cmd=-- , Note=F-3   
+  Raw line:  -- -- F-3
+    > Note: D-4 != F-3
+
+Step 0005: MISMATCH
+  Extracted: Inst=--  (80), Cmd=--  (80), Note=F-4    (35)
+  Reference: Inst=-- , Cmd=-- , Note=+++   
+  Raw line:  -- -- +++
+    > Note: F-4 != +++
+
+Step 0006: MISMATCH
+  Extracted: Inst=--  (80), Cmd=--  (80), Note=G#-4   (38)
+  Reference: Inst=-- , Cmd=-- , Note=F-4   
+  Raw line:  -- -- F-4
+    > Note: G#-4 != F-4
+
+Step 0007: MISMATCH
+  Extracted: Inst=--  (80), Cmd=--  (80), Note=B-4    (3B)
+  Reference: Inst=-- , Cmd=-- , Note=+++   
+  Raw line:  -- -- +++
+    > Note: B-4 != +++
+
+Step 0008: MISMATCH
+  Extracted: Inst=--  (80), Cmd=--  (80), Note=D-5    (3E)
+  Reference: Inst=-- , Cmd=-- , Note=+++   
+  Raw line:  -- -- +++
+    > Note: D-5 != +++
+
+Step 0009: MISMATCH
+  Extracted: Inst=--  (80), Cmd=--  (80), Note=F-5    (41)
+  Reference: Inst=-- , Cmd=-- , Note=+++   
+  Raw line:  -- -- +++
+    > Note: F-5 != +++
+
+Step 000A: MISMATCH
+  Extracted: Inst=--  (80), Cmd=--  (80), Note=G#-5   (44)
+  Reference: Inst=-- , Cmd=-- , Note=F-3   
+  Raw line:  -- -- F-3
+    > Note: G#-5 != F-3
+
+Step 000B: MISMATCH
+  Extracted: Inst=--  (80), Cmd=--  (80), Note=B-5    (47)
+  Reference: Inst=-- , Cmd=-- , Note=+++   
+  Raw line:  -- -- +++
+    > Note: B-5 != +++
+
+Step 000C: MISMATCH
+  Extracted: Inst=--  (80), Cmd=--  (80), Note=D-6    (4A)
+  Reference: Inst=-- , Cmd=-- , Note=+++   
+  Raw line:  -- -- +++
+    > Note: D-6 != +++
+
+Step 000D: MISMATCH
+  Extracted: Inst=--  (80), Cmd=--  (80), Note=F-6    (4D)
+  Reference: Inst=-- , Cmd=-- , Note=+++   
+  Raw line:  -- -- +++
+    > Note: F-6 != +++
+
+Step 000E: MISMATCH
+  Extracted: Inst=--  (80), Cmd=--  (80), Note=G#-6   (50)
+  Reference: Inst=-- , Cmd=-- , Note=F-3   
+  Raw line:  -- -- F-3
+    > Note: G#-6 != F-3
+
+Step 000F: MISMATCH
+  Extracted: Inst=--  (80), Cmd=--  (80), Note=B-6    (53)
+  Reference: Inst=-- , Cmd=-- , Note=+++   
+  Raw line:  -- -- +++
+    > Note: B-6 != +++
+
+Step 0010: MISMATCH
+  Extracted: Inst=--  (80), Cmd=--  (80), Note=D-7    (56)
+  Reference: Inst=-- , Cmd=02 , Note=+++   
+  Raw line:  -- 02 +++
+    > Command: -- != 02
+    > Note: D-7 != +++
+
+Step 0011: MISMATCH
+  Extracted: Inst=--  (80), Cmd=--  (80), Note=F-7    (59)
+  Reference: Inst=-- , Cmd=-- , Note=+++   
+  Raw line:  -- -- +++
+    > Note: F-7 != +++
+
+Step 0012: MISMATCH
+  Extracted: Inst=--  (80), Cmd=--  (80), Note=G#-7   (5C)
+  Reference: Inst=-- , Cmd=-- , Note=F-3   
+  Raw line:  -- -- F-3
+    > Note: G#-7 != F-3
+
+Step 0013: MISMATCH
+  Extracted: Inst=--  (80), Cmd=--  (80), Note=B-7    (5F)
+  Reference: Inst=-- , Cmd=-- , Note=+++   
+  Raw line:  -- -- +++
+    > Note: B-7 != +++
+
+... and 21 more differences

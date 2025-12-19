@@ -44,9 +44,9 @@ python complete_pipeline_with_validation.py
 # See .github/workflows/validation.yml
 ```
 
-### SF2 Viewer (NEW - v2.1)
+### SF2 Viewer & Text Exporter (NEW - v2.2)
 
-Professional GUI tool to view and analyze SF2 files:
+Professional tools for SF2 file analysis:
 
 ```bash
 # Windows (simplest - batch launcher with auto-dependency installation)
@@ -71,19 +71,54 @@ python sf2_viewer_gui.py
   - Tables: Music data tables (spreadsheet view)
   - Memory Map: Visual memory layout
   - OrderList: Sequence playback order
-  - Sequences: Step-by-step sequence data
+  - Sequences: Step-by-step sequence data with **automatic format detection**
   - **Visualization**: Waveform, filter, and envelope graphs
   - **Playback**: Audio preview with play/pause/volume
+- **Smart sequence handling**: Auto-detects single-track vs 3-track interleaved format
+- **Hex notation**: Sequence display shows "Sequence 10 ($0A)" matching SID Factory II
 - View all SF2 block types and table data
 - File validation summary
 - Professional PyQt6 GUI matching SID Factory II layout
 
-**New Features (v2.1):**
+**New Features (v2.2 - 2025-12-18):**
+- **Single-track sequence support**: Auto-detects and displays single-track sequences correctly
+- **Hex notation**: Shows "Sequence 10 ($0A)" format matching SID Factory II editor
+- **96.9% Track 3 accuracy**: Correct extraction and display of Track 3 data
+
+**Features from v2.1:**
 - **Recent Files Menu**: Quick access to last 10 opened files with persistent storage
 - **Visualization Tab**: Graph waveforms, filter curves, and ADSR envelopes
 - **Playback Tab**: Convert SF2→SID→WAV and play audio with volume control
 - Real-time position tracking and status display
 
+### SF2 Text Exporter (NEW - v2.2)
+
+Export all SF2 data to human-readable text files for validation and debugging:
+
+```bash
+# Export single file
+python sf2_to_text_exporter.py "file.sf2" output/export_dir
+
+# Auto-generate output directory
+python sf2_to_text_exporter.py "learnings/Laxity - Stinsen.sf2"
+# Output: output/Laxity - Stinsen_export/
+```
+
+**Exports:**
+- **orderlist.txt** - Sequence playback order (3 tracks)
+- **sequence_XX.txt** - Individual sequences (auto-detects single/interleaved format)
+- **instruments.txt** - Instrument definitions (AD, SR, waveform, tables, HR)
+- **wave.txt, pulse.txt, filter.txt** - Table data
+- **commands.txt** - Command reference
+- **summary.txt** - Statistics and file list
+
+**Use Cases:**
+- Create reference files from known-good SF2 files
+- Validate SID→SF2 conversions by comparing text exports
+- Debug conversion issues by examining actual data structure
+- Learn SF2 format through human-readable output
+
+**See:** `SF2_TEXT_EXPORTER_README.md` for complete documentation
 
 ---
 
@@ -96,9 +131,9 @@ SIDM2/
 ├── new_experiment.py                     # Experiment template generator
 ├── update_inventory.py                   # File inventory updater
 │
-├── SIDM2/                 # SF2 Viewer Application (v2.1 - Recent Files + Visualization + Playback)
-│   ├── sf2_viewer_core.py              # SF2 format parser (450 lines)
-│   ├── sf2_viewer_gui.py               # PyQt6 GUI application (1000+ lines) - UPDATED with Recent Files
+├── SIDM2/                 # SF2 Viewer Application (v2.2 - Single-track Sequences + Hex Notation)
+│   ├── sf2_viewer_core.py              # SF2 format parser with format detection (500 lines)
+│   ├── sf2_viewer_gui.py               # PyQt6 GUI application (1000+ lines) - Single/interleaved display
 │   ├── sf2_visualization_widgets.py    # Visualization widgets (300 lines)
 │   ├── sf2_playback.py                 # Playback engine (200 lines)
 │   ├── launch_sf2_viewer.py            # Python launcher with auto-install (90 lines)
@@ -849,6 +884,7 @@ Assistant: [Use EnterPlanMode to explore and design approach first]
 
 ## Version History
 
+- **v2.2.0** (2025-12-18) - **Single-track Sequence Support** - Auto-detects single-track vs 3-track interleaved sequences, hex notation display, 96.9% Track 3 accuracy
 - **v2.1.0** (2025-12-17) - **Recent Files + Visualization + Playback** - Added Recent Files menu with persistent storage (10 files), waveform/filter/envelope visualization, and audio playback controls
 - **v2.0.0** (2025-12-15) - **SF2 Viewer released** - Professional PyQt6 GUI for viewing SF2 files
 - **v1.8.0** (2025-12-14) - **Laxity driver with 99.93% accuracy** (production ready)
@@ -898,6 +934,9 @@ Assistant: [Use EnterPlanMode to explore and design approach first]
 
 ## Version History
 
+- **v2.2.0** (2025-12-18) - **SF2 Viewer: Single-track Sequence Support** - Auto-detects single-track vs 3-track interleaved sequences, hex notation display, 96.9% Track 3 accuracy
+- **v2.1.0** (2025-12-17) - **SF2 Viewer: Recent Files + Visualization + Playback** - Added Recent Files menu, waveform/filter/envelope graphs, audio playback
+- **v2.0.0** (2025-12-15) - **SF2 Viewer released** - Professional PyQt6 GUI for viewing SF2 files
 - **v2.0.0** (2025-12-14) - Production Ready Release! 100% validated on 286 real Laxity SID files. Complete Laxity driver with SF2 table editing. Zero failures, 6.4 files/sec throughput. Full documentation.
 - **v1.9.0** (2025-12-14) - Phase 6 Complete: SF2 table editing implementation, header generator, batch test tool
 - **v1.8.0** (2025-12-13) - Phase 5 Complete: Laxity driver API integration, conversion pipeline support

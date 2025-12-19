@@ -859,7 +859,7 @@ class SF2ViewerWindow(QMainWindow):
             self.sequence_combo.setCurrentIndex(0)
 
     def on_sequence_selected(self, index: int):
-        """Handle sequence selection - display sequence data in 3-track parallel format"""
+        """Handle sequence selection - display sequence data"""
         if index < 0 or not self.parser:
             return
 
@@ -869,16 +869,46 @@ class SF2ViewerWindow(QMainWindow):
 
         seq_data = self.parser.sequences[seq_idx]
 
-        # Display all sequences in 3-track parallel format (matching SID Factory II)
-        # The parsing method differs (Laxity vs packed), but the display is the same
-        self._display_sequence_3track_parallel(seq_idx, seq_data)
+        # Check sequence format (single-track or 3-track interleaved)
+        seq_format = self.parser.sequence_formats.get(seq_idx, 'interleaved')
+
+        if seq_format == 'single':
+            # Display as single continuous track
+            self._display_sequence_single_track(seq_idx, seq_data)
+        else:
+            # Display in 3-track parallel format (matching SID Factory II)
+            self._display_sequence_3track_parallel(seq_idx, seq_data)
+
+    def _display_sequence_single_track(self, seq_idx: int, seq_data: list):
+        """Display sequence data as single continuous track (for Laxity single-track sequences)"""
+        # Update info
+        format_type = "Laxity driver (single-track)" if (hasattr(self.parser, 'is_laxity_driver') and self.parser.is_laxity_driver) else "Single-track"
+        info = f"Sequence {seq_idx} (${seq_idx:02X}): {len(seq_data)} steps - {format_type}"
+        self.sequence_info.setText(info)
+
+        # Format sequence data as single track
+        seq_text = ""
+
+        # Header
+        seq_text += "Step  Inst Cmd  Note\n"
+        seq_text += "----  ---- ---  ----\n"
+
+        # Data rows
+        for step, entry in enumerate(seq_data):
+            instr = entry.instrument_display()  # 2 chars
+            cmd = entry.command_display()       # 2 chars
+            note = entry.note_name()            # 3+ chars
+
+            seq_text += f"{step:04X}  {instr:2s}   {cmd:>2s}  {note:4s}\n"
+
+        self.sequence_text.setText(seq_text)
 
     def _display_sequence_3track_parallel(self, seq_idx: int, seq_data: list):
         """Display sequence data in 3-track parallel format (matching SID Factory II editor)"""
         # Update info - calculate number of "steps" (groups of 3 entries for 3 tracks)
         num_steps = (len(seq_data) + 2) // 3  # Round up division
         format_type = "Laxity driver" if (hasattr(self.parser, 'is_laxity_driver') and self.parser.is_laxity_driver) else "Traditional"
-        info = f"Sequence {seq_idx}: {len(seq_data)} events ({num_steps} steps × 3 tracks) - {format_type}"
+        info = f"Sequence {seq_idx} (${seq_idx:02X}): {len(seq_data)} events ({num_steps} steps × 3 tracks) - {format_type}"
         self.sequence_info.setText(info)
 
         # Format sequence data like SID Factory II editor with 3 parallel tracks
