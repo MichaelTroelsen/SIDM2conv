@@ -40,7 +40,7 @@ class SF2ViewerWindow(QMainWindow):
 
     def __init__(self, file_to_load: Optional[str] = None):
         super().__init__()
-        self.setWindowTitle("SID Factory II SF2 Viewer v2.1")
+        self.setWindowTitle("SID Factory II SF2 Viewer v2.4")
         self.setGeometry(100, 100, 1600, 1000)
 
         self.parser: Optional[SF2Parser] = None
@@ -107,7 +107,11 @@ class SF2ViewerWindow(QMainWindow):
         self.sequences_tab = self.create_sequences_tab()
         self.tabs.addTab(self.sequences_tab, "Sequences")
 
-        # Tab 7: Visualization
+        # Tab 7: Track View (NEW - v2.4)
+        self.track_view_tab = self.create_track_view_tab()
+        self.tabs.addTab(self.track_view_tab, "Track View")
+
+        # Tab 8: Visualization
         self.visualization_tab = self.create_visualization_tab()
         self.tabs.addTab(self.visualization_tab, "Visualization")
 
@@ -314,6 +318,7 @@ class SF2ViewerWindow(QMainWindow):
             self.update_memory_map()
             self.update_orderlist()
             self.update_sequences()
+            self.update_track_view()  # NEW - v2.4
             self.update_visualization()
 
             # Check if sequences have valid data and enable/disable tab
@@ -759,14 +764,29 @@ class SF2ViewerWindow(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
+        # Top controls layout
+        controls_layout = QHBoxLayout()
+
         # Sequence selector
-        seq_layout = QHBoxLayout()
-        seq_layout.addWidget(QLabel("Select Sequence:"))
+        controls_layout.addWidget(QLabel("Select Sequence:"))
         self.sequence_combo = QComboBox()
         self.sequence_combo.currentIndexChanged.connect(self.on_sequence_selected)
-        seq_layout.addWidget(self.sequence_combo)
-        seq_layout.addStretch()
-        layout.addLayout(seq_layout)
+        controls_layout.addWidget(self.sequence_combo)
+
+        controls_layout.addSpacing(20)
+
+        # View mode selector
+        controls_layout.addWidget(QLabel("View Mode:"))
+        self.sequence_view_combo = QComboBox()
+        self.sequence_view_combo.addItem("Musician (Note Names)", "musician")
+        self.sequence_view_combo.addItem("Hex (Raw Values)", "hex")
+        self.sequence_view_combo.addItem("Both (Combined)", "both")
+        self.sequence_view_combo.setCurrentIndex(2)  # Default to "Both"
+        self.sequence_view_combo.currentIndexChanged.connect(self.on_sequence_view_changed)
+        controls_layout.addWidget(self.sequence_view_combo)
+
+        controls_layout.addStretch()
+        layout.addLayout(controls_layout)
 
         # Sequence info
         self.sequence_info = QLabel()
@@ -781,61 +801,253 @@ class SF2ViewerWindow(QMainWindow):
 
         return widget
 
+    def create_track_view_tab(self) -> QWidget:
+        """Create the track view tab - combines OrderList + Sequences with transpose"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        # Top controls layout
+        controls_layout = QHBoxLayout()
+
+        # Track selector
+        controls_layout.addWidget(QLabel("Select Track:"))
+        self.track_selector = QComboBox()
+        self.track_selector.addItem("Track 1 (Voice 1)", 0)
+        self.track_selector.addItem("Track 2 (Voice 2)", 1)
+        self.track_selector.addItem("Track 3 (Voice 3)", 2)
+        self.track_selector.currentIndexChanged.connect(self.on_track_selected)
+        controls_layout.addWidget(self.track_selector)
+
+        controls_layout.addStretch()
+        layout.addLayout(controls_layout)
+
+        # Track info
+        self.track_info = QLabel()
+        layout.addWidget(self.track_info)
+
+        # Track data text view
+        self.track_text = QTextEdit()
+        self.track_text.setReadOnly(True)
+        self.track_text.setFont(QFont("Courier", 10))
+        self.track_text.setStyleSheet("background-color: #000033; color: #FFFF00; border: 1px solid #0066FF;")
+        layout.addWidget(self.track_text)
+
+        return widget
+
+    def _decode_transpose(self, transpose: int) -> tuple:
+        """Decode transpose byte to signed semitones.
+
+        Args:
+            transpose: Transpose byte (0x80-0xBF)
+
+        Returns:
+            Tuple of (semitones: int, display: str)
+            e.g., (0, "+0"), (2, "+2"), (-4, "-4")
+        """
+        # Extract lower nibble (4-bit signed value)
+        transpose_nibble = transpose & 0x0F
+
+        if transpose_nibble < 8:
+            semitones = transpose_nibble  # 0-7 = +0 to +7
+            display = f"+{semitones}"
+        else:
+            semitones = transpose_nibble - 16  # 8-15 = -8 to -1
+            display = f"{semitones}"
+
+        return semitones, display
+
+    def _format_note(self, note_value: int) -> str:
+        """Convert note value to musical notation (SF2 Editor format).
+
+        Args:
+            note_value: Note byte (0x00-0x7F)
+
+        Returns:
+            Musical notation string (e.g., "C-4", "F#-2", "+++", "---")
+        """
+        if note_value == 0x00:
+            return "---"  # Gate off / silence
+        elif note_value == 0x7E:
+            return "+++"  # Gate on / sustain
+        elif note_value == 0x7F:
+            return "END"  # End marker
+        elif note_value > 0x7F:
+            return f"0x{note_value:02X}"  # Invalid
+        else:
+            # Valid note (0x01-0x7D)
+            notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+            octave = note_value // 12
+            note_idx = note_value % 12
+            return f"{notes[note_idx]}-{octave}"
+
+    def _apply_transpose(self, note_value: int, transpose: int) -> int:
+        """Apply transpose to note value.
+
+        Args:
+            note_value: Original note (0x00-0x7F)
+            transpose: Transpose byte (0x80-0xBF)
+
+        Returns:
+            Transposed note value
+        """
+        # Special values not transposed
+        if note_value in [0x00, 0x7E, 0x7F] or note_value >= 0x80:
+            return note_value
+
+        # Decode transpose (lower nibble)
+        transpose_nibble = transpose & 0x0F
+        if transpose_nibble < 8:
+            semitones = transpose_nibble
+        else:
+            semitones = transpose_nibble - 16
+
+        # Apply transpose
+        transposed = note_value + semitones
+
+        # Clamp to valid range
+        if transposed < 0:
+            transposed = 0
+        elif transposed > 0x7D:
+            transposed = 0x7D
+
+        return transposed
+
     def update_orderlist(self):
-        """Update the orderlist tab - display 3-column OrderList structure (SID Factory II format)"""
+        """Update the orderlist tab - display unpacked XXYY format (SF2 Editor format)"""
         if not self.parser or not self.parser.music_data_info:
             self.orderlist_info.setText("No orderlist data available")
+            self.orderlist_text.setPlainText("No orderlist data available")
             return
 
-        # Get orderlist addresses (3 columns stored separately)
-        addr_col1 = self.parser.music_data_info.orderlist_address
-        addr_col2 = getattr(self.parser, 'orderlist_col2_addr', addr_col1 + 0x100)
-        addr_col3 = getattr(self.parser, 'orderlist_col3_addr', addr_col1 + 0x200)
+        # Use unpacked orderlist if available (NEW - from Phase 1)
+        if hasattr(self.parser, 'orderlist_unpacked') and self.parser.orderlist_unpacked:
+            # Display unpacked XXYY format
+            ol_text = ""
+            ol_text += "ORDER LIST (SF2 Editor Format - Unpacked XXYY)\n"
+            ol_text += "=" * 70 + "\n"
+            ol_text += "Format: XXYY where XX=transpose, YY=sequence\n"
+            ol_text += "  A0 = no transpose, A2 = +2 semitones, AC = -4 semitones, etc.\n"
+            ol_text += "\n"
+            ol_text += "Step  | Track 1      | Track 2      | Track 3      | Notes\n"
+            ol_text += "------|--------------|--------------|--------------|------------------\n"
 
-        # Update info (hidden)
-        info = f"OrderList (3 columns): Col1=${addr_col1:04X} Col2=${addr_col2:04X} Col3=${addr_col3:04X}"
-        self.orderlist_info.setText(info)
+            # Get all 3 tracks
+            tracks = self.parser.orderlist_unpacked
 
-        # Read orderlist columns from memory
-        # Read all entries starting from offset 0 (not offset 2)
-        # Each column contains one byte per entry (256 bytes max = 256 entries)
-        # Format matches SID Factory II editor: row numbers increment by 0x20
-        ol_text = ""
+            # Find maximum length
+            max_len = max(len(track) for track in tracks) if tracks else 0
 
-        for row_idx in range(0, 256):  # Start from row 0 (include all entries)
-            # Get one byte from each column
-            bytes_in_row = []
+            # Track sequence usage for validation
+            sequence_usage = {}
+            invalid_sequences = []
+            available_sequences = set(self.parser.sequences.keys())
 
-            # Column 1
-            if addr_col1 + row_idx < len(self.parser.memory):
-                bytes_in_row.append(self.parser.memory[addr_col1 + row_idx])
-            else:
-                break
+            # Display unpacked entries
+            for pos in range(max_len):
+                # Format row number
+                ol_text += f"{pos:04X}  | "
 
-            # Column 2
-            if addr_col2 + row_idx < len(self.parser.memory):
-                bytes_in_row.append(self.parser.memory[addr_col2 + row_idx])
-            else:
-                bytes_in_row.append(0)
+                notes = []
 
-            # Column 3
-            if addr_col3 + row_idx < len(self.parser.memory):
-                bytes_in_row.append(self.parser.memory[addr_col3 + row_idx])
-            else:
-                bytes_in_row.append(0)
+                for track_idx, track in enumerate(tracks):
+                    if pos < len(track):
+                        entry = track[pos]
+                        transpose = entry['transpose']
+                        sequence = entry['sequence']
 
-            if len(bytes_in_row) == 3:
-                # Format with spaces for zero bytes: XXXX: YY YY YY or YY    YY if column is zero
-                col1_str = f"{bytes_in_row[0]:02X}" if bytes_in_row[0] != 0 else "  "
-                col2_str = f"{bytes_in_row[1]:02X}" if bytes_in_row[1] != 0 else "  "
-                col3_str = f"{bytes_in_row[2]:02X}" if bytes_in_row[2] != 0 else "  "
-                hex_bytes = f"{col1_str} {col2_str} {col3_str}"
-                row_display = row_idx * 0x20  # Match editor row numbering
-                ol_text += f"{row_display:04X}: {hex_bytes}\n"
+                        # Decode transpose
+                        _, transpose_display = self._decode_transpose(transpose)
 
-                # Stop at 0xFF marker (end marker)
-                if bytes_in_row[0] == 0xFF:
+                        # Write in XXYY format with decoded transpose
+                        ol_text += f"{transpose:02X}{sequence:02X} ({transpose_display:>3s}) | "
+
+                        # Track usage
+                        sequence_usage[sequence] = sequence_usage.get(sequence, 0) + 1
+
+                        # Validate sequence exists
+                        if sequence not in available_sequences:
+                            invalid_sequences.append((pos, track_idx + 1, sequence))
+                            notes.append(f"T{track_idx+1}:${sequence:02X}?")
+
+                        # Note transpose changes
+                        if pos > 0 and transpose != tracks[track_idx][pos-1]['transpose']:
+                            _, new_transpose_display = self._decode_transpose(transpose)
+                            notes.append(f"T{track_idx+1} transpose {new_transpose_display}")
+                    else:
+                        # Track ended
+                        ol_text += "              | "
+
+                # Add notes
+                notes_str = " ".join(notes) if notes else ""
+                ol_text += notes_str + "\n"
+
+            # Add summary
+            if sequence_usage:
+                ol_text += "\n"
+                ol_text += "SEQUENCE USAGE:\n"
+                ol_text += "-" * 70 + "\n"
+                for seq_num in sorted(sequence_usage.keys()):
+                    count = sequence_usage[seq_num]
+                    status = "OK" if seq_num in available_sequences else "MISSING"
+                    seq_format = self.parser.sequence_formats.get(seq_num, 'unknown')
+                    ol_text += f"  Sequence ${seq_num:02X}: {count:2d}x  [{status:7s}]  ({seq_format})\n"
+
+            if invalid_sequences:
+                ol_text += "\n"
+                ol_text += "VALIDATION ERRORS:\n"
+                ol_text += "-" * 70 + "\n"
+                for pos, track, seq_num in invalid_sequences:
+                    ol_text += f"  Step ${pos:04X} Track {track}: Sequence ${seq_num:02X} not found\n"
+
+            self.orderlist_text.setPlainText(ol_text)
+
+        else:
+            # Fallback: Show raw bytes (old format)
+            ol_text = ""
+            ol_text += "ORDER LIST (Raw Format - Unpacked data not available)\n"
+            ol_text += "=" * 60 + "\n\n"
+            ol_text += "Step  | Track 1 | Track 2 | Track 3\n"
+            ol_text += "------|---------|---------|----------\n"
+
+            addr_col1 = self.parser.music_data_info.orderlist_address
+            addr_col2 = getattr(self.parser, 'orderlist_col2_addr', addr_col1 + 0x100)
+            addr_col3 = getattr(self.parser, 'orderlist_col3_addr', addr_col1 + 0x200)
+
+            for row_idx in range(0, 256):
+                # Get one byte from each column
+                bytes_in_row = []
+
+                # Column 1
+                if addr_col1 + row_idx < len(self.parser.memory):
+                    bytes_in_row.append(self.parser.memory[addr_col1 + row_idx])
+                else:
                     break
+
+                # Column 2
+                if addr_col2 + row_idx < len(self.parser.memory):
+                    bytes_in_row.append(self.parser.memory[addr_col2 + row_idx])
+                else:
+                    bytes_in_row.append(0)
+
+                # Column 3
+                if addr_col3 + row_idx < len(self.parser.memory):
+                    bytes_in_row.append(self.parser.memory[addr_col3 + row_idx])
+                else:
+                    bytes_in_row.append(0)
+
+                if len(bytes_in_row) == 3:
+                    # Format display strings
+                    col1_str = f"{bytes_in_row[0]:02X}" if bytes_in_row[0] != 0 else "  "
+                    col2_str = f"{bytes_in_row[1]:02X}" if bytes_in_row[1] != 0 else "  "
+                    col3_str = f"{bytes_in_row[2]:02X}" if bytes_in_row[2] != 0 else "  "
+
+                    ol_text += f"{row_idx:04X}  | {col1_str:7s} | {col2_str:7s} | {col3_str:7s}\n"
+
+                    # Stop at 0xFF marker (end marker)
+                    if bytes_in_row[0] == 0xFF:
+                        break
+
+            self.orderlist_text.setPlainText(ol_text)
 
         self.orderlist_text.setText(ol_text if ol_text else "OrderList is empty or contains only zeros")
 
@@ -872,14 +1084,24 @@ class SF2ViewerWindow(QMainWindow):
         # Check sequence format (single-track or 3-track interleaved)
         seq_format = self.parser.sequence_formats.get(seq_idx, 'interleaved')
 
+        # Get current view mode
+        view_mode = self.sequence_view_combo.currentData() if hasattr(self, 'sequence_view_combo') else 'both'
+
         if seq_format == 'single':
             # Display as single continuous track
-            self._display_sequence_single_track(seq_idx, seq_data)
+            self._display_sequence_single_track(seq_idx, seq_data, view_mode)
         else:
             # Display in 3-track parallel format (matching SID Factory II)
-            self._display_sequence_3track_parallel(seq_idx, seq_data)
+            self._display_sequence_3track_parallel(seq_idx, seq_data, view_mode)
 
-    def _display_sequence_single_track(self, seq_idx: int, seq_data: list):
+    def on_sequence_view_changed(self, index: int):
+        """Handle view mode change - refresh current sequence display"""
+        # Re-display the current sequence with the new view mode
+        current_index = self.sequence_combo.currentIndex()
+        if current_index >= 0:
+            self.on_sequence_selected(current_index)
+
+    def _display_sequence_single_track(self, seq_idx: int, seq_data: list, view_mode: str = 'both'):
         """Display sequence data as single continuous track (for Laxity single-track sequences)"""
         # Update info
         format_type = "Laxity driver (single-track)" if (hasattr(self.parser, 'is_laxity_driver') and self.parser.is_laxity_driver) else "Single-track"
@@ -889,21 +1111,40 @@ class SF2ViewerWindow(QMainWindow):
         # Format sequence data as single track
         seq_text = ""
 
-        # Header
-        seq_text += "Step  Inst Cmd  Note\n"
-        seq_text += "----  ---- ---  ----\n"
+        # Header based on view mode
+        if view_mode == 'musician':
+            seq_text += "Step  Inst Cmd  Note\n"
+            seq_text += "----  ---- ---  ----\n"
+        elif view_mode == 'hex':
+            seq_text += "Step  Inst Cmd  Note  [Hex]\n"
+            seq_text += "----  ---- ---  ----  -----------\n"
+        else:  # both
+            seq_text += "Step  Inst Cmd  Note     [Hex]\n"
+            seq_text += "----  ---- ---  -------  -----------\n"
 
         # Data rows
         for step, entry in enumerate(seq_data):
+            # Get display values
             instr = entry.instrument_display()  # 2 chars
             cmd = entry.command_display()       # 2 chars
             note = entry.note_name()            # 3+ chars
 
-            seq_text += f"{step:04X}  {instr:2s}   {cmd:>2s}  {note:4s}\n"
+            # Get hex values
+            inst_hex = f"{entry.instrument:02X}" if entry.instrument else "00"
+            cmd_hex = f"{entry.command:02X}" if entry.command else "00"
+            note_hex = f"{entry.note:02X}" if hasattr(entry, 'note') and entry.note else "00"
+
+            # Format based on view mode
+            if view_mode == 'musician':
+                seq_text += f"{step:04X}  {instr:2s}   {cmd:>2s}  {note:4s}\n"
+            elif view_mode == 'hex':
+                seq_text += f"{step:04X}  {inst_hex}   {cmd_hex}   {note_hex}    [{inst_hex} {cmd_hex} {note_hex}]\n"
+            else:  # both
+                seq_text += f"{step:04X}  {instr:2s}   {cmd:>2s}  {note:6s}   [{inst_hex} {cmd_hex} {note_hex}]\n"
 
         self.sequence_text.setText(seq_text)
 
-    def _display_sequence_3track_parallel(self, seq_idx: int, seq_data: list):
+    def _display_sequence_3track_parallel(self, seq_idx: int, seq_data: list, view_mode: str = 'both'):
         """Display sequence data in 3-track parallel format (matching SID Factory II editor)"""
         # Update info - calculate number of "steps" (groups of 3 entries for 3 tracks)
         num_steps = (len(seq_data) + 2) // 3  # Round up division
@@ -917,10 +1158,19 @@ class SF2ViewerWindow(QMainWindow):
         # Entry 3, 4, 5 = Track 1, 2, 3 at Step 1, etc.
         seq_text = ""
 
-        # Header with 3 columns to match SID Factory II: Instrument (2), Command (2), Note (3)
-        seq_text += "      Track 1           Track 2           Track 3\n"
-        seq_text += "Step  In Cmd Note       In Cmd Note       In Cmd Note\n"
-        seq_text += "----  -- --- ----       -- --- ----       -- --- ----\n"
+        # Header based on view mode
+        if view_mode == 'musician':
+            seq_text += "      Track 1           Track 2           Track 3\n"
+            seq_text += "Step  In Cmd Note       In Cmd Note       In Cmd Note\n"
+            seq_text += "----  -- --- ----       -- --- ----       -- --- ----\n"
+        elif view_mode == 'hex':
+            seq_text += "      Track 1                 Track 2                 Track 3\n"
+            seq_text += "Step  In Cmd Note [Hex]      In Cmd Note [Hex]      In Cmd Note [Hex]\n"
+            seq_text += "----  -- --- ---- --------   -- --- ---- --------   -- --- ---- --------\n"
+        else:  # both
+            seq_text += "      Track 1                  Track 2                  Track 3\n"
+            seq_text += "Step  In Cmd Note   [Hex]     In Cmd Note   [Hex]     In Cmd Note   [Hex]\n"
+            seq_text += "----  -- --- -----  --------  -- --- -----  --------  -- --- -----  --------\n"
 
         # Data rows - group by 3 for parallel track display
         step = 0
@@ -929,25 +1179,126 @@ class SF2ViewerWindow(QMainWindow):
             entry2 = seq_data[i + 1] if i + 1 < len(seq_data) else None
             entry3 = seq_data[i + 2] if i + 2 < len(seq_data) else None
 
-            # Format each track's data: "In Cmd Note" (Instrument=2, Command=2, Note=3)
-            def format_entry(entry):
+            # Format each track's data based on view mode
+            def format_entry(entry, view_mode):
                 if entry is None:
-                    return "-- --- ----"
-                instr = entry.instrument_display()  # 2 chars
-                cmd = entry.command_display()       # 2 chars
-                note = entry.note_name()            # 3+ chars, we'll take first 4
-                # Format: "In Cmd Note" with exact spacing
-                return f"{instr:2s} {cmd:>2s} {note:4s}"
+                    if view_mode == 'hex':
+                        return "-- --- ---- --------"
+                    elif view_mode == 'both':
+                        return "-- --- -----  --------"
+                    else:
+                        return "-- --- ----"
 
-            track1_str = format_entry(entry1)
-            track2_str = format_entry(entry2)
-            track3_str = format_entry(entry3)
+                instr = entry.instrument_display()
+                cmd = entry.command_display()
+                note = entry.note_name()
+
+                if view_mode == 'musician':
+                    return f"{instr:2s} {cmd:>2s} {note:4s}"
+                else:
+                    # Get hex values
+                    inst_hex = f"{entry.instrument:02X}" if entry.instrument else "00"
+                    cmd_hex = f"{entry.command:02X}" if entry.command else "00"
+                    note_hex = f"{entry.note:02X}" if hasattr(entry, 'note') and entry.note else "00"
+
+                    if view_mode == 'hex':
+                        return f"{inst_hex} {cmd_hex}  {note_hex}   [{inst_hex} {cmd_hex} {note_hex}]"
+                    else:  # both
+                        return f"{instr:2s} {cmd:>2s} {note:5s}  [{inst_hex} {cmd_hex} {note_hex}]"
+
+            track1_str = format_entry(entry1, view_mode)
+            track2_str = format_entry(entry2, view_mode)
+            track3_str = format_entry(entry3, view_mode)
 
             # Build the row with 3 tracks
-            seq_text += f"{step:04X}  {track1_str}       {track2_str}       {track3_str}\n"
+            if view_mode == 'musician':
+                seq_text += f"{step:04X}  {track1_str}       {track2_str}       {track3_str}\n"
+            else:
+                seq_text += f"{step:04X}  {track1_str}  {track2_str}  {track3_str}\n"
             step += 1
 
         self.sequence_text.setText(seq_text)
+
+    def on_track_selected(self, index: int):
+        """Handle track selection - display track data"""
+        if index < 0 or not self.parser:
+            return
+
+        track_idx = self.track_selector.itemData(index)
+        self.update_track_view(track_idx)
+
+    def update_track_view(self, track_idx: int = 0):
+        """Update the track view tab - combines OrderList + Sequences with transpose"""
+        if not self.parser or not hasattr(self.parser, 'orderlist_unpacked') or not self.parser.orderlist_unpacked:
+            self.track_info.setText("No track data available - OrderList unpacking required")
+            self.track_text.setPlainText("No track data available")
+            return
+
+        if track_idx < 0 or track_idx >= len(self.parser.orderlist_unpacked):
+            self.track_info.setText(f"Invalid track index: {track_idx}")
+            self.track_text.setPlainText("Invalid track index")
+            return
+
+        # Get track OrderList
+        track_orderlist = self.parser.orderlist_unpacked[track_idx]
+        track_num = track_idx + 1
+
+        # Update info
+        self.track_info.setText(f"Track {track_num} - {len(track_orderlist)} OrderList positions")
+
+        # Build track display
+        track_text = f"# Track {track_num} - Unpacked Musical Notation\n"
+        track_text += f"# Format: Position | OrderList | Sequence | Transpose | Step | Instrument | Command | Note\n"
+        track_text += "# " + "-" * 77 + "\n\n"
+
+        # Process each OrderList position
+        for pos, entry in enumerate(track_orderlist):
+            transpose = entry['transpose']
+            sequence_idx = entry['sequence']
+
+            # Decode transpose for display
+            _, transpose_display = self._decode_transpose(transpose)
+
+            # Write position header
+            track_text += f"Position {pos:03d} | OrderList: {transpose:02X}{sequence_idx:02X} | "
+            track_text += f"Sequence ${sequence_idx:02X} | Transpose {transpose_display}\n"
+
+            # Get sequence data
+            if sequence_idx not in self.parser.sequences:
+                track_text += f"  ERROR: Sequence ${sequence_idx:02X} not found\n\n"
+                continue
+
+            sequence_data = self.parser.sequences[sequence_idx]
+            seq_format = self.parser.sequence_formats.get(sequence_idx, 'interleaved')
+
+            # Extract track entries (handle interleaved vs single)
+            if seq_format == 'interleaved':
+                # Interleaved format: entries at indices track_idx, track_idx+3, track_idx+6, ...
+                track_entries = [sequence_data[i] for i in range(track_idx, len(sequence_data), 3)]
+            else:
+                # Single-track format: use all entries
+                track_entries = sequence_data
+
+            # Display sequence with transpose applied
+            for step, seq_entry in enumerate(track_entries):
+                # Get values
+                inst_str = seq_entry.instrument_display() if hasattr(seq_entry, 'instrument_display') else f"{seq_entry.instrument:02X}"
+                cmd_str = seq_entry.command_display() if hasattr(seq_entry, 'command_display') else f"{seq_entry.command:02X}"
+
+                # Apply transpose to note
+                note_value = seq_entry.note if hasattr(seq_entry, 'note') else 0
+                transposed_note = self._apply_transpose(note_value, transpose)
+                note_str = self._format_note(transposed_note)
+
+                # Format instrument and command to fixed width
+                inst_display = inst_str if inst_str != "00" else "--"
+                cmd_display = cmd_str if cmd_str != "00" else "--"
+
+                track_text += f"  {step:04X} | {inst_display:4s} | {cmd_display:4s} | {note_str:6s}\n"
+
+            track_text += "  [End of sequence]\n\n"
+
+        self.track_text.setPlainText(track_text)
 
     def _has_valid_sequences(self) -> bool:
         """Check if loaded SF2 file has valid sequence data

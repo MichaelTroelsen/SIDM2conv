@@ -420,6 +420,7 @@ class SF2Parser:
         self.table_descriptors: List[TableDescriptor] = []
         self.music_data_info: Optional[MusicDataInfo] = None
         self.orderlist: List[int] = []
+        self.orderlist_unpacked: List[List[Dict]] = []  # NEW: Unpacked orderlist entries for 3 tracks
         self.sequences: Dict[int, List[SequenceEntry]] = {}
         self.sequence_formats: Dict[int, str] = {}  # Maps sequence idx to 'single' or 'interleaved'
         self.memory = bytearray(65536)
@@ -913,26 +914,88 @@ class SF2Parser:
         except Exception as e:
             logger.error(f"Error parsing music data block: {e}")
 
+    def _unpack_orderlist_track(self, track_addr: int, max_entries: int = 256) -> List[Dict]:
+        """Unpack a single track's orderlist from packed format.
+
+        Implements the SF2 editor unpacking algorithm:
+        - Values >= 0x80: Transpose values (update state, don't create entry)
+        - Values < 0x80: Sequence indices (create entry with current transpose)
+        - 0xFE: End marker
+        - 0xFF: Loop marker
+
+        Args:
+            track_addr: Memory address of packed orderlist data for this track
+            max_entries: Maximum number of entries to read
+
+        Returns:
+            List of dicts with 'transpose' and 'sequence' keys
+        """
+        entries = []
+        current_transpose = 0xA0  # Default: no transpose
+
+        for i in range(max_entries):
+            if track_addr + i >= len(self.memory):
+                break
+
+            value = self.memory[track_addr + i]
+
+            # End markers
+            if value == 0xFE or value == 0xFF:
+                break
+
+            # Transpose value (>= 0x80): Update state, don't create entry
+            if value >= 0x80:
+                current_transpose = value
+            else:
+                # Sequence index (< 0x80): Create entry with current transpose
+                entries.append({
+                    'transpose': current_transpose,
+                    'sequence': value
+                })
+
+        return entries
+
     def _parse_orderlist(self):
-        """Extract orderlist from memory"""
+        """Extract and unpack orderlist from memory.
+
+        Reads packed orderlist data for all 3 tracks and unpacks using
+        SF2 editor algorithm (transpose state machine).
+
+        Creates:
+        - self.orderlist: Raw packed bytes (legacy compatibility)
+        - self.orderlist_unpacked: List of 3 track lists with unpacked entries
+        """
         if not self.music_data_info:
             return
 
+        # Legacy: Read raw bytes from first column (for backward compatibility)
         addr = self.music_data_info.orderlist_address
         self.orderlist = []
 
-        # Read orderlist until we find 0x7F (end marker)
         for i in range(256):  # Max 256 entries
             if addr + i >= len(self.memory):
                 break
-
             byte = self.memory[addr + i]
             self.orderlist.append(byte)
-
             if byte == 0x7F:  # End marker
                 break
 
-        logger.info(f"OrderList: {len(self.orderlist)} entries (up to first 0x7F)")
+        # NEW: Unpack all 3 tracks using SF2 editor algorithm
+        self.orderlist_unpacked = []
+
+        # Get addresses for all 3 OrderList columns
+        track_addrs = [
+            self.music_data_info.orderlist_address,  # Track 1
+            getattr(self, 'orderlist_col2_addr', self.music_data_info.orderlist_address + 0x100),  # Track 2
+            getattr(self, 'orderlist_col3_addr', self.music_data_info.orderlist_address + 0x200),  # Track 3
+        ]
+
+        for track_num, track_addr in enumerate(track_addrs, 1):
+            unpacked = self._unpack_orderlist_track(track_addr)
+            self.orderlist_unpacked.append(unpacked)
+            logger.info(f"OrderList Track {track_num}: {len(unpacked)} unpacked entries (from 0x{track_addr:04X})")
+
+        logger.info(f"OrderList: {len(self.orderlist)} raw bytes, {len(self.orderlist_unpacked)} tracks unpacked")
 
     def _detect_laxity_offset_table_structure(self) -> Optional[int]:
         """Detect Laxity offset table structure in SF2 file.

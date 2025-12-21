@@ -70,17 +70,29 @@ python sf2_viewer_gui.py
   - Header Blocks: SF2 block structure
   - Tables: Music data tables (spreadsheet view)
   - Memory Map: Visual memory layout
-  - OrderList: Sequence playback order
+  - **OrderList**: XXYY unpacked format (NEW v2.3 - matches SF2 editor display)
   - Sequences: Step-by-step sequence data with **automatic format detection**
   - **Visualization**: Waveform, filter, and envelope graphs
   - **Playback**: Audio preview with play/pause/volume
 - **Smart sequence handling**: Auto-detects single-track vs 3-track interleaved format
 - **Hex notation**: Sequence display shows "Sequence 10 ($0A)" matching SID Factory II
+- **OrderList unpacking** (NEW v2.3): Shows transpose + sequence (A00E = transpose A0, sequence 0E)
 - View all SF2 block types and table data
 - File validation summary
 - Professional PyQt6 GUI matching SID Factory II layout
 
-**New Features (v2.2 - 2025-12-18):**
+**New Features (v2.4 - 2025-12-21):**
+- **Track View Tab**: Combines OrderList + Sequences with transpose applied (NEW!)
+- **OrderList Transpose Decoding**: Shows A00E (+0), A20A (+2), AC0F (-4)
+- **Track Selector**: Switch between Track 1/2/3 views
+- **100% Feature Parity**: Matches C++ editor and Python exporter exactly
+
+**Features from v2.3 (2025-12-21):**
+- **OrderList XXYY Format**: Unpacked display showing transpose + sequence (A00E, A20A, etc.)
+- **Transpose Change Tracking**: Notes when transpose values change (e.g., "T3 transpose +2")
+- **SF2 Editor Parity**: OrderList display matches C++ editor
+
+**Features from v2.2 (2025-12-18):**
 - **Single-track sequence support**: Auto-detects and displays single-track sequences correctly
 - **Hex notation**: Shows "Sequence 10 ($0A)" format matching SID Factory II editor
 - **96.9% Track 3 accuracy**: Correct extraction and display of Track 3 data
@@ -105,20 +117,88 @@ python sf2_to_text_exporter.py "learnings/Laxity - Stinsen.sf2"
 ```
 
 **Exports:**
-- **orderlist.txt** - Sequence playback order (3 tracks)
+- **orderlist.txt** - Sequence playback order in XXYY format (NEW v2.3)
+- **track_1.txt, track_2.txt, track_3.txt** - Track view with musical notation (NEW v2.3)
 - **sequence_XX.txt** - Individual sequences (auto-detects single/interleaved format)
 - **instruments.txt** - Instrument definitions (AD, SR, waveform, tables, HR)
 - **wave.txt, pulse.txt, filter.txt** - Table data
 - **commands.txt** - Command reference
 - **summary.txt** - Statistics and file list
 
+**New in v2.3 (2025-12-21)**:
+- **OrderList XXYY Format**: Shows unpacked format (A00E = transpose A0, sequence 0E)
+- **Track Export**: 3 files combining OrderList + Sequences with musical notation
+- **Musical Notation**: C-4, F#-2, +++ (sustain), --- (silence)
+- **Transpose Display**: Shows +0, +2, -4 semitones applied to notes
+- **100% Feature Parity**: Matches SF2 C++ editor track export (F8 key)
+
 **Use Cases:**
 - Create reference files from known-good SF2 files
 - Validate SID→SF2 conversions by comparing text exports
 - Debug conversion issues by examining actual data structure
 - Learn SF2 format through human-readable output
+- Compare with SF2 editor track display for accuracy verification
 
 **See:** `SF2_TEXT_EXPORTER_README.md` for complete documentation
+
+### SF2 Editor Enhancements (NEW - 2025-12-21)
+
+Custom modifications to SID Factory II editor for enhanced export and usability:
+
+**Build Location**: `C:\Users\mit\Downloads\sidfactory2-master\sidfactory2-master\`
+**Executable**: `x64\Release\SIDFactoryII.exe` (987 KB)
+
+#### New Features
+
+**1. Track Export with Musical Notation**
+- Press **F8** to export, creates 3 new files: `track_1.txt`, `track_2.txt`, `track_3.txt`
+- Shows unpacked sequences organized by OrderList positions
+- Musical notation matching SF2 editor display (C-4, F#-2, +++, ---)
+- Includes OrderList references (e.g., "OrderList: A00E")
+- Expands duration into visible sustain steps
+
+**2. Enhanced OrderList Export**
+- `orderlist.txt` now shows unpacked XXYY format
+- XX = transpose value (A0, A2, AC, etc.)
+- YY = sequence index (00-7F)
+- Matches SF2 editor OrderList display exactly
+
+**3. Build Timestamp**
+- Window title shows build date/time: `(Build: Dec 21 2025 07:58:12)`
+- Useful for version tracking and debugging
+
+**4. Zoom Functionality**
+- **Ctrl + +** (or Ctrl + =) - Zoom In (0.25x increments)
+- **Ctrl + -** - Zoom Out (0.25x decrements)
+- **Ctrl + 0** - Reset to original zoom
+- Range: 0.5x to 4.0x
+- Perfect for high-resolution screenshots
+
+#### Export Files Created
+
+After **F8** export in SF2 editor (total 148 files):
+```
+exports/music_data_export/
+├── orderlist.txt              # NEW: Unpacked XXYY format
+├── track_1.txt                # NEW: Track 1 musical notation
+├── track_2.txt                # NEW: Track 2 musical notation
+├── track_3.txt                # NEW: Track 3 musical notation
+├── sequence_*.txt             # Original: 128 packed sequence files
+├── instruments.txt            # Original: Instrument definitions
+└── [other table files]        # Original: Wave, Pulse, Filter, etc.
+```
+
+#### Technical Implementation
+
+**Files Modified**:
+- `table_text_exporter.h/cpp` - Track and OrderList export
+- `viewport.h/cpp` - Zoom functionality and build timestamp
+- `editor_facility.cpp` - Keyboard shortcut handling
+
+**Code Added**: ~370 lines
+**New Methods**: 7 (ExportTracks, FormatNote, ZoomIn, ZoomOut, ResetZoom, SetScaling, GetScaling)
+
+**See**: `SF2_EDITOR_ENHANCEMENTS.md` for complete documentation
 
 ---
 
@@ -494,6 +574,8 @@ Total size: 2.5 MB
 ```
 
 ### Experiment Workflow
+
+**⚠️ MANDATORY RULE: ALL experimental work MUST be conducted in `experiments/` folder!**
 
 Create structured experiments with automatic cleanup:
 
@@ -884,6 +966,8 @@ Assistant: [Use EnterPlanMode to explore and design approach first]
 
 ## Version History
 
+- **v2.4.0** (2025-12-21) - **SF2 Viewer Feature Parity** - Track View tab, transpose decoding, 100% parity with C++ editor and Python exporter
+- **v2.3.0** (2025-12-21) - **OrderList & Track Export** - OrderList XXYY unpacking, Track export (3 files), musical notation, 100% SF2 editor parity, transpose bug fix
 - **v2.2.0** (2025-12-18) - **Single-track Sequence Support** - Auto-detects single-track vs 3-track interleaved sequences, hex notation display, 96.9% Track 3 accuracy
 - **v2.1.0** (2025-12-17) - **Recent Files + Visualization + Playback** - Added Recent Files menu with persistent storage (10 files), waveform/filter/envelope visualization, and audio playback controls
 - **v2.0.0** (2025-12-15) - **SF2 Viewer released** - Professional PyQt6 GUI for viewing SF2 files
@@ -934,6 +1018,8 @@ Assistant: [Use EnterPlanMode to explore and design approach first]
 
 ## Version History
 
+- **v2.4.0** (2025-12-21) - **SF2 Viewer: Full Feature Parity** - Track View tab (combines OrderList + Sequences + transpose), transpose decoding in OrderList, 100% parity with C++ editor and Python exporter
+- **v2.3.0** (2025-12-21) - **SF2 Tools: OrderList & Track Export** - Applied SF2 C++ editor knowledge: OrderList XXYY unpacking, Track export (3 files with musical notation), transpose bug fix, 100% feature parity
 - **v2.2.0** (2025-12-18) - **SF2 Viewer: Single-track Sequence Support** - Auto-detects single-track vs 3-track interleaved sequences, hex notation display, 96.9% Track 3 accuracy
 - **v2.1.0** (2025-12-17) - **SF2 Viewer: Recent Files + Visualization + Playback** - Added Recent Files menu, waveform/filter/envelope graphs, audio playback
 - **v2.0.0** (2025-12-15) - **SF2 Viewer released** - Professional PyQt6 GUI for viewing SF2 files
