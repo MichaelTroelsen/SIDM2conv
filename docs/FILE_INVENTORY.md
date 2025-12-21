@@ -1,6 +1,6 @@
 # File Inventory
 
-**Last Updated**: 2025-12-21 18:10:07
+**Last Updated**: 2025-12-21 20:14:05
 
 ## Repository Structure
 
@@ -8,16 +8,16 @@
 SIDM2/
 ├── batch-convert-laxity.bat (559B)
 ├── batch-convert.bat (508B)
-├── CHANGELOG.md (33.7KB)
-├── CLAUDE.md (41.7KB)
+├── CHANGELOG.md (40.5KB)
+├── CLAUDE.md (42.2KB)
 ├── cleanup.bat (1.0KB)
-├── CONTRIBUTING.md (6.5KB)
+├── CONTRIBUTING.md (12.3KB)
 ├── file_inventory.json (0B)
 ├── launch_sf2_viewer.bat (1.8KB)
 ├── nul (0B)
 ├── pipeline.bat (769B)
 ├── pytest.ini (475B)
-├── README.md (102.3KB)
+├── README.md (104.1KB)
 ├── requirements.txt (115B)
 ├── sf2-export.bat (860B)
 ├── sf2-to-sid.bat (642B)
@@ -27,8 +27,10 @@ SIDM2/
 ├── SIDwinder.cfg (1.5KB)
 ├── test-converter.bat (594B)
 ├── test-roundtrip.bat (532B)
+├── test_errors_demo.py (7.4KB)
 ├── TOOLS.bat (5.8KB)
 ├── update-inventory.bat (409B)
+├── UX_IMPROVEMENT_PLAN.md (14.7KB)
 ├── validate-accuracy.bat (638B)
 ├── archive/
 │   ├── README.md (4.3KB)
@@ -230,7 +232,7 @@ SIDM2/
 │       ├── RETRODEBUGGER_INVESTIGATION.md (3.8KB)
 ├── docs/
 │   ├── ARCHITECTURE.md (21.1KB)
-│   ├── COMPONENTS_REFERENCE.md (22.0KB)
+│   ├── COMPONENTS_REFERENCE.md (27.4KB)
 │   ├── FILE_INVENTORY.md (260.3KB)
 │   ├── IMPROVEMENT_PLAN.md (13.8KB)
 │   ├── INDEX.md (12.7KB)
@@ -312,9 +314,11 @@ SIDM2/
 │   │           ├── VALIDATION_SYSTEM_NOTES.md (4.4KB)
 │   ├── guides/
 │   │   ├── CLEANUP_SYSTEM.md (26.1KB)
+│   │   ├── ERROR_MESSAGE_STYLE_GUIDE.md (17.4KB)
 │   │   ├── LAXITY_DRIVER_USER_GUIDE.md (19.7KB)
 │   │   ├── ROOT_FOLDER_RULES.md (10.8KB)
 │   │   ├── SIDWINDER_GUIDE.md (6.9KB)
+│   │   ├── TROUBLESHOOTING.md (18.0KB)
 │   │   ├── VALIDATION_GUIDE.md (25.6KB)
 │   ├── implementation/
 │   │   ├── GATE_INFERENCE_IMPLEMENTATION.md (11.9KB)
@@ -3975,24 +3979,25 @@ SIDM2/
 │   ├── __init__.py (908B)
 │   ├── analyze_waveforms.py (18.4KB)
 │   ├── compare_musical_content.py (3.1KB)
-│   ├── convert_all.py (43.6KB)
+│   ├── convert_all.py (45.3KB)
 │   ├── disassemble_sid.py (9.2KB)
 │   ├── extract_addresses.py (8.1KB)
 │   ├── generate_dashboard.py (7.7KB)
 │   ├── generate_validation_report.py (17.9KB)
 │   ├── run_ci.bat (150B)
 │   ├── run_validation.py (9.7KB)
-│   ├── sf2_to_sid.py (11.4KB)
-│   ├── sid_to_sf2.py (28.5KB)
+│   ├── sf2_to_sid.py (13.5KB)
+│   ├── sid_to_sf2.py (36.5KB)
 │   ├── test_backward_compatibility.py (12.9KB)
 │   ├── test_complete_pipeline.py (13.8KB)
 │   ├── test_converter.py (62.3KB)
+│   ├── test_error_messages.py (20.1KB)
 │   ├── test_laxity_baseline.py (9.3KB)
 │   ├── test_midi_comparison.py (17.9KB)
-│   ├── test_roundtrip.py (26.1KB)
+│   ├── test_roundtrip.py (27.0KB)
 │   ├── test_sf2_format.py (9.4KB)
 │   ├── update_inventory.py (6.9KB)
-│   ├── validate_sid_accuracy.py (33.0KB)
+│   ├── validate_sid_accuracy.py (35.4KB)
 │   └── validation/
 │       ├── __init__.py (70B)
 │       ├── dashboard.py (12.4KB)
@@ -4029,6 +4034,7 @@ SIDM2/
 │   ├── cpu6502_emulator.py (40.1KB)
 │   ├── disasm_table_finder.py (5.1KB)
 │   ├── enhanced_player_detection.py (10.6KB)
+│   ├── errors.py (20.2KB)
 │   ├── exceptions.py (658B)
 │   ├── extraction_validator.py (14.2KB)
 │   ├── galway_format_converter.py (13.7KB)
