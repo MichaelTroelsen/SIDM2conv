@@ -1,6 +1,6 @@
 # File Inventory
 
-**Last Updated**: 2025-12-21 13:31:48
+**Last Updated**: 2025-12-21 13:36:12
 
 ## Repository Structure
 
@@ -155,10 +155,9 @@ SIDM2/
 ├── docs/
 │   ├── ARCHITECTURE.md (21.0KB)
 │   ├── C64_OCR_TEST_RESULTS.md (6.6KB)
-│   ├── CLEANUP_GUIDE.md (7.9KB)
 │   ├── COMPONENTS_REFERENCE.md (21.9KB)
 │   ├── DRIVER_DETECTION_RESEARCH.md (19.8KB)
-│   ├── FILE_INVENTORY.md (260.4KB)
+│   ├── FILE_INVENTORY.md (260.6KB)
 │   ├── GATE_INFERENCE_IMPLEMENTATION.md (11.9KB)
 │   ├── HYBRID_PIPELINE_SUCCESS.md (12.1KB)
 │   ├── IMAGESORCERY_MCP_WORKAROUNDS_SUMMARY.md (9.5KB)
@@ -212,6 +211,10 @@ SIDM2/
 │   │   ├── 2025-12-14/
 │   │   │   ├── IMPROVEMENT_PLAN_FINAL_STATUS.md (17.6KB)
 │   │   └── consolidation_2025-12-21/
+│   │       ├── cleanup/
+│   │       │   ├── CLEANUP_GUIDE.md (7.9KB)
+│   │       │   ├── CLEANUP_RULES.md (9.7KB)
+│   │       │   ├── README.md (4.5KB)
 │   │       ├── laxity/
 │   │       │   ├── LAXITY_ACCURACY_ANALYSIS.md (7.1KB)
 │   │       │   ├── LAXITY_BATCH_TEST_RESULTS.md (9.8KB)
@@ -236,8 +239,7 @@ SIDM2/
 │   │           ├── VALIDATION_DASHBOARD_DESIGN.md (14.8KB)
 │   │           ├── VALIDATION_SYSTEM_NOTES.md (4.4KB)
 │   ├── guides/
-│   │   ├── CLEANUP_RULES.md (9.7KB)
-│   │   ├── CLEANUP_SYSTEM.md (15.5KB)
+│   │   ├── CLEANUP_SYSTEM.md (26.1KB)
 │   │   ├── LAXITY_DRIVER_USER_GUIDE.md (19.7KB)
 │   │   ├── ROOT_FOLDER_RULES.md (10.8KB)
 │   │   ├── SIDWINDER_GUIDE.md (6.9KB)
