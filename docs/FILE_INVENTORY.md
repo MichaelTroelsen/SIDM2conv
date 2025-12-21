@@ -1,6 +1,6 @@
 # File Inventory
 
-**Last Updated**: 2025-12-21 20:21:01
+**Last Updated**: 2025-12-21 21:20:31
 
 ## Repository Structure
 
@@ -8,8 +8,8 @@
 SIDM2/
 ├── batch-convert-laxity.bat (559B)
 ├── batch-convert.bat (508B)
-├── CHANGELOG.md (40.5KB)
-├── CLAUDE.md (42.2KB)
+├── CHANGELOG.md (44.7KB)
+├── CLAUDE.md (15.5KB)
 ├── cleanup.bat (1.0KB)
 ├── CONTRIBUTING.md (12.3KB)
 ├── file_inventory.json (0B)
@@ -17,7 +17,7 @@ SIDM2/
 ├── nul (0B)
 ├── pipeline.bat (769B)
 ├── pytest.ini (475B)
-├── README.md (104.1KB)
+├── README.md (104.4KB)
 ├── requirements.txt (115B)
 ├── sf2-export.bat (860B)
 ├── sf2-to-sid.bat (642B)
@@ -232,7 +232,7 @@ SIDM2/
 │       ├── RETRODEBUGGER_INVESTIGATION.md (3.8KB)
 ├── docs/
 │   ├── ARCHITECTURE.md (21.1KB)
-│   ├── COMPONENTS_REFERENCE.md (27.4KB)
+│   ├── COMPONENTS_REFERENCE.md (27.8KB)
 │   ├── FILE_INVENTORY.md (260.6KB)
 │   ├── IMPROVEMENT_PLAN.md (14.8KB)
 │   ├── INDEX.md (12.7KB)
@@ -315,11 +315,14 @@ SIDM2/
 │   ├── guides/
 │   │   ├── CLEANUP_SYSTEM.md (26.1KB)
 │   │   ├── ERROR_MESSAGE_STYLE_GUIDE.md (17.4KB)
+│   │   ├── EXPERIMENTS_WORKFLOW_GUIDE.md (14.7KB)
 │   │   ├── LAXITY_DRIVER_USER_GUIDE.md (19.7KB)
 │   │   ├── ROOT_FOLDER_RULES.md (10.8KB)
+│   │   ├── SF2_VIEWER_GUIDE.md (12.0KB)
 │   │   ├── SIDWINDER_GUIDE.md (6.9KB)
 │   │   ├── TROUBLESHOOTING.md (18.0KB)
 │   │   ├── VALIDATION_GUIDE.md (25.6KB)
+│   │   ├── WAVEFORM_ANALYSIS_GUIDE.md (10.3KB)
 │   ├── implementation/
 │   │   ├── GATE_INFERENCE_IMPLEMENTATION.md (11.9KB)
 │   │   ├── RUNTIME_TABLE_BUILDING_IMPLEMENTATION.md (13.3KB)
@@ -3991,8 +3994,10 @@ SIDM2/
 │   ├── test_backward_compatibility.py (12.9KB)
 │   ├── test_complete_pipeline.py (13.8KB)
 │   ├── test_converter.py (62.3KB)
+│   ├── test_core_error_handling.py (11.6KB)
 │   ├── test_error_messages.py (20.1KB)
 │   ├── test_laxity_baseline.py (9.3KB)
+│   ├── test_laxity_driver.py (16.9KB)
 │   ├── test_midi_comparison.py (17.9KB)
 │   ├── test_roundtrip.py (27.0KB)
 │   ├── test_sf2_format.py (9.4KB)
@@ -4059,11 +4064,11 @@ SIDM2/
 │   ├── sf2_compatibility.py (17.0KB)
 │   ├── sf2_header_generator.py (12.8KB)
 │   ├── sf2_packed_reader.py (11.5KB)
-│   ├── sf2_packer.py (37.0KB)
+│   ├── sf2_packer.py (38.1KB)
 │   ├── sf2_player_parser.py (21.9KB)
 │   ├── sf2_reader.py (8.1KB)
-│   ├── sf2_writer.py (70.2KB)
-│   ├── sid_parser.py (3.4KB)
+│   ├── sf2_writer.py (70.7KB)
+│   ├── sid_parser.py (6.5KB)
 │   ├── sid_player.py (18.7KB)
 │   ├── sid_structure_analyzer.py (18.0KB)
 │   ├── sid_structure_extractor.py (22.1KB)
