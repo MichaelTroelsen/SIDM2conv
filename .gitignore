@@ -54,6 +54,7 @@ output/**/*_exported_disassembly.md
 *.bin
 *.dump
 nul
+temp/
 temp-exp/
 temp_*
 tmp_*

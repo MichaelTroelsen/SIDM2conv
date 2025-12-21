@@ -1,6 +1,6 @@
 # File Inventory
 
-**Last Updated**: 2025-12-21 13:54:22
+**Last Updated**: 2025-12-21 14:27:04
 
 ## Repository Structure
 
@@ -9,11 +9,8 @@ SIDM2/
 ├── batch-convert-laxity.bat (559B)
 ├── batch-convert.bat (508B)
 ├── CHANGELOG.md (29.2KB)
-├── CLAUDE.md (42.2KB)
+├── CLAUDE.md (41.7KB)
 ├── cleanup.bat (1.0KB)
-├── cleanup_backup_20251214_210642.txt (1.8KB)
-├── cleanup_backup_20251215_185025.txt (1.8KB)
-├── cleanup_backup_20251217_175042.txt (2.4KB)
 ├── cleanup_backup_20251221_092113.txt (2.3KB)
 ├── CONTRIBUTING.md (6.5KB)
 ├── file_inventory.json (0B)
@@ -21,7 +18,7 @@ SIDM2/
 ├── nul (0B)
 ├── pipeline.bat (769B)
 ├── pytest.ini (475B)
-├── README.md (102.0KB)
+├── README.md (102.3KB)
 ├── requirements.txt (115B)
 ├── sf2-export.bat (860B)
 ├── sf2-to-sid.bat (642B)
@@ -31,7 +28,6 @@ SIDM2/
 ├── SIDwinder.cfg (1.5KB)
 ├── test-converter.bat (594B)
 ├── test-roundtrip.bat (532B)
-├── test_siddecompiler_output.asm (51.8KB)
 ├── TOOLS.bat (5.8KB)
 ├── TOOLS_REFERENCE.txt (9.2KB)
 ├── track_3.txt (623B)
@@ -157,7 +153,7 @@ SIDM2/
 │   ├── COMPONENTS_REFERENCE.md (22.0KB)
 │   ├── FILE_INVENTORY.md (259.5KB)
 │   ├── IMPROVEMENT_PLAN.md (13.8KB)
-│   ├── INDEX.md (4.5KB)
+│   ├── INDEX.md (12.7KB)
 │   ├── ROADMAP.md (13.2KB)
 │   ├── SF2_INSTRUMENTS_REFERENCE.md (14.9KB)
 │   ├── SF2_TRACKS_AND_SEQUENCES.md (12.5KB)
@@ -4063,10 +4059,8 @@ SIDM2/
 │       ├── laxity.py (3.3KB)
 ├── SIDSF2player/
 │   ├── Aint_Somebody.sid (5.0KB)
-│   ├── batch_convert_sidsf2player.py (2.4KB)
 │   ├── Broware.sid (6.6KB)
 │   ├── Cocktail_to_Go_tune_3.sid (4.4KB)
-│   ├── debug_packer.py (639B)
 │   ├── Driver 11 Test - Arpeggio.sid (6.9KB)
 │   ├── Driver 11 Test - Filter.sid (7.1KB)
 │   ├── Driver 11 Test - Polyphonic.sid (7.9KB)
@@ -4074,16 +4068,13 @@ SIDM2/
 │   ├── Expand_Side_1.sid (6.7KB)
 │   ├── Halloweed_4_tune_3.sid (5.6KB)
 │   ├── I_Have_Extended_Intros.sid (3.7KB)
-│   ├── parse_sf2_blocks.py (1.4KB)
 │   ├── polyphonic_cpp.sid (8.5KB)
 │   ├── polyphonic_test.sid (8.6KB)
 │   ├── SF2packed_new1_Stiensens_last_night_of_89.sid (6.1KB)
 │   ├── SF2packed_Stinsens_Last_Night_of_89.sid (6.1KB)
 │   ├── Staying_Alive.sid (5.0KB)
-│   ├── Stinsens_Last_Night_of_89.dump (12.1MB)
 │   ├── Stinsens_Last_Night_of_89.sid (6.1KB)
 │   ├── test_broware_packed_only.sid (6.8KB)
-│   ├── test_sidsf2player_batch.py (3.9KB)
 │   ├── tie_notes_test.sid (8.4KB)
 ├── Tel_Jeroen/
 │   ├── 05-09-87.sid (1.9KB)
@@ -4294,11 +4285,6 @@ SIDM2/
 │   ├── trace.bin (5.7MB)
 │   ├── verify_wave_packing.py (5.5KB)
 │   ├── wave_table_packing_demo.py (6.1KB)
-├── test_laxity_pipeline/
-│   ├── Beast.sid (3.8KB)
-│   ├── Dreams.sid (3.9KB)
-│   ├── Stinsens_Last_Night_of_89.sid (6.1KB)
-│   ├── Unboxed_Ending_8580.sid (4.5KB)
 ├── tools/
 │   ├── = (58B)
 │   ├── angular_test.asm (105.7KB)
