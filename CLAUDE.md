@@ -918,28 +918,17 @@ python scripts/test_complete_pipeline.py -v
   - Performance metrics
   - Development history
 
-- **docs/SIDDECOMPILER_INTEGRATION.md** - SIDdecompiler analysis integration (v1.4 - NEW)
+- **docs/implementation/SIDDECOMPILER_INTEGRATION.md** - SIDdecompiler analysis integration (v1.4)
   - Overview and architecture
-  - Phase 1: Basic integration (wrapper module)
-  - Phase 2: Enhanced analysis (player detection, memory layout)
-  - Phase 3: Auto-detection feasibility (hybrid approach)
-  - Phase 4: Validation and impact analysis
-  - Production recommendations
+  - Phase 1-4: Complete integration analysis
+  - Production recommendations (hybrid approach)
   - Test results and metrics
 
-- **docs/analysis/PHASE2_ENHANCEMENTS_SUMMARY.md** - Phase 2 detailed report
-  - Enhanced player detection (100 lines added)
-  - Memory layout parser (70 lines added)
-  - Visual memory map generation (30 lines added)
-  - Enhanced structure reports (90 lines added)
-  - Test results and integration status
-
-- **docs/analysis/PHASE3_4_VALIDATION_REPORT.md** - Phase 3 & 4 detailed report
-  - Auto-detection integration analysis
-  - Manual vs auto-detection comparison
-  - Detection accuracy results
-  - Production recommendations
-  - Metrics summary and completion status
+- **docs/analysis/SIDDECOMPILER_INTEGRATION_ANALYSIS.md** - Detailed integration analysis
+  - Enhanced player detection
+  - Memory layout parsing
+  - Auto-detection feasibility
+  - Validation results
 
 - **docs/COMPONENTS_REFERENCE.md** - Python modules reference
   - Core converter (sid_to_sf2.py)
@@ -1000,10 +989,12 @@ python scripts/test_complete_pipeline.py -v
 - **tools/RETRODEBUGGER_ANALYSIS.md** - RetroDebugger analysis (70KB+)
 
 ### Validation and Testing
-- **docs/VALIDATION_SYSTEM.md** - Three-tier validation architecture (v0.6.0)
-- **docs/VALIDATION_DASHBOARD_DESIGN.md** - Dashboard & regression tracking system (v1.4)
-- **docs/GATE_INFERENCE_IMPLEMENTATION.md** - Waveform-based gate detection (v1.5.0)
-- **docs/ACCURACY_ROADMAP.md** - Plan to reach 99% accuracy (v0.6.0)
+- **docs/guides/VALIDATION_GUIDE.md** - Comprehensive validation system guide (v2.0.0, consolidated)
+  - Three-tier validation architecture
+  - Dashboard & regression tracking system
+  - Complete validation workflows
+- **docs/implementation/GATE_INFERENCE_IMPLEMENTATION.md** - Waveform-based gate detection (v1.5.0)
+- **docs/analysis/ACCURACY_ROADMAP.md** - Plan to reach 99% accuracy (v0.6.0)
 - **PIPELINE_EXECUTION_REPORT.md** - Complete pipeline execution analysis
 
 ### Status Documents

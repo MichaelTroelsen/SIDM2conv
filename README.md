@@ -118,7 +118,7 @@ $1900+        Music Data (sequences, tables)
   - Sequences (255 entries)
 - **Editor Integration**: Tables visible and editable in SID Factory II
 - **Status**: ✅ Implementation complete (awaiting manual SID Factory II validation)
-- **Documentation**: See `docs/LAXITY_PHASE6_FINAL_REPORT.md`
+- **Documentation**: See `docs/reference/LAXITY_DRIVER_TECHNICAL_REFERENCE.md` (v2.0.0)
 
 #### Validation Results
 
@@ -389,10 +389,9 @@ Detected Tables:
 ```
 
 **Documentation**:
-- Complete implementation guide: `docs/SIDDECOMPILER_INTEGRATION.md`
-- Phase 2 enhancements: `docs/analysis/PHASE2_ENHANCEMENTS_SUMMARY.md`
-- Phase 3-4 analysis: `docs/analysis/PHASE3_4_VALIDATION_REPORT.md`
-- Lessons learned: `docs/SIDDECOMPILER_LESSONS_LEARNED.md`
+- Complete implementation guide: `docs/implementation/SIDDECOMPILER_INTEGRATION.md`
+- Integration analysis: `docs/analysis/SIDDECOMPILER_INTEGRATION_ANALYSIS.md`
+- Lessons learned: `docs/implementation/SIDDECOMPILER_LESSONS_LEARNED.md`
 
 ### SIDwinder Integration
 
@@ -1161,14 +1160,16 @@ for sid_file in Path("SID/").glob("*.sid"):
 
 ### Documentation
 
-**User Guide**: `docs/LAXITY_DRIVER_GUIDE.md`
+**User Guide**: `docs/guides/LAXITY_DRIVER_USER_GUIDE.md` (v2.0.0)
 - Complete user documentation
-- Technical specifications
+- Quick start and installation
 - Troubleshooting guide
 - Advanced examples
 
-**Implementation**: `PHASE5_COMPLETE.md`
-- Full technical details
+**Technical Reference**: `docs/reference/LAXITY_DRIVER_TECHNICAL_REFERENCE.md` (v2.0.0)
+- Architecture and design
+- Memory layout and pointer patching
+- Phase 5-6 implementation details
 - Implementation summary
 - Test results
 - Code references
@@ -1220,7 +1221,7 @@ build_driver.bat
 - Subtune switching
 - Combined playlist support
 
-For complete documentation, see `docs/LAXITY_DRIVER_GUIDE.md`.
+For complete documentation, see `docs/guides/LAXITY_DRIVER_USER_GUIDE.md` (user guide) and `docs/reference/LAXITY_DRIVER_TECHNICAL_REFERENCE.md` (technical reference).
 
 ## File Formats
 
@@ -1723,9 +1724,9 @@ Prevents the SID "ADSR bug" (Martin Galway's "school band effect"):
 - All songs share sequences and table data
 
 For complete format details, see:
-- [docs/SF2_FORMAT_SPEC.md](docs/SF2_FORMAT_SPEC.md) - Complete SF2 format specification
-- [docs/SF2_TRACKS_AND_SEQUENCES.md](docs/SF2_TRACKS_AND_SEQUENCES.md) - Tracks and sequences format guide
-- [docs/SF2_INSTRUMENTS_REFERENCE.md](docs/SF2_INSTRUMENTS_REFERENCE.md) - Instruments format guide
+- [docs/reference/SF2_FORMAT_SPEC.md](docs/reference/SF2_FORMAT_SPEC.md) - Complete SF2 format specification
+- [docs/reference/SF2_TRACKS_AND_SEQUENCES.md](docs/reference/SF2_TRACKS_AND_SEQUENCES.md) - Tracks and sequences format guide
+- [docs/reference/SF2_INSTRUMENTS_REFERENCE.md](docs/reference/SF2_INSTRUMENTS_REFERENCE.md) - Instruments format guide
 
 ## Converter Architecture
 
@@ -2634,10 +2635,10 @@ See `sidm2/audio_comparison.py` for implementation:
   - Generates 16-byte hex dumps with addresses
   - Side-by-side original vs converted comparison
 - Created comprehensive player and format documentation
-  - `docs/SF2_DRIVER11_DISASSEMBLY.md` - Complete SF2 Driver 11 analysis (8.3 KB)
-  - `docs/STINSENS_PLAYER_DISASSEMBLY.md` - Laxity NewPlayer v21 analysis (17 KB)
-  - `docs/SF2_TRACKS_AND_SEQUENCES.md` - Tracks and sequences format guide (433 lines)
-  - `docs/SF2_INSTRUMENTS_REFERENCE.md` - Instruments format guide (595 lines)
+  - `docs/reference/SF2_DRIVER11_DISASSEMBLY.md` - Complete SF2 Driver 11 analysis (8.3 KB)
+  - `docs/reference/STINSENS_PLAYER_DISASSEMBLY.md` - Laxity NewPlayer v21 analysis (17 KB)
+  - `docs/reference/SF2_TRACKS_AND_SEQUENCES.md` - Tracks and sequences format guide (433 lines)
+  - `docs/reference/SF2_INSTRUMENTS_REFERENCE.md` - Instruments format guide (595 lines)
   - Memory maps, annotated routines, table formats, architecture comparisons
 - Enhanced info.txt output with new sections:
   - "Original SID File (Preserved)" - Source path, size, copied location
