@@ -41,6 +41,10 @@ Thumbs.db
 output/
 # SF2/*.sf2  # Uncomment to ignore converted files
 
+# Generated disassemblies
+output/**/*_disassembly.md
+output/**/*_exported_disassembly.md
+
 # Temporary files
 *.tmp
 *.temp
