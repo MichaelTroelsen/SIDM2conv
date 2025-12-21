@@ -2,8 +2,8 @@
 
 **Strategic direction and future improvements**
 
-**Date**: 2025-12-14
-**Version**: 2.0
+**Date**: 2025-12-21
+**Version**: 2.1
 **Status**: 🎯 Active Roadmap
 
 ---
@@ -12,11 +12,13 @@
 
 This roadmap focuses on improving the SIDM2 converter from its current **99.93% accuracy** baseline to production-ready quality and expanded format support.
 
-**Current State** (v1.8.0):
+**Current State** (v2.5.1):
 - ✅ Laxity NewPlayer v21: 99.93% frame accuracy
 - ✅ SF2-exported SIDs: 100% accuracy (perfect roundtrip)
 - ✅ Complete validation system with CI/CD
 - ✅ Cleanup and project maintenance system
+- ✅ Professional error handling system (v2.5.0+)
+- ✅ SF2 Viewer GUI with visualization and playback (v2.2.0)
 - ⚠️ Filter accuracy: 0% (format not yet converted)
 - ⚠️ Voice 3: Untested (no test files available)
 
@@ -64,7 +66,7 @@ This roadmap focuses on improving the SIDM2 converter from its current **99.93% 
 
 **Files Modified**:
 - `sidm2/sf2_writer.py` (add filter conversion)
-- `docs/implementation/LAXITY_DRIVER_IMPLEMENTATION.md` (document approach)
+- `docs/reference/LAXITY_DRIVER_TECHNICAL_REFERENCE.md` (document approach)
 
 ---
 
@@ -516,7 +518,8 @@ This roadmap focuses on improving the SIDM2 converter from its current **99.93% 
 ## References
 
 - [Archived Improvement Plan](archive/2025-12-14/IMPROVEMENT_PLAN_FINAL_STATUS.md) - Previous roadmap (completed)
-- [Laxity Driver Implementation](implementation/LAXITY_DRIVER_IMPLEMENTATION.md) - Technical reference
+- [Laxity Driver User Guide](guides/LAXITY_DRIVER_USER_GUIDE.md) - User-facing guide
+- [Laxity Driver Technical Reference](reference/LAXITY_DRIVER_TECHNICAL_REFERENCE.md) - Technical reference
 - [CHANGELOG.md](../CHANGELOG.md) - Version history
 - [CONTRIBUTING.md](../CONTRIBUTING.md) - How to contribute
 

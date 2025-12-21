@@ -2,9 +2,9 @@
 
 **Actionable roadmap based on consolidation insights**
 
-**Date**: 2025-12-07
-**Version**: 0.7.1
-**Status**: Active Roadmap
+**Date**: 2025-12-21
+**Version**: 2.5.1
+**Status**: Archived - Most items completed (see ROADMAP.md for current plan)
 
 ---
 
@@ -36,9 +36,10 @@ This plan addresses the critical findings from the documentation consolidation a
 
 **Impact**: Can't verify fixes, can't debug failures, can't measure progress
 
-### A1: Rebuild SIDwinder with Trace Patches (P0)
+### A1: Rebuild SIDwinder with Trace Patches (P0) ✅ COMPLETED
 
-**Status**: Patches applied to source, executable not rebuilt
+**Status**: ✅ COMPLETED (v1.2 - 2025-12-06)
+**Result**: SIDwinder rebuilt and integrated into pipeline
 
 **Tasks**:
 1. Open Visual Studio Developer Command Prompt
@@ -96,7 +97,10 @@ broken_file = "Angular"  # One of the 17 that fails
 - `sidm2/sf2_packer.py` (relocation logic)
 - New: `scripts/compare_packer_relocations.py` (analysis tool)
 
-### A3: Verify Validation Ecosystem Works (P0)
+### A3: Verify Validation Ecosystem Works (P0) ✅ COMPLETED
+
+**Status**: ✅ COMPLETED (v1.4 - 2025-12-11)
+**Result**: Complete validation system with dashboard, regression tracking, and CI/CD
 
 **Tasks**:
 1. Run complete pipeline on all 18 files
@@ -118,11 +122,14 @@ broken_file = "Angular"  # One of the 17 that fails
 
 **Impact**: Core conversion quality, user experience
 
-### B1: Implement Gate Inference Algorithm (P1)
+### B1: Implement Gate Inference Algorithm (P1) ✅ COMPLETED
+
+**Status**: ✅ COMPLETED (v1.5.0 - 2025-12-12)
+**Result**: Waveform-based gate detection implemented and tested
 
 **Problem**: Laxity has implicit gates, SF2 requires explicit (+++ / ---)
 
-**Current**: Gates not properly inferred from waveform changes
+**Current**: Gate inference implemented with waveform analysis
 
 **Solution**:
 ```python
@@ -220,7 +227,10 @@ def transpose_instruments(laxity_instruments):
 **Files Modified**:
 - `sidm2/instrument_extraction.py` (transposition logic)
 
-### B4: Create Semantic Conversion Test Suite (P1)
+### B4: Create Semantic Conversion Test Suite (P1) ✅ COMPLETED
+
+**Status**: ✅ COMPLETED (v1.4+)
+**Result**: 86 tests + 153 subtests, 100% pass rate
 
 **Purpose**: Validate all semantic conversions
 
@@ -246,7 +256,10 @@ def transpose_instruments(laxity_instruments):
 
 **Impact**: Can't measure improvement, hard to prioritize fixes
 
-### C1: Create Validation Dashboard (P2)
+### C1: Create Validation Dashboard (P2) ✅ COMPLETED
+
+**Status**: ✅ COMPLETED (v1.4 - 2025-12-11)
+**Result**: Interactive HTML dashboard with charts and metrics
 
 **Purpose**: Single view of all validation metrics
 
@@ -286,7 +299,10 @@ validation_dashboard.html:
 - `scripts/generate_dashboard.py` (dashboard generator)
 - `output/validation_dashboard.html` (generated)
 
-### C2: Implement Regression Tracking (P2)
+### C2: Implement Regression Tracking (P2) ✅ COMPLETED
+
+**Status**: ✅ COMPLETED (v1.4 - 2025-12-11)
+**Result**: SQLite database tracking with regression detection
 
 **Purpose**: Track accuracy over time, catch regressions
 
@@ -325,7 +341,10 @@ validation_dashboard.html:
 - `validation_history.json` (tracking data)
 - `scripts/track_validation_history.py` (tracker)
 
-### C3: Automate Validation on Commits (P2)
+### C3: Automate Validation on Commits (P2) ✅ COMPLETED
+
+**Status**: ✅ COMPLETED (v1.4.2 - 2025-12-12)
+**Result**: GitHub Actions CI/CD workflow with PR validation
 
 **Purpose**: Catch issues early, prevent regressions
 
@@ -397,27 +416,20 @@ validation_dashboard.html:
 
 ## Quick Wins (Can Do Immediately)
 
-### Q1: Add .gitignore for Temp Files (P3)
-```bash
-# Add to .gitignore
-temp/
-*.log
-*.cfg
-tools/trace.bin
-tools/mit*
-pipeline_run_*.log
-```
+### Q1: Add .gitignore for Temp Files (P3) ✅ COMPLETED
 
-**Effort**: 5 minutes
+**Status**: ✅ COMPLETED
+**Result**: .gitignore updated with temp file patterns
 
-### Q2: Clean Up Old Index (P3)
-```bash
-rm docs/INDEX_OLD.md
-```
+### Q2: Clean Up Old Index (P3) ✅ COMPLETED
 
-**Effort**: 1 minute
+**Status**: ✅ COMPLETED (v2.3.0)
+**Result**: Documentation consolidated and organized
 
-### Q3: Update README Quick Start (P3)
+### Q3: Update README Quick Start (P3) ✅ COMPLETED
+
+**Status**: ✅ COMPLETED
+**Result**: README.md updated with current docs structure
 
 Update README.md to reflect new docs structure:
 ```markdown

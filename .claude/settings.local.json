@@ -145,7 +145,14 @@
       "Bash(\"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" SIDFactoryII.sln /p:Configuration=Release /p:Platform=x64 /verbosity:minimal)",
       "Bash(cmd.exe:*)",
       "Bash(./build_release.bat)",
-      "Bash(timeout 3 echo:*)"
+      "Bash(timeout 3 echo:*)",
+      "Bash(git ls-files:*)",
+      "Bash(do if [ -f \"$file\" ])",
+      "Bash(then echo \"✓ $file\")",
+      "Bash(else echo \"✗ $file \\(NOT FOUND\\)\")",
+      "Bash(do if [ -f \"$script\" ])",
+      "Bash(then echo \"✓ $script\")",
+      "Bash(else echo \"✗ $script \\(not found\\)\")"
     ],
     "deny": [],
     "ask": []
