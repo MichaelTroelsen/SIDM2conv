@@ -1044,8 +1044,7 @@ Assistant: [Use EnterPlanMode to explore and design approach first]
 
 ## Version History
 
-- **v2.4.0** (2025-12-21) - **SF2 Viewer Feature Parity** - Track View tab, transpose decoding, 100% parity with C++ editor and Python exporter
-- **v2.3.0** (2025-12-21) - **OrderList & Track Export** - OrderList XXYY unpacking, Track export (3 files), musical notation, 100% SF2 editor parity, transpose bug fix
+- **v2.3.0** (2025-12-21) - **Documentation Consolidation & Organization** - Consolidated 20 redundant docs → 6 comprehensive guides (Laxity, Validation, MIDI, Cleanup), reorganized 23 files, removed 16 generated files (~1MB), created clear documentation structure
 - **v2.2.0** (2025-12-18) - **Single-track Sequence Support** - Auto-detects single-track vs 3-track interleaved sequences, hex notation display, 96.9% Track 3 accuracy
 - **v2.1.0** (2025-12-17) - **Recent Files + Visualization + Playback** - Added Recent Files menu with persistent storage (10 files), waveform/filter/envelope visualization, and audio playback controls
 - **v2.0.0** (2025-12-15) - **SF2 Viewer released** - Professional PyQt6 GUI for viewing SF2 files
@@ -1084,36 +1083,11 @@ Assistant: [Use EnterPlanMode to explore and design approach first]
 - **SF2 format questions** → `docs/SF2_FORMAT_SPEC.md`, `docs/format-specification.md`
 - **SF2 tracks/sequences** → `docs/SF2_TRACKS_AND_SEQUENCES.md`
 - **SF2 instruments** → `docs/SF2_INSTRUMENTS_REFERENCE.md`
-- **Validation questions** → `docs/VALIDATION_SYSTEM.md`
-- **Gate inference questions** → `docs/GATE_INFERENCE_IMPLEMENTATION.md`
+- **Validation questions** → `docs/guides/VALIDATION_GUIDE.md` (updated v2.0.0)
+- **Gate inference questions** → `docs/implementation/GATE_INFERENCE_IMPLEMENTATION.md`
+- **Laxity driver questions** → `docs/guides/LAXITY_DRIVER_USER_GUIDE.md` (user guide), `docs/reference/LAXITY_DRIVER_TECHNICAL_REFERENCE.md` (technical)
 
 **Documentation structure optimized for AI assistants**:
 - **CLAUDE.md** (this file) - Quick reference loaded on every conversation
 - **docs/*** - Detailed documentation loaded on-demand
 - **Clear navigation** - Links to detailed docs when more info needed
-
----
-
-## Version History
-
-- **v2.4.0** (2025-12-21) - **SF2 Viewer: Full Feature Parity** - Track View tab (combines OrderList + Sequences + transpose), transpose decoding in OrderList, 100% parity with C++ editor and Python exporter
-- **v2.3.0** (2025-12-21) - **SF2 Tools: OrderList & Track Export** - Applied SF2 C++ editor knowledge: OrderList XXYY unpacking, Track export (3 files with musical notation), transpose bug fix, 100% feature parity
-- **v2.2.0** (2025-12-18) - **SF2 Viewer: Single-track Sequence Support** - Auto-detects single-track vs 3-track interleaved sequences, hex notation display, 96.9% Track 3 accuracy
-- **v2.1.0** (2025-12-17) - **SF2 Viewer: Recent Files + Visualization + Playback** - Added Recent Files menu, waveform/filter/envelope graphs, audio playback
-- **v2.0.0** (2025-12-15) - **SF2 Viewer released** - Professional PyQt6 GUI for viewing SF2 files
-- **v2.0.0** (2025-12-14) - Production Ready Release! 100% validated on 286 real Laxity SID files. Complete Laxity driver with SF2 table editing. Zero failures, 6.4 files/sec throughput. Full documentation.
-- **v1.9.0** (2025-12-14) - Phase 6 Complete: SF2 table editing implementation, header generator, batch test tool
-- **v1.8.0** (2025-12-13) - Phase 5 Complete: Laxity driver API integration, conversion pipeline support
-- **v1.7.0** (2025-12-12) - NP20 driver support + Format compatibility research
-- **v0.7.2** (2025-12-12) - WAV rendering fix + Waveform analysis tool
-- **v1.6.0** (2025-12-12) - Runtime table building implementation
-- **v1.5.0** (2025-12-12) - Waveform-based gate inference system
-- **v1.4.1** (2025-12-12) - Accuracy validation baseline (71.0% average)
-- **v1.3** (2025-12-11) - Added siddump_extractor.py for runtime sequence extraction
-- **v1.2** (2025-12-06) - Added SIDwinder trace to pipeline (now working - rebuilt)
-- **v1.1** (2025-12-06) - Added SIDwinder disassembly to pipeline
-- **v1.0** (2025-12-05) - Complete pipeline with 11 steps
-- **v0.6.2** (2025-11-28) - Added CPU emulator, SID player, SF2 parser modules
-- **v0.6.1** (2025-11-25) - Multi-file validation reports
-- **v0.6.0** (2025-11-20) - Python SF2 packer, accuracy validation system
-- **v0.5.0** (2025-10-15) - Initial working converter

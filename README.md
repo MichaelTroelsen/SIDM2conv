@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 
-**Version 2.2.0** | Build Date: 2025-12-18 | Production Ready - Text Export & Single-Track Sequences ✅✅✅
+**Version 2.3.0** | Build Date: 2025-12-21 | Production Ready - Documentation Consolidation & Organization ✅✅✅
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files.
 
