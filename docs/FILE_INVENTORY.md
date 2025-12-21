@@ -1,11 +1,12 @@
 # File Inventory
 
-**Last Updated**: 2025-12-21 21:20:31
+**Last Updated**: 2025-12-21 22:04:56
 
 ## Repository Structure
 
 ```
 SIDM2/
+├── analyze-file.bat (1.3KB)
 ├── batch-convert-laxity.bat (559B)
 ├── batch-convert.bat (508B)
 ├── CHANGELOG.md (44.7KB)
@@ -17,7 +18,8 @@ SIDM2/
 ├── nul (0B)
 ├── pipeline.bat (769B)
 ├── pytest.ini (475B)
-├── README.md (104.4KB)
+├── quick-test.bat (748B)
+├── README.md (104.6KB)
 ├── requirements.txt (115B)
 ├── sf2-export.bat (860B)
 ├── sf2-to-sid.bat (642B)
@@ -25,6 +27,7 @@ SIDM2/
 ├── sid-to-sf2.bat (922B)
 ├── sidm2_config.example.json (699B)
 ├── SIDwinder.cfg (1.5KB)
+├── test-all.bat (846B)
 ├── test-converter.bat (594B)
 ├── test-roundtrip.bat (532B)
 ├── test_errors_demo.py (7.4KB)
@@ -232,15 +235,17 @@ SIDM2/
 │       ├── RETRODEBUGGER_INVESTIGATION.md (3.8KB)
 ├── docs/
 │   ├── ARCHITECTURE.md (21.1KB)
+│   ├── CHEATSHEET.md (4.9KB)
 │   ├── COMPONENTS_REFERENCE.md (27.8KB)
-│   ├── FILE_INVENTORY.md (260.6KB)
+│   ├── FILE_INVENTORY.md (260.9KB)
 │   ├── IMPROVEMENT_PLAN.md (14.8KB)
-│   ├── INDEX.md (12.7KB)
-│   ├── ROADMAP.md (13.4KB)
+│   ├── INDEX.md (13.1KB)
+│   ├── QUICK_START.md (4.2KB)
+│   ├── ROADMAP.md (13.5KB)
 │   ├── SF2_INSTRUMENTS_REFERENCE.md (14.9KB)
 │   ├── SF2_TRACKS_AND_SEQUENCES.md (12.5KB)
 │   ├── SID_REGISTERS_REFERENCE.md (8.4KB)
-│   ├── STATUS.md (18.0KB)
+│   ├── STATUS.md (19.7KB)
 │   ├── TOOLS_REFERENCE.md (13.6KB)
 │   ├── TOOLS_REFERENCE.txt (9.2KB)
 │   ├── analysis/

@@ -57,6 +57,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.3.2] - 2025-12-21
+
+### Added - Quick Improvements Package
+
+**Created convenience tools and documentation to improve developer experience and user onboarding.**
+
+#### New Batch Launchers (3 files)
+
+1. **`test-all.bat`** - Run all test suites
+   - Executes all 3 test suites: converter, SF2 format, Laxity driver
+   - 3-step progress reporting with clear pass/fail summary
+   - Tracks failures across all suites
+   - Usage: `test-all.bat`
+
+2. **`quick-test.bat`** - Fast feedback tests
+   - Runs core converter tests only (TestSIDParser, TestSF2Writer)
+   - Fast feedback loop for developers (~30 seconds)
+   - Suggests full test suite after success
+   - Usage: `quick-test.bat`
+
+3. **`analyze-file.bat`** - Complete file analysis
+   - 4-step analysis workflow:
+     1. Player type identification (player-id.exe)
+     2. Register dump generation (siddump.exe)
+     3. Disassembly creation (SIDwinder.exe)
+     4. Audio rendering (SID2WAV.EXE)
+   - Creates organized output directory: `output/{basename}_analysis/`
+   - Usage: `analyze-file.bat <input.sid>`
+
+#### New Documentation Guides (2 files)
+
+1. **`docs/QUICK_START.md`** (202 lines)
+   - 5-minute getting started guide for new users
+   - 10 comprehensive sections:
+     - What is SIDM2?, Installation, Basic Usage
+     - Common Tasks, Example Workflow, File Locations
+     - Getting Help, Next Steps, Quick Tips, Common Issues
+   - Cross-references to detailed documentation
+   - Perfect for user onboarding
+
+2. **`docs/CHEATSHEET.md`** (228 lines)
+   - One-page command reference card
+   - Quick Commands (basic conversion, batch ops, viewing, testing)
+   - File Locations diagram
+   - Common Workflows with examples
+   - Python Commands reference
+   - Driver Options comparison table
+   - Tool Shortcuts (siddump, SIDwinder, SID2WAV, player-id)
+   - Error Messages quick reference
+   - Quick Tips checklist
+   - Documentation Links organized by topic
+   - Printable format for desk reference
+
+#### README.md Updates
+
+**Added Quick Start section:**
+- Prominent link to `QUICK_START.md` with beginner call-to-action
+- Prominent link to `CHEATSHEET.md` for quick reference
+- Positioned strategically after Overview, before Installation
+- Clear visual formatting with blockquote and emoji
+
+### Benefits
+
+- ✅ **Faster developer feedback**: quick-test.bat runs in ~30 seconds
+- ✅ **Easier test suite execution**: test-all.bat handles all 3 suites
+- ✅ **Streamlined file analysis**: analyze-file.bat automates 4-step workflow
+- ✅ **Better user onboarding**: QUICK_START.md gets users productive in 5 minutes
+- ✅ **Faster command lookup**: CHEATSHEET.md provides instant reference
+- ✅ **Improved discoverability**: README.md Quick Start section guides new users
+
+**Files Added**: 5 (3 batch launchers + 2 documentation guides)
+**Files Modified**: 1 (README.md)
+**Total Lines Added**: 529 lines
+
+---
+
 ## [2.5.2] - 2025-12-21
 
 ### Added - Error Handling for Core Modules
