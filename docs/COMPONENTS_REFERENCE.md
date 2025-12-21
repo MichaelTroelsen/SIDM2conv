@@ -17,6 +17,7 @@ Complete reference for all Python modules and scripts in the SIDM2 project.
 | `gate_inference.py` | Waveform-based gate detection | v1.5.0 | 306 |
 | `accuracy.py` | Accuracy calculation module | v1.4.1 | 437 |
 | `validation.py` | Validation utilities | v0.6.0 | ~200 |
+| `errors.py` | User-friendly error messages | v2.5.0 | 500+ |
 
 ### Main Scripts (`scripts/`)
 
@@ -800,6 +801,193 @@ python scripts/test_sf2_format.py -v
 # Pipeline tests
 python scripts/test_complete_pipeline.py -v
 ```
+
+---
+
+---
+
+## Error Handling Module (`sidm2/errors.py`)
+
+### Overview
+
+**Version**: v2.5.0
+**Lines**: 500+
+**Purpose**: User-friendly error messages with troubleshooting guidance
+
+### Features
+
+- **Structured Error Format**: Clear "What happened", "Why", "How to fix" sections
+- **Similar File Finder**: Suggests similar filenames for FileNotFound errors using difflib
+- **Documentation Links**: Auto-converts relative paths to GitHub URLs
+- **Optional Colors**: ANSI color support with graceful degradation
+- **Convenience Functions**: Quick error raising helpers
+- **Serialization**: `to_dict()` method for logging/debugging
+
+### Exception Classes
+
+#### Base Class: `SIDMError`
+```python
+class SIDMError(Exception):
+    """Base exception with rich formatting."""
+
+    def __init__(
+        self,
+        message: str,
+        what_happened: Optional[str] = None,
+        why_happened: Optional[List[str]] = None,
+        how_to_fix: Optional[List[str]] = None,
+        docs_link: Optional[str] = None,
+        alternatives: Optional[List[str]] = None,
+        technical_details: Optional[str] = None
+    )
+```
+
+#### Specialized Exceptions
+
+**FileNotFoundError** - File not found with similar file suggestions:
+```python
+from sidm2.errors import FileNotFoundError
+
+raise FileNotFoundError(
+    path="SID/song.sid",
+    context="input SID file",
+    suggestions=[
+        "Check file path: python scripts/sid_to_sf2.py --help",
+        "Use absolute path instead of relative",
+        "List files: ls SID/ (or dir SID\\ on Windows)"
+    ],
+    docs_link="guides/LAXITY_DRIVER_USER_GUIDE.md"
+)
+```
+
+**InvalidInputError** - Invalid file format or corrupted data:
+```python
+from sidm2.errors import InvalidInputError
+
+raise InvalidInputError(
+    input_type="SID file",
+    value="corrupted.sid",
+    expected="PSID or RSID format",
+    got="Unknown magic bytes: ABCD",
+    suggestions=["Verify file is valid", "Re-download from HVSC"],
+    docs_link="reference/format-specification.md"
+)
+```
+
+**MissingDependencyError** - Missing modules with install instructions:
+```python
+from sidm2.errors import MissingDependencyError
+
+raise MissingDependencyError(
+    dependency="sidm2.laxity_converter",
+    install_command="pip install -e .",
+    alternatives=["Use standard drivers: --driver driver11"],
+    docs_link="README.md#installation"
+)
+```
+
+**PermissionError** - File/directory permission issues:
+```python
+from sidm2.errors import PermissionError
+
+raise PermissionError(
+    operation="write",
+    path="output/protected/file.sf2",
+    docs_link="README.md#troubleshooting"
+)
+```
+
+**ConfigurationError** - Invalid configuration values:
+```python
+from sidm2.errors import ConfigurationError
+
+raise ConfigurationError(
+    setting="driver",
+    value="invalid_driver",
+    valid_options=["driver11", "np20", "laxity"],
+    example="python scripts/sid_to_sf2.py input.sid output.sf2 --driver laxity",
+    docs_link="reference/DRIVER_REFERENCE.md"
+)
+```
+
+**ConversionError** - Conversion failures with diagnosis:
+```python
+from sidm2.errors import ConversionError
+
+raise ConversionError(
+    stage="table extraction",
+    reason="Failed to locate instrument table in SID memory",
+    input_file="SID/unknown_player.sid",
+    suggestions=["Try different driver: --driver driver11"],
+    docs_link="guides/LAXITY_DRIVER_USER_GUIDE.md#troubleshooting"
+)
+```
+
+### Convenience Functions
+
+```python
+from sidm2.errors import file_not_found, invalid_input
+
+# Quick file not found
+raise file_not_found("missing.sid", "SID file")
+
+# Quick invalid input
+raise invalid_input("config", "bad_value", expected="number", got="string")
+```
+
+### Error Output Format
+
+```
+ERROR: Input Sid File Not Found
+
+What happened:
+  Could not find the input SID file: SID/song.sid
+
+Why this happened:
+  * File path may be incorrect or contains typos
+  * File may have been moved or deleted
+  * Working directory may be wrong
+
+How to fix:
+  1. Check the file path: python scripts/sid_to_sf2.py --help
+  2. Use absolute path instead of relative
+  3. List files: ls SID/ (or dir SID\ on Windows)
+
+Alternative:
+  Similar files found in the same directory:
+    * SID\Angular.sid
+    * SID\songs.sid
+
+Need help?
+  * Documentation: https://github.com/MichaelTroelsen/SIDM2conv/blob/master/docs/guides/LAXITY_DRIVER_USER_GUIDE.md
+  * Issues: https://github.com/MichaelTroelsen/SIDM2conv/issues
+  * README: https://github.com/MichaelTroelsen/SIDM2conv#readme
+
+Technical details:
+  Full path checked: C:\Users\mit\claude\c64server\SIDM2\SID\song.sid
+```
+
+### Integration
+
+Currently being integrated into:
+- `scripts/sid_to_sf2.py` - Main converter (Phase 2 - in progress)
+- `sidm2/sid_parser.py` - SID parsing
+- `sidm2/sf2_writer.py` - SF2 writing
+- `sidm2/sf2_packer.py` - Packing operations
+
+### Demo Script
+
+```bash
+# See all error types with examples
+python test_errors_demo.py
+```
+
+Demonstrates all 8 error scenarios with realistic examples and proper formatting.
+
+### See Also
+
+- `UX_IMPROVEMENT_PLAN.md` - Complete UX improvement strategy
+- `test_errors_demo.py` - Demonstration script
 
 ---
 

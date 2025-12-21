@@ -213,6 +213,193 @@ class ClassName:
     pass
 ```
 
+## Error Handling Guidelines
+
+The SIDM2 project uses a structured error handling system to provide clear, actionable error messages to users. All code should use the custom error classes from `sidm2.errors` instead of generic exceptions.
+
+### Available Error Classes
+
+The `sidm2.errors` module provides 6 specialized error classes:
+
+| Error Class | Use For | Example |
+|-------------|---------|---------|
+| `FileNotFoundError` | Missing files/directories | Input SID file not found |
+| `InvalidInputError` | Invalid/corrupted data | Corrupted SID file format |
+| `MissingDependencyError` | Missing modules/tools | Laxity converter not installed |
+| `PermissionError` | Access denied issues | Cannot write output file |
+| `ConfigurationError` | Invalid settings | Unknown driver type |
+| `ConversionError` | Conversion failures | Table extraction failed |
+
+### When to Use Custom Errors
+
+**ALWAYS use custom error classes when:**
+
+- File operations fail (reading, writing, access)
+- Input data is invalid or corrupted
+- Required dependencies are missing
+- Configuration values are invalid
+- Conversion or processing fails
+- Permission errors occur
+
+**DON'T use generic exceptions:**
+
+```python
+# ❌ Bad - Generic exceptions
+raise Exception("File not found")
+raise ValueError("Invalid input")
+raise RuntimeError("Conversion failed")
+
+# ✅ Good - Specific error classes
+raise errors.FileNotFoundError(path=filepath, context="SID file")
+raise errors.InvalidInputError(input_type="SID file", value=filepath)
+raise errors.ConversionError(stage="conversion", reason="...")
+```
+
+### Basic Usage
+
+```python
+from sidm2 import errors
+
+# File not found
+if not os.path.exists(input_path):
+    raise errors.FileNotFoundError(
+        path=input_path,
+        context="input SID file",
+        suggestions=[
+            "Check the file path: python scripts/sid_to_sf2.py --help",
+            "Use absolute path instead of relative",
+            "List files: ls SID/"
+        ],
+        docs_link="guides/TROUBLESHOOTING.md#1-file-not-found-issues"
+    )
+
+# Invalid input
+if not validate_format(data):
+    raise errors.InvalidInputError(
+        input_type="SID file",
+        value=filepath,
+        expected="PSID or RSID format",
+        got=f"Unknown magic bytes: {magic_bytes.hex()}",
+        suggestions=[
+            "Verify file is a valid SID file",
+            "Re-download from HVSC or csdb.dk"
+        ]
+    )
+
+# Missing dependency
+if not module_available:
+    raise errors.MissingDependencyError(
+        dependency="sidm2.laxity_converter",
+        install_command="pip install -e .",
+        alternatives=["Use standard drivers instead"]
+    )
+
+# Configuration error
+if driver not in available_drivers:
+    raise errors.ConfigurationError(
+        setting="driver",
+        value=driver,
+        valid_options=available_drivers,
+        example="python scripts/sid_to_sf2.py input.sid output.sf2 --driver laxity"
+    )
+
+# Conversion error
+try:
+    extract_tables(sid_data)
+except Exception as e:
+    raise errors.ConversionError(
+        stage="table extraction",
+        reason=str(e),
+        input_file=input_path,
+        suggestions=[
+            "Check player type: tools/player-id.exe input.sid",
+            "Try different driver: --driver driver11"
+        ]
+    )
+```
+
+### Error Message Structure
+
+All error messages follow a standard structure:
+
+```
+ERROR: [Clear Error Title]
+
+What happened:
+  [Brief explanation of what went wrong]
+
+Why this happened:
+  • [Common cause 1]
+  • [Common cause 2]
+  • [Common cause 3]
+
+How to fix:
+  1. [Primary solution with specific command]
+  2. [Alternative solution]
+  3. [Fallback solution]
+
+Need help?
+  * Documentation: [link to specific guide section]
+  * Issues: https://github.com/MichaelTroelsen/SIDM2conv/issues
+```
+
+### Best Practices
+
+1. **Use Specific Error Classes**: Choose the most appropriate error type for the situation
+2. **Provide Context**: Include the problematic value/path in error messages
+3. **Actionable Solutions**: Give 2-4 specific steps with actual commands
+4. **Platform Awareness**: Provide platform-specific guidance when needed
+5. **Documentation Links**: Link to specific troubleshooting guide sections
+6. **Progressive Disclosure**: Start simple, provide details in "Technical details" section
+
+### Testing Requirements
+
+**When adding new error handling:**
+
+1. Add test cases to `scripts/test_error_messages.py`
+2. Verify error structure (contains all required sections)
+3. Test that error can be raised and caught properly
+4. Verify suggestions are helpful and accurate
+5. Ensure documentation links are valid
+
+```python
+class TestMyNewError(unittest.TestCase):
+    def test_my_error_structure(self):
+        """Test MyNewError has proper structure."""
+        error = errors.MyNewError(param="value")
+        msg = str(error)
+
+        # Verify structure
+        self.assertIn("ERROR:", msg)
+        self.assertIn("What happened:", msg)
+        self.assertIn("How to fix:", msg)
+        self.assertIn("Need help?", msg)
+```
+
+### Complete Documentation
+
+For complete error handling guidelines, see:
+
+- **Style Guide**: `docs/guides/ERROR_MESSAGE_STYLE_GUIDE.md` - Complete contributor guidelines
+- **Troubleshooting Guide**: `docs/guides/TROUBLESHOOTING.md` - User-facing documentation
+- **Error Module**: `sidm2/errors.py` - Implementation details
+- **Test Suite**: `scripts/test_error_messages.py` - 34 tests, 100% coverage
+
+### Checklist for Error Handling
+
+When implementing error handling:
+
+- [ ] Used appropriate error class from `sidm2.errors`
+- [ ] Provided clear "What happened" description
+- [ ] Listed 3-5 common causes in "Why this happened"
+- [ ] Included 2-4 specific, actionable fixes with commands
+- [ ] Added alternatives if applicable
+- [ ] Linked to specific troubleshooting guide section
+- [ ] Included technical details for debugging
+- [ ] Added test case to `test_error_messages.py`
+- [ ] Verified error can be raised and caught
+- [ ] Tested on actual failure scenarios
+
 ## Git Workflow
 
 ### Branch Naming

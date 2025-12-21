@@ -2751,6 +2751,68 @@ See `sidm2/audio_comparison.py` for implementation:
 - Laxity NewPlayer v21 support
 - NP20 and Driver11 template support
 
+## Troubleshooting & Support
+
+Having issues? We've got you covered!
+
+### Common Issues
+
+**File Not Found**:
+- Verify file exists: `dir SID\yourfile.sid` (Windows) or `ls SID/yourfile.sid` (Mac/Linux)
+- Use absolute path instead of relative
+- Check you're in the SIDM2 project root directory
+
+**Low Conversion Accuracy**:
+- Check player type: `tools\player-id.exe yourfile.sid`
+- For Laxity NewPlayer v21, use: `--driver laxity` (99.93% accuracy)
+- Standard drivers on Laxity files: 1-8% accuracy (use Laxity driver instead)
+
+**Module Not Found**:
+- Install package: `pip install -e .`
+- Or set PYTHONPATH: `set PYTHONPATH=%CD%` (Windows) or `export PYTHONPATH=$(pwd)` (Mac/Linux)
+
+**Permission Denied**:
+- Close SID Factory II if output file is open
+- Add `--overwrite` flag to replace existing files
+- Try different output location (e.g., your home directory)
+
+### Debug Mode
+
+Enable verbose logging for detailed error information:
+```bash
+python scripts/sid_to_sf2.py input.sid output.sf2 --verbose
+```
+
+### Complete Troubleshooting Guide
+
+For detailed solutions to all common issues, see:
+**📖 [Complete Troubleshooting Guide](docs/guides/TROUBLESHOOTING.md)**
+
+Covers:
+- File Not Found Issues
+- Invalid SID Files
+- Missing Dependencies
+- Conversion Failures
+- Permission Problems
+- Platform-Specific Issues (Windows/Mac/Linux)
+- Debug Mode Instructions
+- FAQ
+
+### Getting Help
+
+- **Documentation**: See `CLAUDE.md` for quick reference
+- **GitHub Issues**: https://github.com/MichaelTroelsen/SIDM2conv/issues
+- **Bug Reports**: Include verbose output + file details
+
+When reporting issues, include:
+1. Command used (with `--verbose`)
+2. Full error message
+3. Player type: `tools\player-id.exe input.sid`
+4. Python version: `python --version`
+5. Platform (Windows/Mac/Linux)
+
+---
+
 ## References
 
 - [SID Factory II GitHub](https://github.com/Chordian/sidfactory2)

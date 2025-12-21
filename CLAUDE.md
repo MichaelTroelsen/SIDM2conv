@@ -1059,14 +1059,28 @@ Assistant: [Use EnterPlanMode to explore and design approach first]
 ## Getting Help
 
 **If you encounter issues**:
-1. Check `docs/ARCHITECTURE.md` for system details
-2. Check `docs/COMPONENTS_REFERENCE.md` for API documentation
-3. Check `docs/TOOLS_REFERENCE.md` for tool usage
-4. Review `info.txt` files for conversion warnings
-5. Run tests to verify system integrity
-6. Check `PIPELINE_EXECUTION_REPORT.md` for known limitations
+1. **Start here**: Check `docs/guides/TROUBLESHOOTING.md` for common issues and solutions
+2. Check `docs/ARCHITECTURE.md` for system details
+3. Check `docs/COMPONENTS_REFERENCE.md` for API documentation
+4. Check `docs/TOOLS_REFERENCE.md` for tool usage
+5. Review `info.txt` files for conversion warnings
+6. Run tests to verify system integrity
+7. Check `PIPELINE_EXECUTION_REPORT.md` for known limitations
+
+**Quick debugging**:
+```bash
+# Enable verbose output for detailed error messages
+python scripts/sid_to_sf2.py input.sid output.sf2 --verbose
+
+# Check player type
+tools/player-id.exe input.sid
+
+# Test with known-good file
+python scripts/sid_to_sf2.py SID/Angular.sid test.sf2
+```
 
 **For specific topics**:
+- **Troubleshooting & FAQ** → `docs/guides/TROUBLESHOOTING.md` ⭐ **Start here for errors**
 - **Architecture questions** → `docs/ARCHITECTURE.md`
 - **Module API questions** → `docs/COMPONENTS_REFERENCE.md`
 - **Tool usage questions** → `docs/TOOLS_REFERENCE.md`
@@ -1074,7 +1088,7 @@ Assistant: [Use EnterPlanMode to explore and design approach first]
 - **SF2 format questions** → `docs/SF2_FORMAT_SPEC.md`, `docs/format-specification.md`
 - **SF2 tracks/sequences** → `docs/SF2_TRACKS_AND_SEQUENCES.md`
 - **SF2 instruments** → `docs/SF2_INSTRUMENTS_REFERENCE.md`
-- **Validation questions** → `docs/guides/VALIDATION_GUIDE.md` (updated v2.0.0)
+- **Validation questions** → `docs/guides/VALIDATION_GUIDE.md`
 - **Gate inference questions** → `docs/implementation/GATE_INFERENCE_IMPLEMENTATION.md`
 - **Laxity driver questions** → `docs/guides/LAXITY_DRIVER_USER_GUIDE.md` (user guide), `docs/reference/LAXITY_DRIVER_TECHNICAL_REFERENCE.md` (technical)
 

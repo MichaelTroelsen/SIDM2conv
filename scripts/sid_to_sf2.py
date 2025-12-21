@@ -44,8 +44,10 @@ from sidm2.sf2_player_parser import SF2PlayerParser
 # Import configuration system
 from sidm2.config import ConversionConfig, get_default_config
 
-# Also import laxity_parser for backward compatibility
-from scripts.laxity_parser import LaxityParser
+# Import error handling module
+from sidm2 import errors as sidm2_errors
+
+# Removed legacy laxity_parser import (no longer needed)
 
 # Import Laxity converter for custom driver
 try:
@@ -177,14 +179,34 @@ def convert_laxity_to_sf2(input_path: str, output_path: str, config: ConversionC
         True if conversion successful, False otherwise
 
     Raises:
-        FileNotFoundError: If input file doesn't exist
-        RuntimeError: If Laxity converter not available
+        sidm2_errors.MissingDependencyError: If Laxity converter not available
+        sidm2_errors.FileNotFoundError: If input file doesn't exist
     """
     if not LAXITY_CONVERTER_AVAILABLE:
-        raise RuntimeError("Laxity converter not available. Ensure sidm2.laxity_converter is installed.")
+        raise sidm2_errors.MissingDependencyError(
+            dependency="sidm2.laxity_converter",
+            install_command="pip install -e .",
+            alternatives=[
+                "Use standard drivers instead:",
+                "  python scripts/sid_to_sf2.py input.sid output.sf2 --driver driver11",
+                "",
+                "Note: Standard drivers have 1-8% accuracy for Laxity files",
+                "      (vs 99.93% with Laxity driver)"
+            ],
+            docs_link="README.md#installation"
+        )
 
     if not os.path.exists(input_path):
-        raise FileNotFoundError(f"Input file not found: {input_path}")
+        raise sidm2_errors.FileNotFoundError(
+            path=input_path,
+            context="input SID file",
+            suggestions=[
+                "Check the file path: python scripts/sid_to_sf2.py --help",
+                "Use absolute path instead of relative",
+                f"List files in directory: dir {os.path.dirname(input_path) or '.'}"
+            ],
+            docs_link="guides/LAXITY_DRIVER_USER_GUIDE.md"
+        )
 
     try:
         logger.info(f"Converting with Laxity driver: {input_path}")
@@ -237,7 +259,18 @@ def convert_laxity_to_sf2(input_path: str, output_path: str, config: ConversionC
 
     except Exception as e:
         logger.error(f"Laxity conversion error: {e}")
-        raise RuntimeError(f"Laxity conversion failed: {e}")
+        raise sidm2_errors.ConversionError(
+            stage="Laxity driver conversion",
+            reason=str(e),
+            input_file=input_path,
+            suggestions=[
+                "Check that the SID file is a valid Laxity NewPlayer v21 format",
+                "Try using player-id.exe to verify player type: tools/player-id.exe input.sid",
+                "Enable verbose logging to see detailed error: --verbose",
+                "Try standard driver as fallback: --driver driver11"
+            ],
+            docs_link="guides/LAXITY_DRIVER_USER_GUIDE.md#troubleshooting"
+        )
 
 
 def convert_galway_to_sf2(input_path: str, output_path: str, config: ConversionConfig = None) -> bool:
@@ -252,14 +285,33 @@ def convert_galway_to_sf2(input_path: str, output_path: str, config: ConversionC
         True if conversion successful, False otherwise
 
     Raises:
-        FileNotFoundError: If input file doesn't exist
-        RuntimeError: If Galway converter not available
+        sidm2_errors.MissingDependencyError: If Galway converter not available
+        sidm2_errors.FileNotFoundError: If input file doesn't exist
     """
     if not GALWAY_CONVERTER_AVAILABLE:
-        raise RuntimeError("Galway converter not available. Ensure sidm2 Martin Galway modules are installed.")
+        raise sidm2_errors.MissingDependencyError(
+            dependency="sidm2.galway_*",
+            install_command="pip install -e .",
+            alternatives=[
+                "Use standard drivers instead:",
+                "  python scripts/sid_to_sf2.py input.sid output.sf2 --driver driver11",
+                "",
+                "Note: Martin Galway converter provides 88-96% accuracy",
+                "      Standard drivers may have lower accuracy"
+            ],
+            docs_link="README.md#installation"
+        )
 
     if not os.path.exists(input_path):
-        raise FileNotFoundError(f"Input file not found: {input_path}")
+        raise sidm2_errors.FileNotFoundError(
+            path=input_path,
+            context="input SID file",
+            suggestions=[
+                "Check the file path: python scripts/sid_to_sf2.py --help",
+                "Use absolute path instead of relative",
+                f"List files in directory: dir {os.path.dirname(input_path) or '.'}"
+            ]
+        )
 
     try:
         logger.info(f"Converting with Martin Galway player support: {input_path}")
@@ -303,7 +355,16 @@ def convert_galway_to_sf2(input_path: str, output_path: str, config: ConversionC
 
             if not driver11_template_path.exists():
                 logger.error(f"SF2 Driver 11 template not found at {driver11_template_path}")
-                raise FileNotFoundError(f"SF2 Driver 11 template required for Galway conversion")
+                raise sidm2_errors.FileNotFoundError(
+                    path=str(driver11_template_path),
+                    context="SF2 Driver 11 template",
+                    suggestions=[
+                        "Verify repository structure is intact",
+                        "Check that G5/drivers/ directory exists",
+                        "Re-clone the repository if files are missing"
+                    ],
+                    docs_link="README.md#installation"
+                )
 
             with open(driver11_template_path, 'rb') as f:
                 sf2_template = f.read()
@@ -342,7 +403,18 @@ def convert_galway_to_sf2(input_path: str, output_path: str, config: ConversionC
         logger.error(f"Galway conversion error: {e}")
         import traceback
         logger.debug(traceback.format_exc())
-        raise RuntimeError(f"Galway conversion failed: {e}")
+        raise sidm2_errors.ConversionError(
+            stage="Martin Galway conversion",
+            reason=str(e),
+            input_file=input_path,
+            suggestions=[
+                "Check that the SID file is a valid Martin Galway format",
+                "Try using player-id.exe to verify player type: tools/player-id.exe input.sid",
+                "Enable verbose logging to see detailed error: --verbose",
+                "Try standard driver as fallback: --driver driver11"
+            ],
+            docs_link="README.md#troubleshooting"
+        )
 
 
 def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = None, config: ConversionConfig = None, sf2_reference_path: str = None, use_midi: bool = False):
@@ -357,9 +429,10 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
         use_midi: Use MIDI-based sequence extraction (Python emulator, high accuracy)
 
     Raises:
-        FileNotFoundError: If input file doesn't exist
-        ValueError: If file format is invalid or driver_type is unknown
-        IOError: If unable to write output file
+        sidm2_errors.FileNotFoundError: If input file doesn't exist
+        sidm2_errors.InvalidInputError: If file format is invalid
+        sidm2_errors.ConfigurationError: If driver_type is unknown
+        sidm2_errors.PermissionError: If unable to write output file
     """
     try:
         # Load or use default configuration
@@ -372,26 +445,60 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
 
         # Validate input
         if not os.path.exists(input_path):
-            raise FileNotFoundError(f"Input file not found: {input_path}")
+            raise sidm2_errors.FileNotFoundError(
+                path=input_path,
+                context="input SID file",
+                suggestions=[
+                    "Check the file path: python scripts/sid_to_sf2.py --help",
+                    "Use absolute path instead of relative",
+                    f"List files in directory: dir {os.path.dirname(input_path) or '.'}"
+                ],
+                docs_link="README.md#usage"
+            )
 
         # Handle Laxity driver (custom implementation)
         if driver_type == 'laxity':
             if not LAXITY_CONVERTER_AVAILABLE:
-                raise ValueError("Laxity driver not available. Ensure sidm2.laxity_converter is installed.")
+                raise sidm2_errors.MissingDependencyError(
+                    dependency="sidm2.laxity_converter",
+                    install_command="pip install -e .",
+                    alternatives=[
+                        "Use standard drivers instead:",
+                        "  python scripts/sid_to_sf2.py input.sid output.sf2 --driver driver11",
+                        "",
+                        "Note: Standard drivers have 1-8% accuracy for Laxity files",
+                        "      (vs 99.93% with Laxity driver)"
+                    ],
+                    docs_link="README.md#installation"
+                )
             logger.info("Using custom Laxity driver (expected accuracy: 70-90%)")
             return convert_laxity_to_sf2(input_path, output_path, config=config)
 
         # Handle Martin Galway driver (table extraction and injection)
         if driver_type == 'galway':
             if not GALWAY_CONVERTER_AVAILABLE:
-                raise ValueError("Galway converter not available. Ensure sidm2 Martin Galway modules are installed.")
+                raise sidm2_errors.MissingDependencyError(
+                    dependency="sidm2.galway_*",
+                    install_command="pip install -e .",
+                    alternatives=[
+                        "Use standard drivers instead:",
+                        "  python scripts/sid_to_sf2.py input.sid output.sf2 --driver driver11"
+                    ],
+                    docs_link="README.md#installation"
+                )
             logger.info("Using Martin Galway table extraction and injection (expected accuracy: 88-96%)")
             return convert_galway_to_sf2(input_path, output_path, config=config)
 
         # Validate standard driver types
         available_drivers = list(config.driver.available_drivers) + ['laxity', 'galway']
         if driver_type not in available_drivers:
-            raise ValueError(f"Unknown driver type: {driver_type}. Must be one of {available_drivers}")
+            raise sidm2_errors.ConfigurationError(
+                setting="driver",
+                value=driver_type,
+                valid_options=available_drivers,
+                example="python scripts/sid_to_sf2.py input.sid output.sf2 --driver laxity",
+                docs_link="reference/DRIVER_REFERENCE.md"
+            )
 
         logger.info(f"Converting: {input_path}")
         logger.info(f"Output: {output_path}")
@@ -404,7 +511,19 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
             extracted = analyze_sid_file(input_path, config=config, sf2_reference_path=sf2_reference_path)
         except Exception as e:
             logger.error(f"Failed to analyze SID file: {e}")
-            raise ValueError(f"Invalid or corrupted SID file: {e}")
+            raise sidm2_errors.InvalidInputError(
+                input_type="SID file",
+                value=input_path,
+                expected="PSID or RSID format with valid player code",
+                got=str(e),
+                suggestions=[
+                    "Verify file is a valid SID file: file input.sid",
+                    "Re-download from HVSC or csdb.dk",
+                    "Check file size (should be > 124 bytes)",
+                    "Try using player-id.exe to identify player type: tools/player-id.exe input.sid"
+                ],
+                docs_link="reference/format-specification.md"
+            )
 
         # If this is an SF2-exported SID with a reference file, use the reference directly for 99% accuracy
         if sf2_reference_path and os.path.exists(sf2_reference_path):
@@ -476,13 +595,30 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
                 try:
                     os.makedirs(output_dir, exist_ok=True)
                 except OSError as e:
-                    raise IOError(f"Cannot create output directory {output_dir}: {e}")
+                    raise sidm2_errors.PermissionError(
+                        operation="create directory",
+                        path=output_dir,
+                        docs_link="README.md#troubleshooting"
+                    )
             else:
-                raise IOError(f"Output directory does not exist: {output_dir}")
+                raise sidm2_errors.FileNotFoundError(
+                    path=output_dir,
+                    context="output directory",
+                    suggestions=[
+                        "Create the directory manually",
+                        "Use --create-dirs option to create automatically",
+                        "Or set config.output.create_dirs=true"
+                    ],
+                    docs_link="README.md#usage"
+                )
 
         # Check if output file already exists
         if os.path.exists(output_path) and not config.output.overwrite:
-            raise IOError(f"Output file already exists (use --overwrite or config.output.overwrite=true): {output_path}")
+            raise sidm2_errors.PermissionError(
+                operation="overwrite",
+                path=output_path,
+                docs_link="README.md#usage"
+            )
 
         # Write the SF2 file
         try:
@@ -490,7 +626,11 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
             writer.write(output_path)
         except Exception as e:
             logger.error(f"Failed to write SF2 file: {e}")
-            raise IOError(f"Cannot write output file {output_path}: {e}")
+            raise sidm2_errors.PermissionError(
+                operation="write",
+                path=output_path,
+                docs_link="README.md#troubleshooting"
+            )
 
         logger.info("Conversion complete!")
         logger.info("IMPORTANT NOTES:")
@@ -499,13 +639,23 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
         logger.info("- Complex music data extraction is still in development")
         logger.info("- Consider this a starting point for further refinement")
 
-    except (FileNotFoundError, ValueError, IOError):
-        # Re-raise expected errors
+    except sidm2_errors.SIDMError:
+        # Re-raise our custom errors (they have helpful messages)
         raise
     except Exception as e:
         # Catch any unexpected errors
         logger.error(f"Unexpected error during conversion: {e}")
-        raise RuntimeError(f"Conversion failed: {e}")
+        raise sidm2_errors.ConversionError(
+            stage="conversion",
+            reason=str(e),
+            input_file=input_path,
+            suggestions=[
+                "Enable verbose logging to see detailed error: --verbose",
+                "Check that all dependencies are installed: pip install -e .",
+                "Try a different driver: --driver driver11"
+            ],
+            docs_link="README.md#troubleshooting"
+        )
 
 
 def convert_sid_to_both_drivers(input_path: str, output_dir: str = None, config: ConversionConfig = None, sf2_reference_path: str = None):
@@ -521,9 +671,9 @@ def convert_sid_to_both_drivers(input_path: str, output_dir: str = None, config:
         Dict with output file paths and sizes
 
     Raises:
-        FileNotFoundError: If input file doesn't exist
-        ValueError: If file format is invalid
-        IOError: If unable to write output files
+        sidm2_errors.FileNotFoundError: If input file doesn't exist
+        sidm2_errors.InvalidInputError: If file format is invalid
+        sidm2_errors.PermissionError: If unable to write output files
     """
     try:
         # Load or use default configuration
@@ -532,7 +682,16 @@ def convert_sid_to_both_drivers(input_path: str, output_dir: str = None, config:
 
         # Validate input
         if not os.path.exists(input_path):
-            raise FileNotFoundError(f"Input file not found: {input_path}")
+            raise sidm2_errors.FileNotFoundError(
+                path=input_path,
+                context="input SID file",
+                suggestions=[
+                    "Check the file path: python scripts/sid_to_sf2.py --help",
+                    "Use absolute path instead of relative",
+                    f"List files in directory: dir {os.path.dirname(input_path) or '.'}"
+                ],
+                docs_link="README.md#usage"
+            )
 
         base_name = os.path.splitext(os.path.basename(input_path))[0]
 
@@ -544,16 +703,41 @@ def convert_sid_to_both_drivers(input_path: str, output_dir: str = None, config:
             try:
                 os.makedirs(output_dir, exist_ok=True)
             except OSError as e:
-                raise IOError(f"Cannot create output directory {output_dir}: {e}")
+                raise sidm2_errors.PermissionError(
+                    operation="create directory",
+                    path=output_dir,
+                    docs_link="README.md#troubleshooting"
+                )
         elif not os.path.exists(output_dir):
-            raise IOError(f"Output directory does not exist: {output_dir}")
+            raise sidm2_errors.FileNotFoundError(
+                path=output_dir,
+                context="output directory",
+                suggestions=[
+                    "Create the directory manually",
+                    "Use --create-dirs option to create automatically",
+                    "Or set config.output.create_dirs=true"
+                ],
+                docs_link="README.md#usage"
+            )
 
         # Analyze the SID file once
         try:
             extracted = analyze_sid_file(input_path, config=config, sf2_reference_path=sf2_reference_path)
         except Exception as e:
             logger.error(f"Failed to analyze SID file: {e}")
-            raise ValueError(f"Invalid or corrupted SID file: {e}")
+            raise sidm2_errors.InvalidInputError(
+                input_type="SID file",
+                value=input_path,
+                expected="PSID or RSID format with valid player code",
+                got=str(e),
+                suggestions=[
+                    "Verify file is a valid SID file: file input.sid",
+                    "Re-download from HVSC or csdb.dk",
+                    "Check file size (should be > 124 bytes)",
+                    "Try using player-id.exe to identify player type: tools/player-id.exe input.sid"
+                ],
+                docs_link="reference/format-specification.md"
+            )
 
         # Try to extract actual data from siddump
         if config.extraction.use_siddump:
@@ -610,13 +794,23 @@ def convert_sid_to_both_drivers(input_path: str, output_dir: str = None, config:
 
         return results
 
-    except (FileNotFoundError, ValueError, IOError):
-        # Re-raise expected errors
+    except sidm2_errors.SIDMError:
+        # Re-raise our custom errors (they have helpful messages)
         raise
     except Exception as e:
         # Catch any unexpected errors
         logger.error(f"Unexpected error during conversion: {e}")
-        raise RuntimeError(f"Conversion failed: {e}")
+        raise sidm2_errors.ConversionError(
+            stage="conversion",
+            reason=str(e),
+            input_file=input_path,
+            suggestions=[
+                "Enable verbose logging to see detailed error: --verbose",
+                "Check that all dependencies are installed: pip install -e .",
+                "Try a different driver: --driver driver11"
+            ],
+            docs_link="README.md#troubleshooting"
+        )
 
 
 def main():
@@ -708,10 +902,7 @@ def main():
 
     input_file = args.input
 
-    if not os.path.exists(input_file):
-        logger.error(f"Error: Input file not found: {input_file}")
-        sys.exit(1)
-
+    # Let the converter function handle file validation with better error messages
     try:
         if args.both:
             # Generate both driver versions
@@ -732,8 +923,9 @@ def main():
             use_midi = args.use_midi if hasattr(args, 'use_midi') else False
             convert_sid_to_sf2(input_file, output_file, driver_type=driver_type, config=config, sf2_reference_path=sf2_reference, use_midi=use_midi)
 
-    except (FileNotFoundError, ValueError, IOError) as e:
-        logger.error(f"Error: {e}")
+    except sidm2_errors.SIDMError as e:
+        # Our custom errors already have helpful messages
+        print(e)
         sys.exit(1)
     except Exception as e:
         logger.error(f"Unexpected error: {e}")

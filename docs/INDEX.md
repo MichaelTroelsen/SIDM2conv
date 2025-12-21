@@ -3,7 +3,7 @@
 **Complete navigation to all project documentation after v2.3.0 consolidation**
 
 **Last Updated**: 2025-12-21
-**Version**: v2.3.0
+**Version**: v2.5.0
 **Status**: Consolidated & Organized
 
 ---
