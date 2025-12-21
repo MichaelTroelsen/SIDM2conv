@@ -969,8 +969,14 @@ Technical details:
 
 ### Integration
 
-Currently being integrated into:
-- `scripts/sid_to_sf2.py` - Main converter (Phase 2 - in progress)
+**Fully integrated (v2.5.0+)**:
+- `scripts/sid_to_sf2.py` (v1.1.0) - Main SID to SF2 converter
+- `scripts/sf2_to_sid.py` (v1.1.0) - SF2 to SID exporter
+- `scripts/convert_all.py` (v0.7.2) - Batch conversion script
+- `scripts/validate_sid_accuracy.py` (v0.1.1) - Accuracy validation tool
+- `scripts/test_roundtrip.py` - Round-trip validation test
+
+**Planned for future integration**:
 - `sidm2/sid_parser.py` - SID parsing
 - `sidm2/sf2_writer.py` - SF2 writing
 - `sidm2/sf2_packer.py` - Packing operations

@@ -25,6 +25,14 @@ from datetime import datetime
 
 from sidm2.sf2_packer import pack_sf2_to_sid
 
+# Import custom error handling
+try:
+    from sidm2 import errors
+except ImportError:
+    # Fallback if running standalone
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+    from sidm2 import errors
+
 
 class RoundtripValidator:
     def __init__(self, sid_file, output_dir="output", duration=30, verbose=False):
@@ -652,20 +660,38 @@ def main():
 
     args = parser.parse_args()
 
-    if not os.path.exists(args.sid_file):
-        print(f"Error: File not found: {args.sid_file}")
+    try:
+        if not os.path.exists(args.sid_file):
+            raise errors.FileNotFoundError(
+                path=args.sid_file,
+                context="input SID file",
+                suggestions=[
+                    f"Check the file path: {args.sid_file}",
+                    "Use absolute path instead of relative",
+                    "Verify the file extension is .sid"
+                ],
+                docs_link="guides/TROUBLESHOOTING.md#1-file-not-found-issues"
+            )
+
+        validator = RoundtripValidator(
+            args.sid_file,
+            output_dir=args.output,
+            duration=args.duration,
+            verbose=args.verbose
+        )
+
+        success = validator.run_all()
+        return 0 if success else 1
+
+    except errors.SIDMError as e:
+        # Custom error - already has helpful formatting
+        print(str(e))
         return 1
-
-    validator = RoundtripValidator(
-        args.sid_file,
-        output_dir=args.output,
-        duration=args.duration,
-        verbose=args.verbose
-    )
-
-    success = validator.run_all()
-
-    return 0 if success else 1
+    except Exception as e:
+        print(f"ERROR: Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
 
 
 if __name__ == '__main__':

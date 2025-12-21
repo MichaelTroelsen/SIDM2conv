@@ -18,8 +18,8 @@ Usage:
     python validate_sid_accuracy.py original.sid exported.sid --duration 60 --output report.html
 """
 
-__version__ = "0.1.0"
-__date__ = "2025-11-25"
+__version__ = "0.1.1"
+__date__ = "2025-12-21"
 
 import os
 import sys
@@ -29,6 +29,14 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional
 import json
+
+# Import custom error handling
+try:
+    from sidm2 import errors
+except ImportError:
+    # Fallback if running standalone
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+    from sidm2 import errors
 
 
 class SIDRegisterCapture:
@@ -330,10 +338,20 @@ class SIDRegisterCapture:
             }
         }
 
-        with open(output_path, 'w') as f:
-            json.dump(data, f, indent=2)
-
-        print(f"  Exported data to: {output_path}")
+        try:
+            with open(output_path, 'w') as f:
+                json.dump(data, f, indent=2)
+            print(f"  Exported data to: {output_path}")
+        except IOError as e:
+            raise errors.PermissionError(
+                operation="write",
+                path=output_path,
+                suggestions=[
+                    "Check if you have write permissions for the output directory",
+                    "Ensure the file is not open in another program",
+                    "Try a different output location"
+                ]
+            )
 
 
 class SIDComparator:
@@ -772,10 +790,20 @@ def generate_html_report(original: SIDRegisterCapture, exported: SIDRegisterCapt
 </html>
 """
 
-    with open(output_path, 'w', encoding='utf-8') as f:
-        f.write(html)
-
-    print(f"\n[OK] HTML report generated: {output_path}")
+    try:
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(html)
+        print(f"\n[OK] HTML report generated: {output_path}")
+    except IOError as e:
+        raise errors.PermissionError(
+            operation="write",
+            path=output_path,
+            suggestions=[
+                "Check if you have write permissions for the output directory",
+                "Ensure the file is not open in another program",
+                "Try a different output location"
+            ]
+        )
 
 
 def main():
@@ -793,85 +821,112 @@ def main():
 
     args = parser.parse_args()
 
-    # Validate input files
-    if not os.path.exists(args.original):
-        print(f"ERROR: Original SID file not found: {args.original}")
+    try:
+        # Validate input files
+        if not os.path.exists(args.original):
+            raise errors.FileNotFoundError(
+                path=args.original,
+                context="original SID file",
+                suggestions=[
+                    f"Check the file path: {args.original}",
+                    "Use absolute path instead of relative",
+                    "Verify the file extension is .sid"
+                ],
+                docs_link="guides/TROUBLESHOOTING.md#1-file-not-found-issues"
+            )
+
+        if not os.path.exists(args.exported):
+            raise errors.FileNotFoundError(
+                path=args.exported,
+                context="exported SID file",
+                suggestions=[
+                    f"Check the file path: {args.exported}",
+                    "Ensure the SF2 to SID conversion completed successfully",
+                    "Run conversion first: python scripts/sf2_to_sid.py"
+                ],
+                docs_link="guides/TROUBLESHOOTING.md#1-file-not-found-issues"
+            )
+
+        print("=" * 70)
+        print("SID Accuracy Validation Tool")
+        print("=" * 70)
+        print()
+
+        # Capture original SID
+        print("[1/3] Capturing original SID...")
+        original_capture = SIDRegisterCapture(args.original, args.duration)
+        if not original_capture.capture():
+            return 1
+        original_capture.analyze_voice_activity()
+
+        # Capture exported SID
+        print("\n[2/3] Capturing exported SID...")
+        exported_capture = SIDRegisterCapture(args.exported, args.duration)
+        if not exported_capture.capture():
+            return 1
+        exported_capture.analyze_voice_activity()
+
+        # Compare captures
+        print("\n[3/3] Comparing captures...")
+        comparator = SIDComparator(original_capture, exported_capture)
+        comparison_results = comparator.compare()
+
+        # Display results
+        print("\n" + "=" * 70)
+        print("VALIDATION RESULTS")
+        print("=" * 70)
+        print(f"\nOverall Accuracy: {comparison_results['overall_accuracy']:.2f}%")
+        print(f"Frame Accuracy:   {comparison_results['frame_accuracy']:.2f}%")
+        print(f"Filter Accuracy:  {comparison_results['filter_accuracy']:.2f}%")
+        print(f"\nVoice Accuracy:")
+        for voice_name, voice_data in comparison_results['voice_accuracy'].items():
+            print(f"  {voice_name}:")
+            print(f"    Frequency: {voice_data['frequency_accuracy']:.2f}%")
+            print(f"    Waveform:  {voice_data['waveform_accuracy']:.2f}%")
+
+        print(f"\nDifferences found: {len(comparison_results['differences'])}")
+
+        if args.verbose and comparison_results['differences']:
+            print("\nFirst 20 differences:")
+            for diff in comparison_results['differences'][:20]:
+                print(f"  {diff}")
+
+        # Export JSON if requested
+        if args.json:
+            print(f"\nExporting JSON data...")
+            original_capture.export_json(args.json.replace('.json', '_original.json'))
+            exported_capture.export_json(args.json.replace('.json', '_exported.json'))
+
+        # Generate HTML report
+        if args.output:
+            output_path = args.output
+        else:
+            base_name = Path(args.original).stem
+            output_path = f"validation_{base_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+
+        generate_html_report(original_capture, exported_capture, comparison_results, output_path)
+
+        print("\n" + "=" * 70)
+
+        # Return exit code based on accuracy
+        if comparison_results['overall_accuracy'] >= 99:
+            print("[OK] SUCCESS: 99%+ accuracy achieved!")
+            return 0
+        elif comparison_results['overall_accuracy'] >= 95:
+            print("[!] GOOD: 95%+ accuracy achieved")
+            return 0
+        else:
+            print("[X] NEEDS WORK: Accuracy below 95%")
+            return 1
+
+    except errors.SIDMError as e:
+        # Custom error - already has helpful formatting
+        print(str(e))
         return 1
-
-    if not os.path.exists(args.exported):
-        print(f"ERROR: Exported SID file not found: {args.exported}")
-        return 1
-
-    print("=" * 70)
-    print("SID Accuracy Validation Tool")
-    print("=" * 70)
-    print()
-
-    # Capture original SID
-    print("[1/3] Capturing original SID...")
-    original_capture = SIDRegisterCapture(args.original, args.duration)
-    if not original_capture.capture():
-        return 1
-    original_capture.analyze_voice_activity()
-
-    # Capture exported SID
-    print("\n[2/3] Capturing exported SID...")
-    exported_capture = SIDRegisterCapture(args.exported, args.duration)
-    if not exported_capture.capture():
-        return 1
-    exported_capture.analyze_voice_activity()
-
-    # Compare captures
-    print("\n[3/3] Comparing captures...")
-    comparator = SIDComparator(original_capture, exported_capture)
-    comparison_results = comparator.compare()
-
-    # Display results
-    print("\n" + "=" * 70)
-    print("VALIDATION RESULTS")
-    print("=" * 70)
-    print(f"\nOverall Accuracy: {comparison_results['overall_accuracy']:.2f}%")
-    print(f"Frame Accuracy:   {comparison_results['frame_accuracy']:.2f}%")
-    print(f"Filter Accuracy:  {comparison_results['filter_accuracy']:.2f}%")
-    print(f"\nVoice Accuracy:")
-    for voice_name, voice_data in comparison_results['voice_accuracy'].items():
-        print(f"  {voice_name}:")
-        print(f"    Frequency: {voice_data['frequency_accuracy']:.2f}%")
-        print(f"    Waveform:  {voice_data['waveform_accuracy']:.2f}%")
-
-    print(f"\nDifferences found: {len(comparison_results['differences'])}")
-
-    if args.verbose and comparison_results['differences']:
-        print("\nFirst 20 differences:")
-        for diff in comparison_results['differences'][:20]:
-            print(f"  {diff}")
-
-    # Export JSON if requested
-    if args.json:
-        print(f"\nExporting JSON data...")
-        original_capture.export_json(args.json.replace('.json', '_original.json'))
-        exported_capture.export_json(args.json.replace('.json', '_exported.json'))
-
-    # Generate HTML report
-    if args.output:
-        output_path = args.output
-    else:
-        base_name = Path(args.original).stem
-        output_path = f"validation_{base_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-
-    generate_html_report(original_capture, exported_capture, comparison_results, output_path)
-
-    print("\n" + "=" * 70)
-
-    # Return exit code based on accuracy
-    if comparison_results['overall_accuracy'] >= 99:
-        print("[OK] SUCCESS: 99%+ accuracy achieved!")
-        return 0
-    elif comparison_results['overall_accuracy'] >= 95:
-        print("[!] GOOD: 95%+ accuracy achieved")
-        return 0
-    else:
-        print("[X] NEEDS WORK: Accuracy below 95%")
+    except Exception as e:
+        print(f"ERROR: Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
         return 1
 
 

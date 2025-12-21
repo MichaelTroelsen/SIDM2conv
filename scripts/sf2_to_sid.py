@@ -24,7 +24,15 @@ import logging
 from pathlib import Path
 from typing import Tuple, Optional
 
-__version__ = "1.0.0"
+# Import custom error handling
+try:
+    from sidm2 import errors
+except ImportError:
+    # Fallback if running standalone
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+    from sidm2 import errors
+
+__version__ = "1.1.0"
 
 # Configure logging
 logging.basicConfig(
@@ -126,7 +134,17 @@ class SF2File:
     def _parse(self):
         """Parse SF2 file structure"""
         if len(self.data) < 2:
-            raise ValueError("SF2 file too short")
+            raise errors.InvalidInputError(
+                input_type="SF2 file",
+                value=f"{len(self.data)} bytes",
+                expected="at least 2 bytes (PRG load address)",
+                got=f"only {len(self.data)} bytes",
+                suggestions=[
+                    "Verify the file is a valid SF2 file",
+                    "Check if the file was corrupted during download/transfer",
+                    "Try re-exporting from SID Factory II"
+                ]
+            )
 
         # SF2 files are PRG format: first 2 bytes are load address (little-endian)
         self.load_address = struct.unpack('<H', self.data[0:2])[0]
@@ -251,8 +269,31 @@ def convert_sf2_to_sid(sf2_path: str, sid_path: str) -> bool:
     logger.info(f"  Output: {sid_path}")
 
     # Read SF2 file
-    with open(sf2_path, 'rb') as f:
-        sf2_data = f.read()
+    if not os.path.exists(sf2_path):
+        raise errors.FileNotFoundError(
+            path=sf2_path,
+            context="input SF2 file",
+            suggestions=[
+                f"Check the file path: {sf2_path}",
+                "Use absolute path instead of relative",
+                "Verify the file extension is .sf2"
+            ],
+            docs_link="guides/TROUBLESHOOTING.md#1-file-not-found-issues"
+        )
+
+    try:
+        with open(sf2_path, 'rb') as f:
+            sf2_data = f.read()
+    except IOError as e:
+        raise errors.PermissionError(
+            operation="read",
+            path=sf2_path,
+            suggestions=[
+                "Check file permissions",
+                "Ensure the file is not open in another program",
+                "Try running with administrator privileges (Windows)"
+            ]
+        )
 
     sf2 = SF2File(sf2_data)
 
@@ -277,8 +318,24 @@ def convert_sf2_to_sid(sf2_path: str, sid_path: str) -> bool:
     logger.info(f"  DEBUG: C64 first 16 bytes: {' '.join(f'{b:02x}' for b in c64_data[:16])}")
 
     # Write PSID file
-    with open(sid_path, 'wb') as f:
-        f.write(psid_data)
+    try:
+        # Create output directory if needed
+        output_dir = os.path.dirname(sid_path)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
+
+        with open(sid_path, 'wb') as f:
+            f.write(psid_data)
+    except IOError as e:
+        raise errors.PermissionError(
+            operation="write",
+            path=sid_path,
+            suggestions=[
+                "Check if you have write permissions for the output directory",
+                "Ensure the output file is not open in another program",
+                "Try a different output location"
+            ]
+        )
 
     logger.info(f"  Created: {sid_path} ({len(psid_data):,} bytes)")
     logger.info(f"  Header: 124 bytes")
@@ -314,10 +371,6 @@ def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    if not os.path.exists(args.input_sf2):
-        logger.error(f"Input file not found: {args.input_sf2}")
-        sys.exit(1)
-
     try:
         success = convert_sf2_to_sid(args.input_sf2, args.output_sid)
         if success:
@@ -325,8 +378,12 @@ def main():
         else:
             logger.error("Conversion failed")
             sys.exit(1)
+    except errors.SIDMError as e:
+        # Custom error - already has helpful formatting
+        print(str(e))
+        sys.exit(1)
     except Exception as e:
-        logger.error(f"Error: {e}")
+        logger.error(f"Unexpected error: {e}")
         if args.verbose:
             import traceback
             traceback.print_exc()

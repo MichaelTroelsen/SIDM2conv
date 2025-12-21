@@ -62,8 +62,16 @@ from sidm2.sf2_packer import pack_sf2_to_sid
 from scripts.laxity_parser import LaxityParser
 from scripts.validate_psid import PSIDValidator
 
+# Import custom error handling
+try:
+    from sidm2 import errors
+except ImportError:
+    # Fallback if running standalone
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+    from sidm2 import errors
+
 # Version info
-__version__ = "0.7.1"
+__version__ = "0.7.2"
 __build_date__ = "2025-12-07"
 
 # Setup logging
@@ -679,20 +687,48 @@ def convert_all(sid_dir='SID', output_dir='output', roundtrip=False, roundtrip_d
 
     # Check if SID directory exists
     if not os.path.exists(sid_dir):
-        logger.error(f"SID directory '{sid_dir}' not found")
-        sys.exit(1)
+        raise errors.FileNotFoundError(
+            path=sid_dir,
+            context="SID input directory",
+            suggestions=[
+                f"Create the directory: mkdir {sid_dir}",
+                "Use --input to specify a different directory",
+                "Check for typos in the directory name"
+            ],
+            docs_link="guides/TROUBLESHOOTING.md#1-file-not-found-issues"
+        )
 
     # Create output directory if it doesn't exist
     if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-        logger.info(f"Created output directory: {output_dir}")
+        try:
+            os.makedirs(output_dir)
+            logger.info(f"Created output directory: {output_dir}")
+        except OSError as e:
+            raise errors.PermissionError(
+                operation="create directory",
+                path=output_dir,
+                suggestions=[
+                    "Check if you have write permissions for the parent directory",
+                    "Try running with administrator privileges (Windows)",
+                    "Use --output to specify a different directory"
+                ]
+            )
 
     # Get list of SID files
     sid_files = [f for f in os.listdir(sid_dir) if f.lower().endswith('.sid')]
 
     if not sid_files:
-        logger.warning(f"No .sid files found in '{sid_dir}'")
-        sys.exit(1)
+        raise errors.InvalidInputError(
+            input_type="SID directory",
+            value=sid_dir,
+            expected="directory containing .sid files",
+            got="empty directory (no .sid files found)",
+            suggestions=[
+                f"Add .sid files to {sid_dir}/",
+                "Use --input to specify a different directory",
+                "Check if files have the correct .sid extension"
+            ]
+        )
 
     print(f"SID to SF2 Batch Converter v{__version__}")
     print(f"=" * 50)
@@ -1057,14 +1093,23 @@ def main():
 
     args = parser.parse_args()
 
-    success = convert_all(
-        sid_dir=args.input,
-        output_dir=args.output,
-        roundtrip=args.roundtrip,
-        roundtrip_duration=args.roundtrip_duration
-    )
-
-    sys.exit(0 if success else 1)
+    try:
+        success = convert_all(
+            sid_dir=args.input,
+            output_dir=args.output,
+            roundtrip=args.roundtrip,
+            roundtrip_duration=args.roundtrip_duration
+        )
+        sys.exit(0 if success else 1)
+    except errors.SIDMError as e:
+        # Custom error - already has helpful formatting
+        print(str(e))
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 
 if __name__ == '__main__':

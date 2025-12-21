@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.5.1] - 2025-12-21
+
+### Added - Error Handling Extension
+
+Extended custom error handling from v2.5.0 to 4 additional key scripts:
+
+#### Updated Scripts
+- **`scripts/sf2_to_sid.py` (v1.1.0)**
+  - Replaced ValueError with InvalidInputError for file validation
+  - Added FileNotFoundError for missing SF2 files
+  - Added PermissionError for file read/write operations
+  - Updated main() to catch and display SIDMError exceptions
+
+- **`scripts/convert_all.py` (v0.7.2)**
+  - Added FileNotFoundError for missing SID directory
+  - Added InvalidInputError for empty directories
+  - Added PermissionError for directory creation
+  - Updated main() with proper exception handling
+
+- **`scripts/validate_sid_accuracy.py` (v0.1.1)**
+  - Added FileNotFoundError for missing original/exported SID files
+  - Added PermissionError for JSON/HTML export operations
+  - Updated main() with comprehensive error handling
+
+- **`scripts/test_roundtrip.py`**
+  - Added FileNotFoundError for missing input files
+  - Updated main() with proper exception handling
+
+### Changed
+- **`docs/COMPONENTS_REFERENCE.md`**: Updated error handling integration section with fully integrated scripts list
+
+### Benefits
+- ✅ **Consistent UX**: All major user-facing scripts now have professional error messages
+- ✅ **Better diagnostics**: File operations provide clear guidance on permission/path issues
+- ✅ **Reduced frustration**: Users get actionable suggestions instead of stack traces
+- ✅ **Complete coverage**: All key conversion, validation, and testing scripts integrated
+
+---
+
 ## [2.5.0] - 2025-12-21
 
 ### Added - Error Handling & User Experience Improvements
