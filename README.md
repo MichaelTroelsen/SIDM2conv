@@ -12,6 +12,12 @@ This converter analyzes SID files that use Laxity's player routine and attempts 
 
 **Note**: This is an experimental reverse-engineering tool. Results may require manual refinement in SID Factory II.
 
+## Quick Start
+
+> **⚡ New to SIDM2? Get started in 5 minutes!**
+> See **[docs/QUICK_START.md](docs/QUICK_START.md)** for a beginner-friendly guide.
+> See **[docs/CHEATSHEET.md](docs/CHEATSHEET.md)** for a one-page command reference.
+
 ## Installation
 
 No external dependencies required for basic conversion - uses Python standard library only.
