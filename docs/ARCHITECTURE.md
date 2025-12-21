@@ -595,7 +595,7 @@ Break speed sequence:
 - Generates `{filename}_python.mid`
 - Creates comparison report `{filename}_midi_comparison.txt`
 - 100.66% overall accuracy (3 perfect matches)
-- See `docs/MIDI_VALIDATION_SUMMARY.md` for details
+- See `docs/analysis/MIDI_VALIDATION_COMPLETE.md` for complete validation results
 
 #### Step 12: Final Summary
 - Displays pipeline completion status
@@ -739,8 +739,8 @@ $0F03:       Filter table
 - `CLAUDE.md` - Quick reference and workflows
 - `docs/TOOLS_REFERENCE.md` - External tools documentation
 - `docs/COMPONENTS_REFERENCE.md` - Python modules
-- `docs/SF2_FORMAT_SPEC.md` - Complete SF2 format specification
-- `docs/CONVERSION_STRATEGY.md` - Laxity to SF2 mapping
-- `docs/VALIDATION_SYSTEM.md` - Validation architecture
-- `docs/ACCURACY_ROADMAP.md` - Accuracy improvement plan
+- `docs/reference/SF2_FORMAT_SPEC.md` - Complete SF2 format specification
+- `docs/reference/CONVERSION_STRATEGY.md` - Laxity to SF2 mapping
+- `docs/guides/VALIDATION_GUIDE.md` - Comprehensive validation system guide (v2.0.0)
+- `docs/analysis/ACCURACY_ROADMAP.md` - Accuracy improvement plan
 - `PIPELINE_EXECUTION_REPORT.md` - Pipeline execution analysis
