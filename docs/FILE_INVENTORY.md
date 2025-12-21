@@ -1,6 +1,6 @@
 # File Inventory
 
-**Last Updated**: 2025-12-21 13:40:15
+**Last Updated**: 2025-12-21 13:46:42
 
 ## Repository Structure
 
@@ -8,7 +8,7 @@
 SIDM2/
 ├── batch-convert-laxity.bat (559B)
 ├── batch-convert.bat (508B)
-├── CHANGELOG.md (24.8KB)
+├── CHANGELOG.md (29.2KB)
 ├── CLAUDE.md (44.2KB)
 ├── cleanup.bat (1.0KB)
 ├── cleanup_backup_20251214_210642.txt (1.8KB)
@@ -155,14 +155,14 @@ SIDM2/
 ├── docs/
 │   ├── ARCHITECTURE.md (21.0KB)
 │   ├── COMPONENTS_REFERENCE.md (21.9KB)
-│   ├── FILE_INVENTORY.md (260.7KB)
+│   ├── FILE_INVENTORY.md (259.5KB)
 │   ├── IMPROVEMENT_PLAN.md (13.8KB)
 │   ├── INDEX.md (4.5KB)
 │   ├── ROADMAP.md (13.2KB)
 │   ├── SF2_INSTRUMENTS_REFERENCE.md (14.9KB)
 │   ├── SF2_TRACKS_AND_SEQUENCES.md (12.5KB)
 │   ├── SID_REGISTERS_REFERENCE.md (8.4KB)
-│   ├── STATUS.md (11.6KB)
+│   ├── STATUS.md (15.9KB)
 │   ├── TOOLS_REFERENCE.md (13.6KB)
 │   ├── analysis/
 │   │   ├── ACCURACY_ROADMAP.md (11.4KB)

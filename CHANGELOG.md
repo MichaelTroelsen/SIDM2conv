@@ -7,6 +7,111 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.3.0] - 2025-12-21
+
+### Added - Documentation Consolidation & Organization
+
+#### Phase 1: Critical Consolidations (20 files → 6 comprehensive guides)
+
+**Laxity Driver Documentation** (11 files → 2 guides):
+- **NEW: Laxity Driver User Guide** (`docs/guides/LAXITY_DRIVER_USER_GUIDE.md`, 40KB)
+  - Complete user-facing documentation for Laxity driver (v1.8.0)
+  - Quick start, installation, usage, troubleshooting, FAQ
+  - Production-ready guide for 99.93% accuracy conversions
+- **NEW: Laxity Driver Technical Reference** (`docs/reference/LAXITY_DRIVER_TECHNICAL_REFERENCE.md`, 60KB)
+  - Complete technical implementation documentation
+  - Architecture, memory layout, pointer patching, validation results
+  - Phase 1-6 implementation details, wave table format fix
+  - Performance metrics (286 files, 100% success, 6.4 files/sec)
+
+**Validation System Documentation** (4 files → 1 guide):
+- **UPDATED: Validation Guide v2.0.0** (`docs/guides/VALIDATION_GUIDE.md`, 24KB)
+  - Consolidated all validation documentation (v0.1.0, v1.4.x, v1.8.0)
+  - Complete system architecture with ASCII diagrams
+  - Dashboard & regression tracking system
+  - Table validation & analysis tools
+  - CI/CD integration documentation
+
+**MIDI Validation Documentation** (2 files → 1 reference):
+- **NEW: MIDI Validation Complete** (`docs/analysis/MIDI_VALIDATION_COMPLETE.md`, 25KB)
+  - Complete MIDI emulator documentation
+  - Validation results (17 files, 3 perfect matches, 100.66% accuracy)
+  - Implementation evolution (6 phases)
+  - Pipeline integration, production readiness assessment
+  - Ruby installation guide for SIDtool comparison
+
+**Cleanup System Documentation** (3 files → 1 guide):
+- **UPDATED: Cleanup System v2.3** (`docs/guides/CLEANUP_SYSTEM.md`, 1010 lines)
+  - Added RULE 1: Git-tracking protection (critical safety feature)
+  - Added incident report & lessons learned (v2.4.0 cleanup mistake)
+  - Added emergency cleanup & recovery procedures
+  - Expanded with content from CLEANUP_GUIDE.md and CLEANUP_RULES.md
+  - Complete 15-section guide with table of contents
+
+#### Phase 2: Documentation Organization (23 files reorganized)
+
+**New Directory Structure**:
+- Created `docs/testing/` - Test results and OCR documentation (3 files)
+- Created `docs/implementation/laxity/` - Laxity implementation details (8 files)
+
+**File Reorganization**:
+- Moved 9 analysis docs from root → `docs/analysis/`
+- Moved 3 implementation docs from root → `docs/implementation/`
+- Moved 8 Laxity phase docs → `docs/implementation/laxity/`
+- Moved 3 OCR test docs → `docs/testing/`
+
+**Cleanup Actions**:
+- Removed 16 generated disassembly files (~1MB)
+- Updated `.gitignore` with disassembly patterns
+- Reduced docs/ root clutter by 54% (26 files → 12 core files)
+
+#### Phase 3: Content Verification
+
+**Updated Core Documentation**:
+- **UPDATED: STATUS.md** - Current state (v2.3.0, 2025-12-21)
+  - Added SF2 Viewer information (v2.0-v2.2)
+  - Added Laxity driver achievements (99.93% accuracy)
+  - Added documentation consolidation summary
+  - Updated all version numbers and metrics
+  - Comprehensive recent changes section (v1.3.0 through v2.3.0)
+
+### Changed
+
+**Documentation Structure**:
+- All documentation files reorganized into logical categories
+- Git history preserved via `git mv` for all file moves
+- FILE_INVENTORY.md updated to reflect new structure
+- Clear archive structure with README files explaining consolidation
+
+### Benefits
+
+**Reduced Redundancy**:
+- 70% reduction in documentation files (20 → 6 comprehensive guides)
+- Single source of truth for each topic
+- No conflicting information across multiple files
+
+**Improved Organization**:
+- Laxity: 82% reduction (11 → 2 files)
+- Validation: 75% reduction (4 → 1 file)
+- MIDI: 50% reduction (2 → 1 file)
+- Cleanup: 67% reduction (3 → 1 file)
+- Documentation: 54% reduction in root clutter
+
+**Better Maintainability**:
+- All content preserved and enhanced
+- Clear categorization (guides/, reference/, analysis/, implementation/, testing/)
+- Complete table of contents in consolidated guides
+- Cross-references updated
+- Archive preserves historical context
+
+### Documentation
+
+- `docs/archive/consolidation_2025-12-21/` - Archived original files with README files
+- All consolidated guides include version numbers (v2.0.0 or v2.3)
+- Git history preserved for all file moves
+
+---
+
 ## [2.2.0] - 2025-12-18
 
 ### Added - SF2 Text Exporter & Single-track Sequences
