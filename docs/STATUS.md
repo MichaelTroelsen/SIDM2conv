@@ -1,7 +1,7 @@
 # Project Status Overview
 
 **Last Updated**: 2025-12-21
-**Current Version**: v2.5.1 (Error Handling Extension)
+**Current Version**: v2.5.2 (Error Handling Extension)
 **Status**: Active Development - Production Ready
 
 ---
@@ -171,6 +171,41 @@ The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2)
 
 ## Recent Changes
 
+### v2.5.2 (2025-12-21) - Error Handling Extension
+#### Added
+- **Extended error handling** to core conversion modules
+  - `sidm2/sid_parser.py` (v1.1.0) - Custom error classes for parsing
+  - `sidm2/sf2_writer.py` (v1.1.0) - Custom error classes for writing
+  - `sidm2/sf2_packer.py` (v1.1.0) - Custom error classes for packing
+- **Comprehensive error messages** with troubleshooting guidance
+  - FileNotFoundError with similar file suggestions
+  - PermissionError with access control guidance
+  - InvalidInputError with format validation details
+  - ConversionError with recovery steps
+- **Test coverage**: 13 new error handling tests (100% pass rate)
+
+#### Benefits
+- Professional error messages for end users
+- Clear troubleshooting steps in error output
+- Documentation links in error messages
+- Improved debugging experience
+
+### v2.3.1 (2025-12-21) - CLAUDE.md Optimization
+#### Changed
+- **CLAUDE.md optimization**: 1,098 → 422 lines (61.6% reduction)
+- **New comprehensive guides**:
+  - `docs/guides/SF2_VIEWER_GUIDE.md` - Complete SF2 tools documentation
+  - `docs/guides/WAVEFORM_ANALYSIS_GUIDE.md` - Waveform analysis guide
+  - `docs/guides/EXPERIMENTS_WORKFLOW_GUIDE.md` - Experiment system guide
+- **Better organization**: Tables for quick scanning, clear structure
+- **Removed redundancy**: Stale "NEW" tags, redundant workflows
+
+#### Benefits
+- Faster scanning for AI assistants
+- Better information organization
+- All detailed content preserved in comprehensive guides
+- Improved navigation and discoverability
+
 ### v2.4.0 (2025-12-21) - Repository Cleanup & Organization
 #### Cleanup
 - **Python file archiving**: Archived 68 unused implementation artifacts and development scripts
@@ -303,9 +338,12 @@ The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2)
 ### Unit Tests
 - ✅ 86 tests in `test_converter.py` (all passing)
 - ✅ 153 subtests (100% pass rate)
+- ✅ 23 tests in `test_laxity_driver.py` (Laxity driver components)
+- ✅ 13 tests in `test_core_error_handling.py` (error handling)
 - ✅ SF2 format validation tests (passing)
 - ✅ Round-trip validation tests (passing)
 - ✅ Pipeline validation tests (19 tests, passing)
+- ✅ **Total**: 130+ tests (100% pass rate)
 
 ### Integration Tests
 - ✅ 18 SID files in complete pipeline

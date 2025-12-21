@@ -3,7 +3,7 @@
 **Complete navigation to all project documentation after v2.3.0 consolidation**
 
 **Last Updated**: 2025-12-21
-**Version**: v2.5.1
+**Version**: v2.5.2
 **Status**: Consolidated & Organized
 
 ---
@@ -30,6 +30,9 @@ Comprehensive guides for using the system:
 |-------|---------|---------|
 | [LAXITY_DRIVER_USER_GUIDE.md](guides/LAXITY_DRIVER_USER_GUIDE.md) | **Laxity driver complete user guide** - 99.93% accuracy conversions | v2.0.0 |
 | [VALIDATION_GUIDE.md](guides/VALIDATION_GUIDE.md) | **Validation system guide** - Three-tier validation, dashboard, regression tracking | v2.0.0 |
+| [SF2_VIEWER_GUIDE.md](guides/SF2_VIEWER_GUIDE.md) | **SF2 Viewer & Tools** - GUI, text exporter, editor enhancements | v2.4.0 |
+| [WAVEFORM_ANALYSIS_GUIDE.md](guides/WAVEFORM_ANALYSIS_GUIDE.md) | **Waveform analysis tool** - HTML reports, metrics, troubleshooting | v0.7.2 |
+| [EXPERIMENTS_WORKFLOW_GUIDE.md](guides/EXPERIMENTS_WORKFLOW_GUIDE.md) | **Experiment system workflow** - Lifecycle, templates, best practices | v2.2 |
 | [CLEANUP_SYSTEM.md](guides/CLEANUP_SYSTEM.md) | **Cleanup system guide** - Automated cleanup, git protection, file organization | v2.3 |
 | [SIDWINDER_GUIDE.md](guides/SIDWINDER_GUIDE.md) | **SIDwinder integration guide** - Features, usage, rebuilding | - |
 | [ROOT_FOLDER_RULES.md](guides/ROOT_FOLDER_RULES.md) | **Root folder management** - What belongs in root, organization rules | - |

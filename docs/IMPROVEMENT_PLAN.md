@@ -3,7 +3,7 @@
 **Actionable roadmap based on consolidation insights**
 
 **Date**: 2025-12-21
-**Version**: 2.5.1
+**Version**: 2.5.2
 **Status**: Archived - Most items completed (see ROADMAP.md for current plan)
 
 ---
