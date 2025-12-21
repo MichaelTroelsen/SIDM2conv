@@ -63,7 +63,7 @@ echo Starting SF2 Viewer...
 echo.
 
 REM Launch the viewer
-python sf2_viewer_gui.py
+python pyscript/sf2_viewer_gui.py
 if errorlevel 1 (
     echo.
     echo [ERROR] Failed to launch SF2 Viewer

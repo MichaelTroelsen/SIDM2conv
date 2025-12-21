@@ -13,4 +13,4 @@ REM
 REM Examples:
 REM   update-inventory.bat
 
-python update_inventory.py
+python pyscript/update_inventory.py

@@ -69,7 +69,8 @@ def format_tree(tree, indent=0, prefix=""):
     return lines
 
 def main():
-    base_path = Path(__file__).parent
+    # Get repository root (parent of pyscript/ directory)
+    base_path = Path(__file__).parent.parent
 
     # Scan repository
     tree = scan_directory(base_path)

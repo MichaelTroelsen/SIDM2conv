@@ -25,4 +25,4 @@ REM Examples:
 REM   pipeline.bat
 REM   pipeline.bat --quick
 
-python complete_pipeline_with_validation.py %*
+python pyscript/complete_pipeline_with_validation.py %*

@@ -176,7 +176,7 @@ class CleanupTool:
 
     def scan_root_files(self):
         """Scan root directory for cleanup candidates"""
-        print("\n[1/4] Scanning root directory...")
+        print("\n[1/5] Scanning root directory...")
 
         for category, patterns in CLEANUP_PATTERNS.items():
             for pattern in patterns:
@@ -187,7 +187,7 @@ class CleanupTool:
 
     def scan_output_dirs(self):
         """Scan output directory for test/experiment directories"""
-        print("[2/4] Scanning output directory...")
+        print("[2/5] Scanning output directory...")
 
         output_dir = self.root_dir / 'output'
         if not output_dir.exists():
@@ -203,7 +203,7 @@ class CleanupTool:
 
     def scan_temp_outputs(self):
         """Scan for temporary output files in root"""
-        print("[3/4] Scanning for temporary outputs...")
+        print("[3/5] Scanning for temporary outputs...")
 
         # Look for orphaned output files
         for ext in ['.sf2', '.sid', '.dump', '.wav', '.hex']:
@@ -213,6 +213,20 @@ class CleanupTool:
                     if path.parent == self.root_dir:  # In root, likely temporary
                         self.files_to_clean.append((path, 'orphaned_output'))
                         self.total_size += path.stat().st_size
+
+    def scan_python_scripts(self):
+        """Scan for Python scripts in root (NEW - v2.5)
+
+        All Python scripts should be in pyscript/ directory.
+        Any .py file in root is flagged for cleanup.
+        """
+        print("[4/5] Scanning for Python scripts in root...")
+
+        for path in self.root_dir.glob('*.py'):
+            if path.is_file() and not self.should_keep(path):
+                # All .py files should be in pyscript/
+                self.files_to_clean.append((path, 'misplaced_python_script'))
+                self.total_size += path.stat().st_size
 
     def print_report(self):
         """Print cleanup report"""
@@ -354,7 +368,7 @@ class CleanupTool:
 
     def scan_misplaced_docs(self):
         """Scan root directory for misplaced documentation files"""
-        print("[4/4] Scanning for misplaced documentation...")
+        print("[5/5] Scanning for misplaced documentation...")
 
         import fnmatch
 
@@ -409,12 +423,14 @@ def main():
         tool.scan_root_files()
         tool.scan_output_dirs()
         tool.scan_temp_outputs()
+        tool.scan_python_scripts()  # NEW - v2.5: Check for .py files in root
         tool.scan_experiments()
         tool.scan_misplaced_docs()
     else:
         tool.scan_root_files()
         tool.scan_output_dirs()
         tool.scan_temp_outputs()
+        tool.scan_python_scripts()  # NEW - v2.5: Check for .py files in root
         tool.scan_misplaced_docs()
 
     # Report

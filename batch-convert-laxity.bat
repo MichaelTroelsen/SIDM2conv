@@ -16,4 +16,4 @@ REM
 REM Examples:
 REM   batch-convert-laxity.bat
 
-python convert_all_laxity.py
+python pyscript/convert_all_laxity.py

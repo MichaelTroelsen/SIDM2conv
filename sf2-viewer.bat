@@ -13,4 +13,4 @@ REM Examples:
 REM   sf2-viewer.bat
 REM   sf2-viewer.bat "learnings/Laxity - Stinsen - Last Night Of 89.sf2"
 
-python sf2_viewer_gui.py %*
+python pyscript/sf2_viewer_gui.py %*

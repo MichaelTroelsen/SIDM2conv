@@ -1,8 +1,9 @@
 # Root Folder Management Rules
 
-**Version**: 1.0
+**Version**: 2.0
 **Date**: 2025-12-21
 **Status**: Production Rule
+**Changes**: v2.0 - Added pyscript/ directory for ALL Python scripts
 
 ---
 
@@ -48,26 +49,7 @@ SF2_VIEWER_V2.4_COMPLETE.md           - v2.4.0 summary
 TRACK_VIEW_TEST_RESULTS.md            - v2.4.0 testing
 ```
 
-**4. Core Python Modules** (git-tracked):
-```
-sf2_viewer_gui.py           - SF2 Viewer GUI (v2.4.0)
-sf2_to_text_exporter.py     - SF2 Text Exporter (v2.3.0)
-sf2_viewer_core.py          - SF2 Parser
-sf2_visualization_widgets.py - Visualization widgets
-sf2_playback.py             - Playback engine
-```
-
-**5. Utility Scripts** (git-tracked):
-```
-cleanup.py              - Cleanup tool
-update_inventory.py     - Inventory updater
-new_experiment.py       - Experiment creator
-complete_pipeline_with_validation.py - Pipeline
-convert_all_laxity.py   - Laxity batch converter
-launch_sf2_viewer.py    - SF2 Viewer launcher
-```
-
-**6. Batch Launchers** (.bat files):
+**4. Batch Launchers** (.bat files):
 ```
 sf2-viewer.bat          - SF2 Viewer launcher
 sf2-export.bat          - SF2 Text Exporter launcher
@@ -84,10 +66,12 @@ update-inventory.bat    - Inventory updater
 TOOLS.bat               - Interactive menu launcher
 ```
 
-**7. Reference Files**:
+**5. Reference Files**:
 ```
 TOOLS_REFERENCE.txt     - Complete tools reference
 ```
+
+**Note**: All Python scripts (.py files) should be in the `pyscript/` directory. The root directory should ONLY contain .bat launcher files and documentation.
 
 ---
 
@@ -95,18 +79,23 @@ TOOLS_REFERENCE.txt     - Complete tools reference
 
 ### ❌ FORBIDDEN in Root Directory
 
-**1. Experiments & Tests**:
+**1. Python Scripts** (NEW RULE - v2.5):
+```
+❌ ANY .py file          - ALL Python scripts must be in pyscript/ directory
+```
+
+**Enforcement**: Batch launchers reference `pyscript/` for all Python scripts.
+
+**2. Experiments & Tests**:
 ```
 ❌ experiment_*.py      - Use experiments/ directory instead
-❌ test_*.py            - Use scripts/ directory or experiments/
+❌ test_*.py            - Use pyscript/ directory (if production) or experiments/
 ❌ debug_*.py           - Use experiments/ directory
 ❌ scratch_*.py         - Use experiments/ directory
 ❌ temp_*.py            - Use experiments/ directory
 ```
 
-**Exception**: `test_track_view_parity.py` is allowed because it's committed as part of v2.4.0.
-
-**2. Temporary Files**:
+**3. Temporary Files**:
 ```
 ❌ *.tmp                - Temporary files
 ❌ *.temp               - Temporary files
@@ -114,7 +103,7 @@ TOOLS_REFERENCE.txt     - Complete tools reference
 ❌ *_tmp.*              - Temporary files
 ```
 
-**3. Session Documentation**:
+**4. Session Documentation**:
 ```
 ❌ *_ANALYSIS.md        - Should be in docs/analysis/
 ❌ *_IMPLEMENTATION.md  - Should be in docs/implementation/
@@ -124,14 +113,14 @@ TOOLS_REFERENCE.txt     - Complete tools reference
 
 **Exception**: Committed documentation files (tracked by git) are allowed.
 
-**4. Backup Files**:
+**5. Backup Files**:
 ```
 ❌ *_backup.*           - Backup files
 ❌ *_old.*              - Old files
 ❌ *.bak                - Backup files
 ```
 
-**5. Output Files**:
+**6. Output Files**:
 ```
 ❌ *.sf2                - Should be in output/ or learnings/
 ❌ *.sid                - Should be in SID/ or output/
@@ -140,7 +129,7 @@ TOOLS_REFERENCE.txt     - Complete tools reference
 ❌ *.hex                - Should be in output/
 ```
 
-**6. Log Files**:
+**7. Log Files**:
 ```
 ❌ *.log                - Log files
 ❌ pipeline_*.log       - Pipeline logs
@@ -157,11 +146,18 @@ TOOLS_REFERENCE.txt     - Complete tools reference
 ```
 SIDM2/
 ├── Root/                           # Clean, essential files only
-│   ├── *.bat                       # Launchers
+│   ├── *.bat                       # Batch launchers (ONLY .bat files)
 │   ├── *.md (standard)             # README, CLAUDE, CONTRIBUTING, CHANGELOG
 │   ├── *.md (committed)            # Git-tracked documentation
-│   ├── *.py (core modules)         # sf2_viewer_gui.py, cleanup.py, etc.
 │   └── config files                # .gitignore, pytest.ini, etc.
+│
+├── pyscript/                       # ALL Python scripts (NEW - v2.5)
+│   ├── sf2_viewer_gui.py           # SF2 Viewer GUI
+│   ├── sf2_to_text_exporter.py     # SF2 Text Exporter
+│   ├── cleanup.py                  # Cleanup tool
+│   ├── update_inventory.py         # Inventory updater
+│   ├── complete_pipeline_with_validation.py  # Pipeline
+│   └── *.py                        # All other Python scripts
 │
 ├── experiments/                    # ALL experiments go here
 │   ├── my_experiment/
@@ -171,7 +167,7 @@ SIDM2/
 │   │   └── cleanup scripts
 │   └── ARCHIVE/                    # Valuable findings
 │
-├── scripts/                        # Production scripts
+├── scripts/                        # Production conversion scripts
 │   ├── sid_to_sf2.py
 │   ├── convert_all.py
 │   ├── test_*.py                   # Test scripts

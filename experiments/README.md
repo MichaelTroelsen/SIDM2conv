@@ -6,6 +6,24 @@ This directory contains temporary experiments, prototypes, and proofs of concept
 
 ---
 
+## ⚠️ MANDATORY RULE ⚠️
+
+**ALL EXPERIMENTAL WORK MUST BE CONDUCTED IN THE `experiments/` FOLDER.**
+
+- ✅ Testing new OCR approaches → `experiments/ocr_testing/`
+- ✅ Trying different parsers → `experiments/parser_prototype/`
+- ✅ Prototyping new features → `experiments/feature_name/`
+- ✅ Debugging theories → `experiments/debug_issue_123/`
+
+**DO NOT:**
+- ❌ Create test files in the root directory
+- ❌ Create experimental scripts in `scripts/` or `sidm2/`
+- ❌ Leave temporary files scattered around
+
+**If you're not sure it will work, put it in `experiments/` first!**
+
+---
+
 ## Quick Start
 
 ### Create New Experiment

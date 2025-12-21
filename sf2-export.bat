@@ -22,4 +22,4 @@ if "%~1"=="" (
     exit /b 1
 )
 
-python sf2_to_text_exporter.py %*
+python pyscript/sf2_to_text_exporter.py %*

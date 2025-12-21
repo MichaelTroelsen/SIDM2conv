@@ -24,4 +24,4 @@ REM   cleanup.bat --clean
 REM   cleanup.bat --clean --force --update-inventory
 REM   cleanup.bat --all --clean --update-inventory
 
-python cleanup.py %*
+python pyscript/cleanup.py %*

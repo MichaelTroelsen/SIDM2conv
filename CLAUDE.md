@@ -12,12 +12,13 @@ SID to SF2 Converter - Converts Commodore 64 SID music files (Laxity NewPlayer v
 
 ## CRITICAL RULE: Keep Root Folder Clean
 
-**RULE**: Main folder should be kept clean. Experiments should NOT be run in root folder.
+**RULE**: Main folder should be kept clean. Experiments should NOT be run in root folder. ALL Python scripts must be in pyscript/ directory (NEW - v2.5).
 
 **Directory Rules**:
-- ✅ **Root**: Only essential files, launchers (.bat), core modules, standard docs
+- ✅ **Root**: Only .bat launchers, standard docs (.md), config files - NO .py files
+- ✅ **pyscript/**: ALL Python scripts (NEW - v2.5)
 - ✅ **experiments/**: ALL experiments, tests, debug scripts go here
-- ✅ **scripts/**: Production scripts and tools
+- ✅ **scripts/**: Production conversion and validation scripts
 - ✅ **docs/**: All documentation files
 - ✅ **output/**: All output files (.sf2, .sid, .dump, .wav, .hex)
 
@@ -33,9 +34,12 @@ cd SIDM2
 python test_my_idea.py
 
 # ✅ CORRECT - Use experiments directory
-python new_experiment.py "test_my_idea"
+python pyscript/new_experiment.py "test_my_idea"
 cd experiments/test_my_idea
 python experiment.py
+
+# NOTE: Production scripts are in pyscript/ (launched via .bat files)
+# Example: cleanup.bat calls python pyscript/cleanup.py
 ```
 
 **See**: `docs/guides/ROOT_FOLDER_RULES.md` for complete rules
@@ -271,23 +275,23 @@ exports/music_data_export/
 
 ```
 SIDM2/
-├── complete_pipeline_with_validation.py  # Complete 13-step pipeline with player analysis + MIDI validation (main entry point)
-├── cleanup.py                            # Automated cleanup tool (v2.2)
-├── new_experiment.py                     # Experiment template generator
-├── update_inventory.py                   # File inventory updater
+├── pyscript/              # ALL Python scripts (NEW - v2.5)
+│   ├── complete_pipeline_with_validation.py  # Complete 13-step pipeline (main entry point)
+│   ├── cleanup.py                            # Automated cleanup tool (v2.2)
+│   ├── new_experiment.py                     # Experiment template generator
+│   ├── update_inventory.py                   # File inventory updater
+│   ├── convert_all_laxity.py                 # Laxity batch converter
+│   ├── sf2_viewer_gui.py                     # SF2 Viewer GUI (v2.4.0)
+│   ├── sf2_viewer_core.py                    # SF2 format parser (500 lines)
+│   ├── sf2_visualization_widgets.py          # Visualization widgets (300 lines)
+│   ├── sf2_playback.py                       # Playback engine (200 lines)
+│   ├── sf2_to_text_exporter.py               # SF2 Text Exporter (v2.3.0)
+│   ├── launch_sf2_viewer.py                  # Python launcher with auto-install
+│   ├── test_laxity_accuracy.py               # Laxity driver tests
+│   ├── test_track_view_parity.py             # Track View tests
+│   └── *.py                                  # All other Python scripts
 │
-├── SIDM2/                 # SF2 Viewer Application (v2.2 - Single-track Sequences + Hex Notation)
-│   ├── sf2_viewer_core.py              # SF2 format parser with format detection (500 lines)
-│   ├── sf2_viewer_gui.py               # PyQt6 GUI application (1000+ lines) - Single/interleaved display
-│   ├── sf2_visualization_widgets.py    # Visualization widgets (300 lines)
-│   ├── sf2_playback.py                 # Playback engine (200 lines)
-│   ├── launch_sf2_viewer.py            # Python launcher with auto-install (90 lines)
-│   ├── launch_sf2_viewer.bat           # Windows batch launcher with dependency check
-│   ├── test_sf2_viewer.py              # Test suite (160 lines, 100% pass rate)
-│   ├── SF2_VIEWER_IMPLEMENTATION_SUMMARY.md # Technical summary
-│   ├── VIEWER_COMPLETE.txt             # Completion summary
-│
-├── scripts/               # Conversion and utility scripts
+├── scripts/               # Production conversion and validation scripts
 │   ├── sid_to_sf2.py          # Main SID→SF2 converter
 │   ├── sf2_to_sid.py          # SF2→SID exporter (uses sf2_packer.py)
 │   ├── convert_all.py         # Batch conversion with validation
