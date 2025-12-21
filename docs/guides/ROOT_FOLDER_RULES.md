@@ -32,7 +32,7 @@ sidm2_config.example.json - Example configuration
 SIDwinder.cfg           - SIDwinder configuration
 ```
 
-**2. Standard Documentation Files**:
+**2. Standard Documentation Files** (ONLY these):
 ```
 README.md               - Main project documentation
 CONTRIBUTING.md         - Contribution guidelines
@@ -41,15 +41,9 @@ CLAUDE.md               - AI assistant quick reference
 LICENSE                 - Project license (if exists)
 ```
 
-**3. Committed Documentation** (git-tracked):
-```
-CONSOLIDATION_2025-12-21_COMPLETE.md  - v2.4.0 consolidation
-SF2_VIEWER_FEATURE_PARITY_PLAN.md     - v2.4.0 planning
-SF2_VIEWER_V2.4_COMPLETE.md           - v2.4.0 summary
-TRACK_VIEW_TEST_RESULTS.md            - v2.4.0 testing
-```
+**Note**: All other documentation files belong in `docs/` directory.
 
-**4. Batch Launchers** (.bat files):
+**3. Batch Launchers** (.bat files):
 ```
 sf2-viewer.bat          - SF2 Viewer launcher
 sf2-export.bat          - SF2 Text Exporter launcher
@@ -66,12 +60,12 @@ update-inventory.bat    - Inventory updater
 TOOLS.bat               - Interactive menu launcher
 ```
 
-**5. Reference Files**:
+**4. Reference Files**:
 ```
 TOOLS_REFERENCE.txt     - Complete tools reference
 ```
 
-**Note**: All Python scripts (.py files) should be in the `pyscript/` directory. The root directory should ONLY contain .bat launcher files and documentation.
+**Note**: All Python scripts (.py files) should be in the `pyscript/` directory. The root directory should ONLY contain .bat launcher files and standard documentation (README, CLAUDE, CONTRIBUTING, CHANGELOG).
 
 ---
 

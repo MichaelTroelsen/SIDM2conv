@@ -69,15 +69,10 @@ OUTPUT_TEST_DIRS = [
 
 # Files to ALWAYS keep (never clean)
 KEEP_FILES = [
-    'test_laxity_accuracy.py',  # Production validation script
-    'complete_pipeline_with_validation.py',
+    'test_laxity_accuracy.py',  # Production validation script (in pyscript/)
+    'complete_pipeline_with_validation.py',  # Pipeline script (in pyscript/)
+    'test_track_view_parity.py',  # Test script (in pyscript/)
     'SIDwinder.log',  # Keep main log
-    # v2.4.0 Documentation (committed to repository)
-    'SF2_VIEWER_FEATURE_PARITY_PLAN.md',
-    'SF2_VIEWER_V2.4_COMPLETE.md',
-    'TRACK_VIEW_TEST_RESULTS.md',
-    'CONSOLIDATION_2025-12-21_COMPLETE.md',
-    'test_track_view_parity.py',
 ]
 
 # Standard root documentation files (should stay in root)

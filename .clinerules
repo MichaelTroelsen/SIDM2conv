@@ -1,0 +1,16 @@
+# SIDM2 Project Rules
+
+## Available Resources
+- Project documentation in /docs/*.md files - ALWAYS check these first
+- TDZ C64 Knowledge server available via MCP - use c64-knowledge:search_docs for technical references
+- Architecture overview in ARCHITECTURE.md
+- API documentation in API.md
+
+## Workflow
+1. Before asking user questions, search existing MD files and knowledge base
+2. Use c64-knowledge:search_docs for C64 hardware/technical questions
+3. Check CHANGELOG.md for recent changes
+4. Refer to CODING_STANDARDS.md for style guidelines
+
+## Key Facts
+- This is a SID music project to convert SID files into SID Factory II SF2 music files

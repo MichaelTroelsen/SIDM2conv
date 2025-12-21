@@ -1,6 +1,6 @@
 # File Inventory
 
-**Last Updated**: 2025-12-21 12:27:18
+**Last Updated**: 2025-12-21 12:36:04
 
 ## Repository Structure
 
@@ -15,7 +15,6 @@ SIDM2/
 ├── cleanup_backup_20251215_185025.txt (1.8KB)
 ├── cleanup_backup_20251217_175042.txt (2.4KB)
 ├── cleanup_backup_20251221_092113.txt (2.3KB)
-├── CONSOLIDATION_2025-12-21_COMPLETE.md (34.4KB)
 ├── CONTRIBUTING.md (6.5KB)
 ├── file_inventory.json (0B)
 ├── launch_sf2_viewer.bat (1.8KB)
@@ -27,8 +26,6 @@ SIDM2/
 ├── sf2-export.bat (860B)
 ├── sf2-to-sid.bat (642B)
 ├── sf2-viewer.bat (573B)
-├── SF2_VIEWER_FEATURE_PARITY_PLAN.md (10.3KB)
-├── SF2_VIEWER_V2.4_COMPLETE.md (13.7KB)
 ├── sid-to-sf2.bat (922B)
 ├── sidm2_config.example.json (699B)
 ├── SIDwinder.cfg (1.5KB)
@@ -38,7 +35,6 @@ SIDM2/
 ├── TOOLS.bat (5.8KB)
 ├── TOOLS_REFERENCE.txt (9.2KB)
 ├── track_3.txt (623B)
-├── TRACK_VIEW_TEST_RESULTS.md (7.3KB)
 ├── update-inventory.bat (409B)
 ├── validate-accuracy.bat (638B)
 ├── archive/
@@ -162,7 +158,7 @@ SIDM2/
 │   ├── CLEANUP_GUIDE.md (7.9KB)
 │   ├── COMPONENTS_REFERENCE.md (21.9KB)
 │   ├── DRIVER_DETECTION_RESEARCH.md (19.8KB)
-│   ├── FILE_INVENTORY.md (259.6KB)
+│   ├── FILE_INVENTORY.md (259.8KB)
 │   ├── GATE_INFERENCE_IMPLEMENTATION.md (11.9KB)
 │   ├── HYBRID_PIPELINE_SUCCESS.md (12.1KB)
 │   ├── IMAGESORCERY_MCP_WORKAROUNDS_SUMMARY.md (9.5KB)
@@ -196,6 +192,7 @@ SIDM2/
 │   ├── VALIDATION_DASHBOARD_DESIGN.md (14.8KB)
 │   ├── analysis/
 │   │   ├── ACCURACY_ROADMAP.md (11.4KB)
+│   │   ├── CONSOLIDATION_2025-12-21_COMPLETE.md (34.4KB)
 │   │   ├── CONSOLIDATION_INSIGHTS.md (14.6KB)
 │   │   ├── CONVERSION_GUIDE.md (3.2KB)
 │   │   ├── DRIVER_FEATURES_COMPARISON.md (4.3KB)
@@ -209,6 +206,7 @@ SIDM2/
 │   │   ├── SF2_VALIDATION_STATUS.md (5.0KB)
 │   │   ├── SIDDECOMPILER_INTEGRATION_ANALYSIS.md (26.9KB)
 │   │   ├── TECHNICAL_ANALYSIS.md (13.8KB)
+│   │   ├── TRACK_VIEW_TEST_RESULTS.md (7.3KB)
 │   ├── archive/
 │   │   ├── ANNOTATED_DISASSEMBLY_INTEGRATION.md (12.3KB)
 │   │   ├── CONSOLIDATION_COMPLETE.md (9.3KB)
@@ -229,7 +227,7 @@ SIDM2/
 │   ├── guides/
 │   │   ├── CLEANUP_RULES.md (9.7KB)
 │   │   ├── CLEANUP_SYSTEM.md (15.5KB)
-│   │   ├── ROOT_FOLDER_RULES.md (10.9KB)
+│   │   ├── ROOT_FOLDER_RULES.md (10.8KB)
 │   │   ├── SIDWINDER_GUIDE.md (6.9KB)
 │   │   ├── VALIDATION_GUIDE.md (23.2KB)
 │   │   ├── VALIDATION_SYSTEM_NOTES.md (4.4KB)
@@ -243,6 +241,8 @@ SIDM2/
 │   │   ├── PHASE6_STATUS.md (10.6KB)
 │   │   ├── PHASE6_SUCCESS_SUMMARY.md (9.2KB)
 │   │   ├── RUNTIME_TABLE_BUILDING_IMPLEMENTATION.md (13.3KB)
+│   │   ├── SF2_VIEWER_FEATURE_PARITY_PLAN.md (10.3KB)
+│   │   ├── SF2_VIEWER_V2.4_COMPLETE.md (13.7KB)
 │   │   ├── WAVE_TABLE_FORMAT_FIX.md (8.4KB)
 │   ├── reference/
 │   │   ├── CONVERSION_STRATEGY.md (15.0KB)
@@ -3892,7 +3892,7 @@ SIDM2/
 │   ├── analyze_sf2_layout.py (2.6KB)
 │   ├── build_laxity_driver_with_headers.py (3.2KB)
 │   ├── check_pulse_data.py (1.3KB)
-│   ├── cleanup.py (16.6KB)
+│   ├── cleanup.py (16.4KB)
 │   ├── cleanup_md_files.py (2.9KB)
 │   ├── combine_export.py (2.4KB)
 │   ├── combine_sf2_export.py (4.0KB)
