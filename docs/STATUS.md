@@ -1,7 +1,7 @@
 # Project Status Overview
 
 **Last Updated**: 2025-12-21
-**Current Version**: v2.3.0 (Documentation Consolidation)
+**Current Version**: v2.4.0 (Repository Cleanup & Organization)
 **Status**: Active Development - Production Ready
 
 ---
@@ -79,12 +79,23 @@ The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2)
 - SIDdecompiler player structure analysis (v1.4)
 - Address and table annotations
 
-### ✅ Documentation System (v2.3 - NEW)
+### ✅ Documentation System (v2.3-v2.4 - NEW)
 - **Consolidated documentation**: 20 files → 6 comprehensive guides
 - **Organized structure**: testing/, analysis/, implementation/, guides/, reference/, archive/
 - **Git history preserved**: All moves via `git mv`
 - **Clear categories**: Reduced root clutter by 54%
 - See: Phase 1 & 2 consolidation (2025-12-21)
+
+### ✅ Repository Cleanup & Organization (v2.4 - NEW)
+- **Python file archiving**: 68 unused files archived (27% reduction)
+  - scripts/: 65 → 26 files (60% reduction)
+  - pyscript/: 37 → 8 files (78% reduction)
+- **Test collections organized**: 620+ SID files → test_collections/
+  - Laxity/ (286 files), Tel_Jeroen/ (150+ files), Hubbard_Rob/ (100+ files)
+  - Galway_Martin/ (60+ files), Fun_Fun/ (20 files)
+- **Root directory cleanup**: Documentation moved to docs/
+- **Complete documentation**: Archive READMEs with restoration instructions
+- See: `docs/analysis/PYTHON_FILE_ANALYSIS.md`, `archive/python_cleanup_2025-12-21/`
 
 ---
 
@@ -159,6 +170,36 @@ The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2)
 ---
 
 ## Recent Changes
+
+### v2.4.0 (2025-12-21) - Repository Cleanup & Organization
+#### Cleanup
+- **Python file archiving**: Archived 68 unused implementation artifacts and development scripts
+  - Laxity phase tests (7 files), implementation tools (5 files)
+  - Old validation scripts (7 files), old tests (6 files)
+  - SF2 Viewer development (9 files), Laxity development (8 files)
+  - Analysis, debugging, and experiment scripts (26 files)
+  - All files preserved with git history in `archive/python_cleanup_2025-12-21/`
+
+- **Test collections organized**: Moved 620+ SID files to `test_collections/`
+  - Laxity/ (286 files, 1.9 MB) - Primary validation collection
+  - Tel_Jeroen/ (150+ files, 2.1 MB) - Jeroen Tel classics
+  - Hubbard_Rob/ (100+ files, 832 KB) - Rob Hubbard classics
+  - Galway_Martin/ (60+ files, 388 KB) - Martin Galway classics
+  - Fun_Fun/ (20 files, 236 KB) - Fun/Fun player format
+  - Documented with comprehensive README.md
+
+- **Root directory cleanup**: Moved documentation and removed temporary files
+  - PYTHON_FILE_ANALYSIS.md → docs/analysis/
+  - TOOLS_REFERENCE.txt → docs/
+  - Removed: cleanup_backup_*.txt, track_3.txt
+
+#### Benefits
+- ✅ 60% reduction in scripts/ (65 → 26 files)
+- ✅ 78% reduction in pyscript/ (37 → 8 files)
+- ✅ Clear separation: active tools vs archived artifacts
+- ✅ Organized test collections with documentation
+- ✅ Professional repository structure
+- ✅ Easy navigation to core utilities
 
 ### v2.3.0 (2025-12-21) - Documentation Consolidation
 #### Added

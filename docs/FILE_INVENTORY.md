@@ -1,6 +1,6 @@
 # File Inventory
 
-**Last Updated**: 2025-12-21 17:59:26
+**Last Updated**: 2025-12-21 18:10:07
 
 ## Repository Structure
 
@@ -8,17 +8,15 @@
 SIDM2/
 ├── batch-convert-laxity.bat (559B)
 ├── batch-convert.bat (508B)
-├── CHANGELOG.md (29.2KB)
+├── CHANGELOG.md (33.7KB)
 ├── CLAUDE.md (41.7KB)
 ├── cleanup.bat (1.0KB)
-├── cleanup_backup_20251221_092113.txt (2.3KB)
 ├── CONTRIBUTING.md (6.5KB)
 ├── file_inventory.json (0B)
 ├── launch_sf2_viewer.bat (1.8KB)
 ├── nul (0B)
 ├── pipeline.bat (769B)
 ├── pytest.ini (475B)
-├── PYTHON_FILE_ANALYSIS.md (15.9KB)
 ├── README.md (102.3KB)
 ├── requirements.txt (115B)
 ├── sf2-export.bat (860B)
@@ -30,8 +28,6 @@ SIDM2/
 ├── test-converter.bat (594B)
 ├── test-roundtrip.bat (532B)
 ├── TOOLS.bat (5.8KB)
-├── TOOLS_REFERENCE.txt (9.2KB)
-├── track_3.txt (623B)
 ├── update-inventory.bat (409B)
 ├── validate-accuracy.bat (638B)
 ├── archive/
@@ -235,15 +231,16 @@ SIDM2/
 ├── docs/
 │   ├── ARCHITECTURE.md (21.1KB)
 │   ├── COMPONENTS_REFERENCE.md (22.0KB)
-│   ├── FILE_INVENTORY.md (258.8KB)
+│   ├── FILE_INVENTORY.md (260.3KB)
 │   ├── IMPROVEMENT_PLAN.md (13.8KB)
 │   ├── INDEX.md (12.7KB)
 │   ├── ROADMAP.md (13.2KB)
 │   ├── SF2_INSTRUMENTS_REFERENCE.md (14.9KB)
 │   ├── SF2_TRACKS_AND_SEQUENCES.md (12.5KB)
 │   ├── SID_REGISTERS_REFERENCE.md (8.4KB)
-│   ├── STATUS.md (15.9KB)
+│   ├── STATUS.md (18.0KB)
 │   ├── TOOLS_REFERENCE.md (13.6KB)
+│   ├── TOOLS_REFERENCE.txt (9.2KB)
 │   ├── analysis/
 │   │   ├── ACCURACY_ROADMAP.md (11.4KB)
 │   │   ├── CONSOLIDATION_2025-12-21_COMPLETE.md (34.4KB)
@@ -257,6 +254,7 @@ SIDM2/
 │   │   ├── MARTIN_GALWAY_PLAYER_DEEP_ANALYSIS.md (21.7KB)
 │   │   ├── MIDI_VALIDATION_COMPLETE.md (25.6KB)
 │   │   ├── PACK_STATUS.md (5.4KB)
+│   │   ├── PYTHON_FILE_ANALYSIS.md (15.9KB)
 │   │   ├── SF2_DEEP_DIVE.md (31.4KB)
 │   │   ├── SF2_HEADER_BLOCK_ANALYSIS.md (11.4KB)
 │   │   ├── SF2_KNOWLEDGE_CONSOLIDATION.md (12.7KB)
@@ -4302,6 +4300,8 @@ SIDM2/
 │   ├── trace.bin (5.7MB)
 │   ├── verify_wave_packing.py (5.5KB)
 │   ├── wave_table_packing_demo.py (6.1KB)
+├── test_collections/
+│   ├── README.md (4.3KB)
 ├── tools/
 │   ├── = (58B)
 │   ├── angular_test.asm (105.7KB)

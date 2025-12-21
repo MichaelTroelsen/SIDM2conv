@@ -7,6 +7,121 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.4.0] - 2025-12-21
+
+### Added - Repository Cleanup & Organization
+
+#### Python File Archiving (68 files archived, 27% reduction)
+
+**Archived Implementation Artifacts** (`archive/python_cleanup_2025-12-21/`):
+- **Laxity implementation** (12 files):
+  - Phase test scripts: test_phase1-6_*.py, batch_test_laxity_driver*.py
+  - Implementation tools: extract_laxity_player.py, design_laxity_sf2_header.py, relocate_laxity_player.py, etc.
+  - **Reason**: Laxity v1.8.0 complete (99.93% accuracy, production ready)
+
+- **Old validation scripts** (7 files):
+  - validate_conversion.py, validate_psid.py, comprehensive_validate.py, etc.
+  - **Reason**: Superseded by v1.4 validation system
+
+- **Old test scripts** (6 files):
+  - test_config.py, test_sf2_editor.py, test_sf2_player_parser.py, etc.
+  - **Reason**: Superseded by comprehensive test suite
+
+- **SF2 Viewer development** (9 files):
+  - verify_gui_display.py, run_viewer*.py, compare_track3_*.py, etc.
+  - **Reason**: SF2 Viewer v2.2 complete
+
+- **Laxity development** (8 files):
+  - test_laxity_accuracy.py, convert_all_laxity.py, build_laxity_driver_with_headers.py, etc.
+  - **Reason**: Superseded by main pipeline
+
+- **Analysis, debugging, experiments** (26 files):
+  - Collection-specific tools, pipeline experiments, debugging scripts
+  - **Reason**: One-off analysis, functionality integrated
+
+**Results**:
+- scripts/: 65 → 26 files (**60% reduction**)
+- pyscript/: 37 → 8 files (**78% reduction**)
+- All files preserved with git history (`git mv`)
+- Complete archive documentation in `archive/python_cleanup_2025-12-21/README.md`
+
+#### Test Collections Organization (620+ SID files)
+
+**Created `test_collections/` directory**:
+- **Laxity/** (286 files, 1.9 MB) - Primary validation collection
+  - Laxity NewPlayer v21 files
+  - 100% conversion success, 99.93% accuracy
+  - Used for v1.8.0 driver validation
+
+- **Tel_Jeroen/** (150+ files, 2.1 MB) - Jeroen Tel classics
+  - Robocop, Cybernoid, Supremacy, and more
+
+- **Hubbard_Rob/** (100+ files, 832 KB) - Rob Hubbard classics
+  - Music from legendary C64 composer
+
+- **Galway_Martin/** (60+ files, 388 KB) - Martin Galway classics
+  - Arkanoid, Combat School, Miami Vice, Green Beret, etc.
+
+- **Fun_Fun/** (20 files, 236 KB) - Fun/Fun player format
+  - Various demo and scene music
+
+**Documentation**:
+- Created comprehensive `test_collections/README.md`
+- Collection descriptions, usage examples, validation results
+- Integration with conversion and validation tools
+
+#### Root Directory Cleanup
+
+**Moved to docs/**:
+- `PYTHON_FILE_ANALYSIS.md` → `docs/analysis/`
+- `TOOLS_REFERENCE.txt` → `docs/`
+
+**Removed temporary files**:
+- `cleanup_backup_20251221_092113.txt` (backup file)
+- `track_3.txt` (debug notes)
+
+### Changed
+
+**Repository Structure**:
+- **Before**: 252 Python files (65 scripts/ + 37 pyscript/)
+- **After**: 184 Python files (26 scripts/ + 8 pyscript/)
+- **Improvement**: Clearer organization, easier navigation
+
+**Active Scripts** (26 files in scripts/):
+- Core conversion: sid_to_sf2.py, sf2_to_sid.py, convert_all.py
+- Validation: validate_sid_accuracy.py, run_validation.py, generate_dashboard.py
+- Testing: test_converter.py, test_sf2_format.py, test_complete_pipeline.py
+- Analysis: analyze_waveforms.py, test_midi_comparison.py, compare_musical_content.py
+- Utilities: disassemble_sid.py, extract_addresses.py, update_inventory.py
+
+**Active Tools** (8 files in pyscript/):
+- Maintenance: cleanup.py, new_experiment.py, update_inventory.py
+- Pipeline: complete_pipeline_with_validation.py
+- SF2 Viewer: sf2_viewer_gui.py, sf2_viewer_core.py, sf2_visualization_widgets.py, sf2_playback.py
+
+### Documentation
+
+**New Files**:
+- `docs/analysis/PYTHON_FILE_ANALYSIS.md` - Complete file categorization (16KB)
+- `archive/python_cleanup_2025-12-21/README.md` - Archive documentation (8KB)
+- `test_collections/README.md` - Test collections documentation (4KB)
+
+**Updated Files**:
+- `docs/STATUS.md` - Updated to v2.4.0 with cleanup summary
+- `docs/FILE_INVENTORY.md` - Regenerated after cleanup
+
+### Benefits
+
+- ✅ **60-78% reduction** in scripts directories
+- ✅ **Clear separation**: Active tools vs archived artifacts
+- ✅ **Professional organization**: Test collections properly documented
+- ✅ **Easy navigation**: Core utilities clearly identified
+- ✅ **Git history preserved**: All moves via `git mv`
+- ✅ **Complete documentation**: Archive READMEs with restoration instructions
+- ✅ **Reduced maintenance**: Fewer files to maintain and navigate
+
+---
+
 ## [2.3.0] - 2025-12-21
 
 ### Added - Documentation Consolidation & Organization
