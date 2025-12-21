@@ -1,6 +1,6 @@
 # File Inventory
 
-**Last Updated**: 2025-12-21 22:04:56
+**Last Updated**: 2025-12-21 22:25:04
 
 ## Repository Structure
 
@@ -9,10 +9,11 @@ SIDM2/
 ├── analyze-file.bat (1.3KB)
 ├── batch-convert-laxity.bat (559B)
 ├── batch-convert.bat (508B)
-├── CHANGELOG.md (44.7KB)
-├── CLAUDE.md (15.5KB)
+├── CHANGELOG.md (53.4KB)
+├── CLAUDE.md (15.6KB)
 ├── cleanup.bat (1.0KB)
 ├── CONTRIBUTING.md (12.3KB)
+├── convert-file.bat (2.3KB)
 ├── file_inventory.json (0B)
 ├── launch_sf2_viewer.bat (1.8KB)
 ├── nul (0B)
@@ -35,6 +36,8 @@ SIDM2/
 ├── update-inventory.bat (409B)
 ├── UX_IMPROVEMENT_PLAN.md (14.7KB)
 ├── validate-accuracy.bat (638B)
+├── validate-file.bat (2.8KB)
+├── view-file.bat (1.6KB)
 ├── archive/
 │   ├── README.md (4.3KB)
 │   ├── 2025-12-11/
@@ -235,12 +238,12 @@ SIDM2/
 │       ├── RETRODEBUGGER_INVESTIGATION.md (3.8KB)
 ├── docs/
 │   ├── ARCHITECTURE.md (21.1KB)
-│   ├── CHEATSHEET.md (4.9KB)
+│   ├── CHEATSHEET.md (5.5KB)
 │   ├── COMPONENTS_REFERENCE.md (27.8KB)
-│   ├── FILE_INVENTORY.md (260.9KB)
+│   ├── FILE_INVENTORY.md (261.1KB)
 │   ├── IMPROVEMENT_PLAN.md (14.8KB)
 │   ├── INDEX.md (13.1KB)
-│   ├── QUICK_START.md (4.2KB)
+│   ├── QUICK_START.md (4.5KB)
 │   ├── ROADMAP.md (13.5KB)
 │   ├── SF2_INSTRUMENTS_REFERENCE.md (14.9KB)
 │   ├── SF2_TRACKS_AND_SEQUENCES.md (12.5KB)
@@ -4006,6 +4009,8 @@ SIDM2/
 │   ├── test_midi_comparison.py (17.9KB)
 │   ├── test_roundtrip.py (27.0KB)
 │   ├── test_sf2_format.py (9.4KB)
+│   ├── test_sf2_packer.py (10.5KB)
+│   ├── test_validation_system.py (11.3KB)
 │   ├── update_inventory.py (6.9KB)
 │   ├── validate_sid_accuracy.py (35.4KB)
 │   └── validation/

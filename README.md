@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 
-**Version 2.3.0** | Build Date: 2025-12-21 | Production Ready - Documentation Consolidation & Organization ✅✅✅
+**Version 2.3.3** | Build Date: 2025-12-21 | Production Ready - Test Expansion & Convenience Launchers ✅✅✅
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files.
 
@@ -1852,18 +1852,13 @@ The validation performs 7 steps automatically:
 - `tools/SID2WAV.EXE` - SID to WAV renderer
 - `tools/siddump.exe` - SID register analyzer
 
-All 69 unit tests should pass:
-- SID parsing tests (7 tests)
-- Memory access tests
-- Data structure tests
-- Integration tests with real SID files
-- SF2 writing tests (2 tests)
-- Instrument encoding tests
-- Feature validation tests (instruments, commands, tempo, tables)
-- Pulse table extraction tests (5 tests)
-- Filter table extraction tests (7 tests)
-- Sequence parsing edge cases (18 tests)
-- Table linkage validation (3 tests)
+All 164+ unit tests should pass (100% pass rate):
+- **test_converter.py** (86 tests): SID parsing, memory access, data structures, integration, SF2 writing, instruments, commands, tempo, tables, pulse/filter extraction, sequences, table linkage
+- **test_sf2_format.py** (12 tests): SF2 format validation, aux pointer safety, file structure comparison
+- **test_laxity_driver.py** (23 tests): Laxity driver functionality, accuracy validation, table extraction
+- **test_sf2_packer.py** (18 tests): SF2→SID packing, memory operations, PRG format, pointer relocation
+- **test_validation_system.py** (16 tests): Database operations, regression detection, metrics collection
+- **test_complete_pipeline.py** (9 tests): Complete pipeline validation, integration testing
 
 The SF2 format test validates:
 - **Aux pointer validation**: Ensures aux pointer doesn't point to valid aux data (which crashes SID Factory II)
@@ -1912,10 +1907,13 @@ SIDM2/
 ├── convert_all.py                     # Batch converter (both drivers)
 ├── complete_pipeline_with_validation.py # Complete 12-step pipeline (v1.2)
 ├── test_roundtrip.py                  # Round-trip validation
-├── test_converter.py                  # Unit tests (69 tests)
-├── test_sf2_format.py                 # SF2 format validation
+├── test_converter.py                  # Unit tests (86 tests)
+├── test_sf2_format.py                 # SF2 format validation (12 tests)
+├── test_laxity_driver.py              # Laxity driver tests (23 tests)
+├── test_sf2_packer.py                 # SF2 packer tests (18 tests)
+├── test_validation_system.py          # Validation system tests (16 tests)
 ├── test_sf2_editor.py                 # Automated editor validation
-├── test_complete_pipeline.py          # Pipeline validation (19 tests)
+├── test_complete_pipeline.py          # Pipeline validation (9 tests)
 ├── generate_info.py                   # Comprehensive info.txt generator
 ├── extract_addresses.py               # Memory address extraction
 ├── disassemble_sid.py                 # 6502/6510 disassembler

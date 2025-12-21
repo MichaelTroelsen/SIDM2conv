@@ -133,6 +133,154 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.3.3] - 2025-12-21
+
+### Added - Test Expansion & Convenience Launchers
+
+**Exceeded 150+ test goal and added convenience batch launchers for streamlined workflows.**
+
+#### Test Expansion (164+ Tests Total)
+
+**New Test Suites (34 tests added):**
+
+1. **`scripts/test_sf2_packer.py`** (18 tests)
+   - TestDataSection: DataSection dataclass operations (3 tests)
+   - TestSF2PackerInitialization: SF2 file loading and validation (5 tests)
+     - Valid SF2 loading, SF2 format detection with magic ID 0x1337
+     - Error handling for files too small (< 2 bytes)
+     - Error handling for 64KB boundary overflow
+   - TestSF2PackerMemoryOperations: Word read/write operations (4 tests)
+     - Little-endian and big-endian word operations
+     - Read/write roundtrip validation
+   - TestSF2PackerDriverAddresses: Driver init/play address reading (1 test)
+   - TestSF2PackerScanning: Memory scanning until marker bytes (3 tests)
+   - TestSF2PackerConstants: Offset and control byte validation (2 tests)
+
+2. **`scripts/test_validation_system.py`** (16 tests)
+   - TestValidationDatabase: SQLite database operations (7 tests)
+     - Database initialization, run creation, file result tracking
+     - Metric recording, multiple runs, query operations
+   - TestRegressionDetector: Regression detection algorithms (7 tests)
+     - Accuracy regression detection (>5% threshold)
+     - Pipeline step failure detection
+     - Improvement detection, new/removed file tracking
+   - TestValidationDatabaseQueries: Database query operations (2 tests)
+
+**Test Coverage Summary:**
+- test_converter.py: 86 tests
+- test_sf2_format.py: 12 tests
+- test_laxity_driver.py: 23 tests
+- test_sf2_packer.py: 18 tests (NEW)
+- test_validation_system.py: 16 tests (NEW)
+- test_complete_pipeline.py: 9 tests
+- **Total: 164+ tests (100% pass rate on new tests)**
+
+**Goal**: 150+ tests
+**Achieved**: 164+ tests (109% of goal, +34 tests)
+
+#### New Convenience Launchers (3 files)
+
+1. **`convert-file.bat`** (80 lines)
+   - Quick single-file SID→SF2 converter
+   - Auto-detects Laxity player type with `player-id.exe`
+   - Suggests `--driver laxity` for best accuracy (99.93%)
+   - Auto-generates output filename: `output/{basename}.sf2`
+   - 3-step workflow: detect player, convert, verify output
+   - Displays next steps after conversion (view, export, validate)
+   - Usage: `convert-file.bat input.sid [--driver laxity]`
+
+2. **`validate-file.bat`** (90 lines)
+   - Complete 5-step validation workflow:
+     1. Convert SID to SF2
+     2. Export SF2 back to SID
+     3. Generate register dumps (original + exported)
+     4. Validate accuracy with frame-by-frame comparison
+     5. Generate comprehensive summary report
+   - Creates organized validation directory: `output/{basename}_validation/`
+   - Generates reports: `accuracy_report.txt`, `validation_summary.txt`
+   - Displays file list after completion
+   - Usage: `validate-file.bat input.sid [--driver laxity]`
+
+3. **`view-file.bat`** (60 lines)
+   - Quick SF2 Viewer GUI launcher
+   - File existence validation with helpful error messages
+   - Extension checking with warnings for non-.sf2 files
+   - Lists available SF2 files in `output/` if file not found
+   - Troubleshooting guidance for PyQt6 installation
+   - Usage: `view-file.bat file.sf2`
+
+#### Documentation Updates
+
+**Updated Files:**
+
+- **`docs/CHEATSHEET.md`**
+  - Added all 3 new launchers to Quick Commands section
+  - Added "Quick Convert & View" workflow (simplest 2-command workflow)
+  - Added "Complete Validation Workflow" example
+  - Updated command reference with new convenience tools
+
+- **`docs/QUICK_START.md`**
+  - Added `convert-file.bat` as "Quickest way" in Basic Usage
+  - Added `view-file.bat` as "Quickest way" for viewing
+  - Updated Test Conversion Quality section with `validate-file.bat`
+  - Enhanced workflow examples with new launchers
+
+- **`CLAUDE.md`**
+  - Updated version: v2.3.1 → v2.3.3
+  - Updated test coverage: 130+ → 164+ tests
+  - Updated Rule 2 with complete test suite breakdown:
+    - test_converter.py (86) + test_sf2_format.py (12) + test_laxity_driver.py (23)
+    - test_sf2_packer.py (18) + test_validation_system.py (16) + test_complete_pipeline.py (9)
+  - Added `test-all.bat` reference for running all 164+ tests
+
+### Benefits
+
+**Test Expansion:**
+- ✅ Exceeded 150+ test goal by 14 tests (109% of goal)
+- ✅ Complete SF2 packer test coverage (memory ops, validation, scanning)
+- ✅ Complete validation system test coverage (database, regression, metrics)
+- ✅ All new tests passing at 100% rate
+- ✅ Better confidence in core functionality
+
+**Convenience Launchers:**
+- ✅ Simplified single-file conversion workflow (1 command vs 3-5)
+- ✅ Automated complete validation workflow (5 steps in 1 command)
+- ✅ Faster SF2 viewer access (direct launch with validation)
+- ✅ Auto-detection of Laxity files with accuracy suggestions
+- ✅ Better error messages and troubleshooting guidance
+- ✅ Reduced command complexity for common tasks
+
+**Developer Experience:**
+- ✅ Faster feedback loop with quick launchers
+- ✅ Comprehensive test coverage (164+ tests)
+- ✅ Clear documentation of all tools
+- ✅ Simplified common workflows (convert → view → validate)
+- ✅ Professional convenience utilities
+
+### Files Added
+
+- `convert-file.bat` (80 lines)
+- `validate-file.bat` (90 lines)
+- `view-file.bat` (60 lines)
+- `scripts/test_sf2_packer.py` (410 lines, 18 tests)
+- `scripts/test_validation_system.py` (330 lines, 16 tests)
+
+### Files Modified
+
+- `docs/CHEATSHEET.md` (+30 lines)
+- `docs/QUICK_START.md` (+20 lines)
+- `CLAUDE.md` (+10 lines)
+
+### Total Changes
+
+- **Lines Added**: ~1,000+ lines
+- **Files Added**: 5 (3 batch launchers + 2 test suites)
+- **Files Modified**: 3 (documentation)
+- **Test Coverage Increase**: +34 tests (+26% increase)
+- **Version**: v2.3.2 → v2.3.3
+
+---
+
 ## [2.5.2] - 2025-12-21
 
 ### Added - Error Handling for Core Modules
