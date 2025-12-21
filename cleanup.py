@@ -72,6 +72,12 @@ KEEP_FILES = [
     'test_laxity_accuracy.py',  # Production validation script
     'complete_pipeline_with_validation.py',
     'SIDwinder.log',  # Keep main log
+    # v2.4.0 Documentation (committed to repository)
+    'SF2_VIEWER_FEATURE_PARITY_PLAN.md',
+    'SF2_VIEWER_V2.4_COMPLETE.md',
+    'TRACK_VIEW_TEST_RESULTS.md',
+    'CONSOLIDATION_2025-12-21_COMPLETE.md',
+    'test_track_view_parity.py',
 ]
 
 # Standard root documentation files (should stay in root)
@@ -125,16 +131,35 @@ class CleanupTool:
         self.dirs_to_clean = []
         self.total_size = 0
 
+    def is_git_tracked(self, path):
+        """Check if a file is tracked by git"""
+        import subprocess
+        try:
+            rel_path = str(path.relative_to(self.root_dir))
+            result = subprocess.run(
+                ['git', 'ls-files', '--error-unmatch', rel_path],
+                cwd=self.root_dir,
+                capture_output=True,
+                text=True
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+
     def should_keep(self, path):
         """Check if a file/directory should be kept"""
         rel_path = str(path.relative_to(self.root_dir))
 
-        # Check against keep list
+        # RULE 1: NEVER clean files tracked by git
+        if self.is_git_tracked(path):
+            return True
+
+        # RULE 2: Check against explicit keep list
         for keep in KEEP_FILES:
             if path.name == keep or rel_path == keep:
                 return True
 
-        # Check against keep directories
+        # RULE 3: Check against keep directories
         for keep_dir in KEEP_DIRS:
             if rel_path.startswith(keep_dir.replace('*', '')):
                 return True
@@ -338,6 +363,10 @@ class CleanupTool:
             if md_file.is_file():
                 # Skip standard root documentation
                 if md_file.name in STANDARD_ROOT_DOCS:
+                    continue
+
+                # RULE 1: Check if file should be kept (git-tracked, etc.)
+                if self.should_keep(md_file):
                     continue
 
                 # Check against misplaced doc patterns

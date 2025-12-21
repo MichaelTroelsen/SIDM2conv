@@ -1,6 +1,6 @@
 # File Inventory
 
-**Last Updated**: 2025-12-21 09:21:13
+**Last Updated**: 2025-12-21 09:24:16
 
 ## Repository Structure
 
@@ -15,7 +15,7 @@ SIDM2/
 ├── CHANGELOG.md (24.8KB)
 ├── check_pulse_data.py (1.3KB)
 ├── CLAUDE.md (41.7KB)
-├── cleanup.py (14.8KB)
+├── cleanup.py (15.7KB)
 ├── cleanup_backup_20251214_210642.txt (1.8KB)
 ├── cleanup_backup_20251215_185025.txt (1.8KB)
 ├── cleanup_backup_20251217_175042.txt (2.4KB)
@@ -26,12 +26,12 @@ SIDM2/
 ├── compare_track3_flexible.py (13.9KB)
 ├── compare_track3_v2.py (8.9KB)
 ├── complete_pipeline_with_validation.py (111.9KB)
+├── CONSOLIDATION_2025-12-21_COMPLETE.md (34.4KB)
 ├── CONTRIBUTING.md (6.5KB)
 ├── convert_all_laxity.py (4.1KB)
 ├── display_sequences.py (1.7KB)
 ├── file_inventory.json (0B)
 ├── FINAL_EXECUTIVE_SUMMARY.txt (7.0KB)
-├── GALWAY_PIPELINE_TIMING_REPORT.html (13.8KB)
 ├── generate_galway_timing_report.py (10.9KB)
 ├── investigate_entry_stubs.py (2.2KB)
 ├── launch_sf2_viewer.bat (1.8KB)
@@ -48,23 +48,24 @@ SIDM2/
 ├── run_viewer.py (2.1KB)
 ├── run_viewer_with_log.py (2.9KB)
 ├── search_for_sequence.py (2.7KB)
-├── sequence_6_detailed.txt (7.2KB)
 ├── sf2_playback.py (5.0KB)
 ├── sf2_to_text_exporter.py (47.6KB)
 ├── sf2_viewer_core.py (58.5KB)
+├── SF2_VIEWER_FEATURE_PARITY_PLAN.md (10.3KB)
 ├── sf2_viewer_gui.py (60.4KB)
+├── SF2_VIEWER_V2.4_COMPLETE.md (13.7KB)
 ├── sf2_visualization_widgets.py (7.7KB)
 ├── sidm2_config.example.json (699B)
 ├── SIDwinder.cfg (1.5KB)
 ├── test_laxity_accuracy.py (3.3KB)
 ├── test_siddecompiler_output.asm (51.8KB)
+├── test_track_view_parity.py (4.7KB)
 ├── trace_scanning.py (3.2KB)
-├── track3_comparison_seq0.txt (6.8KB)
 ├── track_3.txt (623B)
+├── TRACK_VIEW_TEST_RESULTS.md (7.3KB)
 ├── update_inventory.py (4.9KB)
 ├── validate_sf2.py (4.6KB)
 ├── verify_gui_display.py (6.3KB)
-├── VIEWER_COMPLETE.txt (6.9KB)
 ├── archive/
 │   ├── README.md (4.3KB)
 │   ├── 2025-12-11/
@@ -186,7 +187,7 @@ SIDM2/
 │   ├── CLEANUP_GUIDE.md (7.9KB)
 │   ├── COMPONENTS_REFERENCE.md (21.9KB)
 │   ├── DRIVER_DETECTION_RESEARCH.md (19.8KB)
-│   ├── FILE_INVENTORY.md (255.2KB)
+│   ├── FILE_INVENTORY.md (259.0KB)
 │   ├── GATE_INFERENCE_IMPLEMENTATION.md (11.9KB)
 │   ├── HYBRID_PIPELINE_SUCCESS.md (12.1KB)
 │   ├── IMAGESORCERY_MCP_WORKAROUNDS_SUMMARY.md (9.5KB)
