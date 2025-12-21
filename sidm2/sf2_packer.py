@@ -5,6 +5,8 @@ Replicates SID Factory II's Pack utility (F6):
 - Compacts data by eliminating gaps
 - Relocates pointers and driver code
 - Generates minimal SID files (~3,500 bytes vs ~8,900 bytes)
+
+Version: 1.1.0 - Added custom error handling (v2.5.2)
 """
 
 import struct
@@ -14,6 +16,7 @@ from typing import Optional, List, Dict, Tuple
 from dataclasses import dataclass
 from .cpu6502 import CPU6502
 from .sf2_reader import SF2Reader
+from . import errors
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +74,18 @@ class SF2Packer:
 
         # SF2 is a PRG file: first 2 bytes = load address (little-endian)
         if len(data) < 2:
-            raise ValueError(f"SF2 file too small: {len(data)} bytes")
+            raise errors.InvalidInputError(
+                input_type="SF2 file",
+                value=f"{len(data)} bytes",
+                expected="at least 2 bytes (PRG load address)",
+                got=f"only {len(data)} bytes",
+                suggestions=[
+                    "Verify the file is a valid SF2 file",
+                    "Check if the file was corrupted during transfer",
+                    "Try re-exporting from SID Factory II"
+                ],
+                docs_link="guides/TROUBLESHOOTING.md#2-invalid-sid-files"
+            )
 
         load_addr = struct.unpack('<H', data[0:2])[0]
         file_data = data[2:]
@@ -89,7 +103,19 @@ class SF2Packer:
         # Load into memory at specified address
         end_addr = load_addr + len(file_data)
         if end_addr > 65536:
-            raise ValueError(f"SF2 data extends beyond 64KB: ${end_addr:04X}")
+            raise errors.InvalidInputError(
+                input_type="SF2 file",
+                value=f"end address ${end_addr:04X}",
+                expected="data must fit within 64KB address space (< $10000)",
+                got=f"end address ${end_addr:04X} (beyond 64KB)",
+                suggestions=[
+                    "File may be corrupted or invalid",
+                    "Load address may be incorrect",
+                    "SF2 file may contain too much data",
+                    "Try re-exporting from SID Factory II"
+                ],
+                docs_link="reference/SF2_FORMAT_SPEC.md"
+            )
 
         self.memory[load_addr:end_addr] = file_data
         self.load_address = load_addr

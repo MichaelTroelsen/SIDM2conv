@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.5.2] - 2025-12-21
+
+### Added - Error Handling for Core Modules
+
+Extended custom error handling system to core conversion modules:
+
+#### Updated Core Modules
+- **`sidm2/sid_parser.py` (v1.1.0)**
+  - Replaced SIDParseError/InvalidSIDFileError with custom error classes
+  - Added FileNotFoundError for missing SID files with similar file suggestions
+  - Added PermissionError for read permission failures
+  - Added ConversionError for I/O errors during file loading
+  - Added InvalidInputError for:
+    - Files too small to be valid SID (< 124 bytes)
+    - Invalid magic bytes (non-PSID/RSID headers)
+    - Invalid SID file format
+    - Data offset beyond file size
+    - Missing load address in file data
+
+- **`sidm2/sf2_writer.py` (v1.1.0)**
+  - Replaced SF2WriteError/TemplateNotFoundError with custom error classes
+  - Added PermissionError for template/driver read failures
+  - Added PermissionError for SF2 output write failures
+  - Enhanced error messages with context-aware suggestions
+  - All I/O operations now provide clear guidance on permission issues
+
+- **`sidm2/sf2_packer.py` (v1.1.0)**
+  - Replaced ValueError with InvalidInputError
+  - Added validation for SF2 file size (minimum 2 bytes for PRG load address)
+  - Added validation for 64KB address space boundary
+  - Enhanced error messages with hex addresses and memory layout context
+
+### Changed
+- **`docs/COMPONENTS_REFERENCE.md`**: Updated integration section to show core modules fully integrated (v2.5.2)
+- All core modules now import from `sidm2.errors` instead of `sidm2.exceptions`
+- Error messages now include hex addresses for debugging (e.g., `$1AF3` format)
+
+### Benefits
+- ✅ **Complete error handling coverage**: All core modules + all key scripts now integrated
+- ✅ **Better debugging**: Hex addresses and memory layout info in error messages
+- ✅ **Consistent UX**: Same professional error format across entire codebase
+- ✅ **Reduced support burden**: Users get actionable solutions instead of generic errors
+
+### Testing
+- Validated FileNotFoundError with missing SID file
+- Validated InvalidInputError with corrupted SID file
+- Confirmed all error messages display correctly with full formatting
+
+---
+
 ## [2.5.1] - 2025-12-21
 
 ### Added - Error Handling Extension

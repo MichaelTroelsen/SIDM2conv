@@ -152,7 +152,8 @@
       "Bash(else echo \"✗ $file \\(NOT FOUND\\)\")",
       "Bash(do if [ -f \"$script\" ])",
       "Bash(then echo \"✓ $script\")",
-      "Bash(else echo \"✗ $script \\(not found\\)\")"
+      "Bash(else echo \"✗ $script \\(not found\\)\")",
+      "Bash(del:*)"
     ],
     "deny": [],
     "ask": []

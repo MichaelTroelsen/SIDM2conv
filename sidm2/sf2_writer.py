@@ -1,5 +1,7 @@
 """
 SF2 file writer - writes SID Factory II project files.
+
+Version: 1.1.0 - Added custom error handling (v2.5.2)
 """
 
 import logging
@@ -19,7 +21,7 @@ from .sequence_extraction import (
     find_arpeggio_table_in_memory,
     build_sf2_arp_table
 )
-from .exceptions import SF2WriteError, TemplateNotFoundError
+from . import errors
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +56,9 @@ class SF2Writer:
             filepath: Output file path
 
         Raises:
-            TemplateNotFoundError: If no template/driver is found
-            SF2WriteError: If writing fails
+            errors.FileNotFoundError: If no template/driver is found
+            errors.PermissionError: If file read/write fails
+            errors.ConversionError: If conversion fails
         """
         template_path = self._find_template(self.driver_type)
 
@@ -65,7 +68,11 @@ class SF2Writer:
                 with open(template_path, 'rb') as f:
                     template_data = f.read()
             except IOError as e:
-                raise SF2WriteError(f"Failed to read template: {e}")
+                raise errors.PermissionError(
+                    operation="read",
+                    path=template_path,
+                    docs_link="guides/TROUBLESHOOTING.md#5-permission-problems"
+                )
 
             logger.info(f"  Template size: {len(template_data)} bytes")
             self.output = bytearray(template_data)
@@ -84,7 +91,11 @@ class SF2Writer:
                     with open(driver_path, 'rb') as f:
                         driver_data = f.read()
                 except IOError as e:
-                    raise SF2WriteError(f"Failed to read driver: {e}")
+                    raise errors.PermissionError(
+                        operation="read",
+                        path=driver_path,
+                        docs_link="guides/TROUBLESHOOTING.md#5-permission-problems"
+                    )
 
                 logger.info(f"  Driver size: {len(driver_data)} bytes")
                 self.output = bytearray(driver_data)
@@ -101,7 +112,11 @@ class SF2Writer:
             with open(filepath, 'wb') as f:
                 f.write(self.output)
         except IOError as e:
-            raise SF2WriteError(f"Failed to write SF2 file: {e}")
+            raise errors.PermissionError(
+                operation="write",
+                path=filepath,
+                docs_link="guides/TROUBLESHOOTING.md#5-permission-problems"
+            )
 
         logger.info(f"Written SF2 file: {filepath}")
         logger.info(f"File size: {len(self.output)} bytes")

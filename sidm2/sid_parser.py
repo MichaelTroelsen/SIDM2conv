@@ -1,12 +1,14 @@
 """
 SID file parser.
+
+Version: 1.1.0 - Added custom error handling (v2.5.2)
 """
 
 import struct
 from typing import Tuple
 
 from .models import PSIDHeader
-from .exceptions import SIDParseError, InvalidSIDFileError
+from . import errors
 
 
 class SIDParser:
@@ -18,24 +20,79 @@ class SIDParser:
             with open(filepath, 'rb') as f:
                 self.data = f.read()
         except FileNotFoundError:
-            raise SIDParseError(f"SID file not found: {filepath}")
+            raise errors.FileNotFoundError(
+                path=filepath,
+                context="SID file",
+                suggestions=[
+                    f"Check the file exists: ls {filepath}",
+                    "Use absolute path instead of relative",
+                    "Verify the file extension is .sid"
+                ],
+                docs_link="guides/TROUBLESHOOTING.md#1-file-not-found-issues"
+            )
         except PermissionError:
-            raise SIDParseError(f"Permission denied reading: {filepath}")
+            raise errors.PermissionError(
+                operation="read",
+                path=filepath,
+                docs_link="guides/TROUBLESHOOTING.md#5-permission-problems"
+            )
         except IOError as e:
-            raise SIDParseError(f"Error reading SID file: {e}")
+            raise errors.ConversionError(
+                stage="SID file loading",
+                reason=f"I/O error: {e}",
+                input_file=filepath,
+                suggestions=[
+                    "Check if file is locked by another program",
+                    "Verify disk/network connection",
+                    "Try copying file to a different location"
+                ]
+            )
 
         if len(self.data) < 124:
-            raise InvalidSIDFileError(f"File too small to be valid SID: {len(self.data)} bytes")
+            raise errors.InvalidInputError(
+                input_type="SID file",
+                value=f"{len(self.data)} bytes",
+                expected="at least 124 bytes (PSID header)",
+                got=f"only {len(self.data)} bytes",
+                suggestions=[
+                    "Verify the file is a valid SID file",
+                    "Check if the file was corrupted during download/transfer",
+                    "Try re-downloading from the source"
+                ],
+                docs_link="guides/TROUBLESHOOTING.md#2-invalid-sid-files"
+            )
 
     def parse_header(self) -> PSIDHeader:
         """Parse the PSID/RSID header"""
         try:
             magic = self.data[0:4].decode('ascii')
         except UnicodeDecodeError:
-            raise InvalidSIDFileError("Invalid magic bytes in SID file")
+            raise errors.InvalidInputError(
+                input_type="SID file header",
+                value="corrupted magic bytes",
+                expected="'PSID' or 'RSID' (ASCII)",
+                got="non-ASCII bytes",
+                suggestions=[
+                    "Verify the file is a valid SID file",
+                    "Check file integrity with a hex editor",
+                    "Try re-downloading from the source"
+                ],
+                docs_link="guides/TROUBLESHOOTING.md#2-invalid-sid-files"
+            )
 
         if magic not in ('PSID', 'RSID'):
-            raise InvalidSIDFileError(f"Invalid SID file magic: {magic}")
+            raise errors.InvalidInputError(
+                input_type="SID file format",
+                value=magic,
+                expected="'PSID' or 'RSID'",
+                got=f"'{magic}'",
+                suggestions=[
+                    "This may not be a SID file",
+                    "File may be corrupted or in wrong format",
+                    "Verify file extension is .sid"
+                ],
+                docs_link="reference/format-specification.md"
+            )
 
         version = struct.unpack('>H', self.data[4:6])[0]
         data_offset = struct.unpack('>H', self.data[6:8])[0]
@@ -79,14 +136,36 @@ class SIDParser:
     def get_c64_data(self, header: PSIDHeader) -> Tuple[bytes, int]:
         """Extract the C64 program data and determine load address"""
         if header.data_offset >= len(self.data):
-            raise InvalidSIDFileError(f"Data offset {header.data_offset} beyond file size")
+            raise errors.InvalidInputError(
+                input_type="SID file",
+                value=f"data offset ${header.data_offset:04X}",
+                expected=f"offset < ${len(self.data):04X} (file size)",
+                got=f"offset ${header.data_offset:04X} (beyond end of file)",
+                suggestions=[
+                    "File may be corrupted or truncated",
+                    "Header may contain invalid data offset",
+                    "Try re-downloading from the source"
+                ],
+                docs_link="reference/format-specification.md"
+            )
 
         c64_data = self.data[header.data_offset:]
 
         # If load_address is 0, first two bytes are the actual load address
         if header.load_address == 0:
             if len(c64_data) < 2:
-                raise InvalidSIDFileError("No load address in file")
+                raise errors.InvalidInputError(
+                    input_type="SID file",
+                    value="missing load address",
+                    expected="2-byte load address in file data",
+                    got="insufficient data (< 2 bytes)",
+                    suggestions=[
+                        "File is corrupted or truncated",
+                        "Data section is empty",
+                        "Try re-downloading from the source"
+                    ],
+                    docs_link="reference/format-specification.md"
+                )
             load_address = struct.unpack('<H', c64_data[0:2])[0]
             c64_data = c64_data[2:]
         else:

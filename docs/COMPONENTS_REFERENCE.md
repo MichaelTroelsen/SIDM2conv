@@ -969,17 +969,26 @@ Technical details:
 
 ### Integration
 
-**Fully integrated (v2.5.0+)**:
+**Fully integrated (v2.5.2+)**:
+
+**Scripts** (v2.5.0-v2.5.1):
 - `scripts/sid_to_sf2.py` (v1.1.0) - Main SID to SF2 converter
 - `scripts/sf2_to_sid.py` (v1.1.0) - SF2 to SID exporter
 - `scripts/convert_all.py` (v0.7.2) - Batch conversion script
 - `scripts/validate_sid_accuracy.py` (v0.1.1) - Accuracy validation tool
 - `scripts/test_roundtrip.py` - Round-trip validation test
 
-**Planned for future integration**:
-- `sidm2/sid_parser.py` - SID parsing
-- `sidm2/sf2_writer.py` - SF2 writing
-- `sidm2/sf2_packer.py` - Packing operations
+**Core Modules** (v2.5.2 - NEW):
+- `sidm2/sid_parser.py` (v1.1.0) - SID file parsing with enhanced error messages
+- `sidm2/sf2_writer.py` (v1.1.0) - SF2 file writing with I/O error handling
+- `sidm2/sf2_packer.py` (v1.1.0) - SF2→SID packing with validation errors
+
+**All core modules now provide**:
+- Context-aware error messages
+- Step-by-step troubleshooting guidance
+- Platform-specific suggestions
+- Documentation links
+- Similar file suggestions (for FileNotFoundError)
 
 ### Demo Script
 
