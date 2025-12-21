@@ -1,6 +1,6 @@
 # File Inventory
 
-**Last Updated**: 2025-12-21 13:25:29
+**Last Updated**: 2025-12-21 13:31:48
 
 ## Repository Structure
 
@@ -158,7 +158,7 @@ SIDM2/
 │   ├── CLEANUP_GUIDE.md (7.9KB)
 │   ├── COMPONENTS_REFERENCE.md (21.9KB)
 │   ├── DRIVER_DETECTION_RESEARCH.md (19.8KB)
-│   ├── FILE_INVENTORY.md (260.3KB)
+│   ├── FILE_INVENTORY.md (260.4KB)
 │   ├── GATE_INFERENCE_IMPLEMENTATION.md (11.9KB)
 │   ├── HYBRID_PIPELINE_SUCCESS.md (12.1KB)
 │   ├── IMAGESORCERY_MCP_WORKAROUNDS_SUMMARY.md (9.5KB)
@@ -166,8 +166,6 @@ SIDM2/
 │   ├── INDEX.md (4.5KB)
 │   ├── MARTIN_GALWAY_PLAYER_DEEP_ANALYSIS.md (21.7KB)
 │   ├── MCP_OCR_TEST_RESULTS.md (4.3KB)
-│   ├── MIDI_COMPARISON_RESULTS.md (11.9KB)
-│   ├── MIDI_VALIDATION_SUMMARY.md (12.3KB)
 │   ├── ROADMAP.md (13.2KB)
 │   ├── SF2_DEEP_DIVE.md (31.4KB)
 │   ├── SF2_HEADER_BLOCK_ANALYSIS.md (11.4KB)
@@ -190,6 +188,7 @@ SIDM2/
 │   │   ├── DRIVER_FEATURES_COMPARISON.md (4.3KB)
 │   │   ├── DRIVER_LIMITATIONS.md (2.6KB)
 │   │   ├── GALWAY_BATCH_TIMING_RESULTS.md (10.5KB)
+│   │   ├── MIDI_VALIDATION_COMPLETE.md (25.6KB)
 │   │   ├── PACK_STATUS.md (5.4KB)
 │   │   ├── SF2_VALIDATION_STATUS.md (5.0KB)
 │   │   ├── SIDDECOMPILER_INTEGRATION_ANALYSIS.md (26.9KB)
@@ -227,6 +226,10 @@ SIDM2/
 │   │       │   ├── LAXITY_PHASE6_FINAL_REPORT.md (17.5KB)
 │   │       │   ├── LAXITY_SF2_DRIVER_RESEARCH.md (13.3KB)
 │   │       │   ├── README.md (3.1KB)
+│   │       ├── midi/
+│   │       │   ├── MIDI_COMPARISON_RESULTS.md (11.9KB)
+│   │       │   ├── MIDI_VALIDATION_SUMMARY.md (12.3KB)
+│   │       │   ├── README.md (2.8KB)
 │   │       └── validation/
 │   │           ├── README.md (2.7KB)
 │   │           ├── VALIDATION_AND_ANALYSIS_IMPROVEMENTS.md (10.4KB)
