@@ -443,6 +443,8 @@ This validates that:
 
 ### Waveform Analysis (v0.7.2)
 
+> **📖 Complete Guide**: See `docs/guides/WAVEFORM_ANALYSIS_GUIDE.md` for comprehensive waveform analysis documentation.
+
 Generate interactive HTML reports with waveform visualizations and audio comparison:
 
 ```bash
@@ -467,6 +469,8 @@ Output: `{SongName}_waveform_analysis.html` in each song directory
 ## SF2 Viewer (NEW in v2.1) 🎵
 
 **Professional GUI for viewing and analyzing SID Factory II (.sf2) files with visualization and audio playback.**
+
+> **📖 Complete Guide**: See `docs/guides/SF2_VIEWER_GUIDE.md` for comprehensive documentation including SF2 Text Exporter and SF2 Editor Enhancements.
 
 ### Features
 

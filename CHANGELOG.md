@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.3.1] - 2025-12-21
+
+### Changed - CLAUDE.md Optimization
+
+**Optimized CLAUDE.md for AI assistant quick reference:**
+
+#### Optimization Results
+- **Line Reduction**: 1098 lines → 422 lines (61.6% reduction)
+- **Better Organization**: Tables for quick scanning, clear sections
+- **Improved Navigation**: Quick Commands table, Documentation Index
+- **Removed Redundancy**: Stale "NEW" tags, redundant workflow examples
+
+#### New Comprehensive Guides Created
+- **`docs/guides/SF2_VIEWER_GUIDE.md`** - SF2 Viewer GUI, Text Exporter, and Editor Enhancements
+  - Complete viewer documentation (all 8 tabs)
+  - Text exporter usage and examples
+  - SF2 editor enhancements (F8 export, zoom, timestamps)
+  - Troubleshooting and FAQ
+
+- **`docs/guides/WAVEFORM_ANALYSIS_GUIDE.md`** - Waveform Analysis Tool
+  - Interactive HTML report generation
+  - Similarity metrics and interpretation
+  - Use cases and workflows
+  - Troubleshooting common issues
+
+- **`docs/guides/EXPERIMENTS_WORKFLOW_GUIDE.md`** - Experiment System Workflow
+  - Complete experiment lifecycle guide
+  - Templates and best practices
+  - Integration with cleanup system
+  - Archive successful experiments
+
+#### CLAUDE.md New Structure
+1. **30-Second Overview** - Quick project summary
+2. **Critical Rules** - 3 essential rules only
+3. **Quick Commands** - Top 10 commands in table format
+4. **Project Structure** - Simplified directory tree
+5. **Essential Constants** - Memory addresses, control bytes (tables)
+6. **Known Limitations** - Concise compatibility matrix
+7. **Documentation Index** - Organized by category with tables
+8. **Current Version** - Latest changes only
+9. **For AI Assistants** - Tool usage guidelines
+
+#### Cross-References Updated
+- `README.md` - Added references to new comprehensive guides
+- `CLAUDE.md` - Links to detailed documentation throughout
+
+**Impact**: Faster scanning for AI assistants, better information organization, all detailed content preserved in comprehensive guides.
+
+---
+
 ## [2.5.2] - 2025-12-21
 
 ### Added - Error Handling for Core Modules
