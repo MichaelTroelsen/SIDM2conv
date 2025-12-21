@@ -830,7 +830,7 @@ HR_DEFAULT_SR = 0x00     # No sustain, no release
   - **Laxity NewPlayer v21 → Driver 11**: 1-8% accuracy ⚠️ (use Laxity driver instead)
   - **Laxity NewPlayer v21 → NP20**: 1-8% accuracy ⚠️ (use Laxity driver instead)
   - **Root Cause**: Format incompatibility solved with custom Laxity driver
-  - **See**: `docs/LAXITY_DRIVER_IMPLEMENTATION.md` for complete documentation
+  - **See**: `docs/guides/LAXITY_DRIVER_USER_GUIDE.md` for user guide, `docs/reference/LAXITY_DRIVER_TECHNICAL_REFERENCE.md` for technical details
 - **Only supports Laxity NewPlayer v21** - Other player formats not supported
 - **Single subtune per file** - Multi-song SIDs not supported
 - **Init, Arp, HR tables use defaults** - Not extracted from original
@@ -901,13 +901,22 @@ python scripts/test_complete_pipeline.py -v
   - Complete pipeline (11 steps)
   - SF2 driver reference
 
-- **docs/LAXITY_DRIVER_IMPLEMENTATION.md** - Laxity driver complete guide (v1.8.0)
-  - Implementation overview (Phases 1-6)
+- **docs/guides/LAXITY_DRIVER_USER_GUIDE.md** - Laxity driver user guide (v2.0.0)
+  - Quick start (5 minutes)
+  - Installation & setup
+  - Basic usage examples
+  - Common workflows
+  - Troubleshooting
+  - FAQ
+
+- **docs/reference/LAXITY_DRIVER_TECHNICAL_REFERENCE.md** - Laxity driver technical reference (v2.0.0)
+  - Architecture & design (Extract & Wrap)
+  - Implementation details (Phases 1-6)
   - Wave table format fix (99.93% accuracy breakthrough)
   - Memory layout and pointer patching
-  - Validation results and production readiness
-  - Usage guide and troubleshooting
-  - See also: `docs/implementation/` for detailed technical docs
+  - Validation & testing (286 files, 100% success)
+  - Performance metrics
+  - Development history
 
 - **docs/SIDDECOMPILER_INTEGRATION.md** - SIDdecompiler analysis integration (v1.4 - NEW)
   - Overview and architecture

@@ -1,6 +1,6 @@
 # File Inventory
 
-**Last Updated**: 2025-12-21 12:36:04
+**Last Updated**: 2025-12-21 13:19:47
 
 ## Repository Structure
 
@@ -9,7 +9,7 @@ SIDM2/
 ├── batch-convert-laxity.bat (559B)
 ├── batch-convert.bat (508B)
 ├── CHANGELOG.md (24.8KB)
-├── CLAUDE.md (43.9KB)
+├── CLAUDE.md (44.2KB)
 ├── cleanup.bat (1.0KB)
 ├── cleanup_backup_20251214_210642.txt (1.8KB)
 ├── cleanup_backup_20251215_185025.txt (1.8KB)
@@ -158,18 +158,12 @@ SIDM2/
 │   ├── CLEANUP_GUIDE.md (7.9KB)
 │   ├── COMPONENTS_REFERENCE.md (21.9KB)
 │   ├── DRIVER_DETECTION_RESEARCH.md (19.8KB)
-│   ├── FILE_INVENTORY.md (259.8KB)
+│   ├── FILE_INVENTORY.md (259.9KB)
 │   ├── GATE_INFERENCE_IMPLEMENTATION.md (11.9KB)
 │   ├── HYBRID_PIPELINE_SUCCESS.md (12.1KB)
 │   ├── IMAGESORCERY_MCP_WORKAROUNDS_SUMMARY.md (9.5KB)
 │   ├── IMPROVEMENT_PLAN.md (13.8KB)
 │   ├── INDEX.md (4.5KB)
-│   ├── LAXITY_BATCH_TEST_RESULTS.md (9.8KB)
-│   ├── LAXITY_COMPLETE_COLLECTION_TEST.md (13.0KB)
-│   ├── LAXITY_DRIVER_GUIDE.md (7.6KB)
-│   ├── LAXITY_DRIVER_IMPLEMENTATION.md (11.8KB)
-│   ├── LAXITY_DRIVER_QUICK_START.md (13.7KB)
-│   ├── LAXITY_PHASE6_FINAL_REPORT.md (17.5KB)
 │   ├── MARTIN_GALWAY_PLAYER_DEEP_ANALYSIS.md (21.7KB)
 │   ├── MCP_OCR_TEST_RESULTS.md (4.3KB)
 │   ├── MIDI_COMPARISON_RESULTS.md (11.9KB)
@@ -198,10 +192,6 @@ SIDM2/
 │   │   ├── DRIVER_FEATURES_COMPARISON.md (4.3KB)
 │   │   ├── DRIVER_LIMITATIONS.md (2.6KB)
 │   │   ├── GALWAY_BATCH_TIMING_RESULTS.md (10.5KB)
-│   │   ├── LAXITY_ACCURACY_ANALYSIS.md (7.1KB)
-│   │   ├── LAXITY_DRIVER_IMPLEMENTATION_PLAN.md (15.4KB)
-│   │   ├── LAXITY_DRIVER_RESEARCH_SUMMARY.md (10.4KB)
-│   │   ├── LAXITY_SF2_DRIVER_RESEARCH.md (13.3KB)
 │   │   ├── PACK_STATUS.md (5.4KB)
 │   │   ├── SF2_VALIDATION_STATUS.md (5.0KB)
 │   │   ├── SIDDECOMPILER_INTEGRATION_ANALYSIS.md (26.9KB)
@@ -222,17 +212,32 @@ SIDM2/
 │   │   │   ├── PIPELINE_RESULTS_2025-12-06.md (3.5KB)
 │   │   │   ├── PIPELINE_RESULTS_SUMMARY.md (6.4KB)
 │   │   │   ├── PIPELINE_TIMING.md (1.4KB)
-│   │   └── 2025-12-14/
-│   │       ├── IMPROVEMENT_PLAN_FINAL_STATUS.md (17.6KB)
+│   │   ├── 2025-12-14/
+│   │   │   ├── IMPROVEMENT_PLAN_FINAL_STATUS.md (17.6KB)
+│   │   └── consolidation_2025-12-21/
+│   │       └── laxity/
+│   │           ├── LAXITY_ACCURACY_ANALYSIS.md (7.1KB)
+│   │           ├── LAXITY_BATCH_TEST_RESULTS.md (9.8KB)
+│   │           ├── LAXITY_COMPLETE_COLLECTION_TEST.md (13.0KB)
+│   │           ├── LAXITY_DRIVER_GUIDE.md (7.6KB)
+│   │           ├── LAXITY_DRIVER_IMPLEMENTATION.md (11.8KB)
+│   │           ├── LAXITY_DRIVER_IMPLEMENTATION_PLAN.md (15.4KB)
+│   │           ├── LAXITY_DRIVER_QUICK_START.md (13.7KB)
+│   │           ├── LAXITY_DRIVER_RESEARCH_SUMMARY.md (10.4KB)
+│   │           ├── LAXITY_DRIVER_VALIDATION_SUMMARY.md (3.2KB)
+│   │           ├── LAXITY_NP20_RESEARCH_REPORT.md (23.5KB)
+│   │           ├── LAXITY_PHASE6_FINAL_REPORT.md (17.5KB)
+│   │           ├── LAXITY_SF2_DRIVER_RESEARCH.md (13.3KB)
+│   │           ├── README.md (3.1KB)
 │   ├── guides/
 │   │   ├── CLEANUP_RULES.md (9.7KB)
 │   │   ├── CLEANUP_SYSTEM.md (15.5KB)
+│   │   ├── LAXITY_DRIVER_USER_GUIDE.md (19.7KB)
 │   │   ├── ROOT_FOLDER_RULES.md (10.8KB)
 │   │   ├── SIDWINDER_GUIDE.md (6.9KB)
 │   │   ├── VALIDATION_GUIDE.md (23.2KB)
 │   │   ├── VALIDATION_SYSTEM_NOTES.md (4.4KB)
 │   ├── implementation/
-│   │   ├── LAXITY_DRIVER_VALIDATION_SUMMARY.md (3.2KB)
 │   │   ├── PHASE5_COMPLETE.md (7.5KB)
 │   │   ├── PHASE5_INTEGRATION_STATUS.md (4.6KB)
 │   │   ├── PHASE5_SUMMARY.md (4.7KB)
@@ -249,7 +254,7 @@ SIDM2/
 │   │   ├── DRIVER_REFERENCE.md (9.5KB)
 │   │   ├── external-repositories.md (14.3KB)
 │   │   ├── format-specification.md (10.6KB)
-│   │   ├── LAXITY_NP20_RESEARCH_REPORT.md (23.5KB)
+│   │   ├── LAXITY_DRIVER_TECHNICAL_REFERENCE.md (28.0KB)
 │   │   ├── SF2_CLASSES.md (8.4KB)
 │   │   ├── SF2_FORMAT_SPEC.md (13.9KB)
 │   │   ├── SF2_TO_SID_LIMITATIONS.md (7.0KB)
