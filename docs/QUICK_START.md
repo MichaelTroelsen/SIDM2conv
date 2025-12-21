@@ -31,6 +31,9 @@ cd SIDM2conv
 ### Convert a SID file
 
 ```bash
+# Quickest way (auto-detects Laxity, suggests driver)
+convert-file.bat input.sid
+
 # Basic conversion
 sid-to-sf2.bat input.sid output.sf2
 
@@ -43,6 +46,10 @@ sid-to-sf2.bat input.sid output.sf2 --driver laxity
 ### View SF2 file
 
 ```bash
+# Quickest way
+view-file.bat output.sf2
+
+# Or use full viewer launcher
 sf2-viewer.bat output.sf2
 ```
 
@@ -63,10 +70,14 @@ Converts all SID files in `SID/` directory.
 ### Test Conversion Quality
 
 ```bash
+# Complete validation workflow (recommended)
+validate-file.bat original.sid
+
+# Or manual accuracy check
 validate-accuracy.bat original.sid converted.sid
 ```
 
-Shows frame-by-frame accuracy percentage.
+Shows frame-by-frame accuracy percentage and creates detailed report.
 
 ### Analyze a File
 

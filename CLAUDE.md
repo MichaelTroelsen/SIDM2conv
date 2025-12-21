@@ -1,7 +1,7 @@
 # CLAUDE.md - Project Quick Reference for AI Assistants
 
 **Project**: SIDM2 - SID to SF2 Converter
-**Version**: 2.3.1
+**Version**: 2.3.3
 **Last Updated**: 2025-12-21
 
 ---
@@ -20,7 +20,7 @@ Converts Commodore 64 SID music files (Laxity NewPlayer v21) to SID Factory II (
 - SF2 Viewer GUI (PyQt6) with 8-tab interface
 - Validation system with HTML dashboard
 - Waveform analysis and audio comparison
-- 130+ unit tests (100% pass rate)
+- 164+ unit tests (100% pass rate)
 
 ---
 
@@ -38,8 +38,10 @@ Converts Commodore 64 SID music files (Laxity NewPlayer v21) to SID Factory II (
 ### Rule 2: Always Run Tests
 Before committing, MUST run tests and ensure 100% pass:
 ```bash
-python scripts/test_converter.py -v  # 86 tests + 153 subtests
-python scripts/test_sf2_format.py -v  # 12 tests
+test-all.bat  # Runs all 164+ tests
+# Or individually:
+# test_converter.py (86 tests) + test_sf2_format.py (12) + test_laxity_driver.py (23)
+# test_sf2_packer.py (18) + test_validation_system.py (16) + test_complete_pipeline.py (9)
 ```
 
 **See**: `scripts/test_*.py` for all test suites

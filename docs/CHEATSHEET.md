@@ -11,6 +11,9 @@
 # Convert SID to SF2
 sid-to-sf2.bat input.sid output.sf2
 
+# Quick single-file converter (auto-detects Laxity)
+convert-file.bat input.sid
+
 # High accuracy (Laxity files)
 sid-to-sf2.bat input.sid output.sf2 --driver laxity
 
@@ -28,6 +31,7 @@ pipeline.bat                         # Complete validation pipeline
 ### Viewing & Analysis
 ```bash
 sf2-viewer.bat file.sf2              # Open SF2 Viewer GUI
+view-file.bat file.sf2               # Quick viewer launcher
 sf2-export.bat file.sf2              # Export to text files
 analyze-file.bat input.sid           # Complete SID analysis
 ```
@@ -36,6 +40,7 @@ analyze-file.bat input.sid           # Complete SID analysis
 ```bash
 quick-test.bat                       # Fast core tests (30 sec)
 test-all.bat                         # All test suites (2 min)
+validate-file.bat input.sid          # Complete validation workflow
 validate-accuracy.bat orig.sid conv.sid  # Check accuracy
 test-roundtrip.bat input.sid         # Test SID→SF2→SID
 ```
@@ -64,11 +69,25 @@ SIDM2/
 
 ## Common Workflows
 
+### Quick Convert & View (Simplest)
+```bash
+convert-file.bat song.sid
+view-file.bat output/song.sf2
+```
+
 ### Convert & Validate Laxity File
 ```bash
+convert-file.bat "Laxity.sid" --driver laxity
+# Or manually:
 sid-to-sf2.bat "Laxity.sid" output.sf2 --driver laxity
 validate-accuracy.bat "Laxity.sid" output/exported.sid
-sf2-viewer.bat output.sf2
+view-file.bat output.sf2
+```
+
+### Complete Validation Workflow
+```bash
+validate-file.bat song.sid --driver laxity
+# Creates: song_validation/ with accuracy report
 ```
 
 ### Complete Analysis
