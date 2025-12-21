@@ -10,6 +10,71 @@ SID to SF2 Converter - Converts Commodore 64 SID music files (Laxity NewPlayer v
 
 ---
 
+## CRITICAL RULE: Keep Root Folder Clean
+
+**RULE**: Main folder should be kept clean. Experiments should NOT be run in root folder.
+
+**Directory Rules**:
+- ✅ **Root**: Only essential files, launchers (.bat), core modules, standard docs
+- ✅ **experiments/**: ALL experiments, tests, debug scripts go here
+- ✅ **scripts/**: Production scripts and tools
+- ✅ **docs/**: All documentation files
+- ✅ **output/**: All output files (.sf2, .sid, .dump, .wav, .hex)
+
+**Enforcement**:
+- Automated: `cleanup.py` with git-tracking protection (RULE 1)
+- Manual: Run `cleanup.bat --scan` daily
+- Exception: Git-tracked files are NEVER cleaned
+
+**Proper Workflow**:
+```bash
+# ❌ WRONG - Don't run experiments in root
+cd SIDM2
+python test_my_idea.py
+
+# ✅ CORRECT - Use experiments directory
+python new_experiment.py "test_my_idea"
+cd experiments/test_my_idea
+python experiment.py
+```
+
+**See**: `docs/guides/ROOT_FOLDER_RULES.md` for complete rules
+
+---
+
+## Batch Launchers (NEW - v2.4.1)
+
+Quick-access .bat launchers in root for all main tools:
+
+```bash
+# Main Tools
+sf2-viewer.bat [file.sf2]           # SF2 Viewer GUI
+sf2-export.bat <file.sf2>           # Export SF2 to text
+sid-to-sf2.bat <in.sid> <out.sf2>   # SID to SF2 converter
+sf2-to-sid.bat <in.sf2> <out.sid>   # SF2 to SID converter
+
+# Batch Operations
+batch-convert.bat                   # Convert all SIDs
+batch-convert-laxity.bat            # Convert all Laxity SIDs
+pipeline.bat                        # Complete validation pipeline
+
+# Testing & Validation
+test-converter.bat                  # Run unit tests
+test-roundtrip.bat <file.sid>       # Test roundtrip
+validate-accuracy.bat <orig> <conv> # Validate accuracy
+
+# Maintenance
+cleanup.bat                         # Clean temporary files
+update-inventory.bat                # Update file inventory
+
+# Interactive Menu
+TOOLS.bat                           # Menu launcher for all tools
+```
+
+**See**: `TOOLS_REFERENCE.txt` for complete tools reference
+
+---
+
 ## Quick Start
 
 ### Conversion Workflow

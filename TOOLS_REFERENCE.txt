@@ -1,0 +1,302 @@
+================================================================================
+                         SIDM2 TOOLS REFERENCE
+================================================================================
+
+QUICK START LAUNCHERS (.bat files in root)
+===========================================
+
+[MAIN TOOLS - GUI & CONVERSION]
+
+  sf2-viewer.bat [file.sf2]
+    - Interactive GUI for viewing and analyzing SF2 files
+    - Features: Track View, OrderList, Sequences, Visualization, Playback
+    - Recent files menu, drag-and-drop support
+    - Examples:
+        sf2-viewer.bat
+        sf2-viewer.bat "learnings/Laxity - Stinsen.sf2"
+
+  sf2-export.bat <input.sf2> [output_dir]
+    - Export SF2 data to human-readable text files
+    - Exports: orderlist, tracks, sequences, instruments, tables
+    - Examples:
+        sf2-export.bat "file.sf2"
+        sf2-export.bat "file.sf2" "output/export"
+
+  sid-to-sf2.bat <input.sid> <output.sf2> [--driver laxity|driver11|np20]
+    - Convert SID files to SF2 format
+    - Laxity driver: 99.93% accuracy (recommended for Laxity SIDs)
+    - Examples:
+        sid-to-sf2.bat "input.sid" "output.sf2"
+        sid-to-sf2.bat "input.sid" "output.sf2" --driver laxity
+
+  sf2-to-sid.bat <input.sf2> <output.sid>
+    - Convert SF2 files back to SID format
+    - Roundtrip validation support
+    - Examples:
+        sf2-to-sid.bat "input.sf2" "output.sid"
+
+[BATCH OPERATIONS]
+
+  batch-convert.bat [--roundtrip]
+    - Convert all SID files in SID/ directory
+    - Generates both NP20 and Driver 11 versions
+    - Optional roundtrip validation
+    - Examples:
+        batch-convert.bat
+        batch-convert.bat --roundtrip
+
+  batch-convert-laxity.bat
+    - Convert all Laxity NewPlayer v21 SID files
+    - 99.93% frame accuracy, 8.1 files/second
+    - 100% success rate on 286 test files
+    - Examples:
+        batch-convert-laxity.bat
+
+  pipeline.bat [--quick] [--export-only]
+    - Complete 13-step pipeline with validation
+    - Steps: conversion, extraction, analysis, packing, dumps, accuracy,
+             WAV, hex, trace, info, disassembly, validation, MIDI
+    - Examples:
+        pipeline.bat
+        pipeline.bat --quick
+
+[TESTING & VALIDATION]
+
+  test-converter.bat [-v]
+    - Run converter unit tests
+    - 86 tests + 153 subtests, 100% pass rate
+    - Examples:
+        test-converter.bat
+        test-converter.bat -v
+
+  test-roundtrip.bat <input.sid>
+    - Test SID→SF2→SID roundtrip conversion
+    - Validates conversion accuracy
+    - Examples:
+        test-roundtrip.bat "SID/test.sid"
+
+  validate-accuracy.bat <original.sid> <converted.sid>
+    - Frame-by-frame accuracy validation
+    - Detailed mismatch reporting
+    - Examples:
+        validate-accuracy.bat "SID/orig.sid" "output/conv.sid"
+
+[MAINTENANCE & UTILITIES]
+
+  cleanup.bat [--scan|--clean] [--force] [--update-inventory]
+    - Clean temporary and experimental files
+    - RULE 1: NEVER cleans git-tracked files
+    - Creates backup list for every cleanup
+    - Examples:
+        cleanup.bat
+        cleanup.bat --scan
+        cleanup.bat --clean --force --update-inventory
+
+  update-inventory.bat
+    - Update docs/FILE_INVENTORY.md
+    - Tracks complete repository structure
+    - Examples:
+        update-inventory.bat
+
+  TOOLS.bat
+    - Interactive menu launcher for all tools
+    - Examples:
+        TOOLS.bat
+
+================================================================================
+
+PYTHON SCRIPTS (Direct Usage)
+==============================
+
+[CORE SCRIPTS - Root Directory]
+
+  sf2_viewer_gui.py
+    - SF2 Viewer GUI application (v2.4.0)
+    - Use: python sf2_viewer_gui.py [file.sf2]
+
+  sf2_to_text_exporter.py
+    - SF2 Text Exporter (v2.3.0)
+    - Use: python sf2_to_text_exporter.py <input.sf2> [output_dir]
+
+  complete_pipeline_with_validation.py
+    - Complete pipeline with validation (v1.4)
+    - Use: python complete_pipeline_with_validation.py
+
+  cleanup.py
+    - Cleanup tool (v2.2)
+    - Use: python cleanup.py [options]
+
+  update_inventory.py
+    - File inventory updater
+    - Use: python update_inventory.py
+
+  new_experiment.py
+    - Create new experiment with template
+    - Use: python new_experiment.py "experiment_name"
+
+  convert_all_laxity.py
+    - Batch convert Laxity SIDs
+    - Use: python convert_all_laxity.py
+
+[CONVERSION SCRIPTS - scripts/]
+
+  scripts/sid_to_sf2.py
+    - Main SID to SF2 converter
+    - Use: python scripts/sid_to_sf2.py <input.sid> <output.sf2> [options]
+
+  scripts/sf2_to_sid.py
+    - SF2 to SID exporter
+    - Use: python scripts/sf2_to_sid.py <input.sf2> <output.sid>
+
+  scripts/convert_all.py
+    - Batch convert all SIDs
+    - Use: python scripts/convert_all.py [--roundtrip]
+
+[TESTING SCRIPTS - scripts/]
+
+  scripts/test_converter.py
+    - Converter unit tests (86 tests)
+    - Use: python scripts/test_converter.py [-v]
+
+  scripts/test_sf2_format.py
+    - SF2 format validation tests (12 tests)
+    - Use: python scripts/test_sf2_format.py [-v]
+
+  scripts/test_roundtrip.py
+    - Roundtrip validation
+    - Use: python scripts/test_roundtrip.py <input.sid>
+
+  scripts/test_laxity_baseline.py
+    - Laxity driver baseline tests
+    - Use: python scripts/test_laxity_baseline.py
+
+[VALIDATION SCRIPTS - scripts/]
+
+  scripts/validate_sid_accuracy.py
+    - Frame-by-frame accuracy validation
+    - Use: python scripts/validate_sid_accuracy.py <orig.sid> <conv.sid>
+
+  scripts/run_validation.py
+    - Validation system runner (v1.4)
+    - Use: python scripts/run_validation.py [options]
+
+  scripts/generate_dashboard.py
+    - Generate validation dashboard
+    - Use: python scripts/generate_dashboard.py
+
+  scripts/generate_validation_report.py
+    - Multi-file validation reports
+    - Use: python scripts/generate_validation_report.py
+
+[ANALYSIS SCRIPTS - scripts/]
+
+  scripts/analyze_waveforms.py
+    - Waveform analysis & HTML report generator
+    - Use: python scripts/analyze_waveforms.py <output_dir>
+
+  scripts/disassemble_sid.py
+    - 6502 disassembler
+    - Use: python scripts/disassemble_sid.py <input.sid>
+
+  scripts/extract_addresses.py
+    - Extract data structure addresses
+    - Use: python scripts/extract_addresses.py <input.sid>
+
+  scripts/compare_musical_content.py
+    - Musical content validator
+    - Use: python scripts/compare_musical_content.py <file1> <file2>
+
+[BATCH TESTING SCRIPTS - scripts/]
+
+  scripts/batch_test_laxity_driver.py
+    - Batch test Laxity driver
+    - Use: python scripts/batch_test_laxity_driver.py
+
+  scripts/batch_test_laxity_driver_parallel.py
+    - Parallel batch testing (faster)
+    - Use: python scripts/batch_test_laxity_driver_parallel.py
+
+  scripts/batch_validate_sidsf2player.py
+    - Batch validate SF2 player
+    - Use: python scripts/batch_validate_sidsf2player.py
+
+================================================================================
+
+EXTERNAL TOOLS (tools/ directory)
+==================================
+
+  tools/siddump.exe
+    - SID register dump tool (6502 emulation)
+    - Use: tools/siddump.exe <input.sid> -t30 > output.dump
+
+  tools/SIDdecompiler.exe
+    - Emulation-based disassembler (player structure analysis)
+    - Use: tools/SIDdecompiler.exe <input.sid>
+
+  tools/player-id.exe
+    - Player type identification
+    - Use: tools/player-id.exe <input.sid>
+
+  tools/SID2WAV.EXE
+    - SID to WAV renderer
+    - Use: tools/SID2WAV.EXE -t30 -16 <input.sid> <output.wav>
+
+  tools/SIDwinder.exe
+    - SID processor (disassembly, trace, player, relocate)
+    - Use: tools/SIDwinder.exe <command> <input.sid>
+
+================================================================================
+
+QUICK REFERENCE - COMMON WORKFLOWS
+===================================
+
+[View an SF2 file]
+    sf2-viewer.bat "file.sf2"
+
+[Convert SID to SF2]
+    sid-to-sf2.bat "input.sid" "output.sf2" --driver laxity
+
+[Export SF2 to text files]
+    sf2-export.bat "file.sf2"
+
+[Test roundtrip conversion]
+    test-roundtrip.bat "input.sid"
+
+[Batch convert all Laxity SIDs]
+    batch-convert-laxity.bat
+
+[Run complete pipeline]
+    pipeline.bat
+
+[Clean up repository]
+    cleanup.bat --scan
+    cleanup.bat --clean --update-inventory
+
+[Run all tests]
+    test-converter.bat -v
+
+[Interactive menu]
+    TOOLS.bat
+
+================================================================================
+
+DOCUMENTATION
+=============
+
+  CLAUDE.md                           - AI assistant quick reference
+  README.md                           - Main project documentation
+  docs/ARCHITECTURE.md                - System architecture
+  docs/COMPONENTS_REFERENCE.md        - Python modules reference
+  docs/TOOLS_REFERENCE.md             - External tools documentation
+  docs/guides/CLEANUP_RULES.md        - Cleanup script rules (NEW)
+  docs/guides/CLEANUP_SYSTEM.md       - Complete cleanup guide
+  SF2_VIEWER_V2.4_COMPLETE.md         - SF2 Viewer v2.4 features
+  TRACK_VIEW_TEST_RESULTS.md          - Track View test results
+
+================================================================================
+
+For detailed help on any tool, run the .bat file without arguments.
+For Python scripts, use: python <script.py> --help
+
+Last Updated: 2025-12-21
+Version: 1.0
