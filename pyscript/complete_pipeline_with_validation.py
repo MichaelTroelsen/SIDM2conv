@@ -374,20 +374,20 @@ def generate_hexdump(sid_path, output_hex):
         return False
 
 def generate_sidwinder_trace(sid_path, output_trace, seconds=30):
-    """Generate SIDwinder trace of SID register writes."""
+    """Generate SIDwinder trace of SID register writes using Python SIDwinder."""
     try:
-        # Use absolute path for SIDwinder on Windows
-        sidwinder_exe = Path('tools/SIDwinder.exe').absolute()
-        # Use .txt extension for text format trace
-        result = subprocess.run(
-            [str(sidwinder_exe), f'-trace={output_trace}', f'-frames={seconds*50}', str(sid_path)],
-            capture_output=True,
-            text=True,
-            timeout=120
+        # Use Python SIDwinder wrapper (Python-first with .exe fallback)
+        from sidm2.sidwinder_wrapper import trace_sid
+
+        frames = seconds * 50  # Convert seconds to frames (50Hz PAL)
+        result = trace_sid(
+            sid_file=sid_path,
+            output_file=output_trace,
+            frames=frames,
+            use_python=True  # Python-first, automatic .exe fallback
         )
-        # SIDwinder returns error code even on success due to generateOutput bug
-        # Check if file was created instead
-        return output_trace.exists() and output_trace.stat().st_size > 0
+
+        return result['success']
     except Exception as e:
         print(f"    [WARN] SIDwinder trace failed: {e}")
         return False
