@@ -217,9 +217,9 @@ tools\player-id.exe input.sid
 
 ## Version Info
 
-**Current Version**: v2.5.2
-**Test Coverage**: 130+ tests (100% pass rate)
-**Last Updated**: 2025-12-21
+**Current Version**: v2.5.3
+**Test Coverage**: 164+ tests (100% pass rate)
+**Last Updated**: 2025-12-22
 
 ---
 

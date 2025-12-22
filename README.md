@@ -2583,6 +2583,10 @@ See `sidm2/audio_comparison.py` for implementation:
 
 ## Changelog
 
+**Note**: For recent versions (v2.3.0+), see [`CHANGELOG.md`](CHANGELOG.md). Abbreviated history below shows older releases.
+
+**Current Version**: v2.5.3 - Enhanced Logging & Error Handling (2025-12-22)
+
 ### v2.2.0 (2025-12-18)
 
 **SF2 Text Exporter and Single-track Sequence Support**

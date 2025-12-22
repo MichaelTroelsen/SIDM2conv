@@ -2,8 +2,8 @@
 
 **Strategic direction and future improvements**
 
-**Date**: 2025-12-21
-**Version**: 2.2
+**Date**: 2025-12-22
+**Version**: 2.3
 **Status**: 🎯 Active Roadmap
 
 ---
@@ -12,16 +12,17 @@
 
 This roadmap focuses on improving the SIDM2 converter from its current **99.93% accuracy** baseline to production-ready quality and expanded format support.
 
-**Current State** (v2.3.3):
+**Current State** (v2.5.3):
 - ✅ Laxity NewPlayer v21: 99.93% frame accuracy
 - ✅ SF2-exported SIDs: 100% accuracy (perfect roundtrip)
 - ✅ Complete validation system with CI/CD
 - ✅ Cleanup and project maintenance system
+- ✅ **Enhanced logging & error handling (v2.5.3)** - NEW ⭐
 - ✅ Professional error handling system (v2.5.2)
 - ✅ SF2 Viewer GUI with visualization and playback (v2.4.0)
 - ✅ Documentation consolidation and optimization (v2.3.0-v2.3.1)
-- ✅ **Comprehensive test coverage (164+ tests, 100% pass rate)** - NEW v2.3.3
-- ✅ **Convenience batch launchers (3 streamlined workflow tools)** - NEW v2.3.3
+- ✅ Comprehensive test coverage (164+ tests, 100% pass rate) (v2.3.3)
+- ✅ Convenience batch launchers (3 streamlined workflow tools) (v2.3.3)
 - ⚠️ Filter accuracy: 0% (format not yet converted)
 - ⚠️ Voice 3: Untested (no test files available)
 

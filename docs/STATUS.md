@@ -1,20 +1,31 @@
 # Project Status Overview
 
-**Last Updated**: 2025-12-21
-**Current Version**: v2.3.3 (Test Expansion & Convenience Launchers)
+**Last Updated**: 2025-12-22
+**Current Version**: v2.5.3 (Enhanced Logging & Error Handling)
 **Status**: Active Development - Production Ready
 
 ---
 
 ## Quick Summary
 
-The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2) format for editing and remixing. The conversion pipeline is fully functional with hybrid extraction (static tables + runtime sequences), comprehensive validation, and professional GUI tools.
+The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2) format for editing and remixing. The conversion pipeline is fully functional with hybrid extraction (static tables + runtime sequences), comprehensive validation, professional GUI tools, and enhanced logging for better debugging and troubleshooting.
 
-**Current State**: ✅ **Production Ready** with multiple conversion paths and analysis tools
+**Current State**: ✅ **Production Ready** with multiple conversion paths, analysis tools, and comprehensive logging
 
 ---
 
 ## What Works
+
+### ✅ Enhanced Logging & Error Handling (v2.5.3 - NEW)
+- **4 verbosity levels**: 0=ERROR, 1=WARNING, 2=INFO (default), 3=DEBUG
+- **Color-coded console output**: Automatic ANSI colors with graceful degradation
+- **Structured JSON logging**: Machine-readable logs for aggregation tools (ELK, Splunk)
+- **File logging with rotation**: Automatic 10MB rotation with 3 backups
+- **Performance metrics**: Automatic operation timing with context managers
+- **CLI integration**: Consistent logging flags across all main scripts
+- **User-friendly errors**: 6 specialized error types with troubleshooting guidance
+- Scripts updated: `sid_to_sf2.py`, `sf2_to_sid.py`, `convert_all.py`
+- See: `docs/guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md`
 
 ### ✅ Complete Conversion Pipeline (v1.0-v1.4)
 - **12-step pipeline** with validation and analysis

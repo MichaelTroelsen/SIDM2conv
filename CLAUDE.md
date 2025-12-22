@@ -1,8 +1,8 @@
 # CLAUDE.md - Project Quick Reference for AI Assistants
 
 **Project**: SIDM2 - SID to SF2 Converter
-**Version**: 2.3.3
-**Last Updated**: 2025-12-21
+**Version**: 2.5.3
+**Last Updated**: 2025-12-22
 
 ---
 
@@ -19,7 +19,7 @@ Converts Commodore 64 SID music files (Laxity NewPlayer v21) to SID Factory II (
 - SID→SF2 converter with table extraction
 - SF2 Viewer GUI (PyQt6) with 8-tab interface
 - Validation system with HTML dashboard
-- Waveform analysis and audio comparison
+- Enhanced logging with verbosity control (v2.5.3)
 - 164+ unit tests (100% pass rate)
 
 ---
@@ -33,77 +33,34 @@ Converts Commodore 64 SID music files (Laxity NewPlayer v21) to SID Factory II (
 - ✅ experiments/: ALL experimental code
 - ❌ Never create .py files in root
 
-**Enforcement**: `cleanup.bat --scan` detects violations. **See**: `docs/guides/ROOT_FOLDER_RULES.md`
+**Enforcement**: `cleanup.bat --scan` | **See**: `docs/guides/ROOT_FOLDER_RULES.md`
 
 ### Rule 2: Always Run Tests
-Before committing, MUST run tests and ensure 100% pass:
-```bash
-test-all.bat  # Runs all 164+ tests
-# Or individually:
-# test_converter.py (86 tests) + test_sf2_format.py (12) + test_laxity_driver.py (23)
-# test_sf2_packer.py (18) + test_validation_system.py (16) + test_complete_pipeline.py (9)
-```
-
-**See**: `scripts/test_*.py` for all test suites
+Before committing: `test-all.bat` (164+ tests, 100% pass required)
 
 ### Rule 3: Always Update Documentation
-When changing code, MUST update:
-- `README.md` - Features, CLI options, version numbers
-- `CLAUDE.md` - Project structure, essential workflows
-- `docs/` - Architecture, component APIs, guides
-- `docs/FILE_INVENTORY.md` - After structural changes (run `update-inventory.bat`)
-
-**See**: `CONTRIBUTING.md` for full guidelines
+When changing code: Update README.md, CLAUDE.md, docs/, and run `update-inventory.bat` after structural changes.
 
 ---
 
 ## Quick Commands (Top 10)
 
-| Command | Description | See Also |
-|---------|-------------|----------|
-| `sid-to-sf2.bat input.sid output.sf2` | Convert SID to SF2 | README.md |
-| `sid-to-sf2.bat input.sid output.sf2 --driver laxity` | Convert with Laxity driver (99.93%) | docs/guides/LAXITY_DRIVER_USER_GUIDE.md |
-| `sf2-viewer.bat [file.sf2]` | Open SF2 Viewer GUI | docs/guides/SF2_VIEWER_GUIDE.md |
-| `sf2-export.bat file.sf2` | Export SF2 to text | docs/guides/SF2_VIEWER_GUIDE.md |
-| `batch-convert.bat` | Convert all SID files | README.md |
-| `test-converter.bat` | Run unit tests (130+ tests) | scripts/test_*.py |
-| `test-roundtrip.bat file.sid` | Test SID→SF2→SID roundtrip | scripts/test_roundtrip.py |
-| `validate-accuracy.bat orig.sid conv.sid` | Validate frame accuracy | scripts/validate_sid_accuracy.py |
-| `cleanup.bat` | Clean temp files + update inventory | docs/guides/CLEANUP_SYSTEM.md |
-| `TOOLS.bat` | Interactive menu launcher | TOOLS_REFERENCE.txt |
+| Command | Description |
+|---------|-------------|
+| `sid-to-sf2.bat input.sid output.sf2` | Convert SID to SF2 |
+| `sid-to-sf2.bat input.sid output.sf2 --driver laxity` | Convert with Laxity driver (99.93%) |
+| `sf2-viewer.bat [file.sf2]` | Open SF2 Viewer GUI |
+| `sf2-export.bat file.sf2` | Export SF2 to text |
+| `batch-convert.bat` | Convert all SID files |
+| `test-all.bat` | Run 164+ unit tests |
+| `test-roundtrip.bat file.sid` | Test SID→SF2→SID roundtrip |
+| `validate-accuracy.bat orig.sid conv.sid` | Validate frame accuracy |
+| `cleanup.bat` | Clean temp files + update inventory |
+| `TOOLS.bat` | Interactive menu launcher |
 
-**Note**: All .bat launchers are in root, all Python scripts in `pyscript/` or `scripts/`.
+**Logging flags** (NEW v2.5.3): `-v/-vv` (verbose), `-q` (quiet), `--debug`, `--log-file`, `--log-json`
 
----
-
-## Logging Control (NEW in v2.5.3)
-
-All main scripts support enhanced logging with verbosity control:
-
-**Verbosity Levels**:
-- `--quiet` or `-q`: Errors only (level 0)
-- Default: INFO level (level 2)
-- `-v`: Verbose INFO (level 2)
-- `-vv` or `--debug`: Debug mode (level 3)
-
-**File Logging**:
-- `--log-file logs/conversion.log`: Write to file with rotation
-- `--log-json`: JSON format for log aggregation tools
-
-**Examples**:
-```bash
-# Debug mode with file logging
-python scripts/sid_to_sf2.py input.sid output.sf2 --debug --log-file logs/debug.log
-
-# Quiet mode (errors only)
-python scripts/convert_all.py --quiet
-
-# JSON logging for analysis
-python scripts/sid_to_sf2.py input.sid output.sf2 --log-json --log-file logs/conversion.jsonl
-```
-
-**Features**: Color-coded output, performance metrics, automatic rotation
-**Documentation**: `docs/guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md`
+**Example**: `python scripts/sid_to_sf2.py input.sid output.sf2 --debug --log-file logs/debug.log`
 
 ---
 
@@ -112,337 +69,171 @@ python scripts/sid_to_sf2.py input.sid output.sf2 --log-json --log-file logs/con
 ```
 SIDM2/
 ├── pyscript/              # ALL Python scripts (v2.5)
-│   ├── sf2_viewer_gui.py          # SF2 Viewer (2.4.0)
-│   ├── sf2_to_text_exporter.py    # Text exporter (2.3.0)
-│   ├── cleanup.py                 # Cleanup system (2.2)
-│   ├── new_experiment.py          # Experiment generator
-│   └── *.py                       # All other scripts
+│   ├── sf2_viewer_gui.py, sf2_to_text_exporter.py
+│   ├── cleanup.py, new_experiment.py
+│   └── *.py (all other Python scripts)
 │
 ├── scripts/               # Production conversion tools
-│   ├── sid_to_sf2.py              # Main SID→SF2 converter
-│   ├── sf2_to_sid.py              # SF2→SID exporter
-│   ├── convert_all.py             # Batch conversion
-│   ├── test_roundtrip.py          # Round-trip validation
-│   ├── validate_sid_accuracy.py   # Frame accuracy validation
-│   ├── run_validation.py          # Validation system (v1.4)
-│   ├── generate_dashboard.py     # HTML dashboard
-│   └── test_*.py                  # Unit tests (130+ tests)
+│   ├── sid_to_sf2.py, sf2_to_sid.py, convert_all.py
+│   ├── test_*.py (164+ tests)
+│   └── validate_sid_accuracy.py, run_validation.py
 │
 ├── sidm2/                 # Core Python package
-│   ├── sf2_packer.py              # SF2→SID packer (v0.6.0)
-│   ├── cpu6502_emulator.py        # 6502 emulator (v0.6.2)
-│   ├── laxity_parser.py           # Laxity parser
-│   ├── laxity_analyzer.py         # Laxity analyzer
-│   ├── laxity_converter.py        # Laxity converter (99.93%)
-│   └── *.py                       # Other modules
+│   ├── sf2_packer.py, cpu6502_emulator.py
+│   ├── laxity_parser.py, laxity_converter.py
+│   └── logging_config.py (v2.0.0)
 │
 ├── tools/                 # External tools
-│   ├── siddump.exe                # SID register dump
-│   ├── SIDwinder.exe              # SID processor
-│   ├── SID2WAV.EXE                # SID to WAV
-│   └── player-id.exe              # Player identification
+│   └── siddump.exe, SIDwinder.exe, SID2WAV.EXE, player-id.exe
 │
 ├── G5/drivers/            # SF2 driver templates
-│   ├── sf2driver_laxity_00.prg    # Laxity driver (8192 bytes)
-│   ├── sf2driver_11_*.prg         # Driver 11
-│   └── sf2driver_np20_*.prg       # NP20 driver
+│   └── sf2driver_laxity_00.prg (8192 bytes), sf2driver_11_*.prg
 │
 ├── validation/            # Validation system (v1.4)
-│   ├── database.sqlite            # Validation history
-│   ├── dashboard.html             # Interactive dashboard
-│   └── SUMMARY.md                 # Git-friendly summary
+│   └── database.sqlite, dashboard.html, SUMMARY.md
+│
+├── docs/                  # Documentation
+│   ├── guides/            # How-to guides
+│   ├── reference/         # Technical references
+│   ├── analysis/          # Analysis reports
+│   └── implementation/    # Implementation docs
 │
 ├── experiments/           # Temporary experiments (gitignored)
-│   ├── README.md                  # Experiment workflow
-│   └── {experiment}/              # Individual experiments
-│
-├── docs/                  # Documentation (see index below)
-│   ├── guides/                    # How-to guides
-│   ├── reference/                 # Technical references
-│   ├── analysis/                  # Analysis reports
-│   └── implementation/            # Implementation docs
-│
 ├── SID/                   # Input SID files
 ├── output/                # Output SF2/SID files
 └── *.bat                  # Batch launchers (10 launchers)
 ```
 
-**See**: `docs/FILE_INVENTORY.md` for complete file listing
+**See**: `docs/FILE_INVENTORY.md` for complete listing
 
 ---
 
 ## Essential Constants
 
-### Memory Addresses (Laxity Driver)
+### Laxity Driver Memory
+`SEQUENCE_ADDR=0x1900`, `INSTRUMENTS_ADDR=0x1A6B`, `WAVE_ADDR=0x1ACB`, `LAXITY_INIT=0x1000`, `LAXITY_PLAY=0x10A1`
 
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `SEQUENCE_ADDR` | 0x1900 | Sequence data injection point |
-| `INSTRUMENTS_ADDR` | 0x1A6B | Instrument table (column-major) |
-| `WAVE_ADDR` | 0x1ACB | Wave table data |
-| `PULSE_ADDR` | 0x1A3B | Pulse table data |
-| `FILTER_ADDR` | 0x1A1E | Filter table + break speeds |
-| `LAXITY_INIT_ADDR` | 0x1000 | Init routine entry |
-| `LAXITY_PLAY_ADDR` | 0x10A1 | Play routine entry |
-
-### SF2 Structure Offsets (Driver 11)
-
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `SEQUENCE_TABLE_OFFSET` | 0x0903 | Sequence table start |
-| `INSTRUMENT_TABLE_OFFSET` | 0x0A03 | Instrument definitions |
-| `WAVE_TABLE_OFFSET` | 0x0B03 | Wave table start |
-| `PULSE_TABLE_OFFSET` | 0x0D03 | Pulse table start |
-| `FILTER_TABLE_OFFSET` | 0x0F03 | Filter table start |
+### SF2 Driver 11 Offsets
+`SEQUENCE_TABLE=0x0903`, `INSTRUMENT_TABLE=0x0A03`, `WAVE_TABLE=0x0B03`, `PULSE_TABLE=0x0D03`, `FILTER_TABLE=0x0F03`
 
 ### Control Bytes
+`END_MARKER=0x7F`, `GATE_ON=0x7E` (+++ sustain), `GATE_OFF=0x80` (--- silence), `DEFAULT_TRANSPOSE=0xA0`, `LOOP_MARKER=0x7E`
 
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `END_MARKER` | 0x7F | End of sequence/table |
-| `GATE_ON` | 0x7E | Gate on (+++ sustain) |
-| `GATE_OFF` | 0x80 | Gate off (--- silence) |
-| `DEFAULT_TRANSPOSE` | 0xA0 | No transpose in OrderList |
-| `LOOP_MARKER` | 0x7E | Loop in wave table |
-
-**See**: `docs/ARCHITECTURE.md` for complete constants reference
+**See**: `docs/ARCHITECTURE.md` for complete reference
 
 ---
 
 ## Known Limitations
 
-### Format Compatibility (v1.8.0)
-
+### Format Compatibility
 | Source → Driver | Accuracy | Status |
 |----------------|----------|--------|
 | SF2-Exported → Driver 11 | 100% | ✅ Perfect roundtrip |
 | Laxity NP21 → Laxity Driver | 99.93% | ✅ Production ready |
 | Laxity NP21 → Driver 11 | 1-8% | ⚠️ Use Laxity driver |
-| Laxity NP21 → NP20 | 1-8% | ⚠️ Use Laxity driver |
 
 ### Feature Limitations
-
-- **Only Laxity NewPlayer v21** - Other player formats not supported
+- **Only Laxity NewPlayer v21** - Other formats not supported
 - **Single subtune** - Multi-song SIDs not supported
-- **Init, Arp, HR tables** - Use defaults, not extracted
-- **Command parameters** - Some effect details lost in conversion
 - **Filter accuracy** - 0% (Laxity filter format not yet converted)
 
-### Known Issues
-
-- **SF2 Packer Pointer Relocation** (v0.6.0):
-  - Affects 17/18 files (94%) in disassembly only
-  - Files play correctly in VICE, SID2WAV, siddump
-  - Only impacts SIDwinder disassembly analysis
-  - Under investigation
-
-**See**: `docs/guides/TROUBLESHOOTING.md` for solutions, `PIPELINE_EXECUTION_REPORT.md` for details
+**See**: `docs/guides/TROUBLESHOOTING.md` for solutions
 
 ---
 
-## Documentation Index
+## Documentation Quick Reference
 
-### Quick Start
-| Document | Purpose |
-|----------|---------|
-| **README.md** | Comprehensive project documentation |
-| **CLAUDE.md** (this file) | AI assistant quick reference |
-| **CONTRIBUTING.md** | Contribution guidelines |
-| **CHANGELOG.md** | Version history |
+### Essential Docs (Start Here)
+- **README.md** - Comprehensive project documentation
+- **CLAUDE.md** - AI assistant quick reference (this file)
+- **docs/guides/TROUBLESHOOTING.md** ⭐ - Start here for errors
+- **docs/ARCHITECTURE.md** - Complete system architecture
+- **CHANGELOG.md** - Version history
 
-### User Guides
-| Document | Purpose |
-|----------|---------|
-| `docs/guides/SF2_VIEWER_GUIDE.md` | SF2 Viewer GUI, text exporter, editor enhancements |
-| `docs/guides/LAXITY_DRIVER_USER_GUIDE.md` | Laxity driver user guide (quick start, usage) |
-| `docs/guides/VALIDATION_GUIDE.md` | Validation system and dashboard |
-| `docs/guides/WAVEFORM_ANALYSIS_GUIDE.md` | Waveform analysis tool |
-| `docs/guides/EXPERIMENTS_WORKFLOW_GUIDE.md` | Experiment system workflow |
-| `docs/guides/CLEANUP_SYSTEM.md` | Cleanup system and rules |
-| `docs/guides/ROOT_FOLDER_RULES.md` | Root folder organization rules |
-| `docs/guides/TROUBLESHOOTING.md` | Common issues and solutions |
+### User Guides (How-To)
+- `docs/guides/SF2_VIEWER_GUIDE.md` - SF2 Viewer GUI, text exporter
+- `docs/guides/LAXITY_DRIVER_USER_GUIDE.md` - Laxity driver (99.93% accuracy)
+- `docs/guides/VALIDATION_GUIDE.md` - Validation system and dashboard
+- `docs/guides/CLEANUP_SYSTEM.md` - Cleanup system and rules
+- `docs/guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md` - Enhanced logging (v2.5.3)
 
-### Technical References
-| Document | Purpose |
-|----------|---------|
-| `docs/ARCHITECTURE.md` | Complete system architecture |
-| `docs/COMPONENTS_REFERENCE.md` | Python modules reference |
-| `docs/TOOLS_REFERENCE.md` | External tools documentation |
-| `docs/reference/LAXITY_DRIVER_TECHNICAL_REFERENCE.md` | Laxity driver technical details |
-| `docs/SF2_FORMAT_SPEC.md` | Complete SF2 format specification |
-| `docs/SID_REGISTERS_REFERENCE.md` | SID chip register quick reference |
-| `docs/SF2_TRACKS_AND_SEQUENCES.md` | Tracks and sequences format |
-| `docs/SF2_INSTRUMENTS_REFERENCE.md` | Instruments format guide |
-| `docs/CONVERSION_STRATEGY.md` | Laxity to SF2 mapping details |
+### Technical References (Deep Dive)
+- `docs/COMPONENTS_REFERENCE.md` - Python modules API reference
+- `docs/TOOLS_REFERENCE.md` - External tools documentation
+- `docs/reference/LAXITY_DRIVER_TECHNICAL_REFERENCE.md` - Laxity technical details
+- `docs/SF2_FORMAT_SPEC.md` - Complete SF2 format specification
+- `docs/SID_REGISTERS_REFERENCE.md` - SID chip register reference
 
-### Analysis & Implementation
-| Document | Purpose |
-|----------|---------|
-| `docs/analysis/CONSOLIDATION_2025-12-21_COMPLETE.md` | Knowledge consolidation (authoritative) |
-| `docs/analysis/ACCURACY_ROADMAP.md` | Plan to reach 99% accuracy |
-| `docs/implementation/SIDDECOMPILER_INTEGRATION.md` | SIDdecompiler integration (v1.4) |
-| `docs/implementation/GATE_INFERENCE_IMPLEMENTATION.md` | Waveform-based gate detection |
+### Topic-Specific Help
+| Topic | Primary Document |
+|-------|------------------|
+| Errors/Issues | `docs/guides/TROUBLESHOOTING.md` ⭐ |
+| Logging/Errors | `docs/guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md` |
+| SF2 Format | `docs/SF2_FORMAT_SPEC.md`, `docs/SF2_TRACKS_AND_SEQUENCES.md` |
+| Laxity Driver | `docs/guides/LAXITY_DRIVER_USER_GUIDE.md` (user), `docs/reference/LAXITY_DRIVER_TECHNICAL_REFERENCE.md` (technical) |
 
-### Source Code & Analysis
-| Document | Purpose |
-|----------|---------|
-| `external-repositories.md` | External source repositories |
-| `docs/SF2_SOURCE_ANALYSIS.md` | SF2 editor source analysis |
-| `docs/SIDDUMP_ANALYSIS.md` | Siddump source analysis |
-| `tools/SIDWINDER_ANALYSIS.md` | SIDwinder analysis |
-
-**See**: `docs/INDEX.md` for complete documentation index
-
----
-
-## Current Version
-
-### v2.3.1 (2025-12-21) - CLAUDE.md Optimization
-
-**Changes**:
-- ✅ Optimized CLAUDE.md from 1098 lines to ~450 lines (59% reduction)
-- ✅ Created 3 new comprehensive guides:
-  - `docs/guides/SF2_VIEWER_GUIDE.md` - SF2 Viewer & Tools Guide
-  - `docs/guides/WAVEFORM_ANALYSIS_GUIDE.md` - Waveform Analysis Guide
-  - `docs/guides/EXPERIMENTS_WORKFLOW_GUIDE.md` - Experiment Workflow Guide
-- ✅ Improved scannability with tables and clear sections
-- ✅ Removed stale "NEW" tags and redundant content
-- ✅ Better organization for AI assistant quick reference
-
-**Previous**: v2.3.0 - Documentation Consolidation (2025-12-21)
-
-**See**: `CHANGELOG.md` for complete version history
+**Complete index**: `docs/INDEX.md`
 
 ---
 
 ## For AI Assistants
 
-### When to Use Task Tool (subagent_type=Explore)
+### When to Use Specialized Tools
 
-**Use for open-ended codebase exploration**:
-```
-User: "Where are errors from the client handled?"
-User: "What is the codebase structure?"
-User: "How does the Laxity driver work?"
-```
+**Task Tool (subagent_type=Explore)** - For open-ended exploration:
+- "Where are errors handled?" / "How does the Laxity driver work?"
+- Don't use for: "Read scripts/sid_to_sf2.py" (use Read), "Find class LaxityParser" (use Grep)
 
-**Don't use for specific needle queries**:
-```
-User: "Read scripts/sid_to_sf2.py"  → Use Read tool
-User: "Find class LaxityParser"     → Use Grep tool
-```
+**EnterPlanMode** - For non-trivial implementations:
+- New features (multiple files), architectural decisions, multiple approaches
+- Don't use for: Typo fixes, single-line changes, specific instructions
 
-### When to Use EnterPlanMode
+### Testing & Documentation Requirements
 
-**Use for non-trivial implementation tasks**:
-- New feature implementation (multiple files)
-- Architectural decisions required
-- Multiple valid approaches exist
-- User preferences matter
-
-**Don't use for simple tasks**:
-- Typo fixes
-- Single-line changes
-- Specific detailed instructions
-- Pure research/exploration
-
-### Testing Requirements
-
-**Before committing code changes**:
-1. ✅ Run `python scripts/test_converter.py` (130+ tests)
-2. ✅ Run `python scripts/test_sf2_format.py` (format tests)
-3. ✅ Fix all failures before committing
-4. ✅ Add tests for new features
-
-### Documentation Requirements
-
-**When changing code**:
-1. ✅ Update README.md if features/CLI changed
-2. ✅ Update CLAUDE.md if structure/workflows changed
-3. ✅ Update relevant docs/ files for APIs/architecture
-4. ✅ Keep version numbers in sync
-5. ✅ Run `update-inventory.bat` after structural changes
+**Before committing**:
+1. ✅ Run `test-all.bat` (164+ tests, 100% pass required)
+2. ✅ Update README.md if features/CLI changed
+3. ✅ Update CLAUDE.md if structure/workflows changed
+4. ✅ Update docs/ for APIs/architecture changes
+5. ✅ Run `update-inventory.bat` after file structure changes
 
 ### Code Conventions
-
-**Memory addresses**: `0x1000`, `0x1AF3` (hex)
-**Table sizes**: 32, 64, or 128 entries
+**Memory addresses**: `0x1000`, `0x1AF3` (hex) | **Table sizes**: 32, 64, 128 entries
 **Control bytes**: `0x7F` (end), `0x7E` (gate on), `0x80` (gate off)
-**Waveforms**: `0x11` (triangle+gate), `0x41` (pulse+gate)
 
-**See**: `docs/ARCHITECTURE.md` for complete conventions
+### Common Workflows
 
----
-
-## Getting Help
-
-### Troubleshooting Priority
-
-1. **Start here**: `docs/guides/TROUBLESHOOTING.md` - Common issues and solutions
-2. **Specific topics**: See Documentation Index above
-3. **Enable verbose mode**: `--verbose` flag on most scripts
-4. **Check validation**: Review `info.txt` files in output/
-
-### Quick Debug Commands
-
-```bash
-# Test with known-good file
-python scripts/sid_to_sf2.py SID/Angular.sid test.sf2
-
-# Check player type
-tools/player-id.exe input.sid
-
-# Compare dumps
-tools/siddump.exe original.sid > original.dump
-tools/siddump.exe exported.sid > exported.dump
-diff original.dump exported.dump
-
-# Run validation
-python scripts/run_validation.py --quick
-```
-
-### Topic-Specific Help
-
-| Topic | Primary Document |
-|-------|------------------|
-| Errors/Issues | `docs/guides/TROUBLESHOOTING.md` ⭐ |
-| Architecture | `docs/ARCHITECTURE.md` |
-| Module APIs | `docs/COMPONENTS_REFERENCE.md` |
-| Tool Usage | `docs/TOOLS_REFERENCE.md` |
-| SID Registers | `docs/SID_REGISTERS_REFERENCE.md` |
-| SF2 Format | `docs/SF2_FORMAT_SPEC.md` |
-| Validation | `docs/guides/VALIDATION_GUIDE.md` |
-| Laxity Driver | `docs/guides/LAXITY_DRIVER_USER_GUIDE.md` |
-
----
-
-## Quick Tips
-
-### For AI Assistants Working on SIDM2
-
-**When converting SID files**, always:
-1. Check `info.txt` for conversion warnings
+**Converting SID files**:
+1. Check `info.txt` for warnings
 2. Run validation to verify accuracy
-3. Listen to both WAV files for audio comparison
+3. Compare WAV files for audio differences
 4. Compare siddump outputs for register differences
 
-**When debugging packer issues**:
+**Debugging packer issues**:
 1. Check hexdumps for pointer relocation
-2. Use SIDwinder disassembly on original vs exported
-3. Compare memory layouts
-4. See `PIPELINE_EXECUTION_REPORT.md` for known issues
+2. Use SIDwinder disassembly (original vs exported)
+3. See `PIPELINE_EXECUTION_REPORT.md` for known issues
 
-**When exploring codebase**:
-- Use Task tool with `subagent_type=Explore` for broad searches
-- Use Read tool for specific files
-- Use Grep tool for specific patterns/classes
-- Use EnterPlanMode for complex implementations
+**Exploring codebase**:
+- Task tool (Explore) for broad searches
+- Read tool for specific files
+- Grep tool for patterns/classes
+- EnterPlanMode for complex implementations
 
-**When updating documentation**:
-- Update README.md for user-facing changes
-- Update CLAUDE.md for structure/workflow changes
-- Update docs/ for technical details
-- Run `update-inventory.bat` after file changes
+---
+
+## Current Version
+
+### v2.5.3 (2025-12-22) - Enhanced Logging & Error Handling
+
+**Key Features**:
+- ✅ Enhanced Logging System v2.0.0 (482 lines)
+  - 4 verbosity levels, color-coded output, JSON logging
+  - File rotation (10MB, 3 backups), performance metrics
+- ✅ Script Integration (5 CLI flags: -v, -q, --debug, --log-file, --log-json)
+- ✅ Backward compatible (default INFO level unchanged)
+
+**Previous**: v2.3.1 - CLAUDE.md Optimization | **See**: `CHANGELOG.md` for complete history
 
 ---
 
@@ -450,6 +241,4 @@ python scripts/run_validation.py --quick
 
 For complete documentation, see `README.md` and `docs/` directory.
 
-**Version**: 2.3.1
-**Lines**: ~450 (optimized from 1098)
-**Last Updated**: 2025-12-21
+**Version**: 2.5.3 | **Lines**: ~260 (compacted from 461) | **Last Updated**: 2025-12-22

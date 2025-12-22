@@ -159,9 +159,40 @@ python pyscript/demo_logging_and_errors.py --log-json --log-file logs/demo.jsonl
 - `pyscript/demo_logging_and_errors.py` (280 lines) - Interactive demo
 - `LOGGING_ERROR_IMPROVEMENTS_SUMMARY.md` (230 lines) - Implementation summary
 
+### Script Integration (2025-12-22)
+
+**Integrated enhanced logging into all main conversion scripts:**
+
+**Scripts Updated**:
+- `scripts/sid_to_sf2.py` - Added 5 CLI flags, PerformanceLogger, configure_from_args()
+- `scripts/sf2_to_sid.py` - Added 5 CLI flags, PerformanceLogger, configure_from_args()
+- `scripts/convert_all.py` - Added 5 CLI flags, PerformanceLogger, configure_from_args()
+
+**CLI Arguments Added** (all scripts):
+- `-v, --verbose` - Increase verbosity (-v=INFO, -vv=DEBUG)
+- `-q, --quiet` - Quiet mode (errors only)
+- `--debug` - Debug mode (maximum verbosity)
+- `--log-file FILE` - Write logs to file (with rotation)
+- `--log-json` - Use JSON log format
+
+**Documentation Updated**:
+- `README.md` - Added "Logging and Verbosity Control" section with examples
+- `CLAUDE.md` - Added "Logging Control" quick reference
+
+**Features**:
+- ✅ Performance metrics show operation timing
+- ✅ Color-coded output for all conversion scripts
+- ✅ Backward compatible (default INFO level unchanged)
+- ✅ Consistent CLI interface across all scripts
+
 ### Files Modified
 
 - `sidm2/logging_config.py` - Replaced basic version with v2.0.0
+- `scripts/sid_to_sf2.py` - Enhanced logging integration
+- `scripts/sf2_to_sid.py` - Enhanced logging integration
+- `scripts/convert_all.py` - Enhanced logging integration
+- `README.md` - Logging documentation
+- `CLAUDE.md` - Logging quick reference
 
 ### Statistics
 
