@@ -1,0 +1,78 @@
+Init address at $DE16 appears invalid (all zeros or same bytes)
+Using standard PSID init address: $1000
+Play address at $E416 appears invalid (all zeros or same bytes)
+Using standard PSID play address: $1003
+No music data block found
+No instrument block found
+  SF2 format detected: using hybrid extraction (SF2Reader for data, traditional for code)
+Validation failed: Init routine: timeout (>100000 instructions)
+SID file not written (use validate=False to override)
+================================================================================
+COMPLETE SID CONVERSION PIPELINE WITH VALIDATION
+================================================================================
+
+Found 1 SID files
+Output directory: output\Broware
+[FAST] WAV rendering SKIPPED
+[FAST] MIDI comparison SKIPPED
+Started: 2025-12-22 20:44:04
+
+Pipeline Steps:
+  [1] SID -> SF2 conversion (static table extraction)
+  [1.5] Siddump sequence extraction (runtime analysis)
+  [1.6] SIDdecompiler analysis (player structure analysis)
+  [2] SF2 -> SID packing
+  [3] Siddump generation (original + exported)
+  [4] WAV rendering (original + exported)
+  [5] Hexdump generation (original + exported)
+  [6] SIDwinder trace generation (original + exported)
+  [7] Info.txt report generation
+  [8] Annotated disassembly generation
+  [9] SIDwinder disassembly generation (original + exported)
+  [10] Validation check
+  [11] SIDtool MIDI comparison (Python emulator validation)
+
+
+[1/1] Processing: Broware.sid
+--------------------------------------------------------------------------------
+  Type: LAXITY
+  Name: Broware
+
+  [1/13] Converting SID -> SF2 (tables)...
+        [OK] Method: LAXITY
+
+  [1.5/13] Extracting sequences from siddump...
+Running siddump on Laxity\Broware.sid...
+Parsed 200 total events
+  Voice 0: 98 events (42 with notes)
+  Voice 1: 69 events (48 with notes)
+  Voice 2: 33 events (28 with notes)
+
+Building tables from runtime data...
+Built instrument table: 2 instruments from 2 unique ADSR combinations
+Built pulse table: 5 entries from 5 unique pulse values
+Built filter table: 1 default entries
+Voice 0: detected 42 patterns
+Voice 1: detected 48 patterns
+Voice 2: detected 28 patterns
+Extracted 256 sequences total
+Runtime-built tables: 2 instruments, 5 pulse entries, 1 filter entries
+    [WARN] Could not parse Music Data block
+        [WARN] Siddump extraction failed: cannot unpack non-iterable bool object
+
+  [1.6/13] Running SIDdecompiler analysis...
+        [OK] Analysis complete
+        Player: NewPlayer v21 (Laxity)
+
+  [2/13] Packing SF2 -> SID...
+Traceback (most recent call last):
+  File "C:\Users\mit\claude\c64server\SIDM2\pyscript\complete_pipeline_with_validation.py", line 2581, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\mit\claude\c64server\SIDM2\pyscript\complete_pipeline_with_validation.py", line 2310, in main
+    print(f'        [OK] Size: {exported_sid.stat().st_size} bytes')
+                                ~~~~~~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\pathlib\__init__.py", line 659, in stat
+    return os.stat(self, follow_symlinks=follow_symlinks)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [WinError 2] The system cannot find the file specified: 'output\\Broware\\Broware\\New\\Broware_exported.sid'

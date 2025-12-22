@@ -1,0 +1,27 @@
+Python SIDwinder v2.8.0 - Trace Mode
+Input:  ..\Laxity\Driver_11_Test_Arpeggio.sid
+Output: sidwinder_py.txt
+Frames: 100
+
+SID: Driver 11 Test (Arpeggio)
+Author: Thomas E. Petersen (Laxity)
+
+Tracing 100 frames...
+Writing trace to sidwinder_py.txt...
+
+Trace Summary:
+  Frames: 100
+  Cycles: 106,531
+  Init writes: 0
+  Frame writes: 2,475 total
+  Avg per frame: 24.8
+  Most used registers:
+    D40E: 99 writes
+    D40F: 99 writes
+    D414: 99 writes
+    D413: 99 writes
+    D410: 99 writes
+
+Output: sidwinder_py.txt (23,176 bytes)
+
+Done!

@@ -1,0 +1,1 @@
+SUCCESS: Trace log written to sidwinder_exe.txt
