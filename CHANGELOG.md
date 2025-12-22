@@ -7,6 +7,171 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.5.3] - 2025-12-21
+
+### Added - Enhanced Logging & Error Handling
+
+**Comprehensive improvements to logging system and user experience (Options 5 & 7 from roadmap).**
+
+#### Enhanced Logging System v2.0.0 (NEW)
+
+**New Module**: `sidm2/logging_config.py` (482 lines)
+
+**Features**:
+- **4 Verbosity Levels**: 0=ERROR, 1=WARNING, 2=INFO (default), 3=DEBUG
+- **Color-Coded Console Output**: Automatic ANSI color support with graceful degradation
+  - 🔴 ERROR (Red), 🟡 WARNING (Yellow), 🔵 INFO (Cyan), ⚪ DEBUG (Grey)
+- **Structured JSON Logging**: Machine-readable logs for aggregation tools (ELK, Splunk)
+- **File Logging with Rotation**: Automatic log rotation (default 10MB × 3 backups)
+- **Performance Metrics**: Context manager and decorator for operation timing
+- **Module-Specific Loggers**: Hierarchical logger namespace under 'sidm2'
+- **Dynamic Verbosity**: Change log level at runtime with `set_verbosity()`
+- **CLI Integration**: One-line setup with `configure_from_args(args)`
+
+**Usage**:
+```python
+from sidm2.logging_config import setup_logging, get_logger, PerformanceLogger
+
+# Quick setup
+setup_logging(verbosity=2, log_file='logs/sidm2.log')
+
+# Get logger
+logger = get_logger(__name__)
+logger.info("Processing file", extra={'filename': 'test.sid', 'size': 4096})
+
+# Performance logging
+with PerformanceLogger(logger, "SID conversion"):
+    convert_file(input, output)
+```
+
+**CLI Flags** (ready to integrate):
+```bash
+python script.py --debug          # Debug mode (verbosity=3)
+python script.py --quiet          # Quiet mode (verbosity=0, errors only)
+python script.py --log-file logs/app.log  # File logging
+python script.py --log-json       # JSON structured output
+```
+
+#### Comprehensive Documentation (NEW)
+
+**New Guide**: `docs/guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md` (850+ lines)
+
+**Contents**:
+- **Logging System**:
+  - Quick start (5 minutes)
+  - Verbosity levels explained
+  - Color output configuration
+  - File logging and rotation
+  - Structured JSON logging
+  - Performance logging patterns
+  - CLI integration guide
+- **Error Handling**:
+  - 6 error types documented (FileNotFoundError, InvalidInputError, etc.)
+  - Rich error format explained
+  - Usage examples for each type
+  - Creating custom errors
+- **Examples**: Complete working examples
+- **Best Practices**: Logging and error handling guidelines
+- **Troubleshooting**: Common issues and solutions
+
+#### Test Suite (NEW)
+
+**New Tests**: `scripts/test_logging_system.py` (420 lines, 20 tests)
+
+**Coverage**:
+- TestLoggingSetup (7 tests): Configuration, verbosity levels, file logging
+- TestColoredFormatter (2 tests): Color formatting
+- TestStructuredFormatter (3 tests): JSON output, extra fields
+- TestPerformanceLogger (3 tests): Performance timing, decorator
+- TestModuleLoggers (2 tests): Module-specific loggers
+- TestFileRotation (2 tests): Log rotation, multiple handlers
+- TestStructuredLogging (1 test): JSON structured output
+
+**Test Results**:
+```
+Ran 20 tests in 0.234s
+OK (100% pass rate ✅)
+```
+
+#### Interactive Demo (NEW)
+
+**New Demo**: `pyscript/demo_logging_and_errors.py` (280 lines)
+
+**Demonstrations**:
+1. Logging Levels - Shows DEBUG, INFO, WARNING, ERROR output
+2. Structured Logging - Extra fields in logs
+3. Performance Logging - Context manager and decorator
+4. Error Messages - All 6 error types with full formatting
+5. All Error Types - Quick overview
+
+**Usage**:
+```bash
+python pyscript/demo_logging_and_errors.py          # Normal mode
+python pyscript/demo_logging_and_errors.py --debug  # Debug mode
+python pyscript/demo_logging_and_errors.py --demo 3 # Performance demo
+python pyscript/demo_logging_and_errors.py --log-json --log-file logs/demo.jsonl
+```
+
+#### Error Handling Documentation (EXISTING - NOW DOCUMENTED)
+
+**Existing Module**: `sidm2/errors.py` v1.0.0 (614 lines)
+
+**Already Implemented**:
+- 6 specialized error classes with rich formatting
+- Troubleshooting guidance built-in
+- Documentation links
+- Platform-specific help
+- Similar file suggestions (FileNotFoundError)
+
+**Error Types**:
+1. **FileNotFoundError** - File not found with similar file suggestions
+2. **InvalidInputError** - Invalid input with validation guidance
+3. **MissingDependencyError** - Missing dependencies with install instructions
+4. **PermissionError** - Permission issues with platform-specific fixes
+5. **ConfigurationError** - Invalid configuration with valid options
+6. **ConversionError** - Conversion failures with recovery suggestions
+
+### Benefits
+
+**For Users**:
+- ✅ Clear debugging information with 4 verbosity levels
+- ✅ Beautiful color-coded console output
+- ✅ Helpful error messages with step-by-step troubleshooting
+- ✅ Self-service support via documentation links
+
+**For Developers**:
+- ✅ Easy CLI integration (one-line setup)
+- ✅ Structured JSON logging for analysis tools
+- ✅ Automatic performance tracking
+- ✅ Comprehensive test coverage (20 tests)
+
+**For Operations**:
+- ✅ Log rotation prevents disk filling
+- ✅ Multiple outputs (console + file + error-only)
+- ✅ JSON export for log aggregation
+- ✅ Dynamic runtime configuration
+
+### Files Added
+
+- `sidm2/logging_config.py` (482 lines) - Enhanced logging v2.0.0
+- `docs/guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md` (850+ lines) - Complete guide
+- `scripts/test_logging_system.py` (420 lines, 20 tests) - Test suite
+- `pyscript/demo_logging_and_errors.py` (280 lines) - Interactive demo
+- `LOGGING_ERROR_IMPROVEMENTS_SUMMARY.md` (230 lines) - Implementation summary
+
+### Files Modified
+
+- `sidm2/logging_config.py` - Replaced basic version with v2.0.0
+
+### Statistics
+
+- **Total New Content**: ~2,032 lines
+- **Test Coverage**: 20 tests, 100% pass rate
+- **Zero Dependencies**: Python standard library only
+- **Backward Compatible**: No breaking changes
+
+---
+
 ## [2.3.1] - 2025-12-21
 
 ### Changed - CLAUDE.md Optimization
