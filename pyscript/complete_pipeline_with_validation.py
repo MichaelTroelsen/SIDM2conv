@@ -29,6 +29,9 @@ import sys
 import time
 import os
 
+# Add parent directory to sys.path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 # Global flags for pipeline optimization
 SKIP_WAV = False
 SKIP_MIDI = False
