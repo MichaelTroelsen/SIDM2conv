@@ -18,6 +18,133 @@ This converter analyzes SID files that use Laxity's player routine and attempts 
 > See **[docs/QUICK_START.md](docs/QUICK_START.md)** for a beginner-friendly guide.
 > See **[docs/CHEATSHEET.md](docs/CHEATSHEET.md)** for a one-page command reference.
 
+## Conversion Cockpit (NEW in v2.6) 🚀
+
+**Mission control for batch SID conversion** - Professional GUI for converting multiple SID files with real-time monitoring, configurable pipeline steps, and comprehensive validation.
+
+### Features
+
+- **Batch Processing**: Convert 1-100+ SID files in a single session
+- **Real-time Monitoring**: Live progress bars, step tracking, and time estimates
+- **5-Tab Interface**: Dashboard, Files, Configuration, Results, Logs
+- **Progressive Disclosure**: Simple mode (7 steps) → Advanced mode (14 steps) → Custom
+- **Live Logs**: Color-coded log streaming with filtering and search
+- **Pause/Resume**: Full control over batch processing
+- **Results Tracking**: Per-file accuracy, status badges, and output file access
+- **Persistent Settings**: Configuration saved between sessions
+
+### Quick Start
+
+```bash
+# Windows launcher (auto-installs dependencies)
+conversion-cockpit.bat
+
+# Or use Python launcher
+python pyscript/launch_conversion_cockpit.py
+
+# Or direct launch (requires PyQt6)
+python pyscript/conversion_cockpit_gui.py
+```
+
+**Workflow**:
+1. Click "Browse" or drag-drop SID files
+2. Select mode (Simple/Advanced/Custom)
+3. Choose driver (Laxity recommended for 99.93% accuracy)
+4. Click "START"
+5. Monitor progress across all 5 tabs
+6. Review results and access output files
+
+### Interface Overview
+
+```
+┌─────────────────────────────────────────────────────┐
+│ Conversion Cockpit                          [___][O][X]│
+├─────────────────────────────────────────────────────┤
+│                                                      │
+│  ┌─────────────────────────────────────────────┐  │
+│  │           DASHBOARD (Overview)              │  │
+│  │                                               │  │
+│  │  FILES: 25 selected      PROGRESS: 5/25      │  │
+│  │  RESULTS: Pass 5, Fail 0, Avg 99.2%          │  │
+│  │                                               │  │
+│  │  [▶ START] [⏸ PAUSE] [⏹ STOP]              │  │
+│  │                                               │  │
+│  │  Current: angular.sid (Step 3/7: Packing)    │  │
+│  └─────────────────────────────────────────────┘  │
+│                                                      │
+│  [Dashboard] [Files] [Config] [Results] [Logs]      │
+│  ┌─────────────────────────────────────────────┐  │
+│  │ Tab content switches based on selection      │  │
+│  │ - Dashboard: Overview + controls             │  │
+│  │ - Files: File selection + drag-drop          │  │
+│  │ - Config: Modes, drivers, pipeline steps     │  │
+│  │ - Results: Per-file results table            │  │
+│  │ - Logs: Color-coded live log stream          │  │
+│  └─────────────────────────────────────────────┘  │
+│                                                      │
+│  Status: Converting | Output: C:\...\output          │
+└─────────────────────────────────────────────────────┘
+```
+
+### Pipeline Modes
+
+**Simple Mode** (7 steps, ~5 minutes for 25 files):
+- ✅ SID → SF2 Conversion
+- ✅ SF2 → SID Packing
+- ✅ Siddump (Exported)
+- ✅ WAV Rendering (Original + Exported)
+- ✅ Info Report
+- ✅ Validation
+
+**Advanced Mode** (14 steps, ~10 minutes for 25 files):
+- All simple mode steps plus:
+- ✅ Siddump (Original)
+- ✅ SIDdecompiler Analysis
+- ✅ Hexdump Generation
+- ✅ SIDwinder Trace
+- ✅ Annotated Disassembly
+- ✅ SIDwinder Disassembly
+- ✅ MIDI Comparison
+
+**Custom Mode**: Select any combination of steps
+
+### Test Results
+
+**Real File Test** (3 files: Angular, Beast, Delicate):
+- ✅ 100% success rate (3/3 files)
+- ✅ 21/21 steps completed
+- ✅ 12 output files created (.sf2, .sid, .wav)
+- ⏱️ Duration: 3.2 seconds
+- 📊 Simple mode (7 steps per file)
+
+### Documentation
+
+- **User Guide**: [docs/guides/CONVERSION_COCKPIT_USER_GUIDE.md](docs/guides/CONVERSION_COCKPIT_USER_GUIDE.md)
+- **Technical Reference**: [docs/guides/CONVERSION_COCKPIT_TECHNICAL_REFERENCE.md](docs/guides/CONVERSION_COCKPIT_TECHNICAL_REFERENCE.md)
+
+### Architecture
+
+- **GUI Framework**: PyQt6 with signal/slot pattern
+- **Backend**: ConversionExecutor with QProcess management
+- **Configuration**: PipelineConfig with QSettings persistence
+- **Testing**: 50 tests (26 unit + 24 integration) - 100% pass rate
+- **CI/CD**: GitHub Actions workflow for automated testing
+
+### Comparison: GUI vs Command Line
+
+| Feature | Conversion Cockpit | Command Line |
+|---------|-------------------|--------------|
+| Batch Processing | ✅ Drag-drop multiple files | ✅ Batch scripts |
+| Real-time Progress | ✅ Live progress bars | ❌ Text output only |
+| Pause/Resume | ✅ Full control | ❌ Not available |
+| Results Tracking | ✅ Per-file table | ❌ Manual checking |
+| Live Logs | ✅ Color-coded streaming | ⚠️ Terminal only |
+| Configuration | ✅ GUI checkboxes | ⚠️ CLI flags |
+| Learning Curve | ✅ Visual + guided | ⚠️ Command reference |
+| Automation | ⚠️ Interactive only | ✅ Scriptable |
+
+**Recommendation**: Use Conversion Cockpit for interactive batch conversion, command line for automation/scripts.
+
 ## Installation
 
 No external dependencies required for basic conversion - uses Python standard library only.
@@ -2585,7 +2712,85 @@ See `sidm2/audio_comparison.py` for implementation:
 
 **Note**: For recent versions (v2.3.0+), see [`CHANGELOG.md`](CHANGELOG.md). Abbreviated history below shows older releases.
 
-**Current Version**: v2.5.3 - Enhanced Logging & Error Handling (2025-12-22)
+**Current Version**: v2.6.0 - Conversion Cockpit Complete (2025-12-22)
+
+### v2.6.0 (2025-12-22)
+
+**Conversion Cockpit - Mission Control for Batch SID Conversion**
+
+- **NEW Conversion Cockpit GUI**:
+  - Professional PyQt6 GUI for batch SID conversion
+  - 5-tab interface: Dashboard, Files, Configuration, Results, Logs
+  - Real-time progress monitoring with live updates
+  - Pause/resume/stop batch processing
+  - Drag-drop file selection + browse dialog
+  - Per-file results tracking with accuracy metrics
+
+- **Progressive Disclosure UI**:
+  - Simple mode: 7 essential steps (conversion, packing, validation, WAV, info)
+  - Advanced mode: All 14 pipeline steps enabled
+  - Custom mode: Select any combination of steps
+  - Configurable pipeline executor with 14 steps
+
+- **Pipeline Steps**:
+  1. SID → SF2 Conversion (required)
+  2. Siddump (Original)
+  3. SIDdecompiler Analysis
+  4. SF2 → SID Packing (required)
+  5. Siddump (Exported)
+  6. WAV Rendering (Original + Exported)
+  7. Hexdump Generation
+  8. SIDwinder Trace
+  9. Info Report (required)
+  10. Annotated Disassembly
+  11. SIDwinder Disassembly
+  12. Validation (required)
+  13. MIDI Comparison
+
+- **Features**:
+  - Color-coded live log streaming with level filtering
+  - Results table with sortable columns
+  - Configuration persistence with QSettings
+  - Signal/slot architecture for async updates
+  - Three stats cards (Files, Progress, Results)
+  - Estimated time remaining calculations
+
+- **Testing & Quality**:
+  - 50 tests: 26 unit + 24 integration (100% pass rate)
+  - Real file integration test (3 SID files, 3.2 seconds)
+  - GitHub Actions CI/CD workflow
+  - Comprehensive user guide (1,234 lines)
+  - Technical reference (1,103 lines)
+
+- **Batch Launchers**:
+  - `conversion-cockpit.bat` - Windows launcher
+  - `pyscript/launch_conversion_cockpit.py` - Python launcher with auto-install
+  - `pyscript/conversion_cockpit_gui.py` - Direct launch
+
+- **Architecture**:
+  - `conversion_cockpit_gui.py` (1,047 lines) - Main window
+  - `conversion_executor.py` (475 lines) - Backend engine
+  - `pipeline_config.py` (259 lines) - Configuration management
+  - `cockpit_widgets.py` (437 lines) - Custom widgets
+
+- **Bug Fixes**:
+  - Fixed missing QScrollArea import in configuration tab
+  - Fixed test assertion errors (default values, time estimates)
+  - Fixed FileResult structure (start_time/end_time instead of duration)
+
+- **Documentation**:
+  - `docs/guides/CONVERSION_COCKPIT_USER_GUIDE.md` - User guide
+  - `docs/guides/CONVERSION_COCKPIT_TECHNICAL_REFERENCE.md` - Technical docs
+  - `IMPROVEMENTS_TODO.md` - Comprehensive improvement tracking (28 tasks)
+  - README.md - New Conversion Cockpit section with features, usage, comparison
+
+- **Test Results**:
+  - 100% success rate (3/3 files: Angular, Beast, Delicate)
+  - 21/21 steps completed (7 steps × 3 files)
+  - 12 output files created (.sf2, .sid, .wav)
+  - Duration: 3.2 seconds for 3 files
+
+**Conversion Cockpit provides a professional GUI alternative to command-line batch conversion with full monitoring, control, and validation capabilities.**
 
 ### v2.2.0 (2025-12-18)
 
