@@ -1004,7 +1004,9 @@ def find_and_extract_filter_table(data: bytes, load_addr: int, filter_ptrs: Opti
                 elif filter_val == 0 and count == 0 and duration == 0 and next_idx == 0:
                     entry_score -= 5  # Penalty for all-zero first entry
 
-            entries.append((filter_val, count, duration, next_idx))
+            # Convert Laxity Y*4 index format to SF2 direct index format
+            direct_idx = next_idx // 4 if next_idx % 4 == 0 and next_idx != 0 else next_idx
+            entries.append((filter_val, count, duration, direct_idx))
             score += entry_score
 
             # Track next indices for scoring
