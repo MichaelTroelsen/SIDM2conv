@@ -3,6 +3,12 @@
 Tests for the SID to SF2 converter
 """
 
+import sys
+from pathlib import Path
+
+# Add parent directory to path for sidm2 imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import unittest
 import os
 import tempfile
