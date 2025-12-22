@@ -9,18 +9,28 @@ echo.
 
 set FAILED=0
 
-echo [1/3] Running converter tests...
+echo [1/5] Running converter tests...
 python scripts/test_converter.py
 if %ERRORLEVEL% NEQ 0 set FAILED=1
 
 echo.
-echo [2/3] Running SF2 format tests...
+echo [2/5] Running SF2 format tests...
 python scripts/test_sf2_format.py
 if %ERRORLEVEL% NEQ 0 set FAILED=1
 
 echo.
-echo [3/3] Running Laxity driver tests...
+echo [3/5] Running Laxity driver tests...
 python scripts/test_laxity_driver.py
+if %ERRORLEVEL% NEQ 0 set FAILED=1
+
+echo.
+echo [4/5] Running 6502 disassembler tests...
+python pyscript/test_disasm6502.py
+if %ERRORLEVEL% NEQ 0 set FAILED=1
+
+echo.
+echo [5/5] Running SIDdecompiler tests...
+python pyscript/test_siddecompiler_complete.py
 if %ERRORLEVEL% NEQ 0 set FAILED=1
 
 echo.
