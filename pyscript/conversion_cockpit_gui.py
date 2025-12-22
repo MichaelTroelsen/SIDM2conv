@@ -23,7 +23,7 @@ try:
         QCheckBox, QComboBox, QLineEdit, QGroupBox, QHeaderView, QListWidget,
         QSplitter, QFrame, QScrollArea
     )
-    from PyQt6.QtCore import Qt, QSettings, QTimer, pyqtSignal, QObject
+    from PyQt6.QtCore import Qt, QSettings, QTimer, pyqtSignal, QObject, QUrl
     from PyQt6.QtGui import QFont, QColor, QIcon, QDragEnterEvent, QDropEvent
     PYQT6_AVAILABLE = True
 except ImportError:
@@ -31,6 +31,14 @@ except ImportError:
     print("ERROR: PyQt6 is required for the Conversion Cockpit")
     print("\nInstall with: pip install PyQt6")
     sys.exit(1)
+
+# Try to import QtWebEngineWidgets for embedded dashboard view (optional)
+try:
+    from PyQt6.QtWebEngineWidgets import QWebEngineView
+    WEBENGINE_AVAILABLE = True
+except ImportError:
+    WEBENGINE_AVAILABLE = False
+    QWebEngineView = None  # For type checking
 
 # Import cockpit modules
 from conversion_executor import ConversionExecutor
@@ -515,10 +523,18 @@ class CockpitMainWindow(QMainWindow):
         return widget
 
     def create_results_tab(self) -> QWidget:
-        """Create the Results tab"""
+        """Create the Results tab with embedded dashboard view"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(10, 10, 10, 10)
+
+        # Create splitter for results table (top) and dashboard (bottom)
+        splitter = QSplitter(Qt.Orientation.Vertical)
+
+        # Top section: Results table and stats
+        top_widget = QWidget()
+        top_layout = QVBoxLayout(top_widget)
+        top_layout.setContentsMargins(0, 0, 0, 0)
 
         # Results table
         self.results_table = QTableWidget()
@@ -528,12 +544,12 @@ class CockpitMainWindow(QMainWindow):
         ])
         self.results_table.horizontalHeader().setStretchLastSection(False)
         self.results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        layout.addWidget(self.results_table)
+        top_layout.addWidget(self.results_table)
 
         # Statistics section
-        stats_label = QLabel("Statistics: Total: 0 | Passed: 0 (0%) | Failed: 0 (0%) | Avg Accuracy: 0%")
-        stats_label.setStyleSheet("font-size: 11px; padding: 5px;")
-        layout.addWidget(stats_label)
+        self.stats_label = QLabel("Statistics: Total: 0 | Passed: 0 (0%) | Failed: 0 (0%) | Avg Accuracy: 0%")
+        self.stats_label.setStyleSheet("font-size: 11px; padding: 5px;")
+        top_layout.addWidget(self.stats_label)
 
         # Export buttons
         export_layout = QHBoxLayout()
@@ -545,10 +561,46 @@ class CockpitMainWindow(QMainWindow):
         export_json_btn = QPushButton("Export JSON")
         export_layout.addWidget(export_json_btn)
 
-        export_dashboard_btn = QPushButton("Generate Dashboard HTML")
-        export_layout.addWidget(export_dashboard_btn)
+        self.export_dashboard_btn = QPushButton("Generate & View Dashboard")
+        self.export_dashboard_btn.clicked.connect(self.generate_and_view_dashboard)
+        export_layout.addWidget(self.export_dashboard_btn)
 
-        layout.addLayout(export_layout)
+        refresh_dashboard_btn = QPushButton("Refresh Dashboard")
+        refresh_dashboard_btn.clicked.connect(self.refresh_dashboard)
+        export_layout.addWidget(refresh_dashboard_btn)
+
+        top_layout.addLayout(export_layout)
+
+        splitter.addWidget(top_widget)
+
+        # Bottom section: Embedded dashboard view (if WebEngine available)
+        if WEBENGINE_AVAILABLE:
+            dashboard_widget = QWidget()
+            dashboard_layout = QVBoxLayout(dashboard_widget)
+            dashboard_layout.setContentsMargins(0, 0, 0, 0)
+
+            dashboard_label = QLabel("📊 Validation Dashboard")
+            dashboard_label.setStyleSheet("font-size: 12px; font-weight: bold; padding: 5px;")
+            dashboard_layout.addWidget(dashboard_label)
+
+            self.dashboard_view = QWebEngineView()
+            dashboard_layout.addWidget(self.dashboard_view)
+
+            splitter.addWidget(dashboard_widget)
+
+            # Set initial splitter sizes (60% table, 40% dashboard)
+            splitter.setSizes([600, 400])
+        else:
+            # If WebEngine not available, show info label
+            info_label = QLabel("ℹ️  Install PyQt6-WebEngine to view dashboard here\n"
+                               "Current: Dashboard will open in external browser")
+            info_label.setStyleSheet("padding: 10px; background-color: #FFF3CD; border: 1px solid #FFEB3B;")
+            info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            splitter.addWidget(info_label)
+            splitter.setSizes([900, 100])
+            self.dashboard_view = None
+
+        layout.addWidget(splitter)
 
         return widget
 
@@ -673,6 +725,119 @@ class CockpitMainWindow(QMainWindow):
                 self.start_btn.setEnabled(True)
                 self.pause_btn.setEnabled(False)
                 self.stop_btn.setEnabled(False)
+
+    # =========================================================================
+    # Dashboard Methods
+    # =========================================================================
+
+    def generate_and_view_dashboard(self):
+        """Generate validation dashboard HTML and display it in embedded view"""
+        try:
+            # Check if validation directory and database exist
+            validation_dir = Path("validation")
+            dashboard_html = validation_dir / "dashboard.html"
+            database_file = validation_dir / "database.sqlite"
+
+            if not database_file.exists():
+                QMessageBox.information(
+                    self,
+                    "No Validation Data",
+                    "No validation data found. Complete a batch conversion with validation enabled first.\n\n"
+                    "Validation data is stored in: validation/database.sqlite"
+                )
+                return
+
+            # Generate dashboard HTML using generate_dashboard.py
+            self.update_status_bar("Generating validation dashboard...")
+
+            # Import and run dashboard generator
+            import subprocess
+            result = subprocess.run(
+                [sys.executable, "scripts/generate_dashboard.py"],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+            if result.returncode != 0:
+                QMessageBox.warning(
+                    self,
+                    "Dashboard Generation Failed",
+                    f"Failed to generate dashboard:\n\n{result.stderr}"
+                )
+                self.update_status_bar("Dashboard generation failed")
+                return
+
+            # Load dashboard in web view (if available) or open in browser
+            if WEBENGINE_AVAILABLE and self.dashboard_view:
+                if dashboard_html.exists():
+                    url = QUrl.fromLocalFile(str(dashboard_html.absolute()))
+                    self.dashboard_view.setUrl(url)
+                    self.update_status_bar("Dashboard loaded in view")
+                    QMessageBox.information(
+                        self,
+                        "Dashboard Generated",
+                        "Validation dashboard generated and loaded successfully!\n\n"
+                        "View it in the Results tab below."
+                    )
+                else:
+                    QMessageBox.warning(
+                        self,
+                        "Dashboard File Not Found",
+                        f"Dashboard HTML file not found at: {dashboard_html}"
+                    )
+            else:
+                # Fallback: Open in external browser
+                import webbrowser
+                webbrowser.open(f"file://{dashboard_html.absolute()}")
+                self.update_status_bar("Dashboard opened in external browser")
+                QMessageBox.information(
+                    self,
+                    "Dashboard Generated",
+                    f"Dashboard generated and opened in your browser.\n\n"
+                    f"Location: {dashboard_html}\n\n"
+                    f"Install PyQt6-WebEngine to view dashboard within the app."
+                )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to generate/view dashboard:\n\n{str(e)}"
+            )
+            self.update_status_bar("Error generating dashboard")
+
+    def refresh_dashboard(self):
+        """Refresh the embedded dashboard view"""
+        try:
+            validation_dir = Path("validation")
+            dashboard_html = validation_dir / "dashboard.html"
+
+            if not dashboard_html.exists():
+                QMessageBox.information(
+                    self,
+                    "Dashboard Not Found",
+                    "Dashboard has not been generated yet.\n\n"
+                    "Click 'Generate & View Dashboard' first."
+                )
+                return
+
+            if WEBENGINE_AVAILABLE and self.dashboard_view:
+                # Reload the dashboard in the web view
+                self.dashboard_view.reload()
+                self.update_status_bar("Dashboard refreshed")
+            else:
+                # If no web view, just open in browser
+                import webbrowser
+                webbrowser.open(f"file://{dashboard_html.absolute()}")
+                self.update_status_bar("Dashboard opened in browser")
+
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Refresh Failed",
+                f"Failed to refresh dashboard:\n\n{str(e)}"
+            )
 
     # =========================================================================
     # File Management Methods

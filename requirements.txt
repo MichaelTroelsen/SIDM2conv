@@ -1,2 +1,7 @@
 # SID to SF2 Converter - Core Dependencies
-# No external dependencies required - uses Python standard library only
+
+# Core converter - uses Python standard library only (no dependencies)
+
+# GUI Dependencies (optional - only needed for Conversion Cockpit and SF2 Viewer)
+PyQt6>=6.6.0
+PyQt6-WebEngine>=6.6.0  # For embedded dashboard view in Conversion Cockpit
