@@ -1,14 +1,14 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**Project**: SIDM2 - SID to SF2 Converter | **Version**: 2.5.3 | **Updated**: 2025-12-22
+**Project**: SIDM2 - SID to SF2 Converter | **Version**: 2.6.0 | **Updated**: 2025-12-22
 
 ---
 
 ## 30-Second Overview
 
-Converts C64 SID files (Laxity NewPlayer v21) to SID Factory II (.sf2) format. Custom Laxity driver achieves **99.93% frame accuracy**. Includes SF2 Viewer GUI, Conversion Cockpit GUI, validation system, and 164+ passing tests.
+Converts C64 SID files (Laxity NewPlayer v21) to SID Factory II (.sf2) format. Custom Laxity driver achieves **99.93% frame accuracy**. Includes SF2 Viewer GUI, Conversion Cockpit GUI, **Python siddump** (100% complete), validation system, and 200+ passing tests.
 
-**Key**: Laxity NP21 → Laxity Driver (99.93%) | SF2-Exported → Driver 11 (100%)
+**Key**: Laxity NP21 → Laxity Driver (99.93%) | SF2-Exported → Driver 11 (100%) | **Pure Python Pipeline**
 
 ---
 
@@ -34,14 +34,74 @@ sf2-export.bat file.sf2                # Text export
 
 # Batch Operations
 batch-convert-laxity.bat               # All Laxity files
-test-all.bat                           # All 164+ tests
+test-all.bat                           # All 200+ tests
 cleanup.bat                            # Clean + update inventory
 
 # Conversion Cockpit
 conversion-cockpit.bat                 # Mission control GUI
+
+# Python siddump (NEW v2.6.0)
+python pyscript/siddump_complete.py input.sid -t30  # Frame analysis
+python pyscript/test_siddump.py -v              # Run 38 unit tests
 ```
 
 **Logging** (v2.5.3): `-v/-vv` (verbose), `-q` (quiet), `--debug`, `--log-file`, `--log-json`
+
+---
+
+## Python siddump (v2.6.0) 🎉
+
+**Status**: ✅ **Production Ready** | **Accuracy**: 100% musical content match
+
+Pure Python replacement for siddump.exe with zero external dependencies.
+
+### Quick Start
+
+```bash
+# Basic usage (60 seconds default)
+python pyscript/siddump_complete.py music.sid
+
+# Custom time (30 seconds)
+python pyscript/siddump_complete.py music.sid -t30
+
+# Profiling mode (show CPU cycles)
+python pyscript/siddump_complete.py music.sid -t30 -p
+
+# Time format (mm:ss.ff)
+python pyscript/siddump_complete.py music.sid -t30 -z
+
+# Start from frame 100
+python pyscript/siddump_complete.py music.sid -t30 -f100
+```
+
+### Features
+
+- ✅ **100% musical content match** vs C version (frequencies, notes, waveforms, ADSR, pulse)
+- ✅ **All 11 CLI flags** supported (-a, -c, -d, -f, -l, -n, -o, -p, -s, -t, -z)
+- ✅ **Cross-platform** (Mac/Linux/Windows)
+- ✅ **38 unit tests** (100% pass rate)
+- ✅ **Integrated** (used by sidm2/siddump.py wrapper by default)
+- ⚠️ **2.8x slower** than C (acceptable - 30s dump in 4.2s)
+
+### Integration
+
+Python version is used **automatically** by default:
+
+```python
+from sidm2.siddump import extract_from_siddump
+
+# Uses Python siddump automatically
+result = extract_from_siddump('music.sid', playback_time=30)
+
+# Force C exe (if needed)
+result = extract_from_siddump('music.sid', playback_time=30, use_python=False)
+```
+
+### Documentation
+
+- **Implementation**: `docs/implementation/SIDDUMP_PYTHON_IMPLEMENTATION.md`
+- **Unit Tests**: `pyscript/test_siddump.py` (38 tests)
+- **Analysis**: `docs/analysis/EXTERNAL_TOOLS_REPLACEMENT_ANALYSIS.md`
 
 ---
 
@@ -49,11 +109,12 @@ conversion-cockpit.bat                 # Mission control GUI
 
 ```
 SIDM2/
-├── pyscript/           # ALL Python scripts (v2.5)
+├── pyscript/           # ALL Python scripts (v2.6)
+│   ├── siddump_complete.py          # Python siddump (595 lines, NEW v2.6.0)
 │   ├── conversion_cockpit_gui.py    # Batch conversion GUI
 │   ├── sf2_viewer_gui.py            # SF2 viewer GUI
 │   ├── sf2_to_text_exporter.py      # Text exporter
-│   └── test_*.py                    # 164+ unit tests
+│   └── test_*.py                    # 200+ unit tests (38 for siddump)
 │
 ├── scripts/            # Production tools
 │   ├── sid_to_sf2.py               # Main converter
@@ -63,10 +124,11 @@ SIDM2/
 ├── sidm2/              # Core package
 │   ├── laxity_parser.py, laxity_converter.py
 │   ├── sf2_packer.py, cpu6502_emulator.py
+│   ├── siddump.py (uses Python version, v2.6.0)
 │   └── logging_config.py (v2.0.0)
 │
-├── tools/              # External tools
-│   └── siddump.exe, SIDwinder.exe, SID2WAV.EXE
+├── tools/              # External tools (optional)
+│   └── siddump.exe (fallback), SIDwinder.exe, SID2WAV.EXE
 │
 ├── G5/drivers/         # SF2 drivers
 │   └── sf2driver_laxity_00.prg (8KB, 99.93%)
@@ -147,7 +209,7 @@ SIDM2/
 
 ### Before Committing
 
-1. Run `test-all.bat` (164+ tests must pass)
+1. Run `test-all.bat` (200+ tests must pass)
 2. Update README.md if features changed
 3. Update CLAUDE.md if structure changed
 4. Update docs/ if API changed
@@ -163,8 +225,9 @@ python scripts/validate_sid_accuracy.py input.sid output.sid
 
 **Debug Conversion**:
 1. Check `output/*/New/info.txt` for warnings
-2. Compare dumps: `tools/siddump.exe original.sid` vs `exported.sid`
+2. Compare dumps: `python pyscript/siddump_complete.py original.sid -t30` vs `exported.sid`
 3. Compare audio: `original.wav` vs `exported.wav`
+4. Use C siddump for exact filter matching (if needed): `tools/siddump.exe original.sid -t30`
 
 **Explore Codebase**:
 - Use Task(Explore) for broad questions
@@ -174,6 +237,15 @@ python scripts/validate_sid_accuracy.py input.sid output.sid
 ---
 
 ## Version History
+
+### v2.6.0 (2025-12-22) - Python siddump Complete ✅
+- **Python siddump implementation** (595 lines, 100% complete)
+- **38 unit tests** (100% pass rate)
+- **100% musical content accuracy** vs C version
+- **Wrapper integration** (sidm2/siddump.py uses Python by default)
+- **Cross-platform** (Mac/Linux/Windows)
+- **Zero external dependencies** (pure Python)
+- Production ready with automatic fallback to C exe
 
 ### v2.5.3 (2025-12-22) - Enhanced Logging
 - Enhanced Logging System v2.0.0 (4 levels, JSON, rotation)
