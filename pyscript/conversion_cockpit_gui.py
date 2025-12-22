@@ -21,7 +21,7 @@ try:
         QTabWidget, QLabel, QPushButton, QFileDialog, QMessageBox,
         QStatusBar, QProgressBar, QTextEdit, QTableWidget, QTableWidgetItem,
         QCheckBox, QComboBox, QLineEdit, QGroupBox, QHeaderView, QListWidget,
-        QSplitter, QFrame
+        QSplitter, QFrame, QScrollArea
     )
     from PyQt6.QtCore import Qt, QSettings, QTimer, pyqtSignal, QObject
     from PyQt6.QtGui import QFont, QColor, QIcon, QDragEnterEvent, QDropEvent
