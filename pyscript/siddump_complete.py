@@ -558,7 +558,9 @@ def run_siddump(filename: str, args):
             else:
                 channels[voice].note = -1
 
-        filt.cutoff = (cpu.mem[0xD415] << 5) | (cpu.mem[0xD416] << 8)
+        # Filter cutoff: 11-bit value from $D415 (bits 0-2) and $D416 (bits 0-7)
+        # Correct SID specification: FC = ($D415 & 0x07) | ($D416 << 3)
+        filt.cutoff = (cpu.mem[0xD415] & 0x07) | (cpu.mem[0xD416] << 3)
         filt.ctrl = cpu.mem[0xD417]
         filt.type = cpu.mem[0xD418]
 
