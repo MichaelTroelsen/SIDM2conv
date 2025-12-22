@@ -1,0 +1,807 @@
+#!/usr/bin/env python3
+"""
+Conversion Cockpit GUI - Mission control for batch SID conversion
+
+Professional batch conversion interface with real-time monitoring,
+configurable pipeline steps, and progressive disclosure (simple → advanced mode).
+
+Version: 1.0.0
+Date: 2025-12-22
+"""
+
+import sys
+import os
+from pathlib import Path
+from typing import Optional, List, Dict
+
+# Try to import PyQt6, fallback instructions if not available
+try:
+    from PyQt6.QtWidgets import (
+        QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+        QTabWidget, QLabel, QPushButton, QFileDialog, QMessageBox,
+        QStatusBar, QProgressBar, QTextEdit, QTableWidget, QTableWidgetItem,
+        QCheckBox, QComboBox, QLineEdit, QGroupBox, QHeaderView, QListWidget,
+        QSplitter, QFrame
+    )
+    from PyQt6.QtCore import Qt, QSettings, QTimer, pyqtSignal, QObject
+    from PyQt6.QtGui import QFont, QColor, QIcon, QDragEnterEvent, QDropEvent
+    PYQT6_AVAILABLE = True
+except ImportError:
+    PYQT6_AVAILABLE = False
+    print("ERROR: PyQt6 is required for the Conversion Cockpit")
+    print("\nInstall with: pip install PyQt6")
+    sys.exit(1)
+
+# Import cockpit modules
+from conversion_executor import ConversionExecutor
+from pipeline_config import PipelineConfig, PipelineStep
+from cockpit_widgets import StatsCard, ProgressWidget, FileListWidget, LogStreamWidget
+
+
+class CockpitMainWindow(QMainWindow):
+    """Main window for Conversion Cockpit application"""
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("SIDM2 Conversion Cockpit v1.0")
+        self.setGeometry(100, 100, 1600, 1000)
+
+        # State
+        self.config = PipelineConfig()
+        self.executor: Optional[ConversionExecutor] = None
+        self.settings = QSettings("SIDM2", "ConversionCockpit")
+        self.selected_files: List[str] = []
+        self.is_running = False
+
+        # Initialize UI
+        self.init_ui()
+        self.setup_drag_drop()
+        self.load_settings()
+
+        # Create executor
+        self.setup_executor()
+
+    def init_ui(self):
+        """Initialize the user interface"""
+        # Central widget with main layout
+        central = QWidget()
+        self.setCentralWidget(central)
+        main_layout = QVBoxLayout(central)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(10)
+
+        # Tab widget for main content
+        self.tabs = QTabWidget()
+        main_layout.addWidget(self.tabs)
+
+        # Tab 1: Dashboard (Overview)
+        self.dashboard_tab = self.create_dashboard_tab()
+        self.tabs.addTab(self.dashboard_tab, "🏠 Dashboard")
+
+        # Tab 2: Files
+        self.files_tab = self.create_files_tab()
+        self.tabs.addTab(self.files_tab, "📁 Files")
+
+        # Tab 3: Configuration
+        self.config_tab = self.create_config_tab()
+        self.tabs.addTab(self.config_tab, "⚙️ Config")
+
+        # Tab 4: Results
+        self.results_tab = self.create_results_tab()
+        self.tabs.addTab(self.results_tab, "📊 Results")
+
+        # Tab 5: Logs
+        self.logs_tab = self.create_logs_tab()
+        self.tabs.addTab(self.logs_tab, "📝 Logs")
+
+        # Status bar
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.update_status_bar()
+
+    def create_dashboard_tab(self) -> QWidget:
+        """Create the Dashboard tab (main overview)"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+
+        # Title
+        title = QLabel("Conversion Dashboard")
+        title_font = QFont()
+        title_font.setPointSize(18)
+        title_font.setBold(True)
+        title.setFont(title_font)
+        layout.addWidget(title)
+
+        # Stats cards row
+        stats_layout = QHBoxLayout()
+        stats_layout.setSpacing(15)
+
+        # Files card
+        self.files_card = StatsCard("FILES", [
+            ("Total", "0"),
+            ("Selected", "0"),
+            ("Estimated", "0 minutes")
+        ])
+        stats_layout.addWidget(self.files_card)
+
+        # Progress card
+        self.progress_card = StatsCard("PROGRESS", [
+            ("Current", "0/0"),
+            ("Step", "0/0"),
+            ("Time", "00:00 / 00:00")
+        ])
+        stats_layout.addWidget(self.progress_card)
+
+        # Results card
+        self.results_card = StatsCard("RESULTS", [
+            ("Pass", "0"),
+            ("Fail", "0"),
+            ("Avg Accuracy", "0%")
+        ])
+        stats_layout.addWidget(self.results_card)
+
+        layout.addLayout(stats_layout)
+
+        # Control panel
+        control_group = QGroupBox("Controls")
+        control_layout = QHBoxLayout()
+        control_layout.setSpacing(10)
+
+        self.start_btn = QPushButton("▶ START")
+        self.start_btn.setStyleSheet("background-color: #4CAF50; color: white; padding: 10px; font-size: 14px; font-weight: bold;")
+        self.start_btn.clicked.connect(self.start_conversion)
+        control_layout.addWidget(self.start_btn)
+
+        self.pause_btn = QPushButton("⏸ PAUSE")
+        self.pause_btn.setStyleSheet("background-color: #FF9800; color: white; padding: 10px; font-size: 14px; font-weight: bold;")
+        self.pause_btn.clicked.connect(self.pause_conversion)
+        self.pause_btn.setEnabled(False)
+        control_layout.addWidget(self.pause_btn)
+
+        self.stop_btn = QPushButton("⏹ STOP")
+        self.stop_btn.setStyleSheet("background-color: #f44336; color: white; padding: 10px; font-size: 14px; font-weight: bold;")
+        self.stop_btn.clicked.connect(self.stop_conversion)
+        self.stop_btn.setEnabled(False)
+        control_layout.addWidget(self.stop_btn)
+
+        settings_btn = QPushButton("⚙ SETTINGS")
+        settings_btn.setStyleSheet("background-color: #2196F3; color: white; padding: 10px; font-size: 14px; font-weight: bold;")
+        settings_btn.clicked.connect(lambda: self.tabs.setCurrentIndex(2))  # Switch to Config tab
+        control_layout.addWidget(settings_btn)
+
+        control_group.setLayout(control_layout)
+        layout.addWidget(control_group)
+
+        # Current operation display
+        operation_group = QGroupBox("Current Operation")
+        operation_layout = QVBoxLayout()
+
+        self.current_file_label = QLabel("No operation in progress")
+        self.current_file_label.setStyleSheet("font-size: 12px; padding: 5px;")
+        operation_layout.addWidget(self.current_file_label)
+
+        self.current_step_label = QLabel("Waiting to start...")
+        self.current_step_label.setStyleSheet("font-size: 11px; color: #666; padding: 5px;")
+        operation_layout.addWidget(self.current_step_label)
+
+        operation_group.setLayout(operation_layout)
+        layout.addWidget(operation_group)
+
+        # Progress bar
+        self.main_progress = QProgressBar()
+        self.main_progress.setMaximum(100)
+        self.main_progress.setValue(0)
+        self.main_progress.setTextVisible(True)
+        layout.addWidget(self.main_progress)
+
+        layout.addStretch()
+        return widget
+
+    def create_files_tab(self) -> QWidget:
+        """Create the Files tab"""
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        # Left panel: Input directory controls
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Input directory section
+        input_group = QGroupBox("Input Directory")
+        input_layout = QVBoxLayout()
+
+        dir_select_layout = QHBoxLayout()
+        self.dir_path_label = QLabel("No directory selected")
+        self.dir_path_label.setStyleSheet("background-color: #f0f0f0; padding: 5px;")
+        dir_select_layout.addWidget(self.dir_path_label)
+
+        browse_dir_btn = QPushButton("Browse...")
+        browse_dir_btn.clicked.connect(self.browse_directory)
+        dir_select_layout.addWidget(browse_dir_btn)
+
+        scan_btn = QPushButton("Scan")
+        scan_btn.clicked.connect(self.scan_directory)
+        dir_select_layout.addWidget(scan_btn)
+
+        input_layout.addLayout(dir_select_layout)
+
+        self.include_subdir_cb = QCheckBox("Include subdirectories")
+        self.include_subdir_cb.setChecked(True)
+        input_layout.addWidget(self.include_subdir_cb)
+
+        self.laxity_only_cb = QCheckBox("Laxity files only")
+        input_layout.addWidget(self.laxity_only_cb)
+
+        input_group.setLayout(input_layout)
+        left_layout.addWidget(input_group)
+
+        # Actions section
+        actions_group = QGroupBox("Actions")
+        actions_layout = QVBoxLayout()
+
+        select_all_btn = QPushButton("Select All")
+        select_all_btn.clicked.connect(self.select_all_files)
+        actions_layout.addWidget(select_all_btn)
+
+        select_none_btn = QPushButton("Select None")
+        select_none_btn.clicked.connect(self.select_no_files)
+        actions_layout.addWidget(select_none_btn)
+
+        add_files_btn = QPushButton("Add Files...")
+        add_files_btn.clicked.connect(self.add_files_manually)
+        actions_layout.addWidget(add_files_btn)
+
+        remove_btn = QPushButton("Remove Selected")
+        remove_btn.clicked.connect(self.remove_selected_files)
+        actions_layout.addWidget(remove_btn)
+
+        actions_group.setLayout(actions_layout)
+        left_layout.addWidget(actions_group)
+
+        left_layout.addStretch()
+        left_panel.setMaximumWidth(250)
+
+        # Right panel: File list
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+
+        file_list_label = QLabel("File List")
+        file_list_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        right_layout.addWidget(file_list_label)
+
+        self.file_list_widget = FileListWidget()
+        self.file_list_widget.files_changed.connect(self.on_files_changed)
+        right_layout.addWidget(self.file_list_widget)
+
+        self.selection_count_label = QLabel("0 files selected")
+        self.selection_count_label.setStyleSheet("font-size: 11px; color: #666; padding: 5px;")
+        right_layout.addWidget(self.selection_count_label)
+
+        # Add panels to splitter
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.addWidget(left_panel)
+        splitter.addWidget(right_panel)
+        splitter.setStretchFactor(1, 1)
+
+        layout.addWidget(splitter)
+        return widget
+
+    def create_config_tab(self) -> QWidget:
+        """Create the Configuration tab"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        # Placeholder for now
+        label = QLabel("Configuration Panel")
+        label.setStyleSheet("font-size: 14px; font-weight: bold;")
+        layout.addWidget(label)
+
+        # TODO: Add mode selection, driver config, pipeline steps, presets
+
+        layout.addStretch()
+        return widget
+
+    def create_results_tab(self) -> QWidget:
+        """Create the Results tab"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        # Results table
+        self.results_table = QTableWidget()
+        self.results_table.setColumnCount(6)
+        self.results_table.setHorizontalHeaderLabels([
+            "File", "Driver", "Steps", "Accuracy", "Status", "Action"
+        ])
+        self.results_table.horizontalHeader().setStretchLastSection(False)
+        self.results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self.results_table)
+
+        # Statistics section
+        stats_label = QLabel("Statistics: Total: 0 | Passed: 0 (0%) | Failed: 0 (0%) | Avg Accuracy: 0%")
+        stats_label.setStyleSheet("font-size: 11px; padding: 5px;")
+        layout.addWidget(stats_label)
+
+        # Export buttons
+        export_layout = QHBoxLayout()
+        export_layout.addStretch()
+
+        export_csv_btn = QPushButton("Export CSV")
+        export_layout.addWidget(export_csv_btn)
+
+        export_json_btn = QPushButton("Export JSON")
+        export_layout.addWidget(export_json_btn)
+
+        export_dashboard_btn = QPushButton("Generate Dashboard HTML")
+        export_layout.addWidget(export_dashboard_btn)
+
+        layout.addLayout(export_layout)
+
+        return widget
+
+    def create_logs_tab(self) -> QWidget:
+        """Create the Logs tab"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        # Filter controls
+        filter_layout = QHBoxLayout()
+
+        filter_layout.addWidget(QLabel("Level:"))
+        self.log_level_combo = QComboBox()
+        self.log_level_combo.addItems(["ALL", "ERROR", "WARN", "INFO", "DEBUG"])
+        self.log_level_combo.setCurrentText("ALL")
+        filter_layout.addWidget(self.log_level_combo)
+
+        filter_layout.addWidget(QLabel("Search:"))
+        self.log_search_input = QLineEdit()
+        filter_layout.addWidget(self.log_search_input)
+
+        clear_search_btn = QPushButton("X")
+        clear_search_btn.setMaximumWidth(30)
+        clear_search_btn.clicked.connect(lambda: self.log_search_input.clear())
+        filter_layout.addWidget(clear_search_btn)
+
+        filter_layout.addStretch()
+
+        layout.addLayout(filter_layout)
+
+        # Log display
+        self.log_widget = LogStreamWidget()
+        layout.addWidget(self.log_widget)
+
+        # Log controls
+        log_controls_layout = QHBoxLayout()
+
+        self.auto_scroll_cb = QCheckBox("Auto-scroll")
+        self.auto_scroll_cb.setChecked(True)
+        log_controls_layout.addWidget(self.auto_scroll_cb)
+
+        log_controls_layout.addStretch()
+
+        clear_logs_btn = QPushButton("Clear Logs")
+        clear_logs_btn.clicked.connect(self.clear_logs)
+        log_controls_layout.addWidget(clear_logs_btn)
+
+        export_logs_btn = QPushButton("Export...")
+        log_controls_layout.addWidget(export_logs_btn)
+
+        layout.addLayout(log_controls_layout)
+
+        return widget
+
+    def setup_drag_drop(self):
+        """Enable drag and drop for files"""
+        self.setAcceptDrops(True)
+
+    def setup_executor(self):
+        """Create and configure the conversion executor"""
+        self.executor = ConversionExecutor(self.config)
+
+        # Connect signals
+        self.executor.batch_started.connect(self.on_batch_started)
+        self.executor.file_started.connect(self.on_file_started)
+        self.executor.step_started.connect(self.on_step_started)
+        self.executor.step_completed.connect(self.on_step_completed)
+        self.executor.file_completed.connect(self.on_file_completed)
+        self.executor.batch_completed.connect(self.on_batch_completed)
+        self.executor.progress_updated.connect(self.on_progress_updated)
+        self.executor.log_message.connect(self.on_log_message)
+        self.executor.error_occurred.connect(self.on_error_occurred)
+
+    # =========================================================================
+    # Control Methods
+    # =========================================================================
+
+    def start_conversion(self):
+        """Start batch conversion"""
+        if not self.selected_files:
+            QMessageBox.warning(self, "No Files", "Please select files to convert first.")
+            return
+
+        self.is_running = True
+        self.start_btn.setEnabled(False)
+        self.pause_btn.setEnabled(True)
+        self.stop_btn.setEnabled(True)
+
+        # Start executor
+        self.executor.start_batch(self.selected_files)
+
+    def pause_conversion(self):
+        """Pause batch conversion"""
+        if self.executor and self.is_running:
+            self.executor.pause()
+            self.pause_btn.setText("▶ RESUME")
+            self.pause_btn.clicked.disconnect()
+            self.pause_btn.clicked.connect(self.resume_conversion)
+
+    def resume_conversion(self):
+        """Resume batch conversion"""
+        if self.executor:
+            self.executor.resume()
+            self.pause_btn.setText("⏸ PAUSE")
+            self.pause_btn.clicked.disconnect()
+            self.pause_btn.clicked.connect(self.pause_conversion)
+
+    def stop_conversion(self):
+        """Stop batch conversion"""
+        if self.executor and self.is_running:
+            reply = QMessageBox.question(
+                self,
+                "Stop Conversion",
+                "Are you sure you want to stop the batch conversion?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+
+            if reply == QMessageBox.StandardButton.Yes:
+                self.executor.stop()
+                self.is_running = False
+                self.start_btn.setEnabled(True)
+                self.pause_btn.setEnabled(False)
+                self.stop_btn.setEnabled(False)
+
+    # =========================================================================
+    # File Management Methods
+    # =========================================================================
+
+    def browse_directory(self):
+        """Browse for input directory"""
+        directory = QFileDialog.getExistingDirectory(
+            self,
+            "Select Input Directory",
+            str(Path.home())
+        )
+        if directory:
+            self.dir_path_label.setText(directory)
+
+    def scan_directory(self):
+        """Scan directory for SID files"""
+        directory = self.dir_path_label.text()
+        if directory == "No directory selected":
+            QMessageBox.warning(self, "No Directory", "Please select a directory first.")
+            return
+
+        self.log_widget.append_log("INFO", f"Scanning directory: {directory}")
+
+        # Scan for SID files
+        dir_path = Path(directory)
+        if not dir_path.exists():
+            QMessageBox.warning(self, "Invalid Directory", f"Directory does not exist: {directory}")
+            return
+
+        # Find SID files
+        pattern = "**/*.sid" if self.include_subdir_cb.isChecked() else "*.sid"
+        sid_files = list(dir_path.glob(pattern))
+
+        if not sid_files:
+            QMessageBox.information(self, "No Files Found", "No SID files found in the selected directory.")
+            return
+
+        # Filter for Laxity only if checkbox is checked
+        if self.laxity_only_cb.isChecked():
+            # TODO: Filter by player type (requires player-id.exe integration)
+            self.log_widget.append_log("WARN", "Laxity-only filtering not yet implemented")
+
+        # Add files to list
+        self.file_list_widget.clear()
+        self.file_list_widget.add_files([str(f) for f in sid_files])
+
+        self.log_widget.append_log("INFO", f"Found {len(sid_files)} SID files")
+
+    def add_files_manually(self):
+        """Add files manually via file dialog"""
+        files, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Select SID Files",
+            str(Path.home()),
+            "SID Files (*.sid);;All Files (*)"
+        )
+        if files:
+            self.file_list_widget.add_files(files)
+            self.log_widget.append_log("INFO", f"Added {len(files)} files")
+
+    def select_all_files(self):
+        """Select all files in list"""
+        self.file_list_widget.select_all()
+
+    def select_no_files(self):
+        """Deselect all files"""
+        self.file_list_widget.select_none()
+
+    def remove_selected_files(self):
+        """Remove selected files from list"""
+        self.file_list_widget.remove_selected()
+
+    def on_files_changed(self, selected_files: List[str]):
+        """Handle file selection changes"""
+        self.selected_files = selected_files
+        count = len(selected_files)
+        total = len(self.file_list_widget.get_all_files())
+
+        # Update selection count label
+        self.selection_count_label.setText(f"{count} of {total} files selected")
+
+        # Update dashboard stats
+        self.files_card.update_stat("Selected", str(count))
+        self.files_card.update_stat("Total", str(total))
+
+        # Estimate time (assume 10 seconds per file with 6 steps)
+        estimated_minutes = (count * 10 * 6) / 60
+        self.files_card.update_stat("Estimated", f"{estimated_minutes:.1f} minutes")
+
+    # =========================================================================
+    # Signal Handlers
+    # =========================================================================
+
+    def on_batch_started(self, total_files: int):
+        """Handle batch started signal"""
+        self.log_widget.append_log("INFO", f"Batch conversion started: {total_files} files")
+
+        # Reset progress
+        self.main_progress.setValue(0)
+
+        # Update progress card
+        self.progress_card.update_stat("Current", f"0/{total_files}")
+        self.progress_card.update_stat("Step", "0/0")
+        self.progress_card.update_stat("Time", "00:00 / --:--")
+
+        # Reset results card
+        self.results_card.update_stat("Pass", "0")
+        self.results_card.update_stat("Fail", "0")
+        self.results_card.update_stat("Avg Accuracy", "0%")
+
+    def on_file_started(self, filename: str, index: int, total: int):
+        """Handle file started signal"""
+        # Extract just the filename from the path
+        file_basename = Path(filename).name
+
+        self.current_file_label.setText(f"Processing: {file_basename} ({index + 1}/{total})")
+        self.log_widget.append_log("INFO", f"Started: {file_basename}")
+
+        # Update progress card
+        self.progress_card.update_stat("Current", f"{index + 1}/{total}")
+
+    def on_step_started(self, step_name: str, step_num: int, total_steps: int):
+        """Handle step started signal"""
+        self.current_step_label.setText(f"Step {step_num}/{total_steps}: {step_name}")
+        self.log_widget.append_log("DEBUG", f"Step {step_num}: {step_name}")
+
+        # Update progress card
+        self.progress_card.update_stat("Step", f"{step_num}/{total_steps}")
+
+    def on_step_completed(self, step_name: str, success: bool, message: str):
+        """Handle step completed signal"""
+        status = "✅ OK" if success else "❌ FAIL"
+        self.log_widget.append_log("INFO" if success else "ERROR", f"{step_name}: {status} - {message}")
+
+    def on_file_completed(self, filename: str, results: Dict):
+        """Handle file completed signal"""
+        file_basename = Path(filename).name
+        status = results.get("status", "unknown")
+        accuracy = results.get("accuracy", 0.0)
+
+        self.log_widget.append_log("INFO", f"Completed: {file_basename} - {status.upper()} ({accuracy:.2f}%)")
+
+        # Update results table
+        self._add_result_row(filename, results)
+
+        # Update results card statistics
+        self._update_results_stats()
+
+    def on_batch_completed(self, summary: Dict):
+        """Handle batch completed signal"""
+        self.is_running = False
+        self.start_btn.setEnabled(True)
+        self.pause_btn.setEnabled(False)
+        self.stop_btn.setEnabled(False)
+
+        # Log summary
+        total = summary.get("total_files", 0)
+        passed = summary.get("passed", 0)
+        failed = summary.get("failed", 0)
+        avg_accuracy = summary.get("avg_accuracy", 0.0)
+        duration = summary.get("duration", 0.0)
+
+        self.log_widget.append_log("INFO", "=" * 60)
+        self.log_widget.append_log("INFO", "BATCH CONVERSION COMPLETED")
+        self.log_widget.append_log("INFO", f"Total: {total} | Passed: {passed} | Failed: {failed}")
+        self.log_widget.append_log("INFO", f"Average Accuracy: {avg_accuracy:.2f}%")
+        self.log_widget.append_log("INFO", f"Duration: {duration:.1f} seconds")
+        self.log_widget.append_log("INFO", "=" * 60)
+
+        # Update current operation display
+        self.current_file_label.setText(f"Batch complete: {passed}/{total} files successful")
+        self.current_step_label.setText(f"Finished in {duration:.1f} seconds")
+
+        # Show completion message
+        QMessageBox.information(
+            self,
+            "Conversion Complete",
+            f"Batch conversion completed!\n\n"
+            f"Total: {total} files\n"
+            f"Passed: {passed} ({passed/total*100:.1f}%)\n"
+            f"Failed: {failed}\n"
+            f"Average Accuracy: {avg_accuracy:.2f}%"
+        )
+
+    def on_progress_updated(self, percentage: int):
+        """Handle progress updated signal"""
+        self.main_progress.setValue(percentage)
+
+    def on_log_message(self, level: str, message: str):
+        """Handle log message signal"""
+        self.log_widget.append_log(level, message)
+
+    def on_error_occurred(self, filename: str, error_message: str):
+        """Handle error occurred signal"""
+        self.log_widget.append_log("ERROR", f"{filename}: {error_message}")
+
+    # =========================================================================
+    # Utility Methods
+    # =========================================================================
+
+    def _add_result_row(self, filename: str, results: Dict):
+        """Add a row to the results table"""
+        row = self.results_table.rowCount()
+        self.results_table.insertRow(row)
+
+        # File name
+        file_item = QTableWidgetItem(Path(filename).name)
+        self.results_table.setItem(row, 0, file_item)
+
+        # Driver
+        driver_item = QTableWidgetItem(results.get("driver", "unknown"))
+        self.results_table.setItem(row, 1, driver_item)
+
+        # Steps
+        steps_completed = results.get("steps_completed", 0)
+        total_steps = results.get("total_steps", 0)
+        steps_item = QTableWidgetItem(f"{steps_completed}/{total_steps}")
+        self.results_table.setItem(row, 2, steps_item)
+
+        # Accuracy
+        accuracy = results.get("accuracy", 0.0)
+        accuracy_item = QTableWidgetItem(f"{accuracy:.2f}%")
+        self.results_table.setItem(row, 3, accuracy_item)
+
+        # Status
+        status = results.get("status", "unknown")
+        status_item = QTableWidgetItem(status.upper())
+
+        # Color-code status
+        if status == "passed":
+            status_item.setForeground(QColor("#4CAF50"))  # Green
+        elif status == "failed":
+            status_item.setForeground(QColor("#f44336"))  # Red
+        elif status == "warning":
+            status_item.setForeground(QColor("#FF9800"))  # Orange
+
+        self.results_table.setItem(row, 4, status_item)
+
+        # Action button (View)
+        view_btn = QPushButton("View")
+        view_btn.clicked.connect(lambda: self._view_result_details(filename, results))
+        self.results_table.setCellWidget(row, 5, view_btn)
+
+    def _update_results_stats(self):
+        """Update the results card statistics"""
+        total = self.results_table.rowCount()
+        passed = 0
+        failed = 0
+        accuracies = []
+
+        for row in range(total):
+            status_item = self.results_table.item(row, 4)
+            if status_item:
+                status = status_item.text().lower()
+                if status == "passed":
+                    passed += 1
+                elif status == "failed":
+                    failed += 1
+
+            accuracy_item = self.results_table.item(row, 3)
+            if accuracy_item:
+                try:
+                    acc = float(accuracy_item.text().rstrip('%'))
+                    accuracies.append(acc)
+                except:
+                    pass
+
+        # Calculate average accuracy
+        avg_accuracy = sum(accuracies) / len(accuracies) if accuracies else 0.0
+
+        # Update results card
+        self.results_card.update_stat("Pass", str(passed))
+        self.results_card.update_stat("Fail", str(failed))
+        self.results_card.update_stat("Avg Accuracy", f"{avg_accuracy:.1f}%")
+
+    def _view_result_details(self, filename: str, results: Dict):
+        """View detailed results for a file"""
+        # TODO: Show a dialog with detailed file information
+        details = f"File: {Path(filename).name}\n\n"
+        details += f"Status: {results.get('status', 'unknown').upper()}\n"
+        details += f"Driver: {results.get('driver', 'unknown')}\n"
+        details += f"Steps: {results.get('steps_completed')}/{results.get('total_steps')}\n"
+        details += f"Accuracy: {results.get('accuracy', 0.0):.2f}%\n"
+        details += f"Duration: {results.get('duration', 0.0):.2f}s\n"
+
+        if results.get('error_message'):
+            details += f"\nError: {results.get('error_message')}\n"
+
+        output_files = results.get('output_files', [])
+        if output_files:
+            details += f"\nOutput Files ({len(output_files)}):\n"
+            for f in output_files[:10]:  # Show first 10
+                details += f"  - {Path(f).name}\n"
+            if len(output_files) > 10:
+                details += f"  ... and {len(output_files) - 10} more\n"
+
+        QMessageBox.information(self, "File Details", details)
+
+    def clear_logs(self):
+        """Clear the log display"""
+        self.log_widget.clear()
+
+    def update_status_bar(self):
+        """Update the status bar"""
+        mode = "Simple" if self.config.mode == "simple" else "Advanced"
+        output_dir = self.config.output_directory or "Not set"
+        self.status_bar.showMessage(f"Ready | Output: {output_dir} | Mode: {mode}")
+
+    def load_settings(self):
+        """Load saved settings from QSettings"""
+        # TODO: Load window geometry, recent files, etc.
+        pass
+
+    def save_settings(self):
+        """Save settings to QSettings"""
+        # TODO: Save window geometry, recent files, etc.
+        pass
+
+    def closeEvent(self, event):
+        """Handle window close event"""
+        self.save_settings()
+        event.accept()
+
+
+def main():
+    """Main entry point"""
+    app = QApplication(sys.argv)
+    app.setApplicationName("SIDM2 Conversion Cockpit")
+    app.setOrganizationName("SIDM2")
+
+    window = CockpitMainWindow()
+    window.show()
+
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()
