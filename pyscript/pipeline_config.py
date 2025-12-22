@@ -69,6 +69,7 @@ class PipelineConfig:
     # Execution configuration
     stop_on_error: bool = False
     step_timeout_ms: int = 120000  # 2 minutes per step
+    concurrent_workers: int = 2  # Number of files to process simultaneously (1-4)
 
     def __post_init__(self):
         """Initialize enabled steps if not provided"""

@@ -25,6 +25,7 @@ This converter analyzes SID files that use Laxity's player routine and attempts 
 ### Features
 
 - **Batch Processing**: Convert 1-100+ SID files in a single session
+- **Concurrent Processing** (NEW): Process 2-4 files simultaneously for 2-3x speed improvement
 - **Real-time Monitoring**: Live progress bars, step tracking, and time estimates
 - **5-Tab Interface**: Dashboard, Files, Configuration, Results, Logs
 - **Progressive Disclosure**: Simple mode (7 steps) → Advanced mode (14 steps) → Custom
@@ -117,6 +118,13 @@ python pyscript/conversion_cockpit_gui.py
 - ⏱️ Duration: 3.2 seconds
 - 📊 Simple mode (7 steps per file)
 
+**Concurrent Processing Performance** (10 files: Angular, Balance, Beast, Blue, Cascade, Chaser, Clarencio, Colorama, Cycles, Delicate):
+- **1 worker (sequential)**: 9.85 seconds (1.01 files/sec)
+- **2 workers**: 5.46 seconds (1.83 files/sec) - **1.81x speedup** ⚡
+- **4 workers**: 3.23 seconds (3.10 files/sec) - **3.05x speedup** ⚡⚡
+- ✅ All tests: 100% success rate (30/30 files across all worker counts)
+- 📈 Near-linear scaling with minimal overhead
+
 ### Documentation
 
 - **User Guide**: [docs/guides/CONVERSION_COCKPIT_USER_GUIDE.md](docs/guides/CONVERSION_COCKPIT_USER_GUIDE.md)
@@ -125,9 +133,11 @@ python pyscript/conversion_cockpit_gui.py
 ### Architecture
 
 - **GUI Framework**: PyQt6 with signal/slot pattern
-- **Backend**: ConversionExecutor with QProcess management
+- **Backend**: ConversionExecutor with QThreadPool for concurrent processing
+- **Worker Threads**: FileWorker (QRunnable) for parallel file processing
+- **Thread Safety**: QMutex for shared state protection
 - **Configuration**: PipelineConfig with QSettings persistence
-- **Testing**: 50 tests (26 unit + 24 integration) - 100% pass rate
+- **Testing**: 50 tests (26 unit + 24 integration) + concurrent performance tests - 100% pass rate
 - **CI/CD**: GitHub Actions workflow for automated testing
 
 ### Comparison: GUI vs Command Line

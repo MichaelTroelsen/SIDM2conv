@@ -18,7 +18,7 @@ from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
 
 try:
-    from PyQt6.QtCore import QObject, pyqtSignal, QProcess, QTimer
+    from PyQt6.QtCore import QObject, pyqtSignal, QProcess, QTimer, QThreadPool, QRunnable, QMutex
     from PyQt6.QtCore import QProcessEnvironment
     PYQT6_AVAILABLE = True
 except ImportError:
@@ -42,6 +42,171 @@ class FileResult:
     start_time: float = 0.0
     end_time: float = 0.0
     output_files: List[str] = field(default_factory=list)
+
+
+class FileWorker(QRunnable):
+    """Worker for processing a single file in a thread pool"""
+
+    def __init__(self, executor: 'ConversionExecutor', sid_file: str, file_index: int, total_files: int):
+        super().__init__()
+        self.executor = executor
+        self.sid_file = sid_file
+        self.file_index = file_index
+        self.total_files = total_files
+        self.setAutoDelete(True)
+
+    def run(self):
+        """Execute pipeline for this file (runs in worker thread)"""
+        try:
+            # Emit file started signal
+            self.executor.file_started.emit(self.sid_file, self.file_index, self.total_files)
+
+            # Initialize result for this file (thread-safe)
+            self.executor._mutex.lock()
+            result = FileResult(
+                filename=self.sid_file,
+                driver=self.executor.config.primary_driver,
+                start_time=time.time()
+            )
+            self.executor.results[self.sid_file] = result
+            self.executor._mutex.unlock()
+
+            # Run pipeline for this file
+            self._run_pipeline_for_file()
+
+            # Mark file as completed (thread-safe)
+            self.executor._mutex.lock()
+            result = self.executor.results[self.sid_file]
+            result.end_time = time.time()
+            if result.status == "running":
+                result.status = "passed" if result.steps_completed == result.total_steps else "warning"
+
+            # Collect final results
+            self._collect_results()
+
+            # Emit file completed
+            self.executor.file_completed.emit(self.sid_file, self.executor._result_to_dict(result))
+
+            # Update progress
+            completed = sum(1 for r in self.executor.results.values() if r.status in ["passed", "warning", "failed"])
+            progress = int((completed / self.total_files) * 100)
+            self.executor.progress_updated.emit(progress)
+
+            # Decrement active workers count
+            self.executor._active_workers -= 1
+            has_pending = self.executor._has_pending_files()
+            active_count = self.executor._active_workers
+            self.executor._mutex.unlock()
+
+            # Start next workers if there are pending files
+            if has_pending and self.executor.is_running and not self.executor.is_paused:
+                self.executor._start_next_workers()
+
+            # Check if batch is complete
+            if active_count == 0 and not has_pending:
+                summary = self.executor._get_summary()
+                self.executor.batch_completed.emit(summary)
+                self.executor.is_running = False
+
+        except Exception as e:
+            # Handle any unexpected errors
+            self.executor._mutex.lock()
+            if self.sid_file in self.executor.results:
+                self.executor.results[self.sid_file].status = "failed"
+                self.executor.results[self.sid_file].error_message = str(e)
+            self.executor._active_workers -= 1
+            self.executor._mutex.unlock()
+            self.executor.error_occurred.emit(self.sid_file, str(e))
+
+    def _run_pipeline_for_file(self):
+        """Execute configured pipeline steps for one file"""
+        enabled_steps = self.executor.config.get_enabled_steps()
+
+        self.executor._mutex.lock()
+        result = self.executor.results[self.sid_file]
+        result.total_steps = len(enabled_steps)
+        result.status = "running"
+        self.executor._mutex.unlock()
+
+        for step_num, step_name in enumerate(enabled_steps, 1):
+            if not self.executor.is_running or self.executor.is_paused:
+                break
+
+            self.executor.step_started.emit(step_name, step_num, len(enabled_steps))
+
+            success, message = self._run_step(step_name)
+
+            self.executor.step_completed.emit(step_name, success, message)
+
+            self.executor._mutex.lock()
+            if success:
+                result.steps_completed += 1
+            else:
+                result.error_message = message
+                if self.executor.config.stop_on_error:
+                    result.status = "failed"
+                    self.executor._mutex.unlock()
+                    break
+            self.executor._mutex.unlock()
+
+    def _run_step(self, step_name: str) -> Tuple[bool, str]:
+        """Run a single pipeline step using QProcess (thread-safe)"""
+        # Map step name to command
+        commands = self.executor._get_step_command(step_name, self.sid_file)
+
+        if not commands:
+            return False, f"Unknown step: {step_name}"
+
+        self.executor.log_message.emit("DEBUG", f"[Worker {self.file_index}] Running: {' '.join(commands)}")
+
+        # Handle steps with output redirection
+        output_file = self.executor._get_output_file_for_step(step_name, self.sid_file)
+
+        # Create QProcess for this step (each worker gets its own)
+        process = QProcess()
+        process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+
+        # Start process
+        program = commands[0]
+        args = commands[1:] if len(commands) > 1 else []
+
+        process.start(program, args)
+
+        if not process.waitForStarted(3000):
+            error = process.errorString()
+            return False, f"Failed to start: {error}"
+
+        # Wait for process to finish (with timeout)
+        timeout = self.executor.config.step_timeout_ms
+        if not process.waitForFinished(timeout):
+            process.kill()
+            return False, f"Process timeout ({timeout}ms)"
+
+        exit_code = process.exitCode()
+        success = exit_code == 0
+
+        # Save output to file if needed
+        if output_file and success:
+            try:
+                output_data = bytes(process.readAllStandardOutput()).decode('utf-8', errors='replace')
+                if output_data:
+                    with open(output_file, 'w') as f:
+                        f.write(output_data)
+                    message = f"Exit code: {exit_code}, output saved to {Path(output_file).name}"
+                else:
+                    message = f"Exit code: {exit_code}"
+            except Exception as e:
+                message = f"Exit code: {exit_code}, but failed to save output: {e}"
+        else:
+            message = f"Exit code: {exit_code}"
+
+        return success, message
+
+    def _collect_results(self):
+        """Parse output files to collect results (simplified for now)"""
+        # TODO: Parse info.txt and other files to extract accuracy metrics
+        # For now, just mark as completed
+        pass
 
 
 class ConversionExecutor(QObject):
@@ -82,8 +247,15 @@ class ConversionExecutor(QObject):
         self.results: Dict[str, FileResult] = {}
         self.start_time = 0.0
 
+        # Concurrent processing support
+        self._thread_pool = QThreadPool.globalInstance()
+        self._thread_pool.setMaxThreadCount(self.config.concurrent_workers)
+        self._mutex = QMutex()
+        self._active_workers = 0
+        self._pending_file_indices: List[int] = []
+
     def start_batch(self, files: List[str]):
-        """Start batch conversion"""
+        """Start batch conversion using thread pool"""
         if self.is_running:
             self.log_message.emit("WARN", "Conversion already running")
             return
@@ -94,10 +266,15 @@ class ConversionExecutor(QObject):
         self.current_file_index = 0
         self.results = {}
         self.start_time = time.time()
+        self._active_workers = 0
+        self._pending_file_indices = list(range(len(files)))
 
-        self.log_message.emit("INFO", f"Starting batch conversion: {len(files)} files")
+        workers_str = f"{self.config.concurrent_workers} worker(s)"
+        self.log_message.emit("INFO", f"Starting batch conversion: {len(files)} files with {workers_str}")
         self.batch_started.emit(len(files))
-        self._process_next_file()
+
+        # Start initial batch of workers (up to concurrent_workers limit)
+        self._start_next_workers()
 
     def pause(self):
         """Pause batch processing"""
@@ -118,7 +295,7 @@ class ConversionExecutor(QObject):
 
         self.is_paused = False
         self.log_message.emit("INFO", "Batch conversion resumed")
-        self._process_next_file()
+        self._start_next_workers()
 
     def stop(self):
         """Stop batch processing"""
@@ -129,6 +306,14 @@ class ConversionExecutor(QObject):
         self.is_paused = False
         self.log_message.emit("INFO", "Batch conversion stopped")
 
+        # Clear pending files
+        self._mutex.lock()
+        self._pending_file_indices.clear()
+        self._mutex.unlock()
+
+        # Wait for active workers to finish
+        self._thread_pool.waitForDone(5000)  # 5 second timeout
+
         if self.process and self.process.state() == QProcess.ProcessState.Running:
             self.process.kill()
             self.process.waitForFinished(1000)
@@ -137,129 +322,36 @@ class ConversionExecutor(QObject):
         summary = self._get_summary()
         self.batch_completed.emit(summary)
 
-    def _process_next_file(self):
-        """Process next file in queue"""
-        if not self.is_running or self.is_paused:
-            return
+    def _start_next_workers(self):
+        """Start next batch of workers up to concurrent_workers limit"""
+        self._mutex.lock()
 
-        if self.current_file_index >= len(self.files_to_process):
-            # All files processed
-            self.is_running = False
-            summary = self._get_summary()
-            self.batch_completed.emit(summary)
-            return
+        # Start workers up to the limit
+        while (self._active_workers < self.config.concurrent_workers and
+               len(self._pending_file_indices) > 0 and
+               self.is_running and not self.is_paused):
 
-        current_file = self.files_to_process[self.current_file_index]
-        self.file_started.emit(current_file, self.current_file_index, len(self.files_to_process))
+            # Get next file index
+            file_index = self._pending_file_indices.pop(0)
+            sid_file = self.files_to_process[file_index]
 
-        # Initialize result for this file
-        result = FileResult(
-            filename=current_file,
-            driver=self.config.primary_driver,
-            start_time=time.time()
-        )
-        self.results[current_file] = result
+            # Create and start worker
+            worker = FileWorker(self, sid_file, file_index, len(self.files_to_process))
+            self._active_workers += 1
+            self._thread_pool.start(worker)
 
-        # Run pipeline for this file
-        self._run_pipeline_for_file(current_file)
+            self.log_message.emit("DEBUG", f"Started worker {file_index + 1}/{len(self.files_to_process)} ({self._active_workers} active)")
 
-    def _run_pipeline_for_file(self, sid_file: str):
-        """Execute configured pipeline steps for one file"""
-        enabled_steps = self.config.get_enabled_steps()
-        result = self.results[sid_file]
-        result.total_steps = len(enabled_steps)
-        result.status = "running"
+        self._mutex.unlock()
 
-        for step_num, step_name in enumerate(enabled_steps, 1):
-            if not self.is_running or self.is_paused:
-                break
+    def _has_pending_files(self) -> bool:
+        """Check if there are pending files to process"""
+        # Mutex should already be locked by caller
+        return len(self._pending_file_indices) > 0
 
-            self.step_started.emit(step_name, step_num, len(enabled_steps))
-
-            success, message = self._run_step(step_name, sid_file)
-
-            self.step_completed.emit(step_name, success, message)
-
-            if success:
-                result.steps_completed += 1
-            else:
-                result.error_message = message
-                if self.config.stop_on_error:
-                    result.status = "failed"
-                    break
-
-        # Mark file as completed
-        result.end_time = time.time()
-        if result.status == "running":
-            result.status = "passed" if result.steps_completed == result.total_steps else "warning"
-
-        # Collect final results
-        self._collect_results(sid_file)
-
-        # Emit file completed
-        self.file_completed.emit(sid_file, self._result_to_dict(result))
-
-        # Update progress
-        progress = int(((self.current_file_index + 1) / len(self.files_to_process)) * 100)
-        self.progress_updated.emit(progress)
-
-        # Move to next file
-        self.current_file_index += 1
-        self._process_next_file()
-
-    def _run_step(self, step_name: str, sid_file: str) -> Tuple[bool, str]:
-        """Run a single pipeline step using QProcess"""
-        # Map step name to command
-        commands = self._get_step_command(step_name, sid_file)
-
-        if not commands:
-            return False, f"Unknown step: {step_name}"
-
-        self.log_message.emit("DEBUG", f"Running: {' '.join(commands)}")
-
-        # Handle steps with output redirection
-        output_file = self._get_output_file_for_step(step_name, sid_file)
-
-        # Create QProcess for this step
-        self.process = QProcess()
-        self.process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
-        self.process.readyReadStandardOutput.connect(self._on_output_ready)
-
-        # Start process
-        program = commands[0]
-        args = commands[1:] if len(commands) > 1 else []
-
-        self.process.start(program, args)
-
-        if not self.process.waitForStarted(3000):
-            error = self.process.errorString()
-            return False, f"Failed to start: {error}"
-
-        # Wait for process to finish (with timeout)
-        timeout = self.config.step_timeout_ms
-        if not self.process.waitForFinished(timeout):
-            self.process.kill()
-            return False, f"Process timeout ({timeout}ms)"
-
-        exit_code = self.process.exitCode()
-        success = exit_code == 0
-
-        # Save output to file if needed
-        if output_file and success:
-            try:
-                output_data = bytes(self.process.readAllStandardOutput()).decode('utf-8', errors='replace')
-                if output_data:
-                    with open(output_file, 'w') as f:
-                        f.write(output_data)
-                    message = f"Exit code: {exit_code}, output saved to {Path(output_file).name}"
-                else:
-                    message = f"Exit code: {exit_code}"
-            except Exception as e:
-                message = f"Exit code: {exit_code}, but failed to save output: {e}"
-        else:
-            message = f"Exit code: {exit_code}"
-
-        return success, message
+    # Note: Old sequential processing methods (_process_next_file, _run_pipeline_for_file, _run_step)
+    # have been replaced by FileWorker class for concurrent processing.
+    # See FileWorker.run() and FileWorker._run_pipeline_for_file() above.
 
     def _get_output_file_for_step(self, step_name: str, sid_file: str) -> Optional[str]:
         """Get output file path for steps that generate output"""
