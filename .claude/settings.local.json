@@ -153,7 +153,8 @@
       "Bash(do if [ -f \"$script\" ])",
       "Bash(then echo \"✓ $script\")",
       "Bash(else echo \"✗ $script \\(not found\\)\")",
-      "Bash(del:*)"
+      "Bash(del:*)",
+      "Bash(test-all.bat)"
     ],
     "deny": [],
     "ask": []

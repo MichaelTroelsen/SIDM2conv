@@ -294,17 +294,224 @@ class CockpitMainWindow(QMainWindow):
     def create_config_tab(self) -> QWidget:
         """Create the Configuration tab"""
         widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(20, 20, 20, 20)
+        main_layout = QVBoxLayout(widget)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(15)
 
-        # Placeholder for now
-        label = QLabel("Configuration Panel")
-        label.setStyleSheet("font-size: 14px; font-weight: bold;")
-        layout.addWidget(label)
+        # Create scroll area for configuration options
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
 
-        # TODO: Add mode selection, driver config, pipeline steps, presets
+        scroll_content = QWidget()
+        layout = QVBoxLayout(scroll_content)
+        layout.setSpacing(15)
+
+        # === Mode Selection ===
+        mode_group = QGroupBox("Mode")
+        mode_layout = QVBoxLayout()
+
+        mode_label = QLabel("Select conversion mode:")
+        mode_layout.addWidget(mode_label)
+
+        self.mode_simple_radio = QCheckBox("Simple Mode (Essential steps: conversion, packing, validation)")
+        self.mode_simple_radio.setChecked(True)
+        self.mode_simple_radio.toggled.connect(lambda: self.on_mode_changed("simple"))
+        mode_layout.addWidget(self.mode_simple_radio)
+
+        self.mode_advanced_radio = QCheckBox("Advanced Mode (All 14 pipeline steps)")
+        self.mode_advanced_radio.toggled.connect(lambda: self.on_mode_changed("advanced"))
+        mode_layout.addWidget(self.mode_advanced_radio)
+
+        self.mode_custom_radio = QCheckBox("Custom Mode (Choose your own steps)")
+        self.mode_custom_radio.toggled.connect(lambda: self.on_mode_changed("custom"))
+        mode_layout.addWidget(self.mode_custom_radio)
+
+        mode_group.setLayout(mode_layout)
+        layout.addWidget(mode_group)
+
+        # === Driver Configuration ===
+        driver_group = QGroupBox("Driver Configuration")
+        driver_layout = QVBoxLayout()
+
+        # Primary driver selection
+        driver_select_layout = QHBoxLayout()
+        driver_select_layout.addWidget(QLabel("Primary Driver:"))
+
+        self.driver_combo = QComboBox()
+        self.driver_combo.addItems(["laxity", "driver11", "np20"])
+        self.driver_combo.setCurrentText("laxity")
+        self.driver_combo.currentTextChanged.connect(self.on_driver_changed)
+        driver_select_layout.addWidget(self.driver_combo)
+        driver_select_layout.addStretch()
+
+        driver_layout.addLayout(driver_select_layout)
+
+        # Generate both option
+        self.generate_both_cb = QCheckBox("Generate both NP20 and Driver 11 versions")
+        driver_layout.addWidget(self.generate_both_cb)
+
+        # Output directory
+        output_layout = QHBoxLayout()
+        output_layout.addWidget(QLabel("Output Directory:"))
+
+        self.output_dir_label = QLabel(self.config.output_directory)
+        self.output_dir_label.setStyleSheet("background-color: #f0f0f0; padding: 5px;")
+        output_layout.addWidget(self.output_dir_label, 1)
+
+        output_browse_btn = QPushButton("Browse...")
+        output_browse_btn.clicked.connect(self.browse_output_directory)
+        output_layout.addWidget(output_browse_btn)
+
+        output_new_btn = QPushButton("New")
+        output_new_btn.clicked.connect(self.create_new_output_directory)
+        output_layout.addWidget(output_new_btn)
+
+        driver_layout.addLayout(output_layout)
+
+        # Options
+        self.overwrite_cb = QCheckBox("Overwrite existing files")
+        self.overwrite_cb.setChecked(self.config.overwrite_existing)
+        driver_layout.addWidget(self.overwrite_cb)
+
+        self.nested_dirs_cb = QCheckBox("Create nested directories")
+        self.nested_dirs_cb.setChecked(self.config.create_nested_dirs)
+        driver_layout.addWidget(self.nested_dirs_cb)
+
+        driver_group.setLayout(driver_layout)
+        layout.addWidget(driver_group)
+
+        # === Pipeline Steps ===
+        steps_group = QGroupBox("Pipeline Steps")
+        steps_layout = QVBoxLayout()
+
+        steps_label = QLabel("Select which steps to execute:")
+        steps_label.setStyleSheet("font-weight: bold;")
+        steps_layout.addWidget(steps_label)
+
+        # Create checkboxes for each pipeline step
+        self.step_checkboxes = {}
+        from pipeline_config import PipelineStep
+
+        for step in PipelineStep:
+            cb = QCheckBox(f"{step.description} {'(Required)' if step.default_enabled else ''}")
+            cb.setChecked(self.config.enabled_steps.get(step.step_id, step.default_enabled))
+            cb.toggled.connect(lambda checked, s=step.step_id: self.on_step_toggled(s, checked))
+            steps_layout.addWidget(cb)
+            self.step_checkboxes[step.step_id] = cb
+
+        # Presets buttons
+        presets_layout = QHBoxLayout()
+        presets_layout.addWidget(QLabel("Presets:"))
+
+        simple_preset_btn = QPushButton("Simple")
+        simple_preset_btn.clicked.connect(lambda: self.apply_preset("simple"))
+        presets_layout.addWidget(simple_preset_btn)
+
+        full_preset_btn = QPushButton("Full")
+        full_preset_btn.clicked.connect(lambda: self.apply_preset("advanced"))
+        presets_layout.addWidget(full_preset_btn)
+
+        save_preset_btn = QPushButton("Save As...")
+        save_preset_btn.clicked.connect(self.save_custom_preset)
+        presets_layout.addWidget(save_preset_btn)
+
+        presets_layout.addStretch()
+        steps_layout.addLayout(presets_layout)
+
+        steps_group.setLayout(steps_layout)
+        layout.addWidget(steps_group)
+
+        # === Logging & Validation ===
+        logging_group = QGroupBox("Logging & Validation")
+        logging_layout = QVBoxLayout()
+
+        # Log level
+        log_level_layout = QHBoxLayout()
+        log_level_layout.addWidget(QLabel("Log Level:"))
+
+        self.log_level_combo = QComboBox()
+        self.log_level_combo.addItems(["ERROR", "WARN", "INFO", "DEBUG"])
+        self.log_level_combo.setCurrentText(self.config.log_level)
+        log_level_layout.addWidget(self.log_level_combo)
+        log_level_layout.addStretch()
+
+        logging_layout.addLayout(log_level_layout)
+
+        # Log to file
+        self.log_to_file_cb = QCheckBox("Log to file")
+        self.log_to_file_cb.setChecked(self.config.log_to_file)
+        logging_layout.addWidget(self.log_to_file_cb)
+
+        self.log_json_cb = QCheckBox("JSON format (for analysis)")
+        self.log_json_cb.setChecked(self.config.log_json_format)
+        logging_layout.addWidget(self.log_json_cb)
+
+        # Validation duration
+        val_duration_layout = QHBoxLayout()
+        val_duration_layout.addWidget(QLabel("Validation Duration:"))
+
+        self.val_duration_combo = QComboBox()
+        self.val_duration_combo.addItems(["10s", "30s", "60s", "120s"])
+        self.val_duration_combo.setCurrentText(f"{self.config.validation_duration}s")
+        val_duration_layout.addWidget(self.val_duration_combo)
+        val_duration_layout.addStretch()
+
+        logging_layout.addLayout(val_duration_layout)
+
+        self.run_validation_cb = QCheckBox("Run accuracy validation")
+        self.run_validation_cb.setChecked(self.config.run_accuracy_validation)
+        logging_layout.addWidget(self.run_validation_cb)
+
+        logging_group.setLayout(logging_layout)
+        layout.addWidget(logging_group)
+
+        # === Execution Options ===
+        exec_group = QGroupBox("Execution Options")
+        exec_layout = QVBoxLayout()
+
+        self.stop_on_error_cb = QCheckBox("Stop batch on first error")
+        self.stop_on_error_cb.setChecked(self.config.stop_on_error)
+        exec_layout.addWidget(self.stop_on_error_cb)
+
+        timeout_layout = QHBoxLayout()
+        timeout_layout.addWidget(QLabel("Step Timeout:"))
+
+        self.timeout_combo = QComboBox()
+        self.timeout_combo.addItems(["30s", "60s", "120s", "300s"])
+        self.timeout_combo.setCurrentText(f"{self.config.step_timeout_ms // 1000}s")
+        timeout_layout.addWidget(self.timeout_combo)
+        timeout_layout.addStretch()
+
+        exec_layout.addLayout(timeout_layout)
+
+        exec_group.setLayout(exec_layout)
+        layout.addWidget(exec_group)
+
+        # === Save/Load Configuration ===
+        config_actions_layout = QHBoxLayout()
+        config_actions_layout.addStretch()
+
+        save_config_btn = QPushButton("Save Configuration")
+        save_config_btn.clicked.connect(self.save_configuration)
+        config_actions_layout.addWidget(save_config_btn)
+
+        load_config_btn = QPushButton("Load Configuration")
+        load_config_btn.clicked.connect(self.load_configuration)
+        config_actions_layout.addWidget(load_config_btn)
+
+        reset_config_btn = QPushButton("Reset to Defaults")
+        reset_config_btn.clicked.connect(self.reset_configuration)
+        config_actions_layout.addWidget(reset_config_btn)
+
+        layout.addLayout(config_actions_layout)
 
         layout.addStretch()
+
+        # Set scroll content
+        scroll.setWidget(scroll_content)
+        main_layout.addWidget(scroll)
+
         return widget
 
     def create_results_tab(self) -> QWidget:
@@ -555,6 +762,172 @@ class CockpitMainWindow(QMainWindow):
         # Estimate time (assume 10 seconds per file with 6 steps)
         estimated_minutes = (count * 10 * 6) / 60
         self.files_card.update_stat("Estimated", f"{estimated_minutes:.1f} minutes")
+
+    # =========================================================================
+    # Configuration Methods
+    # =========================================================================
+
+    def on_mode_changed(self, mode: str):
+        """Handle mode selection change"""
+        # Uncheck other mode radios
+        if mode == "simple":
+            self.mode_advanced_radio.setChecked(False)
+            self.mode_custom_radio.setChecked(False)
+        elif mode == "advanced":
+            self.mode_simple_radio.setChecked(False)
+            self.mode_custom_radio.setChecked(False)
+        elif mode == "custom":
+            self.mode_simple_radio.setChecked(False)
+            self.mode_advanced_radio.setChecked(False)
+
+        # Apply preset
+        self.config.set_mode(mode)
+        self.apply_config_to_ui()
+        self.update_status_bar()
+
+    def on_driver_changed(self, driver: str):
+        """Handle driver selection change"""
+        self.config.primary_driver = driver
+        self.update_status_bar()
+
+    def on_step_toggled(self, step_id: str, checked: bool):
+        """Handle pipeline step checkbox toggle"""
+        if checked:
+            self.config.enable_step(step_id)
+        else:
+            self.config.disable_step(step_id)
+
+        # If mode was not custom, switch to custom
+        if self.config.mode != "custom":
+            self.mode_custom_radio.setChecked(True)
+
+    def apply_preset(self, preset: str):
+        """Apply a preset configuration"""
+        self.config.set_mode(preset)
+        self.apply_config_to_ui()
+
+        # Update mode radio buttons
+        if preset == "simple":
+            self.mode_simple_radio.setChecked(True)
+        elif preset == "advanced":
+            self.mode_advanced_radio.setChecked(True)
+
+        self.log_widget.append_log("INFO", f"Applied {preset} preset")
+
+    def apply_config_to_ui(self):
+        """Apply current config to UI controls"""
+        # Update step checkboxes
+        for step_id, checkbox in self.step_checkboxes.items():
+            enabled = self.config.enabled_steps.get(step_id, False)
+            checkbox.setChecked(enabled)
+
+    def save_custom_preset(self):
+        """Save current configuration as custom preset"""
+        # TODO: Implement custom preset saving
+        self.log_widget.append_log("INFO", "Custom preset saving not yet implemented")
+
+    def browse_output_directory(self):
+        """Browse for output directory"""
+        directory = QFileDialog.getExistingDirectory(
+            self,
+            "Select Output Directory",
+            self.config.output_directory or str(Path.home())
+        )
+        if directory:
+            self.config.output_directory = directory
+            self.output_dir_label.setText(directory)
+            self.update_status_bar()
+
+    def create_new_output_directory(self):
+        """Create a new output directory"""
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        new_dir = f"output_{timestamp}"
+
+        directory = QFileDialog.getExistingDirectory(
+            self,
+            "Select Parent Directory for New Output Folder",
+            str(Path.cwd())
+        )
+
+        if directory:
+            new_path = Path(directory) / new_dir
+            new_path.mkdir(exist_ok=True)
+            self.config.output_directory = str(new_path)
+            self.output_dir_label.setText(str(new_path))
+            self.update_status_bar()
+            self.log_widget.append_log("INFO", f"Created output directory: {new_path}")
+
+    def save_configuration(self):
+        """Save current configuration to QSettings"""
+        # Update config from UI
+        self.config.primary_driver = self.driver_combo.currentText()
+        self.config.generate_both = self.generate_both_cb.isChecked()
+        self.config.overwrite_existing = self.overwrite_cb.isChecked()
+        self.config.create_nested_dirs = self.nested_dirs_cb.isChecked()
+        self.config.log_level = self.log_level_combo.currentText()
+        self.config.log_to_file = self.log_to_file_cb.isChecked()
+        self.config.log_json_format = self.log_json_cb.isChecked()
+        self.config.validation_duration = int(self.val_duration_combo.currentText().rstrip('s'))
+        self.config.run_accuracy_validation = self.run_validation_cb.isChecked()
+        self.config.stop_on_error = self.stop_on_error_cb.isChecked()
+        self.config.step_timeout_ms = int(self.timeout_combo.currentText().rstrip('s')) * 1000
+
+        # Save to QSettings
+        self.config.save_to_settings(self.settings)
+
+        self.log_widget.append_log("INFO", "Configuration saved")
+        QMessageBox.information(self, "Configuration Saved", "Configuration has been saved successfully.")
+
+    def load_configuration(self):
+        """Load configuration from QSettings"""
+        self.config = PipelineConfig.load_from_settings(self.settings)
+
+        # Apply to UI
+        self.driver_combo.setCurrentText(self.config.primary_driver)
+        self.generate_both_cb.setChecked(self.config.generate_both)
+        self.output_dir_label.setText(self.config.output_directory)
+        self.overwrite_cb.setChecked(self.config.overwrite_existing)
+        self.nested_dirs_cb.setChecked(self.config.create_nested_dirs)
+        self.log_level_combo.setCurrentText(self.config.log_level)
+        self.log_to_file_cb.setChecked(self.config.log_to_file)
+        self.log_json_cb.setChecked(self.config.log_json_format)
+        self.val_duration_combo.setCurrentText(f"{self.config.validation_duration}s")
+        self.run_validation_cb.setChecked(self.config.run_accuracy_validation)
+        self.stop_on_error_cb.setChecked(self.config.stop_on_error)
+        self.timeout_combo.setCurrentText(f"{self.config.step_timeout_ms // 1000}s")
+
+        # Apply mode
+        if self.config.mode == "simple":
+            self.mode_simple_radio.setChecked(True)
+        elif self.config.mode == "advanced":
+            self.mode_advanced_radio.setChecked(True)
+        else:
+            self.mode_custom_radio.setChecked(True)
+
+        self.apply_config_to_ui()
+        self.update_status_bar()
+
+        # Update executor with new config
+        if self.executor:
+            self.executor.config = self.config
+
+        self.log_widget.append_log("INFO", "Configuration loaded")
+        QMessageBox.information(self, "Configuration Loaded", "Configuration has been loaded successfully.")
+
+    def reset_configuration(self):
+        """Reset configuration to defaults"""
+        reply = QMessageBox.question(
+            self,
+            "Reset Configuration",
+            "Are you sure you want to reset all settings to defaults?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            self.config = PipelineConfig()  # Create new default config
+            self.load_configuration()  # Apply to UI
+            self.log_widget.append_log("INFO", "Configuration reset to defaults")
 
     # =========================================================================
     # Signal Handlers

@@ -217,6 +217,9 @@ class ConversionExecutor(QObject):
 
         self.log_message.emit("DEBUG", f"Running: {' '.join(commands)}")
 
+        # Handle steps with output redirection
+        output_file = self._get_output_file_for_step(step_name, sid_file)
+
         # Create QProcess for this step
         self.process = QProcess()
         self.process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
@@ -240,14 +243,47 @@ class ConversionExecutor(QObject):
 
         exit_code = self.process.exitCode()
         success = exit_code == 0
-        message = f"Exit code: {exit_code}"
+
+        # Save output to file if needed
+        if output_file and success:
+            try:
+                output_data = bytes(self.process.readAllStandardOutput()).decode('utf-8', errors='replace')
+                if output_data:
+                    with open(output_file, 'w') as f:
+                        f.write(output_data)
+                    message = f"Exit code: {exit_code}, output saved to {Path(output_file).name}"
+                else:
+                    message = f"Exit code: {exit_code}"
+            except Exception as e:
+                message = f"Exit code: {exit_code}, but failed to save output: {e}"
+        else:
+            message = f"Exit code: {exit_code}"
 
         return success, message
+
+    def _get_output_file_for_step(self, step_name: str, sid_file: str) -> Optional[str]:
+        """Get output file path for steps that generate output"""
+        output_dir = Path(self.config.output_directory or "output")
+        sid_path = Path(sid_file)
+        base_name = sid_path.stem
+        output_base = output_dir / base_name / "New"
+        analysis_dir = output_base / "analysis"
+
+        output_map = {
+            "siddump_original": str(output_base / f"{base_name}_original.dump"),
+            "siddump_exported": str(output_base / f"{base_name}_exported.dump"),
+            "sidwinder_trace": str(analysis_dir / f"{base_name}_trace.txt"),
+            "siddecompiler": str(analysis_dir / f"{base_name}_siddecompiler.asm"),
+            "sidwinder_disasm": str(analysis_dir / f"{base_name}_disassembly.asm"),
+        }
+
+        return output_map.get(step_name)
 
     def _get_step_command(self, step_name: str, sid_file: str) -> List[str]:
         """Get command for a pipeline step"""
         # Base paths
         scripts_dir = Path(__file__).parent.parent / "scripts"
+        pyscript_dir = Path(__file__).parent
         tools_dir = Path(__file__).parent.parent / "tools"
         output_dir = Path(self.config.output_directory or "output")
 
@@ -257,40 +293,109 @@ class ConversionExecutor(QObject):
         output_base = output_dir / base_name / "New"
         output_base.mkdir(parents=True, exist_ok=True)
 
+        # Analysis directory
+        analysis_dir = output_base / "analysis"
+        analysis_dir.mkdir(parents=True, exist_ok=True)
+
+        # File paths
         sf2_file = str(output_base / f"{base_name}_d11.sf2")
         sid_export = str(output_base / f"{base_name}_exported.sid")
+        original_dump = str(output_base / f"{base_name}_original.dump")
+        exported_dump = str(output_base / f"{base_name}_exported.dump")
+        original_wav = str(output_base / f"{base_name}_original.wav")
+        exported_wav = str(output_base / f"{base_name}_exported.wav")
+        original_hex = str(output_base / f"{base_name}_original.hex")
+        exported_hex = str(output_base / f"{base_name}_exported.hex")
+        trace_file = str(analysis_dir / f"{base_name}_trace.txt")
+        disasm_file = str(analysis_dir / f"{base_name}_disassembly.asm")
+        info_file = str(output_base / "info.txt")
+        siddecompiler_asm = str(analysis_dir / f"{base_name}_siddecompiler.asm")
+        analysis_report = str(analysis_dir / f"{base_name}_analysis_report.txt")
 
-        # Command mappings
+        # Command mappings for all 14 steps
         command_map = {
+            # Step 1: SID → SF2 Conversion (Required)
             "conversion": [
                 "python", str(scripts_dir / "sid_to_sf2.py"),
                 sid_file, sf2_file,
                 "--driver", self.config.primary_driver
             ],
+
+            # Step 2: Siddump (Original)
             "siddump_original": [
                 str(tools_dir / "siddump.exe"),
                 sid_file, "-t30"
             ],
+
+            # Step 3: SIDdecompiler Analysis
+            "siddecompiler": [
+                str(tools_dir / "SIDdecompiler.exe"),
+                sid_file
+            ],
+
+            # Step 4: SF2 → SID Packing (Required for validation)
             "packing": [
                 "python", str(scripts_dir / "sf2_to_sid.py"),
                 sf2_file, sid_export
             ],
+
+            # Step 5: Siddump (Exported)
             "siddump_exported": [
                 str(tools_dir / "siddump.exe"),
                 sid_export, "-t30"
             ],
+
+            # Step 6: WAV Rendering (Original)
             "wav_original": [
                 str(tools_dir / "SID2WAV.EXE"),
-                "-t30", "-16", sid_file,
-                str(output_base / f"{base_name}_original.wav")
+                "-t30", "-16", sid_file, original_wav
             ],
+
+            # Step 7: WAV Rendering (Exported)
             "wav_exported": [
                 str(tools_dir / "SID2WAV.EXE"),
-                "-t30", "-16", sid_export,
-                str(output_base / f"{base_name}_exported.wav")
+                "-t30", "-16", sid_export, exported_wav
             ],
+
+            # Step 8: Hexdump Generation
+            "hexdump": [
+                "cmd", "/c",
+                f'xxd "{sid_file}" > "{original_hex}" && xxd "{sid_export}" > "{exported_hex}"'
+            ],
+
+            # Step 9: SIDwinder Trace
+            "sidwinder_trace": [
+                str(tools_dir / "SIDwinder.exe"),
+                "trace", sid_file
+            ],
+
+            # Step 10: Info.txt Report (Generated during conversion)
+            "info_report": [
+                "python", "-c",
+                f'print("Info report generated during conversion")'
+            ],
+
+            # Step 11: Annotated Disassembly
+            "annotated_disasm": [
+                "python", str(scripts_dir / "disassemble_sid.py"),
+                sid_export
+            ],
+
+            # Step 12: SIDwinder Disassembly
+            "sidwinder_disasm": [
+                str(tools_dir / "SIDwinder.exe"),
+                "disassemble", sid_export
+            ],
+
+            # Step 13: Validation (File checks)
             "validation": [
                 "python", str(scripts_dir / "validate_sid_accuracy.py"),
+                sid_file, sid_export
+            ],
+
+            # Step 14: MIDI Comparison
+            "midi_comparison": [
+                "python", str(scripts_dir / "test_midi_comparison.py"),
                 sid_file, sid_export
             ]
         }
