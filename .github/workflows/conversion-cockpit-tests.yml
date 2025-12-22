@@ -1,0 +1,193 @@
+name: Conversion Cockpit Tests
+
+on:
+  push:
+    branches: [ master, main ]
+    paths:
+      - 'pyscript/conversion_cockpit_gui.py'
+      - 'pyscript/conversion_executor.py'
+      - 'pyscript/pipeline_config.py'
+      - 'pyscript/cockpit_widgets.py'
+      - 'pyscript/test_conversion_cockpit.py'
+      - 'scripts/test_conversion_cockpit_integration.py'
+      - '.github/workflows/conversion-cockpit-tests.yml'
+
+  pull_request:
+    branches: [ master, main ]
+    paths:
+      - 'pyscript/conversion_cockpit_gui.py'
+      - 'pyscript/conversion_executor.py'
+      - 'pyscript/pipeline_config.py'
+      - 'pyscript/cockpit_widgets.py'
+      - 'pyscript/test_conversion_cockpit.py'
+      - 'scripts/test_conversion_cockpit_integration.py'
+      - '.github/workflows/conversion-cockpit-tests.yml'
+
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install PyQt6
+
+      - name: Run unit tests
+        run: |
+          python pyscript/test_conversion_cockpit.py
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: unit-test-results
+          path: |
+            test-results.txt
+            test-coverage.html
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install PyQt6
+
+      - name: Run integration tests
+        run: |
+          python scripts/test_conversion_cockpit_integration.py
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: integration-test-results
+          path: |
+            integration-test-results.txt
+
+  lint:
+    name: Code Quality Check
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install linting tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pylint
+
+      - name: Run flake8
+        continue-on-error: true
+        run: |
+          flake8 pyscript/conversion_cockpit_gui.py --max-line-length=120 --ignore=E501,W503
+          flake8 pyscript/conversion_executor.py --max-line-length=120 --ignore=E501,W503
+          flake8 pyscript/pipeline_config.py --max-line-length=120 --ignore=E501,W503
+          flake8 pyscript/cockpit_widgets.py --max-line-length=120 --ignore=E501,W503
+
+      - name: Run pylint
+        continue-on-error: true
+        run: |
+          pylint pyscript/conversion_cockpit_gui.py --disable=C0111,C0103,R0913,R0914
+          pylint pyscript/conversion_executor.py --disable=C0111,C0103,R0913,R0914
+          pylint pyscript/pipeline_config.py --disable=C0111,C0103,R0913,R0914
+          pylint pyscript/cockpit_widgets.py --disable=C0111,C0103,R0913,R0914
+
+  test-summary:
+    name: Test Summary
+    runs-on: windows-latest
+    needs: [unit-tests, integration-tests]
+    if: always()
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download unit test results
+        uses: actions/download-artifact@v3
+        with:
+          name: unit-test-results
+          path: ./results/unit
+
+      - name: Download integration test results
+        uses: actions/download-artifact@v3
+        with:
+          name: integration-test-results
+          path: ./results/integration
+
+      - name: Generate summary
+        shell: pwsh
+        run: |
+          echo "# Conversion Cockpit Test Summary" >> $env:GITHUB_STEP_SUMMARY
+          echo "" >> $env:GITHUB_STEP_SUMMARY
+          echo "## Test Results" >> $env:GITHUB_STEP_SUMMARY
+          echo "" >> $env:GITHUB_STEP_SUMMARY
+          echo "- **Unit Tests**: ${{ needs.unit-tests.result }}" >> $env:GITHUB_STEP_SUMMARY
+          echo "- **Integration Tests**: ${{ needs.integration-tests.result }}" >> $env:GITHUB_STEP_SUMMARY
+          echo "" >> $env:GITHUB_STEP_SUMMARY
+          echo "## Commit Information" >> $env:GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $env:GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.ref }}" >> $env:GITHUB_STEP_SUMMARY
+          echo "- **Author**: ${{ github.actor }}" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const unitResult = '${{ needs.unit-tests.result }}';
+            const integrationResult = '${{ needs.integration-tests.result }}';
+
+            const statusEmoji = (result) => {
+              if (result === 'success') return '✅';
+              if (result === 'failure') return '❌';
+              return '⚠️';
+            };
+
+            const comment = `## 🧪 Conversion Cockpit Test Results
+
+            | Test Suite | Status |
+            |------------|--------|
+            | Unit Tests | ${statusEmoji(unitResult)} ${unitResult} |
+            | Integration Tests | ${statusEmoji(integrationResult)} ${integrationResult} |
+
+            **Commit**: ${context.sha.substring(0, 7)}
+            **Triggered by**: ${context.actor}
+
+            ---
+            _Automated test run by GitHub Actions_`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
