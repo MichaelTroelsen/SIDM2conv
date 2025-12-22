@@ -27,19 +27,17 @@ from typing import Tuple, Optional
 # Import custom error handling
 try:
     from sidm2 import errors
+    from sidm2.logging_config import setup_logging, get_logger, configure_from_args, PerformanceLogger
 except ImportError:
     # Fallback if running standalone
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
     from sidm2 import errors
+    from sidm2.logging_config import setup_logging, get_logger, configure_from_args, PerformanceLogger
 
 __version__ = "1.1.0"
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(levelname)s: %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Get module logger (configured via configure_from_args in main)
+logger = get_logger(__name__)
 
 
 class PSIDHeader:
@@ -360,19 +358,44 @@ def main():
     )
     parser.add_argument('input_sf2', help='Input SF2 file')
     parser.add_argument('output_sid', help='Output SID file')
+
+    # Enhanced logging arguments (v2.0.0)
     parser.add_argument(
-        '--verbose', '-v',
+        '-v', '--verbose',
+        action='count',
+        default=2,
+        help='Increase verbosity (-v=INFO, -vv=DEBUG). Default: INFO level'
+    )
+    parser.add_argument(
+        '-q', '--quiet',
         action='store_true',
-        help='Enable verbose output'
+        help='Quiet mode (errors only)'
+    )
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Debug mode (maximum verbosity, same as -vv)'
+    )
+    parser.add_argument(
+        '--log-file',
+        type=str,
+        help='Write logs to file (with automatic rotation)'
+    )
+    parser.add_argument(
+        '--log-json',
+        action='store_true',
+        help='Use JSON log format (for log aggregation tools)'
     )
 
     args = parser.parse_args()
 
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
+    # Configure enhanced logging system (v2.0.0)
+    configure_from_args(args)
 
     try:
-        success = convert_sf2_to_sid(args.input_sf2, args.output_sid)
+        with PerformanceLogger(logger, f"SF2 to SID conversion: {args.input_sf2}"):
+            success = convert_sf2_to_sid(args.input_sf2, args.output_sid)
+
         if success:
             logger.info("Conversion complete!")
         else:
@@ -384,7 +407,7 @@ def main():
         sys.exit(1)
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
-        if args.verbose:
+        if args.debug or (hasattr(args, 'verbose') and args.verbose >= 3):
             import traceback
             traceback.print_exc()
         sys.exit(1)

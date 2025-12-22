@@ -65,17 +65,19 @@ from scripts.validate_psid import PSIDValidator
 # Import custom error handling
 try:
     from sidm2 import errors
+    from sidm2.logging_config import setup_logging, get_logger, configure_from_args, PerformanceLogger
 except ImportError:
     # Fallback if running standalone
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
     from sidm2 import errors
+    from sidm2.logging_config import setup_logging, get_logger, configure_from_args, PerformanceLogger
 
 # Version info
 __version__ = "0.7.2"
 __build_date__ = "2025-12-07"
 
-# Setup logging
-logger = logging.getLogger(__name__)
+# Get module logger (configured via configure_from_args in main)
+logger = get_logger(__name__)
 
 
 def run_player_id(sid_path: str) -> str:
@@ -676,11 +678,7 @@ def convert_all(sid_dir='SID', output_dir='output', roundtrip=False, roundtrip_d
         roundtrip: If True, run round-trip validation after conversion
         roundtrip_duration: Duration in seconds for round-trip validation
     """
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(levelname)s: %(message)s'
-    )
+    # Note: Logging is configured in main() via configure_from_args()
 
     # Always generate both driver types
     driver_types = ['np20', 'driver11']
@@ -1091,15 +1089,47 @@ def main():
         help='Duration in seconds for round-trip validation (default: 10)'
     )
 
+    # Enhanced logging arguments (v2.0.0)
+    parser.add_argument(
+        '-v', '--verbose',
+        action='count',
+        default=2,
+        help='Increase verbosity (-v=INFO, -vv=DEBUG). Default: INFO level'
+    )
+    parser.add_argument(
+        '-q', '--quiet',
+        action='store_true',
+        help='Quiet mode (errors only)'
+    )
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Debug mode (maximum verbosity, same as -vv)'
+    )
+    parser.add_argument(
+        '--log-file',
+        type=str,
+        help='Write logs to file (with automatic rotation)'
+    )
+    parser.add_argument(
+        '--log-json',
+        action='store_true',
+        help='Use JSON log format (for log aggregation tools)'
+    )
+
     args = parser.parse_args()
 
+    # Configure enhanced logging system (v2.0.0)
+    configure_from_args(args)
+
     try:
-        success = convert_all(
-            sid_dir=args.input,
-            output_dir=args.output,
-            roundtrip=args.roundtrip,
-            roundtrip_duration=args.roundtrip_duration
-        )
+        with PerformanceLogger(logger, f"Batch conversion: {args.input}"):
+            success = convert_all(
+                sid_dir=args.input,
+                output_dir=args.output,
+                roundtrip=args.roundtrip,
+                roundtrip_duration=args.roundtrip_duration
+            )
         sys.exit(0 if success else 1)
     except errors.SIDMError as e:
         # Custom error - already has helpful formatting

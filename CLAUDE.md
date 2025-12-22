@@ -76,6 +76,37 @@ When changing code, MUST update:
 
 ---
 
+## Logging Control (NEW in v2.5.3)
+
+All main scripts support enhanced logging with verbosity control:
+
+**Verbosity Levels**:
+- `--quiet` or `-q`: Errors only (level 0)
+- Default: INFO level (level 2)
+- `-v`: Verbose INFO (level 2)
+- `-vv` or `--debug`: Debug mode (level 3)
+
+**File Logging**:
+- `--log-file logs/conversion.log`: Write to file with rotation
+- `--log-json`: JSON format for log aggregation tools
+
+**Examples**:
+```bash
+# Debug mode with file logging
+python scripts/sid_to_sf2.py input.sid output.sf2 --debug --log-file logs/debug.log
+
+# Quiet mode (errors only)
+python scripts/convert_all.py --quiet
+
+# JSON logging for analysis
+python scripts/sid_to_sf2.py input.sid output.sf2 --log-json --log-file logs/conversion.jsonl
+```
+
+**Features**: Color-coded output, performance metrics, automatic rotation
+**Documentation**: `docs/guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md`
+
+---
+
 ## Project Structure (Simplified)
 
 ```

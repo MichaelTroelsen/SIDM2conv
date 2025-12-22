@@ -47,6 +47,9 @@ from sidm2.config import ConversionConfig, get_default_config
 # Import error handling module
 from sidm2 import errors as sidm2_errors
 
+# Import enhanced logging system
+from sidm2.logging_config import setup_logging, get_logger, configure_from_args, PerformanceLogger
+
 # Removed legacy laxity_parser import (no longer needed)
 
 # Import Laxity converter for custom driver
@@ -70,8 +73,8 @@ try:
 except ImportError:
     GALWAY_CONVERTER_AVAILABLE = False
 
-# Configure logging
-logger = logging.getLogger(__name__)
+# Get module logger (will be configured in main())
+logger = get_logger(__name__)
 
 
 def detect_player_type(filepath: str) -> str:
@@ -859,10 +862,33 @@ def main():
         action='store_true',
         help='Use MIDI-based sequence extraction (Python emulator, high accuracy)'
     )
+
+    # Logging arguments (enhanced logging system v2.0.0)
     parser.add_argument(
-        '--verbose', '-v',
+        '-v', '--verbose',
+        action='count',
+        default=2,
+        help='Increase verbosity (-v=INFO, -vv=DEBUG). Default: INFO level'
+    )
+    parser.add_argument(
+        '-q', '--quiet',
         action='store_true',
-        help='Enable verbose (debug) output'
+        help='Quiet mode (errors only)'
+    )
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Debug mode (maximum verbosity, same as -vv)'
+    )
+    parser.add_argument(
+        '--log-file',
+        type=str,
+        help='Write logs to file (with automatic rotation)'
+    )
+    parser.add_argument(
+        '--log-json',
+        action='store_true',
+        help='Use JSON log format (for log aggregation tools)'
     )
 
     args = parser.parse_args()
@@ -884,21 +910,12 @@ def main():
     if args.overwrite:
         config.output.overwrite = True
 
-    if args.verbose:
-        config.logging.level = 'DEBUG'
+    # Configure enhanced logging system (v2.0.0)
+    configure_from_args(args)
+
+    # Set verbose extraction if debug mode enabled
+    if args.debug or (hasattr(args, 'verbose') and args.verbose >= 3):
         config.extraction.verbose = True
-
-    # Set up logging based on configuration
-    log_level = getattr(logging, config.logging.level)
-    handlers = [logging.StreamHandler(sys.stdout)]
-    if config.logging.log_file:
-        handlers.append(logging.FileHandler(config.logging.log_file))
-
-    logging.basicConfig(
-        level=log_level,
-        format=config.logging.log_format,
-        handlers=handlers
-    )
 
     input_file = args.input
 
@@ -907,7 +924,8 @@ def main():
         if args.both:
             # Generate both driver versions
             output_dir = args.output_dir
-            convert_sid_to_both_drivers(input_file, output_dir, config=config)
+            with PerformanceLogger(logger, f"SID to SF2 conversion (both drivers): {input_file}"):
+                convert_sid_to_both_drivers(input_file, output_dir, config=config)
         else:
             # Single driver mode
             if args.output:
@@ -921,7 +939,9 @@ def main():
             driver_type = args.driver
             sf2_reference = args.sf2_reference if hasattr(args, 'sf2_reference') else None
             use_midi = args.use_midi if hasattr(args, 'use_midi') else False
-            convert_sid_to_sf2(input_file, output_file, driver_type=driver_type, config=config, sf2_reference_path=sf2_reference, use_midi=use_midi)
+
+            with PerformanceLogger(logger, f"SID to SF2 conversion ({driver_type}): {input_file}"):
+                convert_sid_to_sf2(input_file, output_file, driver_type=driver_type, config=config, sf2_reference_path=sf2_reference, use_midi=use_midi)
 
     except sidm2_errors.SIDMError as e:
         # Our custom errors already have helpful messages

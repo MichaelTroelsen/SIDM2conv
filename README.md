@@ -82,6 +82,69 @@ The converter supports three driver types for different use cases:
   - Use for: Laxity NewPlayer v21 SID files only
   - See [Laxity Driver Guide](#laxity-driver-guide-new) below for details
 
+### Logging and Verbosity Control (NEW in v2.5.3) 🔍
+
+The enhanced logging system (v2.0.0) provides comprehensive control over output verbosity and logging formats.
+
+#### Verbosity Levels
+
+Control how much information is displayed during conversion:
+
+```bash
+# Quiet mode - errors only (verbosity level 0)
+python scripts/sid_to_sf2.py input.sid output.sf2 --quiet
+
+# Normal mode - INFO level (verbosity level 2, default)
+python scripts/sid_to_sf2.py input.sid output.sf2
+
+# Verbose mode - INFO + more details
+python scripts/sid_to_sf2.py input.sid output.sf2 -v
+
+# Debug mode - DEBUG level (verbosity level 3, maximum detail)
+python scripts/sid_to_sf2.py input.sid output.sf2 --debug
+# OR
+python scripts/sid_to_sf2.py input.sid output.sf2 -vv
+```
+
+#### File Logging
+
+Write logs to a file with automatic rotation:
+
+```bash
+# Log to file (with 10MB rotation, 3 backups)
+python scripts/sid_to_sf2.py input.sid output.sf2 --log-file logs/conversion.log
+
+# Debug mode with file logging
+python scripts/sid_to_sf2.py input.sid output.sf2 --debug --log-file logs/debug.log
+
+# JSON format for log aggregation tools (ELK, Splunk, etc.)
+python scripts/sid_to_sf2.py input.sid output.sf2 --log-json --log-file logs/conversion.jsonl
+```
+
+#### Features
+
+- **4 Verbosity Levels**: 0=ERROR, 1=WARNING, 2=INFO (default), 3=DEBUG
+- **Color-Coded Output**: Automatic ANSI color support with graceful degradation
+- **Structured JSON Logging**: Machine-readable logs for aggregation tools
+- **File Rotation**: Automatic log rotation (configurable size/count)
+- **Performance Metrics**: Automatic operation timing with context managers
+- **Module-Specific Loggers**: Hierarchical logger namespace for better organization
+
+#### Logging Examples
+
+```bash
+# Batch conversion with debug logging
+python scripts/convert_all.py --debug --log-file logs/batch.log
+
+# SF2 to SID export with performance metrics
+python scripts/sf2_to_sid.py input.sf2 output.sid --debug
+
+# Pipeline with JSON logging for analysis
+python complete_pipeline_with_validation.py --log-json --log-file logs/pipeline.jsonl
+```
+
+For complete logging documentation, see: `docs/guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md`
+
 ### Laxity Driver Guide (NEW) ⭐
 
 The **Laxity Driver** is a custom SF2 driver providing dramatic accuracy improvement for Laxity NewPlayer v21 SID conversions.
