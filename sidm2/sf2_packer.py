@@ -233,7 +233,8 @@ class SF2Packer:
             if len(seq_data) > 0:
                 section = DataSection(
                     source_address=seq_ptr,
-                    data=seq_data
+                    data=seq_data,
+                    is_code=False  # Sequences are music data, not executable code
                 )
                 self.data_sections.append(section)
 
@@ -261,7 +262,8 @@ class SF2Packer:
             if len(orderlist_data) > 0:
                 section = DataSection(
                     source_address=orderlist_ptr,
-                    data=orderlist_data
+                    data=orderlist_data,
+                    is_code=False  # Orderlists are music data, not executable code
                 )
                 self.data_sections.append(section)
 
@@ -430,7 +432,7 @@ class SF2Packer:
             section = DataSection(
                 source_address=after_wave_start,
                 data=after_wave_data,
-                is_code=True  # Likely sequences/orderlists with pointers
+                is_code=False  # Sequences/orderlists are music data, not executable code
             )
             self.data_sections.append(section)
 
