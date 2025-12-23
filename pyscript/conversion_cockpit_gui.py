@@ -23,7 +23,7 @@ try:
         QCheckBox, QComboBox, QLineEdit, QGroupBox, QHeaderView, QListWidget,
         QSplitter, QFrame, QScrollArea
     )
-    from PyQt6.QtCore import Qt, QSettings, QTimer, pyqtSignal, QObject, QUrl
+    from PyQt6.QtCore import Qt, QSettings, QTimer, pyqtSignal, QObject, QUrl, QSize
     from PyQt6.QtGui import QFont, QColor, QIcon, QDragEnterEvent, QDropEvent
     PYQT6_AVAILABLE = True
 except ImportError:
@@ -46,6 +46,7 @@ from pipeline_config import PipelineConfig, PipelineStep
 from cockpit_widgets import StatsCard, ProgressWidget, FileListWidget, LogStreamWidget
 from cockpit_history_widgets import BatchHistorySectionWidget, HistoryControlWidget
 from batch_history_manager import BatchHistoryManager
+from cockpit_styles import ColorScheme, IconGenerator, StyleSheet
 
 
 class CockpitMainWindow(QMainWindow):
@@ -74,6 +75,13 @@ class CockpitMainWindow(QMainWindow):
 
     def init_ui(self):
         """Initialize the user interface"""
+        # Apply stylesheet
+        self.setStyleSheet(StyleSheet.get_main_stylesheet())
+
+        # Set window icon
+        app_icon = QIcon(IconGenerator.create_circular_icon(ColorScheme.PRIMARY, 64, "C"))
+        self.setWindowIcon(app_icon)
+
         # Central widget with main layout
         central = QWidget()
         self.setCentralWidget(central)
@@ -160,25 +168,40 @@ class CockpitMainWindow(QMainWindow):
         control_layout = QHBoxLayout()
         control_layout.setSpacing(10)
 
-        self.start_btn = QPushButton("▶ START")
-        self.start_btn.setStyleSheet("background-color: #4CAF50; color: white; padding: 10px; font-size: 14px; font-weight: bold;")
+        # Start button with play icon
+        self.start_btn = QPushButton("START")
+        self.start_btn.setObjectName("startBtn")
+        self.start_btn.setIcon(QIcon(IconGenerator.create_play_icon(ColorScheme.SUCCESS, 48)))
+        self.start_btn.setIconSize(QSize(24, 24))
+        self.start_btn.setMinimumHeight(40)
         self.start_btn.clicked.connect(self.start_conversion)
         control_layout.addWidget(self.start_btn)
 
-        self.pause_btn = QPushButton("⏸ PAUSE")
-        self.pause_btn.setStyleSheet("background-color: #FF9800; color: white; padding: 10px; font-size: 14px; font-weight: bold;")
+        # Pause button with pause icon
+        self.pause_btn = QPushButton("PAUSE")
+        self.pause_btn.setObjectName("pauseBtn")
+        self.pause_btn.setIcon(QIcon(IconGenerator.create_pause_icon(ColorScheme.WARNING, 48)))
+        self.pause_btn.setIconSize(QSize(24, 24))
+        self.pause_btn.setMinimumHeight(40)
         self.pause_btn.clicked.connect(self.pause_conversion)
         self.pause_btn.setEnabled(False)
         control_layout.addWidget(self.pause_btn)
 
-        self.stop_btn = QPushButton("⏹ STOP")
-        self.stop_btn.setStyleSheet("background-color: #f44336; color: white; padding: 10px; font-size: 14px; font-weight: bold;")
+        # Stop button with stop icon
+        self.stop_btn = QPushButton("STOP")
+        self.stop_btn.setObjectName("stopBtn")
+        self.stop_btn.setIcon(QIcon(IconGenerator.create_stop_icon(ColorScheme.ERROR, 48)))
+        self.stop_btn.setIconSize(QSize(24, 24))
+        self.stop_btn.setMinimumHeight(40)
         self.stop_btn.clicked.connect(self.stop_conversion)
         self.stop_btn.setEnabled(False)
         control_layout.addWidget(self.stop_btn)
 
-        settings_btn = QPushButton("⚙ SETTINGS")
-        settings_btn.setStyleSheet("background-color: #2196F3; color: white; padding: 10px; font-size: 14px; font-weight: bold;")
+        # Settings button
+        settings_btn = QPushButton("SETTINGS")
+        settings_btn.setIcon(QIcon(IconGenerator.create_settings_icon(ColorScheme.PRIMARY, 48)))
+        settings_btn.setIconSize(QSize(24, 24))
+        settings_btn.setMinimumHeight(40)
         settings_btn.clicked.connect(lambda: self.tabs.setCurrentIndex(2))  # Switch to Config tab
         control_layout.addWidget(settings_btn)
 
@@ -189,9 +212,19 @@ class CockpitMainWindow(QMainWindow):
         operation_group = QGroupBox("Current Operation")
         operation_layout = QVBoxLayout()
 
+        # Status row with icon and text
+        status_layout = QHBoxLayout()
+        self.status_icon_label = QLabel()
+        self.status_icon_label.setPixmap(IconGenerator.create_checkmark_icon(ColorScheme.SUCCESS, 24))
+        self.status_icon_label.setMaximumWidth(32)
+        status_layout.addWidget(self.status_icon_label)
+
         self.current_file_label = QLabel("No operation in progress")
         self.current_file_label.setStyleSheet("font-size: 12px; padding: 5px;")
-        operation_layout.addWidget(self.current_file_label)
+        status_layout.addWidget(self.current_file_label)
+        status_layout.addStretch()
+
+        operation_layout.addLayout(status_layout)
 
         self.current_step_label = QLabel("Waiting to start...")
         self.current_step_label.setStyleSheet("font-size: 11px; color: #666; padding: 5px;")
@@ -700,6 +733,9 @@ class CockpitMainWindow(QMainWindow):
         self.pause_btn.setEnabled(True)
         self.stop_btn.setEnabled(True)
 
+        # Update status icon to show running state
+        self._update_status_icon("running")
+
         # Start executor
         self.executor.start_batch(self.selected_files)
 
@@ -710,6 +746,8 @@ class CockpitMainWindow(QMainWindow):
             self.pause_btn.setText("▶ RESUME")
             self.pause_btn.clicked.disconnect()
             self.pause_btn.clicked.connect(self.resume_conversion)
+            # Update status icon to show paused state
+            self._update_status_icon("paused")
 
     def resume_conversion(self):
         """Resume batch conversion"""
@@ -718,6 +756,8 @@ class CockpitMainWindow(QMainWindow):
             self.pause_btn.setText("⏸ PAUSE")
             self.pause_btn.clicked.disconnect()
             self.pause_btn.clicked.connect(self.pause_conversion)
+            # Update status icon to show running state
+            self._update_status_icon("running")
 
     def stop_conversion(self):
         """Stop batch conversion"""
@@ -735,6 +775,31 @@ class CockpitMainWindow(QMainWindow):
                 self.start_btn.setEnabled(True)
                 self.pause_btn.setEnabled(False)
                 self.stop_btn.setEnabled(False)
+                # Update status icon to show stopped state
+                self._update_status_icon("stopped")
+
+    # =========================================================================
+    # UI Helper Methods
+    # =========================================================================
+
+    def _update_status_icon(self, state: str):
+        """Update the status icon based on conversion state
+
+        Args:
+            state: One of 'idle', 'running', 'paused', 'stopped', 'completed', 'error'
+        """
+        if state == "running":
+            pixmap = IconGenerator.create_play_icon(ColorScheme.INFO, 24)
+        elif state == "paused":
+            pixmap = IconGenerator.create_pause_icon(ColorScheme.WARNING, 24)
+        elif state == "completed":
+            pixmap = IconGenerator.create_checkmark_icon(ColorScheme.SUCCESS, 24)
+        elif state == "error":
+            pixmap = IconGenerator.create_error_icon(ColorScheme.ERROR, 24)
+        else:  # idle, stopped, or unknown
+            pixmap = IconGenerator.create_checkmark_icon(ColorScheme.SUCCESS, 24)
+
+        self.status_icon_label.setPixmap(pixmap)
 
     # =========================================================================
     # Dashboard Methods
