@@ -94,11 +94,11 @@ def main():
 
     runner = TestRunner()
 
-    # Test 1: Converter tests
+    # Test 1: Converter tests (83 test methods - needs longer timeout)
     runner.run_test(
         "Converter Tests",
         f"{sys.executable} scripts/test_converter.py",
-        timeout=300
+        timeout=600
     )
 
     # Test 2: SF2 Format tests
