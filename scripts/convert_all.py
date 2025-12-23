@@ -37,6 +37,13 @@ from pathlib import Path
 from typing import Optional, Dict, List, Tuple
 import re
 
+# Setup Python path for imports - must be BEFORE sidm2 imports
+# This allows the script to be run from any directory
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(script_dir)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 # Import from sidm2 package for table extraction
 from sidm2 import (
     SIDParser,
@@ -59,8 +66,15 @@ from sidm2.instrument_extraction import (
 from sidm2.laxity_analyzer import LaxityPlayerAnalyzer
 from sidm2.exceptions import TableExtractionError
 from sidm2.sf2_packer import pack_sf2_to_sid
-from scripts.laxity_parser import LaxityParser
-from scripts.validate_psid import PSIDValidator
+from sidm2.laxity_parser import LaxityParser
+
+# PSIDValidator is optional (for validation only)
+PSIDValidator = None
+try:
+    from scripts.validate_psid import PSIDValidator
+except ImportError:
+    # PSIDValidator not available, validation will be skipped
+    pass
 
 # Import custom error handling
 try:
@@ -268,7 +282,8 @@ def generate_info_file(sf2_dir: str, sid_file: str, sid_dir: str, output_files: 
 
         # Extract sequences for command analysis
         laxity_parser = LaxityParser(c64_data, load_address)
-        raw_sequences, _ = laxity_parser.find_sequences()
+        laxity_data = laxity_parser.parse()
+        raw_sequences = laxity_data.sequences if laxity_data else []
 
         # Extract parsed sequences for note comparison
         analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
@@ -336,10 +351,9 @@ def generate_info_file(sf2_dir: str, sid_file: str, sid_dir: str, output_files: 
             seq_data_addr = 0
             if c64_data:
                 lp = LaxityParser(c64_data, load_address)
-                orderlists_found = lp.find_orderlists()
-                sequences_found, seq_addrs = lp.find_sequences()
-                if seq_addrs:
-                    seq_data_addr = min(seq_addrs)
+                lp_data = lp.parse()
+                orderlists_found = lp_data.orderlists if (lp_data and hasattr(lp_data, 'orderlists')) else []
+                sequences_found = lp_data.sequences if (lp_data and hasattr(lp_data, 'sequences')) else []
 
             # Calculate sizes
             wave_entries_count = len(wave_entries_extracted) if wave_entries_extracted else 0
@@ -792,8 +806,9 @@ def convert_all(sid_dir='SID', output_dir='output', roundtrip=False, roundtrip_d
             output_path = str(new_dir / output_file)
 
             # Run converter
+            sid_to_sf2_path = os.path.join(script_dir, 'sid_to_sf2.py')
             result = subprocess.run(
-                [sys.executable, 'sid_to_sf2.py', input_path, output_path, '--driver', driver_type],
+                [sys.executable, sid_to_sf2_path, input_path, output_path, '--driver', driver_type],
                 capture_output=True,
                 text=True
             )
@@ -978,7 +993,7 @@ def convert_all(sid_dir='SID', output_dir='output', roundtrip=False, roundtrip_d
 
                 # Step 6: Validate PSID format
                 psid_status = "N/A"
-                if exported_sid.exists():
+                if exported_sid.exists() and PSIDValidator is not None:
                     try:
                         validator = PSIDValidator(exported_sid)
                         is_valid = validator.validate()

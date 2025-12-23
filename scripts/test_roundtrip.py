@@ -23,15 +23,23 @@ import json
 from pathlib import Path
 from datetime import datetime
 
+# Setup Python path for imports - must be BEFORE sidm2 imports
+# This allows the script to be run from any directory
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(script_dir)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 from sidm2.sf2_packer import pack_sf2_to_sid
 
 # Import custom error handling
 try:
     from sidm2 import errors
-except ImportError:
-    # Fallback if running standalone
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-    from sidm2 import errors
+except ImportError as e:
+    print(f"Error importing sidm2: {e}")
+    print(f"Project root: {project_root}")
+    print(f"sys.path: {sys.path}")
+    raise
 
 
 class RoundtripValidator:
@@ -163,8 +171,11 @@ class RoundtripValidator:
         """Step 1: Convert SID -> SF2"""
         print("\n[1/8] Converting SID -> SF2...")
 
+        # Use the scripts/sid_to_sf2.py path
+        script_path = os.path.join(script_dir, 'sid_to_sf2.py')
+
         cmd = [
-            'python', 'sid_to_sf2.py',
+            sys.executable, script_path,
             str(self.sid_file),
             str(self.sf2_file),
             '--driver', 'driver11'

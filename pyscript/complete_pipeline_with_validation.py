@@ -2307,8 +2307,15 @@ def main():
                 # Set exported_sid to original SID for subsequent steps
                 exported_sid = sid_file
             elif pack_sf2_to_sid_safe(output_sf2, exported_sid, name, author, copyright_str):
-                print(f'        [OK] Size: {exported_sid.stat().st_size} bytes')
-                result['steps']['packing'] = {'success': True}
+                # Check if file was actually created before accessing it
+                if exported_sid.exists():
+                    print(f'        [OK] Size: {exported_sid.stat().st_size} bytes')
+                    result['steps']['packing'] = {'success': True}
+                else:
+                    print(f'        [ERROR] Packing returned success but file was not created')
+                    result['steps']['packing'] = {'success': False}
+                    # Fall back to original SID for subsequent steps
+                    exported_sid = sid_file
             else:
                 print(f'        [ERROR] Packing failed')
                 result['steps']['packing'] = {'success': False}
