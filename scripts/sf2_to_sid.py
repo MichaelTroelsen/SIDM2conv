@@ -200,47 +200,42 @@ class SF2File:
             self.title = strings[-1]
 
     def _detect_driver_addresses(self):
-        """Read init and play addresses from SF2 DriverCommon structure.
+        """Detect driver type and set appropriate init/play addresses.
 
-        The SF2 header has a DRIVER_COMMON block (type=2) that contains:
-        - m_InitAddress: Address of driver init routine
-        - m_UpdateAddress: Address of driver play routine
+        SF2 files can use different drivers:
+        1. Driver 11 (standard): Code at $1000, play loop at $1006
+        2. Laxity driver: Code at $0D7E, JMP table at $0D80
 
-        For Driver 11, these are stored at file offset 0x31 (init) and 0x33 (play)
-        in little-endian format.
-
-        For Laxity driver (load address $0D7E), use known entry points.
+        Detection: Check if first JMP (at offset 4) targets $0Dxx range (Laxity)
+        or $10xx range (Driver 11).
         """
-        # Laxity driver detection
-        if self.load_address == 0x0D7E:
-            # Laxity driver has fixed entry points
-            self.init_address = 0x0D80  # Load + 2
-            self.play_address = 0x0D83  # Load + 5
-            logger.debug(f"  Detected Laxity driver (load=$0D7E)")
-            return
+        # Check the JMP target at file offset 4 (first entry point)
+        # Format: 4C LL HH = JMP $HHLL
+        if len(self.data) >= 7 and self.data[4] == 0x4C:  # JMP opcode
+            jmp_target_hi = self.data[6]
 
-        # Default fallback: Driver code at $1000
+            if jmp_target_hi == 0x0D:
+                # Laxity driver: JMPs to $0Dxx range
+                # Entry points at $0D80 (init) and $0D83 (play)
+                # Both work directly - no stub issue like Driver 11
+                self.init_address = 0x0D80
+                self.play_address = 0x0D83
+                logger.debug(f"  Detected Laxity driver: init=$0D80, play=$0D83")
+                return
+
+        # Default: Driver 11 (standard SF2 driver) entry points
+        #
+        # The SF2 file structure at $1000 is:
+        #   $1000: JMP $15E4  (init stub - clears play flag)
+        #   $1003: JMP $15ED  (play stub - sets play flag)
+        #   $1006: Actual player loop (checks flag, processes music)
+        #
+        # The JMPs at $1000/$1003 only set/clear a flag and return immediately.
+        # The ACTUAL player code is at $1006 which must be called every frame.
+        #
         self.init_address = 0x1000
-        self.play_address = 0x1003
-
-        # Try to read from SF2 header structure
-        # The DriverCommon block addresses are at file offset 0x31 and 0x33
-        # (these are stored in little-endian format)
-        if len(self.data) >= 0x36:
-            # File offset 0x31: Init address (little-endian)
-            init = self.data[0x31] | (self.data[0x32] << 8)
-
-            # File offset 0x33: Play address (little-endian)
-            play = self.data[0x33] | (self.data[0x34] << 8)
-
-            # Sanity check: addresses should be in reasonable range
-            # Updated to support Laxity driver which loads at $0D7E (below $1000)
-            if 0x0800 <= init <= 0x2000 and 0x0800 <= play <= 0x2000:
-                self.init_address = init
-                self.play_address = play
-                logger.debug(f"  Read from header: init=${init:04X} play=${play:04X}")
-            else:
-                logger.debug(f"  Header addresses out of range (${init:04X}, ${play:04X}), using defaults")
+        self.play_address = 0x1006  # NOT $1003! The JMP at $1003 is just a stub.
+        logger.debug(f"  Using Driver 11 entry points: init=$1000, play=$1006")
 
     def get_prg_data(self) -> bytes:
         """Get raw PRG data (including load address)"""
