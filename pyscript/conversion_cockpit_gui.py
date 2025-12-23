@@ -44,6 +44,8 @@ except ImportError:
 from conversion_executor import ConversionExecutor
 from pipeline_config import PipelineConfig, PipelineStep
 from cockpit_widgets import StatsCard, ProgressWidget, FileListWidget, LogStreamWidget
+from cockpit_history_widgets import BatchHistorySectionWidget, HistoryControlWidget
+from batch_history_manager import BatchHistoryManager
 
 
 class CockpitMainWindow(QMainWindow):
@@ -60,6 +62,7 @@ class CockpitMainWindow(QMainWindow):
         self.settings = QSettings("SIDM2", "ConversionCockpit")
         self.selected_files: List[str] = []
         self.is_running = False
+        self.history_manager = BatchHistoryManager()
 
         # Initialize UI
         self.init_ui()
@@ -495,6 +498,13 @@ class CockpitMainWindow(QMainWindow):
 
         exec_group.setLayout(exec_layout)
         layout.addWidget(exec_group)
+
+        # === Batch History ===
+        self.history_section = BatchHistorySectionWidget()
+        self.history_section.set_on_load_callback(self.on_history_load)
+        self.history_section.history_control.save_btn = QPushButton("Save Current Batch to History")
+        self.history_section.history_control.save_btn.clicked.connect(self.on_save_batch_to_history)
+        layout.addWidget(self.history_section)
 
         # === Save/Load Configuration ===
         config_actions_layout = QHBoxLayout()
@@ -1312,6 +1322,81 @@ class CockpitMainWindow(QMainWindow):
         mode = "Simple" if self.config.mode == "simple" else "Advanced"
         output_dir = self.config.output_directory or "Not set"
         self.status_bar.showMessage(f"Ready | Output: {output_dir} | Mode: {mode}")
+
+    # === Batch History Methods ===
+
+    def on_save_batch_to_history(self):
+        """Save current batch configuration to history"""
+        if not self.selected_files:
+            QMessageBox.warning(self, "No Files", "Please select files before saving batch history")
+            return
+
+        try:
+            # Generate label
+            mode = self.config.mode.capitalize()
+            driver = self.config.primary_driver.capitalize()
+            from datetime import datetime
+            date_str = datetime.now().strftime('%m/%d')
+            label = f"{driver} {mode} - {date_str}"
+
+            # Save to history
+            self.history_manager.save_batch(
+                self.config,
+                file_count=len(self.selected_files),
+                label=label
+            )
+
+            # Refresh history display
+            if hasattr(self, 'history_section'):
+                self.history_section.refresh_history()
+
+            QMessageBox.information(
+                self,
+                "Batch Saved",
+                f"Batch configuration saved to history.\n"
+                f"Files: {len(self.selected_files)}\n"
+                f"Driver: {driver}\n"
+                f"Mode: {mode}"
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to save batch: {e}")
+
+    def on_history_load(self, entry_id: str):
+        """Load batch configuration from history"""
+        try:
+            config = self.history_manager.restore_config(entry_id)
+            if not config:
+                QMessageBox.warning(self, "Error", "Could not restore batch configuration")
+                return
+
+            # Apply loaded configuration
+            self.config = config
+
+            # Update UI to reflect new config
+            self.mode_simple_radio.setChecked(config.mode == "simple")
+            self.mode_advanced_radio.setChecked(config.mode == "advanced")
+            self.mode_custom_radio.setChecked(config.mode == "custom")
+
+            self.driver_combo.setCurrentText(config.primary_driver)
+            self.generate_both_cb.setChecked(config.generate_both)
+            self.output_dir_label.setText(config.output_directory)
+            self.overwrite_cb.setChecked(config.overwrite_existing)
+            self.create_nested_dirs_cb.setChecked(config.create_nested_dirs)
+            self.stop_on_error_cb.setChecked(config.stop_on_error)
+            self.concurrent_workers_spinbox.setValue(config.concurrent_workers)
+
+            # Update step checkboxes via apply_config_to_ui
+            self.apply_config_to_ui()
+
+            QMessageBox.information(
+                self,
+                "Batch Loaded",
+                f"Configuration restored from history.\n"
+                f"Driver: {config.primary_driver}\n"
+                f"Mode: {config.mode}"
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to load batch: {e}")
 
     def load_settings(self):
         """Load saved settings from QSettings"""
