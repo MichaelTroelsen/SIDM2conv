@@ -87,6 +87,13 @@ try:
 except ImportError:
     DISASSEMBLER_INTEGRATION_AVAILABLE = False
 
+# Import Audio Export integration (Step 16 - optional audio export)
+try:
+    from sidm2.audio_export_wrapper import AudioExportIntegration
+    AUDIO_EXPORT_INTEGRATION_AVAILABLE = True
+except ImportError:
+    AUDIO_EXPORT_INTEGRATION_AVAILABLE = False
+
 # Get module logger (will be configured in main())
 logger = get_logger(__name__)
 
@@ -894,6 +901,17 @@ def main():
         action='store_true',
         help='Enable 6502 disassembly (Step 8.5 - disassemble init and play routines to .asm files)'
     )
+    parser.add_argument(
+        '--audio-export',
+        action='store_true',
+        help='Export to WAV audio (Step 16 - generate reference audio for listening). Note: PSID files only, RSID not supported by SID2WAV v1.8'
+    )
+    parser.add_argument(
+        '--audio-duration',
+        type=int,
+        default=30,
+        help='Audio export duration in seconds (default: 30)'
+    )
 
     # Logging arguments (enhanced logging system v2.0.0)
     parser.add_argument(
@@ -1042,6 +1060,47 @@ def main():
                 logger.info(f"  Play addr:  ${disasm_result['play_addr']:04X}")
             elif args.disasm:
                 logger.warning("[Step 8.5] 6502 disassembly failed (continuing anyway)")
+
+        # PHASE 2 Enhancement: Optional audio export (Step 16)
+        if args.audio_export and AUDIO_EXPORT_INTEGRATION_AVAILABLE:
+            # Determine output directory for WAV files
+            if args.both:
+                audio_output_dir = Path(args.output_dir) if args.output_dir else Path(input_file).parent
+            else:
+                audio_output_dir = Path(output_file).parent
+
+            # Create analysis subdirectory
+            analysis_dir = audio_output_dir / "analysis"
+
+            # Only print header if we didn't already print it for trace or disasm
+            if not ((args.trace and SIDWINDER_INTEGRATION_AVAILABLE) or
+                    (args.disasm and DISASSEMBLER_INTEGRATION_AVAILABLE)):
+                logger.info("")
+                logger.info("=" * 60)
+                logger.info("[Phase 5] Running optional analysis tools...")
+                logger.info("=" * 60)
+
+            # Generate WAV filename
+            wav_file = analysis_dir / f"{Path(input_file).stem}.wav"
+
+            audio_result = AudioExportIntegration.export_to_wav(
+                sid_file=Path(input_file),
+                output_file=wav_file,
+                duration=args.audio_duration,
+                verbose=1 if not args.quiet else 0
+            )
+
+            if audio_result and audio_result['success']:
+                logger.info(f"[Step 16] Audio export complete:")
+                logger.info(f"  WAV file:   {audio_result['output_file'].name}")
+                logger.info(f"  Duration:   {audio_result['duration']}s")
+                logger.info(f"  Format:     {audio_result['frequency']}Hz, {audio_result['bit_depth']}-bit, {'stereo' if audio_result['stereo'] else 'mono'}")
+                logger.info(f"  Size:       {audio_result['file_size']:,} bytes")
+            elif audio_result and not audio_result['success']:
+                logger.warning(f"[Step 16] Audio export failed: {audio_result.get('error', 'Unknown error')}")
+                logger.warning("  Note: SID2WAV v1.8 only supports PSID files, not RSID files")
+            elif args.audio_export:
+                logger.warning("[Step 16] Audio export not available (SID2WAV.EXE not found)")
 
     except sidm2_errors.SIDMError as e:
         # Our custom errors already have helpful messages
