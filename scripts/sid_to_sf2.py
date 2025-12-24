@@ -73,6 +73,13 @@ try:
 except ImportError:
     GALWAY_CONVERTER_AVAILABLE = False
 
+# Import SIDwinder integration (Step 7.5 - optional tracing)
+try:
+    from sidm2.sidwinder_wrapper import SIDwinderIntegration
+    SIDWINDER_INTEGRATION_AVAILABLE = True
+except ImportError:
+    SIDWINDER_INTEGRATION_AVAILABLE = False
+
 # Get module logger (will be configured in main())
 logger = get_logger(__name__)
 
@@ -863,6 +870,19 @@ def main():
         help='Use MIDI-based sequence extraction (Python emulator, high accuracy)'
     )
 
+    # Optional analysis tools (enhanced pipeline v2.0.0)
+    parser.add_argument(
+        '--trace',
+        action='store_true',
+        help='Enable SIDwinder trace generation (Step 7.5 - detailed frame-by-frame register tracing)'
+    )
+    parser.add_argument(
+        '--trace-frames',
+        type=int,
+        default=1500,
+        help='Number of frames for SIDwinder trace (default: 1500 = 30s @ 50Hz PAL)'
+    )
+
     # Logging arguments (enhanced logging system v2.0.0)
     parser.add_argument(
         '-v', '--verbose',
@@ -942,6 +962,40 @@ def main():
 
             with PerformanceLogger(logger, f"SID to SF2 conversion ({driver_type}): {input_file}"):
                 convert_sid_to_sf2(input_file, output_file, driver_type=driver_type, config=config, sf2_reference_path=sf2_reference, use_midi=use_midi)
+
+        # PHASE 5 Enhancement: Optional SIDwinder trace (Step 7.5)
+        if args.trace and SIDWINDER_INTEGRATION_AVAILABLE:
+            # Run optional SIDwinder tracing after conversion
+            # Determine output directory for trace file
+            if args.both:
+                trace_output_dir = Path(args.output_dir) if args.output_dir else Path(input_file).parent
+            else:
+                trace_output_dir = Path(output_file).parent
+
+            # Create analysis subdirectory
+            analysis_dir = trace_output_dir / "analysis"
+
+            logger.info("")
+            logger.info("=" * 60)
+            logger.info("[Phase 5] Running optional analysis tools...")
+            logger.info("=" * 60)
+
+            trace_result = SIDwinderIntegration.trace_sid(
+                sid_file=Path(input_file),
+                output_dir=analysis_dir,
+                frames=args.trace_frames,
+                verbose=1 if not args.quiet else 0
+            )
+
+            if trace_result and trace_result['success']:
+                logger.info(f"[Step 7.5] SIDwinder trace complete:")
+                logger.info(f"  Trace file: {trace_result['trace_file']}")
+                logger.info(f"  Frames:     {trace_result['frames']}")
+                logger.info(f"  Cycles:     {trace_result['cycles']:,}")
+                logger.info(f"  Writes:     {trace_result['writes']:,}")
+                logger.info(f"  Size:       {trace_result['file_size']:,} bytes")
+            elif args.trace:
+                logger.warning("[Step 7.5] SIDwinder trace failed (continuing anyway)")
 
     except sidm2_errors.SIDMError as e:
         # Our custom errors already have helpful messages
