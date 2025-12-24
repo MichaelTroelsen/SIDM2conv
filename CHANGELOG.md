@@ -7,6 +7,250 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.9.0] - 2025-12-24
+
+### Added - SID Inventory System & Pattern Database & Policy Documentation
+
+**🎉 MAJOR FEATURE: Complete SID file cataloging system with comprehensive pattern database and organized policy documentation!**
+
+#### SID Inventory System (v1.0.0) 📋
+
+**STRATEGIC ACHIEVEMENT**: Complete visibility into the SID file collection with automated cataloging and metadata extraction.
+
+**Implementation**:
+- **Inventory Generator**: `pyscript/create_sid_inventory.py` (330 lines)
+- **Batch Launcher**: `create-sid-inventory.bat` (Windows convenience wrapper)
+- **Output**: `SID_INVENTORY.md` - Complete catalog of 658+ SID files
+- **Cross-platform**: Mac/Linux/Windows support
+- **Performance**: ~2-5 minutes for 650+ files
+
+**Features**:
+- ✅ Comprehensive SID file scanning across all collections
+- ✅ Player type identification using player-id.exe
+- ✅ PSID/RSID header parsing (title, author, copyright, addresses)
+- ✅ Markdown table output with sortable grid view
+- ✅ Directory grouping and summary statistics
+- ✅ File format distribution analysis
+- ✅ Top player types ranking
+
+**Catalog Statistics** (658+ files):
+- **Total Files**: 658 SID files
+- **Total Size**: ~5-8 MB
+- **Top Player Types**:
+  - Laxity NewPlayer v21: ~43% (286 files)
+  - Generic SID Init: ~20%
+  - Rob Hubbard: ~10%
+  - Martin Galway: ~5%
+  - Others: ~22%
+- **File Formats**:
+  - PSID v2: ~90%
+  - PSID v3: ~8%
+  - RSID: ~2%
+
+**Output Format**:
+```markdown
+| File | Title | Author | Player Type | Format | Songs | Load | Init | Play | Size |
+|------|-------|--------|-------------|--------|-------|------|------|------|------|
+| Stinsens_Last_Night_of_89.sid | Stinsen's Last Night of '89 | Thomas E. Petersen (Laxity) | Laxity_NewPlayer_V21 | PSID v2 | 1 | $1000 | $1000 | $1006 | 6,201 |
+```
+
+**Usage**:
+```bash
+# Windows
+create-sid-inventory.bat
+
+# Mac/Linux
+python pyscript/create_sid_inventory.py
+```
+
+**Documentation**:
+- **User Guide**: `docs/guides/SID_INVENTORY_GUIDE.md` (428 lines)
+  - Complete usage guide with tools, format, troubleshooting
+  - Integration examples (batch conversion, validation, pattern expansion)
+- **Quick Reference**: `docs/guides/SID_INVENTORY_README.md`
+  - Quick start and getting started guide
+
+#### Pattern Database & Analysis Tools 🔍
+
+**Pattern Database Results** (Final Validation):
+- **File**: `docs/analysis/PATTERN_DATABASE_FINAL_RESULTS.md`
+- **Coverage**: 658 SID files analyzed
+- **Player Type Distribution**: Comprehensive breakdown
+- **Validation Results**: Pattern matching accuracy metrics
+- **Foundation**: Basis for automatic driver selection (Conversion Policy v2.0)
+
+**Pattern Test Results**:
+- **File**: `docs/analysis/pattern_test_results.txt`
+- **Raw Test Output**: Detailed pattern matching validation
+- **Test Coverage**: All player type patterns validated
+
+**Pattern Analysis Tools** (5 new scripts):
+1. **`pyscript/check_entry_patterns.py`** - Validate pattern matches against SID files
+2. **`pyscript/find_undetected_laxity.py`** - Find Laxity files missed by patterns
+3. **`pyscript/identify_undetected.py`** - Analyze unknown/unidentified files
+4. **`pyscript/quick_disasm.py`** - Quick 6502 disassembly for pattern research
+5. **`pyscript/sidid_patterns.txt`** (updated) - Refined pattern database
+
+**Analysis Workflow**:
+```bash
+# Check pattern accuracy
+python pyscript/check_entry_patterns.py
+
+# Find missed Laxity files
+python pyscript/find_undetected_laxity.py
+
+# Identify unknown files
+python pyscript/identify_undetected.py
+```
+
+#### Policy Documentation Reorganization 📚
+
+**New Directory**: `docs/integration/` - Centralized policy documentation
+
+**Moved Documents** (5 files):
+1. **`docs/integration/CONVERSION_POLICY_APPROVED.md`** (v2.0.0 - ACTIVE)
+   - Quality-First conversion policy
+   - Driver selection matrix
+   - Mandatory validation requirements
+2. **`docs/integration/DRIVER_SELECTION_TEST_RESULTS.md`**
+   - Driver selection testing validation
+   - 4 player types tested, 100% pass rate
+3. **`docs/integration/INTEGRATION_SUMMARY.md`**
+   - How driver selection works
+   - Console output examples
+4. **`docs/integration/POLICY_INTEGRATION_COMPLETE.md`**
+   - Policy implementation summary
+   - Production readiness status
+5. **`docs/integration/CONVERSION_POLICY.md`** (v1.0.0 draft)
+   - Earlier draft (superseded by v2.0 APPROVED)
+
+**New Analysis Documents**:
+- **`docs/integration/POLICY_ANALYSIS.md`**
+  - Analysis of quality-first approach vs strict Driver 11 policy
+  - Trade-offs and decision rationale
+- **`docs/integration/POLICY_IMPLEMENTATION_SUMMARY.md`**
+  - Technical implementation details
+  - File changes and integration points
+
+### Changed
+
+**Documentation Updates**:
+- **`docs/INDEX.md`**:
+  - Added SID Inventory System section
+  - Added Pattern Database results section
+  - Added Policy Documentation section (docs/integration/)
+  - Updated all file references for reorganized documents
+- **`docs/FILE_INVENTORY.md`**:
+  - Updated with new files (inventory system, pattern tools, policy docs)
+  - Reorganized structure to reflect docs/integration/ move
+
+**Version**:
+- Project version: 2.8.0 → 2.9.0
+
+### Benefits
+
+**SID Inventory System**:
+- ✅ **Complete visibility**: All 658+ SID files cataloged with metadata
+- ✅ **Easy lookup**: Search by player type, author, title, format
+- ✅ **Foundation for workflows**: Batch conversion, validation, testing
+- ✅ **Pattern discovery**: Identify candidates for new pattern additions
+- ✅ **Collection management**: Understand what files you have
+
+**Pattern Database**:
+- ✅ **Driver selection foundation**: Accurate player identification
+- ✅ **Comprehensive coverage**: 658 files analyzed and categorized
+- ✅ **Analysis tools**: 5 scripts for pattern research and validation
+- ✅ **Quality assurance**: Validated pattern matching accuracy
+
+**Policy Documentation**:
+- ✅ **Organized structure**: All policy docs in docs/integration/
+- ✅ **Clear hierarchy**: Active policies vs drafts clearly marked
+- ✅ **Better navigation**: Easier to find conversion policy documentation
+- ✅ **Professional organization**: Centralized policy management
+
+### Statistics
+
+**New Files**: 13 (inventory system + docs + scripts)
+- SID_INVENTORY.md (root)
+- create-sid-inventory.bat
+- pyscript/create_sid_inventory.py
+- docs/guides/SID_INVENTORY_GUIDE.md
+- docs/guides/SID_INVENTORY_README.md
+- docs/analysis/PATTERN_DATABASE_FINAL_RESULTS.md
+- docs/analysis/pattern_test_results.txt
+- docs/integration/CONVERSION_POLICY.md (new)
+- docs/integration/POLICY_ANALYSIS.md (new)
+- docs/integration/POLICY_IMPLEMENTATION_SUMMARY.md (new)
+- pyscript/check_entry_patterns.py
+- pyscript/find_undetected_laxity.py
+- pyscript/identify_undetected.py
+- pyscript/quick_disasm.py
+
+**Moved Files**: 5 (policy documentation → docs/integration/)
+- CONVERSION_POLICY_APPROVED.md
+- DRIVER_SELECTION_TEST_RESULTS.md
+- INTEGRATION_SUMMARY.md
+- POLICY_INTEGRATION_COMPLETE.md
+- (+ CONVERSION_POLICY.md created)
+
+**Updated Files**: 3
+- docs/INDEX.md
+- docs/FILE_INVENTORY.md
+- pyscript/sidid_patterns.txt
+
+**Total Changes**:
+- 21 files changed
+- 4,329 insertions, 1,859 deletions
+- ~44,000+ lines (mostly SID_INVENTORY.md catalog)
+
+### Production Ready
+
+**v2.9.0 Status**:
+- ✅ SID Inventory System operational
+- ✅ Pattern database validated (658 files)
+- ✅ Policy documentation organized
+- ✅ Analysis tools available for pattern research
+- ✅ Complete documentation and guides
+
+### Workflow Integration
+
+**Batch Conversion Planning**:
+```bash
+# 1. Generate inventory to identify files
+create-sid-inventory.bat
+
+# 2. Search for specific player types in SID_INVENTORY.md
+#    (e.g., find all Laxity files)
+
+# 3. Batch convert with appropriate driver
+python scripts/convert_all.py --dir Laxity/ --driver laxity
+```
+
+**Pattern Research Workflow**:
+```bash
+# 1. Identify unknown files
+python pyscript/identify_undetected.py
+
+# 2. Quick disassembly for analysis
+python pyscript/quick_disasm.py unknown_file.sid
+
+# 3. Check pattern accuracy
+python pyscript/check_entry_patterns.py
+
+# 4. Update pattern database (pyscript/sidid_patterns.txt)
+
+# 5. Regenerate inventory to verify
+create-sid-inventory.bat
+```
+
+### Links
+
+- **Repository**: https://github.com/MichaelTroelsen/SIDM2conv
+- **Issues**: https://github.com/MichaelTroelsen/SIDM2conv/issues
+- **Documentation**: See `docs/INDEX.md` for complete navigation
+
+---
+
 ## [2.8.0] - 2025-12-22
 
 ### Added - Python SIDwinder Complete: 100% Tool Independence Achieved 🎉🐍
