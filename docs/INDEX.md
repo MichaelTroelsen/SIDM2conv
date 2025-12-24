@@ -82,6 +82,7 @@ Technical specifications and format details:
 | [SF2_DRIVER11_DISASSEMBLY.md](reference/SF2_DRIVER11_DISASSEMBLY.md) | SF2 Driver 11 player analysis |
 | [SF2_CLASSES.md](reference/SF2_CLASSES.md) | SF2 class structure reference |
 | [external-repositories.md](reference/external-repositories.md) | External source code repositories |
+| [jc64dis-source-repository.md](reference/jc64dis-source-repository.md) | **JC64dis source code** - Complete Java source for C64 emulator and 6502 disassembler |
 | [sourcerepository.md](reference/sourcerepository.md) | Complete source code repository index |
 
 ### Implementation Limitations

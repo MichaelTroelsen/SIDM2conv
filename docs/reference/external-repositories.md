@@ -444,13 +444,14 @@ When searching these repositories, use these patterns:
 
 ## Summary
 
-You now have access to **five critical C64 development repositories**:
+You now have access to **six critical C64 development repositories**:
 
 1. ✅ **RetroDebugger** - Real-time debugging and SID monitoring
 2. ✅ **SID-Depacker** - Packing/unpacking reference
 3. ✅ **SID Factory II** - **Complete editor source (CRITICAL for custom driver)**
 4. ✅ **sidtool** - SID file analysis and manipulation tools
 5. ✅ **VICE** - Reference C64/SID emulation
+6. ✅ **JC64dis** - Java-based 6502 disassembler with full source code (GitHub)
 
 **Most Important**: The **SID Factory II source code** contains the complete assembly source for all drivers. This is essential for creating a custom Laxity driver.
 
@@ -458,5 +459,15 @@ You now have access to **five critical C64 development repositories**:
 
 ---
 
+## See Also
+
+- **JC64dis Source Repository**: Complete documentation at `jc64dis-source-repository.md`
+  - GitHub repository: https://github.com/ice00/jc64
+  - 101,000+ lines Java source code
+  - Cross-platform 6502 disassembler with SID file support
+  - Local binary: `C:\Users\mit\Downloads\jc64dis-win64\`
+
+---
+
 **Created**: 2025-12-13
-**Last Updated**: 2025-12-13
+**Last Updated**: 2025-12-24
