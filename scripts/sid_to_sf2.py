@@ -108,6 +108,13 @@ try:
 except ImportError:
     PATTERN_RECOGNIZER_AVAILABLE = False
 
+# Import Subroutine Tracer (Step 18 - optional call graph analysis)
+try:
+    from sidm2.subroutine_tracer import SubroutineTracer
+    SUBROUTINE_TRACER_AVAILABLE = True
+except ImportError:
+    SUBROUTINE_TRACER_AVAILABLE = False
+
 # Get module logger (will be configured in main())
 logger = get_logger(__name__)
 
@@ -936,6 +943,11 @@ def main():
         action='store_true',
         help='Generate pattern analysis (Step 17 - identify repeating patterns and optimization opportunities)'
     )
+    parser.add_argument(
+        '--callgraph',
+        action='store_true',
+        help='Generate call graph analysis (Step 18 - trace subroutine calls and build call graph)'
+    )
 
     # Logging arguments (enhanced logging system v2.0.0)
     parser.add_argument(
@@ -1216,6 +1228,54 @@ def main():
                 logger.warning(f"[Step 17] Pattern analysis failed: {pattern_result.get('error', 'Unknown error')}")
             elif args.patterns:
                 logger.warning("[Step 17] Pattern recognizer not available")
+
+        # PHASE 3 Enhancement: Optional call graph analysis (Step 18)
+        if args.callgraph and SUBROUTINE_TRACER_AVAILABLE:
+            # Determine output directory for call graph
+            if args.both:
+                callgraph_output_dir = Path(args.output_dir) if args.output_dir else Path(input_file).parent
+            else:
+                callgraph_output_dir = Path(output_file).parent
+
+            # Create analysis subdirectory
+            analysis_dir = callgraph_output_dir / "analysis"
+
+            # Only print header if not already printed
+            if not ((args.trace and SIDWINDER_INTEGRATION_AVAILABLE) or
+                    (args.disasm and DISASSEMBLER_INTEGRATION_AVAILABLE) or
+                    (args.audio_export and AUDIO_EXPORT_INTEGRATION_AVAILABLE) or
+                    (args.memmap and MEMMAP_ANALYZER_AVAILABLE) or
+                    (args.patterns and PATTERN_RECOGNIZER_AVAILABLE)):
+                logger.info("")
+                logger.info("=" * 60)
+                logger.info("[Phase 5] Running optional analysis tools...")
+                logger.info("=" * 60)
+
+            # Generate call graph filename
+            callgraph_file = analysis_dir / f"{Path(input_file).stem}_callgraph.txt"
+
+            # Create tracer and run analysis
+            tracer = SubroutineTracer(Path(input_file))
+            callgraph_result = tracer.analyze(verbose=1 if not args.quiet else 0)
+
+            if callgraph_result and callgraph_result['success']:
+                # Generate report
+                report_success = tracer.generate_report(callgraph_result, callgraph_file)
+
+                if report_success:
+                    logger.info(f"[Step 18] Call graph analysis complete:")
+                    logger.info(f"  Report file:  {callgraph_file.name}")
+                    logger.info(f"  Subroutines:  {callgraph_result['total_subroutines']}")
+                    logger.info(f"  Init calls:   {callgraph_result['init_subroutines']}")
+                    logger.info(f"  Play calls:   {callgraph_result['play_subroutines']}")
+                    logger.info(f"  Shared:       {callgraph_result['shared_subroutines']}")
+                    logger.info(f"  Max depth:    {callgraph_result['max_call_depth']}")
+                else:
+                    logger.warning("[Step 18] Call graph report generation failed")
+            elif callgraph_result and not callgraph_result['success']:
+                logger.warning(f"[Step 18] Call graph analysis failed: {callgraph_result.get('error', 'Unknown error')}")
+            elif args.callgraph:
+                logger.warning("[Step 18] Subroutine tracer not available")
 
     except sidm2_errors.SIDMError as e:
         # Our custom errors already have helpful messages
