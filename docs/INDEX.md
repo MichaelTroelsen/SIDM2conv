@@ -138,6 +138,11 @@ Technical analysis, validation results, and findings:
 | [SIDWINDER_PYTHON_DESIGN.md](analysis/SIDWINDER_PYTHON_DESIGN.md) | **SIDwinder Python implementation design** - 100% Python replacement architecture | v2.8.0 |
 | [JC64DIS_SID_HANDLING_ANALYSIS.md](analysis/JC64DIS_SID_HANDLING_ANALYSIS.md) | **JC64dis SID file handling** - Complete technical analysis, player detection, frequency analysis, integration strategies | v1.0.0 |
 
+### External Tools Integration
+| Document | Content | Version |
+|----------|---------|---------|
+| [JC64_BUILD_AND_TEST_RESULTS.md](integration/JC64_BUILD_AND_TEST_RESULTS.md) | **JC64 build and test results** - Python wrapper, PSID parsing, player detection, known issues | v1.0.0 |
+
 ### Implementation Analysis
 | Document | Content |
 |----------|---------|
