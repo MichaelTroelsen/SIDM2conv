@@ -94,6 +94,13 @@ try:
 except ImportError:
     AUDIO_EXPORT_INTEGRATION_AVAILABLE = False
 
+# Import Memory Map Analyzer (Step 12.5 - optional memory analysis)
+try:
+    from sidm2.memmap_analyzer import MemoryMapAnalyzer
+    MEMMAP_ANALYZER_AVAILABLE = True
+except ImportError:
+    MEMMAP_ANALYZER_AVAILABLE = False
+
 # Get module logger (will be configured in main())
 logger = get_logger(__name__)
 
@@ -912,6 +919,11 @@ def main():
         default=30,
         help='Audio export duration in seconds (default: 30)'
     )
+    parser.add_argument(
+        '--memmap',
+        action='store_true',
+        help='Generate memory map analysis (Step 12.5 - analyze memory layout and regions)'
+    )
 
     # Logging arguments (enhanced logging system v2.0.0)
     parser.add_argument(
@@ -1101,6 +1113,52 @@ def main():
                 logger.warning("  Note: SID2WAV v1.8 only supports PSID files, not RSID files")
             elif args.audio_export:
                 logger.warning("[Step 16] Audio export not available (SID2WAV.EXE not found)")
+
+        # PHASE 3 Enhancement: Optional memory map analysis (Step 12.5)
+        if args.memmap and MEMMAP_ANALYZER_AVAILABLE:
+            # Determine output directory for memory map
+            if args.both:
+                memmap_output_dir = Path(args.output_dir) if args.output_dir else Path(input_file).parent
+            else:
+                memmap_output_dir = Path(output_file).parent
+
+            # Create analysis subdirectory
+            analysis_dir = memmap_output_dir / "analysis"
+
+            # Only print header if we didn't already print it for other tools
+            if not ((args.trace and SIDWINDER_INTEGRATION_AVAILABLE) or
+                    (args.disasm and DISASSEMBLER_INTEGRATION_AVAILABLE) or
+                    (args.audio_export and AUDIO_EXPORT_INTEGRATION_AVAILABLE)):
+                logger.info("")
+                logger.info("=" * 60)
+                logger.info("[Phase 5] Running optional analysis tools...")
+                logger.info("=" * 60)
+
+            # Generate memory map filename
+            memmap_file = analysis_dir / f"{Path(input_file).stem}_memmap.txt"
+
+            # Create analyzer and run analysis
+            analyzer = MemoryMapAnalyzer(Path(input_file))
+            memmap_result = analyzer.analyze(verbose=1 if not args.quiet else 0)
+
+            if memmap_result and memmap_result['success']:
+                # Generate report
+                report_success = analyzer.generate_report(memmap_result, memmap_file)
+
+                if report_success:
+                    logger.info(f"[Step 12.5] Memory map analysis complete:")
+                    logger.info(f"  Report file: {memmap_file.name}")
+                    logger.info(f"  Load addr:   ${memmap_result['load_addr']:04X}")
+                    logger.info(f"  End addr:    ${memmap_result['end_addr']:04X}")
+                    logger.info(f"  Total size:  {memmap_result['total_size']} bytes")
+                    logger.info(f"  Code:        {memmap_result['code_size']} bytes ({memmap_result['code_size']*100//memmap_result['total_size'] if memmap_result['total_size'] > 0 else 0}%)")
+                    logger.info(f"  Data:        {memmap_result['data_size']} bytes ({memmap_result['data_size']*100//memmap_result['total_size'] if memmap_result['total_size'] > 0 else 0}%)")
+                else:
+                    logger.warning("[Step 12.5] Memory map report generation failed")
+            elif memmap_result and not memmap_result['success']:
+                logger.warning(f"[Step 12.5] Memory map analysis failed: {memmap_result.get('error', 'Unknown error')}")
+            elif args.memmap:
+                logger.warning("[Step 12.5] Memory map analyzer not available")
 
     except sidm2_errors.SIDMError as e:
         # Our custom errors already have helpful messages
