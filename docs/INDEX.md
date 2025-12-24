@@ -35,6 +35,12 @@ Active tracking documents for improvements and task management:
 | [LOGGING_ERROR_IMPROVEMENTS_SUMMARY.md](../LOGGING_ERROR_IMPROVEMENTS_SUMMARY.md) | **Logging enhancements** - Summary of logging system improvements |
 | [RELEASE_NOTES_v2.3.3.md](../RELEASE_NOTES_v2.3.3.md) | **Release notes** - v2.3.3 specific release documentation |
 
+### Implementation Plans
+
+| Plan | Purpose | Version |
+|------|---------|---------|
+| [JC64_ADVANCED_FEATURES_PLAN.md](plans/JC64_ADVANCED_FEATURES_PLAN.md) | **JC64 advanced features** - SID disassembly, player detection, frequency analysis (6 phases, 30-46 hours) | v1.0.0 |
+
 ---
 
 ## 📖 User Guides
