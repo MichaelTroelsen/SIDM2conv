@@ -204,23 +204,31 @@ class SF2File:
 
         SF2 files can use different drivers:
         1. Driver 11 (standard): Code at $1000, play loop at $1006
-        2. Laxity driver: Code at $0D7E, JMP table at $0D80
+        2. Laxity driver: Code at $0D7E, entry points at $0D80/$0D83
 
-        Detection: Check if first JMP (at offset 4) targets $0Dxx range (Laxity)
-        or $10xx range (Driver 11).
+        Detection methods (in order of reliability):
+        1. Load address: $0D7E = Laxity, $1000 = Driver 11
+        2. Check for "Laxity" string in header (backup method)
         """
-        # Check the JMP target at file offset 4 (first entry point)
-        # Format: 4C LL HH = JMP $HHLL
-        if len(self.data) >= 7 and self.data[4] == 0x4C:  # JMP opcode
-            jmp_target_hi = self.data[6]
+        # Method 1: Check load address (most reliable)
+        # Laxity driver always loads at $0D7E
+        # Driver 11 loads at $1000
+        if self.load_address == 0x0D7E:
+            # Laxity driver detected via load address
+            # Entry points: $0D7E (init), $0D81 (play)
+            self.init_address = 0x0D7E
+            self.play_address = 0x0D81
+            logger.debug(f"  Detected Laxity driver (load=$0D7E): init=$0D7E, play=$0D81")
+            return
 
-            if jmp_target_hi == 0x0D:
-                # Laxity driver: JMPs to $0Dxx range
-                # Entry points at $0D80 (init) and $0D83 (play)
-                # Both work directly - no stub issue like Driver 11
+        # Method 2: Check for "Laxity" string in header (backup)
+        # The Laxity driver has " Laxity " text starting around offset 8
+        if len(self.data) >= 20:
+            header_text = self.data[2:50]  # Check first ~48 bytes after load address
+            if b'Laxity' in header_text:
                 self.init_address = 0x0D80
                 self.play_address = 0x0D83
-                logger.debug(f"  Detected Laxity driver: init=$0D80, play=$0D83")
+                logger.debug(f"  Detected Laxity driver (string match): init=$0D80, play=$0D83")
                 return
 
         # Default: Driver 11 (standard SF2 driver) entry points
