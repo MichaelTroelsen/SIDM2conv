@@ -1,39 +1,14 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**Project**: SIDM2 - SID to SF2 Converter | **Version**: 2.8.0 | **Updated**: 2025-12-22
+**Project**: SIDM2 - SID to SF2 Converter | **Version**: 2.8.0 | **Updated**: 2025-12-24
 
 ---
 
 ## 30-Second Overview
 
-Converts C64 SID files (Laxity NewPlayer v21) to SID Factory II (.sf2) format. Custom Laxity driver achieves **99.93% frame accuracy**. Includes SF2 Viewer GUI, Conversion Cockpit GUI, **Python siddump** (100% complete), **8 optional analysis tools** (v2.0.0), validation system, and 200+ passing tests.
+Converts C64 SID files (Laxity NewPlayer v21) to SID Factory II (.sf2) format. Custom Laxity driver achieves **99.93% frame accuracy**. Includes SF2 Viewer GUI, Conversion Cockpit GUI, **Python siddump** (100% complete), **Python SIDwinder** (100% complete), validation system, and 200+ passing tests.
 
-**Key**: Laxity NP21 → Laxity Driver (99.93%) | SF2-Exported → Driver 11 (100%) | **Pure Python Pipeline** | **8 Analysis Tools** 🔬
-
----
-
-## IMPORTANT: v2.0.0 is an EXTENSION of v1.8.0
-
-**NOT A REPLACEMENT** - The enhanced pipeline adds optional analysis tools while maintaining 100% backward compatibility:
-
-**v1.8.0 (Current Core)**
-- 15-step pipeline with 9 tools
-- Fast, proven, reliable
-- Used by default (quick mode)
-- Output: SF2 + 11 text files in <1 second
-
-**v2.0.0 (Enhanced - Optional) ✅ COMPLETE**
-- Adds **8 new optional analysis tools** (all implemented!)
-- Extends to 20-step pipeline with optional steps
-- All new features opt-in via CLI flags
-- New modes: standard, comprehensive, custom
-- Output: Up to 25+ files with detailed analysis
-- Time: 5-15 seconds (depending on tools enabled)
-- Tools: SIDwinder Tracer, 6502 Disassembler, Audio Export, Memory Map, Pattern Recognizer, Subroutine Tracer, Report Generator, Output Organizer
-
-**Bottom Line**: Existing users see ZERO change. New users can opt-in to enhanced analysis.
-
-See `docs/PIPELINE_ARCHITECTURE.md` for complete architecture details.
+**Key**: 🎯 **Auto-Select Driver (v2.8.0)** | Laxity → 99.93% | SF2 → 100% | Others → Safe Default
 
 ---
 
@@ -50,7 +25,13 @@ See `docs/PIPELINE_ARCHITECTURE.md` for complete architecture details.
 ## Quick Commands
 
 ```bash
-# Convert (99.93% accuracy)
+# Convert (AUTOMATIC driver selection - NEW v2.8.0 🎯)
+sid-to-sf2.bat input.sid output.sf2
+# → Auto-selects: Laxity (99.93%), SF2 (100%), Others (safe default)
+# → Generates: output.sf2 + output.txt (driver documentation)
+# → Validates: SF2 format automatically
+
+# Manual override (expert use)
 sid-to-sf2.bat input.sid output.sf2 --driver laxity
 
 # View/Export SF2
@@ -69,153 +50,61 @@ conversion-cockpit.bat                 # Mission control GUI
 python pyscript/siddump_complete.py input.sid -t30  # Frame analysis
 python pyscript/test_siddump.py -v                  # Run 38 unit tests
 
-# Python SIDwinder (NEW v2.8.0)
+# Python SIDwinder (v2.8.0)
 python pyscript/sidwinder_trace.py --trace output.txt --frames 1500 input.sid
 sidwinder-trace.bat -trace=output.txt -frames=1500 input.sid  # Batch launcher
-
-# Analysis Tools (v2.0.0 - ALL COMPLETE) 🔬
-python scripts/sid_to_sf2.py input.sid output.sf2 --driver laxity \
-    --trace --frames 1500 \      # SIDwinder Tracer
-    --disasm \                    # 6502 Disassembler
-    --audio-export \              # Audio Export (WAV)
-    --memmap \                    # Memory Map Analyzer
-    --patterns \                  # Pattern Recognizer
-    --callgraph \                 # Subroutine Tracer
-    --organize                    # Output Organizer (+ auto Report Generator)
-# Output: analysis/ with disassembly/, reports/, audio/ subdirectories + INDEX.txt + README.md
 ```
 
 **Logging** (v2.5.3): `-v/-vv` (verbose), `-q` (quiet), `--debug`, `--log-file`, `--log-json`
 
 ---
 
-## Python siddump (v2.6.0) 🎉
+## Automatic Driver Selection (v2.8.0) 🎯
 
-**Status**: ✅ **Production Ready** | **Accuracy**: 100% musical content match
+**Quality-First Policy v2.0**: Auto-selects best driver based on source SID player type.
 
-Pure Python replacement for siddump.exe with zero external dependencies.
+**Driver Matrix**:
 
-### Quick Start
+| Source Player | Driver | Accuracy | Reason |
+|--------------|--------|----------|--------|
+| **Laxity NP21** | Laxity | **99.93%** ✅ | Custom optimized |
+| **SF2-exported** | Driver 11 | **100%** ✅ | Perfect roundtrip |
+| **NewPlayer 20.G4** | NP20 | **70-90%** ✅ | Format-specific |
+| **Rob Hubbard/Martin Galway/Unknown** | Driver 11 | Safe default | Standard |
 
-```bash
-# Basic usage (60 seconds default)
-python pyscript/siddump_complete.py music.sid
+**Workflow**: Identify player → Select driver → Display selection → Convert → Validate → Generate info file
 
-# Custom time (30 seconds)
-python pyscript/siddump_complete.py music.sid -t30
+**Output**: `output.sf2` (validated) + `output.txt` (driver selection, accuracy, validation)
 
-# Profiling mode (show CPU cycles)
-python pyscript/siddump_complete.py music.sid -t30 -p
+**Benefits**: ✅ Max quality | ✅ Automatic | ✅ Documented | ✅ Validated | ✅ Flexible override
 
-# Time format (mm:ss.ff)
-python pyscript/siddump_complete.py music.sid -t30 -z
-
-# Start from frame 100
-python pyscript/siddump_complete.py music.sid -t30 -f100
-```
-
-### Features
-
-- ✅ **100% musical content match** vs C version (frequencies, notes, waveforms, ADSR, pulse)
-- ✅ **All 11 CLI flags** supported (-a, -c, -d, -f, -l, -n, -o, -p, -s, -t, -z)
-- ✅ **Cross-platform** (Mac/Linux/Windows)
-- ✅ **38 unit tests** (100% pass rate)
-- ✅ **Integrated** (used by sidm2/siddump.py wrapper by default)
-- ⚠️ **2.8x slower** than C (acceptable - 30s dump in 4.2s)
-
-### Integration
-
-Python version is used **automatically** by default:
-
-```python
-from sidm2.siddump import extract_from_siddump
-
-# Uses Python siddump automatically
-result = extract_from_siddump('music.sid', playback_time=30)
-
-# Force C exe (if needed)
-result = extract_from_siddump('music.sid', playback_time=30, use_python=False)
-```
-
-### Documentation
-
-- **Implementation**: `docs/implementation/SIDDUMP_PYTHON_IMPLEMENTATION.md`
-- **Unit Tests**: `pyscript/test_siddump.py` (38 tests)
-- **Analysis**: `docs/analysis/EXTERNAL_TOOLS_REPLACEMENT_ANALYSIS.md`
+**See**: `CONVERSION_POLICY_APPROVED.md`
 
 ---
 
-## Python SIDwinder (v2.8.0) 🎉
+## Python Tools
 
-**Status**: ✅ **Production Ready** | **Accuracy**: 100% format compatible | **Platform**: Cross-platform
-
-Pure Python replacement for SIDwinder.exe trace functionality with zero external dependencies.
-
-### Quick Start
+### Python siddump (v2.6.0) ✅
+Pure Python replacement for siddump.exe. **100% musical content match**, cross-platform, zero dependencies.
 
 ```bash
-# Basic usage (1500 frames = 30 seconds @ 50Hz)
+python pyscript/siddump_complete.py music.sid -t30   # 30 seconds
+python pyscript/siddump_complete.py music.sid -t30 -p # + profiling
+```
+
+**Features**: All 11 CLI flags, 38 unit tests (100% pass), auto-used by sidm2/siddump.py
+**Docs**: `docs/implementation/SIDDUMP_PYTHON_IMPLEMENTATION.md`
+
+### Python SIDwinder (v2.8.0) ✅
+Pure Python SIDwinder.exe trace replacement. **100% format compatible**, cross-platform.
+
+```bash
 python pyscript/sidwinder_trace.py --trace output.txt --frames 1500 input.sid
-
-# Batch launcher
-sidwinder-trace.bat -trace=output.txt -frames=1500 input.sid
-
-# Quick test (100 frames)
-python pyscript/sidwinder_trace.py --trace test.txt --frames 100 input.sid
-
-# Verbose mode
-python pyscript/sidwinder_trace.py --trace output.txt --frames 1500 input.sid -v
+sidwinder-trace.bat -trace=output.txt -frames=1500 input.sid  # Batch
 ```
 
-### Features
-
-- ✅ **100% SIDwinder-compatible output format** (FRAME: D40X:$YY,...)
-- ✅ **Frame-aggregated tracing** (1 line per frame, efficient for validation)
-- ✅ **Cross-platform** (Windows, Mac, Linux - no Wine needed)
-- ✅ **Leverages CPU6502Emulator** (1,242 lines reused, proven code)
-- ✅ **Python-first with .exe fallback** (automatic graceful degradation)
-- ✅ **High performance** (~0.1 seconds per 100 frames)
-- ✅ **Comprehensive testing** (17 unit tests + 10 real-world files, 100% pass)
-
-### API Usage
-
-```python
-# Use wrapper (Python-first with .exe fallback)
-from sidm2.sidwinder_wrapper import trace_sid
-from pathlib import Path
-
-result = trace_sid(
-    sid_file=Path("input.sid"),
-    output_file=Path("output.txt"),
-    frames=1500,
-    use_python=True  # Default
-)
-
-# Returns: {'success': True, 'method': 'python', 'writes': 2475, 'frames': 1500, ...}
-
-# Direct Python usage (no fallback)
-from pyscript.sidtracer import SIDTracer
-from pyscript.trace_formatter import TraceFormatter
-
-tracer = SIDTracer(Path("input.sid"), verbose=1)
-trace_data = tracer.trace(frames=1500)
-TraceFormatter.write_trace_file(trace_data, Path("output.txt"))
-```
-
-### Real-World Validation
-
-**10/10 Laxity SID files** tested successfully:
-- Total: 18,322 SID writes captured
-- Output: 173,914 bytes generated
-- Success rate: 100% (zero failures)
-- Performance: Avg 0.1s per 100 frames
-
-### Documentation
-
-- **Design**: `docs/analysis/SIDWINDER_PYTHON_DESIGN.md`
-- **Unit Tests**: `pyscript/test_sidwinder_trace.py` (17 tests)
-- **Real-World Tests**: `pyscript/test_sidwinder_realworld.py` (10 files)
-- **Analysis**: `docs/analysis/EXTERNAL_TOOLS_REPLACEMENT_ANALYSIS.md`
+**Features**: Frame-aggregated tracing, 17 unit tests + 10 real-world files (100% pass), ~0.1s per 100 frames
+**Docs**: `docs/analysis/SIDWINDER_PYTHON_DESIGN.md`
 
 ---
 
@@ -224,38 +113,22 @@ TraceFormatter.write_trace_file(trace_data, Path("output.txt"))
 ```
 SIDM2/
 ├── pyscript/           # ALL Python scripts (v2.6)
-│   ├── siddump_complete.py          # Python siddump (595 lines, NEW v2.6.0)
-│   ├── conversion_cockpit_gui.py    # Batch conversion GUI
-│   ├── sf2_viewer_gui.py            # SF2 viewer GUI
-│   ├── sf2_to_text_exporter.py      # Text exporter
-│   └── test_*.py                    # 200+ unit tests (38 for siddump)
-│
+│   ├── siddump_complete.py, sidwinder_trace.py  # Python tools
+│   ├── conversion_cockpit_gui.py, sf2_viewer_gui.py
+│   └── test_*.py                    # 200+ unit tests
 ├── scripts/            # Production tools
 │   ├── sid_to_sf2.py               # Main converter
-│   ├── sf2_to_sid.py               # SF2 packer
-│   └── validate_sid_accuracy.py    # Validator
-│
+│   ├── sf2_to_sid.py, validate_sid_accuracy.py
 ├── sidm2/              # Core package
-│   ├── laxity_parser.py, laxity_converter.py
-│   ├── sf2_packer.py, cpu6502_emulator.py
-│   ├── siddump.py (uses Python version, v2.6.0)
-│   └── logging_config.py (v2.0.0)
-│
-├── tools/              # External tools (optional)
-│   └── siddump.exe (fallback), SIDwinder.exe, SID2WAV.EXE
-│
-├── G5/drivers/         # SF2 drivers
-│   └── sf2driver_laxity_00.prg (8KB, 99.93%)
-│
+│   ├── laxity_parser.py, laxity_converter.py, sf2_packer.py
+│   ├── driver_selector.py (v2.8.0), siddump.py, logging_config.py
+├── tools/              # External tools (optional fallback)
+├── G5/drivers/         # SF2 drivers (laxity, driver11, np20)
 ├── docs/               # Documentation
-│   ├── guides/         # User guides
-│   ├── reference/      # Technical docs
-│   └── ARCHITECTURE.md # System design
-│
-└── *.bat               # Launchers (10 files)
+└── *.bat               # Launchers
 ```
 
-**Complete listing**: `docs/FILE_INVENTORY.md`
+**Complete**: `docs/FILE_INVENTORY.md`
 
 ---
 
@@ -333,15 +206,14 @@ SIDM2/
 
 **Convert & Validate**:
 ```bash
-python scripts/sid_to_sf2.py input.sid output.sf2 --driver laxity
+python scripts/sid_to_sf2.py input.sid output.sf2  # Auto-selects driver
 python scripts/validate_sid_accuracy.py input.sid output.sid
 ```
 
 **Debug Conversion**:
-1. Check `output/*/New/info.txt` for warnings
+1. Check `output.txt` info file for driver selection and validation
 2. Compare dumps: `python pyscript/siddump_complete.py original.sid -t30` vs `exported.sid`
 3. Compare audio: `original.wav` vs `exported.wav`
-4. Use C siddump for exact filter matching (if needed): `tools/siddump.exe original.sid -t30`
 
 **Explore Codebase**:
 - Use Task(Explore) for broad questions
@@ -352,43 +224,26 @@ python scripts/validate_sid_accuracy.py input.sid output.sid
 
 ## Version History
 
-### v2.0.0 (2025-12-24) - Pipeline Enhancement Complete ✅ 🎉
-**ALL 8 ANALYSIS TOOLS IMPLEMENTED** - Major pipeline enhancement milestone achieved!
-
-- **8 Optional Analysis Tools** (2,677 lines production code, 1,234 lines tests)
-  1. ✅ SIDwinder Tracer (Step 7.5) - Frame-by-frame SID register traces
-  2. ✅ 6502 Disassembler (Step 8.5) - Init/play routine disassembly
-  3. ✅ Audio Export (Step 16) - WAV export with SID2WAV.EXE wrapper
-  4. ✅ Memory Map Analyzer (Step 12.5) - Memory layout and region analysis
-  5. ✅ Pattern Recognizer (Step 17) - Repeating pattern detection
-  6. ✅ Subroutine Tracer (Step 18) - JSR call graph analysis
-  7. ✅ Report Generator (Step 19) - Automatic consolidated reports
-  8. ✅ Output Organizer (Step 20) - Structured directory organization
-
-- **200+ Unit Tests** (100% pass rate across all tools)
-- **100% Backward Compatible** (all tools opt-in via CLI flags)
-- **Cross-Platform** (pure Python, Windows/Mac/Linux)
-- **Zero External Dependencies** (except SID2WAV.EXE for audio export)
-- **Phase 5 Integration** (runs after conversion, no slowdown to core pipeline)
+### v2.8.0 (2025-12-24) - Automatic Driver Selection + Python SIDwinder ✅
+- **Automatic Driver Selection** (Quality-First Policy v2.0)
+- **Python SIDwinder** (100% complete, cross-platform trace functionality)
+- **Driver documentation** (info files for every conversion)
+- **SF2 format validation** (automatic after every conversion)
 
 ### v2.6.0 (2025-12-22) - Python siddump Complete ✅
-- **Python siddump implementation** (595 lines, 100% complete)
+- **Python siddump** (595 lines, 100% musical content accuracy)
 - **38 unit tests** (100% pass rate)
-- **100% musical content accuracy** vs C version
-- **Wrapper integration** (sidm2/siddump.py uses Python by default)
 - **Cross-platform** (Mac/Linux/Windows)
-- **Zero external dependencies** (pure Python)
-- Production ready with automatic fallback to C exe
 
 ### v2.5.3 (2025-12-22) - Enhanced Logging
 - Enhanced Logging System v2.0.0 (4 levels, JSON, rotation)
 - CLI flags: `-v`, `-vv`, `-q`, `--debug`, `--log-file`, `--log-json`
-- Backward compatible
 
-### Earlier Versions
-- **v2.5.0** - Conversion Cockpit GUI (mission control for batch conversion)
+### Recent Versions
+- **v2.5.0** - Conversion Cockpit GUI
 - **v2.3.0** - Documentation consolidation
 - **v2.2.0** - SF2 Viewer single-track support
+- **v2.0.0** - 8 optional analysis tools (SIDwinder Tracer, 6502 Disassembler, Audio Export, Memory Map, Pattern Recognizer, Subroutine Tracer, Report Generator, Output Organizer)
 - **v1.8.0** - Laxity driver (99.93% accuracy)
 
 **Complete history**: `CHANGELOG.md`
@@ -397,4 +252,4 @@ python scripts/validate_sid_accuracy.py input.sid output.sid
 
 **End of Quick Reference**
 
-**Lines**: ~170 (compacted from 260) | **For full docs**: See README.md and docs/
+**Lines**: ~270 (compacted from 445) | **For full docs**: See README.md and docs/

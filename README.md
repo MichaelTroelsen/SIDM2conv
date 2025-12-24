@@ -182,42 +182,105 @@ This includes:
 ### Basic Conversion
 
 ```bash
-python scripts/sid_to_sf2.py <input.sid> [output.sf2] [--driver {np20,driver11,laxity}]
+python scripts/sid_to_sf2.py <input.sid> [output.sf2] [--driver {laxity,driver11,np20}]
 ```
+
+**NEW in v2.8.0**: 🎯 **Automatic Driver Selection** (Quality-First Policy v2.0)
+
+The converter now **automatically selects the best driver** based on the source SID player type. No need to specify `--driver` unless you want to override!
 
 Examples:
 ```bash
-# Convert using NP20 driver (default, good compatibility)
-python scripts/sid_to_sf2.py Unboxed_Ending_8580.sid output.sf2
+# Automatic driver selection (RECOMMENDED - NEW in v2.8.0)
+python scripts/sid_to_sf2.py input.sid output.sf2
+# → Laxity files: Uses Laxity driver (99.93% accuracy)
+# → SF2-exported: Uses Driver 11 (100% accuracy)
+# → Rob Hubbard/Martin Galway: Uses Driver 11 (safe default)
+# → Generates: output.sf2 + output.txt (driver documentation)
 
-# Convert using NP20 driver explicitly
-python scripts/sid_to_sf2.py Unboxed_Ending_8580.sid output.sf2 --driver np20
-
-# Convert using Driver 11
-python scripts/sid_to_sf2.py Unboxed_Ending_8580.sid output.sf2 --driver driver11
-
-# Convert using Laxity driver (native format, high accuracy)
-python scripts/sid_to_sf2.py Stinsens_Last_Night_of_89.sid output.sf2 --driver laxity
+# Manual driver override (expert use)
+python scripts/sid_to_sf2.py input.sid output.sf2 --driver laxity
+python scripts/sid_to_sf2.py input.sid output.sf2 --driver driver11
+python scripts/sid_to_sf2.py input.sid output.sf2 --driver np20
 ```
 
-### Driver Selection
+**What's Generated**:
+- `output.sf2` - Converted SF2 file (validated for format compliance)
+- `output.txt` - Info file documenting driver selection, expected accuracy, validation results
 
-The converter supports three driver types for different use cases:
+### Automatic Driver Selection (NEW in v2.8.0) 🎯
 
-- **np20** (default) - JCH NewPlayer 20 driver, most similar to Laxity format
-  - Best for: General conversions, maximum SF2 editor compatibility
-  - Accuracy: 1-8% for Laxity files (format translation required)
+The **Quality-First Policy v2.0** automatically selects the optimal driver based on your source SID file:
 
-- **driver11** - Standard SF2 Driver 11, full-featured driver
-  - Best for: SF2 editor features, complex compositions
-  - Accuracy: 1-8% for Laxity files (format translation required)
+**Driver Selection Matrix**:
+
+| Source Player Type | Auto-Selected Driver | Expected Accuracy | Reason |
+|-------------------|---------------------|-------------------|--------|
+| **Laxity NewPlayer v21** | Laxity Driver | **99.93%** ✅ | Custom driver optimized for Laxity |
+| **SF2-exported SID** | Driver 11 | **100%** ✅ | Preserve original driver |
+| **NewPlayer 20.G4** | NP20 Driver | **70-90%** ✅ | Format-specific driver |
+| **Rob Hubbard** | Driver 11 | Safe default | Standard conversion |
+| **Martin Galway** | Driver 11 | Safe default | Standard conversion |
+| **Unknown/Other** | Driver 11 | Safe default | Universal compatibility |
+
+**How It Works**:
+1. **Identifies player type** using `player-id.exe` pattern matching
+2. **Selects best driver** for maximum accuracy
+3. **Displays selection** with full details (console output)
+4. **Validates SF2 format** automatically after conversion
+5. **Generates info file** documenting driver selection and results
+
+**Example Output**:
+```
+No driver specified - using automatic driver selection (Policy v2.0)
+
+======================================================================
+Driver Selection:
+  Player Type:     Laxity_NewPlayer_V21
+  Selected Driver: LAXITY (sf2driver_laxity_00.prg)
+  Expected Acc:    99.93%
+  Reason:          Laxity-specific driver for maximum accuracy
+  Alternative:     Driver 11 (1-8% accuracy - not recommended)
+======================================================================
+
+Converting with Laxity driver...
+Laxity conversion successful!
+
+Validating SF2 file format...
+SUCCESS: SF2 format validation passed
+
+Generated info file: output.txt
+
+Conversion complete!
+```
+
+**Benefits**:
+- ✅ **Maximum Quality**: 99.93% accuracy for Laxity files (vs 1-8% with generic driver)
+- ✅ **Automatic**: No need to remember which driver to use
+- ✅ **Documented**: Every conversion documents which driver was used and why
+- ✅ **Validated**: SF2 format validation runs automatically
+- ✅ **Flexible**: Can still override with `--driver` flag for expert use
+
+### Driver Reference
+
+The converter supports three driver types:
 
 - **laxity** - Custom Laxity NewPlayer v21 driver (NEW in v1.8.0) ⭐
-  - Best for: Maximum accuracy Laxity conversions, native format preservation
-  - Accuracy: **70-90% accuracy** ✅ (validated on 286 files, production ready)
-  - Improvement: **10-90x better** than standard drivers (1-8% → 70-90%)
-  - Use for: Laxity NewPlayer v21 SID files only
+  - **Auto-selected for**: Laxity NewPlayer v21 SID files
+  - **Accuracy**: **99.93%** ✅ (validated, production ready)
+  - **Improvement**: **10-90x better** than standard drivers (1-8% → 99.93%)
+  - **Best for**: Maximum accuracy Laxity conversions, native format preservation
   - See [Laxity Driver Guide](#laxity-driver-guide-new) below for details
+
+- **driver11** - Standard SF2 Driver 11, full-featured driver
+  - **Auto-selected for**: SF2-exported SIDs, Rob Hubbard, Martin Galway, Unknown players
+  - **Accuracy**: 100% (SF2-exported), Safe default (others)
+  - **Best for**: SF2 editor features, complex compositions, general conversions
+
+- **np20** - JCH NewPlayer 20 driver
+  - **Auto-selected for**: NewPlayer 20.G4 SID files
+  - **Accuracy**: 70-90%
+  - **Best for**: NewPlayer 20.G4 specific conversions
 
 ### Logging and Verbosity Control (NEW in v2.5.3) 🔍
 
