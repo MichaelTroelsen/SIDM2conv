@@ -178,8 +178,8 @@ class DisassemblerIntegration:
             )
 
             if verbose > 0:
-                print(f"    Init: {len(disasm_init.lines)} instructions → {init_file.name}")
-                print(f"    Play: {len(disasm_play.lines)} instructions → {play_file.name}")
+                print(f"    Init: {len(disasm_init.lines)} instructions -> {init_file.name}")
+                print(f"    Play: {len(disasm_play.lines)} instructions -> {play_file.name}")
 
             return {
                 'success': True,

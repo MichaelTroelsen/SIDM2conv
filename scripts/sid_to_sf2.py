@@ -17,6 +17,8 @@ import logging
 import os
 import sys
 import subprocess
+import shutil
+import time
 from pathlib import Path
 
 # Add parent directory to path so sidm2 module can be found
@@ -49,6 +51,9 @@ from sidm2 import errors as sidm2_errors
 
 # Import enhanced logging system
 from sidm2.logging_config import setup_logging, get_logger, configure_from_args, PerformanceLogger
+
+# Import driver selector (Conversion Policy v2.0)
+from sidm2.driver_selector import DriverSelector, DriverSelection
 
 # Removed legacy laxity_parser import (no longer needed)
 
@@ -128,6 +133,20 @@ try:
     OUTPUT_ORGANIZER_AVAILABLE = True
 except ImportError:
     OUTPUT_ORGANIZER_AVAILABLE = False
+
+# Import Siddump Integration (Step 7.6 - siddump frame analysis)
+try:
+    from sidm2.siddump_integration import SiddumpIntegration
+    SIDDUMP_INTEGRATION_AVAILABLE = True
+except ImportError:
+    SIDDUMP_INTEGRATION_AVAILABLE = False
+
+# Import Accuracy Integration (Step 21 - accuracy validation)
+try:
+    from sidm2.accuracy_integration import AccuracyIntegration
+    ACCURACY_INTEGRATION_AVAILABLE = True
+except ImportError:
+    ACCURACY_INTEGRATION_AVAILABLE = False
 
 # Get module logger (will be configured in main())
 logger = get_logger(__name__)
@@ -482,7 +501,7 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
     Args:
         input_path: Path to input SID file
         output_path: Path for output SF2 file (or None to use config naming pattern)
-        driver_type: 'driver11' for standard driver, 'np20' for NewPlayer 20 (or None to use config)
+        driver_type: 'driver11' for standard driver, 'np20' for NewPlayer 20, 'laxity' for Laxity driver (or None for automatic selection)
         config: Optional configuration (uses defaults if None)
         sf2_reference_path: Optional path to original SF2 file (for SF2-exported SIDs)
         use_midi: Use MIDI-based sequence extraction (Python emulator, high accuracy)
@@ -498,10 +517,6 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
         if config is None:
             config = get_default_config()
 
-        # Use config values as defaults
-        if driver_type is None:
-            driver_type = config.driver.default_driver
-
         # Validate input
         if not os.path.exists(input_path):
             raise sidm2_errors.FileNotFoundError(
@@ -514,6 +529,36 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
                 ],
                 docs_link="README.md#usage"
             )
+
+        # CONVERSION POLICY v2.0: Automatic driver selection
+        # If no driver specified, use DriverSelector to choose best driver for player type
+        driver_selection = None
+        if driver_type is None:
+            logger.info("No driver specified - using automatic driver selection (Policy v2.0)")
+            selector = DriverSelector()
+            driver_selection = selector.select_driver(Path(input_path))
+            driver_type = driver_selection.driver_name
+
+            # Display driver selection information
+            logger.info("")
+            logger.info("=" * 70)
+            logger.info(selector.format_selection_output(driver_selection))
+            logger.info("=" * 70)
+            logger.info("")
+        else:
+            # Manual driver override - still document it
+            logger.info(f"Using manually specified driver: {driver_type}")
+            # Create a selection record for documentation purposes
+            selector = DriverSelector()
+            player_type = detect_player_type(input_path)
+            driver_selection = selector.select_driver(
+                Path(input_path),
+                player_type=player_type,
+                force_driver=driver_type
+            )
+
+        # Track whether a custom driver already wrote the output file
+        custom_driver_wrote_file = False
 
         # Handle Laxity driver (custom implementation)
         if driver_type == 'laxity':
@@ -531,10 +576,13 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
                     docs_link="README.md#installation"
                 )
             logger.info("Using custom Laxity driver (expected accuracy: 70-90%)")
-            return convert_laxity_to_sf2(input_path, output_path, config=config)
+            # Convert using Laxity driver but don't return yet - continue to validation
+            convert_laxity_to_sf2(input_path, output_path, config=config)
+            custom_driver_wrote_file = True
+            # Fall through to validation and info file generation
 
         # Handle Martin Galway driver (table extraction and injection)
-        if driver_type == 'galway':
+        elif driver_type == 'galway':
             if not GALWAY_CONVERTER_AVAILABLE:
                 raise sidm2_errors.MissingDependencyError(
                     dependency="sidm2.galway_*",
@@ -546,43 +594,48 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
                     docs_link="README.md#installation"
                 )
             logger.info("Using Martin Galway table extraction and injection (expected accuracy: 88-96%)")
-            return convert_galway_to_sf2(input_path, output_path, config=config)
+            # Convert using Galway driver but don't return yet - continue to validation
+            convert_galway_to_sf2(input_path, output_path, config=config)
+            custom_driver_wrote_file = True
+            # Fall through to validation and info file generation
 
-        # Validate standard driver types
-        available_drivers = list(config.driver.available_drivers) + ['laxity', 'galway']
-        if driver_type not in available_drivers:
-            raise sidm2_errors.ConfigurationError(
-                setting="driver",
-                value=driver_type,
-                valid_options=available_drivers,
-                example="python scripts/sid_to_sf2.py input.sid output.sf2 --driver laxity",
-                docs_link="reference/DRIVER_REFERENCE.md"
-            )
+        # Standard driver conversion path (for driver11, np20, etc.)
+        else:
+            # Validate standard driver types
+            available_drivers = list(config.driver.available_drivers) + ['laxity', 'galway']
+            if driver_type not in available_drivers:
+                raise sidm2_errors.ConfigurationError(
+                    setting="driver",
+                    value=driver_type,
+                    valid_options=available_drivers,
+                    example="python scripts/sid_to_sf2.py input.sid output.sf2 --driver laxity",
+                    docs_link="reference/DRIVER_REFERENCE.md"
+                )
 
-        logger.info(f"Converting: {input_path}")
-        logger.info(f"Output: {output_path}")
-        logger.info(f"Driver: {driver_type}")
-        if sf2_reference_path:
-            logger.info(f"SF2 Reference: {sf2_reference_path}")
+            logger.info(f"Converting: {input_path}")
+            logger.info(f"Output: {output_path}")
+            logger.info(f"Driver: {driver_type}")
+            if sf2_reference_path:
+                logger.info(f"SF2 Reference: {sf2_reference_path}")
 
-        # Analyze the SID file
-        try:
-            extracted = analyze_sid_file(input_path, config=config, sf2_reference_path=sf2_reference_path)
-        except Exception as e:
-            logger.error(f"Failed to analyze SID file: {e}")
-            raise sidm2_errors.InvalidInputError(
-                input_type="SID file",
-                value=input_path,
-                expected="PSID or RSID format with valid player code",
-                got=str(e),
-                suggestions=[
-                    "Verify file is a valid SID file: file input.sid",
-                    "Re-download from HVSC or csdb.dk",
-                    "Check file size (should be > 124 bytes)",
-                    "Try using player-id.exe to identify player type: tools/player-id.exe input.sid"
-                ],
-                docs_link="reference/format-specification.md"
-            )
+            # Analyze the SID file
+            try:
+                extracted = analyze_sid_file(input_path, config=config, sf2_reference_path=sf2_reference_path)
+            except Exception as e:
+                logger.error(f"Failed to analyze SID file: {e}")
+                raise sidm2_errors.InvalidInputError(
+                    input_type="SID file",
+                    value=input_path,
+                    expected="PSID or RSID format with valid player code",
+                    got=str(e),
+                    suggestions=[
+                        "Verify file is a valid SID file: file input.sid",
+                        "Re-download from HVSC or csdb.dk",
+                        "Check file size (should be > 124 bytes)",
+                        "Try using player-id.exe to identify player type: tools/player-id.exe input.sid"
+                    ],
+                    docs_link="reference/format-specification.md"
+                )
 
         # If this is an SF2-exported SID with a reference file, use the reference directly for 99% accuracy
         if sf2_reference_path and os.path.exists(sf2_reference_path):
@@ -596,8 +649,8 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
                 logger.info("Conversion complete! (100% accuracy - using reference file)")
                 return
 
-        # Try to extract actual data from siddump
-        if config.extraction.use_siddump:
+        # Try to extract actual data from siddump (only for standard driver conversions)
+        if 'extracted' in locals() and config.extraction.use_siddump:
             try:
                 siddump_data = extract_from_siddump(input_path, playback_time=config.extraction.siddump_duration)
                 if siddump_data:
@@ -609,11 +662,11 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
             except Exception as e:
                 logger.warning(f"Siddump extraction failed (non-critical): {e}")
                 extracted.siddump_data = None
-        else:
+        elif 'extracted' in locals():
             extracted.siddump_data = None
 
-        # MIDI-based sequence extraction (optional, high accuracy)
-        if use_midi:
+        # MIDI-based sequence extraction (optional, high accuracy, only for standard conversions)
+        if use_midi and 'extracted' in locals():
             try:
                 logger.info("Using MIDI-based sequence extraction...")
                 from sidm2.sid_to_midi_emulator import convert_sid_to_midi
@@ -671,26 +724,102 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
                     docs_link="README.md#usage"
                 )
 
-        # Check if output file already exists
-        if os.path.exists(output_path) and not config.output.overwrite:
-            raise sidm2_errors.PermissionError(
-                operation="overwrite",
-                path=output_path,
-                docs_link="README.md#usage"
-            )
+        # Write the SF2 file (skip if custom driver already wrote it)
+        if not custom_driver_wrote_file:
+            # Check if output file already exists
+            if os.path.exists(output_path) and not config.output.overwrite:
+                raise sidm2_errors.PermissionError(
+                    operation="overwrite",
+                    path=output_path,
+                    docs_link="README.md#usage"
+                )
 
-        # Write the SF2 file
+            # Write the SF2 file using standard driver
+            try:
+                writer = SF2Writer(extracted, driver_type=driver_type)
+                writer.write(output_path)
+            except Exception as e:
+                logger.error(f"Failed to write SF2 file: {e}")
+                raise sidm2_errors.PermissionError(
+                    operation="write",
+                    path=output_path,
+                    docs_link="README.md#troubleshooting"
+                )
+        else:
+            logger.debug("Skipping SF2Writer (custom driver already wrote file)")
+
+        # CONVERSION POLICY v2.0: Validate SF2 format
+        logger.info("")
+        logger.info("Validating SF2 file format...")
         try:
-            writer = SF2Writer(extracted, driver_type=driver_type)
-            writer.write(output_path)
-        except Exception as e:
-            logger.error(f"Failed to write SF2 file: {e}")
-            raise sidm2_errors.PermissionError(
-                operation="write",
-                path=output_path,
-                docs_link="README.md#troubleshooting"
-            )
+            # Import validator
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+            from scripts.validate_sf2_format import SF2FormatValidator
 
+            validator = SF2FormatValidator()
+            validation_result = validator.validate_file(Path(output_path), verbose=False)
+
+            if validation_result.passed:
+                logger.info(f"SUCCESS: SF2 format validation passed")
+                if validation_result.warnings > 0:
+                    logger.warning(f"  {validation_result.warnings} warnings detected")
+            else:
+                logger.error(f"FAILED: SF2 format validation failed ({validation_result.errors} errors)")
+                # Log errors but don't fail the conversion
+                for check in validation_result.checks:
+                    if check.severity == "ERROR":
+                        logger.error(f"  - {check.name}: {check.message}")
+        except Exception as e:
+            logger.warning(f"SF2 format validation skipped (validator unavailable): {e}")
+            validation_result = None
+
+        # CONVERSION POLICY v2.0: Generate info file with driver documentation
+        if driver_selection:
+            try:
+                # Parse SID header for metadata
+                parser = SIDParser(input_path)
+                header = parser.parse_header()
+
+                sid_metadata = {
+                    'title': header.name if hasattr(header, 'name') else '(unknown)',
+                    'author': header.author if hasattr(header, 'author') else '(unknown)',
+                    'copyright': header.copyright if hasattr(header, 'copyright') else '(unknown)',
+                    'format': f"{header.magic} v{header.version}" if hasattr(header, 'magic') else 'Unknown',
+                    'load_addr': header.load_address if hasattr(header, 'load_address') else 0,
+                    'init_addr': header.init_address if hasattr(header, 'init_address') else 0,
+                    'play_addr': header.play_address if hasattr(header, 'play_address') else 0,
+                    'songs': header.songs if hasattr(header, 'songs') else 0,
+                }
+
+                # Convert validation result to dict
+                validation_dict = None
+                if validation_result:
+                    validation_dict = {
+                        'status': 'PASS' if validation_result.passed else 'FAIL',
+                        'details': [
+                            f"{check.name}: {check.message}"
+                            for check in validation_result.checks
+                            if check.severity in ('ERROR', 'WARNING')
+                        ]
+                    }
+
+                # Generate info file content
+                info_content = selector.create_conversion_info(
+                    driver_selection,
+                    Path(input_path),
+                    Path(output_path),
+                    sid_metadata,
+                    validation_dict
+                )
+
+                # Write info file
+                info_file_path = Path(output_path).with_suffix('.txt')
+                info_file_path.write_text(info_content, encoding='utf-8')
+                logger.info(f"Generated info file: {info_file_path.name}")
+            except Exception as e:
+                logger.warning(f"Failed to generate info file: {e}")
+
+        logger.info("")
         logger.info("Conversion complete!")
         logger.info("IMPORTANT NOTES:")
         logger.info("- This is an experimental converter")
@@ -798,8 +927,8 @@ def convert_sid_to_both_drivers(input_path: str, output_dir: str = None, config:
                 docs_link="reference/format-specification.md"
             )
 
-        # Try to extract actual data from siddump
-        if config.extraction.use_siddump:
+        # Try to extract actual data from siddump (only for standard driver conversions)
+        if 'extracted' in locals() and config.extraction.use_siddump:
             try:
                 siddump_data = extract_from_siddump(input_path, playback_time=config.extraction.siddump_duration)
                 if siddump_data:
@@ -811,7 +940,7 @@ def convert_sid_to_both_drivers(input_path: str, output_dir: str = None, config:
             except Exception as e:
                 logger.warning(f"Siddump extraction failed (non-critical): {e}")
                 extracted.siddump_data = None
-        else:
+        elif 'extracted' in locals():
             extracted.siddump_data = None
 
         results = {}
@@ -963,6 +1092,26 @@ def main():
         help='Generate call graph analysis (Step 18 - trace subroutine calls and build call graph)'
     )
     parser.add_argument(
+        '--siddump',
+        action='store_true',
+        help='Generate siddump frame analysis for original and exported SIDs (Step 7.6)'
+    )
+
+    parser.add_argument(
+        '--siddump-duration',
+        type=int,
+        default=30,
+        metavar='SECONDS',
+        help='Duration for siddump analysis in seconds (default: 30)'
+    )
+
+    parser.add_argument(
+        '--validate-accuracy',
+        action='store_true',
+        help='Validate conversion accuracy by comparing original vs exported SID (Step 21)'
+    )
+
+    parser.add_argument(
         '--organize',
         action='store_true',
         help='Organize analysis outputs into structured directories (Step 20 - final organization)'
@@ -1048,6 +1197,9 @@ def main():
             with PerformanceLogger(logger, f"SID to SF2 conversion ({driver_type}): {input_file}"):
                 convert_sid_to_sf2(input_file, output_file, driver_type=driver_type, config=config, sf2_reference_path=sf2_reference, use_midi=use_midi)
 
+        # Initialize tool statistics tracking
+        tool_stats = {}
+
         # PHASE 5 Enhancement: Optional SIDwinder trace (Step 7.5)
         if args.trace and SIDWINDER_INTEGRATION_AVAILABLE:
             # Run optional SIDwinder tracing after conversion
@@ -1065,12 +1217,19 @@ def main():
             logger.info("[Phase 5] Running optional analysis tools...")
             logger.info("=" * 60)
 
+            start_time = time.time()
             trace_result = SIDwinderIntegration.trace_sid(
                 sid_file=Path(input_file),
                 output_dir=analysis_dir,
                 frames=args.trace_frames,
                 verbose=1 if not args.quiet else 0
             )
+            tool_stats['SIDwinder Tracer'] = {
+                'executed': True,
+                'success': trace_result and trace_result['success'],
+                'duration': time.time() - start_time,
+                'files_generated': 1 if trace_result and trace_result['success'] else 0
+            }
 
             if trace_result and trace_result['success']:
                 logger.info(f"[Step 7.5] SIDwinder trace complete:")
@@ -1101,11 +1260,18 @@ def main():
                 logger.info("[Phase 5] Running optional analysis tools...")
                 logger.info("=" * 60)
 
+            start_time = time.time()
             disasm_result = DisassemblerIntegration.disassemble_sid(
                 sid_file=Path(input_file),
                 output_dir=analysis_dir,
                 verbose=1 if not args.quiet else 0
             )
+            tool_stats['6502 Disassembler'] = {
+                'executed': True,
+                'success': disasm_result and disasm_result['success'],
+                'duration': time.time() - start_time,
+                'files_generated': 2 if disasm_result and disasm_result['success'] else 0
+            }
 
             if disasm_result and disasm_result['success']:
                 logger.info(f"[Step 8.5] 6502 disassembly complete:")
@@ -1138,12 +1304,19 @@ def main():
             # Generate WAV filename
             wav_file = analysis_dir / f"{Path(input_file).stem}.wav"
 
+            start_time = time.time()
             audio_result = AudioExportIntegration.export_to_wav(
                 sid_file=Path(input_file),
                 output_file=wav_file,
                 duration=args.audio_duration,
                 verbose=1 if not args.quiet else 0
             )
+            tool_stats['Audio Exporter'] = {
+                'executed': True,
+                'success': audio_result and audio_result['success'],
+                'duration': time.time() - start_time,
+                'files_generated': 1 if audio_result and audio_result['success'] else 0
+            }
 
             if audio_result and audio_result['success']:
                 logger.info(f"[Step 16] Audio export complete:")
@@ -1182,7 +1355,14 @@ def main():
 
             # Create analyzer and run analysis
             analyzer = MemoryMapAnalyzer(Path(input_file))
+            start_time = time.time()
             memmap_result = analyzer.analyze(verbose=1 if not args.quiet else 0)
+            tool_stats['Memory Map Analyzer'] = {
+                'executed': True,
+                'success': memmap_result and memmap_result['success'],
+                'duration': time.time() - start_time,
+                'files_generated': 1 if memmap_result and memmap_result['success'] else 0
+            }
 
             if memmap_result and memmap_result['success']:
                 # Generate report
@@ -1229,7 +1409,14 @@ def main():
 
             # Create recognizer and run analysis
             recognizer = PatternRecognizer(Path(input_file))
+            start_time = time.time()
             pattern_result = recognizer.analyze(verbose=1 if not args.quiet else 0)
+            tool_stats['Pattern Recognizer'] = {
+                'executed': True,
+                'success': pattern_result and pattern_result['success'],
+                'duration': time.time() - start_time,
+                'files_generated': 1 if pattern_result and pattern_result['success'] else 0
+            }
 
             if pattern_result and pattern_result['success']:
                 # Generate report
@@ -1275,7 +1462,14 @@ def main():
 
             # Create tracer and run analysis
             tracer = SubroutineTracer(Path(input_file))
+            start_time = time.time()
             callgraph_result = tracer.analyze(verbose=1 if not args.quiet else 0)
+            tool_stats['Subroutine Tracer'] = {
+                'executed': True,
+                'success': callgraph_result and callgraph_result['success'],
+                'duration': time.time() - start_time,
+                'files_generated': 1 if callgraph_result and callgraph_result['success'] else 0
+            }
 
             if callgraph_result and callgraph_result['success']:
                 # Generate report
@@ -1320,7 +1514,14 @@ def main():
             consolidated_file = analysis_dir / f"{Path(input_file).stem}_REPORT.txt"
 
             generator = ReportGenerator(Path(input_file), analysis_dir)
+            start_time = time.time()
             report_result = generator.generate(consolidated_file, verbose=1 if not args.quiet else 0)
+            tool_stats['Report Generator'] = {
+                'executed': True,
+                'success': report_result and report_result['success'],
+                'duration': time.time() - start_time,
+                'files_generated': 1 if report_result and report_result['success'] else 0
+            }
 
             if report_result and report_result['success']:
                 logger.info("")
@@ -1330,6 +1531,142 @@ def main():
                 logger.info(f"  Analyses:     {report_result['report_count']}")
                 logger.info(f"  Types:        {', '.join(report_result['available_reports'])}")
                 logger.info("=" * 60)
+
+        # Step 7.6: Siddump Frame Analysis (optional)
+        if args.siddump and SIDDUMP_INTEGRATION_AVAILABLE:
+            # Determine output directory
+            if args.both:
+                siddump_output_dir = Path(args.output_dir) if args.output_dir else Path(input_file).parent
+            else:
+                siddump_output_dir = Path(output_file).parent
+
+            analysis_dir = siddump_output_dir / "analysis"
+
+            # Generate siddump for original SID
+            start_time = time.time()
+            original_dump_result = SiddumpIntegration.generate_dump(
+                sid_file=Path(input_file),
+                output_dir=analysis_dir,
+                duration=args.siddump_duration,
+                verbose=1 if not args.quiet else 0
+            )
+            if original_dump_result and original_dump_result['success']:
+                tool_stats['Siddump (Original)'] = {
+                    'executed': True,
+                    'success': True,
+                    'duration': time.time() - start_time,
+                    'files_generated': 1
+                }
+                logger.info(f"[Step 7.6] Original siddump complete:")
+                logger.info(f"  Dump file:  {original_dump_result['dump_file'].name}")
+                logger.info(f"  Frames:     {original_dump_result['frames']}")
+                logger.info(f"  Duration:   {original_dump_result['duration']}s")
+
+            # Generate siddump for exported SID (if it exists in binary/)
+            exported_sid_path = analysis_dir / "binary" / f"{Path(output_file).stem}_exported.sid"
+            if exported_sid_path.exists():
+                start_time = time.time()
+                exported_dump_result = SiddumpIntegration.generate_dump(
+                    sid_file=exported_sid_path,
+                    output_dir=analysis_dir,
+                    duration=args.siddump_duration,
+                    verbose=1 if not args.quiet else 0
+                )
+                if exported_dump_result and exported_dump_result['success']:
+                    tool_stats['Siddump (Exported)'] = {
+                        'executed': True,
+                        'success': True,
+                        'duration': time.time() - start_time,
+                        'files_generated': 1
+                    }
+                    logger.info(f"[Step 7.6] Exported siddump complete:")
+                    logger.info(f"  Dump file:  {exported_dump_result['dump_file'].name}")
+                    logger.info(f"  Frames:     {exported_dump_result['frames']}")
+
+        # Step 19.5: Convert SF2 back to playable SID (prerequisite for accuracy validation)
+        if args.organize and analysis_tools_used:
+            # Determine output directory
+            if args.both:
+                sf2_to_sid_output_dir = Path(args.output_dir) if args.output_dir else Path(input_file).parent
+            else:
+                sf2_to_sid_output_dir = Path(output_file).parent
+
+            analysis_dir = sf2_to_sid_output_dir / "analysis"
+            binary_dir = analysis_dir / "binary"
+            binary_dir.mkdir(parents=True, exist_ok=True)
+
+            # Copy original SID to binary directory (if not already there)
+            original_sid_dest = binary_dir / Path(input_file).name
+            if not original_sid_dest.exists():
+                shutil.copy2(input_file, original_sid_dest)
+                logger.info(f"  Copied original SID to binary/: {Path(input_file).name}")
+
+            # Convert SF2 back to playable SID
+            exported_sid_path = binary_dir / f"{Path(output_file).stem}_exported.sid"
+            try:
+                start_time = time.time()
+                # Run SF2 to SID converter as subprocess
+                sf2_to_sid_script = Path(__file__).parent / "sf2_to_sid.py"
+                result = subprocess.run(
+                    [sys.executable, str(sf2_to_sid_script), str(output_file), str(exported_sid_path)],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+
+                tool_stats['SF2 to SID Converter'] = {
+                    'executed': True,
+                    'success': result.returncode == 0 and exported_sid_path.exists(),
+                    'duration': time.time() - start_time,
+                    'files_generated': 1 if exported_sid_path.exists() else 0
+                }
+                if result.returncode == 0 and exported_sid_path.exists():
+                    logger.info(f"  Converted SF2 to playable SID: {exported_sid_path.name}")
+                else:
+                    logger.warning(f"  SF2 to SID conversion failed (exit code: {result.returncode})")
+            except Exception as e:
+                tool_stats['SF2 to SID Converter'] = {
+                    'executed': True,
+                    'success': False,
+                    'duration': time.time() - start_time if 'start_time' in locals() else 0,
+                    'files_generated': 0
+                }
+                logger.warning(f"  SF2 to SID conversion failed: {e}")
+
+        # Step 21: Accuracy Validation (optional)
+        if args.validate_accuracy and ACCURACY_INTEGRATION_AVAILABLE:
+            # Determine output directory
+            if args.both:
+                accuracy_output_dir = Path(args.output_dir) if args.output_dir else Path(input_file).parent
+            else:
+                accuracy_output_dir = Path(output_file).parent
+
+            analysis_dir = accuracy_output_dir / "analysis"
+            exported_sid_path = analysis_dir / "binary" / f"{Path(output_file).stem}_exported.sid"
+
+            if exported_sid_path.exists():
+                start_time = time.time()
+                accuracy_result = AccuracyIntegration.validate_accuracy(
+                    original_sid=Path(input_file),
+                    exported_sid=exported_sid_path,
+                    output_dir=analysis_dir,
+                    duration=args.siddump_duration,
+                    verbose=1 if not args.quiet else 0
+                )
+                tool_stats['Accuracy Validator'] = {
+                    'executed': True,
+                    'success': accuracy_result and accuracy_result['success'],
+                    'duration': time.time() - start_time,
+                    'files_generated': 1 if accuracy_result and accuracy_result['success'] else 0
+                }
+
+                if accuracy_result and accuracy_result['success']:
+                    logger.info(f"[Step 21] Accuracy validation complete:")
+                    logger.info(f"  Report file:      {accuracy_result['report_file'].name}")
+                    logger.info(f"  Overall accuracy: {accuracy_result['overall_accuracy']:.2f}%")
+                    logger.info(f"  Frame accuracy:   {accuracy_result['frame_accuracy']:.2f}%")
+            else:
+                logger.warning("[Step 21] Accuracy validation skipped (exported SID not found)")
 
         # Step 20: Output Organizer (FINAL TOOL) - organize analysis outputs
         if args.organize and analysis_tools_used and OUTPUT_ORGANIZER_AVAILABLE:
@@ -1341,12 +1678,20 @@ def main():
 
             analysis_dir = organize_output_dir / "analysis"
 
+            # Copy info.txt to analysis directory if it exists
+            info_txt_source = Path(output_file).with_suffix('.txt')
+            if info_txt_source.exists():
+                info_txt_dest = analysis_dir / "info.txt"
+                shutil.copy2(info_txt_source, info_txt_dest)
+                logger.info(f"  Copied conversion info to analysis/: info.txt")
+
             # Organize outputs
             organizer = OutputOrganizer(analysis_dir)
             organize_result = organizer.organize(
                 dry_run=False,
                 create_index=True,
                 create_readme=True,
+                tool_stats=tool_stats,
                 verbose=1 if not args.quiet else 0
             )
 

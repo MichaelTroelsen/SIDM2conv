@@ -36,10 +36,10 @@ class OutputOrganizer:
             'description': '6502 disassembly files'
         },
         'reports': {
-            'suffixes': ['.txt'],
+            'suffixes': ['.txt', '.dump'],
             'patterns': ['_memmap.txt', '_patterns.txt', '_callgraph.txt',
-                        '_trace.txt', '_REPORT.txt'],
-            'description': 'Analysis reports and traces'
+                        '_trace.txt', '_REPORT.txt', '_accuracy.txt', '.dump'],
+            'description': 'Analysis reports, traces, and siddump outputs'
         },
         'audio': {
             'suffixes': ['.wav', '.mp3', '.ogg'],
@@ -47,9 +47,9 @@ class OutputOrganizer:
             'description': 'Audio exports'
         },
         'binary': {
-            'suffixes': ['.prg', '.bin', '.dat'],
-            'patterns': ['.prg'],
-            'description': 'Binary files'
+            'suffixes': ['.prg', '.bin', '.dat', '.sid'],
+            'patterns': ['.prg', '.sid'],
+            'description': 'Binary files (SID files, PRG files)'
         }
     }
 
@@ -292,6 +292,7 @@ class OutputOrganizer:
         self,
         categorized: Dict[str, List[Path]],
         output_file: Path,
+        tool_stats: Optional[Dict[str, Any]] = None,
         verbose: int = 0
     ) -> bool:
         """
@@ -300,6 +301,7 @@ class OutputOrganizer:
         Args:
             categorized: Dictionary of categorized files
             output_file: Path to README file
+            tool_stats: Optional dictionary with tool execution statistics
             verbose: Verbosity level
 
         Returns:
@@ -320,7 +322,30 @@ class OutputOrganizer:
                         f.write(f"- **File count**: {len(categorized[category])}\n")
                         f.write(f"- **File types**: {', '.join(config['suffixes'])}\n\n")
 
+                # Add tool execution statistics if provided
+                if tool_stats:
+                    f.write("## Analysis Tools Used\n\n")
+                    f.write("The following tools were used to generate these files:\n\n")
+
+                    total_time = 0.0
+                    for tool_name, stats in sorted(tool_stats.items()):
+                        if stats.get('executed'):
+                            status = "✅" if stats.get('success') else "⚠️"
+                            duration = stats.get('duration', 0.0)
+                            total_time += duration
+
+                            f.write(f"- **{tool_name}** {status}\n")
+                            f.write(f"  - Execution time: {duration:.2f}s\n")
+                            if stats.get('files_generated'):
+                                f.write(f"  - Files generated: {stats['files_generated']}\n")
+                            f.write("\n")
+
+                    f.write(f"**Total analysis time**: {total_time:.2f}s\n\n")
+
                 f.write("## File Descriptions\n\n")
+
+                f.write("### Binary Files\n")
+                f.write("- `*.sid` - Original SID file and exported SID from SF2\n\n")
 
                 f.write("### Disassembly Files\n")
                 f.write("- `*_init.asm` - Disassembly of initialization routine\n")
@@ -331,7 +356,10 @@ class OutputOrganizer:
                 f.write("- `*_patterns.txt` - Pattern recognition analysis\n")
                 f.write("- `*_callgraph.txt` - Subroutine call graph\n")
                 f.write("- `*_trace.txt` - SID register trace\n")
-                f.write("- `*_REPORT.txt` - Consolidated analysis report\n\n")
+                f.write("- `*_REPORT.txt` - Consolidated analysis report\n")
+                f.write("- `*.dump` - Siddump frame-by-frame analysis\n")
+                f.write("- `*_accuracy.txt` - Accuracy validation report\n")
+                f.write("- `info.txt` - Conversion metadata and driver information\n\n")
 
                 f.write("### Audio Files\n")
                 f.write("- `*.wav` - Audio export for reference listening\n\n")
@@ -340,7 +368,8 @@ class OutputOrganizer:
                 f.write("1. Start with `*_REPORT.txt` for an overview of all analyses\n")
                 f.write("2. Check `audio/*.wav` to hear the music\n")
                 f.write("3. Review `reports/*_memmap.txt` for memory layout\n")
-                f.write("4. Examine `disassembly/*.asm` for code details\n\n")
+                f.write("4. Examine `disassembly/*.asm` for code details\n")
+                f.write("5. Use `binary/*.sid` files for playback in SID players\n\n")
 
                 f.write("## Additional Information\n\n")
                 f.write("For detailed file listings, see `INDEX.txt`\n\n")
@@ -358,6 +387,7 @@ class OutputOrganizer:
         dry_run: bool = False,
         create_index: bool = True,
         create_readme: bool = True,
+        tool_stats: Optional[Dict[str, Any]] = None,
         verbose: int = 0
     ) -> Dict[str, Any]:
         """
@@ -367,6 +397,7 @@ class OutputOrganizer:
             dry_run: If True, simulate organization without moving files
             create_index: Create INDEX.txt file
             create_readme: Create README.md file
+            tool_stats: Optional dictionary with tool execution statistics
             verbose: Verbosity level (0=quiet, 1=normal, 2=debug)
 
         Returns:
@@ -407,7 +438,7 @@ class OutputOrganizer:
             readme_success = False
             if create_readme and not dry_run:
                 readme_file = self.analysis_dir / "README.md"
-                readme_success = self._create_readme(categorized, readme_file, verbose=verbose)
+                readme_success = self._create_readme(categorized, readme_file, tool_stats=tool_stats, verbose=verbose)
 
             result = {
                 'success': True,
@@ -451,6 +482,7 @@ def organize_output(
     dry_run: bool = False,
     create_index: bool = True,
     create_readme: bool = True,
+    tool_stats: Optional[Dict[str, Any]] = None,
     verbose: int = 0
 ) -> Optional[Dict[str, Any]]:
     """
@@ -461,6 +493,7 @@ def organize_output(
         dry_run: If True, simulate organization
         create_index: Create INDEX.txt file
         create_readme: Create README.md file
+        tool_stats: Optional dictionary with tool execution statistics
         verbose: Verbosity level
 
     Returns:
@@ -471,5 +504,6 @@ def organize_output(
         dry_run=dry_run,
         create_index=create_index,
         create_readme=create_readme,
+        tool_stats=tool_stats,
         verbose=verbose
     )

@@ -28,6 +28,9 @@ Usage:
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 import subprocess
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class SIDRegisterCapture:
@@ -107,30 +110,60 @@ class SIDRegisterCapture:
             True if successful
         """
         if not self.sid_path or not self.sid_path.exists():
+            logger.error(f"SID file does not exist: {self.sid_path}")
             return False
 
-        siddump_exe = Path('tools/siddump.exe')
-        if not siddump_exe.exists():
-            return False
-
+        # Try Python siddump first (preferred)
         try:
-            result = subprocess.run(
-                [str(siddump_exe.absolute()),
-                 str(self.sid_path.absolute()),
-                 '-z',
-                 f'-t{self.duration}'],
-                capture_output=True,
-                text=True,
-                timeout=self.duration + 10
-            )
+            import sys
+            import io
+            from pyscript.siddump_complete import main as siddump_main
 
-            if result.returncode != 0:
+            # Capture stdout from Python siddump
+            old_stdout = sys.stdout
+            old_argv = sys.argv
+            sys.stdout = captured_output = io.StringIO()
+
+            try:
+                sys.argv = ['siddump', str(self.sid_path), '-z', f'-t{self.duration}']
+                siddump_main()
+                output = captured_output.getvalue()
+            finally:
+                sys.stdout = old_stdout
+                sys.argv = old_argv
+
+            self._parse_siddump_output(output)
+            return True
+
+        except Exception as e:
+            logger.warning(f"Python siddump failed: {e}, trying C exe fallback")
+
+            # Fallback to C exe if Python siddump fails
+            siddump_exe = Path('tools/siddump.exe')
+            if not siddump_exe.exists():
+                logger.error(f"Siddump exe not found: {siddump_exe}")
                 return False
 
-            self._parse_siddump_output(result.stdout)
-            return True
-        except Exception:
-            return False
+            try:
+                result = subprocess.run(
+                    [str(siddump_exe.absolute()),
+                     str(self.sid_path.absolute()),
+                     '-z',
+                     f'-t{self.duration}'],
+                    capture_output=True,
+                    text=True,
+                    timeout=self.duration + 10
+                )
+
+                if result.returncode != 0:
+                    logger.error(f"Siddump exe failed with return code: {result.returncode}")
+                    return False
+
+                self._parse_siddump_output(result.stdout)
+                return True
+            except Exception as e:
+                logger.error(f"Siddump exe exception: {e}")
+                return False
 
     def _parse_siddump_output(self, output: str):
         """Parse siddump table format into frame data."""
@@ -439,14 +472,17 @@ def calculate_accuracy_from_sids(original_sid: str, exported_sid: str,
     try:
         original_capture = SIDRegisterCapture(sid_path=original_sid, duration=duration)
         if not original_capture.capture_from_sid():
+            logger.error(f"Failed to capture registers from original SID: {original_sid}")
             return None
 
         exported_capture = SIDRegisterCapture(sid_path=exported_sid, duration=duration)
         if not exported_capture.capture_from_sid():
+            logger.error(f"Failed to capture registers from exported SID: {exported_sid}")
             return None
 
         comparator = SIDComparator(original_capture, exported_capture)
         return comparator.compare()
 
-    except Exception:
+    except Exception as e:
+        logger.error(f"Accuracy calculation exception: {e}", exc_info=True)
         return None
