@@ -1,0 +1,87 @@
+# SIDId Pattern Database
+# Format: PlayerName HH HH ?? and HH end
+# HH = hex byte, ?? = wildcard, and = AND operator, end = terminator
+#
+# Based on JC64 SIDId V1.09 format
+# Python port by Claude Code (C) 2025
+# Original algorithm by Cadaver (C) 2012
+#
+# Pattern Strategy:
+# - Start with most distinctive initialization sequences
+# - Use wildcards (??) for variable values
+# - Use AND operator for multiple pattern requirements
+# - Prioritize unique byte sequences that rarely appear in other contexts
+#
+# Common SID Players Database (v1.0)
+# ===================================
+
+# Laxity NewPlayer v21
+# Distinctive: SEI, LDA #$00, STA $D412 (cutoff frequency init)
+# Very reliable pattern - $D412 is uncommon in other players
+Laxity_NewPlayer_v21 78 A9 00 8D 12 D4 end
+
+# Laxity NewPlayer (alternative pattern)
+# Pattern: LDX #$00, LDA $1A00,X (loading instrument table)
+# Instruments typically start at $1A00+ in Laxity player
+Laxity_NewPlayer_v21 A2 00 BD 00 1A end
+
+# Martin Galway Routine
+# Pattern: LDA #$00, STA $D400 (clear voice 1 freq lo) ... JMP
+# Galway often clears SID registers then jumps to main loop
+Martin_Galway A9 00 8D 00 D4 and 4C ?? ?? end
+
+# Rob Hubbard Routine
+# Pattern: SEI, LDA #$1F, STA $D418 (volume + filter mode to max)
+# Hubbard often sets max volume early
+Rob_Hubbard 78 A9 1F 8D 18 D4 end
+
+# Rob Hubbard (alternative pattern)
+# Pattern: LDA #$0F, STA $D418 (volume to max, no filter)
+Rob_Hubbard A9 0F 8D 18 D4 end
+
+# JCH NewPlayer
+# Pattern: LDA #$00, STA zeropage ... (typical JCH init)
+# JCH often uses zeropage $xx for variables
+JCH A9 00 85 ?? 85 ?? end
+
+# SoundMonitor
+# Pattern: LDA #$00, TAX, STA $D400,X (clear SID in loop)
+# Distinctive: using indexed addressing to clear all SID registers
+SoundMonitor A9 00 AA 9D 00 D4 end
+
+# Future Machine / DMC
+# Pattern: SEI ... LDA #$00 ... STA $D404 (voice 1 waveform)
+# DMC format often clears waveforms explicitly
+Future_Machine_DMC 78 and A9 00 and 8D 04 D4 end
+
+# BASIC SID Player (uncommon but exists)
+# Pattern: JSR $... (typical BASIC player calls subroutine)
+# Less reliable, but can catch some BASIC-driven players
+BASIC_Player 20 ?? ?? 60 end
+
+# Generic Clear SID Pattern (fallback)
+# Pattern: LDA #$00 ... STA $D4xx (generic SID register clear)
+# This is a weak pattern but catches many simple players
+Generic_SID_Init A9 00 and 8D ?? D4 end
+
+# COMMENTS:
+# - Patterns ordered by reliability (most specific first)
+# - Laxity NewPlayer v21 is highly reliable ($D412 is distinctive)
+# - Generic patterns at end (lower priority)
+# - Each player can have multiple patterns (increases detection rate)
+# - Wildcards (??) allow flexibility for variable data
+# - AND operator requires both patterns to match (reduces false positives)
+#
+# TESTING STRATEGY:
+# 1. Test on Laxity collection (286 files) - expect 80%+ Laxity detection
+# 2. Test on HVSC subset - measure false positive rate
+# 3. Expand database based on unidentified files
+#
+# EXPANSION PLAN:
+# - Add more Galway variants (he has many different init sequences)
+# - Add Hubbard variants (complex player, multiple versions)
+# - Add JCH variants (NewPlayer, EdLib, different versions)
+# - Add less common players as needed (Richard Joseph, Tim Follin, etc.)
+#
+# VERSION HISTORY:
+# v1.0 (2025-12-24) - Initial database with 10 patterns covering 5 players

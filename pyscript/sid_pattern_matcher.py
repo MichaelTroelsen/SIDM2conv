@@ -228,7 +228,12 @@ class SIDPatternParser:
 
             with open(filepath, 'r') as f:
                 for line in f:
-                    tokens = line.strip().split()
+                    # Skip comment lines and empty lines
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+
+                    tokens = line.split()
                     if not tokens:
                         continue
 
