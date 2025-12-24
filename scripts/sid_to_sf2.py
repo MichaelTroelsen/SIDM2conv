@@ -80,6 +80,13 @@ try:
 except ImportError:
     SIDWINDER_INTEGRATION_AVAILABLE = False
 
+# Import 6502 Disassembler integration (Step 8.5 - optional disassembly)
+try:
+    from sidm2.disasm_wrapper import DisassemblerIntegration
+    DISASSEMBLER_INTEGRATION_AVAILABLE = True
+except ImportError:
+    DISASSEMBLER_INTEGRATION_AVAILABLE = False
+
 # Get module logger (will be configured in main())
 logger = get_logger(__name__)
 
@@ -882,6 +889,11 @@ def main():
         default=1500,
         help='Number of frames for SIDwinder trace (default: 1500 = 30s @ 50Hz PAL)'
     )
+    parser.add_argument(
+        '--disasm',
+        action='store_true',
+        help='Enable 6502 disassembly (Step 8.5 - disassemble init and play routines to .asm files)'
+    )
 
     # Logging arguments (enhanced logging system v2.0.0)
     parser.add_argument(
@@ -996,6 +1008,40 @@ def main():
                 logger.info(f"  Size:       {trace_result['file_size']:,} bytes")
             elif args.trace:
                 logger.warning("[Step 7.5] SIDwinder trace failed (continuing anyway)")
+
+        # PHASE 2 Enhancement: Optional 6502 disassembly (Step 8.5)
+        if args.disasm and DISASSEMBLER_INTEGRATION_AVAILABLE:
+            # Run optional disassembly after conversion
+            # Determine output directory for .asm files
+            if args.both:
+                disasm_output_dir = Path(args.output_dir) if args.output_dir else Path(input_file).parent
+            else:
+                disasm_output_dir = Path(output_file).parent
+
+            # Create analysis subdirectory
+            analysis_dir = disasm_output_dir / "analysis"
+
+            # Only print header if we didn't already print it for trace
+            if not (args.trace and SIDWINDER_INTEGRATION_AVAILABLE):
+                logger.info("")
+                logger.info("=" * 60)
+                logger.info("[Phase 5] Running optional analysis tools...")
+                logger.info("=" * 60)
+
+            disasm_result = DisassemblerIntegration.disassemble_sid(
+                sid_file=Path(input_file),
+                output_dir=analysis_dir,
+                verbose=1 if not args.quiet else 0
+            )
+
+            if disasm_result and disasm_result['success']:
+                logger.info(f"[Step 8.5] 6502 disassembly complete:")
+                logger.info(f"  Init file:  {disasm_result['init_file'].name} ({disasm_result['init_lines']} instructions)")
+                logger.info(f"  Play file:  {disasm_result['play_file'].name} ({disasm_result['play_lines']} instructions)")
+                logger.info(f"  Init addr:  ${disasm_result['init_addr']:04X}")
+                logger.info(f"  Play addr:  ${disasm_result['play_addr']:04X}")
+            elif args.disasm:
+                logger.warning("[Step 8.5] 6502 disassembly failed (continuing anyway)")
 
     except sidm2_errors.SIDMError as e:
         # Our custom errors already have helpful messages

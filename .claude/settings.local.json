@@ -162,7 +162,10 @@
       "Bash(timeout 60 python:*)",
       "Bash(jar -tf:*)",
       "Bash(unzip:*)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(git clone:*)",
+      "Bash(ant:*)",
+      "Bash(java:*)"
     ],
     "deny": [],
     "ask": []
