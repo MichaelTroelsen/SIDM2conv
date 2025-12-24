@@ -18,8 +18,8 @@ Usage:
     python validate_sid_accuracy.py original.sid exported.sid --duration 60 --output report.html
 """
 
-__version__ = "0.1.1"
-__date__ = "2025-12-21"
+__version__ = "0.2.0"
+__date__ = "2025-12-24"
 
 import os
 import sys
@@ -397,23 +397,33 @@ class SIDComparator:
                 f"Frame count mismatch: original={orig_frames}, exported={exp_frames}"
             )
 
-        # Compare frame-by-frame
+        # Compare frame-by-frame (FIXED v2.9.1: Per-frame accuracy instead of exact match)
         max_frames = min(orig_frames, exp_frames)
         matching_frames = 0
+        frame_accuracies = []
 
         for frame_idx in range(max_frames):
             orig_frame = self.original.frames[frame_idx]
             exp_frame = self.exported.frames[frame_idx]
 
-            # Check if frames are identical
+            # Calculate per-frame accuracy
+            frame_acc = self._calculate_frame_accuracy(orig_frame, exp_frame)
+            frame_accuracies.append(frame_acc)
+
+            # Check if frames are identical (for legacy exact match count)
             if self._compare_frames(orig_frame, exp_frame):
                 matching_frames += 1
-            else:
+
+            # Store differences if accuracy is not perfect
+            if frame_acc < 100.0:
                 diff = self._get_frame_differences(frame_idx, orig_frame, exp_frame)
                 if len(results['differences']) < 100:  # Limit stored differences
                     results['differences'].extend(diff)
 
-        results['frame_accuracy'] = (matching_frames / max_frames * 100) if max_frames > 0 else 0.0
+        # CRITICAL FIX: Use average per-frame accuracy instead of exact match percentage
+        results['frame_accuracy'] = (sum(frame_accuracies) / len(frame_accuracies)) if frame_accuracies else 0.0
+        results['exact_frame_matches'] = matching_frames  # Store legacy metric for reference
+        results['exact_match_percentage'] = (matching_frames / max_frames * 100) if max_frames > 0 else 0.0
 
         # Compare per-register accuracy
         for reg in range(0x19):
@@ -474,7 +484,7 @@ class SIDComparator:
         return results
 
     def _compare_frames(self, frame1: Dict, frame2: Dict) -> bool:
-        """Compare two frames for exact match"""
+        """Compare two frames for exact match (legacy - for backward compatibility)"""
         if len(frame1) != len(frame2):
             return False
 
@@ -483,6 +493,36 @@ class SIDComparator:
                 return False
 
         return True
+
+    def _calculate_frame_accuracy(self, frame1: Dict, frame2: Dict) -> float:
+        """Calculate accuracy percentage for a single frame.
+
+        CRITICAL FIX (v2.9.1): This replaces exact frame matching with
+        per-register accuracy calculation. Only compares registers that
+        are present in BOTH frames (intersection).
+
+        Returns:
+            Accuracy percentage (0-100) for this frame
+        """
+        # Get all registers present in either frame
+        all_regs = set(frame1.keys()) | set(frame2.keys())
+
+        if not all_regs:
+            return 100.0  # Both frames empty = perfect match
+
+        # Count matching registers
+        matches = 0
+        for reg in all_regs:
+            val1 = frame1.get(reg)
+            val2 = frame2.get(reg)
+
+            # If register is in both frames and values match
+            if val1 is not None and val2 is not None and val1 == val2:
+                matches += 1
+            # If register is in only one frame, it's a mismatch
+            # (don't count it as a match)
+
+        return (matches / len(all_regs) * 100.0)
 
     def _get_frame_differences(self, frame_idx: int, orig: Dict, exp: Dict) -> List[str]:
         """Get detailed differences between two frames"""
@@ -681,8 +721,12 @@ def generate_html_report(original: SIDRegisterCapture, exported: SIDRegisterCapt
         <h2>Summary Statistics</h2>
         <div class="stats-grid">
             <div class="stat-card">
-                <h3>Frame Accuracy</h3>
+                <h3>Per-Frame Accuracy</h3>
                 <div class="value">{comparison['frame_accuracy']:.1f}%</div>
+            </div>
+            <div class="stat-card">
+                <h3>Exact Frame Matches</h3>
+                <div class="value">{comparison.get('exact_frame_matches', 0)}/{original.stats['total_frames']}</div>
             </div>
             <div class="stat-card">
                 <h3>Filter Accuracy</h3>
@@ -695,6 +739,10 @@ def generate_html_report(original: SIDRegisterCapture, exported: SIDRegisterCapt
             <div class="stat-card">
                 <h3>Total Writes</h3>
                 <div class="value">{original.stats['total_writes']}</div>
+            </div>
+            <div class="stat-card">
+                <h3>Exact Match %</h3>
+                <div class="value">{comparison.get('exact_match_percentage', 0.0):.1f}%</div>
             </div>
         </div>
 
@@ -888,8 +936,10 @@ def main():
         print("VALIDATION RESULTS")
         print("=" * 70)
         print(f"\nOverall Accuracy: {comparison_results['overall_accuracy']:.2f}%")
-        print(f"Frame Accuracy:   {comparison_results['frame_accuracy']:.2f}%")
-        print(f"Filter Accuracy:  {comparison_results['filter_accuracy']:.2f}%")
+        print(f"\nFrame Metrics:")
+        print(f"  Per-Frame Accuracy:    {comparison_results['frame_accuracy']:.2f}%")
+        print(f"  Exact Frame Matches:   {comparison_results.get('exact_frame_matches', 0)}/{len(original_capture.frames)} ({comparison_results.get('exact_match_percentage', 0.0):.2f}%)")
+        print(f"  Filter Accuracy:       {comparison_results['filter_accuracy']:.2f}%")
         print(f"\nVoice Accuracy:")
         for voice_name, voice_data in comparison_results['voice_accuracy'].items():
             print(f"  {voice_name}:")
