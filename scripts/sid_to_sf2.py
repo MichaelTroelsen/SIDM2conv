@@ -115,6 +115,13 @@ try:
 except ImportError:
     SUBROUTINE_TRACER_AVAILABLE = False
 
+# Import Report Generator (Step 19 - consolidated reporting)
+try:
+    from sidm2.report_generator import ReportGenerator
+    REPORT_GENERATOR_AVAILABLE = True
+except ImportError:
+    REPORT_GENERATOR_AVAILABLE = False
+
 # Get module logger (will be configured in main())
 logger = get_logger(__name__)
 
@@ -1276,6 +1283,41 @@ def main():
                 logger.warning(f"[Step 18] Call graph analysis failed: {callgraph_result.get('error', 'Unknown error')}")
             elif args.callgraph:
                 logger.warning("[Step 18] Subroutine tracer not available")
+
+        # PHASE 4 Enhancement: Consolidated report generation (Step 19)
+        # Automatically generate if any analysis tools were run
+        analysis_tools_used = any([
+            args.trace and SIDWINDER_INTEGRATION_AVAILABLE,
+            args.disasm and DISASSEMBLER_INTEGRATION_AVAILABLE,
+            args.audio_export and AUDIO_EXPORT_INTEGRATION_AVAILABLE,
+            args.memmap and MEMMAP_ANALYZER_AVAILABLE,
+            args.patterns and PATTERN_RECOGNIZER_AVAILABLE,
+            args.callgraph and SUBROUTINE_TRACER_AVAILABLE
+        ])
+
+        if analysis_tools_used and REPORT_GENERATOR_AVAILABLE:
+            # Determine analysis directory
+            if args.both:
+                report_output_dir = Path(args.output_dir) if args.output_dir else Path(input_file).parent
+            else:
+                report_output_dir = Path(output_file).parent
+
+            analysis_dir = report_output_dir / "analysis"
+
+            # Generate consolidated report
+            consolidated_file = analysis_dir / f"{Path(input_file).stem}_REPORT.txt"
+
+            generator = ReportGenerator(Path(input_file), analysis_dir)
+            report_result = generator.generate(consolidated_file, verbose=1 if not args.quiet else 0)
+
+            if report_result and report_result['success']:
+                logger.info("")
+                logger.info("=" * 60)
+                logger.info("[Step 19] Consolidated report generated:")
+                logger.info(f"  Report file:  {consolidated_file.name}")
+                logger.info(f"  Analyses:     {report_result['report_count']}")
+                logger.info(f"  Types:        {', '.join(report_result['available_reports'])}")
+                logger.info("=" * 60)
 
     except sidm2_errors.SIDMError as e:
         # Our custom errors already have helpful messages
