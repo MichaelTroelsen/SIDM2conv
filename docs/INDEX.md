@@ -62,6 +62,8 @@ Comprehensive guides for using the system:
 | [LOGGING_AND_ERROR_HANDLING_GUIDE.md](guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md) | **Logging system guide** - Enhanced logging v2.0.0, CLI flags, JSON output | v2.0.0 |
 | [ERROR_MESSAGE_STYLE_GUIDE.md](guides/ERROR_MESSAGE_STYLE_GUIDE.md) | **Error message guidelines** - Consistent error reporting standards | - |
 | [CONVERSION_COCKPIT_TECHNICAL_REFERENCE.md](guides/CONVERSION_COCKPIT_TECHNICAL_REFERENCE.md) | **Cockpit technical reference** - Internal architecture, API details | v2.5.0 |
+| [SID_INVENTORY_GUIDE.md](guides/SID_INVENTORY_GUIDE.md) | **SID Inventory system guide** - Complete documentation for SID file cataloging system | v2.8.0 |
+| [SID_INVENTORY_README.md](guides/SID_INVENTORY_README.md) | **SID Inventory quick reference** - Quick start guide for inventory system | v2.8.0 |
 
 ---
 
@@ -149,6 +151,17 @@ Technical analysis, validation results, and findings:
 |----------|---------|---------|
 | [JC64_BUILD_AND_TEST_RESULTS.md](integration/JC64_BUILD_AND_TEST_RESULTS.md) | **JC64 build and test results** - Python wrapper, PSID parsing, player detection, known issues | v1.0.0 |
 
+### Conversion Policy & Driver Integration (NEW - v2.8.0)
+| Document | Content | Version |
+|----------|---------|---------|
+| [CONVERSION_POLICY_APPROVED.md](integration/CONVERSION_POLICY_APPROVED.md) | **Conversion Policy v2.0** - Quality-first approach, driver selection matrix, validation requirements | v2.0.0 |
+| [POLICY_INTEGRATION_COMPLETE.md](integration/POLICY_INTEGRATION_COMPLETE.md) | **Policy integration summary** - Implementation status, testing verification, production readiness | v2.0.0 |
+| [DRIVER_SELECTION_TEST_RESULTS.md](integration/DRIVER_SELECTION_TEST_RESULTS.md) | **Driver selection test results** - 4 player types tested, 100% pass rate | v2.0.0 |
+| [INTEGRATION_SUMMARY.md](integration/INTEGRATION_SUMMARY.md) | **Integration summary** - How driver selection works, console output examples | v2.0.0 |
+| [POLICY_ANALYSIS.md](integration/POLICY_ANALYSIS.md) | **Policy analysis** - Analysis of quality-first approach vs strict Driver 11 policy | v2.0.0 |
+| [POLICY_IMPLEMENTATION_SUMMARY.md](integration/POLICY_IMPLEMENTATION_SUMMARY.md) | **Policy implementation** - Technical implementation details, file changes | v2.0.0 |
+| [CONVERSION_POLICY.md](integration/CONVERSION_POLICY.md) | **Conversion Policy v1.0** - Earlier draft (superseded by v2.0 APPROVED) | v1.0.0 |
+
 ### Implementation Analysis
 | Document | Content |
 |----------|---------|
@@ -163,6 +176,8 @@ Technical analysis, validation results, and findings:
 | [PYTHON_FILE_ANALYSIS.md](analysis/PYTHON_FILE_ANALYSIS.md) | Python codebase structure and file organization |
 | [SIDTOOL_INTEGRATION_PLAN.md](analysis/SIDTOOL_INTEGRATION_PLAN.md) | SIDTool integration planning |
 | [TRACK3_ANALYSIS_SUMMARY.md](analysis/TRACK3_ANALYSIS_SUMMARY.md) | Voice 3 usage analysis summary |
+| [PATTERN_DATABASE_FINAL_RESULTS.md](analysis/PATTERN_DATABASE_FINAL_RESULTS.md) | **Pattern database final results** - 658 SID files analyzed, player type distribution | v2.8.0 |
+| [pattern_test_results.txt](analysis/pattern_test_results.txt) | **Pattern test results** - Raw test output from pattern matching validation | v2.8.0 |
 
 ### Technical Deep Dives
 | Document | Content |
