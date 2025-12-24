@@ -486,3 +486,172 @@ class CPU6502:
             pc += size
 
         return relocatable_addrs
+
+    def scan_data_pointers(self, start_addr: int, end_addr: int,
+                          code_start: int, code_end: int,
+                          alignment: int = 1) -> list[Tuple[int, int]]:
+        """Scan data section for embedded pointer values.
+
+        Scans for 16-bit little-endian values that point to relocatable addresses.
+        Uses heuristics to identify pointers (values within code range).
+
+        CRITICAL FIX: This finds pointers in data tables (sequence tables,
+        jump tables, etc.) that the code scanner misses because they're not
+        in executable instructions.
+
+        Args:
+            start_addr: Start of data section (relative to memory array)
+            end_addr: End of data section (exclusive)
+            code_start: Start of relocatable memory range (absolute address)
+            code_end: End of relocatable memory range (absolute address)
+            alignment: Pointer alignment (1=any byte, 2=even addresses)
+
+        Returns:
+            List of (offset, address) tuples where:
+                offset = byte offset in memory array where pointer is stored
+                address = the pointer value that needs relocation
+
+        Example:
+            Sequence table at $0903:
+            $0903: $50 $1B  → pointer to sequence at $1B50
+            $0905: $60 $1B  → pointer to sequence at $1B60
+            These would be detected and added to relocation list.
+        """
+        data_pointers = []
+
+        # Scan through data section looking for 16-bit values
+        for offset in range(start_addr, end_addr - 1, alignment):
+            if offset + 1 >= len(self.memory):
+                break
+
+            # Read potential 16-bit pointer (little-endian)
+            ptr_lo = self.memory[offset]
+            ptr_hi = self.memory[offset + 1]
+            ptr_value = (ptr_hi << 8) | ptr_lo
+
+            # Check if this looks like a valid pointer
+            if code_start <= ptr_value < code_end:
+                # Don't relocate hardware addresses or zero page
+                if not (0x0000 <= ptr_value < 0x0200 or 0xD000 <= ptr_value < 0xE000):
+                    # Additional heuristic: High byte should be reasonable (not $00 or $FF)
+                    if 0x10 <= ptr_hi <= 0x9F:
+                        data_pointers.append((offset, ptr_value))
+
+        return data_pointers
+
+    def scan_indirect_jump_targets(self, start_addr: int, end_addr: int,
+                                  code_start: int, code_end: int,
+                                  memory_full: bytes) -> list[Tuple[int, int]]:
+        """Scan for indirect jump instructions and find their target pointers.
+
+        CRITICAL FIX: Handles indirect jumps like JMP ($xxxx).
+        The scan_relocatable_addresses() relocates the POINTER address ($xxxx),
+        but we also need to relocate the VALUE stored at that address.
+
+        Args:
+            start_addr: Start of code section (relative to memory array)
+            end_addr: End of code section (exclusive)
+            code_start: Start of relocatable memory range (absolute address)
+            code_end: End of relocatable memory range (absolute address)
+            memory_full: Full 64KB memory array (not code section subset)
+
+        Returns:
+            List of (offset, address) tuples where:
+                offset = memory offset where indirect target is stored
+                address = the target address value that needs relocation
+
+        Example:
+            Code at $1010: JMP ($1060)  → indirect jump via pointer at $1060
+            Memory at $1060: $70 $10    → pointer value $1070
+            Returns: [(0x1060, 0x1070)] so the value at $1060 gets relocated
+        """
+        indirect_targets = []
+        pc = start_addr
+
+        while pc < end_addr and pc < len(self.memory):
+            opcode = self.memory[pc]
+            size = INSTRUCTION_SIZES[opcode]
+
+            # Handle unknown/illegal opcodes
+            if size == 0:
+                pc += 1
+                continue
+
+            # Check for indirect jump: JMP ($xxxx) opcode = $6C
+            if opcode == 0x6C and size == 3:
+                if pc + 2 < len(self.memory):
+                    # Read the pointer address (where the target is stored)
+                    ptr_addr_lo = self.memory[pc + 1]
+                    ptr_addr_hi = self.memory[pc + 2]
+                    ptr_addr = (ptr_addr_hi << 8) | ptr_addr_lo
+
+                    # Now read the TARGET address stored at ptr_addr
+                    # (use full memory, not code section subset)
+                    if 0 <= ptr_addr < len(memory_full) - 1:
+                        target_lo = memory_full[ptr_addr]
+                        target_hi = memory_full[ptr_addr + 1]
+                        target_addr = (target_hi << 8) | target_lo
+
+                        # If target is in relocatable range, add it
+                        if code_start <= target_addr < code_end:
+                            if not (0xD000 <= target_addr < 0xE000):
+                                # Add the LOCATION where target is stored, not the instruction
+                                indirect_targets.append((ptr_addr, target_addr))
+
+            pc += size
+
+        return indirect_targets
+
+    def scan_all_pointers(self, start_addr: int, end_addr: int,
+                         code_start: int, code_end: int,
+                         memory_full: bytes,
+                         is_code: bool = True) -> list[Tuple[int, int]]:
+        """Comprehensive pointer scanning combining all methods.
+
+        COMPLETE FIX: Scans for ALL pointer types:
+        1. Code section: JSR/JMP/LDA/STA absolute addressing
+        2. Data section: Embedded pointers in tables
+        3. Indirect jumps: Targets of JMP ($xxxx) instructions
+
+        Args:
+            start_addr: Start of section (relative to memory array)
+            end_addr: End of section (exclusive)
+            code_start: Start of relocatable memory range (absolute address)
+            code_end: End of relocatable memory range (absolute address)
+            memory_full: Full 64KB memory array (for indirect jump target lookup)
+            is_code: True if this is a code section, False if data section
+
+        Returns:
+            Combined list of all (offset, address) tuples needing relocation
+        """
+        all_pointers = []
+
+        if is_code:
+            # CODE SECTION: Scan for instruction operands
+            code_pointers = self.scan_relocatable_addresses(
+                start_addr, end_addr, code_start, code_end
+            )
+            all_pointers.extend(code_pointers)
+
+            # CODE SECTION: Scan for indirect jump targets
+            indirect_pointers = self.scan_indirect_jump_targets(
+                start_addr, end_addr, code_start, code_end, memory_full
+            )
+            all_pointers.extend(indirect_pointers)
+        else:
+            # DATA SECTION: Scan for embedded pointers
+            # Use alignment=2 for pointer tables (usually aligned)
+            data_pointers = self.scan_data_pointers(
+                start_addr, end_addr, code_start, code_end, alignment=2
+            )
+            all_pointers.extend(data_pointers)
+
+        # Remove duplicates (keep first occurrence)
+        seen = set()
+        unique_pointers = []
+        for offset, address in all_pointers:
+            if offset not in seen:
+                seen.add(offset)
+                unique_pointers.append((offset, address))
+
+        return unique_pointers

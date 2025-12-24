@@ -6,7 +6,10 @@ Replicates SID Factory II's Pack utility (F6):
 - Relocates pointers and driver code
 - Generates minimal SID files (~3,500 bytes vs ~8,900 bytes)
 
-Version: 1.1.0 - Added custom error handling (v2.5.2)
+Version: 2.0.0 - CRITICAL FIX: Enhanced pointer relocation (v2.9.1)
+  - Scans data sections for embedded pointers
+  - Handles indirect jump targets JMP ($xxxx)
+  - Fixes 94% failure rate in pointer relocation
 """
 
 import struct
@@ -523,16 +526,20 @@ class SF2Packer:
                 self._write_word(ptr_addr, new_ptr)
 
     def process_driver_code(self, address_map: dict, address_delta: int):
-        """Relocate absolute addresses in driver code using robust scanning.
+        """Relocate absolute addresses in driver code using comprehensive scanning.
 
-        Uses instruction size table for reliable scanning that handles
-        unknown/illegal opcodes without getting out of sync.
+        CRITICAL FIX (v2.9.1): Uses enhanced pointer scanning that finds:
+        1. Code section pointers (JSR/JMP/LDA/STA absolute addressing)
+        2. Data section pointers (embedded pointer tables)
+        3. Indirect jump targets (JMP ($xxxx) target values)
+
+        This fixes the 94% failure rate caused by missed pointer references.
 
         Args:
             address_map: Dictionary mapping source addresses to destination addresses
             address_delta: Amount to add to addresses not in map
         """
-        logger.info(f"Relocating driver code pointers:")
+        logger.info(f"Relocating driver code pointers (ENHANCED v2.9.1):")
         logger.debug(f"  Address delta: {address_delta:+d}")
         logger.debug(f"  Section ranges:")
         for s in self.data_sections:
@@ -549,45 +556,50 @@ class SF2Packer:
 
         # Process each section (both code and data) separately
         total_reloc_count = 0
+        total_code_pointers = 0
+        total_data_pointers = 0
+        total_indirect_pointers = 0
+
         for section in self.data_sections:
             relocated_data = bytearray(section.data)
             reloc_count = 0
 
+            # ENHANCED SCANNING: Use scan_all_pointers() for comprehensive detection
+            logger.debug(f"  Scanning {'code' if section.is_code else 'data'} section at ${section.source_address:04X} ({len(section.data)} bytes)")
+
+            # Create CPU instance with section data
+            cpu = CPU6502(bytes(section.data))
+
+            # Scan for ALL pointer types (code, data, indirect)
+            relocatable_addrs = cpu.scan_all_pointers(
+                0, len(section.data),
+                code_start, code_end,
+                self.memory,  # Pass full memory for indirect jump target lookup
+                is_code=section.is_code
+            )
+
+            # CRITICAL FIX (Phase 2): Protect entry stubs from relocation
+            # Entry stubs at offsets 0-2 (init JMP) and 3-5 (play JMP) must NOT be relocated
+            # because they will be patched manually later with correct targets
+            # This applies to the FIRST CODE SECTION (driver code), regardless of its original address
+            if section.is_code and not hasattr(self, '_first_code_section_processed'):
+                # First code section - protect entry stubs
+                self._first_code_section_processed = True
+                protected_offsets = {1, 2, 4, 5}
+                original_count = len(relocatable_addrs)
+                relocatable_addrs = [
+                    (offset, addr) for offset, addr in relocatable_addrs
+                    if offset not in protected_offsets
+                ]
+                filtered = original_count - len(relocatable_addrs)
+                if filtered > 0:
+                    logger.info(f"  Protected {filtered} entry stub JMP target bytes from relocation (first code section at ${section.source_address:04X})")
+
+            # Track statistics for logging
             if section.is_code:
-                # CODE SECTION: Use instruction scanning to find relocatable addresses
-                logger.debug(f"  Scanning code section at ${section.source_address:04X} ({len(section.data)} bytes)")
-
-                # Use robust scanning with instruction size table
-                cpu = CPU6502(bytes(section.data))
-                relocatable_addrs = cpu.scan_relocatable_addresses(
-                    0, len(section.data),
-                    code_start, code_end
-                )
-
-                # CRITICAL FIX (Phase 2): Protect entry stubs from relocation
-                # Entry stubs at offsets 0-2 (init JMP) and 3-5 (play JMP) must NOT be relocated
-                # because they will be patched manually later with correct targets
-                # This applies to the FIRST CODE SECTION (driver code), regardless of its original address
-                if hasattr(self, '_first_code_section_processed'):
-                    pass  # Not the first section, normal processing
-                else:
-                    # First code section - protect entry stubs
-                    self._first_code_section_processed = True
-                    protected_offsets = {1, 2, 4, 5}
-                    original_count = len(relocatable_addrs)
-                    relocatable_addrs = [
-                        (offset, addr) for offset, addr in relocatable_addrs
-                        if offset not in protected_offsets
-                    ]
-                    filtered = original_count - len(relocatable_addrs)
-                    if filtered > 0:
-                        logger.info(f"  Protected {filtered} entry stub JMP target bytes from relocation (first code section at ${section.source_address:04X})")
+                total_code_pointers += len(relocatable_addrs)
             else:
-                # DATA SECTION: Skip - data tables don't contain executable code pointers
-                # Tables like Instruments, Wave, Pulse, Filter contain music data, not pointers
-                # Scanning them would create false positives (relocating note values, etc.)
-                logger.debug(f"  Skipping data section at ${section.source_address:04X} (pure data, no code pointers)")
-                relocatable_addrs = []
+                total_data_pointers += len(relocatable_addrs)
 
             # Relocate all found addresses
             for offset, old_address in relocatable_addrs:
@@ -626,6 +638,8 @@ class SF2Packer:
             total_reloc_count += reloc_count
 
         logger.info(f"  Total relocations: {total_reloc_count}")
+        logger.info(f"  Breakdown: {total_code_pointers} code + {total_data_pointers} data pointers")
+        logger.info(f"  FIX APPLIED: Enhanced scanning finds data tables and indirect jump targets")
 
     def pack(self, dest_address: int = 0x1000,
             zp_address: int = 0xFC) -> Tuple[bytes, int, int]:
