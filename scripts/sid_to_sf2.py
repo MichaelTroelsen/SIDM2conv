@@ -101,6 +101,13 @@ try:
 except ImportError:
     MEMMAP_ANALYZER_AVAILABLE = False
 
+# Import Pattern Recognizer (Step 17 - optional pattern analysis)
+try:
+    from sidm2.pattern_recognizer import PatternRecognizer
+    PATTERN_RECOGNIZER_AVAILABLE = True
+except ImportError:
+    PATTERN_RECOGNIZER_AVAILABLE = False
+
 # Get module logger (will be configured in main())
 logger = get_logger(__name__)
 
@@ -924,6 +931,11 @@ def main():
         action='store_true',
         help='Generate memory map analysis (Step 12.5 - analyze memory layout and regions)'
     )
+    parser.add_argument(
+        '--patterns',
+        action='store_true',
+        help='Generate pattern analysis (Step 17 - identify repeating patterns and optimization opportunities)'
+    )
 
     # Logging arguments (enhanced logging system v2.0.0)
     parser.add_argument(
@@ -1159,6 +1171,51 @@ def main():
                 logger.warning(f"[Step 12.5] Memory map analysis failed: {memmap_result.get('error', 'Unknown error')}")
             elif args.memmap:
                 logger.warning("[Step 12.5] Memory map analyzer not available")
+
+        # PHASE 3 Enhancement: Optional pattern analysis (Step 17)
+        if args.patterns and PATTERN_RECOGNIZER_AVAILABLE:
+            # Determine output directory for pattern analysis
+            if args.both:
+                pattern_output_dir = Path(args.output_dir) if args.output_dir else Path(input_file).parent
+            else:
+                pattern_output_dir = Path(output_file).parent
+
+            # Create analysis subdirectory
+            analysis_dir = pattern_output_dir / "analysis"
+
+            # Only print header if not already printed
+            if not ((args.trace and SIDWINDER_INTEGRATION_AVAILABLE) or
+                    (args.disasm and DISASSEMBLER_INTEGRATION_AVAILABLE) or
+                    (args.audio_export and AUDIO_EXPORT_INTEGRATION_AVAILABLE) or
+                    (args.memmap and MEMMAP_ANALYZER_AVAILABLE)):
+                logger.info("")
+                logger.info("=" * 60)
+                logger.info("[Phase 5] Running optional analysis tools...")
+                logger.info("=" * 60)
+
+            # Generate pattern analysis filename
+            pattern_file = analysis_dir / f"{Path(input_file).stem}_patterns.txt"
+
+            # Create recognizer and run analysis
+            recognizer = PatternRecognizer(Path(input_file))
+            pattern_result = recognizer.analyze(verbose=1 if not args.quiet else 0)
+
+            if pattern_result and pattern_result['success']:
+                # Generate report
+                report_success = recognizer.generate_report(pattern_result, pattern_file)
+
+                if report_success:
+                    logger.info(f"[Step 17] Pattern analysis complete:")
+                    logger.info(f"  Report file:  {pattern_file.name}")
+                    logger.info(f"  Patterns:     {pattern_result['total_patterns']}")
+                    logger.info(f"  Occurrences:  {pattern_result['total_occurrences']}")
+                    logger.info(f"  Savings:      {pattern_result['potential_savings']} bytes ({pattern_result['compression_ratio']:.1f}%)")
+                else:
+                    logger.warning("[Step 17] Pattern analysis report generation failed")
+            elif pattern_result and not pattern_result['success']:
+                logger.warning(f"[Step 17] Pattern analysis failed: {pattern_result.get('error', 'Unknown error')}")
+            elif args.patterns:
+                logger.warning("[Step 17] Pattern recognizer not available")
 
     except sidm2_errors.SIDMError as e:
         # Our custom errors already have helpful messages
