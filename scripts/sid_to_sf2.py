@@ -122,6 +122,13 @@ try:
 except ImportError:
     REPORT_GENERATOR_AVAILABLE = False
 
+# Import Output Organizer (Step 20 - output organization)
+try:
+    from sidm2.output_organizer import OutputOrganizer
+    OUTPUT_ORGANIZER_AVAILABLE = True
+except ImportError:
+    OUTPUT_ORGANIZER_AVAILABLE = False
+
 # Get module logger (will be configured in main())
 logger = get_logger(__name__)
 
@@ -955,6 +962,11 @@ def main():
         action='store_true',
         help='Generate call graph analysis (Step 18 - trace subroutine calls and build call graph)'
     )
+    parser.add_argument(
+        '--organize',
+        action='store_true',
+        help='Organize analysis outputs into structured directories (Step 20 - final organization)'
+    )
 
     # Logging arguments (enhanced logging system v2.0.0)
     parser.add_argument(
@@ -1318,6 +1330,40 @@ def main():
                 logger.info(f"  Analyses:     {report_result['report_count']}")
                 logger.info(f"  Types:        {', '.join(report_result['available_reports'])}")
                 logger.info("=" * 60)
+
+        # Step 20: Output Organizer (FINAL TOOL) - organize analysis outputs
+        if args.organize and analysis_tools_used and OUTPUT_ORGANIZER_AVAILABLE:
+            # Determine analysis directory (same as above)
+            if args.both:
+                organize_output_dir = Path(args.output_dir) if args.output_dir else Path(input_file).parent
+            else:
+                organize_output_dir = Path(output_file).parent
+
+            analysis_dir = organize_output_dir / "analysis"
+
+            # Organize outputs
+            organizer = OutputOrganizer(analysis_dir)
+            organize_result = organizer.organize(
+                dry_run=False,
+                create_index=True,
+                create_readme=True,
+                verbose=1 if not args.quiet else 0
+            )
+
+            if organize_result and organize_result['success']:
+                logger.info("")
+                logger.info("=" * 60)
+                logger.info("[Step 20] Analysis outputs organized:")
+                logger.info(f"  Total files:  {organize_result['total_files']}")
+                logger.info(f"  Moved:        {organize_result['moved']}")
+                logger.info(f"  Categories:   {len(organize_result['categories'])}")
+                if organize_result.get('index_created'):
+                    logger.info(f"  Index:        INDEX.txt")
+                if organize_result.get('readme_created'):
+                    logger.info(f"  README:       README.md")
+                logger.info("=" * 60)
+            elif organize_result and not organize_result['success']:
+                logger.warning(f"Output organization failed: {organize_result.get('error', 'Unknown error')}")
 
     except sidm2_errors.SIDMError as e:
         # Our custom errors already have helpful messages
