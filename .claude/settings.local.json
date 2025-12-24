@@ -154,7 +154,15 @@
       "Bash(then echo \"✓ $script\")",
       "Bash(else echo \"✗ $script \\(not found\\)\")",
       "Bash(del:*)",
-      "Bash(test-all.bat)"
+      "Bash(test-all.bat)",
+      "Bash(cleanup.bat --scan)",
+      "Bash(sid-to-sf2.bat)",
+      "Bash(sf2-viewer.bat --help)",
+      "Bash(timeout 30 python:*)",
+      "Bash(timeout 60 python:*)",
+      "Bash(jar -tf:*)",
+      "Bash(unzip:*)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ],
     "deny": [],
     "ask": []

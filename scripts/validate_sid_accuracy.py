@@ -38,6 +38,16 @@ except ImportError:
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
     from sidm2 import errors
 
+# Import Phase 1b enhancement tools (optional)
+try:
+    from sidm2.comparison_tool import (
+        ComparisonJSONExporter,
+        ComparisonDiffReporter
+    )
+    COMPARISON_TOOL_AVAILABLE = True
+except ImportError:
+    COMPARISON_TOOL_AVAILABLE = False
+
 
 class SIDRegisterCapture:
     """Captures SID register writes frame by frame"""
@@ -816,6 +826,8 @@ def main():
                         help='Playback duration in seconds (default: 30)')
     parser.add_argument('--output', '-o', help='Output HTML report path (default: auto-generated)')
     parser.add_argument('--json', help='Export raw JSON data')
+    parser.add_argument('--comparison-json', help='Export comparison results as JSON (Phase 1b)')
+    parser.add_argument('--diff-report', help='Export detailed diff report as text (Phase 1b)')
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='Enable verbose output')
 
@@ -905,6 +917,29 @@ def main():
             output_path = f"validation_{base_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
 
         generate_html_report(original_capture, exported_capture, comparison_results, output_path)
+
+        # Phase 1b: Export comparison JSON (if requested)
+        if args.comparison_json and COMPARISON_TOOL_AVAILABLE:
+            print(f"\nExporting comparison JSON (Phase 1b)...")
+            if ComparisonJSONExporter.export_comparison_results(
+                original_capture,
+                exported_capture,
+                comparison_results,
+                args.comparison_json
+            ):
+                print(f"  Saved: {args.comparison_json}")
+
+        # Phase 1b: Generate diff report (if requested)
+        if args.diff_report and COMPARISON_TOOL_AVAILABLE:
+            print(f"\nGenerating diff report (Phase 1b)...")
+            if ComparisonDiffReporter.generate_text_report(
+                original_capture,
+                exported_capture,
+                comparison_results,
+                args.diff_report,
+                max_diffs=100
+            ):
+                print(f"  Saved: {args.diff_report}")
 
         print("\n" + "=" * 70)
 
