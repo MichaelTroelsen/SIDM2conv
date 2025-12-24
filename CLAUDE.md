@@ -12,6 +12,30 @@ Converts C64 SID files (Laxity NewPlayer v21) to SID Factory II (.sf2) format. C
 
 ---
 
+## IMPORTANT: v2.0.0 is an EXTENSION of v1.8.0
+
+**NOT A REPLACEMENT** - The enhanced pipeline adds optional analysis tools while maintaining 100% backward compatibility:
+
+**v1.8.0 (Current Core)**
+- 15-step pipeline with 9 tools
+- Fast, proven, reliable
+- Used by default (quick mode)
+- Output: SF2 + 11 text files in <1 second
+
+**v2.0.0 (Enhanced - Optional)**
+- Adds 5 new optional tools
+- Extends to 20-step pipeline with optional steps
+- All new features opt-in via CLI flags
+- New modes: standard, comprehensive, custom
+- Output: Up to 25+ files with detailed analysis
+- Time: 2-15 seconds (depending on mode)
+
+**Bottom Line**: Existing users see ZERO change. New users can opt-in to enhanced analysis.
+
+See `docs/PIPELINE_ARCHITECTURE.md` for complete architecture details.
+
+---
+
 ## Critical Rules
 
 1. **Keep Root Clean**: ALL .py files in `pyscript/` only. No .py in root.

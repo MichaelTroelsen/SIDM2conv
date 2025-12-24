@@ -1,21 +1,43 @@
-# Complete Tool Integration Plan - All 14 Tools in Enhanced Pipeline
+# Enhanced Pipeline Extension Plan - Upgrade Existing 15-Step to 20-Step Pipeline
 
-**Version**: 2.0.0 (Ultimate)
+**Version**: 2.0.0 Enhanced (Extension of Existing v1.8.0)
 **Date**: 2025-12-24
 **Status**: Planning Phase
+**Type**: EXTENSION (Backward Compatible Upgrade)
 **Test File**: Stinsens_Last_Night_of_89.sid (6,201 bytes)
-**Target**: 20-step pipeline with 14 integrated tools
+
+---
+
+## Critical Clarification: EXTENSION, NOT REPLACEMENT
+
+This is an **EXTENSION** of the existing conversion pipeline:
+
+**EXISTING PIPELINE (v1.8.0)** - Still Fully Functional
+- 15 steps with 9 tools
+- Input: SID file → Output: SF2 + 11 text exports
+- Time: <1 second
+- Mode: "Quick" (default, no changes)
+
+**ENHANCED PIPELINE (v2.0.0)** - New Optional Modes
+- 20 steps with 14 tools (9 existing + 5 new)
+- Adds optional post-conversion analysis
+- Extends output to 25+ files
+- Modes: "Standard", "Comprehensive", "Custom" (in addition to "Quick")
+- Backward compatible: All new features opt-in via CLI flags
 
 ---
 
 ## Executive Summary
 
-Integration plan for complete SIDM2 conversion pipeline with:
-- 9 Existing Production Tools (all active and tested)
-- 2 Partially Implemented Tools (SIDwinder [DONE], Comparison [to enhance])
-- 5 New Tools to Implement (Disassembler, Audio, Memory, Pattern, Subroutine)
+Extension plan to add optional analysis capabilities to SIDM2:
+- **9 Existing Production Tools** (unchanged - still used in all modes)
+- **2 Partially Implemented Tools** (SIDwinder [integrated], Comparison [enhanced])
+- **5 New Tools** (Disassembler, Audio, Memory, Pattern, Subroutine)
+- **2 Infrastructure Tools** (Report Generator, Output Organizer)
 
-Goal: Comprehensive 20-step pipeline with optional analysis modes using Stinsens file as universal test
+Goal: Provide comprehensive optional analysis while maintaining existing quick-conversion workflow
+
+Key Design Principle: All new features are OPTIONAL and do not affect existing users
 
 ---
 
