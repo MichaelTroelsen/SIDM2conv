@@ -1,14 +1,14 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**Project**: SIDM2 - SID to SF2 Converter | **Version**: 2.8.0 | **Updated**: 2025-12-24
+**Project**: SIDM2 - SID to SF2 Converter | **Version**: 2.9.0 | **Updated**: 2025-12-24
 
 ---
 
 ## 30-Second Overview
 
-Converts C64 SID files (Laxity NewPlayer v21) to SID Factory II (.sf2) format. Custom Laxity driver achieves **99.93% frame accuracy**. Includes SF2 Viewer GUI, Conversion Cockpit GUI, **Python siddump** (100% complete), **Python SIDwinder** (100% complete), validation system, and 200+ passing tests.
+Converts C64 SID files (Laxity NewPlayer v21) to SID Factory II (.sf2) format. Custom Laxity driver achieves **99.93% frame accuracy**. Includes SF2 Viewer GUI, Conversion Cockpit GUI, **SID Inventory System** (658+ files cataloged), **Python siddump** (100% complete), **Python SIDwinder** (100% complete), validation system, and 200+ passing tests.
 
-**Key**: 🎯 **Auto-Select Driver (v2.8.0)** | Laxity → 99.93% | SF2 → 100% | Others → Safe Default
+**Key**: 🎯 **Auto-Select Driver (v2.8.0)** | 📋 **SID Inventory (v2.9.0)** | Laxity → 99.93% | SF2 → 100%
 
 ---
 
@@ -53,6 +53,16 @@ python pyscript/test_siddump.py -v                  # Run 38 unit tests
 # Python SIDwinder (v2.8.0)
 python pyscript/sidwinder_trace.py --trace output.txt --frames 1500 input.sid
 sidwinder-trace.bat -trace=output.txt -frames=1500 input.sid  # Batch launcher
+
+# SID Inventory System (v2.9.0)
+create-sid-inventory.bat                # Generate complete SID catalog (658+ files)
+python pyscript/create_sid_inventory.py # Cross-platform inventory generator
+
+# Pattern Analysis Tools (v2.9.0)
+python pyscript/check_entry_patterns.py      # Validate pattern matches
+python pyscript/find_undetected_laxity.py    # Find missed Laxity files
+python pyscript/identify_undetected.py       # Analyze unknown files
+python pyscript/quick_disasm.py file.sid     # Quick 6502 disassembly
 ```
 
 **Logging** (v2.5.3): `-v/-vv` (verbose), `-q` (quiet), `--debug`, `--log-file`, `--log-json`
@@ -224,7 +234,13 @@ python scripts/validate_sid_accuracy.py input.sid output.sid
 
 ## Version History
 
-### v2.8.0 (2025-12-24) - Automatic Driver Selection + Python SIDwinder ✅
+### v2.9.0 (2025-12-24) - SID Inventory System + Pattern Database ✅
+- **SID Inventory System** (Complete catalog of 658+ SID files)
+- **Pattern Database** (Validated player type identification, 658 files analyzed)
+- **Pattern Analysis Tools** (5 new scripts for pattern research)
+- **Policy Documentation** (Organized in docs/integration/)
+
+### v2.8.0 (2025-12-22) - Automatic Driver Selection + Python SIDwinder ✅
 - **Automatic Driver Selection** (Quality-First Policy v2.0)
 - **Python SIDwinder** (100% complete, cross-platform trace functionality)
 - **Driver documentation** (info files for every conversion)

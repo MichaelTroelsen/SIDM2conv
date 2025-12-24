@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 
-**Version 2.8.0** | Build Date: 2025-12-22 | Production Ready - 100% Python Tool Independence Achieved 🐍✅✅✅
+**Version 2.9.0** | Build Date: 2025-12-24 | Production Ready - SID Inventory & Pattern Database Complete 📋✅
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files.
 
@@ -154,6 +154,109 @@ python pyscript/conversion_cockpit_gui.py
 | Automation | ⚠️ Interactive only | ✅ Scriptable |
 
 **Recommendation**: Use Conversion Cockpit for interactive batch conversion, command line for automation/scripts.
+
+## SID Inventory System (NEW in v2.9.0) 📋
+
+**Complete catalog of your SID file collection** - Automated scanning, player identification, and metadata extraction for 650+ SID files.
+
+### Overview
+
+The SID Inventory System provides a comprehensive markdown catalog of all SID files in your collection with detailed metadata, player type identification, and statistics.
+
+**Output**: `SID_INVENTORY.md` - Searchable markdown table with all your SID files
+
+### Features
+
+- **Automated Scanning**: Recursively scans all directories for .sid files
+- **Player Identification**: Uses player-id.exe for accurate player type detection
+- **Header Parsing**: Extracts title, author, copyright, addresses from PSID/RSID headers
+- **Directory Grouping**: Organizes files by collection (Laxity, Rob Hubbard, etc.)
+- **Summary Statistics**: Player type distribution, format analysis, file counts
+- **Cross-platform**: Works on Windows, Mac, and Linux
+
+### Quick Start
+
+```bash
+# Windows
+create-sid-inventory.bat
+
+# Mac/Linux
+python pyscript/create_sid_inventory.py
+```
+
+**Processing Time**: ~2-5 minutes for 650+ files
+
+### Catalog Output
+
+Each file gets a complete row with:
+
+| File | Title | Author | Player Type | Format | Songs | Load | Init | Play | Size |
+|------|-------|--------|-------------|--------|-------|------|------|------|------|
+| Stinsens_Last_Night_of_89.sid | Stinsen's Last Night of '89 | Thomas E. Petersen (Laxity) | Laxity_NewPlayer_V21 | PSID v2 | 1 | $1000 | $1000 | $1006 | 6,201 |
+
+### Example Statistics
+
+Based on typical SIDM2 collection (658+ files):
+
+**Player Type Distribution**:
+- Laxity NewPlayer v21: ~43% (286 files)
+- Generic SID Init: ~20%
+- Rob Hubbard: ~10%
+- Martin Galway: ~5%
+- Others: ~22%
+
+**File Formats**:
+- PSID v2: ~90%
+- PSID v3: ~8%
+- RSID: ~2%
+
+### Use Cases
+
+**1. Batch Conversion Planning**:
+```bash
+# 1. Generate inventory
+create-sid-inventory.bat
+
+# 2. Open SID_INVENTORY.md and search for "Laxity_NewPlayer_V21"
+
+# 3. Batch convert all Laxity files with optimal driver
+python scripts/convert_all.py --dir Laxity/ --driver laxity
+```
+
+**2. Collection Analysis**:
+- Find all files by a specific author
+- Identify which player types you have
+- Discover unknown/unidentified files for pattern research
+
+**3. Quality Validation**:
+- See which files are identified vs unknown
+- Find candidates for accuracy testing
+- Track collection coverage
+
+### Documentation
+
+- **User Guide**: [docs/guides/SID_INVENTORY_GUIDE.md](docs/guides/SID_INVENTORY_GUIDE.md) - Complete usage guide
+- **Quick Reference**: [docs/guides/SID_INVENTORY_README.md](docs/guides/SID_INVENTORY_README.md) - Getting started
+
+### Pattern Analysis Tools (Advanced)
+
+For pattern research and player identification improvements:
+
+```bash
+# Check pattern matching accuracy
+python pyscript/check_entry_patterns.py
+
+# Find Laxity files missed by patterns
+python pyscript/find_undetected_laxity.py
+
+# Identify unknown files
+python pyscript/identify_undetected.py
+
+# Quick disassembly for pattern analysis
+python pyscript/quick_disasm.py unknown_file.sid
+```
+
+**Pattern Database**: See [docs/analysis/PATTERN_DATABASE_FINAL_RESULTS.md](docs/analysis/PATTERN_DATABASE_FINAL_RESULTS.md) for complete validation results (658 files analyzed).
 
 ## Installation
 
