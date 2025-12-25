@@ -144,20 +144,40 @@ class SF2HeaderGenerator:
         """
         Create Block 1: Driver Descriptor.
 
+        CRITICAL: Must include ALL 7 fields or editor will reject file!
+        ParseDescriptor() expects exact structure (driver_info.cpp:300-316)
+
         Returns:
             Block bytes with ID and size prefix
         """
         content = bytearray()
 
-        # Driver type (0x00 = standard)
+        # 1. Driver type (0x00 = standard)
         content.append(0x00)
 
-        # Driver size (little-endian)
+        # 2. Driver size (little-endian)
         content.extend(struct.pack("<H", self.driver_size))
 
-        # Driver name (null-terminated ASCII)
+        # 3. Driver name (null-terminated ASCII)
         name_bytes = self.driver_name.encode("ascii") + b"\x00"
         content.extend(name_bytes)
+
+        # 4. Driver code top address (where driver code starts in C64 memory)
+        # For Laxity: Code starts at $0E00 (after wrapper at $0D7E)
+        content.extend(struct.pack("<H", 0x0E00))
+
+        # 5. Driver code size (size of actual 6502 code)
+        # For Laxity: Player code is ~2KB (relocated from $1000-$19FF to $0E00-$16FF)
+        driver_code_size = 0x0900  # $16FF - $0E00 + 1 = 2304 bytes
+        content.extend(struct.pack("<H", driver_code_size))
+
+        # 6. Driver version major
+        content.append(1)  # Version 1.x
+
+        # 7. Driver version minor
+        content.append(0)  # Version x.0
+
+        # Optional 8. Driver version revision (not included for now)
 
         # Create block: [ID:1][Size:1][Data]
         block = bytearray([0x01, len(content)])
