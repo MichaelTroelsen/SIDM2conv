@@ -124,16 +124,17 @@ def identify_sid_type(sid_path):
                     # files may be identified as "SidFactory_II/Laxity"
                     if 'SidFactory' in player_type:
                         # Both SF2-exported and Laxity files may be identified as "SidFactory_II/Laxity"
-                        # Distinguish by checking init address:
-                        # - SF2-exported files have init=0x1000 (standard SF2 init)
-                        # - Laxity originals have init=0xA000 or other addresses
+                        # Check play address to distinguish SF2 driver from Laxity player:
+                        # - SF2 driver (non-Laxity): play=0x1003 → use SF2_PACKED (TEMPLATE method)
+                        # - Laxity player code: play=0x1006 or others → use LAXITY driver
+                        # Note: SF2-exported files with Laxity code should use LAXITY driver, not TEMPLATE
                         with open(sid_path, 'rb') as f:
                             data = f.read()
-                        init_addr = struct.unpack('>H', data[10:12])[0]
-                        if init_addr == 0x1000:
-                            return 'SF2_PACKED'
+                        play_addr = struct.unpack('>H', data[12:14])[0]
+                        if play_addr == 0x1003:
+                            return 'SF2_PACKED'  # SF2 driver (non-Laxity) - use TEMPLATE
                         else:
-                            return 'LAXITY'  # Original Laxity file with different init
+                            return 'LAXITY'  # Laxity player code - use LAXITY driver
                     elif 'Laxity' in player_type or 'NewPlayer' in player_type:
                         return 'LAXITY'
 
