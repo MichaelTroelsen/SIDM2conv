@@ -1492,6 +1492,10 @@ class SF2Writer:
 
                         # Laxity orderlist format: [sequence_idx, transpose]
                         self.output[track_offset + i] = seq_idx & 0xFF
+                    elif isinstance(entry, tuple) and len(entry) >= 2:
+                        # Tuple format: (transpose, seq_idx)
+                        seq_idx = entry[1]
+                        self.output[track_offset + i] = seq_idx & 0xFF
                     elif isinstance(entry, int):
                         # Direct sequence index
                         self.output[track_offset + i] = entry & 0xFF
