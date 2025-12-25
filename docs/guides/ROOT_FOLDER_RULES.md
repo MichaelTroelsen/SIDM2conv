@@ -114,14 +114,20 @@ TOOLS_REFERENCE.txt     - Complete tools reference
 ❌ *.bak                - Backup files
 ```
 
-**6. Output Files**:
+**6. Output Files** (CRITICAL - Frequently Violated):
 ```
+❌ test_*.sf2           - Should be in experiments/ or output/
+❌ test_*.sid           - Should be in experiments/ or output/
 ❌ *.sf2                - Should be in output/ or learnings/
 ❌ *.sid                - Should be in SID/ or output/
 ❌ *.dump               - Should be in output/
+❌ *_dump.txt           - Should be in experiments/ or output/
 ❌ *.wav                - Should be in output/
 ❌ *.hex                - Should be in output/
 ```
+
+**⚠️ IMPORTANT**: Test files (test_*.sf2, test_*.sid) are frequently created during debugging.
+ALWAYS move these to experiments/ immediately after creation!
 
 **7. Log Files**:
 ```
