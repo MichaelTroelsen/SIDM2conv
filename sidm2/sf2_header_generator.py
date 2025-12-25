@@ -137,7 +137,8 @@ class SF2HeaderGenerator:
             driver_size: Total Laxity driver size in bytes
         """
         self.driver_size = driver_size
-        self.driver_name = "Laxity NewPlayer v21 SF2"
+        # Use short driver name to match Driver 11 format (max ~10 chars to avoid block overflow)
+        self.driver_name = "Laxity"  # Short name to prevent block structure corruption
 
     def create_descriptor_block(self) -> bytes:
         """
