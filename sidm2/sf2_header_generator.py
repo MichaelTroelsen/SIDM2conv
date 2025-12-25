@@ -333,7 +333,10 @@ class SF2HeaderGenerator:
 
         Format:
         [Magic:2] [Descriptor:var] [DriverCommon:var] [DriverTables:var]
-        [MusicData:var] [OptionalBlocks:var] [EndMarker:1]
+        [InstrumentDescriptor:var] [MusicData:var] [OptionalBlocks:var] [EndMarker:1]
+
+        CRITICAL: Blocks MUST be in sequential order (1, 2, 3, 4, 5...)
+        Editor rejects files with out-of-order blocks!
 
         Returns:
             Complete header bytes ready to prepend to driver
@@ -343,12 +346,12 @@ class SF2HeaderGenerator:
         # Magic number (0x1337 in little-endian)
         headers.extend(struct.pack("<H", self.MAGIC_NUMBER))
 
-        # Add all header blocks
-        headers.extend(self.create_descriptor_block())
-        headers.extend(self.create_driver_common_block())
-        headers.extend(self.create_tables_block())
-        headers.extend(self.create_music_data_block())
-        headers.extend(self.create_optional_blocks())
+        # Add all header blocks IN CORRECT ORDER (1, 2, 3, 4, 5...)
+        headers.extend(self.create_descriptor_block())          # Block 1
+        headers.extend(self.create_driver_common_block())       # Block 2
+        headers.extend(self.create_tables_block())              # Block 3
+        headers.extend(self.create_optional_blocks())           # Block 4 (InstrumentDescriptor)
+        headers.extend(self.create_music_data_block())          # Block 5 (MusicData)
 
         # End marker
         headers.append(0xFF)
