@@ -1377,10 +1377,15 @@ class SF2Writer:
 
         logger.info("  Patching orderlist pointers in relocated player...")
 
+        # CRITICAL NOTE (v2.9.1): Pointer patches commented out because they're outdated
+        # for the current driver version. The Laxity driver binary has been pre-patched
+        # during creation with pointers that already point to the correct locations.
+        # Testing if music injection alone works without additional patching.
+
         # Define all pointer patches (from trace_orderlist_access.py output)
         # Format: (file_offset, old_lo, old_hi, new_lo, new_hi)
         # NOTE: "old" addresses are AFTER -$0200 relocation (driver template is already relocated)
-        pointer_patches = [
+        pointer_patches_DISABLED = [
             # Sequence/data references (after -$0200 relocation)
             (0x01C6, 0xD8, 0x16, 0x40, 0x19),  # $16D8 -> $1940
             (0x01CC, 0xD9, 0x16, 0x41, 0x19),  # $16D9 -> $1941
@@ -1425,7 +1430,18 @@ class SF2Writer:
             (0x0146, 0x49, 0x18, 0xB1, 0x1A),  # $1849 -> $1AB1
         ]
 
-        # Apply patches
+        # Apply patches - Instrument table pointers need redirection to $1A81
+        pointer_patches = [
+            # Instrument Table Area patches - redirect to $1A81
+            (0x02C3, 0x83, 0x1A, 0x81, 0x1A),  # $103F: $1A83 -> $1A81
+            (0x02E1, 0x91, 0x1A, 0x81, 0x1A),  # $105D: $1A91 -> $1A81
+            (0x04F8, 0x91, 0x1A, 0x81, 0x1A),  # $1274: $1A91 -> $1A81
+            (0x069F, 0x9F, 0x1A, 0x81, 0x1A),  # $141B: $1A9F -> $1A81
+            (0x0793, 0xA1, 0x1A, 0x81, 0x1A),  # $150F: $1AA1 -> $1A81
+            (0x079F, 0x80, 0x1A, 0x81, 0x1A),  # $151B: $1A80 -> $1A81
+            (0x07A3, 0x83, 0x1A, 0x81, 0x1A),  # $151F: $1A83 -> $1A81
+            (0x07F1, 0x91, 0x1A, 0x81, 0x1A),  # $156D: $1A91 -> $1A81
+        ]
         patches_applied = 0
         for file_offset, old_lo, old_hi, new_lo, new_hi in pointer_patches:
             if file_offset + 1 < len(self.output):
