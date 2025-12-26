@@ -82,6 +82,13 @@ cleanup_backup_*.txt
 /test_*.wav
 /test_*.dump
 
+# Video files (large, should not be in git)
+*.mp4
+*.mkv
+*.webm
+*.mov
+*.avi
+
 # Debug output files
 SF2/*.dump
 SF2/*_info.txt

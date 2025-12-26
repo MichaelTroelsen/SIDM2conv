@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Remotion
+.remotion/
+out/*.mp4
+out/*.webm
+out/*.mov
+
+# Keep the out directory but not videos
+!out/.gitkeep
+
+# Public assets - exclude large video files
+public/assets/*.mp4
+public/assets/*.mkv
+public/assets/*.webm
+public/assets/*.mov
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
