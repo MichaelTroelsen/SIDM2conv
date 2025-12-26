@@ -113,11 +113,13 @@ validate_extraction.py
 analyze_sf2_sid.py
 compare_sids.py
 tools/RetroDebugger*/
+tools/ffmpeg/
 
 # Validation and test output
 validation_*.html
 comparison_report.html
 roundtrip_output/
+test_output/
 
 # Test data
 SIDSF2player/
