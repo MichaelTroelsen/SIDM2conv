@@ -200,50 +200,74 @@ class SF2File:
             self.title = strings[-1]
 
     def _detect_driver_addresses(self):
-        """Detect driver type and set appropriate init/play addresses.
+        """Parse SF2 header blocks to extract init/play addresses.
 
-        SF2 files can use different drivers:
-        1. Driver 11 (standard): Code at $1000, play loop at $1006
-        2. Laxity driver: Code at $0D7E, entry points at $0D80/$0D83
+        SF2 files use a block-based header system after the magic number (0x1337).
+        Block 2 (DriverCommon, ID=2) contains the init/play/stop addresses.
 
-        Detection methods (in order of reliability):
-        1. Load address: $0D7E = Laxity, $1000 = Driver 11
-        2. Check for "Laxity" string in header (backup method)
+        File structure:
+          Offset 0-1: Load address (little-endian)
+          Offset 2-3: Magic number 0x1337 (0x37 0x13)
+          Offset 4+:  Header blocks (ID, size, data)
+
+        Block 2 (DriverCommon) format:
+          Offset 0-1: Init address
+          Offset 2-3: Stop address
+          Offset 4-5: Play address
+          (+ 34 more bytes of driver state addresses)
         """
-        # Method 1: Check load address (most reliable)
-        # Laxity driver always loads at $0D7E
-        # Driver 11 loads at $1000
+        # Method 1: Parse Block 2 (DriverCommon) header - most reliable
+        try:
+            # Check magic number at offset 2
+            if len(self.data) >= 4:
+                magic = struct.unpack('<H', self.data[2:4])[0]
+                if magic == 0x1337:
+                    # Valid SF2 file - parse header blocks
+                    offset = 4
+                    while offset + 2 < len(self.data):
+                        block_id = self.data[offset]
+                        if block_id == 0xFF:  # End marker
+                            break
+
+                        block_size = self.data[offset + 1]
+                        block_data_offset = offset + 2
+
+                        if block_id == 2:  # DriverCommon block
+                            if block_data_offset + 6 <= len(self.data):
+                                self.init_address = struct.unpack('<H', self.data[block_data_offset:block_data_offset+2])[0]
+                                # Skip stop address at +2/+3
+                                self.play_address = struct.unpack('<H', self.data[block_data_offset+4:block_data_offset+6])[0]
+                                logger.debug(f"  Parsed Block 2 (DriverCommon): init=${self.init_address:04X}, play=${self.play_address:04X}")
+                                return
+
+                        offset += 2 + block_size
+        except Exception as e:
+            logger.warning(f"  Failed to parse SF2 header blocks: {e}")
+
+        # Method 2: Fallback - Check load address (OLD LOGIC)
+        # This is kept for compatibility with files that don't have proper headers
+        logger.debug(f"  No Block 2 found, using fallback address detection")
+
         if self.load_address == 0x0D7E:
             # Laxity driver detected via load address
-            # Entry points: $0D7E (init), $0D81 (play)
             self.init_address = 0x0D7E
             self.play_address = 0x0D81
             logger.debug(f"  Detected Laxity driver (load=$0D7E): init=$0D7E, play=$0D81")
             return
 
-        # Method 2: Check for "Laxity" string in header (backup)
-        # The Laxity driver has " Laxity " text starting around offset 8
+        # Check for "Laxity" string in header (backup method)
         if len(self.data) >= 20:
-            header_text = self.data[2:50]  # Check first ~48 bytes after load address
+            header_text = self.data[2:50]
             if b'Laxity' in header_text:
                 self.init_address = 0x0D80
                 self.play_address = 0x0D83
                 logger.debug(f"  Detected Laxity driver (string match): init=$0D80, play=$0D83")
                 return
 
-        # Default: Driver 11 (standard SF2 driver) entry points
-        #
-        # The SF2 file structure at $1000 is:
-        #   $1000: JMP $15E4  (init stub - clears play flag)
-        #   $1003: JMP $15ED  (play stub - sets play flag)
-        #   $1006: Actual player loop (checks flag, processes music)
-        #
-        # The JMPs at $1000/$1003 only set/clear a flag and return immediately.
-        # The ACTUAL player code is at $1006 which must be called every frame.
-        #
+        # Default: Driver 11 entry points
         self.init_address = 0x1000
-        self.play_address = 0x1006  # NOT $1003! The JMP at $1003 is just a stub.
-        logger.debug(f"  Using Driver 11 entry points: init=$1000, play=$1006")
+        self.play_address = 0x1006
+        logger.debug(f"  Using Driver 11 default entry points: init=$1000, play=$1006")
 
     def get_prg_data(self) -> bytes:
         """Get raw PRG data (including load address)"""
