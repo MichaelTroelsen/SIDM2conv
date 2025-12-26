@@ -1004,7 +1004,7 @@ Total overhead: ~5-10 seconds for full suite
 - **200+ unit tests** (100% pass rate)
 - **17 tests per tool** on average
 - **Cross-platform** (Windows, Mac, Linux)
-- **Pure Python** (zero external dependencies except SID2WAV.EXE for audio)
+- **Pure Python** (zero external dependencies except VSID/SID2WAV.EXE for audio)
 
 #### Documentation
 
@@ -1342,7 +1342,7 @@ SF2 File
   ↓
 scripts/sf2_to_sid.py (export to SID)
   ↓
-tools/SID2WAV.EXE (render to audio)
+VSID/tools/SID2WAV.EXE (render to audio - VSID preferred)
   ↓
 PyQt6 QMediaPlayer (playback)
 ```
@@ -1416,7 +1416,7 @@ Install with: `pip install PyQt6 PyQt6-Multimedia`
 
 #### "Playback not working"
 - Ensure PyQt6-Multimedia is installed: `pip install PyQt6-Multimedia`
-- Check tools/SID2WAV.EXE exists and is executable
+- Check VSID (preferred) or tools/SID2WAV.EXE exists and is executable
 - Verify scripts/sf2_to_sid.py is present
 
 #### Sequences tab is disabled
@@ -1454,7 +1454,7 @@ python sf2_viewer_gui.py
    - Can be adjusted in `sf2_playback.py` `play_sf2()` method
    - Change `-t30` parameter in SID2WAV.EXE call
 
-3. **Audio Quality**: Depends on SID2WAV.EXE
+3. **Audio Quality**: Uses VSID (VICE) for best quality, SID2WAV.EXE as fallback
    - Renders at 16-bit, standard sample rate
    - Quality matches tool's capabilities
 

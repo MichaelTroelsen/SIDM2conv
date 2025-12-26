@@ -15,6 +15,7 @@ from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 # Add parent directory to path for logging
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from sidm2.sf2_debug_logger import get_sf2_logger
+from sidm2.vsid_wrapper import VSIDIntegration
 
 
 class SF2PlaybackEngine(QObject):
@@ -96,44 +97,35 @@ class SF2PlaybackEngine(QObject):
                 'file_exists': sid_path.exists()
             })
 
-            # Step 2: Convert SID to WAV
-            self.status_message.emit("Converting SID to WAV...")
-            self.logger.log_action("Converting SID to WAV", {
+            # Step 2: Convert SID to WAV using VSID
+            self.status_message.emit("Converting SID to WAV (VSID)...")
+            self.logger.log_action("Converting SID to WAV using VSID", {
                 'sid_path': str(sid_path),
                 'wav_path': str(wav_path),
                 'duration_s': duration
             })
 
-            result = subprocess.run([
-                "tools/SID2WAV.EXE",
-                f"-t{duration}",  # Duration in seconds
-                "-16",   # 16-bit
-                str(sid_path),
-                str(wav_path)
-            ], capture_output=True, timeout=60, text=True)
+            # Use VSID for conversion
+            vsid_result = VSIDIntegration.export_to_wav(
+                sid_file=sid_path,
+                output_file=wav_path,
+                duration=duration,
+                verbose=0
+            )
 
-            if result.returncode != 0:
-                error = result.stderr or result.stdout or "Unknown error"
+            if not vsid_result or not vsid_result.get('success'):
+                error = vsid_result.get('error', 'VSID not available') if vsid_result else 'VSID not available'
                 self.logger.log_playback('error', details={
-                    'stage': 'SID to WAV conversion',
-                    'error': error,
-                    'returncode': result.returncode
+                    'stage': 'SID to WAV conversion (VSID)',
+                    'error': error
                 })
                 self.playback_error.emit(f"Failed to convert WAV: {error}")
                 return False
 
-            if not wav_path.exists():
-                self.logger.log_playback('error', details={
-                    'stage': 'WAV file creation',
-                    'error': f'WAV file not created: {wav_path}'
-                })
-                self.playback_error.emit(f"WAV file was not created: {wav_path}")
-                return False
-
-            self.logger.log_action("SID to WAV conversion successful", {
+            self.logger.log_action("SID to WAV conversion successful (VSID)", {
                 'output_path': str(wav_path),
                 'file_exists': wav_path.exists(),
-                'file_size_bytes': wav_path.stat().st_size if wav_path.exists() else 0
+                'file_size_bytes': vsid_result.get('file_size', 0)
             })
 
             # Step 3: Load and play WAV

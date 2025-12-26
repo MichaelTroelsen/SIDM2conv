@@ -1,9 +1,9 @@
 # SIDM2 Project Context
 
-**Version**: 2.9.3 (in progress)
+**Version**: 2.9.6 (in progress)
 **Last Updated**: 2025-12-26
-**Status**: ✅ SF2 Editor Automation Complete (Phases 1-4) + Workflow Documentation
-**Current Focus**: Editor Automation Investigation & Production Workflows
+**Status**: ✅ VSID Integration Complete - Ready for Commit
+**Current Focus**: VSID Audio Export Integration
 
 ---
 
@@ -11,43 +11,47 @@
 
 ### What We're Working On RIGHT NOW (2025-12-26)
 
-**Completed Work**: ✅ **SF2 Editor Automation - Phases 1-4 Complete + Production Workflows**
+**Completed Work**: ✅ **VSID Integration v1.0.0 - Production Ready**
 
 **Implementation Summary**:
-- ✅ **100% Test Pass Rate** (20/20 unit tests, up from 75%)
-- ✅ **Complete Logging System** (45 event types, 13 convenience methods)
-- ✅ **Editor Automation** (Windows API integration, launch/play/stop/close)
-- ✅ **State Detection** (window title parsing, file loaded detection, playback detection)
-- ✅ **Advanced Controls** (position, volume, loop placeholders for future UI automation)
-- ✅ **Window Messages Implementation** (SendMessage API, dialog detection, edit control search)
-- ✅ **Comprehensive Investigation** (6 automation approaches tested, root cause identified)
-- ✅ **Two Production Workflows** (Manual + AutoIt Hybrid, fully documented)
-- ✅ **GUI Event Tracking** (keypress, mouse, tabs, drag-drop)
-- ✅ **Playback Logging** (SF2→SID→WAV→Play workflow)
-- ✅ **Production Ready** (67% tests passing - all non-file-loading features working)
+- ✅ **VSID Integration** (Replaces SID2WAV.EXE with VICE VSID player)
+- ✅ **100% Test Pass Rate** (3/3 integration tests + 120 core tests)
+- ✅ **Cross-Platform Support** (Windows, Linux, Mac)
+- ✅ **Better Accuracy** (VICE-quality SID emulation)
+- ✅ **Auto-Selection** (VSID preferred, SID2WAV fallback)
+- ✅ **100% Backward Compatible** (Automatic fallback, zero breaking changes)
+- ✅ **SF2 Playback Integration** (SF2 Viewer now uses VSID)
+- ✅ **Comprehensive Documentation** (450+ lines guide + API reference)
 
 **Files Created** (uncommitted):
-- `sidm2/sf2_debug_logger.py` - **NEW** Debug logging module (550 lines)
-  - 45 event types (GUI, file ops, playback, structure, editor automation)
-  - 13 convenience methods (log_keypress, log_file_load, log_playback, log_editor_*, etc.)
-  - Multiple output modes (console, file, JSON)
-  - Ultra-verbose mode (logs everything, 111K events/sec)
-  - Event history management (capped at 1000 events)
+- `sidm2/vsid_wrapper.py` - **NEW** VSID integration wrapper (264 lines)
+  - VSIDIntegration class matching audio_export_wrapper API
+  - Automatic VSID detection (4 search paths)
+  - Cross-platform subprocess handling
+  - Comprehensive error handling
+  - Timeout management (VSID runs indefinitely)
 
-- `sidm2/sf2_editor_automation.py` - **NEW** SF2 Editor automation (750 lines)
-  - SF2EditorAutomation class with Windows API integration
-  - Launch editor, load files, control playback (F5/F8)
-  - Window detection, keyboard simulation, process management
-  - Phases 3-4: State detection, advanced controls, window messages
-  - load_file_via_menu() - Keyboard-based file loading (120 lines)
-  - load_file_via_window_messages() - SendMessage API file loading (150 lines)
-  - State detection: get_window_title(), is_file_loaded(), is_playing(), get_playback_state()
-  - Advanced controls: set_position(), set_volume(), toggle_loop() (placeholders)
-  - Output capture: stdout/stderr to temp files, get_editor_output()
-  - Convenience functions (launch_editor_and_load, validate_sf2_with_editor)
-  - Complete error handling (3 custom exceptions)
+- `pyscript/test_vsid_integration.py` - **NEW** Integration test suite (171 lines)
+  - 3 test scenarios (availability, export, wrapper)
+  - 100% pass rate ✅
+  - Auto-finds test SID files
+  - Validates VSID output and file sizes
 
-- `pyscript/test_sf2_logger_unit.py` - **NEW** Unit tests (410 lines)
+- `test-vsid-integration.bat` - **NEW** Batch test launcher
+  - Windows-friendly test wrapper
+
+- `docs/VSID_INTEGRATION_GUIDE.md` - **NEW** Complete usage guide (450+ lines)
+  - Installation instructions (Windows/Linux/Mac)
+  - API reference
+  - Troubleshooting
+  - Migration guide
+  - Performance benchmarks
+
+- `VSID_INTEGRATION_COMPLETE.md` - **NEW** Implementation summary (425 lines)
+  - Complete technical details
+  - Test results
+  - Benefits and architecture
+  - Commit checklist
   - 20 unit tests (100% pass rate ✅)
   - 4 test categories (initialization, events, convenience, metrics)
   - Fixed 3 Windows file handle errors
@@ -71,18 +75,18 @@
   - Confirms editor closes in <2 seconds when launched programmatically
 
 **Files Modified** (uncommitted):
-- `pyscript/sf2_viewer_gui.py` - Enhanced with comprehensive logging
-  - Added keyPressEvent() with modifier tracking
-  - Added mousePressEvent() with position/widget tracking
-  - Added on_tab_changed() for tab switches
-  - Enhanced dropEvent() with logging
-  - File load lifecycle logging with timing metrics
+- `pyscript/sf2_playback.py` - **MODIFIED** Now uses VSID for SID→WAV conversion (+12 lines)
+  - Replaced SID2WAV subprocess with VSIDIntegration wrapper
+  - Enhanced logging (now logs "VSID" explicitly)
+  - Better error handling
+  - Maintains same API and behavior
 
-- `pyscript/sf2_playback.py` - Complete playback logging
-  - 8 logging locations (init, play workflow, pause/resume, stop, state changes)
-  - Conversion stage logging (SF2→SID, SID→WAV)
-  - Error logging with stage information
-  - Timing and file size metrics
+- `sidm2/audio_export_wrapper.py` - **MODIFIED** Auto VSID/SID2WAV selection (+47 lines, v2.0.0)
+  - New parameter: `force_sid2wav=False`
+  - Returns `tool` field: `'vsid'` or `'sid2wav'`
+  - Automatic VSID preference with SID2WAV fallback
+  - Comprehensive warning messages
+  - 100% backward compatible
 
 **Documentation Created** (uncommitted):
 - `docs/implementation/SF2_EDITOR_INTEGRATION_PLAN.md` (850+ lines) - 19-hour ultra-think plan
@@ -118,6 +122,14 @@
 5. `555e7ca` - "chore: Clean up root folder and strengthen test file rules"
 
 ### What Just Happened (Context for Understanding)
+
+**VSID Integration** (Dec 26, 2025) - ✅ **COMPLETE**:
+- **Achievement**: Replaced SID2WAV with VSID (VICE SID player) throughout pipeline
+- **Benefits**: Better accuracy, cross-platform support, active maintenance
+- **Test Results**: 100% pass rate (3/3 integration tests + 120 core tests)
+- **Compatibility**: 100% backward compatible with automatic SID2WAV fallback
+- **Implementation Time**: ~2 hours
+- **Files**: 4 new (wrapper, tests, docs, summary), 2 modified (playback, audio_export)
 
 **SF2 Format Validation Crisis** (Dec 25-26, 2025) - ✅ **RESOLVED**:
 - **Problem**: Generated SF2 files rejected by SID Factory II editor

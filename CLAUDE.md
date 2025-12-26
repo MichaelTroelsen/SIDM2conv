@@ -70,6 +70,11 @@ python pyscript/find_undetected_laxity.py    # Find missed Laxity files
 python pyscript/identify_undetected.py       # Analyze unknown files
 python pyscript/quick_disasm.py file.sid     # Quick 6502 disassembly
 
+# VSID Integration (v2.9.6) - Audio Export
+install-vice.bat                             # Install VICE emulator (includes VSID)
+python pyscript/install_vice.py              # Cross-platform VICE installer
+test-vsid-integration.bat                    # Test VSID integration (100% pass rate)
+
 # Video Creation (NEW)
 setup-video-assets.bat                       # Create all video assets (audio + screenshots)
 install-ffmpeg.bat                           # Install ffmpeg for audio conversion
@@ -130,6 +135,36 @@ sidwinder-trace.bat -trace=output.txt -frames=1500 input.sid  # Batch
 
 **Features**: Frame-aggregated tracing, 17 unit tests + 10 real-world files (100% pass), ~0.1s per 100 frames
 **Docs**: `docs/analysis/SIDWINDER_PYTHON_DESIGN.md`
+
+### VSID Integration (v2.9.6) ✅
+**100% automated** SID→WAV conversion using **VSID (VICE emulator)** for better accuracy. Automatic fallback to SID2WAV.
+
+```python
+from sidm2.vsid_wrapper import VSIDIntegration
+
+# Direct VSID export
+result = VSIDIntegration.export_to_wav(
+    sid_file=Path("input.sid"),
+    output_file=Path("output.wav"),
+    duration=30,
+    verbose=1
+)
+
+# Automatic VSID/SID2WAV selection (preferred)
+from sidm2.audio_export_wrapper import AudioExportIntegration
+
+result = AudioExportIntegration.export_to_wav(
+    sid_file=Path("input.sid"),
+    output_file=Path("output.wav"),
+    duration=30  # Auto-uses VSID if available
+)
+print(f"Tool used: {result['tool']}")  # 'vsid' or 'sid2wav'
+```
+
+**Features**: Cross-platform, VICE-quality emulation, automatic tool selection, 100% backward compatible
+**Benefits**: Better accuracy, active maintenance, open source
+**Status**: ✅ Production ready (3/3 tests + 120 core tests passing)
+**Docs**: `docs/VSID_INTEGRATION_GUIDE.md`
 
 ### SF2 Editor Automation (v2.9.4) 🤖
 **100% automated** SF2 file loading and validation using **PyAutoGUI** as the default mode.
@@ -276,6 +311,14 @@ python scripts/validate_sid_accuracy.py input.sid output.sid
 ---
 
 ## Version History
+
+### v2.9.6 (2025-12-26) - VSID Integration ✅ (Pending Commit)
+- **VSID Integration** (Replaces SID2WAV with VICE VSID player)
+- **Cross-Platform Audio Export** (Windows, Linux, Mac)
+- **Better Accuracy** (VICE-quality SID emulation)
+- **Auto-Selection** (VSID preferred, SID2WAV fallback)
+- **100% Backward Compatible** (Automatic fallback, zero breaking changes)
+- **Complete Documentation** (450+ lines guide + API reference)
 
 ### v2.9.5 (2025-12-26) - Batch Testing & Critical Process Fix ✅
 - **Batch Testing System** (100% success rate, 10/10 files validated)

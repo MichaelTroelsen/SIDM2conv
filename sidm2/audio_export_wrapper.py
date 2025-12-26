@@ -1,8 +1,8 @@
 """
 Audio Export Integration for SID Conversion Pipeline - Phase 2
 
-Integrates SID2WAV.EXE into the conversion pipeline as Step 16.
 Exports SID files to WAV audio for reference listening.
+Uses VSID (VICE emulator) as primary option with SID2WAV.EXE as fallback.
 
 Usage:
     from sidm2.audio_export_wrapper import AudioExportIntegration
@@ -15,8 +15,8 @@ Usage:
     )
 """
 
-__version__ = "1.0.0"
-__date__ = "2025-12-24"
+__version__ = "2.0.0"
+__date__ = "2025-12-26"
 
 import subprocess
 import os
@@ -24,11 +24,23 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import logging
 
+# Import VSID wrapper
+try:
+    from sidm2.vsid_wrapper import VSIDIntegration
+    VSID_AVAILABLE = True
+except ImportError:
+    VSID_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
 class AudioExportIntegration:
-    """Integration wrapper for SID2WAV audio export in conversion pipeline"""
+    """
+    Integration wrapper for audio export in conversion pipeline.
+
+    Prefers VSID (VICE emulator) for better accuracy and cross-platform support.
+    Falls back to SID2WAV.EXE if VSID is not available.
+    """
 
     # Tool configuration
     SID2WAV_EXE = "tools/SID2WAV.EXE"
@@ -38,6 +50,9 @@ class AudioExportIntegration:
     DEFAULT_FREQUENCY = 44100  # Hz
     DEFAULT_BIT_DEPTH = 16  # bits
     DEFAULT_FADE_OUT = 2  # seconds
+
+    # Preferred tool order
+    PREFER_VSID = True  # Use VSID by default if available
 
     @staticmethod
     def _check_tool_available() -> bool:
@@ -59,10 +74,14 @@ class AudioExportIntegration:
         bit_depth: int = DEFAULT_BIT_DEPTH,
         stereo: bool = True,
         fade_out: int = DEFAULT_FADE_OUT,
-        verbose: int = 0
+        verbose: int = 0,
+        force_sid2wav: bool = False
     ) -> Optional[Dict[str, Any]]:
         """
         Export SID file to WAV audio.
+
+        Uses VSID (VICE emulator) by default for better accuracy.
+        Falls back to SID2WAV.EXE if VSID is not available.
 
         Args:
             sid_file: Path to input SID file
@@ -71,8 +90,9 @@ class AudioExportIntegration:
             frequency: Sample rate in Hz (default: 44100)
             bit_depth: Bit depth - 8 or 16 (default: 16)
             stereo: Enable stereo output (default: True)
-            fade_out: Fade-out time in seconds (default: 2)
+            fade_out: Fade-out time in seconds (default: 2, SID2WAV only)
             verbose: Verbosity level (0=quiet, 1=normal, 2=debug)
+            force_sid2wav: Force use of SID2WAV even if VSID is available
 
         Returns:
             Dictionary with export results:
@@ -84,14 +104,46 @@ class AudioExportIntegration:
                 'bit_depth': Bit depth,
                 'stereo': Stereo enabled,
                 'file_size': Output file size in bytes,
+                'tool': 'vsid' or 'sid2wav',
                 'error': Error message (if failed)
             }
-            Returns None if tool not available.
+            Returns None if no tool available.
         """
+        # Try VSID first (preferred) unless forced to use SID2WAV
+        if not force_sid2wav and AudioExportIntegration.PREFER_VSID and VSID_AVAILABLE:
+            if verbose > 1:
+                print(f"  Using VSID for audio export (preferred)")
+
+            result = VSIDIntegration.export_to_wav(
+                sid_file=sid_file,
+                output_file=output_file,
+                duration=duration,
+                frequency=frequency,
+                bit_depth=bit_depth,
+                stereo=stereo,
+                fade_out=fade_out,
+                verbose=verbose
+            )
+
+            if result and result.get('success'):
+                result['tool'] = 'vsid'
+                return result
+
+            # VSID failed, try SID2WAV fallback
+            if verbose > 0:
+                logger.warning("VSID export failed, trying SID2WAV fallback")
+
+        # Use SID2WAV (fallback or forced)
         if not AudioExportIntegration._check_tool_available():
             if verbose > 0:
                 logger.warning("SID2WAV.EXE not available (tools/SID2WAV.EXE not found)")
+                if not VSID_AVAILABLE:
+                    logger.warning("VSID also not available. Install VICE:")
+                    logger.warning("  python pyscript/install_vice.py")
             return None
+
+        if verbose > 1:
+            print(f"  Using SID2WAV for audio export")
 
         if not sid_file.exists():
             if verbose > 0:
@@ -150,7 +202,8 @@ class AudioExportIntegration:
                     'frequency': frequency,
                     'bit_depth': bit_depth,
                     'stereo': stereo,
-                    'file_size': file_size
+                    'file_size': file_size,
+                    'tool': 'sid2wav'
                 }
             else:
                 error_msg = "Output file not created"
