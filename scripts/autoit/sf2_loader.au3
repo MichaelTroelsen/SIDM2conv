@@ -1,8 +1,8 @@
 #Region ;**** Directives ****
-#RequireAdmin
+; #RequireAdmin  ; Removed - not needed for file loading
 #AutoIt3Wrapper_Res_Description=SID Factory II Automated File Loader
 #AutoIt3Wrapper_Res_Fileversion=1.0.0.0
-#AutoIt3Wrapper_Icon=sf2_icon.ico
+; #AutoIt3Wrapper_Icon=sf2_icon.ico  ; Icon file not included
 #EndRegion
 
 ; ============================================================================
@@ -153,22 +153,27 @@ EndFunc
 ; ============================================================================
 
 Func KeepAlive()
-    ; Send null message to window to prevent auto-close
-    ; This simulates user presence without interfering with editor
+    ; Aggressive keep-alive to prevent auto-close
+    ; Uses multiple methods to simulate user presence
     If WinExists($g_hwnd) Then
-        ; Send WM_NULL message (doesn't affect editor, just prevents timeout)
+        ; Method 1: Move mouse cursor slightly (invisible to user)
+        Local $pos = MouseGetPos()
+        MouseMove($pos[0] + 1, $pos[1], 0)
+        MouseMove($pos[0], $pos[1], 0)
+
+        ; Method 2: Send WM_SETCURSOR to simulate mouse movement
         DllCall("user32.dll", "lresult", "SendMessageW", _
                 "hwnd", $g_hwnd, _
-                "uint", $WM_NULL, _
-                "wparam", 0, _
-                "lparam", 0)
+                "uint", 0x0020, _  ; WM_SETCURSOR
+                "wparam", $g_hwnd, _
+                "lparam", 0x02010001)
 
-        ; Alternative: Send WM_SETCURSOR to simulate mouse movement
-        ; DllCall("user32.dll", "lresult", "SendMessageW", _
-        ;         "hwnd", $g_hwnd, _
-        ;         "uint", 0x0020, _  ; WM_SETCURSOR
-        ;         "wparam", $g_hwnd, _
-        ;         "lparam", 0x02010001)
+        ; Method 3: Send WM_NCMOUSEMOVE to simulate mouse over titlebar
+        DllCall("user32.dll", "lresult", "SendMessageW", _
+                "hwnd", $g_hwnd, _
+                "uint", 0x00A0, _  ; WM_NCMOUSEMOVE
+                "wparam", 2, _  ; HTCAPTION
+                "lparam", 0)
     EndIf
 EndFunc
 
@@ -177,24 +182,54 @@ EndFunc
 ; ============================================================================
 
 Func LoadFile($hwnd, $filePath)
-    ConsoleWrite("  Activating window..." & @CRLF)
+    ConsoleWrite("  Checking window state..." & @CRLF)
 
-    ; Activate window
-    WinActivate($hwnd)
-    Sleep(100)
+    ; Check if window is already active
+    If WinActive($hwnd) Then
+        ConsoleWrite("  Window is already active" & @CRLF)
+    Else
+        ConsoleWrite("  Activating window..." & @CRLF)
 
-    If Not WinActive($hwnd) Then
-        ConsoleWrite("  WARNING: Could not activate window" & @CRLF)
-        ; Try to force activation
-        WinSetState($hwnd, "", @SW_RESTORE)
-        WinActivate($hwnd)
+        ; Aggressive window activation
+        WinSetState($hwnd, "", @SW_SHOW)
         Sleep(100)
+        WinSetState($hwnd, "", @SW_RESTORE)
+        Sleep(100)
+        WinSetOnTop($hwnd, "", 1)  ; Set window on top
+        Sleep(100)
+        WinActivate($hwnd)
+        Sleep(300)
+
+        ; Try multiple times if needed
+        Local $attempts = 0
+        While Not WinActive($hwnd) And $attempts < 10
+            ; Try different activation methods
+            If Mod($attempts, 2) = 0 Then
+                WinActivate($hwnd)
+            Else
+                ; Try clicking on the window
+                WinSetState($hwnd, "", @SW_SHOW)
+                ControlFocus($hwnd, "", "")
+            EndIf
+            Sleep(150)
+            $attempts += 1
+        WEnd
+
+        If Not WinActive($hwnd) Then
+            ConsoleWrite("  WARNING: Could not activate window after " & $attempts & " attempts" & @CRLF)
+            ConsoleWrite("  Attempting to proceed anyway..." & @CRLF)
+        Else
+            ConsoleWrite("  Window activated successfully" & @CRLF)
+        EndIf
     EndIf
 
-    ; Send F10 to open file dialog
+    ; Wait a bit longer before sending keys
+    Sleep(1000)
+
+    ; Send F10 to open file dialog - use Send instead of ControlSend
     ConsoleWrite("  Sending F10 key..." & @CRLF)
-    ControlSend($hwnd, "", "", $F10_KEY)
-    Sleep(500)
+    Send($F10_KEY)
+    Sleep(1000)
 
     ; Wait for dialog to appear
     ConsoleWrite("  Waiting for file dialog..." & @CRLF)
@@ -229,18 +264,22 @@ Func LoadFile($hwnd, $filePath)
     WEnd
 
     If Not $dialogFound Then
-        ConsoleWrite("  WARNING: File dialog not found, typing to main window" & @CRLF)
-        $dialogHwnd = $hwnd
+        ConsoleWrite("  WARNING: File dialog not found, using active window" & @CRLF)
+    Else
+        ; Activate dialog if found
+        WinActivate($dialogHwnd)
+        Sleep(200)
     EndIf
 
-    ; Type file path
+    ; Type file path using Send (works with active window)
     ConsoleWrite("  Typing file path..." & @CRLF)
-    ControlSend($dialogHwnd, "", "", $filePath)
-    Sleep(200)
+    Send($filePath)
+    Sleep(500)
 
     ; Press Enter
     ConsoleWrite("  Pressing Enter..." & @CRLF)
-    ControlSend($dialogHwnd, "", "", $ENTER_KEY)
+    Send($ENTER_KEY)
+    Sleep(500)
 
     ; Wait for file to load (window title changes)
     ConsoleWrite("  Waiting for file to load..." & @CRLF)

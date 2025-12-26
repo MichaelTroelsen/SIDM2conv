@@ -1188,7 +1188,7 @@ class SF2EditorAutomation:
         status_path = status_file.name
         status_file.close()
 
-        self.logger.log_event(SF2EventType.EDITOR_LAUNCH_START, {
+        self.logger.log_event(SF2EventType.EDITOR_LAUNCH, {
             'message': 'Launching editor with AutoIt',
             'file_path': str(sf2_path),
             'status_file': status_path,
@@ -1345,7 +1345,7 @@ class SF2EditorAutomation:
             True if file loaded successfully, False otherwise
         """
 
-        self.logger.log_event(SF2EventType.EDITOR_LAUNCH_START, {
+        self.logger.log_event(SF2EventType.EDITOR_LAUNCH, {
             'message': 'Using manual workflow',
             'file_path': sf2_path
         })
