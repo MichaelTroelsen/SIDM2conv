@@ -40,7 +40,7 @@ jobs:
             echo "::error::Batch launcher not found"
             exit 1
           }
-          echo "✓ Batch launcher exists"
+          echo "[OK] Batch launcher exists"
         shell: pwsh
 
   unit-tests:
@@ -65,8 +65,8 @@ jobs:
 
       - name: Test imports
         run: |
-          python -c "from sidm2.sf2_editor_automation import SF2EditorAutomation; print('✓ SF2EditorAutomation imports successfully')"
-          python -c "from pyscript.sf2_pyautogui_automation import SF2PyAutoGUIAutomation; print('✓ SF2PyAutoGUIAutomation imports successfully')"
+          python -c "from sidm2.sf2_editor_automation import SF2EditorAutomation; print('[OK] SF2EditorAutomation imports successfully')"
+          python -c "from pyscript.sf2_pyautogui_automation import SF2PyAutoGUIAutomation; print('[OK] SF2PyAutoGUIAutomation imports successfully')"
         continue-on-error: true
         shell: pwsh
 
@@ -89,10 +89,10 @@ jobs:
 
           missing = [r for r in required if r not in found]
           if missing:
-              print(f'❌ Missing: {missing}')
+              print(f'[FAIL] Missing: {missing}')
               sys.exit(1)
           else:
-              print('✓ All required functions/classes found')
+              print('[OK] All required functions/classes found')
           "
         shell: pwsh
 
@@ -122,7 +122,7 @@ jobs:
           if (Test-Path "G5/examples/*.sf2") {
             $count = (Get-ChildItem "G5/examples/*.sf2").Count
             echo "file_count=$count" >> $env:GITHUB_OUTPUT
-            echo "✓ Found $count SF2 test files"
+            echo "[OK] Found $count SF2 test files"
           } else {
             echo "file_count=0" >> $env:GITHUB_OUTPUT
             echo "::warning::No SF2 test files found"
@@ -139,9 +139,9 @@ jobs:
           echo "==================================="
           echo "Batch Testing Validation Summary"
           echo "==================================="
-          echo "✓ Syntax check: PASSED"
-          echo "✓ Unit tests: PASSED"
-          echo "✓ Integration check: PASSED"
+          echo "[OK] Syntax check: PASSED"
+          echo "[OK] Unit tests: PASSED"
+          echo "[OK] Integration check: PASSED"
           echo "SF2 files available: ${{ steps.check_files.outputs.file_count }}"
           echo ""
           echo "Note: Full batch testing with GUI automation"
@@ -166,21 +166,21 @@ jobs:
           if ! grep -q "Batch Testing" CHANGELOG.md; then
             echo "::warning::Batch Testing not mentioned in CHANGELOG.md"
           else
-            echo "✓ CHANGELOG.md mentions Batch Testing"
+            echo "[OK] CHANGELOG.md mentions Batch Testing"
           fi
 
           # Check README
           if ! grep -q "Batch Testing" README.md; then
             echo "::warning::Batch Testing not mentioned in README.md"
           else
-            echo "✓ README.md mentions Batch Testing"
+            echo "[OK] README.md mentions Batch Testing"
           fi
 
           # Check CLAUDE.md
           if ! grep -q "test-batch-pyautogui" CLAUDE.md; then
             echo "::warning::Batch testing commands not in CLAUDE.md"
           else
-            echo "✓ CLAUDE.md includes batch testing commands"
+            echo "[OK] CLAUDE.md includes batch testing commands"
           fi
 
           echo ""
