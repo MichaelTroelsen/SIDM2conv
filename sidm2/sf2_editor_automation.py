@@ -35,6 +35,20 @@ except ImportError:
 from sidm2.sf2_debug_logger import get_sf2_logger, SF2EventType
 from sidm2.automation_config import AutomationConfig
 
+# PyAutoGUI imports (conditional)
+try:
+    import sys
+    # Add pyscript to path for PyAutoGUI automation module
+    pyscript_path = Path(__file__).parent.parent / "pyscript"
+    if str(pyscript_path) not in sys.path:
+        sys.path.insert(0, str(pyscript_path))
+
+    from sf2_pyautogui_automation import SF2PyAutoGUIAutomation
+    PYAUTOGUI_AVAILABLE = True
+except ImportError as e:
+    PYAUTOGUI_AVAILABLE = False
+    SF2PyAutoGUIAutomation = None
+
 
 class SF2EditorAutomationError(Exception):
     """Base exception for editor automation errors"""
@@ -78,6 +92,27 @@ class SF2EditorAutomation:
         self.autoit_timeout = self.config.autoit_timeout
         self.use_autoit_by_default = self.autoit_enabled
 
+        # PyAutoGUI configuration
+        self.pyautogui_enabled = self.config.pyautogui_enabled and PYAUTOGUI_AVAILABLE
+        self.pyautogui_automation = None
+        if self.pyautogui_enabled:
+            try:
+                self.pyautogui_automation = SF2PyAutoGUIAutomation(self.editor_path)
+            except Exception as e:
+                self.logger.log_event(SF2EventType.EDITOR_ERROR, {
+                    'message': 'Failed to initialize PyAutoGUI automation',
+                    'error': str(e)
+                })
+                self.pyautogui_enabled = False
+
+        # Determine default automation mode (priority: PyAutoGUI > AutoIt > Manual)
+        if self.pyautogui_enabled:
+            self.default_automation_mode = 'pyautogui'
+        elif self.autoit_enabled:
+            self.default_automation_mode = 'autoit'
+        else:
+            self.default_automation_mode = 'manual'
+
         if not WINDOWS_API_AVAILABLE:
             self.logger.log_action("Windows API not available - automation limited", {
                 'platform': 'non-Windows or missing pywin32'
@@ -88,6 +123,9 @@ class SF2EditorAutomation:
             'windows_api': WINDOWS_API_AVAILABLE,
             'autoit_enabled': self.autoit_enabled,
             'autoit_script': str(self.autoit_script) if self.autoit_enabled else None,
+            'pyautogui_enabled': self.pyautogui_enabled,
+            'pyautogui_available': PYAUTOGUI_AVAILABLE,
+            'default_mode': self.default_automation_mode,
             'config_file': str(self.config.config_path),
             'config_exists': self.config.config_path.exists()
         })
@@ -1110,46 +1148,90 @@ class SF2EditorAutomation:
     # ========================================================================
 
     def launch_editor_with_file(self, sf2_path: str, timeout: int = 60,
+                                mode: Optional[str] = None,
                                 use_autoit: Optional[bool] = None) -> bool:
-        """Launch editor and load file (AutoIt or Manual mode)
+        """Launch editor and load file (PyAutoGUI, AutoIt, or Manual mode)
 
         Args:
             sf2_path: Path to SF2 file to load
             timeout: Maximum time to wait for file load (seconds)
-            use_autoit: If True, use AutoIt. If False, use manual mode.
-                       If None, auto-detect (use AutoIt if available)
+            mode: Automation mode: 'pyautogui', 'autoit', or 'manual'
+                 If None, uses default mode from config (priority: PyAutoGUI > AutoIt > Manual)
+            use_autoit: DEPRECATED - Use 'mode' parameter instead
+                       If True, uses AutoIt. If False, uses manual mode.
 
         Returns:
             True if file loaded successfully, False otherwise
 
         Example:
-            # Auto-detect mode (uses AutoIt if available)
+            # Auto-detect mode (uses PyAutoGUI if available, falls back to AutoIt, then Manual)
             automation.launch_editor_with_file("file.sf2")
 
+            # Force PyAutoGUI mode
+            automation.launch_editor_with_file("file.sf2", mode='pyautogui')
+
             # Force AutoIt mode
-            automation.launch_editor_with_file("file.sf2", use_autoit=True)
+            automation.launch_editor_with_file("file.sf2", mode='autoit')
 
             # Force manual mode
-            automation.launch_editor_with_file("file.sf2", use_autoit=False)
+            automation.launch_editor_with_file("file.sf2", mode='manual')
         """
 
-        # Determine mode
-        if use_autoit is None:
-            use_autoit = self.use_autoit_by_default
+        # Handle deprecated use_autoit parameter
+        if use_autoit is not None and mode is None:
+            mode = 'autoit' if use_autoit else 'manual'
 
-        if use_autoit:
+        # Determine mode (priority: explicit mode > default mode)
+        if mode is None:
+            mode = self.default_automation_mode
+
+        # Normalize mode
+        mode = mode.lower()
+
+        self.logger.log_action(f"Launching editor with mode: {mode}", {
+            'file_path': str(sf2_path),
+            'requested_mode': mode,
+            'default_mode': self.default_automation_mode,
+            'pyautogui_enabled': self.pyautogui_enabled,
+            'autoit_enabled': self.autoit_enabled
+        })
+
+        # Launch with selected mode
+        if mode == 'pyautogui':
+            if not self.pyautogui_enabled:
+                self.logger.log_event(SF2EventType.EDITOR_ERROR, {
+                    'message': 'PyAutoGUI mode requested but not available',
+                    'fallback': 'autoit or manual mode'
+                })
+                # Fallback to AutoIt or manual
+                if self.autoit_enabled:
+                    return self._launch_with_autoit(sf2_path, timeout)
+                else:
+                    return self._launch_manual_workflow(sf2_path)
+
+            return self._launch_with_pyautogui(sf2_path)
+
+        elif mode == 'autoit':
             if not self.autoit_enabled:
                 self.logger.log_event(SF2EventType.EDITOR_ERROR, {
                     'message': 'AutoIt mode requested but sf2_loader.exe not found',
                     'script_path': str(self.autoit_script),
                     'fallback': 'manual mode'
                 })
-                self.logger.log_action("AutoIt not available, using manual mode")
                 return self._launch_manual_workflow(sf2_path)
 
             return self._launch_with_autoit(sf2_path, timeout)
-        else:
+
+        elif mode == 'manual':
             return self._launch_manual_workflow(sf2_path)
+
+        else:
+            self.logger.log_event(SF2EventType.EDITOR_ERROR, {
+                'message': f'Unknown automation mode: {mode}',
+                'fallback': 'default mode'
+            })
+            # Use default mode
+            return self.launch_editor_with_file(sf2_path, timeout, mode=self.default_automation_mode)
 
     def _launch_with_autoit(self, sf2_path: str, timeout: int) -> bool:
         """Launch editor with AutoIt automated file loading
@@ -1334,6 +1416,90 @@ class SF2EditorAutomation:
                     Path(status_path).unlink()
             except:
                 pass
+
+    def _launch_with_pyautogui(self, sf2_path: str) -> bool:
+        """Launch editor with PyAutoGUI automated file loading
+
+        Uses PyAutoGUI Python library to:
+        1. Launch editor with --skip-intro CLI flag
+        2. Wait for window to appear
+        3. Verify file loaded
+        4. Store window handle and process for further automation
+
+        Args:
+            sf2_path: Path to SF2 file
+
+        Returns:
+            True if file loaded successfully, False otherwise
+        """
+        sf2_path = Path(sf2_path).absolute()
+
+        if not sf2_path.exists():
+            self.logger.log_event(SF2EventType.EDITOR_ERROR, {
+                'message': 'SF2 file not found',
+                'path': str(sf2_path)
+            })
+            return False
+
+        if not self.pyautogui_enabled:
+            self.logger.log_event(SF2EventType.EDITOR_ERROR, {
+                'message': 'PyAutoGUI mode not enabled',
+                'fallback': 'manual mode'
+            })
+            return self._launch_manual_workflow(sf2_path)
+
+        self.logger.log_event(SF2EventType.EDITOR_LAUNCH, {
+            'message': 'Launching editor with PyAutoGUI',
+            'file_path': str(sf2_path),
+            'skip_intro': self.config.pyautogui_skip_intro,
+            'window_timeout': self.config.pyautogui_window_timeout
+        })
+
+        try:
+            # Launch with PyAutoGUI automation
+            success = self.pyautogui_automation.launch_with_file(
+                str(sf2_path),
+                skip_intro=self.config.pyautogui_skip_intro,
+                timeout=self.config.pyautogui_window_timeout
+            )
+
+            if success:
+                # Store process and window information
+                self.process = self.pyautogui_automation.process
+                if self.process:
+                    self.pid = self.process.pid
+
+                # Update window handle if using Windows API
+                if WINDOWS_API_AVAILABLE and self.pyautogui_automation.window:
+                    try:
+                        # Try to get window handle from pygetwindow
+                        window_title = self.pyautogui_automation.window.title
+                        self.window_handle = win32gui.FindWindow(None, window_title)
+                    except:
+                        pass
+
+                self.logger.log_event(SF2EventType.FILE_LOAD_COMPLETE, {
+                    'file_path': str(sf2_path),
+                    'pid': self.pid,
+                    'window_handle': self.window_handle,
+                    'automation_mode': 'pyautogui'
+                })
+
+                return True
+            else:
+                self.logger.log_event(SF2EventType.FILE_LOAD_ERROR, {
+                    'file_path': str(sf2_path),
+                    'automation_mode': 'pyautogui'
+                })
+                return False
+
+        except Exception as e:
+            self.logger.log_event(SF2EventType.EDITOR_ERROR, {
+                'message': 'PyAutoGUI automation failed',
+                'error': str(e),
+                'fallback': 'manual mode'
+            })
+            return self._launch_manual_workflow(sf2_path)
 
     def _launch_manual_workflow(self, sf2_path: str) -> bool:
         """Launch with manual file loading (existing workflow)

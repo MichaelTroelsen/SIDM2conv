@@ -28,10 +28,16 @@ class AutomationConfig:
     # Default values (used if config file missing or incomplete)
     DEFAULTS = {
         'AutoIt': {
-            'enabled': 'true',
+            'enabled': 'false',
             'script_path': 'scripts/autoit/sf2_loader.exe',
             'timeout': '60',
             'keep_alive_interval': '500'
+        },
+        'PyAutoGUI': {
+            'enabled': 'true',
+            'skip_intro': 'true',
+            'window_timeout': '10',
+            'failsafe': 'true'
         },
         'Editor': {
             'paths': '''bin/SIDFactoryII.exe
@@ -111,6 +117,30 @@ C:/Program Files (x86)/SIDFactoryII/SIDFactoryII.exe''',
     def autoit_keep_alive_interval(self) -> int:
         """Keep-alive interval (milliseconds)"""
         return self.config.getint('AutoIt', 'keep_alive_interval')
+
+    # ========================================================================
+    # PyAutoGUI Configuration
+    # ========================================================================
+
+    @property
+    def pyautogui_enabled(self) -> bool:
+        """Whether PyAutoGUI mode is enabled by default"""
+        return self.config.getboolean('PyAutoGUI', 'enabled', fallback=True)
+
+    @property
+    def pyautogui_skip_intro(self) -> bool:
+        """Whether to use --skip-intro CLI flag"""
+        return self.config.getboolean('PyAutoGUI', 'skip_intro', fallback=True)
+
+    @property
+    def pyautogui_window_timeout(self) -> int:
+        """Timeout for window detection (seconds)"""
+        return self.config.getint('PyAutoGUI', 'window_timeout', fallback=10)
+
+    @property
+    def pyautogui_failsafe(self) -> bool:
+        """Whether to enable PyAutoGUI failsafe (move mouse to corner to abort)"""
+        return self.config.getboolean('PyAutoGUI', 'failsafe', fallback=True)
 
     # ========================================================================
     # Editor Configuration
@@ -263,6 +293,12 @@ C:/Program Files (x86)/SIDFactoryII/SIDFactoryII.exe''',
                 'script_path': str(self.autoit_script_path),
                 'script_exists': self.autoit_script_path.exists(),
                 'timeout': self.autoit_timeout
+            },
+            'PyAutoGUI': {
+                'enabled': self.pyautogui_enabled,
+                'skip_intro': self.pyautogui_skip_intro,
+                'window_timeout': self.pyautogui_window_timeout,
+                'failsafe': self.pyautogui_failsafe
             },
             'Editor': {
                 'paths_configured': len(self.editor_paths),
