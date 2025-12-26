@@ -1,14 +1,14 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**Project**: SIDM2 - SID to SF2 Converter | **Version**: 2.9.4 | **Updated**: 2025-12-26
+**Project**: SIDM2 - SID to SF2 Converter | **Version**: 2.9.5 | **Updated**: 2025-12-26
 
 ---
 
 ## 30-Second Overview
 
-Converts C64 SID files (Laxity NewPlayer v21) to SID Factory II (.sf2) format. Custom Laxity driver achieves **99.93% frame accuracy**. Includes SF2 Viewer GUI, Conversion Cockpit GUI, **SID Inventory System** (658+ files cataloged), **Python siddump** (100% complete), **Python SIDwinder** (100% complete), validation system, and 200+ passing tests.
+Converts C64 SID files (Laxity NewPlayer v21) to SID Factory II (.sf2) format. Custom Laxity driver achieves **99.93% frame accuracy**. Includes SF2 Viewer GUI, Conversion Cockpit GUI, **SID Inventory System** (658+ files cataloged), **Python siddump** (100% complete), **Python SIDwinder** (100% complete), **Batch Testing** (100% validated), validation system, and 200+ passing tests.
 
-**Key**: 🎯 **Auto-Select Driver (v2.8.0)** | 📋 **SID Inventory (v2.9.0)** | ✅ **SF2 Format Fixed (v2.9.1)** | 🤖 **PyAutoGUI Automation (v2.9.4)** | Laxity → 99.93% | SF2 → 100%
+**Key**: 🎯 **Auto-Select Driver (v2.8.0)** | 📋 **SID Inventory (v2.9.0)** | ✅ **SF2 Format Fixed (v2.9.1)** | 🤖 **PyAutoGUI (v2.9.4)** | 🧪 **Batch Testing (v2.9.5)** | Laxity → 99.93% | SF2 → 100%
 
 ---
 
@@ -45,6 +45,12 @@ cleanup.bat                            # Clean + update inventory
 
 # Conversion Cockpit
 conversion-cockpit.bat                 # Mission control GUI
+
+# Batch Testing (v2.9.5)
+test-batch-pyautogui.bat               # Test multiple SF2 files
+test-batch-pyautogui.bat --directory G5/examples --max-files 10
+test-batch-pyautogui.bat --playback 5 --stability 3
+python pyscript/test_batch_pyautogui.py --directory output
 
 # Python siddump (v2.6.0)
 python pyscript/siddump_complete.py input.sid -t30  # Frame analysis
@@ -270,6 +276,12 @@ python scripts/validate_sid_accuracy.py input.sid output.sid
 ---
 
 ## Version History
+
+### v2.9.5 (2025-12-26) - Batch Testing & Critical Process Fix ✅
+- **Batch Testing System** (100% success rate, 10/10 files validated)
+- **Critical Process Fix** (Editor processes now terminate properly, 0 lingering)
+- **100% Pass Rate** (Improved from 90% to 100% with process cleanup)
+- **Automated Validation** (test-batch-pyautogui.bat with detailed reporting)
 
 ### v2.9.4 (2025-12-26) - PyAutoGUI Automation ✅
 - **PyAutoGUI Integration** (100% automated SF2 file loading, production ready)

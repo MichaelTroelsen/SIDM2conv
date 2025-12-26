@@ -92,6 +92,45 @@ automation.launch_editor_with_file("file.sf2", mode='autoit')     # AutoIt (lega
 **Logger Performance**: 111,862 events/second
 **Test Duration**: 0.159 seconds for 20 tests
 
+### Batch Testing (NEW in v2.9.5) 🧪
+
+**Automated validation** - Test multiple SF2 files sequentially with PyAutoGUI automation.
+
+**Features**:
+- ✅ **100% Success Rate** - 10/10 files tested and passed
+- ✅ **Automated Workflow** - Load, play, verify stability, close, cleanup
+- ✅ **Process Cleanup** - Automatic process termination verification
+- ✅ **Detailed Reports** - Pass/fail rates, duration metrics, per-file results
+- ✅ **Configurable** - Playback duration, stability checks, file patterns
+- ✅ **Resilient** - Warns on cosmetic errors, fails on real issues
+
+**Quick Start**:
+```bash
+# Test all SF2 files in output directory
+test-batch-pyautogui.bat
+
+# Test specific directory with file limit
+test-batch-pyautogui.bat --directory G5/examples --max-files 10
+
+# Custom playback (5s) and stability (3s) durations
+test-batch-pyautogui.bat --playback 5 --stability 3
+
+# Python direct
+python pyscript/test_batch_pyautogui.py --directory output --pattern "*.sf2"
+```
+
+**Test Results** (10 files, Drivers 11-15):
+```
+Total Files:    10
+Passed:         10 (100.0%)
+Failed:         0 (0.0%)
+Total Duration: 111.5 seconds
+Avg Per File:   10.1 seconds
+Processes:      0 remaining (✅ verified)
+```
+
+**Critical Fix** (v2.9.5): Added process termination verification - previously 9 processes remained after testing, now 0 remain. This fix also improved pass rate from 90% to 100%.
+
 ### Logging Workflow
 
 1. Set environment variables (SF2_ULTRAVERBOSE, SF2_DEBUG_LOG, SF2_JSON_LOG)

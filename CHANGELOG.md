@@ -7,6 +7,111 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.9.5] - 2025-12-26
+
+### Added - Batch Testing System & Critical Process Fix
+
+**🧪 PRODUCTION FEATURE: Automated batch testing for PyAutoGUI validation**
+
+**QUALITY ACHIEVEMENT**: 100% success rate (10/10 files) with zero lingering processes.
+
+#### Batch Testing Script
+
+**Complete Batch Validation** - Test multiple SF2 files sequentially with automated reporting.
+
+**Implementation**:
+- **Script**: `pyscript/test_batch_pyautogui.py` (441 lines)
+- **Launcher**: `test-batch-pyautogui.bat` (Windows batch wrapper)
+- **Test Coverage**: 10 files tested (Drivers 11-15)
+- **Success Rate**: 100% (10/10 files passed)
+
+**Features**:
+- ✅ **Automated Testing** - Load, play, verify stability, close
+- ✅ **Batch Statistics** - Pass/fail rates, duration metrics
+- ✅ **Configurable Parameters** - Playback duration, stability checks, file patterns
+- ✅ **Detailed Reporting** - Per-file results with timing
+- ✅ **Process Cleanup** - Automatic process termination verification
+- ✅ **Resilient Testing** - Warns on cosmetic errors, fails on real issues
+
+**Usage**:
+```bash
+# Test all SF2 files in output directory
+test-batch-pyautogui.bat
+
+# Custom directory and file limit
+test-batch-pyautogui.bat --directory G5/examples --max-files 10
+
+# Custom playback and stability durations
+test-batch-pyautogui.bat --playback 5 --stability 3
+
+# Python direct
+python pyscript/test_batch_pyautogui.py --directory output --pattern "*.sf2"
+```
+
+**Test Results**:
+```
+Total Files:    10
+Passed:         10 (100.0%)
+Failed:         0 (0.0%)
+Total Duration: 111.5 seconds
+Avg Per File:   10.1 seconds
+```
+
+### Fixed - Critical Process Termination Bug
+
+**CRITICAL**: SF2 editor processes were not terminating after batch tests.
+
+**Problem**:
+- Window close command sent successfully
+- Window appeared to close
+- **BUT**: Process remained running in background
+- Result: 9 SIDFactoryII.exe processes after 10-file test
+
+**Root Cause**:
+- `close_editor()` method sent Alt+F4 to close window
+- Did not verify process termination
+- Process lingered in background
+
+**Solution**:
+```python
+# Added process termination verification
+automation.pyautogui_automation.close_editor()
+time.sleep(0.5)
+
+# Wait up to 3 seconds for graceful termination
+max_wait = 3
+for i in range(max_wait * 2):
+    if process and process.poll() is None:
+        time.sleep(0.5)
+    else:
+        break
+
+# Force kill if still running
+if process and process.poll() is None:
+    print("[WARN] Process still running, force killing...")
+    process.kill()
+    process.wait(timeout=2)
+```
+
+**Impact**:
+- **Before**: 90% pass rate (9/10), 9 processes remained
+- **After**: 100% pass rate (10/10), 0 processes remain
+- **Additional**: Fixed Filter.sf2 failure (clean state between tests)
+
+**Status**: ✅ FIXED (Commit: 82362c0)
+
+### Changed
+
+**Documentation Updates**:
+- `PYAUTOGUI_INTEGRATION_COMPLETE.md` - Added critical fix section
+- Added batch testing test results
+- Updated status metrics (100% reliability)
+
+**Files Modified**:
+- `pyscript/test_batch_pyautogui.py` - Process cleanup logic (+20 lines)
+
+---
+
 ## [2.9.4] - 2025-12-26
 
 ### Added - PyAutoGUI Automation & CLI Integration
