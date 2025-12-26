@@ -9,6 +9,98 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.9.6] - 2025-12-26
 
+### Added - VSID Integration
+
+**🎵 AUDIO ENHANCEMENT: VSID (VICE SID player) replaces SID2WAV for better accuracy**
+
+**QUALITY ACHIEVEMENT**: Cross-platform SID→WAV conversion with VICE-quality emulation, 100% backward compatible.
+
+#### VSID Audio Export Integration
+
+**Complete VSID Integration** - Use VICE emulator's VSID for SID to WAV conversion throughout the pipeline.
+
+**Implementation**:
+- **Wrapper Module**: `sidm2/vsid_wrapper.py` (264 lines)
+- **Integration Tests**: `pyscript/test_vsid_integration.py` (171 lines)
+- **Test Launcher**: `test-vsid-integration.bat`
+- **Documentation**: `docs/VSID_INTEGRATION_GUIDE.md` (450+ lines)
+- **Summary**: `VSID_INTEGRATION_COMPLETE.md` (425 lines)
+
+**Benefits**:
+- ✅ **Better Accuracy** - VICE-quality SID emulation (vs legacy SID2WAV)
+- ✅ **Cross-Platform** - Windows, Linux, Mac support
+- ✅ **Active Maintenance** - VICE project actively developed
+- ✅ **Auto-Selection** - Prefers VSID, falls back to SID2WAV automatically
+- ✅ **100% Backward Compatible** - Zero breaking changes, automatic fallback
+- ✅ **Open Source** - Fully open source (vs closed-source SID2WAV)
+
+**Integration Points**:
+- SF2 Viewer playback (`pyscript/sf2_playback.py`) - Now uses VSID
+- Audio export wrapper (`sidm2/audio_export_wrapper.py` v2.0.0) - Auto VSID/SID2WAV selection
+- New parameter: `force_sid2wav` for legacy compatibility
+
+**VSID Detection** (4 search paths):
+1. `C:\winvice\bin\vsid.exe` (Windows common)
+2. `tools/vice/bin/vsid.exe` (Project local)
+3. `tools/vice/vsid.exe` (Project alternate)
+4. System PATH (Cross-platform)
+
+**Test Results**:
+```
+✓ VSID Availability - PASSED
+✓ VSID Export - PASSED (1.7 MB WAV, 10s duration)
+✓ Audio Export Wrapper - PASSED (auto-selected VSID)
+✓ Core Tests - PASSED (120/120, no regressions)
+```
+
+**Usage**:
+```python
+from sidm2.vsid_wrapper import VSIDIntegration
+
+# Direct VSID export
+result = VSIDIntegration.export_to_wav(
+    sid_file=Path("input.sid"),
+    output_file=Path("output.wav"),
+    duration=30
+)
+
+# Automatic VSID/SID2WAV selection (preferred)
+from sidm2.audio_export_wrapper import AudioExportIntegration
+
+result = AudioExportIntegration.export_to_wav(
+    sid_file=Path("input.sid"),
+    output_file=Path("output.wav"),
+    duration=30  # Auto-uses VSID if available
+)
+print(f"Tool used: {result['tool']}")  # 'vsid' or 'sid2wav'
+```
+
+**Installation**:
+```bash
+# Windows
+install-vice.bat
+
+# Cross-platform
+python pyscript/install_vice.py
+
+# Linux/Mac
+sudo apt-get install vice  # Ubuntu/Debian
+brew install vice          # macOS
+```
+
+**Performance** (10s test file):
+| Tool | Size | Quality |
+|------|------|---------|
+| VSID | 1.7 MB | ⭐⭐⭐⭐⭐ (VICE quality) |
+| SID2WAV | 1.4 MB | ⭐⭐⭐⭐ (Legacy) |
+
+**Documentation**:
+- Complete integration guide with API reference
+- Installation instructions for all platforms
+- Migration guide from SID2WAV
+- Troubleshooting section
+- Performance benchmarks
+
 ### Added - Continuous Integration (CI/CD)
 
 **🔄 INFRASTRUCTURE: Complete CI/CD system with automated testing**
