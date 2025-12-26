@@ -1,14 +1,14 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**Project**: SIDM2 - SID to SF2 Converter | **Version**: 2.9.5 | **Updated**: 2025-12-26
+**Project**: SIDM2 - SID to SF2 Converter | **Version**: 2.9.6 | **Updated**: 2025-12-26
 
 ---
 
 ## 30-Second Overview
 
-Converts C64 SID files (Laxity NewPlayer v21) to SID Factory II (.sf2) format. Custom Laxity driver achieves **99.93% frame accuracy**. Includes SF2 Viewer GUI, Conversion Cockpit GUI, **SID Inventory System** (658+ files cataloged), **Python siddump** (100% complete), **Python SIDwinder** (100% complete), **Batch Testing** (100% validated), validation system, and 200+ passing tests.
+Converts C64 SID files (Laxity NewPlayer v21) to SID Factory II (.sf2) format. Custom Laxity driver achieves **99.93% frame accuracy**. Includes SF2 Viewer GUI, Conversion Cockpit GUI, **SID Inventory System** (658+ files cataloged), **Python siddump** (100% complete), **Python SIDwinder** (100% complete), **Batch Testing** (100% validated), **Complete User Documentation** (3,400+ lines), **CI/CD System** (5 workflows), validation system, and 200+ passing tests.
 
-**Key**: 🎯 **Auto-Select Driver (v2.8.0)** | 📋 **SID Inventory (v2.9.0)** | ✅ **SF2 Format Fixed (v2.9.1)** | 🤖 **PyAutoGUI (v2.9.4)** | 🧪 **Batch Testing (v2.9.5)** | Laxity → 99.93% | SF2 → 100%
+**Key**: 🎯 **Auto-Select Driver (v2.8.0)** | 📋 **SID Inventory (v2.9.0)** | ✅ **SF2 Format Fixed (v2.9.1)** | 🤖 **PyAutoGUI (v2.9.4)** | 🧪 **Batch Testing (v2.9.5)** | 📚 **User Docs (v2.9.6)** | 🔄 **CI/CD (v2.9.6)** | Laxity → 99.93% | SF2 → 100%
 
 ---
 
@@ -248,13 +248,21 @@ SIDM2/
 - **docs/guides/TROUBLESHOOTING.md** ⭐ - Error solutions
 - **CLAUDE.md** - This file
 
-### User Guides
+### User Guides (NEW v2.9.6) 📚
+**Complete Documentation Suite** - 3,400+ lines for all skill levels:
+- **`docs/guides/GETTING_STARTED.md`** ⭐ - 5-minute quick start (beginner)
+- **`docs/guides/TUTORIALS.md`** ⭐ - 9 step-by-step tutorials (all levels)
+- **`docs/guides/FAQ.md`** ⭐ - 30+ Q&A pairs (quick answers)
+- **`docs/guides/BEST_PRACTICES.md`** ⭐ - Expert optimization (advanced)
+
+**Specialized Guides**:
 - `docs/guides/SF2_VIEWER_GUIDE.md` - SF2 Viewer + text exporter
 - `docs/guides/CONVERSION_COCKPIT_USER_GUIDE.md` - Batch conversion GUI
 - `docs/guides/LAXITY_DRIVER_USER_GUIDE.md` - Laxity driver guide
 - `docs/guides/VALIDATION_GUIDE.md` - Validation system
 - `docs/guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md` - Logging (v2.5.3)
-- `PYAUTOGUI_INTEGRATION_COMPLETE.md` - PyAutoGUI automation (v2.9.4) ⭐
+- `docs/guides/TROUBLESHOOTING.md` - Error solutions
+- `PYAUTOGUI_INTEGRATION_COMPLETE.md` - PyAutoGUI automation (v2.9.4)
 
 ### Technical Refs
 - `docs/ARCHITECTURE.md` - System architecture
@@ -265,7 +273,11 @@ SIDM2/
 ### Quick Help
 | Need | Document |
 |------|----------|
-| Error fix | `docs/guides/TROUBLESHOOTING.md` ⭐ |
+| **Get started** | `docs/guides/GETTING_STARTED.md` ⭐ |
+| **Learn workflows** | `docs/guides/TUTORIALS.md` ⭐ |
+| **Quick answers** | `docs/guides/FAQ.md` ⭐ |
+| **Optimize** | `docs/guides/BEST_PRACTICES.md` ⭐ |
+| Error fix | `docs/guides/TROUBLESHOOTING.md` |
 | Logging | `docs/guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md` |
 | SF2 format | `docs/SF2_FORMAT_SPEC.md` |
 | Laxity driver | `docs/guides/LAXITY_DRIVER_USER_GUIDE.md` |
@@ -312,13 +324,13 @@ python scripts/validate_sid_accuracy.py input.sid output.sid
 
 ## Version History
 
-### v2.9.6 (2025-12-26) - VSID Integration ✅ (Pending Commit)
-- **VSID Integration** (Replaces SID2WAV with VICE VSID player)
-- **Cross-Platform Audio Export** (Windows, Linux, Mac)
-- **Better Accuracy** (VICE-quality SID emulation)
-- **Auto-Selection** (VSID preferred, SID2WAV fallback)
-- **100% Backward Compatible** (Automatic fallback, zero breaking changes)
-- **Complete Documentation** (450+ lines guide + API reference)
+### v2.9.6 (2025-12-26) - CI/CD + User Documentation ✅
+- **Complete User Documentation** (3,400+ lines: Getting Started, Tutorials, FAQ, Best Practices)
+- **CI/CD System** (5 GitHub Actions workflows, automated testing on every push)
+- **Workflow Modernization** (Updated ci.yml and test.yml for current project structure)
+- **VSID Integration** (Replaces SID2WAV with VICE VSID player for cross-platform audio)
+- **Documentation Status** (All guides production-ready, README updated with navigation)
+- **Batch Testing Workflow** (Automated validation in GitHub Actions)
 
 ### v2.9.5 (2025-12-26) - Batch Testing & Critical Process Fix ✅
 - **Batch Testing System** (100% success rate, 10/10 files validated)
