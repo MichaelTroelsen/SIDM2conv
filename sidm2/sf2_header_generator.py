@@ -26,6 +26,7 @@ class TableDescriptor:
         layout: int = 0x00,
         insert_delete: bool = False,
         color_rule: int = 0x00,
+        visible_rows: int = 0,
     ):
         """
         Initialize table descriptor.
@@ -40,6 +41,7 @@ class TableDescriptor:
             layout: 0x00=Row-major, 0x01=Column-major
             insert_delete: Enable insert/delete operations
             color_rule: Color rule ID (3 for instruments, 0 for others)
+            visible_rows: Number of visible rows (0 = use rows value)
         """
         self.name = name
         self.table_id = table_id
@@ -50,6 +52,7 @@ class TableDescriptor:
         self.layout = layout
         self.insert_delete = insert_delete
         self.color_rule = color_rule
+        self.visible_rows = visible_rows if visible_rows > 0 else rows
 
     def to_bytes(self) -> bytes:
         """
@@ -57,7 +60,7 @@ class TableDescriptor:
 
         Format:
         [Type:1][ID:1][NameLen:1][Name:Var][Layout:1][Flags:1]
-        [Rules:3][Address:2LE][Columns:2LE][Rows:2LE]
+        [Rules:3][Address:2LE][Columns:2LE][Rows:2LE][VisibleRows:1]
 
         Returns:
             Binary representation of this descriptor
@@ -93,6 +96,9 @@ class TableDescriptor:
 
         # Rows (little-endian)
         data.extend(struct.pack("<H", self.rows))
+
+        # Visible row count (added - was missing!)
+        data.append(self.visible_rows)
 
         return bytes(data)
 
@@ -248,7 +254,7 @@ class SF2HeaderGenerator:
         Returns:
             Block bytes with ID and size prefix
         """
-        # Define all 5 tables per specification
+        # Define all 6 tables (Instruments and Commands are required!)
         tables = [
             TableDescriptor(
                 name="Instruments",
@@ -261,8 +267,17 @@ class SF2HeaderGenerator:
                 color_rule=0x03,  # Instruments color
             ),
             TableDescriptor(
-                name="Wave",
+                name="Commands",
                 table_id=1,
+                address=0x1ADB,  # Laxity command table address
+                columns=2,
+                rows=64,
+                table_type=0x81,  # Commands type (required!)
+                color_rule=0x00,
+            ),
+            TableDescriptor(
+                name="Wave",
+                table_id=2,
                 address=0x1ACB,
                 columns=2,
                 rows=128,
@@ -271,7 +286,7 @@ class SF2HeaderGenerator:
             ),
             TableDescriptor(
                 name="Pulse",
-                table_id=2,
+                table_id=3,
                 address=0x1A3B,
                 columns=4,
                 rows=64,
@@ -280,7 +295,7 @@ class SF2HeaderGenerator:
             ),
             TableDescriptor(
                 name="Filter",
-                table_id=3,
+                table_id=4,
                 address=0x1A1E,
                 columns=4,
                 rows=32,
@@ -289,7 +304,7 @@ class SF2HeaderGenerator:
             ),
             TableDescriptor(
                 name="Sequences",
-                table_id=4,
+                table_id=5,
                 address=0x1900,
                 columns=1,
                 rows=255,
@@ -304,6 +319,9 @@ class SF2HeaderGenerator:
         for table in tables:
             content.extend(table.to_bytes())
 
+        # CRITICAL: Add 0xFF terminator - ParseDriverTables() expects it!
+        content.append(0xFF)
+
         # Create block: [ID:1][Size:1][Data]
         block = bytearray([0x03, len(content)])
         block.extend(content)
@@ -312,15 +330,57 @@ class SF2HeaderGenerator:
 
     def create_music_data_block(self) -> bytes:
         """
-        Create Block 5: Music Data (placeholder).
+        Create Block 5: Music Data.
 
-        This is a minimal block indicating where music data starts.
+        ParseMusicData() expects 18 bytes total:
+        - TrackCount (1)
+        - TrackOrderListPointersLowAddress (2)
+        - TrackOrderListPointersHighAddress (2)
+        - SequenceCount (1)
+        - SequencePointersLowAddress (2)
+        - SequencePointersHighAddress (2)
+        - OrderListSize (2)
+        - OrderListTrack1Address (2)
+        - SequenceSize (2)
+        - Sequence00Address (2)
 
         Returns:
             Block bytes with ID and size prefix
         """
-        # Minimal music data block
-        content = bytes([0x00, 0x19])  # Address $1900 (little-endian)
+        content = bytearray()
+
+        # TrackCount (1 byte) - placeholder value
+        content.append(0x01)
+
+        # TrackOrderListPointersLowAddress (2 bytes)
+        content.extend(struct.pack("<H", 0x1900))
+
+        # TrackOrderListPointersHighAddress (2 bytes)
+        content.extend(struct.pack("<H", 0x1900))
+
+        # SequenceCount (1 byte) - placeholder value
+        content.append(0x01)
+
+        # SequencePointersLowAddress (2 bytes)
+        content.extend(struct.pack("<H", 0x1900))
+
+        # SequencePointersHighAddress (2 bytes)
+        content.extend(struct.pack("<H", 0x1900))
+
+        # OrderListSize (2 bytes)
+        content.extend(struct.pack("<H", 0x0100))
+
+        # OrderListTrack1Address (2 bytes)
+        content.extend(struct.pack("<H", 0x1900))
+
+        # SequenceSize (2 bytes)
+        content.extend(struct.pack("<H", 0x0100))
+
+        # Sequence00Address (2 bytes)
+        content.extend(struct.pack("<H", 0x1900))
+
+        # Verify size is exactly 18 bytes
+        assert len(content) == 18, f"MusicData block must be 18 bytes, got {len(content)}"
 
         block = bytearray([0x05, len(content)])
         block.extend(content)

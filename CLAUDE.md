@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**Project**: SIDM2 - SID to SF2 Converter | **Version**: 2.9.0 | **Updated**: 2025-12-24
+**Project**: SIDM2 - SID to SF2 Converter | **Version**: 2.9.1 | **Updated**: 2025-12-26
 
 ---
 
@@ -8,7 +8,7 @@
 
 Converts C64 SID files (Laxity NewPlayer v21) to SID Factory II (.sf2) format. Custom Laxity driver achieves **99.93% frame accuracy**. Includes SF2 Viewer GUI, Conversion Cockpit GUI, **SID Inventory System** (658+ files cataloged), **Python siddump** (100% complete), **Python SIDwinder** (100% complete), validation system, and 200+ passing tests.
 
-**Key**: 🎯 **Auto-Select Driver (v2.8.0)** | 📋 **SID Inventory (v2.9.0)** | Laxity → 99.93% | SF2 → 100%
+**Key**: 🎯 **Auto-Select Driver (v2.8.0)** | 📋 **SID Inventory (v2.9.0)** | ✅ **SF2 Format Fixed (v2.9.1)** | Laxity → 99.93% | SF2 → 100%
 
 ---
 
@@ -233,6 +233,12 @@ python scripts/validate_sid_accuracy.py input.sid output.sid
 ---
 
 ## Version History
+
+### v2.9.1 (2025-12-26) - SF2 Format Validation Fixes ✅
+- **SF2 Metadata Fixes** (Critical editor compatibility - SID Factory II acceptance)
+- **Missing Descriptor Fields** (Commands table, visible_rows field added)
+- **Enhanced Validation** (Comprehensive SF2 structure logging and validation)
+- **Production Ready** (Generated SF2 files now load correctly in editor)
 
 ### v2.9.0 (2025-12-24) - SID Inventory System + Pattern Database ✅
 - **SID Inventory System** (Complete catalog of 658+ SID files)

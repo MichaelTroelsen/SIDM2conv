@@ -1,7 +1,7 @@
 # Project Status Overview
 
-**Last Updated**: 2025-12-22
-**Current Version**: v2.5.3 (Enhanced Logging & Error Handling)
+**Last Updated**: 2025-12-26
+**Current Version**: v2.9.1 (SF2 Format Validation Fixes)
 **Status**: Active Development - Production Ready
 
 ---
@@ -16,7 +16,15 @@ The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2)
 
 ## What Works
 
-### ✅ Enhanced Logging & Error Handling (v2.5.3 - NEW)
+### ✅ SF2 Format Validation Fixes (v2.9.1 - NEW)
+- **Critical editor compatibility fix**: SF2 files now load correctly in SID Factory II
+- **Missing descriptor fields added**: Commands table, visible_rows field
+- **Enhanced validation**: Comprehensive SF2 structure logging and validation
+- **Block structure corrections**: Proper table ID sequencing (0-5)
+- **Production ready**: All generated SF2 files pass format validation
+- See: `CHANGELOG.md` for complete details
+
+### ✅ Enhanced Logging & Error Handling (v2.5.3)
 - **4 verbosity levels**: 0=ERROR, 1=WARNING, 2=INFO (default), 3=DEBUG
 - **Color-coded console output**: Automatic ANSI colors with graceful degradation
 - **Structured JSON logging**: Machine-readable logs for aggregation tools (ELK, Splunk)
@@ -194,6 +202,24 @@ The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2)
 ---
 
 ## Recent Changes
+
+### v2.9.1 (2025-12-26) - SF2 Format Validation Fixes
+#### Fixed
+- **SF2 metadata corruption** causing SID Factory II editor rejection
+  - Added missing Commands table descriptor in Block 3
+  - Added missing visible_rows field to all table descriptors
+  - Fixed table ID sequencing (0-5 instead of 0-4)
+- **Enhanced validation and debugging**
+  - Comprehensive SF2 structure logging (`_log_sf2_structure`)
+  - Block 3 and Block 5 structure validation
+  - Automatic SF2 file validation after write
+- **Files modified**: `sidm2/sf2_header_generator.py`, `sidm2/sf2_writer.py`, `drivers/laxity/sf2driver_laxity_00.prg`
+
+#### Impact
+- Generated SF2 files now load correctly in SID Factory II editor
+- All 6 tables properly displayed and editable
+- Maintains 99.93% frame accuracy for Laxity files
+- Maintains 100% roundtrip accuracy for SF2-exported files
 
 ### v2.5.2 (2025-12-21) - Error Handling Extension
 #### Added

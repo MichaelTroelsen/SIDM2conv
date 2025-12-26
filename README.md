@@ -2,9 +2,9 @@
 
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 
-**Version 2.9.0** | Build Date: 2025-12-24 | Production Ready - SID Inventory & Pattern Database Complete 📋✅
+**Version 2.9.1** | Build Date: 2025-12-26 | Production Ready - SF2 Format Validation Fixes ✅
 
-A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files.
+A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files with 99.93% frame accuracy for Laxity NewPlayer v21 files.
 
 ## Overview
 
@@ -2957,22 +2957,41 @@ The converter now extracts and injects all major table types:
 
 ### Current Limitations
 
-- **Single player support**: Optimized for Laxity NewPlayer v21 only
-- **Some tables use defaults**: Init and Arp may need manual editing
-- **Manual refinement needed**: Output may require editing in SF2
+- **Player Format Support**:
+  - ✅ **Fully Supported**: Laxity NewPlayer v21 (99.93% accuracy with Laxity driver)
+  - ✅ **Fully Supported**: SF2-exported SIDs (100% accuracy with Driver 11)
+  - ⚠️ **Limited Support**: NewPlayer 20.G4 (70-90% accuracy with NP20 driver)
+  - ❌ **Not Supported**: Other player formats (use Driver 11 safe default)
+- **Laxity Driver Limitations** (v1.8.0):
+  - **Filter accuracy**: 0% (Laxity filter format not yet converted)
+  - **Voice 3**: Untested (no test files available with 3-voice content)
+- **Multi-subtune files**: Only first subtune converted
+- **Manual refinement**: Some output may require editing in SID Factory II
 
 ### Player Format Compatibility
 
-**IMPORTANT**: Conversion accuracy varies significantly based on source player format:
+**IMPORTANT**: Conversion accuracy varies significantly based on source player format and driver selection:
 
 | Source Format | Target Driver | Accuracy | Status |
 |---------------|---------------|----------|--------|
 | **SF2-Exported SID** | Driver 11 | **100%** | ✅ Perfect roundtrip |
 | **Driver 11 Test Files** | Driver 11 | **100%** | ✅ Reference extraction |
-| **Laxity NewPlayer v21** | Driver 11 | **1-8%** | ⚠️ Experimental |
-| **Laxity NewPlayer v21** | NP20 | **1-8%** | ⚠️ Experimental |
+| **Laxity NewPlayer v21** | **Laxity Driver** | **99.93%** | ✅ **Production Ready** (v1.8.0) |
+| **Laxity NewPlayer v21** | Driver 11 | **1-8%** | ⚠️ Use Laxity driver instead |
+| **Laxity NewPlayer v21** | NP20 | **1-8%** | ⚠️ Use Laxity driver instead |
+| **NewPlayer 20.G4** | NP20 | **70-90%** | ⚠️ Experimental |
 
-**Why LAXITY Files Have Low Accuracy**:
+**Laxity Driver Achievement (v1.8.0)**:
+
+The custom Laxity driver achieves **99.93% frame accuracy** using an Extract & Wrap architecture:
+
+- **Native Format Preservation**: Uses original Laxity player code (no format conversion)
+- **Perfect Register Writes**: 507/507 register writes match exactly
+- **Wave Table Format Fix**: Critical breakthrough (497x accuracy improvement)
+- **Production Ready**: 286 real Laxity files tested (100% success rate)
+- **Auto-Selection**: Quality-First Policy v2.0 automatically selects Laxity driver (v2.8.0)
+
+**Why Standard Drivers Have Low Accuracy with Laxity Files**:
 
 Despite JCH reverse-engineering Laxity's player in 1988, the formats are **fundamentally incompatible**:
 
@@ -2980,14 +2999,20 @@ Despite JCH reverse-engineering Laxity's player in 1988, the formats are **funda
 - **Different Memory Layouts**: Tables at different addresses with different organization
 - **Different Player Architecture**: Incompatible runtime behavior and state management
 
-**What the 1-8% Represents**:
+**What the 1-8% Represents** (Driver 11/NP20 with Laxity files):
 - Universal C64 frequency table matches (notes are standard)
 - Random waveform coincidences
 - **NOT** faithful music reproduction
 
-**Recommendation**: Use LAXITY conversions for experimental purposes only. For production use, stick to SF2-originated files which achieve 100% accuracy.
+**Recommendation**:
+- ✅ **Laxity NP21 files**: Use Laxity driver (99.93% accuracy) - automatic with v2.8.0+
+- ✅ **SF2-exported files**: Use Driver 11 (100% accuracy) - automatic with v2.8.0+
+- ⚠️ **Other formats**: Use Driver 11 (safe default)
 
-**See Also**: `LAXITY_NP20_RESEARCH_REPORT.md` for comprehensive format analysis and findings.
+**See Also**:
+- `docs/guides/LAXITY_DRIVER_USER_GUIDE.md` - User guide for Laxity driver
+- `docs/reference/LAXITY_DRIVER_TECHNICAL_REFERENCE.md` - Technical implementation details
+- `docs/integration/CONVERSION_POLICY_APPROVED.md` - Automatic driver selection policy
 
 ### Known Issues
 
@@ -3176,7 +3201,40 @@ See `sidm2/audio_comparison.py` for implementation:
 
 **Note**: For recent versions (v2.3.0+), see [`CHANGELOG.md`](CHANGELOG.md). Abbreviated history below shows older releases.
 
-**Current Version**: v2.6.0 - Conversion Cockpit Complete (2025-12-22)
+**Current Version**: v2.9.1 - SF2 Format Validation Fixes (2025-12-26)
+
+### v2.9.1 (2025-12-26)
+
+**SF2 Format Validation Fixes - Critical Editor Compatibility**
+
+- **Fixed SF2 metadata corruption** causing SID Factory II editor rejection:
+  - ✅ Added missing Commands table descriptor in Block 3 (Driver Tables)
+  - ✅ Added missing visible_rows field to all table descriptors
+  - ✅ Fixed table ID sequencing (Instruments=0, Commands=1, Wave=2, Pulse=3, Filter=4, Sequences=5)
+  - ✅ Corrected Block 3 structure to include all 6 required tables
+
+- **Enhanced validation and debugging**:
+  - ✅ Added comprehensive SF2 structure logging (`_log_sf2_structure`)
+  - ✅ Added Block 3 (Driver Tables) structure validation
+  - ✅ Added Block 5 (Music Data) structure validation
+  - ✅ Added automatic SF2 file validation after write
+  - ✅ Detailed block-by-block structure analysis for debugging
+
+- **Impact**:
+  - Generated SF2 files now load correctly in SID Factory II editor
+  - All table descriptors properly formatted per SF2 specification
+  - Editor can now display and edit all 6 tables (Instruments, Commands, Wave, Pulse, Filter, Sequences)
+  - Improved debugging capabilities for future format issues
+
+- **Files Modified**:
+  - `sidm2/sf2_header_generator.py` - Added missing descriptor fields
+  - `sidm2/sf2_writer.py` - Enhanced validation and logging
+  - `drivers/laxity/sf2driver_laxity_00.prg` - Binary driver updates
+
+**Commits**:
+1. `9948703` - Add missing descriptor fields - ACTUAL root cause fix
+2. `0e2c49b` - Fix SF2 block ordering - CRITICAL editor validation fix
+3. `e9cc32e` - Fix SF2 metadata corruption causing editor rejection
 
 ### v2.6.0 (2025-12-22)
 

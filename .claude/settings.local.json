@@ -165,7 +165,19 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(git clone:*)",
       "Bash(ant:*)",
-      "Bash(java:*)"
+      "Bash(java:*)",
+      "Bash(\"G5/examples/Driver 11 Test - Arpeggio.sf2\" )",
+      "Bash(\"output/Stinsens_Last_Night_of_89/Stinsens_Last_Night_of_89/New/Stinsens_Last_Night_of_89.sf2\")",
+      "Bash(\"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" \"C:/Users/mit/Downloads/sidfactory2-master/sidfactory2-master/SIDFactoryII.sln\" /p:Configuration=Release /p:Platform=x64 /verbosity:minimal)",
+      "Bash(\"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" SIDFactoryII.sln /t:Rebuild /p:Configuration=Release /p:Platform=x64)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" SIDFactoryII.sln //p:Configuration=Release //p:Platform=x64)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" SIDFactoryII.sln //p:Configuration=Release //p:Platform=x64 //t:Rebuild)",
+      "Bash(timeout 10 ./SIDFactoryII.exe:*)",
+      "Bash(./SIDFactoryII.exe \"C:/Users/mit/claude/c64server/SIDM2/experiments/metadata_fix_test/Stinsens_FINAL_v4.sf2\")",
+      "Bash(timeout 3 ./SIDFactoryII.exe:*)",
+      "Bash(\"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" SIDFactoryII.sln /t:Rebuild /p:Configuration=Release /p:Platform=x64 /verbosity:minimal)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" SIDFactoryII.sln //t:Rebuild //p:Configuration=Release //p:Platform=x64)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" SIDFactoryII.sln //t:Rebuild //p:Configuration=Release //p:Platform=x64 //verbosity:minimal)"
     ],
     "deny": [],
     "ask": []

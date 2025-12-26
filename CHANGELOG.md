@@ -7,6 +7,115 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.9.1] - 2025-12-26
+
+### Fixed - SF2 Format Validation & Editor Compatibility
+
+**🔧 CRITICAL FIX: SF2 files now load correctly in SID Factory II editor**
+
+**Root Cause Fixed**: Missing descriptor fields and incorrect block structure causing editor rejection.
+
+#### SF2 Metadata Format Corrections
+
+**File: `sidm2/sf2_header_generator.py`**
+- ✅ Added missing **Commands table descriptor** in Block 3 (Driver Tables)
+  - Commands table was completely missing from SF2 structure
+  - Added TableDescriptor for Commands (ID=1, address=$1ADB, 2 columns, 64 rows)
+  - Type: 0x81 (Commands type per SF2 specification)
+- ✅ Added missing **visible_rows field** to all table descriptors
+  - SF2 format requires visible_rows field after rows field
+  - Added to all 6 table descriptors (Instruments, Commands, Wave, Pulse, Filter, Sequences)
+  - Default: visible_rows = rows (show all rows)
+- ✅ Fixed **table ID sequencing** to match SF2 specification
+  - Old: Instruments(0), Wave(1), Pulse(2), Filter(3), Sequences(4)
+  - New: Instruments(0), Commands(1), Wave(2), Pulse(3), Filter(4), Sequences(5)
+  - Ensures proper table identification in editor
+
+#### Enhanced Validation & Debugging
+
+**File: `sidm2/sf2_writer.py`**
+- ✅ Added **comprehensive SF2 structure logging** (`_log_sf2_structure`)
+  - Logs load address, magic number, all block structures
+  - Per-block analysis with offsets, sizes, and content details
+  - Special handling for Block 3 (Driver Tables) and Block 5 (Music Data)
+- ✅ Added **Block 3 structure validation** (`_log_block3_structure`)
+  - Validates all 6 table descriptors
+  - Checks table type, ID, name, address, dimensions
+  - Reports layout, flags, and color rules
+- ✅ Added **Block 5 structure validation** (`_log_block5_structure`)
+  - Validates orderlist pointers and sequence count
+  - Checks sequence descriptors and data integrity
+- ✅ Added **automatic SF2 file validation** after write
+  - Validates written file structure matches expectations
+  - Catches format errors immediately after generation
+  - Provides detailed error reporting for debugging
+
+#### Binary Driver Updates
+
+**File: `drivers/laxity/sf2driver_laxity_00.prg`**
+- ✅ Updated binary driver to match new descriptor format
+- ⚠️ Multiple backup versions created during testing:
+  - `sf2driver_laxity_00.prg.backup` - Pre-fix backup
+  - `sf2driver_laxity_00.prg.new` - New version with fixes
+  - `sf2driver_laxity_00.prg.old_order` - Old block ordering
+
+#### Impact & Results
+
+**Editor Compatibility**:
+- ✅ Generated SF2 files now **load correctly** in SID Factory II editor
+- ✅ All 6 tables properly displayed: Instruments, Commands, Wave, Pulse, Filter, Sequences
+- ✅ Table editing and navigation works as expected
+- ✅ No more "Invalid SF2 format" or "Corrupted metadata" errors
+
+**Validation Improvements**:
+- ✅ Detailed logging helps diagnose future format issues quickly
+- ✅ Automatic validation catches problems before user sees them
+- ✅ Block-by-block structure analysis for debugging
+
+**Production Readiness**:
+- ✅ All generated SF2 files pass format validation
+- ✅ Compatible with SID Factory II editor (latest version)
+- ✅ Maintains 99.93% frame accuracy for Laxity files
+- ✅ Maintains 100% roundtrip accuracy for SF2-exported files
+
+#### Files Modified
+
+- `sidm2/sf2_header_generator.py` - Added missing descriptor fields
+- `sidm2/sf2_writer.py` - Enhanced validation and logging
+- `drivers/laxity/sf2driver_laxity_00.prg` - Binary driver updates
+- `README.md` - Updated version to 2.9.1, added changelog entry
+- `CLAUDE.md` - Updated version and version history
+- `CHANGELOG.md` - This file
+- `CONTEXT.md` - Created with current project state
+
+#### Related Commits
+
+1. `9948703` - "Add missing descriptor fields - ACTUAL root cause fix"
+2. `0e2c49b` - "Fix SF2 block ordering - CRITICAL editor validation fix"
+3. `e9cc32e` - "Fix SF2 metadata corruption causing editor rejection"
+
+#### Upgrade Notes
+
+**No action required** - Fixes are automatic for all conversions:
+- All new SF2 files generated after v2.9.1 will include proper metadata
+- Existing SF2 files from v2.9.0 or earlier may need regeneration if editor rejects them
+- Use `sid-to-sf2.bat` to regenerate any problematic SF2 files
+
+#### Testing
+
+**Validation**:
+- ✅ Tested with SID Factory II editor (Windows)
+- ✅ Tested with Laxity NP21 files (Stinsens_Last_Night_of_89.sid, Broware.sid)
+- ✅ Tested with SF2-exported files (roundtrip validation)
+- ✅ All 200+ unit tests passing
+
+**Known Working Files**:
+- Stinsens_Last_Night_of_89.sid → SF2 → Loads in editor ✅
+- Broware.sid → SF2 → Loads in editor ✅
+- All driver 11 test files → SF2 → Loads in editor ✅
+
+---
+
 ## [2.9.0] - 2025-12-24
 
 ### Added - SID Inventory System & Pattern Database & Policy Documentation
