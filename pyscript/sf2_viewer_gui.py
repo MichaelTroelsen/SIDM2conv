@@ -31,8 +31,26 @@ from sf2_viewer_core import SF2Parser, BlockType, TableDataLayout
 from sf2_visualization_widgets import WaveformWidget, FilterResponseWidget, EnvelopeWidget
 from sf2_playback import SF2PlaybackEngine
 
+# Add path to sidm2 module
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from sidm2.sf2_debug_logger import configure_sf2_logger, get_sf2_logger, SF2EventType
+
 # Constants
 MAX_RECENT_FILES = 10
+
+# Configure ultra-verbose logging (can be toggled via environment variable)
+import os
+ULTRAVERBOSE = os.getenv('SF2_ULTRAVERBOSE', '').lower() in ('1', 'true', 'yes')
+DEBUG_LOG_FILE = os.getenv('SF2_DEBUG_LOG', 'sf2_viewer_debug.log')
+JSON_LOG = os.getenv('SF2_JSON_LOG', '').lower() in ('1', 'true', 'yes')
+
+# Initialize SF2 debug logger
+sf2_logger = configure_sf2_logger(
+    level=1 if ULTRAVERBOSE else 10,  # ULTRAVERBOSE=1, DEBUG=10
+    log_file=DEBUG_LOG_FILE if os.getenv('SF2_DEBUG_LOG') else None,
+    json_log=JSON_LOG,
+    ultraverbose=ULTRAVERBOSE
+)
 
 
 class SF2ViewerWindow(QMainWindow):
@@ -48,12 +66,21 @@ class SF2ViewerWindow(QMainWindow):
         self.settings = QSettings("Anthropic", "SF2Viewer")
         self.recent_menu = None
 
+        # Log initialization
+        sf2_logger.log_action("SF2 Viewer GUI initialized", {
+            'version': '2.4',
+            'window_size': '1600x1000',
+            'ultraverbose': ULTRAVERBOSE,
+            'log_file': DEBUG_LOG_FILE if os.getenv('SF2_DEBUG_LOG') else None
+        })
+
         self.init_ui()
         self.setup_drag_drop()
         self.update_recent_files_menu()
 
         # Load file if provided as argument
         if file_to_load and os.path.isfile(file_to_load):
+            sf2_logger.log_action(f"Loading file from command line: {file_to_load}")
             self.load_file(file_to_load)
 
     def init_ui(self):
@@ -118,6 +145,9 @@ class SF2ViewerWindow(QMainWindow):
         # Tab 8: Playback
         self.playback_tab = self.create_playback_tab()
         self.tabs.addTab(self.playback_tab, "Playback")
+
+        # Connect tab change signal for logging
+        self.tabs.currentChanged.connect(self.on_tab_changed)
 
         # Create playback engine
         try:
@@ -283,10 +313,104 @@ class SF2ViewerWindow(QMainWindow):
             urls = event.mimeData().urls()
             if urls:
                 file_path = urls[0].toLocalFile()
+                sf2_logger.log_action("File dropped", {
+                    'file_path': file_path,
+                    'drop_position': f'({event.position().x()}, {event.position().y()})'
+                })
                 self.load_file(file_path)
+
+    def keyPressEvent(self, event):
+        """Handle keyboard events and log them"""
+        from PyQt6.QtCore import Qt
+
+        # Get key name
+        key = event.text() if event.text() else event.key()
+        key_name = event.key()
+
+        # Get modifiers
+        modifiers = []
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            modifiers.append('Ctrl')
+        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            modifiers.append('Shift')
+        if event.modifiers() & Qt.KeyboardModifier.AltModifier:
+            modifiers.append('Alt')
+
+        # Special keys
+        key_names = {
+            Qt.Key.Key_Escape: 'Escape',
+            Qt.Key.Key_Return: 'Return',
+            Qt.Key.Key_Enter: 'Enter',
+            Qt.Key.Key_Tab: 'Tab',
+            Qt.Key.Key_Backspace: 'Backspace',
+            Qt.Key.Key_Delete: 'Delete',
+            Qt.Key.Key_Up: 'Up',
+            Qt.Key.Key_Down: 'Down',
+            Qt.Key.Key_Left: 'Left',
+            Qt.Key.Key_Right: 'Right',
+            Qt.Key.Key_F1: 'F1',
+            Qt.Key.Key_F2: 'F2',
+            Qt.Key.Key_F3: 'F3',
+            Qt.Key.Key_F4: 'F4',
+            Qt.Key.Key_F5: 'F5',
+            Qt.Key.Key_F6: 'F6',
+            Qt.Key.Key_F7: 'F7',
+            Qt.Key.Key_F8: 'F8',
+            Qt.Key.Key_F9: 'F9',
+            Qt.Key.Key_F10: 'F10',
+            Qt.Key.Key_F11: 'F11',
+            Qt.Key.Key_F12: 'F12',
+        }
+
+        key_display = key_names.get(key_name, event.text() if event.text() else f'Key_{key_name}')
+
+        # Log keypress
+        sf2_logger.log_keypress(key_display, modifiers, self.__class__.__name__)
+
+        # Pass to parent
+        super().keyPressEvent(event)
+
+    def mousePressEvent(self, event):
+        """Handle mouse press events and log them"""
+        from PyQt6.QtCore import Qt
+
+        # Get button name
+        button_names = {
+            Qt.MouseButton.LeftButton: 'Left',
+            Qt.MouseButton.RightButton: 'Right',
+            Qt.MouseButton.MiddleButton: 'Middle'
+        }
+        button = button_names.get(event.button(), 'Unknown')
+
+        # Get widget under mouse
+        widget = self.childAt(event.pos())
+        widget_name = widget.__class__.__name__ if widget else 'Window'
+
+        # Log mouse click
+        sf2_logger.log_mouse_click(
+            button,
+            event.pos().x(),
+            event.pos().y(),
+            widget_name
+        )
+
+        # Pass to parent
+        super().mousePressEvent(event)
+
+    def on_tab_changed(self, index: int):
+        """Handle tab change events"""
+        if index >= 0 and index < self.tabs.count():
+            tab_name = self.tabs.tabText(index)
+            sf2_logger.log_event(SF2EventType.TAB_CHANGE, {
+                'message': f'Tab changed to: {tab_name}',
+                'tab_name': tab_name,
+                'tab_index': index
+            })
 
     def browse_file(self):
         """Browse for an SF2 file"""
+        sf2_logger.log_action("Opening file browse dialog")
+
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Open SF2 File",
@@ -295,22 +419,51 @@ class SF2ViewerWindow(QMainWindow):
         )
 
         if file_path:
+            sf2_logger.log_action(f"File selected from dialog: {file_path}")
             self.load_file(file_path)
+        else:
+            sf2_logger.log_action("File browse dialog cancelled")
 
     def load_file(self, file_path: str):
         """Load and parse an SF2 file"""
+        import time
+        start_time = time.time()
+
+        # Log file load start
+        file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+        sf2_logger.log_file_load(file_path, 'start', {
+            'file_size_bytes': file_size,
+            'file_size_kb': file_size / 1024
+        })
+
         try:
             self.current_file = file_path
             self.file_label.setText(f"Loaded: {Path(file_path).name}")
 
             # Parse file
+            parse_start = time.time()
+            sf2_logger.log_action("Starting SF2 file parsing")
             self.parser = SF2Parser(file_path)
+            parse_time = time.time() - parse_start
 
             if not self.parser.magic_id:
+                sf2_logger.log_file_load(file_path, 'error', {
+                    'error': 'Invalid magic ID',
+                    'parse_time_ms': int(parse_time * 1000)
+                })
                 QMessageBox.critical(self, "Error", "Failed to parse SF2 file")
                 return
 
+            sf2_logger.log_action("SF2 file parsed successfully", {
+                'parse_time_ms': int(parse_time * 1000),
+                'magic_id': f'0x{self.parser.magic_id:04X}' if self.parser.magic_id else None,
+                'blocks_found': len(self.parser.blocks) if hasattr(self.parser, 'blocks') else 0
+            })
+
             # Update all tabs
+            ui_update_start = time.time()
+            sf2_logger.log_action("Updating UI tabs")
+
             self.update_overview()
             self.update_blocks()
             self.update_tables()
@@ -320,6 +473,11 @@ class SF2ViewerWindow(QMainWindow):
             self.update_sequences()
             self.update_track_view()  # NEW - v2.4
             self.update_visualization()
+
+            ui_update_time = time.time() - ui_update_start
+            sf2_logger.log_action("UI tabs updated", {
+                'update_time_ms': int(ui_update_time * 1000)
+            })
 
             # Check if sequences have valid data and enable/disable tab
             has_valid_sequences = self._has_valid_sequences()
@@ -331,11 +489,27 @@ class SF2ViewerWindow(QMainWindow):
             if self.playback_engine:
                 self.play_btn.setEnabled(True)
                 self.playback_info.setText(f"Ready to play: {Path(file_path).name}")
+                sf2_logger.log_action("Playback enabled")
 
             self.statusBar().showMessage(f"Loaded: {file_path}")
             self.add_recent_file(file_path)
 
+            # Log successful load
+            total_time = time.time() - start_time
+            sf2_logger.log_file_load(file_path, 'complete', {
+                'total_time_ms': int(total_time * 1000),
+                'parse_time_ms': int(parse_time * 1000),
+                'ui_update_time_ms': int(ui_update_time * 1000),
+                'file_size_bytes': file_size,
+                'has_sequences': has_valid_sequences
+            })
+
         except Exception as e:
+            sf2_logger.log_file_load(file_path, 'error', {
+                'error': str(e),
+                'exception_type': type(e).__name__,
+                'elapsed_ms': int((time.time() - start_time) * 1000)
+            })
             QMessageBox.critical(self, "Error", f"Failed to load file: {e}")
 
     def load_recent_files(self) -> list:
