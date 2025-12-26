@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**Project**: SIDM2 - SID to SF2 Converter | **Version**: 2.9.1 | **Updated**: 2025-12-26
+**Project**: SIDM2 - SID to SF2 Converter | **Version**: 2.9.4 | **Updated**: 2025-12-26
 
 ---
 
@@ -8,7 +8,7 @@
 
 Converts C64 SID files (Laxity NewPlayer v21) to SID Factory II (.sf2) format. Custom Laxity driver achieves **99.93% frame accuracy**. Includes SF2 Viewer GUI, Conversion Cockpit GUI, **SID Inventory System** (658+ files cataloged), **Python siddump** (100% complete), **Python SIDwinder** (100% complete), validation system, and 200+ passing tests.
 
-**Key**: 🎯 **Auto-Select Driver (v2.8.0)** | 📋 **SID Inventory (v2.9.0)** | ✅ **SF2 Format Fixed (v2.9.1)** | Laxity → 99.93% | SF2 → 100%
+**Key**: 🎯 **Auto-Select Driver (v2.8.0)** | 📋 **SID Inventory (v2.9.0)** | ✅ **SF2 Format Fixed (v2.9.1)** | 🤖 **PyAutoGUI Automation (v2.9.4)** | Laxity → 99.93% | SF2 → 100%
 
 ---
 
@@ -69,6 +69,9 @@ setup-video-assets.bat                       # Create all video assets (audio + 
 install-ffmpeg.bat                           # Install ffmpeg for audio conversion
 cd video-demo/sidm2-demo && npm start        # Preview video
 cd video-demo/sidm2-demo && npx remotion render SIDM2Demo out/sidm2-demo-enhanced.mp4  # Render final video
+
+# SF2 Editor Automation (v2.9.4)
+python -c "from sidm2.sf2_editor_automation import SF2EditorAutomation; a = SF2EditorAutomation(); a.launch_editor_with_file('file.sf2')"
 ```
 
 **Logging** (v2.5.3): `-v/-vv` (verbose), `-q` (quiet), `--debug`, `--log-file`, `--log-json`
@@ -121,6 +124,33 @@ sidwinder-trace.bat -trace=output.txt -frames=1500 input.sid  # Batch
 
 **Features**: Frame-aggregated tracing, 17 unit tests + 10 real-world files (100% pass), ~0.1s per 100 frames
 **Docs**: `docs/analysis/SIDWINDER_PYTHON_DESIGN.md`
+
+### SF2 Editor Automation (v2.9.4) 🤖
+**100% automated** SF2 file loading and validation using **PyAutoGUI** as the default mode.
+
+```python
+from sidm2.sf2_editor_automation import SF2EditorAutomation
+
+# Automatic PyAutoGUI mode (DEFAULT - zero configuration)
+automation = SF2EditorAutomation()
+success = automation.launch_editor_with_file("file.sf2")
+
+if success:
+    automation.pyautogui_automation.start_playback()  # F5
+    time.sleep(5)
+    automation.pyautogui_automation.stop_playback()   # F6
+    automation.pyautogui_automation.close_editor()
+
+# Explicit mode selection
+automation.launch_editor_with_file("file.sf2", mode='pyautogui')  # Recommended
+automation.launch_editor_with_file("file.sf2", mode='manual')     # User loads file
+automation.launch_editor_with_file("file.sf2", mode='autoit')     # Legacy (not recommended)
+```
+
+**Features**: 100% automated file loading, zero configuration, indefinite window stability, automatic mode fallback
+**Modes**: PyAutoGUI (default) > Manual > AutoIt (automatic priority)
+**Status**: ✅ Production ready (all tests passing)
+**Docs**: `PYAUTOGUI_INTEGRATION_COMPLETE.md`
 
 ---
 
@@ -183,6 +213,7 @@ SIDM2/
 - `docs/guides/LAXITY_DRIVER_USER_GUIDE.md` - Laxity driver guide
 - `docs/guides/VALIDATION_GUIDE.md` - Validation system
 - `docs/guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md` - Logging (v2.5.3)
+- `PYAUTOGUI_INTEGRATION_COMPLETE.md` - PyAutoGUI automation (v2.9.4) ⭐
 
 ### Technical Refs
 - `docs/ARCHITECTURE.md` - System architecture
@@ -239,6 +270,13 @@ python scripts/validate_sid_accuracy.py input.sid output.sid
 ---
 
 ## Version History
+
+### v2.9.4 (2025-12-26) - PyAutoGUI Automation ✅
+- **PyAutoGUI Integration** (100% automated SF2 file loading, production ready)
+- **CLI --skip-intro Flag** (SID Factory II source code modification)
+- **Default Automation Mode** (PyAutoGUI > Manual > AutoIt automatic priority)
+- **Zero Configuration** (Works immediately, automatic fallback)
+- **100% Test Pass Rate** (All integration tests passing)
 
 ### v2.9.1 (2025-12-26) - SF2 Format Validation Fixes ✅
 - **SF2 Metadata Fixes** (Critical editor compatibility - SID Factory II acceptance)
