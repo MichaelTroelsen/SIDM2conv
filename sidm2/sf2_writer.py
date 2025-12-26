@@ -1568,7 +1568,7 @@ class SF2Writer:
         instrument_table_start = 0x1A81  # Matches patched pointer $1819 -> $1A81
         wave_table_start = 0x1942        # Matches patched pointer $16DA -> $1942
         pulse_table_start = 0x1E00       # Estimated (no specific patches found yet)
-        filter_table_start = 0x1F00      # Estimated (no specific patches found yet)
+        filter_table_start = 0x1A1E      # Laxity filter table address (from LaxityConverter.FILTER_ADDR)
 
         # Inject wave table - FIXED: Laxity uses TWO SEPARATE ARRAYS, not interleaved pairs
         if hasattr(self.data, 'wavetable') and self.data.wavetable:
