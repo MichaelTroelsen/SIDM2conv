@@ -18,13 +18,31 @@ export const ToolsDemoScene = () => {
       name: 'Conversion Cockpit',
       desc: 'Batch Processing',
       image: 'screenshots/conversion-cockpit.png',
-      delay: 100
+      delay: 70
     },
     {
       name: 'SID Factory II',
       desc: 'Professional Editing',
       image: 'screenshots/sf2-editor.png',
+      delay: 100
+    },
+    {
+      name: 'Driver 11',
+      desc: 'SF2 Standard Driver',
+      image: 'screenshots/driver11-screenshot.png',
+      delay: 130
+    },
+    {
+      name: 'NewPlayer 20',
+      desc: 'NP20 Driver',
+      image: 'screenshots/np20-driver-screenshot.png',
       delay: 160
+    },
+    {
+      name: 'SF2 Editor (Linux)',
+      desc: 'Cross-Platform',
+      image: 'screenshots/editor-linux.png',
+      delay: 190
     },
   ];
 
@@ -97,7 +115,8 @@ export const ToolsDemoScene = () => {
           style={{
             display: 'grid',
             gridTemplateColumns: '1fr 1fr 1fr',
-            gap: '40px',
+            gridTemplateRows: '1fr 1fr',
+            gap: '30px',
             marginTop: '40px',
           }}
         >
@@ -155,10 +174,10 @@ export const ToolsDemoScene = () => {
                   <div
                     style={{
                       width: '100%',
-                      height: '280px',
+                      height: '220px',
                       backgroundColor: 'rgba(0, 0, 0, 0.3)',
                       borderRadius: '10px',
-                      marginBottom: '20px',
+                      marginBottom: '15px',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',

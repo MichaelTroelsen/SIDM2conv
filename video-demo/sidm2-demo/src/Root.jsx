@@ -7,7 +7,7 @@ export const RemotionRoot = () => {
       <Composition
         id="SIDM2Demo"
         component={SIDM2Demo}
-        durationInFrames={3174} // 105.8 seconds at 30fps (47.8s intro + 58s content)
+        durationInFrames={4800} // 160 seconds (2:40) at 30fps - 16s intro + 144s content
         fps={30}
         width={1920}
         height={1080}
