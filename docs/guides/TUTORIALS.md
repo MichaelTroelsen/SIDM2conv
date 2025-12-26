@@ -1161,7 +1161,7 @@ You can now create custom Python workflows using SIDM2 components.
 - **[FAQ](FAQ.md)** - Common questions
 
 ### Technical References
-- **[SF2 Format Spec](../SF2_FORMAT_SPEC.md)** - Format details
+- **[SF2 Format Spec](../reference/SF2_FORMAT_SPEC.md)** - Format details
 - **[Components Reference](../COMPONENTS_REFERENCE.md)** - Python API
 - **[Architecture](../ARCHITECTURE.md)** - System design
 

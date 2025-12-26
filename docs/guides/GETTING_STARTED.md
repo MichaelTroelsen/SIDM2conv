@@ -418,7 +418,7 @@ See **[Complete Troubleshooting Guide](TROUBLESHOOTING.md)** for:
 
 ### Advanced Topics
 
-- **[SF2 Format Specification](../SF2_FORMAT_SPEC.md)** - Deep dive into format
+- **[SF2 Format Specification](../reference/SF2_FORMAT_SPEC.md)** - Deep dive into format
 - **[Laxity Driver Technical Reference](../reference/LAXITY_DRIVER_TECHNICAL_REFERENCE.md)** - Driver internals
 - **[Components Reference](../COMPONENTS_REFERENCE.md)** - Python API
 
