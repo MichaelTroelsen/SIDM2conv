@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 
-**Version 2.9.3** | Build Date: 2025-12-26 | Production Ready - SF2 Editor Automation + Workflow Guides ✅
+**Version 2.9.6** | Build Date: 2025-12-26 | Production Ready - CI/CD + User Documentation ✅
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files with 99.93% frame accuracy for Laxity NewPlayer v21 files.
 
@@ -17,6 +17,95 @@ This converter analyzes SID files that use Laxity's player routine and attempts 
 > **⚡ New to SIDM2? Get started in 5 minutes!**
 > See **[docs/QUICK_START.md](docs/QUICK_START.md)** for a beginner-friendly guide.
 > See **[docs/CHEATSHEET.md](docs/CHEATSHEET.md)** for a one-page command reference.
+
+## User Guides (NEW in v2.9.6) 📚
+
+**Complete documentation for users of all skill levels** - From first conversion to expert workflows.
+
+### For Beginners
+
+**[Getting Started Guide](docs/guides/GETTING_STARTED.md)** - Your first steps with SIDM2
+- Installation and setup (5 minutes)
+- First SID to SF2 conversion
+- Using SF2 Viewer and Conversion Cockpit
+- Batch testing and validation
+- Troubleshooting common issues
+- Quick reference card
+
+**Perfect for**: New users, quick installation, basic workflows
+
+### For All Users
+
+**[Tutorials](docs/guides/TUTORIALS.md)** - Step-by-step workflows (9 tutorials)
+1. Your First Conversion (2 min)
+2. Viewing SF2 Files (3 min)
+3. Understanding Driver Selection (5 min)
+4. Batch Converting a Collection (10 min)
+5. Using the Conversion Cockpit (5 min)
+6. Editing in SID Factory II (10 min)
+7. Validating Conversion Accuracy (5 min)
+8. Batch Testing Your Files (10 min)
+9. Custom Python Workflows (15 min)
+
+**Perfect for**: Learning by doing, specific tasks, hands-on practice
+
+**[FAQ](docs/guides/FAQ.md)** - Frequently asked questions (30+ Q&A)
+- Getting started questions
+- Conversion help
+- Compatibility information
+- Quality and accuracy
+- Tool usage
+- Troubleshooting
+- Advanced topics
+
+**Perfect for**: Quick answers, common problems, "how do I..." questions
+
+### For Advanced Users
+
+**[Best Practices Guide](docs/guides/BEST_PRACTICES.md)** - Expert tips and optimization
+- Driver selection strategies
+- Quality validation techniques
+- Batch conversion optimization
+- File organization patterns
+- Testing strategies
+- Error handling patterns
+- Performance optimization
+- Python API usage
+- Anti-patterns to avoid
+
+**Perfect for**: Optimization, automation, large-scale operations, production use
+
+### Quick Navigation
+
+| I want to... | See |
+|-------------|-----|
+| **Install and convert my first file** | [Getting Started](docs/guides/GETTING_STARTED.md) |
+| **Learn specific workflows** | [Tutorials](docs/guides/TUTORIALS.md) |
+| **Find answers to common questions** | [FAQ](docs/guides/FAQ.md) |
+| **Optimize my workflow** | [Best Practices](docs/guides/BEST_PRACTICES.md) |
+| **Fix an error** | [Troubleshooting](docs/guides/TROUBLESHOOTING.md) |
+| **Understand the system** | [Architecture](docs/ARCHITECTURE.md) |
+| **Use the Python API** | [Components Reference](docs/COMPONENTS_REFERENCE.md) |
+
+### Additional Documentation
+
+**Technical References**:
+- [SF2 Format Specification](docs/SF2_FORMAT_SPEC.md) - Complete format details
+- [Architecture](docs/ARCHITECTURE.md) - System design and internals
+- [Components Reference](docs/COMPONENTS_REFERENCE.md) - Python API documentation
+- [Laxity Driver Technical Reference](docs/reference/LAXITY_DRIVER_TECHNICAL_REFERENCE.md) - Driver internals
+
+**Specialized Guides**:
+- [Troubleshooting Guide](docs/guides/TROUBLESHOOTING.md) - Error solutions
+- [Logging and Error Handling](docs/guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md) - Debug techniques
+- [Validation Guide](docs/guides/VALIDATION_GUIDE.md) - Quality assurance
+- [SF2 Viewer Guide](docs/guides/SF2_VIEWER_GUIDE.md) - GUI tool usage
+- [Conversion Cockpit User Guide](docs/guides/CONVERSION_COCKPIT_USER_GUIDE.md) - Batch conversion GUI
+- [Laxity Driver User Guide](docs/guides/LAXITY_DRIVER_USER_GUIDE.md) - Laxity driver usage
+
+**Complete Index**: See [docs/INDEX.md](docs/INDEX.md) for all documentation
+
+---
 
 ## SF2 Debug Logging & Editor Automation (NEW in v2.9.3) 🔍
 
