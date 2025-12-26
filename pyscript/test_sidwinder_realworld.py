@@ -19,7 +19,7 @@ from pyscript.sidtracer import SIDTracer
 from pyscript.trace_formatter import TraceFormatter
 
 
-def test_file(sid_path: Path, output_dir: Path, frames: int = 100, verbose: int = 0):
+def process_single_file(sid_path: Path, output_dir: Path, frames: int = 100, verbose: int = 0):
     """
     Test trace generation for a single SID file.
 
@@ -85,7 +85,7 @@ def main():
     for i, sid_path in enumerate(sid_files, 1):
         print(f"[{i}/{len(sid_files)}] {sid_path.name:40}", end=" ... ", flush=True)
 
-        success, stats = test_file(sid_path, output_dir, frames=100, verbose=0)
+        success, stats = process_single_file(sid_path, output_dir, frames=100, verbose=0)
 
         if success:
             print(f"OK  ({stats['total_writes']:5d} writes, {stats['output_size']:7,} bytes)")

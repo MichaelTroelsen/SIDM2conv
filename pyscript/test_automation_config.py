@@ -10,6 +10,7 @@ Usage:
 
 import sys
 from pathlib import Path
+import pytest
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -17,14 +18,18 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from sidm2.automation_config import AutomationConfig
 
 
-def test_config_loading():
+@pytest.fixture
+def config():
+    """Pytest fixture providing AutomationConfig instance for tests"""
+    return AutomationConfig()
+
+
+def test_config_loading(config):
     """Test 1: Configuration file loading"""
     print("=" * 70)
     print("Test 1: Configuration File Loading")
     print("=" * 70)
     print()
-
-    config = AutomationConfig()
 
     print("Loading configuration...")
     print(f"Config file: {config.config_path}")
@@ -37,7 +42,6 @@ def test_config_loading():
         print("[WARN] Configuration file not found (using defaults)")
 
     print()
-    return config
 
 
 def test_autoit_config(config):
@@ -240,7 +244,8 @@ def main():
     print()
 
     # Run tests
-    config = test_config_loading()
+    config = AutomationConfig()  # Create config for standalone execution
+    test_config_loading(config)
     test_autoit_config(config)
     test_editor_config(config)
     test_playback_config(config)

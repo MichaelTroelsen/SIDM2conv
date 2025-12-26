@@ -16,9 +16,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from pyscript.siddecompiler_complete import SIDDecompiler
 
 
-def test_file(sid_path: Path, output_dir: Path, verbose: int = 1):
+def process_single_file(sid_path: Path, output_dir: Path, verbose: int = 1):
     """
-    Test decompilation of a single SID file.
+    Process decompilation of a single SID file.
 
     Returns:
         (success, stats) where stats is a dict of metrics
@@ -96,7 +96,7 @@ def main():
     for i, sid_path in enumerate(sid_files, 1):
         print(f"[{i}/{len(sid_files)}] {sid_path.name:40}", end=" ... ", flush=True)
 
-        success, stats = test_file(sid_path, output_dir, verbose=0)
+        success, stats = process_single_file(sid_path, output_dir, verbose=0)
 
         if success:
             print(f"OK  ({stats['instructions']:4d} instr, {stats['labels']:3d} labels)")

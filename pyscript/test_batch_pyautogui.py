@@ -30,11 +30,18 @@ import argparse
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Optional
+import pytest
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sidm2.sf2_editor_automation import SF2EditorAutomation
+
+
+@pytest.fixture
+def automation():
+    """Pytest fixture providing SF2EditorAutomation instance for tests"""
+    return SF2EditorAutomation()
 
 
 class BatchTestResults:
@@ -124,10 +131,10 @@ def find_sf2_files(directory: Path, pattern: str = "*.sf2") -> List[Path]:
     return files
 
 
-def test_single_file(automation: SF2EditorAutomation, file_path: Path,
-                     playback_duration: float = 3.0,
-                     stability_check: float = 2.0) -> tuple:
-    """Test a single SF2 file
+def run_single_file_test(automation: SF2EditorAutomation, file_path: Path,
+                         playback_duration: float = 3.0,
+                         stability_check: float = 2.0) -> tuple:
+    """Run test on a single SF2 file
 
     Args:
         automation: SF2EditorAutomation instance
@@ -317,7 +324,7 @@ def run_batch_test(directory: Path, pattern: str = "*.sf2",
 
         # Test file
         start_time = time.time()
-        success, message, error = test_single_file(
+        success, message, error = run_single_file_test(
             automation,
             file_path,
             playback_duration=playback_duration,

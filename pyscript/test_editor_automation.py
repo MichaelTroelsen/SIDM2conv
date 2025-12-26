@@ -8,6 +8,7 @@ Tests the editor automation module with actual SID Factory II editor.
 import sys
 import time
 from pathlib import Path
+import pytest
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -22,6 +23,16 @@ from sidm2.sf2_editor_automation import (
 
 # Test file
 TEST_SF2_FILE = "output/keep_Stinsens_Last_Night_of_89/Stinsens_Last_Night_of_89/New/Stinsens_Last_Night_of_89.sf2"
+
+
+@pytest.fixture
+def automation():
+    """Pytest fixture providing SF2EditorAutomation instance for tests"""
+    try:
+        return SF2EditorAutomation()
+    except SF2EditorNotFoundError:
+        pytest.skip("SIDFactoryII.exe not found")
+
 
 def test_editor_detection():
     """Test 1: Detect SIDFactoryII.exe"""
@@ -76,7 +87,7 @@ def test_editor_launch(automation):
         print(f"[FAIL] Editor launch failed: {e}")
         return False
 
-def test_editor_load_file(automation, sf2_file):
+def run_editor_load_file_test(automation, sf2_file):
     """Test 3: Launch Editor and Load File"""
     print("=" * 70)
     print("Test 3: Launch Editor and Load File")
@@ -365,7 +376,7 @@ def main():
     time.sleep(1)
 
     # Test 3: Launch with file
-    results.append(("Launch and Load File", test_editor_load_file(automation, TEST_SF2_FILE)))
+    results.append(("Launch and Load File", run_editor_load_file_test(automation, TEST_SF2_FILE)))
 
     # Test 3b: Window messages file loading (alternative approach)
     print()

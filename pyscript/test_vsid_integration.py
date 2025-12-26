@@ -33,8 +33,8 @@ def test_vsid_availability():
         return False
 
 
-def test_vsid_export(test_sid_file):
-    """Test VSID export functionality"""
+def check_vsid_export(test_sid_file):
+    """Check VSID export functionality"""
     print("\n=== Test 2: VSID Export ===")
 
     if not test_sid_file.exists():
@@ -65,8 +65,8 @@ def test_vsid_export(test_sid_file):
         return False
 
 
-def test_audio_export_wrapper(test_sid_file):
-    """Test AudioExportIntegration with VSID preference"""
+def check_audio_export_wrapper(test_sid_file):
+    """Check AudioExportIntegration with VSID preference"""
     print("\n=== Test 3: Audio Export Wrapper (VSID Preferred) ===")
 
     if not test_sid_file.exists():
@@ -146,10 +146,10 @@ def main():
     print(f"\nUsing test file: {test_sid}")
 
     # Test 2: Direct VSID export
-    vsid_export_ok = test_vsid_export(test_sid)
+    vsid_export_ok = check_vsid_export(test_sid)
 
     # Test 3: Audio export wrapper
-    wrapper_ok = test_audio_export_wrapper(test_sid)
+    wrapper_ok = check_audio_export_wrapper(test_sid)
 
     # Summary
     print("\n" + "=" * 60)
