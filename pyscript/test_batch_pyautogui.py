@@ -204,6 +204,26 @@ def test_single_file(automation: SF2EditorAutomation, file_path: Path,
         # Wait for editor to close
         time.sleep(0.5)
 
+        # Verify editor process is terminated
+        max_wait = 3  # seconds
+        for i in range(max_wait * 2):  # Check every 0.5s
+            if automation.pyautogui_automation.process and automation.pyautogui_automation.process.poll() is None:
+                # Process still running, wait
+                time.sleep(0.5)
+            else:
+                # Process terminated
+                break
+
+        # If process still running after wait, force kill
+        if automation.pyautogui_automation.process and automation.pyautogui_automation.process.poll() is None:
+            print(f"  [WARN] Process still running, force killing...")
+            try:
+                automation.pyautogui_automation.process.kill()
+                automation.pyautogui_automation.process.wait(timeout=2)
+                print(f"  [OK] Process terminated")
+            except Exception as e:
+                print(f"  [WARN] Could not kill process: {e}")
+
         duration = time.time() - start_time
 
         print(f"  [PASS] Test completed successfully ({duration:.1f}s)")
