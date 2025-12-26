@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.9.6] - 2025-12-26
+
+### Added - Continuous Integration (CI/CD)
+
+**🔄 INFRASTRUCTURE: Complete CI/CD system with automated testing**
+
+**AUTOMATION ACHIEVEMENT**: Automated validation on every push with multi-job workflows.
+
+#### Batch Testing Workflow (`.github/workflows/batch-testing.yml`)
+
+**Purpose**: Validate batch testing system and PyAutoGUI automation.
+
+**Jobs**:
+- ✅ **Python Syntax Check** - Validate syntax for batch testing scripts
+- ✅ **Unit Tests** - Test imports and code structure
+- ✅ **Integration Test** - Dry run validation (help check)
+- ✅ **Documentation** - Verify batch testing is documented
+
+**Triggers**:
+- Push to `master`/`main` (when batch testing files change)
+- Pull requests
+- Manual workflow dispatch
+
+**Platform**: Windows (required for PyAutoGUI)
+
+**Test Results** (First Run):
+```
+✓ Python Syntax Check - PASSED (18s)
+✓ Unit Tests - PASSED (1m 19s)
+✓ Integration Test - PASSED (59s)
+✓ Documentation Check - PASSED (3s)
+```
+
+#### CI/CD Documentation (`CI_CD_SYSTEM.md`)
+
+**Complete CI/CD system documentation** (350+ lines).
+
+**Content**:
+- Overview of all 5 workflows
+- Workflow trigger summary and status table
+- Test matrix (Python 3.8-3.12, Windows/Ubuntu)
+- Artifacts produced by each workflow
+- Branch protection recommendations
+- Troubleshooting guide
+- Performance metrics
+- Future enhancement roadmap
+
+**Workflows Documented**:
+1. **batch-testing.yml** - NEW (v2.9.6)
+2. **conversion-cockpit-tests.yml** - Active
+3. **validation.yml** - Active
+4. **ci.yml** - Needs update
+5. **test.yml** - Needs update
+
+### Fixed
+
+**Unicode Encoding in CI** - Replaced Unicode characters (✓, ❌) with ASCII equivalents ([OK], [FAIL]) to prevent `UnicodeEncodeError` in Windows GitHub Actions runners.
+
+### Changed
+
+**CI/CD Status**:
+- ✅ Batch testing validation - ACTIVE
+- ✅ Automated on every push
+- ✅ Windows + Ubuntu platforms
+- ✅ Python 3.8-3.12 tested
+
+---
+
 ## [2.9.5] - 2025-12-26
 
 ### Added - Batch Testing System & Critical Process Fix
