@@ -63,6 +63,12 @@ python pyscript/check_entry_patterns.py      # Validate pattern matches
 python pyscript/find_undetected_laxity.py    # Find missed Laxity files
 python pyscript/identify_undetected.py       # Analyze unknown files
 python pyscript/quick_disasm.py file.sid     # Quick 6502 disassembly
+
+# Video Creation (NEW)
+setup-video-assets.bat                       # Create all video assets (audio + screenshots)
+install-ffmpeg.bat                           # Install ffmpeg for audio conversion
+cd video-demo/sidm2-demo && npm start        # Preview video
+cd video-demo/sidm2-demo && npx remotion render SIDM2Demo out/sidm2-demo-enhanced.mp4  # Render final video
 ```
 
 **Logging** (v2.5.3): `-v/-vv` (verbose), `-q` (quiet), `--debug`, `--log-file`, `--log-json`
