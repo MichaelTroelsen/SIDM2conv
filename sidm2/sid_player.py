@@ -15,6 +15,7 @@ from typing import List, Optional, Tuple, Dict
 from pathlib import Path
 
 from .cpu6502_emulator import CPU6502Emulator, FrameState, SIDRegisterWrite
+from .errors import InvalidInputError, ConversionError
 
 
 # Standard C64 frequency table (PAL)
@@ -137,7 +138,20 @@ class SIDPlayer:
         # Parse header
         magic = data[0:4].decode('ascii', errors='replace')
         if magic not in ('PSID', 'RSID'):
-            raise ValueError(f"Invalid SID file magic: {magic}")
+            raise InvalidInputError(
+                input_type='SID file',
+                value=str(sid_path),
+                expected='PSID or RSID magic bytes at file start',
+                got=f'Magic bytes: {repr(magic)}',
+                suggestions=[
+                    'Verify file is a valid SID file (not corrupted)',
+                    'Check file extension is .sid',
+                    'Try opening file in a SID player (e.g., VICE) to verify',
+                    f'Inspect file header: hexdump -C {sid_path} | head -5',
+                    'Re-download file if obtained from internet'
+                ],
+                docs_link='guides/TROUBLESHOOTING.md#invalid-sid-files'
+            )
 
         version = struct.unpack('>H', data[4:6])[0]
         data_offset = struct.unpack('>H', data[6:8])[0]
@@ -235,7 +249,15 @@ class SIDPlayer:
             PlaybackResult with all captured data
         """
         if not self.header:
-            raise RuntimeError("No SID file loaded")
+            raise ConversionError(
+                stage='Playback',
+                reason='No SID file has been loaded yet',
+                suggestions=[
+                    'Load a SID file first: player.load_sid_file("path/to/file.sid")',
+                    'Check that load_sid_file() completed successfully',
+                    'Verify the file path is correct'
+                ]
+            )
 
         frames: List[FrameState] = []
         notes: List[NoteEvent] = []

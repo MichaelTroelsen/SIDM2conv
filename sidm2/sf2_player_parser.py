@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .models import ExtractedData, PSIDHeader, SequenceEvent
+from .errors import InvalidInputError, MissingDependencyError
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +173,15 @@ class SF2PlayerParser:
         in the SID memory by pattern matching.
         """
         if not self.sf2_reference_path or not self.sf2_reference_path.exists():
-            raise ValueError("SF2 reference file required for this method")
+            raise MissingDependencyError(
+                dependency='SF2 reference file',
+                install_command=None,
+                alternatives=[
+                    'Provide SF2 reference file path when creating parser',
+                    'Use extract() method instead which works without reference',
+                    'Convert SID to SF2 first to get reference file'
+                ]
+            )
 
         # Parse SID header if not done
         if not self.psid_header:
@@ -514,7 +523,19 @@ class SF2PlayerParser:
         # Find marker position in the data
         marker_pos = sf2_data.find(b'\x37\x13')  # Little-endian $1337
         if marker_pos == -1:
-            raise ValueError("SF2 marker not found in data")
+            raise InvalidInputError(
+                input_type='SF2-exported SID file',
+                value=str(self.sid_path) if self.sid_path else 'unknown',
+                expected='SF2 magic marker ($1337) in SID data',
+                got='Marker not found in file',
+                suggestions=[
+                    'Verify this SID was actually exported from SID Factory II',
+                    'Check if file is corrupted: hexdump -C file.sid | grep "37 13"',
+                    'Try using standard Laxity parser instead',
+                    'This file may use a different player format'
+                ],
+                docs_link='guides/TROUBLESHOOTING.md#sf2-export-detection'
+            )
 
         # Extract SF2 structure starting from 2 bytes before marker (load address)
         # The SF2 structure format: [load_addr_lo, load_addr_hi, $37, $13, blocks...]
