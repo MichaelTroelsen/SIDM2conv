@@ -648,6 +648,11 @@ python scripts/sid_to_sf2.py input.sid output.sf2
 python scripts/sid_to_sf2.py input.sid output.sf2 --driver laxity
 python scripts/sid_to_sf2.py input.sid output.sf2 --driver driver11
 python scripts/sid_to_sf2.py input.sid output.sf2 --driver np20
+
+# Quiet mode for automation (NEW in v2.9.7)
+python scripts/sid_to_sf2.py input.sid output.sf2 --quiet
+# → Minimal output: "OK: output.sf2" or "WARN: output.sf2"
+# → Perfect for batch scripts, exit code: 0=success, 1=failure
 ```
 
 **What's Generated**:

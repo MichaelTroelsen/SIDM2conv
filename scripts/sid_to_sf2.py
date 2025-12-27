@@ -188,7 +188,7 @@ def detect_player_type(filepath: str) -> str:
     return "Unknown"
 
 
-def print_success_summary(input_path: str, output_path: str, driver_selection=None, validation_result=None):
+def print_success_summary(input_path: str, output_path: str, driver_selection=None, validation_result=None, quiet=False):
     """Print an enhanced success summary with clear visual formatting.
 
     Args:
@@ -196,18 +196,26 @@ def print_success_summary(input_path: str, output_path: str, driver_selection=No
         output_path: Path to output SF2 file
         driver_selection: Driver selection info (if available)
         validation_result: Validation result (if available)
+        quiet: If True, print minimal output for automation
     """
+    if quiet:
+        # Quiet mode: minimal output for automation
+        status = "OK" if not validation_result or validation_result.passed else "WARN"
+        print(f"{status}: {os.path.basename(output_path)}")
+        return
+
+    # Normal mode: full success summary
     print()
     print("=" * 60)
-    print("✅ CONVERSION SUCCESSFUL!")
+    print("[SUCCESS] CONVERSION SUCCESSFUL!")
     print("=" * 60)
     print()
     print(f"Input:      {os.path.basename(input_path)}")
     print(f"Output:     {os.path.basename(output_path)}")
 
     if driver_selection:
-        driver_name = driver_selection.get('driver_type', 'Unknown')
-        accuracy = driver_selection.get('accuracy', 'N/A')
+        driver_name = driver_selection.driver_name if hasattr(driver_selection, 'driver_name') else 'Unknown'
+        accuracy = driver_selection.expected_accuracy if hasattr(driver_selection, 'expected_accuracy') else 'N/A'
         print(f"Driver:     {driver_name} ({accuracy})")
 
     if validation_result:
@@ -222,11 +230,11 @@ def print_success_summary(input_path: str, output_path: str, driver_selection=No
         print(f"Info File:  {info_file.name}")
 
     print()
-    print("💡 Next Steps:")
-    print(f"  • View in SF2 Viewer: sf2-viewer.bat \"{os.path.basename(output_path)}\"")
-    print(f"  • Edit in SID Factory II")
+    print("Next Steps:")
+    print(f"  - View in SF2 Viewer: sf2-viewer.bat \"{os.path.basename(output_path)}\"")
+    print(f"  - Edit in SID Factory II")
     if Path(input_path).exists():
-        print(f"  • Validate accuracy: validate-sid-accuracy.bat \"{os.path.basename(input_path)}\"")
+        print(f"  - Validate accuracy: validate-sid-accuracy.bat \"{os.path.basename(input_path)}\"")
 
     print()
     print("=" * 60)
@@ -520,7 +528,7 @@ def convert_galway_to_sf2(input_path: str, output_path: str, config: ConversionC
         )
 
 
-def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = None, config: ConversionConfig = None, sf2_reference_path: str = None, use_midi: bool = False):
+def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = None, config: ConversionConfig = None, sf2_reference_path: str = None, use_midi: bool = False, quiet: bool = False):
     """Convert a SID file to SF2 format
 
     Args:
@@ -530,6 +538,7 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
         config: Optional configuration (uses defaults if None)
         sf2_reference_path: Optional path to original SF2 file (for SF2-exported SIDs)
         use_midi: Use MIDI-based sequence extraction (Python emulator, high accuracy)
+        quiet: Quiet mode (minimal output, errors only)
 
     Raises:
         sidm2_errors.FileNotFoundError: If input file doesn't exist
@@ -849,7 +858,8 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
             input_path=input_path,
             output_path=output_path,
             driver_selection=driver_selection,
-            validation_result=validation_result
+            validation_result=validation_result,
+            quiet=quiet
         )
 
         logger.info("IMPORTANT NOTES:")
@@ -1036,7 +1046,22 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description='SID to SF2 Converter - Convert Laxity SID files to SID Factory II format'
+        description='SID to SF2 Converter - Convert Laxity SID files to SID Factory II format',
+        epilog='''Examples:
+  # Auto-detect driver (recommended)
+  %(prog)s music.sid output.sf2
+
+  # Use specific driver
+  %(prog)s music.sid output.sf2 --driver laxity
+
+  # Quiet mode for scripts
+  %(prog)s music.sid output.sf2 --quiet
+
+  # With analysis tools
+  %(prog)s music.sid output.sf2 --trace --disasm
+
+For more help, see README.md or docs/guides/''',
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument('input', help='Input SID file')
     parser.add_argument('output', nargs='?', help='Output SF2 file (default: input name with .sf2)')
@@ -1057,7 +1082,15 @@ def main():
     driver_group.add_argument(
         '--driver', '-d',
         choices=['np20', 'driver11', 'laxity', 'galway'],
-        help='Target driver type (default: from config or driver11). Use "laxity" for native Laxity NewPlayer v21 format, "galway" for Martin Galway players.'
+        help='''Target driver type (default: auto-detected).
+
+Recommended drivers by source:
+  laxity    - Laxity NewPlayer v21 (99.93%% accuracy) [BEST]
+  driver11  - SF2-exported SIDs (100%% accuracy)
+  np20      - NewPlayer 20.G4 (70-90%% accuracy)
+  galway    - Martin Galway players
+
+Example: --driver laxity'''
     )
     driver_group.add_argument(
         '--both', '-b',
@@ -1158,7 +1191,7 @@ def main():
     parser.add_argument(
         '-q', '--quiet',
         action='store_true',
-        help='Quiet mode (errors only)'
+        help='Quiet mode for automation (minimal output, errors only). Exit code: 0=success, 1=failure'
     )
     parser.add_argument(
         '--debug',
@@ -1226,7 +1259,7 @@ def main():
             use_midi = args.use_midi if hasattr(args, 'use_midi') else False
 
             with PerformanceLogger(logger, f"SID to SF2 conversion ({driver_type}): {input_file}"):
-                convert_sid_to_sf2(input_file, output_file, driver_type=driver_type, config=config, sf2_reference_path=sf2_reference, use_midi=use_midi)
+                convert_sid_to_sf2(input_file, output_file, driver_type=driver_type, config=config, sf2_reference_path=sf2_reference, use_midi=use_midi, quiet=args.quiet)
 
         # Initialize tool statistics tracking
         tool_stats = {}
@@ -1745,7 +1778,7 @@ def main():
         # Our custom errors already have helpful messages - format them nicely
         print()
         print("=" * 60)
-        print("❌ CONVERSION FAILED")
+        print("[FAILED] CONVERSION FAILED")
         print("=" * 60)
         print()
         print(str(e))
@@ -1753,14 +1786,14 @@ def main():
 
         # Show suggestions if available
         if hasattr(e, 'suggestions') and e.suggestions:
-            print("💡 Suggestions:")
+            print("Suggestions:")
             for suggestion in e.suggestions:
-                print(f"  • {suggestion}")
+                print(f"  - {suggestion}")
             print()
 
         # Show docs link if available
         if hasattr(e, 'docs_link') and e.docs_link:
-            print(f"📚 See: {e.docs_link}")
+            print(f"Documentation: {e.docs_link}")
             print()
 
         print("=" * 60)
@@ -1769,7 +1802,7 @@ def main():
     except Exception as e:
         print()
         print("=" * 60)
-        print("❌ UNEXPECTED ERROR")
+        print("[ERROR] UNEXPECTED ERROR")
         print("=" * 60)
         print()
         print(f"Error: {e}")
@@ -1781,10 +1814,10 @@ def main():
             traceback.print_exc()
             print()
         else:
-            print("💡 Run with --verbose for detailed error information")
+            print("TIP: Run with --verbose for detailed error information")
             print()
 
-        print("🐛 Please report this issue at:")
+        print("Please report this issue at:")
         print("   https://github.com/MichaelTroelsen/SIDM2conv/issues")
         print()
         print("=" * 60)
