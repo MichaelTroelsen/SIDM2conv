@@ -76,7 +76,13 @@ class AccuracyIntegration:
                     logger.warning(f"Accuracy calculation failed - no result returned")
                     return None
             except Exception as e:
-                logger.error(f"Accuracy calculation error: {e}")
+                logger.error(
+                    f"Accuracy calculation error: {e}\n"
+                    f"  Suggestion: Failed to calculate conversion accuracy\n"
+                    f"  Check: Verify both original and exported SID files exist\n"
+                    f"  Try: Enable verbose logging for detailed error information\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#accuracy-calculation-errors"
+                )
                 return None
 
             # Generate accuracy report
@@ -102,7 +108,13 @@ class AccuracyIntegration:
             }
 
         except Exception as e:
-            logger.error(f"Accuracy validation failed: {e}")
+            logger.error(
+                f"Accuracy validation failed: {e}\n"
+                f"  Suggestion: Unexpected error during accuracy validation\n"
+                f"  Check: Verify accuracy calculation completed successfully\n"
+                f"  Try: Check if siddump is available and working\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#accuracy-validation-errors"
+            )
             return None
 
 

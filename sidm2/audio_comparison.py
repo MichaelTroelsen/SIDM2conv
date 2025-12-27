@@ -292,5 +292,11 @@ def calculate_audio_accuracy(original_wav: str, exported_wav: str, verbose: bool
         logger.warning(f"  Audio comparison failed: {e}")
         return None
     except Exception as e:
-        logger.error(f"  Audio comparison error: {e}")
+        logger.error(
+            f"  Audio comparison error: {e}\n"
+            f"  Suggestion: Audio comparison failed unexpectedly\n"
+            f"  Check: Verify both audio files exist and are readable\n"
+            f"  Try: Test audio files manually to ensure they're valid\n"
+            f"  See: docs/guides/TROUBLESHOOTING.md#audio-comparison-errors"
+        )
         return None

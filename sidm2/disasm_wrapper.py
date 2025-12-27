@@ -162,7 +162,13 @@ class DisassemblerIntegration:
 
         if not sid_file.exists():
             if verbose > 0:
-                logger.error(f"SID file not found: {sid_file}")
+                logger.error(
+                    f"SID file not found: {sid_file}\n"
+                    f"  Suggestion: Cannot disassemble missing SID file\n"
+                    f"  Check: Verify file path is correct\n"
+                    f"  Try: Use absolute path instead of relative path\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#file-not-found-issues"
+                )
             return None
 
         try:
@@ -225,7 +231,13 @@ class DisassemblerIntegration:
             if verbose > 0:
                 # Convert exception to ASCII-safe string
                 error_msg = str(e).encode('ascii', 'replace').decode('ascii')
-                logger.error(f"Disassembly failed: {error_msg}")
+                logger.error(
+                    f"Disassembly failed: {error_msg}\n"
+                    f"  Suggestion: Disassembler could not process SID file\n"
+                    f"  Check: Verify SID file has valid executable code\n"
+                    f"  Try: Check if SID plays correctly in VICE emulator\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#disassembly-failures"
+                )
             return None
 
     @staticmethod

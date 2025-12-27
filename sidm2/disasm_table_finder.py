@@ -33,11 +33,29 @@ def disassemble_sid(sid_path: str) -> str:
         )
         return result.stdout
     except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to disassemble {sid_path}: {e}")
-        logger.error(f"Output: {e.output}")
+        logger.error(
+            f"Failed to disassemble {sid_path}: {e}\n"
+            f"  Suggestion: Disassembler returned error\n"
+            f"  Check: Verify SID file format is valid\n"
+            f"  Try: Check disassembler output below for details\n"
+            f"  See: docs/guides/TROUBLESHOOTING.md#disassembly-errors"
+        )
+        logger.error(
+            f"Output: {e.output}\n"
+            f"  Suggestion: Review disassembler output for specific errors\n"
+            f"  Check: May indicate invalid code or unsupported format\n"
+            f"  Try: Use different disassembly tool if needed\n"
+            f"  See: docs/guides/TROUBLESHOOTING.md#disassembly-output-errors"
+        )
         return ""
     except Exception as e:
-        logger.error(f"Failed to disassemble {sid_path}: {e}")
+        logger.error(
+            f"Failed to disassemble {sid_path}: {e}\n"
+            f"  Suggestion: Unexpected disassembly error\n"
+            f"  Check: Verify disassembler is installed and accessible\n"
+            f"  Try: Test disassembler manually on simpler file\n"
+            f"  See: docs/guides/TROUBLESHOOTING.md#disassembly-exceptions"
+        )
         return ""
 
 
