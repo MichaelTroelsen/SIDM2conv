@@ -90,7 +90,7 @@ This converter analyzes SID files that use Laxity's player routine and attempts 
 ### Additional Documentation
 
 **Technical References**:
-- [SF2 Format Specification](docs/SF2_FORMAT_SPEC.md) - Complete format details
+- [SF2 Format Specification](docs/reference/SF2_FORMAT_SPEC.md) - Complete format details
 - [Architecture](docs/ARCHITECTURE.md) - System design and internals
 - [Components Reference](docs/COMPONENTS_REFERENCE.md) - Python API documentation
 - [Laxity Driver Technical Reference](docs/reference/LAXITY_DRIVER_TECHNICAL_REFERENCE.md) - Driver internals
@@ -2956,7 +2956,9 @@ SIDM2/
 │   ├── drivers/                       # SF2 driver PRG files
 │   └── examples/                      # Example SF2 files
 └── docs/                              # Documentation
-    ├── SF2_FORMAT_SPEC.md             # SF2 format specification
+    ├── reference/                     # Technical references
+    │   └── SF2_FORMAT_SPEC.md         # SF2 format specification
+    ├── guides/                        # User guides
     ├── STINSENS_PLAYER_DISASSEMBLY.md # Laxity player analysis
     ├── CONVERSION_STRATEGY.md         # Conversion mapping
     ├── DRIVER_REFERENCE.md            # Driver specifications

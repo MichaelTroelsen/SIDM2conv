@@ -267,7 +267,7 @@ SIDM2/
 ### Technical Refs
 - `docs/ARCHITECTURE.md` - System architecture
 - `docs/COMPONENTS_REFERENCE.md` - Python API
-- `docs/SF2_FORMAT_SPEC.md` - SF2 format
+- `docs/reference/SF2_FORMAT_SPEC.md` - SF2 format
 - `docs/reference/LAXITY_DRIVER_TECHNICAL_REFERENCE.md` - Laxity internals
 
 ### Quick Help
@@ -279,7 +279,7 @@ SIDM2/
 | **Optimize** | `docs/guides/BEST_PRACTICES.md` ⭐ |
 | Error fix | `docs/guides/TROUBLESHOOTING.md` |
 | Logging | `docs/guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md` |
-| SF2 format | `docs/SF2_FORMAT_SPEC.md` |
+| SF2 format | `docs/reference/SF2_FORMAT_SPEC.md` |
 | Laxity driver | `docs/guides/LAXITY_DRIVER_USER_GUIDE.md` |
 
 **Complete index**: `docs/INDEX.md`
