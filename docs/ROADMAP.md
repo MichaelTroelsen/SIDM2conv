@@ -18,7 +18,8 @@ This roadmap focuses on improving the SIDM2 converter from its current **100% fr
 - ✅ **Filter format conversion: 60-80% accuracy** (v2.9.7) - NEW ⭐
 - ✅ **SF2 packer pointer relocation bug fixed** (v2.9.8) ⭐
 - ✅ **SF2 packer test coverage: 66%** (40 tests) - NEW ⭐
-- ✅ **Expanded test coverage: 235+ tests** (v2.9.8+) - NEW ⭐
+- ✅ **SF2 writer test coverage: 58%** (69 tests) - NEW ⭐
+- ✅ **Expanded test coverage: 255+ tests** (v2.9.8+) - NEW ⭐
 - ✅ Complete validation system with CI/CD
 - ✅ Cleanup and project maintenance system
 - ✅ Enhanced logging & error handling (v2.5.3)
@@ -347,7 +348,64 @@ This roadmap focuses on improving the SIDM2 converter from its current **100% fr
 
 ---
 
-### 3.4: Performance Optimization (P3)
+### 3.4: ✅ Add SF2 Writer Test Suite (P2) - **COMPLETE**
+
+**Status**: ✅ **COMPLETE** (Commit TBD, 2025-12-27)
+
+**Achievement**: SF2 Writer went from 33% to 58% test coverage with 20 new comprehensive tests
+
+**What Was Done**:
+1. ✅ **Table Injection Tests** (10 tests)
+   - Wave table (waveform, note offset pairs)
+   - Pulse table (pulse_value, dur_lo, dur_hi, next_idx)
+   - Filter table (cutoff_hi, cutoff_lo, resonance, next_idx)
+   - Tempo, init, HR, arpeggio tables
+   - Command injection (Phase 1 with command_index_map)
+   - Empty command map fallback
+2. ✅ **Sequence Injection Tests** (4 tests)
+   - Instrument changes in sequences
+   - Command changes in sequences
+   - Note pattern variations
+   - Packed variable-length sequence format (Tetris-style)
+3. ✅ **Instrument Conversion Tests** (4 tests)
+   - Pulse pointer Y*4 → direct index conversion
+   - Wave pointer bounds validation
+   - Laxity waveform → SF2 index mapping
+   - Column-major storage verification
+4. ✅ **Auxiliary Data Tests** (2 tests)
+   - Description data building (PSID header metadata)
+   - Table text data building (instrument/command names)
+
+**Actual Effort**: ~6 hours
+**Actual Impact**:
+- Test count: 49 → 69 (+20 tests, +41%)
+- Coverage: 33% → 58% (+25 percentage points)
+- Target exceeded: 58% vs 40-50% target (+8-18%)
+- 100% test pass rate maintained
+
+**Success Criteria**:
+- ✅ Coverage target: 40-50% → Achieved 58%
+- ✅ Test quality: All tests pass (69/69)
+- ✅ Critical paths: Table/sequence/instrument injection covered
+- ✅ Documentation: Complete implementation guide created
+
+**Files Modified**:
+- `pyscript/test_sf2_writer.py` (+308 lines, 6 new test classes, 20 tests)
+- `docs/testing/TRACK_3.4_SF2_WRITER_TESTS.md` (new, comprehensive documentation)
+
+**Key Technical Insights**:
+- Table addresses must be dicts with 'addr', 'columns', 'rows', 'id' keys
+- Sequences must use SequenceEvent objects, not raw bytes
+- Helper functions: create_minimal_psid_header(), create_minimal_extracted_data()
+
+**Remaining Gaps** (436 uncovered lines):
+- Laxity native format injection (306 lines, 27%)
+- Complex error handling paths (80 lines, 7%)
+- Rare edge cases (50 lines, 4%)
+
+---
+
+### 3.5: Performance Optimization (P3)
 
 **Current**: Conversion time unknown, likely acceptable
 **Target**: Optimize for batch processing

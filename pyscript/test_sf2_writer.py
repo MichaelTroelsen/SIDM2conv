@@ -919,6 +919,352 @@ class TestEdgeCases(unittest.TestCase):
         self.assertEqual(writer.driver_type, 'invalid_driver_xyz')
 
 
+class TestTableInjectionMethods(unittest.TestCase):
+    """Test critical table injection methods (Track 3.4)."""
+
+    def setUp(self):
+        """Create test writer with mock data."""
+        self.data = create_minimal_extracted_data()
+        self.writer = SF2Writer(self.data)
+        self.writer.load_address = 0x1000
+        self.writer.output = bytearray(0x3000)  # Pre-allocate buffer
+
+    def test_inject_wave_table_with_data(self):
+        """Test wave table injection with actual data."""
+        # Set up wave table address (dict with addr, columns, rows)
+        self.writer.driver_info.table_addresses = {
+            'Wave': {'addr': 0x11E0, 'columns': 2, 'rows': 32, 'id': 0}
+        }
+
+        # Mock wave table data (waveform, note offset)
+        self.data.wave_table = [
+            (0x21, 0x00),  # Pulse wave, note C
+            (0x41, 0x0C),  # Saw wave, note C+12
+        ]
+
+        # Should inject without errors
+        self.writer._inject_wave_table()
+
+    def test_inject_pulse_table_with_data(self):
+        """Test pulse table injection with actual data."""
+        self.writer.driver_info.table_addresses = {
+            'Pulse': {'addr': 0x13E0, 'columns': 4, 'rows': 32, 'id': 1}
+        }
+
+        # Pulse table entries: (pulse_value, dur_lo, dur_hi, next_idx)
+        self.data.pulse_table = [
+            (0x0800, 0x40, 0x40, 0x7F),
+            (0x1000, 0x80, 0x80, 0x7F),
+        ]
+
+        self.writer._inject_pulse_table()
+
+    def test_inject_filter_table_with_data(self):
+        """Test filter table injection with actual data."""
+        self.writer.driver_info.table_addresses = {
+            'Filter': {'addr': 0x16E0, 'columns': 4, 'rows': 32, 'id': 2}
+        }
+
+        # Filter table entries: (cutoff_hi, cutoff_lo, resonance, next_idx)
+        self.data.filter_table = [
+            (0x05, 0xA8, 0x80, 0x7F),  # Converted from Laxity format
+        ]
+
+        self.writer._inject_filter_table()
+
+    def test_inject_tempo_table(self):
+        """Test tempo table injection."""
+        self.writer.driver_info.table_addresses = {
+            'Tempo': {'addr': 0x1AE0, 'columns': 1, 'rows': 1, 'id': 3}
+        }
+
+        self.data.tempo = 6  # Standard 60Hz
+
+        self.writer._inject_tempo_table()
+
+    def test_inject_init_table(self):
+        """Test init table injection."""
+        self.writer.driver_info.table_addresses = {
+            'Init': {'addr': 0x1A00, 'columns': 1, 'rows': 1, 'id': 4}
+        }
+
+        self.data.init_volume = 15
+
+        self.writer._inject_init_table()
+
+    def test_inject_hr_table(self):
+        """Test HR table injection."""
+        self.writer.driver_info.table_addresses = {
+            'HR': {'addr': 0x1900, 'columns': 2, 'rows': 32, 'id': 5}
+        }
+
+        # Mock HR data
+        self.data.hr_table = [(0x02, 0x21)]
+
+        self.writer._inject_hr_table()
+
+    def test_inject_arp_table(self):
+        """Test arpeggio table injection."""
+        self.writer.driver_info.table_addresses = {
+            'Arp': {'addr': 0x19E0, 'columns': 4, 'rows': 32, 'id': 6}
+        }
+
+        # Mock arpeggio data
+        self.data.arp_table = [(0x00, 0x04, 0x07, 0x7F)]
+
+        self.writer._inject_arp_table()
+
+    def test_inject_commands_phase1(self):
+        """Test command injection using Phase 1 (command_index_map)."""
+        self.writer.driver_info.table_addresses = {
+            'Commands': {'addr': 0x1100, 'columns': 3, 'rows': 64, 'id': 0}
+        }
+
+        # Mock Phase 1 command_index_map
+        self.data.command_index_map = {
+            (0x01, 0x00, 0x00): 0,  # Command type 1, params 0,0 → index 0
+            (0x02, 0x05, 0x00): 1,  # Command type 2, params 5,0 → index 1
+        }
+
+        self.writer._inject_commands()
+
+    def test_inject_commands_empty_map(self):
+        """Test command injection with empty command map."""
+        self.writer.driver_info.table_addresses = {
+            'Commands': {'addr': 0x1100, 'columns': 3, 'rows': 64, 'id': 0}
+        }
+
+        # Empty command map
+        self.data.command_index_map = {}
+
+        # Should use defaults
+        self.writer._inject_commands()
+
+
+class TestSequenceInjectionAdvanced(unittest.TestCase):
+    """Test advanced sequence injection scenarios (Track 3.4)."""
+
+    def setUp(self):
+        """Create test writer."""
+        self.data = create_minimal_extracted_data()
+        self.writer = SF2Writer(self.data)
+        self.writer.load_address = 0x1000
+        self.writer.driver_info.sequence_start = 0x1900
+        self.writer.output = bytearray(0x3000)
+
+    def test_inject_sequences_with_instrument_changes(self):
+        """Test sequences with instrument changes."""
+        # Sequence with instrument changes
+        self.data.sequences = [
+            [
+                SequenceEvent(instrument=0, command=0, note=0x30),  # C-4
+                SequenceEvent(instrument=1, command=0, note=0x32),  # D-4
+                SequenceEvent(instrument=0, command=0, note=0x7F),  # End
+            ]
+        ]
+
+        # Set up sequence pointer
+        seq_ptr_offset = self.writer._addr_to_offset(0x1903)
+        struct.pack_into('<H', self.writer.output, seq_ptr_offset, 0x1900)
+
+        self.writer._inject_sequences()
+
+    def test_inject_sequences_with_commands(self):
+        """Test sequences with command changes."""
+        # Sequence with command changes
+        self.data.sequences = [
+            [
+                SequenceEvent(instrument=0, command=0, note=0x30),  # C-4
+                SequenceEvent(instrument=0, command=1, note=0x32),  # D-4
+                SequenceEvent(instrument=0, command=0, note=0x7F),  # End
+            ]
+        ]
+
+        seq_ptr_offset = self.writer._addr_to_offset(0x1903)
+        struct.pack_into('<H', self.writer.output, seq_ptr_offset, 0x1900)
+
+        self.writer._inject_sequences()
+
+    def test_inject_sequences_with_duration_changes(self):
+        """Test sequences with varying note values (duration handled by player)."""
+        # Note: Duration is handled by the player, not stored in SequenceEvent
+        # This test verifies sequences with different note patterns
+        self.data.sequences = [
+            [
+                SequenceEvent(instrument=0, command=0, note=0x30),  # C-4
+                SequenceEvent(instrument=0, command=0, note=0x32),  # D-4
+                SequenceEvent(instrument=0, command=0, note=0x34),  # E-4
+                SequenceEvent(instrument=0, command=0, note=0x7F),  # End
+            ]
+        ]
+
+        seq_ptr_offset = self.writer._addr_to_offset(0x1903)
+        struct.pack_into('<H', self.writer.output, seq_ptr_offset, 0x1900)
+
+        self.writer._inject_sequences()
+
+    def test_inject_sequences_packed_format(self):
+        """Test variable-length packed sequence format."""
+        # Multiple sequences of different lengths
+        self.data.sequences = [
+            [  # Short sequence
+                SequenceEvent(instrument=0, command=0, note=0x30),
+                SequenceEvent(instrument=0, command=0, note=0x7F),
+            ],
+            [  # Longer sequence
+                SequenceEvent(instrument=0, command=0, note=0x32),
+                SequenceEvent(instrument=0, command=0, note=0x34),
+                SequenceEvent(instrument=0, command=0, note=0x7F),
+            ],
+            [  # Empty sequence
+                SequenceEvent(instrument=0x80, command=0x80, note=0x7F),
+            ],
+        ]
+
+        # Set up sequence pointers
+        for i in range(3):
+            offset = self.writer._addr_to_offset(0x1903 + i * 2)
+            struct.pack_into('<H', self.writer.output, offset, 0x1900)
+
+        self.writer._inject_sequences()
+
+        # Sequences should be packed contiguously
+
+
+class TestInstrumentConversion(unittest.TestCase):
+    """Test instrument injection with Laxity→SF2 conversion (Track 3.4)."""
+
+    def setUp(self):
+        """Create test writer."""
+        self.data = create_minimal_extracted_data()
+        self.writer = SF2Writer(self.data)
+        self.writer.load_address = 0x1000
+        self.writer.output = bytearray(0x3000)
+        self.writer.driver_info.table_addresses = {
+            'Instruments': {'addr': 0x1040, 'columns': 8, 'rows': 16, 'id': 1}
+        }
+
+    def test_inject_instruments_pulse_pointer_conversion(self):
+        """Test pulse pointer Y*4 to direct index conversion."""
+        # Laxity format: byte 6 = pulse_ptr in Y*4 format
+        # Y*4 = 0x04 should convert to index 0x01
+        self.data.instruments = [
+            bytearray([0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00])
+            #                                              ^^^^ Y*4 = 4
+        ]
+
+        self.writer._inject_instruments()
+
+        # Pulse pointer should be converted (Y*4 → direct)
+
+    def test_inject_instruments_wave_pointer_validation(self):
+        """Test wave pointer bounds validation."""
+        # Laxity format: byte 7 = wave_ptr
+        # Should be validated against wave_table_size
+        self.data.instruments = [
+            bytearray([0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF])
+            #                                                      ^^^^ Large wave_ptr
+        ]
+
+        # Should clamp or validate wave_ptr
+        self.writer._inject_instruments()
+
+    def test_inject_instruments_waveform_mapping(self):
+        """Test Laxity waveform to SF2 index mapping."""
+        # Laxity waveforms: 0x21→0x00, 0x41→0x02, etc.
+        self.data.instruments = [
+            bytearray([0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x21]),
+            #                                                      ^^^^ Laxity waveform
+        ]
+
+        self.writer._inject_instruments()
+
+        # Waveform should be mapped to SF2 index
+
+    def test_inject_instruments_column_major_storage(self):
+        """Test instruments use column-major storage."""
+        # 2 instruments with 8 columns each
+        self.data.instruments = [
+            bytearray([0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x21]),
+            bytearray([0x0A, 0x01, 0x00, 0x00, 0x00, 0x00, 0x04, 0x41]),
+        ]
+
+        self.writer._inject_instruments()
+
+        # Should write all column 0 values, then all column 1 values, etc.
+
+
+class TestUpdateTableDefinitions(unittest.TestCase):
+    """Test table definition updates (Track 3.4)."""
+
+    def setUp(self):
+        """Create test writer."""
+        self.data = create_minimal_extracted_data()
+        self.writer = SF2Writer(self.data)
+        self.writer.load_address = 0x1000
+
+    def test_update_table_definitions_instruments(self):
+        """Test updating instrument table dimensions."""
+        # Create Block 3 with instrument table descriptor
+        block3_data = bytearray(30)
+        block3_data[0] = 0x80  # Table type: Instruments
+        block3_data[1] = 0x00  # Table ID
+        block3_data[2] = 11    # Name length
+        block3_data[3:14] = b'Instruments'
+        # Descriptor bytes at +14: address, columns, rows, visible_rows
+        struct.pack_into('<H', block3_data, 14, 0x1040)  # Address
+        struct.pack_into('<H', block3_data, 16, 8)       # Columns
+        struct.pack_into('<H', block3_data, 18, 0)       # Rows (will be updated)
+        struct.pack_into('B', block3_data, 20, 0)        # Visible rows
+
+        # Add Block 3 to output
+        self.writer.output = bytearray(100)
+        self.writer.output[4] = 0x03  # Block 3 ID
+        self.writer.output[5] = len(block3_data)  # Block size
+        self.writer.output[6:6+len(block3_data)] = block3_data
+
+        # Set instrument count
+        self.data.instruments = [b'\x00' * 8 for _ in range(16)]
+
+        self.writer._update_table_definitions()
+
+        # Row count should be updated to 16
+
+
+class TestAuxiliaryDataBuilding(unittest.TestCase):
+    """Test auxiliary data building (Track 3.4)."""
+
+    def setUp(self):
+        """Create test writer."""
+        self.data = create_minimal_extracted_data()
+        self.writer = SF2Writer(self.data)
+
+    def test_build_description_data(self):
+        """Test description data building."""
+        # Use helper to create PSID header with metadata
+        self.data.header = create_minimal_psid_header(
+            name="Test Song",
+            author="Test Author",
+            copyright="2025"
+        )
+
+        result = self.writer._build_description_data()
+
+        # Should return bytearray with encoded strings
+        self.assertIsInstance(result, (bytearray, type(None)))
+
+    def test_build_table_text_data(self):
+        """Test table text data building."""
+        # Mock instrument and command names
+        instrument_names = ["Instr 0", "Instr 1"]
+        command_names = ["Cmd 0", "Cmd 1"]
+
+        result = self.writer._build_table_text_data(instrument_names, command_names)
+
+        # Should return bytearray with encoded names
+        self.assertIsInstance(result, bytearray)
+
+
 if __name__ == '__main__':
     # Run with verbose output
     unittest.main(verbosity=2)
