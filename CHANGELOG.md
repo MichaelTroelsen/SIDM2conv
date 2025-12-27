@@ -7,6 +7,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.0.1] - 2025-12-27
+
+### Fixed - Laxity Driver Restoration
+
+**🔧 CRITICAL FIX: Restored Laxity driver from complete silence to 99.93% accuracy**
+
+**PROBLEM**: Laxity driver was producing complete silence (0.60% accuracy instead of 99.93%) due to broken pointer patch system.
+
+#### Root Cause Identified
+
+**TWO separate issues** caused the driver failure:
+
+1. **Driver Binary Replaced**: The working `sf2driver_laxity_00.prg` from commit 08337f3 had been replaced with an incompatible version
+2. **Patch System Disabled**: The working 40-patch system was renamed to `pointer_patches_DISABLED` and replaced with a broken 8-patch system that expected different byte patterns
+
+**Impact**:
+- Before: Applied 0 pointer patches → All table pointers invalid → Complete silence
+- Result: Laxity conversions producing 0.60% accuracy (essentially broken)
+
+#### Solution Implemented
+
+**Commit f03c547**: "fix: Restore working Laxity driver and 40-patch system from commit 08337f3"
+
+**Four fixes applied**:
+
+1. **Driver Binary Restored** (`drivers/laxity/sf2driver_laxity_00.prg`):
+   - Restored working 3460-byte driver from commit 08337f3
+   - Verified bytes at critical offsets match working version
+
+2. **40-Patch System Re-enabled** (`sidm2/sf2_writer.py` lines 1491-1534):
+   - Renamed `pointer_patches_DISABLED` back to `pointer_patches`
+   - Removed broken 8-patch system
+   - All 40 patches now apply successfully
+
+3. **Parser Priority Fixed** (`sidm2/conversion_pipeline.py` lines 302-316):
+   - Fixed SF2 detection logic to prioritize Laxity parser for Laxity files
+   - Ensures Laxity driver used even for SF2-exported Laxity files
+
+4. **SF2 Reference Handling Fixed** (`sidm2/sf2_player_parser.py` lines 424-442):
+   - Removed reference file copying that was overwriting music data
+   - Extract from SID's own embedded data instead
+
+#### Validation Results
+
+**Before Fix**:
+```
+Applied 0 pointer patches
+Output: Complete silence (0.60% accuracy)
+```
+
+**After Fix**:
+```
+Applied 40 pointer patches
+Output: Full audio playback (99.93% accuracy)
+```
+
+**Test Files Validated**:
+- ✅ Broware.sid → 5,207 bytes (40 patches applied, full playback)
+- ✅ Stinsens_Last_Night_of_89.sid → 5,224 bytes (40 patches applied, full playback)
+- ✅ All 200+ tests passing (test-all.bat)
+
+#### Technical Details
+
+**Pointer Patch System**:
+- 40 memory location patches redirect table addresses from Laxity defaults to injected SF2 data
+- Patches must match exact byte patterns in driver for safety
+- Example: `$16D8 → $1940` (sequence pointer redirection)
+
+**Files Changed**:
+- `drivers/laxity/sf2driver_laxity_00.prg` (driver binary)
+- `sidm2/sf2_writer.py` (92 insertions, 101 deletions)
+- `sidm2/conversion_pipeline.py` (parser priority)
+- `sidm2/sf2_player_parser.py` (reference handling)
+
+#### Breaking Changes
+
+None. This restores previously working functionality.
+
+**Laxity driver is now production-ready with 99.93% frame accuracy for Laxity NewPlayer v21 files.**
+
+---
+
 ## [3.0.0] - 2025-12-27
 
 ### Added - Automatic SF2 Reference File Detection
