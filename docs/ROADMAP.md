@@ -218,14 +218,19 @@ This roadmap focuses on improving the SIDM2 converter from its current **100% fr
 
 **Actual Effort**: ~2 hours (investigation + fix + documentation)
 **Actual Impact**: Expected 100% SIDwinder disassembly success (integration testing pending)
-**Success Criteria Met**: Fix implemented, existing tests pass (18/18)
+
+**Success Criteria Met**:
+- ✅ Fix implemented (alignment=2 → alignment=1)
+- ✅ Existing tests pass (18/18)
+- ✅ **Regression tests added** (13/13 passing in Track 3.2)
 
 **Files Modified**:
 - `sidm2/cpu6502.py` (+3 lines, -2 lines) - Critical alignment fix
-- `docs/testing/SF2_PACKER_ALIGNMENT_FIX.md` (new, 315 lines) - Comprehensive documentation
+- `docs/testing/SF2_PACKER_ALIGNMENT_FIX.md` (237 lines) - Comprehensive documentation
+- `pyscript/test_sf2_packer_alignment.py` (326 lines, 13 tests) - **Regression tests ✅**
 
 **Integration Testing**: Pending (requires running complete pipeline on 18 validation files)
-**Regression Tests**: Needed (Track 3.2 - add odd-addressed pointer tests)
+**Regression Tests**: ✅ **COMPLETE** (13 tests in Track 3.2, 100% passing)
 
 ---
 

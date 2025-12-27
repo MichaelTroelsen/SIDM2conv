@@ -139,11 +139,16 @@ for offset in range(start_addr, end_addr - 1):  # Every byte
 - Constants and initialization: ✅
 - Section scanning: ✅
 
-**New Tests Needed**:
-- [ ] Test pointer detection with odd-addressed pointers
-- [ ] Test alignment=1 vs alignment=2 scanning
-- [ ] Test SIDwinder disassembly on all 18 files (integration test)
-- [ ] Regression test for $0000 crash detection
+**Regression Tests** (`pyscript/test_sf2_packer_alignment.py`): **13/13 passing ✅**
+- ✅ Test pointer detection with odd-addressed pointers
+- ✅ Test alignment=1 vs alignment=2 scanning
+- ✅ Regression test for $0000 crash detection
+- ✅ Jump table edge cases
+- ✅ Overlapping pointer detection
+- ✅ Boundary condition tests
+
+**Integration Tests Needed**:
+- [ ] Test SIDwinder disassembly on 18 files (full pipeline validation)
 
 ### Expected Results
 
@@ -175,8 +180,8 @@ for offset in range(start_addr, end_addr - 1):  # Every byte
 
 - ✅ Fix implemented (alignment=2 → alignment=1)
 - ✅ Existing unit tests pass (18/18)
+- ✅ Regression tests added (13/13 passing in `test_sf2_packer_alignment.py`)
 - ⏳ Integration testing (SIDwinder disassembly on 18 files)
-- ⏳ Regression tests added
 - ⏳ ROADMAP.md updated to mark Track 3.1 complete
 
 ---
@@ -220,10 +225,12 @@ for offset in range(start_addr, end_addr - 1):  # Every byte
 
 ---
 
-**Status**: ✅ Fix Implemented - Integration Testing Pending
+**Status**: ✅ Fix Implemented - Regression Tests Passing (13/13) - Integration Testing Pending
 
 **Generated**: 2025-12-27
+**Updated**: 2025-12-27 (regression test status confirmed)
 **Implementation**: `sidm2/cpu6502.py` line 645
+**Tests**: `pyscript/test_sf2_packer_alignment.py` (13 tests, 100% passing)
 **Fix Type**: Critical - Pointer Relocation Bug
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
