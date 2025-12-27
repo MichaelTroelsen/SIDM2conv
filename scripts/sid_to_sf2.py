@@ -188,6 +188,51 @@ def detect_player_type(filepath: str) -> str:
     return "Unknown"
 
 
+def print_success_summary(input_path: str, output_path: str, driver_selection=None, validation_result=None):
+    """Print an enhanced success summary with clear visual formatting.
+
+    Args:
+        input_path: Path to input SID file
+        output_path: Path to output SF2 file
+        driver_selection: Driver selection info (if available)
+        validation_result: Validation result (if available)
+    """
+    print()
+    print("=" * 60)
+    print("✅ CONVERSION SUCCESSFUL!")
+    print("=" * 60)
+    print()
+    print(f"Input:      {os.path.basename(input_path)}")
+    print(f"Output:     {os.path.basename(output_path)}")
+
+    if driver_selection:
+        driver_name = driver_selection.get('driver_type', 'Unknown')
+        accuracy = driver_selection.get('accuracy', 'N/A')
+        print(f"Driver:     {driver_name} ({accuracy})")
+
+    if validation_result:
+        status = "PASSED" if validation_result.passed else "FAILED"
+        errors = validation_result.errors
+        warnings = validation_result.warnings
+        print(f"Validation: {status} ({errors} errors, {warnings} warnings)")
+
+    # Info file path
+    info_file = Path(output_path).with_suffix('.txt')
+    if info_file.exists():
+        print(f"Info File:  {info_file.name}")
+
+    print()
+    print("💡 Next Steps:")
+    print(f"  • View in SF2 Viewer: sf2-viewer.bat \"{os.path.basename(output_path)}\"")
+    print(f"  • Edit in SID Factory II")
+    if Path(input_path).exists():
+        print(f"  • Validate accuracy: validate-sid-accuracy.bat \"{os.path.basename(input_path)}\"")
+
+    print()
+    print("=" * 60)
+    print()
+
+
 def analyze_sid_file(filepath: str, config: ConversionConfig = None, sf2_reference_path: str = None):
     """Analyze a SID file and print detailed information
 
@@ -799,8 +844,14 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
             except Exception as e:
                 logger.warning(f"Failed to generate info file: {e}")
 
-        logger.info("")
-        logger.info("Conversion complete!")
+        # Print enhanced success summary
+        print_success_summary(
+            input_path=input_path,
+            output_path=output_path,
+            driver_selection=driver_selection,
+            validation_result=validation_result
+        )
+
         logger.info("IMPORTANT NOTES:")
         logger.info("- This is an experimental converter")
         logger.info("- The output file may need manual editing in SID Factory II")
@@ -1691,14 +1742,53 @@ def main():
                 logger.warning(f"Output organization failed: {organize_result.get('error', 'Unknown error')}")
 
     except sidm2_errors.SIDMError as e:
-        # Our custom errors already have helpful messages
-        print(e)
+        # Our custom errors already have helpful messages - format them nicely
+        print()
+        print("=" * 60)
+        print("❌ CONVERSION FAILED")
+        print("=" * 60)
+        print()
+        print(str(e))
+        print()
+
+        # Show suggestions if available
+        if hasattr(e, 'suggestions') and e.suggestions:
+            print("💡 Suggestions:")
+            for suggestion in e.suggestions:
+                print(f"  • {suggestion}")
+            print()
+
+        # Show docs link if available
+        if hasattr(e, 'docs_link') and e.docs_link:
+            print(f"📚 See: {e.docs_link}")
+            print()
+
+        print("=" * 60)
+        print()
         sys.exit(1)
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
-        if config.logging.level == 'DEBUG':
+        print()
+        print("=" * 60)
+        print("❌ UNEXPECTED ERROR")
+        print("=" * 60)
+        print()
+        print(f"Error: {e}")
+        print()
+
+        if config and config.logging.level == 'DEBUG':
             import traceback
+            print("Stack Trace:")
             traceback.print_exc()
+            print()
+        else:
+            print("💡 Run with --verbose for detailed error information")
+            print()
+
+        print("🐛 Please report this issue at:")
+        print("   https://github.com/MichaelTroelsen/SIDM2conv/issues")
+        print()
+        print("=" * 60)
+        print()
         sys.exit(1)
 
 
