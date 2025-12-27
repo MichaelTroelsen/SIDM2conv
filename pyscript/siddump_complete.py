@@ -39,6 +39,7 @@ from typing import List, Optional, Tuple
 # Add parent directory to path to import cpu6502_emulator
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from sidm2.cpu6502_emulator import CPU6502Emulator
+from sidm2.errors import InvalidInputError
 
 
 # ==============================================================================
@@ -142,12 +143,38 @@ def parse_sid_file(filename: str) -> Tuple[SIDHeader, bytes]:
         data = f.read()
 
     if len(data) < 0x7C:
-        raise ValueError("File too small to be a valid SID file")
+        raise InvalidInputError(
+            input_type='SID file',
+            value=filename,
+            expected='At least 124 bytes for SID header',
+            got=f'Only {len(data)} bytes available',
+            suggestions=[
+                'Verify file is a complete SID file (not truncated)',
+                'Check if file was fully downloaded',
+                f'File size: {len(data)} bytes',
+                'SID files should be at least 124 bytes + music data',
+                'Try re-downloading or re-exporting the file'
+            ],
+            docs_link='guides/TROUBLESHOOTING.md#invalid-sid-files'
+        )
 
     # Parse header (big-endian)
     magic = data[0:4].decode('ascii', errors='replace')
     if magic not in ('PSID', 'RSID'):
-        raise ValueError(f"Invalid SID file magic: {magic}")
+        raise InvalidInputError(
+            input_type='SID file',
+            value=filename,
+            expected='PSID or RSID magic bytes at file start',
+            got=f'Magic bytes: {repr(magic)}',
+            suggestions=[
+                'Verify file is a valid SID file (not corrupted)',
+                'Check file extension is .sid',
+                'Try opening file in a SID player (e.g., VICE) to verify',
+                f'Inspect file header: hexdump -C {filename} | head -5',
+                'Re-download file if obtained from internet'
+            ],
+            docs_link='guides/TROUBLESHOOTING.md#invalid-sid-files'
+        )
 
     version = struct.unpack('>H', data[4:6])[0]
     data_offset = struct.unpack('>H', data[6:8])[0]

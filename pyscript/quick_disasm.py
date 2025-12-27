@@ -4,18 +4,46 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from disassembler_6502 import Disassembler6502
+from sidm2.errors import InvalidInputError
 
 
 def parse_sid_header(sid_data: bytes) -> dict:
     """Parse PSID/RSID file header."""
     if len(sid_data) < 0x7C:
-        raise ValueError("File too small to be a valid SID file")
+        raise InvalidInputError(
+            input_type='SID file',
+            value='<input data>',
+            expected='At least 124 bytes for SID header',
+            got=f'Only {len(sid_data)} bytes available',
+            suggestions=[
+                'Verify file is a complete SID file (not truncated)',
+                'Check if file was fully downloaded',
+                f'Data size: {len(sid_data)} bytes',
+                'SID files should be at least 124 bytes + music data',
+                'Try re-downloading or re-exporting the file'
+            ],
+            docs_link='guides/TROUBLESHOOTING.md#invalid-sid-files'
+        )
 
     magic = sid_data[0:4].decode('ascii', errors='ignore')
     if magic not in ('PSID', 'RSID'):
-        raise ValueError(f"Invalid magic: {magic}")
+        raise InvalidInputError(
+            input_type='SID file',
+            value='<input data>',
+            expected='PSID or RSID magic bytes at file start',
+            got=f'Magic bytes: {repr(magic)}',
+            suggestions=[
+                'Verify file is a valid SID file (not corrupted)',
+                'Check file extension is .sid',
+                'Try opening file in a SID player (e.g., VICE) to verify',
+                'Inspect file header with a hex viewer',
+                'Re-download file if obtained from internet'
+            ],
+            docs_link='guides/TROUBLESHOOTING.md#invalid-sid-files'
+        )
 
     version = (sid_data[4] << 8) | sid_data[5]
     data_offset = (sid_data[6] << 8) | sid_data[7]

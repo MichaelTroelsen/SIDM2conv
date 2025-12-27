@@ -34,6 +34,7 @@ from pyscript.siddump_complete import (
     Channel, Filter, SIDHeader, FREQ_TBL_LO, FREQ_TBL_HI, FILTER_NAMES,
     run_siddump, main
 )
+from sidm2.errors import InvalidInputError
 
 
 class TestSIDFileParser(unittest.TestCase):
@@ -142,9 +143,9 @@ class TestSIDFileParser(unittest.TestCase):
             temp_path = f.name
 
         try:
-            with self.assertRaises(ValueError) as cm:
+            with self.assertRaises(InvalidInputError) as cm:
                 parse_sid_file(temp_path)
-            self.assertIn("Invalid SID file magic", str(cm.exception))
+            self.assertIn("PSID or RSID magic bytes", str(cm.exception))
         finally:
             os.unlink(temp_path)
 

@@ -12,6 +12,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Dict, Optional
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from sidm2.errors import ConfigurationError
 
 
 class PipelineStep(Enum):
@@ -128,7 +132,13 @@ class PipelineConfig:
     def set_mode(self, mode: str):
         """Change mode and apply corresponding preset"""
         if mode not in ["simple", "advanced", "custom"]:
-            raise ValueError(f"Invalid mode: {mode}")
+            raise ConfigurationError(
+                setting='pipeline_mode',
+                value=mode,
+                valid_options=['simple', 'advanced', 'custom'],
+                example='mode: simple',
+                docs_link='guides/TROUBLESHOOTING.md#pipeline-configuration'
+            )
 
         self.mode = mode
         if mode != "custom":
