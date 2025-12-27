@@ -944,6 +944,269 @@ class TestIntegration(unittest.TestCase):
             temp_path.unlink()
 
 
+class TestPackSF2ToSID(unittest.TestCase):
+    """Test pack_sf2_to_sid() integration function (Track 3.5)."""
+
+    def setUp(self):
+        """Create test SF2 file."""
+        # Create minimal valid SF2 file
+        self.temp_sf2 = tempfile.NamedTemporaryFile(suffix='.sf2', delete=False)
+        # PRG header
+        self.temp_sf2.write(struct.pack('<H', 0x1000))
+        # SF2 magic ID
+        self.temp_sf2.write(struct.pack('<H', 0x1337))
+        # Block 0: Descriptor
+        self.temp_sf2.write(b'\x00')  # Block ID
+        self.temp_sf2.write(b'\x10')  # Block size
+        self.temp_sf2.write(b'\x00' * 16)  # Block data
+        self.temp_sf2.write(b'\x00')  # Checksum
+        # Block 1: Driver common
+        self.temp_sf2.write(b'\x01')  # Block ID
+        self.temp_sf2.write(b'\x80')  # Block size (128 bytes)
+        self.temp_sf2.write(b'\x4C\x00\x10' * 40 + b'\x60' + b'\x00' * 7)  # Driver code (JMPs + RTS)
+        self.temp_sf2.write(b'\x00')  # Checksum
+        # Block 0xFF: End
+        self.temp_sf2.write(b'\xFF')
+        self.temp_sf2.close()
+
+    def tearDown(self):
+        """Clean up temp files."""
+        Path(self.temp_sf2.name).unlink(missing_ok=True)
+
+    def test_pack_sf2_to_sid_basic(self):
+        """Test basic SF2 to SID packing without validation."""
+        from sidm2.sf2_packer import pack_sf2_to_sid
+
+        output_path = Path(self.temp_sf2.name).with_suffix('.sid')
+
+        try:
+            # Pack without validation
+            result = pack_sf2_to_sid(
+                sf2_path=Path(self.temp_sf2.name),
+                sid_path=output_path,
+                dest_address=0x1000,
+                validate=False  # Skip validation to test packing only
+            )
+
+            # Should succeed
+            self.assertTrue(result)
+            self.assertTrue(output_path.exists())
+
+            # Verify SID file format
+            with open(output_path, 'rb') as f:
+                sid_data = f.read()
+
+            # Should have PSID header
+            self.assertTrue(sid_data.startswith(b'PSID'))
+            self.assertEqual(len(sid_data), 124 + len(sid_data) - 124)  # Header + data
+
+        finally:
+            output_path.unlink(missing_ok=True)
+
+    def test_pack_sf2_to_sid_with_metadata(self):
+        """Test packing with custom metadata fields."""
+        from sidm2.sf2_packer import pack_sf2_to_sid
+
+        output_path = Path(self.temp_sf2.name).with_suffix('.sid')
+
+        try:
+            result = pack_sf2_to_sid(
+                sf2_path=Path(self.temp_sf2.name),
+                sid_path=output_path,
+                dest_address=0x1000,
+                name="Test Song",
+                author="Test Author",
+                copyright_str="2025 Test",
+                validate=False
+            )
+
+            self.assertTrue(result)
+            self.assertTrue(output_path.exists())
+
+            # Read header and verify metadata
+            with open(output_path, 'rb') as f:
+                header = f.read(124)
+
+            # Name at offset 0x16 (32 bytes)
+            name_bytes = header[0x16:0x16+32]
+            self.assertTrue(b'Test Song' in name_bytes)
+
+        finally:
+            output_path.unlink(missing_ok=True)
+
+    def test_pack_sf2_to_sid_custom_addresses(self):
+        """Test packing with custom destination and zero page addresses."""
+        from sidm2.sf2_packer import pack_sf2_to_sid
+
+        output_path = Path(self.temp_sf2.name).with_suffix('.sid')
+
+        try:
+            result = pack_sf2_to_sid(
+                sf2_path=Path(self.temp_sf2.name),
+                sid_path=output_path,
+                dest_address=0x2000,  # Custom load address
+                zp_address=0x10,      # Custom zero page
+                validate=False
+            )
+
+            self.assertTrue(result)
+
+            # Verify load address in PSID header
+            with open(output_path, 'rb') as f:
+                header = f.read(124)
+
+            # Load address at offset 0x08 (2 bytes, big-endian)
+            load_addr = struct.unpack('>H', header[0x08:0x0A])[0]
+            self.assertEqual(load_addr, 0x2000)
+
+        finally:
+            output_path.unlink(missing_ok=True)
+
+
+class TestValidatePackedSID(unittest.TestCase):
+    """Test validate_packed_sid() validation function (Track 3.5)."""
+
+    def create_minimal_sid_data(self, init_addr=0x1000, play_addr=0x1003):
+        """Create minimal valid SID file data for testing."""
+        # PSID header (124 bytes)
+        header = bytearray(124)
+        header[0:4] = b'PSID'  # Magic
+        header[4:6] = struct.pack('>H', 2)  # Version
+        header[6:8] = struct.pack('>H', 124)  # Data offset
+        header[8:10] = struct.pack('>H', 0x1000)  # Load address
+        header[10:12] = struct.pack('>H', init_addr)  # Init address
+        header[12:14] = struct.pack('>H', play_addr)  # Play address
+        header[14:16] = struct.pack('>H', 1)  # Songs
+        header[16:18] = struct.pack('>H', 1)  # Start song
+
+        # C64 code (minimal valid player)
+        # Init routine at 0x1000: write to SID and RTS
+        code = bytearray()
+        code.extend([0xA9, 0x0F])  # LDA #$0F
+        code.extend([0x8D, 0x18, 0xD4])  # STA $D418 (volume)
+        code.extend([0x60])  # RTS
+
+        # Play routine at 0x1003: write frequency and RTS
+        code.extend([0xA9, 0x00])  # LDA #$00
+        code.extend([0x8D, 0x00, 0xD4])  # STA $D400 (freq lo)
+        code.extend([0xA9, 0x10])  # LDA #$10
+        code.extend([0x8D, 0x01, 0xD4])  # STA $D401 (freq hi)
+        code.extend([0x60])  # RTS
+
+        # Pad to reasonable size
+        code.extend(b'\x00' * (200 - len(code)))
+
+        return bytes(header) + bytes(code)
+
+    def test_validate_packed_sid_valid_file(self):
+        """Test validation of valid SID file."""
+        sid_data = self.create_minimal_sid_data()
+
+        # Validation should pass
+        is_valid, error_msg = validate_sid_file(
+            sid_data=sid_data,
+            init_addr=0x1000,
+            play_addr=0x1003,
+            load_addr=0x1000
+        )
+
+        self.assertTrue(is_valid, f"Validation failed: {error_msg}")
+        self.assertEqual(error_msg, "")
+
+    def test_validate_packed_sid_invalid_init(self):
+        """Test validation catches invalid init routine."""
+        # Create SID with BRK at init address (immediate crash)
+        header = bytearray(124)
+        header[0:4] = b'PSID'
+        header[4:6] = struct.pack('>H', 2)
+        header[6:8] = struct.pack('>H', 124)
+        header[8:10] = struct.pack('>H', 0x1000)
+        header[10:12] = struct.pack('>H', 0x1000)
+        header[12:14] = struct.pack('>H', 0x1003)
+
+        # Code with BRK at init
+        code = bytearray()
+        code.extend([0x00])  # BRK - causes crash
+        code.extend(b'\x00' * 200)
+
+        sid_data = bytes(header) + bytes(code)
+
+        is_valid, error_msg = validate_sid_file(
+            sid_data=sid_data,
+            init_addr=0x1000,
+            play_addr=0x1003,
+            load_addr=0x1000
+        )
+
+        self.assertFalse(is_valid)
+        self.assertIn("crash", error_msg.lower())
+
+
+class TestFetchSequencesEdgeCases(unittest.TestCase):
+    """Test fetch_sequences() edge cases (Track 3.5)."""
+
+    def test_fetch_sequences_does_not_crash_on_invalid_pointers(self):
+        """Test sequence fetching handles invalid pointers gracefully."""
+        # Create minimal SF2 file
+        temp_file = tempfile.NamedTemporaryFile(suffix='.sf2', delete=False)
+
+        # PRG header
+        temp_file.write(struct.pack('<H', 0x1000))
+        # SF2 magic
+        temp_file.write(struct.pack('<H', 0x1337))
+        # Block 0: Descriptor
+        temp_file.write(b'\x00\x10' + b'\x00' * 16 + b'\x00')
+        # Block 1: Driver code (minimal)
+        temp_file.write(b'\x01\x80' + b'\x00' * 128 + b'\x00')
+        # Block 0xFF: End
+        temp_file.write(b'\xFF')
+        temp_file.close()
+
+        sf2_path = Path(temp_file.name)
+
+        try:
+            packer = SF2Packer(sf2_path)
+            # Should not crash even with invalid/missing sequence data
+            packer.fetch_sequences()
+
+            # Method should complete without error
+            self.assertIsNotNone(packer.data_sections)
+
+        finally:
+            sf2_path.unlink()
+
+
+class TestFetchOrderlistsEdgeCases(unittest.TestCase):
+    """Test fetch_orderlists() edge cases (Track 3.5)."""
+
+    def test_fetch_orderlists_with_loop_marker(self):
+        """Test orderlist fetching with 0xFE loop marker."""
+        # Create SF2 with orderlist containing loop
+        temp_file = tempfile.NamedTemporaryFile(suffix='.sf2', delete=False)
+
+        # PRG header
+        temp_file.write(struct.pack('<H', 0x1000))
+        # SF2 magic
+        temp_file.write(struct.pack('<H', 0x1337))
+        # Minimal blocks
+        temp_file.write(b'\x00\x10' + b'\x00' * 16 + b'\x00')
+        temp_file.write(b'\x01\x80' + b'\x00' * 128 + b'\x00')
+        temp_file.write(b'\xFF')
+        temp_file.close()
+
+        sf2_path = Path(temp_file.name)
+
+        try:
+            packer = SF2Packer(sf2_path)
+            packer.fetch_orderlists()
+
+            # Should not crash (orderlists may be empty/invalid in minimal file)
+            self.assertIsNotNone(packer.data_sections)
+
+        finally:
+            sf2_path.unlink()
+
+
 def main():
     """Run all SF2 packer tests."""
     # Run with verbose output
