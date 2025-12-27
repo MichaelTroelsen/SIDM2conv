@@ -8,6 +8,7 @@ instead of requiring exact register set matches.
 
 import sys
 from pathlib import Path
+import pytest
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -103,13 +104,13 @@ def test_accuracy_improvement():
         print("\n[WARN] No test files found. Make sure to run the conversion pipeline first:")
         print("  python scripts/sid_to_sf2.py <input.sid> <output.sf2> --driver laxity")
         print("  python pyscript/siddump_complete.py <input.sid> -t30")
-        return False
+        pytest.skip("No test files found")
 
     success = passed_tests == total_tests
     print(f"\n{'[OK] All tests PASSED!' if success else '[FAIL] Some tests FAILED'}")
     print("="*70 + "\n")
 
-    return success
+    assert success, f"Only {passed_tests}/{total_tests} tests passed"
 
 
 def test_sparse_frame_logic():
@@ -198,9 +199,16 @@ def main():
     test_sparse_frame_logic()
 
     # Test with real files (if they exist)
-    success = test_accuracy_improvement()
-
-    sys.exit(0 if success else 1)
+    try:
+        test_accuracy_improvement()
+        print("\n[SUCCESS] All tests passed!")
+        sys.exit(0)
+    except AssertionError as e:
+        print(f"\n[FAILURE] Tests failed: {e}")
+        sys.exit(1)
+    except pytest.skip.Exception:
+        print("\n[SKIPPED] No test files found")
+        sys.exit(0)
 
 
 if __name__ == '__main__':
