@@ -12,6 +12,7 @@ from typing import Optional
 from .models import ExtractedData, SF2DriverInfo
 from .table_extraction import find_and_extract_wave_table, extract_all_laxity_tables
 from .instrument_extraction import extract_laxity_instruments, extract_laxity_wave_table
+from .laxity_converter import LaxityConverter
 from .sequence_extraction import (
     get_command_names,
     extract_command_parameters,
@@ -904,15 +905,20 @@ class SF2Writer:
         rows = filter_table['rows']
 
         laxity_tables = extract_all_laxity_tables(self.data.c64_data, self.data.load_address)
-        filter_entries = laxity_tables.get('filter_table', [])
+        laxity_filter_entries = laxity_tables.get('filter_table', [])
 
-        if not filter_entries:
-            filter_entries = [(0x40, 0x01, 0x20, 0x00)]
+        if not laxity_filter_entries:
+            laxity_filter_entries = [(0x40, 0x01, 0x20, 0x00)]
+
+        # Convert Laxity filter format to SF2 filter format
+        logger.info(f"    Converting {len(laxity_filter_entries)} Laxity filter entries to SF2 format...")
+        filter_entries = LaxityConverter.convert_filter_table(laxity_filter_entries)
+        logger.info(f"    Converted to {len(filter_entries)} SF2 filter entries")
 
         # Pad filter table to minimum size to avoid missing entry errors
         # Neutral entry: 0x00=no filter, 0x00=no modulation, 0x00=instant, 0x00=no chain
         MIN_FILTER_ENTRIES = 16
-        neutral_entry = (0x00, 0x00, 0x00, 0x00)
+        neutral_entry = (0x00, 0x00, 0x00, 0x7F)  # SF2 format with end marker
         while len(filter_entries) < MIN_FILTER_ENTRIES:
             filter_entries.append(neutral_entry)
 
