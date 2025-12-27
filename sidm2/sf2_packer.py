@@ -806,11 +806,21 @@ def create_psid_header(name: str, author: str, copyright_str: str,
     copyright_bytes = copyright_str.encode('ascii', errors='replace')[:31]
     header[86:86 + len(copyright_bytes)] = copyright_bytes
 
-    # Flags (offset 118-121) - Driver 11 defaults
+    # PSID v2 extension fields (offset 118-123)
+    # Flags (offset 118-119, 2 bytes) - Driver 11 defaults
     # Bit 0: MUS data (0), Bit 1: PlaySID specific (0)
     # Bit 2-3: Video standard (00 = PAL)
     # Bit 4-5: SID model (00 = 6581)
-    header[118:122] = struct.pack('>I', 0x00000000)
+    header[118:120] = struct.pack('>H', 0x0000)  # Flags (2 bytes)
+
+    # Start page (offset 120, 1 byte) - Page where C64 memory is free (0 = not specified)
+    header[120] = 0x00
+
+    # Page length (offset 121, 1 byte) - Number of free pages (0 = not specified)
+    header[121] = 0x00
+
+    # Reserved (offset 122-123, 2 bytes) - Must be zero
+    header[122:124] = struct.pack('>H', 0x0000)
 
     return bytes(header)
 

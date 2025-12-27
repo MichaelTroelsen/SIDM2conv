@@ -269,12 +269,21 @@ SIDM2/
    - See: `docs/guides/SF2_EDITOR_MANUAL_WORKFLOW_GUIDE.md` (production-ready)
    - See: `docs/guides/SF2_EDITOR_AUTOIT_HYBRID_GUIDE.md` (full automation plan)
 
-5. **Pointer Relocation Bug** (Medium Priority):
-   - **Issue**: 17/18 files fail SIDwinder disassembly
-   - **Impact**: Debugging only (files play correctly)
-   - **Status**: Investigation ongoing
+5. **Pointer Relocation Bug**: ✅ **RESOLVED** (2025-12-27)
+   - **Fix**: Changed alignment=2 → alignment=1 in `sidm2/cpu6502.py:646`
+   - **Result**: 0% crash rate (was 94.4% - 17/18 files failing)
+   - **Tests**: 13/13 unit tests passing, 0/10 integration test crashes
+   - **Documentation**: `docs/testing/SF2_PACKER_ALIGNMENT_FIX.md`
+   - **Status**: Fixed and validated
 
-5. **Debug Logger Test Fixes** (Low Priority):
+6. **SID Parsing Issue**: ✅ **RESOLVED** (2025-12-27)
+   - **Root Cause**: Integration test bug - calls `pack()` (raw PRG) instead of `pack_sf2_to_sid()` (PSID)
+   - **Impact**: Integration test only - production code unaffected
+   - **Fix**: Update `test_track3_1_integration.py` to use proper API
+   - **Documentation**: `docs/testing/SID_PARSING_BUG_ANALYSIS.md`
+   - **Status**: Test bug identified, fix ready to implement
+
+7. **Debug Logger Test Fixes** (Low Priority):
    - **Issue**: 3 Windows file handle cleanup errors, 2 assertion threshold failures
    - **Impact**: Test-only (core functionality works)
    - **Status**: Trivial fixes needed

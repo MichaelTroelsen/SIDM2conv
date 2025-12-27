@@ -19,7 +19,7 @@ import tempfile
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sidm2.sf2_packer import SF2Packer
+from sidm2.sf2_packer import pack_sf2_to_sid
 from pyscript.sidtracer import SIDTracer
 
 
@@ -48,23 +48,32 @@ def run_sf2_pack_and_disassemble(sf2_file: Path) -> dict:
     try:
         # Step 1: Pack SF2 to SID
         print(f"[1/3] Packing SF2 to SID...")
-        packer = SF2Packer(str(sf2_file))
 
         # Create temporary output file
         with tempfile.NamedTemporaryFile(suffix='.sid', delete=False) as tmp:
             sid_output = Path(tmp.name)
 
         try:
-            # Pack with validate=False to skip format validation (we're testing pointer relocation)
-            sid_data, init_addr, play_addr = packer.pack(dest_address=0x1000)
+            # Pack using proper API (creates PSID header + data)
+            # validate=False to skip validation (we're testing pointer relocation)
+            success = pack_sf2_to_sid(
+                sf2_file, sid_output,
+                name="Test", author="Test", copyright_str="Test",
+                dest_address=0x1000,
+                validate=False
+            )
 
-            # Write SID file
-            with open(sid_output, 'wb') as f:
-                f.write(sid_data)
+            if not success:
+                results['error'] = "Pack failed: pack_sf2_to_sid() returned False"
+                print(f"  [FAIL] Pack failed")
+                return results
+
+            # Get file size
+            file_size = sid_output.stat().st_size
 
             results['pack_success'] = True
-            print(f"  [OK] Packed successfully ({len(sid_data):,} bytes)")
-            print(f"  Init: ${init_addr:04X}, Play: ${play_addr:04X}")
+            print(f"  [OK] Packed successfully ({file_size:,} bytes)")
+            print(f"  Output: {sid_output.name}")
 
         except Exception as e:
             results['error'] = f"Pack failed: {e}"
