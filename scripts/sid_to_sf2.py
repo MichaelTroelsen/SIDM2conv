@@ -192,7 +192,7 @@ Example: --driver laxity'''
     parser.add_argument(
         '--audio-export',
         action='store_true',
-        help='Export to WAV audio (Step 16 - generate reference audio for listening). Note: PSID files only, RSID not supported by SID2WAV v1.8'
+        help='Export to WAV audio using VSID (Step 16 - generate reference audio for listening). Uses VICE emulator (preferred) or SID2WAV fallback. Note: PSID files only, RSID not supported by SID2WAV v1.8'
     )
     parser.add_argument(
         '--audio-duration',

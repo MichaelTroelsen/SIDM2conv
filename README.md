@@ -3,7 +3,7 @@
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 [![codecov](https://codecov.io/gh/MichaelTroelsen/SIDM2conv/branch/master/graph/badge.svg)](https://codecov.io/gh/MichaelTroelsen/SIDM2conv)
 
-**Version 3.0.0** | Build Date: 2025-12-27 | Production Ready - Auto SF2 Reference Detection ✅
+**Version 3.0.1** | Build Date: 2025-12-27 | Production Ready - Laxity Driver Restored + VSID Integration ✅
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files with 99.93% frame accuracy for Laxity NewPlayer v21 files.
 

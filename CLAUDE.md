@@ -1,8 +1,8 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.0.0** | SID→SF2 Converter | C64 Music Tools | Updated 2025-12-27
+**SIDM2 v3.0.1** | SID→SF2 Converter | C64 Music Tools | Updated 2025-12-27
 
-Converts Laxity NP21 SID files to SF2 format (99.93% accuracy). Features: Auto-driver selection, SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (3,400+ lines), CI/CD (5 workflows), 200+ tests
+Converts Laxity NP21 SID files to SF2 format (99.93% accuracy - RESTORED). Features: Auto-driver selection, VSID audio export, SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (3,400+ lines), CI/CD (5 workflows), 200+ tests
 
 ---
 
@@ -22,6 +22,7 @@ Converts Laxity NP21 SID files to SF2 format (99.93% accuracy). Features: Auto-d
 # Convert (auto-selects best driver)
 sid-to-sf2.bat input.sid output.sf2                  # Auto driver + validation
 sid-to-sf2.bat input.sid output.sf2 --driver laxity  # Manual override
+sid-to-sf2.bat input.sid output.sf2 --export-audio   # With VSID audio export
 
 # GUI Tools
 sf2-viewer.bat [file.sf2]     # View/export SF2
@@ -134,6 +135,10 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.0.1** (2025-12-27): Laxity driver restoration (0→40 patches, 0.60%→99.93% accuracy), VSID pipeline integration
+
+**v3.0.0** (2025-12-27): Auto SF2 reference detection (100% accuracy for SF2-exported SIDs)
 
 **v2.9.7** (2025-12-27): UX improvements (success/error messages, quiet mode, help text, Windows compatibility, UX metrics 3→9/10)
 

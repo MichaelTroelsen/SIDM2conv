@@ -952,6 +952,31 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
             except Exception as e:
                 logger.warning(f"Failed to generate info file: {e}")
 
+        # Optional: Export audio using VSID (if enabled in config)
+        if config and getattr(config, 'export_audio', False):
+            try:
+                if AUDIO_EXPORT_INTEGRATION_AVAILABLE:
+                    logger.info("Exporting audio using VSID...")
+                    audio_output_path = Path(output_path).with_suffix('.wav')
+                    audio_duration = getattr(config, 'audio_duration', 30)
+
+                    result = AudioExportIntegration.export_to_wav(
+                        sid_file=Path(input_path),
+                        output_file=audio_output_path,
+                        duration=audio_duration,
+                        verbose=config.verbose if hasattr(config, 'verbose') else 1
+                    )
+
+                    if result and result.get('success'):
+                        tool_name = result.get('tool', 'unknown')
+                        logger.info(f"Audio export complete using {tool_name.upper()}: {audio_output_path.name}")
+                    else:
+                        logger.warning("Audio export failed or not available")
+                else:
+                    logger.warning("Audio export not available (AudioExportIntegration not installed)")
+            except Exception as e:
+                logger.warning(f"Audio export failed: {e}")
+
         # Print enhanced success summary
         print_success_summary(
             input_path=input_path,

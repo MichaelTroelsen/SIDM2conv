@@ -87,6 +87,57 @@ None. This restores previously working functionality.
 
 **Laxity driver is now production-ready with 99.93% frame accuracy for Laxity NewPlayer v21 files.**
 
+### Enhanced - VSID Audio Export Integration
+
+**🎵 AUDIO EXPORT: Added VSID (VICE emulator) to conversion pipeline for better audio quality**
+
+**NEW FEATURE**: Integrated VSID audio export into the conversion pipeline with automatic fallback to SID2WAV.
+
+#### Implementation
+
+**Pipeline Integration** (`sidm2/conversion_pipeline.py` lines 955-978):
+- Added optional VSID audio export step after SF2 generation
+- Exports SID to WAV using VICE emulator (preferred) or SID2WAV (fallback)
+- Triggered by `--export-audio` flag or config setting
+- Automatic tool selection: VSID → SID2WAV → Skip if neither available
+
+**CLI Enhancement** (`scripts/sid_to_sf2.py` line 195):
+- Updated `--export-audio` help text to mention VSID
+- Clarifies tool preference order: "Uses VICE emulator (preferred) or SID2WAV fallback"
+
+**Audio Export Wrapper** (`sidm2/audio_export_wrapper.py`):
+- Unified interface for both VSID and SID2WAV
+- Automatic tool detection and selection
+- Graceful fallback handling
+
+#### Usage
+
+```bash
+# Export audio during conversion (uses VSID if available)
+python scripts/sid_to_sf2.py input.sid output.sf2 --export-audio
+
+# Specify duration (default: 30 seconds)
+python scripts/sid_to_sf2.py input.sid output.sf2 --export-audio --audio-duration 60
+```
+
+#### Benefits
+
+- **Better Accuracy**: VSID uses VICE emulator for more accurate SID emulation
+- **Cross-Platform**: VSID works on Windows, Mac, Linux (vs SID2WAV Windows-only)
+- **Automatic Fallback**: Gracefully falls back to SID2WAV if VSID not installed
+- **Quality Reference**: WAV files provide audio reference for validation
+
+#### Installation
+
+```bash
+# Install VICE (includes VSID)
+python pyscript/install_vice.py
+# OR
+install-vice.bat
+```
+
+**See**: `docs/VSID_INTEGRATION_GUIDE.md` for complete documentation
+
 ---
 
 ## [3.0.0] - 2025-12-27
