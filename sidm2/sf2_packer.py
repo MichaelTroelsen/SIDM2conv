@@ -944,8 +944,20 @@ def pack_sf2_to_sid(sf2_path: Path, sid_path: Path,
             )
 
             if not is_valid:
-                logger.error(f"Validation failed: {error_msg}")
-                logger.error("SID file not written (use validate=False to override)")
+                logger.error(
+                    f"Validation failed: {error_msg}\n"
+                    f"  Suggestion: Packed SID file failed validation checks\n"
+                    f"  Check: Review validation error details above\n"
+                    f"  Try: Use validate=False to skip validation (not recommended)\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#sid-validation-failures"
+                )
+                logger.error(
+                    "SID file not written (use validate=False to override)\n"
+                    f"  Suggestion: Fix validation errors before writing output\n"
+                    f"  Check: Ensure SF2 file has valid structure and data\n"
+                    f"  Try: Reconvert from original source with correct driver\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#sid-write-blocked"
+                )
                 return False
 
         # Write output file (old-style: header + data, no PRG bytes)
@@ -956,5 +968,11 @@ def pack_sf2_to_sid(sf2_path: Path, sid_path: Path,
         return True
 
     except Exception as e:
-        logger.error(f"Pack error: {e}")
+        logger.error(
+            f"Pack error: {e}\n"
+            f"  Suggestion: Unexpected error during SF2 to SID packing\n"
+            f"  Check: Verify SF2 file is valid and readable\n"
+            f"  Try: Enable verbose logging for detailed error trace\n"
+            f"  See: docs/guides/TROUBLESHOOTING.md#packing-failures"
+        )
         return False
