@@ -70,7 +70,13 @@ class SIDwinderIntegration:
 
             # Validate input file
             if not sid_file.exists():
-                logger.error(f"SID file not found: {sid_file}")
+                logger.error(
+                    f"SID file not found: {sid_file}\n"
+                    f"  Suggestion: Specified SID file does not exist\n"
+                    f"  Check: Verify file path is correct\n"
+                    f"  Try: Use absolute path or verify file location\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#file-not-found-issues"
+                )
                 return None
 
             # Create output directory
@@ -118,7 +124,13 @@ class SIDwinderIntegration:
             }
 
         except Exception as e:
-            logger.error(f"SIDwinder trace failed: {e}")
+            logger.error(
+                f"SIDwinder trace failed: {e}\n"
+                f"  Suggestion: Failed to generate SIDwinder trace\n"
+                f"  Check: Verify SID file is valid and playable\n"
+                f"  Try: Reduce frame count or test with simpler SID file\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#sidwinder-trace-errors"
+            )
             if verbose >= 2:
                 import traceback
                 traceback.print_exc()

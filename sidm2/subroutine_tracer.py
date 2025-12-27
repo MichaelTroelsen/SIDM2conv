@@ -281,7 +281,13 @@ class SubroutineTracer:
         except Exception as e:
             if verbose > 0:
                 error_msg = str(e).encode('ascii', 'replace').decode('ascii')
-                logger.error(f"Subroutine trace failed: {error_msg}")
+                logger.error(
+                    f"Subroutine trace failed: {error_msg}\n"
+                    f"  Suggestion: Failed to trace subroutines in SID file\n"
+                    f"  Check: Verify SID file is valid and has code\n"
+                    f"  Try: Enable debug logging for detailed trace\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#subroutine-trace-errors"
+                )
             return {
                 'success': False,
                 'error': str(e)
@@ -421,7 +427,13 @@ class SubroutineTracer:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to generate report: {e}")
+            logger.error(
+                f"Failed to generate report: {e}\n"
+                f"  Suggestion: Cannot write subroutine trace report\n"
+                f"  Check: Verify output directory is writable\n"
+                f"  Try: Use different output path or check permissions\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#report-generation-errors"
+            )
             return False
 
 

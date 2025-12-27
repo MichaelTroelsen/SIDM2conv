@@ -98,7 +98,13 @@ class SiddumpIntegration:
                 # Write to file
                 dump_file.write_text(dump_content, encoding='utf-8')
             except Exception as e:
-                logger.error(f"Failed to run Python siddump: {e}")
+                logger.error(
+                    f"Failed to run Python siddump: {e}\n"
+                    f"  Suggestion: Python siddump execution failed\n"
+                    f"  Check: Verify SID file is valid and readable\n"
+                    f"  Try: Test SID file in VICE emulator first\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#siddump-errors"
+                )
                 # Fallback: create minimal dump file
                 dump_content = f"# Siddump failed: {e}\n"
                 dump_file.write_text(dump_content, encoding='utf-8')
@@ -118,7 +124,13 @@ class SiddumpIntegration:
             }
 
         except Exception as e:
-            logger.error(f"Siddump generation failed: {e}")
+            logger.error(
+                f"Siddump generation failed: {e}\n"
+                f"  Suggestion: Failed to generate siddump output\n"
+                f"  Check: Verify SID file is valid and readable\n"
+                f"  Try: Check output directory is writable\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#siddump-generation-errors"
+            )
             return None
 
 
