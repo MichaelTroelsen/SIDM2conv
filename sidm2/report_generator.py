@@ -299,7 +299,13 @@ class ReportGenerator:
         except Exception as e:
             if verbose > 0:
                 error_msg = str(e).encode('ascii', 'replace').decode('ascii')
-                logger.error(f"Report generation failed: {error_msg}")
+                logger.error(
+                    f"Report generation failed: {error_msg}\n"
+                    f"  Suggestion: Failed to generate consolidated analysis report\n"
+                    f"  Check: Verify all analysis files exist and are readable\n"
+                    f"  Try: Run analysis steps again or check file permissions\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#report-generation-errors"
+                )
             return {
                 'success': False,
                 'error': str(e)

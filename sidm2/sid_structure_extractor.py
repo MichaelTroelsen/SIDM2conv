@@ -146,7 +146,13 @@ class SIDStructureExtractor:
                     logger.debug(f"Processed frame {frame}/{frame_count}")
 
         except Exception as e:
-            logger.error(f"Emulation failed: {e}")
+            logger.error(
+                f"Emulation failed: {e}\n"
+                f"  Suggestion: SID emulation error during structure extraction\n"
+                f"  Check: Verify SID file is valid and playable\n"
+                f"  Try: Test SID file in VICE emulator first\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#emulation-errors"
+            )
             structure['error'] = str(e)
 
         # Post-process extracted data

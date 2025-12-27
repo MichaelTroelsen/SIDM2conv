@@ -256,7 +256,13 @@ class PatternRecognizer:
         except Exception as e:
             if verbose > 0:
                 error_msg = str(e).encode('ascii', 'replace').decode('ascii')
-                logger.error(f"Pattern analysis failed: {error_msg}")
+                logger.error(
+                    f"Pattern analysis failed: {error_msg}\n"
+                    f"  Suggestion: Failed to analyze SID file patterns\n"
+                    f"  Check: Verify SID file is valid and complete\n"
+                    f"  Try: Enable debug logging for detailed error trace\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#pattern-analysis-errors"
+                )
             return {
                 'success': False,
                 'error': str(e)
@@ -340,7 +346,13 @@ class PatternRecognizer:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to generate report: {e}")
+            logger.error(
+                f"Failed to generate report: {e}\n"
+                f"  Suggestion: Cannot write pattern analysis report\n"
+                f"  Check: Verify output directory is writable\n"
+                f"  Try: Use different output path or check permissions\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#report-generation-errors"
+            )
             return False
 
 

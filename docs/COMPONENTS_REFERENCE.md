@@ -8,6 +8,7 @@ Complete reference for all Python modules and scripts in the SIDM2 project.
 
 | Module | Purpose | Version | Lines |
 |--------|---------|---------|-------|
+| `conversion_pipeline.py` | Core conversion business logic (NEW) | v2.7.0 | 1,117 |
 | `sf2_packer.py` | SF2 to SID packer | v0.6.0 | ~800 |
 | `cpu6502.py` | 6502 CPU emulator (pointer relocation) | v0.6.0 | ~400 |
 | `cpu6502_emulator.py` | Full 6502 emulator with SID capture | v0.6.2 | 1,242 |
@@ -23,7 +24,7 @@ Complete reference for all Python modules and scripts in the SIDM2 project.
 
 | Script | Purpose | Tests |
 |--------|---------|-------|
-| `sid_to_sf2.py` | Main SID to SF2 converter | 69 |
+| `sid_to_sf2.py` | CLI wrapper for conversion_pipeline (802 lines) | 24 |
 | `sf2_to_sid.py` | SF2 to SID exporter | - |
 | `convert_all.py` | Batch conversion | - |
 | `test_roundtrip.py` | Round-trip validation | - |
@@ -34,11 +35,15 @@ Complete reference for all Python modules and scripts in the SIDM2 project.
 
 ---
 
-## Core Converter (`scripts/sid_to_sf2.py`)
+## Core Conversion Pipeline
 
 ### Overview
 
-Main converter that transforms Laxity NewPlayer v21 SID files to SF2 format.
+The conversion system is split into two parts:
+- **Business Logic**: `sidm2/conversion_pipeline.py` (1,117 lines, 59.78% test coverage)
+- **CLI Interface**: `scripts/sid_to_sf2.py` (802 lines, thin wrapper)
+
+This separation enables testability, reusability, and maintainability.
 
 ### Key Classes
 
@@ -98,9 +103,141 @@ class SF2Writer:
 
 ### Usage
 
+**CLI (scripts/sid_to_sf2.py)**:
 ```bash
 python scripts/sid_to_sf2.py SID/input.sid output/SongName/New/output.sf2
 ```
+
+**Python API (sidm2/conversion_pipeline.py)**:
+```python
+from sidm2.conversion_pipeline import (
+    detect_player_type,
+    convert_sid_to_sf2,
+    LAXITY_CONVERTER_AVAILABLE,
+)
+
+# Detect player type
+player_type = detect_player_type("input.sid")
+
+# Convert with automatic driver selection
+convert_sid_to_sf2(
+    input_path="input.sid",
+    output_path="output.sf2",
+    driver_type="auto"  # or "laxity", "driver11", "np20", "galway"
+)
+```
+
+---
+
+## Conversion Pipeline (`sidm2/conversion_pipeline.py`)
+
+### Overview
+
+**Version**: v2.7.0
+**Purpose**: Core business logic for SID to SF2 conversion
+**Lines**: 1,117
+**Test Coverage**: 59.78% (276/445 statements, 24/24 tests passing, 100% pass rate)
+**Created**: 2025-12-27 (refactored from scripts/sid_to_sf2.py)
+
+### Core Functions
+
+#### `detect_player_type(filepath: str) -> str`
+Detects SID player type using player-id.exe.
+
+**Returns**: `"NewPlayer_v21/Laxity"`, `"SidFactory_II"`, `"Unknown"`, etc.
+
+#### `analyze_sid_file(filepath, config, sf2_reference_path) -> ExtractedData`
+Parses SID file and analyzes player structure.
+
+**Returns**: `ExtractedData` namedtuple with header and C64 data.
+
+#### `convert_laxity_to_sf2(input_path, output_path, config) -> bool`
+Converts Laxity NewPlayer v21 SID using custom driver (99.93% accuracy).
+
+**Returns**: `True` on success, raises `sidm2_errors.ConversionError` on failure.
+
+#### `convert_galway_to_sf2(input_path, output_path, config) -> bool`
+Converts Martin Galway SID files using table extraction and injection.
+
+**Returns**: `True` on success, raises exceptions on failure.
+
+#### `convert_sid_to_sf2(input_path, output_path, driver_type, config, ...) -> bool`
+Main conversion function with automatic driver selection.
+
+**Parameters**:
+- `driver_type`: `"auto"`, `"laxity"`, `"driver11"`, `"np20"`, `"galway"`
+- `config`: `ConversionConfig` object with settings
+- Additional optional parameters for validation and logging
+
+**Returns**: `True` on success, raises `sidm2_errors` on failure.
+
+#### `convert_sid_to_both_drivers(input_path, output_dir, config) -> Dict`
+Converts using both driver11 and Laxity for comparison.
+
+**Returns**: Dictionary with conversion results for each driver.
+
+#### `print_success_summary(input_path, output_path, driver_selection, validation_result, quiet)`
+Formats and prints conversion success message with driver info and validation results.
+
+### Availability Flags
+
+The module exports 12 boolean flags indicating which optional features are available:
+
+```python
+LAXITY_CONVERTER_AVAILABLE
+GALWAY_CONVERTER_AVAILABLE
+SIDWINDER_INTEGRATION_AVAILABLE
+DISASSEMBLER_INTEGRATION_AVAILABLE
+AUDIO_EXPORT_INTEGRATION_AVAILABLE
+MEMMAP_ANALYZER_AVAILABLE
+PATTERN_RECOGNIZER_AVAILABLE
+SUBROUTINE_TRACER_AVAILABLE
+REPORT_GENERATOR_AVAILABLE
+OUTPUT_ORGANIZER_AVAILABLE
+SIDDUMP_INTEGRATION_AVAILABLE
+ACCURACY_INTEGRATION_AVAILABLE
+```
+
+### Module Exports
+
+All functions and flags are exported via `__all__`:
+```python
+__all__ = [
+    # Core functions (7)
+    'detect_player_type',
+    'print_success_summary',
+    'analyze_sid_file',
+    'convert_laxity_to_sf2',
+    'convert_galway_to_sf2',
+    'convert_sid_to_sf2',
+    'convert_sid_to_both_drivers',
+
+    # Availability flags (12)
+    'LAXITY_CONVERTER_AVAILABLE',
+    # ... (see above)
+]
+```
+
+### Test Coverage Details
+
+| Metric | Value | Status |
+|--------|-------|--------|
+| **Statements** | 276/445 (59.78%) | ✅ Exceeds 50% target by 19.6% |
+| **Branches** | 89/112 (79.46%) | ✅ Good branch coverage |
+| **Tests** | 24/24 passing | ✅ 100% pass rate |
+| **Full Suite** | 691/692 passing | ✅ 99.86% pass rate |
+
+### Related Files
+
+- `scripts/sid_to_sf2.py` - CLI wrapper (802 lines)
+- `pyscript/test_sid_to_sf2_script.py` - Unit tests (24 tests, 100% pass rate)
+- `docs/implementation/SID_TO_SF2_REFACTORING_SUMMARY.md` - Refactoring documentation
+
+### History
+
+- **2025-12-27**: Created via refactoring to separate business logic from CLI
+- **2025-12-27**: Test fixes completed (17/24 → 24/24 passing)
+- **Coverage**: 54.15% → 59.78% (+5.63 percentage points)
 
 ---
 

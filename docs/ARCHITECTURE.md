@@ -789,7 +789,11 @@ $0F03:       Filter table
 
 **Module Exports** (`__all__`): All 7 functions + all 12 availability flags
 
-**Test Coverage**: 54% (248/442 statements covered)
+**Test Coverage**: 59.78% (276/445 statements covered, 24/24 tests passing)
+- Statement coverage: 276/445 (59.78%)
+- Branch coverage: 89/112 (79.46%)
+- Test pass rate: 24/24 (100%)
+- Exceeds 50% target by 19.6%
 
 **Usage**:
 ```python
@@ -805,11 +809,14 @@ if LAXITY_CONVERTER_AVAILABLE and player_type == "NewPlayer_v21/Laxity":
 ```
 
 **Related Files**:
-- `scripts/sid_to_sf2.py` - Thin CLI wrapper that imports from this module
-- `pyscript/test_sid_to_sf2_script.py` - Unit tests (17/24 passing, 70.8% pass rate)
+- `scripts/sid_to_sf2.py` - Thin CLI wrapper that imports from this module (802 lines)
+- `pyscript/test_sid_to_sf2_script.py` - Unit tests (24/24 passing, 100% pass rate)
 - `docs/implementation/SID_TO_SF2_REFACTORING_SUMMARY.md` - Refactoring documentation
 
-**History**: Created 2025-12-27 via refactoring to separate business logic from CLI script.
+**History**:
+- Created 2025-12-27 via refactoring to separate business logic from CLI script
+- Test fixes completed 2025-12-27: 17/24 → 24/24 passing (100% pass rate)
+- Coverage improved: 54.15% → 59.78% (+5.63 percentage points)
 
 ---
 
