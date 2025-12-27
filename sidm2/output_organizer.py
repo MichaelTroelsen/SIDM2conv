@@ -196,7 +196,13 @@ class OutputOrganizer:
 
                 except Exception as e:
                     error_msg = str(e).encode('ascii', 'replace').decode('ascii')
-                    logger.error(f"Failed to move {file_path.name}: {error_msg}")
+                    logger.error(
+                        f"Failed to move {file_path.name}: {error_msg}\n"
+                        f"  Suggestion: Check file permissions and disk space\n"
+                        f"  Check: Verify destination directory is writable\n"
+                        f"  Try: Close any programs that might have file open\n"
+                        f"  See: docs/guides/TROUBLESHOOTING.md#file-move-failures"
+                    )
                     stats['errors'] += 1
 
         return stats
@@ -285,7 +291,13 @@ class OutputOrganizer:
 
         except Exception as e:
             error_msg = str(e).encode('ascii', 'replace').decode('ascii')
-            logger.error(f"Failed to create index: {error_msg}")
+            logger.error(
+                f"Failed to create index: {error_msg}\n"
+                f"  Suggestion: Check file write permissions in output directory\n"
+                f"  Check: Verify sufficient disk space available\n"
+                f"  Try: Run with elevated permissions if needed\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#index-creation-failures"
+            )
             return False
 
     def _create_readme(
@@ -379,7 +391,13 @@ class OutputOrganizer:
 
         except Exception as e:
             error_msg = str(e).encode('ascii', 'replace').decode('ascii')
-            logger.error(f"Failed to create README: {error_msg}")
+            logger.error(
+                f"Failed to create README: {error_msg}\n"
+                f"  Suggestion: Check file write permissions in output directory\n"
+                f"  Check: Verify README.md is not open in another program\n"
+                f"  Try: Close editors and retry organization\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#readme-creation-failures"
+            )
             return False
 
     def organize(
@@ -469,7 +487,13 @@ class OutputOrganizer:
         except Exception as e:
             error_msg = str(e).encode('ascii', 'replace').decode('ascii')
             if verbose > 0:
-                logger.error(f"Organization failed: {error_msg}")
+                logger.error(
+                    f"Organization failed: {error_msg}\n"
+                    f"  Suggestion: Unexpected error during output organization\n"
+                    f"  Check: Verify all output directories are accessible\n"
+                    f"  Try: Enable verbose mode for detailed error information\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#organization-failures"
+                )
             return {
                 'success': False,
                 'error': str(e)
