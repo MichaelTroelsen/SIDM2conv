@@ -217,9 +217,21 @@ def _run_exe_siddump(sid_path: str, playback_time: int) -> Optional[str]:
         )
 
         if result.returncode != 0:
-            logger.error(f"siddump.exe failed for {sid_path}: return code {result.returncode}")
+            logger.error(
+                f"siddump.exe failed for {sid_path}: return code {result.returncode}\n"
+                f"  Suggestion: SID file may be incompatible with siddump\n"
+                f"  Check: Verify SID file has valid PSID/RSID header\n"
+                f"  Try: Use Python siddump instead (use_python=True, default)\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#siddump-failures"
+            )
             if result.stderr:
-                logger.error(f"siddump.exe stderr: {result.stderr}")
+                logger.error(
+                    f"siddump.exe stderr: {result.stderr}\n"
+                    f"  Suggestion: Check stderr output for specific error details\n"
+                    f"  Check: Verify siddump.exe is compatible with this SID format\n"
+                    f"  Try: Use Python siddump as alternative (use_python=True)\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#siddump-stderr-errors"
+                )
             return None
 
         return result.stdout
@@ -228,8 +240,20 @@ def _run_exe_siddump(sid_path: str, playback_time: int) -> Optional[str]:
         logger.warning(f"siddump.exe timed out after {playback_time}s for {sid_path}")
         return None
     except FileNotFoundError as e:
-        logger.error(f"File not found during siddump.exe for {sid_path}: {e}")
+        logger.error(
+            f"File not found during siddump.exe for {sid_path}: {e}\n"
+            f"  Suggestion: siddump.exe not found in tools/ directory\n"
+            f"  Check: Verify tools/siddump.exe exists\n"
+            f"  Try: Use Python siddump instead (use_python=True, default)\n"
+            f"  See: docs/guides/TROUBLESHOOTING.md#siddump-not-found"
+        )
         return None
     except Exception as e:
-        logger.error(f"siddump.exe failed for {sid_path}: {e}")
+        logger.error(
+            f"siddump.exe failed for {sid_path}: {e}\n"
+            f"  Suggestion: Unexpected error during siddump execution\n"
+            f"  Check: Verify SID file is readable and valid\n"
+            f"  Try: Use Python siddump instead (use_python=True, default)\n"
+            f"  See: docs/guides/TROUBLESHOOTING.md#siddump-unexpected-errors"
+        )
         return None
