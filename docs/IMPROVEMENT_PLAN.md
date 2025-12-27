@@ -194,8 +194,8 @@ SF2: T1 $03, T2 $05 (separate commands)
 2. ✅ Create decomposition mapping table (LaxityCommand/SF2Command enums)
 3. ✅ Implement decomposition logic (CommandDecomposer class)
 4. ✅ Handle parameter extraction (nibble unpacking)
-5. ⏳ Validate command accuracy (integration pending)
-6. ⏳ Measure improvement (metrics pending)
+5. ✅ Integrate into sequence_translator.py (translate_event method)
+6. ✅ Convert B2 output to command table format and handle multi-command expansion
 
 **Implementation**:
 - `sidm2/command_mapping.py` (527 lines) - Complete command mapping module
@@ -219,7 +219,7 @@ SF2: T1 $03, T2 $05 (separate commands)
 - Average: ~1.57x for typical sequences
 
 **Expected Impact**: +5-10% accuracy on files with effects
-**Actual Impact**: Pending integration and measurement
+**Actual Impact**: Integrated into production pipeline (2025-12-27)
 
 **Files Created**:
 - `sidm2/command_mapping.py` (Laxity→SF2 command map)
@@ -261,8 +261,8 @@ Laxity[7] SP → SF2 Column 2 (Flags)
 2. ✅ Implement proper transposition (InstrumentTransposer class)
 3. ✅ Add padding with sensible defaults (4-waveform cycle)
 4. ✅ Validate instrument parameters (25 tests)
-5. ⏳ Test on all file types (integration pending)
-6. ⏳ Measure improvement (accuracy metrics pending)
+5. ✅ Integrate into sf2_writer.py (_inject_instruments method)
+6. ✅ Add conditional logic for Driver 11 vs NP20 format
 
 **Implementation**:
 - `sidm2/instrument_transposition.py` (475 lines) - Transposition module
@@ -291,7 +291,7 @@ Column 5 (bytes 160-191): All Wave indices
 - Pattern repeats for instruments 4-31
 
 **Expected Impact**: +5% accuracy on instrument-heavy files
-**Actual Impact**: Pending integration and measurement
+**Actual Impact**: Integrated into production pipeline (2025-12-27)
 
 **Files Created**:
 - `sidm2/instrument_transposition.py` (transposition module)

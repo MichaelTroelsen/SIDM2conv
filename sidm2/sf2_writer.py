@@ -22,6 +22,7 @@ from .sequence_extraction import (
     find_arpeggio_table_in_memory,
     build_sf2_arp_table
 )
+from .instrument_transposition import transpose_instruments
 from . import errors
 
 logger = logging.getLogger(__name__)
@@ -626,7 +627,6 @@ class SF2Writer:
             else:
                 return 0x00
 
-        sf2_instruments = []
         is_np20 = columns == 8
 
         # Get valid wave entry points for validation
@@ -634,95 +634,150 @@ class SF2Writer:
         valid_wave_points = get_valid_wave_entry_points(wave_entries) if wave_entries else {0}
         wave_table_size = len(wave_entries) if wave_entries else 0
 
-        for lax_instr in laxity_instruments:
-            wave_ptr = lax_instr.get('wave_ptr', 0)
-            pulse_ptr = lax_instr.get('pulse_ptr', 0)
-            filter_ptr = lax_instr.get('filter_ptr', 0)
+        # Use new instrument transposition for Driver 11 (6 columns)
+        if not is_np20 and columns == 6:
+            logger.info("    Using instrument transposition module (Track B3)")
 
-            # Convert Laxity pulse_ptr from Y*4 indexing to direct index
-            if pulse_ptr != 0 and pulse_ptr % 4 == 0:
-                pulse_ptr = pulse_ptr // 4
+            # Prepare Laxity 8-byte instruments for transposition
+            laxity_instr_bytes = []
+            for i, instr_bytes in enumerate(self.data.instruments[:32]):  # Up to 32 instruments
+                if len(instr_bytes) >= 8:
+                    # Process wave and pulse pointers
+                    instr_copy = bytearray(instr_bytes)
+                    wave_ptr = instr_copy[7]
+                    pulse_ptr = instr_copy[6]
 
-            if wave_ptr == 0:
-                wave_ptr = waveform_to_wave_index(lax_instr['wave_for_sf2'])
+                    # Convert Laxity pulse_ptr from Y*4 indexing to direct index
+                    if pulse_ptr != 0 and pulse_ptr % 4 == 0:
+                        pulse_ptr = pulse_ptr // 4
+                    instr_copy[3] = pulse_ptr  # LAXITY_PULSE = 3
 
-            # Validate wave pointer - must be within wave table bounds and at valid entry point
-            if wave_table_size > 0 and wave_ptr >= wave_table_size:
-                # Find closest valid entry point that's within bounds
-                valid_in_bounds = [p for p in valid_wave_points if p < wave_table_size]
-                if valid_in_bounds:
-                    # Find the closest valid entry point
-                    wave_ptr = min(valid_in_bounds, key=lambda p: abs(p - wave_ptr))
+                    # Validate and clamp wave pointer
+                    if wave_table_size > 0 and wave_ptr >= wave_table_size:
+                        valid_in_bounds = [p for p in valid_wave_points if p < wave_table_size]
+                        if valid_in_bounds:
+                            wave_ptr = min(valid_in_bounds, key=lambda p: abs(p - wave_ptr))
+                        else:
+                            wave_ptr = 0
+                        logger.debug(f"    Clamped wave_ptr for instrument {i} to {wave_ptr}")
+                    instr_copy[2] = wave_ptr  # LAXITY_WAVEFORM = 2
+
+                    laxity_instr_bytes.append(bytes(instr_copy))
+
+            # Transpose using B3 module (Laxity 8-byte → SF2 column-major 256-byte)
+            sf2_table = transpose_instruments(laxity_instr_bytes, pad_to=rows)
+
+            # Write transposed table directly
+            base_offset = self._addr_to_offset(instr_addr)
+            table_size = min(len(sf2_table), rows * columns)
+
+            for i in range(table_size):
+                offset = base_offset + i
+                if offset < len(self.output):
+                    self.output[offset] = sf2_table[i]
+
+            instruments_written = len(laxity_instr_bytes)
+            logger.info(f"    Written {instruments_written} instruments using transposition (B3)")
+
+            # Log instrument details
+            for i in range(min(instruments_written, 16)):
+                if i < len(laxity_instruments):
+                    lax_instr = laxity_instruments[i]
+                    name = lax_instr.get('name', f'{i:02d} Instr')
+                    logger.debug(f"      {i}: {name} (AD={lax_instr['ad']:02X} SR={lax_instr['sr']:02X})")
+
+        else:
+            # Legacy path for NP20 or non-standard column counts
+            logger.info("    Using legacy instrument format (NP20 or non-standard)")
+            sf2_instruments = []
+
+            for lax_instr in laxity_instruments:
+                wave_ptr = lax_instr.get('wave_ptr', 0)
+                pulse_ptr = lax_instr.get('pulse_ptr', 0)
+                filter_ptr = lax_instr.get('filter_ptr', 0)
+
+                # Convert Laxity pulse_ptr from Y*4 indexing to direct index
+                if pulse_ptr != 0 and pulse_ptr % 4 == 0:
+                    pulse_ptr = pulse_ptr // 4
+
+                if wave_ptr == 0:
+                    wave_ptr = waveform_to_wave_index(lax_instr['wave_for_sf2'])
+
+                # Validate wave pointer
+                if wave_table_size > 0 and wave_ptr >= wave_table_size:
+                    valid_in_bounds = [p for p in valid_wave_points if p < wave_table_size]
+                    if valid_in_bounds:
+                        wave_ptr = min(valid_in_bounds, key=lambda p: abs(p - wave_ptr))
+                    else:
+                        wave_ptr = 0
+                    logger.debug(f"    Clamped wave_ptr for instrument {lax_instr['index']} to {wave_ptr}")
+
+                if is_np20:
+                    # NP20 instrument format (8 columns)
+                    sf2_instr = [
+                        lax_instr['ad'],
+                        lax_instr['sr'],
+                        0x00,
+                        0x00,
+                        wave_ptr,
+                        pulse_ptr,
+                        filter_ptr,
+                        0x00
+                    ]
                 else:
-                    wave_ptr = 0
-                logger.debug(f"    Clamped wave_ptr for instrument {lax_instr['index']} to {wave_ptr}")
+                    # Non-standard format fallback
+                    restart = lax_instr.get('restart', 0)
+                    flags = 0x00
+                    if restart & 0x80:
+                        flags |= 0x80
+                    if restart & 0x10:
+                        flags |= 0x10
+                    if lax_instr.get('filter_setting', 0):
+                        flags |= 0x40
 
-            if is_np20:
-                # NP20 instrument format (8 columns):
-                # 0: AD, 1: SR, 2: ???, 3: ???, 4: Wave, 5: Pulse, 6: Filter, 7: ???
-                sf2_instr = [
-                    lax_instr['ad'],
-                    lax_instr['sr'],
-                    0x00,
-                    0x00,
-                    wave_ptr,
-                    pulse_ptr,
-                    filter_ptr,
-                    0x00
-                ]
-            else:
-                restart = lax_instr.get('restart', 0)
-                flags = 0x00
-                if restart & 0x80:
-                    flags |= 0x80
-                if restart & 0x10:
-                    flags |= 0x10
-                if lax_instr.get('filter_setting', 0):
-                    flags |= 0x40
+                    sf2_instr = [
+                        lax_instr['ad'],
+                        lax_instr['sr'],
+                        flags,
+                        filter_ptr,
+                        pulse_ptr,
+                        wave_ptr
+                    ]
+                sf2_instruments.append(sf2_instr)
 
-                sf2_instr = [
-                    lax_instr['ad'],
-                    lax_instr['sr'],
-                    flags,
-                    filter_ptr,
-                    pulse_ptr,
-                    wave_ptr
-                ]
-            sf2_instruments.append(sf2_instr)
-
-        while len(sf2_instruments) < 16:
-            if is_np20:
-                sf2_instruments.append([0x09, 0xA0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
-            else:
-                sf2_instruments.append([0x09, 0xA0, 0x00, 0x00, 0x00, 0x00])
-
-        for i, lax_instr in enumerate(laxity_instruments):
-            if i < len(sf2_instruments):
-                instr = sf2_instruments[i]
-                wave_names = {0x00: 'saw', 0x02: 'pulse', 0x04: 'tri', 0x06: 'noise'}
-                wave_idx_pos = 4 if is_np20 else 5  # Fixed: NP20 wave ptr is at col 4, not 2
-                wave_name = wave_names.get(instr[wave_idx_pos], '?')
-                name = lax_instr.get('name', f'{i:02d} {wave_name}')
-                logger.debug(f"      {i}: {name} (AD={instr[0]:02X} SR={instr[1]:02X})")
-
-        instruments_written = 0
-
-        for col in range(columns):
-            for row in range(rows):
-                offset = self._addr_to_offset(instr_addr) + col * rows + row
-
-                if offset >= len(self.output):
-                    continue
-
-                if row < len(sf2_instruments) and col < len(sf2_instruments[row]):
-                    self.output[offset] = sf2_instruments[row][col]
+            while len(sf2_instruments) < 16:
+                if is_np20:
+                    sf2_instruments.append([0x09, 0xA0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
                 else:
-                    self.output[offset] = 0
+                    sf2_instruments.append([0x09, 0xA0, 0x00, 0x00, 0x00, 0x00])
 
-            if col == 0:
-                instruments_written = min(len(sf2_instruments), rows)
+            for i, lax_instr in enumerate(laxity_instruments):
+                if i < len(sf2_instruments):
+                    instr = sf2_instruments[i]
+                    wave_names = {0x00: 'saw', 0x02: 'pulse', 0x04: 'tri', 0x06: 'noise'}
+                    wave_idx_pos = 4 if is_np20 else 5
+                    wave_name = wave_names.get(instr[wave_idx_pos], '?')
+                    name = lax_instr.get('name', f'{i:02d} {wave_name}')
+                    logger.debug(f"      {i}: {name} (AD={instr[0]:02X} SR={instr[1]:02X})")
 
-        logger.info(f"    Written {instruments_written} instruments")
+            instruments_written = 0
+
+            for col in range(columns):
+                for row in range(rows):
+                    offset = self._addr_to_offset(instr_addr) + col * rows + row
+
+                    if offset >= len(self.output):
+                        continue
+
+                    if row < len(sf2_instruments) and col < len(sf2_instruments[row]):
+                        self.output[offset] = sf2_instruments[row][col]
+                    else:
+                        self.output[offset] = 0
+
+                if col == 0:
+                    instruments_written = min(len(sf2_instruments), rows)
+
+            logger.info(f"    Written {instruments_written} instruments (legacy path)")
 
     def _inject_wave_table(self) -> None:
         """Inject wave table data extracted from Laxity SID"""

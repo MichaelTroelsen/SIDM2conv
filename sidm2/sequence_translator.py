@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import List, Dict, Tuple, Optional
 
 from sidm2.models import SequenceEvent
+from sidm2.command_mapping import decompose_laxity_command
 
 logger = logging.getLogger(__name__)
 
@@ -318,35 +319,85 @@ class SF2SequenceBuilder:
         """
         Translate single Laxity event to SF2 events with duration expansion.
 
+        Uses B2 command decomposition for super-commands (vibrato, arpeggio, tremolo).
+
         Args:
             lax_event: Parsed Laxity event
 
         Returns:
-            List of SF2 SequenceEvent objects (expanded for duration)
+            List of SF2 SequenceEvent objects (expanded for duration and command decomposition)
         """
         # Translate note
         sf2_note = self.freq_table.translate_laxity_note(lax_event.note)
 
-        # Translate command to SF2 command index
-        sf2_command = SF2_NO_CHANGE
-        if lax_event.command is not None and lax_event.command_param is not None:
-            sf2_command = self._translate_command(lax_event.command, lax_event.command_param)
-
         # Instrument
         sf2_instrument = lax_event.instrument if lax_event.instrument is not None else SF2_NO_CHANGE
+
+        # Decompose Laxity command using B2 (returns list of SF2 commands)
+        sf2_commands = []
+        if lax_event.command is not None and lax_event.command_param is not None:
+            # Use B2 command decomposition (Track B2)
+            decomposed = decompose_laxity_command(lax_event.command, lax_event.command_param)
+
+            # Convert B2 output format to command table indices
+            for cmd_byte, param in decomposed:
+                # Extract command type from B2 format (0xA0 + type → type)
+                if 0xA0 <= cmd_byte <= 0xBF:
+                    cmd_type = cmd_byte - 0xA0
+                    # Convert to command table tuple (type, param, 0)
+                    sf2_tuple = (cmd_type, param if param is not None else 0, 0)
+
+                    # Look up in command table to get index
+                    if sf2_tuple in self.command_table:
+                        sf2_commands.append(self.command_table[sf2_tuple])
+                    else:
+                        logger.debug(f"B2 command not in table: {sf2_tuple}")
+                elif 0x00 <= cmd_byte <= 0x5F:
+                    # Note event from B2 (direct mapping)
+                    continue
+                elif cmd_byte in (0x7E, 0x80, 0x7F):
+                    # Control markers (gate on/off, end)
+                    continue
+                else:
+                    logger.warning(f"Unknown B2 command byte: ${cmd_byte:02X}")
 
         # Build SF2 events with duration expansion
         events = []
 
-        # First event: note trigger with instrument/command
-        events.append(SequenceEvent(
-            instrument=sf2_instrument,
-            command=sf2_command,
-            note=sf2_note
-        ))
+        # Handle multiple commands from decomposition (super-commands)
+        if not sf2_commands:
+            # No commands - just note with instrument
+            events.append(SequenceEvent(
+                instrument=sf2_instrument,
+                command=SF2_NO_CHANGE,
+                note=sf2_note
+            ))
+        elif len(sf2_commands) == 1:
+            # Single command - standard case
+            events.append(SequenceEvent(
+                instrument=sf2_instrument,
+                command=sf2_commands[0],
+                note=sf2_note
+            ))
+        else:
+            # Multiple commands from super-command decomposition (e.g., Vibrato → 2 commands)
+            # First event: note + instrument + first command
+            events.append(SequenceEvent(
+                instrument=sf2_instrument,
+                command=sf2_commands[0],
+                note=sf2_note
+            ))
+            # Additional events for remaining commands (same note, no instrument change)
+            for cmd_idx in sf2_commands[1:]:
+                events.append(SequenceEvent(
+                    instrument=SF2_NO_CHANGE,
+                    command=cmd_idx,
+                    note=SF2_GATE_ON  # Sustain while applying additional commands
+                ))
 
-        # Sustain events: duration - 1 frames
-        for _ in range(lax_event.duration - 1):
+        # Sustain events: duration - 1 frames (or duration - len(sf2_commands) if multiple commands)
+        sustain_frames = max(0, lax_event.duration - len(events))
+        for _ in range(sustain_frames):
             events.append(SequenceEvent(
                 instrument=SF2_NO_CHANGE,
                 command=SF2_NO_CHANGE,
