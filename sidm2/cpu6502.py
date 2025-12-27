@@ -640,9 +640,10 @@ class CPU6502:
             all_pointers.extend(indirect_pointers)
         else:
             # DATA SECTION: Scan for embedded pointers
-            # Use alignment=2 for pointer tables (usually aligned)
+            # Use alignment=1 to catch ALL pointers (including odd-addressed)
+            # CRITICAL FIX: Changed from alignment=2 to fix 17/18 SIDwinder disassembly failures
             data_pointers = self.scan_data_pointers(
-                start_addr, end_addr, code_start, code_end, alignment=2
+                start_addr, end_addr, code_start, code_end, alignment=1
             )
             all_pointers.extend(data_pointers)
 
