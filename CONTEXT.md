@@ -11,43 +11,50 @@
 
 ### What We're Working On RIGHT NOW (2025-12-27)
 
-**Recently Completed & Committed**: ✅ **VSID Integration v1.0.0** (committed Dec 26, 2025)
+**Recently Completed & Committed**: ✅ **Repository Cleanup & CLAUDE.md Compaction** (committed Dec 27, 2025)
 
-**Commit**: `92f3663` - "feat: Replace SID2WAV with VSID in conversion pipeline"
+**Commit**: `2f4a145` - "chore: Clean up root directory and compact CLAUDE.md"
 
 **Implementation Summary**:
-- ✅ **VSID Integration** (Replaces SID2WAV.EXE with VICE VSID player)
-- ✅ **100% Test Pass Rate** (188 tests + 156 subtests passing)
-- ✅ **Cross-Platform Support** (Windows, Linux, Mac)
-- ✅ **Better Accuracy** (VICE-quality SID emulation)
-- ✅ **Auto-Selection** (VSID preferred, SID2WAV fallback)
-- ✅ **100% Backward Compatible** (Automatic fallback, zero breaking changes)
-- ✅ **SF2 Playback Integration** (SF2 Viewer now uses VSID)
-- ✅ **Comprehensive Documentation** (450+ lines guide + API reference)
+- ✅ **Root Directory Cleanup** (27 files moved/removed, 100% compliant with ROOT_FOLDER_RULES.md)
+- ✅ **CLAUDE.md Compaction** (397→152 lines, 62% reduction, improved scannability)
+- ✅ **Zero Python Files in Root** (All moved to pyscript/)
+- ✅ **Documentation Reorganization** (Archive, integration, analysis subdirectories)
+- ✅ **100% Test Pass Rate** (188 tests + 156 subtests passing, zero regressions)
+- ✅ **FILE_INVENTORY.md Updated** (Auto-regenerated with new structure)
 
-**Files Committed** (10 files changed, +1,495/-85):
-- `sidm2/vsid_wrapper.py` - VSID integration wrapper (264 lines)
-- `pyscript/test_vsid_integration.py` - Integration test suite (171 lines, 100% pass)
-- `test-vsid-integration.bat` - Batch test launcher
-- `docs/VSID_INTEGRATION_GUIDE.md` - Complete usage guide (450+ lines)
-- `VSID_INTEGRATION_COMPLETE.md` - Implementation summary (425 lines)
-- `pyscript/sf2_playback.py` - Updated to use VSID for SID→WAV conversion
-- `sidm2/audio_export_wrapper.py` - Auto VSID/SID2WAV selection (v2.0.0)
-- `CONTEXT.md`, `README.md`, `CLAUDE.md` - Updated documentation
+**Files Committed** (27 files changed, +876/-962):
+- 12 summary docs → `docs/archive/`
+- 2 integration docs → `docs/integration/`
+- 1 analysis doc → `docs/analysis/`
+- 5 general docs → `docs/`
+- 3 Python test files → `pyscript/`
+- 1 outdated duplicate removed (`UX_IMPROVEMENT_PLAN.md`)
+- `CLAUDE.md` - Compacted from 397 to 152 lines (62% reduction)
+- `docs/FILE_INVENTORY.md` - Auto-updated with new locations
+- `.claude/settings.local.json` - Configuration updates
 
-**Current Uncommitted Changes**:
-- `.claude/settings.local.json` - Local Claude Code settings (not for commit)
+**Current Uncommitted Changes**: None
 
-**Test Status**: ✅ **All tests passing** (188 tests + 156 subtests)
+**Test Status**: ✅ **All tests passing** (188 tests + 156 subtests, zero failures)
 
 **Recent Commits**:
-1. `92f3663` - "feat: Replace SID2WAV with VSID in conversion pipeline" (Dec 26, 2025) ⭐ **VSID v1.0.0**
-2. `8890ca0` - "feat: Add diverse test file suite (Q1 Quick Win)"
-3. `788a8fc` - "docs: Validate Track 2.2 (Player Auto-Detection) - COMPLETE"
-4. `f6aa18b` - "docs: Mark Track 1.2 (Voice 3 Support) as complete"
-5. `ccd9365` - "docs: Add B2+B3 accuracy validation results to CHANGELOG"
+1. `2f4a145` - "chore: Clean up root directory and compact CLAUDE.md" (Dec 27, 2025) ⭐ **Cleanup v1.0**
+2. `92f3663` - "feat: Replace SID2WAV with VSID in conversion pipeline" (Dec 26, 2025) ⭐ **VSID v1.0.0**
+3. `8890ca0` - "feat: Add diverse test file suite (Q1 Quick Win)"
+4. `788a8fc` - "docs: Validate Track 2.2 (Player Auto-Detection) - COMPLETE"
+5. `f6aa18b` - "docs: Mark Track 1.2 (Voice 3 Support) as complete"
 
 ### What Just Happened (Context for Understanding)
+
+**Repository Cleanup & CLAUDE.md Compaction** (Dec 27, 2025) - ✅ **COMMITTED** (commit `2f4a145`):
+- **Achievement**: Cleaned root directory, compacted CLAUDE.md, reorganized documentation
+- **Root Cleanup**: 27 files moved/removed (12 to docs/archive/, 2 to docs/integration/, 1 to docs/analysis/, 5 to docs/, 3 Python to pyscript/)
+- **CLAUDE.md**: Reduced from 397 to 152 lines (62% reduction), improved scannability
+- **Compliance**: 100% compliant with ROOT_FOLDER_RULES.md, zero Python files in root
+- **Test Results**: 100% pass rate (188 tests + 156 subtests, zero regressions)
+- **Implementation Time**: ~30 minutes
+- **Files**: 27 files changed (+876/-962 lines)
 
 **VSID Integration** (Dec 26, 2025) - ✅ **COMMITTED** (commit `92f3663`):
 - **Achievement**: Replaced SID2WAV with VSID (VICE SID player) throughout pipeline
@@ -438,9 +445,10 @@ python scripts/validate_sid_accuracy.py input.sid output.sid
 ## Next Steps
 
 ### Immediate (Next Session)
-1. ✅ **VSID Integration committed** - v1.0.0 complete (commit 92f3663)
+1. ✅ **Repository cleanup complete** - Root clean, CLAUDE.md compacted (commit 2f4a145)
 2. ✅ **All tests passing** - 188 tests + 156 subtests (100% pass rate)
-3. 🎯 **Ready for new work** - Clean state, no blockers
+3. ✅ **Zero uncommitted changes** - Clean state, ready to push
+4. 🎯 **Ready for new work** - Clean state, no blockers
 
 ### Short Term (This Month)
 1. Implement filter support (Roadmap Track 1.1)
@@ -472,11 +480,13 @@ python scripts/validate_sid_accuracy.py input.sid output.sid
 ### Current Context (2025-12-27)
 
 **Recent Work Committed**:
+- ✅ Repository Cleanup & CLAUDE.md Compaction (commit 2f4a145, Dec 27) ⭐ **Latest**
 - ✅ VSID Integration v1.0.0 (commit 92f3663, Dec 26)
 - ✅ SF2 Editor Automation with PyAutoGUI (commits ad0aecc, 812d8f8, 23fc039)
 - ✅ Debug logging system (commit dfbba39)
 
-**Current State**: Clean - all tests passing (188 tests + 156 subtests)
+**Current State**: Clean - all tests passing (188 tests + 156 subtests), zero uncommitted changes
+**Repository**: 100% compliant with ROOT_FOLDER_RULES.md, CLAUDE.md compacted to 152 lines
 **Status**: Ready for new work
 
 ### What Changed Recently
