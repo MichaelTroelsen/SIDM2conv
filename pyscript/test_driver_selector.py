@@ -24,12 +24,10 @@ class TestDriverSelector(unittest.TestCase):
         self.selector = DriverSelector()
 
     def test_laxity_variants(self):
-        """Test that all Laxity variants map to laxity driver."""
+        """Test that native Laxity variants map to laxity driver."""
         laxity_variants = [
             'Laxity_NewPlayer_V21',
             'Vibrants/Laxity',
-            'SidFactory_II/Laxity',
-            'SidFactory/Laxity',
             '256bytes/Laxity',
         ]
 
@@ -54,6 +52,10 @@ class TestDriverSelector(unittest.TestCase):
     def test_sf2_exported_variants(self):
         """Test that SF2-exported files map to driver11."""
         sf2_variants = [
+            'SidFactory_II/Laxity',
+            'SidFactory/Laxity',
+            'SidFactory_II',
+            'SidFactory',
             'SF2_Exported',
             'Driver_11',
         ]
@@ -110,12 +112,12 @@ class TestDriverSelector(unittest.TestCase):
 
     def test_build_selection_result_laxity(self):
         """Test building selection result for Laxity driver."""
-        result = self.selector._build_selection_result('laxity', 'SidFactory_II/Laxity')
+        result = self.selector._build_selection_result('laxity', 'Laxity_NewPlayer_V21')
 
         self.assertEqual(result.driver_name, 'laxity')
         self.assertEqual(result.driver_file, 'sf2driver_laxity_00.prg')
         self.assertEqual(result.expected_accuracy, '99.93%')
-        self.assertEqual(result.player_type, 'SidFactory_II/Laxity')
+        self.assertEqual(result.player_type, 'Laxity_NewPlayer_V21')
         self.assertEqual(result.alternative_driver, 'Driver 11')
         self.assertEqual(result.alternative_accuracy, '1-8%')
         self.assertIn('Laxity-specific', result.selection_reason)
@@ -209,7 +211,7 @@ class TestDriverSelector(unittest.TestCase):
             driver_file='sf2driver_laxity_00.prg',
             expected_accuracy='99.93%',
             selection_reason='Laxity driver',
-            player_type='SidFactory_II/Laxity'
+            player_type='Laxity_NewPlayer_V21'
         )
 
         sid_metadata = {
@@ -240,7 +242,7 @@ class TestDriverSelector(unittest.TestCase):
         self.assertIn('Test Song', info)
         self.assertIn('Test Author', info)
         self.assertIn('2025', info)
-        self.assertIn('SidFactory_II/Laxity', info)
+        self.assertIn('Laxity_NewPlayer_V21', info)
         self.assertIn('LAXITY', info)
         self.assertIn('99.93%', info)
         self.assertIn('SUCCESS', info)
@@ -287,12 +289,12 @@ class TestDriverSelector(unittest.TestCase):
 
     @patch.object(DriverSelector, 'identify_player')
     def test_select_driver_auto_detection(self, mock_identify):
-        """Test automatic driver selection."""
+        """Test automatic driver selection for SF2-exported files."""
         mock_identify.return_value = 'SidFactory_II/Laxity'
 
         result = self.selector.select_driver(Path('test.sid'))
 
-        self.assertEqual(result.driver_name, 'laxity')
+        self.assertEqual(result.driver_name, 'driver11')
         self.assertEqual(result.player_type, 'SidFactory_II/Laxity')
         mock_identify.assert_called_once()
 
