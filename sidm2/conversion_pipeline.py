@@ -302,11 +302,13 @@ def analyze_sid_file(filepath: str, config: ConversionConfig = None, sf2_referen
     # Detect player type
     player_type = detect_player_type(filepath)
 
-    # Check for SF2 marker ($1337) - this is the definitive indicator
+    # Check for SF2 marker ($1337) OR player type indicating SF2-exported
     # Files WITH marker have embedded SF2 structure → use SF2PlayerParser
-    # Files WITHOUT marker are either original Laxity or packed binaries → use LaxityParser
-    # Note: player-id is unreliable for newly packed SF2 files, so prioritize marker check
-    is_sf2_exported = b'\x37\x13' in c64_data
+    # Files identified as "SidFactory_II/*" are also SF2-exported → use SF2PlayerParser
+    # Files WITHOUT marker AND not SF2-identified are original Laxity → use LaxityParser
+    has_sf2_magic = b'\x37\x13' in c64_data
+    is_sf2_player_type = 'SidFactory' in player_type or player_type.startswith('SF2')
+    is_sf2_exported = has_sf2_magic or is_sf2_player_type
 
     if config.extraction.verbose or logger.level <= logging.INFO:
         logger.info("=" * 60)

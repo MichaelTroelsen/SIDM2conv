@@ -47,11 +47,15 @@ class DriverSelector:
 
     # Player type → Driver mapping
     PLAYER_MAPPINGS = {
-        # Laxity variants
+        # SF2-exported files (100% accuracy with Driver 11)
+        'SidFactory_II/Laxity': 'driver11',
+        'SidFactory/Laxity': 'driver11',
+        'SidFactory_II': 'driver11',
+        'SidFactory': 'driver11',
+
+        # Native Laxity variants (99.93% accuracy with Laxity driver)
         'Laxity_NewPlayer_V21': 'laxity',
         'Vibrants/Laxity': 'laxity',
-        'SidFactory_II/Laxity': 'laxity',
-        'SidFactory/Laxity': 'laxity',
         '256bytes/Laxity': 'laxity',
 
         # NewPlayer 20.G4
