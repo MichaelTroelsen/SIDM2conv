@@ -1151,7 +1151,13 @@ def main():
         print(str(e))
         sys.exit(1)
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.error(
+            f"Unexpected error: {e}\n"
+            f"  Suggestion: Batch conversion encountered unexpected error\n"
+            f"  Check: Review error trace below for specific issue\n"
+            f"  Try: Enable debug mode for more detailed logging\n"
+            f"  See: docs/guides/TROUBLESHOOTING.md#unexpected-errors"
+        )
         import traceback
         traceback.print_exc()
         sys.exit(1)

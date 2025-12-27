@@ -426,14 +426,26 @@ def main():
         if success:
             logger.info("Conversion complete!")
         else:
-            logger.error("Conversion failed")
+            logger.error(
+                "Conversion failed\n"
+                "  Suggestion: SF2 to SID conversion did not complete successfully\n"
+                "  Check: Review error messages above for specific failures\n"
+                "  Try: Verify SF2 file format is valid and complete\n"
+                "  See: docs/guides/TROUBLESHOOTING.md#conversion-failures"
+            )
             sys.exit(1)
     except errors.SIDMError as e:
         # Custom error - already has helpful formatting
         print(str(e))
         sys.exit(1)
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.error(
+            f"Unexpected error: {e}\n"
+            f"  Suggestion: SF2 to SID conversion encountered unexpected error\n"
+            f"  Check: Review error trace for specific issue\n"
+            f"  Try: Enable debug mode (--debug) for detailed logging\n"
+            f"  See: docs/guides/TROUBLESHOOTING.md#unexpected-errors"
+        )
         if args.debug or (hasattr(args, 'verbose') and args.verbose >= 3):
             import traceback
             traceback.print_exc()

@@ -791,7 +791,13 @@ Example: --driver laxity'''
 
     except Exception as e:
         # Unexpected errors
-        logger.error(f"Unexpected error: {e}")
+        logger.error(
+            f"Unexpected error: {e}\n"
+            f"  Suggestion: SID to SF2 conversion encountered unexpected error\n"
+            f"  Check: Review error trace for specific issue\n"
+            f"  Try: Enable debug mode (--debug) for detailed logging\n"
+            f"  See: docs/guides/TROUBLESHOOTING.md#unexpected-errors"
+        )
         if args.debug:
             import traceback
             traceback.print_exc()
