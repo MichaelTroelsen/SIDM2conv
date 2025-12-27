@@ -734,6 +734,85 @@ $0F03:       Filter table
 
 ---
 
+## Module Architecture
+
+### Conversion Pipeline (`sidm2/conversion_pipeline.py`)
+
+**Purpose**: Core business logic for SID to SF2 conversion, separated from CLI interface for testability.
+
+**Key Functions**:
+
+1. **`detect_player_type(filepath: str) -> str`**
+   - Detects SID player type using player-id.exe
+   - Returns: "NewPlayer_v21/Laxity", "SidFactory_II", "Unknown", etc.
+
+2. **`analyze_sid_file(filepath, config, sf2_reference_path) -> ExtractedData`**
+   - Parses SID file and analyzes player structure
+   - Returns ExtractedData namedtuple with header and C64 data
+
+3. **`convert_laxity_to_sf2(input_path, output_path, config) -> bool`**
+   - Converts Laxity NewPlayer v21 SID using custom driver
+   - Achieves 99.93% accuracy
+   - Returns True on success
+
+4. **`convert_galway_to_sf2(input_path, output_path, config) -> bool`**
+   - Converts Martin Galway SID files
+   - Uses table extraction and injection
+   - Returns True on success
+
+5. **`convert_sid_to_sf2(input_path, output_path, driver_type, config, ...)`**
+   - Main conversion function with automatic driver selection
+   - Supports all driver types (laxity, driver11, np20, galway)
+   - Raises sidm2_errors on failure
+
+6. **`convert_sid_to_both_drivers(input_path, output_dir, config) -> Dict`**
+   - Converts using both driver11 and Laxity for comparison
+   - Returns dictionary with conversion results
+
+7. **`print_success_summary(input_path, output_path, driver_selection, validation_result, quiet)`**
+   - Formats and prints conversion success message
+   - Includes driver selection info and validation results
+
+**Availability Flags** (12 total):
+- `LAXITY_CONVERTER_AVAILABLE`
+- `GALWAY_CONVERTER_AVAILABLE`
+- `SIDWINDER_INTEGRATION_AVAILABLE`
+- `DISASSEMBLER_INTEGRATION_AVAILABLE`
+- `AUDIO_EXPORT_INTEGRATION_AVAILABLE`
+- `MEMMAP_ANALYZER_AVAILABLE`
+- `PATTERN_RECOGNIZER_AVAILABLE`
+- `SUBROUTINE_TRACER_AVAILABLE`
+- `REPORT_GENERATOR_AVAILABLE`
+- `OUTPUT_ORGANIZER_AVAILABLE`
+- `SIDDUMP_INTEGRATION_AVAILABLE`
+- `ACCURACY_INTEGRATION_AVAILABLE`
+
+**Module Exports** (`__all__`): All 7 functions + all 12 availability flags
+
+**Test Coverage**: 54% (248/442 statements covered)
+
+**Usage**:
+```python
+from sidm2.conversion_pipeline import (
+    detect_player_type,
+    convert_sid_to_sf2,
+    LAXITY_CONVERTER_AVAILABLE,
+)
+
+player_type = detect_player_type("input.sid")
+if LAXITY_CONVERTER_AVAILABLE and player_type == "NewPlayer_v21/Laxity":
+    convert_sid_to_sf2("input.sid", "output.sf2", driver_type="laxity")
+```
+
+**Related Files**:
+- `scripts/sid_to_sf2.py` - Thin CLI wrapper that imports from this module
+- `pyscript/test_sid_to_sf2_script.py` - Unit tests (17/24 passing, 70.8% pass rate)
+- `docs/implementation/SID_TO_SF2_REFACTORING_SUMMARY.md` - Refactoring documentation
+
+**History**: Created 2025-12-27 via refactoring to separate business logic from CLI script.
+
+---
+
 ## See Also
 
 - `CLAUDE.md` - Quick reference and workflows
@@ -744,3 +823,4 @@ $0F03:       Filter table
 - `docs/guides/VALIDATION_GUIDE.md` - Comprehensive validation system guide (v2.0.0)
 - `docs/analysis/ACCURACY_ROADMAP.md` - Accuracy improvement plan
 - `PIPELINE_EXECUTION_REPORT.md` - Pipeline execution analysis
+- `docs/implementation/SID_TO_SF2_REFACTORING_SUMMARY.md` - Conversion pipeline refactoring
