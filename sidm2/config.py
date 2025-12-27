@@ -201,7 +201,13 @@ class ConversionConfig:
                 json.dump(config_dict, f, indent=2)
             logger.info(f"Configuration saved to {path}")
         except Exception as e:
-            logger.error(f"Failed to save configuration: {e}")
+            logger.error(
+                f"Failed to save configuration: {e}\n"
+                f"  Suggestion: Check file permissions for {path}\n"
+                f"  Check: Ensure parent directory exists\n"
+                f"  Try: Save to different location or use default config\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#configuration-save-failures"
+            )
             raise
 
     @classmethod
@@ -217,7 +223,13 @@ class ConversionConfig:
             logger.warning(f"Configuration file not found: {path}, using defaults")
             return cls()
         except Exception as e:
-            logger.error(f"Failed to load configuration: {e}")
+            logger.error(
+                f"Failed to load configuration: {e}\n"
+                f"  Suggestion: Check if configuration file is valid JSON\n"
+                f"  Check: Verify file format and syntax\n"
+                f"  Try: Delete config file to use defaults, or fix JSON syntax\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#configuration-load-failures"
+            )
             raise
 
 

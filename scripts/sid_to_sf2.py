@@ -501,11 +501,21 @@ def convert_galway_to_sf2(input_path: str, output_path: str, config: ConversionC
                 logger.info(f"  Expected accuracy: {confidence*100:.0f}%")
                 return True
             else:
-                logger.error("Galway conversion produced no output")
+                logger.error(
+                    "Galway conversion produced no output\n"
+                    "  Suggestion: Check if the SID file is a valid Martin Galway music\n"
+                    "  Try: Use --driver driver11 for better compatibility\n"
+                    "  See: docs/guides/TROUBLESHOOTING.md#conversion-failures"
+                )
                 return False
 
         except Exception as e:
-            logger.error(f"Galway conversion failed: {e}")
+            logger.error(
+                f"Galway conversion failed: {e}\n"
+                f"  Suggestion: Try a different driver (--driver driver11)\n"
+                f"  Check: Verify SID file is valid Martin Galway music\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#galway-conversion-errors"
+            )
             import traceback
             logger.debug(traceback.format_exc())
             return False
@@ -798,7 +808,13 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
                 if validation_result.warnings > 0:
                     logger.warning(f"  {validation_result.warnings} warnings detected")
             else:
-                logger.error(f"FAILED: SF2 format validation failed ({validation_result.errors} errors)")
+                logger.error(
+                    f"FAILED: SF2 format validation failed ({validation_result.errors} errors)\n"
+                    f"  Suggestion: File may still work in SID Factory II despite validation errors\n"
+                    f"  Try: Test the SF2 file in SID Factory II editor\n"
+                    f"  Check: Review validation errors below for specific issues\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#sf2-validation-failures"
+                )
                 # Log errors but don't fail the conversion
                 for check in validation_result.checks:
                     if check.severity == "ERROR":
@@ -1013,7 +1029,12 @@ def convert_sid_to_both_drivers(input_path: str, output_dir: str = None, config:
                 }
                 logger.info(f"  -> {os.path.basename(output_file)} ({driver_label}, {size:,} bytes)")
             except Exception as e:
-                logger.error(f"Failed to generate {driver_type} version: {e}")
+                logger.error(
+                    f"Failed to generate {driver_type} version: {e}\n"
+                    f"  Suggestion: Try a different driver type (automatic selection will continue)\n"
+                    f"  Check: Ensure input SID file is compatible with {driver_type}\n"
+                    f"  See: docs/guides/DRIVER_SELECTION_GUIDE.md#{driver_type.lower()}"
+                )
                 # Continue with next driver type instead of failing completely
                 results[driver_type] = {'error': str(e)}
 

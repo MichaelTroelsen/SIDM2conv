@@ -147,7 +147,13 @@ class AudioExportIntegration:
 
         if not sid_file.exists():
             if verbose > 0:
-                logger.error(f"SID file not found: {sid_file}")
+                logger.error(
+                    f"SID file not found: {sid_file}\n"
+                    f"  Suggestion: Verify file path is correct\n"
+                    f"  Check: Ensure file was generated successfully\n"
+                    f"  Try: Use absolute path instead of relative path\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#file-not-found-issues"
+                )
             return {
                 'success': False,
                 'error': f"SID file not found: {sid_file}"
@@ -212,7 +218,13 @@ class AudioExportIntegration:
                     error_msg = result.stderr.strip().encode('ascii', 'replace').decode('ascii')
 
                 if verbose > 0:
-                    logger.error(f"Audio export failed: {error_msg}")
+                    logger.error(
+                        f"Audio export failed: {error_msg}\n"
+                        f"  Suggestion: Verify SID2WAV is installed correctly\n"
+                        f"  Check: Ensure SID file is valid and playable\n"
+                        f"  Try: Test SID file in VICE emulator first\n"
+                        f"  See: docs/guides/TROUBLESHOOTING.md#audio-export-failures"
+                    )
 
                 return {
                     'success': False,
@@ -222,7 +234,13 @@ class AudioExportIntegration:
         except subprocess.TimeoutExpired:
             error_msg = f"SID2WAV timeout (>{duration + 30}s)"
             if verbose > 0:
-                logger.error(error_msg)
+                logger.error(
+                    f"{error_msg}\n"
+                    f"  Suggestion: Reduce duration with -t flag (e.g., -t30)\n"
+                    f"  Check: SID file may have infinite loop\n"
+                    f"  Try: Test with shorter duration first\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#audio-export-timeout"
+                )
             return {
                 'success': False,
                 'error': error_msg
@@ -232,7 +250,13 @@ class AudioExportIntegration:
             if verbose > 0:
                 # Convert exception to ASCII-safe string
                 error_msg = str(e).encode('ascii', 'replace').decode('ascii')
-                logger.error(f"Audio export failed: {error_msg}")
+                logger.error(
+                    f"Audio export failed: {error_msg}\n"
+                    f"  Suggestion: Check if SID2WAV.EXE is available in tools/ directory\n"
+                    f"  Check: Verify SID file format is valid\n"
+                    f"  Try: Run SID2WAV manually to diagnose issue\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#audio-export-failures"
+                )
             return {
                 'success': False,
                 'error': str(e)

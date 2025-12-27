@@ -110,7 +110,13 @@ class SIDRegisterCapture:
             True if successful
         """
         if not self.sid_path or not self.sid_path.exists():
-            logger.error(f"SID file does not exist: {self.sid_path}")
+            logger.error(
+                f"SID file does not exist: {self.sid_path}\n"
+                f"  Suggestion: Verify file path is correct\n"
+                f"  Check: Ensure file has .sid extension\n"
+                f"  Try: Use absolute path instead of relative path\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#file-not-found-issues"
+            )
             return False
 
         # Try Python siddump first (preferred)
@@ -141,7 +147,13 @@ class SIDRegisterCapture:
             # Fallback to C exe if Python siddump fails
             siddump_exe = Path('tools/siddump.exe')
             if not siddump_exe.exists():
-                logger.error(f"Siddump exe not found: {siddump_exe}")
+                logger.error(
+                    f"Siddump exe not found: {siddump_exe}\n"
+                    f"  Suggestion: Python siddump should work without C exe\n"
+                    f"  Check: Verify Python siddump installation is working\n"
+                    f"  Try: python pyscript/siddump_complete.py {self.sid_path}\n"
+                    f"  See: docs/implementation/SIDDUMP_PYTHON_IMPLEMENTATION.md"
+                )
                 return False
 
             try:
@@ -156,7 +168,13 @@ class SIDRegisterCapture:
                 )
 
                 if result.returncode != 0:
-                    logger.error(f"Siddump exe failed with return code: {result.returncode}")
+                    logger.error(
+                        f"Siddump exe failed with return code: {result.returncode}\n"
+                        f"  Suggestion: Use Python siddump instead (more reliable)\n"
+                        f"  Check: Verify SID file is valid\n"
+                        f"  Try: python pyscript/siddump_complete.py {self.sid_path}\n"
+                        f"  See: docs/implementation/SIDDUMP_PYTHON_IMPLEMENTATION.md"
+                    )
                     return False
 
                 self._parse_siddump_output(result.stdout)
