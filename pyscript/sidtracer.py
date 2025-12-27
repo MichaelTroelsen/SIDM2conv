@@ -94,7 +94,13 @@ class SIDTracer:
 
             # Check magic bytes
             if data[:4] not in (b'PSID', b'RSID'):
-                logger.error(f"Invalid SID file: {self.sid_path}")
+                logger.error(
+                    f"Invalid SID file: {self.sid_path}\n"
+                    f"  Suggestion: File does not have PSID or RSID magic bytes\n"
+                    f"  Check: Verify file is valid SID format\n"
+                    f"  Try: Download from HVSC or csdb.dk if corrupted\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#invalid-sid-files"
+                )
                 return False
 
             # Parse header
@@ -148,7 +154,13 @@ class SIDTracer:
             # If load address is 0, get it from first two bytes of data
             if self.header.load_address == 0:
                 if len(self.sid_data) < 2:
-                    logger.error("SID data too short")
+                    logger.error(
+                        "SID data too short\n"
+                        "  Suggestion: SID data section is missing embedded load address\n"
+                        "  Check: File may be truncated or corrupted\n"
+                        "  Try: Re-download file or verify integrity\n"
+                        "  See: docs/guides/TROUBLESHOOTING.md#sid-data-too-short"
+                    )
                     return False
                 self.header.load_address = self.sid_data[0] | (self.sid_data[1] << 8)
                 self.sid_data = self.sid_data[2:]  # Skip load address bytes

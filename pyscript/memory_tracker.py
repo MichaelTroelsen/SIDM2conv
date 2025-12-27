@@ -347,7 +347,13 @@ class SIDMemoryAnalyzer:
                 self.cpu.run_instruction()
                 cycles += 1
             except Exception as e:
-                logger.error(f"Execution error at ${self.cpu.pc:04X}: {e}")
+                logger.error(
+                    f"Execution error at ${self.cpu.pc:04X}: {e}\n"
+                    f"  Suggestion: 6502 emulation error during routine execution\n"
+                    f"  Check: May be invalid opcode or illegal instruction\n"
+                    f"  Try: Enable debug logging to see instruction trace\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#emulation-errors"
+                )
                 break
 
         if cycles >= max_cycles:
