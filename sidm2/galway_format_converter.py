@@ -115,7 +115,13 @@ class GalwayFormatConverter:
             return bytes(converted), confidence
 
         except Exception as e:
-            logger.error(f"Instrument conversion error: {e}")
+            logger.error(
+                f"Instrument conversion error: {e}\n"
+                f"  Suggestion: Galway instrument format may not match expected structure\n"
+                f"  Check: Verify SID file is valid Martin Galway music\n"
+                f"  Try: Use player-id.exe to confirm player type: tools/player-id.exe input.sid\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#galway-instrument-conversion-errors"
+            )
             self.conversion_errors.append(f"Instruments: {e}")
             # Return default instruments
             default_inst = bytes([0x0F, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00])
@@ -169,7 +175,13 @@ class GalwayFormatConverter:
             return bytes(converted), confidence
 
         except Exception as e:
-            logger.error(f"Sequence conversion error: {e}")
+            logger.error(
+                f"Sequence conversion error: {e}\n"
+                f"  Suggestion: Galway sequence data may be corrupted or incompatible\n"
+                f"  Check: Verify sequence data is valid and within expected ranges\n"
+                f"  Try: Use --driver driver11 for standard conversion instead\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#galway-sequence-conversion-errors"
+            )
             self.conversion_errors.append(f"Sequences: {e}")
             return galway_data, 0.5  # Return original as fallback
 
@@ -229,7 +241,13 @@ class GalwayFormatConverter:
             return bytes(converted), confidence
 
         except Exception as e:
-            logger.error(f"Wave table conversion error: {e}")
+            logger.error(
+                f"Wave table conversion error: {e}\n"
+                f"  Suggestion: Galway wave table format may be incompatible\n"
+                f"  Check: Verify wave table entries are within valid ranges\n"
+                f"  Try: Enable verbose logging to see detailed conversion steps: --verbose\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#galway-wave-table-conversion-errors"
+            )
             self.conversion_errors.append(f"Wave table: {e}")
             # Return default wave table
             return bytes([0x10] * num_entries), 0.3
@@ -275,7 +293,13 @@ class GalwayFormatConverter:
                 return bytes(converted), 0.50
 
         except Exception as e:
-            logger.error(f"Pulse table conversion error: {e}")
+            logger.error(
+                f"Pulse table conversion error: {e}\n"
+                f"  Suggestion: Galway pulse width data may be in unexpected format\n"
+                f"  Check: Verify pulse table size matches expected entry count\n"
+                f"  Try: Check if SID file is valid Galway format with player-id.exe\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#galway-pulse-table-conversion-errors"
+            )
             self.conversion_errors.append(f"Pulse table: {e}")
             # Generate default
             converted = bytearray()
@@ -320,7 +344,13 @@ class GalwayFormatConverter:
                 return bytes([0x00] * num_entries), 0.30
 
         except Exception as e:
-            logger.error(f"Filter table conversion error: {e}")
+            logger.error(
+                f"Filter table conversion error: {e}\n"
+                f"  Suggestion: Galway filter data may not be extractable\n"
+                f"  Check: Filter conversion has known limitations (0% accuracy)\n"
+                f"  Try: Conversion will continue with default filter values\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#galway-filter-conversion-errors"
+            )
             self.conversion_errors.append(f"Filter table: {e}")
             return bytes([0x00] * num_entries), 0.20
 
