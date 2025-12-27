@@ -270,7 +270,8 @@
       "Bash(do if [ -f \"$f\" ])",
       "Bash(then echo \"ROOT: $f\")",
       "Bash(if [ -f \"docs/$f\" ])",
-      "Bash(then echo \"DOCS: docs/$f\")"
+      "Bash(then echo \"DOCS: docs/$f\")",
+      "Bash(iconv:*)"
     ],
     "deny": [],
     "ask": []

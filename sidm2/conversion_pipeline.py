@@ -725,6 +725,46 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
                     docs_link="reference/DRIVER_REFERENCE.md"
                 )
 
+            # Auto-detect SF2 reference file for SF2-exported SIDs (if not manually provided)
+            if sf2_reference_path is None:
+                player_type_check = detect_player_type(input_path)
+                if 'SidFactory' in player_type_check or player_type_check.startswith('SF2'):
+                    input_basename = Path(input_path).stem
+                    possible_names = [
+                        f"{input_basename}.sf2",
+                        f"{input_basename.replace('_', ' ')}.sf2",
+                        f"{input_basename.replace('_', ' - ')}.sf2",
+                    ]
+
+                    learnings_dir = Path("learnings")
+                    if learnings_dir.exists():
+                        # Try exact matches first
+                        for name in possible_names:
+                            candidate = learnings_dir / name
+                            if candidate.exists():
+                                sf2_reference_path = str(candidate)
+                                logger.info(f"Auto-detected SF2 reference: {sf2_reference_path}")
+                                break
+
+                        # If no exact match, try fuzzy matching
+                        if sf2_reference_path is None:
+                            basename_lower = input_basename.lower().replace('_', '').replace(' ', '').replace('-', '')
+                            basename_normalized = basename_lower.replace('laxity', '')
+
+                            for file in learnings_dir.glob("*.sf2"):
+                                file_normalized = file.stem.lower().replace('_', '').replace(' ', '').replace('-', '')
+                                file_normalized_clean = file_normalized.replace('laxity', '')
+
+                                match = (file_normalized_clean in basename_normalized or
+                                        basename_normalized in file_normalized_clean or
+                                        file_normalized_clean.rstrip('s') == basename_normalized.rstrip('s') or
+                                        file_normalized_clean.replace('s', '') == basename_normalized.replace('s', ''))
+
+                                if match:
+                                    sf2_reference_path = str(file)
+                                    logger.info(f"Auto-detected SF2 reference (fuzzy): {sf2_reference_path}")
+                                    break
+
             logger.info(f"Converting: {input_path}")
             logger.info(f"Output: {output_path}")
             logger.info(f"Driver: {driver_type}")

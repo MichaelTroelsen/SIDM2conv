@@ -435,7 +435,8 @@ class TestConvertSidToSF2(unittest.TestCase):
                 convert_sid_to_sf2(test_input, test_output)
 
         # Verify key function calls
-        mock_detect.assert_called_once()
+        # detect_player_type is called twice: once for auto-detection, once in analyze_sid_file
+        self.assertEqual(mock_detect.call_count, 2)
         mock_selector.select_driver.assert_called_once()
 
     @patch('sidm2.conversion_pipeline.DriverSelector')

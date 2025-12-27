@@ -1,0 +1,30 @@
+Conversion Information
+======================================================================
+File: test.sid
+Date: 2025-12-27 19:55:15
+Converter: SIDM2 v2.8.0
+
+Source File:
+  Title:           Test
+  Author:          Tester
+  Copyright:       2025
+  Player Type:     Unknown
+  Format:          PSID v2
+  Load Address:    $1000
+  Init Address:    $1000
+  Play Address:    $10A1
+  Songs:           1
+
+Driver Selection:
+  Selected Driver: DRIVER11 (sf2driver_11.prg)
+  Expected Acc:    Safe default
+  Reason:          Standard SF2 driver for maximum compatibility
+
+Conversion Results:
+  Status:          SUCCESS
+  Output File:     output.sf2
+  Output Size:     0 bytes
+  Validation:      FAIL
+
+Validation Details:
+  File Exists: File not found: output.sf2
