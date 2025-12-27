@@ -1,0 +1,41 @@
+{
+  "timestamp": "2025-12-27T16:07:55.814899",
+  "summary": {
+    "total": 2,
+    "successful": 2,
+    "failed": 0,
+    "average_accuracy": 100.0,
+    "min_accuracy": 100.0,
+    "max_accuracy": 100.0
+  },
+  "results": [
+    {
+      "file": "test_existing_laxity.sid",
+      "timestamp": "2025-12-27T16:07:53.510349",
+      "success": true,
+      "sf2_file": "test_existing_laxity.sf2",
+      "sf2_size": 8946,
+      "exported_sid": "test_existing_laxity_exported.sid",
+      "exported_size": 9068,
+      "accuracy": 100.0,
+      "matches": 306,
+      "total": 306,
+      "orig_writes": 306,
+      "exp_writes": 306
+    },
+    {
+      "file": "test_validation_exported.sid",
+      "timestamp": "2025-12-27T16:07:54.784241",
+      "success": true,
+      "sf2_file": "test_validation_exported.sf2",
+      "sf2_size": 8942,
+      "exported_sid": "test_validation_exported_exported.sid",
+      "exported_size": 9064,
+      "accuracy": 100.0,
+      "matches": 306,
+      "total": 306,
+      "orig_writes": 306,
+      "exp_writes": 306
+    }
+  ]
+}
