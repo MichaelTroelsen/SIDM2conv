@@ -105,17 +105,35 @@ class SIDDecompiler:
             with open(filename, 'rb') as f:
                 data = f.read()
         except Exception as e:
-            logger.error(f"Failed to read {filename}: {e}")
+            logger.error(
+                f"Failed to read {filename}: {e}\n"
+                f"  Suggestion: Cannot read SID file\n"
+                f"  Check: Verify file exists and is readable\n"
+                f"  Try: Use absolute path or check file permissions\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#file-read-errors"
+            )
             return False
 
         if len(data) < 0x7C:
-            logger.error("File too small to be valid SID")
+            logger.error(
+                "File too small to be valid SID\n"
+                "  Suggestion: File size is less than 124 bytes (minimum header size)\n"
+                "  Check: Verify file was fully downloaded or extracted\n"
+                "  Try: Re-download file from HVSC or csdb.dk\n"
+                "  See: docs/guides/TROUBLESHOOTING.md#invalid-sid-files"
+            )
             return False
 
         # Parse header
         magic = data[0:4].decode('ascii', errors='ignore')
         if magic not in ('PSID', 'RSID'):
-            logger.error(f"Invalid magic: {magic}")
+            logger.error(
+                f"Invalid magic: {magic}\n"
+                f"  Suggestion: File does not have PSID or RSID header\n"
+                f"  Check: File may be corrupted or not a SID file\n"
+                f"  Try: Verify file is valid SID format (hexdump first 4 bytes)\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#invalid-magic-bytes"
+            )
             return False
 
         # Parse header fields (big-endian)
@@ -150,7 +168,13 @@ class SIDDecompiler:
 
         # Extract C64 data
         if data_offset > len(data):
-            logger.error(f"Invalid data offset: {data_offset}")
+            logger.error(
+                f"Invalid data offset: {data_offset}\n"
+                f"  Suggestion: Data offset points beyond file end\n"
+                f"  Check: File may be corrupted or truncated\n"
+                f"  Try: Re-download file or verify integrity\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#invalid-data-offset"
+            )
             return False
 
         self.sid_data = data[data_offset:]
@@ -158,7 +182,13 @@ class SIDDecompiler:
         # If load address is 0, read from first 2 bytes of data (little-endian)
         if load_address == 0:
             if len(self.sid_data) < 2:
-                logger.error("Data too small to contain load address")
+                logger.error(
+                    "Data too small to contain load address\n"
+                    "  Suggestion: File has no embedded load address despite header=0\n"
+                    "  Check: SID data section is incomplete\n"
+                    "  Try: Verify file is complete and not truncated\n"
+                    "  See: docs/guides/TROUBLESHOOTING.md#missing-load-address"
+                )
                 return False
             load_address = struct.unpack('<H', self.sid_data[0:2])[0]
             self.sid_header.load_address = load_address
@@ -188,7 +218,13 @@ class SIDDecompiler:
             True if successful
         """
         if not self.sid_header or not self.sid_data:
-            logger.error("No SID file loaded")
+            logger.error(
+                "No SID file loaded\n"
+                "  Suggestion: Must call parse_sid_file() first\n"
+                "  Check: Verify previous parsing steps completed successfully\n"
+                "  Try: Load SID file before attempting memory analysis\n"
+                "  See: docs/guides/TROUBLESHOOTING.md#no-file-loaded"
+            )
             return False
 
         if self.verbose >= 1:
@@ -208,7 +244,13 @@ class SIDDecompiler:
                 ticks=ticks
             )
         except Exception as e:
-            logger.error(f"Memory analysis failed: {e}")
+            logger.error(
+                f"Memory analysis failed: {e}\n"
+                f"  Suggestion: Error during 6502 emulation or memory mapping\n"
+                f"  Check: Review error details for specific issue\n"
+                f"  Try: Enable debug logging for detailed trace\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#memory-analysis-errors"
+            )
             return False
 
         # Extract regions
@@ -235,7 +277,13 @@ class SIDDecompiler:
             True if successful
         """
         if not self.sid_data or not self.memory_map:
-            logger.error("Must parse and analyze before disassembly")
+            logger.error(
+                "Must parse and analyze before disassembly\n"
+                "  Suggestion: Missing SID data or memory map\n"
+                "  Check: Call parse_sid_file() and analyze_memory_access() first\n"
+                "  Try: Complete parsing and analysis steps before disassembly\n"
+                "  See: docs/guides/TROUBLESHOOTING.md#missing-prerequisites"
+            )
             return False
 
         if self.verbose >= 1:
@@ -276,7 +324,13 @@ class SIDDecompiler:
             True if successful
         """
         if self.sid_data is None:
-            logger.error("Must parse SID file before table detection")
+            logger.error(
+                "Must parse SID file before table detection\n"
+                "  Suggestion: No SID data available for table detection\n"
+                "  Check: Call parse_sid_file() first\n"
+                "  Try: Load SID file before attempting table detection\n"
+                "  See: docs/guides/TROUBLESHOOTING.md#no-file-loaded"
+            )
             return False
 
         if not self.data_regions:
@@ -360,7 +414,13 @@ class SIDDecompiler:
             True if successful
         """
         if not self.disassembler:
-            logger.error("Must disassemble before output")
+            logger.error(
+                "Must disassemble before output\n"
+                "  Suggestion: No disassembly results available\n"
+                "  Check: Call disassemble() method first\n"
+                "  Try: Complete disassembly step before generating output\n"
+                "  See: docs/guides/TROUBLESHOOTING.md#missing-disassembly"
+            )
             return False
 
         if self.verbose >= 1:
@@ -409,7 +469,13 @@ class SIDDecompiler:
                         f.write("\n")
 
         except Exception as e:
-            logger.error(f"Failed to write output: {e}")
+            logger.error(
+                f"Failed to write output: {e}\n"
+                f"  Suggestion: Cannot write output file\n"
+                f"  Check: Verify directory is writable and disk has space\n"
+                f"  Try: Use different output path or check permissions\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#file-write-errors"
+            )
             return False
 
         if self.verbose >= 1:
