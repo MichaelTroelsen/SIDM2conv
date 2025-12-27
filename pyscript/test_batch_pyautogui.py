@@ -41,7 +41,25 @@ from sidm2.sf2_editor_automation import SF2EditorAutomation
 @pytest.fixture
 def automation():
     """Pytest fixture providing SF2EditorAutomation instance for tests"""
-    return SF2EditorAutomation()
+    auto = SF2EditorAutomation()
+    yield auto
+
+    # Cleanup: Always close editor after test
+    try:
+        if auto.pyautogui_automation and auto.pyautogui_automation.is_window_open():
+            auto.pyautogui_automation.close_editor()
+            time.sleep(0.5)
+    except Exception:
+        pass  # Ignore cleanup errors
+
+    # Force kill any remaining processes
+    try:
+        import psutil
+        for proc in psutil.process_iter(['name']):
+            if 'SIDFactoryII' in proc.info['name']:
+                proc.kill()
+    except Exception:
+        pass
 
 
 class BatchTestResults:
@@ -317,32 +335,49 @@ def run_batch_test(directory: Path, pattern: str = "*.sf2",
     print("Starting Tests")
     print("=" * 70)
 
-    # Test each file
-    for i, file_path in enumerate(files, 1):
-        print(f"\n[{i}/{len(files)}] Testing: {file_path.name}")
-        print("-" * 70)
+    try:
+        # Test each file
+        for i, file_path in enumerate(files, 1):
+            print(f"\n[{i}/{len(files)}] Testing: {file_path.name}")
+            print("-" * 70)
 
-        # Test file
-        start_time = time.time()
-        success, message, error = run_single_file_test(
-            automation,
-            file_path,
-            playback_duration=playback_duration,
-            stability_check=stability_check
-        )
-        duration = time.time() - start_time
+            # Test file
+            start_time = time.time()
+            success, message, error = run_single_file_test(
+                automation,
+                file_path,
+                playback_duration=playback_duration,
+                stability_check=stability_check
+            )
+            duration = time.time() - start_time
 
-        # Add result
-        results.add_result(
-            str(file_path),
-            success,
-            message,
-            duration,
-            error
-        )
+            # Add result
+            results.add_result(
+                str(file_path),
+                success,
+                message,
+                duration,
+                error
+            )
 
-        # Small delay between tests
-        time.sleep(1)
+            # Small delay between tests
+            time.sleep(1)
+
+    finally:
+        # ALWAYS cleanup all editor processes
+        print()
+        print("Cleaning up editor processes...")
+        try:
+            import psutil
+            killed = 0
+            for proc in psutil.process_iter(['name']):
+                if 'SIDFactoryII' in proc.info['name']:
+                    proc.kill()
+                    killed += 1
+            if killed > 0:
+                print(f"Killed {killed} editor process(es)")
+        except Exception as e:
+            print(f"Warning: Cleanup failed: {e}")
 
     results.end_time = datetime.now()
 

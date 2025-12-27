@@ -29,9 +29,19 @@ TEST_SF2_FILE = "output/keep_Stinsens_Last_Night_of_89/Stinsens_Last_Night_of_89
 def automation():
     """Pytest fixture providing SF2EditorAutomation instance for tests"""
     try:
-        return SF2EditorAutomation()
+        auto = SF2EditorAutomation()
     except SF2EditorNotFoundError:
         pytest.skip("SIDFactoryII.exe not found")
+
+    yield auto
+
+    # Cleanup: Always close editor after test
+    try:
+        if auto.is_editor_running():
+            auto.close_editor(force=True)
+            time.sleep(0.5)
+    except Exception:
+        pass  # Ignore cleanup errors
 
 
 def test_editor_detection():
@@ -371,55 +381,60 @@ def main():
 
     automation = SF2EditorAutomation()
 
-    # Test 2: Launch without file
-    results.append(("Launch Editor (No File)", test_editor_launch(automation)))
-    time.sleep(1)
-
-    # Test 3: Launch with file
-    results.append(("Launch and Load File", run_editor_load_file_test(automation, TEST_SF2_FILE)))
-
-    # Test 3b: Window messages file loading (alternative approach)
-    print()
-    print("=" * 70)
-    print("TESTING ALTERNATIVE APPROACH: Window Messages")
-    print("=" * 70)
-    print()
-    results.append(("Window Messages File Loading", test_window_messages_file_loading(automation)))
-
-    # Test 4: Playback control
-    if automation.is_editor_running():
-        results.append(("Playback Control", test_playback_control(automation)))
-    else:
-        print("[SKIP] Test 4: Editor not running")
-        results.append(("Playback Control", False))
-
-    # Test 5: State detection
-    if automation.is_editor_running():
-        results.append(("State Detection", test_state_detection(automation)))
-    else:
-        print("[SKIP] Test 5: Editor not running")
-        results.append(("State Detection", False))
-
-    # Test 6: Advanced controls
-    if automation.is_editor_running():
-        results.append(("Advanced Controls", test_advanced_controls(automation)))
-    else:
-        print("[SKIP] Test 6: Editor not running")
-        results.append(("Advanced Controls", False))
-
-    # Test 7: Editor info
-    if automation.is_editor_running():
-        results.append(("Editor Info", test_editor_info(automation)))
-    else:
-        print("[SKIP] Test 7: Editor not running")
-        results.append(("Editor Info", False))
-
-    # Close editor if still running
-    if automation.is_editor_running():
-        print()
-        print("Closing editor...")
-        automation.close_editor(force=True)
+    try:
+        # Test 2: Launch without file
+        results.append(("Launch Editor (No File)", test_editor_launch(automation)))
         time.sleep(1)
+
+        # Test 3: Launch with file
+        results.append(("Launch and Load File", run_editor_load_file_test(automation, TEST_SF2_FILE)))
+
+        # Test 3b: Window messages file loading (alternative approach)
+        print()
+        print("=" * 70)
+        print("TESTING ALTERNATIVE APPROACH: Window Messages")
+        print("=" * 70)
+        print()
+        results.append(("Window Messages File Loading", test_window_messages_file_loading(automation)))
+
+        # Test 4: Playback control
+        if automation.is_editor_running():
+            results.append(("Playback Control", test_playback_control(automation)))
+        else:
+            print("[SKIP] Test 4: Editor not running")
+            results.append(("Playback Control", False))
+
+        # Test 5: State detection
+        if automation.is_editor_running():
+            results.append(("State Detection", test_state_detection(automation)))
+        else:
+            print("[SKIP] Test 5: Editor not running")
+            results.append(("State Detection", False))
+
+        # Test 6: Advanced controls
+        if automation.is_editor_running():
+            results.append(("Advanced Controls", test_advanced_controls(automation)))
+        else:
+            print("[SKIP] Test 6: Editor not running")
+            results.append(("Advanced Controls", False))
+
+        # Test 7: Editor info
+        if automation.is_editor_running():
+            results.append(("Editor Info", test_editor_info(automation)))
+        else:
+            print("[SKIP] Test 7: Editor not running")
+            results.append(("Editor Info", False))
+
+    finally:
+        # ALWAYS close editor, even if tests fail
+        try:
+            if automation.is_editor_running():
+                print()
+                print("Closing editor...")
+                automation.close_editor(force=True)
+                time.sleep(1)
+        except Exception as e:
+            print(f"Warning: Cleanup failed: {e}")
 
     # Summary
     print()

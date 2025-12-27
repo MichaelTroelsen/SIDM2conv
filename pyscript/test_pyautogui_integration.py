@@ -58,7 +58,11 @@ def test_pyautogui_integration():
     print("[INFO] Launching editor with default mode...")
     success = automation.launch_editor_with_file(str(test_file))
 
-    if success:
+    if not success:
+        print("[FAIL] Editor launch failed")
+        return False
+
+    try:
         print("[OK] Editor launched successfully!")
         print()
 
@@ -92,19 +96,19 @@ def test_pyautogui_integration():
         print("[OK] Window remained stable!")
         print()
 
-        # Close editor
+    finally:
+        # ALWAYS close editor
         print("Test 4: Graceful Shutdown")
         print("-" * 60)
 
-        if automation.pyautogui_automation:
-            automation.pyautogui_automation.close_editor()
-            print("[OK] Editor closed gracefully")
-        else:
-            print("[WARN] No PyAutoGUI automation instance to close")
-
-    else:
-        print("[FAIL] Editor launch failed")
-        return False
+        try:
+            if automation.pyautogui_automation:
+                automation.pyautogui_automation.close_editor()
+                print("[OK] Editor closed gracefully")
+            else:
+                print("[WARN] No PyAutoGUI automation instance to close")
+        except Exception as e:
+            print(f"[WARN] Cleanup error: {e}")
 
     print()
     print("=" * 60)
@@ -148,16 +152,20 @@ def test_mode_selection():
         print("[INFO] Launching with mode='pyautogui'...")
         success = automation.launch_editor_with_file(str(test_file), mode='pyautogui')
 
-        if success:
-            print("[OK] PyAutoGUI mode works explicitly")
-
-            # Close editor
-            time.sleep(2)
-            if automation.pyautogui_automation:
-                automation.pyautogui_automation.close_editor()
-        else:
+        if not success:
             print("[FAIL] PyAutoGUI mode failed")
             return False
+
+        try:
+            print("[OK] PyAutoGUI mode works explicitly")
+            time.sleep(2)
+        finally:
+            # ALWAYS close editor
+            try:
+                if automation.pyautogui_automation:
+                    automation.pyautogui_automation.close_editor()
+            except Exception:
+                pass
     else:
         print("[SKIP] PyAutoGUI not enabled")
 
@@ -171,21 +179,32 @@ if __name__ == "__main__":
     print("=" * 60)
     print()
 
-    # Run main integration test
-    test1_passed = test_pyautogui_integration()
-    print()
+    try:
+        # Run main integration test
+        test1_passed = test_pyautogui_integration()
+        print()
 
-    # Run mode selection test
-    test2_passed = test_mode_selection()
-    print()
+        # Run mode selection test
+        test2_passed = test_mode_selection()
+        print()
 
-    if test1_passed and test2_passed:
-        print("=" * 60)
-        print("ALL TESTS PASSED!")
-        print("=" * 60)
-        sys.exit(0)
-    else:
-        print("=" * 60)
-        print("SOME TESTS FAILED")
-        print("=" * 60)
-        sys.exit(1)
+        if test1_passed and test2_passed:
+            print("=" * 60)
+            print("ALL TESTS PASSED!")
+            print("=" * 60)
+            sys.exit(0)
+        else:
+            print("=" * 60)
+            print("SOME TESTS FAILED")
+            print("=" * 60)
+            sys.exit(1)
+
+    finally:
+        # Global cleanup: Kill any remaining editor processes
+        try:
+            import psutil
+            for proc in psutil.process_iter(['name']):
+                if 'SIDFactoryII' in proc.info['name']:
+                    proc.kill()
+        except Exception:
+            pass
