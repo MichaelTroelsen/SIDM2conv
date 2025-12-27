@@ -78,7 +78,13 @@ class MIDIComparisonTool:
                           frames: int = 1000) -> bool:
         """Export MIDI using SIDtool (requires Ruby)"""
         if not self.sidtool_path:
-            logger.error("SIDtool not found")
+            logger.error(
+                "SIDtool not found\n"
+                "  Suggestion: SIDtool path not configured or tool not installed\n"
+                "  Check: Verify SIDtool is installed in expected location\n"
+                "  Try: Install SIDtool from https://github.com/cadaver/sidtool\n"
+                "  See: docs/guides/TROUBLESHOOTING.md#sidtool-not-found"
+            )
             return False
 
         sidtool_bin = os.path.join(self.sidtool_path, 'bin', 'sidtool')
@@ -114,16 +120,40 @@ class MIDIComparisonTool:
                 logger.info(f"  SIDtool MIDI exported: {size} bytes")
                 return True
             else:
-                logger.error("  SIDtool did not create MIDI file")
+                logger.error(
+                    "  SIDtool did not create MIDI file\n"
+                    "  Suggestion: SIDtool command completed but no output file created\n"
+                    "  Check: Review SIDtool output for error messages\n"
+                    "  Try: Verify SID file is valid and supported by SIDtool\n"
+                    "  See: docs/guides/TROUBLESHOOTING.md#sidtool-output-errors"
+                )
                 return False
 
         except subprocess.TimeoutExpired:
-            logger.error("  SIDtool timed out (>60s)")
+            logger.error(
+                "  SIDtool timed out (>60s)\n"
+                "  Suggestion: SIDtool execution exceeded time limit\n"
+                "  Check: SID file may be complex or tool is unresponsive\n"
+                "  Try: Reduce frame count or test with simpler SID file\n"
+                "  See: docs/guides/TROUBLESHOOTING.md#sidtool-timeout"
+            )
             return False
         except subprocess.CalledProcessError as e:
-            logger.error(f"  SIDtool failed: {e}")
+            logger.error(
+                f"  SIDtool failed: {e}\n"
+                f"  Suggestion: SIDtool returned error during execution\n"
+                f"  Check: Review error output below for specific issue\n"
+                f"  Try: Verify Ruby and SIDtool are properly installed\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#sidtool-execution-errors"
+            )
             if e.stderr:
-                logger.error(f"  Error: {e.stderr}")
+                logger.error(
+                    f"  Error: {e.stderr}\n"
+                    f"  Suggestion: Detailed error from SIDtool\n"
+                    f"  Check: Review error message for specific problem\n"
+                    f"  Try: Test SIDtool manually to diagnose issue\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#sidtool-stderr"
+                )
             return False
 
     def export_with_python(self, sid_path: str, midi_path: str,
@@ -136,10 +166,22 @@ class MIDIComparisonTool:
                 logger.info(f"  Python MIDI exported: {size} bytes")
                 return True
             else:
-                logger.error("  Python emulator failed")
+                logger.error(
+                    "  Python emulator failed\n"
+                    "  Suggestion: MIDI export from Python emulator did not complete\n"
+                    "  Check: Verify SID file is valid and emulator supports format\n"
+                    "  Try: Test SID file playback first to ensure it's valid\n"
+                    "  See: docs/guides/TROUBLESHOOTING.md#python-midi-export-errors"
+                )
                 return False
         except Exception as e:
-            logger.error(f"  Python emulator error: {e}")
+            logger.error(
+                f"  Python emulator error: {e}\n"
+                f"  Suggestion: Python MIDI emulator encountered unexpected error\n"
+                f"  Check: Review error details for specific issue\n"
+                f"  Try: Enable debug logging for more information\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#python-emulator-errors"
+            )
             return False
 
     def analyze_midi(self, midi_path: str) -> Dict:
@@ -185,7 +227,13 @@ class MIDIComparisonTool:
             return stats
 
         except Exception as e:
-            logger.error(f"Failed to analyze {midi_path}: {e}")
+            logger.error(
+                f"Failed to analyze {midi_path}: {e}\n"
+                f"  Suggestion: MIDI file analysis encountered error\n"
+                f"  Check: Verify MIDI file is valid and readable\n"
+                f"  Try: Test MIDI file in other MIDI tool to verify format\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#midi-analysis-errors"
+            )
             return None
 
     def compare_midi_files(self, midi1_path: str, midi2_path: str) -> Dict:
@@ -283,7 +331,13 @@ class MIDIComparisonTool:
             logger.info("\n[2/2] Testing SIDtool...")
 
             if not self.check_ruby():
-                logger.error("  ❌ Ruby not installed - cannot test SIDtool")
+                logger.error(
+                    "  ❌ Ruby not installed - cannot test SIDtool\n"
+                    "  Suggestion: Ruby runtime required for SIDtool but not found\n"
+                    "  Check: Verify Ruby is installed and in system PATH\n"
+                    "  Try: Install from https://rubyinstaller.org/downloads/\n"
+                    "  See: docs/guides/TROUBLESHOOTING.md#ruby-not-found"
+                )
                 logger.info("\n  To install Ruby:")
                 logger.info("    1. Download from: https://rubyinstaller.org/downloads/")
                 logger.info("    2. Run installer as Administrator")
@@ -432,7 +486,13 @@ def main():
     sid_files = sorted(Path(args.sid_dir).glob('*.sid'))[:args.files]
 
     if not sid_files:
-        logger.error(f"No SID files found in {args.sid_dir}")
+        logger.error(
+            f"No SID files found in {args.sid_dir}\n"
+            f"  Suggestion: No .sid files found in specified directory\n"
+            f"  Check: Verify directory path is correct\n"
+            f"  Try: Use different directory or download test files\n"
+            f"  See: docs/guides/TROUBLESHOOTING.md#no-sid-files-found"
+        )
         return 1
 
     logger.info(f"\n{'='*60}")
