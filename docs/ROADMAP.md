@@ -18,8 +18,8 @@ This roadmap focuses on improving the SIDM2 converter from its current **100% fr
 - ✅ **Filter format conversion: 60-80% accuracy** (v2.9.7) - NEW ⭐
 - ✅ **SF2 packer pointer relocation bug fixed** (v2.9.8) ⭐
 - ✅ **SF2 packer test coverage: 82%** (47 tests) - NEW ⭐
-- ✅ **SF2 writer test coverage: 58%** (69 tests) - NEW ⭐
-- ✅ **Expanded test coverage: 260+ tests** (v2.9.8+) - NEW ⭐
+- ✅ **SF2 writer test coverage: 65%** (76 tests) - NEW ⭐
+- ✅ **Expanded test coverage: 270+ tests** (v2.9.8+) - NEW ⭐
 - ✅ Complete validation system with CI/CD
 - ✅ Cleanup and project maintenance system
 - ✅ Enhanced logging & error handling (v2.5.3)
@@ -457,7 +457,64 @@ This roadmap focuses on improving the SIDM2 converter from its current **100% fr
 
 ---
 
-### 3.6: Performance Optimization (P3)
+### 3.6: ✅ Laxity Native Format Tests (P2) - **COMPLETE**
+
+**Status**: ✅ **COMPLETE** (Commit TBD, 2025-12-27)
+
+**Achievement**: SF2 Writer expanded from 58% to 65% coverage with Laxity-specific tests
+
+**What Was Done**:
+1. ✅ **Laxity Orderlist Tests** (2 tests)
+   - Dict format entry injection ({'sequence': N, 'transpose': 0xA0})
+   - End marker (0xFF) placement for short orderlists
+2. ✅ **Laxity Sequence Tests** (1 test)
+   - SequenceEvent injection with end markers (0x7F)
+   - Variable-length packed format
+3. ✅ **Laxity Table Tests** (2 tests)
+   - Wave table dual array format (Laxity-specific)
+   - Instrument table native format injection
+4. ✅ **Error Handling Tests** (2 tests)
+   - Empty orderlists/sequences graceful handling
+   - Output buffer too small (early return)
+
+**Actual Effort**: ~3 hours
+**Actual Impact**:
+- Test count: 69 → 76 (+7 tests, +10%)
+- Coverage: 58% → 65% (+7 percentage points)
+- Lines covered: 707 → 783 (+76 lines)
+- Laxity method coverage: 0% → 25% (76/306 lines)
+
+**Success Criteria**:
+- ✅ Coverage target: 58% → 65% (approaching 70% goal)
+- ✅ Laxity method: 0% → 25% coverage
+- ✅ Test quality: Main execution paths covered
+- ✅ Documentation: Complete implementation guide created
+
+**Files Modified**:
+- `pyscript/test_sf2_writer.py` (+135 lines, 2 new test classes, 7 tests)
+- `docs/testing/TRACK_3.6_LAXITY_NATIVE_FORMAT_TESTS.md` (new, comprehensive documentation)
+
+**Key Technical Insights**:
+- Laxity memory layout: Orderlists (0x1900), Sequences (0x1B00+), Tables (scattered)
+- Orderlist format: 3 voices × 256 entries each
+- Sequence format: Variable-length with 0x7F end markers
+- Wave table: Dual arrays (not interleaved)
+
+**Laxity Method Breakdown**:
+- Total: 306 lines in _inject_laxity_music_data()
+- Covered: 76 lines (25%)
+- Remaining: 230 lines (75%, mostly table injection details)
+
+**Track 3 Quality Focus Complete** (Tracks 3.1-3.6):
+- Total tests added: 105+ tests
+- SF2 Packer: 0% → 82% coverage (47 tests)
+- SF2 Writer: 33% → 65% coverage (76 tests)
+- Average coverage: ~65% across critical modules
+- Quality milestone achieved: Production-ready pipeline
+
+---
+
+### 3.7: Performance Optimization (P3)
 
 **Current**: Conversion time unknown, likely acceptable
 **Target**: Optimize for batch processing

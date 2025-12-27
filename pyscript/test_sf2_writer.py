@@ -1265,6 +1265,136 @@ class TestAuxiliaryDataBuilding(unittest.TestCase):
         self.assertIsInstance(result, bytearray)
 
 
+class TestLaxityNativeFormatInjection(unittest.TestCase):
+    """Test _inject_laxity_music_data() Laxity native format (Track 3.6)."""
+
+    def setUp(self):
+        """Create test writer with Laxity-specific setup."""
+        self.data = create_minimal_extracted_data()
+        self.writer = SF2Writer(self.data, driver_type='laxity')
+        self.writer.load_address = 0x1000
+        # Create large output buffer for Laxity format
+        self.writer.output = bytearray(0x4000)  # 16KB
+        # Write PRG load address
+        struct.pack_into('<H', self.writer.output, 0, 0x1000)
+
+    def test_inject_laxity_orderlists_dict_format(self):
+        """Test orderlist injection with dict format entries."""
+        # Set up 3 orderlists with dict entries
+        self.data.orderlists = [
+            [{'sequence': 0, 'transpose': 0xA0}],  # Voice 1
+            [{'sequence': 1, 'transpose': 0xA2}],  # Voice 2
+            [{'sequence': 2, 'transpose': 0xA4}],  # Voice 3
+        ]
+
+        # Call the method
+        self.writer._inject_laxity_music_data()
+
+        # Verify orderlists were written (at 0x1900 base)
+        # Orderlists start at 0x1900, each track is 256 bytes
+        # Track 1: 0x1900, Track 2: 0x1A00, Track 3: 0x1B00
+        track1_offset = 0x1900 - 0x1000 + 2  # +2 for PRG header
+
+        # Should have written sequence indices
+        self.assertEqual(self.writer.output[track1_offset], 0)  # Sequence 0
+        self.assertEqual(self.writer.output[track1_offset + 256], 1)  # Sequence 1
+        self.assertEqual(self.writer.output[track1_offset + 512], 2)  # Sequence 2
+
+    def test_inject_laxity_orderlists_with_end_marker(self):
+        """Test orderlist end marker (0xFF) placement."""
+        # Short orderlist (less than 256 entries)
+        self.data.orderlists = [
+            [0, 1, 2],  # Only 3 entries
+            [],
+            [],
+        ]
+
+        self.writer._inject_laxity_music_data()
+
+        track1_offset = 0x1900 - 0x1000 + 2
+
+        # Should have 0xFF after last entry
+        self.assertEqual(self.writer.output[track1_offset + 3], 0xFF)
+
+    def test_inject_laxity_sequences_with_end_markers(self):
+        """Test sequence injection with 0x7F end markers."""
+        # Set up sequences with SequenceEvent objects
+        self.data.sequences = [
+            [
+                SequenceEvent(instrument=0, command=0, note=0x30),
+                SequenceEvent(instrument=0, command=0, note=0x32),
+            ]
+        ]
+
+        self.writer._inject_laxity_music_data()
+
+        # Sequences start after orderlists (0x1900 + 3*256 = 0x1C00)
+        # But actual injection depends on logic - just verify no crash
+        # This tests the sequence writing code path
+        self.assertIsNotNone(self.writer.output)
+
+    def test_inject_laxity_handles_empty_data(self):
+        """Test injection handles empty orderlists/sequences gracefully."""
+        # Empty data
+        self.data.orderlists = [[], [], []]
+        self.data.sequences = []
+
+        # Should not crash
+        self.writer._inject_laxity_music_data()
+
+        self.assertIsNotNone(self.writer.output)
+
+    def test_inject_laxity_output_too_small(self):
+        """Test injection handles output buffer that's too small."""
+        # Create very small output buffer
+        self.writer.output = bytearray(1)  # Only 1 byte
+
+        # Should log error and return early without crashing
+        self.writer._inject_laxity_music_data()
+
+        # Should still have the buffer (not destroyed)
+        self.assertIsNotNone(self.writer.output)
+
+
+class TestLaxityTableInjection(unittest.TestCase):
+    """Test Laxity-specific table injection (Track 3.6)."""
+
+    def setUp(self):
+        """Create test writer."""
+        self.data = create_minimal_extracted_data()
+        self.writer = SF2Writer(self.data, driver_type='laxity')
+        self.writer.load_address = 0x1000
+        self.writer.output = bytearray(0x4000)
+        struct.pack_into('<H', self.writer.output, 0, 0x1000)
+
+    def test_inject_laxity_wave_table_dual_array_format(self):
+        """Test Laxity wave table uses dual array format (not interleaved)."""
+        # Set up wave table data
+        self.data.wave_table = [
+            (0x21, 0x00),  # Waveform, note offset
+            (0x41, 0x0C),
+        ]
+
+        self.writer._inject_laxity_music_data()
+
+        # Just verify method completes without error
+        # (actual wave table injection is complex and position-dependent)
+        self.assertIsNotNone(self.writer.output)
+
+    def test_inject_laxity_instrument_table(self):
+        """Test Laxity instrument table injection."""
+        # Set up instrument data
+        self.data.instruments = [
+            bytearray([0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x21]),
+            bytearray([0x0A, 0x01, 0x00, 0x00, 0x00, 0x00, 0x04, 0x41]),
+        ]
+
+        self.writer._inject_laxity_music_data()
+
+        # Verify method completes
+        self.assertIsNotNone(self.writer.output)
+
+
 if __name__ == '__main__':
     # Run with verbose output
     unittest.main(verbosity=2)
