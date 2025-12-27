@@ -122,7 +122,13 @@ class VSIDIntegration:
 
         if not sid_file.exists():
             if verbose > 0:
-                logger.error(f"SID file not found: {sid_file}")
+                logger.error(
+                    f"SID file not found: {sid_file}\n"
+                    f"  Suggestion: Verify file path is correct\n"
+                    f"  Check: Ensure file has .sid extension\n"
+                    f"  Try: Use absolute path instead of relative path\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#file-not-found-issues"
+                )
             return {
                 'success': False,
                 'error': f"SID file not found: {sid_file}"
@@ -164,7 +170,13 @@ class VSIDIntegration:
                     error_msg = result.stderr.strip()
 
                 if verbose > 0:
-                    logger.error(f"VSID export failed: {error_msg}")
+                    logger.error(
+                        f"VSID export failed: {error_msg}\n"
+                        f"  Suggestion: Verify VSID is installed correctly\n"
+                        f"  Check: Ensure SID file is valid and playable\n"
+                        f"  Try: Test SID file in VICE emulator first\n"
+                        f"  See: docs/guides/TROUBLESHOOTING.md#vsid-export-failures"
+                    )
 
                 return {
                     'success': False,
@@ -174,7 +186,13 @@ class VSIDIntegration:
             file_size = output_file.stat().st_size
             if file_size == 0:
                 if verbose > 0:
-                    logger.error("Output file is empty")
+                    logger.error(
+                        "Output file is empty\n"
+                        "  Suggestion: VSID may have failed silently\n"
+                        "  Check: Verify SID file can be played in VICE\n"
+                        "  Try: Use SID2WAV as fallback (force_sid2wav=True)\n"
+                        "  See: docs/guides/TROUBLESHOOTING.md#empty-wav-output"
+                    )
                 return {
                     'success': False,
                     'error': "Output file is empty"
@@ -220,7 +238,13 @@ class VSIDIntegration:
             else:
                 error_msg = "Timeout but no output file created"
                 if verbose > 0:
-                    logger.error(error_msg)
+                    logger.error(
+                        f"{error_msg}\n"
+                        f"  Suggestion: VSID may be stuck or crashed\n"
+                        f"  Check: Reduce duration with shorter playback time\n"
+                        f"  Try: Use SID2WAV as fallback (force_sid2wav=True)\n"
+                        f"  See: docs/guides/TROUBLESHOOTING.md#vsid-timeout"
+                    )
                 return {
                     'success': False,
                     'error': error_msg
@@ -229,7 +253,13 @@ class VSIDIntegration:
         except Exception as e:
             if verbose > 0:
                 error_msg = str(e)
-                logger.error(f"VSID export failed: {error_msg}")
+                logger.error(
+                    f"VSID export failed: {error_msg}\n"
+                    f"  Suggestion: Check if VSID is available: python pyscript/install_vice.py\n"
+                    f"  Check: Verify SID file format is valid\n"
+                    f"  Try: Use SID2WAV as fallback (force_sid2wav=True)\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#vsid-export-failures"
+                )
             return {
                 'success': False,
                 'error': str(e)
