@@ -53,14 +53,32 @@ class WAVComparator:
                 logger.info(f"Generated WAV: {wav_path}")
                 return True
             else:
-                logger.error(f"SID2WAV failed: {result.stderr}")
+                logger.error(
+                    f"SID2WAV failed: {result.stderr}\n"
+                    f"  Suggestion: Verify SID2WAV.EXE is compatible with this SID file\n"
+                    f"  Check: Ensure SID file is valid and playable\n"
+                    f"  Try: Test SID file in VICE emulator first\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#sid2wav-failures"
+                )
                 return False
 
         except subprocess.TimeoutExpired:
-            logger.error(f"SID2WAV timed out after {duration + 30} seconds")
+            logger.error(
+                f"SID2WAV timed out after {duration + 30} seconds\n"
+                f"  Suggestion: Reduce duration with shorter playback time\n"
+                f"  Check: SID file may have infinite loop or very long playback\n"
+                f"  Try: Use shorter duration (e.g., 10-15 seconds)\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#sid2wav-timeout"
+            )
             return False
         except Exception as e:
-            logger.error(f"WAV generation failed: {e}")
+            logger.error(
+                f"WAV generation failed: {e}\n"
+                f"  Suggestion: Check if SID2WAV.EXE is available in tools/ directory\n"
+                f"  Check: Verify SID file format is valid\n"
+                f"  Try: Run SID2WAV manually to diagnose issue: tools/SID2WAV.EXE -t30 {sid_path} test.wav\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#wav-generation-failures"
+            )
             return False
 
     def compare_wavs(self, wav1_path: str, wav2_path: str) -> Dict[str, float]:
@@ -130,7 +148,13 @@ class WAVComparator:
                        f"RMS diff: {results['rms_difference']:.4f}")
 
         except Exception as e:
-            logger.error(f"WAV comparison failed: {e}")
+            logger.error(
+                f"WAV comparison failed: {e}\n"
+                f"  Suggestion: Verify both WAV files are valid and readable\n"
+                f"  Check: Ensure WAV files were generated successfully\n"
+                f"  Try: Test WAV files in audio player first\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#wav-comparison-failures"
+            )
             results['error'] = str(e)
 
         return results
@@ -164,7 +188,13 @@ class WAVComparator:
             return audio_data
 
         except Exception as e:
-            logger.error(f"Failed to extract audio data: {e}")
+            logger.error(
+                f"Failed to extract audio data: {e}\n"
+                f"  Suggestion: WAV file may be corrupted or in unsupported format\n"
+                f"  Check: Verify WAV file has valid RIFF header\n"
+                f"  Try: Regenerate WAV file from SID source\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#wav-data-extraction-failures"
+            )
             return None
 
     def _calculate_rms_difference(self, audio1: bytes, audio2: bytes) -> float:
@@ -198,7 +228,13 @@ class WAVComparator:
             return normalized_rms
 
         except Exception as e:
-            logger.error(f"RMS calculation failed: {e}")
+            logger.error(
+                f"RMS calculation failed: {e}\n"
+                f"  Suggestion: Audio data may be incompatible or corrupted\n"
+                f"  Check: Verify audio buffers have same length and format\n"
+                f"  Try: Regenerate WAV files with matching parameters\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#rms-calculation-failures"
+            )
             return 1.0  # Return maximum difference on error
 
     def compare_sids_with_wav(self, sid1_path: str, sid2_path: str,
@@ -243,7 +279,13 @@ class WAVComparator:
                 results['error'] = "Failed to generate one or both WAV files"
 
         except Exception as e:
-            logger.error(f"SID-to-WAV comparison failed: {e}")
+            logger.error(
+                f"SID-to-WAV comparison failed: {e}\n"
+                f"  Suggestion: Check if both SID files are valid and playable\n"
+                f"  Check: Verify SID2WAV.EXE is available and working\n"
+                f"  Try: Test each SID file individually first\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#sid-to-wav-comparison-failures"
+            )
             results['error'] = str(e)
 
         finally:
@@ -281,9 +323,21 @@ def quick_wav_compare(sid1_path: str, sid2_path: str, duration: int = 10) -> flo
         if results['comparison']:
             return results['comparison']['audio_accuracy']
         else:
-            logger.error(f"WAV comparison failed: {results.get('error', 'Unknown error')}")
+            logger.error(
+                f"WAV comparison failed: {results.get('error', 'Unknown error')}\n"
+                f"  Suggestion: Review detailed error message above\n"
+                f"  Check: Ensure both SID files generated valid WAV output\n"
+                f"  Try: Run comparison with --verbose flag for details\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#wav-comparison-failures"
+            )
             return 0.0
 
     except Exception as e:
-        logger.error(f"Quick WAV compare failed: {e}")
+        logger.error(
+            f"Quick WAV compare failed: {e}\n"
+            f"  Suggestion: Check if WAVComparator initialization succeeded\n"
+            f"  Check: Verify SID2WAV.EXE is available in tools/ directory\n"
+            f"  Try: Run full comparison with more detailed error reporting\n"
+            f"  See: docs/guides/TROUBLESHOOTING.md#quick-comparison-failures"
+        )
         return 0.0
