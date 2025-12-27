@@ -1,6 +1,7 @@
 # SID to SID Factory II Converter
 
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
+[![codecov](https://codecov.io/gh/MichaelTroelsen/SIDM2conv/branch/master/graph/badge.svg)](https://codecov.io/gh/MichaelTroelsen/SIDM2conv)
 
 **Version 2.9.6** | Build Date: 2025-12-26 | Production Ready - CI/CD + User Documentation ✅
 

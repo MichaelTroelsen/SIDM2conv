@@ -348,25 +348,41 @@ python -m pytest pyscript/ --cov=sidm2 --cov=scripts --cov-report=xml
 
 ### CI/CD Integration
 
-**Add to GitHub Actions** (`.github/workflows/test.yml`):
+**Status**: ✅ **COMPLETE** - Coverage reporting added to `.github/workflows/test.yml`
+
+**Implemented Features**:
 ```yaml
 - name: Run tests with coverage
   run: |
-    python -m pytest pyscript/ --cov=sidm2 --cov=scripts --cov-report=xml --cov-report=term
+    python -m pytest pyscript/test_*.py -v --cov=sidm2 --cov=scripts --cov-report=xml --cov-report=term-missing
 
 - name: Upload coverage to Codecov
-  uses: codecov/codecov-action@v3
+  if: matrix.python-version == '3.11'
+  uses: codecov/codecov-action@v4
   with:
     file: ./coverage.xml
-    fail_ci_if_error: true
+    flags: unittests
+    name: codecov-umbrella
+    fail_ci_if_error: false
+    token: ${{ secrets.CODECOV_TOKEN }}
 ```
+
+**Coverage includes**:
+- ✅ `sidm2/` package (core modules)
+- ✅ `scripts/` directory (conversion scripts)
+- ✅ XML report for Codecov
+- ✅ Terminal report with missing lines
+- ✅ Artifact upload for debugging
 
 ### Coverage Badges
 
-**Add to README.md**:
+**Status**: ✅ **COMPLETE** - Badge added to README.md
+
 ```markdown
 [![codecov](https://codecov.io/gh/MichaelTroelsen/SIDM2conv/branch/master/graph/badge.svg)](https://codecov.io/gh/MichaelTroelsen/SIDM2conv)
 ```
+
+**Location**: Lines 3-4 of README.md (next to Tests badge)
 
 ---
 
@@ -408,9 +424,9 @@ python -m pytest pyscript/ --cov=sidm2 --cov=scripts --cov-report=xml
 
 ### This Week
 1. ✅ Generate initial coverage report (DONE)
-2. ⏳ Set up coverage in CI/CD
-3. ⏳ Add coverage badge to README
-4. ⏳ Create GitHub issue for coverage improvement
+2. ✅ Set up coverage in CI/CD (DONE - includes scripts/ directory, Codecov integration)
+3. ✅ Add coverage badge to README (DONE - Codecov badge added)
+4. ✅ Create GitHub issue for coverage improvement (DONE - Issue #4)
 5. ⏳ Start Phase 1: sf2_writer.py tests
 
 ### This Month
@@ -445,10 +461,13 @@ python -m pytest pyscript/ --cov=sidm2 --cov=scripts --cov-report=xml
 
 **Recommendation**: Implement **Phase 1 coverage improvements** immediately to protect core functionality and enable confident refactoring in v3.0.0.
 
+**Tracking**: All coverage improvement work is tracked in **[GitHub Issue #4](https://github.com/MichaelTroelsen/SIDM2conv/issues/4)**.
+
 ---
 
 **Generated**: 2025-12-27
-**Report Version**: 1.0
+**Report Version**: 1.1
+**Last Updated**: 2025-12-27 (CI/CD integration complete)
 **Next Review**: 2026-01-27 (1 month)
 
 **End of Report**
