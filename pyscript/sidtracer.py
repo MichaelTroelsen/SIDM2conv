@@ -175,7 +175,13 @@ class SIDTracer:
             return True
 
         except Exception as e:
-            logger.error(f"Error parsing SID file: {e}")
+            logger.error(
+                f"Error parsing SID file: {e}\n"
+                f"  Suggestion: Failed to parse SID file header or data\n"
+                f"  Check: Verify file is valid PSID or RSID format\n"
+                f"  Try: Re-download file from HVSC or csdb.dk\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#sid-parsing-errors"
+            )
             return False
 
     def _load_sid_data(self):
@@ -219,7 +225,13 @@ class SIDTracer:
             # Use CPU's run_until_return for cleaner execution
             instruction_count = self.cpu.run_until_return()
         except Exception as e:
-            logger.error(f"Error during init: {e}")
+            logger.error(
+                f"Error during init: {e}\n"
+                f"  Suggestion: Init routine execution failed\n"
+                f"  Check: May be invalid code or unsupported instruction\n"
+                f"  Try: Test SID file in VICE emulator first\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#init-execution-errors"
+            )
             raise
 
         if instruction_count >= max_instructions:
@@ -263,7 +275,13 @@ class SIDTracer:
             # Use CPU's run_until_return for cleaner execution
             instruction_count = self.cpu.run_until_return()
         except Exception as e:
-            logger.error(f"Error during play frame {frame_num}: {e}")
+            logger.error(
+                f"Error during play frame {frame_num}: {e}\n"
+                f"  Suggestion: Play routine execution failed\n"
+                f"  Check: May be invalid code or infinite loop\n"
+                f"  Try: Reduce frame count or test simpler SID file\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#play-execution-errors"
+            )
             raise
 
         # Restore PC
