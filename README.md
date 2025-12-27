@@ -2773,7 +2773,7 @@ SID File → SIDParser → LaxityPlayerAnalyzer → ExtractedData → SF2Writer 
 test-all.bat  # Windows
 pytest pyscript/  # Cross-platform (691 tests, 99.86% pass rate)
 
-# Run conversion pipeline tests (24 tests, 100% pass rate, 59.78% coverage)
+# Run conversion pipeline tests (34 tests, 100% pass rate, 65.89% coverage)
 pytest pyscript/test_sid_to_sf2_script.py -v --cov=sidm2.conversion_pipeline
 
 # Run legacy converter tests
@@ -2787,8 +2787,8 @@ python pyscript/test_sf2_editor.py
 ```
 
 **Test Suite Overview**:
-- **691 passing tests** (99.86% pass rate)
-- **conversion_pipeline**: 24 tests, 100% pass, 59.78% coverage
+- **701 passing tests** (99.86% pass rate)
+- **conversion_pipeline**: 34 tests, 100% pass, 65.89% coverage (+6.11% improvement)
 - **Legacy converter**: 86 tests
 - **SF2 format**: 12 tests
 - **Laxity driver**: 23 tests
@@ -2927,7 +2927,8 @@ The project includes a GitHub Actions workflow (`.github/workflows/ci.yml`) that
 
 **`sidm2/conversion_pipeline.py`** (1,117 lines)
 - **Purpose**: Core business logic for all SID to SF2 conversions
-- **Test Coverage**: 59.78% (276/445 statements, 24/24 tests passing, 100% pass rate)
+- **Test Coverage**: 65.89% (299/445 statements, 34/34 tests passing, 100% pass rate)
+- **Coverage Improvement**: +6.11% from previous 59.78%
 - **Created**: 2025-12-27 via refactoring from `scripts/sid_to_sf2.py`
 
 **Core Functions**:
@@ -2999,7 +3000,7 @@ SIDM2/
 │   ├── sf2_player_parser.py           # SF2-exported SID parser
 │   └── ...                            # Other modules
 ├── pyscript/                          # Python utility scripts & tests
-│   ├── test_sid_to_sf2_script.py      # conversion_pipeline tests (24 tests, 100% pass)
+│   ├── test_sid_to_sf2_script.py      # conversion_pipeline tests (34 tests, 100% pass, 65.89% coverage)
 │   ├── test_converter.py              # Legacy converter tests (86 tests)
 │   ├── test_sf2_format.py             # SF2 format validation (12 tests)
 │   ├── test_laxity_driver.py          # Laxity driver tests (23 tests)

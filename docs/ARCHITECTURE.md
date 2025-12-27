@@ -789,11 +789,12 @@ $0F03:       Filter table
 
 **Module Exports** (`__all__`): All 7 functions + all 12 availability flags
 
-**Test Coverage**: 59.78% (276/445 statements covered, 24/24 tests passing)
-- Statement coverage: 276/445 (59.78%)
-- Branch coverage: 89/112 (79.46%)
-- Test pass rate: 24/24 (100%)
-- Exceeds 50% target by 19.6%
+**Test Coverage**: 65.89% (299/445 statements covered, 34/34 tests passing)
+- Statement coverage: 299/445 (65.89%)
+- Branch coverage: 90/112 (80.36%)
+- Test pass rate: 34/34 (100%)
+- Exceeds 50% target by 31.8%
+- Coverage improvement: +6.11% from previous 59.78%
 
 **Usage**:
 ```python

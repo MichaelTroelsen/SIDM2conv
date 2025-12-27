@@ -23,9 +23,12 @@ from sidm2.sf2_packer import SF2Packer
 from pyscript.sidtracer import SIDTracer
 
 
-def test_sf2_pack_and_disassemble(sf2_file: Path) -> dict:
+def run_sf2_pack_and_disassemble(sf2_file: Path) -> dict:
     """
     Test complete workflow: SF2 -> SID -> Disassemble
+
+    Note: Renamed from test_* to avoid pytest auto-discovery.
+    This function is called from main(), not run directly by pytest.
 
     Returns:
         dict with test results
@@ -143,7 +146,7 @@ def main():
     # Run tests
     all_results = []
     for sf2_file in test_files[:10]:  # Test first 10 files
-        result = test_sf2_pack_and_disassemble(sf2_file)
+        result = run_sf2_pack_and_disassemble(sf2_file)
         all_results.append(result)
 
     # Summary

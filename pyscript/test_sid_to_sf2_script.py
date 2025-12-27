@@ -22,6 +22,7 @@ from sidm2.conversion_pipeline import (
     convert_galway_to_sf2,
     convert_sid_to_sf2,
     convert_sid_to_both_drivers,
+    get_default_config,
 )
 
 
@@ -610,6 +611,214 @@ class TestConfigurationHandling(unittest.TestCase):
 
         # Should call get_default_config
         mock_get_config.assert_called()
+
+
+class TestErrorHandling(unittest.TestCase):
+    """Test error handling paths to improve coverage."""
+
+    def test_convert_laxity_file_not_found(self):
+        """Test Laxity conversion with non-existent file."""
+        from sidm2 import errors as sidm2_errors
+
+        with self.assertRaises(sidm2_errors.FileNotFoundError):
+            convert_laxity_to_sf2("nonexistent.sid", "output.sf2")
+
+    @patch('sidm2.conversion_pipeline.os.path.exists')
+    @patch('sidm2.conversion_pipeline.analyze_sid_file')
+    def test_convert_laxity_invalid_input(self, mock_analyze, mock_exists):
+        """Test Laxity conversion with invalid input that fails analysis."""
+        from sidm2 import errors as sidm2_errors
+
+        mock_exists.return_value = True
+        mock_analyze.side_effect = Exception("Invalid SID format")
+
+        with self.assertRaises(sidm2_errors.ConversionError):
+            convert_laxity_to_sf2("invalid.sid", "output.sf2")
+
+    def test_convert_galway_file_not_found(self):
+        """Test Galway conversion with non-existent file."""
+        from sidm2 import errors as sidm2_errors
+
+        with self.assertRaises(sidm2_errors.FileNotFoundError):
+            convert_galway_to_sf2("nonexistent.sid", "output.sf2")
+
+    def test_convert_sid_to_sf2_file_not_found(self):
+        """Test main conversion with non-existent file."""
+        from sidm2 import errors as sidm2_errors
+
+        with self.assertRaises(sidm2_errors.FileNotFoundError):
+            convert_sid_to_sf2("nonexistent.sid", "output.sf2")
+
+    @patch('sidm2.conversion_pipeline.os.path.exists')
+    @patch('sidm2.conversion_pipeline.SIDParser')
+    def test_convert_sid_to_sf2_permission_error(self, mock_parser, mock_exists):
+        """Test main conversion with output file permission error."""
+        from sidm2 import errors as sidm2_errors
+
+        # Input exists, output exists and overwrite=False
+        def exists_side_effect(path):
+            return True  # Both input and output exist
+        mock_exists.side_effect = exists_side_effect
+
+        # Mock parser
+        mock_parser_inst = Mock()
+        mock_header = Mock()
+        mock_header.load_address = 0x1000
+        mock_header.init_address = 0x1000
+        mock_header.play_address = 0x10A1
+        mock_header.data_offset = 0x7C
+        mock_header.songs = 1
+        mock_header.start_song = 1
+        mock_header.name = "Test"
+        mock_header.author = "Tester"
+        mock_header.copyright = "2025"
+        mock_parser_inst.parse_header.return_value = mock_header
+        mock_parser_inst.get_c64_data.return_value = (b'\x00' * 1024, 0x1000)
+        mock_parser.return_value = mock_parser_inst
+
+        with self.assertRaises(sidm2_errors.PermissionError):
+            convert_sid_to_sf2("input.sid", "output.sf2", config=get_default_config())
+
+
+class TestVerboseLogging(unittest.TestCase):
+    """Test verbose logging paths."""
+
+    @patch('sidm2.conversion_pipeline.os.path.exists')
+    @patch('sidm2.conversion_pipeline.SIDParser')
+    @patch('sidm2.conversion_pipeline.LaxityPlayerAnalyzer')
+    @patch('sidm2.conversion_pipeline.detect_player_type')
+    def test_analyze_sid_file_verbose(self, mock_detect, mock_analyzer, mock_parser, mock_exists):
+        """Test analyze_sid_file with verbose logging enabled."""
+        mock_exists.return_value = True
+        mock_detect.return_value = "NewPlayer_v21/Laxity"
+
+        # Mock parser
+        mock_parser_inst = Mock()
+        mock_header = Mock()
+        mock_header.magic = "PSID"
+        mock_header.version = 2
+        mock_header.load_address = 0x1000
+        mock_header.init_address = 0x1000
+        mock_header.play_address = 0x10A1
+        mock_header.data_offset = 0x7C
+        mock_header.songs = 1
+        mock_header.start_song = 1
+        mock_header.name = "Test Song"
+        mock_header.author = "Test Author"
+        mock_header.copyright = "2025"
+        mock_parser_inst.parse_header.return_value = mock_header
+        mock_parser_inst.get_c64_data.return_value = (b'\x00' * 1024, 0x1000)
+        mock_parser.return_value = mock_parser_inst
+
+        # Mock analyzer
+        mock_analyzer_inst = Mock()
+        mock_extracted = Mock()
+        mock_extracted.header = mock_header
+        mock_extracted.c64_data = b'\x00' * 1024
+        mock_extracted.load_address = 0x1000
+        mock_analyzer_inst.extract_music_data.return_value = mock_extracted
+        mock_analyzer.return_value = mock_analyzer_inst
+
+        # Create config with verbose enabled
+        config = get_default_config()
+        config.extraction.verbose = True
+
+        with patch('builtins.open', mock_open(read_data=b'PSID' + b'\x00' * 1024)):
+            result = analyze_sid_file("test.sid", config=config)
+            self.assertIsNotNone(result)
+
+
+class TestSF2ExportedPath(unittest.TestCase):
+    """Test SF2-exported SID file path."""
+
+    @patch('sidm2.conversion_pipeline.os.path.exists')
+    @patch('sidm2.conversion_pipeline.SIDParser')
+    @patch('sidm2.conversion_pipeline.SF2PlayerParser')
+    @patch('sidm2.conversion_pipeline.detect_player_type')
+    def test_analyze_sf2_exported_sid(self, mock_detect, mock_sf2_parser, mock_parser, mock_exists):
+        """Test analyze_sid_file with SF2-exported SID."""
+        mock_exists.return_value = True
+        mock_detect.return_value = "SidFactory_II"  # SF2-exported player type
+
+        # Mock parser with SF2 marker ($1337) in C64 data
+        mock_parser_inst = Mock()
+        mock_header = Mock()
+        mock_header.magic = "PSID"
+        mock_header.version = 2
+        mock_header.load_address = 0x1000
+        mock_header.init_address = 0x1000
+        mock_header.play_address = 0x10A1
+        mock_header.data_offset = 0x7C
+        mock_header.songs = 1
+        mock_header.start_song = 1
+        mock_header.name = "SF2 Exported"
+        mock_header.author = "Tester"
+        mock_header.copyright = "2025"
+        mock_parser_inst.parse_header.return_value = mock_header
+        # Include SF2 marker ($1337) in C64 data - this triggers SF2PlayerParser usage
+        c64_data = b'\x00' * 100 + b'\x37\x13' + b'\x00' * 922  # 1024 bytes with marker
+        mock_parser_inst.get_c64_data.return_value = (c64_data, 0x1000)
+        mock_parser.return_value = mock_parser_inst
+
+        # Mock SF2 parser
+        mock_sf2_parser_inst = Mock()
+        mock_extracted = Mock()
+        mock_extracted.header = mock_header
+        mock_extracted.c64_data = c64_data
+        mock_extracted.load_address = 0x1000
+        mock_sf2_parser_inst.extract.return_value = mock_extracted
+        mock_sf2_parser.return_value = mock_sf2_parser_inst
+
+        with patch('builtins.open', mock_open(read_data=b'PSID' + b'\x00' * 1024)):
+            result = analyze_sid_file("test_sf2.sid", config=get_default_config())
+            self.assertIsNotNone(result)
+            mock_sf2_parser.assert_called_once()  # Verify SF2 parser was used
+
+
+class TestConvertSidToBothDrivers(unittest.TestCase):
+    """Test convert_sid_to_both_drivers function."""
+
+    def test_convert_both_drivers_file_not_found(self):
+        """Test both drivers conversion with non-existent file."""
+        from sidm2 import errors as sidm2_errors
+
+        with self.assertRaises(sidm2_errors.FileNotFoundError):
+            convert_sid_to_both_drivers("nonexistent.sid")
+
+    @patch('sidm2.conversion_pipeline.os.path.exists')
+    def test_convert_both_drivers_output_dir_not_found(self, mock_exists):
+        """Test both drivers conversion when output dir doesn't exist and create_dirs=False."""
+        from sidm2 import errors as sidm2_errors
+
+        # Input exists, output dir doesn't exist
+        def exists_side_effect(path):
+            if path.endswith('.sid'):
+                return True
+            return False  # Output dir doesn't exist
+        mock_exists.side_effect = exists_side_effect
+
+        config = get_default_config()
+        config.output.create_dirs = False  # Don't auto-create
+
+        with self.assertRaises(sidm2_errors.FileNotFoundError):
+            convert_sid_to_both_drivers("test.sid", output_dir="nonexistent_dir", config=config)
+
+
+class TestImportErrors(unittest.TestCase):
+    """Test import error handling paths."""
+
+    @patch('sidm2.conversion_pipeline.os.path.exists')
+    def test_convert_galway_import_not_available(self, mock_exists):
+        """Test Galway conversion when imports fail."""
+        from sidm2 import errors as sidm2_errors
+
+        mock_exists.return_value = True
+
+        # Mock import failures by patching importlib
+        with patch.dict('sys.modules', {'sidm2.galway_converter': None}):
+            # This should raise ConversionError due to import failure
+            with self.assertRaises((sidm2_errors.ConversionError, AttributeError)):
+                convert_galway_to_sf2("test.sid", "output.sf2")
 
 
 if __name__ == '__main__':
