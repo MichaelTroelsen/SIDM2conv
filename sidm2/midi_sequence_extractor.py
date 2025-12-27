@@ -73,13 +73,25 @@ class MIDISequenceExtractor:
         try:
             import mido
         except ImportError:
-            self.logger.error("mido library not found - cannot extract from MIDI")
+            self.logger.error(
+                "mido library not found - cannot extract from MIDI\n"
+                "  Suggestion: Install mido library for MIDI support\n"
+                "  Check: Run 'pip install mido' to install\n"
+                "  Try: Skip MIDI extraction if not needed\n"
+                "  See: docs/guides/TROUBLESHOOTING.md#missing-mido-library"
+            )
             return ([], [], [])
 
         try:
             mid = mido.MidiFile(midi_path)
         except Exception as e:
-            self.logger.error(f"Failed to load MIDI file {midi_path}: {e}")
+            self.logger.error(
+                f"Failed to load MIDI file {midi_path}: {e}\n"
+                f"  Suggestion: Cannot read MIDI file\n"
+                f"  Check: Verify MIDI file is valid and not corrupted\n"
+                f"  Try: Test MIDI file in another player first\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#midi-load-errors"
+            )
             return ([], [], [])
 
         # Extract note events per track (voice)

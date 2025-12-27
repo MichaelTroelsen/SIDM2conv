@@ -129,7 +129,13 @@ class GalwayTableExtractor:
                     notes.append(f"Found {control_name} table")
 
         except Exception as e:
-            logger.error(f"Extraction error: {e}")
+            logger.error(
+                f"Extraction error: {e}\n"
+                f"  Suggestion: Failed to extract Galway music tables\n"
+                f"  Check: Verify SID file is valid Galway format\n"
+                f"  Try: Use player-id.exe to confirm player type\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#table-extraction-errors"
+            )
             errors.append(str(e))
 
         # Calculate confidence

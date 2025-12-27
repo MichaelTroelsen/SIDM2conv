@@ -252,7 +252,13 @@ class MemoryMapAnalyzer:
         except Exception as e:
             if verbose > 0:
                 error_msg = str(e).encode('ascii', 'replace').decode('ascii')
-                logger.error(f"Memory map analysis failed: {error_msg}")
+                logger.error(
+                    f"Memory map analysis failed: {error_msg}\n"
+                    f"  Suggestion: Cannot analyze SID memory layout\n"
+                    f"  Check: Verify SID file has valid structure\n"
+                    f"  Try: Use simpler analysis or different tool\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#memory-map-errors"
+                )
             return {
                 'success': False,
                 'error': str(e)
@@ -336,7 +342,13 @@ class MemoryMapAnalyzer:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to generate report: {e}")
+            logger.error(
+                f"Failed to generate report: {e}\n"
+                f"  Suggestion: Cannot write memory map report\n"
+                f"  Check: Verify output directory is writable\n"
+                f"  Try: Check disk space and file permissions\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#report-generation-errors"
+            )
             return False
 
     def _write_visual_map(self, f, analysis_result: Dict[str, Any]):

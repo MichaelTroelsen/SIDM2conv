@@ -172,7 +172,11 @@ class PerformanceLogger:
             )
         else:
             self.logger.error(
-                f"Failed: {self.operation}",
+                f"Failed: {self.operation}\n"
+                f"  Suggestion: Operation failed during execution\n"
+                f"  Check: Review exception details for specific cause\n"
+                f"  Try: Enable debug logging for more information\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#operation-failures",
                 extra={'duration_seconds': duration, 'status': 'failed', 'exception': str(exc_val)}
             )
 

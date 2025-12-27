@@ -105,7 +105,13 @@ class GalwayTableInjector:
                 table_data = table_data[:max_size]
                 logger.info(f"Truncating {table_type} to {max_size} bytes")
             else:
-                logger.error(f"Table {table_type} too large for driver")
+                logger.error(
+                    f"Table {table_type} too large for driver\n"
+                    f"  Suggestion: Galway table exceeds driver capacity\n"
+                    f"  Check: Table size {len(table_data)} > max {max_size} bytes\n"
+                    f"  Try: Simplify music or use different driver\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#table-size-errors"
+                )
                 self.injection_errors.append(f"{table_type}: data exceeds bounds")
                 return False
 
@@ -117,7 +123,13 @@ class GalwayTableInjector:
             return True
 
         except Exception as e:
-            logger.error(f"Injection error for {table_type}: {e}")
+            logger.error(
+                f"Injection error for {table_type}: {e}\n"
+                f"  Suggestion: Failed to inject {table_type} table into driver\n"
+                f"  Check: Verify table data format is valid\n"
+                f"  Try: Check if driver has space for this table\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#table-injection-errors"
+            )
             self.injection_errors.append(f"{table_type}: {str(e)}")
             return False
 
@@ -278,7 +290,13 @@ class GalwayConversionIntegrator:
             return sf2_data, overall_confidence
 
         except Exception as e:
-            logger.error(f"Integration error: {e}")
+            logger.error(
+                f"Integration error: {e}\n"
+                f"  Suggestion: Failed to integrate Galway tables with driver\n"
+                f"  Check: Verify all required tables are present\n"
+                f"  Try: Enable verbose logging for detailed error trace\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#integration-errors"
+            )
             import traceback
             traceback.print_exc()
             return sf2_template, 0.1  # Very low confidence on error
