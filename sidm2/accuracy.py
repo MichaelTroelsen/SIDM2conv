@@ -180,7 +180,13 @@ class SIDRegisterCapture:
                 self._parse_siddump_output(result.stdout)
                 return True
             except Exception as e:
-                logger.error(f"Siddump exe exception: {e}")
+                logger.error(
+                    f"Siddump exe exception: {e}\n"
+                    f"  Suggestion: siddump.exe failed to execute\n"
+                    f"  Check: Verify siddump.exe is available in tools/ directory\n"
+                    f"  Try: Use Python siddump instead (use_python=True)\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#siddump-exceptions"
+                )
                 return False
 
     def _parse_siddump_output(self, output: str):
@@ -490,17 +496,36 @@ def calculate_accuracy_from_sids(original_sid: str, exported_sid: str,
     try:
         original_capture = SIDRegisterCapture(sid_path=original_sid, duration=duration)
         if not original_capture.capture_from_sid():
-            logger.error(f"Failed to capture registers from original SID: {original_sid}")
+            logger.error(
+                f"Failed to capture registers from original SID: {original_sid}\n"
+                f"  Suggestion: Cannot capture SID register data from original file\n"
+                f"  Check: Verify SID file is valid and playable\n"
+                f"  Try: Test SID file in VICE emulator first\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#register-capture-failures"
+            )
             return None
 
         exported_capture = SIDRegisterCapture(sid_path=exported_sid, duration=duration)
         if not exported_capture.capture_from_sid():
-            logger.error(f"Failed to capture registers from exported SID: {exported_sid}")
+            logger.error(
+                f"Failed to capture registers from exported SID: {exported_sid}\n"
+                f"  Suggestion: Cannot capture SID register data from exported file\n"
+                f"  Check: Verify exported SID file is valid\n"
+                f"  Try: Reconvert with different driver if export failed\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#register-capture-failures"
+            )
             return None
 
         comparator = SIDComparator(original_capture, exported_capture)
         return comparator.compare()
 
     except Exception as e:
-        logger.error(f"Accuracy calculation exception: {e}", exc_info=True)
+        logger.error(
+            f"Accuracy calculation exception: {e}\n"
+            f"  Suggestion: Unexpected error during accuracy calculation\n"
+            f"  Check: Verify both SID files are valid and playable\n"
+            f"  Try: Enable debug logging for detailed error trace\n"
+            f"  See: docs/guides/TROUBLESHOOTING.md#accuracy-calculation-errors",
+            exc_info=True
+        )
         return None
