@@ -3,7 +3,7 @@
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 [![codecov](https://codecov.io/gh/MichaelTroelsen/SIDM2conv/branch/master/graph/badge.svg)](https://codecov.io/gh/MichaelTroelsen/SIDM2conv)
 
-**Version 2.9.6** | Build Date: 2025-12-26 | Production Ready - CI/CD + User Documentation ✅
+**Version 2.9.7** | Build Date: 2025-12-27 | Production Ready - Filter Accuracy Improved (60-80%) ✅
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files with 99.93% frame accuracy for Laxity NewPlayer v21 files.
 
@@ -3659,7 +3659,7 @@ See `sidm2/audio_comparison.py` for implementation:
 
 **Note**: For recent versions (v2.3.0+), see [`CHANGELOG.md`](CHANGELOG.md). Abbreviated history below shows older releases.
 
-**Current Version**: v2.9.1 - SF2 Format Validation Fixes (2025-12-26)
+**Current Version**: v2.9.7 - Filter Format Conversion (2025-12-27)
 
 ### v2.9.1 (2025-12-26)
 

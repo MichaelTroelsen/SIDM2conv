@@ -1,7 +1,7 @@
 # SIDM2 Frequently Asked Questions (FAQ)
 
-**Version**: 2.9.6
-**Updated**: 2025-12-26
+**Version**: 2.9.7
+**Updated**: 2025-12-27
 
 Common questions and answers about SIDM2.
 
@@ -1059,6 +1059,6 @@ python scripts/validate_sid_accuracy.py original.sid converted.sid
 
 ---
 
-**Last Updated**: 2025-12-26
-**Version**: 2.9.6
+**Last Updated**: 2025-12-27
+**Version**: 2.9.7
 **Status**: Production Ready

@@ -1,7 +1,7 @@
 # SIDM2 Best Practices
 
-**Version**: 2.9.6
-**Updated**: 2025-12-26
+**Version**: 2.9.7
+**Updated**: 2025-12-27
 
 Expert tips, patterns, and optimization strategies for SIDM2.
 
@@ -1088,6 +1088,6 @@ for %%f in (*.sid) do (
 
 ---
 
-**Last Updated**: 2025-12-26
-**Version**: 2.9.6
+**Last Updated**: 2025-12-27
+**Version**: 2.9.7
 **Status**: Production Ready

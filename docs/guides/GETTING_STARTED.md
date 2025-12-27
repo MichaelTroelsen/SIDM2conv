@@ -1,7 +1,7 @@
 # Getting Started with SIDM2
 
-**Version**: 2.9.6
-**Updated**: 2025-12-26
+**Version**: 2.9.7
+**Updated**: 2025-12-27
 
 Welcome to SIDM2! This guide will help you get up and running quickly.
 
@@ -493,6 +493,6 @@ SIDM2/
 
 ---
 
-**Last Updated**: 2025-12-26
-**Version**: 2.9.6
+**Last Updated**: 2025-12-27
+**Version**: 2.9.7
 **Status**: Production Ready

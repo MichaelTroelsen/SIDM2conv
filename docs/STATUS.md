@@ -1,7 +1,7 @@
 # Project Status Overview
 
-**Last Updated**: 2025-12-26
-**Current Version**: v2.9.1 (SF2 Format Validation Fixes)
+**Last Updated**: 2025-12-27
+**Current Version**: v2.9.7 (Filter Format Conversion)
 **Status**: Active Development - Production Ready
 
 ---

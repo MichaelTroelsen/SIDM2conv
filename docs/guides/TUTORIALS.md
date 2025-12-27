@@ -1,7 +1,7 @@
 # SIDM2 Tutorials
 
-**Version**: 2.9.6
-**Updated**: 2025-12-26
+**Version**: 2.9.7
+**Updated**: 2025-12-27
 
 Step-by-step tutorials for common SIDM2 workflows.
 
@@ -1177,6 +1177,6 @@ You can now create custom Python workflows using SIDM2 components.
 
 ---
 
-**Last Updated**: 2025-12-26
-**Version**: 2.9.6
+**Last Updated**: 2025-12-27
+**Version**: 2.9.7
 **Status**: Production Ready
