@@ -7,6 +7,7 @@ Verifies that VSID wrapper works correctly and integrates with the audio export 
 
 import sys
 from pathlib import Path
+import pytest
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -15,7 +16,7 @@ from sidm2.vsid_wrapper import VSIDIntegration
 from sidm2.audio_export_wrapper import AudioExportIntegration
 
 
-def test_vsid_availability():
+def check_vsid_availability():
     """Test if VSID is available"""
     print("\n=== Test 1: VSID Availability ===")
     available = VSIDIntegration._check_tool_available()
@@ -125,7 +126,7 @@ def main():
     print("=" * 60)
 
     # Test 1: Check VSID availability
-    vsid_available = test_vsid_availability()
+    vsid_available = check_vsid_availability()
 
     if not vsid_available:
         print("\n" + "=" * 60)

@@ -7,6 +7,7 @@ including Stinsens_Last_Night_of_89.sid.
 import sys
 from pathlib import Path
 from typing import Tuple
+import pytest
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -111,7 +112,7 @@ def test_laxity_files():
 
     if not laxity_dir.exists():
         print(f"ERROR: Laxity directory not found: {laxity_dir}")
-        return 1
+        pytest.skip(f"Laxity directory not found: {laxity_dir}")
 
     # Test files (prioritize Stinsens)
     test_files = [
@@ -159,8 +160,7 @@ def test_laxity_files():
     print(f"\n{'=' * 80}")
     print("TEST COMPLETE")
     print(f"{'=' * 80}")
-
-    return 0
+    # Test passes if we reach here
 
 
 def test_stinsens_detailed():
@@ -174,7 +174,7 @@ def test_stinsens_detailed():
 
     if not filepath.exists():
         print(f"ERROR: File not found: {filepath}")
-        return 1
+        pytest.skip(f"File not found: {filepath}")
 
     # Read and parse
     sid_data = filepath.read_bytes()
@@ -259,15 +259,24 @@ def test_stinsens_detailed():
             for j in range(i, min(i+5, len(instructions))):
                 print(f"      {instructions[j]}")
             break  # Only show first match
-
-    return 0
+    # Test passes if we reach here
 
 
 if __name__ == "__main__":
-    # Run basic test on multiple files
-    result = test_laxity_files()
+    try:
+        # Run basic test on multiple files
+        test_laxity_files()
 
-    # Detailed analysis of Stinsens
-    test_stinsens_detailed()
+        # Detailed analysis of Stinsens
+        test_stinsens_detailed()
 
-    sys.exit(result)
+        print("\n[SUCCESS] All tests passed!")
+        sys.exit(0)
+    except (AssertionError, pytest.skip.Exception) as e:
+        print(f"\n[FAIL] Test failed: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n[ERROR] Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

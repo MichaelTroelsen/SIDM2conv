@@ -12,6 +12,7 @@ Tests the complete end-to-end AutoIt automation:
 import sys
 import time
 from pathlib import Path
+import pytest
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -27,7 +28,7 @@ def test_full_autoit_automation():
 
     if not Path(sf2_file).exists():
         print(f"[ERROR] SF2 file not found: {sf2_file}")
-        return False
+        pytest.skip(f"SF2 file not found: {sf2_file}")
 
     print("\n" + "=" * 70)
     print("Full AutoIt Automation Test - Stinsen SF2 File")
@@ -52,7 +53,7 @@ def test_full_autoit_automation():
         print("Please check:")
         print("  1. AutoIt script compiled: scripts/autoit/sf2_loader.exe")
         print("  2. Config file: config/sf2_automation.ini")
-        return False
+        pytest.skip("AutoIt not enabled or not available")
 
     # Test AutoIt file loading
     print("Step 2: Testing AutoIt file loading (fully automated)...")
@@ -66,7 +67,7 @@ def test_full_autoit_automation():
 
     if not success:
         print("[FAIL] AutoIt file loading failed")
-        return False
+    assert success, "AutoIt file loading failed"
 
     print("[OK] AutoIt file loading succeeded!")
     print()
@@ -74,18 +75,20 @@ def test_full_autoit_automation():
     # Verify editor is running
     print("Step 3: Verifying editor state...")
 
-    if not automation.is_editor_running():
+    editor_running = automation.is_editor_running()
+    if not editor_running:
         print("[FAIL] Editor not running after AutoIt launch")
-        return False
+    assert editor_running, "Editor not running after AutoIt launch"
 
     print("[OK] Editor is running")
 
     # Verify file is loaded
-    if not automation.is_file_loaded():
+    file_loaded = automation.is_file_loaded()
+    if not file_loaded:
         print("[FAIL] File not loaded")
         title = automation.get_window_title()
         print(f"  Window title: {title}")
-        return False
+    assert file_loaded, "File not loaded"
 
     title = automation.get_window_title()
     print(f"[OK] File loaded: {title}")
@@ -148,14 +151,17 @@ def test_full_autoit_automation():
     print("The AutoIt automation is working perfectly!")
     print("100% automated workflow confirmed!")
     print()
-
-    return True
+    # Test passes if we reach here without assertion failures
 
 
 if __name__ == '__main__':
     try:
-        success = test_full_autoit_automation()
-        sys.exit(0 if success else 1)
+        test_full_autoit_automation()
+        print("\n[SUCCESS] All tests passed!")
+        sys.exit(0)
+    except (AssertionError, pytest.skip.Exception) as e:
+        print(f"\n[FAIL] Test failed: {e}")
+        sys.exit(1)
     except KeyboardInterrupt:
         print("\n[INTERRUPTED] Test cancelled by user")
         sys.exit(1)

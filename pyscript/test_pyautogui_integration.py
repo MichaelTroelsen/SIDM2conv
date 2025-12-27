@@ -10,6 +10,7 @@ Usage:
 import sys
 import time
 from pathlib import Path
+import pytest
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -33,7 +34,7 @@ def test_pyautogui_integration():
     if not test_file.exists():
         print(f"[FAIL] Test file not found: {test_file}")
         print("[INFO] Please provide a valid SF2 file path")
-        return False
+        pytest.skip(f"Test file not found: {test_file}")
 
     print(f"[INFO] Test file: {test_file.name}")
     print()
@@ -60,7 +61,7 @@ def test_pyautogui_integration():
 
     if not success:
         print("[FAIL] Editor launch failed")
-        return False
+    assert success, "Editor launch failed"
 
     try:
         print("[OK] Editor launched successfully!")
@@ -89,7 +90,7 @@ def test_pyautogui_integration():
             if automation.pyautogui_automation:
                 if not automation.pyautogui_automation.is_window_open():
                     print(f"[FAIL] Window closed after {i} seconds")
-                    return False
+                    pytest.fail(f"Window closed after {i} seconds")
             time.sleep(1)
             print(f"  {5-i} seconds remaining...")
 
@@ -122,8 +123,6 @@ def test_pyautogui_integration():
     print(f"  - Test result: SUCCESS")
     print()
 
-    return True
-
 
 def test_mode_selection():
     """Test explicit mode selection"""
@@ -142,7 +141,7 @@ def test_mode_selection():
 
     if not test_file.exists():
         print("[SKIP] Test file not found")
-        return True
+        pytest.skip("Test file not found")
 
     # Test explicit PyAutoGUI mode
     print("Test: Explicit PyAutoGUI mode")
@@ -154,7 +153,7 @@ def test_mode_selection():
 
         if not success:
             print("[FAIL] PyAutoGUI mode failed")
-            return False
+        assert success, "PyAutoGUI mode failed"
 
         try:
             print("[OK] PyAutoGUI mode works explicitly")
@@ -170,7 +169,6 @@ def test_mode_selection():
         print("[SKIP] PyAutoGUI not enabled")
 
     print()
-    return True
 
 
 if __name__ == "__main__":
@@ -181,23 +179,24 @@ if __name__ == "__main__":
 
     try:
         # Run main integration test
-        test1_passed = test_pyautogui_integration()
+        test_pyautogui_integration()
         print()
 
         # Run mode selection test
-        test2_passed = test_mode_selection()
+        test_mode_selection()
         print()
 
-        if test1_passed and test2_passed:
-            print("=" * 60)
-            print("ALL TESTS PASSED!")
-            print("=" * 60)
-            sys.exit(0)
-        else:
-            print("=" * 60)
-            print("SOME TESTS FAILED")
-            print("=" * 60)
-            sys.exit(1)
+        print("=" * 60)
+        print("ALL TESTS PASSED!")
+        print("=" * 60)
+        sys.exit(0)
+
+    except (AssertionError, pytest.skip.Exception) as e:
+        print()
+        print("=" * 60)
+        print(f"TEST FAILED: {e}")
+        print("=" * 60)
+        sys.exit(1)
 
     finally:
         # Global cleanup: Kill any remaining editor processes

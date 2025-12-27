@@ -55,7 +55,6 @@ def test_editor_detection():
         automation = SF2EditorAutomation()
         print(f"[PASS] Editor found: {automation.editor_path}")
         print()
-        return True
     except SF2EditorNotFoundError as e:
         print(f"[FAIL] Editor not found: {e}")
         print()
@@ -65,7 +64,7 @@ def test_editor_detection():
         print("  - tools/SIDFactoryII.exe")
         print("  - C:/Program Files/SIDFactoryII/SIDFactoryII.exe")
         print()
-        return False
+        pytest.fail(f"Editor not found: {e}")
 
 def test_editor_launch(automation):
     """Test 2: Launch Editor Without File"""
@@ -76,26 +75,25 @@ def test_editor_launch(automation):
 
     try:
         success = automation.launch_editor(timeout=30)
-        if success:
-            print(f"[PASS] Editor launched successfully")
-            print(f"  PID: {automation.pid}")
-            print(f"  Window Handle: {automation.window_handle}")
-            print(f"  Window Title: {automation.get_window_title()}")
-            print()
-
-            # Wait a bit
-            time.sleep(2)
-
-            # Close editor
-            automation.close_editor()
-            time.sleep(1)
-            return True
-        else:
+        if not success:
             print("[FAIL] Editor launch returned False")
-            return False
+        assert success, "Editor launch returned False"
+
+        print(f"[PASS] Editor launched successfully")
+        print(f"  PID: {automation.pid}")
+        print(f"  Window Handle: {automation.window_handle}")
+        print(f"  Window Title: {automation.get_window_title()}")
+        print()
+
+        # Wait a bit
+        time.sleep(2)
+
+        # Close editor
+        automation.close_editor()
+        time.sleep(1)
     except Exception as e:
         print(f"[FAIL] Editor launch failed: {e}")
-        return False
+        pytest.fail(f"Editor launch failed: {e}")
 
 def run_editor_load_file_test(automation, sf2_file):
     """Test 3: Launch Editor and Load File"""
@@ -106,7 +104,7 @@ def run_editor_load_file_test(automation, sf2_file):
 
     if not Path(sf2_file).exists():
         print(f"[SKIP] Test file not found: {sf2_file}")
-        return False
+        pytest.skip(f"Test file not found: {sf2_file}")
 
     try:
         print(f"Loading: {sf2_file}")
@@ -115,7 +113,7 @@ def run_editor_load_file_test(automation, sf2_file):
         success = automation.launch_editor(sf2_file, timeout=30)
         if not success:
             print("[FAIL] Editor launch failed")
-            return False
+        assert success, "Editor launch failed"
 
         print(f"[OK] Editor launched")
         print(f"  PID: {automation.pid}")
@@ -129,16 +127,15 @@ def run_editor_load_file_test(automation, sf2_file):
             print(f"  Window Title: {automation.get_window_title()}")
             print(f"  File Loaded: {automation.is_file_loaded()}")
             print()
-            return True
         else:
             print("[FAIL] File load timeout or failure")
-            return False
+            pytest.fail("File load timeout or failure")
 
     except Exception as e:
         print(f"[FAIL] Test failed: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        pytest.fail(f"Test failed: {e}")
 
 def test_playback_control(automation):
     """Test 4: Playback Control (Start/Stop)"""
@@ -186,19 +183,18 @@ def test_playback_control(automation):
                 print()
 
                 print("[PASS] Playback control test completed")
-                return True
             else:
                 print("[FAIL] Stop playback failed")
-                return False
+                pytest.fail("Stop playback failed")
         else:
             print("[FAIL] Start playback failed")
-            return False
+            pytest.fail("Start playback failed")
 
     except Exception as e:
         print(f"[FAIL] Playback control test failed: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        pytest.fail(f"Playback control test failed: {e}")
 
 def test_state_detection(automation):
     """Test 5: State Detection (Phase 3)"""
@@ -231,11 +227,10 @@ def test_state_detection(automation):
         print()
 
         print("[PASS] State detection working")
-        return True
 
     except Exception as e:
         print(f"[FAIL] State detection test failed: {e}")
-        return False
+        pytest.fail(f"State detection test failed: {e}")
 
 def test_advanced_controls(automation):
     """Test 6: Advanced Controls (Phase 4)"""
@@ -264,11 +259,10 @@ def test_advanced_controls(automation):
         print()
 
         print("[PASS] Advanced control methods exist (implementation pending)")
-        return True
 
     except Exception as e:
         print(f"[FAIL] Advanced controls test failed: {e}")
-        return False
+        pytest.fail(f"Advanced controls test failed: {e}")
 
 def test_window_messages_file_loading(automation):
     """Test 3b: Window Messages File Loading (Alternative Approach)"""
@@ -291,7 +285,7 @@ def test_window_messages_file_loading(automation):
 
     if not Path(sf2_file).exists():
         print(f"[SKIP] Test file not found: {sf2_file}")
-        return False
+        pytest.skip(f"Test file not found: {sf2_file}")
 
     try:
         print("Phase 1: Launch editor (NO file)")
@@ -300,7 +294,7 @@ def test_window_messages_file_loading(automation):
         success = automation.launch_editor(timeout=30)
         if not success:
             print("[FAIL] Editor launch failed")
-            return False
+        assert success, "Editor launch failed"
 
         print(f"[OK] Editor launched")
         print(f"  PID: {automation.pid}")
@@ -323,7 +317,6 @@ def test_window_messages_file_loading(automation):
             print(f"  Window Title: {automation.get_window_title()}")
             print(f"  File Loaded: {automation.is_file_loaded()}")
             print()
-            return True
         else:
             print("[FAIL] File load failed or timeout")
 
@@ -334,13 +327,13 @@ def test_window_messages_file_loading(automation):
                 print("Editor stderr output:")
                 print(output['stderr'][:500])  # First 500 chars
 
-            return False
+            pytest.fail("File load failed or timeout")
 
     except Exception as e:
         print(f"[FAIL] Test failed: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        pytest.fail(f"Test failed: {e}")
 
 def test_editor_info(automation):
     """Test 7: Get Editor Info"""
@@ -357,11 +350,10 @@ def test_editor_info(automation):
         print()
 
         print("[PASS] Editor info retrieved")
-        return True
 
     except Exception as e:
         print(f"[FAIL] Editor info test failed: {e}")
-        return False
+        pytest.fail(f"Editor info test failed: {e}")
 
 def main():
     """Run all tests"""
@@ -374,20 +366,39 @@ def main():
     results = []
 
     # Test 1: Detect editor
-    if not test_editor_detection():
+    try:
+        test_editor_detection()
+        results.append(("Editor Detection", True))
+    except (AssertionError, pytest.fail.Exception) as e:
         print()
-        print("[ABORT] Cannot proceed without SIDFactoryII.exe")
+        print(f"[ABORT] Cannot proceed: {e}")
+        sys.exit(1)
+    except pytest.skip.Exception:
+        print()
+        print("[ABORT] Editor detection skipped")
         sys.exit(1)
 
     automation = SF2EditorAutomation()
 
     try:
         # Test 2: Launch without file
-        results.append(("Launch Editor (No File)", test_editor_launch(automation)))
+        try:
+            test_editor_launch(automation)
+            results.append(("Launch Editor (No File)", True))
+        except (AssertionError, pytest.fail.Exception):
+            results.append(("Launch Editor (No File)", False))
+        except pytest.skip.Exception:
+            results.append(("Launch Editor (No File)", False))
         time.sleep(1)
 
         # Test 3: Launch with file
-        results.append(("Launch and Load File", run_editor_load_file_test(automation, TEST_SF2_FILE)))
+        try:
+            run_editor_load_file_test(automation, TEST_SF2_FILE)
+            results.append(("Launch and Load File", True))
+        except (AssertionError, pytest.fail.Exception):
+            results.append(("Launch and Load File)", False))
+        except pytest.skip.Exception:
+            results.append(("Launch and Load File", False))
 
         # Test 3b: Window messages file loading (alternative approach)
         print()
@@ -395,32 +406,62 @@ def main():
         print("TESTING ALTERNATIVE APPROACH: Window Messages")
         print("=" * 70)
         print()
-        results.append(("Window Messages File Loading", test_window_messages_file_loading(automation)))
+        try:
+            test_window_messages_file_loading(automation)
+            results.append(("Window Messages File Loading", True))
+        except (AssertionError, pytest.fail.Exception):
+            results.append(("Window Messages File Loading", False))
+        except pytest.skip.Exception:
+            results.append(("Window Messages File Loading", False))
 
         # Test 4: Playback control
         if automation.is_editor_running():
-            results.append(("Playback Control", test_playback_control(automation)))
+            try:
+                test_playback_control(automation)
+                results.append(("Playback Control", True))
+            except (AssertionError, pytest.fail.Exception):
+                results.append(("Playback Control", False))
+            except pytest.skip.Exception:
+                results.append(("Playback Control", False))
         else:
             print("[SKIP] Test 4: Editor not running")
             results.append(("Playback Control", False))
 
         # Test 5: State detection
         if automation.is_editor_running():
-            results.append(("State Detection", test_state_detection(automation)))
+            try:
+                test_state_detection(automation)
+                results.append(("State Detection", True))
+            except (AssertionError, pytest.fail.Exception):
+                results.append(("State Detection", False))
+            except pytest.skip.Exception:
+                results.append(("State Detection", False))
         else:
             print("[SKIP] Test 5: Editor not running")
             results.append(("State Detection", False))
 
         # Test 6: Advanced controls
         if automation.is_editor_running():
-            results.append(("Advanced Controls", test_advanced_controls(automation)))
+            try:
+                test_advanced_controls(automation)
+                results.append(("Advanced Controls", True))
+            except (AssertionError, pytest.fail.Exception):
+                results.append(("Advanced Controls", False))
+            except pytest.skip.Exception:
+                results.append(("Advanced Controls", False))
         else:
             print("[SKIP] Test 6: Editor not running")
             results.append(("Advanced Controls", False))
 
         # Test 7: Editor info
         if automation.is_editor_running():
-            results.append(("Editor Info", test_editor_info(automation)))
+            try:
+                test_editor_info(automation)
+                results.append(("Editor Info", True))
+            except (AssertionError, pytest.fail.Exception):
+                results.append(("Editor Info", False))
+            except pytest.skip.Exception:
+                results.append(("Editor Info", False))
         else:
             print("[SKIP] Test 7: Editor not running")
             results.append(("Editor Info", False))

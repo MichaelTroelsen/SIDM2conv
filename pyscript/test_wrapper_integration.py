@@ -9,6 +9,7 @@ import sys
 import os
 from pathlib import Path
 import tempfile
+import pytest
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -22,7 +23,7 @@ def test_python_wrapper():
     test_files = list(Path("Laxity").glob("*.sid"))
     if not test_files:
         print("ERROR: No test files found")
-        return False
+        pytest.skip("No test files found")
 
     test_file = test_files[0]
 
@@ -60,10 +61,10 @@ def test_python_wrapper():
                 print(f"  First line: {lines[0].strip() if lines else 'N/A'}")
             else:
                 print("  [FAIL] Output file not created!")
-                return False
+                pytest.fail("Output file not created!")
         else:
             print(f"  [FAIL] Failed: {result['stderr']}")
-            return False
+            pytest.fail(f"Analysis failed: {result['stderr']}")
 
         print()
 
@@ -91,9 +92,13 @@ def test_python_wrapper():
     print("=" * 70)
     print("[PASS] Wrapper integration test completed successfully!")
     print("=" * 70)
-    return True
 
 
 if __name__ == "__main__":
-    success = test_python_wrapper()
-    sys.exit(0 if success else 1)
+    try:
+        test_python_wrapper()
+        print("\n[SUCCESS] All tests passed!")
+        sys.exit(0)
+    except (AssertionError, pytest.skip.Exception) as e:
+        print(f"\n[FAIL] Test failed: {e}")
+        sys.exit(1)

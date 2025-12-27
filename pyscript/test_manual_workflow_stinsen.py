@@ -12,6 +12,7 @@ Usage:
 import sys
 import time
 from pathlib import Path
+import pytest
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -27,7 +28,7 @@ def test_manual_workflow():
 
     if not Path(sf2_file).exists():
         print(f"[ERROR] SF2 file not found: {sf2_file}")
-        return False
+        pytest.skip(f"SF2 file not found: {sf2_file}")
 
     print("\n" + "=" * 70)
     print("Manual Workflow Test - Stinsen SF2 File")
@@ -106,8 +107,6 @@ def test_manual_workflow():
             print()
             print("The manual workflow is working correctly!")
             print()
-
-            return True
         else:
             print("  [WARN] No file loaded in editor")
             print()
@@ -116,7 +115,7 @@ def test_manual_workflow():
             print(f"  2. Navigate to: {Path(sf2_file).absolute()}")
             print(f"  3. Press Enter to load")
             print(f"  4. Run this test again")
-            return False
+            pytest.skip("No file loaded in editor - manual loading required")
     else:
         print("  [INFO] No running editor found")
         print()
@@ -144,7 +143,7 @@ def test_manual_workflow():
         print()
         print("=" * 70)
         print()
-        return False
+        pytest.skip("No running editor found - manual launch required")
 
 
 def demo_workflow():
@@ -192,12 +191,16 @@ if __name__ == '__main__':
     print("Running live test...")
     print()
 
-    success = test_manual_workflow()
-
-    if not success:
+    try:
+        test_manual_workflow()
+        print("\n[SUCCESS] Manual workflow test passed!")
+        sys.exit(0)
+    except (AssertionError, pytest.skip.Exception) as e:
+        print(f"\n[SKIP] Test skipped: {e}")
         print("\nShowing workflow demo...")
         demo_workflow()
 
         print("NOTE: To run the live test, follow the instructions above")
         print("      and run this script again.")
         print()
+        sys.exit(0)  # Skip is not a failure
