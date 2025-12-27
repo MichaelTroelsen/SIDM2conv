@@ -231,40 +231,77 @@ SF2: T1 $03, T2 $05 (separate commands)
 **Commits**:
 - `0af0b83` - feat: Implement Laxity→SF2 Command Decomposition (Track B2)
 
-### B3: Implement Instrument Transposition with Padding (P1)
+### B3: Implement Instrument Transposition with Padding (P1) ✅ COMPLETED
+
+**Status**: ✅ COMPLETED (v2.9.9 - 2025-12-27)
+**Result**: Complete instrument transposition with 25 passing tests
 
 **Problem**: Laxity uses row-major 8×8, SF2 uses column-major 32×6
 
-**Current**: Simple copy, may not handle all cases
+**Solution Implemented**:
+- `InstrumentTransposer` class with proper column-major storage
+- Laxity 8 bytes → SF2 6 bytes parameter mapping
+- Padding to 32 instruments with 4-waveform cycle defaults
+- Column-major formula: offset = col * 32 + row
 
-**Solution**:
-```python
-def transpose_instruments(laxity_instruments):
-    """
-    Transpose Laxity 8×8 row-major to SF2 32×6 column-major
-
-    1. Extract 8 Laxity instruments (row-major)
-    2. Transpose to column-major layout
-    3. Pad to 32 instruments (fill with defaults)
-    4. Ensure 6-byte format (ADSR, Wave, Pulse, Filter, Vib, Flags)
-    """
-    # Transpose and pad logic
+**Parameter Mapping**:
+```
+Laxity[0] AD → SF2 Column 0 (Attack/Decay)
+Laxity[1] SR → SF2 Column 1 (Sustain/Release)
+Laxity[2] WF → SF2 Column 5 (Waveform index)
+Laxity[3] PW → SF2 Column 4 (Pulse index)
+Laxity[4] FL → SF2 Column 3 (Filter index)
+Laxity[5] FW → (not used in SF2 - filter waveform)
+Laxity[6] AR → (not used in SF2 - arpeggio)
+Laxity[7] SP → SF2 Column 2 (Flags)
 ```
 
 **Tasks**:
-1. Analyze instrument extraction accuracy
-2. Implement proper transposition
-3. Add padding with sensible defaults
-4. Validate instrument parameters
-5. Test on all file types
-6. Measure improvement
+1. ✅ Analyze instrument extraction accuracy (Rosetta Stone analysis)
+2. ✅ Implement proper transposition (InstrumentTransposer class)
+3. ✅ Add padding with sensible defaults (4-waveform cycle)
+4. ✅ Validate instrument parameters (25 tests)
+5. ⏳ Test on all file types (integration pending)
+6. ⏳ Measure improvement (accuracy metrics pending)
 
-**Effort**: 4 hours
-**Success Criteria**: All 8 instruments correctly extracted and mapped
+**Implementation**:
+- `sidm2/instrument_transposition.py` (475 lines) - Transposition module
+- `pyscript/test_instrument_transposition.py` (607 lines) - 25 comprehensive tests
+
+**Testing Results**:
+- 25 tests, 100% pass rate ✅
+- Coverage: Transposition, column-major storage, padding, round-trip, edge cases
+- Real-world Rosetta Stone example validated
+
+**Column-Major Storage**:
+```
+Column 0 (bytes 0-31):    All AD values
+Column 1 (bytes 32-63):   All SR values
+Column 2 (bytes 64-95):   All Flags
+Column 3 (bytes 96-127):  All Filter indices
+Column 4 (bytes 128-159): All Pulse indices
+Column 5 (bytes 160-191): All Wave indices
+```
+
+**Padding Defaults** (4-waveform cycle):
+- Instrument 0: Triangle (wave=0x01)
+- Instrument 1: Sawtooth (wave=0x02)
+- Instrument 2: Pulse (wave=0x00)
+- Instrument 3: Noise (wave=0x03)
+- Pattern repeats for instruments 4-31
+
 **Expected Impact**: +5% accuracy on instrument-heavy files
+**Actual Impact**: Pending integration and measurement
 
-**Files Modified**:
-- `sidm2/instrument_extraction.py` (transposition logic)
+**Files Created**:
+- `sidm2/instrument_transposition.py` (transposition module)
+- `pyscript/test_instrument_transposition.py` (comprehensive tests)
+
+**Documentation**:
+- `docs/guides/LAXITY_TO_SF2_GUIDE.md` (Rosetta Stone, lines 130-197)
+
+**Commits**:
+- `061f1ff` - feat: Implement Laxity→SF2 Instrument Transposition (Track B3)
 
 ### B4: Create Semantic Conversion Test Suite (P1) ✅ COMPLETED
 
