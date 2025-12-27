@@ -9,32 +9,37 @@ echo.
 
 set FAILED=0
 
-echo [1/6] Running converter tests...
+echo [1/7] Running converter tests...
 python scripts/test_converter.py
 if %ERRORLEVEL% NEQ 0 set FAILED=1
 
 echo.
-echo [2/6] Running SF2 format tests...
+echo [2/7] Running SF2 format tests...
 python scripts/test_sf2_format.py
 if %ERRORLEVEL% NEQ 0 set FAILED=1
 
 echo.
-echo [3/6] Running Laxity driver tests...
+echo [3/7] Running Laxity driver tests...
 python scripts/test_laxity_driver.py
 if %ERRORLEVEL% NEQ 0 set FAILED=1
 
 echo.
-echo [4/6] Running 6502 disassembler tests...
+echo [4/7] Running driver selection tests...
+python pyscript/test_driver_selector.py
+if %ERRORLEVEL% NEQ 0 set FAILED=1
+
+echo.
+echo [5/7] Running 6502 disassembler tests...
 python pyscript/test_disasm6502.py
 if %ERRORLEVEL% NEQ 0 set FAILED=1
 
 echo.
-echo [5/6] Running SIDdecompiler tests...
+echo [6/7] Running SIDdecompiler tests...
 python pyscript/test_siddecompiler_complete.py
 if %ERRORLEVEL% NEQ 0 set FAILED=1
 
 echo.
-echo [6/6] Running SIDwinder trace tests...
+echo [7/7] Running SIDwinder trace tests...
 python pyscript/test_sidwinder_trace.py
 if %ERRORLEVEL% NEQ 0 set FAILED=1
 
