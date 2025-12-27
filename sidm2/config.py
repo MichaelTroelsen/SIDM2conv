@@ -11,6 +11,9 @@ from typing import Optional, List
 from pathlib import Path
 import json
 
+# Import rich error classes for user-friendly error messages
+from sidm2.errors import ConfigurationError
+
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +33,13 @@ class DriverConfig:
     def validate(self):
         """Validate driver configuration"""
         if self.default_driver not in self.available_drivers:
-            raise ValueError(f"Invalid default driver: {self.default_driver}. "
-                           f"Must be one of {self.available_drivers}")
+            raise ConfigurationError(
+                setting='default_driver',
+                value=self.default_driver,
+                valid_options=self.available_drivers,
+                example='default_driver: laxity',
+                docs_link='guides/LAXITY_DRIVER_USER_GUIDE.md'
+            )
 
 
 @dataclass
@@ -78,10 +86,20 @@ class ExtractionConfig:
     def validate(self):
         """Validate extraction configuration"""
         if self.validation_level not in ['strict', 'normal', 'permissive']:
-            raise ValueError(f"Invalid validation level: {self.validation_level}")
+            raise ConfigurationError(
+                setting='validation_level',
+                value=self.validation_level,
+                valid_options=['strict', 'normal', 'permissive'],
+                example='validation_level: normal'
+            )
 
         if self.siddump_duration < 1 or self.siddump_duration > 300:
-            raise ValueError(f"Siddump duration must be 1-300 seconds")
+            raise ConfigurationError(
+                setting='siddump_duration',
+                value=self.siddump_duration,
+                valid_options=['1-300 seconds'],
+                example='siddump_duration: 60'
+            )
 
 
 @dataclass
@@ -100,7 +118,13 @@ class LoggingConfig:
         """Validate logging configuration"""
         valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
         if self.level not in valid_levels:
-            raise ValueError(f"Invalid log level: {self.level}. Must be one of {valid_levels}")
+            raise ConfigurationError(
+                setting='log_level',
+                value=self.level,
+                valid_options=valid_levels,
+                example='log_level: INFO',
+                docs_link='guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md'
+            )
 
 
 @dataclass

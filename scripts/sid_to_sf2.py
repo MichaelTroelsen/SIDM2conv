@@ -1019,7 +1019,19 @@ def convert_sid_to_both_drivers(input_path: str, output_dir: str = None, config:
 
         # Check if at least one conversion succeeded
         if all('error' in v or 'skipped' in v for v in results.values()):
-            raise IOError("Failed to generate any SF2 files")
+            error_details = [f"  - {k}: {v.get('error', 'unknown')}" for k, v in results.items() if 'error' in v]
+            raise sidm2_errors.ConversionError(
+                stage='SF2 Generation',
+                reason='All driver types failed to generate SF2 files',
+                input_file=str(input_path),
+                suggestions=[
+                    'Check if input SID file is valid: tools/player-id.exe input.sid',
+                    'Try a specific driver manually: --driver laxity or --driver driver11',
+                    'Enable verbose logging: --verbose',
+                    'Check error details above for specific failures',
+                    'Verify SID file format with: hexdump -C input.sid | head -20'
+                ]
+            )
 
         return results
 
