@@ -153,7 +153,13 @@ class SIDToMidiConverter:
             logger.info(f"  Generated {len(self.midi_events)} MIDI events")
 
         except Exception as e:
-            logger.error(f"Emulation failed: {e}")
+            logger.error(
+                f"Emulation failed: {e}\n"
+                f"  Suggestion: SID emulation error during MIDI conversion\n"
+                f"  Check: Verify SID file is valid and playable\n"
+                f"  Try: Test SID file in VICE emulator first\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#midi-emulation-errors"
+            )
             import traceback
             traceback.print_exc()
             raise
@@ -456,7 +462,13 @@ def convert_sid_to_midi(sid_path: str, midi_path: str, frames: int = 5000, song:
         return True
 
     except Exception as e:
-        logger.error(f"\n[ERROR] Conversion failed: {e}")
+        logger.error(
+            f"\n[ERROR] Conversion failed: {e}\n"
+            f"  Suggestion: SID to MIDI conversion encountered error\n"
+            f"  Check: Review error trace for specific issue\n"
+            f"  Try: Reduce frame count or test with simpler SID file\n"
+            f"  See: docs/guides/TROUBLESHOOTING.md#midi-conversion-errors"
+        )
         import traceback
         traceback.print_exc()
         return False
@@ -480,7 +492,13 @@ if __name__ == '__main__':
     frames = int(sys.argv[3]) if len(sys.argv) > 3 else 5000
 
     if not os.path.exists(sid_file):
-        logger.error(f"SID file not found: {sid_file}")
+        logger.error(
+            f"SID file not found: {sid_file}\n"
+            f"  Suggestion: Specified SID file does not exist\n"
+            f"  Check: Verify file path is correct\n"
+            f"  Try: Use absolute path or verify file location\n"
+            f"  See: docs/guides/TROUBLESHOOTING.md#file-not-found-issues"
+        )
         sys.exit(1)
 
     success = convert_sid_to_midi(sid_file, midi_file, frames=frames)
