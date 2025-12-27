@@ -52,7 +52,13 @@ def convert_all_laxity(sid_dir='SID', output_dir='output'):
 
     # Check if input directory exists
     if not os.path.isdir(sid_dir):
-        logger.error(f"Input directory not found: {sid_dir}")
+        logger.error(
+            f"Input directory not found: {sid_dir}\n"
+            f"  Suggestion: Specified directory does not exist\n"
+            f"  Check: Verify directory path is correct\n"
+            f"  Try: Use absolute path or create directory first\n"
+            f"  See: docs/guides/TROUBLESHOOTING.md#directory-not-found"
+        )
         return False
 
     # Get list of SID files
@@ -100,18 +106,42 @@ def convert_all_laxity(sid_dir='SID', output_dir='output'):
                 logger.info(f"  SUCCESS: {output_file} ({file_size} bytes)")
                 success_count += 1
             else:
-                logger.error(f"  FAILED: Conversion failed for {sid_file}")
+                logger.error(
+                    f"  FAILED: Conversion failed for {sid_file}\n"
+                    f"  Suggestion: sid_to_sf2.py returned error for this file\n"
+                    f"  Check: Review error message below for specific issue\n"
+                    f"  Try: Test file individually to diagnose problem\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#conversion-failures"
+                )
                 if result.stderr:
-                    logger.error(f"  Error: {result.stderr[:200]}")
+                    logger.error(
+                        f"  Error: {result.stderr[:200]}\n"
+                        f"  Suggestion: Detailed error from conversion script\n"
+                        f"  Check: Review error details for root cause\n"
+                        f"  Try: Enable debug mode for full error trace\n"
+                        f"  See: docs/guides/TROUBLESHOOTING.md#conversion-stderr"
+                    )
                 failed_count += 1
                 failed_files.append(sid_file)
 
         except subprocess.TimeoutExpired:
-            logger.error(f"  TIMEOUT: Conversion timeout for {sid_file}")
+            logger.error(
+                f"  TIMEOUT: Conversion timeout for {sid_file}\n"
+                f"  Suggestion: Conversion exceeded 60 second limit\n"
+                f"  Check: File may be complex or conversion stuck\n"
+                f"  Try: Test file individually with increased timeout\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#conversion-timeout"
+            )
             failed_count += 1
             failed_files.append(sid_file)
         except Exception as e:
-            logger.error(f"  EXCEPTION: Error converting {sid_file}: {e}")
+            logger.error(
+                f"  EXCEPTION: Error converting {sid_file}: {e}\n"
+                f"  Suggestion: Unexpected error during conversion\n"
+                f"  Check: Review error details for specific issue\n"
+                f"  Try: Test file individually to diagnose problem\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#unexpected-conversion-errors"
+            )
             failed_count += 1
             failed_files.append(sid_file)
 
@@ -175,7 +205,13 @@ def main():
         )
         sys.exit(0 if success else 1)
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.error(
+            f"Unexpected error: {e}\n"
+            f"  Suggestion: Batch Laxity conversion encountered unexpected error\n"
+            f"  Check: Review error trace below for specific issue\n"
+            f"  Try: Enable debug logging for more information\n"
+            f"  See: docs/guides/TROUBLESHOOTING.md#unexpected-errors"
+        )
         import traceback
         traceback.print_exc()
         sys.exit(1)
