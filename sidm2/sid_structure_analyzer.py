@@ -55,7 +55,13 @@ class SIDStructureAnalyzer:
         dump_data = self._run_siddump(sid_path, duration)
 
         if not dump_data:
-            logger.error("Failed to get siddump output")
+            logger.error(
+                "Failed to get siddump output\n"
+                "  Suggestion: siddump may have failed to analyze this SID file\n"
+                "  Check: Verify SID file has valid PSID/RSID header\n"
+                "  Try: Use Python siddump for better compatibility\n"
+                "  See: docs/guides/TROUBLESHOOTING.md#siddump-no-output"
+            )
             return self._empty_structure()
 
         # Parse siddump output
@@ -93,14 +99,32 @@ class SIDStructureAnalyzer:
             if result.returncode == 0:
                 return result.stdout
             else:
-                logger.error(f"siddump failed: {result.stderr}")
+                logger.error(
+                    f"siddump failed: {result.stderr}\n"
+                    f"  Suggestion: SID file may be incompatible with siddump\n"
+                    f"  Check: Review stderr output for specific error details\n"
+                    f"  Try: Use Python siddump instead for better compatibility\n"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#siddump-failures"
+                )
                 return ""
 
         except subprocess.TimeoutExpired:
-            logger.error(f"siddump timed out after {duration + 30} seconds")
+            logger.error(
+                f"siddump timed out after {duration + 30} seconds\n"
+                f"  Suggestion: Reduce analysis duration for faster results\n"
+                f"  Check: SID file may have very long or infinite playback\n"
+                f"  Try: Use shorter duration (e.g., 10-15 seconds)\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#siddump-timeout"
+            )
             return ""
         except Exception as e:
-            logger.error(f"siddump execution failed: {e}")
+            logger.error(
+                f"siddump execution failed: {e}\n"
+                f"  Suggestion: Unexpected error during siddump execution\n"
+                f"  Check: Verify siddump.exe is available in tools/ directory\n"
+                f"  Try: Use Python siddump for cross-platform compatibility\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#siddump-execution-errors"
+            )
             return ""
 
     def _parse_siddump(self, dump_data: str) -> List[Dict]:
