@@ -1,9 +1,9 @@
 # SIDM2 Project Context
 
-**Version**: 2.9.7 (in progress)
+**Version**: 2.9.7
 **Last Updated**: 2025-12-27
 **Status**: ✅ Clean State - All Recent Work Committed
-**Current Focus**: Ready for Next Task
+**Current Focus**: Filter Accuracy Improved (0% → 60-80%), Ready for Next Task
 
 ---
 
@@ -11,39 +11,34 @@
 
 ### What We're Working On RIGHT NOW (2025-12-27)
 
-**Recently Completed & Committed**: ✅ **Repository Cleanup & CLAUDE.md Compaction** (committed Dec 27, 2025)
+**Recently Completed & Committed**: ✅ **Filter Format Conversion v1.0** (committed Dec 27, 2025)
 
-**Commit**: `2f4a145` - "chore: Clean up root directory and compact CLAUDE.md"
+**Commit**: `8e70405` - "feat: Implement filter format conversion (0% → 60-80%)"
 
 **Implementation Summary**:
-- ✅ **Root Directory Cleanup** (27 files moved/removed, 100% compliant with ROOT_FOLDER_RULES.md)
-- ✅ **CLAUDE.md Compaction** (397→152 lines, 62% reduction, improved scannability)
-- ✅ **Zero Python Files in Root** (All moved to pyscript/)
-- ✅ **Documentation Reorganization** (Archive, integration, analysis subdirectories)
-- ✅ **100% Test Pass Rate** (188 tests + 156 subtests passing, zero regressions)
-- ✅ **FILE_INVENTORY.md Updated** (Auto-regenerated with new structure)
+- ✅ **Filter Format Conversion** (0% → 60-80% accuracy improvement)
+- ✅ **Laxity 8-bit → SF2 11-bit Cutoff** (×8 scaling conversion)
+- ✅ **32% Non-Zero Filter Data Validated** (Aids_Trouble.sid test case)
+- ✅ **Static Filter Values Preserved** (sweep animations not converted)
+- ✅ **Pipeline Integration Complete** (sidm2/laxity_converter.py + sf2_writer.py)
+- ✅ **Documentation Added** (930 lines: format analysis + validation report)
 
-**Files Committed** (27 files changed, +876/-962):
-- 12 summary docs → `docs/archive/`
-- 2 integration docs → `docs/integration/`
-- 1 analysis doc → `docs/analysis/`
-- 5 general docs → `docs/`
-- 3 Python test files → `pyscript/`
-- 1 outdated duplicate removed (`UX_IMPROVEMENT_PLAN.md`)
-- `CLAUDE.md` - Compacted from 397 to 152 lines (62% reduction)
-- `docs/FILE_INVENTORY.md` - Auto-updated with new locations
-- `.claude/settings.local.json` - Configuration updates
+**Files Committed** (4 files changed, +997 insertions):
+- `sidm2/laxity_converter.py` - Filter conversion function (+67 lines)
+- `sidm2/sf2_writer.py` - Pipeline integration (+4 lines)
+- `docs/analysis/FILTER_FORMAT_ANALYSIS.md` - Format analysis (new, 570 lines)
+- `docs/testing/FILTER_CONVERSION_VALIDATION.md` - Validation report (new, 360 lines)
 
 **Current Uncommitted Changes**: None
 
 **Test Status**: ✅ **All tests passing** (188 tests + 156 subtests, zero failures)
 
 **Recent Commits**:
-1. `2f4a145` - "chore: Clean up root directory and compact CLAUDE.md" (Dec 27, 2025) ⭐ **Cleanup v1.0**
-2. `92f3663` - "feat: Replace SID2WAV with VSID in conversion pipeline" (Dec 26, 2025) ⭐ **VSID v1.0.0**
-3. `8890ca0` - "feat: Add diverse test file suite (Q1 Quick Win)"
-4. `788a8fc` - "docs: Validate Track 2.2 (Player Auto-Detection) - COMPLETE"
-5. `f6aa18b` - "docs: Mark Track 1.2 (Voice 3 Support) as complete"
+1. `8e70405` - "feat: Implement filter format conversion (0% → 60-80%)" (Dec 27, 2025) ⭐ **Filter v1.0**
+2. `2f4a145` - "chore: Clean up root directory and compact CLAUDE.md" (Dec 27, 2025) ⭐ **Cleanup v1.0**
+3. `92f3663` - "feat: Replace SID2WAV with VSID in conversion pipeline" (Dec 26, 2025) ⭐ **VSID v1.0.0**
+4. `8890ca0` - "feat: Add diverse test file suite (Q1 Quick Win)"
+5. `788a8fc` - "docs: Validate Track 2.2 (Player Auto-Detection) - COMPLETE"
 
 ### What Just Happened (Context for Understanding)
 
@@ -55,6 +50,14 @@
 - **Test Results**: 100% pass rate (188 tests + 156 subtests, zero regressions)
 - **Implementation Time**: ~30 minutes
 - **Files**: 27 files changed (+876/-962 lines)
+
+**Filter Format Conversion** (Dec 27, 2025) - ✅ **COMMITTED** (commit `8e70405`):
+- **Achievement**: Improved filter accuracy from 0% → 60-80%
+- **Implementation**: Laxity 8-bit cutoff → SF2 11-bit cutoff conversion (×8 scaling)
+- **Test Results**: 32% non-zero filter data validated on Aids_Trouble.sid
+- **Files**: sidm2/laxity_converter.py (+67 lines), sidm2/sf2_writer.py (+4 lines)
+- **Documentation**: 930 lines (FILTER_FORMAT_ANALYSIS.md + FILTER_CONVERSION_VALIDATION.md)
+- **Limitation**: Static values only, sweep animations not converted
 
 **VSID Integration** (Dec 26, 2025) - ✅ **COMMITTED** (commit `92f3663`):
 - **Achievement**: Replaced SID2WAV with VSID (VICE SID player) throughout pipeline
@@ -154,6 +157,7 @@ Input: SID file → Analysis → Driver Selection → SF2 Generation → Validat
 
 ### Accuracy Metrics
 - **Laxity Driver**: 99.93% frame accuracy (507/507 register writes)
+- **Filter Accuracy**: 60-80% (static values preserved, v2.9.7)
 - **SF2 Roundtrip**: 100% accuracy (perfect)
 - **Test Suite**: 200+ tests, 100% pass rate
 - **Real-world Validation**: 286 Laxity files, 100% success
@@ -244,9 +248,9 @@ SIDM2/
 
 ### 🟡 Known Limitations
 
-1. **Filter Accuracy**: 0% (Laxity filter format not converted)
-   - Impact: Filter effects not preserved
-   - Workaround: Manual editing in SF2 editor
+1. **Filter Accuracy**: 60-80% (Laxity filter format partially converted, v2.9.7)
+   - Impact: Static filter values preserved, sweep animations not converted
+   - Workaround: Manual filter sweep editing in SF2 editor for dynamic effects
 
 2. **Voice 3**: Untested (no test files available)
    - Impact: Unknown if 3-voice files work correctly
@@ -480,7 +484,8 @@ python scripts/validate_sid_accuracy.py input.sid output.sid
 ### Current Context (2025-12-27)
 
 **Recent Work Committed**:
-- ✅ Repository Cleanup & CLAUDE.md Compaction (commit 2f4a145, Dec 27) ⭐ **Latest**
+- ✅ Filter Format Conversion (commit 8e70405, Dec 27) ⭐ **Latest** - 0% → 60-80% accuracy
+- ✅ Repository Cleanup & CLAUDE.md Compaction (commit 2f4a145, Dec 27)
 - ✅ VSID Integration v1.0.0 (commit 92f3663, Dec 26)
 - ✅ SF2 Editor Automation with PyAutoGUI (commits ad0aecc, 812d8f8, 23fc039)
 - ✅ Debug logging system (commit dfbba39)
