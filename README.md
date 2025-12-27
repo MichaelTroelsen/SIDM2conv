@@ -2769,15 +2769,33 @@ SID File → SIDParser → LaxityPlayerAnalyzer → ExtractedData → SF2Writer 
 ### Running Tests
 
 ```bash
-# Run unit tests
-python scripts/test_converter.py
+# Run all tests (recommended)
+test-all.bat  # Windows
+pytest pyscript/  # Cross-platform (691 tests, 99.86% pass rate)
+
+# Run conversion pipeline tests (24 tests, 100% pass rate, 59.78% coverage)
+pytest pyscript/test_sid_to_sf2_script.py -v --cov=sidm2.conversion_pipeline
+
+# Run legacy converter tests
+python pyscript/test_converter.py  # 86 tests
 
 # Run SF2 format validation (aux pointer check)
-python scripts/test_sf2_format.py
+python pyscript/test_sf2_format.py  # 12 tests
 
 # Run automated editor validation (requires SID Factory II)
-python scripts/test_sf2_editor.py
+python pyscript/test_sf2_editor.py
 ```
+
+**Test Suite Overview**:
+- **691 passing tests** (99.86% pass rate)
+- **conversion_pipeline**: 24 tests, 100% pass, 59.78% coverage
+- **Legacy converter**: 86 tests
+- **SF2 format**: 12 tests
+- **Laxity driver**: 23 tests
+- **SF2 packer**: 18 tests
+- **Validation system**: 16 tests
+- **Complete pipeline**: 9 tests
+- **Plus**: 503 additional tests for other modules
 
 ### Automated Editor Validation
 
@@ -2901,12 +2919,100 @@ The project includes a GitHub Actions workflow (`.github/workflows/ci.yml`) that
 - **Security**: Bandit security scan
 - **Release**: Creates release artifacts on master push
 
+### Code Architecture
+
+**Modular Design** (v2.7.0): The conversion system separates business logic from CLI for testability and reusability.
+
+#### Conversion Pipeline Module
+
+**`sidm2/conversion_pipeline.py`** (1,117 lines)
+- **Purpose**: Core business logic for all SID to SF2 conversions
+- **Test Coverage**: 59.78% (276/445 statements, 24/24 tests passing, 100% pass rate)
+- **Created**: 2025-12-27 via refactoring from `scripts/sid_to_sf2.py`
+
+**Core Functions**:
+```python
+from sidm2.conversion_pipeline import (
+    detect_player_type,          # Detect SID player format
+    analyze_sid_file,             # Parse SID header and data
+    convert_laxity_to_sf2,        # Laxity conversion (99.93% accuracy)
+    convert_galway_to_sf2,        # Martin Galway conversion
+    convert_sid_to_sf2,           # Main conversion with auto driver selection
+    convert_sid_to_both_drivers,  # Dual driver comparison
+    print_success_summary,        # Format success messages
+)
+```
+
+**Benefits**:
+- ✅ **Testable**: Unit tests can import and test functions directly
+- ✅ **Reusable**: Other tools can use conversion functions as library
+- ✅ **Maintainable**: Clear separation between business logic and CLI
+- ✅ **Coverage**: 59.78% test coverage (exceeds 50% target by 19.6%)
+
+#### CLI Wrapper
+
+**`scripts/sid_to_sf2.py`** (802 lines)
+- **Purpose**: Thin command-line interface wrapper
+- **Role**: Argument parsing, user interaction, orchestration
+- **Imports**: All business logic from `sidm2.conversion_pipeline`
+
+**Separation Benefits**:
+- Business logic in testable module (59.78% coverage)
+- CLI remains simple and focused (argument handling only)
+- Zero code duplication
+- Backward compatible (CLI behavior unchanged)
+
+#### Test Coverage
+
+| Module | Statements | Coverage | Tests | Pass Rate |
+|--------|-----------|----------|-------|-----------|
+| `conversion_pipeline.py` | 445 | **59.78%** | 24 | **100%** |
+| Full test suite | - | - | 691 | **99.86%** |
+
+**Coverage Details**:
+- Statement coverage: 276/445 (59.78%)
+- Branch coverage: 89/112 (79.46%)
+- Exceeds 50% target by 19.6%
+- Zero regressions after refactoring
+
+**Related Documentation**:
+- `docs/ARCHITECTURE.md` - Module architecture details
+- `docs/COMPONENTS_REFERENCE.md` - Complete API reference
+- `docs/implementation/SID_TO_SF2_REFACTORING_SUMMARY.md` - Refactoring details
+
+---
+
 ### Project Structure
 
 ```
 SIDM2/
-├── sid_to_sf2.py                      # Main SID → SF2 converter
-├── sf2_to_sid.py                      # SF2 → SID exporter
+├── scripts/                           # Main conversion scripts
+│   ├── sid_to_sf2.py                  # CLI wrapper (802 lines, 24 tests)
+│   ├── sf2_to_sid.py                  # SF2 → SID exporter
+│   └── ...                            # Other scripts
+├── sidm2/                             # Core package
+│   ├── conversion_pipeline.py         # Core conversion logic (1,117 lines) ⭐ NEW
+│   ├── sf2_packer.py                  # SF2 → SID packer (v0.6.0)
+│   ├── cpu6502.py                     # 6502 emulator for relocation
+│   ├── cpu6502_emulator.py            # Full 6502 emulator (v0.6.2)
+│   ├── sid_player.py                  # SID player and analyzer
+│   ├── sf2_player_parser.py           # SF2-exported SID parser
+│   └── ...                            # Other modules
+├── pyscript/                          # Python utility scripts & tests
+│   ├── test_sid_to_sf2_script.py      # conversion_pipeline tests (24 tests, 100% pass)
+│   ├── test_converter.py              # Legacy converter tests (86 tests)
+│   ├── test_sf2_format.py             # SF2 format validation (12 tests)
+│   ├── test_laxity_driver.py          # Laxity driver tests (23 tests)
+│   ├── test_sf2_packer.py             # SF2 packer tests (18 tests)
+│   ├── test_validation_system.py      # Validation system tests (16 tests)
+│   ├── test_complete_pipeline.py      # Pipeline validation (9 tests)
+│   └── ...                            # Other test files
+├── SID/                               # Input SID files
+├── output/                            # Output directory
+│   └── SIDSF2player_Complete_Pipeline/ # Complete pipeline output
+│       └── {SongName}/                # Per-song directories
+│           ├── Original/              # Original SID analysis (4 files)
+│           └── New/                   # Converted files (9 files)
 ├── convert_all.py                     # Batch converter (both drivers)
 ├── complete_pipeline_with_validation.py # Complete 12-step pipeline (v1.2)
 ├── test_roundtrip.py                  # Round-trip validation

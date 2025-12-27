@@ -898,7 +898,13 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
                 # Log errors but don't fail the conversion
                 for check in validation_result.checks:
                     if check.severity == "ERROR":
-                        logger.error(f"  - {check.name}: {check.message}")
+                        logger.error(
+                            f"  - {check.name}: {check.message}\n"
+                            f"    Suggestion: This validation check failed\n"
+                            f"    Check: Review error details above for root cause\n"
+                            f"    Try: Re-generate SF2 file or fix source data\n"
+                            f"    See: docs/guides/TROUBLESHOOTING.md#sf2-validation-failures"
+                        )
         except Exception as e:
             logger.warning(f"SF2 format validation skipped (validator unavailable): {e}")
             validation_result = None

@@ -57,7 +57,13 @@ def demo_logging_levels():
     logger.debug("This is a DEBUG message (verbosity 3)")
     logger.info("This is an INFO message (verbosity 2)")
     logger.warning("This is a WARNING message (verbosity 1)")
-    logger.error("This is an ERROR message (verbosity 0)")
+    logger.error(
+        "This is an ERROR message (verbosity 0)\n"
+        "  Suggestion: This is a demo error message\n"
+        "  Check: Review logging configuration\n"
+        "  Try: Adjust verbosity level with --debug or -v flags\n"
+        "  See: docs/guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md"
+    )
 
     print("\nNote: Current verbosity determines which messages are shown")
     print("Try running with --debug, --quiet, or -v/-vv flags\n")
