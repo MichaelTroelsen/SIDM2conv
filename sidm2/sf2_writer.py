@@ -337,12 +337,14 @@ class SF2Writer:
             self._print_extraction_summary()
             return
 
-        # PACKED MODE: Don't pre-allocate fixed 256-byte slots
-        # Sequences will dynamically extend the buffer as needed during injection
-        # Just ensure we have space up to the sequence start address
-        required_size = self._addr_to_offset(self.driver_info.sequence_start) + 256  # Small initial buffer
+        # PACKED MODE: Pre-allocate enough space for sequences and orderlists
+        # Calculate required size based on actual data
+        sequence_space = sum(len(seq) * 4 for seq in (self.data.sequences or [])) + 2048  # 4 bytes per event + overhead
+        orderlist_space = sum(len(ol) * 2 for ol in (self.data.orderlists or [])) + 1024  # 2 bytes per entry + overhead
+        required_size = self._addr_to_offset(self.driver_info.sequence_start) + sequence_space + orderlist_space
+
         if len(self.output) < required_size:
-            logger.debug(f"  Ensuring minimum file size: {required_size} bytes")
+            logger.debug(f"  Pre-allocating buffer: {required_size} bytes (sequences: {sequence_space}, orderlists: {orderlist_space})")
             self.output.extend(bytearray(required_size - len(self.output)))
 
         if self.data.instruments or self.data.raw_sequences:
@@ -498,13 +500,22 @@ class SF2Writer:
         for track, orderlist in enumerate(self.data.orderlists[:3]):
             current_addr = self.driver_info.orderlist_start + (track * ORDERLIST_SLOT_SIZE)
 
-            if ptr_lo_offset + track < len(self.output):
-                self.output[ptr_lo_offset + track] = current_addr & 0xFF
-            if ptr_hi_offset + track < len(self.output):
-                self.output[ptr_hi_offset + track] = (current_addr >> 8) & 0xFF
+            # Ensure buffer is large enough for pointers
+            if ptr_lo_offset + track >= len(self.output):
+                self.output.extend(bytearray(ptr_lo_offset + track - len(self.output) + 1))
+            if ptr_hi_offset + track >= len(self.output):
+                self.output.extend(bytearray(ptr_hi_offset + track - len(self.output) + 1))
+
+            self.output[ptr_lo_offset + track] = current_addr & 0xFF
+            self.output[ptr_hi_offset + track] = (current_addr >> 8) & 0xFF
 
             ol_offset = self._addr_to_offset(current_addr)
             last_trans = -1
+
+            # Pre-expand buffer for this orderlist
+            estimated_ol_size = len(orderlist) * 2 + 10  # 2 bytes per entry + end marker
+            if ol_offset + estimated_ol_size >= len(self.output):
+                self.output.extend(bytearray(ol_offset + estimated_ol_size - len(self.output) + 1))
 
             for item in orderlist:
                 # Handle both formats: simple int or (transposition, seq_idx) tuple
@@ -518,18 +529,16 @@ class SF2Writer:
                 sf2_trans = max(0x80, min(0xBF, sf2_trans))
 
                 if sf2_trans != last_trans:
-                    if ol_offset < len(self.output):
-                        self.output[ol_offset] = sf2_trans
-                        ol_offset += 1
-                        last_trans = sf2_trans
-
-                if ol_offset < len(self.output):
-                    self.output[ol_offset] = seq_idx & 0x7F
+                    self.output[ol_offset] = sf2_trans
                     ol_offset += 1
+                    last_trans = sf2_trans
 
-            if ol_offset + 1 < len(self.output):
-                self.output[ol_offset] = 0xFF
-                self.output[ol_offset + 1] = 0x00
+                self.output[ol_offset] = seq_idx & 0x7F
+                ol_offset += 1
+
+            # Write end marker
+            self.output[ol_offset] = 0xFF
+            self.output[ol_offset + 1] = 0x00
 
             tracks_written += 1
 
@@ -1156,6 +1165,25 @@ class SF2Writer:
                     sf2_commands[index] = (cmd_type, param1, param2)
 
             logger.info(f"    Using pre-built command table with {len(self.data.command_index_map)} entries (Phase 1)")
+        elif hasattr(self.data, 'sequences') and self.data.sequences:
+            # Extract commands from parsed sequences (SequenceEvent format)
+            sf2_commands = [(0, 0, 0)] * 64
+            command_set = set()
+
+            # Scan all sequences to find unique command combinations
+            for seq in self.data.sequences:
+                for event in seq:
+                    if event.command > 0:  # Non-zero command
+                        # For SF2 format, command is (type, param1, param2)
+                        # SequenceEvent.command contains the command value
+                        command_set.add((event.command, event.instrument, 0))
+
+            # Assign command indices
+            for idx, (cmd_type, param1, param2) in enumerate(sorted(command_set)):
+                if idx < 64:
+                    sf2_commands[idx] = (cmd_type, param1, param2)
+
+            logger.info(f"    Extracted {len(command_set)} unique commands from parsed sequences")
         elif hasattr(self.data, 'raw_sequences') and self.data.raw_sequences:
             # Legacy path: extract from raw sequences
             command_params = extract_command_parameters(
@@ -1460,7 +1488,7 @@ class SF2Writer:
         # Define all pointer patches (from trace_orderlist_access.py output)
         # Format: (file_offset, old_lo, old_hi, new_lo, new_hi)
         # NOTE: "old" addresses are AFTER -$0200 relocation (driver template is already relocated)
-        pointer_patches_DISABLED = [
+        pointer_patches = [
             # Sequence/data references (after -$0200 relocation)
             (0x01C6, 0xD8, 0x16, 0x40, 0x19),  # $16D8 -> $1940
             (0x01CC, 0xD9, 0x16, 0x41, 0x19),  # $16D9 -> $1941
@@ -1505,18 +1533,7 @@ class SF2Writer:
             (0x0146, 0x49, 0x18, 0xB1, 0x1A),  # $1849 -> $1AB1
         ]
 
-        # Apply patches - Instrument table pointers need redirection to $1A81
-        pointer_patches = [
-            # Instrument Table Area patches - redirect to $1A81
-            (0x02C3, 0x83, 0x1A, 0x81, 0x1A),  # $103F: $1A83 -> $1A81
-            (0x02E1, 0x91, 0x1A, 0x81, 0x1A),  # $105D: $1A91 -> $1A81
-            (0x04F8, 0x91, 0x1A, 0x81, 0x1A),  # $1274: $1A91 -> $1A81
-            (0x069F, 0x9F, 0x1A, 0x81, 0x1A),  # $141B: $1A9F -> $1A81
-            (0x0793, 0xA1, 0x1A, 0x81, 0x1A),  # $150F: $1AA1 -> $1A81
-            (0x079F, 0x80, 0x1A, 0x81, 0x1A),  # $151B: $1A80 -> $1A81
-            (0x07A3, 0x83, 0x1A, 0x81, 0x1A),  # $151F: $1A83 -> $1A81
-            (0x07F1, 0x91, 0x1A, 0x81, 0x1A),  # $156D: $1A91 -> $1A81
-        ]
+        # Apply the 40 working pointer patches from commit 08337f3
         patches_applied = 0
         for file_offset, old_lo, old_hi, new_lo, new_hi in pointer_patches:
             if file_offset + 1 < len(self.output):

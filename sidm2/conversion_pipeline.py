@@ -302,13 +302,17 @@ def analyze_sid_file(filepath: str, config: ConversionConfig = None, sf2_referen
     # Detect player type
     player_type = detect_player_type(filepath)
 
-    # Check for SF2 marker ($1337) OR player type indicating SF2-exported
-    # Files WITH marker have embedded SF2 structure → use SF2PlayerParser
-    # Files identified as "SidFactory_II/*" are also SF2-exported → use SF2PlayerParser
-    # Files WITHOUT marker AND not SF2-identified are original Laxity → use LaxityParser
+    # Check for SF2 marker ($1337) AND player type to determine parser
+    # CRITICAL: Only use SF2 parser if we ACTUALLY find the SF2 magic marker
+    # Player-id can detect "SidFactory_II/Laxity" which contains BOTH markers
+    # In that case, prioritize Laxity parser if marker not found
     has_sf2_magic = b'\x37\x13' in c64_data
-    is_sf2_player_type = 'SidFactory' in player_type or player_type.startswith('SF2')
-    is_sf2_exported = has_sf2_magic or is_sf2_player_type
+    is_laxity_file = 'Laxity' in player_type or 'NewPlayer' in player_type
+
+    # Use SF2 parser ONLY if:
+    # 1. We find the SF2 magic marker in the data, AND
+    # 2. It's not primarily a Laxity file (Laxity parser has 99.93% accuracy)
+    is_sf2_exported = has_sf2_magic and not is_laxity_file
 
     if config.extraction.verbose or logger.level <= logging.INFO:
         logger.info("=" * 60)
@@ -725,46 +729,6 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
                     docs_link="reference/DRIVER_REFERENCE.md"
                 )
 
-            # Auto-detect SF2 reference file for SF2-exported SIDs (if not manually provided)
-            if sf2_reference_path is None:
-                player_type_check = detect_player_type(input_path)
-                if 'SidFactory' in player_type_check or player_type_check.startswith('SF2'):
-                    input_basename = Path(input_path).stem
-                    possible_names = [
-                        f"{input_basename}.sf2",
-                        f"{input_basename.replace('_', ' ')}.sf2",
-                        f"{input_basename.replace('_', ' - ')}.sf2",
-                    ]
-
-                    learnings_dir = Path("learnings")
-                    if learnings_dir.exists():
-                        # Try exact matches first
-                        for name in possible_names:
-                            candidate = learnings_dir / name
-                            if candidate.exists():
-                                sf2_reference_path = str(candidate)
-                                logger.info(f"Auto-detected SF2 reference: {sf2_reference_path}")
-                                break
-
-                        # If no exact match, try fuzzy matching
-                        if sf2_reference_path is None:
-                            basename_lower = input_basename.lower().replace('_', '').replace(' ', '').replace('-', '')
-                            basename_normalized = basename_lower.replace('laxity', '')
-
-                            for file in learnings_dir.glob("*.sf2"):
-                                file_normalized = file.stem.lower().replace('_', '').replace(' ', '').replace('-', '')
-                                file_normalized_clean = file_normalized.replace('laxity', '')
-
-                                match = (file_normalized_clean in basename_normalized or
-                                        basename_normalized in file_normalized_clean or
-                                        file_normalized_clean.rstrip('s') == basename_normalized.rstrip('s') or
-                                        file_normalized_clean.replace('s', '') == basename_normalized.replace('s', ''))
-
-                                if match:
-                                    sf2_reference_path = str(file)
-                                    logger.info(f"Auto-detected SF2 reference (fuzzy): {sf2_reference_path}")
-                                    break
-
             logger.info(f"Converting: {input_path}")
             logger.info(f"Output: {output_path}")
             logger.info(f"Driver: {driver_type}")
@@ -797,17 +761,8 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
                     docs_link="reference/format-specification.md"
                 )
 
-        # If this is an SF2-exported SID with a reference file, use the reference directly for 99% accuracy
-        if sf2_reference_path and os.path.exists(sf2_reference_path):
-            player_type = detect_player_type(input_path)
-            if player_type.startswith("SidFactory_II"):
-                logger.info("Using SF2 reference file directly for maximum accuracy")
-                import shutil
-                shutil.copy(sf2_reference_path, output_path)
-                logger.info(f"Written SF2 file: {output_path}")
-                logger.info(f"File size: {os.path.getsize(output_path)} bytes")
-                logger.info("Conversion complete! (100% accuracy - using reference file)")
-                return
+        # Reference files are ONLY for validation - NEVER copy data from them
+        # We must ALWAYS extract from the SID file itself
 
         # Try to extract actual data from siddump (only for standard driver conversions)
         if 'extracted' in locals() and config.extraction.use_siddump:

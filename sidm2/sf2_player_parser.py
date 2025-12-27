@@ -424,18 +424,22 @@ class SF2PlayerParser:
                 ])
                 instruments.append(instr)
 
-        # Extract sequences and orderlists from SF2 reference if available
+        # Extract sequences and orderlists from the SID file's embedded SF2 data
+        # CRITICAL: We must extract from the SID itself, NOT from reference files!
+        # Reference files are ONLY for validation/comparison
         sequences: List[List[SequenceEvent]] = []
         orderlists: List[List[Tuple[int, int]]] = []
 
-        if self.sf2_reference_path and self.sf2_reference_path.exists():
-            try:
-                with open(self.sf2_reference_path, 'rb') as f:
-                    sf2_data = f.read()
-                sf2_load_addr = sf2_data[0] | (sf2_data[1] << 8)
-                sequences, orderlists = self._extract_sequences_from_sf2(sf2_data, sf2_load_addr)
-            except Exception as e:
-                logger.warning(f"Failed to extract sequences from SF2 reference: {e}")
+        try:
+            # Use the SID's own C64 data which contains embedded SF2 structure
+            # Format: load_addr (2 bytes) + C64 data
+            sid_data_with_addr = bytes([self.load_address & 0xFF, (self.load_address >> 8) & 0xFF]) + self.c64_data
+            sequences, orderlists = self._extract_sequences_from_sf2(sid_data_with_addr, self.load_address)
+            logger.info(f"Extracted {len([s for s in sequences if len(s) > 1])} non-empty sequences from SID's embedded data")
+            logger.info(f"Extracted {sum(len(ol) for ol in orderlists)} total orderlist entries across {len(orderlists)} voices")
+        except Exception as e:
+            logger.warning(f"Failed to extract sequences from SID's embedded SF2 data: {e}")
+            # Keep empty sequences/orderlists on error
 
         return ExtractedData(
             header=self.psid_header,
@@ -492,14 +496,29 @@ class SF2PlayerParser:
                 # Fall through to empty return
         else:
             logger.warning("No SF2 marker found - file may not be SF2-exported")
+            logger.info("Attempting sequence extraction without marker...")
 
-        # Return empty data if extraction fails
+            # Even without the marker, we can extract sequences from the embedded SF2 structure
+            # SF2-exported SIDs contain the sequence data in SF2 format at standard offsets
+            sequences: List[List[SequenceEvent]] = []
+            orderlists: List[List[Tuple[int, int]]] = []
+
+            try:
+                # Create SID data with load address header (same format as SF2 file)
+                sid_data_with_addr = bytes([self.load_address & 0xFF, (self.load_address >> 8) & 0xFF]) + self.c64_data
+                sequences, orderlists = self._extract_sequences_from_sf2(sid_data_with_addr, self.load_address)
+                logger.info(f"Successfully extracted {len([s for s in sequences if len(s) > 1])} sequences and {sum(len(ol) for ol in orderlists)} orderlist entries from SID")
+            except Exception as e:
+                logger.warning(f"Failed to extract sequences without marker: {e}")
+                # Keep empty sequences/orderlists on error
+
+        # Return data with extracted sequences (or empty if extraction failed)
         return ExtractedData(
             header=self.psid_header,
             c64_data=self.c64_data,
             load_address=self.load_address,
-            sequences=[],
-            orderlists=[],
+            sequences=sequences if 'sequences' in locals() else [],
+            orderlists=orderlists if 'orderlists' in locals() else [],
             instruments=[],
             wavetable=b'',
             pulsetable=b'',
