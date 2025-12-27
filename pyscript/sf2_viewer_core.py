@@ -436,7 +436,13 @@ class SF2Parser:
                 self.data = f.read()
 
             if len(self.data) < 4:
-                logger.error("File too small")
+                logger.error(
+                    "File too small\n"
+                    "  Suggestion: SF2 file is less than 4 bytes (minimum header size)\n"
+                    "  Check: Verify file was fully downloaded or extracted\n"
+                    "  Try: Re-download or re-generate SF2 file\n"
+                    "  See: docs/guides/TROUBLESHOOTING.md#invalid-sf2-files"
+                )
                 return False
 
             # Read PRG header
@@ -486,7 +492,13 @@ class SF2Parser:
             return True
 
         except Exception as e:
-            logger.error(f"Parse error: {e}")
+            logger.error(
+                f"Parse error: {e}\n"
+                f"  Suggestion: Failed to parse SF2 file structure\n"
+                f"  Check: Verify file is valid SF2 format\n"
+                f"  Try: Re-generate file or use SF2 Viewer debug mode\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#sf2-parse-errors"
+            )
             return False
 
     def _clean_string(self, s: str) -> str:
@@ -912,7 +924,13 @@ class SF2Parser:
             logger.info(f"Music Data: OrderList at 0x{col1_addr:04X}, SeqIdx=0x{seq_idx_addr:04X}, SeqData=0x{seq_data_addr:04X}, SeqLen={default_len}")
 
         except Exception as e:
-            logger.error(f"Error parsing music data block: {e}")
+            logger.error(
+                f"Error parsing music data block: {e}\n"
+                f"  Suggestion: Failed to parse SF2 music data structure\n"
+                f"  Check: Verify music data block format is valid\n"
+                f"  Try: Re-generate SF2 file or check conversion log\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#music-data-parse-errors"
+            )
 
     def _unpack_orderlist_track(self, track_addr: int, max_entries: int = 256) -> List[Dict]:
         """Unpack a single track's orderlist from packed format.
@@ -1299,7 +1317,13 @@ class SF2Parser:
             return True
 
         except Exception as e:
-            logger.error(f"Error parsing Laxity sequences: {e}")
+            logger.error(
+                f"Error parsing Laxity sequences: {e}\n"
+                f"  Suggestion: Failed to parse Laxity format sequences\n"
+                f"  Check: Verify SF2 file was generated from Laxity SID\n"
+                f"  Try: Use Laxity driver for conversion or re-generate file\n"
+                f"  See: docs/guides/TROUBLESHOOTING.md#laxity-sequence-parse-errors"
+            )
             import traceback
             traceback.print_exc()
             return False
