@@ -169,31 +169,67 @@ def infer_gate_commands(laxity_sequence, laxity_wave_table):
 - `sidm2/sequence_extraction.py` (add gate inference)
 - `scripts/test_converter.py` (add gate tests)
 
-### B2: Implement Command Decomposition (P1)
+### B2: Implement Command Decomposition (P1) ✅ COMPLETED
+
+**Status**: ✅ COMPLETED (v2.9.9 - 2025-12-27)
+**Result**: Complete command mapping system with 39 passing tests
 
 **Problem**: Laxity super commands (multi-parameter) need decomposition to SF2 simple commands
 
 **Example**:
 ```
-Laxity: $60 xy (vibrato with x=depth, y=speed)
-SF2: T1 XX YY (separate depth and speed parameters)
+Laxity: $61 $35 (vibrato depth=3, speed=5)
+SF2: T1 $03, T2 $05 (separate commands)
 ```
 
+**Solution Implemented**:
+- `CommandDecomposer` class with comprehensive mapping table
+- 13 Laxity command types → 15 SF2 command types
+- Super-command decomposition (vibrato, arpeggio, tremolo)
+- Simple command mapping (slides, portamento, volume)
+- Pattern commands (no SF2 equivalent, handled gracefully)
+
 **Tasks**:
-1. Document all Laxity super commands
-2. Create decomposition mapping table
-3. Implement decomposition logic
-4. Handle parameter extraction
-5. Validate command accuracy
-6. Measure improvement
+1. ✅ Document all Laxity super commands (Rosetta Stone complete)
+2. ✅ Create decomposition mapping table (LaxityCommand/SF2Command enums)
+3. ✅ Implement decomposition logic (CommandDecomposer class)
+4. ✅ Handle parameter extraction (nibble unpacking)
+5. ⏳ Validate command accuracy (integration pending)
+6. ⏳ Measure improvement (metrics pending)
 
-**Effort**: 8 hours
-**Success Criteria**: Commands match original behavior in playback
+**Implementation**:
+- `sidm2/command_mapping.py` (527 lines) - Complete command mapping module
+- `pyscript/test_command_mapping.py` (622 lines) - 39 comprehensive tests
+
+**Testing Results**:
+- 39 tests, 161+ assertions, 100% pass rate ✅
+- Coverage: All 13 Laxity commands tested
+- Regression tests for edge cases
+
+**Command Mappings**:
+- Super-commands: Vibrato ($61 xy), Arpeggio ($70 xy), Tremolo ($72 xy)
+- Simple commands: Slides ($62, $63), Portamento ($71), Volume ($66)
+- Control markers: Cut ($7E → $80), End ($7F)
+- Pattern control: Jump ($64), Break ($65) - no SF2 equivalent
+
+**Expansion Ratios**:
+- Notes: 1.0x (no expansion)
+- Super-commands: 2.0x (Vibrato, Arpeggio, Tremolo)
+- Simple commands: 1.0x (direct mapping)
+- Average: ~1.57x for typical sequences
+
 **Expected Impact**: +5-10% accuracy on files with effects
+**Actual Impact**: Pending integration and measurement
 
-**Files Modified**:
-- `sidm2/sequence_extraction.py` (command decomposition)
-- New: `sidm2/command_mapping.py` (Laxity→SF2 command map)
+**Files Created**:
+- `sidm2/command_mapping.py` (Laxity→SF2 command map)
+- `pyscript/test_command_mapping.py` (comprehensive tests)
+
+**Documentation**:
+- `docs/guides/LAXITY_TO_SF2_GUIDE.md` (Rosetta Stone with complete mapping table)
+
+**Commits**:
+- `0af0b83` - feat: Implement Laxity→SF2 Command Decomposition (Track B2)
 
 ### B3: Implement Instrument Transposition with Padding (P1)
 
