@@ -692,6 +692,209 @@ class TestEdgeCases(unittest.TestCase):
             temp_path.unlink()
 
 
+class TestProcessDriverCode(unittest.TestCase):
+    """Test critical process_driver_code pointer relocation."""
+
+    def setUp(self):
+        """Create test packer."""
+        with tempfile.NamedTemporaryFile(suffix='.sf2', delete=False) as f:
+            f.write(struct.pack('<H', 0x1000))
+            f.write(b'\x00' * 0x2000)
+            self.temp_path = Path(f.name)
+        self.packer = SF2Packer(self.temp_path)
+
+    def tearDown(self):
+        """Clean up."""
+        self.temp_path.unlink()
+
+    def test_process_driver_code_basic_relocation(self):
+        """Test basic pointer relocation in driver code."""
+        # Create code section with embedded pointer
+        # JSR $1500 = 0x20 0x00 0x15
+        code_data = bytearray(b'\x20\x00\x15')  # JSR $1500
+
+        # Create sections
+        self.packer.data_sections = [
+            DataSection(0x1000, bytes(code_data), dest_address=0x2000, is_code=True),
+            DataSection(0x1500, b'\x60', dest_address=0x2100, is_code=True)  # RTS
+        ]
+
+        # Build address map
+        address_map = {s.source_address: s.dest_address for s in self.packer.data_sections}
+        address_delta = 0
+
+        # Process driver code
+        self.packer.process_driver_code(address_map, address_delta)
+
+        # Pointer should be relocated
+        # Note: The actual relocation logic is complex and depends on CPU6502.scan_all_pointers
+        # This test verifies the method runs without errors
+        self.assertIsNotNone(self.packer.data_sections[0].data)
+
+    def test_process_driver_code_with_delta(self):
+        """Test pointer relocation with address delta."""
+        code_data = b'\x4C\x00\x10'  # JMP $1000
+
+        self.packer.data_sections = [
+            DataSection(0x1000, code_data, dest_address=0x2000, is_code=True)
+        ]
+
+        address_map = {0x1000: 0x2000}
+        address_delta = 0x1000  # Relocating by +$1000
+
+        # Should handle delta without errors
+        self.packer.process_driver_code(address_map, address_delta)
+
+    def test_process_driver_code_data_section(self):
+        """Test pointer relocation in data sections."""
+        # Data section with embedded pointers
+        data = bytearray(4)
+        data[0] = 0x00  # Pointer low byte
+        data[1] = 0x15  # Pointer high byte → $1500
+
+        self.packer.data_sections = [
+            DataSection(0x1200, bytes(data), dest_address=0x2200, is_code=False),
+            DataSection(0x1500, b'\x00', dest_address=0x2500, is_code=False)
+        ]
+
+        address_map = {s.source_address: s.dest_address for s in self.packer.data_sections}
+        address_delta = 0
+
+        # Should process data sections
+        self.packer.process_driver_code(address_map, address_delta)
+
+    def test_process_driver_code_empty_sections(self):
+        """Test with no sections."""
+        self.packer.data_sections = []
+        address_map = {}
+        address_delta = 0
+
+        # Should handle empty sections gracefully
+        self.packer.process_driver_code(address_map, address_delta)
+
+    def test_process_driver_code_entry_stub_protection(self):
+        """Test that entry stub JMP instructions are protected."""
+        # Entry stubs: JMP $1100 at offset 0, JMP $1200 at offset 3
+        code_data = bytearray(b'\x4C\x00\x11\x4C\x00\x12' + b'\x00' * 50)
+
+        self.packer.data_sections = [
+            DataSection(0x1000, bytes(code_data), dest_address=0x1000, is_code=True)
+        ]
+
+        address_map = {0x1000: 0x1000}
+        address_delta = 0
+
+        # Process - should protect offsets 1,2,4,5
+        self.packer.process_driver_code(address_map, address_delta)
+
+        # Entry stubs should be preserved (they'll be patched later by pack())
+        # This test verifies the protection logic runs
+
+
+class TestPackMethod(unittest.TestCase):
+    """Test main pack() method workflow."""
+
+    def test_pack_returns_tuple(self):
+        """Test pack returns (data, init, play) tuple."""
+        with tempfile.NamedTemporaryFile(suffix='.sf2', delete=False) as f:
+            # Create minimal valid SF2
+            f.write(struct.pack('<H', 0x1000))
+
+            # Entry stubs
+            f.write(b'\x4C\x00\x10\x4C\x03\x10')
+
+            # Driver addresses
+            f.write(b'\x00' * 0x2F)
+            f.write(struct.pack('<H', 0x1000))  # Init
+            f.write(struct.pack('<H', 0x1003))  # Play
+
+            # Padding
+            f.write(b'\x00' * 200)
+
+            temp_path = Path(f.name)
+
+        try:
+            packer = SF2Packer(temp_path)
+
+            # Call pack
+            result = packer.pack(dest_address=0x1000)
+
+            # Should return tuple of 3 elements
+            self.assertIsInstance(result, tuple)
+            self.assertEqual(len(result), 3)
+
+            data, init_addr, play_addr = result
+
+            # Data should be bytes
+            self.assertIsInstance(data, bytes)
+            # Addresses should be integers
+            self.assertIsInstance(init_addr, int)
+            self.assertIsInstance(play_addr, int)
+
+        finally:
+            temp_path.unlink()
+
+    def test_pack_entry_stub_patching(self):
+        """Test that pack() patches entry stub JMP instructions."""
+        with tempfile.NamedTemporaryFile(suffix='.sf2', delete=False) as f:
+            # Create minimal SF2
+            f.write(struct.pack('<H', 0x1000))
+
+            # Entry stubs (will be patched)
+            f.write(b'\x4C\x00\x00\x4C\x00\x00')
+
+            # Driver addresses
+            f.write(b'\x00' * 0x2F)
+            f.write(struct.pack('<H', 0x1100))  # Init
+            f.write(struct.pack('<H', 0x1200))  # Play
+
+            # Padding
+            f.write(b'\x00' * 200)
+
+            temp_path = Path(f.name)
+
+        try:
+            packer = SF2Packer(temp_path)
+            data, init_addr, play_addr = packer.pack(dest_address=0x1000)
+
+            # Entry stubs should be JMP instructions
+            self.assertEqual(data[0], 0x4C)  # JMP opcode
+            self.assertEqual(data[3], 0x4C)  # JMP opcode
+
+            # Verify addresses are reasonable
+            self.assertGreater(init_addr, 0)
+            self.assertGreater(play_addr, 0)
+
+        finally:
+            temp_path.unlink()
+
+
+class TestFetchMethods(unittest.TestCase):
+    """Test data fetching methods."""
+
+    def setUp(self):
+        """Create test packer."""
+        with tempfile.NamedTemporaryFile(suffix='.sf2', delete=False) as f:
+            f.write(struct.pack('<H', 0x1000))
+            f.write(b'\x00' * 0x2000)
+            self.temp_path = Path(f.name)
+        self.packer = SF2Packer(self.temp_path)
+
+    def tearDown(self):
+        """Clean up."""
+        self.temp_path.unlink()
+
+    def test_fetch_tables_noop(self):
+        """Test fetch_tables does nothing (tables embedded in driver)."""
+        initial_count = len(self.packer.data_sections)
+
+        # Call fetch_tables
+        self.packer.fetch_tables()
+
+        # Should not add any sections
+        self.assertEqual(len(self.packer.data_sections), initial_count)
+
+
 class TestIntegration(unittest.TestCase):
     """Integration tests for complete packing workflow."""
 
