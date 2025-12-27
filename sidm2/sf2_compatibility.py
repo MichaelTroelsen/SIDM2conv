@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 from enum import Enum
 
+from .errors import ConfigurationError
+
 
 class CompatibilityStatus(Enum):
     """Compatibility status levels"""
@@ -203,7 +205,13 @@ class SF2CompatibilityAnalyzer:
             CompatibilityResult with detailed analysis
         """
         if target_driver not in self.profiles:
-            raise ValueError(f"Unknown driver: {target_driver}")
+            raise ConfigurationError(
+                setting='target_driver',
+                value=target_driver,
+                valid_options=list(self.profiles.keys()),
+                example='target_driver: Driver11',
+                docs_link='guides/TROUBLESHOOTING.md#driver-configuration'
+            )
 
         profile = self.profiles[target_driver]
         issues = []

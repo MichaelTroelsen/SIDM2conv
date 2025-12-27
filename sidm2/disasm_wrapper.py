@@ -23,6 +23,8 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import logging
 
+from .errors import InvalidInputError
+
 # Add pyscript to path for disasm6502 import
 sys.path.insert(0, str(Path(__file__).parent.parent / "pyscript"))
 
@@ -53,12 +55,38 @@ class DisassemblerIntegration:
             header = f.read(0x7E)  # SID header is 126 bytes
 
         if len(header) < 0x7E:
-            raise ValueError("SID file too small")
+            raise InvalidInputError(
+                input_type='SID file',
+                value=str(sid_file),
+                expected='At least 126 bytes for SID header',
+                got=f'Only {len(header)} bytes available',
+                suggestions=[
+                    'Verify file is a complete SID file (not truncated)',
+                    'Check if file was fully downloaded',
+                    f'File size: {sid_file.stat().st_size if sid_file.exists() else 0} bytes',
+                    'SID files should be at least 126 bytes + music data',
+                    'Try re-downloading or re-exporting the file'
+                ],
+                docs_link='guides/TROUBLESHOOTING.md#invalid-sid-files'
+            )
 
         # Parse header
         magic = header[0:4]
         if magic != b'PSID' and magic != b'RSID':
-            raise ValueError(f"Invalid SID magic: {magic}")
+            raise InvalidInputError(
+                input_type='SID file',
+                value=str(sid_file),
+                expected='PSID or RSID magic bytes at file start',
+                got=f'Magic bytes: {repr(magic)}',
+                suggestions=[
+                    'Verify file is a valid SID file (not corrupted)',
+                    'Check file extension is .sid',
+                    'Try opening file in a SID player (e.g., VICE) to verify',
+                    f'Inspect file header: hexdump -C {sid_file} | head -5',
+                    'Re-download file if obtained from internet'
+                ],
+                docs_link='guides/TROUBLESHOOTING.md#invalid-sid-files'
+            )
 
         version = int.from_bytes(header[4:6], 'big')
         data_offset = int.from_bytes(header[6:8], 'big')

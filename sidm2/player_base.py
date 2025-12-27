@@ -12,6 +12,7 @@ from typing import Dict, List, Set, Tuple, Optional, Any
 import logging
 
 from .models import ExtractedData, PSIDHeader
+from .errors import ConfigurationError
 
 logger = logging.getLogger(__name__)
 
@@ -262,7 +263,13 @@ class PlayerRegistry:
             analyzer_class = cls.get_default_analyzer()
 
         if not analyzer_class:
-            raise ValueError("No analyzer available and no default set")
+            raise ConfigurationError(
+                setting='player_analyzer',
+                value=player_hint or '<no player hint>',
+                valid_options=cls.list_players(),
+                example='Register a default analyzer with PlayerRegistry.register(LaxityAnalyzer, is_default=True)',
+                docs_link='guides/TROUBLESHOOTING.md#player-analyzer-configuration'
+            )
 
         return analyzer_class(c64_data, load_address, header)
 

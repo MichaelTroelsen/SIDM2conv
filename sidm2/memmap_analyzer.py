@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 import logging
 
+from .errors import InvalidInputError
+
 logger = logging.getLogger(__name__)
 
 
@@ -77,11 +79,37 @@ class MemoryMapAnalyzer:
             header_bytes = f.read(0x7E)  # 126 bytes
 
         if len(header_bytes) < 0x7E:
-            raise ValueError("SID file too small")
+            raise InvalidInputError(
+                input_type='SID file',
+                value=str(self.sid_file),
+                expected='At least 126 bytes for SID header',
+                got=f'Only {len(header_bytes)} bytes available',
+                suggestions=[
+                    'Verify file is a complete SID file (not truncated)',
+                    'Check if file was fully downloaded',
+                    f'File size: {self.sid_file.stat().st_size if self.sid_file.exists() else 0} bytes',
+                    'SID files should be at least 126 bytes + music data',
+                    'Try re-downloading or re-exporting the file'
+                ],
+                docs_link='guides/TROUBLESHOOTING.md#invalid-sid-files'
+            )
 
         magic = header_bytes[0:4]
         if magic not in (b'PSID', b'RSID'):
-            raise ValueError(f"Invalid SID magic: {magic}")
+            raise InvalidInputError(
+                input_type='SID file',
+                value=str(self.sid_file),
+                expected='PSID or RSID magic bytes at file start',
+                got=f'Magic bytes: {repr(magic)}',
+                suggestions=[
+                    'Verify file is a valid SID file (not corrupted)',
+                    'Check file extension is .sid',
+                    'Try opening file in a SID player (e.g., VICE) to verify',
+                    f'Inspect file header: hexdump -C {self.sid_file} | head -5',
+                    'Re-download file if obtained from internet'
+                ],
+                docs_link='guides/TROUBLESHOOTING.md#invalid-sid-files'
+            )
 
         header = {
             'magic': magic.decode('ascii'),
