@@ -1,21 +1,23 @@
 # SIDM2 Project Context
 
-**Version**: 2.9.6 (in progress)
-**Last Updated**: 2025-12-26
-**Status**: ✅ VSID Integration Complete - Ready for Commit
-**Current Focus**: VSID Audio Export Integration
+**Version**: 2.9.7 (in progress)
+**Last Updated**: 2025-12-27
+**Status**: ✅ Clean State - All Recent Work Committed
+**Current Focus**: Ready for Next Task
 
 ---
 
 ## Current State Snapshot
 
-### What We're Working On RIGHT NOW (2025-12-26)
+### What We're Working On RIGHT NOW (2025-12-27)
 
-**Completed Work**: ✅ **VSID Integration v1.0.0 - Production Ready**
+**Recently Completed & Committed**: ✅ **VSID Integration v1.0.0** (committed Dec 26, 2025)
+
+**Commit**: `92f3663` - "feat: Replace SID2WAV with VSID in conversion pipeline"
 
 **Implementation Summary**:
 - ✅ **VSID Integration** (Replaces SID2WAV.EXE with VICE VSID player)
-- ✅ **100% Test Pass Rate** (3/3 integration tests + 120 core tests)
+- ✅ **100% Test Pass Rate** (188 tests + 156 subtests passing)
 - ✅ **Cross-Platform Support** (Windows, Linux, Mac)
 - ✅ **Better Accuracy** (VICE-quality SID emulation)
 - ✅ **Auto-Selection** (VSID preferred, SID2WAV fallback)
@@ -23,113 +25,37 @@
 - ✅ **SF2 Playback Integration** (SF2 Viewer now uses VSID)
 - ✅ **Comprehensive Documentation** (450+ lines guide + API reference)
 
-**Files Created** (uncommitted):
-- `sidm2/vsid_wrapper.py` - **NEW** VSID integration wrapper (264 lines)
-  - VSIDIntegration class matching audio_export_wrapper API
-  - Automatic VSID detection (4 search paths)
-  - Cross-platform subprocess handling
-  - Comprehensive error handling
-  - Timeout management (VSID runs indefinitely)
+**Files Committed** (10 files changed, +1,495/-85):
+- `sidm2/vsid_wrapper.py` - VSID integration wrapper (264 lines)
+- `pyscript/test_vsid_integration.py` - Integration test suite (171 lines, 100% pass)
+- `test-vsid-integration.bat` - Batch test launcher
+- `docs/VSID_INTEGRATION_GUIDE.md` - Complete usage guide (450+ lines)
+- `VSID_INTEGRATION_COMPLETE.md` - Implementation summary (425 lines)
+- `pyscript/sf2_playback.py` - Updated to use VSID for SID→WAV conversion
+- `sidm2/audio_export_wrapper.py` - Auto VSID/SID2WAV selection (v2.0.0)
+- `CONTEXT.md`, `README.md`, `CLAUDE.md` - Updated documentation
 
-- `pyscript/test_vsid_integration.py` - **NEW** Integration test suite (171 lines)
-  - 3 test scenarios (availability, export, wrapper)
-  - 100% pass rate ✅
-  - Auto-finds test SID files
-  - Validates VSID output and file sizes
+**Current Uncommitted Changes**:
+- `.claude/settings.local.json` - Local Claude Code settings (not for commit)
 
-- `test-vsid-integration.bat` - **NEW** Batch test launcher
-  - Windows-friendly test wrapper
+**Test Status**: ✅ **All tests passing** (188 tests + 156 subtests)
 
-- `docs/VSID_INTEGRATION_GUIDE.md` - **NEW** Complete usage guide (450+ lines)
-  - Installation instructions (Windows/Linux/Mac)
-  - API reference
-  - Troubleshooting
-  - Migration guide
-  - Performance benchmarks
-
-- `VSID_INTEGRATION_COMPLETE.md` - **NEW** Implementation summary (425 lines)
-  - Complete technical details
-  - Test results
-  - Benefits and architecture
-  - Commit checklist
-  - 20 unit tests (100% pass rate ✅)
-  - 4 test categories (initialization, events, convenience, metrics)
-  - Fixed 3 Windows file handle errors
-  - Fixed 2 assertion threshold failures
-
-- `pyscript/test_sf2_viewer_logging.py` - **NEW** Automated viewer test (290 lines)
-  - Automated logging validation test
-  - 80% pass rate (4/5 criteria - expected for automated test)
-  - Captures 11 events, 4 event types, validates JSON output
-
-- `pyscript/test_editor_automation.py` - **NEW** Editor automation tests (450 lines)
-  - 8 comprehensive test functions
-  - Tests: detection, launch, file loading (2 methods), playback, state, controls
-  - Test 3b: Window Messages File Loading (new approach)
-  - 67% pass rate (4/6 tests - file loading blocked by editor design)
-
-- `pyscript/test_f10_manual.py` - **NEW** Manual verification test (120 lines)
-  - Interactive test to verify editor behavior
-  - Monitors editor lifetime and window validity
-  - Enumerates all visible windows for debugging
-  - Confirms editor closes in <2 seconds when launched programmatically
-
-**Files Modified** (uncommitted):
-- `pyscript/sf2_playback.py` - **MODIFIED** Now uses VSID for SID→WAV conversion (+12 lines)
-  - Replaced SID2WAV subprocess with VSIDIntegration wrapper
-  - Enhanced logging (now logs "VSID" explicitly)
-  - Better error handling
-  - Maintains same API and behavior
-
-- `sidm2/audio_export_wrapper.py` - **MODIFIED** Auto VSID/SID2WAV selection (+47 lines, v2.0.0)
-  - New parameter: `force_sid2wav=False`
-  - Returns `tool` field: `'vsid'` or `'sid2wav'`
-  - Automatic VSID preference with SID2WAV fallback
-  - Comprehensive warning messages
-  - 100% backward compatible
-
-**Documentation Created** (uncommitted):
-- `docs/implementation/SF2_EDITOR_INTEGRATION_PLAN.md` (850+ lines) - 19-hour ultra-think plan
-- `docs/implementation/SF2_EDITOR_INTEGRATION_IMPLEMENTATION.md` (900+ lines) - Implementation status
-- `docs/guides/SF2_EDITOR_MANUAL_WORKFLOW_GUIDE.md` (1,000+ lines) ⭐ **PRODUCTION READY**
-  - Complete manual workflow guide with 4 code examples, 3 helper scripts
-  - QA testing, conversion validation, demo/presentation use cases
-  - Troubleshooting and FAQ sections
-  - Works immediately with existing code
-- `docs/guides/SF2_EDITOR_AUTOIT_HYBRID_GUIDE.md` (1,500+ lines) ⭐ **FULL AUTOMATION**
-  - Complete AutoIt hybrid implementation plan (4 weeks, 95-99% success)
-  - Full AutoIt script (150 lines), Python bridge, keep-alive mechanism
-  - Testing strategy, deployment guide, troubleshooting
-- `docs/analysis/GUI_AUTOMATION_COMPREHENSIVE_ANALYSIS.md` (35 pages)
-  - Analysis of 6 automation approaches with code examples
-  - Pros/cons, ratings, timelines, risk analysis
-  - Hybrid AutoIt + win32gui approach recommended
-- `test_output/SF2_EDITOR_INTEGRATION_COMPLETE.md` - Final summary
-- `test_output/SF2_VIEWER_LOGGING_TEST_RESULTS.md` - Automated test results
-- `test_output/EDITOR_AUTOMATION_FILE_LOADING_INVESTIGATION.md` (480 lines)
-  - Root cause analysis: Editor closes in <2s when launched programmatically
-  - Timeline, evidence, all approaches tested, recommendations
-- `test_output/WINDOW_MESSAGES_IMPLEMENTATION_SUMMARY.md` - Window messages approach summary
-- `test_output/EDITOR_AUTOMATION_SESSION_COMPLETE.md` - Complete session summary
-
-**Status**: ✅ Production-ready, awaiting commit decision
-
-**Recent Commits** (v2.9.1 - SF2 Format Validation Fixes):
-1. `379790f` - "docs: Release v2.9.1 - SF2 Format Validation Fixes"
-2. `9948703` - "fix: Add missing descriptor fields - ACTUAL root cause fix"
-3. `0e2c49b` - "fix: Fix SF2 block ordering - CRITICAL editor validation fix"
-4. `e9cc32e` - "fix: Fix SF2 metadata corruption causing editor rejection"
-5. `555e7ca` - "chore: Clean up root folder and strengthen test file rules"
+**Recent Commits**:
+1. `92f3663` - "feat: Replace SID2WAV with VSID in conversion pipeline" (Dec 26, 2025) ⭐ **VSID v1.0.0**
+2. `8890ca0` - "feat: Add diverse test file suite (Q1 Quick Win)"
+3. `788a8fc` - "docs: Validate Track 2.2 (Player Auto-Detection) - COMPLETE"
+4. `f6aa18b` - "docs: Mark Track 1.2 (Voice 3 Support) as complete"
+5. `ccd9365` - "docs: Add B2+B3 accuracy validation results to CHANGELOG"
 
 ### What Just Happened (Context for Understanding)
 
-**VSID Integration** (Dec 26, 2025) - ✅ **COMPLETE**:
+**VSID Integration** (Dec 26, 2025) - ✅ **COMMITTED** (commit `92f3663`):
 - **Achievement**: Replaced SID2WAV with VSID (VICE SID player) throughout pipeline
 - **Benefits**: Better accuracy, cross-platform support, active maintenance
-- **Test Results**: 100% pass rate (3/3 integration tests + 120 core tests)
+- **Test Results**: 100% pass rate (188 tests + 156 subtests)
 - **Compatibility**: 100% backward compatible with automatic SID2WAV fallback
 - **Implementation Time**: ~2 hours
-- **Files**: 4 new (wrapper, tests, docs, summary), 2 modified (playback, audio_export)
+- **Files**: 10 files changed (+1,495/-85 lines)
 
 **SF2 Format Validation Crisis** (Dec 25-26, 2025) - ✅ **RESOLVED**:
 - **Problem**: Generated SF2 files rejected by SID Factory II editor
@@ -470,8 +396,8 @@ python scripts/validate_sid_accuracy.py input.sid output.sid
 **Core Modules**:
 - `sidm2/sf2_writer.py` - SF2 file writer (v2.9.1 fixes complete)
 - `sidm2/sf2_header_generator.py` - SF2 header generation (v2.9.1 fixes complete)
-- `sidm2/sf2_debug_logger.py` - **NEW** Debug logging (45 event types, 111K events/sec) - uncommitted
-- `sidm2/sf2_editor_automation.py` - **NEW** Editor automation (Windows API) - uncommitted
+- `sidm2/sf2_debug_logger.py` - Debug logging (45 event types, 111K events/sec)
+- `sidm2/sf2_editor_automation.py` - Editor automation with PyAutoGUI integration
 - `sidm2/laxity_converter.py` - Laxity conversion logic
 - `sidm2/sf2_packer.py` - SF2→SID packing
 
@@ -512,11 +438,9 @@ python scripts/validate_sid_accuracy.py input.sid output.sid
 ## Next Steps
 
 ### Immediate (Next Session)
-1. ✅ **Logging system complete** - 100% test pass rate, production-ready
-2. ✅ **Editor automation complete** - Windows API integration working
-3. 📝 **Commit decision pending** - Review and approve for v2.9.2
-4. 🧪 **Run full test suite** - Ensure 200+ tests still pass with new code
-5. 🚀 **Commit SF2 Editor Integration** - If approved (v2.9.2 release)
+1. ✅ **VSID Integration committed** - v1.0.0 complete (commit 92f3663)
+2. ✅ **All tests passing** - 188 tests + 156 subtests (100% pass rate)
+3. 🎯 **Ready for new work** - Clean state, no blockers
 
 ### Short Term (This Month)
 1. Implement filter support (Roadmap Track 1.1)
@@ -545,12 +469,15 @@ python scripts/validate_sid_accuracy.py input.sid output.sid
 
 ## Notes for AI Assistants
 
-### Current Context (2025-12-26)
+### Current Context (2025-12-27)
 
-**Active Work**: Debug logging system implementation (uncommitted)
-**Files Modified**: `sf2_debug_logger.py` (NEW), `sf2_viewer_gui.py` (enhanced), tests, docs
-**Status**: Production-ready logging system with minor test fixes needed
-**Previous Work**: SF2 format validation fixes (COMPLETE, released as v2.9.1)
+**Recent Work Committed**:
+- ✅ VSID Integration v1.0.0 (commit 92f3663, Dec 26)
+- ✅ SF2 Editor Automation with PyAutoGUI (commits ad0aecc, 812d8f8, 23fc039)
+- ✅ Debug logging system (commit dfbba39)
+
+**Current State**: Clean - all tests passing (188 tests + 156 subtests)
+**Status**: Ready for new work
 
 ### What Changed Recently
 
@@ -588,42 +515,24 @@ python scripts/validate_sid_accuracy.py input.sid output.sid
 - **Update docs**: When behavior changes
 - **Logging tests**: `run-logging-tests.bat` for logging system
 
-### Current Uncommitted Work
+### Recent Features Committed
 
-**SF2 Editor Automation - Phases 1-4 Complete + Production Workflows** (production-ready):
+**SF2 Editor Automation with PyAutoGUI** (committed):
+- ✅ Complete automation framework (commits ad0aecc, 812d8f8, 23fc039)
+- ✅ PyAutoGUI integration for 100% automated file loading
+- ✅ Debug logging system (commit dfbba39)
+- ✅ Batch testing system (100% success rate)
+- ✅ All tests passing
 
-**New Files** (3 core + 5 tests + 11 docs = 19 files):
-- `sidm2/sf2_debug_logger.py` - 550 lines, 45 event types, 111K events/sec
-- `sidm2/sf2_editor_automation.py` - 750 lines, Windows API integration, Phases 1-4
-- `pyscript/test_sf2_logger_unit.py` - 410 lines, 20 tests (100% pass ✅)
-- `pyscript/test_sf2_viewer_logging.py` - 290 lines, automated test (80% pass)
-- `pyscript/test_editor_automation.py` - 450 lines, 8 tests (67% pass - file loading blocked)
-- `pyscript/test_f10_manual.py` - 120 lines, manual verification test
-- `docs/implementation/SF2_EDITOR_INTEGRATION_PLAN.md` - 850 lines
-- `docs/implementation/SF2_EDITOR_INTEGRATION_IMPLEMENTATION.md` - 900 lines
-- `docs/guides/SF2_EDITOR_MANUAL_WORKFLOW_GUIDE.md` - 1,000+ lines ⭐ **PRODUCTION READY**
-- `docs/guides/SF2_EDITOR_AUTOIT_HYBRID_GUIDE.md` - 1,500+ lines ⭐ **FULL AUTOMATION PLAN**
-- `docs/analysis/GUI_AUTOMATION_COMPREHENSIVE_ANALYSIS.md` - 35 pages, 6 approaches analyzed
-- `test_output/SF2_EDITOR_INTEGRATION_COMPLETE.md` - Phase 1-2 summary
-- `test_output/SF2_VIEWER_LOGGING_TEST_RESULTS.md` - Test results
-- `test_output/EDITOR_AUTOMATION_FILE_LOADING_INVESTIGATION.md` - 480 lines, root cause analysis
-- `test_output/WINDOW_MESSAGES_IMPLEMENTATION_SUMMARY.md` - Window messages summary
-- `test_output/EDITOR_AUTOMATION_SESSION_COMPLETE.md` - Complete session summary
-- `test_output/logs/sf2_viewer_test.{log,json}` - Test output
-
-**Modified Files** (2):
-- `pyscript/sf2_viewer_gui.py` - Added keypress/mouse/tab event handlers (+90 lines)
-- `pyscript/sf2_playback.py` - Complete playback logging (+80 lines)
-
-**Status**: ✅ All tests passing (67% automation, 100% logging), production-ready workflows documented, awaiting commit approval
-
-**Key Achievement**: Complete automation framework with two production-ready workflows:
-- ✅ **Manual Workflow** - Works NOW, fully documented with examples
-- ✅ **AutoIt Hybrid** - Full automation plan (4 weeks, 95-99% success)
+**Key Features**:
+- `sidm2/sf2_editor_automation.py` - PyAutoGUI automation (750 lines)
+- `sidm2/sf2_debug_logger.py` - Debug logging (550 lines)
+- Complete documentation suite (3,500+ lines)
+- Production-ready workflows
 
 ---
 
-**Last Updated**: 2025-12-26
+**Last Updated**: 2025-12-27
 **Updated By**: Claude Sonnet 4.5
-**Next Review**: After logging system decision made
+**Next Review**: Before starting new work
 
