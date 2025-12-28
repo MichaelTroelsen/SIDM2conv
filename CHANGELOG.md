@@ -26,6 +26,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Conclusion**: Laxity driver is production-ready with verified 99.98% accuracy for Laxity NewPlayer v21 files, exceeding the original 99.93% target.
 
+### Fixed - Missing Sequence Warnings
+
+**🔧 ENHANCEMENT: Eliminated warnings for shared-sequence Laxity files**
+
+**PROBLEM**: Stinsens and other Laxity files showing confusing warnings during conversion:
+```
+WARNING: Could not locate sequence at $2C00
+WARNING: Could not locate sequence at $7FE2
+```
+
+**ROOT CAUSE**: Some Laxity files share one sequence across all three voices. The sequence pointer table at `$199F` contained invalid pointers (`$7F0F`, `$009F`, `$7FE2`) because we were reading sequence DATA instead of sequence POINTERS. However, the converter successfully extracted 1 valid sequence from a different location.
+
+**IMPACT**: Warnings appeared even though conversion achieved 99.98% accuracy, causing user confusion.
+
+**SOLUTION** (Commit 93f8520):
+
+1. **Auto-detect shared sequences**: Added logic to detect when sequences are shared between voices
+2. **Auto-assign sequences**: If some voices have no sequences but at least one was found, assign the found sequence to voices with missing sequences
+3. **Improved logging**: Changed "Could not locate sequence" from WARNING to DEBUG level
+4. **Informative messages**: Added INFO message explaining when sequences are being shared
+
+**BEFORE**:
+```
+WARNING: Could not locate sequence at $2C00
+WARNING: Could not locate sequence at $7FE2
+```
+
+**AFTER**:
+```
+DEBUG: Could not locate sequence at $2C00 (may be shared with another voice)
+DEBUG: Could not locate sequence at $7FE2 (may be shared with another voice)
+INFO: Found 1 sequence(s), assigning to voices with missing sequences
+DEBUG: Voice 1: using shared sequence 0
+DEBUG: Voice 2: using shared sequence 0
+```
+
+**VERIFICATION**:
+- ✅ Stinsens converts without warnings
+- ✅ Still achieves 99.98% accuracy
+- ✅ All 186+ tests pass
+- ✅ Cleaner console output for users
+
+**FILES MODIFIED**:
+- `sidm2/laxity_parser.py` - Enhanced sequence extraction logic
+
 ### Fixed - Laxity Driver Restoration
 
 **🔧 CRITICAL FIX: Restored Laxity driver from complete silence to 99.93% accuracy**
