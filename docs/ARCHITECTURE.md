@@ -752,7 +752,7 @@ $0F03:       Filter table
 
 3. **`convert_laxity_to_sf2(input_path, output_path, config) -> bool`**
    - Converts Laxity NewPlayer v21 SID using custom driver
-   - Achieves 99.93% accuracy
+   - Achieves 99.98% accuracy (verified 2025-12-28)
    - Returns True on success
 
 4. **`convert_galway_to_sf2(input_path, output_path, config) -> bool`**

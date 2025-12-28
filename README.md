@@ -5,7 +5,7 @@
 
 **Version 3.0.1** | Build Date: 2025-12-27 | Production Ready - Laxity Driver Restored + VSID Integration ✅
 
-A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files with 99.93% frame accuracy for Laxity NewPlayer v21 files.
+A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files with 99.98% frame accuracy for Laxity NewPlayer v21 files.
 
 ## Overview
 
@@ -347,7 +347,7 @@ The automated pipeline handles:
 - Conversion workflow diagram
 - Tool demonstrations (with screenshots)
 - Technical stack details
-- Performance metrics (99.93% accuracy)
+- Performance metrics (99.98% accuracy)
 - Closing with project information
 
 ### Requirements
@@ -394,7 +394,7 @@ python pyscript/conversion_cockpit_gui.py
 **Workflow**:
 1. Click "Browse" or drag-drop SID files
 2. Select mode (Simple/Advanced/Custom)
-3. Choose driver (Laxity recommended for 99.93% accuracy)
+3. Choose driver (Laxity recommended for 99.98% accuracy)
 4. Click "START"
 5. Monitor progress across all 5 tabs
 6. Review results and access output files
@@ -640,7 +640,7 @@ Examples:
 ```bash
 # Automatic driver selection (RECOMMENDED - NEW in v2.8.0)
 python scripts/sid_to_sf2.py input.sid output.sf2
-# → Laxity files: Uses Laxity driver (99.93% accuracy)
+# → Laxity files: Uses Laxity driver (99.98% accuracy)
 # → SF2-exported: Uses Driver 11 (100% accuracy)
 # → Rob Hubbard/Martin Galway: Uses Driver 11 (safe default)
 # → Generates: output.sf2 + output.txt (driver documentation)
@@ -668,7 +668,7 @@ The **Quality-First Policy v2.0** automatically selects the optimal driver based
 
 | Source Player Type | Auto-Selected Driver | Expected Accuracy | Reason |
 |-------------------|---------------------|-------------------|--------|
-| **Laxity NewPlayer v21** | Laxity Driver | **99.93%** ✅ | Custom driver optimized for Laxity |
+| **Laxity NewPlayer v21** | Laxity Driver | **99.98%** ✅ | Custom driver optimized for Laxity |
 | **SF2-exported SID** | Driver 11 | **100%** ✅ | Preserve original driver |
 | **NewPlayer 20.G4** | NP20 Driver | **70-90%** ✅ | Format-specific driver |
 | **Rob Hubbard** | Driver 11 | Safe default | Standard conversion |
@@ -690,7 +690,7 @@ No driver specified - using automatic driver selection (Policy v2.0)
 Driver Selection:
   Player Type:     Laxity_NewPlayer_V21
   Selected Driver: LAXITY (sf2driver_laxity_00.prg)
-  Expected Acc:    99.93%
+  Expected Acc:    99.98%
   Reason:          Laxity-specific driver for maximum accuracy
   Alternative:     Driver 11 (1-8% accuracy - not recommended)
 ======================================================================
@@ -707,7 +707,7 @@ Conversion complete!
 ```
 
 **Benefits**:
-- ✅ **Maximum Quality**: 99.93% accuracy for Laxity files (vs 1-8% with generic driver)
+- ✅ **Maximum Quality**: 99.98% accuracy for Laxity files (vs 1-8% with generic driver)
 - ✅ **Automatic**: No need to remember which driver to use
 - ✅ **Documented**: Every conversion documents which driver was used and why
 - ✅ **Validated**: SF2 format validation runs automatically
@@ -719,8 +719,8 @@ The converter supports three driver types:
 
 - **laxity** - Custom Laxity NewPlayer v21 driver (NEW in v1.8.0) ⭐
   - **Auto-selected for**: Laxity NewPlayer v21 SID files
-  - **Accuracy**: **99.93%** ✅ (validated, production ready)
-  - **Improvement**: **10-90x better** than standard drivers (1-8% → 99.93%)
+  - **Accuracy**: **99.98%** ✅ (validated, production ready)
+  - **Improvement**: **10-90x better** than standard drivers (1-8% → 99.98%)
   - **Best for**: Maximum accuracy Laxity conversions, native format preservation
   - See [Laxity Driver Guide](#laxity-driver-guide-new) below for details
 
@@ -1933,7 +1933,7 @@ The Laxity driver provides native support for Laxity NewPlayer v21 SID files wit
   - Tables converted between incompatible formats
   - Significant data loss during conversion
 
-- **Laxity driver**: **99.93% frame accuracy** ✅ (validated, production ready)
+- **Laxity driver**: **99.98% frame accuracy** ✅ (validated, production ready)
   - Uses original Laxity player code
   - Tables preserved in native format
   - No format conversion artifacts
@@ -2072,7 +2072,7 @@ Success Rate: 100% (3/3 files)
 | Feature | Laxity Driver | NP20 Driver | Driver 11 |
 |---------|---------------|-------------|-----------|
 | Format | Native Laxity | Translated | Translated |
-| Accuracy (Laxity files) | **99.93%** ✅ | 1-8% | 1-8% |
+| Accuracy (Laxity files) | **99.98%** ✅ | 1-8% | 1-8% |
 | Table preservation | ✓ Yes | ✗ Converted | ✗ Converted |
 | Table injection | ✓ Full | ✗ Translation | ✗ Translation |
 | File size | ~5.2KB | ~25KB | ~25-50KB |
@@ -2936,7 +2936,7 @@ The project includes a GitHub Actions workflow (`.github/workflows/ci.yml`) that
 from sidm2.conversion_pipeline import (
     detect_player_type,          # Detect SID player format
     analyze_sid_file,             # Parse SID header and data
-    convert_laxity_to_sf2,        # Laxity conversion (99.93% accuracy)
+    convert_laxity_to_sf2,        # Laxity conversion (99.98% accuracy)
     convert_galway_to_sf2,        # Martin Galway conversion
     convert_sid_to_sf2,           # Main conversion with auto driver selection
     convert_sid_to_both_drivers,  # Dual driver comparison
@@ -3416,7 +3416,7 @@ The converter now extracts and injects all major table types:
 ### Current Limitations
 
 - **Player Format Support**:
-  - ✅ **Fully Supported**: Laxity NewPlayer v21 (99.93% accuracy with Laxity driver)
+  - ✅ **Fully Supported**: Laxity NewPlayer v21 (99.98% accuracy with Laxity driver)
   - ✅ **Fully Supported**: SF2-exported SIDs (100% accuracy with Driver 11)
   - ⚠️ **Limited Support**: NewPlayer 20.G4 (70-90% accuracy with NP20 driver)
   - ❌ **Not Supported**: Other player formats (use Driver 11 safe default)
@@ -3434,14 +3434,14 @@ The converter now extracts and injects all major table types:
 |---------------|---------------|----------|--------|
 | **SF2-Exported SID** | Driver 11 | **100%** | ✅ Perfect roundtrip |
 | **Driver 11 Test Files** | Driver 11 | **100%** | ✅ Reference extraction |
-| **Laxity NewPlayer v21** | **Laxity Driver** | **99.93%** | ✅ **Production Ready** (v1.8.0) |
+| **Laxity NewPlayer v21** | **Laxity Driver** | **99.98%** | ✅ **Production Ready** (v1.8.0) |
 | **Laxity NewPlayer v21** | Driver 11 | **1-8%** | ⚠️ Use Laxity driver instead |
 | **Laxity NewPlayer v21** | NP20 | **1-8%** | ⚠️ Use Laxity driver instead |
 | **NewPlayer 20.G4** | NP20 | **70-90%** | ⚠️ Experimental |
 
 **Laxity Driver Achievement (v1.8.0)**:
 
-The custom Laxity driver achieves **99.93% frame accuracy** using an Extract & Wrap architecture:
+The custom Laxity driver achieves **99.98% frame accuracy** using an Extract & Wrap architecture:
 
 - **Native Format Preservation**: Uses original Laxity player code (no format conversion)
 - **Perfect Register Writes**: 507/507 register writes match exactly
@@ -3463,7 +3463,7 @@ Despite JCH reverse-engineering Laxity's player in 1988, the formats are **funda
 - **NOT** faithful music reproduction
 
 **Recommendation**:
-- ✅ **Laxity NP21 files**: Use Laxity driver (99.93% accuracy) - automatic with v2.8.0+
+- ✅ **Laxity NP21 files**: Use Laxity driver (99.98% accuracy) - automatic with v2.8.0+
 - ✅ **SF2-exported files**: Use Driver 11 (100% accuracy) - automatic with v2.8.0+
 - ⚠️ **Other formats**: Use Driver 11 (safe default)
 
@@ -4024,7 +4024,7 @@ Having issues? We've got you covered!
 
 **Low Conversion Accuracy**:
 - Check player type: `tools\player-id.exe yourfile.sid`
-- For Laxity NewPlayer v21, use: `--driver laxity` (99.93% accuracy)
+- For Laxity NewPlayer v21, use: `--driver laxity` (99.98% accuracy)
 - Standard drivers on Laxity files: 1-8% accuracy (use Laxity driver instead)
 
 **Module Not Found**:

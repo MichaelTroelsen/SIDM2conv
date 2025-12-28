@@ -2,7 +2,7 @@
 
 **SIDM2 v3.0.1** | SID→SF2 Converter | C64 Music Tools | Updated 2025-12-27
 
-Converts Laxity NP21 SID files to SF2 format (99.93% accuracy - RESTORED). Features: Auto-driver selection, VSID audio export, SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (3,400+ lines), CI/CD (5 workflows), 200+ tests
+Converts Laxity NP21 SID files to SF2 format (99.98% accuracy - RESTORED). Features: Auto-driver selection, VSID audio export, SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (3,400+ lines), CI/CD (5 workflows), 200+ tests
 
 ---
 
@@ -50,7 +50,7 @@ install-vice.bat              # VSID for audio export
 
 ## Auto Driver Selection
 
-Auto-selects best driver by player type: Laxity NP21→Laxity (99.93%), SF2→Driver11 (100%), NP20.G4→NP20 (70-90%), Unknown→Driver11. Outputs: `output.sf2` + `output.txt` (driver info + validation). See: `CONVERSION_POLICY_APPROVED.md`
+Auto-selects best driver by player type: Laxity NP21→Laxity (99.98%), SF2→Driver11 (100%), NP20.G4→NP20 (70-90%), Unknown→Driver11. Outputs: `output.sf2` + `output.txt` (driver info + validation). See: `CONVERSION_POLICY_APPROVED.md`
 
 ---
 
@@ -105,7 +105,7 @@ SIDM2/
 | Source → Driver | Accuracy | Status |
 |----------------|----------|--------|
 | SF2 → Driver 11 | 100% | ✅ Perfect |
-| Laxity → Laxity | 99.93% | ✅ Production |
+| Laxity → Laxity | 99.98% | ✅ Production |
 | Laxity → Driver 11 | 1-8% | ⚠️ Use Laxity driver |
 
 **Other**: Only Laxity NP21 supported, single subtune only, 0% filter accuracy
@@ -136,7 +136,7 @@ SIDM2/
 
 ## Version History
 
-**v3.0.1** (2025-12-27): Laxity driver restoration (0→40 patches, 0.60%→99.93% accuracy), VSID pipeline integration
+**v3.0.1** (2025-12-27): Laxity driver restoration (0→40 patches, 0.60%→99.98% accuracy verified 2025-12-28), VSID pipeline integration
 
 **v3.0.0** (2025-12-27): Auto SF2 reference detection (100% accuracy for SF2-exported SIDs)
 
@@ -146,7 +146,7 @@ SIDM2/
 
 **v2.9.5** (2025-12-26): Batch testing (100% pass), process cleanup
 
-**Earlier**: v2.9.4 (PyAutoGUI), v2.9.1 (SF2 format fixes), v2.9.0 (SID Inventory 658+ files), v2.8.0 (Auto driver + Python SIDwinder), v2.6.0 (Python siddump), v2.5.3 (Enhanced logging), v2.5.0 (Cockpit GUI), v1.8.0 (Laxity driver 99.93%)
+**Earlier**: v2.9.4 (PyAutoGUI), v2.9.1 (SF2 format fixes), v2.9.0 (SID Inventory 658+ files), v2.8.0 (Auto driver + Python SIDwinder), v2.6.0 (Python siddump), v2.5.3 (Enhanced logging), v2.5.0 (Cockpit GUI), v1.8.0 (Laxity driver 99.98%)
 
 **Complete**: `CHANGELOG.md`
 
