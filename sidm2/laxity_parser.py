@@ -148,6 +148,16 @@ class LaxityParser:
                     orderlist_indices.append(addr_to_index[seq_addr])
             orderlists[voice] = orderlist_indices
 
+        # Handle case where some voices have no sequences but we found at least one
+        # Some Laxity files share the same sequence across all voices
+        if sequences and any(not ol for ol in orderlists):
+            logger.info(f"Found {len(sequences)} sequence(s), assigning to voices with missing sequences")
+            for voice in range(3):
+                if not orderlists[voice]:
+                    # Use first available sequence
+                    orderlists[voice] = [0]
+                    logger.debug(f"Voice {voice}: using shared sequence 0")
+
         return sequences, orderlists
 
     def _extract_sequence_at_address(self, address: int) -> bytes:
@@ -191,7 +201,9 @@ class LaxityParser:
             logger.debug(f"Trying sequence at ${address:04X} as relative offset")
             return self._extract_sequence_from_offset(address, address)
 
-        logger.warning(f"Could not locate sequence at ${address:04X}")
+        # Sequence not found - this is logged at debug level since some Laxity files
+        # share sequences between voices and may have invalid pointers for some voices
+        logger.debug(f"Could not locate sequence at ${address:04X} (may be shared with another voice)")
         return b''
 
     def _extract_sequence_from_offset(self, offset: int, address: int) -> bytes:
