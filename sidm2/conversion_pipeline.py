@@ -283,13 +283,14 @@ def print_success_summary(input_path: str, output_path: str, driver_selection=No
     print()
 
 
-def analyze_sid_file(filepath: str, config: ConversionConfig = None, sf2_reference_path: str = None):
+def analyze_sid_file(filepath: str, config: ConversionConfig = None, sf2_reference_path: str = None, driver_type: str = None):
     """Analyze a SID file and print detailed information
 
     Args:
         filepath: Path to SID file
         config: Optional configuration (uses defaults if None)
         sf2_reference_path: Optional path to original SF2 file (for SF2-exported SIDs)
+        driver_type: Optional driver type override ('driver11', 'laxity', 'np20')
     """
     if config is None:
         config = get_default_config()
@@ -299,20 +300,26 @@ def analyze_sid_file(filepath: str, config: ConversionConfig = None, sf2_referen
     header = parser.parse_header()
     c64_data, load_address = parser.get_c64_data(header)
 
-    # Detect player type
+    # Detect player type using player-id.exe
     player_type = detect_player_type(filepath)
 
-    # Check for SF2 marker ($1337) AND player type to determine parser
-    # CRITICAL: Only use SF2 parser if we ACTUALLY find the SF2 magic marker
-    # Player-id can detect "SidFactory_II/Laxity" which contains BOTH markers
-    # In that case, prioritize Laxity parser if marker not found
+    # Check for SF2 magic marker
     has_sf2_magic = b'\x37\x13' in c64_data
-    is_laxity_file = 'Laxity' in player_type or 'NewPlayer' in player_type
 
-    # Use SF2 parser ONLY if:
-    # 1. We find the SF2 magic marker in the data, AND
-    # 2. It's not primarily a Laxity file (Laxity parser has 99.93% accuracy)
-    is_sf2_exported = has_sf2_magic and not is_laxity_file
+    # Use DriverSelector to determine correct driver (unless manually overridden)
+    if driver_type is None:
+        selector = DriverSelector()
+        selection = selector.select_driver(Path(filepath))
+        driver_type = selection.driver_name
+        logger.debug(f"Auto-selected driver: {driver_type} (reason: {selection.selection_reason})")
+    else:
+        logger.debug(f"Using manually specified driver: {driver_type}")
+
+    # Determine which analyzer to use based on driver selection and SF2 magic
+    # SF2-exported files (have magic marker AND driver11) use SF2PlayerParser
+    # Laxity files (driver=laxity) use LaxityPlayerAnalyzer
+    # Other files fallback to Laxity analyzer for table extraction
+    is_sf2_exported = has_sf2_magic and driver_type == 'driver11'
 
     if config.extraction.verbose or logger.level <= logging.INFO:
         logger.info("=" * 60)
@@ -333,13 +340,19 @@ def analyze_sid_file(filepath: str, config: ConversionConfig = None, sf2_referen
         logger.info(f"End address: ${load_address + len(c64_data) - 1:04X}")
         logger.info("=" * 60)
 
-    # Choose appropriate parser based on player type
+    # Choose appropriate parser based on driver selection
     if is_sf2_exported:
-        logger.info("Using SF2 player parser (SID was exported from SF2)")
+        logger.info(f"Using SF2 player parser (driver: {driver_type}, SF2-exported file)")
         sf2_parser = SF2PlayerParser(filepath, sf2_reference_path)
         extracted = sf2_parser.extract()
+    elif driver_type == 'laxity':
+        logger.info(f"Using Laxity player analyzer (driver: {driver_type})")
+        analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
+        extracted = analyzer.extract_music_data()
     else:
-        logger.info("Using Laxity player analyzer (original Laxity SID)")
+        # driver11 or np20 without SF2 magic - use Laxity analyzer for table extraction
+        # The extracted data will be packaged with the selected driver (driver11/np20)
+        logger.info(f"Using table extraction analyzer (driver: {driver_type}, player: {player_type})")
         analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
         extracted = analyzer.extract_music_data()
 
@@ -385,7 +398,7 @@ def convert_laxity_to_sf2(input_path: str, output_path: str, config: ConversionC
         # This ensures all tables (orderlists, sequences, instruments, wave, pulse, filter)
         # are extracted and ready for injection with pointer patching
         try:
-            extracted = analyze_sid_file(input_path, config=config)
+            extracted = analyze_sid_file(input_path, config=config, driver_type='laxity')
         except Exception as e:
             file_size = Path(input_path).stat().st_size if Path(input_path).exists() else 0
             logger.error(
@@ -737,7 +750,7 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
 
             # Analyze the SID file
             try:
-                extracted = analyze_sid_file(input_path, config=config, sf2_reference_path=sf2_reference_path)
+                extracted = analyze_sid_file(input_path, config=config, sf2_reference_path=sf2_reference_path, driver_type=driver_type)
             except Exception as e:
                 file_size = Path(input_path).stat().st_size if Path(input_path).exists() else 0
                 logger.error(
@@ -1079,9 +1092,9 @@ def convert_sid_to_both_drivers(input_path: str, output_dir: str = None, config:
                 docs_link="README.md#usage"
             )
 
-        # Analyze the SID file once
+        # Analyze the SID file once (auto-select driver for analysis)
         try:
-            extracted = analyze_sid_file(input_path, config=config, sf2_reference_path=sf2_reference_path)
+            extracted = analyze_sid_file(input_path, config=config, sf2_reference_path=sf2_reference_path, driver_type=None)
         except Exception as e:
             file_size = Path(input_path).stat().st_size if Path(input_path).exists() else 0
             logger.error(
