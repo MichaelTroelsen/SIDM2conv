@@ -9,6 +9,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.0.1] - 2025-12-27
 
+### Added - ASM Auto-Annotation System
+
+**✨ NEW: Automated assembly file annotation with comprehensive documentation**
+
+**OVERVIEW**: Created an automated system that transforms raw 6502 disassembly files into well-documented, educational resources. Makes Laxity player internals and other assembly code much easier to understand.
+
+**NEW TOOL**: `pyscript/annotate_asm.py`
+
+**Features**:
+- **Comprehensive headers** - Auto-generates headers with file metadata, memory maps, and register references
+- **SID register documentation** - Complete reference for all $D400-$D418 registers
+- **Laxity table addresses** - Auto-detects Laxity files and documents all table locations
+- **Inline opcode comments** - Adds descriptions for 30+ common 6502 opcodes (LDA, STA, JSR, etc.)
+- **Metadata extraction** - Extracts title, author, copyright, and addresses from SIDwinder headers
+- **Batch processing** - Can annotate entire directories at once
+
+**Usage**:
+```bash
+# Single file
+python pyscript/annotate_asm.py input.asm [output.asm]
+
+# Entire directory
+python pyscript/annotate_asm.py directory/
+```
+
+**Files Annotated** (20 total):
+- **Drivers**: `laxity_driver_ANNOTATED.asm`, `laxity_player_disassembly_ANNOTATED.asm`
+- **Compliance**: `test_decompiler_output_ANNOTATED.asm`
+- **Tools**: 13 SIDPlayer and test files
+- **Archive**: 4 experimental test files (local only, gitignored)
+
+**Example Header Output**:
+```asm
+;==============================================================================
+; filename.asm
+; Annotated 6502 Assembly Disassembly
+;==============================================================================
+;
+; TITLE: Song Title
+; AUTHOR: Composer Name
+; PLAYER: Laxity NewPlayer v21
+; LOAD ADDRESS: $1000
+;
+;==============================================================================
+; MEMORY MAP
+;==============================================================================
+;
+; LAXITY NEWPLAYER V21 TABLE ADDRESSES (Verified):
+; $18DA   Wave Table - Waveforms (32 bytes)
+; $190C   Wave Table - Note Offsets (32 bytes)
+; $1837   Pulse Table (4-byte entries)
+; $1A1E   Filter Table (4-byte entries)
+; $1A6B   Instrument Table (8×8 bytes, column-major)
+; $199F   Sequence Pointers (3 voices × 2 bytes)
+;
+;==============================================================================
+; SID REGISTER REFERENCE
+;==============================================================================
+; $D400-$D406   Voice 1 (Frequency, Pulse, Control, ADSR)
+; $D407-$D40D   Voice 2 (Frequency, Pulse, Control, ADSR)
+; $D40E-$D414   Voice 3 (Frequency, Pulse, Control, ADSR)
+; $D415-$D416   Filter Cutoff (11-bit)
+; $D417         Filter Resonance/Routing
+; $D418         Volume/Filter Mode
+```
+
+**Example Inline Comments**:
+```asm
+LDA #$00           ; Load Accumulator
+STA $D418          ; Volume/Filter Mode
+JSR $0E00          ; Jump to Subroutine
+LDA $18DA,Y        ; Wave Table - Waveforms (32 bytes)
+```
+
+**Benefits**:
+- Makes assembly code educational and accessible
+- Helps understand Laxity player internals
+- Useful for debugging and reverse engineering
+- Preserves knowledge in code comments
+- Creates learning resources for 6502 programming
+
+**Commits**:
+- 3c2a2f2 - Initial annotation script + drivers/compliance files
+- d3a82f3 - Tools directory annotation (13 files)
+
 ### Verified - Laxity Accuracy Confirmation
 
 **✅ VERIFIED: Laxity driver achieves 99.98% frame accuracy (exceeds 99.93% target)**
