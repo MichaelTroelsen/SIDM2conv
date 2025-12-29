@@ -3,7 +3,7 @@
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 [![codecov](https://codecov.io/gh/MichaelTroelsen/SIDM2conv/branch/master/graph/badge.svg)](https://codecov.io/gh/MichaelTroelsen/SIDM2conv)
 
-**Version 3.0.1** | Build Date: 2025-12-27 | Production Ready - Laxity Driver Restored + VSID Integration ✅
+**Version 3.0.1** | Build Date: 2025-12-28 | Production Ready - Laxity Driver (99.98% accuracy) + Enhanced Sequence Handling ✅
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files with 99.98% frame accuracy for Laxity NewPlayer v21 files.
 
@@ -923,6 +923,33 @@ python test_batch_laxity.py
 - Tested on complete Laxity collection
 - Comprehensive documentation
 - Automated testing available
+
+#### Enhanced Features (v3.0.1+)
+
+**✨ Shared Sequence Detection** (NEW)
+- **Problem Solved**: Eliminated confusing warnings for files where all voices share one sequence
+- **Smart Detection**: Automatically identifies and handles shared sequences
+- **Clean Output**: No more false warnings like "Could not locate sequence at $2C00"
+- **Example**: Stinsens file now converts without any warnings while maintaining 99.98% accuracy
+
+**How It Works**:
+1. Parser extracts all valid sequences from the file
+2. If some voices have invalid pointers but at least one sequence was found
+3. Automatically assigns the found sequence to voices with missing sequences
+4. Logs informative messages at DEBUG level instead of warnings
+
+**Console Output**:
+```
+INFO: Found 1 sequence(s), assigning to voices with missing sequences
+DEBUG: Voice 1: using shared sequence 0
+DEBUG: Voice 2: using shared sequence 0
+```
+
+**Impact**:
+- ✅ Cleaner console output for users
+- ✅ No accuracy impact (still 99.98%)
+- ✅ Handles edge cases gracefully
+- ✅ Better user experience
 
 #### When to Use Laxity Driver
 
