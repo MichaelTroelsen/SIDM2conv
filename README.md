@@ -16,6 +16,8 @@ SIDM2 analyzes SID files and extracts music data for conversion to SID Factory I
 - ✅ **100% accuracy** for SF2-exported SID files (perfect roundtrip)
 - ✅ **Auto driver selection** based on player type detection
 - ✅ **HTML annotation tool** with 3,700+ semantic annotations per file
+- ✅ **Interactive trace visualization** for frame-by-frame register analysis
+- ✅ **Validation dashboard** with enhanced search and accuracy trends
 - ✅ **200+ unit tests** with 100% pass rate
 - ✅ **658+ SID files** cataloged and tested
 
@@ -34,8 +36,14 @@ sid-to-sf2.bat input.sid output.sf2
 # Generate interactive HTML documentation
 python pyscript/generate_stinsen_html.py input.sid
 
+# Generate interactive trace visualization
+python pyscript/sidwinder_html_exporter.py input.sid -f 300
+
 # View SF2 file with GUI
 sf2-viewer.bat file.sf2
+
+# Generate validation dashboard
+python scripts/generate_dashboard.py
 
 # Batch conversion GUI
 conversion-cockpit.bat
@@ -67,6 +75,8 @@ test-all.bat
 | **HTML Annotation Tool** | [docs/guides/HTML_ANNOTATION_TOOL.md](docs/guides/HTML_ANNOTATION_TOOL.md) |
 | **SF2 Viewer** | [docs/guides/SF2_VIEWER_GUIDE.md](docs/guides/SF2_VIEWER_GUIDE.md) |
 | **Conversion Cockpit** | [docs/guides/CONVERSION_COCKPIT_USER_GUIDE.md](docs/guides/CONVERSION_COCKPIT_USER_GUIDE.md) |
+| **Validation Dashboard** | [docs/guides/VALIDATION_DASHBOARD_GUIDE.md](docs/guides/VALIDATION_DASHBOARD_GUIDE.md) |
+| **SIDwinder HTML Trace** | [docs/guides/SIDWINDER_HTML_TRACE_GUIDE.md](docs/guides/SIDWINDER_HTML_TRACE_GUIDE.md) |
 | **Laxity Driver** | [docs/guides/LAXITY_DRIVER_USER_GUIDE.md](docs/guides/LAXITY_DRIVER_USER_GUIDE.md) |
 | **Validation** | [docs/guides/VALIDATION_GUIDE.md](docs/guides/VALIDATION_GUIDE.md) |
 | **Logging** | [docs/guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md](docs/guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md) |
@@ -102,6 +112,67 @@ python pyscript/generate_stinsen_html.py input.sid
 ```
 
 **See**: [docs/guides/HTML_ANNOTATION_TOOL.md](docs/guides/HTML_ANNOTATION_TOOL.md)
+
+---
+
+### Validation Dashboard (v2.0.0) ⭐ NEW
+
+Interactive validation results dashboard with professional styling and enhanced search.
+
+**Features**:
+- ✅ **Professional HTMLComponents styling** - Dark VS Code theme
+- ✅ **Enhanced search** - Text + accuracy range filters (`>90`, `<70`)
+- ✅ **Interactive charts** - Accuracy trends with Chart.js
+- ✅ **Sidebar navigation** - Jump to sections with smooth scrolling
+- ✅ **Detailed results table** - Color-coded accuracy bars, fail-first sorting
+- ✅ **Self-contained HTML** - Works offline, easy sharing
+
+**Usage**:
+```bash
+# Generate from latest validation run
+python scripts/generate_dashboard.py
+
+# Generate from specific run
+python scripts/generate_dashboard.py --run 5 --output custom.html
+
+# From Conversion Cockpit GUI
+# Results tab → "Generate & View Dashboard" button
+```
+
+**See**: [docs/guides/VALIDATION_DASHBOARD_GUIDE.md](docs/guides/VALIDATION_DASHBOARD_GUIDE.md)
+
+---
+
+### SIDwinder HTML Trace ⭐ NEW
+
+Interactive frame-by-frame SID register trace visualization.
+
+**Features**:
+- ✅ **Interactive timeline** - Slider + clickable activity bars
+- ✅ **Frame viewer** - Color-coded register writes (Voice 1/2/3, Filter)
+- ✅ **Register states** - Real-time SID register display with highlighting
+- ✅ **Professional styling** - Dark VS Code theme, smooth animations
+- ✅ **29 SID registers** - Complete register reference with tooltips
+- ✅ **Self-contained HTML** - Embedded trace data, works offline
+
+**Usage**:
+```bash
+# Generate trace HTML (300 frames default)
+python pyscript/sidwinder_html_exporter.py input.sid
+
+# Custom frame count and output
+python pyscript/sidwinder_html_exporter.py input.sid -o trace.html -f 500
+
+# From Python
+from pyscript.sidwinder_html_exporter import export_trace_to_html
+from pyscript.sidtracer import SIDTracer
+
+tracer = SIDTracer("input.sid", verbose=0)
+trace_data = tracer.trace(frames=300)
+export_trace_to_html(trace_data, "trace.html", tracer.header.name)
+```
+
+**See**: [docs/guides/SIDWINDER_HTML_TRACE_GUIDE.md](docs/guides/SIDWINDER_HTML_TRACE_GUIDE.md)
 
 ---
 
@@ -563,10 +634,10 @@ Located in `tools/` directory (Windows binaries, optional fallbacks):
 
 ### Codebase
 
-- **Python Files**: ~35 active scripts
+- **Python Files**: ~37 active scripts
 - **Test Coverage**: 200+ tests across 15+ test files
-- **Documentation**: 50+ markdown files (3,400+ lines of user guides)
-- **Lines of Code**: ~15,000 (Python + documentation)
+- **Documentation**: 52+ markdown files (4,800+ lines of user guides)
+- **Lines of Code**: ~17,000 (Python + documentation)
 
 ### Performance
 
@@ -587,14 +658,16 @@ Located in `tools/` directory (Windows binaries, optional fallbacks):
 
 ## Version History
 
-### v3.0.1 (2026-01-01) - HTML Annotation Tool
+### v3.0.1 (2026-01-01) - HTML Annotation Tool + Analysis Features
 
 - ✅ **HTML Annotation Tool v1.0** - Interactive SID analysis documentation
 - ✅ **3,700+ semantic annotations** per file (notes, commands, registers)
 - ✅ **11 data sections** auto-detected (Voice Control, Sequences, Tables)
 - ✅ **Clickable navigation** (table names → sections, addresses → hex dumps)
 - ✅ **Professional VS Code dark theme** with syntax highlighting
-- ✅ **Complete documentation** (544-line guide + examples)
+- ✅ **Validation Dashboard v2.0** - Enhanced search, accuracy filters, Chart.js trends
+- ✅ **SIDwinder HTML Trace** - Interactive frame-by-frame register visualization
+- ✅ **Complete documentation** (1,400+ lines for new features)
 
 ### v3.0.0 (2025-12-27) - Auto SF2 Detection
 
