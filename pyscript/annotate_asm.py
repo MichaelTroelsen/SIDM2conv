@@ -2249,6 +2249,430 @@ def format_symbol_table(symbols: Dict[int, Symbol],
     return output
 
 
+# ==============================================================================
+# Enhanced Register Usage Tracking
+# ==============================================================================
+
+@dataclass
+class RegisterLifecycle:
+    """Track the complete lifecycle of a register value"""
+    register: str  # 'A', 'X', or 'Y'
+    load_address: int
+    load_instruction: str
+    uses: List[int] = field(default_factory=list)  # Addresses where value is used
+    modifications: List[int] = field(default_factory=list)  # Where modified (but not killed)
+    death_address: Optional[int] = None  # Where value is overwritten/killed
+    is_dead_code: bool = False  # True if loaded but never used before being killed
+
+
+@dataclass
+class RegisterState:
+    """State of all registers at a specific instruction"""
+    address: int
+    a_live: bool = False  # A contains a value that will be used later
+    x_live: bool = False  # X contains a value that will be used later
+    y_live: bool = False  # Y contains a value that will be used later
+    a_source: Optional[int] = None  # Address where current A value was set
+    x_source: Optional[int] = None  # Address where current X value was set
+    y_source: Optional[int] = None  # Address where current Y value was set
+
+
+@dataclass
+class RegisterDependency:
+    """Track register dependencies for a single instruction"""
+    address: int
+    instruction: str
+    reads_a: bool = False  # Instruction reads A
+    reads_x: bool = False  # Instruction reads X
+    reads_y: bool = False  # Instruction reads Y
+    writes_a: bool = False  # Instruction writes A
+    writes_x: bool = False  # Instruction writes X
+    writes_y: bool = False  # Instruction writes Y
+    depends_on_a: Optional[int] = None  # Address that produced current A value
+    depends_on_x: Optional[int] = None  # Address that produced current X value
+    depends_on_y: Optional[int] = None  # Address that produced current Y value
+
+
+class EnhancedRegisterTracker:
+    """Enhanced register usage analysis with detailed lifecycle tracking"""
+
+    def __init__(self, lines: List[str], subroutines: Dict[int, 'SubroutineInfo']):
+        self.lines = lines
+        self.subroutines = subroutines
+        self.lifecycles: Dict[str, List[RegisterLifecycle]] = {
+            'A': [],
+            'X': [],
+            'Y': []
+        }
+        self.dependencies: Dict[int, RegisterDependency] = {}
+        self.register_states: Dict[int, RegisterState] = {}
+        self.dead_code: List[Tuple[int, str, str]] = []  # (address, register, reason)
+        self.optimizations: List[str] = []
+
+    def analyze_all(self) -> Tuple[
+        Dict[str, List[RegisterLifecycle]],
+        Dict[int, RegisterDependency],
+        List[Tuple[int, str, str]],
+        List[str]
+    ]:
+        """Main entry point: analyze all register usage"""
+        # Analyze each subroutine
+        for addr, info in self.subroutines.items():
+            self._analyze_subroutine_registers(addr, info)
+
+        # Detect dead code
+        self._detect_dead_code()
+
+        # Generate optimization suggestions
+        self._suggest_optimizations()
+
+        return self.lifecycles, self.dependencies, self.dead_code, self.optimizations
+
+    def _analyze_subroutine_registers(self, start_addr: int, info: 'SubroutineInfo'):
+        """Analyze register usage within a single subroutine"""
+        # Find subroutine boundaries
+        start_line = self._find_line_by_address(start_addr)
+        if start_line is None:
+            return
+
+        end_line = self._find_rts_after(start_line)
+        if end_line is None:
+            end_line = min(start_line + 200, len(self.lines))
+
+        # Track current state (where was each register last set?)
+        current_a_source: Optional[int] = None
+        current_x_source: Optional[int] = None
+        current_y_source: Optional[int] = None
+
+        # Active lifecycles (one per register, if any)
+        active_lifecycle_a: Optional[RegisterLifecycle] = None
+        active_lifecycle_x: Optional[RegisterLifecycle] = None
+        active_lifecycle_y: Optional[RegisterLifecycle] = None
+
+        # Analyze each instruction in the subroutine
+        for i in range(start_line, end_line + 1):
+            if i >= len(self.lines):
+                break
+
+            line = self.lines[i]
+            addr = self._extract_address(line)
+            if addr is None:
+                continue
+
+            # Determine what this instruction does to registers
+            dep = self._analyze_instruction_registers(line, addr)
+            if dep is None:
+                continue
+
+            # Track dependencies (what does this instruction depend on?)
+            dep.depends_on_a = current_a_source if dep.reads_a else None
+            dep.depends_on_x = current_x_source if dep.reads_x else None
+            dep.depends_on_y = current_y_source if dep.reads_y else None
+
+            self.dependencies[addr] = dep
+
+            # Handle A register lifecycle
+            if dep.reads_a and active_lifecycle_a:
+                active_lifecycle_a.uses.append(addr)
+
+            if dep.writes_a:
+                # Kill previous lifecycle if any
+                if active_lifecycle_a:
+                    active_lifecycle_a.death_address = addr
+                    self.lifecycles['A'].append(active_lifecycle_a)
+
+                # Start new lifecycle
+                active_lifecycle_a = RegisterLifecycle(
+                    register='A',
+                    load_address=addr,
+                    load_instruction=line.strip()
+                )
+                current_a_source = addr
+
+            # Handle X register lifecycle
+            if dep.reads_x and active_lifecycle_x:
+                active_lifecycle_x.uses.append(addr)
+
+            if dep.writes_x:
+                # Kill previous lifecycle if any
+                if active_lifecycle_x:
+                    active_lifecycle_x.death_address = addr
+                    self.lifecycles['X'].append(active_lifecycle_x)
+
+                # Start new lifecycle
+                active_lifecycle_x = RegisterLifecycle(
+                    register='X',
+                    load_address=addr,
+                    load_instruction=line.strip()
+                )
+                current_x_source = addr
+
+            # Handle Y register lifecycle
+            if dep.reads_y and active_lifecycle_y:
+                active_lifecycle_y.uses.append(addr)
+
+            if dep.writes_y:
+                # Kill previous lifecycle if any
+                if active_lifecycle_y:
+                    active_lifecycle_y.death_address = addr
+                    self.lifecycles['Y'].append(active_lifecycle_y)
+
+                # Start new lifecycle
+                active_lifecycle_y = RegisterLifecycle(
+                    register='Y',
+                    load_address=addr,
+                    load_instruction=line.strip()
+                )
+                current_y_source = addr
+
+        # Close any remaining lifecycles at subroutine end
+        if active_lifecycle_a:
+            active_lifecycle_a.death_address = info.end_address
+            self.lifecycles['A'].append(active_lifecycle_a)
+
+        if active_lifecycle_x:
+            active_lifecycle_x.death_address = info.end_address
+            self.lifecycles['X'].append(active_lifecycle_x)
+
+        if active_lifecycle_y:
+            active_lifecycle_y.death_address = info.end_address
+            self.lifecycles['Y'].append(active_lifecycle_y)
+
+    def _analyze_instruction_registers(self, line: str, addr: int) -> Optional[RegisterDependency]:
+        """Analyze what registers an instruction reads/writes"""
+        upper_line = line.upper()
+        dep = RegisterDependency(address=addr, instruction=line.strip())
+
+        # Instructions that read and write A
+        if re.search(r'\bADC\b|\bSBC\b|\bAND\b|\bORA\b|\bEOR\b|\bASL\s*$|\bLSR\s*$|\bROL\s*$|\bROR\s*$', upper_line):
+            dep.reads_a = True
+            dep.writes_a = True
+
+        # Instructions that only read A
+        elif re.search(r'\bSTA\b|\bCMP\b', upper_line):
+            dep.reads_a = True
+
+        # Instructions that only write A
+        elif re.search(r'\bLDA\b', upper_line):
+            dep.writes_a = True
+
+        # Transfer instructions affecting A
+        elif re.search(r'\bTXA\b|\bTYA\b', upper_line):
+            dep.reads_x = 'TXA' in upper_line
+            dep.reads_y = 'TYA' in upper_line
+            dep.writes_a = True
+        elif re.search(r'\bTAX\b', upper_line):
+            dep.reads_a = True
+            dep.writes_x = True
+        elif re.search(r'\bTAY\b', upper_line):
+            dep.reads_a = True
+            dep.writes_y = True
+
+        # Instructions that read and write X
+        if re.search(r'\bINX\b|\bDEX\b', upper_line):
+            dep.reads_x = True
+            dep.writes_x = True
+
+        # Instructions that only read X
+        elif re.search(r'\bSTX\b|\bCPX\b', upper_line):
+            dep.reads_x = True
+
+        # Instructions that only write X
+        elif re.search(r'\bLDX\b', upper_line):
+            dep.writes_x = True
+
+        # Instructions that read and write Y
+        if re.search(r'\bINY\b|\bDEY\b', upper_line):
+            dep.reads_y = True
+            dep.writes_y = True
+
+        # Instructions that only read Y
+        elif re.search(r'\bSTY\b|\bCPY\b', upper_line):
+            dep.reads_y = True
+
+        # Instructions that only write Y
+        elif re.search(r'\bLDY\b', upper_line):
+            dep.writes_y = True
+
+        # Indexed addressing modes also read the index register
+        if re.search(r',\s*X\b', upper_line):
+            dep.reads_x = True
+        if re.search(r',\s*Y\b', upper_line):
+            dep.reads_y = True
+
+        # Only return if this instruction does something with registers
+        if dep.reads_a or dep.reads_x or dep.reads_y or dep.writes_a or dep.writes_x or dep.writes_y:
+            return dep
+
+        return None
+
+    def _detect_dead_code(self):
+        """Detect register loads that are never used (dead code)"""
+        for reg_name, lifecycles in self.lifecycles.items():
+            for lifecycle in lifecycles:
+                # Dead code: loaded but never used before being killed
+                if not lifecycle.uses and lifecycle.death_address is not None:
+                    lifecycle.is_dead_code = True
+                    reason = f"Value loaded at ${lifecycle.load_address:04X} but never used before overwritten at ${lifecycle.death_address:04X}"
+                    self.dead_code.append((lifecycle.load_address, reg_name, reason))
+
+    def _suggest_optimizations(self):
+        """Generate optimization suggestions based on register usage patterns"""
+        # Suggestion 1: Dead code elimination
+        if self.dead_code:
+            self.optimizations.append(
+                f"Dead Code: Found {len(self.dead_code)} register load(s) that are never used. "
+                f"Consider removing these instructions."
+            )
+
+        # Suggestion 2: Register reuse opportunities
+        for reg_name, lifecycles in self.lifecycles.items():
+            short_lives = [lc for lc in lifecycles if len(lc.uses) == 1]
+            if len(short_lives) > 3:
+                self.optimizations.append(
+                    f"Register {reg_name}: Found {len(short_lives)} single-use loads. "
+                    f"Consider caching values for reuse."
+                )
+
+        # Suggestion 3: Long dependency chains
+        for addr, dep in self.dependencies.items():
+            chain_length = 0
+            current_addr = addr
+
+            # Trace back dependency chain for A register
+            if dep.depends_on_a:
+                visited = set()
+                while current_addr and current_addr not in visited:
+                    visited.add(current_addr)
+                    chain_length += 1
+                    if current_addr in self.dependencies:
+                        current_addr = self.dependencies[current_addr].depends_on_a
+                    else:
+                        break
+
+                if chain_length > 5:
+                    self.optimizations.append(
+                        f"Long Dependency Chain: Instruction at ${addr:04X} has a dependency "
+                        f"chain of {chain_length} steps. Consider breaking into smaller operations."
+                    )
+
+    def _extract_address(self, line: str) -> Optional[int]:
+        """Extract address from a line"""
+        # Try various address formats
+        match = re.match(r'\s*\$?([0-9A-Fa-f]{4}):', line)
+        if match:
+            return int(match.group(1), 16)
+        return None
+
+    def _find_line_by_address(self, address: int) -> Optional[int]:
+        """Find line number containing the given address"""
+        # Support both uppercase and lowercase hex
+        addr_upper = f'${address:04X}:'
+        addr_lower = f'${address:04x}:'
+        for i, line in enumerate(self.lines):
+            stripped = line.strip()
+            if stripped.startswith(addr_upper) or stripped.startswith(addr_lower) or \
+               stripped.startswith(f'{address:04X}:') or stripped.startswith(f'{address:04x}:'):
+                return i
+        return None
+
+    def _find_rts_after(self, start_line: int) -> Optional[int]:
+        """Find the next RTS instruction after start_line"""
+        rts_pattern = re.compile(r'\bRTS\b', re.IGNORECASE)
+        for i in range(start_line, min(start_line + 200, len(self.lines))):
+            if rts_pattern.search(self.lines[i]):
+                return i
+        return None
+
+
+def format_register_analysis(
+    lifecycles: Dict[str, List[RegisterLifecycle]],
+    dependencies: Dict[int, RegisterDependency],
+    dead_code: List[Tuple[int, str, str]],
+    optimizations: List[str]
+) -> str:
+    """Format enhanced register analysis as readable output"""
+    sep = "=" * 78
+    output = f";{sep}\n"
+    output += f"; ENHANCED REGISTER ANALYSIS\n"
+    output += f";{sep}\n"
+    output += ";\n"
+
+    # Summary statistics
+    total_lifecycles = sum(len(lc) for lc in lifecycles.values())
+    total_dependencies = len(dependencies)
+
+    output += f"; Total Register Lifecycles: {total_lifecycles}\n"
+    output += f"; Total Dependencies Tracked: {total_dependencies}\n"
+    output += f"; Dead Code Instances: {len(dead_code)}\n"
+    output += ";\n"
+
+    # Register lifecycles summary
+    output += f"; Register Lifecycles by Register:\n"
+    for reg_name in ['A', 'X', 'Y']:
+        lifecycles_list = lifecycles[reg_name]
+        output += f";   {reg_name}: {len(lifecycles_list)} lifecycle(s)\n"
+
+        # Statistics
+        if lifecycles_list:
+            avg_uses = sum(len(lc.uses) for lc in lifecycles_list) / len(lifecycles_list)
+            max_uses = max(len(lc.uses) for lc in lifecycles_list)
+            dead_count = sum(1 for lc in lifecycles_list if lc.is_dead_code)
+
+            output += f";      Average uses per load: {avg_uses:.1f}\n"
+            output += f";      Maximum uses: {max_uses}\n"
+            output += f";      Dead loads: {dead_count}\n"
+
+    output += ";\n"
+
+    # Dead code warnings
+    if dead_code:
+        output += f"; DEAD CODE WARNINGS\n"
+        output += f"; {'-' * 76}\n"
+        for addr, reg, reason in dead_code:
+            output += f"; ${addr:04X} - Register {reg}: {reason}\n"
+        output += ";\n"
+
+    # Optimization suggestions
+    if optimizations:
+        output += f"; OPTIMIZATION SUGGESTIONS\n"
+        output += f"; {'-' * 76}\n"
+        for i, suggestion in enumerate(optimizations, 1):
+            output += f"; {i}. {suggestion}\n"
+        output += ";\n"
+
+    # Detailed lifecycle table (show first 20)
+    output += f"; REGISTER LIFECYCLE DETAILS (First 20)\n"
+    output += f"; {'-' * 76}\n"
+    output += f"; {'Reg':<3} {'Load@':<8} {'Uses':<6} {'Death@':<8} {'Status':<10} {'Instruction'}\n"
+
+    all_lifecycles = []
+    for reg_name, lc_list in lifecycles.items():
+        for lc in lc_list:
+            all_lifecycles.append((reg_name, lc))
+
+    # Sort by load address
+    all_lifecycles.sort(key=lambda x: x[1].load_address)
+
+    for reg_name, lc in all_lifecycles[:20]:
+        load_str = f"${lc.load_address:04X}"
+        uses_str = str(len(lc.uses))
+        death_str = f"${lc.death_address:04X}" if lc.death_address else "end"
+        status_str = "DEAD" if lc.is_dead_code else "live"
+        instr_str = lc.load_instruction[:40] if lc.load_instruction else ""
+
+        output += f"; {reg_name:<3} {load_str:<8} {uses_str:<6} {death_str:<8} {status_str:<10} {instr_str}\n"
+
+    if len(all_lifecycles) > 20:
+        output += f"; ... ({len(all_lifecycles) - 20} more lifecycles not shown)\n"
+
+    output += ";\n"
+    output += f";{sep}\n"
+    output += ";\n"
+
+    return output
+
+
 def create_header(filename: str, info: dict) -> str:
     """Create comprehensive header for ASM file"""
     sep = ";" + "=" * 78
@@ -2442,6 +2866,13 @@ def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = Non
     symbols = symbol_generator.generate_symbol_table()
     print(f"  Found {len(symbols)} symbol(s)")
 
+    # Analyze enhanced register usage
+    print(f"  Analyzing enhanced register usage...")
+    register_tracker = EnhancedRegisterTracker(lines, subroutines)
+    lifecycles, dependencies, dead_code, optimizations = register_tracker.analyze_all()
+    total_lifecycles = sum(len(lc) for lc in lifecycles.values())
+    print(f"  Tracked {total_lifecycles} register lifecycle(s), {len(dead_code)} dead code instance(s)")
+
     # Create annotated version
     output_lines = []
 
@@ -2462,6 +2893,11 @@ def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = Non
     loop_analysis = format_loop_analysis(loops)
     if loop_analysis:
         output_lines.append(loop_analysis)
+
+    # Add enhanced register analysis
+    register_analysis = format_register_analysis(lifecycles, dependencies, dead_code, optimizations)
+    if register_analysis:
+        output_lines.append(register_analysis)
 
     # Build a mapping of line numbers to subroutine addresses
     line_to_subroutine = {}

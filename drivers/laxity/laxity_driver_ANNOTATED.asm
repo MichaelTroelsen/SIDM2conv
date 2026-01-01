@@ -76,6 +76,47 @@
 ;   Types: subroutine, data, hardware, unknown
 ;==============================================================================
 ;
+;==============================================================================
+; CALL GRAPH
+;==============================================================================
+;
+; Entry Points (2):
+;   - SID Update [$0D7E]
+;   - Subroutine [$0D81]
+;
+; Call Hierarchy:
+;
+; SID Update [$0D7E]
+; └─> JSR $0E00
+;
+; Subroutine [$0D81]
+; └─> JSR $0EA1
+;
+; Statistics:
+;   - Total subroutines: 2
+;   - Maximum call depth: 1 levels
+;   - Recursive calls: 0
+;==============================================================================
+;
+;==============================================================================
+; ENHANCED REGISTER ANALYSIS
+;==============================================================================
+;
+; Total Register Lifecycles: 0
+; Total Dependencies Tracked: 0
+; Dead Code Instances: 0
+;
+; Register Lifecycles by Register:
+;   A: 0 lifecycle(s)
+;   X: 0 lifecycle(s)
+;   Y: 0 lifecycle(s)
+;
+; REGISTER LIFECYCLE DETAILS (First 20)
+; ----------------------------------------------------------------------------
+; Reg Load@    Uses   Death@   Status     Instruction
+;
+;==============================================================================
+;
 ; Laxity SF2 Driver Wrapper; Wraps relocated Laxity NewPlayer v21 with SF2 interface;; Memory Layout:; $0D7E-$0DFF   SF2 Wrapper (130 bytes); $0E00-$16FF   Relocated Laxity Player (2.3 KB); $1700-$18FF   SF2 Header Blocks (512 bytes); $1900+        Music Data*=$0D7E; SF2 Driver Entry Points; These addresses are fixed for SF2 compatibility; Init routine ($0D7E); Initializes SID and Laxity player;------------------------------------------------------------------------------
 ; Subroutine: SID Update
 ; Address: $0D7E
