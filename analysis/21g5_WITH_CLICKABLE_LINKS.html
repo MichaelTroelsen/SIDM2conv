@@ -1,0 +1,1932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>21g5.txt - Assembly Analysis</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/vs2015.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        .container { display: flex; height: 100vh; }
+
+        /* Sidebar */
+        .sidebar {
+            width: 320px;
+            background: #252526;
+            border-right: 1px solid #3e3e42;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        .sidebar h2 {
+            color: #4ec9b0;
+            font-size: 16px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #3e3e42;
+            padding-bottom: 8px;
+        }
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .stat-item {
+            background: #1e1e1e;
+            padding: 12px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .stat-value {
+            color: #4ec9b0;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .stat-label {
+            color: #858585;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+        #search {
+            width: 100%;
+            padding: 10px;
+            background: #3c3c3c;
+            border: 1px solid #3e3e42;
+            color: #d4d4d4;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        #search:focus {
+            outline: none;
+            border-color: #007acc;
+        }
+        .nav-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin: 3px 0;
+            display: flex;
+            justify-content: space-between;
+            transition: all 0.2s;
+        }
+        .nav-item:hover {
+            background: #2a2d2e;
+            transform: translateX(4px);
+        }
+        .nav-item.active {
+            background: #37373d;
+            border-left: 3px solid #007acc;
+        }
+        .nav-address {
+            color: #4ec9b0;
+            font-weight: bold;
+        }
+        .nav-name {
+            color: #dcdcaa;
+            margin-left: 10px;
+        }
+
+        /* Main content */
+        .main-content {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 30px;
+        }
+        .page-header {
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e1e1e 100%);
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border-left: 5px solid #4ec9b0;
+        }
+        .page-title {
+            color: #4ec9b0;
+            font-size: 28px;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        .page-meta {
+            color: #9cdcfe;
+            font-size: 14px;
+        }
+
+        /* Section */
+        .section {
+            background: #252526;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            border: 1px solid #3e3e42;
+            overflow: hidden;
+        }
+        .section-header {
+            padding: 18px 24px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #2d2d30;
+            transition: background 0.2s;
+        }
+        .section-header:hover {
+            background: #383838;
+        }
+        .section-title {
+            color: #569cd6;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        .section-toggle {
+            color: #858585;
+            font-size: 14px;
+            transition: transform 0.3s;
+        }
+        .section-toggle.collapsed {
+            transform: rotate(-90deg);
+        }
+        .section-content {
+            padding: 24px;
+            max-height: 10000px;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out, padding 0.3s;
+        }
+        .section-content.collapsed {
+            max-height: 0;
+            padding: 0 24px;
+        }
+
+        /* Card */
+        .card {
+            background: #1e1e1e;
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            border-left: 4px solid #dcdcaa;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .card-title {
+            color: #dcdcaa;
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .card-subtitle {
+            color: #4ec9b0;
+            font-size: 13px;
+            margin-bottom: 12px;
+        }
+        .card-content {
+            color: #9cdcfe;
+            font-size: 14px;
+            line-height: 1.8;
+        }
+        .card-meta {
+            display: flex;
+            gap: 20px;
+            margin-top: 12px;
+            font-size: 13px;
+            flex-wrap: wrap;
+        }
+        .meta-badge {
+            background: #2d2d30;
+            padding: 6px 12px;
+            border-radius: 4px;
+            color: #9cdcfe;
+        }
+        .meta-badge strong {
+            color: #ce9178;
+        }
+
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th {
+            background: #2d2d30;
+            color: #569cd6;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+            border-bottom: 2px solid #3e3e42;
+        }
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #3e3e42;
+        }
+        tr:hover {
+            background: #2a2d2e;
+        }
+
+        /* Warning/Info boxes */
+        .warning-box {
+            background: linear-gradient(135deg, #4a1c00 0%, #2d2d30 100%);
+            border-left: 4px solid #ce9178;
+            padding: 18px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+        }
+        .warning-title {
+            color: #ce9178;
+            font-weight: bold;
+            margin-bottom: 8px;
+            font-size: 15px;
+        }
+        .warning-text {
+            color: #cccccc;
+        }
+        .info-box {
+            background: linear-gradient(135deg, #0a3a2a 0%, #2d2d30 100%);
+            border-left: 4px solid #4ec9b0;
+            padding: 18px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+        }
+        .info-text {
+            color: #cccccc;
+        }
+
+        /* Highlight effect */
+        .highlight {
+            animation: highlight-flash 1.5s;
+        }
+        @keyframes highlight-flash {
+            0%, 100% { background: transparent; }
+            50% { background: #264f78; }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 12px;
+            height: 12px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e1e1e;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #424242;
+            border-radius: 6px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4e4e4e;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <h2>📊 Analysis Stats</h2>
+            <div class="stat-grid">
+                <div class="stat-item">
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">Subroutines</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">36</div>
+                    <div class="stat-label">Symbols</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">32</div>
+                    <div class="stat-label">Patterns</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">Loops</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">Dead Code</div>
+                </div>
+            </div>
+
+            <h2>🔍 Quick Search</h2>
+            <input type="text" id="search" placeholder="Search addresses, names...">
+
+            <h2>📑 Quick Jump</h2>
+            <div style="margin-bottom: 20px;">
+                <button onclick="document.getElementById('player-structure').scrollIntoView({behavior: 'smooth'}); toggleSection('player-structure');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    🏗️ Player Structure
+                </button>
+                <button onclick="document.getElementById('architectural-insights').scrollIntoView({behavior: 'smooth'}); toggleSection('architectural-insights');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    💡 Architectural Insights
+                </button>
+                <button onclick="document.getElementById('code-org').scrollIntoView({behavior: 'smooth'}); toggleSection('code-org');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    🗂️ Code Organization
+                </button>
+                <button onclick="document.getElementById('subroutines').scrollIntoView({behavior: 'smooth'}); toggleSection('subroutines');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    🔧 Subroutines
+                </button>
+                <button onclick="document.getElementById('loops').scrollIntoView({behavior: 'smooth'}); toggleSection('loops');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    🔄 Loops
+                </button>
+                <button onclick="document.getElementById('patterns').scrollIntoView({behavior: 'smooth'}); toggleSection('patterns');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    🔍 Code Patterns
+                </button>
+                <button onclick="document.getElementById('symbols').scrollIntoView({behavior: 'smooth'}); toggleSection('symbols');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    📝 Symbols
+                </button>
+                <button onclick="document.getElementById('raw-data').scrollIntoView({behavior: 'smooth'}); toggleSection('raw-data');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    💾 Raw Data
+                </button>
+                <button onclick="document.getElementById('full-asm').scrollIntoView({behavior: 'smooth'}); toggleSection('full-asm');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    📜 Assembly Code
+                </button>
+            </div>
+
+            <h2>🔗 Subroutine Links</h2>
+            <div id="nav-list">
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="page-header">
+                <div class="page-title">21g5.txt</div>
+                <div class="page-meta">Author: Unknown | Player: Unknown</div>
+            </div>
+
+            <!-- Player Structure -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('player-structure')">
+                    <span class="section-title">🎵 Player Structure</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="player-structure">
+                    <div class="card">
+                        <div class="card-title">Entry Points</div>
+                        <div class="card-content">
+                            <table>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Load Address:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$0000</td>
+                                    <td style="color: #858585;">Code/data load point</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Init Routine:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$0000</td>
+                                    <td style="color: #858585;">Player initialization</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Play Routine:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$0000</td>
+                                    <td style="color: #858585;">Called every frame (50Hz PAL / 60Hz NTSC)</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">Data Tables</div>
+                        <div class="card-content">
+                            <table>
+                                <tr>
+                                    <td style="color: #dcdcaa;">Pulse Table:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$D411</td>
+                                    <td style="color: #858585;">Pulse width modulation</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa;">Filter Table:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$D418</td>
+                                    <td style="color: #858585;">Filter parameters</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Architectural Insights -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('arch-insights')">
+                    <span class="section-title">🏗️ Architectural Insights</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="arch-insights">
+                    <div class="card">
+                        <div class="card-title">Standard Player</div>
+                        <div class="card-content">Classic SID player architecture with init and play routines</div>
+                    </div>
+                </div>
+            </div>
+            <!-- Code Organization -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('code-org')">
+                    <span class="section-title">📐 Code Organization</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="code-org">
+                    <div class="card">
+                        <div class="card-title">Memory Layout - Complete Map (0 data sections)</div>
+                        <div class="card-content">
+                            <div style="font-family: monospace; line-height: 1.6; font-size: 13px;">
+                                <div style="color: #4ec9b0; font-weight: bold;">• <span style="color: #4ec9b0;">$0000</span> - Load Address</div>
+                                <div style="color: #569cd6; margin-left: 20px;">├─ <span style="color: #4ec9b0;">$0000</span> Init | <span style="color: #4ec9b0;">$0000</span> Play</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">Structure Summary</div>
+                        <div class="card-content">
+                            <table>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Code Sections:</td>
+                                    <td style="color: #4ec9b0;">0</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Data Sections:</td>
+                                    <td style="color: #4ec9b0;">0</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Total Symbols:</td>
+                                    <td style="color: #4ec9b0;">36</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Subroutines -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('subroutines')">
+                    <span class="section-title">🔧 Subroutines (0)</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="subroutines">
+                </div>
+            </div>
+
+            <!-- Loops -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('loops')">
+                    <span class="section-title">🔄 Loops (0)</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="loops">
+                </div>
+            </div>
+
+            <!-- Symbol Table -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('symbols')">
+                    <span class="section-title">📋 Symbol Table (36)</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content collapsed" id="symbols">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Address</th>
+                                <th>Type</th>
+                                <th>Name</th>
+                                <th>Refs</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0314</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0314</td>
+                                <td style="color: #ce9178;">1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0315</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0315</td>
+                                <td style="color: #ce9178;">1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0400</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0400</td>
+                                <td style="color: #ce9178;">2w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D011</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_d011</td>
+                                <td style="color: #ce9178;">1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D012</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_d012</td>
+                                <td style="color: #ce9178;">2r,1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D019</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_d019</td>
+                                <td style="color: #ce9178;">1r,2w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D01A</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_d01a</td>
+                                <td style="color: #ce9178;">1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D020</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_d020</td>
+                                <td style="color: #ce9178;">2r,3w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D400</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_frequency_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Frequency Low</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D401</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_frequency_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Frequency High</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D402</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_pulse_width_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Pulse Width Low</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D403</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_pulse_width_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Pulse Width High</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D404</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_control_register</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Control Register</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D405</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_attack/decay</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Attack/Decay</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D406</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_sustain/release</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Sustain/Release</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D407</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_frequency_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Frequency Low</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D408</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_frequency_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Frequency High</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D409</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_pulse_width_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Pulse Width Low</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40A</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_pulse_width_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Pulse Width High</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40B</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_control_register</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Control Register</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40C</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_attack/decay</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Attack/Decay</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40D</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_sustain/release</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Sustain/Release</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40E</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_frequency_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Frequency Low</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40F</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_frequency_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Frequency High</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D410</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_pulse_width_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Pulse Width Low</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D411</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_pulse_width_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Pulse Width High</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D412</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_control_register</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Control Register</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D413</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_attack/decay</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Attack/Decay</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D414</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_sustain/release</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Sustain/Release</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D415</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">filter_cutoff_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Filter Cutoff Low</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D416</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">filter_cutoff_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Filter Cutoff High</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D417</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">filter_resonance/routing</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Filter Resonance/Routing</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D418</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">volume/filter_mode</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Volume/Filter Mode</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$DC01</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_dc01</td>
+                                <td style="color: #ce9178;">1r</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$DC0E</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_dc0e</td>
+                                <td style="color: #ce9178;">1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$EA31</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_ea31</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <!-- Code Patterns -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('patterns')">
+                    <span class="section-title">🔍 Code Patterns (32)</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content collapsed" id="patterns">
+                    <div class="card">
+                        <div class="card-title">Pattern #1: BIT_SHIFT_RIGHT</div>
+                        <div class="card-content">Bit shift right by 4 (without carry)</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #2: BIT_SHIFT_RIGHT</div>
+                        <div class="card-content">Bit shift right by 3 (without carry)</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #3: BIT_SHIFT_RIGHT</div>
+                        <div class="card-content">Bit shift right by 2 (without carry)</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #4: BIT_SHIFT_LEFT</div>
+                        <div class="card-content">Bit shift left by 2 (without carry)</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #5: CLEAR_MEMORY</div>
+                        <div class="card-content">Clear 3 memory locations</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #6: CLEAR_MEMORY</div>
+                        <div class="card-content">Clear 6 memory locations</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #7: BIT_SHIFT_RIGHT</div>
+                        <div class="card-content">Bit shift right by 4 (without carry)</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #8: BIT_SHIFT_RIGHT</div>
+                        <div class="card-content">Bit shift right by 3 (without carry)</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #9: BIT_SHIFT_RIGHT</div>
+                        <div class="card-content">Bit shift right by 2 (without carry)</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #10: BIT_SHIFT_LEFT</div>
+                        <div class="card-content">Bit shift left by 3 (without carry)</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #11: BIT_SHIFT_LEFT</div>
+                        <div class="card-content">Bit shift left by 2 (without carry)</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #12: BIT_SHIFT_LEFT</div>
+                        <div class="card-content">Bit shift left by 3 (without carry)</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #13: BIT_SHIFT_LEFT</div>
+                        <div class="card-content">Bit shift left by 2 (without carry)</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #14: BIT_SHIFT_LEFT</div>
+                        <div class="card-content">Bit shift left by 3 (without carry)</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #15: BIT_SHIFT_LEFT</div>
+                        <div class="card-content">Bit shift left by 2 (without carry)</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #16: BIT_SHIFT_LEFT</div>
+                        <div class="card-content">Bit shift left by 3 (without carry)</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #17: BIT_SHIFT_LEFT</div>
+                        <div class="card-content">Bit shift left by 2 (without carry)</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #18: CLEAR_MEMORY</div>
+                        <div class="card-content">Clear 4 memory locations</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #19: BIT_SHIFT_RIGHT</div>
+                        <div class="card-content">Bit shift right by 4 (without carry)</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #20: BIT_SHIFT_RIGHT</div>
+                        <div class="card-content">Bit shift right by 3 (without carry)</div>
+                    </div>
+                    <div style="text-align: center; color: #858585; padding: 15px;">
+                        (12 more patterns not shown)
+                    </div>
+                </div>
+            </div>
+            <!-- Full Assembly Code -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('full-asm')">
+                    <span class="section-title">📜 Fully Annotated Assembly (1034 lines)</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content collapsed" id="full-asm">
+                    <div style="background: #1e1e1e; padding: 20px; border-radius: 6px; overflow-x: auto;">
+                        <pre style="color: #d4d4d4; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; line-height: 1.8;"><span style="color: #6a9955;">; ---------------------------------------</span>
+<span style="color: #6a9955;">;  JCH NewPlayer v21.G5.........01-02-98</span>
+<span style="color: #6a9955;">;  by GLOVER/SAMAR/CRYSTAL SOUND</span>
+<span style="color: #6a9955;">; ---------------------------------------</span>
+<span style="color: #6a9955;">; sound:</span>
+<span style="color: #6a9955;">; </span>
+<span style="color: #6a9955;">; 00:attack/delay</span>
+<span style="color: #6a9955;">; 01:sustain/release</span>
+<span style="color: #6a9955;">; 02:wavetab speed first pos/second pos.</span>
+<span style="color: #6a9955;">; 03:fx</span>
+<span style="color: #6a9955;">; 04:resonans/filter type</span>
+<span style="color: #6a9955;">; 05:filtertab number</span>
+<span style="color: #6a9955;">; 06:pulsetab number</span>
+<span style="color: #6a9955;">; 07:wavetab number</span>
+<span style="color: #6a9955;">; fx:</span>
+<span style="color: #6a9955;">; 01:drum effect</span>
+<span style="color: #6a9955;">; 02:filter no restart</span>
+<span style="color: #6a9955;">; 04:pulse no restart</span>
+<span style="color: #6a9955;">; </span>
+<span style="color: #6a9955;">; supertab:</span>
+<span style="color: #6a9955;">; </span>
+<span style="color: #6a9955;">; 0h,lo slide up</span>
+<span style="color: #6a9955;">; 1h,lo slide down</span>
+<span style="color: #6a9955;">; 2x,yy vibrato1 x-speed,yy-add</span>
+<span style="color: #6a9955;">; 3?,sr sustain/release</span>
+<span style="color: #6a9955;">; 4?,xy x,y point to half speed!</span>
+<span style="color: #6a9955;">; 5?,xx filter frq add</span>
+<span style="color: #6a9955;">; 60-7f,xx new filter point in a sound</span>
+<span style="color: #6a9955;">; 80-9f,xx new pulser point in a sound</span>
+<span style="color: #6a9955;">; a0-bf,xx new waveform point in a sound</span>
+<span style="color: #6a9955;">; c0-df,xx new wavespeed point in a sound</span>
+<span style="color: #6a9955;">; e?,?x volume tune.</span>
+<span style="color: #6a9955;">; fx,yz vibrato2 x-feel,y-speed,z-add</span>
+<span style="color: #6a9955;">; ---------------------------------------</span>
+
+         *= <span style="color: #4ec9b0;">$09e0</span>
+
+         ldy #0
+         ldx #&gt<span style="color: #6a9955;">; s0</span>
+sfx      lda #&lt<span style="color: #6a9955;">; s0</span>
+         sta lobyt,y
+         txa
+         sta hibyt,y
+         inx
+         iny
+         bpl sfx
+         rts
+
+         *= <span style="color: #4ec9b0;">$0f00</span>
+
+dinit    lda #0
+         jsr init
+
+         sei
+         ldx #0
+         stx <span style="color: #4ec9b0;">$dc0e</span>
+         stx <span style="color: #4ec9b0;">$d019</span>
+         stx <span style="color: #4ec9b0;">$d020</span>
+         stx drs2+1
+         inx
+         stx <span style="color: #4ec9b0;">$d01a</span>
+         lda #&lt<span style="color: #6a9955;">; drun</span>
+         sta <span style="color: #4ec9b0;">$0314</span>
+         lda #&gt<span style="color: #6a9955;">; drun</span>
+         sta <span style="color: #4ec9b0;">$0315</span>
+         lda #$fa
+         sta <span style="color: #4ec9b0;">$d012</span>
+         cli
+         rts
+
+drun     lda #$1b
+         sta <span style="color: #4ec9b0;">$d011</span>
+         lda <span style="color: #4ec9b0;">$d012</span>
+         sta drs1+1
+         dec <span style="color: #4ec9b0;">$d020</span>
+         jsr drive
+         inc <span style="color: #4ec9b0;">$d020</span>
+         lda <span style="color: #4ec9b0;">$d012</span>
+drs1     sbc #0
+         sta drs1+1
+drs2     cmp #0
+         bcc fast
+         sta drs2+1
+
+fast     lda <span style="color: #4ec9b0;">$dc01</span>
+         cmp #$fd
+         bne dend
+         jsr drive
+         jmp fast
+
+dend     cmp #$fb
+         bne dend2
+         lda #0
+         sta drs2+1
+
+dend2    ldy #0
+         lda drs1+1
+         jsr wh
+         lda drs2+1
+         jsr wh
+
+         inc <span style="color: #4ec9b0;">$d019</span>
+         jmp <span style="color: #4ec9b0;">$ea31</span>
+<span style="color: #6a9955;">; --------</span>
+wh       pha
+         lsr a
+         lsr a
+         lsr a
+         lsr a
+         tax
+         lda th,x
+         sta <span style="color: #4ec9b0;">$0400</span>,y
+         iny
+         pla
+         and #$0f
+         tax
+         lda th,x
+         sta <span style="color: #4ec9b0;">$0400</span>,y
+         iny
+         rts
+th       .text "0123456789"
+<span style="color: #6a9955;">; --------</span>
+         *= <span style="color: #4ec9b0;">$0fa0</span>
+
+ofa0     .word voicon
+ofa2     .word vol+1
+ofa4     .word credits
+ofa6     .word tpoin
+ofa8     .word sinit
+ofaa     .word main
+ofac     .word getinit
+ofae     .word getinit
+ofb0     .word get3
+ofb2     .word getins
+ofb4     .word real
+ofb6     .word setsid
+ofb8     .word notes
+ofba     .word fintun
+ofbc     .word arp1
+ofbe     .word arp2
+ofc0     .word filttab
+ofc2     .word pulstab
+ofc4     .word instr
+ofc6     .word v1
+ofc8     .word v2
+ofca     .word v3
+ofcc     .word lobyt
+ofce     .word hibyt
+ofd0     .word supertab
+ofd2     .word s00
+ofd4     .word shspeed
+ofd6     .word s02
+ofd8     .word voice
+ofda     .word gat
+ofdc     .word nog
+ofde     .word trans
+ofe0     .word sflag
+ofe2     .word not
+ofe4     .word vhzl
+ofe6     .word vhzh
+ofe8     .word next
+ofea     .word insnr
+ofec     .word synth
+
+version  .text "21.g5"
+
+info     .byte %00001101
+               <span style="color: #6a9955;">;     ^^^^</span>
+               <span style="color: #6a9955;">;     4210</span>
+               <span style="color: #6a9955;">; </span>
+               <span style="color: #6a9955;">; 2=0FD8 points to 'VOICE'</span>
+               <span style="color: #6a9955;">; ('S03' was kicked out!)</span>
+               <span style="color: #6a9955;">; </span>
+               <span style="color: #6a9955;">; 1=fix byte 6 AND 7 in</span>
+               <span style="color: #6a9955;">; the instrument table.</span>
+               <span style="color: #6a9955;">; </span>
+               <span style="color: #6a9955;">; 0=fix $7F-$XX pointers.</span>
+<span style="color: #6a9955;">; ---------------------------------------</span>
+tab      = $02
+
+         *= <span style="color: #4ec9b0;">$1000</span>
+
+init     jmp sinit
+drive    jmp main
+
+voicon   .byte 1,1,1     <span style="color: #6a9955;">;  on/off flags</span>
+shspeed  .byte 0
+fltcyc   .byte 0
+reson    .byte $0f
+tt1      .byte 0,0,0
+tt2      .byte 0,0,0
+
+         .byte $fc,$3e   <span style="color: #6a9955;">; _kendetegn til</span>
+                         <span style="color: #6a9955;">;  delux driver</span>
+         .text "player 21.g5"
+
+credits  .byte 0
+         .text "player &amp<span style="color: #6a9955;">;  music "</span>
+         .text "by glover/s/cs!-"
+<span style="color: #6a9955;">; --------</span>
+sinit    asl a
+         asl a
+         asl a
+         tay
+
+         lda #&lt<span style="color: #6a9955;">; tpoin</span>
+         clc
+         ldx tpoin+7,y
+         bpl *+4
+         adc #8
+         sta si1a+1
+         adc #1
+         sta si1b+1
+         lda #&gt<span style="color: #6a9955;">; tpoin</span>
+         sta si1a+2
+         adc #0
+         sta si1b+2
+
+         ldx #bufend-buf
+         lda #0
+         sta half+1
+si0      sta buf-1,x
+         sta <span style="color: #4ec9b0;">$d400</span>-1,x
+         dex
+         bne si0
+
+si1      lda tpoin,y
+         sta kbyl,x
+si1a     lda tpoin,y
+         sta kbyl2,x
+         lda tpoin+1,y
+         sta kbyh,x
+si1b     lda tpoin+1,y
+         sta kbyh2,x
+         iny
+         iny
+         inx
+         cpx #3
+         bne si1
+         inx
+         stx speed+1
+         lda filttab
+         sta shspeed
+         lda #$0f
+         sta f18+1
+         sta vol+1
+         rts
+<span style="color: #6a9955;">; ---------------------------------------</span>
+main     ldx #2
+
+f17      lda #0
+         sta <span style="color: #4ec9b0;">$d417</span>
+f18      lda #$00
+         sta <span style="color: #4ec9b0;">$d418</span>
+
+         dec speed+1
+         bpl m0
+half     ldy #0
+         lda filttab,y
+         sta speed+1
+         sta shspeed
+         tya
+         eor #1
+         sta half+1
+
+m0       lda voicon,x
+         bne speed
+         jmp next
+
+speed    lda #0
+         bne m1
+         dec dtim,x
+         bpl m3
+         jmp getins
+
+m1       cmp #3
+         bne m1a
+         ldy dtim,x
+         beq gettrk
+         bne m3
+m1a      cmp #2
+         bne m2
+         ldy dtim,x
+         beq getinit
+         bne m3
+
+m2       cmp #1
+         bne m3
+         lda dtim,x
+         bne m3
+         jmp endtabs
+
+m3       jmp real
+<span style="color: #6a9955;">; ---------------------------------------</span>
+gettrk   lda kbyl,x
+         sta tab
+         lda kbyh,x
+         sta tab+1
+
+         lda (tab),y
+         bpl seq3
+
+seq2     sta trans,x
+         inc kbyl,x
+         bne *+5
+         inc kbyh,x
+         iny
+         lda (tab),y
+
+seq3     tay
+         lda lobyt,y
+         sta tt1,x
+         lda hibyt,y
+         sta tt2,x
+
+         ldy voice,x
+         lda sr,x
+         sta <span style="color: #4ec9b0;">$d406</span>,y
+         lda ad,x
+         sta <span style="color: #4ec9b0;">$d405</span>,y
+
+         jmp real
+<span style="color: #6a9955;">; ---------------------------------------</span>
+getinit
+         lda tt1,x
+         sta getpt+1
+         lda tt2,x
+         sta getpt+2
+
+get3     ldy seq,x
+getpt    lda !0,y
+         bpl get33
+
+         cmp #$a0
+         bcs get4
+         sta dgem,x
+         and #$10
+         sta nog,x
+         iny
+         bne getpt
+
+get4     cmp #$c0
+         bcs get5
+         sta fflag,x
+         sta insnr,x
+         lda #0
+         sta sust,x
+         iny
+         bne getpt
+
+get5     asl a
+         and #$7f
+         sta scom,x
+         iny
+         bne getpt
+
+get33    beq com2
+         cmp #$7e
+         beq com0
+
+         sta shnot,x
+
+         lda #0
+         sta shsflag,x
+         sta shvflag,x
+
+         tya
+         sta seq,x
+
+         lda nog,x
+         bne com1
+         ldy voice,x
+         lda supertab+1
+         sta <span style="color: #4ec9b0;">$d406</span>,y
+         sta sr,x
+         lda supertab
+         sta <span style="color: #4ec9b0;">$d405</span>,y
+         sta ad,x
+         lda #$fe
+         sta gat,x
+         sta skip+1
+         jmp slide
+
+com0     sta nog,x
+         tya
+         sta seq,x
+com1     lda #$ff
+         sta shgat,x
+         jmp real
+
+com2     lda #$fe
+         sta shgat,x
+         sta nog,x
+         tya
+         sta seq,x
+         jmp real
+<span style="color: #6a9955;">; ---------------------------------------</span>
+endtabs  lda tt1,x
+         sta tab
+         lda tt2,x
+         sta tab+1
+
+         inc seq,x
+         ldy seq,x
+         lda (tab),y
+         cmp #$7f
+         bne et1
+         lda #0
+         sta seq,x
+
+         inc kbyl,x
+         lda kbyl,x
+         sta ent+1
+         bne *+5
+         inc kbyh,x
+         lda kbyh,x
+         sta ent+2
+ent      lda !0
+         cmp #$ff
+         bne et1
+         lda kbyl2,x
+         sta kbyl,x
+         lda kbyh2,x
+         sta kbyh,x
+<span style="color: #6a9955;">; --------</span>
+et1      ldy scom,x
+         bne sc1
+         jmp real
+
+sc1      lda supertab+0,y
+         sta tab
+         and #$f0
+
+         cmp #$20
+         beq sc2
+         bcs sc3
+         sta slddir,x
+         lda supertab+1,y
+         sta sldadl,x
+         lda tab
+         and #$0f
+         sta sldadh,x
+         lda #0
+         sta shvflag,x
+         lda #1
+         sta shsflag,x
+         jmp scend
+
+sc2      sta shvflag,x
+         lda tab
+         and #$0f
+         sta shvspd,x
+         lsr a
+         sta vspd,x
+         lda supertab+1,y
+         sta vadl,x
+         lda #0
+         sta vfeel,x
+         sta shvfeel,x
+         sta vhzl,x
+         sta vhzh,x
+         sta vdir,x
+         sta vadh,x
+         jmp scend
+
+sc3      cmp #$30
+         bne sc4
+         lda supertab+1,y
+         sta sust,x
+         jmp scend
+
+sc4      cmp #$40
+         bne sc5
+         lda supertab+1,y
+         sta tab
+         lsr a
+         lsr a
+         lsr a
+         lsr a
+         ldy #0
+         sta filttab,y
+         lda tab
+         and #$0f
+         sta filttab+1,y
+         jmp scend
+
+sc5      cmp #$50
+         bne sc6
+         lda supertab+1,y
+         sta shfrq+1
+         jmp scend
+
+sc6      cmp #$80
+         bcs sc7
+         lda supertab+1,y
+         sta tab+1
+         lda tab
+         asl a
+         asl a
+         asl a
+         tay
+         lda tab+1
+         sta instr+5,y
+         jmp scend
+
+sc7      cmp #$a0
+         bcs sc8
+         lda supertab+1,y
+         sta tab+1
+         lda tab
+         asl a
+         asl a
+         asl a
+         tay
+         lda tab+1
+         sta instr+6,y
+         jmp scend
+
+sc8      cmp #$c0
+         beq sc9
+         bcs sc10
+         lda supertab+1,y
+         sta tab+1
+         lda tab
+         asl a
+         asl a
+         asl a
+         tay
+         lda tab+1
+         sta instr+7,y
+         bcs scend
+
+sc9      lda supertab+1,y
+         sta tab+1
+         lda tab
+         asl a
+         asl a
+         asl a
+         tay
+         lda tab+1
+         sta instr+2,y
+         bcc scend
+
+sc10     cmp #$e0
+         bne sc11
+         lda f18+1
+         and #$f0
+         ora supertab+1,y
+         sta f18+1
+         bpl scend
+
+sc11     sta shvflag,x
+         lda #0
+         sta vhzl,x
+         sta vhzh,x
+         sta vdir,x
+         sta vfeel,x
+         lda tab
+         and #$0f
+         sta shvfeel,x
+         lda supertab+1,y
+         lsr a
+         lsr a
+         lsr a
+         lsr a
+         sta shvspd,x
+         sec
+         sbc #1
+         sta vspd,x
+         lda supertab+1,y
+         and #$0f
+         sta tab
+         lda trans,x
+         clc
+         adc shnot,x
+         asl a
+         tay
+         lda notes+2,y
+         sec
+         sbc notes+0,y
+         sta tab+1
+         lda notes+3,y
+         sbc notes+1,y
+         ldy tab
+         beq sc11b
+sc11a    lsr a
+         ror tab+1
+         dey
+         bne sc11a
+sc11b    sta vadh,x
+         lda tab+1
+         sta vadl,x
+<span style="color: #6a9955;">; --------</span>
+scend    lda #0
+         sta scom,x
+         jmp slide
+<span style="color: #6a9955;">; ---------------------------------------</span>
+getins   lda dgem,x
+         and #$0f
+         sta dtim,x
+
+         lda trans,x
+         clc
+         adc shnot,x
+         asl a
+         sta not,x
+         lda shgat,x
+         sta gat,x
+
+         lda shvflag,x
+         sta vflag,x
+         lda shsflag,x
+         sta sflag,x
+         bne gi1
+         sta shzl,x
+         sta shzh,x
+
+gi1      lda fflag,x
+         beq shfrq
+         lda #0
+         sta fflag,x
+         lda insnr,x
+         asl a
+         asl a
+         asl a
+         tay
+         lda instr+4,y
+         beq shfrq
+         lda #0
+         sta shfrq+1
+shfrq    lda #0
+         sta frq+1
+
+         lda nog,x
+         beq gett
+         lda #0
+         sta nog,x
+         jmp real
+<span style="color: #6a9955;">; --------</span>
+synth    ldy insnr,x
+         asl not,x       <span style="color: #6a9955;">;  specially for</span>
+         lda f18+1       <span style="color: #6a9955;">;  the editor!!!</span>
+         sta <span style="color: #4ec9b0;">$d418</span>
+         lda f17+1
+         sta <span style="color: #4ec9b0;">$d417</span>
+         lda #0
+         sta sust,x
+         sta sflag,x
+         sta vflag,x
+         sta frq+1
+         beq getu
+<span style="color: #6a9955;">; --------</span>
+gett     lda #$ff
+         sta gat,x
+
+         lda insnr,x
+         asl a
+         asl a
+         asl a
+         tay
+getu     sty tab+1
+         lda instr+3,y
+         and #%00000100
+         bne gt1
+         sta plscyc,x
+         lda instr+6,y
+         sta plspoi,x
+
+gt1      ldy tab+1
+         lda instr+4,y
+         bne gt2
+         lda f17+1
+         and bitoff,x
+         sta f17+1
+         jmp gt4
+gt2      and #$f0
+         sta tab
+         lda f17+1
+         and #$0f
+         ora biton,x
+         ora tab
+         sta f17+1
+         lda instr+3,y
+         and #%00000010
+         bne gt4
+         sta fltcyc
+         lda instr+4,y
+         asl a
+         asl a
+         asl a
+         asl a
+vol      ora #0
+         sta f18+1
+         lda instr+5,y
+         sta fltpoi+1
+gt3      stx filter+1
+
+gt4      ldy tab+1
+         lda instr+7,y
+         sta sampoi,x
+         lda instr+2,y
+         lsr a
+         lsr a
+         lsr a
+         lsr a
+         sta samspd,x
+         lda instr+2,y
+         and #$0f
+         sta samspd2,x
+         lda instr+3,y
+         and #%00000001
+         sta drum,x
+
+         ldy tab+1
+         lda sust,x
+         bne *+5
+         lda instr+1,y
+         ldy voice,x
+         sta <span style="color: #4ec9b0;">$d406</span>,y
+         sta sr,x
+         ldy tab+1
+         lda instr,y
+         ldy voice,x
+         sta <span style="color: #4ec9b0;">$d405</span>,y
+         sta ad,x
+         lda #9
+         sta <span style="color: #4ec9b0;">$d404</span>,y
+         jmp next
+<span style="color: #6a9955;">; --------</span>
+
+real     = *
+pulse    dec plscyc,x
+         bpl pls2
+         ldy plspoi,x
+         lda pulstab+1,y
+         sta plsadd,x
+         lda pulstab+2,y
+         sta plsdir,x
+         and #$7f
+         sta plscyc,x
+         lda pulstab+3,y
+         sta plspoi,x
+         lda pulstab+0,y
+         cmp #$ff
+         bcs pls2
+         ldy voice,x
+         sta plshi,x
+         sta <span style="color: #4ec9b0;">$d403</span>,y
+         and #$f0
+         sta plslo,x
+         sta <span style="color: #4ec9b0;">$d402</span>,y
+         bcc slide
+pls2     ldy voice,x
+         lda plsdir,x
+         bmi plsdw
+         lda plslo,x
+         clc
+         adc plsadd,x
+         sta plslo,x
+         sta <span style="color: #4ec9b0;">$d402</span>,y
+         lda plshi,x
+         adc #0
+         sta plshi,x
+         sta <span style="color: #4ec9b0;">$d403</span>,y
+         jmp slide
+plsdw    lda plslo,x
+         sec
+         sbc plsadd,x
+         sta plslo,x
+         sta <span style="color: #4ec9b0;">$d402</span>,y
+         lda plshi,x
+         sbc #0
+         sta plshi,x
+         sta <span style="color: #4ec9b0;">$d403</span>,y
+<span style="color: #6a9955;">; --------</span>
+slide    lda sflag,x
+         beq vibrato
+         lda slddir,x
+         bne slddw
+         lda shzl,x
+         clc
+         adc sldadl,x
+         sta shzl,x
+         sta hzl+1
+         lda shzh,x
+         adc sldadh,x
+         sta shzh,x
+         sta hzh+1
+         jmp filter
+slddw    lda shzl,x
+         sec
+         sbc sldadl,x
+         sta shzl,x
+         sta hzl+1
+         lda shzh,x
+         sbc sldadh,x
+         sta shzh,x
+         sta hzh+1
+<span style="color: #6a9955;">; --------</span>
+vibrato  lda vflag,x
+         beq filter
+skip     lda #0
+         bne filter
+         dec vspd,x
+         bpl vib1
+         lda shvspd,x
+         sta vspd,x
+         lda shvfeel,x
+         sta vfeel,x
+         lda vdir,x
+         eor #$ff
+         sta vdir,x
+         bne vibdw
+vib1     lda vdir,x
+         bne vibdw
+         lda vhzl,x
+         clc
+         adc vadl,x
+         sta vhzl,x
+         sta hzl+1
+         lda vhzh,x
+         adc vadh,x
+         sta vhzh,x
+         sta hzh+1
+         jmp vib2
+vibdw    lda vhzl,x
+         sec
+         sbc vadl,x
+         sta vhzl,x
+         sta hzl+1
+         lda vhzh,x
+         sbc vadh,x
+         sta vhzh,x
+         sta hzh+1
+vib2     lda vadl,x
+         clc
+         adc vfeel,x
+         sta vadl,x
+         bcc *+5
+         inc vadh,x
+<span style="color: #6a9955;">; --------</span>
+filter   cpx #0
+         bne waveform
+         dec fltcyc
+         bpl fhh
+fltpoi   ldy #0
+         lda filttab+1,y
+         sta fad+1
+         lda filttab+2,y
+         sta fltcyc
+         lda filttab+3,y
+         sta fltpoi+1
+         lda filttab+0,y
+         cmp #$ff
+         bne fl1
+fhh      lda #$00
+         clc
+fad      adc #$00
+fl1      sta fhh+1
+         clc
+frq      adc #0
+         sta <span style="color: #4ec9b0;">$d416</span>
+<span style="color: #6a9955;">; --------</span>
+waveform ldy sampoi,x
+         lda drum,x
+         beq wv0
+         lda arp1,y
+         cmp #$7f
+         bne wv
+         lda arp2,y
+         sta sampoi,x
+         tay
+         lda arp1,y
+wv       sta tab
+         lda #0
+         beq wv3
+wv0      lda arp1,y
+         cmp #$7f
+         bne wv1
+         lda arp2,y
+         sta sampoi,x
+         tay
+         lda arp1,y
+wv1      asl a
+         bcs wv2
+         adc not,x
+wv2      tay
+         lda notes+1,y
+         sta tab
+         lda notes+0,y
+wv3      ldy voice,x
+         clc
+hzl      adc #0
+         sta <span style="color: #4ec9b0;">$d400</span>,y
+         lda tab
+hzh      adc #0
+         sta <span style="color: #4ec9b0;">$d401</span>,y
+         ldy sampoi,x
+         lda arp2,y
+         ldy voice,x
+         and gat,x
+         sta <span style="color: #4ec9b0;">$d404</span>,y
+         dec samspd,x
+         bpl setsid
+         lda samspd2,x
+         sta samspd,x
+         inc sampoi,x
+<span style="color: #6a9955;">; --------</span>
+setsid   lda #0
+         sta hzl+1
+         sta hzh+1
+         sta skip+1
+<span style="color: #6a9955;">; --------</span>
+next     dex
+         bmi *+5
+         jmp m0
+
+         rts
+<span style="color: #6a9955;">; --------</span>
+notes    .word <span style="color: #4ec9b0;">$0116</span>,<span style="color: #4ec9b0;">$0127</span>,<span style="color: #4ec9b0;">$0138</span>,<span style="color: #4ec9b0;">$014b</span>
+         .word <span style="color: #4ec9b0;">$015f</span>,<span style="color: #4ec9b0;">$0173</span>,<span style="color: #4ec9b0;">$018a</span>,<span style="color: #4ec9b0;">$01a1</span>
+         .word <span style="color: #4ec9b0;">$01ba</span>,<span style="color: #4ec9b0;">$01d4</span>,<span style="color: #4ec9b0;">$01f0</span>,<span style="color: #4ec9b0;">$020e</span>
+         .word <span style="color: #4ec9b0;">$022d</span>,<span style="color: #4ec9b0;">$024e</span>,<span style="color: #4ec9b0;">$0271</span>,<span style="color: #4ec9b0;">$0296</span>
+         .word <span style="color: #4ec9b0;">$02bd</span>,<span style="color: #4ec9b0;">$02e7</span>,<span style="color: #4ec9b0;">$0313</span>,<span style="color: #4ec9b0;">$0342</span>
+         .word <span style="color: #4ec9b0;">$0374</span>,<span style="color: #4ec9b0;">$03a9</span>,<span style="color: #4ec9b0;">$03e0</span>,<span style="color: #4ec9b0;">$041b</span>
+         .word <span style="color: #4ec9b0;">$045a</span>,<span style="color: #4ec9b0;">$049b</span>,<span style="color: #4ec9b0;">$04e2</span>,<span style="color: #4ec9b0;">$052c</span>
+         .word <span style="color: #4ec9b0;">$057b</span>,<span style="color: #4ec9b0;">$05ce</span>,<span style="color: #4ec9b0;">$0627</span>,<span style="color: #4ec9b0;">$0685</span>
+         .word <span style="color: #4ec9b0;">$06e8</span>,<span style="color: #4ec9b0;">$0751</span>,<span style="color: #4ec9b0;">$07c1</span>,<span style="color: #4ec9b0;">$0837</span>
+         .word <span style="color: #4ec9b0;">$08b4</span>,<span style="color: #4ec9b0;">$0937</span>,<span style="color: #4ec9b0;">$09c4</span>,<span style="color: #4ec9b0;">$0a57</span>
+         .word <span style="color: #4ec9b0;">$0af5</span>,<span style="color: #4ec9b0;">$0b9c</span>,<span style="color: #4ec9b0;">$0c4e</span>,<span style="color: #4ec9b0;">$0d09</span>
+         .word <span style="color: #4ec9b0;">$0dd0</span>,<span style="color: #4ec9b0;">$0ea3</span>,<span style="color: #4ec9b0;">$0f82</span>,<span style="color: #4ec9b0;">$106e</span>
+         .word <span style="color: #4ec9b0;">$1168</span>,<span style="color: #4ec9b0;">$126e</span>,<span style="color: #4ec9b0;">$1388</span>,<span style="color: #4ec9b0;">$14af</span>
+         .word <span style="color: #4ec9b0;">$15eb</span>,<span style="color: #4ec9b0;">$1739</span>,<span style="color: #4ec9b0;">$189c</span>,<span style="color: #4ec9b0;">$1a13</span>
+         .word <span style="color: #4ec9b0;">$1ba1</span>,<span style="color: #4ec9b0;">$1d46</span>,<span style="color: #4ec9b0;">$1f04</span>,<span style="color: #4ec9b0;">$20dc</span>
+         .word <span style="color: #4ec9b0;">$22d0</span>,<span style="color: #4ec9b0;">$24dc</span>,<span style="color: #4ec9b0;">$2710</span>,<span style="color: #4ec9b0;">$295e</span>
+         .word <span style="color: #4ec9b0;">$2bd6</span>,<span style="color: #4ec9b0;">$2e72</span>,<span style="color: #4ec9b0;">$3138</span>,<span style="color: #4ec9b0;">$3426</span>
+         .word <span style="color: #4ec9b0;">$3742</span>,<span style="color: #4ec9b0;">$3a8c</span>,<span style="color: #4ec9b0;">$3e08</span>,<span style="color: #4ec9b0;">$41b8</span>
+         .word <span style="color: #4ec9b0;">$45a0</span>,<span style="color: #4ec9b0;">$49b8</span>,<span style="color: #4ec9b0;">$4e20</span>,<span style="color: #4ec9b0;">$52bc</span>
+         .word <span style="color: #4ec9b0;">$57ac</span>,<span style="color: #4ec9b0;">$5ce4</span>,<span style="color: #4ec9b0;">$6270</span>,<span style="color: #4ec9b0;">$684c</span>
+         .word <span style="color: #4ec9b0;">$6e84</span>,<span style="color: #4ec9b0;">$7518</span>,<span style="color: #4ec9b0;">$7c10</span>,<span style="color: #4ec9b0;">$8370</span>
+         .word <span style="color: #4ec9b0;">$8b40</span>,<span style="color: #4ec9b0;">$9370</span>,<span style="color: #4ec9b0;">$9c40</span>,<span style="color: #4ec9b0;">$a578</span>
+         .word <span style="color: #4ec9b0;">$af58</span>,<span style="color: #4ec9b0;">$b9c8</span>,<span style="color: #4ec9b0;">$c4e0</span>,<span style="color: #4ec9b0;">$d098</span>
+         .word <span style="color: #4ec9b0;">$dd08</span>,<span style="color: #4ec9b0;">$ea30</span>,<span style="color: #4ec9b0;">$f820</span>,<span style="color: #4ec9b0;">$fd2e</span>
+<span style="color: #6a9955;">; --------</span>
+kbyl     .byte 0,0,0
+kbyh     .byte 0,0,0
+kbyl2    .byte 0,0,0
+kbyh2    .byte 0,0,0
+fintun   .byte $00,$00,$00
+voice    .byte $00,$07,$0e
+biton    .byte $01,$02,$04
+bitoff   .byte $fe,$fd,$fb
+buf      = *
+samspd   .byte 0,0,0
+samspd2  .byte 0,0,0
+plslo    .byte 0,0,0
+plshi    .byte 0,0,0
+plspoi   .byte 0,0,0
+plsadd   .byte 0,0,0
+plscyc   .byte 0,0,0
+plsdir   .byte 0,0,0
+seq      .byte 0,0,0
+nog      .byte 0,0,0
+shnot    .byte 0,0,0
+shgat    .byte 0,0,0
+dtim     .byte 0,0,0
+dgem     .byte 0,0,0
+sflag    .byte 0,0,0
+shsflag  .byte 0,0,0
+slddir   .byte 0,0,0
+sldadl   .byte 0,0,0
+sldadh   .byte 0,0,0
+shzl     .byte 0,0,0
+shzh     .byte 0,0,0
+vflag    .byte 0,0,0
+shvflag  .byte 0,0,0
+vfeel    .byte 0,0,0
+shvfeel  .byte 0,0,0
+vspd     .byte 0,0,0
+shvspd   .byte 0,0,0
+vadl     .byte 0,0,0
+vadh     .byte 0,0,0
+vdir     .byte 0,0,0
+vhzl     .byte 0,0,0
+vhzh     .byte 0,0,0
+scom     .byte 0,0,0
+sust     .byte 0,0,0
+drum     .byte 0,0,0
+sampoi   .byte 0,0,0
+not      .byte 0,0,0
+trans    .byte 0,0,0
+gat      .byte 0,0,0
+insnr    .byte 0,0,0
+fflag    .byte 0,0,0
+ad       .byte 0,0,0
+sr       .byte 0,0,0
+bufend   = *
+<span style="color: #6a9955;">; --------</span>
+         .byte $fc,$3c<span style="color: #6a9955;">; _ TPOIN marks to</span>
+         .byte $00    <span style="color: #6a9955;">;   help relocator</span>
+
+<span style="color: #858585;">... (34 more lines not shown for performance)
+To see complete code, use text format: --annotate-format text</span></pre>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // Toggle section
+        function toggleSection(id) {
+            const content = document.getElementById(id);
+            const header = content.previousElementSibling;
+            const toggle = header.querySelector('.section-toggle');
+
+            content.classList.toggle('collapsed');
+            toggle.classList.toggle('collapsed');
+        }
+
+        // Scroll to element
+        function scrollTo(id) {
+            const element = document.getElementById(id);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                element.classList.add('highlight');
+                setTimeout(() => element.classList.remove('highlight'), 1500);
+            }
+        }
+
+        // Search
+        document.getElementById('search').addEventListener('input', function(e) {
+            const query = e.target.value.toLowerCase();
+            const navItems = document.querySelectorAll('.nav-item');
+
+            navItems.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                item.style.display = text.includes(query) ? 'flex' : 'none';
+            });
+        });
+
+        // Active navigation on scroll
+        const mainContent = document.querySelector('.main-content');
+        const navItems = document.querySelectorAll('.nav-item');
+
+        mainContent.addEventListener('scroll', function() {
+            const cards = document.querySelectorAll('.card[id^="sub-"]');
+            let currentId = null;
+
+            cards.forEach(card => {
+                const rect = card.getBoundingClientRect();
+                if (rect.top >= 0 && rect.top <= window.innerHeight / 2) {
+                    currentId = card.id;
+                }
+            });
+
+            if (currentId) {
+                navItems.forEach(item => {
+                    const onclick = item.getAttribute('onclick');
+                    if (onclick && onclick.includes(currentId)) {
+                        item.classList.add('active');
+                    } else {
+                        item.classList.remove('active');
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>

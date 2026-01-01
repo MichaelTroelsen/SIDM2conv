@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laxity - Stinsen - Last Night Of 89.sf2 - Assembly Analysis</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/vs2015.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        .container { display: flex; height: 100vh; }
+
+        /* Sidebar */
+        .sidebar {
+            width: 320px;
+            background: #252526;
+            border-right: 1px solid #3e3e42;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        .sidebar h2 {
+            color: #4ec9b0;
+            font-size: 16px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #3e3e42;
+            padding-bottom: 8px;
+        }
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .stat-item {
+            background: #1e1e1e;
+            padding: 12px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .stat-value {
+            color: #4ec9b0;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .stat-label {
+            color: #858585;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+        #search {
+            width: 100%;
+            padding: 10px;
+            background: #3c3c3c;
+            border: 1px solid #3e3e42;
+            color: #d4d4d4;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        #search:focus {
+            outline: none;
+            border-color: #007acc;
+        }
+        .nav-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin: 3px 0;
+            display: flex;
+            justify-content: space-between;
+            transition: all 0.2s;
+        }
+        .nav-item:hover {
+            background: #2a2d2e;
+            transform: translateX(4px);
+        }
+        .nav-item.active {
+            background: #37373d;
+            border-left: 3px solid #007acc;
+        }
+        .nav-address {
+            color: #4ec9b0;
+            font-weight: bold;
+        }
+        .nav-name {
+            color: #dcdcaa;
+            margin-left: 10px;
+        }
+
+        /* Main content */
+        .main-content {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 30px;
+        }
+        .page-header {
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e1e1e 100%);
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border-left: 5px solid #4ec9b0;
+        }
+        .page-title {
+            color: #4ec9b0;
+            font-size: 28px;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        .page-meta {
+            color: #9cdcfe;
+            font-size: 14px;
+        }
+
+        /* Section */
+        .section {
+            background: #252526;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            border: 1px solid #3e3e42;
+            overflow: hidden;
+        }
+        .section-header {
+            padding: 18px 24px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #2d2d30;
+            transition: background 0.2s;
+        }
+        .section-header:hover {
+            background: #383838;
+        }
+        .section-title {
+            color: #569cd6;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        .section-toggle {
+            color: #858585;
+            font-size: 14px;
+            transition: transform 0.3s;
+        }
+        .section-toggle.collapsed {
+            transform: rotate(-90deg);
+        }
+        .section-content {
+            padding: 24px;
+            max-height: 10000px;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out, padding 0.3s;
+        }
+        .section-content.collapsed {
+            max-height: 0;
+            padding: 0 24px;
+        }
+
+        /* Card */
+        .card {
+            background: #1e1e1e;
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            border-left: 4px solid #dcdcaa;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .card-title {
+            color: #dcdcaa;
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .card-subtitle {
+            color: #4ec9b0;
+            font-size: 13px;
+            margin-bottom: 12px;
+        }
+        .card-content {
+            color: #9cdcfe;
+            font-size: 14px;
+            line-height: 1.8;
+        }
+        .card-meta {
+            display: flex;
+            gap: 20px;
+            margin-top: 12px;
+            font-size: 13px;
+            flex-wrap: wrap;
+        }
+        .meta-badge {
+            background: #2d2d30;
+            padding: 6px 12px;
+            border-radius: 4px;
+            color: #9cdcfe;
+        }
+        .meta-badge strong {
+            color: #ce9178;
+        }
+
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th {
+            background: #2d2d30;
+            color: #569cd6;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+            border-bottom: 2px solid #3e3e42;
+        }
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #3e3e42;
+        }
+        tr:hover {
+            background: #2a2d2e;
+        }
+
+        /* Warning/Info boxes */
+        .warning-box {
+            background: linear-gradient(135deg, #4a1c00 0%, #2d2d30 100%);
+            border-left: 4px solid #ce9178;
+            padding: 18px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+        }
+        .warning-title {
+            color: #ce9178;
+            font-weight: bold;
+            margin-bottom: 8px;
+            font-size: 15px;
+        }
+        .warning-text {
+            color: #cccccc;
+        }
+        .info-box {
+            background: linear-gradient(135deg, #0a3a2a 0%, #2d2d30 100%);
+            border-left: 4px solid #4ec9b0;
+            padding: 18px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+        }
+        .info-text {
+            color: #cccccc;
+        }
+
+        /* Highlight effect */
+        .highlight {
+            animation: highlight-flash 1.5s;
+        }
+        @keyframes highlight-flash {
+            0%, 100% { background: transparent; }
+            50% { background: #264f78; }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 12px;
+            height: 12px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e1e1e;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #424242;
+            border-radius: 6px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4e4e4e;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <h2>📊 Analysis Stats</h2>
+            <div class="stat-grid">
+                <div class="stat-item">
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">Subroutines</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">25</div>
+                    <div class="stat-label">Symbols</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">Patterns</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">Loops</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">Dead Code</div>
+                </div>
+            </div>
+
+            <h2>🔍 Quick Search</h2>
+            <input type="text" id="search" placeholder="Search addresses, names...">
+
+            <h2>📑 Quick Jump</h2>
+            <div style="margin-bottom: 20px;">
+                <button onclick="document.getElementById('player-structure').scrollIntoView({behavior: 'smooth'}); toggleSection('player-structure');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    🏗️ Player Structure
+                </button>
+                <button onclick="document.getElementById('architectural-insights').scrollIntoView({behavior: 'smooth'}); toggleSection('architectural-insights');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    💡 Architectural Insights
+                </button>
+                <button onclick="document.getElementById('code-org').scrollIntoView({behavior: 'smooth'}); toggleSection('code-org');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    🗂️ Code Organization
+                </button>
+                <button onclick="document.getElementById('subroutines').scrollIntoView({behavior: 'smooth'}); toggleSection('subroutines');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    🔧 Subroutines
+                </button>
+                <button onclick="document.getElementById('loops').scrollIntoView({behavior: 'smooth'}); toggleSection('loops');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    🔄 Loops
+                </button>
+                <button onclick="document.getElementById('patterns').scrollIntoView({behavior: 'smooth'}); toggleSection('patterns');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    🔍 Code Patterns
+                </button>
+                <button onclick="document.getElementById('symbols').scrollIntoView({behavior: 'smooth'}); toggleSection('symbols');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    📝 Symbols
+                </button>
+                <button onclick="document.getElementById('raw-data').scrollIntoView({behavior: 'smooth'}); toggleSection('raw-data');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    💾 Raw Data
+                </button>
+                <button onclick="document.getElementById('full-asm').scrollIntoView({behavior: 'smooth'}); toggleSection('full-asm');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    📜 Assembly Code
+                </button>
+            </div>
+
+            <h2>🔗 Subroutine Links</h2>
+            <div id="nav-list">
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="page-header">
+                <div class="page-title">Laxity - Stinsen - Last Night Of 89.sf2</div>
+                <div class="page-meta">Author: Unknown | Player: Laxity NewPlayer v21</div>
+            </div>
+
+            <!-- Player Structure -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('player-structure')">
+                    <span class="section-title">🎵 Player Structure</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="player-structure">
+                    <div class="card">
+                        <div class="card-title">Entry Points</div>
+                        <div class="card-content">
+                            <table>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Load Address:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$0000</td>
+                                    <td style="color: #858585;">Code/data load point</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Init Routine:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$0000</td>
+                                    <td style="color: #858585;">Player initialization</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Play Routine:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$0000</td>
+                                    <td style="color: #858585;">Called every frame (50Hz PAL / 60Hz NTSC)</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">Data Tables</div>
+                        <div class="card-content">
+                            <table>
+                                <tr>
+                                    <td style="color: #dcdcaa;">Pulse Table:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$D411</td>
+                                    <td style="color: #858585;">Pulse width modulation</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa;">Filter Table:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$D418</td>
+                                    <td style="color: #858585;">Filter parameters</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Architectural Insights -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('arch-insights')">
+                    <span class="section-title">🏗️ Architectural Insights</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="arch-insights">
+                    <div class="card">
+                        <div class="card-title">Standard Player</div>
+                        <div class="card-content">Classic SID player architecture with init and play routines</div>
+                    </div>
+                </div>
+            </div>
+            <!-- Code Organization -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('code-org')">
+                    <span class="section-title">📐 Code Organization</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="code-org">
+                    <div class="card">
+                        <div class="card-title">Memory Layout - Complete Map (0 data sections)</div>
+                        <div class="card-content">
+                            <div style="font-family: monospace; line-height: 1.6; font-size: 13px;">
+                                <div style="color: #4ec9b0; font-weight: bold;">• <span style="color: #4ec9b0;">$0000</span> - Load Address</div>
+                                <div style="color: #569cd6; margin-left: 20px;">├─ <span style="color: #4ec9b0;">$0000</span> Init | <span style="color: #4ec9b0;">$0000</span> Play</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">Structure Summary</div>
+                        <div class="card-content">
+                            <table>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Code Sections:</td>
+                                    <td style="color: #4ec9b0;">0</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Data Sections:</td>
+                                    <td style="color: #4ec9b0;">0</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Total Symbols:</td>
+                                    <td style="color: #4ec9b0;">25</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Subroutines -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('subroutines')">
+                    <span class="section-title">🔧 Subroutines (0)</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="subroutines">
+                </div>
+            </div>
+
+            <!-- Loops -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('loops')">
+                    <span class="section-title">🔄 Loops (0)</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="loops">
+                </div>
+            </div>
+
+            <!-- Symbol Table -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('symbols')">
+                    <span class="section-title">📋 Symbol Table (25)</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content collapsed" id="symbols">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Address</th>
+                                <th>Type</th>
+                                <th>Name</th>
+                                <th>Refs</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D400</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_frequency_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Frequency Low</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D401</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_frequency_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Frequency High</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D402</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_pulse_width_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Pulse Width Low</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D403</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_pulse_width_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Pulse Width High</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D404</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_control_register</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Control Register</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D405</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_attack/decay</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Attack/Decay</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D406</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_sustain/release</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Sustain/Release</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D407</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_frequency_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Frequency Low</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D408</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_frequency_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Frequency High</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D409</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_pulse_width_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Pulse Width Low</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40A</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_pulse_width_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Pulse Width High</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40B</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_control_register</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Control Register</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40C</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_attack/decay</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Attack/Decay</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40D</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_sustain/release</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Sustain/Release</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40E</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_frequency_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Frequency Low</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40F</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_frequency_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Frequency High</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D410</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_pulse_width_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Pulse Width Low</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D411</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_pulse_width_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Pulse Width High</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D412</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_control_register</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Control Register</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D413</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_attack/decay</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Attack/Decay</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D414</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_sustain/release</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Sustain/Release</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D415</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">filter_cutoff_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Filter Cutoff Low</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D416</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">filter_cutoff_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Filter Cutoff High</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D417</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">filter_resonance/routing</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Filter Resonance/Routing</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D418</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">volume/filter_mode</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Volume/Filter Mode</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <!-- Full Assembly Code -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('full-asm')">
+                    <span class="section-title">📜 Fully Annotated Assembly (35 lines)</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content collapsed" id="full-asm">
+                    <div style="background: #1e1e1e; padding: 20px; border-radius: 6px; overflow-x: auto;">
+                        <pre style="color: #d4d4d4; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; line-height: 1.8;">~
+7) D	 11.03.00 - T S   ( w    C
+
+   @ I
+  <span style="color: #6a9955;">;      W        P     F	     A !    T</span>
+  "    HR      I	    AA/ S	/ O	 P 
+ W 
+ ###a$ $ '    p=                  
+    
+K             
+   
+	)      @@                                                                     OLNLL ,0Dp8u))p`ԍԍ`΃""94##	8頝ȱȱȱ mޏh#a$'ȱɠȱɐ)ȱ~Șޕ061# ,){)L@Ly6)<span style="color: #6a9955;">; [{) z=}LL {)J	{)@</span>
+Ύ  0L)?)aL<span style="color: #6a9955;">; {L;{L;0/{L;){ LL{)L8E{);iJ	L;{L;{L{L{Ύ L{ L{""L L&gt;9~9}ݹ4}L Lq8LLLL}}Lɀ) }0FfL)eeL8)i L808%La}}0</span>
+LeeLȹ!0p0)}!}L10L) }&lt<span style="color: #6a9955;">; L-ye </span>
+Ɂ})L|w ԽԽԽԽԽԽ=Խ*%~}ݹ L00Lo0ad΍Aȹ  LZ )p) LR yy@FjFjFjFj
+ԌԊ)ԭ
+ԭ` `@`		
+
+<span style="color: #dcdcaa;"> "$')+.147:&gt<span style="color: #6a9955;">; AEINRW\bhnu|'8K_s-NqBtZ,{'Q77WN	Уnhn9F^r8&amp;B pLp@p@xX0 . ---!0NEdr- "	  @   )       !"            )5  *   = &gt;   :qq!AA   :                                                                                      :gH$:%fx                             </span></span>
+                       	                            	 0"$' +               
+                                                                          $(,(059=0  )                                                              !!AAAAA!!Q@SA A@                                                                                                                                                                                                                Ĭ  vt       " % ' )Ǯ. 0                                                                                                                                                                                                                                                                                                                                                                                                                                                               p@        0                                                                                                                                                                                                                                                
+<span style="color: #dcdcaa;"> 00 00                                                                                                                                                                                                                                                                                                                                                                                                                                                                               ,$: 0Opp                                                                                                                                                                                                                                                    </span>
+<span style="color: #dcdcaa;">                                                                                                                                                                                                                                       p p p p p p p p p p p p p p p p                                                                                                                                                                                                                                                                                                                                                                                                                                                           $%&amp<span style="color: #6a9955;">; '()*+,-./0123456789:;&lt;=&gt;?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~                                                                                                                                                                                                                        %%%%!                                                                                                                                                                                                                                         </span></span>
+
+	
+	
+<span style="color: #dcdcaa;">#$&amp<span style="color: #6a9955;">; "                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 Ġ999ĩ9Ġ99 9Ł:ũ:Ġ9ĩ99                                                                                                                                                                                                                              ʠ000 ʩ0ʠ0ˀ+ ą-ĩ---Ġ- -ĩ-ʠ... ʩ.ʠ.ˀ) ą+ĩ+++Ġ+ +ĩ+ʠ--- ʩ-ʠ-ˀ( ƅ)) Ʃ)Ơ) )Ʃ))ʠ+++ ʩ+ʠ+ˀ&amp; ̅)̩)))̠) ) ̩)                                                                                                ˩)ˠ) )) ˩)ˠ)) ˩)Ƞ+ ͅ-ͩ--ˠ+ + ++ ˩+ ˠ+ +ȁ-ȩ-Π.Ω.Ϡ0ϩ0                                                                                                                                                                           Ʃ5Ơ5 5 55 Ʃ5Ơ5 ǃ77ǩ7Ơ5 4 4 44ɩ4ɠ4 ʃ55ʩ5ɠ44 Ɓ0Ʃ0Ơ0Ā2 2ĩ2222222222                                                                                                                                                     Ơ555Ʃ5Ơ55 ǃ77 ǩ7 Ơ5 2 Ɂ444ɩ4 ɠ44 ʃ55ʩ5 ɠ44 ƃ00Ā2 2ĩ2222222222                                                                                                                                                             &lt;EH  &lt;CH9AH  9&gt;H &lt;@H  4&lt;E$:AJ</span></span>
+<span style="color: #dcdcaa;"> 5&gt<span style="color: #6a9955;">; F                                                                                                                               CH  CEAF AC@@A$ &gt;C ;A :&gt;E </span></span>
+<span style="color: #dcdcaa;">:&gt<span style="color: #6a9955;">; C$&lt;@E 7&lt;C                                                                79Á~ 7 5Á~ 45 7 24 0~ - 0245Å~2 &lt;&gt; C 5 Aр: &gt; &lt;&gt;&lt;р5 79Á~ &lt; 5Á~ 45 7 9 67Á~ 0 57945~&gt; &lt;&gt; E : A&gt; 5 &lt;&gt;&lt;                                                                              Ä~ 9:9~ 575~ 02.Ä~ - 124 75~2- 797Ã~ 2 4542 02Ç~ 2 4 4542 024Ã~2320~                                                                                                                              )~)5))~))5~)'                                                                                                                                                                                                                                         )~)5))~))5~)(                                                                                                                                                                                                                                         )~)5))~))5~)-                                                                                                                                                                                                                                         7֒9Ï 0 0 0257 7֒9&lt;Í 0 0 025 7 2֒45 2֓4Â 0 2֒45 2֔452 Ï  0 0 0257 7֒9Ï 9 9 9:&lt;9 5֒75É &gt;֒@&gt; &lt;֑&gt;&lt;Æ~ 0 9~: &lt;7֐95Ä~                                                                               ӬA ~ ~ ~ ~ ~ ~ ~ ~ ~                                                                                                                                                                                                                             ~ ~ ~ ~ ~ ~ ~ ~ ~ ~                                                                                                                                                                                                                               )~)5))~˭:                                                                                                                                                                                                                                              ~ ~ ~ ~ ~ Ԯ7                                                                                                                                                                                                                                          կ&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;                                                                                                                                                                                                                                                ı999ĩ9ı99 9Ł:ũ:ı9ĩ99                                                                                                                                                                                                                              Ʊ555Ʃ5Ʊ55 ǃ77 ǩ7 Ʊ5 2 Ɂ444ɩ4 ɱ44 ʃ55ʩ5 ɱ44 ƃ00Ā2 2ĩ2222222222                                                                                                                                                             Ʃ5Ʊ5 5 55 Ʃ5Ʊ5 ǃ77ǩ7Ʊ5 4 4 44ɩ4ɱ4 ʃ55ʩ5ɱ44 Ɓ0Ʃ0Ʊ0Ā2 2ĩ2222222222                                                                                                                                                     &lt;EH  &lt;CH                                                                                                                                                                                                                               &lt;AH  &lt;CH                                                                                                                                                                                                                               CH  CEA C@@A$ &gt;C ;A :&gt;E </span></span>
+<span style="color: #dcdcaa;">:&gt<span style="color: #6a9955;">; C$&lt;@E 7&lt; կ&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;                                                     &lt; &lt; &lt;&gt;AC                                                                                                                                                                                                                                                 &lt; &lt; &lt;=AH                                                                                                                                                                                                                                             ˩)ˠ) )) ˩)ˠ)) ˩)Ƞ+ ͅ-ͩ--ˠ+ + ++ ˩+ ˠ+ +ȁ-ȩ-Π.Ω.נ0 0 0                                                                                                                                                                         Ġ4 ĩ4Ġ4 ĩ4Ġ4 ĩ4Ġ4 ĩ4 Ġ4 ĩ4 4 ؠ5 ة5ؠ5 ة5ؠ5 ة5ؠ5 ة5ؠ5 5ة5٠2 ٩2٠2 ٩2٠2 ٩2٠2 ٩2٠2 ٩22ؠ2 ة2ؠ2 ة2ؠ2 ة2ؠ2 ة2ؠ2 5ة5                                                  CH  CEAF AC@@A$ &gt;C ;A :&gt;E </span></span>
+<span style="color: #dcdcaa;">:&gt<span style="color: #6a9955;">; C$&lt;@E 7&lt;                                                                  Ä~ 9:9~ 575Á~32 025.Ä~ &amp;'+.2124 94542 - 79&lt;9;:97Ã~ 2 4542 02Ç~ 2 4 4542 002Ç~ - 2 4 4542 0 02                                                                               ˩)ˠ) )) ˩)ˠ)) ˩)Ƞ+ ͅ-ͩ--ˠ+ + ++ ˩+ ˠ+ +ȁ-ȩ-ˠ+                                                                                                                                                                                     ڠ)~                                                                                                                                                                                                                                                       ~                                                                                                                                                                                                                                                           É~0ߐ-,+)&amp;$! ~~                                                                                                                                                                                                                                       "۝$Ë~ !$ݚ&amp;)Ç~ݗ-+~ &amp; )+0)ݒ+)É~ &amp; )+52ݐ4                                                                                                                                                                                ~0Ç~5749ܐ;&lt;97 2420-+×) .-0)+- )+Ã~- $ +~- " +,+)- 0  +Ã~0 2 &amp; -                                                                                                                                  &lt;EH  &lt;CH9AH  9&gt;H &lt;@H  4&lt;E$:AJ</span></span>
+<span style="color: #dcdcaa;"> 5&gt<span style="color: #6a9955;">; F                                                                                                                               4 5 ) 0~79&lt; - 4~&gt; 9 C ;ܑ&lt;Â~:97ܑ5799:9295.724Á~320Ã~ 24207 454202Ç~ . 020                                                                                                                        x ЩO2X`   nL1 "                                       y     @                                                                                                       @                                                                                                                                                                                                                                                                        Main     </span></span>
+</pre>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // Toggle section
+        function toggleSection(id) {
+            const content = document.getElementById(id);
+            const header = content.previousElementSibling;
+            const toggle = header.querySelector('.section-toggle');
+
+            content.classList.toggle('collapsed');
+            toggle.classList.toggle('collapsed');
+        }
+
+        // Scroll to element
+        function scrollTo(id) {
+            const element = document.getElementById(id);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                element.classList.add('highlight');
+                setTimeout(() => element.classList.remove('highlight'), 1500);
+            }
+        }
+
+        // Search
+        document.getElementById('search').addEventListener('input', function(e) {
+            const query = e.target.value.toLowerCase();
+            const navItems = document.querySelectorAll('.nav-item');
+
+            navItems.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                item.style.display = text.includes(query) ? 'flex' : 'none';
+            });
+        });
+
+        // Active navigation on scroll
+        const mainContent = document.querySelector('.main-content');
+        const navItems = document.querySelectorAll('.nav-item');
+
+        mainContent.addEventListener('scroll', function() {
+            const cards = document.querySelectorAll('.card[id^="sub-"]');
+            let currentId = null;
+
+            cards.forEach(card => {
+                const rect = card.getBoundingClientRect();
+                if (rect.top >= 0 && rect.top <= window.innerHeight / 2) {
+                    currentId = card.id;
+                }
+            });
+
+            if (currentId) {
+                navItems.forEach(item => {
+                    const onclick = item.getAttribute('onclick');
+                    if (onclick && onclick.includes(currentId)) {
+                        item.classList.add('active');
+                    } else {
+                        item.classList.remove('active');
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>

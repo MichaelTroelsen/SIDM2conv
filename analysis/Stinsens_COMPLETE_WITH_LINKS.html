@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>laxity_annotated_full_ANNOTATED.asm - Assembly Analysis</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/vs2015.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        .container { display: flex; height: 100vh; }
+
+        /* Sidebar */
+        .sidebar {
+            width: 320px;
+            background: #252526;
+            border-right: 1px solid #3e3e42;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        .sidebar h2 {
+            color: #4ec9b0;
+            font-size: 16px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #3e3e42;
+            padding-bottom: 8px;
+        }
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .stat-item {
+            background: #1e1e1e;
+            padding: 12px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .stat-value {
+            color: #4ec9b0;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .stat-label {
+            color: #858585;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+        #search {
+            width: 100%;
+            padding: 10px;
+            background: #3c3c3c;
+            border: 1px solid #3e3e42;
+            color: #d4d4d4;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        #search:focus {
+            outline: none;
+            border-color: #007acc;
+        }
+        .nav-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin: 3px 0;
+            display: flex;
+            justify-content: space-between;
+            transition: all 0.2s;
+        }
+        .nav-item:hover {
+            background: #2a2d2e;
+            transform: translateX(4px);
+        }
+        .nav-item.active {
+            background: #37373d;
+            border-left: 3px solid #007acc;
+        }
+        .nav-address {
+            color: #4ec9b0;
+            font-weight: bold;
+        }
+        .nav-name {
+            color: #dcdcaa;
+            margin-left: 10px;
+        }
+
+        /* Main content */
+        .main-content {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 30px;
+        }
+        .page-header {
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e1e1e 100%);
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border-left: 5px solid #4ec9b0;
+        }
+        .page-title {
+            color: #4ec9b0;
+            font-size: 28px;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        .page-meta {
+            color: #9cdcfe;
+            font-size: 14px;
+        }
+
+        /* Section */
+        .section {
+            background: #252526;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            border: 1px solid #3e3e42;
+            overflow: hidden;
+        }
+        .section-header {
+            padding: 18px 24px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #2d2d30;
+            transition: background 0.2s;
+        }
+        .section-header:hover {
+            background: #383838;
+        }
+        .section-title {
+            color: #569cd6;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        .section-toggle {
+            color: #858585;
+            font-size: 14px;
+            transition: transform 0.3s;
+        }
+        .section-toggle.collapsed {
+            transform: rotate(-90deg);
+        }
+        .section-content {
+            padding: 24px;
+            max-height: 10000px;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out, padding 0.3s;
+        }
+        .section-content.collapsed {
+            max-height: 0;
+            padding: 0 24px;
+        }
+
+        /* Card */
+        .card {
+            background: #1e1e1e;
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            border-left: 4px solid #dcdcaa;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .card-title {
+            color: #dcdcaa;
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .card-subtitle {
+            color: #4ec9b0;
+            font-size: 13px;
+            margin-bottom: 12px;
+        }
+        .card-content {
+            color: #9cdcfe;
+            font-size: 14px;
+            line-height: 1.8;
+        }
+        .card-meta {
+            display: flex;
+            gap: 20px;
+            margin-top: 12px;
+            font-size: 13px;
+            flex-wrap: wrap;
+        }
+        .meta-badge {
+            background: #2d2d30;
+            padding: 6px 12px;
+            border-radius: 4px;
+            color: #9cdcfe;
+        }
+        .meta-badge strong {
+            color: #ce9178;
+        }
+
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th {
+            background: #2d2d30;
+            color: #569cd6;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+            border-bottom: 2px solid #3e3e42;
+        }
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #3e3e42;
+        }
+        tr:hover {
+            background: #2a2d2e;
+        }
+
+        /* Warning/Info boxes */
+        .warning-box {
+            background: linear-gradient(135deg, #4a1c00 0%, #2d2d30 100%);
+            border-left: 4px solid #ce9178;
+            padding: 18px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+        }
+        .warning-title {
+            color: #ce9178;
+            font-weight: bold;
+            margin-bottom: 8px;
+            font-size: 15px;
+        }
+        .warning-text {
+            color: #cccccc;
+        }
+        .info-box {
+            background: linear-gradient(135deg, #0a3a2a 0%, #2d2d30 100%);
+            border-left: 4px solid #4ec9b0;
+            padding: 18px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+        }
+        .info-text {
+            color: #cccccc;
+        }
+
+        /* Highlight effect */
+        .highlight {
+            animation: highlight-flash 1.5s;
+        }
+        @keyframes highlight-flash {
+            0%, 100% { background: transparent; }
+            50% { background: #264f78; }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 12px;
+            height: 12px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e1e1e;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #424242;
+            border-radius: 6px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4e4e4e;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <h2>📊 Analysis Stats</h2>
+            <div class="stat-grid">
+                <div class="stat-item">
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">Subroutines</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">25</div>
+                    <div class="stat-label">Symbols</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">Patterns</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">Loops</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">Dead Code</div>
+                </div>
+            </div>
+
+            <h2>🔍 Quick Search</h2>
+            <input type="text" id="search" placeholder="Search addresses, names...">
+
+            <h2>📑 Quick Jump</h2>
+            <div style="margin-bottom: 20px;">
+                <button onclick="document.getElementById('player-structure').scrollIntoView({behavior: 'smooth'}); toggleSection('player-structure');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    🏗️ Player Structure
+                </button>
+                <button onclick="document.getElementById('architectural-insights').scrollIntoView({behavior: 'smooth'}); toggleSection('architectural-insights');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    💡 Architectural Insights
+                </button>
+                <button onclick="document.getElementById('code-org').scrollIntoView({behavior: 'smooth'}); toggleSection('code-org');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    🗂️ Code Organization
+                </button>
+                <button onclick="document.getElementById('subroutines').scrollIntoView({behavior: 'smooth'}); toggleSection('subroutines');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    🔧 Subroutines
+                </button>
+                <button onclick="document.getElementById('loops').scrollIntoView({behavior: 'smooth'}); toggleSection('loops');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    🔄 Loops
+                </button>
+                <button onclick="document.getElementById('patterns').scrollIntoView({behavior: 'smooth'}); toggleSection('patterns');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    🔍 Code Patterns
+                </button>
+                <button onclick="document.getElementById('symbols').scrollIntoView({behavior: 'smooth'}); toggleSection('symbols');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    📝 Symbols
+                </button>
+                <button onclick="document.getElementById('raw-data').scrollIntoView({behavior: 'smooth'}); toggleSection('raw-data');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    💾 Raw Data
+                </button>
+                <button onclick="document.getElementById('full-asm').scrollIntoView({behavior: 'smooth'}); toggleSection('full-asm');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    📜 Assembly Code
+                </button>
+            </div>
+
+            <h2>🔗 Subroutine Links</h2>
+            <div id="nav-list">
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="page-header">
+                <div class="page-title">laxity_annotated_full_ANNOTATED.asm</div>
+                <div class="page-meta">Author: Unknown | Player: Laxity NewPlayer v21</div>
+            </div>
+
+            <!-- Player Structure -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('player-structure')">
+                    <span class="section-title">🎵 Player Structure</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="player-structure">
+                    <div class="card">
+                        <div class="card-title">Entry Points</div>
+                        <div class="card-content">
+                            <table>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Load Address:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$0000</td>
+                                    <td style="color: #858585;">Code/data load point</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Init Routine:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$0000</td>
+                                    <td style="color: #858585;">Player initialization</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Play Routine:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$0000</td>
+                                    <td style="color: #858585;">Called every frame (50Hz PAL / 60Hz NTSC)</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">Data Tables</div>
+                        <div class="card-content">
+                            <table>
+                                <tr>
+                                    <td style="color: #dcdcaa;">Pulse Table:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$D411</td>
+                                    <td style="color: #858585;">Pulse width modulation</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa;">Filter Table:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$D418</td>
+                                    <td style="color: #858585;">Filter parameters</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Architectural Insights -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('arch-insights')">
+                    <span class="section-title">🏗️ Architectural Insights</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="arch-insights">
+                    <div class="card">
+                        <div class="card-title">Standard Player</div>
+                        <div class="card-content">Classic SID player architecture with init and play routines</div>
+                    </div>
+                </div>
+            </div>
+            <!-- Code Organization -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('code-org')">
+                    <span class="section-title">📐 Code Organization</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="code-org">
+                    <div class="card">
+                        <div class="card-title">Memory Layout - Complete Map (0 data sections)</div>
+                        <div class="card-content">
+                            <div style="font-family: monospace; line-height: 1.6; font-size: 13px;">
+                                <div style="color: #4ec9b0; font-weight: bold;">• <span style="color: #4ec9b0;">$0000</span> - Load Address</div>
+                                <div style="color: #569cd6; margin-left: 20px;">├─ <span style="color: #4ec9b0;">$0000</span> Init | <span style="color: #4ec9b0;">$0000</span> Play</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">Structure Summary</div>
+                        <div class="card-content">
+                            <table>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Code Sections:</td>
+                                    <td style="color: #4ec9b0;">0</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Data Sections:</td>
+                                    <td style="color: #4ec9b0;">0</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Total Symbols:</td>
+                                    <td style="color: #4ec9b0;">25</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Subroutines -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('subroutines')">
+                    <span class="section-title">🔧 Subroutines (0)</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="subroutines">
+                </div>
+            </div>
+
+            <!-- Loops -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('loops')">
+                    <span class="section-title">🔄 Loops (0)</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="loops">
+                </div>
+            </div>
+
+            <!-- Symbol Table -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('symbols')">
+                    <span class="section-title">📋 Symbol Table (25)</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content collapsed" id="symbols">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Address</th>
+                                <th>Type</th>
+                                <th>Name</th>
+                                <th>Refs</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D400</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_frequency_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Frequency Low</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D401</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_frequency_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Frequency High</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D402</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_pulse_width_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Pulse Width Low</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D403</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_pulse_width_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Pulse Width High</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D404</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_control_register</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Control Register</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D405</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_attack/decay</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Attack/Decay</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D406</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_sustain/release</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Sustain/Release</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D407</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_frequency_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Frequency Low</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D408</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_frequency_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Frequency High</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D409</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_pulse_width_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Pulse Width Low</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40A</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_pulse_width_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Pulse Width High</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40B</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_control_register</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Control Register</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40C</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_attack/decay</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Attack/Decay</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40D</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_sustain/release</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Sustain/Release</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40E</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_frequency_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Frequency Low</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40F</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_frequency_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Frequency High</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D410</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_pulse_width_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Pulse Width Low</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D411</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_pulse_width_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Pulse Width High</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D412</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_control_register</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Control Register</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D413</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_attack/decay</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Attack/Decay</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D414</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_sustain/release</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Sustain/Release</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D415</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">filter_cutoff_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Filter Cutoff Low</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D416</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">filter_cutoff_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Filter Cutoff High</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D417</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">filter_resonance/routing</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Filter Resonance/Routing</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D418</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">volume/filter_mode</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Volume/Filter Mode</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <!-- Full Assembly Code -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('full-asm')">
+                    <span class="section-title">📜 Fully Annotated Assembly (107 lines)</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content collapsed" id="full-asm">
+                    <div style="background: #1e1e1e; padding: 20px; border-radius: 6px; overflow-x: auto;">
+                        <pre style="color: #d4d4d4; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; line-height: 1.8;"><span style="color: #6a9955;">; ==============================================================================</span>
+<span style="color: #6a9955;">;  laxity_annotated_full.sf2</span>
+<span style="color: #6a9955;">;  Annotated 6502 Assembly Disassembly</span>
+<span style="color: #6a9955;">; ==============================================================================</span>
+<span style="color: #6a9955;">; </span>
+<span style="color: #6a9955;">;  PLAYER: Laxity NewPlayer v21</span>
+<span style="color: #6a9955;">; </span>
+<span style="color: #6a9955;">; ==============================================================================</span>
+<span style="color: #6a9955;">;  MEMORY MAP</span>
+<span style="color: #6a9955;">; ==============================================================================</span>
+<span style="color: #6a9955;">; </span>
+<span style="color: #6a9955;">;  LAXITY NEWPLAYER V21 TABLE ADDRESSES (Verified):</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$18DA</span>   Wave Table - Waveforms (32 bytes)</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$190C</span>   Wave Table - Note Offsets (32 bytes)</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$1837</span>   Pulse Table (4-byte entries)</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$1A1E</span>   Filter Table (4-byte entries)</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$1A6B</span>   Instrument Table (8×8 bytes, column-major)</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$199F</span>   Sequence Pointers (3 voices × 2 bytes)</span>
+<span style="color: #6a9955;">; </span>
+<span style="color: #6a9955;">; ==============================================================================</span>
+<span style="color: #6a9955;">;  SID REGISTER REFERENCE</span>
+<span style="color: #6a9955;">; ==============================================================================</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D400</span>-<span style="color: #4ec9b0;">$D406</span>   Voice 1 (Frequency, Pulse, Control, ADSR)</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D407</span>-<span style="color: #4ec9b0;">$D40D</span>   Voice 2 (Frequency, Pulse, Control, ADSR)</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D40E</span>-<span style="color: #4ec9b0;">$D414</span>   Voice 3 (Frequency, Pulse, Control, ADSR)</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D415</span>-<span style="color: #4ec9b0;">$D416</span>   Filter Cutoff (11-bit)</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D417</span>         Filter Resonance/Routing</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D418</span>         Volume/Filter Mode</span>
+<span style="color: #6a9955;">; </span>
+<span style="color: #6a9955;">; ==============================================================================</span>
+<span style="color: #6a9955;">;  CODE</span>
+<span style="color: #6a9955;">; ==============================================================================</span>
+
+<span style="color: #6a9955;">; ==============================================================================</span>
+<span style="color: #6a9955;">;  SYMBOL TABLE</span>
+<span style="color: #6a9955;">; ==============================================================================</span>
+<span style="color: #6a9955;">; </span>
+<span style="color: #6a9955;">;  Total Symbols: 25</span>
+<span style="color: #6a9955;">;  Breakdown: 25 hardware</span>
+<span style="color: #6a9955;">; </span>
+<span style="color: #6a9955;">;  Address    Type         Name                     Refs     Description</span>
+<span style="color: #6a9955;">;  ---------- ------------ ------------------------ -------- --------------------</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D400</span>      Hardware     voice_1_frequency_low    -        Voice 1 Frequency Low</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D401</span>      Hardware     voice_1_frequency_high   -        Voice 1 Frequency High</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D402</span>      Hardware     voice_1_pulse_width_low  -        Voice 1 Pulse Width Low</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D403</span>      Hardware     voice_1_pulse_width_high -        Voice 1 Pulse Width High</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D404</span>      Hardware     voice_1_control_register -        Voice 1 Control Register</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D405</span>      Hardware     voice_1_attack/decay     -        Voice 1 Attack/Decay</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D406</span>      Hardware     voice_1_sustain/release  -        Voice 1 Sustain/Release</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D407</span>      Hardware     voice_2_frequency_low    -        Voice 2 Frequency Low</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D408</span>      Hardware     voice_2_frequency_high   -        Voice 2 Frequency High</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D409</span>      Hardware     voice_2_pulse_width_low  -        Voice 2 Pulse Width Low</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D40A</span>      Hardware     voice_2_pulse_width_high -        Voice 2 Pulse Width High</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D40B</span>      Hardware     voice_2_control_register -        Voice 2 Control Register</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D40C</span>      Hardware     voice_2_attack/decay     -        Voice 2 Attack/Decay</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D40D</span>      Hardware     voice_2_sustain/release  -        Voice 2 Sustain/Release</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D40E</span>      Hardware     voice_3_frequency_low    -        Voice 3 Frequency Low</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D40F</span>      Hardware     voice_3_frequency_high   -        Voice 3 Frequency High</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D410</span>      Hardware     voice_3_pulse_width_low  -        Voice 3 Pulse Width Low</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D411</span>      Hardware     voice_3_pulse_width_high -        Voice 3 Pulse Width High</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D412</span>      Hardware     voice_3_control_register -        Voice 3 Control Register</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D413</span>      Hardware     voice_3_attack/decay     -        Voice 3 Attack/Decay</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D414</span>      Hardware     voice_3_sustain/release  -        Voice 3 Sustain/Release</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D415</span>      Hardware     filter_cutoff_low        -        Filter Cutoff Low</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D416</span>      Hardware     filter_cutoff_high       -        Filter Cutoff High</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D417</span>      Hardware     filter_resonance/routing -        Filter Resonance/Routing</span>
+<span style="color: #6a9955;">;  <span style="color: #4ec9b0;">$D418</span>      Hardware     volume/filter_mode       -        Volume/Filter Mode</span>
+<span style="color: #6a9955;">; ==============================================================================</span>
+<span style="color: #6a9955;">; </span>
+<span style="color: #6a9955;">;  Legend:</span>
+<span style="color: #6a9955;">;    Refs: c=calls, r=reads, w=writes</span>
+<span style="color: #6a9955;">;    Types: subroutine, data, hardware, unknown</span>
+<span style="color: #6a9955;">; ==============================================================================</span>
+<span style="color: #6a9955;">; </span>
+<span style="color: #6a9955;">; ==============================================================================</span>
+<span style="color: #6a9955;">;  ENHANCED REGISTER ANALYSIS</span>
+<span style="color: #6a9955;">; ==============================================================================</span>
+<span style="color: #6a9955;">; </span>
+<span style="color: #6a9955;">;  Total Register Lifecycles: 0</span>
+<span style="color: #6a9955;">;  Total Dependencies Tracked: 0</span>
+<span style="color: #6a9955;">;  Dead Code Instances: 0</span>
+<span style="color: #6a9955;">; </span>
+<span style="color: #6a9955;">;  Register Lifecycles by Register:</span>
+<span style="color: #6a9955;">;    A: 0 lifecycle(s)</span>
+<span style="color: #6a9955;">;    X: 0 lifecycle(s)</span>
+<span style="color: #6a9955;">;    Y: 0 lifecycle(s)</span>
+<span style="color: #6a9955;">; </span>
+<span style="color: #6a9955;">;  REGISTER LIFECYCLE DETAILS (First 20)</span>
+<span style="color: #6a9955;">;  ----------------------------------------------------------------------------</span>
+<span style="color: #6a9955;">;  Reg Load@    Uses   Death@   Status     Instruction</span>
+<span style="color: #6a9955;">; </span>
+<span style="color: #6a9955;">; ==============================================================================</span>
+<span style="color: #6a9955;">; </span>
+<span style="color: #6a9955;">; ==============================================================================</span>
+<span style="color: #6a9955;">;  DOCUMENTATION CROSS-REFERENCES</span>
+<span style="color: #6a9955;">; ==============================================================================</span>
+<span style="color: #6a9955;">; </span>
+<span style="color: #6a9955;">;  This section shows which documentation files are relevant to this code.</span>
+<span style="color: #6a9955;">; </span>
+<span style="color: #6a9955;">;  docs/ARCHITECTURE.md</span>
+<span style="color: #6a9955;">;    Referenced by 25 address(es): <span style="color: #4ec9b0;">$D400</span>, <span style="color: #4ec9b0;">$D401</span>, <span style="color: #4ec9b0;">$D402</span>, <span style="color: #4ec9b0;">$D403</span>, <span style="color: #4ec9b0;">$D404</span>, ... (20 more)</span>
+<span style="color: #6a9955;">; </span>
+<span style="color: #6a9955;">;  docs/reference/SID_REGISTERS.md</span>
+<span style="color: #6a9955;">;    Referenced by 25 address(es): <span style="color: #4ec9b0;">$D400</span>, <span style="color: #4ec9b0;">$D401</span>, <span style="color: #4ec9b0;">$D402</span>, <span style="color: #4ec9b0;">$D403</span>, <span style="color: #4ec9b0;">$D404</span>, ... (20 more)</span>
+<span style="color: #6a9955;">; </span>
+<span style="color: #6a9955;">; ==============================================================================</span>
+<span style="color: #dcdcaa;">~7% DD	 11.00 - T S   ( A    C  D @ I       W    $    P $    F	 $    A $!    T  $"    HR      I	 D   AA/ S	/ O	 P  W  $#'#*## *$ *' 	  	 p	2                  =              	)      @@                                                                                                  d*L**LL ,0Dp8sDd)d)pABC`ԍԍ`$"$"A94$#'#	8頝ȱȱȱ mh*##'ȱɠȱɐ)ȱ~ȘAA061# ,))8<span style="color: #6a9955;">; &gt;LL&gt; )8 ; L8 ;L )J	5)@ $ 0L)?D)LLJLL0LL8)iJ	L8;L8 ;LL L L9~9}4}S#&amp;L&gt; L&lt;8 LMLL#}#&amp;}&amp;LMTSɀ) }0FfLZ)#e#&amp;e&amp;L#8#&amp;&amp;)i LMS#8#&amp;&amp;0#8#&amp;&amp;%L#}#&amp;}&amp;0#&amp;L#e#&amp;e&amp;LMȹ$!0p0)}$!}S#&amp;$$&lt;$2$/L/y$/2e2$ $$$5$Ɂ})S)L#)&amp;,) Խ,Խ;Խ8Խ/Խ2Խ5=&gt;ԽA*%~} LA0A0Lo0adAȹ$$  L$ $)p$)$$ L$ y$y$@FjFjFjFjԌԊ)ԭ` `@`		 "$')+.147:&gt;AEINRW\bhnu|'8K_s-NqBtZ,{'Q77WN	Уnhn9F^r8&amp;B pLp@p@xX0 . iiii!0NEiiii 	  @                                      &lt;  &lt;     )cc                      "    "        !!!                                                                    %%&amp;&amp;'                        %%%                                                ( %                        %%%      															                                                                                         m                                                                      !!AAAAA!!Q@SA A@  Ĭ                                                                                                                                                                                              Ĭ  vt       " % ' )Ǯ. 0                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               X                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               	"  q                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          ***$%&amp;********************************************************************************************************************************'()*+,-./0123456789:;&lt;=&gt;?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           8~~~~~~~~~~~~~~~~~~~]~8~~~~~~~~~~~~~~~~~~~~~~~~~8~~~8~~~~~~~~~~~~~~~ 8~~~~~~~~~~~~~~~~~~~~~~~~~~~~C~?~~~~~~C~8~~~~~~~~~~~~~~~~~~~~~~~~~ ~ ~~~~~~~~~~~~~~~~8~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ F~ ~~~~~~~~~~~~~~~~8~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~  4~~~~~~~~~~~~~~~~~8~  8~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~8~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ~;~8~ 88~~~~~~~~~~~~~~~~~~~~~~~~~~~~~8~~~~~~~~~~~~~~~~~~~~~~~~8~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~8~~~~~~~~~~~~~~~ 8~~~~~~~~~~~~~~~~~~~~~~~~~~~~~c                                                               Arpeggio soundBassFlute lead                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   D Stinsen's Last Night of '89Thomas E. Petersen (Laxity)2021 Bonzai      Instr 00 PulseInstr 01 PulseInstr 02 PulseInstr 03 PulseInstr 04 PulseInstr 05 PulseInstr 06 PulseInstr 07 PulseInstr 08 PulseInstr 09 PulseInstr 10 PulseInstr 11 PulseInstr 12 PulseInstr 13 PulseInstr 14 PulseInstr 15 Pulse      Slide UpSlide DownVibratoPortamentoSet ADSRSet FilterSet Wave	Set Pulse	Set SpeedSet VolumeArpeggioNote CutLegato	RetriggerDelayEnd     </span></span>
+</pre>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // Toggle section
+        function toggleSection(id) {
+            const content = document.getElementById(id);
+            const header = content.previousElementSibling;
+            const toggle = header.querySelector('.section-toggle');
+
+            content.classList.toggle('collapsed');
+            toggle.classList.toggle('collapsed');
+        }
+
+        // Scroll to element
+        function scrollTo(id) {
+            const element = document.getElementById(id);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                element.classList.add('highlight');
+                setTimeout(() => element.classList.remove('highlight'), 1500);
+            }
+        }
+
+        // Search
+        document.getElementById('search').addEventListener('input', function(e) {
+            const query = e.target.value.toLowerCase();
+            const navItems = document.querySelectorAll('.nav-item');
+
+            navItems.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                item.style.display = text.includes(query) ? 'flex' : 'none';
+            });
+        });
+
+        // Active navigation on scroll
+        const mainContent = document.querySelector('.main-content');
+        const navItems = document.querySelectorAll('.nav-item');
+
+        mainContent.addEventListener('scroll', function() {
+            const cards = document.querySelectorAll('.card[id^="sub-"]');
+            let currentId = null;
+
+            cards.forEach(card => {
+                const rect = card.getBoundingClientRect();
+                if (rect.top >= 0 && rect.top <= window.innerHeight / 2) {
+                    currentId = card.id;
+                }
+            });
+
+            if (currentId) {
+                navItems.forEach(item => {
+                    const onclick = item.getAttribute('onclick');
+                    if (onclick && onclick.includes(currentId)) {
+                        item.classList.add('active');
+                    } else {
+                        item.classList.remove('active');
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stinsen's Last Night of '89 - Assembly Analysis with Clickable Links</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        .container { display: flex; height: 100vh; }
+
+        .sidebar {
+            width: 320px;
+            background: #252526;
+            border-right: 1px solid #3e3e42;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        .sidebar h2 {
+            color: #4ec9b0;
+            font-size: 16px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #3e3e42;
+            padding-bottom: 8px;
+        }
+
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            background: #252526;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .section-header {
+            background: #2d2d30;
+            padding: 15px 20px;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .section-title {
+            color: #569cd6;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .section-toggle {
+            color: #858585;
+            transition: transform 0.2s;
+        }
+        .section-header:hover {
+            background: #333337;
+        }
+
+        .section-content {
+            padding: 20px;
+            max-height: 3000px;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        .section-content.collapsed {
+            max-height: 0;
+            padding: 0 20px;
+        }
+
+        pre {
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            background: #2d2d30;
+            border: 1px solid #3e3e42;
+            color: #cccccc;
+            cursor: pointer;
+            border-radius: 4px;
+            text-align: left;
+        }
+        button:hover {
+            background: #333337;
+        }
+
+        a {
+            color: #4ec9b0;
+            text-decoration: none;
+            border-bottom: 1px dotted #4ec9b0;
+        }
+        a:hover {
+            border-bottom: 1px solid #4ec9b0;
+        }
+
+        .data-group {
+            margin-bottom: 30px;
+        }
+        .data-group-title {
+            color: #dcdcaa;
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            padding: 5px;
+            background: #2d2d30;
+            border-left: 3px solid #569cd6;
+        }
+        .data-block {
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #1e1e1e;
+            border-radius: 4px;
+        }
+        .data-header {
+            color: #569cd6;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .highlight { background: #264f78; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h2>Navigation</h2>
+            <button onclick="document.getElementById('assembly').scrollIntoView({behavior: 'smooth'}); toggleSection('assembly');">
+                📜 Assembly Code
+            </button>
+            <button onclick="document.getElementById('raw-data').scrollIntoView({behavior: 'smooth'}); toggleSection('raw-data');">
+                💾 Raw Data (5 sections)
+            </button>
+
+            <div style="margin-top: 30px; padding: 15px; background: #1e1e1e; border-radius: 4px;">
+                <div style="color: #858585; font-size: 12px;">
+                    <strong style="color: #4ec9b0;">Demo Features:</strong><br><br>
+                    • Click on addresses in assembly code<br>
+                    • Jump directly to raw hex data<br>
+                    • Dotted underlines indicate clickable links<br>
+                    • Hex dumps show both hex and ASCII<br>
+                    • Data organized by table type
+                </div>
+            </div>
+        </div>
+
+        <div class="content">
+            <h1 style="color: #569cd6; margin-bottom: 20px;">Stinsen's Last Night of '89</h1>
+            <p style="color: #858585; margin-bottom: 30px;">Interactive Assembly Analysis with Clickable Raw Data Links</p>
+
+            <!-- Assembly Code Section -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('assembly')">
+                    <span class="section-title">📜 Assembly Code (with clickable data addresses)</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="assembly">
+                    <div style="color: #858585; margin-bottom: 15px; padding: 10px; background: #2d2d30; border-radius: 4px;">
+                        Data addresses ($18DA, $190C, $1837, $1A1E, $1A6B) are clickable links.
+                        Click them to jump to the raw hex data below.
+                    </div>
+                    <pre style="color: #d4d4d4; font-family: 'Consolas', 'Monaco', monospace;">
+<span style="color: #858585;">; Player Initialization - Loading Data Tables</span>
+<span style="color: #4ec9b0;">$1000:</span> <span style="color: #ce9178;">a9 00</span>        LDA  #<span style="color: #ce9178;">$00</span>           <span style="color: #6a9955;">; Clear accumulator</span>
+<span style="color: #4ec9b0;">$1002:</span> <span style="color: #ce9178;">85 fc</span>        STA  <span style="color: #ce9178;">$fc</span>            <span style="color: #6a9955;">; Set pointer lo-byte</span>
+<span style="color: #4ec9b0;">$1004:</span> <span style="color: #ce9178;">85 fd</span>        STA  <span style="color: #ce9178;">$fd</span>            <span style="color: #6a9955;">; Set pointer hi-byte</span>
+
+<span style="color: #858585;">; Load Wave Table Address</span>
+<span style="color: #4ec9b0;">$1010:</span> <span style="color: #ce9178;">a9 da</span>        LDA  #<span style="color: #ce9178;">&lt;</span><a href="#data-18da" style="color: #4ec9b0; text-decoration: none; border-bottom: 1px dotted #4ec9b0;" title="View raw data at $18DA">$18DA</a>        <span style="color: #6a9955;">; Wave table lo-byte → Click to view!</span>
+<span style="color: #4ec9b0;">$1012:</span> <span style="color: #ce9178;">85 fc</span>        STA  <span style="color: #ce9178;">$fc</span>            <span style="color: #6a9955;">; Store to pointer</span>
+<span style="color: #4ec9b0;">$1014:</span> <span style="color: #ce9178;">a9 18</span>        LDA  #<span style="color: #ce9178;">&gt;</span><a href="#data-18da" style="color: #4ec9b0; text-decoration: none; border-bottom: 1px dotted #4ec9b0;" title="View raw data at $18DA">$18DA</a>        <span style="color: #6a9955;">; Wave table hi-byte → Click to view!</span>
+<span style="color: #4ec9b0;">$1016:</span> <span style="color: #ce9178;">85 fd</span>        STA  <span style="color: #ce9178;">$fd</span>            <span style="color: #6a9955;">; Store to pointer</span>
+
+<span style="color: #858585;">; Access wave table data via pointer</span>
+<span style="color: #4ec9b0;">$1018:</span> <span style="color: #ce9178;">a0 00</span>        LDY  #<span style="color: #ce9178;">$00</span>           <span style="color: #6a9955;">; Index = 0</span>
+<span style="color: #4ec9b0;">$101A:</span> <span style="color: #ce9178;">b1 fc</span>        LDA  (<span style="color: #ce9178;">$fc</span>),Y        <span style="color: #6a9955;">; Read from wave table</span>
+<span style="color: #4ec9b0;">$101C:</span> <span style="color: #ce9178;">8d 04 d4</span>     STA  <span style="color: #4ec9b0;">$d404</span>          <span style="color: #6a9955;">; Set Voice 1 Control Register</span>
+
+<span style="color: #858585;">; Load second wave table</span>
+<span style="color: #4ec9b0;">$1020:</span> <span style="color: #ce9178;">a9 0c</span>        LDA  #<span style="color: #ce9178;">&lt;</span><a href="#data-190c" style="color: #4ec9b0; text-decoration: none; border-bottom: 1px dotted #4ec9b0;" title="View raw data at $190C">$190C</a>        <span style="color: #6a9955;">; Wave table note offsets lo</span>
+<span style="color: #4ec9b0;">$1022:</span> <span style="color: #ce9178;">a9 19</span>        LDA  #<span style="color: #ce9178;">&gt;</span><a href="#data-190c" style="color: #4ec9b0; text-decoration: none; border-bottom: 1px dotted #4ec9b0;" title="View raw data at $190C">$190C</a>        <span style="color: #6a9955;">; Wave table note offsets hi</span>
+
+<span style="color: #858585;">; Load Pulse Table</span>
+<span style="color: #4ec9b0;">$1030:</span> <span style="color: #ce9178;">a9 37</span>        LDA  #<span style="color: #ce9178;">&lt;</span><a href="#data-1837" style="color: #4ec9b0; text-decoration: none; border-bottom: 1px dotted #4ec9b0;" title="View raw data at $1837">$1837</a>        <span style="color: #6a9955;">; Pulse table lo-byte</span>
+<span style="color: #4ec9b0;">$1032:</span> <span style="color: #ce9178;">a9 18</span>        LDA  #<span style="color: #ce9178;">&gt;</span><a href="#data-1837" style="color: #4ec9b0; text-decoration: none; border-bottom: 1px dotted #4ec9b0;" title="View raw data at $1837">$1837</a>        <span style="color: #6a9955;">; Pulse table hi-byte</span>
+
+<span style="color: #858585;">; Load Filter Table</span>
+<span style="color: #4ec9b0;">$1040:</span> <span style="color: #ce9178;">a9 1e</span>        LDA  #<span style="color: #ce9178;">&lt;</span><a href="#data-1a1e" style="color: #4ec9b0; text-decoration: none; border-bottom: 1px dotted #4ec9b0;" title="View raw data at $1A1E">$1A1E</a>        <span style="color: #6a9955;">; Filter table lo-byte</span>
+<span style="color: #4ec9b0;">$1042:</span> <span style="color: #ce9178;">a9 1a</span>        LDA  #<span style="color: #ce9178;">&gt;</span><a href="#data-1a1e" style="color: #4ec9b0; text-decoration: none; border-bottom: 1px dotted #4ec9b0;" title="View raw data at $1A1E">$1A1E</a>        <span style="color: #6a9955;">; Filter table hi-byte</span>
+
+<span style="color: #858585;">; Load Instrument Table</span>
+<span style="color: #4ec9b0;">$1050:</span> <span style="color: #ce9178;">a9 6b</span>        LDA  #<span style="color: #ce9178;">&lt;</span><a href="#data-1a6b" style="color: #4ec9b0; text-decoration: none; border-bottom: 1px dotted #4ec9b0;" title="View raw data at $1A6B">$1A6B</a>        <span style="color: #6a9955;">; Instrument table lo-byte</span>
+<span style="color: #4ec9b0;">$1052:</span> <span style="color: #ce9178;">a9 1a</span>        LDA  #<span style="color: #ce9178;">&gt;</span><a href="#data-1a6b" style="color: #4ec9b0; text-decoration: none; border-bottom: 1px dotted #4ec9b0;" title="View raw data at $1A6B">$1A6B</a>        <span style="color: #6a9955;">; Instrument table hi-byte</span>
+
+<span style="color: #4ec9b0;">$1060:</span> <span style="color: #ce9178;">60</span>           RTS                    <span style="color: #6a9955;">; Return from subroutine</span>
+</pre>
+                </div>
+            </div>
+
+            <!-- Raw Data Section -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('raw-data')">
+                    <span class="section-title">💾 Raw Data (5 data sections)</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="raw-data">
+                    <div style="color: #858585; margin-bottom: 15px; padding: 10px; background: #2d2d30; border-radius: 4px;">
+                        This section shows the raw hexadecimal data for all data tables in the player.
+                        Click on data addresses in the assembly code above to jump here.
+                    </div>
+                    <div class="data-group">
+                        <div class="data-group-title">
+                            Filter Table
+                        </div>
+                        <div class="data-block" id="data-1a1e">
+                            <div class="data-header">
+                                $1A1E - $1A3E (16 bytes)
+                            </div>
+                            <pre style="color: #d4d4d4; margin: 0;">
+<span style="color: #858585;">$1A1E:</span> <span style="color: #ce9178;">FF 00 30 4F 70 70 00 00 00 00 00 00 00 10 00 00</span> <span style="color: #6a9955;">; ..0Opp..........</span>
+<span style="color: #858585;">      </span>  <span style="color: #4fc1ff;">Cutoff, Reson, Cutoff, Reson, Cutoff, Reson, Cutoff, Reson, Cutoff, Reson, Cutoff, Reson, Cutoff, Reson, Cutoff, Reson</span></pre>
+                        </div>
+                    </div>
+                    <div class="data-group">
+                        <div class="data-group-title">
+                            Instrument Table
+                        </div>
+                        <div class="data-block" id="data-1a6b">
+                            <div class="data-header">
+                                $1A6B - $1ACB (64 bytes)
+                            </div>
+                            <pre style="color: #d4d4d4; margin: 0;">
+<span style="color: #858585;">$1A6B:</span> <span style="color: #ce9178;">A0 0E 0F 0F 0F 0F 11 01 05 01 04 AC 02 03 A0 13</span> <span style="color: #6a9955;">; ................</span>
+<span style="color: #858585;">      </span>  <span style="color: #4fc1ff;">Cmd:A0, Wave:0E, Wave:0F, Wave:0F, Wave:0F, Wave:0F, Wave:11, Wave:01, Wave:05, Wave:01, Wave:04, Cmd:AC, Wave:02, Wave:03, Cmd:A0, Wave:13</span>
+<span style="color: #858585;">$1A7B:</span> <span style="color: #ce9178;">14 13 15 0E 11 01 05 01 04 AC 02 1B A0 13 14 13</span> <span style="color: #6a9955;">; ................</span>
+<span style="color: #858585;">      </span>  <span style="color: #4fc1ff;">Wave:14, Wave:13, Wave:15, Wave:0E, Wave:11, Wave:01, Wave:05, Wave:01, Wave:04, Cmd:AC, Wave:02, Wave:1B, Cmd:A0, Wave:13, Wave:14, Wave:13</span>
+<span style="color: #858585;">$1A8B:</span> <span style="color: #ce9178;">15 1C 1C 1C 1C AC 02 1F 20 FF 00 A0 00 12 06 06</span> <span style="color: #6a9955;">; ........ .......</span>
+<span style="color: #858585;">      </span>  <span style="color: #4fc1ff;">Wave:15, Wave:1C, Wave:1C, Wave:1C, Wave:1C, Cmd:AC, Wave:02, Wave:1F, Wave:20, End:FF, Wave:00, Cmd:A0, Wave:00, Wave:12, Wave:06, Wave:06</span>
+<span style="color: #858585;">$1A9B:</span> <span style="color: #ce9178;">06 07 25 25 16 17 06 06 18 25 25 06 06 06 06 1D</span> <span style="color: #6a9955;">; ..%%.....%%.....</span>
+<span style="color: #858585;">      </span>  <span style="color: #4fc1ff;">Wave:06, Wave:07, Wave:25, Wave:25, Wave:16, Wave:17, Wave:06, Wave:06, Wave:18, Wave:25, Wave:25, Wave:06, Wave:06, Wave:06, Wave:06, Wave:1D</span></pre>
+                        </div>
+                    </div>
+                    <div class="data-group">
+                        <div class="data-group-title">
+                            Pulse Table
+                        </div>
+                        <div class="data-block" id="data-1837">
+                            <div class="data-header">
+                                $1837 - $1877 (16 bytes)
+                            </div>
+                            <pre style="color: #d4d4d4; margin: 0;">
+<span style="color: #858585;">$1837:</span> <span style="color: #ce9178;">00 00 00 00 00 10 20 A0 E0 D0 00 00 05 00 00 3A</span> <span style="color: #6a9955;">; ...... ........:</span>
+<span style="color: #858585;">      </span>  <span style="color: #4fc1ff;">PW=0000, PW=0000, PW=0000, PW=0000, PW=0000, PW=0010, PW=0020, PW=00A0, PW=00E0, PW=00D0, PW=0000, PW=0000, PW=0005, PW=0000, PW=0000, PW=003A</span></pre>
+                        </div>
+                    </div>
+                    <div class="data-group">
+                        <div class="data-group-title">
+                            Wave Table
+                        </div>
+                        <div class="data-block" id="data-18da">
+                            <div class="data-header">
+                                $18DA - $18F9 (32 bytes)
+                            </div>
+                            <pre style="color: #d4d4d4; margin: 0;">
+<span style="color: #858585;">$18DA:</span> <span style="color: #ce9178;">01 01 01 01 01 01 01 01 01 01 01 02 02 02 02 02</span> <span style="color: #6a9955;">; ................</span>
+<span style="color: #858585;">      </span>  <span style="color: #4fc1ff;">Triangle, Triangle, Triangle, Triangle, Triangle, Triangle, Triangle, Triangle, Triangle, Triangle, Triangle, Sawtooth, Sawtooth, Sawtooth, Sawtooth, Sawtooth</span>
+<span style="color: #858585;">$18EA:</span> <span style="color: #ce9178;">02 02 03 03 03 03 03 04 04 04 04 05 05 05 06 06</span> <span style="color: #6a9955;">; ................</span>
+<span style="color: #858585;">      </span>  <span style="color: #4fc1ff;">Sawtooth, Sawtooth, Tri+Saw, Tri+Saw, Tri+Saw, Tri+Saw, Tri+Saw, Pulse, Pulse, Pulse, Pulse, Tri+Pls, Tri+Pls, Tri+Pls, Saw+Pls, Saw+Pls</span></pre>
+                        </div>
+                        <div class="data-block" id="data-190c">
+                            <div class="data-header">
+                                $190C - $192B (32 bytes)
+                            </div>
+                            <pre style="color: #d4d4d4; margin: 0;">
+<span style="color: #858585;">$190C:</span> <span style="color: #ce9178;">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00</span> <span style="color: #6a9955;">; ................</span>
+<span style="color: #858585;">      </span>  <span style="color: #4fc1ff;">Note+0, Note+0, Note+0, Note+0, Note+0, Note+0, Note+0, Note+0, Note+0, Note+0, Note+0, Note+0, Note+0, Note+0, Note+0, Note+0</span>
+<span style="color: #858585;">$191C:</span> <span style="color: #ce9178;">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00</span> <span style="color: #6a9955;">; ................</span>
+<span style="color: #858585;">      </span>  <span style="color: #4fc1ff;">Note+0, Note+0, Note+0, Note+0, Note+0, Note+0, Note+0, Note+0, Note+0, Note+0, Note+0, Note+0, Note+0, Note+0, Note+0, Note+0</span></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleSection(sectionId) {
+            const content = document.getElementById(sectionId);
+            const header = content.previousElementSibling;
+            const toggle = header.querySelector('.section-toggle');
+
+            content.classList.toggle('collapsed');
+            toggle.textContent = content.classList.contains('collapsed') ? '▶' : '▼';
+        }
+
+        // Initially collapse all sections except assembly
+        document.addEventListener('DOMContentLoaded', function() {
+            const sections = document.querySelectorAll('.section-content');
+            sections.forEach(section => {
+                if (section.id !== 'assembly') {
+                    section.classList.add('collapsed');
+                    const toggle = section.previousElementSibling.querySelector('.section-toggle');
+                    toggle.textContent = '▶';
+                }
+            });
+        });
+    </script>
+</body>
+</html>

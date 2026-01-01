@@ -1933,6 +1933,61 @@ result = trace_sid(
 - 173,914 bytes output generated
 - 100% success rate
 
+### HTML Annotation Tool (v1.0.0) ⭐ NEW
+
+Interactive HTML documentation generator for SID file analysis.
+
+**Features**:
+- ✅ Full disassembly with clickable navigation
+- ✅ 11 data sections auto-detected and annotated
+- ✅ 7 specialized annotation functions (Voice Control, Sequence Data, Wave/Pulse/Filter Tables, etc.)
+- ✅ 3,700+ semantic annotations per file
+- ✅ SID register names (Filter: Cutoff Lo, Voice 1: Freq Hi, etc.)
+- ✅ Clickable table names and addresses
+- ✅ Professional VS Code dark theme
+- ✅ Hex dumps with ASCII preview
+- ✅ Cross-platform HTML output
+
+**Usage**:
+```bash
+# Generate interactive HTML analysis
+python pyscript/generate_stinsen_html.py "path/to/file.sid"
+
+# Output: analysis/filename_ANNOTATED.html (auto-opens in browser)
+```
+
+**Example Output** (Stinsen's Last Night of '89):
+```
+📊 11 Data Sections:
+├─ Voice/Channel Control (406 bytes, 406 annotations)
+├─ Pulse Table (64 bytes, 64 annotations)
+├─ Wave Table (32 bytes, 32 annotations)
+├─ Filter Table (64 bytes, 64 annotations)
+├─ Instrument Table (96 bytes, 96 annotations)
+└─ Sequence/Arpeggio Data (3,312 bytes, 3,312 annotations)
+
+Total: 3,718 annotations + complete disassembly + clickable navigation
+```
+
+**Annotation Examples**:
+```
+Voice Control:
+  $16A1: 01 01 01 02 02 03 04 05 06 07 08 09...
+         Flag:1, Flag:1, Flag:1, Flag:2, Flag:2, Flag:3, Wave:Pls...
+
+Sequence Data:
+  $1ACB: 26 A0 1E 22 FF 00 7F C4 A0 81 39 39 39...
+         Note:C#3, Trans:+0, Note:F-2, Note:A-2, Mark:$FF, Rest,
+         END, Cmd:$C4, Trans:+0, Dur:$81, Note:G#4...
+
+Assembly Code:
+  sta SID0+21  ;  [Filter: Cutoff Lo]  ; Store Accumulator
+  lda VoiceControl + $E4               ; Load from Voice Control
+      └─ CLICKABLE LINK to section ─┘
+```
+
+**Documentation**: See [docs/guides/HTML_ANNOTATION_TOOL.md](docs/guides/HTML_ANNOTATION_TOOL.md)
+
 ### Benefits
 
 **Cross-Platform Support**:

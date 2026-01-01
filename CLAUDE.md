@@ -40,6 +40,7 @@ python pyscript/siddump_complete.py input.sid -t30           # Frame dump
 python pyscript/sidwinder_trace.py --trace out.txt input.sid # Trace
 python pyscript/create_sid_inventory.py                      # SID catalog
 python pyscript/quick_disasm.py file.sid                     # Disassemble
+python pyscript/generate_stinsen_html.py file.sid            # HTML docs (3,700+ annotations)
 
 # Testing & Automation
 test-batch-pyautogui.bat --directory G5/examples --max-files 10
@@ -61,6 +62,8 @@ Auto-selects best driver by player type: Laxity NP21→Laxity (99.98%), SF2→Dr
 **siddump** (`pyscript/siddump_complete.py`): 100% musical match, 38 tests. Docs: `docs/implementation/SIDDUMP_PYTHON_IMPLEMENTATION.md`
 
 **SIDwinder** (`pyscript/sidwinder_trace.py`): Frame trace, 27 tests, cross-platform. Docs: `docs/analysis/SIDWINDER_PYTHON_DESIGN.md`
+
+**HTML Annotation Tool** (`pyscript/generate_stinsen_html.py`): Interactive HTML docs with 3,700+ annotations, clickable navigation, 11 data sections. Docs: `docs/guides/HTML_ANNOTATION_TOOL.md`
 
 **VSID** (`sidm2.vsid_wrapper`): SID→WAV via VICE, auto-fallback to SID2WAV. Docs: `docs/VSID_INTEGRATION_GUIDE.md`
 

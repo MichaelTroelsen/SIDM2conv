@@ -1,0 +1,2322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stinsens_Last_Night_of_89_disasm.asm - Assembly Analysis</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/vs2015.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        .container { display: flex; height: 100vh; }
+
+        /* Sidebar */
+        .sidebar {
+            width: 320px;
+            background: #252526;
+            border-right: 1px solid #3e3e42;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        .sidebar h2 {
+            color: #4ec9b0;
+            font-size: 16px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #3e3e42;
+            padding-bottom: 8px;
+        }
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .stat-item {
+            background: #1e1e1e;
+            padding: 12px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .stat-value {
+            color: #4ec9b0;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .stat-label {
+            color: #858585;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+        #search {
+            width: 100%;
+            padding: 10px;
+            background: #3c3c3c;
+            border: 1px solid #3e3e42;
+            color: #d4d4d4;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        #search:focus {
+            outline: none;
+            border-color: #007acc;
+        }
+        .nav-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin: 3px 0;
+            display: flex;
+            justify-content: space-between;
+            transition: all 0.2s;
+        }
+        .nav-item:hover {
+            background: #2a2d2e;
+            transform: translateX(4px);
+        }
+        .nav-item.active {
+            background: #37373d;
+            border-left: 3px solid #007acc;
+        }
+        .nav-address {
+            color: #4ec9b0;
+            font-weight: bold;
+        }
+        .nav-name {
+            color: #dcdcaa;
+            margin-left: 10px;
+        }
+
+        /* Main content */
+        .main-content {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 30px;
+        }
+        .page-header {
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e1e1e 100%);
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border-left: 5px solid #4ec9b0;
+        }
+        .page-title {
+            color: #4ec9b0;
+            font-size: 28px;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        .page-meta {
+            color: #9cdcfe;
+            font-size: 14px;
+        }
+
+        /* Section */
+        .section {
+            background: #252526;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            border: 1px solid #3e3e42;
+            overflow: hidden;
+        }
+        .section-header {
+            padding: 18px 24px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #2d2d30;
+            transition: background 0.2s;
+        }
+        .section-header:hover {
+            background: #383838;
+        }
+        .section-title {
+            color: #569cd6;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        .section-toggle {
+            color: #858585;
+            font-size: 14px;
+            transition: transform 0.3s;
+        }
+        .section-toggle.collapsed {
+            transform: rotate(-90deg);
+        }
+        .section-content {
+            padding: 24px;
+            max-height: 10000px;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out, padding 0.3s;
+        }
+        .section-content.collapsed {
+            max-height: 0;
+            padding: 0 24px;
+        }
+
+        /* Card */
+        .card {
+            background: #1e1e1e;
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            border-left: 4px solid #dcdcaa;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .card-title {
+            color: #dcdcaa;
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .card-subtitle {
+            color: #4ec9b0;
+            font-size: 13px;
+            margin-bottom: 12px;
+        }
+        .card-content {
+            color: #9cdcfe;
+            font-size: 14px;
+            line-height: 1.8;
+        }
+        .card-meta {
+            display: flex;
+            gap: 20px;
+            margin-top: 12px;
+            font-size: 13px;
+            flex-wrap: wrap;
+        }
+        .meta-badge {
+            background: #2d2d30;
+            padding: 6px 12px;
+            border-radius: 4px;
+            color: #9cdcfe;
+        }
+        .meta-badge strong {
+            color: #ce9178;
+        }
+
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th {
+            background: #2d2d30;
+            color: #569cd6;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+            border-bottom: 2px solid #3e3e42;
+        }
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #3e3e42;
+        }
+        tr:hover {
+            background: #2a2d2e;
+        }
+
+        /* Warning/Info boxes */
+        .warning-box {
+            background: linear-gradient(135deg, #4a1c00 0%, #2d2d30 100%);
+            border-left: 4px solid #ce9178;
+            padding: 18px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+        }
+        .warning-title {
+            color: #ce9178;
+            font-weight: bold;
+            margin-bottom: 8px;
+            font-size: 15px;
+        }
+        .warning-text {
+            color: #cccccc;
+        }
+        .info-box {
+            background: linear-gradient(135deg, #0a3a2a 0%, #2d2d30 100%);
+            border-left: 4px solid #4ec9b0;
+            padding: 18px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+        }
+        .info-text {
+            color: #cccccc;
+        }
+
+        /* Highlight effect */
+        .highlight {
+            animation: highlight-flash 1.5s;
+        }
+        @keyframes highlight-flash {
+            0%, 100% { background: transparent; }
+            50% { background: #264f78; }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 12px;
+            height: 12px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e1e1e;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #424242;
+            border-radius: 6px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4e4e4e;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <h2>📊 Analysis Stats</h2>
+            <div class="stat-grid">
+                <div class="stat-item">
+                    <div class="stat-value">4</div>
+                    <div class="stat-label">Subroutines</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">414</div>
+                    <div class="stat-label">Symbols</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">11</div>
+                    <div class="stat-label">Patterns</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">25</div>
+                    <div class="stat-label">Loops</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">38</div>
+                    <div class="stat-label">Dead Code</div>
+                </div>
+            </div>
+
+            <h2>🔍 Quick Search</h2>
+            <input type="text" id="search" placeholder="Search addresses, names...">
+
+            <h2>📑 Navigation</h2>
+            <div id="nav-list">
+                <div class="nav-item" onclick="scrollTo('sub-1000')">
+                    <span class="nav-address">$1000</span>
+                    <span class="nav-name">Utility</span>
+                </div>
+                <div class="nav-item" onclick="scrollTo('sub-1006')">
+                    <span class="nav-address">$1006</span>
+                    <span class="nav-name">Utility</span>
+                </div>
+                <div class="nav-item" onclick="scrollTo('sub-2200')">
+                    <span class="nav-address">$2200</span>
+                    <span class="nav-name">Utility</span>
+                </div>
+                <div class="nav-item" onclick="scrollTo('sub-2422')">
+                    <span class="nav-address">$2422</span>
+                    <span class="nav-name">Utility</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="page-header">
+                <div class="page-title">Stinsens_Last_Night_of_89_disasm.asm</div>
+                <div class="page-meta">Author: Thomas E. Petersen (Laxity) | Player: Laxity NewPlayer v21</div>
+            </div>
+
+            <!-- Player Structure -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('player-structure')">
+                    <span class="section-title">🎵 Player Structure</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="player-structure">
+                    <div class="card">
+                        <div class="card-title">Entry Points</div>
+                        <div class="card-content">
+                            <table>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Load Address:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$1000</td>
+                                    <td style="color: #858585;">Code/data load point</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Init Routine:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$1000</td>
+                                    <td style="color: #858585;">Player initialization</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Play Routine:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$1006</td>
+                                    <td style="color: #858585;">Called every frame (50Hz PAL / 60Hz NTSC)</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">Data Tables</div>
+                        <div class="card-content">
+                            <table>
+                                <tr>
+                                    <td style="color: #dcdcaa;">Wave Table:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$190C</td>
+                                    <td style="color: #858585;">Waveform definitions</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa;">Instruments:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$1A6B</td>
+                                    <td style="color: #858585;">Instrument parameters</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa;">Pulse Table:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$D411</td>
+                                    <td style="color: #858585;">Pulse width modulation</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa;">Filter Table:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$D418</td>
+                                    <td style="color: #858585;">Filter parameters</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa;">Sequence Data:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$19FF</td>
+                                    <td style="color: #858585;">Music sequence commands</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Architectural Insights -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('arch-insights')">
+                    <span class="section-title">🏗️ Architectural Insights</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="arch-insights">
+                    <div class="card">
+                        <div class="card-title">Loop-Heavy Design</div>
+                        <div class="card-content">25 loops detected - efficient iterative processing of voices/channels</div>
+                    </div>
+                </div>
+            </div>
+            <!-- Code Organization -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('code-org')">
+                    <span class="section-title">📐 Code Organization</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="code-org">
+                    <div class="card">
+                        <div class="card-title">Memory Layout</div>
+                        <div class="card-content">
+                            <div style="font-family: monospace; line-height: 1.8;">
+                                <div style="color: #4ec9b0;">• $1000 - Load Address</div>
+                                <div style="color: #569cd6; margin-left: 20px;">├─ $1000 - Init Routine</div>
+                                <div style="color: #569cd6; margin-left: 20px;">├─ $1006 - Play Routine</div>
+                                <div style="color: #dcdcaa; margin-left: 20px;">├─ $1900 - Sequence Data</div>
+                                <div style="color: #dcdcaa; margin-left: 20px;">├─ $1903 - Sequence Data</div>
+                                <div style="color: #dcdcaa; margin-left: 20px;">├─ $1906 - Sequence Data</div>
+                                <div style="color: #dcdcaa; margin-left: 20px;">├─ $1908 - Sequence Data</div>
+                                <div style="color: #dcdcaa; margin-left: 20px;">├─ $190A - Sequence Data</div>
+                                <div style="color: #dcdcaa; margin-left: 20px;">├─ $190C - Wave Table</div>
+                                <div style="color: #dcdcaa; margin-left: 20px;">├─ $190E - Sequence Data</div>
+                                <div style="color: #dcdcaa; margin-left: 20px;">├─ $190F - Sequence Data</div>
+                                <div style="color: #dcdcaa; margin-left: 20px;">├─ $1910 - Sequence Data</div>
+                                <div style="color: #dcdcaa; margin-left: 20px;">├─ $1912 - Sequence Data</div>
+                                <div style="color: #858585; margin-left: 40px;">... (134 more sections)</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">Structure Summary</div>
+                        <div class="card-content">
+                            <table>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Code Sections:</td>
+                                    <td style="color: #4ec9b0;">2</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Data Sections:</td>
+                                    <td style="color: #4ec9b0;">144</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Total Symbols:</td>
+                                    <td style="color: #4ec9b0;">414</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Subroutines -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('subroutines')">
+                    <span class="section-title">🔧 Subroutines (4)</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="subroutines">
+                    <div class="card" id="sub-1000">
+                        <div class="card-title">Utility</div>
+                        <div class="card-subtitle">$1000</div>
+                        <div class="card-content">Utility or helper function</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>In:</strong> A, X</div><div class="meta-badge"><strong>Out:</strong> A, X</div><div class="meta-badge"><strong>Cycles:</strong> 3</div>
+                        </div>
+                    </div>
+                    <div class="card" id="sub-1006">
+                        <div class="card-title">Utility</div>
+                        <div class="card-subtitle">$1006</div>
+                        <div class="card-content">Utility or helper function</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>In:</strong> A, X</div><div class="meta-badge"><strong>Out:</strong> A, X</div><div class="meta-badge"><strong>Cycles:</strong> 2</div>
+                        </div>
+                    </div>
+                    <div class="card" id="sub-2200">
+                        <div class="card-title">Utility</div>
+                        <div class="card-subtitle">$2200</div>
+                        <div class="card-content">Utility or helper function</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>In:</strong> A, X, Y</div><div class="meta-badge"><strong>Out:</strong> A, X, Y</div><div class="meta-badge"><strong>Cycles:</strong> 2</div>
+                        </div>
+                    </div>
+                    <div class="card" id="sub-2422">
+                        <div class="card-title">Utility</div>
+                        <div class="card-subtitle">$2422</div>
+                        <div class="card-content">Utility or helper function</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>In:</strong> A, X, Y</div><div class="meta-badge"><strong>Out:</strong> A, X, Y</div><div class="meta-badge"><strong>Cycles:</strong> 6</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loops -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('loops')">
+                    <span class="section-title">🔄 Loops (25)</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="loops">
+                    <div class="card">
+                        <div class="card-title">Loop #1</div>
+                        <div class="card-subtitle">$1011 - $1015</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 10</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #2</div>
+                        <div class="card-subtitle">$16D2 - $172D</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 91</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #3</div>
+                        <div class="card-subtitle">$18BF - $18C9</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 13</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #4</div>
+                        <div class="card-subtitle">$194D - $195B</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 16</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #5</div>
+                        <div class="card-subtitle">$193F - $196D</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 91</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #6</div>
+                        <div class="card-subtitle">$191C - $198A</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 201</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #7</div>
+                        <div class="card-subtitle">$19B9 - $1A1C</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 212</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #8</div>
+                        <div class="card-subtitle">$1ACE - $1B02</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 84</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #9</div>
+                        <div class="card-subtitle">$1AD3 - $1B06</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 82</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #10</div>
+                        <div class="card-subtitle">$1BB7 - $1BE6</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 48</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #11</div>
+                        <div class="card-subtitle">$1BFD - $1C35</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 76</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #12</div>
+                        <div class="card-subtitle">$1DE7 - $1E22</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 84</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #13</div>
+                        <div class="card-subtitle">$1E8B - $1EC9</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 117</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #14</div>
+                        <div class="card-subtitle">$1E88 - $1F03</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 201</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #15</div>
+                        <div class="card-subtitle">$213F - $2177</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 79</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #16</div>
+                        <div class="card-subtitle">$222B - $22A9</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 157</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #17</div>
+                        <div class="card-subtitle">$223F - $22BD</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 161</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #18</div>
+                        <div class="card-subtitle">$24A9 - $2524</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 170</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #19</div>
+                        <div class="card-subtitle">$251F - $255D</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 71</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #20</div>
+                        <div class="card-subtitle">$25A6 - $25C5</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 39</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #21</div>
+                        <div class="card-subtitle">$25FA - $2635</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 92</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #22</div>
+                        <div class="card-subtitle">$25E9 - $2657</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 142</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #23</div>
+                        <div class="card-subtitle">$2678 - $2698</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 34</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #24</div>
+                        <div class="card-subtitle">$273D - $27A8</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 174</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Loop #25</div>
+                        <div class="card-subtitle">$2776 - $27B4</div>
+                        <div class="card-meta">
+                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
+                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
+                            <div class="meta-badge"><strong>Cycles/iter:</strong> 101</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dead Code -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('deadcode')">
+                    <span class="section-title">⚠️ Dead Code (38)</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="deadcode">
+                    <div class="warning-box">
+                        <div class="warning-title">$2205 - Register A</div>
+                        <div class="warning-text">Value loaded at $2205 but never used before overwritten at $220D</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$220D - Register A</div>
+                        <div class="warning-text">Value loaded at $220D but never used before overwritten at $2219</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$2221 - Register A</div>
+                        <div class="warning-text">Value loaded at $2221 but never used before overwritten at $2225</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$2235 - Register A</div>
+                        <div class="warning-text">Value loaded at $2235 but never used before overwritten at $2239</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$2249 - Register A</div>
+                        <div class="warning-text">Value loaded at $2249 but never used before overwritten at $224B</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$226C - Register A</div>
+                        <div class="warning-text">Value loaded at $226C but never used before overwritten at $226E</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$2270 - Register A</div>
+                        <div class="warning-text">Value loaded at $2270 but never used before overwritten at $228C</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$228C - Register A</div>
+                        <div class="warning-text">Value loaded at $228C but never used before overwritten at $2296</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$2366 - Register A</div>
+                        <div class="warning-text">Value loaded at $2366 but never used before overwritten at $236A</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$2370 - Register A</div>
+                        <div class="warning-text">Value loaded at $2370 but never used before overwritten at $2374</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$237A - Register A</div>
+                        <div class="warning-text">Value loaded at $237A but never used before overwritten at $237E</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$2424 - Register A</div>
+                        <div class="warning-text">Value loaded at $2424 but never used before overwritten at $2430</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$2438 - Register A</div>
+                        <div class="warning-text">Value loaded at $2438 but never used before overwritten at $243C</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$244C - Register A</div>
+                        <div class="warning-text">Value loaded at $244C but never used before overwritten at $2450</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$2460 - Register A</div>
+                        <div class="warning-text">Value loaded at $2460 but never used before overwritten at $2462</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$2483 - Register A</div>
+                        <div class="warning-text">Value loaded at $2483 but never used before overwritten at $2485</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$2487 - Register A</div>
+                        <div class="warning-text">Value loaded at $2487 but never used before overwritten at $24A3</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$24A3 - Register A</div>
+                        <div class="warning-text">Value loaded at $24A3 but never used before overwritten at $24AD</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$222F - Register X</div>
+                        <div class="warning-text">Value loaded at $222F but never used before overwritten at $2233</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$2261 - Register X</div>
+                        <div class="warning-text">Value loaded at $2261 but never used before overwritten at $2266</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$2274 - Register X</div>
+                        <div class="warning-text">Value loaded at $2274 but never used before overwritten at $2276</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$2276 - Register X</div>
+                        <div class="warning-text">Value loaded at $2276 but never used before overwritten at $2278</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$242C - Register X</div>
+                        <div class="warning-text">Value loaded at $242C but never used before overwritten at $242E</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$2446 - Register X</div>
+                        <div class="warning-text">Value loaded at $2446 but never used before overwritten at $244A</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$2478 - Register X</div>
+                        <div class="warning-text">Value loaded at $2478 but never used before overwritten at $247D</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$248B - Register X</div>
+                        <div class="warning-text">Value loaded at $248B but never used before overwritten at $248D</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$248D - Register X</div>
+                        <div class="warning-text">Value loaded at $248D but never used before overwritten at $248F</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$1014 - Register X</div>
+                        <div class="warning-text">Value loaded at $1014 but never used before overwritten at $1017</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$1014 - Register X</div>
+                        <div class="warning-text">Value loaded at $1014 but never used before overwritten at $1017</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$2229 - Register Y</div>
+                        <div class="warning-text">Value loaded at $2229 but never used before overwritten at $2247</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$22EA - Register Y</div>
+                        <div class="warning-text">Value loaded at $22EA but never used before overwritten at $22EB</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$22EB - Register Y</div>
+                        <div class="warning-text">Value loaded at $22EB but never used before overwritten at $22F8</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$235B - Register Y</div>
+                        <div class="warning-text">Value loaded at $235B but never used before overwritten at $2364</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$2364 - Register Y</div>
+                        <div class="warning-text">Value loaded at $2364 but never used before overwritten at $236E</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$236E - Register Y</div>
+                        <div class="warning-text">Value loaded at $236E but never used before overwritten at $2378</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$2440 - Register Y</div>
+                        <div class="warning-text">Value loaded at $2440 but never used before overwritten at $245E</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$257F - Register Y</div>
+                        <div class="warning-text">Value loaded at $257F but never used before overwritten at $2580</div>
+                    </div>
+                    <div class="warning-box">
+                        <div class="warning-title">$2580 - Register Y</div>
+                        <div class="warning-text">Value loaded at $2580 but never used before overwritten at $258D</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Optimizations -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('optimizations')">
+                    <span class="section-title">💡 Optimizations (15)</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="optimizations">
+                    <div class="info-box">
+                        <div class="info-text">1. Dead Code: Found 38 register load(s) that are never used. Consider removing these instructions.</div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-text">2. Register A: Found 40 single-use loads. Consider caching values for reuse.</div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-text">3. Register X: Found 8 single-use loads. Consider caching values for reuse.</div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-text">4. Register Y: Found 6 single-use loads. Consider caching values for reuse.</div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-text">5. Long Dependency Chain: Instruction at $2517 has a dependency chain of 6 steps. Consider breaking into smaller operations.</div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-text">6. Long Dependency Chain: Instruction at $251E has a dependency chain of 6 steps. Consider breaking into smaller operations.</div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-text">7. Long Dependency Chain: Instruction at $2534 has a dependency chain of 7 steps. Consider breaking into smaller operations.</div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-text">8. Long Dependency Chain: Instruction at $253C has a dependency chain of 8 steps. Consider breaking into smaller operations.</div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-text">9. Long Dependency Chain: Instruction at $2552 has a dependency chain of 8 steps. Consider breaking into smaller operations.</div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-text">10. Long Dependency Chain: Instruction at $2564 has a dependency chain of 9 steps. Consider breaking into smaller operations.</div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-text">11. Long Dependency Chain: Instruction at $2572 has a dependency chain of 9 steps. Consider breaking into smaller operations.</div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-text">12. Long Dependency Chain: Instruction at $257D has a dependency chain of 9 steps. Consider breaking into smaller operations.</div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-text">13. Long Dependency Chain: Instruction at $2584 has a dependency chain of 9 steps. Consider breaking into smaller operations.</div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-text">14. Long Dependency Chain: Instruction at $2587 has a dependency chain of 9 steps. Consider breaking into smaller operations.</div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-text">15. Long Dependency Chain: Instruction at $258A has a dependency chain of 9 steps. Consider breaking into smaller operations.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Symbol Table -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('symbols')">
+                    <span class="section-title">📋 Symbol Table (414)</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content collapsed" id="symbols">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Address</th>
+                                <th>Type</th>
+                                <th>Name</th>
+                                <th>Refs</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0004</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0004</td>
+                                <td style="color: #ce9178;">1c,1r,1w</td>
+                                <td>Zero page variable</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0005</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0005</td>
+                                <td style="color: #ce9178;">1c</td>
+                                <td>Zero page variable</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$000A</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_000a</td>
+                                <td style="color: #ce9178;">1c</td>
+                                <td>Zero page variable</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0030</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0030</td>
+                                <td style="color: #ce9178;">1r</td>
+                                <td>Zero page variable</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$007E</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_007e</td>
+                                <td style="color: #ce9178;">1r,1w</td>
+                                <td>Zero page variable</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0080</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0080</td>
+                                <td style="color: #ce9178;">1r,1w</td>
+                                <td>Zero page variable</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0081</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0081</td>
+                                <td style="color: #ce9178;">1r,1w</td>
+                                <td>Zero page variable</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0082</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0082</td>
+                                <td style="color: #ce9178;">4r,4w</td>
+                                <td>Zero page variable</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0083</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0083</td>
+                                <td style="color: #ce9178;">4r,4w</td>
+                                <td>Zero page variable</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0084</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0084</td>
+                                <td style="color: #ce9178;">1r</td>
+                                <td>Zero page variable</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0085</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0085</td>
+                                <td style="color: #ce9178;">3r,3w</td>
+                                <td>Zero page variable</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0088</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0088</td>
+                                <td style="color: #ce9178;">2r,2w</td>
+                                <td>Zero page variable</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0089</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0089</td>
+                                <td style="color: #ce9178;">2r,2w</td>
+                                <td>Zero page variable</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$008F</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_008f</td>
+                                <td style="color: #ce9178;">1r,1w</td>
+                                <td>Zero page variable</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0099</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0099</td>
+                                <td style="color: #ce9178;">1r,1w</td>
+                                <td>Zero page variable</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$00DE</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_00de</td>
+                                <td style="color: #ce9178;">3r</td>
+                                <td>Zero page variable</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$00FB</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_00fb</td>
+                                <td style="color: #ce9178;">1r</td>
+                                <td>Zero page variable</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$00FF</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_00ff</td>
+                                <td style="color: #ce9178;">1c</td>
+                                <td>Zero page variable</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0100</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0100</td>
+                                <td style="color: #ce9178;">1r,1w</td>
+                                <td>Stack location</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0302</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0302</td>
+                                <td style="color: #ce9178;">1r</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0713</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0713</td>
+                                <td style="color: #ce9178;">1r,1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0A00</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0a00</td>
+                                <td style="color: #ce9178;">1r,1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0B00</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0b00</td>
+                                <td style="color: #ce9178;">1r</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0C00</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0c00</td>
+                                <td style="color: #ce9178;">1r</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0E0D</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0e0d</td>
+                                <td style="color: #ce9178;">1r</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0F00</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0f00</td>
+                                <td style="color: #ce9178;">1r</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$0F0F</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_0f0f</td>
+                                <td style="color: #ce9178;">1r,1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1000</td>
+                                <td style="color: #569cd6;">subroutine</td>
+                                <td style="color: #dcdcaa;">Utility</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Utility or helper function</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1006</td>
+                                <td style="color: #569cd6;">subroutine</td>
+                                <td style="color: #dcdcaa;">Utility</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Utility or helper function</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$106F</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_106f</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$11C8</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_11c8</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1202</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1202</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1286</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1286</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1288</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1288</td>
+                                <td style="color: #ce9178;">1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$131A</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_131a</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$131C</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_131c</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$131F</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_131f</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$133E</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_133e</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1379</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1379</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1385</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1385</td>
+                                <td style="color: #ce9178;">1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$13C6</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_13c6</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$13E7</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_13e7</td>
+                                <td style="color: #ce9178;">1r</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$13FC</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_13fc</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1414</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1414</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1428</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1428</td>
+                                <td style="color: #ce9178;">1r</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1461</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1461</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$147F</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_147f</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1482</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1482</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$14BC</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_14bc</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$14D1</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_14d1</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$14F2</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_14f2</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$152D</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_152d</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1540</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1540</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$157C</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_157c</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1582</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1582</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$15E1</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_15e1</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1652</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1652</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1692</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1692</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$169B</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_169b</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$16A1</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_16a1</td>
+                                <td style="color: #ce9178;">6r</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$16A2</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_16a2</td>
+                                <td style="color: #ce9178;">1r</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1701</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1701</td>
+                                <td style="color: #ce9178;">6r</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1702</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1702</td>
+                                <td style="color: #ce9178;">1r</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1761</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1761</td>
+                                <td style="color: #ce9178;">1r</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1771</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1771</td>
+                                <td style="color: #ce9178;">1r</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1777</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1777</td>
+                                <td style="color: #ce9178;">1r</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$177A</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_177a</td>
+                                <td style="color: #ce9178;">1r</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$177D</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_177d</td>
+                                <td style="color: #ce9178;">1r</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1780</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1780</td>
+                                <td style="color: #ce9178;">1r,2w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1781</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1781</td>
+                                <td style="color: #ce9178;">1r,3w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1782</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1782</td>
+                                <td style="color: #ce9178;">1r,2w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1783</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1783</td>
+                                <td style="color: #ce9178;">2r,4w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1784</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1784</td>
+                                <td style="color: #ce9178;">2r,4w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1785</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1785</td>
+                                <td style="color: #ce9178;">1r,2w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1786</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1786</td>
+                                <td style="color: #ce9178;">1r,2w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1787</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1787</td>
+                                <td style="color: #ce9178;">1r,1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1788</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1788</td>
+                                <td style="color: #ce9178;">1r,1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1789</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1789</td>
+                                <td style="color: #ce9178;">2r,2w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$178A</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_178a</td>
+                                <td style="color: #ce9178;">2r,2w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$178B</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_178b</td>
+                                <td style="color: #ce9178;">3r,1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$178C</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_178c</td>
+                                <td style="color: #ce9178;">1r,4w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$178D</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_178d</td>
+                                <td style="color: #ce9178;">1r,4w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$178E</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_178e</td>
+                                <td style="color: #ce9178;">3r,5w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$178F</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_178f</td>
+                                <td style="color: #ce9178;">1r,2w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1792</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1792</td>
+                                <td style="color: #ce9178;">1r,1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1795</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1795</td>
+                                <td style="color: #ce9178;">3r,2w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$1798</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_1798</td>
+                                <td style="color: #ce9178;">1r,2w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$179B</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_179b</td>
+                                <td style="color: #ce9178;">1r,1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$179E</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_179e</td>
+                                <td style="color: #ce9178;">1r,1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$17A1</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_17a1</td>
+                                <td style="color: #ce9178;">6r,3w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$17A4</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_17a4</td>
+                                <td style="color: #ce9178;">3r,1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$17A7</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_17a7</td>
+                                <td style="color: #ce9178;">2r,2w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$17AA</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_17aa</td>
+                                <td style="color: #ce9178;">2r,2w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$17AD</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_17ad</td>
+                                <td style="color: #ce9178;">1r,1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$17B0</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_17b0</td>
+                                <td style="color: #ce9178;">1r,1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$17B3</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_17b3</td>
+                                <td style="color: #ce9178;">3r,1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$17B6</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_17b6</td>
+                                <td style="color: #ce9178;">1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$17B9</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_17b9</td>
+                                <td style="color: #ce9178;">7r,1w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$17BC</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_17bc</td>
+                                <td style="color: #ce9178;">5r,4w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #4ec9b0; font-weight: bold;">$17BF</td>
+                                <td style="color: #569cd6;">unknown</td>
+                                <td style="color: #dcdcaa;">addr_17bf</td>
+                                <td style="color: #ce9178;">2r,4w</td>
+                                <td>Referenced address</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div style="text-align: center; color: #858585; padding: 15px;">
+                        (314 more symbols not shown)
+                    </div>
+                </div>
+            </div>
+            <!-- Code Patterns -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('patterns')">
+                    <span class="section-title">🔍 Code Patterns (11)</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content collapsed" id="patterns">
+                    <div class="card">
+                        <div class="card-title">Pattern #1: ADD_16BIT</div>
+                        <div class="card-content">16-bit addition with carry propagation</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #2: ADD_16BIT</div>
+                        <div class="card-content">16-bit addition with carry propagation</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #3: SUB_16BIT</div>
+                        <div class="card-content">16-bit subtraction with borrow propagation</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #4: SUB_16BIT</div>
+                        <div class="card-content">16-bit subtraction with borrow propagation</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #5: SUB_16BIT</div>
+                        <div class="card-content">16-bit subtraction with borrow propagation</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #6: ADD_16BIT</div>
+                        <div class="card-content">16-bit addition with carry propagation</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #7: ADD_16BIT</div>
+                        <div class="card-content">16-bit addition with carry propagation</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #8: ADD_16BIT</div>
+                        <div class="card-content">16-bit addition with carry propagation</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #9: ADD_16BIT</div>
+                        <div class="card-content">16-bit addition with carry propagation</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #10: BIT_SHIFT_LEFT</div>
+                        <div class="card-content">Bit shift left by 2 (without carry)</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pattern #11: BIT_SHIFT_LEFT</div>
+                        <div class="card-content">Bit shift left by 2 (without carry)</div>
+                    </div>
+                </div>
+            </div>
+            <!-- Full Assembly Code -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('full-asm')">
+                    <span class="section-title">📜 Full Assembly Code (3146 lines)</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content collapsed" id="full-asm">
+                    <div style="background: #1e1e1e; padding: 20px; border-radius: 6px; overflow-x: auto;">
+                        <pre style="color: #d4d4d4; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; line-height: 1.6;"><span style="color: #6a9955;">;  Disassembly of Stinsens_Last_Night_of_89.sid</span>
+<span style="color: #6a9955;">;  Generated by SIDM2 for ASM annotation</span>
+<span style="color: #dcdcaa;"><span style="color: #6a9955;">;  Title: Stinsen's Last Night of '89</span></span>
+<span style="color: #dcdcaa;"><span style="color: #6a9955;">;  Author: Thomas E. Petersen (Laxity)</span></span>
+<span style="color: #dcdcaa;"><span style="color: #6a9955;">;  Load: <span style="color: #4ec9b0;">$1000</span></span></span>
+<span style="color: #dcdcaa;"><span style="color: #6a9955;">;  Init: <span style="color: #4ec9b0;">$1000</span></span></span>
+<span style="color: #dcdcaa;"><span style="color: #6a9955;">;  Play: <span style="color: #4ec9b0;">$1006</span></span></span>
+
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1000</span>: 4c 92 16     JMP  <span style="color: #4ec9b0;">$1692</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1003</span>: 4c 9b 16     JMP  <span style="color: #4ec9b0;">$169b</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1006</span>: a9 00        LDA  #$00           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1008</span>: 2c 81 17     BIT  <span style="color: #4ec9b0;">$1781</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$100b</span>: 30 44        BMI  l1051          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$100d</span>: 70 38        BVS  l1047          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$100f</span>: a2 75        LDX  #$75           </span>
+<span style="color: #dcdcaa;">l1011:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1011</span>: 9d 82 17     STA  <span style="color: #4ec9b0;">$1782</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1014</span>: ca           DEX                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1015</span>: d0 fa        BNE  l1011          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1017</span>: ae 82 17     LDX  <span style="color: #4ec9b0;">$1782</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$101a</span>: bd fb 17     LDA  <span style="color: #4ec9b0;">$17fb</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$101d</span>: 8d 80 17     STA  <span style="color: #4ec9b0;">$1780</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1020</span>: 8d 84 17     STA  <span style="color: #4ec9b0;">$1784</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1023</span>: bd fc 17     LDA  <span style="color: #4ec9b0;">$17fc</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1026</span>: 29 0f        AND  #$0f           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1028</span>: 8d 85 17     STA  <span style="color: #4ec9b0;">$1785</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$102b</span>: bd fc 17     LDA  <span style="color: #4ec9b0;">$17fc</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$102e</span>: 29 70        AND  #$70           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1030</span>: 8d 86 17     STA  <span style="color: #4ec9b0;">$1786</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1033</span>: a9 02        LDA  #$02           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1035</span>: 8d 83 17     STA  <span style="color: #4ec9b0;">$1783</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1038</span>: 8d f8 17     STA  <span style="color: #4ec9b0;">$17f8</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$103b</span>: 8d f9 17     STA  <span style="color: #4ec9b0;">$17f9</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$103e</span>: 8d fa 17     STA  <span style="color: #4ec9b0;">$17fa</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1041</span>: a9 80        LDA  #$80           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1043</span>: 8d 81 17     STA  <span style="color: #4ec9b0;">$1781</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1046</span>: 60           RTS                 </span>
+<span style="color: #dcdcaa;">l1047:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1047</span>: 8d 04 d4     STA  <span style="color: #4ec9b0;">$d404</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$104a</span>: 8d 0b d4     STA  <span style="color: #4ec9b0;">$d40b</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$104d</span>: 8d 12 d4     STA  <span style="color: #4ec9b0;">$d412</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1050</span>: 60           RTS                 </span>
+<span style="color: #dcdcaa;">l1051:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1051</span>: ce 83 17     DEC  <span style="color: #4ec9b0;">$1783</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1054</span>: 10 17        BPL  l106d          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1056</span>: ae 84 17     LDX  <span style="color: #4ec9b0;">$1784</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1059</span>: bd 19 1a     LDA  <span style="color: #4ec9b0;">$1a19</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$105c</span>: 8d 83 17     STA  <span style="color: #4ec9b0;">$1783</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$105f</span>: e8           INX                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1060</span>: bd 19 1a     LDA  <span style="color: #4ec9b0;">$1a19</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1063</span>: c9 7f        CMP  #$7f           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1065</span>: d0 03        BNE  l106a          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1067</span>: ae 80 17     LDX  <span style="color: #4ec9b0;">$1780</span>          </span>
+<span style="color: #dcdcaa;">l106a:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$106a</span>: 8e 84 17     STX  <span style="color: #4ec9b0;">$1784</span>          </span>
+<span style="color: #dcdcaa;">l106d:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$106d</span>: a2 02        LDX  #$02           </span>
+<span style="color: #dcdcaa;">l106f:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$106f</span>: bd f8 17     LDA  <span style="color: #4ec9b0;">$17f8</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1072</span>: c9 01        CMP  #$01           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1074</span>: d0 39        BNE  l10af          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1076</span>: bd 95 17     LDA  <span style="color: #4ec9b0;">$1795</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1079</span>: d0 34        BNE  l10af          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$107b</span>: fe 95 17     INC  <span style="color: #4ec9b0;">$1795</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$107e</span>: bd 1c 1a     LDA  <span style="color: #4ec9b0;">$1a1c</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1081</span>: 85 fc        STA  $fc            </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1083</span>: bd 1f 1a     LDA  <span style="color: #4ec9b0;">$1a1f</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1086</span>: 85 fd        STA  $fd            </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1088</span>: bc 92 17     LDY  <span style="color: #4ec9b0;">$1792</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$108b</span>: b1 fc        LDA  ($fc),y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$108d</span>: 10 09        BPL  l1098          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$108f</span>: 38           SEC                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1090</span>: e9 a0        SBC  #$a0           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1092</span>: 9d b0 17     STA  <span style="color: #4ec9b0;">$17b0</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1095</span>: c8           INY                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1096</span>: b1 fc        LDA  ($fc),y        </span>
+<span style="color: #dcdcaa;">l1098:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1098</span>: 9d 9b 17     STA  <span style="color: #4ec9b0;">$179b</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$109b</span>: c8           INY                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$109c</span>: b1 fc        LDA  ($fc),y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$109e</span>: c9 ff        CMP  #$ff           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10a0</span>: d0 04        BNE  l10a6          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10a2</span>: c8           INY                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10a3</span>: b1 fc        LDA  ($fc),y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10a5</span>: a8           TAY                 </span>
+<span style="color: #dcdcaa;">l10a6:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10a6</span>: 98           TYA                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10a7</span>: 9d 92 17     STA  <span style="color: #4ec9b0;">$1792</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10aa</span>: a9 00        LDA  #$00           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10ac</span>: 9d 98 17     STA  <span style="color: #4ec9b0;">$1798</span>,x        </span>
+<span style="color: #dcdcaa;">l10af:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10af</span>: ad 83 17     LDA  <span style="color: #4ec9b0;">$1783</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10b2</span>: d0 6d        BNE  l1121          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10b4</span>: de 8f 17     DEC  <span style="color: #4ec9b0;">$178f</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10b7</span>: 10 68        BPL  l1121          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10b9</span>: bc 9b 17     LDY  <span style="color: #4ec9b0;">$179b</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10bc</span>: b9 22 1a     LDA  <span style="color: #4ec9b0;">$1a22</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10bf</span>: 85 fc        STA  $fc            </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10c1</span>: b9 49 1a     LDA  <span style="color: #4ec9b0;">$1a49</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10c4</span>: 85 fd        STA  $fd            </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10c6</span>: bc 98 17     LDY  <span style="color: #4ec9b0;">$1798</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10c9</span>: b1 fc        LDA  ($fc),y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10cb</span>: 10 27        BPL  l10f4          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10cd</span>: c9 c0        CMP  #$c0           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10cf</span>: 90 08        BCC  l10d9          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10d1</span>: 9d aa 17     STA  <span style="color: #4ec9b0;">$17aa</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10d4</span>: c8           INY                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10d5</span>: b1 fc        LDA  ($fc),y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10d7</span>: 10 1b        BPL  l10f4          </span>
+<span style="color: #dcdcaa;">l10d9:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10d9</span>: c9 a0        CMP  #$a0           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10db</span>: 90 08        BCC  l10e5          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10dd</span>: 9d a7 17     STA  <span style="color: #4ec9b0;">$17a7</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10e0</span>: c8           INY                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10e1</span>: b1 fc        LDA  ($fc),y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10e3</span>: 10 0f        BPL  l10f4          </span>
+<span style="color: #dcdcaa;">l10e5:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10e5</span>: c9 90        CMP  #$90           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10e7</span>: 90 03        BCC  l10ec          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10e9</span>: fe a1 17     INC  <span style="color: #4ec9b0;">$17a1</span>,x        </span>
+<span style="color: #dcdcaa;">l10ec:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10ec</span>: 29 0f        AND  #$0f           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10ee</span>: 9d 9e 17     STA  <span style="color: #4ec9b0;">$179e</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10f1</span>: c8           INY                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10f2</span>: b1 fc        LDA  ($fc),y        </span>
+<span style="color: #dcdcaa;">l10f4:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10f4</span>: 9d a4 17     STA  <span style="color: #4ec9b0;">$17a4</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10f7</span>: f0 04        BEQ  l10fd          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10f9</span>: c9 7e        CMP  #$7e           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10fb</span>: d0 05        BNE  l1102          </span>
+<span style="color: #dcdcaa;">l10fd:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$10fd</span>: fe a1 17     INC  <span style="color: #4ec9b0;">$17a1</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1100</span>: d0 06        BNE  l1108          </span>
+<span style="color: #dcdcaa;">l1102:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1102</span>: bd b0 17     LDA  <span style="color: #4ec9b0;">$17b0</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1105</span>: 9d b3 17     STA  <span style="color: #4ec9b0;">$17b3</span>,x        </span>
+<span style="color: #dcdcaa;">l1108:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1108</span>: c8           INY                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1109</span>: 98           TYA                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$110a</span>: 9d 98 17     STA  <span style="color: #4ec9b0;">$1798</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$110d</span>: bd 9e 17     LDA  <span style="color: #4ec9b0;">$179e</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1110</span>: 9d 8f 17     STA  <span style="color: #4ec9b0;">$178f</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1113</span>: a9 02        LDA  #$02           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1115</span>: 9d f8 17     STA  <span style="color: #4ec9b0;">$17f8</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1118</span>: b1 fc        LDA  ($fc),y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$111a</span>: c9 7f        CMP  #$7f           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$111c</span>: d0 03        BNE  l1121          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$111e</span>: de 95 17     DEC  <span style="color: #4ec9b0;">$1795</span>,x        </span>
+<span style="color: #dcdcaa;">l1121:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1121</span>: bc f8 17     LDY  <span style="color: #4ec9b0;">$17f8</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1124</span>: 30 36        BMI  l115c          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1126</span>: bd a1 17     LDA  <span style="color: #4ec9b0;">$17a1</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1129</span>: d0 31        BNE  l115c          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$112b</span>: c0 01        CPY  #$01           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$112d</span>: f0 23        BEQ  l1152          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$112f</span>: c0 00        CPY  #$00           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1131</span>: f0 2c        BEQ  l115f          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1133</span>: bd a7 17     LDA  <span style="color: #4ec9b0;">$17a7</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1136</span>: 29 1f        AND  #$1f           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1138</span>: a8           TAY                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1139</span>: b9 25 18     LDA  <span style="color: #4ec9b0;">$1825</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$113c</span>: 10 0f        BPL  l114d          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$113e</span>: 29 0f        AND  #$0f           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1140</span>: a8           TAY                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1141</span>: b9 d8 18     LDA  <span style="color: #4ec9b0;">$18d8</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1144</span>: 9d ef 17     STA  <span style="color: #4ec9b0;">$17ef</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1147</span>: b9 d9 18     LDA  <span style="color: #4ec9b0;">$18d9</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$114a</span>: 9d f2 17     STA  <span style="color: #4ec9b0;">$17f2</span>,x        </span>
+<span style="color: #dcdcaa;">l114d:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$114d</span>: a9 fe        LDA  #$fe           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$114f</span>: 9d f5 17     STA  <span style="color: #4ec9b0;">$17f5</span>,x        </span>
+<span style="color: #dcdcaa;">l1152:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1152</span>: bd bc 17     LDA  <span style="color: #4ec9b0;">$17bc</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1155</span>: c9 04        CMP  #$04           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1157</span>: b0 03        BCS  l115c          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1159</span>: 4c 40 15     JMP  <span style="color: #4ec9b0;">$1540</span>          </span>
+<span style="color: #dcdcaa;">l115c:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$115c</span>: 4c 79 13     JMP  <span style="color: #4ec9b0;">$1379</span>          </span>
+<span style="color: #dcdcaa;">l115f:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$115f</span>: a9 ff        LDA  #$ff           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1161</span>: 9d f5 17     STA  <span style="color: #4ec9b0;">$17f5</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1164</span>: bd a7 17     LDA  <span style="color: #4ec9b0;">$17a7</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1167</span>: 10 36        BPL  l119f          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1169</span>: 29 1f        AND  #$1f           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$116b</span>: 9d ad 17     STA  <span style="color: #4ec9b0;">$17ad</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$116e</span>: 9d a7 17     STA  <span style="color: #4ec9b0;">$17a7</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1171</span>: a8           TAY                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1172</span>: b9 fd 17     LDA  <span style="color: #4ec9b0;">$17fd</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1175</span>: 9d d4 17     STA  <span style="color: #4ec9b0;">$17d4</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1178</span>: 9d ef 17     STA  <span style="color: #4ec9b0;">$17ef</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$117b</span>: b9 11 18     LDA  <span style="color: #4ec9b0;">$1811</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$117e</span>: 9d d7 17     STA  <span style="color: #4ec9b0;">$17d7</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1181</span>: 9d f2 17     STA  <span style="color: #4ec9b0;">$17f2</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1184</span>: b9 25 18     LDA  <span style="color: #4ec9b0;">$1825</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1187</span>: 29 20        AND  #$20           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1189</span>: f0 08        BEQ  l1193          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$118b</span>: ad 8b 17     LDA  <span style="color: #4ec9b0;">$178b</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$118e</span>: 1d 7a 17     ORA  <span style="color: #4ec9b0;">$177a</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1191</span>: d0 06        BNE  l1199          </span>
+<span style="color: #dcdcaa;">l1193:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1193</span>: ad 8b 17     LDA  <span style="color: #4ec9b0;">$178b</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1196</span>: 3d 7d 17     AND  <span style="color: #4ec9b0;">$177d</span>,x        </span>
+<span style="color: #dcdcaa;">l1199:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1199</span>: 8d 8b 17     STA  <span style="color: #4ec9b0;">$178b</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$119c</span>: 4c c8 11     JMP  <span style="color: #4ec9b0;">$11c8</span>          </span>
+<span style="color: #dcdcaa;">l119f:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$119f</span>: bc ad 17     LDY  <span style="color: #4ec9b0;">$17ad</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11a2</span>: bd d4 17     LDA  <span style="color: #4ec9b0;">$17d4</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11a5</span>: 9d ef 17     STA  <span style="color: #4ec9b0;">$17ef</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11a8</span>: bd d7 17     LDA  <span style="color: #4ec9b0;">$17d7</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11ab</span>: 9d f2 17     STA  <span style="color: #4ec9b0;">$17f2</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11ae</span>: bd bc 17     LDA  <span style="color: #4ec9b0;">$17bc</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11b1</span>: c9 03        CMP  #$03           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11b3</span>: f0 18        BEQ  l11cd          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11b5</span>: c9 04        CMP  #$04           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11b7</span>: d0 0f        BNE  l11c8          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11b9</span>: bd ce 17     LDA  <span style="color: #4ec9b0;">$17ce</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11bc</span>: 9d d1 17     STA  <span style="color: #4ec9b0;">$17d1</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11bf</span>: bd cb 17     LDA  <span style="color: #4ec9b0;">$17cb</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11c2</span>: 9d c8 17     STA  <span style="color: #4ec9b0;">$17c8</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11c5</span>: 4c cd 11     JMP  l11cd          </span>
+<span style="color: #dcdcaa;">l11c8:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11c8</span>: a9 00        LDA  #$00           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11ca</span>: 9d bc 17     STA  <span style="color: #4ec9b0;">$17bc</span>,x        </span>
+<span style="color: #dcdcaa;">l11cd:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11cd</span>: b9 25 18     LDA  <span style="color: #4ec9b0;">$1825</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11d0</span>: 29 10        AND  #$10           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11d2</span>: 4a           LSR                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11d3</span>: 09 01        ORA  #$01           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11d5</span>: 9d ec 17     STA  <span style="color: #4ec9b0;">$17ec</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11d8</span>: b9 25 18     LDA  <span style="color: #4ec9b0;">$1825</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11db</span>: 29 40        AND  #$40           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11dd</span>: f0 12        BEQ  l11f1          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11df</span>: 0a           ASL                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11e0</span>: 8d 8c 17     STA  <span style="color: #4ec9b0;">$178c</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11e3</span>: b9 39 18     LDA  <span style="color: #4ec9b0;">$1839</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11e6</span>: 8d 8e 17     STA  <span style="color: #4ec9b0;">$178e</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11e9</span>: ce 8e 17     DEC  <span style="color: #4ec9b0;">$178e</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11ec</span>: a9 00        LDA  #$00           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11ee</span>: 8d 8d 17     STA  <span style="color: #4ec9b0;">$178d</span>          </span>
+<span style="color: #dcdcaa;">l11f1:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11f1</span>: b9 61 18     LDA  <span style="color: #4ec9b0;">$1861</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11f4</span>: 9d bf 17     STA  <span style="color: #4ec9b0;">$17bf</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11f7</span>: b9 4d 18     LDA  <span style="color: #4ec9b0;">$184d</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11fa</span>: 9d c2 17     STA  <span style="color: #4ec9b0;">$17c2</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11fd</span>: a9 00        LDA  #$00           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$11ff</span>: 9d c5 17     STA  <span style="color: #4ec9b0;">$17c5</span>,x        </span>
+<span style="color: #dcdcaa;">l1202:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1202</span>: bd aa 17     LDA  <span style="color: #4ec9b0;">$17aa</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1205</span>: 30 03        BMI  l120a          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1207</span>: 4c 1f 13     JMP  <span style="color: #4ec9b0;">$131f</span>          </span>
+<span style="color: #dcdcaa;">l120a:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$120a</span>: 29 3f        AND  #$3f           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$120c</span>: 9d aa 17     STA  <span style="color: #4ec9b0;">$17aa</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$120f</span>: a8           TAY                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1210</span>: b9 75 18     LDA  <span style="color: #4ec9b0;">$1875</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1213</span>: 29 0f        AND  #$0f           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1215</span>: a8           TAY                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1216</span>: b9 61 17     LDA  <span style="color: #4ec9b0;">$1761</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1219</span>: 8d 88 12     STA  <span style="color: #4ec9b0;">$1288</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$121c</span>: bc aa 17     LDY  <span style="color: #4ec9b0;">$17aa</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$121f</span>: 4c 86 12     JMP  <span style="color: #4ec9b0;">$1286</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1222</span>: b9 96 18     LDA  <span style="color: #4ec9b0;">$1896</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1225</span>: 9d cb 17     STA  <span style="color: #4ec9b0;">$17cb</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1228</span>: b9 b7 18     LDA  <span style="color: #4ec9b0;">$18b7</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$122b</span>: 9d c8 17     STA  <span style="color: #4ec9b0;">$17c8</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$122e</span>: a9 01        LDA  #$01           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1230</span>: 4c 1c 13     JMP  <span style="color: #4ec9b0;">$131c</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1233</span>: b9 96 18     LDA  <span style="color: #4ec9b0;">$1896</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1236</span>: 9d cb 17     STA  <span style="color: #4ec9b0;">$17cb</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1239</span>: b9 b7 18     LDA  <span style="color: #4ec9b0;">$18b7</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$123c</span>: 9d c8 17     STA  <span style="color: #4ec9b0;">$17c8</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$123f</span>: a9 03        LDA  #$03           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1241</span>: 4c 1c 13     JMP  l131c          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1244</span>: b9 96 18     LDA  <span style="color: #4ec9b0;">$1896</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1247</span>: 30 2f        BMI  l1278          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1249</span>: 9d cb 17     STA  <span style="color: #4ec9b0;">$17cb</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$124c</span>: 9d c8 17     STA  <span style="color: #4ec9b0;">$17c8</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$124f</span>: b9 b7 18     LDA  <span style="color: #4ec9b0;">$18b7</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1252</span>: 9d ce 17     STA  <span style="color: #4ec9b0;">$17ce</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1255</span>: 9d d1 17     STA  <span style="color: #4ec9b0;">$17d1</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1258</span>: a9 04        LDA  #$04           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$125a</span>: 4c 1c 13     JMP  l131c          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$125d</span>: b9 96 18     LDA  <span style="color: #4ec9b0;">$1896</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1260</span>: 9d cb 17     STA  <span style="color: #4ec9b0;">$17cb</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1263</span>: 29 7f        AND  #$7f           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1265</span>: 9d c8 17     STA  <span style="color: #4ec9b0;">$17c8</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1268</span>: b9 b7 18     LDA  <span style="color: #4ec9b0;">$18b7</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$126b</span>: 9d d1 17     STA  <span style="color: #4ec9b0;">$17d1</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$126e</span>: a9 00        LDA  #$00           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1270</span>: 9d ce 17     STA  <span style="color: #4ec9b0;">$17ce</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1273</span>: a9 05        LDA  #$05           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1275</span>: 4c 1c 13     JMP  l131c          </span>
+<span style="color: #dcdcaa;">l1278:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1278</span>: 4c 1a 13     JMP  <span style="color: #4ec9b0;">$131a</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$127b</span>: b9 b7 18     LDA  <span style="color: #4ec9b0;">$18b7</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$127e</span>: 29 0f        AND  #$0f           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1280</span>: 8d 85 17     STA  <span style="color: #4ec9b0;">$1785</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1283</span>: 4c 1f 13     JMP  l131f          </span>
+<span style="color: #dcdcaa;">l1286:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1286</span>: 38           SEC                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1287</span>: b0 45        BCS  l12ce          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1289</span>: b9 b7 18     LDA  <span style="color: #4ec9b0;">$18b7</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$128c</span>: 29 0f        AND  #$0f           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$128e</span>: 9d c8 17     STA  <span style="color: #4ec9b0;">$17c8</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1291</span>: b9 96 18     LDA  <span style="color: #4ec9b0;">$1896</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1294</span>: 18           CLC                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1295</span>: 69 01        ADC  #$01           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1297</span>: 9d cb 17     STA  <span style="color: #4ec9b0;">$17cb</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$129a</span>: 4a           LSR                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$129b</span>: 90 02        BCC  l129f          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$129d</span>: 09 80        ORA  #$80           </span>
+<span style="color: #dcdcaa;">l129f:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$129f</span>: 9d ce 17     STA  <span style="color: #4ec9b0;">$17ce</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12a2</span>: a9 02        LDA  #$02           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12a4</span>: 9d d1 17     STA  <span style="color: #4ec9b0;">$17d1</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12a7</span>: 4c 1c 13     JMP  l131c          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12aa</span>: b9 96 18     LDA  <span style="color: #4ec9b0;">$1896</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12ad</span>: 9d ef 17     STA  <span style="color: #4ec9b0;">$17ef</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12b0</span>: b9 b7 18     LDA  <span style="color: #4ec9b0;">$18b7</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12b3</span>: 9d f2 17     STA  <span style="color: #4ec9b0;">$17f2</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12b6</span>: 4c 1f 13     JMP  l131f          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12b9</span>: b9 96 18     LDA  <span style="color: #4ec9b0;">$1896</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12bc</span>: 9d d4 17     STA  <span style="color: #4ec9b0;">$17d4</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12bf</span>: 9d ef 17     STA  <span style="color: #4ec9b0;">$17ef</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12c2</span>: b9 b7 18     LDA  <span style="color: #4ec9b0;">$18b7</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12c5</span>: 9d d7 17     STA  <span style="color: #4ec9b0;">$17d7</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12c8</span>: 9d f2 17     STA  <span style="color: #4ec9b0;">$17f2</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12cb</span>: 4c 1f 13     JMP  l131f          </span>
+<span style="color: #dcdcaa;">l12ce:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12ce</span>: b9 b7 18     LDA  <span style="color: #4ec9b0;">$18b7</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12d1</span>: 9d bf 17     STA  <span style="color: #4ec9b0;">$17bf</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12d4</span>: 4c 1f 13     JMP  l131f          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12d7</span>: a9 80        LDA  #$80           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12d9</span>: 8d 8c 17     STA  <span style="color: #4ec9b0;">$178c</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12dc</span>: b9 b7 18     LDA  <span style="color: #4ec9b0;">$18b7</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12df</span>: 8d 8e 17     STA  <span style="color: #4ec9b0;">$178e</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12e2</span>: ce 8e 17     DEC  <span style="color: #4ec9b0;">$178e</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12e5</span>: a9 00        LDA  #$00           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12e7</span>: 8d 8d 17     STA  <span style="color: #4ec9b0;">$178d</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12ea</span>: 4c 1f 13     JMP  l131f          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12ed</span>: b9 b7 18     LDA  <span style="color: #4ec9b0;">$18b7</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12f0</span>: 9d c2 17     STA  <span style="color: #4ec9b0;">$17c2</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12f3</span>: a9 00        LDA  #$00           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12f5</span>: 9d c5 17     STA  <span style="color: #4ec9b0;">$17c5</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12f8</span>: 4c 1f 13     JMP  l131f          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12fb</span>: b9 b7 18     LDA  <span style="color: #4ec9b0;">$18b7</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$12fe</span>: 8d 80 17     STA  <span style="color: #4ec9b0;">$1780</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1301</span>: 8d 84 17     STA  <span style="color: #4ec9b0;">$1784</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1304</span>: a8           TAY                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1305</span>: b9 1a 1a     LDA  <span style="color: #4ec9b0;">$1a1a</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1308</span>: c9 7f        CMP  #$7f           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$130a</span>: f0 03        BEQ  l130f          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$130c</span>: ee 84 17     INC  <span style="color: #4ec9b0;">$1784</span>          </span>
+<span style="color: #dcdcaa;">l130f:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$130f</span>: b9 19 1a     LDA  <span style="color: #4ec9b0;">$1a19</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1312</span>: a8           TAY                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1313</span>: 88           DEY                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1314</span>: 8c 83 17     STY  <span style="color: #4ec9b0;">$1783</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1317</span>: 4c 1f 13     JMP  l131f          </span>
+<span style="color: #dcdcaa;">l131a:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$131a</span>: a9 00        LDA  #$00           </span>
+<span style="color: #dcdcaa;">l131c:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$131c</span>: 9d bc 17     STA  <span style="color: #4ec9b0;">$17bc</span>,x        </span>
+<span style="color: #dcdcaa;">l131f:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$131f</span>: bd a1 17     LDA  <span style="color: #4ec9b0;">$17a1</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1322</span>: d0 06        BNE  l132a          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1324</span>: bd a4 17     LDA  <span style="color: #4ec9b0;">$17a4</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1327</span>: 4c 3e 13     JMP  <span style="color: #4ec9b0;">$133e</span>          </span>
+<span style="color: #dcdcaa;">l132a:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$132a</span>: bd a4 17     LDA  <span style="color: #4ec9b0;">$17a4</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$132d</span>: f0 39        BEQ  l1368          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$132f</span>: c9 7e        CMP  #$7e           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1331</span>: f0 39        BEQ  l136c          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1333</span>: a8           TAY                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1334</span>: 18           CLC                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1335</span>: 7d b3 17     ADC  <span style="color: #4ec9b0;">$17b3</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1338</span>: dd b9 17     CMP  <span style="color: #4ec9b0;">$17b9</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$133b</span>: f0 34        BEQ  l1371          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$133d</span>: 98           TYA                 </span>
+<span style="color: #dcdcaa;">l133e:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$133e</span>: 9d b6 17     STA  <span style="color: #4ec9b0;">$17b6</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1341</span>: 18           CLC                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1342</span>: 7d b3 17     ADC  <span style="color: #4ec9b0;">$17b3</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1345</span>: 9d b9 17     STA  <span style="color: #4ec9b0;">$17b9</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1348</span>: a8           TAY                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1349</span>: bd bc 17     LDA  <span style="color: #4ec9b0;">$17bc</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$134c</span>: c9 03        CMP  #$03           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$134e</span>: f0 10        BEQ  l1360          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1350</span>: c9 04        CMP  #$04           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1352</span>: f0 0c        BEQ  l1360          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1354</span>: b9 01 17     LDA  <span style="color: #4ec9b0;">$1701</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1357</span>: 9d da 17     STA  <span style="color: #4ec9b0;">$17da</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$135a</span>: b9 a1 16     LDA  <span style="color: #4ec9b0;">$16a1</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$135d</span>: 9d dd 17     STA  <span style="color: #4ec9b0;">$17dd</span>,x        </span>
+<span style="color: #dcdcaa;">l1360:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1360</span>: bd a1 17     LDA  <span style="color: #4ec9b0;">$17a1</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1363</span>: d0 07        BNE  l136c          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1365</span>: 4c 82 15     JMP  <span style="color: #4ec9b0;">$1582</span>          </span>
+<span style="color: #dcdcaa;">l1368:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1368</span>: a9 fe        LDA  #$fe           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$136a</span>: d0 02        BNE  l136e          </span>
+<span style="color: #dcdcaa;">l136c:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$136c</span>: a9 ff        LDA  #$ff           </span>
+<span style="color: #dcdcaa;">l136e:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$136e</span>: 9d f5 17     STA  <span style="color: #4ec9b0;">$17f5</span>,x        </span>
+<span style="color: #dcdcaa;">l1371:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1371</span>: a9 00        LDA  #$00           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1373</span>: 9d a1 17     STA  <span style="color: #4ec9b0;">$17a1</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1376</span>: 4c e1 15     JMP  <span style="color: #4ec9b0;">$15e1</span>          </span>
+<span style="color: #dcdcaa;">l1379:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1379</span>: bd bc 17     LDA  <span style="color: #4ec9b0;">$17bc</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$137c</span>: a8           TAY                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$137d</span>: b9 71 17     LDA  <span style="color: #4ec9b0;">$1771</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1380</span>: 8d 85 13     STA  <span style="color: #4ec9b0;">$1385</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1383</span>: 38           SEC                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1384</span>: b0 06        BCS  l138c          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1386</span>: 4c f2 14     JMP  <span style="color: #4ec9b0;">$14f2</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1389</span>: 4c 14 14     JMP  <span style="color: #4ec9b0;">$1414</span>          </span>
+<span style="color: #dcdcaa;">l138c:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$138c</span>: 4c 82 14     JMP  <span style="color: #4ec9b0;">$1482</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$138f</span>: 4c bc 14     JMP  <span style="color: #4ec9b0;">$14bc</span>          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1392</span>: bd da 17     LDA  <span style="color: #4ec9b0;">$17da</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1395</span>: 18           CLC                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1396</span>: 7d c8 17     ADC  <span style="color: #4ec9b0;">$17c8</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1399</span>: 9d da 17     STA  <span style="color: #4ec9b0;">$17da</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$139c</span>: bd dd 17     LDA  <span style="color: #4ec9b0;">$17dd</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$139f</span>: 7d cb 17     ADC  <span style="color: #4ec9b0;">$17cb</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13a2</span>: 9d dd 17     STA  <span style="color: #4ec9b0;">$17dd</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13a5</span>: 4c f2 14     JMP  l14f2          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13a8</span>: bc b9 17     LDY  <span style="color: #4ec9b0;">$17b9</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13ab</span>: b9 02 17     LDA  <span style="color: #4ec9b0;">$1702</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13ae</span>: f9 01 17     SBC  <span style="color: #4ec9b0;">$1701</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13b1</span>: 85 fc        STA  $fc            </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13b3</span>: b9 a2 16     LDA  <span style="color: #4ec9b0;">$16a2</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13b6</span>: f9 a1 16     SBC  <span style="color: #4ec9b0;">$16a1</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13b9</span>: 85 fd        STA  $fd            </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13bb</span>: bd ce 17     LDA  <span style="color: #4ec9b0;">$17ce</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13be</span>: c9 80        CMP  #$80           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13c0</span>: 29 00        AND  #$00           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13c2</span>: 7d c8 17     ADC  <span style="color: #4ec9b0;">$17c8</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13c5</span>: a8           TAY                 </span>
+<span style="color: #dcdcaa;">l13c6:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13c6</span>: 88           DEY                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13c7</span>: 30 07        BMI  l13d0          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13c9</span>: 46 fd        LSR  $fd            </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13cb</span>: 66 fc        ROR  $fc            </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13cd</span>: 4c c6 13     JMP  <span style="color: #4ec9b0;">$13c6</span>          </span>
+<span style="color: #dcdcaa;">l13d0:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13d0</span>: bd d1 17     LDA  <span style="color: #4ec9b0;">$17d1</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13d3</span>: 29 01        AND  #$01           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13d5</span>: d0 14        BNE  l13eb          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13d7</span>: bd da 17     LDA  <span style="color: #4ec9b0;">$17da</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13da</span>: 18           CLC                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13db</span>: 65 fc        ADC  $fc            </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13dd</span>: 9d da 17     STA  <span style="color: #4ec9b0;">$17da</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13e0</span>: bd dd 17     LDA  <span style="color: #4ec9b0;">$17dd</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13e3</span>: 65 fd        ADC  $fd            </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13e5</span>: 9d dd 17     STA  <span style="color: #4ec9b0;">$17dd</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13e8</span>: 4c fc 13     JMP  <span style="color: #4ec9b0;">$13fc</span>          </span>
+<span style="color: #dcdcaa;">l13eb:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13eb</span>: bd da 17     LDA  <span style="color: #4ec9b0;">$17da</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13ee</span>: 38           SEC                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13ef</span>: e5 fc        SBC  $fc            </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13f1</span>: 9d da 17     STA  <span style="color: #4ec9b0;">$17da</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13f4</span>: bd dd 17     LDA  <span style="color: #4ec9b0;">$17dd</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13f7</span>: e5 fd        SBC  $fd            </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13f9</span>: 9d dd 17     STA  <span style="color: #4ec9b0;">$17dd</span>,x        </span>
+<span style="color: #dcdcaa;">l13fc:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13fc</span>: bd ce 17     LDA  <span style="color: #4ec9b0;">$17ce</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$13ff</span>: 29 7f        AND  #$7f           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1401</span>: 18           CLC                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1402</span>: 69 01        ADC  #$01           </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1404</span>: dd cb 17     CMP  <span style="color: #4ec9b0;">$17cb</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1407</span>: 90 05        BCC  l140e          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1409</span>: fe d1 17     INC  <span style="color: #4ec9b0;">$17d1</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$140c</span>: a9 00        LDA  #$00           </span>
+<span style="color: #dcdcaa;">l140e:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$140e</span>: 9d ce 17     STA  <span style="color: #4ec9b0;">$17ce</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1411</span>: 4c f2 14     JMP  l14f2          </span>
+<span style="color: #dcdcaa;">l1414:</span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1414</span>: bc b9 17     LDY  <span style="color: #4ec9b0;">$17b9</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1417</span>: b9 01 17     LDA  <span style="color: #4ec9b0;">$1701</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$141a</span>: 85 fc        STA  $fc            </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$141c</span>: b9 a1 16     LDA  <span style="color: #4ec9b0;">$16a1</span>,y        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$141f</span>: 85 fd        STA  $fd            </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1421</span>: bd da 17     LDA  <span style="color: #4ec9b0;">$17da</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1424</span>: 38           SEC                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1425</span>: e5 fc        SBC  $fc            </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1427</span>: 9d da 17     STA  <span style="color: #4ec9b0;">$17da</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$142a</span>: bd dd 17     LDA  <span style="color: #4ec9b0;">$17dd</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$142d</span>: e5 fd        SBC  $fd            </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$142f</span>: 9d dd 17     STA  <span style="color: #4ec9b0;">$17dd</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1432</span>: 30 18        BMI  l144c          </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1434</span>: bd da 17     LDA  <span style="color: #4ec9b0;">$17da</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1437</span>: 38           SEC                 </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1438</span>: fd c8 17     SBC  <span style="color: #4ec9b0;">$17c8</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$143b</span>: 9d da 17     STA  <span style="color: #4ec9b0;">$17da</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$143e</span>: bd dd 17     LDA  <span style="color: #4ec9b0;">$17dd</span>,x        </span>
+<span style="color: #dcdcaa;"><span style="color: #4ec9b0;">$1441</span>: fd cb 17     SBC  <span style="color: #4ec9b0;">$17cb</span>,x        </span>
+<span style="color: #858585;">
+... (2646 more lines not shown for performance)
+To see full code, use text format: python scripts/sid_to_sf2.py input.sid output.sf2 --annotate --annotate-format text
+</span></pre>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // Toggle section
+        function toggleSection(id) {
+            const content = document.getElementById(id);
+            const header = content.previousElementSibling;
+            const toggle = header.querySelector('.section-toggle');
+
+            content.classList.toggle('collapsed');
+            toggle.classList.toggle('collapsed');
+        }
+
+        // Scroll to element
+        function scrollTo(id) {
+            const element = document.getElementById(id);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                element.classList.add('highlight');
+                setTimeout(() => element.classList.remove('highlight'), 1500);
+            }
+        }
+
+        // Search
+        document.getElementById('search').addEventListener('input', function(e) {
+            const query = e.target.value.toLowerCase();
+            const navItems = document.querySelectorAll('.nav-item');
+
+            navItems.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                item.style.display = text.includes(query) ? 'flex' : 'none';
+            });
+        });
+
+        // Active navigation on scroll
+        const mainContent = document.querySelector('.main-content');
+        const navItems = document.querySelectorAll('.nav-item');
+
+        mainContent.addEventListener('scroll', function() {
+            const cards = document.querySelectorAll('.card[id^="sub-"]');
+            let currentId = null;
+
+            cards.forEach(card => {
+                const rect = card.getBoundingClientRect();
+                if (rect.top >= 0 && rect.top <= window.innerHeight / 2) {
+                    currentId = card.id;
+                }
+            });
+
+            if (currentId) {
+                navItems.forEach(item => {
+                    const onclick = item.getAttribute('onclick');
+                    if (onclick && onclick.includes(currentId)) {
+                        item.classList.add('active');
+                    } else {
+                        item.classList.remove('active');
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>
