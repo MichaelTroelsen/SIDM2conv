@@ -108,6 +108,169 @@ LAXITY_TABLES = {
 
 
 # ==============================================================================
+# Section Detection (Data vs Code)
+# ==============================================================================
+
+from enum import Enum
+
+class SectionType(Enum):
+    """Type of section in assembly code"""
+    CODE = "code"
+    DATA = "data"
+    WAVE_TABLE = "wave_table"
+    PULSE_TABLE = "pulse_table"
+    FILTER_TABLE = "filter_table"
+    INSTRUMENT_TABLE = "instrument_table"
+    SEQUENCE_DATA = "sequence_data"
+    UNKNOWN = "unknown"
+
+
+@dataclass
+class Section:
+    """Represents a section of assembly code"""
+    start_address: Optional[int]
+    end_address: Optional[int]
+    start_line: int
+    end_line: int
+    section_type: SectionType
+    name: str = ""
+    size: int = 0
+
+    def __post_init__(self):
+        if self.start_address and self.end_address:
+            self.size = self.end_address - self.start_address + 1
+
+
+class SectionDetector:
+    """Detect code vs data sections in assembly"""
+
+    def __init__(self, lines: List[str], subroutines: Dict[int, 'SubroutineInfo']):
+        self.lines = lines
+        self.subroutines = subroutines
+        self.sections: List[Section] = []
+
+    def detect_sections(self) -> List[Section]:
+        """Detect and classify all sections"""
+        current_section = None
+
+        for i, line in enumerate(self.lines):
+            # Skip comments and empty lines
+            if line.strip().startswith(';') or not line.strip():
+                continue
+
+            address = self._extract_address(line)
+
+            # Check if this line starts a known data table
+            if address:
+                table_type = self._identify_table_type(address)
+                if table_type != SectionType.UNKNOWN:
+                    # Start new data section
+                    if current_section:
+                        current_section.end_line = i - 1
+                        self.sections.append(current_section)
+
+                    current_section = Section(
+                        start_address=address,
+                        end_address=None,
+                        start_line=i,
+                        end_line=i,
+                        section_type=table_type,
+                        name=table_type.value.replace('_', ' ').title()
+                    )
+                    continue
+
+            # Check if this is a subroutine (code section)
+            if address and address in self.subroutines:
+                # Start new code section
+                if current_section and current_section.section_type != SectionType.CODE:
+                    current_section.end_line = i - 1
+                    self.sections.append(current_section)
+                    current_section = None
+
+                if not current_section or current_section.section_type != SectionType.CODE:
+                    current_section = Section(
+                        start_address=address,
+                        end_address=None,
+                        start_line=i,
+                        end_line=i,
+                        section_type=SectionType.CODE,
+                        name="Code"
+                    )
+                continue
+
+            # Extend current section
+            if current_section:
+                current_section.end_line = i
+                if address:
+                    current_section.end_address = address
+
+        # Add final section
+        if current_section:
+            self.sections.append(current_section)
+
+        return self.sections
+
+    def _extract_address(self, line: str) -> Optional[int]:
+        """Extract address from line"""
+        match = re.match(r'^\s*\$?([0-9A-Fa-f]{4}):', line)
+        if match:
+            return int(match.group(1), 16)
+        return None
+
+    def _identify_table_type(self, address: int) -> SectionType:
+        """Identify if address is a known table type"""
+        # Check Laxity tables
+        if address == 0x18DA or address == 0x190C:
+            return SectionType.WAVE_TABLE
+        elif address == 0x1837:
+            return SectionType.PULSE_TABLE
+        elif address == 0x1A1E:
+            return SectionType.FILTER_TABLE
+        elif address == 0x1A6B:
+            return SectionType.INSTRUMENT_TABLE
+        elif address >= 0x1900 and address < 0x1A00:
+            return SectionType.SEQUENCE_DATA
+
+        return SectionType.UNKNOWN
+
+
+def format_data_section(section: Section, lines: List[str]) -> str:
+    """Format a data section with appropriate header and formatting"""
+    sep = ";" + "=" * 78
+    header = f"{sep}\n"
+    header += f"; DATA SECTION: {section.name}\n"
+
+    if section.start_address:
+        header += f"; Address: ${section.start_address:04X}"
+        if section.end_address:
+            header += f" - ${section.end_address:04X}\n"
+        else:
+            header += "\n"
+
+    if section.size:
+        header += f"; Size: {section.size} bytes\n"
+
+    # Add format-specific information
+    if section.section_type == SectionType.WAVE_TABLE:
+        header += "; Format: SID waveform bytes or note offsets (1 byte per instrument)\n"
+        header += "; Values: $01=triangle, $10=sawtooth, $20=pulse, $40=noise, $80=gate\n"
+    elif section.section_type == SectionType.PULSE_TABLE:
+        header += "; Format: 4-byte entries (pulse_lo, pulse_hi, duration, next_index)\n"
+    elif section.section_type == SectionType.FILTER_TABLE:
+        header += "; Format: 4-byte entries (cutoff, resonance, duration, next_index)\n"
+    elif section.section_type == SectionType.INSTRUMENT_TABLE:
+        header += "; Format: 8 bytes × 8 instruments (column-major layout)\n"
+        header += "; Bytes: AD, SR, Pulse ptr, Filter, unused, unused, Flags, Wave ptr\n"
+    elif section.section_type == SectionType.SEQUENCE_DATA:
+        header += "; Format: Sequence bytes terminated by $7F\n"
+        header += "; $00=rest, $01-$5F=note, $7E=gate continue, $7F=end\n"
+
+    header += f"{sep}\n"
+
+    return header
+
+
+# ==============================================================================
 # Subroutine Detection
 # ==============================================================================
 
@@ -588,9 +751,17 @@ def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = Non
 
     # Detect subroutines
     print(f"  Detecting subroutines...")
-    detector = SubroutineDetector(content)
-    subroutines = detector.detect_all_subroutines()
+    sub_detector = SubroutineDetector(content)
+    subroutines = sub_detector.detect_all_subroutines()
     print(f"  Found {len(subroutines)} subroutine(s)")
+
+    # Detect sections (data vs code)
+    print(f"  Detecting sections...")
+    lines = content.split('\n')
+    section_detector = SectionDetector(lines, subroutines)
+    sections = section_detector.detect_sections()
+    data_sections = [s for s in sections if s.section_type != SectionType.CODE and s.section_type != SectionType.UNKNOWN]
+    print(f"  Found {len(data_sections)} data section(s)")
 
     # Create annotated version
     output_lines = []
@@ -601,13 +772,17 @@ def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = Non
     # Build a mapping of line numbers to subroutine addresses
     line_to_subroutine = {}
     for addr, info in subroutines.items():
-        line_num = detector._find_line_by_address(addr)
+        line_num = sub_detector._find_line_by_address(addr)
         if line_num is not None:
             line_to_subroutine[line_num] = addr
 
-    # Process each line, inserting subroutine headers
+    # Build a mapping of line numbers to data sections
+    line_to_section = {}
+    for section in data_sections:
+        line_to_section[section.start_line] = section
+
+    # Process each line, inserting subroutine and section headers
     in_header = True
-    lines = content.split('\n')
 
     for i, line in enumerate(lines):
         # Skip original SIDwinder header (first 10 lines)
@@ -615,6 +790,12 @@ def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = Non
             continue
         elif in_header and not line.strip().startswith('//;'):
             in_header = False
+
+        # Check if this line starts a data section
+        if i in line_to_section:
+            section = line_to_section[i]
+            section_header = format_data_section(section, lines)
+            output_lines.append(section_header)
 
         # Check if this line starts a subroutine (by line number)
         if i in line_to_subroutine:
