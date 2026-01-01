@@ -7,12 +7,14 @@ Adds comprehensive annotations to 6502 assembly files with:
 - Laxity format reference
 - Inline comments for known patterns
 - Label identification
+- Subroutine detection and documentation
 """
 
 import sys
 import re
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict, Set
+from dataclasses import dataclass, field
 
 # Common 6502 opcodes with descriptions
 OPCODES = {
@@ -103,6 +105,337 @@ LAXITY_TABLES = {
     0x1A6B: 'Instrument Table (8×8 bytes, column-major)',
     0x199F: 'Sequence Pointers (3 voices × 2 bytes)',
 }
+
+
+# ==============================================================================
+# Subroutine Detection
+# ==============================================================================
+
+@dataclass
+class RegisterUsage:
+    """Track register usage within a subroutine"""
+    a_input: bool = False      # A used before written
+    x_input: bool = False      # X used before written
+    y_input: bool = False      # Y used before written
+    a_output: bool = False     # A written and used after
+    x_output: bool = False     # X written and used after
+    y_output: bool = False     # Y written and used after
+    a_modified: bool = False   # A modified at all
+    x_modified: bool = False   # X modified at all
+    y_modified: bool = False   # Y modified at all
+
+
+@dataclass
+class SubroutineInfo:
+    """Information about a detected subroutine"""
+    address: int
+    end_address: Optional[int] = None
+    name: str = ""
+    purpose: str = ""
+    calls: List[int] = field(default_factory=list)
+    called_by: List[int] = field(default_factory=list)
+    register_usage: RegisterUsage = field(default_factory=RegisterUsage)
+    accesses_sid: bool = False
+    accesses_tables: List[str] = field(default_factory=list)
+
+
+class SubroutineDetector:
+    """Detect and analyze subroutines in 6502 assembly code"""
+
+    def __init__(self, content: str):
+        self.content = content
+        self.lines = content.split('\n')
+        self.subroutines: Dict[int, SubroutineInfo] = {}
+        self.jsr_targets: Set[int] = set()
+
+    def detect_all_subroutines(self) -> Dict[int, SubroutineInfo]:
+        """Main entry point: detect all subroutines in the code"""
+        # Step 1: Find all JSR targets
+        self._find_jsr_targets()
+
+        # Step 2: Find entry points (init, play, stop)
+        self._find_entry_points()
+
+        # Step 3: Create subroutine info for each target
+        for address in self.jsr_targets:
+            self._analyze_subroutine(address)
+
+        # Step 4: Build call graph
+        self._build_call_graph()
+
+        # Step 5: Infer purposes
+        self._infer_purposes()
+
+        return self.subroutines
+
+    def _find_jsr_targets(self):
+        """Find all JSR instruction targets"""
+        jsr_pattern = re.compile(r'JSR\s+\$([0-9A-Fa-f]{4})', re.IGNORECASE)
+
+        for line in self.lines:
+            match = jsr_pattern.search(line)
+            if match:
+                target = int(match.group(1), 16)
+                self.jsr_targets.add(target)
+
+    def _find_entry_points(self):
+        """Find known entry points (init, play, stop addresses)"""
+        # Look for common entry point patterns
+        init_pattern = re.compile(r'[Ii]nit.*\$([0-9A-Fa-f]{4})')
+        play_pattern = re.compile(r'[Pp]lay.*\$([0-9A-Fa-f]{4})')
+
+        for line in self.lines[:50]:  # Check first 50 lines for headers
+            init_match = init_pattern.search(line)
+            play_match = play_pattern.search(line)
+
+            if init_match:
+                self.jsr_targets.add(int(init_match.group(1), 16))
+            if play_match:
+                self.jsr_targets.add(int(play_match.group(1), 16))
+
+    def _analyze_subroutine(self, address: int):
+        """Analyze a single subroutine starting at address"""
+        info = SubroutineInfo(address=address)
+
+        # Find the subroutine boundaries (address to RTS)
+        start_line = self._find_line_by_address(address)
+        if start_line is None:
+            return
+
+        end_line = self._find_rts_after(start_line)
+        if end_line is not None:
+            end_addr = self._extract_address_from_line(self.lines[end_line])
+            info.end_address = end_addr
+
+        # Analyze instructions within subroutine
+        for i in range(start_line, end_line + 1 if end_line else start_line + 50):
+            if i >= len(self.lines):
+                break
+
+            line = self.lines[i]
+
+            # Check for JSR calls
+            jsr_match = re.search(r'JSR\s+\$([0-9A-Fa-f]{4})', line, re.IGNORECASE)
+            if jsr_match:
+                called_addr = int(jsr_match.group(1), 16)
+                info.calls.append(called_addr)
+
+            # Check for SID access
+            if re.search(r'\$D4[0-1][0-9A-F]', line, re.IGNORECASE):
+                info.accesses_sid = True
+
+            # Check for table access
+            for table_addr, table_name in LAXITY_TABLES.items():
+                if f'${table_addr:04X}' in line.upper():
+                    if table_name not in info.accesses_tables:
+                        info.accesses_tables.append(table_name)
+
+            # Track register usage
+            self._analyze_register_usage(line, info.register_usage)
+
+        self.subroutines[address] = info
+
+    def _find_line_by_address(self, address: int) -> Optional[int]:
+        """Find line number containing the given address"""
+        addr_pattern = re.compile(r'\$?' + f'{address:04X}', re.IGNORECASE)
+
+        for i, line in enumerate(self.lines):
+            # Look for address at start of line (common format: $1000: or 1000:)
+            if line.strip().startswith(f'${address:04X}:') or \
+               line.strip().startswith(f'{address:04X}:'):
+                return i
+            # Also check for hex addresses in various formats
+            if addr_pattern.match(line.strip().split(':')[0] if ':' in line else ''):
+                return i
+            # Check for comments that indicate the address (like "; Init routine ($0D7E)")
+            if f'(${address:04X})' in line.upper():
+                # This might be a comment before the label, search next few lines for label
+                for j in range(i, min(i+3, len(self.lines))):
+                    if re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*:', self.lines[j].strip()):
+                        return j
+            # Check for label immediately after address definition (like "*=$0D7E" followed by label)
+            if re.match(r'^\s*\*\s*=\s*\$' + f'{address:04X}', line, re.IGNORECASE):
+                # Search next few lines for a label
+                for j in range(i+1, min(i+5, len(self.lines))):
+                    next_line = self.lines[j].strip()
+                    if re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*:', next_line):
+                        return j
+
+        return None
+
+    def _find_rts_after(self, start_line: int) -> Optional[int]:
+        """Find the next RTS instruction after start_line"""
+        rts_pattern = re.compile(r'\bRTS\b', re.IGNORECASE)
+
+        for i in range(start_line, min(start_line + 200, len(self.lines))):
+            if rts_pattern.search(self.lines[i]):
+                return i
+
+        return None
+
+    def _extract_address_from_line(self, line: str) -> Optional[int]:
+        """Extract address from a line like '$1234: RTS'"""
+        match = re.match(r'\$?([0-9A-Fa-f]{4}):', line.strip())
+        if match:
+            return int(match.group(1), 16)
+        return None
+
+    def _analyze_register_usage(self, line: str, usage: RegisterUsage):
+        """Analyze how registers are used in a line"""
+        upper_line = line.upper()
+
+        # Check A register
+        if re.search(r'\bLDA\b', upper_line):
+            usage.a_modified = True
+            usage.a_output = True
+        elif re.search(r'\bSTA\b', upper_line):
+            usage.a_input = True
+        elif re.search(r'\bADC\b|\bSBC\b|\bAND\b|\bORA\b|\bEOR\b|\bCMP\b', upper_line):
+            usage.a_input = True
+            usage.a_modified = True
+            usage.a_output = True
+
+        # Check X register
+        if re.search(r'\bLDX\b', upper_line):
+            usage.x_modified = True
+            usage.x_output = True
+        elif re.search(r'\bSTX\b', upper_line):
+            usage.x_input = True
+        elif re.search(r'\bINX\b|\bDEX\b|\bCPX\b', upper_line):
+            usage.x_input = True
+            usage.x_modified = True
+            usage.x_output = True
+
+        # Check Y register
+        if re.search(r'\bLDY\b', upper_line):
+            usage.y_modified = True
+            usage.y_output = True
+        elif re.search(r'\bSTY\b', upper_line):
+            usage.y_input = True
+        elif re.search(r'\bINY\b|\bDEY\b|\bCPY\b', upper_line):
+            usage.y_input = True
+            usage.y_modified = True
+            usage.y_output = True
+
+        # Check indexed addressing (uses X or Y as input)
+        if re.search(r',X\b', upper_line):
+            usage.x_input = True
+        if re.search(r',Y\b', upper_line):
+            usage.y_input = True
+
+    def _build_call_graph(self):
+        """Build bidirectional call graph"""
+        for addr, info in self.subroutines.items():
+            for called_addr in info.calls:
+                if called_addr in self.subroutines:
+                    self.subroutines[called_addr].called_by.append(addr)
+
+    def _infer_purposes(self):
+        """Infer subroutine purposes from their behavior"""
+        for addr, info in self.subroutines.items():
+            # Infer name from address (common patterns)
+            if info.accesses_sid and not info.calls:
+                info.purpose = "Initialize or control SID chip"
+                info.name = "SID Control"
+            elif info.accesses_sid:
+                info.purpose = "Update SID registers (music playback)"
+                info.name = "SID Update"
+            elif len(info.accesses_tables) > 0:
+                table_names = ", ".join([t.split(' - ')[0] for t in info.accesses_tables[:2]])
+                info.purpose = f"Access music data ({table_names})"
+                info.name = "Music Data Access"
+            elif len(info.calls) > 2:
+                info.purpose = "Coordinate multiple operations"
+                info.name = "Main Coordinator"
+            elif not info.calls and not info.accesses_sid:
+                info.purpose = "Utility or helper function"
+                info.name = "Utility"
+            else:
+                info.purpose = "Subroutine"
+                info.name = "Subroutine"
+
+
+def generate_subroutine_header(info: SubroutineInfo) -> str:
+    """Generate a detailed header comment for a subroutine"""
+    sep = ";" + "-" * 78
+    header = f"{sep}\n"
+    header += f"; Subroutine: {info.name}\n"
+    header += f"; Address: ${info.address:04X}"
+
+    if info.end_address:
+        header += f" - ${info.end_address:04X}\n"
+    else:
+        header += "\n"
+
+    if info.purpose:
+        header += f"; Purpose: {info.purpose}\n"
+
+    # Document register inputs
+    inputs = []
+    if info.register_usage.a_input and not info.register_usage.a_modified:
+        inputs.append("A")
+    if info.register_usage.x_input and not info.register_usage.x_modified:
+        inputs.append("X")
+    if info.register_usage.y_input and not info.register_usage.y_modified:
+        inputs.append("Y")
+
+    if inputs:
+        header += f"; Inputs: {', '.join(inputs)}\n"
+    else:
+        header += "; Inputs: None\n"
+
+    # Document register outputs
+    outputs = []
+    if info.register_usage.a_output:
+        outputs.append("A")
+    if info.register_usage.x_output:
+        outputs.append("X")
+    if info.register_usage.y_output:
+        outputs.append("Y")
+
+    if outputs:
+        header += f"; Outputs: {', '.join(outputs)}\n"
+
+    # Document modified registers
+    modified = []
+    if info.register_usage.a_modified:
+        modified.append("A")
+    if info.register_usage.x_modified:
+        modified.append("X")
+    if info.register_usage.y_modified:
+        modified.append("Y")
+
+    if modified:
+        header += f"; Modifies: {', '.join(modified)}\n"
+
+    # Document calls
+    if info.calls:
+        header += f"; Calls: "
+        call_strs = [f"${addr:04X}" for addr in info.calls[:3]]
+        if len(info.calls) > 3:
+            call_strs.append(f"... ({len(info.calls)} total)")
+        header += ", ".join(call_strs) + "\n"
+
+    # Document callers
+    if info.called_by:
+        header += f"; Called by: "
+        caller_strs = [f"${addr:04X}" for addr in info.called_by[:3]]
+        if len(info.called_by) > 3:
+            caller_strs.append(f"... ({len(info.called_by)} total)")
+        header += ", ".join(caller_strs) + "\n"
+
+    # Document SID access
+    if info.accesses_sid:
+        header += "; Accesses: SID chip registers\n"
+
+    # Document table access
+    if info.accesses_tables:
+        tables_str = ", ".join([t.split(' - ')[0] for t in info.accesses_tables])
+        header += f"; Tables: {tables_str}\n"
+
+    header += f"{sep}\n"
+
+    return header
 
 
 def create_header(filename: str, info: dict) -> str:
@@ -253,20 +586,41 @@ def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = Non
     if 'Laxity' in content or 'laxity' in str(input_path).lower():
         file_info['player'] = 'Laxity NewPlayer v21'
 
+    # Detect subroutines
+    print(f"  Detecting subroutines...")
+    detector = SubroutineDetector(content)
+    subroutines = detector.detect_all_subroutines()
+    print(f"  Found {len(subroutines)} subroutine(s)")
+
     # Create annotated version
     output_lines = []
 
     # Add comprehensive header
     output_lines.append(create_header(input_path.name, file_info))
 
-    # Process each line
+    # Build a mapping of line numbers to subroutine addresses
+    line_to_subroutine = {}
+    for addr, info in subroutines.items():
+        line_num = detector._find_line_by_address(addr)
+        if line_num is not None:
+            line_to_subroutine[line_num] = addr
+
+    # Process each line, inserting subroutine headers
     in_header = True
-    for line in content.split('\n'):
+    lines = content.split('\n')
+
+    for i, line in enumerate(lines):
         # Skip original SIDwinder header (first 10 lines)
         if in_header and line.startswith('//;'):
             continue
         elif in_header and not line.strip().startswith('//;'):
             in_header = False
+
+        # Check if this line starts a subroutine (by line number)
+        if i in line_to_subroutine:
+            sub_addr = line_to_subroutine[i]
+            sub_header = generate_subroutine_header(subroutines[sub_addr])
+            output_lines.append(sub_header)
 
         # Annotate the line
         annotated = annotate_line(line)
@@ -277,6 +631,23 @@ def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = Non
         f.write(''.join(output_lines))
 
     print(f"  Created: {output_path.name}")
+
+
+def _extract_line_address(line: str) -> Optional[int]:
+    """Extract address from the start of a line if present"""
+    # Match patterns like: $1000:, 1000:, etc.
+    match = re.match(r'^\s*\$?([0-9A-Fa-f]{4}):', line)
+    if match:
+        return int(match.group(1), 16)
+
+    # Check if this is a label, search for address in nearby comment
+    # Pattern: label_name:
+    if re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*:\s*$', line.strip()):
+        # This is a label, but we don't know its address yet
+        # Will be handled by the subroutine detector finding the label
+        return None
+
+    return None
 
 
 def main():
