@@ -13,6 +13,7 @@ import sys
 import os
 from pathlib import Path
 from typing import Optional, List, Dict
+from datetime import datetime
 
 # Try to import PyQt6, fallback instructions if not available
 try:
@@ -47,6 +48,7 @@ from cockpit_widgets import StatsCard, ProgressWidget, FileListWidget, LogStream
 from cockpit_history_widgets import BatchHistorySectionWidget, HistoryControlWidget
 from batch_history_manager import BatchHistoryManager
 from cockpit_styles import ColorScheme, IconGenerator, StyleSheet
+from report_generator import generate_batch_report
 
 
 class CockpitMainWindow(QMainWindow):
@@ -604,6 +606,10 @@ class CockpitMainWindow(QMainWindow):
         export_json_btn = QPushButton("Export JSON")
         export_layout.addWidget(export_json_btn)
 
+        export_html_btn = QPushButton("Export HTML Report")
+        export_html_btn.clicked.connect(self.export_html_report)
+        export_layout.addWidget(export_html_btn)
+
         self.export_dashboard_btn = QPushButton("Generate & View Dashboard")
         self.export_dashboard_btn.clicked.connect(self.generate_and_view_dashboard)
         export_layout.addWidget(self.export_dashboard_btn)
@@ -913,6 +919,90 @@ class CockpitMainWindow(QMainWindow):
                 "Refresh Failed",
                 f"Failed to refresh dashboard:\n\n{str(e)}"
             )
+
+    def export_html_report(self):
+        """Export batch conversion results to HTML report"""
+        try:
+            # Check if there are results to export
+            if not self.executor or not self.executor.results:
+                QMessageBox.information(
+                    self,
+                    "No Results",
+                    "No conversion results available to export.\n\n"
+                    "Complete a batch conversion first."
+                )
+                return
+
+            # Ask user for output file location
+            default_filename = f"batch_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+            output_file, _ = QFileDialog.getSaveFileName(
+                self,
+                "Export Batch Report",
+                str(Path.home() / default_filename),
+                "HTML Files (*.html);;All Files (*.*)"
+            )
+
+            if not output_file:
+                # User cancelled
+                return
+
+            self.update_status_bar("Generating batch report...")
+
+            # Collect results
+            results_list = []
+            for filename, result in self.executor.results.items():
+                results_list.append(self.executor._result_to_dict(result))
+
+            # Get summary statistics
+            summary = self.executor._get_summary()
+
+            # Get config (optional)
+            config = {
+                "primary_driver": self.executor.config.primary_driver,
+                "enabled_steps": [step.name for step in self.executor.config.steps if step.enabled]
+            }
+
+            # Generate report
+            success = generate_batch_report(
+                results=results_list,
+                summary=summary,
+                output_path=output_file,
+                config=config
+            )
+
+            if success:
+                self.update_status_bar(f"Batch report exported: {Path(output_file).name}")
+
+                # Ask if user wants to open the report
+                reply = QMessageBox.question(
+                    self,
+                    "Report Exported",
+                    f"Batch report exported successfully!\n\n"
+                    f"Location: {output_file}\n\n"
+                    f"Would you like to open it now?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes
+                )
+
+                if reply == QMessageBox.StandardButton.Yes:
+                    import webbrowser
+                    webbrowser.open(f"file://{Path(output_file).absolute()}")
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Export Failed",
+                    "Failed to generate batch report.\n\n"
+                    "Check the console for error details."
+                )
+                self.update_status_bar("Report export failed")
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Export Error",
+                f"Failed to export batch report:\n\n{str(e)}"
+            )
+            self.update_status_bar("Error exporting report")
 
     # =========================================================================
     # File Management Methods
