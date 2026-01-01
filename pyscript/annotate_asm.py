@@ -12,9 +12,10 @@ Adds comprehensive annotations to 6502 assembly files with:
 
 import sys
 import re
+import json
 from pathlib import Path
 from typing import List, Tuple, Optional, Dict, Set
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 
 # Common 6502 opcodes with descriptions
 OPCODES = {
@@ -2804,8 +2805,15 @@ def extract_info_from_sidwinder(content: str) -> dict:
     return info
 
 
-def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = None):
-    """Annotate an ASM file with comprehensive comments"""
+def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = None, output_format: str = 'text'):
+    """Annotate an ASM file with comprehensive comments
+
+    Args:
+        input_path: Path to input ASM file
+        output_path: Path to output file
+        file_info: Optional file metadata dict
+        output_format: Output format - 'text' (default), 'json', or 'markdown'
+    """
 
     print(f"Annotating: {input_path.name}")
 
@@ -2948,11 +2956,33 @@ def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = Non
         annotated = annotate_line(line)
         output_lines.append(annotated)
 
-    # Write annotated file
-    with open(output_path, 'w', encoding='utf-8') as f:
-        f.write(''.join(output_lines))
+    # Export in requested format
+    if output_format == 'json':
+        # Export comprehensive analysis data to JSON
+        json_output = export_to_json(
+            file_info, subroutines, sections, xrefs, patterns, symbols,
+            cycle_counts, call_graph, loops, branches, lifecycles,
+            dependencies, dead_code, optimizations
+        )
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(json_output)
+        print(f"  Created JSON: {output_path.name}")
 
-    print(f"  Created: {output_path.name}")
+    elif output_format == 'markdown':
+        # Export analysis summary to Markdown
+        md_output = export_to_markdown(
+            input_path, file_info, subroutines, sections, symbols,
+            patterns, loops, dead_code, optimizations
+        )
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(md_output)
+        print(f"  Created Markdown: {output_path.name}")
+
+    else:
+        # Default: Write annotated text file
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(''.join(output_lines))
+        print(f"  Created: {output_path.name}")
 
 
 def _extract_line_address(line: str) -> Optional[int]:
@@ -2972,28 +3002,421 @@ def _extract_line_address(line: str) -> Optional[int]:
     return None
 
 
+# ==============================================================================
+# Export Formats (JSON, Markdown, HTML)
+# ==============================================================================
+
+def export_to_json(
+    file_info: dict,
+    subroutines: Dict[int, 'SubroutineInfo'],
+    sections: List['SectionInfo'],
+    xrefs: Dict[int, List['Reference']],
+    patterns: List['Pattern'],
+    symbols: Dict[int, 'Symbol'],
+    cycle_counts: Dict[int, 'CycleInfo'],
+    call_graph: Dict[int, 'CallGraphNode'],
+    loops: List['LoopInfo'],
+    branches: List['BranchInfo'],
+    lifecycles: Dict[str, List['RegisterLifecycle']],
+    dependencies: Dict[int, 'RegisterDependency'],
+    dead_code: List[Tuple[int, str, str]],
+    optimizations: List[str]
+) -> str:
+    """Export all analysis data to JSON format"""
+
+    # Convert dataclasses to dictionaries
+    def to_dict(obj):
+        """Convert dataclass to dict, handling nested structures"""
+        if hasattr(obj, '__dataclass_fields__'):
+            result = {}
+            for field_name, field_value in asdict(obj).items():
+                if isinstance(field_value, list):
+                    result[field_name] = [to_dict(item) if hasattr(item, '__dataclass_fields__') else item
+                                         for item in field_value]
+                elif hasattr(field_value, '__dataclass_fields__'):
+                    result[field_name] = to_dict(field_value)
+                elif hasattr(field_value, 'value'):  # Enum
+                    result[field_name] = field_value.value
+                else:
+                    result[field_name] = field_value
+            return result
+        return obj
+
+    # Build JSON structure
+    data = {
+        "metadata": file_info,
+        "statistics": {
+            "subroutines": len(subroutines),
+            "data_sections": len([s for s in sections if s.section_type.value != 'CODE']),
+            "cross_references": sum(len(refs) for refs in xrefs.values()),
+            "patterns": len(patterns),
+            "symbols": len(symbols),
+            "instructions_analyzed": len(cycle_counts),
+            "loops": len(loops),
+            "branches": len(branches),
+            "register_lifecycles": sum(len(lc) for lc in lifecycles.values()),
+            "dead_code_instances": len(dead_code)
+        },
+        "subroutines": {
+            f"${addr:04X}": {
+                "address": addr,
+                "end_address": info.end_address,
+                "name": info.name,
+                "purpose": info.purpose,
+                "calls": [f"${c:04X}" for c in info.calls],
+                "called_by": [f"${c:04X}" for c in info.called_by],
+                "accesses_sid": info.accesses_sid,
+                "accesses_tables": info.accesses_tables,
+                "register_usage": {
+                    "a_input": info.register_usage.a_input,
+                    "x_input": info.register_usage.x_input,
+                    "y_input": info.register_usage.y_input,
+                    "a_output": info.register_usage.a_output,
+                    "x_output": info.register_usage.x_output,
+                    "y_output": info.register_usage.y_output,
+                    "a_modified": info.register_usage.a_modified,
+                    "x_modified": info.register_usage.x_modified,
+                    "y_modified": info.register_usage.y_modified
+                }
+            }
+            for addr, info in subroutines.items()
+        },
+        "data_sections": [
+            {
+                "start_address": f"${s.start_address:04X}" if s.start_address else None,
+                "end_address": f"${s.end_address:04X}" if s.end_address else None,
+                "section_type": s.section_type.value,
+                "start_line": s.start_line,
+                "end_line": s.end_line,
+                "size": s.size,
+                "name": s.name
+            }
+            for s in sections if s.section_type.value != 'CODE'
+        ],
+        "cross_references": {
+            f"${addr:04X}": [
+                {
+                    "source_address": f"${ref.source_address:04X}" if ref.source_address else None,
+                    "source_line": ref.source_line,
+                    "ref_type": ref.ref_type.value,
+                    "instruction": ref.instruction
+                }
+                for ref in refs
+            ]
+            for addr, refs in xrefs.items()
+        },
+        "patterns": [
+            {
+                "type": p.pattern_type.value,
+                "start_line": p.start_line,
+                "end_line": p.end_line,
+                "description": p.description,
+                "variables": p.variables,
+                "result": p.result
+            }
+            for p in patterns
+        ],
+        "symbols": {
+            f"${addr:04X}": {
+                "address": addr,
+                "type": sym.symbol_type.value,
+                "name": sym.name,
+                "description": sym.description,
+                "ref_count": sym.ref_count,
+                "call_count": sym.call_count,
+                "read_count": sym.read_count,
+                "write_count": sym.write_count,
+                "size_bytes": sym.size_bytes
+            }
+            for addr, sym in symbols.items()
+        },
+        "cycles": {
+            f"${addr:04X}": {
+                "min": info.min_cycles,
+                "max": info.max_cycles,
+                "typical": info.typical_cycles,
+                "notes": info.notes
+            }
+            for addr, info in cycle_counts.items()
+        },
+        "call_graph": {
+            f"${addr:04X}": {
+                "name": node.name,
+                "calls": [f"${c:04X}" for c in node.calls],
+                "called_by": [f"${c:04X}" for c in node.called_by],
+                "cycles_min": node.cycles_min,
+                "cycles_max": node.cycles_max,
+                "cycles_typical": node.cycles_typical
+            }
+            for addr, node in call_graph.items()
+        },
+        "loops": [
+            {
+                "start_address": f"${loop.start_address:04X}",
+                "end_address": f"${loop.end_address:04X}",
+                "type": loop.loop_type,
+                "counter_register": loop.counter_register,
+                "iterations_min": loop.iterations_min,
+                "iterations_max": loop.iterations_max,
+                "iterations_typical": loop.iterations_typical,
+                "cycles_per_iteration": loop.cycles_per_iteration,
+                "description": loop.description
+            }
+            for loop in loops
+        ],
+        "branches": [
+            {
+                "address": f"${branch.address:04X}",
+                "opcode": branch.opcode,
+                "target": f"${branch.target:04X}",
+                "is_backward": branch.is_backward,
+                "is_forward": branch.is_forward
+            }
+            for branch in branches
+        ],
+        "register_lifecycles": {
+            reg: [
+                {
+                    "load_address": f"${lc.load_address:04X}",
+                    "load_instruction": lc.load_instruction,
+                    "uses": [f"${addr:04X}" for addr in lc.uses],
+                    "death_address": f"${lc.death_address:04X}" if lc.death_address else None,
+                    "is_dead_code": lc.is_dead_code
+                }
+                for lc in lifecycles_list
+            ]
+            for reg, lifecycles_list in lifecycles.items()
+        },
+        "dependencies": {
+            f"${addr:04X}": {
+                "instruction": dep.instruction,
+                "reads_a": dep.reads_a,
+                "reads_x": dep.reads_x,
+                "reads_y": dep.reads_y,
+                "writes_a": dep.writes_a,
+                "writes_x": dep.writes_x,
+                "writes_y": dep.writes_y,
+                "depends_on_a": f"${dep.depends_on_a:04X}" if dep.depends_on_a else None,
+                "depends_on_x": f"${dep.depends_on_x:04X}" if dep.depends_on_x else None,
+                "depends_on_y": f"${dep.depends_on_y:04X}" if dep.depends_on_y else None
+            }
+            for addr, dep in dependencies.items()
+        },
+        "dead_code": [
+            {
+                "address": f"${addr:04X}",
+                "register": reg,
+                "reason": reason
+            }
+            for addr, reg, reason in dead_code
+        ],
+        "optimizations": optimizations
+    }
+
+    return json.dumps(data, indent=2)
+
+
+def export_to_markdown(
+    input_path: Path,
+    file_info: dict,
+    subroutines: Dict[int, 'SubroutineInfo'],
+    sections: List['SectionInfo'],
+    symbols: Dict[int, 'Symbol'],
+    patterns: List['Pattern'],
+    loops: List['LoopInfo'],
+    dead_code: List[Tuple[int, str, str]],
+    optimizations: List[str]
+) -> str:
+    """Export annotated assembly to Markdown format"""
+
+    md = []
+
+    # Header
+    md.append(f"# {input_path.name} - Assembly Analysis\n")
+    md.append(f"**Auto-generated by ASM Annotation System**\n")
+
+    if file_info.get('title'):
+        md.append(f"- **Title**: {file_info['title']}")
+    if file_info.get('author'):
+        md.append(f"- **Author**: {file_info['author']}")
+    if file_info.get('player'):
+        md.append(f"- **Player**: {file_info['player']}")
+
+    md.append("\n---\n")
+
+    # Statistics
+    md.append("## Statistics\n")
+    md.append(f"- **Subroutines**: {len(subroutines)}")
+    md.append(f"- **Data Sections**: {len([s for s in sections if s.section_type.value != 'CODE'])}")
+    md.append(f"- **Symbols**: {len(symbols)}")
+    md.append(f"- **Patterns**: {len(patterns)}")
+    md.append(f"- **Loops**: {len(loops)}")
+    md.append(f"- **Dead Code**: {len(dead_code)} instances")
+    md.append("\n---\n")
+
+    # Subroutines
+    if subroutines:
+        md.append("## Subroutines\n")
+        for addr, info in sorted(subroutines.items()):
+            md.append(f"### {info.name or f'sub_{addr:04x}'} (`${addr:04X}`)\n")
+            if info.purpose:
+                md.append(f"**Purpose**: {info.purpose}\n")
+            if info.calls:
+                calls_str = ", ".join([f"`${c:04X}`" for c in info.calls])
+                md.append(f"**Calls**: {calls_str}\n")
+            if info.called_by:
+                callers_str = ", ".join([f"`${c:04X}`" for c in info.called_by])
+                md.append(f"**Called by**: {callers_str}\n")
+
+            # Register usage
+            inputs = []
+            outputs = []
+            if info.register_usage.a_input:
+                inputs.append("A")
+            if info.register_usage.x_input:
+                inputs.append("X")
+            if info.register_usage.y_input:
+                inputs.append("Y")
+            if info.register_usage.a_output:
+                outputs.append("A")
+            if info.register_usage.x_output:
+                outputs.append("X")
+            if info.register_usage.y_output:
+                outputs.append("Y")
+
+            if inputs:
+                md.append(f"**Inputs**: {', '.join(inputs)}\n")
+            if outputs:
+                md.append(f"**Outputs**: {', '.join(outputs)}\n")
+
+            md.append("")
+        md.append("\n---\n")
+
+    # Symbols
+    if symbols:
+        md.append("## Symbol Table\n")
+        md.append("| Address | Type | Name | Refs | Description |")
+        md.append("|---------|------|------|------|-------------|")
+        for addr, sym in sorted(symbols.items())[:50]:  # Limit to 50
+            addr_str = f"`${addr:04X}`"
+            type_str = sym.symbol_type.value
+            name_str = sym.name or "-"
+
+            # Format refs
+            refs_parts = []
+            if sym.call_count > 0:
+                refs_parts.append(f"{sym.call_count}c")
+            if sym.read_count > 0:
+                refs_parts.append(f"{sym.read_count}r")
+            if sym.write_count > 0:
+                refs_parts.append(f"{sym.write_count}w")
+            refs_str = ",".join(refs_parts) if refs_parts else "-"
+
+            desc_str = sym.description[:40] if sym.description else "-"
+
+            md.append(f"| {addr_str} | {type_str} | {name_str} | {refs_str} | {desc_str} |")
+
+        if len(symbols) > 50:
+            md.append(f"\n*({len(symbols) - 50} more symbols not shown)*\n")
+        md.append("\n---\n")
+
+    # Loops
+    if loops:
+        md.append("## Loop Analysis\n")
+        for i, loop in enumerate(loops[:20], 1):  # Show first 20
+            md.append(f"### Loop #{i}: `${loop.start_address:04X}` - `${loop.end_address:04X}`\n")
+            md.append(f"- **Type**: {loop.loop_type}")
+            if loop.counter_register:
+                md.append(f"- **Counter**: Register {loop.counter_register}")
+            md.append(f"- **Iterations**: {loop.iterations_min}-{loop.iterations_max} (typically {loop.iterations_typical})")
+            md.append(f"- **Cycles/iteration**: {loop.cycles_per_iteration}")
+            total_cycles = loop.cycles_per_iteration * loop.iterations_typical
+            md.append(f"- **Total cycles**: {total_cycles} ({total_cycles * 100 // NTSC_CYCLES_PER_FRAME:.1f}% of frame)")
+            md.append("")
+
+        if len(loops) > 20:
+            md.append(f"\n*({len(loops) - 20} more loops not shown)*\n")
+        md.append("\n---\n")
+
+    # Dead code
+    if dead_code:
+        md.append("## Dead Code Warnings\n")
+        for addr, reg, reason in dead_code:
+            md.append(f"- **`${addr:04X}`** - Register {reg}: {reason}")
+        md.append("\n---\n")
+
+    # Optimizations
+    if optimizations:
+        md.append("## Optimization Suggestions\n")
+        for i, opt in enumerate(optimizations, 1):
+            md.append(f"{i}. {opt}")
+        md.append("\n---\n")
+
+    md.append("\n*Generated by ASM Annotation System*")
+
+    return "\n".join(md)
+
+
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python annotate_asm.py <input.asm> [output.asm]")
-        print("   or: python annotate_asm.py <directory>")
+        print("Usage: python annotate_asm.py <input.asm> [output] [--format FORMAT]")
+        print("   or: python annotate_asm.py <directory> [--format FORMAT]")
+        print("")
+        print("Formats:")
+        print("  text     - Annotated ASM text (default)")
+        print("  json     - Machine-readable JSON with all analysis data")
+        print("  markdown - Human-readable Markdown summary")
+        print("")
+        print("Examples:")
+        print("  python annotate_asm.py input.asm                          # Text output")
+        print("  python annotate_asm.py input.asm output.json --format json")
+        print("  python annotate_asm.py input.asm output.md --format markdown")
         return 1
 
+    # Parse arguments
     input_path = Path(sys.argv[1])
+    output_format = 'text'  # default
+    output_path = None
+
+    # Check for --format argument
+    if '--format' in sys.argv:
+        format_index = sys.argv.index('--format')
+        if format_index + 1 < len(sys.argv):
+            output_format = sys.argv[format_index + 1]
+            if output_format not in ['text', 'json', 'markdown']:
+                print(f"Error: Invalid format '{output_format}'. Use: text, json, or markdown")
+                return 1
+
+    # Determine output path
+    if len(sys.argv) > 2 and not sys.argv[2].startswith('--'):
+        output_path = Path(sys.argv[2])
 
     if input_path.is_dir():
         # Process all ASM files in directory
         for asm_file in input_path.glob('**/*.asm'):
             if '_ANNOTATED' not in asm_file.name:
-                output_file = asm_file.parent / f"{asm_file.stem}_ANNOTATED.asm"
-                annotate_asm_file(asm_file, output_file)
+                # Determine extension based on format
+                if output_format == 'json':
+                    ext = '.json'
+                elif output_format == 'markdown':
+                    ext = '.md'
+                else:
+                    ext = '.asm'
+
+                output_file = asm_file.parent / f"{asm_file.stem}_ANNOTATED{ext}"
+                annotate_asm_file(asm_file, output_file, output_format=output_format)
     else:
         # Process single file
-        if len(sys.argv) > 2:
-            output_path = Path(sys.argv[2])
-        else:
-            output_path = input_path.parent / f"{input_path.stem}_ANNOTATED.asm"
+        if not output_path:
+            # Auto-generate output path based on format
+            if output_format == 'json':
+                output_path = input_path.parent / f"{input_path.stem}_ANALYSIS.json"
+            elif output_format == 'markdown':
+                output_path = input_path.parent / f"{input_path.stem}_ANALYSIS.md"
+            else:
+                output_path = input_path.parent / f"{input_path.stem}_ANNOTATED.asm"
 
-        annotate_asm_file(input_path, output_path)
+        annotate_asm_file(input_path, output_path, output_format=output_format)
 
     print("\nAnnotation complete!")
     return 0
