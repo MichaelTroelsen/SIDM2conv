@@ -94,6 +94,137 @@ LDA $18DA,Y        ; Wave Table - Waveforms (32 bytes)
 - 3c2a2f2 - Initial annotation script + drivers/compliance files
 - d3a82f3 - Tools directory annotation (13 files)
 
+#### Enhanced - Subroutine Detection (2025-12-29)
+
+**🚀 MAJOR ENHANCEMENT: Comprehensive subroutine detection and documentation**
+
+Implemented Priority 1 improvement from `docs/ASM_ANNOTATION_IMPROVEMENTS.md`: automatic subroutine detection with register usage analysis and call graph generation.
+
+**NEW CAPABILITIES**:
+
+**1. Automatic Subroutine Detection**:
+- Finds all JSR targets (called functions)
+- Detects entry points from comments (init, play addresses)
+- Identifies subroutine boundaries (start address → RTS)
+- Handles multiple address formats (raw addresses, labels, directives)
+
+**2. Register Usage Analysis**:
+- Tracks which registers are **inputs** (used before written)
+- Tracks which registers are **outputs** (written and used after)
+- Tracks which registers are **modified**
+- Detects indexed addressing mode usage (,X and ,Y)
+
+**3. Purpose Inference**:
+- **SID Control**: Accesses SID without calls → "Initialize or control SID chip"
+- **SID Update**: Accesses SID with calls → "Update SID registers (music playback)"
+- **Music Data Access**: Accesses Laxity tables → "Access music data (Wave Table, Pulse Table)"
+- **Main Coordinator**: Makes 3+ calls → "Coordinate multiple operations"
+- **Utility**: No SID, no calls → "Utility or helper function"
+
+**4. Call Graph Generation**:
+- Documents which functions call this subroutine (Called by: $1234, $5678)
+- Documents which functions this subroutine calls (Calls: $0E00, $0EA1)
+- Builds bidirectional relationships
+- Limits to 3 references + count for readability
+
+**5. Hardware & Data Access Detection**:
+- Identifies SID register access ($D400-$D418)
+- Documents Laxity table access (Wave, Pulse, Filter, Instrument tables)
+
+**EXAMPLE OUTPUT**:
+
+Before subroutine detection:
+```asm
+sf2_init:
+    LDA #$00
+    STA $D418
+    JSR $0E00
+    RTS
+```
+
+After subroutine detection:
+```asm
+;------------------------------------------------------------------------------
+; Subroutine: SID Update
+; Address: $0D7E - $0D7F
+; Purpose: Update SID registers (music playback)
+; Inputs: None
+; Outputs: A
+; Modifies: A
+; Calls: $0E00
+; Called by: $1234
+; Accesses: SID chip registers
+; Tables: Wave Table, Pulse Table
+;------------------------------------------------------------------------------
+sf2_init:
+    LDA #$00
+    STA $D418
+    JSR $0E00
+    RTS
+```
+
+**IMPLEMENTATION DETAILS**:
+
+**New Classes** (3):
+- `RegisterUsage`: Track A, X, Y register usage patterns
+- `SubroutineInfo`: Store all detected information about a subroutine
+- `SubroutineDetector`: Main detection engine with 5-step process
+
+**Detection Algorithm** (5 steps):
+1. Find all JSR targets
+2. Find known entry points (init, play)
+3. Analyze each subroutine (boundaries, calls, register usage)
+4. Build bidirectional call graph
+5. Infer purposes from behavior
+
+**Address Format Support**:
+- Raw addresses: `$1000:`, `1000:`
+- Labels: `sf2_init:`, `play_music:`
+- Address directives: `*=$0D7E` followed by label
+- Comments: `; Init routine ($0D7E)` followed by label
+
+**TESTING RESULTS**:
+
+Re-annotated 16 files, detected 4 subroutines:
+
+**Files Updated** (2):
+- `drivers/laxity/laxity_driver_ANNOTATED.asm`: 2 subroutines detected
+  - sf2_init ($0D7E): Outputs A, Modifies A, Calls $0E00, Accesses SID
+  - sf2_play ($0D81): Calls $0EA1
+- `compliance_test/test_decompiler_output_ANNOTATED.asm`: 2 subroutines detected
+
+**Files Unchanged** (14):
+- `drivers/laxity/laxity_player_disassembly_ANNOTATED.asm`: 0 subroutines (disassembly format)
+- `tools/*_ANNOTATED.asm`: 0 subroutines (include files, data tables)
+
+**BENEFITS**:
+
+✓ **Immediate Understanding**: See function purpose at a glance
+✓ **Calling Conventions**: Know which registers are inputs/outputs
+✓ **Call Flow**: Understand relationships between functions
+✓ **Register Safety**: Identify which registers are destroyed
+✓ **Educational Value**: Learn 6502 programming patterns
+✓ **Debugging Aid**: Quick reference for function behavior
+
+**CODE STATISTICS**:
+- +374 lines of code added to `pyscript/annotate_asm.py`
+- 3 new classes
+- 1 new header generation function
+- Enhanced address detection with 4 pattern types
+
+**COMMITS**:
+- d5c3d7a - feat: Add comprehensive subroutine detection to ASM annotator
+- 4f42c42 - docs: Re-annotate ASM files with subroutine detection
+
+**NEXT STEPS**:
+
+Remaining Priority 1 features from improvement roadmap:
+- Data vs code section detection
+- Enhanced cross-reference generation
+- Additional address format support for disassembly files
+
+See `docs/ASM_ANNOTATION_IMPROVEMENTS.md` for complete roadmap.
+
 ### Verified - Laxity Accuracy Confirmation
 
 **✅ VERIFIED: Laxity driver achieves 99.98% frame accuracy (exceeds 99.93% target)**
