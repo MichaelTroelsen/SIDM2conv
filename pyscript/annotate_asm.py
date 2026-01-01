@@ -1616,6 +1616,388 @@ def format_cycle_summary(min_cycles: int, max_cycles: int, typical_cycles: int,
 
 
 # ==============================================================================
+# Control Flow Visualization
+# ==============================================================================
+
+@dataclass
+class CallGraphNode:
+    """Node in the call graph representing a subroutine"""
+    address: int
+    name: str
+    calls: List[int] = field(default_factory=list)
+    called_by: List[int] = field(default_factory=list)
+    cycles_min: int = 0
+    cycles_max: int = 0
+    cycles_typical: int = 0
+
+
+@dataclass
+class LoopInfo:
+    """Information about a detected loop"""
+    start_address: int
+    end_address: int
+    loop_type: str  # "counted", "conditional", "infinite"
+    counter_register: str = ""  # X, Y, or memory address
+    iterations_min: int = 0
+    iterations_max: int = 0
+    iterations_typical: int = 0
+    cycles_per_iteration: int = 0
+    description: str = ""
+
+
+@dataclass
+class BranchInfo:
+    """Information about a conditional branch"""
+    address: int
+    opcode: str
+    target: int
+    is_backward: bool  # True if branch goes backward (likely a loop)
+    is_forward: bool   # True if branch goes forward (likely a conditional)
+
+
+class ControlFlowAnalyzer:
+    """Analyze control flow: calls, branches, loops"""
+
+    def __init__(self,
+                 lines: List[str],
+                 subroutines: Dict[int, 'SubroutineInfo'],
+                 cycle_counter: Optional['CycleCounter'] = None):
+        self.lines = lines
+        self.subroutines = subroutines
+        self.cycle_counter = cycle_counter
+        self.call_graph: Dict[int, CallGraphNode] = {}
+        self.branches: List[BranchInfo] = []
+        self.loops: List[LoopInfo] = []
+
+    def analyze_all(self) -> Tuple[Dict[int, CallGraphNode], List[LoopInfo], List[BranchInfo]]:
+        """Main entry point: analyze all control flow"""
+        self._build_call_graph()
+        self._detect_branches()
+        self._detect_loops()
+        return (self.call_graph, self.loops, self.branches)
+
+    def _build_call_graph(self):
+        """Build call graph from JSR instructions"""
+        # Create nodes for all subroutines
+        for addr, info in self.subroutines.items():
+            cycles_min = 0
+            cycles_max = 0
+            cycles_typical = 0
+
+            if self.cycle_counter:
+                cycles_min, cycles_max, cycles_typical = self.cycle_counter.count_subroutine_cycles(info)
+
+            self.call_graph[addr] = CallGraphNode(
+                address=addr,
+                name=info.name,
+                calls=list(info.calls),
+                called_by=list(info.called_by),
+                cycles_min=cycles_min,
+                cycles_max=cycles_max,
+                cycles_typical=cycles_typical
+            )
+
+    def _detect_branches(self):
+        """Detect all conditional branches"""
+        branch_opcodes = {'BEQ', 'BNE', 'BPL', 'BMI', 'BCC', 'BCS', 'BVC', 'BVS'}
+
+        for line in self.lines:
+            # Extract address and instruction
+            addr = self._extract_address(line)
+            if addr is None:
+                continue
+
+            # Check for branch instruction - handle both $ADDR and label formats
+            # Pattern: BNE  $a051 or BNE  la051
+            match = re.search(r'([A-Z]{3})\s+(?:\$?([0-9A-Fa-f]{4})|l?a?([0-9A-Fa-f]{3,4}))', line)
+            if match:
+                opcode = match.group(1)
+                if opcode in branch_opcodes:
+                    # Try to extract target address from either hex or label
+                    target_hex = match.group(2) or match.group(3)
+                    if target_hex:
+                        target = int(target_hex, 16)
+                        is_backward = target < addr
+                        is_forward = target > addr
+
+                        self.branches.append(BranchInfo(
+                            address=addr,
+                            opcode=opcode,
+                            target=target,
+                            is_backward=is_backward,
+                            is_forward=is_forward
+                        ))
+
+    def _detect_loops(self):
+        """Detect loops (backward branches and counted loops)"""
+        # Group backward branches as potential loops
+        backward_branches = [b for b in self.branches if b.is_backward]
+
+        for branch in backward_branches:
+            # Look for counted loop pattern: LDX/LDY #n ... DEX/DEY ... BNE
+            loop_info = self._analyze_loop(branch.target, branch.address)
+            if loop_info:
+                self.loops.append(loop_info)
+
+    def _analyze_loop(self, start_addr: int, end_addr: int) -> Optional[LoopInfo]:
+        """Analyze a potential loop between start and end addresses"""
+        # Find lines in loop body
+        loop_lines = []
+        for line in self.lines:
+            addr = self._extract_address(line)
+            if addr and start_addr <= addr <= end_addr:
+                loop_lines.append(line)
+
+        if not loop_lines:
+            return None
+
+        # Check for counted loop pattern (LDX/LDY #n)
+        counter_reg = None
+        initial_count = None
+
+        for line in loop_lines[:3]:  # Check first few lines
+            match = re.search(r'(LDX|LDY)\s+#\$?([0-9A-Fa-f]+)', line)
+            if match:
+                counter_reg = match.group(1)[2]  # 'X' or 'Y'
+                initial_count = int(match.group(2), 16)
+                break
+
+        # Check for decrement (DEX/DEY)
+        has_decrement = any(f'DE{counter_reg}' in line if counter_reg else False
+                           for line in loop_lines)
+
+        # Calculate cycles per iteration
+        cycles_per_iter = 0
+        if self.cycle_counter:
+            for line in loop_lines:
+                addr = self._extract_address(line)
+                if addr and addr in self.cycle_counter.cycle_counts:
+                    info = self.cycle_counter.cycle_counts[addr]
+                    cycles_per_iter += info.typical_cycles
+
+        # Determine loop type
+        if counter_reg and has_decrement and initial_count:
+            # Counted loop
+            return LoopInfo(
+                start_address=start_addr,
+                end_address=end_addr,
+                loop_type="counted",
+                counter_register=counter_reg,
+                iterations_min=initial_count,
+                iterations_max=initial_count,
+                iterations_typical=initial_count,
+                cycles_per_iteration=cycles_per_iter,
+                description=f"Counted loop (register {counter_reg}, {initial_count} iterations)"
+            )
+        else:
+            # Conditional loop (unknown iteration count)
+            return LoopInfo(
+                start_address=start_addr,
+                end_address=end_addr,
+                loop_type="conditional",
+                counter_register="",
+                iterations_min=1,
+                iterations_max=100,  # Estimate
+                iterations_typical=10,  # Estimate
+                cycles_per_iteration=cycles_per_iter,
+                description="Conditional loop (variable iterations)"
+            )
+
+    def _extract_address(self, line: str) -> Optional[int]:
+        """Extract address from line"""
+        match = re.match(r'^\s*\$?([0-9A-Fa-f]{4}):', line)
+        if match:
+            return int(match.group(1), 16)
+        return None
+
+
+def format_call_graph(call_graph: Dict[int, CallGraphNode],
+                      subroutines: Dict[int, 'SubroutineInfo'],
+                      max_depth: int = 10) -> str:
+    """Format call graph as ASCII art tree"""
+    if not call_graph:
+        return ""
+
+    sep = "=" * 78
+    output = f";{sep}\n"
+    output += f"; CALL GRAPH\n"
+    output += f";{sep}\n"
+    output += ";\n"
+
+    # Find entry points (not called by anyone, or called by few)
+    entry_points = []
+    for addr, node in call_graph.items():
+        if not node.called_by or len(node.called_by) <= 1:
+            entry_points.append(addr)
+
+    # Limit to first few entry points
+    entry_points = sorted(entry_points)[:5]
+
+    if entry_points:
+        output += f"; Entry Points ({len(entry_points)}):\n"
+        for addr in entry_points:
+            node = call_graph[addr]
+            cycles_str = ""
+            if node.cycles_typical > 0:
+                pct = (node.cycles_typical / NTSC_CYCLES_PER_FRAME) * 100
+                cycles_str = f" ({node.cycles_typical} cycles, {pct:.1f}% frame)"
+            output += f";   - {node.name} [${addr:04X}]{cycles_str}\n"
+        output += ";\n"
+
+    # Build call hierarchy for each entry point
+    output += "; Call Hierarchy:\n;\n"
+
+    for entry_addr in entry_points:
+        output += _format_call_tree(entry_addr, call_graph, subroutines, "", set(), 0, max_depth)
+        output += ";\n"
+
+    # Statistics
+    total_subs = len(call_graph)
+    max_call_depth = _calculate_max_depth(call_graph)
+    recursive_calls = sum(1 for node in call_graph.values() if node.address in node.calls)
+
+    output += "; Statistics:\n"
+    output += f";   - Total subroutines: {total_subs}\n"
+    output += f";   - Maximum call depth: {max_call_depth} levels\n"
+    output += f";   - Recursive calls: {recursive_calls}\n"
+
+    # Find hottest path
+    hottest = max(call_graph.values(), key=lambda n: n.cycles_typical, default=None)
+    if hottest and hottest.cycles_typical > 0:
+        pct = (hottest.cycles_typical / NTSC_CYCLES_PER_FRAME) * 100
+        output += f";   - Hottest subroutine: {hottest.name} ({hottest.cycles_typical} cycles, {pct:.1f}%)\n"
+
+    output += f";{sep}\n"
+    output += ";\n"
+
+    return output
+
+
+def _format_call_tree(addr: int,
+                     call_graph: Dict[int, CallGraphNode],
+                     subroutines: Dict[int, 'SubroutineInfo'],
+                     prefix: str,
+                     visited: Set[int],
+                     depth: int,
+                     max_depth: int) -> str:
+    """Recursively format call tree (helper for format_call_graph)"""
+    if depth >= max_depth or addr in visited:
+        return ""
+
+    visited.add(addr)
+    node = call_graph.get(addr)
+    if not node:
+        return ""
+
+    output = ""
+
+    # Format this node
+    cycles_str = ""
+    if node.cycles_typical > 0:
+        cycles_str = f" ({node.cycles_typical} cycles)"
+
+    output += f"; {prefix}{node.name} [${addr:04X}]{cycles_str}\n"
+
+    # Format children
+    if node.calls:
+        for i, callee_addr in enumerate(node.calls[:5]):  # Limit to first 5 calls
+            is_last = (i == len(node.calls) - 1) or (i == 4)
+            child_prefix = prefix + ("└─> " if is_last else "├─> ")
+            next_prefix = prefix + ("    " if is_last else "│   ")
+
+            output += f"; {child_prefix}JSR ${callee_addr:04X}"
+
+            # Add callee name if known
+            if callee_addr in call_graph:
+                callee_node = call_graph[callee_addr]
+                cycles_str = ""
+                if callee_node.cycles_typical > 0:
+                    cycles_str = f" ({callee_node.cycles_typical} cycles)"
+                output += f" - {callee_node.name}{cycles_str}"
+
+            output += "\n"
+
+            # Recurse (only for first few to avoid deep trees)
+            if i < 3 and callee_addr in call_graph:
+                child_output = _format_call_tree(callee_addr, call_graph, subroutines,
+                                                 next_prefix, visited.copy(), depth + 1, max_depth)
+                if child_output:
+                    output += child_output
+
+        if len(node.calls) > 5:
+            output += f"; {prefix}    ... and {len(node.calls) - 5} more call(s)\n"
+
+    return output
+
+
+def _calculate_max_depth(call_graph: Dict[int, CallGraphNode]) -> int:
+    """Calculate maximum call depth in the call graph"""
+    def depth_from(addr: int, visited: Set[int]) -> int:
+        if addr in visited or addr not in call_graph:
+            return 0
+        visited.add(addr)
+        node = call_graph[addr]
+        if not node.calls:
+            return 1
+        max_child_depth = max((depth_from(c, visited.copy()) for c in node.calls), default=0)
+        return 1 + max_child_depth
+
+    # Start from entry points
+    entry_points = [addr for addr, node in call_graph.items() if not node.called_by]
+    if not entry_points:
+        entry_points = list(call_graph.keys())[:1]
+
+    return max((depth_from(addr, set()) for addr in entry_points), default=0)
+
+
+def format_loop_analysis(loops: List[LoopInfo]) -> str:
+    """Format loop analysis"""
+    if not loops:
+        return ""
+
+    sep = "=" * 78
+    output = f";{sep}\n"
+    output += f"; LOOP ANALYSIS\n"
+    output += f";{sep}\n"
+    output += ";\n"
+
+    output += f"; Detected Loops: {len(loops)}\n"
+    output += ";\n"
+
+    for i, loop in enumerate(loops, 1):
+        output += f"; Loop #{i}: [${loop.start_address:04X}-${loop.end_address:04X}]\n"
+        output += f";   Type: {loop.loop_type}\n"
+
+        if loop.counter_register:
+            output += f";   Counter: Register {loop.counter_register}\n"
+
+        if loop.iterations_typical > 0:
+            if loop.iterations_min == loop.iterations_max:
+                output += f";   Iterations: {loop.iterations_typical} (fixed)\n"
+            else:
+                output += f";   Iterations: {loop.iterations_min}-{loop.iterations_max} (typically {loop.iterations_typical})\n"
+
+        if loop.cycles_per_iteration > 0:
+            total_cycles = loop.cycles_per_iteration * loop.iterations_typical
+            output += f";   Per iteration: {loop.cycles_per_iteration} cycles\n"
+            output += f";   Total: {total_cycles} cycles (typically)\n"
+
+            # Calculate percentage of frame
+            pct = (total_cycles / NTSC_CYCLES_PER_FRAME) * 100
+            output += f";   Frame %: {pct:.1f}%\n"
+
+        if loop.description:
+            output += f";   Description: {loop.description}\n"
+
+        output += ";\n"
+
+    output += f";{sep}\n"
+    output += ";\n"
+
+    return output
+
+
+# ==============================================================================
 # Symbol Table Generation
 # ==============================================================================
 
@@ -2048,6 +2430,12 @@ def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = Non
     cycle_counts = cycle_counter.count_all_cycles()
     print(f"  Counted cycles for {len(cycle_counts)} instruction(s)")
 
+    # Analyze control flow
+    print(f"  Analyzing control flow...")
+    flow_analyzer = ControlFlowAnalyzer(lines, subroutines, cycle_counter)
+    call_graph, loops, branches = flow_analyzer.analyze_all()
+    print(f"  Found {len(loops)} loop(s), {len(branches)} branch(es)")
+
     # Generate symbol table
     print(f"  Generating symbol table...")
     symbol_generator = SymbolTableGenerator(subroutines, xrefs, sections)
@@ -2064,6 +2452,16 @@ def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = Non
     symbol_table = format_symbol_table(symbols)
     if symbol_table:
         output_lines.append(symbol_table)
+
+    # Add call graph
+    call_graph_output = format_call_graph(call_graph, subroutines)
+    if call_graph_output:
+        output_lines.append(call_graph_output)
+
+    # Add loop analysis
+    loop_analysis = format_loop_analysis(loops)
+    if loop_analysis:
+        output_lines.append(loop_analysis)
 
     # Build a mapping of line numbers to subroutine addresses
     line_to_subroutine = {}

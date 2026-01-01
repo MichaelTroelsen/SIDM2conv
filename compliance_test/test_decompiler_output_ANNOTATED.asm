@@ -188,6 +188,667 @@
 ;   Types: subroutine, data, hardware, unknown
 ;==============================================================================
 ;
+;==============================================================================
+; CALL GRAPH
+;==============================================================================
+;
+; Entry Points (2):
+;   - Utility [$A000] (87 cycles, 0.4% frame)
+;   - Utility [$A006] (84 cycles, 0.4% frame)
+;
+; Call Hierarchy:
+;
+; Utility [$A000] (87 cycles)
+;
+; Utility [$A006] (84 cycles)
+;
+; Statistics:
+;   - Total subroutines: 2
+;   - Maximum call depth: 1 levels
+;   - Recursive calls: 0
+;   - Hottest subroutine: Utility (87 cycles, 0.4%)
+;==============================================================================
+;
+;==============================================================================
+; LOOP ANALYSIS
+;==============================================================================
+;
+; Detected Loops: 79
+;
+; Loop #1: [$0051-$A00B]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 12 cycles
+;   Total: 120 cycles (typically)
+;   Frame %: 0.6%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #2: [$0047-$A00D]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 15 cycles
+;   Total: 150 cycles (typically)
+;   Frame %: 0.8%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #3: [$0011-$A015]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 27 cycles
+;   Total: 270 cycles (typically)
+;   Frame %: 1.4%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #4: [$006D-$A054]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 102 cycles
+;   Total: 1020 cycles (typically)
+;   Frame %: 5.2%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #5: [$006A-$A065]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 125 cycles
+;   Total: 1250 cycles (typically)
+;   Frame %: 6.4%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #6: [$00AF-$A074]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 144 cycles
+;   Total: 1440 cycles (typically)
+;   Frame %: 7.3%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #7: [$00AF-$A079]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 151 cycles
+;   Total: 1510 cycles (typically)
+;   Frame %: 7.7%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #8: [$0098-$A08D]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 184 cycles
+;   Total: 1840 cycles (typically)
+;   Frame %: 9.4%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #9: [$00A6-$A0A0]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 217 cycles
+;   Total: 2170 cycles (typically)
+;   Frame %: 11.0%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #10: [$00B9-$A0B2]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 238 cycles
+;   Total: 2380 cycles (typically)
+;   Frame %: 12.1%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #11: [$00BC-$A0B7]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 248 cycles
+;   Total: 2480 cycles (typically)
+;   Frame %: 12.6%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #12: [$00F7-$A0CE]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 281 cycles
+;   Total: 2810 cycles (typically)
+;   Frame %: 14.3%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #13: [$00DC-$A0D2]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 286 cycles
+;   Total: 2860 cycles (typically)
+;   Frame %: 14.6%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #14: [$00F7-$A0DA]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 301 cycles
+;   Total: 3010 cycles (typically)
+;   Frame %: 15.3%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #15: [$00E8-$A0DE]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 306 cycles
+;   Total: 3060 cycles (typically)
+;   Frame %: 15.6%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #16: [$00F7-$A0E6]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 321 cycles
+;   Total: 3210 cycles (typically)
+;   Frame %: 16.3%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #17: [$00EF-$A0EA]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 326 cycles
+;   Total: 3260 cycles (typically)
+;   Frame %: 16.6%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #18: [$0100-$A0FA]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 355 cycles
+;   Total: 3550 cycles (typically)
+;   Frame %: 18.1%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #19: [$0105-$A0FE]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 360 cycles
+;   Total: 3600 cycles (typically)
+;   Frame %: 18.3%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #20: [$010B-$A103]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 370 cycles
+;   Total: 3700 cycles (typically)
+;   Frame %: 18.8%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #21: [$0119-$A114]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 398 cycles
+;   Total: 3980 cycles (typically)
+;   Frame %: 20.2%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #22: [$0137-$A122]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 421 cycles
+;   Total: 4210 cycles (typically)
+;   Frame %: 21.4%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #23: [$0137-$A12C]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 434 cycles
+;   Total: 4340 cycles (typically)
+;   Frame %: 22.1%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #24: [$017B-$A13F]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 448 cycles
+;   Total: 4480 cycles (typically)
+;   Frame %: 22.8%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #25: [$017B-$A143]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 453 cycles
+;   Total: 4530 cycles (typically)
+;   Frame %: 23.0%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #26: [$017B-$A148]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 460 cycles
+;   Total: 4600 cycles (typically)
+;   Frame %: 23.4%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #27: [$0171-$A14C]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 465 cycles
+;   Total: 4650 cycles (typically)
+;   Frame %: 23.7%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #28: [$017E-$A150]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 470 cycles
+;   Total: 4700 cycles (typically)
+;   Frame %: 23.9%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #29: [$016C-$A15B]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 485 cycles
+;   Total: 4850 cycles (typically)
+;   Frame %: 24.7%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #30: [$017B-$A176]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 523 cycles
+;   Total: 5230 cycles (typically)
+;   Frame %: 26.6%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #31: [$01BE-$A186]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 543 cycles
+;   Total: 5430 cycles (typically)
+;   Frame %: 27.6%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #32: [$01B2-$A1A8]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 594 cycles
+;   Total: 5940 cycles (typically)
+;   Frame %: 30.2%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #33: [$01EC-$A1D2]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 640 cycles
+;   Total: 6400 cycles (typically)
+;   Frame %: 32.6%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #34: [$01E7-$A1D6]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 645 cycles
+;   Total: 6450 cycles (typically)
+;   Frame %: 32.8%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #35: [$0210-$A1FC]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 697 cycles
+;   Total: 6970 cycles (typically)
+;   Frame %: 35.5%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #36: [$0229-$A224]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 755 cycles
+;   Total: 7550 cycles (typically)
+;   Frame %: 38.4%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #37: [$0297-$A266]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 820 cycles
+;   Total: 8200 cycles (typically)
+;   Frame %: 41.7%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #38: [$0263-$A2A6]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 854 cycles
+;   Total: 8540 cycles (typically)
+;   Frame %: 43.4%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #39: [$02BE-$A2BA]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 883 cycles
+;   Total: 8830 cycles (typically)
+;   Frame %: 44.9%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #40: [$0349-$A341]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 945 cycles
+;   Total: 9450 cycles (typically)
+;   Frame %: 48.1%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #41: [$0387-$A34C]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 959 cycles
+;   Total: 9590 cycles (typically)
+;   Frame %: 48.8%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #42: [$038B-$A350]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 964 cycles
+;   Total: 9640 cycles (typically)
+;   Frame %: 49.0%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #43: [$0390-$A35A]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 979 cycles
+;   Total: 9790 cycles (typically)
+;   Frame %: 49.8%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #44: [$037F-$A36D]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1008 cycles
+;   Total: 10080 cycles (typically)
+;   Frame %: 51.3%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #45: [$037F-$A371]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1013 cycles
+;   Total: 10130 cycles (typically)
+;   Frame %: 51.5%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #46: [$038B-$A382]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1038 cycles
+;   Total: 10380 cycles (typically)
+;   Frame %: 52.8%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #47: [$038D-$A389]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1046 cycles
+;   Total: 10460 cycles (typically)
+;   Frame %: 53.2%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #48: [$03A5-$A3A3]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1082 cycles
+;   Total: 10820 cycles (typically)
+;   Frame %: 55.0%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #49: [$03EF-$A3E6]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1136 cycles
+;   Total: 11360 cycles (typically)
+;   Frame %: 57.8%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #50: [$040A-$A3F4]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1158 cycles
+;   Total: 11580 cycles (typically)
+;   Frame %: 58.9%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #51: [$042D-$A426]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1230 cycles
+;   Total: 12300 cycles (typically)
+;   Frame %: 62.6%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #52: [$046B-$A451]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1294 cycles
+;   Total: 12940 cycles (typically)
+;   Frame %: 65.8%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #53: [$048D-$A466]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1325 cycles
+;   Total: 13250 cycles (typically)
+;   Frame %: 67.4%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #54: [$048D-$A47E]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1359 cycles
+;   Total: 13590 cycles (typically)
+;   Frame %: 69.1%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #55: [$04C4-$A4A7]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1421 cycles
+;   Total: 14210 cycles (typically)
+;   Frame %: 72.3%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #56: [$04BA-$A4AD]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1430 cycles
+;   Total: 14300 cycles (typically)
+;   Frame %: 72.8%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #57: [$04BA-$A4B1]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1435 cycles
+;   Total: 14350 cycles (typically)
+;   Frame %: 73.0%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #58: [$0527-$A519]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1507 cycles
+;   Total: 15070 cycles (typically)
+;   Frame %: 76.7%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #59: [$055F-$A521]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1518 cycles
+;   Total: 15180 cycles (typically)
+;   Frame %: 77.2%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #60: [$0538-$A52A]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1532 cycles
+;   Total: 15320 cycles (typically)
+;   Frame %: 77.9%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #61: [$055F-$A555]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1597 cycles
+;   Total: 15970 cycles (typically)
+;   Frame %: 81.2%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #62: [$0573-$A567]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1624 cycles
+;   Total: 16240 cycles (typically)
+;   Frame %: 82.6%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #63: [$0592-$A579]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1651 cycles
+;   Total: 16510 cycles (typically)
+;   Frame %: 84.0%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #64: [$0583-$A57D]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1656 cycles
+;   Total: 16560 cycles (typically)
+;   Frame %: 84.2%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #65: [$0600-$A5D4]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1785 cycles
+;   Total: 17850 cycles (typically)
+;   Frame %: 90.8%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #66: [$0600-$A5D9]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1792 cycles
+;   Total: 17920 cycles (typically)
+;   Frame %: 91.2%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #67: [$05FD-$A5E0]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1801 cycles
+;   Total: 18010 cycles (typically)
+;   Frame %: 91.6%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #68: [$05FD-$A5E4]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1806 cycles
+;   Total: 18060 cycles (typically)
+;   Frame %: 91.9%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #69: [$05FD-$A5E9]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1813 cycles
+;   Total: 18130 cycles (typically)
+;   Frame %: 92.2%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #70: [$05FD-$A5ED]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1818 cycles
+;   Total: 18180 cycles (typically)
+;   Frame %: 92.5%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #71: [$05FD-$A5F6]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1831 cycles
+;   Total: 18310 cycles (typically)
+;   Frame %: 93.2%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #72: [$0608-$A603]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1848 cycles
+;   Total: 18480 cycles (typically)
+;   Frame %: 94.0%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #73: [$060E-$A609]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1860 cycles
+;   Total: 18600 cycles (typically)
+;   Frame %: 94.6%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #74: [$067C-$A611]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1870 cycles
+;   Total: 18700 cycles (typically)
+;   Frame %: 95.1%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #75: [$0681-$A613]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1873 cycles
+;   Total: 18730 cycles (typically)
+;   Frame %: 95.3%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #76: [$0666-$A620]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1892 cycles
+;   Total: 18920 cycles (typically)
+;   Frame %: 96.3%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #77: [$063C-$A628]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1903 cycles
+;   Total: 19030 cycles (typically)
+;   Frame %: 96.8%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #78: [$0638-$A62E]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1912 cycles
+;   Total: 19120 cycles (typically)
+;   Frame %: 97.3%
+;   Description: Conditional loop (variable iterations)
+;
+; Loop #79: [$0660-$A63F]
+;   Type: conditional
+;   Iterations: 1-100 (typically 10)
+;   Per iteration: 1928 cycles
+;   Total: 19280 cycles (typically)
+;   Frame %: 98.1%
+;   Description: Conditional loop (variable iterations)
+;
+;==============================================================================
+;
 ; SIDdecompiler output; Generated by Python SIDdecompiler (100% compatible);; Original file: Broware; Author: Laxity, youtH & SMC; Released: 2022 Onslaught/Offence;; Load address: $A000; Init address: $A000; Play address: $A006;* = $A000;------------------------------------------------------------------------------
 ; Subroutine: Utility
 ; Address: $A000 - $A046
