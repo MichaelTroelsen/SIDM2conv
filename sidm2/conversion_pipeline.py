@@ -22,6 +22,7 @@ Module-level constants:
     LAXITY_CONVERTER_AVAILABLE - True if Laxity converter available
     GALWAY_CONVERTER_AVAILABLE - True if Galway converter available
     SIDWINDER_INTEGRATION_AVAILABLE - True if SIDwinder available
+    ASM_ANNOTATION_AVAILABLE - True if ASM annotation available
     ... (10 more optional integration availability flags)
 
 Architecture:
@@ -109,6 +110,13 @@ try:
 except ImportError:
     DISASSEMBLER_INTEGRATION_AVAILABLE = False
 
+# Import ASM Annotation integration (Step 8.7 - optional comprehensive annotation)
+try:
+    from sidm2.annotation_wrapper import AnnotationIntegration
+    ASM_ANNOTATION_AVAILABLE = True
+except ImportError:
+    ASM_ANNOTATION_AVAILABLE = False
+
 # Import Audio Export integration (Step 16 - optional audio export)
 try:
     from sidm2.audio_export_wrapper import AudioExportIntegration
@@ -183,6 +191,7 @@ __all__ = [
     'GALWAY_CONVERTER_AVAILABLE',
     'SIDWINDER_INTEGRATION_AVAILABLE',
     'DISASSEMBLER_INTEGRATION_AVAILABLE',
+    'ASM_ANNOTATION_AVAILABLE',
     'AUDIO_EXPORT_INTEGRATION_AVAILABLE',
     'MEMMAP_ANALYZER_AVAILABLE',
     'PATTERN_RECOGNIZER_AVAILABLE',

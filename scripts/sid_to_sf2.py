@@ -56,6 +56,7 @@ from sidm2.conversion_pipeline import (
     GALWAY_CONVERTER_AVAILABLE,
     SIDWINDER_INTEGRATION_AVAILABLE,
     DISASSEMBLER_INTEGRATION_AVAILABLE,
+    ASM_ANNOTATION_AVAILABLE,
     AUDIO_EXPORT_INTEGRATION_AVAILABLE,
     MEMMAP_ANALYZER_AVAILABLE,
     PATTERN_RECOGNIZER_AVAILABLE,
@@ -72,6 +73,9 @@ if SIDWINDER_INTEGRATION_AVAILABLE:
 
 if DISASSEMBLER_INTEGRATION_AVAILABLE:
     from sidm2.disasm_wrapper import DisassemblerIntegration
+
+if ASM_ANNOTATION_AVAILABLE:
+    from sidm2.annotation_wrapper import AnnotationIntegration
 
 if AUDIO_EXPORT_INTEGRATION_AVAILABLE:
     from sidm2.audio_export_wrapper import AudioExportIntegration
@@ -188,6 +192,17 @@ Example: --driver laxity'''
         '--disasm',
         action='store_true',
         help='Enable 6502 disassembly (Step 8.5 - disassemble init and play routines to .asm files)'
+    )
+    parser.add_argument(
+        '--annotate',
+        action='store_true',
+        help='Generate comprehensive ASM annotation (Step 8.7 - symbol tables, call graphs, loop analysis, register tracking, patterns, documentation links). Includes all features from --disasm plus advanced analysis'
+    )
+    parser.add_argument(
+        '--annotate-format',
+        choices=['text', 'html', 'markdown', 'json', 'csv', 'tsv'],
+        default='text',
+        help='Output format for annotation (default: text). Use html for browseable output, markdown for documentation'
     )
     parser.add_argument(
         '--audio-export',
@@ -414,6 +429,51 @@ Example: --driver laxity'''
             elif args.disasm:
                 logger.warning("[Step 8.5] 6502 disassembly failed (continuing anyway)")
 
+        # PHASE 2 Enhancement: Optional ASM annotation (Step 8.7)
+        if args.annotate and ASM_ANNOTATION_AVAILABLE:
+            # Run comprehensive ASM annotation (includes disassembly + analysis)
+            # Determine output directory
+            if args.both:
+                annotate_output_dir = Path(args.output_dir) if args.output_dir else Path(input_file).parent
+            else:
+                annotate_output_dir = Path(output_file).parent
+
+            # Create analysis subdirectory
+            analysis_dir = annotate_output_dir / "analysis"
+
+            # Only print header if we didn't already print it for trace or disasm
+            if not ((args.trace and SIDWINDER_INTEGRATION_AVAILABLE) or
+                    (args.disasm and DISASSEMBLER_INTEGRATION_AVAILABLE)):
+                logger.info("")
+                logger.info("=" * 60)
+                logger.info("[Phase 5] Running optional analysis tools...")
+                logger.info("=" * 60)
+
+            start_time = time.time()
+            annotation_result = AnnotationIntegration.annotate_sid(
+                sid_file=Path(input_file),
+                output_dir=analysis_dir,
+                output_format=args.annotate_format,
+                verbose=1 if not args.quiet else 0
+            )
+            tool_stats['ASM Annotator'] = {
+                'executed': True,
+                'success': annotation_result and annotation_result['success'],
+                'duration': time.time() - start_time,
+                'files_generated': 2 if annotation_result and annotation_result['success'] else 0  # disasm + annotated
+            }
+
+            if annotation_result and annotation_result['success']:
+                logger.info(f"[Step 8.7] ASM annotation complete:")
+                logger.info(f"  Annotated:  {annotation_result['annotated_file'].name} ({annotation_result['file_size']:,} bytes)")
+                logger.info(f"  Format:     {annotation_result['output_format']}")
+                if annotation_result.get('title'):
+                    logger.info(f"  Title:      {annotation_result['title']}")
+                logger.info(f"  Init addr:  ${annotation_result['init_addr']:04X}")
+                logger.info(f"  Play addr:  ${annotation_result['play_addr']:04X}")
+            elif args.annotate:
+                logger.warning("[Step 8.7] ASM annotation failed (continuing anyway)")
+
         # PHASE 2 Enhancement: Optional audio export (Step 16)
         if args.audio_export and AUDIO_EXPORT_INTEGRATION_AVAILABLE:
             # Determine output directory for WAV files
@@ -425,9 +485,10 @@ Example: --driver laxity'''
             # Create analysis subdirectory
             analysis_dir = audio_output_dir / "analysis"
 
-            # Only print header if we didn't already print it for trace or disasm
+            # Only print header if we didn't already print it for trace, disasm, or annotate
             if not ((args.trace and SIDWINDER_INTEGRATION_AVAILABLE) or
-                    (args.disasm and DISASSEMBLER_INTEGRATION_AVAILABLE)):
+                    (args.disasm and DISASSEMBLER_INTEGRATION_AVAILABLE) or
+                    (args.annotate and ASM_ANNOTATION_AVAILABLE)):
                 logger.info("")
                 logger.info("=" * 60)
                 logger.info("[Phase 5] Running optional analysis tools...")
@@ -476,6 +537,7 @@ Example: --driver laxity'''
             # Only print header if we didn't already print it for other tools
             if not ((args.trace and SIDWINDER_INTEGRATION_AVAILABLE) or
                     (args.disasm and DISASSEMBLER_INTEGRATION_AVAILABLE) or
+                    (args.annotate and ASM_ANNOTATION_AVAILABLE) or
                     (args.audio_export and AUDIO_EXPORT_INTEGRATION_AVAILABLE)):
                 logger.info("")
                 logger.info("=" * 60)
@@ -527,6 +589,7 @@ Example: --driver laxity'''
             # Only print header if we didn't already print it for other tools
             if not ((args.trace and SIDWINDER_INTEGRATION_AVAILABLE) or
                     (args.disasm and DISASSEMBLER_INTEGRATION_AVAILABLE) or
+                    (args.annotate and ASM_ANNOTATION_AVAILABLE) or
                     (args.audio_export and AUDIO_EXPORT_INTEGRATION_AVAILABLE) or
                     (args.memmap and MEMMAP_ANALYZER_AVAILABLE)):
                 logger.info("")
@@ -577,6 +640,7 @@ Example: --driver laxity'''
             # Only print header if we didn't already print it for other tools
             if not ((args.trace and SIDWINDER_INTEGRATION_AVAILABLE) or
                     (args.disasm and DISASSEMBLER_INTEGRATION_AVAILABLE) or
+                    (args.annotate and ASM_ANNOTATION_AVAILABLE) or
                     (args.audio_export and AUDIO_EXPORT_INTEGRATION_AVAILABLE) or
                     (args.memmap and MEMMAP_ANALYZER_AVAILABLE) or
                     (args.patterns and PATTERN_RECOGNIZER_AVAILABLE)):
@@ -629,6 +693,7 @@ Example: --driver laxity'''
             # Only print header if we didn't already print it for other tools
             if not ((args.trace and SIDWINDER_INTEGRATION_AVAILABLE) or
                     (args.disasm and DISASSEMBLER_INTEGRATION_AVAILABLE) or
+                    (args.annotate and ASM_ANNOTATION_AVAILABLE) or
                     (args.audio_export and AUDIO_EXPORT_INTEGRATION_AVAILABLE) or
                     (args.memmap and MEMMAP_ANALYZER_AVAILABLE) or
                     (args.patterns and PATTERN_RECOGNIZER_AVAILABLE) or
@@ -674,6 +739,7 @@ Example: --driver laxity'''
             # Only print header if we didn't already print it for other tools
             if not ((args.trace and SIDWINDER_INTEGRATION_AVAILABLE) or
                     (args.disasm and DISASSEMBLER_INTEGRATION_AVAILABLE) or
+                    (args.annotate and ASM_ANNOTATION_AVAILABLE) or
                     (args.audio_export and AUDIO_EXPORT_INTEGRATION_AVAILABLE) or
                     (args.memmap and MEMMAP_ANALYZER_AVAILABLE) or
                     (args.patterns and PATTERN_RECOGNIZER_AVAILABLE) or

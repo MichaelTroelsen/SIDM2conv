@@ -7,6 +7,165 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased] - 2026-01-01
+
+### Added - ASM Annotation Integration (Pipeline Step 8.7)
+
+**🎯 NEW: Comprehensive ASM annotation integrated into SID conversion pipeline**
+
+Integrated the standalone ASM annotation tool (`annotate_asm.py`) into the main SID to SF2 conversion pipeline as **Step 8.7**. Now you can generate richly annotated assembly analysis directly from the conversion command.
+
+**INTEGRATION DETAILS**:
+
+**New CLI Options**:
+```bash
+# Enable comprehensive annotation
+python scripts/sid_to_sf2.py input.sid output.sf2 --annotate
+
+# Choose output format
+python scripts/sid_to_sf2.py input.sid output.sf2 --annotate --annotate-format html
+python scripts/sid_to_sf2.py input.sid output.sf2 --annotate --annotate-format markdown
+python scripts/sid_to_sf2.py input.sid output.sf2 --annotate --annotate-format json
+```
+
+**Features Included**:
+- **Automatic disassembly**: Converts SID binary to assembly (Step 1)
+- **Comprehensive annotation**: Adds symbol tables, call graphs, loop analysis, patterns, documentation (Step 2)
+- **Multiple output formats**: text/html/markdown/json/csv/tsv
+- **Metadata preservation**: Extracts and includes SID title, author, init/play addresses
+- **Analysis directory output**: Generates files in `analysis/` subdirectory alongside SF2 output
+
+**What Gets Generated**:
+1. `{filename}_disasm.asm` - Intermediate disassembly (264KB for typical SID)
+2. `{filename}_annotated.{ext}` - Final annotated output (284KB for text, 63KB for HTML)
+
+**Analysis Features** (from annotate_asm.py):
+- **Symbol Table**: All memory addresses categorized (hardware, subroutines, unknowns)
+- **Call Graph**: Subroutine relationships and call chains
+- **Loop Analysis**: Detected loops with cycle counts and performance impact
+- **Register Lifecycle**: Track A/X/Y register usage across code sections
+- **Pattern Detection**: Identify common code patterns (table access, sequence parsing, etc.)
+- **Documentation Links**: Auto-link to SIDM2 documentation (SID registers, Laxity tables, etc.)
+
+**Integration Architecture**:
+
+**New Module**: `sidm2/annotation_wrapper.py`
+- Integration wrapper following existing pattern (like `disasm_wrapper.py`, `sidwinder_wrapper.py`)
+- Two-step process: disassemble → annotate
+- Returns detailed result dictionary with statistics
+
+**Pipeline Integration**:
+- **Step 8.7**: Runs after disassembly (Step 8.5) but before audio export (Step 16)
+- **Availability Flag**: `ASM_ANNOTATION_AVAILABLE` (added to `conversion_pipeline.py`)
+- **Optional Tool**: Only runs when `--annotate` flag is specified
+- **Graceful Degradation**: Falls back silently if dependencies missing
+
+**Output Example** (from verbose mode):
+```
+[Step 8.7] ASM annotation complete:
+  Annotated:  Byte_Bite_annotated.asm (283,851 bytes)
+  Format:     text
+  Title:      Byte Bite
+  Init addr:  $7FF8
+  Play addr:  $0000
+```
+
+**Tool Statistics Integration**:
+- Adds `ASM Annotator` entry to tool stats summary
+- Tracks: execution status, success/failure, duration, files generated
+- Reports 2 files generated (disasm + annotated output)
+
+**Implementation Details**:
+
+**Files Modified**:
+- `sidm2/conversion_pipeline.py` (+7 lines): Added `ASM_ANNOTATION_AVAILABLE` flag
+- `scripts/sid_to_sf2.py` (+56 lines): Added `--annotate` and `--annotate-format` CLI options + Step 8.7 integration logic
+
+**Files Created**:
+- `sidm2/annotation_wrapper.py` (+377 lines): Integration wrapper module
+
+**Dependencies**:
+- Requires `pyscript/annotate_asm.py` (standalone tool from Priority 3 features)
+- Requires `pyscript/disasm6502.py` (6502 disassembler)
+- Optional YAML support for config files (graceful fallback to defaults)
+
+**Testing Results**:
+- ✅ Text format: 283,851 bytes (comprehensive annotations)
+- ✅ HTML format: 63,488 bytes (browsable output)
+- ✅ Metadata extraction: Title, author, addresses correctly extracted
+- ✅ Integration: Works seamlessly with existing pipeline steps
+- ✅ Error handling: Graceful failures with informative messages
+
+**Relationship to Other Tools**:
+
+Tool Comparison:
+| Tool | Purpose | Output Size | Use Case |
+|------|---------|-------------|----------|
+| `quick_disasm.py` | Quick preview | ~5KB | Fast check of first 100 instructions |
+| `disasm_wrapper.py` | Full disassembly | ~264KB | Complete init/play routine disassembly |
+| `annotation_wrapper.py` | Comprehensive analysis | ~284KB | Educational documentation + debugging |
+
+**Use Cases**:
+1. **Debugging conversions**: Understand why conversion failed or produced wrong results
+2. **Learning 6502**: Study SID player internals with detailed annotations
+3. **Documentation**: Generate browseable HTML docs of player code
+4. **Research**: Analyze patterns in SID player implementations
+
+**Example Workflows**:
+
+Workflow 1: **Debug Low Accuracy**
+```bash
+# Convert with annotation to understand player structure
+python scripts/sid_to_sf2.py problematic.sid output.sf2 --annotate --annotate-format html
+
+# Open analysis/problematic_annotated.html in browser
+# Review symbol table, call graph, and loops to identify issues
+```
+
+Workflow 2: **Educational Documentation**
+```bash
+# Generate markdown docs for all SIDs in a collection
+for sid in collection/*.sid; do
+    python scripts/sid_to_sf2.py "$sid" "output/${sid%.sid}.sf2" \
+        --annotate --annotate-format markdown
+done
+
+# Markdown files generated in analysis/ subdirectory
+```
+
+Workflow 3: **Comprehensive Analysis**
+```bash
+# Full pipeline: trace + disasm + annotation + audio
+python scripts/sid_to_sf2.py music.sid output.sf2 \
+    --trace --disasm --annotate --audio-export
+
+# Generates:
+#   - analysis/music_trace.txt (SIDwinder trace)
+#   - analysis/music_init.asm (init routine disassembly)
+#   - analysis/music_play.asm (play routine disassembly)
+#   - analysis/music_annotated.asm (comprehensive annotation)
+#   - analysis/music.wav (reference audio)
+```
+
+**Future Enhancements**:
+- Configuration file support (`.annotation.yaml`) for per-project settings
+- Preset modes (minimal/educational/debug) via `--annotate-preset` flag
+- Integration with accuracy validation (annotate low-accuracy files automatically)
+- Batch annotation mode for entire SID collections
+
+**Related Documentation**:
+- Standalone tool: See CHANGELOG entry for `annotate_asm.py` (v3.0.1)
+- Configuration: See `pyscript/annotate_asm.py --init-config` for config template
+- Architecture: See `docs/ARCHITECTURE.md` for pipeline overview
+
+**Code Statistics**:
+- New integration wrapper: 377 lines (annotation_wrapper.py)
+- Pipeline modifications: 63 lines (conversion_pipeline.py + sid_to_sf2.py)
+- Total implementation: 440 lines
+- Test file output: 283KB annotated ASM (189 symbols, 100+ patterns detected)
+
+---
+
 ## [3.0.1] - 2025-12-27
 
 ### Added - ASM Auto-Annotation System
