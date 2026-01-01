@@ -42,7 +42,12 @@
 ; Accesses: SID chip registers
 ;------------------------------------------------------------------------------
 sf2_init:    ; Initialize SID chip    LDA #$00  ; Load Accumulator
-    STA $D418           ; Master volume off        ; Initialize all voice control registers    LDA #$00  ; Load Accumulator
+    STA $D418           ; Master volume off        ; Initialize all voice control registers;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; PATTERN DETECTED: Clear 3 memory locations
+; Type: Memory Clear
+; Addresses: $D404, $D40B, $D412
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    LDA #$00  ; Load Accumulator
     STA $D404           ; Voice 1 Control    STA $D40B           ; Voice 2 Control    STA $D412           ; Voice 3 Control        ; Call relocated Laxity init routine at $0E00    JSR $0E00           ; Laxity init        RTS  ; Return from Subroutine
 ; Padding to $0D81.align $0D81; Play routine ($0D81); Executes one frame of music;------------------------------------------------------------------------------
 ; Subroutine: Subroutine
@@ -52,7 +57,12 @@ sf2_init:    ; Initialize SID chip    LDA #$00  ; Load Accumulator
 ; Calls: $0EA1
 ;------------------------------------------------------------------------------
 sf2_play:    ; Call relocated Laxity play routine    ; Laxity play entry was originally at $10A1    ; After relocation to $0E00, it's at $0E00 + ($10A1 - $1000) = $0EA1    JSR $0EA1           ; Laxity play        RTS  ; Return from Subroutine
-; Padding to $0D84.align $0D84; Stop routine ($0D84); Stops music and silences SIDsf2_stop:    ; Silence all voices    LDA #$00  ; Load Accumulator
+; Padding to $0D84.align $0D84; Stop routine ($0D84); Stops music and silences SIDsf2_stop:    ; Silence all voices;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; PATTERN DETECTED: Clear 3 memory locations
+; Type: Memory Clear
+; Addresses: $D404, $D40B, $D412
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    LDA #$00  ; Load Accumulator
     STA $D404           ; Voice 1 Control    STA $D40B           ; Voice 2 Control    STA $D412           ; Voice 3 Control        ; Kill all oscillators    LDA #$00  ; Load Accumulator
     STA $D418           ; Master volume off        RTS  ; Return from Subroutine
 ; Fill to end of wrapper.align $0E00
