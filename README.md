@@ -641,9 +641,9 @@ Located in `tools/` directory (Windows binaries, optional fallbacks):
 ### Codebase
 
 - **Python Files**: ~37 active scripts
-- **Test Coverage**: 200+ tests across 15+ test files
+- **Test Coverage**: 233+ tests across 17+ test files
 - **Documentation**: 52+ markdown files (4,800+ lines of user guides)
-- **Lines of Code**: ~17,000 (Python + documentation)
+- **Lines of Code**: ~17,500 (Python + documentation + tests)
 
 ### Performance
 
@@ -655,7 +655,9 @@ Located in `tools/` directory (Windows binaries, optional fallbacks):
 
 ### Test Results
 
-- **Unit Tests**: 200+ tests, 100% pass rate
+- **Unit Tests**: 233+ tests, 100% pass rate
+- **Dashboard Tests**: 17 tests for validation dashboard v2.0
+- **Trace Tests**: 16 tests for SIDwinder HTML exporter
 - **Integration Tests**: 18 file validation suite, 100% success
 - **Real-world Validation**: 286 Laxity files, 100% conversion success
 - **Batch Testing**: 10/10 files, 100% automated validation success
