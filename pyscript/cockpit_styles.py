@@ -14,7 +14,7 @@ from typing import Tuple, Optional
 
 try:
     from PyQt6.QtGui import QColor, QIcon, QPainter, QPixmap
-    from PyQt6.QtCore import Qt, QSize
+    from PyQt6.QtCore import Qt, QSize, QPoint
 except ImportError:
     raise ImportError("PyQt6 is required for Cockpit Styles")
 
@@ -109,7 +109,7 @@ class IconGenerator:
             (margin, size - margin),
             (size - margin, size // 2)
         ]
-        painter.drawPolygon([QSize(x, y) for x, y in points])
+        painter.drawPolygon([QPoint(x, y) for x, y in points])
 
         painter.end()
         return pixmap

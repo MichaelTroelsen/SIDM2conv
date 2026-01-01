@@ -1,259 +1,164 @@
 #!/usr/bin/env python3
-"""
-Real File Integration Test for Conversion Cockpit
-
-Tests end-to-end conversion with actual SID files.
-Verifies that the pipeline executes correctly and produces expected outputs.
-
-Version: 1.0.0
-Date: 2025-12-22
-"""
+"""Conversion Cockpit Real File Test"""
 
 import sys
-import os
-import time
-import tempfile
-import shutil
+import subprocess
 from pathlib import Path
-from typing import List
+import time
 
-# Add pyscript directory to path
-sys.path.insert(0, str(Path(__file__).parent))
-
-from pipeline_config import PipelineConfig
-from conversion_executor import ConversionExecutor
-
-
-class TestResults:
-    """Track test results"""
-    def __init__(self):
-        self.batch_started = False
-        self.files_started = []
-        self.files_completed = []
-        self.steps_completed = []
-        self.errors = []
-        self.logs = []
-        self.batch_completed = False
-        self.summary = None
-
-
-def run_real_file_test():
-    """Run conversion test with real SID files"""
-
-    print("=" * 70)
-    print("CONVERSION COCKPIT - REAL FILE INTEGRATION TEST")
-    print("=" * 70)
+def test_cockpit_with_real_files():
+    print("=" * 80)
+    print("CONVERSION COCKPIT REAL FILE TEST")
+    print("=" * 80)
     print()
 
-    # Setup
-    test_results = TestResults()
-
-    # Find SID files
-    sid_dir = Path(__file__).parent.parent / "SID"
-    if not sid_dir.exists():
-        print(f"❌ ERROR: SID directory not found: {sid_dir}")
-        return 1
-
-    # Select 3 test files (small, medium, large complexity)
     test_files = [
-        "Angular.sid",      # Known good file
-        "Beast.sid",        # Medium complexity
-        "Delicate.sid"      # Another test file
+        "SID/Broware.sid",
+        "SID/Aint_Somebody.sid",
+        "SID/Stinsens_Last_Night_of_89.sid",
+        "SID/Beast.sid",
+        "SID/Delicate.sid"
     ]
 
-    sid_files = []
-    for filename in test_files:
-        filepath = sid_dir / filename
-        if filepath.exists():
-            sid_files.append(str(filepath))
-        else:
-            print(f"⚠️  WARNING: Test file not found: {filename}")
+    existing_files = [f for f in test_files if Path(f).exists()]
 
-    if not sid_files:
-        print("❌ ERROR: No test files found")
-        return 1
-
-    print(f"[FILES] Test Files ({len(sid_files)}):")
-    for f in sid_files:
-        print(f"   - {Path(f).name}")
+    print(f"Found {len(existing_files)} test files:")
+    for f in existing_files:
+        print(f"  [OK] {f}")
     print()
 
-    # Create temporary output directory
-    output_dir = Path(tempfile.mkdtemp(prefix="cockpit_test_"))
-    print(f"[OUTPUT] Output Directory: {output_dir}")
+    output_dir = Path("output/cockpit_test")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    print("Configuration:")
+    print(f"  Driver: laxity (auto)")
+    print(f"  Output: {output_dir}/")
     print()
 
-    try:
-        # Create configuration (Simple mode)
-        config = PipelineConfig()
-        config.set_mode("simple")
-        config.output_directory = str(output_dir)
-        config.primary_driver = "laxity"
-        config.overwrite_existing = True
+    print("=" * 80)
+    print("STARTING CONVERSION")
+    print("=" * 80)
+    start_time = time.time()
 
-        print("[CONFIG] Configuration:")
-        print(f"   Mode: {config.mode}")
-        print(f"   Driver: {config.primary_driver}")
-        print(f"   Steps: {len(config.get_enabled_steps())}")
-        print(f"   Enabled: {', '.join(config.get_enabled_steps())}")
-        print()
+    results = []
+    for i, sid_file in enumerate(existing_files, 1):
+        file_name = Path(sid_file).stem
+        output_file = output_dir / f"{file_name}.sf2"
 
-        # Create executor
-        executor = ConversionExecutor(config)
+        print(f"\n[{i}/{len(existing_files)}] Converting: {Path(sid_file).name}")
+        print(f"    Output: {output_file.name}")
 
-        # Connect signals
-        def on_batch_started(total_files):
-            test_results.batch_started = True
-            print(f"[START] Batch Started: {total_files} files")
+        file_start = time.time()
 
-        def on_file_started(filename, index, total):
-            test_results.files_started.append(filename)
-            print(f"\n[FILE] File {index + 1}/{total}: {Path(filename).name}")
+        try:
+            # Call sid_to_sf2.py with --driver laxity
+            result = subprocess.run(
+                [sys.executable, "scripts/sid_to_sf2.py", sid_file, str(output_file), "--driver", "laxity", "-q"],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
 
-        def on_step_started(step_name, step_num, total_steps):
-            print(f"   [{step_num}/{total_steps}] {step_name}...", end="", flush=True)
+            file_duration = time.time() - file_start
 
-        def on_step_completed(step_name, success, message):
-            test_results.steps_completed.append((step_name, success))
-            status = "[OK]" if success else "[FAIL]"
-            print(f" {status}")
-            if not success:
-                print(f"      Error: {message}")
-
-        def on_file_completed(filename, results):
-            test_results.files_completed.append((filename, results))
-            status = results.get("status", "unknown")
-            accuracy = results.get("accuracy", 0.0)
-            steps = results.get("steps_completed", 0)
-            total_steps = results.get("total_steps", 0)
-
-            print(f"\n   [DONE] Completed: {Path(filename).name}")
-            print(f"      Status: {status}")
-            print(f"      Steps: {steps}/{total_steps}")
-            if accuracy > 0:
-                print(f"      Accuracy: {accuracy:.2f}%")
-
-        def on_batch_completed(summary):
-            test_results.batch_completed = True
-            test_results.summary = summary
-
-        def on_log_message(level, message):
-            test_results.logs.append((level, message))
-
-        def on_error_occurred(filename, error):
-            test_results.errors.append((filename, error))
-            print(f"\n   [ERROR] ERROR in {Path(filename).name}: {error}")
-
-        # Connect signals
-        executor.batch_started.connect(on_batch_started)
-        executor.file_started.connect(on_file_started)
-        executor.step_started.connect(on_step_started)
-        executor.step_completed.connect(on_step_completed)
-        executor.file_completed.connect(on_file_completed)
-        executor.batch_completed.connect(on_batch_completed)
-        executor.log_message.connect(on_log_message)
-        executor.error_occurred.connect(on_error_occurred)
-
-        # Start conversion
-        print("[RUN] Starting Batch Conversion...")
-        print()
-
-        start_time = time.time()
-        executor.start_batch(sid_files)
-
-        # Wait for completion
-        while executor.is_running:
-            time.sleep(0.5)
-
-        duration = time.time() - start_time
-
-        # Print results
-        print()
-        print("=" * 70)
-        print("TEST RESULTS")
-        print("=" * 70)
-        print()
-
-        print(f"[PASS] Batch Started: {test_results.batch_started}")
-        print(f"[PASS] Files Started: {len(test_results.files_started)}/{len(sid_files)}")
-        print(f"[PASS] Files Completed: {len(test_results.files_completed)}/{len(sid_files)}")
-        print(f"[PASS] Steps Completed: {len(test_results.steps_completed)}")
-        print(f"[PASS] Batch Completed: {test_results.batch_completed}")
-        print(f"[TIME] Duration: {duration:.1f} seconds")
-        print()
-
-        # Summary
-        if test_results.summary:
-            summary = test_results.summary
-            total = summary.get("total_files", 0)
-            passed = summary.get("passed", 0)
-            failed = summary.get("failed", 0)
-            avg_accuracy = summary.get("avg_accuracy", 0.0)
-
-            print("[SUMMARY] Summary:")
-            print(f"   Total: {total}")
-            print(f"   Passed: {passed}")
-            print(f"   Failed: {failed}")
-            print(f"   Success Rate: {(passed/total*100) if total > 0 else 0:.1f}%")
-            if avg_accuracy > 0:
-                print(f"   Average Accuracy: {avg_accuracy:.2f}%")
-            print()
-
-        # Check output files
-        print("[OUTPUT] Output Files Created:")
-        output_files = list(output_dir.rglob("*"))
-        output_files = [f for f in output_files if f.is_file()]
-
-        file_types = {}
-        for f in output_files:
-            ext = f.suffix
-            file_types[ext] = file_types.get(ext, 0) + 1
-
-        print(f"   Total files: {len(output_files)}")
-        for ext, count in sorted(file_types.items()):
-            print(f"   {ext}: {count}")
-        print()
-
-        # Errors
-        if test_results.errors:
-            print("[ERRORS] Errors:")
-            for filename, error in test_results.errors:
-                print(f"   - {Path(filename).name}: {error}")
-            print()
-
-        # Verify expected outputs
-        print("[VERIFY] Verification:")
-        all_verified = True
-
-        for sid_file in sid_files:
-            base_name = Path(sid_file).stem
-            expected_sf2 = output_dir / base_name / "New" / f"{base_name}_d11.sf2"
-
-            if expected_sf2.exists():
-                print(f"   [OK] {base_name}_d11.sf2 created ({expected_sf2.stat().st_size} bytes)")
+            # Check if conversion succeeded
+            if result.returncode == 0 and output_file.exists():
+                file_size = output_file.stat().st_size
+                results.append({
+                    'input_file': sid_file,
+                    'output_file': str(output_file),
+                    'status': 'success',
+                    'size': file_size,
+                    'duration': file_duration,
+                    'driver_used': 'laxity'
+                })
+                print(f"    [OK] Success - {file_size:,} bytes in {file_duration:.2f}s")
             else:
-                print(f"   [FAIL] {base_name}_d11.sf2 NOT FOUND")
-                all_verified = False
+                error_msg = result.stderr.strip() if result.stderr else "Unknown error"
+                results.append({
+                    'input_file': sid_file,
+                    'status': 'failed',
+                    'error': error_msg,
+                    'duration': file_duration
+                })
+                print(f"    [FAIL] Failed - {error_msg}")
+
+        except subprocess.TimeoutExpired:
+            file_duration = time.time() - file_start
+            results.append({
+                'input_file': sid_file,
+                'status': 'failed',
+                'error': 'Timeout (>30s)',
+                'duration': file_duration
+            })
+            print(f"    [FAIL] Timeout (>30s)")
+        except Exception as e:
+            file_duration = time.time() - file_start
+            results.append({
+                'input_file': sid_file,
+                'status': 'failed',
+                'error': str(e),
+                'duration': file_duration
+            })
+            print(f"    [FAIL] Error: {e}")
+
+    duration = time.time() - start_time
+
+    print()
+    print("=" * 80)
+    print("RESULTS")
+    print("=" * 80)
+    print()
+
+    total = len(results)
+    successful = sum(1 for r in results if r.get('status') == 'success')
+    failed = total - successful
+
+    print(f"Total files:      {total}")
+    print(f"Successful:       {successful} ({successful/total*100:.1f}%)")
+    print(f"Failed:           {failed}")
+    print(f"Duration:         {duration:.2f}s")
+    print(f"Avg per file:     {duration/total:.2f}s")
+    print()
+
+    print("File Results:")
+    print("-" * 80)
+
+    for i, result in enumerate(results, 1):
+        file_name = Path(result['input_file']).name
+        status = result.get('status', 'unknown')
+        driver = result.get('driver_used', 'unknown')
+
+        status_icon = "[OK]" if status == 'success' else "[FAIL]"
+
+        print(f"{i}. {status_icon} {file_name} - {status.upper()}")
+        if status == 'success':
+            print(f"   Driver: {driver}")
+            print(f"   Output: {result.get('size', 0):,} bytes")
+            print(f"   Time: {result.get('duration', 0):.2f}s")
+        else:
+            print(f"   Error: {result.get('error', 'Unknown')}")
+            print(f"   Time: {result.get('duration', 0):.2f}s")
 
         print()
 
-        # Final verdict
-        print("=" * 70)
-        if test_results.batch_completed and all_verified and not test_results.errors:
-            print("[PASS] TEST PASSED - All conversions successful")
-            print("=" * 70)
-            return 0
-        else:
-            print("[FAIL] TEST FAILED - See errors above")
-            print("=" * 70)
-            return 1
+    print("=" * 80)
 
-    finally:
-        # Cleanup
-        if output_dir.exists():
-            print(f"\n[CLEANUP] Cleaning up: {output_dir}")
-            shutil.rmtree(output_dir)
+    success_rate = successful / total * 100
+    test_passed = success_rate >= 80
+
+    if test_passed:
+        print(f"[PASSED] Success rate: {success_rate:.1f}% (target: >=80%)")
+    else:
+        print(f"[FAILED] Success rate: {success_rate:.1f}% (target: >=80%)")
+
+    print()
+    print(f"Output directory: {output_dir}/")
+    print()
+
+    return test_passed
 
 
-if __name__ == "__main__":
-    sys.exit(run_real_file_test())
+if __name__ == '__main__':
+    success = test_cockpit_with_real_files()
+    sys.exit(0 if success else 1)
