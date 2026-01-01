@@ -9,6 +9,166 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-01-01
 
+### Added - SIDwinder HTML Trace Visualization
+
+**✅ COMPLETED: Interactive frame-by-frame trace analysis**
+
+Implemented interactive HTML trace exporter for SIDwinder with timeline navigation and real-time register state display.
+
+**Features**:
+- **Interactive Timeline**:
+  - Frame slider with drag navigation (0 to N-1 frames)
+  - Timeline bars showing register write activity
+  - Click bars to jump to specific frames
+  - Visual write count per frame
+
+- **Frame Viewer**:
+  - Current frame's register writes displayed
+  - Color-coded by register group (Voice 1/2/3, Filter)
+  - Shows address ($D4XX) and value ($XX)
+  - Hover for full register names
+
+- **Register States**:
+  - Live SID register values (29 registers)
+  - Organized in 4 groups (Voice 1, Voice 2, Voice 3, Filter)
+  - Animated yellow highlight on register change
+  - Real-time update as frames change
+
+- **Professional Styling**:
+  - Dark VS Code theme using HTMLComponents
+  - Color-coded register groups (red/blue/green/orange borders)
+  - Responsive timeline (auto-scales to ~500 bars)
+  - Self-contained HTML (works offline)
+
+**Components Created**:
+- `pyscript/sidwinder_html_exporter.py` (625 lines) - Interactive trace exporter
+- `docs/guides/SIDWINDER_HTML_TRACE_GUIDE.md` (470 lines) - Complete user guide
+
+**Register Groups**:
+- **Voice 1**: $D400-$D406 (7 registers) - Red border
+- **Voice 2**: $D407-$D40D (7 registers) - Blue border
+- **Voice 3**: $D40E-$D414 (7 registers) - Green border
+- **Filter**: $D415-$D418 (4 registers) - Orange border
+
+**Trace Sections**:
+1. Overview - SID info, frames, cycles
+2. Statistics - 6 metric cards (total/init/avg/max/min writes, cycles)
+3. Timeline - Interactive slider + activity visualization
+4. Frame Viewer - Current frame's register writes
+5. Register States - Live register values with highlighting
+
+**Usage**:
+```bash
+# Command line
+python pyscript/sidwinder_html_exporter.py input.sid -o trace.html -f 300
+
+# From Python
+from pyscript.sidwinder_html_exporter import export_trace_to_html
+from pyscript.sidtracer import SIDTracer
+tracer = SIDTracer("input.sid")
+trace_data = tracer.trace(frames=300)
+export_trace_to_html(trace_data, "trace.html", tracer.header.name)
+```
+
+**Testing**:
+- ✅ Beast.sid (100 frames) → 104,833 byte HTML
+- ✅ All interactive features working
+- ✅ Timeline navigation smooth
+- ✅ Register updates correct
+
+**Use Cases**:
+- Debug music player code
+- Analyze music patterns
+- Compare player implementations
+- Performance analysis
+- Learn SID programming
+
+**Impact**:
+- ✅ Revolutionary SID debugging tool
+- ✅ Frame-by-frame register analysis
+- ✅ Perfect for understanding music code
+- ✅ Easy to share (single HTML file)
+- ✅ Educational resource for SID programming
+
+**Git Commit**: `bf96377` - "feat: Add SIDwinder HTML trace exporter with interactive visualization (Option 2)"
+
+---
+
+### Added - Improved Validation Dashboard (v2.0.0)
+
+**✅ COMPLETED: Professional dashboard with enhanced features**
+
+Improved validation dashboard with HTMLComponents styling, enhanced search, and better user experience.
+
+**Features**:
+- **Professional Styling**:
+  - Dark VS Code theme using HTMLComponents library
+  - Consistent styling with other SIDM2 HTML exports
+  - Better mobile responsiveness
+  - Improved color scheme and accessibility
+
+- **Enhanced Search**:
+  - Basic text search (file names, status, any text)
+  - Advanced accuracy range filters (`>90`, `<70`)
+  - Real-time filtering
+  - Case-insensitive matching
+
+- **Interactive Elements**:
+  - Collapsible sections for all data
+  - Smooth scrolling navigation with sidebar
+  - Color-coded accuracy bars (green/orange/red)
+  - Hover highlighting on table rows
+
+- **Improved Charts**:
+  - Better Chart.js integration
+  - Dark theme compatible colors
+  - Trend visualization up to 20 runs
+  - Hover tooltips with exact values
+
+**Components Created/Modified**:
+- `scripts/validation/dashboard_v2.py` (363 lines) - New dashboard generator
+- `scripts/generate_dashboard.py` (modified) - Uses V2 by default
+- `docs/guides/VALIDATION_DASHBOARD_GUIDE.md` (380 lines) - Complete user guide
+
+**Dashboard Sections**:
+1. Overview - Run info with navigation sidebar
+2. Statistics - 6 metric cards (total, passed, failed, pass rate, accuracies)
+3. Trends - Line chart showing accuracy over runs
+4. Results - Searchable table with visual accuracy bars
+
+**Search Examples**:
+```
+"beast"    → Files with "beast" in name
+"fail"     → Only failed files
+">90"      → Files with any accuracy > 90%
+"<70"      → Files with any accuracy < 70%
+```
+
+**Improvements vs v1.0.0**:
+- ✅ Professional dark theme
+- ✅ HTMLComponents integration
+- ✅ Enhanced search functionality
+- ✅ Better navigation
+- ✅ Improved accessibility
+- ✅ Faster rendering
+- ✅ Mobile-friendly
+
+**Testing**:
+- ✅ Generated from existing validation database
+- ✅ All sections render correctly
+- ✅ Search functionality working
+- ✅ Chart.js integration functional
+
+**Impact**:
+- ✅ Better validation result analysis
+- ✅ Consistent UI across SIDM2 tools
+- ✅ Enhanced productivity with search filters
+- ✅ Professional presentation for reports
+
+**Git Commit**: `6ed3d78` - "feat: Add improved validation dashboard with HTMLComponents (Option 1)"
+
+---
+
 ### Added - Conversion Cockpit Batch HTML Reports (CC-4)
 
 **✅ COMPLETED: Professional HTML reports for batch conversion results**
