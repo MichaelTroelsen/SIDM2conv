@@ -24,6 +24,13 @@ try:
 except ImportError:
     HTML_EXPORT_AVAILABLE = False
 
+# Import YAML for config files
+try:
+    import yaml
+    YAML_AVAILABLE = True
+except ImportError:
+    YAML_AVAILABLE = False
+
 # Documentation mapping: Address ranges and topics to documentation files
 DOCUMENTATION_MAP = {
     # Memory address ranges to documentation
@@ -175,6 +182,246 @@ DOCUMENTATION_MAP = {
         },
     }
 }
+
+# Default configuration
+DEFAULT_CONFIG = {
+    'annotation': {
+        'features': {
+            'inline_comments': True,
+            'opcode_descriptions': True,
+            'cycle_counts': True,
+            'register_tracking': True,
+            'pattern_detection': True,
+            'dead_code_warnings': True,
+            'documentation_links': True,
+        },
+        'headers': {
+            'memory_map': True,
+            'sid_registers': True,
+            'laxity_tables': True,
+            'symbol_table': True,
+            'call_graph': True,
+            'loop_analysis': True,
+            'register_analysis': True,
+            'documentation_xrefs': True,
+        },
+        'analysis': {
+            'detect_subroutines': True,
+            'detect_data_sections': True,
+            'detect_loops': True,
+            'detect_patterns': True,
+            'max_pattern_types': 10,
+        },
+        'output': {
+            'default_format': 'text',
+            'max_line_length': 100,
+            'show_cycle_percentages': True,
+            'collapse_large_sections': False,
+            'max_symbols_in_table': 50,
+            'max_loops_in_analysis': 20,
+        },
+        'documentation': {
+            'auto_link': True,
+            'check_file_exists': False,
+            'max_docs_per_address': 2,
+        },
+    }
+}
+
+# Configuration presets
+CONFIG_PRESETS = {
+    'minimal': {
+        'annotation': {
+            'features': {
+                'inline_comments': True,
+                'opcode_descriptions': True,
+                'cycle_counts': False,
+                'register_tracking': False,
+                'pattern_detection': False,
+                'dead_code_warnings': False,
+                'documentation_links': False,
+            },
+            'headers': {
+                'memory_map': True,
+                'sid_registers': True,
+                'laxity_tables': False,
+                'symbol_table': False,
+                'call_graph': False,
+                'loop_analysis': False,
+                'register_analysis': False,
+                'documentation_xrefs': False,
+            },
+        }
+    },
+    'educational': {
+        'annotation': {
+            'features': {
+                'inline_comments': True,
+                'opcode_descriptions': True,
+                'cycle_counts': True,
+                'register_tracking': True,
+                'pattern_detection': True,
+                'dead_code_warnings': True,
+                'documentation_links': True,
+            },
+            'headers': {
+                'memory_map': True,
+                'sid_registers': True,
+                'laxity_tables': True,
+                'symbol_table': True,
+                'call_graph': True,
+                'loop_analysis': True,
+                'register_analysis': True,
+                'documentation_xrefs': True,
+            },
+            'output': {
+                'show_cycle_percentages': True,
+            },
+        }
+    },
+    'debug': {
+        'annotation': {
+            'features': {
+                'inline_comments': True,
+                'opcode_descriptions': True,
+                'cycle_counts': True,
+                'register_tracking': True,
+                'pattern_detection': True,
+                'dead_code_warnings': True,
+                'documentation_links': True,
+            },
+            'output': {
+                'max_symbols_in_table': 200,
+                'max_loops_in_analysis': 100,
+            },
+        }
+    },
+}
+
+
+def load_config_file(config_path: Path = None) -> dict:
+    """Load configuration from YAML or JSON file"""
+    if config_path is None:
+        # Search for config in current dir and parents
+        current = Path.cwd()
+        for _ in range(5):  # Search up to 5 levels
+            for config_name in ['.annotation.yaml', '.annotation.yml', '.annotation.json']:
+                config_file = current / config_name
+                if config_file.exists():
+                    config_path = config_file
+                    break
+            if config_path:
+                break
+            if current.parent == current:  # Reached root
+                break
+            current = current.parent
+
+    if not config_path:
+        return DEFAULT_CONFIG.copy()
+
+    if not config_path.exists():
+        print(f"Warning: Config file not found: {config_path}")
+        return DEFAULT_CONFIG.copy()
+
+    # Load config file
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            if config_path.suffix in ['.yaml', '.yml']:
+                if not YAML_AVAILABLE:
+                    print("Warning: PyYAML not installed, cannot load YAML config")
+                    return DEFAULT_CONFIG.copy()
+                config = yaml.safe_load(f)
+            elif config_path.suffix == '.json':
+                config = json.load(f)
+            else:
+                print(f"Warning: Unknown config format: {config_path.suffix}")
+                return DEFAULT_CONFIG.copy()
+
+        # Merge with defaults
+        merged = merge_configs(DEFAULT_CONFIG.copy(), config)
+        print(f"Loaded config: {config_path}")
+        return merged
+
+    except Exception as e:
+        print(f"Warning: Error loading config: {e}")
+        return DEFAULT_CONFIG.copy()
+
+
+def merge_configs(base: dict, override: dict) -> dict:
+    """Deep merge two config dictionaries"""
+    result = base.copy()
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = merge_configs(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def load_preset(preset_name: str) -> dict:
+    """Load a configuration preset"""
+    if preset_name not in CONFIG_PRESETS:
+        print(f"Warning: Unknown preset '{preset_name}', using default")
+        return DEFAULT_CONFIG.copy()
+
+    preset = CONFIG_PRESETS[preset_name]
+    return merge_configs(DEFAULT_CONFIG.copy(), preset)
+
+
+def generate_default_config() -> str:
+    """Generate default configuration file content (YAML format)"""
+    yaml_content = """# ASM Annotation Configuration
+# Generated default configuration
+
+annotation:
+  # Features to enable/disable
+  features:
+    inline_comments: true      # Add inline comments to instructions
+    opcode_descriptions: true  # Describe what opcodes do
+    cycle_counts: true         # Count CPU cycles
+    register_tracking: true    # Track register usage
+    pattern_detection: true    # Detect code patterns
+    dead_code_warnings: true   # Warn about dead code
+    documentation_links: true  # Link to documentation
+
+  # Header sections to include
+  headers:
+    memory_map: true           # Memory layout
+    sid_registers: true        # SID register reference
+    laxity_tables: true        # Laxity table addresses
+    symbol_table: true         # Symbol table
+    call_graph: true           # Call graph
+    loop_analysis: true        # Loop analysis
+    register_analysis: true    # Register lifecycle analysis
+    documentation_xrefs: true  # Documentation cross-references
+
+  # Analysis options
+  analysis:
+    detect_subroutines: true   # Detect subroutines
+    detect_data_sections: true # Detect data vs code
+    detect_loops: true         # Detect loops
+    detect_patterns: true      # Detect patterns
+    max_pattern_types: 10      # Maximum pattern types to detect
+
+  # Output preferences
+  output:
+    default_format: text       # Default: text, json, markdown, html, csv, tsv
+    max_line_length: 100       # Maximum line length
+    show_cycle_percentages: true  # Show cycle % of frame
+    collapse_large_sections: false  # Collapse large sections
+    max_symbols_in_table: 50   # Max symbols to show in table
+    max_loops_in_analysis: 20  # Max loops to show in analysis
+
+  # Documentation options
+  documentation:
+    auto_link: true            # Auto-link to documentation
+    check_file_exists: false   # Check if docs exist
+    max_docs_per_address: 2    # Max docs to show per address
+
+# Presets: minimal, educational, debug
+"""
+    return yaml_content
+
 
 # Common 6502 opcodes with descriptions
 OPCODES = {
@@ -3842,9 +4089,14 @@ def export_to_tsv(
 
 
 def main():
+    # Check for special flags first
+    if '--init-config' in sys.argv:
+        print(generate_default_config())
+        return 0
+
     if len(sys.argv) < 2:
-        print("Usage: python annotate_asm.py <input.asm> [output] [--format FORMAT]")
-        print("   or: python annotate_asm.py <directory> [--format FORMAT]")
+        print("Usage: python annotate_asm.py <input.asm> [output] [OPTIONS]")
+        print("   or: python annotate_asm.py <directory> [OPTIONS]")
         print("")
         print("Formats:")
         print("  text     - Annotated ASM text (default)")
@@ -3854,21 +4106,47 @@ def main():
         print("  csv      - Comma-separated values (diff-friendly, version control)")
         print("  tsv      - Tab-separated values (diff-friendly, version control)")
         print("")
+        print("Options:")
+        print("  --format FORMAT      Output format (text, json, markdown, html, csv, tsv)")
+        print("  --config PATH        Load configuration from file (.yaml or .json)")
+        print("  --preset NAME        Use preset (minimal, educational, debug)")
+        print("  --init-config        Generate default configuration file")
+        print("")
         print("Examples:")
         print("  python annotate_asm.py input.asm                           # Text output")
         print("  python annotate_asm.py input.asm output.json --format json")
-        print("  python annotate_asm.py input.asm output.md --format markdown")
         print("  python annotate_asm.py input.asm output.html --format html")
-        print("  python annotate_asm.py input.asm output.csv --format csv   # Diff-friendly")
-        print("  python annotate_asm.py input.asm output.tsv --format tsv   # Tab-separated")
+        print("  python annotate_asm.py input.asm --preset minimal          # Minimal output")
+        print("  python annotate_asm.py input.asm --config my.yaml          # Custom config")
+        print("  python annotate_asm.py --init-config > .annotation.yaml    # Generate config")
         return 1
 
     # Parse arguments
     input_path = Path(sys.argv[1])
     output_format = 'text'  # default
     output_path = None
+    config = None
 
-    # Check for --format argument
+    # Load configuration
+    if '--preset' in sys.argv:
+        preset_index = sys.argv.index('--preset')
+        if preset_index + 1 < len(sys.argv):
+            preset_name = sys.argv[preset_index + 1]
+            config = load_preset(preset_name)
+    elif '--config' in sys.argv:
+        config_index = sys.argv.index('--config')
+        if config_index + 1 < len(sys.argv):
+            config_path = Path(sys.argv[config_index + 1])
+            config = load_config_file(config_path)
+    else:
+        # Try to auto-load config from current directory or parents
+        config = load_config_file()
+
+    # Use default config if none loaded
+    if config is None:
+        config = DEFAULT_CONFIG.copy()
+
+    # Check for --format argument (overrides config)
     if '--format' in sys.argv:
         format_index = sys.argv.index('--format')
         if format_index + 1 < len(sys.argv):
@@ -3876,6 +4154,9 @@ def main():
             if output_format not in ['text', 'json', 'markdown', 'html', 'csv', 'tsv']:
                 print(f"Error: Invalid format '{output_format}'. Use: text, json, markdown, html, csv, or tsv")
                 return 1
+    else:
+        # Use format from config if not specified on command line
+        output_format = config.get('annotation', {}).get('output', {}).get('default_format', 'text')
 
     # Determine output path
     if len(sys.argv) > 2 and not sys.argv[2].startswith('--'):

@@ -2123,7 +2123,281 @@ Q: "Where are SF2 instrument tables located?"
 - `pyscript/annotate_asm.py` (lines 3164-3168 for integration)
 
 **Remaining Priority 3 Features**:
-- Configuration system (YAML/JSON config files)
+- ~~Configuration system (YAML/JSON config files)~~ ✅ COMPLETE
+
+🎉 **ALL PRIORITY 3 FEATURES NOW COMPLETE!** 🎉
+
+#### Enhanced - Configuration System (2026-01-01)
+
+**⚙️ FINAL PRIORITY 3 FEATURE: YAML/JSON configuration files for customizable annotation**
+
+Implemented Priority 3 improvement #3.5 from `docs/ASM_ANNOTATION_IMPROVEMENTS.md`: Configuration system with YAML/JSON support, presets, and auto-loading.
+
+🎊 **THIS COMPLETES THE ENTIRE PRIORITY 3 ROADMAP!** 🎊
+
+**NEW FEATURE**: Configuration files and presets for customizing annotation behavior
+
+**CONFIGURATION FILE SUPPORT**:
+- **YAML**: `.annotation.yaml` or `.annotation.yml`
+- **JSON**: `.annotation.json`
+- **Auto-loading**: Searches current directory and up to 5 parent directories
+- **Deep merging**: Config values override defaults while preserving unset values
+
+**CLI OPTIONS**:
+```bash
+# Generate default config
+python pyscript/annotate_asm.py --init-config > .annotation.yaml
+
+# Use custom config file
+python pyscript/annotate_asm.py input.asm --config my_config.yaml
+
+# Use preset
+python pyscript/annotate_asm.py input.asm --preset minimal
+
+# Override format from config
+python pyscript/annotate_asm.py input.asm --format html  # Overrides config
+```
+
+**CONFIGURATION STRUCTURE**:
+
+```yaml
+annotation:
+  # Features to enable/disable
+  features:
+    inline_comments: true      # Add inline comments to instructions
+    opcode_descriptions: true  # Describe what opcodes do
+    cycle_counts: true         # Count CPU cycles
+    register_tracking: true    # Track register usage
+    pattern_detection: true    # Detect code patterns
+    dead_code_warnings: true   # Warn about dead code
+    documentation_links: true  # Link to documentation
+
+  # Header sections to include
+  headers:
+    memory_map: true           # Memory layout
+    sid_registers: true        # SID register reference
+    laxity_tables: true        # Laxity table addresses
+    symbol_table: true         # Symbol table
+    call_graph: true           # Call graph
+    loop_analysis: true        # Loop analysis
+    register_analysis: true    # Register lifecycle analysis
+    documentation_xrefs: true  # Documentation cross-references
+
+  # Analysis options
+  analysis:
+    detect_subroutines: true   # Detect subroutines
+    detect_data_sections: true # Detect data vs code
+    detect_loops: true         # Detect loops
+    detect_patterns: true      # Detect patterns
+    max_pattern_types: 10      # Maximum pattern types
+
+  # Output preferences
+  output:
+    default_format: text       # text, json, markdown, html, csv, tsv
+    max_line_length: 100       # Maximum line length
+    show_cycle_percentages: true  # Show cycle % of frame
+    collapse_large_sections: false  # Collapse large sections
+    max_symbols_in_table: 50   # Max symbols to show
+    max_loops_in_analysis: 20  # Max loops to show
+
+  # Documentation options
+  documentation:
+    auto_link: true            # Auto-link to documentation
+    check_file_exists: false   # Check if docs exist
+    max_docs_per_address: 2    # Max docs per address
+```
+
+**BUILT-IN PRESETS**:
+
+**1. Minimal** (--preset minimal):
+- Basic inline comments and opcode descriptions
+- Memory map and SID registers only
+- No cycle counting, patterns, or register tracking
+- Fast, lightweight output
+
+**2. Educational** (--preset educational):
+- All features enabled
+- All header sections included
+- Maximum detail for learning
+- Default configuration (same as standard)
+
+**3. Debug** (--preset debug):
+- All features enabled
+- Increased limits (200 symbols, 100 loops)
+- Maximum detail for debugging
+- Useful for deep analysis
+
+**FEATURES**:
+
+**1. Auto-Loading**:
+- Searches for `.annotation.yaml`, `.annotation.yml`, `.annotation.json`
+- Starts in current directory
+- Searches up to 5 parent directories
+- Uses first config found
+- Falls back to defaults if none found
+
+**2. Deep Merging**:
+- Config values override defaults
+- Unset values inherit from defaults
+- Allows partial configs (only specify what you want to change)
+
+**3. CLI Overrides**:
+- Command-line flags override config values
+- `--format` overrides `output.default_format`
+- `--preset` loads preset then merges
+- `--config` loads specific file
+
+**4. Config Generation**:
+- `--init-config` generates default YAML config
+- Includes all options with comments
+- Can redirect to file: `> .annotation.yaml`
+- Ready to customize
+
+**IMPLEMENTATION**:
+
+**Default Config** (44 lines):
+```python
+DEFAULT_CONFIG = {
+    'annotation': {
+        'features': { ... },
+        'headers': { ... },
+        'analysis': { ... },
+        'output': { ... },
+        'documentation': { ... },
+    }
+}
+```
+
+**Presets** (68 lines):
+```python
+CONFIG_PRESETS = {
+    'minimal': { ... },
+    'educational': { ... },
+    'debug': { ... },
+}
+```
+
+**Loading Functions** (123 lines):
+```python
+def load_config_file(config_path=None) -> dict:
+    """Load YAML or JSON config with auto-search"""
+
+def merge_configs(base, override) -> dict:
+    """Deep merge two config dictionaries"""
+
+def load_preset(preset_name) -> dict:
+    """Load a configuration preset"""
+
+def generate_default_config() -> str:
+    """Generate default YAML config"""
+```
+
+**Integration** (38 lines in main()):
+- Check for `--init-config` first (special case)
+- Load preset or config file
+- Auto-load if no explicit config
+- Use format from config if not specified on CLI
+- Command-line args override config
+
+**REAL-WORLD USAGE EXAMPLES**:
+
+**Scenario 1: Team Configuration**
+```bash
+# Create team config
+python pyscript/annotate_asm.py --init-config > .annotation.yaml
+
+# Edit to team preferences:
+# - default_format: html
+# - max_symbols_in_table: 100
+
+# Commit to repository
+git add .annotation.yaml
+git commit -m "Add team annotation config"
+
+# Team members automatically use team config
+python pyscript/annotate_asm.py input.asm  # Uses team config!
+```
+
+**Scenario 2: Different Projects**
+```
+project-a/.annotation.yaml    # Minimal config for quick builds
+project-b/.annotation.yaml    # Full config for educational docs
+project-c/.annotation.yaml    # Debug config for deep analysis
+
+# Config auto-loaded based on current directory!
+cd project-a && python annotate_asm.py input.asm  # Uses project-a config
+cd project-b && python annotate_asm.py input.asm  # Uses project-b config
+```
+
+**Scenario 3: Quick Overrides**
+```bash
+# Use minimal preset for quick check
+python pyscript/annotate_asm.py input.asm --preset minimal
+
+# Use config but override format
+python pyscript/annotate_asm.py input.asm --config full.yaml --format csv
+```
+
+**CODE STATISTICS**:
+- **+44 lines**: DEFAULT_CONFIG dictionary
+- **+68 lines**: CONFIG_PRESETS dictionary
+- **+123 lines**: Config loading functions (4 functions)
+- **+50 lines**: YAML template in generate_default_config()
+- **+38 lines**: Integration in main()
+- **+6 lines**: YAML import
+- **Total: +329 lines**
+
+**TESTING RESULTS**:
+- **--init-config**: Generates valid YAML with all options
+- **--preset minimal**: Loads minimal preset successfully
+- **--preset educational**: Loads educational preset
+- **--preset debug**: Loads debug preset with increased limits
+- **Auto-loading**: Searches parent directories correctly
+- **Deep merging**: Partial configs work as expected
+
+**BENEFITS**:
+- **Customizable**: Fine-grained control over all features
+- **Team-friendly**: Share configs via version control
+- **Project-specific**: Different configs for different projects
+- **Presets**: Quick access to common configurations
+- **Auto-loading**: No need to specify config every time
+- **Flexible**: CLI overrides for one-off changes
+- **Self-documenting**: Generated config includes comments
+
+**LIMITATIONS**:
+- **Requires PyYAML**: YAML support needs PyYAML package (graceful fallback to JSON)
+- **Static presets**: Presets are hardcoded (not user-extendable)
+- **No validation**: Config values aren't validated (invalid values may cause errors)
+
+**FUTURE ENHANCEMENTS**:
+- Schema validation with helpful error messages
+- User-defined presets in config file
+- Environment variable support
+- Config inheritance (extend another config)
+- Per-file overrides in config
+
+**Code Location**:
+- `pyscript/annotate_asm.py` (lines 27-32 for YAML import)
+- `pyscript/annotate_asm.py` (lines 186-423 for config system)
+- `pyscript/annotate_asm.py` (lines 4091-4159 for main() integration)
+
+🏆 **MILESTONE ACHIEVED: ALL PRIORITY 3 FEATURES COMPLETE!** 🏆
+
+**Priority 2 (5/5 complete)**:
+- ✅ Pattern recognition
+- ✅ Symbol table generation
+- ✅ CPU cycle counting
+- ✅ Control flow visualization
+- ✅ Enhanced register usage tracking
+
+**Priority 3 (5/5 complete)**:
+- ✅ Multiple output formats (6 formats)
+- ✅ Interactive HTML output
+- ✅ Diff-friendly CSV/TSV output
+- ✅ Documentation integration
+- ✅ **Configuration system** ← FINAL FEATURE!
+
+The ASM annotation system is now **feature-complete** with all roadmap items implemented!
 
 ### Verified - Laxity Accuracy Confirmation
 
