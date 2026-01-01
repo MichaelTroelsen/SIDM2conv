@@ -231,16 +231,18 @@ class TestLaxityInjection(unittest.TestCase):
         self.writer.output = bytearray(b'\x00' * 8000)
         self.writer.output[0:2] = struct.pack('<H', 0x1000)
         # Set old pointer value that should be patched
-        self.writer.output[0x02C3] = 0x83
-        self.writer.output[0x02C4] = 0x1A
+        # Using first patch from 40-patch list: (0x01C6, 0xD8, 0x16, 0x40, 0x19)
+        # This patches $16D8 -> $1940
+        self.writer.output[0x01C6] = 0xD8  # Old low byte
+        self.writer.output[0x01C7] = 0x16  # Old high byte
 
         self.data.orderlists = [[], [], []]
         self.data.sequences = []
         self.writer._inject_laxity_music_data()
 
-        # Verify patch was applied (0x1A83 -> 0x1A81)
-        self.assertEqual(self.writer.output[0x02C3], 0x81)
-        self.assertEqual(self.writer.output[0x02C4], 0x1A)
+        # Verify patch was applied (0x16D8 -> 0x1940)
+        self.assertEqual(self.writer.output[0x01C6], 0x40)  # New low byte
+        self.assertEqual(self.writer.output[0x01C7], 0x19)  # New high byte
 
     def test_inject_laxity_max_3_orderlists(self):
         """Test that only first 3 orderlists are injected."""
