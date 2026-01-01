@@ -9,6 +9,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-01-01
 
+### Added - Conversion Cockpit Batch HTML Reports (CC-4)
+
+**✅ COMPLETED: Professional HTML reports for batch conversion results**
+
+Implemented comprehensive batch report generation feature that exports Conversion Cockpit batch results to professional, interactive HTML reports.
+
+**Features**:
+- **Professional Reports**:
+  - Dark VS Code theme with interactive elements
+  - Self-contained HTML (works offline, single file)
+  - Smooth scrolling navigation with sidebar
+  - Collapsible sections for all data categories
+  - Color-coded status indicators (passed/failed/warning)
+
+- **Comprehensive Statistics**:
+  - Overview dashboard with 6 metric cards (total, passed, failed, warnings, avg accuracy, duration)
+  - Driver usage breakdown with percentages
+  - Accuracy distribution analysis (Perfect 99-100%, High 90-99%, Medium 70-90%, Low <70%)
+  - Performance metrics (timing, throughput, fastest/slowest files)
+  - Per-file detailed results with expandable sections
+
+- **Interactive Elements**:
+  - Click headers to expand/collapse sections
+  - Sidebar navigation jumps to sections
+  - Failed/warning files shown first in listings
+  - Detailed error messages and output file lists
+
+**Components Created**:
+- `pyscript/report_generator.py` (565 lines) - Main report generator with `BatchReportGenerator` class
+- `pyscript/test_batch_report.py` (155 lines) - Automated test suite with sample data
+- `docs/guides/BATCH_REPORTS_GUIDE.md` (372 lines) - Complete user guide with examples
+
+**GUI Integration**:
+- Added **"Export HTML Report"** button to Conversion Cockpit Results tab
+- File save dialog with timestamp-based default filename (`batch_report_20260101_153045.html`)
+- Auto-open report in browser after successful export
+- Status bar updates during generation
+- Comprehensive error handling and user feedback
+
+**Report Sections Generated**:
+1. **Overview** - Navigation sidebar with summary stats
+2. **Summary Statistics** - Batch totals, pass rate, average time per file
+3. **Driver Breakdown** - Usage statistics by driver (laxity, driver11, np20)
+4. **Accuracy Distribution** - Quality analysis with ranges and file counts
+5. **Performance Metrics** - Total time, average time, fastest/slowest files, throughput
+6. **File Details** - Summary table (top 20) + expandable per-file sections with:
+   - Full file path and driver used
+   - Status, steps completed, accuracy
+   - Duration and error messages
+   - Output files list
+
+**Usage**:
+```bash
+# From GUI
+1. Run batch conversion in Conversion Cockpit
+2. Go to Results tab
+3. Click "Export HTML Report"
+4. Choose save location
+5. Click Yes to open in browser
+
+# From Python
+from pyscript.report_generator import generate_batch_report
+generate_batch_report(results, summary, 'batch_report.html')
+```
+
+**Testing**:
+- ✅ Test suite with realistic sample data (6 files: 4 passed, 1 failed, 1 warning)
+- ✅ Generated test report: 33,154 bytes
+- ✅ 100% test success rate
+- ✅ All report sections validated
+
+**Dependencies**:
+- Uses `HTMLComponents` library for all UI elements
+- Integrates with `ConversionExecutor` for results collection
+- Leverages existing `FileResult` data structure
+
+**Impact**:
+- ✅ Fulfills CC-4 from `docs/IMPROVEMENTS_TODO.md`
+- ✅ Enables offline batch result analysis without GUI
+- ✅ Perfect for QA, documentation, and archiving
+- ✅ Easy to share with collaborators (single HTML file)
+- ✅ Complements SF2 HTML export for complete reporting suite
+
+**Git Commit**: `6bdac45` - "feat: Add Conversion Cockpit batch HTML reports (CC-4)"
+
+---
+
 ### Added - SF2 HTML Export Feature
 
 **✅ COMPLETED: SF2 to interactive HTML export with professional reports**
