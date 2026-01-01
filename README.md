@@ -3,7 +3,7 @@
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 [![codecov](https://codecov.io/gh/MichaelTroelsen/SIDM2conv/branch/master/graph.svg)](https://codecov.io/gh/MichaelTroelsen/SIDM2conv)
 
-**Version 3.0.1** | Build Date: 2026-01-01 | Production Ready ✅
+**Version 3.0.2** | Build Date: 2026-01-01 | Production Ready ✅
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files with **99.93% frame accuracy** for Laxity NewPlayer v21 files.
 
@@ -665,6 +665,14 @@ Located in `tools/` directory (Windows binaries, optional fallbacks):
 ---
 
 ## Version History
+
+### v3.0.2 (2026-01-01) - Interactive Analysis Features
+
+- ✅ **Validation Dashboard v2.0** - Professional HTMLComponents styling, enhanced search
+- ✅ **SIDwinder HTML Trace** - Interactive frame-by-frame register visualization
+- ✅ **Windows batch launchers** - validation-dashboard.bat, trace-viewer.bat
+- ✅ **Comprehensive tests** - 33 new tests (17 dashboard + 16 trace), 100% pass rate
+- ✅ **Complete documentation** - 1,400+ lines (user guides, README, CHANGELOG)
 
 ### v3.0.1 (2026-01-01) - HTML Annotation Tool + Analysis Features
 
