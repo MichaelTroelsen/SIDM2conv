@@ -49,6 +49,8 @@ output/**/*_exported_disassembly.md
 *_ANALYSIS.html
 *_ANALYSIS.json
 *_ANALYSIS.md
+*_ANALYSIS.csv
+*_ANALYSIS.tsv
 
 # Temporary files
 *.tmp

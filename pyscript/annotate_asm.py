@@ -3001,6 +3001,28 @@ def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = Non
             print(f"  Created HTML: {output_path.name}")
             return
 
+    elif output_format == 'csv':
+        # Export to CSV format (diff-friendly)
+        csv_output = export_to_csv(
+            input_path, file_info, subroutines, symbols, xrefs,
+            patterns, loops, cycle_counts, lifecycles, dead_code, lines
+        )
+        with open(output_path, 'w', encoding='utf-8', newline='') as f:
+            f.write(csv_output)
+        print(f"  Created CSV: {output_path.name}")
+        return
+
+    elif output_format == 'tsv':
+        # Export to TSV format (tab-separated, diff-friendly)
+        tsv_output = export_to_tsv(
+            input_path, file_info, subroutines, symbols, xrefs,
+            patterns, loops, cycle_counts, lifecycles, dead_code, lines
+        )
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(tsv_output)
+        print(f"  Created TSV: {output_path.name}")
+        return
+
     if output_format == 'text':
         # Default: Write annotated text file
         with open(output_path, 'w', encoding='utf-8') as f:
@@ -3380,6 +3402,184 @@ def export_to_markdown(
     return "\n".join(md)
 
 
+def export_to_csv(
+    input_path: Path,
+    file_info: dict,
+    subroutines: Dict[int, 'SubroutineInfo'],
+    symbols: Dict[int, 'Symbol'],
+    xrefs: Dict[int, List['Reference']],
+    patterns: List['Pattern'],
+    loops: List['LoopInfo'],
+    cycle_counts: Dict[int, 'CycleInfo'],
+    lifecycles: Dict[str, List['RegisterLifecycle']],
+    dead_code: List[Tuple[int, str, str]],
+    lines: List[str]
+) -> str:
+    """Export assembly analysis to CSV format (diff-friendly)"""
+    import csv
+    from io import StringIO
+
+    output = StringIO()
+    writer = csv.writer(output)
+
+    # Header row
+    writer.writerow([
+        'Address',
+        'Type',
+        'Opcode',
+        'Operand',
+        'Cycles_Min',
+        'Cycles_Max',
+        'Description',
+        'Reads',
+        'Writes',
+        'Calls',
+        'In_Loop',
+        'In_Subroutine',
+        'Dead_Code',
+        'Pattern'
+    ])
+
+    # Build lookup maps
+    addr_to_subroutine = {}
+    for addr, info in subroutines.items():
+        # Map all addresses in subroutine range
+        if info.end_address:
+            for a in range(addr, info.end_address + 1):
+                addr_to_subroutine[a] = info.name or f"sub_{addr:04x}"
+
+    addr_to_loop = {}
+    for loop in loops:
+        for a in range(loop.start_address, loop.end_address + 1):
+            addr_to_loop[a] = True
+
+    dead_code_addrs = {addr for addr, _, _ in dead_code}
+
+    # Parse each line
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith(';'):
+            continue
+
+        # Try to extract address and instruction
+        if ':' in stripped:
+            parts = stripped.split(':', 1)
+            try:
+                addr = int(parts[0].strip().replace('$', ''), 16)
+            except ValueError:
+                continue
+
+            # Get symbol type
+            symbol_type = symbols[addr].symbol_type.value if addr in symbols else 'CODE'
+
+            # Parse instruction
+            instruction_part = parts[1].strip() if len(parts) > 1 else ''
+            opcode = ''
+            operand = ''
+            description = ''
+
+            if instruction_part:
+                # Split on comment
+                if ';' in instruction_part:
+                    inst, desc = instruction_part.split(';', 1)
+                    description = desc.strip()
+                else:
+                    inst = instruction_part
+
+                # Parse opcode and operand
+                inst_parts = inst.strip().split(None, 1)
+                if inst_parts:
+                    opcode = inst_parts[0]
+                    operand = inst_parts[1] if len(inst_parts) > 1 else ''
+
+            # Get cycle counts
+            cycles_min = cycle_counts[addr].min_cycles if addr in cycle_counts else ''
+            cycles_max = cycle_counts[addr].max_cycles if addr in cycle_counts else ''
+
+            # Get reads/writes from symbols
+            reads = ''
+            writes = ''
+            calls = ''
+            if addr in symbols:
+                sym = symbols[addr]
+                if sym.read_count > 0:
+                    reads = f"{sym.read_count}r"
+                if sym.write_count > 0:
+                    writes = f"{sym.write_count}w"
+                if sym.call_count > 0:
+                    calls = f"{sym.call_count}c"
+
+            # Check if in loop
+            in_loop = 'YES' if addr in addr_to_loop else 'NO'
+
+            # Check which subroutine
+            in_subroutine = addr_to_subroutine.get(addr, '')
+
+            # Check if dead code
+            is_dead_code = 'YES' if addr in dead_code_addrs else 'NO'
+
+            # Check for patterns
+            pattern_match = ''
+            for pattern in patterns:
+                if hasattr(pattern, 'start_address') and pattern.start_address == addr:
+                    pattern_match = pattern.pattern_type.value
+                    break
+
+            # Write row
+            writer.writerow([
+                f"${addr:04X}",
+                symbol_type,
+                opcode,
+                operand,
+                cycles_min,
+                cycles_max,
+                description,
+                reads,
+                writes,
+                calls,
+                in_loop,
+                in_subroutine,
+                is_dead_code,
+                pattern_match
+            ])
+
+    return output.getvalue()
+
+
+def export_to_tsv(
+    input_path: Path,
+    file_info: dict,
+    subroutines: Dict[int, 'SubroutineInfo'],
+    symbols: Dict[int, 'Symbol'],
+    xrefs: Dict[int, List['Reference']],
+    patterns: List['Pattern'],
+    loops: List['LoopInfo'],
+    cycle_counts: Dict[int, 'CycleInfo'],
+    lifecycles: Dict[str, List['RegisterLifecycle']],
+    dead_code: List[Tuple[int, str, str]],
+    lines: List[str]
+) -> str:
+    """Export assembly analysis to TSV format (tab-separated, diff-friendly)"""
+    # Use same logic as CSV but with tab delimiter
+    csv_output = export_to_csv(
+        input_path, file_info, subroutines, symbols, xrefs,
+        patterns, loops, cycle_counts, lifecycles, dead_code, lines
+    )
+
+    # Convert CSV to TSV
+    lines_out = []
+    for line in csv_output.splitlines():
+        # Simple CSV to TSV conversion (assumes no commas in quoted fields for now)
+        # For proper conversion, we'd need to parse CSV properly
+        import csv
+        from io import StringIO
+        reader = csv.reader(StringIO(line))
+        for row in reader:
+            lines_out.append('\t'.join(row))
+
+    return '\n'.join(lines_out)
+
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: python annotate_asm.py <input.asm> [output] [--format FORMAT]")
@@ -3390,12 +3590,16 @@ def main():
         print("  json     - Machine-readable JSON with all analysis data")
         print("  markdown - Human-readable Markdown summary")
         print("  html     - Interactive HTML with collapsible sections, search, syntax highlighting")
+        print("  csv      - Comma-separated values (diff-friendly, version control)")
+        print("  tsv      - Tab-separated values (diff-friendly, version control)")
         print("")
         print("Examples:")
         print("  python annotate_asm.py input.asm                           # Text output")
         print("  python annotate_asm.py input.asm output.json --format json")
         print("  python annotate_asm.py input.asm output.md --format markdown")
         print("  python annotate_asm.py input.asm output.html --format html")
+        print("  python annotate_asm.py input.asm output.csv --format csv   # Diff-friendly")
+        print("  python annotate_asm.py input.asm output.tsv --format tsv   # Tab-separated")
         return 1
 
     # Parse arguments
@@ -3408,8 +3612,8 @@ def main():
         format_index = sys.argv.index('--format')
         if format_index + 1 < len(sys.argv):
             output_format = sys.argv[format_index + 1]
-            if output_format not in ['text', 'json', 'markdown', 'html']:
-                print(f"Error: Invalid format '{output_format}'. Use: text, json, markdown, or html")
+            if output_format not in ['text', 'json', 'markdown', 'html', 'csv', 'tsv']:
+                print(f"Error: Invalid format '{output_format}'. Use: text, json, markdown, html, csv, or tsv")
                 return 1
 
     # Determine output path
@@ -3427,6 +3631,10 @@ def main():
                     ext = '.md'
                 elif output_format == 'html':
                     ext = '.html'
+                elif output_format == 'csv':
+                    ext = '.csv'
+                elif output_format == 'tsv':
+                    ext = '.tsv'
                 else:
                     ext = '.asm'
 
@@ -3442,6 +3650,10 @@ def main():
                 output_path = input_path.parent / f"{input_path.stem}_ANALYSIS.md"
             elif output_format == 'html':
                 output_path = input_path.parent / f"{input_path.stem}_ANALYSIS.html"
+            elif output_format == 'csv':
+                output_path = input_path.parent / f"{input_path.stem}_ANALYSIS.csv"
+            elif output_format == 'tsv':
+                output_path = input_path.parent / f"{input_path.stem}_ANALYSIS.tsv"
             else:
                 output_path = input_path.parent / f"{input_path.stem}_ANNOTATED.asm"
 
