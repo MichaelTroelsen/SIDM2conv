@@ -398,6 +398,187 @@ Remaining enhancements:
 
 See `docs/ASM_ANNOTATION_IMPROVEMENTS.md` for complete roadmap.
 
+#### Enhanced - Cross-Reference Generation (2025-12-29)
+
+**🔗 MAJOR ENHANCEMENT: Comprehensive cross-reference tracking for all address references**
+
+Implemented Priority 1 improvement #3 from `docs/ASM_ANNOTATION_IMPROVEMENTS.md`: automatic cross-reference generation showing where addresses are referenced throughout the code, with bidirectional navigation support.
+
+**NEW CAPABILITIES**:
+
+**1. Reference Type Tracking (6 Types)**:
+- **CALL**: JSR (subroutine call) instructions
+- **JUMP**: JMP (unconditional jump) instructions
+- **BRANCH**: BEQ, BNE, BPL, BMI, BCC, BCS, BVC, BVS (conditional branches)
+- **READ**: LDA, LDX, LDY, CMP, CPX, CPY, BIT, AND, ORA, EOR, ADC, SBC (load/compare/logic)
+- **WRITE**: STA, STX, STY (store instructions)
+- **READ_MODIFY**: INC, DEC, ASL, LSR, ROL, ROR (read-modify-write)
+
+**2. Automatic Cross-Reference Detection**:
+- Scans all assembly instructions for address references
+- Tracks source address, target address, and reference type
+- Builds bidirectional cross-reference table
+- Filters out SID registers ($D400-$D418) which are documented separately
+- Supports absolute addressing and indexed addressing (,X ,Y)
+
+**3. Enhanced Subroutine Headers**:
+
+Cross-references automatically added to subroutine documentation:
+
+```asm
+;------------------------------------------------------------------------------
+; Subroutine: Update Voice 1
+; Address: $1020 - $1029
+; Purpose: Update SID registers (music playback)
+; Inputs: X = voice offset
+; Outputs: A
+; Modifies: A
+; Calls: $1050, $1060
+; Cross-References:
+;   Called by:
+;     - $1000 (Main Coordinator)
+;     - $1010 (SID Update)
+;   Jumped to by:
+;     - $100C
+;   Branched to by:
+;     - $1008
+; Accesses: SID chip registers
+;------------------------------------------------------------------------------
+```
+
+**4. Enhanced Data Section Headers**:
+
+Cross-references added to data table documentation:
+
+```asm
+;==============================================================================
+; DATA SECTION: Wave Table
+; Address: $18DA - $18F9
+; Size: 32 bytes
+; Format: SID waveform bytes (1 byte per instrument)
+; Values: $01=triangle, $10=sawtooth, $20=pulse, $40=noise, $80=gate
+; Cross-References:
+;   Read by:
+;     - $1545 (Music Data Access)
+;     - $1553 (Wave Table Access #2)
+;     - $15A2 (Instrument Setup)
+;   Written by:
+;     - $1200 (Init Routine)
+;==============================================================================
+```
+
+**5. Bidirectional Navigation**:
+- **Forward references**: See what a subroutine calls or accesses
+- **Backward references**: See who calls/jumps to a subroutine or reads/writes data
+- **Named references**: Shows subroutine names in cross-references when available
+
+**BEFORE / AFTER COMPARISON**:
+
+**Before** (basic subroutine header):
+```asm
+;------------------------------------------------------------------------------
+; Subroutine: SID Update
+; Address: $1020
+; Calls: $1050
+;------------------------------------------------------------------------------
+```
+
+**After** (with cross-references):
+```asm
+;------------------------------------------------------------------------------
+; Subroutine: SID Update
+; Address: $1020
+; Calls: $1050
+; Cross-References:
+;   Called by:
+;     - $1000 (Main Coordinator)
+;     - $1010 (Helper Routine)
+;   Jumped to by:
+;     - $100C
+;------------------------------------------------------------------------------
+```
+
+**IMPLEMENTATION DETAILS**:
+
+**New Classes**:
+1. **ReferenceType** (Enum) - 6 reference type classifications
+2. **Reference** (Dataclass) - Stores source, target, type, line number, instruction
+3. **CrossReferenceDetector** (Class) - Main detection engine with 6 reference type checkers
+
+**Detection Methods**:
+- `_check_jsr()` - Detects JSR instructions
+- `_check_jmp()` - Detects JMP instructions
+- `_check_branch()` - Detects all branch instructions (BEQ, BNE, etc.)
+- `_check_read()` - Detects load and compare instructions
+- `_check_write()` - Detects store instructions
+- `_check_read_modify()` - Detects read-modify-write instructions
+
+**Integration**:
+- **format_cross_references()** - Formats references for display with grouping by type
+- **Updated format_data_section()** - Adds cross-references to data section headers
+- **Updated generate_subroutine_header()** - Adds cross-references to subroutine headers
+- **Updated annotate_asm_file()** - Generates cross-references after section detection
+
+**TESTING RESULTS**:
+
+**Test File** (test_xref.asm):
+- **Input**: 3 subroutines, 1 data table, 5 cross-referenced addresses
+- **Detection**: 8 references to 5 addresses
+- **Output**: Complete cross-reference documentation on all subroutines
+
+**Real File** (test_decompiler_output.asm):
+- **Detection**: 319 references to 113 addresses
+- **Coverage**: Comprehensive tracking across entire codebase
+- **Performance**: Fast detection with minimal overhead
+
+**Re-annotated Files** (2 files):
+- `drivers/laxity/laxity_driver_ANNOTATED.asm` - Updated with cross-references
+- `compliance_test/test_decompiler_output_ANNOTATED.asm` - Updated with cross-references
+
+**BENEFITS**:
+
+1. **Navigate code structure** - See how subroutines call each other
+2. **Understand data usage** - See where tables are read/written
+3. **Find all callers** - Identify all references to a function or data
+4. **Bidirectional links** - Navigate forward (what does this call?) and backward (who calls this?)
+5. **Named references** - See subroutine names instead of just addresses
+6. **Educational value** - Understand code flow and data dependencies
+
+**CODE STATISTICS**:
+
+- **Lines added**: +241 (cross-reference generation system)
+- **Enums**: 1 (ReferenceType)
+- **Dataclasses**: 1 (Reference)
+- **Classes**: 1 (CrossReferenceDetector)
+- **Functions**: 1 (format_cross_references)
+- **Methods**: 6 detection methods + 2 helper methods
+- **Integration points**: 3 (format_data_section, generate_subroutine_header, annotate_asm_file)
+
+**COMMITS**:
+- (Current) - Cross-reference generation implementation
+
+**PROGRESS TRACKER**:
+
+✅ Subroutine detection - **COMPLETE**
+✅ Data vs code section detection - **COMPLETE**
+✅ Cross-reference generation - **COMPLETE**
+⏭️ Enhanced register usage analysis - **Next** (already partially done in subroutine detection)
+
+**3 out of 4 Priority 1 features completed!**
+
+**NEXT STEPS**:
+
+Remaining Priority 1 enhancements:
+- Additional address format support (for various disassembly formats)
+
+Priority 2 features:
+- Pattern recognition (16-bit ops, loops, copy routines)
+- Control flow visualization (ASCII art graphs)
+- Cycle counting (performance analysis)
+- Symbol table generation (complete address reference)
+
+See `docs/ASM_ANNOTATION_IMPROVEMENTS.md` for complete roadmap.
+
 ### Verified - Laxity Accuracy Confirmation
 
 **✅ VERIFIED: Laxity driver achieves 99.98% frame accuracy (exceeds 99.93% target)**

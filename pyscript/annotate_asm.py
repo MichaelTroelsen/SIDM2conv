@@ -234,7 +234,9 @@ class SectionDetector:
         return SectionType.UNKNOWN
 
 
-def format_data_section(section: Section, lines: List[str]) -> str:
+def format_data_section(section: Section, lines: List[str],
+                        xrefs: Optional[Dict[int, List[Reference]]] = None,
+                        subroutines: Optional[Dict[int, 'SubroutineInfo']] = None) -> str:
     """Format a data section with appropriate header and formatting"""
     sep = ";" + "=" * 78
     header = f"{sep}\n"
@@ -265,7 +267,253 @@ def format_data_section(section: Section, lines: List[str]) -> str:
         header += "; Format: Sequence bytes terminated by $7F\n"
         header += "; $00=rest, $01-$5F=note, $7E=gate continue, $7F=end\n"
 
+    # Add cross-references if available
+    if xrefs and subroutines and section.start_address:
+        xref_header = format_cross_references(section.start_address, xrefs, subroutines)
+        if xref_header:
+            header += xref_header
+
     header += f"{sep}\n"
+
+    return header
+
+
+# ==============================================================================
+# Cross-Reference Generation
+# ==============================================================================
+
+class ReferenceType(Enum):
+    """Type of reference to an address"""
+    CALL = "call"           # JSR instruction
+    JUMP = "jump"           # JMP instruction
+    BRANCH = "branch"       # BEQ, BNE, etc.
+    READ = "read"           # LDA, LDX, LDY, CMP, etc.
+    WRITE = "write"         # STA, STX, STY
+    READ_MODIFY = "r/w"     # INC, DEC, ASL, LSR, ROL, ROR
+
+
+@dataclass
+class Reference:
+    """A reference to an address in the code"""
+    source_address: Optional[int]  # Address where reference occurs
+    source_line: int               # Line number where reference occurs
+    target_address: int            # Address being referenced
+    ref_type: ReferenceType        # Type of reference
+    instruction: str = ""          # The actual instruction
+
+
+class CrossReferenceDetector:
+    """Generate cross-references for addresses in assembly code"""
+
+    def __init__(self, lines: List[str], subroutines: Dict[int, 'SubroutineInfo']):
+        self.lines = lines
+        self.subroutines = subroutines
+        # Map from target address to list of references
+        self.xrefs: Dict[int, List[Reference]] = {}
+
+    def generate_cross_references(self) -> Dict[int, List[Reference]]:
+        """Build complete cross-reference table"""
+        from collections import defaultdict
+        self.xrefs = defaultdict(list)
+
+        for line_num, line in enumerate(self.lines):
+            # Skip comments and empty lines
+            if line.strip().startswith(';') or not line.strip():
+                continue
+
+            # Extract source address
+            source_addr = self._extract_address(line)
+
+            # Check for different reference types
+            self._check_jsr(line, line_num, source_addr)
+            self._check_jmp(line, line_num, source_addr)
+            self._check_branch(line, line_num, source_addr)
+            self._check_read(line, line_num, source_addr)
+            self._check_write(line, line_num, source_addr)
+            self._check_read_modify(line, line_num, source_addr)
+
+        return dict(self.xrefs)
+
+    def _extract_address(self, line: str) -> Optional[int]:
+        """Extract address from line"""
+        match = re.match(r'^\s*\$?([0-9A-Fa-f]{4}):', line)
+        if match:
+            return int(match.group(1), 16)
+        return None
+
+    def _extract_target_address(self, operand: str) -> Optional[int]:
+        """Extract target address from operand"""
+        # Match $XXXX or XXXX (with optional ,X or ,Y)
+        match = re.match(r'\$?([0-9A-Fa-f]{4})', operand)
+        if match:
+            return int(match.group(1), 16)
+        return None
+
+    def _check_jsr(self, line: str, line_num: int, source_addr: Optional[int]):
+        """Check for JSR (call) instruction"""
+        match = re.search(r'JSR\s+\$?([0-9A-Fa-f]{4})', line, re.IGNORECASE)
+        if match:
+            target = int(match.group(1), 16)
+            self.xrefs[target].append(Reference(
+                source_address=source_addr,
+                source_line=line_num,
+                target_address=target,
+                ref_type=ReferenceType.CALL,
+                instruction=line.strip()
+            ))
+
+    def _check_jmp(self, line: str, line_num: int, source_addr: Optional[int]):
+        """Check for JMP instruction"""
+        match = re.search(r'JMP\s+\$?([0-9A-Fa-f]{4})', line, re.IGNORECASE)
+        if match:
+            target = int(match.group(1), 16)
+            self.xrefs[target].append(Reference(
+                source_address=source_addr,
+                source_line=line_num,
+                target_address=target,
+                ref_type=ReferenceType.JUMP,
+                instruction=line.strip()
+            ))
+
+    def _check_branch(self, line: str, line_num: int, source_addr: Optional[int]):
+        """Check for branch instructions (BEQ, BNE, etc.)"""
+        match = re.search(r'(BEQ|BNE|BPL|BMI|BCC|BCS|BVC|BVS)\s+\$?([0-9A-Fa-f]{4})', line, re.IGNORECASE)
+        if match:
+            target = int(match.group(2), 16)
+            self.xrefs[target].append(Reference(
+                source_address=source_addr,
+                source_line=line_num,
+                target_address=target,
+                ref_type=ReferenceType.BRANCH,
+                instruction=line.strip()
+            ))
+
+    def _check_read(self, line: str, line_num: int, source_addr: Optional[int]):
+        """Check for read instructions (LDA, LDX, LDY, CMP, etc.)"""
+        # Match load and compare instructions with absolute addressing
+        match = re.search(r'(LDA|LDX|LDY|CMP|CPX|CPY|BIT|AND|ORA|EOR|ADC|SBC)\s+\$?([0-9A-Fa-f]{4})(,X|,Y)?', line, re.IGNORECASE)
+        if match:
+            target = int(match.group(2), 16)
+            # Only track if it's not a SID register (those are tracked separately)
+            if target < 0xD400 or target > 0xD418:
+                self.xrefs[target].append(Reference(
+                    source_address=source_addr,
+                    source_line=line_num,
+                    target_address=target,
+                    ref_type=ReferenceType.READ,
+                    instruction=line.strip()
+                ))
+
+    def _check_write(self, line: str, line_num: int, source_addr: Optional[int]):
+        """Check for write instructions (STA, STX, STY)"""
+        match = re.search(r'(STA|STX|STY)\s+\$?([0-9A-Fa-f]{4})(,X|,Y)?', line, re.IGNORECASE)
+        if match:
+            target = int(match.group(2), 16)
+            # Only track if it's not a SID register
+            if target < 0xD400 or target > 0xD418:
+                self.xrefs[target].append(Reference(
+                    source_address=source_addr,
+                    source_line=line_num,
+                    target_address=target,
+                    ref_type=ReferenceType.WRITE,
+                    instruction=line.strip()
+                ))
+
+    def _check_read_modify(self, line: str, line_num: int, source_addr: Optional[int]):
+        """Check for read-modify-write instructions (INC, DEC, etc.)"""
+        match = re.search(r'(INC|DEC|ASL|LSR|ROL|ROR)\s+\$?([0-9A-Fa-f]{4})', line, re.IGNORECASE)
+        if match:
+            target = int(match.group(2), 16)
+            # Only track if it's not a SID register
+            if target < 0xD400 or target > 0xD418:
+                self.xrefs[target].append(Reference(
+                    source_address=source_addr,
+                    source_line=line_num,
+                    target_address=target,
+                    ref_type=ReferenceType.READ_MODIFY,
+                    instruction=line.strip()
+                ))
+
+
+def format_cross_references(address: int, xrefs: Dict[int, List[Reference]],
+                            subroutines: Dict[int, 'SubroutineInfo']) -> str:
+    """Format cross-references for an address"""
+    if address not in xrefs or not xrefs[address]:
+        return ""
+
+    refs = xrefs[address]
+    header = "; Cross-References:\n"
+
+    # Group by reference type
+    calls = [r for r in refs if r.ref_type == ReferenceType.CALL]
+    jumps = [r for r in refs if r.ref_type == ReferenceType.JUMP]
+    branches = [r for r in refs if r.ref_type == ReferenceType.BRANCH]
+    reads = [r for r in refs if r.ref_type == ReferenceType.READ]
+    writes = [r for r in refs if r.ref_type == ReferenceType.WRITE]
+    read_modifies = [r for r in refs if r.ref_type == ReferenceType.READ_MODIFY]
+
+    # Format calls
+    if calls:
+        header += ";   Called by:\n"
+        for ref in calls[:5]:  # Limit to 5 for brevity
+            name = ""
+            if ref.source_address and ref.source_address in subroutines:
+                name = f" ({subroutines[ref.source_address].name})"
+            header += f";     - ${ref.source_address:04X}{name}\n" if ref.source_address else f";     - Line {ref.source_line}\n"
+        if len(calls) > 5:
+            header += f";     - ... ({len(calls) - 5} more)\n"
+
+    # Format jumps
+    if jumps:
+        header += ";   Jumped to by:\n"
+        for ref in jumps[:5]:
+            name = ""
+            if ref.source_address and ref.source_address in subroutines:
+                name = f" ({subroutines[ref.source_address].name})"
+            header += f";     - ${ref.source_address:04X}{name}\n" if ref.source_address else f";     - Line {ref.source_line}\n"
+        if len(jumps) > 5:
+            header += f";     - ... ({len(jumps) - 5} more)\n"
+
+    # Format branches
+    if branches:
+        header += ";   Branched to by:\n"
+        for ref in branches[:5]:
+            header += f";     - ${ref.source_address:04X}\n" if ref.source_address else f";     - Line {ref.source_line}\n"
+        if len(branches) > 5:
+            header += f";     - ... ({len(branches) - 5} more)\n"
+
+    # Format reads
+    if reads:
+        header += ";   Read by:\n"
+        for ref in reads[:5]:
+            name = ""
+            if ref.source_address and ref.source_address in subroutines:
+                name = f" ({subroutines[ref.source_address].name})"
+            header += f";     - ${ref.source_address:04X}{name}\n" if ref.source_address else f";     - Line {ref.source_line}\n"
+        if len(reads) > 5:
+            header += f";     - ... ({len(reads) - 5} more)\n"
+
+    # Format writes
+    if writes:
+        header += ";   Written by:\n"
+        for ref in writes[:5]:
+            name = ""
+            if ref.source_address and ref.source_address in subroutines:
+                name = f" ({subroutines[ref.source_address].name})"
+            header += f";     - ${ref.source_address:04X}{name}\n" if ref.source_address else f";     - Line {ref.source_line}\n"
+        if len(writes) > 5:
+            header += f";     - ... ({len(writes) - 5} more)\n"
+
+    # Format read-modify-write
+    if read_modifies:
+        header += ";   Modified by:\n"
+        for ref in read_modifies[:5]:
+            name = ""
+            if ref.source_address and ref.source_address in subroutines:
+                name = f" ({subroutines[ref.source_address].name})"
+            header += f";     - ${ref.source_address:04X}{name}\n" if ref.source_address else f";     - Line {ref.source_line}\n"
+        if len(read_modifies) > 5:
+            header += f";     - ... ({len(read_modifies) - 5} more)\n"
 
     return header
 
@@ -518,7 +766,9 @@ class SubroutineDetector:
                 info.name = "Subroutine"
 
 
-def generate_subroutine_header(info: SubroutineInfo) -> str:
+def generate_subroutine_header(info: SubroutineInfo,
+                               xrefs: Optional[Dict[int, List[Reference]]] = None,
+                               all_subroutines: Optional[Dict[int, 'SubroutineInfo']] = None) -> str:
     """Generate a detailed header comment for a subroutine"""
     sep = ";" + "-" * 78
     header = f"{sep}\n"
@@ -586,6 +836,12 @@ def generate_subroutine_header(info: SubroutineInfo) -> str:
         if len(info.called_by) > 3:
             caller_strs.append(f"... ({len(info.called_by)} total)")
         header += ", ".join(caller_strs) + "\n"
+
+    # Add enhanced cross-references if available
+    if xrefs and all_subroutines:
+        xref_header = format_cross_references(info.address, xrefs, all_subroutines)
+        if xref_header:
+            header += xref_header
 
     # Document SID access
     if info.accesses_sid:
@@ -763,6 +1019,13 @@ def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = Non
     data_sections = [s for s in sections if s.section_type != SectionType.CODE and s.section_type != SectionType.UNKNOWN]
     print(f"  Found {len(data_sections)} data section(s)")
 
+    # Generate cross-references
+    print(f"  Generating cross-references...")
+    xref_detector = CrossReferenceDetector(lines, subroutines)
+    xrefs = xref_detector.generate_cross_references()
+    total_refs = sum(len(refs) for refs in xrefs.values())
+    print(f"  Found {total_refs} reference(s) to {len(xrefs)} address(es)")
+
     # Create annotated version
     output_lines = []
 
@@ -794,13 +1057,13 @@ def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = Non
         # Check if this line starts a data section
         if i in line_to_section:
             section = line_to_section[i]
-            section_header = format_data_section(section, lines)
+            section_header = format_data_section(section, lines, xrefs, subroutines)
             output_lines.append(section_header)
 
         # Check if this line starts a subroutine (by line number)
         if i in line_to_subroutine:
             sub_addr = line_to_subroutine[i]
-            sub_header = generate_subroutine_header(subroutines[sub_addr])
+            sub_header = generate_subroutine_header(subroutines[sub_addr], xrefs, subroutines)
             output_lines.append(sub_header)
 
         # Annotate the line
