@@ -9,6 +9,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-01-01
 
+### Added - Windows Batch Launchers for Analysis Tools
+
+**✅ COMPLETED: Easy-to-use batch launchers for validation dashboard and trace viewer**
+
+Created Windows batch file launchers for the new analysis tools, providing convenient command-line access with comprehensive help text and usage examples.
+
+**Batch Files Created**:
+
+**1. validation-dashboard.bat**:
+- Generates interactive validation dashboard from database
+- Supports `--run` for specific run ID
+- Supports `--output` for custom file path
+- Includes comprehensive help text with features and examples
+- Pass-through to `scripts/generate_dashboard.py`
+
+**Usage**:
+```bash
+validation-dashboard.bat                           # Latest run
+validation-dashboard.bat --run 5                   # Specific run
+validation-dashboard.bat --output custom.html      # Custom output
+```
+
+**2. trace-viewer.bat**:
+- Generates interactive SIDwinder HTML trace visualization
+- Supports `-o` for output file path
+- Supports `-f` for frame count
+- Parameter validation with helpful error messages
+- Pass-through to `pyscript/sidwinder_html_exporter.py`
+
+**Usage**:
+```bash
+trace-viewer.bat input.sid                         # 300 frames default
+trace-viewer.bat input.sid -o trace.html           # Custom output
+trace-viewer.bat input.sid -f 500                  # Custom frame count
+trace-viewer.bat SID/Beast.sid -o beast.html -f 300
+```
+
+**Implementation Details**:
+- Follow existing project batch file conventions
+- `@echo off` for clean output
+- REM comments with features, options, and examples
+- Parameter validation with usage help text
+- Pass all arguments to Python scripts with `%*`
+- Consistent formatting with existing launchers
+
+**Documentation Updates**:
+- **README.md**: Updated Quick Start and feature usage sections
+- **CLAUDE.md**: Added to Quick Commands under new "Analysis Tools" section
+- **VALIDATION_DASHBOARD_GUIDE.md**: Added Windows batch + cross-platform Python options
+- **SIDWINDER_HTML_TRACE_GUIDE.md**: Added Windows batch + cross-platform Python options
+
+**Testing**:
+- ✅ validation-dashboard.bat: Successfully generated dashboard from database
+- ✅ trace-viewer.bat: Successfully generated 42KB HTML from Angular.sid (10 frames)
+- ✅ Help text displays correctly
+- ✅ Parameter pass-through working
+- ✅ Error handling functional
+
+**Impact**:
+- ✅ Easier access to analysis tools for Windows users
+- ✅ Reduced command complexity (batch file vs full Python path)
+- ✅ Consistent with existing launcher patterns (sf2-viewer.bat, conversion-cockpit.bat)
+- ✅ Better discoverability of new features
+- ✅ Professional help text for new users
+
+**Git Commit**: `2afccf3` - "feat: Add Windows batch launchers for validation dashboard and trace viewer"
+
+---
+
 ### Added - SIDwinder HTML Trace Visualization
 
 **✅ COMPLETED: Interactive frame-by-frame trace analysis**
@@ -59,10 +128,13 @@ Implemented interactive HTML trace exporter for SIDwinder with timeline navigati
 
 **Usage**:
 ```bash
-# Command line
+# Windows batch launcher (recommended)
+trace-viewer.bat input.sid -o trace.html -f 300
+
+# Direct Python (cross-platform)
 python pyscript/sidwinder_html_exporter.py input.sid -o trace.html -f 300
 
-# From Python
+# From Python API
 from pyscript.sidwinder_html_exporter import export_trace_to_html
 from pyscript.sidtracer import SIDTracer
 tracer = SIDTracer("input.sid")
@@ -135,6 +207,17 @@ Improved validation dashboard with HTMLComponents styling, enhanced search, and 
 2. Statistics - 6 metric cards (total, passed, failed, pass rate, accuracies)
 3. Trends - Line chart showing accuracy over runs
 4. Results - Searchable table with visual accuracy bars
+
+**Usage**:
+```bash
+# Windows batch launcher (recommended)
+validation-dashboard.bat
+validation-dashboard.bat --run 5 --output custom.html
+
+# Direct Python (cross-platform)
+python scripts/generate_dashboard.py
+python scripts/generate_dashboard.py --run 5 --output custom.html
+```
 
 **Search Examples**:
 ```
