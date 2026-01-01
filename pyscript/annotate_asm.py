@@ -2478,13 +2478,11 @@ class SymbolTableGenerator:
             if section.section_type == SectionType.CODE or section.section_type == SectionType.UNKNOWN:
                 continue
 
-            addr = section.address
+            addr = section.start_address
             if addr and addr not in self.symbols:
                 # Determine description from section type
                 desc = ""
-                if section.section_type == SectionType.FREQUENCY_TABLE:
-                    desc = "Note frequency lookup table"
-                elif section.section_type == SectionType.WAVE_TABLE:
+                if section.section_type == SectionType.WAVE_TABLE:
                     desc = "Waveform data table"
                 elif section.section_type == SectionType.INSTRUMENT_TABLE:
                     desc = "Instrument definitions"
@@ -3287,21 +3285,29 @@ def annotate_line(line: str) -> str:
 
 
 def extract_info_from_sidwinder(content: str) -> dict:
-    """Extract file info from SIDwinder-generated header"""
+    """Extract file info from SIDwinder-generated header or disassembly comments"""
     info = {}
 
-    # Look for SIDwinder header
+    # Look for SIDwinder header or disassembly comments
     for line in content.split('\n')[:20]:
-        if 'Name:' in line:
-            info['title'] = line.split('Name:', 1)[1].strip()
+        if 'Name:' in line or 'Title:' in line:
+            info['title'] = line.split(':', 1)[1].strip() if ':' in line else ''
         elif 'Author:' in line:
             info['author'] = line.split('Author:', 1)[1].strip()
         elif 'Copyright:' in line:
             info['copyright'] = line.split('Copyright:', 1)[1].strip()
-        elif 'SIDLoad' in line:
+        elif 'SIDLoad' in line or 'Load:' in line:
             match = re.search(r'\$([0-9A-Fa-f]+)', line)
             if match:
                 info['load_address'] = int(match.group(1), 16)
+        elif 'Init:' in line:
+            match = re.search(r'\$([0-9A-Fa-f]+)', line)
+            if match:
+                info['init_address'] = int(match.group(1), 16)
+        elif 'Play:' in line:
+            match = re.search(r'\$([0-9A-Fa-f]+)', line)
+            if match:
+                info['play_address'] = int(match.group(1), 16)
 
     return info
 

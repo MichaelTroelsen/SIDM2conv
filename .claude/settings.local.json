@@ -271,7 +271,12 @@
       "Bash(then echo \"ROOT: $f\")",
       "Bash(if [ -f \"docs/$f\" ])",
       "Bash(then echo \"DOCS: docs/$f\")",
-      "Bash(iconv:*)"
+      "Bash(iconv:*)",
+      "Bash(git log:*)",
+      "Bash(SF2 player and laxity newplayer 21 is not the same.\"\n\nThe driver_selector.py mapping was already correct:\n  ''SidFactory_II/Laxity'': ''driver11''\n\nBut analyze_sid_file\\(\\) was ignoring it!\n\nImpact:\n- Fixes conversion of all SID files created in SID Factory II using Driver 11\n- Respects user''s --driver override in all cases\n- Eliminates confusion between file authorship \\(\"Laxity\"\\) and player format\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git ls-tree:*)",
+      "Bash(git stash:*)",
+      "Bash(./tools/SIDwinder.exe:*)"
     ],
     "deny": [],
     "ask": []
