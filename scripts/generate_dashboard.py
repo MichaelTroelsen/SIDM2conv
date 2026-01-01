@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from scripts.validation.database import ValidationDatabase
 from scripts.validation.dashboard import DashboardGenerator
+from scripts.validation.dashboard_v2 import DashboardGeneratorV2
 from scripts.validation.metrics import MetricsCollector
 
 
@@ -64,8 +65,8 @@ def generate_dashboard(db_path: Path, output_path: Path, run_id: int = None):
             'accuracy': db.get_metric_trend('avg_overall_accuracy', limit=20)
         }
 
-        # Generate HTML
-        generator = DashboardGenerator()
+        # Generate HTML (using improved V2 generator)
+        generator = DashboardGeneratorV2()
         html = generator.generate_html(
             run_info=run_info,
             results=results,
