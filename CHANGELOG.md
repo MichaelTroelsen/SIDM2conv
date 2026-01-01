@@ -1939,7 +1939,190 @@ def export_to_tsv(...) -> str:
 - `pyscript/annotate_asm.py` (lines 3611-3658 for CLI support)
 
 **Remaining Priority 3 Features**:
-- Documentation integration (auto-generate docs from analysis)
+- ~~Documentation integration (auto-generate docs from analysis)~~ ✅ COMPLETE
+- Configuration system (YAML/JSON config files)
+
+#### Enhanced - Documentation Integration (2026-01-01)
+
+**📚 PRIORITY 3 FEATURE: Auto-link assembly analysis to project documentation**
+
+Implemented Priority 3 improvement #3.3 from `docs/ASM_ANNOTATION_IMPROVEMENTS.md`: Automatic documentation cross-referencing that connects analyzed code to relevant documentation files.
+
+**NEW FEATURE**: Auto-generated documentation cross-references in assembly annotations
+
+**HOW IT WORKS**:
+1. **Address Mapping**: System maps memory ranges to documentation files
+2. **Auto-Detection**: Scans analyzed code for documented addresses
+3. **Cross-References**: Generates "DOCUMENTATION CROSS-REFERENCES" section
+4. **Reverse Index**: Shows which docs are relevant for each file
+
+**DOCUMENTED MEMORY RANGES**:
+
+**SID Chip Registers** ($D400-$D418):
+- docs/reference/SID_REGISTERS.md
+- docs/ARCHITECTURE.md
+
+**Laxity NewPlayer v21 Tables**:
+- $18DA-$18F9: Wave Table Waveforms → LAXITY_WAVE_TABLE.md
+- $190C-$192B: Wave Table Note Offsets → LAXITY_WAVE_TABLE.md
+- $1837-$1A1D: Pulse Table → LAXITY_TABLES.md
+- $1A1E-$1A6A: Filter Table → LAXITY_TABLES.md
+- $1A6B-$1AAA: Instrument Table → LAXITY_INSTRUMENTS.md
+- $199F-$19A4: Sequence Pointers → LAXITY_SEQUENCES.md
+
+**SF2 Driver 11 Tables**:
+- $0903-$0A02: Sequence Data → SF2_FORMAT_SPEC.md
+- $0A03-$0B02: Instrument Table → SF2_FORMAT_SPEC.md
+- $0B03-$0D02: Wave Table → SF2_FORMAT_SPEC.md
+- $0D03-$0F02: Pulse Table → SF2_FORMAT_SPEC.md
+- $0F03-$1102: Filter Table → SF2_FORMAT_SPEC.md
+
+**TOPIC DOCUMENTATION**:
+- **laxity**: Laxity NewPlayer v21 format and driver
+- **sf2**: SID Factory II format and drivers
+- **conversion**: SID to SF2 conversion process
+- **validation**: Accuracy validation methodology
+- **driver_selection**: Auto driver selection logic
+
+**EXAMPLE OUTPUT**:
+
+```asm
+;==============================================================================
+; DOCUMENTATION CROSS-REFERENCES
+;==============================================================================
+;
+; This section shows which documentation files are relevant to this code.
+;
+; docs/ARCHITECTURE.md
+;   Referenced by 25 address(es): $D400, $D401, $D402, $D403, $D404, ... (20 more)
+;
+; docs/reference/SID_REGISTERS.md
+;   Referenced by 25 address(es): $D400, $D401, $D402, $D403, $D404, ... (20 more)
+;
+;==============================================================================
+```
+
+**IMPLEMENTATION**:
+
+**1. Documentation Mapping** (DOCUMENTATION_MAP dict):
+```python
+DOCUMENTATION_MAP = {
+    'addresses': {
+        # SID chip registers
+        (0xD400, 0xD418): {
+            'title': 'SID Chip Registers',
+            'docs': ['docs/reference/SID_REGISTERS.md', 'docs/ARCHITECTURE.md'],
+            'description': 'Complete SID sound chip register reference'
+        },
+        # Laxity tables, SF2 tables, etc.
+    },
+    'topics': {
+        'laxity': {
+            'title': 'Laxity NewPlayer v21',
+            'docs': ['docs/LAXITY_DRIVER_USER_GUIDE.md', ...],
+            'description': 'Laxity music player format and driver'
+        },
+        # sf2, conversion, validation, etc.
+    }
+}
+```
+
+**2. Helper Functions** (93 lines):
+```python
+def find_documentation_for_address(address: int) -> Optional[dict]:
+    """Find documentation links for a given memory address"""
+    for (start, end), doc_info in DOCUMENTATION_MAP['addresses'].items():
+        if start <= address <= end:
+            return doc_info
+    return None
+
+def create_reverse_documentation_index(symbols, file_info) -> Dict[str, List[int]]:
+    """Create reverse index: documentation file -> addresses that reference it"""
+    # Scans all symbols for addresses with documentation
+    # Returns dict mapping doc paths to address lists
+
+def format_documentation_section(reverse_index) -> str:
+    """Format documentation cross-reference section"""
+    # Generates formatted section showing:
+    # - Which docs are relevant
+    # - How many addresses reference each doc
+    # - Sample addresses (first 5)
+```
+
+**3. Integration**:
+```python
+# In annotate_asm_file():
+# Add documentation cross-references section
+reverse_doc_index = create_reverse_documentation_index(symbols, file_info)
+doc_section = format_documentation_section(reverse_doc_index)
+if doc_section:
+    output_lines.append(doc_section)
+```
+
+**REAL-WORLD USAGE EXAMPLES**:
+
+**Scenario 1: Learning 6502 Assembly**
+```
+Q: "What does register $D418 do?"
+→ Annotation shows: docs/reference/SID_REGISTERS.md
+→ Click through to full SID register documentation
+→ Learn: $D418 = Master volume and filter mode control
+```
+
+**Scenario 2: Understanding Laxity Format**
+```
+Q: "How are Laxity wave tables structured?"
+→ Annotation shows: docs/reference/LAXITY_WAVE_TABLE.md
+→ Documentation explains: 32-byte dual-array format
+→ Code + docs together = complete understanding
+```
+
+**Scenario 3: SF2 Driver Development**
+```
+Q: "Where are SF2 instrument tables located?"
+→ Annotation shows: $0A03-$0B02 → docs/reference/SF2_FORMAT_SPEC.md
+→ Full specification with format details
+→ Can implement compatible driver
+```
+
+**CODE STATISTICS**:
+- **+151 lines**: DOCUMENTATION_MAP (address ranges + topics)
+- **+93 lines**: 6 helper functions
+- **+5 lines**: Integration in annotate_asm_file()
+- **Total: +249 lines**
+
+**TESTING RESULTS**:
+- **test_decompiler_output.asm**: Detected 25 SID register addresses
+- **Cross-references**: 2 doc files linked (SID_REGISTERS.md, ARCHITECTURE.md)
+- **Section generated**: Complete with address lists
+- **All formats**: Works in text, JSON, Markdown, HTML, CSV, TSV
+
+**BENEFITS**:
+- **Educational**: Connect code to learning resources
+- **Self-documenting**: Code points to its own documentation
+- **Bi-directional**: Docs ↔ Code cross-references
+- **Maintenance**: Easy to find relevant docs when modifying code
+- **Onboarding**: New developers can explore docs from code
+- **Completeness**: No orphaned documentation
+
+**LIMITATIONS**:
+- **Static mapping**: Requires manual maintenance of DOCUMENTATION_MAP
+- **Address-based only**: Currently only maps memory addresses (not topics in code)
+- **Doc availability**: Doesn't check if documentation files actually exist
+- **No auto-update**: Adding new docs requires updating DOCUMENTATION_MAP
+
+**FUTURE ENHANCEMENTS**:
+- Auto-detect documentation files in docs/ directory
+- Parse markdown files to extract address references
+- Generate documentation from annotations (reverse direction)
+- Interactive links in HTML output
+
+**Code Location**:
+- `pyscript/annotate_asm.py` (lines 27-177 for DOCUMENTATION_MAP)
+- `pyscript/annotate_asm.py` (lines 2836-2929 for helper functions)
+- `pyscript/annotate_asm.py` (lines 3164-3168 for integration)
+
+**Remaining Priority 3 Features**:
 - Configuration system (YAML/JSON config files)
 
 ### Verified - Laxity Accuracy Confirmation

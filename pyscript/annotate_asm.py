@@ -24,6 +24,158 @@ try:
 except ImportError:
     HTML_EXPORT_AVAILABLE = False
 
+# Documentation mapping: Address ranges and topics to documentation files
+DOCUMENTATION_MAP = {
+    # Memory address ranges to documentation
+    'addresses': {
+        # SID chip registers
+        (0xD400, 0xD418): {
+            'title': 'SID Chip Registers',
+            'docs': [
+                'docs/reference/SID_REGISTERS.md',
+                'docs/ARCHITECTURE.md'
+            ],
+            'description': 'Complete SID sound chip register reference'
+        },
+        # Laxity NewPlayer v21 tables
+        (0x18DA, 0x18F9): {
+            'title': 'Laxity Wave Table - Waveforms',
+            'docs': [
+                'docs/reference/LAXITY_WAVE_TABLE.md',
+                'docs/ARCHITECTURE.md'
+            ],
+            'description': 'Laxity NewPlayer v21 waveform table (32 bytes)'
+        },
+        (0x190C, 0x192B): {
+            'title': 'Laxity Wave Table - Note Offsets',
+            'docs': [
+                'docs/reference/LAXITY_WAVE_TABLE.md',
+                'docs/ARCHITECTURE.md'
+            ],
+            'description': 'Laxity NewPlayer v21 note offset table (32 bytes)'
+        },
+        (0x1837, 0x1A1D): {
+            'title': 'Laxity Pulse Table',
+            'docs': [
+                'docs/reference/LAXITY_TABLES.md',
+                'docs/ARCHITECTURE.md'
+            ],
+            'description': 'Laxity NewPlayer v21 pulse width table (4-byte entries)'
+        },
+        (0x1A1E, 0x1A6A): {
+            'title': 'Laxity Filter Table',
+            'docs': [
+                'docs/reference/LAXITY_TABLES.md',
+                'docs/ARCHITECTURE.md'
+            ],
+            'description': 'Laxity NewPlayer v21 filter table (4-byte entries)'
+        },
+        (0x1A6B, 0x1AAA): {
+            'title': 'Laxity Instrument Table',
+            'docs': [
+                'docs/reference/LAXITY_INSTRUMENTS.md',
+                'docs/ARCHITECTURE.md'
+            ],
+            'description': 'Laxity NewPlayer v21 instrument table (8×8 bytes, column-major)'
+        },
+        (0x199F, 0x19A4): {
+            'title': 'Laxity Sequence Pointers',
+            'docs': [
+                'docs/reference/LAXITY_SEQUENCES.md',
+                'docs/ARCHITECTURE.md'
+            ],
+            'description': 'Laxity NewPlayer v21 sequence pointers (3 voices × 2 bytes)'
+        },
+        # SF2 Driver tables
+        (0x0903, 0x0A02): {
+            'title': 'SF2 Sequence Data',
+            'docs': [
+                'docs/reference/SF2_FORMAT_SPEC.md',
+                'docs/ARCHITECTURE.md'
+            ],
+            'description': 'SF2 Driver 11 sequence data area'
+        },
+        (0x0A03, 0x0B02): {
+            'title': 'SF2 Instrument Table',
+            'docs': [
+                'docs/reference/SF2_FORMAT_SPEC.md',
+                'docs/ARCHITECTURE.md'
+            ],
+            'description': 'SF2 Driver 11 instrument table'
+        },
+        (0x0B03, 0x0D02): {
+            'title': 'SF2 Wave Table',
+            'docs': [
+                'docs/reference/SF2_FORMAT_SPEC.md',
+                'docs/ARCHITECTURE.md'
+            ],
+            'description': 'SF2 Driver 11 wave table'
+        },
+        (0x0D03, 0x0F02): {
+            'title': 'SF2 Pulse Table',
+            'docs': [
+                'docs/reference/SF2_FORMAT_SPEC.md',
+                'docs/ARCHITECTURE.md'
+            ],
+            'description': 'SF2 Driver 11 pulse table'
+        },
+        (0x0F03, 0x1102): {
+            'title': 'SF2 Filter Table',
+            'docs': [
+                'docs/reference/SF2_FORMAT_SPEC.md',
+                'docs/ARCHITECTURE.md'
+            ],
+            'description': 'SF2 Driver 11 filter table'
+        },
+    },
+    # Topics to documentation
+    'topics': {
+        'laxity': {
+            'title': 'Laxity NewPlayer v21',
+            'docs': [
+                'docs/LAXITY_DRIVER_USER_GUIDE.md',
+                'docs/implementation/LAXITY_DRIVER_IMPLEMENTATION.md',
+                'docs/ARCHITECTURE.md'
+            ],
+            'description': 'Laxity music player format and driver'
+        },
+        'sf2': {
+            'title': 'SID Factory II Format',
+            'docs': [
+                'docs/reference/SF2_FORMAT_SPEC.md',
+                'docs/guides/SF2_VIEWER_GUIDE.md',
+                'docs/ARCHITECTURE.md'
+            ],
+            'description': 'SF2 file format and drivers'
+        },
+        'conversion': {
+            'title': 'SID to SF2 Conversion',
+            'docs': [
+                'docs/guides/TUTORIALS.md',
+                'docs/guides/BEST_PRACTICES.md',
+                'README.md'
+            ],
+            'description': 'How SID files are converted to SF2 format'
+        },
+        'validation': {
+            'title': 'Accuracy Validation',
+            'docs': [
+                'docs/guides/VALIDATION_GUIDE.md',
+                'docs/ARCHITECTURE.md'
+            ],
+            'description': 'How conversion accuracy is measured and validated'
+        },
+        'driver_selection': {
+            'title': 'Driver Selection',
+            'docs': [
+                'docs/ARCHITECTURE.md',
+                'docs/guides/BEST_PRACTICES.md'
+            ],
+            'description': 'How the correct driver is automatically selected'
+        },
+    }
+}
+
 # Common 6502 opcodes with descriptions
 OPCODES = {
     'LDA': 'Load Accumulator',
@@ -2681,6 +2833,101 @@ def format_register_analysis(
     return output
 
 
+def find_documentation_for_address(address: int) -> Optional[dict]:
+    """Find documentation links for a given memory address"""
+    for (start, end), doc_info in DOCUMENTATION_MAP['addresses'].items():
+        if start <= address <= end:
+            return doc_info
+    return None
+
+
+def find_documentation_for_topic(topic: str) -> Optional[dict]:
+    """Find documentation links for a given topic"""
+    return DOCUMENTATION_MAP['topics'].get(topic.lower())
+
+
+def format_documentation_link(doc_path: str, base_path: Path = None) -> str:
+    """Format a documentation link (check if file exists)"""
+    if base_path:
+        full_path = base_path / doc_path
+        if full_path.exists():
+            return f"{doc_path} ✓"
+        else:
+            return f"{doc_path} (not found)"
+    return doc_path
+
+
+def generate_documentation_references(address: int, player_type: str = None) -> List[str]:
+    """Generate documentation reference lines for an address"""
+    refs = []
+
+    # Check for address-specific documentation
+    doc_info = find_documentation_for_address(address)
+    if doc_info:
+        refs.append(f"; See also: {doc_info['title']}")
+        for doc in doc_info['docs'][:2]:  # Limit to 2 most relevant
+            refs.append(f";   - {doc}")
+
+    # Check for player-type documentation
+    if player_type:
+        topic_info = find_documentation_for_topic(player_type)
+        if topic_info and not doc_info:  # Only if we don't already have address docs
+            refs.append(f"; See also: {topic_info['title']}")
+            for doc in topic_info['docs'][:2]:
+                refs.append(f";   - {doc}")
+
+    return refs
+
+
+def create_reverse_documentation_index(symbols: Dict[int, 'Symbol'],
+                                       file_info: dict = None) -> Dict[str, List[int]]:
+    """Create reverse index: documentation file -> addresses that reference it"""
+    index = {}
+
+    # Scan all symbols for addresses that have documentation
+    for addr, symbol in symbols.items():
+        doc_info = find_documentation_for_address(addr)
+        if doc_info:
+            for doc in doc_info['docs']:
+                if doc not in index:
+                    index[doc] = []
+                index[doc].append(addr)
+
+    return index
+
+
+def format_documentation_section(reverse_index: Dict[str, List[int]]) -> str:
+    """Format documentation cross-reference section"""
+    if not reverse_index:
+        return ""
+
+    output = []
+    output.append(";==============================================================================")
+    output.append("; DOCUMENTATION CROSS-REFERENCES")
+    output.append(";==============================================================================")
+    output.append(";")
+    output.append("; This section shows which documentation files are relevant to this code.")
+    output.append(";")
+
+    for doc_path in sorted(reverse_index.keys()):
+        addresses = reverse_index[doc_path]
+        output.append(f"; {doc_path}")
+
+        # Show first 5 addresses
+        addr_strs = [f"${a:04X}" for a in sorted(addresses)[:5]]
+        addr_list = ", ".join(addr_strs)
+        if len(addresses) > 5:
+            output.append(f";   Referenced by {len(addresses)} address(es): {addr_list}, ... ({len(addresses) - 5} more)")
+        else:
+            output.append(f";   Referenced by {len(addresses)} address(es): {addr_list}")
+        output.append(";")
+
+    output.append(";==============================================================================")
+    output.append("")
+
+    return "\n".join(output)
+
+
 def create_header(filename: str, info: dict) -> str:
     """Create comprehensive header for ASM file"""
     sep = ";" + "=" * 78
@@ -2914,6 +3161,12 @@ def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = Non
     if register_analysis:
         output_lines.append(register_analysis)
 
+    # Add documentation cross-references
+    reverse_doc_index = create_reverse_documentation_index(symbols, file_info)
+    doc_section = format_documentation_section(reverse_doc_index)
+    if doc_section:
+        output_lines.append(doc_section)
+
     # Build a mapping of line numbers to subroutine addresses
     line_to_subroutine = {}
     for addr, info in subroutines.items():
@@ -2958,6 +3211,14 @@ def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = Non
             pattern = line_to_pattern[i]
             pattern_header = format_pattern_header(pattern)
             output_lines.append(pattern_header)
+
+        # Check if this line references a documented address
+        line_addr = _extract_line_address(line)
+        if line_addr:
+            doc_refs = generate_documentation_references(line_addr, file_info.get('player'))
+            if doc_refs:
+                for ref in doc_refs:
+                    output_lines.append(ref)
 
         # Annotate the line
         annotated = annotate_line(line)
