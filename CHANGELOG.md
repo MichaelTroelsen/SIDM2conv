@@ -760,6 +760,170 @@ Priority 2 features to implement:
 
 See `docs/ASM_ANNOTATION_IMPROVEMENTS.md` for complete roadmap.
 
+#### Enhanced - Symbol Table Generation (2026-01-01)
+
+**🎯 MAJOR ENHANCEMENT: Comprehensive symbol table consolidates all detected addresses**
+
+Implemented Priority 2 improvement #4 from `docs/ASM_ANNOTATION_IMPROVEMENTS.md`: automatic symbol table generation that consolidates all detected symbols (subroutines, data sections, hardware registers, referenced addresses) into a searchable reference table with usage statistics.
+
+**NEW CAPABILITIES**:
+
+**1. Symbol Classification (4 Types)**:
+- **SUBROUTINE**: Detected subroutines with names and purposes
+- **DATA**: Data sections (frequency tables, wave tables, instruments, etc.)
+- **HARDWARE**: SID chip registers ($D400-$D418) and other I/O
+- **UNKNOWN**: Referenced addresses not yet classified (zero page, stack, etc.)
+
+**2. Automatic Symbol Detection**:
+- Consolidates all detected subroutines from SubroutineDetector
+- Includes all data sections from SectionDetector
+- Adds all 25 SID hardware registers automatically
+- Captures all referenced addresses from cross-references
+- Classifies unknown addresses (zero page, stack, I/O)
+
+**3. Reference Statistics**:
+- **Total references**: Sum of all reference types
+- **Call count**: Number of JSR calls (subroutines)
+- **Read count**: Number of reads (LDA, LDX, CMP, etc.)
+- **Write count**: Number of writes (STA, STX, STY)
+- **Compact format**: "5c,12r,3w" = 5 calls, 12 reads, 3 writes
+
+**4. Symbol Table Format**:
+```
+;==============================================================================
+; SYMBOL TABLE
+;==============================================================================
+;
+; Total Symbols: 140
+; Breakdown: 25 hardware, 2 subroutine, 113 unknown
+;
+; Address    Type         Name                     Refs     Description
+; ---------- ------------ ------------------------ -------- --------------------
+; $0D7E      Subroutine   sf2_init                 -        Initialize SID chip
+; $0E00      Unknown      addr_0e00                1c       Referenced address
+; $A7A8      Unknown      addr_a7a8                1r,2w    Referenced address
+; $D400      Hardware     voice_1_frequency_low    -        Voice 1 Frequency Low
+; $D418      Hardware     volume/filter_mode       -        Volume/Filter Mode
+;==============================================================================
+;
+; Legend:
+;   Refs: c=calls, r=reads, w=writes
+;   Types: subroutine, data, hardware, unknown
+;==============================================================================
+```
+
+**IMPLEMENTATION**:
+
+**New Classes**:
+```python
+class SymbolType(Enum):
+    """Type of symbol in the symbol table"""
+    SUBROUTINE = "subroutine"
+    DATA = "data"
+    HARDWARE = "hardware"
+    UNKNOWN = "unknown"
+
+@dataclass
+class Symbol:
+    """Represents a symbol in the symbol table"""
+    address: int
+    symbol_type: SymbolType
+    name: str = ""
+    description: str = ""
+    ref_count: int = 0
+    call_count: int = 0
+    read_count: int = 0
+    write_count: int = 0
+    size_bytes: Optional[int] = None
+
+class SymbolTableGenerator:
+    """Generate a comprehensive symbol table from detected features"""
+
+    def generate_symbol_table(self) -> Dict[int, Symbol]:
+        """Main entry point: generate complete symbol table"""
+        self._add_subroutines()       # From SubroutineDetector
+        self._add_data_sections()     # From SectionDetector
+        self._add_hardware_registers() # All SID registers
+        self._add_unknown_references() # From cross-references
+        self._count_references()      # Count all reference types
+        return self.symbols
+```
+
+**Helper Methods** (6 total):
+- `_add_subroutines()` - Add all detected subroutines with names/purposes
+- `_add_data_sections()` - Add data sections with type-specific descriptions
+- `_add_hardware_registers()` - Add all 25 SID registers ($D400-$D418)
+- `_add_unknown_references()` - Classify unknown referenced addresses
+- `_count_references()` - Count calls, reads, writes for each symbol
+- `format_symbol_table()` - Format as readable text table with legend
+
+**TESTING RESULTS**:
+
+**Test File: `test_decompiler_output.asm` (Laxity music player)**:
+```
+Generating symbol table...
+Found 140 symbol(s)
+
+Breakdown:
+- 2 subroutines (detected entry points)
+- 25 hardware registers (all SID registers)
+- 113 unknown addresses (referenced locations)
+```
+
+**Test File: `laxity_driver.asm` (SF2 wrapper)**:
+```
+Generating symbol table...
+Found 29 symbol(s)
+
+Breakdown:
+- 2 subroutines (sf2_init, sf2_play)
+- 25 hardware registers (all SID registers)
+- 2 unknown addresses (JSR targets $0E00, $0EA1)
+
+Reference counts showing:
+- $0E00: 1c (1 call to laxity init)
+- $0EA1: 1c (1 call to laxity play)
+```
+
+**KEY BENEFITS**:
+
+1. **Quick Reference** - Find any address instantly without scrolling
+2. **Usage Statistics** - See how often each symbol is used (hot spots)
+3. **Type Classification** - Understand what each address represents
+4. **Comprehensive Coverage** - All addresses in one consolidated view
+5. **Educational Value** - Learn memory layout and usage patterns
+6. **Foundation for Analysis** - Enables cycle counting, flow visualization
+
+**INTEGRATION**:
+
+Symbol table is automatically generated after pattern detection and inserted after the main header in all annotated ASM files. The table appears before the actual assembly code for easy reference.
+
+**Code Location**: `pyscript/annotate_asm.py` lines 1268-1517
+
+**CODE STATISTICS**:
+- **+252 lines of code**
+- **1 enum** (SymbolType with 4 types)
+- **1 dataclass** (Symbol with 9 fields)
+- **1 class** (SymbolTableGenerator)
+- **6 methods** (5 detection methods + 1 formatter)
+- **1 formatting function** (format_symbol_table with filtering/sorting)
+
+**NEXT STEPS**:
+
+Completed features (Priority 1 + Priority 2 partial):
+- ✅ Subroutine detection
+- ✅ Data vs code section detection
+- ✅ Cross-reference generation
+- ✅ Pattern recognition
+- ✅ **Symbol table generation** ← NEW!
+
+Remaining Priority 2 features:
+- Cycle counting (performance analysis)
+- Control flow visualization (ASCII art graphs)
+- Enhanced register usage tracking
+
+See `docs/ASM_ANNOTATION_IMPROVEMENTS.md` for complete roadmap.
+
 ### Verified - Laxity Accuracy Confirmation
 
 **✅ VERIFIED: Laxity driver achieves 99.98% frame accuracy (exceeds 99.93% target)**

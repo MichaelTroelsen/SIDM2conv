@@ -32,6 +32,162 @@
 ; CODE
 ;==============================================================================
 
+;==============================================================================
+; SYMBOL TABLE
+;==============================================================================
+;
+; Total Symbols: 140
+; Breakdown: 25 hardware, 2 subroutine, 113 unknown
+;
+; Address    Type         Name                     Refs     Description
+; ---------- ------------ ------------------------ -------- --------------------
+; $A000      Subroutine   Utility                  -        Utility or helper function
+; $A006      Subroutine   Utility                  -        Utility or helper function
+; $A06F      Unknown      addr_a06f                -        Referenced address
+; $A13C      Unknown      addr_a13c                -        Referenced address
+; $A1E7      Unknown      addr_a1e7                -        Referenced address
+; $A221      Unknown      addr_a221                -        Referenced address
+; $A2A5      Unknown      addr_a2a5                -        Referenced address
+; $A2A7      Unknown      addr_a2a7                1w       Referenced address
+; $A33B      Unknown      addr_a33b                -        Referenced address
+; $A33E      Unknown      addr_a33e                -        Referenced address
+; $A35D      Unknown      addr_a35d                -        Referenced address
+; $A398      Unknown      addr_a398                -        Referenced address
+; $A3A4      Unknown      addr_a3a4                1w       Referenced address
+; $A3E5      Unknown      addr_a3e5                -        Referenced address
+; $A41B      Unknown      addr_a41b                -        Referenced address
+; $A433      Unknown      addr_a433                -        Referenced address
+; $A480      Unknown      addr_a480                -        Referenced address
+; $A49E      Unknown      addr_a49e                -        Referenced address
+; $A4A1      Unknown      addr_a4a1                -        Referenced address
+; $A511      Unknown      addr_a511                -        Referenced address
+; $A54C      Unknown      addr_a54c                -        Referenced address
+; $A55F      Unknown      addr_a55f                -        Referenced address
+; $A59B      Unknown      addr_a59b                -        Referenced address
+; $A5A1      Unknown      addr_a5a1                -        Referenced address
+; $A600      Unknown      addr_a600                -        Referenced address
+; $A679      Unknown      addr_a679                -        Referenced address
+; $A6B9      Unknown      addr_a6b9                -        Referenced address
+; $A6C8      Unknown      addr_a6c8                5r       Referenced address
+; $A6C9      Unknown      addr_a6c9                1r       Referenced address
+; $A728      Unknown      addr_a728                5r       Referenced address
+; $A729      Unknown      addr_a729                1r       Referenced address
+; $A788      Unknown      addr_a788                1r       Referenced address
+; $A798      Unknown      addr_a798                1r       Referenced address
+; $A79E      Unknown      addr_a79e                1r       Referenced address
+; $A7A4      Unknown      addr_a7a4                1r       Referenced address
+; $A7A7      Unknown      addr_a7a7                1r,1w    Referenced address
+; $A7A8      Unknown      addr_a7a8                1r,2w    Referenced address
+; $A7A9      Unknown      addr_a7a9                1r,2w    Referenced address
+; $A7AA      Unknown      addr_a7aa                2r,3w    Referenced address
+; $A7AB      Unknown      addr_a7ab                1r,2w    Referenced address
+; $A7AC      Unknown      addr_a7ac                1r,1w    Referenced address
+; $A7AD      Unknown      addr_a7ad                1r,2w    Referenced address
+; $A7AE      Unknown      addr_a7ae                1r,1w    Referenced address
+; $A7AF      Unknown      addr_a7af                1r,1w    Referenced address
+; $A7B0      Unknown      addr_a7b0                2r,2w    Referenced address
+; $A7B1      Unknown      addr_a7b1                2r,2w    Referenced address
+; $A7B2      Unknown      addr_a7b2                2r,1w    Referenced address
+; $A7B3      Unknown      addr_a7b3                1r,3w    Referenced address
+; $A7B4      Unknown      addr_a7b4                3r,4w    Referenced address
+; $A7B5      Unknown      addr_a7b5                2r,3w    Referenced address
+; $A7B6      Unknown      addr_a7b6                1r,2w    Referenced address
+; $A7B9      Unknown      addr_a7b9                1r,1w    Referenced address
+; $A7BC      Unknown      addr_a7bc                3r,2w    Referenced address
+; $A7BF      Unknown      addr_a7bf                1r,2w    Referenced address
+; $A7C2      Unknown      addr_a7c2                1r,1w    Referenced address
+; $A7C5      Unknown      addr_a7c5                1r,1w    Referenced address
+; $A7C8      Unknown      addr_a7c8                6r,3w    Referenced address
+; $A7CB      Unknown      addr_a7cb                3r,1w    Referenced address
+; $A7CE      Unknown      addr_a7ce                2r,2w    Referenced address
+; $A7D1      Unknown      addr_a7d1                3r,2w    Referenced address
+; $A7D4      Unknown      addr_a7d4                1r,1w    Referenced address
+; $A7D7      Unknown      addr_a7d7                1r,1w    Referenced address
+; $A7DA      Unknown      addr_a7da                3r,1w    Referenced address
+; $A7DD      Unknown      addr_a7dd                1w       Referenced address
+; $A7E0      Unknown      addr_a7e0                6r,1w    Referenced address
+; $A7E3      Unknown      addr_a7e3                5r,3w    Referenced address
+; $A7E6      Unknown      addr_a7e6                2r,4w    Referenced address
+; $A7E9      Unknown      addr_a7e9                3r,3w    Referenced address
+; $A7EC      Unknown      addr_a7ec                2r,3w    Referenced address
+; $A7EF      Unknown      addr_a7ef                4r,6w    Referenced address
+; $A7F2      Unknown      addr_a7f2                5r,3w    Referenced address
+; $A7F5      Unknown      addr_a7f5                4r,3w    Referenced address
+; $A7F8      Unknown      addr_a7f8                3r,5w    Referenced address
+; $A7FB      Unknown      addr_a7fb                1r,1w    Referenced address
+; $A7FE      Unknown      addr_a7fe                1r,1w    Referenced address
+; $A801      Unknown      addr_a801                7r,9w    Referenced address
+; $A804      Unknown      addr_a804                7r,9w    Referenced address
+; $A807      Unknown      addr_a807                1r,2w    Referenced address
+; $A80A      Unknown      addr_a80a                1r,1w    Referenced address
+; $A80D      Unknown      addr_a80d                2r,2w    Referenced address
+; $A810      Unknown      addr_a810                2r,2w    Referenced address
+; $A813      Unknown      addr_a813                1r,2w    Referenced address
+; $A816      Unknown      addr_a816                1r,4w    Referenced address
+; $A819      Unknown      addr_a819                1r,4w    Referenced address
+; $A81C      Unknown      addr_a81c                1r,3w    Referenced address
+; $A81F      Unknown      addr_a81f                5r,3w    Referenced address
+; $A820      Unknown      addr_a820                1w       Referenced address
+; $A821      Unknown      addr_a821                1w       Referenced address
+; $A822      Unknown      addr_a822                1r       Referenced address
+; $A823      Unknown      addr_a823                2r       Referenced address
+; $A824      Unknown      addr_a824                1r       Referenced address
+; $A834      Unknown      addr_a834                1r       Referenced address
+; $A844      Unknown      addr_a844                4r       Referenced address
+; $A854      Unknown      addr_a854                1r       Referenced address
+; $A864      Unknown      addr_a864                1r       Referenced address
+; $A874      Unknown      addr_a874                1r       Referenced address
+; $A884      Unknown      addr_a884                2r       Referenced address
+; $A8A8      Unknown      addr_a8a8                4r       Referenced address
+; $A8CC      Unknown      addr_a8cc                5r       Referenced address
+; $A8F0      Unknown      addr_a8f0                1r       Referenced address
+; $A8F1      Unknown      addr_a8f1                1r       Referenced address
+; $A8F2      Unknown      addr_a8f2                2r       Referenced address
+; $A924      Unknown      addr_a924                2r       Referenced address
+; $A956      Unknown      addr_a956                2r       Referenced address
+; $A96F      Unknown      addr_a96f                2r       Referenced address
+; $A988      Unknown      addr_a988                2r       Referenced address
+; $A9A1      Unknown      addr_a9a1                4r       Referenced address
+; $A9B2      Unknown      addr_a9b2                2r       Referenced address
+; $A9C3      Unknown      addr_a9c3                3r       Referenced address
+; $A9D4      Unknown      addr_a9d4                2r       Referenced address
+; $AA1F      Unknown      addr_aa1f                2r       Referenced address
+; $AA24      Unknown      addr_aa24                1r       Referenced address
+; $AA27      Unknown      addr_aa27                1r       Referenced address
+; $AA2A      Unknown      addr_aa2a                1r       Referenced address
+; $AA7A      Unknown      addr_aa7a                1r       Referenced address
+; $D400      Hardware     voice_1_frequency_low    -        Voice 1 Frequency Low
+; $D401      Hardware     voice_1_frequency_high   -        Voice 1 Frequency High
+; $D402      Hardware     voice_1_pulse_width_low  -        Voice 1 Pulse Width Low
+; $D403      Hardware     voice_1_pulse_width_high -        Voice 1 Pulse Width High
+; $D404      Hardware     voice_1_control_register -        Voice 1 Control Register
+; $D405      Hardware     voice_1_attack/decay     -        Voice 1 Attack/Decay
+; $D406      Hardware     voice_1_sustain/release  -        Voice 1 Sustain/Release
+; $D407      Hardware     voice_2_frequency_low    -        Voice 2 Frequency Low
+; $D408      Hardware     voice_2_frequency_high   -        Voice 2 Frequency High
+; $D409      Hardware     voice_2_pulse_width_low  -        Voice 2 Pulse Width Low
+; $D40A      Hardware     voice_2_pulse_width_high -        Voice 2 Pulse Width High
+; $D40B      Hardware     voice_2_control_register -        Voice 2 Control Register
+; $D40C      Hardware     voice_2_attack/decay     -        Voice 2 Attack/Decay
+; $D40D      Hardware     voice_2_sustain/release  -        Voice 2 Sustain/Release
+; $D40E      Hardware     voice_3_frequency_low    -        Voice 3 Frequency Low
+; $D40F      Hardware     voice_3_frequency_high   -        Voice 3 Frequency High
+; $D410      Hardware     voice_3_pulse_width_low  -        Voice 3 Pulse Width Low
+; $D411      Hardware     voice_3_pulse_width_high -        Voice 3 Pulse Width High
+; $D412      Hardware     voice_3_control_register -        Voice 3 Control Register
+; $D413      Hardware     voice_3_attack/decay     -        Voice 3 Attack/Decay
+; $D414      Hardware     voice_3_sustain/release  -        Voice 3 Sustain/Release
+; $D415      Hardware     filter_cutoff_low        -        Filter Cutoff Low
+; $D416      Hardware     filter_cutoff_high       -        Filter Cutoff High
+; $D417      Hardware     filter_resonance/routing -        Filter Resonance/Routing
+; $D418      Hardware     volume/filter_mode       -        Volume/Filter Mode
+;==============================================================================
+;
+; Legend:
+;   Refs: c=calls, r=reads, w=writes
+;   Types: subroutine, data, hardware, unknown
+;==============================================================================
+;
 ; SIDdecompiler output; Generated by Python SIDdecompiler (100% compatible);; Original file: Broware; Author: Laxity, youtH & SMC; Released: 2022 Onslaught/Offence;; Load address: $A000; Init address: $A000; Play address: $A006;* = $A000;------------------------------------------------------------------------------
 ; Subroutine: Utility
 ; Address: $A000 - $A046

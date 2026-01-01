@@ -1265,6 +1265,258 @@ def generate_subroutine_header(info: SubroutineInfo,
     return header
 
 
+# ==============================================================================
+# Symbol Table Generation
+# ==============================================================================
+
+class SymbolType(Enum):
+    """Type of symbol in the symbol table"""
+    SUBROUTINE = "subroutine"
+    DATA = "data"
+    HARDWARE = "hardware"
+    UNKNOWN = "unknown"
+
+
+@dataclass
+class Symbol:
+    """Represents a symbol in the symbol table"""
+    address: int
+    symbol_type: SymbolType
+    name: str = ""
+    description: str = ""
+    ref_count: int = 0
+    call_count: int = 0
+    read_count: int = 0
+    write_count: int = 0
+    size_bytes: Optional[int] = None
+
+
+class SymbolTableGenerator:
+    """Generate a comprehensive symbol table from detected features"""
+
+    def __init__(self,
+                 subroutines: Dict[int, 'SubroutineInfo'],
+                 xrefs: Dict[int, List['Reference']],
+                 sections: List['SectionInfo']):
+        self.subroutines = subroutines
+        self.xrefs = xrefs
+        self.sections = sections
+        self.symbols: Dict[int, Symbol] = {}
+
+    def generate_symbol_table(self) -> Dict[int, Symbol]:
+        """Main entry point: generate complete symbol table"""
+        # Add subroutines
+        self._add_subroutines()
+
+        # Add data sections
+        self._add_data_sections()
+
+        # Add hardware registers (SID)
+        self._add_hardware_registers()
+
+        # Add referenced addresses that aren't classified yet
+        self._add_unknown_references()
+
+        # Count references for all symbols
+        self._count_references()
+
+        return self.symbols
+
+    def _add_subroutines(self):
+        """Add all detected subroutines to symbol table"""
+        for addr, info in self.subroutines.items():
+            self.symbols[addr] = Symbol(
+                address=addr,
+                symbol_type=SymbolType.SUBROUTINE,
+                name=info.name if info.name else f"sub_{addr:04x}",
+                description=info.purpose,
+                size_bytes=info.end_address - addr if info.end_address else None
+            )
+
+    def _add_data_sections(self):
+        """Add data sections to symbol table"""
+        for section in self.sections:
+            if section.section_type == SectionType.CODE or section.section_type == SectionType.UNKNOWN:
+                continue
+
+            addr = section.address
+            if addr and addr not in self.symbols:
+                # Determine description from section type
+                desc = ""
+                if section.section_type == SectionType.FREQUENCY_TABLE:
+                    desc = "Note frequency lookup table"
+                elif section.section_type == SectionType.WAVE_TABLE:
+                    desc = "Waveform data table"
+                elif section.section_type == SectionType.INSTRUMENT_TABLE:
+                    desc = "Instrument definitions"
+                elif section.section_type == SectionType.PULSE_TABLE:
+                    desc = "Pulse width modulation table"
+                elif section.section_type == SectionType.FILTER_TABLE:
+                    desc = "Filter parameter table"
+                elif section.section_type == SectionType.SEQUENCE_DATA:
+                    desc = "Music sequence data"
+                else:
+                    desc = section.section_type.value.replace('_', ' ').title()
+
+                self.symbols[addr] = Symbol(
+                    address=addr,
+                    symbol_type=SymbolType.DATA,
+                    name=section.section_type.value.lower(),
+                    description=desc,
+                    size_bytes=section.size
+                )
+
+    def _add_hardware_registers(self):
+        """Add SID hardware registers to symbol table"""
+        # Add the main SID register range
+        for addr, desc in SID_REGISTERS.items():
+            if addr not in self.symbols:
+                # Generate short name from description
+                name = desc.lower().replace(' ', '_')
+                self.symbols[addr] = Symbol(
+                    address=addr,
+                    symbol_type=SymbolType.HARDWARE,
+                    name=name,
+                    description=desc,
+                    size_bytes=1
+                )
+
+    def _add_unknown_references(self):
+        """Add referenced addresses that aren't classified yet"""
+        for addr in self.xrefs.keys():
+            if addr not in self.symbols:
+                # Determine if this looks like zero page, stack, or other
+                desc = ""
+                if 0x0000 <= addr <= 0x00FF:
+                    desc = "Zero page variable"
+                elif 0x0100 <= addr <= 0x01FF:
+                    desc = "Stack location"
+                elif 0xD400 <= addr <= 0xD7FF:
+                    desc = "I/O register"
+                else:
+                    desc = "Referenced address"
+
+                self.symbols[addr] = Symbol(
+                    address=addr,
+                    symbol_type=SymbolType.UNKNOWN,
+                    name=f"addr_{addr:04x}",
+                    description=desc
+                )
+
+    def _count_references(self):
+        """Count all types of references for each symbol"""
+        from collections import defaultdict
+
+        for addr, refs in self.xrefs.items():
+            if addr not in self.symbols:
+                continue
+
+            symbol = self.symbols[addr]
+
+            for ref in refs:
+                symbol.ref_count += 1
+
+                if ref.ref_type == ReferenceType.CALL:
+                    symbol.call_count += 1
+                elif ref.ref_type == ReferenceType.READ:
+                    symbol.read_count += 1
+                elif ref.ref_type == ReferenceType.WRITE:
+                    symbol.write_count += 1
+                elif ref.ref_type == ReferenceType.READ_MODIFY:
+                    symbol.read_count += 1
+                    symbol.write_count += 1
+
+
+def format_symbol_table(symbols: Dict[int, Symbol],
+                        max_entries: int = 0,
+                        filter_type: Optional[SymbolType] = None) -> str:
+    """
+    Format the symbol table as a readable text table
+
+    Args:
+        symbols: Dictionary of address -> Symbol
+        max_entries: Maximum entries to show (0 = show all)
+        filter_type: Only show symbols of this type (None = show all)
+
+    Returns:
+        Formatted symbol table as string
+    """
+    if not symbols:
+        return ""
+
+    sep = "=" * 78
+
+    # Filter symbols if requested
+    filtered_symbols = symbols
+    if filter_type:
+        filtered_symbols = {addr: sym for addr, sym in symbols.items()
+                          if sym.symbol_type == filter_type}
+
+    # Sort by address
+    sorted_symbols = sorted(filtered_symbols.items(), key=lambda x: x[0])
+
+    # Limit entries if requested
+    if max_entries > 0:
+        sorted_symbols = sorted_symbols[:max_entries]
+
+    # Build header
+    output = f";{sep}\n"
+    output += f"; SYMBOL TABLE\n"
+    output += f";{sep}\n"
+    output += ";\n"
+
+    if filter_type:
+        output += f"; Showing: {filter_type.value.upper()} symbols only\n"
+    else:
+        output += f"; Total Symbols: {len(filtered_symbols)}\n"
+
+    # Count by type
+    type_counts = {}
+    for sym in symbols.values():
+        type_counts[sym.symbol_type] = type_counts.get(sym.symbol_type, 0) + 1
+
+    output += "; Breakdown: "
+    output += ", ".join([f"{count} {stype.value}" for stype, count in sorted(type_counts.items(), key=lambda x: x[0].value)])
+    output += "\n;\n"
+
+    # Table header
+    output += f"; {'Address':<10} {'Type':<12} {'Name':<24} {'Refs':<8} {'Description'}\n"
+    output += f"; {'-'*10} {'-'*12} {'-'*24} {'-'*8} {'-'*20}\n"
+
+    # Table rows
+    for addr, symbol in sorted_symbols:
+        addr_str = f"${addr:04X}"
+        type_str = symbol.symbol_type.value.capitalize()
+        name_str = symbol.name[:24] if symbol.name else "-"
+
+        # Format reference counts
+        refs_parts = []
+        if symbol.call_count > 0:
+            refs_parts.append(f"{symbol.call_count}c")
+        if symbol.read_count > 0:
+            refs_parts.append(f"{symbol.read_count}r")
+        if symbol.write_count > 0:
+            refs_parts.append(f"{symbol.write_count}w")
+
+        refs_str = ",".join(refs_parts) if refs_parts else "-"
+
+        desc_str = symbol.description[:40] if symbol.description else "-"
+
+        output += f"; {addr_str:<10} {type_str:<12} {name_str:<24} {refs_str:<8} {desc_str}\n"
+
+    output += f";{sep}\n"
+    output += ";\n"
+
+    # Add legend
+    output += "; Legend:\n"
+    output += ";   Refs: c=calls, r=reads, w=writes\n"
+    output += ";   Types: subroutine, data, hardware, unknown\n"
+    output += f";{sep}\n"
+    output += ";\n"
+
+    return output
+
+
 def create_header(filename: str, info: dict) -> str:
     """Create comprehensive header for ASM file"""
     sep = ";" + "=" * 78
@@ -1440,11 +1692,22 @@ def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = Non
     patterns = pattern_detector.detect_all_patterns()
     print(f"  Found {len(patterns)} code pattern(s)")
 
+    # Generate symbol table
+    print(f"  Generating symbol table...")
+    symbol_generator = SymbolTableGenerator(subroutines, xrefs, sections)
+    symbols = symbol_generator.generate_symbol_table()
+    print(f"  Found {len(symbols)} symbol(s)")
+
     # Create annotated version
     output_lines = []
 
     # Add comprehensive header
     output_lines.append(create_header(input_path.name, file_info))
+
+    # Add symbol table
+    symbol_table = format_symbol_table(symbols)
+    if symbol_table:
+        output_lines.append(symbol_table)
 
     # Build a mapping of line numbers to subroutine addresses
     line_to_subroutine = {}

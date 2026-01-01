@@ -31,6 +31,51 @@
 ; CODE
 ;==============================================================================
 
+;==============================================================================
+; SYMBOL TABLE
+;==============================================================================
+;
+; Total Symbols: 29
+; Breakdown: 25 hardware, 2 subroutine, 2 unknown
+;
+; Address    Type         Name                     Refs     Description
+; ---------- ------------ ------------------------ -------- --------------------
+; $0D7E      Subroutine   SID Update               -        Update SID registers (music playback)
+; $0D81      Subroutine   Subroutine               -        Subroutine
+; $0E00      Unknown      addr_0e00                1c       Referenced address
+; $0EA1      Unknown      addr_0ea1                1c       Referenced address
+; $D400      Hardware     voice_1_frequency_low    -        Voice 1 Frequency Low
+; $D401      Hardware     voice_1_frequency_high   -        Voice 1 Frequency High
+; $D402      Hardware     voice_1_pulse_width_low  -        Voice 1 Pulse Width Low
+; $D403      Hardware     voice_1_pulse_width_high -        Voice 1 Pulse Width High
+; $D404      Hardware     voice_1_control_register -        Voice 1 Control Register
+; $D405      Hardware     voice_1_attack/decay     -        Voice 1 Attack/Decay
+; $D406      Hardware     voice_1_sustain/release  -        Voice 1 Sustain/Release
+; $D407      Hardware     voice_2_frequency_low    -        Voice 2 Frequency Low
+; $D408      Hardware     voice_2_frequency_high   -        Voice 2 Frequency High
+; $D409      Hardware     voice_2_pulse_width_low  -        Voice 2 Pulse Width Low
+; $D40A      Hardware     voice_2_pulse_width_high -        Voice 2 Pulse Width High
+; $D40B      Hardware     voice_2_control_register -        Voice 2 Control Register
+; $D40C      Hardware     voice_2_attack/decay     -        Voice 2 Attack/Decay
+; $D40D      Hardware     voice_2_sustain/release  -        Voice 2 Sustain/Release
+; $D40E      Hardware     voice_3_frequency_low    -        Voice 3 Frequency Low
+; $D40F      Hardware     voice_3_frequency_high   -        Voice 3 Frequency High
+; $D410      Hardware     voice_3_pulse_width_low  -        Voice 3 Pulse Width Low
+; $D411      Hardware     voice_3_pulse_width_high -        Voice 3 Pulse Width High
+; $D412      Hardware     voice_3_control_register -        Voice 3 Control Register
+; $D413      Hardware     voice_3_attack/decay     -        Voice 3 Attack/Decay
+; $D414      Hardware     voice_3_sustain/release  -        Voice 3 Sustain/Release
+; $D415      Hardware     filter_cutoff_low        -        Filter Cutoff Low
+; $D416      Hardware     filter_cutoff_high       -        Filter Cutoff High
+; $D417      Hardware     filter_resonance/routing -        Filter Resonance/Routing
+; $D418      Hardware     volume/filter_mode       -        Volume/Filter Mode
+;==============================================================================
+;
+; Legend:
+;   Refs: c=calls, r=reads, w=writes
+;   Types: subroutine, data, hardware, unknown
+;==============================================================================
+;
 ; Laxity SF2 Driver Wrapper; Wraps relocated Laxity NewPlayer v21 with SF2 interface;; Memory Layout:; $0D7E-$0DFF   SF2 Wrapper (130 bytes); $0E00-$16FF   Relocated Laxity Player (2.3 KB); $1700-$18FF   SF2 Header Blocks (512 bytes); $1900+        Music Data*=$0D7E; SF2 Driver Entry Points; These addresses are fixed for SF2 compatibility; Init routine ($0D7E); Initializes SID and Laxity player;------------------------------------------------------------------------------
 ; Subroutine: SID Update
 ; Address: $0D7E
