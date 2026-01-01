@@ -579,6 +579,187 @@ Priority 2 features:
 
 See `docs/ASM_ANNOTATION_IMPROVEMENTS.md` for complete roadmap.
 
+#### Enhanced - Pattern Recognition (2025-12-29)
+
+**🎯 MAJOR ENHANCEMENT: Automatic detection and documentation of common 6502 code patterns**
+
+Implemented Priority 2 improvement #1 from `docs/ASM_ANNOTATION_IMPROVEMENTS.md`: automatic pattern recognition to identify and explain common 6502 programming patterns, making assembly code much easier to understand at a glance.
+
+**NEW CAPABILITIES**:
+
+**1. Pattern Type Detection (10 Types)**:
+- **ADD_16BIT**: 16-bit addition with carry propagation (CLC; ADC; STA; LDA; ADC; STA)
+- **SUB_16BIT**: 16-bit subtraction with borrow propagation (SEC; SBC; STA; LDA; SBC; STA)
+- **LOOP_MEMORY_COPY**: Memory copy loop (LDA source,X; STA dest,X; INX; BNE)
+- **LOOP_MEMORY_FILL**: Memory fill loop (LDA #value; STA dest,X; INX; BNE)
+- **DELAY_LOOP**: Delay/timing loop (LDX #n; DEX; BNE)
+- **BIT_SHIFT_LEFT**: Consecutive left shifts (ASL/ROL chains)
+- **BIT_SHIFT_RIGHT**: Consecutive right shifts (LSR/ROR chains)
+- **CLEAR_MEMORY**: Clear multiple memory locations (LDA #$00; STA; STA; STA...)
+- **LOOP_COUNT**: General counting loop patterns
+- **COMPARE_16BIT**: 16-bit comparison (reserved for future)
+
+**2. Automatic Pattern Detection**:
+- Scans assembly for instruction sequences matching known patterns
+- Analyzes operands to extract variables and targets
+- Calculates pattern boundaries (start/end lines)
+- Generates high-level descriptions of what the code does
+
+**3. Enhanced Pattern Headers**:
+
+Patterns automatically annotated with descriptive headers:
+
+```asm
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; PATTERN DETECTED: 16-bit addition with carry propagation
+; Type: 16-bit Addition
+; Result: $FB/$FC = $FB/$FC + $20 (with carry)
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+$1000:  CLC                     ; Clear Carry
+$1001:  LDA $FB                 ; Load low byte
+$1003:  ADC #$20                ; Add immediate value
+$1005:  STA $FB                 ; Store result low
+$1007:  LDA $FC                 ; Load high byte
+$1009:  ADC #$00                ; Add carry
+$100B:  STA $FC                 ; Store result high
+; Pattern completes 16-bit pointer arithmetic
+```
+
+**4. Pattern-Specific Information**:
+
+Each pattern type includes specialized information:
+
+**16-bit Addition/Subtraction**:
+- Shows source and destination addresses
+- Displays carry/borrow propagation
+- Explains result (e.g., "ptr = ptr + offset")
+
+**Memory Copy/Fill Loops**:
+- Identifies source and destination addresses
+- Shows which index register is used (X or Y)
+- Describes operation (e.g., "Copy bytes from $1900 to $1A00")
+
+**Delay Loops**:
+- Shows iteration count
+- Indicates timing purpose
+- Identifies register used for counting
+
+**Bit Shifts**:
+- Shows shift direction (left/right)
+- Counts number of shifts
+- Indicates carry usage (with/without)
+
+**BEFORE / AFTER COMPARISON**:
+
+**Before** (raw assembly):
+```asm
+$a3f9: 18           CLC
+$a3fa: 65 02        ADC  $02
+$a3fc: 9d 01 a8     STA  $a801,x
+$a3ff: bd 04 a8     LDA  $a804,x
+$a402: 65 03        ADC  $03
+$a404: 9d 04 a8     STA  $a804,x
+```
+
+**After** (with pattern detection):
+```asm
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; PATTERN DETECTED: 16-bit addition with carry propagation
+; Type: 16-bit Addition
+; Result: $a801,x/$a804,x = $a804,x + $02 (with carry)
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+$a3f9: 18           CLC                 ; Clear Carry
+$a3fa: 65 02        ADC  $02            ; Add low byte
+$a3fc: 9d 01 a8     STA  $a801,x        ; Store low result
+$a3ff: bd 04 a8     LDA  $a804,x        ; Load high byte
+$a402: 65 03        ADC  $03            ; Add carry to high
+$a404: 9d 04 a8     STA  $a804,x        ; Store high result
+; Pattern implements frequency/pointer calculation
+```
+
+**IMPLEMENTATION DETAILS**:
+
+**New Classes**:
+1. **PatternType** (Enum) - 10 pattern type classifications
+2. **Pattern** (Dataclass) - Stores pattern info (type, lines, description, variables, result)
+3. **PatternDetector** (Class) - Main detection engine with 7 detection methods
+
+**Detection Methods**:
+- `_detect_16bit_addition()` - Finds 16-bit ADD patterns (6-instruction sequence)
+- `_detect_16bit_subtraction()` - Finds 16-bit SUB patterns (6-instruction sequence)
+- `_detect_memory_copy_loops()` - Finds indexed copy loops
+- `_detect_memory_fill_loops()` - Finds indexed fill loops
+- `_detect_delay_loops()` - Finds simple countdown loops
+- `_detect_bit_shifts()` - Finds consecutive shift chains
+- `_detect_clear_memory()` - Finds multiple zero-out sequences
+- `_extract_instruction()` - Helper to parse opcode and operand
+
+**Integration**:
+- **format_pattern_header()** - Formats pattern headers with type-specific info
+- **Updated annotate_asm_file()** - Calls pattern detector after cross-references
+- **Pattern insertion** - Headers inserted before first instruction of pattern
+
+**TESTING RESULTS**:
+
+**Test File** (test_decompiler_output.asm):
+- **Input**: Real music player disassembly
+- **Detection**: 8 patterns found
+  - 5 × 16-bit Addition patterns
+  - 3 × 16-bit Subtraction patterns
+- **Coverage**: Common frequency calculation and pointer arithmetic patterns
+- **Performance**: Fast detection with no false positives
+
+**Pattern Examples Found**:
+1. **Frequency calculations**: 16-bit additions for pitch bend/vibrato
+2. **Pointer arithmetic**: 16-bit math for table indexing
+3. **Data manipulation**: 16-bit subtraction for delta calculations
+
+**BENEFITS**:
+
+1. **High-level understanding** - Explains WHAT code does, not just HOW
+2. **Educational value** - Helps learners recognize common patterns
+3. **Reduced cognitive load** - See complex operations at a glance
+4. **Algorithm recognition** - Identify common 6502 techniques
+5. **Debugging aid** - Understand intent of multi-instruction sequences
+6. **Documentation** - Preserves knowledge about code patterns
+
+**CODE STATISTICS**:
+
+- **Lines added**: +407 (pattern recognition system)
+- **Enums**: 1 (PatternType with 10 types)
+- **Dataclasses**: 1 (Pattern)
+- **Classes**: 1 (PatternDetector)
+- **Methods**: 7 detection methods + 1 helper
+- **Functions**: 1 (format_pattern_header)
+- **Integration points**: 1 (annotate_asm_file)
+
+**COMMITS**:
+- (Current) - Pattern recognition implementation
+
+**PROGRESS TRACKER**:
+
+**Priority 1 Features** (3/4 complete):
+- ✅ Subroutine detection
+- ✅ Data vs code section detection
+- ✅ Cross-reference generation
+- ⏭️ Additional address format support
+
+**Priority 2 Features** (1/5 started):
+- ✅ Pattern recognition - **COMPLETE**
+- ⏭️ Control flow visualization
+- ⏭️ Cycle counting
+- ⏭️ Symbol table generation
+
+**NEXT STEPS**:
+
+Priority 2 features to implement:
+- Symbol table generation (quick win - consolidate xref data)
+- Cycle counting (performance analysis)
+- Control flow visualization (ASCII art graphs)
+- Enhanced pattern recognition (more pattern types)
+
+See `docs/ASM_ANNOTATION_IMPROVEMENTS.md` for complete roadmap.
+
 ### Verified - Laxity Accuracy Confirmation
 
 **✅ VERIFIED: Laxity driver achieves 99.98% frame accuracy (exceeds 99.93% target)**

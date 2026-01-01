@@ -519,6 +519,414 @@ def format_cross_references(address: int, xrefs: Dict[int, List[Reference]],
 
 
 # ==============================================================================
+# Pattern Recognition
+# ==============================================================================
+
+class PatternType(Enum):
+    """Type of recognized code pattern"""
+    ADD_16BIT = "16bit_add"
+    SUB_16BIT = "16bit_sub"
+    LOOP_COUNT = "loop_count"
+    LOOP_MEMORY_COPY = "loop_memory_copy"
+    LOOP_MEMORY_FILL = "loop_memory_fill"
+    DELAY_LOOP = "delay_loop"
+    BIT_SHIFT_LEFT = "bit_shift_left"
+    BIT_SHIFT_RIGHT = "bit_shift_right"
+    CLEAR_MEMORY = "clear_memory"
+    COMPARE_16BIT = "16bit_compare"
+
+
+@dataclass
+class Pattern:
+    """Represents a recognized code pattern"""
+    pattern_type: PatternType
+    start_line: int
+    end_line: int
+    description: str = ""
+    variables: Dict[str, str] = field(default_factory=dict)
+    result: str = ""
+
+
+class PatternDetector:
+    """Detect common 6502 code patterns"""
+
+    def __init__(self, lines: List[str]):
+        self.lines = lines
+        self.patterns: List[Pattern] = []
+
+    def detect_all_patterns(self) -> List[Pattern]:
+        """Main entry point: detect all patterns in the code"""
+        # Detect different pattern types
+        self._detect_16bit_addition()
+        self._detect_16bit_subtraction()
+        self._detect_memory_copy_loops()
+        self._detect_memory_fill_loops()
+        self._detect_delay_loops()
+        self._detect_bit_shifts()
+        self._detect_clear_memory()
+
+        # Sort patterns by start line
+        self.patterns.sort(key=lambda p: p.start_line)
+
+        return self.patterns
+
+    def _extract_instruction(self, line: str) -> Optional[Tuple[str, str]]:
+        """Extract opcode and operand from a line"""
+        # Match pattern like: $1000:  LDA #$00  ; comment
+        # or just: LDA #$00  ; comment
+        match = re.search(r'(?:\$[0-9A-Fa-f]{4}:)?\s*([A-Z]{3})\s+([^;]+)', line, re.IGNORECASE)
+        if match:
+            opcode = match.group(1).upper()
+            operand = match.group(2).strip()
+            return (opcode, operand)
+        return None
+
+    def _detect_16bit_addition(self):
+        """Detect 16-bit addition pattern: CLC; ADC; STA; LDA; ADC; STA"""
+        for i in range(len(self.lines) - 5):
+            # Look for CLC
+            instr0 = self._extract_instruction(self.lines[i])
+            if not instr0 or instr0[0] != 'CLC':
+                continue
+
+            # Look for ADC (low byte)
+            instr1 = self._extract_instruction(self.lines[i + 1])
+            if not instr1 or instr1[0] != 'ADC':
+                continue
+
+            # Look for STA (store low result)
+            instr2 = self._extract_instruction(self.lines[i + 2])
+            if not instr2 or instr2[0] != 'STA':
+                continue
+
+            # Look for LDA (high byte)
+            instr3 = self._extract_instruction(self.lines[i + 3])
+            if not instr3 or instr3[0] != 'LDA':
+                continue
+
+            # Look for ADC (add carry to high byte)
+            instr4 = self._extract_instruction(self.lines[i + 4])
+            if not instr4 or instr4[0] != 'ADC':
+                continue
+
+            # Look for STA (store high result)
+            instr5 = self._extract_instruction(self.lines[i + 5])
+            if not instr5 or instr5[0] != 'STA':
+                continue
+
+            # Found 16-bit addition pattern!
+            self.patterns.append(Pattern(
+                pattern_type=PatternType.ADD_16BIT,
+                start_line=i,
+                end_line=i + 5,
+                description="16-bit addition with carry propagation",
+                variables={
+                    'addend': instr1[1],
+                    'result_lo': instr2[1],
+                    'high_byte': instr3[1],
+                    'result_hi': instr5[1]
+                },
+                result=f"{instr2[1]}/{instr5[1]} = {instr3[1]} + {instr1[1]} (with carry)"
+            ))
+
+    def _detect_16bit_subtraction(self):
+        """Detect 16-bit subtraction pattern: SEC; SBC; STA; LDA; SBC; STA"""
+        for i in range(len(self.lines) - 5):
+            # Look for SEC
+            instr0 = self._extract_instruction(self.lines[i])
+            if not instr0 or instr0[0] != 'SEC':
+                continue
+
+            # Look for SBC (low byte)
+            instr1 = self._extract_instruction(self.lines[i + 1])
+            if not instr1 or instr1[0] != 'SBC':
+                continue
+
+            # Look for STA (store low result)
+            instr2 = self._extract_instruction(self.lines[i + 2])
+            if not instr2 or instr2[0] != 'STA':
+                continue
+
+            # Look for LDA (high byte)
+            instr3 = self._extract_instruction(self.lines[i + 3])
+            if not instr3 or instr3[0] != 'LDA':
+                continue
+
+            # Look for SBC (subtract borrow from high byte)
+            instr4 = self._extract_instruction(self.lines[i + 4])
+            if not instr4 or instr4[0] != 'SBC':
+                continue
+
+            # Look for STA (store high result)
+            instr5 = self._extract_instruction(self.lines[i + 5])
+            if not instr5 or instr5[0] != 'STA':
+                continue
+
+            # Found 16-bit subtraction pattern!
+            self.patterns.append(Pattern(
+                pattern_type=PatternType.SUB_16BIT,
+                start_line=i,
+                end_line=i + 5,
+                description="16-bit subtraction with borrow propagation",
+                variables={
+                    'subtrahend': instr1[1],
+                    'result_lo': instr2[1],
+                    'high_byte': instr3[1],
+                    'result_hi': instr5[1]
+                },
+                result=f"{instr2[1]}/{instr5[1]} = {instr3[1]} - {instr1[1]} (with borrow)"
+            ))
+
+    def _detect_memory_copy_loops(self):
+        """Detect memory copy loop: LDA source,X; STA dest,X; INX/DEX; BNE"""
+        for i in range(len(self.lines) - 3):
+            # Look for LDA with indexed addressing
+            instr0 = self._extract_instruction(self.lines[i])
+            if not instr0 or instr0[0] != 'LDA' or ',X' not in instr0[1] and ',Y' not in instr0[1]:
+                continue
+
+            # Look for STA with indexed addressing
+            instr1 = self._extract_instruction(self.lines[i + 1])
+            if not instr1 or instr1[0] != 'STA' or ',X' not in instr1[1] and ',Y' not in instr1[1]:
+                continue
+
+            # Look for INX/INY/DEX/DEY
+            instr2 = self._extract_instruction(self.lines[i + 2])
+            if not instr2 or instr2[0] not in ['INX', 'INY', 'DEX', 'DEY']:
+                continue
+
+            # Look for BNE (or CPX/CPY followed by BNE)
+            instr3 = self._extract_instruction(self.lines[i + 3])
+            if not instr3:
+                continue
+
+            # Check if it's a direct BNE or a compare followed by BNE
+            is_loop = False
+            end_line = i + 3
+            if instr3[0] == 'BNE':
+                is_loop = True
+            elif instr3[0] in ['CPX', 'CPY'] and i + 4 < len(self.lines):
+                instr4 = self._extract_instruction(self.lines[i + 4])
+                if instr4 and instr4[0] == 'BNE':
+                    is_loop = True
+                    end_line = i + 4
+
+            if is_loop:
+                source = instr0[1].replace(',X', '').replace(',Y', '')
+                dest = instr1[1].replace(',X', '').replace(',Y', '')
+                index_reg = 'X' if ',X' in instr0[1] else 'Y'
+
+                self.patterns.append(Pattern(
+                    pattern_type=PatternType.LOOP_MEMORY_COPY,
+                    start_line=i,
+                    end_line=end_line,
+                    description=f"Memory copy loop using {index_reg} register",
+                    variables={
+                        'source': source,
+                        'dest': dest,
+                        'index': index_reg
+                    },
+                    result=f"Copy bytes from {source} to {dest}"
+                ))
+
+    def _detect_memory_fill_loops(self):
+        """Detect memory fill loop: LDA #value; STA dest,X; INX/DEX; BNE"""
+        for i in range(len(self.lines) - 3):
+            # Look for LDA immediate
+            instr0 = self._extract_instruction(self.lines[i])
+            if not instr0 or instr0[0] != 'LDA' or not instr0[1].startswith('#'):
+                continue
+
+            # Look for STA with indexed addressing
+            instr1 = self._extract_instruction(self.lines[i + 1])
+            if not instr1 or instr1[0] != 'STA' or ',X' not in instr1[1] and ',Y' not in instr1[1]:
+                continue
+
+            # Look for INX/INY/DEX/DEY
+            instr2 = self._extract_instruction(self.lines[i + 2])
+            if not instr2 or instr2[0] not in ['INX', 'INY', 'DEX', 'DEY']:
+                continue
+
+            # Look for BNE or compare+BNE
+            instr3 = self._extract_instruction(self.lines[i + 3])
+            if not instr3:
+                continue
+
+            is_loop = False
+            end_line = i + 3
+            if instr3[0] == 'BNE':
+                is_loop = True
+            elif instr3[0] in ['CPX', 'CPY'] and i + 4 < len(self.lines):
+                instr4 = self._extract_instruction(self.lines[i + 4])
+                if instr4 and instr4[0] == 'BNE':
+                    is_loop = True
+                    end_line = i + 4
+
+            if is_loop:
+                value = instr0[1]
+                dest = instr1[1].replace(',X', '').replace(',Y', '')
+                index_reg = 'X' if ',X' in instr1[1] else 'Y'
+
+                self.patterns.append(Pattern(
+                    pattern_type=PatternType.LOOP_MEMORY_FILL,
+                    start_line=i,
+                    end_line=end_line,
+                    description=f"Memory fill loop using {index_reg} register",
+                    variables={
+                        'value': value,
+                        'dest': dest,
+                        'index': index_reg
+                    },
+                    result=f"Fill memory at {dest} with {value}"
+                ))
+
+    def _detect_delay_loops(self):
+        """Detect delay loop: LDX/LDY #n; DEX/DEY; BNE (simple counting loop with no body)"""
+        for i in range(len(self.lines) - 2):
+            # Look for LDX/LDY immediate
+            instr0 = self._extract_instruction(self.lines[i])
+            if not instr0 or instr0[0] not in ['LDX', 'LDY'] or not instr0[1].startswith('#'):
+                continue
+
+            # Look for DEX/DEY (matching register)
+            instr1 = self._extract_instruction(self.lines[i + 1])
+            expected_dec = 'DEX' if instr0[0] == 'LDX' else 'DEY'
+            if not instr1 or instr1[0] != expected_dec:
+                continue
+
+            # Look for BNE (branch back to DEX/DEY)
+            instr2 = self._extract_instruction(self.lines[i + 2])
+            if not instr2 or instr2[0] != 'BNE':
+                continue
+
+            # This is a simple delay loop
+            count = instr0[1]
+            register = 'X' if instr0[0] == 'LDX' else 'Y'
+
+            self.patterns.append(Pattern(
+                pattern_type=PatternType.DELAY_LOOP,
+                start_line=i,
+                end_line=i + 2,
+                description=f"Delay loop counting down from {count}",
+                variables={
+                    'count': count,
+                    'register': register
+                },
+                result=f"Delay for {count} iterations"
+            ))
+
+    def _detect_bit_shifts(self):
+        """Detect bit shift sequences: ASL/LSR/ROL/ROR chains"""
+        for i in range(len(self.lines) - 1):
+            # Look for shift instruction
+            instr0 = self._extract_instruction(self.lines[i])
+            if not instr0 or instr0[0] not in ['ASL', 'LSR', 'ROL', 'ROR']:
+                continue
+
+            # Count consecutive shifts on same operand
+            shift_op = instr0[0]
+            operand = instr0[1]
+            shift_count = 1
+            j = i + 1
+
+            while j < len(self.lines):
+                instr = self._extract_instruction(self.lines[j])
+                if instr and instr[0] == shift_op and instr[1] == operand:
+                    shift_count += 1
+                    j += 1
+                else:
+                    break
+
+            # Only create pattern if multiple shifts detected
+            if shift_count > 1:
+                direction = "left" if shift_op in ['ASL', 'ROL'] else "right"
+                pattern_type = PatternType.BIT_SHIFT_LEFT if shift_op in ['ASL', 'ROL'] else PatternType.BIT_SHIFT_RIGHT
+                with_carry = "with carry" if shift_op in ['ROL', 'ROR'] else "without carry"
+
+                self.patterns.append(Pattern(
+                    pattern_type=pattern_type,
+                    start_line=i,
+                    end_line=j - 1,
+                    description=f"Bit shift {direction} by {shift_count} ({with_carry})",
+                    variables={
+                        'operand': operand,
+                        'shifts': str(shift_count),
+                        'operation': shift_op
+                    },
+                    result=f"{operand} shifted {direction} by {shift_count} bits"
+                ))
+
+    def _detect_clear_memory(self):
+        """Detect clear memory pattern: LDA #$00; STA addr1; STA addr2; ..."""
+        for i in range(len(self.lines) - 2):
+            # Look for LDA #$00
+            instr0 = self._extract_instruction(self.lines[i])
+            if not instr0 or instr0[0] != 'LDA' or instr0[1] not in ['#$00', '#0', '#$0']:
+                continue
+
+            # Count consecutive STA instructions
+            addresses = []
+            j = i + 1
+            while j < len(self.lines):
+                instr = self._extract_instruction(self.lines[j])
+                if instr and instr[0] == 'STA':
+                    addresses.append(instr[1])
+                    j += 1
+                else:
+                    break
+
+            # Only create pattern if clearing multiple addresses
+            if len(addresses) >= 3:
+                self.patterns.append(Pattern(
+                    pattern_type=PatternType.CLEAR_MEMORY,
+                    start_line=i,
+                    end_line=j - 1,
+                    description=f"Clear {len(addresses)} memory locations",
+                    variables={
+                        'count': str(len(addresses)),
+                        'addresses': ', '.join(addresses[:5]) + ('...' if len(addresses) > 5 else '')
+                    },
+                    result=f"Zero out {len(addresses)} memory location(s)"
+                ))
+
+
+def format_pattern_header(pattern: Pattern) -> str:
+    """Format a header comment for a detected pattern"""
+    sep = ";" + "~" * 78
+    header = f"{sep}\n"
+    header += f"; PATTERN DETECTED: {pattern.description}\n"
+
+    if pattern.pattern_type == PatternType.ADD_16BIT:
+        header += f"; Type: 16-bit Addition\n"
+        header += f"; Result: {pattern.result}\n"
+    elif pattern.pattern_type == PatternType.SUB_16BIT:
+        header += f"; Type: 16-bit Subtraction\n"
+        header += f"; Result: {pattern.result}\n"
+    elif pattern.pattern_type == PatternType.LOOP_MEMORY_COPY:
+        header += f"; Type: Memory Copy Loop\n"
+        header += f"; Operation: {pattern.result}\n"
+    elif pattern.pattern_type == PatternType.LOOP_MEMORY_FILL:
+        header += f"; Type: Memory Fill Loop\n"
+        header += f"; Operation: {pattern.result}\n"
+    elif pattern.pattern_type == PatternType.DELAY_LOOP:
+        header += f"; Type: Delay/Timing Loop\n"
+        header += f"; Iterations: {pattern.variables.get('count', 'unknown')}\n"
+    elif pattern.pattern_type == PatternType.BIT_SHIFT_LEFT:
+        header += f"; Type: Bit Shift Left\n"
+        header += f"; Result: {pattern.result}\n"
+    elif pattern.pattern_type == PatternType.BIT_SHIFT_RIGHT:
+        header += f"; Type: Bit Shift Right\n"
+        header += f"; Result: {pattern.result}\n"
+    elif pattern.pattern_type == PatternType.CLEAR_MEMORY:
+        header += f"; Type: Memory Clear\n"
+        header += f"; Addresses: {pattern.variables.get('addresses', '')}\n"
+
+    header += f"{sep}\n"
+
+    return header
+
+
+# ==============================================================================
 # Subroutine Detection
 # ==============================================================================
 
@@ -1026,6 +1434,12 @@ def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = Non
     total_refs = sum(len(refs) for refs in xrefs.values())
     print(f"  Found {total_refs} reference(s) to {len(xrefs)} address(es)")
 
+    # Detect code patterns
+    print(f"  Detecting code patterns...")
+    pattern_detector = PatternDetector(lines)
+    patterns = pattern_detector.detect_all_patterns()
+    print(f"  Found {len(patterns)} code pattern(s)")
+
     # Create annotated version
     output_lines = []
 
@@ -1043,6 +1457,11 @@ def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = Non
     line_to_section = {}
     for section in data_sections:
         line_to_section[section.start_line] = section
+
+    # Build a mapping of line numbers to patterns
+    line_to_pattern = {}
+    for pattern in patterns:
+        line_to_pattern[pattern.start_line] = pattern
 
     # Process each line, inserting subroutine and section headers
     in_header = True
@@ -1065,6 +1484,12 @@ def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = Non
             sub_addr = line_to_subroutine[i]
             sub_header = generate_subroutine_header(subroutines[sub_addr], xrefs, subroutines)
             output_lines.append(sub_header)
+
+        # Check if this line starts a code pattern
+        if i in line_to_pattern:
+            pattern = line_to_pattern[i]
+            pattern_header = format_pattern_header(pattern)
+            output_lines.append(pattern_header)
 
         # Annotate the line
         annotated = annotate_line(line)
