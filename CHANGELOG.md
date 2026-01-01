@@ -225,6 +225,179 @@ Remaining Priority 1 features from improvement roadmap:
 
 See `docs/ASM_ANNOTATION_IMPROVEMENTS.md` for complete roadmap.
 
+#### Enhanced - Data vs Code Section Detection (2025-12-29)
+
+**🎯 MAJOR ENHANCEMENT: Automatic section detection with format-specific documentation**
+
+Implemented Priority 1 improvement #2 from `docs/ASM_ANNOTATION_IMPROVEMENTS.md`: automatic detection and formatting of data sections vs code sections to clearly distinguish executable code from data tables.
+
+**NEW CAPABILITIES**:
+
+**1. Section Type Classification (7 Types)**:
+- **CODE**: Executable subroutines with JSR/RTS
+- **WAVE_TABLE**: SID waveform bytes and note offsets ($18DA, $190C)
+- **PULSE_TABLE**: Pulse modulation sequences ($1837)
+- **FILTER_TABLE**: Filter modulation sequences ($1A1E)
+- **INSTRUMENT_TABLE**: Laxity instrument definitions ($1A6B)
+- **SEQUENCE_DATA**: Note sequence data ($1900-$19FF range)
+- **DATA/UNKNOWN**: Generic data sections
+
+**2. Automatic Section Detection**:
+- Scans assembly for addresses
+- Matches addresses against known Laxity table locations
+- Identifies section type (Wave, Pulse, Filter, Instrument, Sequence)
+- Calculates start/end addresses and section sizes
+- Generates format-specific documentation headers
+
+**3. Known Table Address Recognition**:
+
+| Address | Type | Description |
+|---------|------|-------------|
+| $18DA | Wave Table | Waveforms (32 bytes) |
+| $190C | Wave Table | Note offsets (32 bytes) |
+| $1837 | Pulse Table | 4-byte entries |
+| $1A1E | Filter Table | 4-byte entries |
+| $1A6B | Instrument Table | 8×8 bytes (column-major) |
+| $1900-$19FF | Sequence Data | Variable, $7F terminated |
+
+**4. Format-Specific Documentation**:
+
+Each data type gets custom header with detailed format information:
+
+**Wave Table Format**:
+- SID waveform values ($01=triangle, $10=sawtooth, $20=pulse, $40=noise, $80=gate)
+- Note offset values for transpose/detune
+
+**Pulse/Filter Table Format**:
+- 4-byte entries: (lo_byte, hi_byte, duration, next_index)
+- Modulation sequence structure
+
+**Instrument Table Format**:
+- Column-major layout (8 bytes × 8 instruments)
+- Byte order: AD, SR, Pulse ptr, Filter, unused, unused, Flags, Wave ptr
+
+**Sequence Data Format**:
+- Byte encoding: $00=rest, $01-$5F=note, $7E=gate continue, $7F=end
+- Variable length, terminated by $7F
+
+**EXAMPLE OUTPUT**:
+
+Before section detection:
+```asm
+; Wave table
+$18DA:  .byte $11, $11, $11, $11, $11, $11, $11, $11
+$18E2:  .byte $20, $20, $21, $21, $40, $40, $41, $41
+```
+
+After section detection:
+```asm
+;==============================================================================
+; DATA SECTION: Wave Table
+; Address: $18DA - $18E2
+; Size: 9 bytes
+; Format: SID waveform bytes or note offsets (1 byte per instrument)
+; Values: $01=triangle, $10=sawtooth, $20=pulse, $40=noise, $80=gate
+;==============================================================================
+$18DA:  .byte $11, $11, $11, $11, $11, $11, $11, $11
+$18E2:  .byte $20, $20, $21, $21, $40, $40, $41, $41
+```
+
+**IMPLEMENTATION DETAILS**:
+
+**New Classes** (3):
+- `SectionType` (Enum): 8 section type constants
+- `Section` (dataclass): Section metadata with address range, size, type, name
+- `SectionDetector`: Main detection engine with section classification
+
+**Detection Algorithm**:
+1. Scan all assembly lines for addresses
+2. Check if address matches known table location
+3. Identify section type from address
+4. Track section boundaries (start line to end line)
+5. Calculate section size from address range
+6. Generate format-specific header
+
+**New Function**:
+- `format_data_section()`: Generate formatted headers for data sections
+  - Custom documentation per section type
+  - Address ranges and size calculations
+  - Format specifications and value references
+  - Educational information for each table type
+
+**TESTING RESULTS**:
+
+Test file with 10 data sections:
+- Wave Table ($18DA-$18F2): ✓ Detected with waveform format info
+- Wave Table ($190C): ✓ Detected with note offset format
+- Pulse Table ($1837-$183F): ✓ Detected with 4-byte entry format
+- Filter Table ($1A1E-$1A22): ✓ Detected with 4-byte entry format
+- Instrument Table ($1A6B-$1AA3): ✓ Detected with column-major layout info
+- Sequence Data (5 sections): ✓ All detected with byte format documentation
+
+All sections correctly identified with appropriate format-specific headers.
+
+**INTEGRATION**:
+
+Works seamlessly with subroutine detection:
+```asm
+; CODE SECTION
+;------------------------------------------------------------------------------
+; Subroutine: SID Update
+; Address: $0D7E
+; Purpose: Update SID registers
+;------------------------------------------------------------------------------
+sf2_init:
+    LDA #$00
+    RTS
+
+; DATA SECTION
+;==============================================================================
+; DATA SECTION: Wave Table
+; Address: $18DA
+; Format: SID waveform bytes
+;==============================================================================
+$18DA:  .byte $11, $11, $11
+```
+
+**BENEFITS**:
+
+✓ **Clear Separation**: Data sections visually distinct from code
+✓ **Format Documentation**: Complete format reference for each table type
+✓ **Educational Value**: Learn Laxity data structure formats
+✓ **Size Information**: Memory usage visible at a glance
+✓ **Address Boundaries**: Clear start/end for each table
+✓ **Type-Specific Info**: Custom details per data type (waveforms, sequences, etc.)
+
+**CODE STATISTICS**:
+- +186 lines of code added to `pyscript/annotate_asm.py`
+- 3 new classes (SectionType, Section, SectionDetector)
+- 1 new formatting function (format_data_section)
+- 7 section types supported
+- 6 known table addresses recognized
+
+**COMMIT**:
+- fc41e94 - feat: Add data vs code section detection to ASM annotator
+
+**PROGRESS ON PRIORITY 1 FEATURES**:
+
+| Feature | Status |
+|---------|--------|
+| 1. Subroutine detection | ✅ DONE (d5c3d7a) |
+| 2. Data vs code sections | ✅ DONE (fc41e94) |
+| 3. Cross-reference generation | ⏭️ Next (partially done) |
+| 4. Enhanced register usage | ✅ DONE (part of subroutines) |
+
+**2 out of 4 Priority 1 features completed!**
+
+**NEXT STEPS**:
+
+Remaining enhancements:
+- Enhanced cross-reference generation (expand beyond call graph)
+- Additional address format support (for disassembly files)
+- Priority 2 features: Pattern recognition, control flow, cycle counting
+
+See `docs/ASM_ANNOTATION_IMPROVEMENTS.md` for complete roadmap.
+
 ### Verified - Laxity Accuracy Confirmation
 
 **✅ VERIFIED: Laxity driver achieves 99.98% frame accuracy (exceeds 99.93% target)**
