@@ -1020,7 +1020,18 @@ python scripts/sid_to_sf2.py input.sid output.sf2 --disasm
 - Annotated with addresses, opcodes, and instruction comments
 - Use cases: Reverse engineering, player analysis, optimization
 
-**3. Audio Export** (Step 16)
+**3. ASM Annotator** (Step 8.7)
+```bash
+python scripts/sid_to_sf2.py input.sid output.sf2 --annotate
+python scripts/sid_to_sf2.py input.sid output.sf2 --annotate --annotate-format html
+```
+- Generates comprehensive annotated assembly analysis
+- Features: Symbol tables (189 symbols), call graphs, loop analysis, register tracking, pattern detection (100+ patterns), documentation links
+- Output formats: text (default), html, markdown, json, csv, tsv
+- Output: `analysis/{name}_disasm.asm` (264KB intermediate), `analysis/{name}_annotated.{ext}` (284KB text / 63KB HTML)
+- Use cases: Debug low-accuracy conversions, educational documentation, research SID player implementations
+
+**4. Audio Export** (Step 16)
 ```bash
 python scripts/sid_to_sf2.py input.sid output.sf2 --audio-export --audio-duration 30
 ```
@@ -1029,7 +1040,7 @@ python scripts/sid_to_sf2.py input.sid output.sf2 --audio-export --audio-duratio
 - Wraps SID2WAV.EXE with duration/quality controls
 - Use cases: Quality comparison, audio reference, validation
 
-**4. Memory Map Analyzer** (Step 12.5)
+**5. Memory Map Analyzer** (Step 12.5)
 ```bash
 python scripts/sid_to_sf2.py input.sid output.sf2 --memmap
 ```
@@ -1038,7 +1049,7 @@ python scripts/sid_to_sf2.py input.sid output.sf2 --memmap
 - Shows init/play routines, SID chip registers, data regions
 - Use cases: Memory optimization, player understanding, debugging
 
-**5. Pattern Recognizer** (Step 17)
+**6. Pattern Recognizer** (Step 17)
 ```bash
 python scripts/sid_to_sf2.py input.sid output.sf2 --patterns
 ```
@@ -1047,7 +1058,7 @@ python scripts/sid_to_sf2.py input.sid output.sf2 --patterns
 - Non-overlapping pattern detection (4-32 byte patterns)
 - Use cases: Compression analysis, optimization, format study
 
-**6. Subroutine Tracer** (Step 18)
+**7. Subroutine Tracer** (Step 18)
 ```bash
 python scripts/sid_to_sf2.py input.sid output.sf2 --callgraph
 ```
@@ -1056,7 +1067,7 @@ python scripts/sid_to_sf2.py input.sid output.sf2 --callgraph
 - Identifies init vs play routines, call depths, leaf subroutines
 - Use cases: Code flow analysis, optimization, player understanding
 
-**7. Report Generator** (Step 19) - Automatic
+**8. Report Generator** (Step 19) - Automatic
 ```bash
 # Runs automatically when any analysis tools are used
 ```
@@ -1065,7 +1076,7 @@ python scripts/sid_to_sf2.py input.sid output.sf2 --callgraph
 - Includes: File index, statistics, previews of all reports
 - Use cases: Quick overview, comprehensive documentation
 
-**8. Output Organizer** (Step 20)
+**9. Output Organizer** (Step 20)
 ```bash
 python scripts/sid_to_sf2.py input.sid output.sf2 --organize [... other tools ...]
 ```
@@ -1084,6 +1095,7 @@ python scripts/sid_to_sf2.py input.sid output.sf2 \
     --driver laxity \
     --trace --frames 1500 \
     --disasm \
+    --annotate --annotate-format html \
     --audio-export --audio-duration 30 \
     --memmap \
     --patterns \
@@ -1097,6 +1109,8 @@ python scripts/sid_to_sf2.py input.sid output.sf2 \
 #   disassembly/
 #     input_init.asm             # Init routine disassembly
 #     input_play.asm             # Play routine disassembly
+#     input_disasm.asm           # Full disassembly (for annotation)
+#     input_annotated.html       # Annotated assembly (HTML format)
 #   reports/
 #     input_trace.txt            # SID register trace
 #     input_memmap.txt           # Memory map

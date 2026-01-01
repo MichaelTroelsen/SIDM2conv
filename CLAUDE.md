@@ -23,6 +23,8 @@ Converts Laxity NP21 SID files to SF2 format (99.98% accuracy - RESTORED). Featu
 sid-to-sf2.bat input.sid output.sf2                  # Auto driver + validation
 sid-to-sf2.bat input.sid output.sf2 --driver laxity  # Manual override
 sid-to-sf2.bat input.sid output.sf2 --export-audio   # With VSID audio export
+sid-to-sf2.bat input.sid output.sf2 --annotate       # With ASM annotation (text)
+sid-to-sf2.bat input.sid output.sf2 --annotate --annotate-format html  # HTML docs
 
 # GUI Tools
 sf2-viewer.bat [file.sf2]     # View/export SF2
