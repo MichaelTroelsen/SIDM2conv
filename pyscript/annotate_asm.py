@@ -1176,7 +1176,8 @@ class SubroutineDetector:
 
 def generate_subroutine_header(info: SubroutineInfo,
                                xrefs: Optional[Dict[int, List[Reference]]] = None,
-                               all_subroutines: Optional[Dict[int, 'SubroutineInfo']] = None) -> str:
+                               all_subroutines: Optional[Dict[int, 'SubroutineInfo']] = None,
+                               cycle_counter: Optional['CycleCounter'] = None) -> str:
     """Generate a detailed header comment for a subroutine"""
     sep = ";" + "-" * 78
     header = f"{sep}\n"
@@ -1190,6 +1191,13 @@ def generate_subroutine_header(info: SubroutineInfo,
 
     if info.purpose:
         header += f"; Purpose: {info.purpose}\n"
+
+    # Add cycle count information if available
+    if cycle_counter:
+        min_c, max_c, typ_c = cycle_counter.count_subroutine_cycles(info)
+        if typ_c > 0:
+            cycle_summary = format_cycle_summary(min_c, max_c, typ_c, 'NTSC')
+            header += cycle_summary
 
     # Document register inputs
     inputs = []
@@ -1263,6 +1271,348 @@ def generate_subroutine_header(info: SubroutineInfo,
     header += f"{sep}\n"
 
     return header
+
+
+# ==============================================================================
+# Cycle Counting
+# ==============================================================================
+
+# Frame timing constants
+NTSC_CYCLES_PER_FRAME = 19656  # 60 Hz
+PAL_CYCLES_PER_FRAME = 19705   # 50 Hz
+
+# 6502 Cycle counts by opcode and addressing mode
+# Format: (opcode, addressing_mode): cycles
+# Addressing modes: IMM (immediate), ZP (zero page), ZPX/ZPY (zero page indexed),
+#                   ABS (absolute), ABSX/ABSY (absolute indexed), IND (indirect),
+#                   INDX (indexed indirect), INDY (indirect indexed), IMP (implied)
+#
+# Note: Some instructions have variable timing (marked with +1 for page crossing)
+CYCLE_COUNTS = {
+    # Load/Store
+    ('LDA', 'IMM'): 2, ('LDA', 'ZP'): 3, ('LDA', 'ZPX'): 4,
+    ('LDA', 'ABS'): 4, ('LDA', 'ABSX'): 4, ('LDA', 'ABSY'): 4,  # +1 if page crossed
+    ('LDA', 'INDX'): 6, ('LDA', 'INDY'): 5,  # +1 if page crossed on INDY
+
+    ('LDX', 'IMM'): 2, ('LDX', 'ZP'): 3, ('LDX', 'ZPY'): 4,
+    ('LDX', 'ABS'): 4, ('LDX', 'ABSY'): 4,  # +1 if page crossed
+
+    ('LDY', 'IMM'): 2, ('LDY', 'ZP'): 3, ('LDY', 'ZPX'): 4,
+    ('LDY', 'ABS'): 4, ('LDY', 'ABSX'): 4,  # +1 if page crossed
+
+    ('STA', 'ZP'): 3, ('STA', 'ZPX'): 4,
+    ('STA', 'ABS'): 4, ('STA', 'ABSX'): 5, ('STA', 'ABSY'): 5,
+    ('STA', 'INDX'): 6, ('STA', 'INDY'): 6,
+
+    ('STX', 'ZP'): 3, ('STX', 'ZPY'): 4, ('STX', 'ABS'): 4,
+    ('STY', 'ZP'): 3, ('STY', 'ZPX'): 4, ('STY', 'ABS'): 4,
+
+    # Transfer
+    ('TAX', 'IMP'): 2, ('TAY', 'IMP'): 2, ('TXA', 'IMP'): 2, ('TYA', 'IMP'): 2,
+    ('TSX', 'IMP'): 2, ('TXS', 'IMP'): 2,
+
+    # Stack
+    ('PHA', 'IMP'): 3, ('PHP', 'IMP'): 3, ('PLA', 'IMP'): 4, ('PLP', 'IMP'): 4,
+
+    # Increment/Decrement
+    ('INC', 'ZP'): 5, ('INC', 'ZPX'): 6, ('INC', 'ABS'): 6, ('INC', 'ABSX'): 7,
+    ('DEC', 'ZP'): 5, ('DEC', 'ZPX'): 6, ('DEC', 'ABS'): 6, ('DEC', 'ABSX'): 7,
+    ('INX', 'IMP'): 2, ('INY', 'IMP'): 2, ('DEX', 'IMP'): 2, ('DEY', 'IMP'): 2,
+
+    # Arithmetic
+    ('ADC', 'IMM'): 2, ('ADC', 'ZP'): 3, ('ADC', 'ZPX'): 4,
+    ('ADC', 'ABS'): 4, ('ADC', 'ABSX'): 4, ('ADC', 'ABSY'): 4,  # +1 if page crossed
+    ('ADC', 'INDX'): 6, ('ADC', 'INDY'): 5,  # +1 if page crossed on INDY
+
+    ('SBC', 'IMM'): 2, ('SBC', 'ZP'): 3, ('SBC', 'ZPX'): 4,
+    ('SBC', 'ABS'): 4, ('SBC', 'ABSX'): 4, ('SBC', 'ABSY'): 4,  # +1 if page crossed
+    ('SBC', 'INDX'): 6, ('SBC', 'INDY'): 5,  # +1 if page crossed on INDY
+
+    # Logical
+    ('AND', 'IMM'): 2, ('AND', 'ZP'): 3, ('AND', 'ZPX'): 4,
+    ('AND', 'ABS'): 4, ('AND', 'ABSX'): 4, ('AND', 'ABSY'): 4,  # +1 if page crossed
+    ('AND', 'INDX'): 6, ('AND', 'INDY'): 5,  # +1 if page crossed on INDY
+
+    ('ORA', 'IMM'): 2, ('ORA', 'ZP'): 3, ('ORA', 'ZPX'): 4,
+    ('ORA', 'ABS'): 4, ('ORA', 'ABSX'): 4, ('ORA', 'ABSY'): 4,  # +1 if page crossed
+    ('ORA', 'INDX'): 6, ('ORA', 'INDY'): 5,  # +1 if page crossed on INDY
+
+    ('EOR', 'IMM'): 2, ('EOR', 'ZP'): 3, ('EOR', 'ZPX'): 4,
+    ('EOR', 'ABS'): 4, ('EOR', 'ABSX'): 4, ('EOR', 'ABSY'): 4,  # +1 if page crossed
+    ('EOR', 'INDX'): 6, ('EOR', 'INDY'): 5,  # +1 if page crossed on INDY
+
+    # Compare
+    ('CMP', 'IMM'): 2, ('CMP', 'ZP'): 3, ('CMP', 'ZPX'): 4,
+    ('CMP', 'ABS'): 4, ('CMP', 'ABSX'): 4, ('CMP', 'ABSY'): 4,  # +1 if page crossed
+    ('CMP', 'INDX'): 6, ('CMP', 'INDY'): 5,  # +1 if page crossed on INDY
+
+    ('CPX', 'IMM'): 2, ('CPX', 'ZP'): 3, ('CPX', 'ABS'): 4,
+    ('CPY', 'IMM'): 2, ('CPY', 'ZP'): 3, ('CPY', 'ABS'): 4,
+
+    # Shifts/Rotates
+    ('ASL', 'ACC'): 2, ('ASL', 'ZP'): 5, ('ASL', 'ZPX'): 6, ('ASL', 'ABS'): 6, ('ASL', 'ABSX'): 7,
+    ('LSR', 'ACC'): 2, ('LSR', 'ZP'): 5, ('LSR', 'ZPX'): 6, ('LSR', 'ABS'): 6, ('LSR', 'ABSX'): 7,
+    ('ROL', 'ACC'): 2, ('ROL', 'ZP'): 5, ('ROL', 'ZPX'): 6, ('ROL', 'ABS'): 6, ('ROL', 'ABSX'): 7,
+    ('ROR', 'ACC'): 2, ('ROR', 'ZP'): 5, ('ROR', 'ZPX'): 6, ('ROR', 'ABS'): 6, ('ROR', 'ABSX'): 7,
+
+    # Branches (2 cycles if not taken, 3 if taken, 4 if page crossed)
+    ('BCC', 'REL'): 2, ('BCS', 'REL'): 2, ('BEQ', 'REL'): 2, ('BNE', 'REL'): 2,
+    ('BMI', 'REL'): 2, ('BPL', 'REL'): 2, ('BVC', 'REL'): 2, ('BVS', 'REL'): 2,
+
+    # Jumps/Calls
+    ('JMP', 'ABS'): 3, ('JMP', 'IND'): 5,
+    ('JSR', 'ABS'): 6,
+    ('RTS', 'IMP'): 6,
+    ('RTI', 'IMP'): 6,
+
+    # Flags
+    ('CLC', 'IMP'): 2, ('SEC', 'IMP'): 2, ('CLI', 'IMP'): 2, ('SEI', 'IMP'): 2,
+    ('CLV', 'IMP'): 2, ('CLD', 'IMP'): 2, ('SED', 'IMP'): 2,
+
+    # Misc
+    ('BIT', 'ZP'): 3, ('BIT', 'ABS'): 4,
+    ('NOP', 'IMP'): 2,
+    ('BRK', 'IMP'): 7,
+}
+
+
+@dataclass
+class CycleInfo:
+    """Information about cycle count for an instruction"""
+    min_cycles: int
+    max_cycles: int
+    typical_cycles: int
+    notes: str = ""
+
+    @property
+    def is_variable(self) -> bool:
+        """Returns True if cycle count varies"""
+        return self.min_cycles != self.max_cycles
+
+
+class CycleCounter:
+    """Count CPU cycles for 6502 assembly instructions"""
+
+    def __init__(self, lines: List[str], subroutines: Dict[int, 'SubroutineInfo']):
+        self.lines = lines
+        self.subroutines = subroutines
+        self.cycle_counts: Dict[int, CycleInfo] = {}  # address -> cycle info
+
+    def count_all_cycles(self) -> Dict[int, CycleInfo]:
+        """Count cycles for all instructions in the file"""
+        for i, line in enumerate(self.lines):
+            addr = self._extract_address(line)
+            if addr is not None:
+                cycle_info = self._count_instruction_cycles(line)
+                if cycle_info:
+                    self.cycle_counts[addr] = cycle_info
+
+        return self.cycle_counts
+
+    def count_subroutine_cycles(self, subroutine: 'SubroutineInfo') -> Tuple[int, int, int]:
+        """
+        Count total cycles for a subroutine
+
+        Returns:
+            (min_cycles, max_cycles, typical_cycles)
+        """
+        min_total = 0
+        max_total = 0
+        typical_total = 0
+
+        # Find all instructions in this subroutine
+        start_addr = subroutine.address
+        end_addr = subroutine.end_address or (start_addr + 1000)  # Default range
+
+        for addr in range(start_addr, end_addr):
+            if addr in self.cycle_counts:
+                info = self.cycle_counts[addr]
+                min_total += info.min_cycles
+                max_total += info.max_cycles
+                typical_total += info.typical_cycles
+
+                # Stop at RTS
+                line = self._find_line_by_address(addr)
+                if line and 'RTS' in line:
+                    break
+
+        return (min_total, max_total, typical_total)
+
+    def _count_instruction_cycles(self, line: str) -> Optional[CycleInfo]:
+        """Count cycles for a single instruction"""
+        # Extract opcode and operand
+        parts = self._parse_instruction(line)
+        if not parts:
+            return None
+
+        opcode, operand = parts
+
+        # Determine addressing mode
+        addr_mode = self._detect_addressing_mode(opcode, operand)
+        if not addr_mode:
+            return None
+
+        # Look up base cycle count
+        key = (opcode, addr_mode)
+        if key not in CYCLE_COUNTS:
+            return None
+
+        base_cycles = CYCLE_COUNTS[key]
+
+        # Determine if variable (page crossing or branch taken)
+        min_cycles = base_cycles
+        max_cycles = base_cycles
+        typical_cycles = base_cycles
+        notes = ""
+
+        # Check for page crossing possibility
+        if addr_mode in ['ABSX', 'ABSY', 'INDY']:
+            if opcode in ['LDA', 'LDX', 'LDY', 'ADC', 'SBC', 'AND', 'ORA', 'EOR', 'CMP']:
+                max_cycles = base_cycles + 1
+                typical_cycles = base_cycles  # Assume same page typically
+                notes = "+1 if page crossed"
+
+        # Branches have variable timing
+        if addr_mode == 'REL':
+            max_cycles = 4  # Taken + page crossed
+            typical_cycles = 3  # Assume taken, same page
+            notes = "+1 if taken, +2 if page crossed"
+
+        return CycleInfo(
+            min_cycles=min_cycles,
+            max_cycles=max_cycles,
+            typical_cycles=typical_cycles,
+            notes=notes
+        )
+
+    def _parse_instruction(self, line: str) -> Optional[Tuple[str, str]]:
+        """Parse instruction line into (opcode, operand)"""
+        # Match pattern: $ADDR: BYTES  OPCODE OPERAND  ; comment
+        # Example: $1000: A9 00    LDA  #$00         ; comment
+        match = re.search(r'([A-Z]{3})\s+(.+?)(?:\s*;|$)', line)
+        if match:
+            opcode = match.group(1).strip()
+            operand = match.group(2).strip()
+            return (opcode, operand)
+
+        # Try simpler pattern: OPCODE OPERAND
+        match = re.search(r'^[^;]*\s([A-Z]{3})(?:\s+(.+?))?(?:\s*;|$)', line)
+        if match:
+            opcode = match.group(1).strip()
+            operand = match.group(2).strip() if match.group(2) else ""
+            return (opcode, operand)
+
+        return None
+
+    def _detect_addressing_mode(self, opcode: str, operand: str) -> Optional[str]:
+        """Detect addressing mode from operand"""
+        if not operand:
+            # Implied or Accumulator
+            if opcode in ['ASL', 'LSR', 'ROL', 'ROR']:
+                return 'ACC'  # Accumulator
+            return 'IMP'  # Implied
+
+        operand = operand.upper().strip()
+
+        # Immediate: #$00
+        if operand.startswith('#'):
+            return 'IMM'
+
+        # Indirect indexed: ($00),Y
+        if '(' in operand and '),Y' in operand:
+            return 'INDY'
+
+        # Indexed indirect: ($00,X)
+        if '(' in operand and ',X)' in operand:
+            return 'INDX'
+
+        # Indirect: ($0000)
+        if operand.startswith('(') and operand.endswith(')'):
+            return 'IND'
+
+        # Indexed: $00,X or $0000,X
+        if ',X' in operand:
+            # Check if zero page or absolute
+            addr_part = operand.split(',')[0].strip()
+            if addr_part.startswith('$'):
+                addr_hex = addr_part[1:]
+                if len(addr_hex) <= 2:
+                    return 'ZPX'
+                else:
+                    return 'ABSX'
+            return 'ABSX'  # Default to absolute
+
+        if ',Y' in operand:
+            # Check if zero page or absolute
+            addr_part = operand.split(',')[0].strip()
+            if addr_part.startswith('$'):
+                addr_hex = addr_part[1:]
+                if len(addr_hex) <= 2:
+                    return 'ZPY'
+                else:
+                    return 'ABSY'
+            return 'ABSY'  # Default to absolute
+
+        # Relative (for branches)
+        if opcode in ['BCC', 'BCS', 'BEQ', 'BNE', 'BMI', 'BPL', 'BVC', 'BVS']:
+            return 'REL'
+
+        # Absolute or Zero Page
+        if operand.startswith('$'):
+            addr_hex = operand[1:]
+            if len(addr_hex) <= 2:
+                return 'ZP'
+            else:
+                return 'ABS'
+
+        return 'ABS'  # Default
+
+    def _extract_address(self, line: str) -> Optional[int]:
+        """Extract address from line"""
+        match = re.match(r'^\s*\$?([0-9A-Fa-f]{4}):', line)
+        if match:
+            return int(match.group(1), 16)
+        return None
+
+    def _find_line_by_address(self, address: int) -> Optional[str]:
+        """Find line by address"""
+        for line in self.lines:
+            addr = self._extract_address(line)
+            if addr == address:
+                return line
+        return None
+
+
+def format_cycle_summary(min_cycles: int, max_cycles: int, typical_cycles: int,
+                         system: str = 'NTSC') -> str:
+    """Format cycle count summary with frame budget"""
+    frame_cycles = NTSC_CYCLES_PER_FRAME if system == 'NTSC' else PAL_CYCLES_PER_FRAME
+
+    # Calculate percentages
+    min_pct = (min_cycles / frame_cycles) * 100
+    max_pct = (max_cycles / frame_cycles) * 100
+    typical_pct = (typical_cycles / frame_cycles) * 100
+
+    output = ""
+
+    if min_cycles == max_cycles:
+        # Fixed cycle count
+        output += f"; Cycles: {typical_cycles} ({typical_pct:.1f}% of {system} frame)\n"
+    else:
+        # Variable cycle count
+        output += f"; Cycles: {min_cycles}-{max_cycles} (typically {typical_cycles})\n"
+        output += f"; Frame %: {min_pct:.1f}%-{max_pct:.1f}% (typically {typical_pct:.1f}% of {system} frame)\n"
+
+    # Calculate remaining budget
+    remaining = frame_cycles - typical_cycles
+    remaining_pct = (remaining / frame_cycles) * 100
+    output += f"; Budget remaining: {remaining} cycles ({remaining_pct:.1f}%)\n"
+
+    # Warning if over budget
+    if typical_cycles > frame_cycles:
+        output += f"; ⚠ WARNING: Exceeds frame budget by {typical_cycles - frame_cycles} cycles!\n"
+
+    return output
 
 
 # ==============================================================================
@@ -1692,6 +2042,12 @@ def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = Non
     patterns = pattern_detector.detect_all_patterns()
     print(f"  Found {len(patterns)} code pattern(s)")
 
+    # Count CPU cycles
+    print(f"  Counting CPU cycles...")
+    cycle_counter = CycleCounter(lines, subroutines)
+    cycle_counts = cycle_counter.count_all_cycles()
+    print(f"  Counted cycles for {len(cycle_counts)} instruction(s)")
+
     # Generate symbol table
     print(f"  Generating symbol table...")
     symbol_generator = SymbolTableGenerator(subroutines, xrefs, sections)
@@ -1745,7 +2101,7 @@ def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = Non
         # Check if this line starts a subroutine (by line number)
         if i in line_to_subroutine:
             sub_addr = line_to_subroutine[i]
-            sub_header = generate_subroutine_header(subroutines[sub_addr], xrefs, subroutines)
+            sub_header = generate_subroutine_header(subroutines[sub_addr], xrefs, subroutines, cycle_counter)
             output_lines.append(sub_header)
 
         # Check if this line starts a code pattern

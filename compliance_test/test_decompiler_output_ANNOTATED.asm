@@ -192,6 +192,9 @@
 ; Subroutine: Utility
 ; Address: $A000 - $A046
 ; Purpose: Utility or helper function
+; Cycles: 84-93 (typically 87)
+; Frame %: 0.4%-0.5% (typically 0.4% of NTSC frame)
+; Budget remaining: 19569 cycles (99.6%)
 ; Inputs: None
 ; Outputs: A, X
 ; Modifies: A, X
@@ -200,6 +203,9 @@ init:$a000: 4c b9 a6     JMP  $a6b9          play:;-----------------------------
 ; Subroutine: Utility
 ; Address: $A006 - $A046
 ; Purpose: Utility or helper function
+; Cycles: 81-90 (typically 84)
+; Frame %: 0.4%-0.5% (typically 0.4% of NTSC frame)
+; Budget remaining: 19572 cycles (99.6%)
 ; Inputs: None
 ; Outputs: A, X
 ; Modifies: A, X
