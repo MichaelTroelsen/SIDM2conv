@@ -12,17 +12,21 @@ Interactive HTML visualization for SID register traces with frame-by-frame analy
 ### Generate Trace HTML
 
 ```bash
-# Basic usage (300 frames default)
+# Basic usage (300 frames default) - Windows
+trace-viewer.bat input.sid
+
+# Specify output file - Windows
+trace-viewer.bat input.sid -o trace.html
+
+# Custom frame count - Windows
+trace-viewer.bat input.sid -f 1000
+
+# Complete example - Windows
+trace-viewer.bat SID/Beast.sid -o beast_trace.html -f 500
+
+# Direct Python (cross-platform)
 python pyscript/sidwinder_html_exporter.py input.sid
-
-# Specify output file
-python pyscript/sidwinder_html_exporter.py input.sid -o trace.html
-
-# Custom frame count
-python pyscript/sidwinder_html_exporter.py input.sid -f 1000
-
-# Complete example
-python pyscript/sidwinder_html_exporter.py SID/Beast.sid -o beast_trace.html -f 500
+python pyscript/sidwinder_html_exporter.py input.sid -o trace.html -f 500
 ```
 
 ### From Python

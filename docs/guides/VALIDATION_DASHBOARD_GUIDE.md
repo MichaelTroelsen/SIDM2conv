@@ -12,14 +12,18 @@ Interactive validation dashboard with professional styling and enhanced search c
 ### Generate Dashboard
 
 ```bash
-# Generate from latest validation run
+# Generate from latest validation run (Windows)
+validation-dashboard.bat
+
+# Generate from specific run (Windows)
+validation-dashboard.bat --run 5
+
+# Specify output location (Windows)
+validation-dashboard.bat --output custom_dashboard.html
+
+# Direct Python (cross-platform)
 python scripts/generate_dashboard.py
-
-# Generate from specific run
-python scripts/generate_dashboard.py --run 5
-
-# Specify output location
-python scripts/generate_dashboard.py --output custom_dashboard.html
+python scripts/generate_dashboard.py --run 5 --output custom.html
 ```
 
 ### From Conversion Cockpit GUI

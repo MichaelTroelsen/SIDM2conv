@@ -30,6 +30,11 @@ sid-to-sf2.bat input.sid output.sf2 --annotate --annotate-format html  # HTML do
 sf2-viewer.bat [file.sf2]     # View/export SF2
 conversion-cockpit.bat        # Batch conversion GUI
 
+# Analysis Tools
+trace-viewer.bat input.sid -f 300              # Interactive HTML trace (frame-by-frame)
+validation-dashboard.bat                       # Validation results dashboard
+python pyscript/generate_stinsen_html.py file.sid  # HTML docs (3,700+ annotations)
+
 # Batch Operations
 batch-convert-laxity.bat      # All Laxity files
 test-all.bat                  # 200+ tests
@@ -37,10 +42,9 @@ cleanup.bat                   # Clean + inventory
 
 # Python Tools
 python pyscript/siddump_complete.py input.sid -t30           # Frame dump
-python pyscript/sidwinder_trace.py --trace out.txt input.sid # Trace
+python pyscript/sidwinder_trace.py --trace out.txt input.sid # Trace (text)
 python pyscript/create_sid_inventory.py                      # SID catalog
 python pyscript/quick_disasm.py file.sid                     # Disassemble
-python pyscript/generate_stinsen_html.py file.sid            # HTML docs (3,700+ annotations)
 
 # Testing & Automation
 test-batch-pyautogui.bat --directory G5/examples --max-files 10

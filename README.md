@@ -37,13 +37,13 @@ sid-to-sf2.bat input.sid output.sf2
 python pyscript/generate_stinsen_html.py input.sid
 
 # Generate interactive trace visualization
-python pyscript/sidwinder_html_exporter.py input.sid -f 300
+trace-viewer.bat input.sid -f 300
 
 # View SF2 file with GUI
 sf2-viewer.bat file.sf2
 
 # Generate validation dashboard
-python scripts/generate_dashboard.py
+validation-dashboard.bat
 
 # Batch conversion GUI
 conversion-cockpit.bat
@@ -130,10 +130,13 @@ Interactive validation results dashboard with professional styling and enhanced 
 **Usage**:
 ```bash
 # Generate from latest validation run
-python scripts/generate_dashboard.py
+validation-dashboard.bat
 
 # Generate from specific run
-python scripts/generate_dashboard.py --run 5 --output custom.html
+validation-dashboard.bat --run 5 --output custom.html
+
+# Direct Python (advanced)
+python scripts/generate_dashboard.py --run 5
 
 # From Conversion Cockpit GUI
 # Results tab → "Generate & View Dashboard" button
@@ -158,12 +161,15 @@ Interactive frame-by-frame SID register trace visualization.
 **Usage**:
 ```bash
 # Generate trace HTML (300 frames default)
-python pyscript/sidwinder_html_exporter.py input.sid
+trace-viewer.bat input.sid
 
 # Custom frame count and output
-python pyscript/sidwinder_html_exporter.py input.sid -o trace.html -f 500
+trace-viewer.bat input.sid -o trace.html -f 500
 
-# From Python
+# Direct Python (advanced)
+python pyscript/sidwinder_html_exporter.py input.sid -f 300
+
+# From Python API
 from pyscript.sidwinder_html_exporter import export_trace_to_html
 from pyscript.sidtracer import SIDTracer
 
