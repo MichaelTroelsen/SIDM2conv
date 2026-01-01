@@ -9,6 +9,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-01-01
 
+### Added - SF2 HTML Export Feature
+
+**✅ COMPLETED: SF2 to interactive HTML export with professional reports**
+
+Implemented SF2 file to HTML export feature that generates professional, interactive HTML reports for SF2 analysis and documentation.
+
+**Features**:
+- **Interactive Elements**:
+  - Collapsible sections for orderlists, sequences, instruments, tables
+  - Search/filter functionality for quick navigation
+  - Smooth scrolling navigation with sidebar
+  - Cross-references (click instrument in sequence → jump to definition)
+
+- **Professional Styling**:
+  - Dark VS Code theme with color-coded elements
+  - Color-coded musical notes (blue=normal, green=gate on, red=END, gray=silence)
+  - Musical notation in SID Factory II format (C-4, F#-2, ---, +++, END)
+  - Hexadecimal display alongside readable values
+
+- **Data Export**:
+  - Self-contained HTML (works offline, single file)
+  - No external dependencies
+  - Easy to share and archive
+  - Print-friendly layout
+
+**Components Created**:
+- `pyscript/sf2_html_exporter.py` (650+ lines) - Main exporter class with SF2Parser integration
+- `sf2-to-html.bat` - Windows batch launcher for command-line usage
+- `docs/guides/SF2_HTML_EXPORT_GUIDE.md` - Complete user guide with examples
+
+**Usage**:
+```bash
+python pyscript/sf2_html_exporter.py input.sf2
+python pyscript/sf2_html_exporter.py input.sf2 -o output.html
+sf2-to-html.bat input.sf2
+```
+
+**HTML Sections Generated**:
+1. Overview with file information and navigation
+2. Statistics grid (6 metric cards: file size, orderlists, sequences, instruments, driver, load address)
+3. File information table (addresses, driver type)
+4. Orderlists (3 voices with sequence playback order)
+5. Sequences (summary table + detailed expandable views with musical notation)
+6. Instruments (8 entries with parameter breakdown and cross-references)
+7. Tables (wave, pulse, filter, arpeggio tables)
+
+**Testing**:
+- ✅ Driver 11 Test - Arpeggio.sf2 → 61 KB HTML (2 sequences)
+- ✅ Stinsens_Last_Night_of_89.sf2 → HTML generated successfully
+- ✅ 100% success rate with test files
+
+**Dependencies**:
+- Uses `HTMLComponents` library (created in previous commit)
+- Integrates with `SF2Parser` from `sf2_viewer_core.py`
+- Leverages existing SF2 parsing infrastructure
+
+**Impact**:
+- ✅ Enables offline SF2 analysis without GUI tools
+- ✅ Perfect for documentation and archiving
+- ✅ Easy to share with collaborators (single HTML file)
+- ✅ Complements SF2 Viewer GUI for batch documentation
+- ✅ Addresses user request for SF2 HTML export capability
+
+**Git Commit**: `36d5229` - "feat: Add SF2 to HTML export with interactive reports"
+
+---
+
 ### Fixed - Test Fixture Error
 
 **✅ FIXED: Missing pytest fixture error in test_sid_parse_debug.py**
