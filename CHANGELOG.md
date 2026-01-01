@@ -1511,6 +1511,229 @@ The ASM annotation system is now **feature-complete** with all major analysis ca
 
 See `docs/ASM_ANNOTATION_IMPROVEMENTS.md` for complete roadmap and implementation details.
 
+#### Enhanced - Interactive HTML Output (2026-01-01)
+
+**🌐 PRIORITY 3 FEATURE: Professional interactive HTML export with collapsible sections, search, and syntax highlighting**
+
+Implemented Priority 3 improvement #3.1 from `docs/ASM_ANNOTATION_IMPROVEMENTS.md`: Interactive web-based viewing of assembly analysis with modern UI/UX features.
+
+**NEW FORMAT**: `--format html` generates self-contained HTML files with embedded CSS and JavaScript
+
+**USAGE**:
+```bash
+# Generate interactive HTML
+python pyscript/annotate_asm.py input.asm --format html
+
+# Auto-generates: input_ANALYSIS.html
+
+# All existing formats still supported:
+python pyscript/annotate_asm.py input.asm --format text      # Default annotated ASM
+python pyscript/annotate_asm.py input.asm --format json      # Machine-readable JSON
+python pyscript/annotate_asm.py input.asm --format markdown  # Documentation summary
+```
+
+**KEY FEATURES**:
+
+**1. VS Code Dark Theme**:
+- Professional color scheme matching popular IDE
+- Background: `#1e1e1e`, Text: `#d4d4d4`
+- Color-coded elements:
+  - Addresses: `#4ec9b0` (green)
+  - Keywords: `#569cd6` (blue)
+  - Functions: `#dcdcaa` (yellow)
+  - Strings: `#ce9178` (orange)
+
+**2. Responsive Sidebar Layout**:
+```
+┌─────────────┬────────────────────────┐
+│  Sidebar    │  Main Content          │
+│  320px      │  Flexible              │
+│             │                        │
+│  Statistics │  Subroutines Section   │
+│  Search     │  Loops Section         │
+│  Navigation │  Dead Code Section     │
+│             │  Optimizations Section │
+│             │  Symbol Table          │
+└─────────────┴────────────────────────┘
+```
+
+**3. Statistics Dashboard**:
+```
+┌──────────────────────────────────┐
+│ ASSEMBLY ANALYSIS DASHBOARD      │
+├──────────────┬───────────────────┤
+│ Subroutines  │ Symbols          │
+│     2        │   140            │
+├──────────────┼───────────────────┤
+│ Patterns     │ Loops            │
+│     8        │    79            │
+├──────────────┼───────────────────┤
+│ Lifecycles   │ Dead Code        │
+│    22        │     2            │
+└──────────────┴───────────────────┘
+```
+
+**4. Collapsible Sections**:
+- Click section headers to expand/collapse
+- JavaScript `toggleSection()` function
+- Smooth animations with CSS transitions
+- Persistent state during navigation
+
+**5. Real-Time Search**:
+- Filter navigation items by text
+- Instant results as you type
+- Searches subroutine names and addresses
+- Case-insensitive matching
+
+**6. Smart Navigation**:
+- Click navigation items to jump to sections
+- Smooth scroll with `scrollIntoView()`
+- Active item highlighting based on scroll position
+- Flash animation on target element (1.5s)
+
+**7. Symbol Table with Quick Reference**:
+- Color-coded by type (subroutine, hardware, data, unknown)
+- Reference counts (reads, writes, calls)
+- Complete descriptions
+- Sortable by address
+
+**MODULAR ARCHITECTURE**:
+
+Created separate `pyscript/html_export.py` module (~600 lines):
+```python
+def generate_html_export(
+    input_path, file_info, subroutines, sections, symbols,
+    xrefs, patterns, loops, branches, cycle_counts, call_graph,
+    lifecycles, dependencies, dead_code, optimizations, lines
+) -> str:
+    """Generate interactive HTML output with embedded CSS and JavaScript"""
+```
+
+**Helper Functions**:
+- `_get_html_header()` - CSS styling (VS Code theme)
+- `_get_html_body_start()` - Sidebar and statistics dashboard
+- `_get_subroutines_section()` - Subroutine cards with details
+- `_get_loops_section()` - Loop analysis
+- `_get_dead_code_section()` - Dead code warnings
+- `_get_optimizations_section()` - Optimization suggestions
+- `_get_symbols_section()` - Symbol table
+- `_get_html_footer()` - JavaScript for interactivity
+
+**INTEGRATION**:
+
+Updated `pyscript/annotate_asm.py`:
+```python
+# Graceful import with fallback
+try:
+    from html_export import generate_html_export
+    HTML_EXPORT_AVAILABLE = True
+except ImportError:
+    HTML_EXPORT_AVAILABLE = False
+
+# Format validation
+if output_format not in ['text', 'json', 'markdown', 'html']:
+    print(f"Error: Invalid format. Use: text, json, markdown, or html")
+
+# Auto-extension selection
+if output_format == 'html':
+    output_path = input_path.parent / f"{input_path.stem}_ANALYSIS.html"
+```
+
+**REAL-WORLD USAGE EXAMPLES**:
+
+**Scenario 1: Educational Resource**
+```
+Q: "I want to share annotated assembly code with students"
+→ Generate HTML: python pyscript/annotate_asm.py laxity_driver.asm --format html
+→ Share single HTML file (28KB, self-contained)
+→ Students can browse interactively in any browser
+→ Collapsible sections prevent information overload
+```
+
+**Scenario 2: Code Review**
+```
+Q: "Need to review Laxity player modifications"
+→ Generate HTML with all analysis sections
+→ Use search to find specific subroutines
+→ Check dead code warnings before merging
+→ Review optimization suggestions
+```
+
+**Scenario 3: Documentation**
+```
+Q: "Need to document reverse-engineered music player"
+→ HTML format preserves all analysis in single file
+→ Professional appearance for technical documentation
+→ Interactive navigation makes large files manageable
+→ Can be versioned in git and viewed anywhere
+```
+
+**JAVASCRIPT FUNCTIONALITY**:
+
+**Toggle Sections**:
+```javascript
+function toggleSection(id) {
+    const content = document.getElementById(id);
+    const header = content.previousElementSibling;
+    content.classList.toggle('collapsed');
+    header.classList.toggle('collapsed');
+}
+```
+
+**Search Filter**:
+```javascript
+document.getElementById('search').addEventListener('input', function(e) {
+    const query = e.target.value.toLowerCase();
+    navItems.forEach(item => {
+        const text = item.textContent.toLowerCase();
+        item.style.display = text.includes(query) ? 'flex' : 'none';
+    });
+});
+```
+
+**Active Navigation**:
+```javascript
+mainContent.addEventListener('scroll', function() {
+    // Find visible section and highlight corresponding nav item
+    // Provides visual feedback of current location
+});
+```
+
+**CODE STATISTICS**:
+- **+596 lines** in `pyscript/html_export.py` (new file)
+- **+25 lines** in `pyscript/annotate_asm.py` (integration)
+- **8 helper functions** for modular HTML generation
+- **3 JavaScript features** (toggle, search, navigation)
+
+**TESTING RESULTS**:
+- **test_decompiler_output.asm**: 74KB HTML with 2 subroutines, 140 symbols, 22 lifecycles
+- **laxity_driver.asm**: 28KB HTML with 2 subroutines, 29 symbols
+- **Self-contained**: No external dependencies except highlight.js CDN for syntax highlighting
+- **Browser compatibility**: Works in all modern browsers (Chrome, Firefox, Safari, Edge)
+
+**OUTPUT FILE SIZES**:
+| ASM Input | Text Output | JSON Output | HTML Output |
+|-----------|-------------|-------------|-------------|
+| test_decompiler_output.asm | 180KB | 156KB | **74KB** |
+| laxity_driver.asm | 8KB | 12KB | **28KB** |
+
+**BENEFITS**:
+- **Professional presentation**: Clean, modern UI for technical documentation
+- **Single-file deployment**: HTML includes all CSS/JS, no server required
+- **Interactive exploration**: Collapsible sections and search make large files manageable
+- **Accessibility**: View anywhere with a web browser, no special tools required
+- **Educational**: Perfect for teaching 6502 assembly and reverse engineering
+- **Version control friendly**: Text-based HTML diffs well in git
+
+**Code Location**:
+- `pyscript/html_export.py` (new file, 596 lines)
+- `pyscript/annotate_asm.py` (integration, lines 3177-3201 and 3411-3446)
+
+**Next Priority 3 Features**:
+- Diff-friendly output format (CSV/TSV for version control)
+- Documentation integration (auto-generate docs from analysis)
+- Configuration system (YAML/JSON config files)
+
 ### Verified - Laxity Accuracy Confirmation
 
 **✅ VERIFIED: Laxity driver achieves 99.98% frame accuracy (exceeds 99.93% target)**

@@ -17,6 +17,13 @@ from pathlib import Path
 from typing import List, Tuple, Optional, Dict, Set
 from dataclasses import dataclass, field, asdict
 
+# Import HTML export module
+try:
+    from html_export import generate_html_export
+    HTML_EXPORT_AVAILABLE = True
+except ImportError:
+    HTML_EXPORT_AVAILABLE = False
+
 # Common 6502 opcodes with descriptions
 OPCODES = {
     'LDA': 'Load Accumulator',
@@ -2978,7 +2985,23 @@ def annotate_asm_file(input_path: Path, output_path: Path, file_info: dict = Non
             f.write(md_output)
         print(f"  Created Markdown: {output_path.name}")
 
-    else:
+    elif output_format == 'html':
+        # Export interactive HTML
+        if not HTML_EXPORT_AVAILABLE:
+            print("  WARNING: HTML export module not available, falling back to text format")
+            output_format = 'text'
+        else:
+            html_output = generate_html_export(
+                input_path, file_info, subroutines, sections, symbols,
+                xrefs, patterns, loops, branches, cycle_counts, call_graph,
+                lifecycles, dependencies, dead_code, optimizations, lines
+            )
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(html_output)
+            print(f"  Created HTML: {output_path.name}")
+            return
+
+    if output_format == 'text':
         # Default: Write annotated text file
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(''.join(output_lines))
@@ -3366,11 +3389,13 @@ def main():
         print("  text     - Annotated ASM text (default)")
         print("  json     - Machine-readable JSON with all analysis data")
         print("  markdown - Human-readable Markdown summary")
+        print("  html     - Interactive HTML with collapsible sections, search, syntax highlighting")
         print("")
         print("Examples:")
-        print("  python annotate_asm.py input.asm                          # Text output")
+        print("  python annotate_asm.py input.asm                           # Text output")
         print("  python annotate_asm.py input.asm output.json --format json")
         print("  python annotate_asm.py input.asm output.md --format markdown")
+        print("  python annotate_asm.py input.asm output.html --format html")
         return 1
 
     # Parse arguments
@@ -3383,8 +3408,8 @@ def main():
         format_index = sys.argv.index('--format')
         if format_index + 1 < len(sys.argv):
             output_format = sys.argv[format_index + 1]
-            if output_format not in ['text', 'json', 'markdown']:
-                print(f"Error: Invalid format '{output_format}'. Use: text, json, or markdown")
+            if output_format not in ['text', 'json', 'markdown', 'html']:
+                print(f"Error: Invalid format '{output_format}'. Use: text, json, markdown, or html")
                 return 1
 
     # Determine output path
@@ -3400,6 +3425,8 @@ def main():
                     ext = '.json'
                 elif output_format == 'markdown':
                     ext = '.md'
+                elif output_format == 'html':
+                    ext = '.html'
                 else:
                     ext = '.asm'
 
@@ -3413,6 +3440,8 @@ def main():
                 output_path = input_path.parent / f"{input_path.stem}_ANALYSIS.json"
             elif output_format == 'markdown':
                 output_path = input_path.parent / f"{input_path.stem}_ANALYSIS.md"
+            elif output_format == 'html':
+                output_path = input_path.parent / f"{input_path.stem}_ANALYSIS.html"
             else:
                 output_path = input_path.parent / f"{input_path.stem}_ANNOTATED.asm"
 
