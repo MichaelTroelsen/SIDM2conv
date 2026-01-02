@@ -524,6 +524,15 @@ def main():
             lines = f.readlines()
         print(f"Read {len(lines)} lines of assembly")
 
+    # Run AI table detection
+    print("\nRunning AI table detection...")
+    from pyscript.ai_table_detector import AITableDetector
+    table_candidates = []
+    if asm_file.exists():
+        detector = AITableDetector(str(asm_file))
+        table_candidates = detector.analyze()
+        print(f"  Found {len(table_candidates)} table candidates")
+
     # Get actual load address (for PSID files, header.load_address might be 0)
     parser = SIDParser(str(sid_file))
     _, actual_load_addr = parser.get_c64_data(header)
@@ -556,7 +565,8 @@ def main():
         input_path=sid_file,
         file_info=file_info,
         sections=sections,
-        lines=lines
+        lines=lines,
+        table_candidates=table_candidates
     )
 
     # Write HTML
@@ -657,7 +667,7 @@ def generate_meaningful_labels(lines: List[str], init_addr: int, play_addr: int)
                     new_name = 'Subroutine_SetSID'
                 else:
                     new_name = 'Subroutine_ReadSID'
-            elif 'rts' in context_str and context.index('rts') <= 1:
+            elif 'rts' in context and context.index('rts') <= 1:
                 new_name = 'Subroutine_Return'
             elif any(x in context_str for x in ['lda', 'ldx', 'ldy']) and 'sta' in context_str:
                 new_name = 'Subroutine_LoadStore'
@@ -1166,7 +1176,7 @@ def annotate_sidwinder_line(line: str, load_address: int = 0x1000) -> str:
     # Always return with exactly one newline
     return line + '\n'
 
-def generate_annotated_html_with_sections(input_path, file_info, sections, lines):
+def generate_annotated_html_with_sections(input_path, file_info, sections, lines, table_candidates=None):
     """Generate HTML with our extracted sections"""
 
     # Import all analyzer classes from annotate_asm
@@ -1180,6 +1190,12 @@ def generate_annotated_html_with_sections(input_path, file_info, sections, lines
         SymbolTableGenerator,
         EnhancedRegisterTracker
     )
+
+    # Build AI table address map for annotations
+    ai_table_map = {}  # address -> table_candidate
+    if table_candidates:
+        for candidate in table_candidates:
+            ai_table_map[candidate.address] = candidate
 
     print("\n=== Running Full Analysis Pipeline ===")
 
@@ -1418,7 +1434,20 @@ def generate_annotated_html_with_sections(input_path, file_info, sections, lines
 
                     # Add memory map annotation comment
                     annotation = f';   ├─ Location: ${start_addr:04X}-${end_addr:04X} ({size} bytes)\n'
-                    annotation += f';   └─ Memory Region: {region}\n'
+                    annotation += f';   ├─ Memory Region: {region}\n'
+
+                    # Check for AI table detection at this address
+                    if start_addr in ai_table_map:
+                        table = ai_table_map[start_addr]
+                        table_type_name = table.table_type.replace('_', ' ').title()
+                        conf_emoji = '🟢' if table.confidence >= 0.8 else '🟡' if table.confidence >= 0.6 else '⚪'
+                        annotation += f';   ├─ AI Detection: {conf_emoji} {table_type_name} ({table.confidence:.0%} confidence)\n'
+                        if table.reasons:
+                            annotation += f';   │  Reason: {table.reasons[0]}\n'
+                        annotation += ';   └─ (See AI-Detected Tables section for details)\n'
+                    else:
+                        annotation += ';   └─\n'
+
                     annotated_lines.append(annotation)
 
     # Add prominent EOF marker at the end (make it very visible with version info)
@@ -1463,7 +1492,8 @@ def generate_annotated_html_with_sections(input_path, file_info, sections, lines
         dependencies=dependencies,
         dead_code=dead_code,
         optimizations=optimizations,
-        lines=annotated_lines  # Use annotated lines instead of raw lines
+        lines=annotated_lines,  # Use annotated lines instead of raw lines
+        table_candidates=table_candidates  # AI-detected music tables
     )
 
     return html

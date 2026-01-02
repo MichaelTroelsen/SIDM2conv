@@ -23,7 +23,8 @@ def generate_html_export(
     dependencies: Dict[int, any],
     dead_code: List[Tuple[int, str, str]],
     optimizations: List[str],
-    lines: List[str]
+    lines: List[str],
+    table_candidates: List[any] = None
 ) -> str:
     """Generate interactive HTML output with embedded CSS and JavaScript"""
 
@@ -53,6 +54,10 @@ def generate_html_export(
 
     # Add Player Structure section (NEW)
     html_parts.append(_get_player_structure_section(file_info, symbols, sections))
+
+    # Add AI-Detected Tables section (NEW)
+    if table_candidates:
+        html_parts.append(_get_ai_tables_section(table_candidates))
 
     # Add Architectural Insights section (NEW)
     html_parts.append(_get_architectural_insights_section(file_info, subroutines, patterns, loops))
@@ -422,6 +427,10 @@ def _get_html_body_start(input_path: Path, file_info: dict, subroutines: Dict, s
                 <button onclick="document.getElementById('player-structure').scrollIntoView({{behavior: 'smooth'}}); toggleSection('player-structure');"
                         style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
                     🏗️ Player Structure
+                </button>
+                <button onclick="document.getElementById('ai-tables').scrollIntoView({{behavior: 'smooth'}}); toggleSection('ai-tables');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #4ec9b0; cursor: pointer; border-radius: 4px; text-align: left; font-weight: bold;">
+                    🤖 AI-Detected Tables
                 </button>
                 <button onclick="document.getElementById('architectural-insights').scrollIntoView({{behavior: 'smooth'}}); toggleSection('architectural-insights');"
                         style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
@@ -830,6 +839,127 @@ def _get_player_structure_section(file_info: dict, symbols: Dict, sections: List
                 </div>
             </div>
 """
+    return html
+
+
+def _get_ai_tables_section(table_candidates: List) -> str:
+    """Generate AI-Detected Music Tables section"""
+
+    if not table_candidates:
+        return ""
+
+    # Group by type
+    by_type = {}
+    for candidate in table_candidates:
+        table_type = candidate.table_type
+        if table_type not in by_type:
+            by_type[table_type] = []
+        by_type[table_type].append(candidate)
+
+    # Sort each group by confidence
+    for table_type in by_type:
+        by_type[table_type].sort(key=lambda c: c.confidence, reverse=True)
+
+    # Build table type summary
+    type_summary = []
+    type_order = ['note_freq', 'instrument', 'arpeggio', 'wave', 'pulse', 'filter']
+    for table_type in type_order:
+        if table_type in by_type:
+            count = len(by_type[table_type])
+            max_conf = max(c.confidence for c in by_type[table_type])
+            type_summary.append(f"{table_type.replace('_', ' ').title()}: {count} (max {max_conf:.0%})")
+
+    html = f"""            <!-- AI-Detected Music Tables -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('ai-tables')">
+                    <span class="section-title">🤖 AI-Detected Music Tables</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="ai-tables">
+                    <p style="color: #cccccc; line-height: 1.6; margin-bottom: 20px;">
+                        AI analysis of the disassembled code identified <strong>{len(table_candidates)} potential music data structures</strong>.
+                        These tables were detected using pattern recognition, heuristics, and SID register analysis.
+                    </p>
+
+                    <div style="background: #2d2d30; padding: 15px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #569cd6;">
+                        <h3 style="color: #569cd6; margin: 0 0 10px 0; font-size: 16px;">Detection Summary</h3>
+                        <div style="color: #cccccc; font-size: 13px; line-height: 1.8;">
+                            {' • '.join(type_summary)}
+                        </div>
+                    </div>
+"""
+
+    # Add tabs for each table type
+    for idx, table_type in enumerate(type_order):
+        if table_type not in by_type:
+            continue
+
+        candidates = by_type[table_type][:10]  # Show top 10
+        type_name = table_type.replace('_', ' ').title()
+        type_id = f"ai-table-{table_type}"
+
+        html += f"""
+                    <div style="margin-bottom: 25px;">
+                        <div class="section-header" onclick="toggleSection('{type_id}')" style="background: #1e1e1e; padding: 12px 18px;">
+                            <span style="color: #4ec9b0; font-weight: bold; font-size: 15px;">📊 {type_name} Tables ({len(by_type[table_type])})</span>
+                            <span class="section-toggle">▼</span>
+                        </div>
+                        <div class="section-content" id="{type_id}" style="background: #252526; padding: 15px; border-radius: 0 0 6px 6px;">
+"""
+
+        for candidate in candidates:
+            # Build confidence badge color
+            if candidate.confidence >= 0.8:
+                conf_color = "#4ec9b0"  # Green
+            elif candidate.confidence >= 0.6:
+                conf_color = "#dcdcaa"  # Yellow
+            else:
+                conf_color = "#858585"  # Gray
+
+            # Build data preview
+            if candidate.size <= 32:
+                hex_bytes = ' '.join(f'${b:02X}' for b in candidate.data[:16])
+                if len(candidate.data) > 16:
+                    hex_bytes += '...'
+            else:
+                hex_bytes = ' '.join(f'${b:02X}' for b in candidate.data[:16]) + f'... ({candidate.size} bytes total)'
+
+            html += f"""
+                            <div style="background: #1e1e1e; padding: 15px; margin-bottom: 12px; border-radius: 6px; border-left: 3px solid {conf_color};">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                    <span style="color: #569cd6; font-family: 'Consolas', monospace; font-size: 14px; font-weight: bold;">
+                                        ${candidate.address:04X} - {candidate.size} bytes
+                                    </span>
+                                    <span style="background: {conf_color}; color: #1e1e1e; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold;">
+                                        {candidate.confidence:.0%}
+                                    </span>
+                                </div>
+                                <div style="color: #858585; font-size: 12px; margin-bottom: 8px;">
+"""
+
+            for reason in candidate.reasons:
+                html += f"""                                    <div style="margin: 3px 0;">• {reason}</div>
+"""
+
+            html += f"""
+                                </div>
+                                <div style="background: #252526; padding: 10px; border-radius: 4px; margin-top: 8px;">
+                                    <div style="color: #6a9955; font-size: 11px; margin-bottom: 4px;">Data:</div>
+                                    <code style="color: #ce9178; font-family: 'Consolas', monospace; font-size: 12px;">{hex_bytes}</code>
+                                </div>
+                            </div>
+"""
+
+        html += """
+                        </div>
+                    </div>
+"""
+
+    html += """
+                </div>
+            </div>
+"""
+
     return html
 
 
@@ -1245,17 +1375,24 @@ def _get_full_assembly_section(lines: List[str], symbols: Dict, xrefs: Dict, cyc
                 <div class="section-header" onclick="toggleSection('full-asm')">
                     <span class="section-title">📜 Fully Annotated Assembly ({len(lines)} lines)</span>
                     <div style="display: flex; align-items: center; gap: 15px;">
-                        <div style="position: relative;" onclick="event.stopPropagation();">
+                        <div style="position: relative; display: flex; align-items: center; gap: 8px;" onclick="event.stopPropagation();">
                             <input type="text" id="asm-search" placeholder="Search code, data, addresses..."
                                    style="padding: 8px 12px; background: #1e1e1e; border: 1px solid #3e3e42; border-radius: 4px; color: #cccccc; font-size: 13px; width: 500px; outline: none;">
+                            <button id="search-prev" style="padding: 6px 12px; background: #2d2d30; border: 1px solid #3e3e42; border-radius: 4px; color: #cccccc; cursor: pointer; font-size: 12px; transition: background 0.2s;" title="Previous match (Shift+Enter)" onmouseover="this.style.background='#383838'" onmouseout="this.style.background='#2d2d30'">◀</button>
+                            <button id="search-next" style="padding: 6px 12px; background: #2d2d30; border: 1px solid #3e3e42; border-radius: 4px; color: #cccccc; cursor: pointer; font-size: 12px; transition: background 0.2s;" title="Next match (Enter)" onmouseover="this.style.background='#383838'" onmouseout="this.style.background='#2d2d30'">▶</button>
+                            <span style="color: #858585; font-size: 12px; margin-left: 8px;">│</span>
+                            <button id="zoom-out" style="padding: 6px 12px; background: #2d2d30; border: 1px solid #3e3e42; border-radius: 4px; color: #cccccc; cursor: pointer; font-size: 12px; font-weight: bold; transition: background 0.2s;" title="Zoom out" onmouseover="this.style.background='#383838'" onmouseout="this.style.background='#2d2d30'">−</button>
+                            <span id="zoom-level" style="color: #858585; font-size: 11px; min-width: 40px; text-align: center;">100%</span>
+                            <button id="zoom-in" style="padding: 6px 12px; background: #2d2d30; border: 1px solid #3e3e42; border-radius: 4px; color: #cccccc; cursor: pointer; font-size: 12px; font-weight: bold; transition: background 0.2s;" title="Zoom in" onmouseover="this.style.background='#383838'" onmouseout="this.style.background='#2d2d30'">+</button>
+                            <button id="zoom-reset" style="padding: 6px 10px; background: #2d2d30; border: 1px solid #3e3e42; border-radius: 4px; color: #858585; cursor: pointer; font-size: 11px; transition: background 0.2s;" title="Reset zoom (100%)" onmouseover="this.style.background='#383838'" onmouseout="this.style.background='#2d2d30'">Reset</button>
                             <div id="asm-search-count" style="position: absolute; top: 100%; left: 0; margin-top: 5px; font-size: 11px; color: #858585; white-space: nowrap; display: none;"></div>
                         </div>
                         <span class="section-toggle">▼</span>
                     </div>
                 </div>
                 <div class="section-content" id="full-asm">
-                    <div style="background: #1e1e1e; padding: 20px; border-radius: 6px; max-height: 800px; overflow-y: scroll; overflow-x: auto; border: 1px solid #3e3e42;">
-                        <pre style="color: #d4d4d4; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; line-height: 1.8; margin: 0;">"""
+                    <div style="background: #1e1e1e; padding: 20px; border-radius: 6px; max-height: calc(100vh - 300px); overflow-y: scroll; overflow-x: auto; border: 1px solid #3e3e42;">
+                        <pre id="asm-code-pre" style="color: #d4d4d4; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; line-height: 1.8; margin: 0;">"""
 
     prev_was_blank = False
     section_started = False
@@ -1491,7 +1628,7 @@ def _get_html_footer() -> str:
             if (!query || query.length < 2) return;
 
             // Search in assembly code section
-            const asmSection = document.querySelector('#assembly-code pre');
+            const asmSection = document.querySelector('#full-asm pre');
             if (asmSection) {
                 highlightInElement(asmSection, query);
             }
@@ -1624,6 +1761,73 @@ def _get_html_footer() -> str:
                 updateMatchCount();
             }
         });
+
+        // Button navigation
+        const searchPrevBtn = document.getElementById('search-prev');
+        const searchNextBtn = document.getElementById('search-next');
+
+        if (searchPrevBtn) {
+            searchPrevBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (currentMatches.length > 0) {
+                    jumpToMatch(currentMatchIndex - 1);
+                }
+            });
+        }
+
+        if (searchNextBtn) {
+            searchNextBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (currentMatches.length > 0) {
+                    jumpToMatch(currentMatchIndex + 1);
+                }
+            });
+        }
+
+        // Zoom functionality
+        const asmCodePre = document.getElementById('asm-code-pre');
+        const zoomInBtn = document.getElementById('zoom-in');
+        const zoomOutBtn = document.getElementById('zoom-out');
+        const zoomResetBtn = document.getElementById('zoom-reset');
+        const zoomLevelSpan = document.getElementById('zoom-level');
+
+        let currentZoom = 100; // percentage
+        const baseFontSize = 13; // pixels
+        const minZoom = 50;
+        const maxZoom = 200;
+        const zoomStep = 10;
+
+        function updateZoom(newZoom) {
+            currentZoom = Math.max(minZoom, Math.min(maxZoom, newZoom));
+            const newFontSize = (baseFontSize * currentZoom) / 100;
+            if (asmCodePre) {
+                asmCodePre.style.fontSize = newFontSize + 'px';
+            }
+            if (zoomLevelSpan) {
+                zoomLevelSpan.textContent = currentZoom + '%';
+            }
+        }
+
+        if (zoomInBtn) {
+            zoomInBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                updateZoom(currentZoom + zoomStep);
+            });
+        }
+
+        if (zoomOutBtn) {
+            zoomOutBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                updateZoom(currentZoom - zoomStep);
+            });
+        }
+
+        if (zoomResetBtn) {
+            zoomResetBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                updateZoom(100);
+            });
+        }
 
         // Active navigation on scroll
         const mainContent = document.querySelector('.main-content');

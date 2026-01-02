@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Accuracy Heatmap - Cascade.sid vs Cascade_exported.sid</title>
+    
+    <style>
+
+        /* Reset and Base Styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+
+        .container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+            width: 320px;
+            background: #252526;
+            border-right: 1px solid #3e3e42;
+            overflow-y: auto;
+            padding: 20px;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+        }
+
+        .sidebar h2 {
+            color: #4ec9b0;
+            font-size: 16px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #3e3e42;
+            padding-bottom: 8px;
+        }
+
+        .nav-list {
+            list-style: none;
+            margin-bottom: 20px;
+        }
+
+        .nav-item {
+            padding: 8px 12px;
+            margin: 4px 0;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .nav-item:hover {
+            background: #2a2d2e;
+        }
+
+        .nav-item a {
+            color: #d4d4d4;
+            text-decoration: none;
+            flex: 1;
+        }
+
+        .nav-item .count {
+            color: #858585;
+            font-size: 12px;
+            background: #2d2d30;
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            padding: 30px;
+            overflow-y: auto;
+        }
+
+        .header {
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #4ec9b0;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header .subtitle {
+            color: #858585;
+            font-size: 1em;
+        }
+
+        /* Stat Cards Grid */
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .stat-card {
+            background: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #3e3e42;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        .stat-card.primary {
+            border-left: 4px solid #667eea;
+        }
+
+        .stat-card.success {
+            border-left: 4px solid #56ab2f;
+        }
+
+        .stat-card.warning {
+            border-left: 4px solid #f09819;
+        }
+
+        .stat-card.error {
+            border-left: 4px solid #eb3349;
+        }
+
+        .stat-card.info {
+            border-left: 4px solid #569cd6;
+        }
+
+        .stat-label {
+            color: #858585;
+            font-size: 0.85em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            color: #4ec9b0;
+            font-size: 2em;
+            font-weight: bold;
+        }
+
+        .stat-card.success .stat-value {
+            color: #56ab2f;
+        }
+
+        .stat-card.warning .stat-value {
+            color: #f09819;
+        }
+
+        .stat-card.error .stat-value {
+            color: #eb3349;
+        }
+
+        .stat-card.info .stat-value {
+            color: #569cd6;
+        }
+
+        /* Sections */
+        .section {
+            margin: 30px 0;
+        }
+
+        .section h2 {
+            color: #569cd6;
+            font-size: 1.8em;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #3e3e42;
+        }
+
+        .section h3 {
+            color: #c586c0;
+            font-size: 1.3em;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        /* Collapsible Sections */
+        .collapsible {
+            background: #252526;
+            border: 1px solid #3e3e42;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+
+        .collapsible-header {
+            padding: 15px 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+
+        .collapsible-header:hover {
+            background: #2a2d2e;
+        }
+
+        .collapsible-header h3 {
+            margin: 0;
+            color: #dcdcaa;
+        }
+
+        .collapsible-icon {
+            color: #858585;
+            font-size: 1.2em;
+            transition: transform 0.3s;
+        }
+
+        .collapsible.collapsed .collapsible-icon {
+            transform: rotate(-90deg);
+        }
+
+        .collapsible-content {
+            padding: 20px;
+            border-top: 1px solid #3e3e42;
+            max-height: 5000px;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out, padding 0.3s;
+        }
+
+        .collapsible.collapsed .collapsible-content {
+            max-height: 0;
+            padding: 0 20px;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            background: #252526;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        th {
+            background: #2d2d30;
+            color: #4ec9b0;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+            border-bottom: 2px solid #3e3e42;
+        }
+
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #3e3e42;
+        }
+
+        tr:hover {
+            background: #2a2d2e;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* Code Blocks */
+        .code-block {
+            background: #2d2d30;
+            border: 1px solid #3e3e42;
+            border-radius: 4px;
+            padding: 15px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        }
+
+        .code-line {
+            display: block;
+            padding: 2px 0;
+        }
+
+        .line-number {
+            color: #656565;
+            display: inline-block;
+            width: 40px;
+            text-align: right;
+            margin-right: 15px;
+            user-select: none;
+        }
+
+        /* Search Box */
+        .search-box {
+            background: #2d2d30;
+            border: 1px solid #3e3e42;
+            border-radius: 4px;
+            padding: 10px 15px;
+            margin: 15px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .search-box input {
+            background: transparent;
+            border: none;
+            color: #d4d4d4;
+            flex: 1;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .search-box input::placeholder {
+            color: #858585;
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: bold;
+            margin: 0 4px;
+        }
+
+        .badge.success {
+            background: #56ab2f;
+            color: white;
+        }
+
+        .badge.warning {
+            background: #f09819;
+            color: white;
+        }
+
+        .badge.error {
+            background: #eb3349;
+            color: white;
+        }
+
+        .badge.info {
+            background: #667eea;
+            color: white;
+        }
+
+        /* Buttons */
+        .btn {
+            background: #569cd6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background: #4ec9b0;
+        }
+
+        .btn.success {
+            background: #56ab2f;
+        }
+
+        .btn.warning {
+            background: #f09819;
+        }
+
+        .btn.error {
+            background: #eb3349;
+        }
+
+        /* Footer */
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #3e3e42;
+            color: #858585;
+            font-size: 0.85em;
+            text-align: center;
+        }
+
+        /* Utility Classes */
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .mb-10 { margin-bottom: 10px; }
+        .mb-20 { margin-bottom: 20px; }
+        .mt-10 { margin-top: 10px; }
+        .mt-20 { margin-top: 20px; }
+
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 12px;
+            height: 12px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #1e1e1e;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #2d2d30;
+            border-radius: 6px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555555;
+        }
+
+    </style>
+</head>
+<body>
+
+<style>
+/* Heatmap Layout */
+.container {
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.sidebar {
+    width: 320px;
+    background: #252526;
+    border-right: 1px solid #3e3e42;
+    padding: 20px;
+    overflow-y: auto;
+    flex-shrink: 0;
+}
+
+.heatmap-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.heatmap-header {
+    background: #252526;
+    border-bottom: 1px solid #3e3e42;
+    padding: 15px 20px;
+    flex-shrink: 0;
+}
+
+.heatmap-header h2 {
+    color: #d4d4d4;
+    font-size: 18px;
+    font-weight: 500;
+    margin: 0;
+}
+
+.heatmap-canvas-wrapper {
+    flex: 1;
+    overflow: auto;
+    position: relative;
+    background: #1e1e1e;
+}
+
+.heatmap-canvas {
+    display: block;
+    cursor: crosshair;
+}
+
+/* Tooltip */
+.heatmap-tooltip {
+    position: fixed;
+    background: #2d2d30;
+    border: 1px solid #3e3e42;
+    border-radius: 4px;
+    padding: 10px;
+    font-size: 12px;
+    color: #d4d4d4;
+    pointer-events: none;
+    z-index: 1000;
+    display: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    max-width: 300px;
+}
+
+.heatmap-tooltip strong {
+    display: block;
+    margin-bottom: 5px;
+    color: #4ec9b0;
+}
+
+/* Controls */
+.control-group {
+    margin-bottom: 25px;
+}
+
+.control-group h3 {
+    color: #d4d4d4;
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 10px;
+}
+
+.mode-selector {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.mode-option {
+    display: flex;
+    align-items: center;
+    padding: 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.mode-option:hover {
+    background: #2a2d2e;
+}
+
+.mode-option input[type="radio"] {
+    margin-right: 8px;
+    cursor: pointer;
+}
+
+.mode-option label {
+    cursor: pointer;
+    flex: 1;
+    color: #d4d4d4;
+    font-size: 13px;
+}
+
+.mode-option.active {
+    background: #2d2d30;
+    border-left: 3px solid #4ec9b0;
+}
+
+/* Legend */
+.legend {
+    margin-top: 20px;
+    padding: 15px;
+    background: #2d2d30;
+    border-radius: 4px;
+}
+
+.legend h4 {
+    color: #d4d4d4;
+    font-size: 13px;
+    margin-bottom: 10px;
+}
+
+.legend-items {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #858585;
+}
+
+.legend-color {
+    width: 20px;
+    height: 12px;
+    border-radius: 2px;
+    border: 1px solid #3e3e42;
+}
+
+/* Zoom Controls */
+.zoom-controls {
+    display: flex;
+    gap: 8px;
+    margin-top: 15px;
+}
+
+.zoom-btn {
+    padding: 6px 12px;
+    background: #2d2d30;
+    border: 1px solid #3e3e42;
+    border-radius: 4px;
+    color: #d4d4d4;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+}
+
+.zoom-btn:hover {
+    background: #2a2d2e;
+    border-color: #4ec9b0;
+}
+
+/* Stats Section */
+.stats-section {
+    margin-bottom: 25px;
+}
+
+.stat-card {
+    background: #2d2d30;
+    border-radius: 4px;
+    padding: 12px;
+    margin-bottom: 10px;
+}
+
+.stat-label {
+    font-size: 11px;
+    color: #858585;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+
+.stat-value {
+    font-size: 24px;
+    font-weight: 600;
+    color: #d4d4d4;
+}
+
+.stat-value.success {
+    color: #56ab2f;
+}
+
+.stat-value.warning {
+    color: #f09819;
+}
+
+.stat-value.error {
+    color: #eb3349;
+}
+</style>
+<div class="container">
+<div class="sidebar">
+    <!-- Stats Section -->
+    <div class="stats-section">
+        <div class="stat-card">
+            <div class="stat-label">Overall Accuracy</div>
+            <div class="stat-value success">100.00%</div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-label">Matches / Total</div>
+            <div class="stat-value">8,700 / 8,700</div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-label">Dimensions</div>
+            <div class="stat-value">300 × 29</div>
+        </div>
+    </div>
+
+    <!-- Mode Selector -->
+    <div class="control-group">
+        <h3>Visualization Mode</h3>
+        <div class="mode-selector">
+            <div class="mode-option active" onclick="switchMode(1)" id="mode-option-1">
+                <input type="radio" name="mode" id="mode-1" value="1" checked>
+                <label for="mode-1">Binary Match/Mismatch</label>
+            </div>
+            <div class="mode-option" onclick="switchMode(2)" id="mode-option-2">
+                <input type="radio" name="mode" id="mode-2" value="2">
+                <label for="mode-2">Value Delta Magnitude</label>
+            </div>
+            <div class="mode-option" onclick="switchMode(3)" id="mode-option-3">
+                <input type="radio" name="mode" id="mode-3" value="3">
+                <label for="mode-3">Register Group Highlighting</label>
+            </div>
+            <div class="mode-option" onclick="switchMode(4)" id="mode-option-4">
+                <input type="radio" name="mode" id="mode-4" value="4">
+                <label for="mode-4">Frame Accuracy Summary</label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Zoom Controls -->
+    <div class="control-group">
+        <h3>Zoom</h3>
+        <div class="zoom-controls">
+            <button class="zoom-btn" onclick="zoomIn()">Zoom In (+)</button>
+            <button class="zoom-btn" onclick="zoomOut()">Zoom Out (-)</button>
+            <button class="zoom-btn" onclick="resetZoom()">Reset</button>
+        </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="legend" id="legend">
+        <h4>Legend</h4>
+        <div class="legend-items" id="legend-items">
+            <!-- Dynamic legend content based on mode -->
+        </div>
+    </div>
+
+    <!-- File Info -->
+    <div class="control-group" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #3e3e42;">
+        <h3>Files</h3>
+        <div style="font-size: 12px; color: #858585; line-height: 1.6;">
+            <div style="margin-bottom: 8px;">
+                <strong style="color: #4ec9b0;">File A:</strong><br>
+                Cascade.sid
+            </div>
+            <div>
+                <strong style="color: #569cd6;">File B:</strong><br>
+                Cascade_exported.sid
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="heatmap-main">
+    <div class="heatmap-header">
+        <h2>Accuracy Heatmap - Frame-by-Frame Register Comparison</h2>
+    </div>
+
+    <div class="heatmap-canvas-wrapper" id="canvas-wrapper">
+        <canvas id="heatmap-canvas" class="heatmap-canvas"></canvas>
+    </div>
+
+    <div class="heatmap-tooltip" id="tooltip"></div>
+</div>
+</div><script>
+// Heatmap data
+const heatmapData = {
+    frames: 300,
+    registers: 29,
+    matchGrid: [[true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true], [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]],
+    valueGridA: [[16, 124, 0, 0, 129, 0, 0, 17, 124, 0, 0, 129, 0, 0, 18, 124, 0, 0, 129, 0, 0, 0, 0, 242, 15, 0, 0, 0, 0], [55, 9, 0, 0, 16, 0, 0, 56, 9, 0, 0, 16, 0, 0, 57, 9, 0, 0, 16, 0, 0, 0, 5, 242, 15, 0, 0, 0, 0], [123, 5, 0, 0, 16, 0, 0, 124, 5, 0, 0, 16, 0, 0, 125, 5, 0, 0, 16, 0, 0, 0, 9, 242, 15, 0, 0, 0, 0], [123, 5, 0, 0, 16, 2, 168, 124, 5, 0, 0, 16, 3, 143, 125, 5, 0, 0, 16, 3, 108, 0, 13, 242, 63, 0, 0, 0, 0], [193, 7, 160, 4, 65, 2, 168, 225, 3, 40, 2, 65, 3, 143, 222, 36, 160, 4, 65, 3, 108, 0, 19, 242, 63, 0, 0, 0, 0], [193, 7, 64, 5, 65, 2, 168, 225, 3, 80, 2, 65, 3, 143, 222, 36, 64, 5, 65, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [193, 7, 224, 5, 65, 2, 168, 225, 3, 120, 2, 65, 3, 143, 222, 36, 224, 5, 65, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [193, 7, 128, 6, 65, 2, 168, 225, 3, 160, 2, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [193, 7, 32, 7, 65, 2, 168, 225, 3, 200, 2, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [193, 7, 192, 7, 65, 2, 168, 225, 3, 240, 2, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [193, 7, 96, 8, 65, 2, 168, 225, 3, 24, 3, 65, 3, 143, 132, 15, 96, 8, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [193, 7, 0, 9, 65, 2, 168, 225, 3, 64, 3, 65, 3, 143, 132, 15, 0, 9, 64, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [193, 7, 160, 9, 65, 2, 168, 225, 3, 104, 3, 65, 3, 143, 132, 15, 160, 9, 64, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [193, 7, 64, 10, 65, 2, 168, 225, 3, 144, 3, 65, 3, 143, 222, 36, 64, 10, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [193, 7, 224, 10, 65, 2, 168, 225, 3, 184, 3, 65, 3, 143, 222, 36, 224, 10, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [193, 7, 128, 11, 65, 2, 168, 225, 3, 224, 3, 65, 3, 143, 222, 36, 128, 11, 64, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [193, 7, 32, 12, 65, 2, 168, 225, 3, 8, 4, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [193, 7, 192, 12, 65, 2, 168, 225, 3, 48, 4, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [193, 7, 96, 13, 65, 2, 168, 225, 3, 88, 4, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [193, 7, 0, 14, 65, 2, 168, 225, 3, 128, 4, 65, 3, 143, 132, 15, 0, 14, 64, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [193, 7, 160, 14, 65, 2, 168, 225, 3, 168, 4, 65, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [193, 7, 0, 14, 65, 2, 168, 225, 3, 208, 4, 65, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [193, 7, 96, 14, 65, 2, 168, 225, 3, 248, 4, 65, 3, 143, 222, 36, 0, 14, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [193, 7, 192, 14, 65, 2, 168, 225, 3, 32, 5, 65, 3, 143, 222, 36, 0, 14, 65, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [193, 7, 32, 14, 65, 2, 168, 225, 3, 72, 5, 65, 3, 143, 222, 36, 160, 4, 65, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [193, 7, 128, 14, 65, 2, 168, 225, 3, 112, 5, 65, 3, 143, 222, 36, 64, 5, 65, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [193, 7, 224, 14, 65, 2, 168, 225, 3, 152, 5, 65, 3, 143, 222, 36, 224, 5, 65, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [193, 7, 64, 14, 65, 2, 168, 225, 3, 192, 5, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [193, 7, 160, 14, 65, 2, 168, 225, 3, 232, 5, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [193, 7, 0, 14, 65, 2, 168, 225, 3, 16, 6, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [193, 7, 96, 14, 65, 2, 168, 225, 3, 56, 6, 65, 3, 143, 132, 15, 96, 8, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [193, 7, 192, 14, 65, 2, 168, 225, 3, 96, 6, 65, 3, 143, 132, 15, 0, 9, 64, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [193, 7, 32, 14, 65, 2, 168, 225, 3, 136, 6, 65, 3, 143, 132, 15, 160, 9, 64, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [193, 7, 128, 14, 65, 2, 168, 225, 3, 176, 6, 65, 3, 143, 222, 36, 64, 10, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [193, 7, 224, 14, 65, 2, 168, 225, 3, 216, 6, 65, 3, 143, 222, 36, 224, 10, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [193, 7, 64, 14, 65, 2, 168, 225, 3, 0, 7, 65, 3, 143, 222, 36, 128, 11, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [193, 7, 160, 14, 65, 2, 168, 225, 3, 40, 7, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [193, 7, 0, 14, 65, 2, 168, 225, 3, 80, 7, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [193, 7, 160, 14, 65, 2, 168, 225, 3, 120, 7, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [30, 8, 64, 15, 65, 2, 168, 225, 3, 160, 7, 65, 3, 143, 132, 15, 0, 14, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [123, 8, 224, 15, 65, 2, 168, 225, 3, 120, 7, 65, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [30, 8, 128, 16, 65, 2, 168, 225, 3, 80, 7, 65, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [193, 8, 32, 17, 65, 2, 168, 225, 3, 40, 7, 65, 3, 143, 222, 36, 0, 14, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [100, 8, 192, 17, 65, 2, 168, 225, 3, 0, 7, 65, 3, 143, 222, 36, 0, 14, 65, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [7, 8, 96, 18, 65, 2, 168, 225, 3, 216, 7, 65, 3, 143, 222, 36, 160, 4, 65, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [100, 8, 0, 19, 65, 2, 168, 225, 3, 176, 7, 65, 3, 143, 222, 36, 64, 5, 65, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [193, 8, 160, 19, 65, 2, 168, 225, 3, 136, 7, 65, 3, 143, 222, 36, 224, 5, 65, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [30, 9, 64, 20, 65, 2, 168, 225, 3, 96, 7, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [123, 9, 224, 20, 65, 2, 168, 225, 3, 56, 7, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [30, 9, 128, 21, 65, 2, 168, 225, 3, 16, 7, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [193, 9, 32, 22, 65, 2, 168, 225, 3, 232, 7, 65, 3, 143, 132, 15, 96, 8, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [100, 9, 192, 22, 65, 2, 168, 225, 3, 192, 7, 65, 3, 143, 132, 15, 0, 9, 64, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [7, 9, 96, 23, 65, 2, 168, 225, 3, 152, 7, 65, 3, 143, 132, 15, 160, 9, 64, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [100, 9, 0, 24, 65, 2, 168, 225, 3, 112, 7, 65, 3, 143, 222, 36, 64, 10, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [193, 9, 160, 24, 65, 2, 168, 225, 3, 72, 7, 65, 3, 143, 222, 36, 224, 10, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [30, 10, 0, 24, 65, 2, 168, 225, 3, 32, 7, 65, 3, 143, 222, 36, 128, 11, 64, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [123, 10, 96, 24, 65, 2, 168, 225, 3, 248, 7, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [30, 10, 192, 24, 65, 2, 168, 225, 3, 208, 7, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [193, 10, 32, 24, 65, 2, 168, 225, 3, 168, 7, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [100, 10, 128, 24, 65, 2, 168, 225, 3, 128, 7, 65, 3, 143, 132, 15, 0, 14, 64, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [7, 10, 224, 24, 65, 2, 168, 225, 3, 88, 7, 65, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [7, 10, 224, 24, 64, 2, 168, 225, 3, 48, 7, 65, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [100, 10, 64, 24, 64, 2, 168, 225, 3, 8, 7, 65, 3, 143, 222, 36, 0, 14, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [100, 10, 64, 24, 65, 2, 168, 225, 3, 224, 7, 65, 3, 143, 222, 36, 0, 14, 65, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [180, 8, 160, 4, 65, 2, 168, 225, 3, 184, 7, 65, 3, 143, 222, 36, 160, 4, 65, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [180, 8, 64, 5, 65, 2, 168, 225, 3, 144, 7, 65, 3, 143, 222, 36, 64, 5, 65, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [180, 8, 224, 5, 65, 2, 168, 225, 3, 104, 7, 65, 3, 143, 222, 36, 224, 5, 65, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [180, 8, 128, 6, 65, 2, 168, 225, 3, 64, 7, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [180, 8, 32, 7, 65, 2, 168, 225, 3, 24, 7, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [180, 8, 192, 7, 65, 2, 168, 225, 3, 240, 7, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [180, 8, 96, 8, 65, 2, 168, 225, 3, 200, 7, 65, 3, 143, 132, 15, 96, 8, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [180, 8, 0, 9, 65, 2, 168, 225, 3, 160, 7, 65, 3, 143, 132, 15, 0, 9, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [180, 8, 160, 9, 65, 2, 168, 225, 3, 120, 7, 65, 3, 143, 132, 15, 160, 9, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [180, 8, 64, 10, 65, 2, 168, 225, 3, 160, 7, 65, 3, 143, 222, 36, 64, 10, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [180, 8, 224, 10, 65, 2, 168, 225, 3, 200, 7, 65, 3, 143, 222, 36, 224, 10, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [180, 8, 128, 11, 65, 2, 168, 225, 3, 240, 7, 65, 3, 143, 222, 36, 128, 11, 64, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [180, 8, 32, 12, 65, 2, 168, 225, 3, 24, 8, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [180, 8, 192, 12, 65, 2, 168, 225, 3, 64, 8, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [180, 8, 96, 13, 65, 2, 168, 225, 3, 104, 8, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [180, 8, 0, 14, 65, 2, 168, 225, 3, 144, 8, 65, 3, 143, 132, 15, 0, 14, 64, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [180, 8, 160, 14, 65, 2, 168, 225, 3, 184, 8, 65, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [180, 8, 0, 14, 65, 2, 168, 225, 3, 224, 8, 65, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [180, 8, 96, 14, 65, 2, 168, 225, 3, 8, 9, 65, 3, 143, 222, 36, 0, 14, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [180, 8, 192, 14, 65, 2, 168, 225, 3, 48, 9, 65, 3, 143, 222, 36, 0, 14, 65, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [180, 8, 32, 14, 65, 2, 168, 225, 3, 88, 9, 65, 3, 143, 222, 36, 160, 4, 65, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [180, 8, 128, 14, 65, 2, 168, 225, 3, 128, 9, 65, 3, 143, 222, 36, 64, 5, 65, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [180, 8, 224, 14, 65, 2, 168, 225, 3, 168, 9, 65, 3, 143, 222, 36, 224, 5, 65, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [180, 8, 64, 14, 65, 2, 168, 225, 3, 208, 9, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [180, 8, 160, 14, 65, 2, 168, 225, 3, 248, 9, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [180, 8, 0, 14, 65, 2, 168, 225, 3, 32, 10, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [180, 8, 96, 14, 65, 2, 168, 225, 3, 72, 10, 65, 3, 143, 132, 15, 96, 8, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [180, 8, 192, 14, 65, 2, 168, 225, 3, 112, 10, 65, 3, 143, 132, 15, 0, 9, 64, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [180, 8, 32, 14, 65, 2, 168, 225, 3, 152, 10, 65, 3, 143, 132, 15, 160, 9, 64, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [180, 8, 128, 14, 65, 2, 168, 225, 3, 192, 10, 65, 3, 143, 222, 36, 64, 10, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [180, 8, 224, 14, 65, 2, 168, 225, 3, 232, 10, 65, 3, 143, 222, 36, 224, 10, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [180, 8, 64, 14, 65, 2, 168, 225, 3, 16, 11, 65, 3, 143, 222, 36, 128, 11, 64, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [180, 8, 160, 14, 65, 2, 168, 225, 3, 56, 11, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [180, 8, 0, 14, 65, 2, 168, 225, 3, 96, 11, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [180, 8, 160, 14, 65, 2, 168, 225, 3, 136, 11, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [20, 9, 64, 15, 65, 2, 168, 225, 3, 176, 11, 65, 3, 143, 132, 15, 0, 14, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [116, 9, 224, 15, 65, 2, 168, 225, 3, 216, 11, 65, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [20, 9, 128, 16, 65, 2, 168, 225, 3, 0, 12, 65, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [180, 9, 32, 17, 65, 2, 168, 225, 3, 40, 12, 65, 3, 143, 222, 36, 0, 14, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [84, 9, 192, 17, 65, 2, 168, 225, 3, 80, 12, 65, 3, 143, 222, 36, 0, 14, 65, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [244, 9, 96, 18, 65, 2, 168, 225, 3, 120, 12, 65, 3, 143, 222, 36, 160, 4, 65, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [84, 10, 0, 19, 65, 2, 168, 225, 3, 160, 12, 65, 3, 143, 222, 36, 64, 5, 65, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [180, 10, 160, 19, 65, 2, 168, 225, 3, 120, 12, 65, 3, 143, 222, 36, 224, 5, 65, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [20, 11, 64, 20, 65, 2, 168, 225, 3, 80, 12, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [116, 11, 224, 20, 65, 2, 168, 225, 3, 40, 12, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [20, 11, 128, 21, 65, 2, 168, 225, 3, 0, 12, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [180, 11, 32, 22, 65, 2, 168, 225, 3, 216, 12, 65, 3, 143, 132, 15, 96, 8, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [84, 11, 192, 22, 65, 2, 168, 225, 3, 176, 12, 65, 3, 143, 132, 15, 0, 9, 64, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [244, 11, 96, 23, 65, 2, 168, 225, 3, 136, 12, 65, 3, 143, 132, 15, 160, 9, 64, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [84, 12, 0, 24, 65, 2, 168, 225, 3, 96, 12, 65, 3, 143, 222, 36, 64, 10, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [180, 12, 160, 24, 65, 2, 168, 225, 3, 56, 12, 65, 3, 143, 222, 36, 224, 10, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [193, 7, 0, 24, 65, 2, 168, 225, 3, 16, 12, 65, 3, 143, 222, 36, 128, 11, 64, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [193, 7, 96, 24, 65, 2, 168, 225, 3, 232, 12, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [193, 7, 192, 24, 65, 2, 168, 225, 3, 192, 12, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [193, 7, 32, 24, 65, 2, 168, 225, 3, 152, 12, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [206, 5, 128, 24, 65, 2, 168, 225, 3, 112, 12, 65, 3, 143, 132, 15, 0, 14, 64, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [206, 5, 224, 24, 65, 2, 168, 225, 3, 72, 12, 65, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [206, 5, 224, 24, 64, 2, 168, 225, 3, 72, 12, 64, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [206, 5, 64, 24, 64, 2, 168, 225, 3, 32, 12, 64, 3, 143, 222, 36, 0, 14, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [206, 5, 64, 24, 65, 2, 168, 225, 3, 32, 12, 65, 3, 143, 222, 36, 0, 14, 65, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [55, 9, 160, 4, 65, 2, 168, 117, 3, 248, 12, 65, 3, 143, 210, 34, 160, 4, 65, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [55, 9, 64, 5, 65, 2, 168, 117, 3, 208, 12, 65, 3, 143, 210, 34, 64, 5, 65, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [55, 9, 224, 5, 65, 2, 168, 117, 3, 168, 12, 65, 3, 143, 210, 34, 224, 5, 65, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [55, 9, 128, 6, 65, 2, 168, 117, 3, 128, 12, 65, 3, 143, 237, 21, 128, 6, 65, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [55, 9, 32, 7, 65, 2, 168, 117, 3, 88, 12, 65, 3, 143, 237, 21, 32, 7, 65, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [55, 9, 192, 7, 65, 2, 168, 117, 3, 48, 12, 65, 3, 143, 237, 21, 192, 7, 65, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [55, 9, 96, 8, 65, 2, 168, 117, 3, 8, 12, 65, 3, 143, 210, 13, 96, 8, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [55, 9, 0, 9, 65, 2, 168, 117, 3, 224, 12, 65, 3, 143, 210, 13, 0, 9, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [55, 9, 160, 9, 65, 2, 168, 117, 3, 184, 12, 65, 3, 143, 210, 13, 160, 9, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [55, 9, 64, 10, 65, 2, 168, 117, 3, 144, 12, 65, 3, 143, 59, 23, 64, 10, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [55, 9, 224, 10, 65, 2, 168, 117, 3, 104, 12, 65, 3, 143, 59, 23, 224, 10, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [55, 9, 128, 11, 65, 2, 168, 117, 3, 64, 12, 65, 3, 143, 59, 23, 128, 11, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [55, 9, 32, 12, 65, 2, 168, 117, 3, 24, 12, 65, 3, 143, 210, 13, 32, 12, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [55, 9, 192, 12, 65, 2, 168, 117, 3, 240, 12, 65, 3, 143, 210, 13, 192, 12, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [55, 9, 96, 13, 65, 2, 168, 117, 3, 200, 12, 65, 3, 143, 210, 13, 96, 13, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [55, 9, 0, 14, 65, 2, 168, 117, 3, 160, 12, 65, 3, 143, 210, 34, 0, 14, 64, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [55, 9, 160, 14, 65, 2, 168, 117, 3, 120, 12, 65, 3, 143, 210, 34, 160, 14, 64, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [55, 9, 0, 14, 65, 2, 168, 117, 3, 160, 12, 65, 3, 143, 210, 34, 160, 14, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [55, 9, 96, 14, 65, 2, 168, 117, 3, 200, 12, 65, 3, 143, 59, 23, 0, 14, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [55, 9, 192, 14, 65, 2, 168, 117, 3, 240, 12, 65, 3, 143, 59, 23, 0, 14, 65, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [90, 9, 32, 14, 65, 2, 168, 117, 3, 24, 13, 65, 3, 143, 210, 34, 160, 4, 65, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [125, 9, 128, 14, 65, 2, 168, 117, 3, 64, 13, 65, 3, 143, 210, 34, 64, 5, 65, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [90, 9, 224, 14, 65, 2, 168, 117, 3, 104, 13, 65, 3, 143, 210, 34, 224, 5, 65, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [55, 9, 64, 14, 65, 2, 168, 117, 3, 144, 13, 65, 3, 143, 237, 21, 128, 6, 65, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [20, 9, 160, 14, 65, 2, 168, 117, 3, 184, 13, 65, 3, 143, 237, 21, 32, 7, 65, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [241, 9, 0, 14, 65, 2, 168, 117, 3, 224, 13, 65, 3, 143, 237, 21, 192, 7, 65, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [20, 10, 96, 14, 65, 2, 168, 117, 3, 8, 14, 65, 3, 143, 210, 13, 96, 8, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [55, 10, 192, 14, 65, 2, 168, 117, 3, 48, 14, 65, 3, 143, 210, 13, 0, 9, 64, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [90, 10, 32, 14, 65, 2, 168, 117, 3, 88, 14, 65, 3, 143, 210, 13, 160, 9, 64, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [125, 10, 128, 14, 65, 2, 168, 117, 3, 128, 14, 65, 3, 143, 59, 23, 64, 10, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [90, 10, 224, 14, 65, 2, 168, 117, 3, 168, 14, 65, 3, 143, 59, 23, 224, 10, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [55, 10, 64, 14, 65, 2, 168, 117, 3, 208, 14, 65, 3, 143, 59, 23, 128, 11, 64, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [20, 10, 160, 14, 65, 2, 168, 117, 3, 248, 14, 65, 3, 143, 210, 13, 32, 12, 64, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [241, 10, 0, 14, 65, 2, 168, 117, 3, 32, 15, 65, 3, 143, 210, 13, 192, 12, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [20, 11, 160, 14, 65, 2, 168, 117, 3, 72, 15, 65, 3, 143, 210, 13, 96, 13, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [55, 11, 64, 15, 65, 2, 168, 117, 3, 112, 15, 65, 3, 143, 210, 34, 0, 14, 64, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [90, 11, 224, 15, 65, 2, 168, 117, 3, 152, 15, 65, 3, 143, 210, 34, 160, 14, 64, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [90, 11, 224, 15, 64, 2, 168, 117, 3, 152, 15, 64, 3, 143, 210, 34, 160, 14, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [125, 11, 128, 16, 64, 2, 168, 117, 3, 192, 15, 64, 3, 143, 59, 23, 0, 14, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [125, 11, 128, 16, 65, 2, 168, 117, 3, 192, 15, 65, 3, 143, 59, 23, 0, 14, 65, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [156, 11, 160, 4, 65, 2, 168, 156, 4, 232, 15, 65, 3, 143, 222, 36, 160, 4, 65, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [156, 11, 64, 5, 65, 2, 168, 156, 4, 16, 16, 65, 3, 143, 222, 36, 64, 5, 65, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [156, 11, 224, 5, 65, 2, 168, 156, 4, 56, 16, 65, 3, 143, 222, 36, 224, 5, 65, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [156, 11, 128, 6, 65, 2, 168, 156, 4, 96, 16, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [156, 11, 32, 7, 65, 2, 168, 156, 4, 136, 16, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [156, 11, 192, 7, 65, 2, 168, 156, 4, 176, 16, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [156, 11, 96, 8, 65, 2, 168, 156, 4, 216, 16, 65, 3, 143, 210, 13, 96, 8, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [156, 11, 0, 9, 65, 2, 168, 156, 4, 0, 17, 65, 3, 143, 210, 13, 0, 9, 64, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [156, 11, 160, 9, 65, 2, 168, 156, 4, 40, 17, 65, 3, 143, 210, 13, 160, 9, 64, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [156, 11, 64, 10, 65, 2, 168, 156, 4, 80, 17, 65, 3, 143, 222, 36, 64, 10, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [156, 11, 224, 10, 65, 2, 168, 156, 4, 120, 17, 65, 3, 143, 222, 36, 224, 10, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [156, 11, 128, 11, 65, 2, 168, 156, 4, 160, 17, 65, 3, 143, 222, 36, 128, 11, 64, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [156, 11, 32, 12, 65, 2, 168, 156, 4, 120, 17, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [156, 11, 192, 12, 65, 2, 168, 156, 4, 80, 17, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [156, 11, 96, 13, 65, 2, 168, 156, 4, 40, 17, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [156, 11, 0, 14, 65, 2, 168, 156, 4, 0, 17, 65, 3, 143, 210, 13, 0, 14, 64, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [156, 11, 160, 14, 65, 2, 168, 156, 4, 216, 17, 65, 3, 143, 210, 13, 160, 14, 64, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [156, 11, 0, 14, 65, 2, 168, 156, 4, 176, 17, 65, 3, 143, 210, 13, 160, 14, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [156, 11, 96, 14, 65, 2, 168, 156, 4, 136, 17, 65, 3, 143, 222, 36, 0, 14, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [156, 11, 192, 14, 65, 2, 168, 156, 4, 96, 17, 65, 3, 143, 222, 36, 0, 14, 65, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [156, 11, 32, 14, 65, 2, 168, 156, 4, 56, 17, 65, 3, 143, 222, 36, 160, 4, 65, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [156, 11, 128, 14, 65, 2, 168, 156, 4, 16, 17, 65, 3, 143, 222, 36, 64, 5, 65, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [156, 11, 224, 14, 65, 2, 168, 156, 4, 232, 17, 65, 3, 143, 222, 36, 224, 5, 65, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [156, 11, 64, 14, 65, 2, 168, 156, 4, 192, 17, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [156, 11, 160, 14, 65, 2, 168, 156, 4, 152, 17, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [156, 11, 0, 14, 65, 2, 168, 156, 4, 112, 17, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [156, 11, 96, 14, 65, 2, 168, 156, 4, 72, 17, 65, 3, 143, 210, 13, 96, 8, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [156, 11, 192, 14, 65, 2, 168, 156, 4, 32, 17, 65, 3, 143, 210, 13, 0, 9, 64, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [156, 11, 32, 14, 65, 2, 168, 156, 4, 248, 17, 65, 3, 143, 210, 13, 160, 9, 64, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [156, 11, 128, 14, 65, 2, 168, 156, 4, 208, 17, 65, 3, 143, 222, 36, 64, 10, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [156, 11, 224, 14, 65, 2, 168, 156, 4, 168, 17, 65, 3, 143, 222, 36, 224, 10, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [156, 11, 64, 14, 65, 2, 168, 156, 4, 128, 17, 65, 3, 143, 222, 36, 128, 11, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [156, 11, 160, 14, 65, 2, 168, 156, 4, 88, 17, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [156, 11, 0, 14, 65, 2, 168, 156, 4, 48, 17, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [156, 11, 160, 14, 65, 2, 168, 156, 4, 8, 17, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [156, 11, 64, 15, 65, 2, 168, 156, 4, 224, 17, 65, 3, 143, 210, 13, 0, 14, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [156, 11, 224, 15, 65, 2, 168, 156, 4, 184, 17, 65, 3, 143, 210, 13, 160, 14, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [156, 11, 128, 16, 65, 2, 168, 156, 4, 144, 17, 65, 3, 143, 210, 13, 160, 14, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [156, 11, 32, 17, 65, 2, 168, 156, 4, 104, 17, 65, 3, 143, 222, 36, 0, 14, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [156, 11, 192, 17, 65, 2, 168, 156, 4, 64, 17, 65, 3, 143, 222, 36, 0, 14, 65, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [8, 12, 96, 18, 65, 2, 168, 156, 4, 24, 17, 65, 3, 143, 222, 36, 160, 4, 65, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [116, 12, 0, 19, 65, 2, 168, 156, 4, 240, 17, 65, 3, 143, 222, 36, 64, 5, 65, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [8, 12, 160, 19, 65, 2, 168, 156, 4, 200, 17, 65, 3, 143, 222, 36, 224, 5, 65, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [156, 12, 64, 20, 65, 2, 168, 156, 4, 160, 17, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [48, 12, 224, 20, 65, 2, 168, 156, 4, 120, 17, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [196, 12, 128, 21, 65, 2, 168, 156, 4, 160, 17, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [48, 13, 32, 22, 65, 2, 168, 156, 4, 200, 17, 65, 3, 143, 210, 13, 96, 8, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [156, 13, 192, 22, 65, 2, 168, 156, 4, 240, 17, 65, 3, 143, 210, 13, 0, 9, 64, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [8, 14, 96, 23, 65, 2, 168, 156, 4, 24, 18, 65, 3, 143, 210, 13, 160, 9, 64, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [116, 14, 0, 24, 65, 2, 168, 156, 4, 64, 18, 65, 3, 143, 222, 36, 64, 10, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [8, 14, 160, 24, 65, 2, 168, 156, 4, 104, 18, 65, 3, 143, 222, 36, 224, 10, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [156, 14, 0, 24, 65, 2, 168, 156, 4, 144, 18, 65, 3, 143, 222, 36, 128, 11, 64, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [48, 14, 96, 24, 65, 2, 168, 156, 4, 184, 18, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [196, 14, 192, 24, 65, 2, 168, 156, 4, 224, 18, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [48, 15, 32, 24, 65, 2, 168, 156, 4, 8, 19, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [156, 15, 128, 24, 65, 2, 168, 156, 4, 48, 19, 65, 3, 143, 210, 13, 0, 14, 64, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [8, 16, 224, 24, 65, 2, 168, 156, 4, 88, 19, 65, 3, 143, 210, 13, 160, 14, 64, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [116, 16, 64, 24, 65, 2, 168, 156, 4, 128, 19, 65, 3, 143, 210, 13, 160, 14, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [8, 16, 160, 24, 65, 2, 168, 156, 4, 168, 19, 65, 3, 143, 222, 36, 0, 14, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [156, 16, 0, 24, 65, 2, 168, 156, 4, 208, 19, 65, 3, 143, 222, 36, 0, 14, 65, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [48, 16, 96, 24, 65, 2, 168, 156, 4, 248, 19, 65, 3, 143, 222, 36, 160, 4, 65, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [196, 16, 192, 24, 65, 2, 168, 156, 4, 32, 20, 65, 3, 143, 222, 36, 64, 5, 65, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [48, 17, 32, 24, 65, 2, 168, 156, 4, 72, 20, 65, 3, 143, 222, 36, 224, 5, 65, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [156, 17, 128, 24, 65, 2, 168, 156, 4, 112, 20, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [8, 18, 224, 24, 65, 2, 168, 156, 4, 152, 20, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [116, 18, 64, 24, 65, 2, 168, 156, 4, 192, 20, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [8, 18, 160, 24, 65, 2, 168, 156, 4, 232, 20, 65, 3, 143, 210, 13, 96, 8, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [156, 18, 0, 24, 65, 2, 168, 156, 4, 16, 21, 65, 3, 143, 210, 13, 0, 9, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [48, 18, 160, 24, 65, 2, 168, 156, 4, 56, 21, 65, 3, 143, 210, 13, 160, 9, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [196, 18, 64, 25, 65, 2, 168, 156, 4, 96, 21, 65, 3, 143, 222, 36, 64, 10, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [48, 19, 224, 25, 65, 2, 168, 156, 4, 136, 21, 65, 3, 143, 222, 36, 224, 10, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [156, 19, 128, 26, 65, 2, 168, 156, 4, 176, 21, 65, 3, 143, 222, 36, 128, 11, 64, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [8, 20, 32, 27, 65, 2, 168, 156, 4, 216, 21, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [116, 20, 192, 27, 65, 2, 168, 156, 4, 0, 22, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [8, 20, 96, 28, 65, 2, 168, 156, 4, 40, 22, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [156, 20, 0, 29, 65, 2, 168, 156, 4, 80, 22, 65, 3, 143, 210, 13, 0, 14, 64, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [48, 20, 160, 29, 65, 2, 168, 156, 4, 120, 22, 65, 3, 143, 210, 13, 160, 14, 64, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [48, 20, 160, 29, 64, 2, 168, 156, 4, 120, 22, 64, 3, 143, 210, 13, 160, 14, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [196, 20, 64, 30, 64, 2, 168, 156, 4, 160, 22, 64, 3, 143, 222, 36, 0, 14, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [196, 20, 64, 30, 65, 2, 168, 156, 4, 160, 22, 65, 3, 143, 222, 36, 0, 14, 65, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [9, 13, 160, 4, 65, 2, 168, 91, 4, 120, 22, 65, 3, 143, 210, 34, 160, 4, 65, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [9, 13, 64, 5, 65, 2, 168, 91, 4, 80, 22, 65, 3, 143, 210, 34, 64, 5, 65, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [9, 13, 224, 5, 65, 2, 168, 91, 4, 40, 22, 65, 3, 143, 210, 34, 224, 5, 65, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [9, 13, 128, 6, 65, 2, 168, 91, 4, 0, 22, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [9, 13, 32, 7, 65, 2, 168, 91, 4, 216, 22, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [9, 13, 192, 7, 65, 2, 168, 91, 4, 176, 22, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [9, 13, 96, 8, 65, 2, 168, 91, 4, 136, 22, 65, 3, 143, 11, 13, 96, 8, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [9, 13, 0, 9, 65, 2, 168, 91, 4, 96, 22, 65, 3, 143, 11, 13, 0, 9, 64, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [9, 13, 160, 9, 65, 2, 168, 91, 4, 56, 22, 65, 3, 143, 11, 13, 160, 9, 64, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [9, 13, 64, 10, 65, 2, 168, 91, 4, 16, 22, 65, 3, 143, 210, 34, 64, 10, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [9, 13, 224, 10, 65, 2, 168, 91, 4, 232, 22, 65, 3, 143, 210, 34, 224, 10, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [9, 13, 128, 11, 65, 2, 168, 91, 4, 192, 22, 65, 3, 143, 210, 34, 128, 11, 64, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [9, 13, 32, 12, 65, 2, 168, 91, 4, 152, 22, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [9, 13, 192, 12, 65, 2, 168, 91, 4, 112, 22, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [9, 13, 96, 13, 65, 2, 168, 91, 4, 72, 22, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [9, 13, 0, 14, 65, 2, 168, 91, 4, 32, 22, 65, 3, 143, 11, 13, 0, 14, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [9, 13, 160, 14, 65, 2, 168, 91, 4, 248, 22, 65, 3, 143, 11, 13, 160, 14, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [9, 13, 0, 14, 65, 2, 168, 91, 4, 208, 22, 65, 3, 143, 11, 13, 160, 14, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [9, 13, 96, 14, 65, 2, 168, 91, 4, 168, 22, 65, 3, 143, 210, 34, 0, 14, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [9, 13, 192, 14, 65, 2, 168, 91, 4, 128, 22, 65, 3, 143, 210, 34, 0, 14, 65, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [9, 13, 32, 14, 65, 2, 168, 91, 4, 88, 22, 65, 3, 143, 210, 34, 160, 4, 65, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [9, 13, 128, 14, 65, 2, 168, 91, 4, 48, 22, 65, 3, 143, 210, 34, 64, 5, 65, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [9, 13, 224, 14, 65, 2, 168, 91, 4, 8, 22, 65, 3, 143, 210, 34, 224, 5, 65, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [9, 13, 64, 14, 65, 2, 168, 91, 4, 224, 22, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [9, 13, 160, 14, 65, 2, 168, 91, 4, 184, 22, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [9, 13, 0, 14, 65, 2, 168, 91, 4, 144, 22, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [58, 13, 96, 14, 65, 2, 168, 91, 4, 104, 22, 65, 3, 143, 11, 13, 96, 8, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [107, 13, 192, 14, 65, 2, 168, 91, 4, 64, 22, 65, 3, 143, 11, 13, 0, 9, 64, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [58, 13, 32, 14, 65, 2, 168, 91, 4, 24, 22, 65, 3, 143, 11, 13, 160, 9, 64, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [9, 13, 128, 14, 65, 2, 168, 91, 4, 240, 22, 65, 3, 143, 210, 34, 64, 10, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [216, 13, 224, 14, 65, 2, 168, 91, 4, 200, 22, 65, 3, 143, 210, 34, 224, 10, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [167, 13, 64, 14, 65, 2, 168, 91, 4, 160, 22, 65, 3, 143, 210, 34, 128, 11, 64, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [216, 13, 160, 14, 65, 2, 168, 91, 4, 120, 22, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [9, 14, 0, 14, 65, 2, 168, 91, 4, 160, 22, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [58, 14, 160, 14, 65, 2, 168, 91, 4, 200, 22, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [107, 14, 64, 15, 65, 2, 168, 91, 4, 240, 22, 65, 3, 143, 11, 13, 0, 14, 64, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [58, 14, 224, 15, 65, 2, 168, 91, 4, 24, 23, 65, 3, 143, 11, 13, 160, 14, 64, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [58, 14, 224, 15, 64, 2, 168, 91, 4, 24, 23, 64, 3, 143, 11, 13, 160, 14, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [9, 14, 128, 16, 64, 2, 168, 91, 4, 64, 23, 64, 3, 143, 210, 34, 0, 14, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [9, 14, 128, 16, 65, 2, 168, 91, 4, 64, 23, 65, 3, 143, 210, 34, 0, 14, 65, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [156, 11, 160, 4, 65, 2, 168, 124, 5, 104, 23, 65, 3, 143, 210, 34, 160, 4, 65, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [156, 11, 64, 5, 65, 2, 168, 124, 5, 144, 23, 65, 3, 143, 210, 34, 64, 5, 65, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [156, 11, 224, 5, 65, 2, 168, 124, 5, 184, 23, 65, 3, 143, 210, 34, 224, 5, 65, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [156, 11, 128, 6, 65, 2, 168, 124, 5, 224, 23, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [156, 11, 32, 7, 65, 2, 168, 124, 5, 8, 24, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [156, 11, 192, 7, 65, 2, 168, 124, 5, 48, 24, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [9, 13, 96, 8, 65, 2, 168, 124, 5, 88, 24, 65, 3, 143, 11, 13, 96, 8, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [9, 13, 0, 9, 65, 2, 168, 124, 5, 128, 24, 65, 3, 143, 11, 13, 0, 9, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [9, 13, 160, 9, 65, 2, 168, 124, 5, 168, 24, 65, 3, 143, 11, 13, 160, 9, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [9, 13, 64, 10, 65, 2, 168, 124, 5, 208, 24, 65, 3, 143, 210, 34, 64, 10, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [9, 13, 224, 10, 65, 2, 168, 124, 5, 248, 24, 65, 3, 143, 210, 34, 224, 10, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [104, 17, 128, 11, 65, 2, 168, 124, 5, 32, 25, 65, 3, 143, 210, 34, 128, 11, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [104, 17, 32, 12, 65, 2, 168, 124, 5, 72, 25, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [104, 17, 192, 12, 65, 2, 168, 124, 5, 112, 25, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [104, 17, 96, 13, 65, 2, 168, 124, 5, 152, 25, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [9, 13, 0, 14, 65, 2, 168, 124, 5, 192, 25, 65, 3, 143, 11, 13, 0, 14, 64, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0]],
+    valueGridB: [[16, 124, 0, 0, 129, 0, 0, 17, 124, 0, 0, 129, 0, 0, 18, 124, 0, 0, 129, 0, 0, 0, 0, 242, 15, 0, 0, 0, 0], [55, 9, 0, 0, 16, 0, 0, 56, 9, 0, 0, 16, 0, 0, 57, 9, 0, 0, 16, 0, 0, 0, 5, 242, 15, 0, 0, 0, 0], [123, 5, 0, 0, 16, 0, 0, 124, 5, 0, 0, 16, 0, 0, 125, 5, 0, 0, 16, 0, 0, 0, 9, 242, 15, 0, 0, 0, 0], [123, 5, 0, 0, 16, 2, 168, 124, 5, 0, 0, 16, 3, 143, 125, 5, 0, 0, 16, 3, 108, 0, 13, 242, 63, 0, 0, 0, 0], [193, 7, 160, 4, 65, 2, 168, 225, 3, 40, 2, 65, 3, 143, 222, 36, 160, 4, 65, 3, 108, 0, 19, 242, 63, 0, 0, 0, 0], [193, 7, 64, 5, 65, 2, 168, 225, 3, 80, 2, 65, 3, 143, 222, 36, 64, 5, 65, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [193, 7, 224, 5, 65, 2, 168, 225, 3, 120, 2, 65, 3, 143, 222, 36, 224, 5, 65, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [193, 7, 128, 6, 65, 2, 168, 225, 3, 160, 2, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [193, 7, 32, 7, 65, 2, 168, 225, 3, 200, 2, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [193, 7, 192, 7, 65, 2, 168, 225, 3, 240, 2, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [193, 7, 96, 8, 65, 2, 168, 225, 3, 24, 3, 65, 3, 143, 132, 15, 96, 8, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [193, 7, 0, 9, 65, 2, 168, 225, 3, 64, 3, 65, 3, 143, 132, 15, 0, 9, 64, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [193, 7, 160, 9, 65, 2, 168, 225, 3, 104, 3, 65, 3, 143, 132, 15, 160, 9, 64, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [193, 7, 64, 10, 65, 2, 168, 225, 3, 144, 3, 65, 3, 143, 222, 36, 64, 10, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [193, 7, 224, 10, 65, 2, 168, 225, 3, 184, 3, 65, 3, 143, 222, 36, 224, 10, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [193, 7, 128, 11, 65, 2, 168, 225, 3, 224, 3, 65, 3, 143, 222, 36, 128, 11, 64, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [193, 7, 32, 12, 65, 2, 168, 225, 3, 8, 4, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [193, 7, 192, 12, 65, 2, 168, 225, 3, 48, 4, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [193, 7, 96, 13, 65, 2, 168, 225, 3, 88, 4, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [193, 7, 0, 14, 65, 2, 168, 225, 3, 128, 4, 65, 3, 143, 132, 15, 0, 14, 64, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [193, 7, 160, 14, 65, 2, 168, 225, 3, 168, 4, 65, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [193, 7, 0, 14, 65, 2, 168, 225, 3, 208, 4, 65, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [193, 7, 96, 14, 65, 2, 168, 225, 3, 248, 4, 65, 3, 143, 222, 36, 0, 14, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [193, 7, 192, 14, 65, 2, 168, 225, 3, 32, 5, 65, 3, 143, 222, 36, 0, 14, 65, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [193, 7, 32, 14, 65, 2, 168, 225, 3, 72, 5, 65, 3, 143, 222, 36, 160, 4, 65, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [193, 7, 128, 14, 65, 2, 168, 225, 3, 112, 5, 65, 3, 143, 222, 36, 64, 5, 65, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [193, 7, 224, 14, 65, 2, 168, 225, 3, 152, 5, 65, 3, 143, 222, 36, 224, 5, 65, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [193, 7, 64, 14, 65, 2, 168, 225, 3, 192, 5, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [193, 7, 160, 14, 65, 2, 168, 225, 3, 232, 5, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [193, 7, 0, 14, 65, 2, 168, 225, 3, 16, 6, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [193, 7, 96, 14, 65, 2, 168, 225, 3, 56, 6, 65, 3, 143, 132, 15, 96, 8, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [193, 7, 192, 14, 65, 2, 168, 225, 3, 96, 6, 65, 3, 143, 132, 15, 0, 9, 64, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [193, 7, 32, 14, 65, 2, 168, 225, 3, 136, 6, 65, 3, 143, 132, 15, 160, 9, 64, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [193, 7, 128, 14, 65, 2, 168, 225, 3, 176, 6, 65, 3, 143, 222, 36, 64, 10, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [193, 7, 224, 14, 65, 2, 168, 225, 3, 216, 6, 65, 3, 143, 222, 36, 224, 10, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [193, 7, 64, 14, 65, 2, 168, 225, 3, 0, 7, 65, 3, 143, 222, 36, 128, 11, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [193, 7, 160, 14, 65, 2, 168, 225, 3, 40, 7, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [193, 7, 0, 14, 65, 2, 168, 225, 3, 80, 7, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [193, 7, 160, 14, 65, 2, 168, 225, 3, 120, 7, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [30, 8, 64, 15, 65, 2, 168, 225, 3, 160, 7, 65, 3, 143, 132, 15, 0, 14, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [123, 8, 224, 15, 65, 2, 168, 225, 3, 120, 7, 65, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [30, 8, 128, 16, 65, 2, 168, 225, 3, 80, 7, 65, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [193, 8, 32, 17, 65, 2, 168, 225, 3, 40, 7, 65, 3, 143, 222, 36, 0, 14, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [100, 8, 192, 17, 65, 2, 168, 225, 3, 0, 7, 65, 3, 143, 222, 36, 0, 14, 65, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [7, 8, 96, 18, 65, 2, 168, 225, 3, 216, 7, 65, 3, 143, 222, 36, 160, 4, 65, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [100, 8, 0, 19, 65, 2, 168, 225, 3, 176, 7, 65, 3, 143, 222, 36, 64, 5, 65, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [193, 8, 160, 19, 65, 2, 168, 225, 3, 136, 7, 65, 3, 143, 222, 36, 224, 5, 65, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [30, 9, 64, 20, 65, 2, 168, 225, 3, 96, 7, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [123, 9, 224, 20, 65, 2, 168, 225, 3, 56, 7, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [30, 9, 128, 21, 65, 2, 168, 225, 3, 16, 7, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [193, 9, 32, 22, 65, 2, 168, 225, 3, 232, 7, 65, 3, 143, 132, 15, 96, 8, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [100, 9, 192, 22, 65, 2, 168, 225, 3, 192, 7, 65, 3, 143, 132, 15, 0, 9, 64, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [7, 9, 96, 23, 65, 2, 168, 225, 3, 152, 7, 65, 3, 143, 132, 15, 160, 9, 64, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [100, 9, 0, 24, 65, 2, 168, 225, 3, 112, 7, 65, 3, 143, 222, 36, 64, 10, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [193, 9, 160, 24, 65, 2, 168, 225, 3, 72, 7, 65, 3, 143, 222, 36, 224, 10, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [30, 10, 0, 24, 65, 2, 168, 225, 3, 32, 7, 65, 3, 143, 222, 36, 128, 11, 64, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [123, 10, 96, 24, 65, 2, 168, 225, 3, 248, 7, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [30, 10, 192, 24, 65, 2, 168, 225, 3, 208, 7, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [193, 10, 32, 24, 65, 2, 168, 225, 3, 168, 7, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [100, 10, 128, 24, 65, 2, 168, 225, 3, 128, 7, 65, 3, 143, 132, 15, 0, 14, 64, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [7, 10, 224, 24, 65, 2, 168, 225, 3, 88, 7, 65, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [7, 10, 224, 24, 64, 2, 168, 225, 3, 48, 7, 65, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [100, 10, 64, 24, 64, 2, 168, 225, 3, 8, 7, 65, 3, 143, 222, 36, 0, 14, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [100, 10, 64, 24, 65, 2, 168, 225, 3, 224, 7, 65, 3, 143, 222, 36, 0, 14, 65, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [180, 8, 160, 4, 65, 2, 168, 225, 3, 184, 7, 65, 3, 143, 222, 36, 160, 4, 65, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [180, 8, 64, 5, 65, 2, 168, 225, 3, 144, 7, 65, 3, 143, 222, 36, 64, 5, 65, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [180, 8, 224, 5, 65, 2, 168, 225, 3, 104, 7, 65, 3, 143, 222, 36, 224, 5, 65, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [180, 8, 128, 6, 65, 2, 168, 225, 3, 64, 7, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [180, 8, 32, 7, 65, 2, 168, 225, 3, 24, 7, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [180, 8, 192, 7, 65, 2, 168, 225, 3, 240, 7, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [180, 8, 96, 8, 65, 2, 168, 225, 3, 200, 7, 65, 3, 143, 132, 15, 96, 8, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [180, 8, 0, 9, 65, 2, 168, 225, 3, 160, 7, 65, 3, 143, 132, 15, 0, 9, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [180, 8, 160, 9, 65, 2, 168, 225, 3, 120, 7, 65, 3, 143, 132, 15, 160, 9, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [180, 8, 64, 10, 65, 2, 168, 225, 3, 160, 7, 65, 3, 143, 222, 36, 64, 10, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [180, 8, 224, 10, 65, 2, 168, 225, 3, 200, 7, 65, 3, 143, 222, 36, 224, 10, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [180, 8, 128, 11, 65, 2, 168, 225, 3, 240, 7, 65, 3, 143, 222, 36, 128, 11, 64, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [180, 8, 32, 12, 65, 2, 168, 225, 3, 24, 8, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [180, 8, 192, 12, 65, 2, 168, 225, 3, 64, 8, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [180, 8, 96, 13, 65, 2, 168, 225, 3, 104, 8, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [180, 8, 0, 14, 65, 2, 168, 225, 3, 144, 8, 65, 3, 143, 132, 15, 0, 14, 64, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [180, 8, 160, 14, 65, 2, 168, 225, 3, 184, 8, 65, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [180, 8, 0, 14, 65, 2, 168, 225, 3, 224, 8, 65, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [180, 8, 96, 14, 65, 2, 168, 225, 3, 8, 9, 65, 3, 143, 222, 36, 0, 14, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [180, 8, 192, 14, 65, 2, 168, 225, 3, 48, 9, 65, 3, 143, 222, 36, 0, 14, 65, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [180, 8, 32, 14, 65, 2, 168, 225, 3, 88, 9, 65, 3, 143, 222, 36, 160, 4, 65, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [180, 8, 128, 14, 65, 2, 168, 225, 3, 128, 9, 65, 3, 143, 222, 36, 64, 5, 65, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [180, 8, 224, 14, 65, 2, 168, 225, 3, 168, 9, 65, 3, 143, 222, 36, 224, 5, 65, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [180, 8, 64, 14, 65, 2, 168, 225, 3, 208, 9, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [180, 8, 160, 14, 65, 2, 168, 225, 3, 248, 9, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [180, 8, 0, 14, 65, 2, 168, 225, 3, 32, 10, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [180, 8, 96, 14, 65, 2, 168, 225, 3, 72, 10, 65, 3, 143, 132, 15, 96, 8, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [180, 8, 192, 14, 65, 2, 168, 225, 3, 112, 10, 65, 3, 143, 132, 15, 0, 9, 64, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [180, 8, 32, 14, 65, 2, 168, 225, 3, 152, 10, 65, 3, 143, 132, 15, 160, 9, 64, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [180, 8, 128, 14, 65, 2, 168, 225, 3, 192, 10, 65, 3, 143, 222, 36, 64, 10, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [180, 8, 224, 14, 65, 2, 168, 225, 3, 232, 10, 65, 3, 143, 222, 36, 224, 10, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [180, 8, 64, 14, 65, 2, 168, 225, 3, 16, 11, 65, 3, 143, 222, 36, 128, 11, 64, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [180, 8, 160, 14, 65, 2, 168, 225, 3, 56, 11, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [180, 8, 0, 14, 65, 2, 168, 225, 3, 96, 11, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [180, 8, 160, 14, 65, 2, 168, 225, 3, 136, 11, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [20, 9, 64, 15, 65, 2, 168, 225, 3, 176, 11, 65, 3, 143, 132, 15, 0, 14, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [116, 9, 224, 15, 65, 2, 168, 225, 3, 216, 11, 65, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [20, 9, 128, 16, 65, 2, 168, 225, 3, 0, 12, 65, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [180, 9, 32, 17, 65, 2, 168, 225, 3, 40, 12, 65, 3, 143, 222, 36, 0, 14, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [84, 9, 192, 17, 65, 2, 168, 225, 3, 80, 12, 65, 3, 143, 222, 36, 0, 14, 65, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [244, 9, 96, 18, 65, 2, 168, 225, 3, 120, 12, 65, 3, 143, 222, 36, 160, 4, 65, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [84, 10, 0, 19, 65, 2, 168, 225, 3, 160, 12, 65, 3, 143, 222, 36, 64, 5, 65, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [180, 10, 160, 19, 65, 2, 168, 225, 3, 120, 12, 65, 3, 143, 222, 36, 224, 5, 65, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [20, 11, 64, 20, 65, 2, 168, 225, 3, 80, 12, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [116, 11, 224, 20, 65, 2, 168, 225, 3, 40, 12, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [20, 11, 128, 21, 65, 2, 168, 225, 3, 0, 12, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [180, 11, 32, 22, 65, 2, 168, 225, 3, 216, 12, 65, 3, 143, 132, 15, 96, 8, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [84, 11, 192, 22, 65, 2, 168, 225, 3, 176, 12, 65, 3, 143, 132, 15, 0, 9, 64, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [244, 11, 96, 23, 65, 2, 168, 225, 3, 136, 12, 65, 3, 143, 132, 15, 160, 9, 64, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [84, 12, 0, 24, 65, 2, 168, 225, 3, 96, 12, 65, 3, 143, 222, 36, 64, 10, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [180, 12, 160, 24, 65, 2, 168, 225, 3, 56, 12, 65, 3, 143, 222, 36, 224, 10, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [193, 7, 0, 24, 65, 2, 168, 225, 3, 16, 12, 65, 3, 143, 222, 36, 128, 11, 64, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [193, 7, 96, 24, 65, 2, 168, 225, 3, 232, 12, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [193, 7, 192, 24, 65, 2, 168, 225, 3, 192, 12, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [193, 7, 32, 24, 65, 2, 168, 225, 3, 152, 12, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [206, 5, 128, 24, 65, 2, 168, 225, 3, 112, 12, 65, 3, 143, 132, 15, 0, 14, 64, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [206, 5, 224, 24, 65, 2, 168, 225, 3, 72, 12, 65, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [206, 5, 224, 24, 64, 2, 168, 225, 3, 72, 12, 64, 3, 143, 132, 15, 160, 14, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [206, 5, 64, 24, 64, 2, 168, 225, 3, 32, 12, 64, 3, 143, 222, 36, 0, 14, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [206, 5, 64, 24, 65, 2, 168, 225, 3, 32, 12, 65, 3, 143, 222, 36, 0, 14, 65, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [55, 9, 160, 4, 65, 2, 168, 117, 3, 248, 12, 65, 3, 143, 210, 34, 160, 4, 65, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [55, 9, 64, 5, 65, 2, 168, 117, 3, 208, 12, 65, 3, 143, 210, 34, 64, 5, 65, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [55, 9, 224, 5, 65, 2, 168, 117, 3, 168, 12, 65, 3, 143, 210, 34, 224, 5, 65, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [55, 9, 128, 6, 65, 2, 168, 117, 3, 128, 12, 65, 3, 143, 237, 21, 128, 6, 65, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [55, 9, 32, 7, 65, 2, 168, 117, 3, 88, 12, 65, 3, 143, 237, 21, 32, 7, 65, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [55, 9, 192, 7, 65, 2, 168, 117, 3, 48, 12, 65, 3, 143, 237, 21, 192, 7, 65, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [55, 9, 96, 8, 65, 2, 168, 117, 3, 8, 12, 65, 3, 143, 210, 13, 96, 8, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [55, 9, 0, 9, 65, 2, 168, 117, 3, 224, 12, 65, 3, 143, 210, 13, 0, 9, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [55, 9, 160, 9, 65, 2, 168, 117, 3, 184, 12, 65, 3, 143, 210, 13, 160, 9, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [55, 9, 64, 10, 65, 2, 168, 117, 3, 144, 12, 65, 3, 143, 59, 23, 64, 10, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [55, 9, 224, 10, 65, 2, 168, 117, 3, 104, 12, 65, 3, 143, 59, 23, 224, 10, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [55, 9, 128, 11, 65, 2, 168, 117, 3, 64, 12, 65, 3, 143, 59, 23, 128, 11, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [55, 9, 32, 12, 65, 2, 168, 117, 3, 24, 12, 65, 3, 143, 210, 13, 32, 12, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [55, 9, 192, 12, 65, 2, 168, 117, 3, 240, 12, 65, 3, 143, 210, 13, 192, 12, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [55, 9, 96, 13, 65, 2, 168, 117, 3, 200, 12, 65, 3, 143, 210, 13, 96, 13, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [55, 9, 0, 14, 65, 2, 168, 117, 3, 160, 12, 65, 3, 143, 210, 34, 0, 14, 64, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [55, 9, 160, 14, 65, 2, 168, 117, 3, 120, 12, 65, 3, 143, 210, 34, 160, 14, 64, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [55, 9, 0, 14, 65, 2, 168, 117, 3, 160, 12, 65, 3, 143, 210, 34, 160, 14, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [55, 9, 96, 14, 65, 2, 168, 117, 3, 200, 12, 65, 3, 143, 59, 23, 0, 14, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [55, 9, 192, 14, 65, 2, 168, 117, 3, 240, 12, 65, 3, 143, 59, 23, 0, 14, 65, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [90, 9, 32, 14, 65, 2, 168, 117, 3, 24, 13, 65, 3, 143, 210, 34, 160, 4, 65, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [125, 9, 128, 14, 65, 2, 168, 117, 3, 64, 13, 65, 3, 143, 210, 34, 64, 5, 65, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [90, 9, 224, 14, 65, 2, 168, 117, 3, 104, 13, 65, 3, 143, 210, 34, 224, 5, 65, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [55, 9, 64, 14, 65, 2, 168, 117, 3, 144, 13, 65, 3, 143, 237, 21, 128, 6, 65, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [20, 9, 160, 14, 65, 2, 168, 117, 3, 184, 13, 65, 3, 143, 237, 21, 32, 7, 65, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [241, 9, 0, 14, 65, 2, 168, 117, 3, 224, 13, 65, 3, 143, 237, 21, 192, 7, 65, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [20, 10, 96, 14, 65, 2, 168, 117, 3, 8, 14, 65, 3, 143, 210, 13, 96, 8, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [55, 10, 192, 14, 65, 2, 168, 117, 3, 48, 14, 65, 3, 143, 210, 13, 0, 9, 64, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [90, 10, 32, 14, 65, 2, 168, 117, 3, 88, 14, 65, 3, 143, 210, 13, 160, 9, 64, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [125, 10, 128, 14, 65, 2, 168, 117, 3, 128, 14, 65, 3, 143, 59, 23, 64, 10, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [90, 10, 224, 14, 65, 2, 168, 117, 3, 168, 14, 65, 3, 143, 59, 23, 224, 10, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [55, 10, 64, 14, 65, 2, 168, 117, 3, 208, 14, 65, 3, 143, 59, 23, 128, 11, 64, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [20, 10, 160, 14, 65, 2, 168, 117, 3, 248, 14, 65, 3, 143, 210, 13, 32, 12, 64, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [241, 10, 0, 14, 65, 2, 168, 117, 3, 32, 15, 65, 3, 143, 210, 13, 192, 12, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [20, 11, 160, 14, 65, 2, 168, 117, 3, 72, 15, 65, 3, 143, 210, 13, 96, 13, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [55, 11, 64, 15, 65, 2, 168, 117, 3, 112, 15, 65, 3, 143, 210, 34, 0, 14, 64, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [90, 11, 224, 15, 65, 2, 168, 117, 3, 152, 15, 65, 3, 143, 210, 34, 160, 14, 64, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [90, 11, 224, 15, 64, 2, 168, 117, 3, 152, 15, 64, 3, 143, 210, 34, 160, 14, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [125, 11, 128, 16, 64, 2, 168, 117, 3, 192, 15, 64, 3, 143, 59, 23, 0, 14, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [125, 11, 128, 16, 65, 2, 168, 117, 3, 192, 15, 65, 3, 143, 59, 23, 0, 14, 65, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [156, 11, 160, 4, 65, 2, 168, 156, 4, 232, 15, 65, 3, 143, 222, 36, 160, 4, 65, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [156, 11, 64, 5, 65, 2, 168, 156, 4, 16, 16, 65, 3, 143, 222, 36, 64, 5, 65, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [156, 11, 224, 5, 65, 2, 168, 156, 4, 56, 16, 65, 3, 143, 222, 36, 224, 5, 65, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [156, 11, 128, 6, 65, 2, 168, 156, 4, 96, 16, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [156, 11, 32, 7, 65, 2, 168, 156, 4, 136, 16, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [156, 11, 192, 7, 65, 2, 168, 156, 4, 176, 16, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [156, 11, 96, 8, 65, 2, 168, 156, 4, 216, 16, 65, 3, 143, 210, 13, 96, 8, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [156, 11, 0, 9, 65, 2, 168, 156, 4, 0, 17, 65, 3, 143, 210, 13, 0, 9, 64, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [156, 11, 160, 9, 65, 2, 168, 156, 4, 40, 17, 65, 3, 143, 210, 13, 160, 9, 64, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [156, 11, 64, 10, 65, 2, 168, 156, 4, 80, 17, 65, 3, 143, 222, 36, 64, 10, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [156, 11, 224, 10, 65, 2, 168, 156, 4, 120, 17, 65, 3, 143, 222, 36, 224, 10, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [156, 11, 128, 11, 65, 2, 168, 156, 4, 160, 17, 65, 3, 143, 222, 36, 128, 11, 64, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [156, 11, 32, 12, 65, 2, 168, 156, 4, 120, 17, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [156, 11, 192, 12, 65, 2, 168, 156, 4, 80, 17, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [156, 11, 96, 13, 65, 2, 168, 156, 4, 40, 17, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [156, 11, 0, 14, 65, 2, 168, 156, 4, 0, 17, 65, 3, 143, 210, 13, 0, 14, 64, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [156, 11, 160, 14, 65, 2, 168, 156, 4, 216, 17, 65, 3, 143, 210, 13, 160, 14, 64, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [156, 11, 0, 14, 65, 2, 168, 156, 4, 176, 17, 65, 3, 143, 210, 13, 160, 14, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [156, 11, 96, 14, 65, 2, 168, 156, 4, 136, 17, 65, 3, 143, 222, 36, 0, 14, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [156, 11, 192, 14, 65, 2, 168, 156, 4, 96, 17, 65, 3, 143, 222, 36, 0, 14, 65, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [156, 11, 32, 14, 65, 2, 168, 156, 4, 56, 17, 65, 3, 143, 222, 36, 160, 4, 65, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [156, 11, 128, 14, 65, 2, 168, 156, 4, 16, 17, 65, 3, 143, 222, 36, 64, 5, 65, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [156, 11, 224, 14, 65, 2, 168, 156, 4, 232, 17, 65, 3, 143, 222, 36, 224, 5, 65, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [156, 11, 64, 14, 65, 2, 168, 156, 4, 192, 17, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [156, 11, 160, 14, 65, 2, 168, 156, 4, 152, 17, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [156, 11, 0, 14, 65, 2, 168, 156, 4, 112, 17, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [156, 11, 96, 14, 65, 2, 168, 156, 4, 72, 17, 65, 3, 143, 210, 13, 96, 8, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [156, 11, 192, 14, 65, 2, 168, 156, 4, 32, 17, 65, 3, 143, 210, 13, 0, 9, 64, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [156, 11, 32, 14, 65, 2, 168, 156, 4, 248, 17, 65, 3, 143, 210, 13, 160, 9, 64, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [156, 11, 128, 14, 65, 2, 168, 156, 4, 208, 17, 65, 3, 143, 222, 36, 64, 10, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [156, 11, 224, 14, 65, 2, 168, 156, 4, 168, 17, 65, 3, 143, 222, 36, 224, 10, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [156, 11, 64, 14, 65, 2, 168, 156, 4, 128, 17, 65, 3, 143, 222, 36, 128, 11, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [156, 11, 160, 14, 65, 2, 168, 156, 4, 88, 17, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [156, 11, 0, 14, 65, 2, 168, 156, 4, 48, 17, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [156, 11, 160, 14, 65, 2, 168, 156, 4, 8, 17, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [156, 11, 64, 15, 65, 2, 168, 156, 4, 224, 17, 65, 3, 143, 210, 13, 0, 14, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [156, 11, 224, 15, 65, 2, 168, 156, 4, 184, 17, 65, 3, 143, 210, 13, 160, 14, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [156, 11, 128, 16, 65, 2, 168, 156, 4, 144, 17, 65, 3, 143, 210, 13, 160, 14, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [156, 11, 32, 17, 65, 2, 168, 156, 4, 104, 17, 65, 3, 143, 222, 36, 0, 14, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [156, 11, 192, 17, 65, 2, 168, 156, 4, 64, 17, 65, 3, 143, 222, 36, 0, 14, 65, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [8, 12, 96, 18, 65, 2, 168, 156, 4, 24, 17, 65, 3, 143, 222, 36, 160, 4, 65, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [116, 12, 0, 19, 65, 2, 168, 156, 4, 240, 17, 65, 3, 143, 222, 36, 64, 5, 65, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [8, 12, 160, 19, 65, 2, 168, 156, 4, 200, 17, 65, 3, 143, 222, 36, 224, 5, 65, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [156, 12, 64, 20, 65, 2, 168, 156, 4, 160, 17, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [48, 12, 224, 20, 65, 2, 168, 156, 4, 120, 17, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [196, 12, 128, 21, 65, 2, 168, 156, 4, 160, 17, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [48, 13, 32, 22, 65, 2, 168, 156, 4, 200, 17, 65, 3, 143, 210, 13, 96, 8, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [156, 13, 192, 22, 65, 2, 168, 156, 4, 240, 17, 65, 3, 143, 210, 13, 0, 9, 64, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [8, 14, 96, 23, 65, 2, 168, 156, 4, 24, 18, 65, 3, 143, 210, 13, 160, 9, 64, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [116, 14, 0, 24, 65, 2, 168, 156, 4, 64, 18, 65, 3, 143, 222, 36, 64, 10, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [8, 14, 160, 24, 65, 2, 168, 156, 4, 104, 18, 65, 3, 143, 222, 36, 224, 10, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [156, 14, 0, 24, 65, 2, 168, 156, 4, 144, 18, 65, 3, 143, 222, 36, 128, 11, 64, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [48, 14, 96, 24, 65, 2, 168, 156, 4, 184, 18, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [196, 14, 192, 24, 65, 2, 168, 156, 4, 224, 18, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [48, 15, 32, 24, 65, 2, 168, 156, 4, 8, 19, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [156, 15, 128, 24, 65, 2, 168, 156, 4, 48, 19, 65, 3, 143, 210, 13, 0, 14, 64, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [8, 16, 224, 24, 65, 2, 168, 156, 4, 88, 19, 65, 3, 143, 210, 13, 160, 14, 64, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [116, 16, 64, 24, 65, 2, 168, 156, 4, 128, 19, 65, 3, 143, 210, 13, 160, 14, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [8, 16, 160, 24, 65, 2, 168, 156, 4, 168, 19, 65, 3, 143, 222, 36, 0, 14, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [156, 16, 0, 24, 65, 2, 168, 156, 4, 208, 19, 65, 3, 143, 222, 36, 0, 14, 65, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [48, 16, 96, 24, 65, 2, 168, 156, 4, 248, 19, 65, 3, 143, 222, 36, 160, 4, 65, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [196, 16, 192, 24, 65, 2, 168, 156, 4, 32, 20, 65, 3, 143, 222, 36, 64, 5, 65, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [48, 17, 32, 24, 65, 2, 168, 156, 4, 72, 20, 65, 3, 143, 222, 36, 224, 5, 65, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [156, 17, 128, 24, 65, 2, 168, 156, 4, 112, 20, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [8, 18, 224, 24, 65, 2, 168, 156, 4, 152, 20, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [116, 18, 64, 24, 65, 2, 168, 156, 4, 192, 20, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [8, 18, 160, 24, 65, 2, 168, 156, 4, 232, 20, 65, 3, 143, 210, 13, 96, 8, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [156, 18, 0, 24, 65, 2, 168, 156, 4, 16, 21, 65, 3, 143, 210, 13, 0, 9, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [48, 18, 160, 24, 65, 2, 168, 156, 4, 56, 21, 65, 3, 143, 210, 13, 160, 9, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [196, 18, 64, 25, 65, 2, 168, 156, 4, 96, 21, 65, 3, 143, 222, 36, 64, 10, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [48, 19, 224, 25, 65, 2, 168, 156, 4, 136, 21, 65, 3, 143, 222, 36, 224, 10, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [156, 19, 128, 26, 65, 2, 168, 156, 4, 176, 21, 65, 3, 143, 222, 36, 128, 11, 64, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [8, 20, 32, 27, 65, 2, 168, 156, 4, 216, 21, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [116, 20, 192, 27, 65, 2, 168, 156, 4, 0, 22, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [8, 20, 96, 28, 65, 2, 168, 156, 4, 40, 22, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [156, 20, 0, 29, 65, 2, 168, 156, 4, 80, 22, 65, 3, 143, 210, 13, 0, 14, 64, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [48, 20, 160, 29, 65, 2, 168, 156, 4, 120, 22, 65, 3, 143, 210, 13, 160, 14, 64, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [48, 20, 160, 29, 64, 2, 168, 156, 4, 120, 22, 64, 3, 143, 210, 13, 160, 14, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [196, 20, 64, 30, 64, 2, 168, 156, 4, 160, 22, 64, 3, 143, 222, 36, 0, 14, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [196, 20, 64, 30, 65, 2, 168, 156, 4, 160, 22, 65, 3, 143, 222, 36, 0, 14, 65, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [9, 13, 160, 4, 65, 2, 168, 91, 4, 120, 22, 65, 3, 143, 210, 34, 160, 4, 65, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [9, 13, 64, 5, 65, 2, 168, 91, 4, 80, 22, 65, 3, 143, 210, 34, 64, 5, 65, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [9, 13, 224, 5, 65, 2, 168, 91, 4, 40, 22, 65, 3, 143, 210, 34, 224, 5, 65, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [9, 13, 128, 6, 65, 2, 168, 91, 4, 0, 22, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [9, 13, 32, 7, 65, 2, 168, 91, 4, 216, 22, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [9, 13, 192, 7, 65, 2, 168, 91, 4, 176, 22, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [9, 13, 96, 8, 65, 2, 168, 91, 4, 136, 22, 65, 3, 143, 11, 13, 96, 8, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [9, 13, 0, 9, 65, 2, 168, 91, 4, 96, 22, 65, 3, 143, 11, 13, 0, 9, 64, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [9, 13, 160, 9, 65, 2, 168, 91, 4, 56, 22, 65, 3, 143, 11, 13, 160, 9, 64, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [9, 13, 64, 10, 65, 2, 168, 91, 4, 16, 22, 65, 3, 143, 210, 34, 64, 10, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [9, 13, 224, 10, 65, 2, 168, 91, 4, 232, 22, 65, 3, 143, 210, 34, 224, 10, 64, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [9, 13, 128, 11, 65, 2, 168, 91, 4, 192, 22, 65, 3, 143, 210, 34, 128, 11, 64, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [9, 13, 32, 12, 65, 2, 168, 91, 4, 152, 22, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [9, 13, 192, 12, 65, 2, 168, 91, 4, 112, 22, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [9, 13, 96, 13, 65, 2, 168, 91, 4, 72, 22, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [9, 13, 0, 14, 65, 2, 168, 91, 4, 32, 22, 65, 3, 143, 11, 13, 0, 14, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [9, 13, 160, 14, 65, 2, 168, 91, 4, 248, 22, 65, 3, 143, 11, 13, 160, 14, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [9, 13, 0, 14, 65, 2, 168, 91, 4, 208, 22, 65, 3, 143, 11, 13, 160, 14, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [9, 13, 96, 14, 65, 2, 168, 91, 4, 168, 22, 65, 3, 143, 210, 34, 0, 14, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [9, 13, 192, 14, 65, 2, 168, 91, 4, 128, 22, 65, 3, 143, 210, 34, 0, 14, 65, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [9, 13, 32, 14, 65, 2, 168, 91, 4, 88, 22, 65, 3, 143, 210, 34, 160, 4, 65, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [9, 13, 128, 14, 65, 2, 168, 91, 4, 48, 22, 65, 3, 143, 210, 34, 64, 5, 65, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [9, 13, 224, 14, 65, 2, 168, 91, 4, 8, 22, 65, 3, 143, 210, 34, 224, 5, 65, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [9, 13, 64, 14, 65, 2, 168, 91, 4, 224, 22, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [9, 13, 160, 14, 65, 2, 168, 91, 4, 184, 22, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [9, 13, 0, 14, 65, 2, 168, 91, 4, 144, 22, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [58, 13, 96, 14, 65, 2, 168, 91, 4, 104, 22, 65, 3, 143, 11, 13, 96, 8, 64, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [107, 13, 192, 14, 65, 2, 168, 91, 4, 64, 22, 65, 3, 143, 11, 13, 0, 9, 64, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [58, 13, 32, 14, 65, 2, 168, 91, 4, 24, 22, 65, 3, 143, 11, 13, 160, 9, 64, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [9, 13, 128, 14, 65, 2, 168, 91, 4, 240, 22, 65, 3, 143, 210, 34, 64, 10, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [216, 13, 224, 14, 65, 2, 168, 91, 4, 200, 22, 65, 3, 143, 210, 34, 224, 10, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [167, 13, 64, 14, 65, 2, 168, 91, 4, 160, 22, 65, 3, 143, 210, 34, 128, 11, 64, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [216, 13, 160, 14, 65, 2, 168, 91, 4, 120, 22, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [9, 14, 0, 14, 65, 2, 168, 91, 4, 160, 22, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [58, 14, 160, 14, 65, 2, 168, 91, 4, 200, 22, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 36, 242, 63, 0, 0, 0, 0], [107, 14, 64, 15, 65, 2, 168, 91, 4, 240, 22, 65, 3, 143, 11, 13, 0, 14, 64, 3, 108, 0, 37, 242, 63, 0, 0, 0, 0], [58, 14, 224, 15, 65, 2, 168, 91, 4, 24, 23, 65, 3, 143, 11, 13, 160, 14, 64, 3, 108, 0, 38, 242, 63, 0, 0, 0, 0], [58, 14, 224, 15, 64, 2, 168, 91, 4, 24, 23, 64, 3, 143, 11, 13, 160, 14, 64, 3, 108, 0, 39, 242, 63, 0, 0, 0, 0], [9, 14, 128, 16, 64, 2, 168, 91, 4, 64, 23, 64, 3, 143, 210, 34, 0, 14, 64, 3, 108, 0, 40, 242, 63, 0, 0, 0, 0], [9, 14, 128, 16, 65, 2, 168, 91, 4, 64, 23, 65, 3, 143, 210, 34, 0, 14, 65, 3, 108, 0, 41, 242, 63, 0, 0, 0, 0], [156, 11, 160, 4, 65, 2, 168, 124, 5, 104, 23, 65, 3, 143, 210, 34, 160, 4, 65, 3, 108, 0, 42, 242, 63, 0, 0, 0, 0], [156, 11, 64, 5, 65, 2, 168, 124, 5, 144, 23, 65, 3, 143, 210, 34, 64, 5, 65, 3, 108, 0, 43, 242, 63, 0, 0, 0, 0], [156, 11, 224, 5, 65, 2, 168, 124, 5, 184, 23, 65, 3, 143, 210, 34, 224, 5, 65, 3, 108, 0, 44, 242, 63, 0, 0, 0, 0], [156, 11, 128, 6, 65, 2, 168, 124, 5, 224, 23, 65, 3, 143, 59, 23, 128, 6, 65, 3, 108, 0, 45, 242, 63, 0, 0, 0, 0], [156, 11, 32, 7, 65, 2, 168, 124, 5, 8, 24, 65, 3, 143, 59, 23, 32, 7, 65, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0], [156, 11, 192, 7, 65, 2, 168, 124, 5, 48, 24, 65, 3, 143, 59, 23, 192, 7, 65, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [9, 13, 96, 8, 65, 2, 168, 124, 5, 88, 24, 65, 3, 143, 11, 13, 96, 8, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [9, 13, 0, 9, 65, 2, 168, 124, 5, 128, 24, 65, 3, 143, 11, 13, 0, 9, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [9, 13, 160, 9, 65, 2, 168, 124, 5, 168, 24, 65, 3, 143, 11, 13, 160, 9, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [9, 13, 64, 10, 65, 2, 168, 124, 5, 208, 24, 65, 3, 143, 210, 34, 64, 10, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [9, 13, 224, 10, 65, 2, 168, 124, 5, 248, 24, 65, 3, 143, 210, 34, 224, 10, 64, 3, 108, 0, 51, 242, 63, 0, 0, 0, 0], [104, 17, 128, 11, 65, 2, 168, 124, 5, 32, 25, 65, 3, 143, 210, 34, 128, 11, 64, 3, 108, 0, 50, 242, 63, 0, 0, 0, 0], [104, 17, 32, 12, 65, 2, 168, 124, 5, 72, 25, 65, 3, 143, 59, 23, 32, 12, 64, 3, 108, 0, 49, 242, 63, 0, 0, 0, 0], [104, 17, 192, 12, 65, 2, 168, 124, 5, 112, 25, 65, 3, 143, 59, 23, 192, 12, 64, 3, 108, 0, 48, 242, 63, 0, 0, 0, 0], [104, 17, 96, 13, 65, 2, 168, 124, 5, 152, 25, 65, 3, 143, 59, 23, 96, 13, 64, 3, 108, 0, 47, 242, 63, 0, 0, 0, 0], [9, 13, 0, 14, 65, 2, 168, 124, 5, 192, 25, 65, 3, 143, 11, 13, 0, 14, 64, 3, 108, 0, 46, 242, 63, 0, 0, 0, 0]],
+    deltaGrid: [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
+    frameAccuracy: [100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0],
+    registerAccuracy: [100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0],
+    filenameA: "Cascade.sid",
+    filenameB: "Cascade_exported.sid",
+    totalComparisons: 8700,
+    totalMatches: 8700,
+    overallAccuracy: 100.00
+};
+
+const REGISTER_NAMES = ["V1_FREQ_LO", "V1_FREQ_HI", "V1_PW_LO", "V1_PW_HI", "V1_CTRL", "V1_AD", "V1_SR", "V2_FREQ_LO", "V2_FREQ_HI", "V2_PW_LO", "V2_PW_HI", "V2_CTRL", "V2_AD", "V2_SR", "V3_FREQ_LO", "V3_FREQ_HI", "V3_PW_LO", "V3_PW_HI", "V3_CTRL", "V3_AD", "V3_SR", "FC_LO", "FC_HI", "RES_FILT", "MODE_VOL", "POT_X", "POT_Y", "OSC3_RAND", "ENV3"];
+
+// Heatmap configuration
+const config = {
+    cellWidth: 4,           // pixels per frame
+    cellHeight: 20,         // pixels per register
+    margin: { top: 50, right: 20, bottom: 50, left: 150 },
+    colors: {
+        match: '#56ab2f',
+        mismatch: '#eb3349',
+        deltaMin: '#a8e063',
+        deltaMax: '#eb3349',
+        voice1: '#eb3349',
+        voice2: '#569cd6',
+        voice3: '#56ab2f',
+        filter: '#f09819',
+        bgPrimary: '#1e1e1e',
+        textPrimary: '#d4d4d4',
+        textSecondary: '#858585',
+        border: '#3e3e42'
+    },
+    minCellWidth: 1,
+    maxCellWidth: 20,
+    minCellHeight: 10,
+    maxCellHeight: 40
+};
+
+// State
+let currentMode = 1;
+let zoomLevel = 1.0;
+
+// Canvas reference
+let canvas = null;
+let ctx = null;
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    canvas = document.getElementById('heatmap-canvas');
+    ctx = canvas.getContext('2d');
+
+    // Initial render
+    drawHeatmap(currentMode);
+    updateLegend(currentMode);
+
+    // Set up event listeners
+    setupEventListeners();
+});
+
+// Draw complete heatmap
+function drawHeatmap(mode) {
+    if (!canvas || !ctx) return;
+
+    const cellW = config.cellWidth * zoomLevel;
+    const cellH = config.cellHeight * zoomLevel;
+
+    // Calculate canvas size
+    const canvasWidth = config.margin.left + (heatmapData.frames * cellW) + config.margin.right;
+    const canvasHeight = config.margin.top + (heatmapData.registers * cellH) + config.margin.bottom;
+
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+
+    // Clear canvas
+    ctx.fillStyle = config.colors.bgPrimary;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw cells
+    for (let frame = 0; frame < heatmapData.frames; frame++) {
+        for (let reg = 0; reg < heatmapData.registers; reg++) {
+            const x = config.margin.left + (frame * cellW);
+            const y = config.margin.top + (reg * cellH);
+
+            const color = getCellColor(frame, reg, mode);
+
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y, cellW, cellH);
+        }
+    }
+
+    // Draw axis labels
+    drawAxisLabels(cellW, cellH);
+}
+
+// Get cell color based on mode
+function getCellColor(frame, reg, mode) {
+    switch(mode) {
+        case 1:  // Binary match/mismatch
+            return heatmapData.matchGrid[frame][reg] ? config.colors.match : config.colors.mismatch;
+
+        case 2:  // Value delta magnitude
+            const delta = heatmapData.deltaGrid[frame][reg];
+            return interpolateColor(config.colors.deltaMin, config.colors.deltaMax, delta / 255);
+
+        case 3:  // Register group highlighting
+            const group = getRegisterGroup(reg);
+            const isMatch = heatmapData.matchGrid[frame][reg];
+            const baseColor = config.colors[group];
+            return isMatch ? baseColor : darkenColor(baseColor, 0.4);
+
+        case 4:  // Frame accuracy
+            const accuracy = heatmapData.frameAccuracy[frame];
+            return interpolateColor(config.colors.mismatch, config.colors.match, accuracy / 100);
+    }
+}
+
+// Get register group (voice1, voice2, voice3, filter)
+function getRegisterGroup(reg) {
+    if (reg >= 0 && reg <= 6) return 'voice1';
+    if (reg >= 7 && reg <= 13) return 'voice2';
+    if (reg >= 14 && reg <= 20) return 'voice3';
+    return 'filter';
+}
+
+// Interpolate between two colors
+function interpolateColor(color1, color2, factor) {
+    const c1 = hexToRgb(color1);
+    const c2 = hexToRgb(color2);
+
+    const r = Math.round(c1.r + factor * (c2.r - c1.r));
+    const g = Math.round(c1.g + factor * (c2.g - c1.g));
+    const b = Math.round(c1.b + factor * (c2.b - c1.b));
+
+    return `rgb(${r}, ${g}, ${b})`;
+}
+
+// Darken color
+function darkenColor(color, factor) {
+    const rgb = hexToRgb(color);
+    const r = Math.round(rgb.r * (1 - factor));
+    const g = Math.round(rgb.g * (1 - factor));
+    const b = Math.round(rgb.b * (1 - factor));
+    return `rgb(${r}, ${g}, ${b})`;
+}
+
+// Convert hex to RGB
+function hexToRgb(hex) {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+    } : { r: 0, g: 0, b: 0 };
+}
+
+// Draw axis labels
+function drawAxisLabels(cellW, cellH) {
+    ctx.font = '11px monospace';
+    ctx.fillStyle = config.colors.textSecondary;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+
+    // Y-axis (register names)
+    for (let reg = 0; reg < heatmapData.registers; reg++) {
+        const y = config.margin.top + (reg * cellH) + (cellH / 2);
+        ctx.fillText(REGISTER_NAMES[reg], config.margin.left - 10, y);
+    }
+
+    // X-axis (frame numbers) - only show every 50 frames
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    for (let frame = 0; frame < heatmapData.frames; frame += 50) {
+        const x = config.margin.left + (frame * cellW) + (cellW / 2);
+        ctx.fillText(frame.toString(), x, config.margin.top - 30);
+    }
+
+    // Title
+    ctx.font = '14px sans-serif';
+    ctx.fillStyle = config.colors.textPrimary;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`Frames (0-${heatmapData.frames-1})`, config.margin.left, 10);
+}
+
+// Set up event listeners
+function setupEventListeners() {
+    // Mouse move for tooltip
+    canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('mouseleave', hideTooltip);
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', function(e) {
+        if (e.key === '+' || e.key === '=') {
+            zoomIn();
+        } else if (e.key === '-') {
+            zoomOut();
+        } else if (e.key === '0') {
+            resetZoom();
+        }
+    });
+}
+
+// Handle mouse move (show tooltip)
+function handleMouseMove(event) {
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    const cellW = config.cellWidth * zoomLevel;
+    const cellH = config.cellHeight * zoomLevel;
+
+    const frame = Math.floor((x - config.margin.left) / cellW);
+    const reg = Math.floor((y - config.margin.top) / cellH);
+
+    if (frame >= 0 && frame < heatmapData.frames && reg >= 0 && reg < heatmapData.registers) {
+        showTooltip(event.clientX, event.clientY, frame, reg);
+    } else {
+        hideTooltip();
+    }
+}
+
+// Show tooltip
+function showTooltip(x, y, frame, reg) {
+    const tooltip = document.getElementById('tooltip');
+    const regName = REGISTER_NAMES[reg];
+    const valueA = heatmapData.valueGridA[frame][reg];
+    const valueB = heatmapData.valueGridB[frame][reg];
+    const match = heatmapData.matchGrid[frame][reg];
+    const delta = heatmapData.deltaGrid[frame][reg];
+    const matchIcon = match ? '[MATCH]' : '[DIFF]';
+
+    tooltip.innerHTML = `
+        <strong>Frame ${frame}, ${regName}</strong><br>
+        File A: $$${valueA.toString(16).toUpperCase().padStart(2, '0')} (${valueA})<br>
+        File B: $$${valueB.toString(16).toUpperCase().padStart(2, '0')} (${valueB})<br>
+        Delta: ${delta} ${matchIcon}
+    `;
+
+    tooltip.style.left = (x + 10) + 'px';
+    tooltip.style.top = (y + 10) + 'px';
+    tooltip.style.display = 'block';
+}
+
+// Hide tooltip
+function hideTooltip() {
+    const tooltip = document.getElementById('tooltip');
+    tooltip.style.display = 'none';
+}
+
+// Switch visualization mode
+function switchMode(mode) {
+    currentMode = mode;
+
+    // Update radio button
+    document.getElementById('mode-' + mode).checked = true;
+
+    // Update active class
+    for (let i = 1; i <= 4; i++) {
+        const option = document.getElementById('mode-option-' + i);
+        if (i === mode) {
+            option.classList.add('active');
+        } else {
+            option.classList.remove('active');
+        }
+    }
+
+    // Redraw heatmap
+    drawHeatmap(mode);
+
+    // Update legend
+    updateLegend(mode);
+}
+
+// Update legend based on mode
+function updateLegend(mode) {
+    const legendItems = document.getElementById('legend-items');
+
+    let html = '';
+
+    switch(mode) {
+        case 1:
+            html = `
+                <div class="legend-item">
+                    <div class="legend-color" style="background: ${config.colors.match};"></div>
+                    <span>Match</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: ${config.colors.mismatch};"></div>
+                    <span>Mismatch</span>
+                </div>
+            `;
+            break;
+        case 2:
+            html = `
+                <div class="legend-item">
+                    <div class="legend-color" style="background: ${config.colors.deltaMin};"></div>
+                    <span>0 difference</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: ${config.colors.deltaMax};"></div>
+                    <span>255 difference</span>
+                </div>
+            `;
+            break;
+        case 3:
+            html = `
+                <div class="legend-item">
+                    <div class="legend-color" style="background: ${config.colors.voice1};"></div>
+                    <span>Voice 1 (Bright=Match)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: ${config.colors.voice2};"></div>
+                    <span>Voice 2 (Bright=Match)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: ${config.colors.voice3};"></div>
+                    <span>Voice 3 (Bright=Match)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: ${config.colors.filter};"></div>
+                    <span>Filter (Bright=Match)</span>
+                </div>
+            `;
+            break;
+        case 4:
+            html = `
+                <div class="legend-item">
+                    <div class="legend-color" style="background: ${config.colors.match};"></div>
+                    <span>100% accuracy</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: ${config.colors.mismatch};"></div>
+                    <span>0% accuracy</span>
+                </div>
+            `;
+            break;
+    }
+
+    legendItems.innerHTML = html;
+}
+
+// Zoom functions
+function zoomIn() {
+    zoomLevel = Math.min(zoomLevel * 1.5, 5.0);
+    drawHeatmap(currentMode);
+}
+
+function zoomOut() {
+    zoomLevel = Math.max(zoomLevel / 1.5, 0.25);
+    drawHeatmap(currentMode);
+}
+
+function resetZoom() {
+    zoomLevel = 1.0;
+    drawHeatmap(currentMode);
+}
+</script>
+    <script>
+
+        // Toggle collapsible sections
+        function toggleCollapsible(id) {
+            const element = document.getElementById(id);
+            if (element) {
+                element.classList.toggle('collapsed');
+            }
+        }
+
+        // Search/filter content
+        function searchContent(query, targetClass) {
+            const items = document.querySelectorAll(targetClass);
+            const lowerQuery = query.toLowerCase();
+
+            items.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                if (text.includes(lowerQuery) || query === '') {
+                    item.style.display = '';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+
+        // Copy to clipboard
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                showNotification('Copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+            });
+        }
+
+        // Show notification
+        function showNotification(message, duration = 3000) {
+            const notification = document.createElement('div');
+            notification.textContent = message;
+            notification.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background: #4ec9b0;
+                color: white;
+                padding: 15px 25px;
+                border-radius: 4px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                z-index: 1000;
+                animation: slideIn 0.3s;
+            `;
+
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s';
+                setTimeout(() => notification.remove(), 300);
+            }, duration);
+        }
+
+        // Smooth scroll to anchor
+        function scrollToAnchor(anchor) {
+            const element = document.getElementById(anchor);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        // Initialize collapsibles
+        document.addEventListener('DOMContentLoaded', () => {
+            // Add click handlers to collapsible headers
+            document.querySelectorAll('.collapsible-header').forEach(header => {
+                header.addEventListener('click', () => {
+                    const collapsible = header.closest('.collapsible');
+                    if (collapsible) {
+                        toggleCollapsible(collapsible.id);
+                    }
+                });
+            });
+
+            // Add smooth scroll to nav items
+            document.querySelectorAll('.nav-item a').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const anchor = link.getAttribute('href').substring(1);
+                    scrollToAnchor(anchor);
+                });
+            });
+        });
+
+        // Add CSS animations
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            @keyframes slideOut {
+                from { transform: translateX(0); opacity: 1; }
+                to { transform: translateX(100%); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
+
+    </script>
+</body>
+</html>

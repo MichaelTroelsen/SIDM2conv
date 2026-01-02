@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Arkanoid_disasm.asm - Assembly Analysis</title>
+    <title>Arkanoid.sid - Assembly Analysis</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/vs2015.min.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -289,1065 +289,215 @@
             <h2>📊 Analysis Stats</h2>
             <div class="stat-grid">
                 <div class="stat-item">
-                    <div class="stat-value">27</div>
+                    <div class="stat-value">0</div>
                     <div class="stat-label">Subroutines</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-value">630</div>
+                    <div class="stat-value">25</div>
                     <div class="stat-label">Symbols</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-value">8</div>
+                    <div class="stat-value">0</div>
                     <div class="stat-label">Patterns</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-value">56</div>
+                    <div class="stat-value">0</div>
                     <div class="stat-label">Loops</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-value">61</div>
+                    <div class="stat-value">0</div>
                     <div class="stat-label">Dead Code</div>
                 </div>
             </div>
 
-            <h2>🔍 Quick Search</h2>
-            <input type="text" id="search" placeholder="Search addresses, names...">
+            <h2>📑 Quick Jump</h2>
+            <div style="margin-bottom: 20px;">
+                <button onclick="document.getElementById('player-structure').scrollIntoView({behavior: 'smooth'}); toggleSection('player-structure');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    🏗️ Player Structure
+                </button>
+                <button onclick="document.getElementById('ai-tables').scrollIntoView({behavior: 'smooth'}); toggleSection('ai-tables');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #4ec9b0; cursor: pointer; border-radius: 4px; text-align: left; font-weight: bold;">
+                    🤖 AI-Detected Tables
+                </button>
+                <button onclick="document.getElementById('architectural-insights').scrollIntoView({behavior: 'smooth'}); toggleSection('architectural-insights');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    💡 Architectural Insights
+                </button>
+                <button onclick="document.getElementById('code-org').scrollIntoView({behavior: 'smooth'}); toggleSection('code-org');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    🗂️ Code Organization
+                </button>
+                <button onclick="document.getElementById('subroutines').scrollIntoView({behavior: 'smooth'}); toggleSection('subroutines');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    🔧 Subroutines
+                </button>
+                <button onclick="document.getElementById('loops').scrollIntoView({behavior: 'smooth'}); toggleSection('loops');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    🔄 Loops
+                </button>
+                <button onclick="document.getElementById('patterns').scrollIntoView({behavior: 'smooth'}); toggleSection('patterns');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    🔍 Code Patterns
+                </button>
+                <button onclick="document.getElementById('symbols').scrollIntoView({behavior: 'smooth'}); toggleSection('symbols');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    📝 Symbols
+                </button>
+                <button onclick="document.getElementById('raw-data').scrollIntoView({behavior: 'smooth'}); toggleSection('raw-data');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    💾 Raw Data
+                </button>
+                <button onclick="document.getElementById('full-asm').scrollIntoView({behavior: 'smooth'}); toggleSection('full-asm');"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #2d2d30; border: 1px solid #3e3e42; color: #cccccc; cursor: pointer; border-radius: 4px; text-align: left;">
+                    📜 Assembly Code
+                </button>
+                <button onclick="scrollToEOF();"
+                        style="width: 100%; padding: 10px; margin: 5px 0; background: #3e2d2d; border: 1px solid #5e3e3e; color: #ff9999; cursor: pointer; border-radius: 4px; text-align: left; font-weight: bold;">
+                    🏁 Jump to EOF
+                </button>
+            </div>
 
-            <h2>📑 Navigation</h2>
+            <h2>🔗 Subroutine Links</h2>
             <div id="nav-list">
-                <div class="nav-item" onclick="scrollTo('sub-2021')">
-                    <span class="nav-address">$2021</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-205f')">
-                    <span class="nav-address">$205F</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-26c5')">
-                    <span class="nav-address">$26C5</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-26cb')">
-                    <span class="nav-address">$26CB</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-26dc')">
-                    <span class="nav-address">$26DC</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-26e2')">
-                    <span class="nav-address">$26E2</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-26f3')">
-                    <span class="nav-address">$26F3</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-26f9')">
-                    <span class="nav-address">$26F9</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-270a')">
-                    <span class="nav-address">$270A</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-2716')">
-                    <span class="nav-address">$2716</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-27af')">
-                    <span class="nav-address">$27AF</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-27d9')">
-                    <span class="nav-address">$27D9</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-27e3')">
-                    <span class="nav-address">$27E3</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-2809')">
-                    <span class="nav-address">$2809</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-2813')">
-                    <span class="nav-address">$2813</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-2b5d')">
-                    <span class="nav-address">$2B5D</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-2bfe')">
-                    <span class="nav-address">$2BFE</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-2c15')">
-                    <span class="nav-address">$2C15</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-2d6c')">
-                    <span class="nav-address">$2D6C</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-2ec5')">
-                    <span class="nav-address">$2EC5</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-3022')">
-                    <span class="nav-address">$3022</span>
-                    <span class="nav-name">SID Control</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-3160')">
-                    <span class="nav-address">$3160</span>
-                    <span class="nav-name">SID Update</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-32d2')">
-                    <span class="nav-address">$32D2</span>
-                    <span class="nav-name">SID Update</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-370a')">
-                    <span class="nav-address">$370A</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-3716')">
-                    <span class="nav-address">$3716</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-3809')">
-                    <span class="nav-address">$3809</span>
-                    <span class="nav-name">Utility</span>
-                </div>
-                <div class="nav-item" onclick="scrollTo('sub-3bfe')">
-                    <span class="nav-address">$3BFE</span>
-                    <span class="nav-name">Utility</span>
-                </div>
             </div>
         </div>
 
         <!-- Main Content -->
         <div class="main-content">
             <div class="page-header">
-                <div class="page-title">Arkanoid_disasm.asm</div>
-                <div class="page-meta">Author: Martin Galway | Player: Unknown</div>
+                <div class="page-title">Arkanoid</div>
+                <div class="page-meta">Author: Martin Galway | Player: Martin_Galway | 1987 Imagine</div>
+                <div style="margin-top: 10px; padding: 10px; background: #2d2d30; border-radius: 4px; font-size: 12px; color: #858585;">
+                    <strong style="color: #569cd6;">SIDM2 v3.0.1</strong> | Generated: 2026-01-02 16:57:08<br>
+                    Tools: SIDwinder 0.2.6 + Python SID Parser + Enhanced Player Detector + Python Assembly Annotator + 6502 Register Tracker + Label Name Generator
+                </div>
             </div>
 
+            <!-- Player Structure -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('player-structure')">
+                    <span class="section-title">🎵 Player Structure</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="player-structure">
+                    <div class="card">
+                        <div class="card-title">Entry Points</div>
+                        <div class="card-content">
+                            <table>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Load Address:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$2000</td>
+                                    <td style="color: #858585;">Code/data load point</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Init Routine:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$4000</td>
+                                    <td style="color: #858585;">Player initialization</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Play Routine:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$0000</td>
+                                    <td style="color: #858585;">Called every frame (50Hz PAL / 60Hz NTSC)</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">Data Tables</div>
+                        <div class="card-content">
+                            <table>
+                                <tr>
+                                    <td style="color: #dcdcaa;">Pulse Table:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$D411</td>
+                                    <td style="color: #858585;">Pulse width modulation</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa;">Filter Table:</td>
+                                    <td style="color: #4ec9b0; font-family: monospace;">$D418</td>
+                                    <td style="color: #858585;">Filter parameters</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Architectural Insights -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('arch-insights')">
+                    <span class="section-title">🏗️ Architectural Insights</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="arch-insights">
+                    <div class="card">
+                        <div class="card-title">Standard Player</div>
+                        <div class="card-content">Classic SID player architecture with init and play routines</div>
+                    </div>
+                </div>
+            </div>
+            <!-- Code Organization -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('code-org')">
+                    <span class="section-title">📐 Code Organization</span>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="section-content" id="code-org">
+                    <div class="card">
+                        <div class="card-title">Memory Layout - Complete Map (0 data sections)</div>
+                        <div class="card-content">
+                            <div style="font-family: monospace; line-height: 1.6; font-size: 13px;">
+                                <div style="color: #4ec9b0; font-weight: bold;">• <span style="color: #4ec9b0;">$2000</span> - Load Address</div>
+                                <div style="color: #569cd6; margin-left: 20px;">├─ <span style="color: #4ec9b0;">$4000</span> Init | <span style="color: #4ec9b0;">$0000</span> Play</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">Structure Summary</div>
+                        <div class="card-content">
+                            <table>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Code Sections:</td>
+                                    <td style="color: #4ec9b0;">0</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Data Sections:</td>
+                                    <td style="color: #4ec9b0;">0</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #dcdcaa; font-weight: bold;">Total Symbols:</td>
+                                    <td style="color: #4ec9b0;">25</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <!-- Subroutines -->
             <div class="section">
                 <div class="section-header" onclick="toggleSection('subroutines')">
-                    <span class="section-title">🔧 Subroutines (27)</span>
+                    <span class="section-title">🔧 Subroutines (0)</span>
                     <span class="section-toggle">▼</span>
                 </div>
                 <div class="section-content" id="subroutines">
-                    <div class="card" id="sub-2021">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$2021</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A, X, Y</div><div class="meta-badge"><strong>Out:</strong> A</div><div class="meta-badge"><strong>Cycles:</strong> 7</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-205f">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$205F</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A, X, Y</div><div class="meta-badge"><strong>Out:</strong> A, X</div><div class="meta-badge"><strong>Cycles:</strong> 7</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-26c5">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$26C5</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A, X, Y</div><div class="meta-badge"><strong>Out:</strong> A, X, Y</div><div class="meta-badge"><strong>Cycles:</strong> 4</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-26cb">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$26CB</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A, X, Y</div><div class="meta-badge"><strong>Out:</strong> A</div><div class="meta-badge"><strong>Cycles:</strong> 3</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-26dc">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$26DC</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A, X, Y</div><div class="meta-badge"><strong>Out:</strong> A, X, Y</div><div class="meta-badge"><strong>Cycles:</strong> 4</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-26e2">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$26E2</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A, X, Y</div><div class="meta-badge"><strong>Out:</strong> A</div><div class="meta-badge"><strong>Cycles:</strong> 3</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-26f3">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$26F3</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A, X, Y</div><div class="meta-badge"><strong>Out:</strong> A, X, Y</div><div class="meta-badge"><strong>Cycles:</strong> 4</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-26f9">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$26F9</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A, X, Y</div><div class="meta-badge"><strong>Out:</strong> A</div><div class="meta-badge"><strong>Cycles:</strong> 3</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-270a">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$270A</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A, X, Y</div><div class="meta-badge"><strong>Out:</strong> A, X, Y</div><div class="meta-badge"><strong>Cycles:</strong> 4</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-2716">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$2716</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A</div><div class="meta-badge"><strong>Out:</strong> A</div><div class="meta-badge"><strong>Cycles:</strong> 4</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-27af">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$27AF</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A</div><div class="meta-badge"><strong>Out:</strong> A</div><div class="meta-badge"><strong>Cycles:</strong> 4</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-27d9">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$27D9</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A, X, Y</div><div class="meta-badge"><strong>Out:</strong> A, X, Y</div><div class="meta-badge"><strong>Cycles:</strong> 4</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-27e3">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$27E3</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A</div><div class="meta-badge"><strong>Out:</strong> A</div><div class="meta-badge"><strong>Cycles:</strong> 4</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-2809">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$2809</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A, X, Y</div><div class="meta-badge"><strong>Out:</strong> A, X, Y</div><div class="meta-badge"><strong>Cycles:</strong> 4</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-2813">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$2813</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A</div><div class="meta-badge"><strong>Out:</strong> A</div><div class="meta-badge"><strong>Cycles:</strong> 4</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-2b5d">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$2B5D</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A</div><div class="meta-badge"><strong>Out:</strong> A, X, Y</div><div class="meta-badge"><strong>Cycles:</strong> 4</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-2bfe">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$2BFE</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A, X</div><div class="meta-badge"><strong>Out:</strong> A, X</div><div class="meta-badge"><strong>Cycles:</strong> 2</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-2c15">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$2C15</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Out:</strong> A</div><div class="meta-badge"><strong>Cycles:</strong> 4</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-2d6c">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$2D6C</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Out:</strong> A</div><div class="meta-badge"><strong>Cycles:</strong> 4</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-2ec5">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$2EC5</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Out:</strong> A</div><div class="meta-badge"><strong>Cycles:</strong> 4</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-3022">
-                        <div class="card-title">SID Control</div>
-                        <div class="card-subtitle">$3022</div>
-                        <div class="card-content">Initialize or control SID chip</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A, X, Y</div><div class="meta-badge"><strong>Out:</strong> A, X, Y</div><div class="meta-badge"><strong>Cycles:</strong> 4</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-3160">
-                        <div class="card-title">SID Update</div>
-                        <div class="card-subtitle">$3160</div>
-                        <div class="card-content">Update SID registers (music playback)</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A, X, Y</div><div class="meta-badge"><strong>Out:</strong> A, X, Y</div><div class="meta-badge"><strong>Cycles:</strong> 4</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-32d2">
-                        <div class="card-title">SID Update</div>
-                        <div class="card-subtitle">$32D2</div>
-                        <div class="card-content">Update SID registers (music playback)</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A, X, Y</div><div class="meta-badge"><strong>Out:</strong> A, X, Y</div><div class="meta-badge"><strong>Cycles:</strong> 4</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-370a">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$370A</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A, X</div><div class="meta-badge"><strong>Out:</strong> A</div><div class="meta-badge"><strong>Cycles:</strong> 4</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-3716">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$3716</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A, X</div><div class="meta-badge"><strong>Out:</strong> A</div><div class="meta-badge"><strong>Cycles:</strong> 3</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-3809">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$3809</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A, X, Y</div><div class="meta-badge"><strong>Out:</strong> A, Y</div><div class="meta-badge"><strong>Cycles:</strong> 6</div>
-                        </div>
-                    </div>
-                    <div class="card" id="sub-3bfe">
-                        <div class="card-title">Utility</div>
-                        <div class="card-subtitle">$3BFE</div>
-                        <div class="card-content">Utility or helper function</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>In:</strong> A, X</div><div class="meta-badge"><strong>Out:</strong> A, X</div><div class="meta-badge"><strong>Cycles:</strong> 2</div>
-                        </div>
-                    </div>
                 </div>
             </div>
 
             <!-- Loops -->
             <div class="section">
                 <div class="section-header" onclick="toggleSection('loops')">
-                    <span class="section-title">🔄 Loops (56)</span>
+                    <span class="section-title">🔄 Loops (0)</span>
                     <span class="section-toggle">▼</span>
                 </div>
                 <div class="section-content" id="loops">
-                    <div class="card">
-                        <div class="card-title">Loop #1</div>
-                        <div class="card-subtitle">$20F9 - $2134</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 247</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #2</div>
-                        <div class="card-subtitle">$2110 - $2136</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 128</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #3</div>
-                        <div class="card-subtitle">$212F - $2155</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 102</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #4</div>
-                        <div class="card-subtitle">$2256 - $226C</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 69</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #5</div>
-                        <div class="card-subtitle">$22C4 - $2328</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 379</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #6</div>
-                        <div class="card-subtitle">$234E - $2364</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 89</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #7</div>
-                        <div class="card-subtitle">$2532 - $25A0</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 201</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #8</div>
-                        <div class="card-subtitle">$2641 - $2680</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 103</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #9</div>
-                        <div class="card-subtitle">$2685 - $268D</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 14</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #10</div>
-                        <div class="card-subtitle">$2692 - $269D</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 19</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #11</div>
-                        <div class="card-subtitle">$2752 - $2759</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 17</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #12</div>
-                        <div class="card-subtitle">$2791 - $2798</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 17</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #13</div>
-                        <div class="card-subtitle">$27FB - $2807</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 26</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #14</div>
-                        <div class="card-subtitle">$2875 - $287C</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 14</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #15</div>
-                        <div class="card-subtitle">$28AA - $28B1</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 14</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #16</div>
-                        <div class="card-subtitle">$2915 - $291B</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 15</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #17</div>
-                        <div class="card-subtitle">$2975 - $297C</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 14</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #18</div>
-                        <div class="card-subtitle">$29AA - $29B1</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 14</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #19</div>
-                        <div class="card-subtitle">$2A15 - $2A1B</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 15</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #20</div>
-                        <div class="card-subtitle">$2A8D - $2A94</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 14</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #21</div>
-                        <div class="card-subtitle">$2AA8 - $2AAF</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 14</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #22</div>
-                        <div class="card-subtitle">$2ADD - $2AE4</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 14</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #23</div>
-                        <div class="card-subtitle">$2AF6 - $2B0A</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 26</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #24</div>
-                        <div class="card-subtitle">$2B52 - $2B58</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 15</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Loop #25</div>
-                        <div class="card-subtitle">$2BC8 - $2BEE</div>
-                        <div class="card-meta">
-                            <div class="meta-badge"><strong>Type:</strong> conditional</div>
-                            <div class="meta-badge"><strong>Iterations:</strong> 1-100</div>
-                            <div class="meta-badge"><strong>Cycles/iter:</strong> 65</div>
-                        </div>
-                    </div>
-                    <div style="text-align: center; color: #858585; padding: 15px;">
-                        (31 more loops not shown)
-                    </div>
-                </div>
-            </div>
-
-            <!-- Dead Code -->
-            <div class="section">
-                <div class="section-header" onclick="toggleSection('deadcode')">
-                    <span class="section-title">⚠️ Dead Code (61)</span>
-                    <span class="section-toggle">▼</span>
-                </div>
-                <div class="section-content" id="deadcode">
-                    <div class="warning-box">
-                        <div class="warning-title">$3748 - Register A</div>
-                        <div class="warning-text">Value loaded at $3748 but never used before overwritten at $374B</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$2C15 - Register A</div>
-                        <div class="warning-text">Value loaded at $2C15 but never used before overwritten at $2C1E</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$3748 - Register A</div>
-                        <div class="warning-text">Value loaded at $3748 but never used before overwritten at $374B</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$2037 - Register A</div>
-                        <div class="warning-text">Value loaded at $2037 but never used before overwritten at $2039</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$2056 - Register A</div>
-                        <div class="warning-text">Value loaded at $2056 but never used before overwritten at $2058</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$2075 - Register A</div>
-                        <div class="warning-text">Value loaded at $2075 but never used before overwritten at $2077</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$2094 - Register A</div>
-                        <div class="warning-text">Value loaded at $2094 but never used before overwritten at $2096</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$20B3 - Register A</div>
-                        <div class="warning-text">Value loaded at $20B3 but never used before overwritten at $20B5</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$302A - Register A</div>
-                        <div class="warning-text">Value loaded at $302A but never used before overwritten at $302E</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$2EC5 - Register A</div>
-                        <div class="warning-text">Value loaded at $2EC5 but never used before overwritten at $2ECE</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$32DA - Register A</div>
-                        <div class="warning-text">Value loaded at $32DA but never used before overwritten at $32DE</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$330C - Register A</div>
-                        <div class="warning-text">Value loaded at $330C but never used before overwritten at $331C</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$3324 - Register A</div>
-                        <div class="warning-text">Value loaded at $3324 but never used before overwritten at $3329</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$332B - Register A</div>
-                        <div class="warning-text">Value loaded at $332B but never used before overwritten at $332F</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$332F - Register A</div>
-                        <div class="warning-text">Value loaded at $332F but never used before overwritten at $333F</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$333F - Register A</div>
-                        <div class="warning-text">Value loaded at $333F but never used before overwritten at $3347</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$3354 - Register A</div>
-                        <div class="warning-text">Value loaded at $3354 but never used before overwritten at $335C</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$336C - Register A</div>
-                        <div class="warning-text">Value loaded at $336C but never used before overwritten at $3388</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$3388 - Register A</div>
-                        <div class="warning-text">Value loaded at $3388 but never used before overwritten at $338D</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$338F - Register A</div>
-                        <div class="warning-text">Value loaded at $338F but never used before overwritten at $3398</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$3398 - Register A</div>
-                        <div class="warning-text">Value loaded at $3398 but never used before overwritten at $33A0</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$33A3 - Register A</div>
-                        <div class="warning-text">Value loaded at $33A3 but never used before overwritten at $33A7</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$3C15 - Register A</div>
-                        <div class="warning-text">Value loaded at $3C15 but never used before overwritten at $3C1E</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$2B5D - Register A</div>
-                        <div class="warning-text">Value loaded at $2B5D but never used before overwritten at $2B69</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$2B69 - Register A</div>
-                        <div class="warning-text">Value loaded at $2B69 but never used before overwritten at $2B71</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$2B74 - Register A</div>
-                        <div class="warning-text">Value loaded at $2B74 but never used before overwritten at $2B78</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$3168 - Register A</div>
-                        <div class="warning-text">Value loaded at $3168 but never used before overwritten at $316C</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$319A - Register A</div>
-                        <div class="warning-text">Value loaded at $319A but never used before overwritten at $31AA</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$31B2 - Register A</div>
-                        <div class="warning-text">Value loaded at $31B2 but never used before overwritten at $31B7</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$31B7 - Register A</div>
-                        <div class="warning-text">Value loaded at $31B7 but never used before overwritten at $31C7</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$31C7 - Register A</div>
-                        <div class="warning-text">Value loaded at $31C7 but never used before overwritten at $31CF</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$31DC - Register A</div>
-                        <div class="warning-text">Value loaded at $31DC but never used before overwritten at $31E4</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$31F4 - Register A</div>
-                        <div class="warning-text">Value loaded at $31F4 but never used before overwritten at $3210</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$3215 - Register A</div>
-                        <div class="warning-text">Value loaded at $3215 but never used before overwritten at $321E</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$321E - Register A</div>
-                        <div class="warning-text">Value loaded at $321E but never used before overwritten at $3226</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$3229 - Register A</div>
-                        <div class="warning-text">Value loaded at $3229 but never used before overwritten at $322D</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$2075 - Register A</div>
-                        <div class="warning-text">Value loaded at $2075 but never used before overwritten at $2077</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$2094 - Register A</div>
-                        <div class="warning-text">Value loaded at $2094 but never used before overwritten at $2096</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$20B3 - Register A</div>
-                        <div class="warning-text">Value loaded at $20B3 but never used before overwritten at $20B5</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$212F - Register A</div>
-                        <div class="warning-text">Value loaded at $212F but never used before overwritten at $2131</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$2142 - Register A</div>
-                        <div class="warning-text">Value loaded at $2142 but never used before overwritten at $2150</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$2D6C - Register A</div>
-                        <div class="warning-text">Value loaded at $2D6C but never used before overwritten at $2D75</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$2C15 - Register A</div>
-                        <div class="warning-text">Value loaded at $2C15 but never used before overwritten at $2C1E</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$3022 - Register X</div>
-                        <div class="warning-text">Value loaded at $3022 but never used before overwritten at $3054</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$32D2 - Register X</div>
-                        <div class="warning-text">Value loaded at $32D2 but never used before overwritten at $3304</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$3309 - Register X</div>
-                        <div class="warning-text">Value loaded at $3309 but never used before overwritten at $333B</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$3393 - Register X</div>
-                        <div class="warning-text">Value loaded at $3393 but never used before overwritten at $33A7</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$3C0C - Register X</div>
-                        <div class="warning-text">Value loaded at $3C0C but never used before overwritten at $3C1E</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$2B62 - Register X</div>
-                        <div class="warning-text">Value loaded at $2B62 but never used before overwritten at $2B78</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$3160 - Register X</div>
-                        <div class="warning-text">Value loaded at $3160 but never used before overwritten at $3192</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$3197 - Register X</div>
-                        <div class="warning-text">Value loaded at $3197 but never used before overwritten at $31C3</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$3219 - Register X</div>
-                        <div class="warning-text">Value loaded at $3219 but never used before overwritten at $322D</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$2C0C - Register X</div>
-                        <div class="warning-text">Value loaded at $2C0C but never used before overwritten at $2C1E</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$304C - Register Y</div>
-                        <div class="warning-text">Value loaded at $304C but never used before overwritten at $3065</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$32FC - Register Y</div>
-                        <div class="warning-text">Value loaded at $32FC but never used before overwritten at $3311</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$3314 - Register Y</div>
-                        <div class="warning-text">Value loaded at $3314 but never used before overwritten at $333D</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$3395 - Register Y</div>
-                        <div class="warning-text">Value loaded at $3395 but never used before overwritten at $33A7</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$2B65 - Register Y</div>
-                        <div class="warning-text">Value loaded at $2B65 but never used before overwritten at $2B78</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$318A - Register Y</div>
-                        <div class="warning-text">Value loaded at $318A but never used before overwritten at $319F</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$31A2 - Register Y</div>
-                        <div class="warning-text">Value loaded at $31A2 but never used before overwritten at $31C5</div>
-                    </div>
-                    <div class="warning-box">
-                        <div class="warning-title">$321B - Register Y</div>
-                        <div class="warning-text">Value loaded at $321B but never used before overwritten at $322D</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Optimizations -->
-            <div class="section">
-                <div class="section-header" onclick="toggleSection('optimizations')">
-                    <span class="section-title">💡 Optimizations (61)</span>
-                    <span class="section-toggle">▼</span>
-                </div>
-                <div class="section-content" id="optimizations">
-                    <div class="info-box">
-                        <div class="info-text">1. Dead Code: Found 61 register load(s) that are never used. Consider removing these instructions.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">2. Register A: Found 200 single-use loads. Consider caching values for reuse.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">3. Register X: Found 12 single-use loads. Consider caching values for reuse.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">4. Register Y: Found 15 single-use loads. Consider caching values for reuse.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">5. Long Dependency Chain: Instruction at $383B has a dependency chain of 6 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">6. Long Dependency Chain: Instruction at $383F has a dependency chain of 7 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">7. Long Dependency Chain: Instruction at $3846 has a dependency chain of 8 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">8. Long Dependency Chain: Instruction at $384B has a dependency chain of 9 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">9. Long Dependency Chain: Instruction at $384F has a dependency chain of 10 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">10. Long Dependency Chain: Instruction at $3885 has a dependency chain of 11 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">11. Long Dependency Chain: Instruction at $3887 has a dependency chain of 12 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">12. Long Dependency Chain: Instruction at $38BB has a dependency chain of 12 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">13. Long Dependency Chain: Instruction at $38BE has a dependency chain of 13 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">14. Long Dependency Chain: Instruction at $38FF has a dependency chain of 14 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">15. Long Dependency Chain: Instruction at $3903 has a dependency chain of 15 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">16. Long Dependency Chain: Instruction at $390A has a dependency chain of 16 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">17. Long Dependency Chain: Instruction at $390C has a dependency chain of 17 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">18. Long Dependency Chain: Instruction at $390E has a dependency chain of 18 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">19. Long Dependency Chain: Instruction at $3910 has a dependency chain of 19 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">20. Long Dependency Chain: Instruction at $3912 has a dependency chain of 20 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">21. Long Dependency Chain: Instruction at $3914 has a dependency chain of 21 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">22. Long Dependency Chain: Instruction at $391C has a dependency chain of 22 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">23. Long Dependency Chain: Instruction at $391E has a dependency chain of 23 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">24. Long Dependency Chain: Instruction at $3920 has a dependency chain of 24 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">25. Long Dependency Chain: Instruction at $3922 has a dependency chain of 25 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">26. Long Dependency Chain: Instruction at $3924 has a dependency chain of 26 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">27. Long Dependency Chain: Instruction at $3926 has a dependency chain of 27 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">28. Long Dependency Chain: Instruction at $3928 has a dependency chain of 28 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">29. Long Dependency Chain: Instruction at $392A has a dependency chain of 29 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">30. Long Dependency Chain: Instruction at $3930 has a dependency chain of 30 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">31. Long Dependency Chain: Instruction at $3931 has a dependency chain of 31 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">32. Long Dependency Chain: Instruction at $3939 has a dependency chain of 32 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">33. Long Dependency Chain: Instruction at $393B has a dependency chain of 33 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">34. Long Dependency Chain: Instruction at $393D has a dependency chain of 34 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">35. Long Dependency Chain: Instruction at $393F has a dependency chain of 35 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">36. Long Dependency Chain: Instruction at $3941 has a dependency chain of 36 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">37. Long Dependency Chain: Instruction at $3943 has a dependency chain of 37 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">38. Long Dependency Chain: Instruction at $3945 has a dependency chain of 38 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">39. Long Dependency Chain: Instruction at $3947 has a dependency chain of 39 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">40. Long Dependency Chain: Instruction at $394B has a dependency chain of 40 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">41. Long Dependency Chain: Instruction at $394F has a dependency chain of 41 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">42. Long Dependency Chain: Instruction at $3951 has a dependency chain of 42 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">43. Long Dependency Chain: Instruction at $3953 has a dependency chain of 43 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">44. Long Dependency Chain: Instruction at $3955 has a dependency chain of 44 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">45. Long Dependency Chain: Instruction at $3959 has a dependency chain of 45 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">46. Long Dependency Chain: Instruction at $395C has a dependency chain of 46 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">47. Long Dependency Chain: Instruction at $3960 has a dependency chain of 47 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">48. Long Dependency Chain: Instruction at $3962 has a dependency chain of 48 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">49. Long Dependency Chain: Instruction at $3964 has a dependency chain of 49 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">50. Long Dependency Chain: Instruction at $3966 has a dependency chain of 50 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">51. Long Dependency Chain: Instruction at $3968 has a dependency chain of 51 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">52. Long Dependency Chain: Instruction at $396A has a dependency chain of 52 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">53. Long Dependency Chain: Instruction at $396C has a dependency chain of 53 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">54. Long Dependency Chain: Instruction at $396E has a dependency chain of 54 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">55. Long Dependency Chain: Instruction at $20A8 has a dependency chain of 6 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">56. Long Dependency Chain: Instruction at $20B3 has a dependency chain of 7 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">57. Long Dependency Chain: Instruction at $2110 has a dependency chain of 6 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">58. Long Dependency Chain: Instruction at $2114 has a dependency chain of 7 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">59. Long Dependency Chain: Instruction at $2121 has a dependency chain of 8 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">60. Long Dependency Chain: Instruction at $2124 has a dependency chain of 9 steps. Consider breaking into smaller operations.</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-text">61. Long Dependency Chain: Instruction at $212F has a dependency chain of 9 steps. Consider breaking into smaller operations.</div>
-                    </div>
                 </div>
             </div>
 
             <!-- Symbol Table -->
             <div class="section">
                 <div class="section-header" onclick="toggleSection('symbols')">
-                    <span class="section-title">📋 Symbol Table (630)</span>
+                    <span class="section-title">📋 Symbol Table (25)</span>
                     <span class="section-toggle">▼</span>
                 </div>
                 <div class="section-content collapsed" id="symbols">
@@ -1363,709 +513,226 @@
                         </thead>
                         <tbody>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$0000</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_0000</td>
-                                <td style="color: #ce9178;">1c</td>
-                                <td>Zero page variable</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D400</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_frequency_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Frequency Low</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$0039</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_0039</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Zero page variable</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D401</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_frequency_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Frequency High</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$0069</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_0069</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Zero page variable</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D402</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_pulse_width_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Pulse Width Low</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$00B1</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_00b1</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Zero page variable</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D403</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_pulse_width_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Pulse Width High</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$00BF</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_00bf</td>
-                                <td style="color: #ce9178;">2w</td>
-                                <td>Zero page variable</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D404</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_control_register</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Control Register</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$00C6</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_00c6</td>
-                                <td style="color: #ce9178;">1w</td>
-                                <td>Zero page variable</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D405</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_attack/decay</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Attack/Decay</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$00FF</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_00ff</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Zero page variable</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D406</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_1_sustain/release</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 1 Sustain/Release</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$0100</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_0100</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Stack location</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D407</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_frequency_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Frequency Low</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$015F</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_015f</td>
-                                <td style="color: #ce9178;">2r,2w</td>
-                                <td>Stack location</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D408</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_frequency_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Frequency High</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$0163</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_0163</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Stack location</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D409</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_pulse_width_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Pulse Width Low</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$0237</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_0237</td>
-                                <td style="color: #ce9178;">1r,1w</td>
-                                <td>Referenced address</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40A</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_pulse_width_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Pulse Width High</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$0239</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_0239</td>
-                                <td style="color: #ce9178;">1r,1w</td>
-                                <td>Referenced address</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40B</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_control_register</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Control Register</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$0245</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_0245</td>
-                                <td style="color: #ce9178;">1r,1w</td>
-                                <td>Referenced address</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40C</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_attack/decay</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Attack/Decay</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$0248</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_0248</td>
-                                <td style="color: #ce9178;">1r,1w</td>
-                                <td>Referenced address</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40D</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_2_sustain/release</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 2 Sustain/Release</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$02CC</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_02cc</td>
-                                <td style="color: #ce9178;">2r,2w</td>
-                                <td>Referenced address</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40E</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_frequency_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Frequency Low</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$0338</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_0338</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D40F</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_frequency_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Frequency High</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$035F</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_035f</td>
-                                <td style="color: #ce9178;">1r,1w</td>
-                                <td>Referenced address</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D410</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_pulse_width_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Pulse Width Low</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$03A9</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_03a9</td>
-                                <td style="color: #ce9178;">2r</td>
-                                <td>Referenced address</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D411</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_pulse_width_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Pulse Width High</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$03CC</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_03cc</td>
-                                <td style="color: #ce9178;">1c</td>
-                                <td>Referenced address</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D412</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_control_register</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Control Register</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$03FF</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_03ff</td>
-                                <td style="color: #ce9178;">2r</td>
-                                <td>Referenced address</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D413</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_attack/decay</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Attack/Decay</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$0437</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_0437</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D414</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">voice_3_sustain/release</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Voice 3 Sustain/Release</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$04CC</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_04cc</td>
-                                <td style="color: #ce9178;">1r,1w</td>
-                                <td>Referenced address</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D415</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">filter_cutoff_low</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Filter Cutoff Low</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$073B</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_073b</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D416</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">filter_cutoff_high</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Filter Cutoff High</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$0804</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_0804</td>
-                                <td style="color: #ce9178;">1r,1w</td>
-                                <td>Referenced address</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D417</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">filter_resonance/routing</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Filter Resonance/Routing</td>
                             </tr>
                             <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$08DC</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_08dc</td>
-                                <td style="color: #ce9178;">3r,3w</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$093A</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_093a</td>
-                                <td style="color: #ce9178;">1r,1w</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$0AFF</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_0aff</td>
-                                <td style="color: #ce9178;">3r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$100F</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_100f</td>
-                                <td style="color: #ce9178;">1r,1w</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$1419</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_1419</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$14FF</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_14ff</td>
-                                <td style="color: #ce9178;">9r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$16DC</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_16dc</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$173A</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_173a</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$1804</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_1804</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$1905</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_1905</td>
-                                <td style="color: #ce9178;">1r,1w</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$1A5F</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_1a5f</td>
-                                <td style="color: #ce9178;">1c</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$1BBF</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_1bbf</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$1C02</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_1c02</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$1F05</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_1f05</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2021</td>
-                                <td style="color: #569cd6;">subroutine</td>
-                                <td style="color: #dcdcaa;">Utility</td>
-                                <td style="color: #ce9178;">1c</td>
-                                <td>Utility or helper function</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2028</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2028</td>
-                                <td style="color: #ce9178;">1r,1w</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$205F</td>
-                                <td style="color: #569cd6;">subroutine</td>
-                                <td style="color: #dcdcaa;">Utility</td>
-                                <td style="color: #ce9178;">1c</td>
-                                <td>Utility or helper function</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2102</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2102</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$23FF</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_23ff</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2402</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2402</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2403</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2403</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$245C</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_245c</td>
-                                <td style="color: #ce9178;">1r,3w</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$245D</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_245d</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$245E</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_245e</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$245F</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_245f</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2460</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2460</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2461</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2461</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2462</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2462</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2463</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2463</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2464</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2464</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2465</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2465</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2466</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2466</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2467</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2467</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2468</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2468</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2469</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2469</td>
-                                <td style="color: #ce9178;">1r,1w</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$246A</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_246a</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$246B</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_246b</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$246C</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_246c</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$246D</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_246d</td>
-                                <td style="color: #ce9178;">1r,1w</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$246E</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_246e</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$246F</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_246f</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2470</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2470</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2471</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2471</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2472</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2472</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2473</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2473</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2474</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2474</td>
-                                <td style="color: #ce9178;">1r,1w</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2475</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2475</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2476</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2476</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2477</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2477</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2478</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2478</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2479</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2479</td>
-                                <td style="color: #ce9178;">1r,4w</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$247A</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_247a</td>
-                                <td style="color: #ce9178;">1r,1w</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$247B</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_247b</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$247C</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_247c</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$247D</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_247d</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$247E</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_247e</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$247F</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_247f</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2480</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2480</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2481</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2481</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2482</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2482</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2483</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2483</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2484</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2484</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2485</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2485</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2486</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2486</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2487</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2487</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2488</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2488</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2489</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2489</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$248A</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_248a</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$248B</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_248b</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$248C</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_248c</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$248D</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_248d</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$248E</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_248e</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$248F</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_248f</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2490</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2490</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2491</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2491</td>
-                                <td style="color: #ce9178;">1r,1w</td>
-                                <td>Referenced address</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #4ec9b0; font-weight: bold;">$2492</td>
-                                <td style="color: #569cd6;">unknown</td>
-                                <td style="color: #dcdcaa;">addr_2492</td>
-                                <td style="color: #ce9178;">1r</td>
-                                <td>Referenced address</td>
+                                <td style="color: #4ec9b0; font-weight: bold;">$D418</td>
+                                <td style="color: #569cd6;">hardware</td>
+                                <td style="color: #dcdcaa;">volume/filter_mode</td>
+                                <td style="color: #ce9178;">-</td>
+                                <td>Volume/Filter Mode</td>
                             </tr>
                         </tbody>
                     </table>
-                    <div style="text-align: center; color: #858585; padding: 15px;">
-                        (530 more symbols not shown)
+                </div>
+            </div>
+            <!-- Full Assembly Code -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('full-asm')">
+                    <span class="section-title">📜 Fully Annotated Assembly (20 lines)</span>
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <div style="position: relative; display: flex; align-items: center; gap: 8px;" onclick="event.stopPropagation();">
+                            <input type="text" id="asm-search" placeholder="Search code, data, addresses..."
+                                   style="padding: 8px 12px; background: #1e1e1e; border: 1px solid #3e3e42; border-radius: 4px; color: #cccccc; font-size: 13px; width: 500px; outline: none;">
+                            <button id="search-prev" style="padding: 6px 12px; background: #2d2d30; border: 1px solid #3e3e42; border-radius: 4px; color: #cccccc; cursor: pointer; font-size: 12px; transition: background 0.2s;" title="Previous match (Shift+Enter)" onmouseover="this.style.background='#383838'" onmouseout="this.style.background='#2d2d30'">◀</button>
+                            <button id="search-next" style="padding: 6px 12px; background: #2d2d30; border: 1px solid #3e3e42; border-radius: 4px; color: #cccccc; cursor: pointer; font-size: 12px; transition: background 0.2s;" title="Next match (Enter)" onmouseover="this.style.background='#383838'" onmouseout="this.style.background='#2d2d30'">▶</button>
+                            <span style="color: #858585; font-size: 12px; margin-left: 8px;">│</span>
+                            <button id="zoom-out" style="padding: 6px 12px; background: #2d2d30; border: 1px solid #3e3e42; border-radius: 4px; color: #cccccc; cursor: pointer; font-size: 12px; font-weight: bold; transition: background 0.2s;" title="Zoom out" onmouseover="this.style.background='#383838'" onmouseout="this.style.background='#2d2d30'">−</button>
+                            <span id="zoom-level" style="color: #858585; font-size: 11px; min-width: 40px; text-align: center;">100%</span>
+                            <button id="zoom-in" style="padding: 6px 12px; background: #2d2d30; border: 1px solid #3e3e42; border-radius: 4px; color: #cccccc; cursor: pointer; font-size: 12px; font-weight: bold; transition: background 0.2s;" title="Zoom in" onmouseover="this.style.background='#383838'" onmouseout="this.style.background='#2d2d30'">+</button>
+                            <button id="zoom-reset" style="padding: 6px 10px; background: #2d2d30; border: 1px solid #3e3e42; border-radius: 4px; color: #858585; cursor: pointer; font-size: 11px; transition: background 0.2s;" title="Reset zoom (100%)" onmouseover="this.style.background='#383838'" onmouseout="this.style.background='#2d2d30'">Reset</button>
+                            <div id="asm-search-count" style="position: absolute; top: 100%; left: 0; margin-top: 5px; font-size: 11px; color: #858585; white-space: nowrap; display: none;"></div>
+                        </div>
+                        <span class="section-toggle">▼</span>
+                    </div>
+                </div>
+                <div class="section-content" id="full-asm">
+                    <div style="background: #1e1e1e; padding: 20px; border-radius: 6px; max-height: calc(100vh - 300px); overflow-y: scroll; overflow-x: auto; border: 1px solid #3e3e42;">
+                        <pre id="asm-code-pre" style="color: #d4d4d4; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; line-height: 1.8; margin: 0;">;==============================================================================
+;==============================================================================
+;
+;   END OF FILE - Stinsen's Last Night of '89
+;
+;   SIDM2 Version: 3.0.1
+;   Generated: 2026-01-02 16:57:08
+;   Total Lines: 13
+;
+;   Tools Used:
+;     - SIDwinder 0.2.6 (Disassembler)
+;     - Python SID Parser (Metadata Extraction)
+;     - Enhanced Player Detector (Player Identification)
+;     - Python Assembly Annotator (Instruction Comments)
+;     - 6502 Register Tracker (Data Flow Analysis)
+;     - Label Name Generator (Semantic Naming)
+;
+;==============================================================================
+;==============================================================================
+</pre>
                     </div>
                 </div>
             </div>
@@ -2094,16 +761,247 @@
             }
         }
 
-        // Search
-        document.getElementById('search').addEventListener('input', function(e) {
-            const query = e.target.value.toLowerCase();
-            const navItems = document.querySelectorAll('.nav-item');
+        // Scroll to EOF marker
+        function scrollToEOF() {
+            // Expand the full-asm section if collapsed
+            const asmSection = document.getElementById('full-asm');
+            if (asmSection && asmSection.classList.contains('collapsed')) {
+                toggleSection('full-asm');
+            }
 
-            navItems.forEach(item => {
-                const text = item.textContent.toLowerCase();
-                item.style.display = text.includes(query) ? 'flex' : 'none';
+            // Wait for expansion animation, then scroll to bottom
+            setTimeout(() => {
+                const asmContent = document.getElementById('full-asm');
+                if (asmContent) {
+                    // Scroll the assembly section to the very bottom
+                    const pre = asmContent.querySelector('pre');
+                    if (pre) {
+                        pre.scrollTop = pre.scrollHeight;
+                    }
+                    // Also scroll the main content to show the assembly section
+                    asmContent.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                }
+            }, 300);
+        }
+
+        // Enhanced Search with highlighting in assembly code and raw data
+        let currentMatches = [];
+        let currentMatchIndex = -1;
+        const searchInput = document.getElementById('asm-search');
+
+        function clearHighlights() {
+            document.querySelectorAll('.search-highlight').forEach(el => {
+                el.outerHTML = el.textContent;
             });
+            currentMatches = [];
+            currentMatchIndex = -1;
+        }
+
+        function highlightMatches(query) {
+            clearHighlights();
+            if (!query || query.length < 2) return;
+
+            // Search in assembly code section
+            const asmSection = document.querySelector('#full-asm pre');
+            if (asmSection) {
+                highlightInElement(asmSection, query);
+            }
+
+            // Search in raw data sections
+            document.querySelectorAll('[id^="data-"] pre').forEach(section => {
+                highlightInElement(section, query);
+            });
+
+            // Update match count
+            updateMatchCount();
+
+            // Jump to first match
+            if (currentMatches.length > 0) {
+                jumpToMatch(0);
+            }
+        }
+
+        function highlightInElement(element, query) {
+            const walker = document.createTreeWalker(
+                element,
+                NodeFilter.SHOW_TEXT,
+                null,
+                false
+            );
+
+            const textNodes = [];
+            while (walker.nextNode()) {
+                textNodes.push(walker.currentNode);
+            }
+
+            textNodes.forEach(node => {
+                const text = node.textContent;
+                const lowerText = text.toLowerCase();
+                const lowerQuery = query.toLowerCase();
+                let index = 0;
+                let lastIndex = 0;
+                const fragments = [];
+
+                while ((index = lowerText.indexOf(lowerQuery, lastIndex)) !== -1) {
+                    // Add text before match
+                    if (index > lastIndex) {
+                        fragments.push(document.createTextNode(text.substring(lastIndex, index)));
+                    }
+
+                    // Add highlighted match
+                    const mark = document.createElement('span');
+                    mark.className = 'search-highlight';
+                    mark.textContent = text.substring(index, index + query.length);
+                    mark.style.backgroundColor = '#ffd700';
+                    mark.style.color = '#000';
+                    mark.style.padding = '2px 4px';
+                    mark.style.borderRadius = '3px';
+                    fragments.push(mark);
+                    currentMatches.push(mark);
+
+                    lastIndex = index + query.length;
+                }
+
+                // Add remaining text
+                if (lastIndex < text.length) {
+                    fragments.push(document.createTextNode(text.substring(lastIndex)));
+                }
+
+                // Replace node if we found matches
+                if (fragments.length > 0) {
+                    const parent = node.parentNode;
+                    fragments.forEach(frag => parent.insertBefore(frag, node));
+                    parent.removeChild(node);
+                }
+            });
+        }
+
+        function updateMatchCount() {
+            const countDisplay = document.getElementById('asm-search-count');
+            if (countDisplay) {
+                if (currentMatches.length > 0) {
+                    countDisplay.textContent = `${currentMatchIndex + 1} of ${currentMatches.length} matches`;
+                    countDisplay.style.display = 'block';
+                } else {
+                    countDisplay.textContent = searchInput.value.length >= 2 ? 'No matches' : '';
+                    countDisplay.style.display = searchInput.value.length >= 2 ? 'block' : 'none';
+                }
+            }
+        }
+
+        function jumpToMatch(index) {
+            if (currentMatches.length === 0) return;
+
+            // Remove active class from current match
+            if (currentMatchIndex >= 0 && currentMatchIndex < currentMatches.length) {
+                currentMatches[currentMatchIndex].style.backgroundColor = '#ffd700';
+            }
+
+            // Set new index
+            currentMatchIndex = index;
+            if (currentMatchIndex < 0) currentMatchIndex = currentMatches.length - 1;
+            if (currentMatchIndex >= currentMatches.length) currentMatchIndex = 0;
+
+            // Highlight current match
+            const match = currentMatches[currentMatchIndex];
+            match.style.backgroundColor = '#ff6b35';
+            match.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            updateMatchCount();
+        }
+
+        // Search input handler
+        let searchTimeout;
+        searchInput.addEventListener('input', function(e) {
+            const query = e.target.value;
+
+            // Debounce content search
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                highlightMatches(query);
+            }, 300);
         });
+
+        // Keyboard navigation (Enter for next, Shift+Enter for previous)
+        searchInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (currentMatches.length > 0) {
+                    jumpToMatch(e.shiftKey ? currentMatchIndex - 1 : currentMatchIndex + 1);
+                }
+            } else if (e.key === 'Escape') {
+                searchInput.value = '';
+                clearHighlights();
+                updateMatchCount();
+            }
+        });
+
+        // Button navigation
+        const searchPrevBtn = document.getElementById('search-prev');
+        const searchNextBtn = document.getElementById('search-next');
+
+        if (searchPrevBtn) {
+            searchPrevBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (currentMatches.length > 0) {
+                    jumpToMatch(currentMatchIndex - 1);
+                }
+            });
+        }
+
+        if (searchNextBtn) {
+            searchNextBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (currentMatches.length > 0) {
+                    jumpToMatch(currentMatchIndex + 1);
+                }
+            });
+        }
+
+        // Zoom functionality
+        const asmCodePre = document.getElementById('asm-code-pre');
+        const zoomInBtn = document.getElementById('zoom-in');
+        const zoomOutBtn = document.getElementById('zoom-out');
+        const zoomResetBtn = document.getElementById('zoom-reset');
+        const zoomLevelSpan = document.getElementById('zoom-level');
+
+        let currentZoom = 100; // percentage
+        const baseFontSize = 13; // pixels
+        const minZoom = 50;
+        const maxZoom = 200;
+        const zoomStep = 10;
+
+        function updateZoom(newZoom) {
+            currentZoom = Math.max(minZoom, Math.min(maxZoom, newZoom));
+            const newFontSize = (baseFontSize * currentZoom) / 100;
+            if (asmCodePre) {
+                asmCodePre.style.fontSize = newFontSize + 'px';
+            }
+            if (zoomLevelSpan) {
+                zoomLevelSpan.textContent = currentZoom + '%';
+            }
+        }
+
+        if (zoomInBtn) {
+            zoomInBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                updateZoom(currentZoom + zoomStep);
+            });
+        }
+
+        if (zoomOutBtn) {
+            zoomOutBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                updateZoom(currentZoom - zoomStep);
+            });
+        }
+
+        if (zoomResetBtn) {
+            zoomResetBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                updateZoom(100);
+            });
+        }
 
         // Active navigation on scroll
         const mainContent = document.querySelector('.main-content');

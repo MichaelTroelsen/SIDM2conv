@@ -1,0 +1,144 @@
+{
+  "summary": {
+    "total_pairs": 3,
+    "successful": 3,
+    "failed": 0,
+    "partial": 0,
+    "avg_frame_match": 100.0,
+    "avg_register_accuracy": 100.0,
+    "best_match": {
+      "filename": "Angular.sid",
+      "accuracy": 100.0
+    },
+    "worst_match": {
+      "filename": "Angular.sid",
+      "accuracy": 100.0
+    },
+    "avg_voice1_accuracy": 100.0,
+    "avg_voice2_accuracy": 100.0,
+    "avg_voice3_accuracy": 100.0,
+    "total_duration": 2.75,
+    "avg_duration_per_pair": 0.92
+  },
+  "config": {
+    "frames": 300,
+    "generate_heatmaps": true,
+    "generate_comparisons": false
+  },
+  "results": [
+    {
+      "filename_a": "Angular.sid",
+      "filename_b": "Angular_exported.sid",
+      "path_a": "batch_test\\originals\\Angular.sid",
+      "path_b": "batch_test\\exported\\Angular_exported.sid",
+      "metrics": {
+        "frame_match_percent": 100.0,
+        "register_accuracy": 100.0,
+        "total_diffs": 0,
+        "voice_accuracy": {
+          "voice1": {
+            "frequency": 100.0,
+            "waveform": 100.0,
+            "adsr": 100.0,
+            "pulse": 100.0
+          },
+          "voice2": {
+            "frequency": 100.0,
+            "waveform": 100.0,
+            "adsr": 100.0,
+            "pulse": 100.0
+          },
+          "voice3": {
+            "frequency": 100.0,
+            "waveform": 100.0,
+            "adsr": 100.0,
+            "pulse": 100.0
+          }
+        }
+      },
+      "status": "success",
+      "duration": 1.02,
+      "frames_traced": 300,
+      "artifacts": {
+        "heatmap": "heatmaps/Angular_heatmap.html",
+        "comparison": null
+      }
+    },
+    {
+      "filename_a": "Balance.sid",
+      "filename_b": "Balance_exported.sid",
+      "path_a": "batch_test\\originals\\Balance.sid",
+      "path_b": "batch_test\\exported\\Balance_exported.sid",
+      "metrics": {
+        "frame_match_percent": 100.0,
+        "register_accuracy": 100.0,
+        "total_diffs": 0,
+        "voice_accuracy": {
+          "voice1": {
+            "frequency": 100.0,
+            "waveform": 100.0,
+            "adsr": 100.0,
+            "pulse": 100.0
+          },
+          "voice2": {
+            "frequency": 100.0,
+            "waveform": 100.0,
+            "adsr": 100.0,
+            "pulse": 100.0
+          },
+          "voice3": {
+            "frequency": 100.0,
+            "waveform": 100.0,
+            "adsr": 100.0,
+            "pulse": 100.0
+          }
+        }
+      },
+      "status": "success",
+      "duration": 0.9,
+      "frames_traced": 300,
+      "artifacts": {
+        "heatmap": "heatmaps/Balance_heatmap.html",
+        "comparison": null
+      }
+    },
+    {
+      "filename_a": "Cascade.sid",
+      "filename_b": "Cascade_exported.sid",
+      "path_a": "batch_test\\originals\\Cascade.sid",
+      "path_b": "batch_test\\exported\\Cascade_exported.sid",
+      "metrics": {
+        "frame_match_percent": 100.0,
+        "register_accuracy": 100.0,
+        "total_diffs": 0,
+        "voice_accuracy": {
+          "voice1": {
+            "frequency": 100.0,
+            "waveform": 100.0,
+            "adsr": 100.0,
+            "pulse": 100.0
+          },
+          "voice2": {
+            "frequency": 100.0,
+            "waveform": 100.0,
+            "adsr": 100.0,
+            "pulse": 100.0
+          },
+          "voice3": {
+            "frequency": 100.0,
+            "waveform": 100.0,
+            "adsr": 100.0,
+            "pulse": 100.0
+          }
+        }
+      },
+      "status": "success",
+      "duration": 0.84,
+      "frames_traced": 300,
+      "artifacts": {
+        "heatmap": "heatmaps/Cascade_heatmap.html",
+        "comparison": null
+      }
+    }
+  ]
+}

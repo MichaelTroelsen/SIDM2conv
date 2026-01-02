@@ -1,0 +1,4 @@
+filename_a,filename_b,frame_match_percent,register_accuracy,voice1_freq,voice1_wave,voice1_adsr,voice1_pulse,voice2_freq,voice2_wave,voice2_adsr,voice2_pulse,voice3_freq,voice3_wave,voice3_adsr,voice3_pulse,total_diffs,frames_traced,status,duration,heatmap_path,comparison_path
+Angular.sid,Angular_exported.sid,100.00,100.00,100.00,100.00,100.00,100.00,100.00,100.00,100.00,100.00,100.00,100.00,100.00,100.00,0,300,success,1.02,heatmaps/Angular_heatmap.html,
+Balance.sid,Balance_exported.sid,100.00,100.00,100.00,100.00,100.00,100.00,100.00,100.00,100.00,100.00,100.00,100.00,100.00,100.00,0,300,success,0.90,heatmaps/Balance_heatmap.html,
+Cascade.sid,Cascade_exported.sid,100.00,100.00,100.00,100.00,100.00,100.00,100.00,100.00,100.00,100.00,100.00,100.00,100.00,100.00,0,300,success,0.84,heatmaps/Cascade_heatmap.html,
