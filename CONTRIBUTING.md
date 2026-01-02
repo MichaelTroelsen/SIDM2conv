@@ -17,7 +17,7 @@ Thank you for your interest in contributing to the SID to SF2 Converter project!
 git clone <repository-url>
 cd SIDM2
 
-# Verify Python version (3.7+)
+# Verify Python version (3.8+ required, 3.7+ may work)
 python --version
 
 # Run tests to verify setup

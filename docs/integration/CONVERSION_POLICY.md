@@ -1,8 +1,18 @@
 # SIDM2 Conversion Policy & Quality Standards
 
-**Version**: 1.0.0
+⚠️ **DEPRECATED - This document is superseded by CONVERSION_POLICY_APPROVED.md (v2.0.0)**
+
+**This v1.0.0 policy has been replaced. Please refer to:**
+- **Current Policy**: [CONVERSION_POLICY_APPROVED.md](./CONVERSION_POLICY_APPROVED.md) (v2.0.0)
+- **Key Change**: Auto-driver selection (Laxity driver for Laxity files, Driver 11 for others)
+
+This document is retained for historical reference only.
+
+---
+
+**Version**: 1.0.0 (DEPRECATED)
 **Date**: 2025-12-24
-**Status**: 🎯 **MANDATORY** - All conversions must follow this policy
+**Status**: 🚫 **SUPERSEDED** - See CONVERSION_POLICY_APPROVED.md for current policy
 
 ---
 

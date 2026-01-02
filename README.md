@@ -457,7 +457,7 @@ test-batch-pyautogui.bat --directory output --max-files 10
 
 ### Requirements
 
-- **Python 3.9+**
+- **Python 3.8+**
 - **Windows** (primary support) or **macOS/Linux** (Python tools only)
 - **Optional**: SID Factory II editor (for editing SF2 files)
 - **Optional**: VICE emulator (for VSID audio export)
