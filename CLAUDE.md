@@ -1,8 +1,8 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.1.0** | SID→SF2 Converter | C64 Music Tools | Updated 2026-01-02
+**SIDM2 v3.1.1** | SID→SF2 Converter | C64 Music Tools | Updated 2026-01-02
 
-Converts Laxity NP21 SID files to SF2 format (99.93% accuracy - RESTORED). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
+Converts native Laxity NP21 SID files to SF2 format (99.93-100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
 ---
 
@@ -61,7 +61,7 @@ install-vice.bat              # VSID for audio export
 
 ## Auto Driver Selection
 
-Auto-selects best driver by player type: Laxity NP21→Laxity (99.93%), SF2→Driver11 (100%), NP20.G4→NP20 (70-90%), Unknown→Driver11. Outputs: `output.sf2` + `output.txt` (driver info + validation). See: `CONVERSION_POLICY_APPROVED.md`
+Auto-selects best driver by player type: Native Laxity NP21 (Laxity_NewPlayer_V21)→Laxity driver (99.93-100%), SF2-exported (SidFactory_II/*)→Driver11 (100%), NP20.G4→NP20 (70-90%), Unknown→Driver11. **Note**: "SidFactory_II/Laxity" = SF2-exported, use Driver11 not Laxity driver. Outputs: `output.sf2` + `output.txt` (driver info + validation). See: `CONVERSION_POLICY_APPROVED.md`, `docs/reference/ACCURACY_MATRIX.md`
 
 ---
 
@@ -117,11 +117,13 @@ SIDM2/
 
 | Source → Driver | Accuracy | Status |
 |----------------|----------|--------|
-| SF2 → Driver 11 | 100% | ✅ Perfect |
-| Laxity → Laxity | 99.98% | ✅ Production |
-| Laxity → Driver 11 | 1-8% | ⚠️ Use Laxity driver |
+| SF2-exported → Driver 11 | 100% | ✅ Perfect (including SidFactory_II/Laxity) |
+| Native Laxity NP21 → Laxity driver | 99.93-100% | ✅ Production |
+| Native Laxity NP21 → Driver 11 | 1-8% | ⚠️ Use Laxity driver instead |
 
-**Other**: Only Laxity NP21 supported, single subtune only, 0% filter accuracy
+**Critical**: "SidFactory_II/Laxity" ≠ native Laxity! Check player-id: "SidFactory" = use Driver 11, "Laxity_NewPlayer_V21" = use Laxity driver
+
+**Other**: Only native Laxity NP21 supported by Laxity driver, single subtune only, 0% filter accuracy
 
 ---
 

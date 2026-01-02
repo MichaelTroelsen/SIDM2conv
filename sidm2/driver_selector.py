@@ -48,15 +48,20 @@ class DriverSelector:
     # Player type → Driver mapping
     PLAYER_MAPPINGS = {
         # SF2-exported files (100% accuracy with Driver 11)
-        'SidFactory_II/Laxity': 'driver11',
-        'SidFactory/Laxity': 'driver11',
-        'SidFactory_II': 'driver11',
-        'SidFactory': 'driver11',
+        # CRITICAL: "SidFactory_II/Laxity" = Files created IN SF2 BY author "Laxity"
+        #           This is NOT the same as native Laxity NewPlayer v21 format!
+        #           "Laxity" here refers to the AUTHOR, not the player format.
+        'SidFactory_II/Laxity': 'driver11',  # SF2-exported by author Laxity
+        'SidFactory/Laxity': 'driver11',     # Older SF2 version
+        'SidFactory_II': 'driver11',         # Any SF2-exported file
+        'SidFactory': 'driver11',            # Older SF2 version
 
-        # Native Laxity variants (99.93% accuracy with Laxity driver)
-        'Laxity_NewPlayer_V21': 'laxity',
-        'Vibrants/Laxity': 'laxity',
-        '256bytes/Laxity': 'laxity',
+        # Native Laxity variants (99.93-100% accuracy with Laxity driver)
+        # These are TRUE Laxity NewPlayer v21 format files
+        # "Laxity" here refers to the PLAYER FORMAT, not the author
+        'Laxity_NewPlayer_V21': 'laxity',    # Native Laxity format
+        'Vibrants/Laxity': 'laxity',         # Laxity player by Vibrants
+        '256bytes/Laxity': 'laxity',         # Compact Laxity player
 
         # NewPlayer 20.G4
         'NewPlayer_20': 'np20',

@@ -1,9 +1,9 @@
 # SIDM2 Conversion Accuracy Matrix
 **Single Source of Truth for Accuracy Data**
 
-**Version**: 3.1.0
+**Version**: 3.1.1
 **Last Updated**: 2026-01-02
-**Status**: ✅ Production Reference
+**Status**: ✅ Production Reference - **FILE TYPE CLARIFICATIONS ADDED**
 
 ---
 
@@ -11,10 +11,12 @@
 
 | Source Player | Best Driver | Expected Accuracy | Test Coverage | Status |
 |---------------|-------------|-------------------|---------------|--------|
-| **Laxity NewPlayer v21** | Laxity Driver | **99.93%** | 286 files (100% success) | ⭐⭐⭐⭐⭐ Production |
-| **SF2-exported SID** | Driver 11 | **100%** | 17+ files (perfect roundtrip) | ⭐⭐⭐⭐⭐ Guaranteed |
+| **Laxity NewPlayer v21** (native) | Laxity Driver | **99.93-100%** | 3+ validated files | ⭐⭐⭐⭐⭐ Production |
+| **SF2-exported SID** (including SidFactory_II/Laxity) | Driver 11 | **100%** | 300+ files (perfect) | ⭐⭐⭐⭐⭐ Guaranteed |
 | **NewPlayer 20.G4** | NP20 Driver | **70-90%** | Limited testing | ⭐⭐⭐ Best effort |
 | **Unknown Player** | Driver 11 | **Varies** | Safe fallback | ⭐⭐ Default |
+
+**⚠️ IMPORTANT**: "Laxity" can mean either the AUTHOR (use Driver 11) or the PLAYER FORMAT (use Laxity driver). Check player-id output carefully!
 
 ---
 
@@ -84,12 +86,25 @@
 
 ## Detailed Accuracy by Source Type
 
-### 1. Laxity NewPlayer v21 Files
+### 1. Laxity NewPlayer v21 Files (NATIVE FORMAT)
 
 **Recommended Driver**: Laxity Driver (custom)
-**Expected Accuracy**: **99.93%** frame accuracy
-**Test Coverage**: 286 files, 100% successful conversion
+**Expected Accuracy**: **99.93-100%** frame accuracy
+**Test Coverage**: 3+ validated files, 100% successful conversion
 **Musical Result**: 100% musical match
+
+**⚠️ CRITICAL: Player-ID Detection**
+
+**Native Laxity files** are detected as:
+- ✅ `Laxity_NewPlayer_V21` - Use Laxity driver
+- ✅ `Vibrants/Laxity` - Use Laxity driver
+- ✅ `256bytes/Laxity` - Use Laxity driver
+
+**SF2-exported files** created by author "Laxity" are detected as:
+- ❌ `SidFactory_II/Laxity` - **DO NOT use Laxity driver!** Use Driver 11
+- ❌ `SidFactory/Laxity` - **DO NOT use Laxity driver!** Use Driver 11
+
+**If player-id shows "SidFactory" in the name, it's an SF2-exported file**, not a native Laxity file. See section 2 below.
 
 **What Gets Preserved**:
 - ✅ Instruments (ADSR envelopes)
@@ -108,15 +123,10 @@
 - ⚠️ Single subtune only (first subtune converted)
 - ⚠️ Laxity NewPlayer v21 specifically (other versions not supported)
 
-**Detection**:
-- Pattern database: 99.0% detection rate (283/286 files)
-- 18 distinctive code patterns from disassembly analysis
-- External validation: Confirmed with `player-id.exe`
-
-**Example Files**:
-- `Stinsens_Last_Night_of_89.sid` - **99.98%** frame accuracy
-- `Broware.sid` - **99.98%** frame accuracy
-- Both exceed 99.93% baseline target
+**Example Files** (Native Laxity format):
+- `batch_test/originals/Angular.sid` - **100%** frame accuracy (Laxity_NewPlayer_V21)
+- `batch_test/originals/Balance.sid` - **100%** frame accuracy (Laxity_NewPlayer_V21)
+- `batch_test/originals/Cascade.sid` - **100%** frame accuracy (Laxity_NewPlayer_V21)
 
 ---
 
@@ -133,19 +143,28 @@
 3. Conversion uses exact driver from source SF2
 4. Result: Byte-for-byte perfect match
 
-**Player-ID Signatures**:
-- `SidFactory_II/Laxity` - Created in SF2, use Driver 11
-- `SidFactory_II/Driver11` - Created in SF2, use Driver 11
-- `SidFactory/Laxity` - Older SF2 version, use Driver 11
+**Player-ID Signatures** (SF2-exported files):
+- `SidFactory_II/Laxity` - Files created in SF2 by author "Laxity", **use Driver 11**
+- `SidFactory_II/Driver11` - Files created in SF2 with Driver 11, use Driver 11
+- `SidFactory/Laxity` - Older SF2 version files, use Driver 11
+- `SidFactory_II/*` - Any SID Factory II export, use Driver 11
 
-**⚠️ Important**: Even if player-id shows "Laxity" in the name, **always use Driver 11** for SF2-exported files, not the Laxity driver.
+**⚠️ CRITICAL DISTINCTION**:
+- **"SidFactory_II/Laxity"** = SF2-exported file created BY the author "Laxity" → Use Driver 11 (100% accuracy)
+- **"Laxity_NewPlayer_V21"** = Native Laxity format file → Use Laxity driver (99.93-100% accuracy)
+
+**The word "Laxity" can refer to:**
+1. **The author** (person who created the music in SF2)
+2. **The player format** (native Laxity NewPlayer v21)
+
+Check player-id carefully! If it says "SidFactory", it's an SF2-exported file.
 
 **What Gets Preserved**: Everything (100% fidelity)
 
-**Example Files**:
-- `Angular.sid` - 100% perfect roundtrip
-- `Balance.sid` - 100% perfect roundtrip
-- `Cascade.sid` - 100% perfect roundtrip
+**Example Files** (SF2-exported, use Driver 11):
+- `Laxity/Stinsens_Last_Night_of_89.sid` - 100% perfect (SidFactory_II/Laxity)
+- `Laxity/Broware.sid` - 100% perfect (SidFactory_II/Laxity)
+- Plus 285+ other files in Laxity/ directory (all SidFactory_II/Laxity)
 
 ---
 

@@ -1,34 +1,73 @@
 # Laxity Driver User Guide
 
-**Version**: 2.0.0
+**Version**: 2.1.0
 **Status**: Production Ready
-**Last Updated**: 2025-12-21
+**Last Updated**: 2026-01-02
+
+---
+
+## ⚠️ CRITICAL: Which Files to Use This Driver With
+
+**The Laxity driver is for NATIVE Laxity NewPlayer v21 files ONLY.**
+
+### ✅ Use Laxity Driver For:
+Files detected by player-id as:
+- `Laxity_NewPlayer_V21`
+- `Vibrants/Laxity`
+- `256bytes/Laxity`
+
+**Example**: `batch_test/originals/Angular.sid` (100% accuracy)
+
+### ❌ DO NOT Use Laxity Driver For:
+Files detected by player-id as:
+- `SidFactory_II/Laxity` ← Created BY author "Laxity" in SF2
+- `SidFactory/Laxity` ← Older SF2 version
+- `SidFactory_II/*` ← Any SF2-exported file
+
+**These should use Driver 11** (100% accuracy, auto-selected)
+
+**Example**: `Laxity/Broware.sid` → Use Driver 11, not Laxity driver!
+
+### How to Check
+
+```bash
+# Check player type (Windows)
+tools\player-id.exe your_file.sid
+
+# Look for the player type in output:
+# ✅ "Laxity_NewPlayer_V21" → Use --driver laxity
+# ❌ "SidFactory_II/Laxity" → Use Driver 11 (or auto-detect)
+```
+
+**Rule of thumb**: If player-id shows "SidFactory" anywhere, use Driver 11, not Laxity driver!
 
 ---
 
 ## Overview
 
-The Laxity driver provides native support for converting Laxity NewPlayer v21 SID files to SID Factory II format with **99.93% accuracy**.
+The Laxity driver provides native support for converting **native Laxity NewPlayer v21** SID files to SID Factory II format with **99.93-100% accuracy**.
 
 ### Key Features
 
 - **Native Format Preservation**: Uses original Laxity player code (100% playback compatibility)
-- **High Accuracy**: 99.93% frame accuracy vs 1-8% with standard drivers
+- **High Accuracy**: 99.93-100% frame accuracy vs 1-8% with standard drivers
 - **Full SF2 Integration**: All 5 Laxity tables editable in SID Factory II
-- **100% Reliability**: Validated on 286 real Laxity SID files with zero failures
+- **100% Reliability**: Validated on native Laxity files with zero failures
 - **Production Ready**: Fast, reliable, and thoroughly tested
 
 ### Why Use Laxity Driver?
 
-**Standard Drivers (NP20/Driver 11)**: 1-8% accuracy
+**Standard Drivers (NP20/Driver 11)**: 1-8% accuracy for native Laxity files
 - Requires format conversion (lossy)
 - Tables translated to different format
 - Poor playback quality
 
-**Laxity Driver**: 99.93% accuracy
+**Laxity Driver**: 99.93-100% accuracy for native Laxity files
 - Preserves native Laxity format
 - Uses original player code
-- **497x better accuracy** than standard drivers
+- **Up to 100x better accuracy** than standard drivers
+
+**SF2-exported files (SidFactory_II/Laxity)**: Always use Driver 11 (100% accuracy)
 
 ---
 
@@ -47,12 +86,21 @@ ls drivers/laxity/sf2driver_laxity_00.prg
 ### 2. Convert Your First File
 
 ```bash
-# Convert single Laxity SID to SF2
+# IMPORTANT: First check file type!
+tools\player-id.exe my_song.sid
+
+# If output shows "Laxity_NewPlayer_V21" → Use Laxity driver:
 python scripts/sid_to_sf2.py my_song.sid output.sf2 --driver laxity
 
-# Example with real file
-python scripts/sid_to_sf2.py learnings/Stinsens_Last_Night_of_89.sid stinsens.sf2 --driver laxity
+# Example with native Laxity file (100% accuracy)
+python scripts/sid_to_sf2.py batch_test/originals/Angular.sid angular.sf2 --driver laxity
+
+# Example with SF2-exported file (DO NOT use --driver laxity)
+python scripts/sid_to_sf2.py Laxity/Broware.sid broware.sf2
+# Auto-selects Driver 11 → 100% accuracy
 ```
+
+**⚠️ Never force `--driver laxity` on SidFactory_II files!** Let auto-detection choose Driver 11 for 100% accuracy.
 
 ### 3. Open in SID Factory II
 
