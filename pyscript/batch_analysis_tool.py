@@ -46,9 +46,9 @@ Output:
 
 File Pairing:
   Auto-pairs files by matching basenames:
-  - song.sid ↔ song_exported.sid
-  - song.sid ↔ song_laxity_exported.sid
-  - song.sid ↔ song.sf2_exported.sid
+  - song.sid <-> song_exported.sid
+  - song.sid <-> song_laxity_exported.sid
+  - song.sid <-> song.sf2_exported.sid
         '''
     )
 
