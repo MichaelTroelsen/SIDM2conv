@@ -1,8 +1,8 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.0.2** | SID→SF2 Converter | C64 Music Tools | Updated 2026-01-01
+**SIDM2 v3.1.0** | SID→SF2 Converter | C64 Music Tools | Updated 2026-01-02
 
-Converts Laxity NP21 SID files to SF2 format (99.98% accuracy - RESTORED). Features: Auto-driver selection, VSID audio export, SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (3,400+ lines), CI/CD (5 workflows), 200+ tests
+Converts Laxity NP21 SID files to SF2 format (99.93% accuracy - RESTORED). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
 ---
 
@@ -31,9 +31,13 @@ sf2-viewer.bat [file.sf2]     # View/export SF2
 conversion-cockpit.bat        # Batch conversion GUI
 
 # Analysis Tools
-trace-viewer.bat input.sid -f 300              # Interactive HTML trace (frame-by-frame)
-validation-dashboard.bat                       # Validation results dashboard
-python pyscript/generate_stinsen_html.py file.sid  # HTML docs (3,700+ annotations)
+trace-viewer.bat input.sid -f 300                       # Interactive HTML trace (frame-by-frame)
+trace-compare.bat file_a.sid file_b.sid                 # Compare two SID traces (tabbed HTML)
+accuracy-heatmap.bat file_a.sid file_b.sid              # Accuracy heatmap (4 viz modes, Canvas)
+batch-analysis.bat originals/ exported/                 # Batch analysis (standalone, HTML+CSV+JSON)
+batch-analysis-validate.bat originals/ exported/        # Batch analysis (validation DB integration)
+validation-dashboard.bat                                # Validation results dashboard
+python pyscript/generate_stinsen_html.py file.sid       # HTML docs (3,700+ annotations)
 
 # Batch Operations
 batch-convert-laxity.bat      # All Laxity files
@@ -57,7 +61,7 @@ install-vice.bat              # VSID for audio export
 
 ## Auto Driver Selection
 
-Auto-selects best driver by player type: Laxity NP21→Laxity (99.98%), SF2→Driver11 (100%), NP20.G4→NP20 (70-90%), Unknown→Driver11. Outputs: `output.sf2` + `output.txt` (driver info + validation). See: `CONVERSION_POLICY_APPROVED.md`
+Auto-selects best driver by player type: Laxity NP21→Laxity (99.93%), SF2→Driver11 (100%), NP20.G4→NP20 (70-90%), Unknown→Driver11. Outputs: `output.sf2` + `output.txt` (driver info + validation). See: `CONVERSION_POLICY_APPROVED.md`
 
 ---
 

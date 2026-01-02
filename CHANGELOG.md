@@ -9,7 +9,356 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-*No unreleased changes yet.*
+---
+
+## [3.1.0] - 2026-01-02
+
+### Added - Batch Analysis Tool
+
+**✅ COMPLETED: Compare multiple SID file pairs with aggregate reporting**
+
+Created comprehensive batch analysis tool that automatically pairs and compares multiple SID files from two directories, generating individual analyses plus aggregate summary reports.
+
+**Features**:
+
+**1. Core Batch Engine** (`pyscript/batch_analysis_engine.py` - 734 lines):
+- `BatchAnalysisEngine` class - Orchestrates batch analysis workflow
+- `PairAnalysisResult` dataclass - Complete per-pair results with 20+ metrics
+- `BatchAnalysisSummary` dataclass - Aggregate statistics across all pairs
+- `BatchAnalysisConfig` dataclass - Configuration settings
+- **Auto-Pairing Logic**: Matches files from two directories by basename
+  - Removes suffixes: `_laxity_exported`, `_np20_exported`, `_d11_exported`, `.sf2_exported`, `_exported`, `_laxity`, `_np20`, `_d11`, `.sf2`
+  - Example: `song.sid` ↔ `song_exported.sid`, `song_laxity_exported.sid`, etc.
+- **Per-Pair Analysis**: For each pair:
+  - Trace both SID files using SIDTracer
+  - Compare using TraceComparator
+  - Generate accuracy heatmap (optional)
+  - Generate comparison HTML (optional)
+- **Export Formats**:
+  - CSV: 22 columns (filename, metrics, status, paths)
+  - JSON: Summary + results array with nested metrics
+- **Error Handling**: Failed pairs don't stop batch, status tracking (success/partial/failed)
+
+**2. Interactive HTML Summary** (`pyscript/batch_analysis_html_exporter.py` - 600+ lines):
+- **Overview Section**: Stat cards (total pairs, success rate, avg accuracy, duration)
+- **Accuracy Distribution Chart**: Chart.js histogram (5 bins: 0-20%, 20-40%, ..., 80-100%)
+- **Sortable Results Table**: Click column headers to sort ascending/descending
+  - Columns: Filename pairs, Frame Match %, Register Accuracy, Total Diffs, Status, Duration
+  - Color-coded accuracy bars (green=excellent, yellow=good, orange/red=needs review)
+  - Status badges (success/partial/failed)
+  - Links to individual heatmap and comparison HTML
+- **Search/Filter**: Live filtering by filename
+- **Best/Worst Highlights**: Quick navigation to extremes
+- **Dark VS Code Theme**: Matches other SIDM2 tools
+- **JavaScript Interactivity**: Sorting, filtering, chart rendering, smooth scrolling
+
+**3. CLI Tool** (`pyscript/batch_analysis_tool.py` - 200+ lines):
+- Two positional arguments: `dir_a`, `dir_b`
+- Options:
+  - `-o/--output DIR`: Output directory (default: batch_analysis_output)
+  - `-f/--frames N`: Frames to trace (default: 300)
+  - `--no-heatmaps`: Skip heatmap generation (saves ~1s per pair)
+  - `--no-comparisons`: Skip comparison HTML (saves ~0.5s per pair)
+  - `--no-html/--no-csv/--no-json`: Skip specific exports
+  - `-v/-vv`: Verbose output
+- **Progress Display**: Shows per-pair progress with accuracy and duration
+- **Comprehensive Summary**: Total pairs, success rate, avg accuracy, voice accuracy, duration, output paths
+- **Interpretation**: Automatic quality assessment (EXCELLENT/GOOD/MODERATE/POOR)
+
+**4. Windows Batch Launcher** (`batch-analysis.bat`):
+- Easy command-line access
+- Comprehensive help text with examples
+- Parameter pass-through to Python
+
+**Output Structure**:
+```
+batch_analysis_output/
+├── batch_summary.html       # Main interactive report
+├── batch_results.csv        # Spreadsheet export (22 columns)
+├── batch_results.json       # Machine-readable (summary + results)
+├── heatmaps/
+│   ├── song1_heatmap.html
+│   └── ...
+└── comparisons/
+    ├── song1_comparison.html
+    └── ...
+```
+
+**Usage**:
+```bash
+# Basic batch analysis
+batch-analysis.bat originals/ exported/ -o results/
+
+# Fast metrics-only (skip visuals)
+batch-analysis.bat originals/ exported/ --no-heatmaps --no-comparisons
+
+# Custom frame count
+batch-analysis.bat originals/ exported/ --frames 500
+
+# Verbose output
+batch-analysis.bat originals/ exported/ -v
+```
+
+**Use Cases**:
+- **After batch conversion**: Validate 10-100+ conversions at once
+- **Quality assurance**: Check conversion accuracy across entire music collection
+- **Driver comparison**: Compare Laxity vs Driver11 vs NP20 results
+- **Before release**: Verify no regressions in conversion quality
+- **Documentation**: Generate visual proof of conversion accuracy
+
+**Performance**:
+- ~2-5 seconds per pair (with all artifacts)
+- ~1-2 seconds per pair (metrics only, --no-heatmaps --no-comparisons)
+- Progress indicators with ETA
+- Parallel processing planned for future (3-4x speedup on multi-core)
+
+**Integration** ✅ COMPLETED:
+- **Validation Pipeline**: ✅ IMPLEMENTED
+  - `scripts/validation/batch_analysis_integration.py` (350+ lines)
+  - `ValidationBatchAnalyzer` class - Runs batch analysis and stores in validation DB
+  - Database schema extended: `batch_analysis_results` + `batch_analysis_pair_results` tables
+  - Batch launcher: `batch-analysis-validate.bat`
+  - Dashboard integration: Added "Batch Analysis" section to `dashboard_v2.py` (200+ lines)
+  - Features: Auto git tracking, metrics integration, trend analysis
+  - Usage: `batch-analysis-validate.bat originals/ exported/ --notes "Testing v3.1"`
+
+- **Conversion Cockpit GUI**: ✅ IMPLEMENTED
+  - Added "🔬 Batch Analysis" tab to `pyscript/conversion_cockpit_gui.py` (+475 lines)
+  - UI Components: Directory selection, options group, results table (7 columns)
+  - Features: Color-coded status (green/orange/red), sortable table, one-click file access
+  - Output buttons: Open HTML/CSV/JSON/folder
+  - Validation option: Checkbox to store in validation database
+  - Integrated workflow: Run conversion → Run analysis → View results
+
+- **CI/CD**: JSON output ready for automation, accuracy threshold checking supported
+
+**Documentation**:
+- **User Guide**: `docs/guides/BATCH_ANALYSIS_GUIDE.md` (900+ lines)
+  - 11 sections: Overview, Quick Start, Installation, Usage Examples, Command-Line Options, Output Formats, File Pairing Logic, Understanding Results, Integration, Troubleshooting, Advanced Usage
+  - Detailed file pairing examples
+  - Complete output format documentation (HTML/CSV/JSON)
+  - Interpretation guide with accuracy ranges
+  - Troubleshooting (7 common issues)
+  - Advanced usage (custom pairing, CI/CD integration, regression testing)
+- **README.md**: Added to Quick Start and Tool-Specific Guides
+- **CLAUDE.md**: Added to Analysis Tools section
+
+**Testing**:
+- End-to-end tested with 3 SID pairs
+- All outputs verified (HTML/CSV/JSON/heatmaps/comparisons)
+- File pairing logic validated
+- Windows batch launcher tested
+- Performance: 0.2s per pair (100 frames, 100% accuracy test)
+
+**Files Added**:
+- `pyscript/batch_analysis_engine.py` (734 lines) - Core batch engine
+- `pyscript/batch_analysis_html_exporter.py` (600+ lines) - HTML summary generator
+- `pyscript/batch_analysis_tool.py` (200+ lines) - CLI tool
+- `scripts/validation/batch_analysis_integration.py` (350+ lines) - Validation integration
+- `batch-analysis.bat` - Standalone launcher
+- `batch-analysis-validate.bat` - Validation-integrated launcher
+- `docs/guides/BATCH_ANALYSIS_GUIDE.md` (1,000+ lines) - Complete user guide
+
+**Updated**:
+- `scripts/validation/database.py` (+170 lines) - Added batch analysis tables + 4 methods
+- `scripts/validation/dashboard_v2.py` (+200 lines) - Added batch analysis section
+- `scripts/generate_dashboard.py` (+5 lines) - Fetch and pass batch results
+- `pyscript/conversion_cockpit_gui.py` (+475 lines) - Added Batch Analysis tab
+- `README.md` (+50 lines) - Added Batch Analysis Tool section in Key Features
+- `CLAUDE.md` (+2 lines) - Added batch-analysis-validate.bat to Analysis Tools
+- `CHANGELOG.md`: This entry
+
+**Total**: 3,800+ lines of new code and documentation
+
+---
+
+### Added - Trace Comparison Tool
+
+**✅ COMPLETED: Compare two SID files frame-by-frame with interactive HTML report**
+
+Created comprehensive trace comparison tool that compares two SID file executions and generates interactive tabbed HTML visualization showing differences.
+
+**Features**:
+
+**1. Core Comparison Engine** (`pyscript/trace_comparator.py`):
+- `TraceComparator` class - Compares two TraceData objects
+- `TraceComparisonMetrics` dataclass - Holds comprehensive comparison results
+- **4 Key Metrics**:
+  - Frame Match %: Percentage of frames with identical writes
+  - Register Accuracy: Per-register match percentage
+  - Voice Accuracy: Per-voice frequency/waveform/ADSR/pulse accuracy
+  - Total Diff Count: Count of all register write differences
+- Reuses existing `ComparisonDetailExtractor` for diff extraction
+- Per-frame accuracy calculation for timeline visualization
+
+**2. Interactive HTML Export** (`pyscript/trace_comparison_html_exporter.py`):
+- **Tabbed Interface**: File A | File B | Differences
+- **Sidebar**: 4 key metrics visible across all tabs
+- **Timeline Navigation**: Color-coded bars (green=perfect, red=poor)
+- **Frame Viewer**: Shows register writes for current frame
+- **Register States**: Real-time display organized by voice/filter
+- **Diff Highlighting**: Side-by-side comparison with color coding
+- **JavaScript Interactivity**: Tab switching, frame sync, clickable timeline
+
+**3. CLI Tool** (`pyscript/trace_comparison_tool.py`):
+- Compare two SID files and generate HTML report
+- Console output with comprehensive metrics
+- Interpretation hints (PERFECT/EXCELLENT/GOOD/MODERATE/POOR)
+- Options: `--frames`, `--output`, `-v/-vv`, `--no-html`
+
+**4. Windows Batch Launcher** (`trace-compare.bat`):
+- Easy command-line access
+- Parameter validation
+- Comprehensive help text
+
+**Usage**:
+```bash
+# Basic comparison
+trace-compare.bat original.sid converted.sid
+
+# Custom frames and output
+trace-compare.bat a.sid b.sid --frames 1500 --output comparison.html
+
+# Verbose output
+trace-compare.bat a.sid b.sid -v
+
+# Quick comparison (no HTML)
+trace-compare.bat a.sid b.sid --no-html
+```
+
+**Use Cases**:
+- Validate SID→SF2→SID roundtrip accuracy
+- Compare different driver implementations
+- Debug timing issues and execution divergence
+- Verify player code produces identical output
+- Analyze SID file variations
+
+**Documentation**:
+- **User Guide**: `docs/guides/TRACE_COMPARISON_GUIDE.md` (820+ lines)
+  - 10 sections: Overview, Quick Start, HTML Report, Metrics, Use Cases, Interpreting Results, Advanced Usage, Troubleshooting, Best Practices, Tips & Tricks
+  - 5 detailed use cases with examples
+  - 5 interpretation scenarios (Perfect/Excellent/Good/Moderate/Poor)
+  - Complete troubleshooting guide
+- **README.md**: Added to Quick Start and Tool-Specific Guides
+- **CLAUDE.md**: Added to Analysis Tools section
+
+---
+
+### Added - Accuracy Heatmap Tool
+
+**✅ COMPLETED: Interactive Canvas-based heatmap visualizing register-level accuracy across all frames**
+
+Created comprehensive accuracy heatmap tool that generates interactive Canvas-based visualization showing frame-by-frame, register-by-register accuracy between two SID files.
+
+**Features**:
+
+**1. Core Heatmap Data Generator** (`pyscript/accuracy_heatmap_generator.py`):
+- `HeatmapGenerator` class - Generates heatmap data from trace comparison
+- `HeatmapData` dataclass - Contains complete heatmap structure
+- **Grid Data Structures**:
+  - `match_grid`: Binary match/mismatch (frames × 29 registers)
+  - `value_grid_a` / `value_grid_b`: Actual register values (0-255)
+  - `delta_grid`: Absolute differences between values
+- **Summary Statistics**:
+  - Per-frame accuracy (list of accuracy % for each frame)
+  - Per-register accuracy (list of accuracy % for each register)
+  - Overall accuracy (total matches / total comparisons)
+- Efficient grid building with register value extraction
+
+**2. Interactive Canvas HTML Export** (`pyscript/accuracy_heatmap_exporter.py`):
+- **Canvas Rendering**: Fast, smooth rendering for large datasets (1000+ frames)
+- **4 Visualization Modes**:
+  1. **Binary Match/Mismatch**: Green (match) / Red (mismatch)
+  2. **Value Delta Magnitude**: Color intensity by difference (0-255)
+  3. **Register Group Highlighting**: Voice 1/2/3/Filter colored differently (bright=match, dark=mismatch)
+  4. **Frame Accuracy Summary**: Per-frame accuracy percentage gradient (red → yellow → green)
+- **Interactive Features**:
+  - Hover tooltips showing exact values (File A, File B, delta, match status)
+  - Zoom controls (Zoom In/Out/Reset buttons + keyboard shortcuts)
+  - Mode switching (radio buttons + legend updates)
+  - Axis labels (register names, frame numbers)
+- **Professional Styling**: Dark VS Code theme, responsive layout, sidebar stats
+- **Color Interpolation**: Smooth gradients for delta magnitude and frame accuracy modes
+- **Self-Contained HTML**: Embedded data, works offline
+
+**3. CLI Tool** (`pyscript/accuracy_heatmap_tool.py`):
+- Compare two SID files and generate heatmap HTML
+- Console output with grid dimensions and overall accuracy
+- Interpretation guidance (PERFECT/EXCELLENT/GOOD/MODERATE/POOR)
+- Options: `--frames`, `--output`, `--mode`, `-v/-vv`
+- Support for large frame counts (tested up to 1500 frames)
+
+**4. Windows Batch Launcher** (`accuracy-heatmap.bat`):
+- Easy command-line access
+- Parameter forwarding
+- Comprehensive help text with mode explanations
+
+**Usage**:
+```bash
+# Basic heatmap
+accuracy-heatmap.bat original.sid converted.sid
+
+# Custom frames and output
+accuracy-heatmap.bat a.sid b.sid --frames 1000 --output heatmap.html
+
+# Start with specific mode
+accuracy-heatmap.bat a.sid b.sid --mode 2  # Delta magnitude mode
+
+# Verbose output
+accuracy-heatmap.bat a.sid b.sid -vv
+```
+
+**Visualization Modes Explained**:
+1. **Mode 1 (Binary Match/Mismatch)**: Quick overview, identify problem clusters
+2. **Mode 2 (Value Delta Magnitude)**: See how severe differences are (0-255 scale)
+3. **Mode 3 (Register Group Highlighting)**: Identify which voices have problems
+4. **Mode 4 (Frame Accuracy Summary)**: Spot timing drift and accuracy trends
+
+**Common Pattern Recognition**:
+- **Vertical lines**: Consistent register issue across frames
+- **Horizontal lines**: Frame-specific problem affecting all registers
+- **Diagonal lines**: Timing drift
+- **Clusters**: Localized accuracy problems
+- **Checkerboard**: Alternating value oscillation
+
+**Use Cases**:
+- Identify problematic registers in conversions
+- Find timing drift issues
+- Spot systematic differences
+- Validate conversion accuracy visually
+- Debug specific frames causing audible glitches
+- Compare different conversion methods
+
+**Documentation**:
+- **User Guide**: `docs/guides/ACCURACY_HEATMAP_GUIDE.md` (670+ lines)
+  - 12 sections: Overview, Quick Start, Understanding Heatmap, Visualization Modes, Reading Patterns, Interactive Features, Use Cases, Command Reference, Interpreting Colors, Advanced Usage, Troubleshooting, Tips & Tricks
+  - Detailed explanation of all 4 visualization modes
+  - Pattern recognition guide (vertical lines, horizontal lines, diagonal lines, clusters, checkerboard)
+  - 5 complete use cases with step-by-step instructions
+  - Full command reference with examples
+  - Color interpretation tables for all modes
+  - Advanced usage patterns (batch analysis, CI/CD integration)
+- **README.md**: Added to Quick Start and Tool-Specific Guides
+- **CLAUDE.md**: Added to Analysis Tools section
+
+**Testing**:
+- ✅ Same file comparison (100% accuracy, all green)
+- ✅ Different file comparison (38.34% accuracy, visible patterns)
+- ✅ All 4 visualization modes tested
+- ✅ Zoom controls functional
+- ✅ Tooltips showing correct values
+- ✅ HTML generation successful (60-82KB files)
+
+**Implementation Details**:
+- **3 new Python modules**: trace_comparator.py (380 lines), trace_comparison_html_exporter.py (1,050+ lines), trace_comparison_tool.py (220 lines)
+- **1 new batch file**: trace-compare.bat
+- **1 new user guide**: TRACE_COMPARISON_GUIDE.md (820 lines)
+- **Total**: ~2,500 lines of code and documentation
+
+**Testing**:
+- End-to-end testing with real SID files (Laxity NewPlayer v21)
+- Generates 60KB+ HTML files with full interactivity
+- Produces comprehensive metrics (Frame Match %, Voice Accuracy, Register Accuracy, Diff Count)
 
 ---
 

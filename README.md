@@ -3,7 +3,7 @@
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 [![codecov](https://codecov.io/gh/MichaelTroelsen/SIDM2conv/branch/master/graph.svg)](https://codecov.io/gh/MichaelTroelsen/SIDM2conv)
 
-**Version 3.0.2** | Build Date: 2026-01-01 | Production Ready ✅
+**Version 3.1.0** | Build Date: 2026-01-02 | Production Ready ✅
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files with **99.93% frame accuracy** for Laxity NewPlayer v21 files.
 
@@ -45,6 +45,12 @@ sf2-viewer.bat file.sf2
 # Generate validation dashboard
 validation-dashboard.bat
 
+# Compare two SID traces (frame-by-frame)
+trace-compare.bat file_a.sid file_b.sid
+
+# Batch analysis (compare multiple SID pairs)
+batch-analysis.bat originals/ exported/
+
 # Batch conversion GUI
 conversion-cockpit.bat
 
@@ -77,6 +83,9 @@ test-all.bat
 | **Conversion Cockpit** | [docs/guides/CONVERSION_COCKPIT_USER_GUIDE.md](docs/guides/CONVERSION_COCKPIT_USER_GUIDE.md) |
 | **Validation Dashboard** | [docs/guides/VALIDATION_DASHBOARD_GUIDE.md](docs/guides/VALIDATION_DASHBOARD_GUIDE.md) |
 | **SIDwinder HTML Trace** | [docs/guides/SIDWINDER_HTML_TRACE_GUIDE.md](docs/guides/SIDWINDER_HTML_TRACE_GUIDE.md) |
+| **Trace Comparison** | [docs/guides/TRACE_COMPARISON_GUIDE.md](docs/guides/TRACE_COMPARISON_GUIDE.md) |
+| **Accuracy Heatmap** | [docs/guides/ACCURACY_HEATMAP_GUIDE.md](docs/guides/ACCURACY_HEATMAP_GUIDE.md) |
+| **Batch Analysis** | [docs/guides/BATCH_ANALYSIS_GUIDE.md](docs/guides/BATCH_ANALYSIS_GUIDE.md) |
 | **Laxity Driver** | [docs/guides/LAXITY_DRIVER_USER_GUIDE.md](docs/guides/LAXITY_DRIVER_USER_GUIDE.md) |
 | **Validation** | [docs/guides/VALIDATION_GUIDE.md](docs/guides/VALIDATION_GUIDE.md) |
 | **Logging** | [docs/guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md](docs/guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md) |
@@ -179,6 +188,141 @@ export_trace_to_html(trace_data, "trace.html", tracer.header.name)
 ```
 
 **See**: [docs/guides/SIDWINDER_HTML_TRACE_GUIDE.md](docs/guides/SIDWINDER_HTML_TRACE_GUIDE.md)
+
+---
+
+### Trace Comparison Tool ⭐ NEW
+
+Compare two SID files frame-by-frame with interactive tabbed HTML interface.
+
+**Features**:
+- ✅ **Tabbed interface** - File A | File B | Differences tabs
+- ✅ **4 key metrics** - Frame match %, register accuracy, voice accuracy, total diffs
+- ✅ **Timeline visualization** - Color-coded frame accuracy bars
+- ✅ **Frame-by-frame viewer** - Side-by-side register write comparison
+- ✅ **Detailed statistics** - Per-register and per-voice accuracy breakdowns
+- ✅ **Self-contained HTML** - Embedded trace data, works offline
+
+**Usage**:
+```bash
+# Compare two SID files (300 frames default)
+trace-compare.bat original.sid converted.sid
+
+# Custom frame count and output
+trace-compare.bat file_a.sid file_b.sid --frames 1500 --output comparison.html
+
+# Quick comparison (console only, no HTML)
+trace-compare.bat file_a.sid file_b.sid --no-html -v
+
+# Direct Python (advanced)
+python pyscript/trace_comparison_tool.py file_a.sid file_b.sid -f 500
+```
+
+**Metrics Displayed**:
+- **Frame Match %**: Percentage of frames with identical register writes
+- **Register Accuracy**: Per-register match percentage (0x00-0x1C)
+- **Voice Accuracy**: Frequency/waveform/ADSR/pulse accuracy for Voice 1/2/3
+- **Total Diffs**: Count of all register write differences (init + frame phase)
+
+**See**: [docs/guides/TRACE_COMPARISON_GUIDE.md](docs/guides/TRACE_COMPARISON_GUIDE.md)
+
+---
+
+### Accuracy Heatmap Tool ⭐ NEW
+
+Interactive Canvas-based heatmap showing register-level accuracy across all frames.
+
+**Features**:
+- ✅ **4 visualization modes** - Binary match, delta magnitude, register groups, frame accuracy
+- ✅ **Interactive tooltips** - Hover to see exact values and differences
+- ✅ **Zoom controls** - Zoom in/out with keyboard shortcuts (+, -, 0)
+- ✅ **Canvas rendering** - Fast rendering for large datasets (1000+ frames)
+- ✅ **Pattern recognition** - Identify vertical lines, horizontal lines, clusters
+- ✅ **Self-contained HTML** - Single file, works offline
+
+**Usage**:
+```bash
+# Generate heatmap (300 frames default)
+accuracy-heatmap.bat original.sid converted.sid
+
+# Custom frame count and output
+accuracy-heatmap.bat file_a.sid file_b.sid --frames 1000 --output heatmap.html
+
+# Start with specific mode (1=Match, 2=Delta, 3=Groups, 4=Frame%)
+accuracy-heatmap.bat file_a.sid file_b.sid --mode 2 -v
+
+# Direct Python (advanced)
+python pyscript/accuracy_heatmap_tool.py file_a.sid file_b.sid -f 500
+```
+
+**Visualization Modes**:
+1. **Binary Match/Mismatch**: Green (match) / Red (mismatch)
+2. **Value Delta Magnitude**: Color intensity by difference (0-255)
+3. **Register Group Highlighting**: Voice 1/2/3/Filter colored differently
+4. **Frame Accuracy Summary**: Per-frame accuracy percentage (0-100%)
+
+**Common Patterns**:
+- **Vertical lines**: Consistent register issue across frames
+- **Horizontal lines**: Frame-specific problem affecting all registers
+- **Diagonal lines**: Timing drift
+- **Clusters**: Localized accuracy problems
+- **Checkerboard**: Alternating value oscillation
+
+**See**: [docs/guides/ACCURACY_HEATMAP_GUIDE.md](docs/guides/ACCURACY_HEATMAP_GUIDE.md)
+
+---
+
+### Batch Analysis Tool ⭐ NEW
+
+Multi-pair SID comparison engine with aggregate reporting and validation integration.
+
+**Features**:
+- ✅ **Auto file pairing** - Handles `_exported`, `_laxity`, `_d11` suffixes automatically
+- ✅ **Complete per-pair analysis** - Trace comparison + heatmap + comparison HTML
+- ✅ **3 output formats** - Interactive HTML summary, CSV export, JSON data
+- ✅ **Validation integration** - Store results in database, track trends over time
+- ✅ **GUI integration** - Dedicated tab in Conversion Cockpit with results table
+- ✅ **Error handling** - Failed pairs don't stop batch, partial results preserved
+- ✅ **Performance** - ~2-5 seconds per pair with progress tracking
+
+**Usage**:
+```bash
+# Basic: Compare two directories
+batch-analysis.bat originals/ exported/
+
+# Custom output and frame count
+batch-analysis.bat originals/ exported/ -o results/ --frames 500
+
+# Validation integration (store in database)
+batch-analysis-validate.bat originals/ exported/ --notes "Testing v3.1"
+
+# GUI mode
+conversion-cockpit.bat  # Navigate to "🔬 Batch Analysis" tab
+```
+
+**Output**:
+- **HTML Summary** - Sortable table, accuracy charts (Chart.js), search/filter
+- **CSV Export** - Spreadsheet-compatible data (22 columns)
+- **JSON Export** - Machine-readable results for automation
+- **Individual Heatmaps** - Per-pair accuracy visualization
+- **Individual Comparisons** - Detailed side-by-side analysis
+
+**Validation Integration**:
+```bash
+# Run batch analysis with validation storage
+batch-analysis-validate.bat SID/ output/ --frames 300
+
+# View in validation dashboard
+validation-dashboard.bat  # See "Batch Analysis" section
+```
+
+**Typical Workflow**:
+1. Convert batch of files: `batch-convert-laxity.bat`
+2. Analyze results: `batch-analysis-validate.bat SID/ output/`
+3. Review dashboard: `validation-dashboard.bat`
+4. Check trends over multiple runs
+
+**See**: [docs/guides/BATCH_ANALYSIS_GUIDE.md](docs/guides/BATCH_ANALYSIS_GUIDE.md)
 
 ---
 

@@ -65,13 +65,19 @@ def generate_dashboard(db_path: Path, output_path: Path, run_id: int = None):
             'accuracy': db.get_metric_trend('avg_overall_accuracy', limit=20)
         }
 
+        # Get batch analysis results (recent 10)
+        batch_analysis_results = db.get_batch_analysis_results(limit=10)
+        if batch_analysis_results:
+            print(f"Found {len(batch_analysis_results)} batch analysis results")
+
         # Generate HTML (using improved V2 generator)
         generator = DashboardGeneratorV2()
         html = generator.generate_html(
             run_info=run_info,
             results=results,
             aggregate=aggregate,
-            trend_data=trend_data if trend_data['accuracy'] else None
+            trend_data=trend_data if trend_data['accuracy'] else None,
+            batch_analysis_results=batch_analysis_results if batch_analysis_results else None
         )
 
         # Write to file

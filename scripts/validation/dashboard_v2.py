@@ -19,7 +19,8 @@ class DashboardGeneratorV2:
     def generate_html(self, run_info: Dict[str, Any],
                      results: List[Dict[str, Any]],
                      aggregate: Dict[str, float],
-                     trend_data: Dict[str, List] = None) -> str:
+                     trend_data: Dict[str, List] = None,
+                     batch_analysis_results: List[Dict[str, Any]] = None) -> str:
         """Generate complete HTML dashboard with HTMLComponents.
 
         Args:
@@ -27,6 +28,7 @@ class DashboardGeneratorV2:
             results: List of file results
             aggregate: Aggregate metrics
             trend_data: Optional trend data for charts
+            batch_analysis_results: Optional batch analysis results
 
         Returns:
             Complete HTML document string
@@ -39,7 +41,8 @@ class DashboardGeneratorV2:
         html += '<div class="container">'
 
         # Sidebar
-        html += self._create_sidebar(run_info, aggregate, len(results))
+        html += self._create_sidebar(run_info, aggregate, len(results),
+                                     batch_count=len(batch_analysis_results) if batch_analysis_results else 0)
 
         # Main content
         html += '<div class="main-content">'
@@ -56,12 +59,16 @@ class DashboardGeneratorV2:
         if trend_data:
             html += self._create_trend_section(trend_data)
 
+        # Batch analysis section (if data available)
+        if batch_analysis_results:
+            html += self._create_batch_analysis_section(batch_analysis_results)
+
         # Results table
         html += self._create_results_section(results)
 
         # Footer
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        html += HTMLComponents.create_footer("3.0.1", timestamp)
+        html += HTMLComponents.create_footer("3.1.0", timestamp)
         html += '</div>'  # main-content
 
         html += '</div>'  # container
@@ -71,12 +78,14 @@ class DashboardGeneratorV2:
 
         return html
 
-    def _create_sidebar(self, run_info: Dict[str, Any], aggregate: Dict[str, float], total_files: int) -> str:
+    def _create_sidebar(self, run_info: Dict[str, Any], aggregate: Dict[str, float],
+                       total_files: int, batch_count: int = 0) -> str:
         """Create navigation sidebar"""
         nav_items = [
             NavItem("Overview", "overview"),
             NavItem("Statistics", "stats"),
             NavItem("Trends", "trends") if aggregate.get('total_files', 0) > 0 else None,
+            NavItem("Batch Analysis", "batch-analysis", count=batch_count) if batch_count > 0 else None,
             NavItem("Results", "results", count=total_files)
         ]
         # Filter out None items
@@ -235,6 +244,200 @@ class DashboardGeneratorV2:
         '''
 
         return chart_html
+
+    def _create_batch_analysis_section(self, batch_results: List[Dict[str, Any]]) -> str:
+        """Create batch analysis section with results table"""
+        if not batch_results:
+            return ''
+
+        html = '''
+        <div id="batch-analysis" class="section">
+            <h2>Batch Analysis Results</h2>
+            <p class="description">Multi-pair SID comparison results from batch analysis runs.</p>
+        '''
+
+        # Create table
+        html += '''
+            <table class="results-table batch-analysis-table">
+                <thead>
+                    <tr>
+                        <th>Batch ID</th>
+                        <th>Timestamp</th>
+                        <th>Directories</th>
+                        <th>Total Pairs</th>
+                        <th>Success Rate</th>
+                        <th>Avg Accuracy</th>
+                        <th>Best/Worst</th>
+                        <th>Duration</th>
+                        <th>Reports</th>
+                    </tr>
+                </thead>
+                <tbody>
+        '''
+
+        for batch in batch_results:
+            batch_id = batch.get('batch_id', 'N/A')
+            timestamp = batch.get('timestamp', 'N/A')[:19]  # Truncate timestamp
+            dir_a = Path(batch.get('dir_a', '')).name  # Just the directory name
+            dir_b = Path(batch.get('dir_b', '')).name
+            total_pairs = batch.get('total_pairs', 0)
+            successful = batch.get('successful', 0)
+            success_rate = (successful / total_pairs * 100) if total_pairs > 0 else 0
+            avg_accuracy = batch.get('avg_frame_match', 0.0)
+
+            best_filename = batch.get('best_match_filename', 'N/A')
+            best_accuracy = batch.get('best_match_accuracy', 0.0)
+            worst_filename = batch.get('worst_match_filename', 'N/A')
+            worst_accuracy = batch.get('worst_match_accuracy', 0.0)
+
+            total_duration = batch.get('total_duration', 0.0)
+            html_report = batch.get('html_report_path', '')
+            csv_report = batch.get('csv_path', '')
+            json_report = batch.get('json_path', '')
+
+            # Color-code success rate
+            if success_rate >= 95:
+                success_color = ColorScheme.SUCCESS
+            elif success_rate >= 80:
+                success_color = ColorScheme.WARNING
+            else:
+                success_color = ColorScheme.ERROR
+
+            # Color-code accuracy
+            if avg_accuracy >= 95:
+                accuracy_color = ColorScheme.SUCCESS
+            elif avg_accuracy >= 80:
+                accuracy_color = ColorScheme.WARNING
+            else:
+                accuracy_color = ColorScheme.ERROR
+
+            html += f'''
+                <tr>
+                    <td><strong>#{batch_id}</strong></td>
+                    <td><span class="timestamp">{timestamp}</span></td>
+                    <td>
+                        <div class="directory-info">
+                            <div><strong>A:</strong> {dir_a}</div>
+                            <div><strong>B:</strong> {dir_b}</div>
+                        </div>
+                    </td>
+                    <td class="number">{total_pairs}</td>
+                    <td>
+                        <span class="badge" style="background: {success_color};">
+                            {successful}/{total_pairs} ({success_rate:.1f}%)
+                        </span>
+                    </td>
+                    <td>
+                        <div class="accuracy-bar-container">
+                            <div class="accuracy-bar" style="width: {avg_accuracy}%; background: {accuracy_color};"></div>
+                            <span class="accuracy-value">{avg_accuracy:.2f}%</span>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="best-worst-info">
+                            <div class="best" title="{best_filename}">
+                                <strong>↑</strong> {best_accuracy:.1f}%
+                            </div>
+                            <div class="worst" title="{worst_filename}">
+                                <strong>↓</strong> {worst_accuracy:.1f}%
+                            </div>
+                        </div>
+                    </td>
+                    <td class="number">{total_duration:.1f}s</td>
+                    <td>
+                        <div class="report-links">
+            '''
+
+            if html_report:
+                html += f'<a href="{html_report}" class="report-link" title="Open HTML report">📊 HTML</a>'
+            if csv_report:
+                html += f'<a href="{csv_report}" class="report-link" title="Open CSV export">📄 CSV</a>'
+            if json_report:
+                html += f'<a href="{json_report}" class="report-link" title="Open JSON export">📋 JSON</a>'
+
+            html += '''
+                        </div>
+                    </td>
+                </tr>
+            '''
+
+        html += '''
+                </tbody>
+            </table>
+        </div>
+
+        <style>
+            .batch-analysis-table {
+                margin-top: 1rem;
+            }
+
+            .batch-analysis-table th {
+                background: ''' + ColorScheme.BG_SECONDARY + ''';
+                padding: 0.75rem;
+                text-align: left;
+                font-weight: 600;
+            }
+
+            .batch-analysis-table td {
+                padding: 0.75rem;
+                border-bottom: 1px solid ''' + ColorScheme.BG_SECONDARY + ''';
+            }
+
+            .directory-info {
+                font-size: 0.9em;
+                line-height: 1.4;
+            }
+
+            .directory-info strong {
+                color: ''' + ColorScheme.ACCENT_TEAL + ''';
+            }
+
+            .best-worst-info {
+                display: flex;
+                flex-direction: column;
+                gap: 0.25rem;
+                font-size: 0.9em;
+            }
+
+            .best {
+                color: ''' + ColorScheme.SUCCESS + ''';
+            }
+
+            .worst {
+                color: ''' + ColorScheme.ERROR + ''';
+            }
+
+            .report-links {
+                display: flex;
+                gap: 0.5rem;
+                flex-wrap: wrap;
+            }
+
+            .report-link {
+                display: inline-block;
+                padding: 0.25rem 0.5rem;
+                background: ''' + ColorScheme.BG_SECONDARY + ''';
+                border-radius: 4px;
+                color: ''' + ColorScheme.ACCENT_TEAL + ''';
+                text-decoration: none;
+                font-size: 0.85em;
+                transition: all 0.2s;
+            }
+
+            .report-link:hover {
+                background: ''' + ColorScheme.ACCENT_TEAL + ''';
+                color: ''' + ColorScheme.BG_PRIMARY + ''';
+            }
+
+            .timestamp {
+                font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+                font-size: 0.9em;
+                color: ''' + ColorScheme.TEXT_SECONDARY + ''';
+            }
+        </style>
+        '''
+
+        return html
 
     def _create_results_section(self, results: List[Dict[str, Any]]) -> str:
         """Create results table section"""

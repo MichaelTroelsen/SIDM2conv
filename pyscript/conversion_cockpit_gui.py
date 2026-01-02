@@ -111,7 +111,11 @@ class CockpitMainWindow(QMainWindow):
         self.results_tab = self.create_results_tab()
         self.tabs.addTab(self.results_tab, "📊 Results")
 
-        # Tab 5: Logs
+        # Tab 5: Batch Analysis
+        self.batch_analysis_tab = self.create_batch_analysis_tab()
+        self.tabs.addTab(self.batch_analysis_tab, "🔬 Batch Analysis")
+
+        # Tab 6: Logs
         self.logs_tab = self.create_logs_tab()
         self.tabs.addTab(self.logs_tab, "📝 Logs")
 
@@ -650,6 +654,181 @@ class CockpitMainWindow(QMainWindow):
             self.dashboard_view = None
 
         layout.addWidget(splitter)
+
+        return widget
+
+    def create_batch_analysis_tab(self) -> QWidget:
+        """Create the Batch Analysis tab for comparing multiple SID pairs"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+
+        # Title
+        title = QLabel("Batch Analysis - Multi-Pair Comparison")
+        title_font = QFont()
+        title_font.setPointSize(16)
+        title_font.setBold(True)
+        title.setFont(title_font)
+        layout.addWidget(title)
+
+        description = QLabel(
+            "Compare multiple SID file pairs from two directories. "
+            "Generates accuracy reports, heatmaps, and aggregate statistics."
+        )
+        description.setWordWrap(True)
+        description.setStyleSheet("color: #666; margin-bottom: 10px;")
+        layout.addWidget(description)
+
+        # Directory selection group
+        dir_group = QGroupBox("Directory Selection")
+        dir_layout = QVBoxLayout()
+
+        # Directory A (originals)
+        dir_a_layout = QHBoxLayout()
+        dir_a_layout.addWidget(QLabel("Directory A (Originals):"))
+        self.batch_dir_a_input = QLineEdit()
+        self.batch_dir_a_input.setPlaceholderText("Select directory with original SID files...")
+        dir_a_layout.addWidget(self.batch_dir_a_input)
+        batch_browse_a_btn = QPushButton("Browse...")
+        batch_browse_a_btn.clicked.connect(self.browse_batch_dir_a)
+        dir_a_layout.addWidget(batch_browse_a_btn)
+        dir_layout.addLayout(dir_a_layout)
+
+        # Directory B (converted/exported)
+        dir_b_layout = QHBoxLayout()
+        dir_b_layout.addWidget(QLabel("Directory B (Converted):"))
+        self.batch_dir_b_input = QLineEdit()
+        self.batch_dir_b_input.setPlaceholderText("Select directory with converted/exported SID files...")
+        dir_b_layout.addWidget(self.batch_dir_b_input)
+        batch_browse_b_btn = QPushButton("Browse...")
+        batch_browse_b_btn.clicked.connect(self.browse_batch_dir_b)
+        dir_b_layout.addWidget(batch_browse_b_btn)
+        dir_layout.addLayout(dir_b_layout)
+
+        # Output directory
+        output_layout = QHBoxLayout()
+        output_layout.addWidget(QLabel("Output Directory:"))
+        self.batch_output_input = QLineEdit()
+        self.batch_output_input.setText("batch_analysis_output")
+        self.batch_output_input.setPlaceholderText("Output directory for batch analysis results...")
+        output_layout.addWidget(self.batch_output_input)
+        batch_browse_output_btn = QPushButton("Browse...")
+        batch_browse_output_btn.clicked.connect(self.browse_batch_output)
+        output_layout.addWidget(batch_browse_output_btn)
+        dir_layout.addLayout(output_layout)
+
+        dir_group.setLayout(dir_layout)
+        layout.addWidget(dir_group)
+
+        # Options group
+        options_group = QGroupBox("Analysis Options")
+        options_layout = QVBoxLayout()
+
+        # Frames setting
+        frames_layout = QHBoxLayout()
+        frames_layout.addWidget(QLabel("Frames to trace:"))
+        self.batch_frames_input = QLineEdit("300")
+        self.batch_frames_input.setMaximumWidth(100)
+        frames_layout.addWidget(self.batch_frames_input)
+        frames_layout.addWidget(QLabel("(default: 300)"))
+        frames_layout.addStretch()
+        options_layout.addLayout(frames_layout)
+
+        # Checkboxes for optional outputs
+        self.batch_generate_heatmaps_cb = QCheckBox("Generate accuracy heatmaps")
+        self.batch_generate_heatmaps_cb.setChecked(True)
+        options_layout.addWidget(self.batch_generate_heatmaps_cb)
+
+        self.batch_generate_comparisons_cb = QCheckBox("Generate comparison HTMLs")
+        self.batch_generate_comparisons_cb.setChecked(True)
+        options_layout.addWidget(self.batch_generate_comparisons_cb)
+
+        self.batch_store_in_validation_cb = QCheckBox("Store results in validation database")
+        self.batch_store_in_validation_cb.setChecked(False)
+        self.batch_store_in_validation_cb.setToolTip("Save batch analysis results to validation database for tracking")
+        options_layout.addWidget(self.batch_store_in_validation_cb)
+
+        options_group.setLayout(options_layout)
+        layout.addWidget(options_group)
+
+        # Action buttons
+        action_layout = QHBoxLayout()
+        action_layout.addStretch()
+
+        self.batch_run_btn = QPushButton("🚀 Run Batch Analysis")
+        self.batch_run_btn.setMinimumHeight(40)
+        self.batch_run_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {ColorScheme.PRIMARY};
+                color: white;
+                font-weight: bold;
+                font-size: 14px;
+                border-radius: 5px;
+                padding: 10px 20px;
+            }}
+            QPushButton:hover {{
+                background-color: {ColorScheme.PRIMARY_DARK};
+            }}
+            QPushButton:disabled {{
+                background-color: #ccc;
+                color: #666;
+            }}
+        """)
+        self.batch_run_btn.clicked.connect(self.run_batch_analysis)
+        action_layout.addWidget(self.batch_run_btn)
+
+        layout.addLayout(action_layout)
+
+        # Results section
+        results_group = QGroupBox("Batch Analysis Results")
+        results_layout = QVBoxLayout()
+
+        # Statistics label
+        self.batch_stats_label = QLabel("No analysis run yet")
+        self.batch_stats_label.setStyleSheet("font-size: 12px; padding: 10px;")
+        results_layout.addWidget(self.batch_stats_label)
+
+        # Results table
+        self.batch_results_table = QTableWidget()
+        self.batch_results_table.setColumnCount(7)
+        self.batch_results_table.setHorizontalHeaderLabels([
+            "File Pair", "Frame Match %", "Register Accuracy %", "Total Diffs", "Status", "Duration", "Reports"
+        ])
+        self.batch_results_table.horizontalHeader().setStretchLastSection(False)
+        self.batch_results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        results_layout.addWidget(self.batch_results_table)
+
+        # Output buttons
+        output_buttons_layout = QHBoxLayout()
+        output_buttons_layout.addStretch()
+
+        self.batch_open_html_btn = QPushButton("📊 Open HTML Summary")
+        self.batch_open_html_btn.clicked.connect(self.open_batch_html_summary)
+        self.batch_open_html_btn.setEnabled(False)
+        output_buttons_layout.addWidget(self.batch_open_html_btn)
+
+        self.batch_open_csv_btn = QPushButton("📄 Open CSV Export")
+        self.batch_open_csv_btn.clicked.connect(self.open_batch_csv)
+        self.batch_open_csv_btn.setEnabled(False)
+        output_buttons_layout.addWidget(self.batch_open_csv_btn)
+
+        self.batch_open_json_btn = QPushButton("📋 Open JSON Export")
+        self.batch_open_json_btn.clicked.connect(self.open_batch_json)
+        self.batch_open_json_btn.setEnabled(False)
+        output_buttons_layout.addWidget(self.batch_open_json_btn)
+
+        self.batch_open_folder_btn = QPushButton("📁 Open Output Folder")
+        self.batch_open_folder_btn.clicked.connect(self.open_batch_output_folder)
+        self.batch_open_folder_btn.setEnabled(False)
+        output_buttons_layout.addWidget(self.batch_open_folder_btn)
+
+        results_layout.addLayout(output_buttons_layout)
+
+        results_group.setLayout(results_layout)
+        layout.addWidget(results_group)
+
+        layout.addStretch()
 
         return widget
 
@@ -1552,6 +1731,282 @@ class CockpitMainWindow(QMainWindow):
             )
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load batch: {e}")
+
+    # === Batch Analysis Methods ===
+
+    def browse_batch_dir_a(self):
+        """Browse for directory A (originals)"""
+        dir_path = QFileDialog.getExistingDirectory(
+            self,
+            "Select Directory A (Originals)",
+            str(Path.home())
+        )
+        if dir_path:
+            self.batch_dir_a_input.setText(dir_path)
+
+    def browse_batch_dir_b(self):
+        """Browse for directory B (converted/exported)"""
+        dir_path = QFileDialog.getExistingDirectory(
+            self,
+            "Select Directory B (Converted)",
+            str(Path.home())
+        )
+        if dir_path:
+            self.batch_dir_b_input.setText(dir_path)
+
+    def browse_batch_output(self):
+        """Browse for output directory"""
+        dir_path = QFileDialog.getExistingDirectory(
+            self,
+            "Select Output Directory",
+            str(Path.home())
+        )
+        if dir_path:
+            self.batch_output_input.setText(dir_path)
+
+    def run_batch_analysis(self):
+        """Run batch analysis on selected directories"""
+        # Validate inputs
+        dir_a = self.batch_dir_a_input.text().strip()
+        dir_b = self.batch_dir_b_input.text().strip()
+        output_dir = self.batch_output_input.text().strip()
+
+        if not dir_a or not dir_b:
+            QMessageBox.warning(
+                self,
+                "Missing Directories",
+                "Please select both Directory A and Directory B"
+            )
+            return
+
+        if not Path(dir_a).exists():
+            QMessageBox.warning(self, "Invalid Path", f"Directory A does not exist:\n{dir_a}")
+            return
+
+        if not Path(dir_b).exists():
+            QMessageBox.warning(self, "Invalid Path", f"Directory B does not exist:\n{dir_b}")
+            return
+
+        # Get frames setting
+        try:
+            frames = int(self.batch_frames_input.text())
+            if frames < 1:
+                raise ValueError()
+        except ValueError:
+            QMessageBox.warning(self, "Invalid Frames", "Frames must be a positive integer")
+            return
+
+        # Get options
+        generate_heatmaps = self.batch_generate_heatmaps_cb.isChecked()
+        generate_comparisons = self.batch_generate_comparisons_cb.isChecked()
+        store_in_validation = self.batch_store_in_validation_cb.isChecked()
+
+        # Disable run button
+        self.batch_run_btn.setEnabled(False)
+        self.batch_run_btn.setText("Running...")
+
+        # Update status
+        self.batch_stats_label.setText("Running batch analysis...")
+
+        # Build command
+        import subprocess
+        import sys
+
+        cmd = [
+            sys.executable,
+            "pyscript/batch_analysis_tool.py" if not store_in_validation else "scripts/validation/batch_analysis_integration.py",
+            dir_a,
+            dir_b,
+            "-o", output_dir,
+            "--frames", str(frames)
+        ]
+
+        if not generate_heatmaps:
+            cmd.append("--no-heatmaps")
+
+        if not generate_comparisons:
+            cmd.append("--no-comparisons")
+
+        if store_in_validation:
+            cmd.extend(["--notes", f"Batch analysis from Conversion Cockpit"])
+
+        # Run process
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                cwd=Path(__file__).parent.parent
+            )
+
+            if result.returncode == 0:
+                # Parse output to extract summary
+                self._process_batch_analysis_results(output_dir)
+
+                QMessageBox.information(
+                    self,
+                    "Batch Analysis Complete",
+                    f"Batch analysis completed successfully!\n\n"
+                    f"Results saved to:\n{output_dir}"
+                )
+            else:
+                error_msg = result.stderr if result.stderr else result.stdout
+                QMessageBox.critical(
+                    self,
+                    "Batch Analysis Failed",
+                    f"Batch analysis failed with errors:\n\n{error_msg[:500]}"
+                )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to run batch analysis:\n{str(e)}"
+            )
+
+        finally:
+            # Re-enable run button
+            self.batch_run_btn.setEnabled(True)
+            self.batch_run_btn.setText("🚀 Run Batch Analysis")
+
+    def _process_batch_analysis_results(self, output_dir: str):
+        """Process batch analysis results and populate UI"""
+        output_path = Path(output_dir)
+
+        # Check if JSON results exist
+        json_path = output_path / "batch_results.json"
+        if not json_path.exists():
+            self.batch_stats_label.setText("Results generated (JSON not found)")
+            return
+
+        # Load JSON results
+        import json
+        try:
+            with open(json_path, 'r') as f:
+                data = json.load(f)
+
+            summary = data.get('summary', {})
+            results = data.get('results', [])
+
+            # Update stats label
+            total_pairs = summary.get('total_pairs', 0)
+            successful = summary.get('successful', 0)
+            avg_accuracy = summary.get('avg_frame_match', 0.0)
+
+            self.batch_stats_label.setText(
+                f"Total Pairs: {total_pairs} | "
+                f"Successful: {successful} ({successful/total_pairs*100:.1f}%) | "
+                f"Avg Accuracy: {avg_accuracy:.2f}%"
+            )
+
+            # Populate results table
+            self.batch_results_table.setRowCount(0)
+
+            for result in results:
+                row = self.batch_results_table.rowCount()
+                self.batch_results_table.insertRow(row)
+
+                # File pair
+                filename_a = result.get('filename_a', '')
+                filename_b = result.get('filename_b', '')
+                pair_item = QTableWidgetItem(f"{filename_a} ↔ {filename_b}")
+                self.batch_results_table.setItem(row, 0, pair_item)
+
+                # Frame match %
+                metrics = result.get('metrics', {})
+                frame_match = metrics.get('frame_match_percent', 0.0)
+                frame_item = QTableWidgetItem(f"{frame_match:.2f}%")
+                self.batch_results_table.setItem(row, 1, frame_item)
+
+                # Register accuracy %
+                reg_accuracy = metrics.get('register_accuracy', 0.0)
+                reg_item = QTableWidgetItem(f"{reg_accuracy:.2f}%")
+                self.batch_results_table.setItem(row, 2, reg_item)
+
+                # Total diffs
+                total_diffs = metrics.get('total_diffs', 0)
+                diffs_item = QTableWidgetItem(str(total_diffs))
+                self.batch_results_table.setItem(row, 3, diffs_item)
+
+                # Status
+                status = result.get('status', 'unknown')
+                status_item = QTableWidgetItem(status.upper())
+
+                # Color-code status
+                if status == "success":
+                    status_item.setForeground(QColor("#4CAF50"))  # Green
+                elif status == "failed":
+                    status_item.setForeground(QColor("#f44336"))  # Red
+                else:
+                    status_item.setForeground(QColor("#FF9800"))  # Orange
+
+                self.batch_results_table.setItem(row, 4, status_item)
+
+                # Duration
+                duration = result.get('duration', 0.0)
+                duration_item = QTableWidgetItem(f"{duration:.2f}s")
+                self.batch_results_table.setItem(row, 5, duration_item)
+
+                # Reports (links)
+                artifacts = result.get('artifacts', {})
+                reports_text = []
+                if artifacts.get('heatmap_path'):
+                    reports_text.append("Heatmap")
+                if artifacts.get('comparison_path'):
+                    reports_text.append("Comparison")
+                reports_item = QTableWidgetItem(", ".join(reports_text) if reports_text else "N/A")
+                self.batch_results_table.setItem(row, 6, reports_item)
+
+            # Enable output buttons
+            self.batch_open_html_btn.setEnabled(True)
+            self.batch_open_csv_btn.setEnabled(True)
+            self.batch_open_json_btn.setEnabled(True)
+            self.batch_open_folder_btn.setEnabled(True)
+
+            # Store output directory for button handlers
+            self.current_batch_output_dir = output_path
+
+        except Exception as e:
+            self.batch_stats_label.setText(f"Error loading results: {str(e)}")
+
+    def open_batch_html_summary(self):
+        """Open batch HTML summary report"""
+        if hasattr(self, 'current_batch_output_dir'):
+            html_path = self.current_batch_output_dir / "batch_summary.html"
+            if html_path.exists():
+                import webbrowser
+                webbrowser.open(html_path.as_uri())
+            else:
+                QMessageBox.warning(self, "File Not Found", "HTML summary report not found")
+
+    def open_batch_csv(self):
+        """Open batch CSV export"""
+        if hasattr(self, 'current_batch_output_dir'):
+            csv_path = self.current_batch_output_dir / "batch_results.csv"
+            if csv_path.exists():
+                import webbrowser
+                webbrowser.open(csv_path.as_uri())
+            else:
+                QMessageBox.warning(self, "File Not Found", "CSV export not found")
+
+    def open_batch_json(self):
+        """Open batch JSON export"""
+        if hasattr(self, 'current_batch_output_dir'):
+            json_path = self.current_batch_output_dir / "batch_results.json"
+            if json_path.exists():
+                import webbrowser
+                webbrowser.open(json_path.as_uri())
+            else:
+                QMessageBox.warning(self, "File Not Found", "JSON export not found")
+
+    def open_batch_output_folder(self):
+        """Open batch output folder in file explorer"""
+        if hasattr(self, 'current_batch_output_dir'):
+            if self.current_batch_output_dir.exists():
+                import webbrowser
+                webbrowser.open(self.current_batch_output_dir.as_uri())
+            else:
+                QMessageBox.warning(self, "Folder Not Found", "Output folder not found")
 
     def load_settings(self):
         """Load saved settings from QSettings"""

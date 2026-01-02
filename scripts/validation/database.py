@@ -92,6 +92,97 @@ class ValidationDatabase:
             )
         """)
 
+        # Create batch_analysis_results table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS batch_analysis_results (
+                batch_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id INTEGER,
+                timestamp TEXT NOT NULL,
+
+                -- Batch configuration
+                dir_a TEXT NOT NULL,
+                dir_b TEXT NOT NULL,
+                frames INTEGER,
+
+                -- Aggregate metrics
+                total_pairs INTEGER,
+                successful INTEGER,
+                failed INTEGER,
+                partial INTEGER,
+                avg_frame_match REAL,
+                avg_register_accuracy REAL,
+                avg_voice1_accuracy REAL,
+                avg_voice2_accuracy REAL,
+                avg_voice3_accuracy REAL,
+
+                -- Best/worst
+                best_match_filename TEXT,
+                best_match_accuracy REAL,
+                worst_match_filename TEXT,
+                worst_match_accuracy REAL,
+
+                -- Performance
+                total_duration REAL,
+                avg_duration_per_pair REAL,
+
+                -- Output paths
+                html_report_path TEXT,
+                csv_path TEXT,
+                json_path TEXT,
+
+                FOREIGN KEY (run_id) REFERENCES validation_runs(run_id)
+            )
+        """)
+
+        # Create batch_analysis_pair_results table (per-pair details)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS batch_analysis_pair_results (
+                pair_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                batch_id INTEGER,
+
+                -- File information
+                filename_a TEXT NOT NULL,
+                filename_b TEXT NOT NULL,
+                path_a TEXT,
+                path_b TEXT,
+
+                -- Core metrics
+                frame_match_percent REAL,
+                register_accuracy REAL,
+                total_diffs INTEGER,
+
+                -- Voice 1 accuracy
+                voice1_freq REAL,
+                voice1_wave REAL,
+                voice1_adsr REAL,
+                voice1_pulse REAL,
+
+                -- Voice 2 accuracy
+                voice2_freq REAL,
+                voice2_wave REAL,
+                voice2_adsr REAL,
+                voice2_pulse REAL,
+
+                -- Voice 3 accuracy
+                voice3_freq REAL,
+                voice3_wave REAL,
+                voice3_adsr REAL,
+                voice3_pulse REAL,
+
+                -- Status
+                status TEXT,
+                error_message TEXT,
+                duration REAL,
+                frames_traced INTEGER,
+
+                -- Artifact paths
+                heatmap_path TEXT,
+                comparison_path TEXT,
+
+                FOREIGN KEY (batch_id) REFERENCES batch_analysis_results(batch_id)
+            )
+        """)
+
         self.conn.commit()
 
     def create_run(self, git_commit: Optional[str] = None,
@@ -313,6 +404,149 @@ class ValidationDatabase:
 
         with open(output_path, 'w') as f:
             json.dump(data, f, indent=2)
+
+    def add_batch_analysis(self, run_id: int, summary: Dict[str, Any],
+                          config: Dict[str, Any], output_paths: Dict[str, str]) -> int:
+        """Add a batch analysis result.
+
+        Args:
+            run_id: ID of the validation run
+            summary: BatchAnalysisSummary data
+            config: Batch configuration (dir_a, dir_b, frames)
+            output_paths: Dictionary with html_report_path, csv_path, json_path
+
+        Returns:
+            batch_id of the created batch analysis
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            INSERT INTO batch_analysis_results (
+                run_id, timestamp, dir_a, dir_b, frames,
+                total_pairs, successful, failed, partial,
+                avg_frame_match, avg_register_accuracy,
+                avg_voice1_accuracy, avg_voice2_accuracy, avg_voice3_accuracy,
+                best_match_filename, best_match_accuracy,
+                worst_match_filename, worst_match_accuracy,
+                total_duration, avg_duration_per_pair,
+                html_report_path, csv_path, json_path
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            run_id,
+            datetime.now().isoformat(),
+            config.get('dir_a', ''),
+            config.get('dir_b', ''),
+            config.get('frames', 0),
+            summary.get('total_pairs', 0),
+            summary.get('successful', 0),
+            summary.get('failed', 0),
+            summary.get('partial', 0),
+            summary.get('avg_frame_match', 0.0),
+            summary.get('avg_register_accuracy', 0.0),
+            summary.get('avg_voice1_accuracy', 0.0),
+            summary.get('avg_voice2_accuracy', 0.0),
+            summary.get('avg_voice3_accuracy', 0.0),
+            summary.get('best_match_filename', ''),
+            summary.get('best_match_accuracy', 0.0),
+            summary.get('worst_match_filename', ''),
+            summary.get('worst_match_accuracy', 0.0),
+            summary.get('total_duration', 0.0),
+            summary.get('avg_duration_per_pair', 0.0),
+            output_paths.get('html_report_path', ''),
+            output_paths.get('csv_path', ''),
+            output_paths.get('json_path', '')
+        ))
+
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def add_batch_pair_result(self, batch_id: int, pair_result: Dict[str, Any]) -> int:
+        """Add a batch analysis pair result.
+
+        Args:
+            batch_id: ID of the batch analysis
+            pair_result: PairAnalysisResult data
+
+        Returns:
+            pair_id of the created pair result
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            INSERT INTO batch_analysis_pair_results (
+                batch_id, filename_a, filename_b, path_a, path_b,
+                frame_match_percent, register_accuracy, total_diffs,
+                voice1_freq, voice1_wave, voice1_adsr, voice1_pulse,
+                voice2_freq, voice2_wave, voice2_adsr, voice2_pulse,
+                voice3_freq, voice3_wave, voice3_adsr, voice3_pulse,
+                status, error_message, duration, frames_traced,
+                heatmap_path, comparison_path
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            batch_id,
+            pair_result.get('filename_a', ''),
+            pair_result.get('filename_b', ''),
+            pair_result.get('path_a', ''),
+            pair_result.get('path_b', ''),
+            pair_result.get('frame_match_percent', 0.0),
+            pair_result.get('register_accuracy_overall', 0.0),
+            pair_result.get('total_diff_count', 0),
+            pair_result.get('voice1_freq', 0.0),
+            pair_result.get('voice1_wave', 0.0),
+            pair_result.get('voice1_adsr', 0.0),
+            pair_result.get('voice1_pulse', 0.0),
+            pair_result.get('voice2_freq', 0.0),
+            pair_result.get('voice2_wave', 0.0),
+            pair_result.get('voice2_adsr', 0.0),
+            pair_result.get('voice2_pulse', 0.0),
+            pair_result.get('voice3_freq', 0.0),
+            pair_result.get('voice3_wave', 0.0),
+            pair_result.get('voice3_adsr', 0.0),
+            pair_result.get('voice3_pulse', 0.0),
+            pair_result.get('status', 'pending'),
+            pair_result.get('error_message'),
+            pair_result.get('duration', 0.0),
+            pair_result.get('frames_traced', 0),
+            pair_result.get('heatmap_path'),
+            pair_result.get('comparison_path')
+        ))
+
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_batch_analysis_results(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get recent batch analysis results.
+
+        Args:
+            limit: Maximum number of results to return
+
+        Returns:
+            List of batch analysis results
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT * FROM batch_analysis_results
+            ORDER BY timestamp DESC
+            LIMIT ?
+        """, (limit,))
+
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_batch_pair_results(self, batch_id: int) -> List[Dict[str, Any]]:
+        """Get pair results for a specific batch.
+
+        Args:
+            batch_id: ID of the batch analysis
+
+        Returns:
+            List of pair results
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT * FROM batch_analysis_pair_results
+            WHERE batch_id = ?
+            ORDER BY filename_a
+        """, (batch_id,))
+
+        return [dict(row) for row in cursor.fetchall()]
 
     def close(self):
         """Close database connection."""
