@@ -524,12 +524,16 @@ def main():
             lines = f.readlines()
         print(f"Read {len(lines)} lines of assembly")
 
+    # Get actual load address (for PSID files, header.load_address might be 0)
+    parser = SIDParser(str(sid_file))
+    _, actual_load_addr = parser.get_c64_data(header)
+
     # Create file info dict for HTML generation (use actual header data)
     file_info = {
         'name': header.name or sid_file.name,
         'author': header.author or "Unknown",
         'copyright': header.copyright or "",
-        'load_address': header.load_address,
+        'load_address': header.load_address or actual_load_addr,  # Use actual if header is 0
         'init_address': header.init_address,
         'play_address': header.play_address,
         'songs': header.songs,
@@ -911,8 +915,52 @@ def add_label_hyperlinks(line: str, all_labels: set) -> str:
     return result
 
 
-def annotate_sidwinder_line(line: str) -> str:
-    """Add inline annotations to SIDwinder disassembly lines with memory map info"""
+def build_memory_map(load_address: int) -> dict:
+    """
+    Build C64 memory map, treating ROM areas as RAM if SID loads there.
+
+    When a SID file loads at $A000-$BFFF or $E000-$FFFF, those ROM areas
+    are actually being used as RAM (ROM is banked out).
+
+    Args:
+        load_address: SID file load address
+
+    Returns:
+        Dictionary mapping (start, end) ranges to region names
+    """
+    # Determine if ROM areas should be treated as RAM
+    basic_rom_is_ram = 0xA000 <= load_address <= 0xBFFF
+    kernal_rom_is_ram = 0xE000 <= load_address <= 0xFFFF
+
+    return {
+        (0x0000, 0x00FF): 'Zero Page',
+        (0x0100, 0x01FF): 'Stack',
+        (0x0200, 0x03FF): 'BASIC/KERNAL Variables',
+        (0x0400, 0x07FF): 'Screen RAM',
+        (0x0800, 0x0FFF): 'BASIC Program',
+        (0x1000, 0x1FFF): 'Program Memory',
+        (0x2000, 0x3FFF): 'Program Memory',
+        (0x4000, 0x7FFF): 'Program Memory',
+        (0x8000, 0x9FFF): 'Cartridge ROM',
+        (0xA000, 0xBFFF): 'RAM (BASIC ROM banked out)' if basic_rom_is_ram else 'BASIC ROM',
+        (0xC000, 0xCFFF): 'Program Memory',
+        (0xD000, 0xD3FF): 'VIC-II',
+        (0xD400, 0xD7FF): 'SID',
+        (0xD800, 0xDBFF): 'Color RAM',
+        (0xDC00, 0xDCFF): 'CIA #1',
+        (0xDD00, 0xDDFF): 'CIA #2',
+        (0xDE00, 0xDFFF): 'I/O',
+        (0xE000, 0xFFFF): 'RAM (KERNAL ROM banked out)' if kernal_rom_is_ram else 'KERNAL ROM'
+    }
+
+
+def annotate_sidwinder_line(line: str, load_address: int = 0x1000) -> str:
+    """Add inline annotations to SIDwinder disassembly lines with memory map info
+
+    Args:
+        line: Assembly line to annotate
+        load_address: SID file load address (for correct ROM/RAM mapping)
+    """
     import re
 
     # Strip ALL lines of their newlines first - we'll add exactly one back at the end
@@ -947,27 +995,8 @@ def annotate_sidwinder_line(line: str) -> str:
             return f'{code_part}{padding}//;  {comment_part}\n'
         return line + '\n'
 
-    # C64 Memory Map
-    MEMORY_MAP = {
-        (0x0000, 0x00FF): 'Zero Page',
-        (0x0100, 0x01FF): 'Stack',
-        (0x0200, 0x03FF): 'BASIC/KERNAL Variables',
-        (0x0400, 0x07FF): 'Screen RAM',
-        (0x0800, 0x0FFF): 'BASIC Program',
-        (0x1000, 0x1FFF): 'Program Memory',
-        (0x2000, 0x3FFF): 'Program Memory',
-        (0x4000, 0x7FFF): 'Program Memory',
-        (0x8000, 0x9FFF): 'Cartridge ROM',
-        (0xA000, 0xBFFF): 'BASIC ROM',
-        (0xC000, 0xCFFF): 'Program Memory',
-        (0xD000, 0xD3FF): 'VIC-II',
-        (0xD400, 0xD7FF): 'SID',
-        (0xD800, 0xDBFF): 'Color RAM',
-        (0xDC00, 0xDCFF): 'CIA #1',
-        (0xDD00, 0xDDFF): 'CIA #2',
-        (0xDE00, 0xDFFF): 'I/O',
-        (0xE000, 0xFFFF): 'KERNAL ROM'
-    }
+    # C64 Memory Map (dynamic based on SID load address)
+    MEMORY_MAP = build_memory_map(load_address)
 
     # SID Chip Register Map ($D400-$D41F)
     SID_REGISTERS = {
@@ -1233,30 +1262,13 @@ def generate_annotated_html_with_sections(input_path, file_info, sections, lines
     print("  Annotating assembly lines...")
     annotated_lines = []
 
-    # Memory map helper function
+    # Memory map helper function (uses the same build_memory_map logic)
     def get_memory_region(addr: int) -> str:
         """Get the memory region name for an address"""
-        MEMORY_MAP = {
-            (0x0000, 0x00FF): 'Zero Page',
-            (0x0100, 0x01FF): 'Stack',
-            (0x0200, 0x03FF): 'BASIC/KERNAL Variables',
-            (0x0400, 0x07FF): 'Screen RAM',
-            (0x0800, 0x0FFF): 'BASIC Program',
-            (0x1000, 0x1FFF): 'Program Memory',
-            (0x2000, 0x3FFF): 'Program Memory',
-            (0x4000, 0x7FFF): 'Program Memory',
-            (0x8000, 0x9FFF): 'Cartridge ROM',
-            (0xA000, 0xBFFF): 'BASIC ROM',
-            (0xC000, 0xCFFF): 'Program Memory',
-            (0xD000, 0xD3FF): 'VIC-II',
-            (0xD400, 0xD7FF): 'SID Registers',
-            (0xD800, 0xDBFF): 'Color RAM',
-            (0xDC00, 0xDCFF): 'CIA #1',
-            (0xDD00, 0xDDFF): 'CIA #2',
-            (0xDE00, 0xDFFF): 'I/O',
-            (0xE000, 0xFFFF): 'KERNAL ROM'
-        }
-        for (start, end), region in MEMORY_MAP.items():
+        # Use the same dynamic memory map based on load address
+        load_addr = file_info.get('load_address', 0x1000)
+        memory_map = build_memory_map(load_addr)
+        for (start, end), region in memory_map.items():
             if start <= addr <= end:
                 return region
         return 'Unknown'
@@ -1289,8 +1301,8 @@ def generate_annotated_html_with_sections(input_path, file_info, sections, lines
         # Add hyperlinks to labels (both definitions and references)
         line = add_label_hyperlinks(line, all_labels)
 
-        # Then annotate the line
-        annotated_line = annotate_sidwinder_line(line)
+        # Then annotate the line (with correct ROM/RAM mapping based on load address)
+        annotated_line = annotate_sidwinder_line(line, file_info.get('load_address', 0x1000))
 
         # Skip if annotation returned empty string (filtered blank line)
         if not annotated_line or not annotated_line.strip():

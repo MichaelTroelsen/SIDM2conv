@@ -1,8 +1,8 @@
 # HTML Annotation Tool - Interactive SID Analysis Generator
 
-**Version**: 1.0.0
-**Updated**: 2026-01-01
-**For**: SIDM2 v3.0.1+
+**Version**: 1.1.0
+**Updated**: 2026-01-02
+**For**: SIDM2 v3.1.0+
 
 Generate beautiful, interactive HTML documentation for SID files with comprehensive annotations, clickable navigation, and professional VS Code dark theme styling.
 
@@ -71,10 +71,17 @@ The HTML Annotation Tool (`generate_stinsen_html.py`) creates comprehensive, int
 
 ### 📈 **Analysis Pipeline**
 - **Automatic player detection** - Laxity NP21, SF2, etc.
+- **Dynamic ROM/RAM detection** - Correctly identifies ROM areas used as RAM
 - **6502 disassembly** - Using SIDwinder
 - **Code pattern detection** - 16-bit math, loops, etc.
 - **Label generation** - Meaningful names (Loop_ClearMemory)
 - **Symbol table** - Complete cross-reference
+
+### 🧠 **Smart Memory Mapping**
+- **Context-aware memory regions** - Detects when ROM is banked out
+- **$A000-$BFFF** marked as "RAM (BASIC ROM banked out)" when SID loads there
+- **$E000-$FFFF** marked as "RAM (KERNAL ROM banked out)" when SID loads there
+- **Accurate annotations** for Martin Galway and other pre-1986 SID files
 
 ---
 
@@ -370,6 +377,38 @@ instrument_table_addr = 0x1A6B
 voice_control_addr = 0x16A1
 sequence_data_addr = 0x1ACB  # If present
 ```
+
+### Dynamic ROM/RAM Detection
+
+The tool automatically detects when ROM areas are being used as RAM based on the SID load address:
+
+```python
+def build_memory_map(load_address: int) -> dict:
+    """
+    Build C64 memory map, treating ROM areas as RAM if SID loads there.
+
+    When a SID file loads at $A000-$BFFF or $E000-$FFFF, those ROM areas
+    are actually being used as RAM (ROM is banked out).
+    """
+    basic_rom_is_ram = 0xA000 <= load_address <= 0xBFFF
+    kernal_rom_is_ram = 0xE000 <= load_address <= 0xFFFF
+
+    return {
+        # ... other memory regions ...
+        (0xA000, 0xBFFF): 'RAM (BASIC ROM banked out)' if basic_rom_is_ram else 'BASIC ROM',
+        (0xE000, 0xFFFF): 'RAM (KERNAL ROM banked out)' if kernal_rom_is_ram else 'KERNAL ROM'
+    }
+```
+
+**Why This Matters**:
+- Early SID files (1982-1986) often loaded at $A000 (e.g., Martin Galway's Ocean Loader)
+- The C64 ROM must be banked out to use these areas as RAM
+- Incorrect labeling as "ROM" would be misleading in annotations
+- This ensures accurate memory region annotations in the HTML output
+
+**Examples**:
+- **Ocean Loader 1** (Martin Galway, 1985): Loads at $A000 → Annotated as "RAM (BASIC ROM banked out)"
+- **Stinsen's Last Night** (Laxity, 2006): Loads at $1000 → Annotated as "Program Memory"
 
 ### Annotation Functions
 

@@ -16,6 +16,7 @@ SIDM2 analyzes SID files and extracts music data for conversion to SID Factory I
 - ✅ **100% accuracy** for SF2-exported SID files (perfect roundtrip)
 - ✅ **Auto driver selection** based on player type detection
 - ✅ **HTML annotation tool** with 3,700+ semantic annotations per file
+- ✅ **Dynamic ROM/RAM detection** for accurate memory region annotations
 - ✅ **Interactive trace visualization** for frame-by-frame register analysis
 - ✅ **Validation dashboard** with enhanced search and accuracy trends
 - ✅ **200+ unit tests** with 100% pass rate
