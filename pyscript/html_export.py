@@ -1469,15 +1469,166 @@ def _get_html_footer() -> str:
             }, 300);
         }
 
-        // Search
-        document.getElementById('search').addEventListener('input', function(e) {
-            const query = e.target.value.toLowerCase();
-            const navItems = document.querySelectorAll('.nav-item');
+        // Enhanced Search with highlighting in assembly code and raw data
+        let currentMatches = [];
+        let currentMatchIndex = -1;
+        const searchInput = document.getElementById('search');
 
+        function clearHighlights() {
+            document.querySelectorAll('.search-highlight').forEach(el => {
+                el.outerHTML = el.textContent;
+            });
+            currentMatches = [];
+            currentMatchIndex = -1;
+        }
+
+        function highlightMatches(query) {
+            clearHighlights();
+            if (!query || query.length < 2) return;
+
+            // Search in assembly code section
+            const asmSection = document.querySelector('#assembly-code pre');
+            if (asmSection) {
+                highlightInElement(asmSection, query);
+            }
+
+            // Search in raw data sections
+            document.querySelectorAll('[id^="data-"] pre').forEach(section => {
+                highlightInElement(section, query);
+            });
+
+            // Update match count
+            updateMatchCount();
+
+            // Jump to first match
+            if (currentMatches.length > 0) {
+                jumpToMatch(0);
+            }
+        }
+
+        function highlightInElement(element, query) {
+            const walker = document.createTreeWalker(
+                element,
+                NodeFilter.SHOW_TEXT,
+                null,
+                false
+            );
+
+            const textNodes = [];
+            while (walker.nextNode()) {
+                textNodes.push(walker.currentNode);
+            }
+
+            textNodes.forEach(node => {
+                const text = node.textContent;
+                const lowerText = text.toLowerCase();
+                const lowerQuery = query.toLowerCase();
+                let index = 0;
+                let lastIndex = 0;
+                const fragments = [];
+
+                while ((index = lowerText.indexOf(lowerQuery, lastIndex)) !== -1) {
+                    // Add text before match
+                    if (index > lastIndex) {
+                        fragments.push(document.createTextNode(text.substring(lastIndex, index)));
+                    }
+
+                    // Add highlighted match
+                    const mark = document.createElement('span');
+                    mark.className = 'search-highlight';
+                    mark.textContent = text.substring(index, index + query.length);
+                    mark.style.backgroundColor = '#ffd700';
+                    mark.style.color = '#000';
+                    mark.style.padding = '2px 4px';
+                    mark.style.borderRadius = '3px';
+                    fragments.push(mark);
+                    currentMatches.push(mark);
+
+                    lastIndex = index + query.length;
+                }
+
+                // Add remaining text
+                if (lastIndex < text.length) {
+                    fragments.push(document.createTextNode(text.substring(lastIndex)));
+                }
+
+                // Replace node if we found matches
+                if (fragments.length > 0) {
+                    const parent = node.parentNode;
+                    fragments.forEach(frag => parent.insertBefore(frag, node));
+                    parent.removeChild(node);
+                }
+            });
+        }
+
+        function updateMatchCount() {
+            const countDisplay = document.getElementById('search-count');
+            if (countDisplay) {
+                if (currentMatches.length > 0) {
+                    countDisplay.textContent = `${currentMatchIndex + 1} of ${currentMatches.length} matches`;
+                    countDisplay.style.display = 'block';
+                } else {
+                    countDisplay.textContent = searchInput.value.length >= 2 ? 'No matches' : '';
+                    countDisplay.style.display = searchInput.value.length >= 2 ? 'block' : 'none';
+                }
+            }
+        }
+
+        function jumpToMatch(index) {
+            if (currentMatches.length === 0) return;
+
+            // Remove active class from current match
+            if (currentMatchIndex >= 0 && currentMatchIndex < currentMatches.length) {
+                currentMatches[currentMatchIndex].style.backgroundColor = '#ffd700';
+            }
+
+            // Set new index
+            currentMatchIndex = index;
+            if (currentMatchIndex < 0) currentMatchIndex = currentMatches.length - 1;
+            if (currentMatchIndex >= currentMatches.length) currentMatchIndex = 0;
+
+            // Highlight current match
+            const match = currentMatches[currentMatchIndex];
+            match.style.backgroundColor = '#ff6b35';
+            match.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            updateMatchCount();
+        }
+
+        // Search input handler
+        let searchTimeout;
+        searchInput.addEventListener('input', function(e) {
+            const query = e.target.value;
+
+            // Filter navigation items
+            const navItems = document.querySelectorAll('.nav-item');
             navItems.forEach(item => {
                 const text = item.textContent.toLowerCase();
-                item.style.display = text.includes(query) ? 'flex' : 'none';
+                item.style.display = text.includes(query.toLowerCase()) ? 'flex' : 'none';
             });
+
+            // Debounce content search
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                highlightMatches(query);
+            }, 300);
+        });
+
+        // Keyboard navigation (Enter for next, Shift+Enter for previous)
+        searchInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (currentMatches.length > 0) {
+                    jumpToMatch(e.shiftKey ? currentMatchIndex - 1 : currentMatchIndex + 1);
+                }
+            } else if (e.key === 'Escape') {
+                searchInput.value = '';
+                clearHighlights();
+                document.querySelectorAll('.nav-item').forEach(item => {
+                    item.style.display = 'flex';
+                });
+                updateMatchCount();
+            }
         });
 
         // Active navigation on scroll

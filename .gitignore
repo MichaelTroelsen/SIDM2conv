@@ -127,6 +127,24 @@ validation_*.html
 comparison_report.html
 roundtrip_output/
 test_output/
+batch_analysis_output/
+batch_test/results/
+batch_test/results*/
+batch_test/validation_test/
+
+# Annotated output files
+*_ANNOTATED.html
+*_ANNOTATED.asm
+*_ANNOTATED.txt
+
+# Demo and example scripts (root only)
+/demo_*.py
+/example_*.py
+
+# Common output files (root only)
+/output.txt
+/trace_output.txt
+/siddump_output.txt
 
 # Test data
 SIDSF2player/
