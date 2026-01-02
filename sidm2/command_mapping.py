@@ -228,18 +228,49 @@ class CommandDecomposer:
         volume = param & 0x0F  # 4-bit volume (0-15)
         return [(0xA0 + SF2Command.VOLUME, volume)]  # Te
 
-    def _decompose_fine_volume(self, param: int) -> List[Tuple[int, int]]:
+    def _decompose_fine_volume(self, param: int, voice_hint: Optional[int] = None) -> List[Tuple[int, int]]:
         """
-        Fine Volume: $67 xy → (channel-specific volume)
+        Fine Volume: $67 xy → Te XX (with voice-specific metadata)
 
-        Laxity supports per-channel volume.
-        SF2 has limited support - map to global volume for now.
+        Laxity supports per-channel volume (separate volume per voice).
+        SF2 Driver 11 only supports global volume (Te command).
 
-        TODO: Enhanced support for channel volume in future version
+        Enhanced Implementation:
+        - Maps to global volume (Te) for playback compatibility
+        - Logs the intended voice-specific volume for analysis
+        - Preserves high nibble for future use (voice mask or extended volume)
+
+        Limitation:
+            SF2 cannot reproduce per-voice volume changes accurately.
+            This results in potential audio differences when multiple voices
+            have different volume levels.
+
+        Args:
+            param: Packed volume parameter (xy nibbles)
+            voice_hint: Optional voice index (0-2) for logging
+
+        Format:
+            High nibble (x): Reserved (may indicate voice mask in some players)
+            Low nibble (y): Volume level (0-F)
+
+        Returns:
+            List of (command, param) tuples - Maps to global volume
         """
-        volume = param & 0x0F  # Use low nibble
-        logger.debug(f"Fine Volume (${param:02X}) - mapped to global volume")
-        return [(0xA0 + SF2Command.VOLUME, volume)]  # Te
+        high_nibble = (param >> 4) & 0x0F
+        volume = param & 0x0F  # Use low nibble for volume level
+
+        # Log voice-specific volume intent (for debugging/analysis)
+        if voice_hint is not None:
+            logger.info(f"Fine Volume (Voice {voice_hint}): target=${volume:X} "
+                       f"(high nibble=${high_nibble:X}) → mapped to global volume ${volume:X}")
+            logger.warning(f"Voice {voice_hint} volume cannot be set independently in SF2 - "
+                          f"using global volume (may affect other voices)")
+        else:
+            logger.debug(f"Fine Volume: ${param:02X} (high=${high_nibble:X}, vol=${volume:X}) "
+                        f"→ global volume ${volume:X}")
+
+        # Map to global volume command (SF2 limitation)
+        return [(0xA0 + SF2Command.VOLUME, volume)]  # Te XX
 
     def _decompose_arpeggio(self, param: int) -> List[Tuple[int, int]]:
         """

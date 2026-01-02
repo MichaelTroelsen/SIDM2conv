@@ -203,6 +203,57 @@ __all__ = [
 ]
 
 
+def _convert_midi_to_sequence_events(midi_sequences: dict) -> List[List[SequenceEvent]]:
+    """Convert MIDI-extracted sequences to SequenceEvent format.
+
+    MIDI extraction produces command bytes (notes + gate markers), but
+    ExtractedData.sequences needs full SequenceEvent objects with
+    (instrument, command, note) tuples.
+
+    Args:
+        midi_sequences: Dictionary with {'voice1': [bytes], 'voice2': [bytes], 'voice3': [bytes]}
+
+    Returns:
+        List of 3 sequences (one per voice), each containing SequenceEvent objects
+    """
+    logger = get_logger(__name__)
+
+    voice_names = ['voice1', 'voice2', 'voice3']
+    result_sequences = []
+
+    # Special markers
+    GATE_ON = 0x7E
+    GATE_OFF = 0x80
+    END_MARKER = 0x7F
+
+    for voice_name in voice_names:
+        command_bytes = midi_sequences.get(voice_name, [])
+        sequence_events = []
+
+        default_instrument = 0  # Use instrument 0 for MIDI-extracted notes
+
+        for cmd_byte in command_bytes:
+            if cmd_byte == GATE_ON:
+                # Gate ON marker: instrument=0x7E, command=0x7E, note=0x7E
+                event = SequenceEvent(instrument=0x7E, command=0x7E, note=GATE_ON)
+            elif cmd_byte == GATE_OFF:
+                # Gate OFF marker: instrument=0x80, command=0x80, note=0x80
+                event = SequenceEvent(instrument=0x80, command=0x80, note=GATE_OFF)
+            elif cmd_byte == END_MARKER:
+                # End marker: instrument=0x80, command=0x80, note=0x7F
+                event = SequenceEvent(instrument=0x80, command=0x80, note=END_MARKER)
+            else:
+                # Regular note: instrument=0 (default), command=0x00 (no effect), note=<value>
+                event = SequenceEvent(instrument=default_instrument, command=0x00, note=cmd_byte)
+
+            sequence_events.append(event)
+
+        result_sequences.append(sequence_events)
+        logger.debug(f"Converted {voice_name}: {len(command_bytes)} command bytes → {len(sequence_events)} SequenceEvents")
+
+    return result_sequences
+
+
 def detect_player_type(filepath: str) -> str:
     """Detect the player type of a SID file using player-id.exe
 
@@ -825,9 +876,11 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
                               f"V2={len(sequences.get('voice2', []))} events, "
                               f"V3={len(sequences.get('voice3', []))} events")
 
-                    # TODO: Integrate sequences into extracted data
-                    # For now, just log that we have them
-                    logger.info("  MIDI sequences extracted successfully (integration pending)")
+                    # Integrate MIDI sequences into extracted data
+                    midi_extracted_sequences = _convert_midi_to_sequence_events(sequences)
+                    if midi_extracted_sequences:
+                        extracted.sequences = midi_extracted_sequences
+                        logger.info(f"  MIDI sequences integrated successfully: {sum(len(s) for s in extracted.sequences)} total events")
 
                 finally:
                     # Clean up temporary MIDI file

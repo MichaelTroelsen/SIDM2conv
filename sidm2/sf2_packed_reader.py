@@ -76,6 +76,11 @@ class SF2PackedReader:
             9: "Init"
         }
 
+        # Music data block attributes (populated by parse_header_blocks)
+        self.orderlist_pointers = []
+        self.sequence_data_pointer = None
+        self.music_data_block = None
+
         self._load_file()
 
     def _load_file(self):
@@ -165,6 +170,8 @@ class SF2PackedReader:
                 # Parse specific blocks
                 if block_id == self.BLOCK_DRIVER_TABLES:
                     self._parse_driver_tables_block(current)
+                elif block_id == self.BLOCK_MUSIC_DATA:
+                    self._parse_music_data_block(current)
 
                 current += block_size
             else:
@@ -205,6 +212,46 @@ class SF2PackedReader:
                   f"{columns}x{rows} ({layout_str})")
 
             offset += 6
+
+    def _parse_music_data_block(self, block_addr: int):
+        """
+        Parse Block 5 (Music Data) to extract sequence pointers.
+
+        Block 5 contains pointers to:
+        - Orderlists (3 tracks, one per voice)
+        - Sequences (variable number of note/instrument/command data)
+
+        Format (typical Driver 11 layout):
+          Byte 0-1: Voice 1 orderlist pointer (address, little-endian)
+          Byte 2-3: Voice 2 orderlist pointer
+          Byte 4-5: Voice 3 orderlist pointer
+          Byte 6-7: Sequence data start pointer
+          Byte 8+:  Additional metadata (varies by driver)
+        """
+        block_size = self.get_word(block_addr + 1)
+        data_start = block_addr + 3
+
+        print("\n  Parsing Music Data block...")
+
+        # Extract orderlist pointers (3 voices × 2 bytes each)
+        self.orderlist_pointers = []
+        for voice in range(3):
+            offset = data_start + (voice * 2)
+            pointer = self.get_word(offset)
+            self.orderlist_pointers.append(pointer)
+            print(f"    Voice {voice + 1} orderlist: ${pointer:04X}")
+
+        # Extract sequence data pointer (if present)
+        sequence_data_offset = data_start + 6
+        if sequence_data_offset < block_addr + block_size:
+            self.sequence_data_pointer = self.get_word(sequence_data_offset)
+            print(f"    Sequence data start: ${self.sequence_data_pointer:04X}")
+        else:
+            self.sequence_data_pointer = None
+            print("    No sequence data pointer found")
+
+        # Store raw block data for further analysis
+        self.music_data_block = self.get_bytes(data_start, block_size - 3)
 
     def extract_table(self, table_id: int) -> Optional[List[List[int]]]:
         """Extract table data using its definition."""
@@ -258,10 +305,99 @@ class SF2PackedReader:
         return result
 
     def extract_sequences(self) -> Dict[int, bytes]:
-        """Extract sequence data."""
-        # TODO: Parse sequence pointers from Block 5 (Music Data)
-        # For now, return empty
-        return {}
+        """
+        Extract sequence data from Block 5 (Music Data).
+
+        Sequences in SF2 are packed event streams with format:
+          Byte 0: Instrument ($80 = no change, $A0-$BF = instrument+$A0)
+          Byte 1: Command ($80 = no change, $C0+ = command+$C0)
+          Byte 2: Note ($00-$5D = notes, $7E = gate on, $7F = end, $80 = gate off)
+
+        Returns:
+            Dictionary mapping sequence index to raw sequence bytes
+        """
+        sequences = {}
+
+        if not self.orderlist_pointers:
+            print("  No orderlist pointers found - Block 5 may not have been parsed")
+            return sequences
+
+        print("\nExtracting sequences...")
+
+        # Parse orderlists to find sequence indices referenced
+        sequence_indices = set()
+        for voice_idx, orderlist_ptr in enumerate(self.orderlist_pointers):
+            if orderlist_ptr == 0:
+                continue
+
+            # Read orderlist entries (each is 2 bytes: transpose + sequence_idx)
+            current = orderlist_ptr
+            entry_count = 0
+            max_entries = 256  # Safety limit
+
+            while entry_count < max_entries:
+                transpose = self.get_byte(current)
+                seq_idx = self.get_byte(current + 1)
+
+                # Check for end of orderlist (various termination markers)
+                if transpose == 0xFF or seq_idx == 0xFF:
+                    break
+
+                # Valid sequence index
+                if seq_idx != 0x80:  # 0x80 = empty/no sequence
+                    sequence_indices.add(seq_idx)
+
+                current += 2
+                entry_count += 1
+
+            print(f"  Voice {voice_idx + 1} orderlist: {entry_count} entries")
+
+        # Now extract the actual sequence data
+        # Sequences are typically stored contiguously after orderlists
+        # Each sequence is terminated by 0x7F (end marker)
+        if self.sequence_data_pointer and sequence_indices:
+            print(f"  Found {len(sequence_indices)} unique sequence indices: {sorted(sequence_indices)}")
+
+            # Try to extract sequences by scanning from sequence_data_pointer
+            # This is a heuristic approach - sequences stack like Tetris blocks
+            current = self.sequence_data_pointer
+            seq_idx = 0
+            max_sequences = max(sequence_indices) + 1 if sequence_indices else 256
+
+            for seq_idx in range(max_sequences):
+                if current >= self.load_address + len(self.data):
+                    break  # Reached end of data
+
+                sequence_bytes = []
+                max_bytes = 1024  # Safety limit per sequence
+                byte_count = 0
+
+                # Read sequence until end marker (0x7F in note column)
+                while byte_count < max_bytes:
+                    # Read 3 bytes per event (instrument, command, note)
+                    instrument = self.get_byte(current)
+                    command = self.get_byte(current + 1)
+                    note = self.get_byte(current + 2)
+
+                    sequence_bytes.extend([instrument, command, note])
+                    current += 3
+                    byte_count += 3
+
+                    # Check for end marker (0x7F in note position)
+                    if note == 0x7F:
+                        break
+
+                    # Additional safety check - if we hit all zeros, likely past data
+                    if instrument == 0 and command == 0 and note == 0:
+                        break
+
+                # Store sequence if it's referenced in orderlists
+                if seq_idx in sequence_indices and len(sequence_bytes) > 0:
+                    sequences[seq_idx] = bytes(sequence_bytes)
+                    print(f"    Sequence {seq_idx}: {len(sequence_bytes)} bytes")
+
+        print(f"  Extracted {len(sequences)} sequences")
+        return sequences
 
     def compare_with_original(self, original_sf2_path: str):
         """Compare extracted data with original SF2 file."""
