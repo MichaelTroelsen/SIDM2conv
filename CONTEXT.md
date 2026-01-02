@@ -1,45 +1,46 @@
 # SIDM2 Project Context
 
-**Version**: 3.0.1
-**Last Updated**: 2026-01-01
-**Status**: ✅ Clean State - HTML Annotation Tool Added
-**Current Focus**: Interactive SID analysis documentation
+**Version**: 3.1.0
+**Last Updated**: 2026-01-02
+**Status**: ✅ Clean State - Changelog Organization Complete
+**Current Focus**: Documentation maintenance and organization
 
 ---
 
 ## Current State Snapshot
 
-### What We're Working On RIGHT NOW (2026-01-01)
+### What We're Working On RIGHT NOW (2026-01-02)
 
-**Recently Completed & Committed**: ✅ **HTML Annotation Tool v1.0** (committed Jan 1, 2026)
+**Recently Completed & Committed**: ✅ **Changelog Split & Organization** (committed Jan 2, 2026)
 
-**Commit**: `bfdac30` - "feat: Add HTML Annotation Tool for interactive SID analysis"
+**Commit**: `7ae28f8` - "docs: Split CHANGELOG.md into versioned archives"
 
 **Implementation Summary**:
-- ✅ **Interactive HTML Documentation Generator** (3,700+ annotations per file)
-- ✅ **11 DataBlock_6 Sections Auto-Detected** (Voice Control, Pulse, Wave, Filter, Instruments, Sequences)
-- ✅ **7 Specialized Annotation Functions** (Note decoding, SID registers, table semantics)
-- ✅ **Clickable Navigation** (Table names → sections, addresses → hex dumps)
-- ✅ **Professional VS Code Dark Theme** (Syntax highlighting + collapsible sections)
-- ✅ **Complete Documentation** (544-line guide + README/CLAUDE updates)
+- ✅ **CHANGELOG.md Split**: 284KB → 148KB (48% size reduction)
+- ✅ **Organized Archives**: Split by major version (v0.x, v1.x, v2.x)
+- ✅ **4 New Archive Files** in `docs/archive/changelogs/`
+- ✅ **Complete History Preserved**: All 43 versions maintained
+- ✅ **Navigation Guide**: README.md with clear structure explanation
+- ✅ **Cross-file Links**: Easy navigation between current and archived versions
 
-**Files Added** (22 files, +38,484 insertions):
-- `pyscript/generate_stinsen_html.py` (470 lines) - Main generator with 7 annotation functions
-- `pyscript/html_export.py` (modified) - HTML export with navigation
-- `docs/guides/HTML_ANNOTATION_TOOL.md` (544 lines) - Comprehensive guide
-- `analysis/` (17 HTML examples) - Generated documentation files
+**Files Changed** (5 files, +6,591 insertions, -3,490 deletions):
+- `CHANGELOG.md` (modified) - Now contains v3.x only with archive links
+- `docs/archive/changelogs/CHANGELOG_v0.md` (new) - v0.1.0 to v0.6.2
+- `docs/archive/changelogs/CHANGELOG_v1.md` (new) - v1.0.0 to v1.4.0
+- `docs/archive/changelogs/CHANGELOG_v2.md` (new) - v2.0.0 to v2.10.0
+- `docs/archive/changelogs/README.md` (new) - Archive navigation guide
 
-**Current Uncommitted Changes**: Root cleanup in progress
+**Current Uncommitted Changes**: None (clean working tree)
 
-**Test Status**: ✅ **All tests passing** (200+ tests, zero failures)
+**Test Status**: ✅ **All tests passing** (260+ tests, zero failures)
 
 ### What Just Happened (Recent Commits)
 
-1. `bfdac30` - "feat: Add HTML Annotation Tool for interactive SID analysis" (Jan 1, 2026) ⭐ **Latest**
-2. `7311a6f` - "docs: Update all documentation to v3.0.1" (Dec 28, 2025)
-3. `371b167` - "docs: Update CHANGELOG.md for v3.0.1" (Dec 28, 2025)
-4. `f03c547` - "fix: Restore working Laxity driver" (Dec 28, 2025)
-5. `74489a9` - "release: v3.0.0 - Automatic SF2 Reference File Detection" (Dec 27, 2025)
+1. `7ae28f8` - "docs: Split CHANGELOG.md into versioned archives" (Jan 2, 2026) ⭐ **Latest**
+2. `8e8cd71` - "feat: Implement core pipeline improvements (MIDI sequences, channel volume, Block 5 parsing)" (Jan 2, 2026)
+3. `72f390e` - "docs: Add comprehensive developer documentation and visual guides" (Jan 2, 2026)
+4. `90e014a` - "docs: Update CHANGELOG for repository cleanup and archival" (Jan 2, 2026)
+5. `bfdac30` - "feat: Add HTML Annotation Tool for interactive SID analysis" (Jan 1, 2026)
 
 ---
 
@@ -113,6 +114,8 @@ SIDM2/
 ├── docs/                  # Documentation (50+ files)
 │   ├── guides/            # User guides + HTML_ANNOTATION_TOOL.md
 │   ├── reference/         # Technical references
+│   ├── archive/           # Archived documentation
+│   │   └── changelogs/    # Versioned changelog archives (v0.x, v1.x, v2.x)
 │   └── [various docs]
 ├── analysis/              # NEW: Generated HTML documentation
 ├── G5/drivers/            # SF2 driver templates
@@ -181,10 +184,10 @@ cleanup.bat --clean --force
 
 ## Notes for AI Assistants
 
-### Current Context (2026-01-01)
+### Current Context (2026-01-02)
 
-**Latest Work**: HTML Annotation Tool v1.0 (commit bfdac30, Jan 1, 2026)
-**Current State**: Clean - all tests passing, root cleanup in progress
+**Latest Work**: Changelog split and organization (commit 7ae28f8, Jan 2, 2026)
+**Current State**: Clean - all tests passing (260+), working tree clean
 **Repository**: 100% compliant with ROOT_FOLDER_RULES.md
 **Status**: Ready for continued work
 
@@ -210,6 +213,12 @@ cleanup.bat --clean --force
 
 ### Recent Features
 
+**Changelog Organization** (Jan 2, 2026):
+- Split CHANGELOG.md into versioned archives (48% size reduction)
+- Organized by major version for easier navigation
+- All 43 versions preserved with complete history
+- Archive navigation guide in `docs/archive/changelogs/README.md`
+
 **HTML Annotation Tool v1.0** (Jan 1, 2026):
 - Interactive HTML generator with 3,700+ annotations
 - 11 data sections, 7 annotation functions
@@ -233,10 +242,10 @@ cleanup.bat --clean --force
 - **Roadmap**: `docs/ROADMAP.md`
 - **Architecture**: `docs/ARCHITECTURE.md`
 - **Troubleshooting**: `docs/guides/TROUBLESHOOTING.md`
-- **Changelog**: `CHANGELOG.md`
+- **Changelog**: `CHANGELOG.md` (current v3.x), `docs/archive/changelogs/` (v0.x-v2.x archives)
 
 ---
 
-**Last Updated**: 2026-01-01
+**Last Updated**: 2026-01-02
 **Updated By**: Claude Sonnet 4.5
 **Next Review**: Before starting new work
