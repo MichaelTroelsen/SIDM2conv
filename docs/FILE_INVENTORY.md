@@ -1,6 +1,6 @@
 # File Inventory
 
-**Last Updated**: 2026-01-02 18:49:02
+**Last Updated**: 2026-01-02 18:53:40
 
 ## Repository Structure
 
@@ -225,6 +225,15 @@ SIDM2/
 │   │   │   ├── run_tests_comprehensive.py (4.6KB)
 │   │   │   ├── validate_tests.py (2.3KB)
 │   │   │   ├── verify_deployment.py (12.2KB)
+│   │   ├── orphaned_scripts/
+│   │   │   ├── analyze_waveforms.py (18.4KB)
+│   │   │   ├── ci_local.py (9.2KB)
+│   │   │   ├── compare_musical_content.py (3.1KB)
+│   │   │   ├── disassemble_sid.py (9.2KB)
+│   │   │   ├── extract_addresses.py (8.1KB)
+│   │   │   ├── extract_sf2_properly.py (20.1KB)
+│   │   │   ├── update_inventory.py (6.9KB)
+│   │   │   ├── validate_sf2_format.py (16.0KB)
 │   │   └── video_demo/
 │   │       ├── capture_screenshots.py (7.5KB)
 │   │       ├── setup-video-assets.bat (291B)
@@ -644,7 +653,7 @@ SIDM2/
 │   ├── DOCUMENTATION_CONSOLIDATION_ANALYSIS_2026-01-02.md (13.2KB)
 │   ├── DOCUMENTATION_CONSOLIDATION_EXECUTION_2026-01-02.md (15.2KB)
 │   ├── ENHANCED_PIPELINE_PLAN.md (14.9KB)
-│   ├── FILE_INVENTORY.md (217.9KB)
+│   ├── FILE_INVENTORY.md (216.7KB)
 │   ├── IMPROVEMENT_PLAN.md (18.4KB)
 │   ├── IMPROVEMENTS_TODO.md (26.4KB)
 │   ├── INDEX.md (27.0KB)
@@ -3338,13 +3347,7 @@ SIDM2/
 │       ├── batch_report_demo.html (27.0KB)
 ├── scripts/
 │   ├── __init__.py (908B)
-│   ├── analyze_waveforms.py (18.4KB)
-│   ├── ci_local.py (9.2KB)
-│   ├── compare_musical_content.py (3.1KB)
 │   ├── convert_all.py (48.5KB)
-│   ├── disassemble_sid.py (9.2KB)
-│   ├── extract_addresses.py (8.1KB)
-│   ├── extract_sf2_properly.py (20.1KB)
 │   ├── generate_dashboard.py (8.1KB)
 │   ├── generate_validation_report.py (17.9KB)
 │   ├── run_ci.bat (150B)
@@ -3365,8 +3368,6 @@ SIDM2/
 │   ├── test_sf2_format.py (10.0KB)
 │   ├── test_sf2_packer.py (10.5KB)
 │   ├── test_validation_system.py (11.3KB)
-│   ├── update_inventory.py (6.9KB)
-│   ├── validate_sf2_format.py (16.0KB)
 │   ├── validate_sid_accuracy.py (39.2KB)
 │   ├── autoit/
 │   │   ├── compile.bat (2.8KB)
