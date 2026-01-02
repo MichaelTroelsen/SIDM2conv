@@ -417,9 +417,6 @@ def _get_html_body_start(input_path: Path, file_info: dict, subroutines: Dict, s
                 </div>
             </div>
 
-            <h2>🔍 Quick Search</h2>
-            <input type="text" id="search" placeholder="Search addresses, names...">
-
             <h2>📑 Quick Jump</h2>
             <div style="margin-bottom: 20px;">
                 <button onclick="document.getElementById('player-structure').scrollIntoView({{behavior: 'smooth'}}); toggleSection('player-structure');"
@@ -1247,7 +1244,14 @@ def _get_full_assembly_section(lines: List[str], symbols: Dict, xrefs: Dict, cyc
             <div class="section">
                 <div class="section-header" onclick="toggleSection('full-asm')">
                     <span class="section-title">📜 Fully Annotated Assembly ({len(lines)} lines)</span>
-                    <span class="section-toggle">▼</span>
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <div style="position: relative;" onclick="event.stopPropagation();">
+                            <input type="text" id="asm-search" placeholder="Search code, data, addresses..."
+                                   style="padding: 8px 12px; background: #1e1e1e; border: 1px solid #3e3e42; border-radius: 4px; color: #cccccc; font-size: 13px; width: 500px; outline: none;">
+                            <div id="asm-search-count" style="position: absolute; top: 100%; left: 0; margin-top: 5px; font-size: 11px; color: #858585; white-space: nowrap; display: none;"></div>
+                        </div>
+                        <span class="section-toggle">▼</span>
+                    </div>
                 </div>
                 <div class="section-content" id="full-asm">
                     <div style="background: #1e1e1e; padding: 20px; border-radius: 6px; max-height: 800px; overflow-y: scroll; overflow-x: auto; border: 1px solid #3e3e42;">
@@ -1472,7 +1476,7 @@ def _get_html_footer() -> str:
         // Enhanced Search with highlighting in assembly code and raw data
         let currentMatches = [];
         let currentMatchIndex = -1;
-        const searchInput = document.getElementById('search');
+        const searchInput = document.getElementById('asm-search');
 
         function clearHighlights() {
             document.querySelectorAll('.search-highlight').forEach(el => {
@@ -1562,7 +1566,7 @@ def _get_html_footer() -> str:
         }
 
         function updateMatchCount() {
-            const countDisplay = document.getElementById('search-count');
+            const countDisplay = document.getElementById('asm-search-count');
             if (countDisplay) {
                 if (currentMatches.length > 0) {
                     countDisplay.textContent = `${currentMatchIndex + 1} of ${currentMatches.length} matches`;
@@ -1600,13 +1604,6 @@ def _get_html_footer() -> str:
         searchInput.addEventListener('input', function(e) {
             const query = e.target.value;
 
-            // Filter navigation items
-            const navItems = document.querySelectorAll('.nav-item');
-            navItems.forEach(item => {
-                const text = item.textContent.toLowerCase();
-                item.style.display = text.includes(query.toLowerCase()) ? 'flex' : 'none';
-            });
-
             // Debounce content search
             clearTimeout(searchTimeout);
             searchTimeout = setTimeout(() => {
@@ -1624,9 +1621,6 @@ def _get_html_footer() -> str:
             } else if (e.key === 'Escape') {
                 searchInput.value = '';
                 clearHighlights();
-                document.querySelectorAll('.nav-item').forEach(item => {
-                    item.style.display = 'flex';
-                });
                 updateMatchCount();
             }
         });

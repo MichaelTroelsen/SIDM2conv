@@ -111,6 +111,7 @@ SID/*.wav
 pytest.ini
 .pytest_cache/
 htmlcov/
+coverage_report/
 coverage.xml
 extracted_instruments.json
 
