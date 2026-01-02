@@ -439,6 +439,97 @@ Enhanced the HTML annotation tool to automatically detect when C64 ROM areas are
 
 ---
 
+### Cleanup - Repository Archival
+
+**✅ COMPLETED: Comprehensive audit and archival of obsolete Python files**
+
+Performed comprehensive audit of all 272 Python files in the repository to identify and archive obsolete scripts, experiments, and superseded utilities. Archived 54 Python files and 1 batch launcher, reducing codebase by 20% while preserving all production code.
+
+**Audit Process**:
+- **Total Files Analyzed**: 272 Python files
+- **Categorization**: 8 categories (BAT_CALLED, CORE_LIB, TESTS, SCRIPTS, PYSCRIPT_UTIL, EXPERIMENTS, COMPLIANCE, OTHER)
+- **Import Analysis**: Checked which utility files are actively imported by production code
+- **CI/CD Review**: Verified no GitHub Actions dependencies affected
+- **Documentation**: Created comprehensive ARCHIVAL_RECOMMENDATIONS.md (416 lines)
+
+**Categories Archived**:
+
+1. **Experiments/Temp** (7 files):
+   - `experiments/` directory (3 files)
+   - `temp/` directory (2 files)
+   - `pyscript/find_all_tempo.py`, `pyscript/verify_tempo_table.py`
+
+2. **Analysis Scripts** (25 files):
+   - One-time debugging/analysis scripts no longer needed
+   - Examples: `analyze_pointer_mapping.py`, `check_pipeline_accuracy.py`, `find_undetected_laxity.py`
+   - All located in `pyscript/`
+
+3. **Demo Scripts** (4 files):
+   - `demo_logging_and_errors.py`, `demo_manual_workflow.py`
+   - `example_autoit_usage.py`, `new_experiment.py`
+
+4. **Obsolete Utils** (8 files):
+   - `disassembler_6502.py` (superseded by `disasm6502.py`)
+   - `run_tests_comprehensive.py`, `validate_tests.py` (superseded by `test-all.bat`)
+   - `profile_conversion.py`, `verify_deployment.py`, `regenerate_laxity_patches.py`
+   - `generate_stinsen_html.py`, `audit_error_messages.py`
+
+5. **Video Demo Assets** (2 files + 1 .bat):
+   - `capture_screenshots.py`, `wav_to_mp3.py`
+   - `setup-video-assets.bat` (video creation completed)
+
+6. **Orphaned Scripts** (8 files):
+   - Scripts in `scripts/` not called by any .bat file
+   - Verified not used by CI/CD (GitHub Actions workflows checked)
+   - Examples: `ci_local.py`, `analyze_waveforms.py`, `compare_musical_content.py`
+   - Kept: `run_validation.py` (used by validation.yml), `scripts/validation/*` (imported as modules)
+
+**Archive Location**: `archive/cleanup_2026-01-02/`
+- Organized into subdirectories: `experimental/`, `analysis_scripts/`, `demo_scripts/`, `obsolete_utils/`, `video_demo/`, `orphaned_scripts/`
+- All archived files safely preserved for potential future restoration
+
+**Impact Statistics**:
+- **Before**: 272 Python files
+- **After**: 218 Python files
+- **Reduction**: 54 files (20%)
+- **Batch Files**: 1 archived (`setup-video-assets.bat`)
+- **Production Code**: 100% preserved (all active files kept)
+- **Tests**: 200+ tests continue to pass ✅
+- **Repository Size**: Minimal impact (~50-100 KB)
+
+**Files Preserved**:
+- ✅ All production GUI components (`cockpit_*_widgets.py`, `sf2_visualization_widgets.py`)
+- ✅ All core library modules (`sidm2/*`)
+- ✅ All test files (`test_*.py`)
+- ✅ All CI/CD scripts (validation pipeline, dashboard generation)
+- ✅ All batch launchers for active tools
+
+**Verification**:
+- ✅ Import checks passed (no broken imports)
+- ✅ Full test suite passed (200+ tests)
+- ✅ File inventory updated (`docs/FILE_INVENTORY.md`)
+- ✅ CI/CD workflows verified (no dependencies broken)
+
+**Documentation**:
+- **ARCHIVAL_RECOMMENDATIONS.md** (416 lines):
+  - Executive summary with statistics
+  - 6 categories with detailed file lists
+  - Step-by-step archival procedure
+  - Post-archival verification steps
+  - Complete rationale for each category
+
+**Commits**:
+- `bade8f1`: Archived categories 1-5 (46 files + 1 .bat)
+- `8db0990`: Archived category 6 after CI/CD review (8 files)
+
+**Rationale**:
+- **Maintainability**: Reduces cognitive load for new contributors
+- **Clarity**: Clearer separation of active vs historical code
+- **Preservation**: All archived files remain accessible in archive/
+- **Safety**: All production functionality preserved and tested
+
+---
+
 ## [3.0.2] - 2026-01-01
 
 ### Added - Windows Batch Launchers for Analysis Tools
