@@ -23,6 +23,251 @@ Complete architecture documentation for the SID to SF2 converter system.
                                          └─────────────┘
 ```
 
+### Detailed Conversion Pipeline
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          SID TO SF2 CONVERSION                           │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+                        ┌───────────────────────┐
+                        │  1. PARSE SID HEADER  │
+                        │  ├─ Magic (PSID/RSID)│
+                        │  ├─ Load Address      │
+                        │  ├─ Init/Play Addr    │
+                        │  └─ Metadata         │
+                        └───────────┬───────────┘
+                                    │
+                                    ▼
+                        ┌───────────────────────┐
+                        │ 2. IDENTIFY PLAYER    │
+                        │  (player-id.exe)      │
+                        └───────────┬───────────┘
+                                    │
+                    ┌───────────────┼───────────────┐
+                    │               │               │
+                    ▼               ▼               ▼
+          ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+          │  Laxity_     │ │ SidFactory_  │ │  NewPlayer_  │
+          │  NewPlayer_  │ │ II/Laxity    │ │  20.G4       │
+          │  V21         │ │ (SF2 export) │ │              │
+          └──────┬───────┘ └──────┬───────┘ └──────┬───────┘
+                 │                │                │
+                 ▼                ▼                ▼
+          ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+          │  Driver:     │ │  Driver:     │ │  Driver:     │
+          │  LAXITY      │ │  DRIVER11    │ │  NP20        │
+          └──────┬───────┘ └──────┬───────┘ └──────┬───────┘
+                 │                │                │
+                 └────────────────┼────────────────┘
+                                  │
+                                  ▼
+                        ┌───────────────────────┐
+                        │ 3. SELECT CONVERTER   │
+                        │  ├─ LaxityConverter   │
+                        │  └─ Driver11Converter │
+                        └───────────┬───────────┘
+                                    │
+                                    ▼
+                        ┌───────────────────────┐
+                        │ 4. EXTRACT TABLES     │
+                        │  ├─ Instruments (32)  │
+                        │  ├─ Wave Table        │
+                        │  ├─ Pulse Table       │
+                        │  ├─ Filter Table      │
+                        │  └─ Arpeggio Table    │
+                        └───────────┬───────────┘
+                                    │
+                                    ▼
+                        ┌───────────────────────┐
+                        │ 5. EXTRACT SEQUENCES  │
+                        │  ├─ Orderlists (v0-2) │
+                        │  ├─ Sequence Ptrs     │
+                        │  └─ Events (note+cmd) │
+                        └───────────┬───────────┘
+                                    │
+                                    ▼
+                        ┌───────────────────────┐
+                        │ 6. LOAD TEMPLATE      │
+                        │  (sf2driver_*.prg)    │
+                        │  ├─ Driver Code (~2KB)│
+                        │  └─ Empty Tables      │
+                        └───────────┬───────────┘
+                                    │
+                                    ▼
+                        ┌───────────────────────┐
+                        │ 7. APPLY PATCHES      │
+                        │  (Laxity: 40 patches) │
+                        │  Redirect table access│
+                        └───────────┬───────────┘
+                                    │
+                                    ▼
+                        ┌───────────────────────┐
+                        │ 8. INJECT DATA        │
+                        │  ├─ Tables → $1900+   │
+                        │  ├─ Sequences → SF2   │
+                        │  └─ Headers → $1700   │
+                        └───────────┬───────────┘
+                                    │
+                                    ▼
+                        ┌───────────────────────┐
+                        │ 9. WRITE OUTPUT       │
+                        │  output.sf2 (8-40 KB) │
+                        └───────────┬───────────┘
+                                    │
+                                    ▼
+                        ┌───────────────────────┐
+                        │ 10. VALIDATE          │
+                        │  ├─ Siddump compare   │
+                        │  ├─ Frame accuracy    │
+                        │  └─ Report (output.txt│
+                        └───────────────────────┘
+```
+
+### Driver Selection Decision Tree
+
+```
+                         Player Type Detected
+                                 │
+                 ┌───────────────┼───────────────┐
+                 │               │               │
+                 ▼               ▼               ▼
+        ┌────────────────┐ ┌────────────┐ ┌────────────┐
+        │ Contains       │ │ Contains   │ │ Contains   │
+        │ "SidFactory"?  │ │ "Laxity"?  │ │"NewPlayer"?│
+        └────┬───────────┘ └────┬───────┘ └─────┬──────┘
+             │                  │                │
+            YES                YES              YES
+             │                  │                │
+             ▼                  ▼                ▼
+        ┌─────────┐       ┌─────────┐      ┌─────────┐
+        │ Driver  │       │ Check   │      │ Check   │
+        │ 11      │       │ Variant │      │ Version │
+        │ 100%    │       └────┬────┘      └────┬────┘
+        └─────────┘            │                │
+                               │                │
+                    ┌──────────┼──────────┐     │
+                    │          │          │     │
+                    ▼          ▼          ▼     ▼
+              ┌──────────┐ ┌───────┐ ┌────┐ ┌────┐
+              │SidFactory│ │ Laxity│ │Vibr│ │NP20│
+              │_II/Laxity│ │_NP_V21│ │ants│ │    │
+              └─────┬────┘ └───┬───┘ └─┬──┘ └─┬──┘
+                    │          │       │      │
+                    │          │       │      │
+                    ▼          ▼       ▼      ▼
+              ┌──────────┐ ┌─────────────────────┐
+              │Driver 11 │ │   Laxity Driver     │
+              │(Author   │ │   (Player Format)   │
+              │ Laxity)  │ │   99.93% accuracy   │
+              └──────────┘ └─────────────────────┘
+
+CRITICAL: "SidFactory_II/Laxity" = Files created IN SF2 by author "Laxity"
+          "Laxity_NewPlayer_V21"   = Native Laxity player format
+```
+
+### Memory Layout Diagram (Laxity Driver in SF2)
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    C64 MEMORY (64KB)                         │
+├────────┬──────────┬──────────────────────────────────────────┤
+│ Addr   │ Size     │ Purpose                                  │
+├────────┼──────────┼──────────────────────────────────────────┤
+│ $0000  │ 256B     │ Zero Page (6502 registers, pointers)     │
+│ $0100  │ 256B     │ Stack (6502 hardware stack)              │
+│ $0200  │ 2.9KB    │ Free RAM                                 │
+├────────┼──────────┼──────────────────────────────────────────┤
+│ $0D7E  │ 130B     │ SF2 WRAPPER (init/play/stop entry)       │
+│        │          │   $0D7E: JMP init_routine                │
+│        │          │   $0D81: JMP play_routine                │
+│        │          │   $0D84: JMP stop_routine                │
+├────────┼──────────┼──────────────────────────────────────────┤
+│ $0E00  │ 2.3KB    │ RELOCATED LAXITY PLAYER CODE             │
+│        │          │   Original: $1000-$19FF                  │
+│        │          │   Offset: -$0200 (40 patches applied)    │
+│        │          │   Entry: $0E00 (was $1000)               │
+│        │          │   Play: $0EA1 (was $10A1)                │
+├────────┼──────────┼──────────────────────────────────────────┤
+│ $1700  │ 512B     │ SF2 HEADER BLOCKS                        │
+│        │          │   Block 0: Metadata                      │
+│        │          │   Block 1: Song/Track info               │
+│        │          │   Block 2-4: Reserved                    │
+├────────┼──────────┼──────────────────────────────────────────┤
+│ $1900  │ 256B     │ INSTRUMENTS (32 × 8 bytes)               │
+│        │          │   ADSR + table pointers                  │
+├────────┼──────────┼──────────────────────────────────────────┤
+│ $1A00  │ 256B     │ WAVE TABLE (48 × 5 bytes)                │
+│        │          │   Row-major interleaved pairs            │
+├────────┼──────────┼──────────────────────────────────────────┤
+│ $1B00  │ 256B     │ PULSE TABLE (pulse programs)             │
+├────────┼──────────┼──────────────────────────────────────────┤
+│ $1C00  │ 256B     │ FILTER TABLE (filter sweeps)             │
+├────────┼──────────┼──────────────────────────────────────────┤
+│ $1D00  │ 256B     │ ARPEGGIO TABLE (arpeggio programs)       │
+├────────┼──────────┼──────────────────────────────────────────┤
+│ $1E00  │ Var      │ ORDERLISTS (voice 0/1/2)                 │
+│        │          │   Sequence indices (ends with $FF)       │
+├────────┼──────────┼──────────────────────────────────────────┤
+│ $1F00  │ Var      │ SEQUENCES (up to 256)                    │
+│        │          │   Note+instrument+command events         │
+│        │          │   Ends with $7F (END) marker             │
+├────────┼──────────┼──────────────────────────────────────────┤
+│ $D000  │ 1KB      │ SID CHIP REGISTERS                       │
+│        │          │   $D400-$D418: Voice 1/2/3 + filter      │
+└────────┴──────────┴──────────────────────────────────────────┘
+```
+
+### Data Flow Through Modules
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                         CLI Entry Point                           │
+│                      scripts/sid_to_sf2.py                        │
+└──────────────────────┬───────────────────────────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                    ConversionPipeline                             │
+│                sidm2/conversion_pipeline.py                       │
+├──────────────────────────────────────────────────────────────────┤
+│ • parse_sid_header() → SIDMetadata                               │
+│ • identify_player_type() → player-id.exe                         │
+│ • select_driver() → DriverSelector                               │
+│ • select_converter() → LaxityConverter | Driver11Converter       │
+└──────────────────────┬───────────────────────────────────────────┘
+                       │
+       ┌───────────────┼───────────────┐
+       │               │               │
+       ▼               ▼               ▼
+┌─────────────┐ ┌─────────────┐ ┌─────────────┐
+│ Driver      │ │  Laxity     │ │   SF2       │
+│ Selector    │ │  Parser     │ │  Packer     │
+├─────────────┤ ├─────────────┤ ├─────────────┤
+│ • identify  │ │ • parse_inst│ │ • pack_data │
+│ • mappings  │ │ • parse_wave│ │ • inject    │
+│ • accuracy  │ │ • parse_seqs│ │ • template  │
+└─────────────┘ └──────┬──────┘ └──────┬──────┘
+                       │               │
+                       ▼               ▼
+                ┌──────────────────────────┐
+                │   Laxity Converter       │
+                │ sidm2/laxity_converter.py│
+                ├──────────────────────────┤
+                │ • load_template()        │
+                │ • apply_patches() (40)   │
+                │ • inject_data()          │
+                │ • write_sf2()            │
+                └────────────┬─────────────┘
+                             │
+                             ▼
+                ┌──────────────────────────┐
+                │   OUTPUT: output.sf2     │
+                │   8-40 KB, playable      │
+                └──────────────────────────┘
+```
+
 ---
 
 ## Conversion Flow

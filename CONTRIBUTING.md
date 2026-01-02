@@ -447,29 +447,109 @@ test(writer): add tests for template injection
 4. Reference related issues
 5. Request review
 
-## Adding New File Format Support
+## Developer Resources
 
-When adding support for a new player format:
+For comprehensive guides on advanced development topics:
+
+### **Developer Guide**
+**See**: `docs/guides/DEVELOPER_GUIDE.md` (~1,200 lines)
+
+Complete developer guide covering:
+- **Understanding the Codebase** - Module-by-module walkthrough
+- **Adding a New SF2 Driver** - Complete 9-step tutorial with code examples
+- **Adding Support for a New Player Type** - Parser development guide
+- **Debugging Conversion Issues** - Diagnostic workflows and tools
+- **Code Patterns and Idioms** - SIDM2 conventions
+- **Testing Guide** - Unit and integration testing
+- **Performance Optimization** - Profiling and bottleneck identification
+
+### **Architecture Documentation**
+**See**: `docs/ARCHITECTURE.md` (834 lines)
+
+Reference documentation including:
+- Detailed conversion pipeline flowcharts
+- Driver selection decision trees
+- Memory layout diagrams
+- Data flow diagrams
+- Module architecture
+
+### **Troubleshooting Flowcharts**
+**See**: `docs/guides/TROUBLESHOOTING_FLOWCHARTS.md` (~850 lines)
+
+Visual decision trees for:
+- Conversion failures
+- Low accuracy results
+- Driver selection issues
+- File not found errors
+- External tool problems
+- Test failures
+
+---
+
+## Adding a New SF2 Driver
+
+**For complete step-by-step guide, see**: `docs/guides/DEVELOPER_GUIDE.md` → "Adding a New SF2 Driver"
+
+### Quick Overview
+
+SF2 drivers are pre-built 6502 assembly programs that play music from SF2 format data structures.
+
+**The 9 Steps**:
+1. Research the target player format (disassemble, identify tables)
+2. Design driver architecture (Extract & Wrap vs Full Rewrite)
+3. Create driver template (`G5/drivers/my_driver/`)
+4. Implement pointer patching (redirect table access)
+5. Create converter class (`sidm2/my_driver_converter.py`)
+6. Integrate with driver selector (`sidm2/driver_selector.py`)
+7. Add tests (`pyscript/test_my_driver.py`)
+8. Write documentation (`G5/drivers/my_driver/README.md`)
+9. Validate (convert test files, measure accuracy)
+
+**Example**: See Laxity driver implementation:
+- Driver: `G5/drivers/laxity/`
+- Parser: `sidm2/laxity_parser.py`
+- Converter: `sidm2/laxity_converter.py`
+- Tests: `pyscript/test_laxity_*.py`
+- Result: 99.93% accuracy (40 pointer patches)
+
+---
+
+## Adding New Player Format Support
+
+**For complete step-by-step guide, see**: `docs/guides/DEVELOPER_GUIDE.md` → "Adding Support for a New Player Type"
+
+### Quick Overview
+
+When adding support for a new player format (e.g., GoatTracker, JCH):
 
 1. **Research phase**
-   - Document the format structure
-   - Identify data locations
+   - Disassemble player code (`tools/SIDwinder.exe disassemble`)
+   - Identify table locations and formats
+   - Document init/play addresses, memory layout
    - Create analysis tool
 
 2. **Implementation phase**
-   - Create parser class
-   - Add extraction methods
-   - Implement conversion logic
+   - Create parser class (`sidm2/myplayer_parser.py`)
+   - Implement table extraction methods (instruments, wave, pulse, sequences)
+   - Create converter class (`sidm2/myplayer_converter.py`)
+   - Integrate with conversion pipeline
 
 3. **Testing phase**
-   - Add unit tests
-   - Add integration tests with real files
-   - Test edge cases
+   - Add unit tests (`pyscript/test_myplayer_*.py`)
+   - Add integration tests with real SID files
+   - Test edge cases and boundary conditions
+   - Measure accuracy on test suite
 
 4. **Documentation phase**
    - Update README with format description
-   - Add usage examples
-   - Document limitations
+   - Add usage examples with expected accuracy
+   - Document limitations and known issues
+   - Update driver selector mappings
+
+**Example**: See Laxity parser implementation:
+- Parser: `sidm2/laxity_parser.py` (extracts instruments, wave table, sequences)
+- Integration: `sidm2/conversion_pipeline.py` (select_converter method)
+- Tests: `pyscript/test_laxity_parser.py` (38 tests)
 
 ## Checklist for Pull Requests
 
