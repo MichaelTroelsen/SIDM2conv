@@ -14,7 +14,7 @@ SIDM2/
 ├── batch-analysis.bat (1.7KB)
 ├── batch-convert-laxity.bat (559B)
 ├── batch-convert.bat (508B)
-├── CHANGELOG.md (277.1KB)
+├── CHANGELOG.md (147.8KB)
 ├── CLAUDE.md (7.8KB)
 ├── cleanup.bat (1.0KB)
 ├── cleanup_backup_20260101_185906.txt (857B)
@@ -693,6 +693,11 @@ SIDM2/
 │   │   ├── Stinsens_annotated.asm (8.3KB)
 │   │   ├── Stinsens_Last_Night_of_89_ANNOTATED_COMPLETE.asm (22.7KB)
 │   ├── archive/
+│   │   ├── changelogs/
+│   │   │   ├── CHANGELOG_v0.md (1.7KB)
+│   │   │   ├── CHANGELOG_v1.md (23.2KB)
+│   │   │   ├── CHANGELOG_v2.md (213.0KB)
+│   │   │   ├── README.md (2.0KB)
 │   │   ├── ALL_FIXES_SUMMARY.md (7.8KB)
 │   │   ├── ANNOTATED_DISASSEMBLY_INTEGRATION.md (12.3KB)
 │   │   ├── B2_B3_ACCURACY_RESULTS.md (8.0KB)
