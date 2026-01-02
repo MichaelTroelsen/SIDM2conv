@@ -1137,7 +1137,7 @@ def annotate_sidwinder_line(line: str, load_address: int = 0x1000) -> str:
             parts = line.split('//', 1)
             code_part = parts[0].rstrip()
 
-            # Expand tabs to spaces (8-space tab stops) for accurate length calculation
+            # Expand tabs to spaces (8-space tab stops) for accurate length calculation AND display
             code_part_expanded = code_part.expandtabs(8)
 
             # Extract just the first address from comments
@@ -1151,12 +1151,13 @@ def annotate_sidwinder_line(line: str, load_address: int = 0x1000) -> str:
             current_length = len(code_part_expanded)
             padding = ' ' * max(2, target_column - current_length)
 
+            # Use expanded code_part for consistent alignment (no tabs)
             if instruction_doc and addr_str:
-                line = f'{code_part}{padding};  {instruction_doc} //; {addr_str} [{memory_info}]'
+                line = f'{code_part_expanded}{padding};  {instruction_doc} //; {addr_str} [{memory_info}]'
             elif instruction_doc:
-                line = f'{code_part}{padding};  {instruction_doc}'
+                line = f'{code_part_expanded}{padding};  {instruction_doc}'
             elif addr_str:
-                line = f'{code_part}{padding}//; {addr_str} [{memory_info}]'
+                line = f'{code_part_expanded}{padding}//; {addr_str} [{memory_info}]'
         else:
             # No SIDwinder comment, just add instruction doc
             if instruction_doc:
@@ -1264,8 +1265,19 @@ def generate_annotated_html_with_sections(input_path, file_info, sections, lines
 
     # Memory map helper function (uses the same build_memory_map logic)
     def get_memory_region(addr: int) -> str:
-        """Get the memory region name for an address"""
-        # Use the same dynamic memory map based on load address
+        """Get the memory region name for an address
+
+        Priority:
+        1. Specific data sections (Wave Table, Pulse Table, etc.)
+        2. General memory map (RAM/ROM/Program Memory, etc.)
+        """
+        # First, check if address is within any extracted data section
+        # These take precedence over general memory regions
+        for section in sections:
+            if section.start_address <= addr <= section.end_address:
+                return section.name
+
+        # Fall back to general memory map based on load address
         load_addr = file_info.get('load_address', 0x1000)
         memory_map = build_memory_map(load_addr)
         for (start, end), region in memory_map.items():
