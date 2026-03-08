@@ -407,6 +407,23 @@ conversion-cockpit.bat
 - Auto-fallback to SID2WAV
 - Docs: [docs/VSID_INTEGRATION_GUIDE.md](docs/VSID_INTEGRATION_GUIDE.md)
 
+**Filter Accuracy Validator** (`pyscript/validate_filter_accuracy.py`):
+- Cross-validates extracted Laxity NP21 filter tables against cycle-accurate zig64 ground truth
+- Checks resonance byte, sweep speed, and mode bits per filter step
+- Ground truth: `SID/stinsen_sid_trace_300frames.csv` (300 frames, 1909 SID writes)
+- Usage: `python pyscript/validate_filter_accuracy.py [--sid F] [--csv F] [--verbose]`
+
+**Regenerator 2000 Labeler** (`pyscript/regen2000_label_laxity_np21.py`):
+- Auto-labels NP21 Laxity driver symbols in Regenerator 2000 via MCP HTTP
+- Marks filter tables, INIT/PLAY entry points, SMC regions
+- Usage: `python pyscript/regen2000_label_laxity_np21.py --port 3000`
+
+**zig64 SID Tracer** (`tools/sidm2-sid-trace.exe`):
+- Pre-built cycle-accurate C64 SID register tracer (Zig, zig64 library)
+- Output: CSV `frame,cycle,register,old_val,new_val` on stderr
+- Usage: `sidm2-sid-trace.exe file.prg [frames] [init_hex] [play_hex]`
+- Source: `C:\Users\mit\Downloads\zig64\src\examples\sidm2_sid_trace.zig`
+
 ---
 
 ### SID Inventory System (v2.9.0)

@@ -1651,7 +1651,11 @@ class SF2Writer:
         instrument_table_start = 0x1A81  # Matches patched pointer $1819 -> $1A81
         wave_table_start = 0x1942        # Matches patched pointer $16DA -> $1942
         pulse_table_start = 0x1E00       # Estimated (no specific patches found yet)
-        filter_table_start = 0x1A1E      # Laxity filter table address (from LaxityConverter.FILTER_ADDR)
+        # Laxity NP21 filter uses three parallel tables (confirmed via Regenerator 2000).
+        # $1A1E was wrong — it reads ch_seq_ptr_hi (sequence pointer bytes).
+        filter_seq_start  = 0x1989   # tbl_filter_seq:       cutoff control + mode bits
+        filter_spd_start  = 0x19A3   # tbl_filter_speed:     cutoff sweep delta
+        filter_res_start  = 0x19BD   # tbl_filter_resonance: resonance per step
 
         # Inject wave table - FIXED: Laxity uses TWO SEPARATE ARRAYS, not interleaved pairs
         if hasattr(self.data, 'wavetable') and self.data.wavetable:
@@ -1712,21 +1716,33 @@ class SF2Writer:
 
             logger.info(f"  Injected pulse table: {len(pulse_data)} bytes at ${pulse_table_start:04X}")
 
-        # Inject filter table
-        if hasattr(self.data, 'filtertable') and self.data.filtertable:  # RE-ENABLED after wave fix
-            filter_offset = addr_to_offset(filter_table_start)
+        # Inject filter tables (three parallel Laxity NP21 arrays)
+        if hasattr(self.data, 'filtertable') and self.data.filtertable:
             filter_data = self.data.filtertable
+            # filtertable is flat bytes: [seq, spd, res, next, seq, spd, res, next, ...]
+            # Each 4-byte group maps to one filter step across the 3 parallel arrays.
+            seq_bytes = bytearray()
+            spd_bytes = bytearray()
+            res_bytes = bytearray()
+            raw = bytes(filter_data) if not isinstance(filter_data, (bytes, bytearray)) else filter_data
+            for i in range(0, len(raw) - 3, 4):
+                seq_bytes.append(raw[i])
+                spd_bytes.append(raw[i + 1])
+                res_bytes.append(raw[i + 2])
 
-            # Ensure file is large enough
-            if len(self.output) < filter_offset + len(filter_data):
-                self.output.extend(bytearray(filter_offset + len(filter_data) - len(self.output)))
-
-            # Write filter table
-            for i, byte in enumerate(filter_data):
-                if isinstance(byte, (int, bytes)):
-                    self.output[filter_offset + i] = byte if isinstance(byte, int) else byte[0]
-
-            logger.info(f"  Injected filter table: {len(filter_data)} bytes at ${filter_table_start:04X}")
+            for start_addr, table_bytes, label in (
+                (filter_seq_start,  seq_bytes, 'filter_seq'),
+                (filter_spd_start,  spd_bytes, 'filter_speed'),
+                (filter_res_start,  res_bytes, 'filter_resonance'),
+            ):
+                if not table_bytes:
+                    continue
+                tbl_offset = addr_to_offset(start_addr)
+                if len(self.output) < tbl_offset + len(table_bytes):
+                    self.output.extend(bytearray(tbl_offset + len(table_bytes) - len(self.output)))
+                for i, byte in enumerate(table_bytes):
+                    self.output[tbl_offset + i] = byte
+                logger.info(f"  Injected {label}: {len(table_bytes)} bytes at ${start_addr:04X}")
 
         # Inject instrument table
         if self.data.instruments and len(self.data.instruments) > 0:  # RE-ENABLED for testing

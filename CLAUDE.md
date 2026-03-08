@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.1.1** | SID→SF2 Converter | C64 Music Tools | Updated 2026-01-02
+**SIDM2 v3.1.2** | SID→SF2 Converter | C64 Music Tools | Updated 2026-03-08
 
 Converts native Laxity NP21 SID files to SF2 format (99.93-100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -49,6 +49,7 @@ python pyscript/siddump_complete.py input.sid -t30           # Frame dump
 python pyscript/sidwinder_trace.py --trace out.txt input.sid # Trace (text)
 python pyscript/create_sid_inventory.py                      # SID catalog
 python pyscript/quick_disasm.py file.sid                     # Disassemble
+python pyscript/validate_filter_accuracy.py [--sid F] [--csv F] [--verbose]  # Filter accuracy vs zig64 ground truth
 
 # Testing & Automation
 test-batch-pyautogui.bat --directory G5/examples --max-files 10
@@ -76,6 +77,12 @@ Auto-selects best driver by player type: Native Laxity NP21 (Laxity_NewPlayer_V2
 **VSID** (`sidm2.vsid_wrapper`): SID→WAV via VICE, auto-fallback to SID2WAV. Docs: `docs/VSID_INTEGRATION_GUIDE.md`
 
 **SF2 Automation** (`sidm2.sf2_editor_automation`): PyAutoGUI auto-loading, 100% pass. Docs: `PYAUTOGUI_INTEGRATION_COMPLETE.md`
+
+**Filter Accuracy Validator** (`pyscript/validate_filter_accuracy.py`): Cross-validates Laxity NP21 filter tables extracted from SID binary against cycle-accurate zig64 ground truth trace. Checks resonance byte, sweep speed, and mode bits. Ground truth: `SID/stinsen_sid_trace_300frames.csv`
+
+**Regenerator 2000 Labeler** (`pyscript/regen2000_label_laxity_np21.py`): Auto-labels any NP21 file loaded in Regenerator 2000 via MCP HTTP. Run: `python pyscript/regen2000_label_laxity_np21.py --port 3000`
+
+**zig64 SID Tracer** (`tools/sidm2-sid-trace.exe`): Pre-built cycle-accurate SID register tracer. Usage: `sidm2-sid-trace.exe file.prg [frames] [init_hex] [play_hex]`. Output: CSV on stderr. Source: `C:\Users\mit\Downloads\zig64\src\examples\sidm2_sid_trace.zig`
 
 ---
 
@@ -150,6 +157,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.1.2** (2026-03-08): Filter accuracy validation pipeline (zig64 ground truth tracer, validate_filter_accuracy.py), Regenerator 2000 MCP auto-labeler, filter table fix ($1A1E→$1989/$19A3/$19BD correct NP21 offsets), pre-built sidm2-sid-trace.exe
 
 **v3.0.2** (2026-01-01): Interactive analysis features (Dashboard v2.0, HTML Trace, batch launchers, 33 tests)
 

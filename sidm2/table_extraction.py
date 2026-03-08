@@ -893,42 +893,40 @@ def find_and_extract_filter_table(data: bytes, load_addr: int, filter_ptrs: Opti
     if not data or len(data) < 64:
         raise TableExtractionError(f"Data too small for filter table extraction: {len(data) if data else 0} bytes")
 
-    # Try known Laxity NewPlayer v21 address first: $1A1E
-    LAXITY_FILTER_ADDR = 0x1A1E
-    if load_addr <= LAXITY_FILTER_ADDR and LAXITY_FILTER_ADDR < load_addr + len(data):
-        laxity_offset = LAXITY_FILTER_ADDR - load_addr
-        if laxity_offset + 16 < len(data):
-            # Try extracting from known address
-            entries = []
-            pos = laxity_offset
-            for entry_idx in range(16):
-                if pos + 4 > len(data):
-                    break
-
-                filter_val = data[pos]
-                # Check for end marker (0x7F)
-                if filter_val == 0x7F:
-                    break
-
-                count = data[pos + 1]
-                duration = data[pos + 2]
-                next_idx = data[pos + 3]
-
-                # Validate Y*4 format for next index
-                if next_idx != 0 and (next_idx % 4 != 0 or next_idx > 64):
-                    break
-
-                entries.append((filter_val, count, duration, next_idx))
-
-                # Stop at end marker (all zeros)
-                if filter_val == 0 and count == 0 and duration == 0 and next_idx == 0 and entry_idx > 0:
-                    break
-
-                pos += 4
-
-            # If we extracted a reasonable table from known address, use it
-            if len(entries) >= 2:
-                return LAXITY_FILTER_ADDR, entries
+    # Try Laxity NewPlayer v21 three parallel filter tables first.
+    # Confirmed via Regenerator 2000 disassembly of Stinsens_Last_Night_of_89.prg:
+    #   tbl_filter_seq      = load_addr + $0989  (cutoff control + mode bits per step)
+    #   tbl_filter_speed    = load_addr + $09A3  (cutoff sweep delta per step)
+    #   tbl_filter_resonance= load_addr + $09BD  (resonance value per step)
+    # Each table has up to 26 entries; $7F in tbl_filter_seq marks end of a program.
+    # The old $1A1E address was wrong — it reads ch_seq_ptr_hi (sequence pointer data).
+    NP21_SEQ_OFFSET  = 0x0989   # $1989 - $1000
+    NP21_SPD_OFFSET  = 0x09A3   # $19A3 - $1000
+    NP21_RES_OFFSET  = 0x09BD   # $19BD - $1000
+    NP21_MAX_ENTRIES = 26
+    seq_start  = load_addr + NP21_SEQ_OFFSET
+    spd_start  = load_addr + NP21_SPD_OFFSET
+    res_start  = load_addr + NP21_RES_OFFSET
+    if (load_addr <= seq_start < load_addr + len(data) and
+            res_start + NP21_MAX_ENTRIES <= load_addr + len(data)):
+        seq_off = NP21_SEQ_OFFSET
+        spd_off = NP21_SPD_OFFSET
+        res_off = NP21_RES_OFFSET
+        entries = []
+        for i in range(NP21_MAX_ENTRIES):
+            seq_byte = data[seq_off + i]
+            spd_byte = data[spd_off + i]
+            res_byte = data[res_off + i]
+            # Map three parallel bytes to the (filter_val, count, duration, next_idx) tuple.
+            # seq_byte: bit7=1 → new filter step (bits 6-4 = mode, bits 3-0 = target idx)
+            #           bit7=0 → hold duration count
+            # spd_byte: cutoff sweep delta per frame
+            # res_byte: resonance (or step duration when seq_byte bit7=1)
+            entries.append((seq_byte, spd_byte, res_byte, 0))
+            if seq_byte == 0x7F:   # end-of-program marker — include it then stop
+                break
+        if len(entries) >= 2:
+            return seq_start, entries
 
     best_addr = 0
     best_entries = []
