@@ -42,16 +42,40 @@ NP21_LABELS = {
     0x1003: ("PLAY",   "Laxity NP21 PLAY entry - JMP to play routine (addr varies per song)"),
 
     # Filter sequencer tables (confirmed identical offset in all NP21 files)
-    0x1989: ("tbl_filter_seq",        "$7F = end-of-program; cutoff control + mode bits per step"),
-    0x19A3: ("tbl_filter_speed",      "Cutoff sweep delta per step"),
-    0x19BD: ("tbl_filter_resonance",  "Resonance value per step"),
+    0x1989: ("tbl_filter_seq",        "Multi-program filter table. $7F=end-of-program; bit7=1 NEW_STEP (bits6-4=mode, bits3-0=loop target); bit7=0 HOLD. 26 entries."),
+    0x19A3: ("tbl_filter_speed",      "Cutoff sweep delta per HOLD frame (16-bit accumulator low byte). 26 entries."),
+    0x19BD: ("tbl_filter_resonance",  "Resonance ($D417) written at NEW_STEP activation. 26 entries."),
+
+    # Effect/command dispatch tables (fixed offset in NP21, Stinsen-verified)
+    0x1200: ("effect_handler",    "Entry: load ch_fx_arg,x. If bit7 set -> cmd_with_arg, else skip"),
+    0x120A: ("cmd_with_arg",      "Mask fx_arg to 6 bits, lookup tbl_fx_category, patch smc_cmd_handler dispatch"),
+    0x1222: ("fx_slide_down",     "Portamento slide down: speed from tbl_fx_speed, target from tbl_fx_param"),
+    0x1233: ("fx_slide_up",       "Portamento slide up"),
+    0x1244: ("fx_portamento_dn",  "Portamento down with target"),
+    0x125D: ("fx_portamento_up",  "Portamento up with target"),
+    0x127B: ("fx_set_volume",     "Set master volume (lower nibble of tbl_fx_param[y] -> a1785 / $D418 bits 0-3)"),
+    0x1286: ("cmd_dispatch",      "SMC dispatch: sec; bcs [smc_cmd_handler]. Branch offset at $1288 patched by effect_handler."),
+    0x12AA: ("fx_set_adsr",       "Set ADSR: attack/decay from tbl_fx_speed, sustain/release from tbl_fx_param"),
+    0x12B9: ("fx_note_offset",    "Set note offset and attack/decay from tbl_fx_speed"),
+    0x12C2: ("fx_arpeggio_step",  "Set arpeggio step: base_freq_hi and sustain/release from tbl_fx_param"),
+    0x12CE: ("fx_portamento_delay", "Set portamento counter from tbl_fx_param"),
+    0x12D7: ("fx_set_filter",     "Start filter program: step_cnt=$80, seek target=tbl_fx_param[y]-1, seq_idx=0. tbl_fx_param[y] is Y-index into 26-entry filter table."),
+    0x12ED: ("fx_set_pulse",      "Start pulse sequence: pulse_seq_idx from tbl_fx_param, pulse_step_cnt=0"),
+
+    # Effect parameter tables
+    0x1875: ("tbl_fx_category",   "4-byte table: maps (fx_arg & $3F) to effect category. Lower nibble = dispatch index into tbl_effect_type."),
+    0x1896: ("tbl_fx_speed",      "26-byte effect speed/direction table. Indexed by (fx_arg & $3F). Used as portamento speed; bit7=direction."),
+    0x18B7: ("tbl_fx_param",      "21-byte effect secondary parameter. Indexed by (fx_arg & $3F). Used as portamento target, filter seek, arpeggio step, etc."),
 }
 
 NP21_DATA_REGIONS = [
     # (start, end_exclusive, description)
-    (0x1989, 0x199D, "byte"),   # tbl_filter_seq    (20 entries max)
-    (0x19A3, 0x19B7, "byte"),   # tbl_filter_speed  (20 entries max)
-    (0x19BD, 0x19D1, "byte"),   # tbl_filter_resonance (20 entries max)
+    (0x1989, 0x19A3, "byte"),   # tbl_filter_seq         (26 entries)
+    (0x19A3, 0x19BD, "byte"),   # tbl_filter_speed        (26 entries)
+    (0x19BD, 0x19D7, "byte"),   # tbl_filter_resonance    (26 entries)
+    (0x1875, 0x1879, "byte"),   # tbl_fx_category         (4 entries)
+    (0x1896, 0x18B6, "byte"),   # tbl_fx_speed            (26 entries, last byte $18B6 is $00 padding)
+    (0x18B7, 0x18CC, "byte"),   # tbl_fx_param            (21 entries)
 ]
 
 
@@ -127,8 +151,8 @@ class RegenMCP:
     def set_label(self, addr, name):
         return self.call("r2000_set_label_name", {"address": addr, "name": name})
 
-    def set_comment(self, addr, text):
-        return self.call("r2000_set_comment", {"address": addr, "comment": text})
+    def set_comment(self, addr, text, ctype="line"):
+        return self.call("r2000_set_comment", {"address": addr, "comment": text, "type": ctype})
 
     def set_dtype(self, start, end, dtype):
         return self.call("r2000_set_data_type", {
