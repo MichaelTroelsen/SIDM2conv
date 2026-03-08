@@ -62,8 +62,13 @@ def load_prg_data(prg_path: str, sid_path: str) -> tuple[bytes, int]:
         raise FileNotFoundError(f"Neither {prg_path} nor {sid_path} found")
 
 
-def extract_filter_tables(data: bytes, load_addr: int) -> dict:
-    """Extract the three NP21 filter tables from binary data."""
+def extract_filter_tables(data: bytes, load_addr: int, full: bool = False) -> dict:
+    """Extract the three NP21 filter tables from binary data.
+
+    The NP21 filter table is a collection of PROGRAMS at different Y indices,
+    separated by $7F markers. The 'steps' list stops at the first $7F (first
+    program boundary). 'all_steps' contains all 26 entries for cross-program search.
+    """
     seq_off  = NP21_SEQ_OFFSET
     spd_off  = NP21_SPD_OFFSET
     res_off  = NP21_RES_OFFSET
@@ -75,14 +80,17 @@ def extract_filter_tables(data: bytes, load_addr: int) -> dict:
             f"Data too short: need {needed} bytes from load addr, have {len(data)}"
         )
 
-    steps = []
+    steps = []       # first program only (stops at $7F)
+    all_steps = []   # full 26-entry table (all programs)
     for i in range(NP21_MAX_ENTRIES):
         seq = data[seq_off + i]
         spd = data[spd_off + i]
         res = data[res_off + i]
-        steps.append({'seq': seq, 'spd': spd, 'res': res})
-        if seq == NP21_END_MARKER:
-            break
+        all_steps.append({'idx': i, 'seq': seq, 'spd': spd, 'res': res})
+        if not steps or steps[-1]['seq'] != NP21_END_MARKER:
+            steps.append({'idx': i, 'seq': seq, 'spd': spd, 'res': res})
+            if seq == NP21_END_MARKER:
+                pass  # keep going for all_steps but steps is now "done"
 
     return {
         'load_addr': load_addr,
@@ -90,6 +98,7 @@ def extract_filter_tables(data: bytes, load_addr: int) -> dict:
         'tbl_filter_speed_addr':     load_addr + spd_off,
         'tbl_filter_resonance_addr': load_addr + res_off,
         'steps': steps,
+        'all_steps': all_steps,
     }
 
 
@@ -303,28 +312,31 @@ def validate(tables: dict, events: dict) -> list[str]:
                 )
 
     # --- Check 3: Filter mode per program step ---
-    # NP21 seq_byte bit7=1: NEW_STEP, bits 6-4 map to SID $D418 filter mode bits.
-    # $D418 layout: bit6=HP, bit5=BP, bit4=LP.
-    # We compare each NEW_STEP entry against the corresponding mode_vol write in trace.
-    # First activation → step with target!=0 (step 0, $9F); subsequent → mode_change_frame.
+    # VERIFIED: NP21 seq_byte bit7=1 = NEW_STEP. Bits 6-4 (seq & $70) map directly to
+    # SID $D418 bits 6-4 (bit6=HP, bit5=BP, bit4=LP). No further decoding needed.
+    # The active filter program may start at a Y index > 0 (e.g. Y=19 for Stinsen).
+    # We search all_steps for any NEW_STEP entry whose mode bits match each observed event.
     mode_frames = [f for f in frames if 'filter_mode_volume' in events[f]
                    and f >= (first_res_frame or 0)]
-    new_steps = [s for s in steps if (s['seq'] & 0x80) and s['seq'] != NP21_END_MARKER]
-    if mode_frames and new_steps:
-        # Pair observed mode_vol frames with NEW_STEP entries in order
-        for i, (frame, step) in enumerate(zip(mode_frames, new_steps)):
-            mode_vol = events[frame]['filter_mode_volume']
-            obs_mode = (mode_vol >> 4) & 0x07
-            ext_mode = (step['seq'] >> 4) & 0x07
-            match = "OK" if obs_mode == ext_mode else "INFO"
+    all_steps = tables.get('all_steps', tables['steps'])
+    for frame in mode_frames:
+        mode_vol = events[frame]['filter_mode_volume']
+        obs_mode = (mode_vol >> 4) & 0x07
+        matching = [s for s in all_steps
+                    if (s['seq'] & 0x80) and s['seq'] != NP21_END_MARKER
+                    and ((s['seq'] & 0x70) >> 4) == obs_mode]
+        if matching:
+            m = matching[0]
             results.append(
-                f"[{match}] Mode step[{i}]: binary=0b{ext_mode:03b} (seq=${step['seq']:02X}), "
-                f"trace=0b{obs_mode:03b} (mode_vol=${mode_vol:02X} at frame {frame})"
+                f"[OK] Mode frame {frame}: D418=${mode_vol:02X} mode=0b{obs_mode:03b}, "
+                f"matched by all_steps[{m['idx']}] seq=${m['seq']:02X} "
+                f"(seq&$70=${m['seq'] & 0x70:02X})"
             )
-    results.append(
-        "[INFO] Note: NP21 seq_byte mode encoding not fully reversed - "
-        "mode checks are indicative only"
-    )
+        else:
+            results.append(
+                f"[MISMATCH] Mode frame {frame}: D418=${mode_vol:02X} mode=0b{obs_mode:03b}, "
+                f"no matching NEW_STEP found in table"
+            )
 
     # --- Check 4: Address sanity ---
     # Verify the three table addresses are correct by checking resonance match
