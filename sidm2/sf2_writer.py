@@ -1604,39 +1604,49 @@ class SF2Writer:
         sequence_start = orderlist_start + (3 * 256)  # After 3 orderlist tracks
         sequence_offset = addr_to_offset(sequence_start)
 
-        if self.data.sequences and len(self.data.sequences) > 0:
-            logger.info(f"  Injecting {len(self.data.sequences)} sequences...")
+        # Prefer raw_sequences for Laxity driver: the NP21 player reads native sequence
+        # bytes directly, so we must inject them verbatim. The translated self.data.sequences
+        # only carries note events and silently drops all command bytes (filter triggers $C4/$CC,
+        # portamento $81, etc.), causing 0% filter accuracy and other playback errors.
+        raw_seqs = getattr(self.data, 'raw_sequences', None) or []
+        seq_source = raw_seqs if raw_seqs else (self.data.sequences or [])
+        seq_source_label = "raw" if raw_seqs else "translated"
+
+        if seq_source:
+            logger.info(f"  Injecting {len(seq_source)} sequences ({seq_source_label})...")
             current_offset = sequence_offset
 
-            for seq_idx, sequence in enumerate(self.data.sequences):
+            for seq_idx, sequence in enumerate(seq_source):
                 if not sequence:
                     continue
 
-                # Write sequence data (native Laxity format)
-                seq_bytes = bytearray()
+                if isinstance(sequence, (bytes, bytearray)):
+                    # Raw bytes — inject verbatim (preserves all NP21 commands)
+                    seq_bytes = bytearray(sequence)
+                    # Ensure terminated with $7F if not already
+                    if not seq_bytes or seq_bytes[-1] != 0x7F:
+                        seq_bytes.append(0x7F)
+                else:
+                    # Translated event list fallback
+                    seq_bytes = bytearray()
+                    for event in sequence:
+                        if isinstance(event, dict):
+                            note = event.get('note', 0)
+                            gate = event.get('gate', False)
+                            if gate:
+                                seq_bytes.append(0x7E)
+                            seq_bytes.append(note & 0x7F)
+                        elif isinstance(event, int):
+                            seq_bytes.append(event & 0xFF)
+                    seq_bytes.append(0x7F)
 
-                for event in sequence:
-                    if isinstance(event, dict):
-                        # Extract note/command
-                        note = event.get('note', 0)
-                        duration = event.get('duration', 1)
-                        gate = event.get('gate', False)
+                # Extend output if needed
+                if current_offset + len(seq_bytes) > len(self.output):
+                    self.output.extend(bytearray(
+                        current_offset + len(seq_bytes) - len(self.output)))
 
-                        # Laxity sequence format varies, use simple note encoding
-                        if gate:
-                            seq_bytes.append(0x7E)  # Gate on marker
-                        seq_bytes.append(note & 0x7F)
-
-                    elif isinstance(event, int):
-                        seq_bytes.append(event & 0xFF)
-
-                # Write sequence end marker
-                seq_bytes.append(0x7F)
-
-                # Copy to output
                 for i, byte in enumerate(seq_bytes):
-                    if current_offset + i < len(self.output):
-                        self.output[current_offset + i] = byte
+                    self.output[current_offset + i] = byte
 
                 logger.debug(f"    Sequence {seq_idx}: {len(seq_bytes)} bytes at ${current_offset:04X}")
                 current_offset += len(seq_bytes)
@@ -1743,6 +1753,24 @@ class SF2Writer:
                 for i, byte in enumerate(table_bytes):
                     self.output[tbl_offset + i] = byte
                 logger.info(f"  Injected {label}: {len(table_bytes)} bytes at ${start_addr:04X}")
+
+        # Inject command table (NP21 indirect command dispatch table)
+        # Each sequence command byte $C0+n references entry n in this table.
+        # Entries are (cmd_byte, param_byte) pairs. Without this table, filter
+        # commands ($C4/$CC) and portamento ($81) commands are all silently mis-fired.
+        cmd_addrs = (getattr(self.data, 'extraction_addresses', None) or {}).get('commands')
+        c64_data = getattr(self.data, 'c64_data', None)
+        if cmd_addrs and c64_data:
+            cmd_addr, cmd_end, cmd_size = cmd_addrs
+            src_offset = cmd_addr - self.data.load_address
+            if 0 <= src_offset and src_offset + cmd_size <= len(c64_data):
+                cmd_bytes = bytes(c64_data[src_offset:src_offset + cmd_size])
+                cmd_file_off = addr_to_offset(cmd_addr)
+                if len(self.output) < cmd_file_off + cmd_size:
+                    self.output.extend(bytearray(cmd_file_off + cmd_size - len(self.output)))
+                for i, byte in enumerate(cmd_bytes):
+                    self.output[cmd_file_off + i] = byte
+                logger.info(f"  Injected command table: {cmd_size} bytes at ${cmd_addr:04X}")
 
         # Inject instrument table
         if self.data.instruments and len(self.data.instruments) > 0:  # RE-ENABLED for testing

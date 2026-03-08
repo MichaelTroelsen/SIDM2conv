@@ -917,14 +917,16 @@ def find_and_extract_filter_table(data: bytes, load_addr: int, filter_ptrs: Opti
             seq_byte = data[seq_off + i]
             spd_byte = data[spd_off + i]
             res_byte = data[res_off + i]
-            # Map three parallel bytes to the (filter_val, count, duration, next_idx) tuple.
-            # seq_byte: bit7=1 → new filter step (bits 6-4 = mode, bits 3-0 = target idx)
-            #           bit7=0 → hold duration count
-            # spd_byte: cutoff sweep delta per frame
-            # res_byte: resonance (or step duration when seq_byte bit7=1)
+            # Map three parallel bytes to the (seq, spd, res, 0) tuple.
+            # seq_byte: bit7=1 → NEW_STEP (bits 6-4 = mode, bits 3-0 = loop target Y idx)
+            #           bit7=0 → HOLD (duration count)
+            #           $7F    → end-of-program marker (NOT a break — multi-program table!)
+            # spd_byte: 16-bit cutoff accumulator low-byte delta per HOLD frame
+            # res_byte: resonance ($D417) written at NEW_STEP activation
+            # NOTE: Always extract ALL 26 entries. The table contains multiple programs
+            # separated by $7F markers. The active program may start at Y>0 (e.g. Y=19).
+            # Stopping at the first $7F would lose programs that the music data references.
             entries.append((seq_byte, spd_byte, res_byte, 0))
-            if seq_byte == 0x7F:   # end-of-program marker — include it then stop
-                break
         if len(entries) >= 2:
             return seq_start, entries
 
