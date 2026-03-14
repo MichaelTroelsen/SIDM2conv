@@ -138,9 +138,9 @@ def decode_np21_seq_byte(seq: int) -> str:
         mode_bits  = (seq >> 4) & 0x07
         target_idx = seq & 0x0F
         mode_str = []
-        if mode_bits & 0x04: mode_str.append("LP")
-        if mode_bits & 0x02: mode_str.append("BP")
-        if mode_bits & 0x01: mode_str.append("HP")
+        if mode_bits & 0x04: mode_str.append("HP")   # seq bit6 = D418 bit6 = HP
+        if mode_bits & 0x02: mode_str.append("BP")   # seq bit5 = D418 bit5 = BP
+        if mode_bits & 0x01: mode_str.append("LP")   # seq bit4 = D418 bit4 = LP
         return f"NEW_STEP mode=[{'|'.join(mode_str) or 'off'}] target={target_idx}"
     else:
         return f"HOLD duration={seq}"
