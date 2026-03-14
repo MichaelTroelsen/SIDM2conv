@@ -96,6 +96,44 @@ try:
 except ImportError:
     GALWAY_CONVERTER_AVAILABLE = False
 
+# ---------------------------------------------------------------------------
+# PLAYER_CONVERTERS — maps driver_type → full convert function.
+# Used by convert_sid_to_sf2() for players that need a custom conversion path.
+# Players NOT listed here fall through to the standard Driver 11 / table-extract path.
+#
+# To add a new player with a custom converter:
+#   1. Implement convert_myplayer_to_sf2(input_path, output_path, config) -> bool
+#   2. Add: 'myplayer': convert_myplayer_to_sf2
+#   3. Register the player in driver_selector.DriverSelector.PLAYER_REGISTRY
+# ---------------------------------------------------------------------------
+def _make_player_converters():
+    converters = {}
+    if LAXITY_CONVERTER_AVAILABLE:
+        converters['laxity'] = convert_laxity_to_sf2
+    if GALWAY_CONVERTER_AVAILABLE:
+        converters['galway'] = convert_galway_to_sf2
+    # --- ADD NEW CUSTOM CONVERTERS HERE ---
+    # if MY_PLAYER_AVAILABLE:
+    #     converters['myplayer'] = convert_myplayer_to_sf2
+    return converters
+
+
+# ---------------------------------------------------------------------------
+# PLAYER_EXTRACTORS — maps driver_type → analyzer factory for analyze_sid_file().
+# Only list players that need a non-default (non-Laxity) extractor.
+# Unknown driver types fall back to LaxityPlayerAnalyzer (table extraction).
+#
+# To add a new player with a custom extractor:
+#   1. Implement MyPlayerAnalyzer(c64_data, load_address, header).extract_music_data()
+#      inheriting from player_base.BasePlayerAnalyzer
+#   2. Add: 'myplayer': lambda c64, addr, hdr: MyPlayerAnalyzer(c64, addr, hdr).extract_music_data()
+# ---------------------------------------------------------------------------
+PLAYER_EXTRACTORS = {
+    'laxity': lambda c64, addr, hdr: LaxityPlayerAnalyzer(c64, addr, hdr).extract_music_data(),
+    # --- ADD NEW PLAYER EXTRACTORS HERE ---
+    # 'myplayer': lambda c64, addr, hdr: MyPlayerAnalyzer(c64, addr, hdr).extract_music_data(),
+}
+
 # Import SIDwinder integration (Step 7.5 - optional tracing)
 try:
     from sidm2.sidwinder_wrapper import SIDwinderIntegration
@@ -400,19 +438,19 @@ def analyze_sid_file(filepath: str, config: ConversionConfig = None, sf2_referen
         logger.info(f"End address: ${load_address + len(c64_data) - 1:04X}")
         logger.info("=" * 60)
 
-    # Choose appropriate parser based on driver selection
+    # Choose appropriate parser based on driver selection.
+    # Priority: SF2-exported magic → registered extractor → Laxity fallback (table extraction)
     if is_sf2_exported:
         logger.info(f"Using SF2 player parser (driver: {driver_type}, SF2-exported file)")
         sf2_parser = SF2PlayerParser(filepath, sf2_reference_path)
         extracted = sf2_parser.extract()
-    elif driver_type == 'laxity':
-        logger.info(f"Using Laxity player analyzer (driver: {driver_type})")
-        analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
-        extracted = analyzer.extract_music_data()
+    elif driver_type in PLAYER_EXTRACTORS:
+        logger.info(f"Using registered extractor for '{driver_type}' (player: {player_type})")
+        extracted = PLAYER_EXTRACTORS[driver_type](c64_data, load_address, header)
     else:
-        # driver11 or np20 without SF2 magic - use Laxity analyzer for table extraction
-        # The extracted data will be packaged with the selected driver (driver11/np20)
-        logger.info(f"Using table extraction analyzer (driver: {driver_type}, player: {player_type})")
+        # Unknown/standard drivers (driver11 without SF2 magic, np20, etc.) —
+        # fall back to Laxity table extraction. Accuracy will vary.
+        logger.info(f"No registered extractor for '{driver_type}' — using Laxity table extraction (player: {player_type})")
         analyzer = LaxityPlayerAnalyzer(c64_data, load_address, header)
         extracted = analyzer.extract_music_data()
 
@@ -750,49 +788,24 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
         # Track whether a custom driver already wrote the output file
         custom_driver_wrote_file = False
 
-        # Handle Laxity driver (custom implementation)
-        if driver_type == 'laxity':
-            if not LAXITY_CONVERTER_AVAILABLE:
-                raise sidm2_errors.MissingDependencyError(
-                    dependency="sidm2.laxity_converter",
-                    install_command="pip install -e .",
-                    alternatives=[
-                        "Use standard drivers instead:",
-                        "  python scripts/sid_to_sf2.py input.sid output.sf2 --driver driver11",
-                        "",
-                        "Note: Standard drivers have 1-8% accuracy for Laxity files",
-                        "      (vs 99.93% with Laxity driver)"
-                    ],
-                    docs_link="README.md#installation"
-                )
-            logger.info("Using custom Laxity driver (expected accuracy: 70-90%)")
-            # Convert using Laxity driver but don't return yet - continue to validation
-            convert_laxity_to_sf2(input_path, output_path, config=config)
+        # Build the live converter dispatch (depends on which optional modules loaded)
+        player_converters = _make_player_converters()
+
+        # Dispatch to player-specific converter if registered; else use standard path.
+        # To add a new player: implement convert_<player>_to_sf2() and add it to
+        # PLAYER_CONVERTERS via _make_player_converters() above.
+        if driver_type in player_converters:
+            registry_info = DriverSelector.PLAYER_REGISTRY.get(driver_type, {})
+            accuracy = registry_info.get('accuracy', 'unknown')
+            description = registry_info.get('description', driver_type)
+            logger.info(f"Using registered converter for '{driver_type}': {description} (accuracy: {accuracy})")
+            player_converters[driver_type](input_path, output_path, config=config)
             custom_driver_wrote_file = True
             # Fall through to validation and info file generation
 
-        # Handle Martin Galway driver (table extraction and injection)
-        elif driver_type == 'galway':
-            if not GALWAY_CONVERTER_AVAILABLE:
-                raise sidm2_errors.MissingDependencyError(
-                    dependency="sidm2.galway_*",
-                    install_command="pip install -e .",
-                    alternatives=[
-                        "Use standard drivers instead:",
-                        "  python scripts/sid_to_sf2.py input.sid output.sf2 --driver driver11"
-                    ],
-                    docs_link="README.md#installation"
-                )
-            logger.info("Using Martin Galway table extraction and injection (expected accuracy: 88-96%)")
-            # Convert using Galway driver but don't return yet - continue to validation
-            convert_galway_to_sf2(input_path, output_path, config=config)
-            custom_driver_wrote_file = True
-            # Fall through to validation and info file generation
-
-        # Standard driver conversion path (for driver11, np20, etc.)
+        # Standard driver conversion path (driver11, np20, and any unregistered driver)
         else:
-            # Validate standard driver types
-            available_drivers = list(config.driver.available_drivers) + ['laxity', 'galway']
+            available_drivers = list(config.driver.available_drivers) + list(player_converters.keys())
             if driver_type not in available_drivers:
                 raise sidm2_errors.ConfigurationError(
                     setting="driver",

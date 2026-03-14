@@ -38,48 +38,95 @@ class DriverSelection:
 class DriverSelector:
     """Selects best SF2 driver based on source SID player type."""
 
-    # Driver file mappings
-    DRIVER_FILES = {
-        'laxity': 'sf2driver_laxity_00.prg',
-        'driver11': 'sf2driver_11.prg',
-        'np20': 'sf2driver_np20.prg',
+    # ---------------------------------------------------------------------------
+    # PLAYER_REGISTRY — single source of truth for all supported player types.
+    #
+    # To add a new player type:
+    #   1. Add an entry here with its player-id.exe detection strings, driver file,
+    #      expected accuracy, and description.
+    #   2. Add an entry to conversion_pipeline.PLAYER_CONVERTERS if it needs a
+    #      custom convert function (like Laxity/Galway), or to PLAYER_EXTRACTORS
+    #      if it needs a custom analyzer class.
+    #   3. Add the driver .prg file to G5/drivers/.
+    #   4. Implement the analyzer class inheriting from player_base.BasePlayerAnalyzer.
+    # ---------------------------------------------------------------------------
+    PLAYER_REGISTRY = {
+        'laxity': {
+            'player_ids': [
+                'Laxity_NewPlayer_V21',   # Native Laxity NP21
+                'Vibrants/Laxity',        # Laxity player by Vibrants
+                '256bytes/Laxity',        # Compact Laxity player
+            ],
+            'driver_file': 'sf2driver_laxity_00.prg',
+            'accuracy': '99.93%',
+            'description': 'Laxity NewPlayer v21 — custom driver with pointer patching',
+        },
+        'driver11': {
+            'player_ids': [
+                'SidFactory_II/Laxity',   # SF2-exported by author Laxity (author, not player!)
+                'SidFactory/Laxity',      # Older SF2 version by author Laxity
+                'SidFactory_II',          # Any SF2-exported file
+                'SidFactory',             # Older SF2 version
+                'SF2_Exported',
+                'Driver_11',
+            ],
+            'driver_file': 'sf2driver11_00.prg',
+            'accuracy': '100% (SF2-exported) / safe default (unknown)',
+            'description': 'SF2-exported files — Driver 11 preserves exact structure; also safe fallback',
+        },
+        'np20': {
+            'player_ids': [
+                'NewPlayer_20',
+                'NewPlayer_20.G4',
+                'NP20',
+            ],
+            'driver_file': 'sf2driver_np20_00.prg',
+            'accuracy': '70-90%',
+            'description': 'NewPlayer 20.G4',
+        },
+        'galway': {
+            'player_ids': [
+                'Martin_Galway',
+                'Galway',
+            ],
+            'driver_file': 'sf2driver11_00.prg',
+            'accuracy': '88-96%',
+            'description': 'Martin Galway — table extraction and injection into Driver 11 template',
+        },
+        # --- ADD NEW PLAYERS BELOW ---
+        # 'myplayer': {
+        #     'player_ids': ['MyPlayer_v1', 'MP1'],  # strings output by player-id.exe
+        #     'driver_file': 'sf2driver_myplayer_00.prg',  # must exist in G5/drivers/
+        #     'accuracy': 'TBD',
+        #     'description': 'My custom player format',
+        # },
     }
 
-    # Player type → Driver mapping
+    # Build PLAYER_MAPPINGS and DRIVER_FILES from PLAYER_REGISTRY for backwards compat
     PLAYER_MAPPINGS = {
-        # SF2-exported files (100% accuracy with Driver 11)
-        # CRITICAL: "SidFactory_II/Laxity" = Files created IN SF2 BY author "Laxity"
-        #           This is NOT the same as native Laxity NewPlayer v21 format!
-        #           "Laxity" here refers to the AUTHOR, not the player format.
-        'SidFactory_II/Laxity': 'driver11',  # SF2-exported by author Laxity
-        'SidFactory/Laxity': 'driver11',     # Older SF2 version
-        'SidFactory_II': 'driver11',         # Any SF2-exported file
-        'SidFactory': 'driver11',            # Older SF2 version
-
-        # Native Laxity variants (99.93-100% accuracy with Laxity driver)
-        # These are TRUE Laxity NewPlayer v21 format files
-        # "Laxity" here refers to the PLAYER FORMAT, not the author
-        'Laxity_NewPlayer_V21': 'laxity',    # Native Laxity format
-        'Vibrants/Laxity': 'laxity',         # Laxity player by Vibrants
-        '256bytes/Laxity': 'laxity',         # Compact Laxity player
-
-        # NewPlayer 20.G4
-        'NewPlayer_20': 'np20',
-        'NewPlayer_20.G4': 'np20',
-        'NP20': 'np20',
-
-        # SF2-exported (preserve Driver 11)
-        'SF2_Exported': 'driver11',
-        'Driver_11': 'driver11',
+        pid: driver
+        for driver, info in PLAYER_REGISTRY.items()
+        for pid in info['player_ids']
     }
 
-    # Expected accuracies
+    DRIVER_FILES = {
+        driver: info['driver_file']
+        for driver, info in PLAYER_REGISTRY.items()
+    }
+
+    # Expected accuracies (kept for backwards compat; PLAYER_REGISTRY is authoritative)
     EXPECTED_ACCURACY = {
         'laxity': '99.93%',
-        'driver11_sf2': '100%',     # For SF2-exported files
-        'driver11_default': 'Safe default',  # For unknown files
+        'driver11_sf2': '100%',
+        'driver11_default': 'Safe default',
         'np20': '70-90%',
+        'galway': '88-96%',
     }
+
+    @classmethod
+    def registered_drivers(cls) -> list:
+        """Return list of all registered driver names."""
+        return list(cls.PLAYER_REGISTRY.keys())
 
     def __init__(self, player_id_exe: Optional[Path] = None):
         """Initialize driver selector.

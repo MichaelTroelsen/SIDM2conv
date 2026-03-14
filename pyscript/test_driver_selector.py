@@ -70,7 +70,7 @@ class TestDriverSelector(unittest.TestCase):
         unknown_types = [
             'Unknown',
             'Rob_Hubbard',
-            'Martin_Galway',
+            # Martin_Galway is now a registered player (maps to 'galway')
             'UNIDENTIFIED',
             '',
         ]
@@ -127,7 +127,7 @@ class TestDriverSelector(unittest.TestCase):
         result = self.selector._build_selection_result('np20', 'NewPlayer_20.G4')
 
         self.assertEqual(result.driver_name, 'np20')
-        self.assertEqual(result.driver_file, 'sf2driver_np20.prg')
+        self.assertEqual(result.driver_file, 'sf2driver_np20_00.prg')
         self.assertEqual(result.expected_accuracy, '70-90%')
         self.assertEqual(result.player_type, 'NewPlayer_20.G4')
         self.assertEqual(result.alternative_driver, 'Driver 11')
@@ -138,7 +138,7 @@ class TestDriverSelector(unittest.TestCase):
         result = self.selector._build_selection_result('driver11', 'SF2_Exported')
 
         self.assertEqual(result.driver_name, 'driver11')
-        self.assertEqual(result.driver_file, 'sf2driver_11.prg')
+        self.assertEqual(result.driver_file, 'sf2driver11_00.prg')
         self.assertEqual(result.expected_accuracy, '100%')
         self.assertEqual(result.player_type, 'SF2_Exported')
         self.assertIn('SF2-exported', result.selection_reason)
@@ -149,7 +149,7 @@ class TestDriverSelector(unittest.TestCase):
         result = self.selector._build_selection_result('driver11', 'Unknown')
 
         self.assertEqual(result.driver_name, 'driver11')
-        self.assertEqual(result.driver_file, 'sf2driver_11.prg')
+        self.assertEqual(result.driver_file, 'sf2driver11_00.prg')
         self.assertEqual(result.expected_accuracy, 'Safe default')
         self.assertEqual(result.player_type, 'Unknown')
         self.assertIn('compatibility', result.selection_reason)
