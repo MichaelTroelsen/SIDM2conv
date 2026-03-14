@@ -1,0 +1,232 @@
+{
+  "version": 1,
+  "origin": 4096,
+  "raw_data_base64": "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",
+  "blocks": [
+    {
+      "start": 0,
+      "end": 2164,
+      "type_": "Code",
+      "collapsed": false
+    },
+    {
+      "start": 2165,
+      "end": 2168,
+      "type_": "DataByte",
+      "collapsed": false
+    },
+    {
+      "start": 2169,
+      "end": 2197,
+      "type_": "Code",
+      "collapsed": false
+    },
+    {
+      "start": 2198,
+      "end": 2251,
+      "type_": "DataByte",
+      "collapsed": false
+    },
+    {
+      "start": 2252,
+      "end": 2440,
+      "type_": "Code",
+      "collapsed": false
+    },
+    {
+      "start": 2441,
+      "end": 2518,
+      "type_": "DataByte",
+      "collapsed": false
+    },
+    {
+      "start": 2519,
+      "end": 6074,
+      "type_": "Code",
+      "collapsed": false
+    }
+  ],
+  "labels": {
+    "4096": [
+      {
+        "name": "INIT",
+        "label_type": "UserDefined",
+        "kind": "User"
+      }
+    ],
+    "4099": [
+      {
+        "name": "PLAY",
+        "label_type": "UserDefined",
+        "kind": "User"
+      }
+    ],
+    "4608": [
+      {
+        "name": "effect_handler",
+        "label_type": "UserDefined",
+        "kind": "User"
+      }
+    ],
+    "4618": [
+      {
+        "name": "cmd_with_arg",
+        "label_type": "UserDefined",
+        "kind": "User"
+      }
+    ],
+    "4642": [
+      {
+        "name": "fx_slide_down",
+        "label_type": "UserDefined",
+        "kind": "User"
+      }
+    ],
+    "4659": [
+      {
+        "name": "fx_slide_up",
+        "label_type": "UserDefined",
+        "kind": "User"
+      }
+    ],
+    "4676": [
+      {
+        "name": "fx_portamento_dn",
+        "label_type": "UserDefined",
+        "kind": "User"
+      }
+    ],
+    "4701": [
+      {
+        "name": "fx_portamento_up",
+        "label_type": "UserDefined",
+        "kind": "User"
+      }
+    ],
+    "4731": [
+      {
+        "name": "fx_set_volume",
+        "label_type": "UserDefined",
+        "kind": "User"
+      }
+    ],
+    "4742": [
+      {
+        "name": "cmd_dispatch",
+        "label_type": "UserDefined",
+        "kind": "User"
+      }
+    ],
+    "4778": [
+      {
+        "name": "fx_set_adsr",
+        "label_type": "UserDefined",
+        "kind": "User"
+      }
+    ],
+    "4793": [
+      {
+        "name": "fx_note_offset",
+        "label_type": "UserDefined",
+        "kind": "User"
+      }
+    ],
+    "4802": [
+      {
+        "name": "fx_arpeggio_step",
+        "label_type": "UserDefined",
+        "kind": "User"
+      }
+    ],
+    "4814": [
+      {
+        "name": "fx_portamento_delay",
+        "label_type": "UserDefined",
+        "kind": "User"
+      }
+    ],
+    "4823": [
+      {
+        "name": "fx_set_filter",
+        "label_type": "UserDefined",
+        "kind": "User"
+      }
+    ],
+    "4845": [
+      {
+        "name": "fx_set_pulse",
+        "label_type": "UserDefined",
+        "kind": "User"
+      }
+    ],
+    "6261": [
+      {
+        "name": "tbl_fx_category",
+        "label_type": "UserDefined",
+        "kind": "User"
+      }
+    ],
+    "6294": [
+      {
+        "name": "tbl_fx_speed",
+        "label_type": "UserDefined",
+        "kind": "User"
+      }
+    ],
+    "6327": [
+      {
+        "name": "tbl_fx_param",
+        "label_type": "UserDefined",
+        "kind": "User"
+      }
+    ],
+    "6537": [
+      {
+        "name": "tbl_filter_seq",
+        "label_type": "UserDefined",
+        "kind": "User"
+      }
+    ],
+    "6563": [
+      {
+        "name": "tbl_filter_speed",
+        "label_type": "UserDefined",
+        "kind": "User"
+      }
+    ],
+    "6589": [
+      {
+        "name": "tbl_filter_resonance",
+        "label_type": "UserDefined",
+        "kind": "User"
+      }
+    ]
+  },
+  "user_side_comments": {
+    "4096": "Laxity NP21 INIT entry - JMP to init routine",
+    "4099": "Laxity NP21 PLAY entry - JMP to play routine (addr varies per song)",
+    "4608": "Entry: load ch_fx_arg,x. If bit7 set -> cmd_with_arg, else skip",
+    "4618": "Mask fx_arg to 6 bits, lookup tbl_fx_category, patch smc_cmd_handler dispatch",
+    "4642": "Portamento slide down: speed from tbl_fx_speed, target from tbl_fx_param",
+    "4659": "Portamento slide up",
+    "4676": "Portamento down with target",
+    "4701": "Portamento up with target",
+    "4731": "Set master volume (lower nibble of tbl_fx_param[y] -> a1785 / $D418 bits 0-3)",
+    "4742": "SMC dispatch: sec; bcs [smc_cmd_handler]. Branch offset at $1288 patched by effect_handler.",
+    "4778": "Set ADSR: attack/decay from tbl_fx_speed, sustain/release from tbl_fx_param",
+    "4793": "Set note offset and attack/decay from tbl_fx_speed",
+    "4802": "Set arpeggio step: base_freq_hi and sustain/release from tbl_fx_param",
+    "4814": "Set portamento counter from tbl_fx_param",
+    "4823": "Start filter program: step_cnt=$80, seek target=tbl_fx_param[y]-1, seq_idx=0. tbl_fx_param[y] is Y-index into 26-entry filter table.",
+    "4845": "Start pulse sequence: pulse_seq_idx from tbl_fx_param, pulse_step_cnt=0",
+    "6261": "4-byte table: maps (fx_arg & $3F) to effect category. Lower nibble = dispatch index into tbl_effect_type.",
+    "6294": "26-byte effect speed/direction table. Indexed by (fx_arg & $3F). Used as portamento speed; bit7=direction.",
+    "6327": "21-byte effect secondary parameter. Indexed by (fx_arg & $3F). Used as portamento target, filter seek, arpeggio step, etc.",
+    "6537": "Multi-program filter table. $7F=end-of-program; bit7=1 NEW_STEP (bits6-4=mode HP/BP/LP, bits3-0=loop target); bit7=0 HOLD. 26 entries.",
+    "6563": "Cutoff sweep delta per HOLD frame (16-bit accumulator low byte). 26 entries.",
+    "6589": "Resonance ($D417) written at NEW_STEP activation. 26 entries."
+  },
+  "user_line_comments": {},
+  "immediate_value_formats": {},
+  "bookmarks": {}
+}
