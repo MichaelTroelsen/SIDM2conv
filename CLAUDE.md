@@ -62,7 +62,19 @@ install-vice.bat              # VSID for audio export
 
 ## Auto Driver Selection
 
-Auto-selects best driver by player type: Native Laxity NP21 (Laxity_NewPlayer_V21)→Laxity driver (99.93-100%), SF2-exported (SidFactory_II/*)→Driver11 (100%), NP20.G4→NP20 (70-90%), Unknown→Driver11. **Note**: "SidFactory_II/Laxity" = SF2-exported, use Driver11 not Laxity driver. Outputs: `output.sf2` + `output.txt` (driver info + validation). See: `CONVERSION_POLICY_APPROVED.md`, `docs/reference/ACCURACY_MATRIX.md`
+Auto-selects best driver by player type via `DriverSelector.PLAYER_REGISTRY` (single source of truth):
+
+| Player (player-id.exe string) | Driver | Accuracy |
+|-------------------------------|--------|----------|
+| `Laxity_NewPlayer_V21`, `Vibrants/Laxity`, `256bytes/Laxity` | Laxity | 99.93% |
+| `SidFactory_II/*`, `SidFactory/*`, `SF2_Exported` | Driver11 | 100% |
+| `NewPlayer_20`, `NewPlayer_20.G4`, `NP20` | NP20 | 70-90% |
+| `Martin_Galway`, `Galway` | Galway | 88-96% |
+| Unknown | Driver11 | safe default |
+
+**Note**: "SidFactory_II/Laxity" = SF2-exported by author Laxity → Driver11 (NOT Laxity driver). Outputs: `output.sf2` + `output.txt`.
+
+**Adding a new player** (3 steps): (1) Add to `DriverSelector.PLAYER_REGISTRY` in `sidm2/driver_selector.py`, (2) Add to `PLAYER_EXTRACTORS` or `PLAYER_CONVERTERS` in `sidm2/conversion_pipeline.py`, (3) Implement analyzer extending `player_base.BasePlayerAnalyzer`. See: `docs/reference/ACCURACY_MATRIX.md`
 
 ---
 
@@ -160,7 +172,7 @@ SIDM2/
 
 ## Version History
 
-**v3.1.3** (2026-03-14): Fix NP21 seq ptr reading (separate lo/hi arrays at $0A1C/$0A1F), fix filter injection addresses ($19F1/$1A0B/$1A25), fix HP/LP label swap in filter seq decoder, add Regenerator 2000 project generator (headless-capable .regen2000proj from PRG)
+**v3.1.3** (2026-03-14): Fix NP21 seq ptr reading (separate lo/hi arrays at $0A1C/$0A1F), fix filter injection addresses ($19F1/$1A0B/$1A25), fix HP/LP label swap in filter seq decoder, add Regenerator 2000 project generator (headless .regen2000proj from PRG), registry-based player dispatch (PLAYER_REGISTRY + PLAYER_CONVERTERS/PLAYER_EXTRACTORS dicts replacing hardcoded if/elif), 4 players registered (laxity/driver11/np20/galway)
 
 **v3.1.2** (2026-03-08): Filter accuracy validation pipeline (zig64 ground truth tracer, validate_filter_accuracy.py), Regenerator 2000 MCP auto-labeler, filter table fix ($1A1E→$1989/$19A3/$19BD correct NP21 offsets), pre-built sidm2-sid-trace.exe
 
