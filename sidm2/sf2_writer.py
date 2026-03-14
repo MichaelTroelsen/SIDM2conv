@@ -1662,10 +1662,14 @@ class SF2Writer:
         wave_table_start = 0x1942        # Matches patched pointer $16DA -> $1942
         pulse_table_start = 0x1E00       # Estimated (no specific patches found yet)
         # Laxity NP21 filter uses three parallel tables (confirmed via Regenerator 2000).
-        # $1A1E was wrong — it reads ch_seq_ptr_hi (sequence pointer bytes).
-        filter_seq_start  = 0x1989   # tbl_filter_seq:       cutoff control + mode bits
-        filter_spd_start  = 0x19A3   # tbl_filter_speed:     cutoff sweep delta
-        filter_res_start  = 0x19BD   # tbl_filter_resonance: resonance per step
+        # Pointer patches redirect the player to read from these relocated addresses:
+        #   tbl_filter_seq   : $1789 (orig $1989 - $0200) -> patched to $19F1
+        #   tbl_filter_speed : $17A3 (orig $19A3 - $0200) -> patched to $1A0B
+        #   tbl_filter_res   : $17BD (orig $19BD - $0200) -> patched to $1A25
+        # Injection must match the patched pointer targets.
+        filter_seq_start  = 0x19F1   # tbl_filter_seq:       cutoff control + mode bits
+        filter_spd_start  = 0x1A0B   # tbl_filter_speed:     cutoff sweep delta
+        filter_res_start  = 0x1A25   # tbl_filter_resonance: resonance per step
 
         # Inject wave table - FIXED: Laxity uses TWO SEPARATE ARRAYS, not interleaved pairs
         if hasattr(self.data, 'wavetable') and self.data.wavetable:

@@ -10,11 +10,15 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
-# Laxity player table offsets from load address (from docs/LAXITY_PLAYER_ANALYSIS.md)
-# These are relative offsets, not absolute addresses
-# For Angular (load $1000): SEQ_PTRS at $199F = $1000 + $099F
-# For Broware (load $A000): SEQ_PTRS at $A99F = $A000 + $099F
-LAXITY_SEQ_PTRS_OFFSET = 0x099F    # Sequence pointer table offset
+# Laxity player table offsets from load address (confirmed via Regenerator 2000 symbol table,
+# Stinsens_Last_Night_of_89 NP21 v21 disassembly)
+# ch_seq_ptr_lo at load+$0A1C (3 bytes: lo of seq ptr for ch0, ch1, ch2)
+# ch_seq_ptr_hi at load+$0A1F (3 bytes: hi of seq ptr for ch0, ch1, ch2)
+# Format: SEPARATE lo/hi arrays, NOT interleaved pairs.
+# Old value 0x099F was wrong for Stinsen (pointed into filter speed table).
+LAXITY_SEQ_PTRS_LO_OFFSET = 0x0A1C  # ch_seq_ptr_lo[0..2]
+LAXITY_SEQ_PTRS_HI_OFFSET = 0x0A1F  # ch_seq_ptr_hi[0..2]
+LAXITY_SEQ_PTRS_OFFSET = 0x0A1C     # Legacy alias (lo offset)
 LAXITY_INSTR_TABLE_OFFSET = 0x0A6B # Instrument table offset (8 × 8 bytes)
 LAXITY_CMD_TABLE_OFFSET = 0x0ADB   # Command table offset
 
@@ -88,32 +92,28 @@ class LaxityParser:
         sequences = []
         orderlists = [[], [], []]  # 3 voices
 
-        # Calculate sequence pointer table location (offset $099F from load address)
-        seq_ptr_addr = self.load_address + LAXITY_SEQ_PTRS_OFFSET
+        # ch_seq_ptr stored as two separate 3-byte arrays:
+        #   lo bytes at load+$0A1C: [ch0_lo, ch1_lo, ch2_lo]
+        #   hi bytes at load+$0A1F: [ch0_hi, ch1_hi, ch2_hi]
+        # (Confirmed via Regenerator 2000 symbol table for Stinsen NP21 v21)
+        lo_base = self.load_address + LAXITY_SEQ_PTRS_LO_OFFSET
+        hi_base = self.load_address + LAXITY_SEQ_PTRS_HI_OFFSET
 
-        if seq_ptr_addr < self.load_address or seq_ptr_addr >= self.load_address + len(self.data):
-            logger.warning(f"Sequence pointer table at ${seq_ptr_addr:04X} is outside loaded data range")
+        if hi_base + 2 >= self.load_address + len(self.data):
+            logger.warning(f"ch_seq_ptr table at ${lo_base:04X} is outside loaded data range")
             return sequences, orderlists
 
-        # Calculate file offset
-        seq_ptr_offset = seq_ptr_addr - self.load_address
+        lo_off = lo_base - self.load_address
+        hi_off = hi_base - self.load_address
 
-        logger.debug(f"Sequence pointer table at ${seq_ptr_addr:04X} (file offset {seq_ptr_offset})")
+        logger.debug(f"ch_seq_ptr_lo at ${lo_base:04X}, ch_seq_ptr_hi at ${hi_base:04X}")
 
-        # Extract sequence pointers for 3 voices
-        # The pointer table has pairs of bytes (lo, hi) for each voice's sequence
+        # Extract sequence pointers for 3 voices (separate lo/hi arrays)
         sequence_addresses = set()  # Track unique sequence addresses
 
         for voice in range(3):
-            # Read sequence pointer (2 bytes: lo, hi)
-            ptr_offset = seq_ptr_offset + (voice * 2)
-
-            if ptr_offset + 1 >= len(self.data):
-                logger.warning(f"Voice {voice}: pointer offset {ptr_offset} out of range")
-                continue
-
-            seq_lo = self.data[ptr_offset]
-            seq_hi = self.data[ptr_offset + 1]
+            seq_lo = self.data[lo_off + voice]
+            seq_hi = self.data[hi_off + voice]
             seq_addr = seq_lo | (seq_hi << 8)
 
             logger.debug(f"Voice {voice}: sequence at ${seq_addr:04X}")
