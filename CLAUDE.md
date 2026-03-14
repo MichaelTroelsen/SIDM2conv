@@ -82,6 +82,8 @@ Auto-selects best driver by player type: Native Laxity NP21 (Laxity_NewPlayer_V2
 
 **Regenerator 2000 Labeler** (`pyscript/regen2000_label_laxity_np21.py`): Auto-labels any NP21 file loaded in Regenerator 2000 via MCP HTTP. Run: `python pyscript/regen2000_label_laxity_np21.py --port 3000`
 
+**Regenerator 2000 Project Generator** (`pyscript/gen_regen2000_project.py`): Generates `.regen2000proj` directly from a PRG binary with all NP21 labels pre-applied (no running Regenerator needed). Run: `python pyscript/gen_regen2000_project.py [--prg FILE] [--out FILE]`. Load headlessly: `regenerator2000.exe file.regen2000proj --headless --mcp-server --mcp-port 3000`
+
 **zig64 SID Tracer** (`tools/sidm2-sid-trace.exe`): Pre-built cycle-accurate SID register tracer. Usage: `sidm2-sid-trace.exe file.prg [frames] [init_hex] [play_hex]`. Output: CSV on stderr. Source: `C:\Users\mit\Downloads\zig64\src\examples\sidm2_sid_trace.zig`
 
 ---
@@ -158,7 +160,7 @@ SIDM2/
 
 ## Version History
 
-**v3.1.3** (2026-03-14): Fix NP21 seq ptr reading (separate lo/hi arrays at $0A1C/$0A1F, was wrong $099F), fix filter injection addresses to patched pointer targets ($19F1/$1A0B/$1A25)
+**v3.1.3** (2026-03-14): Fix NP21 seq ptr reading (separate lo/hi arrays at $0A1C/$0A1F), fix filter injection addresses ($19F1/$1A0B/$1A25), fix HP/LP label swap in filter seq decoder, add Regenerator 2000 project generator (headless-capable .regen2000proj from PRG)
 
 **v3.1.2** (2026-03-08): Filter accuracy validation pipeline (zig64 ground truth tracer, validate_filter_accuracy.py), Regenerator 2000 MCP auto-labeler, filter table fix ($1A1E→$1989/$19A3/$19BD correct NP21 offsets), pre-built sidm2-sid-trace.exe
 
