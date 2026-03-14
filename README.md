@@ -3,7 +3,7 @@
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 [![codecov](https://codecov.io/gh/MichaelTroelsen/SIDM2conv/branch/master/graph.svg)](https://codecov.io/gh/MichaelTroelsen/SIDM2conv)
 
-**Version 3.1.0** | Build Date: 2026-01-02 | Production Ready ✅
+**Version 3.1.3** | Build Date: 2026-03-14 | Production Ready ✅
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files with **99.93% frame accuracy** for Laxity NewPlayer v21 files.
 
@@ -327,21 +327,26 @@ validation-dashboard.bat  # See "Batch Analysis" section
 
 ---
 
-### Automatic Driver Selection (v2.8.0)
+### Automatic Driver Selection (v3.1.3)
 
-Automatically selects the best driver based on player type detection:
+Automatically selects the best driver based on player type detection via `DriverSelector.PLAYER_REGISTRY`:
 
-| Source Format | Driver | Accuracy | Status |
-|--------------|--------|----------|--------|
-| Laxity NewPlayer v21 | Laxity | **99.93%** | ✅ Production |
-| SF2-exported SID | Driver 11 | **100%** | ✅ Perfect |
-| NewPlayer 20 | NP20 | 70-90% | ✅ Good |
-| Unknown | Driver 11 | Varies | ✅ Safe default |
+| Source Format | player-id string | Driver | Accuracy | Status |
+|--------------|-----------------|--------|----------|--------|
+| Laxity NewPlayer v21 | `Laxity_NewPlayer_V21` | Laxity | **99.93%** | ✅ Production |
+| SF2-exported SID | `SidFactory_II/*` | Driver 11 | **100%** | ✅ Perfect |
+| NewPlayer 20.G4 | `NewPlayer_20.G4` | NP20 | 70-90% | ✅ Good |
+| Martin Galway | `Martin_Galway` | Galway | 88-96% | ✅ Good |
+| Unknown | any | Driver 11 | Varies | ✅ Safe default |
+
+**Note**: `SidFactory_II/Laxity` = SF2-exported by author Laxity → Driver 11 (not the Laxity player driver).
 
 **Manual override**:
 ```bash
 sid-to-sf2.bat input.sid output.sf2 --driver laxity  # Force Laxity driver
 ```
+
+**Adding a new player** (3 steps): add to `DriverSelector.PLAYER_REGISTRY` → add to `PLAYER_EXTRACTORS`/`PLAYER_CONVERTERS` → implement `BasePlayerAnalyzer` subclass.
 
 **See**: [CONVERSION_POLICY_APPROVED.md](CONVERSION_POLICY_APPROVED.md)
 
@@ -827,6 +832,29 @@ Located in `tools/` directory (Windows binaries, optional fallbacks):
 ---
 
 ## Version History
+
+### v3.1.3 (2026-03-14) - Registry-Based Player Dispatch + NP21 Fixes
+
+- ✅ **Registry-based player dispatch** — `DriverSelector.PLAYER_REGISTRY` as single source of truth; `PLAYER_CONVERTERS`/`PLAYER_EXTRACTORS` dicts replace hardcoded if/elif chains
+- ✅ **4 players registered**: laxity (99.93%), driver11 (100%), np20 (70-90%), galway (88-96%)
+- ✅ **Regenerator 2000 project generator** — `gen_regen2000_project.py` creates `.regen2000proj` from PRG with 22 NP21 labels; headless-capable
+- ✅ **NP21 fixes**: seq ptr lo/hi array layout ($0A1C/$0A1F), filter injection addresses ($19F1/$1A0B/$1A25), HP/LP label swap corrected
+- ✅ **Pre-built Regenerator projects**: Stinsen + Unboxed `.regen2000proj` committed
+- ✅ **785 tests passing**
+
+### v3.1.2 (2026-03-08) - Filter Accuracy Validation Pipeline
+
+- ✅ **Filter accuracy validator** (`validate_filter_accuracy.py`) — cross-validates NP21 filter tables vs zig64 cycle-accurate ground truth
+- ✅ **Regenerator 2000 auto-labeler** (`regen2000_label_laxity_np21.py`) — applies all NP21 labels via MCP HTTP
+- ✅ **zig64 SID tracer** (`tools/sidm2-sid-trace.exe`) — pre-built cycle-accurate register tracer
+- ✅ **Filter table fix**: extraction now reads correct offsets $0989/$09A3/$09BD
+
+### v3.1.0 (2026-01-02) - Batch Analysis + Interactive Tools
+
+- ✅ **Batch Analysis Tool** — multi-pair SID comparison with HTML+CSV+JSON reports
+- ✅ **Accuracy Heatmap** — 4 visualization modes, Canvas rendering
+- ✅ **Trace Comparison** — tabbed HTML comparison of two SID traces
+- ✅ **Interactive HTML trace** — frame-by-frame register visualization
 
 ### v3.0.2 (2026-01-01) - Interactive Analysis Features
 

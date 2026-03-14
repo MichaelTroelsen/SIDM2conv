@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Due to the extensive development history, older changelogs have been archived for easier navigation:
 
-- **[v3.x (Current)](CHANGELOG.md)** - This file (v3.0.0 - v3.1.0)
+- **[v3.x (Current)](CHANGELOG.md)** - This file (v3.0.0 - v3.1.3)
 - **[v2.x Archive](docs/archive/changelogs/CHANGELOG_v2.md)** - Maturity phase (v2.0.0 - v2.10.0)
   - SF2 Viewer, documentation consolidation, logging, performance optimization
 - **[v1.x Archive](docs/archive/changelogs/CHANGELOG_v1.md)** - Foundation phase (v1.0.0 - v1.4.0)
@@ -22,6 +22,39 @@ Due to the extensive development history, older changelogs have been archived fo
 ---
 
 ## [Unreleased]
+
+---
+
+## [3.1.3] - 2026-03-14
+
+### Fixed
+- `laxity_parser.py`: NP21 seq ptr read as separate lo/hi arrays at load+$0A1C/load+$0A1F (was wrong $099F which landed in the filter speed table)
+- `sf2_writer.py`: Filter injection addresses corrected to patched pointer targets $19F1/$1A0B/$1A25 (were pre-patch player addresses $1989/$19A3/$19BD)
+- `validate_filter_accuracy.py`: HP/LP label swap in `decode_np21_seq_byte` — seq bit6=HP, bit5=BP, bit4=LP (was reversed LP/HP). Validation logic was always correct; display only.
+
+### Added
+- `pyscript/gen_regen2000_project.py`: Generates `.regen2000proj` directly from a PRG binary with all 22 NP21 fixed-offset labels pre-applied. No running Regenerator 2000 instance required. Load headlessly: `regenerator2000.exe file.regen2000proj --headless --mcp-server`
+- `SID/Stinsens_Last_Night_of_89.regen2000proj`: Pre-built Regenerator 2000 project for Stinsen (verified headless)
+- `SID/Unboxed_Ending_8580.regen2000proj`: Pre-built Regenerator 2000 project for Unboxed (verified headless)
+- `SID/Stinsens_disasm.asm`: Full 3768-line Regenerator 2000 disassembly of Stinsen NP21
+- `SID/stinsen_sf2_trace_300frames.csv`: SF2 output register trace (300 frames, pairs with SID ground truth for accuracy comparison)
+- Registry-based player dispatch: `DriverSelector.PLAYER_REGISTRY` is now the single source of truth for all player types. `PLAYER_CONVERTERS` and `PLAYER_EXTRACTORS` dicts in `conversion_pipeline.py` replace hardcoded if/elif chains. 4 players registered: laxity, driver11, np20, galway.
+- `DriverSelector.registered_drivers()` helper method
+- Driver filenames corrected to match actual G5/drivers/ files (`sf2driver11_00.prg`, `sf2driver_np20_00.prg`)
+
+---
+
+## [3.1.2] - 2026-03-08
+
+### Added
+- `pyscript/validate_filter_accuracy.py`: End-to-end filter accuracy validator. Cross-validates Laxity NP21 filter tables extracted from SID binary against cycle-accurate zig64 ground truth trace. Checks resonance byte, sweep speed, and mode bits.
+- `pyscript/regen2000_label_laxity_np21.py`: Auto-labels any NP21 file loaded in Regenerator 2000 via MCP HTTP. Applies all 22 fixed-offset NP21 labels with side comments. Run: `python pyscript/regen2000_label_laxity_np21.py --port 3000`
+- `tools/sidm2-sid-trace.exe`: Pre-built cycle-accurate zig64 SID register tracer. Usage: `sidm2-sid-trace.exe file.prg [frames] [init_hex] [play_hex]`
+- `SID/stinsen_sid_trace_300frames.csv`: 300-frame zig64 ground truth SID register trace for Stinsen
+
+### Fixed
+- Filter table extraction: `table_extraction.py` was reading `$1A1E` (ch_seq_ptr_hi, wrong). Fixed to use 3-table parallel extraction at offsets `$0989/$09A3/$09BD` from load address.
+- `sf2_writer.py`: Filter table injection used stride-4 tuple loop; corrected to flat byte stride.
 
 ---
 
