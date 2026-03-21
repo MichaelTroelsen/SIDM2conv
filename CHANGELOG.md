@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Due to the extensive development history, older changelogs have been archived for easier navigation:
 
-- **[v3.x (Current)](CHANGELOG.md)** - This file (v3.0.0 - v3.1.3)
+- **[v3.x (Current)](CHANGELOG.md)** - This file (v3.0.0 - v3.1.4)
 - **[v2.x Archive](docs/archive/changelogs/CHANGELOG_v2.md)** - Maturity phase (v2.0.0 - v2.10.0)
   - SF2 Viewer, documentation consolidation, logging, performance optimization
 - **[v1.x Archive](docs/archive/changelogs/CHANGELOG_v1.md)** - Foundation phase (v1.0.0 - v1.4.0)
@@ -22,6 +22,24 @@ Due to the extensive development history, older changelogs have been archived fo
 ---
 
 ## [Unreleased]
+
+---
+
+## [3.1.4] - 2026-03-21
+
+### Fixed
+- `sf2_writer.py`: Per-song NP21 voice orderlist pointers now read dynamically from SID binary at load+$0A1C/load+$0A1F (were hardcoded to Stinsen-specific addresses)
+- `sf2_writer.py`: Filter injection addresses updated to $19D0/$19EA/$1A04 (packed before music block at $1A22; were $19F1/$1A0B/$1A25 which overlapped music data)
+- `sf2_writer.py`: Fix LSR $EC → LSR $FC at 3 locations in filter output path — template was using wrong zero-page address, corrupting D416 with pattern-pointer LO bytes
+- `sf2_writer.py`: Pattern ptr table pointers ($1A22/$1A49) computed dynamically from SID load address
+- `sf2_writer.py`: Filter state variables $158A/$1589/$1586/$1587 zero-initialised to match NP21 INIT behaviour (template defaults caused D416=$E0, D418=$1F, D417=$F2 on first frame)
+- `sf2_writer.py`: Raw NP21 music block ($1A22+) injected verbatim from SID binary ensuring filter trigger commands ($C4/$CC) activate filter at correct song position
+
+### Added
+- `pyscript/compare_filter_accuracy.py`: Frame-by-frame filter register comparison tool (SF2 vs SID ground-truth zig64 traces); reports per-register accuracy for $D415–$D418
+
+### Result
+- Laxity driver filter accuracy: **0% → 100%** (300 frames, all 4 filter registers, Stinsen verified)
 
 ---
 

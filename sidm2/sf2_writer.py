@@ -1485,6 +1485,23 @@ class SF2Writer:
         # during creation with pointers that already point to the correct locations.
         # Testing if music injection alone works without additional patching.
 
+        # Read per-song NP21 voice orderlist start addresses from SID binary.
+        # tbl_seq_ptr_lo/hi at load_addr+$0A1C / load_addr+$0A1F hold initial
+        # orderlist positions for voices 0-2. These are used to redirect the
+        # relocated NP21 player's orderlist pointer patches to the correct addresses.
+        _c64 = getattr(self.data, 'c64_data', None)
+        _sid_la = getattr(self.data, 'load_address', 0x1000)
+        if _c64 and len(_c64) > 0x0A21:
+            _v_ol_lo = [_c64[0x0A1C + v] for v in range(3)]
+            _v_ol_hi = [_c64[0x0A1F + v] for v in range(3)]
+        else:
+            _v_ol_lo = [0x70, 0x9B, 0xB3]  # NP21 defaults (load $1000)
+            _v_ol_hi = [0x1A, 0x1A, 0x1A]
+        logger.info(f"  NP21 voice OL addrs: "
+                    f"v0=${_v_ol_hi[0]:02X}{_v_ol_lo[0]:02X} "
+                    f"v1=${_v_ol_hi[1]:02X}{_v_ol_lo[1]:02X} "
+                    f"v2=${_v_ol_hi[2]:02X}{_v_ol_lo[2]:02X}")
+
         # Define all pointer patches (from trace_orderlist_access.py output)
         # Format: (file_offset, old_lo, old_hi, new_lo, new_hi)
         # NOTE: "old" addresses are AFTER -$0200 relocation (driver template is already relocated)
@@ -1504,23 +1521,37 @@ class SF2Writer:
             (0x0361, 0xB7, 0x16, 0x1F, 0x19),
             (0x0372, 0xB7, 0x16, 0x1F, 0x19),
             (0x0380, 0xB7, 0x16, 0x1F, 0x19),
-            (0x057A, 0x3E, 0x17, 0xA6, 0x19),  # $173E -> $19A6 (2 instances)
-            (0x058D, 0x3E, 0x17, 0xA6, 0x19),
-            (0x0581, 0x70, 0x17, 0xD8, 0x19),  # $1770 -> $19D8 (2 instances)
-            (0x05B8, 0x70, 0x17, 0xD8, 0x19),
-            (0x0595, 0x57, 0x17, 0xBF, 0x19),  # $1757 -> $19BF
+            # Voice orderlist pointers: patched to actual SID orderlist addresses per-song
+            (0x057A, 0x3E, 0x17, _v_ol_lo[0], _v_ol_hi[0]),  # voice 0 OL (2 instances)
+            (0x058D, 0x3E, 0x17, _v_ol_lo[0], _v_ol_hi[0]),
+            (0x0581, 0x70, 0x17, _v_ol_lo[1], _v_ol_hi[1]),  # voice 1 OL (2 instances)
+            (0x05B8, 0x70, 0x17, _v_ol_lo[1], _v_ol_hi[1]),
+            (0x0595, 0x57, 0x17, _v_ol_lo[2], _v_ol_hi[2]),  # voice 2 OL (instance 1)
+            (0x05A4, 0x57, 0x17, _v_ol_lo[2], _v_ol_hi[2]),  # voice 2 OL (instance 2)
             (0x05C8, 0xDA, 0x16, 0x42, 0x19),  # $16DA -> $1942 (2 instances)
             (0x05D6, 0xDA, 0x16, 0x42, 0x19),
             (0x05CF, 0x0C, 0x17, 0x74, 0x19),  # $170C -> $1974 (2 instances)
             (0x05DC, 0x0C, 0x17, 0x74, 0x19),
-            (0x0684, 0x89, 0x17, 0xF1, 0x19),  # $1789 -> $19F1 (3 instances)
-            (0x069D, 0x89, 0x17, 0xF1, 0x19),
-            (0x06A7, 0x89, 0x17, 0xF1, 0x19),
-            (0x068C, 0xBD, 0x17, 0x25, 0x1A),  # $17BD -> $1A25 (4 instances)
-            (0x0699, 0xBD, 0x17, 0x25, 0x1A),
-            (0x06B5, 0xBD, 0x17, 0x25, 0x1A),
-            (0x06BE, 0xBD, 0x17, 0x25, 0x1A),
-            (0x06AF, 0xA3, 0x17, 0x0B, 0x1A),  # $17A3 -> $1A0B
+            (0x0684, 0x89, 0x17, 0xD0, 0x19),  # $1789 -> $19D0 (3 instances, filter_seq)
+            (0x069D, 0x89, 0x17, 0xD0, 0x19),
+            (0x06A7, 0x89, 0x17, 0xD0, 0x19),
+            (0x068C, 0xBD, 0x17, 0x04, 0x1A),  # $17BD -> $1A04 (4 instances, filter_res)
+            (0x0699, 0xBD, 0x17, 0x04, 0x1A),
+            (0x06B5, 0xBD, 0x17, 0x04, 0x1A),
+            (0x06BE, 0xBD, 0x17, 0x04, 0x1A),
+            (0x06AF, 0xA3, 0x17, 0xEA, 0x19),  # $17A3 -> $19EA (filter_spd, step-advance path)
+            # Sweep path: hold/accumulate code at $143F also references filter tables
+            # but these instances were missing from the original patch set.
+            # Sweep path: hold/accumulate code at $143F also references filter tables
+            (0x06C8, 0xA3, 0x17, 0xEA, 0x19),  # $17A3 -> $19EA (filter_spd, sweep acc path)
+            (0x06D1, 0x89, 0x17, 0xD0, 0x19),  # $1789 -> $19D0 (filter_seq, cutoff hi update)
+            # Fix filter output: original NP21 uses LSR $FC for all 4 shifts;
+            # SF2 template incorrectly uses LSR $EC for shifts 2-4, which corrupts
+            # D416 with pattern-pointer LO bytes from voice processing.
+            # Patch: 46 EC (LSR $EC) -> 46 FC (LSR $FC) at 3 locations.
+            (0x06EA, 0x46, 0xEC, 0x46, 0xFC),  # $1466: LSR $EC -> LSR $FC
+            (0x06ED, 0x46, 0xEC, 0x46, 0xFC),  # $1469: LSR $EC -> LSR $FC
+            (0x06F0, 0x46, 0xEC, 0x46, 0xFC),  # $146C: LSR $EC -> LSR $FC
             (0x052A, 0xD7, 0x17, 0x3F, 0x1A),  # $17D7 -> $1A3F
             # Table references (after -$0200 relocation)
             (0x00DE, 0x19, 0x18, 0x81, 0x1A),  # $1819 -> $1A81 (3 instances - instrument table)
@@ -1529,8 +1560,8 @@ class SF2Writer:
             (0x0103, 0x1C, 0x18, 0x84, 0x1A),  # $181C -> $1A84
             (0x0108, 0x1F, 0x18, 0x87, 0x1A),  # $181F -> $1A87
             (0x038A, 0x1A, 0x18, 0x82, 0x1A),  # $181A -> $1A82
-            (0x0141, 0x22, 0x18, 0x8A, 0x1A),  # $1822 -> $1A8A
-            (0x0146, 0x49, 0x18, 0xB1, 0x1A),  # $1849 -> $1AB1
+            (0x0141, 0x22, 0x18, (_sid_la + 0x0A22) & 0xFF, ((_sid_la + 0x0A22) >> 8) & 0xFF),  # $1822 -> $1A22 (pattern ptr lo table)
+            (0x0146, 0x49, 0x18, (_sid_la + 0x0A49) & 0xFF, ((_sid_la + 0x0A49) >> 8) & 0xFF),  # $1849 -> $1A49 (pattern ptr hi table)
         ]
 
         # Apply the 40 working pointer patches from commit 08337f3
@@ -1663,13 +1694,16 @@ class SF2Writer:
         pulse_table_start = 0x1E00       # Estimated (no specific patches found yet)
         # Laxity NP21 filter uses three parallel tables (confirmed via Regenerator 2000).
         # Pointer patches redirect the player to read from these relocated addresses:
-        #   tbl_filter_seq   : $1789 (orig $1989 - $0200) -> patched to $19F1
-        #   tbl_filter_speed : $17A3 (orig $19A3 - $0200) -> patched to $1A0B
-        #   tbl_filter_res   : $17BD (orig $19BD - $0200) -> patched to $1A25
+        #   tbl_filter_seq   : $1789 (orig $1989 - $0200) -> patched to $19D0
+        #   tbl_filter_speed : $17A3 (orig $19A3 - $0200) -> patched to $19EA
+        #   tbl_filter_res   : $17BD (orig $19BD - $0200) -> patched to $1A04
+        # Tables packed at $19D0-$1A1D (before music block at $1A22).
         # Injection must match the patched pointer targets.
-        filter_seq_start  = 0x19F1   # tbl_filter_seq:       cutoff control + mode bits
-        filter_spd_start  = 0x1A0B   # tbl_filter_speed:     cutoff sweep delta
-        filter_res_start  = 0x1A25   # tbl_filter_resonance: resonance per step
+        # Filter tables must be entirely before the music block at $1A22.
+        # Pack at $19D0/$19EA/$1A04 → all 78 bytes end at $1A1D (< $1A22).
+        filter_seq_start  = 0x19D0   # tbl_filter_seq:       cutoff control + mode bits
+        filter_spd_start  = 0x19EA   # tbl_filter_speed:     cutoff sweep delta
+        filter_res_start  = 0x1A04   # tbl_filter_resonance: resonance per step
 
         # Inject wave table - FIXED: Laxity uses TWO SEPARATE ARRAYS, not interleaved pairs
         if hasattr(self.data, 'wavetable') and self.data.wavetable:
@@ -1758,6 +1792,21 @@ class SF2Writer:
                     self.output[tbl_offset + i] = byte
                 logger.info(f"  Injected {label}: {len(table_bytes)} bytes at ${start_addr:04X}")
 
+        # Inject raw NP21 music block verbatim at original SID addresses.
+        # Block: pattern pointer lo table ($1A22) + hi table ($1A49) + orderlists + patterns.
+        # This ensures the NP21 player finds all note patterns correctly, including filter
+        # trigger commands ($C4/$CC) that activate the filter at the right song position.
+        _NP21_MUSIC_OFF = _sid_la + 0x0A22 - _sid_la  # = 0x0A22 offset from SID c64_data start
+        if _c64 and len(_c64) > _NP21_MUSIC_OFF:
+            _music = bytes(_c64[_NP21_MUSIC_OFF:])
+            _m_addr = _sid_la + _NP21_MUSIC_OFF   # $1A22 for NP21 at load $1000
+            _m_off = addr_to_offset(_m_addr)
+            if len(self.output) < _m_off + len(_music):
+                self.output.extend(bytearray(_m_off + len(_music) - len(self.output)))
+            for _i, _b in enumerate(_music):
+                self.output[_m_off + _i] = _b
+            logger.info(f"  Injected NP21 music block: {len(_music)} bytes at ${_m_addr:04X}")
+
         # Inject command table (NP21 indirect command dispatch table)
         # Each sequence command byte $C0+n references entry n in this table.
         # Entries are (cmd_byte, param_byte) pairs. Without this table, filter
@@ -1798,6 +1847,21 @@ class SF2Writer:
                 self.output[instr_offset + i] = byte
 
             logger.info(f"  Injected instrument table: {len(instr_data)} bytes ({len(self.data.instruments)} instruments) at ${instrument_table_start:04X}")
+
+        # Zero-init filter state variables.
+        # The SF2 INIT routine ($1492) only clears $1581/$1582; it does NOT reset the
+        # filter state machine variables $158A/$1589/$1586/$1587.
+        # $158A ($E0 bug source): template has $10, causes D416=$E0 when inactive.
+        # $1589 (sweep accumulator): template has $29, causes wrong sweep timing.
+        # $1586 (mode_bits): template has $10 (LP bit set), causes D418=$1F not $0F.
+        # $1587 (filter_res): template has $F2, causes D417=$F2 not $00 initially.
+        # Setting all to $00 matches NP21 INIT behaviour (filter fully off at start).
+        for _faddr, _flabel in [(0x158A, 'filter_lo'), (0x1589, 'filter_spd_acc'),
+                                (0x1586, 'mode_bits'), (0x1587, 'filter_res')]:
+            _foff = addr_to_offset(_faddr)
+            if len(self.output) > _foff:
+                self.output[_foff] = 0x00
+                logger.debug(f"  Zeroed {_flabel} @ ${_faddr:04X}")
 
         logger.info(f"  Laxity music data injection complete (with tables)")
         logger.info(f"  Total file size: {len(self.output)} bytes")

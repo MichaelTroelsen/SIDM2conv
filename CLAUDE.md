@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.1.3** | SID→SF2 Converter | C64 Music Tools | Updated 2026-03-14
+**SIDM2 v3.1.4** | SID→SF2 Converter | C64 Music Tools | Updated 2026-03-21
 
 Converts native Laxity NP21 SID files to SF2 format (99.93-100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -144,7 +144,7 @@ SIDM2/
 
 **Critical**: "SidFactory_II/Laxity" ≠ native Laxity! Check player-id: "SidFactory" = use Driver 11, "Laxity_NewPlayer_V21" = use Laxity driver
 
-**Other**: Only native Laxity NP21 supported by Laxity driver, single subtune only, 0% filter accuracy
+**Other**: Only native Laxity NP21 supported by Laxity driver, single subtune only, filter accuracy 100% (Stinsen verified v3.1.4)
 
 ---
 
@@ -171,6 +171,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.1.4** (2026-03-21): Fix Laxity driver filter accuracy 0%→100% — dynamic voice OL pointers from SID binary ($0A1C/$0A1F), filter table addresses $19D0/$19EA/$1A04, LSR $EC→$FC (D416 corruption fix), raw NP21 music block injection, filter state zero-init, add compare_filter_accuracy.py
 
 **v3.1.3** (2026-03-14): Fix NP21 seq ptr reading (separate lo/hi arrays at $0A1C/$0A1F), fix filter injection addresses ($19F1/$1A0B/$1A25), fix HP/LP label swap in filter seq decoder, add Regenerator 2000 project generator (headless .regen2000proj from PRG), registry-based player dispatch (PLAYER_REGISTRY + PLAYER_CONVERTERS/PLAYER_EXTRACTORS dicts replacing hardcoded if/elif), 4 players registered (laxity/driver11/np20/galway)
 

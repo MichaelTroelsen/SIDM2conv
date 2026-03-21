@@ -1,0 +1,26 @@
+Conversion Information
+======================================================================
+File: Stinsens_Last_Night_of_89.sid
+Date: 2026-03-20 21:22:52
+Converter: SIDM2 v2.8.0
+
+Source File:
+  Title:           Stinsen's Last Night of '89
+  Author:          Thomas E. Petersen (Laxity)
+  Copyright:       2021 Bonzai
+  Player Type:     SidFactory_II/Laxity
+  Format:          PSID v2
+  Load Address:    $0000
+  Init Address:    $1000
+  Play Address:    $1006
+  Songs:           1
+
+Driver Selection:
+  Selected Driver: LAXITY (sf2driver_laxity_00.prg)
+  Expected Acc:    User override
+  Reason:          Manual override: --driver laxity
+
+Conversion Results:
+  Status:          SUCCESS
+  Output File:     stinsen_laxity_fresh.sf2
+  Output Size:     7,203 bytes
