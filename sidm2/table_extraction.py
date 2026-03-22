@@ -875,6 +875,79 @@ def find_and_extract_pulse_table(data: bytes, load_addr: int, pulse_ptrs: Option
     return 0, []
 
 
+def detect_np21_filter_offsets(data: bytes, load_addr: int) -> Optional[Tuple[int, int, int]]:
+    """
+    Dynamically detect NP21 filter table offsets by scanning player code.
+
+    Finds SID filter register writes (STA/STY $D415-$D418) then scans a ±256-byte
+    window for LDA abs,Y instructions whose targets lie in the data section
+    (>= load_addr + $0800).  Validates that the discovered trio has exactly the
+    Stinsen-style stride of 26 ($1A) between tables and that the first (seq) table
+    starts with a NEW_STEP marker (bit7 set) or a $7F end-of-program marker.
+
+    Returns (seq_offset, spd_offset, res_offset) as byte offsets from load_addr,
+    or None if detection fails (caller should fall back to hardcoded defaults).
+    """
+    import struct as _struct
+
+    # ── Step 1: find STA/STY $D415-$D418 (filter register writes) ──────────
+    write_offsets: List[int] = []
+    for i in range(len(data) - 2):
+        if data[i] in (0x8C, 0x8D) and data[i + 2] == 0xD4 and data[i + 1] in (0x15, 0x16, 0x17, 0x18):
+            write_offsets.append(i)
+
+    if not write_offsets:
+        logger.debug("  detect_np21_filter_offsets: no STA $D4xx found")
+        return None
+
+    win_start = max(0, min(write_offsets) - 256)
+    win_end   = min(len(data) - 2, max(write_offsets) + 256)
+
+    # ── Step 2: collect LDA abs,Y ($B9) targets in the data section ─────────
+    data_section_lo = load_addr + 0x0800   # player code ends well before $1800
+    data_section_hi = load_addr + len(data)
+
+    first_seen: dict = {}   # target_addr → first code offset where it appears
+    for i in range(win_start, win_end):
+        if data[i] == 0xB9 and i + 2 < len(data):
+            target = _struct.unpack_from('<H', data, i + 1)[0]
+            if data_section_lo <= target < data_section_hi:
+                if target not in first_seen:
+                    first_seen[target] = i
+
+    unique = sorted(first_seen.keys())
+    if len(unique) < 3:
+        logger.debug(f"  detect_np21_filter_offsets: only {len(unique)} unique LDA targets; need ≥ 3")
+        return None
+
+    # ── Step 3: look for a trio with exactly stride 26 ($1A) ─────────────────
+    # The Stinsen-confirmed NP21 format has tbl_filter_spd = tbl_filter_seq + 26
+    # and tbl_filter_res = tbl_filter_spd + 26.  This is the only validated format.
+    NP21_STRIDE = 26
+    for a in unique:
+        b = a + NP21_STRIDE
+        c = b + NP21_STRIDE
+        if b in first_seen and c in first_seen:
+            # Validate: seq table byte 0 should have bit7=1 (NEW_STEP) or be $7F (empty)
+            seq_off = a - load_addr
+            if seq_off + 1 <= len(data):
+                first_byte = data[seq_off]
+                if (first_byte & 0x80) or first_byte == 0x7F:
+                    spd_off = b - load_addr
+                    res_off = c - load_addr
+                    logger.debug(
+                        f"  detect_np21_filter_offsets: stride-{NP21_STRIDE} trio found — "
+                        f"seq=${a:04X} spd=${b:04X} res=${c:04X}"
+                    )
+                    return (seq_off, spd_off, res_off)
+
+    logger.debug(
+        f"  detect_np21_filter_offsets: no stride-{NP21_STRIDE} trio found in {len(unique)} candidates: "
+        + " ".join(f"${x:04X}" for x in unique[:8])
+    )
+    return None
+
+
 def find_and_extract_filter_table(data: bytes, load_addr: int, filter_ptrs: Optional[set] = None, avoid_addr: int = 0) -> Tuple[Optional[int], List[bytes]]:
     """
     Find and extract filter table from Laxity SID.
@@ -900,9 +973,15 @@ def find_and_extract_filter_table(data: bytes, load_addr: int, filter_ptrs: Opti
     #   tbl_filter_resonance= load_addr + $09BD  (resonance value per step)
     # Each table has up to 26 entries; $7F in tbl_filter_seq marks end of a program.
     # The old $1A1E address was wrong — it reads ch_seq_ptr_hi (sequence pointer data).
-    NP21_SEQ_OFFSET  = 0x0989   # $1989 - $1000
-    NP21_SPD_OFFSET  = 0x09A3   # $19A3 - $1000
-    NP21_RES_OFFSET  = 0x09BD   # $19BD - $1000
+    _detected = detect_np21_filter_offsets(data, load_addr)
+    if _detected:
+        NP21_SEQ_OFFSET, NP21_SPD_OFFSET, NP21_RES_OFFSET = _detected
+        logger.debug(f"  filter offsets (dynamic): seq=${load_addr + NP21_SEQ_OFFSET:04X} spd=${load_addr + NP21_SPD_OFFSET:04X} res=${load_addr + NP21_RES_OFFSET:04X}")
+    else:
+        NP21_SEQ_OFFSET  = 0x0989   # $1989 - $1000 (Stinsen default)
+        NP21_SPD_OFFSET  = 0x09A3   # $19A3 - $1000
+        NP21_RES_OFFSET  = 0x09BD   # $19BD - $1000
+        logger.warning("  Dynamic filter offset detection failed, using Stinsen defaults ($1989/$19A3/$19BD)")
     NP21_MAX_ENTRIES = 26
     seq_start  = load_addr + NP21_SEQ_OFFSET
     spd_start  = load_addr + NP21_SPD_OFFSET

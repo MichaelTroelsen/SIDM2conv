@@ -1,8 +1,8 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.1.4** | SID→SF2 Converter | C64 Music Tools | Updated 2026-03-21
+**SIDM2 v3.1.5** | SID→SF2 Converter | C64 Music Tools | Updated 2026-03-22
 
-Converts native Laxity NP21 SID files to SF2 format (99.93-100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
+Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
 ---
 
@@ -171,6 +171,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.1.5** (2026-03-22): Raw NP21 embedding extended to all Laxity songs — embed any song's own NP21 binary verbatim at $1000 with a minimal $0D7E wrapper dispatching to INIT/PLAY; patch $init+3 → JMP play_addr for zig64 auto-detection compatibility; 100% accuracy on both Stinsen and Unboxed (verified 300 frames each)
 
 **v3.1.4** (2026-03-21): Fix Laxity driver filter accuracy 0%→100% — dynamic voice OL pointers from SID binary ($0A1C/$0A1F), filter table addresses $19D0/$19EA/$1A04, LSR $EC→$FC (D416 corruption fix), raw NP21 music block injection, filter state zero-init, add compare_filter_accuracy.py
 

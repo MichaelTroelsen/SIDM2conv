@@ -84,7 +84,13 @@ class SF2Writer:
 
             # Use Laxity-specific injection for Laxity driver
             if self.driver_type == 'laxity':
-                self._inject_laxity_music_data()
+                # Raw approach: embed song's own NP21 binary verbatim.
+                # This supersedes the 40-patch Stinsen-template approach: it works
+                # for any NP21 sub-version without hardcoded data-layout assumptions.
+                if getattr(self.data, 'c64_data', None) is not None:
+                    self._inject_laxity_raw_np21()
+                else:
+                    self._inject_laxity_music_data()
             else:
                 self._inject_music_data_into_template()
         else:
@@ -1440,6 +1446,71 @@ class SF2Writer:
         logger.info(" Music data injection is a placeholder")
         logger.debug("The output file structure may need manual refinement")
 
+    def _inject_laxity_raw_np21(self) -> None:
+        """Build SF2 by embedding the song's own NP21 binary verbatim.
+
+        Unlike the Stinsen-template approach (40 hardcoded pointer patches),
+        this places the song's complete NP21 player + music data at its original
+        C64 addresses ($1000+). A minimal dispatch wrapper sits at $0D7E-$0FFF.
+
+        No pointer patches are required: the player reads its own music data from
+        the same addresses it was assembled for. Works for any NP21 sub-version
+        (Stinsen, Unboxed, etc.) without song-specific analysis.
+
+        SF2 memory layout:
+            $0D7E-$0FFF: Minimal wrapper (INIT/PLAY dispatch + zero fill)
+            $1000+:      Song's original NP21 binary (player + all music data)
+        """
+        logger.info("Building raw-NP21 SF2 (verbatim player embedding)...")
+
+        c64_data = getattr(self.data, 'c64_data', None)
+        if not c64_data:
+            logger.error("  No c64_data available; cannot build raw NP21 SF2")
+            return
+
+        sid_la    = getattr(self.data, 'load_address', 0x1000)
+        header    = getattr(self.data, 'header', None)
+        init_addr = getattr(header, 'init_address', sid_la)     if header else sid_la
+        play_addr = getattr(header, 'play_address', sid_la + 3) if header else sid_la + 3
+
+        WRAP_BASE    = 0x0D7E
+        INIT_ENTRY   = WRAP_BASE + 2    # $0D80: SID INIT entry (JMP → handler)
+        PLAY_ENTRY   = WRAP_BASE + 5    # $0D83: SID PLAY entry (JMP → handler)
+        INIT_HANDLER = WRAP_BASE + 11   # $0D89: JSR init_addr, RTS
+        PLAY_HANDLER = WRAP_BASE + 15   # $0D8D: JSR play_addr, RTS
+
+        gap     = sid_la - WRAP_BASE    # bytes $0D7E … $0FFF (zeroed)
+        wrapper = bytearray(gap)
+
+        def put(addr: int, *bs: int) -> None:
+            for i, b in enumerate(bs):
+                wrapper[addr - WRAP_BASE + i] = b
+
+        put(INIT_ENTRY,   0x4C, INIT_HANDLER & 0xFF, INIT_HANDLER >> 8)
+        put(PLAY_ENTRY,   0x4C, PLAY_HANDLER & 0xFF, PLAY_HANDLER >> 8)
+        put(INIT_HANDLER, 0x20, init_addr & 0xFF, init_addr >> 8, 0x60)
+        put(PLAY_HANDLER, 0x20, play_addr & 0xFF, play_addr >> 8, 0x60)
+
+        prg_hdr    = bytes([WRAP_BASE & 0xFF, WRAP_BASE >> 8])
+        self.output = bytearray(prg_hdr) + wrapper + bytearray(c64_data)
+
+        # Fix zig64 auto-detection: it always calls init_addr+3 as PLAY.
+        # For songs where play_addr != init_addr+3 (e.g. Stinsen: play=$1006, init+3=$1003),
+        # patch the 3 bytes at init_addr+3 to JMP play_addr.
+        if play_addr != init_addr + 3:
+            stub_off = 2 + gap + (init_addr + 3 - sid_la)
+            if stub_off + 3 <= len(self.output):
+                self.output[stub_off]     = 0x4C                # JMP
+                self.output[stub_off + 1] = play_addr & 0xFF
+                self.output[stub_off + 2] = (play_addr >> 8) & 0xFF
+                logger.info(f"  Patched ${init_addr+3:04X} → JMP ${play_addr:04X} (zig64 play redirect)")
+
+        logger.info(f"  SF2 size: {len(self.output)} bytes")
+        logger.info(f"  Wrapper: ${WRAP_BASE:04X}-${sid_la - 1:04X} ({gap} bytes, zeroed)")
+        logger.info(f"  NP21 binary: ${sid_la:04X}-${sid_la + len(c64_data) - 1:04X} ({len(c64_data)} bytes)")
+        logger.info(f"  INIT: ${INIT_ENTRY:04X} → JSR ${init_addr:04X} @ ${INIT_HANDLER:04X}")
+        logger.info(f"  PLAY: ${PLAY_ENTRY:04X} → JSR ${play_addr:04X} @ ${PLAY_HANDLER:04X}")
+
     def _inject_laxity_music_data(self) -> None:
         """Inject music data into Laxity driver (native format, no conversion)
 
@@ -1471,6 +1542,44 @@ class SF2Writer:
         # Helper to convert memory address to file offset
         def addr_to_offset(addr: int) -> int:
             return addr - load_addr + 2  # +2 for PRG load address bytes
+
+        # ===== INIT DISPATCH PATCH ($0E00) =====
+        # The driver INIT at $0D89 calls JSR $0E00.  The dispatch table at $0E00 was:
+        #   4C 92 14  JMP $1492   ← steals the return addr so $0E06 (full init) is never reached
+        #   4C 9B 14  JMP $149B
+        # Fix: change first entry to JSR $1492 and redirect second to JMP $0E06 so the
+        # full init ($0E06: zero voices, set $1583=$02, set $1581=$80) runs during INIT.
+        _off_0e00 = addr_to_offset(0x0E00)
+        _off_0e03 = addr_to_offset(0x0E03)
+        if (len(self.output) > _off_0e03 + 2
+                and self.output[_off_0e00]     == 0x4C    # JMP $1492
+                and self.output[_off_0e00 + 1] == 0x92
+                and self.output[_off_0e00 + 2] == 0x14):
+            self.output[_off_0e00] = 0x20                  # JSR $1492
+            self.output[_off_0e03]     = 0x4C              # JMP $0E06
+            self.output[_off_0e03 + 1] = 0x06
+            self.output[_off_0e03 + 2] = 0x0E
+            logger.debug("  INIT patch applied: $0E00 JMP->JSR $1492, $0E03 -> JMP $0E06")
+        else:
+            logger.warning(f"  INIT patch skipped: unexpected bytes at $0E00: "
+                           f"{self.output[_off_0e00]:02X} {self.output[_off_0e00+1]:02X} {self.output[_off_0e00+2]:02X}")
+
+        # ===== PLAY ENTRY PATCH ($0D97) =====
+        # The PLAY wrapper at $0D91 calls JSR $0EA1, which is a mid-voice-loop entry
+        # point that expects X=voice and FC set up — it never decrements the frame
+        # counter ($1583) so the voice loop at $0E6D never runs and no SID writes occur.
+        # Fix: redirect to JSR $0E06 (the real frame-tick routine) which decrements
+        # $1583 and drives the full 3-voice loop + SID output on every PLAY call.
+        _off_0d97 = addr_to_offset(0x0D97)
+        if (len(self.output) > _off_0d97 + 2
+                and self.output[_off_0d97]     == 0x20    # JSR
+                and self.output[_off_0d97 + 1] == 0xA1    # lo: $A1
+                and self.output[_off_0d97 + 2] == 0x0E):  # hi: $0E  → JSR $0EA1
+            self.output[_off_0d97 + 1] = 0x06             # → JSR $0E06
+            logger.debug("  PLAY patch applied: $0D97 JSR $0EA1 -> JSR $0E06")
+        else:
+            logger.warning(f"  PLAY patch skipped: unexpected bytes at $0D97: "
+                           f"{self.output[_off_0d97]:02X} {self.output[_off_0d97+1]:02X} {self.output[_off_0d97+2]:02X}")
 
         #  ===== POINTER PATCHING FOR RELOCATED LAXITY PLAYER =====
         # The relocated Laxity player contains hardcoded pointers to orderlist/sequence locations
