@@ -25,6 +25,31 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.1.7] - 2026-03-29
+
+### Added
+- `SF2Writer._build_np21_sf2_edit_area()`: extracts voice sequences from NP21 `ch_seq_ptr`
+  tables ($0A1C/$0A1F), converts to SF2 format (note indices are 1:1 — chromatic order
+  identical in both formats), builds orderlists (one sequence per voice + loop), and
+  appends an SF2 edit data area after the NP21 binary in the output file
+
+### Changed
+- `SF2HeaderGenerator.create_music_data_block()` and `generate_complete_headers()` now
+  accept a `music_data_params` dict for real C64 addresses; Block 5 previously had all
+  placeholder `$1900` values
+- `_inject_laxity_raw_np21()` now calls `_build_np21_sf2_edit_area()` and regenerates
+  headers with correct Block 5 before building the file
+
+### Details
+- SF2 data area layout: OL ptr lo/hi (3 bytes each) + Seq ptr lo/hi (128 bytes each)
+  + orderlists (3 × 256 B) + sequences (N × 256 B), appended at `sid_la + len(c64_data)`
+- Sequences use SF2 format: instruments $A0-$BF, duration $80-$9F, commands $C0-$FF,
+  notes $01-$5D (direct index, gate-on $7E, end $7F)
+- Accuracy maintained at 100% (Stinsen 1909/1909, Unboxed 2733/2733)
+- 786 tests pass
+
+---
+
 ## [3.1.6] - 2026-03-29
 
 ### Changed
