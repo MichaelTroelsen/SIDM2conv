@@ -328,7 +328,7 @@ class SF2HeaderGenerator:
 
         return bytes(block)
 
-    def create_music_data_block(self) -> bytes:
+    def create_music_data_block(self, music_data_params: Optional[dict] = None) -> bytes:
         """
         Create Block 5: Music Data.
 
@@ -344,42 +344,29 @@ class SF2HeaderGenerator:
         - SequenceSize (2)
         - Sequence00Address (2)
 
+        Args:
+            music_data_params: dict with real address values, or None for placeholders.
+                Keys: track_count, ol_ptr_lo_addr, ol_ptr_hi_addr, seq_count,
+                      seq_ptr_lo_addr, seq_ptr_hi_addr, ol_size, ol_track1_addr,
+                      seq_size, seq00_addr
+
         Returns:
             Block bytes with ID and size prefix
         """
+        p = music_data_params or {}
         content = bytearray()
 
-        # TrackCount (1 byte) - placeholder value
-        content.append(0x01)
+        content.append(p.get('track_count', 0x01))
+        content.extend(struct.pack("<H", p.get('ol_ptr_lo_addr', 0x1900)))
+        content.extend(struct.pack("<H", p.get('ol_ptr_hi_addr', 0x1900)))
+        content.append(p.get('seq_count', 0x01))
+        content.extend(struct.pack("<H", p.get('seq_ptr_lo_addr', 0x1900)))
+        content.extend(struct.pack("<H", p.get('seq_ptr_hi_addr', 0x1900)))
+        content.extend(struct.pack("<H", p.get('ol_size', 0x0100)))
+        content.extend(struct.pack("<H", p.get('ol_track1_addr', 0x1900)))
+        content.extend(struct.pack("<H", p.get('seq_size', 0x0100)))
+        content.extend(struct.pack("<H", p.get('seq00_addr', 0x1900)))
 
-        # TrackOrderListPointersLowAddress (2 bytes)
-        content.extend(struct.pack("<H", 0x1900))
-
-        # TrackOrderListPointersHighAddress (2 bytes)
-        content.extend(struct.pack("<H", 0x1900))
-
-        # SequenceCount (1 byte) - placeholder value
-        content.append(0x01)
-
-        # SequencePointersLowAddress (2 bytes)
-        content.extend(struct.pack("<H", 0x1900))
-
-        # SequencePointersHighAddress (2 bytes)
-        content.extend(struct.pack("<H", 0x1900))
-
-        # OrderListSize (2 bytes)
-        content.extend(struct.pack("<H", 0x0100))
-
-        # OrderListTrack1Address (2 bytes)
-        content.extend(struct.pack("<H", 0x1900))
-
-        # SequenceSize (2 bytes)
-        content.extend(struct.pack("<H", 0x0100))
-
-        # Sequence00Address (2 bytes)
-        content.extend(struct.pack("<H", 0x1900))
-
-        # Verify size is exactly 18 bytes
         assert len(content) == 18, f"MusicData block must be 18 bytes, got {len(content)}"
 
         block = bytearray([0x05, len(content)])
@@ -407,7 +394,7 @@ class SF2HeaderGenerator:
 
         return bytes(blocks)
 
-    def generate_complete_headers(self) -> bytes:
+    def generate_complete_headers(self, music_data_params: Optional[dict] = None) -> bytes:
         """
         Generate complete SF2 header block structure.
 
@@ -418,22 +405,23 @@ class SF2HeaderGenerator:
         CRITICAL: Blocks MUST be in sequential order (1, 2, 3, 4, 5...)
         Editor rejects files with out-of-order blocks!
 
+        Args:
+            music_data_params: Real Block 5 address values (see create_music_data_block).
+                               If None, placeholder $1900 values are used.
+
         Returns:
             Complete header bytes ready to prepend to driver
         """
         headers = bytearray()
 
-        # Magic number (0x1337 in little-endian)
         headers.extend(struct.pack("<H", self.MAGIC_NUMBER))
 
-        # Add all header blocks IN CORRECT ORDER (1, 2, 3, 4, 5...)
-        headers.extend(self.create_descriptor_block())          # Block 1
-        headers.extend(self.create_driver_common_block())       # Block 2
-        headers.extend(self.create_tables_block())              # Block 3
-        headers.extend(self.create_optional_blocks())           # Block 4 (InstrumentDescriptor)
-        headers.extend(self.create_music_data_block())          # Block 5 (MusicData)
+        headers.extend(self.create_descriptor_block())
+        headers.extend(self.create_driver_common_block())
+        headers.extend(self.create_tables_block())
+        headers.extend(self.create_optional_blocks())
+        headers.extend(self.create_music_data_block(music_data_params))
 
-        # End marker
         headers.append(0xFF)
 
         return bytes(headers)

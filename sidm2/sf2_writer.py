@@ -1503,9 +1503,26 @@ class SF2Writer:
             )
             return
 
-        # Build the full PRG: [load_addr:2] + memory image from $0D7E to end of NP21
+        # --- Extract NP21 patterns and build SF2 edit data area ---
+        music_data_params, sf2_edit_data = self._build_np21_sf2_edit_area(c64_data, sid_la)
+
+        # Update driver_size to include the full file extent (NP21 + edit area)
+        gen.driver_size += len(sf2_edit_data)
+
+        # Now regenerate headers with correct Block 5 addresses
+        header_bytes = gen.generate_complete_headers(music_data_params)
+
+        # Re-check header size hasn't grown past handler base
+        headers_end_addr = LOAD_BASE + len(header_bytes)
+        if headers_end_addr > HANDLER_BASE:
+            logger.error(
+                f"  Headers too large after music data update! End ${headers_end_addr:04X} > ${HANDLER_BASE:04X}"
+            )
+            return
+
+        # Build the full PRG: [load_addr:2] + memory from $0D7E to end of NP21 + SF2 edit data
         gap = sid_la - LOAD_BASE
-        file_size = 2 + gap + len(c64_data)
+        file_size = 2 + gap + len(c64_data) + len(sf2_edit_data)
         file_data = bytearray(file_size)
 
         # PRG load address (2-byte little-endian header)
@@ -1526,8 +1543,6 @@ class SF2Writer:
         file_data[np21_off:np21_off + len(c64_data)] = c64_data
 
         # Fix zig64 auto-detection: it always calls init_addr+3 as PLAY.
-        # For songs where play_addr != init_addr+3 (e.g. Stinsen: play=$1006, init+3=$1003),
-        # patch the 3 bytes at init_addr+3 inside the embedded NP21 to JMP play_addr.
         if play_addr != init_addr + 3:
             stub_off = np21_off + (init_addr + 3 - sid_la)
             if 0 <= stub_off and stub_off + 3 <= len(file_data):
@@ -1536,14 +1551,173 @@ class SF2Writer:
                 file_data[stub_off + 2] = (play_addr >> 8) & 0xFF
                 logger.info(f"  Patched ${init_addr+3:04X} -> JMP ${play_addr:04X} (zig64 play redirect)")
 
+        # SF2 edit data appended after NP21 binary
+        if sf2_edit_data:
+            edit_off = np21_off + len(c64_data)
+            file_data[edit_off:edit_off + len(sf2_edit_data)] = sf2_edit_data
+
         self.output = file_data
 
+        sf2_data_base = sid_la + len(c64_data)
         logger.info(f"  SF2 size: {len(self.output)} bytes")
         logger.info(f"  Magic + headers: ${LOAD_BASE:04X}-${headers_end_addr - 1:04X} ({len(header_bytes)} bytes)")
         logger.info(f"  Handlers: ${HANDLER_BASE:04X} (INIT=${INIT_HANDLER:04X}, PLAY=${PLAY_HANDLER:04X}, STOP=${STOP_HANDLER:04X})")
         logger.info(f"  NP21 binary: ${sid_la:04X}-${sid_la + len(c64_data) - 1:04X} ({len(c64_data)} bytes)")
+        logger.info(f"  SF2 edit data: ${sf2_data_base:04X}-${sf2_data_base + len(sf2_edit_data) - 1:04X} ({len(sf2_edit_data)} bytes)")
         logger.info(f"  INIT: ${INIT_HANDLER:04X} -> JSR ${init_addr:04X}")
         logger.info(f"  PLAY: ${PLAY_HANDLER:04X} -> JSR ${play_addr:04X}")
+
+    def _build_np21_sf2_edit_area(self, c64_data: bytes, sid_la: int):
+        """Extract NP21 patterns/orderlists and build an SF2-format edit data area.
+
+        Returns (music_data_params, sf2_edit_bytes).
+        music_data_params is a dict for SF2HeaderGenerator.create_music_data_block().
+        sf2_edit_bytes is the raw bytes to append after the NP21 binary in the file.
+
+        The edit area layout (all offsets from sf2_data_base = sid_la + len(c64_data)):
+          [0]          OL ptr lo table  (3 bytes, written by editor at runtime)
+          [3]          OL ptr hi table  (3 bytes, written by editor at runtime)
+          [6]          Seq ptr lo table (SEQ_PTR_SIZE bytes, written by editor at runtime)
+          [6+N]        Seq ptr hi table (SEQ_PTR_SIZE bytes, written by editor at runtime)
+          [6+2N]       Orderlists       (3 × OL_SIZE bytes)
+          [6+2N+3*O]   Sequences        (num_patterns × SEQ_SIZE bytes, SF2-format)
+        where N=SEQ_PTR_SIZE=128, O=OL_SIZE=256, SEQ_SIZE=256.
+        """
+        CH_SEQ_LO_OFF  = 0x0A1C   # Offset from sid_la to voice seq ptr lo table (3 bytes)
+        CH_SEQ_HI_OFF  = 0x0A1F   # Offset from sid_la to voice seq ptr hi table (3 bytes)
+        OL_SIZE  = 256
+        SEQ_SIZE = 256
+        SEQ_PTR_SIZE = 128         # Max sequences tracked in ptr tables
+
+        def _extract_raw_seq(addr):
+            """Read NP21 raw bytes from addr until $7F (inclusive), capped at SEQ_SIZE."""
+            off = addr - sid_la
+            if off < 0 or off >= len(c64_data):
+                return None
+            raw = bytearray()
+            j = 0
+            while off + j < len(c64_data) and j < SEQ_SIZE:
+                b = c64_data[off + j]
+                raw.append(b)
+                if b == 0x7F:
+                    break
+                j += 1
+            return bytes(raw)
+
+        # --- 1. Extract the 3 main voice sequences from ch_seq_ptr ---
+        # ch_seq_ptr ($0A1C/$0A1F) gives the actual voice sequence addresses.
+        # These are the primary music data the editor needs to display.
+        # The pattern ptr table at $0A22/$0A49 points to instrument sub-patterns, not
+        # voice sequences — do NOT use that table for sequence extraction.
+        addr_to_sf2_idx = {}
+        raw_patterns = []
+
+        for v in range(3):
+            if CH_SEQ_LO_OFF + v < len(c64_data) and CH_SEQ_HI_OFF + v < len(c64_data):
+                lo = c64_data[CH_SEQ_LO_OFF + v]
+                hi = c64_data[CH_SEQ_HI_OFF + v]
+                seq_addr = (hi << 8) | lo
+                if seq_addr not in addr_to_sf2_idx:
+                    raw = _extract_raw_seq(seq_addr)
+                    if raw is not None:
+                        sf2_idx = len(raw_patterns)
+                        addr_to_sf2_idx[seq_addr] = sf2_idx
+                        raw_patterns.append(raw)
+
+        voice_init_idx = [0, 0, 0]
+        for v in range(3):
+            if CH_SEQ_LO_OFF + v < len(c64_data) and CH_SEQ_HI_OFF + v < len(c64_data):
+                lo = c64_data[CH_SEQ_LO_OFF + v]
+                hi = c64_data[CH_SEQ_HI_OFF + v]
+                init_addr = (hi << 8) | lo
+                voice_init_idx[v] = addr_to_sf2_idx.get(init_addr, 0)
+
+        num_patterns = len(raw_patterns)
+        if num_patterns == 0:
+            logger.warning("  No NP21 patterns found; Block 5 will use placeholder addresses")
+            return None, b''
+
+        logger.info(f"  Extracted {num_patterns} NP21 patterns for SF2 edit area")
+
+        # --- 2. Convert patterns to SF2 sequence format ---
+        # NP21 note indices 0x00-0x5D map 1:1 to SF2 note numbers.
+        # Both formats use chromatic ordering: 0=C-0, 1=C#0, ..., 93=B-7.
+        # No frequency table lookup needed — direct index passthrough is correct.
+        sf2_sequences = []
+        for raw in raw_patterns:
+            seq = bytearray()
+            for b in raw:
+                if b == 0x7F:           # end marker — same in SF2
+                    seq.append(0x7F)
+                    break
+                elif b == 0x7E:         # gate on — same in SF2
+                    seq.append(0x7E)
+                elif 0xA0 <= b <= 0xBF: # instrument — same encoding
+                    seq.append(b)
+                elif 0x80 <= b <= 0x9F: # duration — approx same
+                    seq.append(b)
+                elif 0xC0 <= b <= 0xFF: # command index — pass through
+                    seq.append(b)
+                else:                   # note: direct index passthrough (0=C-0, 1=C#0, ...)
+                    # SF2 note 0x00 = gate off; valid notes start at 0x01.
+                    # NP21 note 0 maps to C-0, which would be SF2 note 0 (gate-off).
+                    # Use 1 as minimum to avoid accidental gate-off bytes.
+                    seq.append(max(0x01, b))
+            if not seq or seq[-1] != 0x7F:
+                seq.append(0x7F)
+            # Pad to fixed size
+            while len(seq) < SEQ_SIZE:
+                seq.append(0x7F)
+            sf2_sequences.append(bytes(seq[:SEQ_SIZE]))
+
+        orderlists = []
+        for v in range(3):
+            ol = bytearray([voice_init_idx[v] & 0x7F, 0xFE])  # single pattern + loop
+            while len(ol) < OL_SIZE:
+                ol.append(0xFF)
+            orderlists.append(bytes(ol[:OL_SIZE]))
+
+        # --- 4. Compute addresses in C64 memory ---
+        sf2_data_base = sid_la + len(c64_data)
+
+        ol_ptr_lo_addr  = sf2_data_base + 0
+        ol_ptr_hi_addr  = sf2_data_base + 3
+        seq_ptr_lo_addr = sf2_data_base + 6
+        seq_ptr_hi_addr = sf2_data_base + 6 + SEQ_PTR_SIZE
+        ol_track1_addr  = sf2_data_base + 6 + 2 * SEQ_PTR_SIZE
+        seq00_addr      = ol_track1_addr + 3 * OL_SIZE
+
+        music_data_params = {
+            'track_count':     3,
+            'ol_ptr_lo_addr':  ol_ptr_lo_addr,
+            'ol_ptr_hi_addr':  ol_ptr_hi_addr,
+            'seq_count':       min(num_patterns, SEQ_PTR_SIZE),
+            'seq_ptr_lo_addr': seq_ptr_lo_addr,
+            'seq_ptr_hi_addr': seq_ptr_hi_addr,
+            'ol_size':         OL_SIZE,
+            'ol_track1_addr':  ol_track1_addr,
+            'seq_size':        SEQ_SIZE,
+            'seq00_addr':      seq00_addr,
+        }
+
+        # --- 5. Build raw edit data bytes ---
+        edit = bytearray()
+        edit.extend(b'\x00' * 3)                  # OL ptr lo table (editor writes)
+        edit.extend(b'\x00' * 3)                  # OL ptr hi table (editor writes)
+        edit.extend(b'\x00' * SEQ_PTR_SIZE)       # Seq ptr lo table (editor writes)
+        edit.extend(b'\x00' * SEQ_PTR_SIZE)       # Seq ptr hi table (editor writes)
+        for ol in orderlists:
+            edit.extend(ol)
+        for seq in sf2_sequences:
+            edit.extend(seq)
+
+        logger.info(
+            f"  SF2 edit area: base=${sf2_data_base:04X}, "
+            f"OL=${ol_track1_addr:04X}, "
+            f"Seq=${seq00_addr:04X} ({num_patterns} patterns × {SEQ_SIZE}B)"
+        )
+
+        return music_data_params, bytes(edit)
 
     def _inject_laxity_music_data(self) -> None:
         """Inject music data into Laxity driver (native format, no conversion)
