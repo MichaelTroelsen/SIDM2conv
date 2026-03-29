@@ -1447,21 +1447,26 @@ class SF2Writer:
         logger.debug("The output file structure may need manual refinement")
 
     def _inject_laxity_raw_np21(self) -> None:
-        """Build SF2 by embedding the song's own NP21 binary verbatim.
+        """Build a valid SF2 file by embedding the song's own NP21 binary verbatim.
 
         Unlike the Stinsen-template approach (40 hardcoded pointer patches),
         this places the song's complete NP21 player + music data at its original
-        C64 addresses ($1000+). A minimal dispatch wrapper sits at $0D7E-$0FFF.
+        C64 addresses ($1000+). A proper SF2 header sits at $0D7E-$0FFF.
 
         No pointer patches are required: the player reads its own music data from
         the same addresses it was assembled for. Works for any NP21 sub-version
         (Stinsen, Unboxed, etc.) without song-specific analysis.
 
         SF2 memory layout:
-            $0D7E-$0FFF: Minimal wrapper (INIT/PLAY dispatch + zero fill)
+            $0D7E:       0x1337 magic (required for SF2 recognition)
+            $0D80-$0EFF: SF2 header blocks (Descriptor, DriverCommon, DriverTables,
+                         InstrumentDescriptor, MusicData, 0xFF end)
+            $0F00:       INIT handler: JSR init_addr, RTS
+            $0F04:       PLAY handler: JSR play_addr, RTS
+            $0F08:       STOP handler: LDA #0, STA $D418, RTS
             $1000+:      Song's original NP21 binary (player + all music data)
         """
-        logger.info("Building raw-NP21 SF2 (verbatim player embedding)...")
+        logger.info("Building raw-NP21 SF2 (verbatim player embedding, valid SF2 headers)...")
 
         c64_data = getattr(self.data, 'c64_data', None)
         if not c64_data:
@@ -1473,43 +1478,72 @@ class SF2Writer:
         init_addr = getattr(header, 'init_address', sid_la)     if header else sid_la
         play_addr = getattr(header, 'play_address', sid_la + 3) if header else sid_la + 3
 
-        WRAP_BASE    = 0x0D7E
-        INIT_ENTRY   = WRAP_BASE + 2    # $0D80: SID INIT entry (JMP → handler)
-        PLAY_ENTRY   = WRAP_BASE + 5    # $0D83: SID PLAY entry (JMP → handler)
-        INIT_HANDLER = WRAP_BASE + 11   # $0D89: JSR init_addr, RTS
-        PLAY_HANDLER = WRAP_BASE + 15   # $0D8D: JSR play_addr, RTS
+        LOAD_BASE    = 0x0D7E   # SF2 loads here; 0x1337 magic goes here
+        HANDLER_BASE = 0x0F00   # Handler code — safely past all header blocks
+        INIT_HANDLER = HANDLER_BASE + 0    # $0F00: JSR init_addr, RTS
+        PLAY_HANDLER = HANDLER_BASE + 4    # $0F04: JSR play_addr, RTS
+        STOP_HANDLER = HANDLER_BASE + 8    # $0F08: LDA #0, STA $D418, RTS
 
-        gap     = sid_la - WRAP_BASE    # bytes $0D7E … $0FFF (zeroed)
-        wrapper = bytearray(gap)
+        # Generate SF2 header blocks with correct handler entry points.
+        # generate_complete_headers() returns [37 13] + Block1..5 + [FF].
+        # These bytes go at $0D7E; blocks start at $0D80 (= load_addr + 2) as
+        # required by driver_info.cpp:313: block_address = m_TopAddress + 2.
+        from sidm2.sf2_header_generator import SF2HeaderGenerator
+        gen = SF2HeaderGenerator(driver_size=len(c64_data) + (sid_la - LOAD_BASE))
+        gen.DRIVER_INIT = INIT_HANDLER
+        gen.DRIVER_PLAY = PLAY_HANDLER
+        gen.DRIVER_STOP = STOP_HANDLER
+        header_bytes = gen.generate_complete_headers()
 
-        def put(addr: int, *bs: int) -> None:
-            for i, b in enumerate(bs):
-                wrapper[addr - WRAP_BASE + i] = b
+        # Safety check: headers must not overlap handler code
+        headers_end_addr = LOAD_BASE + len(header_bytes)
+        if headers_end_addr > HANDLER_BASE:
+            logger.error(
+                f"  Headers too large! End ${headers_end_addr:04X} > handler base ${HANDLER_BASE:04X}"
+            )
+            return
 
-        put(INIT_ENTRY,   0x4C, INIT_HANDLER & 0xFF, INIT_HANDLER >> 8)
-        put(PLAY_ENTRY,   0x4C, PLAY_HANDLER & 0xFF, PLAY_HANDLER >> 8)
-        put(INIT_HANDLER, 0x20, init_addr & 0xFF, init_addr >> 8, 0x60)
-        put(PLAY_HANDLER, 0x20, play_addr & 0xFF, play_addr >> 8, 0x60)
+        # Build the full PRG: [load_addr:2] + memory image from $0D7E to end of NP21
+        gap = sid_la - LOAD_BASE
+        file_size = 2 + gap + len(c64_data)
+        file_data = bytearray(file_size)
 
-        prg_hdr    = bytes([WRAP_BASE & 0xFF, WRAP_BASE >> 8])
-        self.output = bytearray(prg_hdr) + wrapper + bytearray(c64_data)
+        # PRG load address (2-byte little-endian header)
+        file_data[0] = LOAD_BASE & 0xFF
+        file_data[1] = LOAD_BASE >> 8
+
+        # SF2 magic + header blocks at $0D7E (file offset 2)
+        file_data[2:2 + len(header_bytes)] = header_bytes
+
+        # Handler code at $0F00 (file offset 2 + ($0F00 - $0D7E))
+        hnd_off = 2 + (HANDLER_BASE - LOAD_BASE)
+        file_data[hnd_off:hnd_off + 4]  = bytes([0x20, init_addr & 0xFF, init_addr >> 8, 0x60])
+        file_data[hnd_off + 4:hnd_off + 8]  = bytes([0x20, play_addr & 0xFF, play_addr >> 8, 0x60])
+        file_data[hnd_off + 8:hnd_off + 14] = bytes([0xA9, 0x00, 0x8D, 0x18, 0xD4, 0x60])
+
+        # NP21 binary verbatim at its original load address (file offset 2 + gap)
+        np21_off = 2 + gap
+        file_data[np21_off:np21_off + len(c64_data)] = c64_data
 
         # Fix zig64 auto-detection: it always calls init_addr+3 as PLAY.
         # For songs where play_addr != init_addr+3 (e.g. Stinsen: play=$1006, init+3=$1003),
-        # patch the 3 bytes at init_addr+3 to JMP play_addr.
+        # patch the 3 bytes at init_addr+3 inside the embedded NP21 to JMP play_addr.
         if play_addr != init_addr + 3:
-            stub_off = 2 + gap + (init_addr + 3 - sid_la)
-            if stub_off + 3 <= len(self.output):
-                self.output[stub_off]     = 0x4C                # JMP
-                self.output[stub_off + 1] = play_addr & 0xFF
-                self.output[stub_off + 2] = (play_addr >> 8) & 0xFF
-                logger.info(f"  Patched ${init_addr+3:04X} → JMP ${play_addr:04X} (zig64 play redirect)")
+            stub_off = np21_off + (init_addr + 3 - sid_la)
+            if 0 <= stub_off and stub_off + 3 <= len(file_data):
+                file_data[stub_off]     = 0x4C  # JMP
+                file_data[stub_off + 1] = play_addr & 0xFF
+                file_data[stub_off + 2] = (play_addr >> 8) & 0xFF
+                logger.info(f"  Patched ${init_addr+3:04X} -> JMP ${play_addr:04X} (zig64 play redirect)")
+
+        self.output = file_data
 
         logger.info(f"  SF2 size: {len(self.output)} bytes")
-        logger.info(f"  Wrapper: ${WRAP_BASE:04X}-${sid_la - 1:04X} ({gap} bytes, zeroed)")
+        logger.info(f"  Magic + headers: ${LOAD_BASE:04X}-${headers_end_addr - 1:04X} ({len(header_bytes)} bytes)")
+        logger.info(f"  Handlers: ${HANDLER_BASE:04X} (INIT=${INIT_HANDLER:04X}, PLAY=${PLAY_HANDLER:04X}, STOP=${STOP_HANDLER:04X})")
         logger.info(f"  NP21 binary: ${sid_la:04X}-${sid_la + len(c64_data) - 1:04X} ({len(c64_data)} bytes)")
-        logger.info(f"  INIT: ${INIT_ENTRY:04X} → JSR ${init_addr:04X} @ ${INIT_HANDLER:04X}")
-        logger.info(f"  PLAY: ${PLAY_ENTRY:04X} → JSR ${play_addr:04X} @ ${PLAY_HANDLER:04X}")
+        logger.info(f"  INIT: ${INIT_HANDLER:04X} -> JSR ${init_addr:04X}")
+        logger.info(f"  PLAY: ${PLAY_HANDLER:04X} -> JSR ${play_addr:04X}")
 
     def _inject_laxity_music_data(self) -> None:
         """Inject music data into Laxity driver (native format, no conversion)

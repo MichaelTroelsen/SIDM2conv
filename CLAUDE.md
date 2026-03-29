@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.1.5** | SID→SF2 Converter | C64 Music Tools | Updated 2026-03-22
+**SIDM2 v3.1.6** | SID→SF2 Converter | C64 Music Tools | Updated 2026-03-29
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -171,6 +171,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.1.6** (2026-03-29): Valid SF2 file output — raw NP21 embedding now produces a proper SF2 recognized by SID Factory II editor; added 0x1337 magic + 5 required header blocks (228 bytes at $0D7E-$0E62); handlers moved to $0F00/$0F04/$0F08; zig64 accuracy maintained at 100% (Stinsen 1909/1909, Unboxed 2733/2733); editor automation test PASS
 
 **v3.1.5** (2026-03-22): Raw NP21 embedding extended to all Laxity songs — embed any song's own NP21 binary verbatim at $1000 with a minimal $0D7E wrapper dispatching to INIT/PLAY; patch $init+3 → JMP play_addr for zig64 auto-detection compatibility; 100% accuracy on both Stinsen and Unboxed (verified 300 frames each)
 

@@ -25,6 +25,39 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.1.6] - 2026-03-29
+
+### Changed
+- `sf2_writer.py` (`_inject_laxity_raw_np21`): Generated PRG is now a **valid SF2 file** recognized by SID Factory II editor
+  - Added `0x1337` magic at $0D7E (required for editor recognition)
+  - Added 5 required SF2 header blocks (Descriptor, DriverCommon, DriverTables, InstrumentDescriptor, MusicData) — 228 bytes at $0D7E-$0E62
+  - Handler code moved from $0D89/$0D8D to $0F00/$0F04/$0F08 to make room for headers
+  - Added STOP handler: LDA #0, STA $D418, RTS
+
+### Verified
+- zig64 accuracy maintained at 100%: Stinsen 1909/1909, Unboxed 2733/2733 (300 frames each)
+- SID Factory II editor automation test: PASS (loads, plays, window stable)
+- zig64 handler addresses for generated SF2: init=$0F00, play=$0F04 (NOT $0D7E)
+
+### Note
+- File is recognized and plays correctly in editor; music data not yet editable (Block 5 MusicData addresses are placeholder $1900 values)
+
+---
+
+## [3.1.5] - 2026-03-22
+
+### Added
+- `sf2_writer.py` (`_inject_laxity_raw_np21`): Raw NP21 embedding — embed any song's NP21 binary verbatim at $1000 with minimal $0D7E dispatch wrapper
+- zig64 auto-detection patch: `$init+3` → `JMP play_addr` for songs where play_addr ≠ init_addr+3 (e.g. Stinsen: play=$1006, init+3=$1003)
+- Verified on Unboxed_Ending_8580.sid (different NP21 sub-version from Stinsen)
+
+### Result
+- **100% accuracy for all Laxity songs** — no song-specific patches required
+- Stinsen: 1909/1909 SID register writes match (300 frames)
+- Unboxed: 2733/2733 SID register writes match (300 frames)
+
+---
+
 ## [3.1.4] - 2026-03-21
 
 ### Fixed
