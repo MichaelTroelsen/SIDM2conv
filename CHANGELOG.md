@@ -25,6 +25,22 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.2.0] - 2026-03-30
+
+### Fixed
+- `SF2HeaderGenerator.create_tables_block()` Block 3 table addresses corrected for the raw
+  NP21 approach (player at `$1000`). Critical fix: Filter address was `$1A1E` which is
+  actually `ch_seq_ptr_hi` (voice sequence pointer data) — editing "filter" entries would
+  corrupt NP21 voice pointers and break playback. Corrected to `$1989` (`tbl_filter_seq`),
+  confirmed in `laxity-np21.md`
+- Wave address corrected from `$1ACB` (inside voice sequence dead-code area) to `$1942`
+  (NP21 waveform array offset `$0942` from load)
+- Instruments table layout changed from row-major (0) to column-major (1) to match actual
+  NP21 storage format
+- Added explanatory comments mapping each Block 3 address to its confirmed NP21 offset
+
+---
+
 ## [3.1.9] - 2026-03-30
 
 ### Fixed

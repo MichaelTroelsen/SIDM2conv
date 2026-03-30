@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.1.9** | SID→SF2 Converter | C64 Music Tools | Updated 2026-03-30
+**SIDM2 v3.2.0** | SID→SF2 Converter | C64 Music Tools | Updated 2026-03-30
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -171,6 +171,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.2.0** (2026-03-30): Correct Block 3 table addresses for raw NP21 approach — Filter fixed from `$1A1E` (was ch_seq_ptr_hi, editing it would corrupt NP21!) to `$1989` (tbl_filter_seq); Wave updated to `$1942`; Instruments layout set column-major; all addresses now match actual NP21 binary layout (player at `$1000`)
 
 **v3.1.9** (2026-03-30): Correct NP21→SF2 note index mapping — SF2 notes are 1-based (0x01=C-0), NP21 notes are 0-based (0x00=C-0); fix: `sf2_note = np21_note + 1`; all note displays in editor were shifted down one semitone (e.g. D-1 displayed as C#1); accuracy unaffected (NP21 binary unchanged)
 

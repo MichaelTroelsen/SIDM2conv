@@ -249,67 +249,81 @@ class SF2HeaderGenerator:
         """
         Create Block 3: Driver Tables.
 
-        Defines 5 Laxity tables with their memory addresses and sizes.
+        All addresses are for the raw NP21 approach: player at $1000 (load address).
+        Offsets are fixed constants in the Laxity NP21 v21 player binary.
+
+        Confirmed addresses (laxity-np21.md + zig64 verification):
+          Instruments  $1A6B  offset $0A6B  32x8 column-major
+          Wave         $1942  offset $0942  waveform array; note offsets start at $1974
+          Pulse        $1A3B  offset $0A3B  64x4 row-major (Y*4 indexed)
+          Filter seq   $1989  offset $0989  tbl_filter_seq  (26 entries, $7F=end-of-prog)
+          Filter spd   $19A3  offset $09A3  tbl_filter_speed
+          Filter res   $19BD  offset $09BD  tbl_filter_resonance
+          Commands     $1ADB  offset $0ADB  instrument sub-pattern table base
+
+        NOTE: $1A1E is WRONG for filter — it is ch_seq_ptr_hi (voice sequence pointers).
+        Editing that address would corrupt NP21 playback. Corrected to $1989.
 
         Returns:
             Block bytes with ID and size prefix
         """
-        # Define all 6 tables (Instruments and Commands are required!)
+        # NP21 player at $1000 — all offsets relative to load address $1000.
         tables = [
             TableDescriptor(
                 name="Instruments",
                 table_id=0,
-                address=0x1A6B,
+                address=0x1A6B,    # offset $0A6B — 32 instruments x 8 params, column-major
                 columns=8,
                 rows=32,
-                table_type=0x80,  # Instruments type
+                table_type=0x80,   # Instruments type
+                layout=0x01,       # Column-major storage (NP21 uses column-major instrument table)
                 insert_delete=True,
-                color_rule=0x03,  # Instruments color
+                color_rule=0x03,   # Instruments color
             ),
             TableDescriptor(
                 name="Commands",
                 table_id=1,
-                address=0x1ADB,  # Laxity command table address
+                address=0x1ADB,    # offset $0ADB — instrument sub-pattern table
                 columns=2,
                 rows=64,
-                table_type=0x81,  # Commands type (required!)
+                table_type=0x81,   # Commands type (required for editor)
                 color_rule=0x00,
             ),
             TableDescriptor(
                 name="Wave",
                 table_id=2,
-                address=0x1ACB,
+                address=0x1942,    # offset $0942 — waveform array (note offsets at $1974 = +$32)
                 columns=2,
-                rows=128,
-                table_type=0x00,  # Generic
+                rows=50,           # 50 entries in the waveform/note-offset pair arrays
+                table_type=0x00,
                 color_rule=0x00,
             ),
             TableDescriptor(
                 name="Pulse",
                 table_id=3,
-                address=0x1A3B,
+                address=0x1A3B,    # offset $0A3B — pulse width table, row-major Y*4
                 columns=4,
                 rows=64,
-                table_type=0x00,  # Generic
+                table_type=0x00,
                 color_rule=0x00,
             ),
             TableDescriptor(
                 name="Filter",
                 table_id=4,
-                address=0x1A1E,
-                columns=4,
-                rows=32,
-                table_type=0x00,  # Generic
+                address=0x1989,    # offset $0989 — tbl_filter_seq (NOT $1A1E which is ch_seq_ptr_hi)
+                columns=3,         # 3 parallel arrays: seq / speed / resonance (each $1A apart)
+                rows=26,           # Up to 26 entries; $7F marks end-of-program
+                table_type=0x00,
                 color_rule=0x00,
             ),
             TableDescriptor(
                 name="Sequences",
                 table_id=5,
-                address=0x1900,
+                address=0x1900,    # offset $0900 — NP21 orderlist/sequence area (before music data)
                 columns=1,
                 rows=255,
-                table_type=0x00,  # Generic
-                layout=0x00,  # Will be marked continuous in implementation
+                table_type=0x00,
+                layout=0x00,
                 color_rule=0x00,
             ),
         ]
