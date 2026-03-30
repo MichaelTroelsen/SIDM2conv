@@ -25,6 +25,25 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.1.8] - 2026-03-30
+
+### Fixed
+- `_extract_raw_seq()` now stops at `0xFF` (the NP21 internal loop marker) instead of
+  `0x7F` (the unreachable safety terminator at the end of the data block). NP21 voice
+  sequences use `0xFF <loop_target_Y>` for looping; `0x7F` is never reached in normal
+  playback. Previously, voice 0 for Stinsen extracted 101 bytes including data that
+  belonged to voices 1 and 2; now correctly extracts 41 bytes (the actual voice 0 loop body)
+- Note 0 (C-0) now passes through to SF2 sequences without clamping. In SF2 packed format,
+  `0x00`–`0x5D` are note indices and gate-off is `0x80` — the earlier clamp `max(0x01, b)`
+  was based on an incorrect assumption and shifted C-0 to C#0 in the editor display
+
+### Added
+- Loop target detection in `_extract_raw_seq()`: returns `(body_bytes, loop_target)` where
+  `loop_target` is the Y index from the `0xFF` marker (usually `0x00`). Non-zero loop
+  targets (intro + loop-body structure) are logged as warnings
+
+---
+
 ## [3.1.7] - 2026-03-29
 
 ### Added

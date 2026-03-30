@@ -1590,19 +1590,37 @@ class SF2Writer:
         SEQ_PTR_SIZE = 128         # Max sequences tracked in ptr tables
 
         def _extract_raw_seq(addr):
-            """Read NP21 raw bytes from addr until $7F (inclusive), capped at SEQ_SIZE."""
+            """Read NP21 sequence bytes up to (not including) the loop/end terminator.
+
+            NP21 uses 0xFF as an internal loop marker (not 0x7F).  Format:
+              ...<body bytes>... 0xFF <loop_target_Y>
+            where loop_target_Y is the Y index to jump to (usually 0x00 = loop from start).
+            0x7F is a true end-of-data marker, but is typically unreachable in playback
+            because each voice loops via 0xFF before ever reaching 0x7F.
+
+            Returns (body_bytes, loop_target):
+              body_bytes  — raw NP21 bytes before the terminator (excludes 0xFF/0x7F)
+              loop_target — int Y target from 0xFF marker, or None if ended with 0x7F
+            """
             off = addr - sid_la
             if off < 0 or off >= len(c64_data):
-                return None
+                return None, None
             raw = bytearray()
             j = 0
             while off + j < len(c64_data) and j < SEQ_SIZE:
                 b = c64_data[off + j]
-                raw.append(b)
                 if b == 0x7F:
-                    break
+                    # True end — sequence plays once (no loop)
+                    return bytes(raw), None
+                if b == 0xFF:
+                    # Loop marker: next byte is the Y index to loop back to
+                    loop_target = 0
+                    if off + j + 1 < len(c64_data):
+                        loop_target = c64_data[off + j + 1]
+                    return bytes(raw), loop_target
+                raw.append(b)
                 j += 1
-            return bytes(raw)
+            return bytes(raw), None
 
         # --- 1. Extract the 3 main voice sequences from ch_seq_ptr ---
         # ch_seq_ptr ($0A1C/$0A1F) gives the actual voice sequence addresses.
@@ -1610,7 +1628,7 @@ class SF2Writer:
         # The pattern ptr table at $0A22/$0A49 points to instrument sub-patterns, not
         # voice sequences — do NOT use that table for sequence extraction.
         addr_to_sf2_idx = {}
-        raw_patterns = []
+        raw_patterns = []    # list of (body_bytes, loop_target)
 
         for v in range(3):
             if CH_SEQ_LO_OFF + v < len(c64_data) and CH_SEQ_HI_OFF + v < len(c64_data):
@@ -1618,11 +1636,16 @@ class SF2Writer:
                 hi = c64_data[CH_SEQ_HI_OFF + v]
                 seq_addr = (hi << 8) | lo
                 if seq_addr not in addr_to_sf2_idx:
-                    raw = _extract_raw_seq(seq_addr)
-                    if raw is not None:
+                    body, loop_target = _extract_raw_seq(seq_addr)
+                    if body is not None:
                         sf2_idx = len(raw_patterns)
                         addr_to_sf2_idx[seq_addr] = sf2_idx
-                        raw_patterns.append(raw)
+                        raw_patterns.append((body, loop_target))
+                        if loop_target is not None and loop_target > 0:
+                            logger.warning(
+                                f"  Voice seq at ${seq_addr:04X}: loop target={loop_target} "
+                                f"(non-zero intro loop — only loop body extracted for SF2)"
+                            )
 
         voice_init_idx = [0, 0, 0]
         for v in range(3):
@@ -1637,34 +1660,32 @@ class SF2Writer:
             logger.warning("  No NP21 patterns found; Block 5 will use placeholder addresses")
             return None, b''
 
-        logger.info(f"  Extracted {num_patterns} NP21 patterns for SF2 edit area")
+        for i, (body, lt) in enumerate(raw_patterns):
+            loop_str = f"loops from start" if lt == 0 else f"loops from Y={lt}" if lt is not None else "no loop"
+            logger.info(f"  Pattern {i}: {len(body)} bytes, {loop_str}")
 
         # --- 2. Convert patterns to SF2 sequence format ---
         # NP21 note indices 0x00-0x5D map 1:1 to SF2 note numbers.
         # Both formats use chromatic ordering: 0=C-0, 1=C#0, ..., 93=B-7.
         # No frequency table lookup needed — direct index passthrough is correct.
+        # Body bytes no longer contain 0x7F or 0xFF (stripped by _extract_raw_seq).
         sf2_sequences = []
-        for raw in raw_patterns:
+        for body, loop_target in raw_patterns:
             seq = bytearray()
-            for b in raw:
-                if b == 0x7F:           # end marker — same in SF2
-                    seq.append(0x7F)
-                    break
-                elif b == 0x7E:         # gate on — same in SF2
+            for b in body:
+                if b == 0x7E:           # gate on — same in SF2
                     seq.append(0x7E)
                 elif 0xA0 <= b <= 0xBF: # instrument — same encoding
                     seq.append(b)
-                elif 0x80 <= b <= 0x9F: # duration — approx same
+                elif 0x80 <= b <= 0x9F: # duration — same encoding
                     seq.append(b)
                 elif 0xC0 <= b <= 0xFF: # command index — pass through
                     seq.append(b)
                 else:                   # note: direct index passthrough (0=C-0, 1=C#0, ...)
-                    # SF2 note 0x00 = gate off; valid notes start at 0x01.
-                    # NP21 note 0 maps to C-0, which would be SF2 note 0 (gate-off).
-                    # Use 1 as minimum to avoid accidental gate-off bytes.
-                    seq.append(max(0x01, b))
-            if not seq or seq[-1] != 0x7F:
-                seq.append(0x7F)
+                    # In SF2 packed data, 0x00-0x5D are note indices (0=C-0 is valid).
+                    # Gate-off in SF2 is 0x80, not 0x00. Direct passthrough is correct.
+                    seq.append(b)
+            seq.append(0x7F)  # SF2 end-of-sequence marker
             # Pad to fixed size
             while len(seq) < SEQ_SIZE:
                 seq.append(0x7F)
