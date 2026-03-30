@@ -1665,15 +1665,27 @@ class SF2Writer:
             logger.info(f"  Pattern {i}: {len(body)} bytes, {loop_str}")
 
         # --- 2. Convert patterns to SF2 sequence format ---
-        # NP21 note indices 0x00-0x5D map 1:1 to SF2 note numbers.
-        # Both formats use chromatic ordering: 0=C-0, 1=C#0, ..., 93=B-7.
-        # No frequency table lookup needed — direct index passthrough is correct.
+        # SF2 packed sequence format (from datasource_sequence.cpp):
+        #   0x00        = note off (gate off)
+        #   0x01-0x6F   = notes  (0x01 = C-0, 0x02 = C#0, ..., chromatic)
+        #   0x7E        = note on / tie
+        #   0x7F        = end of sequence
+        #   0x80-0x8F   = duration (0-15 ticks)
+        #   0x90-0x9F   = duration + tie flag
+        #   0xA0-0xBF   = set instrument
+        #   0xC0-0xFF   = set command
+        #
+        # NP21 note format: 0x00-0x5D = notes, where 0x00 = C-0 (lowest).
+        # SF2 note format:  0x01-0x6F = notes, where 0x01 = C-0.
+        # Conversion: sf2_note = np21_note + 1  (NP21 notes are 0-based, SF2 are 1-based)
+        # All other byte ranges (gate-on 0x7E, durations 0x80-0x9F, instrument, command)
+        # are identical between NP21 and SF2.
         # Body bytes no longer contain 0x7F or 0xFF (stripped by _extract_raw_seq).
         sf2_sequences = []
         for body, loop_target in raw_patterns:
             seq = bytearray()
             for b in body:
-                if b == 0x7E:           # gate on — same in SF2
+                if b == 0x7E:           # gate on — same in SF2 (0x7E)
                     seq.append(0x7E)
                 elif 0xA0 <= b <= 0xBF: # instrument — same encoding
                     seq.append(b)
@@ -1681,10 +1693,9 @@ class SF2Writer:
                     seq.append(b)
                 elif 0xC0 <= b <= 0xFF: # command index — pass through
                     seq.append(b)
-                else:                   # note: direct index passthrough (0=C-0, 1=C#0, ...)
-                    # In SF2 packed data, 0x00-0x5D are note indices (0=C-0 is valid).
-                    # Gate-off in SF2 is 0x80, not 0x00. Direct passthrough is correct.
-                    seq.append(b)
+                else:                   # note: NP21 is 0-based, SF2 is 1-based (+1 shift)
+                    # NP21 note 0x00 = C-0, SF2 note 0x01 = C-0 (SF2 note 0x00 = gate off)
+                    seq.append(min(0x6F, b + 1))
             seq.append(0x7F)  # SF2 end-of-sequence marker
             # Pad to fixed size
             while len(seq) < SEQ_SIZE:

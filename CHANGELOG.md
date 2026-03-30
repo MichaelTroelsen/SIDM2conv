@@ -25,6 +25,20 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.1.9] - 2026-03-30
+
+### Fixed
+- NP21→SF2 note index conversion: SF2 packed sequences use 1-based note indices
+  (`0x01` = C-0, `0x00` = gate-off), while NP21 uses 0-based (`0x00` = C-0). The
+  correct mapping is `sf2_note = np21_note + 1`. Previously the conversion was either
+  clamping (`max(0x01, b)`, only fixed the b=0 case) or passthrough (`b`, wrong for
+  every note). All notes were displayed one semitone too low in the SF2 editor
+- Confirmed SF2 format from `datasource_sequence.cpp`: `0x00`=gate-off, `0x01–0x6F`=notes,
+  `0x7E`=gate-on/tie, `0x7F`=end, `0x80–0x8F`=duration, `0x90–0x9F`=duration+tie,
+  `0xA0–0xBF`=instrument, `0xC0–0xFF`=command (documented in code comments)
+
+---
+
 ## [3.1.8] - 2026-03-30
 
 ### Fixed
