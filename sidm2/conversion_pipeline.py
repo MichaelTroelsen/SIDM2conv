@@ -531,7 +531,7 @@ def convert_laxity_to_sf2(input_path: str, output_path: str, config: ConversionC
         logger.info(f"Laxity conversion successful!")
         logger.info(f"  Output: {output_path}")
         logger.info(f"  Size: {output_size} bytes")
-        logger.info(f"  Expected accuracy: 70%")  # Conservative estimate, actual is 99.93% with complete table injection
+        logger.info(f"  Expected accuracy: {DriverSelector.PLAYER_REGISTRY['laxity']['accuracy']}")
         return True
 
     except Exception as e:

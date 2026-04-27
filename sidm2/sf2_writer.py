@@ -1574,13 +1574,28 @@ class SF2Writer:
         music_data_params is a dict for SF2HeaderGenerator.create_music_data_block().
         sf2_edit_bytes is the raw bytes to append after the NP21 binary in the file.
 
+        EDITABLE-REPLAY GAP (do not "fix" by switching to NP21 format here):
+          The bytes written here are read by the SF2 editor's DataSourceSequence::Unpack
+          (datasource_sequence.cpp:197-267), which assumes the SF2 packed format:
+            0x7F=end, 0xC0-0xFF=command, 0xA0-0xBF=instrument,
+            0x80-0x9F=duration, <0x80=note (asserts), 0x00=gate-off, 0x7E=tie.
+          NP21 format conflicts on every key byte (0x80=gate-off, 0xFF=loop,
+          0-based notes), so storing NP21 bytes here would corrupt the editor view.
+          The flip side: the laxity SF2 driver runs the original NP21 player code,
+          which reads NP21-format sequences from inside the embedded NP21 binary at
+          ch_seq_ptr ($0A1C/$0A1F) — NOT from this edit area. Therefore edits the
+          user makes in the SF2 editor do NOT yet affect playback. Closing that gap
+          requires either (a) a runtime SF2->NP21 translator added to the laxity
+          driver, or (b) a full Driver-11-compatible re-encoding of the song. Both
+          are out of scope for this function.
+
         The edit area layout (all offsets from sf2_data_base = sid_la + len(c64_data)):
           [0]          OL ptr lo table  (3 bytes, written by editor at runtime)
           [3]          OL ptr hi table  (3 bytes, written by editor at runtime)
           [6]          Seq ptr lo table (SEQ_PTR_SIZE bytes, written by editor at runtime)
           [6+N]        Seq ptr hi table (SEQ_PTR_SIZE bytes, written by editor at runtime)
           [6+2N]       Orderlists       (3 × OL_SIZE bytes)
-          [6+2N+3*O]   Sequences        (num_patterns × SEQ_SIZE bytes, SF2-format)
+          [6+2N+3*O]   Sequences        (num_patterns × SEQ_SIZE bytes, NP21-format)
         where N=SEQ_PTR_SIZE=128, O=OL_SIZE=256, SEQ_SIZE=256.
         """
         CH_SEQ_LO_OFF  = 0x0A1C   # Offset from sid_la to voice seq ptr lo table (3 bytes)

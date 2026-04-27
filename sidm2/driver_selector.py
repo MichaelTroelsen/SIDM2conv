@@ -56,6 +56,8 @@ class DriverSelector:
                 'Laxity_NewPlayer_V21',   # Native Laxity NP21
                 'Vibrants/Laxity',        # Laxity player by Vibrants
                 '256bytes/Laxity',        # Compact Laxity player
+                'SidFactory_II/Laxity',   # SF2-exported but embeds Laxity NP21 player code
+                'SidFactory/Laxity',      # Older SF2 version, same situation
             ],
             'driver_file': 'sf2driver_laxity_00.prg',
             'accuracy': '99.93%',
@@ -63,9 +65,7 @@ class DriverSelector:
         },
         'driver11': {
             'player_ids': [
-                'SidFactory_II/Laxity',   # SF2-exported by author Laxity (author, not player!)
-                'SidFactory/Laxity',      # Older SF2 version by author Laxity
-                'SidFactory_II',          # Any SF2-exported file
+                'SidFactory_II',          # Any SF2-exported file (non-Laxity author)
                 'SidFactory',             # Older SF2 version
                 'SF2_Exported',
                 'Driver_11',
@@ -300,7 +300,8 @@ class DriverSelector:
             DriverSelection for forced driver
         """
         driver_file = self.DRIVER_FILES.get(force_driver, force_driver)
-        expected_accuracy = "User override"
+        registry_acc = self.PLAYER_REGISTRY.get(force_driver, {}).get('accuracy')
+        expected_accuracy = f"{registry_acc} (user override)" if registry_acc else "User override"
         selection_reason = f"Manual override: --driver {force_driver}"
 
         return DriverSelection(

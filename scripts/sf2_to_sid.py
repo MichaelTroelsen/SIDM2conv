@@ -160,44 +160,45 @@ class SF2File:
         logger.debug(f"  Data size: {len(self.data) - 2} bytes")
 
     def _extract_metadata(self):
-        """Extract title, author, copyright from SF2 auxiliary data"""
-        # SF2 files store metadata as null-terminated strings near the end
-        # Format: [title\0][author\0][copyright\0]
-        # Look for string data in last 256 bytes
+        """Extract title, author, copyright from the SF2 Description aux block.
 
-        search_start = max(0, len(self.data) - 512)
-        search_data = self.data[search_start:]
+        SF2 aux data is a chain of TLV blocks (see sf2_writer._inject_auxiliary_data):
+            [id:1][param:2 LE][size:2 LE][data:size bytes]
+        Block id=5 with param=1 is "Description" and contains three length-prefixed
+        latin-1 strings: title, author, copyright (each [len:1][bytes:len]).
 
-        strings = []
-        current_str = bytearray()
-
-        for i, byte in enumerate(search_data):
-            if byte == 0:
-                if current_str:
-                    try:
-                        # Try to decode as ASCII/Latin-1
-                        decoded = current_str.decode('latin-1', errors='ignore').strip()
-                        if decoded and len(decoded) > 3:  # Reasonable string
-                            strings.append(decoded)
-                    except:
-                        pass
-                    current_str = bytearray()
-            elif 0x20 <= byte <= 0x7E:  # Printable ASCII
-                current_str.append(byte)
-            else:
-                current_str = bytearray()  # Reset on non-printable
-
-        # Take last 3 strings as title/author/copyright
-        if len(strings) >= 3:
-            self.title = strings[-3]
-            self.author = strings[-2]
-            self.copyright = strings[-1]
-            logger.debug(f"  Found metadata: {self.title} / {self.author} / {self.copyright}")
-        elif len(strings) >= 2:
-            self.title = strings[-2]
-            self.author = strings[-1]
-        elif len(strings) >= 1:
-            self.title = strings[-1]
+        We scan the file for that exact block signature; the previous heuristic
+        (last 3 null-separated printable strings) was unreliable — it picked up
+        the last instrument name in block id=4 instead of the song title.
+        """
+        for off in range(len(self.data) - 5):
+            if self.data[off] != 5:
+                continue
+            param = struct.unpack('<H', self.data[off+1:off+3])[0]
+            size  = struct.unpack('<H', self.data[off+3:off+5])[0]
+            if param != 1 or size == 0 or off + 5 + size > len(self.data):
+                continue
+            block = self.data[off+5:off+5+size]
+            try:
+                i = 0
+                strs = []
+                for _ in range(3):
+                    if i >= len(block):
+                        break
+                    L = block[i]; i += 1
+                    if i + L > len(block):
+                        raise ValueError("string runs past block end")
+                    strs.append(block[i:i+L].decode('latin-1', errors='replace'))
+                    i += L
+                if i != size or len(strs) != 3:
+                    continue  # not a valid Description block, keep scanning
+                self.title, self.author, self.copyright = strs
+                logger.debug(f"  Found Description block @ {off:#x}: "
+                             f"{self.title!r} / {self.author!r} / {self.copyright!r}")
+                return
+            except Exception:
+                continue
+        logger.debug("  No Description block found; metadata will be empty")
 
     def _detect_driver_addresses(self):
         """Parse SF2 header blocks to extract init/play addresses.

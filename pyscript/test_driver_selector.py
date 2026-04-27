@@ -50,20 +50,22 @@ class TestDriverSelector(unittest.TestCase):
                            f"Player type '{player_type}' should map to np20 driver")
 
     def test_sf2_exported_variants(self):
-        """Test that SF2-exported files map to driver11."""
-        sf2_variants = [
-            'SidFactory_II/Laxity',
-            'SidFactory/Laxity',
-            'SidFactory_II',
-            'SidFactory',
-            'SF2_Exported',
-            'Driver_11',
-        ]
+        """Test that SF2-exported files map to the correct driver.
 
-        for player_type in sf2_variants:
+        SidFactory_II/Laxity and SidFactory/Laxity embed Laxity NP21 player code,
+        so they need the laxity driver — driver11 produces an invalid file
+        ("Instruments table MISSING") and ~1-8% accuracy on those songs.
+        Author-less SF2 exports still default to driver11.
+        """
+        for player_type in ('SidFactory_II/Laxity', 'SidFactory/Laxity'):
+            result = self.selector._select_best_driver(player_type)
+            self.assertEqual(result, 'laxity',
+                             f"'{player_type}' embeds NP21 player; should map to laxity")
+
+        for player_type in ('SidFactory_II', 'SidFactory', 'SF2_Exported', 'Driver_11'):
             result = self.selector._select_best_driver(player_type)
             self.assertEqual(result, 'driver11',
-                           f"Player type '{player_type}' should map to driver11")
+                             f"'{player_type}' should map to driver11")
 
     def test_unknown_player_defaults_to_driver11(self):
         """Test that unknown player types default to driver11."""
@@ -156,11 +158,16 @@ class TestDriverSelector(unittest.TestCase):
         self.assertEqual(result.alternative_driver, '')
 
     def test_handle_forced_driver(self):
-        """Test forced driver override."""
+        """Test forced driver override.
+
+        Forced override now prefixes the registered accuracy so users still see
+        what to expect from the chosen driver, with "(user override)" appended
+        so it's clear auto-detection didn't pick this.
+        """
         result = self.selector._handle_forced_driver('laxity', 'Unknown')
 
         self.assertEqual(result.driver_name, 'laxity')
-        self.assertEqual(result.expected_accuracy, 'User override')
+        self.assertEqual(result.expected_accuracy, '99.93% (user override)')
         self.assertIn('Manual override', result.selection_reason)
         self.assertEqual(result.player_type, 'Unknown')
 
@@ -289,12 +296,17 @@ class TestDriverSelector(unittest.TestCase):
 
     @patch.object(DriverSelector, 'identify_player')
     def test_select_driver_auto_detection(self, mock_identify):
-        """Test automatic driver selection for SF2-exported files."""
+        """Test automatic driver selection for SF2-exported Laxity files.
+
+        Files reported as 'SidFactory_II/Laxity' by player-id.exe still embed
+        Laxity NP21 player code at runtime, so they must go to the laxity driver
+        (driver11 fails with missing-tables on these).
+        """
         mock_identify.return_value = 'SidFactory_II/Laxity'
 
         result = self.selector.select_driver(Path('test.sid'))
 
-        self.assertEqual(result.driver_name, 'driver11')
+        self.assertEqual(result.driver_name, 'laxity')
         self.assertEqual(result.player_type, 'SidFactory_II/Laxity')
         mock_identify.assert_called_once()
 
