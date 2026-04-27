@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.2.0** | SID→SF2 Converter | C64 Music Tools | Updated 2026-03-30
+**SIDM2 v3.2.1** | SID→SF2 Converter | C64 Music Tools | Updated 2026-04-27
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -171,6 +171,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.2.1** (2026-04-27): First end-to-end success for Stinsen + Unboxed — auto-detect now picks laxity driver for `SidFactory_II/Laxity` files (Stinsen-class), no `--driver` flag needed; `sf2_to_sid.py` reads metadata from SF2 aux block id=5 instead of last-string-wins heuristic, so title/author/copyright survive SID→SF2→SID round-trip; `--driver` override reports registered accuracy ("99.93% (user override)") instead of flat "User override"; `EDITABLE-REPLAY GAP` documented inline in `_build_np21_sf2_edit_area` (NP21↔SF2 byte format conflict, criterion 3 deferred); new `pyscript/verify_editor_view.py` simulates `DataSourceSequence::Unpack` for headless editor-side checks; 786 tests pass
 
 **v3.2.0** (2026-03-30): Correct Block 3 table addresses for raw NP21 approach — Filter fixed from `$1A1E` (was ch_seq_ptr_hi, editing it would corrupt NP21!) to `$1989` (tbl_filter_seq); Wave updated to `$1942`; Instruments layout set column-major; all addresses now match actual NP21 binary layout (player at `$1000`)
 

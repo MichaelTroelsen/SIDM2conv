@@ -25,6 +25,40 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.2.1] - 2026-04-27
+
+### Fixed
+- Auto-detect now picks the laxity driver for `SidFactory_II/Laxity` and `SidFactory/Laxity`
+  files (Stinsen and similar). These are SF2-exported but embed Laxity NP21 player code at
+  runtime; the previous mapping to driver11 produced an invalid SF2 ("Instruments table
+  MISSING") at ~1-8% accuracy. Both Stinsen (1909/1909) and Unboxed (2733/2733) now match
+  the zig64 ground truth at 100% with no `--driver` flag (`sidm2/driver_selector.py`)
+- `sf2_to_sid.py` metadata round-trip: replaced the string-scan heuristic that picked the
+  last instrument name as the song title ("Instr 15 Pulse") with a proper SF2 aux-block
+  scanner that reads block id=5 (Description) directly. Title/author/copyright now
+  preserved end-to-end through SID→SF2→SID
+- Forced `--driver` override now reports the registered accuracy (e.g. "99.93% (user
+  override)") instead of a flat "User override" string. Hardcoded `Expected accuracy: 70%`
+  log line in the laxity conversion path now reads from `PLAYER_REGISTRY` (`sidm2/conversion_pipeline.py`)
+- `_build_np21_sf2_edit_area` no-patterns early-return aligned back to the 2-value contract
+  the caller actually unpacks (latent crash if no NP21 patterns were found)
+
+### Documented
+- `_build_np21_sf2_edit_area` now has an inline EDITABLE-REPLAY GAP comment block
+  explaining why storing sequences in NP21 format would corrupt the editor view: the SF2
+  editor's `DataSourceSequence::Unpack` (datasource_sequence.cpp:197-267) requires SF2
+  format strictly — NP21 0x80=gate-off vs SF2 0x80=duration; NP21 0xFF=loop vs SF2
+  0xC0+=command; 0-based vs 1-based notes. Closing the edit-affects-playback gap requires
+  a runtime SF2→NP21 translator in the laxity SF2 driver, deferred to a separate workstream
+
+### Added
+- `pyscript/verify_editor_view.py` — faithful Python port of SIDFactoryII's
+  `DataSourceSequence::Unpack` plus Block 5 / orderlist parsing. Lets us confirm the
+  editor decodes our emitted sequences cleanly (no asserts, recognizable musical events)
+  without launching the GUI binary
+
+---
+
 ## [3.2.0] - 2026-03-30
 
 ### Fixed
