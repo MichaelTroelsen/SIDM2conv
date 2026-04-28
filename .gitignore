@@ -58,6 +58,22 @@ output/**/*_exported_disassembly.md
 *.bak
 *.log
 *.pkl
+
+# Session test outputs at project root only (leading slash anchors to root,
+# leaves drivers/, tools/, SID/, etc. untouched). Conversion runs land here
+# during development and should never be committed.
+/*.sf2
+/*.sid
+/*.prg
+/*.txt
+/*_trace*.csv
+/*_tr.csv
+
+# SID/ ad-hoc test outputs (ground-truth files like *_sid_trace_300frames.csv
+# and original *.sid sources are excluded by being more specific or pre-tracked)
+SID/*_test*.sf2
+SID/*_test*.txt
+SID/*_test_current.*
 *.bin
 *.dump
 nul
