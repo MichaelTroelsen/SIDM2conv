@@ -133,11 +133,11 @@ Technical analysis, validation results, and findings:
 | Document | Content |
 |----------|---------|
 | [CONSOLIDATION_2025-12-21_COMPLETE.md](analysis/CONSOLIDATION_2025-12-21_COMPLETE.md) | **Authoritative consolidation documentation** - Complete Phase 1-4 documentation |
-| [ACCURACY_ROADMAP.md](analysis/ACCURACY_ROADMAP.md) | Accuracy improvement plan - Path to 99% accuracy |
+| [ACCURACY_ROADMAP.md](../archive/cleanup_2026-04-28/old_docs/old_analysis/ACCURACY_ROADMAP.md) (archived) | Accuracy improvement plan - Path to 99% accuracy |
 | [PACK_STATUS.md](analysis/PACK_STATUS.md) | Packer status - SF2→SID implementation details |
 | [TRACK_VIEW_TEST_RESULTS.md](analysis/TRACK_VIEW_TEST_RESULTS.md) | Track view testing results |
 | [ACCURACY_FIX_VERIFICATION_REPORT.md](ACCURACY_FIX_VERIFICATION_REPORT.md) | Accuracy optimization verification - 99.93% → 100% fixes |
-| [ACCURACY_OPTIMIZATION_ANALYSIS.md](ACCURACY_OPTIMIZATION_ANALYSIS.md) | Root cause analysis of accuracy improvements |
+| [ACCURACY_OPTIMIZATION_ANALYSIS.md](../archive/cleanup_2026-04-28/old_docs/old_analysis/ACCURACY_OPTIMIZATION_ANALYSIS.md) (archived) | Root cause analysis of accuracy improvements |
 
 ### External Tools Analysis
 | Document | Content | Version |
@@ -381,7 +381,7 @@ Historical reports, completed work, and consolidated documentation:
 → See [CONTRIBUTING.md](../CONTRIBUTING.md)
 
 **...improve accuracy**
-→ See [ACCURACY_ROADMAP.md](analysis/ACCURACY_ROADMAP.md)
+→ See [ACCURACY_ROADMAP.md](../archive/cleanup_2026-04-28/old_docs/old_analysis/ACCURACY_ROADMAP.md) (archived)
 
 **...check MIDI validation results**
 → See [MIDI_VALIDATION_COMPLETE.md](analysis/MIDI_VALIDATION_COMPLETE.md)

@@ -744,7 +744,7 @@ print(report)  # Shows conflict locations and suggestions
 - This guide - Complete validation system reference
 - `docs/guides/LAXITY_DRIVER_USER_GUIDE.md` - Laxity driver usage
 - `docs/reference/LAXITY_DRIVER_TECHNICAL_REFERENCE.md` - Laxity technical details
-- `docs/ACCURACY_ROADMAP.md` - Path to 99% accuracy
+- `archive/cleanup_2026-04-28/old_docs/old_analysis/ACCURACY_ROADMAP.md` (archived) - Path to 99% accuracy
 - `docs/ARCHITECTURE.md` - System architecture
 
 **API Documentation**:

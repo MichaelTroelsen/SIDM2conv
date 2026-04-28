@@ -714,7 +714,7 @@ def convert_pattern_to_sequence(pattern: List[Dict],
 
 - **Implementation details** → `docs/implementation/GATE_INFERENCE_IMPLEMENTATION.md`
 - **SID register reference** → `docs/reference/SID_REGISTERS_REFERENCE.md`
-- **Accuracy roadmap** → `docs/analysis/ACCURACY_ROADMAP.md`
+- **Accuracy roadmap** → `archive/cleanup_2026-04-28/old_docs/old_analysis/ACCURACY_ROADMAP.md` (archived)
 
 ---
 
@@ -778,7 +778,7 @@ python scripts/validate_sid_accuracy.py SID/original.sid output/exported.sid --d
 #### Baseline Accuracy (v0.6.0)
 
 - Angular.sid: 9.0% overall (POOR)
-- Target: 99% overall (see `docs/analysis/ACCURACY_ROADMAP.md`)
+- Target: 99% overall (see `archive/cleanup_2026-04-28/old_docs/old_analysis/ACCURACY_ROADMAP.md` (archived))
 
 ### Lightweight Validation Module (`sidm2/validation.py`)
 
@@ -1149,4 +1149,4 @@ Demonstrates all 8 error scenarios with realistic examples and proper formatting
 - `docs/TOOLS_REFERENCE.md` - External tools documentation
 - `docs/ARCHITECTURE.md` - System architecture
 - `docs/guides/VALIDATION_GUIDE.md` - Comprehensive validation system guide (v2.0.0)
-- `docs/analysis/ACCURACY_ROADMAP.md` - Accuracy improvement plan
+- `archive/cleanup_2026-04-28/old_docs/old_analysis/ACCURACY_ROADMAP.md` (archived) - Accuracy improvement plan

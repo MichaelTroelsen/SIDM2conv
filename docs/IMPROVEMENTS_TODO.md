@@ -512,7 +512,7 @@
 **Files Modified**:
 - `sidm2/accuracy.py` - Fixed `_frames_match()` method (lines 347-367)
 - `pyscript/test_accuracy_fix.py` - New comprehensive unit tests (195 lines)
-- `docs/ACCURACY_OPTIMIZATION_ANALYSIS.md` - Root cause analysis (166 lines)
+- `archive/cleanup_2026-04-28/old_docs/old_analysis/ACCURACY_OPTIMIZATION_ANALYSIS.md` (archived) - Root cause analysis (166 lines)
 - `docs/ACCURACY_FIX_VERIFICATION_REPORT.md` - Verification report (new)
 
 **Test Results**: All 8/9 tests PASSED ✓

@@ -1074,6 +1074,6 @@ if LAXITY_CONVERTER_AVAILABLE and player_type == "NewPlayer_v21/Laxity":
 - `docs/reference/SF2_FORMAT_SPEC.md` - Complete SF2 format specification
 - `docs/reference/CONVERSION_STRATEGY.md` - Laxity to SF2 mapping
 - `docs/guides/VALIDATION_GUIDE.md` - Comprehensive validation system guide (v2.0.0)
-- `docs/analysis/ACCURACY_ROADMAP.md` - Accuracy improvement plan
+- `archive/cleanup_2026-04-28/old_docs/old_analysis/ACCURACY_ROADMAP.md` (archived) - Accuracy improvement plan
 - `PIPELINE_EXECUTION_REPORT.md` - Pipeline execution analysis
 - `docs/implementation/SID_TO_SF2_REFACTORING_SUMMARY.md` - Conversion pipeline refactoring
