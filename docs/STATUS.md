@@ -1,16 +1,22 @@
 # Project Status Overview
 
-**Last Updated**: 2025-12-27
-**Current Version**: v2.9.7 (Filter Format Conversion)
-**Status**: Active Development - Production Ready
+**Last Updated**: 2026-04-28
+**Current Version**: v3.2.1 (First End-to-End Success on Stinsen + Unboxed)
+**Status**: Production — 3 of 4 success criteria closed; criterion 3 deferred to scheduled agent
 
 ---
 
 ## Quick Summary
 
-The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2) format for editing and remixing. The conversion pipeline is fully functional with hybrid extraction (static tables + runtime sequences), comprehensive validation, professional GUI tools, and enhanced logging for better debugging and troubleshooting.
+The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2) format for editing and remixing. As of v3.2.1, the converter achieves **100% frame accuracy** on the canonical test songs (Stinsen + Unboxed) verified against zig64 cycle-accurate ground truth, with auto-driver detection, round-trip metadata preservation, and an editor-side Python decoder simulator for headless verification.
 
-**Current State**: ✅ **Production Ready** with multiple conversion paths, analysis tools, and comprehensive logging
+**Current State**: ✅ **Production** for the four success criteria —
+1. **Plays correctly in SF2 editor** ✅ (auto-detect picks laxity driver; trace match 100%)
+2. **Editor displays real sequences** ✅ (Block 5 populated with real addresses; simulator confirms)
+3. **Edits affect playback** ⏸️ (architectural gap, deferred to remote agent fire 2026-05-11)
+4. **Round-trip SID→SF2→SID** ✅ (register accuracy 100%, metadata preserved)
+
+The sections below document the full feature inventory accumulated since v1.0; not all are still actively maintained but they represent the historical capability surface.
 
 ---
 

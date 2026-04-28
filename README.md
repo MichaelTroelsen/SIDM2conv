@@ -3,9 +3,9 @@
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 [![codecov](https://codecov.io/gh/MichaelTroelsen/SIDM2conv/branch/master/graph.svg)](https://codecov.io/gh/MichaelTroelsen/SIDM2conv)
 
-**Version 3.1.3** | Build Date: 2026-03-14 | Production Ready ✅
+**Version 3.2.1** | Build Date: 2026-04-28 | Production Ready ✅
 
-A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files with **99.93% frame accuracy** for Laxity NewPlayer v21 files.
+A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files with **100% frame accuracy** for Laxity NewPlayer v21 files (verified on Stinsen + Unboxed against zig64 ground truth).
 
 ## Overview
 
@@ -833,6 +833,39 @@ Located in `tools/` directory (Windows binaries, optional fallbacks):
 
 ## Version History
 
+### v3.2.1 (2026-04-28) - First End-to-End Success + Cleanup
+
+- ✅ **Auto-detect routes `SidFactory_II/Laxity` files to laxity driver** — Stinsen-class files (SF2-exported but embedding NP21 player code) now convert correctly without `--driver laxity` flag; previous mapping to driver11 produced an invalid SF2
+- ✅ **Round-trip metadata preservation** — `sf2_to_sid.py` reads SF2 aux block id=5 (Description) directly instead of last-string heuristic; title/author/copyright survive SID→SF2→SID
+- ✅ **EDITABLE-REPLAY GAP documented in code** — explicit `_build_np21_sf2_edit_area` comment explains the NP21↔SF2 byte-format conflict so future attempts don't restart the dead-end "patch ch_seq_ptr to SF2-format edit area" approach
+- ✅ **Editor-side Python simulator** — new `pyscript/verify_editor_view.py` faithfully ports SIDFactoryII's `DataSourceSequence::Unpack` for headless display verification
+- ✅ **786 tests passing** — same baseline maintained through major project cleanup
+- ✅ **Project cleanup** — archived ~1 GB of unused files (orphaned test dirs, video-demo project, output/, 24 stale docs) under `archive/cleanup_2026-04-28/`. Composer SID test collections moved into `SID/<composer>/`
+
+### v3.2.0 (2026-03-30) - Block 3 Table Address Corrections
+
+- ✅ **Filter address fix**: `$1A1E` → `$1989` (was `ch_seq_ptr_hi` — editing it would corrupt NP21 voice pointers)
+- ✅ **Wave address fix**: `$1ACB` → `$1942` (was inside voice sequence dead-code area)
+- ✅ **Instruments layout**: row-major (0) → column-major (1) to match NP21 storage format
+
+### v3.1.9 (2026-03-30) - NP21→SF2 Note Index Mapping
+
+- ✅ **Correct +1 shift**: SF2 notes are 1-based (0x01 = C-0, 0x00 = gate-off); NP21 is 0-based. All notes were displayed one semitone too low in the editor
+- ✅ Documented SF2 sequence format from `datasource_sequence.cpp` (0x00=gate-off, 0x01-0x6F=notes, 0x7E=tie, 0x7F=end, 0x80-0x9F=duration, 0xA0-0xBF=instrument, 0xC0-0xFF=command)
+
+### v3.1.5–3.1.8 (2026-03-21–2026-03-30) - Raw NP21 Embedding + Editable SF2
+
+- ✅ **100% playback accuracy** — verbatim NP21 binary embedding at `$1000` with minimal `$0D7E` wrapper
+- ✅ **Valid SF2 file** — 0x1337 magic + 5 required header blocks (228 bytes at `$0D7E-$0E62`); editor loads + plays
+- ✅ **Block 5 MusicData populated** — real addresses for orderlists + sequences (no longer placeholder `$1900` values)
+- ✅ **Accurate sequence extraction** — stops at `$FF` NP21 loop marker (not unreachable `$7F` safety terminator); Stinsen voice 0: 101 → 41 bytes
+
+### v3.1.4 (2026-03-21) - Filter Accuracy 0% → 100%
+
+- ✅ **Dynamic voice OL pointers** from SID binary ($0A1C/$0A1F)
+- ✅ **Filter table address fix**: $19D0/$19EA/$1A04
+- ✅ **D416 corruption fix**: LSR $EC → $FC
+
 ### v3.1.3 (2026-03-14) - Registry-Based Player Dispatch + NP21 Fixes
 
 - ✅ **Registry-based player dispatch** — `DriverSelector.PLAYER_REGISTRY` as single source of truth; `PLAYER_CONVERTERS`/`PLAYER_EXTRACTORS` dicts replace hardcoded if/elif chains
@@ -975,4 +1008,4 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 **🤖 Generated with [Claude Code](https://claude.com/claude-code)**
 
-**Last Updated**: 2026-01-01 | **Version**: 3.0.1
+**Last Updated**: 2026-04-28 | **Version**: 3.2.1

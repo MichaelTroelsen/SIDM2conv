@@ -1,46 +1,34 @@
 # SIDM2 Project Context
 
-**Version**: 3.1.0
-**Last Updated**: 2026-01-02
-**Status**: ✅ Clean State - Changelog Organization Complete
-**Current Focus**: Documentation maintenance and organization
+**Version**: 3.2.1
+**Last Updated**: 2026-04-28
+**Status**: ✅ Production — first end-to-end success on Stinsen + Unboxed shipped (criteria 1, 2, 4 closed; criterion 3 deferred to scheduled agent on 2026-05-11)
+**Current Focus**: Edit-affects-playback architectural gap (criterion 3) — runtime SF2→NP21 sequence translator in laxity SF2 driver
 
 ---
 
 ## Current State Snapshot
 
-### What We're Working On RIGHT NOW (2026-01-02)
+### What We're Working On RIGHT NOW (2026-04-28)
 
-**Recently Completed & Committed**: ✅ **Changelog Split & Organization** (committed Jan 2, 2026)
+**Recently Completed & Pushed**: ✅ **First end-to-end success + project cleanup** (commits `afffc05`–`1d4e82a`)
 
-**Commit**: `7ae28f8` - "docs: Split CHANGELOG.md into versioned archives"
+**Status**: 4-criterion converter goal — 3 of 4 closed:
+- ✅ **Criterion 1: Plays correctly in SID Factory II** — auto-detect picks laxity driver for both Stinsen (`SidFactory_II/Laxity`) and Unboxed (`Laxity_NewPlayer_V21`); zig64 trace 100% match
+- ✅ **Criterion 2: Editor displays real sequences** — Block 5 MusicData populated with real addresses; `pyscript/verify_editor_view.py` simulator confirms decoding succeeds without asserts
+- ⏸️ **Criterion 3: Edits affect playback** — architectural gap; player and editor disagree on byte format. Deferred to scheduled remote agent (`trig_01Hv7p9xq98LuEVobHVHz5xb`, fires 2026-05-11). Documented inline as `EDITABLE-REPLAY GAP` comment in `sidm2/sf2_writer.py`
+- ✅ **Criterion 4: Round-trip SID→SF2→SID** — register accuracy 100%, title/author/copyright preserved via SF2 aux block id=5 reader
 
-**Implementation Summary**:
-- ✅ **CHANGELOG.md Split**: 284KB → 148KB (48% size reduction)
-- ✅ **Organized Archives**: Split by major version (v0.x, v1.x, v2.x)
-- ✅ **4 New Archive Files** in `docs/archive/changelogs/`
-- ✅ **Complete History Preserved**: All 43 versions maintained
-- ✅ **Navigation Guide**: README.md with clear structure explanation
-- ✅ **Cross-file Links**: Easy navigation between current and archived versions
-
-**Files Changed** (5 files, +6,591 insertions, -3,490 deletions):
-- `CHANGELOG.md` (modified) - Now contains v3.x only with archive links
-- `docs/archive/changelogs/CHANGELOG_v0.md` (new) - v0.1.0 to v0.6.2
-- `docs/archive/changelogs/CHANGELOG_v1.md` (new) - v1.0.0 to v1.4.0
-- `docs/archive/changelogs/CHANGELOG_v2.md` (new) - v2.0.0 to v2.10.0
-- `docs/archive/changelogs/README.md` (new) - Archive navigation guide
-
-**Current Uncommitted Changes**: None (clean working tree)
-
-**Test Status**: ✅ **All tests passing** (260+ tests, zero failures)
+**Test Status**: ✅ **786 passed, 8 skipped** (consistent baseline through cleanup)
 
 ### What Just Happened (Recent Commits)
 
-1. `7ae28f8` - "docs: Split CHANGELOG.md into versioned archives" (Jan 2, 2026) ⭐ **Latest**
-2. `8e8cd71` - "feat: Implement core pipeline improvements (MIDI sequences, channel volume, Block 5 parsing)" (Jan 2, 2026)
-3. `72f390e` - "docs: Add comprehensive developer documentation and visual guides" (Jan 2, 2026)
-4. `90e014a` - "docs: Update CHANGELOG for repository cleanup and archival" (Jan 2, 2026)
-5. `bfdac30` - "feat: Add HTML Annotation Tool for interactive SID analysis" (Jan 1, 2026)
+1. `1d4e82a` - "fix: update path references for SID/<composer> dir migration" (Apr 28, 2026) ⭐ **Latest**
+2. `482c239` - "chore: archive 24 stale/redundant docs (cleanup 2026-04-28)" (Apr 28, 2026)
+3. `c7e13b1` - "chore: archive 5 batches of unused project files (cleanup 2026-04-28)" (Apr 28, 2026)
+4. `1564c6e` - "chore: gitignore root-level session test artifacts" (Apr 28, 2026)
+5. `7b39286` - "release: v3.2.1 — first end-to-end success for Stinsen + Unboxed" (Apr 27, 2026)
+6. `afffc05` - "fix: First successful end-to-end conversion for Stinsen + Unboxed" (Apr 27, 2026)
 
 ---
 
@@ -50,9 +38,9 @@
 
 SIDM2 converts Commodore 64 SID music files to SID Factory II (SF2) format for editing and remixing.
 
-**Key Achievement**: 99.93% frame accuracy for Laxity NewPlayer v21 files using custom driver.
+**Key Achievement**: 100% frame accuracy on Stinsen + Unboxed (verified against zig64 cycle-accurate ground truth, 1909/1909 + 2733/2733 register writes match) for Laxity NewPlayer v21 files using a custom driver.
 
-**New**: Interactive HTML documentation generator with 3,700+ semantic annotations per file.
+**Open architectural piece**: criterion 3 (editor edits affect playback) requires runtime SF2→NP21 sequence translation in the laxity SF2 driver — scheduled agent fires 2026-05-11.
 
 ### Architecture
 
@@ -246,6 +234,6 @@ cleanup.bat --clean --force
 
 ---
 
-**Last Updated**: 2026-01-02
-**Updated By**: Claude Sonnet 4.5
-**Next Review**: Before starting new work
+**Last Updated**: 2026-04-28
+**Updated By**: Claude Opus 4.7 (1M context)
+**Next Review**: After scheduled criterion-3 agent fires (2026-05-11)

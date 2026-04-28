@@ -2,17 +2,34 @@
 
 **Strategic direction and future improvements**
 
-**Date**: 2025-12-27
-**Version**: 2.6
-**Status**: 🎯 Active Roadmap
+**Date**: 2026-04-28
+**Version**: 3.x roadmap (post-v3.2.1)
+**Status**: 🎯 Active Roadmap — primary open piece is criterion 3 (edits-affect-playback)
 
 ---
 
-## Overview
+## Current State (v3.2.1, 2026-04-28)
 
-This roadmap focuses on improving the SIDM2 converter from its current **100% frame accuracy** baseline to expanded format support and production-ready quality.
+The original four-criterion converter goal is **3 of 4 closed** for Stinsen + Unboxed:
+1. **Plays correctly in SF2 editor** — ✅ auto-detect routes `SidFactory_II/Laxity` to laxity driver; zig64 trace 100% match
+2. **Editor displays real sequences** — ✅ Block 5 MusicData has real addresses; `pyscript/verify_editor_view.py` confirms decoding
+3. **Edits affect playback** — ⏸️ open architectural gap. Player reads NP21-format from embedded binary, editor reads/writes SF2-format from edit area; byte semantics conflict (0x80=gate-off vs duration; 0xFF=loop vs command; 0-vs-1-based notes). Deferred to scheduled remote agent `trig_01Hv7p9xq98LuEVobHVHz5xb` (fires 2026-05-11) which will scope and implement a runtime SF2→NP21 translator in `drivers/laxity/sf2driver_laxity_00.prg`
+4. **Round-trip SID→SF2→SID** — ✅ register accuracy 100%, metadata preserved through the SF2 aux block id=5 reader
 
-**Current State** (v2.9.9+):
+**Generalization beyond Stinsen + Unboxed** is the other major open piece — both test songs are simple (single sequence per voice, looping). Multi-pattern songs that walk the orderlist are not yet supported by `_build_np21_sf2_edit_area`.
+
+The historical roadmap below tracks the v2.x targets (most achieved, kept for context).
+
+---
+
+## Historical Track Status (v2.x)
+
+This section was last fully refreshed on 2025-12-27 for v2.6 of the roadmap. Many entries
+have shipped since (filter accuracy 60-80% → now 100% in trace; sf2 packer relocation —
+shipped; expanded test coverage — 786 tests passing). Treat as historical reference, not
+current strategic plan.
+
+**v2.x state at last refresh**:
 - ✅ Laxity NewPlayer v21: **100% frame accuracy** (v2.9.7) ⭐
 - ✅ SF2-exported SIDs: 100% accuracy (perfect roundtrip)
 - ✅ **Performance: 24x faster conversion** (3.87s → 0.16s per file) - NEW ⭐
