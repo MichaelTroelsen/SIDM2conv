@@ -99,7 +99,7 @@ def analyze_sid_file(sid_path):
 
 def main():
     """Analyze all Laxity files and categorize them."""
-    laxity_dir = Path('Laxity')
+    laxity_dir = Path('SID/Laxity')
 
     if not laxity_dir.exists():
         print("Error: Laxity directory not found")

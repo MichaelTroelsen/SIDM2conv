@@ -126,7 +126,7 @@ Validation Details:
 
 **Command**:
 ```bash
-python scripts/sid_to_sf2.py "Laxity/Stinsens_Last_Night_of_89.sid" "output.sf2"
+python scripts/sid_to_sf2.py "SID/Laxity/Stinsens_Last_Night_of_89.sid" "output.sf2"
 ```
 
 **Results**:

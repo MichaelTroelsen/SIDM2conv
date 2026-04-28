@@ -482,8 +482,8 @@ class TestIntegration(unittest.TestCase):
         # Look for test files in common locations
         test_locations = [
             'SID',
-            'Fun_Fun',
-            'Laxity',
+            'SID/Fun_Fun',
+            'SID/Laxity',
             'test_files'
         ]
 

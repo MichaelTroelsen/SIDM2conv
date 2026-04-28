@@ -447,7 +447,7 @@ cd C:/Users/mit/claude/c64server/SIDM2
 # Test with Laxity SID file
 java -cp jc64_test/jc64-fixed.jar sw_emulator.software.FileDasm \
      -en \
-     Laxity/Stinsens_Last_Night_of_89.sid \
+     SID/Laxity/Stinsens_Last_Night_of_89.sid \
      jc64_test/stinsens_disasm.asm
 
 # Check output
@@ -711,9 +711,9 @@ class TestJC64Disassembly:
     def test_sids(self):
         """Get list of test SID files."""
         return [
-            Path("Laxity/Stinsens_Last_Night_of_89.sid"),
-            Path("Laxity/Broware.sid"),
-            Path("Laxity/21_G4_demo_tune_1.sid"),
+            Path("SID/Laxity/Stinsens_Last_Night_of_89.sid"),
+            Path("SID/Laxity/Broware.sid"),
+            Path("SID/Laxity/21_G4_demo_tune_1.sid"),
         ]
 
     def test_disassemble_basic(self, jc64, test_sids):
@@ -755,7 +755,7 @@ class TestJC64Disassembly:
     def test_compare_sids(self, jc64):
         """Test SID comparison functionality."""
         # Use same file for perfect match
-        sid_file = Path("Laxity/Stinsens_Last_Night_of_89.sid")
+        sid_file = Path("SID/Laxity/Stinsens_Last_Night_of_89.sid")
         if not sid_file.exists():
             pytest.skip(f"Test file not found: {sid_file}")
 
@@ -990,13 +990,13 @@ cd C:/Users/mit/claude/c64server/SIDM2/jc64_test
 javac -cp "../jc64_test/jc64-fixed.jar" PlayerDetector.java
 
 # Test
-java -cp "../jc64_test/jc64-fixed.jar;." PlayerDetector ../Laxity/Stinsens_Last_Night_of_89.sid
+java -cp "../jc64_test/jc64-fixed.jar;." PlayerDetector ../SID/Laxity/Stinsens_Last_Night_of_89.sid
 ```
 
 **Expected Output**:
 ```json
 {
-  "file": "../Laxity/Stinsens_Last_Night_of_89.sid",
+  "file": "../SID/Laxity/Stinsens_Last_Night_of_89.sid",
   "players": "Laxity NewPlayer v21",
   "detected": true,
   "player_count": 80,
@@ -1070,8 +1070,8 @@ from pyscript.jc64_wrapper import JC64Wrapper
 
 # Known player test cases
 KNOWN_PLAYERS = [
-    ("Laxity/Stinsens_Last_Night_of_89.sid", "Laxity NewPlayer"),
-    ("Laxity/21_G4_demo_tune_1.sid", "Laxity"),
+    ("SID/Laxity/Stinsens_Last_Night_of_89.sid", "Laxity NewPlayer"),
+    ("SID/Laxity/21_G4_demo_tune_1.sid", "Laxity"),
     # Add more known players...
 ]
 

@@ -53,7 +53,7 @@ class TestSIDTracer(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Find a test SID file."""
-        laxity_dir = Path("Laxity")
+        laxity_dir = Path("SID/Laxity")
         if not laxity_dir.exists():
             raise unittest.SkipTest("Laxity directory not found")
 
@@ -224,7 +224,7 @@ class TestIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Find a test SID file."""
-        laxity_dir = Path("Laxity")
+        laxity_dir = Path("SID/Laxity")
         if not laxity_dir.exists():
             raise unittest.SkipTest("Laxity directory not found")
 

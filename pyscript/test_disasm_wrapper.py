@@ -22,7 +22,7 @@ class TestDisassemblerIntegration(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.test_dir = Path(__file__).parent
-        self.test_sid = self.test_dir.parent / 'Laxity' / 'Stinsens_Last_Night_of_89.sid'
+        self.test_sid = self.test_dir.parent / 'SID' / 'Laxity' / 'Stinsens_Last_Night_of_89.sid'
 
     def test_disassembler_integration_available(self):
         """Test that disassembler integration is available"""

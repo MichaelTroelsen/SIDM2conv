@@ -118,8 +118,8 @@ for (int i=0; i<memoryDasm.length; i++) {
 **File**: `pyscript/jc64_wrapper.py` - `parse_psid_header()`
 
 **Test Files**:
-1. `Laxity/Broware.sid`
-2. `Laxity/Stinsens_Last_Night_of_89.sid`
+1. `SID/Laxity/Broware.sid`
+2. `SID/Laxity/Stinsens_Last_Night_of_89.sid`
 
 #### Test 1: Broware.sid
 
@@ -620,7 +620,7 @@ Input SID → JC64 Analysis → Enhanced Parser → Converter → Output SF2
 ## Appendix C: Test File Details
 
 **Broware.sid**:
-- Path: `Laxity/Broware.sid`
+- Path: `SID/Laxity/Broware.sid`
 - Size: 6,656 bytes
 - Format: PSID v2
 - Author: Laxity, youtH & SMC
@@ -628,7 +628,7 @@ Input SID → JC64 Analysis → Enhanced Parser → Converter → Output SF2
 - Detection: Unknown player
 
 **Stinsens_Last_Night_of_89.sid**:
-- Path: `Laxity/Stinsens_Last_Night_of_89.sid`
+- Path: `SID/Laxity/Stinsens_Last_Night_of_89.sid`
 - Format: PSID v2
 - Author: Thomas E. Petersen (Laxity)
 - Init: $1000 (standard)

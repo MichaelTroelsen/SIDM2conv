@@ -71,7 +71,7 @@ class TestSubroutineTracer(unittest.TestCase):
         """Set up test fixtures"""
         # Find test SID files
         test_dirs = [
-            Path("Fun_Fun"),
+            Path("SID/Fun_Fun"),
             Path("laxity_music"),
             Path("test_files"),
             Path(".")

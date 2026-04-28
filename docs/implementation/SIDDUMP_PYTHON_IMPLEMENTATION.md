@@ -112,8 +112,8 @@ The Python implementation of siddump is **complete and production-ready**. It su
 
 **Execution**:
 ```bash
-python pyscript/siddump_complete.py "Fun_Fun/Byte_Bite.sid" -t2
-tools/siddump.exe "Fun_Fun/Byte_Bite.sid" -t2
+python pyscript/siddump_complete.py "SID/Fun_Fun/Byte_Bite.sid" -t2
+tools/siddump.exe "SID/Fun_Fun/Byte_Bite.sid" -t2
 ```
 
 **Results** (first 10 frames):

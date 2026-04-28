@@ -26,7 +26,7 @@ Files detected by player-id as:
 
 **These should use Driver 11** (100% accuracy, auto-selected)
 
-**Example**: `Laxity/Broware.sid` → Use Driver 11, not Laxity driver!
+**Example**: `SID/Laxity/Broware.sid` → Use Driver 11, not Laxity driver!
 
 ### How to Check
 
@@ -96,7 +96,7 @@ python scripts/sid_to_sf2.py my_song.sid output.sf2 --driver laxity
 python scripts/sid_to_sf2.py batch_test/originals/Angular.sid angular.sf2 --driver laxity
 
 # Example with SF2-exported file (DO NOT use --driver laxity)
-python scripts/sid_to_sf2.py Laxity/Broware.sid broware.sf2
+python scripts/sid_to_sf2.py SID/Laxity/Broware.sid broware.sf2
 # Auto-selects Driver 11 → 100% accuracy
 ```
 

@@ -47,7 +47,7 @@ class VideoAssetsPipeline:
         self.print_step(1, "Finding SID file for background music")
 
         candidates = [
-            "Laxity/Stinsens_Last_Night_of_89.sid",
+            "SID/Laxity/Stinsens_Last_Night_of_89.sid",
             "learnings/Stinsens_Last_Night_of_89.sid",
             "SID/Stinsens_Last_Night_of_89.sid",
             "tools/Stinsens_Last_Night_of_89.sid",
@@ -62,7 +62,7 @@ class VideoAssetsPipeline:
         print("[X] Could not find Stinsens SID file")
         print("   Searching for any Laxity SID file...")
 
-        laxity_dir = self.project_root / 'Laxity'
+        laxity_dir = self.project_root / 'SID' / 'Laxity'
         if laxity_dir.exists():
             sid_files = list(laxity_dir.glob('*.sid'))
             if sid_files:

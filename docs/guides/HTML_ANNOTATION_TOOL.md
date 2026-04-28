@@ -100,7 +100,7 @@ python pyscript/generate_stinsen_html.py "path/to/file.sid"
 
 ```bash
 # Analyze Stinsen's Last Night of '89
-python pyscript/generate_stinsen_html.py "Laxity/Stinsens_Last_Night_of_89.sid"
+python pyscript/generate_stinsen_html.py "SID/Laxity/Stinsens_Last_Night_of_89.sid"
 
 # Output: analysis/Stinsens_Last_Night_of_89_ANNOTATED.html
 ```
@@ -114,7 +114,7 @@ The HTML file will automatically open in your default browser.
 ### Example 1: Laxity NewPlayer V21 File
 
 ```bash
-python pyscript/generate_stinsen_html.py "Laxity/Stinsens_Last_Night_of_89.sid"
+python pyscript/generate_stinsen_html.py "SID/Laxity/Stinsens_Last_Night_of_89.sid"
 ```
 
 **Output**:
@@ -138,7 +138,7 @@ python pyscript/generate_stinsen_html.py "SID/Unboxed_Ending_8580.sid"
 
 ```bash
 # Process multiple files
-for file in Laxity/*.sid; do
+for file in SID/Laxity/*.sid; do
     python pyscript/generate_stinsen_html.py "$file"
 done
 ```
@@ -497,7 +497,7 @@ font_family = "'Consolas', 'Monaco', 'Courier New', monospace"
 python pyscript/generate_stinsen_html.py "C:/full/path/to/file.sid"
 
 # Or relative from project root
-python pyscript/generate_stinsen_html.py "Laxity/file.sid"
+python pyscript/generate_stinsen_html.py "SID/Laxity/file.sid"
 ```
 
 ### Issue: "No sections extracted"
@@ -542,7 +542,7 @@ xdg-open analysis/filename_ANNOTATED.html  # Linux
 
 ### Example 1: Stinsen's Last Night of '89
 
-**File**: `Laxity/Stinsens_Last_Night_of_89.sid`
+**File**: `SID/Laxity/Stinsens_Last_Night_of_89.sid`
 **Author**: Thomas E. Petersen (Laxity)
 **Player**: Laxity NewPlayer V21
 
@@ -585,7 +585,7 @@ xdg-open analysis/filename_ANNOTATED.html  # Linux
 python pyscript/generate_stinsen_html.py <sid_file>
 
 # Examples
-python pyscript/generate_stinsen_html.py "Laxity/file.sid"
+python pyscript/generate_stinsen_html.py "SID/Laxity/file.sid"
 python pyscript/generate_stinsen_html.py "C:/absolute/path/file.sid"
 
 # Output location

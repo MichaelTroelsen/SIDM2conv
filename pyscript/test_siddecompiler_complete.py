@@ -26,7 +26,7 @@ class TestSIDHeaderParsing(unittest.TestCase):
         decompiler = SIDDecompiler(verbose=0)
 
         # Find a test SID file
-        test_files = list(Path("Laxity").glob("*.sid"))
+        test_files = list(Path("SID/Laxity").glob("*.sid"))
         if not test_files:
             self.skipTest("No Laxity SID files found")
 
@@ -42,7 +42,7 @@ class TestSIDHeaderParsing(unittest.TestCase):
         """Test that all header fields are populated"""
         decompiler = SIDDecompiler(verbose=0)
 
-        test_files = list(Path("Laxity").glob("*.sid"))
+        test_files = list(Path("SID/Laxity").glob("*.sid"))
         if not test_files:
             self.skipTest("No Laxity SID files found")
 
@@ -64,7 +64,7 @@ class TestMemoryAnalysis(unittest.TestCase):
         """Test basic memory analysis runs without errors"""
         decompiler = SIDDecompiler(verbose=0)
 
-        test_files = list(Path("Laxity").glob("*.sid"))
+        test_files = list(Path("SID/Laxity").glob("*.sid"))
         if not test_files:
             self.skipTest("No Laxity SID files found")
 
@@ -79,7 +79,7 @@ class TestMemoryAnalysis(unittest.TestCase):
         """Test that code regions are detected"""
         decompiler = SIDDecompiler(verbose=0)
 
-        test_files = list(Path("Laxity").glob("*.sid"))
+        test_files = list(Path("SID/Laxity").glob("*.sid"))
         if not test_files:
             self.skipTest("No Laxity SID files found")
 
@@ -105,7 +105,7 @@ class TestDisassembly(unittest.TestCase):
         """Test basic disassembly"""
         decompiler = SIDDecompiler(verbose=0)
 
-        test_files = list(Path("Laxity").glob("*.sid"))
+        test_files = list(Path("SID/Laxity").glob("*.sid"))
         if not test_files:
             self.skipTest("No Laxity SID files found")
 
@@ -121,7 +121,7 @@ class TestDisassembly(unittest.TestCase):
         """Test that labels are created for init/play"""
         decompiler = SIDDecompiler(verbose=0)
 
-        test_files = list(Path("Laxity").glob("*.sid"))
+        test_files = list(Path("SID/Laxity").glob("*.sid"))
         if not test_files:
             self.skipTest("No Laxity SID files found")
 
@@ -141,7 +141,7 @@ class TestOutputGeneration(unittest.TestCase):
         """Test that output file is created"""
         decompiler = SIDDecompiler(verbose=0)
 
-        test_files = list(Path("Laxity").glob("*.sid"))
+        test_files = list(Path("SID/Laxity").glob("*.sid"))
         if not test_files:
             self.skipTest("No Laxity SID files found")
 
@@ -174,7 +174,7 @@ class TestOutputGeneration(unittest.TestCase):
         """Test output format is correct"""
         decompiler = SIDDecompiler(verbose=0)
 
-        test_files = list(Path("Laxity").glob("*.sid"))
+        test_files = list(Path("SID/Laxity").glob("*.sid"))
         if not test_files:
             self.skipTest("No Laxity SID files found")
 
@@ -209,7 +209,7 @@ class TestMultipleSIDFiles(unittest.TestCase):
 
     def test_batch_processing(self):
         """Test processing multiple SID files"""
-        test_files = list(Path("Laxity").glob("*.sid"))[:5]  # Test first 5
+        test_files = list(Path("SID/Laxity").glob("*.sid"))[:5]  # Test first 5
         if not test_files:
             self.skipTest("No Laxity SID files found")
 
@@ -225,7 +225,7 @@ class TestMultipleSIDFiles(unittest.TestCase):
 
     def test_different_load_addresses(self):
         """Test SID files with different load addresses"""
-        test_files = list(Path("Laxity").glob("*.sid"))
+        test_files = list(Path("SID/Laxity").glob("*.sid"))
         if not test_files:
             self.skipTest("No Laxity SID files found")
 

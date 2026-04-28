@@ -108,7 +108,7 @@ def test_laxity_files():
     print("=" * 80)
 
     # Find Laxity directory
-    laxity_dir = Path(__file__).parent.parent / "Laxity"
+    laxity_dir = Path(__file__).parent.parent / "SID" / "Laxity"
 
     if not laxity_dir.exists():
         print(f"ERROR: Laxity directory not found: {laxity_dir}")
@@ -170,7 +170,7 @@ def test_stinsens_detailed():
     print("DETAILED ANALYSIS: Stinsens_Last_Night_of_89.sid")
     print("=" * 80)
 
-    laxity_dir = Path(__file__).parent.parent / "Laxity"
+    laxity_dir = Path(__file__).parent.parent / "SID" / "Laxity"
     filepath = laxity_dir / "Stinsens_Last_Night_of_89.sid"
 
     if not filepath.exists():

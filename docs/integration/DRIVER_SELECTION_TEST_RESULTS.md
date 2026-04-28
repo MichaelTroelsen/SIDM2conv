@@ -14,7 +14,7 @@ Tested automatic driver selection with **4 different player types** to verify th
 
 ## Test 1: Laxity NewPlayer v21 ✅
 
-**File**: `Laxity/Stinsens_Last_Night_of_89.sid`
+**File**: `SID/Laxity/Stinsens_Last_Night_of_89.sid`
 **Expected**: Laxity driver (99.93% accuracy)
 
 ### Results
@@ -48,7 +48,7 @@ Driver Selection:
 
 ## Test 2: Martin Galway Player ✅
 
-**File**: `Galway_Martin/Arkanoid.sid`
+**File**: `SID/Galway_Martin/Arkanoid.sid`
 **Expected**: Driver 11 (safe default)
 
 ### Results
@@ -86,7 +86,7 @@ Driver Selection:
 
 ## Test 3: Rob Hubbard Player ✅
 
-**File**: `Hubbard_Rob/ACE_II.sid`
+**File**: `SID/Hubbard_Rob/ACE_II.sid`
 **Expected**: Driver 11 (safe default)
 
 ### Results
@@ -264,13 +264,13 @@ Validation Details:
 
 ```bash
 # Laxity file → Laxity driver (99.93%)
-python scripts/sid_to_sf2.py "Laxity/Stinsens_Last_Night_of_89.sid" "output.sf2"
+python scripts/sid_to_sf2.py "SID/Laxity/Stinsens_Last_Night_of_89.sid" "output.sf2"
 
 # Martin Galway file → Driver 11 (safe default)
-python scripts/sid_to_sf2.py "Galway_Martin/Arkanoid.sid" "output.sf2"
+python scripts/sid_to_sf2.py "SID/Galway_Martin/Arkanoid.sid" "output.sf2"
 
 # Rob Hubbard file → Driver 11 (safe default)
-python scripts/sid_to_sf2.py "Hubbard_Rob/ACE_II.sid" "output.sf2"
+python scripts/sid_to_sf2.py "SID/Hubbard_Rob/ACE_II.sid" "output.sf2"
 
 # SF2-exported file → Laxity driver (perfect roundtrip)
 python scripts/sid_to_sf2.py "exported.sid" "output.sf2"

@@ -23,7 +23,7 @@ class TestAudioExportIntegration(unittest.TestCase):
         """Set up test fixtures"""
         # Find a PSID test file (SID2WAV v1.8 doesn't support RSID)
         test_dirs = [
-            Path("Fun_Fun"),  # Known to have PSID files
+            Path("SID/Fun_Fun"),  # Known to have PSID files
             Path("laxity_music"),
             Path("test_files"),
             Path("music"),

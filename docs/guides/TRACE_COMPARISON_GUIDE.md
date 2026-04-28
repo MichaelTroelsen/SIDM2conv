@@ -76,11 +76,11 @@ trace-compare.bat a.sid b.sid --no-html
 
 ```bash
 # 1. Convert Laxity SID to SF2 and back
-sid-to-sf2.bat Laxity/Broware.sid Broware.sf2 --driver laxity
+sid-to-sf2.bat SID/Laxity/Broware.sid Broware.sf2 --driver laxity
 sf2-to-sid.bat Broware.sf2 Broware_exported.sid
 
 # 2. Compare original vs roundtrip
-trace-compare.bat Laxity/Broware.sid Broware_exported.sid --frames 1500
+trace-compare.bat SID/Laxity/Broware.sid Broware_exported.sid --frames 1500
 
 # 3. Open comparison_<timestamp>.html in browser
 # 4. Check Frame Match % - should be 99%+
@@ -540,7 +540,7 @@ trace-compare.bat original.sid converted.sid --no-html
 
 ```bash
 # Script to test all Laxity files
-for file in Laxity/*.sid; do
+for file in SID/Laxity/*.sid; do
     basename=$(basename "$file" .sid)
     sid-to-sf2.bat "$file" "temp/${basename}.sf2" --driver laxity
     sf2-to-sid.bat "temp/${basename}.sf2" "temp/${basename}_exported.sid"
@@ -715,7 +715,7 @@ echo Open in browser to view results.
 
 **Usage**:
 ```bash
-validate_conversion.bat Laxity/Broware.sid
+validate_conversion.bat SID/Laxity/Broware.sid
 ```
 
 ### Batch Compare Multiple Files

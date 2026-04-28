@@ -217,9 +217,9 @@ def test_wrapper():
         print(f"  JAR: {wrapper.jar_path}")
 
         # Test with a Laxity SID file
-        test_sid = Path("Laxity/Broware.sid")
+        test_sid = Path("SID/Laxity/Broware.sid")
         if not test_sid.exists():
-            test_sid = Path("Laxity/Stinsens_Last_Night_of_89.sid")
+            test_sid = Path("SID/Laxity/Stinsens_Last_Night_of_89.sid")
 
         if test_sid.exists():
             print(f"\n[OK] Test file found: {test_sid}")

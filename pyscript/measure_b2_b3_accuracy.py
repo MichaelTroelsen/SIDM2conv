@@ -33,7 +33,7 @@ from sidm2.enhanced_player_detection import EnhancedPlayerDetector
 class AccuracyMeasurement:
     """Measure B2+B3 integration accuracy improvements"""
 
-    def __init__(self, test_dir: str = "Fun_Fun", max_files: int = 10):
+    def __init__(self, test_dir: str = "SID/Fun_Fun", max_files: int = 10):
         self.test_dir = test_dir
         self.max_files = max_files
         self.results = []
@@ -320,7 +320,7 @@ class AccuracyMeasurement:
 
 def main():
     parser = argparse.ArgumentParser(description="Measure B2+B3 accuracy improvements")
-    parser.add_argument("--directory", "-d", default="Fun_Fun", help="Directory with test files")
+    parser.add_argument("--directory", "-d", default="SID/Fun_Fun", help="Directory with test files")
     parser.add_argument("--files", "-n", type=int, default=10, help="Max files to test")
 
     args = parser.parse_args()

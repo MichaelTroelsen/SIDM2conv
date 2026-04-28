@@ -23,7 +23,7 @@ class TestSIDwinderIntegration(unittest.TestCase):
         """Set up test fixtures."""
         self.test_dir = Path(__file__).parent
         # Use Stinsens test file
-        self.test_sid = self.test_dir.parent / 'Laxity' / 'Stinsens_Last_Night_of_89.sid'
+        self.test_sid = self.test_dir.parent / 'SID' / 'Laxity' / 'Stinsens_Last_Night_of_89.sid'
         
     def test_sidwinder_integration_available(self):
         """Test that SIDwinder integration is available."""

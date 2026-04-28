@@ -71,7 +71,7 @@ def main():
     logging.basicConfig(level=logging.WARNING, format='%(message)s')
 
     # Find SID files
-    laxity_dir = Path("Laxity")
+    laxity_dir = Path("SID/Laxity")
     if not laxity_dir.exists():
         print("Error: Laxity directory not found")
         return 1

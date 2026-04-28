@@ -20,7 +20,7 @@ from sidm2.siddecompiler import SIDdecompilerAnalyzer
 def test_python_wrapper():
     """Test Python SIDdecompiler via wrapper"""
     # Find a test SID file
-    test_files = list(Path("Laxity").glob("*.sid"))
+    test_files = list(Path("SID/Laxity").glob("*.sid"))
     if not test_files:
         print("ERROR: No test files found")
         pytest.skip("No test files found")

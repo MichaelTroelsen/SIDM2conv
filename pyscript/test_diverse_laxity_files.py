@@ -29,7 +29,7 @@ class TestDiverseLaxityFiles(unittest.TestCase):
     def setUp(self):
         """Set up test environment"""
         self.temp_dir = tempfile.mkdtemp()
-        self.laxity_dir = Path("Laxity")
+        self.laxity_dir = Path("SID/Laxity")
 
         # Skip tests if Laxity directory doesn't exist
         if not self.laxity_dir.exists():
@@ -213,7 +213,7 @@ class TestFileCharacteristics(unittest.TestCase):
 
     def setUp(self):
         """Set up test environment"""
-        self.laxity_dir = Path("Laxity")
+        self.laxity_dir = Path("SID/Laxity")
         if not self.laxity_dir.exists():
             self.skipTest("Laxity directory not found")
 
