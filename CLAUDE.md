@@ -92,9 +92,9 @@ Auto-selects best driver by player type via `DriverSelector.PLAYER_REGISTRY` (si
 
 **Filter Accuracy Validator** (`pyscript/validate_filter_accuracy.py`): Cross-validates Laxity NP21 filter tables extracted from SID binary against cycle-accurate zig64 ground truth trace. Checks resonance byte, sweep speed, and mode bits. Ground truth: `SID/stinsen_sid_trace_300frames.csv`
 
-**Regenerator 2000 Labeler** (`pyscript/regen2000_label_laxity_np21.py`): Auto-labels any NP21 file loaded in Regenerator 2000 via MCP HTTP. Run: `python pyscript/regen2000_label_laxity_np21.py --port 3000`
+**Regenerator 2000 Labeler** (archived 2026-04-29 → `archive/cleanup_2026-04-29/orphaned_utils/regen2000_label_laxity_np21.py`): Auto-labels any NP21 file loaded in Regenerator 2000 via MCP HTTP. Restore from archive if needed.
 
-**Regenerator 2000 Project Generator** (`pyscript/gen_regen2000_project.py`): Generates `.regen2000proj` directly from a PRG binary with all NP21 labels pre-applied (no running Regenerator needed). Run: `python pyscript/gen_regen2000_project.py [--prg FILE] [--out FILE]`. Load headlessly: `regenerator2000.exe file.regen2000proj --headless --mcp-server --mcp-port 3000`
+**Regenerator 2000 Project Generator** (archived 2026-04-29 → `archive/cleanup_2026-04-29/orphaned_utils/gen_regen2000_project.py`): Generates `.regen2000proj` directly from a PRG binary with NP21 labels pre-applied. Restore from archive if needed.
 
 **zig64 SID Tracer** (`tools/sidm2-sid-trace.exe`): Pre-built cycle-accurate SID register tracer. Usage: `sidm2-sid-trace.exe file.prg [frames] [init_hex] [play_hex]`. Output: CSV on stderr. Source: `C:\Users\mit\Downloads\zig64\src\examples\sidm2_sid_trace.zig`
 
