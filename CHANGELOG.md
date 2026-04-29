@@ -25,6 +25,37 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.2.2] - 2026-04-29
+
+### Fixed
+- `_build_np21_sf2_edit_area` byte mapping: removed the +1 note shift introduced
+  by v3.1.9. Step 0 of the criterion-3 investigation verified against the player
+  disassembly at `$10F4-$10FB` (drivers/laxity/laxity_player_disassembly.asm:111-156)
+  that NP21 byte `0x00` means "no new note this tick" (gate stays in current
+  state — same code path as `0x7E` tie), NOT "C-0 lowest pitch" as the v3.1.9
+  changelog had claimed. The +1 shift caused two real defects in editor display:
+  (1) every NP21 silence-row rendered as a C-0 played note in the SF2 editor,
+  (2) every actual note appeared one semitone higher than the original NP21
+  pitch. Corrected mapping: NP21 0x00→SF2 0x00 (gate off); NP21 0x01-0x6F→identity;
+  NP21 0x70-0x7D→clamp to 0x6F (NP21 has more pitch range than SF2 supports);
+  NP21 0x7E→SF2 0x7E (tie); NP21 0x80-0xFF→identity (durations/instruments/commands)
+
+### Added
+- `pyscript/test_sf2_writer.py::TestBuildNp21Sf2EditAreaByteMapping` — 6 regression
+  tests pinning the corrected byte mapping (zero-becomes-gate-off, notes-are-identity,
+  high-notes-clamp, tie-preserved, control-bytes-pass-through, padding-with-0x7F)
+- `docs/criterion3_step0_findings.md` — captures the player-code analysis that
+  uncovered the bug, for future readers and for the scheduled remote agent
+
+### Verified
+- zig64 frame-set match remains 100% on both Stinsen (1909/1909) and Unboxed
+  (2733/2733) — playback is unaffected because the player reads from the
+  embedded NP21 binary at `$1A1C/$1A1F`, not from the SF2 edit area where the
+  fix lives. Editor-side `pyscript/verify_editor_view.py` decodes both files
+  cleanly with no asserts. Test suite: 784 passed (was 778 + 6 new), 7 skipped
+
+---
+
 ## [3.2.1] - 2026-04-27
 
 ### Fixed

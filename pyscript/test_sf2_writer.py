@@ -1395,6 +1395,78 @@ class TestLaxityTableInjection(unittest.TestCase):
         self.assertIsNotNone(self.writer.output)
 
 
+class TestBuildNp21Sf2EditAreaByteMapping(unittest.TestCase):
+    """Verify the NP21 -> SF2 byte mapping in _build_np21_sf2_edit_area.
+
+    Regression guard for the v3.2.2 fix: v3.1.9 had introduced a +1 note
+    shift based on the wrong assumption that NP21 0x00 = C-0. Player
+    disassembly at $10F4-$10FB shows NP21 0x00 = "no new note this tick"
+    (gate stays current state). Correct mapping is identity for notes
+    0x01-0x6F, 0x00 -> 0x00, clamp 0x70-0x7D to 0x6F, identity elsewhere.
+    """
+
+    def _build_with_seq(self, np21_body):
+        """Construct minimal c64_data with a single voice 0 seq pointing at
+        np21_body, then call _build_np21_sf2_edit_area on it. Returns the
+        first SF2 sequence's 256-byte block from the edit area.
+        """
+        sid_la = 0x1000
+        seq_offset = 0x0A30
+        c64_data = bytearray(seq_offset + len(np21_body) + 2)
+        # Three voices all point at the same seq (dedupe collapses to 1 pattern)
+        for v in range(3):
+            c64_data[0x0A1C + v] = (sid_la + seq_offset) & 0xFF
+            c64_data[0x0A1F + v] = (sid_la + seq_offset) >> 8
+        c64_data[seq_offset:seq_offset + len(np21_body)] = np21_body
+        # NP21 loop terminator (extractor stops at 0xFF; next byte is loop target)
+        c64_data[seq_offset + len(np21_body)] = 0xFF
+        c64_data[seq_offset + len(np21_body) + 1] = 0x00
+
+        # _build_np21_sf2_edit_area only reads c64_data + sid_la; bypass __init__
+        # entirely so we don't need a real template/driver.
+        writer = SF2Writer.__new__(SF2Writer)
+        _params, edit_bytes = writer._build_np21_sf2_edit_area(bytes(c64_data), sid_la)
+        SEQ_PTR_SIZE = 128
+        OL_SIZE = 256
+        seq00_offset = 6 + 2 * SEQ_PTR_SIZE + 3 * OL_SIZE
+        return edit_bytes[seq00_offset:seq00_offset + OL_SIZE]
+
+    def test_note_zero_maps_to_gate_off(self):
+        """NP21 0x00 ("no new note this tick") must become SF2 0x00 (gate off),
+        not SF2 0x01 (C-0) — this is the v3.2.2 bug fix."""
+        seq = self._build_with_seq([0xA0, 0x00, 0x05])  # inst, no-event, note
+        self.assertEqual(seq[0], 0xA0, "instrument byte preserved")
+        self.assertEqual(seq[1], 0x00, "NP21 0x00 must map to SF2 0x00, not 0x01")
+        self.assertEqual(seq[2], 0x05, "NP21 note 0x05 stays 0x05 (no +1 shift)")
+
+    def test_notes_are_identity_not_shifted(self):
+        """NP21 0x01..0x6F must pass through unchanged (v3.1.9 had +1)."""
+        seq = self._build_with_seq([0x01, 0x02, 0x10, 0x6F])
+        self.assertEqual(list(seq[:4]), [0x01, 0x02, 0x10, 0x6F])
+
+    def test_high_notes_clamp_to_sf2_max(self):
+        """NP21 0x70..0x7D (notes outside SF2 range) clamp to 0x6F."""
+        seq = self._build_with_seq([0x70, 0x7D])
+        self.assertEqual(seq[0], 0x6F, "NP21 0x70 clamps to 0x6F")
+        self.assertEqual(seq[1], 0x6F, "NP21 0x7D clamps to 0x6F")
+
+    def test_tie_byte_preserved(self):
+        """NP21 0x7E (tie) passes through as SF2 0x7E."""
+        seq = self._build_with_seq([0x05, 0x7E, 0x07])
+        self.assertEqual(seq[1], 0x7E)
+
+    def test_control_bytes_pass_through(self):
+        """NP21 0x80..0xFF (durations, instruments, commands) all identity."""
+        seq = self._build_with_seq([0x80, 0x95, 0xA3, 0xBF, 0xC1, 0xFE])
+        self.assertEqual(list(seq[:6]), [0x80, 0x95, 0xA3, 0xBF, 0xC1, 0xFE])
+
+    def test_sequence_padded_with_sf2_end_marker(self):
+        """Sequence body terminated by SF2 0x7F and padded with 0x7F to 256B."""
+        seq = self._build_with_seq([0x05])
+        self.assertEqual(seq[1], 0x7F, "0x7F follows the body")
+        self.assertTrue(all(b == 0x7F for b in seq[2:]), "padding is 0x7F")
+
+
 if __name__ == '__main__':
     # Run with verbose output
     unittest.main(verbosity=2)

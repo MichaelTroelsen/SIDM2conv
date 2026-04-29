@@ -1690,27 +1690,55 @@ class SF2Writer:
         #   0xA0-0xBF   = set instrument
         #   0xC0-0xFF   = set command
         #
-        # NP21 note format: 0x00-0x5D = notes, where 0x00 = C-0 (lowest).
-        # SF2 note format:  0x01-0x6F = notes, where 0x01 = C-0.
-        # Conversion: sf2_note = np21_note + 1  (NP21 notes are 0-based, SF2 are 1-based)
-        # All other byte ranges (gate-on 0x7E, durations 0x80-0x9F, instrument, command)
-        # are identical between NP21 and SF2.
-        # Body bytes no longer contain 0x7F or 0xFF (stripped by _extract_raw_seq).
+        # NP21 note byte semantics (verified against player code at $10C9-$1108
+        # in drivers/laxity/laxity_player_disassembly.asm:111-156):
+        #   0x00         = "no new note this tick" — gate stays in current state.
+        #                  At $10F4 the byte is stored to the active-note slot;
+        #                  $10F7 BEQ branches to Label_13 which only increments
+        #                  the tick counter. NOT "C-0" as v3.1.9 changelog claimed.
+        #   0x01 - 0x7D  = playable notes (0x01 = lowest; chromatic).
+        #   0x7E         = tie / note-on (Label_14, copies last active note).
+        #   0x7F         = true end-of-data (rare; loops use 0xFF/Y-target instead).
+        #   0x80 - 0x9F  = duration byte (low nibble = ticks; bit 4 = tie flag).
+        #   0xA0 - 0xBF  = set-instrument prefix.
+        #   0xC0 - 0xFF  = command prefix (then a payload byte follows).
+        #
+        # SF2 packed sequence format (DataSourceSequence::Unpack lines 197-267):
+        #   0x00         = gate off
+        #   0x01 - 0x6F  = notes (0x01 = C-0; SF2 has FEWER pitches than NP21)
+        #   0x7E         = tie/note-on (same as NP21)
+        #   0x7F         = end of sequence
+        #   0x80 - 0x9F  = duration (same encoding as NP21)
+        #   0xA0 - 0xBF  = instrument (same)
+        #   0xC0 - 0xFF  = command (same)
+        #
+        # Correct conversion (identity for compatible ranges; map for note 0):
+        #   NP21 0x00       → SF2 0x00 (no event / gate off — closest equivalent)
+        #   NP21 0x01-0x6F  → SF2 0x01-0x6F (identity)
+        #   NP21 0x70-0x7D  → SF2 0x6F (clamp; SF2's pitch range is shorter)
+        #   NP21 0x7E       → SF2 0x7E
+        #   NP21 0x80+      → SF2 same (identity for all control bytes)
+        # The previous +1 shift (v3.1.9 fix) was based on the wrong assumption
+        # that NP21 0x00 = C-0 (lowest pitch); fixed in v3.2.2 after verifying
+        # against the player disassembly directly. Body bytes no longer contain
+        # 0x7F or 0xFF (stripped by _extract_raw_seq).
         sf2_sequences = []
         for body, loop_target in raw_patterns:
             seq = bytearray()
             for b in body:
-                if b == 0x7E:           # gate on — same in SF2 (0x7E)
+                if b == 0x00:                    # no-event → gate off
+                    seq.append(0x00)
+                elif 0x01 <= b <= 0x6F:          # notes — identity
+                    seq.append(b)
+                elif 0x70 <= b <= 0x7D:          # high notes outside SF2 range
+                    seq.append(0x6F)
+                elif b == 0x7E:                  # tie/gate-on — identity
                     seq.append(0x7E)
-                elif 0xA0 <= b <= 0xBF: # instrument — same encoding
+                elif 0x80 <= b <= 0xFF:          # all control bytes — identity
                     seq.append(b)
-                elif 0x80 <= b <= 0x9F: # duration — same encoding
+                else:
+                    # 0x7F shouldn't occur (stripped) — pass through if it does
                     seq.append(b)
-                elif 0xC0 <= b <= 0xFF: # command index — pass through
-                    seq.append(b)
-                else:                   # note: NP21 is 0-based, SF2 is 1-based (+1 shift)
-                    # NP21 note 0x00 = C-0, SF2 note 0x01 = C-0 (SF2 note 0x00 = gate off)
-                    seq.append(min(0x6F, b + 1))
             seq.append(0x7F)  # SF2 end-of-sequence marker
             # Pad to fixed size
             while len(seq) < SEQ_SIZE:
