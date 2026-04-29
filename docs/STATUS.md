@@ -96,7 +96,7 @@ The sections below document the full feature inventory accumulated since v1.0; n
 - **3 perfect matches**: Beast.sid, Delicate.sid, Ocean_Reloaded.sid (100%)
 - **SIDtool comparison** - Validated against reference implementation
 - **Pipeline integration** - Automated MIDI export (Step 11)
-- See: `docs/analysis/MIDI_VALIDATION_COMPLETE.md`
+- See: `archive/cleanup_2026-04-28/old_docs/meta_reports/MIDI_VALIDATION_COMPLETE.md` (archived)
 
 ### ✅ Disassembly
 - Python-based annotated disassembly

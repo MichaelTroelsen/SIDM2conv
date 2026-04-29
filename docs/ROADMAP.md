@@ -168,7 +168,7 @@ current strategic plan.
 - Musical output identical (0% audible difference)
 
 **Documentation**:
-- `docs/ACCURACY_FIX_VERIFICATION_REPORT.md` - Complete validation
+- `archive/cleanup_2026-04-28/old_docs/completion_reports/ACCURACY_FIX_VERIFICATION_REPORT.md` (archived) - Complete validation
 - `archive/cleanup_2026-04-28/old_docs/old_analysis/ACCURACY_OPTIMIZATION_ANALYSIS.md` (archived) - Technical analysis
 - `pyscript/test_accuracy_fix.py` - Unit tests (216 lines)
 

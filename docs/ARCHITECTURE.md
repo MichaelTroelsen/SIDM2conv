@@ -840,7 +840,7 @@ Break speed sequence:
 - Generates `{filename}_python.mid`
 - Creates comparison report `{filename}_midi_comparison.txt`
 - 100.66% overall accuracy (3 perfect matches)
-- See `docs/analysis/MIDI_VALIDATION_COMPLETE.md` for complete validation results
+- See `archive/cleanup_2026-04-28/old_docs/meta_reports/MIDI_VALIDATION_COMPLETE.md` (archived) for complete validation results
 
 #### Step 12: Final Summary
 - Displays pipeline completion status

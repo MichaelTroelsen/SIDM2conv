@@ -127,16 +127,16 @@ Technical analysis, validation results, and findings:
 ### Consolidated Analysis (NEW - v2.3.0)
 | Document | Content | Version |
 |----------|---------|---------|
-| [MIDI_VALIDATION_COMPLETE.md](analysis/MIDI_VALIDATION_COMPLETE.md) | **Complete MIDI validation results** - 100.66% accuracy, perfect matches | v2.0.0 |
+| [MIDI_VALIDATION_COMPLETE.md](../archive/cleanup_2026-04-28/old_docs/meta_reports/MIDI_VALIDATION_COMPLETE.md) (archived) | **Complete MIDI validation results** - 100.66% accuracy, perfect matches | v2.0.0 |
 
 ### Project Analysis
 | Document | Content |
 |----------|---------|
-| [CONSOLIDATION_2025-12-21_COMPLETE.md](analysis/CONSOLIDATION_2025-12-21_COMPLETE.md) | **Authoritative consolidation documentation** - Complete Phase 1-4 documentation |
+| [CONSOLIDATION_2025-12-21_COMPLETE.md](../archive/cleanup_2026-04-28/old_docs/meta_reports/CONSOLIDATION_2025-12-21_COMPLETE.md) (archived) | **Authoritative consolidation documentation** - Complete Phase 1-4 documentation |
 | [ACCURACY_ROADMAP.md](../archive/cleanup_2026-04-28/old_docs/old_analysis/ACCURACY_ROADMAP.md) (archived) | Accuracy improvement plan - Path to 99% accuracy |
 | [PACK_STATUS.md](analysis/PACK_STATUS.md) | Packer status - SF2→SID implementation details |
 | [TRACK_VIEW_TEST_RESULTS.md](analysis/TRACK_VIEW_TEST_RESULTS.md) | Track view testing results |
-| [ACCURACY_FIX_VERIFICATION_REPORT.md](ACCURACY_FIX_VERIFICATION_REPORT.md) | Accuracy optimization verification - 99.93% → 100% fixes |
+| [ACCURACY_FIX_VERIFICATION_REPORT.md](../archive/cleanup_2026-04-28/old_docs/completion_reports/ACCURACY_FIX_VERIFICATION_REPORT.md) (archived) | Accuracy optimization verification - 99.93% → 100% fixes |
 | [ACCURACY_OPTIMIZATION_ANALYSIS.md](../archive/cleanup_2026-04-28/old_docs/old_analysis/ACCURACY_OPTIMIZATION_ANALYSIS.md) (archived) | Root cause analysis of accuracy improvements |
 
 ### External Tools Analysis
@@ -194,7 +194,7 @@ Technical analysis, validation results, and findings:
 | Document | Content |
 |----------|---------|
 | [STATUS.md](STATUS.md) | **Current project status** - Features, recent changes, roadmap | v2.3.0 |
-| [IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md) | Improvement planning and tracking |
+| [IMPROVEMENT_PLAN.md](../archive/cleanup_2026-04-28/old_docs/completion_reports/IMPROVEMENT_PLAN.md) (archived) | Improvement planning and tracking |
 | [ROADMAP.md](ROADMAP.md) | Project roadmap |
 
 ---
@@ -206,10 +206,10 @@ Detailed implementation guides and reports:
 ### Laxity Driver Implementation
 | Document | Content |
 |----------|---------|
-| [laxity/PHASE5_COMPLETE.md](implementation/laxity/PHASE5_COMPLETE.md) | Phase 5: Pipeline integration |
+| [laxity/PHASE5_COMPLETE.md](../archive/cleanup_2026-04-28/old_docs/completion_reports/PHASE5_COMPLETE.md) (archived) | Phase 5: Pipeline integration |
 | [laxity/PHASE6_POINTER_ANALYSIS.md](implementation/laxity/PHASE6_POINTER_ANALYSIS.md) | Phase 6: Pointer patching analysis |
 | [laxity/PHASE6_POINTER_PATCHING_RESULTS.md](implementation/laxity/PHASE6_POINTER_PATCHING_RESULTS.md) | Pointer patching results |
-| [laxity/PHASE6_SUCCESS_SUMMARY.md](implementation/laxity/PHASE6_SUCCESS_SUMMARY.md) | Phase 6 success summary |
+| [laxity/PHASE6_SUCCESS_SUMMARY.md](../archive/cleanup_2026-04-28/old_docs/completion_reports/PHASE6_SUCCESS_SUMMARY.md) (archived) | Phase 6 success summary |
 | [laxity/POINTER_PATCHING_RESULTS.md](implementation/laxity/POINTER_PATCHING_RESULTS.md) | Detailed pointer patching results |
 | [laxity/WAVE_TABLE_FORMAT_FIX.md](implementation/laxity/WAVE_TABLE_FORMAT_FIX.md) | Wave table format fix (99.93% accuracy breakthrough) |
 | [laxity/WAVE_TABLE_FORMAT_COMPLETE.md](implementation/laxity/WAVE_TABLE_FORMAT_COMPLETE.md) | Complete wave table format documentation |
@@ -229,13 +229,13 @@ Detailed implementation guides and reports:
 ### Laxity Driver Implementation (Detailed)
 | Document | Content |
 |----------|---------|
-| [laxity/PHASE5_COMPLETE.md](implementation/laxity/PHASE5_COMPLETE.md) | Phase 5: Pipeline integration complete |
-| [laxity/PHASE5_INTEGRATION_STATUS.md](implementation/laxity/PHASE5_INTEGRATION_STATUS.md) | Phase 5: Integration status tracking |
-| [laxity/PHASE5_SUMMARY.md](implementation/laxity/PHASE5_SUMMARY.md) | Phase 5: Summary and results |
+| [laxity/PHASE5_COMPLETE.md](../archive/cleanup_2026-04-28/old_docs/completion_reports/PHASE5_COMPLETE.md) (archived) | Phase 5: Pipeline integration complete |
+| [laxity/PHASE5_INTEGRATION_STATUS.md](../archive/cleanup_2026-04-28/old_docs/completion_reports/PHASE5_INTEGRATION_STATUS.md) (archived) | Phase 5: Integration status tracking |
+| [laxity/PHASE5_SUMMARY.md](../archive/cleanup_2026-04-28/old_docs/completion_reports/PHASE5_SUMMARY.md) (archived) | Phase 5: Summary and results |
 | [laxity/PHASE6_POINTER_ANALYSIS.md](implementation/laxity/PHASE6_POINTER_ANALYSIS.md) | Phase 6: Pointer patching analysis |
 | [laxity/PHASE6_POINTER_PATCHING_RESULTS.md](implementation/laxity/PHASE6_POINTER_PATCHING_RESULTS.md) | Phase 6: Pointer patching results |
 | [laxity/PHASE6_STATUS.md](implementation/laxity/PHASE6_STATUS.md) | Phase 6: Status tracking |
-| [laxity/PHASE6_SUCCESS_SUMMARY.md](implementation/laxity/PHASE6_SUCCESS_SUMMARY.md) | Phase 6: Success summary |
+| [laxity/PHASE6_SUCCESS_SUMMARY.md](../archive/cleanup_2026-04-28/old_docs/completion_reports/PHASE6_SUCCESS_SUMMARY.md) (archived) | Phase 6: Success summary |
 | [laxity/WAVE_TABLE_FORMAT_FIX.md](implementation/laxity/WAVE_TABLE_FORMAT_FIX.md) | **Wave table format fix** - 99.93% accuracy breakthrough |
 
 ---
@@ -384,7 +384,7 @@ Historical reports, completed work, and consolidated documentation:
 → See [ACCURACY_ROADMAP.md](../archive/cleanup_2026-04-28/old_docs/old_analysis/ACCURACY_ROADMAP.md) (archived)
 
 **...check MIDI validation results**
-→ See [MIDI_VALIDATION_COMPLETE.md](analysis/MIDI_VALIDATION_COMPLETE.md)
+→ See [MIDI_VALIDATION_COMPLETE.md](../archive/cleanup_2026-04-28/old_docs/meta_reports/MIDI_VALIDATION_COMPLETE.md) (archived)
 
 **...use Python siddump**
 → See [SIDDUMP_PYTHON_IMPLEMENTATION.md](implementation/SIDDUMP_PYTHON_IMPLEMENTATION.md) (v2.6.0, 100% accuracy)
