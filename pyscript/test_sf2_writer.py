@@ -1467,6 +1467,104 @@ class TestBuildNp21Sf2EditAreaByteMapping(unittest.TestCase):
         self.assertTrue(all(b == 0x7F for b in seq[2:]), "padding is 0x7F")
 
 
+class TestSf2ToNp21RoundTrip(unittest.TestCase):
+    """Round-trip: NP21 source -> SF2 encoding -> NP21 reconstruction.
+
+    Spec for the 6502 translator that will be emitted at $0F0E in the
+    laxity SF2 driver (criterion-3 work). The reference Python translator
+    in sidm2.sf2_to_np21 must produce the same bytes the 6502 will when
+    fed an SF2 sequence — and round-tripping back to NP21 must reproduce
+    the source body when no edits were applied.
+    """
+
+    def _build_with_seq(self, np21_body):
+        """Same helper as TestBuildNp21Sf2EditAreaByteMapping — kept local
+        rather than imported so this class stands on its own.
+        """
+        sid_la = 0x1000
+        seq_offset = 0x0A30
+        c64_data = bytearray(seq_offset + len(np21_body) + 2)
+        for v in range(3):
+            c64_data[0x0A1C + v] = (sid_la + seq_offset) & 0xFF
+            c64_data[0x0A1F + v] = (sid_la + seq_offset) >> 8
+        c64_data[seq_offset:seq_offset + len(np21_body)] = np21_body
+        c64_data[seq_offset + len(np21_body)] = 0xFF
+        c64_data[seq_offset + len(np21_body) + 1] = 0x00
+
+        writer = SF2Writer.__new__(SF2Writer)
+        _params, edit_bytes = writer._build_np21_sf2_edit_area(bytes(c64_data), sid_la)
+        SEQ_PTR_SIZE = 128
+        OL_SIZE = 256
+        seq00_offset = 6 + 2 * SEQ_PTR_SIZE + 3 * OL_SIZE
+        return edit_bytes[seq00_offset:seq00_offset + OL_SIZE]
+
+    def test_simple_note_sequence_round_trips(self):
+        """Notes pass through identity in both directions; loop terminator
+        rewritten between the two formats."""
+        from sidm2.sf2_to_np21 import sf2_to_np21
+        np21_source = bytes([0xA0, 0x05, 0x07, 0x09, 0x0C])
+        sf2_seq = self._build_with_seq(np21_source)
+        np21_decoded = sf2_to_np21(sf2_seq, loop_target=0)
+        # Decoded body must match source, plus NP21 loop terminator
+        self.assertEqual(np21_decoded, np21_source + bytes([0xFF, 0x00]))
+
+    def test_no_event_byte_round_trips(self):
+        """NP21 0x00 ('no new note') survives the round trip — this is the
+        v3.2.2 bug regression check at the translator boundary."""
+        from sidm2.sf2_to_np21 import sf2_to_np21
+        np21_source = bytes([0xA0, 0x00, 0x05])
+        sf2_seq = self._build_with_seq(np21_source)
+        np21_decoded = sf2_to_np21(sf2_seq, loop_target=0)
+        self.assertEqual(np21_decoded, np21_source + bytes([0xFF, 0x00]))
+
+    def test_mixed_byte_types_round_trip(self):
+        """Notes, no-event, tie, duration, instrument, command all round-trip."""
+        from sidm2.sf2_to_np21 import sf2_to_np21
+        # Note: NP21 0xC0-0xFF are command prefixes that consume the next byte
+        # as payload. 0xFF specifically is the loop marker — reserved, can't
+        # appear in body. We exercise 0xC1 (a generic command) instead.
+        np21_source = bytes([
+            0xA0,        # set instrument $A0
+            0x05,        # play note $05
+            0x00,        # no new note (gate stays)
+            0x7E,        # tie
+            0x80,        # duration 0
+            0x95,        # duration 5 + tie flag
+            0xB3,        # set instrument $B3
+            0xC1, 0x42,  # command $C1 with payload $42
+        ])
+        sf2_seq = self._build_with_seq(np21_source)
+        np21_decoded = sf2_to_np21(sf2_seq, loop_target=0)
+        self.assertEqual(np21_decoded, np21_source + bytes([0xFF, 0x00]))
+
+    def test_loop_target_propagates(self):
+        """The Y-index passed to sf2_to_np21 ends up as the byte after 0xFF."""
+        from sidm2.sf2_to_np21 import sf2_to_np21
+        sf2_seq = bytes([0x05, 0x07, 0x7F, 0x7F, 0x7F])
+        decoded = sf2_to_np21(sf2_seq, loop_target=0x03)
+        self.assertEqual(decoded, bytes([0x05, 0x07, 0xFF, 0x03]))
+
+    def test_translator_stops_at_first_end_marker(self):
+        """Padding 0x7F bytes after the first 0x7F are not emitted."""
+        from sidm2.sf2_to_np21 import sf2_to_np21
+        sf2_seq = bytes([0x05, 0x7F]) + bytes([0x7F] * 250)
+        decoded = sf2_to_np21(sf2_seq)
+        self.assertEqual(decoded, bytes([0x05, 0xFF, 0x00]))
+
+    def test_empty_body(self):
+        """Sequence with only 0x7F yields just the NP21 loop terminator."""
+        from sidm2.sf2_to_np21 import sf2_to_np21
+        decoded = sf2_to_np21(bytes([0x7F]))
+        self.assertEqual(decoded, bytes([0xFF, 0x00]))
+
+    def test_missing_end_marker_emits_defensive_terminator(self):
+        """If the input lacks 0x7F (malformed), the translator still emits
+        a loop terminator so the NP21 player won't run off the buffer end."""
+        from sidm2.sf2_to_np21 import sf2_to_np21
+        decoded = sf2_to_np21(bytes([0x01, 0x02, 0x03]))
+        self.assertEqual(decoded, bytes([0x01, 0x02, 0x03, 0xFF, 0x00]))
+
+
 if __name__ == '__main__':
     # Run with verbose output
     unittest.main(verbosity=2)
