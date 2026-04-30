@@ -1504,49 +1504,10 @@ class SF2Writer:
             return
 
         # --- Extract NP21 patterns and build SF2 edit data area ---
-        music_data_params, sf2_edit_data, voice_init_idx = self._build_np21_sf2_edit_area(c64_data, sid_la)
+        music_data_params, sf2_edit_data = self._build_np21_sf2_edit_area(c64_data, sid_la)
 
-        # --- Criterion-3 Step 2: allocate shadow buffer ---
-        # The runtime translator (Step 3, $0F0E) will write NP21-format bytes
-        # into this buffer at PLAY time. The NP21 player will read sequences
-        # from here instead of the original NP21 binary, so the editor's edits
-        # to the SF2 edit area propagate through the translator into playback.
-        #
-        # Layout: one 256-byte slot per unique extracted pattern. Voices that
-        # shared a sequence in the source still share the same shadow slot
-        # (the addr-dedupe in _build_np21_sf2_edit_area produced one entry per
-        # unique source address; voice_init_idx maps voice -> pattern index).
-        SEQ_SHADOW_SIZE = 256       # NP21 sequence max length the player can address
-        num_patterns = max(voice_init_idx) + 1 if music_data_params else 0
-        shadow_buffer_size = num_patterns * SEQ_SHADOW_SIZE
-        sf2_data_base = sid_la + len(c64_data)
-        shadow_base = sf2_data_base + len(sf2_edit_data)
-        # Without the Step 3 translator running yet, the shadow is zeros;
-        # the player will produce silence until the translator is wired up.
-        # Initialise with NP21 loop terminator at byte 0 of each slot so the
-        # player at least loops cleanly instead of running off the buffer end.
-        shadow_buffer = bytearray(shadow_buffer_size)
-        for idx in range(num_patterns):
-            slot = idx * SEQ_SHADOW_SIZE
-            shadow_buffer[slot] = 0xFF      # NP21 loop marker
-            shadow_buffer[slot + 1] = 0x00  # loop target = start
-
-        # --- Patch NP21 binary's ch_seq_ptr to point at shadow ---
-        # Voices keep reading from $0A1C/$0A1F per the player at $107E/$1083,
-        # but those entries now resolve to shadow_base + N*256 instead of an
-        # offset inside the original NP21 binary. The original sequence bytes
-        # in the NP21 binary remain in place but are now unreferenced.
-        c64_data = bytearray(c64_data)  # copy to make the patches mutable
-        CH_SEQ_LO_OFF = 0x0A1C
-        CH_SEQ_HI_OFF = 0x0A1F
-        for v in range(3):
-            voice_shadow_addr = shadow_base + voice_init_idx[v] * SEQ_SHADOW_SIZE
-            if CH_SEQ_LO_OFF + v < len(c64_data) and CH_SEQ_HI_OFF + v < len(c64_data):
-                c64_data[CH_SEQ_LO_OFF + v] = voice_shadow_addr & 0xFF
-                c64_data[CH_SEQ_HI_OFF + v] = (voice_shadow_addr >> 8) & 0xFF
-
-        # Update driver_size to include the full file extent (NP21 + edit area + shadow)
-        gen.driver_size += len(sf2_edit_data) + shadow_buffer_size
+        # Update driver_size to include the full file extent (NP21 + edit area)
+        gen.driver_size += len(sf2_edit_data)
 
         # Now regenerate headers with correct Block 5 addresses
         header_bytes = gen.generate_complete_headers(music_data_params)
@@ -1559,9 +1520,9 @@ class SF2Writer:
             )
             return
 
-        # Build the full PRG: [load_addr:2] + memory from $0D7E to end of shadow buffer
+        # Build the full PRG: [load_addr:2] + memory from $0D7E to end of NP21 + SF2 edit data
         gap = sid_la - LOAD_BASE
-        file_size = 2 + gap + len(c64_data) + len(sf2_edit_data) + shadow_buffer_size
+        file_size = 2 + gap + len(c64_data) + len(sf2_edit_data)
         file_data = bytearray(file_size)
 
         # PRG load address (2-byte little-endian header)
@@ -1577,7 +1538,7 @@ class SF2Writer:
         file_data[hnd_off + 4:hnd_off + 8]  = bytes([0x20, play_addr & 0xFF, play_addr >> 8, 0x60])
         file_data[hnd_off + 8:hnd_off + 14] = bytes([0xA9, 0x00, 0x8D, 0x18, 0xD4, 0x60])
 
-        # NP21 binary (with patched ch_seq_ptr) at its original load address
+        # NP21 binary verbatim at its original load address (file offset 2 + gap)
         np21_off = 2 + gap
         file_data[np21_off:np21_off + len(c64_data)] = c64_data
 
@@ -1595,37 +1556,23 @@ class SF2Writer:
             edit_off = np21_off + len(c64_data)
             file_data[edit_off:edit_off + len(sf2_edit_data)] = sf2_edit_data
 
-        # Shadow buffer appended after SF2 edit data
-        if shadow_buffer_size > 0:
-            shadow_off = np21_off + len(c64_data) + len(sf2_edit_data)
-            file_data[shadow_off:shadow_off + shadow_buffer_size] = shadow_buffer
-
         self.output = file_data
 
+        sf2_data_base = sid_la + len(c64_data)
         logger.info(f"  SF2 size: {len(self.output)} bytes")
         logger.info(f"  Magic + headers: ${LOAD_BASE:04X}-${headers_end_addr - 1:04X} ({len(header_bytes)} bytes)")
         logger.info(f"  Handlers: ${HANDLER_BASE:04X} (INIT=${INIT_HANDLER:04X}, PLAY=${PLAY_HANDLER:04X}, STOP=${STOP_HANDLER:04X})")
         logger.info(f"  NP21 binary: ${sid_la:04X}-${sid_la + len(c64_data) - 1:04X} ({len(c64_data)} bytes)")
         logger.info(f"  SF2 edit data: ${sf2_data_base:04X}-${sf2_data_base + len(sf2_edit_data) - 1:04X} ({len(sf2_edit_data)} bytes)")
-        if shadow_buffer_size > 0:
-            logger.info(f"  Shadow buffer: ${shadow_base:04X}-${shadow_base + shadow_buffer_size - 1:04X} "
-                        f"({num_patterns} × {SEQ_SHADOW_SIZE}B = {shadow_buffer_size}B; "
-                        f"voice slots: " + ", ".join(
-                            f"v{v}=${shadow_base + voice_init_idx[v] * SEQ_SHADOW_SIZE:04X}" for v in range(3)
-                        ) + ")")
         logger.info(f"  INIT: ${INIT_HANDLER:04X} -> JSR ${init_addr:04X}")
         logger.info(f"  PLAY: ${PLAY_HANDLER:04X} -> JSR ${play_addr:04X}")
 
     def _build_np21_sf2_edit_area(self, c64_data: bytes, sid_la: int):
         """Extract NP21 patterns/orderlists and build an SF2-format edit data area.
 
-        Returns (music_data_params, sf2_edit_bytes, voice_init_idx).
+        Returns (music_data_params, sf2_edit_bytes).
         music_data_params is a dict for SF2HeaderGenerator.create_music_data_block().
         sf2_edit_bytes is the raw bytes to append after the NP21 binary in the file.
-        voice_init_idx is a list[int] of length 3 with the SF2 sequence index
-        each voice's ch_seq_ptr ($0A1C+v / $0A1F+v) was pointing at originally
-        — used by the criterion-3 shadow-buffer wiring in _inject_laxity_raw_np21
-        to compute per-voice shadow addresses.
 
         EDITABLE-REPLAY GAP (do not "fix" by switching to NP21 format here):
           The bytes written here are read by the SF2 editor's DataSourceSequence::Unpack
@@ -1726,7 +1673,7 @@ class SF2Writer:
         num_patterns = len(raw_patterns)
         if num_patterns == 0:
             logger.warning("  No NP21 patterns found; Block 5 will use placeholder addresses")
-            return None, b'', [0, 0, 0]
+            return None, b''
 
         for i, (body, lt) in enumerate(raw_patterns):
             loop_str = f"loops from start" if lt == 0 else f"loops from Y={lt}" if lt is not None else "no loop"
@@ -1845,7 +1792,7 @@ class SF2Writer:
             f"Seq=${seq00_addr:04X} ({num_patterns} patterns × {SEQ_SIZE}B)"
         )
 
-        return music_data_params, bytes(edit), voice_init_idx
+        return music_data_params, bytes(edit)
 
     def _inject_laxity_music_data(self) -> None:
         """Inject music data into Laxity driver (native format, no conversion)
