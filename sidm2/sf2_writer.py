@@ -1729,20 +1729,38 @@ class SF2Writer:
         raw_patterns is a list[(body_bytes, loop_target)] of the extracted NP21
         sequences (used by the criterion-3 path to pre-fill the shadow buffer).
 
-        EDITABLE-REPLAY GAP (do not "fix" by switching to NP21 format here):
-          The bytes written here are read by the SF2 editor's DataSourceSequence::Unpack
-          (datasource_sequence.cpp:197-267), which assumes the SF2 packed format:
-            0x7F=end, 0xC0-0xFF=command, 0xA0-0xBF=instrument,
-            0x80-0x9F=duration, <0x80=note (asserts), 0x00=gate-off, 0x7E=tie.
-          NP21 format conflicts on every key byte (0x80=gate-off, 0xFF=loop,
-          0-based notes), so storing NP21 bytes here would corrupt the editor view.
-          The flip side: the laxity SF2 driver runs the original NP21 player code,
-          which reads NP21-format sequences from inside the embedded NP21 binary at
-          ch_seq_ptr ($0A1C/$0A1F) — NOT from this edit area. Therefore edits the
-          user makes in the SF2 editor do NOT yet affect playback. Closing that gap
-          requires either (a) a runtime SF2->NP21 translator added to the laxity
-          driver, or (b) a full Driver-11-compatible re-encoding of the song. Both
-          are out of scope for this function.
+        EDITABLE-REPLAY (closed in v3.3.0; see docs/criterion3_step0_findings.md
+        and the criterion3_scoping.md correction at the top of that doc):
+
+          The byte-format conflict between the SF2 editor's
+          DataSourceSequence::Unpack (datasource_sequence.cpp:197-267, which
+          asserts on byte values that are legal in NP21) and the embedded NP21
+          player is bridged by a two-part runtime mechanism:
+
+          1. Build-time pre-fill (this function and _inject_laxity_raw_np21):
+             extract per-voice sequences from c64_data, store them as
+             "raw_patterns", and have _inject_laxity_raw_np21 write each
+             pattern's NP21-format body + 0xFF + loop_target into a
+             "shadow buffer" appended after sf2_edit_bytes. ch_seq_ptr at
+             load+$0A1C/$0A1F is patched to point at per-voice shadow slots.
+             Non-editor playback (zig64 trace, VICE etc.) reads correct bytes
+             directly without involving the runtime translator.
+
+          2. Runtime translator at $0F0E (_emit_sf2_to_np21_translator).
+             The PLAY handler at $0F04 is patched to JMP $0F0E, which
+             regenerates the shadow on every PLAY tick by translating the
+             SF2-format bytes at seq00_addr through sidm2.sf2_to_np21.
+             When the user edits a sequence in the SF2 editor and triggers
+             playback, the editor calls $0F04 -> JMP $0F0E -> translator
+             reads the EDITED bytes from seq00_addr -> writes NP21-format
+             bytes into the shadow -> player reads from shadow.
+
+          The bytes in this edit area (at seq00_addr) are SF2-packed format
+          (0x7F=end, 0xC0-0xFF=command, etc.) so the editor's Unpack works.
+          The shadow holds NP21 format (0xFF/loop_target terminator,
+          0x00=no-event) so the embedded player works. Both formats agree
+          on note bytes 0x01-0x6F and most control prefixes; only the
+          terminator and a couple of edge cases need translation.
 
         The edit area layout (all offsets from sf2_data_base = sid_la + len(c64_data)):
           [0]          OL ptr lo table  (3 bytes, written by editor at runtime)

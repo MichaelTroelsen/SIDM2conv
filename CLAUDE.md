@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.2.2** | SID→SF2 Converter | C64 Music Tools | Updated 2026-04-29
+**SIDM2 v3.3.0** | SID→SF2 Converter | C64 Music Tools | Updated 2026-04-30
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -171,6 +171,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.3.0** (2026-04-30): Criterion 3 closed — edits in SF2 editor affect playback. Two-part architecture: build-time pre-fill of a 3-slot shadow buffer (per-voice NP21-format bytes appended after the SF2 edit area, with `ch_seq_ptr` at $1A1C/$1A1F patched to point at the shadow); runtime translator at $0F0E that regenerates the shadow on every PLAY tick by translating SF2-edit-area bytes through `sidm2/sf2_to_np21.py`. PLAY handler at $0F04 is now `JMP $0F0E`. Stinsen + Unboxed both still trace at 100%; 794 tests passing (+3 edit-proof tests). Architecture dead-ends and corrections documented in `docs/criterion3_step0_findings.md` and `docs/criterion3_scoping.md`.
 
 **v3.2.2** (2026-04-29): Fix +1 note shift in `_build_np21_sf2_edit_area` — Step 0 of criterion-3 investigation revealed v3.1.9 was wrong: NP21 0x00 = "no new note this tick" (verified at player code `$10F4-$10FB`), not C-0. Old converter shifted every note one semitone up in the editor view and rendered NP21 silence-rows as C-0 played notes. Correct mapping: NP21 0x00→SF2 0x00, NP21 0x01-0x6F→identity, NP21 0x70-0x7D→clamp 0x6F. Playback unaffected (zig64 trace 100% on Stinsen + Unboxed). 6 new regression tests; 784 total passing.
 

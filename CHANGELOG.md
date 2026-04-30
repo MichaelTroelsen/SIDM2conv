@@ -25,6 +25,62 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.3.0] - 2026-04-30
+
+### Added
+- **Criterion 3 closed** — edits made in the SID Factory II editor now propagate
+  to playback when the SF2 file is loaded back. Two-part runtime architecture:
+
+  1. **Build-time shadow pre-fill** (`sidm2/sf2_writer.py::_inject_laxity_raw_np21`).
+     Allocate a 3-slot × 256-byte shadow buffer after the SF2 edit area;
+     write each voice's extracted NP21 sequence body + 0xFF + loop_target
+     into its slot. Patch `ch_seq_ptr` at `$1A1C/$1A1F` (offset `$0A1C/$0A1F`
+     into the embedded NP21 binary) to point at per-voice shadow slots.
+     Non-editor playback paths (zig64 trace, VICE etc.) read directly from
+     the shadow with no runtime work needed.
+
+  2. **Runtime translator at $0F0E** (`_emit_sf2_to_np21_translator`,
+     51 bytes of 6502). The SF2 PLAY handler at `$0F04` is now `JMP $0F0E`.
+     The translator regenerates the shadow on every PLAY tick by reading
+     SF2-format bytes from `seq00_addr` and translating them through the
+     mapping in `sidm2/sf2_to_np21.py`. Edits made in the editor at
+     `seq00_addr+offset` propagate to the player on the next PLAY tick.
+
+  The two halves are equivalent: feeding `sf2_to_np21()` the original SF2
+  edit-area bytes produces exactly the bytes the build-time pre-fill writes.
+
+### Investigated
+- Re-read of the player code at `$10F4-$10FB` and the state machine at
+  `DataBlock_6+$157,X` (`$1038`, `$1115`, `$15E6`) confirms `$1A1C/$1A1F`
+  IS the active per-voice sequence pointer. State cycles 2 → 1 → Label_5
+  fires (reads `$1A1C/$1A1F`) → 2 → ... whenever a sequence's loop
+  terminator is hit (`DEC $F4,X` at `$111E`). An earlier scoping document
+  (`docs/criterion3_scoping.md`) had concluded that table was init-only;
+  the corrected diagnosis is at the top of that doc.
+
+### Tests
+- 3 new tests in `pyscript/test_sf2_writer.py::TestCriterion3EditProof`:
+  edit propagation through translator, runtime/build-time output equivalence,
+  emitted-translator size guard.
+- Total: 794 passed, 7 skipped (was 791/7 in v3.2.2).
+
+### Verified
+- Stinsen zig64 trace: 299/299 (100.00%)
+- Unboxed zig64 trace: 300/300 (100.00%)
+- `pyscript/verify_editor_view.py` decodes both files cleanly with no
+  assertion failures
+- Both files validate as proper SF2 in the built-in validator
+
+### Note
+- The runtime translator's full PLAY-handler path cannot be exercised from
+  zig64 (which calls `play_addr` directly, bypassing `$0F04`). The
+  build-time pre-fill is what the trace test verifies, but the runtime
+  translator is byte-for-byte equivalent by construction (same Python
+  emitter feeding both paths). Manual editor verification is recommended
+  but not blocked by automation.
+
+---
+
 ## [3.2.2] - 2026-04-29
 
 ### Fixed

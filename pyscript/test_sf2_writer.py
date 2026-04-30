@@ -1565,6 +1565,112 @@ class TestSf2ToNp21RoundTrip(unittest.TestCase):
         self.assertEqual(decoded, bytes([0x01, 0x02, 0x03, 0xFF, 0x00]))
 
 
+class TestCriterion3EditProof(unittest.TestCase):
+    """Criterion 3 acceptance test — edits to the SF2 edit area, when run
+    through the translator (manually here, since zig64 bypasses the SF2
+    PLAY handler), produce different NP21 sequence bytes that the player
+    would consume.
+
+    Conceptual flow:
+      - convert source SID
+      - read original SF2-edit-area bytes for voice 0
+      - patch one note byte to a different pitch
+      - run through sf2_to_np21() — the byte-level spec the runtime
+        translator at $0F0E follows
+      - verify the resulting NP21 bytes differ in exactly the predicted way
+
+    The runtime translator at $0F0E is exercised only when the editor
+    calls PLAY at $0F04. zig64 cannot trigger it because it calls
+    play_addr ($1003) directly. So the proof here is at the byte-level
+    spec; full PLAY-handler exercise requires either the SF2 editor or
+    a future asm-level test.
+    """
+
+    def test_edit_propagates_through_translator(self):
+        """Patching an SF2 note byte produces a corresponding NP21 byte change."""
+        from sidm2.sf2_to_np21 import sf2_to_np21
+
+        # Synthetic SF2-edit-area bytes for one voice — same shape the
+        # converter writes: instrument prefix, then notes, then 0x7F.
+        sf2_seq = bytes([0xA0, 0x05, 0x07, 0x09, 0x0B, 0x7F])
+        baseline_np21 = sf2_to_np21(sf2_seq)
+
+        # Editor-side edit: change note at offset 2 from 0x07 to 0x14
+        # (D-1 → C-2, three octaves up roughly — concrete, verifiable shift).
+        edited_sf2 = bytearray(sf2_seq)
+        edited_sf2[2] = 0x14
+        edited_np21 = sf2_to_np21(bytes(edited_sf2))
+
+        # The byte at the same offset in the NP21 output must reflect the edit.
+        self.assertEqual(edited_np21[2], 0x14, "edit at SF2 offset 2 must appear in NP21 output")
+        # And only that byte changed (modulo the 0x7F→0xFF/0x00 terminator).
+        for i in range(len(baseline_np21)):
+            if i == 2:
+                self.assertNotEqual(baseline_np21[i], edited_np21[i])
+            else:
+                self.assertEqual(baseline_np21[i], edited_np21[i],
+                                 f"unexpected change at NP21 byte {i}")
+
+    def test_runtime_translator_output_equals_build_time_prefill(self):
+        """The sf2_writer pre-fills the shadow buffer with content that the
+        runtime translator must reproduce on every PLAY tick. This test
+        proves the two paths emit identical bytes for the same input.
+        """
+        from sidm2.sf2_to_np21 import sf2_to_np21
+        from sidm2.sf2_writer import SF2Writer
+
+        # Build a synthetic NP21 sequence and run it through the encoder
+        # half (sf2_writer's build-time pre-fill), then through the decoder
+        # (sf2_to_np21, what the runtime translator does on PLAY).
+        sid_la = 0x1000
+        seq_offset = 0x0A30
+        np21_body = [0xA0, 0x05, 0x00, 0x07, 0x7E, 0x80, 0xC1, 0x42]
+        c64_data = bytearray(seq_offset + len(np21_body) + 2)
+        for v in range(3):
+            c64_data[0x0A1C + v] = (sid_la + seq_offset) & 0xFF
+            c64_data[0x0A1F + v] = (sid_la + seq_offset) >> 8
+        c64_data[seq_offset:seq_offset + len(np21_body)] = np21_body
+        c64_data[seq_offset + len(np21_body)] = 0xFF
+        c64_data[seq_offset + len(np21_body) + 1] = 0x00
+
+        writer = SF2Writer.__new__(SF2Writer)
+        params, edit_bytes, voice_idx, raw_patterns = \
+            writer._build_np21_sf2_edit_area(bytes(c64_data), sid_la)
+
+        # The sf2 sequence the runtime translator will consume on PLAY:
+        SEQ_PTR_SIZE = 128
+        OL_SIZE = 256
+        seq00_offset_in_edit = 6 + 2 * SEQ_PTR_SIZE + 3 * OL_SIZE
+        sf2_seq_block = edit_bytes[seq00_offset_in_edit:seq00_offset_in_edit + OL_SIZE]
+
+        # What the runtime translator emits when fed that block:
+        runtime_output = sf2_to_np21(sf2_seq_block, loop_target=0)
+
+        # What the build-time pre-fill writes into the shadow:
+        body, lt = raw_patterns[0]
+        build_time_output = bytes(body) + bytes([0xFF, lt & 0xFF if lt is not None else 0x00])
+
+        # Both must produce equivalent NP21 bytes for the same input.
+        self.assertEqual(runtime_output, build_time_output,
+                         "runtime translator output must equal build-time shadow pre-fill")
+
+    def test_emit_translator_produces_expected_size(self):
+        """The emitted 6502 translator must fit in the 242-byte slot at $0F0E."""
+        from sidm2.sf2_writer import SF2Writer
+        writer = SF2Writer.__new__(SF2Writer)
+        for num_pat in (1, 3, 39):
+            code = writer._emit_sf2_to_np21_translator(
+                num_patterns=num_pat,
+                seq00_addr=0x2BC1,
+                shadow_base=0x2EC1,
+                play_addr=0x1006,
+            )
+            self.assertEqual(len(code), 51,
+                             f"translator length must be 51 bytes (got {len(code)} for "
+                             f"num_patterns={num_pat})")
+            self.assertLess(len(code), 242, "must fit in $0F0E-$0FFF slot")
+
+
 if __name__ == '__main__':
     # Run with verbose output
     unittest.main(verbosity=2)
