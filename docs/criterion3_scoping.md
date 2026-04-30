@@ -1,7 +1,58 @@
-# Criterion 3 — scoping document (Step 2/3 revert)
+# Criterion 3 — scoping document (Step 2/3 revert, then partial reversal)
 
-**Date**: 2026-04-30
-**Outcome**: Step 2 (shadow buffer + ch_seq_ptr patch) reverted. Step 3
+**Date**: 2026-04-30 (initial scoping); 2026-04-30 update (architecture vindicated)
+**Outcome**: Step 2 + Step 3 were reverted on misdiagnosis. Subsequent
+investigation showed the architecture was correct; the trace failure was a
+test-tool artifact (zig64 bypasses the SF2 PLAY handler). Re-attempting
+with the fix; this document is kept as historical record and corrected
+below.
+
+## CORRECTION (later same day): the architecture WAS correct
+
+The "Choice A: redirect $1A22/$1A49 instead" recommendation in the
+sections below is **wrong**. After the revert, I performed an experiment:
+take a v3.2.2 .sf2 file, append a shadow buffer manually, COPY the
+original NP21 sequence bytes verbatim into the shadow, and patch
+$1A1C/$1A1F to point at the shadow. zig64 trace then matches the ground
+truth at 100% (299/299 frames). This proves:
+
+- **$1A1C/$1A1F is read at runtime** — it's not just an init-time hook.
+  The state machine at `DataBlock_6+$157,X` cycles 2 → 1 → re-init
+  (Label_5 reads $1A1C/$1A1F) → 2 → 1 → ... whenever a sequence ends
+  (0xFF/$Y target byte hit), state F4 decrements 1→0 and Label_5 fires.
+- **The data at $1A1C/$1A1F IS the per-voice sequence stream** — it
+  contains pattern_index bytes, instrument prefixes, and the loop
+  terminator. The player reads it, decodes it, and the pattern_index
+  byte resolves into the per-pattern note pointer at $1A22/$1A49 just
+  like with the original NP21 binary.
+
+So Step 2's pointer-patching WAS correct. The reason Step 3's trace
+showed 0.67% was that zig64 calls `play_addr` ($1003 patched as JMP
+$1006) directly, bypassing the SF2 PLAY handler at $0F04 where the
+runtime translator's JMP $0F0E lived. The translator never executed
+during zig64's trace, so the shadow stayed at the defensive $FF $00
+init Python applied. That bytes-of-zeros input to the player produces
+the "all voices converge on pattern 0" symptom I diagnosed below as a
+pointer-table bug — but it's actually a shadow-not-populated bug.
+
+**Recovery plan:** the previously reverted Step 2 + Step 3 are correct as
+a unit. Two-line fix: have Step 2 pre-fill the shadow with the SF2-edit-
+area bytes already translated through `sidm2/sf2_to_np21.sf2_to_np21()`
+(so zig64's flow gets a correct shadow even without running the runtime
+translator), AND keep Step 3's runtime translator at $0F0E (so the
+editor's PLAY path regenerates the shadow whenever the user has edited
+the SF2 edit area).
+
+The original scoping recommendation (redirect $1A22/$1A49 instead) was
+based on an incomplete reading of the state machine. Section "What I
+actually found at run-time" below is left intact for historical context;
+the conclusion in "Recommendation" is superseded.
+
+---
+
+## Original scoping (as written, with wrong conclusion)
+
+**Outcome (as written initially)**: Step 2 (shadow buffer + ch_seq_ptr patch) reverted. Step 3
 (6502 translator) abandoned in current form. The runtime-translator
 approach is **not yet viable** as planned because the plan's model of the
 NP21 player's sequence-read path is incomplete.

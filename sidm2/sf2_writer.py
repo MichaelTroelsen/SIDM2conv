@@ -1478,11 +1478,12 @@ class SF2Writer:
         init_addr = getattr(header, 'init_address', sid_la)     if header else sid_la
         play_addr = getattr(header, 'play_address', sid_la + 3) if header else sid_la + 3
 
-        LOAD_BASE    = 0x0D7E   # SF2 loads here; 0x1337 magic goes here
-        HANDLER_BASE = 0x0F00   # Handler code — safely past all header blocks
-        INIT_HANDLER = HANDLER_BASE + 0    # $0F00: JSR init_addr, RTS
-        PLAY_HANDLER = HANDLER_BASE + 4    # $0F04: JSR play_addr, RTS
-        STOP_HANDLER = HANDLER_BASE + 8    # $0F08: LDA #0, STA $D418, RTS
+        LOAD_BASE      = 0x0D7E    # SF2 loads here; 0x1337 magic goes here
+        HANDLER_BASE   = 0x0F00    # Handler code — safely past all header blocks
+        INIT_HANDLER   = HANDLER_BASE + 0    # $0F00: JSR init_addr, RTS
+        PLAY_HANDLER   = HANDLER_BASE + 4    # $0F04: JMP translator (criterion-3) OR JSR play_addr, RTS
+        STOP_HANDLER   = HANDLER_BASE + 8    # $0F08: LDA #0, STA $D418, RTS
+        TRANSLATE_BASE = HANDLER_BASE + 0x0E # $0F0E: SF2->NP21 runtime translator (criterion-3)
 
         # Generate SF2 header blocks with correct handler entry points.
         # generate_complete_headers() returns [37 13] + Block1..5 + [FF].
@@ -1504,10 +1505,59 @@ class SF2Writer:
             return
 
         # --- Extract NP21 patterns and build SF2 edit data area ---
-        music_data_params, sf2_edit_data = self._build_np21_sf2_edit_area(c64_data, sid_la)
+        # Returns voice_init_idx so we can compute per-voice shadow slots and
+        # the original NP21 sequence bytes (for pre-filling the shadow).
+        music_data_params, sf2_edit_data, voice_init_idx, raw_patterns = \
+            self._build_np21_sf2_edit_area(c64_data, sid_la)
 
-        # Update driver_size to include the full file extent (NP21 + edit area)
-        gen.driver_size += len(sf2_edit_data)
+        # --- Criterion-3: shadow buffer + pre-filled NP21 bytes + ch_seq_ptr patch ---
+        # The player's per-voice sequence pointers at $1A1C/$1A1F are read on
+        # song-restart events (state machine cycles 2->1->Label_5 fires->2->...
+        # whenever a sequence's loop terminator is reached). Patching them to
+        # point at a "shadow" buffer that holds the same NP21 bytes (= what
+        # _build_np21_sf2_edit_area extracted, in NP21 format with the loop
+        # terminator restored) gives the player identical input → identical
+        # playback. The shadow IS where the runtime translator (emitted at
+        # $0F0E below) writes its output on every PLAY tick — so editor edits
+        # to the SF2 edit area at seq00_addr propagate to playback through the
+        # translator.
+        SEQ_SHADOW_SIZE = 256       # NP21 sequence max length the player can address
+        num_patterns = len(raw_patterns)
+        shadow_buffer_size = num_patterns * SEQ_SHADOW_SIZE
+        sf2_data_base = sid_la + len(c64_data)
+        shadow_base = sf2_data_base + len(sf2_edit_data)
+
+        # Pre-fill shadow with the original NP21 sequence body bytes per pattern,
+        # terminated with NP21 0xFF + loop_target. This is the same content the
+        # runtime translator will later regenerate from the SF2 edit area; doing
+        # it at build time means zig64 / non-editor playback paths see correct
+        # bytes even though they don't trigger the runtime translator.
+        shadow_buffer = bytearray(shadow_buffer_size)
+        for idx, (body, loop_target) in enumerate(raw_patterns):
+            slot = idx * SEQ_SHADOW_SIZE
+            for j, b in enumerate(body):
+                if j >= SEQ_SHADOW_SIZE - 2:
+                    break
+                shadow_buffer[slot + j] = b
+            n = min(len(body), SEQ_SHADOW_SIZE - 2)
+            shadow_buffer[slot + n]     = 0xFF
+            shadow_buffer[slot + n + 1] = loop_target & 0xFF if loop_target is not None else 0x00
+
+        # Patch ch_seq_ptr ($0A1C/$0A1F) in c64_data to point at per-voice shadow slots.
+        # Voices that originally shared a sequence still share a shadow slot
+        # (voice_init_idx maps voice -> dedupe-collapsed pattern index).
+        c64_data = bytearray(c64_data)
+        CH_SEQ_LO_OFF = 0x0A1C
+        CH_SEQ_HI_OFF = 0x0A1F
+        if num_patterns > 0:
+            for v in range(3):
+                voice_shadow_addr = shadow_base + voice_init_idx[v] * SEQ_SHADOW_SIZE
+                if CH_SEQ_LO_OFF + v < len(c64_data) and CH_SEQ_HI_OFF + v < len(c64_data):
+                    c64_data[CH_SEQ_LO_OFF + v] = voice_shadow_addr & 0xFF
+                    c64_data[CH_SEQ_HI_OFF + v] = (voice_shadow_addr >> 8) & 0xFF
+
+        # Update driver_size to include the full file extent (NP21 + edit area + shadow)
+        gen.driver_size += len(sf2_edit_data) + shadow_buffer_size
 
         # Now regenerate headers with correct Block 5 addresses
         header_bytes = gen.generate_complete_headers(music_data_params)
@@ -1520,9 +1570,9 @@ class SF2Writer:
             )
             return
 
-        # Build the full PRG: [load_addr:2] + memory from $0D7E to end of NP21 + SF2 edit data
+        # Build the full PRG: [load_addr:2] + memory from $0D7E through shadow buffer
         gap = sid_la - LOAD_BASE
-        file_size = 2 + gap + len(c64_data) + len(sf2_edit_data)
+        file_size = 2 + gap + len(c64_data) + len(sf2_edit_data) + shadow_buffer_size
         file_data = bytearray(file_size)
 
         # PRG load address (2-byte little-endian header)
@@ -1532,15 +1582,43 @@ class SF2Writer:
         # SF2 magic + header blocks at $0D7E (file offset 2)
         file_data[2:2 + len(header_bytes)] = header_bytes
 
-        # Handler code at $0F00 (file offset 2 + ($0F00 - $0D7E))
+        # Handler code at $0F00:
+        #   INIT ($0F00): JSR init_addr; RTS  (4 bytes)
+        #   PLAY ($0F04): JMP TRANSLATE_BASE  (3 bytes + 1 NOP) — translator JSRs play internally
+        #   STOP ($0F08): LDA #0; STA $D418; RTS  (6 bytes)
+        # When num_patterns == 0 there's no shadow → PLAY stays as plain JSR play; RTS.
         hnd_off = 2 + (HANDLER_BASE - LOAD_BASE)
         file_data[hnd_off:hnd_off + 4]  = bytes([0x20, init_addr & 0xFF, init_addr >> 8, 0x60])
-        file_data[hnd_off + 4:hnd_off + 8]  = bytes([0x20, play_addr & 0xFF, play_addr >> 8, 0x60])
+        if num_patterns > 0:
+            file_data[hnd_off + 4:hnd_off + 8]  = bytes([
+                0x4C, TRANSLATE_BASE & 0xFF, (TRANSLATE_BASE >> 8) & 0xFF, 0xEA
+            ])
+        else:
+            file_data[hnd_off + 4:hnd_off + 8]  = bytes([0x20, play_addr & 0xFF, play_addr >> 8, 0x60])
         file_data[hnd_off + 8:hnd_off + 14] = bytes([0xA9, 0x00, 0x8D, 0x18, 0xD4, 0x60])
 
-        # NP21 binary verbatim at its original load address (file offset 2 + gap)
+        # NP21 binary (with patched ch_seq_ptr) at its original load address
         np21_off = 2 + gap
         file_data[np21_off:np21_off + len(c64_data)] = c64_data
+
+        # Emit translator at $0F0E (only if there's a shadow buffer to populate).
+        # The translator runs on every PLAY in the editor's flow ($0F04 JMPs here);
+        # zig64 trace bypasses this and uses the build-time pre-filled shadow above.
+        if num_patterns > 0:
+            translator_bytes = self._emit_sf2_to_np21_translator(
+                num_patterns=num_patterns,
+                seq00_addr=music_data_params['seq00_addr'],
+                shadow_base=shadow_base,
+                play_addr=play_addr,
+            )
+            tr_off = 2 + (TRANSLATE_BASE - LOAD_BASE)
+            if tr_off + len(translator_bytes) > np21_off:
+                logger.error(
+                    f"  Translator overflow: {len(translator_bytes)}B at "
+                    f"${TRANSLATE_BASE:04X} would overflow into $1000 (NP21 binary)"
+                )
+                return
+            file_data[tr_off:tr_off + len(translator_bytes)] = translator_bytes
 
         # Fix zig64 auto-detection: it always calls init_addr+3 as PLAY.
         if play_addr != init_addr + 3:
@@ -1556,23 +1634,100 @@ class SF2Writer:
             edit_off = np21_off + len(c64_data)
             file_data[edit_off:edit_off + len(sf2_edit_data)] = sf2_edit_data
 
+        # Shadow buffer appended after SF2 edit data
+        if shadow_buffer_size > 0:
+            shadow_off = np21_off + len(c64_data) + len(sf2_edit_data)
+            file_data[shadow_off:shadow_off + shadow_buffer_size] = shadow_buffer
+
         self.output = file_data
 
-        sf2_data_base = sid_la + len(c64_data)
         logger.info(f"  SF2 size: {len(self.output)} bytes")
         logger.info(f"  Magic + headers: ${LOAD_BASE:04X}-${headers_end_addr - 1:04X} ({len(header_bytes)} bytes)")
         logger.info(f"  Handlers: ${HANDLER_BASE:04X} (INIT=${INIT_HANDLER:04X}, PLAY=${PLAY_HANDLER:04X}, STOP=${STOP_HANDLER:04X})")
         logger.info(f"  NP21 binary: ${sid_la:04X}-${sid_la + len(c64_data) - 1:04X} ({len(c64_data)} bytes)")
         logger.info(f"  SF2 edit data: ${sf2_data_base:04X}-${sf2_data_base + len(sf2_edit_data) - 1:04X} ({len(sf2_edit_data)} bytes)")
+        if shadow_buffer_size > 0:
+            logger.info(f"  Shadow buffer: ${shadow_base:04X}-${shadow_base + shadow_buffer_size - 1:04X} "
+                        f"({num_patterns} × {SEQ_SHADOW_SIZE}B = {shadow_buffer_size}B)")
+            logger.info(f"  Translator: ${TRANSLATE_BASE:04X} (PLAY at ${PLAY_HANDLER:04X} JMPs here)")
         logger.info(f"  INIT: ${INIT_HANDLER:04X} -> JSR ${init_addr:04X}")
         logger.info(f"  PLAY: ${PLAY_HANDLER:04X} -> JSR ${play_addr:04X}")
+
+    def _emit_sf2_to_np21_translator(self, num_patterns, seq00_addr, shadow_base, play_addr):
+        """Emit the runtime SF2->NP21 translator that lives at $0F0E.
+
+        Matches sidm2.sf2_to_np21.sf2_to_np21() byte-for-byte. For each of
+        num_patterns 256-byte slots starting at seq00_addr, copy bytes verbatim
+        into the corresponding shadow slot until the first SF2 0x7F end marker
+        is hit, then write NP21 0xFF + 0x00 (loop-to-start). After all patterns
+        are translated, JSR play_addr; RTS.
+
+        Uses zero-page $FB-$FE for indirect-Y addressing. The PLAY handler at
+        $0F04 is a JMP into this routine; the translator does the JSR play_addr
+        internally. Returns 51 bytes regardless of num_patterns.
+        """
+        SRC_LO, SRC_HI = 0xFB, 0xFC
+        DST_LO, DST_HI = 0xFD, 0xFE
+
+        code = bytearray()
+
+        # Setup: load src/dst pointers into zero page (16 bytes)
+        code += bytes([0xA9,  seq00_addr        & 0xFF,
+                       0x85,  SRC_LO,
+                       0xA9, (seq00_addr  >> 8) & 0xFF,
+                       0x85,  SRC_HI,
+                       0xA9,  shadow_base       & 0xFF,
+                       0x85,  DST_LO,
+                       0xA9, (shadow_base >> 8) & 0xFF,
+                       0x85,  DST_HI])
+
+        code += bytes([0xA2, num_patterns])                # LDX #num_patterns
+
+        pattern_loop_addr = len(code)
+        code += bytes([0xA0, 0x00])                        # LDY #0
+
+        byte_loop_addr = len(code)
+        code += bytes([0xB1, SRC_LO,                       # LDA (src_zp),Y
+                       0xC9, 0x7F])                        # CMP #$7F
+
+        code += bytes([0xF0, 0])                           # BEQ end_of_seq (fixup)
+        beq_off_pos = len(code) - 1
+
+        code += bytes([0x91, DST_LO,                       # STA (dst_zp),Y
+                       0xC8])                              # INY
+        bne_target = byte_loop_addr - (len(code) + 2)
+        code += bytes([0xD0, bne_target & 0xFF])           # BNE byte_loop
+
+        end_of_seq_addr = len(code)
+        code[beq_off_pos] = (end_of_seq_addr - (beq_off_pos + 1)) & 0xFF
+
+        code += bytes([0xA9, 0xFF,                         # LDA #$FF
+                       0x91, DST_LO,                       # STA (dst_zp),Y
+                       0xC8,                               # INY
+                       0xA9, 0x00,                         # LDA #$00
+                       0x91, DST_LO])                      # STA (dst_zp),Y
+
+        code += bytes([0xE6, SRC_HI,                       # INC src_zp+1
+                       0xE6, DST_HI,                       # INC dst_zp+1
+                       0xCA])                              # DEX
+
+        bne_pat_target = pattern_loop_addr - (len(code) + 2)
+        code += bytes([0xD0, bne_pat_target & 0xFF])       # BNE pattern_loop
+
+        code += bytes([0x20, play_addr & 0xFF, (play_addr >> 8) & 0xFF,
+                       0x60])                              # JSR play_addr; RTS
+
+        return bytes(code)
 
     def _build_np21_sf2_edit_area(self, c64_data: bytes, sid_la: int):
         """Extract NP21 patterns/orderlists and build an SF2-format edit data area.
 
-        Returns (music_data_params, sf2_edit_bytes).
+        Returns (music_data_params, sf2_edit_bytes, voice_init_idx, raw_patterns).
         music_data_params is a dict for SF2HeaderGenerator.create_music_data_block().
         sf2_edit_bytes is the raw bytes to append after the NP21 binary in the file.
+        voice_init_idx is a list[int] of length 3 — each voice's pattern index.
+        raw_patterns is a list[(body_bytes, loop_target)] of the extracted NP21
+        sequences (used by the criterion-3 path to pre-fill the shadow buffer).
 
         EDITABLE-REPLAY GAP (do not "fix" by switching to NP21 format here):
           The bytes written here are read by the SF2 editor's DataSourceSequence::Unpack
@@ -1673,7 +1828,7 @@ class SF2Writer:
         num_patterns = len(raw_patterns)
         if num_patterns == 0:
             logger.warning("  No NP21 patterns found; Block 5 will use placeholder addresses")
-            return None, b''
+            return None, b'', [0, 0, 0], []
 
         for i, (body, lt) in enumerate(raw_patterns):
             loop_str = f"loops from start" if lt == 0 else f"loops from Y={lt}" if lt is not None else "no loop"
@@ -1792,7 +1947,7 @@ class SF2Writer:
             f"Seq=${seq00_addr:04X} ({num_patterns} patterns × {SEQ_SIZE}B)"
         )
 
-        return music_data_params, bytes(edit)
+        return music_data_params, bytes(edit), voice_init_idx, raw_patterns
 
     def _inject_laxity_music_data(self) -> None:
         """Inject music data into Laxity driver (native format, no conversion)

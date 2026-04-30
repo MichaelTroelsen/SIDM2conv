@@ -1425,7 +1425,7 @@ class TestBuildNp21Sf2EditAreaByteMapping(unittest.TestCase):
         # _build_np21_sf2_edit_area only reads c64_data + sid_la; bypass __init__
         # entirely so we don't need a real template/driver.
         writer = SF2Writer.__new__(SF2Writer)
-        _params, edit_bytes = writer._build_np21_sf2_edit_area(bytes(c64_data), sid_la)
+        _params, edit_bytes, _voice_idx, _raw = writer._build_np21_sf2_edit_area(bytes(c64_data), sid_la)
         SEQ_PTR_SIZE = 128
         OL_SIZE = 256
         seq00_offset = 6 + 2 * SEQ_PTR_SIZE + 3 * OL_SIZE
@@ -1492,7 +1492,7 @@ class TestSf2ToNp21RoundTrip(unittest.TestCase):
         c64_data[seq_offset + len(np21_body) + 1] = 0x00
 
         writer = SF2Writer.__new__(SF2Writer)
-        _params, edit_bytes = writer._build_np21_sf2_edit_area(bytes(c64_data), sid_la)
+        _params, edit_bytes, _voice_idx, _raw = writer._build_np21_sf2_edit_area(bytes(c64_data), sid_la)
         SEQ_PTR_SIZE = 128
         OL_SIZE = 256
         seq00_offset = 6 + 2 * SEQ_PTR_SIZE + 3 * OL_SIZE
