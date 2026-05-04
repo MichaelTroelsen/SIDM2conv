@@ -84,6 +84,30 @@ def lint(path, reference_top=0x1000):
         if required not in blocks:
             issues.append(f'CRIT: Block {required} missing')
 
+    # Block 2 (DriverCommon): first 3 little-endian words are INIT, STOP, PLAY
+    # entry points. SF2II's "outside expected Laxity driver range" warning
+    # fires when they fall outside [code_top, code_top + code_sz).
+    if 2 in blocks and 1 in blocks:
+        b2 = blocks[2]
+        if len(b2) >= 6 and 'b1' in dir():
+            init_a = b2[0] | (b2[1] << 8)
+            stop_a = b2[2] | (b2[3] << 8)
+            play_a = b2[4] | (b2[5] << 8)
+            print(f'  Block 2 entry points: INIT=${init_a:04X} STOP=${stop_a:04X} PLAY=${play_a:04X}')
+            lo, hi = b1['code_top'], b1['code_top'] + b1['code_sz']
+            for nm, a in (('INIT', init_a), ('STOP', stop_a), ('PLAY', play_a)):
+                if not (lo <= a < hi):
+                    issues.append(
+                        f'CRIT: {nm}=${a:04X} outside driver range '
+                        f'[${lo:04X}, ${hi:04X}) — SF2II emits a "Laxity driver range" warning here'
+                    )
+
+    # Bundled SF2II files commonly carry blocks 6-9 (instrument data,
+    # command/wave/pulse/filter tables in editor format). Their absence
+    # may break the editor's display layer.
+    bundled_optional = sorted(b for b in blocks if b > 5)
+    print(f'  Optional blocks present (>5): {bundled_optional or "none"}')
+
     if issues:
         for it in issues:
             print(f'  -> {it}')
