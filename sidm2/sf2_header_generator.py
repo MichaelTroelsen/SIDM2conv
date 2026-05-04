@@ -24,24 +24,17 @@ class TableDescriptor:
         rows: int,
         table_type: int = 0x00,
         layout: int = 0x00,
-        insert_delete: bool = False,
-        color_rule: int = 0x00,
+        properties: int = 0x00,
+        ins_del_rule: int = 0xFF,
+        enter_rule: int = 0xFF,
+        color_rule: int = 0xFF,
         visible_rows: int = 0,
     ):
-        """
-        Initialize table descriptor.
+        """Properties bits (per parse log): bit0=EnableInsertDelete,
+        bit1=LayoutVertically, bit2=IndexAsContinuousMemory.
 
-        Args:
-            name: Table name (will be null-terminated)
-            table_id: Unique ID for this table (0-15)
-            address: Memory address of table data
-            columns: Number of columns per row
-            rows: Number of rows
-            table_type: 0x00=Generic, 0x80=Instruments
-            layout: 0x00=Row-major, 0x01=Column-major
-            insert_delete: Enable insert/delete operations
-            color_rule: Color rule ID (3 for instruments, 0 for others)
-            visible_rows: Number of visible rows (0 = use rows value)
+        Rule IDs (ins_del / enter / color) reference Block 7 / Block 8 /
+        Block 6 entries respectively. 0xFF means "no rule".
         """
         self.name = name
         self.table_id = table_id
@@ -50,7 +43,9 @@ class TableDescriptor:
         self.rows = rows
         self.table_type = table_type
         self.layout = layout
-        self.insert_delete = insert_delete
+        self.properties = properties
+        self.ins_del_rule = ins_del_rule
+        self.enter_rule = enter_rule
         self.color_rule = color_rule
         self.visible_rows = visible_rows if visible_rows > 0 else rows
 
@@ -76,17 +71,12 @@ class TableDescriptor:
         data.append(len(name_bytes))
         data.extend(name_bytes)
 
-        # Layout
+        # Layout, properties (bit-flags), then 3 rule IDs.
         data.append(self.layout)
-
-        # Flags byte (bit 0 = insert/delete)
-        flags = 0x01 if self.insert_delete else 0x00
-        data.append(flags)
-
-        # Rule IDs
-        data.append(0x00)  # Insert/Delete rule ID
-        data.append(0xFF)  # Enter Action rule ID (0xFF = none)
-        data.append(self.color_rule)  # Color rule ID
+        data.append(self.properties)
+        data.append(self.ins_del_rule)
+        data.append(self.enter_rule)
+        data.append(self.color_rule)
 
         # Address (little-endian)
         data.extend(struct.pack("<H", self.address))
@@ -271,64 +261,75 @@ class SF2HeaderGenerator:
         Returns:
             Block bytes with ID and size prefix
         """
-        # NP21 player at $1000 — all offsets relative to load address $1000.
+        # Tables match the schema bundled SF2II reference files emit: same set
+        # of 9 tables (Commands, Instruments, Wave, Pulse, Filter, HR, Arp,
+        # Tempo, Init) with the same column counts, types, and rule IDs.
+        # Editor view loaded an SF2 we wrote with only 6 tables and crashed
+        # post-parse — bundled files exist with these 9 in 67/67 .sf2 we have.
+        #
+        # HR / Arp / Tempo / Init are not real NP21 player constructs; they're
+        # editor-side tables required by SF2II's display layer. We point each
+        # at a unique high-RAM address ($C000 region — outside our PRG load
+        # range, so SF2II's emulated C64 reads zeros). Display will be empty;
+        # editor loads.
         tables = [
             TableDescriptor(
-                name="Instruments",
-                table_id=0,
-                address=0x1A6B,    # offset $0A6B — 32 instruments x 8 params, column-major
-                columns=8,
-                rows=32,
-                table_type=0x80,   # Instruments type
-                layout=0x01,       # Column-major storage (NP21 uses column-major instrument table)
-                insert_delete=True,
-                color_rule=0x03,   # Instruments color
+                # 3 columns, not the 2 NP21 actually uses, because the
+                # bundled Block 9 (DriverInstrumentDataDescriptor) we copy
+                # verbatim references Commands column index 2; SF2II reads
+                # past the end of a 2-col table and segfaults.
+                name="Commands", table_id=0, address=0x1ADB,
+                columns=3, rows=64, visible_rows=16,
+                table_type=0x81, layout=0x01, properties=0x00,
+                ins_del_rule=0xFF, enter_rule=0x03, color_rule=0xFF,
             ),
             TableDescriptor(
-                name="Commands",
-                table_id=1,
-                address=0x1ADB,    # offset $0ADB — instrument sub-pattern table
-                columns=2,
-                rows=64,
-                table_type=0x81,   # Commands type (required for editor)
-                color_rule=0x00,
+                name="Instruments", table_id=1, address=0x1A6B,
+                columns=6, rows=32, visible_rows=16,
+                table_type=0x80, layout=0x01, properties=0x00,
+                ins_del_rule=0xFF, enter_rule=0x01, color_rule=0xFF,
             ),
             TableDescriptor(
-                name="Wave",
-                table_id=2,
-                address=0x1942,    # offset $0942 — waveform array (note offsets at $1974 = +$32)
-                columns=2,
-                rows=50,           # 50 entries in the waveform/note-offset pair arrays
-                table_type=0x00,
-                color_rule=0x00,
+                name="Wave", table_id=2, address=0x1942,
+                columns=2, rows=256, visible_rows=16,
+                table_type=0x00, layout=0x01, properties=0x01,
+                ins_del_rule=0x00, enter_rule=0x00, color_rule=0x00,
             ),
             TableDescriptor(
-                name="Pulse",
-                table_id=3,
-                address=0x1A3B,    # offset $0A3B — pulse width table, row-major Y*4
-                columns=4,
-                rows=64,
-                table_type=0x00,
-                color_rule=0x00,
+                name="Pulse", table_id=3, address=0x1A3B,
+                columns=3, rows=256, visible_rows=16,
+                table_type=0x00, layout=0x01, properties=0x01,
+                ins_del_rule=0x01, enter_rule=0x02, color_rule=0x01,
             ),
             TableDescriptor(
-                name="Filter",
-                table_id=4,
-                address=0x1989,    # offset $0989 — tbl_filter_seq (NOT $1A1E which is ch_seq_ptr_hi)
-                columns=3,         # 3 parallel arrays: seq / speed / resonance (each $1A apart)
-                rows=26,           # Up to 26 entries; $7F marks end-of-program
-                table_type=0x00,
-                color_rule=0x00,
+                name="Filter", table_id=4, address=0x1989,
+                columns=3, rows=256, visible_rows=16,
+                table_type=0x00, layout=0x01, properties=0x01,
+                ins_del_rule=0x02, enter_rule=0x02, color_rule=0x01,
             ),
             TableDescriptor(
-                name="Sequences",
-                table_id=5,
-                address=0x1900,    # offset $0900 — NP21 orderlist/sequence area (before music data)
-                columns=1,
-                rows=255,
-                table_type=0x00,
-                layout=0x00,
-                color_rule=0x00,
+                name="Arp", table_id=6, address=0xC000,
+                columns=1, rows=256, visible_rows=16,
+                table_type=0x00, layout=0x01, properties=0x01,
+                ins_del_rule=0x03, enter_rule=0xFF, color_rule=0x02,
+            ),
+            TableDescriptor(
+                name="Tempo", table_id=7, address=0xC100,
+                columns=1, rows=256, visible_rows=16,
+                table_type=0x00, layout=0x01, properties=0x01,
+                ins_del_rule=0xFF, enter_rule=0xFF, color_rule=0x00,
+            ),
+            TableDescriptor(
+                name="HR", table_id=5, address=0xC200,
+                columns=2, rows=16, visible_rows=6,
+                table_type=0x00, layout=0x01, properties=0x00,
+                ins_del_rule=0xFF, enter_rule=0xFF, color_rule=0xFF,
+            ),
+            TableDescriptor(
+                name="Init", table_id=8, address=0xC300,
+                columns=2, rows=32, visible_rows=8,
+                table_type=0x00, layout=0x01, properties=0x02,
+                ins_del_rule=0xFF, enter_rule=0xFF, color_rule=0xFF,
             ),
         ]
 
@@ -392,25 +393,70 @@ class SF2HeaderGenerator:
 
         return bytes(block)
 
-    def create_optional_blocks(self) -> bytes:
-        """
-        Create optional blocks 4, 6-9 (minimal/empty).
+    # Bytes copied verbatim from bundled "bin/music/Driver 11 Test - Arpeggio.sf2".
+    # SF2II's editor view requires these blocks to be present and parsable;
+    # without them the file parses cleanly but SF2II crashes (access violation)
+    # when constructing the editor model. The bytes describe the editor's
+    # column layout (Block 4: Attack/decay, Sustain/release, Options, Pulse
+    # program, Wave program — 5 column descriptors for the 6-column
+    # Instruments table) and the rule sets referenced by Block 3 table
+    # descriptors (color rules, insert/delete rules, action rules, instrument
+    # data descriptor). We use Driver 11's set verbatim because (a) SF2II's
+    # editor displays NP21 instrument data through a Driver 11-shaped UI
+    # anyway — playback uses NP21's own player code embedded at $1000 — and
+    # (b) shipping our own would require reverse-engineering the rule format.
+    # Editor-side editing of NP21 instruments will appear with Driver 11
+    # column labels, which is acceptable for the "file loads" goal.
+    _BLOCK_4_BODY = bytes((
+        0x05, 0x41, 0x14, 0x14, 0x01, 0x03, 0x0B, 0x2F, 0x04, 0x05, 0x03, 0x01, 0x19, 0x00, 0x53, 0x15,
+        0x13, 0x14, 0x01, 0x09, 0x0E, 0x2F, 0x12, 0x05, 0x0C, 0x05, 0x01, 0x13, 0x05, 0x00, 0x4F, 0x10,
+        0x14, 0x09, 0x0F, 0x0E, 0x13, 0x00, 0x50, 0x15, 0x0C, 0x13, 0x05, 0x20, 0x10, 0x12, 0x0F, 0x07,
+        0x12, 0x01, 0x0D, 0x00, 0x57, 0x01, 0x16, 0x05, 0x20, 0x10, 0x12, 0x0F, 0x07, 0x12, 0x01, 0x0D,
+        0x00,
+    ))
+    _BLOCK_6_BODY = bytes((
+        0x00, 0xFF, 0x7F, 0x09, 0xFF, 0x00, 0x80, 0x80, 0x07, 0x00, 0xFF, 0x7F, 0x09, 0xFF, 0x00, 0xF0,
+        0x70, 0x09, 0xFF, 0xFE,
+    ))
+    _BLOCK_7_BODY = bytes((
+        0x01, 0x05, 0x00, 0x00, 0x00, 0x02, 0x01, 0x00, 0xFF, 0x7F, 0x00, 0x02, 0x00, 0xFF, 0x0B, 0xFF,
+        0x01, 0x04, 0x00, 0x00, 0x00, 0x03, 0x02, 0x00, 0xFF, 0x7F, 0xFF, 0x01, 0x03, 0x00, 0x00, 0x00,
+        0x04, 0x02, 0x00, 0xFF, 0x7F, 0x00, 0x02, 0x00, 0xFF, 0x0A, 0xFF, 0x00, 0x02, 0x00, 0xFF, 0x03,
+        0xFF, 0xFE,
+    ))
+    _BLOCK_8_BODY = bytes((
+        0x80, 0xFF, 0x01, 0xFF, 0x00, 0xFF, 0x7F, 0xFF, 0x03, 0x04, 0x03, 0xFF, 0x00, 0x00, 0x00, 0x04,
+        0x03, 0x04, 0xFF, 0x00, 0x00, 0x00, 0x05, 0x02, 0x05, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0x80, 0xFF,
+        0x02, 0xFF, 0x00, 0xFF, 0x7F, 0xFF, 0x80, 0x06, 0x02, 0xFF, 0x00, 0xFF, 0x03, 0x80, 0x04, 0x02,
+        0xFF, 0x00, 0xFF, 0x0A, 0x80, 0x02, 0x02, 0xFF, 0x00, 0xFF, 0x0B, 0xFF, 0xFE,
+    ))
+    # Block 9 (DriverInstrumentDataDescriptor) entries reference instrument-
+    # name addresses that exist only in bundled Driver 11 files (a label
+    # data section appended after the header). Our raw-NP21 layout has no
+    # such labels, so any non-empty Block 9 makes ParseAuxilaryData crash
+    # with an access violation. A single-byte body (zero entries) lets
+    # SF2II's parser walk past it cleanly — verified via load harness:
+    # ParseAuxilaryData: PASSED, editor opens.
+    _BLOCK_9_BODY = bytes((0x00,))
 
-        For now, these are minimal or empty. Can be enhanced later.
+    @staticmethod
+    def _wrap_block(block_id: int, body: bytes) -> bytes:
+        return bytes([block_id, len(body)]) + body
 
-        Returns:
-            Combined optional block bytes
-        """
-        blocks = bytearray()
+    def create_block_4_instrument_descriptor(self) -> bytes:
+        return self._wrap_block(0x04, self._BLOCK_4_BODY)
 
-        # Block 4: Instrument Descriptor (minimal)
-        # For now, empty (just ID and size)
-        blocks.extend(bytes([0x04, 0x01, 0x00]))
+    def create_block_6_table_color_rules(self) -> bytes:
+        return self._wrap_block(0x06, self._BLOCK_6_BODY)
 
-        # Blocks 6-9: Optional color/action rules
-        # For now, skip these (can be added later if needed)
+    def create_block_7_insert_delete_rules(self) -> bytes:
+        return self._wrap_block(0x07, self._BLOCK_7_BODY)
 
-        return bytes(blocks)
+    def create_block_8_action_rules(self) -> bytes:
+        return self._wrap_block(0x08, self._BLOCK_8_BODY)
+
+    def create_block_9_instrument_data_descriptor(self) -> bytes:
+        return self._wrap_block(0x09, self._BLOCK_9_BODY)
 
     def generate_complete_headers(self, music_data_params: Optional[dict] = None) -> bytes:
         """
@@ -434,11 +480,15 @@ class SF2HeaderGenerator:
 
         headers.extend(struct.pack("<H", self.MAGIC_NUMBER))
 
-        headers.extend(self.create_descriptor_block())
-        headers.extend(self.create_driver_common_block())
-        headers.extend(self.create_tables_block())
-        headers.extend(self.create_optional_blocks())
-        headers.extend(self.create_music_data_block(music_data_params))
+        headers.extend(self.create_descriptor_block())              # 1
+        headers.extend(self.create_driver_common_block())            # 2
+        headers.extend(self.create_tables_block())                   # 3
+        headers.extend(self.create_block_4_instrument_descriptor())  # 4
+        headers.extend(self.create_music_data_block(music_data_params))  # 5
+        headers.extend(self.create_block_6_table_color_rules())      # 6
+        headers.extend(self.create_block_7_insert_delete_rules())    # 7
+        headers.extend(self.create_block_8_action_rules())           # 8
+        headers.extend(self.create_block_9_instrument_data_descriptor())  # 9
 
         headers.append(0xFF)
 

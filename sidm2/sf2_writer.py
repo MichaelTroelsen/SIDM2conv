@@ -1479,11 +1479,15 @@ class SF2Writer:
         play_addr = getattr(header, 'play_address', sid_la + 3) if header else sid_la + 3
 
         LOAD_BASE      = 0x0D7E    # SF2 loads here; 0x1337 magic goes here
-        HANDLER_BASE   = 0x0F00    # Handler code — safely past all header blocks
-        INIT_HANDLER   = HANDLER_BASE + 0    # $0F00: JSR init_addr, RTS
-        PLAY_HANDLER   = HANDLER_BASE + 4    # $0F04: JMP translator (criterion-3) OR JSR play_addr, RTS
-        STOP_HANDLER   = HANDLER_BASE + 8    # $0F08: LDA #0, STA $D418, RTS
-        TRANSLATE_BASE = HANDLER_BASE + 0x0E # $0F0E: SF2->NP21 runtime translator (criterion-3)
+        # Handler base moved to $0FA0 to make room for the full 9-block SF2II
+        # editor header set (~525B; $0F00 only allowed 386B). Translator at
+        # $0FAE leaves 82 bytes before NP21 binary at $1000 — enough for the
+        # 51-byte runtime translator plus small overhead.
+        HANDLER_BASE   = 0x0FA0
+        INIT_HANDLER   = HANDLER_BASE + 0
+        PLAY_HANDLER   = HANDLER_BASE + 4
+        STOP_HANDLER   = HANDLER_BASE + 8
+        TRANSLATE_BASE = HANDLER_BASE + 0x0E
 
         # Generate SF2 header blocks with correct handler entry points.
         # generate_complete_headers() returns [37 13] + Block1..5 + [FF].
