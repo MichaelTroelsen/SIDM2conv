@@ -168,13 +168,17 @@ class SF2HeaderGenerator:
         name_bytes = self.driver_name.encode("ascii") + b"\x00"
         content.extend(name_bytes)
 
-        # 4. Driver code top address (where driver code starts in C64 memory)
-        # For Laxity: Code starts at $0E00 (after wrapper at $0D7E)
-        content.extend(struct.pack("<H", 0x0E00))
+        # 4. Driver code top address (where driver code starts in C64 memory).
+        # All 67 bundled SF2II reference files use $1000; we matched on $0E00
+        # for the legacy relocated-driver approach (sf2_writer.py:1975-2020),
+        # but the active path since v3.1.5 embeds raw NP21 verbatim at $1000.
+        # SF2II's load-time validator was crashing on the mismatch.
+        content.extend(struct.pack("<H", 0x1000))
 
-        # 5. Driver code size (size of actual 6502 code)
-        # For Laxity: Player code is ~2KB (relocated from $1000-$19FF to $0E00-$16FF)
-        driver_code_size = 0x0900  # $16FF - $0E00 + 1 = 2304 bytes
+        # 5. Driver code size (size of actual 6502 code at driver_code_top).
+        # NP21 player code occupies $1000-$18FF (~$0900 bytes); music data
+        # tables start at $19xx and live in the SF2 edit area.
+        driver_code_size = 0x0900
         content.extend(struct.pack("<H", driver_code_size))
 
         # 6. Driver version major
