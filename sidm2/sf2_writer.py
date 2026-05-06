@@ -1514,12 +1514,27 @@ class SF2Writer:
                 gen.pulse_addr = laxity_tables['pulse_addr']
             if laxity_tables.get('filter_addr'):
                 gen.filter_addr = laxity_tables['filter_addr']
-            if laxity_tables.get('instr_addr'):
-                gen.instr_addr = laxity_tables['instr_addr']
+
+            # Instrument-address detection: extract_all_laxity_tables uses
+            # find_instrument_table whose scoring loop has an indentation bug
+            # (returns 0 for Stinsen/Unboxed/Angular). Fall back to the v2
+            # detector (find_instrument_table_np21_v2) when the primary fails.
+            instr_addr = laxity_tables.get('instr_addr') or 0
+            if not instr_addr:
+                from sidm2.table_extraction import find_instrument_table_np21_v2
+                wave_size = max(len(laxity_tables.get('wave_table') or []), 64)
+                fallback = find_instrument_table_np21_v2(c64_data, sid_la, wave_size)
+                if fallback:
+                    instr_addr = fallback
+                    logger.info(f"  Instrument table detected via v2 fallback: ${instr_addr:04X}")
+
+            if instr_addr:
+                gen.instr_addr = instr_addr
                 # Commands sit a fixed 0x70 bytes past Instruments in Laxity NP21
                 # (verified on Stinsen: instr=$1A6B, cmd=$1ADB). No separate
                 # extractor; bias from Instruments is the simplest correct anchor.
-                gen.cmd_addr = laxity_tables['instr_addr'] + 0x70
+                gen.cmd_addr = instr_addr + 0x70
+
             logger.info(
                 f"  Block 3 table addresses: Wave=${gen.wave_addr:04X}, "
                 f"Pulse=${gen.pulse_addr:04X}, Filter=${gen.filter_addr:04X}, "

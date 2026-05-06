@@ -1430,6 +1430,87 @@ def extract_command_table(data: bytes, load_addr: int, sequences: list = None) -
     return default_commands
 
 
+def find_instrument_table_np21_v2(data: bytes, load_addr: int,
+                                  wave_table_size: int = 64) -> Optional[int]:
+    """
+    NP21-specific instrument-table detector.
+
+    Written 2026-05-06 as a structurally-correct replacement for the
+    fallback path in `find_instrument_table`, which has an indentation
+    bug (the scoring code sits OUTSIDE its `for i in range(8)` loop, so
+    only the i=7 record contributes to the score). That broken fallback
+    returns 0 for Stinsen / Unboxed / Angular, leaving sf2_writer to
+    fall back to a Stinsen-derived hardcoded $1A6B — wrong for many
+    songs, including Angular which crashes deterministically on F10-load.
+
+    This detector scans 8-byte-aligned offsets in a plausible range and
+    requires N consecutive 8-byte records that look like real Laxity
+    instruments:
+      - AD high nibble (attack) typically 0x0..0xC (ADSR rise time)
+      - SR high nibble (sustain) typically >= 0x4 (audible voice)
+      - byte 6 (pulse_ptr) < 64 (small index into pulse table)
+      - byte 7 (wave_ptr) < wave_table_size (valid wave entry)
+      - Not a known 6502 opcode pattern in bytes 0-1
+
+    Returns the C64 absolute address of the first record's start, or
+    None if no plausible table is found.
+    """
+    if not data or len(data) < 64:
+        return None
+
+    MIN_RECORDS_REQUIRED = 4   # need at least 4 plausible instruments in a row
+    SCAN_START = 0x900         # search starts at +0x900 (= $1900 for $1000 load)
+    SCAN_END   = min(len(data) - 32, 0x1A00)  # tables typically before $2A00
+
+    best_offset: Optional[int] = None
+    best_score = 0
+
+    for offset in range(SCAN_START, SCAN_END):
+        consec = 0
+        score = 0
+        for i in range(8):  # check up to 8 instruments at this offset
+            o = offset + i * 8
+            if o + 8 > len(data):
+                break
+            ad = data[o]
+            sr = data[o + 1]
+            pulse_ptr = data[o + 6]
+            wave_ptr = data[o + 7]
+
+            # Plausibility checks
+            attack = (ad >> 4) & 0x0F
+            sustain = (sr >> 4) & 0x0F
+
+            valid = (
+                attack <= 0x0C
+                and pulse_ptr < 64
+                and wave_ptr < wave_table_size
+                and not (ad == 0xEA and sr == 0xEA)  # NOP NOP unlikely as instr
+                and not (ad in OPCODE_BYTES and sr in OPCODE_BYTES)
+            )
+            if not valid:
+                break
+
+            consec += 1
+            # Score: prefer non-silent records, valid AD/SR ranges
+            if attack > 0:
+                score += 1
+            if sustain >= 4:
+                score += 2
+            if 0 < wave_ptr < wave_table_size:
+                score += 2
+            if 0 < pulse_ptr < 64:
+                score += 1
+
+        if consec >= MIN_RECORDS_REQUIRED and score > best_score:
+            best_score = score
+            best_offset = offset
+
+    if best_offset is None:
+        return None
+    return load_addr + best_offset
+
+
 def extract_all_laxity_tables(data: bytes, load_addr: int) -> Dict[str, Any]:
     """
     Extract ALL tables from Laxity SID file.
