@@ -1512,16 +1512,40 @@ class SF2Writer:
                 gen.wave_addr = laxity_tables['wave_addr']
             if laxity_tables.get('pulse_addr'):
                 gen.pulse_addr = laxity_tables['pulse_addr']
-            if laxity_tables.get('filter_addr'):
-                gen.filter_addr = laxity_tables['filter_addr']
+
+            # Filter-address detection: extract_all_laxity_tables internally
+            # falls back to Stinsen's $1989 when its strict stride-26 detector
+            # fails. For files with interleaved 4-byte filter records
+            # (Unboxed, Angular), the v2 loose detector finds the actual
+            # base by clustering LDA targets near STA $D4xx sites.
+            filter_addr = laxity_tables.get('filter_addr') or 0
+            # The "extracted" address may be the $1989 fallback. Re-test
+            # with the strict detector to see if dynamic detection actually
+            # found it; if not, try the v2 loose detector.
+            from sidm2.table_extraction import (
+                detect_np21_filter_offsets,
+                find_filter_table_np21_v2,
+                find_instrument_table_np21_v2,
+            )
+            strict = detect_np21_filter_offsets(c64_data, sid_la)
+            if strict:
+                # Strict detection succeeded — trust the extracted addr
+                gen.filter_addr = filter_addr or (sid_la + strict[0])
+            else:
+                # Strict failed; try v2 loose
+                v2_filter = find_filter_table_np21_v2(c64_data, sid_la)
+                if v2_filter:
+                    gen.filter_addr = v2_filter
+                    logger.info(f"  Filter table detected via v2 loose detector: ${gen.filter_addr:04X}")
+                elif filter_addr:
+                    gen.filter_addr = filter_addr  # fallback to whatever extract returned
 
             # Instrument-address detection: extract_all_laxity_tables uses
             # find_instrument_table whose scoring loop has an indentation bug
             # (returns 0 for Stinsen/Unboxed/Angular). Fall back to the v2
-            # detector (find_instrument_table_np21_v2) when the primary fails.
+            # detector when the primary fails.
             instr_addr = laxity_tables.get('instr_addr') or 0
             if not instr_addr:
-                from sidm2.table_extraction import find_instrument_table_np21_v2
                 wave_size = max(len(laxity_tables.get('wave_table') or []), 64)
                 fallback = find_instrument_table_np21_v2(c64_data, sid_la, wave_size)
                 if fallback:

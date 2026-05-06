@@ -1430,6 +1430,74 @@ def extract_command_table(data: bytes, load_addr: int, sequences: list = None) -
     return default_commands
 
 
+def find_filter_table_np21_v2(data: bytes, load_addr: int) -> Optional[int]:
+    """
+    Loose filter-table detector for NP21 binaries that don't match
+    `detect_np21_filter_offsets`'s strict stride-26 requirement.
+
+    Stinsen uses three parallel 26-byte tables (filter_seq, filter_spd,
+    filter_res) read via LDA $XXXX,Y / LDA $XXXX+26,Y / LDA $XXXX+52,Y.
+    Unboxed and Angular use an interleaved single-table layout (4-byte
+    records) read via three closely-spaced LDA addresses (e.g. Unboxed:
+    $1A93, $1A95, $1A96 — three reads from the SAME base + small offsets,
+    not a stride-26 trio).
+
+    This detector returns the lowest plausible filter-table base address
+    near a STA $D415-$D418 site. The "lowest" target is typically the
+    sequence-base; stride-26-style files return the correct $1989 too
+    because that's still the minimum target.
+
+    Returns None if no STA $D4xx site or no plausible candidate is found;
+    the caller should then fall back to defaults.
+    """
+    import struct as _struct
+
+    # Find STA/STY $D415-$D418
+    write_offsets: List[int] = []
+    for i in range(len(data) - 2):
+        if data[i] in (0x8C, 0x8D) and data[i + 2] == 0xD4 and data[i + 1] in (0x15, 0x16, 0x17, 0x18):
+            write_offsets.append(i)
+    if not write_offsets:
+        return None
+
+    win_start = max(0, min(write_offsets) - 256)
+    win_end   = min(len(data) - 2, max(write_offsets) + 256)
+
+    data_section_lo = load_addr + 0x0800
+    data_section_hi = load_addr + len(data)
+
+    targets: List[int] = []
+    for i in range(win_start, win_end):
+        if data[i] == 0xB9 and i + 2 < len(data):  # LDA abs,Y
+            t = _struct.unpack_from('<H', data, i + 1)[0]
+            if data_section_lo <= t < data_section_hi and t not in targets:
+                targets.append(t)
+    if not targets:
+        return None
+
+    # Cluster targets within 16 bytes of each other; pick the cluster with
+    # >=3 reads (real filter table reads three values per step). Tie-break:
+    # prefer the cluster with LOWEST base address (closer to player code,
+    # typical for sequence tables).
+    targets.sort()
+    best_cluster: List[int] = []
+    cur: List[int] = [targets[0]]
+    for t in targets[1:]:
+        if t - cur[-1] <= 16:
+            cur.append(t)
+        else:
+            if len(cur) >= len(best_cluster):
+                best_cluster = cur
+            cur = [t]
+    if len(cur) >= len(best_cluster):
+        best_cluster = cur
+
+    if len(best_cluster) < 3:
+        return None
+
+    return best_cluster[0]
+
+
 def find_instrument_table_np21_v2(data: bytes, load_addr: int,
                                   wave_table_size: int = 64) -> Optional[int]:
     """
