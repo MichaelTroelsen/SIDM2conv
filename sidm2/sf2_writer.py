@@ -1940,25 +1940,65 @@ class SF2Writer:
                 "doesn't contain valid sequence pointers); emitting "
                 "track_count=0 to avoid SF2II editor-view OOB crash"
             )
-            # Point addresses at a zero-filled region of emulated C64 memory
-            # ($D000+, well outside any binary's load range — emulator returns
-            # zeros). Reading 256 bytes of zeros from an editor display
-            # iteration is harmless. Compare $1900 default (which is at the
-            # END of small binaries where uninit / garbage bytes live).
-            SAFE_ADDR = 0xD000
+            # SF2II's ComponentTracks constructor dereferences
+            # `(*m_TracksDataSource)[0]->GetDimensions().m_Width` unconditionally
+            # (component_tracks.cpp:47). With an empty data source it OOB-crashes.
+            # So we MUST emit a non-empty track structure even when we can't
+            # extract real patterns.
+            #
+            # Build a minimal "1 track + 1 sequence" placeholder block with
+            # real SF2-format bytes (0x7F end-of-sequence markers) so the
+            # editor's iteration sees valid data. Point all Block 5 addresses
+            # at this minimal edit area, appended after the NP21 binary like
+            # the normal path.
+            OL_SIZE  = 0x100
+            SEQ_SIZE = 0x100
+            sf2_data_base = sid_la + len(c64_data)
+            # Layout (mimicking the normal path for editor-compat):
+            #   [0..2]    OL ptr lo table  (3 bytes — for 3 voices)
+            #   [3..5]    OL ptr hi table  (3 bytes)
+            #   [6..7]    Seq ptr lo table (2 bytes — for 1 sequence × 2 fields? actually used as varint)
+            #   [...]     ...
+            # Simplest: keep 3-track layout per editor expectations but with
+            # all tracks pointing at the same single orderlist + single seq.
+            ol_ptr_lo_addr  = sf2_data_base + 0
+            ol_ptr_hi_addr  = sf2_data_base + 3
+            seq_ptr_lo_addr = sf2_data_base + 6
+            seq_ptr_hi_addr = sf2_data_base + 6 + 0x80
+            ol_track1_addr  = sf2_data_base + 6 + 2 * 0x80
+            seq00_addr      = ol_track1_addr + 3 * OL_SIZE
             safe_params = {
-                'track_count':     0,
-                'ol_ptr_lo_addr':  SAFE_ADDR,
-                'ol_ptr_hi_addr':  SAFE_ADDR + 8,
-                'seq_count':       0,
-                'seq_ptr_lo_addr': SAFE_ADDR + 16,
-                'seq_ptr_hi_addr': SAFE_ADDR + 32,
-                'ol_size':         0x0100,
-                'ol_track1_addr':  SAFE_ADDR + 64,
-                'seq_size':        0x0100,
-                'seq00_addr':      SAFE_ADDR + 320,
+                'track_count':     3,
+                'ol_ptr_lo_addr':  ol_ptr_lo_addr,
+                'ol_ptr_hi_addr':  ol_ptr_hi_addr,
+                'seq_count':       1,
+                'seq_ptr_lo_addr': seq_ptr_lo_addr,
+                'seq_ptr_hi_addr': seq_ptr_hi_addr,
+                'ol_size':         OL_SIZE,
+                'ol_track1_addr':  ol_track1_addr,
+                'seq_size':        SEQ_SIZE,
+                'seq00_addr':      seq00_addr,
             }
-            return safe_params, b'', [0, 0, 0], []
+            # Build the minimal edit data:
+            #   pointer tables: zeros (editor will fill)
+            #   3 orderlists × 256 bytes: [0x00, 0xFE, 0xFF*254] each (single
+            #     pattern, loop marker, then padded with 0xFF end-markers)
+            #   1 sequence × 256 bytes: 0x7F repeated (end-of-sequence)
+            edit = bytearray()
+            edit.extend(b'\x00' * 3)          # OL ptr lo
+            edit.extend(b'\x00' * 3)          # OL ptr hi
+            edit.extend(b'\x00' * 0x80)       # Seq ptr lo
+            edit.extend(b'\x00' * 0x80)       # Seq ptr hi
+            for _ in range(3):                # 3 orderlists, each 256 bytes
+                ol = bytearray([0x00, 0xFE])  # single pattern + loop
+                while len(ol) < OL_SIZE:
+                    ol.append(0xFF)
+                edit.extend(ol)
+            seq = bytearray()                  # single sequence, 256 bytes
+            while len(seq) < SEQ_SIZE:
+                seq.append(0x7F)               # SF2 end-of-sequence marker
+            edit.extend(seq)
+            return safe_params, bytes(edit), [0, 0, 0], [(b'', None)]
 
         for i, (body, lt) in enumerate(raw_patterns):
             loop_str = f"loops from start" if lt == 0 else f"loops from Y={lt}" if lt is not None else "no loop"
