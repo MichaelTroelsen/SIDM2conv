@@ -1,34 +1,36 @@
 # SIDM2 Project Context
 
-**Version**: 3.2.1
-**Last Updated**: 2026-04-28
-**Status**: ✅ Production — first end-to-end success on Stinsen + Unboxed shipped (criteria 1, 2, 4 closed; criterion 3 deferred to scheduled agent on 2026-05-11)
-**Current Focus**: Edit-affects-playback architectural gap (criterion 3) — runtime SF2→NP21 sequence translator in laxity SF2 driver
+**Version**: 3.3.0
+**Last Updated**: 2026-05-06
+**Status**: ✅ Production — all four original criteria closed
+**Current Focus**: F10-load editor crash investigation (heap-state-dependent ~50% rate; comprehensive RE complete, no source fix landed yet — see `memory/project-status.md`). Workaround shipped: `pyscript/sf2_load_retry.py`.
 
 ---
 
 ## Current State Snapshot
 
-### What We're Working On RIGHT NOW (2026-04-28)
+### What We're Working On RIGHT NOW (2026-05-06)
 
-**Recently Completed & Pushed**: ✅ **First end-to-end success + project cleanup** (commits `afffc05`–`1d4e82a`)
+**Most Recently Pushed**: ✅ **Diagnostic tools for SF2II crash investigation** (`6117676`)
 
-**Status**: 4-criterion converter goal — 3 of 4 closed:
+**Status**: 4-criterion converter goal — **all 4 closed**:
 - ✅ **Criterion 1: Plays correctly in SID Factory II** — auto-detect picks laxity driver for both Stinsen (`SidFactory_II/Laxity`) and Unboxed (`Laxity_NewPlayer_V21`); zig64 trace 100% match
 - ✅ **Criterion 2: Editor displays real sequences** — Block 5 MusicData populated with real addresses; `pyscript/verify_editor_view.py` simulator confirms decoding succeeds without asserts
-- ⏸️ **Criterion 3: Edits affect playback** — architectural gap; player and editor disagree on byte format. Deferred to scheduled remote agent (`trig_01Hv7p9xq98LuEVobHVHz5xb`, fires 2026-05-11). Documented inline as `EDITABLE-REPLAY GAP` comment in `sidm2/sf2_writer.py`
+- ✅ **Criterion 3: Edits affect playback** (closed in v3.3.0) — runtime translator at `$0F0E` regenerates shadow buffer on every PLAY tick from SF2-format edit-area bytes; `ch_seq_ptr` patched at `$1A1C/$1A1F`
 - ✅ **Criterion 4: Round-trip SID→SF2→SID** — register accuracy 100%, title/author/copyright preserved via SF2 aux block id=5 reader
 
-**Test Status**: ✅ **786 passed, 8 skipped** (consistent baseline through cleanup)
+**Known unfixed**: F10-load editor crash fires ~40% on Stinsen / 73% on Unboxed. Heap-state-dependent stray 1-byte write of `0xDE`/`0xDF` inside `m_ComponentsManager->Refresh()`, content-triggered. Comprehensive RE in `memory/project-status.md`. Workaround: `pyscript/sf2_load_retry.py` retries until success (median 2-4 attempts).
+
+**Test Status**: ✅ **794 passed, 7 skipped** (+3 from v3.3.0's edit-proof tests, +4 from v3.4 retry-wrapper tests)
 
 ### What Just Happened (Recent Commits)
 
-1. `1d4e82a` - "fix: update path references for SID/<composer> dir migration" (Apr 28, 2026) ⭐ **Latest**
-2. `482c239` - "chore: archive 24 stale/redundant docs (cleanup 2026-04-28)" (Apr 28, 2026)
-3. `c7e13b1` - "chore: archive 5 batches of unused project files (cleanup 2026-04-28)" (Apr 28, 2026)
-4. `1564c6e` - "chore: gitignore root-level session test artifacts" (Apr 28, 2026)
-5. `7b39286` - "release: v3.2.1 — first end-to-end success for Stinsen + Unboxed" (Apr 27, 2026)
-6. `afffc05` - "fix: First successful end-to-end conversion for Stinsen + Unboxed" (Apr 27, 2026)
+1. `6117676` - "diag: add SF2II runtime debugger + patched-binary harness" (May 6, 2026) ⭐ **Latest**
+2. `61873d0` - "Revert: empty Block 7 (regression confirmed via N=15 harness)" (May 5, 2026)
+3. `901df99` - "fix: empty Block 7 — reverted; byte-patch test was misleading" (May 5, 2026)
+4. `4c2507c` - "diag: add SF2II crash-dump analyzer (sf2_crash_analyze.py)" (May 5, 2026)
+5. `e0cea67` - "fix: emit full 9-block SF2II header schema" (May 4, 2026)
+6. `989b2d9` - "release: v3.3.0 — criterion 3 closed (edits affect playback)" (April 30, 2026)
 
 ---
 

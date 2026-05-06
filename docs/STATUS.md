@@ -1,20 +1,22 @@
 # Project Status Overview
 
-**Last Updated**: 2026-04-28
-**Current Version**: v3.2.1 (First End-to-End Success on Stinsen + Unboxed)
-**Status**: Production — 3 of 4 success criteria closed; criterion 3 deferred to scheduled agent
+**Last Updated**: 2026-05-06
+**Current Version**: v3.3.0 (Criterion 3 Closed — Edits Affect Playback)
+**Status**: Production — all 4 success criteria closed
 
 ---
 
 ## Quick Summary
 
-The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2) format for editing and remixing. As of v3.2.1, the converter achieves **100% frame accuracy** on the canonical test songs (Stinsen + Unboxed) verified against zig64 cycle-accurate ground truth, with auto-driver detection, round-trip metadata preservation, and an editor-side Python decoder simulator for headless verification.
+The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2) format for editing and remixing. As of v3.3.0, the converter achieves **100% frame accuracy** on the canonical test songs (Stinsen + Unboxed) verified against zig64 cycle-accurate ground truth, with auto-driver detection, round-trip metadata preservation, an editor-side Python decoder simulator for headless verification, and a runtime SF2→NP21 sequence translator that propagates editor edits to playback.
 
-**Current State**: ✅ **Production** for the four success criteria —
+**Current State**: ✅ **Production** — all four success criteria closed:
 1. **Plays correctly in SF2 editor** ✅ (auto-detect picks laxity driver; trace match 100%)
 2. **Editor displays real sequences** ✅ (Block 5 populated with real addresses; simulator confirms)
-3. **Edits affect playback** ⏸️ (architectural gap, deferred to remote agent fire 2026-05-11)
+3. **Edits affect playback** ✅ (closed v3.3.0 — runtime translator at `$0F0E`, 51 bytes of 6502)
 4. **Round-trip SID→SF2→SID** ✅ (register accuracy 100%, metadata preserved)
+
+**Known unfixed limitation**: F10-load editor crash fires ~40% Stinsen / 73% Unboxed (heap-state-dependent stray byte write inside `m_ComponentsManager->Refresh()`). The file ALWAYS plays correctly when load succeeds. Workaround: `pyscript/sf2_load_retry.py` retries automatically. Comprehensive RE in `memory/project-status.md`.
 
 The sections below document the full feature inventory accumulated since v1.0; not all are still actively maintained but they represent the historical capability surface.
 

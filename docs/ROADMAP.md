@@ -2,21 +2,23 @@
 
 **Strategic direction and future improvements**
 
-**Date**: 2026-04-28
-**Version**: 3.x roadmap (post-v3.2.1)
-**Status**: 🎯 Active Roadmap — primary open piece is criterion 3 (edits-affect-playback)
+**Date**: 2026-05-06
+**Version**: 3.x roadmap (post-v3.3.0)
+**Status**: 🎯 Active Roadmap — all four original criteria closed; remaining workstreams are F10-load reliability and multi-pattern song support
 
 ---
 
-## Current State (v3.2.1, 2026-04-28)
+## Current State (v3.3.0, 2026-04-30) — All Four Criteria Closed
 
-The original four-criterion converter goal is **3 of 4 closed** for Stinsen + Unboxed:
+The original four-criterion converter goal is **all 4 closed** for Stinsen + Unboxed:
 1. **Plays correctly in SF2 editor** — ✅ auto-detect routes `SidFactory_II/Laxity` to laxity driver; zig64 trace 100% match
 2. **Editor displays real sequences** — ✅ Block 5 MusicData has real addresses; `pyscript/verify_editor_view.py` confirms decoding
-3. **Edits affect playback** — ⏸️ open architectural gap. Player reads NP21-format from embedded binary, editor reads/writes SF2-format from edit area; byte semantics conflict (0x80=gate-off vs duration; 0xFF=loop vs command; 0-vs-1-based notes). Deferred to scheduled remote agent `trig_01Hv7p9xq98LuEVobHVHz5xb` (fires 2026-05-11) which will scope and implement a runtime SF2→NP21 translator in `drivers/laxity/sf2driver_laxity_00.prg`
+3. **Edits affect playback** — ✅ closed in v3.3.0. Two-part runtime architecture: build-time pre-fill of a 3-slot shadow buffer + runtime translator at `$0F0E` (51 bytes of 6502) that regenerates the shadow on every PLAY tick by translating SF2-format edit-area bytes through `sidm2/sf2_to_np21.py`. PLAY handler at `$0F04` is now `JMP $0F0E`.
 4. **Round-trip SID→SF2→SID** — ✅ register accuracy 100%, metadata preserved through the SF2 aux block id=5 reader
 
-**Generalization beyond Stinsen + Unboxed** is the other major open piece — both test songs are simple (single sequence per voice, looping). Multi-pattern songs that walk the orderlist are not yet supported by `_build_np21_sf2_edit_area`.
+**Open piece — F10-load editor crash**: SF2II's editor-view setup crashes ~40% on Stinsen / 73% on Unboxed when F10-loading our raw-NP21 SF2 files. Heap-state-dependent stray 1-byte write of `0xDE`/`0xDF` inside `m_ComponentsManager->Refresh()`. Comprehensive RE complete (see `memory/project-status.md`); fix requires NP21→Driver-11 data conversion (multi-day work). Workaround shipped: `pyscript/sf2_load_retry.py` retries until success (median 2-4 attempts).
+
+**Open piece — Generalization beyond Stinsen + Unboxed**: both test songs are simple (single sequence per voice, looping). Multi-pattern songs that walk the orderlist are not yet supported by `_build_np21_sf2_edit_area`.
 
 The historical roadmap below tracks the v2.x targets (most achieved, kept for context).
 

@@ -833,6 +833,23 @@ Located in `tools/` directory (Windows binaries, optional fallbacks):
 
 ## Version History
 
+### v3.3.0 (2026-04-30) - Criterion 3 Closed (Edits Affect Playback)
+
+- ✅ **Edits in SID Factory II editor now affect playback** — closes the
+  fourth original criterion. Two-part runtime architecture: build-time
+  pre-fill of a 3-slot shadow buffer (per-voice NP21-format bytes appended
+  after the SF2 edit area, with `ch_seq_ptr` at `$1A1C/$1A1F` patched to
+  point at the shadow); runtime translator at `$0F0E` (51 bytes of 6502)
+  that regenerates the shadow on every PLAY tick by translating SF2-format
+  bytes from `seq00_addr` through `sidm2/sf2_to_np21.py`. PLAY handler at
+  `$0F04` is now `JMP $0F0E`.
+- ✅ **Stinsen + Unboxed both still trace at 100%** (299/299, 300/300 frames
+  via zig64 ground truth)
+- ✅ **794 tests passing** (+3 new edit-proof tests in `TestCriterion3EditProof`)
+- ✅ **Architecture dead-ends documented** in `docs/criterion3_step0_findings.md`
+  and `docs/criterion3_scoping.md` so future iterations don't restart the
+  invalidated "store in format X, patch ptr" approach
+
 ### v3.2.1 (2026-04-28) - First End-to-End Success + Cleanup
 
 - ✅ **Auto-detect routes `SidFactory_II/Laxity` files to laxity driver** — Stinsen-class files (SF2-exported but embedding NP21 player code) now convert correctly without `--driver laxity` flag; previous mapping to driver11 produced an invalid SF2
