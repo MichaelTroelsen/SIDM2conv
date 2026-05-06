@@ -1498,6 +1498,39 @@ class SF2Writer:
         gen.DRIVER_INIT = INIT_HANDLER
         gen.DRIVER_PLAY = PLAY_HANDLER
         gen.DRIVER_STOP = STOP_HANDLER
+
+        # Detect per-file Block 3 table addresses from the actual NP21 binary,
+        # rather than relying on Stinsen-derived defaults. Songs with smaller
+        # binaries (e.g. Angular ~5KB vs Stinsen ~9KB) have their Wave/Pulse/
+        # Filter/Instruments at different absolute C64 addresses; pointing
+        # SF2II's editor view at the wrong addresses triggers a deterministic
+        # editor-view crash on F10-load. See memory/project-status.md
+        # (2026-05-06 Angular generalization finding) for context.
+        try:
+            laxity_tables = extract_all_laxity_tables(c64_data, sid_la)
+            if laxity_tables.get('wave_addr'):
+                gen.wave_addr = laxity_tables['wave_addr']
+            if laxity_tables.get('pulse_addr'):
+                gen.pulse_addr = laxity_tables['pulse_addr']
+            if laxity_tables.get('filter_addr'):
+                gen.filter_addr = laxity_tables['filter_addr']
+            if laxity_tables.get('instr_addr'):
+                gen.instr_addr = laxity_tables['instr_addr']
+                # Commands sit a fixed 0x70 bytes past Instruments in Laxity NP21
+                # (verified on Stinsen: instr=$1A6B, cmd=$1ADB). No separate
+                # extractor; bias from Instruments is the simplest correct anchor.
+                gen.cmd_addr = laxity_tables['instr_addr'] + 0x70
+            logger.info(
+                f"  Block 3 table addresses: Wave=${gen.wave_addr:04X}, "
+                f"Pulse=${gen.pulse_addr:04X}, Filter=${gen.filter_addr:04X}, "
+                f"Instr=${gen.instr_addr:04X}, Cmd=${gen.cmd_addr:04X}"
+            )
+        except Exception as e:
+            logger.warning(
+                f"  Per-file table-address detection failed ({e!r}); "
+                f"falling back to Stinsen-derived defaults"
+            )
+
         header_bytes = gen.generate_complete_headers()
 
         # Safety check: headers must not overlap handler code

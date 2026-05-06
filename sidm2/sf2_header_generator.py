@@ -136,6 +136,19 @@ class SF2HeaderGenerator:
         # Use short driver name to match Driver 11 format (max ~10 chars to avoid block overflow)
         self.driver_name = "Laxity"  # Short name to prevent block structure corruption
 
+        # Block 3 driver-table addresses. Defaults match Stinsen's NP21 binary
+        # layout. Per-file overrides keep SF2II's editor view from reading
+        # bytes outside the song's actual table data — songs with smaller
+        # NP21 binaries (e.g., Angular ~5KB vs Stinsen ~9KB) have their tables
+        # at different absolute C64 addresses. The writer should call
+        # `extract_all_laxity_tables()` and set these before generating
+        # headers; if left at defaults, behaviour matches pre-2026-05-06.
+        self.wave_addr = 0x1942        # Wave table
+        self.pulse_addr = 0x1A3B       # Pulse table (row-major, 64x4)
+        self.filter_addr = 0x1989      # tbl_filter_seq
+        self.instr_addr = 0x1A6B       # Instruments (column-major, 32x8 — emitted as 6 cols)
+        self.cmd_addr = 0x1ADB         # Commands (= instruments + 0x70 in Stinsen)
+
     def create_descriptor_block(self) -> bytes:
         """
         Create Block 1: Driver Descriptor.
@@ -278,31 +291,31 @@ class SF2HeaderGenerator:
                 # bundled Block 9 (DriverInstrumentDataDescriptor) we copy
                 # verbatim references Commands column index 2; SF2II reads
                 # past the end of a 2-col table and segfaults.
-                name="Commands", table_id=0, address=0x1ADB,
+                name="Commands", table_id=0, address=self.cmd_addr,
                 columns=3, rows=64, visible_rows=16,
                 table_type=0x81, layout=0x01, properties=0x00,
                 ins_del_rule=0xFF, enter_rule=0x03, color_rule=0xFF,
             ),
             TableDescriptor(
-                name="Instruments", table_id=1, address=0x1A6B,
+                name="Instruments", table_id=1, address=self.instr_addr,
                 columns=6, rows=32, visible_rows=16,
                 table_type=0x80, layout=0x01, properties=0x00,
                 ins_del_rule=0xFF, enter_rule=0x01, color_rule=0xFF,
             ),
             TableDescriptor(
-                name="Wave", table_id=2, address=0x1942,
+                name="Wave", table_id=2, address=self.wave_addr,
                 columns=2, rows=256, visible_rows=16,
                 table_type=0x00, layout=0x01, properties=0x01,
                 ins_del_rule=0x00, enter_rule=0x00, color_rule=0x00,
             ),
             TableDescriptor(
-                name="Pulse", table_id=3, address=0x1A3B,
+                name="Pulse", table_id=3, address=self.pulse_addr,
                 columns=3, rows=256, visible_rows=16,
                 table_type=0x00, layout=0x01, properties=0x01,
                 ins_del_rule=0x01, enter_rule=0x02, color_rule=0x01,
             ),
             TableDescriptor(
-                name="Filter", table_id=4, address=0x1989,
+                name="Filter", table_id=4, address=self.filter_addr,
                 columns=3, rows=256, visible_rows=16,
                 table_type=0x00, layout=0x01, properties=0x01,
                 ins_del_rule=0x02, enter_rule=0x02, color_rule=0x01,
