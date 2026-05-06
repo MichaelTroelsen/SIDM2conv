@@ -1921,8 +1921,44 @@ class SF2Writer:
 
         num_patterns = len(raw_patterns)
         if num_patterns == 0:
-            logger.warning("  No NP21 patterns found; Block 5 will use placeholder addresses")
-            return None, b'', [0, 0, 0], []
+            # Pattern extraction failed (ch_seq_ptr at $0A1C/$0A1F doesn't
+            # contain valid sequence pointers — happens for NP21 binaries
+            # with a different player layout, e.g., Angular and Beast).
+            # Returning music_data_params=None used to make
+            # create_music_data_block() emit ALL-DEFAULT placeholder
+            # addresses ($1900) with track_count=1 — SF2II's editor view
+            # then iterates 1 track, reads OOB at $1900, and deterministically
+            # crashes on F10-load. Documented 2026-05-06.
+            #
+            # Workaround: emit track_count=0 + seq_count=0 so the editor
+            # iterates zero tracks/sequences and skips the crashing
+            # track-display code path entirely. Playback is unaffected
+            # because runtime SID emulation reads the embedded NP21 binary
+            # via INIT/PLAY vectors, not Block 5 addresses.
+            logger.warning(
+                "  No NP21 patterns found (ch_seq_ptr at $0A1C/$0A1F "
+                "doesn't contain valid sequence pointers); emitting "
+                "track_count=0 to avoid SF2II editor-view OOB crash"
+            )
+            # Point addresses at a zero-filled region of emulated C64 memory
+            # ($D000+, well outside any binary's load range — emulator returns
+            # zeros). Reading 256 bytes of zeros from an editor display
+            # iteration is harmless. Compare $1900 default (which is at the
+            # END of small binaries where uninit / garbage bytes live).
+            SAFE_ADDR = 0xD000
+            safe_params = {
+                'track_count':     0,
+                'ol_ptr_lo_addr':  SAFE_ADDR,
+                'ol_ptr_hi_addr':  SAFE_ADDR + 8,
+                'seq_count':       0,
+                'seq_ptr_lo_addr': SAFE_ADDR + 16,
+                'seq_ptr_hi_addr': SAFE_ADDR + 32,
+                'ol_size':         0x0100,
+                'ol_track1_addr':  SAFE_ADDR + 64,
+                'seq_size':        0x0100,
+                'seq00_addr':      SAFE_ADDR + 320,
+            }
+            return safe_params, b'', [0, 0, 0], []
 
         for i, (body, lt) in enumerate(raw_patterns):
             loop_str = f"loops from start" if lt == 0 else f"loops from Y={lt}" if lt is not None else "no loop"
