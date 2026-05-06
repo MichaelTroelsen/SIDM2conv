@@ -5,10 +5,13 @@ of our raw-NP21 SF2 files. The file ALWAYS plays correctly when load
 succeeds — the crash is in the editor view's setup, not the parser.
 Pass rate is ~60% on Stinsen, ~27% on Unboxed (per project-status memory).
 
-This wrapper retries until success. At 60% per-attempt success, 5 attempts
-covers 99% of cases (1 - 0.4^5 = 99.0%). At 27%, 5 attempts covers 79%
-(1 - 0.73^5 = 79.0%); 10 attempts → 95.6%. Default max_attempts=10 is
-the safe choice.
+This wrapper retries until success. Per-attempt success rate baselines:
+Stinsen ~60%, Unboxed ~27% (worst case). At 27%, expected attempts =
+1/0.27 ≈ 3.7; std dev is ~3.2. The 99th-percentile attempt count is
+~14. Empirically (5 cycles on Unboxed, 2026-05-06): one cycle hit
+attempt 10. Default max_attempts=15 covers 99% of Unboxed cycles
+(1 - 0.73^15 = 99.0%) and >99.99% on Stinsen, with worst-case wall
+time bound at ~90s.
 
 Usage:
     py -3 pyscript/sf2_load_retry.py <file.sf2> [max_attempts]
@@ -28,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import sf2_load_test as harness
 
 
-def load_with_retry(sf2_path: str, max_attempts: int = 10,
+def load_with_retry(sf2_path: str, max_attempts: int = 15,
                     per_attempt_timeout: float = 12.0,
                     verbose: bool = True) -> dict:
     """Try F10-loading sf2_path up to max_attempts times.
@@ -71,7 +74,7 @@ def main(argv):
         print(__doc__)
         sys.exit(2)
     sf2_path = argv[0]
-    max_attempts = int(argv[1]) if len(argv) >= 2 else 10
+    max_attempts = int(argv[1]) if len(argv) >= 2 else 15
 
     if not os.path.exists(sf2_path):
         print(f'ERROR: file not found: {sf2_path}', file=sys.stderr)
