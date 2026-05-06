@@ -1536,6 +1536,8 @@ def find_instrument_table_np21_v2(data: bytes, load_addr: int,
     for offset in range(SCAN_START, SCAN_END):
         consec = 0
         score = 0
+        ad_values: List[int] = []
+        sr_values: List[int] = []
         for i in range(8):  # check up to 8 instruments at this offset
             o = offset + i * 8
             if o + 8 > len(data):
@@ -1560,6 +1562,8 @@ def find_instrument_table_np21_v2(data: bytes, load_addr: int,
                 break
 
             consec += 1
+            ad_values.append(ad)
+            sr_values.append(sr)
             # Score: prefer non-silent records, valid AD/SR ranges
             if attack > 0:
                 score += 1
@@ -1570,7 +1574,19 @@ def find_instrument_table_np21_v2(data: bytes, load_addr: int,
             if 0 < pulse_ptr < 64:
                 score += 1
 
-        if consec >= MIN_RECORDS_REQUIRED and score > best_score:
+        # Reject "constant-AD" candidates: real instrument tables have musical
+        # variety in AD/SR across records. Wave/note/parameter LUTs (which
+        # also pass the per-byte plausibility checks above) typically have
+        # IDENTICAL bytes 0-1 across all records, with only the trailing
+        # byte (wave_ptr) varying. Empirically (2026-05-06):
+        #   Beast/Angular   $1B8D/$1A7C: AD identical across 4-7 records → false
+        #   Stinsen/Unboxed $1A46/$19F9: 4-7 distinct AD values across records → true
+        # Require at least 3 distinct AD values OR 3 distinct SR values
+        # across the consecutive plausible records.
+        unique_ad = len(set(ad_values))
+        unique_sr = len(set(sr_values))
+        if consec >= MIN_RECORDS_REQUIRED and (unique_ad >= 3 or unique_sr >= 3) \
+                and score > best_score:
             best_score = score
             best_offset = offset
 
