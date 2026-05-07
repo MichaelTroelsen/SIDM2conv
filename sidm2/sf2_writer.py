@@ -2072,7 +2072,16 @@ class SF2Writer:
 
         orderlists = []
         for v in range(3):
-            ol = bytearray([voice_init_idx[v] & 0x7F, 0xFE])  # single pattern + loop
+            # Orderlist parser (datasource_orderlist.cpp:290-365):
+            #   - bytes 0x80+ update current_transposition
+            #   - bytes 0x00..0x7F are pattern indices (stored with current transposition)
+            #   - 0xFE = end (no loop), 0xFF = end-with-loop (next byte = loop idx)
+            # The renderer at component_track.cpp:548 passes
+            #   inTransposition = (stored_transposition - 0xA0)
+            # to the note renderer. So we MUST prepend 0xA0 here to mean
+            # "transpose 0"; otherwise initial current_transposition=0 results
+            # in inTransposition = -160 and every note renders as "???".
+            ol = bytearray([0xA0, voice_init_idx[v] & 0x7F, 0xFE])
             while len(ol) < OL_SIZE:
                 ol.append(0xFF)
             orderlists.append(bytes(ol[:OL_SIZE]))
@@ -2101,11 +2110,31 @@ class SF2Writer:
         }
 
         # --- 5. Build raw edit data bytes ---
+        # The OL ptr and Seq ptr tables MUST be populated at conversion time:
+        # SF2II reads them on F10-load to find the orderlists and sequences.
+        # The previous "editor writes" comment was wrong — leaving these as
+        # zeros made every voice's OL ptr decode to $00xx (zero page), which
+        # is why the editor's track view showed empty sequences even though
+        # the sequence/OL data was present in the file.
+        ol_lo_table = bytearray(b'\x00' * 3)
+        ol_hi_table = bytearray(b'\x00' * 3)
+        for v in range(3):
+            ol_addr = ol_track1_addr + v * OL_SIZE
+            ol_lo_table[v] = ol_addr & 0xFF
+            ol_hi_table[v] = (ol_addr >> 8) & 0xFF
+
+        seq_lo_table = bytearray(b'\x00' * SEQ_PTR_SIZE)
+        seq_hi_table = bytearray(b'\x00' * SEQ_PTR_SIZE)
+        for s in range(min(num_patterns, SEQ_PTR_SIZE)):
+            seq_addr = seq00_addr + s * SEQ_SIZE
+            seq_lo_table[s] = seq_addr & 0xFF
+            seq_hi_table[s] = (seq_addr >> 8) & 0xFF
+
         edit = bytearray()
-        edit.extend(b'\x00' * 3)                  # OL ptr lo table (editor writes)
-        edit.extend(b'\x00' * 3)                  # OL ptr hi table (editor writes)
-        edit.extend(b'\x00' * SEQ_PTR_SIZE)       # Seq ptr lo table (editor writes)
-        edit.extend(b'\x00' * SEQ_PTR_SIZE)       # Seq ptr hi table (editor writes)
+        edit.extend(ol_lo_table)
+        edit.extend(ol_hi_table)
+        edit.extend(seq_lo_table)
+        edit.extend(seq_hi_table)
         for ol in orderlists:
             edit.extend(ol)
         for seq in sf2_sequences:

@@ -39,7 +39,18 @@ Thumbs.db
 
 # Output files
 output/
-# SF2/*.sf2  # Uncomment to ignore converted files
+
+# Generated SF2 test corpus — reproducible from SID/ via sid_to_sf2.py;
+# treat as ephemeral test artifacts, not source.
+SF2/*.sf2
+SF2/*.txt
+SF2/**/*.sf2
+SF2/**/*.txt
+
+# Harness staging files (created in bin/ for F10-load tests)
+bin/_*.sf2
+bin/__sf2load_test__*.sf2
+bin/__sf2dbg__*.sf2
 
 # Generated disassemblies
 output/**/*_disassembly.md
