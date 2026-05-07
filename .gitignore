@@ -179,4 +179,5 @@ SIDSF2player/
 
 # Claude Code local settings
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
 file_inventory.json
