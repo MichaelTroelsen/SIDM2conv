@@ -181,3 +181,7 @@ SIDSF2player/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 file_inventory.json
+
+# Reference SF2 corpus (Laxity-authored ground-truth files used by
+# pyscript/analyze_laxity_pattern_split.py); kept local only.
+Original_SF2/
