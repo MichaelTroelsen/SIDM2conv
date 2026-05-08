@@ -1330,17 +1330,17 @@ class SF2Writer:
         def _make_aux_block(bid: int, param: int, body: bytes) -> bytes:
             return bytes([bid]) + struct.pack('<H', param) + struct.pack('<H', len(body)) + body
 
-        # id=3 param=2 — Play markers (per-voice loop indices etc.).
-        # 34 bytes from reference; mostly zeros with a few config bytes.
-        body3 = bytes([
-            0x01, 0x08, 0x98, 0x08,  # config (decoded meaning unclear)
-        ]) + bytes(30)               # 30 zero bytes -> total 34
-        # id=2 param=1 — Hardware preferences (SID model, region).
-        # 2 bytes: 01 00 = (8580, PAL) per reference Stinsen.
-        body2 = bytes([0x01, 0x00])
-        # id=1 param=1 — Editing preferences (notation mode, follow, etc.).
-        # 3 bytes: 00 00 04 from reference.
-        body1 = bytes([0x00, 0x00, 0x04])
+        # Aux body formats (decoded from auxilary_data_*.cpp:RestoreFromSaveData):
+        # id=1 EditingPreferences (3B v1): [NotationMode][HighlightOffset][HighlightInterval]
+        # id=2 HardwarePreferences (2B v1): [SIDModel][Region]
+        # id=3 PlayMarkers v2:               [layer_count] then per-layer
+        #                                    [marker_count][u32×marker_count event positions]
+        # Defaults match reasonable editor state. Region/SIDModel could be
+        # pulled from the PSID flags but defaulting to (8580, PAL) like the
+        # reference is a safer bet because it matches more bundled files.
+        body3 = bytes([0x01, 0x00])         # 1 layer, 0 markers (no song-position bookmarks)
+        body2 = bytes([0x01, 0x00])         # SIDModel=8580 (1), Region=PAL (0)
+        body1 = bytes([0x00, 0x00, 0x04])   # Sharp notation, highlight offset=0, interval=4
 
         # id=4 param=2 — Table text (instrument + command names).
         table_text_data = self._build_table_text_data(
@@ -1358,18 +1358,16 @@ class SF2Writer:
         # missing aux-pointer fix without the full bundled chain — that
         # alone gives SF2II access to instrument names + song description
         # which the prior aux-pointer-zero made unreachable.
-        # Stage 6.5/6.6: aux chain order is [id=4 TableText, id=5 Songs, END].
-        # Reference Stinsen has the full bundled order [3, 2, 1, 4, 5, END]
-        # but our id=1/2/3 (PlayMarkers/HardwarePreferences/EditingPreferences)
-        # bodies need their own RE work — adding them with verbatim-copied
-        # reference bytes broke F10-load because they reference state our
-        # SF2 layout doesn't have. Stage 6.7 follow-up may restore them.
+        # Stage 6.7: aux chain in bundled order [3, 2, 1, 4, 5, END]
+        # matching all 67 bundled SF2II reference files.
         aux_data = bytearray()
-        aux_data.extend(_make_aux_block(4, 2, bytes(table_text_data)))
+        aux_data.extend(_make_aux_block(3, 2, body3))             # PlayMarkers (v2)
+        aux_data.extend(_make_aux_block(2, 1, body2))             # HardwarePreferences
+        aux_data.extend(_make_aux_block(1, 1, body1))             # EditingPreferences
+        aux_data.extend(_make_aux_block(4, 2, bytes(table_text_data)))  # TableText
         if desc_data:
-            aux_data.extend(_make_aux_block(5, 2, bytes(desc_data)))
+            aux_data.extend(_make_aux_block(5, 2, bytes(desc_data)))    # Songs
         aux_data.extend(bytes([0x00, 0x00, 0x00, 0x00, 0x00]))   # END marker
-        _ = body1, body2, body3  # silence unused
 
         # Place aux chain at end of file. C64 address of aux_chain_start
         # = LOAD_BASE + (file offset of aux start).
@@ -1390,7 +1388,7 @@ class SF2Writer:
             self.output[aux_pointer_offset + 1] = (aux_chain_c64_addr >> 8) & 0xFF
             self.output.extend(aux_data)
             logger.info(f"    Aux chain @ ${aux_chain_c64_addr:04X} "
-                        f"({len(aux_data)}B, [TableText, Songs, END]), "
+                        f"({len(aux_data)}B, [3,2,1,4,5,END] bundled order), "
                         f"pointer@$0FFB written at file offset ${aux_pointer_offset:04X}")
             if hasattr(self.data, 'header') and self.data.header:
                 logger.info(f"    Written metadata: {self.data.header.name} by {self.data.header.author}")
