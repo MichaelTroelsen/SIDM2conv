@@ -70,6 +70,22 @@
     overflow: hidden;
     perspective: 500px;
     perspective-origin: 50% 100%;
+    /* Tight fade only at the very top — text reaches near the top edge
+       before disappearing into the starfield. */
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      transparent 0%,
+      rgba(0,0,0,0.4) 4%,
+      black 10%,
+      black 100%
+    );
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0%,
+      rgba(0,0,0,0.4) 4%,
+      black 10%,
+      black 100%
+    );
     opacity: 0;
     animation: crawlContainerFadeIn 0.5s ease-in forwards;
     animation-delay: 6s;
@@ -78,25 +94,10 @@
     to { opacity: 1; }
   }
 
-  #fade-overlay {
-    position: fixed;
-    top: 0; left: 0;
-    width: 100%;
-    /* Tight fade so text stays visible nearly to the top of the
-       screen before disappearing. Solid black only in the top 8%. */
-    height: 22%;
-    background-image: linear-gradient(
-      to bottom,
-      black 0%,
-      black 8%,
-      transparent 100%
-    );
-    z-index: 2;
-    pointer-events: none;
-    opacity: 0;
-    animation: crawlContainerFadeIn 0.5s ease-in forwards;
-    animation-delay: 6s;
-  }
+  /* fade-overlay disabled — replaced by the tighter mask on
+     #crawl-container above. Kept the empty rule so the HTML element
+     stays harmless if present. */
+  #fade-overlay { display: none; }
 
   /* The rotated viewport. Bottom anchored to viewport bottom, height
      = full viewport, tilted backward. Content inside scrolls through. */
@@ -107,7 +108,7 @@
     width: min(92%, 1500px);
     height: 100vh;
     transform-origin: 50% 100%;
-    transform: translateX(-50%) rotateX(25deg);
+    transform: translateX(-50%) rotateX(20deg);
     overflow: hidden;
   }
 
