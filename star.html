@@ -43,69 +43,79 @@
     100% { opacity: 0; }
   }
 
-  /* Star Wars-style perspective container.
-     - perspective + rotateX on the crawl recedes text into the distance
-       as it scrolls up (the iconic vanishing-point effect).
-     - mask-image fades text to transparent in the top ~33% of the
-       viewport, so the upper third is just starfield (the Star Wars
-       text "disappears into the stars" before reaching the top edge).
-     - Bottom 50% of viewport keeps text at full size + opacity, which
-       is where the eye reads. */
+  /* Star Wars opening crawl, Pietrusky-style.
+     - Container has perspective + flexbox to center the crawl
+     - #fade-overlay sits OUTSIDE the perspective and just paints a
+       black-to-transparent gradient at the top of the screen so the
+       text appears to fade into the starfield (the "vanishing point")
+     - Crawl element animates `top` AND `translateZ` together: as it
+       scrolls up, it also recedes deeper into the screen, exactly like
+       the original film */
   #crawl-container {
     position: fixed;
     top: 0; left: 0;
     width: 100%; height: 100%;
     z-index: 1;
     overflow: hidden;
-    perspective: 500px;
-    perspective-origin: 50% 100%;
-    -webkit-mask-image: linear-gradient(
-      to bottom,
-      transparent 0%,
-      transparent 22%,
-      rgba(0, 0, 0, 0.4) 36%,
-      black 52%,
-      black 100%
-    );
-    mask-image: linear-gradient(
-      to bottom,
-      transparent 0%,
-      transparent 22%,
-      rgba(0, 0, 0, 0.4) 36%,
-      black 52%,
-      black 100%
-    );
+    perspective: 400px;
+    display: flex;
+    justify-content: center;
     opacity: 0;
-    animation: crawlContainerFadeIn 0.6s ease-in forwards;
-    animation-delay: 6.5s;
+    animation: crawlContainerFadeIn 0.5s ease-in forwards;
+    animation-delay: 6s;
   }
   @keyframes crawlContainerFadeIn {
     to { opacity: 1; }
   }
 
-  /* The animation distance is set by JS (see setCrawlDistance()). It's
-     scrollHeight + viewport height so the entire crawl scrolls past the
-     viewport top, regardless of the changelog's length. */
+  #fade-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%;
+    height: 60%;
+    background-image: linear-gradient(
+      to bottom,
+      black 0%,
+      black 30%,
+      transparent 100%
+    );
+    z-index: 2;
+    pointer-events: none;
+    opacity: 0;
+    animation: crawlContainerFadeIn 0.5s ease-in forwards;
+    animation-delay: 6s;
+  }
+
+  /* The crawl itself. `top: 9999px` is a safe initial offset that
+     keeps it off-screen until the animation overrides it. The
+     animation uses both `top` (for the bulk scroll) AND a small
+     `translateZ` motion (so the text appears to recede deeper in
+     addition to moving up). */
   #crawl {
-    position: absolute;
-    top: 100vh;
-    left: 50%;
-    width: min(94%, 1400px);
+    position: relative;
+    top: 9999px;
+    width: min(86%, 1100px);
     transform-origin: 50% 100%;
-    transform: translateX(-50%) rotateX(25deg);
     color: #FFE81F;
     font-weight: bold;
     text-align: justify;
-    font-size: clamp(56px, 6vw, 100px);
-    line-height: 1.4;
-    text-shadow: 0 0 6px rgba(255, 232, 31, 0.3);
+    font-size: clamp(56px, 5.5vw, 90px);
+    line-height: 1.5;
+    letter-spacing: 0.04em;
+    text-shadow: 0 0 8px rgba(255, 232, 31, 0.35);
     animation: crawlScroll var(--crawl-duration, 90s) linear forwards;
-    animation-delay: 6.8s;
-    will-change: top;
+    animation-delay: 6.3s;
+    will-change: top, transform;
   }
   @keyframes crawlScroll {
-    0%   { top: 100vh; }
-    100% { top: calc(-1 * var(--crawl-distance, 4000px)); }
+    0% {
+      top: 100vh;
+      transform: rotateX(22deg) translateZ(0);
+    }
+    100% {
+      top: calc(-1 * var(--crawl-distance, 4000px));
+      transform: rotateX(22deg) translateZ(-1500px);
+    }
   }
 
   #crawl h1 {
@@ -176,11 +186,28 @@
     z-index: 10;
   }
   #replay:hover { color: #FFE81F; border-color: #FFE81F; }
+
+  #music {
+    position: fixed;
+    bottom: 0.6em; right: 6em;
+    color: #888;
+    background: rgba(0,0,0,0.4);
+    border: 1px solid #444;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    z-index: 10;
+  }
+  #music:hover { color: #FFE81F; border-color: #FFE81F; }
+  #music.playing { color: #FFE81F; border-color: #FFE81F; }
+  #music.missing { opacity: 0.4; cursor: not-allowed; }
 </style>
 </head>
 <body>
 <canvas id="stars"></canvas>
 <div id="intro">In a repo far,<br>far away....</div>
+<div id="fade-overlay"></div>
 <div id="crawl-container">
   <div id="crawl">
     <h1 id="episode">Episode XIV</h1>
@@ -191,6 +218,12 @@
     </div>
   </div>
 </div>
+<!-- Drop a "star-wars-theme.mp3" next to star.html and it'll auto-play
+     when the crawl begins. If autoplay is blocked the music button
+     becomes clickable. Original John Williams composition is © Lucasfilm/
+     Disney, so the file isn't shipped with this repo. -->
+<audio id="theme" preload="auto" src="./star-wars-theme.mp3"></audio>
+<button id="music" type="button" title="Toggle music">♪ music</button>
 <div id="status">booting hyperdrive...</div>
 <button id="replay" type="button" title="Replay crawl">↻ replay</button>
 
@@ -606,17 +639,62 @@
   }
   window.addEventListener('resize', setCrawlDistance);
 
+  // ===================== Music =====================
+  // Try to play ./star-wars-theme.mp3 (user-supplied, not shipped) when
+  // the crawl begins. Browsers usually require a user-gesture for audio
+  // autoplay, so attach a click fallback to the music button.
+  const audio   = document.getElementById('theme');
+  const musicBtn = document.getElementById('music');
+  let musicState = 'idle';   // 'idle' | 'playing' | 'paused' | 'missing'
+
+  function tryPlay() {
+    if (!audio) return;
+    audio.play().then(() => {
+      musicState = 'playing';
+      musicBtn.classList.add('playing');
+    }).catch(() => {
+      // Autoplay blocked — leave button enabled so user can opt in.
+      musicState = 'paused';
+    });
+  }
+  audio.addEventListener('error', () => {
+    musicState = 'missing';
+    musicBtn.classList.add('missing');
+    musicBtn.title = 'Drop "star-wars-theme.mp3" next to star.html to enable';
+  });
+  musicBtn.addEventListener('click', () => {
+    if (musicState === 'missing') return;
+    if (audio.paused) {
+      audio.play();
+      musicBtn.classList.add('playing');
+      musicState = 'playing';
+    } else {
+      audio.pause();
+      musicBtn.classList.remove('playing');
+      musicState = 'paused';
+    }
+  });
+  // Kick off audio at crawl-start (matches animation-delay above).
+  setTimeout(tryPlay, 6300);
+
   // ===================== Replay =====================
   document.getElementById('replay').addEventListener('click', () => {
     const intro     = document.getElementById('intro');
+    const overlay   = document.getElementById('fade-overlay');
     const container = document.getElementById('crawl-container');
     const crawl     = document.getElementById('crawl');
-    [intro, container, crawl].forEach(el => {
+    [intro, overlay, container, crawl].forEach(el => {
+      if (!el) return;
       el.style.animation = 'none';
       void el.offsetWidth;             // force reflow so the animation can restart
       el.style.animation = '';
     });
     setCrawlDistance();
+    // Restart audio at the same time
+    if (audio) {
+      audio.currentTime = 0;
+      setTimeout(tryPlay, 6300);
+    }
   });
 
   loadChangelog().then(setCrawlDistance);
