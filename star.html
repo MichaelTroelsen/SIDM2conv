@@ -69,10 +69,11 @@
     z-index: 1;
     overflow: hidden;
     perspective: 500px;
-    /* perspective-origin at top of viewport so the rotated crawl's top
-       projects near the top of the screen (not pulled down toward the
-       bottom-center as it was with origin: 50% 100%). */
-    perspective-origin: 50% 0%;
+    /* perspective-origin tuned so the rotated crawl's top projects to
+       around 12% from the screen top — close enough to give the
+       impression of text reaching upward, but with breathing room of
+       starfield above it. */
+    perspective-origin: 50% 20%;
     /* Tight fade only at the very top — text reaches near the top edge
        before disappearing into the starfield. */
     -webkit-mask-image: linear-gradient(
