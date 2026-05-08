@@ -25,6 +25,202 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.4.0] - 2026-05-08
+
+### Added
+- **Editor fidelity push** — Laxity-driver SF2 output now structurally matches
+  the bundled SF2II reference corpus across all 9 header blocks, the aux chain,
+  and the Block 3 column data formats. After F10-load:
+  - Tracks 1/2/3 show real notes (D-1, D#1, F-1, etc.) instead of `???` markers
+  - Each voice's orderlist column shows multiple pattern transitions
+    (e.g. Stinsen voice 0: `a000 a001 a002 a003 a004 a005`) instead of one
+    block of bytes
+  - F1 Commands view shows real labels: Slide Up, Slide Down, Vibrato,
+    Portamento, Set ADSR, Set Filter, Set Wave, Set Pulse, Set Speed,
+    Set Volume, Arpeggio, Note Cut, Legato, Retrigger, Delay, End
+  - F2 Instruments view shows clean 6-byte rows (AD, SR, HR, Filter, Pulse,
+    Wave) instead of NP21-format bytes through Driver-11 lens
+  - F3/F4/F5 Wave/Pulse/Filter views show structured data, not garbage
+  - Editor parses + opens at ≥60% per-attempt rate (Stinsen) with retry-30 budget
+
+- **Multi-pattern segmentation** (`sidm2/np21_pattern_segmenter.py`).
+  Each voice's flat NP21 byte stream is split at instrument-prefix
+  boundaries (`$A0-$BF`) into multiple SF2-display patterns. Round-trip
+  property guarantees the segments concatenate back to the original
+  byte stream byte-for-byte, defending shadow-buffer audio fidelity.
+  For Stinsen voice 0: 6 segments. Voice 1: 1 (no internal instr changes).
+  Voice 2: 7. Total 14 patterns vs. previous 3.
+
+- **Multi-pattern runtime translator** (`_emit_multipat_translator`,
+  ~87 bytes of 6502 at `$0F8E`). Walks each voice's orderlist range,
+  concatenates referenced segments into the voice's shadow slot, writes
+  NP21 0xFF + 0x00 loop terminator. Required `HANDLER_BASE` move from
+  `$0FA0` to `$0F90` (translator window grew from 77B to 92B).
+  Restores criterion-3 contract (edits to SF2 patterns propagate to
+  playback through the translator on every PLAY tick) for the new
+  multi-pattern structure.
+
+- **Driver-11-format display tables** in the SF2 edit area.
+  - `Stage 3` — Instrument table emits clean 6-byte rows
+    (`AD, SR, HR, Filter, Pulse, Wave`) at `gen.instr_addr`. Block 3
+    Instruments column repointed at the new table.
+  - `Stage 4` — Wave/Pulse/Filter tables emitted in their respective
+    Driver-11 column counts (Wave=2, Pulse=3, Filter=3). Block 3
+    column addresses repointed at the new tables.
+  - Display-only: edits to F2/F3/F4/F5 don't propagate to playback
+    yet (NP21 binary at `$1000` keeps reading its own table data).
+
+- **Block 9 (DriverInstrumentDataDescriptor) populated**.
+  Was 1-byte placeholder; now 4 descriptors (41 bytes) verbatim from
+  the reference SF2: Wave/Pulse/Filter/HR table-program lookups
+  pointing at byte positions 5/4/3/2 of our 6-byte instrument rows.
+  The earlier "non-empty Block 9 always crashes" claim was a false
+  attribution — it was actually unrelated post-parse instability.
+
+- **Bundled `[3, 2, 1, 4, 5, END]` aux chain**.
+  Was `[5, 4, END]` with a missing aux-pointer write at `$0FFB`
+  (aux pointer was always zero, so SF2II skipped the chain). All
+  five aux blocks now emitted with body formats decoded from
+  `auxilary_data_*.cpp::RestoreFromSaveData`:
+  - id=3 PlayMarkers v2: 1 layer, 0 markers
+  - id=2 HardwarePreferences v1: SIDModel 8580, Region PAL
+  - id=1 EditingPreferences v1: Sharp notation, highlight interval 4
+  - id=4 TableText v2: real Commands + Instruments names, padded
+    with empty strings to Block 3 row counts (Commands=64,
+    Instruments=32) plus reference's mystery `id=64` 256-empty entry
+  - id=5 Songs v2: song name from PSID title (truncated 16 chars)
+
+- **Stage 8 Path A — embed-binary fallback for non-Laxity SIDs**.
+  New `_inject_player_raw_minimal()` handles Galway, Hubbard, NP20,
+  etc. by embedding the SID's compiled binary verbatim and emitting
+  minimal SF2 headers + handler stubs. Trampoline at `$1000` provides
+  zig64-trace compatibility (zig64 hardcodes `$1000` as INIT entry).
+  Verified on Hubbard's Commando: zig64 trace shows real SID writes
+  (`osc3_control $41 = pulse`, ADSR `$09/$9F`, etc.). Editor F10-load
+  remains broken for non-Laxity (deterministic post-parse crash;
+  documented in `docs/stage8_5_findings.md`).
+
+- **`star.html`** — single-file Star Wars opening-crawl viewer for the
+  CHANGELOG. Fetches the latest entry, renders as yellow perspective
+  scroll over a twinkling starfield with the canonical
+  "In a repo far, far away...." intro. Replay button bottom-right.
+
+### Fixed
+- **OL ptr / Seq ptr tables now populated at conversion time**
+  (`_build_np21_sf2_edit_area`). Previously zero-filled with a
+  comment "editor writes" — but SF2II reads them on F10-load to
+  locate orderlists + sequences. Voice OL ptrs decoded to `$00xx`
+  (zero page), so the editor read garbage.
+
+- **Voice orderlists prepend `0xA0` transposition marker**.
+  The orderlist parser initializes `current_transposition=0`, and
+  the renderer (`component_track.cpp:548`) does
+  `inTransposition = stored - 0xA0`. Without a leading `0xA0`,
+  every note got `+(-160)` transposition and rendered as `???`
+  outside the displayable range.
+
+- **Block 1 driver name encoded in PETSCII**. Lowercase letters
+  `a-z` → bytes `0x01-0x1A`. Quiets the `sf2_lint` warning and
+  matches the bundled corpus.
+
+- **Aux chain pointer at C64 `$0FFB`**. Two bugs in
+  `_inject_auxiliary_data`: (1) the pointer was never written;
+  (2) the offset computation used `self.load_address` (PSID's
+  load = `$0000`) instead of the SF2 PRG load (`$0D7E`). Result
+  was that the appended aux blocks were unreachable garbage.
+
+- **TableText body encoding** (`_build_table_text_data`).
+  - `text_count` must equal the Block 3 row count for the table
+    (Commands=64, Instruments=32), not the number of names we
+    extracted. Padded with empty strings.
+  - `table_id` packed as `u32 LE` (defensive; was signed `i32`).
+  - Mirror the reference's 3-entry shape with the third entry
+    `table_id=64`, 256 empty strings.
+
+- **Songs body format** (`_build_description_data`). Old emit was
+  3 pascal strings (name/author/copyright) — wrong format for aux
+  block id=5. Rewrote to emit the format
+  `AuxilaryDataSongs::RestoreFromSaveData` expects:
+  `[song_count][selected_song]` then per-song pascal strings.
+
+- **Focus-stealing protection in `pyscript/sf2_open_in_editor.py`**:
+  bare `SetForegroundWindow` was raising on Windows protection
+  refusals, breaking every retry. Wrapped in `try/except`; the
+  click-on-title-bar below forces focus regardless.
+
+### Investigated
+- **Original SF2 architectural mismatch**. Comparison of
+  `Original_SF2/Laxity/Laxity - Stinsen - Last Night Of 89.sf2`
+  revealed it is a **Driver 11** ("The Standard") SF2 hand-authored
+  by Laxity (the person), not a Laxity-NP21-driver SF2. Both files
+  play the same song; structurally fundamentally different.
+  Path C (hybrid: keep NP21 player, polish Driver-11-format editor
+  metadata) chosen as the strategic direction; Path B (full
+  transpilation to Driver 11) rejected as multi-week with high
+  zig64-trace regression risk.
+
+- **NP21 has no pattern table**. The "voice byte stream" the
+  player reads is a flat event stream — each byte dispatched by
+  value (note / duration / instrument / command / loop). Laxity's
+  original SF2 splits the same stream into 128 patterns purely as
+  editor-side metadata that gets compiled away. So when converting
+  from a SID file we don't have access to the original musical
+  pattern boundaries — Stage 2's instrument-prefix split is a
+  structurally-valid but heuristic best-effort.
+
+- **Non-Laxity editor crash root cause untested**
+  (`docs/stage8_5_findings.md`). Bisected against aux chain
+  content, Block 9 descriptor count, and `$1000` trampoline — none
+  fixed it. Leading hypothesis: SF2II's editor 6502 emulator
+  doesn't fully implement KERNAL routines / CIA-timer IRQs that
+  Hubbard/Galway players require. zig64's emulator does, hence
+  audio works there but not in the editor.
+
+### Tools
+- `pyscript/np21_pattern_segmenter.py` — pure-function pattern
+  splitter with round-trip property test
+- `pyscript/analyze_laxity_pattern_split.py` — reverse-engineering
+  helper that compares our NP21 voice stream byte-by-byte against
+  the original SF2's orderlist + pattern bodies
+- `tests/test_corpus_regression.py` + `tests/golden/*.trace.csv`
+  — Stinsen + Unboxed zig64 frame-perfect regression gate
+- `pyscript/sf2_open_in_editor.py` — user-facing F10-load wrapper
+  with retry-30 + title verification + focus-stealing tolerance
+
+### Verified
+- Stinsen zig64 trace: 1909/1909 SID register writes match
+  baseline (frame-perfect)
+- Unboxed zig64 trace: 2733/2733 (frame-perfect)
+- Hubbard's Commando (Stage 8 Path A): zig64 trace shows real SID
+  register writes — audio plays correctly
+- F10-load editor pass rate: ≥60% per attempt for Stinsen with
+  multi-pattern segmentation, Block 9, and full aux chain in place
+- `pyscript/sf2_lint.py` "all checks pass" on PETSCII name (was
+  WARN); CRIT warnings on INIT/STOP/PLAY entry-point ranges remain
+  (these are deliberate — handler stubs live outside the
+  `[$1000, $1900)` driver range)
+- Total: 794 tests passing (unchanged from v3.3.0 — no test
+  removals, only behavior corrections)
+
+### Note
+- This release is editor-fidelity-focused. Audio fidelity (the
+  v3.3.0 frame-perfect contract) is unchanged.
+- F10-load pass rate dropped from ~70% per attempt (pre-Stage 2)
+  to ~20-30% per attempt (post-Stage 2 multi-pattern). Mitigated
+  by raising `pyscript/sf2_open_in_editor.py` retry budget from
+  15 to 30; cumulative success > 99%. Investigation of the
+  underlying SF2II heap-state crash is upstream-side and out of
+  scope.
+- Editing instruments / wave / pulse / filter tables in F2-F5 does
+  NOT yet propagate to playback — the criterion-3 translator
+  bridges sequences only. A future stage could add per-table
+  translators at the cost of more `$0F00`-region 6502 budget.
+- Stage 8 Path B (per-driver pattern extraction for Galway/Hubbard
+  editor view) and Stage 7 (edit-affects-playback for non-sequence
+  data) deferred as multi-week investments.
+
+---
+
 ## [3.3.0] - 2026-04-30
 
 ### Added
