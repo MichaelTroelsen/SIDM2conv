@@ -43,23 +43,33 @@
     100% { opacity: 0; }
   }
 
-  /* Star Wars opening crawl, Pietrusky-style.
-     - Container has perspective + flexbox to center the crawl
-     - #fade-overlay sits OUTSIDE the perspective and just paints a
-       black-to-transparent gradient at the top of the screen so the
-       text appears to fade into the starfield (the "vanishing point")
-     - Crawl element animates `top` AND `translateZ` together: as it
-       scrolls up, it also recedes deeper into the screen, exactly like
-       the original film */
+  /* Star Wars-style crawl with a FIXED viewport.
+     Architecture (key insight from analyzing the actual film):
+       Each line of text should APPEAR at the bottom of the screen
+       at full size, then RECEDE as it scrolls up, then disappear at
+       the top. To get that effect, the rotated element must stay
+       anchored to the bottom of the viewport (so its bottom edge is
+       always "near" / full-size); the CONTENT inside scrolls UP
+       through the rotated frame.
+
+     - #crawl-container: fixed-position viewport-sized box with the
+       perspective property. Top of viewport is z=far, bottom is z=close.
+     - #crawl: 100vh-tall window anchored to the bottom of the
+       container. Rotated rotateX(25deg) so its top recedes. Crawl
+       has overflow:hidden so content scrolling beyond it is clipped.
+     - #crawl-content: the actual changelog content. Animates `top`
+       from 100% (below the viewport window, off-screen) to
+       -(content-height) (above the viewport window). The content
+       passes through the rotated frame, with each line transitioning
+       from the bottom (full size) to the top (small, far). */
   #crawl-container {
     position: fixed;
     top: 0; left: 0;
     width: 100%; height: 100%;
     z-index: 1;
     overflow: hidden;
-    perspective: 400px;
-    display: flex;
-    justify-content: center;
+    perspective: 500px;
+    perspective-origin: 50% 100%;
     opacity: 0;
     animation: crawlContainerFadeIn 0.5s ease-in forwards;
     animation-delay: 6s;
@@ -72,11 +82,11 @@
     position: fixed;
     top: 0; left: 0;
     width: 100%;
-    height: 60%;
+    height: 55%;
     background-image: linear-gradient(
       to bottom,
       black 0%,
-      black 30%,
+      black 25%,
       transparent 100%
     );
     z-index: 2;
@@ -86,36 +96,40 @@
     animation-delay: 6s;
   }
 
-  /* The crawl itself. `top: 9999px` is a safe initial offset that
-     keeps it off-screen until the animation overrides it. The
-     animation uses both `top` (for the bulk scroll) AND a small
-     `translateZ` motion (so the text appears to recede deeper in
-     addition to moving up). */
+  /* The rotated viewport. Bottom anchored to viewport bottom, height
+     = full viewport, tilted backward. Content inside scrolls through. */
   #crawl {
-    position: relative;
-    top: 9999px;
-    width: min(86%, 1100px);
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: min(85%, 1100px);
+    height: 100vh;
     transform-origin: 50% 100%;
+    transform: translateX(-50%) rotateX(25deg);
+    overflow: hidden;
+  }
+
+  /* The actual scrolling content. Starts below the rotated viewport,
+     scrolls up through it, exits at the top. */
+  #crawl-content {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
     color: #FFE81F;
     font-weight: bold;
     text-align: justify;
-    font-size: clamp(56px, 5.5vw, 90px);
+    font-size: clamp(56px, 6vw, 96px);
     line-height: 1.5;
     letter-spacing: 0.04em;
     text-shadow: 0 0 8px rgba(255, 232, 31, 0.35);
     animation: crawlScroll var(--crawl-duration, 90s) linear forwards;
     animation-delay: 6.3s;
-    will-change: top, transform;
+    will-change: top;
   }
   @keyframes crawlScroll {
-    0% {
-      top: 100vh;
-      transform: rotateX(22deg) translateZ(0);
-    }
-    100% {
-      top: calc(-1 * var(--crawl-distance, 4000px));
-      transform: rotateX(22deg) translateZ(-1500px);
-    }
+    0%   { top: 100%; }
+    100% { top: calc(-1 * var(--content-height, 4000px)); }
   }
 
   #crawl h1 {
@@ -210,11 +224,13 @@
 <div id="fade-overlay"></div>
 <div id="crawl-container">
   <div id="crawl">
-    <h1 id="episode">Episode XIV</h1>
-    <h2 id="title">A NEW COMMIT</h2>
-    <div id="body">
-      <p>The galaxy still loads. The latest entry has yet to arrive
-         from the central archive of GitHub....</p>
+    <div id="crawl-content">
+      <h1 id="episode">Episode XIV</h1>
+      <h2 id="title">A NEW COMMIT</h2>
+      <div id="body">
+        <p>The galaxy still loads. The latest entry has yet to arrive
+           from the central archive of GitHub....</p>
+      </div>
     </div>
   </div>
 </div>
@@ -623,19 +639,22 @@
     }
   }
 
-  // ===================== Crawl distance measurement =====================
-  // The crawl `top` animates from 100vh (just below viewport) down to
-  // -(scrollHeight + 100vh), which is enough to drag the entire crawl
-  // up off the top of the screen, regardless of how long the CHANGELOG
-  // entry is. Recompute on resize. Re-run after content load.
+  // ===================== Content distance measurement =====================
+  // The crawl-content's `top` animates from 100% (just below the rotated
+  // viewport, off-screen) to -(content-height) (fully past the top of
+  // the viewport). JS measures the actual rendered height after the
+  // CHANGELOG content is in the DOM and writes it as a CSS variable so
+  // the keyframe ranges to the right distance regardless of changelog
+  // size or viewport width.
   function setCrawlDistance() {
-    const crawl = document.getElementById('crawl');
-    const distance = crawl.scrollHeight + window.innerHeight;
-    // Pace the scroll at ~80 px/sec so a small entry doesn't blast past
+    const content = document.getElementById('crawl-content');
+    if (!content) return;
+    const distance = content.scrollHeight + window.innerHeight;
+    // Pace the scroll at ~70 px/sec so a small entry doesn't blast past
     // and a huge entry isn't unwatchably slow. Clamped to 60–180s.
-    const duration = Math.max(60, Math.min(180, Math.round(distance / 80)));
-    crawl.style.setProperty('--crawl-distance', distance + 'px');
-    crawl.style.setProperty('--crawl-duration', duration + 's');
+    const duration = Math.max(60, Math.min(180, Math.round(distance / 70)));
+    content.style.setProperty('--content-height', distance + 'px');
+    content.style.setProperty('--crawl-duration', duration + 's');
   }
   window.addEventListener('resize', setCrawlDistance);
 
