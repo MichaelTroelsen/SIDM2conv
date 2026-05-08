@@ -167,9 +167,22 @@ class SF2HeaderGenerator:
         # 2. Driver size (little-endian)
         content.extend(struct.pack("<H", self.driver_size))
 
-        # 3. Driver name (null-terminated ASCII)
-        name_bytes = self.driver_name.encode("ascii") + b"\x00"
-        content.extend(name_bytes)
+        # 3. Driver name (null-terminated, PETSCII-encoded).
+        # SF2II reads names in PETSCII: lowercase letters a-z map to bytes
+        # 0x01-0x1A; uppercase, digits, space, punctuation stay as ASCII.
+        # All 67 bundled SF2II reference files use this encoding (e.g., the
+        # original Stinsen SF2's name "Driver 11.03.00 - The Standard"
+        # encodes the lowercase letters as 0x12 0x09 0x16 0x05 0x12 etc.).
+        # Plain ASCII works for display but sf2_lint flags it as a deviation
+        # from the bundled corpus.
+        name_bytes = bytearray()
+        for ch in self.driver_name:
+            if 'a' <= ch <= 'z':
+                name_bytes.append(ord(ch) - ord('a') + 1)  # 0x01-0x1A
+            else:
+                name_bytes.append(ord(ch))
+        name_bytes.append(0x00)
+        content.extend(bytes(name_bytes))
 
         # 4. Driver code top address (where driver code starts in C64 memory).
         # All 67 bundled SF2II reference files use $1000; we matched on $0E00
