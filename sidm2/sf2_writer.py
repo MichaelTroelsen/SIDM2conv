@@ -1652,18 +1652,23 @@ class SF2Writer:
         # Update driver_size to include the full file extent (NP21 + edit area + shadow)
         gen.driver_size += len(sf2_edit_data) + shadow_buffer_size
 
-        # Stage 3: repoint Block 3 Instruments column at the clean
-        # Driver-11-format instrument table inside the SF2 edit area
-        # instead of into the NP21 binary's Laxity-format bytes. F2
-        # instrument view will now show clean AD/SR/Wave/Pulse/HR rows.
+        # Stages 3 + 4: repoint Block 3 column addresses (Instruments,
+        # Wave, Pulse, Filter) at the clean Driver-11-format tables we
+        # emitted in the SF2 edit area instead of into the NP21 binary's
+        # Laxity-format bytes. F2/F3/F4/F5 views will now show structured
+        # rows in the editor instead of garbage.
         edit_instr_addr = music_data_params.get('edit_instr_addr')
         if edit_instr_addr:
             gen.instr_addr = edit_instr_addr
-            # Commands table (Block 3) traditionally sits 0x70 past
-            # Instruments in NP21; keep that bias against the new
-            # instr_addr so cmd_addr also points outside the NP21 binary
-            # and isn't a stale pointer into Laxity's compiled command bytes.
+            # Commands table sits 0x70 past Instruments in NP21; keep that
+            # bias against the new instr_addr.
             gen.cmd_addr = edit_instr_addr + 0x70
+        if music_data_params.get('edit_wave_addr'):
+            gen.wave_addr = music_data_params['edit_wave_addr']
+        if music_data_params.get('edit_pulse_addr'):
+            gen.pulse_addr = music_data_params['edit_pulse_addr']
+        if music_data_params.get('edit_filter_addr'):
+            gen.filter_addr = music_data_params['edit_filter_addr']
 
         # Now regenerate headers with correct Block 5 + Block 3 addresses
         header_bytes = gen.generate_complete_headers(music_data_params)
@@ -2349,22 +2354,17 @@ class SF2Writer:
         for seq in sf2_sequences:
             edit.extend(seq)
 
-        # --- Stage 3: Driver-11-format instrument table appended to edit area ---
-        # The NP21 instrument bytes inside the embedded NP21 binary use a
-        # Laxity-specific 8-byte-per-instrument format. SF2II's editor F2
-        # view expects Driver 11's 6-byte rows
-        # (Attack/Decay, Sustain/Release, Waveform, PulseProgram,
-        #  WaveProgram/HR, ProgramSelect/HR-or-similar). Today's Block 3
-        # instr_addr points into the NP21 binary at $1A6B, so the editor
-        # reads NP21 bytes through Driver-11 6-byte interpretation and
-        # shows garbage. Stage 3 converts the extracted instruments into
-        # Driver-11 6-byte rows, appends the table to the edit area, and
-        # returns the new c64 address so the caller can repoint
-        # gen.instr_addr (Block 3 column entries) at the clean table.
-        #
-        # Display only: edits in F2 don't propagate to playback (NP21 binary
-        # at $1000 still has the original bytes that the player reads).
+        # --- Stages 3 + 4: clean Driver-11-format tables in edit area ---
+        # The NP21 binary at $1000 has Laxity-specific table formats that
+        # look like garbage when SF2II's editor reads them through its
+        # Driver-11 column interpretation (Block 3 column counts: Instr=6,
+        # Wave=2, Pulse=3, Filter=3). Stages 3-4 emit clean Driver-11
+        # tables in the SF2 edit area and repoint Block 3 column addresses
+        # at them. Display only: F2/F3/F4/F5 edits don't propagate to
+        # playback because the NP21 binary keeps reading its own table data.
         from sidm2.instrument_extraction import extract_laxity_instruments
+
+        # Stage 3 — Instruments (6 bytes per row)
         instr_table_offset = len(edit)
         instr_table_addr   = sf2_data_base + instr_table_offset
         try:
@@ -2385,28 +2385,94 @@ class SF2Writer:
             edit.extend(bytes([ad, sr, wave, pulse, wave_t, hr]))
             instr_count += 1
 
-        # Pad table to a fixed minimum size so the editor always has 16
-        # readable rows even on songs that extracted fewer.
         MIN_INSTR_ROWS = 16
         while instr_count < MIN_INSTR_ROWS:
             edit.extend(bytes([0x00, 0x00, 0x80, 0x00, 0x00, 0x00]))
             instr_count += 1
 
+        # Stage 4 — Wave / Pulse / Filter tables.
+        # extract_all_laxity_tables returns the player's tables in their
+        # native NP21 layouts; we re-pack them to Driver 11 column counts.
+        try:
+            laxity_tables = extract_all_laxity_tables(c64_data, sid_la)
+        except Exception as e:
+            logger.warning(f"  Stage 4 table extract failed: {e!r}")
+            laxity_tables = {}
+
+        # Wave: NP21 wave_table is already (note_offset, waveform) pairs
+        # — exactly Driver 11's 2-byte row layout. Direct copy.
+        wave_table_offset = len(edit)
+        wave_table_addr   = sf2_data_base + wave_table_offset
+        wave_entries = laxity_tables.get('wave_table', []) or []
+        wave_rows = 0
+        for note_off, waveform in wave_entries:
+            edit.extend(bytes([note_off & 0xFF, waveform & 0xFF]))
+            wave_rows += 1
+        # Pad to a useful editor view (32 visible rows minimum)
+        while wave_rows < 32:
+            edit.extend(bytes([0x7F, 0x00]))   # 0x7F = end-of-program
+            wave_rows += 1
+
+        # Pulse: NP21 pulse rows are 4-byte tuples; Block 3 declares Pulse
+        # with 3 columns. Emit (b0, b1, b2) — drop the last byte, which is
+        # the "next-program" pointer in NP21 internals and not part of
+        # Driver 11's 3-column display anyway.
+        pulse_table_offset = len(edit)
+        pulse_table_addr   = sf2_data_base + pulse_table_offset
+        pulse_entries = laxity_tables.get('pulse_table', []) or []
+        pulse_rows = 0
+        for entry in pulse_entries:
+            row = bytes(entry)[:3]
+            if len(row) < 3:
+                row = row + bytes(3 - len(row))
+            edit.extend(row)
+            pulse_rows += 1
+        while pulse_rows < 16:
+            edit.extend(bytes([0x7F, 0x00, 0x00]))
+            pulse_rows += 1
+
+        # Filter: NP21 stores three parallel arrays (resonance, sweep,
+        # mode) at filter_addr / +0x1A / +0x34 — different from the per-row
+        # layout SF2II expects. extract_all_laxity_tables returns
+        # filter_table as a list of bytes (3 fields per logical entry).
+        # Emit one 3-byte row per entry.
+        filter_table_offset = len(edit)
+        filter_table_addr   = sf2_data_base + filter_table_offset
+        filter_entries = laxity_tables.get('filter_table', []) or []
+        filter_rows = 0
+        for entry in filter_entries:
+            row = bytes(entry) if isinstance(entry, (bytes, bytearray)) else bytes(entry[:3])
+            if len(row) < 3:
+                row = row + bytes(3 - len(row))
+            elif len(row) > 3:
+                row = row[:3]
+            edit.extend(row)
+            filter_rows += 1
+        while filter_rows < 16:
+            edit.extend(bytes([0x7F, 0x00, 0x00]))
+            filter_rows += 1
+
         logger.info(
             f"  SF2 edit area: base=${sf2_data_base:04X}, "
-            f"OL=${ol_track1_addr:04X}, "
-            f"Seq=${seq00_addr:04X} ({num_patterns} patterns × {SEQ_SIZE}B), "
-            f"Instr=${instr_table_addr:04X} ({instr_count} rows × 6B)"
+            f"OL=${ol_track1_addr:04X}, Seq=${seq00_addr:04X} "
+            f"({num_patterns} pat×{SEQ_SIZE}B), Instr=${instr_table_addr:04X} "
+            f"({instr_count}×6B), Wave=${wave_table_addr:04X} ({wave_rows}×2B), "
+            f"Pulse=${pulse_table_addr:04X} ({pulse_rows}×3B), "
+            f"Filter=${filter_table_addr:04X} ({filter_rows}×3B)"
         )
 
         # Stage 2.5: per-voice segment counts feed the multi-pattern
         # translator at $0F0E. Total of voice_pat_counts == num_patterns.
         voice_pat_counts = [len(per_voice_pat_indices[v]) for v in range(3)]
 
-        # Stage 3: report new instrument-table address so caller can
-        # update gen.instr_addr before regenerating Block 3.
-        music_data_params['edit_instr_addr'] = instr_table_addr
+        # Stages 3 + 4: report new table addresses so caller can update
+        # gen.instr_addr / wave_addr / pulse_addr / filter_addr before
+        # regenerating Block 3.
+        music_data_params['edit_instr_addr']  = instr_table_addr
         music_data_params['edit_instr_count'] = instr_count
+        music_data_params['edit_wave_addr']   = wave_table_addr
+        music_data_params['edit_pulse_addr']  = pulse_table_addr
+        music_data_params['edit_filter_addr'] = filter_table_addr
 
         return music_data_params, bytes(edit), voice_init_idx, raw_patterns, voice_pat_counts
 
