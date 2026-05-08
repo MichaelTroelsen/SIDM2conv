@@ -234,11 +234,11 @@
     </div>
   </div>
 </div>
-<!-- Drop a "star-wars-theme.mp3" next to star.html and it'll auto-play
-     when the crawl begins. If autoplay is blocked the music button
-     becomes clickable. Original John Williams composition is © Lucasfilm/
-     Disney, so the file isn't shipped with this repo. -->
-<audio id="theme" preload="auto" src="./star-wars-theme.mp3"></audio>
+<!-- Looks for ./starwarsintro.mp3 next to star.html; auto-plays when
+     the crawl begins (or via the ♪ button if the browser blocks
+     autoplay). Original John Williams composition is © Lucasfilm/
+     Disney, so the file is gitignored, not committed. -->
+<audio id="theme" preload="auto" src="./starwarsintro.mp3"></audio>
 <button id="music" type="button" title="Toggle music">♪ music</button>
 <div id="status">booting hyperdrive...</div>
 <button id="replay" type="button" title="Replay crawl">↻ replay</button>
@@ -679,7 +679,7 @@
   audio.addEventListener('error', () => {
     musicState = 'missing';
     musicBtn.classList.add('missing');
-    musicBtn.title = 'Drop "star-wars-theme.mp3" next to star.html to enable';
+    musicBtn.title = 'Drop "starwarsintro.mp3" next to star.html to enable';
   });
   musicBtn.addEventListener('click', () => {
     if (musicState === 'missing') return;

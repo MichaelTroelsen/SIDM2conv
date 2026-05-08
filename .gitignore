@@ -182,6 +182,10 @@ SIDSF2player/
 .claude/scheduled_tasks.lock
 file_inventory.json
 
+# star.html plays this if present; copyrighted, not shipped with repo
+starwarsintro.mp3
+*.mp3
+
 # Reference SF2 corpus (Laxity-authored ground-truth files used by
 # pyscript/analyze_laxity_pattern_split.py); kept local only.
 Original_SF2/
