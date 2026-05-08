@@ -44,12 +44,13 @@
   }
 
   /* The crawl perspective container — sits below the intro layer
-     and starts its scroll just as the intro fades out. */
+     and starts its scroll just as the intro fades out. Larger
+     perspective + less rotation = readable text throughout. */
   #crawl-container {
     position: fixed;
     top: 0; left: 0;
     width: 100%; height: 100%;
-    perspective: 400px;
+    perspective: 800px;
     perspective-origin: 50% 100%;
     z-index: 1;
     overflow: hidden;
@@ -61,26 +62,31 @@
     to { opacity: 1; }
   }
 
+  /* The animation distance is set by JS (see setCrawlDistance() below)
+     because the crawl content height varies with viewport width and
+     CHANGELOG length. CSS percentages on `top` refer to the container,
+     not the element's own height — which is why the previous fixed
+     `top: -260%` value was nowhere near enough for a tall changelog. */
   #crawl {
     position: absolute;
-    top: 100%;
+    top: 100vh;
     left: 50%;
     width: min(92%, 1400px);
     transform-origin: 50% 100%;
-    transform: translateX(-50%) rotateX(22deg);
+    transform: translateX(-50%) rotateX(18deg);
     color: #FFE81F;
     font-weight: bold;
     text-align: justify;
-    font-size: clamp(36px, 5.5vw, 84px);
-    line-height: 1.5;
+    font-size: clamp(40px, 4.5vw, 64px);
+    line-height: 1.45;
     text-shadow: 0 0 4px rgba(255, 232, 31, 0.25);
-    animation: crawlScroll 90s linear forwards;
+    animation: crawlScroll var(--crawl-duration, 90s) linear forwards;
     animation-delay: 6.8s;
     will-change: top;
   }
   @keyframes crawlScroll {
-    0%   { top: 100%; }
-    100% { top: -260%; }
+    0%   { top: 100vh; }
+    100% { top: calc(-1 * var(--crawl-distance, 4000px)); }
   }
 
   #crawl h1 {
@@ -565,6 +571,22 @@
     }
   }
 
+  // ===================== Crawl distance measurement =====================
+  // The crawl `top` animates from 100vh (just below viewport) down to
+  // -(scrollHeight + 100vh), which is enough to drag the entire crawl
+  // up off the top of the screen, regardless of how long the CHANGELOG
+  // entry is. Recompute on resize. Re-run after content load.
+  function setCrawlDistance() {
+    const crawl = document.getElementById('crawl');
+    const distance = crawl.scrollHeight + window.innerHeight;
+    // Pace the scroll at ~80 px/sec so a small entry doesn't blast past
+    // and a huge entry isn't unwatchably slow. Clamped to 60–180s.
+    const duration = Math.max(60, Math.min(180, Math.round(distance / 80)));
+    crawl.style.setProperty('--crawl-distance', distance + 'px');
+    crawl.style.setProperty('--crawl-duration', duration + 's');
+  }
+  window.addEventListener('resize', setCrawlDistance);
+
   // ===================== Replay =====================
   document.getElementById('replay').addEventListener('click', () => {
     const intro     = document.getElementById('intro');
@@ -575,9 +597,12 @@
       void el.offsetWidth;             // force reflow so the animation can restart
       el.style.animation = '';
     });
+    setCrawlDistance();
   });
 
-  loadChangelog();
+  loadChangelog().then(setCrawlDistance);
+  // also remeasure once everything's painted, in case fonts caused reflow
+  setTimeout(setCrawlDistance, 200);
 })();
 </script>
 </body>
