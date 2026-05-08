@@ -1485,11 +1485,12 @@ class SF2Writer:
         #           translator at $0FAE (77B budget).
         #   $0F80 — Stage 2.5: multi-pattern translator needs ~87B; bumping
         #           HANDLER_BASE earlier gives translator a $0F8E..$0FFA
-        #           window (109B). Stinsen+Unboxed headers actually end
-        #           around $0F64, so $0F80 still leaves ~28B of slack for
-        #           songs whose Block 4 (table-text) carries longer
-        #           instrument or command names.
-        HANDLER_BASE   = 0x0F80
+        #           window (109B).
+        #   $0F90 — Stage 5: Block 9 grew from 1B placeholder to 41B
+        #           (4 InstrumentDataPointerDescription entries).
+        #           Stinsen+Unboxed headers now end ~$0F8B, leaving only
+        #           ~5B slack to $0F90. Translator window $0F9E..$0FFA = 92B.
+        HANDLER_BASE   = 0x0F90
         INIT_HANDLER   = HANDLER_BASE + 0
         PLAY_HANDLER   = HANDLER_BASE + 4
         STOP_HANDLER   = HANDLER_BASE + 8
@@ -2374,20 +2375,36 @@ class SF2Writer:
                            f"falling back to NP21 instr_addr (garbled F2 view)")
             laxity_instrs = []
 
+        # Stage 5: instrument byte order matches Driver 11 reference layout
+        # (matters for Block 9 DriverInstrumentDataDescriptor below — Block 9
+        # tells SF2II which byte position holds which table-program index):
+        #   byte 0: AD          (Attack/Decay)
+        #   byte 1: SR          (Sustain/Release)
+        #   byte 2: HR          (Hard-Restart flags; bit 0x40 enables filter)
+        #   byte 3: Filter      (filter program index; only used when HR bit 6 set)
+        #   byte 4: Pulse       (pulse program index)
+        #   byte 5: Wave        (wave program index)
+        # The "waveform character" byte (0x41/Pulse, 0x21/Saw, etc.) is NOT
+        # stored in the instrument row — it's derived from wave_table[wave][1]
+        # at runtime.
         instr_count = 0
         for instr in laxity_instrs:
-            ad     = instr.get('ad', 0) & 0xFF
-            sr     = instr.get('sr', 0) & 0xFF
-            wave   = instr.get('wave_for_sf2', 0x41) & 0xFF
-            pulse  = instr.get('pulse_ptr', 0) & 0xFF
-            wave_t = instr.get('wave_ptr', 0) & 0xFF
-            hr     = instr.get('restart', 0) & 0xFF
-            edit.extend(bytes([ad, sr, wave, pulse, wave_t, hr]))
+            ad      = instr.get('ad', 0) & 0xFF
+            sr      = instr.get('sr', 0) & 0xFF
+            hr      = instr.get('restart', 0) & 0xFF
+            # extract_laxity_instruments doesn't expose a per-instrument
+            # filter program ptr (NP21's filter selection is global per
+            # song, not per instrument). Emit 0; Block 9 makes filter
+            # column conditional on HR bit 0x40 anyway, so 0 = "no filter".
+            filt    = 0
+            pulse   = instr.get('pulse_ptr', 0) & 0xFF
+            wave    = instr.get('wave_ptr', 0) & 0xFF
+            edit.extend(bytes([ad, sr, hr, filt, pulse, wave]))
             instr_count += 1
 
         MIN_INSTR_ROWS = 16
         while instr_count < MIN_INSTR_ROWS:
-            edit.extend(bytes([0x00, 0x00, 0x80, 0x00, 0x00, 0x00]))
+            edit.extend(bytes([0x00, 0x00, 0x00, 0x00, 0x00, 0x00]))
             instr_count += 1
 
         # Stage 4 — Wave / Pulse / Filter tables.
