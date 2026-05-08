@@ -29,12 +29,21 @@ class TableDescriptor:
         enter_rule: int = 0xFF,
         color_rule: int = 0xFF,
         visible_rows: int = 0,
+        text_field_size: int = 0,
     ):
         """Properties bits (per parse log): bit0=EnableInsertDelete,
         bit1=LayoutVertically, bit2=IndexAsContinuousMemory.
 
         Rule IDs (ins_del / enter / color) reference Block 7 / Block 8 /
         Block 6 entries respectively. 0xFF means "no rule".
+
+        text_field_size: width of the side-text column SF2II's editor
+        renders next to this table. >0 makes PrepareLayout build a
+        ComponentTableRowElementsWithText (Refresh path that requires
+        a populated AuxilaryDataTableText entry); =0 makes it build the
+        plain ComponentTableRowElements (no text column, simpler Refresh
+        path). Bundled "Driver 11 Test - Arpeggio.sf2" uses 12 for
+        Commands, 18 for Instruments, 0 for everything else.
         """
         self.name = name
         self.table_id = table_id
@@ -48,14 +57,27 @@ class TableDescriptor:
         self.enter_rule = enter_rule
         self.color_rule = color_rule
         self.visible_rows = visible_rows if visible_rows > 0 else rows
+        self.text_field_size = text_field_size
 
     def to_bytes(self) -> bytes:
         """
-        Generate table descriptor bytes for Block 3.
+        Generate table descriptor bytes for Block 3, matching the format
+        SF2II's DriverInfo::ParseDriverTables expects (driver_info.cpp:347):
 
         Format:
-        [Type:1][ID:1][NameLen:1][Name:Var][Layout:1][Flags:1]
+        [Type:1][ID:1][TextFieldSize:1][Name+NUL:Var][Layout:1][Flags:1]
         [Rules:3][Address:2LE][Columns:2LE][Rows:2LE][VisibleRows:1]
+
+        Pre-2026-05-08 the writer emitted NameLen at the TextFieldSize
+        position. ParseDriverTables coincidentally still parsed cleanly
+        (NameLen happens to be a small u8 like a real tfs would be) but
+        every table ended up with m_TextFieldSize = strlen(name)+1.
+        That made every table a "WithText" table, and the WithText
+        component's Refresh writes a stray byte 0xDE/0xDF when its
+        AuxilaryDataTableText lookup misses — corrupting m_MainTextField
+        ~50% of the time. Emitting the proper tfs (with most tables 0)
+        switches them to the simpler plain ComponentTableRowElements
+        which doesn't take that path.
 
         Returns:
             Binary representation of this descriptor
@@ -66,10 +88,21 @@ class TableDescriptor:
         data.append(self.table_type)
         data.append(self.table_id)
 
-        # Name with null terminator
-        name_bytes = self.name.encode("ascii") + b"\x00"
-        data.append(len(name_bytes))
-        data.extend(name_bytes)
+        # TextFieldSize (NEW: was NameLen before 2026-05-08).
+        data.append(self.text_field_size)
+
+        # Name in PETSCII (lowercase a-z → 0x01-0x1A) + null terminator.
+        # Bundled SF2II reference files use PETSCII for table names; ASCII
+        # parses cleanly too, but PETSCII keeps us bug-for-bug compatible
+        # with the corpus.
+        name_bytes = bytearray()
+        for ch in self.name:
+            if 'a' <= ch <= 'z':
+                name_bytes.append(ord(ch) - ord('a') + 1)
+            else:
+                name_bytes.append(ord(ch))
+        name_bytes.append(0x00)
+        data.extend(bytes(name_bytes))
 
         # Layout, properties (bit-flags), then 3 rule IDs.
         data.append(self.layout)
@@ -298,6 +331,11 @@ class SF2HeaderGenerator:
         # at a unique high-RAM address ($C000 region — outside our PRG load
         # range, so SF2II's emulated C64 reads zeros). Display will be empty;
         # editor loads.
+        # text_field_size matches bundled "Driver 11 Test - Arpeggio.sf2":
+        # 12 for Commands, 18 for Instruments, 0 for everything else.
+        # Tables with tfs=0 use plain ComponentTableRowElements (no text
+        # column) instead of ...WithText, sidestepping the WithText
+        # Refresh-path corruption that fires ~50% on Arp.
         tables = [
             TableDescriptor(
                 # 3 columns, not the 2 NP21 actually uses, because the
@@ -308,54 +346,63 @@ class SF2HeaderGenerator:
                 columns=3, rows=64, visible_rows=16,
                 table_type=0x81, layout=0x01, properties=0x00,
                 ins_del_rule=0xFF, enter_rule=0x03, color_rule=0xFF,
+                text_field_size=12,
             ),
             TableDescriptor(
                 name="Instruments", table_id=1, address=self.instr_addr,
                 columns=6, rows=32, visible_rows=16,
                 table_type=0x80, layout=0x01, properties=0x00,
                 ins_del_rule=0xFF, enter_rule=0x01, color_rule=0xFF,
+                text_field_size=18,
             ),
             TableDescriptor(
                 name="Wave", table_id=2, address=self.wave_addr,
                 columns=2, rows=256, visible_rows=16,
                 table_type=0x00, layout=0x01, properties=0x01,
                 ins_del_rule=0x00, enter_rule=0x00, color_rule=0x00,
+                text_field_size=0,
             ),
             TableDescriptor(
                 name="Pulse", table_id=3, address=self.pulse_addr,
                 columns=3, rows=256, visible_rows=16,
                 table_type=0x00, layout=0x01, properties=0x01,
                 ins_del_rule=0x01, enter_rule=0x02, color_rule=0x01,
+                text_field_size=0,
             ),
             TableDescriptor(
                 name="Filter", table_id=4, address=self.filter_addr,
                 columns=3, rows=256, visible_rows=16,
                 table_type=0x00, layout=0x01, properties=0x01,
                 ins_del_rule=0x02, enter_rule=0x02, color_rule=0x01,
+                text_field_size=0,
             ),
             TableDescriptor(
                 name="Arp", table_id=6, address=0xC000,
                 columns=1, rows=256, visible_rows=16,
                 table_type=0x00, layout=0x01, properties=0x01,
                 ins_del_rule=0x03, enter_rule=0xFF, color_rule=0x02,
+                text_field_size=0,
             ),
             TableDescriptor(
                 name="Tempo", table_id=7, address=0xC100,
                 columns=1, rows=256, visible_rows=16,
                 table_type=0x00, layout=0x01, properties=0x01,
                 ins_del_rule=0xFF, enter_rule=0xFF, color_rule=0x00,
+                text_field_size=0,
             ),
             TableDescriptor(
                 name="HR", table_id=5, address=0xC200,
                 columns=2, rows=16, visible_rows=6,
                 table_type=0x00, layout=0x01, properties=0x00,
                 ins_del_rule=0xFF, enter_rule=0xFF, color_rule=0xFF,
+                text_field_size=0,
             ),
             TableDescriptor(
                 name="Init", table_id=8, address=0xC300,
                 columns=2, rows=32, visible_rows=8,
                 table_type=0x00, layout=0x01, properties=0x02,
                 ins_del_rule=0xFF, enter_rule=0xFF, color_rule=0xFF,
+                text_field_size=0,
             ),
         ]
 
