@@ -1479,11 +1479,17 @@ class SF2Writer:
         play_addr = getattr(header, 'play_address', sid_la + 3) if header else sid_la + 3
 
         LOAD_BASE      = 0x0D7E    # SF2 loads here; 0x1337 magic goes here
-        # Handler base moved to $0FA0 to make room for the full 9-block SF2II
-        # editor header set (~525B; $0F00 only allowed 386B). Translator at
-        # $0FAE leaves 82 bytes before NP21 binary at $1000 — enough for the
-        # 51-byte runtime translator plus small overhead.
-        HANDLER_BASE   = 0x0FA0
+        # HANDLER_BASE history:
+        #   $0F00 — original; only allowed 386B for the 9-block header set
+        #   $0FA0 — moved to fit ~525B header set + 51-byte single-pattern
+        #           translator at $0FAE (77B budget).
+        #   $0F80 — Stage 2.5: multi-pattern translator needs ~87B; bumping
+        #           HANDLER_BASE earlier gives translator a $0F8E..$0FFA
+        #           window (109B). Stinsen+Unboxed headers actually end
+        #           around $0F64, so $0F80 still leaves ~28B of slack for
+        #           songs whose Block 4 (table-text) carries longer
+        #           instrument or command names.
+        HANDLER_BASE   = 0x0F80
         INIT_HANDLER   = HANDLER_BASE + 0
         PLAY_HANDLER   = HANDLER_BASE + 4
         STOP_HANDLER   = HANDLER_BASE + 8
@@ -1581,9 +1587,10 @@ class SF2Writer:
             return
 
         # --- Extract NP21 patterns and build SF2 edit data area ---
-        # Returns voice_init_idx so we can compute per-voice shadow slots and
-        # the original NP21 sequence bytes (for pre-filling the shadow).
-        music_data_params, sf2_edit_data, voice_init_idx, raw_patterns = \
+        # Returns voice_init_idx so we can compute per-voice shadow slots,
+        # raw_patterns (original NP21 sequence bytes for shadow pre-fill),
+        # and voice_pat_counts (Stage 2.5: feeds the multi-pattern translator).
+        music_data_params, sf2_edit_data, voice_init_idx, raw_patterns, voice_pat_counts = \
             self._build_np21_sf2_edit_area(c64_data, sid_la)
 
         # --- Shadow buffer: per-voice flat NP21 stream + ch_seq_ptr patch ---
@@ -1669,33 +1676,40 @@ class SF2Writer:
         file_data[2:2 + len(header_bytes)] = header_bytes
 
         # Handler code:
-        #   INIT (HANDLER_BASE+0): JSR init_addr; RTS  (4 bytes)
-        #   PLAY (HANDLER_BASE+4): JSR play_addr; RTS  (4 bytes)
-        #   STOP (HANDLER_BASE+8): LDA #0; STA $D418; RTS  (6 bytes)
-        #
-        # Stage 2 note: PLAY is plain JSR play_addr (NOT JMP TRANSLATE_BASE).
-        # The runtime translator at $0F0E (criterion-3 edit-propagation) is
-        # disabled because today's "pat N -> shadow N" logic doesn't handle
-        # multi-pattern voices. Re-enabling = Stage 2.5 follow-up. Audio
-        # fidelity is preserved by the build-time shadow pre-fill above.
+        #   INIT (HANDLER_BASE+0): JSR init_addr; RTS                (4 bytes)
+        #   PLAY (HANDLER_BASE+4): JMP TRANSLATE_BASE + 1B NOP fill  (4 bytes)
+        #     (translator does JSR play_addr internally on completion)
+        #   STOP (HANDLER_BASE+8): LDA #0; STA $D418; RTS            (6 bytes)
+        # Stage 2.5: PLAY rewires to JMP TRANSLATE_BASE again so editor edits
+        # propagate through _emit_multipat_translator() to the per-voice
+        # shadow slots. If num_patterns == 0 (no music data) PLAY stays as
+        # plain JSR play_addr; RTS as a degenerate fallback.
         hnd_off = 2 + (HANDLER_BASE - LOAD_BASE)
         file_data[hnd_off:hnd_off + 4]  = bytes([0x20, init_addr & 0xFF, init_addr >> 8, 0x60])
-        file_data[hnd_off + 4:hnd_off + 8]  = bytes([0x20, play_addr & 0xFF, play_addr >> 8, 0x60])
+        if num_patterns > 0:
+            file_data[hnd_off + 4:hnd_off + 8]  = bytes([
+                0x4C, TRANSLATE_BASE & 0xFF, (TRANSLATE_BASE >> 8) & 0xFF, 0xEA
+            ])
+        else:
+            file_data[hnd_off + 4:hnd_off + 8]  = bytes([0x20, play_addr & 0xFF, play_addr >> 8, 0x60])
         file_data[hnd_off + 8:hnd_off + 14] = bytes([0xA9, 0x00, 0x8D, 0x18, 0xD4, 0x60])
 
         # NP21 binary (with patched ch_seq_ptr) at its original load address
         np21_off = 2 + gap
         file_data[np21_off:np21_off + len(c64_data)] = c64_data
 
-        # Stage 2 note: runtime translator emission at $0F0E is suppressed;
-        # PLAY is plain JSR play_addr above. _emit_sf2_to_np21_translator()
-        # remains in the file as dead code, ready to be revived by Stage 2.5.
-        if False and num_patterns > 0:  # disabled — see Stage 2 architecture comment above
-            translator_bytes = self._emit_sf2_to_np21_translator(
-                num_patterns=num_patterns,
+        # Stage 2.5: emit multi-pattern translator at TRANSLATE_BASE. Walks
+        # each voice's segment range, concatenates pattern bytes into the
+        # voice's shadow slot, terminates with 0xFF + 0x00. Audio fidelity
+        # is preserved (build-time shadow has same content), and editor
+        # edits to SF2 patterns propagate through here on every PLAY tick.
+        if num_patterns > 0:
+            translator_bytes = self._emit_multipat_translator(
+                voice_pat_counts=voice_pat_counts,
                 seq00_addr=music_data_params['seq00_addr'],
                 shadow_base=shadow_base,
                 play_addr=play_addr,
+                translate_base=TRANSLATE_BASE,
             )
             tr_off = 2 + (TRANSLATE_BASE - LOAD_BASE)
             if tr_off + len(translator_bytes) > np21_off:
@@ -1804,6 +1818,144 @@ class SF2Writer:
                        0x60])                              # JSR play_addr; RTS
 
         return bytes(code)
+
+    def _emit_multipat_translator(self, voice_pat_counts, seq00_addr, shadow_base,
+                                  play_addr, translate_base):
+        """Stage 2.5: Multi-pattern runtime translator.
+
+        For each voice 0..2:
+          1. Reset DST to shadow_base + voice*256, DST_Y to 0.
+          2. Load voice's pattern count from inline data table.
+          3. For each pattern: copy bytes from src (SF2 edit area) until 0x7F
+             into the voice's shadow slot at DST_Y, advance DST_Y per byte,
+             advance src by 256 (next SF2 pattern) per pattern.
+          4. After all voice's patterns: write 0xFF + 0x00 to dst (loop
+             terminator the NP21 player needs).
+        After all 3 voices: JSR play_addr; RTS.
+
+        ZP usage:
+          $F7      = src_y_save (temp)
+          $F8      = dst_y (current write offset within voice slot)
+          $F9      = pat_remaining (patterns left in current voice)
+          $FA      = voice_idx (0..2)
+          $FB/$FC  = src_lo/src_hi (current SF2 pattern start)
+          $FD/$FE  = dst_lo/dst_hi (voice shadow slot base)
+
+        voice_pat_counts: list of 3 ints (per-voice segment counts)
+        translate_base:   absolute c64 addr where this code lives (so
+                          we can compute the absolute address of the
+                          inline data table emitted at end of code).
+
+        Returns the assembled byte sequence; caller emits at translate_base.
+        """
+        SRC_LO, SRC_HI = 0xFB, 0xFC
+        DST_LO, DST_HI = 0xFD, 0xFE
+        DST_Y          = 0xF8
+        PAT_REM        = 0xF9
+        VOICE_IDX      = 0xFA
+        SRC_Y_TMP      = 0xF7
+
+        SHADOW_LO = shadow_base & 0xFF
+        SHADOW_HI = (shadow_base >> 8) & 0xFF
+
+        c = bytearray()
+
+        # ------ Setup (12 bytes): src = seq00_addr, voice = 0
+        c += bytes([0xA9, seq00_addr & 0xFF, 0x85, SRC_LO,
+                    0xA9, (seq00_addr >> 8) & 0xFF, 0x85, SRC_HI,
+                    0xA9, 0x00, 0x85, VOICE_IDX])
+
+        # ------ voice_loop:
+        voice_loop = len(c)
+
+        # DST = shadow_base + voice_idx*256 (10 bytes)
+        c += bytes([0xA9, SHADOW_LO, 0x85, DST_LO,        # LDA #lo; STA dst_lo
+                    0xA5, VOICE_IDX,                       # LDA voice_idx
+                    0x18,                                   # CLC
+                    0x69, SHADOW_HI,                        # ADC #shadow_hi
+                    0x85, DST_HI])                          # STA dst_hi
+
+        # DST_Y = 0; PAT_REM = pat_count_table[voice_idx]
+        # Inline data table sits at translate_base + (eventual table offset);
+        # we patch the LDA absolute,X operand once we know its location.
+        c += bytes([0xA9, 0x00, 0x85, DST_Y,               # LDA #0; STA dst_y
+                    0xA6, VOICE_IDX,                        # LDX voice_idx
+                    0xBD, 0x00, 0x00,                       # LDA <table>,X (operand patched)
+                    0x85, PAT_REM])                         # STA pat_rem
+        table_load_operand = len(c) - 4   # position of the lo byte of table addr
+
+        # ------ pat_loop:
+        pat_loop = len(c)
+        c += bytes([0xA0, 0x00])                            # LDY #0 (src offset)
+
+        # ------ copy_loop:
+        copy_loop = len(c)
+        c += bytes([0xB1, SRC_LO,                           # LDA (src),Y
+                    0xC9, 0x7F,                              # CMP #$7F
+                    0xF0, 0])                                # BEQ pat_end (fixup)
+        beq_pat_end_pos = len(c) - 1
+
+        c += bytes([0x84, SRC_Y_TMP,                        # STY src_y_tmp
+                    0xA4, DST_Y,                             # LDY dst_y
+                    0x91, DST_LO,                            # STA (dst),Y
+                    0xE6, DST_Y,                             # INC dst_y
+                    0xA4, SRC_Y_TMP,                         # LDY src_y_tmp
+                    0xC8])                                   # INY
+
+        rel_back = copy_loop - (len(c) + 2)
+        if not -128 <= rel_back <= 127:
+            raise RuntimeError(f"copy_loop back-branch out of range: {rel_back}")
+        c += bytes([0xD0, rel_back & 0xFF])                 # BNE copy_loop
+
+        # ------ pat_end:
+        pat_end = len(c)
+        c[beq_pat_end_pos] = (pat_end - beq_pat_end_pos - 1) & 0xFF
+
+        c += bytes([0xE6, SRC_HI,                           # INC src_hi (+= 256)
+                    0xC6, PAT_REM])                          # DEC pat_rem
+        rel_back2 = pat_loop - (len(c) + 2)
+        if not -128 <= rel_back2 <= 127:
+            raise RuntimeError(f"pat_loop back-branch out of range: {rel_back2}")
+        c += bytes([0xD0, rel_back2 & 0xFF])                # BNE pat_loop
+
+        # ------ voice_done: write 0xFF, 0x00 terminator
+        c += bytes([0xA9, 0xFF,                             # LDA #$FF
+                    0xA4, DST_Y,                             # LDY dst_y
+                    0x91, DST_LO,                            # STA (dst),Y
+                    0xC8,                                    # INY
+                    0xA9, 0x00,                              # LDA #0
+                    0x91, DST_LO])                           # STA (dst),Y
+
+        # Advance voice; if < 3, loop
+        c += bytes([0xE6, VOICE_IDX,                        # INC voice_idx
+                    0xA5, VOICE_IDX,                         # LDA voice_idx
+                    0xC9, 0x03])                             # CMP #3
+        rel_voice_back = voice_loop - (len(c) + 2)
+        if -128 <= rel_voice_back <= 127:
+            c += bytes([0x90, rel_voice_back & 0xFF])       # BCC voice_loop
+        else:
+            # Out of branch range — use BCS skip + JMP voice_loop
+            c += bytes([0xB0, 0x03,                         # BCS skip (+3)
+                        0x4C,                                 # JMP voice_loop
+                        (translate_base + voice_loop) & 0xFF,
+                        ((translate_base + voice_loop) >> 8) & 0xFF])
+
+        # ------ all voices done: JSR play_addr; RTS
+        c += bytes([0x20, play_addr & 0xFF, (play_addr >> 8) & 0xFF, 0x60])
+
+        # ------ Inline data: voice_pat_counts table (3 bytes)
+        table_offset = len(c)
+        if len(voice_pat_counts) != 3:
+            raise ValueError("voice_pat_counts must have 3 entries")
+        for n in voice_pat_counts:
+            c.append(n & 0xFF)
+
+        # Patch the LDA absolute,X table operand to point at the table
+        table_abs = translate_base + table_offset
+        c[table_load_operand]     = table_abs & 0xFF
+        c[table_load_operand + 1] = (table_abs >> 8) & 0xFF
+
+        return bytes(c)
 
     def _build_np21_sf2_edit_area(self, c64_data: bytes, sid_la: int):
         """Extract NP21 patterns/orderlists and build an SF2-format edit data area.
@@ -2190,7 +2342,11 @@ class SF2Writer:
             f"Seq=${seq00_addr:04X} ({num_patterns} patterns × {SEQ_SIZE}B)"
         )
 
-        return music_data_params, bytes(edit), voice_init_idx, raw_patterns
+        # Stage 2.5: per-voice segment counts feed the multi-pattern
+        # translator at $0F0E. Total of voice_pat_counts == num_patterns.
+        voice_pat_counts = [len(per_voice_pat_indices[v]) for v in range(3)]
+
+        return music_data_params, bytes(edit), voice_init_idx, raw_patterns, voice_pat_counts
 
     def _inject_laxity_music_data(self) -> None:
         """Inject music data into Laxity driver (native format, no conversion)
