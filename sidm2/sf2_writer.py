@@ -1358,21 +1358,18 @@ class SF2Writer:
         # missing aux-pointer fix without the full bundled chain — that
         # alone gives SF2II access to instrument names + song description
         # which the prior aux-pointer-zero made unreachable.
+        # Stage 6.5/6.6: aux chain order is [id=4 TableText, id=5 Songs, END].
+        # Reference Stinsen has the full bundled order [3, 2, 1, 4, 5, END]
+        # but our id=1/2/3 (PlayMarkers/HardwarePreferences/EditingPreferences)
+        # bodies need their own RE work — adding them with verbatim-copied
+        # reference bytes broke F10-load because they reference state our
+        # SF2 layout doesn't have. Stage 6.7 follow-up may restore them.
         aux_data = bytearray()
-        # Stage 6.5: emit [TableText (id=4) with real names + reference's
-        # 3-entry shape, END]. Bug fixes vs the original encoding:
-        #   - table_id packed as u32 LE (not signed i32). Same on the
-        #     wire for positive small ids; defensive.
-        #   - text_count MUST equal the Block 3 row count for that table
-        #     (Commands=64, Instruments=32), not just the number of names
-        #     we have. Padded with empty strings.
-        #   - Reference includes an extra entry (table_id=64, 256 empty
-        #     entries). Mirror it to match the bundled corpus exactly.
-        # id=1/2/3/5 still omitted — Stage 6.6 follow-up if we want to
-        # populate hardware/editing prefs and song description.
         aux_data.extend(_make_aux_block(4, 2, bytes(table_text_data)))
+        if desc_data:
+            aux_data.extend(_make_aux_block(5, 2, bytes(desc_data)))
         aux_data.extend(bytes([0x00, 0x00, 0x00, 0x00, 0x00]))   # END marker
-        _ = body1, body2, body3, desc_data  # silence unused
+        _ = body1, body2, body3  # silence unused
 
         # Place aux chain at end of file. C64 address of aux_chain_start
         # = LOAD_BASE + (file offset of aux start).
@@ -1393,7 +1390,7 @@ class SF2Writer:
             self.output[aux_pointer_offset + 1] = (aux_chain_c64_addr >> 8) & 0xFF
             self.output.extend(aux_data)
             logger.info(f"    Aux chain @ ${aux_chain_c64_addr:04X} "
-                        f"({len(aux_data)}B, [TableText, END]), "
+                        f"({len(aux_data)}B, [TableText, Songs, END]), "
                         f"pointer@$0FFB written at file offset ${aux_pointer_offset:04X}")
             if hasattr(self.data, 'header') and self.data.header:
                 logger.info(f"    Written metadata: {self.data.header.name} by {self.data.header.author}")
@@ -1403,28 +1400,33 @@ class SF2Writer:
             logger.debug("    Warning: Could not find auxiliary data pointer location")
 
     def _build_description_data(self) -> Optional[bytearray]:
-        """Build description data block with song metadata from SID header"""
+        """Build the AuxilaryDataSongs body (used as aux block id=5).
+
+        Per AuxilaryDataSongs::RestoreFromSaveData (auxilary_data_songs.cpp:107):
+          [u8 song_count]
+          [u8 selected_song]
+          per song (when data_version == 2):
+            [u8 string_length] [string_length bytes — pascal string]
+
+        Reference Stinsen ships exactly one song named "Main".
+        We use the SID's PSID title (truncated to 16 chars) so each song
+        gets a real label in SF2II's "Songs" panel.
+        """
         if not hasattr(self.data, 'header') or not self.data.header:
-            return None
+            song_name = "Main"
+        else:
+            header = self.data.header
+            song_name = (header.name if header.name else "Main").strip() or "Main"
 
-        header = self.data.header
+        # The "Songs" panel shows song name — keep short to avoid weird wraps
+        song_name = song_name[:16]
+        song_bytes = song_name.encode('latin-1', errors='replace')
+
         data = bytearray()
-
-        name = header.name if header.name else ""
-        name_bytes = name.encode('latin-1', errors='replace')[:255]
-        data.append(len(name_bytes))
-        data.extend(name_bytes)
-
-        author = header.author if header.author else ""
-        author_bytes = author.encode('latin-1', errors='replace')[:255]
-        data.append(len(author_bytes))
-        data.extend(author_bytes)
-
-        copyright_str = header.copyright if header.copyright else ""
-        copyright_bytes = copyright_str.encode('latin-1', errors='replace')[:255]
-        data.append(len(copyright_bytes))
-        data.extend(copyright_bytes)
-
+        data.append(0x01)              # song_count = 1
+        data.append(0x00)              # selected_song = 0
+        data.append(len(song_bytes))   # pascal-string length
+        data.extend(song_bytes)
         return data
 
     def _build_table_text_data(self, instrument_names, command_names, instr_table_id=1, cmd_table_id=0) -> bytearray:
