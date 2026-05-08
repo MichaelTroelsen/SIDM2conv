@@ -1586,48 +1586,58 @@ class SF2Writer:
         music_data_params, sf2_edit_data, voice_init_idx, raw_patterns = \
             self._build_np21_sf2_edit_area(c64_data, sid_la)
 
-        # --- Criterion-3: shadow buffer + pre-filled NP21 bytes + ch_seq_ptr patch ---
-        # The player's per-voice sequence pointers at $1A1C/$1A1F are read on
-        # song-restart events (state machine cycles 2->1->Label_5 fires->2->...
-        # whenever a sequence's loop terminator is reached). Patching them to
-        # point at a "shadow" buffer that holds the same NP21 bytes (= what
-        # _build_np21_sf2_edit_area extracted, in NP21 format with the loop
-        # terminator restored) gives the player identical input → identical
-        # playback. The shadow IS where the runtime translator (emitted at
-        # $0F0E below) writes its output on every PLAY tick — so editor edits
-        # to the SF2 edit area at seq00_addr propagate to playback through the
-        # translator.
+        # --- Shadow buffer: per-voice flat NP21 stream + ch_seq_ptr patch ---
+        #
+        # Stage 2 (segmentation) note: the shadow now holds ONE flat stream
+        # per voice (= the original NP21 byte stream the song's player would
+        # read), regardless of how many SF2 patterns we emit for the editor's
+        # display. This decouples the editor's "many short patterns" view
+        # from the player's "one continuous voice stream" model.
+        #
+        # The runtime translator at $0F0E (criterion-3 edit-propagation) is
+        # DISABLED for now (PLAY = JSR play_addr; RTS, not JMP $0F0E),
+        # because the existing translator's "SF2 pat N -> shadow slot N"
+        # logic doesn't work for multi-pattern voices. Re-enabling requires
+        # a multi-pattern translator that walks each voice's orderlist and
+        # concatenates referenced patterns into the voice's shadow slot —
+        # tracked as Stage 2.5 follow-up. Until then, edits in the editor
+        # are visual only and don't propagate to playback.
         SEQ_SHADOW_SIZE = 256       # NP21 sequence max length the player can address
+        SHADOW_VOICES = 3           # one slot per voice
         num_patterns = len(raw_patterns)
-        shadow_buffer_size = num_patterns * SEQ_SHADOW_SIZE
+        # voice_streams: list[(body_bytes, loop_target)] of length 3, one per voice.
+        # Built from raw_patterns + voice_init_idx (which voice maps to which
+        # extracted stream — voices that share a stream share a slot in
+        # voice_streams too, but each voice still gets its own shadow slot
+        # so ch_seq_ptr per voice is unambiguous).
+        voice_streams = []
+        for v in range(3):
+            if num_patterns > 0 and 0 <= voice_init_idx[v] < num_patterns:
+                voice_streams.append(raw_patterns[voice_init_idx[v]])
+            else:
+                voice_streams.append((b"", None))
+
+        shadow_buffer_size = SHADOW_VOICES * SEQ_SHADOW_SIZE
         sf2_data_base = sid_la + len(c64_data)
         shadow_base = sf2_data_base + len(sf2_edit_data)
 
-        # Pre-fill shadow with the original NP21 sequence body bytes per pattern,
-        # terminated with NP21 0xFF + loop_target. This is the same content the
-        # runtime translator will later regenerate from the SF2 edit area; doing
-        # it at build time means zig64 / non-editor playback paths see correct
-        # bytes even though they don't trigger the runtime translator.
+        # Pre-fill shadow with each voice's full NP21 byte stream + loop terminator.
         shadow_buffer = bytearray(shadow_buffer_size)
-        for idx, (body, loop_target) in enumerate(raw_patterns):
-            slot = idx * SEQ_SHADOW_SIZE
-            for j, b in enumerate(body):
-                if j >= SEQ_SHADOW_SIZE - 2:
-                    break
-                shadow_buffer[slot + j] = b
+        for v, (body, loop_target) in enumerate(voice_streams):
+            slot = v * SEQ_SHADOW_SIZE
             n = min(len(body), SEQ_SHADOW_SIZE - 2)
+            shadow_buffer[slot : slot + n] = body[:n]
             shadow_buffer[slot + n]     = 0xFF
             shadow_buffer[slot + n + 1] = loop_target & 0xFF if loop_target is not None else 0x00
 
-        # Patch ch_seq_ptr ($0A1C/$0A1F) in c64_data to point at per-voice shadow slots.
-        # Voices that originally shared a sequence still share a shadow slot
-        # (voice_init_idx maps voice -> dedupe-collapsed pattern index).
+        # Patch ch_seq_ptr ($0A1C/$0A1F) in c64_data — each voice points to
+        # its own shadow slot at shadow_base + v*256.
         c64_data = bytearray(c64_data)
         CH_SEQ_LO_OFF = 0x0A1C
         CH_SEQ_HI_OFF = 0x0A1F
         if num_patterns > 0:
-            for v in range(3):
-                voice_shadow_addr = shadow_base + voice_init_idx[v] * SEQ_SHADOW_SIZE
+            for v in range(SHADOW_VOICES):
+                voice_shadow_addr = shadow_base + v * SEQ_SHADOW_SIZE
                 if CH_SEQ_LO_OFF + v < len(c64_data) and CH_SEQ_HI_OFF + v < len(c64_data):
                     c64_data[CH_SEQ_LO_OFF + v] = voice_shadow_addr & 0xFF
                     c64_data[CH_SEQ_HI_OFF + v] = (voice_shadow_addr >> 8) & 0xFF
@@ -1658,29 +1668,29 @@ class SF2Writer:
         # SF2 magic + header blocks at $0D7E (file offset 2)
         file_data[2:2 + len(header_bytes)] = header_bytes
 
-        # Handler code at $0F00:
-        #   INIT ($0F00): JSR init_addr; RTS  (4 bytes)
-        #   PLAY ($0F04): JMP TRANSLATE_BASE  (3 bytes + 1 NOP) — translator JSRs play internally
-        #   STOP ($0F08): LDA #0; STA $D418; RTS  (6 bytes)
-        # When num_patterns == 0 there's no shadow → PLAY stays as plain JSR play; RTS.
+        # Handler code:
+        #   INIT (HANDLER_BASE+0): JSR init_addr; RTS  (4 bytes)
+        #   PLAY (HANDLER_BASE+4): JSR play_addr; RTS  (4 bytes)
+        #   STOP (HANDLER_BASE+8): LDA #0; STA $D418; RTS  (6 bytes)
+        #
+        # Stage 2 note: PLAY is plain JSR play_addr (NOT JMP TRANSLATE_BASE).
+        # The runtime translator at $0F0E (criterion-3 edit-propagation) is
+        # disabled because today's "pat N -> shadow N" logic doesn't handle
+        # multi-pattern voices. Re-enabling = Stage 2.5 follow-up. Audio
+        # fidelity is preserved by the build-time shadow pre-fill above.
         hnd_off = 2 + (HANDLER_BASE - LOAD_BASE)
         file_data[hnd_off:hnd_off + 4]  = bytes([0x20, init_addr & 0xFF, init_addr >> 8, 0x60])
-        if num_patterns > 0:
-            file_data[hnd_off + 4:hnd_off + 8]  = bytes([
-                0x4C, TRANSLATE_BASE & 0xFF, (TRANSLATE_BASE >> 8) & 0xFF, 0xEA
-            ])
-        else:
-            file_data[hnd_off + 4:hnd_off + 8]  = bytes([0x20, play_addr & 0xFF, play_addr >> 8, 0x60])
+        file_data[hnd_off + 4:hnd_off + 8]  = bytes([0x20, play_addr & 0xFF, play_addr >> 8, 0x60])
         file_data[hnd_off + 8:hnd_off + 14] = bytes([0xA9, 0x00, 0x8D, 0x18, 0xD4, 0x60])
 
         # NP21 binary (with patched ch_seq_ptr) at its original load address
         np21_off = 2 + gap
         file_data[np21_off:np21_off + len(c64_data)] = c64_data
 
-        # Emit translator at $0F0E (only if there's a shadow buffer to populate).
-        # The translator runs on every PLAY in the editor's flow ($0F04 JMPs here);
-        # zig64 trace bypasses this and uses the build-time pre-filled shadow above.
-        if num_patterns > 0:
+        # Stage 2 note: runtime translator emission at $0F0E is suppressed;
+        # PLAY is plain JSR play_addr above. _emit_sf2_to_np21_translator()
+        # remains in the file as dead code, ready to be revived by Stage 2.5.
+        if False and num_patterns > 0:  # disabled — see Stage 2 architecture comment above
             translator_bytes = self._emit_sf2_to_np21_translator(
                 num_patterns=num_patterns,
                 seq00_addr=music_data_params['seq00_addr'],
@@ -2047,41 +2057,75 @@ class SF2Writer:
         # that NP21 0x00 = C-0 (lowest pitch); fixed in v3.2.2 after verifying
         # against the player disassembly directly. Body bytes no longer contain
         # 0x7F or 0xFF (stripped by _extract_raw_seq).
-        sf2_sequences = []
-        for body, loop_target in raw_patterns:
-            seq = bytearray()
-            for b in body:
-                if b == 0x00:                    # no-event → gate off
-                    seq.append(0x00)
-                elif 0x01 <= b <= 0x6F:          # notes — identity
-                    seq.append(b)
-                elif 0x70 <= b <= 0x7D:          # high notes outside SF2 range
-                    seq.append(0x6F)
-                elif b == 0x7E:                  # tie/gate-on — identity
-                    seq.append(0x7E)
-                elif 0x80 <= b <= 0xFF:          # all control bytes — identity
-                    seq.append(b)
-                else:
-                    # 0x7F shouldn't occur (stripped) — pass through if it does
-                    seq.append(b)
-            seq.append(0x7F)  # SF2 end-of-sequence marker
-            # Pad to fixed size
-            while len(seq) < SEQ_SIZE:
-                seq.append(0x7F)
-            sf2_sequences.append(bytes(seq[:SEQ_SIZE]))
+        # --- Stage 2: per-voice pattern segmentation ---
+        # Replace today's "1 SF2 pattern = 1 voice's flat stream" with
+        # "N SF2 patterns = N segments of the voice", split at instrument-
+        # prefix ($A0-$BF) boundaries. Each voice's segments concatenate
+        # back to its original byte stream (round-trip property), so the
+        # build-time shadow pre-fill in the outer function can still
+        # reconstruct identical flat streams per voice.
+        from sidm2.np21_pattern_segmenter import segment_voice_stream
 
+        sf2_sequences = []
         orderlists = []
+        # Track which SF2 pattern indices belong to each voice (for orderlists)
+        per_voice_pat_indices: list[list[int]] = [[], [], []]
+        next_pat_idx = 0
+
         for v in range(3):
-            # Orderlist parser (datasource_orderlist.cpp:290-365):
-            #   - bytes 0x80+ update current_transposition
-            #   - bytes 0x00..0x7F are pattern indices (stored with current transposition)
-            #   - 0xFE = end (no loop), 0xFF = end-with-loop (next byte = loop idx)
-            # The renderer at component_track.cpp:548 passes
-            #   inTransposition = (stored_transposition - 0xA0)
-            # to the note renderer. So we MUST prepend 0xA0 here to mean
-            # "transpose 0"; otherwise initial current_transposition=0 results
-            # in inTransposition = -160 and every note renders as "???".
-            ol = bytearray([0xA0, voice_init_idx[v] & 0x7F, 0xFE])
+            # Voice v's flat byte stream comes from raw_patterns[voice_init_idx[v]]
+            if num_patterns > 0 and 0 <= voice_init_idx[v] < num_patterns:
+                voice_body, _loop = raw_patterns[voice_init_idx[v]]
+            else:
+                voice_body = b""
+            segments = segment_voice_stream(voice_body)
+            for seg in segments:
+                seq = bytearray()
+                for b in seg.bytes_:
+                    # Byte format is identical (NP21 == SF2 packed) for all
+                    # ranges except 0x7F (we strip those during extraction)
+                    # and 0x70-0x7D (clamp to SF2 max pitch 0x6F).
+                    if b == 0x00:
+                        seq.append(0x00)
+                    elif 0x01 <= b <= 0x6F:
+                        seq.append(b)
+                    elif 0x70 <= b <= 0x7D:
+                        seq.append(0x6F)
+                    else:  # 0x7E (tie) and 0x80-0xFF (controls): identity
+                        seq.append(b)
+                seq.append(0x7F)
+                while len(seq) < SEQ_SIZE:
+                    seq.append(0x7F)
+                sf2_sequences.append(bytes(seq[:SEQ_SIZE]))
+                per_voice_pat_indices[v].append(next_pat_idx)
+                next_pat_idx += 1
+
+        # If a voice produced zero segments (empty stream), give it a
+        # placeholder pattern so its orderlist can still terminate cleanly.
+        for v in range(3):
+            if not per_voice_pat_indices[v]:
+                placeholder = bytearray(b'\x7F' * SEQ_SIZE)
+                sf2_sequences.append(bytes(placeholder))
+                per_voice_pat_indices[v].append(next_pat_idx)
+                next_pat_idx += 1
+
+        # Replace num_patterns with the segmented count (defines seq_count
+        # in Block 5 + size of seq ptr table population below).
+        num_patterns = len(sf2_sequences)
+
+        # Build per-voice orderlists. Each entry: 0xA0 transpose marker
+        # (= zero transposition; renderer subtracts 0xA0) followed by the
+        # SF2 pattern index. Terminate with 0xFE (no loop).
+        # Orderlist parser (datasource_orderlist.cpp:290-365):
+        #   - 0x80+ updates current_transposition
+        #   - 0x00..0x7F = pattern index (stored with current transposition)
+        #   - 0xFE = end (no loop), 0xFF = end-with-loop (next byte = loop idx)
+        for v in range(3):
+            ol = bytearray()
+            for pat_idx in per_voice_pat_indices[v]:
+                ol.append(0xA0)              # transpose 0 (re-asserted per entry)
+                ol.append(pat_idx & 0x7F)
+            ol.append(0xFE)                  # end (no loop)
             while len(ol) < OL_SIZE:
                 ol.append(0xFF)
             orderlists.append(bytes(ol[:OL_SIZE]))

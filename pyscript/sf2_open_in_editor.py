@@ -149,18 +149,23 @@ def _try_one_detached_load(staged_name: str, bin_dir: Path) -> tuple[bool, int |
         return False, None
     time.sleep(ALIVE_CHECK_SECONDS)
     if not _is_alive(pid):
+        print(f"    process died during {ALIVE_CHECK_SECONDS}s wait", file=sys.stderr)
         return False, None
     title = _get_window_title(pid)
     if staged_name not in title:
-        # Editor is alive but didn't load our file — treat as failure
-        print(f"    F10-load did not take effect (title={title!r})",
+        print(f"    F10-load did not take effect "
+              f"(staged={staged_name!r}, title={title!r})",
               file=sys.stderr)
         _kill_pid(pid)
         return False, None
     return True, pid
 
 
-def open_in_editor(sf2_path: str, max_attempts: int = 15) -> bool:
+def open_in_editor(sf2_path: str, max_attempts: int = 30) -> bool:
+    # default bumped from 15 -> 30 in Stage 2 (segmentation): the per-attempt
+    # F10-load pass rate dropped from ~70% to ~20% on segmented files; raising
+    # the budget keeps cumulative success > 99% while we investigate the
+    # root cause separately.
     abs_path = str(Path(sf2_path).absolute())
     if not Path(abs_path).exists():
         print(f"ERROR: file not found: {sf2_path}", file=sys.stderr)
@@ -191,6 +196,6 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         print(__doc__)
         sys.exit(2)
-    max_attempts = int(sys.argv[2]) if len(sys.argv) >= 3 else 15
+    max_attempts = int(sys.argv[2]) if len(sys.argv) >= 3 else 30
     ok = open_in_editor(sys.argv[1], max_attempts=max_attempts)
     sys.exit(0 if ok else 1)
