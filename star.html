@@ -82,11 +82,13 @@
     position: fixed;
     top: 0; left: 0;
     width: 100%;
-    height: 55%;
+    /* Smaller fade height = text stays visible higher up the screen
+       before fading into the starfield. */
+    height: 35%;
     background-image: linear-gradient(
       to bottom,
       black 0%,
-      black 25%,
+      black 15%,
       transparent 100%
     );
     z-index: 2;
@@ -102,7 +104,7 @@
     position: absolute;
     bottom: 0;
     left: 50%;
-    width: min(85%, 1100px);
+    width: min(92%, 1500px);
     height: 100vh;
     transform-origin: 50% 100%;
     transform: translateX(-50%) rotateX(25deg);
@@ -650,9 +652,9 @@
     const content = document.getElementById('crawl-content');
     if (!content) return;
     const distance = content.scrollHeight + window.innerHeight;
-    // Pace the scroll at ~70 px/sec so a small entry doesn't blast past
-    // and a huge entry isn't unwatchably slow. Clamped to 60–180s.
-    const duration = Math.max(60, Math.min(180, Math.round(distance / 70)));
+    // Pace the scroll at ~50 px/sec — enough time to read each line.
+    // Clamped to 90–240s.
+    const duration = Math.max(90, Math.min(240, Math.round(distance / 50)));
     content.style.setProperty('--content-height', distance + 'px');
     content.style.setProperty('--crawl-duration', duration + 's');
   }
