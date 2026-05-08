@@ -1652,7 +1652,20 @@ class SF2Writer:
         # Update driver_size to include the full file extent (NP21 + edit area + shadow)
         gen.driver_size += len(sf2_edit_data) + shadow_buffer_size
 
-        # Now regenerate headers with correct Block 5 addresses
+        # Stage 3: repoint Block 3 Instruments column at the clean
+        # Driver-11-format instrument table inside the SF2 edit area
+        # instead of into the NP21 binary's Laxity-format bytes. F2
+        # instrument view will now show clean AD/SR/Wave/Pulse/HR rows.
+        edit_instr_addr = music_data_params.get('edit_instr_addr')
+        if edit_instr_addr:
+            gen.instr_addr = edit_instr_addr
+            # Commands table (Block 3) traditionally sits 0x70 past
+            # Instruments in NP21; keep that bias against the new
+            # instr_addr so cmd_addr also points outside the NP21 binary
+            # and isn't a stale pointer into Laxity's compiled command bytes.
+            gen.cmd_addr = edit_instr_addr + 0x70
+
+        # Now regenerate headers with correct Block 5 + Block 3 addresses
         header_bytes = gen.generate_complete_headers(music_data_params)
 
         # Re-check header size hasn't grown past handler base
@@ -2336,15 +2349,64 @@ class SF2Writer:
         for seq in sf2_sequences:
             edit.extend(seq)
 
+        # --- Stage 3: Driver-11-format instrument table appended to edit area ---
+        # The NP21 instrument bytes inside the embedded NP21 binary use a
+        # Laxity-specific 8-byte-per-instrument format. SF2II's editor F2
+        # view expects Driver 11's 6-byte rows
+        # (Attack/Decay, Sustain/Release, Waveform, PulseProgram,
+        #  WaveProgram/HR, ProgramSelect/HR-or-similar). Today's Block 3
+        # instr_addr points into the NP21 binary at $1A6B, so the editor
+        # reads NP21 bytes through Driver-11 6-byte interpretation and
+        # shows garbage. Stage 3 converts the extracted instruments into
+        # Driver-11 6-byte rows, appends the table to the edit area, and
+        # returns the new c64 address so the caller can repoint
+        # gen.instr_addr (Block 3 column entries) at the clean table.
+        #
+        # Display only: edits in F2 don't propagate to playback (NP21 binary
+        # at $1000 still has the original bytes that the player reads).
+        from sidm2.instrument_extraction import extract_laxity_instruments
+        instr_table_offset = len(edit)
+        instr_table_addr   = sf2_data_base + instr_table_offset
+        try:
+            laxity_instrs = extract_laxity_instruments(c64_data, sid_la)
+        except Exception as e:
+            logger.warning(f"  Stage 3 instrument extract failed: {e!r}; "
+                           f"falling back to NP21 instr_addr (garbled F2 view)")
+            laxity_instrs = []
+
+        instr_count = 0
+        for instr in laxity_instrs:
+            ad     = instr.get('ad', 0) & 0xFF
+            sr     = instr.get('sr', 0) & 0xFF
+            wave   = instr.get('wave_for_sf2', 0x41) & 0xFF
+            pulse  = instr.get('pulse_ptr', 0) & 0xFF
+            wave_t = instr.get('wave_ptr', 0) & 0xFF
+            hr     = instr.get('restart', 0) & 0xFF
+            edit.extend(bytes([ad, sr, wave, pulse, wave_t, hr]))
+            instr_count += 1
+
+        # Pad table to a fixed minimum size so the editor always has 16
+        # readable rows even on songs that extracted fewer.
+        MIN_INSTR_ROWS = 16
+        while instr_count < MIN_INSTR_ROWS:
+            edit.extend(bytes([0x00, 0x00, 0x80, 0x00, 0x00, 0x00]))
+            instr_count += 1
+
         logger.info(
             f"  SF2 edit area: base=${sf2_data_base:04X}, "
             f"OL=${ol_track1_addr:04X}, "
-            f"Seq=${seq00_addr:04X} ({num_patterns} patterns × {SEQ_SIZE}B)"
+            f"Seq=${seq00_addr:04X} ({num_patterns} patterns × {SEQ_SIZE}B), "
+            f"Instr=${instr_table_addr:04X} ({instr_count} rows × 6B)"
         )
 
         # Stage 2.5: per-voice segment counts feed the multi-pattern
         # translator at $0F0E. Total of voice_pat_counts == num_patterns.
         voice_pat_counts = [len(per_voice_pat_indices[v]) for v in range(3)]
+
+        # Stage 3: report new instrument-table address so caller can
+        # update gen.instr_addr before regenerating Block 3.
+        music_data_params['edit_instr_addr'] = instr_table_addr
+        music_data_params['edit_instr_count'] = instr_count
 
         return music_data_params, bytes(edit), voice_init_idx, raw_patterns, voice_pat_counts
 
