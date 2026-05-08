@@ -82,13 +82,13 @@
     position: fixed;
     top: 0; left: 0;
     width: 100%;
-    /* Smaller fade height = text stays visible higher up the screen
-       before fading into the starfield. */
-    height: 35%;
+    /* Tight fade so text stays visible nearly to the top of the
+       screen before disappearing. Solid black only in the top 8%. */
+    height: 22%;
     background-image: linear-gradient(
       to bottom,
       black 0%,
-      black 15%,
+      black 8%,
       transparent 100%
     );
     z-index: 2;
