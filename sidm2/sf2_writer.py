@@ -82,15 +82,22 @@ class SF2Writer:
             # Log detailed template structure
             self._log_sf2_structure("TEMPLATE LOADED", template_data)
 
-            # Use Laxity-specific injection for Laxity driver
+            # Use Laxity-specific injection for Laxity driver, embed-binary
+            # fallback for non-Laxity SIDs that have c64_data (Galway, Hubbard,
+            # NP20, etc.), template-based for the rest.
             if self.driver_type == 'laxity':
                 # Raw approach: embed song's own NP21 binary verbatim.
-                # This supersedes the 40-patch Stinsen-template approach: it works
-                # for any NP21 sub-version without hardcoded data-layout assumptions.
+                # Works for any NP21 sub-version without hardcoded layout.
                 if getattr(self.data, 'c64_data', None) is not None:
                     self._inject_laxity_raw_np21()
                 else:
                     self._inject_laxity_music_data()
+            elif getattr(self.data, 'c64_data', None) is not None:
+                # Stage 8 Path A: minimal embed-binary for non-Laxity drivers.
+                # Audio plays via the original player code; editor view is
+                # mostly empty (table addresses point at high RAM, sequences
+                # are placeholder 0x7F end markers).
+                self._inject_player_raw_minimal()
             else:
                 self._inject_music_data_into_template()
         else:
@@ -1300,10 +1307,19 @@ class SF2Writer:
         """Inject auxiliary data with instrument and command names"""
         logger.info("  Injecting auxiliary data (names)...")
 
-        wave_addr, wave_entries = find_and_extract_wave_table(self.data.c64_data, self.data.load_address)
-        laxity_instruments = extract_laxity_instruments(self.data.c64_data, self.data.load_address, wave_entries)
-        instrument_names = [instr['name'] for instr in laxity_instruments]
-        command_names = get_command_names()
+        # Path A (non-Laxity SIDs): skip instrument-name extraction, which
+        # would call Laxity-specific extractors on a Galway/Hubbard binary
+        # and return garbage that corrupts the TableText body and crashes
+        # F10-load. Empty names produce a clean (padded-with-empty-strings)
+        # TableText that loads fine.
+        if getattr(self, '_minimal_path', False):
+            instrument_names = []
+            command_names = []
+        else:
+            wave_addr, wave_entries = find_and_extract_wave_table(self.data.c64_data, self.data.load_address)
+            laxity_instruments = extract_laxity_instruments(self.data.c64_data, self.data.load_address, wave_entries)
+            instrument_names = [instr['name'] for instr in laxity_instruments]
+            command_names = get_command_names()
 
         instr_table_id = 1
         cmd_table_id = 0
@@ -1866,6 +1882,189 @@ class SF2Writer:
             logger.info(f"  Shadow buffer: ${shadow_base:04X}-${shadow_base + shadow_buffer_size - 1:04X} "
                         f"({num_patterns} × {SEQ_SHADOW_SIZE}B = {shadow_buffer_size}B)")
             logger.info(f"  Translator: ${TRANSLATE_BASE:04X} (PLAY at ${PLAY_HANDLER:04X} JMPs here)")
+        logger.info(f"  INIT: ${INIT_HANDLER:04X} -> JSR ${init_addr:04X}")
+        logger.info(f"  PLAY: ${PLAY_HANDLER:04X} -> JSR ${play_addr:04X}")
+
+    def _inject_player_raw_minimal(self) -> None:
+        """Stage 8 Path A: minimal embed-binary fallback for non-Laxity SIDs.
+
+        Galway, Hubbard, NP20, etc. don't share NP21's ch_seq_ptr / pattern-
+        table layout, so the Laxity-specific extraction in
+        _inject_laxity_raw_np21() yields garbage for them. This method
+        delivers PLAYBACK fidelity at the cost of editor-view emptiness:
+
+          - Embed the SID's compiled player + data binary verbatim at its
+            PSID load address (no patches, no ch_seq_ptr rewrites).
+          - INIT handler: JSR psid_init_addr; RTS
+          - PLAY handler: JSR psid_play_addr; RTS  (no JMP into criterion-3
+            translator — none exists for these drivers)
+          - STOP handler: silence SID volume + RTS
+          - Block 5 uses the safe-params placeholder (3 tracks × 1 pattern,
+            all 0x7F end markers) so SF2II's ComponentTracks ctor sees a
+            non-empty data source and doesn't OOB-crash.
+          - Block 3 column addresses point at high RAM ($C000+) — outside
+            the embedded binary — so editor reads zeros instead of garbage.
+          - Aux chain (TableText with empty names, Songs, hardware/editing
+            prefs, play markers) emitted in bundled [3,2,1,4,5,END] order.
+
+        Editor will load (track view shows 1 placeholder pattern per voice;
+        instrument/wave/pulse/filter views show empty rows) and audio plays
+        correctly because the original player drives the SID registers.
+        """
+        logger.info("Building minimal-embed SF2 (non-Laxity driver — playback only)...")
+        self._minimal_path = True
+
+        c64_data = getattr(self.data, 'c64_data', None)
+        if not c64_data:
+            logger.error("  No c64_data available; cannot build minimal SF2")
+            return
+
+        sid_la    = getattr(self.data, 'load_address', 0x1000)
+        header    = getattr(self.data, 'header', None)
+        init_addr = getattr(header, 'init_address', sid_la)     if header else sid_la
+        play_addr = getattr(header, 'play_address', sid_la + 3) if header else sid_la + 3
+
+        LOAD_BASE      = 0x0D7E
+        HANDLER_BASE   = 0x0F90
+        INIT_HANDLER   = HANDLER_BASE + 0
+        PLAY_HANDLER   = HANDLER_BASE + 4
+        STOP_HANDLER   = HANDLER_BASE + 8
+
+        from sidm2.sf2_header_generator import SF2HeaderGenerator
+        gen = SF2HeaderGenerator(driver_size=len(c64_data) + (sid_la - LOAD_BASE))
+        gen.DRIVER_INIT = INIT_HANDLER
+        gen.DRIVER_PLAY = PLAY_HANDLER
+        gen.DRIVER_STOP = STOP_HANDLER
+
+        # Block 3 column addresses will be filled in below to point at a
+        # zero-filled placeholder region inside the SF2 edit area (rather
+        # than high-RAM $C000+ which has unpredictable emulated-memory
+        # contents that can crash the editor's renderer).
+
+        # Build placeholder Block 5 (3 tracks × 1 pattern × 256 bytes of 0x7F)
+        OL_SIZE  = 0x100
+        SEQ_SIZE = 0x100
+        SEQ_PTR_SIZE = 0x80
+        sf2_data_base = sid_la + len(c64_data)
+        ol_ptr_lo_addr  = sf2_data_base + 0
+        ol_ptr_hi_addr  = sf2_data_base + 3
+        seq_ptr_lo_addr = sf2_data_base + 6
+        seq_ptr_hi_addr = sf2_data_base + 6 + SEQ_PTR_SIZE
+        ol_track1_addr  = sf2_data_base + 6 + 2 * SEQ_PTR_SIZE
+        seq00_addr      = ol_track1_addr + 3 * OL_SIZE
+        music_data_params = {
+            'track_count':     3,
+            'ol_ptr_lo_addr':  ol_ptr_lo_addr,
+            'ol_ptr_hi_addr':  ol_ptr_hi_addr,
+            'seq_count':       1,
+            'seq_ptr_lo_addr': seq_ptr_lo_addr,
+            'seq_ptr_hi_addr': seq_ptr_hi_addr,
+            'ol_size':         OL_SIZE,
+            'ol_track1_addr':  ol_track1_addr,
+            'seq_size':        SEQ_SIZE,
+            'seq00_addr':      seq00_addr,
+        }
+
+        # Edit area: populated OL/Seq ptr tables + 3 placeholder orderlists +
+        # 1 placeholder sequence (the same shape as Stage 1's success).
+        edit = bytearray()
+        # OL ptr lo / hi tables
+        for v in range(3):
+            ol_addr = ol_track1_addr + v * OL_SIZE
+            edit.append(ol_addr & 0xFF)
+        for v in range(3):
+            ol_addr = ol_track1_addr + v * OL_SIZE
+            edit.append((ol_addr >> 8) & 0xFF)
+        # Seq ptr lo / hi tables (only entry 0 populated)
+        seq_lo = bytearray(SEQ_PTR_SIZE)
+        seq_hi = bytearray(SEQ_PTR_SIZE)
+        seq_lo[0] = seq00_addr & 0xFF
+        seq_hi[0] = (seq00_addr >> 8) & 0xFF
+        edit.extend(seq_lo)
+        edit.extend(seq_hi)
+        # 3 orderlists, each [0xA0 transpose-0, 0x00 pattern-idx, 0xFE end, 0xFF...]
+        for _ in range(3):
+            ol = bytearray([0xA0, 0x00, 0xFE])
+            while len(ol) < OL_SIZE:
+                ol.append(0xFF)
+            edit.extend(ol)
+        # 1 sequence: all 0x7F end markers
+        edit.extend(bytes([0x7F] * SEQ_SIZE))
+
+        # Placeholder Driver-11-format tables, all zeros, in the edit area.
+        # Block 3 column addresses will point HERE rather than into high-RAM,
+        # so the editor's renderer reads from real file bytes and never
+        # touches emulated $C000+ which may have garbage.
+        instr_table_offset  = len(edit)
+        gen.instr_addr      = sf2_data_base + instr_table_offset
+        gen.cmd_addr        = gen.instr_addr + 0x70   # NP21-style bias retained
+        edit.extend(bytes(32 * 6))                    # 32 rows × 6 cols Instruments
+
+        wave_table_offset   = len(edit)
+        gen.wave_addr       = sf2_data_base + wave_table_offset
+        edit.extend(bytes(32 * 2))                    # 32 rows × 2 cols Wave
+
+        pulse_table_offset  = len(edit)
+        gen.pulse_addr      = sf2_data_base + pulse_table_offset
+        edit.extend(bytes(16 * 3))                    # 16 rows × 3 cols Pulse
+
+        filter_table_offset = len(edit)
+        gen.filter_addr     = sf2_data_base + filter_table_offset
+        edit.extend(bytes(16 * 3))                    # 16 rows × 3 cols Filter
+
+        sf2_edit_data = bytes(edit)
+        gen.driver_size += len(sf2_edit_data)
+
+        header_bytes = gen.generate_complete_headers(music_data_params)
+        headers_end_addr = LOAD_BASE + len(header_bytes)
+        if headers_end_addr > HANDLER_BASE:
+            logger.error(f"  Headers too large! End ${headers_end_addr:04X} > ${HANDLER_BASE:04X}")
+            return
+
+        # Build full PRG: [load:2] + headers + handler stubs + c64 binary + edit area
+        gap = sid_la - LOAD_BASE
+        file_size = 2 + gap + len(c64_data) + len(sf2_edit_data)
+        file_data = bytearray(file_size)
+
+        file_data[0] = LOAD_BASE & 0xFF
+        file_data[1] = LOAD_BASE >> 8
+        file_data[2:2 + len(header_bytes)] = header_bytes
+
+        # Handler stubs at HANDLER_BASE
+        hnd_off = 2 + (HANDLER_BASE - LOAD_BASE)
+        file_data[hnd_off:hnd_off + 4]      = bytes([0x20, init_addr & 0xFF, init_addr >> 8, 0x60])
+        file_data[hnd_off + 4:hnd_off + 8]  = bytes([0x20, play_addr & 0xFF, play_addr >> 8, 0x60])
+        file_data[hnd_off + 8:hnd_off + 14] = bytes([0xA9, 0x00, 0x8D, 0x18, 0xD4, 0x60])
+
+        # Embed SID binary verbatim — NO ch_seq_ptr patch
+        np21_off = 2 + gap
+        file_data[np21_off:np21_off + len(c64_data)] = c64_data
+
+        # Compatibility trampoline at $1000 for SID players that hardcode
+        # $1000 as INIT (e.g., zig64 cycle-accurate tracer). Only placed
+        # when the SID's load address is past $1006 — otherwise the binary
+        # itself occupies $1000 and a trampoline would corrupt it.
+        if sid_la >= 0x1007:
+            tramp_off = 2 + (0x1000 - LOAD_BASE)
+            file_data[tramp_off : tramp_off + 3] = bytes([
+                0x4C, init_addr & 0xFF, (init_addr >> 8) & 0xFF
+            ])
+            file_data[tramp_off + 3 : tramp_off + 6] = bytes([
+                0x4C, play_addr & 0xFF, (play_addr >> 8) & 0xFF
+            ])
+            logger.info(f"  Trampoline @ $1000: JMP ${init_addr:04X}; @ $1003: JMP ${play_addr:04X}")
+
+        # SF2 edit area appended after binary
+        edit_off = np21_off + len(c64_data)
+        file_data[edit_off:edit_off + len(sf2_edit_data)] = sf2_edit_data
+
+        self.output = file_data
+
+        logger.info(f"  SF2 size: {len(self.output)} bytes")
+        logger.info(f"  Magic + headers: ${LOAD_BASE:04X}-${headers_end_addr - 1:04X} ({len(header_bytes)} bytes)")
+        logger.info(f"  Handlers: ${HANDLER_BASE:04X} (INIT=${INIT_HANDLER:04X}, PLAY=${PLAY_HANDLER:04X}, STOP=${STOP_HANDLER:04X})")
+        logger.info(f"  Binary: ${sid_la:04X}-${sid_la + len(c64_data) - 1:04X} ({len(c64_data)} bytes)")
+        logger.info(f"  Edit area: ${sf2_data_base:04X}-${sf2_data_base + len(sf2_edit_data) - 1:04X} ({len(sf2_edit_data)} bytes)")
         logger.info(f"  INIT: ${INIT_HANDLER:04X} -> JSR ${init_addr:04X}")
         logger.info(f"  PLAY: ${PLAY_HANDLER:04X} -> JSR ${play_addr:04X}")
 
