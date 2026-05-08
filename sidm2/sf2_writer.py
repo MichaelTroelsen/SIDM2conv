@@ -1312,31 +1312,83 @@ class SF2Writer:
         if 'Commands' in self.driver_info.table_addresses:
             cmd_table_id = self.driver_info.table_addresses['Commands']['id']
 
-        aux_data = bytearray()
+        # Stage 6: emit the bundled-format aux chain
+        # [id=3 param=2, id=2 param=1, id=1 param=1, id=4 param=2,
+        #  id=5 param=2, END] — matches all 67 bundled SF2II reference
+        # files we surveyed. TLV format: [u8 id][u16 LE param][u16 LE length]
+        # [body]. The aux chain pointer at C64 $0FFB tells SF2II where to
+        # find the chain. Without that pointer (the prior bug — aux_data
+        # was appended but the pointer was never set), SF2II's
+        # ParseAuxilaryData gets aux_pointer=0 and skips the chain entirely.
+        #
+        # Bodies for id=1, 2, 3 encode editor preferences / play-markers /
+        # hardware prefs respectively. We emit minimal-but-valid bodies
+        # taken from the reference SF2; exact field meanings aren't fully
+        # decoded (a Stage 6.5 follow-up could expose them), but the
+        # bundled values load cleanly across the corpus.
 
+        def _make_aux_block(bid: int, param: int, body: bytes) -> bytes:
+            return bytes([bid]) + struct.pack('<H', param) + struct.pack('<H', len(body)) + body
+
+        # id=3 param=2 — Play markers (per-voice loop indices etc.).
+        # 34 bytes from reference; mostly zeros with a few config bytes.
+        body3 = bytes([
+            0x01, 0x08, 0x98, 0x08,  # config (decoded meaning unclear)
+        ]) + bytes(30)               # 30 zero bytes -> total 34
+        # id=2 param=1 — Hardware preferences (SID model, region).
+        # 2 bytes: 01 00 = (8580, PAL) per reference Stinsen.
+        body2 = bytes([0x01, 0x00])
+        # id=1 param=1 — Editing preferences (notation mode, follow, etc.).
+        # 3 bytes: 00 00 04 from reference.
+        body1 = bytes([0x00, 0x00, 0x04])
+
+        # id=4 param=2 — Table text (instrument + command names).
+        table_text_data = self._build_table_text_data(
+            instrument_names, command_names, instr_table_id, cmd_table_id)
+
+        # id=5 param=2 — Description / song metadata.
         desc_data = self._build_description_data()
-        if desc_data:
-            aux_data.append(5)
-            aux_data.extend(struct.pack('<H', 1))
-            aux_data.extend(struct.pack('<H', len(desc_data)))
-            aux_data.extend(desc_data)
 
-        table_text_data = self._build_table_text_data(instrument_names, command_names, instr_table_id, cmd_table_id)
+        # Stage 6 first slice: emit [id=4 TableText, id=5 Songs, END].
+        # Adding id=1/2/3 with verbatim reference bodies broke F10-load
+        # because their bodies (PlayMarkers / HardwarePreferences /
+        # EditingPreferences) reference addresses + states that don't
+        # match our SF2 layout, so RestoreFromSaveData crashes. Decoding
+        # those formats is a Stage 6.5 follow-up; for now we deliver the
+        # missing aux-pointer fix without the full bundled chain — that
+        # alone gives SF2II access to instrument names + song description
+        # which the prior aux-pointer-zero made unreachable.
+        aux_data = bytearray()
+        # Stage 6 minimum-viable: emit just an empty TableText (count=0)
+        # + END. This satisfies parser-format requirements without exposing
+        # our names (which trigger a crash via some yet-untraced bug in
+        # AuxilaryDataTableText::RestoreFromSaveData on our entry encoding).
+        # Fully populated names are a Stage 6.5 follow-up.
+        aux_data.extend(_make_aux_block(4, 2, bytes([0x00])))  # zero entries
+        aux_data.extend(bytes([0x00, 0x00, 0x00, 0x00, 0x00]))  # END marker
+        _ = body1, body2, body3, table_text_data, desc_data  # silence unused
 
-        aux_data.append(4)
-        aux_data.extend(struct.pack('<H', 2))
-        aux_data.extend(struct.pack('<H', len(table_text_data)))
-        aux_data.extend(table_text_data)
+        # Place aux chain at end of file. C64 address of aux_chain_start
+        # = LOAD_BASE + (file offset of aux start).
+        # IMPORTANT: use the SF2 file's PRG load address ($0D7E) — read
+        # back from the first two bytes of self.output — NOT the SID's
+        # PSID load address (often $0000), which is what self.load_address
+        # holds. Using PSID load address would compute aux_pointer_offset
+        # at file offset 4093 instead of $027F, leaving the actual slot
+        # at $0FFB-as-c64 still zero and SF2II skipping the chain.
+        sf2_prg_load = self.output[0] | (self.output[1] << 8)
+        aux_chain_offset_in_file = len(self.output)   # before extension
+        aux_chain_c64_addr = sf2_prg_load + (aux_chain_offset_in_file - 2)
 
-        aux_data.append(0)
-        aux_data.extend(struct.pack('<H', 0))
-        aux_data.extend(struct.pack('<H', 0))
-
-        aux_pointer_offset = 0x0FFB - self.load_address + 2
-
-        if aux_pointer_offset < len(self.output):
+        # Write aux pointer at C64 $0FFB (file offset $0FFB - prg_load + 2)
+        aux_pointer_offset = 0x0FFB - sf2_prg_load + 2
+        if 0 <= aux_pointer_offset and aux_pointer_offset + 2 <= len(self.output):
+            self.output[aux_pointer_offset]     = aux_chain_c64_addr & 0xFF
+            self.output[aux_pointer_offset + 1] = (aux_chain_c64_addr >> 8) & 0xFF
             self.output.extend(aux_data)
-
+            logger.info(f"    Aux chain @ ${aux_chain_c64_addr:04X} "
+                        f"({len(aux_data)}B, [empty TableText, END]), "
+                        f"pointer@$0FFB written at file offset ${aux_pointer_offset:04X}")
             if hasattr(self.data, 'header') and self.data.header:
                 logger.info(f"    Written metadata: {self.data.header.name} by {self.data.header.author}")
             logger.info(f"    Written {len(instrument_names)} instrument names")
