@@ -1359,14 +1359,20 @@ class SF2Writer:
         # alone gives SF2II access to instrument names + song description
         # which the prior aux-pointer-zero made unreachable.
         aux_data = bytearray()
-        # Stage 6 minimum-viable: emit just an empty TableText (count=0)
-        # + END. This satisfies parser-format requirements without exposing
-        # our names (which trigger a crash via some yet-untraced bug in
-        # AuxilaryDataTableText::RestoreFromSaveData on our entry encoding).
-        # Fully populated names are a Stage 6.5 follow-up.
-        aux_data.extend(_make_aux_block(4, 2, bytes([0x00])))  # zero entries
-        aux_data.extend(bytes([0x00, 0x00, 0x00, 0x00, 0x00]))  # END marker
-        _ = body1, body2, body3, table_text_data, desc_data  # silence unused
+        # Stage 6.5: emit [TableText (id=4) with real names + reference's
+        # 3-entry shape, END]. Bug fixes vs the original encoding:
+        #   - table_id packed as u32 LE (not signed i32). Same on the
+        #     wire for positive small ids; defensive.
+        #   - text_count MUST equal the Block 3 row count for that table
+        #     (Commands=64, Instruments=32), not just the number of names
+        #     we have. Padded with empty strings.
+        #   - Reference includes an extra entry (table_id=64, 256 empty
+        #     entries). Mirror it to match the bundled corpus exactly.
+        # id=1/2/3/5 still omitted — Stage 6.6 follow-up if we want to
+        # populate hardware/editing prefs and song description.
+        aux_data.extend(_make_aux_block(4, 2, bytes(table_text_data)))
+        aux_data.extend(bytes([0x00, 0x00, 0x00, 0x00, 0x00]))   # END marker
+        _ = body1, body2, body3, desc_data  # silence unused
 
         # Place aux chain at end of file. C64 address of aux_chain_start
         # = LOAD_BASE + (file offset of aux start).
@@ -1387,7 +1393,7 @@ class SF2Writer:
             self.output[aux_pointer_offset + 1] = (aux_chain_c64_addr >> 8) & 0xFF
             self.output.extend(aux_data)
             logger.info(f"    Aux chain @ ${aux_chain_c64_addr:04X} "
-                        f"({len(aux_data)}B, [empty TableText, END]), "
+                        f"({len(aux_data)}B, [TableText, END]), "
                         f"pointer@$0FFB written at file offset ${aux_pointer_offset:04X}")
             if hasattr(self.data, 'header') and self.data.header:
                 logger.info(f"    Written metadata: {self.data.header.name} by {self.data.header.author}")
@@ -1422,28 +1428,67 @@ class SF2Writer:
         return data
 
     def _build_table_text_data(self, instrument_names, command_names, instr_table_id=1, cmd_table_id=0) -> bytearray:
-        """Build the table text data block"""
+        """Build the TableText body in version-2 format.
+
+        Per AuxilaryDataTableText::RestoreFromSaveData (auxilary_data_table_text.cpp:269):
+          [u8 entry_count]
+          per entry:
+            [u32 LE table_id]
+            [u16 LE layer_count]
+            per layer:
+              [u16 LE text_count]
+              per text:
+                [u8 string_length]
+                [string_length bytes — string body]
+
+        Reference Stinsen ships 3 entries:
+          entry 0: table_id=0  (Commands),    1 layer, 64 entries (all empty)
+          entry 1: table_id=1  (Instruments), 1 layer, 32 entries (all empty)
+          entry 2: table_id=64 (Mystery / "TableTextLines"?), 1 layer, 256 entries (all empty)
+
+        We follow the same shape but populate Commands + Instruments with our
+        extracted names. Counts are the table row counts from Block 3
+        (Commands=64, Instruments=32) — text_count MUST equal the table's
+        row count or RestoreFromSaveData walks past the buffer end.
+        """
+        COMMANDS_ROWS    = 64
+        INSTRUMENTS_ROWS = 32
+        EXTRA_TABLE_ID   = 64
+        EXTRA_ROWS       = 256
+
+        def _pad_or_truncate(names: list, target_count: int) -> list:
+            out = list(names)[:target_count]
+            while len(out) < target_count:
+                out.append("")
+            return out
+
+        commands_padded    = _pad_or_truncate(command_names,    COMMANDS_ROWS)
+        instruments_padded = _pad_or_truncate(instrument_names, INSTRUMENTS_ROWS)
+
+        def _pack_text(name: str) -> bytes:
+            b = name.encode('latin-1', errors='replace')[:255]
+            return bytes([len(b)]) + b
+
+        def _pack_layer(texts: list) -> bytes:
+            out = bytearray()
+            out.extend(struct.pack('<H', len(texts)))
+            for t in texts:
+                out.extend(_pack_text(t))
+            return bytes(out)
+
+        def _pack_entry(table_id: int, layer_text_lists: list) -> bytes:
+            out = bytearray()
+            out.extend(struct.pack('<I', table_id))   # u32 LE — was '<i' (signed)
+            out.extend(struct.pack('<H', len(layer_text_lists)))
+            for layer in layer_text_lists:
+                out.extend(_pack_layer(layer))
+            return bytes(out)
+
         data = bytearray()
-
-        num_tables = 2
-        data.append(num_tables)
-
-        data.extend(struct.pack('<i', instr_table_id))
-        data.extend(struct.pack('<H', 1))
-        data.extend(struct.pack('<H', len(instrument_names)))
-        for name in instrument_names:
-            name_bytes = name.encode('latin-1', errors='replace')[:255]
-            data.append(len(name_bytes))
-            data.extend(name_bytes)
-
-        data.extend(struct.pack('<i', cmd_table_id))
-        data.extend(struct.pack('<H', 1))
-        data.extend(struct.pack('<H', len(command_names)))
-        for name in command_names:
-            name_bytes = name.encode('latin-1', errors='replace')[:255]
-            data.append(len(name_bytes))
-            data.extend(name_bytes)
-
+        data.append(3)  # entry_count
+        data.extend(_pack_entry(cmd_table_id,    [commands_padded]))
+        data.extend(_pack_entry(instr_table_id,  [instruments_padded]))
+        data.extend(_pack_entry(EXTRA_TABLE_ID,  [[""] * EXTRA_ROWS]))
         return data
 
     def _print_extraction_summary(self) -> None:
