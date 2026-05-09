@@ -1641,10 +1641,16 @@ class SF2Writer:
         # SF2II's editor view at the wrong addresses triggers a deterministic
         # editor-view crash on F10-load. See memory/project-status.md
         # (2026-05-06 Angular generalization finding) for context.
+        # Stage 7 Phase B.1: capture the BINARY wave-table address before
+        # gen.wave_addr gets overwritten with the SF2 edit area address
+        # below (line ~1796). The wave-copy 6502 routine needs the binary
+        # address as the destination — that's where the player reads from.
+        np21_wave_binary_addr = None
         try:
             laxity_tables = extract_all_laxity_tables(c64_data, sid_la)
             if laxity_tables.get('wave_addr'):
                 gen.wave_addr = laxity_tables['wave_addr']
+                np21_wave_binary_addr = laxity_tables['wave_addr']
             if laxity_tables.get('pulse_addr'):
                 gen.pulse_addr = laxity_tables['pulse_addr']
 
@@ -1755,6 +1761,24 @@ class SF2Writer:
 
         shadow_buffer_size = SHADOW_VOICES * SEQ_SHADOW_SIZE
         sf2_data_base = sid_la + len(c64_data)
+
+        # Stage 7 Phase B.1 infrastructure: the runtime translator at
+        # $0F0E now accepts an optional `table_copy_addr` parameter; if
+        # set, the translator JSRs that routine before JSR play_addr,
+        # giving table-copy code a chance to refresh NP21 binary tables
+        # from the SF2 edit area on every PLAY tick.
+        #
+        # The wave-copy emission was attempted but DISABLED (set to None
+        # below). Empirical finding 2026-05-09: `extract_all_laxity_tables`
+        # returns wave_addr=$17EC for Stinsen, but py65 trace shows
+        # $17EC is mutating player state (not a static wave table); the
+        # canonical $1942 has structured data that's also not where the
+        # player reads waveforms from when it writes osc<v>_control.
+        # The actual NP21 wave-read path needs per-variant RE before
+        # the dst address is known. Until then: ship the plumbing,
+        # don't emit the routine. See docs/stage7_plan.md for status.
+        wave_copy_addr = None
+
         shadow_base = sf2_data_base + len(sf2_edit_data)
 
         # Pre-fill shadow with each voice's full NP21 byte stream + loop terminator.
@@ -1850,6 +1874,11 @@ class SF2Writer:
         # voice's shadow slot, terminates with 0xFF + 0x00. Audio fidelity
         # is preserved (build-time shadow has same content), and editor
         # edits to SF2 patterns propagate through here on every PLAY tick.
+        # Stage 7 Phase B.1: if `wave_copy_addr` was set above (Class A
+        # files where we know both the binary wave-table address and the
+        # SF2 edit-area wave address), pass it to the translator so it
+        # JSRs the wave-copy routine before JSR play_addr. F3 edits then
+        # propagate to playback.
         if num_patterns > 0:
             translator_bytes = self._emit_multipat_translator(
                 voice_pat_counts=voice_pat_counts,
@@ -1857,6 +1886,7 @@ class SF2Writer:
                 shadow_base=shadow_base,
                 play_addr=play_addr,
                 translate_base=TRANSLATE_BASE,
+                table_copy_addr=wave_copy_addr,
             )
             tr_off = 2 + (TRANSLATE_BASE - LOAD_BASE)
             if tr_off + len(translator_bytes) > np21_off:
@@ -2288,8 +2318,37 @@ class SF2Writer:
 
         return bytes(code)
 
+    def _emit_wave_copy_routine(self, sf2_wave_addr: int, np21_wave_addr: int,
+                                n_bytes: int = 64) -> bytes:
+        """Stage 7 Phase B.1: Emit a 6502 routine that copies the SF2 edit
+        area's wave table back to the NP21 binary's wave table on every
+        PLAY tick. This is what makes F3 (wave) edits actually affect
+        playback.
+
+        Wave is the simplest of the four tables — SF2 and NP21 share the
+        same byte layout (rows of [note_offset, waveform]), so this is a
+        straight byte copy with no field rearrangement. Caller is
+        responsible for ensuring n_bytes <= 256 (X register counts down).
+
+        Returns 12 bytes: LDX #n-1; LDA sf2,X; STA np21,X; DEX; BPL loop; RTS
+        """
+        if not (1 <= n_bytes <= 256):
+            raise ValueError(f"wave_copy n_bytes must be 1..256, got {n_bytes}")
+        code = bytearray()
+        code += bytes([0xA2, (n_bytes - 1) & 0xFF])                                # LDX #n-1
+        loop_start = len(code)
+        code += bytes([0xBD, sf2_wave_addr & 0xFF, (sf2_wave_addr >> 8) & 0xFF])   # LDA sf2,X
+        code += bytes([0x9D, np21_wave_addr & 0xFF, (np21_wave_addr >> 8) & 0xFF]) # STA np21,X
+        code += bytes([0xCA])                                                       # DEX
+        rel = loop_start - (len(code) + 2)
+        if not -128 <= rel <= 127:
+            raise RuntimeError(f"wave_copy back-branch out of range: {rel}")
+        code += bytes([0x10, rel & 0xFF])                                          # BPL loop
+        code += bytes([0x60])                                                       # RTS
+        return bytes(code)
+
     def _emit_multipat_translator(self, voice_pat_counts, seq00_addr, shadow_base,
-                                  play_addr, translate_base):
+                                  play_addr, translate_base, table_copy_addr=None):
         """Stage 2.5: Multi-pattern runtime translator.
 
         For each voice 0..2:
@@ -2409,7 +2468,15 @@ class SF2Writer:
                         (translate_base + voice_loop) & 0xFF,
                         ((translate_base + voice_loop) >> 8) & 0xFF])
 
-        # ------ all voices done: JSR play_addr; RTS
+        # ------ all voices done: optionally JSR table-copy routine,
+        # then JSR play_addr; RTS.
+        # Stage 7 Phase B.1: if table_copy_addr is given, the table-copy
+        # routine (currently just wave; instruments/pulse coming in B.2)
+        # lives in the SF2 edit area and gets called every PLAY tick
+        # before the embedded NP21 player runs. Without this, F3 edits
+        # don't propagate to playback.
+        if table_copy_addr is not None:
+            c += bytes([0x20, table_copy_addr & 0xFF, (table_copy_addr >> 8) & 0xFF])
         c += bytes([0x20, play_addr & 0xFF, (play_addr >> 8) & 0xFF, 0x60])
 
         # ------ Inline data: voice_pat_counts table (3 bytes)

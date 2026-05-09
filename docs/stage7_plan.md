@@ -1,6 +1,9 @@
 # Stage 7 — Edit-affects-playback for tables (instruments / wave / pulse / filter)
 
-**Status:** Phase A shipped 2026-05-09. Phases B and C deferred.
+**Status:** Phase A shipped 2026-05-09. **Phase B.1 plumbing shipped
+2026-05-09**, but actual edit propagation BLOCKED on per-variant
+wave-table reverse-engineering — see "Phase B.0" below. Phase C
+deferred.
 
 ## Background
 
@@ -75,34 +78,80 @@ identity (NP21 → SF2 → NP21 = no-op when no edit) is the key correctness
 property. Edge cases for short inputs, multi-row tables, and the
 "Filter column not propagated" rule are covered.
 
-### Phase B — 6502 emission (deferred)
+### Phase B.1 — 6502 plumbing (✅ shipped 2026-05-09)
 
-Mirror the Phase A Python in 6502 assembly, integrated into the
-existing translator at `$0F8E` (`_emit_multipat_translator` in
-`sf2_writer.py`). Run once per PLAY tick, BEFORE the JSR to the
-embedded NP21 player.
+What's in:
 
-Estimated 6502 budget:
-- Wave: ~10 bytes (loop copy of 64 bytes)
+- `_emit_wave_copy_routine(sf2_addr, np21_addr, n_bytes)` —
+  emits a 12-byte 6502 byte-copy routine. Tested mechanically (py65
+  step-through confirms it executes during PLAY and overwrites the
+  destination bytes).
+- `_emit_multipat_translator` accepts a new optional
+  `table_copy_addr` parameter; when set, the translator emits
+  `JSR table_copy_addr` before its existing `JSR play_addr`. With
+  default `None`, behaviour is unchanged from v3.4.0.
+
+What's NOT in (and why): the wave_copy_addr is currently hardcoded
+to `None` in `_inject_laxity_raw_np21`, so no routine is actually
+emitted. See Phase B.0 below.
+
+### Phase B.0 — Per-variant wave-table address RE (BLOCKER)
+
+**Empirical finding 2026-05-09**: the Stinsen wave-table extraction
+in `extract_all_laxity_tables` returns wave_addr=`$17EC`, but py65
+trace shows that's a region of MUTATING player state (byte 2 changes
+from `$20` to `$41` during PLAY) — not a static wave table the
+player reads. Direct edits to bytes at `$17EC` mid-tick don't
+propagate to playback because the player overwrites those bytes
+itself.
+
+The canonical CLAUDE.md address `$1942` has structured-looking data
+(repeating `$7F` end-of-program markers) but direct edits there
+ALSO don't change the SID register writes the player issues to
+`osc<v>_control` ($D404/$D40B/$D412). So `$1942` isn't the read
+source either, at least not for the bytes I tested.
+
+The actual NP21 wave-read path is more complex than a flat
+2-byte-per-row table. Likely candidates:
+- A wave PROGRAM is a sequence of bytes terminated by `$7F`,
+  played byte-by-byte each tick by the player. The "read source"
+  is wherever the player's current program pointer is at that
+  tick — varies per voice, per beat.
+- The waveform value written to `osc<v>_control` may be derived
+  by combining a STATIC waveform byte (from one table) with a
+  DYNAMIC gate-bit decision (from sequence state) — not a single
+  byte read.
+
+So Phase B can't proceed via simple "flat table copy" because the
+table abstraction doesn't match NP21's runtime layout. Real options:
+
+1. Disassemble Stinsen's NP21 player, find the actual `LDA <addr>;
+   STA $D404` (or `STA <osc_control_table>` etc.) instruction, and
+   trace back to find the wave-read source address.
+2. Run the player under py65 with read-tracing AND filter for reads
+   that immediately precede SID register writes — that pinpoints
+   the read addresses dynamically.
+
+Until Phase B.0 is done, Phase B.1's plumbing is shipped but
+inactive (no routine emitted). The `_emit_wave_copy_routine` is
+kept as ready-to-call infrastructure for when an address is
+known.
+
+### Phase B.2 — 6502 emission for instruments / pulse (deferred)
+
+Same model as Wave but more complex (field rearrangement). Same
+Phase B.0 blocker: need to know the actual NP21 read addresses for
+instrument/pulse tables, not just where the extractor THINKS they
+are.
+
+Estimated 6502 budget once Phase B.0 unblocks:
+- Wave: 12 bytes (loop copy of 64 bytes; already implemented)
 - Instruments: ~40 bytes (per-row 5-field copy with 3-byte preserve)
 - Pulse: ~20 bytes (per-row 3-byte copy)
-- Total: ~70 bytes additional
+- Total: ~72 bytes additional
 
-The translator window is currently `$0F0E..$0FFA` (≈240 bytes) and the
-existing translator+multipat use ~138 bytes, so there's room. If
-budget gets tight, can move HANDLER_BASE down further.
-
-Care points:
-- Each table's destination address is variant-dependent (Stinsen
-  $1A6B / $1942 / $1A3B / $1989; other variants TBD via Class B
-  autodetector). The 6502 routine can't hardcode these; the writer
-  must patch in the addresses at SF2-build time.
-- Need to handle the case where the table address is in the embedded
-  NP21 binary (mostly the case) vs in the SF2 edit area itself (would
-  be a self-overwrite — should skip).
-- For Class B files (where ch_seq_ptr was autodetected), the table
-  addresses are also autodetected — same fingerprint logic could be
-  reused.
+These would all live in the SF2 edit area (no translator-window
+budget concern), called via JSR from the multipat translator.
 
 ### Phase C — End-to-end zig64 verification (deferred)
 
