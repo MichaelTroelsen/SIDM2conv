@@ -2,7 +2,7 @@
 
 **Version**: 2.9.7
 **Updated**: 2025-12-27
-**Reviewed against**: v3.4.1 (2026-05-09) — install + first-conversion steps unchanged
+**Reviewed against**: v3.5.0 (2026-05-09) — install + first-conversion steps unchanged
 
 Welcome to SIDM2! This guide will help you get up and running quickly.
 

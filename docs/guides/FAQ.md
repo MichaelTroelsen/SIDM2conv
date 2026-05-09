@@ -2,7 +2,7 @@
 
 **Version**: 2.9.7
 **Updated**: 2025-12-27
-**Reviewed against**: v3.4.1 (2026-05-09) — driver-selection / accuracy / compatibility answers unchanged. New since: F10-load now 100% solo on canonical Stinsen+Unboxed; 2 high-load-addr non-Laxity files (Hubbard `$C000` / Soundmonitor `$7FF8`) blocked on upstream Chordian/sidfactory2#211.
+**Reviewed against**: v3.5.0 (2026-05-09) — driver-selection / accuracy / compatibility answers unchanged. New since: F10-load 100% solo on canonical Stinsen+Unboxed; 2 high-load-addr non-Laxity files (Hubbard `$C000` / Soundmonitor `$7FF8`) blocked on upstream Chordian/sidfactory2#211, with a conversion-time advisory now naming the safe load_addr window. Wave (F3) edits in the SF2 editor propagate to playback as of v3.5.0.
 
 Common questions and answers about SIDM2.
 

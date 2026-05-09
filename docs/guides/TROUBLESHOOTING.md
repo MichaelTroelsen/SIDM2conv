@@ -4,6 +4,7 @@ Complete troubleshooting guide for the SID to SF2 converter.
 
 **Version**: v2.5.0
 **Last Updated**: 2025-12-21
+**Reviewed against**: v3.5.0 (2026-05-09) — diagnosis checklist + common-issues content remains accurate. New advisory: high-load-addr SIDs (outside `$0E00-$3000`) print a conversion-time warning about SF2II F10-load failures (upstream Chordian/sidfactory2#211).
 
 ---
 

@@ -2,7 +2,7 @@
 
 **Version**: 2.9.7
 **Updated**: 2025-12-27
-**Reviewed against**: v3.4.1 (2026-05-09) — workflow patterns unchanged.
+**Reviewed against**: v3.5.0 (2026-05-09) — workflow patterns unchanged. Stage 7 wave-edit propagation does not affect best-practices guidance.
 
 Expert tips, patterns, and optimization strategies for SIDM2.
 
