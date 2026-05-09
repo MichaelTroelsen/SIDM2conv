@@ -438,6 +438,24 @@ def analyze_sid_file(filepath: str, config: ConversionConfig = None, sf2_referen
         logger.info(f"End address: ${load_address + len(c64_data) - 1:04X}")
         logger.info("=" * 60)
 
+    # Stage 8.5 advisory: SF2II's editor view crashes on F10-load for SIDs
+    # whose load_addr falls outside the safe window $0E00-$3000. Root cause
+    # is a NULL std::string deref in SF2II's m_TableColorRules destructor at
+    # +0x63fab — confirmed via PageHeap, content-triggered, reported upstream
+    # as Chordian/sidfactory2#211. Conversion still produces a valid SF2 (it
+    # plays correctly in VICE/sidplayer); only SF2II's editor view crashes.
+    SAFE_LOAD_LOW = 0x0E00
+    SAFE_LOAD_HIGH = 0x3000
+    end_addr = load_address + len(c64_data) - 1
+    if load_address < SAFE_LOAD_LOW or end_addr > SAFE_LOAD_HIGH:
+        logger.warning(
+            f"⚠ load_addr ${load_address:04X} is outside the safe window "
+            f"${SAFE_LOAD_LOW:04X}-${SAFE_LOAD_HIGH:04X}. The converted SF2 "
+            f"will likely crash on F10-load in SID Factory II's editor view. "
+            f"Audio playback in VICE/sidplayer is unaffected. "
+            f"Tracked at upstream issue Chordian/sidfactory2#211."
+        )
+
     # Choose appropriate parser based on driver selection.
     # Priority: SF2-exported magic → registered extractor → Laxity fallback (table extraction)
     if is_sf2_exported:
