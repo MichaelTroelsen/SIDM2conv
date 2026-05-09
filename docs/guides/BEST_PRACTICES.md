@@ -2,6 +2,7 @@
 
 **Version**: 2.9.7
 **Updated**: 2025-12-27
+**Reviewed against**: v3.4.1 (2026-05-09) — workflow patterns unchanged.
 
 Expert tips, patterns, and optimization strategies for SIDM2.
 
