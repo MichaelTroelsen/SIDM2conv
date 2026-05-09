@@ -181,6 +181,18 @@ class SF2HeaderGenerator:
         self.filter_addr = 0x1989      # tbl_filter_seq
         self.instr_addr = 0x1A6B       # Instruments (column-major, 32x8 — emitted as 6 cols)
         self.cmd_addr = 0x1ADB         # Commands (= instruments + 0x70 in Stinsen)
+        # Editor-only "fake" tables (no NP21 player constructs). Default
+        # high-RAM addresses are safe for Laxity NP21 (binary at $1000+,
+        # so $C000-$C300 read zeros from emulated RAM). Non-Laxity files
+        # whose binary overlaps high RAM (e.g., Hubbard player at $C000)
+        # MUST override these to point at zero-filled placeholder regions
+        # inside the SF2 edit area; otherwise SF2II's editor renders the
+        # SID's executable code as instrument/wave/pulse/filter cells and
+        # deterministically crashes on F10-load.
+        self.arp_addr   = 0xC000
+        self.tempo_addr = 0xC100
+        self.hr_addr    = 0xC200
+        self.init_table_addr = 0xC300
 
     def create_descriptor_block(self) -> bytes:
         """
@@ -377,28 +389,28 @@ class SF2HeaderGenerator:
                 text_field_size=0,
             ),
             TableDescriptor(
-                name="Arp", table_id=6, address=0xC000,
+                name="Arp", table_id=6, address=self.arp_addr,
                 columns=1, rows=256, visible_rows=16,
                 table_type=0x00, layout=0x01, properties=0x01,
                 ins_del_rule=0x03, enter_rule=0xFF, color_rule=0x02,
                 text_field_size=0,
             ),
             TableDescriptor(
-                name="Tempo", table_id=7, address=0xC100,
+                name="Tempo", table_id=7, address=self.tempo_addr,
                 columns=1, rows=256, visible_rows=16,
                 table_type=0x00, layout=0x01, properties=0x01,
                 ins_del_rule=0xFF, enter_rule=0xFF, color_rule=0x00,
                 text_field_size=0,
             ),
             TableDescriptor(
-                name="HR", table_id=5, address=0xC200,
+                name="HR", table_id=5, address=self.hr_addr,
                 columns=2, rows=16, visible_rows=6,
                 table_type=0x00, layout=0x01, properties=0x00,
                 ins_del_rule=0xFF, enter_rule=0xFF, color_rule=0xFF,
                 text_field_size=0,
             ),
             TableDescriptor(
-                name="Init", table_id=8, address=0xC300,
+                name="Init", table_id=8, address=self.init_table_addr,
                 columns=2, rows=32, visible_rows=8,
                 table_type=0x00, layout=0x01, properties=0x02,
                 ins_del_rule=0xFF, enter_rule=0xFF, color_rule=0xFF,

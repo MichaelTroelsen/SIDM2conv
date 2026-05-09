@@ -97,6 +97,21 @@ class SF2Writer:
                 # Audio plays via the original player code; editor view is
                 # mostly empty (table addresses point at high RAM, sequences
                 # are placeholder 0x7F end markers).
+                #
+                # Known limitation (Stage 8.5, 2026-05-09): F10-load is only
+                # 100% reliable when the SID's load_addr is roughly $0E00-$3000.
+                # SIDs that load at $C000 (e.g., Hubbard Action_Biker), $7FF8
+                # (Soundmonitor Byte_Bite), $5000 (Hubbard Commando), $BC00
+                # (Hubbard Delta), $E000 (Hubbard ACE_II) trigger a heap-
+                # layout-dependent crash inside SF2II's editor view setup
+                # that's Heisenbug-masked under our diagnostic patched x86
+                # SF2II build, so writer-side fixes can't be pinned without
+                # admin-elevated AppVerifier/WER tooling. Conversion still
+                # succeeds (the SF2 plays correctly outside the editor), but
+                # users opening these files via F10 in SF2II will see a
+                # crash. Workaround: route through Galway/dedicated converter
+                # if applicable, or accept the editor crash and use other
+                # tools (VICE, sidplayer) for audio.
                 self._inject_player_raw_minimal()
             else:
                 self._inject_music_data_into_template()
@@ -2012,6 +2027,28 @@ class SF2Writer:
         gen.filter_addr     = sf2_data_base + filter_table_offset
         edit.extend(bytes(16 * 3))                    # 16 rows × 3 cols Filter
 
+        # Editor-only "fake" tables (Arp/Tempo/HR/Init) live in the SF2 edit
+        # area too. The default $C000-$C300 high-RAM addresses are safe for
+        # Laxity NP21 (binary at $1000+) but COLLIDE with non-Laxity binaries
+        # that load at $C000+ (e.g., Hubbard's Action_Biker at $C000-$CBC1).
+        # When SF2II's editor renders these tables, it reads cells from the
+        # emulated C64 RAM at the configured address — which for Action_Biker
+        # would be the SID player's executable code, deterministically
+        # crashing the editor. Pointing them at zero-filled placeholders
+        # inside the edit area sidesteps that.
+        arp_table_offset    = len(edit)
+        gen.arp_addr        = sf2_data_base + arp_table_offset
+        edit.extend(bytes(256 * 1))                   # Arp: 256 rows × 1 col
+        tempo_table_offset  = len(edit)
+        gen.tempo_addr      = sf2_data_base + tempo_table_offset
+        edit.extend(bytes(256 * 1))                   # Tempo: 256 rows × 1 col
+        hr_table_offset     = len(edit)
+        gen.hr_addr         = sf2_data_base + hr_table_offset
+        edit.extend(bytes(16 * 2))                    # HR: 16 rows × 2 cols
+        init_table_offset   = len(edit)
+        gen.init_table_addr = sf2_data_base + init_table_offset
+        edit.extend(bytes(32 * 2))                    # Init: 32 rows × 2 cols
+
         sf2_edit_data = bytes(edit)
         gen.driver_size += len(sf2_edit_data)
 
@@ -2067,6 +2104,123 @@ class SF2Writer:
         logger.info(f"  Edit area: ${sf2_data_base:04X}-${sf2_data_base + len(sf2_edit_data) - 1:04X} ({len(sf2_edit_data)} bytes)")
         logger.info(f"  INIT: ${INIT_HANDLER:04X} -> JSR ${init_addr:04X}")
         logger.info(f"  PLAY: ${PLAY_HANDLER:04X} -> JSR ${play_addr:04X}")
+
+    def _inject_silent_stub(self) -> None:
+        """[ATTEMPTED, NOT WORKING — kept for reference/future work]
+
+        Builds a minimal SF2 with no embedded player binary, intended as a
+        fallback when the SID's load_addr falls outside the embed-binary
+        path's safe window. The hope was: a 3KB stub with valid Blocks 1-9
+        + handlers + placeholder edit area would be structurally close
+        enough to the bundled "Driver 11 Test - Arpeggio.sf2" to load.
+
+        It DOES NOT load. Action_Biker silent-stub (3KB, no embedded
+        binary, identical Block 3 layout to the working bundled file)
+        crashes 5/5 in production SF2II while the byte-for-byte same
+        layout converts via 13KB Stinsen file passes 5/5. The crash is
+        heap-state-dependent, Heisenbug-masked under the patched
+        diagnostic binary.
+
+        This method is currently uncalled; left here so future
+        investigation can reuse the layout setup without re-deriving it.
+        """
+        logger.info("Building silent-stub SF2 (load_addr unsafe — no playback)...")
+        self._minimal_path = True
+
+        LOAD_BASE      = 0x0D7E
+        HANDLER_BASE   = 0x0F90
+        INIT_HANDLER   = HANDLER_BASE + 0
+        PLAY_HANDLER   = HANDLER_BASE + 1
+        STOP_HANDLER   = HANDLER_BASE + 2
+        # No embedded binary; everything lives between $0D7E and the end
+        # of the edit area. Pretend sid_la is at $1000 to match the layout
+        # of bundled SF2II reference files (whose Block 3 addresses all
+        # live in $1000+); the gap from $0F93 to $1000 is just zero
+        # padding in the file and does not affect anything in C64 RAM.
+        sid_la = 0x1000
+
+        from sidm2.sf2_header_generator import SF2HeaderGenerator
+        gen = SF2HeaderGenerator(driver_size=sid_la - LOAD_BASE)
+        gen.DRIVER_INIT = INIT_HANDLER
+        gen.DRIVER_PLAY = PLAY_HANDLER
+        gen.DRIVER_STOP = STOP_HANDLER
+
+        # Build Block 5 placeholder + zero-filled Block 3 column tables
+        # in the edit area starting at sid_la.
+        OL_SIZE  = 0x100
+        SEQ_SIZE = 0x100
+        SEQ_PTR_SIZE = 0x80
+        sf2_data_base = sid_la
+        ol_ptr_lo_addr  = sf2_data_base + 0
+        ol_ptr_hi_addr  = sf2_data_base + 3
+        seq_ptr_lo_addr = sf2_data_base + 6
+        seq_ptr_hi_addr = sf2_data_base + 6 + SEQ_PTR_SIZE
+        ol_track1_addr  = sf2_data_base + 6 + 2 * SEQ_PTR_SIZE
+        seq00_addr      = ol_track1_addr + 3 * OL_SIZE
+        music_data_params = {
+            'track_count':     3,
+            'ol_ptr_lo_addr':  ol_ptr_lo_addr,
+            'ol_ptr_hi_addr':  ol_ptr_hi_addr,
+            'seq_count':       1,
+            'seq_ptr_lo_addr': seq_ptr_lo_addr,
+            'seq_ptr_hi_addr': seq_ptr_hi_addr,
+            'ol_size':         OL_SIZE,
+            'ol_track1_addr':  ol_track1_addr,
+            'seq_size':        SEQ_SIZE,
+            'seq00_addr':      seq00_addr,
+        }
+        edit = bytearray()
+        for v in range(3):
+            ol_addr = ol_track1_addr + v * OL_SIZE
+            edit.append(ol_addr & 0xFF)
+        for v in range(3):
+            ol_addr = ol_track1_addr + v * OL_SIZE
+            edit.append((ol_addr >> 8) & 0xFF)
+        seq_lo = bytearray(SEQ_PTR_SIZE)
+        seq_hi = bytearray(SEQ_PTR_SIZE)
+        seq_lo[0] = seq00_addr & 0xFF
+        seq_hi[0] = (seq00_addr >> 8) & 0xFF
+        edit.extend(seq_lo)
+        edit.extend(seq_hi)
+        for _ in range(3):
+            ol = bytearray([0xA0, 0x00, 0xFE])
+            while len(ol) < OL_SIZE:
+                ol.append(0xFF)
+            edit.extend(ol)
+        edit.extend(bytes([0x7F] * SEQ_SIZE))
+
+        gen.instr_addr   = sf2_data_base + len(edit); edit.extend(bytes(32 * 6))
+        gen.cmd_addr     = gen.instr_addr + 0x70
+        gen.wave_addr    = sf2_data_base + len(edit); edit.extend(bytes(32 * 2))
+        gen.pulse_addr   = sf2_data_base + len(edit); edit.extend(bytes(16 * 3))
+        gen.filter_addr  = sf2_data_base + len(edit); edit.extend(bytes(16 * 3))
+        gen.arp_addr     = sf2_data_base + len(edit); edit.extend(bytes(256 * 1))
+        gen.tempo_addr   = sf2_data_base + len(edit); edit.extend(bytes(256 * 1))
+        gen.hr_addr      = sf2_data_base + len(edit); edit.extend(bytes(16 * 2))
+        gen.init_table_addr = sf2_data_base + len(edit); edit.extend(bytes(32 * 2))
+        sf2_edit_data = bytes(edit)
+
+        gen.driver_size += len(sf2_edit_data)
+        header_bytes = gen.generate_complete_headers(music_data_params)
+        if LOAD_BASE + len(header_bytes) > HANDLER_BASE:
+            logger.error(f"  Headers too large: ${LOAD_BASE + len(header_bytes):04X} > ${HANDLER_BASE:04X}")
+            return
+
+        gap = sid_la - LOAD_BASE
+        file_size = 2 + gap + len(sf2_edit_data)
+        file_data = bytearray(file_size)
+        file_data[0] = LOAD_BASE & 0xFF
+        file_data[1] = LOAD_BASE >> 8
+        file_data[2:2 + len(header_bytes)] = header_bytes
+        # Bare-RTS handler stubs at $0F90-$0F92.
+        hnd_off = 2 + (HANDLER_BASE - LOAD_BASE)
+        file_data[hnd_off:hnd_off + 3] = bytes([0x60, 0x60, 0x60])
+        # SF2 edit area at sid_la.
+        edit_off = 2 + gap
+        file_data[edit_off:edit_off + len(sf2_edit_data)] = sf2_edit_data
+
+        self.output = file_data
+        logger.info(f"  SF2 size: {len(self.output)} bytes (silent stub)")
 
     def _emit_sf2_to_np21_translator(self, num_patterns, seq00_addr, shadow_base, play_addr):
         """Emit the runtime SF2->NP21 translator that lives at $0F0E.

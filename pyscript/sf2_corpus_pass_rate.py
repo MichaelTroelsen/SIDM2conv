@@ -35,6 +35,13 @@ CORPUS = [
 
 
 def convert(sid: Path, sf2: Path) -> bool:
+    # Clear stale output to avoid the converter's overwrite-refusal.
+    sf2_txt = sf2.with_suffix('.txt')
+    for p in (sf2, sf2_txt):
+        try:
+            p.unlink()
+        except FileNotFoundError:
+            pass
     rc = subprocess.run(
         [sys.executable, str(CONVERTER), str(sid), str(sf2), '-q'],
         capture_output=True, text=True, cwd=str(ROOT),
