@@ -275,10 +275,16 @@ class TestWrite(unittest.TestCase):
 
         output_path = os.path.join(self.temp_dir, 'test_output.sf2')
 
-        # Mock both template and driver finding
+        # Mock both template and driver finding. Also mock the post-structure
+        # injection paths since `_create_minimal_structure` is mocked and
+        # `self.output` stays empty — otherwise `_inject_auxiliary_data` raises
+        # IndexError reading `self.output[0]`.
         with patch.object(writer, '_find_template') as mock_template, \
              patch.object(writer, '_find_driver') as mock_driver, \
-             patch.object(writer, '_create_minimal_structure') as mock_create:
+             patch.object(writer, '_create_minimal_structure') as mock_create, \
+             patch.object(writer, '_inject_music_data'), \
+             patch.object(writer, '_update_table_definitions'), \
+             patch.object(writer, '_inject_auxiliary_data'):
 
             # Template doesn't exist
             mock_template.return_value = '/nonexistent/template.sf2'
@@ -1425,7 +1431,10 @@ class TestBuildNp21Sf2EditAreaByteMapping(unittest.TestCase):
         # _build_np21_sf2_edit_area only reads c64_data + sid_la; bypass __init__
         # entirely so we don't need a real template/driver.
         writer = SF2Writer.__new__(SF2Writer)
-        _params, edit_bytes, _voice_idx, _raw = writer._build_np21_sf2_edit_area(bytes(c64_data), sid_la)
+        # Stage 2.5+ contract: returns 5-tuple (params, edit, voice_idx,
+        # raw_patterns, voice_pat_counts).
+        _params, edit_bytes, _voice_idx, _raw, _voice_pat_counts = \
+            writer._build_np21_sf2_edit_area(bytes(c64_data), sid_la)
         SEQ_PTR_SIZE = 128
         OL_SIZE = 256
         seq00_offset = 6 + 2 * SEQ_PTR_SIZE + 3 * OL_SIZE
@@ -1456,9 +1465,19 @@ class TestBuildNp21Sf2EditAreaByteMapping(unittest.TestCase):
         self.assertEqual(seq[1], 0x7E)
 
     def test_control_bytes_pass_through(self):
-        """NP21 0x80..0xFF (durations, instruments, commands) all identity."""
-        seq = self._build_with_seq([0x80, 0x95, 0xA3, 0xBF, 0xC1, 0xFE])
-        self.assertEqual(list(seq[:6]), [0x80, 0x95, 0xA3, 0xBF, 0xC1, 0xFE])
+        """NP21 control bytes (durations 0x80-0x9F, commands 0xC0-0xFF) are
+        identity in the SF2 sequence buffer.
+
+        Excludes the 0xA0-0xBF range — those are instrument-prefix bytes
+        that, since v3.4.0 Stage 2.5, are also pattern-split markers for
+        the multi-pattern segmenter. Mid-stream 0xA0-0xBF bytes therefore
+        appear in *subsequent* sequences, not in segment 0 which is what
+        `_build_with_seq` returns. Identity for those is covered by
+        TestSf2ToNp21RoundTrip below where the segmenter sees 0xA0 only
+        at the start of a segment.
+        """
+        seq = self._build_with_seq([0x80, 0x95, 0xC1, 0xFE])
+        self.assertEqual(list(seq[:4]), [0x80, 0x95, 0xC1, 0xFE])
 
     def test_sequence_padded_with_sf2_end_marker(self):
         """Sequence body terminated by SF2 0x7F and padded with 0x7F to 256B."""
@@ -1492,7 +1511,8 @@ class TestSf2ToNp21RoundTrip(unittest.TestCase):
         c64_data[seq_offset + len(np21_body) + 1] = 0x00
 
         writer = SF2Writer.__new__(SF2Writer)
-        _params, edit_bytes, _voice_idx, _raw = writer._build_np21_sf2_edit_area(bytes(c64_data), sid_la)
+        _params, edit_bytes, _voice_idx, _raw, _voice_pat_counts = \
+            writer._build_np21_sf2_edit_area(bytes(c64_data), sid_la)
         SEQ_PTR_SIZE = 128
         OL_SIZE = 256
         seq00_offset = 6 + 2 * SEQ_PTR_SIZE + 3 * OL_SIZE
@@ -1518,19 +1538,26 @@ class TestSf2ToNp21RoundTrip(unittest.TestCase):
         self.assertEqual(np21_decoded, np21_source + bytes([0xFF, 0x00]))
 
     def test_mixed_byte_types_round_trip(self):
-        """Notes, no-event, tie, duration, instrument, command all round-trip."""
+        """Notes, no-event, tie, duration, instrument, command all round-trip
+        within a single segment.
+
+        Stage 2.5 splits the NP21 stream at instrument-prefix bytes 0xA0-0xBF.
+        We test round-trip within ONE segment — instrument-prefix at position
+        0 starts segment 0; subsequent instrument prefixes would split it.
+        Cross-segment round-tripping for multi-instrument streams is verified
+        by `np21_pattern_segmenter`'s round-trip property test instead.
+        """
         from sidm2.sf2_to_np21 import sf2_to_np21
         # Note: NP21 0xC0-0xFF are command prefixes that consume the next byte
         # as payload. 0xFF specifically is the loop marker — reserved, can't
         # appear in body. We exercise 0xC1 (a generic command) instead.
         np21_source = bytes([
-            0xA0,        # set instrument $A0
+            0xA0,        # set instrument $A0 (starts segment 0; no further 0xA0-0xBF)
             0x05,        # play note $05
             0x00,        # no new note (gate stays)
             0x7E,        # tie
             0x80,        # duration 0
             0x95,        # duration 5 + tie flag
-            0xB3,        # set instrument $B3
             0xC1, 0x42,  # command $C1 with payload $42
         ])
         sf2_seq = self._build_with_seq(np21_source)
@@ -1634,7 +1661,7 @@ class TestCriterion3EditProof(unittest.TestCase):
         c64_data[seq_offset + len(np21_body) + 1] = 0x00
 
         writer = SF2Writer.__new__(SF2Writer)
-        params, edit_bytes, voice_idx, raw_patterns = \
+        params, edit_bytes, voice_idx, raw_patterns, _voice_pat_counts = \
             writer._build_np21_sf2_edit_area(bytes(c64_data), sid_la)
 
         # The sf2 sequence the runtime translator will consume on PLAY:
