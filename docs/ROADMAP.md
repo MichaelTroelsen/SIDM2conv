@@ -8,7 +8,7 @@
 
 ---
 
-## Current State (v3.3.0, 2026-04-30) — All Four Criteria Closed
+## Current State (v3.4.1, 2026-05-09) — All Four Criteria Closed; F10-load 100% Solo
 
 The original four-criterion converter goal is **all 4 closed** for Stinsen + Unboxed:
 1. **Plays correctly in SF2 editor** — ✅ auto-detect routes `SidFactory_II/Laxity` to laxity driver; zig64 trace 100% match
@@ -16,7 +16,17 @@ The original four-criterion converter goal is **all 4 closed** for Stinsen + Unb
 3. **Edits affect playback** — ✅ closed in v3.3.0. Two-part runtime architecture: build-time pre-fill of a 3-slot shadow buffer + runtime translator at `$0F0E` (51 bytes of 6502) that regenerates the shadow on every PLAY tick by translating SF2-format edit-area bytes through `sidm2/sf2_to_np21.py`. PLAY handler at `$0F04` is now `JMP $0F0E`.
 4. **Round-trip SID→SF2→SID** — ✅ register accuracy 100%, metadata preserved through the SF2 aux block id=5 reader
 
-**Open piece — F10-load editor crash**: SF2II's editor-view setup crashes ~40% on Stinsen / 73% on Unboxed when F10-loading our raw-NP21 SF2 files. Heap-state-dependent stray 1-byte write of `0xDE`/`0xDF` inside `m_ComponentsManager->Refresh()`. Comprehensive RE complete (see `memory/project-status.md`); fix requires NP21→Driver-11 data conversion (multi-day work). Workaround shipped: `pyscript/sf2_load_retry.py` retries until success (median 2-4 attempts).
+**Open piece — F10-load on non-Laxity files**: closed for the canonical
+corpus in v3.4.1 (Block 3 NameLen→TextFieldSize fix took Stinsen + Unboxed
+solo F10-load to 100%, also unblocking Angular + Beast which were 0%
+deterministic crashes). Residual 2 of 11 corpus files still crash:
+Hubbard *Action_Biker* (`$C000`) and Soundmonitor *Byte_Bite* (`$7FF8`).
+Captured under PageHeap-mode AppVerifier as a NULL `std::string` deref in
+SF2II's `m_TableColorRules` destructor at `+0x63fab` — bug is in upstream
+SF2II source, not the converter. Filed as
+[Chordian/sidfactory2#211](https://github.com/Chordian/sidfactory2/issues/211).
+Conversion still produces a valid `.sf2`; audio plays via VICE / sidplayer.
+Toolchain at `docs/stage8.5_debugging_toolkit.md`.
 
 **Open piece — Generalization beyond Stinsen + Unboxed**: both test songs are simple (single sequence per voice, looping). Multi-pattern songs that walk the orderlist are not yet supported by `_build_np21_sf2_edit_area`.
 

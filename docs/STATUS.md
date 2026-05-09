@@ -8,7 +8,7 @@
 
 ## Quick Summary
 
-The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2) format for editing and remixing. As of v3.3.0, the converter achieves **100% frame accuracy** on the canonical test songs (Stinsen + Unboxed) verified against zig64 cycle-accurate ground truth, with auto-driver detection, round-trip metadata preservation, an editor-side Python decoder simulator for headless verification, and a runtime SF2→NP21 sequence translator that propagates editor edits to playback.
+The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2) format for editing and remixing. As of v3.4.1, the converter achieves **100% frame accuracy** on the canonical test songs (Stinsen + Unboxed) verified against zig64 cycle-accurate ground truth, with auto-driver detection, round-trip metadata preservation, an editor-side Python decoder simulator for headless verification, a runtime SF2→NP21 sequence translator that propagates editor edits to playback, and **100% solo F10-load reliability** on the canonical corpus (no retry wrapper).
 
 **Current State**: ✅ **Production** — all four success criteria closed:
 1. **Plays correctly in SF2 editor** ✅ (auto-detect picks laxity driver; trace match 100%)

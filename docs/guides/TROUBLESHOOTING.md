@@ -443,7 +443,55 @@ xxd SID/file.sid | head -1
 
 ---
 
-### 6. Platform-Specific Issues
+### 6. Editor Issues (SID Factory II load / display)
+
+#### SF2 file crashes SID Factory II on F10-load (deterministic, certain SIDs only)
+
+**What it looks like**:
+- `sid_to_sf2.bat` reports SUCCESS and writes a `.sf2`.
+- Loading that `.sf2` in SID Factory II via F10 crashes the editor 100% of the time.
+- The SID still plays correctly in VICE, sidplayer, or any external SID emulator.
+- Most files load fine; a few specific ones don't.
+
+**Pattern**: the failing files all have a high or unusual PSID load address.
+Verified failing classes: load_addr `$C000` (e.g. Rob Hubbard's *Action_Biker*),
+`$7FF8` (e.g. Soundmonitor *Byte_Bite*), `$5000` (Hubbard's *Commando*),
+`$BC00` (Hubbard's *Delta*). Files at `$1000` (the Laxity convention) load
+reliably.
+
+**Cause**: this is an **upstream bug in SF2II's source**, not in the converter.
+Captured under PageHeap-mode AppVerifier as a NULL `std::string` deref at
+`SIDFactoryII.exe + 0x63fab` inside the `m_TableColorRules` destructor. Filed
+upstream as [Chordian/sidfactory2#211](https://github.com/Chordian/sidfactory2/issues/211).
+
+**Workaround**: use the converter's output via VICE / sidplayer for audio;
+wait for upstream resolution before opening these specific files in the editor.
+
+**Verify the fix landed once upstream resolves**:
+```bash
+py -3 pyscript/sf2_corpus_pass_rate.py 5
+```
+Target: 11/11 = 100% (currently 9/11 = 82% — the 2 missing are blocked on
+the upstream issue).
+
+**For developers chasing this**: see `docs/stage8.5_debugging_toolkit.md` for
+the full reproduction recipe + AppVerifier setup + custom debugger.
+
+---
+
+#### F10-load occasionally crashes a previously-working file
+
+If you're on a SIDM2 build older than v3.4.1 (released 2026-05-09), upgrade.
+v3.4.1's Block 3 NameLen→TextFieldSize fix took canonical-corpus solo
+F10-load from ~50% to 100% by closing a heap-state-dependent stray-write
+that fired in SF2II's `m_MainTextField`. Check your version:
+```bash
+git log --oneline | head -5
+```
+
+---
+
+### 7. Platform-Specific Issues
 
 #### Windows Issues
 
