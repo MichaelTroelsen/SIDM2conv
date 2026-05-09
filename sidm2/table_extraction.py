@@ -1608,6 +1608,12 @@ def extract_all_laxity_tables(data: bytes, load_addr: int) -> Dict[str, Any]:
         'commands': [],
         'instr_addr': 0,
         'wave_addr': 0,
+        'wave_data_addr': 0,   # NP21 wave-program (waveform values) address;
+                                # parallel to wave_addr (note offsets). For
+                                # Stinsen: wave_addr=$190C, wave_data_addr=$18DA.
+                                # Set when find_wave_table_from_player_code
+                                # succeeds; 0 otherwise (would need addr-tweak
+                                # at extract time to derive).
         'pulse_addr': 0,
         'filter_addr': 0,
     }
@@ -1634,8 +1640,60 @@ def extract_all_laxity_tables(data: bytes, load_addr: int) -> Dict[str, Any]:
     # Find table addresses by tracing player code
     table_addrs = find_table_addresses_from_player(data, load_addr)
 
-    # Extract wave table
-    if 'wave' in table_addrs:
+    # ----- Wave table -----
+    # Prefer find_and_extract_wave_table (which calls
+    # find_wave_table_from_player_code) over the LDA-near-STA$D404
+    # heuristic in find_table_addresses_from_player. Empirical 2026-05-09
+    # finding (probe_wave_read_addr.py): find_table_addresses_from_player
+    # returns Stinsen wave_addr=$17EC, but $17EC is per-voice TRANSIENT
+    # state that the player itself overwrites every PLAY tick — not the
+    # static wave PROGRAM. The actual wave program is at $18DA. The
+    # LDA-near-STA heuristic finds the immediate-source addr (which is
+    # only one step away from the SID register) rather than chasing back
+    # to the static source.
+    #
+    # find_wave_table_from_player_code uses known Laxity NP21 layouts
+    # (Stinsens: note=$190C/wave=$18DA; Angular: note=$19AD/wave=$19E7)
+    # plus a validation check that the wave bytes actually look like
+    # waveform values. Falls back to LDA-reference search if those fail.
+    # That validates the static source, not just the indirect-load
+    # operand.
+    #
+    # The detection chain:
+    #   1. Try find_and_extract_wave_table — validated static address
+    #   2. If that fails, fall back to the LDA-near-STA heuristic
+    #      (find_table_addresses_from_player['wave'])
+    #   3. If both fail, leave wave_addr=0 and wave_table=[]
+    wave_addr_validated = None
+    wave_entries: List[Tuple[int, int]] = []
+    try:
+        wave_addr_validated, wave_entries = find_and_extract_wave_table(data, load_addr)
+    except TableExtractionError:
+        wave_addr_validated, wave_entries = None, []
+
+    if wave_addr_validated and len(wave_entries) >= 4:
+        result['wave_addr'] = wave_addr_validated
+        result['wave_table'] = wave_entries
+        # Also try to get the WAVE-DATA address (separate from note
+        # address). This is the static waveform-values array that the
+        # NP21 player reads to drive osc<v>_control. Phase B.1 wave-copy
+        # writes back here. find_wave_table_from_player_code returns
+        # (note_addr, wave_addr) — the second element is the wave-data
+        # array. For Stinsen: wave_addr_validated=$190C (notes),
+        # wave_data_addr=$18DA (waveforms).
+        try:
+            note_addr, wave_data_addr = find_wave_table_from_player_code(data, load_addr)
+            if (wave_data_addr is not None
+                and note_addr == wave_addr_validated):
+                result['wave_data_addr'] = wave_data_addr
+        except (IndexError, ValueError):
+            pass
+    elif 'wave' in table_addrs:
+        # Fallback to the LDA-near-STA result. Note this gives a
+        # transient-state address for some variants — the SF2 editor
+        # view will show whatever is at that location at extraction
+        # time, which may not be the actual wave program. Still
+        # better than nothing.
         wave_addr = table_addrs['wave']
         result['wave_addr'] = wave_addr
         wave_offset = wave_addr - load_addr
@@ -1650,11 +1708,6 @@ def extract_all_laxity_tables(data: bytes, load_addr: int) -> Dict[str, Any]:
                 if note_offset == 0x7E or (note_offset == 0x7F and waveform <= i):
                     break
         result['wave_table'] = wave_entries
-    else:
-        wave_addr, wave_entries = find_and_extract_wave_table(data, load_addr)
-        if wave_addr:
-            result['wave_addr'] = wave_addr
-            result['wave_table'] = wave_entries
 
     # Extract pulse table
     pulse_addr, pulse_entries = find_and_extract_pulse_table(data, load_addr)

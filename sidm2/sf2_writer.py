@@ -1641,16 +1641,22 @@ class SF2Writer:
         # SF2II's editor view at the wrong addresses triggers a deterministic
         # editor-view crash on F10-load. See memory/project-status.md
         # (2026-05-06 Angular generalization finding) for context.
-        # Stage 7 Phase B.1: capture the BINARY wave-table address before
+        # Stage 7 Phase B.1: capture the BINARY wave-table addresses before
         # gen.wave_addr gets overwritten with the SF2 edit area address
-        # below (line ~1796). The wave-copy 6502 routine needs the binary
-        # address as the destination — that's where the player reads from.
-        np21_wave_binary_addr = None
+        # below (line ~1796). The wave-copy 6502 routine needs both the
+        # NOTE address (where the player reads note offsets) AND the
+        # WAVE-DATA address (where the player reads waveform values) —
+        # NP21 stores them as PARALLEL arrays at separate addresses, e.g.
+        # for Stinsen: note=$190C, wave-data=$18DA.
+        np21_note_binary_addr = None
+        np21_wave_data_binary_addr = None
         try:
             laxity_tables = extract_all_laxity_tables(c64_data, sid_la)
             if laxity_tables.get('wave_addr'):
                 gen.wave_addr = laxity_tables['wave_addr']
-                np21_wave_binary_addr = laxity_tables['wave_addr']
+                np21_note_binary_addr = laxity_tables['wave_addr']
+            if laxity_tables.get('wave_data_addr'):
+                np21_wave_data_binary_addr = laxity_tables['wave_data_addr']
             if laxity_tables.get('pulse_addr'):
                 gen.pulse_addr = laxity_tables['pulse_addr']
 
@@ -1762,22 +1768,44 @@ class SF2Writer:
         shadow_buffer_size = SHADOW_VOICES * SEQ_SHADOW_SIZE
         sf2_data_base = sid_la + len(c64_data)
 
-        # Stage 7 Phase B.1 infrastructure: the runtime translator at
-        # $0F0E now accepts an optional `table_copy_addr` parameter; if
-        # set, the translator JSRs that routine before JSR play_addr,
-        # giving table-copy code a chance to refresh NP21 binary tables
-        # from the SF2 edit area on every PLAY tick.
+        # Stage 7 Phase B.1: append a wave SPLIT-copy 6502 routine to
+        # the END of sf2_edit_data, so F3 (wave) edits propagate to
+        # playback. The routine does a per-row split-copy from the
+        # SF2 edit area's interleaved (waveform, note_offset) bytes
+        # to the parallel NP21 arrays at np21_wave_data_addr and
+        # np21_note_addr. ch_seq_ptr patch resolves correctly because
+        # shadow_base is computed AFTER appending.
         #
-        # The wave-copy emission was attempted but DISABLED (set to None
-        # below). Empirical finding 2026-05-09: `extract_all_laxity_tables`
-        # returns wave_addr=$17EC for Stinsen, but py65 trace shows
-        # $17EC is mutating player state (not a static wave table); the
-        # canonical $1942 has structured data that's also not where the
-        # player reads waveforms from when it writes osc<v>_control.
-        # The actual NP21 wave-read path needs per-variant RE before
-        # the dst address is known. Until then: ship the plumbing,
-        # don't emit the routine. See docs/stage7_plan.md for status.
+        # Eligibility:
+        #   - Class A extraction succeeded (np21_note_binary_addr set).
+        #   - find_wave_table_from_player_code returned a wave-data
+        #     addr distinct from the note addr (np21_wave_data_binary_addr).
+        #   - Both addresses inside the embedded c64_data range.
+        #   - music_data_params has an SF2 edit-area wave address.
         wave_copy_addr = None
+        edit_wave_addr = music_data_params.get('edit_wave_addr')
+        wave_n_rows = 32   # matches Stage 4 emit (32 rows × 2 cols)
+        if (num_patterns > 0
+            and np21_note_binary_addr is not None
+            and np21_wave_data_binary_addr is not None
+            and edit_wave_addr is not None
+            and sid_la <= np21_note_binary_addr < sid_la + len(c64_data)
+            and sid_la <= np21_wave_data_binary_addr < sid_la + len(c64_data)):
+            wave_routine = self._emit_wave_split_copy_routine(
+                sf2_wave_addr=edit_wave_addr,
+                np21_wave_data_addr=np21_wave_data_binary_addr,
+                np21_note_addr=np21_note_binary_addr,
+                n_rows=wave_n_rows,
+            )
+            wave_copy_addr = sf2_data_base + len(sf2_edit_data)
+            sf2_edit_data = bytes(sf2_edit_data) + wave_routine
+            logger.info(
+                f"  Stage 7 wave-split-copy routine @ ${wave_copy_addr:04X} "
+                f"({len(wave_routine)}B); src=${edit_wave_addr:04X} "
+                f"wave-dst=${np21_wave_data_binary_addr:04X} "
+                f"note-dst=${np21_note_binary_addr:04X} "
+                f"({wave_n_rows} rows per PLAY tick)"
+            )
 
         shadow_base = sf2_data_base + len(sf2_edit_data)
 
@@ -1899,12 +1927,27 @@ class SF2Writer:
 
         # Fix zig64 auto-detection: it always calls init_addr+3 as PLAY.
         if play_addr != init_addr + 3:
+            # The trampoline at init_addr+3 is what zig64 calls as PLAY
+            # (it always uses init_addr+3 as the play entry). For runtime
+            # translator + wave-copy to fire on EVERY zig64 trace tick
+            # — not just SF2II's PLAY-handler path — point the trampoline
+            # at the translator entry (TRANSLATE_BASE) when patterns
+            # exist, falling through to play_addr otherwise. Without
+            # this, edits to the SF2 edit area would only propagate when
+            # SF2II calls PLAY via $0F94, never under zig64 trace.
             stub_off = np21_off + (init_addr + 3 - sid_la)
             if 0 <= stub_off and stub_off + 3 <= len(file_data):
+                if num_patterns > 0:
+                    target = TRANSLATE_BASE
+                    label = "translator"
+                else:
+                    target = play_addr
+                    label = "play"
                 file_data[stub_off]     = 0x4C  # JMP
-                file_data[stub_off + 1] = play_addr & 0xFF
-                file_data[stub_off + 2] = (play_addr >> 8) & 0xFF
-                logger.info(f"  Patched ${init_addr+3:04X} -> JMP ${play_addr:04X} (zig64 play redirect)")
+                file_data[stub_off + 1] = target & 0xFF
+                file_data[stub_off + 2] = (target >> 8) & 0xFF
+                logger.info(f"  Patched ${init_addr+3:04X} -> JMP ${target:04X} "
+                            f"({label} — zig64 PLAY redirect)")
 
         # SF2 edit data appended after NP21 binary
         if sf2_edit_data:
@@ -2320,17 +2363,14 @@ class SF2Writer:
 
     def _emit_wave_copy_routine(self, sf2_wave_addr: int, np21_wave_addr: int,
                                 n_bytes: int = 64) -> bytes:
-        """Stage 7 Phase B.1: Emit a 6502 routine that copies the SF2 edit
-        area's wave table back to the NP21 binary's wave table on every
-        PLAY tick. This is what makes F3 (wave) edits actually affect
-        playback.
+        """[KEPT for backwards compat — superseded by _emit_wave_split_copy]
 
-        Wave is the simplest of the four tables — SF2 and NP21 share the
-        same byte layout (rows of [note_offset, waveform]), so this is a
-        straight byte copy with no field rearrangement. Caller is
-        responsible for ensuring n_bytes <= 256 (X register counts down).
-
-        Returns 12 bytes: LDX #n-1; LDA sf2,X; STA np21,X; DEX; BPL loop; RTS
+        Simple byte-copy from sf2_wave_addr to np21_wave_addr (same layout
+        in both). NP21 wave is actually parallel arrays (notes + waveforms
+        at separate addresses), so this can't be used directly for Stage 7;
+        see `_emit_wave_split_copy_routine` instead. Kept as a sanity-test
+        utility in case a future SF2/NP21 layout shares a flat 2-byte-row
+        format.
         """
         if not (1 <= n_bytes <= 256):
             raise ValueError(f"wave_copy n_bytes must be 1..256, got {n_bytes}")
@@ -2345,6 +2385,77 @@ class SF2Writer:
             raise RuntimeError(f"wave_copy back-branch out of range: {rel}")
         code += bytes([0x10, rel & 0xFF])                                          # BPL loop
         code += bytes([0x60])                                                       # RTS
+        return bytes(code)
+
+    def _emit_wave_split_copy_routine(self, sf2_wave_addr: int,
+                                     np21_wave_data_addr: int,
+                                     np21_note_addr: int,
+                                     n_rows: int = 32) -> bytes:
+        """Stage 7 Phase B.1 (split-copy): copy SF2-edit-area wave bytes
+        back into NP21's PARALLEL waveform + note-offset arrays.
+
+        NP21 stores wave programs as two parallel arrays at separate
+        addresses (Stinsen layout: waveforms at $18DA, notes at $190C).
+        The SF2 edit area emits them interleaved as 2-byte rows
+        (waveform, note_offset) starting at sf2_wave_addr. So per row r:
+
+            np21_wave_data[r] ← sf2[2r]      (waveform byte)
+            np21_note[r]      ← sf2[2r + 1]  (note-offset byte)
+
+        Routine size for n_rows=32 (typical Stage 4 emit): 31 bytes.
+        Two passes through r=31..0 — first copies waveforms, second
+        copies notes. Two passes simplify the indexing: each uses
+        TXA / ASL / TAY (with optional INY) to compute the SF2
+        offset, so we only need DEX + BPL for the loop.
+
+        Routine layout:
+            LDX #n-1
+        wave_loop:
+            TXA; ASL; TAY               ; Y = X*2
+            LDA sf2_wave,Y               ; waveform byte
+            STA np21_wave_data,X
+            DEX
+            BPL wave_loop
+            LDX #n-1
+        note_loop:
+            TXA; ASL; TAY; INY           ; Y = X*2 + 1
+            LDA sf2_wave,Y
+            STA np21_note,X
+            DEX
+            BPL note_loop
+            RTS
+        """
+        if not (1 <= n_rows <= 128):
+            raise ValueError(f"wave_split_copy n_rows must be 1..128, got {n_rows}")
+        code = bytearray()
+
+        # ----- waveform pass -----
+        code += bytes([0xA2, (n_rows - 1) & 0xFF])                                  # LDX #n-1
+        wave_loop_start = len(code)
+        code += bytes([0x8A, 0x0A, 0xA8])                                           # TXA; ASL; TAY
+        code += bytes([0xB9, sf2_wave_addr & 0xFF, (sf2_wave_addr >> 8) & 0xFF])    # LDA sf2,Y
+        code += bytes([0x9D, np21_wave_data_addr & 0xFF,
+                       (np21_wave_data_addr >> 8) & 0xFF])                          # STA np21_wave,X
+        code += bytes([0xCA])                                                        # DEX
+        rel = wave_loop_start - (len(code) + 2)
+        if not -128 <= rel <= 127:
+            raise RuntimeError(f"wave_split_copy wave_loop out of range: {rel}")
+        code += bytes([0x10, rel & 0xFF])                                           # BPL wave_loop
+
+        # ----- note-offset pass -----
+        code += bytes([0xA2, (n_rows - 1) & 0xFF])                                  # LDX #n-1
+        note_loop_start = len(code)
+        code += bytes([0x8A, 0x0A, 0xA8, 0xC8])                                     # TXA; ASL; TAY; INY
+        code += bytes([0xB9, sf2_wave_addr & 0xFF, (sf2_wave_addr >> 8) & 0xFF])    # LDA sf2,Y
+        code += bytes([0x9D, np21_note_addr & 0xFF,
+                       (np21_note_addr >> 8) & 0xFF])                               # STA np21_note,X
+        code += bytes([0xCA])                                                        # DEX
+        rel = note_loop_start - (len(code) + 2)
+        if not -128 <= rel <= 127:
+            raise RuntimeError(f"wave_split_copy note_loop out of range: {rel}")
+        code += bytes([0x10, rel & 0xFF])                                           # BPL note_loop
+
+        code += bytes([0x60])                                                        # RTS
         return bytes(code)
 
     def _emit_multipat_translator(self, voice_pat_counts, seq00_addr, shadow_base,

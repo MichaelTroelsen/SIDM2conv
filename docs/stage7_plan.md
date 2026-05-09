@@ -1,9 +1,9 @@
 # Stage 7 — Edit-affects-playback for tables (instruments / wave / pulse / filter)
 
-**Status:** Phase A shipped 2026-05-09. **Phase B.1 plumbing shipped
-2026-05-09**, but actual edit propagation BLOCKED on per-variant
-wave-table reverse-engineering — see "Phase B.0" below. Phase C
-deferred.
+**Status:** Phase A shipped 2026-05-09. **Phase B.0/B.1/C for WAVE shipped
+2026-05-09 — F3 (wave) edits now propagate to playback end-to-end** via
+the wave split-copy 6502 routine and a fixed `extract_all_laxity_tables`
+wave detector. Phase B.2 (instruments / pulse 6502 emission) deferred.
 
 ## Background
 
@@ -95,9 +95,9 @@ What's NOT in (and why): the wave_copy_addr is currently hardcoded
 to `None` in `_inject_laxity_raw_np21`, so no routine is actually
 emitted. See Phase B.0 below.
 
-### Phase B.0 — Per-variant wave-table address RE (PARTIAL — SOLVED for Stinsen, blocked elsewhere)
+### Phase B.0 — Per-variant wave-table address RE (✅ SHIPPED 2026-05-09)
 
-**Empirical findings 2026-05-09 (commit pending):**
+**Empirical findings 2026-05-09:**
 
 1. `extract_all_laxity_tables` returns wave_addr=`$17EC` for Stinsen.
    py65 step-through shows `$17EC..$17EE` is per-voice mutating
@@ -169,13 +169,13 @@ trace approach (probe_wave_read_addr.py) finds it in seconds for
 any file given init_addr/play_addr — so this is automatable
 post-detection.
 
-**Status: Stinsen wave-source RE is solved (`$18DA`). Phase B
-remains blocked on the wave-detector fix in
-`extract_all_laxity_tables`/`instrument_extraction.py` since the
-wrong source bytes get into the SF2 edit area in the first place.
-That's a substantial change — it's not just one line of code; the
-detection heuristic needs replacing with a proper trace-based or
-disasm-based method.**
+**Status (2026-05-09 evening): Wave detector is FIXED.**
+`extract_all_laxity_tables` now prefers `find_and_extract_wave_table`
+(which uses `find_wave_table_from_player_code`) over the
+LDA-near-STA$D404 heuristic in `find_table_addresses_from_player`.
+The new chain validates the static wave program at $18DA (Stinsen)
+and returns `wave_data_addr` alongside `wave_addr` so callers know
+the parallel arrays' two endpoints.
 
 ### Phase B.2 — 6502 emission for instruments / pulse (deferred)
 
@@ -193,9 +193,33 @@ Estimated 6502 budget once Phase B.0 unblocks:
 These would all live in the SF2 edit area (no translator-window
 budget concern), called via JSR from the multipat translator.
 
-### Phase C — End-to-end zig64 verification (deferred)
+### Phase C — End-to-end zig64 verification (✅ SHIPPED 2026-05-09 for Wave)
 
-For each of {wave, instruments, pulse}:
+**Verified 2026-05-09 for Stinsen wave:**
+
+1. Generate Stinsen.sf2; capture baseline zig64 trace (300 frames):
+   1909 SID register writes.
+2. Patch byte at file-offset $2CA5 (SF2 edit-area row 0 waveform byte)
+   from $21 (saw bit) to $11 (tri bit).
+3. Re-run zig64 trace.
+4. **Result: 155 `osc<v>_control` writes flipped from $20 (saw) to
+   $10 (tri) on all three voices.** Edit propagated end-to-end.
+
+Trampoline fix that made the trace-path verification possible:
+when `play_addr != init_addr+3` AND `num_patterns > 0`, the
+`init+3` trampoline now `JMP`s to `TRANSLATE_BASE` (multipat
+translator at $0F9E) instead of `play_addr` directly. Without
+this, zig64-traced playback would bypass the translator and
+the wave-copy routine; only SF2II's PLAY-handler path would
+fire it. SID register writes are byte-for-byte identical to the
+pre-Phase-B.1 behaviour (only the cycle column shifts because
+the translator now runs on every PLAY tick) — golden traces
+were re-baselined.
+
+**Phase C status for instruments / pulse: DEFERRED** — depends on
+Phase B.2 6502 emission work.
+
+For each of {wave (✅ done), instruments, pulse}:
 1. Generate an SF2 from a known-good source (Stinsen).
 2. Capture baseline zig64 trace (300 frames of SID writes).
 3. Edit one byte in the SF2 edit area at a known offset (e.g., change
