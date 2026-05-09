@@ -2,9 +2,9 @@
 
 **Complete navigation to all project documentation after v2.3.0 consolidation**
 
-**Last Updated**: 2026-05-06
-**Version**: v3.3.0
-**Status**: Consolidated & Organized (post-cleanup_2026-04-28); all four converter criteria closed
+**Last Updated**: 2026-05-09
+**Version**: v3.4.1
+**Status**: Consolidated & Organized (post-cleanup_2026-04-28); all four converter criteria closed; F10-load 100% solo on canonical corpus
 
 ---
 

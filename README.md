@@ -833,6 +833,57 @@ Located in `tools/` directory (Windows binaries, optional fallbacks):
 
 ## Version History
 
+### v3.4.1 (2026-05-09) - Block 3 Format Fix + Stage 8.5 Toolkit
+
+- ✅ **Block 3 emits TextFieldSize, not NameLen** — closes the residual
+  ~50% F10-load Heisenbug. SF2II's parser was reading our `NameLen` byte as
+  `m_TextFieldSize`, making every driver table a `ComponentTableRowElementsWithText`
+  whose `Refresh` writes a stray byte 0xDE/0xDF when its
+  `AuxilaryDataTableText` lookup misses on tables without text entries.
+  **Solo F10-load: Stinsen 47% → 100%, Unboxed → 100%.** Same fix unblocked
+  Angular + Beast (was 0% deterministic crash → 100%).
+- ✅ **Empty-patterns fallback returns 5-tuple** — fixes
+  `not enough values to unpack` for files where `ch_seq_ptr` doesn't yield
+  valid sequence pointers (Angular, Beast, Cycles, Colorama).
+- ✅ **Per-instance Block 3 address overrides** — `arp_addr/tempo_addr/hr_addr/init_table_addr`
+  on `SF2HeaderGenerator` so non-Laxity binaries don't collide with hardcoded
+  `$C000-$C300`.
+- ✅ **Stage 8.5 debugging toolkit** — `appverifier-*.bat`,
+  `pyscript/sf2_debug_inspect_v2.py` (HW watchpoints + dbghelp StackWalk64),
+  `pyscript/disasm_rva.py`, `docs/stage8.5_debugging_toolkit.md`.
+- ✅ **Stage 8.5 root cause LOCALIZED upstream** — under PageHeap-mode
+  AppVerifier, captured a NULL `std::string` deref in SF2II's
+  `m_TableColorRules` destructor at `+0x63fab`. Reported as
+  [Chordian/sidfactory2#211](https://github.com/Chordian/sidfactory2/issues/211).
+- ✅ **Broader 11-file corpus pass rate: 9/11 = 82%**. Two failures
+  (Hubbard *Action_Biker*, Soundmonitor *Byte_Bite*) blocked on the upstream
+  issue.
+- ✅ **794 tests passing** (unchanged from v3.4.0).
+
+### v3.4.0 (2026-05-08) - Editor Fidelity Push
+
+- ✅ **Editor opens with real notes** — Tracks 1/2/3 show D-1, D#1, F-1 etc.
+  instead of `???` markers; orderlists show pattern transitions (e.g.
+  `a000 a001 a002 a003 a004 a005`).
+- ✅ **Multi-pattern segmentation** — `np21_pattern_segmenter.py` splits each
+  voice's flat NP21 byte stream at instrument-prefix boundaries
+  (`$A0-$BF`), with round-trip property test guaranteeing byte-for-byte
+  reconstruction.
+- ✅ **Multi-pattern runtime translator** at `$0F8E` (87 bytes of 6502).
+  Walks each voice's orderlist, concatenates referenced segments into the
+  shadow slot. Restores criterion-3 contract.
+- ✅ **Driver-11-format display tables** in SF2 edit area
+  (Wave=2 cols, Pulse=3, Filter=3, Instruments=6).
+- ✅ **Block 9 populated** with 4 instrument-data descriptors.
+- ✅ **Bundled `[3, 2, 1, 4, 5, END]` aux chain** with all five aux blocks
+  decoded from `auxilary_data_*.cpp`.
+- ✅ **Stage 8 Path A** — embed-binary fallback for non-Laxity SIDs (Galway,
+  Hubbard, NP20). Audio plays via the original player code through a
+  trampoline at `$1000`.
+- ✅ **`star.html`** — single-file Star Wars opening-crawl viewer for the
+  CHANGELOG.
+- ✅ **794 tests passing**.
+
 ### v3.3.0 (2026-04-30) - Criterion 3 Closed (Edits Affect Playback)
 
 - ✅ **Edits in SID Factory II editor now affect playback** — closes the

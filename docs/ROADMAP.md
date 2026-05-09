@@ -2,9 +2,9 @@
 
 **Strategic direction and future improvements**
 
-**Date**: 2026-05-06
-**Version**: 3.x roadmap (post-v3.3.0)
-**Status**: 🎯 Active Roadmap — all four original criteria closed; remaining workstreams are F10-load reliability and multi-pattern song support
+**Date**: 2026-05-09
+**Version**: 3.x roadmap (post-v3.4.1)
+**Status**: 🎯 Active Roadmap — all four original criteria closed; F10-load now 100% solo on canonical corpus (Block 3 fix in v3.4.1); residual upstream-side blocker tracked at Chordian/sidfactory2#211
 
 ---
 

@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.3.0** | SID→SF2 Converter | C64 Music Tools | Updated 2026-04-30
+**SIDM2 v3.4.1** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-09
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -171,6 +171,10 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.4.1** (2026-05-09): Block 3 emits `TextFieldSize` instead of `NameLen`. SF2II's parser was reading our `NameLen` byte as `m_TextFieldSize`, making every driver table a `ComponentTableRowElementsWithText` whose `Refresh` writes a stray byte 0xDE/0xDF when its `AuxilaryDataTableText` lookup misses on tables without text entries. **Solo F10-load: Stinsen 47% → 100%, Unboxed → 100%.** Same fix unblocked Angular + Beast (was 0% deterministic crash → 100%). Empty-patterns fallback path returns 5-tuple to match Stage 2.5 contract. Per-instance `arp_addr/tempo_addr/hr_addr/init_table_addr` overrides on `SF2HeaderGenerator` so non-Laxity binaries don't collide with hardcoded `$C000-$C300`. Stage 8.5 toolkit (`appverifier-*.bat`, `pyscript/sf2_debug_inspect_v2.py`, `disasm_rva.py`) plus PageHeap-mode investigation that LOCALIZED the residual non-Laxity F10 crash to a NULL `std::string` deref in SF2II's `m_TableColorRules` destructor at `+0x63fab` — reported upstream as Chordian/sidfactory2#211. Broader 11-file corpus pass rate 9/11 = 82% (the 2 failures blocked on upstream). 794 tests still pass.
+
+**v3.4.0** (2026-05-08): Editor fidelity push — Laxity SF2 output now structurally matches the bundled SF2II reference corpus across all 9 header blocks, the aux chain, and Block 3 column data formats. Multi-pattern segmentation splits each voice's flat NP21 byte stream at instrument-prefix boundaries (e.g. Stinsen voice 0: 6 segments). New 87-byte multi-pattern runtime translator at `$0F8E`. Driver-11-format Wave/Pulse/Filter/Instruments tables emitted in the SF2 edit area. Block 9 populated with 4 descriptors (was 1-byte placeholder). Bundled `[3, 2, 1, 4, 5, END]` aux chain with body formats decoded from `auxilary_data_*.cpp`. Stage 8 Path A — minimal embed-binary fallback for non-Laxity SIDs. `star.html` Star Wars opening-crawl viewer for the changelog.
 
 **v3.3.0** (2026-04-30): Criterion 3 closed — edits in SF2 editor affect playback. Two-part architecture: build-time pre-fill of a 3-slot shadow buffer (per-voice NP21-format bytes appended after the SF2 edit area, with `ch_seq_ptr` at $1A1C/$1A1F patched to point at the shadow); runtime translator at $0F0E that regenerates the shadow on every PLAY tick by translating SF2-edit-area bytes through `sidm2/sf2_to_np21.py`. PLAY handler at $0F04 is now `JMP $0F0E`. Stinsen + Unboxed both still trace at 100%; 794 tests passing (+3 edit-proof tests). Architecture dead-ends and corrections documented in `docs/criterion3_step0_findings.md` and `docs/criterion3_scoping.md`.
 

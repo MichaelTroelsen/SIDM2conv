@@ -25,6 +25,158 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.4.1] - 2026-05-09
+
+### Fixed
+- **Block 3 byte format: `TextFieldSize` instead of `NameLen`**
+  (`sf2_header_generator.py`, commit `04f5829`). SF2II's
+  `DriverInfo::ParseDriverTables` reads each table descriptor as
+  `[type:1][id:1][text_field_size:1][NUL-terminated name][...]`. Our writer
+  was emitting `[type:1][id:1][NameLen:1][NUL-terminated name][...]` —
+  coincidentally parsing because `NameLen` happens to be a small u8 like a
+  real `tfs` would be. Every table ended up with `m_TextFieldSize =
+  strlen(name)+1`, so `PrepareLayout` built a `ComponentTableRowElementsWithText`
+  for all 9 driver tables. The `WithText` component's `Refresh` writes a
+  stray byte `0xDE`/`0xDF` when its `AuxilaryDataTableText` lookup misses
+  on a table with no text entries (Arp/Tempo/HR/Init/Wave/Pulse/Filter — only
+  Commands and Instruments have text in our aux block id=4). That stray byte
+  landed on `m_MainTextField`'s MSB ~50% of the time, deterministically
+  content-triggered and heap-layout-dependent.
+
+  Now `TableDescriptor` takes a `text_field_size` keyword arg (default 0),
+  emits at the byte position SF2II expects, and Block 3 sets `tfs=12` for
+  Commands, `tfs=18` for Instruments, `tfs=0` for the other 7 — matches
+  bundled `Driver 11 Test - Arpeggio.sf2` exactly. Names emit in PETSCII
+  (lowercase a-z → 0x01-0x1A) for bug-for-bug compatibility with the
+  bundled corpus.
+
+  **Solo-load pass rate (no retry wrapper):**
+  - Stinsen N=15: 7/15 (47%) → 15/15 (100%)
+  - Unboxed N=15: similar regime → 15/15 (100%)
+  - Angular + Beast (was documented 0% deterministic crash): → 100%
+    The same Block 3 bug was their root cause too — small NP21 binary heap
+    layout put `m_MainTextField` in every stray-write's path, while
+    Stinsen's heap put it there ~50% of the time.
+
+- **Empty-patterns fallback returns 5-tuple, not 4-tuple**
+  (`_build_np21_sf2_edit_area`, commit `4950b04`). The Stage 2.5
+  multi-pattern translator change widened the contract to 5 (added
+  `voice_pat_counts`), but the `num_patterns == 0` fallback path was
+  missed. Files where `ch_seq_ptr` at `$0A1C/$0A1F` doesn't yield valid
+  sequence pointers (Angular, Beast, Cycles, Colorama — small NP21
+  binaries with non-Stinsen player layouts) failed conversion with
+  `not enough values to unpack (expected 5, got 4)`. Returning
+  `voice_pat_counts=[1,1,1]` (each voice points at the single placeholder
+  pattern) restores arity.
+
+### Added
+- **Editor-only Block 3 column tables in the SF2 edit area** (Stage 8.5,
+  commit `e3efadc`). Arp/Tempo/HR/Init were hardcoded at `$C000-$C300`,
+  safe for Laxity NP21 (binary at `$1000+`, those addresses read zeros from
+  emulated RAM) but COLLIDE with non-Laxity binaries that load at `$C000`
+  (e.g., Hubbard's *Action_Biker* at `$C000-$CBC1`). When SF2II's editor
+  rendered those tables it read the SID's executable code as
+  instrument/wave/pulse/filter cells. `SF2HeaderGenerator` now has
+  per-instance `arp_addr`/`tempo_addr`/`hr_addr`/`init_table_addr` overrides
+  (defaults at `$C000-$C300` for Laxity); `_inject_player_raw_minimal`
+  allocates 4 zero-filled placeholder regions inside the edit area and
+  points the gen attrs at them. Doesn't fix the residual Stage 8.5 crash
+  but is structurally correct for any non-Laxity SID.
+
+- **Stage 8.5 debugging toolkit** (commits `a4f0b2c`, `38447a5`, `3f94d55`):
+  - `appverifier-setup.bat` / `appverifier-disable.bat` — admin one-shot
+    AppVerifier (Heaps + Memory + Locks + WER LocalDumps DumpType=2).
+  - `appverifier-tune.bat` / `appverifier-heaps-only.bat` /
+    `appverifier-pageheap.bat` — narrower instrumentation variants. Heaps-only
+    via direct `reg add` on the IFEO key (the `appverif.exe /enable Heaps` CLI
+    didn't persist on this Windows build); standalone PageHeap via NT
+    `GlobalFlag = 0x02000000` + `PageHeapFlags = 0x3` for catching OOB writes
+    at the writing instruction.
+  - `pyscript/sf2_debug_inspect_v2.py` — extends the v1 inspector with
+    `--watch <addr> [--size N]` (hardware write-watchpoint via DR0/DR7 on
+    every thread of the target), `--attach <pid>` (DebugActiveProcess instead
+    of CreateProcessW DEBUG_PROCESS — slightly less heap-perturbative), and
+    a dbghelp `StackWalk64`-backed stack walk that resolves PC + return
+    addresses to module-relative RVAs.
+  - `pyscript/disasm_rva.py` — disassembles around an RVA in `SIDFactoryII.exe`
+    via `pefile + capstone`. Handy for decoding stack frames captured by
+    the v2 debugger.
+  - `docs/stage8.5_debugging_toolkit.md` — workflow doc tying both the
+    AppVerifier path and the HW-watchpoint path together, with DR7
+    bit-layout reference.
+
+- **`pyscript/sf2_corpus_pass_rate.py`** — N-trial harness across an 11-file
+  corpus spanning Laxity NP21, Galway, Hubbard, Tel_Jeroen, Fun_Fun, and
+  SF2-exported. Clears stale outputs before each conversion (the converter
+  refuses to overwrite without `--overwrite`). Prints per-file PASS/CRASH
+  count and totals.
+
+- **`pyscript/diff_block3.py`** — decodes Block 3 from a `.sf2` and prints
+  side-by-side comparison against bundled. Spotted the NameLen vs TextFieldSize
+  mismatch by showing every table's tfs as a small int that turned out to be
+  the name length.
+
+### Investigated
+- **Stage 8.5 root cause LOCALIZED in upstream SF2II source**
+  (`docs/stage8.5_debugging_toolkit.md` — full repro recipe).
+  Under PageHeap-mode AppVerifier + DEBUG_PROCESS, the v2 debugger
+  caught a fresh crash signature that the original 0xC0000005 dumps had
+  been masking:
+
+  ```
+  AV: READ at 0x1
+  RIP = SIDFactoryII.exe + 0x63fab
+  movzx edx, byte ptr [rcx + 1]   ; rcx loaded from *rdi == NULL
+  ```
+
+  Disassembly at `+0x63fab` is a byte-level transform loop walking a
+  `std::string`'s storage (`*rdi` = begin pointer, `*(rdi+8)` = end
+  pointer); `*rdi == NULL` shouldn't happen for a properly-constructed
+  MSVC `std::string`. Stack walk via `StackWalk64`:
+    `[0] +0x63fab → [1] +0x7a1b1 → [2] +0x66cb9 (right after a virtual
+    call; next insn zeroes [rbx+0xa0] = m_TableColorRules per source
+    layout) → [3..5] startup glue`.
+
+  So the crash is inside SF2II's destructor sequence for
+  `m_TableColorRules`. One contained `std::string` has a NULL begin
+  pointer — uninitialized OR already-freed. Under normal heap the freed
+  page is recycled and the read picks up safe garbage; under PageHeap
+  freed pages are unmapped → guard-memory deref.
+
+  **Bug is in SF2II's source, not in our writer.** Reported upstream as
+  [Chordian/sidfactory2#211](https://github.com/Chordian/sidfactory2/issues/211)
+  with full disassembly, stack walk, repro recipe, and load_addr
+  correlation table. Out of scope to fix from SIDM2 side.
+
+### Verified
+- Solo F10-load pass rate (no retry wrapper, `pyscript/sf2_pass_rate.py
+  N=15`): Stinsen 15/15, Unboxed 15/15.
+- Broader 11-file corpus pass rate (`pyscript/sf2_corpus_pass_rate.py
+  N=5`): **45/55 = 82%** (up from previous "60% Stinsen / 27% Unboxed"
+  baseline). Two failures are Hubbard *Action_Biker* and Soundmonitor
+  *Byte_Bite* — both blocked on Chordian/sidfactory2#211.
+- Stinsen + Unboxed playback unchanged: zig64 trace 1910/1910 + 2734/2734
+  byte-for-byte match against golden trace.
+- Total: 794 tests passing (unchanged from v3.4.0 — Block 3 emission
+  doesn't affect zig64 register-level playback).
+
+### Note
+- The Stage 8.5 crash is upstream-side. Two corpus files
+  (Action_Biker, Byte_Bite) currently fail F10-load; conversion still
+  succeeds and the resulting `.sf2` plays correctly via VICE / sidplayer.
+  When upstream resolves Chordian/sidfactory2#211, re-run
+  `pyscript/sf2_corpus_pass_rate.py 5` to confirm 11/11.
+- The `appverifier-setup.bat` enables Heaps + Memory + Locks + several
+  ancillary providers via `/faults` — this combination crashes SF2II
+  before init completes (`STATUS_ASSERTION_FAILURE 0xC0000421` within
+  ~50ms of launch). On this Windows build, `appverif.exe /disable
+  Memory /for SIDFactoryII.exe` doesn't actually unset providers (the
+  registry retains them after the command). Use
+  `appverifier-pageheap.bat` (PageHeap-only via NT global flags) for
+  the OOB-write hunt instead.
+
+---
+
 ## [3.4.0] - 2026-05-08
 
 ### Added

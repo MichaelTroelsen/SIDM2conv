@@ -92,7 +92,7 @@
     );
     opacity: 0;
     animation: crawlContainerFadeIn 0.5s ease-in forwards;
-    animation-delay: 6s;
+    animation-delay: 13.8s;
   }
   @keyframes crawlContainerFadeIn {
     to { opacity: 1; }
@@ -131,7 +131,7 @@
     letter-spacing: 0.04em;
     text-shadow: 0 0 8px rgba(255, 232, 31, 0.35);
     animation: crawlScroll var(--crawl-duration, 90s) linear forwards;
-    animation-delay: 6.3s;
+    animation-delay: 14.1s;
     will-change: top;
   }
   @keyframes crawlScroll {
@@ -177,26 +177,15 @@
   }
   #crawl strong { font-weight: 900; }
 
-  /* Replay & status — small UI in the corner */
-  #status {
-    position: fixed;
-    bottom: 0.6em; left: 0.8em;
-    color: #888;
-    background: rgba(0,0,0,0.5);
-    padding: 4px 8px;
-    border-radius: 3px;
-    font-family: 'Courier New', monospace;
-    font-size: 12px;
-    z-index: 10;
-    pointer-events: none;
-    max-width: 60vw;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  #replay {
+  /* Bottom-right control bar — replay + music buttons side by side */
+  #controls {
     position: fixed;
     bottom: 0.6em; right: 0.8em;
+    display: flex;
+    gap: 6px;
+    z-index: 10;
+  }
+  #controls button {
     color: #888;
     background: rgba(0,0,0,0.4);
     border: 1px solid #444;
@@ -204,30 +193,43 @@
     cursor: pointer;
     font-family: 'Courier New', monospace;
     font-size: 11px;
-    z-index: 10;
   }
-  #replay:hover { color: #FFE81F; border-color: #FFE81F; }
-
-  #music {
-    position: fixed;
-    bottom: 0.6em; right: 6em;
-    color: #888;
-    background: rgba(0,0,0,0.4);
-    border: 1px solid #444;
-    padding: 4px 10px;
-    cursor: pointer;
-    font-family: 'Courier New', monospace;
-    font-size: 11px;
-    z-index: 10;
-  }
-  #music:hover { color: #FFE81F; border-color: #FFE81F; }
+  #controls button:hover { color: #FFE81F; border-color: #FFE81F; }
   #music.playing { color: #FFE81F; border-color: #FFE81F; }
   #music.missing { opacity: 0.4; cursor: not-allowed; }
+
+  /* SIDM2 logo — Star Wars-style title that comes in HUGE up close, then
+     recedes into the distance and vanishes. Does NOT scroll. Sits behind
+     the camera-near plane via 3D scale, fades out as it shrinks. */
+  #logo {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%) scale(10);
+    color: #FFE81F;
+    font-family: 'Arial Black', 'Trebuchet MS', sans-serif;
+    font-weight: 900;
+    font-size: clamp(60px, 8vw, 140px);
+    letter-spacing: 0.06em;
+    text-align: center;
+    z-index: 4;
+    opacity: 0;
+    text-shadow: 0 0 12px rgba(255, 232, 31, 0.5);
+    pointer-events: none;
+    animation: logoRecede 7s ease-in forwards;
+    animation-delay: 6.5s;
+    will-change: transform, opacity;
+  }
+  @keyframes logoRecede {
+    0%   { transform: translate(-50%, -50%) scale(10); opacity: 0; }
+    8%   { transform: translate(-50%, -50%) scale(8);  opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(0.05); opacity: 0; }
+  }
 </style>
 </head>
 <body>
 <canvas id="stars"></canvas>
 <div id="intro">In a repo far,<br>far away....</div>
+<div id="logo">SIDM2</div>
 <div id="fade-overlay"></div>
 <div id="crawl-container">
   <div id="crawl">
@@ -246,9 +248,10 @@
      autoplay). Original John Williams composition is © Lucasfilm/
      Disney, so the file is gitignored, not committed. -->
 <audio id="theme" preload="auto" src="./starwarsintro.mp3"></audio>
-<button id="music" type="button" title="Toggle music">♪ music</button>
-<div id="status">booting hyperdrive...</div>
-<button id="replay" type="button" title="Replay crawl">↻ replay</button>
+<div id="controls">
+  <button id="music"  type="button" title="Toggle music">♪ music</button>
+  <button id="replay" type="button" title="Replay crawl">↻ replay</button>
+</div>
 
 <!-- Inlined CHANGELOG.md latest-version section. Refresh with:
        py -3 pyscript/update_star_html.py
@@ -256,199 +259,155 @@
      when opened directly from disk. Falls back to live GitHub fetch
      if this block is empty (e.g., for the GitHub-hosted version). -->
 <script id="changelog-data" type="text/plain">
-## [3.4.0] - 2026-05-08
-
-### Added
-- **Editor fidelity push** — Laxity-driver SF2 output now structurally matches
-  the bundled SF2II reference corpus across all 9 header blocks, the aux chain,
-  and the Block 3 column data formats. After F10-load:
-  - Tracks 1/2/3 show real notes (D-1, D#1, F-1, etc.) instead of `???` markers
-  - Each voice's orderlist column shows multiple pattern transitions
-    (e.g. Stinsen voice 0: `a000 a001 a002 a003 a004 a005`) instead of one
-    block of bytes
-  - F1 Commands view shows real labels: Slide Up, Slide Down, Vibrato,
-    Portamento, Set ADSR, Set Filter, Set Wave, Set Pulse, Set Speed,
-    Set Volume, Arpeggio, Note Cut, Legato, Retrigger, Delay, End
-  - F2 Instruments view shows clean 6-byte rows (AD, SR, HR, Filter, Pulse,
-    Wave) instead of NP21-format bytes through Driver-11 lens
-  - F3/F4/F5 Wave/Pulse/Filter views show structured data, not garbage
-  - Editor parses + opens at ≥60% per-attempt rate (Stinsen) with retry-30 budget
-
-- **Multi-pattern segmentation** (`sidm2/np21_pattern_segmenter.py`).
-  Each voice's flat NP21 byte stream is split at instrument-prefix
-  boundaries (`$A0-$BF`) into multiple SF2-display patterns. Round-trip
-  property guarantees the segments concatenate back to the original
-  byte stream byte-for-byte, defending shadow-buffer audio fidelity.
-  For Stinsen voice 0: 6 segments. Voice 1: 1 (no internal instr changes).
-  Voice 2: 7. Total 14 patterns vs. previous 3.
-
-- **Multi-pattern runtime translator** (`_emit_multipat_translator`,
-  ~87 bytes of 6502 at `$0F8E`). Walks each voice's orderlist range,
-  concatenates referenced segments into the voice's shadow slot, writes
-  NP21 0xFF + 0x00 loop terminator. Required `HANDLER_BASE` move from
-  `$0FA0` to `$0F90` (translator window grew from 77B to 92B).
-  Restores criterion-3 contract (edits to SF2 patterns propagate to
-  playback through the translator on every PLAY tick) for the new
-  multi-pattern structure.
-
-- **Driver-11-format display tables** in the SF2 edit area.
-  - `Stage 3` — Instrument table emits clean 6-byte rows
-    (`AD, SR, HR, Filter, Pulse, Wave`) at `gen.instr_addr`. Block 3
-    Instruments column repointed at the new table.
-  - `Stage 4` — Wave/Pulse/Filter tables emitted in their respective
-    Driver-11 column counts (Wave=2, Pulse=3, Filter=3). Block 3
-    column addresses repointed at the new tables.
-  - Display-only: edits to F2/F3/F4/F5 don't propagate to playback
-    yet (NP21 binary at `$1000` keeps reading its own table data).
-
-- **Block 9 (DriverInstrumentDataDescriptor) populated**.
-  Was 1-byte placeholder; now 4 descriptors (41 bytes) verbatim from
-  the reference SF2: Wave/Pulse/Filter/HR table-program lookups
-  pointing at byte positions 5/4/3/2 of our 6-byte instrument rows.
-  The earlier "non-empty Block 9 always crashes" claim was a false
-  attribution — it was actually unrelated post-parse instability.
-
-- **Bundled `[3, 2, 1, 4, 5, END]` aux chain**.
-  Was `[5, 4, END]` with a missing aux-pointer write at `$0FFB`
-  (aux pointer was always zero, so SF2II skipped the chain). All
-  five aux blocks now emitted with body formats decoded from
-  `auxilary_data_*.cpp::RestoreFromSaveData`:
-  - id=3 PlayMarkers v2: 1 layer, 0 markers
-  - id=2 HardwarePreferences v1: SIDModel 8580, Region PAL
-  - id=1 EditingPreferences v1: Sharp notation, highlight interval 4
-  - id=4 TableText v2: real Commands + Instruments names, padded
-    with empty strings to Block 3 row counts (Commands=64,
-    Instruments=32) plus reference's mystery `id=64` 256-empty entry
-  - id=5 Songs v2: song name from PSID title (truncated 16 chars)
-
-- **Stage 8 Path A — embed-binary fallback for non-Laxity SIDs**.
-  New `_inject_player_raw_minimal()` handles Galway, Hubbard, NP20,
-  etc. by embedding the SID's compiled binary verbatim and emitting
-  minimal SF2 headers + handler stubs. Trampoline at `$1000` provides
-  zig64-trace compatibility (zig64 hardcodes `$1000` as INIT entry).
-  Verified on Hubbard's Commando: zig64 trace shows real SID writes
-  (`osc3_control $41 = pulse`, ADSR `$09/$9F`, etc.). Editor F10-load
-  remains broken for non-Laxity (deterministic post-parse crash;
-  documented in `docs/stage8_5_findings.md`).
-
-- **`star.html`** — single-file Star Wars opening-crawl viewer for the
-  CHANGELOG. Fetches the latest entry, renders as yellow perspective
-  scroll over a twinkling starfield with the canonical
-  "In a repo far, far away...." intro. Replay button bottom-right.
+## [3.4.1] - 2026-05-09
 
 ### Fixed
-- **OL ptr / Seq ptr tables now populated at conversion time**
-  (`_build_np21_sf2_edit_area`). Previously zero-filled with a
-  comment "editor writes" — but SF2II reads them on F10-load to
-  locate orderlists + sequences. Voice OL ptrs decoded to `$00xx`
-  (zero page), so the editor read garbage.
+- **Block 3 byte format: `TextFieldSize` instead of `NameLen`**
+  (`sf2_header_generator.py`, commit `04f5829`). SF2II's
+  `DriverInfo::ParseDriverTables` reads each table descriptor as
+  `[type:1][id:1][text_field_size:1][NUL-terminated name][...]`. Our writer
+  was emitting `[type:1][id:1][NameLen:1][NUL-terminated name][...]` —
+  coincidentally parsing because `NameLen` happens to be a small u8 like a
+  real `tfs` would be. Every table ended up with `m_TextFieldSize =
+  strlen(name)+1`, so `PrepareLayout` built a `ComponentTableRowElementsWithText`
+  for all 9 driver tables. The `WithText` component's `Refresh` writes a
+  stray byte `0xDE`/`0xDF` when its `AuxilaryDataTableText` lookup misses
+  on a table with no text entries (Arp/Tempo/HR/Init/Wave/Pulse/Filter — only
+  Commands and Instruments have text in our aux block id=4). That stray byte
+  landed on `m_MainTextField`'s MSB ~50% of the time, deterministically
+  content-triggered and heap-layout-dependent.
 
-- **Voice orderlists prepend `0xA0` transposition marker**.
-  The orderlist parser initializes `current_transposition=0`, and
-  the renderer (`component_track.cpp:548`) does
-  `inTransposition = stored - 0xA0`. Without a leading `0xA0`,
-  every note got `+(-160)` transposition and rendered as `???`
-  outside the displayable range.
+  Now `TableDescriptor` takes a `text_field_size` keyword arg (default 0),
+  emits at the byte position SF2II expects, and Block 3 sets `tfs=12` for
+  Commands, `tfs=18` for Instruments, `tfs=0` for the other 7 — matches
+  bundled `Driver 11 Test - Arpeggio.sf2` exactly. Names emit in PETSCII
+  (lowercase a-z → 0x01-0x1A) for bug-for-bug compatibility with the
+  bundled corpus.
 
-- **Block 1 driver name encoded in PETSCII**. Lowercase letters
-  `a-z` → bytes `0x01-0x1A`. Quiets the `sf2_lint` warning and
-  matches the bundled corpus.
+  **Solo-load pass rate (no retry wrapper):**
+  - Stinsen N=15: 7/15 (47%) → 15/15 (100%)
+  - Unboxed N=15: similar regime → 15/15 (100%)
+  - Angular + Beast (was documented 0% deterministic crash): → 100%
+    The same Block 3 bug was their root cause too — small NP21 binary heap
+    layout put `m_MainTextField` in every stray-write's path, while
+    Stinsen's heap put it there ~50% of the time.
 
-- **Aux chain pointer at C64 `$0FFB`**. Two bugs in
-  `_inject_auxiliary_data`: (1) the pointer was never written;
-  (2) the offset computation used `self.load_address` (PSID's
-  load = `$0000`) instead of the SF2 PRG load (`$0D7E`). Result
-  was that the appended aux blocks were unreachable garbage.
+- **Empty-patterns fallback returns 5-tuple, not 4-tuple**
+  (`_build_np21_sf2_edit_area`, commit `4950b04`). The Stage 2.5
+  multi-pattern translator change widened the contract to 5 (added
+  `voice_pat_counts`), but the `num_patterns == 0` fallback path was
+  missed. Files where `ch_seq_ptr` at `$0A1C/$0A1F` doesn't yield valid
+  sequence pointers (Angular, Beast, Cycles, Colorama — small NP21
+  binaries with non-Stinsen player layouts) failed conversion with
+  `not enough values to unpack (expected 5, got 4)`. Returning
+  `voice_pat_counts=[1,1,1]` (each voice points at the single placeholder
+  pattern) restores arity.
 
-- **TableText body encoding** (`_build_table_text_data`).
-  - `text_count` must equal the Block 3 row count for the table
-    (Commands=64, Instruments=32), not the number of names we
-    extracted. Padded with empty strings.
-  - `table_id` packed as `u32 LE` (defensive; was signed `i32`).
-  - Mirror the reference's 3-entry shape with the third entry
-    `table_id=64`, 256 empty strings.
+### Added
+- **Editor-only Block 3 column tables in the SF2 edit area** (Stage 8.5,
+  commit `e3efadc`). Arp/Tempo/HR/Init were hardcoded at `$C000-$C300`,
+  safe for Laxity NP21 (binary at `$1000+`, those addresses read zeros from
+  emulated RAM) but COLLIDE with non-Laxity binaries that load at `$C000`
+  (e.g., Hubbard's *Action_Biker* at `$C000-$CBC1`). When SF2II's editor
+  rendered those tables it read the SID's executable code as
+  instrument/wave/pulse/filter cells. `SF2HeaderGenerator` now has
+  per-instance `arp_addr`/`tempo_addr`/`hr_addr`/`init_table_addr` overrides
+  (defaults at `$C000-$C300` for Laxity); `_inject_player_raw_minimal`
+  allocates 4 zero-filled placeholder regions inside the edit area and
+  points the gen attrs at them. Doesn't fix the residual Stage 8.5 crash
+  but is structurally correct for any non-Laxity SID.
 
-- **Songs body format** (`_build_description_data`). Old emit was
-  3 pascal strings (name/author/copyright) — wrong format for aux
-  block id=5. Rewrote to emit the format
-  `AuxilaryDataSongs::RestoreFromSaveData` expects:
-  `[song_count][selected_song]` then per-song pascal strings.
+- **Stage 8.5 debugging toolkit** (commits `a4f0b2c`, `38447a5`, `3f94d55`):
+  - `appverifier-setup.bat` / `appverifier-disable.bat` — admin one-shot
+    AppVerifier (Heaps + Memory + Locks + WER LocalDumps DumpType=2).
+  - `appverifier-tune.bat` / `appverifier-heaps-only.bat` /
+    `appverifier-pageheap.bat` — narrower instrumentation variants. Heaps-only
+    via direct `reg add` on the IFEO key (the `appverif.exe /enable Heaps` CLI
+    didn't persist on this Windows build); standalone PageHeap via NT
+    `GlobalFlag = 0x02000000` + `PageHeapFlags = 0x3` for catching OOB writes
+    at the writing instruction.
+  - `pyscript/sf2_debug_inspect_v2.py` — extends the v1 inspector with
+    `--watch <addr> [--size N]` (hardware write-watchpoint via DR0/DR7 on
+    every thread of the target), `--attach <pid>` (DebugActiveProcess instead
+    of CreateProcessW DEBUG_PROCESS — slightly less heap-perturbative), and
+    a dbghelp `StackWalk64`-backed stack walk that resolves PC + return
+    addresses to module-relative RVAs.
+  - `pyscript/disasm_rva.py` — disassembles around an RVA in `SIDFactoryII.exe`
+    via `pefile + capstone`. Handy for decoding stack frames captured by
+    the v2 debugger.
+  - `docs/stage8.5_debugging_toolkit.md` — workflow doc tying both the
+    AppVerifier path and the HW-watchpoint path together, with DR7
+    bit-layout reference.
 
-- **Focus-stealing protection in `pyscript/sf2_open_in_editor.py`**:
-  bare `SetForegroundWindow` was raising on Windows protection
-  refusals, breaking every retry. Wrapped in `try/except`; the
-  click-on-title-bar below forces focus regardless.
+- **`pyscript/sf2_corpus_pass_rate.py`** — N-trial harness across an 11-file
+  corpus spanning Laxity NP21, Galway, Hubbard, Tel_Jeroen, Fun_Fun, and
+  SF2-exported. Clears stale outputs before each conversion (the converter
+  refuses to overwrite without `--overwrite`). Prints per-file PASS/CRASH
+  count and totals.
+
+- **`pyscript/diff_block3.py`** — decodes Block 3 from a `.sf2` and prints
+  side-by-side comparison against bundled. Spotted the NameLen vs TextFieldSize
+  mismatch by showing every table's tfs as a small int that turned out to be
+  the name length.
 
 ### Investigated
-- **Original SF2 architectural mismatch**. Comparison of
-  `Original_SF2/Laxity/Laxity - Stinsen - Last Night Of 89.sf2`
-  revealed it is a **Driver 11** ("The Standard") SF2 hand-authored
-  by Laxity (the person), not a Laxity-NP21-driver SF2. Both files
-  play the same song; structurally fundamentally different.
-  Path C (hybrid: keep NP21 player, polish Driver-11-format editor
-  metadata) chosen as the strategic direction; Path B (full
-  transpilation to Driver 11) rejected as multi-week with high
-  zig64-trace regression risk.
+- **Stage 8.5 root cause LOCALIZED in upstream SF2II source**
+  (`docs/stage8.5_debugging_toolkit.md` — full repro recipe).
+  Under PageHeap-mode AppVerifier + DEBUG_PROCESS, the v2 debugger
+  caught a fresh crash signature that the original 0xC0000005 dumps had
+  been masking:
 
-- **NP21 has no pattern table**. The "voice byte stream" the
-  player reads is a flat event stream — each byte dispatched by
-  value (note / duration / instrument / command / loop). Laxity's
-  original SF2 splits the same stream into 128 patterns purely as
-  editor-side metadata that gets compiled away. So when converting
-  from a SID file we don't have access to the original musical
-  pattern boundaries — Stage 2's instrument-prefix split is a
-  structurally-valid but heuristic best-effort.
+  ```
+  AV: READ at 0x1
+  RIP = SIDFactoryII.exe + 0x63fab
+  movzx edx, byte ptr [rcx + 1]   ; rcx loaded from *rdi == NULL
+  ```
 
-- **Non-Laxity editor crash root cause untested**
-  (`docs/stage8_5_findings.md`). Bisected against aux chain
-  content, Block 9 descriptor count, and `$1000` trampoline — none
-  fixed it. Leading hypothesis: SF2II's editor 6502 emulator
-  doesn't fully implement KERNAL routines / CIA-timer IRQs that
-  Hubbard/Galway players require. zig64's emulator does, hence
-  audio works there but not in the editor.
+  Disassembly at `+0x63fab` is a byte-level transform loop walking a
+  `std::string`'s storage (`*rdi` = begin pointer, `*(rdi+8)` = end
+  pointer); `*rdi == NULL` shouldn't happen for a properly-constructed
+  MSVC `std::string`. Stack walk via `StackWalk64`:
+    `[0] +0x63fab → [1] +0x7a1b1 → [2] +0x66cb9 (right after a virtual
+    call; next insn zeroes [rbx+0xa0] = m_TableColorRules per source
+    layout) → [3..5] startup glue`.
 
-### Tools
-- `pyscript/np21_pattern_segmenter.py` — pure-function pattern
-  splitter with round-trip property test
-- `pyscript/analyze_laxity_pattern_split.py` — reverse-engineering
-  helper that compares our NP21 voice stream byte-by-byte against
-  the original SF2's orderlist + pattern bodies
-- `tests/test_corpus_regression.py` + `tests/golden/*.trace.csv`
-  — Stinsen + Unboxed zig64 frame-perfect regression gate
-- `pyscript/sf2_open_in_editor.py` — user-facing F10-load wrapper
-  with retry-30 + title verification + focus-stealing tolerance
+  So the crash is inside SF2II's destructor sequence for
+  `m_TableColorRules`. One contained `std::string` has a NULL begin
+  pointer — uninitialized OR already-freed. Under normal heap the freed
+  page is recycled and the read picks up safe garbage; under PageHeap
+  freed pages are unmapped → guard-memory deref.
+
+  **Bug is in SF2II's source, not in our writer.** Reported upstream as
+  [Chordian/sidfactory2#211](https://github.com/Chordian/sidfactory2/issues/211)
+  with full disassembly, stack walk, repro recipe, and load_addr
+  correlation table. Out of scope to fix from SIDM2 side.
 
 ### Verified
-- Stinsen zig64 trace: 1909/1909 SID register writes match
-  baseline (frame-perfect)
-- Unboxed zig64 trace: 2733/2733 (frame-perfect)
-- Hubbard's Commando (Stage 8 Path A): zig64 trace shows real SID
-  register writes — audio plays correctly
-- F10-load editor pass rate: ≥60% per attempt for Stinsen with
-  multi-pattern segmentation, Block 9, and full aux chain in place
-- `pyscript/sf2_lint.py` "all checks pass" on PETSCII name (was
-  WARN); CRIT warnings on INIT/STOP/PLAY entry-point ranges remain
-  (these are deliberate — handler stubs live outside the
-  `[$1000, $1900)` driver range)
-- Total: 794 tests passing (unchanged from v3.3.0 — no test
-  removals, only behavior corrections)
+- Solo F10-load pass rate (no retry wrapper, `pyscript/sf2_pass_rate.py
+  N=15`): Stinsen 15/15, Unboxed 15/15.
+- Broader 11-file corpus pass rate (`pyscript/sf2_corpus_pass_rate.py
+  N=5`): **45/55 = 82%** (up from previous "60% Stinsen / 27% Unboxed"
+  baseline). Two failures are Hubbard *Action_Biker* and Soundmonitor
+  *Byte_Bite* — both blocked on Chordian/sidfactory2#211.
+- Stinsen + Unboxed playback unchanged: zig64 trace 1910/1910 + 2734/2734
+  byte-for-byte match against golden trace.
+- Total: 794 tests passing (unchanged from v3.4.0 — Block 3 emission
+  doesn't affect zig64 register-level playback).
 
 ### Note
-- This release is editor-fidelity-focused. Audio fidelity (the
-  v3.3.0 frame-perfect contract) is unchanged.
-- F10-load pass rate dropped from ~70% per attempt (pre-Stage 2)
-  to ~20-30% per attempt (post-Stage 2 multi-pattern). Mitigated
-  by raising `pyscript/sf2_open_in_editor.py` retry budget from
-  15 to 30; cumulative success > 99%. Investigation of the
-  underlying SF2II heap-state crash is upstream-side and out of
-  scope.
-- Editing instruments / wave / pulse / filter tables in F2-F5 does
-  NOT yet propagate to playback — the criterion-3 translator
-  bridges sequences only. A future stage could add per-table
-  translators at the cost of more `$0F00`-region 6502 budget.
-- Stage 8 Path B (per-driver pattern extraction for Galway/Hubbard
-  editor view) and Stage 7 (edit-affects-playback for non-sequence
-  data) deferred as multi-week investments.
+- The Stage 8.5 crash is upstream-side. Two corpus files
+  (Action_Biker, Byte_Bite) currently fail F10-load; conversion still
+  succeeds and the resulting `.sf2` plays correctly via VICE / sidplayer.
+  When upstream resolves Chordian/sidfactory2#211, re-run
+  `pyscript/sf2_corpus_pass_rate.py 5` to confirm 11/11.
+- The `appverifier-setup.bat` enables Heaps + Memory + Locks + several
+  ancillary providers via `/faults` — this combination crashes SF2II
+  before init completes (`STATUS_ASSERTION_FAILURE 0xC0000421` within
+  ~50ms of launch). On this Windows build, `appverif.exe /disable
+  Memory /for SIDFactoryII.exe` doesn't actually unset providers (the
+  registry retains them after the command). Use
+  `appverifier-pageheap.bat` (PageHeap-only via NT global flags) for
+  the OOB-write hunt instead.
 
 ---
 </script>
@@ -512,7 +471,9 @@
   ];
   const COMMITS_URL = `https://api.github.com/repos/${DEFAULT_OWNER}/${DEFAULT_REPO}/commits?per_page=1`;
 
-  const statusEl  = document.getElementById('status');
+  // Status text is no longer rendered (was a corner debug line). Keep a
+  // sink so existing `statusEl.textContent = ...` writes are harmless.
+  const statusEl  = { set textContent(_v) {} };
   const episodeEl = document.getElementById('episode');
   const titleEl   = document.getElementById('title');
   const bodyEl    = document.getElementById('body');
@@ -672,6 +633,7 @@
   const audio   = document.getElementById('theme');
   const musicBtn = document.getElementById('music');
   let musicState = 'idle';   // 'idle' | 'playing' | 'paused' | 'missing'
+  let userToggledMusic = false;  // once true, gesture-primer stops auto-resuming
 
   function tryPlay() {
     if (!audio) return;
@@ -688,8 +650,13 @@
     musicBtn.classList.add('missing');
     musicBtn.title = 'Drop "starwarsintro.mp3" next to star.html to enable';
   });
-  musicBtn.addEventListener('click', () => {
+  musicBtn.addEventListener('click', (e) => {
     if (musicState === 'missing') return;
+    // Without this, the document-level primeOnGesture handler also fires
+    // on this same click and immediately re-starts playback — making the
+    // pause action invisible to the user.
+    e.stopPropagation();
+    userToggledMusic = true;
     if (audio.paused) {
       audio.play();
       musicBtn.classList.add('playing');
@@ -701,13 +668,16 @@
     }
   });
   // Kick off audio at crawl-start (matches animation-delay above).
-  setTimeout(tryPlay, 6300);
+  setTimeout(tryPlay, 14100);
 
   // Browsers block autoplay without a user gesture. If the autoplay
   // attempt got blocked, the very first click/keypress anywhere on
   // the page will start the music — no need for the user to find the
   // ♪ button.
   function primeOnGesture() {
+    // Once the user has explicitly toggled music (play OR pause), respect
+    // that choice — don't keep auto-resuming from background gestures.
+    if (userToggledMusic) return;
     if (audio && audio.paused && musicState !== 'missing') {
       tryPlay();
     }
@@ -719,10 +689,12 @@
   // ===================== Replay =====================
   document.getElementById('replay').addEventListener('click', () => {
     const intro     = document.getElementById('intro');
+    const logo      = document.getElementById('logo');
     const overlay   = document.getElementById('fade-overlay');
     const container = document.getElementById('crawl-container');
     const crawl     = document.getElementById('crawl');
-    [intro, overlay, container, crawl].forEach(el => {
+    const content   = document.getElementById('crawl-content');
+    [intro, logo, overlay, container, crawl, content].forEach(el => {
       if (!el) return;
       el.style.animation = 'none';
       void el.offsetWidth;             // force reflow so the animation can restart
@@ -732,7 +704,7 @@
     // Restart audio at the same time
     if (audio) {
       audio.currentTime = 0;
-      setTimeout(tryPlay, 6300);
+      setTimeout(tryPlay, 14100);
     }
   });
 

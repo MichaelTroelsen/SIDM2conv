@@ -1,8 +1,8 @@
 # Project Status Overview
 
-**Last Updated**: 2026-05-06
-**Current Version**: v3.3.0 (Criterion 3 Closed — Edits Affect Playback)
-**Status**: Production — all 4 success criteria closed
+**Last Updated**: 2026-05-09
+**Current Version**: v3.4.1 (Block 3 Format Fix + Stage 8.5 Toolkit)
+**Status**: Production — all 4 success criteria closed; F10-load now 100% solo on the canonical corpus
 
 ---
 
@@ -16,7 +16,17 @@ The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2)
 3. **Edits affect playback** ✅ (closed v3.3.0 — runtime translator at `$0F0E`, 51 bytes of 6502)
 4. **Round-trip SID→SF2→SID** ✅ (register accuracy 100%, metadata preserved)
 
-**Known unfixed limitation**: F10-load editor crash fires ~40% Stinsen / 73% Unboxed (heap-state-dependent stray byte write inside `m_ComponentsManager->Refresh()`). The file ALWAYS plays correctly when load succeeds. Workaround: `pyscript/sf2_load_retry.py` retries automatically. Comprehensive RE in `memory/project-status.md`.
+**Known unfixed limitation** (closed in v3.4.1 for canonical corpus): The F10-load
+heap-state-dependent stray byte write was the Block 3 NameLen-vs-TextFieldSize
+bug. Stinsen + Unboxed now solo-load 100% (15/15). Two non-canonical files
+(Hubbard *Action_Biker* `$C000`, Soundmonitor *Byte_Bite* `$7FF8`) still
+deterministically crash F10-load on a related but distinct upstream bug —
+NULL `std::string` deref in SF2II's `m_TableColorRules` destructor at
+`+0x63fab`, reported as
+[Chordian/sidfactory2#211](https://github.com/Chordian/sidfactory2/issues/211).
+Conversion still succeeds and audio plays via VICE / sidplayer for those
+files; only the editor F10-load is affected. Toolkit at
+`docs/stage8.5_debugging_toolkit.md`.
 
 The sections below document the full feature inventory accumulated since v1.0; not all are still actively maintained but they represent the historical capability surface.
 
