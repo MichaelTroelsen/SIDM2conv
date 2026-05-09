@@ -162,8 +162,12 @@ def trace_play_reads(c64_data: bytes, sid_la: int, init_addr: int,
         if not call(play_addr):
             return None
 
-    # Snapshot post-final-PLAY memory
-    snapshot = bytearray(new_mem[i] for i in range(0x10000))
+    # Snapshot post-final-PLAY memory. Bypass TracingMemory.__getitem__
+    # (which would add every i to `reads`, polluting the set with all
+    # 65536 addresses and making it useless as a candidate filter).
+    snapshot = bytearray(0x10000)
+    for i in range(0x10000):
+        snapshot[i] = list.__getitem__(new_mem, i)
     return snapshot, reads
 
 
