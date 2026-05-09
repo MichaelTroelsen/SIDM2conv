@@ -95,47 +95,87 @@ What's NOT in (and why): the wave_copy_addr is currently hardcoded
 to `None` in `_inject_laxity_raw_np21`, so no routine is actually
 emitted. See Phase B.0 below.
 
-### Phase B.0 — Per-variant wave-table address RE (BLOCKER)
+### Phase B.0 — Per-variant wave-table address RE (PARTIAL — SOLVED for Stinsen, blocked elsewhere)
 
-**Empirical finding 2026-05-09**: the Stinsen wave-table extraction
-in `extract_all_laxity_tables` returns wave_addr=`$17EC`, but py65
-trace shows that's a region of MUTATING player state (byte 2 changes
-from `$20` to `$41` during PLAY) — not a static wave table the
-player reads. Direct edits to bytes at `$17EC` mid-tick don't
-propagate to playback because the player overwrites those bytes
-itself.
+**Empirical findings 2026-05-09 (commit pending):**
 
-The canonical CLAUDE.md address `$1942` has structured-looking data
-(repeating `$7F` end-of-program markers) but direct edits there
-ALSO don't change the SID register writes the player issues to
-`osc<v>_control` ($D404/$D40B/$D412). So `$1942` isn't the read
-source either, at least not for the bytes I tested.
+1. `extract_all_laxity_tables` returns wave_addr=`$17EC` for Stinsen.
+   py65 step-through shows `$17EC..$17EE` is per-voice mutating
+   player state — the player WRITES waveform values to those
+   addresses each tick, then reads them when issuing the
+   `STA $D404` instruction. So $17EC IS read by the player but
+   only as a transient stash; wave-copying to it is clobbered.
 
-The actual NP21 wave-read path is more complex than a flat
-2-byte-per-row table. Likely candidates:
-- A wave PROGRAM is a sequence of bytes terminated by `$7F`,
-  played byte-by-byte each tick by the player. The "read source"
-  is wherever the player's current program pointer is at that
-  tick — varies per voice, per beat.
-- The waveform value written to `osc<v>_control` may be derived
-  by combining a STATIC waveform byte (from one table) with a
-  DYNAMIC gate-bit decision (from sequence state) — not a single
-  byte read.
+2. Canonical CLAUDE.md address `$1942` has note-offset data
+   (`00 0f 7f 88 7f 88 0f 0f 00 7f`) — small numbers + `$7F` end
+   markers. Note-offsets, not waveforms.
 
-So Phase B can't proceed via simple "flat table copy" because the
-table abstraction doesn't match NP21's runtime layout. Real options:
+3. **Stinsen's actual wave-program is at `$18DA`** (waveform bytes
+   `21 21 41 7f 81 41 41 41 7f 81 41 80 80 7f 81 ...`). Confirmed by
+   direct-edit experiment:
+   - File generated, byte at `$18DA` patched from `$21` (saw) to
+     `$11` (triangle), zig64 trace re-run.
+   - Result: `osc<v>_control` register writes flipped from `$20`
+     (saw bit) to `$10` (tri bit) on ALL THREE VOICES.
+   - Edit propagated end-to-end. So `$18DA` is the actual wave
+     read source for Stinsen.
 
-1. Disassemble Stinsen's NP21 player, find the actual `LDA <addr>;
-   STA $D404` (or `STA <osc_control_table>` etc.) instruction, and
-   trace back to find the wave-read source address.
-2. Run the player under py65 with read-tracing AND filter for reads
-   that immediately precede SID register writes — that pinpoints
-   the read addresses dynamically.
+The trace path (via `pyscript/probe_wave_read_addr.py`):
+```
+osc<v>_control writes ← read from $15B1, $17EC, $17EE
+   ↓ (chase)
+$17EC, $17EE writes   ← read from $18DA-$18DC (wave program),
+                              $190A (extension), $11D4
+   ↓
+$18DA-$190A           ← STATIC bytes in NP21 binary; THIS IS the
+                          wave-program source
+```
 
-Until Phase B.0 is done, Phase B.1's plumbing is shipped but
-inactive (no routine emitted). The `_emit_wave_copy_routine` is
-kept as ready-to-call infrastructure for when an address is
-known.
+So the wave path is: STATIC wave program at $18DA (and probably
+$190A) → player walks it byte-by-byte → stores current value at
+$15B1/$17EC-EE → reads that and writes to SID osc-control. Edits
+to $18DA propagate; edits to $17EC are clobbered by the player's
+own write-back.
+
+**What this means for Phase B:**
+
+The SF2 edit area's wave bytes ARE WRONG. They were extracted
+from `$17EC` (mutating player state captured at one specific
+moment), not from `$18DA` (the actual wave program). So even if
+the wave-copy routine writes back to $18DA, it'd be writing
+garbage.
+
+To make Phase B work end-to-end, we need:
+
+1. **Fix `extract_all_laxity_tables` wave detection** to find
+   `$18DA` (or equivalent for other NP21 variants). The detector
+   in `sidm2/instrument_extraction.py::find_and_extract_wave_table`
+   uses heuristics that misidentify mutating player state as a
+   wave table.
+
+2. **Re-emit the SF2 edit area Stage 4 wave** with bytes from
+   `$18DA` (the actual wave program). This propagates wherever the
+   user sees in the editor view.
+
+3. **Then** the wave-copy 6502 routine in Phase B.1 plumbing can
+   actually do its job: copy bytes from the SF2 edit area back to
+   `$18DA` on every PLAY tick.
+
+4. Then Phase C verifies edits propagate.
+
+Per-variant: $18DA is Stinsen-specific. Other NP21 variants will
+have the wave program at different addresses. The same dynamic-
+trace approach (probe_wave_read_addr.py) finds it in seconds for
+any file given init_addr/play_addr — so this is automatable
+post-detection.
+
+**Status: Stinsen wave-source RE is solved (`$18DA`). Phase B
+remains blocked on the wave-detector fix in
+`extract_all_laxity_tables`/`instrument_extraction.py` since the
+wrong source bytes get into the SF2 edit area in the first place.
+That's a substantial change — it's not just one line of code; the
+detection heuristic needs replacing with a proper trace-based or
+disasm-based method.**
 
 ### Phase B.2 — 6502 emission for instruments / pulse (deferred)
 
