@@ -161,32 +161,58 @@ def find_ch_seq_ptr_in_memory(mem: bytearray, sid_la: int, c64_len: int,
 
 
 def find_lda_abs_x_pairs(c64_data: bytes, sid_la: int) -> list[tuple[int, int]]:
-    """Statically scan the binary for `LDA abs,X` ($BD lo hi) instructions
-    whose operands form a (T, T+3) pair within a small window. The player
-    MUST contain such a pair to load the voice ch_seq_ptr lo and hi
-    tables, and the table itself sits at the addr T (lo table) + T+3 (hi
-    table). This is the strongest fingerprint of the ch_seq_ptr location.
+    """Backwards-compat shim — see `find_indexed_load_pairs`."""
+    return find_indexed_load_pairs(c64_data, sid_la, opcodes=(0xBD,))
 
-    Returns list of (lo_table_addr, hi_table_addr) candidates.
+
+# 6502 absolute,indexed load opcodes (3-byte instructions: opcode + lo + hi)
+#
+#   $BD  LDA abs,X   — most common voice-pointer-load idiom
+#   $B9  LDA abs,Y   — alternative; some NP21 variants use Y-indexing
+#   $BE  LDX abs,Y   — load X from table[Y]; rare but possible
+#   $BC  LDY abs,X   — load Y from table[X]; rare but possible
+#
+# All four can plausibly appear as a `load lo, load hi` voice-ptr idiom.
+# We accept any pair of these instructions whose operands differ by
+# exactly 3, regardless of mix.
+DEFAULT_LOAD_OPCODES = (0xBD, 0xB9, 0xBE, 0xBC)
+
+
+def find_indexed_load_pairs(c64_data: bytes, sid_la: int,
+                            opcodes: tuple[int, ...] = DEFAULT_LOAD_OPCODES,
+                            max_distance: int = 32,
+                            ) -> list[tuple[int, int]]:
+    """Statically scan the binary for absolute,indexed load instructions
+    (opcode + lo + hi) whose operands form a (T, T+3) pair within
+    `max_distance` bytes. The player MUST contain such a pair to load
+    the voice ch_seq_ptr lo and hi tables, and the table itself sits
+    at the lower address (lo table) and lower+3 (hi table).
+
+    `opcodes` defaults to all four 6502 absolute-indexed load forms
+    (LDA abs,X / LDA abs,Y / LDX abs,Y / LDY abs,X). Caller can restrict
+    via opcodes=(0xBD,) for x-only, etc.
+
+    Returns deduplicated list of (lo_table_addr, hi_table_addr) candidates.
     """
-    OP_LDA_ABS_X = 0xBD
     candidates = []
-    seen = set()
+    seen: set[tuple[int, int]] = set()
     n = len(c64_data)
+    op_set = set(opcodes)
 
-    # Find all LDA abs,X opcodes
-    lda_addrs = []   # list of (instruction_offset, target_addr)
+    # Find all matching instructions
+    loads = []   # list of (instruction_offset, target_addr)
     for off in range(n - 2):
-        if c64_data[off] == OP_LDA_ABS_X:
+        if c64_data[off] in op_set:
             target = c64_data[off + 1] | (c64_data[off + 2] << 8)
-            lda_addrs.append((off, target))
+            loads.append((off, target))
 
-    # Look for pairs (a, b) where b = a + 3 and the two LDAs are within
-    # 16 bytes of each other (typical "load lo table, load hi table"
-    # idiom in NP21 player loops).
-    for i, (off_i, t_i) in enumerate(lda_addrs):
-        for off_j, t_j in lda_addrs[i+1 : i+10]:    # nearby instructions
-            if off_j - off_i > 32:
+    # Look for pairs (a, b) where b = a + 3 and the two loads are
+    # within `max_distance` bytes of each other (typical "load lo
+    # table, load hi table" idiom in NP21 player loops).
+    for i, (off_i, t_i) in enumerate(loads):
+        # Probe a small forward window — typical idiom is ~3-15 bytes
+        for off_j, t_j in loads[i+1 : i+15]:
+            if off_j - off_i > max_distance:
                 break
             if t_j == t_i + 3:
                 key = (t_i, t_j)
@@ -226,8 +252,28 @@ def detect_ch_seq_ptr(c64_data: bytes, sid_la: int, init_addr: int,
         if mem is None:
             return None
 
-    # Static scan: find `LDA abs,X` pairs that look like ch_seq_ptr loads
-    pairs = find_lda_abs_x_pairs(c64_data, sid_la)
+    # Static scan: find indexed-load pairs that look like ch_seq_ptr loads.
+    # We accept all four absolute,indexed forms (LDA abs,X / LDA abs,Y /
+    # LDX abs,Y / LDY abs,X) — the canonical voice-pointer-load idiom is
+    #     load voice_seq_lo_table, <reg>
+    #     load voice_seq_hi_table, <reg>     (with hi = lo + 3)
+    # but variants exist where the player uses Y instead of X, or mixes
+    # registers between the two loads.
+    pairs = find_indexed_load_pairs(c64_data, sid_la)
+
+    # Also scan POST-INIT memory in the binary's range. Some NP21 player
+    # variants use self-modifying code: INIT writes the table address into
+    # an `LDA $XXXX,X` operand at runtime. Those patches are in mpu.memory
+    # but NOT in c64_data, so the static scan above misses them.
+    bin_end = min(sid_la + len(c64_data), 0x10000)
+    post_init_bytes = bytes(mem[sid_la:bin_end])
+    pairs_post = find_indexed_load_pairs(post_init_bytes, sid_la)
+    # Dedupe — most pairs will overlap with the static scan
+    seen_pairs = set(pairs)
+    for p in pairs_post:
+        if p not in seen_pairs:
+            seen_pairs.add(p)
+            pairs.append(p)
 
     # Also: build a set of (lo, hi) candidates from PLAY-read addresses.
     # If two consecutive read addresses (or any pair with delta=3) both
