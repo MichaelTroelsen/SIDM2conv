@@ -316,14 +316,21 @@ def detect_ch_seq_ptr(c64_data: bytes, sid_la: int, init_addr: int,
         if best is None or score > best[0]:
             best = (score, lo_addr, hi_addr, ptrs)
 
-    # Fallback: brute-force scan if nothing passed
-    if best is None:
+    # Fallback: brute-force scan if static candidates yielded no usable
+    # result. Run when EITHER (a) we found nothing, OR (b) the best
+    # static candidate has score <= 0 (would be rejected by the final
+    # filter anyway). Without (b), a single junk static-paired candidate
+    # with negative score short-circuits the brute-force pass that might
+    # find a real table.
+    if best is None or best[0] <= 0:
         r = find_ch_seq_ptr_in_memory(
             mem, sid_la, len(c64_data),
             search_lo=sid_la, search_hi=sid_la + len(c64_data))
         if r is not None:
             lo_addr, hi_addr, ptrs, score = r
-            best = (score, lo_addr, hi_addr, ptrs)
+            # Only adopt the brute-force result if it beats the static best
+            if best is None or score > best[0]:
+                best = (score, lo_addr, hi_addr, ptrs)
 
     # Reject candidates whose score is non-positive. The scorer applies
     # large negative penalties (-1000) for hard-fail conditions; a
