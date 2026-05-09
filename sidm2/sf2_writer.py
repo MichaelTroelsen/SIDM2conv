@@ -2518,18 +2518,55 @@ class SF2Writer:
             return bytes(raw), None
 
         # --- 1. Extract the 3 main voice sequences from ch_seq_ptr ---
-        # ch_seq_ptr ($0A1C/$0A1F) gives the actual voice sequence addresses.
-        # These are the primary music data the editor needs to display.
-        # The pattern ptr table at $0A22/$0A49 points to instrument sub-patterns, not
-        # voice sequences — do NOT use that table for sequence extraction.
+        # The Stinsen/Unboxed convention places ch_seq_ptr at the binary's
+        # $0A1C/$0A1F offsets ($1A1C/$1A1F absolute when sid_la=$1000).
+        # Other NP21 variants put it elsewhere. Try the conventional offsets
+        # first; if extraction yields no in-range pointers, run the
+        # auto-detector (sidm2.ch_seq_ptr_scanner) which combines static
+        # disasm of LDA-pair operands with runtime PLAY-read tracing.
+
+        def _read_ptrs(lo_off, hi_off):
+            ptrs = []
+            for v in range(3):
+                if lo_off + v >= len(c64_data) or hi_off + v >= len(c64_data):
+                    return None
+                ptrs.append((c64_data[hi_off + v] << 8) | c64_data[lo_off + v])
+            return ptrs
+
+        def _ptrs_in_range(ptrs):
+            return all(sid_la <= p < sid_la + len(c64_data) for p in ptrs)
+
+        # Try conventional offsets first
+        ptrs = _read_ptrs(CH_SEQ_LO_OFF, CH_SEQ_HI_OFF)
+        if ptrs is None or not _ptrs_in_range(ptrs):
+            # Class B autodetect path
+            try:
+                from sidm2.ch_seq_ptr_scanner import detect_ch_seq_ptr
+                init_addr = getattr(self.data.header, 'init_address', sid_la) \
+                    if getattr(self, 'data', None) and getattr(self.data, 'header', None) else sid_la
+                play_addr = getattr(self.data.header, 'play_address', sid_la + 3) \
+                    if getattr(self, 'data', None) and getattr(self.data, 'header', None) else sid_la + 3
+                detected = detect_ch_seq_ptr(c64_data, sid_la, init_addr,
+                                             play_addr=play_addr, n_play_ticks=3)
+            except Exception as e:
+                logger.debug(f"  ch_seq_ptr autodetect failed: {e}")
+                detected = None
+            if detected is not None:
+                lo_addr, hi_addr, det_ptrs, score = detected
+                logger.info(
+                    f"  ch_seq_ptr autodetect: lo=${lo_addr:04X} hi=${hi_addr:04X} "
+                    f"score={score} ptrs={[f'${p:04X}' for p in det_ptrs]}"
+                )
+                # Convert absolute back to offsets
+                CH_SEQ_LO_OFF = lo_addr - sid_la
+                CH_SEQ_HI_OFF = hi_addr - sid_la
+                ptrs = det_ptrs
+
         addr_to_sf2_idx = {}
         raw_patterns = []    # list of (body_bytes, loop_target)
 
-        for v in range(3):
-            if CH_SEQ_LO_OFF + v < len(c64_data) and CH_SEQ_HI_OFF + v < len(c64_data):
-                lo = c64_data[CH_SEQ_LO_OFF + v]
-                hi = c64_data[CH_SEQ_HI_OFF + v]
-                seq_addr = (hi << 8) | lo
+        if ptrs is not None and _ptrs_in_range(ptrs):
+            for seq_addr in ptrs:
                 if seq_addr not in addr_to_sf2_idx:
                     body, loop_target = _extract_raw_seq(seq_addr)
                     if body is not None:
@@ -2543,12 +2580,9 @@ class SF2Writer:
                             )
 
         voice_init_idx = [0, 0, 0]
-        for v in range(3):
-            if CH_SEQ_LO_OFF + v < len(c64_data) and CH_SEQ_HI_OFF + v < len(c64_data):
-                lo = c64_data[CH_SEQ_LO_OFF + v]
-                hi = c64_data[CH_SEQ_HI_OFF + v]
-                init_addr = (hi << 8) | lo
-                voice_init_idx[v] = addr_to_sf2_idx.get(init_addr, 0)
+        if ptrs is not None and _ptrs_in_range(ptrs):
+            for v in range(3):
+                voice_init_idx[v] = addr_to_sf2_idx.get(ptrs[v], 0)
 
         num_patterns = len(raw_patterns)
         if num_patterns == 0:

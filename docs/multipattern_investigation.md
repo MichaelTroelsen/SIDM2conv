@@ -93,7 +93,59 @@ playback already works for all 300 files (the embedded NP21 binary
 plays fine in zig64 / VICE / sidplayer regardless of whether the SF2
 editor view is populated).
 
-## Class B upgrade attempt (2026-05-09) — DOES NOT WORK
+## Class B upgrade — partial success (2026-05-09 second pass)
+
+After the initial "DOES NOT WORK" finding (kept below for context), a
+second pass took a different angle: scan the binary statically for
+`LDA abs,X` instruction pairs whose operands differ by 3, then validate
+each candidate by walking the post-INIT memory and scoring the resulting
+voice byte streams. Real NP21 voice streams have a characteristic
+statistical signature (start with $A0-$BF instrument prefix, ≥70% of
+bytes < $A0, plausible length 8-200) that distinguishes them from
+arbitrary code byte runs.
+
+Implemented in:
+- `sidm2/ch_seq_ptr_scanner.py` — autodetector
+- `sidm2/sid_init_runner.py::trace_play_reads` — runtime memory-read
+  trace during PLAY (used as a filter when available)
+- `sidm2/sf2_writer.py:_build_np21_sf2_edit_area` — falls back to
+  the autodetector when conventional `$0A1C/$0A1F` ch_seq_ptr extraction
+  yields no in-range pointers
+
+**Real-world impact** on the SID/Laxity/ corpus (286 files):
+
+| Class | Count | % | Meaning |
+|---|---|---|---|
+| A_native | 42 | 15% | conventional `$1A1C/$1A1F` ch_seq_ptr extraction works (Stinsen, Unboxed, etc.) |
+| **B_lifted** | **33** | **12%** | autodetect found a non-Stinsen ch_seq_ptr table, real voice sequences extracted |
+| C_unchanged | 151 | 53% | autodetect found no candidate or yielded non-NP21 byte runs; empty-patterns fallback |
+| (driver11) | 57 | 20% | player-id detection routed to driver11 fallback path; my upgrade doesn't apply |
+| CONVERT_FAIL | 3 | 1% | pre-existing parse errors |
+
+**Net lift: 18% → 27% (+9 pp)** of the Laxity corpus now has a real
+editor view.
+
+Verified F10-load on `1983_Sauna_Tango.sid` and `C20H25N30.sid`: both
+load 5/5 in SF2II, with real notes visible in the editor. Stinsen +
+Unboxed canonical regression tests still pass (zig64 trace 1910/1910 +
+2734/2734).
+
+**Why most Class B/C files don't lift**: the `LDA abs,X`-pair fingerprint
+catches Stinsen/Sauna_Tango/C20H25N30-style players that load voice
+pointers via `LDA voice_seq_lo_table,X / LDA voice_seq_hi_table,X`. Other
+NP21 variants use different addressing modes (`LDA abs,Y`,
+`LDA (zp),Y`, self-modifying code, etc.) that the static scanner doesn't
+match. A future refinement could add detection for `LDA abs,Y` ($B9)
+pairs and zero-page indirect-Y patterns.
+
+The original "Class B doesn't work" investigation below is preserved for
+historical context — the FIRST attempt (read post-INIT `$1A1C/$1A1F`)
+genuinely doesn't work; the SECOND attempt (LDA-pair fingerprinting +
+walk validation) does for ~12% of files.
+
+---
+
+## Class B upgrade — first attempt (2026-05-09) — DID NOT WORK
 
 I tried to lift Class B to Class A by capturing `ch_seq_ptr` after running
 INIT in a py65 6502 emulator (`sidm2/sid_init_runner.py`). Findings:

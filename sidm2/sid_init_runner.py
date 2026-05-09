@@ -94,6 +94,79 @@ def run_init(c64_data: bytes, sid_la: int, init_addr: int,
     return bytearray(mpu.memory[i] for i in range(0x10000))
 
 
+def trace_play_reads(c64_data: bytes, sid_la: int, init_addr: int,
+                     play_addr: int, n_ticks: int = 3
+                     ) -> Optional[tuple[bytearray, set[int]]]:
+    """Run INIT once, then PLAY n_ticks times, recording every memory
+    read address. Returns (final_memory, set_of_read_addresses) or None
+    on emulator error.
+
+    The voice ch_seq_ptr table will be in the read set every PLAY tick
+    — that's how the player advances each voice's stream.
+    """
+    try:
+        from py65.devices.mpu6502 import MPU
+    except ImportError:
+        return None
+
+    # Track reads via a small wrapper around the memory list. py65's
+    # MPU calls memory[addr] for reads, both via __getitem__ and
+    # potentially via slice. We capture all reads by replacing memory
+    # with a list-like object.
+    reads: set[int] = set()
+
+    class TracingMemory(list):
+        def __getitem__(self, idx):
+            if isinstance(idx, int):
+                if 0x0000 <= idx <= 0xFFFF:
+                    reads.add(idx)
+                return super().__getitem__(idx)
+            return super().__getitem__(idx)
+        # __setitem__: pass through, no tracing needed for our purpose
+
+    mpu = MPU()
+    new_mem = TracingMemory([0] * 0x10000)
+    # Copy c64_data
+    end = min(sid_la + len(c64_data), 0x10000)
+    n = end - sid_la
+    if n <= 0:
+        return None
+    for i in range(n):
+        new_mem[sid_la + i] = c64_data[i]
+    mpu.memory = new_mem
+
+    def call(entry):
+        sentinel = 0xFFFE
+        new_mem[0x0100 | mpu.sp] = (sentinel >> 8) & 0xFF
+        mpu.sp = (mpu.sp - 1) & 0xFF
+        new_mem[0x0100 | mpu.sp] = sentinel & 0xFF
+        mpu.sp = (mpu.sp - 1) & 0xFF
+        mpu.pc = entry
+        for _ in range(200_000):
+            try:
+                mpu.step()
+            except Exception:
+                return False
+            if mpu.pc == 0xFFFF:
+                return True
+        return False
+
+    mpu.a = mpu.x = mpu.y = 0
+    if not call(init_addr):
+        return None
+
+    # Clear reads from INIT — only care about PLAY-time reads
+    reads.clear()
+
+    for _ in range(n_ticks):
+        if not call(play_addr):
+            return None
+
+    # Snapshot post-final-PLAY memory
+    snapshot = bytearray(new_mem[i] for i in range(0x10000))
+    return snapshot, reads
+
+
 def recover_ch_seq_ptr(c64_data: bytes, sid_la: int, init_addr: int,
                        ch_seq_lo: int = 0x1A1C,
                        ch_seq_hi: int = 0x1A1F) -> Optional[list[int]]:
