@@ -93,20 +93,90 @@ playback already works for all 300 files (the embedded NP21 binary
 plays fine in zig64 / VICE / sidplayer regardless of whether the SF2
 editor view is populated).
 
+## Class B upgrade attempt (2026-05-09) — DOES NOT WORK
+
+I tried to lift Class B to Class A by capturing `ch_seq_ptr` after running
+INIT in a py65 6502 emulator (`sidm2/sid_init_runner.py`). Findings:
+
+- For Class A files (Stinsen): post-INIT memory at `$1A1C/$1A1F` matches
+  pre-INIT — the bytes are **pre-populated in the binary at SF2-export
+  time**, not written by the player's INIT routine.
+- For Class B files (Sauna_Tango, Bossa_Nova, 7-BITS, C20H25N30,
+  Adventure, Coop_6581 — 6 sampled): post-INIT bytes at `$1A1C/$1A1F`
+  are **identical to pre-INIT garbage**. Running PLAY 10× also doesn't
+  change them.
+
+This means `$1A1C/$1A1F` is **not the ch_seq_ptr location** for these
+Class B files. They're using a different NP21 player variant where the
+voice pointer table sits somewhere else.
+
+Implications for the "Class B = analyzer recovers" metric (24%):
+
+The `LaxityPlayerAnalyzer` claims to recover ≥1 sequence for those
+files, but its recovery is via heuristic fallback strategies in
+`laxity_parser.py:_extract_sequence_at_address`:
+- Strategy 2: treat the (garbage) ch_seq_ptr address as a direct file
+  offset
+- Strategy 3: treat it as a low-memory offset
+
+Both walk `c64_data` from the heuristic offset until a `0x7F` byte
+turns up and call that "a sequence." The byte run found may be
+arbitrary table data (instrument bytes, pulse table, etc.) that just
+happens to contain a `0x7F`. **The "Class B" count is largely a
+false-positive metric** — the recovered "sequences" are not
+necessarily what the player actually plays.
+
+So the corpus picture is closer to:
+- Class A: ~18% (real recovery, ch_seq_ptr at $1A1C/$1A1F works)
+- Class B + C combined: ~82% (no reliable recovery — the existing
+  analyzer's "B-class" successes are mostly heuristic noise)
+
+## Where this could go (multi-day work)
+
+To genuinely lift Class B/C to A would require **per-NP21-variant
+analysis**: identify the player variant from the binary, look up its
+ch_seq_ptr address, extract from there. Variants seen across the
+corpus include at least:
+
+- **Stinsen-class** — ch_seq_ptr at $1A1C/$1A1F (covered today)
+- **Native Laxity NewPlayer V21 (multiple sub-variants)** — locations
+  unknown; would need RE per variant
+
+A reasonable approach would be:
+1. Disassemble each unique NP21 binary in the corpus.
+2. Find the `LDA <addr>,Y` or `LDX <addr>,X` instructions that load
+   from a 3-byte-by-3-byte structure (lo + hi tables).
+3. Extract the addr of the lo + hi tables for that variant.
+4. Build a player-fingerprint → ch_seq_ptr-addresses map.
+5. Plug into `_build_np21_sf2_edit_area`.
+
+That's a multi-day reverse-engineering project. Not started; not
+recommended unless editor-view fidelity for native Laxity files
+becomes a strong user requirement.
+
 ## Recommendation
 
 1. **Do nothing right now**. The user-facing audio path is 100% on the
    canonical corpus and the F10-load reliability is sound.
-2. If editor-view fidelity becomes important for Class B files, the
-   "capture ch_seq_ptr post-INIT" approach is the right next step.
-   Not started.
-3. Drop the "multi-pattern songs" phrasing from project docs — it's
-   misleading. The right phrasing is "Class B/C files have empty
-   editor views because ch_seq_ptr extraction fails."
+2. The corpus classifier in `pyscript/probe_multipattern.py` overcounts
+   Class B because the analyzer's heuristic fallbacks produce false
+   positives. True recovery rate is closer to 18% (Class A only).
+3. The py65 INIT runner at `sidm2/sid_init_runner.py` is kept for
+   future investigation — it correctly runs INIT and snapshots memory,
+   it just doesn't help with the ch_seq_ptr-recovery problem because
+   the assumed location is wrong for non-Stinsen-class files.
+4. Drop the "multi-pattern songs" phrasing from project docs — it's
+   misleading. The right phrasing is "Class A: Stinsen-class layout
+   works today. All other Laxity files would need per-variant RE for
+   real editor-view recovery; not done."
 
 ## Files used in this investigation
 
 - `pyscript/probe_orderlist.py` — per-file probe of `ch_seq_ptr` validity
-- `pyscript/probe_multipattern.py` — full corpus classifier (A/B/C)
+- `pyscript/probe_multipattern.py` — full corpus classifier (overcounts
+  Class B — see disclaimer above)
+- `sidm2/sid_init_runner.py` — py65-based INIT runner. Kept for future
+  per-variant RE; the simple "run INIT, read $1A1C" approach was
+  proven empirically not to work for non-Stinsen-class files.
 
 Run either against any `.sid` file to reproduce.
