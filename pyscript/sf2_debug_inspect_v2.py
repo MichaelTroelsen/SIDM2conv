@@ -595,7 +595,7 @@ def report_event(hproc, hthread, ctx, kind, info_extra=''):
     print(f'  RIP = 0x{ctx.Rip:x}')
     rva_mod, rva = addr_to_rva(hproc, ctx.Rip)
     if rva is not None:
-        print(f'        ↳ {rva_mod} + 0x{rva:x}')
+        print(f'        -> {rva_mod} + 0x{rva:x}')
     print(f'  Registers: RAX={ctx.Rax:#x} RCX={ctx.Rcx:#x} RDX={ctx.Rdx:#x}')
     print(f'             RBX={ctx.Rbx:#x} RSI={ctx.Rsi:#x} RDI={ctx.Rdi:#x}')
     print(f'             R8={ctx.R8:#x}  R9={ctx.R9:#x}  R10={ctx.R10:#x}')
