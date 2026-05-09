@@ -48,7 +48,6 @@ cleanup.bat                   # Clean + inventory
 python pyscript/siddump_complete.py input.sid -t30           # Frame dump
 python pyscript/sidwinder_trace.py --trace out.txt input.sid # Trace (text)
 python pyscript/create_sid_inventory.py                      # SID catalog
-python pyscript/quick_disasm.py file.sid                     # Disassemble
 python pyscript/validate_filter_accuracy.py [--sid F] [--csv F] [--verbose]  # Filter accuracy vs zig64 ground truth
 
 # Testing & Automation
