@@ -2475,7 +2475,11 @@ class SF2Writer:
             while len(seq) < SEQ_SIZE:
                 seq.append(0x7F)               # SF2 end-of-sequence marker
             edit.extend(seq)
-            return safe_params, bytes(edit), [0, 0, 0], [(b'', None)]
+            # voice_pat_counts: each voice points at the single placeholder
+            # pattern (index 0). Stage 2.5 multi-pattern translator path is
+            # not used for empty-pattern files anyway, but the caller unpacks
+            # 5 values, so return a 5-tuple to keep arity consistent.
+            return safe_params, bytes(edit), [0, 0, 0], [(b'', None)], [1, 1, 1]
 
         for i, (body, lt) in enumerate(raw_patterns):
             loop_str = f"loops from start" if lt == 0 else f"loops from Y={lt}" if lt is not None else "no loop"
