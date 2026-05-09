@@ -25,6 +25,93 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.0] - 2026-05-09
+
+### Added — Stage 7: edit-affects-playback for tables (criterion 3 extended)
+
+v3.3.0 closed criterion 3 for **sequence** edits (F1 in SF2II). v3.5.0
+extends the runtime translator architecture to **wave** (F3): edits in
+the SF2 editor now propagate to playback for the wave table. The same
+plumbing is in place for instruments (F2) and pulse (F4) but wire-up
+is gated until per-variant address-detection lands.
+
+- **Wave (✅ end-to-end)**:
+  - `_emit_wave_split_copy_routine` — 31-byte 6502 routine emitted to
+    the SF2 edit area. Two-pass split-copy from the SF2 edit area's
+    interleaved `(waveform, note_offset)` rows back to NP21's parallel
+    arrays at `np21_wave_data_addr` / `np21_note_addr`. Called via
+    JSR from the multipat translator at `$0F9E` on every PLAY tick.
+  - `extract_all_laxity_tables` wave detector replaced. The
+    LDA-near-STA$D404 heuristic in `find_table_addresses_from_player`
+    returned `$17EC` for Stinsen, but `$17EC` is per-voice transient
+    state the player overwrites every PLAY tick. Now prefers
+    `find_and_extract_wave_table` (validates static wave-program
+    addresses against known Laxity NP21 layouts: `$190C/$18DA` for
+    Stinsens, `$19AD/$19E7` for Angular). New `wave_data_addr` field
+    in result dict exposes the parallel waveform array.
+  - **Trampoline patch**: when `play_addr ≠ init_addr+3` AND
+    `num_patterns > 0`, the `init+3` trampoline JMPs to
+    `TRANSLATE_BASE` (multipat translator) instead of `play_addr`.
+    Without this, zig64-traced playback bypasses the translator path;
+    only SF2II's PLAY handler ($0F94) would fire wave-copy.
+  - **Phase C verification**: editing one byte at file-offset `$2CA5`
+    (SF2 edit-area row 0 waveform) from `$21` (saw) to `$11` (tri)
+    flipped 155 `osc<v>_control` writes from `$20` to `$10` on all
+    three voices. Edit propagated end-to-end for Stinsen.
+
+- **Instruments + Pulse (plumbing only)**:
+  - `_emit_instr_copy_routine` (110 bytes, n=16) — 5 separate field
+    pass loops for AD, SR, HR, pulse_ptr, wave_ptr. NP21
+    flags2/flags3/pulse_pm preserved in place.
+  - `_emit_pulse_copy_routine` (66 bytes, n=16) — 3 field pass loops
+    for cols 0..2. NP21 byte 3 (next-program ptr) preserved.
+  - **Wire-up DEFERRED**: per-variant NP21 instrument/pulse layouts
+    show more variance than wave did. Stinsen has AD/SR fed from
+    `$18D8/$18D9` adjacent to wave-data at `$18DA` (a row-major
+    8B/instrument layout would clobber wave). Angular and Beast use
+    parallel-array per-voice scratches at `$197B-$1986` and
+    `$1911-$191C` respectively. Per-variant address-detection RE is
+    needed before wire-up can ship safely.
+
+### Changed
+- **Golden traces re-baselined** for Stinsen + Unboxed corpus
+  regression. SID register writes are byte-for-byte identical to
+  v3.4.1; only the `cycle` column shifts because zig64 trace path now
+  goes through the translator on every PLAY tick (matches SF2II's
+  PLAY handler path).
+- **828 tests pass** (+11 new from `test_sf2_writer_phase_b2.py`).
+
+### Investigation work
+- Stinsen instrument-table direct-edit experiments confirmed `$18D8`
+  = AD, `$18D9` = SR for one instrument. Patching `$18D0/$18D2/
+  $18D4/$18D6` to canary values did NOT appear in AD writes, so the
+  hypothesis "row-major 2B/instrument from `$18D0`" is rejected.
+  Other observed AD values (`$A0`, `$20`) come from addresses not
+  yet identified. Multi-day per-variant RE noted as remaining work.
+- Per-variant layouts cataloged: see `docs/stage7_plan.md` Phase B.2.
+
+### Files
+- `sidm2/sf2_writer.py` — wave/instr/pulse copy routines, wire-up
+  for wave, trampoline JMP fix
+- `sidm2/table_extraction.py` — wave detector preference change,
+  `wave_data_addr` exposed
+- `sidm2/sf2_to_np21_tables.py` (new) — Python reference for SF2-edit-
+  area → NP21 table format conversions (Phase A)
+- `pyscript/test_sf2_to_np21_tables.py` (new) — 19 unit tests
+- `pyscript/test_sf2_writer_phase_b2.py` (new) — 11 unit tests
+- `pyscript/probe_wave_read_addr.py` (new) — py65 instrumented
+  probe for finding the static source of SID register writes
+- `docs/stage7_plan.md` (new) — Stage 7 design + phase-status doc
+
+### Commits
+- `95920fa` — Phase A: Python reference
+- `31788e9` — Phase B.1: runtime translator plumbing
+- `38cc07b` — Phase B.0 investigate: Stinsen wave-program at `$18DA`
+- `58697f8` — Phase B/C: F3 wave edits propagate end-to-end
+- `3aab4ff` — Phase B.2: instr+pulse 6502 plumbing
+
+---
+
 ## [3.4.1] - 2026-05-09
 
 ### Fixed

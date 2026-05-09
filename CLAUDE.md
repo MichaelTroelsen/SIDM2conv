@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.4.1** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-09
+**SIDM2 v3.5.0** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-09
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -170,6 +170,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.5.0** (2026-05-09): Stage 7 — criterion 3 extends from sequences to **wave** tables. Edits to F3 (wave) in the SF2 editor now propagate to playback end-to-end via a 31-byte split-copy 6502 routine emitted into the SF2 edit area, called via JSR from the multipat translator at `$0F9E` on every PLAY tick. The wave detector in `extract_all_laxity_tables` was rewritten — preferring `find_and_extract_wave_table` (which validates static wave-program addresses against known Laxity NP21 layouts) over the LDA-near-STA$D404 heuristic which returned transient per-voice state. New `wave_data_addr` field exposes the parallel waveform array (Stinsen: notes=$190C, waves=$18DA). Trampoline at `init+3` redirects to `TRANSLATE_BASE` when patterns exist (so zig64 trace path also goes through wave-copy, not just SF2II's PLAY handler). **Verified: byte-edit at file-offset $2CA5 ($21 saw → $11 tri) flipped 155 osc<v>_control writes from $20 to $10 across all three voices.** Plus Phase B.2 plumbing: `_emit_instr_copy_routine` (110B, 5 fields) and `_emit_pulse_copy_routine` (66B, 3 fields) — 6502 split-copy routines for instruments + pulse, tested via py65 step-through (11 new tests). Wire-up deferred for instr/pulse pending per-variant address-detection RE (Stinsen has AD/SR at $18D8/$18D9 adjacent to wave-data; Beast/Angular use parallel-array per-voice scratches at completely different addresses). 828 tests pass. Golden traces re-baselined.
 
 **v3.4.1** (2026-05-09): Block 3 emits `TextFieldSize` instead of `NameLen`. SF2II's parser was reading our `NameLen` byte as `m_TextFieldSize`, making every driver table a `ComponentTableRowElementsWithText` whose `Refresh` writes a stray byte 0xDE/0xDF when its `AuxilaryDataTableText` lookup misses on tables without text entries. **Solo F10-load: Stinsen 47% → 100%, Unboxed → 100%.** Same fix unblocked Angular + Beast (was 0% deterministic crash → 100%). Empty-patterns fallback path returns 5-tuple to match Stage 2.5 contract. Per-instance `arp_addr/tempo_addr/hr_addr/init_table_addr` overrides on `SF2HeaderGenerator` so non-Laxity binaries don't collide with hardcoded `$C000-$C300`. Stage 8.5 toolkit (`appverifier-*.bat`, `pyscript/sf2_debug_inspect_v2.py`, `disasm_rva.py`) plus PageHeap-mode investigation that LOCALIZED the residual non-Laxity F10 crash to a NULL `std::string` deref in SF2II's `m_TableColorRules` destructor at `+0x63fab` — reported upstream as Chordian/sidfactory2#211. Broader 11-file corpus pass rate 9/11 = 82% (the 2 failures blocked on upstream). 794 tests still pass.
 
