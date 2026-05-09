@@ -177,21 +177,42 @@ The new chain validates the static wave program at $18DA (Stinsen)
 and returns `wave_data_addr` alongside `wave_addr` so callers know
 the parallel arrays' two endpoints.
 
-### Phase B.2 — 6502 emission for instruments / pulse (deferred)
+### Phase B.2 — 6502 emission for instruments / pulse (✅ PLUMBING SHIPPED 2026-05-09)
 
-Same model as Wave but more complex (field rearrangement). Same
-Phase B.0 blocker: need to know the actual NP21 read addresses for
-instrument/pulse tables, not just where the extractor THINKS they
-are.
+**Status:** Routines implemented + tested. **Wire-up disabled** —
+per-variant NP21 instrument/pulse address RE has more variance than
+wave did:
+- **Stinsen**: AD/SR scratch fed from $18D8/$18D9 — adjacent to
+  wave-data start at $18DA (so writing back into a "row-major
+  8 bytes/instrument" layout would clobber wave data). Layout
+  appears to be ≤2 bytes/instrument or column-major-with-overlap;
+  needs targeted RE.
+- **Angular**: per-voice scratches at $197B-$1986 (12 bytes total:
+  3 voices × 4 fields PWlo/PWhi/AD/SR). The SID register writes
+  source DIRECTLY from those scratches; chase to the static
+  instrument table not yet done.
+- **Beast**: per-voice scratches at $1911-$191C — same parallel-
+  array layout as Angular but at different addresses.
 
-Estimated 6502 budget once Phase B.0 unblocks:
-- Wave: 12 bytes (loop copy of 64 bytes; already implemented)
-- Instruments: ~40 bytes (per-row 5-field copy with 3-byte preserve)
-- Pulse: ~20 bytes (per-row 3-byte copy)
-- Total: ~72 bytes additional
+The `_emit_instr_copy_routine` and `_emit_pulse_copy_routine`
+functions are wired into `SF2Writer` but **NOT** called from
+`_inject_laxity_raw_np21` — there are no validated per-variant
+addresses to pass them. Once per-variant RE provides clean
+{instr_addr, n_instruments} and {pulse_addr, n_rows} pairs, the
+wire-up is ~10 lines per table.
 
-These would all live in the SF2 edit area (no translator-window
-budget concern), called via JSR from the multipat translator.
+**6502 size (measured)**:
+- Wave (already shipped): 31 bytes (split-copy, n_rows=32)
+- Instruments: 110 bytes (5-field × 5-pass, n_instruments=16)
+- Pulse: 66 bytes (3-field × 3-pass, n_rows=16)
+- Total Stage 7: ~207 bytes in SF2 edit area
+
+These all live in the SF2 edit area trailing buffer, called via
+JSR from the multipat translator.
+
+**Tests**: `pyscript/test_sf2_writer_phase_b2.py` — 11 cases:
+opcode emission, py65 step-through, multi-row copy, round-trip
+identity, edge cases (n=32 with stride wrap).
 
 ### Phase C — End-to-end zig64 verification (✅ SHIPPED 2026-05-09 for Wave)
 

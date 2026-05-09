@@ -2458,6 +2458,146 @@ class SF2Writer:
         code += bytes([0x60])                                                        # RTS
         return bytes(code)
 
+    def _emit_instr_copy_routine(self, sf2_instr_addr: int, np21_instr_addr: int,
+                                  n_instruments: int = 16) -> bytes:
+        """Stage 7 Phase B.2: copy SF2-edit-area instrument bytes back into
+        the NP21 binary's instrument table on every PLAY tick.
+
+        Field mapping per instrument (from sidm2.sf2_to_np21_tables):
+            NP21 byte 0 (AD)        ← SF2 col 0 (AD)
+            NP21 byte 1 (SR)        ← SF2 col 1 (SR)
+            NP21 byte 2 (HR)        ← SF2 col 2 (HR/restart)
+            NP21 byte 3 (flags2)    ← preserved (NOT touched)
+            NP21 byte 4 (flags3)    ← preserved
+            NP21 byte 5 (pulse_pm)  ← preserved
+            NP21 byte 6 (pulse_ptr) ← SF2 col 4 (Pulse)
+            NP21 byte 7 (wave_ptr)  ← SF2 col 5 (Wave)
+
+        Five field copies per row × n_instruments rows. The NP21 stride is
+        8 bytes/row, SF2 stride is 6 bytes/row — incompatible strides, so
+        we use FIVE separate pass loops (one per copied field). Each pass
+        walks rows 0..n-1 with X tracking np21 offset (stride 8) and Y
+        tracking SF2 offset (stride 6).
+
+        The HR field (SF2 col 2 → NP21 byte 2) is the trickiest case
+        because for some Laxity layouts NP21 byte 2 is also called
+        flags1/restart. The mapping is a literal pass-through; we do
+        NOT mask or transform.
+
+        Field 3 (Filter, SF2 col 3) is intentionally NOT copied — NP21
+        has no per-instrument filter slot.
+
+        Per-pass instructions (single field):
+            LDX #0          ; np21 row offset
+            LDY #0          ; sf2 row offset
+        loop:
+            LDA sf2_addr+sf2_field_off,Y
+            STA np21_addr+np21_field_off,X
+            ; row += 1
+            TXA; CLC; ADC #8; TAX
+            TYA; CLC; ADC #6; TAY
+            CPX #(n*8)
+            BNE loop
+
+        Approx 22 bytes per pass × 5 passes ≈ 110 bytes total. Fits in
+        the SF2 edit area trailing buffer.
+
+        ⚠ Plumbing only — the wire-up in `_inject_laxity_raw_np21` is
+        currently disabled because per-variant NP21 instrument-table
+        addresses haven't been validated. Stinsen's layout puts AD at
+        $18D8 with width unclear; Beast/Angular use parallel arrays at
+        different per-voice scratch slots. Per-variant RE work needed,
+        analogous to wave Phase B.0. See docs/stage7_plan.md.
+        """
+        if not (1 <= n_instruments <= 32):
+            raise ValueError(f"instr_copy n_instruments must be 1..32, got {n_instruments}")
+
+        # Field map: (sf2_col, np21_byte) — 5 fields, skip Filter (sf2 col 3)
+        FIELDS = [
+            (0, 0),   # AD
+            (1, 1),   # SR
+            (2, 2),   # HR / restart
+            (4, 6),   # Pulse ptr
+            (5, 7),   # Wave ptr
+        ]
+        np21_total = n_instruments * 8
+        if np21_total > 256:
+            raise ValueError(f"instr_copy NP21 stride×rows exceeds 256: {np21_total}")
+
+        code = bytearray()
+        for sf2_col, np21_byte in FIELDS:
+            sf2_field_addr = (sf2_instr_addr + sf2_col) & 0xFFFF
+            np21_field_addr = (np21_instr_addr + np21_byte) & 0xFFFF
+            code += bytes([0xA2, 0x00])                                              # LDX #0
+            code += bytes([0xA0, 0x00])                                              # LDY #0
+            loop_start = len(code)
+            code += bytes([0xB9, sf2_field_addr & 0xFF,
+                           (sf2_field_addr >> 8) & 0xFF])                            # LDA sf2,Y
+            code += bytes([0x9D, np21_field_addr & 0xFF,
+                           (np21_field_addr >> 8) & 0xFF])                           # STA np21,X
+            # X += 8
+            code += bytes([0x8A, 0x18, 0x69, 0x08, 0xAA])                            # TXA; CLC; ADC #8; TAX
+            # Y += 6 (no second CLC needed — carry cleared after ADC #8 always
+            # when np21_total ≤ 256 because no further wraparound; we explicitly
+            # CLC anyway to be safe)
+            code += bytes([0x98, 0x18, 0x69, 0x06, 0xA8])                            # TYA; CLC; ADC #6; TAY
+            code += bytes([0xE0, np21_total & 0xFF])                                 # CPX #n*8
+            rel = loop_start - (len(code) + 2)
+            if not -128 <= rel <= 127:
+                raise RuntimeError(f"instr_copy back-branch out of range: {rel}")
+            code += bytes([0xD0, rel & 0xFF])                                        # BNE loop
+        code += bytes([0x60])                                                         # RTS
+        return bytes(code)
+
+    def _emit_pulse_copy_routine(self, sf2_pulse_addr: int, np21_pulse_addr: int,
+                                  n_rows: int = 16) -> bytes:
+        """Stage 7 Phase B.2: copy SF2-edit-area pulse bytes back into the
+        NP21 binary's pulse table on every PLAY tick.
+
+        Field mapping per row (from sidm2.sf2_to_np21_tables):
+            NP21 byte 0  ← SF2 col 0
+            NP21 byte 1  ← SF2 col 1
+            NP21 byte 2  ← SF2 col 2
+            NP21 byte 3  ← preserved (next-program ptr in NP21 internals)
+
+        Three field copies per row × n_rows rows. NP21 stride 4, SF2
+        stride 3 — same incompatible-stride problem as instruments.
+
+        Three pass loops, each walks rows 0..n-1 with X tracking np21
+        offset (stride 4) and Y tracking SF2 offset (stride 3).
+
+        Approx 22 bytes per pass × 3 passes ≈ 66 bytes total.
+
+        ⚠ Plumbing only — wire-up disabled (per-variant address RE).
+        """
+        if not (1 <= n_rows <= 32):
+            raise ValueError(f"pulse_copy n_rows must be 1..32, got {n_rows}")
+
+        np21_total = n_rows * 4
+        if np21_total > 256:
+            raise ValueError(f"pulse_copy NP21 stride×rows exceeds 256: {np21_total}")
+
+        code = bytearray()
+        for col in range(3):  # SF2 cols 0, 1, 2 → NP21 bytes 0, 1, 2
+            sf2_field_addr = (sf2_pulse_addr + col) & 0xFFFF
+            np21_field_addr = (np21_pulse_addr + col) & 0xFFFF
+            code += bytes([0xA2, 0x00])                                              # LDX #0
+            code += bytes([0xA0, 0x00])                                              # LDY #0
+            loop_start = len(code)
+            code += bytes([0xB9, sf2_field_addr & 0xFF,
+                           (sf2_field_addr >> 8) & 0xFF])                            # LDA sf2,Y
+            code += bytes([0x9D, np21_field_addr & 0xFF,
+                           (np21_field_addr >> 8) & 0xFF])                           # STA np21,X
+            code += bytes([0x8A, 0x18, 0x69, 0x04, 0xAA])                            # TXA; CLC; ADC #4; TAX
+            code += bytes([0x98, 0x18, 0x69, 0x03, 0xA8])                            # TYA; CLC; ADC #3; TAY
+            code += bytes([0xE0, np21_total & 0xFF])                                 # CPX #n*4
+            rel = loop_start - (len(code) + 2)
+            if not -128 <= rel <= 127:
+                raise RuntimeError(f"pulse_copy back-branch out of range: {rel}")
+            code += bytes([0xD0, rel & 0xFF])                                        # BNE loop
+        code += bytes([0x60])                                                         # RTS
+        return bytes(code)
+
     def _emit_multipat_translator(self, voice_pat_counts, seq00_addr, shadow_base,
                                   play_addr, translate_base, table_copy_addr=None):
         """Stage 2.5: Multi-pattern runtime translator.
