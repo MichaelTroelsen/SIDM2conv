@@ -1816,24 +1816,53 @@ class SF2Writer:
         edit_instr_addr = music_data_params.get('edit_instr_addr')
         if num_patterns > 0 and edit_instr_addr is not None:
             from sidm2.stinsen_instr_detector import detect_stinsen_layout
-            layout = detect_stinsen_layout(c64_data, sid_la)
-            if (layout is not None
-                and sid_la <= layout.ad_col_addr < sid_la + len(c64_data)
-                and sid_la <= layout.sr_col_addr < sid_la + len(c64_data)):
+            from sidm2.beast_instr_detector import detect_beast_layout
+
+            stinsen = detect_stinsen_layout(c64_data, sid_la)
+            beast   = detect_beast_layout(c64_data, sid_la)
+
+            if (stinsen is not None
+                and sid_la <= stinsen.ad_col_addr < sid_la + len(c64_data)
+                and sid_la <= stinsen.sr_col_addr < sid_la + len(c64_data)):
                 instr_routine = self._emit_instr_column_copy_routine(
                     sf2_instr_addr=edit_instr_addr,
-                    np21_ad_col_addr=layout.ad_col_addr,
-                    np21_sr_col_addr=layout.sr_col_addr,
-                    n_instruments=layout.n_instruments,
+                    np21_ad_col_addr=stinsen.ad_col_addr,
+                    np21_sr_col_addr=stinsen.sr_col_addr,
+                    n_instruments=stinsen.n_instruments,
                 )
                 instr_copy_addr = sf2_data_base + len(sf2_edit_data)
                 sf2_edit_data = bytes(sf2_edit_data) + instr_routine
                 logger.info(
-                    f"  Stage 7 instr-column-copy (AD+SR) @ ${instr_copy_addr:04X} "
+                    f"  Stage 7 instr-column-copy Stinsen (AD+SR) @ ${instr_copy_addr:04X} "
                     f"({len(instr_routine)}B); src=${edit_instr_addr:04X} "
-                    f"AD-dst=${layout.ad_col_addr:04X} "
-                    f"SR-dst=${layout.sr_col_addr:04X} "
-                    f"({layout.n_instruments} instruments per PLAY tick)"
+                    f"AD-dst=${stinsen.ad_col_addr:04X} "
+                    f"SR-dst=${stinsen.sr_col_addr:04X} "
+                    f"({stinsen.n_instruments} instruments per PLAY tick)"
+                )
+            elif (beast is not None
+                  and sid_la <= beast.table_addr < sid_la + len(c64_data)
+                  and beast.n_instruments * 8 <= 256):
+                # Beast: row-major, AD at byte 5, SR at byte 6 within
+                # each 8-byte row. Reuse _emit_instr_copy_routine with
+                # custom fields list. NP21-stride 8 / SF2-stride 6 are
+                # the existing routine's defaults.
+                instr_routine = self._emit_instr_copy_routine(
+                    sf2_instr_addr=edit_instr_addr,
+                    np21_instr_addr=beast.table_addr,
+                    n_instruments=beast.n_instruments,
+                    fields=[
+                        (0, beast.ad_offset),   # SF2 col 0 (AD) → row+5
+                        (1, beast.sr_offset),   # SF2 col 1 (SR) → row+6
+                    ],
+                )
+                instr_copy_addr = sf2_data_base + len(sf2_edit_data)
+                sf2_edit_data = bytes(sf2_edit_data) + instr_routine
+                logger.info(
+                    f"  Stage 7 instr-row-copy Beast (AD+SR) @ ${instr_copy_addr:04X} "
+                    f"({len(instr_routine)}B); src=${edit_instr_addr:04X} "
+                    f"table=${beast.table_addr:04X} "
+                    f"({beast.n_instruments} instruments × 8B-row, "
+                    f"AD@+{beast.ad_offset} SR@+{beast.sr_offset})"
                 )
 
         shadow_base = sf2_data_base + len(sf2_edit_data)
@@ -2489,7 +2518,8 @@ class SF2Writer:
         return bytes(code)
 
     def _emit_instr_copy_routine(self, sf2_instr_addr: int, np21_instr_addr: int,
-                                  n_instruments: int = 16) -> bytes:
+                                  n_instruments: int = 16,
+                                  fields: list[tuple[int, int]] | None = None) -> bytes:
         """Stage 7 Phase B.2: copy SF2-edit-area instrument bytes back into
         the NP21 binary's instrument table on every PLAY tick.
 
@@ -2542,14 +2572,20 @@ class SF2Writer:
         if not (1 <= n_instruments <= 32):
             raise ValueError(f"instr_copy n_instruments must be 1..32, got {n_instruments}")
 
-        # Field map: (sf2_col, np21_byte) — 5 fields, skip Filter (sf2 col 3)
-        FIELDS = [
+        # Field map: (sf2_col, np21_byte). Default = full Driver-11 row-major
+        # mapping (5 fields, skip Filter at SF2 col 3). Caller can pass a
+        # variant-specific subset, e.g. Beast uses [(0, 5), (1, 6)] (AD/SR
+        # at offsets 5/6 within an 8-byte row).
+        if fields is not None:
+            FIELDS = list(fields)
+        else:
+            FIELDS = [
             (0, 0),   # AD
             (1, 1),   # SR
             (2, 2),   # HR / restart
             (4, 6),   # Pulse ptr
             (5, 7),   # Wave ptr
-        ]
+            ]
         np21_total = n_instruments * 8
         if np21_total > 256:
             raise ValueError(f"instr_copy NP21 stride×rows exceeds 256: {np21_total}")
@@ -3263,18 +3299,18 @@ class SF2Writer:
         # playback because the NP21 binary keeps reading its own table data.
         from sidm2.instrument_extraction import extract_laxity_instruments
         from sidm2.stinsen_instr_detector import extract_stinsen_instruments
+        from sidm2.beast_instr_detector import extract_beast_instruments
 
         # Stage 3 — Instruments (6 bytes per row)
         instr_table_offset = len(edit)
         instr_table_addr   = sf2_data_base + instr_table_offset
 
-        # Stage 7 Phase B.2 (Stinsen variant): when the binary matches
-        # the column-major Stinsen layout (AD col at $1808, SR col at
-        # $181C — verified by direct-edit RE 2026-05-10), extract REAL
-        # AD/SR values into the SF2 view so F2 edits have something
-        # meaningful to alter. Other Laxity variants fall through to
-        # the existing extract_laxity_instruments path (which returns
-        # all-zero defaults for non-detected layouts).
+        # Stage 7 Phase B.2: when the binary matches a known per-variant
+        # layout, extract REAL AD/SR values into the SF2 view so F2 edits
+        # have something meaningful to alter. Stinsen-class uses column-
+        # major at $1808/$181C; Beast-class uses row-major 8B/instr at
+        # $1B38 (AD@+5, SR@+6). Other Laxity variants fall through to the
+        # existing extract_laxity_instruments path (all-zero defaults).
         try:
             laxity_instrs = extract_stinsen_instruments(c64_data, sid_la)
             if laxity_instrs is not None:
@@ -3284,7 +3320,15 @@ class SF2Writer:
                     f"table (AD@${sid_la + 0x808:04X} SR@${sid_la + 0x81C:04X})"
                 )
             else:
-                laxity_instrs = extract_laxity_instruments(c64_data, sid_la)
+                laxity_instrs = extract_beast_instruments(c64_data, sid_la)
+                if laxity_instrs is not None:
+                    logger.info(
+                        f"  Stage 3: Beast layout detected — "
+                        f"{len(laxity_instrs)} instruments from row-major "
+                        f"table (AD@+5 SR@+6 from ${sid_la + 0xB38:04X})"
+                    )
+                else:
+                    laxity_instrs = extract_laxity_instruments(c64_data, sid_la)
         except Exception as e:
             logger.warning(f"  Stage 3 instrument extract failed: {e!r}; "
                            f"falling back to NP21 instr_addr (garbled F2 view)")
