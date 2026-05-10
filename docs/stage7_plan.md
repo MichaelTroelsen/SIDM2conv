@@ -177,10 +177,29 @@ The new chain validates the static wave program at $18DA (Stinsen)
 and returns `wave_data_addr` alongside `wave_addr` so callers know
 the parallel arrays' two endpoints.
 
-### Phase B.2 — 6502 emission for instruments / pulse (✅ PLUMBING SHIPPED 2026-05-09)
+### Phase B.2 — 6502 emission for instruments / pulse (✅ STINSEN AD+SR WIRED 2026-05-10)
 
-**Status:** Routines implemented + tested. **Wire-up disabled** —
-per-variant NP21 instrument/pulse address RE has more variance than
+**Status (Stinsen):** AD + SR edits propagate end-to-end. Verified
+2026-05-10 by patching SF2-edit-area instr 1 AD/SR and observing
+osc1_attack_decay/osc1_sustain_release flips in zig64 trace.
+
+Direct-edit RE confirmed Stinsen's instrument table contains
+**only AD + SR columns** (column-major at `$1808` / `$181C`, 20 slots
+max). `_emit_instr_column_copy_routine` handles the SF2-row-major →
+NP21-column-major stride mismatch in 41 bytes of 6502.
+
+**Status (HR / Pulse_ptr / Wave_ptr for Stinsen):** verified absent
+from this table. Static disasm + direct-edit tests show no per-
+instrument storage at `$1830+` (see memory/stinsen-instr-layout.md).
+These fields are likely encoded by other mechanisms (sequence-stream
+prefix, wave-program offset, or song-wide flags).
+
+**Status (Pulse table F4 + other variants):** Routines from earlier
+(`_emit_instr_copy_routine` row-major, `_emit_pulse_copy_routine`)
+remain implemented + tested but not wired up. Per-variant address
+RE for Beast / Angular / Unboxed remains as future work.
+
+Per-variant NP21 instrument/pulse address RE has more variance than
 wave did:
 - **Stinsen**: AD/SR scratch fed from $18D8/$18D9 — adjacent to
   wave-data start at $18DA (so writing back into a "row-major
