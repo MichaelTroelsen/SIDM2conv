@@ -26,8 +26,10 @@ CONVERTER = ROOT / "scripts" / "sid_to_sf2.py"
 GOLDEN_DIR = Path(__file__).resolve().parent / "golden"
 
 CORPUS = [
-    ("Stinsens_Last_Night_of_89", "laxity", 1909),  # acceptance frame count
+    ("Stinsens_Last_Night_of_89", "laxity", 1909),
     ("Unboxed_Ending_8580",       "laxity", 2733),
+    ("Beast",                     "laxity", None),  # zig64-verified v3.5.4
+    ("Angular",                   "laxity", None),  # zig64-verified v3.5.4
 ]
 TRACE_FRAMES = 300  # capture window for diff (covers song intros)
 
