@@ -1992,11 +1992,26 @@ class SF2Writer:
         # JSRs the wave-copy routine before JSR play_addr. F3 edits then
         # propagate to playback.
         if num_patterns > 0:
+            # Pre-compute effective_play_addr (used by both the translator
+            # JSR target below AND the trampoline patch later). For PSID
+            # `play_addr == init+3`-with-JMP-indirection layouts (Beast,
+            # Hubbard), the byte at init+3 is `4C lo hi`; the JMP target
+            # is the real play handler. Translator must JSR the real
+            # handler, NOT the trampoline (would infinite-loop after we
+            # patch init+3 → JMP TRANSLATE_BASE below).
+            effective_play_addr = play_addr
+            if (play_addr == init_addr + 3
+                and 0 <= (init_addr + 3 - sid_la) < len(c64_data) - 2):
+                stub_lo = init_addr + 3 - sid_la
+                if c64_data[stub_lo] == 0x4C:    # JMP abs
+                    t = c64_data[stub_lo + 1] | (c64_data[stub_lo + 2] << 8)
+                    if sid_la <= t < sid_la + len(c64_data):
+                        effective_play_addr = t
             translator_bytes = self._emit_multipat_translator(
                 voice_pat_counts=voice_pat_counts,
                 seq00_addr=music_data_params['seq00_addr'],
                 shadow_base=shadow_base,
-                play_addr=play_addr,
+                play_addr=effective_play_addr,
                 translate_base=TRANSLATE_BASE,
                 table_copy_addr=wave_copy_addr,
                 instr_copy_addr=instr_copy_addr,
@@ -2011,31 +2026,42 @@ class SF2Writer:
             file_data[tr_off:tr_off + len(translator_bytes)] = translator_bytes
 
         # Fix zig64 auto-detection: it always calls init_addr+3 as PLAY.
-        # Limited to play_addr != init+3 case: when those are equal (Beast,
-        # Hubbard, etc.), patching $1003 would clobber the original play
-        # entry. Beast's instr-copy wire-up still fires at SF2II runtime
-        # via the PLAY handler at $0F94 — just not via zig64 trace, which
-        # calls $1003 directly and bypasses the translator.
-        # JMP-indirection patching of init+3 was attempted in the v3.5.x
-        # Beast work but exposes a pre-existing wave-copy non-idempotency
-        # for Unboxed (extra osc3 writes when wave-copy runs every tick
-        # under zig64 timing). See git history for that experiment.
-        if play_addr != init_addr + 3:
+        # Determine effective play target — usually play_addr, but when
+        # PSID play_addr == init+3 AND that location is a `JMP $XXXX`
+        # (Beast/Hubbard layout: byte at init+3 is `4C lo hi`),
+        # extracting the JMP target lets us safely patch init+3 to
+        # JMP TRANSLATE_BASE without clobbering the original play entry.
+        # The translator's JSR play_addr should target the JMP target,
+        # not init+3 (would infinite-loop).
+        effective_play_addr = play_addr
+        play_redirect_safe = (play_addr != init_addr + 3)
+        if (play_addr == init_addr + 3
+            and 0 <= (init_addr + 3 - sid_la) < len(c64_data) - 2):
+            stub_lo = init_addr + 3 - sid_la
+            if c64_data[stub_lo] == 0x4C:    # JMP abs
+                jmp_target = (
+                    c64_data[stub_lo + 1] | (c64_data[stub_lo + 2] << 8)
+                )
+                if sid_la <= jmp_target < sid_la + len(c64_data):
+                    effective_play_addr = jmp_target
+                    play_redirect_safe = True
+
+        if play_redirect_safe:
             # The trampoline at init_addr+3 is what zig64 calls as PLAY
             # (it always uses init_addr+3 as the play entry). For runtime
-            # translator + wave-copy to fire on EVERY zig64 trace tick
-            # — not just SF2II's PLAY-handler path — point the trampoline
-            # at the translator entry (TRANSLATE_BASE) when patterns
-            # exist, falling through to play_addr otherwise. Without
-            # this, edits to the SF2 edit area would only propagate when
-            # SF2II calls PLAY via $0F94, never under zig64 trace.
+            # translator + table-copy routines to fire on EVERY zig64
+            # trace tick — not just SF2II's PLAY-handler path — point
+            # the trampoline at TRANSLATE_BASE when patterns exist,
+            # falling through to play_addr otherwise. Without this,
+            # edits to the SF2 edit area would only propagate when SF2II
+            # calls PLAY via $0F94, never under zig64 trace.
             stub_off = np21_off + (init_addr + 3 - sid_la)
             if 0 <= stub_off and stub_off + 3 <= len(file_data):
                 if num_patterns > 0:
                     target = TRANSLATE_BASE
                     label = "translator"
                 else:
-                    target = play_addr
+                    target = effective_play_addr
                     label = "play"
                 file_data[stub_off]     = 0x4C  # JMP
                 file_data[stub_off + 1] = target & 0xFF

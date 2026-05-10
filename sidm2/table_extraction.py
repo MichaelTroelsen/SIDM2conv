@@ -554,15 +554,22 @@ def find_and_extract_wave_table(data: bytes, load_addr: int, verbose: bool = Fal
             else:
                 consecutive_zeros = 0  # Reset counter when non-zero found
 
-            # SF2 format: (first_col, second_col)
-            # For $7F commands: first_col=$7F, second_col=target
-            # For normal entries: first_col=waveform, second_col=note
+            # SF2 format: (first_col, second_col) = (wave_val, note_val).
+            # Always emit consistently — wave_val in col 0, note_val in col 1
+            # — so the Stage 7 wave-copy routine can do straight per-row
+            # copy back to NP21's parallel arrays without needing to
+            # detect/reverse the swap. End markers (note==$7F) appear
+            # naturally in col 1 (note column), which matches their
+            # semantic role.
+            #
+            # (Pre-2026-05-10 versions did `(note_val, wave_val)` for
+            # note==$7F entries to put the marker in col 0 for SF2II
+            # display. That broke wave-copy round-trip identity for
+            # non-Stinsen variants (memory/wave-copy-non-idempotency.md).)
+            entries.append((wave_val, note_val))
             if note_val == 0x7F:
-                entries.append((note_val, wave_val))  # Jump command - don't break, might be mid-table
-                invalid_count = 0  # Reset invalid counter
+                invalid_count = 0  # End marker — don't penalise as invalid
             else:
-                entries.append((wave_val, note_val))  # Swap: waveform first, note second
-
                 # Check validity, but be permissive for first 32 entries
                 if i >= 32 and wave_val not in WAVE_TABLE_WAVEFORMS:
                     invalid_count += 1
