@@ -25,6 +25,72 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.4] - 2026-05-10
+
+### Fixed — Wave-copy non-idempotency (v3.5.3 documented bug)
+
+The Stage 4 SF2 emit was performing a `$7F`-swap on end-marker rows
+(when NP21 note column == `$7F`, the entry was emitted as `($7F,
+wave_val)` instead of `(wave_val, note_val)`). The Stage 7 wave-copy
+6502 routine couldn't reverse this swap on copy-back, so it
+corrupted NP21 wave-data for any non-Stinsen variant (Stinsen happens
+to round-trip correctly because its NP21 wave_data has `$7F` at the
+same positions as note `$7F` markers).
+
+Fix: **remove the `$7F` swap** from `find_and_extract_wave_table`.
+Always emit `(wave_val, note_val)`. End markers naturally land in
+col 1 (note column), matching their semantic role. Wave-copy is now
+byte-perfect round-trip identity. SF2II's F3 wave editor displays
+end markers in col 1 instead of col 0 — visually unusual but
+byte-correct.
+
+Direct-edit verification (Stinsen): SF2 col 0 row 0 was previously
+`$7F` (un-editable, the wave-copy treated it as no-op). After the
+fix, col 0 row 0 = `$21` (saw); editing to `$11` (tri) flips ALL
+osc<v>_control writes, including row 0 (was 0 writes flipping for
+that swapped row pre-fix).
+
+### Added — Beast/Angular F2 edits zig64-verifiable
+
+The fix above made wave-copy idempotent for non-Stinsen variants,
+which unblocked the JMP-indirection trampoline patch that exposes
+the translator path to zig64 trace. When PSID `play_addr == init+3`
+AND that location is `JMP $XXXX` (Beast/Hubbard layout), extract the
+JMP target and use it as the translator's `JSR play` target. Patch
+`$1003 → JMP TRANSLATE_BASE`.
+
+End-to-end zig64-verified F2 edit propagation:
+- **Beast** (commit `d832264` plumbing, now verifiable): edit instr 0
+  AD (`$07 → $5A`) flips `osc2_attack_decay` writes 1:1.
+- **Angular** (commit `0c95c88` plumbing, now verifiable): edit instr
+  0 AD (`$0F → $77`) flips `osc1/2/3_attack_decay` writes 1:1.
+
+Previously these were testable only at SF2II runtime via the PLAY
+handler at `$0F94`; now they're testable via the zig64 trace path
+too because the trampoline at `$1003` redirects through the
+translator + copy routines.
+
+### Changed — Unboxed golden trace re-baselined
+Stinsen + Unboxed corpus regression byte-identical at the register-
+write level (1909 + 2733 writes). Unboxed's cycle column shifted
+because the translator + wave-copy chain now runs every PLAY tick
+under zig64 (+6708 cycles per tick estimated). Re-baselined.
+
+### Tests
+862 tests pass (unchanged from v3.5.3). Audio unchanged.
+
+### Files
+- `sidm2/table_extraction.py` — `$7F` swap removed (lines 557-575)
+- `sidm2/sf2_writer.py` — `effective_play_addr` computation +
+  reactivated trampoline JMP-indirection patch
+- `tests/golden/Unboxed_Ending_8580.trace.csv` — re-baselined
+
+### Commits
+- `8713ff4` — wave-copy round-trip identity + Beast/Angular
+  zig64-verified F2 edits
+
+---
+
 ## [3.5.3] - 2026-05-10
 
 ### Added — Stage 7 Phase B.2: Beast + Angular instrument-table detectors

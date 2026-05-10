@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.5.3** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-10
+**SIDM2 v3.5.4** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-10
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -170,6 +170,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.5.4** (2026-05-10): Wave-copy non-idempotency (v3.5.3 known issue) RESOLVED via two clean changes: (1) removed `$7F`-swap from `find_and_extract_wave_table` — extract now always emits `(wave_val, note_val)`, end markers land in col 1 naturally, wave-copy is byte-perfect round-trip identity; (2) re-enabled the JMP-indirection trampoline patch — when `play_addr == init+3` is `JMP $XXXX` (Beast/Hubbard layout), extract the JMP target as the translator's JSR play target and patch `$1003 → JMP TRANSLATE_BASE`. End-to-end zig64-verified F2 edit propagation now works for ALL THREE variants (Stinsen, Beast, Angular) — was Stinsen-only pre-this-release. Stinsen + Unboxed audio byte-identical (1909 + 2733 register writes). Unboxed cycle column shifted (translator path now runs each PLAY tick under zig64); golden re-baselined.
 
 **v3.5.3** (2026-05-10): Beast + Angular instrument-table detectors land. F2 (instruments) AD/SR edits now propagate for any binary matching one of three known layouts: Stinsen column-major @ $1808/$181C, Beast row-major 8B @ $1B38 (AD@+5 SR@+6), Angular row-major 2B @ $1ADB. `_emit_instr_copy_routine` gained `fields=` (variant-specific column mappings) and `np21_stride=` (default 8, Angular uses 2) parameters. Plus a major ch_seq_ptr autodetect fix: relaxed `body[0] must be $A0-$BF` to allow note/duration/command starts (Beast voice bodies start with notes), and relaxed entropy threshold for held-note runs. **Editor-view yield on Laxity 286-file corpus jumped from 30% to 72% (87 → 206 files extracting real per-voice sequences, +119 net).** Two negative-result investigations documented: wave-copy non-idempotency for non-Stinsen variants (`$7F`-swap mismatch between extract and copy-back; reverted attempted fix; root cause documented for future fix), and F4 pulse propagation complexity (pulse is a byte stream, not a grid; needs deeper RE). 862 tests pass (+19 new). Audio unchanged.
 
