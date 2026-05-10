@@ -1807,6 +1807,35 @@ class SF2Writer:
                 f"({wave_n_rows} rows per PLAY tick)"
             )
 
+        # Stage 7 Phase B.2 (Stinsen variant): wire up the column-major
+        # AD/SR copy routine when the binary matches Stinsen layout.
+        # F2 (instruments) edits to AD/SR will then propagate to
+        # playback. HR/Pulse/Wave columns NOT yet propagated — destination
+        # addresses haven't been RE'd. See memory/stinsen-instr-layout.md.
+        instr_copy_addr = None
+        edit_instr_addr = music_data_params.get('edit_instr_addr')
+        if num_patterns > 0 and edit_instr_addr is not None:
+            from sidm2.stinsen_instr_detector import detect_stinsen_layout
+            layout = detect_stinsen_layout(c64_data, sid_la)
+            if (layout is not None
+                and sid_la <= layout.ad_col_addr < sid_la + len(c64_data)
+                and sid_la <= layout.sr_col_addr < sid_la + len(c64_data)):
+                instr_routine = self._emit_instr_column_copy_routine(
+                    sf2_instr_addr=edit_instr_addr,
+                    np21_ad_col_addr=layout.ad_col_addr,
+                    np21_sr_col_addr=layout.sr_col_addr,
+                    n_instruments=layout.n_instruments,
+                )
+                instr_copy_addr = sf2_data_base + len(sf2_edit_data)
+                sf2_edit_data = bytes(sf2_edit_data) + instr_routine
+                logger.info(
+                    f"  Stage 7 instr-column-copy (AD+SR) @ ${instr_copy_addr:04X} "
+                    f"({len(instr_routine)}B); src=${edit_instr_addr:04X} "
+                    f"AD-dst=${layout.ad_col_addr:04X} "
+                    f"SR-dst=${layout.sr_col_addr:04X} "
+                    f"({layout.n_instruments} instruments per PLAY tick)"
+                )
+
         shadow_base = sf2_data_base + len(sf2_edit_data)
 
         # Pre-fill shadow with each voice's full NP21 byte stream + loop terminator.
@@ -1915,6 +1944,7 @@ class SF2Writer:
                 play_addr=play_addr,
                 translate_base=TRANSLATE_BASE,
                 table_copy_addr=wave_copy_addr,
+                instr_copy_addr=instr_copy_addr,
             )
             tr_off = 2 + (TRANSLATE_BASE - LOAD_BASE)
             if tr_off + len(translator_bytes) > np21_off:
@@ -2598,8 +2628,68 @@ class SF2Writer:
         code += bytes([0x60])                                                         # RTS
         return bytes(code)
 
+    def _emit_instr_column_copy_routine(self, sf2_instr_addr: int,
+                                         np21_ad_col_addr: int,
+                                         np21_sr_col_addr: int,
+                                         n_instruments: int) -> bytes:
+        """Stage 7 Phase B.2 (Stinsen variant): copy SF2-edit-area
+        instrument AD/SR columns back into NP21's COLUMN-MAJOR table.
+
+        Stinsen-class layout (verified 2026-05-10 via direct-edit RE):
+            AD column: NP21 contiguous bytes [np21_ad_col_addr .. +n-1]
+            SR column: NP21 contiguous bytes [np21_sr_col_addr .. +n-1]
+
+        SF2 edit area is row-major (6B/instr): [AD, SR, HR, Filter,
+        Pulse, Wave]. So per row r:
+            np21_ad_col[r] ← sf2[6r + 0]   (AD)
+            np21_sr_col[r] ← sf2[6r + 1]   (SR)
+
+        HR/Filter/Pulse/Wave columns NOT propagated — destination
+        addresses for those columns are not yet RE'd for Stinsen.
+        Future work can extend this routine once those addresses are
+        verified (see memory/stinsen-instr-layout.md).
+
+        Two pass loops, X tracks NP21 stride 1, Y tracks SF2 stride 6.
+        Approx 22 bytes per pass × 2 passes ≈ 44 bytes total.
+
+        Constraints:
+        - n_instruments × 6 must fit in a u8 (so n ≤ 42)
+        - n_instruments must be ≥ 1
+        - n_instruments == 0x80 is forbidden (CPX #$80 then BMI confusion)
+        """
+        if not (1 <= n_instruments <= 42):
+            raise ValueError(
+                f"instr_column_copy n_instruments must be 1..42, got {n_instruments}"
+            )
+
+        code = bytearray()
+        for col_offset_in_row, np21_col_addr in (
+            (0, np21_ad_col_addr),    # AD
+            (1, np21_sr_col_addr),    # SR
+        ):
+            sf2_field_addr = (sf2_instr_addr + col_offset_in_row) & 0xFFFF
+            code += bytes([0xA2, 0x00])                                              # LDX #0
+            code += bytes([0xA0, 0x00])                                              # LDY #0
+            loop_start = len(code)
+            code += bytes([0xB9, sf2_field_addr & 0xFF,
+                           (sf2_field_addr >> 8) & 0xFF])                            # LDA sf2,Y
+            code += bytes([0x9D, np21_col_addr & 0xFF,
+                           (np21_col_addr >> 8) & 0xFF])                             # STA np21_col,X
+            code += bytes([0xE8])                                                     # INX
+            code += bytes([0x98, 0x18, 0x69, 0x06, 0xA8])                            # TYA; CLC; ADC #6; TAY
+            code += bytes([0xE0, n_instruments & 0xFF])                              # CPX #n
+            rel = loop_start - (len(code) + 2)
+            if not -128 <= rel <= 127:
+                raise RuntimeError(
+                    f"instr_column_copy back-branch out of range: {rel}"
+                )
+            code += bytes([0xD0, rel & 0xFF])                                        # BNE loop
+        code += bytes([0x60])                                                         # RTS
+        return bytes(code)
+
     def _emit_multipat_translator(self, voice_pat_counts, seq00_addr, shadow_base,
-                                  play_addr, translate_base, table_copy_addr=None):
+                                  play_addr, translate_base, table_copy_addr=None,
+                                  instr_copy_addr=None):
         """Stage 2.5: Multi-pattern runtime translator.
 
         For each voice 0..2:
@@ -2719,15 +2809,17 @@ class SF2Writer:
                         (translate_base + voice_loop) & 0xFF,
                         ((translate_base + voice_loop) >> 8) & 0xFF])
 
-        # ------ all voices done: optionally JSR table-copy routine,
-        # then JSR play_addr; RTS.
-        # Stage 7 Phase B.1: if table_copy_addr is given, the table-copy
-        # routine (currently just wave; instruments/pulse coming in B.2)
-        # lives in the SF2 edit area and gets called every PLAY tick
-        # before the embedded NP21 player runs. Without this, F3 edits
-        # don't propagate to playback.
+        # ------ all voices done: optionally JSR copy routines, then
+        # JSR play_addr; RTS.
+        # Stage 7 Phase B.1: table_copy_addr (wave) — F3 edits propagate.
+        # Stage 7 Phase B.2: instr_copy_addr (Stinsen AD/SR) — F2 edits
+        # propagate when binary matches Stinsen layout.
+        # Both copies run BEFORE play_addr so the embedded NP21 player
+        # reads the freshly-updated table bytes on this tick.
         if table_copy_addr is not None:
             c += bytes([0x20, table_copy_addr & 0xFF, (table_copy_addr >> 8) & 0xFF])
+        if instr_copy_addr is not None:
+            c += bytes([0x20, instr_copy_addr & 0xFF, (instr_copy_addr >> 8) & 0xFF])
         c += bytes([0x20, play_addr & 0xFF, (play_addr >> 8) & 0xFF, 0x60])
 
         # ------ Inline data: voice_pat_counts table (3 bytes)
@@ -3170,12 +3262,29 @@ class SF2Writer:
         # at them. Display only: F2/F3/F4/F5 edits don't propagate to
         # playback because the NP21 binary keeps reading its own table data.
         from sidm2.instrument_extraction import extract_laxity_instruments
+        from sidm2.stinsen_instr_detector import extract_stinsen_instruments
 
         # Stage 3 — Instruments (6 bytes per row)
         instr_table_offset = len(edit)
         instr_table_addr   = sf2_data_base + instr_table_offset
+
+        # Stage 7 Phase B.2 (Stinsen variant): when the binary matches
+        # the column-major Stinsen layout (AD col at $1808, SR col at
+        # $181C — verified by direct-edit RE 2026-05-10), extract REAL
+        # AD/SR values into the SF2 view so F2 edits have something
+        # meaningful to alter. Other Laxity variants fall through to
+        # the existing extract_laxity_instruments path (which returns
+        # all-zero defaults for non-detected layouts).
         try:
-            laxity_instrs = extract_laxity_instruments(c64_data, sid_la)
+            laxity_instrs = extract_stinsen_instruments(c64_data, sid_la)
+            if laxity_instrs is not None:
+                logger.info(
+                    f"  Stage 3: Stinsen layout detected — "
+                    f"{len(laxity_instrs)} instruments from column-major "
+                    f"table (AD@${sid_la + 0x808:04X} SR@${sid_la + 0x81C:04X})"
+                )
+            else:
+                laxity_instrs = extract_laxity_instruments(c64_data, sid_la)
         except Exception as e:
             logger.warning(f"  Stage 3 instrument extract failed: {e!r}; "
                            f"falling back to NP21 instr_addr (garbled F2 view)")
