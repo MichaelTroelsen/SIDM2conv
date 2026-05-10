@@ -52,19 +52,33 @@ def _score_sequence(body: bytes) -> int:
     """Score how "NP21-like" a candidate sequence body is.
 
     Discriminators:
-      - body must start with $A0-$BF (instrument prefix) — canonical
-        NP21 voice stream beginning. Hard reject otherwise.
-      - body must have >= 60% of its bytes below $80 (notes/rests/
+      - body[0] must look like a valid NP21 stream byte: any of
+        $01-$6F (note), $80-$9F (duration), $A0-$BF (instrument
+        prefix), or $C0-$FE (command). Hard reject for $00 / $7E /
+        $7F (special markers — invalid as stream start).
+      - body must have >= 70% of its bytes below $A0 (notes/rests/
         durations dominate real NP21; uniform random bytes (e.g.,
-        machine code) only have ~50% < $80 statistically).
+        machine code) only have ~62% < $A0 statistically).
       - body must have at least 2 of {instr, dur, note, cmd} traits.
       - body must NOT be mostly zeros or have very low byte-value
         entropy.
+
+    The body[0] rule was previously stricter ("must be $A0-$BF
+    instrument prefix"), but verified-good Beast voice bodies start
+    with a note or duration byte (the player relies on a
+    pre-initialised current-instrument from INIT). The other
+    discriminators (% < $A0, traits, no zeros, entropy) still filter
+    out random byte runs.
     """
     if not body or len(body) < 8:
         return -1000
 
-    if not (0xA0 <= body[0] <= 0xBF):
+    # body[0] must be a valid NP21 stream byte. Reject $00 (no event)
+    # and $7E/$7F (special markers — never legitimate stream start).
+    b0 = body[0]
+    if b0 == 0x00 or b0 == 0x7E or b0 == 0x7F:
+        return -1000
+    if not (0x01 <= b0 <= 0xFE):
         return -1000
 
     # Statistical signature: NP21 voice streams have ~75-85% of bytes
@@ -85,7 +99,11 @@ def _score_sequence(body: bytes) -> int:
 
     if body.count(0x00) > len(body) // 2:
         return -1000
-    if len(set(body)) < 5 and len(body) > 15:
+    # Entropy rule: very low byte-set sizes indicate "junk" code-byte
+    # runs only if the body is also long. Real NP21 voice streams can
+    # be long runs of the same note value (held notes), so we require
+    # a fairly low unique count AND a longer body before rejecting.
+    if len(set(body)) < 3 and len(body) > 30:
         return -1000
 
     score = 0
@@ -93,6 +111,11 @@ def _score_sequence(body: bytes) -> int:
     if has_dur:   score += 3
     if has_note:  score += 5
     if has_cmd:   score += 2
+    # Bonus: bodies starting with an instrument prefix ($A0-$BF) are
+    # more likely real (Stinsen-class). Bodies starting with notes /
+    # durations / commands are also legitimate (Beast-class) but
+    # slightly more likely to false-positive on random data.
+    if 0xA0 <= b0 <= 0xBF:  score += 3
     # Length: real NP21 voice streams loop quickly, typically 20-100
     # bytes per voice segment. >200 bytes is suspicious (could indicate
     # walking past the real terminator into adjacent data).
@@ -151,6 +174,11 @@ def find_ch_seq_ptr_in_memory(mem: bytearray, sid_la: int, c64_len: int,
         if r is None:
             continue
         score, ptrs, body_lens = r
+        # Reject candidates where all 3 voice ptrs are identical — that
+        # never represents a real 3-voice ch_seq_ptr table. Same filter
+        # the static-disasm path applies.
+        if len(set(ptrs)) < 2:
+            continue
         if best is None or score > best[0]:
             best = (score, lo_addr, hi_addr, ptrs, body_lens)
 

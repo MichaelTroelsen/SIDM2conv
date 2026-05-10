@@ -1985,6 +1985,15 @@ class SF2Writer:
             file_data[tr_off:tr_off + len(translator_bytes)] = translator_bytes
 
         # Fix zig64 auto-detection: it always calls init_addr+3 as PLAY.
+        # Limited to play_addr != init+3 case: when those are equal (Beast,
+        # Hubbard, etc.), patching $1003 would clobber the original play
+        # entry. Beast's instr-copy wire-up still fires at SF2II runtime
+        # via the PLAY handler at $0F94 — just not via zig64 trace, which
+        # calls $1003 directly and bypasses the translator.
+        # JMP-indirection patching of init+3 was attempted in the v3.5.x
+        # Beast work but exposes a pre-existing wave-copy non-idempotency
+        # for Unboxed (extra osc3 writes when wave-copy runs every tick
+        # under zig64 timing). See git history for that experiment.
         if play_addr != init_addr + 3:
             # The trampoline at init_addr+3 is what zig64 calls as PLAY
             # (it always uses init_addr+3 as the play entry). For runtime
