@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.5.1** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-10
+**SIDM2 v3.5.2** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-10
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -170,6 +170,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.5.2** (2026-05-10): Stage 7 Phase B.2 — F2 (instruments) AD+SR edits propagate to playback for Stinsen-class binaries. New `sidm2/stinsen_instr_detector.py` matches the column-major layout signature at binary offset `$0800` (AD col `$1808`, SR col `$181C`, 20 slots max). New `_emit_instr_column_copy_routine` (41 bytes 6502) handles SF2-row-major→NP21-column-major stride mismatch. Stage 3 SF2 emit populates F2 view with real Stinsen AD/SR values. Verified: editing instr 1 AD `$A0`→`$5A` flips osc1_attack_decay writes; editing instr 1 SR `$25`→`$66` flips osc1_sustain_release. Plus a definitive negative result via direct-edit + static disasm: HR/Filter/Pulse_ptr/Wave_ptr columns are NOT in Stinsen's per-instrument table — they're encoded by other mechanisms beyond F2 column view's scope. 843 tests pass (+12 new). Golden trace re-baselined for the cycle shift.
 
 **v3.5.1** (2026-05-10): Two ch_seq_ptr autodetect bug fixes lifted +12 net new Laxity files to proper editor view (75→87, 18%→30%). (1) `trace_play_reads` snapshot loop iterated through `TracingMemory.__getitem__`, polluting the read-tracking set with all 64KB and rendering the PLAY-read filter in `detect_ch_seq_ptr` a no-op. Fix: snapshot via `list.__getitem__`. (+5 lifts). (2) Brute-force fallback gate ran only on `best is None`; if static candidates returned hard-rejected scores (-3000), `best` was set and fallback skipped. Now runs when `best is None OR best[0] <= 0`. (+14 absolute lifts). Plus conversion-time advisory when load_addr is outside the safe window `$0E00-$3000`, naming upstream issue #211 (Chordian/sidfactory2). 3 new regression tests in `test_sid_init_runner.py`. 831 tests pass. Audio unchanged.
 

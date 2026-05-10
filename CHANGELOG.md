@@ -25,6 +25,92 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.2] - 2026-05-10
+
+### Added — Stage 7 Phase B.2: Stinsen instrument-table edit propagation
+
+F2 (instruments) edits to the AD or SR column now propagate to
+playback for any binary matching the Stinsen-class layout. This
+extends criterion 3 ("edits affect playback") from sequences (v3.3.0)
++ wave (v3.5.0) to the instrument table for Stinsen-class binaries.
+
+Verified end-to-end: editing SF2-edit-area instr 1 AD ($A0 → $5A)
+flips osc1_attack_decay writes from $A0 to $5A across the whole
+zig64 trace; editing instr 1 SR ($25 → $66) flips
+osc1_sustain_release similarly.
+
+#### Components
+
+- `sidm2/stinsen_instr_detector.py` (new) — signature-based detector
+  matching the byte pattern at binary offset `$0800`. Returns
+  `StinsenInstrLayout(ad_col_addr, sr_col_addr, n_instruments)` or
+  `None`. Active instrument count derived from non-zero entries in
+  the AD column.
+- `_emit_instr_column_copy_routine` in `sf2_writer.py` (~41 bytes
+  6502): two pass loops handling the SF2-row-major (stride 6) →
+  NP21-column-major (stride 1) format conversion. Emitted to the
+  SF2 edit area trailing buffer; called via JSR from the multipat
+  translator at `$0F9E` on every PLAY tick.
+- `_inject_laxity_raw_np21` wire-up: detect Stinsen layout, emit the
+  column-copy routine, pass `instr_copy_addr` to multipat translator.
+- Stage 3 SF2 emit: when Stinsen detected, populate F2 view with
+  REAL AD/SR values from the binary instead of all-zero defaults.
+
+### RE work — definitive negative result on HR/Pulse_ptr/Wave_ptr columns
+
+Direct-edit experiments + static disassembly confirm Stinsen's
+per-instrument table contains **only AD + SR columns**:
+
+1. Patching `$1830` (column-2 candidate at delta `$28` from AD col)
+   causes widespread global changes — affects 49 freq writes, 47 PW
+   writes, 36 osc3 writes, 31 filter writes. Pattern inconsistent
+   with per-instrument data; `$1830` is some global state byte.
+2. Patching `$1834` (would be instr 4 HR if column existed) has
+   zero effect on any SID register write.
+3. Static disasm: 5 `LDA abs,Y` instructions reference `$1800-$1840`;
+   all access into the AD column (`$1808-$181B`) or SR column
+   (`$181C-$182F`). Zero player code references `$1830+`.
+
+Phase B.2 for Stinsen is therefore **complete** with AD+SR. HR /
+Filter / Pulse_ptr / Wave_ptr aren't in any per-instrument table —
+they're encoded by other mechanisms (sequence-stream prefix bytes,
+wave-program starting offsets, or song-wide flags), beyond F2 column
+view's scope.
+
+### Changed
+- Stinsen golden trace re-baselined for the new JSR adding ~250
+  cycles per PLAY tick. Register writes byte-identical to v3.5.1;
+  only the cycle column shifts.
+
+### Tests
+- 12 new tests in `pyscript/test_stinsen_instr_phase_b2.py`:
+  detector matching, rejection of arbitrary/short/wrong binaries,
+  n_instruments counting, real-Stinsen-file extract, py65
+  step-through of column-copy routine, multi-instrument copy,
+  round-trip identity.
+- 843 tests pass (was 831).
+
+### Files
+- `sidm2/stinsen_instr_detector.py` (new)
+- `sidm2/sf2_writer.py` — wire-up + new copy routine
+- `pyscript/test_stinsen_instr_phase_b2.py` (new)
+- `docs/stage7_plan.md` — Phase B.2 status updated
+- `tests/golden/Stinsens_Last_Night_of_89.trace.csv` — re-baselined
+
+### Commits
+- `b52ac12` — feat(stage7-B.2): Stinsen AD+SR edits propagate end-to-end
+- `0378b87` — docs(stage7-B.2): Stinsen instrument table is AD+SR only
+
+### Other variants
+Beast / Angular / Unboxed / etc. fall through to the existing
+`extract_laxity_instruments` path; their F2 edits remain
+non-propagating until per-variant RE lands. Beast and Angular use
+parallel-array per-voice scratches at completely different
+addresses — same Phase B.0-style direct-edit RE work needed per
+family.
+
+---
+
 ## [3.5.1] - 2026-05-10
 
 ### Fixed
