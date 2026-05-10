@@ -51,6 +51,13 @@ SF2/**/*.txt
 bin/_*.sf2
 bin/__sf2load_test__*.sf2
 bin/__sf2dbg__*.sf2
+# Throwaway probe + audit + verify scripts and their outputs (live in
+# bin/_*.py / .csv / .txt; named with leading underscore by convention).
+# Persistent investigation tools should go in pyscript/probe_*.py.
+bin/_*.py
+bin/_*.csv
+bin/_*.txt
+bin/_*.prg
 
 # Generated disassemblies
 output/**/*_disassembly.md
