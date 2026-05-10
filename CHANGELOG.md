@@ -25,6 +25,58 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.1] - 2026-05-10
+
+### Fixed
+- **`trace_play_reads` snapshot loop polluted the `reads` set with all
+  65536 addresses** (commit `b3e63fa`). The post-PLAY snapshot loop
+  iterated `new_mem[i]` through `TracingMemory.__getitem__`, adding
+  every i in 0..0xFFFF to the read-tracking set — making the
+  PLAY-read intersection filter in `detect_ch_seq_ptr` a no-op.
+  Fix: snapshot via `list.__getitem__` to bypass the override.
+  Empirical: +5 file lifts in the Laxity 286-file corpus.
+- **Brute-force fallback gate ran only when `best is None`** (commit
+  `5af0f4a`). If static (T, T+3) load-pair candidates yielded only
+  hard-rejected scores (-3000 each), `best` was set and the
+  brute-force scan was skipped — even though the final `score <= 0`
+  filter would reject anyway. Now runs whenever
+  `best is None OR best[0] <= 0`. Empirical: +14 absolute lifts.
+
+### Cumulative effect on Laxity 286-file corpus
+| Class | v3.5.0 | v3.5.1 |
+|---|---|---|
+| A_native | 42 | 35 |
+| **B_lifted** | **33** | **52** |
+| Files with patterns | 75 | **87** |
+| Editor-view yield | 18% | **30%** |
+
+7 files migrated A→B (categorization-only — both paths now succeed
+for them; they still produce patterns). Net 12 new files lifted
+out of empty-placeholder editor view.
+
+### Added
+- Conversion-time advisory when `load_addr` is outside the safe
+  window `$0E00-$3000` (commit `1558998`). Names the safe window
+  and links upstream issue Chordian/sidfactory2#211 (NULL
+  std::string deref in SF2II's `m_TableColorRules` destructor at
+  RVA `+0x63fab`). Audio playback in VICE/sidplayer is unaffected
+  by the upstream issue; only SF2II's editor view crashes.
+
+### Tests
+- `pyscript/test_sid_init_runner.py` (new) — 3 regression tests for
+  `trace_play_reads` guarding the snapshot fix: reads set bounded
+  (<5000 addresses), play_addr included, snapshot captures real
+  memory state.
+- 831 tests pass (was 828).
+- Stinsen+Unboxed corpus regression unchanged (audio byte-identical).
+
+### Docs
+- User-guide reviewed-against stamps bumped to v3.5.0 across
+  GETTING_STARTED, FAQ, BEST_PRACTICES, TROUBLESHOOTING,
+  DRIVER_SELECTION_GUIDE (commit `aa90e7d`).
+
+---
+
 ## [3.5.0] - 2026-05-09
 
 ### Added — Stage 7: edit-affects-playback for tables (criterion 3 extended)

@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.5.0** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-09
+**SIDM2 v3.5.1** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-10
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -170,6 +170,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.5.1** (2026-05-10): Two ch_seq_ptr autodetect bug fixes lifted +12 net new Laxity files to proper editor view (75→87, 18%→30%). (1) `trace_play_reads` snapshot loop iterated through `TracingMemory.__getitem__`, polluting the read-tracking set with all 64KB and rendering the PLAY-read filter in `detect_ch_seq_ptr` a no-op. Fix: snapshot via `list.__getitem__`. (+5 lifts). (2) Brute-force fallback gate ran only on `best is None`; if static candidates returned hard-rejected scores (-3000), `best` was set and fallback skipped. Now runs when `best is None OR best[0] <= 0`. (+14 absolute lifts). Plus conversion-time advisory when load_addr is outside the safe window `$0E00-$3000`, naming upstream issue #211 (Chordian/sidfactory2). 3 new regression tests in `test_sid_init_runner.py`. 831 tests pass. Audio unchanged.
 
 **v3.5.0** (2026-05-09): Stage 7 — criterion 3 extends from sequences to **wave** tables. Edits to F3 (wave) in the SF2 editor now propagate to playback end-to-end via a 31-byte split-copy 6502 routine emitted into the SF2 edit area, called via JSR from the multipat translator at `$0F9E` on every PLAY tick. The wave detector in `extract_all_laxity_tables` was rewritten — preferring `find_and_extract_wave_table` (which validates static wave-program addresses against known Laxity NP21 layouts) over the LDA-near-STA$D404 heuristic which returned transient per-voice state. New `wave_data_addr` field exposes the parallel waveform array (Stinsen: notes=$190C, waves=$18DA). Trampoline at `init+3` redirects to `TRANSLATE_BASE` when patterns exist (so zig64 trace path also goes through wave-copy, not just SF2II's PLAY handler). **Verified: byte-edit at file-offset $2CA5 ($21 saw → $11 tri) flipped 155 osc<v>_control writes from $20 to $10 across all three voices.** Plus Phase B.2 plumbing: `_emit_instr_copy_routine` (110B, 5 fields) and `_emit_pulse_copy_routine` (66B, 3 fields) — 6502 split-copy routines for instruments + pulse, tested via py65 step-through (11 new tests). Wire-up deferred for instr/pulse pending per-variant address-detection RE (Stinsen has AD/SR at $18D8/$18D9 adjacent to wave-data; Beast/Angular use parallel-array per-voice scratches at completely different addresses). 828 tests pass. Golden traces re-baselined.
 
