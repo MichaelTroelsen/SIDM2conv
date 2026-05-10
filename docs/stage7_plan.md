@@ -194,10 +194,25 @@ instrument storage at `$1830+` (see memory/stinsen-instr-layout.md).
 These fields are likely encoded by other mechanisms (sequence-stream
 prefix, wave-program offset, or song-wide flags).
 
-**Status (Pulse table F4 + other variants):** Routines from earlier
-(`_emit_instr_copy_routine` row-major, `_emit_pulse_copy_routine`)
-remain implemented + tested but not wired up. Per-variant address
-RE for Beast / Angular / Unboxed remains as future work.
+**Status (Pulse table F4):** Investigated 2026-05-10. Pulse-program
+in NP21 is a **byte stream** (not a clean structured grid like
+instruments). Direct-edit probe on Stinsen pulse-source candidates
+shows many addresses across `$1500-$1960` contribute to PW
+register writes over time. The SF2 edit area's pulse view has 16
+structured rows × 3 cols, while NP21 stores pulse as a flat byte
+sequence the player walks linearly per voice. Mapping SF2 rows
+back to the byte stream isn't a simple per-column copy — needs
+deeper RE on the NP21 pulse-program byte format. Pulse F4
+propagation is **substantially more complex** than instrument F2 was.
+Deferred.
+
+**Status (other variants instr-table):** Beast detector + wire-up
+shipped 2026-05-10 (commit d832264). Angular detector + np21_stride
+parameter shipped 2026-05-10 (commit 0c95c88). Both wire up at
+SF2II runtime; not directly verifiable via zig64 trace because
+they have `play_addr == init+3` and the trampoline JMP-indirection
+patch was reverted (exposed wave-copy non-idempotency for Unboxed —
+see `memory/wave-copy-non-idempotency.md`).
 
 Per-variant NP21 instrument/pulse address RE has more variance than
 wave did:
