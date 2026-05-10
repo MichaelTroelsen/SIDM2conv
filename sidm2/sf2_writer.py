@@ -1817,9 +1817,11 @@ class SF2Writer:
         if num_patterns > 0 and edit_instr_addr is not None:
             from sidm2.stinsen_instr_detector import detect_stinsen_layout
             from sidm2.beast_instr_detector import detect_beast_layout
+            from sidm2.angular_instr_detector import detect_angular_layout
 
             stinsen = detect_stinsen_layout(c64_data, sid_la)
             beast   = detect_beast_layout(c64_data, sid_la)
+            angular = detect_angular_layout(c64_data, sid_la)
 
             if (stinsen is not None
                 and sid_la <= stinsen.ad_col_addr < sid_la + len(c64_data)
@@ -1863,6 +1865,30 @@ class SF2Writer:
                     f"table=${beast.table_addr:04X} "
                     f"({beast.n_instruments} instruments × 8B-row, "
                     f"AD@+{beast.ad_offset} SR@+{beast.sr_offset})"
+                )
+            elif (angular is not None
+                  and sid_la <= angular.table_addr < sid_la + len(c64_data)
+                  and angular.n_instruments * 2 <= 256):
+                # Angular: row-major, 2 bytes per instrument (AD/SR
+                # adjacent at offsets +0/+1). Use np21_stride=2.
+                instr_routine = self._emit_instr_copy_routine(
+                    sf2_instr_addr=edit_instr_addr,
+                    np21_instr_addr=angular.table_addr,
+                    n_instruments=angular.n_instruments,
+                    fields=[
+                        (0, angular.ad_offset),  # SF2 col 0 (AD) → row+0
+                        (1, angular.sr_offset),  # SF2 col 1 (SR) → row+1
+                    ],
+                    np21_stride=2,
+                )
+                instr_copy_addr = sf2_data_base + len(sf2_edit_data)
+                sf2_edit_data = bytes(sf2_edit_data) + instr_routine
+                logger.info(
+                    f"  Stage 7 instr-row-copy Angular (AD+SR) @ ${instr_copy_addr:04X} "
+                    f"({len(instr_routine)}B); src=${edit_instr_addr:04X} "
+                    f"table=${angular.table_addr:04X} "
+                    f"({angular.n_instruments} instruments × 2B-row, "
+                    f"AD@+{angular.ad_offset} SR@+{angular.sr_offset})"
                 )
 
         shadow_base = sf2_data_base + len(sf2_edit_data)
@@ -2528,7 +2554,8 @@ class SF2Writer:
 
     def _emit_instr_copy_routine(self, sf2_instr_addr: int, np21_instr_addr: int,
                                   n_instruments: int = 16,
-                                  fields: list[tuple[int, int]] | None = None) -> bytes:
+                                  fields: list[tuple[int, int]] | None = None,
+                                  np21_stride: int = 8) -> bytes:
         """Stage 7 Phase B.2: copy SF2-edit-area instrument bytes back into
         the NP21 binary's instrument table on every PLAY tick.
 
@@ -2595,7 +2622,9 @@ class SF2Writer:
             (4, 6),   # Pulse ptr
             (5, 7),   # Wave ptr
             ]
-        np21_total = n_instruments * 8
+        if not (1 <= np21_stride <= 16):
+            raise ValueError(f"instr_copy np21_stride must be 1..16, got {np21_stride}")
+        np21_total = n_instruments * np21_stride
         if np21_total > 256:
             raise ValueError(f"instr_copy NP21 stride×rows exceeds 256: {np21_total}")
 
@@ -2611,8 +2640,8 @@ class SF2Writer:
             code += bytes([0x9D, np21_field_addr & 0xFF,
                            (np21_field_addr >> 8) & 0xFF])                           # STA np21,X
             # X += 8
-            code += bytes([0x8A, 0x18, 0x69, 0x08, 0xAA])                            # TXA; CLC; ADC #8; TAX
-            # Y += 6 (no second CLC needed — carry cleared after ADC #8 always
+            code += bytes([0x8A, 0x18, 0x69, np21_stride & 0xFF, 0xAA])              # TXA; CLC; ADC #stride; TAX
+            # Y += 6 (no second CLC needed — carry cleared after ADC always
             # when np21_total ≤ 256 because no further wraparound; we explicitly
             # CLC anyway to be safe)
             code += bytes([0x98, 0x18, 0x69, 0x06, 0xA8])                            # TYA; CLC; ADC #6; TAY
@@ -3309,6 +3338,7 @@ class SF2Writer:
         from sidm2.instrument_extraction import extract_laxity_instruments
         from sidm2.stinsen_instr_detector import extract_stinsen_instruments
         from sidm2.beast_instr_detector import extract_beast_instruments
+        from sidm2.angular_instr_detector import extract_angular_instruments
 
         # Stage 3 — Instruments (6 bytes per row)
         instr_table_offset = len(edit)
@@ -3316,10 +3346,10 @@ class SF2Writer:
 
         # Stage 7 Phase B.2: when the binary matches a known per-variant
         # layout, extract REAL AD/SR values into the SF2 view so F2 edits
-        # have something meaningful to alter. Stinsen-class uses column-
-        # major at $1808/$181C; Beast-class uses row-major 8B/instr at
-        # $1B38 (AD@+5, SR@+6). Other Laxity variants fall through to the
-        # existing extract_laxity_instruments path (all-zero defaults).
+        # have something meaningful to alter. Stinsen-class column-major
+        # at $1808/$181C; Beast-class row-major 8B/instr at $1B38
+        # (AD@+5, SR@+6); Angular-class row-major 2B/instr at $1ADB.
+        # Other variants fall through to extract_laxity_instruments.
         try:
             laxity_instrs = extract_stinsen_instruments(c64_data, sid_la)
             if laxity_instrs is not None:
@@ -3328,16 +3358,22 @@ class SF2Writer:
                     f"{len(laxity_instrs)} instruments from column-major "
                     f"table (AD@${sid_la + 0x808:04X} SR@${sid_la + 0x81C:04X})"
                 )
+            elif (beast_i := extract_beast_instruments(c64_data, sid_la)) is not None:
+                laxity_instrs = beast_i
+                logger.info(
+                    f"  Stage 3: Beast layout detected — "
+                    f"{len(laxity_instrs)} instruments from row-major "
+                    f"table (AD@+5 SR@+6 from ${sid_la + 0xB38:04X})"
+                )
+            elif (ang_i := extract_angular_instruments(c64_data, sid_la)) is not None:
+                laxity_instrs = ang_i
+                logger.info(
+                    f"  Stage 3: Angular layout detected — "
+                    f"{len(laxity_instrs)} instruments from row-major "
+                    f"2B-row table at ${sid_la + 0xADB:04X}"
+                )
             else:
-                laxity_instrs = extract_beast_instruments(c64_data, sid_la)
-                if laxity_instrs is not None:
-                    logger.info(
-                        f"  Stage 3: Beast layout detected — "
-                        f"{len(laxity_instrs)} instruments from row-major "
-                        f"table (AD@+5 SR@+6 from ${sid_la + 0xB38:04X})"
-                    )
-                else:
-                    laxity_instrs = extract_laxity_instruments(c64_data, sid_la)
+                laxity_instrs = extract_laxity_instruments(c64_data, sid_la)
         except Exception as e:
             logger.warning(f"  Stage 3 instrument extract failed: {e!r}; "
                            f"falling back to NP21 instr_addr (garbled F2 view)")
