@@ -1,19 +1,22 @@
 # Project Status Overview
 
-**Last Updated**: 2026-05-09
-**Current Version**: v3.4.1 (Block 3 Format Fix + Stage 8.5 Toolkit)
-**Status**: Production — all 4 success criteria closed; F10-load now 100% solo on the canonical corpus
+**Last Updated**: 2026-05-10
+**Current Version**: v3.5.4 (Stage 7 — F1+F2+F3 edit propagation, all 3 instrument-table variants zig64-verified)
+**Status**: Production — all 4 success criteria closed; Stage 7 F1/F2/F3 edits propagate end-to-end; Laxity corpus editor-view yield 72% (was 18%)
 
 ---
 
 ## Quick Summary
 
-The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2) format for editing and remixing. As of v3.4.1, the converter achieves **100% frame accuracy** on the canonical test songs (Stinsen + Unboxed) verified against zig64 cycle-accurate ground truth, with auto-driver detection, round-trip metadata preservation, an editor-side Python decoder simulator for headless verification, a runtime SF2→NP21 sequence translator that propagates editor edits to playback, and **100% solo F10-load reliability** on the canonical corpus (no retry wrapper).
+The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2) format for editing and remixing. v3.5.x extends criterion 3 ("edits affect playback") from sequences (v3.3.0) to wave (v3.5.0) and instrument tables (v3.5.2/v3.5.3), with all three known instrument-table variants (Stinsen, Beast, Angular) zig64-verifiable end-to-end as of v3.5.4. The autodetect-bug fix in v3.5.3 lifted +119 Laxity files from empty-placeholder editor view to real per-voice sequences. **882 tests pass**; corpus regression covers Stinsen/Unboxed/Beast/Angular byte-identical zig64 traces.
 
-**Current State**: ✅ **Production** — all four success criteria closed:
+**Current State**: ✅ **Production** — all four success criteria closed; Stage 7 closed for sequences/wave/instruments AD+SR:
 1. **Plays correctly in SF2 editor** ✅ (auto-detect picks laxity driver; trace match 100%)
 2. **Editor displays real sequences** ✅ (Block 5 populated with real addresses; simulator confirms)
-3. **Edits affect playback** ✅ (closed v3.3.0 — runtime translator at `$0F0E`, 51 bytes of 6502)
+3. **Edits affect playback** ✅
+   - F1 (sequences): closed v3.3.0 — runtime translator at `$0F0E`, 51 bytes of 6502
+   - F3 (wave): closed v3.5.0; round-trip identity in v3.5.4
+   - F2 (instruments) AD+SR: closed v3.5.2 (Stinsen) + v3.5.3 (Beast/Angular) + v3.5.4 (zig64-verified for all 3)
 4. **Round-trip SID→SF2→SID** ✅ (register accuracy 100%, metadata preserved)
 
 **Known unfixed limitation** (closed in v3.4.1 for canonical corpus): The F10-load

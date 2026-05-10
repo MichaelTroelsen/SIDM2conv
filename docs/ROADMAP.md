@@ -2,13 +2,13 @@
 
 **Strategic direction and future improvements**
 
-**Date**: 2026-05-09
-**Version**: 3.x roadmap (post-v3.4.1)
-**Status**: 🎯 Active Roadmap — all four original criteria closed; F10-load now 100% solo on canonical corpus (Block 3 fix in v3.4.1); residual upstream-side blocker tracked at Chordian/sidfactory2#211
+**Date**: 2026-05-10
+**Version**: 3.x roadmap (post-v3.5.4)
+**Status**: 🎯 Active Roadmap — all four original criteria closed; Stage 7 (F1/F2/F3 edit propagation) closed for canonical corpus + 3 instrument-table variants; Laxity corpus editor-view yield 72%
 
 ---
 
-## Current State (v3.4.1, 2026-05-09) — All Four Criteria Closed; F10-load 100% Solo
+## Current State (v3.5.4, 2026-05-10) — Stage 7 F1/F2/F3 Closed for All Three Variants
 
 The original four-criterion converter goal is **all 4 closed** for Stinsen + Unboxed:
 1. **Plays correctly in SF2 editor** — ✅ auto-detect routes `SidFactory_II/Laxity` to laxity driver; zig64 trace 100% match
@@ -29,6 +29,19 @@ Conversion still produces a valid `.sf2`; audio plays via VICE / sidplayer.
 Toolchain at `docs/stage8.5_debugging_toolkit.md`.
 
 **Open piece — Generalization beyond Stinsen + Unboxed**: both test songs are simple (single sequence per voice, looping). Multi-pattern songs that walk the orderlist are not yet supported by `_build_np21_sf2_edit_area`.
+
+**Stage 7 status (post v3.5.4)**:
+- F1 (sequences) ✅ propagates (v3.3.0)
+- F2 (instruments AD+SR) ✅ propagates for Stinsen / Beast / Angular,
+  all 3 zig64-verified (v3.5.4). The 129 other Vibrants/Laxity files
+  in the corpus get pattern extraction (v3.5.3 corpus lift) but NOT
+  F2 instrument propagation — would need control-flow-aware disasm
+  to find table addresses per file (3 simpler approaches tried + failed,
+  documented in `memory/dynamic-instr-detector-attempt.md`).
+- F3 (wave) ✅ propagates with byte-perfect round-trip (v3.5.4)
+- F4 (pulse) ❌ deferred — NP21 pulse-program is a byte stream not
+  a structured grid; needs multi-day RE
+- F5 (filter) ❌ out of original Stage 7 scope
 
 The historical roadmap below tracks the v2.x targets (most achieved, kept for context).
 
