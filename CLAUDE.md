@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.5.2** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-10
+**SIDM2 v3.5.3** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-10
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -170,6 +170,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.5.3** (2026-05-10): Beast + Angular instrument-table detectors land. F2 (instruments) AD/SR edits now propagate for any binary matching one of three known layouts: Stinsen column-major @ $1808/$181C, Beast row-major 8B @ $1B38 (AD@+5 SR@+6), Angular row-major 2B @ $1ADB. `_emit_instr_copy_routine` gained `fields=` (variant-specific column mappings) and `np21_stride=` (default 8, Angular uses 2) parameters. Plus a major ch_seq_ptr autodetect fix: relaxed `body[0] must be $A0-$BF` to allow note/duration/command starts (Beast voice bodies start with notes), and relaxed entropy threshold for held-note runs. **Editor-view yield on Laxity 286-file corpus jumped from 30% to 72% (87 → 206 files extracting real per-voice sequences, +119 net).** Two negative-result investigations documented: wave-copy non-idempotency for non-Stinsen variants (`$7F`-swap mismatch between extract and copy-back; reverted attempted fix; root cause documented for future fix), and F4 pulse propagation complexity (pulse is a byte stream, not a grid; needs deeper RE). 862 tests pass (+19 new). Audio unchanged.
 
 **v3.5.2** (2026-05-10): Stage 7 Phase B.2 — F2 (instruments) AD+SR edits propagate to playback for Stinsen-class binaries. New `sidm2/stinsen_instr_detector.py` matches the column-major layout signature at binary offset `$0800` (AD col `$1808`, SR col `$181C`, 20 slots max). New `_emit_instr_column_copy_routine` (41 bytes 6502) handles SF2-row-major→NP21-column-major stride mismatch. Stage 3 SF2 emit populates F2 view with real Stinsen AD/SR values. Verified: editing instr 1 AD `$A0`→`$5A` flips osc1_attack_decay writes; editing instr 1 SR `$25`→`$66` flips osc1_sustain_release. Plus a definitive negative result via direct-edit + static disasm: HR/Filter/Pulse_ptr/Wave_ptr columns are NOT in Stinsen's per-instrument table — they're encoded by other mechanisms beyond F2 column view's scope. 843 tests pass (+12 new). Golden trace re-baselined for the cycle shift.
 

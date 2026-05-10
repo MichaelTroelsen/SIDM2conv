@@ -25,6 +25,126 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.3] - 2026-05-10
+
+### Added — Stage 7 Phase B.2: Beast + Angular instrument-table detectors
+
+Two more per-variant NP21 instrument layouts wired up. F2 (instruments)
+edits to AD/SR now propagate to playback for any binary matching one
+of three known layouts. Direct-edit RE confirmed both:
+
+| Variant | Layout | Address | Stride | n max |
+|---|---|---|---|---|
+| Stinsen (v3.5.2) | column-major | `$1808` AD / `$181C` SR | 1 | 20 |
+| **Beast (new)** | row-major 8B | `$1B38` AD@+5 SR@+6 | 8 | 24 |
+| **Angular (new)** | row-major 2B | `$1ADB` AD@+0 SR@+1 | 2 | 24 |
+
+#### Beast (commit `d832264`)
+- `sidm2/beast_instr_detector.py` — 16-byte signature match at binary
+  offset `$0B38`; returns `BeastInstrLayout(table_addr, n_instruments,
+  ad_offset=5, sr_offset=6)`.
+- `_emit_instr_copy_routine` extended with optional `fields=` parameter
+  for variant-specific field mappings (Beast uses `[(0, 5), (1, 6)]`).
+- Wire-up gated on `num_patterns > 0`. Beast's ch_seq_ptr autodetect
+  was failing pre-this-release; the next commit fixed that.
+
+#### ch_seq_ptr autodetect — corpus lift (commit `a7a0ede`)
+Two real defects in `_score_sequence` were rejecting valid Beast +
+many other Laxity variants:
+1. `body[0] must be $A0-$BF (instrument prefix)` — hard reject.
+   Verified-good Beast voice bodies start with note (`$01`, `$03`)
+   or duration (`$81`) bytes; the player relies on a pre-initialised
+   current-instrument from INIT. Relaxed to "must be a valid NP21
+   stream byte (`$01-$FE` except `$00/$7E/$7F`)" with a +3 score
+   bonus when body[0] IS in `$A0-$BF` (preserves Stinsen-class
+   discrimination).
+2. Entropy rule `len(set) < 5 and len(body) > 15: reject` — long
+   held-note runs are legitimate NP21 voice content. Relaxed to
+   `len(set) < 3 and len(body) > 30`.
+3. Brute-force fallback now applies the same "all 3 voice ptrs
+   identical" reject filter as the static-disasm path.
+
+**Empirical effect on Laxity 286-file corpus:**
+| Class | v3.5.2 | v3.5.3 |
+|---|---|---|
+| A_native | 35 | 22 |
+| **B_lifted** | **52** | **184** |
+| Files with patterns | 87 | **206** |
+| Editor-view yield | 30% | **72%** |
+
+Net +119 files lifted from empty-placeholder editor view to real
+per-voice sequences. Audio for Stinsen + Unboxed canonical corpus
+unchanged (byte-identical SID register writes).
+
+#### Angular (commit `0c95c88`)
+- `sidm2/angular_instr_detector.py` — 7-byte signature match at
+  `$0AD8`; returns `AngularInstrLayout(table_addr=$1ADB, ad_offset=0,
+  sr_offset=1)`.
+- `_emit_instr_copy_routine` extended with `np21_stride=` parameter
+  (default 8, Angular passes 2). The hardcoded `ADC #8` stride byte
+  becomes `ADC #stride`.
+- Same wire-up pattern: Angular detector tried after Beast.
+
+### Investigated — wave-copy non-idempotency for non-Stinsen variants
+**(Negative result, documented but not fixed.)** The Stage 4 SF2 emit
+performs a `$7F`-swap (`find_and_extract_wave_table` line 560: when
+note_val==`$7F`, entry stores `($7F, wave_val)` instead of normal
+`(wave_val, note_val)`) for SF2II display correctness. The Stage 7
+wave-copy routine doesn't reverse this swap on copy-back, so it
+corrupts NP21 wave-data. Stinsen happens to round-trip correctly
+because its NP21 wave_data has `$7F` at the same positions as note
+`$7F` markers. Unboxed gets 291 extra osc3 writes when wave-copy
+runs under zig64 timing (`$1003`-trampoline-redirect path). Tried a
+swap-aware wave-copy fix; logically correct but caused Stinsen audio
+to shift in unexplained ways. Reverted. Possible cleaner fixes
+documented in `memory/wave-copy-non-idempotency.md` for a future
+session: (a) remove the `$7F` swap from extract; (b) skip wave-copy
+when the swap is in play; (c) walk the actual wave-program
+structure in extract.
+
+This is why we kept the `play_addr != init+3` gate on the trampoline
+redirect — without it, wave-copy runs for Beast/Angular/Unboxed
+under zig64 trace and the non-idempotency bites. Beast and Angular
+F2 wire-up still works at SF2II runtime via the PLAY handler at
+`$0F94` — just not directly verifiable via zig64 trace.
+
+### Investigated — F4 (pulse) propagation complexity
+**(Negative result, deferred.)** Direct-edit probe on Stinsen pulse-
+source candidates shows pulse data is a **byte stream** (not a
+structured grid like instruments). Many addresses across
+`$1500-$1960` contribute to PW register writes over time. SF2's
+structured 16×3 pulse view doesn't map cleanly back to NP21's flat
+byte sequence via per-column copy. Phase B.2 for pulse needs deeper
+RE on NP21 pulse-program byte format — substantially harder than
+instrument F2 was. Deferred indefinitely.
+
+### Tests
+- 12 new tests in `pyscript/test_stinsen_instr_phase_b2.py`
+  (already in v3.5.2)
+- 9 new tests in `pyscript/test_beast_instr_phase_b2.py`
+- 10 new tests in `pyscript/test_angular_instr_phase_b2.py`
+- **862 tests pass** (was 843)
+- Stinsen + Unboxed corpus regression unchanged
+
+### Files
+- `sidm2/beast_instr_detector.py` (new)
+- `sidm2/angular_instr_detector.py` (new)
+- `sidm2/sf2_writer.py` — `fields=` and `np21_stride=` parameters,
+  Beast + Angular wire-up branches, Stage 3 chain extended
+- `sidm2/ch_seq_ptr_scanner.py` — relaxed scoring rules
+- `pyscript/test_beast_instr_phase_b2.py` (new)
+- `pyscript/test_angular_instr_phase_b2.py` (new)
+- `docs/stage7_plan.md` — Phase B.2 status updated, F4 + wave-copy
+  non-idempotency findings recorded
+
+### Commits
+- `d832264` — Beast detector + wire-up plumbing
+- `a7a0ede` — ch_seq_ptr autodetect bug fixes (+119 corpus lift)
+- `0c95c88` — Angular detector + np21_stride parameter
+- `3e145a7` — Wave-copy non-idempotency + F4 pulse findings (docs)
+
+---
+
 ## [3.5.2] - 2026-05-10
 
 ### Added — Stage 7 Phase B.2: Stinsen instrument-table edit propagation
