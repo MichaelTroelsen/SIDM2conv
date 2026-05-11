@@ -35,9 +35,18 @@ from sidm2.ch_seq_ptr_scanner import (
 # ---------------------------------------------------------------------------
 
 class TestScoreSequence:
-    def test_too_short_rejected(self):
+    def test_empty_body_rejected(self):
+        """Empty body is still a hard reject — distinct from `len < 8`."""
         assert _score_sequence(b"") == -1000
-        assert _score_sequence(bytes(7)) == -1000
+
+    def test_short_body_neutral_not_rejected(self):
+        """v3.5.6: bodies < 8 bytes are too short to assess reliably (often
+        silent voices with just a 1-2 byte stream). They now return 0
+        (neutral) instead of -1000 (hard reject) so they don't poison
+        the per-voice sum in `_scan_table_at`."""
+        assert _score_sequence(bytes(7)) == 0
+        assert _score_sequence(bytes([0x01, 0x02])) == 0
+        assert _score_sequence(bytes([0xA0])) == 0
 
     def test_body_0_zero_rejected(self):
         body = bytes([0x00] + [0x12] * 30)
@@ -306,6 +315,32 @@ class TestPlayReadsSoftFilter:
         lo, hi, ptrs, score = result
         assert lo == 0x463C and hi == 0x463F
         # All voice ptrs inside binary range
+        for p in ptrs:
+            assert load <= p < load + len(c64)
+
+    def test_lifts_intro_2_with_silent_voice(self):
+        """Intro_2.sid (v3.5.5 Class C): voice 1 has only 2 bytes before
+        terminator (silent voice). v3.5.5 scored -984 because voice 1's
+        len<8 returned -1000. v3.5.6 treats short bodies as neutral 0,
+        so voices 0+2's positive scores carry to acceptance."""
+        sid = ROOT / "SID" / "Laxity" / "Intro_2.sid"
+        if not sid.exists():
+            pytest.skip("missing Intro_2.sid")
+        buf = open(sid, "rb").read()
+        do = (buf[6] << 8) | buf[7]
+        load = (buf[8] << 8) | buf[9]
+        init = (buf[10] << 8) | buf[11]
+        play = (buf[12] << 8) | buf[13]
+        if load == 0:
+            load = buf[do] | (buf[do+1] << 8); c64 = buf[do+2:]
+        else:
+            c64 = buf[do:]
+        result = detect_ch_seq_ptr(c64, load, init, play, n_play_ticks=5)
+        assert result is not None, "Intro_2 must lift after v3.5.6 short-body neutralization"
+        lo, hi, ptrs, score = result
+        assert lo == 0x4513 and hi == 0x4516
+        # Voice ptrs distinct + in-range
+        assert len(set(ptrs)) >= 2
         for p in ptrs:
             assert load <= p < load + len(c64)
 

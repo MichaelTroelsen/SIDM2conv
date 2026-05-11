@@ -69,9 +69,21 @@ def _score_sequence(body: bytes) -> int:
     pre-initialised current-instrument from INIT). The other
     discriminators (% < $A0, traits, no zeros, entropy) still filter
     out random byte runs.
+
+    Per-voice scoring contract: -1000 means "hard reject — this voice
+    body is illegal NP21 (random bytes, illegal start marker, etc.)".
+    Score 0 means "ambiguous, too short to assess reliably" — bodies
+    < 8 bytes are typically silent / placeholder voices, not junk.
+    `_scan_table_at` sums per-voice scores; treating short bodies as
+    -1000 used to poison the total, rejecting otherwise-valid tables
+    just because one voice happens to be silent (single-byte terminator
+    or 2-3 note stream). Returning 0 lets the other voices' positive
+    scores carry the candidate to acceptance (v3.5.6).
     """
-    if not body or len(body) < 8:
+    if not body:
         return -1000
+    if len(body) < 8:
+        return 0
 
     # body[0] must be a valid NP21 stream byte. Reject $00 (no event)
     # and $7E/$7F (special markers — never legitimate stream start).

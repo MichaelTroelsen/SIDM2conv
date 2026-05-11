@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.5.5** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-10
+**SIDM2 v3.5.6** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-10
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -170,6 +170,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.5.6** (2026-05-10): ch_seq_ptr `_score_sequence` short-body return changed from -1000 (hard reject) to 0 (neutral). v3.5.5's per-voice hard-reject for `len(body) < 8` was poisoning the per-table sum in `_scan_table_at` — files with one silent voice (e.g., Intro_2.sid voice 1 = 2-byte body before terminator) got the entire table rejected even though voices 0+2 had legitimate NP21 streams. Returning 0 for short bodies lets non-silent voices' positive scores carry the candidate. **Editor-view yield on Laxity 286-file corpus: 76% → 78% (216 → 224 files; C_unchanged collapsed 10 → 2).** All-notes Vibrants-variant files (no duration/instrument bytes) stay correctly rejected — they trip n_traits < 2 on long bodies, which still hard-rejects. New regression test `test_lifts_intro_2_with_silent_voice`; existing `test_too_short_rejected` split into `test_empty_body_rejected` + `test_short_body_neutral_not_rejected`. 886 tests pass.
 
 **v3.5.5** (2026-05-10): ch_seq_ptr autodetect `play_reads`-coverage check relaxed from hard reject to `+1 per byte found` score bonus (max +6). v3.5.4 required all 6 table bytes appear in the PLAY-time read set within 3 ticks — too strict for ~129 Laxity files whose players touch one voice per PLAY tick (IRQ-dispatched / counter-rotated voice handling). Structurally-valid candidates scoring 24-60 on stream-shape were getting dropped pre-scoring. **Editor-view yield on Laxity 286-file corpus: 30% → 76% (87 → 216 files).** 3 new regression tests in `test_ch_seq_ptr_scanner.py::TestPlayReadsSoftFilter` pin Axel_F.sid / TSZ_Intro.sid (v3.5.4 false-rejects) plus a Stinsen-unaffected check. 885 tests pass. Audio path unchanged — the runtime translator pre-fills shadow buffer to the NP21 binary's verbatim bytes, so editor-view lift is decoupled from playback. Negative findings docs: a ZP-indirect-Y detector was the originally-scoped fix but `bin/classify_c_class.py` showed 0/54 of the remaining Class-C files actually lack a static-disasm indexed-load pair — every C-class file had at least one `LDA abs,X/Y` candidate. The real gap was the play_reads strictness; PTRS_OOR cases (20 of 54 sampled) are unrelated player variants (Hubbard/Galway/Vibrants 1987-90) outside the NP21 scope.
 

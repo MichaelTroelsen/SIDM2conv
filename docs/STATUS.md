@@ -1,14 +1,14 @@
 # Project Status Overview
 
 **Last Updated**: 2026-05-10
-**Current Version**: v3.5.5 (ch_seq_ptr `play_reads` filter relaxed from hard reject to score bonus — corpus editor-view yield 76%, +129 files)
-**Status**: Production — all 4 success criteria closed; Stage 7 F1/F2/F3 edits propagate end-to-end; Laxity corpus editor-view yield 76%
+**Current Version**: v3.5.6 (short-body per-voice score neutralized; corpus editor-view yield 78%, C_unchanged collapsed 10 → 2)
+**Status**: Production — all 4 success criteria closed; Stage 7 F1/F2/F3 edits propagate end-to-end; Laxity corpus editor-view yield 78%
 
 ---
 
 ## Quick Summary
 
-The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2) format for editing and remixing. v3.5.x extends criterion 3 ("edits affect playback") from sequences (v3.3.0) to wave (v3.5.0) and instrument tables (v3.5.2/v3.5.3), with all three known instrument-table variants (Stinsen, Beast, Angular) zig64-verifiable end-to-end as of v3.5.4. v3.5.5 relaxes the `play_reads` filter from hard reject to soft score bonus, lifting +129 more Laxity files (corpus editor-view yield 30% → 76%). **885 tests pass**; corpus regression covers Stinsen/Unboxed/Beast/Angular byte-identical zig64 traces.
+The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2) format for editing and remixing. v3.5.x extends criterion 3 ("edits affect playback") from sequences (v3.3.0) to wave (v3.5.0) and instrument tables (v3.5.2/v3.5.3), with all three known instrument-table variants (Stinsen, Beast, Angular) zig64-verifiable end-to-end as of v3.5.4. v3.5.5 + v3.5.6 lifted the Laxity corpus editor-view yield from 30% to 78%: relaxing `play_reads` from hard reject to soft bonus (v3.5.5, +129 files) and neutralizing short-body hard-rejects in `_score_sequence` (v3.5.6, +9 more). **886 tests pass**; corpus regression covers Stinsen/Unboxed/Beast/Angular byte-identical zig64 traces.
 
 **Current State**: ✅ **Production** — all four success criteria closed; Stage 7 closed for sequences/wave/instruments AD+SR:
 1. **Plays correctly in SF2 editor** ✅ (auto-detect picks laxity driver; trace match 100%)
