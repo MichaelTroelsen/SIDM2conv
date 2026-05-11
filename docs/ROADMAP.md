@@ -58,8 +58,14 @@ Toolchain at `docs/stage8.5_debugging_toolkit.md`.
   documented in `memory/dynamic-instr-detector-attempt.md`).
 - F3 (wave) ✅ propagates with byte-perfect round-trip (v3.5.4)
 - F4 (pulse) ❌ deferred — NP21 pulse-program is a byte stream not
-  a structured grid; needs multi-day RE
-- F5 (filter) ❌ out of original Stage 7 scope
+  a structured grid; needs multi-day RE. Surface probe done 2026-05-11
+  (`bin/_probe_pulse_*.py`): scratch identified at $17E6-$17EB,
+  candidate source bytes $1957/$193E (2-byte stride), full byte-stream
+  format RE outstanding. See `memory/stinsen-pulse-architecture.md`.
+- F5 (filter) ❌ out of original Stage 7 scope. Surface probe done
+  2026-05-11 (`bin/_probe_filter_stream.py`): scratch identified at
+  $1785-$178A, source table not yet RE'd; same multi-day shape as F4.
+  See `memory/stinsen-filter-architecture.md`.
 
 The historical roadmap below tracks the v2.x targets (most achieved, kept for context).
 
