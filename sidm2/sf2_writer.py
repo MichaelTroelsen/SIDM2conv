@@ -1891,6 +1891,36 @@ class SF2Writer:
                     f"AD@+{angular.ad_offset} SR@+{angular.sr_offset})"
                 )
 
+        # Stage 7 Phase B.2 (F4 pulse, Stinsen variant): wire up the
+        # split-copy routine that propagates SF2-edit-area pulse edits
+        # to NP21's parallel PW lo / PW hi byte streams at $1957/$193E.
+        # Verified 2026-05-11 via py65 + direct-edit-patch (see
+        # memory/stinsen-pulse-architecture.md).
+        pulse_copy_addr = None
+        edit_pulse_addr = music_data_params.get('edit_pulse_addr')
+        if num_patterns > 0 and edit_pulse_addr is not None:
+            from sidm2.stinsen_pulse_detector import detect_stinsen_pulse_layout
+
+            sp = detect_stinsen_pulse_layout(c64_data, sid_la)
+            if (sp is not None
+                and sid_la <= sp.pw_lo_addr < sid_la + len(c64_data)
+                and sid_la <= sp.pw_hi_addr < sid_la + len(c64_data)):
+                pulse_routine = self._emit_pulse_split_copy_routine(
+                    sf2_pulse_addr=edit_pulse_addr,
+                    np21_pulse_lo_addr=sp.pw_lo_addr,
+                    np21_pulse_hi_addr=sp.pw_hi_addr,
+                    n_rows=sp.n_steps,
+                )
+                pulse_copy_addr = sf2_data_base + len(sf2_edit_data)
+                sf2_edit_data = bytes(sf2_edit_data) + pulse_routine
+                logger.info(
+                    f"  Stage 7 pulse-split-copy Stinsen @ ${pulse_copy_addr:04X} "
+                    f"({len(pulse_routine)}B); src=${edit_pulse_addr:04X} "
+                    f"PW-lo-dst=${sp.pw_lo_addr:04X} "
+                    f"PW-hi-dst=${sp.pw_hi_addr:04X} "
+                    f"({sp.n_steps} steps per PLAY tick)"
+                )
+
         shadow_base = sf2_data_base + len(sf2_edit_data)
 
         # Pre-fill shadow with each voice's full NP21 byte stream + loop terminator.
@@ -2015,6 +2045,7 @@ class SF2Writer:
                 translate_base=TRANSLATE_BASE,
                 table_copy_addr=wave_copy_addr,
                 instr_copy_addr=instr_copy_addr,
+                pulse_copy_addr=pulse_copy_addr,
             )
             tr_off = 2 + (TRANSLATE_BASE - LOAD_BASE)
             if tr_off + len(translator_bytes) > np21_off:
@@ -2578,6 +2609,76 @@ class SF2Writer:
         code += bytes([0x60])                                                        # RTS
         return bytes(code)
 
+    def _emit_pulse_split_copy_routine(self, sf2_pulse_addr: int,
+                                       np21_pulse_lo_addr: int,
+                                       np21_pulse_hi_addr: int,
+                                       n_rows: int = 16) -> bytes:
+        """Stage 7 Phase B.2 (F4 pulse, split-copy): copy SF2-edit-area
+        pulse bytes back into NP21's PARALLEL pulse-program byte streams.
+
+        NP21 stores the pulse program as two parallel byte arrays at
+        separate addresses (Stinsen layout: PW lo at $1957, PW hi at
+        $193E). Each pulse-program-step has one byte in each array; the
+        player advances both pointers in lockstep as voices transition
+        to a new step.
+
+        SF2 edit area emits the pulse as **3-byte rows** (col0, col1,
+        col2) starting at sf2_pulse_addr — Block 3 declares Pulse as a
+        3-column table for Driver-11-style display. So per row r:
+
+            np21_pulse_lo[r] ← sf2[3r + 0]   (col 0 → PW lo)
+            np21_pulse_hi[r] ← sf2[3r + 1]   (col 1 → PW hi)
+            (col 2 ignored — preserved for future expansion)
+
+        Stride-3 SF2 indexing means we can't use the wave routine's
+        TXA / ASL / TAY trick (which gives stride 2). Use an interleaved
+        single-pass loop where X tracks np21 destination offset (stride
+        1) and Y tracks SF2 offset (stride 3, advanced per row).
+
+        Layout (single pass, ~24 bytes for any n):
+            LDX #0
+            LDY #0
+        loop:
+            LDA sf2_pulse,Y          ; PW lo (col 0)
+            STA np21_pulse_lo,X
+            INY                       ; Y → col 1
+            LDA sf2_pulse,Y           ; PW hi (col 1)
+            STA np21_pulse_hi,X
+            INY; INY                  ; Y → col 0 of next row (skip col 2)
+            INX
+            CPX #n
+            BNE loop
+            RTS
+
+        Verified 2026-05-11 for Stinsen: direct-edit-patching binary
+        offsets 0x957 ($1957) and 0x93E ($193E) propagates to D402/D403/
+        D409/D40A/D410/D411 register writes for all three voices in the
+        zig64 trace (see `memory/stinsen-pulse-architecture.md`).
+        """
+        if not (1 <= n_rows <= 85):     # 85 × 3 = 255, fits in u8 Y
+            raise ValueError(f"pulse_split_copy n_rows must be 1..85, got {n_rows}")
+        code = bytearray()
+
+        code += bytes([0xA2, 0x00])                                                 # LDX #0
+        code += bytes([0xA0, 0x00])                                                 # LDY #0
+        loop_start = len(code)
+        code += bytes([0xB9, sf2_pulse_addr & 0xFF, (sf2_pulse_addr >> 8) & 0xFF])  # LDA sf2,Y
+        code += bytes([0x9D, np21_pulse_lo_addr & 0xFF,
+                       (np21_pulse_lo_addr >> 8) & 0xFF])                            # STA np21_lo,X
+        code += bytes([0xC8])                                                        # INY (→ col 1)
+        code += bytes([0xB9, sf2_pulse_addr & 0xFF, (sf2_pulse_addr >> 8) & 0xFF])  # LDA sf2,Y
+        code += bytes([0x9D, np21_pulse_hi_addr & 0xFF,
+                       (np21_pulse_hi_addr >> 8) & 0xFF])                            # STA np21_hi,X
+        code += bytes([0xC8, 0xC8])                                                  # INY; INY (skip col 2, → next row col 0)
+        code += bytes([0xE8])                                                        # INX
+        code += bytes([0xE0, n_rows & 0xFF])                                         # CPX #n
+        rel = loop_start - (len(code) + 2)
+        if not -128 <= rel <= 127:
+            raise RuntimeError(f"pulse_split_copy loop out of range: {rel}")
+        code += bytes([0xD0, rel & 0xFF])                                            # BNE loop
+        code += bytes([0x60])                                                        # RTS
+        return bytes(code)
+
     def _emit_instr_copy_routine(self, sf2_instr_addr: int, np21_instr_addr: int,
                                   n_instruments: int = 16,
                                   fields: list[tuple[int, int]] | None = None,
@@ -2789,7 +2890,7 @@ class SF2Writer:
 
     def _emit_multipat_translator(self, voice_pat_counts, seq00_addr, shadow_base,
                                   play_addr, translate_base, table_copy_addr=None,
-                                  instr_copy_addr=None):
+                                  instr_copy_addr=None, pulse_copy_addr=None):
         """Stage 2.5: Multi-pattern runtime translator.
 
         For each voice 0..2:
@@ -2920,6 +3021,8 @@ class SF2Writer:
             c += bytes([0x20, table_copy_addr & 0xFF, (table_copy_addr >> 8) & 0xFF])
         if instr_copy_addr is not None:
             c += bytes([0x20, instr_copy_addr & 0xFF, (instr_copy_addr >> 8) & 0xFF])
+        if pulse_copy_addr is not None:
+            c += bytes([0x20, pulse_copy_addr & 0xFF, (pulse_copy_addr >> 8) & 0xFF])
         c += bytes([0x20, play_addr & 0xFF, (play_addr >> 8) & 0xFF, 0x60])
 
         # ------ Inline data: voice_pat_counts table (3 bytes)
@@ -3464,16 +3567,42 @@ class SF2Writer:
         # with 3 columns. Emit (b0, b1, b2) — drop the last byte, which is
         # the "next-program" pointer in NP21 internals and not part of
         # Driver 11's 3-column display anyway.
+        #
+        # Stage 7 Phase B.2 (F4 Stinsen override): when the binary matches
+        # Stinsen-class pulse layout, replace the 4-byte-tuple
+        # interpretation with the ACTUAL PW lo / PW hi bytes from
+        # $1957 / $193E. This gives the editor a coherent semantics
+        # ("col 0 = PW lo, col 1 = PW hi") that matches what
+        # _emit_pulse_split_copy_routine writes back. Verified
+        # 2026-05-11; see memory/stinsen-pulse-architecture.md.
         pulse_table_offset = len(edit)
         pulse_table_addr   = sf2_data_base + pulse_table_offset
-        pulse_entries = laxity_tables.get('pulse_table', []) or []
         pulse_rows = 0
-        for entry in pulse_entries:
-            row = bytes(entry)[:3]
-            if len(row) < 3:
-                row = row + bytes(3 - len(row))
-            edit.extend(row)
-            pulse_rows += 1
+        used_stinsen_pulse = False
+        try:
+            from sidm2.stinsen_pulse_detector import detect_stinsen_pulse_layout
+            sp = detect_stinsen_pulse_layout(c64_data, sid_la)
+        except Exception:
+            sp = None
+        if sp is not None:
+            lo_off = sp.pw_lo_addr - sid_la
+            hi_off = sp.pw_hi_addr - sid_la
+            for r in range(sp.n_steps):
+                if lo_off + r >= len(c64_data) or hi_off + r >= len(c64_data):
+                    break
+                lo = c64_data[lo_off + r]
+                hi = c64_data[hi_off + r]
+                edit.extend(bytes([lo, hi, 0x00]))
+                pulse_rows += 1
+            used_stinsen_pulse = pulse_rows > 0
+        if not used_stinsen_pulse:
+            pulse_entries = laxity_tables.get('pulse_table', []) or []
+            for entry in pulse_entries:
+                row = bytes(entry)[:3]
+                if len(row) < 3:
+                    row = row + bytes(3 - len(row))
+                edit.extend(row)
+                pulse_rows += 1
         while pulse_rows < 16:
             edit.extend(bytes([0x7F, 0x00, 0x00]))
             pulse_rows += 1

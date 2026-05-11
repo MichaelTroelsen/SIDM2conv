@@ -57,11 +57,14 @@ Toolchain at `docs/stage8.5_debugging_toolkit.md`.
   to find table addresses per file (3 simpler approaches tried + failed,
   documented in `memory/dynamic-instr-detector-attempt.md`).
 - F3 (wave) ✅ propagates with byte-perfect round-trip (v3.5.4)
-- F4 (pulse) ❌ deferred — NP21 pulse-program is a byte stream not
-  a structured grid; needs multi-day RE. Surface probe done 2026-05-11
-  (`bin/_probe_pulse_*.py`): scratch identified at $17E6-$17EB,
-  candidate source bytes $1957/$193E (2-byte stride), full byte-stream
-  format RE outstanding. See `memory/stinsen-pulse-architecture.md`.
+- F4 (pulse) ✅ Stinsen — edits propagate via `_emit_pulse_split_copy_routine` (25B 6502)
+  wired by `sidm2/stinsen_pulse_detector.py`. Scratch at $17E6-$17EB, source
+  byte streams at $1957 (PW lo) and $193E (PW hi) — shared across all 3
+  voices; per-voice walk positions advance through the same stream. Stage 3
+  emit overridden to populate SF2 cols 0/1 from those byte streams.
+  zig64-verified 2026-05-11 (patching SF2 pulse row 0 col 0 → flips
+  osc1/2/3_pw_lo writes). v3.5.7. See `memory/stinsen-pulse-architecture.md`.
+  ❌ Beast/Angular — pulse scratch + source addresses not yet RE'd.
 - F5 (filter) ❌ out of original Stage 7 scope. Surface probe done
   2026-05-11 (`bin/_probe_filter_stream.py`): scratch identified at
   $1785-$178A, source table not yet RE'd; same multi-day shape as F4.

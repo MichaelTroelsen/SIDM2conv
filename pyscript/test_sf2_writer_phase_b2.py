@@ -252,6 +252,118 @@ class TestPulseCopyRoutine:
 
 
 # ---------------------------------------------------------------------------
+# Pulse split-copy (F4 Stinsen variant): two parallel NP21 arrays, SF2 stride 3
+# ---------------------------------------------------------------------------
+
+def _run_split_routine(code: bytes, sf2_addr: int, np21_lo_addr: int,
+                       np21_hi_addr: int, sf2_bytes: bytes,
+                       np21_lo_initial: bytes, np21_hi_initial: bytes,
+                       code_addr: int = 0xC000):
+    """Variant of _run_routine that takes two NP21 destinations. Returns
+    (lo_after, hi_after)."""
+    mpu = MPU()
+    mem = [0] * 0x10000
+    for i, b in enumerate(code):
+        mem[code_addr + i] = b
+    for i, b in enumerate(sf2_bytes):
+        mem[sf2_addr + i] = b
+    for i, b in enumerate(np21_lo_initial):
+        mem[np21_lo_addr + i] = b
+    for i, b in enumerate(np21_hi_initial):
+        mem[np21_hi_addr + i] = b
+
+    class M(list):
+        pass
+    new_mem = M(mem)
+    mpu.memory = new_mem
+    sentinel = 0xFFFE
+    new_mem[0x100 | mpu.sp] = (sentinel >> 8) & 0xFF
+    mpu.sp = (mpu.sp - 1) & 0xFF
+    new_mem[0x100 | mpu.sp] = sentinel & 0xFF
+    mpu.sp = (mpu.sp - 1) & 0xFF
+    mpu.pc = code_addr
+    for _ in range(200_000):
+        mpu.step()
+        if mpu.pc == 0xFFFF:
+            break
+    else:
+        raise RuntimeError("split-routine did not RTS within budget")
+    return (bytes(new_mem[np21_lo_addr : np21_lo_addr + len(np21_lo_initial)]),
+            bytes(new_mem[np21_hi_addr : np21_hi_addr + len(np21_hi_initial)]))
+
+
+class TestPulseSplitCopyRoutine:
+    """F4 Stinsen variant: SF2 emits pulse as 3-byte rows (PW lo, PW hi,
+    col2_ignored). Routine writes col 0 → np21_pulse_lo[r], col 1 →
+    np21_pulse_hi[r], col 2 discarded."""
+
+    def test_assembles_and_rtses(self):
+        w = _new_writer()
+        code = w._emit_pulse_split_copy_routine(
+            sf2_pulse_addr=0x4000, np21_pulse_lo_addr=0x1957,
+            np21_pulse_hi_addr=0x193E, n_rows=16,
+        )
+        assert len(code) >= 20      # single-pass interleaved loop is ~24B
+        assert code[-1] == 0x60     # RTS
+
+    def test_n_out_of_range_raises(self):
+        w = _new_writer()
+        with pytest.raises(ValueError):
+            w._emit_pulse_split_copy_routine(0x4000, 0x1957, 0x193E, n_rows=0)
+        with pytest.raises(ValueError):
+            w._emit_pulse_split_copy_routine(0x4000, 0x1957, 0x193E, n_rows=86)
+
+    def test_copies_lo_hi_ignores_col2(self):
+        """Single row: SF2 [$11, $22, $33] → np21_lo[0]=$11, np21_hi[0]=$22.
+        Col 2 ($33) must NOT land in either NP21 array."""
+        w = _new_writer()
+        code = w._emit_pulse_split_copy_routine(
+            sf2_pulse_addr=0x4000, np21_pulse_lo_addr=0x5000,
+            np21_pulse_hi_addr=0x5100, n_rows=1,
+        )
+        sf2 = bytes([0x11, 0x22, 0x33])
+        lo, hi = _run_split_routine(code, 0x4000, 0x5000, 0x5100, sf2,
+                                    bytes([0xAA]), bytes([0xBB]))
+        assert lo == bytes([0x11])
+        assert hi == bytes([0x22])
+
+    def test_multi_row(self):
+        w = _new_writer()
+        n = 8
+        code = w._emit_pulse_split_copy_routine(
+            sf2_pulse_addr=0x4000, np21_pulse_lo_addr=0x5000,
+            np21_pulse_hi_addr=0x5100, n_rows=n,
+        )
+        sf2 = bytearray()
+        for r in range(n):
+            sf2.extend([r, (r + 50) & 0xFF, (r + 100) & 0xFF])
+        lo, hi = _run_split_routine(code, 0x4000, 0x5000, 0x5100,
+                                    bytes(sf2), bytes(n), bytes(n))
+        for r in range(n):
+            assert lo[r] == r,                       f"lo row {r}"
+            assert hi[r] == (r + 50) & 0xFF,         f"hi row {r}"
+
+    def test_round_trip_identity(self):
+        """Feed the SF2 view that mirrors NP21 state — output must
+        equal input (no spurious modifications)."""
+        w = _new_writer()
+        n = 8
+        code = w._emit_pulse_split_copy_routine(
+            sf2_pulse_addr=0x4000, np21_pulse_lo_addr=0x5000,
+            np21_pulse_hi_addr=0x5100, n_rows=n,
+        )
+        np21_lo = bytes((0x10 + r) & 0xFF for r in range(n))
+        np21_hi = bytes((0x80 + r) & 0xFF for r in range(n))
+        sf2 = bytearray()
+        for r in range(n):
+            sf2.extend([np21_lo[r], np21_hi[r], 0x00])
+        lo, hi = _run_split_routine(code, 0x4000, 0x5000, 0x5100,
+                                    bytes(sf2), np21_lo, np21_hi)
+        assert lo == np21_lo
+        assert hi == np21_hi
+
+
+# ---------------------------------------------------------------------------
 # Edge cases
 # ---------------------------------------------------------------------------
 

@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.5.6** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-10
+**SIDM2 v3.5.7** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-11
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -170,6 +170,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.5.7** (2026-05-11): Stage 7 F4 (pulse) — Stinsen edits propagate to playback. New `sidm2/stinsen_pulse_detector.py` finds the parallel PW lo / PW hi byte streams at `$1957`/`$193E` (piggybacks the existing Stinsen instr signature at `$1800`). New `_emit_pulse_split_copy_routine` (25 bytes 6502) does a single-pass interleaved walk over the SF2 edit area's 16 × 3-byte pulse table, writing col 0 → `$1957+r` (PW lo) and col 1 → `$193E+r` (PW hi). Stage 3 SF2 emit gains a Stinsen-pulse override that populates cols 0/1 from the binary's actual PW lo/hi bytes (replacing the prior `find_and_extract_pulse_table` 4-byte-tuple interpretation that was structurally incompatible). Verified end-to-end via zig64: patching SF2 pulse row 0 col 0 → 5 new `osc*_pw_lo` register writes flipped to the patched value across all three voices. 897 tests pass (+11 new: `TestPulseSplitCopyRoutine` × 5 in `test_sf2_writer_phase_b2.py` + `TestStinsenPulseDetector` × 5 in `test_stinsen_pulse_detector.py`). Non-Stinsen variants (Beast/Angular) keep the old 4-byte-tuple emit and don't get F4 wire-up — needs per-variant pulse-table RE to extend (Beast/Angular scratches and source candidates not yet identified).
 
 **v3.5.6** (2026-05-10): ch_seq_ptr `_score_sequence` short-body return changed from -1000 (hard reject) to 0 (neutral). v3.5.5's per-voice hard-reject for `len(body) < 8` was poisoning the per-table sum in `_scan_table_at` — files with one silent voice (e.g., Intro_2.sid voice 1 = 2-byte body before terminator) got the entire table rejected even though voices 0+2 had legitimate NP21 streams. Returning 0 for short bodies lets non-silent voices' positive scores carry the candidate. **Editor-view yield on Laxity 286-file corpus: 76% → 78% (216 → 224 files; C_unchanged collapsed 10 → 2).** All-notes Vibrants-variant files (no duration/instrument bytes) stay correctly rejected — they trip n_traits < 2 on long bodies, which still hard-rejects. New regression test `test_lifts_intro_2_with_silent_voice`; existing `test_too_short_rejected` split into `test_empty_body_rejected` + `test_short_body_neutral_not_rejected`. 886 tests pass.
 
