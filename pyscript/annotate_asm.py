@@ -9,6 +9,7 @@ Adds comprehensive annotations to 6502 assembly files with:
 - Label identification
 - Subroutine detection and documentation
 """
+from __future__ import annotations
 
 import sys
 import re
