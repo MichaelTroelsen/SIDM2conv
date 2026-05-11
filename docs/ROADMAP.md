@@ -65,10 +65,15 @@ Toolchain at `docs/stage8.5_debugging_toolkit.md`.
   zig64-verified 2026-05-11 (patching SF2 pulse row 0 col 0 → flips
   osc1/2/3_pw_lo writes). v3.5.7. See `memory/stinsen-pulse-architecture.md`.
   ❌ Beast/Angular — pulse scratch + source addresses not yet RE'd.
-- F5 (filter) ❌ out of original Stage 7 scope. Surface probe done
-  2026-05-11 (`bin/_probe_filter_stream.py`): scratch identified at
-  $1785-$178A, source table not yet RE'd; same multi-day shape as F4.
-  See `memory/stinsen-filter-architecture.md`.
+- F5 (filter) ❌ second-layer RE 2026-05-11 (`bin/_probe_filter_source_writers.py`
+  + `_verify_filter_arrays.py`): filter byte streams at $1989, $19A3,
+  $19BD (20 entries each) feed the scratches at $1785-$178A. **But
+  direct-edit-patch shows these are a state-machine command sequence
+  (sweep-deltas / register-set commands), NOT parallel value arrays.**
+  Bulk-patching $1989 or $19A3 → ZERO D-register propagation; $19BD
+  bulk → +143 D417 + +5 D416 (split across registers, confirming
+  command-sequence encoding). Wire-up DEFERRED pending byte-stream
+  format RE (multi-day). See `memory/stinsen-filter-architecture.md`.
 
 The historical roadmap below tracks the v2.x targets (most achieved, kept for context).
 
