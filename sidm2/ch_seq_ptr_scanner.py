@@ -331,16 +331,17 @@ def detect_ch_seq_ptr(c64_data: bytes, sid_la: int, init_addr: int,
         # Reject candidates where all 3 voice ptrs are identical
         if len(set(ptrs)) < 2:
             continue
-        # The PLAY-read set helps as a *filter* (must appear there)
-        # but not as a tiebreaker — code addresses also appear in
-        # play_reads because of instruction fetch. We require that all
-        # 6 bytes of the table (lo[0..2] + hi[0..2]) were read during
-        # PLAY: that's specific to data reads of the voice pointer
-        # table, not instruction fetches which read sequentially.
+        # PLAY-read coverage is a SCORE BONUS, not a hard reject. Some
+        # NP21 variants only touch one voice per PLAY tick (IRQ-dispatched
+        # or counter-rotated voice handling), so within `n_play_ticks`
+        # not all 6 table bytes get read — but the table is still real.
+        # Adding +1 per byte found (max +6) preserves Stinsen/Unboxed
+        # selectivity (their base scores are 50-100+, dwarfing the bonus)
+        # while letting structurally-valid candidates with weak PLAY
+        # observation still win over near-random alternatives.
         if play_reads:
             need = [lo_addr + v for v in range(3)] + [hi_addr + v for v in range(3)]
-            if not all(a in play_reads for a in need):
-                continue
+            score += sum(1 for a in need if a in play_reads)
         if best is None or score > best[0]:
             best = (score, lo_addr, hi_addr, ptrs)
 

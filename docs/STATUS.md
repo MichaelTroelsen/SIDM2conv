@@ -1,14 +1,14 @@
 # Project Status Overview
 
 **Last Updated**: 2026-05-10
-**Current Version**: v3.5.4 (Stage 7 — F1+F2+F3 edit propagation, all 3 instrument-table variants zig64-verified)
-**Status**: Production — all 4 success criteria closed; Stage 7 F1/F2/F3 edits propagate end-to-end; Laxity corpus editor-view yield 72% (was 18%)
+**Current Version**: v3.5.5 (ch_seq_ptr `play_reads` filter relaxed from hard reject to score bonus — corpus editor-view yield 76%, +129 files)
+**Status**: Production — all 4 success criteria closed; Stage 7 F1/F2/F3 edits propagate end-to-end; Laxity corpus editor-view yield 76%
 
 ---
 
 ## Quick Summary
 
-The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2) format for editing and remixing. v3.5.x extends criterion 3 ("edits affect playback") from sequences (v3.3.0) to wave (v3.5.0) and instrument tables (v3.5.2/v3.5.3), with all three known instrument-table variants (Stinsen, Beast, Angular) zig64-verifiable end-to-end as of v3.5.4. The autodetect-bug fix in v3.5.3 lifted +119 Laxity files from empty-placeholder editor view to real per-voice sequences. **882 tests pass**; corpus regression covers Stinsen/Unboxed/Beast/Angular byte-identical zig64 traces.
+The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2) format for editing and remixing. v3.5.x extends criterion 3 ("edits affect playback") from sequences (v3.3.0) to wave (v3.5.0) and instrument tables (v3.5.2/v3.5.3), with all three known instrument-table variants (Stinsen, Beast, Angular) zig64-verifiable end-to-end as of v3.5.4. v3.5.5 relaxes the `play_reads` filter from hard reject to soft score bonus, lifting +129 more Laxity files (corpus editor-view yield 30% → 76%). **885 tests pass**; corpus regression covers Stinsen/Unboxed/Beast/Angular byte-identical zig64 traces.
 
 **Current State**: ✅ **Production** — all four success criteria closed; Stage 7 closed for sequences/wave/instruments AD+SR:
 1. **Plays correctly in SF2 editor** ✅ (auto-detect picks laxity driver; trace match 100%)

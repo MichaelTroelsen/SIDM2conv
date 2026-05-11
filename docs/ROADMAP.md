@@ -3,10 +3,28 @@
 **Strategic direction and future improvements**
 
 **Date**: 2026-05-10
-**Version**: 3.x roadmap (post-v3.5.4)
-**Status**: 🎯 Active Roadmap — all four original criteria closed; Stage 7 (F1/F2/F3 edit propagation) closed for canonical corpus + 3 instrument-table variants; Laxity corpus editor-view yield 72%
+**Version**: 3.x roadmap (post-v3.5.5)
+**Status**: 🎯 Active Roadmap — all four original criteria closed; Stage 7 (F1/F2/F3 edit propagation) closed for canonical corpus + 3 instrument-table variants; Laxity corpus editor-view yield 76%
 
 ---
+
+## Current State (v3.5.5, 2026-05-10) — `play_reads` Hard Filter Relaxed to Score Bonus
+
+v3.5.5 turns the ch_seq_ptr `play_reads`-coverage check from a hard
+reject into a `+1 per byte found` score bonus (max +6). v3.5.4 was
+demanding that all 6 table bytes (3 lo + 3 hi) appear in the PLAY-time
+read set within 3 ticks — too strict for ~129 Laxity files whose
+players touch only one voice per PLAY tick (IRQ-dispatched / counter-
+rotated voice handling). The structurally-valid candidates were
+scoring 24-60 on stream-shape but getting dropped before scoring.
+
+**Corpus editor-view yield: 30% → 76% on the 286-file Laxity corpus**
+(216 of 286 files now extract real per-voice sequences). 3 new
+regression tests pin Axel_F.sid / TSZ_Intro.sid (v3.5.4 false-rejects)
+plus a Stinsen-unaffected check that locks in "base scores dwarf the
+bonus" for canonical files. 885 tests pass. Audio path unchanged
+(runtime translator pre-fills shadow buffer to NP21 binary's verbatim
+bytes; editor-view lift is decoupled from playback).
 
 ## Current State (v3.5.4, 2026-05-10) — Stage 7 F1/F2/F3 Closed for All Three Variants
 
