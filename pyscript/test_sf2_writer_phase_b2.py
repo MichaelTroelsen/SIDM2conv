@@ -364,6 +364,109 @@ class TestPulseSplitCopyRoutine:
 
 
 # ---------------------------------------------------------------------------
+# Filter split-copy (F5 Stinsen variant): three parallel NP21 arrays, SF2 stride 3
+# ---------------------------------------------------------------------------
+
+def _run_3split_routine(code: bytes, sf2_addr: int, np21_cmd: int, np21_val: int,
+                       np21_aux: int, sf2_bytes: bytes,
+                       cmd_initial: bytes, val_initial: bytes, aux_initial: bytes,
+                       code_addr: int = 0xC000):
+    """py65 helper for 3-destination split-copy."""
+    mpu = MPU()
+    mem = [0] * 0x10000
+    for i, b in enumerate(code): mem[code_addr + i] = b
+    for i, b in enumerate(sf2_bytes): mem[sf2_addr + i] = b
+    for i, b in enumerate(cmd_initial): mem[np21_cmd + i] = b
+    for i, b in enumerate(val_initial): mem[np21_val + i] = b
+    for i, b in enumerate(aux_initial): mem[np21_aux + i] = b
+    class M(list): pass
+    new_mem = M(mem); mpu.memory = new_mem
+    sentinel = 0xFFFE
+    new_mem[0x100 | mpu.sp] = (sentinel >> 8) & 0xFF; mpu.sp = (mpu.sp - 1) & 0xFF
+    new_mem[0x100 | mpu.sp] = sentinel & 0xFF; mpu.sp = (mpu.sp - 1) & 0xFF
+    mpu.pc = code_addr
+    for _ in range(200_000):
+        mpu.step()
+        if mpu.pc == 0xFFFF: break
+    else:
+        raise RuntimeError("3split-routine did not RTS within budget")
+    return (bytes(new_mem[np21_cmd : np21_cmd + len(cmd_initial)]),
+            bytes(new_mem[np21_val : np21_val + len(val_initial)]),
+            bytes(new_mem[np21_aux : np21_aux + len(aux_initial)]))
+
+
+class TestFilterSplitCopyRoutine:
+    """F5 Stinsen variant: SF2 emits filter as 3-byte rows (cmd, val,
+    aux). Routine writes col 0 → np21_cmd[r], col 1 → np21_val[r],
+    col 2 → np21_aux[r]."""
+
+    def test_assembles_and_rtses(self):
+        w = _new_writer()
+        code = w._emit_filter_split_copy_routine(
+            sf2_filter_addr=0x4000, np21_cmd_addr=0x1989,
+            np21_val_addr=0x19A3, np21_aux_addr=0x19BD, n_rows=16,
+        )
+        assert len(code) >= 25
+        assert code[-1] == 0x60     # RTS
+
+    def test_n_out_of_range_raises(self):
+        w = _new_writer()
+        with pytest.raises(ValueError):
+            w._emit_filter_split_copy_routine(0x4000, 0x1989, 0x19A3, 0x19BD, n_rows=0)
+        with pytest.raises(ValueError):
+            w._emit_filter_split_copy_routine(0x4000, 0x1989, 0x19A3, 0x19BD, n_rows=86)
+
+    def test_copies_three_cols_each_to_own_array(self):
+        w = _new_writer()
+        code = w._emit_filter_split_copy_routine(
+            sf2_filter_addr=0x4000, np21_cmd_addr=0x5000,
+            np21_val_addr=0x5100, np21_aux_addr=0x5200, n_rows=1,
+        )
+        sf2 = bytes([0x11, 0x22, 0x33])
+        c, v, a = _run_3split_routine(code, 0x4000, 0x5000, 0x5100, 0x5200,
+                                     sf2, bytes([0xAA]), bytes([0xBB]), bytes([0xCC]))
+        assert c == bytes([0x11])
+        assert v == bytes([0x22])
+        assert a == bytes([0x33])
+
+    def test_multi_row(self):
+        w = _new_writer()
+        n = 8
+        code = w._emit_filter_split_copy_routine(
+            sf2_filter_addr=0x4000, np21_cmd_addr=0x5000,
+            np21_val_addr=0x5100, np21_aux_addr=0x5200, n_rows=n,
+        )
+        sf2 = bytearray()
+        for r in range(n):
+            sf2.extend([r, (r + 50) & 0xFF, (r + 100) & 0xFF])
+        c, v, a = _run_3split_routine(code, 0x4000, 0x5000, 0x5100, 0x5200,
+                                     bytes(sf2), bytes(n), bytes(n), bytes(n))
+        for r in range(n):
+            assert c[r] == r,                       f"cmd row {r}"
+            assert v[r] == (r + 50) & 0xFF,         f"val row {r}"
+            assert a[r] == (r + 100) & 0xFF,        f"aux row {r}"
+
+    def test_round_trip_identity(self):
+        w = _new_writer()
+        n = 8
+        code = w._emit_filter_split_copy_routine(
+            sf2_filter_addr=0x4000, np21_cmd_addr=0x5000,
+            np21_val_addr=0x5100, np21_aux_addr=0x5200, n_rows=n,
+        )
+        np21_cmd = bytes((0x80 + r) & 0xFF for r in range(n))
+        np21_val = bytes((0x10 + r) & 0xFF for r in range(n))
+        np21_aux = bytes((0xF0 + r) & 0xFF for r in range(n))
+        sf2 = bytearray()
+        for r in range(n):
+            sf2.extend([np21_cmd[r], np21_val[r], np21_aux[r]])
+        c, v, a = _run_3split_routine(code, 0x4000, 0x5000, 0x5100, 0x5200,
+                                     bytes(sf2), np21_cmd, np21_val, np21_aux)
+        assert c == np21_cmd
+        assert v == np21_val
+        assert a == np21_aux
+
+
+# ---------------------------------------------------------------------------
 # Edge cases
 # ---------------------------------------------------------------------------
 

@@ -1,8 +1,8 @@
 # Project Status Overview
 
 **Last Updated**: 2026-05-10
-**Current Version**: v3.5.7 (Stage 7 F4 pulse — Stinsen edits propagate to playback; zig64-verified)
-**Status**: Production — all 4 success criteria closed; Stage 7 F1/F2/F3/F4 edits propagate end-to-end for Stinsen; Laxity corpus editor-view yield 78%
+**Current Version**: v3.5.8 (Stage 7 F5 filter — Stinsen edits propagate to playback; zig64-verified)
+**Status**: Production — all 4 success criteria closed; Stage 7 F1/F2/F3/F4/F5 edits propagate end-to-end for Stinsen; Laxity corpus editor-view yield 78%
 
 ---
 

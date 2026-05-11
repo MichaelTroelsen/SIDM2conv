@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.5.7** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-11
+**SIDM2 v3.5.8** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-11
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -170,6 +170,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.5.8** (2026-05-11): Stage 7 F5 (filter) — Stinsen edits propagate to playback. Full RE of the filter command handler at `$15F6-$167F` confirmed the byte streams at `$1989` (cmd), `$19A3` (val), `$19BD` (aux) form a state machine: bit 7 of cmd selects SET command (initialize accumulator) vs SWEEP command (delta accumulate); aux byte feeds resonance/routing (D417) directly OR step-duration depending on command type. `_emit_filter_split_copy_routine` (31B 6502) copies SF2 3-byte rows back to the three parallel arrays; player re-interprets state machine on next step. New `sidm2/stinsen_filter_detector.py` piggybacks the Stinsen instr signature. Stage 3 emit override populates SF2 cols 0/1/2 from the byte streams (replacing prior `find_and_extract_filter_table` interpretation). Verified end-to-end via zig64: patching SF2 filter row 0 col 2 (aux) → +2 `filter_res_control` register writes with marker value. Plus a translator overflow fix: 4 inline JSRs in the multipat translator would have exceeded the `$0F9E..$0FFA` 98B window (would land at 99B). Consolidated tail (instr + pulse + filter) into a 10B trampoline at the end of `sf2_edit_data` — translator does ONE JSR to the trampoline instead of 3 inline JSRs, saving 6B. **906 tests pass** (+9 new: `TestFilterSplitCopyRoutine` × 5 + `TestStinsenFilterDetector` × 4). Corpus regression byte-identical on Stinsen/Unboxed/Beast/Angular. Beast/Angular F5 not yet wired — needs per-variant filter byte-stream RE.
 
 **v3.5.7** (2026-05-11): Stage 7 F4 (pulse) — Stinsen edits propagate to playback. New `sidm2/stinsen_pulse_detector.py` finds the parallel PW lo / PW hi byte streams at `$1957`/`$193E` (piggybacks the existing Stinsen instr signature at `$1800`). New `_emit_pulse_split_copy_routine` (25 bytes 6502) does a single-pass interleaved walk over the SF2 edit area's 16 × 3-byte pulse table, writing col 0 → `$1957+r` (PW lo) and col 1 → `$193E+r` (PW hi). Stage 3 SF2 emit gains a Stinsen-pulse override that populates cols 0/1 from the binary's actual PW lo/hi bytes (replacing the prior `find_and_extract_pulse_table` 4-byte-tuple interpretation that was structurally incompatible). Verified end-to-end via zig64: patching SF2 pulse row 0 col 0 → 5 new `osc*_pw_lo` register writes flipped to the patched value across all three voices. 897 tests pass (+11 new: `TestPulseSplitCopyRoutine` × 5 in `test_sf2_writer_phase_b2.py` + `TestStinsenPulseDetector` × 5 in `test_stinsen_pulse_detector.py`). Non-Stinsen variants (Beast/Angular) keep the old 4-byte-tuple emit and don't get F4 wire-up — needs per-variant pulse-table RE to extend (Beast/Angular scratches and source candidates not yet identified).
 

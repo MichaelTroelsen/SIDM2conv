@@ -1921,6 +1921,77 @@ class SF2Writer:
                     f"({sp.n_steps} steps per PLAY tick)"
                 )
 
+        # Stage 7 Phase B.2 (F5 filter, Stinsen variant): wire up the
+        # 3-array split-copy routine that propagates SF2-edit-area filter
+        # edits to NP21's parallel byte streams at $1989/$19A3/$19BD.
+        # The streams are a state machine internally (cmd/val/aux byte
+        # patterns dispatch SET vs SWEEP behavior at runtime); we write
+        # bytes back as-is, the player re-interprets on next step.
+        # See memory/stinsen-filter-architecture.md.
+        filter_copy_addr = None
+        edit_filter_addr = music_data_params.get('edit_filter_addr')
+        if num_patterns > 0 and edit_filter_addr is not None:
+            from sidm2.stinsen_filter_detector import detect_stinsen_filter_layout
+
+            sf = detect_stinsen_filter_layout(c64_data, sid_la)
+            if (sf is not None
+                and sid_la <= sf.cmd_addr < sid_la + len(c64_data)
+                and sid_la <= sf.val_addr < sid_la + len(c64_data)
+                and sid_la <= sf.aux_addr < sid_la + len(c64_data)):
+                filter_routine = self._emit_filter_split_copy_routine(
+                    sf2_filter_addr=edit_filter_addr,
+                    np21_cmd_addr=sf.cmd_addr,
+                    np21_val_addr=sf.val_addr,
+                    np21_aux_addr=sf.aux_addr,
+                    n_rows=sf.n_steps,
+                )
+                filter_copy_addr = sf2_data_base + len(sf2_edit_data)
+                sf2_edit_data = bytes(sf2_edit_data) + filter_routine
+                logger.info(
+                    f"  Stage 7 filter-split-copy Stinsen @ ${filter_copy_addr:04X} "
+                    f"({len(filter_routine)}B); src=${edit_filter_addr:04X} "
+                    f"cmd-dst=${sf.cmd_addr:04X} val-dst=${sf.val_addr:04X} "
+                    f"aux-dst=${sf.aux_addr:04X} ({sf.n_steps} steps per PLAY tick)"
+                )
+
+        # Stage 7 trampoline (v3.5.8): when 3+ copy routines are wired
+        # (wave + instr + pulse + filter all fire for Stinsen), 4
+        # inline JSRs in the translator + JSR play + RTS = 99B,
+        # overflowing the $0F9E..$0FFA = 98B window. Consolidate the
+        # tail (instr + pulse + filter) into a single trampoline
+        # emitted at the end of sf2_edit_data. Translator JSRs (a)
+        # wave_copy_addr inline, (b) the trampoline. Net translator
+        # save: trampoline collapses 3 conditional JSRs into 1 (-6B).
+        # Eligibility: at least 3 of the 4 copy_addrs are non-None.
+        _wired = [a for a in (wave_copy_addr, instr_copy_addr,
+                              pulse_copy_addr, filter_copy_addr) if a is not None]
+        trampoline_or_wave_copy_addr = wave_copy_addr
+        tr_instr_copy  = instr_copy_addr
+        tr_pulse_copy  = pulse_copy_addr
+        tr_filter_copy = filter_copy_addr
+        if len(_wired) >= 4:
+            # Consolidate instr + pulse + filter into a trampoline.
+            # (Leave wave as a direct JSR so we always have at least one
+            #  direct JSR for code-path coverage in tests + corpus.)
+            _tail_addrs = [a for a in (instr_copy_addr, pulse_copy_addr,
+                                       filter_copy_addr) if a is not None]
+            tramp = bytearray()
+            for a in _tail_addrs:
+                tramp += bytes([0x20, a & 0xFF, (a >> 8) & 0xFF])  # JSR
+            tramp += bytes([0x60])                                  # RTS
+            _trampoline_addr = sf2_data_base + len(sf2_edit_data)
+            sf2_edit_data = bytes(sf2_edit_data) + bytes(tramp)
+            logger.info(
+                f"  Stage 7 copy-trampoline @ ${_trampoline_addr:04X} "
+                f"({len(tramp)}B); {len(_tail_addrs)} routines "
+                f"({', '.join(f'${a:04X}' for a in _tail_addrs)})"
+            )
+            # Pass the trampoline as instr_copy_addr (one JSR slot in
+            # the translator), suppress pulse + filter direct JSRs.
+            tr_instr_copy  = _trampoline_addr
+            tr_pulse_copy  = None
+            tr_filter_copy = None
+
         shadow_base = sf2_data_base + len(sf2_edit_data)
 
         # Pre-fill shadow with each voice's full NP21 byte stream + loop terminator.
@@ -2043,9 +2114,10 @@ class SF2Writer:
                 shadow_base=shadow_base,
                 play_addr=effective_play_addr,
                 translate_base=TRANSLATE_BASE,
-                table_copy_addr=wave_copy_addr,
-                instr_copy_addr=instr_copy_addr,
-                pulse_copy_addr=pulse_copy_addr,
+                table_copy_addr=trampoline_or_wave_copy_addr,
+                instr_copy_addr=tr_instr_copy,
+                pulse_copy_addr=tr_pulse_copy,
+                filter_copy_addr=tr_filter_copy,
             )
             tr_off = 2 + (TRANSLATE_BASE - LOAD_BASE)
             if tr_off + len(translator_bytes) > np21_off:
@@ -2609,6 +2681,79 @@ class SF2Writer:
         code += bytes([0x60])                                                        # RTS
         return bytes(code)
 
+    def _emit_filter_split_copy_routine(self, sf2_filter_addr: int,
+                                        np21_cmd_addr: int,
+                                        np21_val_addr: int,
+                                        np21_aux_addr: int,
+                                        n_rows: int = 16) -> bytes:
+        """Stage 7 Phase B.2 (F5 filter, Stinsen variant): copy SF2-edit-area
+        filter bytes back into NP21's three parallel filter byte streams.
+
+        Stinsen layout (verified 2026-05-11 by disassembling the filter
+        handler at $15F6-$167F):
+          - cmd stream at $1989: bit 7 selects SET vs SWEEP command type
+          - val stream at $19A3: paired with cmd for 16-bit value/delta
+          - aux stream at $19BD: resonance/routing OR step-duration
+
+        SF2 edit area emits 3-byte rows (col0, col1, col2). We copy
+        col 0 → np21_cmd[r], col 1 → np21_val[r], col 2 → np21_aux[r].
+
+        The player's filter handler re-reads these bytes on the next
+        step transition (driven by the step counter at $178D), so edits
+        propagate within ~1-30 ticks depending on current step duration.
+
+        Same single-pass interleaved-loop shape as the pulse-split-copy
+        routine but 3 stores per iteration instead of 2.
+
+        Layout (~30 bytes for any n):
+            LDX #0
+            LDY #0
+        loop:
+            LDA sf2_filter,Y         ; col 0
+            STA np21_cmd,X
+            INY
+            LDA sf2_filter,Y         ; col 1
+            STA np21_val,X
+            INY
+            LDA sf2_filter,Y         ; col 2
+            STA np21_aux,X
+            INY                       ; advance Y to next row's col 0
+            INX
+            CPX #n
+            BNE loop
+            RTS
+        """
+        if not (1 <= n_rows <= 85):     # 85 * 3 = 255, fits in u8 Y
+            raise ValueError(f"filter_split_copy n_rows must be 1..85, got {n_rows}")
+        code = bytearray()
+
+        code += bytes([0xA2, 0x00])                                                   # LDX #0
+        code += bytes([0xA0, 0x00])                                                   # LDY #0
+        loop_start = len(code)
+        # col 0 (cmd)
+        code += bytes([0xB9, sf2_filter_addr & 0xFF, (sf2_filter_addr >> 8) & 0xFF])  # LDA sf2,Y
+        code += bytes([0x9D, np21_cmd_addr & 0xFF,
+                       (np21_cmd_addr >> 8) & 0xFF])                                   # STA np21_cmd,X
+        code += bytes([0xC8])                                                          # INY
+        # col 1 (val)
+        code += bytes([0xB9, sf2_filter_addr & 0xFF, (sf2_filter_addr >> 8) & 0xFF])  # LDA sf2,Y
+        code += bytes([0x9D, np21_val_addr & 0xFF,
+                       (np21_val_addr >> 8) & 0xFF])                                   # STA np21_val,X
+        code += bytes([0xC8])                                                          # INY
+        # col 2 (aux)
+        code += bytes([0xB9, sf2_filter_addr & 0xFF, (sf2_filter_addr >> 8) & 0xFF])  # LDA sf2,Y
+        code += bytes([0x9D, np21_aux_addr & 0xFF,
+                       (np21_aux_addr >> 8) & 0xFF])                                   # STA np21_aux,X
+        code += bytes([0xC8])                                                          # INY (→ next row col 0)
+        code += bytes([0xE8])                                                          # INX
+        code += bytes([0xE0, n_rows & 0xFF])                                           # CPX #n
+        rel = loop_start - (len(code) + 2)
+        if not -128 <= rel <= 127:
+            raise RuntimeError(f"filter_split_copy loop out of range: {rel}")
+        code += bytes([0xD0, rel & 0xFF])                                              # BNE loop
+        code += bytes([0x60])                                                          # RTS
+        return bytes(code)
+
     def _emit_pulse_split_copy_routine(self, sf2_pulse_addr: int,
                                        np21_pulse_lo_addr: int,
                                        np21_pulse_hi_addr: int,
@@ -2890,7 +3035,8 @@ class SF2Writer:
 
     def _emit_multipat_translator(self, voice_pat_counts, seq00_addr, shadow_base,
                                   play_addr, translate_base, table_copy_addr=None,
-                                  instr_copy_addr=None, pulse_copy_addr=None):
+                                  instr_copy_addr=None, pulse_copy_addr=None,
+                                  filter_copy_addr=None):
         """Stage 2.5: Multi-pattern runtime translator.
 
         For each voice 0..2:
@@ -3017,12 +3163,17 @@ class SF2Writer:
         # propagate when binary matches Stinsen layout.
         # Both copies run BEFORE play_addr so the embedded NP21 player
         # reads the freshly-updated table bytes on this tick.
-        if table_copy_addr is not None:
-            c += bytes([0x20, table_copy_addr & 0xFF, (table_copy_addr >> 8) & 0xFF])
-        if instr_copy_addr is not None:
-            c += bytes([0x20, instr_copy_addr & 0xFF, (instr_copy_addr >> 8) & 0xFF])
-        if pulse_copy_addr is not None:
-            c += bytes([0x20, pulse_copy_addr & 0xFF, (pulse_copy_addr >> 8) & 0xFF])
+        # Stage 7: callers pass routine addresses via table_copy_addr
+        # (wave), instr_copy_addr, pulse_copy_addr, filter_copy_addr.
+        # The translator does one JSR per non-None entry. v3.5.8: when
+        # 4 routines all fire, this would push the translator past the
+        # $0F9E..$0FFA window — `_inject_laxity_raw_np21` detects that
+        # case and consolidates routines into a single trampoline,
+        # passing only `table_copy_addr` pointing at the trampoline.
+        for addr in (table_copy_addr, instr_copy_addr, pulse_copy_addr,
+                     filter_copy_addr):
+            if addr is not None:
+                c += bytes([0x20, addr & 0xFF, (addr >> 8) & 0xFF])
         c += bytes([0x20, play_addr & 0xFF, (play_addr >> 8) & 0xFF, 0x60])
 
         # ------ Inline data: voice_pat_counts table (3 bytes)
@@ -3607,23 +3758,51 @@ class SF2Writer:
             edit.extend(bytes([0x7F, 0x00, 0x00]))
             pulse_rows += 1
 
-        # Filter: NP21 stores three parallel arrays (resonance, sweep,
-        # mode) at filter_addr / +0x1A / +0x34 — different from the per-row
-        # layout SF2II expects. extract_all_laxity_tables returns
-        # filter_table as a list of bytes (3 fields per logical entry).
-        # Emit one 3-byte row per entry.
+        # Filter: NP21 stores three parallel arrays (cmd/val/aux) that
+        # form a state machine. Block 3 declares Filter as a 3-column
+        # table for the editor view.
+        #
+        # Stage 7 Phase B.2 (F5 Stinsen override): when the binary
+        # matches Stinsen-class filter layout, populate cols 0/1/2 from
+        # the actual byte streams at $1989/$19A3/$19BD — the addresses
+        # that `_emit_filter_split_copy_routine` writes back to. This
+        # gives a coherent edit→playback path. The state-machine
+        # interpretation lives in the player ($15F6-$167F handler), so
+        # the SF2 view shows raw bytes; users editing need to know the
+        # cmd-byte bit-7 dispatch (SET vs SWEEP). Verified 2026-05-11;
+        # see memory/stinsen-filter-architecture.md.
         filter_table_offset = len(edit)
         filter_table_addr   = sf2_data_base + filter_table_offset
-        filter_entries = laxity_tables.get('filter_table', []) or []
         filter_rows = 0
-        for entry in filter_entries:
-            row = bytes(entry) if isinstance(entry, (bytes, bytearray)) else bytes(entry[:3])
-            if len(row) < 3:
-                row = row + bytes(3 - len(row))
-            elif len(row) > 3:
-                row = row[:3]
-            edit.extend(row)
-            filter_rows += 1
+        used_stinsen_filter = False
+        try:
+            from sidm2.stinsen_filter_detector import detect_stinsen_filter_layout
+            sf = detect_stinsen_filter_layout(c64_data, sid_la)
+        except Exception:
+            sf = None
+        if sf is not None:
+            cmd_off = sf.cmd_addr - sid_la
+            val_off = sf.val_addr - sid_la
+            aux_off = sf.aux_addr - sid_la
+            for r in range(sf.n_steps):
+                if cmd_off + r >= len(c64_data) or val_off + r >= len(c64_data) or aux_off + r >= len(c64_data):
+                    break
+                edit.extend(bytes([c64_data[cmd_off + r],
+                                   c64_data[val_off + r],
+                                   c64_data[aux_off + r]]))
+                filter_rows += 1
+            used_stinsen_filter = filter_rows > 0
+        if not used_stinsen_filter:
+            # Fallback: existing extract-based 3-byte interpretation
+            filter_entries = laxity_tables.get('filter_table', []) or []
+            for entry in filter_entries:
+                row = bytes(entry) if isinstance(entry, (bytes, bytearray)) else bytes(entry[:3])
+                if len(row) < 3:
+                    row = row + bytes(3 - len(row))
+                elif len(row) > 3:
+                    row = row[:3]
+                edit.extend(row)
+                filter_rows += 1
         while filter_rows < 16:
             edit.extend(bytes([0x7F, 0x00, 0x00]))
             filter_rows += 1

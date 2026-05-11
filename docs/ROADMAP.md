@@ -65,15 +65,17 @@ Toolchain at `docs/stage8.5_debugging_toolkit.md`.
   zig64-verified 2026-05-11 (patching SF2 pulse row 0 col 0 → flips
   osc1/2/3_pw_lo writes). v3.5.7. See `memory/stinsen-pulse-architecture.md`.
   ❌ Beast/Angular — pulse scratch + source addresses not yet RE'd.
-- F5 (filter) ❌ second-layer RE 2026-05-11 (`bin/_probe_filter_source_writers.py`
-  + `_verify_filter_arrays.py`): filter byte streams at $1989, $19A3,
-  $19BD (20 entries each) feed the scratches at $1785-$178A. **But
-  direct-edit-patch shows these are a state-machine command sequence
-  (sweep-deltas / register-set commands), NOT parallel value arrays.**
-  Bulk-patching $1989 or $19A3 → ZERO D-register propagation; $19BD
-  bulk → +143 D417 + +5 D416 (split across registers, confirming
-  command-sequence encoding). Wire-up DEFERRED pending byte-stream
-  format RE (multi-day). See `memory/stinsen-filter-architecture.md`.
+- F5 (filter) ✅ Stinsen — edits propagate via `_emit_filter_split_copy_routine`
+  (31B 6502) wired by `sidm2/stinsen_filter_detector.py`. Filter command
+  handler at $15F6-$167F disassembled: byte streams at $1989 (cmd), $19A3
+  (val), $19BD (aux) form a state machine — cmd's bit 7 selects SET vs
+  SWEEP, aux feeds D417 directly OR step-duration. Wire-up copies raw
+  bytes back; player re-interprets state machine on next step. Multipat
+  translator overflow (99B vs 98B window) resolved via a 10B trampoline
+  that consolidates instr+pulse+filter JSRs. zig64-verified 2026-05-11
+  (patching SF2 filter aux col → +2 `filter_res_control` marker writes).
+  v3.5.8. See `memory/stinsen-filter-architecture.md`.
+  ❌ Beast/Angular — filter byte-stream addresses not yet probed.
 
 The historical roadmap below tracks the v2.x targets (most achieved, kept for context).
 
