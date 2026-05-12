@@ -25,6 +25,202 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.10] - 2026-05-12
+
+### Added — Stage 7 F4 (pulse) for Beast + Angular
+
+Disassembled both variants' pulse handlers (`$13C4-$13DA` Beast,
+`$1404-$1418` Angular) and discovered an unexpected encoding: 4-byte
+step records where byte 0 is **nibble-packed** — high nibble → PW lo
+scratch, low nibble → PW hi scratch.
+
+  $13CD STA $FB         ; save full cmd byte
+  $13CF AND #$F0; STA $1911,X    ; high nibble → PW lo
+  $13D4 LDA $FB
+  $13D6 AND #$0F; STA $1914,X    ; low nibble → PW hi
+
+This explains why v3.5.9 patches with arbitrary values (e.g., `$A5`)
+produced ZERO `pw_lo` writes matching the patched byte: the byte gets
+split as `$A0`/`$05` before reaching the SID registers. Patching to
+`$A0` (low nibble 0) yields a clean `$A0` in `pw_lo`.
+
+Step record layout (4 bytes/step, identical for Beast + Angular):
+  byte 0: cmd (`$FF`=skip, else nibble-packed PW lo|hi)
+  byte 1: PW lo sweep delta (ADC each tick)
+  byte 2: flags + duration (bit 7=direction, bits 0-6=duration)
+  byte 3: sweep param (PRESERVED — not copied)
+
+Wire-up: `sidm2/beast_pulse_detector.py` + `sidm2/angular_pulse_detector.py`
+(piggyback existing instr signatures); new `_emit_pulse_packed_copy_routine`
+(34B 6502, single-pass interleaved loop, stride-3 SF2 → stride-4 NP21,
+copies cols 0/1/2 per row, preserves byte 3); Stage 3 emit override
+populates SF2 from `c64_data[stream+r*4+0..2]` when variant detected.
+
+zig64-verified:
+- Beast row 0 col 0: `$00 → $A0` → +10 `pw_lo` writes of `$A0`,
+  30/30 sequence positions diverge from baseline.
+- Angular row 0 col 0: `$08 → $A0` → +10 `pw_lo` writes of `$A0`,
+  30/30 sequence positions diverge.
+
+**Stage 7 NOW COMPLETE for all 3 variants** (Stinsen + Beast + Angular)
+across F1/F2(AD+SR)/F3/F4/F5 edit propagation.
+
+### Tests
+923 tests pass (+8 new). Corpus regression byte-identical on
+Stinsen/Unboxed/Beast/Angular.
+
+### Commits
+- `2741a8a` — release: v3.5.10
+
+---
+
+## [3.5.9] - 2026-05-12
+
+### Added — Stage 7 F5 (filter) for Beast + Angular
+
+Beast and Angular share a Vibrants-class filter architecture:
+- cutoff_hi byte stream at `$1A7D` (Beast) / `$1A1F` (Angular),
+  16+ entries — direct-value array (verified via direct-edit-patch).
+- `res_routing` latched at fixed `$100A`, `mode_vol` at fixed `$1009`
+  (both shared between Beast and Angular).
+- cutoff_lo (D415) is unused in both songs.
+
+New `_emit_filter_cutoff_only_routine` (19B 6502) propagates SF2 col 0
+→ cutoff_hi byte stream. Cols 1 + 2 in the editor display the static
+`$100A`/`$1009` bytes but can't be array-indexed safely (writes to
+`$100A+r` for `r>0` would corrupt adjacent player code), so edits to
+those cols don't propagate.
+
+zig64-verified:
+- Beast row 0 col 0: `$05 → $C7` → cutoff_hi at frame 1 flips
+  `$05 → $C7` directly (no state-machine transformation).
+- Angular row 0 col 0: `$03 → $C7` → 24/30 sequence positions diverge
+  from baseline.
+
+### Tests
+915 tests pass (+9 new). Corpus regression byte-identical.
+
+### Commits
+- `049a2e8` — release: v3.5.9
+
+---
+
+## [3.5.8] - 2026-05-11
+
+### Added — Stage 7 F5 (filter) for Stinsen
+
+Full RE of the filter command handler at `$15F6-$167F` confirmed the
+byte streams at `$1989` (cmd), `$19A3` (val), `$19BD` (aux) form a
+state machine: bit 7 of cmd selects SET command (initialize
+accumulator) vs SWEEP command (delta accumulate); aux byte feeds
+resonance/routing (D417) directly OR step-duration depending on
+command type.
+
+`_emit_filter_split_copy_routine` (31B 6502) copies SF2 3-byte rows
+back to the three parallel arrays. Player re-interprets state machine
+on next step.
+
+### Fixed — Multipat translator overflow
+
+Adding the 4th JSR (filter_copy) would push the translator to 99B,
+overflowing the `$0F9E..$0FFA` = 98B window. Consolidated tail
+(instr + pulse + filter) into a 10B trampoline at the end of
+`sf2_edit_data` — translator does ONE JSR to the trampoline instead
+of 3 inline JSRs, saving 6B.
+
+### Tests
+906 tests pass (+9 new).
+
+### Commits
+- `328aac3` — release: v3.5.8
+
+---
+
+## [3.5.7] - 2026-05-11
+
+### Added — Stage 7 F4 (pulse) for Stinsen
+
+NP21 pulse architecture (RE'd via py65 trace + direct-edit-patch):
+Stinsen stores PW lo at `$1957` and PW hi at `$193E` as parallel byte
+streams, walked independently by each voice. Each pulse-program-step
+transition loads the current step's lo + hi into the voice's PW
+scratch (`$17E6-$17EB`).
+
+New `sidm2/stinsen_pulse_detector.py` + `_emit_pulse_split_copy_routine`
+(25B 6502, single-pass interleaved walk over 16×3-byte pulse table,
+writes col 0 → `$1957+r`, col 1 → `$193E+r`, col 2 ignored). Stage 3
+emit override populates cols 0/1 from the binary's PW lo/hi bytes.
+
+zig64-verified: patching SF2 pulse row 0 col 0 → +5 new `osc*_pw_lo`
+register writes flipped to the patched value across all three voices.
+
+### Tests
+897 tests pass (+11 new). Corpus regression byte-identical.
+
+### Commits
+- `decc9b5` — release: v3.5.7
+
+---
+
+## [3.5.6] - 2026-05-10
+
+### Fixed — Short-body per-voice score neutralized in ch_seq_ptr autodetect
+
+v3.5.5 used `_score_sequence` with `len(body) < 8 → -1000` (hard
+reject) which poisoned the per-table sum in `_scan_table_at` — files
+with one silent voice (e.g., Intro_2.sid voice 1 = 2-byte body before
+terminator) got the entire table rejected even though voices 0+2
+carried legitimate NP21 streams.
+
+Fix: short bodies (1-7 bytes) now return 0 (neutral) instead of -1000.
+Empty body still hard-rejects.
+
+**Editor-view yield: 76% → 78%** (216 → 224 files; C_unchanged
+collapsed 10 → 2). All-notes Vibrants-variant files (no duration/instr
+bytes) stay correctly rejected.
+
+### Tests
+886 tests pass (+1 new).
+
+### Commits
+- `05a7368` — release: v3.5.6
+
+---
+
+## [3.5.5] - 2026-05-10
+
+### Fixed — play_reads hard filter relaxed to score bonus
+
+The ch_seq_ptr autodetect's `play_reads`-coverage check was rejecting
+candidates if any of the 6 table bytes wasn't in the PLAY-time read
+set within 3 ticks. Too strict for ~129 Laxity files whose players
+touch one voice per PLAY tick (IRQ-dispatched / counter-rotated
+handling).
+
+Fix: change `continue` on play_reads miss to `score += sum(in_set)`
+(max +6 bonus). Preserves Stinsen/Unboxed selectivity (base scores
+50-100+ dwarf the bonus).
+
+**Editor-view yield: 30% → 76%** on 286-file Laxity corpus (+129 files
+lifted).
+
+### Negative finding documented
+
+A ZP-indirect-Y detector was originally scoped (per
+`memory/zp-indirect-y-negative.md`) but `bin/_classify_c_class.py`
+showed 0/54 of remaining Class-C files actually lack a static-disasm
+indexed-load pair. The real gap was play_reads strictness; PTRS_OOR
+cases (20 of 54 sampled) are unrelated player variants out of NP21
+scope.
+
+### Tests
+885 tests pass (+3 new).
+
+### Commits
+- `1a0bfda` — release: v3.5.5
+
+---
+
 ## [3.5.4] - 2026-05-10
 
 ### Fixed — Wave-copy non-idempotency (v3.5.3 documented bug)
