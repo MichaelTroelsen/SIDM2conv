@@ -37,12 +37,14 @@ V20_COPYRIGHT_HINTS = (
     '2000 A.D.',
     'Zetrex',
     'Flexible Arts',
+    'Laxity',   # 1990 Laxity (Fast_Stuff_1) — late Vibrants-era output
 )
 
 
 # Below this binary size, NP21 is implausible (NP21 driver code +
-# data is typically 8 KB+). V20 binaries are 1.5–3.5 KB.
-V20_MAX_SIZE = 0x1000
+# data is typically 8 KB+ / $2000+). V20 binaries range from 1.5 KB
+# up to ~5 KB (Fast_Stuff_1 at $1300 is the largest observed).
+V20_MAX_SIZE = 0x1800
 
 
 # Signature bytes for the 1988 2000 A.D. player (Galax_it_y + Echo_Beat).
@@ -152,6 +154,67 @@ def _is_wizax_b_cluster(c64_data: bytes) -> bool:
     return _WIZAX_B_SIG_BYTES in c64_data[:128]
 
 
+# Wizax-B / Yield-Point-alt cluster (Cool_as_Wize_Title + Magic_Sound).
+# These share the SAME player as Wizax-B but at different load addresses
+# ($C000 vs $F000), so the operand bytes differ in the `9D XX YY` voice
+# clears. The distinctive 5-byte sequence `30 2A 50 40 AE` (BMI +42;
+# BVC +64; LDX abs) is identical because the branch offsets are
+# load-independent. Searching for this in the first 300 bytes catches
+# both files but excludes Wizax-A (which uses `30 1E 50 31`).
+_WIZAX_B_YP_ALT_SIG = bytes([0x30, 0x2A, 0x50, 0x40, 0xAE])
+
+
+def _is_wizax_b_yp_alt_cluster(c64_data: bytes) -> bool:
+    """Detects Cool_as_Wize_Title (1987 Wizax) + Magic_Sound (1987
+    Yield Point). Both use the same player at different load addresses
+    ($C000 / $F000); the 5-byte BMI/BVC/LDX-abs prelude is fixed."""
+    return _WIZAX_B_YP_ALT_SIG in c64_data[:300]
+
+
+# Flexible Arts cluster (Atom_Rock, 1989 Flexible Arts).
+# 5-iteration STA abs,X voice-clear loop with unique BMI/BVS prelude.
+# Sequence `30 2E 70 21 A9 00 A2 02 9D` (BMI +46; BVS +33; LDA #0;
+# LDX #2; STA abs,X) appears once near the start.
+_FLEXIBLE_ARTS_SIG = bytes([0x30, 0x2E, 0x70, 0x21, 0xA9, 0x00, 0xA2, 0x02, 0x9D])
+
+
+def _is_flexible_arts_cluster(c64_data: bytes) -> bool:
+    """Detects Atom_Rock (1989 Flexible Arts). Singleton cluster."""
+    return _FLEXIBLE_ARTS_SIG in c64_data[:300]
+
+
+# Laxity-1990 cluster (Fast_Stuff_1).
+# 6-iteration STA abs,X with LDA#1 setup. Sequence
+# `30 34 70 31 A2 02 A9 01 9D` is distinctive.
+_LAXITY_1990_SIG = bytes([0x30, 0x34, 0x70, 0x31, 0xA2, 0x02, 0xA9, 0x01, 0x9D])
+
+
+def _is_laxity_1990_cluster(c64_data: bytes) -> bool:
+    """Detects Fast_Stuff_1 (1990 Laxity). Singleton cluster — note
+    that "1990 Laxity" copyright is ambiguous (Laxity also authored
+    NP21 SF2-exports), so the cluster signature is the discriminator."""
+    return _LAXITY_1990_SIG in c64_data[:600]
+
+
+# James_Bond_Theme_Remix cluster (1988 2000 A.D. but DIFFERENT player
+# from the Galax_it_y + Echo_Beat cluster — same copyright label,
+# different code).
+# Distinctive INIT routine pattern: `A2 00 8A A9 00 9D` (LDX #0; TXA;
+# LDA #0; STA abs,X) is the start of a 3-iteration voice-init loop
+# unique to this player. Found within first 300 bytes after the JMP
+# table.
+_JAMES_BOND_SIG = bytes([0xA2, 0x00, 0x8A, 0xA9, 0x00, 0x9D])
+
+
+def _is_james_bond_cluster(c64_data: bytes) -> bool:
+    """Detects James_Bond_Theme_Remix (singleton cluster within the
+    1988 2000 A.D. copyright label — has a different player than
+    Galax_it_y / Echo_Beat)."""
+    # Search a wider window because the JMP target ($107A in Galax)
+    # places the player code later than the start of c64_data.
+    return _JAMES_BOND_SIG in c64_data[:400]
+
+
 def detect_vibrants_v20(c64_data: bytes, load_addr: int,
                          copyright_str: str = '') -> Optional[str]:
     """Return a short variant label (e.g., "1988 2000 A.D.") if the
@@ -193,14 +256,26 @@ def detect_vibrants_v20(c64_data: bytes, load_addr: int,
     # Waste + Racer share this binary at load $E000).
     if _is_zetrex_yp_cluster(c64_data):
         return f"{base} — 1988 Zetrex / 1987 Yield Point cluster (player signature matched; 3 files share this binary at load $E000)"
-    # 1987 Wizax 2004 main variant (Wizax-A): 2000_A_D, Fight_TST_II,
-    # Hall_of_Fame share a player with `LDA #0; STA $D404; STA $D40B;
-    # STA $D412` voice-control-clear sequence.
+    # 1987 Wizax 2004 main variant (Wizax-A): now 4 files including
+    # Min_Axel_F (Yield Point copyright but same player). Player has
+    # `LDA #0; STA $D404; STA $D40B; STA $D412` voice-control-clear.
     if _is_wizax_a_cluster(c64_data):
-        return f"{base} — 1987 Wizax 2004 cluster (Wizax-A variant; 3 files share this player: 2000_A_D, Fight_TST_II, Hall_of_Fame)"
-    # 1987 Wizax 2004 alt variant (Wizax-B): Cool_as_Wize_Title uses a
-    # different player with STA abs,Y/abs,X voice writes.
-    if _is_wizax_b_cluster(c64_data):
-        return f"{base} — 1987 Wizax 2004 cluster (Wizax-B variant; Cool_as_Wize_Title)"
+        return f"{base} — Wizax-A variant cluster (4 files: 2000_A_D, Fight_TST_II, Hall_of_Fame, Min_Axel_F)"
+    # Wizax-B / Yield-Point-alt: 2 files (Cool_as_Wize_Title +
+    # Magic_Sound) share the same player at $C000 / $F000 loads. The
+    # 5-byte BMI/BVC/LDX-abs prelude `30 2A 50 40 AE` is load-independent
+    # and matches both. Catches the original Wizax-B file too.
+    if _is_wizax_b_yp_alt_cluster(c64_data):
+        return f"{base} — Wizax-B variant cluster (2 files: Cool_as_Wize_Title, Magic_Sound — different load addrs)"
+    # Flexible Arts (1989) — Atom_Rock singleton.
+    if _is_flexible_arts_cluster(c64_data):
+        return f"{base} — 1989 Flexible Arts cluster (Atom_Rock singleton; 5-iteration STA abs,X voice-clear)"
+    # Laxity-1990 (Fast_Stuff_1 singleton).
+    if _is_laxity_1990_cluster(c64_data):
+        return f"{base} — 1990 Laxity cluster (Fast_Stuff_1 singleton; 6-iteration STA abs,X voice-clear)"
+    # 1988 2000 A.D. James_Bond variant — same copyright as Galax/Echo_Beat
+    # but DIFFERENT player code (3-iteration voice-init with TXA; LDA #0).
+    if _is_james_bond_cluster(c64_data):
+        return f"{base} — James_Bond variant within 1988 2000 A.D. label (different player from Galax/Echo_Beat cluster)"
 
     return base

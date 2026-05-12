@@ -163,6 +163,81 @@ class TestWizaxClusters:
         assert 'Wizax-A variant' not in result
 
 
+class TestSingletonClusters:
+    """The 4 remaining V20 files are each their own cluster
+    (3 singletons + 1 file that joined Wizax-A by signature)."""
+
+    def test_min_axel_f_joins_wizax_a(self):
+        """Min_Axel_F has 1987 Yield Point copyright but matches the
+        Wizax-A player signature (same player, different release label)."""
+        c64, load, cprt = _load_c64('Min_Axel_F.sid')
+        result = detect_vibrants_v20(c64, load, cprt)
+        assert result is not None
+        assert 'Wizax-A variant' in result
+
+    def test_magic_sound_joins_wizax_b(self):
+        """Magic_Sound (1987 Yield Point, load $F000) shares its player
+        with Cool_as_Wize_Title (1987 Wizax, load $C000). The cluster
+        signature matches both at variable operand bytes."""
+        c64, load, cprt = _load_c64('Magic_Sound.sid')
+        result = detect_vibrants_v20(c64, load, cprt)
+        assert result is not None
+        assert 'Wizax-B variant' in result
+
+    def test_james_bond_own_cluster(self):
+        """James_Bond_Theme_Remix shares the 1988 2000 A.D. copyright
+        with Galax_it_y + Echo_Beat but uses a different player code."""
+        c64, load, cprt = _load_c64('James_Bond_Theme_Remix.sid')
+        result = detect_vibrants_v20(c64, load, cprt)
+        assert result is not None
+        assert 'James_Bond variant' in result
+
+    def test_atom_rock_flexible_arts(self):
+        """Atom_Rock (1989 Flexible Arts) singleton — 5-iteration
+        STA abs,X voice-clear pattern."""
+        c64, load, cprt = _load_c64('Atom_Rock.sid')
+        result = detect_vibrants_v20(c64, load, cprt)
+        assert result is not None
+        assert 'Flexible Arts cluster' in result
+
+    def test_fast_stuff_1_laxity_1990(self):
+        """Fast_Stuff_1 (1990 Laxity) singleton. Note: required adding
+        'Laxity' to V20_COPYRIGHT_HINTS and bumping V20_MAX_SIZE since
+        Fast_Stuff_1 is $1300 bytes."""
+        c64, load, cprt = _load_c64('Fast_Stuff_1.sid')
+        result = detect_vibrants_v20(c64, load, cprt)
+        assert result is not None
+        assert '1990 Laxity cluster' in result
+
+
+class TestAllV20FilesIdentified:
+    """Every file in the 14-file V20 inventory must hit a specific
+    cluster label (not just the base V20 detection)."""
+
+    @pytest.mark.parametrize("name,expected_cluster", [
+        ('2000_A_D.sid',                'Wizax-A variant'),
+        ('Cool_as_Wize_Title.sid',      'Wizax-B variant'),
+        ('Fight_TST_II.sid',            'Wizax-A variant'),
+        ('Hall_of_Fame.sid',            'Wizax-A variant'),
+        ('Magic_Sound.sid',             'Wizax-B variant'),
+        ('Min_Axel_F.sid',              'Wizax-A variant'),
+        ('Galax_it_y.sid',              '1988 2000 A.D. cluster'),
+        ('Echo_Beat.sid',               '1988 2000 A.D. cluster'),
+        ('James_Bond_Theme_Remix.sid',  'James_Bond variant'),
+        ('Jewels.sid',                  'Zetrex / 1987 Yield Point cluster'),
+        ('Waste.sid',                   'Zetrex / 1987 Yield Point cluster'),
+        ('Racer.sid',                   'Zetrex / 1987 Yield Point cluster'),
+        ('Atom_Rock.sid',               '1989 Flexible Arts cluster'),
+        ('Fast_Stuff_1.sid',            '1990 Laxity cluster'),
+    ])
+    def test_all_v20_files_have_cluster(self, name, expected_cluster):
+        c64, load, cprt = _load_c64(name)
+        result = detect_vibrants_v20(c64, load, cprt)
+        assert result is not None, f"{name} should match V20"
+        assert expected_cluster in result, \
+            f"{name} expected cluster '{expected_cluster}', got: {result}"
+
+
 class TestCanonicalFilesDoNotMatch:
     """Stinsen + Unboxed + Beast + Angular must NOT be flagged as V20
     (their copyright strings don't contain V20 labels and they're

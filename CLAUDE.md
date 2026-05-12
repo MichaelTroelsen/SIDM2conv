@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.5.13** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-12
+**SIDM2 v3.5.14** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-12
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -170,6 +170,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.5.14** (2026-05-12): **All 14 Vibrants V20 files now have specific cluster identification.** Final 4 clusters added: (1) Wizax-B widened to also catch Magic_Sound (1987 Yield Point Music, load $F000) via 5-byte `30 2A 50 40 AE` BMI/BVC/LDX-abs prelude that matches both Cool_as_Wize_Title ($C000) and Magic_Sound ($F000) — same player, different loads. (2) James_Bond_Theme_Remix singleton — distinctive `A2 00 8A A9 00 9D` init-loop within the 1988 2000 A.D. copyright label (different player from Galax/Echo_Beat cluster). (3) Atom_Rock singleton — 1989 Flexible Arts, 5-iteration STA abs,X voice-clear with `30 2E 70 21 A9 00 A2 02 9D` prelude. (4) Fast_Stuff_1 singleton — 1990 Laxity, 6-iteration STA abs,X with `30 34 70 31 A2 02 A9 01 9D` prelude. Also: bumped `V20_MAX_SIZE` from $1000 to $1800 (Fast_Stuff_1 is $1300), added "Laxity" to `V20_COPYRIGHT_HINTS`, recognized Min_Axel_F (1987 Yield Point copyright) as a 4th Wizax-A file (player signature matches despite copyright label). 19 new tests including a parametrized `TestAllV20FilesIdentified` that asserts every V20 file matches a specific cluster. **974 tests pass**. Corpus regression byte-identical. **V20 cluster coverage now 14 of 14 files (100%).**
 
 **v3.5.13** (2026-05-12): Vibrants V20 — third + fourth cluster signatures (Wizax-A + Wizax-B). The "1987 Wizax 2004" copyright label covers 4 files split across 2 sub-clusters by player code. Wizax-A (`2000_A_D` + `Fight_TST_II` + `Hall_of_Fame`) shares a player with `A9 00 8D 04 D4 8D 0B D4 8D 12 D4` (LDA #0; STA $D404; STA $D40B; STA $D412 — clear voice control registers) found via byte-pattern search within first 128 bytes (JMP-table prefix length varies per file). Wizax-B (`Cool_as_Wize_Title`) uses a DIFFERENT player with `99 04 D4 9D C8 C4 9D CB C4 9D CE C4 9D D4 C4 99 06 D4` (STA abs,Y/X indexed writes — Yield-Point-style architecture). 5 new tests + mutual-exclusivity check. **955 tests pass**. Corpus regression byte-identical. **Vibrants V20 cluster coverage now 9 of 14 files** (1988 2000 A.D.: 2, Zetrex/YP: 3, Wizax-A: 3, Wizax-B: 1; remaining 5 = Magic_Sound + Min_Axel_F + James_Bond_Theme_Remix + Atom_Rock + Fast_Stuff_1, each a singleton or different player).
 
