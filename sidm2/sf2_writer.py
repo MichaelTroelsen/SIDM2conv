@@ -2301,6 +2301,25 @@ class SF2Writer:
             return
 
         sid_la    = getattr(self.data, 'load_address', 0x1000)
+
+        # Vibrants V20 cluster advisory: even files routed through the
+        # driver11 minimal-embed path (player-id="Rob_Hubbard" or similar)
+        # may belong to our V20 inventory clusters (Jewels/Waste/Racer
+        # use the Zetrex/YP player at load $E000). Log the cluster label
+        # so users know which RE notes apply.
+        v20_copyright = (getattr(self.data.header, 'copyright', '')
+                         if getattr(self, 'data', None) and getattr(self.data, 'header', None)
+                         else '')
+        if v20_copyright:
+            from sidm2.vibrants_v20_detector import detect_vibrants_v20
+            v20_label = detect_vibrants_v20(c64_data, sid_la, v20_copyright)
+            if v20_label:
+                logger.info(
+                    f"  Vibrants V20 (pre-NP21) detected: {v20_label}. "
+                    f"Audio plays via embedded-binary path; editor view "
+                    f"stays empty by design "
+                    f"(see docs/ROADMAP.md → Vibrants V20 section)."
+                )
         header    = getattr(self.data, 'header', None)
         init_addr = getattr(header, 'init_address', sid_la)     if header else sid_la
         play_addr = getattr(header, 'play_address', sid_la + 3) if header else sid_la + 3

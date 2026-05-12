@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.5.11** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-12
+**SIDM2 v3.5.12** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-12
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -170,6 +170,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.5.12** (2026-05-12): Vibrants V20 — second cluster (Zetrex / Yield Point) signature-identified. Discovered Jewels.sid + Waste.sid (1988 Zetrex) + Racer.sid (1987 Yield Point Music) share the same player binary at load $E000 — same code matches across 3 files; song-specific data tables diverge after the first 35 bytes of player code. New `_is_zetrex_yp_cluster` check in `sidm2/vibrants_v20_detector.py` matches `2C 4A E5 30 29 50 3E A2 02 A9 00 BC 09 E5 99 04 D4 9D 0D E5 9D 10 E5 9D 13 E5 9D 19 E5 99 06 D4 A9 11 9D` at c64_data offset 9. These files get player-id="Rob_Hubbard" and route through driver11 (not laxity), so the V20 detector call was ALSO added to `_inject_player_raw_minimal` so the cluster advisory log appears. Cluster suffix: "1988 Zetrex / 1987 Yield Point cluster (player signature matched; 3 files share this binary at load $E000)". No edit propagation — same multi-week-per-variant RE blocker as the 1988 2000 A.D. cluster. **950 tests pass** (+4 new: 3 parametrized cluster matches + 1 mutual-exclusivity check). Corpus regression byte-identical.
 
 **v3.5.11** (2026-05-12): Vibrants V20 (pre-NP21) advisory + autodetect short-circuit. The 14 Class-C all-notes Laxity-corpus files use pre-NP21 player variants from 1987-1990 (Wizax / Yield Point / 2000 A.D. / Zetrex / Flexible Arts / Laxity-1990) with per-voice freq LUTs at variant-dependent addresses (Galax_it_y: $14C5/$14C8 V0 freq scratches fed via `LDA $150F,Y` LUT lookup at PC $1236, with note source byte stream at `$1794+` per-voice). The relaxed v3.5.5/v3.5.6 NP21 autodetect was lifting 2-14 byte "patterns" from these files' freq LUTs and other regions — garbage from the SF2 editor's perspective. New `sidm2/vibrants_v20_detector.py` uses copyright-string + file-size heuristics ("Wizax", "Yield Point", "2000 A.D.", "Zetrex", "Flexible Arts" + size < $1000) to flag these files BEFORE the autodetect runs; flagged files skip the autodetect and emit `track_count=0` (honest empty editor view). Audio path unchanged — playback goes through the embedded-binary path via SF2II's PLAY handler. Plus an info-level log line: `Vibrants V20 (pre-NP21) detected: <copyright>. Audio plays via embedded-binary path; editor view stays empty by design`. **943 tests pass** (+20 new: parametrized `TestKnownV20Files` × 13 + `TestCanonicalFilesDoNotMatch` × 4 + base detector cases × 3). Corpus regression byte-identical. Full V20 byte-stream RE remains multi-week per variant (each cluster has its own scratch layout + LUT shape); see `memory/vibrants-v20-findings.md`.
 

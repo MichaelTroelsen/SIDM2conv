@@ -100,6 +100,34 @@ class Test2000ADClusterSignature:
         assert '2000 A.D. cluster' not in result, f"James_Bond should NOT hit cluster suffix, got: {result}"
 
 
+class TestZetrexYPClusterSignature:
+    """1988 Zetrex (Jewels + Waste) and 1987 Yield Point (Racer) share
+    the same player binary at load $E000. The cluster signature should
+    match all three."""
+
+    @pytest.mark.parametrize("name", [
+        'Jewels.sid',
+        'Waste.sid',
+        'Racer.sid',
+    ])
+    def test_matches_cluster(self, name):
+        c64, load, cprt = _load_c64(name)
+        result = detect_vibrants_v20(c64, load, cprt)
+        assert result is not None
+        assert 'Zetrex / 1987 Yield Point cluster' in result, \
+            f"{name} should hit Zetrex/YP cluster suffix, got: {result}"
+
+    def test_2000_ad_files_not_in_zetrex_cluster(self):
+        """Cluster suffixes must be mutually exclusive — Galax/Echo_Beat
+        match 2000 A.D., not Zetrex/YP."""
+        for name in ('Galax_it_y.sid', 'Echo_Beat.sid'):
+            c64, load, cprt = _load_c64(name)
+            result = detect_vibrants_v20(c64, load, cprt)
+            assert result is not None
+            assert 'Zetrex / 1987 Yield Point cluster' not in result, \
+                f"{name} should NOT hit Zetrex cluster, got: {result}"
+
+
 class TestCanonicalFilesDoNotMatch:
     """Stinsen + Unboxed + Beast + Angular must NOT be flagged as V20
     (their copyright strings don't contain V20 labels and they're

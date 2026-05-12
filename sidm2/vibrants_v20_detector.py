@@ -73,6 +73,42 @@ def _is_2000_ad_cluster(c64_data: bytes) -> bool:
     return True
 
 
+# Zetrex / Yield Point cluster signature.
+# Jewels + Waste (1988 Zetrex) + Racer (1987 Yield Point Music) all
+# share the same player binary at load $E000. After 7 bytes of header
+# (load address + small init flag area), the player code starts with
+# `BIT $E54A; BMI ...; BVC ...; LDX #2; LDA #0; LDY $E509,X; STA $D404;
+# STA $E50D,X; STA $E510,X; STA $E513,X; STA $E519,X; STA $D406; LDA #$11`
+# — 38 bytes that match exactly across all three files.
+#
+# Different from 2000 A.D.: Zetrex/YP starts with `2C 4A E5` (BIT abs)
+# whereas 2000 A.D. starts with `2C A3 XX` (BIT abs where XX = load_hi).
+# So the BIT-target-low-byte distinguishes the clusters.
+#
+# Partial RE notes: TBD (Jewels/Waste/Racer not yet traced via py65;
+# the cluster is identified by signature only).
+_ZETREX_YP_SIG_OFFSET = 9
+_ZETREX_YP_SIG_BYTES = bytes([
+    0x2C, 0x4A, 0xE5, 0x30, 0x29, 0x50, 0x3E,
+    0xA2, 0x02, 0xA9, 0x00, 0xBC, 0x09, 0xE5,
+    0x99, 0x04, 0xD4, 0x9D, 0x0D, 0xE5, 0x9D,
+    0x10, 0xE5, 0x9D, 0x13, 0xE5, 0x9D, 0x19,
+    0xE5, 0x99, 0x06, 0xD4, 0xA9, 0x11, 0x9D,
+])
+
+
+def _is_zetrex_yp_cluster(c64_data: bytes) -> bool:
+    """Player signature match for 1988 Zetrex / 1987 Yield Point
+    cluster (Jewels + Waste + Racer share the same player at load $E000).
+    Hardcoded for $E000 load — other loads not observed in the corpus.
+    """
+    if len(c64_data) < _ZETREX_YP_SIG_OFFSET + len(_ZETREX_YP_SIG_BYTES):
+        return False
+    return (c64_data[_ZETREX_YP_SIG_OFFSET :
+                     _ZETREX_YP_SIG_OFFSET + len(_ZETREX_YP_SIG_BYTES)]
+            == _ZETREX_YP_SIG_BYTES)
+
+
 def detect_vibrants_v20(c64_data: bytes, load_addr: int,
                          copyright_str: str = '') -> Optional[str]:
     """Return a short variant label (e.g., "1988 2000 A.D.") if the
@@ -108,9 +144,11 @@ def detect_vibrants_v20(c64_data: bytes, load_addr: int,
     base = f"{copyright_str.strip()} (label: {matched_label})"
 
     # Cluster signature: 1988 2000 A.D. player (Galax + Echo_Beat).
-    # When matched, append a hint so the conversion log mentions partial
-    # RE is available for this specific player.
     if _is_2000_ad_cluster(c64_data):
         return f"{base} — 1988 2000 A.D. cluster (player signature matched; partial RE in memory/vibrants-v20-findings.md)"
+    # Cluster signature: 1988 Zetrex / 1987 Yield Point player (Jewels +
+    # Waste + Racer share this binary at load $E000).
+    if _is_zetrex_yp_cluster(c64_data):
+        return f"{base} — 1988 Zetrex / 1987 Yield Point cluster (player signature matched; 3 files share this binary at load $E000)"
 
     return base
