@@ -57,36 +57,31 @@ Toolchain at `docs/stage8.5_debugging_toolkit.md`.
   to find table addresses per file (3 simpler approaches tried + failed,
   documented in `memory/dynamic-instr-detector-attempt.md`).
 - F3 (wave) ✅ propagates with byte-perfect round-trip (v3.5.4)
-- F4 (pulse) ✅ Stinsen — edits propagate via `_emit_pulse_split_copy_routine` (25B 6502)
-  wired by `sidm2/stinsen_pulse_detector.py`. Scratch at $17E6-$17EB, source
-  byte streams at $1957 (PW lo) and $193E (PW hi) — shared across all 3
-  voices; per-voice walk positions advance through the same stream. Stage 3
-  emit overridden to populate SF2 cols 0/1 from those byte streams.
-  zig64-verified 2026-05-11 (patching SF2 pulse row 0 col 0 → flips
-  osc1/2/3_pw_lo writes). v3.5.7. See `memory/stinsen-pulse-architecture.md`.
-  ❌ Beast/Angular — pulse scratch + source addresses not yet RE'd.
-- F5 (filter) ✅ Stinsen — edits propagate via `_emit_filter_split_copy_routine`
-  (31B 6502, 3-array state-machine). Filter handler at $15F6-$167F
-  disassembled. v3.5.8.
-  ✅ Beast — cutoff_hi byte stream at `$1A7D` (Beast)
-  via `_emit_filter_cutoff_only_routine` (19B 6502, single-column).
-  zig64-verified 2026-05-12 (patching row 0 col 0 → cutoff_hi at frame 1
-  flips $05→$C7 directly; no state-machine transformation). v3.5.9.
-  ✅ Angular — cutoff_hi byte stream at `$1A1F`. Same routine.
-  zig64-verified 2026-05-12 (24/30 sequence positions changed). v3.5.9.
-  ⚠️ Beast/Angular res_routing ($100A) and mode_vol ($1009) are at
-  fixed low addresses and CAN'T be array-indexed safely — those cols
-  in the editor view stay static; edits to cols 1+2 don't propagate.
-  See `memory/stinsen-filter-architecture.md` + similar for variants.
-- F4 (pulse) ✅ Stinsen (v3.5.7), ✅ Beast (v3.5.10),
-  ✅ Angular (v3.5.10). Beast/Angular pulse stream is 4-byte step
-  records starting at `$1AC5` (Beast) / `$1A3B` (Angular). Byte 0 is
-  nibble-packed: high nibble → PW lo scratch, low nibble → PW hi
-  scratch. New `_emit_pulse_packed_copy_routine` (34B 6502) copies SF2
-  3-col rows into NP21 stride-4 records (bytes 0/1/2 written, byte 3
-  preserved). zig64-verified 2026-05-12 (Beast + Angular row 0 col 0
-  patch $00 / $08 → $A0 → +10 pw_lo writes of $A0, 30/30 sequence
-  positions diverge from baseline). See `memory/beast-angular-pulse-architecture.md`.
+- F4 (pulse) ✅ Stinsen (v3.5.7), ✅ Beast (v3.5.10), ✅ Angular (v3.5.10).
+  Stinsen: 2 parallel byte streams at $1957 (PW lo) / $193E (PW hi), shared
+  across voices; copy routine `_emit_pulse_split_copy_routine` (25B 6502).
+  Beast/Angular: 4-byte step records at `$1AC5` (Beast) / `$1A3B` (Angular),
+  byte 0 nibble-packed (high → PW lo, low → PW hi); copy routine
+  `_emit_pulse_packed_copy_routine` (34B 6502). All zig64-verified. See
+  `memory/stinsen-pulse-architecture.md` + `memory/beast-angular-pulse-architecture.md`.
+- F5 (filter) ✅ Stinsen (v3.5.8), ✅ Beast (v3.5.9), ✅ Angular (v3.5.9).
+  Stinsen: 3-array state-machine at $1989/$19A3/$19BD; cmd byte's bit 7
+  selects SET vs SWEEP. Beast/Angular: cutoff_hi byte stream at $1A7D /
+  $1A1F (direct values); res_routing + mode_vol at fixed $100A/$1009
+  (cols 1+2 stay static — can't be array-indexed safely). All
+  zig64-verified. See `memory/stinsen-filter-architecture.md` +
+  `memory/beast-angular-filter-architecture.md`.
+
+**Vibrants V20 (14 Class-C files, pre-NP21)** — ❌ DEFERRED (multi-week).
+The remaining 14 files in the Laxity corpus that don't lift via NP21
+autodetect use 5+ distinct pre-NP21 player variants from 1987-1990
+(Wizax / Yield Point / 2000 A.D. / Zetrex / Flexible Arts / Laxity-1990).
+No shared byte-stream encoding across variants; each needs its own
+detector + decoder. Audio already plays correctly via embedded-binary
+path; only the editor view is empty. Inventory + traces in
+`memory/vibrants-v20-findings.md`. Full support estimated at 2-3 days
+per variant × 5 variants = 10-15 days. Investigation tooling staged
+in `bin/_inventory_vibrants.py` + `bin/_trace_vibrants_v20.py`.
 
 The historical roadmap below tracks the v2.x targets (most achieved, kept for context).
 
