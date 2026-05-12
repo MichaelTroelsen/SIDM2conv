@@ -50,12 +50,20 @@ Toolchain at `docs/stage8.5_debugging_toolkit.md`.
 
 **Stage 7 status (post v3.5.4)**:
 - F1 (sequences) ✅ propagates (v3.3.0)
-- F2 (instruments AD+SR) ✅ propagates for Stinsen / Beast / Angular,
-  all 3 zig64-verified (v3.5.4). The 129 other Vibrants/Laxity files
+- F2 (instruments) ✅ AD+SR propagates for Stinsen / Beast / Angular,
+  all 3 zig64-verified (v3.5.4). **HR / Pulse_ptr / Wave_ptr columns
+  are intentionally NOT propagated through the F2 per-instrument
+  table** — RE confirmed they're not stored per-instrument in
+  Stinsen-class binaries (see `memory/stinsen-instr-layout.md`).
+  Wave and pulse program data IS edit-propagatable via F3 and F4
+  byte streams (shipped v3.5.0–v3.5.10); HR is global/song-wide, not
+  per-instrument. So all *playback-affecting* table fields are
+  covered, just via different SF2 editor columns than F2's
+  per-instrument view suggests. The 129 other Vibrants/Laxity files
   in the corpus get pattern extraction (v3.5.3 corpus lift) but NOT
-  F2 instrument propagation — would need control-flow-aware disasm
-  to find table addresses per file (3 simpler approaches tried + failed,
-  documented in `memory/dynamic-instr-detector-attempt.md`).
+  F2 AD+SR instrument propagation — would need control-flow-aware
+  disasm to find table addresses per file (3 simpler approaches
+  tried + failed, see `memory/dynamic-instr-detector-attempt.md`).
 - F3 (wave) ✅ propagates with byte-perfect round-trip (v3.5.4)
 - F4 (pulse) ✅ Stinsen (v3.5.7), ✅ Beast (v3.5.10), ✅ Angular (v3.5.10).
   Stinsen: 2 parallel byte streams at $1957 (PW lo) / $193E (PW hi), shared

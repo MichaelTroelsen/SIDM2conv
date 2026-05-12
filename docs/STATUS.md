@@ -1,6 +1,6 @@
 # Project Status Overview
 
-**Last Updated**: 2026-05-10
+**Last Updated**: 2026-05-12
 **Current Version**: v3.5.10 (Stage 7 F4 pulse — extended to Beast + Angular; zig64-verified)
 **Status**: Production — all 4 success criteria closed; **Stage 7 F1-F5 closed for Stinsen + Beast + Angular**; Laxity corpus editor-view yield 78%
 
@@ -8,15 +8,17 @@
 
 ## Quick Summary
 
-The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2) format for editing and remixing. v3.5.x extends criterion 3 ("edits affect playback") from sequences (v3.3.0) to wave (v3.5.0) and instrument tables (v3.5.2/v3.5.3), with all three known instrument-table variants (Stinsen, Beast, Angular) zig64-verifiable end-to-end as of v3.5.4. v3.5.5 + v3.5.6 lifted the Laxity corpus editor-view yield from 30% to 78%: relaxing `play_reads` from hard reject to soft bonus (v3.5.5, +129 files) and neutralizing short-body hard-rejects in `_score_sequence` (v3.5.6, +9 more). **886 tests pass**; corpus regression covers Stinsen/Unboxed/Beast/Angular byte-identical zig64 traces.
+The SIDM2 project converts Commodore 64 SID music files to SID Factory II (.sf2) format for editing and remixing. **Stage 7 (editor-edit propagation) is now complete** across F1 sequences, F2 instruments (AD+SR), F3 wave, F4 pulse, and F5 filter — for all three Stinsen-class variants (Stinsen, Beast, Angular). v3.5.5 + v3.5.6 lifted the Laxity corpus editor-view yield from 30% to 78%: relaxing `play_reads` from hard reject to soft bonus (v3.5.5, +129 files) and neutralizing short-body hard-rejects in `_score_sequence` (v3.5.6, +9 more). **923 tests pass**; corpus regression covers Stinsen/Unboxed/Beast/Angular byte-identical zig64 traces.
 
-**Current State**: ✅ **Production** — all four success criteria closed; Stage 7 closed for sequences/wave/instruments AD+SR:
+**Current State**: ✅ **Production** — all four success criteria closed; Stage 7 closed end-to-end:
 1. **Plays correctly in SF2 editor** ✅ (auto-detect picks laxity driver; trace match 100%)
 2. **Editor displays real sequences** ✅ (Block 5 populated with real addresses; simulator confirms)
 3. **Edits affect playback** ✅
-   - F1 (sequences): closed v3.3.0 — runtime translator at `$0F0E`, 51 bytes of 6502
+   - F1 (sequences): closed v3.3.0 — runtime translator + per-voice shadow buffer
+   - F2 (instruments AD+SR): closed v3.5.2/v3.5.3/v3.5.4 for Stinsen/Beast/Angular. HR/Pulse_ptr/Wave_ptr columns intentionally absent — those data live in F3/F4 byte streams, not per-instrument table
    - F3 (wave): closed v3.5.0; round-trip identity in v3.5.4
-   - F2 (instruments) AD+SR: closed v3.5.2 (Stinsen) + v3.5.3 (Beast/Angular) + v3.5.4 (zig64-verified for all 3)
+   - F4 (pulse): closed v3.5.7 (Stinsen) + v3.5.10 (Beast/Angular with nibble-pack encoding)
+   - F5 (filter): closed v3.5.8 (Stinsen state machine) + v3.5.9 (Beast/Angular cutoff_hi-only)
 4. **Round-trip SID→SF2→SID** ✅ (register accuracy 100%, metadata preserved)
 
 **Known unfixed limitation** (closed in v3.4.1 for canonical corpus): The F10-load
