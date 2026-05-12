@@ -78,12 +78,15 @@ Toolchain at `docs/stage8.5_debugging_toolkit.md`.
   fixed low addresses and CAN'T be array-indexed safely — those cols
   in the editor view stay static; edits to cols 1+2 don't propagate.
   See `memory/stinsen-filter-architecture.md` + similar for variants.
-- F4 (pulse) ❌ Beast/Angular — PW lo byte streams at `$1AC5` (Beast)
-  / `$1A3B` (Angular) don't propagate single-byte patches (transformed
-  mid-pipeline by AND/OR masking, similar to Stinsen filter cmd
-  stream). PW hi sources via ZP `$FB` indirection — additional
-  byte-stream RE needed. Multi-day per variant. Stinsen F4 already
-  shipped (v3.5.7).
+- F4 (pulse) ✅ Stinsen (v3.5.7), ✅ Beast (v3.5.10),
+  ✅ Angular (v3.5.10). Beast/Angular pulse stream is 4-byte step
+  records starting at `$1AC5` (Beast) / `$1A3B` (Angular). Byte 0 is
+  nibble-packed: high nibble → PW lo scratch, low nibble → PW hi
+  scratch. New `_emit_pulse_packed_copy_routine` (34B 6502) copies SF2
+  3-col rows into NP21 stride-4 records (bytes 0/1/2 written, byte 3
+  preserved). zig64-verified 2026-05-12 (Beast + Angular row 0 col 0
+  patch $00 / $08 → $A0 → +10 pw_lo writes of $A0, 30/30 sequence
+  positions diverge from baseline). See `memory/beast-angular-pulse-architecture.md`.
 
 The historical roadmap below tracks the v2.x targets (most achieved, kept for context).
 

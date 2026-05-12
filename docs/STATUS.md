@@ -1,8 +1,8 @@
 # Project Status Overview
 
 **Last Updated**: 2026-05-10
-**Current Version**: v3.5.9 (Stage 7 F5 filter — extended to Beast + Angular; zig64-verified)
-**Status**: Production — all 4 success criteria closed; Stage 7 F1/F2/F3/F4/F5 edits propagate end-to-end for Stinsen, F5 also propagates for Beast + Angular; Laxity corpus editor-view yield 78%
+**Current Version**: v3.5.10 (Stage 7 F4 pulse — extended to Beast + Angular; zig64-verified)
+**Status**: Production — all 4 success criteria closed; **Stage 7 F1-F5 closed for Stinsen + Beast + Angular**; Laxity corpus editor-view yield 78%
 
 ---
 

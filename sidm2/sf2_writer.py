@@ -1900,25 +1900,60 @@ class SF2Writer:
         edit_pulse_addr = music_data_params.get('edit_pulse_addr')
         if num_patterns > 0 and edit_pulse_addr is not None:
             from sidm2.stinsen_pulse_detector import detect_stinsen_pulse_layout
+            from sidm2.beast_pulse_detector import detect_beast_pulse_layout
+            from sidm2.angular_pulse_detector import detect_angular_pulse_layout
 
-            sp = detect_stinsen_pulse_layout(c64_data, sid_la)
-            if (sp is not None
-                and sid_la <= sp.pw_lo_addr < sid_la + len(c64_data)
-                and sid_la <= sp.pw_hi_addr < sid_la + len(c64_data)):
+            sp_stinsen = detect_stinsen_pulse_layout(c64_data, sid_la)
+            sp_beast   = detect_beast_pulse_layout(c64_data, sid_la)
+            sp_angular = detect_angular_pulse_layout(c64_data, sid_la)
+
+            if (sp_stinsen is not None
+                and sid_la <= sp_stinsen.pw_lo_addr < sid_la + len(c64_data)
+                and sid_la <= sp_stinsen.pw_hi_addr < sid_la + len(c64_data)):
                 pulse_routine = self._emit_pulse_split_copy_routine(
                     sf2_pulse_addr=edit_pulse_addr,
-                    np21_pulse_lo_addr=sp.pw_lo_addr,
-                    np21_pulse_hi_addr=sp.pw_hi_addr,
-                    n_rows=sp.n_steps,
+                    np21_pulse_lo_addr=sp_stinsen.pw_lo_addr,
+                    np21_pulse_hi_addr=sp_stinsen.pw_hi_addr,
+                    n_rows=sp_stinsen.n_steps,
                 )
                 pulse_copy_addr = sf2_data_base + len(sf2_edit_data)
                 sf2_edit_data = bytes(sf2_edit_data) + pulse_routine
                 logger.info(
                     f"  Stage 7 pulse-split-copy Stinsen @ ${pulse_copy_addr:04X} "
                     f"({len(pulse_routine)}B); src=${edit_pulse_addr:04X} "
-                    f"PW-lo-dst=${sp.pw_lo_addr:04X} "
-                    f"PW-hi-dst=${sp.pw_hi_addr:04X} "
-                    f"({sp.n_steps} steps per PLAY tick)"
+                    f"PW-lo-dst=${sp_stinsen.pw_lo_addr:04X} "
+                    f"PW-hi-dst=${sp_stinsen.pw_hi_addr:04X} "
+                    f"({sp_stinsen.n_steps} steps per PLAY tick)"
+                )
+            elif (sp_beast is not None
+                  and sid_la <= sp_beast.stream_addr < sid_la + len(c64_data)):
+                pulse_routine = self._emit_pulse_packed_copy_routine(
+                    sf2_pulse_addr=edit_pulse_addr,
+                    np21_stream_addr=sp_beast.stream_addr,
+                    n_rows=sp_beast.n_steps,
+                )
+                pulse_copy_addr = sf2_data_base + len(sf2_edit_data)
+                sf2_edit_data = bytes(sf2_edit_data) + pulse_routine
+                logger.info(
+                    f"  Stage 7 pulse-packed-copy Beast @ ${pulse_copy_addr:04X} "
+                    f"({len(pulse_routine)}B); src=${edit_pulse_addr:04X} "
+                    f"stream-dst=${sp_beast.stream_addr:04X} "
+                    f"({sp_beast.n_steps} steps × 4B stride per PLAY tick)"
+                )
+            elif (sp_angular is not None
+                  and sid_la <= sp_angular.stream_addr < sid_la + len(c64_data)):
+                pulse_routine = self._emit_pulse_packed_copy_routine(
+                    sf2_pulse_addr=edit_pulse_addr,
+                    np21_stream_addr=sp_angular.stream_addr,
+                    n_rows=sp_angular.n_steps,
+                )
+                pulse_copy_addr = sf2_data_base + len(sf2_edit_data)
+                sf2_edit_data = bytes(sf2_edit_data) + pulse_routine
+                logger.info(
+                    f"  Stage 7 pulse-packed-copy Angular @ ${pulse_copy_addr:04X} "
+                    f"({len(pulse_routine)}B); src=${edit_pulse_addr:04X} "
+                    f"stream-dst=${sp_angular.stream_addr:04X} "
+                    f"({sp_angular.n_steps} steps × 4B stride per PLAY tick)"
                 )
 
         # Stage 7 Phase B.2 (F5 filter, Stinsen variant): wire up the
@@ -2839,6 +2874,69 @@ class SF2Writer:
         rel = loop_start - (len(code) + 2)
         if not -128 <= rel <= 127:
             raise RuntimeError(f"filter_split_copy loop out of range: {rel}")
+        code += bytes([0xD0, rel & 0xFF])                                              # BNE loop
+        code += bytes([0x60])                                                          # RTS
+        return bytes(code)
+
+    def _emit_pulse_packed_copy_routine(self, sf2_pulse_addr: int,
+                                         np21_stream_addr: int,
+                                         n_rows: int = 16) -> bytes:
+        """Stage 7 Phase B.2 (F4 pulse, Beast/Angular variants):
+        copy SF2-edit-area pulse bytes back to NP21's 4-byte stride
+        step-record byte stream.
+
+        NP21 layout per step (verified 2026-05-12 for Beast at $1AC5
+        and Angular at $1A3B):
+            byte 0: cmd (nibble-packed PW: high=PW lo, low=PW hi; $FF=skip)
+            byte 1: PW lo sweep delta
+            byte 2: flags + duration
+            byte 3: additional sweep param (PRESERVED — not copied)
+
+        SF2 edit area emits 3-byte rows (col0, col1, col2). Routine
+        copies SF2 cols 0/1/2 → NP21 bytes 0/1/2 per step record,
+        leaving NP21 byte 3 untouched. Final SF2 stride = 3, NP21
+        stride = 4.
+
+        Layout (~30B): single-pass interleaved loop.
+            LDX #0          ; NP21 offset (advances by 4 per row)
+            LDY #0          ; SF2 offset (advances by 3 per row)
+        loop:
+            LDA sf2,Y; STA np21,X            ; col 0
+            INX; INY
+            LDA sf2,Y; STA np21,X            ; col 1
+            INX; INY
+            LDA sf2,Y; STA np21,X            ; col 2
+            INX; INX                          ; skip np21 byte 3
+            INY                               ; advance SF2 to next row col 0
+            CPX #n*4
+            BNE loop
+            RTS
+        """
+        if not (1 <= n_rows <= 60):     # 60 * 4 = 240, fits u8 X
+            raise ValueError(f"pulse_packed n_rows must be 1..60, got {n_rows}")
+        np21_total = n_rows * 4
+        code = bytearray()
+        code += bytes([0xA2, 0x00, 0xA0, 0x00])                                       # LDX #0; LDY #0
+        loop_start = len(code)
+        # col 0
+        code += bytes([0xB9, sf2_pulse_addr & 0xFF, (sf2_pulse_addr >> 8) & 0xFF])    # LDA sf2,Y
+        code += bytes([0x9D, np21_stream_addr & 0xFF,
+                       (np21_stream_addr >> 8) & 0xFF])                                # STA np21,X
+        code += bytes([0xE8, 0xC8])                                                    # INX; INY
+        # col 1
+        code += bytes([0xB9, sf2_pulse_addr & 0xFF, (sf2_pulse_addr >> 8) & 0xFF])
+        code += bytes([0x9D, np21_stream_addr & 0xFF,
+                       (np21_stream_addr >> 8) & 0xFF])
+        code += bytes([0xE8, 0xC8])
+        # col 2
+        code += bytes([0xB9, sf2_pulse_addr & 0xFF, (sf2_pulse_addr >> 8) & 0xFF])
+        code += bytes([0x9D, np21_stream_addr & 0xFF,
+                       (np21_stream_addr >> 8) & 0xFF])
+        code += bytes([0xE8, 0xE8, 0xC8])                                              # INX; INX (skip byte 3); INY (next row col 0)
+        code += bytes([0xE0, np21_total & 0xFF])                                       # CPX #n*4
+        rel = loop_start - (len(code) + 2)
+        if not -128 <= rel <= 127:
+            raise RuntimeError(f"pulse_packed loop out of range: {rel}")
         code += bytes([0xD0, rel & 0xFF])                                              # BNE loop
         code += bytes([0x60])                                                          # RTS
         return bytes(code)
@@ -3818,24 +3916,39 @@ class SF2Writer:
         pulse_table_offset = len(edit)
         pulse_table_addr   = sf2_data_base + pulse_table_offset
         pulse_rows = 0
-        used_stinsen_pulse = False
+        used_variant_pulse = False
         try:
             from sidm2.stinsen_pulse_detector import detect_stinsen_pulse_layout
-            sp = detect_stinsen_pulse_layout(c64_data, sid_la)
+            from sidm2.beast_pulse_detector import detect_beast_pulse_layout
+            from sidm2.angular_pulse_detector import detect_angular_pulse_layout
+            sp_stinsen = detect_stinsen_pulse_layout(c64_data, sid_la)
+            sp_beast   = detect_beast_pulse_layout(c64_data, sid_la)
+            sp_angular = detect_angular_pulse_layout(c64_data, sid_la)
         except Exception:
-            sp = None
-        if sp is not None:
-            lo_off = sp.pw_lo_addr - sid_la
-            hi_off = sp.pw_hi_addr - sid_la
-            for r in range(sp.n_steps):
+            sp_stinsen = sp_beast = sp_angular = None
+        if sp_stinsen is not None:
+            lo_off = sp_stinsen.pw_lo_addr - sid_la
+            hi_off = sp_stinsen.pw_hi_addr - sid_la
+            for r in range(sp_stinsen.n_steps):
                 if lo_off + r >= len(c64_data) or hi_off + r >= len(c64_data):
                     break
-                lo = c64_data[lo_off + r]
-                hi = c64_data[hi_off + r]
-                edit.extend(bytes([lo, hi, 0x00]))
+                edit.extend(bytes([c64_data[lo_off + r], c64_data[hi_off + r], 0x00]))
                 pulse_rows += 1
-            used_stinsen_pulse = pulse_rows > 0
-        if not used_stinsen_pulse:
+            used_variant_pulse = pulse_rows > 0
+        elif sp_beast is not None or sp_angular is not None:
+            # Beast / Angular: 4-byte step records starting at stream_addr.
+            # SF2 cols 0/1/2 ← np21 bytes 0/1/2 (byte 3 preserved).
+            sp = sp_beast if sp_beast is not None else sp_angular
+            base_off = sp.stream_addr - sid_la
+            for r in range(sp.n_steps):
+                if base_off + r * 4 + 3 > len(c64_data):
+                    break
+                edit.extend(bytes([c64_data[base_off + r * 4 + 0],
+                                   c64_data[base_off + r * 4 + 1],
+                                   c64_data[base_off + r * 4 + 2]]))
+                pulse_rows += 1
+            used_variant_pulse = pulse_rows > 0
+        if not used_variant_pulse:
             pulse_entries = laxity_tables.get('pulse_table', []) or []
             for entry in pulse_entries:
                 row = bytes(entry)[:3]
