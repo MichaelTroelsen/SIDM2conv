@@ -1932,26 +1932,61 @@ class SF2Writer:
         edit_filter_addr = music_data_params.get('edit_filter_addr')
         if num_patterns > 0 and edit_filter_addr is not None:
             from sidm2.stinsen_filter_detector import detect_stinsen_filter_layout
+            from sidm2.beast_filter_detector import detect_beast_filter_layout
+            from sidm2.angular_filter_detector import detect_angular_filter_layout
 
-            sf = detect_stinsen_filter_layout(c64_data, sid_la)
-            if (sf is not None
-                and sid_la <= sf.cmd_addr < sid_la + len(c64_data)
-                and sid_la <= sf.val_addr < sid_la + len(c64_data)
-                and sid_la <= sf.aux_addr < sid_la + len(c64_data)):
+            sf_stinsen = detect_stinsen_filter_layout(c64_data, sid_la)
+            sf_beast   = detect_beast_filter_layout(c64_data, sid_la)
+            sf_angular = detect_angular_filter_layout(c64_data, sid_la)
+
+            if (sf_stinsen is not None
+                and sid_la <= sf_stinsen.cmd_addr < sid_la + len(c64_data)
+                and sid_la <= sf_stinsen.val_addr < sid_la + len(c64_data)
+                and sid_la <= sf_stinsen.aux_addr < sid_la + len(c64_data)):
                 filter_routine = self._emit_filter_split_copy_routine(
                     sf2_filter_addr=edit_filter_addr,
-                    np21_cmd_addr=sf.cmd_addr,
-                    np21_val_addr=sf.val_addr,
-                    np21_aux_addr=sf.aux_addr,
-                    n_rows=sf.n_steps,
+                    np21_cmd_addr=sf_stinsen.cmd_addr,
+                    np21_val_addr=sf_stinsen.val_addr,
+                    np21_aux_addr=sf_stinsen.aux_addr,
+                    n_rows=sf_stinsen.n_steps,
                 )
                 filter_copy_addr = sf2_data_base + len(sf2_edit_data)
                 sf2_edit_data = bytes(sf2_edit_data) + filter_routine
                 logger.info(
                     f"  Stage 7 filter-split-copy Stinsen @ ${filter_copy_addr:04X} "
                     f"({len(filter_routine)}B); src=${edit_filter_addr:04X} "
-                    f"cmd-dst=${sf.cmd_addr:04X} val-dst=${sf.val_addr:04X} "
-                    f"aux-dst=${sf.aux_addr:04X} ({sf.n_steps} steps per PLAY tick)"
+                    f"cmd-dst=${sf_stinsen.cmd_addr:04X} val-dst=${sf_stinsen.val_addr:04X} "
+                    f"aux-dst=${sf_stinsen.aux_addr:04X} ({sf_stinsen.n_steps} steps per PLAY tick)"
+                )
+            elif (sf_beast is not None
+                  and sid_la <= sf_beast.cutoff_hi_stream_addr < sid_la + len(c64_data)):
+                filter_routine = self._emit_filter_cutoff_only_routine(
+                    sf2_filter_addr=edit_filter_addr,
+                    np21_cutoff_hi_addr=sf_beast.cutoff_hi_stream_addr,
+                    n_rows=sf_beast.n_steps,
+                )
+                filter_copy_addr = sf2_data_base + len(sf2_edit_data)
+                sf2_edit_data = bytes(sf2_edit_data) + filter_routine
+                logger.info(
+                    f"  Stage 7 filter-cutoff-only Beast @ ${filter_copy_addr:04X} "
+                    f"({len(filter_routine)}B); src=${edit_filter_addr:04X} "
+                    f"cutoff_hi-dst=${sf_beast.cutoff_hi_stream_addr:04X} "
+                    f"({sf_beast.n_steps} steps per PLAY tick)"
+                )
+            elif (sf_angular is not None
+                  and sid_la <= sf_angular.cutoff_hi_stream_addr < sid_la + len(c64_data)):
+                filter_routine = self._emit_filter_cutoff_only_routine(
+                    sf2_filter_addr=edit_filter_addr,
+                    np21_cutoff_hi_addr=sf_angular.cutoff_hi_stream_addr,
+                    n_rows=sf_angular.n_steps,
+                )
+                filter_copy_addr = sf2_data_base + len(sf2_edit_data)
+                sf2_edit_data = bytes(sf2_edit_data) + filter_routine
+                logger.info(
+                    f"  Stage 7 filter-cutoff-only Angular @ ${filter_copy_addr:04X} "
+                    f"({len(filter_routine)}B); src=${edit_filter_addr:04X} "
+                    f"cutoff_hi-dst=${sf_angular.cutoff_hi_stream_addr:04X} "
+                    f"({sf_angular.n_steps} steps per PLAY tick)"
                 )
 
         # Stage 7 trampoline (v3.5.8): when 3+ copy routines are wired
@@ -2679,6 +2714,60 @@ class SF2Writer:
         code += bytes([0x10, rel & 0xFF])                                           # BPL note_loop
 
         code += bytes([0x60])                                                        # RTS
+        return bytes(code)
+
+    def _emit_filter_cutoff_only_routine(self, sf2_filter_addr: int,
+                                          np21_cutoff_hi_addr: int,
+                                          n_rows: int = 16) -> bytes:
+        """Stage 7 Phase B.2 (F5 filter, Beast/Angular variants):
+        propagate only col 0 (cutoff_hi byte stream) from SF2 edit area
+        to NP21. Cols 1 + 2 (res_routing, mode_vol) are at fixed low
+        addresses ($100A, $1009) that CANNOT be array-indexed safely —
+        $100A+r for r in 1..15 would overwrite adjacent player code.
+
+        SF2 stride 3 (col0, col1, col2 per row), NP21 stride 1.
+
+        Layout (~18 bytes for any n):
+            LDX #n-1
+        loop:
+            TXA; ASL; CLC; ADC X; TAY    ; Y = X * 3
+            (= TXA; ASL; STA tmp; TXA; CLC; ADC tmp; TAY — too many bytes)
+            (use TXA; ASL; TAY; TYA; CLC; ADC X; TAY instead)
+            LDA sf2,Y                    ; col 0
+            STA np21_cutoff_hi,X
+            DEX
+            BPL loop
+            RTS
+
+        The Y = X * 3 computation needs care — there's no single
+        instruction. Pattern: TXA; ASL A; TAY; TYA; CLC; ADC X; TAY.
+        That's TXA(1) + ASL(1) + TAY(1) + TYA(1) + CLC(1) + ADC X??(2)
+        ... wait, ADC needs immediate or zp. Use: TXA; ASL A; CLC; ADC X
+        but ADC X is "ADC zp" if X is loaded. Easier: TXA; ASL; TAY; INX
+        is wrong too. Let me use 2-pass approach instead, similar to
+        wave-split-copy: skip and just store at X*1 with the right Y.
+        Actually, simpler: precompute Y = X*3 by table lookup is overkill.
+        Use TXA; STA tmp; ASL A; CLC; ADC tmp; TAY (~7 bytes per pass).
+        """
+        if not (1 <= n_rows <= 85):
+            raise ValueError(f"filter_cutoff_only n_rows must be 1..85, got {n_rows}")
+        code = bytearray()
+        # Walk r = 0..n-1 with Y = 3*r maintained incrementally.
+        # X = NP21 dst offset, Y = SF2 offset.
+        code += bytes([0xA2, 0x00])                                                   # LDX #0
+        code += bytes([0xA0, 0x00])                                                   # LDY #0
+        loop_start = len(code)
+        code += bytes([0xB9, sf2_filter_addr & 0xFF, (sf2_filter_addr >> 8) & 0xFF])  # LDA sf2,Y
+        code += bytes([0x9D, np21_cutoff_hi_addr & 0xFF,
+                       (np21_cutoff_hi_addr >> 8) & 0xFF])                             # STA np21,X
+        code += bytes([0xC8, 0xC8, 0xC8])                                              # INY × 3 (skip cols 1,2 → next row col 0)
+        code += bytes([0xE8])                                                          # INX
+        code += bytes([0xE0, n_rows & 0xFF])                                           # CPX #n
+        rel = loop_start - (len(code) + 2)
+        if not -128 <= rel <= 127:
+            raise RuntimeError(f"filter_cutoff_only loop out of range: {rel}")
+        code += bytes([0xD0, rel & 0xFF])                                              # BNE loop
+        code += bytes([0x60])                                                          # RTS
         return bytes(code)
 
     def _emit_filter_split_copy_routine(self, sf2_filter_addr: int,
@@ -3774,25 +3863,53 @@ class SF2Writer:
         filter_table_offset = len(edit)
         filter_table_addr   = sf2_data_base + filter_table_offset
         filter_rows = 0
-        used_stinsen_filter = False
+        used_variant_filter = False
         try:
             from sidm2.stinsen_filter_detector import detect_stinsen_filter_layout
-            sf = detect_stinsen_filter_layout(c64_data, sid_la)
+            from sidm2.beast_filter_detector import detect_beast_filter_layout
+            from sidm2.angular_filter_detector import detect_angular_filter_layout
+            sf_stinsen = detect_stinsen_filter_layout(c64_data, sid_la)
+            sf_beast   = detect_beast_filter_layout(c64_data, sid_la)
+            sf_angular = detect_angular_filter_layout(c64_data, sid_la)
         except Exception:
-            sf = None
-        if sf is not None:
-            cmd_off = sf.cmd_addr - sid_la
-            val_off = sf.val_addr - sid_la
-            aux_off = sf.aux_addr - sid_la
-            for r in range(sf.n_steps):
+            sf_stinsen = sf_beast = sf_angular = None
+        if sf_stinsen is not None:
+            cmd_off = sf_stinsen.cmd_addr - sid_la
+            val_off = sf_stinsen.val_addr - sid_la
+            aux_off = sf_stinsen.aux_addr - sid_la
+            for r in range(sf_stinsen.n_steps):
                 if cmd_off + r >= len(c64_data) or val_off + r >= len(c64_data) or aux_off + r >= len(c64_data):
                     break
                 edit.extend(bytes([c64_data[cmd_off + r],
                                    c64_data[val_off + r],
                                    c64_data[aux_off + r]]))
                 filter_rows += 1
-            used_stinsen_filter = filter_rows > 0
-        if not used_stinsen_filter:
+            used_variant_filter = filter_rows > 0
+        elif sf_beast is not None:
+            # Beast/Angular: only cutoff_hi byte stream propagates;
+            # cols 1+2 emit the binary's current $100A/$1009 bytes for
+            # editor-view consistency (edits to cols 1+2 won't propagate
+            # but the displayed values match what plays).
+            cutoff_off = sf_beast.cutoff_hi_stream_addr - sid_la
+            for r in range(sf_beast.n_steps):
+                if cutoff_off + r >= len(c64_data):
+                    break
+                edit.extend(bytes([c64_data[cutoff_off + r],
+                                   c64_data[0x000A] if 0x000A < len(c64_data) else 0,   # $100A res_routing
+                                   c64_data[0x0009] if 0x0009 < len(c64_data) else 0]))  # $1009 mode_vol
+                filter_rows += 1
+            used_variant_filter = filter_rows > 0
+        elif sf_angular is not None:
+            cutoff_off = sf_angular.cutoff_hi_stream_addr - sid_la
+            for r in range(sf_angular.n_steps):
+                if cutoff_off + r >= len(c64_data):
+                    break
+                edit.extend(bytes([c64_data[cutoff_off + r],
+                                   c64_data[0x000A] if 0x000A < len(c64_data) else 0,
+                                   c64_data[0x0009] if 0x0009 < len(c64_data) else 0]))
+                filter_rows += 1
+            used_variant_filter = filter_rows > 0
+        if not used_variant_filter:
             # Fallback: existing extract-based 3-byte interpretation
             filter_entries = laxity_tables.get('filter_table', []) or []
             for entry in filter_entries:

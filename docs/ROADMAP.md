@@ -66,16 +66,24 @@ Toolchain at `docs/stage8.5_debugging_toolkit.md`.
   osc1/2/3_pw_lo writes). v3.5.7. See `memory/stinsen-pulse-architecture.md`.
   ❌ Beast/Angular — pulse scratch + source addresses not yet RE'd.
 - F5 (filter) ✅ Stinsen — edits propagate via `_emit_filter_split_copy_routine`
-  (31B 6502) wired by `sidm2/stinsen_filter_detector.py`. Filter command
-  handler at $15F6-$167F disassembled: byte streams at $1989 (cmd), $19A3
-  (val), $19BD (aux) form a state machine — cmd's bit 7 selects SET vs
-  SWEEP, aux feeds D417 directly OR step-duration. Wire-up copies raw
-  bytes back; player re-interprets state machine on next step. Multipat
-  translator overflow (99B vs 98B window) resolved via a 10B trampoline
-  that consolidates instr+pulse+filter JSRs. zig64-verified 2026-05-11
-  (patching SF2 filter aux col → +2 `filter_res_control` marker writes).
-  v3.5.8. See `memory/stinsen-filter-architecture.md`.
-  ❌ Beast/Angular — filter byte-stream addresses not yet probed.
+  (31B 6502, 3-array state-machine). Filter handler at $15F6-$167F
+  disassembled. v3.5.8.
+  ✅ Beast — cutoff_hi byte stream at `$1A7D` (Beast)
+  via `_emit_filter_cutoff_only_routine` (19B 6502, single-column).
+  zig64-verified 2026-05-12 (patching row 0 col 0 → cutoff_hi at frame 1
+  flips $05→$C7 directly; no state-machine transformation). v3.5.9.
+  ✅ Angular — cutoff_hi byte stream at `$1A1F`. Same routine.
+  zig64-verified 2026-05-12 (24/30 sequence positions changed). v3.5.9.
+  ⚠️ Beast/Angular res_routing ($100A) and mode_vol ($1009) are at
+  fixed low addresses and CAN'T be array-indexed safely — those cols
+  in the editor view stay static; edits to cols 1+2 don't propagate.
+  See `memory/stinsen-filter-architecture.md` + similar for variants.
+- F4 (pulse) ❌ Beast/Angular — PW lo byte streams at `$1AC5` (Beast)
+  / `$1A3B` (Angular) don't propagate single-byte patches (transformed
+  mid-pipeline by AND/OR masking, similar to Stinsen filter cmd
+  stream). PW hi sources via ZP `$FB` indirection — additional
+  byte-stream RE needed. Multi-day per variant. Stinsen F4 already
+  shipped (v3.5.7).
 
 The historical roadmap below tracks the v2.x targets (most achieved, kept for context).
 
