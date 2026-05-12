@@ -45,6 +45,34 @@ V20_COPYRIGHT_HINTS = (
 V20_MAX_SIZE = 0x1000
 
 
+# Signature bytes for the 1988 2000 A.D. player (Galax_it_y + Echo_Beat).
+# After the 6-byte JMP-table prefix, the player has this fixed pattern.
+# RE'd 2026-05-12 — see `memory/vibrants-v20-findings.md`. Stream
+# extraction notes (Galax_it_y only — Echo_Beat has different offsets):
+#   - per-voice freq LUT at $150F (lo) / $1510 (hi), 2-byte cells
+#   - V0 note stream at $17A4-$17A6 (3 bytes)
+#   - V1 note stream at $1795-$17A3 (15 bytes; cmd + value pairs)
+#   - V2 stream minimal ($1788, $178E only)
+#   - Per-voice freq scratches at $14C5/$14C8 (V0)
+_AD_2000_SIG_OFFSET = 6
+_AD_2000_SIG_BYTES = bytes([0x2C, 0xA3])   # BIT $A3XX
+_AD_2000_SIG_PATTERN_AFTER = bytes([0x30, 0x01, 0x60, 0xA9, 0x00, 0x8D, 0x0E])
+
+
+def _is_2000_ad_cluster(c64_data: bytes) -> bool:
+    """Player signature match for 1988 2000 A.D. cluster (Galax_it_y +
+    Echo_Beat share the same player at different loads). James_Bond
+    has a different player and won't match."""
+    if len(c64_data) < 0x20:
+        return False
+    if c64_data[_AD_2000_SIG_OFFSET : _AD_2000_SIG_OFFSET + 2] != _AD_2000_SIG_BYTES:
+        return False
+    # Pattern after the load-addr-dependent high byte at offset +2
+    if c64_data[_AD_2000_SIG_OFFSET + 3 : _AD_2000_SIG_OFFSET + 3 + len(_AD_2000_SIG_PATTERN_AFTER)] != _AD_2000_SIG_PATTERN_AFTER:
+        return False
+    return True
+
+
 def detect_vibrants_v20(c64_data: bytes, load_addr: int,
                          copyright_str: str = '') -> Optional[str]:
     """Return a short variant label (e.g., "1988 2000 A.D.") if the
@@ -55,6 +83,11 @@ def detect_vibrants_v20(c64_data: bytes, load_addr: int,
         load_addr: PRG load address
         copyright_str: PSID copyright string (often "1987 Wizax 2004"
             or similar)
+
+    The label includes a cluster suffix when the player signature
+    matches a specifically-RE'd cluster (currently only "1988 2000 A.D."
+    — Galax_it_y + Echo_Beat). See `memory/vibrants-v20-findings.md`
+    for per-cluster notes.
     """
     if not copyright_str:
         return None
@@ -72,4 +105,12 @@ def detect_vibrants_v20(c64_data: bytes, load_addr: int,
     if len(c64_data) > V20_MAX_SIZE:
         return None
 
-    return f"{copyright_str.strip()} (label: {matched_label})"
+    base = f"{copyright_str.strip()} (label: {matched_label})"
+
+    # Cluster signature: 1988 2000 A.D. player (Galax + Echo_Beat).
+    # When matched, append a hint so the conversion log mentions partial
+    # RE is available for this specific player.
+    if _is_2000_ad_cluster(c64_data):
+        return f"{base} — 1988 2000 A.D. cluster (player signature matched; partial RE in memory/vibrants-v20-findings.md)"
+
+    return base

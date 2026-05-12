@@ -72,6 +72,34 @@ class TestKnownV20Files:
         assert result is not None, f"{name} (cprt={cprt!r}, size={len(c64)}) should match V20"
 
 
+class Test2000ADClusterSignature:
+    """The 1988 2000 A.D. player signature should match Galax_it_y + Echo_Beat
+    (same player at different load addrs) but NOT James_Bond_Theme_Remix
+    (1988 2000 A.D. copyright but different player code)."""
+
+    def test_galax_matches_cluster(self):
+        c64, load, cprt = _load_c64('Galax_it_y.sid')
+        result = detect_vibrants_v20(c64, load, cprt)
+        assert result is not None
+        assert '2000 A.D. cluster' in result, f"Galax should hit cluster suffix, got: {result}"
+
+    def test_echo_beat_matches_cluster(self):
+        c64, load, cprt = _load_c64('Echo_Beat.sid')
+        result = detect_vibrants_v20(c64, load, cprt)
+        assert result is not None
+        assert '2000 A.D. cluster' in result, f"Echo_Beat should hit cluster suffix, got: {result}"
+
+    def test_james_bond_does_not_match_cluster(self):
+        """James_Bond_Theme_Remix.sid has copyright '1988 2000 A.D.' but
+        different player code — must NOT match the cluster signature."""
+        c64, load, cprt = _load_c64('James_Bond_Theme_Remix.sid')
+        result = detect_vibrants_v20(c64, load, cprt)
+        # Should still detect as V20 (copyright + size), but not as
+        # cluster (player signature differs)
+        assert result is not None
+        assert '2000 A.D. cluster' not in result, f"James_Bond should NOT hit cluster suffix, got: {result}"
+
+
 class TestCanonicalFilesDoNotMatch:
     """Stinsen + Unboxed + Beast + Angular must NOT be flagged as V20
     (their copyright strings don't contain V20 labels and they're
