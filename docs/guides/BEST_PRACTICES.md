@@ -2,7 +2,7 @@
 
 **Version**: 2.9.7
 **Updated**: 2025-12-27
-**Reviewed against**: v3.5.0 (2026-05-09) — workflow patterns unchanged. Stage 7 wave-edit propagation does not affect best-practices guidance.
+**Reviewed against**: v3.5.10 (2026-05-12) — workflow patterns unchanged. Stage 7 edit-propagation (now closed for sequences/instruments AD+SR/wave/pulse/filter across Stinsen + Beast + Angular) does not affect best-practices guidance.
 
 Expert tips, patterns, and optimization strategies for SIDM2.
 
@@ -1089,6 +1089,6 @@ for %%f in (*.sid) do (
 
 ---
 
-**Last Updated**: 2025-12-27
+**Last Updated**: 2025-12-27 (reviewed 2026-05-12 against v3.5.10)
 **Version**: 2.9.7
 **Status**: Production Ready

@@ -5,7 +5,7 @@
 **Version**: 2.8.0+
 **Feature**: Auto-Select Driver
 **Policy**: Quality-First v2.0
-**Reviewed against**: v3.5.0 (2026-05-09) — auto-detect logic unchanged.
+**Reviewed against**: v3.5.10 (2026-05-12) — auto-detect logic unchanged.
 
 ---
 

@@ -2,7 +2,7 @@
 
 **Version**: 2.9.7
 **Updated**: 2025-12-27
-**Reviewed against**: v3.5.0 (2026-05-09) — driver-selection / accuracy / compatibility answers unchanged. New since: F10-load 100% solo on canonical Stinsen+Unboxed; 2 high-load-addr non-Laxity files (Hubbard `$C000` / Soundmonitor `$7FF8`) blocked on upstream Chordian/sidfactory2#211, with a conversion-time advisory now naming the safe load_addr window. Wave (F3) edits in the SF2 editor propagate to playback as of v3.5.0.
+**Reviewed against**: v3.5.10 (2026-05-12) — driver-selection / accuracy / compatibility answers unchanged. New since v3.5.0: F10-load 100% solo on canonical Stinsen + Unboxed; 2 high-load-addr non-Laxity files (Hubbard `$C000` / Soundmonitor `$7FF8`) blocked on upstream Chordian/sidfactory2#211, with a conversion-time advisory naming the safe load_addr window. **Stage 7 (editor-edit propagation) now closed end-to-end for sequences, instruments AD+SR, wave, pulse, and filter across Stinsen + Beast + Angular variants** (v3.5.0–v3.5.10). Editor-view yield on the 286-file Laxity corpus climbed from 18% to 78% through autodetect-filter relaxations in v3.5.5–v3.5.6.
 
 Common questions and answers about SIDM2.
 
@@ -1060,6 +1060,6 @@ python scripts/validate_sid_accuracy.py original.sid converted.sid
 
 ---
 
-**Last Updated**: 2025-12-27
+**Last Updated**: 2025-12-27 (reviewed 2026-05-12 against v3.5.10)
 **Version**: 2.9.7
 **Status**: Production Ready

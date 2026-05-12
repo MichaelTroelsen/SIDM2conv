@@ -2,7 +2,7 @@
 
 **Version**: 2.9.7
 **Updated**: 2025-12-27
-**Reviewed against**: v3.5.0 (2026-05-09) — install + first-conversion steps unchanged
+**Reviewed against**: v3.5.10 (2026-05-12) — install + first-conversion steps unchanged. Editor-edit propagation now closed for sequences, instruments (AD+SR), wave, pulse, and filter across Stinsen + Beast + Angular variants (Stage 7 complete v3.5.10); does not affect this guide's getting-started content.
 
 Welcome to SIDM2! This guide will help you get up and running quickly.
 
@@ -494,6 +494,6 @@ SIDM2/
 
 ---
 
-**Last Updated**: 2025-12-27
+**Last Updated**: 2025-12-27 (reviewed 2026-05-12 against v3.5.10)
 **Version**: 2.9.7
 **Status**: Production Ready

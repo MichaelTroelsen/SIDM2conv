@@ -2,6 +2,7 @@
 
 **Version**: 2.9.7
 **Updated**: 2025-12-27
+**Reviewed against**: v3.5.10 (2026-05-12) — tutorial workflows unchanged. Editor-edit propagation (Stage 7) is now closed end-to-end for sequences/instruments AD+SR/wave/pulse/filter across Stinsen + Beast + Angular; the conversion + editing tutorials below remain accurate.
 
 Step-by-step tutorials for common SIDM2 workflows.
 
@@ -1177,6 +1178,6 @@ You can now create custom Python workflows using SIDM2 components.
 
 ---
 
-**Last Updated**: 2025-12-27
+**Last Updated**: 2025-12-27 (reviewed 2026-05-12 against v3.5.10)
 **Version**: 2.9.7
 **Status**: Production Ready
