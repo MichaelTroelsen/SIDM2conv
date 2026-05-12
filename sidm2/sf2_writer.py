@@ -96,10 +96,17 @@ class SF2Writer:
                 and getattr(self.data, 'c64_data', None) is not None):
                 try:
                     from sidm2.wizax_a_detector import detect_wizax_a_layout
+                    from sidm2.zetrex_yp_detector import detect_zetrex_yp_layout
                     sid_la_check = getattr(self.data, 'load_address', 0x1000)
                     if detect_wizax_a_layout(self.data.c64_data, sid_la_check) is not None:
                         logger.info(
                             "  Wizax-A signature detected; redirecting "
+                            "non-Laxity driver to the F1 pipeline."
+                        )
+                        wizax_redirect = True
+                    elif detect_zetrex_yp_layout(self.data.c64_data, sid_la_check) is not None:
+                        logger.info(
+                            "  Zetrex/YP signature detected; redirecting "
                             "non-Laxity driver to the F1 pipeline."
                         )
                         wizax_redirect = True
@@ -2104,15 +2111,20 @@ class SF2Writer:
         CH_SEQ_HI_OFF = 0x0A1F
         try:
             from sidm2.wizax_a_detector import detect_wizax_a_layout
+            from sidm2.zetrex_yp_detector import detect_zetrex_yp_layout
             wzx_for_patch = detect_wizax_a_layout(c64_data, sid_la)
+            zyp_for_patch = detect_zetrex_yp_layout(c64_data, sid_la)
         except Exception:
             wzx_for_patch = None
-        if wzx_for_patch is not None:
-            CH_SEQ_LO_OFF = wzx_for_patch.ptr_lo_addr - sid_la
-            CH_SEQ_HI_OFF = wzx_for_patch.ptr_hi_addr - sid_la
+            zyp_for_patch = None
+        patch_layout = wzx_for_patch or zyp_for_patch
+        patch_layout_name = 'Wizax-A' if wzx_for_patch else ('Zetrex/YP' if zyp_for_patch else None)
+        if patch_layout is not None:
+            CH_SEQ_LO_OFF = patch_layout.ptr_lo_addr - sid_la
+            CH_SEQ_HI_OFF = patch_layout.ptr_hi_addr - sid_la
             logger.info(
-                f"  Wizax-A ch_seq_ptr patching at "
-                f"${wzx_for_patch.ptr_lo_addr:04X}/${wzx_for_patch.ptr_hi_addr:04X} "
+                f"  {patch_layout_name} ch_seq_ptr patching at "
+                f"${patch_layout.ptr_lo_addr:04X}/${patch_layout.ptr_hi_addr:04X} "
                 f"(NOT default $0A1C/$0A1F)"
             )
         if num_patterns > 0:
@@ -2278,6 +2290,34 @@ class SF2Writer:
                 file_data[stub_off + 2] = (target >> 8) & 0xFF
                 logger.info(f"  Patched ${init_addr+3:04X} -> JMP ${target:04X} "
                             f"({label} — zig64 PLAY redirect)")
+
+        # zig64 entry stub for non-$1000-loaded binaries:
+        # zig64 always calls $1000 as INIT and $1003 as PLAY. For NP21
+        # binaries loaded at $1000 the first 6 bytes are JMP init/JMP play
+        # already, so zig64 works directly. For binaries loaded ELSEWHERE
+        # (Zetrex/YP at $E000, Echo_Beat at $0400, etc.), $1000-$1003
+        # is a gap in the SF2 file = zero bytes = no audio.
+        # Write `JMP INIT_HANDLER; JMP PLAY_HANDLER` stubs there so zig64
+        # finds the right entry points. INIT_HANDLER ($0F90) does
+        # JSR psid_init then RTS; PLAY_HANDLER ($0F94) jumps to the
+        # multipat translator. Both handlers are emitted unconditionally.
+        binary_covers_1003 = sid_la <= 0x1000 < sid_la + len(c64_data)
+        if not binary_covers_1003:
+            stub_off_1000 = 2 + (0x1000 - LOAD_BASE)
+            if 0 <= stub_off_1000 and stub_off_1000 + 6 <= len(file_data):
+                # JMP INIT_HANDLER
+                file_data[stub_off_1000]     = 0x4C
+                file_data[stub_off_1000 + 1] = INIT_HANDLER & 0xFF
+                file_data[stub_off_1000 + 2] = (INIT_HANDLER >> 8) & 0xFF
+                # JMP PLAY_HANDLER
+                file_data[stub_off_1000 + 3] = 0x4C
+                file_data[stub_off_1000 + 4] = PLAY_HANDLER & 0xFF
+                file_data[stub_off_1000 + 5] = (PLAY_HANDLER >> 8) & 0xFF
+                logger.info(
+                    f"  zig64 entry stub at $1000: "
+                    f"JMP ${INIT_HANDLER:04X} / JMP ${PLAY_HANDLER:04X} "
+                    f"(binary at ${sid_la:04X}-${sid_la + len(c64_data) - 1:04X} doesn't cover $1000-$1003)"
+                )
 
         # SF2 edit data appended after NP21 binary
         if sf2_edit_data:
@@ -3557,20 +3597,25 @@ class SF2Writer:
             # See `memory/wizax-a-byte-stream-re.md`.
             try:
                 from sidm2.wizax_a_detector import detect_wizax_a_layout
+                from sidm2.zetrex_yp_detector import detect_zetrex_yp_layout
                 wzx = detect_wizax_a_layout(c64_data, sid_la)
+                zyp = detect_zetrex_yp_layout(c64_data, sid_la)
             except Exception:
                 wzx = None
-            if wzx is not None:
-                CH_SEQ_LO_OFF = wzx.ptr_lo_addr - sid_la
-                CH_SEQ_HI_OFF = wzx.ptr_hi_addr - sid_la
+                zyp = None
+            redirect = wzx or zyp
+            redirect_name = 'Wizax-A' if wzx else ('Zetrex/YP' if zyp else None)
+            if redirect is not None:
+                CH_SEQ_LO_OFF = redirect.ptr_lo_addr - sid_la
+                CH_SEQ_HI_OFF = redirect.ptr_hi_addr - sid_la
                 ptrs = _read_ptrs(CH_SEQ_LO_OFF, CH_SEQ_HI_OFF)
                 if ptrs is not None and _ptrs_in_range(ptrs):
                     logger.info(
-                        f"  Wizax-A detected: ptr-table at "
-                        f"${wzx.ptr_lo_addr:04X}/${wzx.ptr_hi_addr:04X} "
-                        f"(ZP ${wzx.zp_lo:02X}/${wzx.zp_hi:02X}); "
+                        f"  {redirect_name} detected: ptr-table at "
+                        f"${redirect.ptr_lo_addr:04X}/${redirect.ptr_hi_addr:04X} "
+                        f"(ZP ${redirect.zp_lo:02X}/${redirect.zp_hi:02X}); "
                         f"voice ptrs = {[f'${p:04X}' for p in ptrs]}. "
-                        f"Running NP21 F1 pipeline with Wizax-A redirect."
+                        f"Running NP21 F1 pipeline with {redirect_name} redirect."
                     )
 
         if ptrs is None or not _ptrs_in_range(ptrs):
