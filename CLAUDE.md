@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.5.12** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-12
+**SIDM2 v3.5.13** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-12
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -170,6 +170,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.5.13** (2026-05-12): Vibrants V20 — third + fourth cluster signatures (Wizax-A + Wizax-B). The "1987 Wizax 2004" copyright label covers 4 files split across 2 sub-clusters by player code. Wizax-A (`2000_A_D` + `Fight_TST_II` + `Hall_of_Fame`) shares a player with `A9 00 8D 04 D4 8D 0B D4 8D 12 D4` (LDA #0; STA $D404; STA $D40B; STA $D412 — clear voice control registers) found via byte-pattern search within first 128 bytes (JMP-table prefix length varies per file). Wizax-B (`Cool_as_Wize_Title`) uses a DIFFERENT player with `99 04 D4 9D C8 C4 9D CB C4 9D CE C4 9D D4 C4 99 06 D4` (STA abs,Y/X indexed writes — Yield-Point-style architecture). 5 new tests + mutual-exclusivity check. **955 tests pass**. Corpus regression byte-identical. **Vibrants V20 cluster coverage now 9 of 14 files** (1988 2000 A.D.: 2, Zetrex/YP: 3, Wizax-A: 3, Wizax-B: 1; remaining 5 = Magic_Sound + Min_Axel_F + James_Bond_Theme_Remix + Atom_Rock + Fast_Stuff_1, each a singleton or different player).
 
 **v3.5.12** (2026-05-12): Vibrants V20 — second cluster (Zetrex / Yield Point) signature-identified. Discovered Jewels.sid + Waste.sid (1988 Zetrex) + Racer.sid (1987 Yield Point Music) share the same player binary at load $E000 — same code matches across 3 files; song-specific data tables diverge after the first 35 bytes of player code. New `_is_zetrex_yp_cluster` check in `sidm2/vibrants_v20_detector.py` matches `2C 4A E5 30 29 50 3E A2 02 A9 00 BC 09 E5 99 04 D4 9D 0D E5 9D 10 E5 9D 13 E5 9D 19 E5 99 06 D4 A9 11 9D` at c64_data offset 9. These files get player-id="Rob_Hubbard" and route through driver11 (not laxity), so the V20 detector call was ALSO added to `_inject_player_raw_minimal` so the cluster advisory log appears. Cluster suffix: "1988 Zetrex / 1987 Yield Point cluster (player signature matched; 3 files share this binary at load $E000)". No edit propagation — same multi-week-per-variant RE blocker as the 1988 2000 A.D. cluster. **950 tests pass** (+4 new: 3 parametrized cluster matches + 1 mutual-exclusivity check). Corpus regression byte-identical.
 

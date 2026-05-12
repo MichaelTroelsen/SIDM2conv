@@ -109,6 +109,49 @@ def _is_zetrex_yp_cluster(c64_data: bytes) -> bool:
             == _ZETREX_YP_SIG_BYTES)
 
 
+# Wizax-A cluster signature (1987 Wizax 2004 — main player variant).
+# 2000_A_D + Fight_TST_II + Hall_of_Fame share player code with this
+# distinctive byte sequence near the start of the binary. The sequence
+# is `A9 00 8D 04 D4 8D 0B D4 8D 12 D4` (LDA #0; STA $D404; STA $D40B;
+# STA $D412 — clear all 3 voice control registers). Found at variable
+# offset within first 128 bytes because the JMP-table prefix length
+# varies (2000_A_D has 2 JMPs, Fight_TST_II has 6, Hall_of_Fame has 4).
+_WIZAX_A_SIG_BYTES = bytes([
+    0xA9, 0x00, 0x8D, 0x04, 0xD4,
+    0x8D, 0x0B, 0xD4, 0x8D, 0x12, 0xD4,
+])
+
+# Wizax-B cluster signature (1987 Wizax 2004 — alt variant).
+# Cool_as_Wize_Title uses a DIFFERENT player than Wizax-A. Its
+# distinctive byte sequence uses `STA $D4XX,Y` indexed writes:
+# `99 04 D4 9D C8 C4 9D CB C4 9D CE C4 9D D4 C4 99 06 D4` — STA $D404,Y
+# then 4× STA $C4CC,X (voice scratches) then STA $D406,Y. Found near
+# start of the binary. This pattern is specific to Cool_as_Wize's
+# load=$C000 variant; the $C4 high byte is the player's RAM area.
+_WIZAX_B_SIG_BYTES = bytes([
+    0x99, 0x04, 0xD4,
+    0x9D, 0xC8, 0xC4,
+    0x9D, 0xCB, 0xC4,
+    0x9D, 0xCE, 0xC4,
+    0x9D, 0xD4, 0xC4,
+    0x99, 0x06, 0xD4,
+])
+
+
+def _is_wizax_a_cluster(c64_data: bytes) -> bool:
+    """1987 Wizax 2004 main-variant cluster (2000_A_D, Fight_TST_II,
+    Hall_of_Fame). Search for the distinctive 11-byte voice-control
+    clear pattern within the first 128 bytes."""
+    return _WIZAX_A_SIG_BYTES in c64_data[:128]
+
+
+def _is_wizax_b_cluster(c64_data: bytes) -> bool:
+    """1987 Wizax 2004 alt-variant cluster (Cool_as_Wize_Title).
+    Different player from Wizax-A — uses STA abs,Y and STA abs,X for
+    voice register writes."""
+    return _WIZAX_B_SIG_BYTES in c64_data[:128]
+
+
 def detect_vibrants_v20(c64_data: bytes, load_addr: int,
                          copyright_str: str = '') -> Optional[str]:
     """Return a short variant label (e.g., "1988 2000 A.D.") if the
@@ -150,5 +193,14 @@ def detect_vibrants_v20(c64_data: bytes, load_addr: int,
     # Waste + Racer share this binary at load $E000).
     if _is_zetrex_yp_cluster(c64_data):
         return f"{base} — 1988 Zetrex / 1987 Yield Point cluster (player signature matched; 3 files share this binary at load $E000)"
+    # 1987 Wizax 2004 main variant (Wizax-A): 2000_A_D, Fight_TST_II,
+    # Hall_of_Fame share a player with `LDA #0; STA $D404; STA $D40B;
+    # STA $D412` voice-control-clear sequence.
+    if _is_wizax_a_cluster(c64_data):
+        return f"{base} — 1987 Wizax 2004 cluster (Wizax-A variant; 3 files share this player: 2000_A_D, Fight_TST_II, Hall_of_Fame)"
+    # 1987 Wizax 2004 alt variant (Wizax-B): Cool_as_Wize_Title uses a
+    # different player with STA abs,Y/abs,X voice writes.
+    if _is_wizax_b_cluster(c64_data):
+        return f"{base} — 1987 Wizax 2004 cluster (Wizax-B variant; Cool_as_Wize_Title)"
 
     return base

@@ -128,6 +128,41 @@ class TestZetrexYPClusterSignature:
                 f"{name} should NOT hit Zetrex cluster, got: {result}"
 
 
+class TestWizaxClusters:
+    """1987 Wizax 2004 splits into 2 sub-clusters by player code:
+    Wizax-A (2000_A_D + Fight_TST_II + Hall_of_Fame) uses STA abs;
+    Wizax-B (Cool_as_Wize_Title) uses STA abs,X/Y indexed."""
+
+    @pytest.mark.parametrize("name", [
+        '2000_A_D.sid',
+        'Fight_TST_II.sid',
+        'Hall_of_Fame.sid',
+    ])
+    def test_wizax_a(self, name):
+        c64, load, cprt = _load_c64(name)
+        result = detect_vibrants_v20(c64, load, cprt)
+        assert result is not None
+        assert 'Wizax-A variant' in result, \
+            f"{name} should hit Wizax-A cluster, got: {result}"
+
+    def test_wizax_b(self):
+        c64, load, cprt = _load_c64('Cool_as_Wize_Title.sid')
+        result = detect_vibrants_v20(c64, load, cprt)
+        assert result is not None
+        assert 'Wizax-B variant' in result, \
+            f"Cool_as_Wize_Title should hit Wizax-B cluster, got: {result}"
+
+    def test_wizax_clusters_mutually_exclusive(self):
+        """Wizax-A files must NOT match Wizax-B, and vice versa."""
+        for name in ('2000_A_D.sid', 'Fight_TST_II.sid', 'Hall_of_Fame.sid'):
+            c64, load, cprt = _load_c64(name)
+            result = detect_vibrants_v20(c64, load, cprt)
+            assert 'Wizax-B variant' not in result
+        c64, load, cprt = _load_c64('Cool_as_Wize_Title.sid')
+        result = detect_vibrants_v20(c64, load, cprt)
+        assert 'Wizax-A variant' not in result
+
+
 class TestCanonicalFilesDoNotMatch:
     """Stinsen + Unboxed + Beast + Angular must NOT be flagged as V20
     (their copyright strings don't contain V20 labels and they're
