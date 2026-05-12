@@ -80,13 +80,21 @@ Toolchain at `docs/stage8.5_debugging_toolkit.md`.
   zig64-verified. See `memory/stinsen-filter-architecture.md` +
   `memory/beast-angular-filter-architecture.md`.
 
-**Vibrants V20 (14 Class-C files, pre-NP21)** — ❌ DEFERRED (multi-week).
-The remaining 14 files in the Laxity corpus that don't lift via NP21
-autodetect use 5+ distinct pre-NP21 player variants from 1987-1990
-(Wizax / Yield Point / 2000 A.D. / Zetrex / Flexible Arts / Laxity-1990).
-No shared byte-stream encoding across variants; each needs its own
-detector + decoder. Audio already plays correctly via embedded-binary
-path; only the editor view is empty. Inventory + traces in
+**Vibrants V20 (14 Class-C files, pre-NP21)** — ⚠️ DETECTED + advisory (v3.5.11); full byte-stream support remains DEFERRED (multi-week).
+v3.5.11 ships `sidm2/vibrants_v20_detector.py` (copyright + size
+heuristic) that flags V20 files BEFORE the NP21 autodetect runs,
+so they skip the garbage-pattern-lifting path and emit an honest
+empty editor view plus an info-level advisory log. Audio playback
+unchanged — embedded-binary path handles playback regardless.
+
+Full edit propagation still requires per-variant byte-stream
+decoders: the 14 files use 5+ distinct pre-NP21 player variants
+from 1987-1990 (Wizax / Yield Point / 2000 A.D. / Zetrex / Flexible
+Arts / Laxity-1990) with no shared encoding. The 1988 2000 A.D.
+cluster (3 files) has been partially RE'd this session — note byte
+stream lives at `$1794+` per voice (Galax_it_y), with each byte
+indexed into a freq LUT at `$150F`. Full decode requires further
+RE per variant. Inventory + traces in
 `memory/vibrants-v20-findings.md`. Full support estimated at 2-3 days
 per variant × 5 variants = 10-15 days. Investigation tooling staged
 in `bin/_inventory_vibrants.py` + `bin/_trace_vibrants_v20.py`.

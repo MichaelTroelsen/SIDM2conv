@@ -1,7 +1,7 @@
 # Project Status Overview
 
 **Last Updated**: 2026-05-12
-**Current Version**: v3.5.10 (Stage 7 F4 pulse — extended to Beast + Angular; zig64-verified)
+**Current Version**: v3.5.11 (Vibrants V20 advisory + autodetect short-circuit)
 **Status**: Production — all 4 success criteria closed; **Stage 7 F1-F5 closed for Stinsen + Beast + Angular**; Laxity corpus editor-view yield 78%
 
 ---

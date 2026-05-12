@@ -3490,28 +3490,50 @@ class SF2Writer:
         # Try conventional offsets first
         ptrs = _read_ptrs(CH_SEQ_LO_OFF, CH_SEQ_HI_OFF)
         if ptrs is None or not _ptrs_in_range(ptrs):
-            # Class B autodetect path
-            try:
-                from sidm2.ch_seq_ptr_scanner import detect_ch_seq_ptr
-                init_addr = getattr(self.data.header, 'init_address', sid_la) \
-                    if getattr(self, 'data', None) and getattr(self.data, 'header', None) else sid_la
-                play_addr = getattr(self.data.header, 'play_address', sid_la + 3) \
-                    if getattr(self, 'data', None) and getattr(self.data, 'header', None) else sid_la + 3
-                detected = detect_ch_seq_ptr(c64_data, sid_la, init_addr,
-                                             play_addr=play_addr, n_play_ticks=3)
-            except Exception as e:
-                logger.debug(f"  ch_seq_ptr autodetect failed: {e}")
-                detected = None
-            if detected is not None:
-                lo_addr, hi_addr, det_ptrs, score = detected
+            # Vibrants V20 short-circuit: pre-NP21 player variants have
+            # no NP21 ch_seq_ptr at all, and running the autodetect on
+            # them yields garbage 2-14 byte "patterns" that mislead the
+            # SF2 editor view. For these files, skip the autodetect
+            # entirely and emit track_count=0 (honest empty editor view).
+            # Audio playback is unaffected — it goes through the
+            # embedded-binary path. See `memory/vibrants-v20-findings.md`.
+            from sidm2.vibrants_v20_detector import detect_vibrants_v20
+            v20_copyright = (getattr(self.data.header, 'copyright', '')
+                             if getattr(self, 'data', None) and getattr(self.data, 'header', None)
+                             else '')
+            v20_label = detect_vibrants_v20(c64_data, sid_la, v20_copyright)
+            if v20_label:
                 logger.info(
-                    f"  ch_seq_ptr autodetect: lo=${lo_addr:04X} hi=${hi_addr:04X} "
-                    f"score={score} ptrs={[f'${p:04X}' for p in det_ptrs]}"
+                    f"  Vibrants V20 (pre-NP21) detected: {v20_label}. "
+                    f"Skipping NP21 autodetect — these files use a different "
+                    f"player architecture. Audio plays via embedded-binary "
+                    f"path; editor view stays empty by design "
+                    f"(see docs/ROADMAP.md → Vibrants V20 section)."
                 )
-                # Convert absolute back to offsets
-                CH_SEQ_LO_OFF = lo_addr - sid_la
-                CH_SEQ_HI_OFF = hi_addr - sid_la
-                ptrs = det_ptrs
+                # ptrs stays None → num_patterns=0 → track_count=0 path
+            else:
+                # Class B autodetect path (NP21 variant with relocated table)
+                try:
+                    from sidm2.ch_seq_ptr_scanner import detect_ch_seq_ptr
+                    init_addr = getattr(self.data.header, 'init_address', sid_la) \
+                        if getattr(self, 'data', None) and getattr(self.data, 'header', None) else sid_la
+                    play_addr = getattr(self.data.header, 'play_address', sid_la + 3) \
+                        if getattr(self, 'data', None) and getattr(self.data, 'header', None) else sid_la + 3
+                    detected = detect_ch_seq_ptr(c64_data, sid_la, init_addr,
+                                                 play_addr=play_addr, n_play_ticks=3)
+                except Exception as e:
+                    logger.debug(f"  ch_seq_ptr autodetect failed: {e}")
+                    detected = None
+                if detected is not None:
+                    lo_addr, hi_addr, det_ptrs, score = detected
+                    logger.info(
+                        f"  ch_seq_ptr autodetect: lo=${lo_addr:04X} hi=${hi_addr:04X} "
+                        f"score={score} ptrs={[f'${p:04X}' for p in det_ptrs]}"
+                    )
+                    # Convert absolute back to offsets
+                    CH_SEQ_LO_OFF = lo_addr - sid_la
+                    CH_SEQ_HI_OFF = hi_addr - sid_la
+                    ptrs = det_ptrs
 
         addr_to_sf2_idx = {}
         raw_patterns = []    # list of (body_bytes, loop_target)
@@ -3551,11 +3573,20 @@ class SF2Writer:
             # track-display code path entirely. Playback is unaffected
             # because runtime SID emulation reads the embedded NP21 binary
             # via INIT/PLAY vectors, not Block 5 addresses.
-            logger.warning(
-                "  No NP21 patterns found (ch_seq_ptr at $0A1C/$0A1F "
-                "doesn't contain valid sequence pointers); emitting "
-                "track_count=0 to avoid SF2II editor-view OOB crash"
-            )
+            # The Vibrants V20 advisory was already logged at the
+            # autodetect short-circuit (see above) for V20-class files.
+            # Only emit the generic warning for non-V20 cases where the
+            # autodetect genuinely failed.
+            from sidm2.vibrants_v20_detector import detect_vibrants_v20
+            v20_copy = (getattr(self.data.header, 'copyright', '')
+                        if getattr(self, 'data', None) and getattr(self.data, 'header', None)
+                        else '')
+            if detect_vibrants_v20(c64_data, sid_la, v20_copy) is None:
+                logger.warning(
+                    "  No NP21 patterns found (ch_seq_ptr at $0A1C/$0A1F "
+                    "doesn't contain valid sequence pointers); emitting "
+                    "track_count=0 to avoid SF2II editor-view OOB crash"
+                )
             # SF2II's ComponentTracks constructor dereferences
             # `(*m_TracksDataSource)[0]->GetDimensions().m_Width` unconditionally
             # (component_tracks.cpp:47). With an empty data source it OOB-crashes.
