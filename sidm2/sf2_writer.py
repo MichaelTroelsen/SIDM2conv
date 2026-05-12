@@ -85,7 +85,28 @@ class SF2Writer:
             # Use Laxity-specific injection for Laxity driver, embed-binary
             # fallback for non-Laxity SIDs that have c64_data (Galway, Hubbard,
             # NP20, etc.), template-based for the rest.
-            if self.driver_type == 'laxity':
+            # Wizax-A redirect: files identified as non-Laxity by
+            # player-id.exe but matching the Wizax-A signature can be
+            # processed via the laxity F1 pipeline (their byte streams
+            # are NP21-compatible). v3.5.15 enables this for 4 Wizax-A
+            # files: 2000_A_D / Fight_TST_II / Hall_of_Fame / Min_Axel_F.
+            # See `memory/wizax-a-byte-stream-re.md`.
+            wizax_redirect = False
+            if (self.driver_type != 'laxity'
+                and getattr(self.data, 'c64_data', None) is not None):
+                try:
+                    from sidm2.wizax_a_detector import detect_wizax_a_layout
+                    sid_la_check = getattr(self.data, 'load_address', 0x1000)
+                    if detect_wizax_a_layout(self.data.c64_data, sid_la_check) is not None:
+                        logger.info(
+                            "  Wizax-A signature detected; redirecting "
+                            "non-Laxity driver to the F1 pipeline."
+                        )
+                        wizax_redirect = True
+                except Exception:
+                    pass
+
+            if self.driver_type == 'laxity' or wizax_redirect:
                 # Raw approach: embed song's own NP21 binary verbatim.
                 # Works for any NP21 sub-version without hardcoded layout.
                 if getattr(self.data, 'c64_data', None) is not None:
@@ -2073,11 +2094,27 @@ class SF2Writer:
             shadow_buffer[slot + n]     = 0xFF
             shadow_buffer[slot + n + 1] = loop_target & 0xFF if loop_target is not None else 0x00
 
-        # Patch ch_seq_ptr ($0A1C/$0A1F) in c64_data — each voice points to
-        # its own shadow slot at shadow_base + v*256.
+        # Patch ch_seq_ptr in c64_data — each voice points to its own
+        # shadow slot at shadow_base + v*256. Default offsets are NP21's
+        # $0A1C/$0A1F. For Wizax-A files, override with the detected
+        # ptr-table addresses (file-specific) so the redirected pipeline
+        # actually patches the addresses the Wizax-A player reads from.
         c64_data = bytearray(c64_data)
         CH_SEQ_LO_OFF = 0x0A1C
         CH_SEQ_HI_OFF = 0x0A1F
+        try:
+            from sidm2.wizax_a_detector import detect_wizax_a_layout
+            wzx_for_patch = detect_wizax_a_layout(c64_data, sid_la)
+        except Exception:
+            wzx_for_patch = None
+        if wzx_for_patch is not None:
+            CH_SEQ_LO_OFF = wzx_for_patch.ptr_lo_addr - sid_la
+            CH_SEQ_HI_OFF = wzx_for_patch.ptr_hi_addr - sid_la
+            logger.info(
+                f"  Wizax-A ch_seq_ptr patching at "
+                f"${wzx_for_patch.ptr_lo_addr:04X}/${wzx_for_patch.ptr_hi_addr:04X} "
+                f"(NOT default $0A1C/$0A1F)"
+            )
         if num_patterns > 0:
             for v in range(SHADOW_VOICES):
                 voice_shadow_addr = shadow_base + v * SEQ_SHADOW_SIZE
@@ -3508,6 +3545,34 @@ class SF2Writer:
 
         # Try conventional offsets first
         ptrs = _read_ptrs(CH_SEQ_LO_OFF, CH_SEQ_HI_OFF)
+        if ptrs is None or not _ptrs_in_range(ptrs):
+            # Wizax-A redirect: pre-NP21 Wizax-A files use a different
+            # ptr-table layout than NP21's $0A1C/$0A1F but their byte
+            # streams ARE NP21-compatible (notes $01-$6F, durations
+            # $80-$9F, $FF loop). Redirect the ch_seq_ptr offsets at
+            # Wizax-A's detected ptr-table addresses so the existing
+            # F1 extraction + shadow buffer + multipat translator
+            # pipeline can process them. v3.5.15 enables F1 (sequences)
+            # display + edit propagation for the 4 Wizax-A files.
+            # See `memory/wizax-a-byte-stream-re.md`.
+            try:
+                from sidm2.wizax_a_detector import detect_wizax_a_layout
+                wzx = detect_wizax_a_layout(c64_data, sid_la)
+            except Exception:
+                wzx = None
+            if wzx is not None:
+                CH_SEQ_LO_OFF = wzx.ptr_lo_addr - sid_la
+                CH_SEQ_HI_OFF = wzx.ptr_hi_addr - sid_la
+                ptrs = _read_ptrs(CH_SEQ_LO_OFF, CH_SEQ_HI_OFF)
+                if ptrs is not None and _ptrs_in_range(ptrs):
+                    logger.info(
+                        f"  Wizax-A detected: ptr-table at "
+                        f"${wzx.ptr_lo_addr:04X}/${wzx.ptr_hi_addr:04X} "
+                        f"(ZP ${wzx.zp_lo:02X}/${wzx.zp_hi:02X}); "
+                        f"voice ptrs = {[f'${p:04X}' for p in ptrs]}. "
+                        f"Running NP21 F1 pipeline with Wizax-A redirect."
+                    )
+
         if ptrs is None or not _ptrs_in_range(ptrs):
             # Vibrants V20 short-circuit: pre-NP21 player variants have
             # no NP21 ch_seq_ptr at all, and running the autodetect on
