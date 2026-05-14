@@ -58,6 +58,12 @@ bin/_*.py
 bin/_*.csv
 bin/_*.txt
 bin/_*.prg
+# Generated SF2 + round-trip outputs from sid_to_sf2 / sf2_to_sid
+# (reproducible from SID/; ephemeral test artifacts, not source).
+bin/*.sf2
+bin/*.txt
+bin/*_rt.sid
+bin/*_roundtrip.sid
 
 # Generated disassemblies
 output/**/*_disassembly.md
