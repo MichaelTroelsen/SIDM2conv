@@ -160,45 +160,41 @@ class SF2File:
         logger.debug(f"  Data size: {len(self.data) - 2} bytes")
 
     def _extract_metadata(self):
-        """Extract title, author, copyright from the SF2 Description aux block.
+        """Extract title, author, copyright from the SF2 META trailer.
 
-        SF2 aux data is a chain of TLV blocks (see sf2_writer._inject_auxiliary_data):
-            [id:1][param:2 LE][size:2 LE][data:size bytes]
-        Block id=5 with param=1 is "Description" and contains three length-prefixed
-        latin-1 strings: title, author, copyright (each [len:1][bytes:len]).
+        Since v3.5.17, sf2_writer appends a trailer past the SF2 content:
+            b"META" [pascal title] [pascal author] [pascal copyright]
+        where each pascal string is [u8 len][len bytes latin-1].
 
-        We scan the file for that exact block signature; the previous heuristic
-        (last 3 null-separated printable strings) was unreliable — it picked up
-        the last instrument name in block id=4 instead of the song title.
+        SF2II ignores the trailer (the C64 memory location it would map to
+        isn't referenced by any handler). Round-trip readers find the
+        magic by reverse-scanning the file's tail.
         """
-        for off in range(len(self.data) - 5):
-            if self.data[off] != 5:
-                continue
-            param = struct.unpack('<H', self.data[off+1:off+3])[0]
-            size  = struct.unpack('<H', self.data[off+3:off+5])[0]
-            if param != 1 or size == 0 or off + 5 + size > len(self.data):
-                continue
-            block = self.data[off+5:off+5+size]
+        # Reverse-scan a reasonable tail window for the b"META" magic
+        # (faster than a full-file scan; trailer is always at file end)
+        magic = b"META"
+        search = self.data[-2048:] if len(self.data) > 2048 else self.data
+        idx = search.rfind(magic)
+        if idx >= 0:
+            off = len(self.data) - len(search) + idx + len(magic)
             try:
-                i = 0
                 strs = []
                 for _ in range(3):
-                    if i >= len(block):
+                    if off >= len(self.data):
                         break
-                    L = block[i]; i += 1
-                    if i + L > len(block):
-                        raise ValueError("string runs past block end")
-                    strs.append(block[i:i+L].decode('latin-1', errors='replace'))
-                    i += L
-                if i != size or len(strs) != 3:
-                    continue  # not a valid Description block, keep scanning
-                self.title, self.author, self.copyright = strs
-                logger.debug(f"  Found Description block @ {off:#x}: "
-                             f"{self.title!r} / {self.author!r} / {self.copyright!r}")
-                return
-            except Exception:
-                continue
-        logger.debug("  No Description block found; metadata will be empty")
+                    L = self.data[off]; off += 1
+                    if off + L > len(self.data):
+                        raise ValueError("string runs past file end")
+                    strs.append(self.data[off:off+L].decode('latin-1', errors='replace'))
+                    off += L
+                if len(strs) == 3:
+                    self.title, self.author, self.copyright = strs
+                    logger.debug(f"  Found META trailer: "
+                                 f"{self.title!r} / {self.author!r} / {self.copyright!r}")
+                    return
+            except Exception as e:
+                logger.debug(f"  META trailer parse failed: {e}")
+        logger.debug("  No META trailer found; metadata will be empty")
 
     def _detect_driver_addresses(self):
         """Parse SF2 header blocks to extract init/play addresses.

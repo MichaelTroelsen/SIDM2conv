@@ -169,6 +169,13 @@ class SF2Writer:
 
         self._inject_auxiliary_data()
 
+        # v3.5.17: append a "META" trailer with PSID title/author/copyright
+        # so SID -> SF2 -> SID round-trip preserves metadata. Trailer lives
+        # past the shadow buffer; SF2II loads but never reads it (the C64
+        # memory area where it lands isn't referenced by any handler).
+        # Format: b"META" + 3 pascal strings (title, author, copyright).
+        self._append_metadata_trailer()
+
         # Log final structure before writing
         self._log_sf2_structure("FINAL FILE STRUCTURE", self.output)
 
@@ -1346,6 +1353,31 @@ class SF2Writer:
 
             idx = pos + 12
 
+    def _append_metadata_trailer(self) -> None:
+        """Append b"META" magic + 3 pascal strings (title, author, copyright)
+        after the existing SF2 content so sf2_to_sid.py can recover them
+        on round-trip. SF2II ignores the trailer (its C64 memory landing
+        spot isn't read by any handler). Latin-1 encoded, max 255B per
+        string per the pascal-len format.
+        """
+        if not hasattr(self.data, 'header') or not self.data.header:
+            title = author = copyright = ""
+        else:
+            h = self.data.header
+            title     = (getattr(h, 'name', '')      or '').strip()
+            author    = (getattr(h, 'author', '')    or '').strip()
+            copyright = (getattr(h, 'copyright', '') or '').strip()
+        trailer = bytearray(b"META")
+        for s in (title, author, copyright):
+            b = s.encode('latin-1', errors='replace')[:255]
+            trailer.append(len(b))
+            trailer.extend(b)
+        self.output = bytes(self.output) + bytes(trailer)
+        logger.info(
+            f"  Metadata trailer: title={title!r} author={author!r} "
+            f"copyright={copyright!r} ({len(trailer)}B appended)"
+        )
+
     def _inject_auxiliary_data(self) -> None:
         """Inject auxiliary data with instrument and command names"""
         logger.info("  Injecting auxiliary data (names)...")
@@ -2106,9 +2138,17 @@ class SF2Writer:
         # $0A1C/$0A1F. For Wizax-A files, override with the detected
         # ptr-table addresses (file-specific) so the redirected pipeline
         # actually patches the addresses the Wizax-A player reads from.
+        # v3.5.17: skip the default $1A1C/$1A1F patch when the bytes
+        # there don't actually contain valid ch_seq_ptrs (out-of-range
+        # → those bytes are state-machine data, not pointers). Patching
+        # them corrupts other code paths (e.g. Angular: LDA $1A1F,Y at
+        # $10F7 reads state from there, causing 3 extra osc3 register
+        # writes per active frame). Tradeoff: F1 edit propagation
+        # disabled for these files; audio playback matches original.
         c64_data = bytearray(c64_data)
         CH_SEQ_LO_OFF = 0x0A1C
         CH_SEQ_HI_OFF = 0x0A1F
+        skip_ch_seq_patch = False
         try:
             from sidm2.wizax_a_detector import detect_wizax_a_layout
             from sidm2.zetrex_yp_detector import detect_zetrex_yp_layout
@@ -2127,7 +2167,28 @@ class SF2Writer:
                 f"${patch_layout.ptr_lo_addr:04X}/${patch_layout.ptr_hi_addr:04X} "
                 f"(NOT default $0A1C/$0A1F)"
             )
-        if num_patterns > 0:
+        else:
+            # Check whether bytes at default $1A1C/$1A1F look like valid
+            # ch_seq_ptrs (in-range, pointing inside the binary). If not,
+            # those bytes are something else and patching them corrupts
+            # the file. Skip the patch to preserve audio integrity.
+            def _ptrs_in_range_check(lo_off, hi_off):
+                if lo_off + 2 >= len(c64_data) or hi_off + 2 >= len(c64_data):
+                    return False
+                for v in range(3):
+                    p = (c64_data[hi_off + v] << 8) | c64_data[lo_off + v]
+                    if not (sid_la <= p < sid_la + len(c64_data)):
+                        return False
+                return True
+            if not _ptrs_in_range_check(CH_SEQ_LO_OFF, CH_SEQ_HI_OFF):
+                skip_ch_seq_patch = True
+                logger.info(
+                    f"  Default $1A1C/$1A1F ch_seq_ptr bytes are not "
+                    f"in-range pointers for this file; skipping patch "
+                    f"to preserve audio fidelity (F1 edit propagation "
+                    f"disabled for this file)"
+                )
+        if num_patterns > 0 and not skip_ch_seq_patch:
             for v in range(SHADOW_VOICES):
                 voice_shadow_addr = shadow_base + v * SEQ_SHADOW_SIZE
                 if CH_SEQ_LO_OFF + v < len(c64_data) and CH_SEQ_HI_OFF + v < len(c64_data):
@@ -4218,6 +4279,18 @@ class SF2Writer:
         music_data_params['edit_wave_addr']   = wave_table_addr
         music_data_params['edit_pulse_addr']  = pulse_table_addr
         music_data_params['edit_filter_addr'] = filter_table_addr
+
+        # v3.5.17 fix: expose the (possibly autodetected, possibly redirected)
+        # ch_seq_ptr table absolute addresses so _inject_laxity_raw_np21 can
+        # patch at the SAME location we extracted pointers from. Without
+        # this, the injector defaults to $0A1C/$0A1F and clobbers
+        # non-ch_seq_ptr data on files whose actual table is elsewhere
+        # (e.g. Angular: ch_seq_ptr at $1B2C/$1B2F, but $1A1F-$1A22 is
+        # state-machine data the player reads via LDA $1A1F,Y at $10F7).
+        # Only set when the table was successfully located (ptrs in range).
+        if ptrs is not None and _ptrs_in_range(ptrs):
+            music_data_params['ch_seq_lo_addr'] = sid_la + CH_SEQ_LO_OFF
+            music_data_params['ch_seq_hi_addr'] = sid_la + CH_SEQ_HI_OFF
 
         return music_data_params, bytes(edit), voice_init_idx, raw_patterns, voice_pat_counts
 
