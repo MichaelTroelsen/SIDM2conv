@@ -1698,6 +1698,64 @@ class TestCriterion3EditProof(unittest.TestCase):
             self.assertLess(len(code), 242, "must fit in $0F0E-$0FFF slot")
 
 
+class TestUpstream211Workaround(unittest.TestCase):
+    """_ensure_sid_write_in_scan_window_universal — guards SF2II's
+    unguarded result.begin() in driver_utils.cpp:419 by stamping a dead
+    STA $D400,X at $1006 (post 2-JMP trampoline) when that slot is gap."""
+
+    LOAD_BASE = 0x0D7E
+    O1000 = 0x1000 - 0x0D7E + 2          # file offset of $1000
+    O1006 = O1000 + 6                    # file offset of $1006
+
+    def _writer(self, buf: bytearray) -> SF2Writer:
+        w = SF2Writer(create_minimal_extracted_data())
+        w.output = buf
+        return w
+
+    def _base_buf(self, tail=b"\x00\x00\x00") -> bytearray:
+        b = bytearray(self.O1006 + 3 + 4)
+        b[0] = self.LOAD_BASE & 0xFF
+        b[1] = self.LOAD_BASE >> 8
+        # 2-JMP trampoline at $1000: JMP $C000 ; JMP $C475
+        b[self.O1000:self.O1000 + 6] = bytes(
+            [0x4C, 0x00, 0xC0, 0x4C, 0x75, 0xC4])
+        b[self.O1006:self.O1006 + 3] = tail
+        return b
+
+    def test_stamps_when_gap(self):
+        w = self._writer(self._base_buf(b"\x00\x00\x00"))
+        w._ensure_sid_write_in_scan_window_universal()
+        o = w.output
+        self.assertEqual(bytes(o[self.O1006:self.O1006 + 3]),
+                         b"\x9d\x00\xd4", "STA $D400,X must be stamped")
+        # trampoline must stay intact (zig64/playback depends on it)
+        self.assertEqual(bytes(o[self.O1000:self.O1000 + 6]),
+                         bytes([0x4C, 0x00, 0xC0, 0x4C, 0x75, 0xC4]))
+
+    def test_idempotent(self):
+        w = self._writer(self._base_buf(b"\x9d\x00\xd4"))
+        w._ensure_sid_write_in_scan_window_universal()
+        self.assertEqual(bytes(w.output[self.O1006:self.O1006 + 3]),
+                         b"\x9d\x00\xd4")
+
+    def test_skips_live_code_at_1006(self):
+        w = self._writer(self._base_buf(b"\xa9\x01\x85"))  # live code
+        w._ensure_sid_write_in_scan_window_universal()
+        self.assertEqual(bytes(w.output[self.O1006:self.O1006 + 3]),
+                         b"\xa9\x01\x85",
+                         "must not overwrite live code at $1006")
+
+    def test_skips_when_no_trampoline(self):
+        b = self._base_buf(b"\x00\x00\x00")
+        # $1000 is live player code, not a 2-JMP trampoline
+        b[self.O1000:self.O1000 + 6] = bytes([0xA9, 0x00, 0x8D, 0x18, 0xD4, 0x60])
+        w = self._writer(b)
+        w._ensure_sid_write_in_scan_window_universal()
+        self.assertEqual(bytes(w.output[self.O1006:self.O1006 + 3]),
+                         b"\x00\x00\x00",
+                         "no stamp unless $1000 is a 2-JMP trampoline")
+
+
 if __name__ == '__main__':
     # Run with verbose output
     unittest.main(verbosity=2)

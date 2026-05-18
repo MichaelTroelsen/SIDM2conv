@@ -169,6 +169,17 @@ class SF2Writer:
 
         self._inject_auxiliary_data()
 
+        # Upstream #211 universal workaround. Every injection path
+        # (laxity raw-NP21, minimal-embed, driver11) emits a valid SF2
+        # whose Block 1 declares m_DriverCodeTop=$1000 and places a
+        # 2-JMP trampoline at $1000. SF2II's GetSIDWriteInformationFromDriver
+        # statically sweeps [$1000,$1900) for ABX/ABY $D400-$D406 writes
+        # and then derefs result.begin() UNGUARDED (driver_utils.cpp:419)
+        # — empty result ⇒ F10-load AV crash (upstream declined to fix).
+        # Apply once here, after self.output is final, so it covers ALL
+        # paths uniformly.
+        self._ensure_sid_write_in_scan_window_universal()
+
         # v3.5.17: append a "META" trailer with PSID title/author/copyright
         # so SID -> SF2 -> SID round-trip preserves metadata. Trailer lives
         # past the shadow buffer; SF2II loads but never reads it (the C64
@@ -1634,6 +1645,50 @@ class SF2Writer:
         logger.info(" Music data injection is a placeholder")
         logger.debug("The output file structure may need manual refinement")
 
+    def _ensure_sid_write_in_scan_window_universal(self) -> None:
+        """Upstream #211 workaround applied to the FINAL self.output,
+        covering every injection path (laxity raw-NP21, minimal-embed,
+        driver11). SF2II's GetSIDWriteInformationFromDriver sweeps
+        [$1000,$1900) for ABX/ABY $D400-$D406 writes then derefs
+        result.begin() unguarded (driver_utils.cpp:419) → empty ⇒ crash.
+
+        Every path emits a 2-JMP trampoline at $1000 (`4C lo hi 4C lo hi`,
+        6 bytes): laxity's zig64 entry stub, minimal's trampoline, and
+        driver11's `JMP init; JMP play`. SF2II decodes JMP abs as 3 bytes,
+        so after the two JMPs its linear sweep lands DETERMINISTICALLY at
+        $1006. If $1006 is inert PRG gap (00 00 00) we stamp a dead
+        `STA $D400,X` (9D 00 D4) there: the sweep decodes it as the next
+        instruction → result non-empty → no crash. The trampoline stays
+        intact (so zig64/playback unaffected) and $1006 gap is never
+        executed (playback uses DriverCommon InitAddress). If $1000 is
+        NOT a 2-JMP trampoline (live NP21 player at $1000, e.g. Sauna) or
+        $1006 isn't 00-filler (live code), we leave it alone — those
+        binaries already contain real indexed $D40x writes and pass."""
+        out = self.output
+        if out is None or len(out) < 4:
+            return
+        out = bytearray(out)
+        load_base = out[0] | (out[1] << 8)
+        o1000 = 0x1000 - load_base + 2
+        if o1000 < 0 or o1000 + 9 > len(out):
+            return
+        # Require the 2-JMP trampoline signature at $1000.
+        if not (out[o1000] == 0x4C and out[o1000 + 3] == 0x4C):
+            return
+        o1006 = o1000 + 6
+        trio = out[o1006:o1006 + 3]
+        if bytes(trio) == b"\x9d\x00\xd4":
+            return  # idempotent — already stamped
+        if trio != b"\x00\x00\x00":
+            return  # not inert gap (live code) — don't touch
+        out[o1006:o1006 + 3] = b"\x9d\x00\xd4"  # STA $D400,X
+        self.output = out
+        logger.info(
+            "  #211 workaround: stamped dead STA $D400,X at $1006 "
+            "(post 2-JMP trampoline; SF2II driver_utils.cpp:419 derefs "
+            "result.begin() unguarded — guarantees >=1 ABX/ABY $D40x "
+            "write in the [$1000,$1900) static scan window)")
+
     def _inject_laxity_raw_np21(self) -> None:
         """Build a valid SF2 file by embedding the song's own NP21 binary verbatim.
 
@@ -2390,6 +2445,9 @@ class SF2Writer:
             shadow_off = np21_off + len(c64_data) + len(sf2_edit_data)
             file_data[shadow_off:shadow_off + shadow_buffer_size] = shadow_buffer
 
+        # Upstream #211 workaround is applied universally in write()
+        # (_ensure_sid_write_in_scan_window_universal) after all injection
+        # paths converge, so nothing path-specific is needed here.
         self.output = file_data
 
         logger.info(f"  SF2 size: {len(self.output)} bytes")
@@ -2618,6 +2676,7 @@ class SF2Writer:
         edit_off = np21_off + len(c64_data)
         file_data[edit_off:edit_off + len(sf2_edit_data)] = sf2_edit_data
 
+        # Upstream #211 workaround applied universally in write().
         self.output = file_data
 
         logger.info(f"  SF2 size: {len(self.output)} bytes")
