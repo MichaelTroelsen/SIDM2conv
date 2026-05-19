@@ -65,6 +65,9 @@ bin/*.txt
 bin/*_rt.sid
 bin/*_roundtrip.sid
 
+# Issue-211 cron watcher state (harness-managed, not source)
+.claude/sf2_issue_211_state.json
+
 # Generated disassemblies
 output/**/*_disassembly.md
 output/**/*_exported_disassembly.md

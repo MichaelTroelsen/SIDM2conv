@@ -25,6 +25,50 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.19] - 2026-05-19
+
+### Validated — #211 fix at full Laxity-corpus scale + housekeeping
+
+Re-ran F10-load N=15 across all 286 SID/Laxity files with the v3.5.18
+fix: **C1 134→242/286 (47%→85%), 109 files recovered 0/15→15/15**,
+audio byte-identical, C4 unchanged. 37 still-crashing are all separate
+pre-documented clusters (sub-$1000 wrapper-collision, Vibrants V20,
+CONV_FAIL) — zero clean #211 cases remain. Synced stale
+`sidm2/__init__.py __version__` (3.3.0→3.5.19), purged bin/ scratch
+artifacts, gitignored the issue-211 cron state file. No behavior change.
+
+## [3.5.18] - 2026-05-18
+
+### Fixed — SF2II upstream #211 F10-load crash (SF2-side workaround)
+
+Root-caused via symbolized debugging (discovered `main.cpp:95` auto-
+loads `argv[1]` → new `pyscript/sf2_argv_crash.py`, no pyautogui): the
+crash is `Editor::DriverUtils::GetSIDWriteInformationFromDriver` at
+`driver_utils.cpp:419` — `result.begin()->m_CycleOffset` dereferenced
+on an EMPTY vector. SF2II statically sweeps `[$1000,$1900)` for
+absolute-indexed `$D400-$D406` writes; binaries not loaded at `$1000`
+leave that a zero gap → empty `result` → AV. (The old
+"m_TableColorRules" attribution was wrong.) Upstream declined to fix.
+Workaround: `_ensure_sid_write_in_scan_window_universal()` in
+`sf2_writer.py` (called once in `write()`, covers all injection
+paths) stamps a dead `STA $D400,X` (`9D 00 D4`) at `$1006` — the
+deterministic post-2-JMP-trampoline sweep boundary — when that slot
+is inert PRG gap. Trampoline intact (zig64/playback unaffected),
+NP21-at-$1000 passers skipped. +4 `TestUpstream211Workaround` tests.
+
+## [3.5.17] - 2026-05-14
+
+### Fixed — Angular audio fidelity + metadata round-trip
+
+(1) `_inject_laxity_raw_np21` no longer patches `$1A1C/$1A1F` when
+those bytes aren't valid in-range pointers (Angular: that region is
+state-machine data read via `LDA $1A1F,Y` at `$10F7`; the default
+patch caused +3 osc3 register writes/frame). Audio now byte-identical
+to original (2648/2648). (2) Metadata round-trip was never actually
+implemented — appended a `b"META"` trailer (title/author/copyright)
+past SF2 content; `sf2_to_sid.py` rfinds it. Round-trip metadata now
+preserved corpus-wide.
+
 ## [3.5.10] - 2026-05-12
 
 ### Added — Stage 7 F4 (pulse) for Beast + Angular
