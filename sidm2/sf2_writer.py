@@ -1391,6 +1391,14 @@ class SF2Writer:
 
     def _inject_auxiliary_data(self) -> None:
         """Inject auxiliary data with instrument and command names"""
+        # Low-load layout: the binary spans the hardcoded aux-pointer
+        # address $0FFB, so writing the pointer there corrupts live
+        # player data. Skip aux entirely (SF2II cleanly skips when it
+        # reads the binary's bytes as an address into unmapped/zero RAM).
+        if getattr(self, '_skip_aux', False):
+            logger.info("  Skipping aux injection (low-load: $0FFB "
+                        "overlaps embedded binary)")
+            return
         logger.info("  Injecting auxiliary data (names)...")
 
         # Path A (non-Laxity SIDs): skip instrument-name extraction, which
@@ -1813,6 +1821,20 @@ class SF2Writer:
         # Dead code — SF2II only static-sweeps it; nothing executes here.
         fd[off(BAIT):off(BAIT) + 4] = bytes([0x9D, 0x00, 0xD4, 0x60])
         fd[off(EDIT):off(EDIT) + len(sf2_edit_data)] = sf2_edit_data
+
+        # SF2II reads the aux-chain pointer from a HARDCODED absolute
+        # address $0FFB (driver_info.h: AuxilaryDataPointerAddress).
+        # For low-load files the binary spans $0FFB, so writing our aux
+        # pointer there corrupts live player data (verified: Slash/Broom
+        # read a freq table at $0FFB → audio divergence). Skip aux
+        # injection entirely: SF2II then reads the binary's own
+        # $0FFB-$0FFC bytes AS an address; for these files that points
+        # below LOAD_BASE (unmapped → 0) so ParseAuxilaryData's
+        # `if (addr == 0) return false` / immediate ID_End yields a clean
+        # empty-aux skip — binary stays byte-intact, editor view is
+        # empty-by-design anyway. (C4 metadata still works — the META
+        # trailer is appended at file end, not via aux.)
+        self._skip_aux = True
 
         self.output = fd
         logger.info(

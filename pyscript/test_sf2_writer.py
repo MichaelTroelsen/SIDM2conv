@@ -1800,6 +1800,27 @@ class TestLowLoadLayout(unittest.TestCase):
         self.assertEqual(top, 0x0600, "$0900-load → LOAD_BASE $0600")
         self.assertEqual(w.output[2] | (w.output[3] << 8), 0x1337)
 
+    def test_low_load_skips_aux_and_preserves_0FFB(self):
+        # SF2II reads the aux pointer from hardcoded $0FFB. For low-load
+        # the binary spans $0FFB, so aux must be skipped and the binary's
+        # $0FFB-$0FFC bytes left intact (else live player data corrupts).
+        w = self._writer()
+        c64 = bytearray(0xA00)
+        c64[0x0FFB - 0x0900] = 0x04   # sentinel "live player data"
+        c64[0x0FFC - 0x0900] = 0x05
+        self.assertTrue(w._build_low_load_sf2(bytes(c64), 0x0900, 0x0900, 0x0906))
+        self.assertTrue(getattr(w, '_skip_aux', False),
+                        "_build_low_load_sf2 must set _skip_aux")
+        top = w.output[0] | (w.output[1] << 8)
+        def at(a): return w.output[a - top + 2]
+        self.assertEqual(at(0x0FFB), 0x04, "binary $0FFB must stay intact")
+        self.assertEqual(at(0x0FFC), 0x05, "binary $0FFC must stay intact")
+        # _inject_auxiliary_data must early-return (no exception, no write)
+        before = bytes(w.output)
+        w._inject_auxiliary_data()
+        self.assertEqual(bytes(w.output), before,
+                         "aux injection must be a no-op when _skip_aux")
+
     def test_unfixable_low_load_returns_false(self):
         # load=$0400: no room for a ~525B header below the $0600 floor
         w = self._writer()

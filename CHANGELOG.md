@@ -25,6 +25,22 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.22] - 2026-05-19
+
+### Fixed — $0900 cluster complete 7/7 (aux-pointer-$0FFB corruption)
+
+The 3 deferred $0900 files (Broom_Tycoon, Slash_with_Ash_commercial/
+game) diverged because SF2II reads the aux-chain pointer from a
+hardcoded absolute address $0FFB. Low-load binaries span $0FFB, so
+`_inject_auxiliary_data`'s pointer write corrupted live player data.
+Fix: `_build_low_load_sf2` sets `_skip_aux`; `_inject_auxiliary_data`
+early-returns — binary's $0FFB stays intact, SF2II reads it as an
+address into unmapped/zero RAM and cleanly skips aux (no crash).
+$0900 now 7/7 fully recovered (C1 0→5/5, C2 byte-identical, C4
+MATCH). Also de-corrupts Phase-1 $0F00 binaries (span $0FFB too).
+New `pyscript/find_rbw_scratch.py` (py65 read-before-write analyzer).
++1 TestLowLoadLayout test (1014 total).
+
 ## [3.5.21] - 2026-05-19
 
 ### Fixed — sub-$1000 cluster Phase 2 ($0900) + low-load #211 hardening
