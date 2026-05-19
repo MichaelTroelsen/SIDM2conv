@@ -1689,6 +1689,116 @@ class SF2Writer:
             "result.begin() unguarded — guarantees >=1 ABX/ABY $D40x "
             "write in the [$1000,$1900) static scan window)")
 
+    def _build_low_load_sf2(self, c64_data, sid_la, init_addr, play_addr) -> bool:
+        """Alternate PRG layout for binaries that load below $1000.
+
+        Normal layout: [$0D7E header][$0F90 handlers][$0F9E translator]
+        [$1000 binary]…  — a sub-$1000 binary overlaps the wrapper.
+
+        Low-load layout: header goes BELOW the binary (LOAD_BASE_LOW),
+        the binary sits at its native sid_la untouched, and minimal
+        handlers go AFTER the binary. SF2II is fully TopAddress-relative
+        (driver_info.cpp: block_address = m_TopAddress + 2; no lower
+        bound) so a low TopAddress parses fine. No editor edit-area /
+        translator (these files have no working C3 anyway) — track view
+        uses the same safe placeholder as the minimal path so SF2II's
+        ComponentTracks ctor doesn't OOB-crash. Returns True if built,
+        False if there's no room for the header below sid_la (caller
+        falls back to legacy behavior).
+        """
+        from sidm2.sf2_header_generator import SF2HeaderGenerator
+
+        OL_SIZE, SEQ_SIZE, SEQ_PTR_SIZE = 0x100, 0x100, 0x80
+        clen = len(c64_data)
+
+        # Handlers + edit-area placeholder go AFTER the binary, page-aligned.
+        HI = (sid_la + clen + 0xFF) & ~0xFF
+        INIT_H, PLAY_H, STOP_H = HI, HI + 4, HI + 8
+        EDIT = HI + 0x10                       # 14B handler stubs, pad to 16
+
+        # Safe placeholder Block 5 + zero-filled Block 3 tables in the edit
+        # area (identical shape to _inject_player_raw_minimal so SF2II's
+        # editor model is valid even though it's empty).
+        ol_ptr_lo  = EDIT + 0
+        ol_ptr_hi  = EDIT + 3
+        seq_ptr_lo = EDIT + 6
+        seq_ptr_hi = EDIT + 6 + SEQ_PTR_SIZE
+        ol_track1  = EDIT + 6 + 2 * SEQ_PTR_SIZE
+        seq00      = ol_track1 + 3 * OL_SIZE
+        music_data_params = {
+            'track_count': 3, 'ol_ptr_lo_addr': ol_ptr_lo,
+            'ol_ptr_hi_addr': ol_ptr_hi, 'seq_count': 1,
+            'seq_ptr_lo_addr': seq_ptr_lo, 'seq_ptr_hi_addr': seq_ptr_hi,
+            'ol_size': OL_SIZE, 'ol_track1_addr': ol_track1,
+            'seq_size': SEQ_SIZE, 'seq00_addr': seq00,
+        }
+
+        edit = bytearray()
+        for v in range(3): edit.append((ol_track1 + v * OL_SIZE) & 0xFF)
+        for v in range(3): edit.append(((ol_track1 + v * OL_SIZE) >> 8) & 0xFF)
+        seq_lo = bytearray(SEQ_PTR_SIZE); seq_hi = bytearray(SEQ_PTR_SIZE)
+        seq_lo[0] = seq00 & 0xFF; seq_hi[0] = (seq00 >> 8) & 0xFF
+        edit.extend(seq_lo); edit.extend(seq_hi)
+        for _ in range(3):
+            ol = bytearray([0xA0, 0x00, 0xFE])
+            ol.extend([0xFF] * (OL_SIZE - 3)); edit.extend(ol)
+        edit.extend(bytes([0x7F] * SEQ_SIZE))
+
+        gen = SF2HeaderGenerator(driver_size=clen)
+        gen.DRIVER_INIT, gen.DRIVER_PLAY, gen.DRIVER_STOP = INIT_H, PLAY_H, STOP_H
+        gen.instr_addr = EDIT + len(edit); gen.cmd_addr = gen.instr_addr + 0x70
+        edit.extend(bytes(32 * 6))
+        gen.wave_addr = EDIT + len(edit);  edit.extend(bytes(32 * 2))
+        gen.pulse_addr = EDIT + len(edit); edit.extend(bytes(16 * 3))
+        gen.filter_addr = EDIT + len(edit); edit.extend(bytes(16 * 3))
+        gen.arp_addr = EDIT + len(edit);   edit.extend(bytes(256))
+        gen.tempo_addr = EDIT + len(edit); edit.extend(bytes(256))
+        gen.hr_addr = EDIT + len(edit);    edit.extend(bytes(16 * 2))
+        gen.init_table_addr = EDIT + len(edit); edit.extend(bytes(32 * 2))
+        sf2_edit_data = bytes(edit)
+        gen.driver_size += len(sf2_edit_data)
+
+        header_bytes = gen.generate_complete_headers(music_data_params)
+        H = len(header_bytes)
+
+        # Place the header so it ends strictly below sid_la (header bytes
+        # are LOAD_BASE-independent — all addresses inside are absolute).
+        # Floor at $0900 to stay clear of zeropage/stack/$0200-$03FF.
+        load_base = (sid_la - (2 + H) - 1) & ~0xFF
+        if load_base < 0x0900:
+            logger.info(
+                f"  Low-load: no room for {2+H}B header below "
+                f"${sid_la:04X} (would need LOAD_BASE ${load_base:04X} "
+                f"< $0900 floor); cannot fix this file")
+            return False
+
+        edit_end = EDIT + len(sf2_edit_data)
+        file_size = 2 + (edit_end - load_base)
+        if file_size >= 0x10000:
+            logger.info("  Low-load: file would exceed 64K; cannot fix")
+            return False
+        fd = bytearray(file_size)
+        fd[0] = load_base & 0xFF
+        fd[1] = load_base >> 8
+
+        def off(addr): return addr - load_base + 2
+        fd[off(load_base):off(load_base) + H] = header_bytes
+        fd[off(sid_la):off(sid_la) + clen] = bytes(c64_data)
+        # Minimal handler stubs after the binary.
+        fd[off(INIT_H):off(INIT_H) + 4] = bytes([0x20, init_addr & 0xFF, init_addr >> 8, 0x60])
+        fd[off(PLAY_H):off(PLAY_H) + 4] = bytes([0x20, play_addr & 0xFF, play_addr >> 8, 0x60])
+        fd[off(STOP_H):off(STOP_H) + 6] = bytes([0xA9, 0x00, 0x8D, 0x18, 0xD4, 0x60])
+        fd[off(EDIT):off(EDIT) + len(sf2_edit_data)] = sf2_edit_data
+
+        self.output = fd
+        logger.info(
+            f"  Low-load layout: LOAD_BASE=${load_base:04X} "
+            f"header=${load_base:04X}-${load_base + H - 1:04X} "
+            f"binary=${sid_la:04X}-${sid_la + clen - 1:04X} "
+            f"handlers INIT=${INIT_H:04X} PLAY=${PLAY_H:04X} "
+            f"STOP=${STOP_H:04X} (JSR ${init_addr:04X}/${play_addr:04X})")
+        return True
+
     def _inject_laxity_raw_np21(self) -> None:
         """Build a valid SF2 file by embedding the song's own NP21 binary verbatim.
 
@@ -1720,6 +1830,18 @@ class SF2Writer:
         header    = getattr(self.data, 'header', None)
         init_addr = getattr(header, 'init_address', sid_la)     if header else sid_la
         play_addr = getattr(header, 'play_address', sid_la + 3) if header else sid_la + 3
+
+        # Sub-$1000 wrapper-collision cluster: binaries loading below
+        # $1000 overlap the normal SF2 wrapper ($0D7E header + $0F90
+        # handlers + $0F9E translator) in the single contiguous PRG, so
+        # the normal layout aborts ("Translator overflow") → silent SF2.
+        # Use an alternate low-LOAD_BASE layout: header BELOW the binary,
+        # handlers AFTER it. See memory/sub-1000-cluster-design.md.
+        if 0 < sid_la < 0x1000:
+            if self._build_low_load_sf2(c64_data, sid_la, init_addr, play_addr):
+                return
+            # else: unfixable (no room below sid_la for the header —
+            # e.g. Echo_Beat $0400) → fall through to legacy behavior.
 
         LOAD_BASE      = 0x0D7E    # SF2 loads here; 0x1337 magic goes here
         # HANDLER_BASE history:
@@ -2519,6 +2641,15 @@ class SF2Writer:
         header    = getattr(self.data, 'header', None)
         init_addr = getattr(header, 'init_address', sid_la)     if header else sid_la
         play_addr = getattr(header, 'play_address', sid_la + 3) if header else sid_la + 3
+
+        # Sub-$1000 wrapper-collision: same as the laxity path. The
+        # minimal/driver11 path also places header+handlers in
+        # $0D7E-$0FFF, which a sub-$1000 binary overlaps → silent SF2.
+        # Reuse the self-contained low-LOAD_BASE builder.
+        if 0 < sid_la < 0x1000:
+            if self._build_low_load_sf2(c64_data, sid_la, init_addr, play_addr):
+                return
+            # else: unfixable (no header room below sid_la) → legacy.
 
         LOAD_BASE      = 0x0D7E
         HANDLER_BASE   = 0x0F90

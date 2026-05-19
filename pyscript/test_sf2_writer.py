@@ -1756,6 +1756,45 @@ class TestUpstream211Workaround(unittest.TestCase):
                          "no stamp unless $1000 is a 2-JMP trampoline")
 
 
+class TestLowLoadLayout(unittest.TestCase):
+    """_build_low_load_sf2 — sub-$1000 binaries get a low-LOAD_BASE
+    layout (header below the binary, handlers after it) instead of the
+    silent-abort wrapper collision."""
+
+    def _writer(self):
+        return SF2Writer(create_minimal_extracted_data())
+
+    def test_builds_low_load_for_0F00(self):
+        w = self._writer()
+        # 6400-byte synthetic binary at $0F00; init/play like the cluster
+        c64 = bytes(0x1900)
+        ok = w._build_low_load_sf2(c64, 0x0F00, 0x1000, 0x1006)
+        self.assertTrue(ok, "should build for $0F00 load")
+        out = w.output
+        top = out[0] | (out[1] << 8)
+        self.assertLess(top, 0x0F00, "TopAddr/header must sit below binary")
+        self.assertGreaterEqual(top, 0x0900, "TopAddr above the $0900 floor")
+        self.assertEqual(out[2] | (out[3] << 8), 0x1337, "magic at TopAddr+2")
+        # binary present, intact, at native $0F00
+        bo = 0x0F00 - top + 2
+        self.assertEqual(bytes(out[bo:bo + len(c64)]), c64)
+        # handlers placed AFTER the binary (page-aligned)
+        hi = (0x0F00 + len(c64) + 0xFF) & ~0xFF
+        ho = hi - top + 2
+        self.assertEqual(bytes(out[ho:ho + 4]),
+                         bytes([0x20, 0x00, 0x10, 0x60]), "INIT=JSR $1000;RTS")
+        self.assertEqual(bytes(out[ho + 4:ho + 8]),
+                         bytes([0x20, 0x06, 0x10, 0x60]), "PLAY=JSR $1006;RTS")
+
+    def test_unfixable_low_load_returns_false(self):
+        # load=$0400: no room for a ~$200 header below it (floor $0900)
+        w = self._writer()
+        ok = w._build_low_load_sf2(bytes(0x800), 0x0400, 0x0400, 0x0406)
+        self.assertFalse(ok, "should bail when header can't fit below load")
+        # legacy fall-through: output left as-is (empty bytearray)
+        self.assertEqual(len(w.output), 0)
+
+
 if __name__ == '__main__':
     # Run with verbose output
     unittest.main(verbosity=2)

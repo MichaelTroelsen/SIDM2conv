@@ -25,6 +25,24 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.20] - 2026-05-19
+
+### Fixed — sub-$1000 wrapper-collision cluster (Phase 1)
+
+Binaries loading below $1000 ($0F00 etc.) overlapped the SF2 wrapper
+($0D7E header + $0F90 handlers + $0F9E translator) in the contiguous
+PRG → converter aborted ("Translator overflow") → silent SF2 + F10
+crash. New `_build_low_load_sf2()`: header placed BELOW the binary
+(low LOAD_BASE — SF2II is TopAddress-relative, no lower bound),
+minimal handlers AFTER the binary, safe placeholder track view.
+Dispatched from the laxity raw-NP21 and minimal/driver11 paths when
+`0 < sid_la < $1000`. `verify_audio_match.py` now traces the SF2 via
+its Block 2 DriverCommon Init/Update addresses (robust for low-load
+AND normal layouts). Recovered (C1 0→5/5, C2 byte-identical, C4
+metadata preserved): Annelouise, Axel_F, Beat_the_Shit_3, Crap_5,
+Force_Tune, Shit. No_System-Part_2 deferred (driver11 template path).
++2 `TestLowLoadLayout` tests (1012 total).
+
 ## [3.5.19] - 2026-05-19
 
 ### Validated — #211 fix at full Laxity-corpus scale + housekeeping

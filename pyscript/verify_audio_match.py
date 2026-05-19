@@ -99,10 +99,36 @@ def main(argv):
         sid_rows = csv_rows(sid_trace)
         print(f"SID trace: {len(sid_rows)} register writes over {frames} frames")
 
-        # 3. Trace SF2
-        sf2_trace = trace_prg(sf2_path, frames)
+        # 3. Trace SF2 via its DECLARED Block 2 init/play (not zig64's
+        #    default $1000/$1003). SF2II calls Block 2 DriverCommon
+        #    InitAddress/UpdateAddress; low-load layouts (binary < $1000)
+        #    put real handlers high, and many players' play != $1003.
+        #    Block chain: magic at TopAddr+2 (file off 2), blocks at
+        #    TopAddr+2 (file off 4): [id:1][size:1][body]. id=2 body =
+        #    [InitAddr:2][StopAddr:2][UpdateAddr:2]...
+        s_init = s_play = None
+        try:
+            sd = sf2_path.read_bytes()
+            o = 4  # first block (file offset; PRG load:2 + magic:2)
+            while o + 2 <= len(sd):
+                bid = sd[o]
+                if bid == 0xFF:
+                    break
+                bsz = sd[o + 1]
+                body = sd[o + 2:o + 2 + bsz]
+                if bid == 2 and len(body) >= 6:
+                    s_init = body[0] | (body[1] << 8)
+                    s_play = body[4] | (body[5] << 8)
+                    break
+                o += 2 + bsz
+        except Exception:
+            pass
+        sf2_trace = trace_prg(sf2_path, frames, s_init, s_play)
         sf2_rows = csv_rows(sf2_trace)
-        print(f"SF2 trace: {len(sf2_rows)} register writes over {frames} frames")
+        _via = (f"Block2 init=${s_init:04X} play=${s_play:04X}"
+                if s_init is not None else "zig64 default $1000/$1003")
+        print(f"SF2 trace: {len(sf2_rows)} register writes over {frames} "
+              f"frames (via {_via})")
 
         # 4. Strip cycle and compare
         sid_strip = [strip_cycle(r) for r in sid_rows]
