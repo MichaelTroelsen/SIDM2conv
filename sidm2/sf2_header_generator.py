@@ -193,6 +193,14 @@ class SF2HeaderGenerator:
         self.tempo_addr = 0xC100
         self.hr_addr    = 0xC200
         self.init_table_addr = 0xC300
+        # Block 1 DriverCodeTop/Size — the window SF2II statically sweeps
+        # for ABX/ABY $D400-$D406 writes (driver_utils.cpp:419 derefs
+        # result.begin() unguarded → empty ⇒ #211 F10 crash). Default
+        # $1000/$0900 suits NP21-at-$1000. The low-load layout overrides
+        # these to point at a controlled region containing a dead
+        # STA $D400,X "scan bait".
+        self.driver_code_top  = 0x1000
+        self.driver_code_size = 0x0900
 
     def create_descriptor_block(self) -> bytes:
         """
@@ -234,13 +242,12 @@ class SF2HeaderGenerator:
         # for the legacy relocated-driver approach (sf2_writer.py:1975-2020),
         # but the active path since v3.1.5 embeds raw NP21 verbatim at $1000.
         # SF2II's load-time validator was crashing on the mismatch.
-        content.extend(struct.pack("<H", 0x1000))
+        content.extend(struct.pack("<H", self.driver_code_top))
 
         # 5. Driver code size (size of actual 6502 code at driver_code_top).
         # NP21 player code occupies $1000-$18FF (~$0900 bytes); music data
         # tables start at $19xx and live in the SF2 edit area.
-        driver_code_size = 0x0900
-        content.extend(struct.pack("<H", driver_code_size))
+        content.extend(struct.pack("<H", self.driver_code_size))
 
         # 6. Driver version major
         content.append(1)  # Version 1.x

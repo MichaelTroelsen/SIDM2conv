@@ -25,6 +25,24 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.21] - 2026-05-19
+
+### Fixed — sub-$1000 cluster Phase 2 ($0900) + low-load #211 hardening
+
+Lowered the low-load LOAD_BASE floor $0900→$0600 so $0900-load files
+fit a header below the binary. Low-load $1000-$18FF is the embedded
+binary (no trampoline for the universal #211 stamp) → SF2II's
+driver_utils.cpp:419 scan crashed. Made
+`SF2HeaderGenerator.driver_code_top/_size` overridable;
+`_build_low_load_sf2` now points SF2II's scan window at the handler
+region and emits a dead "scan bait" `STA $D400,X; RTS` at HI+14
+(decoded by SF2II's sweep after STOP's RTS; never executed). Makes
+the low-load layout #211-robust for all low-load files. Recovered
+(C1 0→5/5, C2 byte-identical, C4 MATCH): Hand_Interludes_Side_1/2/3,
+Rudolph_in_the_Kitchen. Deferred: Broom_Tycoon, Slash_with_Ash_
+commercial/game (header overlaps read-before-write player scratch).
++1 `TestLowLoadLayout` test (1015 total).
+
 ## [3.5.20] - 2026-05-19
 
 ### Fixed — sub-$1000 wrapper-collision cluster (Phase 1)

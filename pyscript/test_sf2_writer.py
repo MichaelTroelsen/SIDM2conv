@@ -1785,9 +1785,23 @@ class TestLowLoadLayout(unittest.TestCase):
                          bytes([0x20, 0x00, 0x10, 0x60]), "INIT=JSR $1000;RTS")
         self.assertEqual(bytes(out[ho + 4:ho + 8]),
                          bytes([0x20, 0x06, 0x10, 0x60]), "PLAY=JSR $1006;RTS")
+        # #211 scan bait: STA $D400,X; RTS at HI+14 (after 14B stubs)
+        self.assertEqual(bytes(out[ho + 14:ho + 18]),
+                         bytes([0x9D, 0x00, 0xD4, 0x60]),
+                         "scan bait STA $D400,X;RTS at HI+14")
+
+    def test_0900_load_lowers_to_0600(self):
+        # $0900-load (Hand_Interludes/Rudolph class): header must drop
+        # below the old $0900 floor to $0600.
+        w = self._writer()
+        c64 = bytes(0xA00)
+        self.assertTrue(w._build_low_load_sf2(c64, 0x0900, 0x0900, 0x0906))
+        top = w.output[0] | (w.output[1] << 8)
+        self.assertEqual(top, 0x0600, "$0900-load → LOAD_BASE $0600")
+        self.assertEqual(w.output[2] | (w.output[3] << 8), 0x1337)
 
     def test_unfixable_low_load_returns_false(self):
-        # load=$0400: no room for a ~$200 header below it (floor $0900)
+        # load=$0400: no room for a ~525B header below the $0600 floor
         w = self._writer()
         ok = w._build_low_load_sf2(bytes(0x800), 0x0400, 0x0400, 0x0406)
         self.assertFalse(ok, "should bail when header can't fit below load")

@@ -1714,7 +1714,16 @@ class SF2Writer:
         # Handlers + edit-area placeholder go AFTER the binary, page-aligned.
         HI = (sid_la + clen + 0xFF) & ~0xFF
         INIT_H, PLAY_H, STOP_H = HI, HI + 4, HI + 8
-        EDIT = HI + 0x10                       # 14B handler stubs, pad to 16
+        # #211 scan bait: SF2II statically sweeps [DriverCodeTop,+Size)
+        # for an ABX/ABY $D400-$D406 write (driver_utils.cpp:419 derefs
+        # result.begin() unguarded → empty ⇒ crash). For low-load files
+        # $1000-$18FF is the embedded binary (no usable trampoline/stamp
+        # slot), so point the scan window HERE instead: handler stubs are
+        # 14B (HI..HI+13), then a dead `STA $D400,X; RTS` at HI+14 that
+        # SF2II's linear sweep decodes after STOP's RTS. Never executed
+        # (INIT/PLAY/STOP are JSR-stub entries; STOP ends RTS at HI+13).
+        BAIT = HI + 14
+        EDIT = HI + 0x20                       # past 14B stubs + 4B bait
 
         # Safe placeholder Block 5 + zero-filled Block 3 tables in the edit
         # area (identical shape to _inject_player_raw_minimal so SF2II's
@@ -1746,6 +1755,10 @@ class SF2Writer:
 
         gen = SF2HeaderGenerator(driver_size=clen)
         gen.DRIVER_INIT, gen.DRIVER_PLAY, gen.DRIVER_STOP = INIT_H, PLAY_H, STOP_H
+        # Point SF2II's #211 SID-write scan window at our handler+bait
+        # region (binary at $1000 has no usable stamp slot for low-load).
+        gen.driver_code_top  = HI
+        gen.driver_code_size = 0x20
         gen.instr_addr = EDIT + len(edit); gen.cmd_addr = gen.instr_addr + 0x70
         edit.extend(bytes(32 * 6))
         gen.wave_addr = EDIT + len(edit);  edit.extend(bytes(32 * 2))
@@ -1763,13 +1776,21 @@ class SF2Writer:
 
         # Place the header so it ends strictly below sid_la (header bytes
         # are LOAD_BASE-independent — all addresses inside are absolute).
-        # Floor at $0900 to stay clear of zeropage/stack/$0200-$03FF.
+        # Floor at $0600: keeps the header clear of zeropage ($00-$FF),
+        # stack ($0100-$01FF) and the BASIC/KERNAL vector+buffer region
+        # ($0200-$05FF — IRQ vector $0314, tape buffer $033C, BASIC input
+        # $0200). $0600-$08FF is default screen RAM on a real C64 but
+        # SF2II's player emulation never drives VIC, so it's free except
+        # for the embedded player's own scratch — Laxity-class players
+        # zero their scratch at INIT before reading, so header bytes that
+        # land on a scratch address are overwritten before first use
+        # (verified by C2 byte-match on the $0900 cluster).
         load_base = (sid_la - (2 + H) - 1) & ~0xFF
-        if load_base < 0x0900:
+        if load_base < 0x0600:
             logger.info(
                 f"  Low-load: no room for {2+H}B header below "
                 f"${sid_la:04X} (would need LOAD_BASE ${load_base:04X} "
-                f"< $0900 floor); cannot fix this file")
+                f"< $0600 floor); cannot fix this file")
             return False
 
         edit_end = EDIT + len(sf2_edit_data)
@@ -1788,6 +1809,9 @@ class SF2Writer:
         fd[off(INIT_H):off(INIT_H) + 4] = bytes([0x20, init_addr & 0xFF, init_addr >> 8, 0x60])
         fd[off(PLAY_H):off(PLAY_H) + 4] = bytes([0x20, play_addr & 0xFF, play_addr >> 8, 0x60])
         fd[off(STOP_H):off(STOP_H) + 6] = bytes([0xA9, 0x00, 0x8D, 0x18, 0xD4, 0x60])
+        # #211 scan bait at HI+14 (after the 14B stubs): STA $D400,X; RTS.
+        # Dead code — SF2II only static-sweeps it; nothing executes here.
+        fd[off(BAIT):off(BAIT) + 4] = bytes([0x9D, 0x00, 0xD4, 0x60])
         fd[off(EDIT):off(EDIT) + len(sf2_edit_data)] = sf2_edit_data
 
         self.output = fd
