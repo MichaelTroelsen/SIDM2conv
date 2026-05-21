@@ -25,6 +25,24 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.26] - 2026-05-21
+
+### Fixed — Wizax-A / Zetrex-YP V20-gate (20 of 27 C2 divergences recovered)
+
+The Wizax-A and Zetrex-YP byte-pattern signatures were too loose —
+the voice-clear sequence (`LDA #0; STA $D404/$D40B/$D412`) matches
+many regular Laxity NP21 players, so the redirect was patching
+ch_seq_ptr at non-ch_seq_ptr addresses → audio divergence.
+`detect_wizax_a_layout` and `detect_zetrex_yp_layout` now accept an
+optional `copyright_str` and gate on Vibrants-V20 detection
+(copyright-class hint + size ≤ $1800). V20 is the strict superset
+Wizax-A/Zetrex-YP live in, cleanly distinguishing real from false
+matches. Backwards-compatible. **20 of 27 originally-divergent
+files now pass C2 byte-identical** including the entire
+Unboxed_Intro/Turn_Disk family, Phoenix_Code_*, and most
+SID_Factory_demo_tune_*. Real Wizax-A files unaffected. +2
+`TestWizaxFalsePositiveGate` tests (1016 total).
+
 ## [3.5.25] - 2026-05-21
 
 ### Validated/Fixed — No_System-Part_2 recovered; Echo_Beat clean failure

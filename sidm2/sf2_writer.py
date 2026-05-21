@@ -98,13 +98,15 @@ class SF2Writer:
                     from sidm2.wizax_a_detector import detect_wizax_a_layout
                     from sidm2.zetrex_yp_detector import detect_zetrex_yp_layout
                     sid_la_check = getattr(self.data, 'load_address', 0x1000)
-                    if detect_wizax_a_layout(self.data.c64_data, sid_la_check) is not None:
+                    cpyr = getattr(getattr(self.data, 'header', None),
+                                   'copyright', '') or ''
+                    if detect_wizax_a_layout(self.data.c64_data, sid_la_check, cpyr) is not None:
                         logger.info(
                             "  Wizax-A signature detected; redirecting "
                             "non-Laxity driver to the F1 pipeline."
                         )
                         wizax_redirect = True
-                    elif detect_zetrex_yp_layout(self.data.c64_data, sid_la_check) is not None:
+                    elif detect_zetrex_yp_layout(self.data.c64_data, sid_la_check, cpyr) is not None:
                         logger.info(
                             "  Zetrex/YP signature detected; redirecting "
                             "non-Laxity driver to the F1 pipeline."
@@ -2394,8 +2396,10 @@ class SF2Writer:
         try:
             from sidm2.wizax_a_detector import detect_wizax_a_layout
             from sidm2.zetrex_yp_detector import detect_zetrex_yp_layout
-            wzx_for_patch = detect_wizax_a_layout(c64_data, sid_la)
-            zyp_for_patch = detect_zetrex_yp_layout(c64_data, sid_la)
+            cpyr = getattr(getattr(self.data, 'header', None),
+                           'copyright', '') or ''
+            wzx_for_patch = detect_wizax_a_layout(c64_data, sid_la, cpyr)
+            zyp_for_patch = detect_zetrex_yp_layout(c64_data, sid_la, cpyr)
         except Exception:
             wzx_for_patch = None
             zyp_for_patch = None
@@ -3914,8 +3918,10 @@ class SF2Writer:
             try:
                 from sidm2.wizax_a_detector import detect_wizax_a_layout
                 from sidm2.zetrex_yp_detector import detect_zetrex_yp_layout
-                wzx = detect_wizax_a_layout(c64_data, sid_la)
-                zyp = detect_zetrex_yp_layout(c64_data, sid_la)
+                cpyr = getattr(getattr(self.data, 'header', None),
+                               'copyright', '') or ''
+                wzx = detect_wizax_a_layout(c64_data, sid_la, cpyr)
+                zyp = detect_zetrex_yp_layout(c64_data, sid_la, cpyr)
             except Exception:
                 wzx = None
                 zyp = None

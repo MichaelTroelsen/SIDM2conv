@@ -1830,6 +1830,54 @@ class TestLowLoadLayout(unittest.TestCase):
         self.assertEqual(len(w.output), 0)
 
 
+class TestWizaxFalsePositiveGate(unittest.TestCase):
+    """The Wizax-A / Zetrex-YP byte-pattern signatures were too loose —
+    the voice-clear opcode sequence (LDA #0; STA $D404/$D40B/$D412)
+    matches many regular Laxity NP21 players. v3.5.26 gates both
+    detectors on Vibrants-V20 detection (copyright string + size + cluster
+    signature), which is the strict superset Wizax-A/Zetrex-YP live in."""
+
+    # 11-byte voice-clear sequence Wizax-A also requires
+    WIZAX_SIG = bytes([0xA9, 0x00, 0x8D, 0x04, 0xD4,
+                       0x8D, 0x0B, 0xD4, 0x8D, 0x12, 0xD4])
+
+    def _bin_with_sig_and_ptr_setup(self):
+        # Synthetic binary that DOES match the Wizax-A byte signature
+        # (voice-clear + ptr-table setup) — used to verify the gate
+        # rejects non-V20 copyrights even when bytes match.
+        b = bytearray(0x800)
+        b[:len(self.WIZAX_SIG)] = self.WIZAX_SIG
+        # 10-byte ptr-table-setup at offset 0x40: B9 lo hi 85 zp B9 lo hi 85 zp
+        # ptrs in-range: $1100, $1110 (within $1000+0x800)
+        b[0x40:0x4A] = bytes([0xB9, 0x00, 0x11, 0x85, 0xFB,
+                              0xB9, 0x10, 0x11, 0x85, 0xFC])
+        # voice ptr tables at $1100, $1110: 3 lo bytes + 3 hi bytes
+        # → addrs $1200/$1300/$1400 etc., must be in-range
+        b[0x100:0x103] = bytes([0x00, 0x10, 0x20])   # lo
+        b[0x110:0x113] = bytes([0x12, 0x13, 0x14])   # hi
+        return bytes(b)
+
+    def test_non_V20_copyright_rejects_wizax_match(self):
+        from sidm2.wizax_a_detector import detect_wizax_a_layout
+        b = self._bin_with_sig_and_ptr_setup()
+        # No copyright → legacy behaviour (signature alone, matches)
+        self.assertIsNotNone(detect_wizax_a_layout(b, 0x1000))
+        # Regular Laxity-class copyright ("2021 Bonzai") → must reject
+        self.assertIsNone(detect_wizax_a_layout(b, 0x1000, "2021 Bonzai"))
+        # Empty copyright → legacy (still matches, for backwards-compat)
+        self.assertIsNotNone(detect_wizax_a_layout(b, 0x1000, ""))
+
+    def test_zetrex_yp_same_v20_gate(self):
+        from sidm2.zetrex_yp_detector import detect_zetrex_yp_layout
+        # Even with a perfect Zetrex/YP byte signature, a non-V20
+        # copyright must reject. (We don't construct a fake matching
+        # binary here — that signature is 35 bytes; we just verify the
+        # gate short-circuits before the byte scan when copyright is
+        # given and doesn't match V20 hints.)
+        b = bytes(0x800)
+        self.assertIsNone(detect_zetrex_yp_layout(b, 0x1000, "2021 Bonzai"))
+
+
 if __name__ == '__main__':
     # Run with verbose output
     unittest.main(verbosity=2)

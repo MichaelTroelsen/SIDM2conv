@@ -98,17 +98,28 @@ def _read_ptr_setup(c64_data: bytes) -> Optional[tuple[int, int, int, int]]:
     return (ptr_lo_addr, ptr_hi_addr, zp_lo, zp_hi)
 
 
-def detect_zetrex_yp_layout(c64_data: bytes, load_addr: int
+def detect_zetrex_yp_layout(c64_data: bytes, load_addr: int,
+                            copyright_str: str = ''
                             ) -> Optional[ZetrexYPLayout]:
     """Return ZetrexYPLayout if the binary matches Zetrex/YP, else None.
 
     Matching criteria:
+    0. (NEW v3.5.26) When `copyright_str` is provided, gate on
+       Vibrants-V20 detection — same false-positive cleanup as
+       wizax_a_detector. Without this gate the byte-pattern signature
+       alone matched some regular Laxity NP21 files (Edie_Ball, Racer
+       in the corpus C2-divergent list) → wrong ch_seq_ptr patch →
+       audio corruption.
     1. 35-byte init signature at offset 9.
     2. 10-byte ptr-table-setup at offset $0B6 (decoded operands).
     3. Both ptr-table addresses fall within the binary.
     4. All 3 voice pointers (lo[0..2] + hi[0..2]) yield in-range
        stream addresses inside the binary.
     """
+    if copyright_str:
+        from sidm2.vibrants_v20_detector import detect_vibrants_v20
+        if detect_vibrants_v20(c64_data, load_addr, copyright_str) is None:
+            return None
     if not _has_zetrex_yp_signature(c64_data):
         return None
     decoded = _read_ptr_setup(c64_data)

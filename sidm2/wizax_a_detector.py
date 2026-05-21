@@ -107,11 +107,22 @@ def _find_ptr_table_setup(c64_data: bytes) -> Optional[tuple[int, int, int, int]
     return None
 
 
-def detect_wizax_a_layout(c64_data: bytes, load_addr: int
+def detect_wizax_a_layout(c64_data: bytes, load_addr: int,
+                          copyright_str: str = ''
                           ) -> Optional[WizaxALayout]:
     """Return WizaxALayout if the binary matches Wizax-A, else None.
 
     Matching criteria:
+    0. (NEW v3.5.26) When `copyright_str` is provided, gate on
+       Vibrants-V20 detection — Wizax-A is a strict subset of V20, and
+       the voice-clear byte signature alone is too common (it matches
+       many regular Laxity SF2-authored NP21 players: Phoenix_Code_*,
+       Unboxed_Intro/Turn_Disk_*, SID_Factory_demo_tune_*, etc.,
+       causing false-positive ch_seq_ptr patching → audio divergence).
+       The V20 detector requires a V20-class copyright label (Wizax/
+       Yield Point/Vibrants/Zetrex/2000 A.D./Flexible Arts/Laxity-1990)
+       AND binary size ≤ $1800, which cleanly distinguishes the 4 real
+       Wizax-A files from the false-positive cluster.
     1. 11-byte voice-control-clear signature appears in first 128 bytes.
     2. Player setup pattern `B9 lo hi 85 zp B9 lo hi 85 zp` appears
        anywhere in the binary.
@@ -119,6 +130,10 @@ def detect_wizax_a_layout(c64_data: bytes, load_addr: int
     4. The 3 voice pointers (lo[0..2] + hi[0..2]) all yield in-range
        stream addresses inside the binary.
     """
+    if copyright_str:
+        from sidm2.vibrants_v20_detector import detect_vibrants_v20
+        if detect_vibrants_v20(c64_data, load_addr, copyright_str) is None:
+            return None
     if not _has_wizax_a_signature(c64_data):
         return None
     result = _find_ptr_table_setup(c64_data)
