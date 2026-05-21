@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.5.24** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-21
+**SIDM2 v3.5.25** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-21
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -170,6 +170,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.5.25** (2026-05-21): **Sub-$1000 cluster — 30 of 31 files recovered (No_System-Part_2 validated; Echo_Beat clean error).** No_System-Part_2 (player-id=Rob_Hubbard, load=$0F00, init=$0F00, play=$1012) was ALSO already recovered by Phase 1's low-load fix — the earlier memory note that it took the "driver11 template path" was incorrect. It actually routes through `_inject_player_raw_minimal` (Rob_Hubbard player-id + has c64_data → minimal-embed path), which got the low-load dispatch in v3.5.20. Verified: C1 0→5/5, C2 byte-identical (1214), C4 MATCH. **Echo_Beat ($0400)** stays genuinely infeasible (binary $0400-$0A6B leaves only 512B for a 525B header; floor can't go below $0500 — zeropage/stack occupy $0000-$01FF). v3.5.25 makes that failure CLEAN: when the low-load builder returns False for a sub-$1000 file, instead of falling through to the legacy layout (which crashed with `struct.pack 'H' overflow` on negative offsets), the converter raises a `ConversionError` with a clear "binary load $XXXX too low — architectural limit of the SF2 format" message. **Final sub-$1000 tally: 30 of 31 fully recovered** (6 $0F00 NP21 + 15 $0F00 V20 + 7 $0900 + 1 $0800 + 1 No_System-Part_2 + Echo_Beat infeasible). 1014 tests pass, all previously-recovered files re-verified byte-identical. Version sync → 3.5.25.
 
 **v3.5.24** (2026-05-21): **Sub-$1000 cluster Phase 2d — 15 V20+$0F00 files validated as ALREADY RECOVERED (no new code).** Validation pass: ran the converter+verifiers on all 15 Vibrants-V20-flagged sub-$1000 files (load=$0F00; Complete_2, Drum_em, Fast_Stuff_1, Gametune_1, Jarre_Mix, Pedestrian, Pow-Crack, S2-Tune, Sad_Song, Shakin, She_Broke_Up, Star_Wars, Synthony, Tilt, Yakie). **All 15 pass C2 byte-identical to original SID** (audio plays exactly right via the embedded binary). 14/15 also pass C1 5/5; She_Broke_Up at 4/5 (one OTHER — harness flakiness, same noise pattern as Ocean_Reloaded/A_Trace_of_Space). 15/15 C4 metadata MATCH. The "Vibrants V20 deferred architecture" memory entry was about editor-view edit propagation (F1-F5 cells don't map to V20's sequence/instrument format) — that's still deferred and orthogonal. The actual gating blocker for C1+C2+C4 was the sub-$1000 wrapper collision, which Phase 1's low-load layout already solved generically. Editor-view stays empty-by-design (track_count placeholder), same as any other low-load file. **Sub-$1000 cumulative: 29 of 31 files recovered** (6 $0F00 NP21 + 15 $0F00 V20 + 7 $0900 + 1 $0800); remaining 2 are Echo_Beat $0400 (architectural dead-end — header would land in stack) and No_System-Part_2 (driver11 template path — separate architecture). Version sync → 3.5.24.
 

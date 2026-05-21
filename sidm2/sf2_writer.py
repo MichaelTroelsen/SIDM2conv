@@ -1886,8 +1886,27 @@ class SF2Writer:
         if 0 < sid_la < 0x1000:
             if self._build_low_load_sf2(c64_data, sid_la, init_addr, play_addr):
                 return
-            # else: unfixable (no room below sid_la for the header —
-            # e.g. Echo_Beat $0400) → fall through to legacy behavior.
+            # Low-load returned False — header doesn't fit below sid_la
+            # (Echo_Beat $0400 is the only file in this state: only
+            # 512B of space below the load, but the 9-block SF2 header
+            # needs 525B). Falling through to the legacy layout would
+            # crash with a `struct.pack 'H' overflow` because handler
+            # offsets go negative. Emit a clear architectural-limit
+            # error and bail — the file genuinely cannot be converted
+            # with the SF2 schema.
+            logger.error(
+                f"  Binary load address ${sid_la:04X} is too low: "
+                f"no room for the 525B SF2 wrapper header below it "
+                f"(stack + zeropage occupy $0000-$01FF; the lowest "
+                f"safe LOAD_BASE is $0500). This is an architectural "
+                f"limit of the SF2 format, not a converter bug.")
+            raise errors.ConversionError(
+                stage="raw-NP21 inject (low-load)",
+                reason=f"sid_load=${sid_la:04X} below the $0500 LOAD_BASE floor "
+                       f"(SF2 header doesn't fit below the binary)",
+                input_file=getattr(self.data, 'filepath', None),
+                docs_link="guides/LAXITY_DRIVER_USER_GUIDE.md#troubleshooting",
+            )
 
         LOAD_BASE      = 0x0D7E    # SF2 loads here; 0x1337 magic goes here
         # HANDLER_BASE history:

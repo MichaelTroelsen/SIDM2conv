@@ -25,6 +25,21 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.25] - 2026-05-21
+
+### Validated/Fixed — No_System-Part_2 recovered; Echo_Beat clean failure
+
+No_System-Part_2 (player-id=Rob_Hubbard, load=$0F00) routes through
+`_inject_player_raw_minimal` (NOT the driver11 template path as
+earlier memory claimed); the v3.5.20 minimal-path low-load dispatch
+already handles it. C1 0→5/5, C2 byte-identical (1214), C4 MATCH.
+Echo_Beat ($0400) stays architecturally infeasible (header 525B
+doesn't fit in 512B below the binary) — now fails with a clear
+"binary load $0400 too low — architectural SF2-format limit" error
+instead of the prior cryptic struct.pack overflow from legacy
+fall-through. Sub-$1000: 30 of 31 fully recovered (Echo_Beat the
+sole architectural dead-end).
+
 ## [3.5.24] - 2026-05-21
 
 ### Validated — 15 V20+$0F00 files already recovered (no new code)
