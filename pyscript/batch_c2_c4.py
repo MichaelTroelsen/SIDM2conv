@@ -59,6 +59,32 @@ def trace(prg: Path, frames, ia=None, pa=None):
     return rows
 
 
+def sf2_block2_entries(sf2: Path):
+    """Parse Block 2 DriverCommon and return (init_addr, update_addr).
+    Falls back to (None, None) → caller uses zig64 default. The SF2 PRG
+    layout: file[0:2]=TopAddr LE, magic at TopAddr+2 (file off 2), block
+    chain starts at TopAddr+2 (file off 4): [id:1][size:1][body]. Block
+    id=2 body = [InitAddress:2][StopAddress:2][UpdateAddress:2]...
+    Needed for low-load SF2 layouts where $1000 isn't INIT (binary lives
+    elsewhere); without this the SF2-trace falsely fails."""
+    try:
+        d = sf2.read_bytes()
+        o = 4
+        while o + 2 <= len(d):
+            bid = d[o]
+            if bid == 0xFF:
+                break
+            bsz = d[o + 1]
+            body = d[o + 2:o + 2 + bsz]
+            if bid == 2 and len(body) >= 6:
+                return (body[0] | (body[1] << 8),
+                        body[4] | (body[5] << 8))
+            o += 2 + bsz
+    except Exception:
+        pass
+    return (None, None)
+
+
 def main(argv):
     sid_dir = Path(argv[0]) if argv else ROOT / "SID" / "Laxity"
     limit = int(argv[1]) if len(argv) > 1 else 0
@@ -93,7 +119,10 @@ def main(argv):
                 sidprg = Path(f.name)
             try:
                 sid_rows = trace(sidprg, FRAMES, ia, pa)
-                sf2_rows = trace(sf2, FRAMES)
+                # Trace SF2 via its declared Block 2 init/play (low-load
+                # files have $1000 in the gap, not the trampoline).
+                si, sp = sf2_block2_entries(sf2)
+                sf2_rows = trace(sf2, FRAMES, si, sp)
                 c2 = "PASS" if sid_rows == sf2_rows else f"DIFF({len(sid_rows)}v{len(sf2_rows)})"
             finally:
                 try: sidprg.unlink()
@@ -124,7 +153,8 @@ def main(argv):
                     except FileNotFoundError: pass
             else:
                 rt_rows = trace(rt, FRAMES)
-            sf2_rows2 = trace(sf2, FRAMES)
+            si, sp = sf2_block2_entries(sf2)
+            sf2_rows2 = trace(sf2, FRAMES, si, sp)
             c4a = "PASS" if rt_rows == sf2_rows2 else f"DIFF({len(rt_rows)}v{len(sf2_rows2)})"
             try:
                 c4m = "PASS" if meta(sid) == meta(rt) else "DIFFER"
