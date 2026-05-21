@@ -25,6 +25,18 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.23] - 2026-05-21
+
+### Fixed — DNA_Warrior ($0800) via $0500 floor
+
+Lowered the low-load LOAD_BASE floor $0600→$0500 (stays above
+zeropage/stack and BASIC/KERNAL buffer region $0200-$04FF). py65 rbw
+analysis confirmed the header span $0500-$070C is benign for
+DNA_Warrior. Fully recovered (load=$0800, init=$2133>play=$2130):
+C1 0→5/5, C2 byte-identical (1800), C4 MATCH. Sub-$1000 cumulative:
+14 files (6 $0F00 + 7 $0900 + 1 $0800). 1014 tests; all 13 previously-
+fixed files re-verified byte-identical.
+
 ## [3.5.22] - 2026-05-19
 
 ### Fixed — $0900 cluster complete 7/7 (aux-pointer-$0FFB corruption)

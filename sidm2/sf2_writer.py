@@ -1784,21 +1784,21 @@ class SF2Writer:
 
         # Place the header so it ends strictly below sid_la (header bytes
         # are LOAD_BASE-independent — all addresses inside are absolute).
-        # Floor at $0600: keeps the header clear of zeropage ($00-$FF),
-        # stack ($0100-$01FF) and the BASIC/KERNAL vector+buffer region
-        # ($0200-$05FF — IRQ vector $0314, tape buffer $033C, BASIC input
-        # $0200). $0600-$08FF is default screen RAM on a real C64 but
-        # SF2II's player emulation never drives VIC, so it's free except
-        # for the embedded player's own scratch — Laxity-class players
-        # zero their scratch at INIT before reading, so header bytes that
-        # land on a scratch address are overwritten before first use
-        # (verified by C2 byte-match on the $0900 cluster).
+        # Floor at $0500: keeps the header clear of zeropage ($00-$FF),
+        # stack ($0100-$01FF), and the BASIC/KERNAL vector+buffer region
+        # ($0200-$04FF — BASIC input $0200, tape buffer $033C, KERNAL
+        # vectors $0314+). $0500-$08FF is default screen RAM on a real
+        # C64 but SF2II's player emulation never drives VIC, so it's free
+        # except where the embedded player has its own scratch — Laxity-
+        # class players either zero scratch at INIT before reading, or
+        # don't touch it at all in the header span (verified by py65
+        # read-before-write analysis: `pyscript/find_rbw_scratch.py`).
         load_base = (sid_la - (2 + H) - 1) & ~0xFF
-        if load_base < 0x0600:
+        if load_base < 0x0500:
             logger.info(
                 f"  Low-load: no room for {2+H}B header below "
                 f"${sid_la:04X} (would need LOAD_BASE ${load_base:04X} "
-                f"< $0600 floor); cannot fix this file")
+                f"< $0500 floor); cannot fix this file")
             return False
 
         edit_end = EDIT + len(sf2_edit_data)

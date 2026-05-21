@@ -1822,7 +1822,7 @@ class TestLowLoadLayout(unittest.TestCase):
                          "aux injection must be a no-op when _skip_aux")
 
     def test_unfixable_low_load_returns_false(self):
-        # load=$0400: no room for a ~525B header below the $0600 floor
+        # load=$0400: no room for a ~525B header below the $0500 floor
         w = self._writer()
         ok = w._build_low_load_sf2(bytes(0x800), 0x0400, 0x0400, 0x0406)
         self.assertFalse(ok, "should bail when header can't fit below load")
