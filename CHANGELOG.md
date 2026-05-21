@@ -25,6 +25,21 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.24] - 2026-05-21
+
+### Validated — 15 V20+$0F00 files already recovered (no new code)
+
+Validation pass: the 15 Vibrants-V20-flagged sub-$1000 files
+(load=$0F00; Complete_2, Drum_em, Fast_Stuff_1, Gametune_1, Jarre_Mix,
+Pedestrian, Pow-Crack, S2-Tune, Sad_Song, Shakin, She_Broke_Up,
+Star_Wars, Synthony, Tilt, Yakie) all pass C2 byte-identical to the
+original SID, 14/15 pass C1 5/5 (She_Broke_Up 4/5 = harness
+flakiness), and 15/15 pass C4 MATCH — the low-load layout from
+Phase 1+2 covers them. The "V20 deferred" memory entry was about
+editor-view edit propagation (still deferred); the gating C1/C2/C4
+blocker was sub-$1000 collision, which Phase 1 already solved. Sub-
+$1000 cumulative: 29 of 31 files recovered. No code change.
+
 ## [3.5.23] - 2026-05-21
 
 ### Fixed — DNA_Warrior ($0800) via $0500 floor

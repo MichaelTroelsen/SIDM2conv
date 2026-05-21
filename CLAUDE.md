@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.5.23** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-21
+**SIDM2 v3.5.24** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-21
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -170,6 +170,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.5.24** (2026-05-21): **Sub-$1000 cluster Phase 2d — 15 V20+$0F00 files validated as ALREADY RECOVERED (no new code).** Validation pass: ran the converter+verifiers on all 15 Vibrants-V20-flagged sub-$1000 files (load=$0F00; Complete_2, Drum_em, Fast_Stuff_1, Gametune_1, Jarre_Mix, Pedestrian, Pow-Crack, S2-Tune, Sad_Song, Shakin, She_Broke_Up, Star_Wars, Synthony, Tilt, Yakie). **All 15 pass C2 byte-identical to original SID** (audio plays exactly right via the embedded binary). 14/15 also pass C1 5/5; She_Broke_Up at 4/5 (one OTHER — harness flakiness, same noise pattern as Ocean_Reloaded/A_Trace_of_Space). 15/15 C4 metadata MATCH. The "Vibrants V20 deferred architecture" memory entry was about editor-view edit propagation (F1-F5 cells don't map to V20's sequence/instrument format) — that's still deferred and orthogonal. The actual gating blocker for C1+C2+C4 was the sub-$1000 wrapper collision, which Phase 1's low-load layout already solved generically. Editor-view stays empty-by-design (track_count placeholder), same as any other low-load file. **Sub-$1000 cumulative: 29 of 31 files recovered** (6 $0F00 NP21 + 15 $0F00 V20 + 7 $0900 + 1 $0800); remaining 2 are Echo_Beat $0400 (architectural dead-end — header would land in stack) and No_System-Part_2 (driver11 template path — separate architecture). Version sync → 3.5.24.
 
 **v3.5.23** (2026-05-21): **Sub-$1000 cluster Phase 2c — DNA_Warrior ($0800) recovered.** Lowered the low-load LOAD_BASE floor $0600→$0500 (stays clear of zeropage/stack and the $0200-$04FF BASIC/KERNAL buffer region; $0500-$08FF is C64 screen RAM but SF2II's player emulation never drives VIC). py65 read-before-write analysis confirmed 0 rbw in $0500-$07FF for DNA_Warrior, so the header at LOAD_BASE=$0500 (span $0500-$070C) is benign. **DNA_Warrior fully recovered** (load=$0800, init=$2133, play=$2130 — note init>play; the JSR-stub Block 2 handlers don't care): C1 0→5/5, C2 byte-identical to original SID (1800 register writes), C4 metadata MATCH. **Sub-$1000 cumulative: 14 files fully recovered** (6 $0F00 + 7 $0900 + 1 $0800). Previously-fixed files re-verified byte-identical; normal Stinsen/Beast/Angular/Unboxed unaffected. 1014 tests pass. `test_unfixable_low_load_returns_false` comment updated for the new floor. Remaining sub-$1000 (each its own effort, distinct architectures): Echo_Beat $0400 (infeasible — header would land in stack/buffers), ~14 Vibrants V20 (deferred architecture), No_System-Part_2 (driver11 template path). Version sync → 3.5.23.
 
