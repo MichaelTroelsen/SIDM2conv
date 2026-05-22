@@ -1747,13 +1747,69 @@ class TestUpstream211Workaround(unittest.TestCase):
 
     def test_skips_when_no_trampoline(self):
         b = self._base_buf(b"\x00\x00\x00")
-        # $1000 is live player code, not a 2-JMP trampoline
-        b[self.O1000:self.O1000 + 6] = bytes([0xA9, 0x00, 0x8D, 0x18, 0xD4, 0x60])
+        # $1000 is live player code WITH a natural ABX $D400 write —
+        # SF2II's sweep finds it, no stamp / no fallback needed.
+        b[self.O1000:self.O1000 + 6] = bytes(
+            [0x9D, 0x00, 0xD4, 0xA9, 0x00, 0x60])
+        # No Block 1 to patch in this minimal buf, so the "natural hit"
+        # short-circuit must fire — output unchanged in size.
+        before_len = len(b)
         w = self._writer(b)
         w._ensure_sid_write_in_scan_window_universal()
-        self.assertEqual(bytes(w.output[self.O1006:self.O1006 + 3]),
-                         b"\x00\x00\x00",
-                         "no stamp unless $1000 is a 2-JMP trampoline")
+        self.assertEqual(len(w.output), before_len,
+                         "natural ABX/ABY $D40x write → no alternate-window injection")
+
+    def test_digidag_fallback_appends_stub_and_patches_block1(self):
+        # No 2-JMP trampoline at $1000 AND no natural ABX/ABY $D40x in
+        # [$1000,$1900) → must append `9D 00 D4 60` and patch Block 1's
+        # m_DriverCodeTop/Size to point at the stub. Build a minimal SF2
+        # with a valid Block 1 chain so the patch can find it.
+        # Layout (PRG load=$0D7E):
+        #   file[0:2]=0x7E 0x0D, magic 0x1337 at file off 2,
+        #   block chain at file off 4: [id=1][bsz][body...][0xFF]
+        #   ...zero gap...
+        #   $1000 = binary code with ABS (not ABX) $D40x writes only.
+        LOAD = 0x0D7E
+        # Build Block 1 body: [Type=0][Size=2LE][Name 'X\0'][CodeTop=2LE][CodeSize=2LE][3 ver bytes]
+        b1_body = bytes([0x00,        # Type
+                         0x00, 0x10,  # Size LE = $1000
+                         ord('X'), 0x00,
+                         0x00, 0x10,  # CodeTop = $1000  (will be patched)
+                         0x00, 0x09,  # CodeSize = $0900 (will be patched)
+                         1, 0, 0])    # ver maj/min/rev
+        chain = bytes([0x01, len(b1_body)]) + b1_body + bytes([0xFF])
+        # File: [LOAD:2 LE][magic:2 LE][chain][gap zeros to $1000][binary]
+        header_region = (
+            LOAD.to_bytes(2, "little")
+            + bytes([0x37, 0x13])     # magic at $0D7E (file off 2)
+            + chain
+        )
+        # Pad with zeros up to file offset for $1000:
+        pad = bytearray(2 + (0x1000 - LOAD) - len(header_region))
+        # Binary at $1000: ABS $D404 writes only (`8D 04 D4` — NOT ABX 9D).
+        # Fills enough of [$1000,$1900) that the natural-hit scan finishes.
+        binary = bytes([0x8D, 0x04, 0xD4]) * 16   # 48B of `STA $D404`
+        out = bytearray(header_region) + pad + binary
+        w = SF2Writer(create_minimal_extracted_data())
+        w.output = out
+        before_len = len(w.output)
+        w._ensure_sid_write_in_scan_window_universal()
+        # Stub appended: last 4 bytes = STA $D400,X; RTS
+        self.assertEqual(bytes(w.output[-4:]), b"\x9d\x00\xd4\x60")
+        self.assertEqual(len(w.output), before_len + 4)
+        # Block 1 patched: m_DriverCodeTop now points at the stub addr.
+        # Find Block 1 in the new output and read its CodeTop field.
+        # Block 1 starts at file off 4: [id=1][bsz][body...].
+        b1_bsz = w.output[5]
+        # body offset = 6; CodeTop is after [Type:1][Size:2][Name+NUL:2]
+        ct_off = 6 + 1 + 2 + 2
+        code_top = w.output[ct_off] | (w.output[ct_off + 1] << 8)
+        stub_addr = LOAD + (before_len - 2)
+        self.assertEqual(code_top, stub_addr,
+                         f"m_DriverCodeTop must point at stub ${stub_addr:04X}")
+        code_size = w.output[ct_off + 2] | (w.output[ct_off + 3] << 8)
+        self.assertEqual(code_size, 3,
+                         "m_DriverCodeSize = 3 (covers STA $D400,X)")
 
 
 class TestLowLoadLayout(unittest.TestCase):

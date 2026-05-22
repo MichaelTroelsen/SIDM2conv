@@ -25,6 +25,29 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.27] - 2026-05-22
+
+### Fixed — Digidag-class #211 fallback (alternate scan-window)
+
+Investigation of the 4 remaining C1-crashing files identified one
+genuine architectural case (Digidag): $1000 is binary code (no
+2-JMP trampoline) AND the player uses ABS `STA $D404` instead of
+ABX `9D 04 D4` — SF2II's static scanner counts 0 ABX/ABY $D40x
+writes, hitting the unguarded `result.begin()` deref at
+`driver_utils.cpp:419`. Extended
+`_ensure_sid_write_in_scan_window_universal()`: when no trampoline
+AND no natural indexed $D40x write is found in [$1000,$1900),
+append a dead `STA $D400,X; RTS` (`9D 00 D4 60`) at end of file
+and patch Block 1's `m_DriverCodeTop`/`m_DriverCodeSize` in place
+to point at it. Reuses the override added in v3.5.21. Conservative
+gating (byte-scan = lower bound on opcode sweep). **Digidag:
+C1 0/15 → 10/10 PASS, argv-load clean.** Binary byte-identical;
+stub appended past binary, never executed. +3 tests (1019 total).
+
+Q/SG/TMH (other 3 still-crashing): argv-load PARSE SUCCESS; only
+pyautogui F10 codepath fails — SF2II-GUI-codepath issue out of
+converter scope.
+
 ## [3.5.26] - 2026-05-21
 
 ### Fixed — Wizax-A / Zetrex-YP V20-gate (20 of 27 C2 divergences recovered)

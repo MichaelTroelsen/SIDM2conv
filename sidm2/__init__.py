@@ -4,8 +4,8 @@ SID to SF2 Converter Package
 Converts Commodore 64 SID music files to SID Factory II format.
 """
 
-__version__ = "3.5.26"
-__build_date__ = "2026-05-21"
+__version__ = "3.5.27"
+__build_date__ = "2026-05-22"
 
 from .constants import *
 from .exceptions import *

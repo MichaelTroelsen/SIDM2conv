@@ -1682,22 +1682,85 @@ class SF2Writer:
         o1000 = 0x1000 - load_base + 2
         if o1000 < 0 or o1000 + 9 > len(out):
             return
-        # Require the 2-JMP trampoline signature at $1000.
-        if not (out[o1000] == 0x4C and out[o1000 + 3] == 0x4C):
+        ABXY_OPS = (0x9D, 0xBD, 0xDD, 0x7D, 0x1D, 0x3D, 0x5D, 0xFD,  # abs,X
+                    0x99, 0xB9, 0xD9, 0x79, 0x19, 0x39, 0x59, 0xF9,  # abs,Y
+                    0xBE, 0xBC)
+        # Trampoline path: $1000 = 4C ?? ?? 4C ?? ?? + $1006 inert gap →
+        # stamp at $1006.
+        if (out[o1000] == 0x4C and out[o1000 + 3] == 0x4C):
+            o1006 = o1000 + 6
+            trio = out[o1006:o1006 + 3]
+            if bytes(trio) == b"\x9d\x00\xd4":
+                return  # idempotent — already stamped
+            if trio == b"\x00\x00\x00":
+                out[o1006:o1006 + 3] = b"\x9d\x00\xd4"  # STA $D400,X
+                self.output = out
+                logger.info(
+                    "  #211 workaround: stamped dead STA $D400,X at $1006 "
+                    "(post 2-JMP trampoline; SF2II driver_utils.cpp:419 "
+                    "derefs result.begin() unguarded — guarantees >=1 "
+                    "ABX/ABY $D40x write in the [$1000,$1900) static "
+                    "scan window)")
+                return
+            return  # trampoline present but $1006 is live code — leave alone
+        # No trampoline (binary itself at $1000, e.g. Digidag PLA TYA PLA).
+        # If the binary contains a natural ABX/ABY $D40x write byte pattern
+        # in [$1000,$1900), SF2II's static sweep WILL find it (byte-scan is
+        # a conservative lower bound on what the opcode-aware sweep finds:
+        # if 0 byte-matches exist, the opcode sweep also finds 0). When
+        # zero matches: redirect the scan window via the descriptor-block
+        # m_DriverCodeTop override to a freshly-appended dead `STA $D400,X;
+        # RTS` stub at the end of the file (Digidag-class architectural
+        # workaround). Without this the file crashes at driver_utils:419.
+        win_end = min(o1000 + 0x900, len(out))
+        natural_hit = False
+        for a in range(o1000, win_end - 2):
+            if out[a] in ABXY_OPS:
+                tgt = out[a + 1] | (out[a + 2] << 8)
+                if 0xD400 <= tgt <= 0xD406:
+                    natural_hit = True
+                    break
+        if natural_hit:
             return
-        o1006 = o1000 + 6
-        trio = out[o1006:o1006 + 3]
-        if bytes(trio) == b"\x9d\x00\xd4":
-            return  # idempotent — already stamped
-        if trio != b"\x00\x00\x00":
-            return  # not inert gap (live code) — don't touch
-        out[o1006:o1006 + 3] = b"\x9d\x00\xd4"  # STA $D400,X
-        self.output = out
-        logger.info(
-            "  #211 workaround: stamped dead STA $D400,X at $1006 "
-            "(post 2-JMP trampoline; SF2II driver_utils.cpp:419 derefs "
-            "result.begin() unguarded — guarantees >=1 ABX/ABY $D40x "
-            "write in the [$1000,$1900) static scan window)")
+        # No natural write — append stub + patch Block 1's DriverCodeTop/Size.
+        stub = b"\x9D\x00\xD4\x60"   # STA $D400,X; RTS
+        stub_file_off = len(out)
+        stub_addr = load_base + (stub_file_off - 2)
+        out.extend(stub)
+        # Find Block 1 (Descriptor) in the chain at file offset 4. Body:
+        # [Type:1][Size:2LE][Name+NUL:var][CodeTop:2LE][CodeSize:2LE]...
+        o = 4
+        patched = False
+        while o + 2 <= len(out):
+            bid = out[o]
+            if bid == 0xFF:
+                break
+            bsz = out[o + 1]
+            body_off = o + 2
+            body_end = body_off + bsz
+            if bid == 1 and body_end <= len(out):
+                # Skip Type(1)+Size(2); then null-terminated Name.
+                p = body_off + 3
+                while p < body_end and out[p] != 0:
+                    p += 1
+                p += 1  # past NUL
+                if p + 4 <= body_end:
+                    out[p:p + 2] = stub_addr.to_bytes(2, "little")
+                    out[p + 2:p + 4] = (len(stub) - 1).to_bytes(2, "little")
+                    patched = True
+                break
+            o = body_end
+        if patched:
+            self.output = out
+            logger.info(
+                f"  #211 workaround: appended STA $D400,X scan-bait stub at "
+                f"${stub_addr:04X} and redirected Block 1 m_DriverCodeTop "
+                f"there (binary at $1000 with no natural ABX/ABY $D40x "
+                f"write — Digidag-class architectural fallback)")
+        else:
+            logger.warning(
+                "  #211 workaround: could not locate Block 1 to patch "
+                "m_DriverCodeTop; file may crash on F10-load")
 
     def _build_low_load_sf2(self, c64_data, sid_la, init_addr, play_addr) -> bool:
         """Alternate PRG layout for binaries that load below $1000.
