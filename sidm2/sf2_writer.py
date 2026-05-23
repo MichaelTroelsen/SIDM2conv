@@ -25,6 +25,8 @@ from .sequence_extraction import (
 from .instrument_transposition import transpose_instruments
 from . import errors
 from . import np21_codegen
+from . import audio_gate
+from . import universal_211_workaround
 
 logger = logging.getLogger(__name__)
 
@@ -1667,317 +1669,52 @@ class SF2Writer:
         logger.debug("The output file structure may need manual refinement")
 
     def _run_post_build_audio_gate(self) -> None:
-        """v3.5.32 / v3.5.33 zig64-based post-build audio safety gate.
+        """v3.5.36 wrapper around sidm2.audio_gate.run_post_build_audio_gate.
 
-        Verifies cycle-accurate audio matches the original SID. If it
-        diverges, progressively reverts the converter's optional patches
-        until audio matches (or no more reverts available):
-          1. Try as-built. If matches, done.
-          2. Revert ch_seq_ptr patches (Edie_Ball class — py65 gate
-             missed it because of CIA-IRQ-driven INIT).
-          3. NOP the wave-copy JSR in the translator (Patterns class —
-             wave-copy's dst addrs overlap binary data the player reads).
-          4. Both reverted (most files have only one of these problems,
-             but pin the search order).
-
-        Each step costs ~50-100ms for the zig64 trace. Uses 64 frames by
-        default — long enough to catch Edie_Ball (early divergence) AND
-        Patterns (frame 169) without paying the full 300-frame cost.
+        Pulls per-instance state (output buffer, sid path, patch records)
+        and forwards to the module-level function. Mutates self.output in
+        place. Sets self._ch_seq_patches / self._wave_copy_jsr_offs to
+        empty lists when the gate's respective revert step succeeded.
         """
         np21_off = getattr(self, '_np21_file_off', None)
-        if np21_off is None:
-            return
-        patches = getattr(self, '_ch_seq_patches', None) or []
-        wave_jsr_offs = getattr(self, '_wave_copy_jsr_offs', None) or []
-        # v3.5.35: even when patches and wave_jsr_offs are both empty,
-        # we may still want to try the Block 2 native-redirect fallback
-        # for files like Exorcist_preview where the SF2 wrapper layer
-        # itself diverges from native cycle-accurate emulation. The
-        # gate proceeds whenever sid_input_path is set (only the laxity
-        # path sets that), and the per-step reverts simply skip the
-        # steps that have nothing to revert.
         sid_path = getattr(self, '_sid_input_path', None)
-        if sid_path is None:
-            return
-        from pathlib import Path
-        sid_path = Path(sid_path)
-        if not sid_path.exists():
+        if np21_off is None or sid_path is None:
             return
         header = getattr(self.data, 'header', None)
         sid_init = getattr(header, 'init_address', None) if header else None
         sid_play = getattr(header, 'play_address', None) if header else None
-        if sid_init is None or sid_play is None:
-            return
-        if sid_play == 0:
-            sid_play = sid_init + 3
-        sf2_init, sf2_play = 0x0F90, 0x0F94
-
-        try:
-            from sidm2.zig64_audio_gate import verify_sf2_audio
-        except Exception as e:
-            logger.debug(f"  Post-build zig64 audio gate skipped: {e}")
-            return
-
-        def _check(buf: bytes, override_init=None, override_play=None) -> bool:
-            try:
-                # 200 frames catches Patterns-class late divergences
-                # (instrument-edge at frame 169) while keeping the
-                # trace cost under ~30ms (zig64 = ~140us/frame).
-                # override_init/play used by the Block 2 redirect
-                # fallback (so the gate re-traces at the new native
-                # entry, not the original wrapper handlers).
-                return verify_sf2_audio(
-                    sf2_bytes=buf, sid_path=sid_path,
-                    sf2_init_addr=override_init if override_init is not None else sf2_init,
-                    sf2_play_addr=override_play if override_play is not None else sf2_play,
-                    sid_init_addr=sid_init, sid_play_addr=sid_play,
-                    frames=200,
-                )
-            except Exception:
-                return True   # tracer error → degrade gracefully
-
-        if _check(bytes(self.output)):
-            return  # SF2 already matches; no reverts needed
-
-        # 1) Try reverting only ch_seq_ptr patches
-        if patches:
-            saved = [self.output[np21_off + o] for o, _b in patches]
-            for c64_off, orig_byte in patches:
-                file_off = np21_off + c64_off
-                if 0 <= file_off < len(self.output):
-                    self.output[file_off] = orig_byte
-            if _check(bytes(self.output)):
-                layout = getattr(self, '_ch_seq_patch_layout', None) or "default"
-                logger.info(
-                    f"  Post-build zig64 gate: reverted {layout} ch_seq_ptr "
-                    f"patch ({len(patches)} bytes) to preserve audio fidelity."
-                )
-                self._ch_seq_patches = []
-                return
-            # Restore for next attempt
-            for (c64_off, _orig), saved_b in zip(patches, saved):
-                file_off = np21_off + c64_off
-                if 0 <= file_off < len(self.output):
-                    self.output[file_off] = saved_b
-
-        # 2) Try NOPping wave-copy JSR
-        if wave_jsr_offs:
-            saved_jsr = []
-            for jo in wave_jsr_offs:
-                if jo + 3 <= len(self.output):
-                    saved_jsr.append((jo, bytes(self.output[jo:jo + 3])))
-                    self.output[jo:jo + 3] = b'\xEA\xEA\xEA'
-            if _check(bytes(self.output)):
-                logger.info(
-                    f"  Post-build zig64 gate: NOPped wave-copy JSR ({len(wave_jsr_offs)} "
-                    f"call) to preserve audio fidelity (F3 wave edit "
-                    f"propagation disabled for this file)."
-                )
-                self._wave_copy_jsr_offs = []
-                return
-            # Restore for next attempt
-            for jo, orig_bytes in saved_jsr:
-                self.output[jo:jo + 3] = orig_bytes
-
-        # 3) Try both reverts
-        if patches and wave_jsr_offs:
-            for c64_off, orig_byte in patches:
-                file_off = np21_off + c64_off
-                if 0 <= file_off < len(self.output):
-                    self.output[file_off] = orig_byte
-            for jo in wave_jsr_offs:
-                if jo + 3 <= len(self.output):
-                    self.output[jo:jo + 3] = b'\xEA\xEA\xEA'
-            if _check(bytes(self.output)):
-                logger.info(
-                    f"  Post-build zig64 gate: reverted ch_seq_ptr patch "
-                    f"AND NOPped wave-copy JSR to preserve audio fidelity."
-                )
-                self._ch_seq_patches = []
-                self._wave_copy_jsr_offs = []
-                return
-
-        # 4) Final fallback: redirect Block 2's declared init/play
-        # addresses to point at the PSID-native entry points (instead
-        # of our $0F90/$0F94 wrapper handlers). For Exorcist_preview
-        # (load=$9000), tracing the SF2 at native $9000/$9006 gives
-        # byte-identical audio to the SID; only the $0F90/$0F94
-        # wrapper trace diverges (cycle-drift / CIA-IRQ interaction).
-        # By rewriting Block 2 to point at native, SF2II's emulator
-        # and zig64 both call the native entries directly, skipping
-        # the wrapper. Tradeoff: editor-side F1-F5 propagation paths
-        # rely on the translator at $0F9E running; redirecting Block
-        # 2 means edits won't reach the player. For files that
-        # already can't propagate (ch_seq_ptr was skipped), this is
-        # a clean win — audio correct AND no further editor degradation.
-        if sid_init is not None and sid_play is not None:
-            saved_b2 = self._try_block2_native_redirect(sid_init, sid_play)
-            if saved_b2 is not None and _check(bytes(self.output),
-                                                 override_init=sid_init,
-                                                 override_play=sid_play):
-                logger.info(
-                    f"  Post-build zig64 gate: redirected Block 2 init/play "
-                    f"from $0F90/$0F94 to native ${sid_init:04X}/${sid_play:04X} "
-                    f"to preserve audio fidelity (editor-side wrapper bypassed; "
-                    f"F1-F5 edit propagation NOT available for this file)."
-                )
-                return
-            elif saved_b2 is not None:
-                # Didn't help — restore Block 2 wrapper addresses
-                self._restore_block2(saved_b2)
-
-        # Audio still diverges even with all reverts + redirects. Log
-        # and leave the SF2 as-is. Some divergence is genuinely
-        # architectural; SF2 is the best we can do.
-        logger.warning(
-            f"  Post-build zig64 gate: SF2 audio still diverges from SID "
-            f"after attempting all reverts and Block 2 redirect. Leaving "
-            f"SF2 as-built. Investigate per-file."
+        result = audio_gate.run_post_build_audio_gate(
+            out=self.output,
+            sid_path=sid_path,
+            np21_off=np21_off,
+            ch_seq_patches=getattr(self, '_ch_seq_patches', None) or [],
+            wave_copy_jsr_offs=getattr(self, '_wave_copy_jsr_offs', None) or [],
+            ch_seq_patch_layout=getattr(self, '_ch_seq_patch_layout', None),
+            sid_init=sid_init,
+            sid_play=sid_play,
         )
+        if result.get('ch_seq_reverted'):
+            self._ch_seq_patches = []
+        if result.get('wave_copy_nopped'):
+            self._wave_copy_jsr_offs = []
 
     def _try_block2_native_redirect(self, init_addr: int, play_addr: int):
-        """Rewrite Block 2's declared init/play addresses to point at the
-        PSID-native entry points. Returns (b2_init_off, b2_play_off,
-        orig_init_le, orig_play_le) tuple or None if Block 2 wasn't
-        found. Used by `_run_post_build_audio_gate` as a final fallback
-        for files where the SF2 wrapper layer itself diverges from
-        native cycle-accurate emulation.
-        """
-        # Block chain starts at file off 4 (PRG load:2 + magic:2).
-        # Walk chain: [id:1][size:1][body...] until id == 0xFF.
-        # Block 2 body layout: [Init:2 LE][Stop:2 LE][Play/Update:2 LE]...
-        o = 4
-        while o + 2 <= len(self.output):
-            bid = self.output[o]
-            if bid == 0xFF:
-                break
-            bsz = self.output[o + 1]
-            if bid == 2 and bsz >= 6:
-                # Found Block 2. Body starts at o+2.
-                init_off = o + 2
-                play_off = o + 2 + 4
-                orig_init = bytes(self.output[init_off:init_off + 2])
-                orig_play = bytes(self.output[play_off:play_off + 2])
-                # Patch
-                self.output[init_off]     = init_addr & 0xFF
-                self.output[init_off + 1] = (init_addr >> 8) & 0xFF
-                self.output[play_off]     = play_addr & 0xFF
-                self.output[play_off + 1] = (play_addr >> 8) & 0xFF
-                return (init_off, play_off, orig_init, orig_play)
-            o += 2 + bsz
-        return None
+        return audio_gate.try_block2_native_redirect(
+            self.output, init_addr, play_addr)
 
     def _restore_block2(self, saved) -> None:
-        init_off, play_off, orig_init, orig_play = saved
-        self.output[init_off:init_off + 2] = orig_init
-        self.output[play_off:play_off + 2] = orig_play
+        audio_gate.restore_block2(self.output, saved)
 
     def _ensure_sid_write_in_scan_window_universal(self) -> None:
-        """Upstream #211 workaround applied to the FINAL self.output,
-        covering every injection path (laxity raw-NP21, minimal-embed,
-        driver11). SF2II's GetSIDWriteInformationFromDriver sweeps
-        [$1000,$1900) for ABX/ABY $D400-$D406 writes then derefs
-        result.begin() unguarded (driver_utils.cpp:419) → empty ⇒ crash.
-
-        Every path emits a 2-JMP trampoline at $1000 (`4C lo hi 4C lo hi`,
-        6 bytes): laxity's zig64 entry stub, minimal's trampoline, and
-        driver11's `JMP init; JMP play`. SF2II decodes JMP abs as 3 bytes,
-        so after the two JMPs its linear sweep lands DETERMINISTICALLY at
-        $1006. If $1006 is inert PRG gap (00 00 00) we stamp a dead
-        `STA $D400,X` (9D 00 D4) there: the sweep decodes it as the next
-        instruction → result non-empty → no crash. The trampoline stays
-        intact (so zig64/playback unaffected) and $1006 gap is never
-        executed (playback uses DriverCommon InitAddress). If $1000 is
-        NOT a 2-JMP trampoline (live NP21 player at $1000, e.g. Sauna) or
-        $1006 isn't 00-filler (live code), we leave it alone — those
-        binaries already contain real indexed $D40x writes and pass."""
-        out = self.output
-        if out is None or len(out) < 4:
-            return
-        out = bytearray(out)
-        load_base = out[0] | (out[1] << 8)
-        o1000 = 0x1000 - load_base + 2
-        if o1000 < 0 or o1000 + 9 > len(out):
-            return
-        ABXY_OPS = (0x9D, 0xBD, 0xDD, 0x7D, 0x1D, 0x3D, 0x5D, 0xFD,  # abs,X
-                    0x99, 0xB9, 0xD9, 0x79, 0x19, 0x39, 0x59, 0xF9,  # abs,Y
-                    0xBE, 0xBC)
-        # Trampoline path: $1000 = 4C ?? ?? 4C ?? ?? + $1006 inert gap →
-        # stamp at $1006.
-        if (out[o1000] == 0x4C and out[o1000 + 3] == 0x4C):
-            o1006 = o1000 + 6
-            trio = out[o1006:o1006 + 3]
-            if bytes(trio) == b"\x9d\x00\xd4":
-                return  # idempotent — already stamped
-            if trio == b"\x00\x00\x00":
-                out[o1006:o1006 + 3] = b"\x9d\x00\xd4"  # STA $D400,X
-                self.output = out
-                logger.info(
-                    "  #211 workaround: stamped dead STA $D400,X at $1006 "
-                    "(post 2-JMP trampoline; SF2II driver_utils.cpp:419 "
-                    "derefs result.begin() unguarded — guarantees >=1 "
-                    "ABX/ABY $D40x write in the [$1000,$1900) static "
-                    "scan window)")
-                return
-            return  # trampoline present but $1006 is live code — leave alone
-        # No trampoline (binary itself at $1000, e.g. Digidag PLA TYA PLA).
-        # If the binary contains a natural ABX/ABY $D40x write byte pattern
-        # in [$1000,$1900), SF2II's static sweep WILL find it (byte-scan is
-        # a conservative lower bound on what the opcode-aware sweep finds:
-        # if 0 byte-matches exist, the opcode sweep also finds 0). When
-        # zero matches: redirect the scan window via the descriptor-block
-        # m_DriverCodeTop override to a freshly-appended dead `STA $D400,X;
-        # RTS` stub at the end of the file (Digidag-class architectural
-        # workaround). Without this the file crashes at driver_utils:419.
-        win_end = min(o1000 + 0x900, len(out))
-        natural_hit = False
-        for a in range(o1000, win_end - 2):
-            if out[a] in ABXY_OPS:
-                tgt = out[a + 1] | (out[a + 2] << 8)
-                if 0xD400 <= tgt <= 0xD406:
-                    natural_hit = True
-                    break
-        if natural_hit:
-            return
-        # No natural write — append stub + patch Block 1's DriverCodeTop/Size.
-        stub = b"\x9D\x00\xD4\x60"   # STA $D400,X; RTS
-        stub_file_off = len(out)
-        stub_addr = load_base + (stub_file_off - 2)
-        out.extend(stub)
-        # Find Block 1 (Descriptor) in the chain at file offset 4. Body:
-        # [Type:1][Size:2LE][Name+NUL:var][CodeTop:2LE][CodeSize:2LE]...
-        o = 4
-        patched = False
-        while o + 2 <= len(out):
-            bid = out[o]
-            if bid == 0xFF:
-                break
-            bsz = out[o + 1]
-            body_off = o + 2
-            body_end = body_off + bsz
-            if bid == 1 and body_end <= len(out):
-                # Skip Type(1)+Size(2); then null-terminated Name.
-                p = body_off + 3
-                while p < body_end and out[p] != 0:
-                    p += 1
-                p += 1  # past NUL
-                if p + 4 <= body_end:
-                    out[p:p + 2] = stub_addr.to_bytes(2, "little")
-                    out[p + 2:p + 4] = (len(stub) - 1).to_bytes(2, "little")
-                    patched = True
-                break
-            o = body_end
-        if patched:
-            self.output = out
-            logger.info(
-                f"  #211 workaround: appended STA $D400,X scan-bait stub at "
-                f"${stub_addr:04X} and redirected Block 1 m_DriverCodeTop "
-                f"there (binary at $1000 with no natural ABX/ABY $D40x "
-                f"write — Digidag-class architectural fallback)")
-        else:
-            logger.warning(
-                "  #211 workaround: could not locate Block 1 to patch "
-                "m_DriverCodeTop; file may crash on F10-load")
+        """v3.5.36 wrapper around
+        sidm2.universal_211_workaround.ensure_sid_write_in_scan_window_universal.
+        Forwards self.output; assigns back if the function returned a new
+        buffer (Digidag-class case appends a stub at end of file).
+        """
+        result = universal_211_workaround.ensure_sid_write_in_scan_window_universal(
+            self.output)
+        if result is not None:
+            self.output = result
 
     def _build_low_load_sf2(self, c64_data, sid_la, init_addr, play_addr) -> bool:
         """Alternate PRG layout for binaries that load below $1000.
