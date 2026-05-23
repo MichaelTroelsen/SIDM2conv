@@ -66,7 +66,8 @@ class TestChSeqSafetyGate(unittest.TestCase):
         """Dark_Fun has in-range pointer-shaped bytes at $1A1C-$1A21
         but the player uses them for a DATA table (LDA $1A1E,Y at
         $10C1), not as ch_seq_ptr. Patching corrupts the data → gate
-        must catch this."""
+        must catch this. Divergence appears within the first 5 PLAY
+        frames."""
         path = self.SID_DIR / "Laxity" / "Dark_Fun.sid"
         if not path.exists():
             self.skipTest(f"reference SID not present: {path}")
@@ -74,9 +75,32 @@ class TestChSeqSafetyGate(unittest.TestCase):
         lo_off = 0x1A1C - la
         hi_off = 0x1A1F - la
         self.assertFalse(
-            is_ch_seq_patch_safe(c, la, ia, pa, lo_off, hi_off, n_play=3),
+            is_ch_seq_patch_safe(c, la, ia, pa, lo_off, hi_off, n_play=8),
             "Dark_Fun should FAIL the safety gate (bytes are data, "
             "not ch_seq_ptr — patching them corrupts audio)"
+        )
+
+    def test_sfd1_fails_safety_gate_with_default_nplay(self):
+        """SID_Factory_demo_tune_1 has the same false-positive pattern as
+        Dark_Fun BUT the divergence only appears after ~14 PLAY frames
+        (it survives short traces). The gate's default n_play=16 must
+        catch it; this test pins that behavior."""
+        path = self.SID_DIR / "Laxity" / "SID_Factory_demo_tune_1.sid"
+        if not path.exists():
+            self.skipTest(f"reference SID not present: {path}")
+        c, la, ia, pa = _parse_psid(path)
+        lo_off = 0x1A1C - la
+        hi_off = 0x1A1F - la
+        # Default n_play (16) should be enough — pin that
+        self.assertFalse(
+            is_ch_seq_patch_safe(c, la, ia, pa, lo_off, hi_off),
+            "SFd1 should FAIL with default n_play=16"
+        )
+        # Short trace would miss it — pin that too as a regression
+        # warning if someone shortens the default.
+        self.assertTrue(
+            is_ch_seq_patch_safe(c, la, ia, pa, lo_off, hi_off, n_play=4),
+            "SFd1 with n_play=4 passes — confirms why default needs ≥16"
         )
 
     def test_out_of_range_pointers_rejected(self):

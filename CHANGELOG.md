@@ -25,6 +25,43 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.30] - 2026-05-23
+
+### Fixed — SID_Factory_demo_tune_1 recovered (gate n_play tuned + early-exit)
+
+SFd1 was a false-negative of the v3.5.29 ch_seq_ptr safety gate. Its 3
+voice ptrs at `$1A1C-$1A21` all point at `$1F1E` (highly unusual — all
+3 voices same address), so the gate's mirrored-shadow buffer produced
+IDENTICAL audio for the first 14 PLAY frames. The default `n_play=4`
+trace was too short; divergence only emerged at frame 14+.
+
+Isolation via ablation: reverting ONLY ch_seq_ptr (keeping the $1003
+trampoline + translator) → 0 diffs vs SID; reverting anything else
+but ch_seq_ptr → 377 diffs. So ch_seq_ptr WAS the cause; the gate
+just needed a longer window.
+
+Updates to `is_ch_seq_patch_safe()`:
+- `n_play` default 4 → 16 (covers SFd1 late-divergence with margin)
+- new `early_exit_check` callback in `_trace_register_writes`:
+  patched-simulation aborts the moment a write diverges from the
+  pre-traced original — cuts UNSAFE-file cost from ~5s to ~2s
+- `max_init_cyc` 2_000_000 → 20_000 (most INITs complete in <50k;
+  the old 2M cap was burning cycles on busy-wait INITs)
+
+**SFd1: 1904 register writes byte-identical to original SID
+(verify_audio_match.py 300 frames PASS).**
+
+Canonical regression byte-identical: Stinsen (1909), Unboxed (2733),
+Beast (2684), Angular (2648). Dark_Fun (1719), Twone_Five (1326)
+re-verified. 31-file stratified sample 27/31 PASS, gate fired TWICE
+(Dark_Fun + SFd1), zero false positives. 1026 tests pass.
+
+Residual 4 divergences (Alliance V20, Edie_Ball + Racer Zetrex/YP,
+Exorcist_preview wrapper-init) are unrelated to ch_seq_ptr — each is
+a separate per-file RE.
+
+---
+
 ## [3.5.29] - 2026-05-23
 
 ### Fixed — Dark_Fun recovered (ch_seq_ptr py65 safety gate)

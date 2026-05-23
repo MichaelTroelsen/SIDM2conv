@@ -31,9 +31,23 @@ from typing import List, Tuple
 def _trace_register_writes(c64_data: bytes, sid_la: int,
                             init_addr: int, play_addr: int,
                             shadow_overlay: dict | None = None,
-                            n_play: int = 5) -> List[Tuple[int, int, int]]:
+                            n_play: int = 5,
+                            max_init_cyc: int = 20_000,
+                            max_play_cyc: int = 100_000,
+                            early_exit_check=None
+                            ) -> List[Tuple[int, int, int]]:
     """Run py65 INIT + n PLAY ticks; return list of (frame, reg_off, value)
-    writes to $D400-$D418."""
+    writes to $D400-$D418.
+
+    `max_init_cyc` is bounded — some players have CIA-IRQ-style INIT that
+    busy-waits and never naturally exits. 200k cycles is generous enough
+    for legitimate INIT (most complete in <50k) while keeping wall-clock
+    cost ~1-2 seconds per file.
+
+    `early_exit_check`, if provided, is called after each write; if it
+    returns True, tracing terminates immediately. Used by the safety
+    gate to detect a divergence and skip remaining work.
+    """
     from py65.devices.mpu6502 import MPU
     mpu = MPU()
     for i in range(0x10000):
@@ -46,6 +60,7 @@ def _trace_register_writes(c64_data: bytes, sid_la: int,
 
     writes: List[Tuple[int, int, int]] = []
     frame_no = [0]
+    abort = [False]
     real = mpu.memory
 
     class Obs(list):
@@ -55,11 +70,13 @@ def _trace_register_writes(c64_data: bytes, sid_la: int,
         def __setitem__(self, a, v):
             if isinstance(a, int) and 0xD400 <= a <= 0xD418:
                 writes.append((frame_no[0], a - 0xD400, v))
+                if early_exit_check is not None and early_exit_check(writes):
+                    abort[0] = True
             list.__setitem__(self, a, v)
 
     mpu.memory = Obs(real)
 
-    def run(entry: int, max_cyc: int = 500_000) -> None:
+    def run(entry: int, max_cyc: int) -> None:
         mpu.pc = entry
         sent = 0xFFF0
         mpu.memory[0x0100 | mpu.sp] = (sent >> 8) & 0xFF
@@ -68,16 +85,18 @@ def _trace_register_writes(c64_data: bytes, sid_la: int,
         mpu.sp = (mpu.sp - 1) & 0xFF
         cyc = 0
         while cyc < max_cyc:
-            if mpu.pc == sent:
+            if mpu.pc == sent or abort[0]:
                 return
             mpu.step()
             cyc += 1
 
     mpu.a = 0
-    run(init_addr, 2_000_000)
+    run(init_addr, max_init_cyc)
     for f in range(n_play):
+        if abort[0]:
+            break
         frame_no[0] = f
-        run(play_addr, 300_000)
+        run(play_addr, max_play_cyc)
     return writes
 
 
@@ -85,7 +104,7 @@ def is_ch_seq_patch_safe(c64_data: bytes, sid_la: int,
                           init_addr: int, play_addr: int,
                           lo_off: int, hi_off: int,
                           shadow_base: int = 0x3000,
-                          n_play: int = 4) -> bool:
+                          n_play: int = 16) -> bool:
     """Return True if patching $1A1C-$1A21 with shadow_base addresses
     produces identical SID register writes vs the unpatched original.
 
@@ -148,12 +167,24 @@ def is_ch_seq_patch_safe(c64_data: bytes, sid_la: int,
             if b == 0x7F:
                 break
 
+    # Early-exit check: stop tracing the patched simulation as soon as
+    # its writes diverge from the original (which we already traced).
+    # This cuts gate runtime on UNSAFE files from ~1-2s to ~100ms.
+    def _diverged(writes_so_far):
+        idx = len(writes_so_far) - 1
+        return idx >= len(writes_orig) or writes_orig[idx] != writes_so_far[idx]
+
     writes_patched = _trace_register_writes(bytes(patched), sid_la,
                                              init_addr, play_addr,
                                              shadow_overlay=overlay,
-                                             n_play=n_play)
+                                             n_play=n_play,
+                                             early_exit_check=_diverged)
 
-    # Compare write tuples
+    # Early-exit means we already detected divergence
+    if len(writes_patched) < len(writes_orig):
+        # Either aborted on divergence, or patched produced fewer writes
+        # → not safe.
+        return False
     if len(writes_orig) != len(writes_patched):
         return False
     for a, b in zip(writes_orig, writes_patched):
