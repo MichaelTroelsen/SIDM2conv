@@ -133,17 +133,64 @@ def verify_sf2(sf2_path: Path, verbose: bool = False) -> tuple[bool, list[str]]:
                     f"${play_handler[0]:02X} (expected $20 or $4C)"
                 )
 
-    # 7. #211 stamp at $1006 — should be `9D 00 D4` (STA $D400,X) OR
-    # actual binary opcodes (when load=$1000 and binary occupies $1006)
-    one006_off = 0x1006 - load_addr + 2
-    if 0 <= one006_off and one006_off + 3 <= len(d):
-        b1006 = d[one006_off:one006_off + 3]
-        if bytes(b1006) == b"\x00\x00\x00":
-            issues.append(
-                f"$1006 is inert zero gap (no #211 stamp); SF2II's "
-                f"GetSIDWriteInformationFromDriver would AV on F10-load"
-            )
-        # Otherwise: either the stamp ($9D $00 $D4) or live binary bytes — both OK.
+    # 7. #211 protection: SF2II's GetSIDWriteInformationFromDriver
+    # statically sweeps [m_DriverCodeTop, +m_DriverCodeSize) for any
+    # ABX/ABY write to $D400-$D406. If the scan finds zero matches it
+    # derefs result.begin() UNGUARDED → AV (driver_utils.cpp:419,
+    # upstream #211). The converter protects against this in two ways:
+    #
+    #  (a) Universal: stamp `9D 00 D4` (STA $D400,X) at $1006 (the
+    #      post-2-JMP-trampoline slot) when the standard layout is
+    #      used and $1006 is inert gap.
+    #
+    #  (b) Low-load / alt-scan: when the binary loads below $1000 (and
+    #      so $1000-$1FFF is PRG gap), v3.5.21 overrides Block 1's
+    #      m_DriverCodeTop/m_DriverCodeSize to point at the handler
+    #      region (post-binary), and emits a `9D 00 D4 60` "scan bait"
+    #      sequence at HI+14 (after the 14B init/play/stop stubs).
+    #
+    # The validator must look up Block 1 to find the actual scan
+    # window, then verify an ABX/ABY $D40x write exists somewhere in
+    # it.
+    if 1 in blocks:
+        bsz_1, body_1 = blocks[1]
+        # Block 1 (Descriptor) body layout (sf2_header_generator.py):
+        # [Type:1][Size:2 LE][Name+NUL:N][CodeTop:2 LE][CodeSize:2 LE]...
+        # Find Name terminator NUL to locate CodeTop/CodeSize.
+        if bsz_1 >= 6:
+            # Type at body_1[0], Size at body_1[1..2], then Name
+            # starts at body_1[3] and is NUL-terminated.
+            try:
+                nul_off = body_1.index(0x00, 3)
+                # CodeTop / CodeSize follow the NUL
+                ct_off = nul_off + 1
+                if ct_off + 4 <= len(body_1):
+                    code_top  = body_1[ct_off]     | (body_1[ct_off + 1] << 8)
+                    code_size = body_1[ct_off + 2] | (body_1[ct_off + 3] << 8)
+                    # Now scan [code_top, code_top + code_size) in the
+                    # file for any ABX (9D) or ABY (99) opcode followed
+                    # by an operand low byte $00-$06 and high byte $D4.
+                    # That's `STA $D400-$D406,X` or `STA $D400-$D406,Y`.
+                    has_d40x_indexed = False
+                    for addr in range(code_top, code_top + code_size - 2):
+                        off = addr - load_addr + 2
+                        if 0 <= off and off + 2 < len(d):
+                            op = d[off]
+                            lo = d[off + 1]
+                            hi = d[off + 2]
+                            if op in (0x9D, 0x99) and 0x00 <= lo <= 0x06 and hi == 0xD4:
+                                has_d40x_indexed = True
+                                break
+                    if not has_d40x_indexed:
+                        issues.append(
+                            f"#211: no ABX/ABY $D40x write in scan window "
+                            f"[${code_top:04X}, ${code_top + code_size:04X}); "
+                            f"SF2II's GetSIDWriteInformationFromDriver would "
+                            f"AV on F10-load"
+                        )
+            except ValueError:
+                # No NUL terminator in Name? Block 1 looks malformed
+                issues.append("Block 1 Name field has no NUL terminator")
 
     return len(issues) == 0, issues
 
