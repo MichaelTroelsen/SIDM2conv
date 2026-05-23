@@ -182,6 +182,16 @@ class SF2Writer:
         # paths uniformly.
         self._ensure_sid_write_in_scan_window_universal()
 
+        # v3.5.32 post-build zig64 audio gate. The py65 safety gate
+        # (sidm2/ch_seq_safety_gate.py) catches most cases where a
+        # ch_seq_ptr patch corrupts player code, but it can't simulate
+        # CIA-IRQ-driven INIT correctly. For files like Edie_Ball
+        # (Zetrex/YP cluster, CIA-timer-driven), py65 says SAFE while
+        # cycle-accurate emulation diverges from the original SID. If
+        # the patch is bad we revert the ch_seq_ptr bytes (preserves
+        # everything else — translator, #211 stamp, META trailer, etc.).
+        self._run_post_build_audio_gate()
+
         # v3.5.17: append a "META" trailer with PSID title/author/copyright
         # so SID -> SF2 -> SID round-trip preserves metadata. Trailer lives
         # past the shadow buffer; SF2II loads but never reads it (the C64
@@ -1655,6 +1665,78 @@ class SF2Writer:
         logger.info(" Music data injection is a placeholder")
         logger.debug("The output file structure may need manual refinement")
 
+    def _run_post_build_audio_gate(self) -> None:
+        """v3.5.32 zig64-based post-build audio safety gate.
+
+        For files where the ch_seq_ptr patch was applied (laxity raw NP21
+        path with shadow buffer), verify cycle-accurate audio matches the
+        original SID. If it diverges, revert the patch bytes in
+        self.output (preserving every other patch: translator, #211
+        stamp, META trailer placement, etc.).
+
+        Catches Edie_Ball-class failures where py65 can't simulate the
+        CIA-IRQ-driven INIT and the py65 safety gate falsely approves
+        the patch. Cost: ~200ms (two 16-frame zig64 traces) only for
+        files where ch_seq_ptr was actually patched (~70% of corpus).
+        """
+        patches = getattr(self, '_ch_seq_patches', None)
+        np21_off = getattr(self, '_np21_file_off', None)
+        if not patches or np21_off is None:
+            return
+        # Need the original SID path. Get it from the data context if
+        # available (set by conversion_pipeline / analyzer when known).
+        sid_path = getattr(self, '_sid_input_path', None)
+        if sid_path is None:
+            sid_path = getattr(self.data, 'sid_path', None) if getattr(
+                self, 'data', None) else None
+        if sid_path is None:
+            return  # No source path → can't verify
+        from pathlib import Path
+        sid_path = Path(sid_path)
+        if not sid_path.exists():
+            return
+        # SID entry points
+        header = getattr(self.data, 'header', None)
+        sid_init = getattr(header, 'init_address', None) if header else None
+        sid_play = getattr(header, 'play_address', None) if header else None
+        if sid_init is None or sid_play is None:
+            return
+        if sid_play == 0:
+            sid_play = sid_init + 3
+        # SF2 entry points: our laxity raw NP21 path uses INIT=$0F90,
+        # PLAY=$0F94 (the JMP $0F9E translator entry).
+        sf2_init, sf2_play = 0x0F90, 0x0F94
+        try:
+            from sidm2.zig64_audio_gate import verify_sf2_audio
+            ok = verify_sf2_audio(
+                sf2_bytes=bytes(self.output),
+                sid_path=sid_path,
+                sf2_init_addr=sf2_init, sf2_play_addr=sf2_play,
+                sid_init_addr=sid_init, sid_play_addr=sid_play,
+                frames=16,
+            )
+        except Exception as e:
+            logger.debug(f"  Post-build zig64 audio gate skipped: {e}")
+            return
+        if ok:
+            return
+        # Audio diverges. Revert ch_seq_ptr patches.
+        layout_name = getattr(self, '_ch_seq_patch_layout', None) or "default"
+        logger.info(
+            f"  Post-build zig64 gate: SF2 audio diverges from SID; "
+            f"reverting {layout_name} ch_seq_ptr patch ({len(patches)} bytes) "
+            f"to preserve audio fidelity (F1 edit propagation disabled "
+            f"for this file)."
+        )
+        # patches: list of (offset_in_c64_data, original_byte). The c64
+        # data lives at self.output[np21_off:np21_off + N]. Restore each.
+        for c64_off, orig_byte in patches:
+            file_off = np21_off + c64_off
+            if 0 <= file_off < len(self.output):
+                self.output[file_off] = orig_byte
+        # Clear so we don't re-run on accidental re-entry
+        self._ch_seq_patches = []
+
     def _ensure_sid_write_in_scan_window_universal(self) -> None:
         """Upstream #211 workaround applied to the FINAL self.output,
         covering every injection path (laxity raw-NP21, minimal-embed,
@@ -2544,12 +2626,23 @@ class SF2Writer:
                         f"  ch_seq_ptr safety gate skipped due to "
                         f"exception: {e}"
                     )
+        # v3.5.32: track patched addresses + original bytes so the
+        # post-build zig64 audio gate can revert if the patch corrupts
+        # audio under cycle-accurate emulation (a case py65 can miss
+        # for CIA-IRQ-driven players like Zetrex/YP — see Edie_Ball).
+        ch_seq_patches: list[tuple[int, int]] = []
         if num_patterns > 0 and not skip_ch_seq_patch:
             for v in range(SHADOW_VOICES):
                 voice_shadow_addr = shadow_base + v * SEQ_SHADOW_SIZE
                 if CH_SEQ_LO_OFF + v < len(c64_data) and CH_SEQ_HI_OFF + v < len(c64_data):
+                    ch_seq_patches.append((CH_SEQ_LO_OFF + v, c64_data[CH_SEQ_LO_OFF + v]))
+                    ch_seq_patches.append((CH_SEQ_HI_OFF + v, c64_data[CH_SEQ_HI_OFF + v]))
                     c64_data[CH_SEQ_LO_OFF + v] = voice_shadow_addr & 0xFF
                     c64_data[CH_SEQ_HI_OFF + v] = (voice_shadow_addr >> 8) & 0xFF
+        # Save for post-build verification (used in write() after the
+        # universal #211 stamp).
+        self._ch_seq_patches = ch_seq_patches
+        self._ch_seq_patch_layout = patch_layout_name  # for log messages
 
         # Update driver_size to include the full file extent (NP21 + edit area + shadow)
         gen.driver_size += len(sf2_edit_data) + shadow_buffer_size
@@ -2617,6 +2710,9 @@ class SF2Writer:
         # NP21 binary (with patched ch_seq_ptr) at its original load address
         np21_off = 2 + gap
         file_data[np21_off:np21_off + len(c64_data)] = c64_data
+        # Save for the post-build zig64 audio gate (used in write())
+        # to know where the ch_seq_ptr patches landed in the output PRG.
+        self._np21_file_off = np21_off
 
         # Stage 2.5: emit multi-pattern translator at TRANSLATE_BASE. Walks
         # each voice's segment range, concatenates pattern bytes into the

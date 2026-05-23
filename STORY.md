@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.31 (2026-05-23) — 1029 tests, 286-file corpus, **98% C2 byte-identical**
-**Latest chapter:** [v3.5.31 — init+3 patch safety](#v3531--init3-patch-safety-2026-05-23)
+**Current version:** v3.5.32 (2026-05-23) — 1032 tests, 286-file corpus, **98% C2 byte-identical**
+**Latest chapter:** [v3.5.32 — zig64 post-build audio gate](#v3532--zig64-post-build-audio-gate-2026-05-23)
 
 ---
 
@@ -28,7 +28,7 @@ Today the project sits at:
 
 | Criterion | Where it lives |
 |-----------|---------------|
-| **C2 byte-identical** | **280/286 (98%)** of the Laxity corpus, plus the canonical references (Stinsen, Unboxed, Beast, Angular) at exactly zero divergent register writes over 300 frames. Of the 6 still-failing: 3 convert-fail (Crosswords, Echo_Beat architectural, Magic_Sound) and 3 audio-diverge (Edie_Ball, Exorcist_preview, Patterns) |
+| **C2 byte-identical** | **281/286 (98.25%)** of the Laxity corpus, plus the canonical references (Stinsen, Unboxed, Beast, Angular) at exactly zero divergent register writes over 300 frames. Of the 5 still-failing: 3 convert-fail (Crosswords, Echo_Beat architectural, Magic_Sound) and 2 audio-diverge (Exorcist_preview wrapper-init, Patterns 11 minor) |
 | **C1 F10-load** | **85%** (`242/286`) after the SF2II issue #211 workaround landed in v3.5.18 |
 | **C4 audio round-trip** | **283/283 (100% of converted)** |
 | **C4 metadata round-trip** | **283/283 (100% of converted)** |
@@ -337,6 +337,36 @@ Wired into `_inject_laxity_raw_np21` at the existing `_ptrs_in_range_check` site
 
 Result: 1719 register writes byte-identical. Canonical regressions unaffected. 31-file stratified sample 26/31 PASS, gate fired once (Dark_Fun), zero false positives.
 
+### v3.5.32 — Edie_Ball, shared-stream designs, and cycle-accurate verification
+
+After v3.5.31 recovered Alliance and Racer (both V20/Zetrex), Edie_Ball remained as the last Zetrex/YP residual. Same player (1987 Yield Point Music, load `$E000`, init `$E51F`, play `$E009`), same Zetrex/YP detector verdict (ptr_lo=`$E849`, ptr_hi=`$E86C`), same patches applied. So why does Racer pass byte-identical and Edie_Ball not?
+
+py65 didn't help. The v3.5.29 ch_seq_ptr safety gate said SAFE for both. The reason: py65 doesn't simulate CIA-IRQ-driven INIT. The Zetrex/YP player at `$E51F` installs a CIA timer pointing at `$E009`. py65 sees the install but never fires the IRQ during INIT, so its trace of the patched-vs-original simulation doesn't actually exercise the divergence path.
+
+Ablation revealed the truth: reverting the 6 patched bytes (3 lo + 3 hi at `$E849-$E84B` + `$E86C-$E86E`) gives byte-identical audio for Edie_Ball. So the patch IS the cause. But why for Edie_Ball and not Racer?
+
+Looking at Edie_Ball V0's byte stream at `$E887`:
+```
+00 00 00 00 00 00 00 00 FF 5B FF 85 0A 18 01 18 83 ...
+```
+The first 8 bytes are zeros (= silence ticks in NP21). Byte 8 is `$FF` — NP21 loop terminator. Byte 9 is `$5B` (= 91) — the loop target. The player jumps to offset 91 of the byte stream.
+
+In the **original** SID memory layout, V0's `$E887 + 91 = $E8E2`. That falls INSIDE V1's stream region (V1 starts at `$E891`). So Edie_Ball uses a **shared-stream design**: V0 has 8 silence ticks then loops into V1's data. V0 effectively continues playing V1's notes after the silent intro.
+
+The converter's shadow pre-fill, however, only writes V0's extracted body (8 zeros) + `$FF $5B` + zeros for the rest of the 256-byte slot. After ch_seq_ptr patch, the player reads V0's shadow at offset 91 — which is zero. V0 plays silence forever where it should have played V1's notes.
+
+Racer V0 also has an early `$FF` and a high loop target (`$83` = 131), but Racer's V0 is musically minor — it's effectively a sustained drone with V1 and V2 carrying the song. Whether V0 plays silence or V1's notes doesn't change the audible output (V1's stream plays anyway via V1's own ch_seq_ptr). For Edie_Ball, V0 is significant, and losing it produces silence-after-intro behavior.
+
+The fix isn't a smarter byte-level heuristic — there isn't one that cleanly distinguishes Edie_Ball from Racer without RE'ing the per-file score data. The fix is a **defense-in-depth audio gate that doesn't depend on understanding the player at all**: just run cycle-accurate emulation on the SF2 we built, compare to the SID, and revert patches if they diverge.
+
+New `sidm2/zig64_audio_gate.py` uses the bundled `tools/sidm2-sid-trace.exe` (zig64, cycle-accurate). After `_inject_laxity_raw_np21` produces `self.output` and the universal #211 stamp lands, the gate traces SF2 vs SID over 16 PAL frames (~50ms each trace). If divergence is detected, the recorded `_ch_seq_patches: list[(offset, original_byte)]` are reverted byte-exact, preserving every other patch (translator, #211 stamp, META trailer).
+
+**Edie_Ball: 433-diff → byte-identical 637 writes**. The gate reverts 6 bytes. Racer, Jewels, Waste's patches are kept because their audio matches. F1 edit propagation is preserved for the 3 files that have it; only Edie_Ball loses F1 — which it never had working-with-correct-audio anyway.
+
+The gate is generic — it verifies SF2 audio matches SID audio for ANY file the converter produces. Future architectural bugs that escape the build-time checks will be caught here. The cost (~200ms per file when the gate fires, ~70% of corpus) is acceptable; the full 286-file batch takes ~1 minute longer than v3.5.31.
+
+**Final corpus state at v3.5.32: C2 281/286 (98.25%), C4 audio 100% of converted, C4 metadata 100% of converted.** Remaining 5: 3 CONV_FAIL (Crosswords, Echo_Beat architectural, Magic_Sound) + 2 C2-diverge (Exorcist_preview wrapper-init, Patterns 11 minor divergences).
+
 ### v3.5.31 — Joe_Gunn_Extras, the init+3 patch, and the false "deferred architecture"
 
 This is the most consequential single fix of the entire post-v3.5.18 run.
@@ -499,6 +529,24 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.32 — zig64 post-build audio gate (2026-05-23)
+
+The Edie_Ball recovery — the last Zetrex/YP residual. py65 can't
+simulate the CIA-IRQ-driven INIT, so the py65 ch_seq_ptr safety gate
+falsely says SAFE for Edie_Ball; cycle-accurate emulation diverges.
+Edie_Ball V0's `$FF $5B` (loop to offset 91) is a shared-stream
+design — offset 91 falls inside V1's data in the original, but the
+converter's truncated shadow only writes 8 zeros + `$FF $5B` + zeros,
+so the player jumps to silence. New `sidm2/zig64_audio_gate.py`:
+cycle-accurate post-build verification via the bundled
+`tools/sidm2-sid-trace.exe`. After the universal #211 stamp, the gate
+traces SF2 vs SID; if audio diverges, the ch_seq_ptr patches are
+reverted byte-exact. **Edie_Ball: 433-diff → byte-identical 637
+writes.** The gate selectively keeps Racer/Jewels/Waste's patches
+(audio matches, F1 propagation preserved). C2 corpus 280/286 → 281/286.
+Cost: ~200ms per file when gate runs. 1032 tests (+3
+`TestZig64AudioGate`).
 
 ### v3.5.31 — init+3 patch safety (2026-05-23)
 

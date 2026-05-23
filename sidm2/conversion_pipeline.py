@@ -541,6 +541,7 @@ def convert_laxity_to_sf2(input_path: str, output_path: str, config: ConversionC
         # CRITICAL FIX: Use SF2Writer with driver_type='laxity'
         # This triggers _inject_laxity_music_data() which applies 40 pointer patches
         writer = SF2Writer(extracted, driver_type='laxity')
+        writer._sid_input_path = input_path  # for v3.5.32 post-build zig64 gate
         writer.write(output_path)
 
         # Get output file size for reporting
@@ -958,6 +959,7 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
             # Write the SF2 file using standard driver
             try:
                 writer = SF2Writer(extracted, driver_type=driver_type)
+                writer._sid_input_path = input_path  # for v3.5.32 zig64 gate
                 writer.write(output_path)
             except Exception as e:
                 logger.error(
@@ -1247,6 +1249,7 @@ def convert_sid_to_both_drivers(input_path: str, output_dir: str = None, config:
 
                 # Write the SF2 file
                 writer = SF2Writer(extracted, driver_type=driver_type)
+                writer._sid_input_path = input_path  # for v3.5.32 zig64 gate
                 writer.write(output_file)
 
                 size = os.path.getsize(output_file)

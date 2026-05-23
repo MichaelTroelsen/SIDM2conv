@@ -25,6 +25,78 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.32] - 2026-05-23
+
+### Added — zig64 post-build audio safety gate (Edie_Ball recovered)
+
+Edie_Ball.sid was the last Zetrex/YP residual after v3.5.31. The py65
+ch_seq_ptr safety gate said SAFE for it, but cycle-accurate emulation
+diverged from the SID. Root cause: py65 can't simulate CIA-IRQ-driven
+players. The Zetrex/YP player at `$E51F` installs a CIA timer pointing
+at `$E009` (play); py65 doesn't fire IRQs during INIT, so its trace
+doesn't reflect the actual divergence.
+
+Edie_Ball V0 at `$E887`: `00 00 00 00 00 00 00 00 FF 5B ...` — 8
+silence zeros then `$FF $5B` (NP21 loop to offset 91). In the original
+SID, offset 91 falls INSIDE V1's stream region (shared-stream design;
+V0 continues into V1's data after the silent intro). The converter's
+shadow pre-fill writes only V0's body (8 zeros) + `$FF $5B` + zeros.
+After ch_seq_ptr is patched to the shadow, the player jumps to offset
+91 of V0's shadow slot = zero → silence forever where the original
+had real music.
+
+New `sidm2/zig64_audio_gate.py`: cycle-accurate post-build verification
+via the bundled `tools/sidm2-sid-trace.exe`. Runs ~50ms per trace ×
+2 traces. After the universal #211 stamp in `write()`, the gate
+traces SF2 vs SID over 16 PAL frames. If audio diverges, the
+ch_seq_ptr patches in `self.output` are reverted (preserving
+translator, #211 stamp, META trailer, etc.).
+
+`_inject_laxity_raw_np21` tracks `_ch_seq_patches: list[(offset,
+original_byte)]` for byte-exact revert. `_run_post_build_audio_gate()`
+is called once from `write()`. Conversion pipeline passes
+`writer._sid_input_path` so the gate can find the source SID. Gate
+degrades gracefully (returns True) when the tracer binary isn't
+installed.
+
+### Results
+
+Full-corpus batch (286 files):
+- **C2 audio: 280/286 → 281/286 (98% → 98.25%)**
+- C4 audio: 283/283 PASS (unchanged, 100% of converted)
+- C4 metadata: 283/283 PASS (unchanged, 100% of converted)
+
+Recovered:
+- **Edie_Ball**: 433-diff → byte-identical 637 writes (gate reverts 6
+  bytes of Zetrex/YP ch_seq_ptr patches)
+
+Selective behavior — the gate keeps Racer (909), Jewels (525), and
+Waste (429)'s Zetrex/YP patches because their audio matches. F1 edit
+propagation is preserved for those three; only Edie_Ball loses F1
+(which it never had working audio-correctly anyway).
+
+Canonical regression byte-identical: Stinsen (1909), Unboxed (2733),
+Beast (2684), Angular (2648). Dark_Fun (1719), Twone_Five (1326),
+SFd1 (1904), Joe_Gunn_Extras (1756), SFd2 (1133), Alliance (1283)
+re-verified.
+
+### Tests
+
+1032 pass (+3 `TestZig64AudioGate`: stinsen-passes / tracer-missing-
+fallback / corrupted-sf2-diverges).
+
+### Cost
+
+~200ms per file when the gate runs (~70% of corpus, the laxity raw
+NP21 path). Full 286-file batch ~1 min slower than v3.5.31.
+
+### Remaining C2 fails (2 of 286)
+
+- Exorcist_preview: wrapper-init interaction (`memory/exorcist-preview-deferred.md`)
+- Patterns: 11 minor divergences (instrument-table edge case at frame 169)
+
+---
+
 ## [3.5.31] - 2026-05-23
 
 ### Fixed — init+3 patch safety (4 files recovered including 2 assumed-deferred archs)
