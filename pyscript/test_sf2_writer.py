@@ -1934,6 +1934,84 @@ class TestWizaxFalsePositiveGate(unittest.TestCase):
         self.assertIsNone(detect_zetrex_yp_layout(b, 0x1000, "2021 Bonzai"))
 
 
+class TestMinimalEmbedPostBinaryGuard(unittest.TestCase):
+    """v3.5.28: _inject_player_raw_minimal places a 256-byte zero guard
+    between the embedded SID binary and the SF2 edit area. Some players
+    (Twone_Five.sid is canonical) declare a data table inside the binary
+    that extends a few bytes past the binary's end and read it via
+    absolute,Y addressing — relying on RAM being zero past the binary.
+    Without the guard the edit area's OL/Seq ptr tables landed at
+    sid_la+len(c64_data) and the player picked up `$29 $29 $29 ...`
+    (the first OL_ptr_lo bytes) → spurious freq_hi writes.
+    """
+
+    def _build(self, c64_data: bytes, sid_la: int = 0x1000,
+               init_addr: int = 0x1000, play_addr: int = 0x1003):
+        """Drive _inject_player_raw_minimal end-to-end with a synthetic
+        binary and return the output PRG bytes."""
+        data = create_minimal_extracted_data()
+        data.c64_data = c64_data
+        data.load_address = sid_la
+        data.header = create_minimal_psid_header(
+            load_address=sid_la, init_address=init_addr,
+            play_address=play_addr,
+        )
+        w = SF2Writer(data)
+        w.driver_type = 'driver11'
+        w._inject_player_raw_minimal()
+        return bytes(w.output)
+
+    def test_zero_guard_after_binary(self):
+        # Sentinel binary: $1000 = JMP $102F ; rest = $AA fill.
+        # After the binary's last byte the next 256 bytes MUST be zero.
+        c64 = bytearray(0x300)
+        c64[0:3] = bytes([0x4C, 0x2F, 0x10])   # JMP $102F
+        for i in range(3, len(c64)):
+            c64[i] = 0xAA
+        out = self._build(bytes(c64), sid_la=0x1000)
+        load = out[0] | (out[1] << 8)
+        # Last binary byte at sid_la + len(c64) - 1 = $12FF
+        guard_start = 0x1000 + len(c64)         # $1300
+        # File offset of guard region:
+        go = guard_start - load + 2
+        for i in range(256):
+            self.assertEqual(out[go + i], 0,
+                             f"guard byte ${guard_start + i:04X} must be 0x00")
+
+    def test_binary_intact_after_guard(self):
+        # Binary's last byte must still be $AA (guard sits AFTER it,
+        # doesn't overwrite the binary).
+        c64 = bytearray(0x300)
+        c64[0:3] = bytes([0x4C, 0x2F, 0x10])
+        for i in range(3, len(c64)):
+            c64[i] = 0xAA
+        out = self._build(bytes(c64), sid_la=0x1000)
+        load = out[0] | (out[1] << 8)
+        last_byte_addr = 0x1000 + len(c64) - 1   # $12FF
+        self.assertEqual(out[last_byte_addr - load + 2], 0xAA,
+                         "binary's last byte must remain $AA")
+
+    def test_edit_area_shifted_by_guard(self):
+        # Edit area (OL ptr lo at first byte = $29 due to ol_track1_addr
+        # low byte) MUST start at sid_la + len(c64) + 0x100, not directly
+        # after the binary.
+        c64 = bytearray(0x200)
+        c64[0:3] = bytes([0x4C, 0x2F, 0x10])
+        out = self._build(bytes(c64), sid_la=0x1000)
+        load = out[0] | (out[1] << 8)
+        edit_start = 0x1000 + len(c64) + 0x100   # = $1300
+        # First 3 bytes are OL ptr lo for tracks 0,1,2 — they all share
+        # the same low byte (each ol_track1_addr +N*0x100 has same low).
+        first_three = bytes(out[edit_start - load + 2 :
+                                edit_start - load + 2 + 3])
+        # The 3 bytes must be equal (same lo byte across 3 OLs at +N*$100)
+        # AND they must be non-zero (= ol_track1_addr & 0xFF).
+        self.assertEqual(first_three[0], first_three[1])
+        self.assertEqual(first_three[1], first_three[2])
+        self.assertNotEqual(first_three[0], 0,
+                            "edit area's OL ptr lo bytes must land here")
+
+
 if __name__ == '__main__':
     # Run with verbose output
     unittest.main(verbosity=2)

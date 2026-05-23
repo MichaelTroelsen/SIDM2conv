@@ -2804,7 +2804,17 @@ class SF2Writer:
         OL_SIZE  = 0x100
         SEQ_SIZE = 0x100
         SEQ_PTR_SIZE = 0x80
-        sf2_data_base = sid_la + len(c64_data)
+        # Zero-pad gap between binary end and edit area. Some SID players
+        # (Twone_Five.sid is the canonical example, v3.5.28) declare a
+        # data table just before the binary's last byte and read past the
+        # binary end via absolute,Y indexing. In RAM this is naturally
+        # zero (uninitialized DRAM); when the SF2 edit area lands at
+        # sid_la+len(c64_data) the player picks up edit-area bytes
+        # (orderlist-ptr lo, hi, seq-ptr-lo etc.) instead of zeros →
+        # spurious SID-register writes. 256 bytes covers the 6502
+        # absolute,Y addressing range (Y ∈ [0,255]).
+        POST_BINARY_GUARD = 0x100
+        sf2_data_base = sid_la + len(c64_data) + POST_BINARY_GUARD
         ol_ptr_lo_addr  = sf2_data_base + 0
         ol_ptr_hi_addr  = sf2_data_base + 3
         seq_ptr_lo_addr = sf2_data_base + 6
@@ -2894,7 +2904,7 @@ class SF2Writer:
         edit.extend(bytes(32 * 2))                    # Init: 32 rows × 2 cols
 
         sf2_edit_data = bytes(edit)
-        gen.driver_size += len(sf2_edit_data)
+        gen.driver_size += POST_BINARY_GUARD + len(sf2_edit_data)
 
         header_bytes = gen.generate_complete_headers(music_data_params)
         headers_end_addr = LOAD_BASE + len(header_bytes)
@@ -2902,10 +2912,11 @@ class SF2Writer:
             logger.error(f"  Headers too large! End ${headers_end_addr:04X} > ${HANDLER_BASE:04X}")
             return
 
-        # Build full PRG: [load:2] + headers + handler stubs + c64 binary + edit area
+        # Build full PRG: [load:2] + headers + handler stubs + c64 binary
+        # + post-binary zero guard + edit area
         gap = sid_la - LOAD_BASE
-        file_size = 2 + gap + len(c64_data) + len(sf2_edit_data)
-        file_data = bytearray(file_size)
+        file_size = 2 + gap + len(c64_data) + POST_BINARY_GUARD + len(sf2_edit_data)
+        file_data = bytearray(file_size)  # bytearray() inits to 0x00 → guard is zero-filled
 
         file_data[0] = LOAD_BASE & 0xFF
         file_data[1] = LOAD_BASE >> 8
@@ -2935,8 +2946,9 @@ class SF2Writer:
             ])
             logger.info(f"  Trampoline @ $1000: JMP ${init_addr:04X}; @ $1003: JMP ${play_addr:04X}")
 
-        # SF2 edit area appended after binary
-        edit_off = np21_off + len(c64_data)
+        # SF2 edit area appended after binary + POST_BINARY_GUARD.
+        # The guard region is already zero-filled by bytearray(file_size).
+        edit_off = np21_off + len(c64_data) + POST_BINARY_GUARD
         file_data[edit_off:edit_off + len(sf2_edit_data)] = sf2_edit_data
 
         # Upstream #211 workaround applied universally in write().

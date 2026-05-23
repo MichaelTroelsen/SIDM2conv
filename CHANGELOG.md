@@ -25,6 +25,41 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.28] - 2026-05-23
+
+### Fixed — Twone_Five recovered (minimal-embed post-binary zero guard)
+
+The smallest residual C2 divergence from v3.5.26 (Twone_Five, +2 spurious
+register writes vs original) is resolved. Twone_Five's player reads a freq
+HI table at `$1223,Y` — one byte past the binary's end at `$1222`. In a
+real C64 environment $1223+ is uninitialized RAM (= $00); the SF2
+minimal-embed path placed the edit area directly at
+`sid_la + len(c64_data) = $1223`, so the player picked up OL-ptr-lo bytes
+(`29 29 29 ...`) instead of zeros → spurious `osc<n>_freq_hi = $29`
+writes per voice at frame 0.
+
+`_inject_player_raw_minimal` now inserts a 256-byte zero guard between
+the embedded binary and the edit area (`POST_BINARY_GUARD = 0x100`,
+covering 6502 absolute,Y addressing). `gen.driver_size` includes the
+guard so SF2II sees the correct code-region length; `bytearray(file_size)`
+zero-fills the new region so no extra memset is needed.
+
+**Twone_Five: 1326 register writes byte-identical to original SID
+(verify_audio_match.py 300 frames PASS).**
+
+Canonical regression byte-identical: Stinsen (1909), Unboxed (2733),
+Beast (2684), Angular (2648). 20-file stratified sample 18/20 PASS (the
+2 failures are pre-existing Alliance V20 + SID_Factory_demo_tune_1
+voice-misorder on the laxity raw_NP21 path which this fix does NOT
+touch). 1020 tests pass (+3 `TestMinimalEmbedPostBinaryGuard`).
+
+Residual 6 divergences (Dark_Fun, SID_Factory_demo_tune_1 voice-misorder;
+Exorcist_preview $9000 autodetect; Alliance V20; Edie_Ball, Racer
+Zetrex/YP) are unrelated bugs on the laxity raw_NP21 path, each
+multi-hour per-file RE.
+
+---
+
 ## [3.5.27] - 2026-05-22
 
 ### Fixed — Digidag-class #211 fallback (alternate scan-window)
