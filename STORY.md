@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.34 (2026-05-23) — 1032 tests, 286-file corpus, **98.6% C2 byte-identical**
-**Latest chapter:** [v3.5.34 — clean architectural-limit errors](#v3534--clean-architectural-limit-errors-for-high-load-conv-fail-files-2026-05-23)
+**Current version:** v3.5.35 (2026-05-23) — 1032 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
+**Latest chapter:** [v3.5.35 — Block 2 native-redirect (Exorcist_preview)](#v3535--block-2-native-redirect-exorcist_preview-recovered-2026-05-23)
 
 ---
 
@@ -28,7 +28,7 @@ Today the project sits at:
 
 | Criterion | Where it lives |
 |-----------|---------------|
-| **C2 byte-identical** | **282/286 (98.6%)** of the Laxity corpus, plus the canonical references (Stinsen, Unboxed, Beast, Angular) at exactly zero divergent register writes over 300 frames. Of the 4 still-failing: 3 convert-fail (Crosswords, Echo_Beat architectural, Magic_Sound) and 1 audio-diverge (Exorcist_preview wrapper-init) |
+| **C2 byte-identical** | **283/286 (99%)** of the Laxity corpus — **every file the converter produces a SF2 for now matches the SID byte-identically over 300 PAL frames.** The 3 still-failing are all CONV_FAIL with documented architectural-infeasibility error messages: Echo_Beat (load `$0400`, no room for SF2 header below the binary), Crosswords + Magic_Sound (load `$F000`, no room for edit area above the binary in 16-bit address space). Zero non-architectural audio residuals. |
 | **C1 F10-load** | **85%** (`242/286`) after the SF2II issue #211 workaround landed in v3.5.18 |
 | **C4 audio round-trip** | **283/283 (100% of converted)** |
 | **C4 metadata round-trip** | **283/283 (100% of converted)** |
@@ -529,6 +529,31 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.35 — Block 2 native-redirect (Exorcist_preview recovered) (2026-05-23)
+
+The last non-architectural C2 audio residual. Exorcist_preview's
+embedded binary at `$9000+` is byte-identical to the SID, but tracing
+the SF2 via Block 2's declared `$0F90/$0F94` (wrapper handlers) gives
+50 extra register writes per 60 frames — wrapper-init cycle drift,
+unfixable through any patch revert. **But** tracing the SF2 at native
+`$9000/$9006` directly gives 0 diffs.
+
+Added the 4th gate fallback: **rewrite Block 2's declared init/play
+addresses to the PSID-native entry points**. zig64 and SF2II both read
+Block 2 init/play to invoke the player; pointing them at native
+bypasses the wrapper layer entirely. Tradeoff: F1-F5 edit propagation
+goes through the translator at `$0F9E` (called via `$0F94`), so
+redirecting Block 2 means edits won't reach the player. For files that
+already couldn't propagate (ch_seq_ptr was skipped), this is a clean
+audio win with no editor regression.
+
+**Exorcist_preview: 916-diff → byte-identical 1612 writes.** C2
+corpus 282/286 → 283/286 (99%). **Every file the converter produces
+a SF2 for now has byte-identical audio.** Zero non-architectural
+audio residuals. Cost: ~30ms extra per file when the gate's
+trace-revert chain reaches step 4 (rare; only Exorcist_preview-class
+wrapper-init issues).
 
 ### v3.5.34 — clean architectural-limit errors for high-load CONV_FAIL files (2026-05-23)
 

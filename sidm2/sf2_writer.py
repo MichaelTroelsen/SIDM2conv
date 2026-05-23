@@ -1688,8 +1688,13 @@ class SF2Writer:
             return
         patches = getattr(self, '_ch_seq_patches', None) or []
         wave_jsr_offs = getattr(self, '_wave_copy_jsr_offs', None) or []
-        if not patches and not wave_jsr_offs:
-            return  # nothing to potentially revert
+        # v3.5.35: even when patches and wave_jsr_offs are both empty,
+        # we may still want to try the Block 2 native-redirect fallback
+        # for files like Exorcist_preview where the SF2 wrapper layer
+        # itself diverges from native cycle-accurate emulation. The
+        # gate proceeds whenever sid_input_path is set (only the laxity
+        # path sets that), and the per-step reverts simply skip the
+        # steps that have nothing to revert.
         sid_path = getattr(self, '_sid_input_path', None)
         if sid_path is None:
             return
@@ -1712,14 +1717,18 @@ class SF2Writer:
             logger.debug(f"  Post-build zig64 audio gate skipped: {e}")
             return
 
-        def _check(buf: bytes) -> bool:
+        def _check(buf: bytes, override_init=None, override_play=None) -> bool:
             try:
                 # 200 frames catches Patterns-class late divergences
                 # (instrument-edge at frame 169) while keeping the
                 # trace cost under ~30ms (zig64 = ~140us/frame).
+                # override_init/play used by the Block 2 redirect
+                # fallback (so the gate re-traces at the new native
+                # entry, not the original wrapper handlers).
                 return verify_sf2_audio(
                     sf2_bytes=buf, sid_path=sid_path,
-                    sf2_init_addr=sf2_init, sf2_play_addr=sf2_play,
+                    sf2_init_addr=override_init if override_init is not None else sf2_init,
+                    sf2_play_addr=override_play if override_play is not None else sf2_play,
                     sid_init_addr=sid_init, sid_play_addr=sid_play,
                     frames=200,
                 )
@@ -1787,16 +1796,80 @@ class SF2Writer:
                 self._wave_copy_jsr_offs = []
                 return
 
-        # Audio still diverges even with all reverts. Log and leave the
-        # SF2 as-is (the current state, with reverts undone in the
-        # restore-for-next-attempt steps above). Some divergence is
-        # genuinely architectural; SF2 is the best we can do.
+        # 4) Final fallback: redirect Block 2's declared init/play
+        # addresses to point at the PSID-native entry points (instead
+        # of our $0F90/$0F94 wrapper handlers). For Exorcist_preview
+        # (load=$9000), tracing the SF2 at native $9000/$9006 gives
+        # byte-identical audio to the SID; only the $0F90/$0F94
+        # wrapper trace diverges (cycle-drift / CIA-IRQ interaction).
+        # By rewriting Block 2 to point at native, SF2II's emulator
+        # and zig64 both call the native entries directly, skipping
+        # the wrapper. Tradeoff: editor-side F1-F5 propagation paths
+        # rely on the translator at $0F9E running; redirecting Block
+        # 2 means edits won't reach the player. For files that
+        # already can't propagate (ch_seq_ptr was skipped), this is
+        # a clean win — audio correct AND no further editor degradation.
+        if sid_init is not None and sid_play is not None:
+            saved_b2 = self._try_block2_native_redirect(sid_init, sid_play)
+            if saved_b2 is not None and _check(bytes(self.output),
+                                                 override_init=sid_init,
+                                                 override_play=sid_play):
+                logger.info(
+                    f"  Post-build zig64 gate: redirected Block 2 init/play "
+                    f"from $0F90/$0F94 to native ${sid_init:04X}/${sid_play:04X} "
+                    f"to preserve audio fidelity (editor-side wrapper bypassed; "
+                    f"F1-F5 edit propagation NOT available for this file)."
+                )
+                return
+            elif saved_b2 is not None:
+                # Didn't help — restore Block 2 wrapper addresses
+                self._restore_block2(saved_b2)
+
+        # Audio still diverges even with all reverts + redirects. Log
+        # and leave the SF2 as-is. Some divergence is genuinely
+        # architectural; SF2 is the best we can do.
         logger.warning(
             f"  Post-build zig64 gate: SF2 audio still diverges from SID "
-            f"after attempting all reverts ({len(patches)} ch_seq_ptr "
-            f"patches + {len(wave_jsr_offs)} wave-copy JSRs). Leaving "
+            f"after attempting all reverts and Block 2 redirect. Leaving "
             f"SF2 as-built. Investigate per-file."
         )
+
+    def _try_block2_native_redirect(self, init_addr: int, play_addr: int):
+        """Rewrite Block 2's declared init/play addresses to point at the
+        PSID-native entry points. Returns (b2_init_off, b2_play_off,
+        orig_init_le, orig_play_le) tuple or None if Block 2 wasn't
+        found. Used by `_run_post_build_audio_gate` as a final fallback
+        for files where the SF2 wrapper layer itself diverges from
+        native cycle-accurate emulation.
+        """
+        # Block chain starts at file off 4 (PRG load:2 + magic:2).
+        # Walk chain: [id:1][size:1][body...] until id == 0xFF.
+        # Block 2 body layout: [Init:2 LE][Stop:2 LE][Play/Update:2 LE]...
+        o = 4
+        while o + 2 <= len(self.output):
+            bid = self.output[o]
+            if bid == 0xFF:
+                break
+            bsz = self.output[o + 1]
+            if bid == 2 and bsz >= 6:
+                # Found Block 2. Body starts at o+2.
+                init_off = o + 2
+                play_off = o + 2 + 4
+                orig_init = bytes(self.output[init_off:init_off + 2])
+                orig_play = bytes(self.output[play_off:play_off + 2])
+                # Patch
+                self.output[init_off]     = init_addr & 0xFF
+                self.output[init_off + 1] = (init_addr >> 8) & 0xFF
+                self.output[play_off]     = play_addr & 0xFF
+                self.output[play_off + 1] = (play_addr >> 8) & 0xFF
+                return (init_off, play_off, orig_init, orig_play)
+            o += 2 + bsz
+        return None
+
+    def _restore_block2(self, saved) -> None:
+        init_off, play_off, orig_init, orig_play = saved
+        self.output[init_off:init_off + 2] = orig_init
+        self.output[play_off:play_off + 2] = orig_play
 
     def _ensure_sid_write_in_scan_window_universal(self) -> None:
         """Upstream #211 workaround applied to the FINAL self.output,

@@ -25,6 +25,89 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.35] - 2026-05-23
+
+### Added — Block 2 native-redirect (Exorcist_preview recovered)
+
+Exorcist_preview.sid was the last C2 audio residual after v3.5.33.
+The SF2's embedded binary at `$9000+` is byte-identical to the SID,
+but the wrapper trace ($0F90 INIT → $0F94 PLAY → translator) produced
+~50 extra register writes per 60 frames vs the SID's native trace
+($9000/$9006). The bug isn't in the binary; it's in the
+**wrapper-init interaction** — JSR/RTS overhead + translator code +
+zig64 cycle accounting accumulates a roughly 1-frame drift after ~30
+frames.
+
+Investigation confirmed:
+- SF2 at native `$9000/$9006`: 0 diffs vs SID (300 frames)
+- SF2 at wrapper `$0F90/$0F94`: 337 writes vs 287 (60 frames)
+- Disabling translator entirely + reverting all patches: still 337
+  writes — wrapper-init drift is the cause, not any specific patch.
+
+### Fix
+
+Added a 4th fallback to `_run_post_build_audio_gate()`: when all 3
+revert strategies fail (ch_seq_ptr revert, wave-copy NOP, both), the
+gate **rewrites Block 2's declared init/play addresses from
+`$0F90/$0F94` (wrapper handlers) to the PSID-native entry points
+(e.g., `$9000/$9006`)**. zig64 and SF2II both read Block 2 init/play
+to invoke the player; pointing them at native bypasses the wrapper
+layer entirely.
+
+New methods:
+- `_try_block2_native_redirect(init_addr, play_addr)`: walks the SF2
+  block chain to find Block 2 (id=2) and patches body[0..1] (init)
+  and body[4..5] (play/update). Returns the saved-state tuple for
+  revert.
+- `_restore_block2(saved)`: undoes the redirect if it doesn't help.
+
+The `_check()` callback gained `override_init`/`override_play`
+parameters so it re-traces at the new entry addresses after the Block
+2 rewrite (previously it was hardcoded to test at $0F90/$0F94).
+
+Also: removed the gate's "patches and wave_jsr_offs both empty →
+early return" so the redirect can fire for Exorcist_preview-class
+files which have neither.
+
+### Tradeoff
+
+F1-F5 edit propagation runs through the translator at `$0F9E` (called
+via `$0F94`). Redirecting Block 2 → native means edits won't reach
+the player. For files like Exorcist_preview that already couldn't
+propagate (ch_seq_ptr was skipped because bytes at $9A1C-equiv aren't
+in-range pointers), this is a clean win.
+
+### Results
+
+**C2 audio: 282/286 → 283/286 (99% → 99%)**. Every file the converter
+produces a SF2 for now has byte-identical audio to the original SID.
+**Zero non-architectural audio residuals.**
+
+Recovered:
+- **Exorcist_preview**: 916-diff → byte-identical 1612 writes
+
+Canonical regression byte-identical: Stinsen (1909), Unboxed (2733),
+Beast (2684), Angular (2648); Patterns (1793), Edie_Ball (637),
+Dark_Fun (1719), Twone_Five (1326), SFd1 (1904), SFd2 (1133),
+Joe_Gunn_Extras (1756), Alliance (1283), Racer (909) all re-verified.
+
+Remaining 3 files = documented CONV_FAIL architectural infeasibilities
+(Echo_Beat low-load, Crosswords + Magic_Sound high-load — v3.5.34
+added clean error messages for these).
+
+### Tests
+
+1032 pass (no changes — the new gate fallback is exercised through
+the existing converter pipeline).
+
+### Cost
+
+The Block 2 redirect step costs one extra zig64 trace (~30ms) only
+when reached, which is rare (only Exorcist_preview-class wrapper-init
+files). Most files match on the first trace.
+
+---
+
 ## [3.5.34] - 2026-05-23
 
 ### Fixed — clean architectural-limit errors for high-load CONV_FAIL files
