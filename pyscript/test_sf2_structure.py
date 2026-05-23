@@ -88,6 +88,16 @@ class TestSF2Structure(unittest.TestCase):
         """Patterns: gate NOPs the wave-copy JSR. Structure unchanged."""
         self._check("Laxity/Patterns.sid")
 
+    def test_wizax_tune_low_load_alt_scan_window(self):
+        """Wizax_tune (load=$0900): low-load layout. Block 1's
+        m_DriverCodeTop is overridden to point at the post-binary
+        handler region (NOT $1000-$18FF gap), and a `9D 00 D4 60`
+        scan-bait sequence sits at HI+14. The #211 check must look
+        up the actual scan window from Block 1, NOT assume the
+        standard $1000 base — pins the v3.5.36 validator fix that
+        eliminated a false positive on this file."""
+        self._check("Laxity/Wizax_tune.sid")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
