@@ -2497,6 +2497,53 @@ class SF2Writer:
                     f"to preserve audio fidelity (F1 edit propagation "
                     f"disabled for this file)"
                 )
+            else:
+                # v3.5.28 ch_seq_ptr safety gate: bytes look like in-range
+                # pointers, but verify the player actually USES them as
+                # ch_seq_ptr. Some files (Dark_Fun.sid, 2023 Genesis
+                # Project, canonical example) have valid-looking pointer
+                # bytes at $1A1C-$1A21 that are part of OTHER data tables;
+                # patching them corrupts those tables → wrong audio.
+                # The gate emulates the patch under py65 with the shadow
+                # buffer mirroring the original byte streams; if the
+                # patched audio diverges from the original, the player
+                # doesn't use these bytes as ch_seq_ptr → skip patch.
+                try:
+                    from sidm2.ch_seq_safety_gate import is_ch_seq_patch_safe
+                    init_addr_for_gate = getattr(
+                        self.data.header, 'init_address', sid_la
+                    ) if getattr(self, 'data', None) and getattr(
+                        self.data, 'header', None
+                    ) else sid_la
+                    play_addr_for_gate = getattr(
+                        self.data.header, 'play_address', sid_la + 3
+                    ) if getattr(self, 'data', None) and getattr(
+                        self.data, 'header', None
+                    ) else sid_la + 3
+                    if play_addr_for_gate == 0:
+                        play_addr_for_gate = init_addr_for_gate + 3
+                    if not is_ch_seq_patch_safe(
+                        bytes(c64_data), sid_la,
+                        init_addr_for_gate, play_addr_for_gate,
+                        CH_SEQ_LO_OFF, CH_SEQ_HI_OFF,
+                    ):
+                        skip_ch_seq_patch = True
+                        logger.info(
+                            f"  ch_seq_ptr safety gate: patching "
+                            f"$1A1C/$1A1F changes audio under py65 "
+                            f"simulation (player uses these bytes for "
+                            f"non-ch_seq_ptr data); skipping patch to "
+                            f"preserve audio fidelity (F1 edit "
+                            f"propagation disabled for this file)"
+                        )
+                except Exception as e:
+                    # Safety gate failure (e.g., py65 import error) →
+                    # fall through to apply patch as before. Logged at
+                    # debug only since this is a soft fallback.
+                    logger.debug(
+                        f"  ch_seq_ptr safety gate skipped due to "
+                        f"exception: {e}"
+                    )
         if num_patterns > 0 and not skip_ch_seq_patch:
             for v in range(SHADOW_VOICES):
                 voice_shadow_addr = shadow_base + v * SEQ_SHADOW_SIZE

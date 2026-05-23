@@ -25,6 +25,47 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.29] - 2026-05-23
+
+### Fixed — Dark_Fun recovered (ch_seq_ptr py65 safety gate)
+
+Dark_Fun.sid (Laxity 2023 Genesis Project) had the largest residual C2
+divergence from v3.5.26: voices 1+2 silent in SF2 (only voice 0 wrote
+SID registers). Root-caused via py65 trace: the player at PC `$10C1`
+reads `LDA $1A1E,Y` — using `$1A1E` as a Y-indexed DATA TABLE, not as
+voice-2's ch_seq_ptr lo byte. The bytes at `$1A1C-$1A21 = 54 7C 1B 1B
+1B 1B` happen to look like in-range ch_seq_ptr pointers
+(`$1B54/$1B7C/$1B1B`), so v3.5.17's `_ptrs_in_range_check` heuristic
+incorrectly approved the patch. After patching ch_seq_ptr → shadow,
+the player's `LDA $1A1E,Y` read corrupted bytes → wrong data → silent
+voices.
+
+New `sidm2/ch_seq_safety_gate.py` `is_ch_seq_patch_safe()` runs py65
+INIT + 4 PLAY ticks on the original c64_data AND on a patched copy
+where `$1A1C-$1A21` are repointed at a synthetic shadow buffer
+mirroring the original byte streams. If the player uses ch_seq_ptr
+the standard way, patched audio matches the original (shadow mirrors
+what the player would read anyway). If the player uses those bytes
+for OTHER data, patched audio diverges. Gate returns False →
+`_inject_laxity_raw_np21` sets `skip_ch_seq_patch=True`.
+
+**Dark_Fun: 1719 register writes byte-identical to original SID
+(verify_audio_match.py 300 frames PASS).**
+
+Canonical regression byte-identical: Stinsen (1909), Unboxed (2733),
+Beast (2684), Angular (2648). 31-file stratified sample 26/31 PASS,
+gate fired ONCE (Dark_Fun), zero false positives. 1025 tests pass
+(+5 `TestChSeqSafetyGate`).
+
+Cost: ~1-2s extra per file when gate runs (only when default `$1A1C`
+bytes are in-range pointers; ~30% of corpus).
+
+Residual 5 divergences (Alliance V20, Edie_Ball + Racer Zetrex/YP,
+Exorcist_preview `$9000` autodetect, SID_Factory_demo_tune_1 timing)
+are unrelated to ch_seq_ptr — each is a separate per-file RE.
+
+---
+
 ## [3.5.28] - 2026-05-23
 
 ### Fixed — Twone_Five recovered (minimal-embed post-binary zero guard)
