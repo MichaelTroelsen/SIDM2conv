@@ -165,6 +165,8 @@ SIDM2/
 
 **Before Commit**: Run `test-all.bat` (200+ tests) | Update README.md, CLAUDE.md, docs/ if changed | Run `update-inventory.bat` if files added/removed
 
+**On Version Bump**: Update `CLAUDE.md` (this file), `CHANGELOG.md`, AND `STORY.md` (the project narrative — append to per-version index; update Eras / deep-tech sections only if a new architectural finding warrants it). Bump `sidm2/__init__.py __version__` + `__build_date__`.
+
 **Debug**: Check `output.txt` → Compare dumps (`siddump_complete.py`) → Compare audio
 
 ---

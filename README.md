@@ -65,6 +65,12 @@ test-all.bat
 
 ## Documentation
 
+### Project Narrative
+
+| Document | Description | Best For |
+|----------|-------------|----------|
+| **[STORY.md](STORY.md)** | The project's technical journey — how SIDM2 went from "experimental converter" to byte-accurate bridge across 30+ versions, with deep technical stories | Curious readers, contributors |
+
 ### Essential Guides
 
 | Guide | Description | Best For |
