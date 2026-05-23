@@ -2116,6 +2116,44 @@ class SF2Writer:
                 docs_link="guides/LAXITY_DRIVER_USER_GUIDE.md#troubleshooting",
             )
 
+        # v3.5.34 high-load architectural check: when the binary ends
+        # within ~$300 bytes of $FFFF, there's no room for the SF2 edit
+        # area (typically $400-$2000 bytes for orderlists + sequences +
+        # F2/F3/F4/F5 tables + shadow buffer). Block 3 column addresses
+        # would overflow the 16-bit space and produce a cryptic
+        # `struct.pack 'H' overflow` deep in header generation.
+        #
+        # Canonical cases: Crosswords (1988 Starion, load=$F000, 3363B
+        # → ends $FD23, only $2DD bytes left to $FFFF), Magic_Sound
+        # (1987 Yield Point Music, load=$F000, 2613B → similar). Both
+        # are documented "high-load architectural infeasibility" — the
+        # SF2 format can't represent edit-area metadata for binaries
+        # that fill nearly all 64KB.
+        #
+        # Threshold: we need ~$800 bytes minimum after the binary for
+        # the smallest reasonable edit area + shadow + #211 stamp. If
+        # less, raise a clean error instead of letting struct.pack
+        # blow up several frames deep.
+        MIN_POST_BINARY = 0x800
+        if sid_la + len(c64_data) + MIN_POST_BINARY > 0x10000:
+            logger.error(
+                f"  Binary load address ${sid_la:04X} + size "
+                f"${len(c64_data):04X} = ends at ${sid_la + len(c64_data):04X}: "
+                f"insufficient room (<{MIN_POST_BINARY:#06x} bytes) below "
+                f"$FFFF for the SF2 edit area + shadow buffer. This is an "
+                f"architectural limit of the SF2 format — Block 3 column "
+                f"addresses are 16-bit, so the edit area can't extend past "
+                f"the C64 address space."
+            )
+            raise errors.ConversionError(
+                stage="raw-NP21 inject (high-load)",
+                reason=f"sid_load=${sid_la:04X} + size {len(c64_data)} leaves "
+                       f"<{MIN_POST_BINARY:#06x} bytes below $FFFF for the "
+                       f"edit area + shadow buffer",
+                input_file=getattr(self.data, 'filepath', None),
+                docs_link="guides/LAXITY_DRIVER_USER_GUIDE.md#troubleshooting",
+            )
+
         LOAD_BASE      = 0x0D7E    # SF2 loads here; 0x1337 magic goes here
         # HANDLER_BASE history:
         #   $0F00 — original; only allowed 386B for the 9-block header set
@@ -3022,6 +3060,27 @@ class SF2Writer:
             if self._build_low_load_sf2(c64_data, sid_la, init_addr, play_addr):
                 return
             # else: unfixable (no header room below sid_la) → legacy.
+
+        # v3.5.34 high-load architectural check: same as
+        # _inject_laxity_raw_np21. Binary + edit area + shadow can't
+        # overflow 16-bit C64 address space. Magic_Sound (load=$F000,
+        # 2613 bytes) is the canonical case for this path.
+        MIN_POST_BINARY = 0x800
+        if sid_la + len(c64_data) + MIN_POST_BINARY > 0x10000:
+            logger.error(
+                f"  Binary load address ${sid_la:04X} + size "
+                f"${len(c64_data):04X} = ends at ${sid_la + len(c64_data):04X}: "
+                f"insufficient room (<{MIN_POST_BINARY:#06x} bytes) below "
+                f"$FFFF for the SF2 edit area. Architectural limit of the "
+                f"SF2 format (Block 3 column addresses are 16-bit)."
+            )
+            raise errors.ConversionError(
+                stage="minimal-embed inject (high-load)",
+                reason=f"sid_load=${sid_la:04X} + size {len(c64_data)} leaves "
+                       f"<{MIN_POST_BINARY:#06x} bytes below $FFFF for edit area",
+                input_file=getattr(self.data, 'filepath', None),
+                docs_link="guides/LAXITY_DRIVER_USER_GUIDE.md#troubleshooting",
+            )
 
         LOAD_BASE      = 0x0D7E
         HANDLER_BASE   = 0x0F90

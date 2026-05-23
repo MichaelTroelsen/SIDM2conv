@@ -25,6 +25,53 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.34] - 2026-05-23
+
+### Fixed — clean architectural-limit errors for high-load CONV_FAIL files
+
+Crosswords (1988 Starion, load=`$F000`, 3363B) and Magic_Sound (1987
+Yield Point Music, load=`$F000`, 2613B) were failing with cryptic
+`struct.pack 'H' format requires 0 <= number <= 65535` errors several
+frames deep in `sf2_header_generator.create_tables_block()`. The 16-bit
+C64 address space is insufficient: at load `$F000` with binary 2-3KB,
+only ~700 bytes remain to `$FFFF` — not enough for the SF2 edit area
+(orderlists + sequences + F2/F3/F4/F5 tables + shadow buffer; minimum
+~$800 bytes; Block 3 column addresses are 16-bit so they can't
+represent the edit area past `$FFFF`).
+
+Added a guard at the top of both `_inject_laxity_raw_np21` AND
+`_inject_player_raw_minimal`: when
+`sid_la + len(c64_data) + 0x800 > 0x10000`, raise a clean
+`ConversionError(stage='raw-NP21/minimal-embed inject (high-load)',
+reason='sid_load=$XXXX + size N leaves <0x0800 bytes below $FFFF for
+edit area')`. Echo_Beat had this style of clean error since v3.5.25
+(low-load architectural infeasibility — header can't fit below the
+binary); now Crosswords and Magic_Sound get the symmetric high-load
+version.
+
+### Results
+
+**C2 corpus unchanged** (these files don't produce SF2s either way) but
+the failure mode is now diagnostic instead of a deep stack trace.
+
+The three CONV_FAIL files are all now documented as architectural
+infeasibility:
+- Echo_Beat (load=`$0400`): low-load — no room for 525B header below
+- Crosswords (load=`$F000`, 3363B): high-load — no room for edit area
+- Magic_Sound (load=`$F000`, 2613B): high-load — same
+
+Canonical regression byte-identical: Stinsen (1909), Unboxed (2733),
+Beast (2684), Angular (2648); Patterns (1793), Edie_Ball (637),
+Dark_Fun (1719), Twone_Five (1326), SFd1 (1904), Joe_Gunn_Extras
+(1756), SFd2 (1133), Alliance (1283), Racer (909) re-verified.
+
+### Tests
+
+1032 pass (no changes — the error messages are exercised through
+existing batch conversion failures).
+
+---
+
 ## [3.5.33] - 2026-05-23
 
 ### Added — gate extended with wave-copy NOP + 200-frame window (Patterns recovered)

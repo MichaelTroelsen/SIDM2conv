@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.33 (2026-05-23) — 1032 tests, 286-file corpus, **98.6% C2 byte-identical**
-**Latest chapter:** [v3.5.33 — gate extended (wave-copy NOP + 200-frame window)](#v3533--gate-extended-wave-copy-nop--200-frame-window-2026-05-23)
+**Current version:** v3.5.34 (2026-05-23) — 1032 tests, 286-file corpus, **98.6% C2 byte-identical**
+**Latest chapter:** [v3.5.34 — clean architectural-limit errors](#v3534--clean-architectural-limit-errors-for-high-load-conv-fail-files-2026-05-23)
 
 ---
 
@@ -529,6 +529,24 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.34 — clean architectural-limit errors for high-load CONV_FAIL files (2026-05-23)
+
+Diagnostics polish. Crosswords (load=`$F000`, 3363B) and Magic_Sound
+(load=`$F000`, 2613B) were failing with a cryptic
+`struct.pack 'H' format requires 0 <= number <= 65535` deep in
+`sf2_header_generator.create_tables_block()`. Root cause: when the
+binary loads near `$F000` and is 2-3KB, only ~700 bytes remain to
+`$FFFF` — not enough for the SF2 edit area (orderlists + sequences +
+F2/F3/F4/F5 tables + shadow buffer; minimum ~$800 bytes; Block 3
+column addresses are 16-bit). Added a guard at the top of both
+`_inject_laxity_raw_np21` and `_inject_player_raw_minimal`: when
+`sid_la + len(c64_data) + 0x800 > 0x10000`, raise a clean
+`ConversionError` with `stage="...inject (high-load)"` and a
+human-readable reason. Echo_Beat had the symmetric low-load
+architectural error since v3.5.25; now all three CONV_FAIL files are
+documented architectural infeasibility, not bugs. C2 corpus
+unchanged; failure mode is now diagnostic. 1032 tests still pass.
 
 ### v3.5.33 — gate extended (wave-copy NOP + 200-frame window) (2026-05-23)
 
