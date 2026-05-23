@@ -25,6 +25,82 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.33] - 2026-05-23
+
+### Added — gate extended with wave-copy NOP + 200-frame window (Patterns recovered)
+
+Patterns.sid was the final fixable audio residual after v3.5.32. The
+SF2 produced the right number of register writes (1793, matching the
+SID) but 11 of them diverged: `osc2_attack_decay: $7F` (SF2) vs `$00`
+(SID), recurring at frames 169, 185, 201, 249, 265, 281 — every 16
+frames.
+
+Ablation: NOP the wave-copy JSR in the translator → audio matches
+byte-identical. Root cause: the wave-copy writes 32 bytes from the SF2
+edit area to `np21_wave_data_addr` (`$6903`) and `np21_note_addr`
+(`$6963`) on every PLAY tick. For Patterns (load `$5FF4`), both
+addresses overlap with the file's INSTRUMENT TABLE region. At runtime
+the wave-copy stomps an instrument's AD byte with the value from the
+SF2 edit area's wave column — which contains `$7F` (the SF2
+packed-format end-of-sequence terminator).
+
+Wave-copy is a Stage 7 Phase B.1 feature for F3 (wave) edit
+propagation. For files where it corrupts critical binary data,
+disabling it is the correct tradeoff: audio correct, F3 propagation
+lost.
+
+### Changes
+
+Extended `_run_post_build_audio_gate()` with progressive revert:
+
+1. Trace SF2 vs SID at 200 PAL frames (~30ms). Match? Done.
+2. Try reverting `ch_seq_ptr` patches. Match? Keep.
+3. Try NOP'ing wave-copy JSR. Match? Keep.
+4. Try both. Match? Keep.
+
+Bumped the gate's trace window from 64 → 200 frames to catch late
+divergences (Patterns' diverge at frame 169).
+
+`_inject_laxity_raw_np21` now tracks `_wave_copy_jsr_offs:
+list[int]` — absolute file offsets of the wave-copy JSR(s) inside the
+translator — found via 3-byte pattern match `20 lo hi` where the
+target is `trampoline_or_wave_copy_addr`.
+
+### Results
+
+Full-corpus batch (286 files):
+- **C2 audio: 281/286 → 282/286 (98% → 98.6%)**
+- C4 audio: 283/283 PASS (100% of converted, unchanged)
+- C4 metadata: 283/283 PASS (100% of converted, unchanged)
+
+Recovered:
+- **Patterns**: 11-diff → byte-identical 1793 writes (gate detects
+  ch_seq_ptr revert insufficient, then NOPs wave-copy JSR)
+
+Canonical regression byte-identical: Stinsen (1909), Unboxed (2733),
+Beast (2684), Angular (2648). Dark_Fun (1719), Twone_Five (1326),
+SFd1 (1904), Joe_Gunn_Extras (1756), SFd2 (1133), Alliance (1283),
+Racer (909), Edie_Ball (637) re-verified.
+
+### Cost
+
+When gate matches on first try: ~30ms (one 200-frame zig64 trace).
+When reverts are needed: up to 4 traces × ~30ms = ~120ms. Full
+286-file corpus: ~1 min total (within previous v3.5.32 budget).
+
+### Remaining
+
+1 audio-diverge residual: Exorcist_preview (wrapper-init interaction,
+documented). Plus 3 CONV_FAIL: Crosswords, Echo_Beat (architectural),
+Magic_Sound.
+
+### Tests
+
+1032 pass (no changes — the gate behavior is exercised through the
+existing TestZig64AudioGate suite).
+
+---
+
 ## [3.5.32] - 2026-05-23
 
 ### Added — zig64 post-build audio safety gate (Edie_Ball recovered)

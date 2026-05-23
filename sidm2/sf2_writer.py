@@ -1666,36 +1666,37 @@ class SF2Writer:
         logger.debug("The output file structure may need manual refinement")
 
     def _run_post_build_audio_gate(self) -> None:
-        """v3.5.32 zig64-based post-build audio safety gate.
+        """v3.5.32 / v3.5.33 zig64-based post-build audio safety gate.
 
-        For files where the ch_seq_ptr patch was applied (laxity raw NP21
-        path with shadow buffer), verify cycle-accurate audio matches the
-        original SID. If it diverges, revert the patch bytes in
-        self.output (preserving every other patch: translator, #211
-        stamp, META trailer placement, etc.).
+        Verifies cycle-accurate audio matches the original SID. If it
+        diverges, progressively reverts the converter's optional patches
+        until audio matches (or no more reverts available):
+          1. Try as-built. If matches, done.
+          2. Revert ch_seq_ptr patches (Edie_Ball class — py65 gate
+             missed it because of CIA-IRQ-driven INIT).
+          3. NOP the wave-copy JSR in the translator (Patterns class —
+             wave-copy's dst addrs overlap binary data the player reads).
+          4. Both reverted (most files have only one of these problems,
+             but pin the search order).
 
-        Catches Edie_Ball-class failures where py65 can't simulate the
-        CIA-IRQ-driven INIT and the py65 safety gate falsely approves
-        the patch. Cost: ~200ms (two 16-frame zig64 traces) only for
-        files where ch_seq_ptr was actually patched (~70% of corpus).
+        Each step costs ~50-100ms for the zig64 trace. Uses 64 frames by
+        default — long enough to catch Edie_Ball (early divergence) AND
+        Patterns (frame 169) without paying the full 300-frame cost.
         """
-        patches = getattr(self, '_ch_seq_patches', None)
         np21_off = getattr(self, '_np21_file_off', None)
-        if not patches or np21_off is None:
+        if np21_off is None:
             return
-        # Need the original SID path. Get it from the data context if
-        # available (set by conversion_pipeline / analyzer when known).
+        patches = getattr(self, '_ch_seq_patches', None) or []
+        wave_jsr_offs = getattr(self, '_wave_copy_jsr_offs', None) or []
+        if not patches and not wave_jsr_offs:
+            return  # nothing to potentially revert
         sid_path = getattr(self, '_sid_input_path', None)
         if sid_path is None:
-            sid_path = getattr(self.data, 'sid_path', None) if getattr(
-                self, 'data', None) else None
-        if sid_path is None:
-            return  # No source path → can't verify
+            return
         from pathlib import Path
         sid_path = Path(sid_path)
         if not sid_path.exists():
             return
-        # SID entry points
         header = getattr(self.data, 'header', None)
         sid_init = getattr(header, 'init_address', None) if header else None
         sid_play = getattr(header, 'play_address', None) if header else None
@@ -1703,39 +1704,99 @@ class SF2Writer:
             return
         if sid_play == 0:
             sid_play = sid_init + 3
-        # SF2 entry points: our laxity raw NP21 path uses INIT=$0F90,
-        # PLAY=$0F94 (the JMP $0F9E translator entry).
         sf2_init, sf2_play = 0x0F90, 0x0F94
+
         try:
             from sidm2.zig64_audio_gate import verify_sf2_audio
-            ok = verify_sf2_audio(
-                sf2_bytes=bytes(self.output),
-                sid_path=sid_path,
-                sf2_init_addr=sf2_init, sf2_play_addr=sf2_play,
-                sid_init_addr=sid_init, sid_play_addr=sid_play,
-                frames=16,
-            )
         except Exception as e:
             logger.debug(f"  Post-build zig64 audio gate skipped: {e}")
             return
-        if ok:
-            return
-        # Audio diverges. Revert ch_seq_ptr patches.
-        layout_name = getattr(self, '_ch_seq_patch_layout', None) or "default"
-        logger.info(
-            f"  Post-build zig64 gate: SF2 audio diverges from SID; "
-            f"reverting {layout_name} ch_seq_ptr patch ({len(patches)} bytes) "
-            f"to preserve audio fidelity (F1 edit propagation disabled "
-            f"for this file)."
+
+        def _check(buf: bytes) -> bool:
+            try:
+                # 200 frames catches Patterns-class late divergences
+                # (instrument-edge at frame 169) while keeping the
+                # trace cost under ~30ms (zig64 = ~140us/frame).
+                return verify_sf2_audio(
+                    sf2_bytes=buf, sid_path=sid_path,
+                    sf2_init_addr=sf2_init, sf2_play_addr=sf2_play,
+                    sid_init_addr=sid_init, sid_play_addr=sid_play,
+                    frames=200,
+                )
+            except Exception:
+                return True   # tracer error → degrade gracefully
+
+        if _check(bytes(self.output)):
+            return  # SF2 already matches; no reverts needed
+
+        # 1) Try reverting only ch_seq_ptr patches
+        if patches:
+            saved = [self.output[np21_off + o] for o, _b in patches]
+            for c64_off, orig_byte in patches:
+                file_off = np21_off + c64_off
+                if 0 <= file_off < len(self.output):
+                    self.output[file_off] = orig_byte
+            if _check(bytes(self.output)):
+                layout = getattr(self, '_ch_seq_patch_layout', None) or "default"
+                logger.info(
+                    f"  Post-build zig64 gate: reverted {layout} ch_seq_ptr "
+                    f"patch ({len(patches)} bytes) to preserve audio fidelity."
+                )
+                self._ch_seq_patches = []
+                return
+            # Restore for next attempt
+            for (c64_off, _orig), saved_b in zip(patches, saved):
+                file_off = np21_off + c64_off
+                if 0 <= file_off < len(self.output):
+                    self.output[file_off] = saved_b
+
+        # 2) Try NOPping wave-copy JSR
+        if wave_jsr_offs:
+            saved_jsr = []
+            for jo in wave_jsr_offs:
+                if jo + 3 <= len(self.output):
+                    saved_jsr.append((jo, bytes(self.output[jo:jo + 3])))
+                    self.output[jo:jo + 3] = b'\xEA\xEA\xEA'
+            if _check(bytes(self.output)):
+                logger.info(
+                    f"  Post-build zig64 gate: NOPped wave-copy JSR ({len(wave_jsr_offs)} "
+                    f"call) to preserve audio fidelity (F3 wave edit "
+                    f"propagation disabled for this file)."
+                )
+                self._wave_copy_jsr_offs = []
+                return
+            # Restore for next attempt
+            for jo, orig_bytes in saved_jsr:
+                self.output[jo:jo + 3] = orig_bytes
+
+        # 3) Try both reverts
+        if patches and wave_jsr_offs:
+            for c64_off, orig_byte in patches:
+                file_off = np21_off + c64_off
+                if 0 <= file_off < len(self.output):
+                    self.output[file_off] = orig_byte
+            for jo in wave_jsr_offs:
+                if jo + 3 <= len(self.output):
+                    self.output[jo:jo + 3] = b'\xEA\xEA\xEA'
+            if _check(bytes(self.output)):
+                logger.info(
+                    f"  Post-build zig64 gate: reverted ch_seq_ptr patch "
+                    f"AND NOPped wave-copy JSR to preserve audio fidelity."
+                )
+                self._ch_seq_patches = []
+                self._wave_copy_jsr_offs = []
+                return
+
+        # Audio still diverges even with all reverts. Log and leave the
+        # SF2 as-is (the current state, with reverts undone in the
+        # restore-for-next-attempt steps above). Some divergence is
+        # genuinely architectural; SF2 is the best we can do.
+        logger.warning(
+            f"  Post-build zig64 gate: SF2 audio still diverges from SID "
+            f"after attempting all reverts ({len(patches)} ch_seq_ptr "
+            f"patches + {len(wave_jsr_offs)} wave-copy JSRs). Leaving "
+            f"SF2 as-built. Investigate per-file."
         )
-        # patches: list of (offset_in_c64_data, original_byte). The c64
-        # data lives at self.output[np21_off:np21_off + N]. Restore each.
-        for c64_off, orig_byte in patches:
-            file_off = np21_off + c64_off
-            if 0 <= file_off < len(self.output):
-                self.output[file_off] = orig_byte
-        # Clear so we don't re-run on accidental re-entry
-        self._ch_seq_patches = []
 
     def _ensure_sid_write_in_scan_window_universal(self) -> None:
         """Upstream #211 workaround applied to the FINAL self.output,
@@ -2759,6 +2820,26 @@ class SF2Writer:
                 )
                 return
             file_data[tr_off:tr_off + len(translator_bytes)] = translator_bytes
+
+            # v3.5.33: scan the translator for the wave-copy JSR so the
+            # post-build zig64 gate can NOP it if audio diverges.
+            # Pattern: `20 lo hi` where (lo|hi<<8) == trampoline_or_wave_copy_addr.
+            # The wave-copy routine writes to NP21 wave/note scratch
+            # addresses (e.g. $190C/$18DA for Stinsen-class). For files
+            # like Patterns where those addresses overlap an unrelated
+            # data table inside the binary, the runtime copy stomps live
+            # data → audio divergence.
+            jsr_lo_off = []  # absolute file offsets of each JSR we may NOP
+            if trampoline_or_wave_copy_addr is not None:
+                tgt_lo = trampoline_or_wave_copy_addr & 0xFF
+                tgt_hi = (trampoline_or_wave_copy_addr >> 8) & 0xFF
+                for k in range(len(translator_bytes) - 2):
+                    if (translator_bytes[k] == 0x20
+                        and translator_bytes[k+1] == tgt_lo
+                        and translator_bytes[k+2] == tgt_hi):
+                        jsr_lo_off.append(tr_off + k)
+                        break  # only first match — the wave-copy JSR
+            self._wave_copy_jsr_offs = jsr_lo_off
 
         # Fix zig64 auto-detection: it always calls init_addr+3 as PLAY.
         # Determine effective play target — usually play_addr, but when

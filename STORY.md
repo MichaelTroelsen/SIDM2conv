@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.32 (2026-05-23) — 1032 tests, 286-file corpus, **98% C2 byte-identical**
-**Latest chapter:** [v3.5.32 — zig64 post-build audio gate](#v3532--zig64-post-build-audio-gate-2026-05-23)
+**Current version:** v3.5.33 (2026-05-23) — 1032 tests, 286-file corpus, **98.6% C2 byte-identical**
+**Latest chapter:** [v3.5.33 — gate extended (wave-copy NOP + 200-frame window)](#v3533--gate-extended-wave-copy-nop--200-frame-window-2026-05-23)
 
 ---
 
@@ -28,7 +28,7 @@ Today the project sits at:
 
 | Criterion | Where it lives |
 |-----------|---------------|
-| **C2 byte-identical** | **281/286 (98.25%)** of the Laxity corpus, plus the canonical references (Stinsen, Unboxed, Beast, Angular) at exactly zero divergent register writes over 300 frames. Of the 5 still-failing: 3 convert-fail (Crosswords, Echo_Beat architectural, Magic_Sound) and 2 audio-diverge (Exorcist_preview wrapper-init, Patterns 11 minor) |
+| **C2 byte-identical** | **282/286 (98.6%)** of the Laxity corpus, plus the canonical references (Stinsen, Unboxed, Beast, Angular) at exactly zero divergent register writes over 300 frames. Of the 4 still-failing: 3 convert-fail (Crosswords, Echo_Beat architectural, Magic_Sound) and 1 audio-diverge (Exorcist_preview wrapper-init) |
 | **C1 F10-load** | **85%** (`242/286`) after the SF2II issue #211 workaround landed in v3.5.18 |
 | **C4 audio round-trip** | **283/283 (100% of converted)** |
 | **C4 metadata round-trip** | **283/283 (100% of converted)** |
@@ -529,6 +529,33 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.33 — gate extended (wave-copy NOP + 200-frame window) (2026-05-23)
+
+The final fixable audio residual. Patterns.sid had the right NUMBER
+of register writes (1793) but 11 of them diverged: `osc2_attack_decay:
+$7F` (SF2) vs `$00` (SID), recurring at frames 169, 185, 201, 249,
+265, 281 — every 16 frames. Ablation pinpointed the wave-copy
+routine: it writes 32 bytes from the SF2 edit area to
+`np21_wave_data_addr` (`$6903`) and `np21_note_addr` (`$6963`) every
+PLAY tick; for Patterns those addresses overlap the file's instrument
+table, so the wave-copy stomps an AD byte with `$7F` (the SF2 packed
+sequence terminator).
+
+Extended `_run_post_build_audio_gate()` with progressive revert:
+trace at 200 PAL frames; if diverge, try reverting ch_seq_ptr patches
+first, then NOP'ing wave-copy JSR, then both. The gate now tracks
+`_wave_copy_jsr_offs: list[int]` of absolute file offsets where the
+translator JSRs the wave-copy routine, found via 3-byte pattern match
+during translator emit.
+
+**Patterns: 11-diff → byte-identical 1793 writes.** C2 corpus
+281/286 → 282/286 (98.6%). Cost: ~30-120ms per file depending on how
+many revert attempts the gate makes.
+
+The wave-copy disable is a tradeoff — Patterns loses F3 (wave) edit
+propagation in exchange for byte-identical audio. The post-build
+gate makes that tradeoff automatic and per-file.
 
 ### v3.5.32 — zig64 post-build audio gate (2026-05-23)
 
