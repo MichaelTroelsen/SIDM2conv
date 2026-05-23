@@ -2673,17 +2673,33 @@ class SF2Writer:
         # The translator's JSR play_addr should target the JMP target,
         # not init+3 (would infinite-loop).
         effective_play_addr = play_addr
-        play_redirect_safe = (play_addr != init_addr + 3)
-        if (play_addr == init_addr + 3
-            and 0 <= (init_addr + 3 - sid_la) < len(c64_data) - 2):
-            stub_lo = init_addr + 3 - sid_la
-            if c64_data[stub_lo] == 0x4C:    # JMP abs
-                jmp_target = (
-                    c64_data[stub_lo + 1] | (c64_data[stub_lo + 2] << 8)
-                )
+        # v3.5.31: init+3 patch safety. The patch overwrites 3 bytes at
+        # init_addr+3 with `JMP TRANSLATE_BASE`. That's safe ONLY when
+        # those 3 bytes are either:
+        #   (A) `JMP $XXXX` (`$4C`) — typical NP21 trampoline; we
+        #       extract the JMP target as effective_play_addr.
+        #   (B) Inert gap (`$00 $00 $00` or `$EA $EA $EA`) — Twone_Five-
+        #       class NP21 with no live code at init+3.
+        # For files where init+3 is live player code (Joe_Gunn_Extras
+        # init=$1900: byte 0=$19 is the high byte of an LDA abs,Y
+        # operand from $1901's `B9 28` instruction), the patch CORRUPTS
+        # init → player crashes → SF2 produces 0 SID writes. The old
+        # `play_redirect_safe = (play_addr != init_addr + 3)` heuristic
+        # had the safety check exactly backwards.
+        play_redirect_safe = False
+        stub_lo = init_addr + 3 - sid_la
+        if 0 <= stub_lo and stub_lo + 2 < len(c64_data):
+            b0, b1, b2 = c64_data[stub_lo], c64_data[stub_lo + 1], c64_data[stub_lo + 2]
+            if b0 == 0x4C:    # Case A: JMP abs
+                jmp_target = b1 | (b2 << 8)
                 if sid_la <= jmp_target < sid_la + len(c64_data):
-                    effective_play_addr = jmp_target
+                    if play_addr == init_addr + 3:
+                        effective_play_addr = jmp_target
                     play_redirect_safe = True
+            elif (b0, b1, b2) in ((0x00, 0x00, 0x00),
+                                   (0xEA, 0xEA, 0xEA)):
+                # Case B: inert gap
+                play_redirect_safe = True
 
         if play_redirect_safe:
             # The trampoline at init_addr+3 is what zig64 calls as PLAY

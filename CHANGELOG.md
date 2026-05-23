@@ -25,6 +25,78 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.31] - 2026-05-23
+
+### Fixed — init+3 patch safety (4 files recovered including 2 assumed-deferred archs)
+
+The first full-corpus C2/C4 batch at v3.5.30 surfaced 7 C2 fails. Two
+of them — Joe_Gunn_Extras and Patterns — had the suspicious "SF2 trace
+= 0 writes" signature: the SF2 produced ZERO SID register writes,
+meaning the player binary wasn't running at all in the embedded
+context.
+
+Root cause: the converter patches `init_addr + 3` with
+`JMP TRANSLATE_BASE` so zig64's auto-detect convention (call init+3 as
+PLAY) reaches the runtime translator. The old `play_redirect_safe =
+(play_addr != init_addr + 3)` heuristic had safety EXACTLY BACKWARDS:
+when `play_addr != init+3`, init+3 might contain LIVE PLAYER CODE
+(not the expected `JMP $XXXX` trampoline), and patching it destroyed
+the init routine.
+
+Canonical break: Joe_Gunn_Extras (PSID load=$1900, init=$1900,
+play=$1006). The binary at $1900 starts:
+```
+$1900: A8           TAY
+$1901: B9 28 19     LDA $1928,Y    ← operand $19 at $1903 is LIVE
+$1904: 85 FB        STA $FB
+```
+After patch: $1903-$1905 became `$4C $9E $0F` (JMP $0F9E). The
+`LDA $1928,Y` instruction's high-byte operand became `$4C` → reads
+from $4C28 → corrupted Y/$FB → init crashes → 0 SID writes.
+
+### Fix
+
+Flip the safety check. `play_redirect_safe = True` ONLY when bytes at
+init+3 are either:
+- `$4C XX XX` (Case A: JMP abs — the Stinsen/Beast/Hubbard layout;
+  extract the JMP target as `effective_play_addr` if it lands inside
+  the binary)
+- `$00 $00 $00` or `$EA $EA $EA` (Case B: inert gap — Twone_Five class)
+
+Any other byte pattern → live code → skip the patch entirely.
+
+### Results
+
+Full-corpus batch (286 files):
+- **C2 audio: 276/286 → 280/286 (97% → 98%)**
+- C4 audio: 283/283 PASS (unchanged, perfect)
+- C4 metadata: 283/283 PASS (unchanged, perfect)
+
+Recovered (all C2 byte-identical):
+- **Joe_Gunn_Extras**: 0 → 1756 writes
+- **SID_Factory_demo_tune_2**: 218 → 1133 writes
+- **Alliance**: 532 → 1283 writes
+- **Racer**: 2211 → 909 writes
+
+Alliance and Racer had been filed as "deferred V20/Zetrex
+architectures" requiring multi-week per-variant RE. The actual issue
+was our init+3 patch corruption, not the player kernel. With the
+correct patch gating, the embedded-binary path produces byte-identical
+audio for these files.
+
+Partially recovered:
+- **Patterns**: 0 → 1793 writes (correct count), 11 minor divergences
+  remain (0.6% — instrument-table edge case at frame 169)
+
+Remaining C2 fails (3 of 286): Edie_Ball (Zetrex/YP — didn't recover
+like Racer), Exorcist_preview (wrapper-init), Patterns (11 minor).
+
+Canonical regression byte-identical: Stinsen (1909), Unboxed (2733),
+Beast (2684), Angular (2648). Dark_Fun (1719), Twone_Five (1326), SFd1
+(1904) re-verified. **1029 tests pass** (+3 `TestInitPlus3PatchSafety`).
+
+---
+
 ## [3.5.30] - 2026-05-23
 
 ### Fixed — SID_Factory_demo_tune_1 recovered (gate n_play tuned + early-exit)

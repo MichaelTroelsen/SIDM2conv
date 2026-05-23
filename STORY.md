@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.30 (2026-05-23) — 1026 tests, 286-file corpus, ~95% C2 byte-identical
-**Latest chapter:** [v3.5.30 — Late-divergence safety gate](#v3530--late-divergence-safety-gate)
+**Current version:** v3.5.31 (2026-05-23) — 1029 tests, 286-file corpus, **98% C2 byte-identical**
+**Latest chapter:** [v3.5.31 — init+3 patch safety](#v3531--init3-patch-safety-2026-05-23)
 
 ---
 
@@ -28,10 +28,10 @@ Today the project sits at:
 
 | Criterion | Where it lives |
 |-----------|---------------|
-| **C2 byte-identical** | **~95%** of the 286-file Laxity corpus, plus the canonical references (Stinsen, Unboxed, Beast, Angular) at exactly zero divergent register writes over 300 frames |
+| **C2 byte-identical** | **280/286 (98%)** of the Laxity corpus, plus the canonical references (Stinsen, Unboxed, Beast, Angular) at exactly zero divergent register writes over 300 frames. Of the 6 still-failing: 3 convert-fail (Crosswords, Echo_Beat architectural, Magic_Sound) and 3 audio-diverge (Edie_Ball, Exorcist_preview, Patterns) |
 | **C1 F10-load** | **85%** (`242/286`) after the SF2II issue #211 workaround landed in v3.5.18 |
-| **C4 audio round-trip** | **97%** |
-| **C4 metadata round-trip** | **99%** (since v3.5.17's META trailer landed) |
+| **C4 audio round-trip** | **283/283 (100% of converted)** |
+| **C4 metadata round-trip** | **283/283 (100% of converted)** |
 | **C3 strict (all five tabs propagate)** | **1 file** (Stinsen). C3 is fundamentally a per-variant reverse-engineering problem and the limiting factor on full editor support. |
 
 The rest of this document is the story of how the project got here. It is roughly chronological — partly because each release built on the previous one, partly because every "obvious next fix" required tooling that didn't exist before the fix before it.
@@ -280,9 +280,13 @@ The fourth — Digidag — is a genuine architectural #211 case. `$1000 = 68 98 
 
 Extended `_ensure_sid_write_in_scan_window_universal()`: when there's no trampoline AND zero natural ABX/ABY `$D40x` writes in the scan window, **append a dead `STA $D400,X; RTS` (`9D 00 D4 60`) at the end of `self.output`** and patch Block 1's `m_DriverCodeTop`/`m_DriverCodeSize` in place to point at the appended stub. Conservative gating (byte-scan = lower bound on opcode sweep). Digidag: C1 0/15 → 10/10 PASS.
 
-### v3.5.28 → v3.5.30: The residual-7 finale
+### v3.5.28 → v3.5.31: The residual-7 finale
 
-After v3.5.26, the 27-file Angular-class cluster had 7 stubborn survivors. v3.5.28 through v3.5.30 picked off 3 of them, each via a fundamentally different mechanism. These are described in detail in their own sections below.
+After v3.5.26, the 27-file Angular-class cluster had 7 stubborn survivors. v3.5.28 through v3.5.30 picked off 3 of them (Twone_Five, Dark_Fun, SID_Factory_demo_tune_1), each via a fundamentally different mechanism, described in detail below.
+
+v3.5.31 then turned the entire corpus upside down. The first full-corpus C2/C4 batch surfaced **two files with the SF2-trace=0-writes signature** (Joe_Gunn_Extras, Patterns) — meaning the SF2 produced ZERO SID register writes for files that the SID original played normally. Investigation pinned this to the converter's `init_addr+3` trampoline patch, which was applied indiscriminately whenever `play_addr != init+3` — but for files like Joe_Gunn_Extras (load=$1900), `$1903` is LIVE PLAYER CODE (the operand byte of an `LDA $1928,Y` instruction at $1901), and the patch corrupted init.
+
+The biggest surprise: fixing the patch also recovered **Alliance and Racer**, both of which had been categorized as "deferred V20/Zetrex architectures" requiring multi-week per-variant RE. Two of the original "residual 7" weren't architectural blockers at all — they were our own converter corrupting live code via a too-eager patch. Final corpus state: **C2 280/286 (98%)** with only 3 audio divergences and 3 convert-fails remaining.
 
 ---
 
@@ -333,6 +337,87 @@ Wired into `_inject_laxity_raw_np21` at the existing `_ptrs_in_range_check` site
 
 Result: 1719 register writes byte-identical. Canonical regressions unaffected. 31-file stratified sample 26/31 PASS, gate fired once (Dark_Fun), zero false positives.
 
+### v3.5.31 — Joe_Gunn_Extras, the init+3 patch, and the false "deferred architecture"
+
+This is the most consequential single fix of the entire post-v3.5.18 run.
+
+The first full-corpus C2/C4 batch at v3.5.30 produced 7 C2 fails. Two of them stood out as structurally weird:
+
+| File | SID writes | SF2 writes |
+|------|-----------:|-----------:|
+| Joe_Gunn_Extras | 1756 | **0** |
+| Patterns | 1793 | **0** |
+
+The SF2 was producing **zero SID register writes**. Not "wrong audio" — **silent**. For files whose SID original plays normally and whose embedded NP21 binary is byte-identical to the SID's binary in our SF2 output. Something was breaking the player binary itself.
+
+Inspecting the SF2 bytes for Joe_Gunn_Extras (PSID load=$1900):
+
+```
+$1900: A8           TAY              ← init entry
+$1901: B9 28 19     LDA $1928,Y      ← in original SID
+                                       ↓
+$1900: A8           TAY              ← init entry
+$1901: B9 28 4C     LDA $4C28,Y      ← in our SF2 — corrupted!
+$1904: 9E 0F         (illegal opcode)
+```
+
+Bytes `$1903 $1904 $1905` in the original SID were `$19 $85 $FB` — the operand high byte of the `LDA $1928,Y` instruction, plus a `STA $FB` opcode/operand. In our SF2, those bytes had been overwritten with `$4C $9E $0F` (JMP $0F9E — the translator). The `LDA $1928,Y` instruction's high-byte operand became `$4C`, so it read from `$4C28` instead of `$1928`. Init crashed. Player ran no code. SF2 silent.
+
+Tracing back: `_inject_laxity_raw_np21` has always written a JMP at `init_addr+3` to redirect zig64's auto-detect PLAY (which calls init+3) through the translator. The safety check was:
+
+```python
+play_redirect_safe = (play_addr != init_addr + 3)
+if play_addr == init_addr + 3:
+    # validate as JMP $XXXX, extract play target
+    play_redirect_safe = True
+
+if play_redirect_safe:
+    # patch init+3 with JMP TRANSLATE_BASE
+```
+
+That safety check is **exactly backwards**. It says "init+3 is safe to patch when `play_addr != init+3`." For Stinsen/Unboxed/Beast/Angular this happens to be fine because their init+3 is either `JMP $XXXX` (covered by the `if play_addr == init+3` branch) or inert gap. For files like Joe_Gunn_Extras where init=$1900, play=$1006, AND init+3 contains live player code, the patch is destructive.
+
+**Fix:** flip the meaning of `play_redirect_safe`. It now means "the bytes at init+3 ARE safe to patch":
+
+```python
+play_redirect_safe = False
+stub_lo = init_addr + 3 - sid_la
+if 0 <= stub_lo and stub_lo + 2 < len(c64_data):
+    b0, b1, b2 = c64_data[stub_lo:stub_lo + 3]
+    if b0 == 0x4C:           # Case A: JMP abs
+        # extract jmp_target as effective_play_addr if play_addr == init+3
+        if sid_la <= (b1 | (b2 << 8)) < sid_la + len(c64_data):
+            if play_addr == init_addr + 3:
+                effective_play_addr = b1 | (b2 << 8)
+            play_redirect_safe = True
+    elif (b0, b1, b2) in ((0x00, 0x00, 0x00), (0xEA, 0xEA, 0xEA)):
+        # Case B: inert gap
+        play_redirect_safe = True
+```
+
+Any other byte pattern is treated as live code → skip the patch.
+
+The result was bigger than expected. The full-corpus re-run recovered **four files**, not the two I'd targeted:
+
+| File | C2 v3.5.30 | C2 v3.5.31 |
+|------|------------|------------|
+| Joe_Gunn_Extras | DIFF (1756 vs 0) | **PASS (1756 byte-identical)** |
+| SID_Factory_demo_tune_2 | DIFF (1133 vs 1136) | **PASS (1133 byte-identical)** |
+| Alliance | DIFF (1283 vs 532) | **PASS (1283 byte-identical)** |
+| Racer | DIFF (909 vs 2211) | **PASS (909 byte-identical)** |
+
+**Alliance and Racer had been documented as "deferred V20/Zetrex architectures"** in `memory/vibrants-v20-findings.md` and the Zetrex/YP cluster notes. The presumed root cause was that pre-NP21 player variants need full per-variant reverse engineering. The actual root cause was the same init+3 patch corrupting their player code. Once we stop corrupting init, the embedded-binary path produces byte-identical audio.
+
+This is the single most impactful single-fix moment of the entire project. Two assumed-multi-week-RE blockers turned out to be a single mis-stated safety check.
+
+Final corpus state at v3.5.31:
+- **C2: 280/286 (98%)** — up from 219/286 (77%) before this session
+- **C4 audio: 283/283 (100% of converted)**
+- **C4 metadata: 283/283 (100% of converted)**
+- Remaining 6 fails: 3 CONV_FAIL (Crosswords, Echo_Beat architectural, Magic_Sound) + 3 C2-diverge (Edie_Ball, Exorcist_preview, Patterns)
+
+The "audio first; C3 second" principle paid off. Editor-view propagation for Alliance/Racer is still deferred (their V20/Zetrex players don't expose NP21-compatible byte streams to the editor), but the audio is now bit-exact.
+
 ### v3.5.30 — SID_Factory_demo_tune_1 and the late-divergence trap
 
 After v3.5.29, the gate caught Dark_Fun but missed SID_Factory_demo_tune_1, which kept showing the same voice-misorder pattern. Six-case ablation pinpointed the cause:
@@ -367,16 +452,17 @@ The lesson: empirical gates need conservative trace windows. v3.5.29's choice of
 
 ## What's left
 
-Of the 27 originally-divergent files in the Angular cluster, **22 were fixed by the v3.5.26 Wizax/Zetrex V20-gate, 3 more by v3.5.28-v3.5.30 (Twone_Five, Dark_Fun, SID_Factory_demo_tune_1)**. Four genuine residuals remain:
+Of the 27 originally-divergent files in the Angular cluster, **22 were fixed by the v3.5.26 Wizax/Zetrex V20-gate, 3 more by v3.5.28-v3.5.30 (Twone_Five, Dark_Fun, SID_Factory_demo_tune_1), plus 4 more by v3.5.31's init+3 patch safety (Joe_Gunn_Extras, SID_Factory_demo_tune_2, and the two assumed-deferred Alliance + Racer)**. Three genuine C2 residuals remain across the entire 286-file Laxity corpus:
 
 | File | Architecture | Status |
 |------|--------------|--------|
-| **Alliance** | Vibrants V20 (1988 Laxity, load `$E000`) | True V20 deferred — multi-week per-variant RE; audio plays acceptably through embed but the trace diverges |
-| **Edie_Ball** | Zetrex/YP `$E000` (1987 Yield Point) | True Zetrex/YP per-variant RE blocker |
-| **Racer** | Zetrex/YP `$E000` (1987 Yield Point) | Same |
+| **Edie_Ball** | Zetrex/YP `$E000` (1987 Yield Point) | Didn't recover with the v3.5.31 init+3 fix like sibling Racer did — needs separate investigation. The Zetrex/YP "cluster" sharing-the-same-player-binary claim should be re-tested with the new converter. |
 | **Exorcist_preview** | Laxity `$9000` autodetect | Wrapper-init interaction — the SF2 wrapper layer adds ~50 extra register writes per 60 frames even with the translator and wave-copy fully disabled. Native trace at `$9000/$9006` matches the SID exactly; only the wrapper trace via `$0F90/$0F94` diverges. Most plausible: CIA-IRQ-during-init interaction or accumulated cycle drift. Multi-hour RE; documented in `memory/exorcist-preview-deferred.md` |
+| **Patterns** | Laxity `$5FF4` autodetect | Reduced from 1793-vs-0 to 11 minor divergences (instrument-table edge case at frame 169). Same number of register writes (1793 each), just 11 with wrong content (0.6%). |
 
-The three V20/Zetrex cases are architectural — they need full reverse-engineering of pre-NP21 player kernels that no two files use quite the same way. Exorcist_preview is the most interesting open question because it's the only one isolated to the SF2 wrapper layer.
+Plus 3 CONV_FAIL files: **Crosswords** (unknown player rejected by converter), **Echo_Beat** (load=$0400 architectural dead-end — header can't fit below the binary), **Magic_Sound** (unknown player rejected).
+
+The v3.5.31 finding that 2 of the 4 "deferred V20/Zetrex" cases were actually init+3 corruption suggests the "deferred architecture" categorization should be revisited for editor-view propagation too. **Audio** works fine for V20/Zetrex files through the embedded-binary path; only the editor-side byte-stream interpretation requires per-variant RE.
 
 ---
 
@@ -413,6 +499,25 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.31 — init+3 patch safety (2026-05-23)
+
+The most impactful single fix of the post-v3.5.18 run. Old check
+`play_redirect_safe = (play_addr != init_addr + 3)` had safety
+EXACTLY BACKWARDS: it patched init+3 with `JMP TRANSLATE_BASE`
+whenever play_addr was elsewhere, even when init+3 contained live
+player code. For Joe_Gunn_Extras (load=$1900), $1903 = `$19` (the
+operand high byte of `LDA $1928,Y` at $1901); patching it crashed
+init → SF2 silent (0 SID writes). New check: only patch when init+3
+is `$4C XX XX` (JMP — Stinsen/Beast/Hubbard) OR inert gap
+(`$00 $00 $00` / `$EA $EA $EA` — Twone_Five-class). Any other byte
+pattern → live code → skip. **C2 audio: 276/286 → 280/286 (97%→98%)
+across the full 286-file corpus**. Recovered: Joe_Gunn_Extras,
+SID_Factory_demo_tune_2, **Alliance + Racer** (both had been
+categorized as "deferred V20/Zetrex architectures" — turns out the
+issue was our init+3 patch, not the player kernel). Partially
+recovered: Patterns (1793 writes vs 0 → 1793 vs 1793 with 11 minor
+divergences). 1029 tests; 3 new `TestInitPlus3PatchSafety`.
 
 ### v3.5.30 — Late-divergence safety gate (2026-05-23)
 

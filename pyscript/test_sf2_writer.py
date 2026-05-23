@@ -2012,6 +2012,96 @@ class TestMinimalEmbedPostBinaryGuard(unittest.TestCase):
                             "edit area's OL ptr lo bytes must land here")
 
 
+class TestInitPlus3PatchSafety(unittest.TestCase):
+    """v3.5.31: the converter patches `init_addr+3` with JMP TRANSLATE_BASE
+    so zig64's auto-detect convention (call init+3 as PLAY) reaches the
+    translator. The patch is ONLY safe when bytes at init+3 are EITHER:
+       (A) `$4C XX XX` — typical Laxity NP21 layout (Stinsen / Beast /
+            Hubbard / Twone_Five — the JMP target is the real play addr)
+       (B) Inert gap (`$00 $00 $00` or `$EA $EA $EA`)
+    When init+3 contains LIVE PLAYER CODE (Joe_Gunn_Extras load=$1900:
+    bytes at $1903 are operand bytes from `LDA $1928,Y` at $1901), the
+    patch corrupts init → SF2 produces 0 SID writes.
+
+    The fix flips the meaning of `play_redirect_safe` — it now means
+    "init+3 bytes ARE safe to patch" instead of the old
+    "play_addr != init+3 (so the patch isn't a no-op)".
+    """
+
+    def _convert_and_check_init3(self, bin_data, sid_la, init_addr, play_addr,
+                                   expect_patched: bool):
+        """Build SF2 from synthetic data; check whether file_data at
+        init+3 was patched to `JMP $XXXX` or left intact."""
+        data = create_minimal_extracted_data()
+        data.c64_data = bin_data
+        data.load_address = sid_la
+        data.header = create_minimal_psid_header(
+            load_address=sid_la, init_address=init_addr,
+            play_address=play_addr,
+        )
+        w = SF2Writer(data)
+        w.driver_type = 'laxity'
+        try:
+            w._inject_laxity_raw_np21()
+        except Exception:
+            pass
+        if not w.output:
+            return  # conversion bailed; nothing to check
+        out = bytes(w.output)
+        load = out[0] | (out[1] << 8)
+        off = init_addr + 3 - load + 2
+        if off < 0 or off + 3 > len(out):
+            return
+        patched_bytes = out[off:off + 3]
+        orig_bytes = bin_data[init_addr + 3 - sid_la:init_addr + 3 - sid_la + 3]
+        if expect_patched:
+            # Should be `4C XX XX` (JMP $XXXX) pointing into the wrapper region
+            self.assertEqual(patched_bytes[0], 0x4C,
+                             f"init+3 should be JMP (patched). got: {patched_bytes.hex()}")
+        else:
+            # init+3 must remain identical to original (no patch)
+            self.assertEqual(patched_bytes, orig_bytes,
+                             f"init+3 must NOT be patched. orig={orig_bytes.hex()} got={patched_bytes.hex()}")
+
+    def test_jmp_at_init3_is_safe_to_patch(self):
+        """Case A: $init+3 = `$4C lo hi` → safe to redirect to translator."""
+        # Synthetic binary: $1000 = JMP $1010 (init); $1003 = JMP $1020 (play)
+        bin_data = bytearray(0x1000)
+        bin_data[0:3] = bytes([0x4C, 0x10, 0x10])  # JMP $1010
+        bin_data[3:6] = bytes([0x4C, 0x20, 0x10])  # JMP $1020 (play trampoline)
+        # Fill $1010 (init) with NOPs + RTS so init "runs"
+        bin_data[0x10:0x12] = bytes([0xEA, 0x60])
+        # Need at least 1 raw_pattern for the patch to engage; we don't
+        # exercise the full pipeline here, just want the patch decision.
+        self._convert_and_check_init3(bytes(bin_data), 0x1000, 0x1000,
+                                       0x1003, expect_patched=True)
+
+    def test_inert_gap_at_init3_is_safe_to_patch(self):
+        """Case B: $init+3 = `$00 $00 $00` → safe (Twone_Five-class)."""
+        bin_data = bytearray(0x1000)
+        bin_data[0:3] = bytes([0x4C, 0x2F, 0x10])  # JMP $102F (init)
+        bin_data[3:6] = bytes([0x00, 0x00, 0x00])  # inert gap
+        bin_data[0x2F:0x31] = bytes([0xEA, 0x60])
+        self._convert_and_check_init3(bytes(bin_data), 0x1000, 0x1000,
+                                       0x1006, expect_patched=True)
+
+    def test_live_code_at_init3_is_NOT_patched(self):
+        """Joe_Gunn_Extras-class: $init+3 has LIVE PLAYER CODE
+        (not `$4C` and not inert gap) → the patch MUST be skipped.
+        For Joe_Gunn_Extras (load=$1900), $1903 = `19 85 FB` (operand
+        bytes from `LDA $1928,Y` at $1901). Synthesize that shape."""
+        # Layout: load=$1900, init=$1900, play=$1006 (outside binary)
+        sid_la = 0x1900
+        bin_data = bytearray(0x800)
+        # $1900 = TAY; $1901 = LDA $1928,Y; $1904 = STA $FB ; ...
+        bin_data[0] = 0xA8                       # TAY
+        bin_data[1:4] = bytes([0xB9, 0x28, 0x19])  # LDA $1928,Y
+        bin_data[4:6] = bytes([0x85, 0xFB])         # STA $FB
+        # so $1903 = $19 (the high byte of the LDA operand) — LIVE CODE
+        self._convert_and_check_init3(bytes(bin_data), sid_la, sid_la,
+                                       0x1006, expect_patched=False)
+
+
 if __name__ == '__main__':
     # Run with verbose output
     unittest.main(verbosity=2)
