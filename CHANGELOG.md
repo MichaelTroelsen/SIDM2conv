@@ -25,6 +25,71 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.38] - 2026-05-25
+
+### Refactored — `_build_low_load_sf2` extracted to its own module
+
+Continuing the sf2_writer.py decomposition started in v3.5.36
+(Phase 1-3 modules) and v3.5.37 (dead code removal). The 148-line
+`_build_low_load_sf2` method was self-contained (only two `self.*`
+writes: `self.output` and `self._skip_aux`), making it the next
+clean extraction candidate.
+
+New module: **`sidm2/low_load_layout.py`** (211 lines).
+
+Public API: `build_low_load_sf2(c64_data, sid_la, init_addr, play_addr)
+→ Optional[(bytes, skip_aux)]`. Returns the SF2 bytes + the required
+`skip_aux=True` signal when the layout fits, or `None` when the
+header has no room below `sid_la` (caller falls back to legacy /
+architectural error).
+
+The module's docstring captures the architecture rationale previously
+scattered across inline comments and CLAUDE.md notes:
+  - Why the alternate PRG layout exists (sub-$1000 binaries overlap
+    the wrapper at $0F90 in the normal layout).
+  - The $0500 LOAD_BASE floor (zeropage $00-FF + stack $0100-01FF +
+    BASIC/KERNAL buffers $0200-04FF occupy below; verified by py65
+    read-before-write analysis in `pyscript/find_rbw_scratch.py`).
+  - The $0FFB aux-pointer caveat (HARDCODED in driver_info.h; for
+    low-load files the binary spans $0FFB so the caller MUST skip
+    aux injection — see Slash/Broom freq table corruption).
+
+`SF2Writer._build_low_load_sf2()` is now a 9-line wrapper that
+forwards to the module function and copies the result into
+`self.output` / `self._skip_aux`.
+
+### Added — 13 focused unit tests for low_load_layout
+
+New `pyscript/test_low_load_layout.py`:
+
+  TestSuccessfulBuild (8):
+    - returns bytes + skip_aux=True
+    - load_base under sid_la AND above $0500 floor
+    - 0x1337 magic present at expected offset
+    - embedded binary byte-identical at sid_la
+    - INIT handler is `JSR init_addr; RTS` at HI
+    - PLAY handler is `JSR play_addr; RTS` at HI+4
+    - STOP handler silences voice 3 via `LDA #0; STA $D418; RTS`
+    - #211 scan bait `STA $D400,X; RTS` at HI+14
+
+  TestInfeasibility (2):
+    - sid_la=$0400 → None (below $0500 floor)
+    - oversized binary stays < 64K or returns None
+
+  TestDifferentLoadAddresses (3):
+    - parametric: $0F00, $0900, $0800 all build cleanly
+
+### Stats
+- sf2_writer.py: 4408 → 4284 lines (-124)
+- Cumulative since v3.5.27: 5832 → 4284 lines (-26%)
+- 1095 → 1108 tests pass (+13)
+- 5 extracted modules total 1613 lines with 56 focused unit tests
+- All 14 C2 reference files byte-identical (including the recovered
+  low-load files Annelouise, Axel_F, Beat_the_Shit_3, Crap_5,
+  Force_Tune, Shit)
+
+---
+
 ## [3.5.37] - 2026-05-24
 
 ### Removed — dead code in sf2_writer.py

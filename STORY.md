@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.37 (2026-05-24) — 1095 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
-**Latest chapter:** [v3.5.37 — dead-code cleanup post-refactor](#v3537--dead-code-cleanup-post-refactor-2026-05-24)
+**Current version:** v3.5.38 (2026-05-25) — 1108 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
+**Latest chapter:** [v3.5.38 — low-load layout extracted (Phase 4)](#v3538--low-load-layout-extracted-phase-4-2026-05-25)
 
 ---
 
@@ -529,6 +529,47 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.38 — low-load layout extracted (Phase 4) (2026-05-25)
+
+The v3.5.36 refactor stopped at four modules because that was where
+the easy extractions clustered: pure-function 6502 emitters,
+self-contained audio gate, single-function #211 workaround, observer-
+only diagnostics. v3.5.38 takes the next candidate from
+`sf2_writer.py`: **`_build_low_load_sf2`**, the 148-line method that
+handles the alternate PRG layout for binaries that load below $1000.
+
+This one's interesting because the algorithm is genuinely tricky —
+the function has to thread between zeropage, stack, BASIC/KERNAL
+buffers, screen RAM, the embedded binary's own scratch space, and
+SF2II's HARDCODED $0FFB aux-pointer address. All of that knowledge
+was inline-commented in `sf2_writer.py`, which made the rest of the
+file harder to read without giving the low-load logic the prominence
+it deserved.
+
+Extraction strategy: the function has only two `self.*` writes
+(`self.output`, `self._skip_aux`). Move it to a new module
+`sidm2/low_load_layout.py` as a pure function returning
+`Optional[(bytes, skip_aux)]`; the wrapper in SF2Writer copies the
+result into `self.output` and `self._skip_aux`. The module docstring
+captures the architecture rationale (~50 lines of "why" up front
+instead of scattered comments) so future readers can understand the
+constraints without spelunking.
+
+13 focused unit tests in `test_low_load_layout.py` exercise the
+function with synthetic inputs: structure assertions (load_base,
+magic, embedded binary, handler stubs, #211 scan bait), infeasibility
+cases ($0400 below floor, oversized binary), parametric layouts for
+$0F00 / $0900 / $0800. Tighter than the C2 end-to-end tests, which
+verify byte-identical output but only on the 14 reference files.
+
+`sf2_writer.py`: 4408 → 4284 lines. Cumulative since v3.5.27:
+**5832 → 4284 lines (-26%)**. 1108 tests pass (+13). All 14 C2
+reference files byte-identical, including all 6 recovered low-load
+files (Annelouise, Axel_F, Beat_the_Shit_3, Crap_5, Force_Tune,
+Shit). Five extracted modules now total 1613 lines with 56 focused
+unit tests — the structural high cards are all lifted out of the
+monolith.
 
 ### v3.5.37 — dead-code cleanup post-refactor (2026-05-24)
 
