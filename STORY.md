@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.35 (2026-05-23) — 1032 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
-**Latest chapter:** [v3.5.35 — Block 2 native-redirect (Exorcist_preview)](#v3535--block-2-native-redirect-exorcist_preview-recovered-2026-05-23)
+**Current version:** v3.5.37 (2026-05-24) — 1095 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
+**Latest chapter:** [v3.5.37 — dead-code cleanup post-refactor](#v3537--dead-code-cleanup-post-refactor-2026-05-24)
 
 ---
 
@@ -529,6 +529,93 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.37 — dead-code cleanup post-refactor (2026-05-24)
+
+Housekeeping. After the v3.5.36 four-module extraction, AST analysis
+of the SF2Writer class surfaced 8 unused private methods. 4 were
+safely removable without touching tests or external callers:
+
+- `_try_block2_native_redirect` + `_restore_block2` (5 lines combined) —
+  wrappers around `audio_gate` functions never called by anything,
+  because `audio_gate` calls the module functions directly.
+- `_emit_wave_copy_routine` (4 lines) — wrapper around
+  `np21_codegen.emit_wave_copy_routine` with zero callers anywhere.
+- `_inject_silent_stub` (116 lines) — the 2026-03 "ATTEMPTED, NOT
+  WORKING" silent-stub fallback. Body removed; replaced with a
+  `NotImplementedError` stub + docstring pointer to git history.
+  Recoverable from the v3.5.37 commit's parent if anyone ever wants to
+  revisit it (Action_Biker test cases included).
+
+The remaining 4 unused wrappers
+(`_emit_pulse_copy_routine`, `_emit_sf2_to_np21_translator`,
+`_log_block3_structure`, `_log_block5_structure`) stay because legacy
+test files exercise them as wrapper-delegation contracts. Migrating
+those tests would gain nothing (the module functions already have
+dedicated tests).
+
+Also added the focused unit-test coverage missing from v3.5.36:
+22 new tests in `test_audio_gate.py` (8) and `test_sf2_diagnostics.py`
+(14). All four extracted modules now have dedicated unit-test
+coverage — **43 tests on 1402 extracted lines**.
+
+| Module | Lines | Tests |
+|---|---|---|
+| np21_codegen.py | 617 | 14 |
+| audio_gate.py | 232 | 8 |
+| universal_211_workaround.py | 152 | 7 |
+| sf2_diagnostics.py | 401 | 14 |
+
+`sf2_writer.py`: 4510 → 4408 lines. Cumulative since the C2 push
+started at v3.5.27: **5832 → 4408 lines (-24%)**. 1095 tests pass
+(unchanged — the dead code had zero coverage, the new tests are
+additive). Zero behavior change.
+
+### v3.5.36 — sf2_writer.py refactor (Phase 1-3) (2026-05-23)
+
+After the C2 push reached 99% byte-identical and the architecture
+stabilized, the 5832-line `sf2_writer.py` became the structural
+liability. It accreted ~3000 lines over the C2 work: gates, codegen
+emitters, diagnostics, four inject paths, music data builder. Each
+addition was correct in isolation; the file as a whole was a wall of
+text where you couldn't tell where one concern ended and another
+began.
+
+The refactor strategy: **extract pure functions first, then thin
+delegating wrappers stay behind to preserve `self.x_y_z()` call sites.**
+Each extraction step is verified byte-identical against the 14-file
+C2 reference regression suite. If any C2 file's SF2 output changes
+by one byte, the extraction is wrong — revert and try again.
+
+Four modules came out cleanly:
+
+- **`sidm2/np21_codegen.py`** (617 lines): 11 pure 6502 emitters
+  (`emit_sf2_to_np21_translator`, `emit_wave_copy_routine`,
+  `emit_wave_split_copy_routine`, etc.). All 11 had ZERO `self.*`
+  references — they read pure parameter inputs and emit bytes. Moved
+  directly as module functions.
+
+- **`sidm2/audio_gate.py`** (232 lines): the post-build zig64 gate.
+  `run_post_build_audio_gate` orchestrates the 4-step progressive
+  revert (ch_seq_ptr revert → wave-copy NOP → both → Block 2 native
+  redirect). `try_block2_native_redirect` / `restore_block2` operate
+  on the SF2 buffer.
+
+- **`sidm2/universal_211_workaround.py`** (152 lines): the SF2II #211
+  protection stamp. Two paths: stamp `9D 00 D4` at $1006 (trampoline
+  layouts) or append a stub + patch Block 1 (Digidag fallback).
+
+- **`sidm2/sf2_diagnostics.py`** (401 lines): logging + post-write
+  validation. `log_sf2_structure`, `log_block3_structure`,
+  `log_block5_structure`, `validate_sf2_file`.
+
+`sf2_writer.py`: 5832 → 4510 lines (-23% in one push). 1052 → 1073
+tests pass (21 new focused unit tests on the codegen + #211 modules
+followed up immediately so a future emitter regression wouldn't have
+to wait for the slower C2 end-to-end suite to surface it). All 14 C2
+reference files byte-identical at every extraction step. The
+remaining file isn't beautiful, but the structural high cards
+(codegen, gates, diagnostics) are now lifted into testable units.
 
 ### v3.5.35 — Block 2 native-redirect (Exorcist_preview recovered) (2026-05-23)
 
