@@ -1699,13 +1699,6 @@ class SF2Writer:
         if result.get('wave_copy_nopped'):
             self._wave_copy_jsr_offs = []
 
-    def _try_block2_native_redirect(self, init_addr: int, play_addr: int):
-        return audio_gate.try_block2_native_redirect(
-            self.output, init_addr, play_addr)
-
-    def _restore_block2(self, saved) -> None:
-        audio_gate.restore_block2(self.output, saved)
-
     def _ensure_sid_write_in_scan_window_universal(self) -> None:
         """v3.5.36 wrapper around
         sidm2.universal_211_workaround.ensure_sid_write_in_scan_window_universal.
@@ -3074,121 +3067,31 @@ class SF2Writer:
         logger.info(f"  PLAY: ${PLAY_HANDLER:04X} -> JSR ${play_addr:04X}")
 
     def _inject_silent_stub(self) -> None:
-        """[ATTEMPTED, NOT WORKING — kept for reference/future work]
+        """[REMOVED v3.5.37 — failed approach; see git history for the
+        ~120 line implementation.
 
-        Builds a minimal SF2 with no embedded player binary, intended as a
-        fallback when the SID's load_addr falls outside the embed-binary
-        path's safe window. The hope was: a 3KB stub with valid Blocks 1-9
-        + handlers + placeholder edit area would be structurally close
-        enough to the bundled "Driver 11 Test - Arpeggio.sf2" to load.
+        Originally attempted as a fallback for SIDs whose load_addr is
+        outside the embed-binary safe window: a 3KB stub with valid
+        Blocks 1-9 + bare-RTS handlers + placeholder edit area, hoping
+        it would be structurally close enough to the bundled "Driver 11
+        Test - Arpeggio.sf2" to load.
 
-        It DOES NOT load. Action_Biker silent-stub (3KB, no embedded
+        DOES NOT load. Action_Biker silent-stub (3KB, no embedded
         binary, identical Block 3 layout to the working bundled file)
-        crashes 5/5 in production SF2II while the byte-for-byte same
-        layout converts via 13KB Stinsen file passes 5/5. The crash is
-        heap-state-dependent, Heisenbug-masked under the patched
+        crashed 5/5 in production SF2II while the byte-for-byte same
+        layout converted via 13KB Stinsen file passed 5/5. The crash
+        was heap-state-dependent, Heisenbug-masked under the patched
         diagnostic binary.
 
-        This method is currently uncalled; left here so future
-        investigation can reuse the layout setup without re-deriving it.
+        Method body removed because it was never called from any code
+        path in the converter. If future investigation needs the layout
+        setup, recover it from git history at this method's removal
+        commit.
         """
-        logger.info("Building silent-stub SF2 (load_addr unsafe — no playback)...")
-        self._minimal_path = True
-
-        LOAD_BASE      = 0x0D7E
-        HANDLER_BASE   = 0x0F90
-        INIT_HANDLER   = HANDLER_BASE + 0
-        PLAY_HANDLER   = HANDLER_BASE + 1
-        STOP_HANDLER   = HANDLER_BASE + 2
-        # No embedded binary; everything lives between $0D7E and the end
-        # of the edit area. Pretend sid_la is at $1000 to match the layout
-        # of bundled SF2II reference files (whose Block 3 addresses all
-        # live in $1000+); the gap from $0F93 to $1000 is just zero
-        # padding in the file and does not affect anything in C64 RAM.
-        sid_la = 0x1000
-
-        from sidm2.sf2_header_generator import SF2HeaderGenerator
-        gen = SF2HeaderGenerator(driver_size=sid_la - LOAD_BASE)
-        gen.DRIVER_INIT = INIT_HANDLER
-        gen.DRIVER_PLAY = PLAY_HANDLER
-        gen.DRIVER_STOP = STOP_HANDLER
-
-        # Build Block 5 placeholder + zero-filled Block 3 column tables
-        # in the edit area starting at sid_la.
-        OL_SIZE  = 0x100
-        SEQ_SIZE = 0x100
-        SEQ_PTR_SIZE = 0x80
-        sf2_data_base = sid_la
-        ol_ptr_lo_addr  = sf2_data_base + 0
-        ol_ptr_hi_addr  = sf2_data_base + 3
-        seq_ptr_lo_addr = sf2_data_base + 6
-        seq_ptr_hi_addr = sf2_data_base + 6 + SEQ_PTR_SIZE
-        ol_track1_addr  = sf2_data_base + 6 + 2 * SEQ_PTR_SIZE
-        seq00_addr      = ol_track1_addr + 3 * OL_SIZE
-        music_data_params = {
-            'track_count':     3,
-            'ol_ptr_lo_addr':  ol_ptr_lo_addr,
-            'ol_ptr_hi_addr':  ol_ptr_hi_addr,
-            'seq_count':       1,
-            'seq_ptr_lo_addr': seq_ptr_lo_addr,
-            'seq_ptr_hi_addr': seq_ptr_hi_addr,
-            'ol_size':         OL_SIZE,
-            'ol_track1_addr':  ol_track1_addr,
-            'seq_size':        SEQ_SIZE,
-            'seq00_addr':      seq00_addr,
-        }
-        edit = bytearray()
-        for v in range(3):
-            ol_addr = ol_track1_addr + v * OL_SIZE
-            edit.append(ol_addr & 0xFF)
-        for v in range(3):
-            ol_addr = ol_track1_addr + v * OL_SIZE
-            edit.append((ol_addr >> 8) & 0xFF)
-        seq_lo = bytearray(SEQ_PTR_SIZE)
-        seq_hi = bytearray(SEQ_PTR_SIZE)
-        seq_lo[0] = seq00_addr & 0xFF
-        seq_hi[0] = (seq00_addr >> 8) & 0xFF
-        edit.extend(seq_lo)
-        edit.extend(seq_hi)
-        for _ in range(3):
-            ol = bytearray([0xA0, 0x00, 0xFE])
-            while len(ol) < OL_SIZE:
-                ol.append(0xFF)
-            edit.extend(ol)
-        edit.extend(bytes([0x7F] * SEQ_SIZE))
-
-        gen.instr_addr   = sf2_data_base + len(edit); edit.extend(bytes(32 * 6))
-        gen.cmd_addr     = gen.instr_addr + 0x70
-        gen.wave_addr    = sf2_data_base + len(edit); edit.extend(bytes(32 * 2))
-        gen.pulse_addr   = sf2_data_base + len(edit); edit.extend(bytes(16 * 3))
-        gen.filter_addr  = sf2_data_base + len(edit); edit.extend(bytes(16 * 3))
-        gen.arp_addr     = sf2_data_base + len(edit); edit.extend(bytes(256 * 1))
-        gen.tempo_addr   = sf2_data_base + len(edit); edit.extend(bytes(256 * 1))
-        gen.hr_addr      = sf2_data_base + len(edit); edit.extend(bytes(16 * 2))
-        gen.init_table_addr = sf2_data_base + len(edit); edit.extend(bytes(32 * 2))
-        sf2_edit_data = bytes(edit)
-
-        gen.driver_size += len(sf2_edit_data)
-        header_bytes = gen.generate_complete_headers(music_data_params)
-        if LOAD_BASE + len(header_bytes) > HANDLER_BASE:
-            logger.error(f"  Headers too large: ${LOAD_BASE + len(header_bytes):04X} > ${HANDLER_BASE:04X}")
-            return
-
-        gap = sid_la - LOAD_BASE
-        file_size = 2 + gap + len(sf2_edit_data)
-        file_data = bytearray(file_size)
-        file_data[0] = LOAD_BASE & 0xFF
-        file_data[1] = LOAD_BASE >> 8
-        file_data[2:2 + len(header_bytes)] = header_bytes
-        # Bare-RTS handler stubs at $0F90-$0F92.
-        hnd_off = 2 + (HANDLER_BASE - LOAD_BASE)
-        file_data[hnd_off:hnd_off + 3] = bytes([0x60, 0x60, 0x60])
-        # SF2 edit area at sid_la.
-        edit_off = 2 + gap
-        file_data[edit_off:edit_off + len(sf2_edit_data)] = sf2_edit_data
-
-        self.output = file_data
-        logger.info(f"  SF2 size: {len(self.output)} bytes (silent stub)")
+        raise NotImplementedError(
+            "_inject_silent_stub was removed in v3.5.37 — see docstring "
+            "and git history. The approach did not work in production "
+            "SF2II and was never called from any code path.")
 
     # ──────────────────────────────────────────────────────────────────────
     # 6502 code generators (v3.5.36 — extracted to sidm2/np21_codegen.py).
@@ -3199,11 +3102,6 @@ class SF2Writer:
     def _emit_sf2_to_np21_translator(self, num_patterns, seq00_addr, shadow_base, play_addr):
         return np21_codegen.emit_sf2_to_np21_translator(
             num_patterns, seq00_addr, shadow_base, play_addr)
-
-    def _emit_wave_copy_routine(self, sf2_wave_addr: int, np21_wave_addr: int,
-                                n_bytes: int = 64) -> bytes:
-        return np21_codegen.emit_wave_copy_routine(
-            sf2_wave_addr, np21_wave_addr, n_bytes)
 
     def _emit_wave_split_copy_routine(self, sf2_wave_addr: int,
                                      np21_wave_data_addr: int,

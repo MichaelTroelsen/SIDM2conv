@@ -25,6 +25,97 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.37] - 2026-05-24
+
+### Removed — dead code in sf2_writer.py
+
+Post-refactor cleanup. After v3.5.36 extracted four modules (codegen,
+audio_gate, universal_211_workaround, sf2_diagnostics), AST analysis
+of the SF2Writer class surfaced 8 unused private methods. 4 were safely
+removable (no internal calls AND no external references in
+tests/scripts):
+
+- `_try_block2_native_redirect` / `_restore_block2` — wrappers around
+  audio_gate functions; audio_gate calls the module functions directly,
+  so the wrappers had no callers.
+- `_emit_wave_copy_routine` — wrapper around np21_codegen function with
+  no callers anywhere in the codebase.
+- `_inject_silent_stub` — 116-line "ATTEMPTED, NOT WORKING" approach
+  from earlier failed silent-stub investigation. Method body was
+  preserved as documentation but never called. Replaced with a
+  NotImplementedError stub + docstring pointer to git history.
+
+The remaining 4 unused wrappers (`_emit_pulse_copy_routine`,
+`_emit_sf2_to_np21_translator`, `_log_block3_structure`,
+`_log_block5_structure`) are kept because legacy test files still
+exercise them as wrapper-delegation contracts.
+
+### Stats
+- sf2_writer.py: 4510 → 4408 lines (-102)
+- Cumulative since v3.5.27: 5832 → 4408 lines (-24%)
+- 1095 tests pass (unchanged — dead code had no test exposure)
+
+### Added — focused unit tests for sf2_diagnostics + audio_gate
+
+22 new tests (14 sf2_diagnostics + 8 audio_gate) bringing all four
+extracted modules to dedicated unit-test coverage:
+
+| Module | Lines | Tests |
+|---|---|---|
+| np21_codegen.py | 617 | 14 |
+| audio_gate.py | 232 | 8 |
+| universal_211_workaround.py | 152 | 7 |
+| sf2_diagnostics.py | 401 | 14 |
+| **Total** | **1402** | **43** |
+
+Tighter regression guard than the C2 end-to-end suite — failures
+pin to the function under test instead of bubbling up through
+several layers.
+
+---
+
+## [3.5.36] - 2026-05-23
+
+### Refactored — sf2_writer.py decomposition (Phase 1-3)
+
+Split the 5832-line sf2_writer.py module into testable submodules.
+Each extraction is byte-identical (verified against the 14-file C2
+reference regression suite at every step):
+
+- **sidm2/np21_codegen.py** (617 lines, 11 pure 6502 emitters):
+  `emit_sf2_to_np21_translator`, `emit_wave_copy_routine`,
+  `emit_wave_split_copy_routine`, `emit_filter_cutoff_only_routine`,
+  `emit_filter_split_copy_routine`, `emit_pulse_packed_copy_routine`,
+  `emit_pulse_split_copy_routine`, `emit_instr_copy_routine`,
+  `emit_pulse_copy_routine`, `emit_instr_column_copy_routine`,
+  `emit_multipat_translator`. All have ZERO self.* references — moved
+  directly as module functions.
+
+- **sidm2/audio_gate.py** (232 lines): post-build zig64 audio gate.
+  `run_post_build_audio_gate` orchestrates the 4-step progressive
+  revert (ch_seq_ptr revert → wave-copy NOP → both → Block 2 native
+  redirect). `try_block2_native_redirect` / `restore_block2` operate
+  on the SF2 buffer.
+
+- **sidm2/universal_211_workaround.py** (152 lines): SF2II #211
+  protection. `ensure_sid_write_in_scan_window_universal` stamps
+  `9D 00 D4` at $1006 (trampoline path) or appends a stub + patches
+  Block 1 (Digidag fallback).
+
+- **sidm2/sf2_diagnostics.py** (401 lines): SF2 structure logging +
+  validation. `log_sf2_structure`, `log_block3_structure`,
+  `log_block5_structure`, `validate_sf2_file`.
+
+### Stats
+- sf2_writer.py: 5832 → 4510 lines (-23%)
+- 4 new modules totaling 1402 lines
+- 1052 → 1073 tests pass (focused unit tests on codegen + #211)
+- All 14 C2 reference files byte-identical (Stinsen, Patterns,
+  Edie_Ball, Dark_Fun, Twone_Five, SFd1, SFd2, Joe_Gunn_Extras,
+  Alliance, Racer, Unboxed, Beast, Angular, Exorcist_preview)
+
+---
+
 ## [3.5.35] - 2026-05-23
 
 ### Added — Block 2 native-redirect (Exorcist_preview recovered)
