@@ -38,6 +38,7 @@ from . import driver11_table_helpers
 from . import np21_edit_area_builder
 from . import laxity_music_data_injector
 from . import driver11_section_injectors
+from . import minimal_embed_builder
 
 logger = logging.getLogger(__name__)
 
@@ -1836,186 +1837,30 @@ class SF2Writer:
         logger.info(f"  PLAY: ${PLAY_HANDLER:04X} -> JSR ${play_addr:04X}")
 
     def _inject_player_raw_minimal(self) -> None:
-        """Stage 8 Path A: minimal embed-binary fallback for non-Laxity SIDs.
+        """v3.5.50 wrapper around
+        sidm2.minimal_embed_builder.build_minimal_embed_sf2.
 
-        Galway, Hubbard, NP20, etc. don't share NP21's ch_seq_ptr / pattern-
-        table layout, so the Laxity-specific extraction in
-        _inject_laxity_raw_np21() yields garbage for them. This method
-        delivers PLAYBACK fidelity at the cost of editor-view emptiness:
-
-          - Embed the SID's compiled player + data binary verbatim at its
-            PSID load address (no patches, no ch_seq_ptr rewrites).
-          - INIT handler: JSR psid_init_addr; RTS
-          - PLAY handler: JSR psid_play_addr; RTS  (no JMP into criterion-3
-            translator — none exists for these drivers)
-          - STOP handler: silence SID volume + RTS
-          - Block 5 uses the safe-params placeholder (3 tracks × 1 pattern,
-            all 0x7F end markers) so SF2II's ComponentTracks ctor sees a
-            non-empty data source and doesn't OOB-crash.
-          - Block 3 column addresses point at high RAM ($C000+) — outside
-            the embedded binary — so editor reads zeros instead of garbage.
-          - Aux chain (TableText with empty names, Songs, hardware/editing
-            prefs, play markers) emitted in bundled [3,2,1,4,5,END] order.
-
-        Editor will load (track view shows 1 placeholder pattern per voice;
-        instrument/wave/pulse/filter views show empty rows) and audio plays
-        correctly because the original player drives the SID registers.
+        See the module docstring for the full Stage 8 Path A semantics
+        (non-Laxity playback-fidelity-only layout, low-load fallback,
+        high-load architectural error).
         """
-        logger.info("Building minimal-embed SF2 (non-Laxity driver — playback only)...")
         self._minimal_path = True
-
         c64_data = getattr(self.data, 'c64_data', None)
-        if not c64_data:
-            logger.error("  No c64_data available; cannot build minimal SF2")
-            return
-
-        sid_la    = getattr(self.data, 'load_address', 0x1000)
-
-        # Vibrants V20 cluster advisory: even files routed through the
-        # driver11 minimal-embed path (player-id="Rob_Hubbard" or similar)
-        # may belong to our V20 inventory clusters (Jewels/Waste/Racer
-        # use the Zetrex/YP player at load $E000). Log the cluster label
-        # so users know which RE notes apply.
-        v20_copyright = (getattr(self.data.header, 'copyright', '')
-                         if getattr(self, 'data', None) and getattr(self.data, 'header', None)
-                         else '')
-        if v20_copyright:
-            from sidm2.vibrants_v20_detector import detect_vibrants_v20
-            v20_label = detect_vibrants_v20(c64_data, sid_la, v20_copyright)
-            if v20_label:
-                logger.info(
-                    f"  Vibrants V20 (pre-NP21) detected: {v20_label}. "
-                    f"Audio plays via embedded-binary path; editor view "
-                    f"stays empty by design "
-                    f"(see docs/ROADMAP.md → Vibrants V20 section)."
-                )
-        header    = getattr(self.data, 'header', None)
-        init_addr = getattr(header, 'init_address', sid_la)     if header else sid_la
+        sid_la = getattr(self.data, 'load_address', 0x1000)
+        header = getattr(self.data, 'header', None)
+        init_addr = getattr(header, 'init_address', sid_la) if header else sid_la
         play_addr = getattr(header, 'play_address', sid_la + 3) if header else sid_la + 3
-
-        # Sub-$1000 wrapper-collision: same as the laxity path. The
-        # minimal/driver11 path also places header+handlers in
-        # $0D7E-$0FFF, which a sub-$1000 binary overlaps → silent SF2.
-        # Reuse the self-contained low-LOAD_BASE builder.
-        if 0 < sid_la < 0x1000:
-            if self._build_low_load_sf2(c64_data, sid_la, init_addr, play_addr):
-                return
-            # else: unfixable (no header room below sid_la) → legacy.
-
-        # v3.5.34 high-load architectural check: same as
-        # _inject_laxity_raw_np21. Binary + edit area + shadow can't
-        # overflow 16-bit C64 address space. Magic_Sound (load=$F000,
-        # 2613 bytes) is the canonical case for this path.
-        MIN_POST_BINARY = 0x800
-        if sid_la + len(c64_data) + MIN_POST_BINARY > 0x10000:
-            logger.error(
-                f"  Binary load address ${sid_la:04X} + size "
-                f"${len(c64_data):04X} = ends at ${sid_la + len(c64_data):04X}: "
-                f"insufficient room (<{MIN_POST_BINARY:#06x} bytes) below "
-                f"$FFFF for the SF2 edit area. Architectural limit of the "
-                f"SF2 format (Block 3 column addresses are 16-bit)."
-            )
-            raise errors.ConversionError(
-                stage="minimal-embed inject (high-load)",
-                reason=f"sid_load=${sid_la:04X} + size {len(c64_data)} leaves "
-                       f"<{MIN_POST_BINARY:#06x} bytes below $FFFF for edit area",
-                input_file=getattr(self.data, 'filepath', None),
-                docs_link="guides/LAXITY_DRIVER_USER_GUIDE.md#troubleshooting",
-            )
-
-        LOAD_BASE      = 0x0D7E
-        HANDLER_BASE   = 0x0F90
-        INIT_HANDLER   = HANDLER_BASE + 0
-        PLAY_HANDLER   = HANDLER_BASE + 4
-        STOP_HANDLER   = HANDLER_BASE + 8
-
-        from sidm2.sf2_header_generator import SF2HeaderGenerator
-        gen = SF2HeaderGenerator(driver_size=len(c64_data) + (sid_la - LOAD_BASE))
-        gen.DRIVER_INIT = INIT_HANDLER
-        gen.DRIVER_PLAY = PLAY_HANDLER
-        gen.DRIVER_STOP = STOP_HANDLER
-
-        # Block 3 column addresses will be filled in below to point at a
-        # zero-filled placeholder region inside the SF2 edit area (rather
-        # than high-RAM $C000+ which has unpredictable emulated-memory
-        # contents that can crash the editor's renderer).
-
-        # Zero-pad gap between binary end and edit area. Some SID players
-        # (Twone_Five.sid is the canonical example, v3.5.28) declare a
-        # data table just before the binary's last byte and read past the
-        # binary end via absolute,Y indexing. In RAM this is naturally
-        # zero (uninitialized DRAM); when the SF2 edit area lands at
-        # sid_la+len(c64_data) the player picks up edit-area bytes
-        # (orderlist-ptr lo, hi, seq-ptr-lo etc.) instead of zeros →
-        # spurious SID-register writes. 256 bytes covers the 6502
-        # absolute,Y addressing range (Y ∈ [0,255]).
-        POST_BINARY_GUARD = 0x100
-        sf2_data_base = sid_la + len(c64_data) + POST_BINARY_GUARD
-
-        # Build placeholder Block 5 (3 tracks × 1 pattern) + zero-filled
-        # F1-F5 + Arp/Tempo/HR/Init tables. Shared with the low-load path
-        # via sidm2.placeholder_edit_area. Mutates gen with table addresses
-        # (gen.instr_addr / cmd_addr / wave_addr / pulse_addr / filter_addr
-        # / arp_addr / tempo_addr / hr_addr / init_table_addr).
-        sf2_edit_data, music_data_params = (
-            placeholder_edit_area.build_placeholder_edit_area(sf2_data_base, gen))
-        gen.driver_size += POST_BINARY_GUARD + len(sf2_edit_data)
-
-        header_bytes = gen.generate_complete_headers(music_data_params)
-        headers_end_addr = LOAD_BASE + len(header_bytes)
-        if headers_end_addr > HANDLER_BASE:
-            logger.error(f"  Headers too large! End ${headers_end_addr:04X} > ${HANDLER_BASE:04X}")
-            return
-
-        # Build full PRG: [load:2] + headers + handler stubs + c64 binary
-        # + post-binary zero guard + edit area
-        gap = sid_la - LOAD_BASE
-        file_size = 2 + gap + len(c64_data) + POST_BINARY_GUARD + len(sf2_edit_data)
-        file_data = bytearray(file_size)  # bytearray() inits to 0x00 → guard is zero-filled
-
-        file_data[0] = LOAD_BASE & 0xFF
-        file_data[1] = LOAD_BASE >> 8
-        file_data[2:2 + len(header_bytes)] = header_bytes
-
-        # Handler stubs at HANDLER_BASE
-        hnd_off = 2 + (HANDLER_BASE - LOAD_BASE)
-        file_data[hnd_off:hnd_off + 4]      = bytes([0x20, init_addr & 0xFF, init_addr >> 8, 0x60])
-        file_data[hnd_off + 4:hnd_off + 8]  = bytes([0x20, play_addr & 0xFF, play_addr >> 8, 0x60])
-        file_data[hnd_off + 8:hnd_off + 14] = bytes([0xA9, 0x00, 0x8D, 0x18, 0xD4, 0x60])
-
-        # Embed SID binary verbatim — NO ch_seq_ptr patch
-        np21_off = 2 + gap
-        file_data[np21_off:np21_off + len(c64_data)] = c64_data
-
-        # Compatibility trampoline at $1000 for SID players that hardcode
-        # $1000 as INIT (e.g., zig64 cycle-accurate tracer). Only placed
-        # when the SID's load address is past $1006 — otherwise the binary
-        # itself occupies $1000 and a trampoline would corrupt it.
-        if sid_la >= 0x1007:
-            tramp_off = 2 + (0x1000 - LOAD_BASE)
-            file_data[tramp_off : tramp_off + 3] = bytes([
-                0x4C, init_addr & 0xFF, (init_addr >> 8) & 0xFF
-            ])
-            file_data[tramp_off + 3 : tramp_off + 6] = bytes([
-                0x4C, play_addr & 0xFF, (play_addr >> 8) & 0xFF
-            ])
-            logger.info(f"  Trampoline @ $1000: JMP ${init_addr:04X}; @ $1003: JMP ${play_addr:04X}")
-
-        # SF2 edit area appended after binary + POST_BINARY_GUARD.
-        # The guard region is already zero-filled by bytearray(file_size).
-        edit_off = np21_off + len(c64_data) + POST_BINARY_GUARD
-        file_data[edit_off:edit_off + len(sf2_edit_data)] = sf2_edit_data
-
-        # Upstream #211 workaround applied universally in write().
-        self.output = file_data
-
-        logger.info(f"  SF2 size: {len(self.output)} bytes")
-        logger.info(f"  Magic + headers: ${LOAD_BASE:04X}-${headers_end_addr - 1:04X} ({len(header_bytes)} bytes)")
-        logger.info(f"  Handlers: ${HANDLER_BASE:04X} (INIT=${INIT_HANDLER:04X}, PLAY=${PLAY_HANDLER:04X}, STOP=${STOP_HANDLER:04X})")
-        logger.info(f"  Binary: ${sid_la:04X}-${sid_la + len(c64_data) - 1:04X} ({len(c64_data)} bytes)")
-        logger.info(f"  Edit area: ${sf2_data_base:04X}-${sf2_data_base + len(sf2_edit_data) - 1:04X} ({len(sf2_edit_data)} bytes)")
-        logger.info(f"  INIT: ${INIT_HANDLER:04X} -> JSR ${init_addr:04X}")
-        logger.info(f"  PLAY: ${PLAY_HANDLER:04X} -> JSR ${play_addr:04X}")
+        psid_copyright = (getattr(header, 'copyright', '') or '') if header else ''
+        psid_filepath = getattr(self.data, 'filepath', None)
+        result = minimal_embed_builder.build_minimal_embed_sf2(
+            c64_data, sid_la, init_addr, play_addr,
+            psid_copyright=psid_copyright,
+            psid_filepath=psid_filepath,
+        )
+        if result is not None:
+            self.output = bytearray(result.sf2_bytes)
+            if result.skip_aux:
+                self._skip_aux = True
 
     def _inject_silent_stub(self) -> None:
         """[REMOVED v3.5.37 — failed approach; see git history for the

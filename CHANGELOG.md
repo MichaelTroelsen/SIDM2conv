@@ -25,6 +25,67 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.50] - 2026-05-25
+
+### Refactored — _inject_player_raw_minimal (181 lines) extracted
+
+Stage 8 Path A: the minimal-embed SF2 builder for non-Laxity SIDs
+(Galway, Hubbard, NP20, etc.). The 181-line method had only 4 unique
+self refs (`self.data`, `self.output`, `self._minimal_path`,
+`self._build_low_load_sf2`) — clean extraction shape after
+parameterising the data fields and replacing the inner low-load
+delegation with a direct `low_load_layout.build_low_load_sf2` call.
+
+New module: **`sidm2/minimal_embed_builder.py`** (234 lines).
+
+Public API:
+  - `build_minimal_embed_sf2(c64_data, sid_la, init_addr, play_addr,
+                              *, psid_copyright='', psid_filepath=None)
+       → Optional[MinimalEmbedResult]`
+  - `MinimalEmbedResult` dataclass with `.sf2_bytes` + `.skip_aux`
+
+Three dispatch paths:
+  - **`sid_la < $1000`**: delegate to `low_load_layout.build_low_load_sf2`
+    (returns skip_aux=True; the binary spans $0FFB so aux injection
+    would corrupt it).
+  - **High-load (`sid_la + len(c64_data) + $800 > $10000`)**: raise
+    `errors.ConversionError` with diagnostic. Magic_Sound + Crosswords
+    ($F000 load, 2-3KB) hit this.
+  - **Normal layout**: build directly with handler stubs at $0F90,
+    binary embedded at sid_la, POST_BINARY_GUARD=$100 between binary
+    end and edit area (Twone_Five.sid v3.5.28 fix), placeholder edit
+    area via `placeholder_edit_area.build_placeholder_edit_area`,
+    compatibility trampoline at $1000 if sid_la >= $1007.
+
+SF2Writer keeps a 21-line wrapper that pulls header fields from
+`self.data.header` and propagates the result to `self._minimal_path`,
+`self.output`, `self._skip_aux`.
+
+### Added — 9 focused unit tests for minimal_embed_builder
+
+  TestBuildMinimalEmbedSf2 (8):
+    - empty c64_data returns None
+    - high-load case raises ConversionError
+    - low-load ($0F00) returns skip_aux=True
+    - low-load infeasible ($0400 too low) returns None
+    - normal layout ($1000) returns skip_aux=False
+    - binary embedded at sid_la (byte-exact match)
+    - INIT/PLAY/STOP handler stubs at $0F90
+    - trampoline at $1000 only placed when sid_la >= $1007
+      (sid_la == $1000 preserves the binary byte at $1000)
+
+  TestMinimalEmbedResult (1):
+    - dataclass fields accessible
+
+### Stats
+- sf2_writer.py: 2165 → 2010 lines (**-155**) — under 2100 for first time
+- Cumulative since v3.5.27: 5832 → 2010 lines (-66%)
+- 1208 → 1217 tests pass (+9)
+- 15 extracted modules total 4599 lines with 165 focused unit tests
+- All 14 C2 reference files byte-identical
+
+---
+
 ## [3.5.49] - 2026-05-25
 
 ### Refactored — `_update_table_definitions` moved into `driver11_table_helpers`

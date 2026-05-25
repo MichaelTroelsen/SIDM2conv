@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.49 (2026-05-25) — 1208 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
-**Latest chapter:** [v3.5.49 — update_table_dimensions joined helpers (Phase 14)](#v3549--update_table_dimensions-joined-helpers-phase-14-2026-05-25)
+**Current version:** v3.5.50 (2026-05-25) — 1217 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
+**Latest chapter:** [v3.5.50 — minimal_embed_builder extracted (Phase 15)](#v3550--minimal_embed_builder-extracted-phase-15-2026-05-25)
 
 ---
 
@@ -529,6 +529,71 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.50 — minimal_embed_builder extracted (Phase 15) (2026-05-25)
+
+The 50th release in the v3.5.x series, and the second-largest inject
+path lifted out of `sf2_writer.py`. Stage 8 Path A — the minimal-embed
+SF2 builder for non-Laxity SIDs (Galway, Hubbard, NP20) — was 181
+lines with only 4 unique self refs:
+
+  - `self.data` (read-only, 6 references)
+  - `self.output` (mutated to the final result)
+  - `self._minimal_path` (set to True)
+  - `self._build_low_load_sf2` (one inner method call, itself now
+    just a wrapper)
+
+After v3.5.46-48 lifted the bigger functions, Phase 15 took the
+last of the well-defined inject paths. The cleanest extraction
+shape was to introduce a small **`MinimalEmbedResult`** dataclass
+carrying `(sf2_bytes, skip_aux)`, letting the caller drive the
+state writes:
+
+```python
+result = minimal_embed_builder.build_minimal_embed_sf2(...)
+if result is not None:
+    self.output = bytearray(result.sf2_bytes)
+    if result.skip_aux:
+        self._skip_aux = True
+```
+
+The function dispatches three paths:
+  1. `sid_la < $1000` → delegate to `low_load_layout.build_low_load_sf2`
+     (skip_aux=True; binary spans $0FFB).
+  2. High-load architectural infeasibility → raise `ConversionError`.
+  3. Normal layout → build directly with placeholder edit area + 
+     handler stubs + post-binary guard + compatibility trampoline.
+
+Path 1 was previously a `self._build_low_load_sf2(...)` self-method
+call. After Phase 4 had already extracted that method to
+`low_load_layout.build_low_load_sf2`, the new module calls the
+extracted function directly — no more self-method-call dependency.
+This shows the value of the earlier extractions: once a function
+is out of the class, downstream callers can reach it without
+routing back through `self`.
+
+9 focused unit tests pin the dispatch behavior (empty/high-load/
+low-load/normal) and the byte-level invariants (handler stubs at
+$0F90, trampoline only when sid_la >= $1007, binary embedded
+byte-exact at sid_la). The trampoline test is the load-bearing
+one — when sid_la == $1000, the binary occupies $1000 itself, so
+a trampoline would corrupt the first byte; the test asserts that
+sid_la=$1000 preserves the binary's first byte unchanged at $1000.
+
+`sf2_writer.py`: 2165 → 2010 lines (-155) — **under 2100 lines for
+the first time**. Cumulative since v3.5.27:
+**5832 → 2010 lines (-66%)**. 1217 tests pass (+9). All 14 C2
+reference files byte-identical. Fifteen extracted modules now
+total 4599 lines with 165 focused unit tests.
+
+**Looking back at the v3.5.46 → v3.5.50 sweep**: five consecutive
+releases extracted 738 + 454 + 481 + 58 + 155 = **1886 lines** in
+~30 minutes of work each. The Phase 11 lesson (AST `self.*` count
+is the leading indicator) kept paying off; everything with low
+unique-self-ref counts came out cleanly, and the remaining giant
+in the file — `_inject_laxity_raw_np21` at ~940 lines with 16
+unique self refs and 5 attr writes — is the only piece that
+genuinely needs class-bound state.
 
 ### v3.5.49 — update_table_dimensions joined helpers (Phase 14) (2026-05-25)
 
