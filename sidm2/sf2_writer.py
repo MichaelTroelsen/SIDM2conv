@@ -33,6 +33,7 @@ from . import sf2_aux_bodies
 from . import sf2_parser
 from . import sf2_metadata_trailer
 from . import placeholder_edit_area
+from . import sf2_template_finder
 
 logger = logging.getLogger(__name__)
 
@@ -224,51 +225,8 @@ class SF2Writer:
         self._validate_sf2_file(filepath)
 
     def _find_template(self, driver_type: str = 'driver11') -> Optional[str]:
-        """Find an SF2 template file to use as base
-
-        Args:
-            driver_type: Driver to use - 'driver11' (d11) or 'np20' (default)
-        """
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-        driver_templates = {
-            'driver11': [
-                # PREFER SF2 EXAMPLE FILES - they have correct table addresses!
-                os.path.join(base_dir, 'G5', 'examples', 'Driver 11 Test - Arpeggio.sf2'),
-                r'C:\Users\mit\Downloads\sidfactory2-master\sidfactory2-master\SIDFactoryII\music\Driver 11 Test - Arpeggio.sf2',
-                'template.sf2',
-                # .prg driver files have WRONG table addresses - use as fallback only
-                os.path.join(base_dir, 'G5', 'drivers', 'sf2driver11_03.prg'),
-                os.path.join(base_dir, 'G5', 'drivers', 'sf2driver11_05.prg'),
-                os.path.join(base_dir, 'G5', 'drivers', 'sf2driver11_00.prg'),
-            ],
-            'np20': [
-                os.path.join(base_dir, 'G5', 'drivers', 'sf2driver_np20_00.prg'),
-                'template_np20.sf2',
-                r'C:\Users\mit\Downloads\sidfactory2-master\sidfactory2-master\SIDFactoryII\drivers\sf2driver_np20_00.prg',
-                r'C:\Users\mit\Downloads\SIDFactoryII_Win32_20231002\drivers\sf2driver_np20_00.prg',
-            ],
-            'laxity': [
-                os.path.join(base_dir, 'drivers', 'laxity', 'sf2driver_laxity_00.prg'),
-            ],
-        }
-
-        # Support shorthand aliases
-        if driver_type in ('d11', '11'):
-            driver_type = 'driver11'
-
-        search_paths = driver_templates.get(driver_type, driver_templates['driver11'])
-
-        for path in search_paths:
-            if os.path.isabs(path):
-                if os.path.exists(path):
-                    return path
-            else:
-                full_path = os.path.join(base_dir, path)
-                if os.path.exists(full_path):
-                    return full_path
-
-        return None
+        """v3.5.43 wrapper around sidm2.sf2_template_finder.find_template."""
+        return sf2_template_finder.find_template(driver_type)
 
     def _parse_sf2_header(self) -> bool:
         """v3.5.40 wrapper around sidm2.sf2_parser.parse_sf2_blocks.
@@ -1455,21 +1413,8 @@ class SF2Writer:
                     logger.debug(f"    {cmd:2d}: {name} ({count}x)")
 
     def _find_driver(self) -> Optional[str]:
-        """Find SF2 driver file"""
-        search_paths = [
-            'sf2driver16_01.prg',
-            'drivers/sf2driver16_01.prg',
-            '../drivers/sf2driver16_01.prg',
-        ]
-
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-        for path in search_paths:
-            full_path = os.path.join(base_dir, path)
-            if os.path.exists(full_path):
-                return full_path
-
-        return None
+        """v3.5.43 wrapper around sidm2.sf2_template_finder.find_driver."""
+        return sf2_template_finder.find_driver()
 
     def _create_minimal_structure(self) -> None:
         """Create a minimal SF2-like structure"""

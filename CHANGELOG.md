@@ -25,6 +25,67 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.43] - 2026-05-25
+
+### Refactored — SF2 template/driver file-finding extracted
+
+Filesystem lookup utilities for the driver11 template path. The
+46-line `_find_template` method dispatches a per-driver-type search
+list:
+
+  - `driver11` → prefers bundled SF2 examples (correct table
+    addresses); falls back to .prg drivers (wrong addresses but
+    parse). Aliases `d11` and `11` map here.
+  - `np20`     → np20-specific .prg drivers.
+  - `laxity`   → drivers/laxity/sf2driver_laxity_00.prg
+
+The 16-line `_find_driver` finds the v1.6 driver
+(sf2driver16_01.prg). Both are pure read-only filesystem lookups
+with no `self.*` state involvement — perfect extraction candidates.
+
+New module: **`sidm2/sf2_template_finder.py`** (124 lines).
+
+Public API:
+  - `find_template(driver_type='driver11') → Optional[str]`
+  - `find_driver() → Optional[str]`
+
+Both SF2Writer methods are now 3-line wrappers.
+
+### Added — 12 focused unit tests for sf2_template_finder
+
+New `pyscript/test_sf2_template_finder.py` uses
+`unittest.mock.patch('os.path.exists')` to verify path-ordering
+invariants deterministically (no dependency on which template
+files actually exist on the host):
+
+  TestFindTemplate (8):
+    - unknown driver_type falls back to driver11 search list
+    - `d11` alias produces identical search to `driver11`
+    - `11` alias produces identical search
+    - returns first existing path (stops scanning after match)
+    - returns None when no candidates exist
+    - SF2 examples checked BEFORE .prg drivers (the load-bearing
+      ordering invariant — .prg drivers have wrong table addresses)
+    - np20 search uses np20-specific paths
+    - laxity search uses laxity-specific paths
+
+  TestFindDriver (3):
+    - checks 3 expected candidate paths for sf2driver16_01.prg
+    - returns first existing
+    - returns None when no driver found
+
+  TestBaseDir (1):
+    - _base_dir() resolves to a directory containing sidm2/
+
+### Stats
+- sf2_writer.py: 4009 → 3954 lines (-55) — **under 4000 for first time**
+- Cumulative since v3.5.27: 5832 → 3954 lines (-32%)
+- 1176 → 1188 tests pass (+12)
+- 10 extracted modules total 2351 lines with 136 focused unit tests
+- All 14 C2 reference files byte-identical
+
+---
+
 ## [3.5.42] - 2026-05-25
 
 ### Refactored — placeholder edit-area builder deduplicated

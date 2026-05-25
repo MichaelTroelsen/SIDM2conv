@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.42 (2026-05-25) — 1176 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
-**Latest chapter:** [v3.5.42 — placeholder edit-area deduplicated (Phase 8)](#v3542--placeholder-edit-area-deduplicated-phase-8-2026-05-25)
+**Current version:** v3.5.43 (2026-05-25) — 1188 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
+**Latest chapter:** [v3.5.43 — file-finders extracted (Phase 9)](#v3543--file-finders-extracted-phase-9-2026-05-25)
 
 ---
 
@@ -529,6 +529,39 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.43 — file-finders extracted (Phase 9) (2026-05-25)
+
+The smallest extraction of the session, and it crosses a symbolic
+milestone: `sf2_writer.py` falls **under 4000 lines** for the first
+time. The biggest win is structural — the converter is no longer
+opening files via methods that live alongside the writer logic.
+
+Two pure read-only filesystem-lookup utilities:
+
+  - `_find_template(driver_type)` — dispatches a per-driver-type
+    search list. `driver11` prefers the bundled SF2 example
+    (correct table addresses) and falls back to .prg drivers
+    (wrong addresses but they parse). The `d11` and `11` aliases
+    map to `driver11`. `np20` and `laxity` have their own lists.
+  - `_find_driver()` — locates the v1.6 driver (sf2driver16_01.prg).
+
+Both go to `sidm2/sf2_template_finder.py` (124 lines).
+
+The 12 tests use `unittest.mock.patch('os.path.exists')` to make
+path-ordering invariants deterministic. The load-bearing one is
+"SF2 examples are checked before .prg drivers" — both file types
+parse, but only the .sf2 example files have correct table
+addresses, so we always want them first. A future refactor
+accidentally swapping the order would still parse and load, but
+silently use wrong addresses. The dedicated test catches that
+class of regression before it ships.
+
+`sf2_writer.py`: 4009 → 3954 lines. **First time under 4000.**
+Cumulative since v3.5.27: 5832 → 3954 lines (**-32%**). 1188 tests
+pass (+12). All 14 C2 reference files byte-identical. Ten
+extracted modules now total 2351 lines with 136 focused unit
+tests.
 
 ### v3.5.42 — placeholder edit-area deduplicated (Phase 8) (2026-05-25)
 
