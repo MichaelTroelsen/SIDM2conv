@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.47 (2026-05-25) — 1202 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
-**Latest chapter:** [v3.5.47 — laxity_music_data_injector extracted (Phase 12)](#v3547--laxity_music_data_injector-extracted-phase-12-2026-05-25)
+**Current version:** v3.5.48 (2026-05-25) — 1202 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
+**Latest chapter:** [v3.5.48 — driver11 section injectors cluster (Phase 13)](#v3548--driver11-section-injectors-cluster-phase-13-2026-05-25)
 
 ---
 
@@ -529,6 +529,71 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.48 — driver11 section injectors cluster (Phase 13) (2026-05-25)
+
+The third release in the three-release sweep. After Phase 11
+extracted the 761-line NP21 edit-area builder and Phase 12 lifted
+the 463-line Laxity music-data injector, the next biggest cluster
+was the 4 remaining driver11-template-path section injectors:
+
+| Method | Lines |
+|---|---|
+| `_inject_instruments` | 243 |
+| `_inject_sequences` | 114 |
+| `_inject_commands` | 83 |
+| `_inject_orderlists` | 61 |
+| **Total** | **501** |
+
+These four functions all had the EXACT same shape:
+
+  - Read `self.data` (ExtractedData)
+  - Look up table addresses in `self.driver_info.table_addresses`
+  - Convert C64 addresses to file offsets via `self._addr_to_offset(addr)`
+  - Mutate `self.output` in place
+
+No cross-function state, no other method calls. The natural
+extraction shape: a module of pure functions with identical
+signatures `(output, data, driver_info, load_address) → None`,
+plus the `_addr_to_offset` helper lifted to module level.
+
+New `sidm2/driver11_section_injectors.py` (575 lines):
+
+```python
+def inject_orderlists(output, data, driver_info, load_address) -> None: ...
+def inject_sequences(output, data, driver_info, load_address) -> None: ...
+def inject_instruments(output, data, driver_info, load_address) -> None: ...
+def inject_commands(output, data, driver_info, load_address) -> None: ...
+
+def _addr_to_offset(addr: int, load_address: int) -> int:
+    return addr - load_address + 2
+```
+
+SF2Writer keeps 4 thin wrappers (~5 lines each) preserving the
+existing call surface.
+
+One practical hurdle: the extracted functions had inline references
+to several sibling-module imports (`find_and_extract_wave_table`,
+`extract_command_parameters`, `build_sf2_command_table`,
+`transpose_instruments`, `LaxityConverter`). The first regression
+run failed with a NameError; adding the imports to the new module
+fixed it. The C2 reference suite was the right safety net here — it
+caught the missing imports immediately rather than letting them ship.
+
+**The three-release sweep totals**: v3.5.46 (-738L) + v3.5.47 (-454L)
++ v3.5.48 (-481L) = **1673 lines moved in 3 consecutive releases**.
+`sf2_writer.py` is now at 2223 lines — **62% smaller than at v3.5.27**.
+Half the original file has been lifted out in 3 releases.
+
+| Metric | v3.5.46 | v3.5.47 | v3.5.48 |
+|---|---|---|---|
+| sf2_writer.py | 3158 | 2704 | **2223** |
+| Cumulative shrink | -46% | -54% | **-62%** |
+| Extracted modules | 12 | 13 | **14** |
+| Total extracted code | 3227L | 3728L | **4303L** |
+
+1202 tests pass throughout. All 14 C2 reference files byte-identical
+at every step.
 
 ### v3.5.47 — laxity_music_data_injector extracted (Phase 12) (2026-05-25)
 

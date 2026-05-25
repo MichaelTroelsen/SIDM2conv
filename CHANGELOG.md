@@ -25,6 +25,65 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.48] - 2026-05-25
+
+### Refactored — driver11 section injectors cluster extracted (4 methods)
+
+All four driver11-template-path section injectors shared the exact
+same shape:
+
+  - `_inject_orderlists`    (61 lines, ~16 self.output[] writes)
+  - `_inject_sequences`     (114 lines, ~18 self.output[] writes)
+  - `_inject_commands`      (83 lines, ~3 self.output[] writes)
+  - `_inject_instruments`   (243 lines, ~3 self.output[] writes)
+
+Each:
+  - reads `self.data` (ExtractedData)
+  - looks up addresses in `self.driver_info.table_addresses`
+  - converts C64 addresses to file offsets via `self._addr_to_offset(addr)`
+  - mutates `self.output` in place
+
+No method calls to other SF2Writer methods beyond `_addr_to_offset`,
+no shared state between them. Pure cluster extraction.
+
+New module: **`sidm2/driver11_section_injectors.py`** (575 lines).
+
+Public API:
+  - `inject_orderlists(output, data, driver_info, load_address) → None`
+  - `inject_sequences(output, data, driver_info, load_address) → None`
+  - `inject_instruments(output, data, driver_info, load_address) → None`
+  - `inject_commands(output, data, driver_info, load_address) → None`
+  - `_addr_to_offset(addr, load_address) → int` — module-level helper
+
+SF2Writer keeps 4 thin wrappers (~5 lines each) preserving the
+existing `self.<method>()` call surface.
+
+### Imports re-wired
+
+The new module re-imports from sibling modules — these were used
+inside the extracted function bodies:
+  - `find_and_extract_wave_table`, `extract_all_laxity_tables`
+  - `extract_laxity_instruments`, `extract_laxity_wave_table`
+  - `LaxityConverter`
+  - `extract_command_parameters`, `build_sf2_command_table`
+  - `transpose_instruments`
+
+### Stats
+- sf2_writer.py: 2704 → 2223 lines (**-481**)
+- Cumulative since v3.5.27: 5832 → 2223 lines (-62%)
+- 1202 tests pass (unchanged — pure refactor)
+- 14 extracted modules total 4303 lines with 150 focused unit tests
+- All 14 C2 reference files byte-identical
+
+### Three-release sweep
+
+v3.5.46 (`np21_edit_area_builder` -738L) + v3.5.47
+(`laxity_music_data_injector` -454L) + v3.5.48
+(`driver11_section_injectors` -481L) = **1673 lines moved in 3
+consecutive releases**. Half the original sf2_writer.py lifted out.
+
+---
+
 ## [3.5.47] - 2026-05-25
 
 ### Refactored — _inject_laxity_music_data (463 lines) extracted
