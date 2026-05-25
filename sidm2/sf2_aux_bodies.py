@@ -1,6 +1,10 @@
-"""Pure builders for SF2 auxiliary-block bodies.
+"""Pure builders for SF2 auxiliary-block bodies + chain assembly.
 
-Extracted from sf2_writer.py at the v3.5.39 Phase 5 refactor.
+Extracted from sf2_writer.py at the v3.5.39 Phase 5 refactor (the two
+non-trivial body builders) and extended at the v3.5.51 refactor with
+`assemble_aux_chain` + `inject_aux_chain_into_sf2` (the chain framing
+and $0FFB-pointer injection that were the remaining half of the old
+`_inject_auxiliary_data` method).
 
 The SF2 file format has an auxiliary-data chain (located via a HARDCODED
 pointer at C64 $0FFB) containing up to 5 block types:
@@ -11,7 +15,8 @@ pointer at C64 $0FFB) containing up to 5 block types:
   id=4  TableText           — variable v2 (instrument + command names)
   id=5  Songs               — variable v2 (song description metadata)
 
-This module covers the two non-trivial ones:
+This module covers the two non-trivial body builders + the chain
+assembly + pointer-injection helpers:
 
   build_table_text_data(instrument_names, command_names, instr_table_id,
                          cmd_table_id) -> bytes
@@ -159,3 +164,106 @@ def _pack_entry(table_id: int, layer_text_lists: List[List[str]]) -> bytes:
     for layer in layer_text_lists:
         out.extend(_pack_layer(layer))
     return bytes(out)
+
+
+# ---------------------------------------------------------------------------
+# Chain assembly + pointer injection (added at the v3.5.51 refactor)
+# ---------------------------------------------------------------------------
+
+# Reference-bundled minimal bodies for the aux blocks that DO NOT carry
+# converter-derived payloads (id=1/2/3). These match values found in all
+# 67 bundled SF2II reference files surveyed. Verbatim PlayMarkers /
+# HardwarePreferences / EditingPreferences with rich payloads would
+# require addresses + states matching our SF2 layout — diverging bodies
+# crash RestoreFromSaveData — so we emit minimal-valid versions.
+
+_BODY3_PLAY_MARKERS         = bytes([0x01, 0x00])         # 1 layer, 0 markers
+_BODY2_HARDWARE_PREFS       = bytes([0x01, 0x00])         # SIDModel=8580, Region=PAL
+_BODY1_EDITING_PREFS        = bytes([0x00, 0x00, 0x04])   # Sharp notation, hl 0, interval 4
+
+_AUX_CHAIN_END_MARKER       = bytes([0x00, 0x00, 0x00, 0x00, 0x00])
+
+# Hardcoded $0FFB aux-pointer location — read by SF2II's
+# `ParseAuxilaryData` at the constant `driver_info.h:
+# AuxilaryDataPointerAddress`. NOT configurable per-file.
+AUX_POINTER_C64_ADDR = 0x0FFB
+
+
+def _make_aux_block(bid: int, param: int, body: bytes) -> bytes:
+    """Wrap a body in a TLV aux-block frame.
+
+    Frame: [u8 id][u16 LE param][u16 LE length][body]
+    """
+    return bytes([bid]) + struct.pack('<H', param) + struct.pack('<H', len(body)) + body
+
+
+def assemble_aux_chain(
+    table_text_body: bytes,
+    desc_body: Optional[bytes] = None,
+) -> bytes:
+    """Assemble the SF2 aux chain in bundled order [3, 2, 1, 4, 5, END].
+
+    Matches all 67 bundled SF2II reference files. Each block is a
+    TLV frame `[u8 id][u16 LE param][u16 LE length][body]` and the
+    chain is terminated by 5 zero bytes.
+
+    Args:
+        table_text_body: Body for aux block id=4 (TableText). Built
+            via `build_table_text_data`.
+        desc_body: Body for aux block id=5 (Songs). Built via
+            `build_description_data`. If None or empty, the id=5
+            block is omitted from the chain entirely (matches the
+            pre-v3.5.51 behavior).
+
+    Returns:
+        Bytes of the complete chain ready to be appended past the
+        SF2 content. Caller is responsible for writing the chain's
+        starting C64 address to the $0FFB pointer slot — see
+        `inject_aux_chain_into_sf2` for that step.
+    """
+    out = bytearray()
+    out.extend(_make_aux_block(3, 2, _BODY3_PLAY_MARKERS))             # PlayMarkers
+    out.extend(_make_aux_block(2, 1, _BODY2_HARDWARE_PREFS))           # HardwarePreferences
+    out.extend(_make_aux_block(1, 1, _BODY1_EDITING_PREFS))            # EditingPreferences
+    out.extend(_make_aux_block(4, 2, table_text_body))                 # TableText
+    if desc_body:
+        out.extend(_make_aux_block(5, 2, desc_body))                   # Songs
+    out.extend(_AUX_CHAIN_END_MARKER)
+    return bytes(out)
+
+
+def inject_aux_chain_into_sf2(
+    output: bytearray,
+    aux_chain: bytes,
+) -> Optional[int]:
+    """Append the aux chain past the SF2 content and write its address
+    to the $0FFB pointer slot.
+
+    The PRG load address comes from `output[0:2]` (little-endian word).
+    Use the SF2 file's PRG load address (typically $0D7E) — NOT the
+    SID's PSID load address (often $0000), which would mis-compute the
+    pointer offset.
+
+    Args:
+        output: The SF2 buffer (mutated in place — extended with
+            `aux_chain` and patched at the $0FFB pointer slot).
+        aux_chain: Bytes from `assemble_aux_chain`.
+
+    Returns:
+        The C64 address where the aux chain was placed (i.e. what was
+        written to $0FFB), or None if the pointer slot doesn't fit
+        within the buffer (the chain is then NOT appended either).
+    """
+    if len(output) < 2:
+        return None
+    sf2_prg_load = output[0] | (output[1] << 8)
+    aux_chain_offset_in_file = len(output)
+    aux_chain_c64_addr = sf2_prg_load + (aux_chain_offset_in_file - 2)
+
+    aux_pointer_offset = AUX_POINTER_C64_ADDR - sf2_prg_load + 2
+    if 0 <= aux_pointer_offset and aux_pointer_offset + 2 <= len(output):
+        output[aux_pointer_offset]     = aux_chain_c64_addr & 0xFF
+        output[aux_pointer_offset + 1] = (aux_chain_c64_addr >> 8) & 0xFF
+        output.extend(aux_chain)
+        return aux_chain_c64_addr
+    return None

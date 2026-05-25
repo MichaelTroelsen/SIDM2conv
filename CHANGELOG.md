@@ -25,6 +25,73 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.51] - 2026-05-25
+
+### Refactored — aux chain assembly + $0FFB injection added to sf2_aux_bodies
+
+Completes the auxiliary-data refactor started in v3.5.39 (which lifted
+the two body builders `build_table_text_data` and `build_description_data`).
+v3.5.51 lifts the REMAINING half of `_inject_auxiliary_data`:
+
+  - The chain framing in bundled order [3, 2, 1, 4, 5, END]
+  - TLV wrapping: `[u8 id][u16 LE param][u16 LE length][body]`
+  - The hardcoded `$0FFB` aux-pointer injection (read by SF2II's
+    `ParseAuxilaryData` at `driver_info.h:AuxilaryDataPointerAddress`)
+
+Two new pure functions added to `sidm2/sf2_aux_bodies.py`:
+
+  - `assemble_aux_chain(table_text_body, desc_body) → bytes`
+    Assembles the 5-block chain with hardcoded minimal bodies for
+    id=1/2/3 + caller-provided bodies for id=4/5. Omits id=5 when
+    `desc_body` is None or empty.
+
+  - `inject_aux_chain_into_sf2(output, aux_chain) → Optional[int]`
+    Appends the chain past the buffer end and writes its C64
+    address to the $0FFB pointer slot. Returns the placement address
+    on success, None if the pointer slot is out of range (without
+    extending the buffer).
+
+New module-level constants:
+  - `AUX_POINTER_C64_ADDR = 0x0FFB`
+  - `_BODY1_EDITING_PREFS`, `_BODY2_HARDWARE_PREFS`,
+    `_BODY3_PLAY_MARKERS`, `_AUX_CHAIN_END_MARKER` (hardcoded
+    reference-bundled minimal bodies — verbatim from all 67 bundled
+    SF2II reference files surveyed).
+
+SF2Writer's `_inject_auxiliary_data` becomes a 47-line orchestrator:
+skip-aux gate, path-dependent name extraction (laxity vs
+minimal-embed), table ID lookup, then delegate body building +
+chain assembly + injection to the module.
+
+### Added — 12 focused unit tests for aux chain
+
+  TestAssembleAuxChain (7):
+    - chain starts with block 3 (PlayMarkers)
+    - chain ends with 5-zero terminator
+    - includes all 5 blocks when desc_body present (order [3,2,1,4,5])
+    - omits id=5 when desc_body is None
+    - omits id=5 when desc_body is empty bytes
+    - table_text body embedded correctly inside the id=4 block
+    - hardcoded block-3 body is `01 00`
+
+  TestInjectAuxChainIntoSf2 (4):
+    - returns None for tiny buffer (< 2 bytes)
+    - appends chain past buffer end + writes pointer at $0FFB
+    - returns the C64 address where the chain was placed
+    - returns None when pointer slot out of range (buffer NOT extended)
+
+  TestAuxChainConstants (1):
+    - `AUX_POINTER_C64_ADDR = 0x0FFB`
+
+### Stats
+- sf2_writer.py: 2010 → 1954 lines (-56) — **under 2000 for first time**
+- Cumulative since v3.5.27: 5832 → 1954 lines (-66.5%)
+- 1217 → 1229 tests pass (+12)
+- 15 extracted modules total 4716 lines with 177 focused unit tests
+- All 14 C2 reference files byte-identical
+
+---
+
 ## [3.5.50] - 2026-05-25
 
 ### Refactored — _inject_player_raw_minimal (181 lines) extracted

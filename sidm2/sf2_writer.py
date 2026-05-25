@@ -652,28 +652,36 @@ class SF2Writer:
         )
 
     def _inject_auxiliary_data(self) -> None:
-        """Inject auxiliary data with instrument and command names"""
+        """Inject the SF2 auxiliary data chain.
+
+        v3.5.51: chain assembly + $0FFB pointer-injection moved to
+        sidm2.sf2_aux_bodies. This wrapper handles the orchestration:
+          - skip when self._skip_aux is True (low-load layout)
+          - choose name extraction by path (laxity vs minimal embed)
+          - delegate to sf2_aux_bodies.assemble_aux_chain
+          - delegate to sf2_aux_bodies.inject_aux_chain_into_sf2
+        """
         # Low-load layout: the binary spans the hardcoded aux-pointer
         # address $0FFB, so writing the pointer there corrupts live
-        # player data. Skip aux entirely (SF2II cleanly skips when it
-        # reads the binary's bytes as an address into unmapped/zero RAM).
+        # player data. Skip aux entirely.
         if getattr(self, '_skip_aux', False):
             logger.info("  Skipping aux injection (low-load: $0FFB "
                         "overlaps embedded binary)")
             return
         logger.info("  Injecting auxiliary data (names)...")
 
-        # Path A (non-Laxity SIDs): skip instrument-name extraction, which
-        # would call Laxity-specific extractors on a Galway/Hubbard binary
-        # and return garbage that corrupts the TableText body and crashes
-        # F10-load. Empty names produce a clean (padded-with-empty-strings)
+        # Path A (non-Laxity SIDs): skip instrument-name extraction
+        # (would call Laxity-specific extractors on a Galway/Hubbard
+        # binary and return garbage). Empty names produce a clean
         # TableText that loads fine.
         if getattr(self, '_minimal_path', False):
             instrument_names = []
             command_names = []
         else:
-            wave_addr, wave_entries = find_and_extract_wave_table(self.data.c64_data, self.data.load_address)
-            laxity_instruments = extract_laxity_instruments(self.data.c64_data, self.data.load_address, wave_entries)
+            wave_addr, wave_entries = find_and_extract_wave_table(
+                self.data.c64_data, self.data.load_address)
+            laxity_instruments = extract_laxity_instruments(
+                self.data.c64_data, self.data.load_address, wave_entries)
             instrument_names = [instr['name'] for instr in laxity_instruments]
             command_names = get_command_names()
 
@@ -684,86 +692,22 @@ class SF2Writer:
         if 'Commands' in self.driver_info.table_addresses:
             cmd_table_id = self.driver_info.table_addresses['Commands']['id']
 
-        # Stage 6: emit the bundled-format aux chain
-        # [id=3 param=2, id=2 param=1, id=1 param=1, id=4 param=2,
-        #  id=5 param=2, END] — matches all 67 bundled SF2II reference
-        # files we surveyed. TLV format: [u8 id][u16 LE param][u16 LE length]
-        # [body]. The aux chain pointer at C64 $0FFB tells SF2II where to
-        # find the chain. Without that pointer (the prior bug — aux_data
-        # was appended but the pointer was never set), SF2II's
-        # ParseAuxilaryData gets aux_pointer=0 and skips the chain entirely.
-        #
-        # Bodies for id=1, 2, 3 encode editor preferences / play-markers /
-        # hardware prefs respectively. We emit minimal-but-valid bodies
-        # taken from the reference SF2; exact field meanings aren't fully
-        # decoded (a Stage 6.5 follow-up could expose them), but the
-        # bundled values load cleanly across the corpus.
-
-        def _make_aux_block(bid: int, param: int, body: bytes) -> bytes:
-            return bytes([bid]) + struct.pack('<H', param) + struct.pack('<H', len(body)) + body
-
-        # Aux body formats (decoded from auxilary_data_*.cpp:RestoreFromSaveData):
-        # id=1 EditingPreferences (3B v1): [NotationMode][HighlightOffset][HighlightInterval]
-        # id=2 HardwarePreferences (2B v1): [SIDModel][Region]
-        # id=3 PlayMarkers v2:               [layer_count] then per-layer
-        #                                    [marker_count][u32×marker_count event positions]
-        # Defaults match reasonable editor state. Region/SIDModel could be
-        # pulled from the PSID flags but defaulting to (8580, PAL) like the
-        # reference is a safer bet because it matches more bundled files.
-        body3 = bytes([0x01, 0x00])         # 1 layer, 0 markers (no song-position bookmarks)
-        body2 = bytes([0x01, 0x00])         # SIDModel=8580 (1), Region=PAL (0)
-        body1 = bytes([0x00, 0x00, 0x04])   # Sharp notation, highlight offset=0, interval=4
-
-        # id=4 param=2 — Table text (instrument + command names).
-        table_text_data = self._build_table_text_data(
+        # Build the two converter-derived bodies + assemble the chain.
+        table_text = sf2_aux_bodies.build_table_text_data(
             instrument_names, command_names, instr_table_id, cmd_table_id)
+        desc_body = sf2_aux_bodies.build_description_data(
+            self.data.header.name if (hasattr(self.data, 'header')
+                                       and self.data.header) else None)
+        aux_chain = sf2_aux_bodies.assemble_aux_chain(table_text, desc_body)
 
-        # id=5 param=2 — Description / song metadata.
-        desc_data = self._build_description_data()
-
-        # Stage 6 first slice: emit [id=4 TableText, id=5 Songs, END].
-        # Adding id=1/2/3 with verbatim reference bodies broke F10-load
-        # because their bodies (PlayMarkers / HardwarePreferences /
-        # EditingPreferences) reference addresses + states that don't
-        # match our SF2 layout, so RestoreFromSaveData crashes. Decoding
-        # those formats is a Stage 6.5 follow-up; for now we deliver the
-        # missing aux-pointer fix without the full bundled chain — that
-        # alone gives SF2II access to instrument names + song description
-        # which the prior aux-pointer-zero made unreachable.
-        # Stage 6.7: aux chain in bundled order [3, 2, 1, 4, 5, END]
-        # matching all 67 bundled SF2II reference files.
-        aux_data = bytearray()
-        aux_data.extend(_make_aux_block(3, 2, body3))             # PlayMarkers (v2)
-        aux_data.extend(_make_aux_block(2, 1, body2))             # HardwarePreferences
-        aux_data.extend(_make_aux_block(1, 1, body1))             # EditingPreferences
-        aux_data.extend(_make_aux_block(4, 2, bytes(table_text_data)))  # TableText
-        if desc_data:
-            aux_data.extend(_make_aux_block(5, 2, bytes(desc_data)))    # Songs
-        aux_data.extend(bytes([0x00, 0x00, 0x00, 0x00, 0x00]))   # END marker
-
-        # Place aux chain at end of file. C64 address of aux_chain_start
-        # = LOAD_BASE + (file offset of aux start).
-        # IMPORTANT: use the SF2 file's PRG load address ($0D7E) — read
-        # back from the first two bytes of self.output — NOT the SID's
-        # PSID load address (often $0000), which is what self.load_address
-        # holds. Using PSID load address would compute aux_pointer_offset
-        # at file offset 4093 instead of $027F, leaving the actual slot
-        # at $0FFB-as-c64 still zero and SF2II skipping the chain.
-        sf2_prg_load = self.output[0] | (self.output[1] << 8)
-        aux_chain_offset_in_file = len(self.output)   # before extension
-        aux_chain_c64_addr = sf2_prg_load + (aux_chain_offset_in_file - 2)
-
-        # Write aux pointer at C64 $0FFB (file offset $0FFB - prg_load + 2)
-        aux_pointer_offset = 0x0FFB - sf2_prg_load + 2
-        if 0 <= aux_pointer_offset and aux_pointer_offset + 2 <= len(self.output):
-            self.output[aux_pointer_offset]     = aux_chain_c64_addr & 0xFF
-            self.output[aux_pointer_offset + 1] = (aux_chain_c64_addr >> 8) & 0xFF
-            self.output.extend(aux_data)
-            logger.info(f"    Aux chain @ ${aux_chain_c64_addr:04X} "
-                        f"({len(aux_data)}B, [3,2,1,4,5,END] bundled order), "
-                        f"pointer@$0FFB written at file offset ${aux_pointer_offset:04X}")
+        aux_addr = sf2_aux_bodies.inject_aux_chain_into_sf2(
+            self.output, aux_chain)
+        if aux_addr is not None:
+            logger.info(f"    Aux chain @ ${aux_addr:04X} "
+                        f"({len(aux_chain)}B, [3,2,1,4,5,END] bundled order)")
             if hasattr(self.data, 'header') and self.data.header:
-                logger.info(f"    Written metadata: {self.data.header.name} by {self.data.header.author}")
+                logger.info(f"    Written metadata: {self.data.header.name} "
+                            f"by {self.data.header.author}")
             logger.info(f"    Written {len(instrument_names)} instrument names")
             logger.info(f"    Written {len(command_names)} command names")
         else:

@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.50 (2026-05-25) — 1217 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
-**Latest chapter:** [v3.5.50 — minimal_embed_builder extracted (Phase 15)](#v3550--minimal_embed_builder-extracted-phase-15-2026-05-25)
+**Current version:** v3.5.51 (2026-05-25) — 1229 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
+**Latest chapter:** [v3.5.51 — aux chain assembly + injection (Phase 16)](#v3551--aux-chain-assembly--injection-phase-16-2026-05-25)
 
 ---
 
@@ -529,6 +529,61 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.51 — aux chain assembly + injection (Phase 16) (2026-05-25)
+
+Phase 16 finishes the auxiliary-data refactor that v3.5.39 started.
+Back then, the two non-trivial body builders (`build_table_text_data`,
+`build_description_data`) moved out to `sidm2/sf2_aux_bodies.py`, but
+the chain framing and `$0FFB` pointer injection stayed inside
+`_inject_auxiliary_data` because they were tightly entangled with
+`self.output`.
+
+That was two reasons to make the function not-quite-clean:
+
+1. The TLV chain assembly (the bundled `[3, 2, 1, 4, 5, END]`
+   ordering, the per-block `[u8 id][u16 LE param][u16 LE length]`
+   framing, the hardcoded reference-bundled bodies for id=1/2/3)
+   was still spelled out inline.
+2. The `$0FFB` pointer injection — read by SF2II's
+   `ParseAuxilaryData` at the constant `driver_info.h:
+   AuxilaryDataPointerAddress` — used `self.output[0:2]` to get the
+   PRG load address but otherwise was a pure transformation on a
+   bytearray + the chain.
+
+Phase 16 lifts both. The chain assembly becomes
+`assemble_aux_chain(table_text_body, desc_body) → bytes` with the
+ordering and framing handled internally and minimal bodies for
+id=1/2/3 stored as module-level constants. The pointer injection
+becomes `inject_aux_chain_into_sf2(output, aux_chain) → Optional[int]`
+returning the placement address on success or None when the pointer
+slot doesn't fit within the buffer (in which case the buffer is
+NOT extended, so the caller's idempotency contract holds).
+
+`_inject_auxiliary_data` becomes a 47-line orchestrator: skip-aux
+gate at top, path-dependent name extraction, table ID lookup,
+then 4 lines of delegation.
+
+The 12 new focused unit tests are useful here because aux-chain
+framing is the kind of thing that fails silently — SF2II will load
+a chain with wrong TLV lengths but the contents will be garbage,
+and there's no good way to test that end-to-end short of opening
+the file in SF2II's editor. The dedicated unit tests pin the bytes
+precisely: chain starts with block 3, ends with 5 zeros, includes
+all 5 blocks (or omits id=5 when desc is None), block-3 body is
+`01 00`, the table_text body lands inside the id=4 block at the
+expected offset, the `$0FFB` pointer write happens at the right file
+offset given the PRG load address.
+
+`sf2_writer.py`: 2010 → 1954 lines (-56) — **under 2000 for the
+first time**. Cumulative since v3.5.27: **5832 → 1954 lines (-66.5%)**.
+1229 tests pass (+12). All 14 C2 reference files byte-identical.
+
+**Phase 16 is the second "completion" release**: Phase 14 closed the
+Block-3 table-operations trinity (lookup/emit/patch); Phase 16 closes
+the aux-chain operations trinity (bodies, assembly, injection). Both
+times, an existing module gained a third member that completed its
+conceptual surface without spawning a new file.
 
 ### v3.5.50 — minimal_embed_builder extracted (Phase 15) (2026-05-25)
 
