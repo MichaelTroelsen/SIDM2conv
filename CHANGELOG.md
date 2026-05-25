@@ -25,6 +25,78 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.46] - 2026-05-25
+
+### Refactored — _build_np21_sf2_edit_area (761 lines) extracted
+
+The single largest extraction of the decomposition project. AST
+analysis revealed the 761-line method only had **9 `self.*`
+references** — all reads of `self.data.header` (3 distinct fields:
+copyright, init_address, play_address). Otherwise purely a function
+of `(c64_data, sid_la)`.
+
+New module: **`sidm2/np21_edit_area_builder.py`** (778 lines).
+
+Public API:
+  - `build_np21_sf2_edit_area(c64_data, sid_la, *,
+                                psid_copyright='',
+                                init_addr=None,
+                                play_addr=None)
+       → Tuple[dict, bytes, list[int], list[Tuple], list[int]]`
+
+The function:
+  1. Extracts 3 voice byte-streams from ch_seq_ptr (default
+     $0A1C/$0A1F or relocated via Wizax-A / Zetrex-YP / autodetect).
+  2. Segments each voice's stream at instrument-prefix boundaries
+     into per-voice "patterns" (Stage 2 multi-pattern segmentation).
+  3. Converts NP21 byte format to SF2 packed-sequence (close-to-
+     identity except note clamping at 0x6F).
+  4. Builds per-voice orderlists referencing the segmented patterns.
+  5. Emits Driver-11-format Instruments / Wave / Pulse / Filter
+     tables (Stages 3-4), using per-variant detectors when applicable
+     (Stinsen / Beast / Angular).
+  6. Computes the C64-memory layout of the SF2 edit area immediately
+     past the NP21 binary.
+
+If no in-range ch_seq_ptr is found (Vibrants V20, autodetect falls
+through), emits a "safe placeholder" 3-track 1-sequence editor view
+so SF2II's ComponentTracks constructor doesn't OOB-crash.
+
+SF2Writer keeps a 22-line wrapper that pulls the 3 header fields
+from `self.data.header` and forwards.
+
+### Test coverage
+
+No NEW focused unit tests for this one. Reasoning:
+  - The C2 reference suite (14 files) IS the regression guard —
+    every Laxity-path SF2 conversion routes through this function.
+  - The full audio + structure of every byte-identical regression
+    file is verified at every commit.
+  - Adding equivalent focused unit tests would require synthetic
+    NP21 binaries that exercise the same surface as the real ones,
+    which is a months-long fixture-building effort.
+  - The extraction is purely structural (zero behavior change), so
+    if any byte changes, C2 catches it.
+
+### Stats
+- sf2_writer.py: 3896 → 3158 lines (**-738**)
+  *Largest single-release shrink in the entire decomposition*
+- Cumulative since v3.5.27: 5832 → 3158 lines (-46%)
+- 1202 tests pass (unchanged — refactor only, zero behavior change)
+- 12 extracted modules total 3227 lines with 150 focused unit tests
+- All 14 C2 reference files byte-identical
+
+### Note
+
+`_inject_laxity_raw_np21` still ~940 lines and lives in `sf2_writer.py`.
+That function consumes the edit-area builder's output and orchestrates
+shadow-buffer pre-fill + ch_seq_ptr patching + translator emission +
+audio gate. It's tightly entangled with `self.output`, `self._np21_off`,
+`self._ch_seq_patches`, and the audio gate's shared state. A future
+refactor would need a class-shaped extraction.
+
+---
+
 ## [3.5.45] - 2026-05-25
 
 ### Refactored — 5 more inject methods adopt driver11_table_helpers

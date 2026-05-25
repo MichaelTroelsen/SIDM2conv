@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.45 (2026-05-25) — 1202 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
-**Latest chapter:** [v3.5.45 — Phase 10 helpers fully adopted](#v3545--phase-10-helpers-fully-adopted-2026-05-25)
+**Current version:** v3.5.46 (2026-05-25) — 1202 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
+**Latest chapter:** [v3.5.46 — np21_edit_area_builder extracted (Phase 11)](#v3546--np21_edit_area_builder-extracted-phase-11-2026-05-25)
 
 ---
 
@@ -529,6 +529,90 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.46 — np21_edit_area_builder extracted (Phase 11) (2026-05-25)
+
+**The biggest single extraction of the decomposition project.** A
+761-line method, lifted out in one release, with zero behavior change
+and zero new tests required.
+
+The setup: after 10 phases of pulling small-to-medium concerns out of
+`sf2_writer.py`, the remaining biggest method was
+`_build_np21_sf2_edit_area`. At 761 lines it looked like an unmovable
+monolith — the function that builds the entire SF2 edit-data area for
+the raw-NP21 path, encoding 6 stages of work (ch_seq_ptr extraction,
+pattern segmentation, byte-format conversion, orderlist building,
+per-variant table emission, address layout).
+
+The surprise: an AST scan looking for `self.*` references in the
+function counted **9 total references**, all reads of
+`self.data.header` (3 distinct fields: `copyright`, `init_address`,
+`play_address`). No writes, no calls to other methods, no peeks at
+`self.output`. The method was already 99.9% a pure function — it
+just hadn't been parameterised.
+
+Phase 11 extraction shape: pass the 3 header fields as keyword
+arguments. The function becomes:
+
+```python
+def build_np21_sf2_edit_area(
+    c64_data: bytes,
+    sid_la: int,
+    *,
+    psid_copyright: str = '',
+    init_addr: Optional[int] = None,
+    play_addr: Optional[int] = None,
+) -> Tuple[dict, bytes, List[int], List[Tuple], List[int]]:
+```
+
+`sf2_writer.py:_build_np21_sf2_edit_area` becomes a 22-line wrapper
+that pulls the 3 header fields and forwards.
+
+The extraction itself was mechanical but had two practical hurdles:
+
+1. **761 lines is too big to copy-paste safely** with the Edit tool.
+   The script-based approach: read the function via AST, transform the
+   3 `self.data.header.*` references into parameter accesses, dedent
+   from class-method indent (8 spaces) to module-function indent (4
+   spaces), write to a new file. The script ran on first try; the only
+   complication was getting the `init_addr` parameter naming to not
+   collide with a local variable of the same name (renamed local to
+   `_init`).
+
+2. **No focused unit tests this time.** The function builds 6 stages
+   of inter-dependent state — synthesizing a test fixture would mean
+   either crafting a synthetic NP21 binary (weeks of work to exercise
+   the per-variant detectors) or pulling in real Stinsen-class
+   binaries (which then makes the tests fragile to changes in
+   external detector modules). The decision: rely on the C2 reference
+   suite as the regression guard. Every Laxity SF2 conversion routes
+   through this function; the 14 byte-identical reference files
+   verify every code path that matters. Adding equivalent focused
+   tests would be a months-long fixture-building project for a
+   purely structural refactor with zero behavior change.
+
+`sf2_writer.py`: 3896 → 3158 lines. **A single release shrank the
+file by 738 lines.** Cumulative since v3.5.27:
+**5832 → 3158 lines (-46%)**. 1202 tests still pass. All 14 C2
+reference files byte-identical. Twelve extracted modules now total
+3227 lines.
+
+**What remains in `sf2_writer.py`** is harder: the 940-line
+`_inject_laxity_raw_np21` (consumes the edit-area builder's output
+and orchestrates shadow-buffer pre-fill + ch_seq_ptr patching +
+translator emission + audio gate), the 463-line
+`_inject_laxity_music_data`, the 243-line `_inject_instruments`, and
+the 166-line `write()` orchestrator. Those are entangled with
+`self.output` mutation and inter-method shared state — they'd need
+class-shaped refactors with proper test fixtures, not the
+pure-function lift that worked here.
+
+**The Phase 11 lesson**: the AST `self.*` count is the leading
+indicator of refactor feasibility. A 761-line function with 9
+references — all reads of the same dataclass field — is genuinely
+0.9% bound to the writer's state. The 940-line `_inject_laxity_raw_np21`,
+by contrast, has 5 `self.*` writes and dozens of reads scattered
+through 940 lines. Function size ≠ extraction risk.
 
 ### v3.5.45 — Phase 10 helpers fully adopted (2026-05-25)
 
