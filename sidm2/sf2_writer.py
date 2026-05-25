@@ -30,6 +30,7 @@ from . import universal_211_workaround
 from . import sf2_diagnostics
 from . import low_load_layout
 from . import sf2_aux_bodies
+from . import sf2_parser
 
 logger = logging.getLogger(__name__)
 
@@ -272,148 +273,30 @@ class SF2Writer:
         return None
 
     def _parse_sf2_header(self) -> bool:
-        """Parse the SF2 driver header to find data locations"""
-        if len(self.output) < 4:
+        """v3.5.40 wrapper around sidm2.sf2_parser.parse_sf2_blocks.
+
+        Returns True on success (load address found + magic valid),
+        False otherwise. Populates self.load_address and
+        self.driver_info as a side effect (matching the original
+        method's contract).
+        """
+        load_addr = sf2_parser.parse_sf2_blocks(self.output, self.driver_info)
+        if load_addr is None:
             return False
-
-        self.load_address = struct.unpack('<H', self.output[0:2])[0]
-
-        file_id = struct.unpack('<H', self.output[2:4])[0]
-        if file_id != self.SF2_FILE_ID:
-            logger.warning(f" File ID {file_id:04X} != expected {self.SF2_FILE_ID:04X}")
-            return False
-
-        logger.debug(f"Parsing SF2 header (load address: ${self.load_address:04X})")
-
-        offset = 4
-        while offset < len(self.output) - 2:
-            block_id = self.output[offset]
-            if block_id == self.BLOCK_END:
-                break
-
-            block_size = self.output[offset + 1]
-            block_data = self.output[offset + 2:offset + 2 + block_size]
-
-            if block_id == self.BLOCK_DESCRIPTOR:
-                self._parse_descriptor_block(block_data)
-            elif block_id == self.BLOCK_MUSIC_DATA:
-                self._parse_music_data_block(block_data)
-            elif block_id == self.BLOCK_DRIVER_TABLES:
-                self._parse_tables_block(block_data)
-
-            offset += 2 + block_size
-
+        self.load_address = load_addr
         return True
 
     def _parse_descriptor_block(self, data: bytes) -> None:
-        """Parse descriptor block"""
-        if len(data) < 3:
-            return
-
-        self.driver_info.driver_type = data[0]
-        self.driver_info.driver_size = struct.unpack('<H', data[1:3])[0]
-
-        name_end = 3
-        while name_end < len(data) and data[name_end] != 0:
-            name_end += 1
-
-        self.driver_info.driver_name = data[3:name_end].decode('latin-1', errors='replace')
-        logger.debug(f"  Driver: {self.driver_info.driver_name}")
+        """v3.5.40 wrapper — see sidm2.sf2_parser.parse_descriptor_block."""
+        sf2_parser.parse_descriptor_block(data, self.driver_info)
 
     def _parse_music_data_block(self, data: bytes) -> None:
-        """Parse music data block to find sequence/orderlist locations"""
-        if len(data) < 18:
-            return
-
-        idx = 0
-        self.driver_info.track_count = data[idx]
-        idx += 1
-
-        self.driver_info.orderlist_ptrs_lo = struct.unpack('<H', data[idx:idx+2])[0]
-        idx += 2
-        self.driver_info.orderlist_ptrs_hi = struct.unpack('<H', data[idx:idx+2])[0]
-        idx += 2
-
-        self.driver_info.sequence_count = data[idx]
-        idx += 1
-
-        self.driver_info.sequence_ptrs_lo = struct.unpack('<H', data[idx:idx+2])[0]
-        idx += 2
-        self.driver_info.sequence_ptrs_hi = struct.unpack('<H', data[idx:idx+2])[0]
-        idx += 2
-
-        self.driver_info.orderlist_size = struct.unpack('<H', data[idx:idx+2])[0]
-        idx += 2
-        self.driver_info.orderlist_start = struct.unpack('<H', data[idx:idx+2])[0]
-        idx += 2
-
-        self.driver_info.sequence_size = struct.unpack('<H', data[idx:idx+2])[0]
-        idx += 2
-        self.driver_info.sequence_start = struct.unpack('<H', data[idx:idx+2])[0]
-
-        logger.debug(f"  Tracks: {self.driver_info.track_count}")
-        logger.debug(f"  Sequences: {self.driver_info.sequence_count}")
-        logger.debug(f"  Sequence start: ${self.driver_info.sequence_start:04X}")
-        logger.debug(f"  Orderlist start: ${self.driver_info.orderlist_start:04X}")
+        """v3.5.40 wrapper — see sidm2.sf2_parser.parse_music_data_block."""
+        sf2_parser.parse_music_data_block(data, self.driver_info)
 
     def _parse_tables_block(self, data: bytes) -> None:
-        """Parse table definitions block to find table addresses"""
-        idx = 0
-
-        while idx < len(data):
-            if idx >= len(data):
-                break
-
-            table_type = data[idx]
-            if table_type == 0xFF:
-                break
-
-            if idx + 3 > len(data):
-                break
-
-            table_id = data[idx + 1]
-            text_field_size = data[idx + 2]
-
-            name_start = idx + 3
-            name_end = name_start
-            while name_end < len(data) and data[name_end] != 0:
-                name_end += 1
-            name = data[name_start:name_end].decode('latin-1', errors='replace')
-
-            pos = name_end + 1
-            if pos + 12 <= len(data):
-                addr = struct.unpack('<H', data[pos+5:pos+7])[0]
-                columns = struct.unpack('<H', data[pos+7:pos+9])[0]
-                rows = struct.unpack('<H', data[pos+9:pos+11])[0]
-
-                table_info = {
-                    'type': table_type,
-                    'id': table_id,
-                    'addr': addr,
-                    'columns': columns,
-                    'rows': rows,
-                    'name': name
-                }
-
-                if table_type == 0x80:
-                    self.driver_info.table_addresses['Instruments'] = table_info
-                    logger.info(f"    Instruments table at ${addr:04X} ({columns}×{rows}) [ID={table_id}]")
-                elif table_type == 0x81:
-                    self.driver_info.table_addresses['Commands'] = table_info
-                    logger.info(f"    Commands table at ${addr:04X} ({columns}×{rows}) [ID={table_id}]")
-                else:
-                    if name:
-                        self.driver_info.table_addresses[name] = table_info
-                        first_char = name[0] if name else ''
-                        if first_char in ['W', 'P', 'F', 'A', 'T']:
-                            key_map = {'W': 'Wave', 'P': 'Pulse', 'F': 'Filter', 'A': 'Arp', 'T': 'Tempo'}
-                            mapped_name = key_map.get(first_char, first_char)
-                            self.driver_info.table_addresses[mapped_name] = table_info
-                            logger.info(f"    {mapped_name} table (\"{name}\") at ${addr:04X} ({columns}×{rows}) [type=${table_type:02X}, ID={table_id}]")
-
-                idx = pos + 12
-            else:
-                break
+        """v3.5.40 wrapper — see sidm2.sf2_parser.parse_tables_block."""
+        sf2_parser.parse_tables_block(data, self.driver_info)
 
     def _addr_to_offset(self, addr: int) -> int:
         """Convert C64 address to file offset"""

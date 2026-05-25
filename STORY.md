@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.39 (2026-05-25) — 1123 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
-**Latest chapter:** [v3.5.39 — aux-body builders extracted (Phase 5)](#v3539--aux-body-builders-extracted-phase-5-2026-05-25)
+**Current version:** v3.5.40 (2026-05-25) — 1141 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
+**Latest chapter:** [v3.5.40 — SF2 block-parsing extracted (Phase 6)](#v3540--sf2-block-parsing-extracted-phase-6-2026-05-25)
 
 ---
 
@@ -529,6 +529,64 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.40 — SF2 block-parsing extracted (Phase 6) (2026-05-25)
+
+SF2 files are a TLV block chain terminated by `0xFF`. To convert a
+template-style SF2 (the "Driver 11 Test - Arpeggio.sf2" reference,
+say, or another SIDM2-produced SF2 being reopened), the converter
+needs to parse the existing block chain to learn the driver name,
+the music-data layout, and the table addresses for instruments /
+commands / wave / pulse / filter / arp / tempo. That parsing logic
+lived as four methods inside `sf2_writer.py` — about 191 lines that
+were structurally read-only against the SF2 file (reads
+`self.output`, writes `self.driver_info`) but tangled with the
+writer's class because they used `self.SF2_FILE_ID` / `self.BLOCK_*`
+constants and `self.driver_info.*` field accesses.
+
+Phase 6 lifts them into `sidm2/sf2_parser.py` (222 lines):
+
+  - `parse_sf2_blocks(sf2_bytes, driver_info) → Optional[int]`
+    Top-level walk. Returns load address on success, `None` on
+    invalid magic or empty file.
+  - `parse_descriptor_block(data, driver_info)` — Block 1
+  - `parse_music_data_block(data, driver_info)` — Block 5
+  - `parse_tables_block(data, driver_info)` — Block 3
+
+All four are best-effort: malformed bodies silently skip rather than
+raise. This is intentional — SF2 files in the wild may have garbage
+in unreachable bytes, and the parser shouldn't refuse to load just
+because some `text_field_size` byte looks wrong.
+
+The format constants now live at module level:
+
+```python
+SF2_FILE_ID = 0x1337
+BLOCK_DESCRIPTOR = 1
+BLOCK_DRIVER_TABLES = 3
+BLOCK_MUSIC_DATA = 5
+BLOCK_END = 0xFF
+```
+
+These pin SF2II's parser contract — any drift would break F10-load.
+A dedicated test (`TestConstants.test_constants_match_sf2ii`) is now
+the canary.
+
+SF2Writer keeps thin wrapper methods preserving the original
+`True/False` signatures for backwards-compat with the 5 legacy
+tests in `pyscript/test_sf2_writer.py`.
+
+18 new focused unit tests in `pyscript/test_sf2_parser.py` exercise
+the walk dispatch, terminator handling (a ghost block past `0xFF`
+must NOT be parsed), first-letter aliasing for all 5 letter tables
+(W → Wave, P → Pulse, F → Filter, A → Arp, T → Tempo), and the
+defaults-preserved-on-undersized-body invariant.
+
+`sf2_writer.py`: 4214 → 4097 lines. Cumulative since v3.5.27:
+**5832 → 4097 lines (-30%)** — we cracked the 4000-line floor.
+1141 tests pass (+18). All 14 C2 reference files byte-identical;
+legacy parser tests still pass via wrappers. Seven extracted modules
+now total 1990 lines with 89 focused unit tests.
 
 ### v3.5.39 — aux-body builders extracted (Phase 5) (2026-05-25)
 

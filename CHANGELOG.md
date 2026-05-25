@@ -25,6 +25,85 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.40] - 2026-05-25
+
+### Refactored — SF2 block-parsing extracted to its own module
+
+Continuing the sf2_writer.py decomposition (Phase 6). The 4-method
+SF2 block-parse cluster (`_parse_sf2_header`, `_parse_descriptor_block`,
+`_parse_music_data_block`, `_parse_tables_block`, ~191 lines combined)
+lifted into a new module.
+
+New module: **`sidm2/sf2_parser.py`** (222 lines). Public API:
+
+  - `parse_sf2_blocks(sf2_bytes, driver_info) → Optional[int]`
+    Top-level walk. Returns the PRG load address on success
+    (magic 0x1337 valid), None on failure. Mutates driver_info.
+
+  - `parse_descriptor_block(data, driver_info) → None`
+    Block 1 — driver type + size + NUL-terminated name.
+
+  - `parse_music_data_block(data, driver_info) → None`
+    Block 5 — track count + orderlist/sequence pointers/sizes/addrs.
+
+  - `parse_tables_block(data, driver_info) → None`
+    Block 3 — Instruments + Commands + named tables with first-letter
+    aliasing (W→Wave, P→Pulse, F→Filter, A→Arp, T→Tempo).
+
+SF2II format constants now at module level:
+  - `SF2_FILE_ID = 0x1337`
+  - `BLOCK_DESCRIPTOR = 1`
+  - `BLOCK_DRIVER_TABLES = 3`
+  - `BLOCK_MUSIC_DATA = 5`
+  - `BLOCK_END = 0xFF`
+
+SF2Writer keeps thin wrappers preserving the original `True/False`
+signature of `_parse_sf2_header` and the `data, ` parameter signature
+of the per-block methods for backwards-compat with the 5 legacy
+tests in `test_sf2_writer.py`.
+
+### Added — 18 focused unit tests for sf2_parser
+
+New `pyscript/test_sf2_parser.py`:
+
+  TestParseSf2Blocks (5):
+    - tiny buffer → None
+    - invalid magic → None
+    - reads load address correctly
+    - dispatches to descriptor block
+    - terminator stops the walk (ghost blocks past 0xFF ignored)
+
+  TestParseDescriptorBlock (3):
+    - too-short body silently ignored
+    - extracts type + size + name correctly
+    - name without NUL terminator extends to end of buffer
+
+  TestParseMusicDataBlock (2):
+    - undersized body silently ignored (defaults preserved)
+    - all 9 fields populated from valid 18-byte body
+
+  TestParseTablesBlock (7):
+    - Instruments table (type 0x80)
+    - Commands table (type 0x81)
+    - first-letter aliasing for Wave/Pulse/Filter/Arp/Tempo
+    - multiple tables in one block
+    - terminator stops walk
+    - empty data ignored
+    - Wave alias points at same dict as the original name
+
+  TestConstants (1):
+    - module constants match SF2II format spec
+
+### Stats
+- sf2_writer.py: 4214 → 4097 lines (-117)
+- Cumulative since v3.5.27: 5832 → 4097 lines (-30%)
+- 1123 → 1141 tests pass (+18)
+- 7 extracted modules total 1990 lines with 89 focused unit tests
+- All 14 C2 reference files byte-identical; legacy parser tests
+  still pass via wrappers
+
+---
+
 ## [3.5.39] - 2026-05-25
 
 ### Refactored — SF2 auxiliary-body builders extracted
