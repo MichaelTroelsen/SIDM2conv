@@ -25,6 +25,49 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.45] - 2026-05-25
+
+### Refactored — 5 more inject methods adopt driver11_table_helpers
+
+Compound payoff from v3.5.44. The previously-extracted helpers
+`find_table` and `write_column_major` are now used by all 6 of the
+remaining `_inject_*_table` candidates:
+
+- `_inject_pulse_table` — cleaned up the v3.5.44 leftover legacy loop
+  (was kept as a "kept for backward-compat" comment; now removed)
+- `_inject_init_table` — find_table adoption (-9 lines)
+- `_inject_tempo_table` — find_table adoption (-7 lines)
+- `_inject_hr_table` — find_table + write_column_major; replaces
+  two manual column loops with one helper call (-15 lines)
+- `_inject_arp_table` — find_table adoption (-9 lines)
+
+(Plus `_inject_filter_table` from v3.5.44, total 6 adopters.)
+
+### Left untouched
+
+`_inject_wave_table` uses an exact-key lookup (`'Wave' not in
+driver_info.table_addresses`) that's already 2 lines — adopting
+`find_table` there would add ~1 line, no payoff.
+
+### Stats
+- sf2_writer.py: 3941 → 3896 lines (-45)
+- Cumulative since v3.5.27: 5832 → 3896 lines (-33%)
+- 1202 tests pass (unchanged — pure refactor, no new tests needed
+  because v3.5.44 already pinned both helpers)
+- 11 extracted modules total 2449 lines with 150 focused unit tests
+  (counts unchanged from v3.5.44 — the helpers are reused, not extended)
+- All 14 C2 reference files byte-identical
+
+### Lesson
+
+The Phase 10 helpers proved their value: from 2 adopters in v3.5.44
+to 6 adopters in v3.5.45, the cumulative line save is **58 (13 + 45)**
+with **zero behavior change** and **zero new tests required**. This
+is the compounding effect of a horizontal helper — every additional
+adoption is essentially free.
+
+---
+
 ## [3.5.44] - 2026-05-25
 
 ### Refactored — shared helpers for driver11 _inject_*_table methods

@@ -801,37 +801,24 @@ class SF2Writer:
         logger.info(f"    Written {len(wave_data)} wave table entries (column-major: waveforms first, then notes)")
 
     def _inject_hr_table(self) -> None:
-        """Inject HR (Hard Restart) table data"""
+        """Inject HR (Hard Restart) table data."""
         logger.info("  Injecting HR table...")
 
-        hr_table = None
-        for name, info in self.driver_info.table_addresses.items():
-            if 'HR' in name:
-                hr_table = info
-                break
-
-        if not hr_table:
+        result = driver11_table_helpers.find_table(self.driver_info, 'HR')
+        if result is None:
             logger.debug("    Warning: No HR table found")
             return
-
-        hr_addr = hr_table['addr']
-        rows = hr_table['rows']
+        hr_addr, _columns, rows = result
 
         # Use extracted HR table or default
         hr_entries = getattr(self.data, 'hr_table', None)
         if not hr_entries:
             hr_entries = [(0x0F, 0x00)]  # Default fallback
 
-        base_offset = self._addr_to_offset(hr_addr)
-
-        for i, (frames, wave) in enumerate(hr_entries):
-            if i < rows and base_offset + i < len(self.output):
-                self.output[base_offset + i] = frames
-
-        col1_offset = base_offset + rows
-        for i, (frames, wave) in enumerate(hr_entries):
-            if i < rows and col1_offset + i < len(self.output):
-                self.output[col1_offset + i] = wave
+        # HR table is 2-column (frames, wave). Each entry is a 2-tuple.
+        driver11_table_helpers.write_column_major(
+            self.output, self._addr_to_offset(hr_addr),
+            hr_entries, columns=2, rows=rows)
 
         logger.info(f"    Written {len(hr_entries)} HR table entries (frames={hr_entries[0][0]})")
 
@@ -839,23 +826,12 @@ class SF2Writer:
         """Inject pulse table data extracted from Laxity SID"""
         logger.info("  Injecting Pulse table...")
 
-        pulse_table = None
-        for name, info in self.driver_info.table_addresses.items():
-            if 'Pulse' in name or name == 'P':
-                pulse_table = info
-                break
-
-        # v3.5.44: kept the old per-method lookup loop for backward compat
-        # with the existing local var (pulse_table). The lookup result is
-        # equivalent to driver11_table_helpers.find_table(self.driver_info,
-        # 'Pulse', 'P').
-        if not pulse_table:
+        result = driver11_table_helpers.find_table(
+            self.driver_info, 'Pulse', 'P')
+        if result is None:
             logger.debug("    Warning: No Pulse table found in driver")
             return
-
-        pulse_addr = pulse_table['addr']
-        columns = pulse_table['columns']
-        rows = pulse_table['rows']
+        pulse_addr, columns, rows = result
 
         laxity_tables = extract_all_laxity_tables(self.data.c64_data, self.data.load_address)
         pulse_entries = laxity_tables.get('pulse_table', [])
@@ -916,22 +892,14 @@ class SF2Writer:
         logger.info(f"    Written {len(filter_entries)} Filter table entries (padded from {len(laxity_tables.get('filter_table', []))})")
 
     def _inject_init_table(self) -> None:
-        """Inject Init table data"""
+        """Inject Init table data."""
         logger.info("  Injecting Init table...")
 
-        init_table = None
-        for name, info in self.driver_info.table_addresses.items():
-            if 'Init' in name:
-                init_table = info
-                break
-
-        if not init_table:
+        result = driver11_table_helpers.find_table(self.driver_info, 'Init')
+        if result is None:
             logger.debug("    Warning: No Init table found in driver")
             return
-
-        init_addr = init_table['addr']
-        columns = init_table['columns']
-        rows = init_table['rows']
+        init_addr, columns, rows = result
 
         # Use extracted init table or build from defaults
         init_entries = getattr(self.data, 'init_table', None)
@@ -950,21 +918,15 @@ class SF2Writer:
         logger.info(f"    Written {len(init_entries)} Init table entries (volume={init_volume})")
 
     def _inject_tempo_table(self) -> None:
-        """Inject Tempo table data"""
+        """Inject Tempo table data."""
         logger.info("  Injecting Tempo table...")
 
-        tempo_table = None
-        for name, info in self.driver_info.table_addresses.items():
-            if 'Tempo' in name or name == 'T':
-                tempo_table = info
-                break
-
-        if not tempo_table:
+        result = driver11_table_helpers.find_table(
+            self.driver_info, 'Tempo', 'T')
+        if result is None:
             logger.debug("    Warning: No Tempo table found in driver")
             return
-
-        tempo_addr = tempo_table['addr']
-        rows = tempo_table['rows']
+        tempo_addr, _columns, rows = result
 
         tempo = self.data.tempo if hasattr(self.data, 'tempo') else 6
         multi_speed = getattr(self.data, 'multi_speed', 1)
@@ -988,22 +950,15 @@ class SF2Writer:
         logger.info(f"    Written tempo: {tempo}")
 
     def _inject_arp_table(self) -> None:
-        """Inject Arpeggio table data"""
+        """Inject Arpeggio table data."""
         logger.info("  Injecting Arp table...")
 
-        arp_table = None
-        for name, info in self.driver_info.table_addresses.items():
-            if 'Arp' in name or name == 'A':
-                arp_table = info
-                break
-
-        if not arp_table:
+        result = driver11_table_helpers.find_table(
+            self.driver_info, 'Arp', 'A')
+        if result is None:
             logger.debug("    Warning: No Arp table found in driver")
             return
-
-        arp_addr = arp_table['addr']
-        columns = arp_table['columns']
-        rows = arp_table['rows']
+        arp_addr, columns, rows = result
 
         # Use extracted arpeggio table if available, otherwise try to extract
         if hasattr(self.data, 'arp_table') and self.data.arp_table:

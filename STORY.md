@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.44 (2026-05-25) — 1202 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
-**Latest chapter:** [v3.5.44 — driver11 table helpers shared (Phase 10)](#v3544--driver11-table-helpers-shared-phase-10-2026-05-25)
+**Current version:** v3.5.45 (2026-05-25) — 1202 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
+**Latest chapter:** [v3.5.45 — Phase 10 helpers fully adopted](#v3545--phase-10-helpers-fully-adopted-2026-05-25)
 
 ---
 
@@ -529,6 +529,51 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.45 — Phase 10 helpers fully adopted (2026-05-25)
+
+A short follow-up release that demonstrates the compounding value
+of horizontal helpers. v3.5.44 introduced `find_table` and
+`write_column_major` and refactored two methods (Filter, Pulse) to
+use them — that saved 13 lines.
+
+v3.5.45 takes the remaining four candidates (`_inject_init_table`,
+`_inject_tempo_table`, `_inject_hr_table`, `_inject_arp_table`)
+plus a cleanup pass on the v3.5.44 Pulse adopter (the previous
+release had left the old per-method lookup loop in place as a
+"kept for backward-compat" comment — now removed cleanly).
+
+Each adoption shrinks the inject method's table-lookup block from
+~8 lines to 4 lines. The biggest single win is `_inject_hr_table`,
+which previously had two MANUAL column loops (one writing
+`frames` to col 0, one writing `wave` to col 1). The new code is
+one `write_column_major` call.
+
+The 7th candidate, `_inject_wave_table`, was left alone — it uses
+an exact-key dict lookup (`'Wave' not in driver_info.table_addresses`)
+that's already 2 lines. Adopting `find_table` would add a line, not
+remove one. The pattern only pays off where the legacy code did a
+substring-match-loop.
+
+**The compounding effect**: from 2 adopters in v3.5.44 to 6 in
+v3.5.45, the cumulative line save is 58 (13 + 45) with zero behavior
+change and zero new tests required. Each additional adoption is
+essentially free — the helpers were already byte-tested in v3.5.44.
+
+`sf2_writer.py`: 3941 → 3896 lines. Biggest single-release shrink
+since Phase 4 (`low_load_layout`). Cumulative since v3.5.27:
+**5832 → 3896 lines (-33%)**. 1202 tests still pass. All 14 C2
+reference files byte-identical.
+
+**The Phase 10/10b lesson**: vertical extractions (an algorithm to
+its own module) and horizontal helpers (shared utilities for
+in-place patterns) have different value curves. A vertical
+extraction pays its full price up-front (you write the module,
+its tests, and update the call site). A horizontal helper pays
+upfront for the helper + tests but gets dividends with every
+subsequent adoption — and you can ship the helper before you
+adopt everywhere, letting subsequent low-risk adoptions land
+incrementally.
 
 ### v3.5.44 — driver11 table helpers shared (Phase 10) (2026-05-25)
 
