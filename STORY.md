@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.43 (2026-05-25) — 1188 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
-**Latest chapter:** [v3.5.43 — file-finders extracted (Phase 9)](#v3543--file-finders-extracted-phase-9-2026-05-25)
+**Current version:** v3.5.44 (2026-05-25) — 1202 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
+**Latest chapter:** [v3.5.44 — driver11 table helpers shared (Phase 10)](#v3544--driver11-table-helpers-shared-phase-10-2026-05-25)
 
 ---
 
@@ -529,6 +529,57 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.44 — driver11 table helpers shared (Phase 10) (2026-05-25)
+
+The driver11 template path has ~7 inject methods that all build
+Block 3 column tables from extracted Laxity data — `Pulse`, `Filter`,
+`Wave`, `Arp`, `Tempo`, `Init`, `HR`, plus `Commands`. They share two
+repeated patterns:
+
+1. **Find table by name substring**: walk
+   `driver_info.table_addresses`, return on a `'Filter' in name` or
+   `name == 'F'` match. ~8 lines per method.
+2. **Write column-major**: iterate columns then rows, writing
+   `entries[i][col]` to `base_offset + col * rows + i`, bounds-checking
+   both buffer length and per-entry tuple length. ~7 lines per method.
+
+That's ~15 duplicated lines × 7 methods = ~105 lines of pure pattern
+repetition.
+
+Phase 10 lifts both into `sidm2/driver11_table_helpers.py` (98 lines):
+
+  - `find_table(driver_info, name_substring, short_alias=None)
+       → Optional[(addr, columns, rows)]`
+  - `write_column_major(output, base_offset, entries, columns, rows,
+                        max_columns=4) → None`
+
+In this release, `_inject_filter_table` and `_inject_pulse_table`
+adopt them. The other 5 methods are left for future incremental
+refactors — each adoption is a ~10-line save with no risk because
+the helpers are byte-equivalent to the inline loops they replace,
+and they have dedicated tests.
+
+The 14 tests pin both helpers' contracts precisely. The most
+load-bearing one is `test_short_entry_tuple_skips_columns` — it
+documents that if a table descriptor declares 6 columns but the
+extracted entries are only 4-tuples, only 4 columns are written
+and cols 4-5 are untouched. That's the silent invariant that lets
+us run the same `write_column_major` against tables with different
+column counts.
+
+`sf2_writer.py`: 3954 → 3941 lines (-13). The win compounds as
+more inject methods adopt the helpers. Cumulative since v3.5.27:
+**5832 → 3941 lines (-32%)**. 1202 tests pass (+14). All 14 C2
+reference files byte-identical. Eleven extracted modules now total
+2449 lines with 150 focused unit tests.
+
+**The Phase 10 lesson**: not every refactor is a vertical
+extraction. Sometimes the win is a horizontal helper that absorbs
+a pattern repeated across multiple in-place methods. Each adoption
+is small (~10 lines), but the cumulative effect across 7 methods
++ the dedicated test coverage of the previously-untested duplicated
+logic makes it a meaningful structural improvement.
 
 ### v3.5.43 — file-finders extracted (Phase 9) (2026-05-25)
 

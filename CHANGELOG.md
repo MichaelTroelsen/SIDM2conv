@@ -25,6 +25,89 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.44] - 2026-05-25
+
+### Refactored — shared helpers for driver11 _inject_*_table methods
+
+Pattern-deduplication for the driver11 template path. ~7 inject
+methods share two repeated patterns:
+
+**Pattern 1: Find table by name substring**
+
+```python
+table = None
+for name, info in self.driver_info.table_addresses.items():
+    if 'Filter' in name or name == 'F':
+        table = info
+        break
+if not table:
+    logger.debug("    Warning: No Filter table found in driver")
+    return
+addr = table['addr']; columns = table['columns']; rows = table['rows']
+```
+
+**Pattern 2: Write tuple-rows column-major into the SF2 buffer**
+
+```python
+for col in range(min(columns, 4)):
+    for i, entry in enumerate(entries):
+        if i < rows:
+            offset = base_offset + (col * rows) + i
+            if offset < len(self.output) and col < len(entry):
+                self.output[offset] = entry[col]
+```
+
+New module: **`sidm2/driver11_table_helpers.py`** (98 lines).
+
+Public API:
+  - `find_table(driver_info, name_substring, short_alias=None)
+       → Optional[Tuple[int, int, int]]`
+    Returns (addr, columns, rows) or None.
+
+  - `write_column_major(output, base_offset, entries, columns, rows,
+                        max_columns=4) → None`
+    Column-major write with bounds-check on both buffer length and
+    per-entry tuple length.
+
+`_inject_filter_table` refactored to use both helpers; `_inject_pulse_table`
+refactored to use write_column_major. Each saves ~10 lines and gains
+focused unit-test coverage for the shared logic.
+
+### Added — 14 focused unit tests for driver11_table_helpers
+
+New `pyscript/test_driver11_table_helpers.py`:
+
+  TestFindTable (7):
+    - substring match
+    - short alias match (e.g. 'F' for Filter)
+    - mixed substring + alias both present
+    - returns None when no match / no addresses / no alias match
+    - empty substring matches all (documented behavior)
+
+  TestWriteColumnMajor (7):
+    - basic 4×3 layout produces expected column-major byte sequence
+    - base_offset respected (bytes before untouched)
+    - columns capped at max_columns parameter (default 4)
+    - entries truncated to `rows` count
+    - short entry tuple (len < columns) skips columns past tuple end
+    - offset past buffer end silently skipped (no exception)
+    - empty entries leaves buffer unchanged
+
+### Stats
+- sf2_writer.py: 3954 → 3941 lines (-13)
+- Cumulative since v3.5.27: 5832 → 3941 lines (-32%)
+- 1188 → 1202 tests pass (+14)
+- 11 extracted modules total 2449 lines with 150 focused unit tests
+- All 14 C2 reference files byte-identical
+
+### Future work
+The two helpers can absorb 5 more `_inject_*_table` methods
+(`_inject_init_table`, `_inject_tempo_table`, `_inject_hr_table`,
+`_inject_arp_table`, `_inject_wave_table`) at minimal risk in
+subsequent phases — each saves ~10 lines.
+
+---
+
 ## [3.5.43] - 2026-05-25
 
 ### Refactored — SF2 template/driver file-finding extracted

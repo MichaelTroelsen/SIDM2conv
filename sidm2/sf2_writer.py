@@ -34,6 +34,7 @@ from . import sf2_parser
 from . import sf2_metadata_trailer
 from . import placeholder_edit_area
 from . import sf2_template_finder
+from . import driver11_table_helpers
 
 logger = logging.getLogger(__name__)
 
@@ -844,6 +845,10 @@ class SF2Writer:
                 pulse_table = info
                 break
 
+        # v3.5.44: kept the old per-method lookup loop for backward compat
+        # with the existing local var (pulse_table). The lookup result is
+        # equivalent to driver11_table_helpers.find_table(self.driver_info,
+        # 'Pulse', 'P').
         if not pulse_table:
             logger.debug("    Warning: No Pulse table found in driver")
             return
@@ -865,39 +870,26 @@ class SF2Writer:
         while len(pulse_entries) < MIN_PULSE_ENTRIES:
             pulse_entries.append(neutral_entry)
 
-        base_offset = self._addr_to_offset(pulse_addr)
-
         # Convert from Laxity format (Y*4 indexing) to SF2 format (direct indexing)
         # Laxity: (val, cnt, dur, next_y) where next_y is pre-multiplied by 4
         # SF2: (val, cnt, dur, next_idx) where next_idx is direct entry number
-        for col in range(min(columns, 4)):
-            for i, entry in enumerate(pulse_entries):
-                if i < rows:
-                    offset = base_offset + (col * rows) + i
-                    if offset < len(self.output) and col < len(entry):
-                        value = entry[col]
-                        # Index already converted during extraction (Y*4 → direct)
-                        self.output[offset] = value
+        # Index already converted during extraction (Y*4 → direct).
+        driver11_table_helpers.write_column_major(
+            self.output, self._addr_to_offset(pulse_addr),
+            pulse_entries, columns, rows)
 
         logger.info(f"    Written {len(pulse_entries)} Pulse table entries (padded from {len(laxity_tables.get('pulse_table', []))})")
 
     def _inject_filter_table(self) -> None:
-        """Inject filter table data extracted from Laxity SID"""
+        """Inject filter table data extracted from Laxity SID."""
         logger.info("  Injecting Filter table...")
 
-        filter_table = None
-        for name, info in self.driver_info.table_addresses.items():
-            if 'Filter' in name or name == 'F':
-                filter_table = info
-                break
-
-        if not filter_table:
+        result = driver11_table_helpers.find_table(
+            self.driver_info, 'Filter', 'F')
+        if result is None:
             logger.debug("    Warning: No Filter table found in driver")
             return
-
-        filter_addr = filter_table['addr']
-        columns = filter_table['columns']
-        rows = filter_table['rows']
+        filter_addr, columns, rows = result
 
         laxity_tables = extract_all_laxity_tables(self.data.c64_data, self.data.load_address)
         laxity_filter_entries = laxity_tables.get('filter_table', [])
@@ -905,26 +897,21 @@ class SF2Writer:
         if not laxity_filter_entries:
             laxity_filter_entries = [(0x40, 0x01, 0x20, 0x00)]
 
-        # Convert Laxity filter format to SF2 filter format
+        # Convert Laxity filter format to SF2 filter format.
         logger.info(f"    Converting {len(laxity_filter_entries)} Laxity filter entries to SF2 format...")
         filter_entries = LaxityConverter.convert_filter_table(laxity_filter_entries)
         logger.info(f"    Converted to {len(filter_entries)} SF2 filter entries")
 
-        # Pad filter table to minimum size to avoid missing entry errors
-        # Neutral entry: 0x00=no filter, 0x00=no modulation, 0x00=instant, 0x00=no chain
+        # Pad to minimum size with neutral entry: no filter, no modulation,
+        # instant, end marker.
         MIN_FILTER_ENTRIES = 16
-        neutral_entry = (0x00, 0x00, 0x00, 0x7F)  # SF2 format with end marker
+        neutral_entry = (0x00, 0x00, 0x00, 0x7F)
         while len(filter_entries) < MIN_FILTER_ENTRIES:
             filter_entries.append(neutral_entry)
 
-        base_offset = self._addr_to_offset(filter_addr)
-
-        for col in range(min(columns, 4)):
-            for i, entry in enumerate(filter_entries):
-                if i < rows:
-                    offset = base_offset + (col * rows) + i
-                    if offset < len(self.output) and col < len(entry):
-                        self.output[offset] = entry[col]
+        driver11_table_helpers.write_column_major(
+            self.output, self._addr_to_offset(filter_addr),
+            filter_entries, columns, rows)
 
         logger.info(f"    Written {len(filter_entries)} Filter table entries (padded from {len(laxity_tables.get('filter_table', []))})")
 
