@@ -25,6 +25,71 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.52] - 2026-05-25
+
+### Refactored — 7 more _inject_*_table methods moved to driver11_section_injectors
+
+Follow-on to Phase 13 (v3.5.48). The 4-method cluster moved then
+(orderlists, sequences, instruments, commands) had the same shape as
+the 7 remaining `_inject_*_table` methods left in `sf2_writer.py`:
+
+  - `_inject_init_table`    (25L)
+  - `_inject_tempo_table`   (31L)
+  - `_inject_hr_table`      (21L)
+  - `_inject_pulse_table`   (33L)
+  - `_inject_filter_table`  (34L)
+  - `_inject_arp_table`     (63L)
+  - `_inject_wave_table`    (79L)
+
+All 7 have the `(output, data, driver_info, load_address) → None`
+shape (after Phase 10/10b adopted `find_table` + `write_column_major`
+helpers across them). Batch-moved in a single scripted pass.
+
+The destination module `driver11_section_injectors.py` grew from
+575 → 873 lines (+298). 11 inject functions now live there:
+
+  inject_orderlists, inject_sequences, inject_instruments,
+  inject_commands, inject_init_table, inject_tempo_table,
+  inject_hr_table, inject_pulse_table, inject_filter_table,
+  inject_arp_table, inject_wave_table
+
+Plus the module-level `_addr_to_offset(addr, load_address)` helper.
+
+### Imports added
+
+Two additional imports needed by the new functions:
+
+  - `driver11_table_helpers` (for `find_table` + `write_column_major`
+    + `update_table_dimensions` adopters; previously imported by
+    the inject methods via `self.` access)
+  - From `sequence_extraction`: `extract_arpeggio_indices`,
+    `find_arpeggio_table_in_memory`, `build_sf2_arp_table` (for
+    `_inject_arp_table`'s pattern extraction)
+
+SF2Writer keeps 7 thin wrappers (~5 lines each) preserving the
+existing call surface.
+
+### Test coverage
+
+No new focused unit tests — pure structural refactor following the
+Phase 13 precedent. The C2 reference suite + the existing
+`test_sf2_writer.py` tests that exercise each inject method via
+`self._inject_<name>()` continue to be the regression guard.
+
+### Stats
+- sf2_writer.py: 1954 → 1703 lines (**-251**) — biggest shrink since Phase 12
+- Cumulative since v3.5.27: 5832 → 1703 lines (-71%)
+- 1229 tests pass (unchanged — pure refactor)
+- 15 extracted modules total 5014 lines with 177 focused unit tests
+- All 14 C2 reference files byte-identical
+
+### Milestone
+
+`sf2_writer.py` is now at **29% of its v3.5.27 size**. Over 4000
+lines have been lifted out into 15 focused modules across 17 phases.
+
+---
+
 ## [3.5.51] - 2026-05-25
 
 ### Refactored — aux chain assembly + $0FFB injection added to sf2_aux_bodies

@@ -53,6 +53,15 @@ from .sequence_extraction import (
     build_sf2_command_table,
 )
 from .instrument_transposition import transpose_instruments
+from . import driver11_table_helpers
+
+# v3.5.52 — the Phase 17-moved _inject_*_table methods call into
+# additional helpers that need module-level imports:
+from .sequence_extraction import (
+    extract_arpeggio_indices,
+    find_arpeggio_table_in_memory,
+    build_sf2_arp_table,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -571,3 +580,302 @@ def inject_orderlists(output: bytearray, data, driver_info, load_address: int) -
         tracks_written += 1
 
     logger.info(f"    Written {tracks_written} orderlists")
+
+
+# ---------------------------------------------------------------------------
+# v3.5.52 Phase 17 additions — 7 more _inject_*_table methods.
+# All follow the same (output, data, driver_info, load_address) shape.
+# ---------------------------------------------------------------------------
+
+def inject_init_table(output: bytearray, data, driver_info, load_address: int) -> None:
+    """Inject Init table data."""
+    logger.info("  Injecting Init table...")
+
+    result = driver11_table_helpers.find_table(driver_info, 'Init')
+    if result is None:
+        logger.debug("    Warning: No Init table found in driver")
+        return
+    init_addr, columns, rows = result
+
+    # Use extracted init table or build from defaults
+    init_entries = getattr(data, 'init_table', None)
+    if not init_entries:
+        # Fallback to building from init_volume
+        init_volume = getattr(data, 'init_volume', 0x0F)
+        init_entries = [0x00, init_volume, 0x00, 0x01, 0x02]
+
+    base_offset = _addr_to_offset(init_addr, load_address)
+
+    for i, val in enumerate(init_entries):
+        if i < rows * columns and base_offset + i < len(output):
+            output[base_offset + i] = val
+
+    init_volume = init_entries[1] if len(init_entries) > 1 else 0x0F
+    logger.info(f"    Written {len(init_entries)} Init table entries (volume={init_volume})")
+
+def inject_tempo_table(output: bytearray, data, driver_info, load_address: int) -> None:
+    """Inject Tempo table data."""
+    logger.info("  Injecting Tempo table...")
+
+    result = driver11_table_helpers.find_table(
+        driver_info, 'Tempo', 'T')
+    if result is None:
+        logger.debug("    Warning: No Tempo table found in driver")
+        return
+    tempo_addr, _columns, rows = result
+
+    tempo = data.tempo if hasattr(data, 'tempo') else 6
+    multi_speed = getattr(data, 'multi_speed', 1)
+
+    # Adjust tempo for multi-speed tunes
+    # Multi-speed tunes call the play routine multiple times per frame
+    # To maintain correct playback speed, we divide tempo by multi-speed factor
+    if multi_speed > 1:
+        adjusted_tempo = max(1, tempo // multi_speed)
+        logger.info(f"    Multi-speed tune detected ({multi_speed}x), adjusting tempo: {tempo} -> {adjusted_tempo}")
+        tempo = adjusted_tempo
+
+    tempo_entries = [tempo, 0x7F]
+
+    base_offset = _addr_to_offset(tempo_addr, load_address)
+
+    for i, val in enumerate(tempo_entries):
+        if i < rows and base_offset + i < len(output):
+            output[base_offset + i] = val
+
+    logger.info(f"    Written tempo: {tempo}")
+
+def inject_hr_table(output: bytearray, data, driver_info, load_address: int) -> None:
+    """Inject HR (Hard Restart) table data."""
+    logger.info("  Injecting HR table...")
+
+    result = driver11_table_helpers.find_table(driver_info, 'HR')
+    if result is None:
+        logger.debug("    Warning: No HR table found")
+        return
+    hr_addr, _columns, rows = result
+
+    # Use extracted HR table or default
+    hr_entries = getattr(data, 'hr_table', None)
+    if not hr_entries:
+        hr_entries = [(0x0F, 0x00)]  # Default fallback
+
+    # HR table is 2-column (frames, wave). Each entry is a 2-tuple.
+    driver11_table_helpers.write_column_major(
+        output, _addr_to_offset(hr_addr, load_address),
+        hr_entries, columns=2, rows=rows)
+
+    logger.info(f"    Written {len(hr_entries)} HR table entries (frames={hr_entries[0][0]})")
+
+def inject_pulse_table(output: bytearray, data, driver_info, load_address: int) -> None:
+    """Inject pulse table data extracted from Laxity SID"""
+    logger.info("  Injecting Pulse table...")
+
+    result = driver11_table_helpers.find_table(
+        driver_info, 'Pulse', 'P')
+    if result is None:
+        logger.debug("    Warning: No Pulse table found in driver")
+        return
+    pulse_addr, columns, rows = result
+
+    laxity_tables = extract_all_laxity_tables(data.c64_data, data.load_address)
+    pulse_entries = laxity_tables.get('pulse_table', [])
+
+    if not pulse_entries:
+        pulse_entries = [(0x08, 0x01, 0x40, 0x00)]
+
+    # Pad pulse table to minimum size to avoid missing entry errors
+    # Neutral entry: 0xFF=keep value, 0x00=no modulation, 0x00=instant, 0x00=no chain
+    MIN_PULSE_ENTRIES = 16
+    neutral_entry = (0xFF, 0x00, 0x00, 0x00)
+    while len(pulse_entries) < MIN_PULSE_ENTRIES:
+        pulse_entries.append(neutral_entry)
+
+    # Convert from Laxity format (Y*4 indexing) to SF2 format (direct indexing)
+    # Laxity: (val, cnt, dur, next_y) where next_y is pre-multiplied by 4
+    # SF2: (val, cnt, dur, next_idx) where next_idx is direct entry number
+    # Index already converted during extraction (Y*4 → direct).
+    driver11_table_helpers.write_column_major(
+        output, _addr_to_offset(pulse_addr, load_address),
+        pulse_entries, columns, rows)
+
+    logger.info(f"    Written {len(pulse_entries)} Pulse table entries (padded from {len(laxity_tables.get('pulse_table', []))})")
+
+def inject_filter_table(output: bytearray, data, driver_info, load_address: int) -> None:
+    """Inject filter table data extracted from Laxity SID."""
+    logger.info("  Injecting Filter table...")
+
+    result = driver11_table_helpers.find_table(
+        driver_info, 'Filter', 'F')
+    if result is None:
+        logger.debug("    Warning: No Filter table found in driver")
+        return
+    filter_addr, columns, rows = result
+
+    laxity_tables = extract_all_laxity_tables(data.c64_data, data.load_address)
+    laxity_filter_entries = laxity_tables.get('filter_table', [])
+
+    if not laxity_filter_entries:
+        laxity_filter_entries = [(0x40, 0x01, 0x20, 0x00)]
+
+    # Convert Laxity filter format to SF2 filter format.
+    logger.info(f"    Converting {len(laxity_filter_entries)} Laxity filter entries to SF2 format...")
+    filter_entries = LaxityConverter.convert_filter_table(laxity_filter_entries)
+    logger.info(f"    Converted to {len(filter_entries)} SF2 filter entries")
+
+    # Pad to minimum size with neutral entry: no filter, no modulation,
+    # instant, end marker.
+    MIN_FILTER_ENTRIES = 16
+    neutral_entry = (0x00, 0x00, 0x00, 0x7F)
+    while len(filter_entries) < MIN_FILTER_ENTRIES:
+        filter_entries.append(neutral_entry)
+
+    driver11_table_helpers.write_column_major(
+        output, _addr_to_offset(filter_addr, load_address),
+        filter_entries, columns, rows)
+
+    logger.info(f"    Written {len(filter_entries)} Filter table entries (padded from {len(laxity_tables.get('filter_table', []))})")
+
+def inject_arp_table(output: bytearray, data, driver_info, load_address: int) -> None:
+    """Inject Arpeggio table data."""
+    logger.info("  Injecting Arp table...")
+
+    result = driver11_table_helpers.find_table(
+        driver_info, 'Arp', 'A')
+    if result is None:
+        logger.debug("    Warning: No Arp table found in driver")
+        return
+    arp_addr, columns, rows = result
+
+    # Use extracted arpeggio table if available, otherwise try to extract
+    if hasattr(data, 'arp_table') and data.arp_table:
+        arp_entries = data.arp_table
+        logger.info(f"    Using {len(arp_entries)} extracted arpeggio entries")
+    elif hasattr(data, 'raw_sequences') and data.raw_sequences:
+        # Try to extract arpeggio table from raw sequences
+        arp_indices = extract_arpeggio_indices(data.raw_sequences)
+        if arp_indices:
+            logger.debug(f"    Found arpeggio indices: {sorted(arp_indices)}")
+            _, extracted_entries = find_arpeggio_table_in_memory(
+                data.c64_data,
+                data.load_address,
+                arp_indices
+            )
+            if extracted_entries:
+                arp_entries = build_sf2_arp_table(extracted_entries)
+                logger.info(f"    Extracted {len(extracted_entries)} arpeggio patterns")
+            else:
+                # Use defaults
+                arp_entries = [
+                    (0x00, 0x04, 0x07, 0x7F),  # Major chord
+                    (0x00, 0x03, 0x07, 0x7F),  # Minor chord
+                    (0x00, 0x0C, 0x7F, 0x00),  # Octave
+                ]
+                logger.debug("    No arpeggio table found, using defaults")
+        else:
+            # No arpeggios used, use defaults
+            arp_entries = [
+                (0x00, 0x04, 0x07, 0x7F),  # Major chord
+                (0x00, 0x03, 0x07, 0x7F),  # Minor chord
+                (0x00, 0x0C, 0x7F, 0x00),  # Octave
+            ]
+            logger.debug("    No arpeggio commands in sequences, using defaults")
+    else:
+        # Default arpeggio patterns
+        arp_entries = [
+            (0x00, 0x04, 0x07, 0x7F),  # Major chord
+            (0x00, 0x03, 0x07, 0x7F),  # Minor chord
+            (0x00, 0x0C, 0x7F, 0x00),  # Octave
+        ]
+        logger.debug("    Using default arpeggio patterns")
+
+    base_offset = _addr_to_offset(arp_addr, load_address)
+
+    for col in range(min(columns, 4)):
+        for i, entry in enumerate(arp_entries):
+            if i < rows:
+                offset = base_offset + (col * rows) + i
+                if offset < len(output) and col < len(entry):
+                    output[offset] = entry[col]
+
+    logger.info(f"    Written {len(arp_entries)} Arp table entries")
+
+def inject_wave_table(output: bytearray, data, driver_info, load_address: int) -> None:
+    """Inject wave table data extracted from Laxity SID"""
+    logger.info("  Injecting wave table...")
+
+    if 'Wave' not in driver_info.table_addresses:
+        logger.debug("    Warning: No wave table found in driver")
+        return
+
+    wave_table = driver_info.table_addresses['Wave']
+    wave_addr = wave_table['addr']
+    columns = wave_table['columns']
+    rows = wave_table['rows']
+
+    logger.info(f"    Wave table address: ${wave_addr:04X}, columns={columns}, rows={rows}")
+    logger.info(f"    Extracting from c64_data (len={len(data.c64_data)}), load_address=${data.load_address:04X}")
+    logger.info(f"    First 16 bytes of c64_data: {data.c64_data[:16].hex(' ').upper()}")
+
+    extracted_waves = extract_laxity_wave_table(data.c64_data, data.load_address)
+
+    if extracted_waves:
+        wave_data = extracted_waves
+        logger.info(f"    Extracted {len(extracted_waves)} wave entries from SID")
+        logger.info(f"    First 5 entries: {extracted_waves[:5]}")
+    else:
+        # Default: (col0, col1) = (waveform, note) or (0x7F, target)
+        wave_data = [
+            (0x41, 0x00), (0x7F, 0x00),  # Pulse, jump to 0
+            (0x21, 0x00), (0x7F, 0x02),  # Saw, jump to 2
+            (0x11, 0x00), (0x7F, 0x04),  # Tri, jump to 4
+            (0x81, 0x00), (0x7F, 0x06),  # Noise, jump to 6
+        ]
+
+    if hasattr(data, 'siddump_data') and data.siddump_data:
+        siddump_waveforms = set(data.siddump_data['waveforms'])
+        # Waveform is in column 0 (first element), except for $7F jump commands
+        existing_waveforms = set(col0 for col0, _ in wave_data if col0 != 0x7F)
+        missing = siddump_waveforms - existing_waveforms
+        missing = {wf for wf in missing
+                  if (wf | 0x01) not in existing_waveforms
+                  and wf not in (0x01, 0x09, 0xF0)}
+        if missing:
+            logger.debug(f"    Validation: {len(missing)} waveforms from siddump not in wave table")
+
+    base_offset = _addr_to_offset(wave_addr, load_address)
+
+    logger.info(f"    Base offset: ${base_offset:04X} ({base_offset}), load_addr=${load_address:04X}")
+
+    # SF2 wave table format is column-major storage:
+    # Bytes 0-255 (Column 0): Waveforms ($11=tri, $21=saw, $41=pulse, $81=noise) or $7F for jump
+    # Bytes 256-511 (Column 1): Note offsets
+    # Extraction returns (waveform, note) tuples - write waveforms first, then notes
+
+    # Write Column 0: Waveforms (bytes 0-255)
+    logger.info(f"    Writing waveforms: rows={rows}, base_offset=${base_offset:04X}, file_size={len(output)}, wave_data_len={len(wave_data)}")
+    waveforms_written = 0
+    for i, (waveform, note) in enumerate(wave_data):
+        if i < rows and base_offset + i < len(output):
+            old_val = output[base_offset + i]  # Capture old value
+            output[base_offset + i] = waveform
+            waveforms_written += 1
+            if i < 3:  # Log first 3 for debugging
+                logger.info(f"      [{i}] Wrote waveform ${waveform:02X} at offset ${base_offset+i:04X} (was ${old_val:02X})")
+        elif i < rows:
+            logger.warning(f"    Skipping wave entry {i}: offset ${base_offset+i:04X} out of bounds (file size {len(output)})")
+    logger.info(f"    Wrote {waveforms_written} waveforms")
+
+    # Write Column 1: Note offsets (bytes 256-511)
+    note_offset = base_offset + rows
+    logger.debug(f"    Writing notes: note_offset=${note_offset:04X}")
+    notes_written = 0
+    for i, (waveform, note) in enumerate(wave_data):
+        if i < rows and note_offset + i < len(output):
+            output[note_offset + i] = note
+            notes_written += 1
+            if i < 5:  # Log first 5 for debugging
+                logger.debug(f"      [{i}] Writing note ${note:02X} at offset ${note_offset+i:04X}")
+    logger.debug(f"    Wrote {notes_written} note offsets")
+
+    logger.info(f"    Written {len(wave_data)} wave table entries (column-major: waveforms first, then notes)")

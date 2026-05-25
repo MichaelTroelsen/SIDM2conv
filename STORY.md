@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.51 (2026-05-25) — 1229 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
-**Latest chapter:** [v3.5.51 — aux chain assembly + injection (Phase 16)](#v3551--aux-chain-assembly--injection-phase-16-2026-05-25)
+**Current version:** v3.5.52 (2026-05-25) — 1229 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
+**Latest chapter:** [v3.5.52 — 7 more inject methods to driver11_section_injectors (Phase 17)](#v3552--7-more-inject-methods-to-driver11_section_injectors-phase-17-2026-05-25)
 
 ---
 
@@ -529,6 +529,65 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.52 — 7 more inject methods to driver11_section_injectors (Phase 17) (2026-05-25)
+
+A follow-on to Phase 13 (v3.5.48). At v3.5.48 the cluster of 4
+driver11-template-path inject methods (orderlists, sequences,
+instruments, commands) moved to a new module. The 7 remaining
+`_inject_*_table` methods (init, tempo, hr, pulse, filter, arp,
+wave) stayed in `sf2_writer.py` because they were still entangled
+with `self._addr_to_offset` calls.
+
+Phase 10/10b (v3.5.44-45) had already refactored those 7 methods
+to use `find_table` + `write_column_major` helpers — which meant
+the `self.driver_info.table_addresses` lookups and column-major
+writes were now indirected through pure module functions. With
+that surface clean, all 7 had become genuinely `(output, data,
+driver_info, load_address) → None` candidates.
+
+Phase 17 batch-moved them in a single scripted pass:
+
+| Method | Lines |
+|---|---|
+| `_inject_init_table` | 25 |
+| `_inject_tempo_table` | 31 |
+| `_inject_hr_table` | 21 |
+| `_inject_pulse_table` | 33 |
+| `_inject_filter_table` | 34 |
+| `_inject_arp_table` | 63 |
+| `_inject_wave_table` | 79 |
+| **Total** | **286** |
+
+`driver11_section_injectors.py` now hosts 11 inject functions (the
+4 from Phase 13 + the 7 from Phase 17) and the module-level
+`_addr_to_offset` helper. Grew from 575 → 873 lines (+298).
+
+Two new imports needed: `driver11_table_helpers` for the `find_table`
++ `write_column_major` + `update_table_dimensions` adopters, plus
+3 sequence extraction symbols (`extract_arpeggio_indices`,
+`find_arpeggio_table_in_memory`, `build_sf2_arp_table`) for the
+`_inject_arp_table` pattern extraction. The first test run failed
+with NameError — the C2 reference suite caught the missing
+imports on the first try, exactly like Phase 13's similar case.
+
+No new focused unit tests for this one. The Phase 13 precedent
+established that batch-moved methods with no new logic don't need
+new tests — the existing `test_sf2_writer.py` exercises each
+method via `self._inject_<name>()`, the wrappers preserve the call
+surface, and C2 verifies byte output.
+
+`sf2_writer.py`: 1954 → 1703 lines (-251) — biggest shrink since
+Phase 12 (v3.5.47). Cumulative since v3.5.27:
+**5832 → 1703 lines (-71%)**. 1229 tests still pass. All 14 C2
+reference files byte-identical.
+
+**Milestone**: `sf2_writer.py` is now at **29% of its v3.5.27
+size**. Over 4000 lines have been lifted into 15 focused modules
+across 17 phases. The decomposition has reached a clean structural
+state: section injectors live with section injectors,
+edit-area builders with edit-area builders, parsers with parsers,
+helpers with helpers.
 
 ### v3.5.51 — aux chain assembly + injection (Phase 16) (2026-05-25)
 
