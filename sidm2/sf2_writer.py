@@ -620,70 +620,11 @@ class SF2Writer:
             self.output, self.data, self.driver_info, self.load_address)
 
     def _update_table_definitions(self) -> None:
-        """Update table definition headers with actual data sizes"""
-        logger.info("  Updating table definitions...")
-
-        # Table definitions start at offset 0x31 from load address
-        table_defs_offset = 0x31
-        idx = table_defs_offset
-
-        while idx < len(self.output):
-            if idx >= len(self.output):
-                break
-
-            table_type = self.output[idx]
-            if table_type == 0xFF:  # End marker
-                break
-
-            if idx + 3 > len(self.output):
-                break
-
-            table_id = self.output[idx + 1]
-
-            # Find null-terminated name
-            name_start = idx + 3
-            name_end = name_start
-            while name_end < len(self.output) and self.output[name_end] != 0:
-                name_end += 1
-
-            if name_end >= len(self.output):
-                break
-
-            name = bytes(self.output[name_start:name_end]).decode('latin-1', errors='replace')
-
-            # Table header is after null terminator
-            pos = name_end + 1
-            if pos + 12 > len(self.output):
-                break
-
-            # Update Instruments table (type 0x80)
-            if table_type == 0x80:
-                # Get actual dimensions from driver_info
-                if 'Instruments' in self.driver_info.table_addresses:
-                    table_info = self.driver_info.table_addresses['Instruments']
-                    actual_cols = table_info['columns']
-                    actual_rows = table_info['rows']
-
-                    # Update columns at pos+7, pos+8 (little-endian word)
-                    struct.pack_into('<H', self.output, pos + 7, actual_cols)
-                    # Update rows at pos+9, pos+10 (little-endian word)
-                    struct.pack_into('<H', self.output, pos + 9, actual_rows)
-
-                    logger.info(f"    Updated Instruments table definition: {actual_cols}x{actual_rows}")
-
-            # Update Commands table (type 0x81)
-            elif table_type == 0x81:
-                if 'Commands' in self.driver_info.table_addresses:
-                    table_info = self.driver_info.table_addresses['Commands']
-                    actual_cols = table_info['columns']
-                    actual_rows = table_info['rows']
-
-                    struct.pack_into('<H', self.output, pos + 7, actual_cols)
-                    struct.pack_into('<H', self.output, pos + 9, actual_rows)
-
-                    logger.info(f"    Updated Commands table definition: {actual_cols}x{actual_rows}")
-
-            idx = pos + 12
+        """v3.5.49 wrapper around
+        sidm2.driver11_table_helpers.update_table_dimensions.
+        """
+        driver11_table_helpers.update_table_dimensions(
+            self.output, self.driver_info)
 
     def _append_metadata_trailer(self) -> None:
         """v3.5.41 wrapper around

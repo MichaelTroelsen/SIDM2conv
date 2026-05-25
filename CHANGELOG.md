@@ -25,6 +25,53 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.49] - 2026-05-25
+
+### Refactored — `_update_table_definitions` moved into `driver11_table_helpers`
+
+`SF2Writer._update_table_definitions` (65 lines) walks the SF2 Block 3
+table-descriptor chain and patches columns + rows fields in-place for
+Instruments (type 0x80) and Commands (type 0x81) descriptors. Pure
+`(output, driver_info) → None` shape.
+
+Rather than creating a new module, the function joined the existing
+`sidm2/driver11_table_helpers.py` as `update_table_dimensions`. It's
+logically the third member of that module's "patches against the
+SF2 Block 3 table layout" theme:
+
+  - `find_table(driver_info, name_substring, short_alias=None)`
+    → lookup
+  - `write_column_major(output, base_offset, entries, columns, rows)`
+    → emit
+  - `update_table_dimensions(output, driver_info)` ← **NEW**
+    → patch dimensions in the chain
+
+SF2Writer keeps a 4-line wrapper preserving `self._update_table_definitions()`
+calls in the driver11 inject paths.
+
+### Added — 6 focused unit tests for update_table_dimensions
+
+  TestUpdateTableDimensions (6):
+    - Instruments dimensions patched at expected offsets (pos+7/+9)
+    - Commands dimensions patched at expected offsets
+    - Terminator (0xFF) at start = no writes (buffer unchanged)
+    - Missing 'Instruments' / 'Commands' key in driver_info: skip
+      silently (no exception, no writes)
+    - Unknown table type byte (e.g. 0x55) walked past silently
+    - Multiple descriptors (Instruments + Commands) each patched
+      with their own driver_info dimensions
+
+The tests use synthetic SF2 buffers with hand-built descriptors at
+file offset 0x31 — same layout assumptions as `sf2_parser.parse_tables_block`.
+
+### Stats
+- sf2_writer.py: 2223 → 2165 lines (-58)
+- Cumulative since v3.5.27: 5832 → 2165 lines (-63%)
+- 1202 → 1208 tests pass (+6)
+- 14 extracted modules total 4365 lines with 156 focused unit tests
+
+---
+
 ## [3.5.48] - 2026-05-25
 
 ### Refactored — driver11 section injectors cluster extracted (4 methods)

@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.5.48** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-25
+**SIDM2 v3.5.49** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-25
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -172,6 +172,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.5.49** (2026-05-25): **Phase 14 — `_update_table_definitions` (65 lines) moved into `driver11_table_helpers.update_table_dimensions`.** The method walks the SF2 Block 3 table-descriptor chain (starts at file offset $31, terminated by 0xFF) and patches columns + rows fields in-place for Instruments (type 0x80) and Commands (type 0x81) descriptors. Pure `(output, driver_info) → None` shape. Added to the existing `driver11_table_helpers.py` module rather than creating a new one — it's logically related to the table-find/write helpers already there. 6 new focused unit tests: instruments dimensions patched, commands dimensions patched, terminator at start = no writes, missing address entry skips update, unknown table type ignored, multiple descriptors each patched. **sf2_writer.py: 2223 → 2165 lines (-58)**. Cumulative since v3.5.27: 5832 → 2165 lines (-63%). 1202 → 1208 tests pass (+6). All 14 C2 reference files byte-identical. Fourteen extracted modules (same count — added to existing one) now total 4365 lines with 156 focused unit tests. Version sync → 3.5.49.
 
 **v3.5.48** (2026-05-25): **Phase 13 — driver11 section injectors cluster extracted (501 lines, 4 methods).** All four driver11-template-path section injectors (`_inject_instruments` 243L, `_inject_sequences` 114L, `_inject_commands` 83L, `_inject_orderlists` 61L) shared the exact same shape: read `self.data`, look up `self.driver_info.table_addresses`, convert C64 addresses to file offsets via `self._addr_to_offset(addr)`, mutate `self.output` in place. Combined extraction as a single cluster module. New `sidm2/driver11_section_injectors.py` (575 lines) exports 4 module functions with identical signature: `inject_orderlists(output, data, driver_info, load_address) → None`, `inject_sequences(...)`, `inject_instruments(...)`, `inject_commands(...)`. Plus the helper `_addr_to_offset(addr, load_address) → int` lifted to module level. SF2Writer keeps 4 thin wrappers (~5 lines each). One adjustment needed: the new module had to re-import `find_and_extract_wave_table`, `extract_command_parameters`, `build_sf2_command_table`, `transpose_instruments` from their original sibling modules (these were used inside `_inject_instruments` and `_inject_commands` bodies). **sf2_writer.py: 2704 → 2223 lines (-481)**. Cumulative since v3.5.27: 5832 → 2223 lines (-62%). 1202 tests pass (unchanged — pure refactor). All 14 C2 reference files byte-identical. Fourteen extracted modules now total 4303 lines with 150 focused unit tests. **Three consecutive releases (v3.5.46/47/48) extracted 1705 lines** combined — half the original `sf2_writer.py` lifted out in 3 releases. Version sync → 3.5.48.
 

@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.48 (2026-05-25) — 1202 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
-**Latest chapter:** [v3.5.48 — driver11 section injectors cluster (Phase 13)](#v3548--driver11-section-injectors-cluster-phase-13-2026-05-25)
+**Current version:** v3.5.49 (2026-05-25) — 1208 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
+**Latest chapter:** [v3.5.49 — update_table_dimensions joined helpers (Phase 14)](#v3549--update_table_dimensions-joined-helpers-phase-14-2026-05-25)
 
 ---
 
@@ -529,6 +529,51 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.49 — update_table_dimensions joined helpers (Phase 14) (2026-05-25)
+
+A smaller follow-on release that adds a third helper to the existing
+`sidm2/driver11_table_helpers.py` rather than creating a new module
+file. The 65-line `_update_table_definitions` method walks the SF2
+Block 3 table-descriptor chain and patches columns + rows fields
+in-place for the Instruments (0x80) and Commands (0x81) descriptors.
+
+It was a good fit for the existing helpers module because all three
+functions now operate on Block 3 table descriptors with the same
+layout assumptions:
+
+```python
+# sidm2/driver11_table_helpers.py
+find_table(driver_info, name_substring, short_alias=None)
+    → Optional[Tuple[addr, columns, rows]]                  # lookup
+write_column_major(output, base_offset, entries, columns, rows)
+    → None                                                  # emit
+update_table_dimensions(output, driver_info)
+    → None                                                  # patch
+```
+
+That's the "Block 3 table operations" trinity. The module now stands
+at 218 lines covering the full surface — read existing descriptors,
+write column-major payloads, patch dimensions on existing
+descriptors.
+
+The 6 new focused unit tests pin the patch behavior precisely.
+The most useful one is `test_missing_address_entry_skips_update` —
+it documents that if `driver_info.table_addresses` has no entry for
+'Instruments', the descriptor for it is silently skipped (no
+exception, no writes). That's the silent invariant that lets the
+function be safely called on partially-populated driver_info.
+
+`sf2_writer.py`: 2223 → 2165 lines. Cumulative since v3.5.27:
+**5832 → 2165 lines (-63%)**. 1208 tests pass (+6). 14 modules
+(unchanged) now total 4365 lines with 156 focused unit tests.
+
+**The Phase 14 lesson**: not every extraction needs a new module
+file. A function that fits an existing module's theme can just join
+it. The judgment call is whether the new addition genuinely belongs
+to the module's concept or whether it would be a stranger living
+alongside unrelated functions. Here the trinity of lookup/emit/patch
+is cohesive — the new function fits.
 
 ### v3.5.48 — driver11 section injectors cluster (Phase 13) (2026-05-25)
 

@@ -176,5 +176,144 @@ class TestWriteColumnMajor(unittest.TestCase):
         self.assertEqual(bytes(output), bytes(10), "buffer unchanged")
 
 
+class TestUpdateTableDimensions(unittest.TestCase):
+    """update_table_dimensions patches columns + rows in the SF2 table
+    descriptor chain (Block 3) based on driver_info.table_addresses."""
+
+    def _build_descriptor(self, type_byte: int, name: str,
+                           columns: int = 1, rows: int = 1) -> bytes:
+        """Build one Block 3 table descriptor."""
+        import struct
+        out = bytearray()
+        out.append(type_byte)
+        out.append(1)                       # table_id
+        out.append(0)                       # text_field_size
+        out.extend(name.encode('latin-1'))
+        out.append(0)                       # NUL terminator
+        out.extend([0, 0])                  # layout + flags
+        out.extend([0, 0, 0])               # rules
+        out.extend(struct.pack('<H', 0))    # addr placeholder
+        out.extend(struct.pack('<H', columns))
+        out.extend(struct.pack('<H', rows))
+        out.append(0)                       # visible_rows
+        return bytes(out)
+
+    def _build_buffer_with_descriptors(self, descriptors: list) -> bytearray:
+        """Build a synthetic SF2 buffer with descriptors at offset 0x31."""
+        buf = bytearray(0x500)
+        offset = 0x31
+        for desc in descriptors:
+            buf[offset:offset + len(desc)] = desc
+            offset += len(desc)
+        buf[offset] = 0xFF   # end marker
+        return buf
+
+    def _make_di(self, table_addresses: dict):
+        from sidm2.models import SF2DriverInfo
+        di = SF2DriverInfo()
+        di.table_addresses = table_addresses
+        return di
+
+    def test_instruments_dimensions_patched(self):
+        """Instruments descriptor (type 0x80) columns + rows updated."""
+        import struct
+        desc = self._build_descriptor(0x80, "Instruments", columns=1, rows=1)
+        buf = self._build_buffer_with_descriptors([desc])
+
+        di = self._make_di({
+            'Instruments': {'columns': 7, 'rows': 42},
+        })
+        driver11_table_helpers.update_table_dimensions(buf, di)
+
+        # Find the Instruments descriptor and verify dims updated
+        # Layout: type(1) + id(1) + tfs(1) + name+NUL + 1+1+3 + addr(2) +
+        # columns(2) + rows(2) + visible(1)
+        # Name is "Instruments\0" = 12 bytes
+        # pos = 0x31 + 3 + 12 = 0x40 (after NUL)
+        # cols at pos+7, rows at pos+9
+        pos = 0x31 + 3 + len("Instruments") + 1
+        self.assertEqual(struct.unpack('<H', buf[pos + 7:pos + 9])[0], 7)
+        self.assertEqual(struct.unpack('<H', buf[pos + 9:pos + 11])[0], 42)
+
+    def test_commands_dimensions_patched(self):
+        """Commands descriptor (type 0x81) columns + rows updated."""
+        import struct
+        desc = self._build_descriptor(0x81, "Commands", columns=1, rows=1)
+        buf = self._build_buffer_with_descriptors([desc])
+
+        di = self._make_di({
+            'Commands': {'columns': 4, 'rows': 64},
+        })
+        driver11_table_helpers.update_table_dimensions(buf, di)
+
+        pos = 0x31 + 3 + len("Commands") + 1
+        self.assertEqual(struct.unpack('<H', buf[pos + 7:pos + 9])[0], 4)
+        self.assertEqual(struct.unpack('<H', buf[pos + 9:pos + 11])[0], 64)
+
+    def test_terminator_stops_walk(self):
+        """A `0xFF` at offset 0x31 means no descriptors — no writes."""
+        buf = bytearray(0x500)
+        buf[0x31] = 0xFF
+        before = bytes(buf)
+
+        di = self._make_di({
+            'Instruments': {'columns': 99, 'rows': 99},
+        })
+        driver11_table_helpers.update_table_dimensions(buf, di)
+
+        self.assertEqual(bytes(buf), before, "no writes when terminator first")
+
+    def test_missing_address_entry_skips_update(self):
+        """If driver_info has no 'Instruments' key, the descriptor is
+        skipped (no exception, no writes)."""
+        import struct
+        desc = self._build_descriptor(0x80, "Instruments", columns=1, rows=1)
+        buf = self._build_buffer_with_descriptors([desc])
+        before = bytes(buf)
+
+        di = self._make_di({})   # empty
+        driver11_table_helpers.update_table_dimensions(buf, di)
+        self.assertEqual(bytes(buf), before)
+
+    def test_unknown_table_type_ignored(self):
+        """A type byte that isn't 0x80 or 0x81 is silently walked past."""
+        import struct
+        # Type 0x55 (made up). Should not crash.
+        desc = self._build_descriptor(0x55, "Generic")
+        buf = self._build_buffer_with_descriptors([desc])
+
+        di = self._make_di({'Instruments': {'columns': 99, 'rows': 99}})
+        driver11_table_helpers.update_table_dimensions(buf, di)
+        # Verifies no exception was raised; nothing to assert beyond that
+
+    def test_multiple_descriptors_each_patched(self):
+        """Instruments + Commands both get their dimensions updated."""
+        import struct
+        desc1 = self._build_descriptor(0x80, "Instruments", columns=1, rows=1)
+        desc2 = self._build_descriptor(0x81, "Commands", columns=1, rows=1)
+        buf = self._build_buffer_with_descriptors([desc1, desc2])
+
+        di = self._make_di({
+            'Instruments': {'columns': 6, 'rows': 32},
+            'Commands': {'columns': 3, 'rows': 64},
+        })
+        driver11_table_helpers.update_table_dimensions(buf, di)
+
+        pos1 = 0x31 + 3 + len("Instruments") + 1
+        self.assertEqual(struct.unpack('<H', buf[pos1 + 7:pos1 + 9])[0], 6)
+        self.assertEqual(struct.unpack('<H', buf[pos1 + 9:pos1 + 11])[0], 32)
+
+        # Second descriptor follows. Total length of first descriptor:
+        # 1+1+1+12+1+1+3+2+2+2+1 = 27 bytes (Instruments has 11 char + NUL)
+        # Just verify by re-scanning rather than calculating manually:
+        # Find next descriptor by searching for 0x81
+        idx = 0x31
+        while idx < len(buf) and buf[idx] != 0x81:
+            idx += 1
+        pos2 = idx + 3 + len("Commands") + 1
+        self.assertEqual(struct.unpack('<H', buf[pos2 + 7:pos2 + 9])[0], 3)
+        self.assertEqual(struct.unpack('<H', buf[pos2 + 9:pos2 + 11])[0], 64)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
