@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.38 (2026-05-25) — 1108 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
-**Latest chapter:** [v3.5.38 — low-load layout extracted (Phase 4)](#v3538--low-load-layout-extracted-phase-4-2026-05-25)
+**Current version:** v3.5.39 (2026-05-25) — 1123 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
+**Latest chapter:** [v3.5.39 — aux-body builders extracted (Phase 5)](#v3539--aux-body-builders-extracted-phase-5-2026-05-25)
 
 ---
 
@@ -529,6 +529,55 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.39 — aux-body builders extracted (Phase 5) (2026-05-25)
+
+The auxiliary-data chain is one of the trickier corners of the SF2
+format: a TLV-encoded sidecar (located via a HARDCODED pointer at
+C64 `$0FFB`) carrying up to 5 block types — editor preferences,
+play markers, hardware prefs, table text (instrument + command
+names), and song description. SF2II's parser walks each body's
+bytes literally; any encoding drift past the expected boundaries
+either silently breaks F10-load or corrupts the heap.
+
+Two of the bodies (id=4 TableText and id=5 Songs) had small but
+nontrivial encoders inside `sf2_writer.py` — pascal strings, `u16`
+LE text counts, `u32` LE table IDs, padding rules to match the
+Block 3 row counts. Both functions were already pure (no `self.*`
+state writes) but bundled with the inject orchestrator.
+
+Phase 5 lifts them into `sidm2/sf2_aux_bodies.py` (155 lines)
+exposing:
+
+  - `build_description_data(song_name) → bytes`
+  - `build_table_text_data(instrument_names, command_names,
+                            instr_table_id, cmd_table_id) → bytes`
+
+The SF2Writer wrappers are 8 lines each — pull the song name from
+`self.data.header.name`, return `bytearray` for backwards-compat
+with the existing `_inject_auxiliary_data` orchestration.
+
+The format rationale (decoded from SF2II's
+`auxilary_data_*.cpp:RestoreFromSaveData`) moves into the module
+docstring, so future readers can grep for "TableText" or
+"AuxilaryDataSongs" and find the exact byte layout in one place.
+
+15 new focused unit tests — these encoders are perfect candidates
+because the byte output is precisely-defined and small drifts have
+catastrophic downstream effects. Tests pin:
+  - default fallbacks for missing/empty/whitespace song names
+  - 16-char Songs truncation, 255-byte TableText truncation
+  - latin-1 encoding behavior (non-ASCII chars preserved,
+    unencodable chars → '?')
+  - the critical "excess names truncated to row count" invariant
+    that prevents heap corruption (if the parser sees text_count
+    > actual texts, it walks past the buffer)
+  - the four module constants that pin SF2II's Block 3 layout
+
+`sf2_writer.py`: 4284 → 4214 lines. Cumulative since v3.5.27:
+**5832 → 4214 lines (-28%)**. 1123 tests pass (+15). All 14 C2
+reference files byte-identical. Six extracted modules now total
+1768 lines with 71 focused unit tests.
 
 ### v3.5.38 — low-load layout extracted (Phase 4) (2026-05-25)
 

@@ -25,6 +25,70 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.39] - 2026-05-25
+
+### Refactored — SF2 auxiliary-body builders extracted
+
+Continuing the sf2_writer.py decomposition (Phase 5). The two pure
+builder helpers `_build_description_data` and `_build_table_text_data`
+(~95 lines combined) encode bodies for SF2II's auxiliary-data chain:
+
+  - aux id=5 Songs body — format per
+    `auxilary_data_songs.cpp:107` (RestoreFromSaveData)
+  - aux id=4 TableText body — format per
+    `auxilary_data_table_text.cpp:269` (RestoreFromSaveData)
+
+Both formats use pascal strings + u16 LE counters + u32 LE table IDs.
+Any drift would corrupt SF2II's heap when its parser walks past the
+expected buffer bounds, so they're a high-leverage extraction target
+for focused unit tests.
+
+New module: **`sidm2/sf2_aux_bodies.py`** (155 lines). Public API:
+
+  - `build_description_data(song_name: Optional[str]) → bytes`
+  - `build_table_text_data(instrument_names, command_names,
+                            instr_table_id, cmd_table_id) → bytes`
+
+Both pure (parameter inputs, byte outputs); no `self.*`, no I/O,
+no logging. SF2Writer keeps thin wrappers that pull `song_name`
+from `self.data.header.name` and return `bytearray` for
+backwards-compatible call sites in `_inject_auxiliary_data`.
+
+### Added — 15 focused unit tests for sf2_aux_bodies
+
+New `pyscript/test_sf2_aux_bodies.py`:
+
+  TestBuildDescriptionData (7):
+    - default "Main" when no name / empty / whitespace
+    - normal name passes through with correct pascal-string length
+    - 17-char name truncated to 16
+    - non-ASCII latin-1 chars preserved (é = $E9)
+    - unencodable chars (Chinese) replaced with '?'
+
+  TestBuildTableTextData (7):
+    - entry_count always 3 (Commands + Instruments + Mystery)
+    - empty input produces correct 1+4+2+2+64-byte entry 0 structure
+    - instruments padded to 32 slots with empty strings
+    - excess names (100) truncated to text_count=32 (NOT 100 — would
+      corrupt SF2II's heap)
+    - 3rd entry uses EXTRA_TABLE_ID=64, 256 rows
+    - custom instr_table_id / cmd_table_id propagate correctly
+    - 300-char name truncated to 255 (pascal-string max)
+
+  TestConstants (1):
+    - module constants COMMANDS_ROWS=64, INSTRUMENTS_ROWS=32,
+      EXTRA_TABLE_ID=64, EXTRA_ROWS=256 (any change breaks SF2II
+      parser walks)
+
+### Stats
+- sf2_writer.py: 4284 → 4214 lines (-70)
+- Cumulative since v3.5.27: 5832 → 4214 lines (-28%)
+- 1108 → 1123 tests pass (+15)
+- 6 extracted modules total 1768 lines with 71 focused unit tests
+- All 14 C2 reference files byte-identical
+
+---
+
 ## [3.5.38] - 2026-05-25
 
 ### Refactored — `_build_low_load_sf2` extracted to its own module

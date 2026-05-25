@@ -29,6 +29,7 @@ from . import audio_gate
 from . import universal_211_workaround
 from . import sf2_diagnostics
 from . import low_load_layout
+from . import sf2_aux_bodies
 
 logger = logging.getLogger(__name__)
 
@@ -1525,98 +1526,27 @@ class SF2Writer:
             logger.debug("    Warning: Could not find auxiliary data pointer location")
 
     def _build_description_data(self) -> Optional[bytearray]:
-        """Build the AuxilaryDataSongs body (used as aux block id=5).
+        """v3.5.39 wrapper around sidm2.sf2_aux_bodies.build_description_data.
 
-        Per AuxilaryDataSongs::RestoreFromSaveData (auxilary_data_songs.cpp:107):
-          [u8 song_count]
-          [u8 selected_song]
-          per song (when data_version == 2):
-            [u8 string_length] [string_length bytes — pascal string]
-
-        Reference Stinsen ships exactly one song named "Main".
-        We use the SID's PSID title (truncated to 16 chars) so each song
-        gets a real label in SF2II's "Songs" panel.
+        Pulls the song name from self.data.header (PSID title) before
+        delegating to the pure builder. Returns bytearray for
+        backwards-compat with the _inject_auxiliary_data call site.
         """
         if not hasattr(self.data, 'header') or not self.data.header:
-            song_name = "Main"
+            song_name = None
         else:
-            header = self.data.header
-            song_name = (header.name if header.name else "Main").strip() or "Main"
+            song_name = self.data.header.name
+        return bytearray(sf2_aux_bodies.build_description_data(song_name))
 
-        # The "Songs" panel shows song name — keep short to avoid weird wraps
-        song_name = song_name[:16]
-        song_bytes = song_name.encode('latin-1', errors='replace')
+    def _build_table_text_data(self, instrument_names, command_names,
+                                instr_table_id=1, cmd_table_id=0) -> bytearray:
+        """v3.5.39 wrapper around sidm2.sf2_aux_bodies.build_table_text_data.
 
-        data = bytearray()
-        data.append(0x01)              # song_count = 1
-        data.append(0x00)              # selected_song = 0
-        data.append(len(song_bytes))   # pascal-string length
-        data.extend(song_bytes)
-        return data
-
-    def _build_table_text_data(self, instrument_names, command_names, instr_table_id=1, cmd_table_id=0) -> bytearray:
-        """Build the TableText body in version-2 format.
-
-        Per AuxilaryDataTableText::RestoreFromSaveData (auxilary_data_table_text.cpp:269):
-          [u8 entry_count]
-          per entry:
-            [u32 LE table_id]
-            [u16 LE layer_count]
-            per layer:
-              [u16 LE text_count]
-              per text:
-                [u8 string_length]
-                [string_length bytes — string body]
-
-        Reference Stinsen ships 3 entries:
-          entry 0: table_id=0  (Commands),    1 layer, 64 entries (all empty)
-          entry 1: table_id=1  (Instruments), 1 layer, 32 entries (all empty)
-          entry 2: table_id=64 (Mystery / "TableTextLines"?), 1 layer, 256 entries (all empty)
-
-        We follow the same shape but populate Commands + Instruments with our
-        extracted names. Counts are the table row counts from Block 3
-        (Commands=64, Instruments=32) — text_count MUST equal the table's
-        row count or RestoreFromSaveData walks past the buffer end.
+        Returns bytearray for backwards-compat with the
+        _inject_auxiliary_data call site.
         """
-        COMMANDS_ROWS    = 64
-        INSTRUMENTS_ROWS = 32
-        EXTRA_TABLE_ID   = 64
-        EXTRA_ROWS       = 256
-
-        def _pad_or_truncate(names: list, target_count: int) -> list:
-            out = list(names)[:target_count]
-            while len(out) < target_count:
-                out.append("")
-            return out
-
-        commands_padded    = _pad_or_truncate(command_names,    COMMANDS_ROWS)
-        instruments_padded = _pad_or_truncate(instrument_names, INSTRUMENTS_ROWS)
-
-        def _pack_text(name: str) -> bytes:
-            b = name.encode('latin-1', errors='replace')[:255]
-            return bytes([len(b)]) + b
-
-        def _pack_layer(texts: list) -> bytes:
-            out = bytearray()
-            out.extend(struct.pack('<H', len(texts)))
-            for t in texts:
-                out.extend(_pack_text(t))
-            return bytes(out)
-
-        def _pack_entry(table_id: int, layer_text_lists: list) -> bytes:
-            out = bytearray()
-            out.extend(struct.pack('<I', table_id))   # u32 LE — was '<i' (signed)
-            out.extend(struct.pack('<H', len(layer_text_lists)))
-            for layer in layer_text_lists:
-                out.extend(_pack_layer(layer))
-            return bytes(out)
-
-        data = bytearray()
-        data.append(3)  # entry_count
-        data.extend(_pack_entry(cmd_table_id,    [commands_padded]))
-        data.extend(_pack_entry(instr_table_id,  [instruments_padded]))
-        data.extend(_pack_entry(EXTRA_TABLE_ID,  [[""] * EXTRA_ROWS]))
-        return data
+        return bytearray(sf2_aux_bodies.build_table_text_data(
+            instrument_names, command_names, instr_table_id, cmd_table_id))
 
     def _print_extraction_summary(self) -> None:
         """Print summary of extracted data"""
