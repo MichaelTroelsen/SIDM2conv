@@ -25,6 +25,83 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.42] - 2026-05-25
+
+### Refactored — placeholder edit-area builder deduplicated
+
+Both `low_load_layout.build_low_load_sf2` and
+`sf2_writer._inject_player_raw_minimal` had ~40 lines of identical
+"empty editor view" edit-area construction:
+
+  - 6-byte OL ptr lo/hi tables (3 voices × 2)
+  - 256-byte Seq ptr lo + 256-byte Seq ptr hi tables
+  - 3 × 256-byte orderlists `[0xA0, 0x00, 0xFE, 0xFF...]`
+  - 1 × 256-byte sequence (all 0x7F end markers)
+  - F1-F5 + editor-only Arp/Tempo/HR/Init zero-filled tables
+  - Identical SF2HeaderGenerator field assignments
+    (instr_addr / cmd_addr / wave_addr / pulse_addr / filter_addr
+    / arp_addr / tempo_addr / hr_addr / init_table_addr)
+
+New module: **`sidm2/placeholder_edit_area.py`** (155 lines).
+
+Public API:
+  - `build_placeholder_edit_area(sf2_data_base, gen) → (bytes, dict)`
+    Builds the editor-view skeleton bytes. Mutates `gen` with the
+    table addresses. Returns the bytes and the music_data_params
+    dict to pass to `gen.generate_complete_headers()`.
+
+Constants exposed: `OL_SIZE`, `SEQ_SIZE`, `SEQ_PTR_SIZE`.
+
+Both callers now ~25 lines each instead of ~70:
+  - `low_load_layout.py`: 211 → 184 lines (-27)
+  - `sf2_writer.py`: 4093 → 4009 lines (-84)
+
+### Removed — orphaned SF2 constants on SF2Writer class
+
+`SF2_FILE_ID`, `SF2_DRIVER_VERSION`, `BLOCK_DESCRIPTOR`,
+`BLOCK_DRIVER_COMMON`, `BLOCK_DRIVER_TABLES`, `BLOCK_INSTRUMENT_DESC`,
+`BLOCK_MUSIC_DATA`, `BLOCK_END` were class attributes on `SF2Writer`
+that became orphaned after v3.5.40 extracted the SF2 parser to
+`sidm2/sf2_parser.py` (which uses its own module-level constants).
+Zero callers (no `self.SF2_FILE_ID` / `SF2Writer.SF2_FILE_ID` /
+`writer.SF2_FILE_ID` anywhere in the codebase). Removed; the single
+source of truth is now `sidm2.sf2_parser`.
+
+### Added — 11 focused unit tests for placeholder_edit_area
+
+New `pyscript/test_placeholder_edit_area.py`:
+
+  TestBuildPlaceholderEditArea (8):
+    - total size matches expected byte breakdown (1414 bytes)
+    - OL ptr lo table at offset 0 with correct voice addresses
+    - 3 orderlists begin with `[0xA0, 0x00, 0xFE]` + 253B of 0xFF
+    - 1 sequence all-0x7F end markers
+    - F1-F5 + editor tables all zero-filled
+    - gen fields populated in expected layout order
+      (instr < wave < pulse < filter < arp < tempo < hr < init)
+    - cmd_addr = instr_addr + 0x70 (NP21-bias retained)
+    - music_data_params dict has all 10 required keys with correct
+      values
+
+  TestDifferentBaseAddresses (2):
+    - works at base $2000 (typical low-load case)
+    - works at base $E000 (high-address case)
+
+  TestConstants (1):
+    - OL_SIZE = 0x100, SEQ_SIZE = 0x100, SEQ_PTR_SIZE = 0x80
+
+### Stats
+- sf2_writer.py: 4093 → 4009 lines (-84)
+- low_load_layout.py: 211 → 184 lines (-27)
+- Cumulative since v3.5.27: 5832 → 4009 lines (-31%)
+- 1165 → 1176 tests pass (+11)
+- 9 extracted modules total 2254 lines with 124 focused unit tests
+- All 14 C2 reference files byte-identical (including 6 recovered
+  low-load files: Annelouise, Axel_F, Beat_the_Shit_3, Crap_5,
+  Force_Tune, Shit)
+
+---
+
 ## [3.5.41] - 2026-05-25
 
 ### Refactored — META trailer encode/decode pair unified

@@ -85,8 +85,8 @@ def build_low_load_sf2(
     # Import inside the function to avoid a module-load cycle; SF2HeaderGenerator
     # is a sibling module that also imports from this package.
     from sidm2.sf2_header_generator import SF2HeaderGenerator
+    from sidm2 import placeholder_edit_area
 
-    OL_SIZE, SEQ_SIZE, SEQ_PTR_SIZE = 0x100, 0x100, 0x80
     clen = len(c64_data)
 
     # Handlers + edit-area placeholder go AFTER the binary, page-aligned.
@@ -103,50 +103,19 @@ def build_low_load_sf2(
     BAIT = HI + 14
     EDIT = HI + 0x20                       # past 14B stubs + 4B bait
 
-    # Safe placeholder Block 5 + zero-filled Block 3 tables in the edit
-    # area (identical shape to _inject_player_raw_minimal so SF2II's
-    # editor model is valid even though it's empty).
-    ol_ptr_lo  = EDIT + 0
-    ol_ptr_hi  = EDIT + 3
-    seq_ptr_lo = EDIT + 6
-    seq_ptr_hi = EDIT + 6 + SEQ_PTR_SIZE
-    ol_track1  = EDIT + 6 + 2 * SEQ_PTR_SIZE
-    seq00      = ol_track1 + 3 * OL_SIZE
-    music_data_params = {
-        'track_count': 3, 'ol_ptr_lo_addr': ol_ptr_lo,
-        'ol_ptr_hi_addr': ol_ptr_hi, 'seq_count': 1,
-        'seq_ptr_lo_addr': seq_ptr_lo, 'seq_ptr_hi_addr': seq_ptr_hi,
-        'ol_size': OL_SIZE, 'ol_track1_addr': ol_track1,
-        'seq_size': SEQ_SIZE, 'seq00_addr': seq00,
-    }
-
-    edit = bytearray()
-    for v in range(3): edit.append((ol_track1 + v * OL_SIZE) & 0xFF)
-    for v in range(3): edit.append(((ol_track1 + v * OL_SIZE) >> 8) & 0xFF)
-    seq_lo = bytearray(SEQ_PTR_SIZE); seq_hi = bytearray(SEQ_PTR_SIZE)
-    seq_lo[0] = seq00 & 0xFF; seq_hi[0] = (seq00 >> 8) & 0xFF
-    edit.extend(seq_lo); edit.extend(seq_hi)
-    for _ in range(3):
-        ol = bytearray([0xA0, 0x00, 0xFE])
-        ol.extend([0xFF] * (OL_SIZE - 3)); edit.extend(ol)
-    edit.extend(bytes([0x7F] * SEQ_SIZE))
-
     gen = SF2HeaderGenerator(driver_size=clen)
     gen.DRIVER_INIT, gen.DRIVER_PLAY, gen.DRIVER_STOP = INIT_H, PLAY_H, STOP_H
     # Point SF2II's #211 SID-write scan window at our handler+bait
     # region (binary at $1000 has no usable stamp slot for low-load).
     gen.driver_code_top  = HI
     gen.driver_code_size = 0x20
-    gen.instr_addr = EDIT + len(edit); gen.cmd_addr = gen.instr_addr + 0x70
-    edit.extend(bytes(32 * 6))
-    gen.wave_addr = EDIT + len(edit);  edit.extend(bytes(32 * 2))
-    gen.pulse_addr = EDIT + len(edit); edit.extend(bytes(16 * 3))
-    gen.filter_addr = EDIT + len(edit); edit.extend(bytes(16 * 3))
-    gen.arp_addr = EDIT + len(edit);   edit.extend(bytes(256))
-    gen.tempo_addr = EDIT + len(edit); edit.extend(bytes(256))
-    gen.hr_addr = EDIT + len(edit);    edit.extend(bytes(16 * 2))
-    gen.init_table_addr = EDIT + len(edit); edit.extend(bytes(32 * 2))
-    sf2_edit_data = bytes(edit)
+
+    # Safe placeholder Block 5 + zero-filled Block 3 tables in the edit
+    # area (identical shape to _inject_player_raw_minimal so SF2II's
+    # editor model is valid even though it's empty). Shared with the
+    # minimal-embed path via sidm2.placeholder_edit_area.
+    sf2_edit_data, music_data_params = (
+        placeholder_edit_area.build_placeholder_edit_area(EDIT, gen))
     gen.driver_size += len(sf2_edit_data)
 
     header_bytes = gen.generate_complete_headers(music_data_params)

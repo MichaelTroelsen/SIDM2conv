@@ -32,24 +32,21 @@ from . import low_load_layout
 from . import sf2_aux_bodies
 from . import sf2_parser
 from . import sf2_metadata_trailer
+from . import placeholder_edit_area
 
 logger = logging.getLogger(__name__)
 
 
 class SF2Writer:
-    """Write SID Factory II .sf2 project files"""
+    """Write SID Factory II .sf2 project files.
 
-    # SF2 file format constants
-    SF2_FILE_ID = 0x1337
-    SF2_DRIVER_VERSION = 11
-
-    # Header block IDs
-    BLOCK_DESCRIPTOR = 1
-    BLOCK_DRIVER_COMMON = 2
-    BLOCK_DRIVER_TABLES = 3
-    BLOCK_INSTRUMENT_DESC = 4
-    BLOCK_MUSIC_DATA = 5
-    BLOCK_END = 0xFF
+    SF2 file format constants previously held as class attributes here
+    (SF2_FILE_ID, BLOCK_*) were removed at v3.5.42 once the v3.5.40
+    parser extraction made them orphaned. The single source of truth
+    is now `sidm2.sf2_parser` (module-level constants). The remaining
+    SF2_DRIVER_VERSION = 11 has no callers; SF2II reads the version
+    from Block 1's body (`driver_info.driver_version_major`).
+    """
 
     def __init__(self, extracted_data: ExtractedData, driver_type: str = 'np20') -> None:
         self.data = extracted_data
@@ -2593,10 +2590,6 @@ class SF2Writer:
         # than high-RAM $C000+ which has unpredictable emulated-memory
         # contents that can crash the editor's renderer).
 
-        # Build placeholder Block 5 (3 tracks × 1 pattern × 256 bytes of 0x7F)
-        OL_SIZE  = 0x100
-        SEQ_SIZE = 0x100
-        SEQ_PTR_SIZE = 0x80
         # Zero-pad gap between binary end and edit area. Some SID players
         # (Twone_Five.sid is the canonical example, v3.5.28) declare a
         # data table just before the binary's last byte and read past the
@@ -2608,95 +2601,14 @@ class SF2Writer:
         # absolute,Y addressing range (Y ∈ [0,255]).
         POST_BINARY_GUARD = 0x100
         sf2_data_base = sid_la + len(c64_data) + POST_BINARY_GUARD
-        ol_ptr_lo_addr  = sf2_data_base + 0
-        ol_ptr_hi_addr  = sf2_data_base + 3
-        seq_ptr_lo_addr = sf2_data_base + 6
-        seq_ptr_hi_addr = sf2_data_base + 6 + SEQ_PTR_SIZE
-        ol_track1_addr  = sf2_data_base + 6 + 2 * SEQ_PTR_SIZE
-        seq00_addr      = ol_track1_addr + 3 * OL_SIZE
-        music_data_params = {
-            'track_count':     3,
-            'ol_ptr_lo_addr':  ol_ptr_lo_addr,
-            'ol_ptr_hi_addr':  ol_ptr_hi_addr,
-            'seq_count':       1,
-            'seq_ptr_lo_addr': seq_ptr_lo_addr,
-            'seq_ptr_hi_addr': seq_ptr_hi_addr,
-            'ol_size':         OL_SIZE,
-            'ol_track1_addr':  ol_track1_addr,
-            'seq_size':        SEQ_SIZE,
-            'seq00_addr':      seq00_addr,
-        }
 
-        # Edit area: populated OL/Seq ptr tables + 3 placeholder orderlists +
-        # 1 placeholder sequence (the same shape as Stage 1's success).
-        edit = bytearray()
-        # OL ptr lo / hi tables
-        for v in range(3):
-            ol_addr = ol_track1_addr + v * OL_SIZE
-            edit.append(ol_addr & 0xFF)
-        for v in range(3):
-            ol_addr = ol_track1_addr + v * OL_SIZE
-            edit.append((ol_addr >> 8) & 0xFF)
-        # Seq ptr lo / hi tables (only entry 0 populated)
-        seq_lo = bytearray(SEQ_PTR_SIZE)
-        seq_hi = bytearray(SEQ_PTR_SIZE)
-        seq_lo[0] = seq00_addr & 0xFF
-        seq_hi[0] = (seq00_addr >> 8) & 0xFF
-        edit.extend(seq_lo)
-        edit.extend(seq_hi)
-        # 3 orderlists, each [0xA0 transpose-0, 0x00 pattern-idx, 0xFE end, 0xFF...]
-        for _ in range(3):
-            ol = bytearray([0xA0, 0x00, 0xFE])
-            while len(ol) < OL_SIZE:
-                ol.append(0xFF)
-            edit.extend(ol)
-        # 1 sequence: all 0x7F end markers
-        edit.extend(bytes([0x7F] * SEQ_SIZE))
-
-        # Placeholder Driver-11-format tables, all zeros, in the edit area.
-        # Block 3 column addresses will point HERE rather than into high-RAM,
-        # so the editor's renderer reads from real file bytes and never
-        # touches emulated $C000+ which may have garbage.
-        instr_table_offset  = len(edit)
-        gen.instr_addr      = sf2_data_base + instr_table_offset
-        gen.cmd_addr        = gen.instr_addr + 0x70   # NP21-style bias retained
-        edit.extend(bytes(32 * 6))                    # 32 rows × 6 cols Instruments
-
-        wave_table_offset   = len(edit)
-        gen.wave_addr       = sf2_data_base + wave_table_offset
-        edit.extend(bytes(32 * 2))                    # 32 rows × 2 cols Wave
-
-        pulse_table_offset  = len(edit)
-        gen.pulse_addr      = sf2_data_base + pulse_table_offset
-        edit.extend(bytes(16 * 3))                    # 16 rows × 3 cols Pulse
-
-        filter_table_offset = len(edit)
-        gen.filter_addr     = sf2_data_base + filter_table_offset
-        edit.extend(bytes(16 * 3))                    # 16 rows × 3 cols Filter
-
-        # Editor-only "fake" tables (Arp/Tempo/HR/Init) live in the SF2 edit
-        # area too. The default $C000-$C300 high-RAM addresses are safe for
-        # Laxity NP21 (binary at $1000+) but COLLIDE with non-Laxity binaries
-        # that load at $C000+ (e.g., Hubbard's Action_Biker at $C000-$CBC1).
-        # When SF2II's editor renders these tables, it reads cells from the
-        # emulated C64 RAM at the configured address — which for Action_Biker
-        # would be the SID player's executable code, deterministically
-        # crashing the editor. Pointing them at zero-filled placeholders
-        # inside the edit area sidesteps that.
-        arp_table_offset    = len(edit)
-        gen.arp_addr        = sf2_data_base + arp_table_offset
-        edit.extend(bytes(256 * 1))                   # Arp: 256 rows × 1 col
-        tempo_table_offset  = len(edit)
-        gen.tempo_addr      = sf2_data_base + tempo_table_offset
-        edit.extend(bytes(256 * 1))                   # Tempo: 256 rows × 1 col
-        hr_table_offset     = len(edit)
-        gen.hr_addr         = sf2_data_base + hr_table_offset
-        edit.extend(bytes(16 * 2))                    # HR: 16 rows × 2 cols
-        init_table_offset   = len(edit)
-        gen.init_table_addr = sf2_data_base + init_table_offset
-        edit.extend(bytes(32 * 2))                    # Init: 32 rows × 2 cols
-
-        sf2_edit_data = bytes(edit)
+        # Build placeholder Block 5 (3 tracks × 1 pattern) + zero-filled
+        # F1-F5 + Arp/Tempo/HR/Init tables. Shared with the low-load path
+        # via sidm2.placeholder_edit_area. Mutates gen with table addresses
+        # (gen.instr_addr / cmd_addr / wave_addr / pulse_addr / filter_addr
+        # / arp_addr / tempo_addr / hr_addr / init_table_addr).
+        sf2_edit_data, music_data_params = (
+            placeholder_edit_area.build_placeholder_edit_area(sf2_data_base, gen))
         gen.driver_size += POST_BINARY_GUARD + len(sf2_edit_data)
 
         header_bytes = gen.generate_complete_headers(music_data_params)

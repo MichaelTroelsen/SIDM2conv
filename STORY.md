@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.41 (2026-05-25) — 1165 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
-**Latest chapter:** [v3.5.41 — META trailer encode/decode unified (Phase 7)](#v3541--meta-trailer-encodedecode-unified-phase-7-2026-05-25)
+**Current version:** v3.5.42 (2026-05-25) — 1176 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
+**Latest chapter:** [v3.5.42 — placeholder edit-area deduplicated (Phase 8)](#v3542--placeholder-edit-area-deduplicated-phase-8-2026-05-25)
 
 ---
 
@@ -529,6 +529,68 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.42 — placeholder edit-area deduplicated (Phase 8) (2026-05-25)
+
+The Phase 4 (`low_load_layout`) and Phase 7 (`metadata_trailer`)
+extractions each pulled out a self-contained concept. Phase 8 is
+different: it finds a **40-line block of code that was duplicated
+in two of the already-extracted modules** and lifts it into a third
+shared module.
+
+When `low_load_layout` was extracted in v3.5.38, the placeholder
+edit-area builder (OL ptr tables + seq ptr tables + 3 placeholder
+orderlists + 1 sequence + F1-F5 + Arp/Tempo/HR/Init tables) came
+along for the ride because it was tightly woven into the low-load
+flow. But the exact same 40-line block also lived in
+`sf2_writer._inject_player_raw_minimal` — the minimal-embed path
+for non-Laxity SIDs. Same construction, same field assignments
+on SF2HeaderGenerator, same byte layout.
+
+The pattern was hiding in plain sight: any code path that needs an
+empty editor view (because the source SID's player format can't be
+decoded into SIDM2's F1-F5 representation) emits the same byte
+sequence. There's only ONE shape of "empty editor view that SF2II
+loads without crashing" — the 3-tracks × 1-pattern placeholder
+verified against the Stinsen reference back at v3.4.1.
+
+Phase 8 lifts it into `sidm2/placeholder_edit_area.py` (155 lines):
+
+```python
+def build_placeholder_edit_area(
+    sf2_data_base: int,
+    gen: SF2HeaderGenerator,
+) -> Tuple[bytes, dict]:
+    """Build the empty-editor-view edit area; mutate gen with addrs."""
+```
+
+Both call sites become ~25 lines each. `low_load_layout.py` shrinks
+from 211 to 184 lines; `sf2_writer.py:_inject_player_raw_minimal`
+loses ~80 lines.
+
+Tests pin the exact byte layout (total 1414 bytes), the orderlist
+signature (`$A0 $00 $FE $FF×253` per voice), the all-0x7F
+end-of-sequence sequence, the zero-fill of the F1-F5 + editor-only
+tables, and the gen field population order (instr < wave < pulse
+< filter < arp < tempo < hr < init).
+
+Also in this phase: the orphaned `SF2_FILE_ID` / `BLOCK_*` class
+constants on `SF2Writer` (left behind when Phase 6 extracted the
+parser) are deleted. Zero callers. The parser module is the single
+source of truth now.
+
+`sf2_writer.py`: 4093 → 4009 lines. Cumulative since v3.5.27:
+**5832 → 4009 lines (-31%)**. 1176 tests pass (+11). All 14 C2
+reference files byte-identical, including all 6 recovered low-load
+files (Annelouise, Axel_F, Beat_the_Shit_3, Crap_5, Force_Tune,
+Shit). Nine extracted modules now total 2254 lines with 124 focused
+unit tests.
+
+**The Phase 8 lesson**: refactoring isn't a one-pass operation.
+After lifting a function into a module, look at whether that
+function still duplicates work that lives in another module — the
+deduplication that wasn't possible before becomes obvious once
+both sides are out of the monolith.
 
 ### v3.5.41 — META trailer encode/decode unified (Phase 7) (2026-05-25)
 
