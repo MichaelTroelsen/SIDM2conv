@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.40 (2026-05-25) — 1141 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
-**Latest chapter:** [v3.5.40 — SF2 block-parsing extracted (Phase 6)](#v3540--sf2-block-parsing-extracted-phase-6-2026-05-25)
+**Current version:** v3.5.41 (2026-05-25) — 1165 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
+**Latest chapter:** [v3.5.41 — META trailer encode/decode unified (Phase 7)](#v3541--meta-trailer-encodedecode-unified-phase-7-2026-05-25)
 
 ---
 
@@ -529,6 +529,65 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.41 — META trailer encode/decode unified (Phase 7) (2026-05-25)
+
+A different kind of refactor — not about shrinking `sf2_writer.py`,
+but about consolidating a format contract that previously spanned
+two files with two independent implementations.
+
+Since v3.5.17, SIDM2 has appended a small trailer past the SF2
+content so SID → SF2 → SID round-trips preserve all three PSID
+metadata fields:
+
+    [b"META"] [pascal title] [pascal author] [pascal copyright]
+
+Where each pascal string is `[u8 length][length bytes latin-1]`.
+SF2II ignores the trailer because its C64 memory landing spot lies
+past the SF2 file's natural end and isn't referenced by any of its
+handlers. The encoder lived in `sf2_writer.py:_append_metadata_trailer`;
+the decoder lived in `scripts/sf2_to_sid.py:_extract_metadata`. Same
+format spec, two implementations, **no shared test**. One typo away
+from breaking metadata round-trip silently — the C2 reference tests
+verify SF2 byte-output but don't exercise SF2→SID at all.
+
+Phase 7 unifies them in `sidm2/sf2_metadata_trailer.py` (109 lines)
+exposing:
+
+  - `encode_metadata_trailer(title, author, copyright) → bytes`
+  - `decode_metadata_trailer(sf2_bytes) → Optional[Tuple[str, str, str]]`
+
+Both writers now thin-wrap the module. The decoder gracefully
+returns `None` on missing/truncated/malformed trailers instead of
+raising — this matches the original behavior (`logger.debug` then
+fall through) and keeps the caller simple.
+
+The high-value addition is the **24 focused unit tests** that span
+both halves of the contract:
+
+- Encoder edge cases: whitespace strip, latin-1 with non-ASCII,
+  unencodable chars replaced with `?`, 400-char string truncated
+  to 255 (the pascal-length cap).
+- Decoder edge cases: empty input, no magic, truncated string,
+  missing third string, rightmost-wins when multiple `b"META"`
+  appear, tail-window enforcement (trailer >2KB from end ignored).
+- **Round-trip symmetry** (5 tests): `decode(encode(x)) == x`
+  modulo the documented strip + truncation. This is the load-
+  bearing property — it catches drift between the two halves
+  before it can break a real round-trip in production.
+
+`sf2_writer.py` stays at 4097 lines (the wrapper is the same size
+as the original method, so no shrink in that file specifically).
+But `scripts/sf2_to_sid.py` lost ~25 lines, and the format spec
+that was duplicated across both files now lives in exactly one
+place. 1165 tests pass (+24). All 14 C2 reference files
+byte-identical. Eight extracted modules now total 2099 lines with
+113 focused unit tests.
+
+The lesson: refactoring isn't only about cutting lines from a
+monolith. Sometimes it's about pulling apart a format contract
+that's been silently duplicated and writing the round-trip test
+that should always have existed.
 
 ### v3.5.40 — SF2 block-parsing extracted (Phase 6) (2026-05-25)
 

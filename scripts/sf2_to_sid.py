@@ -162,39 +162,18 @@ class SF2File:
     def _extract_metadata(self):
         """Extract title, author, copyright from the SF2 META trailer.
 
-        Since v3.5.17, sf2_writer appends a trailer past the SF2 content:
-            b"META" [pascal title] [pascal author] [pascal copyright]
-        where each pascal string is [u8 len][len bytes latin-1].
-
-        SF2II ignores the trailer (the C64 memory location it would map to
-        isn't referenced by any handler). Round-trip readers find the
-        magic by reverse-scanning the file's tail.
+        v3.5.41 wrapper around
+        sidm2.sf2_metadata_trailer.decode_metadata_trailer. See the
+        module docstring for the trailer format spec.
         """
-        # Reverse-scan a reasonable tail window for the b"META" magic
-        # (faster than a full-file scan; trailer is always at file end)
-        magic = b"META"
-        search = self.data[-2048:] if len(self.data) > 2048 else self.data
-        idx = search.rfind(magic)
-        if idx >= 0:
-            off = len(self.data) - len(search) + idx + len(magic)
-            try:
-                strs = []
-                for _ in range(3):
-                    if off >= len(self.data):
-                        break
-                    L = self.data[off]; off += 1
-                    if off + L > len(self.data):
-                        raise ValueError("string runs past file end")
-                    strs.append(self.data[off:off+L].decode('latin-1', errors='replace'))
-                    off += L
-                if len(strs) == 3:
-                    self.title, self.author, self.copyright = strs
-                    logger.debug(f"  Found META trailer: "
-                                 f"{self.title!r} / {self.author!r} / {self.copyright!r}")
-                    return
-            except Exception as e:
-                logger.debug(f"  META trailer parse failed: {e}")
-        logger.debug("  No META trailer found; metadata will be empty")
+        from sidm2 import sf2_metadata_trailer
+        result = sf2_metadata_trailer.decode_metadata_trailer(self.data)
+        if result is not None:
+            self.title, self.author, self.copyright = result
+            logger.debug(f"  Found META trailer: "
+                         f"{self.title!r} / {self.author!r} / {self.copyright!r}")
+        else:
+            logger.debug("  No META trailer found; metadata will be empty")
 
     def _detect_driver_addresses(self):
         """Parse SF2 header blocks to extract init/play addresses.

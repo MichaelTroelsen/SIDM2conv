@@ -25,6 +25,87 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.41] - 2026-05-25
+
+### Refactored — META trailer encode/decode pair unified
+
+A cross-file deduplication. Since v3.5.17, SIDM2 appends a 5-byte
+trailer past the SF2 content so `sf2_to_sid.py` can recover PSID
+metadata on round-trip:
+
+    [b"META"] [pascal title] [pascal author] [pascal copyright]
+
+Where each pascal string is `[u8 len][len bytes latin-1]` and SF2II
+ignores the trailer (its C64 memory landing spot isn't read by any
+handler).
+
+Before this version, the encoder lived in
+`sf2_writer.py:_append_metadata_trailer` and the decoder lived in
+`scripts/sf2_to_sid.py:_extract_metadata`. Same format spec, two
+implementations, no shared test. **One typo away from breaking
+metadata round-trip silently.**
+
+New module: **`sidm2/sf2_metadata_trailer.py`** (109 lines).
+
+Public API:
+  - `encode_metadata_trailer(title, author, copyright) → bytes`
+    Pure encoder. Strips whitespace, latin-1 encodes (with '?'
+    replacement for unencodable chars), truncates at 255B per
+    pascal-length constraint.
+  - `decode_metadata_trailer(sf2_bytes) → Optional[Tuple[str, str, str]]`
+    Pure decoder. Reverse-scans the last 2KB for `b"META"`, returns
+    None on missing/truncated/malformed instead of raising.
+
+Constants exposed:
+  - `METADATA_MAGIC = b"META"`
+  - `MAX_PASCAL_LEN = 255`
+  - `TAIL_SCAN_WINDOW = 2048`
+
+Both files now thin-wrap the module:
+  - `sf2_writer.py:_append_metadata_trailer` pulls title/author/
+    copyright from `self.data.header` and forwards to `encode`.
+  - `sf2_to_sid.py:_extract_metadata` forwards to `decode` and
+    unpacks into `self.title/author/copyright`.
+
+### Added — 24 focused unit tests for sf2_metadata_trailer
+
+New `pyscript/test_sf2_metadata_trailer.py`:
+
+  TestEncode (8):
+    - magic prefix `b"META"`
+    - 3 empty strings → b"META\x00\x00\x00"
+    - normal strings produce expected byte sequence
+    - whitespace stripped before encoding
+    - None values treated as empty
+    - 400-char string truncated to 255
+    - latin-1 chars preserved (é, ü)
+    - unencodable chars (Chinese) replaced with '?'
+
+  TestDecode (8):
+    - empty input / no magic → None
+    - minimal trailer (3 empty strings) decodes correctly
+    - normal decode
+    - truncated string returns None (no exception)
+    - missing third string returns None
+    - rfind semantics: when multiple b"META" present, rightmost wins
+    - tail-window enforcement: trailer >2KB from file end is ignored
+
+  TestRoundTrip (5): **the load-bearing property**
+    - encode → decode = identity (modulo strip + truncation)
+    - empty / whitespace / 255B truncation / latin-1 preservation
+
+  TestConstants (3): pin magic, pascal length cap, tail-window
+
+### Stats
+- sf2_writer.py: 4097 lines (unchanged — wrapper same size as original)
+- Cumulative since v3.5.27: 5832 → 4097 lines (-30%)
+- 1141 → 1165 tests pass (+24)
+- 8 extracted modules total 2099 lines with 113 focused unit tests
+- Round-trip contract now has dedicated cross-file regression coverage
+- All 14 C2 reference files byte-identical
+
+---
+
 ## [3.5.40] - 2026-05-25
 
 ### Refactored — SF2 block-parsing extracted to its own module

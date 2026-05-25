@@ -31,6 +31,7 @@ from . import sf2_diagnostics
 from . import low_load_layout
 from . import sf2_aux_bodies
 from . import sf2_parser
+from . import sf2_metadata_trailer
 
 logger = logging.getLogger(__name__)
 
@@ -1266,28 +1267,27 @@ class SF2Writer:
             idx = pos + 12
 
     def _append_metadata_trailer(self) -> None:
-        """Append b"META" magic + 3 pascal strings (title, author, copyright)
-        after the existing SF2 content so sf2_to_sid.py can recover them
-        on round-trip. SF2II ignores the trailer (its C64 memory landing
-        spot isn't read by any handler). Latin-1 encoded, max 255B per
-        string per the pascal-len format.
+        """v3.5.41 wrapper around
+        sidm2.sf2_metadata_trailer.encode_metadata_trailer.
+
+        Pulls title/author/copyright from self.data.header, encodes
+        the trailer, and appends to self.output. See the module
+        docstring for the trailer format spec.
         """
         if not hasattr(self.data, 'header') or not self.data.header:
             title = author = copyright = ""
         else:
             h = self.data.header
-            title     = (getattr(h, 'name', '')      or '').strip()
-            author    = (getattr(h, 'author', '')    or '').strip()
-            copyright = (getattr(h, 'copyright', '') or '').strip()
-        trailer = bytearray(b"META")
-        for s in (title, author, copyright):
-            b = s.encode('latin-1', errors='replace')[:255]
-            trailer.append(len(b))
-            trailer.extend(b)
-        self.output = bytes(self.output) + bytes(trailer)
+            title     = getattr(h, 'name', '')      or ''
+            author    = getattr(h, 'author', '')    or ''
+            copyright = getattr(h, 'copyright', '') or ''
+        trailer = sf2_metadata_trailer.encode_metadata_trailer(
+            title, author, copyright)
+        self.output = bytes(self.output) + trailer
         logger.info(
-            f"  Metadata trailer: title={title!r} author={author!r} "
-            f"copyright={copyright!r} ({len(trailer)}B appended)"
+            f"  Metadata trailer: title={title.strip()!r} "
+            f"author={author.strip()!r} copyright={copyright.strip()!r} "
+            f"({len(trailer)}B appended)"
         )
 
     def _inject_auxiliary_data(self) -> None:
