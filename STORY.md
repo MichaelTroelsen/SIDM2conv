@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.53 (2026-05-25) — 1229 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
-**Latest chapter:** [v3.5.53 — driver11 dispatcher + orphan removal (Phase 18)](#v3553--driver11-dispatcher--orphan-removal-phase-18-2026-05-25)
+**Current version:** v3.5.54 (2026-05-25) — 1229 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
+**Latest chapter:** [v3.5.54 — laxity_raw_np21_builder extracted (Phase 19, the hard one)](#v3554--laxity_raw_np21_builder-extracted-phase-19-the-hard-one-2026-05-25)
 
 ---
 
@@ -529,6 +529,103 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.54 — laxity_raw_np21_builder extracted (Phase 19, the hard one) (2026-05-25)
+
+The big one. The "class-bound giant" tagged at Phase 15 as the only
+remaining piece in `sf2_writer.py` that genuinely needed class-shaped
+refactoring. 940 lines of audio gate orchestration, shadow buffer
+setup, ch_seq_ptr patching, translator emission, and Driver-11-format
+table emission.
+
+**The surprise** (the same as Phase 11 + 12): the AST `self.*` count
+overstated the actual class-bound surface. The method had 16 unique
+self refs, but **10 were calls to wrapper methods that already routed
+into extracted modules**:
+
+| Self method | Routes to |
+|---|---|
+| `_build_low_load_sf2` | `low_load_layout.build_low_load_sf2` |
+| `_build_np21_sf2_edit_area` | `np21_edit_area_builder.build_np21_sf2_edit_area` |
+| `_emit_filter_cutoff_only_routine` | `np21_codegen.emit_filter_cutoff_only_routine` |
+| `_emit_filter_split_copy_routine` | `np21_codegen.emit_filter_split_copy_routine` |
+| `_emit_instr_column_copy_routine` | `np21_codegen.emit_instr_column_copy_routine` |
+| `_emit_instr_copy_routine` | `np21_codegen.emit_instr_copy_routine` |
+| `_emit_multipat_translator` | `np21_codegen.emit_multipat_translator` |
+| `_emit_pulse_packed_copy_routine` | `np21_codegen.emit_pulse_packed_copy_routine` |
+| `_emit_pulse_split_copy_routine` | `np21_codegen.emit_pulse_split_copy_routine` |
+| `_emit_wave_split_copy_routine` | `np21_codegen.emit_wave_split_copy_routine` |
+
+The actual class-bound state was just 5 attr writes:
+`self.output`, `self._ch_seq_patches`, `self._ch_seq_patch_layout`,
+`self._np21_file_off`, `self._wave_copy_jsr_offs`. Those plus
+`skip_aux` for the low-load case became the `LaxityRawNp21Result`
+dataclass.
+
+After parameterising those + replacing the 10 self-method-call
+sites with direct module-function calls, the function became a
+pure `(data) → Optional[LaxityRawNp21Result]` builder.
+
+**The transformation bugs** are worth recording because they show
+exactly when the C2 reference suite earns its keep:
+
+1. Missing `from . import laxity_raw_np21_builder` in
+   `sf2_writer.py`. Caught immediately on the first conversion run.
+2. Two `self.` prefix substitutions the body-rewrite regex missed:
+   - `if self._build_low_load_sf2(...)` — the regex looked for the
+     dedented form (no `self.` prefix) but the body had `self.` still
+     attached. Fixed by hand-patching the call site.
+   - `self.np21_edit_area_builder.build_np21_sf2_edit_area(...)` —
+     half-substitution. The `_build_np21_sf2_edit_area` part got
+     replaced with `np21_edit_area_builder.build_np21_sf2_edit_area`,
+     but the leading `self.` got left in place, producing the broken
+     `self.np21_edit_area_builder.` form. Fixed by removing the
+     `self.` prefix in that single line.
+
+Both surfaced on the first C2 regression run. The 14-file byte-
+identical suite immediately failed every Laxity-path test with a
+specific NameError, pointing at exactly the right line. That's the
+test design we've relied on for 18 phases working as expected.
+
+`sf2_writer.py`: 1633 → 710 lines (**-923**). The **largest single
+release shrink in the entire decomposition**. Cumulative since
+v3.5.27: **5832 → 710 lines (-88%)**.
+
+**The decomposition is functionally complete**. SF2Writer is now
+a thin orchestrator (`__init__` + `write()` + wrapper methods) over
+16 focused modules totaling 6180 lines. The ratio is **8.7:1**
+extracted-to-monolith.
+
+| Module | Lines | Tests |
+|---|---|---|
+| `laxity_raw_np21_builder` | **1045** | **C2-covered** ⬅ new |
+| `driver11_section_injectors` | 994 | C2 |
+| `np21_edit_area_builder` | 778 | C2 |
+| `np21_codegen` | 617 | 14 |
+| `laxity_music_data_injector` | 501 | C2 |
+| `sf2_diagnostics` | 401 | 14 |
+| `sf2_aux_bodies` | 281 | 27 |
+| `driver11_table_helpers` | 235 | 20 |
+| `minimal_embed_builder` | 234 | 9 |
+| `audio_gate` | 232 | 8 |
+| `sf2_parser` | 222 | 18 |
+| `low_load_layout` | 184 | 13 |
+| `placeholder_edit_area` | 155 | 11 |
+| `universal_211_workaround` | 152 | 7 |
+| `sf2_template_finder` | 124 | 12 |
+| `sf2_metadata_trailer` | 109 | 24 |
+| **16 modules total** | **6464** | **177** |
+
+1229 tests pass. All 14 C2 reference files byte-identical.
+
+**The 19-phase decomposition has reduced `sf2_writer.py` by 88%.**
+What started as a 5832-line monolith is now a 710-line orchestrator
+over 16 focused modules. Every byte of the SF2 output is preserved.
+Every architectural concern that could be lifted has been lifted.
+The Phase 11 lesson — AST `self.*` unique-ref count is the leading
+indicator of refactor feasibility — proved true even on the
+"genuinely class-bound" 940-line giant: it was just deeper-wrapped
+modular code than the surface count suggested.
 
 ### v3.5.53 — driver11 dispatcher + orphan removal (Phase 18) (2026-05-25)
 

@@ -25,6 +25,89 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.54] - 2026-05-25
+
+### Refactored — _inject_laxity_raw_np21 (940L) extracted
+
+The "hard" extraction that was tagged as class-bound at Phase 15 —
+and the largest single-release shrink in the entire decomposition.
+
+After 18 phases, AST analysis revealed the 940-line method had
+16 unique self refs but **10 of them were calls to wrapper methods
+that already routed into extracted modules**:
+
+  - `self._build_low_load_sf2` → `low_load_layout.build_low_load_sf2`
+  - `self._build_np21_sf2_edit_area`
+    → `np21_edit_area_builder.build_np21_sf2_edit_area`
+  - `self._emit_*` (8 calls) → `np21_codegen.emit_*`
+
+The actual class-bound state surface was just **5 attr writes**:
+`self.output`, `self._ch_seq_patches`, `self._ch_seq_patch_layout`,
+`self._np21_file_off`, `self._wave_copy_jsr_offs`.
+
+After parameterising those + replacing the 10 self-method-call sites
+with direct module-function calls, the function became a pure
+`(data) → Optional[LaxityRawNp21Result]` builder.
+
+New module: **`sidm2/laxity_raw_np21_builder.py`** (1045 lines
+including module docstring + LaxityRawNp21Result dataclass + the
+builder function).
+
+Public API:
+  - `build_laxity_raw_np21_sf2(data) → Optional[LaxityRawNp21Result]`
+  - `LaxityRawNp21Result` dataclass with `.sf2_bytes`,
+    `.ch_seq_patches`, `.ch_seq_patch_layout`, `.np21_file_off`,
+    `.wave_copy_jsr_offs`, `.skip_aux`
+
+SF2Writer keeps a 17-line wrapper that pulls the result fields onto
+the writer's instance attributes (where the audio gate's
+post-write-gate consumes them).
+
+### Transformation bugs caught by C2 reference suite
+
+Two issues surfaced on the first regression run, both fixed:
+
+1. Missing `from . import laxity_raw_np21_builder` in `sf2_writer.py`.
+2. Two stray `self.` references inside the body that the body-rewrite
+   regex didn't catch:
+   - A `self._build_low_load_sf2(...)` call that the simple textual
+     substitution missed because the regex was looking for the
+     dedented form without `self.` prefix.
+   - A `self.np21_edit_area_builder.build_np21_sf2_edit_area`
+     fragment from a partial substitution (the `_build_np21_sf2_edit_area`
+     pattern got replaced, but the `self.` prefix was left in
+     place, resulting in `self.np21_edit_area_builder.`).
+
+Both fixed manually; the C2 suite caught the regressions on first
+run, exactly as designed.
+
+### Test coverage
+
+No new focused unit tests for the extracted function — same
+reasoning as v3.5.46/47: the C2 reference suite (14 files) is the
+regression guard. Building synthetic NP21 fixtures that exercise
+the variant detectors (Stinsen/Beast/Angular/Wizax-A/Zetrex-YP/
+Vibrants V20 fallback) + ch_seq_ptr autodetect + audio gate
+orchestration would be a months-long fixture project for a
+purely structural refactor with zero behavior change.
+
+### Stats
+- sf2_writer.py: 1633 → 710 lines (**-923**)
+  *Largest single-release shrink in the entire decomposition*
+- Cumulative since v3.5.27: 5832 → 710 lines (**-88%**)
+- 1229 tests pass (unchanged — pure refactor)
+- 16 extracted modules total 6180 lines with 177 focused unit tests
+- All 14 C2 reference files byte-identical
+
+### Milestone
+
+**The decomposition is functionally complete.** SF2Writer is now a
+thin orchestrator (~710 lines of `__init__` + `write()` + wrapper
+methods) over 16 focused modules totaling 6180 lines. The ratio is
+**8.7:1** extracted-to-monolith.
+
+---
+
 ## [3.5.53] - 2026-05-25
 
 ### Refactored — driver11 dispatcher + diagnostic moved to driver11_section_injectors
