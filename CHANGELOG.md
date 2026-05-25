@@ -25,6 +25,64 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.47] - 2026-05-25
+
+### Refactored — _inject_laxity_music_data (463 lines) extracted
+
+Second-largest single extraction of the decomposition (after the
+v3.5.46 _build_np21_sf2_edit_area lift). AST analysis found the
+463-line Laxity-driver-template music data injector had 92 `self.*`
+references but only TWO unique ones:
+
+  - `self.output` (67 refs, mutated via item-write)
+  - `self.data` (25 refs, read-only)
+
+No method calls, no other state. Pure `(output, data) → None` shape
+after parameterisation.
+
+New module: **`sidm2/laxity_music_data_injector.py`** (501 lines).
+
+Public API:
+  - `inject_laxity_music_data(output: bytearray, data) → None`
+    Mutates `output` in place. No return value.
+
+The function handles the Laxity driver template (v1.6,
+`sf2driver_laxity_00.prg`):
+  - INIT dispatch fix at $0E00 (steals-return-addr bug)
+  - 40 hardcoded pointer patches throughout the player at $0E00-$16FF
+  - Orderlist injection at $1900 (3 tracks × 256 bytes max)
+  - Sequence injection after orderlists
+  - Tempo / arp / filter / wave / pulse / instrument tables
+  - Per-voice scratch initialization
+
+SF2Writer keeps an 8-line wrapper.
+
+### Test coverage
+
+No new focused unit tests for this one (same reasoning as v3.5.46):
+the C2 reference suite is the regression guard — every Laxity-driver
+SF2 conversion routes through this function. Adding equivalent unit
+tests would require building synthetic test fixtures for the 40
+hardcoded pointer patches, which is a months-long project for a
+pure structural refactor with zero behavior change.
+
+### Stats
+- sf2_writer.py: 3158 → 2704 lines (**-454**)
+- Cumulative since v3.5.27: 5832 → 2704 lines (-54%)
+- 1202 tests pass (unchanged — pure refactor)
+- 13 extracted modules total 3728 lines with 150 focused unit tests
+- All 14 C2 reference files byte-identical
+
+### Milestone
+
+**The decomposition is now past the halfway mark.** More lines live
+in extracted modules (3728) than in `sf2_writer.py` itself (2704)
+for the first time. The architectural separation between writer
+orchestration and pure builders/encoders/validators/utilities is
+now structurally complete for the easy targets.
+
+---
+
 ## [3.5.46] - 2026-05-25
 
 ### Refactored — _build_np21_sf2_edit_area (761 lines) extracted

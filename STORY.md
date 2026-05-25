@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.46 (2026-05-25) — 1202 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
-**Latest chapter:** [v3.5.46 — np21_edit_area_builder extracted (Phase 11)](#v3546--np21_edit_area_builder-extracted-phase-11-2026-05-25)
+**Current version:** v3.5.47 (2026-05-25) — 1202 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
+**Latest chapter:** [v3.5.47 — laxity_music_data_injector extracted (Phase 12)](#v3547--laxity_music_data_injector-extracted-phase-12-2026-05-25)
 
 ---
 
@@ -529,6 +529,65 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.47 — laxity_music_data_injector extracted (Phase 12) (2026-05-25)
+
+The Phase 11 lesson (AST `self.*` count is the leading indicator) had
+an immediate payoff. After v3.5.46 pulled out the 761-line
+`_build_np21_sf2_edit_area` whose AST scan revealed only 9 self refs,
+the next biggest method in `sf2_writer.py` was the 463-line
+`_inject_laxity_music_data`. AST scan: 92 `self.*` references — but
+only **TWO unique ones**, `self.output` (67 refs, mutated) and
+`self.data` (25 refs, read-only). No method calls. No other state.
+
+That's the same shape as Phase 11 — high reference count is fine when
+the references are all to ONE mutating-target and ONE read-only source.
+Pass `output: bytearray` and `data` as parameters; the function
+becomes pure.
+
+The function is itself complex — it patches the Laxity driver
+template (v1.6, `sf2driver_laxity_00.prg`) with INIT dispatch fix
+at $0E00, 40 hardcoded pointer patches throughout the relocated
+player, orderlist injection at $1900, sequences after, tables —
+but every line of that complexity is **local** to the function. The
+600 lines of patch logic don't reach out into other parts of the
+writer's state.
+
+New `sidm2/laxity_music_data_injector.py` (501 lines):
+
+```python
+def inject_laxity_music_data(output: bytearray, data) -> None:
+    """Inject music data into the Laxity driver template (native format)."""
+    # ... 463 lines of hardcoded patches ...
+```
+
+`sf2_writer.py:_inject_laxity_music_data` becomes an 8-line wrapper.
+
+Same test-coverage decision as Phase 11: no new focused unit tests.
+The C2 reference suite is the regression guard; building synthetic
+fixtures to exercise 40 hardcoded pointer patches would be
+months-long fixture work. The C2 audio comparison verifies every
+byte of the output.
+
+**A milestone hit**: `sf2_writer.py` is now at 2704 lines, and the
+13 extracted modules total 3728 lines. **More code lives in extracted
+modules than in `sf2_writer.py` itself** for the first time. The
+architectural separation between "writer orchestration" and "pure
+builders / encoders / validators / utilities" is structurally
+complete for the easy-to-medium difficulty targets.
+
+`sf2_writer.py`: 3158 → 2704 lines (-454). Cumulative since v3.5.27:
+**5832 → 2704 lines (-54%)** — more than half the file is gone.
+1202 tests still pass. All 14 C2 reference files byte-identical.
+
+**The Phase 11-12 pattern**: two consecutive releases extracting
+761 + 463 = 1224 lines, neither requiring new focused unit tests
+because the C2 reference suite was already the right safety net.
+Both functions were *intrinsically pure*, just trapped inside a
+class. The cumulative effect since v3.5.27 — 5832 → 2704, -54% —
+demonstrates that you can lift huge amounts of code out of a
+monolith without writing new tests, **provided you have a
+trustworthy end-to-end suite** as the regression guard.
 
 ### v3.5.46 — np21_edit_area_builder extracted (Phase 11) (2026-05-25)
 
