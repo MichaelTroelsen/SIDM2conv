@@ -54,6 +54,7 @@ from .sequence_extraction import (
 )
 from .instrument_transposition import transpose_instruments
 from . import driver11_table_helpers
+from . import sf2_parser
 
 # v3.5.52 — the Phase 17-moved _inject_*_table methods call into
 # additional helpers that need module-level imports:
@@ -61,6 +62,8 @@ from .sequence_extraction import (
     extract_arpeggio_indices,
     find_arpeggio_table_in_memory,
     build_sf2_arp_table,
+    analyze_sequence_commands,
+    get_command_names,
 )
 
 logger = logging.getLogger(__name__)
@@ -879,3 +882,112 @@ def inject_wave_table(output: bytearray, data, driver_info, load_address: int) -
     logger.debug(f"    Wrote {notes_written} note offsets")
 
     logger.info(f"    Written {len(wave_data)} wave table entries (column-major: waveforms first, then notes)")
+
+
+
+# ---------------------------------------------------------------------------
+# v3.5.53 Phase 18 additions:
+#   - inject_music_data_into_template: top-level dispatcher that parses
+#     the SF2 header, pre-allocates the buffer, and invokes all 11
+#     section injectors in the correct order. Mirrors the legacy
+#     driver11-template path's `_inject_music_data_into_template`.
+#   - print_extraction_summary: debug-log dump of extracted sequence /
+#     instrument / orderlist / command counts.
+# Both functions consume only (output, data, driver_info) state.
+# ---------------------------------------------------------------------------
+
+
+def print_extraction_summary(data) -> None:
+    """Log a summary of extracted sequences / instruments / orderlists /
+    commands used. Pure read-only diagnostic.
+    """
+    if data.sequences:
+        logger.debug(f"\n  Extracted {len(data.sequences)} sequences:")
+        for i, seq in enumerate(data.sequences[:5]):
+            logger.debug(f"    Sequence {i}: {len(seq)} events")
+        if len(data.sequences) > 5:
+            logger.debug(f"    ... and {len(data.sequences) - 5} more")
+
+    if data.instruments:
+        logger.debug(f"\n  Extracted {len(data.instruments)} instruments")
+
+    if data.orderlists:
+        logger.debug(f"\n  Created {len(data.orderlists)} orderlists")
+
+    if hasattr(data, 'raw_sequences') and data.raw_sequences:
+        cmd_analysis = analyze_sequence_commands(data.raw_sequences)
+        if cmd_analysis['commands_used']:
+            logger.debug(f"\n  Commands used in sequences:")
+            cmd_names = get_command_names()
+            for cmd in sorted(cmd_analysis['commands_used']):
+                count = cmd_analysis['command_counts'].get(cmd, 0)
+                name = cmd_names[cmd] if cmd < len(cmd_names) else f"Cmd {cmd}"
+                logger.debug(f"    {cmd:2d}: {name} ({count}x)")
+
+
+def inject_music_data_into_template(
+    output: bytearray,
+    data,
+    driver_info,
+) -> Optional[int]:
+    """Top-level driver11 template-path dispatcher.
+
+    Parses the SF2 header from `output` (populating `driver_info`),
+    pre-allocates the buffer for sequences + orderlists, then invokes
+    each section injector in the correct order:
+
+        instruments -> sequences -> orderlists -> wave -> pulse ->
+        filter -> hr -> init -> tempo -> arp -> commands
+
+    Args:
+        output: SF2 PRG buffer (mutated in place — pre-allocated +
+            section data written by the inject functions).
+        data: ExtractedData providing instruments / sequences /
+            orderlists / raw_sequences / c64_data / load_address.
+        driver_info: SF2DriverInfo (mutated by sf2_parser.parse_sf2_blocks).
+
+    Returns:
+        The PRG load address on success, or None if the SF2 header
+        couldn't be parsed.
+    """
+    logger.info("Injecting music data into template...")
+    logger.debug(f"Template size: {len(output)} bytes")
+
+    load_address = sf2_parser.parse_sf2_blocks(output, driver_info)
+    if load_address is None:
+        logger.warning(" Could not parse SF2 header, using fallback")
+        print_extraction_summary(data)
+        return None
+
+    # PACKED MODE: pre-allocate enough space for sequences + orderlists
+    # so the inject calls don't overrun the buffer.
+    sequence_space = sum(len(seq) * 4 for seq in (data.sequences or [])) + 2048
+    orderlist_space = sum(len(ol) * 2 for ol in (data.orderlists or [])) + 1024
+    required_size = _addr_to_offset(driver_info.sequence_start, load_address) + sequence_space + orderlist_space
+    if len(output) < required_size:
+        logger.debug(
+            f"  Pre-allocating buffer: {required_size} bytes "
+            f"(sequences: {sequence_space}, orderlists: {orderlist_space})"
+        )
+        output.extend(bytearray(required_size - len(output)))
+
+    if data.instruments or data.raw_sequences:
+        inject_instruments(output, data, driver_info, load_address)
+
+    if data.sequences and driver_info.sequence_start:
+        inject_sequences(output, data, driver_info, load_address)
+
+    if data.orderlists and driver_info.orderlist_start:
+        inject_orderlists(output, data, driver_info, load_address)
+
+    inject_wave_table(output, data, driver_info, load_address)
+    inject_pulse_table(output, data, driver_info, load_address)
+    inject_filter_table(output, data, driver_info, load_address)
+    inject_hr_table(output, data, driver_info, load_address)
+    inject_init_table(output, data, driver_info, load_address)
+    inject_tempo_table(output, data, driver_info, load_address)
+    inject_arp_table(output, data, driver_info, load_address)
+    inject_commands(output, data, driver_info, load_address)
+
+    print_extraction_summary(data)
+    return load_address

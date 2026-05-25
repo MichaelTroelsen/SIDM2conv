@@ -264,44 +264,13 @@ class SF2Writer:
         return addr - self.load_address + 2
 
     def _inject_music_data_into_template(self) -> None:
-        """Inject extracted music data into a template SF2 file"""
-        logger.info("Injecting music data into template...")
-        logger.debug(f"Template size: {len(self.output)} bytes")
-
-        if not self._parse_sf2_header():
-            logger.warning(" Could not parse SF2 header, using fallback")
-            self._print_extraction_summary()
-            return
-
-        # PACKED MODE: Pre-allocate enough space for sequences and orderlists
-        # Calculate required size based on actual data
-        sequence_space = sum(len(seq) * 4 for seq in (self.data.sequences or [])) + 2048  # 4 bytes per event + overhead
-        orderlist_space = sum(len(ol) * 2 for ol in (self.data.orderlists or [])) + 1024  # 2 bytes per entry + overhead
-        required_size = self._addr_to_offset(self.driver_info.sequence_start) + sequence_space + orderlist_space
-
-        if len(self.output) < required_size:
-            logger.debug(f"  Pre-allocating buffer: {required_size} bytes (sequences: {sequence_space}, orderlists: {orderlist_space})")
-            self.output.extend(bytearray(required_size - len(self.output)))
-
-        if self.data.instruments or self.data.raw_sequences:
-            self._inject_instruments()
-
-        if self.data.sequences and self.driver_info.sequence_start:
-            self._inject_sequences()
-
-        if self.data.orderlists and self.driver_info.orderlist_start:
-            self._inject_orderlists()
-
-        self._inject_wave_table()
-        self._inject_pulse_table()
-        self._inject_filter_table()
-        self._inject_hr_table()
-        self._inject_init_table()
-        self._inject_tempo_table()
-        self._inject_arp_table()
-        self._inject_commands()
-
-        self._print_extraction_summary()
+        """v3.5.53 wrapper around
+        sidm2.driver11_section_injectors.inject_music_data_into_template.
+        """
+        load_address = driver11_section_injectors.inject_music_data_into_template(
+            self.output, self.data, self.driver_info)
+        if load_address is not None:
+            self.load_address = load_address
 
     def _inject_sequences(self) -> None:
         """v3.5.48 wrapper around
@@ -486,30 +455,10 @@ class SF2Writer:
             instrument_names, command_names, instr_table_id, cmd_table_id))
 
     def _print_extraction_summary(self) -> None:
-        """Print summary of extracted data"""
-        if self.data.sequences:
-            logger.debug(f"\n  Extracted {len(self.data.sequences)} sequences:")
-            for i, seq in enumerate(self.data.sequences[:5]):
-                logger.debug(f"    Sequence {i}: {len(seq)} events")
-            if len(self.data.sequences) > 5:
-                logger.debug(f"    ... and {len(self.data.sequences) - 5} more")
-
-        if self.data.instruments:
-            logger.debug(f"\n  Extracted {len(self.data.instruments)} instruments")
-
-        if self.data.orderlists:
-            logger.debug(f"\n  Created {len(self.data.orderlists)} orderlists")
-
-        if hasattr(self.data, 'raw_sequences') and self.data.raw_sequences:
-            from .sequence_extraction import analyze_sequence_commands
-            cmd_analysis = analyze_sequence_commands(self.data.raw_sequences)
-            if cmd_analysis['commands_used']:
-                logger.debug(f"\n  Commands used in sequences:")
-                cmd_names = get_command_names()
-                for cmd in sorted(cmd_analysis['commands_used']):
-                    count = cmd_analysis['command_counts'].get(cmd, 0)
-                    name = cmd_names[cmd] if cmd < len(cmd_names) else f"Cmd {cmd}"
-                    logger.debug(f"    {cmd:2d}: {name} ({count}x)")
+        """v3.5.53 wrapper around
+        sidm2.driver11_section_injectors.print_extraction_summary.
+        """
+        driver11_section_injectors.print_extraction_summary(self.data)
 
     def _find_driver(self) -> Optional[str]:
         """v3.5.43 wrapper around sidm2.sf2_template_finder.find_driver."""
@@ -1555,32 +1504,13 @@ class SF2Writer:
             if result.skip_aux:
                 self._skip_aux = True
 
-    def _inject_silent_stub(self) -> None:
-        """[REMOVED v3.5.37 — failed approach; see git history for the
-        ~120 line implementation.
-
-        Originally attempted as a fallback for SIDs whose load_addr is
-        outside the embed-binary safe window: a 3KB stub with valid
-        Blocks 1-9 + bare-RTS handlers + placeholder edit area, hoping
-        it would be structurally close enough to the bundled "Driver 11
-        Test - Arpeggio.sf2" to load.
-
-        DOES NOT load. Action_Biker silent-stub (3KB, no embedded
-        binary, identical Block 3 layout to the working bundled file)
-        crashed 5/5 in production SF2II while the byte-for-byte same
-        layout converted via 13KB Stinsen file passed 5/5. The crash
-        was heap-state-dependent, Heisenbug-masked under the patched
-        diagnostic binary.
-
-        Method body removed because it was never called from any code
-        path in the converter. If future investigation needs the layout
-        setup, recover it from git history at this method's removal
-        commit.
-        """
-        raise NotImplementedError(
-            "_inject_silent_stub was removed in v3.5.37 — see docstring "
-            "and git history. The approach did not work in production "
-            "SF2II and was never called from any code path.")
+    # `_inject_silent_stub` was a NotImplementedError stub kept since
+    # v3.5.37 as documentation for a failed approach (3KB silent SF2
+    # for unsafe load_addr files — never loaded in production SF2II).
+    # Removed at v3.5.53: zero callers, no external references, docs
+    # still pinned in CHANGELOG / STORY / git history at the removal
+    # commit. If future investigation needs the layout setup, recover
+    # from `git show <v3.5.37>^:sidm2/sf2_writer.py | grep -A 120 _inject_silent_stub`.
 
     # ──────────────────────────────────────────────────────────────────────
     # 6502 code generators (v3.5.36 — extracted to sidm2/np21_codegen.py).

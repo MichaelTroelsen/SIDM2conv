@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.52 (2026-05-25) — 1229 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
-**Latest chapter:** [v3.5.52 — 7 more inject methods to driver11_section_injectors (Phase 17)](#v3552--7-more-inject-methods-to-driver11_section_injectors-phase-17-2026-05-25)
+**Current version:** v3.5.53 (2026-05-25) — 1229 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
+**Latest chapter:** [v3.5.53 — driver11 dispatcher + orphan removal (Phase 18)](#v3553--driver11-dispatcher--orphan-removal-phase-18-2026-05-25)
 
 ---
 
@@ -529,6 +529,62 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.53 — driver11 dispatcher + orphan removal (Phase 18) (2026-05-25)
+
+The release that closes the driver11 template path. After Phases
+13+17 moved all 11 section inject functions, only three small
+pieces of driver11-template-path code remained in `sf2_writer.py`:
+
+1. **The dispatcher** (`_inject_music_data_into_template`, 39 lines):
+   parses the SF2 header, pre-allocates the buffer, calls each
+   inject function in order. Moved to `driver11_section_injectors`
+   as `inject_music_data_into_template(output, data, driver_info)
+   → Optional[int]` (returns the load_address on success or None
+   on parse failure). The function now does its own SF2 header
+   parsing via `sf2_parser.parse_sf2_blocks` instead of calling
+   back into `self._parse_sf2_header()`.
+
+2. **The diagnostic** (`_print_extraction_summary`, 25 lines):
+   pure read-only debug log. Moved as
+   `print_extraction_summary(data) → None`.
+
+3. **The orphan stub** (`_inject_silent_stub`, 26 lines): the
+   v3.5.37 NotImplementedError raising stub kept as documentation
+   for a failed approach. Removed — zero callers, the rationale
+   is preserved in CHANGELOG/STORY/git history at the v3.5.37
+   removal commit, and a 7-line recovery-pointer comment remains
+   in place.
+
+The dispatcher landing in `driver11_section_injectors.py` means the
+entire driver11 template path now lives in one module — 13
+functions covering parse + dispatch + 11 section injectors + the
+debug summary. `sf2_writer.py` has zero remaining driver11-
+template-path code beyond the thin wrapper methods that test files
+still call.
+
+`sf2_writer.py`: 1703 → 1633 lines (-70). Cumulative since v3.5.27:
+**5832 → 1633 lines (-72%)**. 1229 tests still pass. All 14 C2
+reference files byte-identical. `driver11_section_injectors.py`
+grew from 873 → 994 lines.
+
+**The 18-phase decomposition tally:**
+
+| Phases | Cumulative shrink | New modules |
+|---|---|---|
+| v3.5.36–43 (Phases 1–9) | 5832 → 3954 (-32%) | +10 |
+| v3.5.44–45 (Phase 10/10b) | 3954 → 3896 (-33%) | +1 |
+| v3.5.46–48 (Phases 11–13) | 3896 → 2223 (-62%) | +3 |
+| v3.5.49–51 (Phases 14–16) | 2223 → 1954 (-66.5%) | +0 (additions to existing) |
+| v3.5.52–53 (Phases 17–18) | **1954 → 1633 (-72%)** | +0 (additions to existing) |
+
+The final 6 releases (Phases 13–18) demonstrate the value of
+choosing the right home for an extraction: 5 of those 6 added to
+existing modules rather than spawning new ones, because the surface
+they covered was a natural extension of an already-extracted theme
+(driver11 sections, aux chain, helpers). The pattern of *"complete
+an existing module's surface rather than fragment it"* is a useful
+counterweight to the tempting "one extraction = one new file" rule.
 
 ### v3.5.52 — 7 more inject methods to driver11_section_injectors (Phase 17) (2026-05-25)
 

@@ -25,6 +25,59 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.53] - 2026-05-25
+
+### Refactored — driver11 dispatcher + diagnostic moved to driver11_section_injectors
+
+Phase 18 closes the driver11 template path encapsulation. After
+Phases 13+17 moved all 11 inject functions, the remaining 3 pieces
+of driver11-template-path logic in `sf2_writer.py` were:
+
+  - `_inject_music_data_into_template` (39L) — top-level dispatcher
+  - `_print_extraction_summary` (25L) — read-only debug-log function
+  - `_inject_silent_stub` (26L) — v3.5.37 NotImplementedError stub
+    (orphaned, no callers)
+
+Two were moved to `driver11_section_injectors.py`:
+
+  - `inject_music_data_into_template(output, data, driver_info)
+       → Optional[int]`
+    Parses the SF2 header (via `sf2_parser.parse_sf2_blocks`),
+    pre-allocates the buffer for sequences + orderlists, then
+    invokes the 11 section injectors in the correct order
+    (instruments → sequences → orderlists → wave → pulse → filter
+    → hr → init → tempo → arp → commands). Returns load_address
+    on success or None on parse failure.
+
+  - `print_extraction_summary(data) → None`
+    Logs the count of extracted sequences / instruments / orderlists
+    / commands. Pure read-only.
+
+SF2Writer keeps two thin wrappers (5 lines each):
+  - `_inject_music_data_into_template` forwards + propagates
+    `self.load_address` from the returned value.
+  - `_print_extraction_summary` is a one-line delegate.
+
+### Removed — `_inject_silent_stub` orphan stub
+
+The v3.5.37 NotImplementedError stub had been kept as documentation
+for a failed approach (3KB silent SF2 for unsafe load_addr files —
+never loaded in production SF2II). Zero callers, no external
+references. Removed (with a 7-line comment pointing to git history
+at the v3.5.37 removal commit for any future investigator).
+
+### Stats
+- sf2_writer.py: 1703 → 1633 lines (**-70**)
+  Driver11 template path is now fully encapsulated outside SF2Writer
+- driver11_section_injectors.py: 873 → 994 lines (+121)
+  Hosts 13 functions (11 section injectors + dispatcher + summary)
+- Cumulative since v3.5.27: 5832 → 1633 lines (-72%)
+- 1229 tests pass (unchanged — pure refactor)
+- 15 extracted modules total 5135 lines with 177 focused unit tests
+- All 14 C2 reference files byte-identical
+
+---
+
 ## [3.5.52] - 2026-05-25
 
 ### Refactored — 7 more _inject_*_table methods moved to driver11_section_injectors

@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.5.52** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-25
+**SIDM2 v3.5.53** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-25
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -172,6 +172,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.5.53** (2026-05-25): **Phase 18 — driver11 template dispatcher + diagnostic moved to `driver11_section_injectors.py`; orphan `_inject_silent_stub` removed.** Two cleanups in one release. (1) `_inject_music_data_into_template` (39L, the dispatcher that calls all 11 driver11 section injectors in sequence) and `_print_extraction_summary` (25L, the read-only debug-log function) both moved to `driver11_section_injectors.py`. The dispatcher now does its own SF2 header parsing via `sf2_parser.parse_sf2_blocks`, returns the load_address (or None on parse failure), and dispatches to all 11 inject functions directly without going through `self.`. SF2Writer keeps thin 5-line wrappers. (2) Removed the v3.5.37 `_inject_silent_stub` NotImplementedError stub (26L) — no callers, fully documented in CHANGELOG/STORY/git history, the recovery pointer comment is left in place. **sf2_writer.py: 1703 → 1633 lines (-70)** — driver11 template path is now fully encapsulated outside SF2Writer. Cumulative since v3.5.27: 5832 → 1633 lines (-72%). 1229 tests pass (unchanged). All 14 C2 reference files byte-identical. `driver11_section_injectors.py` grew from 873 → 994 lines (+121, now hosts 13 functions: 11 section injectors + dispatcher + summary). 15 extracted modules total 5135 lines with 177 focused unit tests. Version sync → 3.5.53.
 
 **v3.5.52** (2026-05-25): **Phase 17 — 7 more `_inject_*_table` methods batch-moved to `driver11_section_injectors.py`.** Follow-on to Phase 13. The Phase 13 cluster had moved 4 driver11-template-path inject methods (orderlists, sequences, instruments, commands) at v3.5.48. The 7 remaining `_inject_*_table` methods (init/tempo/hr/pulse/filter/arp/wave) all had the same `(output, data, driver_info, load_address) → None` shape after Phase 10's `find_table` + `write_column_major` adoption in v3.5.44-45. Batch-moved in a single scripted pass. The module needed 2 more imports added: `driver11_table_helpers` (for the `find_table` adopters) and 3 `sequence_extraction` symbols (`extract_arpeggio_indices`, `find_arpeggio_table_in_memory`, `build_sf2_arp_table`) for `_inject_arp_table`. `driver11_section_injectors.py` grew from 575 → 873 lines (+298 lines from 11 functions total instead of 4). SF2Writer keeps 7 thin wrappers (~5 lines each). No new focused unit tests — pure structural refactor, C2 reference suite is the regression guard. **sf2_writer.py: 1954 → 1703 lines (-251)** — biggest single shrink since Phase 12. Cumulative since v3.5.27: 5832 → 1703 lines (-71%). 1229 tests pass (unchanged). All 14 C2 reference files byte-identical. 15 extracted modules total 5014 lines with 177 focused unit tests. Version sync → 3.5.52.
 
