@@ -67,6 +67,7 @@ from typing import Optional
 from . import errors
 from . import placeholder_edit_area
 from . import low_load_layout
+from . import high_load_layout
 
 logger = logging.getLogger(__name__)
 
@@ -147,22 +148,35 @@ def build_minimal_embed_sf2(
             return MinimalEmbedResult(sf2_bytes=sf2_bytes, skip_aux=skip_aux)
         return None    # unfixable (no header room below sid_la)
 
-    # v3.5.34 high-load architectural check: same as _inject_laxity_raw_np21.
-    # Binary + edit area + shadow can't overflow 16-bit C64 address space.
-    # Magic_Sound (load=$F000, 2613 bytes) is the canonical case for this path.
+    # v3.5.34 high-load architectural check: insufficient post-binary
+    # space for the SF2 edit area. v3.5.55 adds a high-load alternate
+    # layout fallback that places the edit area BEFORE the binary
+    # (using the 50+ KB gap between handlers at $0FA0 and binary at
+    # $F000+). Magic_Sound is the canonical case this recovers.
     MIN_POST_BINARY = 0x800
     if sid_la + len(c64_data) + MIN_POST_BINARY > 0x10000:
+        # Try the high-load alternate layout (edit area before binary)
+        hl_result = high_load_layout.build_high_load_sf2(
+            c64_data, sid_la, init_addr, play_addr)
+        if hl_result is not None:
+            sf2_bytes, skip_aux = hl_result
+            logger.info(
+                f"  Using high-load alternate layout for sid_la=${sid_la:04X} "
+                f"(edit area placed before binary)")
+            return MinimalEmbedResult(sf2_bytes=sf2_bytes, skip_aux=skip_aux)
+        # High-load fallback also can't fit (e.g. file > 64K) →
+        # raise the original architectural error.
         logger.error(
             f"  Binary load address ${sid_la:04X} + size "
             f"${len(c64_data):04X} = ends at ${sid_la + len(c64_data):04X}: "
             f"insufficient room (<{MIN_POST_BINARY:#06x} bytes) below "
-            f"$FFFF for the SF2 edit area. Architectural limit of the "
-            f"SF2 format (Block 3 column addresses are 16-bit)."
+            f"$FFFF for the SF2 edit area, and the high-load alternate "
+            f"layout doesn't fit either."
         )
         raise errors.ConversionError(
             stage="minimal-embed inject (high-load)",
-            reason=f"sid_load=${sid_la:04X} + size {len(c64_data)} leaves "
-                   f"<{MIN_POST_BINARY:#06x} bytes below $FFFF for edit area",
+            reason=f"sid_load=${sid_la:04X} + size {len(c64_data)} doesn't "
+                   f"fit in either the normal or high-load layouts",
             input_file=psid_filepath,
             docs_link="guides/LAXITY_DRIVER_USER_GUIDE.md#troubleshooting",
         )

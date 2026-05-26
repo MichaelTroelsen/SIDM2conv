@@ -31,15 +31,33 @@ class TestBuildMinimalEmbedSf2(unittest.TestCase):
         )
         self.assertIsNone(result)
 
-    def test_high_load_raises_conversion_error(self):
-        """sid_la + len(c64_data) + 0x800 > 0x10000 → ConversionError."""
-        # 2KB binary at $F800 → ends at $10000 + 0x800 = past $10000.
+    def test_high_load_uses_alternate_layout_when_possible(self):
+        """v3.5.55: when post-binary is too small but the alternate
+        layout fits, the high-load layout recovers the file."""
+        # 2KB binary at $F800 — ends at $10000, leaving 0 post-binary,
+        # but the high-load layout places the edit area at $1000+
+        # before the binary and fits the file under 64K.
+        result = minimal_embed_builder.build_minimal_embed_sf2(
+            c64_data=bytes(0x800),
+            sid_la=0xF800,
+            init_addr=0xF800,
+            play_addr=0xF803,
+        )
+        self.assertIsNotNone(result)
+        self.assertFalse(result.skip_aux,
+                         "high-load layout has free $0FFB slot — no skip_aux")
+
+    def test_high_load_raises_conversion_error_when_unrecoverable(self):
+        """When BOTH the normal layout AND the high-load fallback fail,
+        the architectural-error ConversionError is raised."""
+        # sid_la=$8000, binary=$9000 bytes → ends at $11000 → file_size
+        # would exceed 64K in either layout.
         with self.assertRaises(errors.ConversionError) as ctx:
             minimal_embed_builder.build_minimal_embed_sf2(
-                c64_data=bytes(0x800),
-                sid_la=0xF800,
-                init_addr=0xF800,
-                play_addr=0xF803,
+                c64_data=bytes(0x9000),
+                sid_la=0x8000,
+                init_addr=0x8000,
+                play_addr=0x8003,
             )
         self.assertIn('high-load', str(ctx.exception).lower())
 

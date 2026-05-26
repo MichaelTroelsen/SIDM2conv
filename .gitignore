@@ -205,3 +205,4 @@ starwarsintro.mp3
 # Reference SF2 corpus (Laxity-authored ground-truth files used by
 # pyscript/analyze_laxity_pattern_split.py); kept local only.
 Original_SF2/
+bin/_c1_smoke/

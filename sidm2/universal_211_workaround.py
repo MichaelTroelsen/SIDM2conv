@@ -111,9 +111,22 @@ def ensure_sid_write_in_scan_window_universal(out: bytearray) -> Optional[bytear
         return None
 
     # No natural write — append stub + patch Block 1's DriverCodeTop/Size.
-    stub = b"\x9D\x00\xD4\x60"   # STA $D400,X; RTS
+    # High-load guard: skip the Digidag-style append when stub_addr would
+    # overflow 16-bit. High-load layouts (v3.5.55) place a scan bait at
+    # $0F9E (outside the hardcoded [$1000, $1900) window above) and set
+    # driver_code_top accordingly via the header generator — SF2II's
+    # scanner finds the bait there. The hardcoded window's failure to
+    # see it is a false positive for high-load files.
     stub_file_off = len(out)
     stub_addr = load_base + (stub_file_off - 2)
+    if stub_addr > 0xFFFF:
+        logger.info(
+            "  #211 workaround: file already extends near $FFFF; the "
+            "Digidag-style stub append would overflow 16-bit space. "
+            "Skipping — caller is responsible for placing a scan bait "
+            "and configuring driver_code_top (high-load layout does this).")
+        return None
+    stub = b"\x9D\x00\xD4\x60"   # STA $D400,X; RTS
     out.extend(stub)
     # Find Block 1 (Descriptor) in the chain at file offset 4. Body:
     # [Type:1][Size:2LE][Name+NUL:var][CodeTop:2LE][CodeSize:2LE]...

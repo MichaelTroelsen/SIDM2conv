@@ -57,6 +57,7 @@ from typing import List, Optional, Tuple
 from . import errors
 from . import np21_codegen
 from . import low_load_layout
+from . import high_load_layout
 from . import np21_edit_area_builder
 
 logger = logging.getLogger(__name__)
@@ -180,22 +181,38 @@ def build_laxity_raw_np21_sf2(data) -> Optional[LaxityRawNp21Result]:
     # the smallest reasonable edit area + shadow + #211 stamp. If
     # less, raise a clean error instead of letting struct.pack
     # blow up several frames deep.
+    # v3.5.55: try the high-load alternate layout BEFORE raising the
+    # architectural error. The alternate layout places the SF2 edit area
+    # BEFORE the binary (in the 50+ KB gap between handlers at $0FA0 and
+    # binary at $F000+), giving Crosswords and Magic_Sound a working
+    # SF2 output instead of the previous CONV_FAIL. Editor view is the
+    # placeholder (no F1-F5 edit propagation for these files) but audio
+    # plays correctly via the embedded binary.
     MIN_POST_BINARY = 0x800
     if sid_la + len(c64_data) + MIN_POST_BINARY > 0x10000:
+        hl_result = high_load_layout.build_high_load_sf2(
+            c64_data, sid_la, init_addr, play_addr)
+        if hl_result is not None:
+            hl_bytes, hl_skip_aux = hl_result
+            # np21_file_off: where the embedded binary starts in the file.
+            # The audio gate uses this to re-trace the SF2.
+            file_np21_off = 2 + sid_la - 0x0D7E   # LOAD_BASE = $0D7E
+            return LaxityRawNp21Result(
+                sf2_bytes=hl_bytes,
+                np21_file_off=file_np21_off,
+                skip_aux=hl_skip_aux,
+            )
         logger.error(
             f"  Binary load address ${sid_la:04X} + size "
             f"${len(c64_data):04X} = ends at ${sid_la + len(c64_data):04X}: "
             f"insufficient room (<{MIN_POST_BINARY:#06x} bytes) below "
-            f"$FFFF for the SF2 edit area + shadow buffer. This is an "
-            f"architectural limit of the SF2 format — Block 3 column "
-            f"addresses are 16-bit, so the edit area can't extend past "
-            f"the C64 address space."
+            f"$FFFF for the SF2 edit area + shadow buffer, and the "
+            f"high-load alternate layout doesn't fit either."
         )
         raise errors.ConversionError(
             stage="raw-NP21 inject (high-load)",
-            reason=f"sid_load=${sid_la:04X} + size {len(c64_data)} leaves "
-                   f"<{MIN_POST_BINARY:#06x} bytes below $FFFF for the "
-                   f"edit area + shadow buffer",
+            reason=f"sid_load=${sid_la:04X} + size {len(c64_data)} doesn't "
+                   f"fit either the normal or high-load layouts",
             input_file=getattr(data, 'filepath', None),
             docs_link="guides/LAXITY_DRIVER_USER_GUIDE.md#troubleshooting",
         )
