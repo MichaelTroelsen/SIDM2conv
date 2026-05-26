@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.54 (2026-05-25) — 1229 tests, 286-file corpus, **99% C2 byte-identical (every convertible file)**
-**Latest chapter:** [v3.5.54 — laxity_raw_np21_builder extracted (Phase 19, the hard one)](#v3554--laxity_raw_np21_builder-extracted-phase-19-the-hard-one-2026-05-25)
+**Current version:** v3.5.55 (2026-05-26) — 1246 tests, 286-file corpus, **99.65% functional (285/286, only Echo_Beat architecturally infeasible)**
+**Latest chapter:** [v3.5.55 — high-load alternate layout (Crosswords + Magic_Sound recovered)](#v3555--high-load-alternate-layout-crosswords--magic_sound-recovered-2026-05-26)
 
 ---
 
@@ -529,6 +529,87 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.55 — high-load alternate layout (Crosswords + Magic_Sound recovered) (2026-05-26)
+
+After the 19-phase refactor closed and validation confirmed 99% true
+converter quality (with 3 documented "architectural CONV_FAILs"), the
+natural question was: are those 3 ACTUALLY infeasible, or did
+v3.5.34's clean-error commit just freeze in an early assumption?
+
+Geometric inspection of the 3 files:
+
+| File | sid_la | size | Post-binary | Pre-binary (after handlers) |
+|---|---|---|---|---|
+| Echo_Beat | $0400 | 1644B | 62868B | **-2976B** ← truly infeasible |
+| Crosswords | $F000 | 3363B | 733B (too small) | **57440B free** |
+| Magic_Sound | $F000 | 2613B | 1483B (too small) | **57440B free** |
+
+Crosswords and Magic_Sound have **57KB of free space BEFORE the
+binary** — between the SF2 handlers at $0FA0 and the binary at $F000.
+The v3.5.34 architectural error checked only post-binary space; it
+didn't notice the giant pre-binary gap.
+
+Phase 20 introduces `sidm2/high_load_layout.py` (185 lines) — mirror
+image of `low_load_layout`:
+
+```
+$0D7E [PRG load + magic]
+$0D80 [SF2 header blocks]
+$0F90 [INIT/PLAY/STOP handlers]
+$0F9E [#211 scan bait — STA $D400,X; RTS]
+$1000 [SF2 edit area — placeholder]
+...   [zero padding to sid_la]
+$F000 [embedded NP21 binary verbatim]
+```
+
+Block 3 column addresses point at $1000+ instead of high RAM. SF2II's
+parser walks bytes at the configured addresses — it doesn't care
+WHERE in 16-bit space those addresses live, only that the bytes
+exist. The 16-bit "overflow" concern from v3.5.34 was only true if
+you assumed edit area must follow the binary.
+
+Wired into both inject paths (Crosswords routes through laxity-
+raw-np21, Magic_Sound through minimal-embed) as a fallback before
+raising the original architectural error.
+
+One snag during integration: `universal_211_workaround.py` does a
+Digidag-style stub-append on files where its hardcoded `[$1000, $1900)`
+scan finds no natural ABX/ABY $D40x writes. For high-load files the
+edit area is at $1000+ (zero-filled placeholder) and the bait is at
+$0F9E — the scan misses it. The codepath tried to append a stub past
+file end and overflowed 16-bit. Fix: add a `stub_addr > 0xFFFF` guard
+and bail (the high-load layout has already placed a scan bait and
+configured `driver_code_top = $0F90` for SF2II's actual scanner;
+nothing to do).
+
+Both Magic_Sound and Crosswords now produce SF2 files that load
+cleanly via argv-load. **First-ever conversions for both files.**
+
+The 16 new focused unit tests pin the layout's bytes precisely
+(magic, handlers, bait, edit area start, binary embedding at sid_la)
+plus the infeasibility cases (sid_la too low, file > 64K).
+
+Echo_Beat remains the only genuinely-infeasible file. Its binary
+loads at $0400 — *below* the SF2 wrapper at $0D7E. No PRG layout
+can fix that. Recovering it would need either:
+1. Multi-segment SF2 files (format doesn't support this today)
+2. Putting the SF2 header in ROM-shadow space (conflicts with
+   BASIC/KERNAL at $A000+ / $E000+)
+
+Both are out-of-scope refactors of the SF2 format itself.
+
+**Converter quality progression:**
+
+| Date | Quality | Note |
+|---|---|---|
+| Pre-v3.5.27 | ~77% (220/286 C2 byte-identical) | C2 audio push begins |
+| v3.5.35 | 99% (283/286 SF2 outputs) | C2 audio push complete |
+| v3.5.54 | 99% | 19-phase refactor preserved quality |
+| **v3.5.55** | **99.65%** (285/286) | High-load layout recovers 2 of 3 CONV_FAILs |
+
+1246 tests pass. 17 extracted modules totaling 6649 lines with 193
+focused unit tests. `sf2_writer.py` unchanged at 710 lines.
 
 ### v3.5.54 — laxity_raw_np21_builder extracted (Phase 19, the hard one) (2026-05-25)
 

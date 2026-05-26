@@ -25,6 +25,105 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.55] - 2026-05-26
+
+### Recovered — Crosswords + Magic_Sound (2 of 3 architectural CONV_FAILs)
+
+The v3.5.34 architectural error rejected high-load files (sid_la near
+$F000) because the SF2 edit area can't fit in the few hundred bytes
+between binary-end and $FFFF. Inspection showed Crosswords ($F000,
+3363B) and Magic_Sound ($F000, 2613B) have **~57KB of free space
+BEFORE the binary** (between handlers at $0FA0 and binary at $F000).
+The edit area doesn't have to follow the binary — it can precede it.
+
+New module: **`sidm2/high_load_layout.py`** (185 lines).
+
+Public API:
+  - `build_high_load_sf2(c64_data, sid_la, init_addr, play_addr)
+        → Optional[Tuple[bytes, False]]`
+
+Mirror image of `low_load_layout`:
+
+```
+$0D7E [PRG load + magic]
+$0D80 [SF2 header blocks]
+$0F90 [INIT/PLAY/STOP handlers]
+$0F9E [#211 scan bait]
+$1000 [SF2 edit area — placeholder, ~1414 bytes]
+...   [zero padding through to sid_la]
+sid_la [embedded NP21 binary verbatim]
+```
+
+Block 3 column addresses point at `$1000+` instead of high RAM.
+SF2II's parser doesn't care WHERE the edit area lives in 16-bit
+address space — only that the bytes are at the configured addresses.
+
+Wired into both inject paths as a fallback BEFORE raising the
+original architectural error:
+  - `minimal_embed_builder.build_minimal_embed_sf2` (Magic_Sound)
+  - `laxity_raw_np21_builder.build_laxity_raw_np21_sf2` (Crosswords)
+
+### Fixed — `universal_211_workaround` stub overflow on high-load files
+
+The Digidag-style stub-append codepath looks for natural ABX/ABY
+$D40x writes in a hardcoded `[$1000, $1900)` window. For high-load
+files the #211 scan bait lives at $0F9E (outside that window), so
+the codepath would fall through to "append stub at file end" and
+try to write a 16-bit address > $FFFF. Added a `stub_addr > 0xFFFF`
+guard that bails cleanly; the high-load layout already configures
+`driver_code_top = $0F90` for SF2II's actual scanner.
+
+### Status of architectural CONV_FAILs after v3.5.55
+
+| File | Pre-v3.5.55 | v3.5.55 |
+|---|---|---|
+| Magic_Sound ($F000, 2613B) | CONV_FAIL | ✅ Loads via argv |
+| Crosswords ($F000, 3363B) | CONV_FAIL | ✅ Loads via argv |
+| Echo_Beat ($0400, 1644B) | Infeasible | Still infeasible (binary loads BELOW SF2 wrapper at $0D7E) |
+
+Echo_Beat remains the only genuinely-infeasible file. Its binary
+loads at $0400, which is below the SF2 wrapper. Recovering it
+would require either a multi-segment SF2 (the format doesn't
+support this today) or moving the SF2 header into ROM-shadow space
+(C64 BASIC/KERNAL conflicts).
+
+### Added — 16 focused unit tests for high_load_layout
+
+  TestSuccessfulBuild (9):
+    - returns bytes + skip_aux=False
+    - LOAD_BASE at $0D7E with magic 0x1337
+    - binary embedded byte-exact at sid_la
+    - INIT/PLAY/STOP handlers at $0F90 / $0F94 / $0F98
+    - #211 scan bait `STA $D400,X; RTS` at $0F9E
+    - edit area starts at $1000 with OL ptr lo[0] = low byte of
+      ol_track1_addr (verifies placeholder_edit_area integration)
+    - file size stays under 64K
+
+  TestInfeasibility (2):
+    - sid_la < $2000 returns None (binary would overlap edit area)
+    - sid_la=$8000 with 36KB binary → file > 64K returns None
+
+  TestDifferentLoadAddresses (3):
+    - parametric tests for $E000, $F000-2613B (Magic_Sound),
+      $F000-3363B (Crosswords)
+
+  TestConstants (1):
+    - module constants match normal-path constants
+
+Plus one updated test in `test_minimal_embed_builder.py` (split
+into "uses high-load when possible" + "raises when both layouts
+fail").
+
+### Stats
+- 17 extracted modules (added `high_load_layout`)
+- 6649 total module lines, 193 focused unit tests
+- sf2_writer.py: 710 lines (unchanged from v3.5.54)
+- Tests: 1229 → 1246 (+17)
+- All 14 C2 reference files byte-identical
+- Converter quality: 283/286 → **285/286** (99% → 99.65%)
+
+---
+
 ## [3.5.54] - 2026-05-25
 
 ### Refactored — _inject_laxity_raw_np21 (940L) extracted
