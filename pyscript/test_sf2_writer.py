@@ -1877,11 +1877,24 @@ class TestLowLoadLayout(unittest.TestCase):
         self.assertEqual(bytes(w.output), before,
                          "aux injection must be a no-op when _skip_aux")
 
-    def test_unfixable_low_load_returns_false(self):
-        # load=$0400: no room for a ~525B header below the $0500 floor
+    def test_echo_beat_low_load_now_works(self):
+        # v3.5.56: load=$0400 (Echo_Beat) now CONVERTS via the lowered
+        # low_load_layout floor ($0500 → $0100). The header lives at
+        # $0100-$030D and gets clobbered by player runtime, but SF2II's
+        # parser has already read it from the file by then.
         w = self._writer()
         ok = w._build_low_load_sf2(bytes(0x800), 0x0400, 0x0400, 0x0406)
-        self.assertFalse(ok, "should bail when header can't fit below load")
+        self.assertTrue(ok, "Echo_Beat $0400 should now convert")
+        self.assertGreater(len(w.output), 0, "output should be populated")
+        load_base = w.output[0] | (w.output[1] << 8)
+        self.assertEqual(load_base, 0x0100,
+                         f"Expected $0100 LOAD_BASE, got ${load_base:04X}")
+
+    def test_unfixable_low_load_returns_false(self):
+        # load=$0200: no room for a ~525B header below the $0100 floor
+        w = self._writer()
+        ok = w._build_low_load_sf2(bytes(0x800), 0x0200, 0x0200, 0x0203)
+        self.assertFalse(ok, "should bail when header can't fit below $0100 floor")
         # legacy fall-through: output left as-is (empty bytearray)
         self.assertEqual(len(w.output), 0)
 

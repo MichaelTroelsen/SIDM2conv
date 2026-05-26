@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.55 (2026-05-26) — 1246 tests, 286-file corpus, **99.65% functional (285/286, only Echo_Beat architecturally infeasible)**
-**Latest chapter:** [v3.5.55 — high-load alternate layout (Crosswords + Magic_Sound recovered)](#v3555--high-load-alternate-layout-crosswords--magic_sound-recovered-2026-05-26)
+**Current version:** v3.5.56 (2026-05-26) — 1249 tests, 286-file corpus, **100% functional (286/286, zero remaining CONV_FAILs)**
+**Latest chapter:** [v3.5.56 — Echo_Beat recovered. 100% converter quality](#v3556--echo_beat-recovered-100-converter-quality-2026-05-26)
 
 ---
 
@@ -529,6 +529,75 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.56 — Echo_Beat recovered. 100% converter quality (2026-05-26)
+
+The last "architectural CONV_FAIL" wasn't architectural either.
+
+Echo_Beat (sid_la=$0400, 1644B binary) had been categorized as
+infeasible since v3.5.20 because the `low_load_layout` floor required
+`LOAD_BASE >= $0500`. The stated rationale: putting SF2 header bytes
+at $0100-$04FF would conflict with the C64 stack ($0100-$01FF) and
+BASIC/KERNAL buffer region ($0200-$04FF) used by the player at
+runtime.
+
+**The premise was wrong**, in exactly the same way v3.5.55's premise
+was wrong for Crosswords + Magic_Sound.
+
+The key insight: **SF2II's parser reads the SF2 chain from the FILE
+on disk BEFORE the C64 emulator starts**. Once parsed, the chain
+info lives in SF2II's internal structures. The C64 RAM contents at
+the header location only matter pre-emulation. The player can freely
+clobber the header bytes once it starts running.
+
+Lowered the floor from $0500 to $0100 (zeropage is a true hard
+limit — can't write to $0000-$00FF as a PRG load destination
+because the C64 ROM/IO map uses it). Echo_Beat now converts.
+
+Layout for Echo_Beat:
+
+```
+$0100-$030D  SF2 header (525B; clobbered by player at runtime)
+$030E-$03FF  zero padding
+$0400-$0A6B  Echo_Beat binary (1644B at native location)
+$0A6C-$0AFF  zero padding
+$0B00-$0B0D  INIT/PLAY/STOP handlers
+$0B0E-$0B11  #211 scan bait
+$0B20-$10A5  SF2 edit area (placeholder, 1414B)
+```
+
+PRG file size: 4901 bytes. argv-load: 3/3 PASS.
+
+**The two-release recovery story** (v3.5.55 + v3.5.56) makes a
+broader point. The original architectural-error commit at v3.5.34
+was protective — converting cryptic struct.pack failures into clean
+error messages. Necessary at the time. But the error message baked
+in a too-strong constraint:
+> "Block 3 column addresses are 16-bit, so the edit area can't
+> extend past the C64 address space."
+
+That sentence is TRUE, but the inference "therefore these files are
+unsolvable" is FALSE. Two different geometric escape hatches existed:
+- For high-load ($F000+): pre-binary 16-bit space wasn't being used
+- For low-load ($0400): the stack-collision concern dissolves once
+  you realize SF2II doesn't re-read the header from RAM
+
+Both fixes are about ten lines each. Both required noticing that the
+original architectural error baked in a too-conservative constraint
+that wasn't actually load-bearing.
+
+**Converter quality progression:**
+
+| Date | Quality | Note |
+|---|---|---|
+| Pre-v3.5.27 | ~77% | C2 audio push begins |
+| v3.5.35 | 99% (283/286) | C2 audio push complete; 3 "infeasible" |
+| v3.5.54 | 99% | 19-phase refactor preserved quality |
+| v3.5.55 | 99.65% (285/286) | High-load layout — Crosswords + Magic_Sound |
+| **v3.5.56** | **100% (286/286)** | **Echo_Beat — zero remaining CONV_FAILs** |
+
+The converter is now functionally complete. Every native Laxity SID
+in the corpus converts to a working SF2.
 
 ### v3.5.55 — high-load alternate layout (Crosswords + Magic_Sound recovered) (2026-05-26)
 

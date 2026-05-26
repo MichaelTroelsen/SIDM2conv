@@ -145,17 +145,40 @@ class TestSuccessfulBuild(unittest.TestCase):
 class TestInfeasibility(unittest.TestCase):
     """Cases where the layout shouldn't fit — function returns None."""
 
-    def test_returns_none_when_sid_la_too_low(self):
-        """Echo_Beat ($0400) — there's no room for the header
-        between zeropage/stack ($0000-$01FF), BASIC/KERNAL buffers
-        ($0200-$04FF), and the binary itself."""
+    def test_returns_none_when_sid_la_truly_too_low(self):
+        """v3.5.56 floor is $0100 (zeropage). A binary loading at sid_la
+        such that LOAD_BASE goes BELOW $0100 still gets None — we can't
+        write a PRG load below zeropage. Echo_Beat ($0400) now WORKS;
+        we need a more extreme case for infeasibility."""
+        # sid_la = $0200 with full 525-byte header: LOAD_BASE = ($0200 -
+        # $20E) & ~0xFF = ($-E) & ~0xFF = wraps negative → caught by
+        # the floor check at $0100.
         result = low_load_layout.build_low_load_sf2(
             c64_data=bytes(1000),    # any size
-            sid_la=0x0400,           # below $0500 floor
+            sid_la=0x0200,           # too low to fit header even at $0100 floor
+            init_addr=0x0200,
+            play_addr=0x0206,
+        )
+        self.assertIsNone(result, "$0200 load = no room below $0100 floor")
+
+    def test_echo_beat_now_works(self):
+        """v3.5.56: Echo_Beat (binary at $0400) previously returned None
+        because the $0500 floor blocked LOAD_BASE = $0100. With the floor
+        lowered to $0100, the conversion succeeds. The header bytes at
+        $0100-$01FF (stack region) get overwritten at runtime by the
+        player's JSR/RTS, but SF2II's parser has already read them from
+        the file by then."""
+        result = low_load_layout.build_low_load_sf2(
+            c64_data=bytes(1644),
+            sid_la=0x0400,
             init_addr=0x0400,
             play_addr=0x0406,
         )
-        self.assertIsNone(result, "$0400 load = no room below floor")
+        self.assertIsNotNone(result, "Echo_Beat $0400 should convert now")
+        sf2, skip_aux = result
+        self.assertEqual(_parse_load_addr(sf2), 0x0100,
+                         "LOAD_BASE should be $0100 for sid_la=$0400")
+        self.assertTrue(skip_aux, "low-load layout always requests skip_aux")
 
     def test_returns_none_when_binary_exceeds_64k(self):
         """Cap at 64K (16-bit address limit) — synthetic case."""

@@ -133,11 +133,18 @@ def build_low_load_sf2(
     # don't touch it at all in the header span (verified by py65
     # read-before-write analysis: `pyscript/find_rbw_scratch.py`).
     load_base = (sid_la - (2 + H) - 1) & ~0xFF
-    if load_base < 0x0500:
+    if load_base < 0x0100:
+        # Hard floor: PRG load can't go below $0100 (would clobber
+        # zeropage at load time). $0100-$01FF is the stack, but at
+        # SF2 parse time the C64 emulator hasn't started yet — the
+        # stack bytes are not active. They get clobbered when the
+        # emulator runs the player, but by then SF2II has already
+        # parsed the header chain from the file. v3.5.56 lowered the
+        # floor from $0500 to $0100 to recover Echo_Beat ($0400 load).
         logger.info(
             f"  Low-load: no room for {2+H}B header below "
             f"${sid_la:04X} (would need LOAD_BASE ${load_base:04X} "
-            f"< $0500 floor); cannot fix this file")
+            f"< $0100 floor — zeropage); cannot fix this file")
         return None
 
     edit_end = EDIT + len(sf2_edit_data)

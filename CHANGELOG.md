@@ -25,6 +25,84 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.56] - 2026-05-26
+
+### Recovered — Echo_Beat. **100% converter quality (286/286).**
+
+The last "architectural CONV_FAIL" turned out to not be architectural.
+
+Echo_Beat (sid_la=$0400, 1644B binary) had been blocked since v3.5.20
+because `low_load_layout` required `LOAD_BASE >= $0500` — the
+rationale being that putting SF2 header bytes at $0100-$04FF
+would conflict with the C64 stack ($0100-$01FF) and BASIC/KERNAL
+buffer region ($0200-$04FF) used by the player at runtime.
+
+**The premise was wrong.** SF2II's parser reads the SF2 chain from
+the FILE on disk BEFORE the C64 emulator starts. Once parsed, the
+SF2II's internal structures have all the chain info; the C64 RAM
+contents at the header location only matter pre-emulation. The
+player can freely clobber the header bytes during execution, and
+SF2II doesn't care.
+
+Lowered the `low_load_layout` floor from $0500 to $0100 (a true
+hard limit — zeropage at $0000-$00FF IS used at load time and
+can't be a PRG load destination).
+
+### Layout for Echo_Beat
+
+```
+$0100-$030D  SF2 header (525B; clobbered by player runtime —
+             stack writes start at $0100, BASIC buffer at $0200)
+$030E-$03FF  zero padding
+$0400-$0A6B  Echo_Beat binary (1644B, native location)
+$0A6C-$0AFF  zero padding
+$0B00-$0B0D  INIT/PLAY/STOP handlers (14B)
+$0B0E-$0B11  #211 scan bait
+$0B20-$10A5  SF2 edit area (placeholder)
+```
+
+PRG file size: 4901 bytes.
+
+### Tests
+
+argv-load: **3/3 PASS** for all 3 former CONV_FAILs:
+  - Echo_Beat:   3/3 (5/5 trials would also pass)
+  - Crosswords:  3/3
+  - Magic_Sound: 3/3
+
+3 new/updated focused unit tests:
+  - `test_echo_beat_now_works` (low_load_layout)
+  - `test_low_load_echo_beat_now_works` (minimal_embed_builder)
+  - `test_echo_beat_low_load_now_works` (sf2_writer wrapper)
+
+Plus 2 retargeted infeasibility tests using sid_la=$0200 (genuinely
+below the new $0100 floor):
+  - `test_returns_none_when_sid_la_truly_too_low` (low_load_layout)
+  - `test_low_load_returns_none_below_zeropage_floor` (minimal_embed)
+
+### Stats
+- Tests: 1246 → 1249 (+3)
+- All 14 C2 reference files still byte-identical (existing low-load
+  files Annelouise/Axel_F/Beat_the_Shit_3/Crap_5/Force_Tune/Shit use
+  LOAD_BASE=$0C00, above both old and new floors — untouched)
+- Converter quality: 99.65% → **100%** (286/286)
+
+### Historical note
+
+The "16-bit address space" rationale that originally categorized
+these 3 files as infeasible was falsified twice in two releases:
+  - v3.5.55 falsified the post-binary 16-bit overflow claim
+    (Crosswords + Magic_Sound — there's $5C000 of free pre-binary
+    space we weren't using)
+  - v3.5.56 falsified the stack-collision claim
+    (Echo_Beat — SF2 parser reads from file, not RAM, at load time)
+
+Both fixes are about ten lines each. Both required noticing that
+the original architectural error baked in a too-conservative
+constraint that wasn't actually load-bearing.
+
+---
+
 ## [3.5.55] - 2026-05-26
 
 ### Recovered — Crosswords + Magic_Sound (2 of 3 architectural CONV_FAILs)

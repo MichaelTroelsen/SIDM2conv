@@ -75,15 +75,32 @@ class TestBuildMinimalEmbedSf2(unittest.TestCase):
                         "low-load layout must request skip_aux")
         self.assertIsInstance(result.sf2_bytes, bytes)
 
-    def test_low_load_returns_none_when_no_fit(self):
-        """A binary at $0400 has no room for the header below the floor."""
+    def test_low_load_echo_beat_now_works(self):
+        """v3.5.56: a binary at $0400 (Echo_Beat-class) now CONVERTS via
+        the low_load_layout (floor lowered from $0500 to $0100).
+        The header lives at $0100-$030D and gets clobbered by player
+        runtime stack/buffer writes, but SF2II's parser has already
+        read it from the file by then."""
         result = minimal_embed_builder.build_minimal_embed_sf2(
-            c64_data=bytes(1000),
+            c64_data=bytes(1644),    # Echo_Beat size
             sid_la=0x0400,
             init_addr=0x0400,
-            play_addr=0x0403,
+            play_addr=0x0406,
         )
-        self.assertIsNone(result, "no room below $0500 floor")
+        self.assertIsNotNone(result, "Echo_Beat $0400 should now convert")
+        self.assertTrue(result.skip_aux,
+                        "low-load always requests skip_aux")
+
+    def test_low_load_returns_none_below_zeropage_floor(self):
+        """sid_la=$0200 leaves no room for the 525B header even at the
+        $0100 floor → returns None."""
+        result = minimal_embed_builder.build_minimal_embed_sf2(
+            c64_data=bytes(1000),
+            sid_la=0x0200,
+            init_addr=0x0200,
+            play_addr=0x0203,
+        )
+        self.assertIsNone(result, "no room below $0100 floor")
 
     def test_normal_layout_returns_skip_aux_false(self):
         """A binary at $1000 uses the normal layout (no skip_aux)."""
