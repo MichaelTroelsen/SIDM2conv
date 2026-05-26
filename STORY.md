@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.56 (2026-05-26) — 1249 tests, 286-file corpus, **100% functional (286/286, zero remaining CONV_FAILs)**
-**Latest chapter:** [v3.5.56 — Echo_Beat recovered. 100% converter quality](#v3556--echo_beat-recovered-100-converter-quality-2026-05-26)
+**Current version:** v3.5.57 (2026-05-26) — 1249 tests, 286-file corpus, **100% functional + audio-verified (286/286, all 3 former CONV_FAILs byte-identical via zig64)**
+**Latest chapter:** [v3.5.57 — Audio-verified 100%. All 3 former CONV_FAILs zig64 byte-identical](#v3557--audio-verified-100-all-3-former-conv_fails-zig64-byte-identical-2026-05-26)
 
 ---
 
@@ -529,6 +529,62 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.57 — Audio-verified 100%. All 3 former CONV_FAILs zig64 byte-identical (2026-05-26)
+
+v3.5.55 + v3.5.56 brought the 3 architectural CONV_FAILs to "loads
+via argv-load", but loading isn't the same as playing. The natural
+next check was zig64 cycle-accurate trace comparison over 300 PAL
+frames:
+
+| File | SID writes | SF2 writes (initial) | Verdict |
+|---|---|---|---|
+| Echo_Beat   | 2007 | 2007 | ✅ byte-identical |
+| Magic_Sound | 1091 | 1091 | ✅ byte-identical |
+| **Crosswords** | 2572 | **0** | ❌ silent |
+
+Crosswords' SF2 produced 0 register writes. zig64's stderr revealed
+the cause: `thread panic: index out of bounds: index 62186, len 62186`.
+The Crosswords SF2 file is 62186 bytes which makes its C64 span
+$0D7E-$10066 — 102 bytes past $FFFF. zig64's tracer panics on
+oversized files even though SF2II's parser handles them fine.
+
+What was making the file so big? The aux chain. For Crosswords with
+the high_load_layout's placeholder edit area, the aux chain contained
+779 bytes of empty-named TableText entries — labels for cells that
+don't exist in the placeholder editor view. Useless padding, and 779
+bytes was enough to push the file's C64 end past $FFFF.
+
+The fix is one line: `high_load_layout.build_high_load_sf2` now returns
+`skip_aux=True`. The aux chain is omitted, Crosswords' SF2 shrinks to
+61407 bytes (C64 end $FCFB, comfortably under 64K). The META trailer
+at file-end is still appended (title/author/copyright for SID
+round-trip recovery via sf2_to_sid.py).
+
+After fix:
+
+| File | SID writes | SF2 writes | Verdict |
+|---|---|---|---|
+| Echo_Beat   | 2007 | **2007** | ✅ byte-identical |
+| Magic_Sound | 1091 | **1091** | ✅ byte-identical |
+| Crosswords  | 2572 | **2572** | ✅ byte-identical |
+
+**ALL 3 former architectural-CONV_FAIL files now produce SF2 outputs
+that load in production SF2II AND play byte-identically to the
+original SID via zig64 cycle-accurate trace.**
+
+The converter is now functionally complete AND audio-verified. Every
+native Laxity SID in the corpus produces a working, audio-correct SF2.
+
+The two-release recovery (v3.5.55 high-load alternate layout +
+v3.5.56 zeropage floor) plus this audio-correctness fix (v3.5.57)
+closes the loop on what was, just three releases ago, three
+"architecturally infeasible" files. The lesson stands: a clean
+error message can encode a too-strong constraint that survives
+review because nobody re-questions it. The real question for any
+"infeasible" rejection is *"infeasible under WHAT assumption?"* —
+and the answer is often loadbearing on a layout choice, not a
+fundamental property of the format.
 
 ### v3.5.56 — Echo_Beat recovered. 100% converter quality (2026-05-26)
 

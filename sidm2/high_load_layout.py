@@ -193,4 +193,13 @@ def build_high_load_sf2(
         f"binary=${sid_la:04X}-${sid_la + clen - 1:04X} "
         f"file_size={file_size}")
 
-    return bytes(fd), False
+    # skip_aux=True: the high-load layout uses a placeholder edit area
+    # (no real F1-F5 data, no per-instrument names). Including the aux
+    # chain would just pad the file with empty TableText entries and
+    # could push it past 64K (Crosswords v3.5.57 fix — the 779-byte
+    # aux chain was overflowing past $FFFF for binaries ending near
+    # $FD22, panicking zig64's tracer at "index out of bounds" even
+    # though SF2II loaded the file fine). The META trailer at file
+    # end is still appended (carries title/author/copyright for SID
+    # round-trip recovery via sf2_to_sid.py).
+    return bytes(fd), True

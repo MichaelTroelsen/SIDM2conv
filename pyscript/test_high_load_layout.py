@@ -38,14 +38,19 @@ class TestSuccessfulBuild(unittest.TestCase):
         self.init_addr = 0xF0B9
         self.play_addr = 0xF0BF
 
-    def test_returns_bytes_and_skip_aux_false(self):
+    def test_returns_bytes_and_skip_aux_true(self):
+        """v3.5.57: high-load returns skip_aux=True. The placeholder
+        edit area doesn't need an aux chain — including one would just
+        pad the file with empty TableText entries and could push past
+        64K (zig64's tracer panics at "index out of bounds" on
+        oversized files even though SF2II handles them fine)."""
         result = high_load_layout.build_high_load_sf2(
             self.c64_data, self.sid_la, self.init_addr, self.play_addr)
         self.assertIsNotNone(result)
         sf2_bytes, skip_aux = result
         self.assertIsInstance(sf2_bytes, bytes)
-        self.assertFalse(skip_aux,
-                         "high-load doesn't span $0FFB, so no need to skip aux")
+        self.assertTrue(skip_aux,
+                        "high-load skips aux to keep file under 64K")
 
     def test_load_base_is_0d7e(self):
         sf2, _ = high_load_layout.build_high_load_sf2(

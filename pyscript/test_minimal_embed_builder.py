@@ -33,10 +33,12 @@ class TestBuildMinimalEmbedSf2(unittest.TestCase):
 
     def test_high_load_uses_alternate_layout_when_possible(self):
         """v3.5.55: when post-binary is too small but the alternate
-        layout fits, the high-load layout recovers the file."""
-        # 2KB binary at $F800 — ends at $10000, leaving 0 post-binary,
-        # but the high-load layout places the edit area at $1000+
-        # before the binary and fits the file under 64K.
+        layout fits, the high-load layout recovers the file.
+
+        v3.5.57: high-load now returns skip_aux=True (aux chain would
+        push file past 64K and panic zig64; placeholder edit area
+        doesn't benefit from aux contents anyway).
+        """
         result = minimal_embed_builder.build_minimal_embed_sf2(
             c64_data=bytes(0x800),
             sid_la=0xF800,
@@ -44,8 +46,8 @@ class TestBuildMinimalEmbedSf2(unittest.TestCase):
             play_addr=0xF803,
         )
         self.assertIsNotNone(result)
-        self.assertFalse(result.skip_aux,
-                         "high-load layout has free $0FFB slot — no skip_aux")
+        self.assertTrue(result.skip_aux,
+                        "high-load skips aux to stay under 64K")
 
     def test_high_load_raises_conversion_error_when_unrecoverable(self):
         """When BOTH the normal layout AND the high-load fallback fail,

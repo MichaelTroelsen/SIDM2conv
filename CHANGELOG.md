@@ -25,6 +25,67 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.57] - 2026-05-26
+
+### Fixed — Crosswords audio fidelity (zig64 panic on oversized SF2)
+
+After v3.5.55+56 recovered the 3 architectural CONV_FAILs (loading via
+argv-load), a cycle-accurate audio fidelity check was needed to
+confirm the converted SF2 outputs play identically to the original
+SID. Ran zig64 trace comparison over 300 PAL frames:
+
+- Echo_Beat:   **2007/2007** ✅
+- Magic_Sound: **1091/1091** ✅
+- Crosswords:  **0/2572** ❌ (silent — bug)
+
+The bug: Crosswords' SF2 is 62186 bytes which makes its C64 span
+$0D7E-$10066 — 102 bytes past $FFFF. zig64's tracer panics at
+"index out of bounds: index 62186, len 62186" when loading. SF2II's
+parser handles oversized files fine, but zig64 doesn't.
+
+### Fix
+
+Changed `high_load_layout.build_high_load_sf2` to return
+`skip_aux=True`. The aux chain (779 bytes of empty-named TableText
+for a placeholder edit area) is now omitted, shrinking Crosswords'
+SF2 to 61407 bytes (C64 end $FCFB, under 64K).
+
+The META trailer at file-end is still appended (title/author/copyright
+for SID round-trip recovery via `sf2_to_sid.py`).
+
+### Justification for skip_aux
+
+`high_load_layout` uses placeholder edit area with no F1-F5 data.
+The aux chain's TableText payload contains per-instrument names and
+per-command names; since the editor view is empty placeholder
+anyway, these names would just label empty cells. No information
+lost.
+
+### Tests
+
+After fix:
+- Echo_Beat:   2007/2007 ✅
+- Crosswords:  **2572/2572 ✅** (was 0/2572)
+- Magic_Sound: 1091/1091 ✅
+
+Updated 2 unit tests:
+- `test_returns_bytes_and_skip_aux_true` (renamed from `_false`,
+  expectation flipped)
+- `test_high_load_uses_alternate_layout_when_possible` (assertion
+  flipped to `assertTrue(result.skip_aux)`)
+
+### Stats
+- 1249 tests pass (unchanged from v3.5.56)
+- All 14 C2 reference files still byte-identical
+- **ALL 3 former CONV_FAILs now audio-verified byte-identical via
+  zig64**: Echo_Beat 2007/2007, Magic_Sound 1091/1091,
+  Crosswords 2572/2572
+
+The converter now produces a working AND audio-correct SF2 file for
+every native Laxity SID in the 286-file corpus.
+
+---
+
 ## [3.5.56] - 2026-05-26
 
 ### Recovered — Echo_Beat. **100% converter quality (286/286).**
