@@ -97,14 +97,21 @@ _FIXED_BYTES_AT_OFFSETS = {
     14: 0x8D,   # STA $XXXX
 }
 
-# Offsets within the binary where the orderlist+pattern data lives.
-# These offsets are HARDCODED in the player (the player's own code
-# does `LDA $XX 9F,X` etc. where the high byte is implicit in the
-# player's load).
+# The voice-orderlist ptr table sits at a fixed file-relative offset
+# (`load+$493`/`load+$496`) — the player code has `LDA $XX93,X` /
+# `LDA $XX96,X` instructions where the high byte is `(load_hi + 4)`.
 _VOICE_OL_LO_OFF = 0x493
 _VOICE_OL_HI_OFF = 0x496
-_PATTERN_PTR_LO_OFF = 0x788
-_PATTERN_PTR_HI_OFF = 0x78E
+
+# The PATTERN-ptr table address is FILE-SPECIFIC (data section size
+# differs per song; the player code is identical between cluster files
+# but the data tables shift). Always located via dynamic scan; see
+# `_find_pattern_ptr_table` below.
+#
+# Earlier RE notes assumed `load+$788`/`load+$78E` — that's only correct
+# for Galax_it_y (load $1000, size $7C0). Echo_Beat (load $0400, size
+# $66C) puts the pattern ptr table at `load+$629`/`load+$62D`, past the
+# end of where a $788 lookup would land.
 
 
 def _has_2000ad_signature(c64_data: bytes) -> bool:
@@ -129,6 +136,43 @@ def _voice_orderlists_in_range(c64_data: bytes, sid_la: int) -> Optional[tuple]:
     if not all(sid_la <= a < binary_end for a in addrs):
         return None
     return addrs
+
+
+def _find_pattern_ptr_table(c64_data: bytes, sid_la: int) -> Optional[tuple]:
+    """Scan the orderlist-advance code for the pattern_ptr LO/HI table
+    addresses.
+
+    The end-of-orderlist handler emits this code sequence (Galax_it_y
+    illustration, load $1000):
+
+        48 98 9D F2 14   ; PHA; TYA; STA $14F2,X   (save pattern index, advance Y)
+        68 A8            ; PLA; TAY               (recover index → Y)
+        B9 88 17         ; LDA $1788,Y           ← pattern_ptr_LO_TABLE
+        9D BF 14         ; STA $14BF,X           (current pat ptr lo)
+        B9 8E 17         ; LDA $178E,Y           ← pattern_ptr_HI_TABLE
+        9D C2 14         ; STA $14C2,X           (current pat ptr hi)
+
+    The two LDA absolute-Y operands give the two table addresses. The
+    `$14` byte (scratch page) is `(load_hi + 4)`. Returns
+    `(pat_lo_addr, pat_hi_addr)` or None if not found.
+    """
+    scratch_hi = (sid_la >> 8) + 4
+    if scratch_hi > 0xFF:
+        return None
+    sig = bytes([0x48, 0x98, 0x9D, 0xF2, scratch_hi, 0x68, 0xA8, 0xB9])
+    idx = c64_data.find(sig)
+    if idx < 0:
+        return None
+    p = idx + len(sig)
+    if p + 8 > len(c64_data):
+        return None
+    pat_lo_addr = c64_data[p] | (c64_data[p + 1] << 8)
+    if c64_data[p + 2] != 0x9D or c64_data[p + 3] != 0xBF or c64_data[p + 4] != scratch_hi:
+        return None
+    if c64_data[p + 5] != 0xB9:
+        return None
+    pat_hi_addr = c64_data[p + 6] | (c64_data[p + 7] << 8)
+    return pat_lo_addr, pat_hi_addr
 
 
 def detect_2000ad_layout(
@@ -166,14 +210,21 @@ def detect_2000ad_layout(
     if addrs is None:
         return None
 
+    pat_ptrs = _find_pattern_ptr_table(c64_data, sid_la)
+    if pat_ptrs is None:
+        return None
+    pat_lo_addr, pat_hi_addr = pat_ptrs
+    binary_end = sid_la + len(c64_data)
+    if not (sid_la <= pat_lo_addr < binary_end and
+            sid_la <= pat_hi_addr < binary_end):
+        return None
+
     # The copyright check is currently advisory — the signature +
-    # orderlist range check are strong enough on their own. If the
-    # copyright is provided we log-only (not gate). Future tightening
-    # could enforce.
+    # orderlist range check are strong enough on their own.
     return Vibrants2000ADLayout(
         voice_orderlist_lo_addr=sid_la + _VOICE_OL_LO_OFF,
         voice_orderlist_hi_addr=sid_la + _VOICE_OL_HI_OFF,
-        pattern_ptr_lo_addr=sid_la + _PATTERN_PTR_LO_OFF,
-        pattern_ptr_hi_addr=sid_la + _PATTERN_PTR_HI_OFF,
+        pattern_ptr_lo_addr=pat_lo_addr,
+        pattern_ptr_hi_addr=pat_hi_addr,
         voice_orderlist_addrs=addrs,
     )

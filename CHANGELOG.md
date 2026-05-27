@@ -25,6 +25,113 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.59] - 2026-05-27
+
+### Added — 2000 A.D. cluster extractor + editor view (Galax_it_y)
+
+Builds on the v3.5.58 detector with the actual orderlist+pattern walk
+needed to populate the SF2 editor's F1 sequence view for the 1988
+2000 A.D. shared player (Echo_Beat + Galax_it_y).
+
+### New modules
+
+* **`sidm2/vibrants_2000ad_extractor.py`** — walks each voice's
+  orderlist (load+$493/$496), dereferences pattern pointers (file-
+  specific table, dynamically located), decodes pattern byte pairs
+  into NP21-shape note + duration streams. Skips commands; clamps
+  notes to NP21's $00-$6F range; emits an `$A0` instrument-set
+  marker between patterns so the segmenter splits each 2000 A.D.
+  pattern into its own SF2 sub-pattern. Bounded by `_MAX_STREAM_BYTES`
+  (600B) to fit the editor's per-voice slot budget.
+
+### Detector fix
+
+* `sidm2/vibrants_2000ad_detector.py` — pattern_ptr table address
+  is now located via a dynamic opcode scan
+  (`48 98 9D F2 <scratch_hi> 68 A8 B9 …`) rather than the previously
+  hardcoded `load+$788/$78E`. Echo_Beat's pattern_ptr table sits at
+  `load+$629/$62D`, not `load+$788` — the old static offset was
+  Galax-specific and silently returned an out-of-range address for
+  Echo_Beat.
+
+### Wire-in
+
+* `sidm2/np21_edit_area_builder.py` — between the Wizax-A / Zetrex-YP
+  redirect block and the Vibrants V20 short-circuit, attempts
+  2000 A.D. detection; on hit, synthesizes NP21 streams via the
+  new extractor and plugs them into the existing segmentation +
+  SF2-encoding pipeline. Editor sees per-voice patterns instead
+  of the prior empty placeholder.
+
+### Verified files
+
+| File                  | Path                   | Editor F1 view        |
+|-----------------------|------------------------|-----------------------|
+| Galax_it_y (load $1000) | `np21_edit_area_builder` | ✅ V0/V1/V2 populated |
+| Echo_Beat   (load $0400) | `low_load_layout`        | ⚠ placeholder (deferred) |
+
+Echo_Beat takes the sub-$1000 `low_load_layout` path which uses
+`placeholder_edit_area` by design. Extending the 2000 A.D. extractor
+through that path requires a small refactor (parameterize edit-area
+base address in `build_np21_sf2_edit_area`); deferred to keep this
+push narrowly scoped. Audio playback for Echo_Beat is unaffected —
+it routes through the v3.5.35 Block 2 native-redirect audio gate.
+
+### Tests
+
+* `pyscript/test_vibrants_2000ad_detector.py` — +3 tests for
+  dynamic pattern_ptr scan (custom address, OOR rejection, missing
+  locator rejection). Updated the Echo_Beat assertion to expect
+  the now-correct `$0A29/$0A2D`.
+* `pyscript/test_vibrants_2000ad_extractor.py` (new) — 6 tests:
+  real-file extraction for Echo_Beat + Galax_it_y, NP21 byte format
+  validation, size cap, (note, duration) pair structure, defensive
+  empty-on-bogus-layout.
+* Full pytest: 1272 passed (+9 from v3.5.58).
+
+### What this does NOT enable
+
+* **F1 edit propagation**: The embedded 2000 A.D. binary keeps reading
+  its own pattern data at runtime. Edits in the SF2 editor change the
+  displayed bytes but don't propagate to playback. (The
+  ch_seq_ptr / shadow-buffer translator doesn't apply — different
+  byte format, different player.)
+* **Chromatic note display**: Note bytes emit verbatim from the
+  2000 A.D. binary; the player feeds them through a per-voice
+  transpose + frequency LUT to derive actual pitch. Without LUT
+  decoding (deferred per the memory note: "Workable as read-only
+  display"), the editor shows opaque byte values instead of C-X /
+  D#X labels. Relative pattern structure is still visible.
+* **Echo_Beat editor view**: low_load path uses placeholder
+  (see Verified files table above).
+
+### Reference
+
+* `memory/vibrants-2000ad-cluster-re.md` — full RE writeup of the
+  player architecture (orderlist + pattern + byte-stream).
+
+---
+
+## [3.5.58] - 2026-05-26
+
+### Added — 1988 2000 A.D. cluster RE + detector (C3 push checkpoint)
+
+* **`sidm2/vibrants_2000ad_detector.py`** (new) — detects the shared
+  player used by Echo_Beat + Galax_it_y via a 16-byte fixed signature
+  at `load+$0..$F` (`4C XX XX 4C XX XX 2C XX XX 30 01 60 A9 00 8D XX`)
+  plus an in-range check on the voice orderlist pointer table at
+  `load+$493/$496`. James_Bond_Theme_Remix carries the same "1988
+  2000 A.D." copyright but uses a different player and does not match.
+* **`memory/vibrants-2000ad-cluster-re.md`** (new) — orderlist +
+  pattern + byte-stream architecture documented end-to-end.
+* `pyscript/test_vibrants_2000ad_detector.py` — 14 tests covering
+  positive matches, copyright-collision rejection, signature
+  variations, and bounds checks.
+
+Extractor and editor-view wire-in deferred to v3.5.59.
+
+---
+
 ## [3.5.57] - 2026-05-26
 
 ### Fixed — Crosswords audio fidelity (zig64 panic on oversized SF2)

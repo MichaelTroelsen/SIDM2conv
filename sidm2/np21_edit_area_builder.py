@@ -167,7 +167,35 @@ def build_np21_sf2_edit_area(
                     f"Running NP21 F1 pipeline with {redirect_name} redirect."
                 )
 
+    # 1988 2000 A.D. cluster (Echo_Beat + Galax_it_y): pre-NP21 player
+    # with orderlist + pattern + byte-pair architecture. Byte streams are
+    # NOT NP21-compatible byte-for-byte, so we can't just redirect
+    # ch_seq_ptr like Wizax-A / Zetrex-YP. Instead, synthesize per-voice
+    # NP21-shaped streams from the orderlist+pattern walk and plug them
+    # into raw_patterns directly. v3.5.59 enables editor view of F1
+    # sequences for these 2 files. See
+    # `memory/vibrants-2000ad-cluster-re.md`.
+    v2k_streams: Optional[List[bytes]] = None
     if ptrs is None or not _ptrs_in_range(ptrs):
+        try:
+            from sidm2.vibrants_2000ad_detector import detect_2000ad_layout
+            from sidm2.vibrants_2000ad_extractor import (
+                extract_2000ad_voice_streams,
+            )
+            v2k_layout = detect_2000ad_layout(c64_data, sid_la, psid_copyright)
+        except Exception:
+            v2k_layout = None
+        if v2k_layout is not None:
+            streams = extract_2000ad_voice_streams(c64_data, sid_la, v2k_layout)
+            if any(streams):
+                v2k_streams = streams
+                logger.info(
+                    f"  2000 A.D. cluster detected: V0={len(streams[0])}B "
+                    f"V1={len(streams[1])}B V2={len(streams[2])}B "
+                    f"NP21-synth streams (editor view only)"
+                )
+
+    if v2k_streams is None and (ptrs is None or not _ptrs_in_range(ptrs)):
         # Vibrants V20 short-circuit: pre-NP21 player variants have
         # no NP21 ch_seq_ptr at all, and running the autodetect on
         # them yields garbage 2-14 byte "patterns" that mislead the
@@ -212,7 +240,12 @@ def build_np21_sf2_edit_area(
     addr_to_sf2_idx = {}
     raw_patterns = []    # list of (body_bytes, loop_target)
 
-    if ptrs is not None and _ptrs_in_range(ptrs):
+    if v2k_streams is not None:
+        # 2000 A.D. cluster: 3 distinct synthesized streams (one per voice).
+        # No address dedup — feed each directly with loop_target=0.
+        for s in v2k_streams:
+            raw_patterns.append((s, 0))
+    elif ptrs is not None and _ptrs_in_range(ptrs):
         for seq_addr in ptrs:
             if seq_addr not in addr_to_sf2_idx:
                 body, loop_target = _extract_raw_seq(seq_addr)
@@ -227,7 +260,9 @@ def build_np21_sf2_edit_area(
                         )
 
     voice_init_idx = [0, 0, 0]
-    if ptrs is not None and _ptrs_in_range(ptrs):
+    if v2k_streams is not None:
+        voice_init_idx = [0, 1, 2]
+    elif ptrs is not None and _ptrs_in_range(ptrs):
         for v in range(3):
             voice_init_idx[v] = addr_to_sf2_idx.get(ptrs[v], 0)
 

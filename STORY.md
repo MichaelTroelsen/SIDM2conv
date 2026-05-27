@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.57 (2026-05-26) — 1249 tests, 286-file corpus, **100% functional + audio-verified (286/286, all 3 former CONV_FAILs byte-identical via zig64)**
-**Latest chapter:** [v3.5.57 — Audio-verified 100%. All 3 former CONV_FAILs zig64 byte-identical](#v3557--audio-verified-100-all-3-former-conv_fails-zig64-byte-identical-2026-05-26)
+**Current version:** v3.5.59 (2026-05-27) — 1272 tests, 286-file corpus, **100% audio-verified (286/286 byte-identical via zig64). C3 push: Galax_it_y now shows real F1 patterns in the editor.**
+**Latest chapter:** [v3.5.59 — 2000 A.D. cluster extractor: Galax_it_y editor view](#v3559--2000-ad-cluster-extractor-galax_it_y-editor-view-2026-05-27)
 
 ---
 
@@ -529,6 +529,121 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.59 — 2000 A.D. cluster extractor: Galax_it_y editor view (2026-05-27)
+
+v3.5.58 stopped at "detector + RE memo." The natural next move was to
+actually use that detector — extract per-voice patterns from the
+1988 2000 A.D. shared player (Echo_Beat + Galax_it_y) and feed them
+into the SF2 editor's F1 view, so users see something coherent instead
+of the empty placeholder.
+
+The interesting part wasn't the extractor — it was discovering, mid-
+implementation, that the v3.5.58 detector itself was silently broken.
+The memory note claimed the pattern-pointer table sits at `load+$788`
+for both cluster files. That's true for Galax_it_y (load $1000, ends
+$17C0 → `load+$788` = `$1788`, in-range). It's NOT true for Echo_Beat
+(load $0400, ends $0A6C → `load+$788` = `$0B88`, *past the end of the
+binary*). The detector was returning a `Vibrants2000ADLayout` with a
+broken pattern_ptr_lo_addr for Echo_Beat, and the existing test
+asserted that broken value because it was written to match the code.
+
+The RE memo's mistake was assuming the data tables sit at fixed file-
+relative offsets. They don't. The player code is identical between
+files — it relocates cleanly — but the data sections vary in size
+per song, so anything that lives *after* the variable-sized data
+shifts in absolute terms. The pattern-pointer table is one such
+"after" structure.
+
+The fix is to locate the table dynamically. The orderlist-advance
+code (just past the end-of-orderlist check) emits a fixed-shape
+instruction sequence:
+
+```
+48 98 9D F2 <scratch>   ; PHA; TYA; STA $14F2,X
+68 A8                    ; PLA; TAY
+B9 <lo lo> <lo hi>       ; LDA pattern_ptr_LO_TABLE,Y    ← captured
+9D BF <scratch>          ; STA $14BF,X
+B9 <hi lo> <hi hi>       ; LDA pattern_ptr_HI_TABLE,Y    ← captured
+9D C2 <scratch>          ; STA $14C2,X
+```
+
+Scan for the 8-byte prefix, read the two LDA operands, and the table
+addresses fall out. Echo_Beat's table lives at `$0A29/$0A2D`, Galax_it_y's
+at `$1788/$178E`. Detector now refuses files whose dynamically-found
+table is out-of-range, which is the test the v3.5.58 version should
+have made in the first place.
+
+The extractor walks each voice's orderlist (3 ptrs at `load+$493/$496`),
+dereferences pattern indices via the now-correct ptr table, decodes
+pattern byte pairs (duration+octave, note byte). It emits synthesized
+NP21-shape streams: `$A0` instrument-set marker per pattern,
+note byte (clamped to $00-$6F), duration byte (`$80 | low_4_bits`).
+Stream is bounded at 600 bytes per voice (the SF2 editor's slot
+budget is 256B and the segmenter wants room for multiple sub-patterns).
+
+The wire-in goes between the Wizax-A / Zetrex-YP redirect block and
+the Vibrants V20 short-circuit in `np21_edit_area_builder`. On a
+2000 A.D. hit, the synthesized streams plug into `raw_patterns`
+directly, bypassing the standard ch_seq_ptr extraction. Everything
+downstream (segmentation, orderlist construction, edit-area emission)
+is unchanged.
+
+### Galax_it_y: works. Echo_Beat: doesn't, by design.
+
+The wire-in only fires for the standard `np21_edit_area_builder`
+path. Galax_it_y (load $1000) takes that path. Echo_Beat (load
+$0400) takes the sub-$1000 `low_load_layout` path, which by design
+uses `placeholder_edit_area` because the editor-area concept doesn't
+fit cleanly into the low-load PRG geometry (header below binary,
+handlers above, no room for the standard edit-area layout pinned
+to `sid_la + len(c64_data)`).
+
+Extending the 2000 A.D. extractor through `low_load_layout` is
+tractable but needs a small refactor — `build_np21_sf2_edit_area`
+hardcodes the edit-area base address; parameterizing it would let
+`low_load_layout` call the same builder with `EDIT` as the base.
+Deferred to keep this push narrowly scoped. Echo_Beat's audio is
+unaffected (it routes through the v3.5.35 audio gate's Block 2
+native-redirect fallback as documented).
+
+### What "editor view" actually buys
+
+Not edit propagation. The embedded 2000 A.D. binary keeps reading
+its own pattern data at runtime; nothing the user types in SF2II's
+editor changes what plays. The translator + shadow-buffer pipeline
+that gives Wizax-A / Zetrex-YP real F1 edit propagation doesn't
+apply here — different byte format, different player code, no
+ch_seq_ptr to patch.
+
+What the user *does* get is a tracker-like view of the song's
+structure: per-voice orderlists with pattern indices, sub-patterns
+showing duration+note pairs in roughly the shape one would expect.
+Notes display as opaque byte values (not C-X / D#X) until the
+frequency LUT is decoded — deferred per the memory note's "Workable
+as read-only display" scoping.
+
+### Per-criterion delta
+
+| Criterion | v3.5.58 → v3.5.59 |
+|-----------|--------------------|
+| C1 (loads) | 286/286 — unchanged |
+| C2 (audio) | 286/286 — unchanged |
+| **C3 (editor)** | **+1: Galax_it_y now shows real F1 patterns** |
+| C4 (round-trip) | unchanged |
+
+Tests: 1272 passed (+9 from v3.5.58: 3 detector dynamic-scan, 6 extractor).
+
+The bigger lesson worth recording: a memory note marked "detector
+buildable" was treated as ground truth, and the resulting detector
+shipped with a silently-broken field that only surfaced when the
+extractor tried to use it. Next time a memory note describes a
+multi-file architecture, the detector tests should hit *every*
+listed file and assert the returned addresses are actually in-range
+in each file — not just that detection succeeds. The v3.5.58 test
+suite did the first part and skipped the second.
+
+---
 
 ### v3.5.57 — Audio-verified 100%. All 3 former CONV_FAILs zig64 byte-identical (2026-05-26)
 
