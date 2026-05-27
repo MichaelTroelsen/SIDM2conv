@@ -25,12 +25,24 @@ and emits a synthesized NP21-format byte stream:
     ... repeat ...
     (no explicit terminator — caller appends $FF $00)
 
-The note byte is emitted directly from byte 2 of the 2000 A.D. pattern
-(clamped to $6F if larger). It is NOT chromatically mapped — the 2000 A.D.
-player feeds byte 2 + per-voice transpose through a frequency LUT, and
-the byte values aren't a semitone scale. Editor displays them as opaque
-pitches; users see relative patterns instead of named notes. Full
-chromatic mapping requires LUT decoding (deferred).
+The note byte is chromatically mapped: 2000 A.D. byte 2 = N corresponds
+to semitone N from C-0 (verified v3.5.61 by decoding the freq LUT at
+load+$10F and confirming it holds the standard SID PAL chromatic table).
+NP21 uses 1-based chromatic notation ($01 = C-0), so the mapping is
+`NP21_note = byte_2 + 1`, clamped to $6F (SF2 editor max).
+
+`byte_2 = 0` retains its 2000 A.D. semantics of "rest / gate off" and
+maps to NP21 $00 (no-event); the LUT's entry-0 freq value (C-0) is
+unreachable in the player because the gate-off code path runs first.
+
+Per-pattern transpose (set by orderlist command bytes $80-$9F before
+each pattern plays) is NOT applied to the displayed notes — each
+2000 A.D. orderlist iteration produces a separate SF2 sub-pattern via
+the $A0 segmenter marker, so users see distinct sub-patterns whose
+relative pitch shifts are visible; the absolute pitch label reflects
+the raw byte_2 value before transposition. Decoding the per-pattern
+transpose commands is a future polish (would shift sub-pattern labels
+to actually played pitches).
 
 The duration byte's bit 5 in 2000 A.D. is an "upper octave" flag and
 bits 0-4 are tick count. NP21 duration uses bits 0-3 for tick count
@@ -194,15 +206,16 @@ def _walk_pattern(c64_data: bytes, pat_off: int, stream: bytearray) -> None:
         if q + 1 >= len(c64_data):
             return
         b2 = c64_data[q + 1]
-        # Emit note: $00 stays as rest; non-zero gets clamped into NP21's
-        # $01-$6F range. The raw byte is not a chromatic value — see
-        # module docstring.
+        # Chromatic mapping: NP21_note = byte_2 + 1, clamped to $6F.
+        # byte_2 = 0 stays as NP21 $00 (rest/gate-off); see module
+        # docstring for the LUT-derived semitone mapping rationale.
         if b2 == 0x00:
             stream.append(0x00)
-        elif b2 <= 0x6F:
-            stream.append(b2)
         else:
-            stream.append(0x6F)
+            np21_note = b2 + 1
+            if np21_note > 0x6F:
+                np21_note = 0x6F
+            stream.append(np21_note)
         # Emit NP21 duration ($80 | low 4 bits of ticks).
         ticks = b1 & 0x1F
         stream.append(0x80 | min(ticks, 0x0F))

@@ -25,6 +25,68 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.61] - 2026-05-27
+
+### Added — Chromatic note display for 2000 A.D. cluster
+
+v3.5.59 + v3.5.60 emitted 2000 A.D. byte_2 values directly into the
+SF2 editor, which rendered them with the wrong pitch labels because
+the 2000 A.D. player uses 0-based semitone encoding (byte_2 = 0 is
+the "rest" code path; byte_2 = 1 plays as C#-0) while NP21 / SF2 use
+1-based encoding ($01 = C-0).
+
+This release applies the chromatic shift `NP21_note = byte_2 + 1`
+(clamped to $6F) so the editor's pitch labels match what the player
+actually produces. byte_2 = 0 stays as NP21 $00 (rest), preserving
+the gate-off semantics.
+
+### How the mapping was verified
+
+Located the freq LUT via dynamic opcode scan against the
+freq-resolution code sequence:
+
+```
+18 7D EF <scratch>   ; CLC; ADC $XXEF,X (add per-voice transpose)
+9D B0 <scratch>      ; STA $XXB0,X
+0A A8                ; ASL; TAY (byte_2 * 2 → Y for 2-byte LUT entries)
+B9 <lo lo> <lo hi>   ; LDA freq_LUT_lo_table,Y   ← captured
+9D C5 <scratch>      ; STA $XXC5,X (per-voice freq lo scratch)
+B9 <hi lo> <hi hi>   ; LDA freq_LUT_hi_table,Y   ← captured
+9D C8 <scratch>      ; STA $XXC8,X (per-voice freq hi scratch)
+```
+
+Located addresses: Galax_it_y at `$150F`, Echo_Beat at `$090F`. Both
+files' LUTs match the standard SID PAL chromatic table
+(`hz × 2^24 / 985248`) byte-for-byte from C-0 ($0116) upward. The
+table is 256 bytes (128 entries × 2 bytes), giving byte_2 the range
+$00-$7F where index 0 is C-0.
+
+### What's still deferred
+
+Per-pattern transpose: the 2000 A.D. orderlist's command bytes
+($80-$9F before each pattern index) shift the per-voice transpose at
+`$XXEF+X`, which the freq-resolution code adds to byte_2 before the
+LUT lookup. Decoding the command-byte → transpose mapping would let
+the editor's sub-pattern labels reflect actually-played pitches; the
+displayed labels currently reflect raw byte_2 values before any
+runtime shift. Each orderlist iteration already gets its own SF2
+sub-pattern via the `$A0` segmenter marker, so the relative pitch
+structure is correct; only the absolute octave label may be off.
+
+### Tests
+
+* `pyscript/test_vibrants_2000ad_extractor.py` — +4 tests:
+  - `test_galax_v0_first_notes_chromatic_shifted` — locks in the
+    +1 shift on real Galax_it_y patterns.
+  - `test_byte_2_zero_stays_rest` — confirms $00 stays as rest.
+  - `test_byte_2_one_maps_to_chromatic_two` — synthetic check.
+  - `test_chromatic_clamp_at_6f` — boundary clamp.
+* Full pytest: 1280 → 1284 (+4).
+* Full Laxity corpus: 286/286 C2 audio + 286/286 C4 audio + 286/286
+  C4 metadata, zero convert fails — at parity with v3.5.60.
+
+---
+
 ## [3.5.60] - 2026-05-27
 
 ### Added — Echo_Beat editor F1 view (2000 A.D. cluster complete)

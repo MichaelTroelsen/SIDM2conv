@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.60 (2026-05-27) — 1280 tests, 286-file corpus, **100% audio-verified (286/286 byte-identical via zig64). 2000 A.D. cluster complete: both Echo_Beat and Galax_it_y show real F1 patterns in the editor.**
-**Latest chapter:** [v3.5.60 — 2000 A.D. cluster complete: Echo_Beat editor view via low_load_layout](#v3560--2000-ad-cluster-complete-echo_beat-editor-view-via-low_load_layout-2026-05-27)
+**Current version:** v3.5.61 (2026-05-27) — 1284 tests, 286-file corpus, **100% audio-verified (286/286 byte-identical via zig64). 2000 A.D. cluster shows chromatic note labels in the editor.**
+**Latest chapter:** [v3.5.61 — Chromatic note display for 2000 A.D. cluster](#v3561--chromatic-note-display-for-2000-ad-cluster-2026-05-27)
 
 ---
 
@@ -529,6 +529,77 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.61 — Chromatic note display for 2000 A.D. cluster (2026-05-27)
+
+v3.5.59 and v3.5.60 wired the 2000 A.D. extractor through both code
+paths but punted on note labels: byte_2 values were emitted directly
+into the editor, which rendered them with the wrong pitch (e.g.,
+byte_2 = $03 displayed as "D#-0" even though the player produces it
+as "E-0"). The freq LUT decode was the deferred polish.
+
+The decode turned out to be a five-minute job once the opcode pattern
+came into focus. The freq-resolution code path inside the player goes:
+
+```
+CLC; ADC $14EF,X        ; add per-voice transpose to byte_2
+STA $14B0,X             ; save the shifted index
+ASL                     ; ×2 (LUT entries are 2 bytes each)
+TAY                     ; use as Y index
+LDA freq_LUT_lo,Y       ; freq lo byte
+STA $14C5,X             ; per-voice freq lo scratch
+LDA freq_LUT_hi,Y       ; freq hi byte
+STA $14C8,X             ; per-voice freq hi scratch
+```
+
+That 8-byte opcode prefix (`18 7D EF <scratch> 9D B0 <scratch> 0A A8`)
+is unique to the freq-resolution path, and the two LDA-absolute-Y
+operands after it are the table addresses. For Galax_it_y the table
+sits at $150F; for Echo_Beat at $090F. Both files' tables are the
+standard SID PAL chromatic table (`round(hz × 2^24 / 985248)`)
+byte-for-byte from C-0 = $0116 upward.
+
+So byte_2 maps to chromatic semitones directly: byte_2 = N is
+semitone N from C-0. NP21 / SF2 use 1-based encoding ($01 = C-0), so
+the editor-side translation is `NP21_byte = byte_2 + 1`, clamped to
+$6F (SF2's max display pitch). byte_2 = 0 keeps its 2000 A.D.
+semantics of "rest / gate off" and maps to NP21 $00, since the player
+code branches to the gate-off path before reading LUT[0].
+
+### What it changes for the user
+
+Notes in the SF2 editor now show correct chromatic labels (C-X /
+C#X / D-X / …) instead of opaque byte values. The relative pattern
+structure was already correct; this fixes the *absolute* pitch label.
+
+### What's still not perfect
+
+Each orderlist command byte ($80-$9F before a pattern index) modifies
+the per-voice transpose at $14EF+X, so the same pattern bytes can
+play at different absolute pitches across orderlist iterations. The
+extractor already emits one SF2 sub-pattern per orderlist iteration
+(via the $A0 segmenter marker), so each iteration is a distinct
+editor pattern; but the displayed pitch label for each sub-pattern
+reflects the raw byte_2 before the transpose, not after.
+
+The fix (decoding the command-byte → transpose mapping) is a
+straightforward follow-up — three or four orderlist commands need
+their semantics teased out — but the cost/value tradeoff is small
+enough that it's deferred until someone actually asks. Relative
+pitch structure within a sub-pattern remains correct.
+
+### Per-criterion delta
+
+| Criterion | v3.5.60 → v3.5.61 |
+|-----------|--------------------|
+| C1 (loads) | 286/286 — unchanged |
+| C2 (audio) | 286/286 — unchanged |
+| C3 (editor) | **+polish: notes now show chromatic labels for 2000 A.D. cluster** |
+| C4 (round-trip) | unchanged |
+
+Tests: 1280 → 1284 (+4 chromatic mapping).
+
+---
 
 ### v3.5.60 — 2000 A.D. cluster complete: Echo_Beat editor view via low_load_layout (2026-05-27)
 

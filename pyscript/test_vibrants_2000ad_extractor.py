@@ -125,6 +125,83 @@ class TestNP21ByteFormat(unittest.TestCase):
                 i += 2
 
 
+class TestChromaticMapping(unittest.TestCase):
+    """v3.5.61: byte_2 -> NP21 chromatic note (byte_2 + 1, clamped to $6F).
+    byte_2 = 0 stays as NP21 $00 (rest)."""
+
+    def test_galax_v0_first_notes_chromatic_shifted(self):
+        """First V0 pattern of Galax_it_y has byte pairs starting with
+        duration=$0A note=$03 then $16/$03, etc. (per the RE probe).
+        After +1 shift each note byte should be $04 (D-0 in NP21 1-based)."""
+        load, binary, copyright = _load_sid("Galax_it_y")
+        layout = detect_2000ad_layout(binary, load, copyright)
+        streams = extract_2000ad_voice_streams(binary, load, layout)
+        v0 = streams[0]
+        # Stream layout: $A0 note dur note dur …
+        # Per RE: first 5 (note,dur) pairs in V0 pat[0] of Galax are
+        #   ($03,$8A) ($03,$96) ($07,$8A) ($03,$8D) ($07,$99)
+        # (durations are byte_1 ticks: $0A -> $8A, $16 -> $96, $0D -> $8D, $19 -> $99)
+        # After +1 chromatic shift the note bytes become $04, $04, $08, $04, $08.
+        self.assertEqual(v0[0], 0xA0, "stream starts with instrument marker")
+        notes = [v0[i] for i in range(1, min(len(v0), 11), 2)]
+        # First 5 note bytes
+        self.assertEqual(notes[:5], [0x04, 0x04, 0x08, 0x04, 0x08],
+                         "chromatic shift: byte_2 N -> NP21 N+1")
+
+    def _build_synth_binary_with_pattern(self, pattern_bytes: bytes) -> bytes:
+        """Synthesize a 2000 A.D.-shape binary that the extractor will
+        walk into `pattern_bytes` for voice 0's pattern 0."""
+        binary = bytearray(0x600)
+        # Pattern at body offset $400 (= $1400 absolute)
+        binary[0x400:0x400 + len(pattern_bytes)] = pattern_bytes
+        # Pattern ptr table at body $200/$206 → pat 0 at $1400
+        binary[0x200] = 0x00
+        binary[0x206] = 0x14
+        # Orderlist at $300 ($1300): [pat_idx=0, $FF (loop)]
+        binary[0x300:0x302] = bytes([0x00, 0xFF])
+        return bytes(binary)
+
+    def _layout(self) -> "Vibrants2000ADLayout":
+        from sidm2.vibrants_2000ad_detector import Vibrants2000ADLayout
+        return Vibrants2000ADLayout(
+            voice_orderlist_lo_addr=0x1000,
+            voice_orderlist_hi_addr=0x1000,
+            pattern_ptr_lo_addr=0x1200,
+            pattern_ptr_hi_addr=0x1206,
+            voice_orderlist_addrs=(0x1300, 0x1300, 0x1300),
+        )
+
+    def test_byte_2_zero_stays_rest(self):
+        """A (duration, note=0) pair: byte_2 = 0 emits NP21 $00 (rest),
+        not chromatic +1."""
+        # 2000 A.D. pattern: (dur=$02, note=$00) then end-of-pattern $FF
+        binary = self._build_synth_binary_with_pattern(
+            bytes([0x02, 0x00, 0xFF]))
+        streams = extract_2000ad_voice_streams(binary, 0x1000, self._layout())
+        # V0 stream: $A0 marker, then (note=$00, dur=$82) pair
+        self.assertEqual(streams[0][0], 0xA0)
+        self.assertEqual(streams[0][1], 0x00,
+                         "byte_2 = 0 must stay $00 (rest), not get +1 shifted")
+        self.assertEqual(streams[0][2], 0x82,
+                         "duration low 5 bits = 2 → NP21 byte $82")
+
+    def test_byte_2_one_maps_to_chromatic_two(self):
+        """byte_2 = 1 (semitone 1 from C-0 per LUT) maps to NP21 $02 (C#-0)."""
+        binary = self._build_synth_binary_with_pattern(
+            bytes([0x05, 0x01, 0xFF]))
+        streams = extract_2000ad_voice_streams(binary, 0x1000, self._layout())
+        self.assertEqual(streams[0][1], 0x02,
+                         "byte_2=1 -> NP21 $02 (C#-0)")
+
+    def test_chromatic_clamp_at_6f(self):
+        """byte_2 = $6F → byte_2 + 1 = $70, clamped to NP21 $6F."""
+        binary = self._build_synth_binary_with_pattern(
+            bytes([0x05, 0x6F, 0xFF]))
+        streams = extract_2000ad_voice_streams(binary, 0x1000, self._layout())
+        self.assertEqual(streams[0][1], 0x6F,
+                         "byte_2 $6F maps to NP21 $6F (clamped, not $70)")
+
+
 class TestNonClusterReturnsEmpty(unittest.TestCase):
     """Calling the extractor with an obviously bogus layout returns
     empty streams (not a crash)."""
