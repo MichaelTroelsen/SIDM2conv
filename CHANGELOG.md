@@ -25,6 +25,92 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.62] - 2026-05-27
+
+### Added — Per-pattern transpose decoding for 2000 A.D. cluster
+
+v3.5.61 applied a flat `byte_2 + 1` chromatic shift but ignored the
+orderlist command bytes ($80-$FE before each pattern index) that change
+the per-voice transpose at runtime. Each orderlist iteration of the
+same pattern can therefore play at a different absolute pitch, and the
+editor labels were off for any iteration past the first command.
+
+### Decode
+
+The orderlist command handler at body+$0443 is dead simple:
+
+```
+29 1F      ; AND #$1F     (mask low 5 bits of command byte)
+9D EF <hi> ; STA $XXEF,X  (write to per-voice transpose scratch)
+4C 11 <hi> ; JMP retry    (re-read next orderlist byte)
+```
+
+So `transpose = command_byte & $1F`. The freq-resolution path then
+adds that transpose to byte_2 before the LUT lookup
+(`CLC; ADC $XXEF,X`), shifting the played semitone.
+
+### Echo_Beat V0 orderlist example
+
+`$8C $01 $8F $01 $8A $01 $88 $01 $FF` — same pattern (1) plays four
+times at four different transposes:
+
+| Iter | Cmd  | Transpose | Note byte_2 = $03 emits |
+|------|------|-----------|--------------------------|
+| 1    | $8C  | +12       | NP21 $10 (D#-1)          |
+| 2    | $8F  | +15       | NP21 $13 (F#-1)          |
+| 3    | $8A  | +10       | NP21 $0E (D-1)           |
+| 4    | $88  | +8        | NP21 $0C (C-1)           |
+
+Each iteration becomes its own SF2 sub-pattern (via the `$A0` segmenter
+marker), so the editor displays four sub-patterns with the correct
+chromatic labels per iteration.
+
+### Rest unchanged
+
+byte_2 = 0 still maps to NP21 $00 (rest) regardless of transpose,
+matching the player's runtime branch order (gate-off path runs before
+the freq-LUT lookup).
+
+### Tests
+
+* `pyscript/test_vibrants_2000ad_extractor.py` — +5 tests in
+  `TestOrderlistTranspose`:
+  - `$8C` transposes by +12
+  - `$88` transposes by +8
+  - Multiple orderlist iterations use different transposes
+  - byte_2 = 0 ignores transpose (rest semantics)
+  - Bare pattern index (no command) → transpose 0
+* Existing `test_galax_v0_first_notes_chromatic_with_transpose`
+  updated to assert post-transpose values.
+* Full pytest: 1284 → 1289 (+5).
+* Full Laxity corpus: 286/286 C2 audio + 286/286 C4 audio + 286/286
+  C4 metadata, zero convert fails — at parity with v3.5.61.
+
+### What's left of the 2000 A.D. cluster RE
+
+The original v3.5.58 memory note's deferred list is drained:
+
+- ✅ Detector (v3.5.58)
+- ✅ Extractor + Galax_it_y wire-in (v3.5.59)
+- ✅ Echo_Beat editor view via low_load_layout (v3.5.60)
+- ✅ Frequency LUT decode + chromatic mapping (v3.5.61)
+- ✅ Per-pattern transpose decoding (v3.5.62)
+
+Still NOT done (intentionally):
+- F1 edit propagation (writeback into the embedded binary). This is a
+  fundamentally different problem from ch_seq_ptr-style redirect —
+  the byte format is non-NP21, so the translator/shadow-buffer
+  pipeline can't be reused. Not worth implementing for a 2-file
+  cluster.
+- Pattern-level command bytes ($80-$FE inside a pattern, not in the
+  orderlist) — currently skipped during extraction. Decoding their
+  semantics ($8C, $8F, ... payloads at $0a31+Y / $0a37+Y per the
+  command handler dump) might add finer pitch/instrument control, but
+  preliminary structure looks like per-step instrument switches with
+  no editor-visible benefit.
+
+---
+
 ## [3.5.61] - 2026-05-27
 
 ### Added — Chromatic note display for 2000 A.D. cluster

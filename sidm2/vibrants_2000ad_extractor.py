@@ -35,14 +35,19 @@ NP21 uses 1-based chromatic notation ($01 = C-0), so the mapping is
 maps to NP21 $00 (no-event); the LUT's entry-0 freq value (C-0) is
 unreachable in the player because the gate-off code path runs first.
 
-Per-pattern transpose (set by orderlist command bytes $80-$9F before
-each pattern plays) is NOT applied to the displayed notes — each
-2000 A.D. orderlist iteration produces a separate SF2 sub-pattern via
-the $A0 segmenter marker, so users see distinct sub-patterns whose
-relative pitch shifts are visible; the absolute pitch label reflects
-the raw byte_2 value before transposition. Decoding the per-pattern
-transpose commands is a future polish (would shift sub-pattern labels
-to actually played pitches).
+Per-pattern transpose is applied (v3.5.62): orderlist command bytes
+$80-$9F set the per-voice transpose at runtime via the simple rule
+`transpose = command_byte & $1F` (mask low 5 bits). The freq-resolution
+path then adds that transpose to byte_2 before the LUT lookup, so each
+orderlist iteration of the same pattern plays at a different absolute
+pitch. The extractor mirrors this: each voice's walk tracks a current
+transpose (initialized to 0), updates it on each $80-$FE orderlist
+command, and pre-shifts each pattern note by that transpose before
+emitting. Result: editor sub-patterns now show correct absolute pitch
+labels, not raw pre-transpose values.
+
+byte_2 = 0 is unaffected by transpose because the gate-off code path
+runs before the transpose+LUT lookup; it always maps to NP21 $00 (rest).
 
 The duration byte's bit 5 in 2000 A.D. is an "upper octave" flag and
 bits 0-4 are tick count. NP21 duration uses bits 0-3 for tick count
@@ -123,7 +128,13 @@ def _walk_voice(
     pat_lo_off: int,
     pat_hi_off: int,
 ) -> bytes:
-    """Walk one voice's orderlist + patterns, emit one NP21-shape stream."""
+    """Walk one voice's orderlist + patterns, emit one NP21-shape stream.
+
+    Tracks a running `transpose` value that orderlist commands $80-$FE
+    update via `transpose = command_byte & $1F`. The transpose is added
+    to each pattern note before chromatic mapping. Initialized to 0
+    (matches the C64 RAM init state for $XXEF+X scratch).
+    """
     ol_off = ol_addr - sid_la
     if not (0 <= ol_off < len(c64_data)):
         return b''
@@ -131,6 +142,7 @@ def _walk_voice(
     stream = bytearray()
     ol_idx = 0
     ol_steps = 0
+    transpose = 0
 
     while (ol_off + ol_idx < len(c64_data)
            and ol_steps < _MAX_ORDERLIST_STEPS
@@ -142,9 +154,12 @@ def _walk_voice(
             # truncating at the first end-or-loop is correct.
             break
         if b >= 0x80:
-            # Command byte; the 2000 A.D. orderlist code reads it,
-            # processes the command, then continues to the next
-            # orderlist byte without playing a pattern.
+            # Orderlist command: `transpose = command_byte & $1F`
+            # (handler at body+$0443: `AND #$1F; STA $XXEF,X`). The
+            # value applies to all subsequent pattern notes until the
+            # next command. Continue to read the next orderlist byte
+            # (the actual pattern index).
+            transpose = b & 0x1F
             ol_idx += 1
             continue
         pat_idx = b
@@ -157,7 +172,7 @@ def _walk_voice(
         # Emit instrument-set marker so the segmenter splits at this
         # boundary (each 2000 A.D. pattern → one SF2 sub-pattern).
         stream.append(0xA0)
-        _walk_pattern(c64_data, pat_off, stream)
+        _walk_pattern(c64_data, pat_off, stream, transpose=transpose)
         ol_idx += 1
         ol_steps += 1
 
@@ -182,8 +197,19 @@ def _read_pattern_addr(
     return c64_data[pat_lo_off + pat_idx] | (c64_data[pat_hi_off + pat_idx] << 8)
 
 
-def _walk_pattern(c64_data: bytes, pat_off: int, stream: bytearray) -> None:
+def _walk_pattern(
+    c64_data: bytes,
+    pat_off: int,
+    stream: bytearray,
+    *,
+    transpose: int = 0,
+) -> None:
     """Walk a single 2000 A.D. pattern and append NP21 bytes to `stream`.
+
+    `transpose` is added to byte_2 before chromatic mapping (the player
+    does `CLC; ADC $XXEF,X` between byte_2 read and the LUT lookup, so
+    pre-shifting here mirrors what plays). byte_2 = 0 (rest) bypasses
+    the transpose because the gate-off code path runs first.
 
     Stops at $FF (end of pattern), out-of-bounds, the per-pattern pair
     cap, or the global stream cap.
@@ -206,15 +232,20 @@ def _walk_pattern(c64_data: bytes, pat_off: int, stream: bytearray) -> None:
         if q + 1 >= len(c64_data):
             return
         b2 = c64_data[q + 1]
-        # Chromatic mapping: NP21_note = byte_2 + 1, clamped to $6F.
-        # byte_2 = 0 stays as NP21 $00 (rest/gate-off); see module
-        # docstring for the LUT-derived semitone mapping rationale.
+        # Chromatic mapping: NP21_note = (byte_2 + transpose) + 1,
+        # clamped to $6F. byte_2 = 0 stays as NP21 $00 (rest/gate-off);
+        # see module docstring for the LUT + transpose rationale.
         if b2 == 0x00:
             stream.append(0x00)
         else:
-            np21_note = b2 + 1
+            np21_note = b2 + transpose + 1
             if np21_note > 0x6F:
                 np21_note = 0x6F
+            elif np21_note < 0x01:
+                # Transpose could in theory be negative if we ever
+                # extend handling beyond AND-$1F; defend against $00
+                # falling into "rest" semantics by clamping low.
+                np21_note = 0x01
             stream.append(np21_note)
         # Emit NP21 duration ($80 | low 4 bits of ticks).
         ticks = b1 & 0x1F

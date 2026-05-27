@@ -129,24 +129,22 @@ class TestChromaticMapping(unittest.TestCase):
     """v3.5.61: byte_2 -> NP21 chromatic note (byte_2 + 1, clamped to $6F).
     byte_2 = 0 stays as NP21 $00 (rest)."""
 
-    def test_galax_v0_first_notes_chromatic_shifted(self):
+    def test_galax_v0_first_notes_chromatic_with_transpose(self):
         """First V0 pattern of Galax_it_y has byte pairs starting with
-        duration=$0A note=$03 then $16/$03, etc. (per the RE probe).
-        After +1 shift each note byte should be $04 (D-0 in NP21 1-based)."""
+        duration=$0A note=$03 then $16/$03, etc. Galax's V0 orderlist
+        is `$8C 01 $FF` so command $8C sets transpose = $8C & $1F = 12.
+
+        After transpose+chromatic shift: NP21_note = byte_2 + 12 + 1.
+        First 5 byte_2 values are $03 $03 $07 $03 $07 →
+        NP21 $10 $10 $14 $10 $14 (D#-1, D#-1, F#-1, D#-1, F#-1)."""
         load, binary, copyright = _load_sid("Galax_it_y")
         layout = detect_2000ad_layout(binary, load, copyright)
         streams = extract_2000ad_voice_streams(binary, load, layout)
         v0 = streams[0]
-        # Stream layout: $A0 note dur note dur …
-        # Per RE: first 5 (note,dur) pairs in V0 pat[0] of Galax are
-        #   ($03,$8A) ($03,$96) ($07,$8A) ($03,$8D) ($07,$99)
-        # (durations are byte_1 ticks: $0A -> $8A, $16 -> $96, $0D -> $8D, $19 -> $99)
-        # After +1 chromatic shift the note bytes become $04, $04, $08, $04, $08.
         self.assertEqual(v0[0], 0xA0, "stream starts with instrument marker")
         notes = [v0[i] for i in range(1, min(len(v0), 11), 2)]
-        # First 5 note bytes
-        self.assertEqual(notes[:5], [0x04, 0x04, 0x08, 0x04, 0x08],
-                         "chromatic shift: byte_2 N -> NP21 N+1")
+        self.assertEqual(notes[:5], [0x10, 0x10, 0x14, 0x10, 0x14],
+                         "byte_2 + transpose($0C) + 1 mapping")
 
     def _build_synth_binary_with_pattern(self, pattern_bytes: bytes) -> bytes:
         """Synthesize a 2000 A.D.-shape binary that the extractor will
@@ -200,6 +198,85 @@ class TestChromaticMapping(unittest.TestCase):
         streams = extract_2000ad_voice_streams(binary, 0x1000, self._layout())
         self.assertEqual(streams[0][1], 0x6F,
                          "byte_2 $6F maps to NP21 $6F (clamped, not $70)")
+
+
+class TestOrderlistTranspose(unittest.TestCase):
+    """v3.5.62: orderlist command bytes ($80-$FE before pattern indices)
+    set the per-voice transpose: `transpose = command_byte & $1F`. The
+    extractor applies the transpose to each pattern note."""
+
+    def _layout(self):
+        from sidm2.vibrants_2000ad_detector import Vibrants2000ADLayout
+        return Vibrants2000ADLayout(
+            voice_orderlist_lo_addr=0x1000,
+            voice_orderlist_hi_addr=0x1000,
+            pattern_ptr_lo_addr=0x1200,
+            pattern_ptr_hi_addr=0x1206,
+            voice_orderlist_addrs=(0x1300, 0x1300, 0x1300),
+        )
+
+    def _build(self, *, orderlist_bytes: bytes, pattern_bytes: bytes) -> bytes:
+        binary = bytearray(0x600)
+        binary[0x400:0x400 + len(pattern_bytes)] = pattern_bytes
+        binary[0x200] = 0x00     # pat 0 lo
+        binary[0x206] = 0x14     # pat 0 hi
+        binary[0x300:0x300 + len(orderlist_bytes)] = orderlist_bytes
+        return bytes(binary)
+
+    def test_command_8c_transposes_pattern_by_12(self):
+        """Orderlist `$8C $00 $FF`: cmd $8C & $1F = 12 → transpose +12."""
+        binary = self._build(
+            orderlist_bytes=bytes([0x8C, 0x00, 0xFF]),
+            pattern_bytes=bytes([0x05, 0x03, 0xFF]))   # dur=$05 note=$03
+        streams = extract_2000ad_voice_streams(binary, 0x1000, self._layout())
+        # byte_2=$03 + transpose=$0C + 1 = $10
+        self.assertEqual(streams[0][1], 0x10,
+                         "$8C transposes by +12 → byte_2=$03 emits as $10")
+
+    def test_command_88_transposes_pattern_by_8(self):
+        """$88 & $1F = 8 → transpose +8."""
+        binary = self._build(
+            orderlist_bytes=bytes([0x88, 0x00, 0xFF]),
+            pattern_bytes=bytes([0x05, 0x03, 0xFF]))
+        streams = extract_2000ad_voice_streams(binary, 0x1000, self._layout())
+        self.assertEqual(streams[0][1], 0x0C,
+                         "$88 transposes by +8 → byte_2=$03 emits as $0C")
+
+    def test_multiple_orderlist_iterations_use_different_transposes(self):
+        """Echo_Beat-style orderlist: same pattern, different transposes
+        per iteration produces different chromatic labels per sub-pattern."""
+        binary = self._build(
+            orderlist_bytes=bytes([0x8C, 0x00, 0x88, 0x00, 0xFF]),
+            pattern_bytes=bytes([0x05, 0x03, 0xFF]))   # one note per pattern
+        streams = extract_2000ad_voice_streams(binary, 0x1000, self._layout())
+        # Stream: $A0 note1 dur $A0 note2 dur
+        # Iter 1: transpose=12 → byte_2=$03 → $10
+        # Iter 2: transpose=8  → byte_2=$03 → $0C
+        s = streams[0]
+        self.assertEqual(s[0], 0xA0)
+        self.assertEqual(s[1], 0x10, "iter 1: +12 transpose → $10")
+        self.assertEqual(s[3], 0xA0, "second sub-pattern marker")
+        self.assertEqual(s[4], 0x0C, "iter 2: +8 transpose → $0C")
+
+    def test_rest_byte_2_zero_ignores_transpose(self):
+        """A note byte of $00 is the gate-off path; the transpose does
+        NOT apply (matches the player's runtime branch order)."""
+        binary = self._build(
+            orderlist_bytes=bytes([0x8C, 0x00, 0xFF]),     # transpose = 12
+            pattern_bytes=bytes([0x05, 0x00, 0xFF]))       # note = $00 (rest)
+        streams = extract_2000ad_voice_streams(binary, 0x1000, self._layout())
+        self.assertEqual(streams[0][1], 0x00,
+                         "byte_2=$00 stays $00 regardless of transpose")
+
+    def test_no_command_default_transpose_zero(self):
+        """Orderlist starting with a bare pattern index (no command)
+        uses transpose = 0 → bare +1 chromatic mapping."""
+        binary = self._build(
+            orderlist_bytes=bytes([0x00, 0xFF]),
+            pattern_bytes=bytes([0x05, 0x03, 0xFF]))
+        streams = extract_2000ad_voice_streams(binary, 0x1000, self._layout())
+        self.assertEqual(streams[0][1], 0x04,
+                         "no command → transpose=0 → byte_2=$03 emits as $04")
 
 
 class TestNonClusterReturnsEmpty(unittest.TestCase):

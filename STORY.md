@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.61 (2026-05-27) — 1284 tests, 286-file corpus, **100% audio-verified (286/286 byte-identical via zig64). 2000 A.D. cluster shows chromatic note labels in the editor.**
-**Latest chapter:** [v3.5.61 — Chromatic note display for 2000 A.D. cluster](#v3561--chromatic-note-display-for-2000-ad-cluster-2026-05-27)
+**Current version:** v3.5.62 (2026-05-27) — 1289 tests, 286-file corpus, **100% audio-verified (286/286 byte-identical via zig64). 2000 A.D. cluster RE drained: per-pattern transpose now applied to editor sub-patterns.**
+**Latest chapter:** [v3.5.62 — Per-pattern transpose decoding for 2000 A.D. cluster](#v3562--per-pattern-transpose-decoding-for-2000-ad-cluster-2026-05-27)
 
 ---
 
@@ -529,6 +529,91 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.62 — Per-pattern transpose decoding for 2000 A.D. cluster (2026-05-27)
+
+v3.5.61 shipped chromatic note labels but explicitly deferred the
+per-pattern transpose, with the note that "relative pitch within a
+sub-pattern is correct; absolute octave may be off." That deferral
+turned out to be a five-minute job.
+
+The orderlist's command-byte handler at body+$0443 is three opcodes:
+
+```
+29 1F      ; AND #$1F
+9D EF <hi> ; STA $XXEF,X
+4C 11 <hi> ; JMP back to orderlist read
+```
+
+That's it. Mask the low 5 bits, store as per-voice transpose, retry.
+The next orderlist byte is the pattern index. The freq-resolution
+path (already RE'd in v3.5.61) adds that transpose to byte_2 before
+the LUT lookup, so each orderlist iteration of the same pattern plays
+at a different absolute pitch.
+
+Echo_Beat's V0 orderlist `$8C $01 $8F $01 $8A $01 $88 $01 $FF`
+encodes a four-pass climb of pattern 1 at transposes +12 / +15 / +10 /
++8. Galax_it_y's V0 orderlist `$8C $01 $FF` plays pattern 1 just once
+at +12. The same pattern bytes, four (or one) absolute pitches.
+
+### What changes for the user
+
+The extractor now tracks `transpose` during the orderlist walk and
+pre-shifts each sub-pattern's notes by it. Each SF2 sub-pattern's
+chromatic labels match what plays — not the raw pre-shift byte_2
+values. Echo_Beat's four iterations of pattern 1 show up as four
+distinct sub-patterns at four distinct pitches in SF2II's editor.
+
+### byte_2 = 0 still bypasses transpose
+
+The runtime gate-off path runs before the transpose-add code, so a
+"rest" byte (byte_2 = 0) doesn't get shifted to a low note. The
+extractor mirrors that branch order: NP21 $00 always emits for
+byte_2 = 0, regardless of the current transpose.
+
+### Why "transpose = cmd & $1F"
+
+The mask explains why the orderlist command bytes are in the $80-$9F
+range — bit 7 is the orderlist's "command" flag (CMP #$80 BCS branch
+in the orderlist loop), and bits 0-4 carry the actual transpose
+value. The orderlist code looks like it could accept any byte ≥ $80
+as a command, but the player-author's encoding only uses $80-$9F so
+the masked transpose stays in [0, 31]. We mirror that range; the
+clamp at $6F protects against any weird high-octave shifts.
+
+### The 2000 A.D. cluster deferral list is drained
+
+From the original v3.5.58 memory note:
+
+- ✅ Detector (v3.5.58)
+- ✅ Extractor + Galax_it_y editor view (v3.5.59)
+- ✅ Echo_Beat editor view via low_load_layout (v3.5.60)
+- ✅ Frequency LUT decode + chromatic mapping (v3.5.61)
+- ✅ Per-pattern transpose (v3.5.62)
+
+What's still NOT in scope:
+- F1 edit propagation. Different problem class — the byte format
+  isn't NP21-compatible, so the ch_seq_ptr-redirect / shadow-buffer
+  pipeline doesn't apply. Writing the user's edited notes back into
+  the embedded binary would need a per-variant translator emitting
+  2000 A.D. format bytes. Not worth it for a 2-file cluster.
+- Pattern-level command bytes ($80-$FE *inside* a pattern, not in the
+  orderlist). Currently skipped during extraction. Could decode them
+  for finer instrument switches, but the editor-visible benefit looks
+  small and the structure isn't fully RE'd yet.
+
+### Per-criterion delta
+
+| Criterion | v3.5.61 → v3.5.62 |
+|-----------|--------------------|
+| C1 (loads) | 286/286 — unchanged |
+| C2 (audio) | 286/286 — unchanged |
+| C3 (editor) | **+polish: 2000 A.D. sub-patterns now show transposed pitch labels** |
+| C4 (round-trip) | unchanged |
+
+Tests: 1284 → 1289 (+5 orderlist transpose).
+
+---
 
 ### v3.5.61 — Chromatic note display for 2000 A.D. cluster (2026-05-27)
 
