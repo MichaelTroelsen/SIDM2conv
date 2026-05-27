@@ -769,16 +769,20 @@ def build_laxity_raw_np21_sf2(data) -> Optional[LaxityRawNp21Result]:
             # doesn't use these bytes as ch_seq_ptr → skip patch.
             try:
                 from sidm2.ch_seq_safety_gate import is_ch_seq_patch_safe
-                init_addr_for_gate = getattr(
-                    data.header, 'init_address', sid_la
-                ) if getattr(self, 'data', None) and getattr(
-                    data, 'header', None
-                ) else sid_la
-                play_addr_for_gate = getattr(
-                    data.header, 'play_address', sid_la + 3
-                ) if getattr(self, 'data', None) and getattr(
-                    data, 'header', None
-                ) else sid_la + 3
+                # v3.5.65: replaced two stray `self.data` references the
+                # v3.5.54 refactor missed. `data` is a function parameter
+                # here, not an instance attribute. Pyflakes caught these
+                # as undefined names; the bare `except Exception` below
+                # had been silently swallowing the NameError, causing
+                # the ch_seq_ptr safety gate to never run.
+                if getattr(data, 'header', None) is not None:
+                    init_addr_for_gate = getattr(
+                        data.header, 'init_address', sid_la)
+                    play_addr_for_gate = getattr(
+                        data.header, 'play_address', sid_la + 3)
+                else:
+                    init_addr_for_gate = sid_la
+                    play_addr_for_gate = sid_la + 3
                 if play_addr_for_gate == 0:
                     play_addr_for_gate = init_addr_for_gate + 3
                 if not is_ch_seq_patch_safe(

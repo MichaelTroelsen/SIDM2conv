@@ -9,8 +9,20 @@ Provides comprehensive validation for extracted table sizes including:
 """
 
 from dataclasses import dataclass
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, TYPE_CHECKING
 from enum import Enum
+
+# v3.5.65: TableInfo lives in `.siddecompiler` but importing it here
+# would create a circular dependency (siddecompiler already imports
+# from table_validator). We only use the symbol in quoted forward-
+# reference annotations (`Dict[str, 'TableInfo']`), which evaluate
+# lazily under Python 3.14+ deferred-annotation semantics — but
+# pyflakes warns when the symbol isn't reachable at all from this
+# module's namespace. The TYPE_CHECKING block keeps the import path
+# clean at runtime while still making the symbol resolvable for
+# static checkers and IDE autocomplete.
+if TYPE_CHECKING:
+    from .siddecompiler import TableInfo  # noqa: F401
 
 
 class ValidationSeverity(Enum):

@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.64 (2026-05-27) — 1300 tests, 286-file corpus, **100% audio-verified (286/286 byte-identical via zig64). Defensive regression tests for the Stage 7 emission class added.**
-**Latest chapter:** [v3.5.64 — Defensive tests after the v3.5.63 silent regression](#v3564--defensive-tests-after-the-v3563-silent-regression-2026-05-27)
+**Current version:** v3.5.65 (2026-05-27) — 1301 tests, 286-file corpus, **100% audio-verified (286/286 byte-identical via zig64). Pyflakes undefined-name gate added; surfaced + fixed 5 latent bugs including 2 more `self.` refs in the v3.5.54 refactor batch.**
+**Latest chapter:** [v3.5.65 — Pyflakes gate + 5 fixes it surfaced](#v3565--pyflakes-gate--5-fixes-it-surfaced-2026-05-27)
 
 ---
 
@@ -529,6 +529,122 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.65 — Pyflakes gate + 5 fixes it surfaced (2026-05-27)
+
+The v3.5.64 release notes flagged the systematic answer to the v3.5.63
+bug class as "a static imports-vs-usage check that runs after every
+commit." v3.5.65 ships it via pyflakes — a checker that's been part
+of the Python toolchain for years, and that I just hadn't been
+running against this codebase.
+
+Installing pyflakes and pointing it at `sidm2/` returned 14
+"undefined name" findings out of 234 total messages. Most of the rest
+were cosmetic (`'os' imported but unused`, `f-string is missing
+placeholders`). The 14 undefined-name findings broke down as:
+
+1. **2 of them were exactly the v3.5.63 bug class.** Two stray `self.data`
+   references inside `laxity_raw_np21_builder.py`'s ch_seq_ptr safety
+   gate try block. Wrapped by a bare `except Exception` that logged at
+   `debug` (not even `warning`) and fell through. The pre-build safety
+   gate has been silently bypassed for **every file in the corpus
+   since v3.5.54.** Audio fidelity was preserved only because the
+   v3.5.32 post-build audio gate reverts patches that break audio —
+   the pre-build gate was a redundant fast-path the project hasn't
+   needed for 11 releases.
+2. **7 of them were `TableInfo` forward references in
+   `table_validator.py`.** Quoted forward refs (`'TableInfo'`) work
+   at runtime, but pyflakes can't tell whether the symbol exists in
+   the module's namespace if it isn't imported anywhere. Adding a
+   `TYPE_CHECKING` import made pyflakes happy and didn't change
+   runtime semantics.
+3. **3 typos**: `table_name` in a galway f-string (loop variable was
+   `effect_name`); `sid_path` at two sites in `sid_player.py`'s
+   error path (parameter is `filepath`); `List` in a type annotation
+   in `conversion_pipeline.py` (`typing.List` not imported, made
+   invisible by Python 3.14's lazy annotation evaluation).
+4. The `__init__.py` star-import warnings — pyflakes can't trace
+   symbols through `from X import *`. Filtered out as known
+   harmless.
+
+The pyflakes gate is now `pyscript/test_pyflakes_undefined.py`. It
+runs the checker via subprocess, filters out the harmless
+star-import warnings, and asserts zero remaining `undefined name`
+lines. The test SKIPs cleanly if pyflakes isn't installed (CI
+graceful-fallback), with a message instructing
+`pip install pyflakes` for local pre-commit runs.
+
+### The v3.5.54 refactor pattern, fully post-mortem'd
+
+This release closes the loop on the v3.5.54 → v3.5.65 arc. The Phase
+19 refactor that pulled `_inject_laxity_raw_np21` into a
+module-function introduced **at least four** structural artifacts of
+the partial body rewrite:
+
+* (v3.5.54 release) Missing `from . import laxity_raw_np21_builder`
+  in `sf2_writer.py`. Caught by C2 reference suite.
+* (v3.5.54 release) `self._build_low_load_sf2(...)` and
+  `self.np21_edit_area_builder` references. Caught by C2 reference
+  suite.
+* (v3.5.63) Missing `extract_all_laxity_tables` import. Survived
+  9 releases until a status survey caught it (the survey forced a
+  comparison against the v3.5.17 baseline, which made the F3=0/17
+  contradiction visible).
+* (v3.5.65) Two `self.data` references inside the ch_seq_ptr safety
+  gate try block. Survived 11 releases until pyflakes caught it.
+
+The pattern was always the same: a partial body rewrite during
+extract-to-module left some symbols in the old class-bound form. The
+C2 reference suite caught the structural defects that changed the
+SF2 byte output. It missed the ones whose effects were absorbed by
+other safety nets — the post-build audio gate for v3.5.65, the
+NOP-by-default audio gate for v3.5.63. Pyflakes catches both
+classes (and the three latent typos).
+
+Pyflakes should have been part of CI before v3.5.54 ever shipped.
+This release retrofits it. The remaining "if I had a time machine"
+move is to also enforce **no bare `except Exception`** as a project
+lint — but that's a broader refactor than this push.
+
+### The corpus
+
+All four v3.5.54-refactor bugs survived because none of them changed
+the SF2 byte output the C2 suite was comparing. Two ways to read
+that:
+
+* **Pessimistic**: the C2 suite is a narrow gate. Multiple classes of
+  structural bug can hide behind it.
+* **Optimistic**: the C2 suite is exactly what it claims to be — a
+  byte-identical regression guard for the converter's primary
+  contract. Other bug classes need other gates.
+
+I lean optimistic. The fix isn't to make the C2 suite check more
+properties; it's to layer in the additional gates (pyflakes,
+log-emission tests) at the right semantic level. v3.5.64 added the
+log-emission test class. v3.5.65 adds the static checker class.
+Future bug-class discoveries get their own gates.
+
+### Tests + corpus
+
+* Full pytest: 1300 → 1301 (+1 pyflakes-gate test).
+* Full Laxity corpus: 286/286 C2 + C4 audio + metadata, zero
+  convert fails — at parity with v3.5.64 even though the ch_seq_ptr
+  safety gate has just resumed running. (Both the pre-build gate
+  and the post-build audio gate converge on the same set of files
+  needing `skip_ch_seq_patch=True`.)
+
+### Per-criterion delta
+
+| Criterion | v3.5.64 → v3.5.65 |
+|-----------|--------------------|
+| C1 (loads) | 286/286 — unchanged |
+| C2 (audio) | 286/286 — unchanged |
+| C3 (editor) | unchanged |
+| C4 (round-trip) | unchanged |
+
+Tests: 1300 → 1301 (+1). 5 latent bugs fixed.
+
+---
 
 ### v3.5.64 — Defensive tests after the v3.5.63 silent regression (2026-05-27)
 

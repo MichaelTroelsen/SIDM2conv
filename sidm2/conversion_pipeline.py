@@ -241,7 +241,7 @@ __all__ = [
 ]
 
 
-def _convert_midi_to_sequence_events(midi_sequences: dict) -> List[List[SequenceEvent]]:
+def _convert_midi_to_sequence_events(midi_sequences: dict) -> list[list[SequenceEvent]]:
     """Convert MIDI-extracted sequences to SequenceEvent format.
 
     MIDI extraction produces command bytes (notes + gate markers), but

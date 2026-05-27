@@ -119,7 +119,7 @@ class GalwayTableExtractor:
             for effect_name, table in effects.items():
                 if table:
                     self.extracted_tables[effect_name] = table
-                    notes.append(f"Found {table_name} table ({table.entries} entries)")
+                    notes.append(f"Found {effect_name} table ({table.entries} entries)")
 
             # Step 4: Extract control tables
             controls = self._extract_control_tables()

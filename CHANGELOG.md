@@ -25,6 +25,77 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.65] - 2026-05-27
+
+### Added — Pyflakes-based undefined-name gate, plus 5 bug fixes it surfaced
+
+The v3.5.64 release notes flagged "a static imports-vs-usage check
+that runs after every commit" as the systematic answer to the v3.5.63
+bug class. v3.5.65 delivers it via pyflakes (installed locally,
+optional in CI). The new test `pyscript/test_pyflakes_undefined.py`
+runs `pyflakes sidm2/` and asserts zero `undefined name` findings.
+
+### Bugs the new gate caught + fixed
+
+| File:line | Bug | Severity |
+|-----------|-----|----------|
+| `conversion_pipeline.py:244` | `List[List[SequenceEvent]]` annotation; `typing.List` not imported | Latent — Python 3.14 lazy annotations meant the NameError only fires on introspection |
+| `galway_table_extractor.py:122` | Typo `f"Found {table_name}"` — loop variable is `effect_name` | Real runtime NameError when the f-string evaluates |
+| `sid_player.py:143,150` | Typo `sid_path` — parameter is `filepath` | Real runtime NameError when the error path runs |
+| `laxity_raw_np21_builder.py:774,779` | Two stray `self.data` references the v3.5.54 refactor missed | **Same v3.5.54 import-bug pattern as v3.5.63.** The bare `except Exception` block (line ~798, separate from the v3.5.63 one) was swallowing the NameError, and the ch_seq_ptr safety gate has been bypassed for ALL files since v3.5.54. Audio still 286/286 because the post-build audio gate (v3.5.32) reverts patches that break audio; the pre-build gate was a redundant fast-path that just hasn't been running. |
+| `table_validator.py:89,234,…` | `TableInfo` forward references couldn't be resolved by pyflakes (7 sites) | Cosmetic — quoted forward refs work at runtime, but pyflakes flags them. Added `TYPE_CHECKING` import. |
+
+### Why pyflakes (not ruff)
+
+* Smaller surface, no config file needed.
+* Same underlying checker as ruff's F821.
+* Installed via `pip install pyflakes` (pure Python, no compiled deps).
+
+### Why the test SKIPs if pyflakes isn't installed
+
+Avoid hard-failing CI on a missing dev dep. Local runs should install
+it via `pip install pyflakes` for full coverage. The skip message
+includes that instruction.
+
+### The v3.5.54 refactor pattern (now thoroughly post-mortem'd)
+
+This release closes the loop on the v3.5.54 → v3.5.64 arc. The Phase
+19 refactor that extracted `_inject_laxity_raw_np21` into a
+module-function introduced **at least four** structural-bug artifacts:
+
+* (v3.5.54 release) Missing `from . import laxity_raw_np21_builder`
+  in `sf2_writer.py` — caught by C2 reference suite, fixed at release.
+* (v3.5.54 release) `self._build_low_load_sf2(...)` and
+  `self.np21_edit_area_builder` references — caught by C2 reference
+  suite, fixed at release.
+* (v3.5.63) Missing `extract_all_laxity_tables` import — survived
+  9 releases until a status survey caught it.
+* (v3.5.65) Two `self.data` references inside the ch_seq_ptr safety
+  gate try block — survived 11 releases until pyflakes caught it.
+
+The pattern: every regression was the same shape (missing import or
+stray `self` reference left by a partial body rewrite), but the
+release-time test gate was insufficiently broad to catch all four.
+The v3.5.65 pyflakes gate would have caught at least the latter two
+(and probably the former two too, if pyflakes had been part of CI).
+
+### Tests + corpus
+
+* Full pytest: 1300 → 1301 (+1 pyflakes-gate test).
+* Full Laxity corpus: 286/286 C2 + C4 audio + metadata, zero
+  convert fails — at parity with v3.5.64 even though the ch_seq_ptr
+  safety gate has just started running for the first time in 11
+  releases. (The pre-build gate and the post-build audio gate
+  converge on the same set of files needing skip_ch_seq_patch.)
+
+### Pyflakes is now a soft project dependency
+
+Add `pip install pyflakes` to your dev setup. The test SKIPs cleanly
+if it isn't installed, so CI doesn't break — but local pre-commit
+verification gets the full gate.
+
+---
+
 ## [3.5.64] - 2026-05-27
 
 ### Added — Stage 7 emission regression tests + narrowed exception catch

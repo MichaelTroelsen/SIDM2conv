@@ -140,14 +140,14 @@ class SIDPlayer:
         if magic not in ('PSID', 'RSID'):
             raise InvalidInputError(
                 input_type='SID file',
-                value=str(sid_path),
+                value=str(filepath),
                 expected='PSID or RSID magic bytes at file start',
                 got=f'Magic bytes: {repr(magic)}',
                 suggestions=[
                     'Verify file is a valid SID file (not corrupted)',
                     'Check file extension is .sid',
                     'Try opening file in a SID player (e.g., VICE) to verify',
-                    f'Inspect file header: hexdump -C {sid_path} | head -5',
+                    f'Inspect file header: hexdump -C {filepath} | head -5',
                     'Re-download file if obtained from internet'
                 ],
                 docs_link='guides/TROUBLESHOOTING.md#invalid-sid-files'

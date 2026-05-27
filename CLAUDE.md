@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.5.64** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-27
+**SIDM2 v3.5.65** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-27
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -172,6 +172,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.5.65** (2026-05-27): Pyflakes-based undefined-name gate + 5 real bug fixes it surfaced. `pyscript/test_pyflakes_undefined.py` runs pyflakes against `sidm2/` and asserts zero "undefined name" findings. Bugs caught and fixed: (1) `conversion_pipeline.py:244` `List` → `list` (typing.List not imported), (2) `galway_table_extractor.py:122` typo `table_name` → `effect_name`, (3) `sid_player.py:143,150` typo `sid_path` → `filepath`, (4) `laxity_raw_np21_builder.py:774,779` two stray `self.data` references the v3.5.54 refactor missed (silently swallowed by `except Exception`; the ch_seq_ptr safety gate has been bypassed for ALL files since), (5) `table_validator.py` missing `TableInfo` import (`TYPE_CHECKING` block — siddecompiler imports table_validator). 1300 → 1301 tests (+1).
 
 **v3.5.64** (2026-05-27): Defensive regression tests for the v3.5.63 bug class. New `pyscript/test_stage7_emissions.py` (11 tests): exercises full conversion for Stinsens/Beast/Angular and asserts each Stage 7 routine emits + the table-address detection block doesn't fail + the v3.5.63-bugged symbol is importable. Also narrowed the bare `except Exception` in `laxity_raw_np21_builder.py` to `(ValueError, IndexError, KeyError, struct.error)` so NameError/ImportError/AttributeError propagate. 1289 → 1300 tests (+11).
 
