@@ -325,7 +325,14 @@ def build_laxity_raw_np21_sf2(data) -> Optional[LaxityRawNp21Result]:
             f"Pulse=${gen.pulse_addr:04X}, Filter=${gen.filter_addr:04X}, "
             f"Instr=${gen.instr_addr:04X}, Cmd=${gen.cmd_addr:04X}"
         )
-    except Exception as e:
+    except (ValueError, IndexError, KeyError, struct.error) as e:
+        # Catch only data-format problems from the binary-parsing path;
+        # let NameError / ImportError / AttributeError propagate so
+        # structural bugs (like the v3.5.54 missing-import regression
+        # this except block silently swallowed for 9 releases — see
+        # memory/v3.5.63-import-fix.md) surface immediately at the
+        # first conversion rather than masquerading as a benign
+        # "falling back to defaults" warning.
         logger.warning(
             f"  Per-file table-address detection failed ({e!r}); "
             f"falling back to Stinsen-derived defaults"

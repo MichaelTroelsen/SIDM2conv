@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.5.63** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-27
+**SIDM2 v3.5.64** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-27
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -172,6 +172,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.5.64** (2026-05-27): Defensive regression tests for the v3.5.63 bug class. New `pyscript/test_stage7_emissions.py` (11 tests): exercises full conversion for Stinsens/Beast/Angular and asserts each Stage 7 routine emits + the table-address detection block doesn't fail + the v3.5.63-bugged symbol is importable. Also narrowed the bare `except Exception` in `laxity_raw_np21_builder.py` to `(ValueError, IndexError, KeyError, struct.error)` so NameError/ImportError/AttributeError propagate. 1289 → 1300 tests (+11).
 
 **v3.5.63** (2026-05-27): **Fix: F3 wave-split-copy import bug — restored for 13/17 SID/ root files**. `extract_all_laxity_tables` was used at `laxity_raw_np21_builder.py:267` but not imported at module top (regression from v3.5.54 Phase 19 extraction). A bare `except Exception` silently caught the `NameError`, leaving `np21_note_binary_addr`/`np21_wave_data_binary_addr` as None → wave-copy emission skipped. Stinsens back to all-5 columns wired. Audio still 286/286 PASS (gate NOPs problematic emissions).
 

@@ -25,6 +25,77 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.64] - 2026-05-27
+
+### Added — Stage 7 emission regression tests + narrowed exception catch
+
+Two defensive engineering changes from the v3.5.63 bug post-mortem.
+
+### 1. New test file: `pyscript/test_stage7_emissions.py` (11 tests)
+
+Catches the v3.5.54 → v3.5.62 silent regression class. The bug: a
+missing import in `laxity_raw_np21_builder` made wave-split-copy
+silently not emit. The C2 byte-comparison suite couldn't see the
+difference because the audio gate NOPs wave-copy when it diverges
+anyway, so the SID-register byte sequence was identical in both
+states. Nothing exercised the editor-side emission path.
+
+The new tests run the full conversion in-process and capture the
+log stream, then assert:
+
+* Stinsens: all 4 Stage 7 routines (wave-split-copy, instr-column-copy,
+  pulse-split-copy, filter-split-copy) emit.
+* Beast / Angular: wave-split-copy emits.
+* For each file: the "Per-file table-address detection failed"
+  warning does NOT appear (smoking gun for the import-bug class).
+* `extract_all_laxity_tables` is importable from the
+  `laxity_raw_np21_builder` namespace (static-style check).
+
+These tests would have caught the v3.5.63 bug at the v3.5.54 release
+nine releases earlier.
+
+### 2. Narrowed `except Exception` in `laxity_raw_np21_builder`
+
+The bare `except Exception as e: logger.warning(...)` around the
+table-address detection block at line ~328 was the actual hiding
+place for the v3.5.63 bug. Replaced with:
+
+```python
+except (ValueError, IndexError, KeyError, struct.error) as e:
+```
+
+These four cover the legitimate data-format errors that the
+binary-parsing path can raise (struct unpack failures, missing dict
+keys, out-of-bounds list reads, sentinel value mismatches). The
+exception types that indicate structural bugs (`NameError`,
+`ImportError`, `AttributeError`, `TypeError`) now propagate instead
+of being silently logged as "falling back to defaults."
+
+### Tests + corpus
+
+* Full pytest: 1289 → 1300 (+11 stage7 emission tests).
+* No corpus regression (this release is test + defensive code only).
+
+### Why this matters
+
+The v3.5.63 fix was a one-line import addition. The diagnostic
+journey was 30 minutes of grepping and a year of stale memory. The
+deeper question is "what should make this class of bug unable to
+hide for 9 releases next time," and the two changes here are the
+answer:
+
+1. **A test that exercises the externally visible behavior** (a Stage 7
+   log line is the public contract that emission happened).
+2. **A narrower exception catch** so structural bugs surface at the
+   first conversion instead of being indistinguishable from benign
+   fallback warnings.
+
+These don't eliminate the class of bug entirely, but they shrink the
+window from "9 releases of silent regression" to "first conversion
+on first test run." That's the right shape.
+
+---
+
 ## [3.5.63] - 2026-05-27
 
 ### Fixed — F3 wave-split-copy emission silently disabled since v3.5.54

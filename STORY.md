@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.63 (2026-05-27) — 1289 tests, 286-file corpus, **100% audio-verified (286/286 byte-identical via zig64). F3 wave-split-copy restored for 13/17 SID/ root files (silent regression since v3.5.54).**
-**Latest chapter:** [v3.5.63 — Fix: F3 wave-split-copy import bug](#v3563--fix-f3-wave-split-copy-import-bug-2026-05-27)
+**Current version:** v3.5.64 (2026-05-27) — 1300 tests, 286-file corpus, **100% audio-verified (286/286 byte-identical via zig64). Defensive regression tests for the Stage 7 emission class added.**
+**Latest chapter:** [v3.5.64 — Defensive tests after the v3.5.63 silent regression](#v3564--defensive-tests-after-the-v3563-silent-regression-2026-05-27)
 
 ---
 
@@ -529,6 +529,103 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.64 — Defensive tests after the v3.5.63 silent regression (2026-05-27)
+
+The v3.5.63 fix took 30 minutes. The bug took 9 releases to surface.
+The asymmetry is the interesting part — what should make this class
+of bug unable to hide for that long next time?
+
+Two changes:
+
+**A test that exercises the externally visible behavior**
+
+`pyscript/test_stage7_emissions.py` (11 tests) runs the full
+conversion in-process for Stinsens, Beast, and Angular, captures the
+log stream, and asserts each Stage 7 routine emits. The Stage 7 log
+lines (`Stage 7 wave-split-copy routine`, `Stage 7 instr-column-copy
+Stinsen`, etc.) are the public contract: if the routine emitted, the
+line is there; if it didn't, the line is absent. The C2
+byte-comparison suite couldn't see the v3.5.63 bug because the
+emitted bytes were optional (the audio gate NOPs them anyway when
+they diverge), but a log-line check is unambiguous.
+
+The same test class asserts that the "Per-file table-address
+detection failed" warning does NOT appear for each canonical file —
+that warning was the smoking gun for the v3.5.63 bug all along, but
+it was buried in 100+ lines of conversion output and easy to miss.
+Now any future regression that triggers that fallback will fail a
+test instead of producing a benign warning.
+
+There's also a static-style check that `extract_all_laxity_tables`
+is importable from the builder's module namespace. That alone would
+have caught v3.5.63's specific bug — but the more general behavioral
+test is the better long-term guard.
+
+**A narrower exception catch**
+
+The actual hiding place for v3.5.63 was a bare `except Exception` in
+`laxity_raw_np21_builder` that wrapped the table-address detection
+block. Replaced with:
+
+```python
+except (ValueError, IndexError, KeyError, struct.error) as e:
+```
+
+These four cover legitimate data-format errors from the
+binary-parsing path: struct unpack failures, missing dict keys,
+out-of-bounds list reads, sentinel mismatches. `NameError`,
+`ImportError`, `AttributeError`, and `TypeError` — the four types
+that indicate structural bugs in the code itself — now propagate
+instead of being silently caught.
+
+A defensive comment in the code points at `memory/v3.5.63-import-fix.md`
+so the next maintainer sees the why.
+
+### Why this doesn't fix the *class* of bug entirely
+
+Both changes shrink the discovery window. Neither eliminates it.
+
+A new symbol introduced in a refactor and only used inside a code
+path that's not currently exercised by a test will still slip
+through. The audit gap is "code coverage of refactored code paths,"
+which is broader than this one fix.
+
+What this release does buy: the specific Stage 7 emission paths now
+have test coverage that pins their externally visible behavior. Any
+future refactor that breaks them will fail tests at the first
+conversion, not at the first user report nine releases later.
+
+### Tests
+
+* Full pytest: 1289 → 1300 (+11 stage7 emission tests).
+* No corpus regression — this release is test + defensive code only.
+
+### What I'd reach for next time
+
+The systematic version of "audit imports-vs-usage after large
+refactors": a static analysis pass that diffs the module's import
+block against its top-level symbol references after every commit
+that touches the file. Ruff and pyflakes catch some of these via
+F821 (undefined name), but they don't trigger when the broken symbol
+is in a code path that the import-pyflakes-style analysis doesn't
+reach (e.g., conditional imports, exception-wrapped calls). A
+project-specific check that grep'd for known module-level symbols
+against their import statements would be sufficient. Worth the cost
+of writing — but a follow-up, not this push.
+
+### Per-criterion delta
+
+| Criterion | v3.5.63 → v3.5.64 |
+|-----------|--------------------|
+| C1 (loads) | 286/286 — unchanged |
+| C2 (audio) | 286/286 — unchanged |
+| C3 (editor) | unchanged |
+| C4 (round-trip) | unchanged |
+
+Tests: 1289 → 1300 (+11).
+
+---
 
 ### v3.5.63 — Fix: F3 wave-split-copy import bug (2026-05-27)
 
