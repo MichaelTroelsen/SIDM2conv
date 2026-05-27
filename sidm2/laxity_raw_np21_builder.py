@@ -135,8 +135,10 @@ def build_laxity_raw_np21_sf2(data) -> Optional[LaxityRawNp21Result]:
     # Use an alternate low-LOAD_BASE layout: header BELOW the binary,
     # handlers AFTER it. See memory/sub-1000-cluster-design.md.
     if 0 < sid_la < 0x1000:
+        psid_copyright = (getattr(header, 'copyright', '') or '') if header else ''
         ll_result = low_load_layout.build_low_load_sf2(
-            c64_data, sid_la, init_addr, play_addr)
+            c64_data, sid_la, init_addr, play_addr,
+            psid_copyright=psid_copyright)
         if ll_result is not None:
             ll_bytes, ll_skip_aux = ll_result
             return LaxityRawNp21Result(

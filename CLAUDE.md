@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.5.59** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-27
+**SIDM2 v3.5.60** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-27
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -172,6 +172,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.5.60** (2026-05-27): 2000 A.D. cluster complete — Echo_Beat editor F1 view now populated via the low_load path. `placeholder_edit_area.build_placeholder_edit_area` accepts optional `voice_streams` to emit real orderlists+sequences (segmented at $A0 markers); low_load_layout threads `psid_copyright` and runs the 2000 A.D. detector before falling through to placeholder. 1272 → 1280 tests (+8: 6 populated-placeholder + 2 low-load integration).
 
 **v3.5.59** (2026-05-27): 2000 A.D. cluster extractor + wire-in — Galax_it_y editor F1 view populated. Pattern_ptr table dynamically located (v3.5.58 hardcoded `load+$788` was Galax-only — Echo_Beat is at `load+$629`). Echo_Beat editor deferred (low_load path). Notes emit as raw bytes (freq LUT decode deferred). 1263 → 1272 tests (+9). Corpus 286/286 C2+C4 audio — zero regressions.
 

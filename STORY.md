@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.59 (2026-05-27) — 1272 tests, 286-file corpus, **100% audio-verified (286/286 byte-identical via zig64). C3 push: Galax_it_y now shows real F1 patterns in the editor.**
-**Latest chapter:** [v3.5.59 — 2000 A.D. cluster extractor: Galax_it_y editor view](#v3559--2000-ad-cluster-extractor-galax_it_y-editor-view-2026-05-27)
+**Current version:** v3.5.60 (2026-05-27) — 1280 tests, 286-file corpus, **100% audio-verified (286/286 byte-identical via zig64). 2000 A.D. cluster complete: both Echo_Beat and Galax_it_y show real F1 patterns in the editor.**
+**Latest chapter:** [v3.5.60 — 2000 A.D. cluster complete: Echo_Beat editor view via low_load_layout](#v3560--2000-ad-cluster-complete-echo_beat-editor-view-via-low_load_layout-2026-05-27)
 
 ---
 
@@ -529,6 +529,82 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.60 — 2000 A.D. cluster complete: Echo_Beat editor view via low_load_layout (2026-05-27)
+
+v3.5.59 shipped the 2000 A.D. extractor and wired it into the standard
+`np21_edit_area_builder` path. Galax_it_y (load $1000) immediately
+benefited; Echo_Beat (load $0400) didn't, because anything below $1000
+takes the `low_load_layout` PRG geometry — header below the binary,
+handlers above, edit area pinned at a page-aligned address past the
+binary. That path has used `placeholder_edit_area.build_placeholder_edit_area`
+to emit an empty 3-track placeholder for the editor view, by design,
+since v3.5.42.
+
+The "small refactor" sketched in the v3.5.59 deferral note turned out
+to be smaller than expected: `build_placeholder_edit_area` already had
+the right shape (compute layout addresses, emit OL + seq ptr tables,
+emit orderlists + sequences, append zero F-tables, populate gen fields).
+The only thing the placeholder did differently from the populated case
+was emitting one empty sequence and three identical orderlists pointing
+at it. So instead of building a parallel `np21_edit_area_builder`
+override, the cleaner move was to add an optional `voice_streams` parameter
+to `build_placeholder_edit_area`. When None: existing placeholder
+behavior. When provided: segment each stream at `$A0` boundaries,
+produce N orderlists + N sub-patterns, populate the seq ptr table for
+N entries instead of 1.
+
+The detection wire-in goes inside `low_load_layout.build_low_load_sf2`,
+which previously took only `(c64_data, sid_la, init_addr, play_addr)`.
+Added a `psid_copyright` keyword and threaded it from `laxity_raw_np21_builder`'s
+sub-$1000 dispatch. Inside, attempt `detect_2000ad_layout` +
+`extract_2000ad_voice_streams`; on success, pass the streams to
+`build_placeholder_edit_area`. The change to the non-2000-A.D. low-load
+path is exactly nothing (default `psid_copyright=''`, default
+`voice_streams=None`).
+
+Echo_Beat now produces 4 segments on V0, 3 on V1, 3 on V2 — total of
+10 sub-patterns visible in the editor instead of 1 empty placeholder.
+Same caveats as Galax_it_y: notes display as opaque byte values
+(no freq LUT), F1 edits don't propagate to playback (the embedded
+binary keeps reading its own pattern data).
+
+### What this completes
+
+The v3.5.58 memory note's plan was "ship 2000 A.D. cluster, then stop."
+v3.5.58 did the RE + detector. v3.5.59 did the extractor + Galax_it_y
+wire-in. v3.5.60 does Echo_Beat. Cluster complete.
+
+### Per-criterion delta
+
+| Criterion | v3.5.59 → v3.5.60 |
+|-----------|--------------------|
+| C1 (loads) | 286/286 — unchanged |
+| C2 (audio) | 286/286 — unchanged |
+| **C3 (editor)** | **+1: Echo_Beat now shows real F1 patterns; cluster (2/2) complete** |
+| C4 (round-trip) | unchanged |
+
+Tests: 1272 → 1280 (+8).
+
+### The deferred-list status
+
+From the original cluster RE memo, the deferred items for "minimum
+viable C3 support" were:
+
+- ✅ Detector (v3.5.58)
+- ✅ Extractor + wire-in (v3.5.59 — Galax_it_y)
+- ✅ Echo_Beat editor view (v3.5.60 — via low_load_layout)
+
+Still deferred (intentionally):
+- Frequency LUT decode (would upgrade displayed notes from opaque
+  bytes to chromatic C-X / D#X labels).
+- F1 edit propagation (needs a writeback mechanism that converts
+  edited NP21 bytes back to 2000 A.D. format — different problem class
+  than Wizax-A's ch_seq_ptr redirect).
+- Other V20 singletons (James_Bond, Atom_Rock, Fast_Stuff_1, etc.) —
+  bad ROI per the original memo.
+
+---
 
 ### v3.5.59 — 2000 A.D. cluster extractor: Galax_it_y editor view (2026-05-27)
 

@@ -64,6 +64,8 @@ def build_low_load_sf2(
     sid_la: int,
     init_addr: int,
     play_addr: int,
+    *,
+    psid_copyright: str = '',
 ) -> Optional[Tuple[bytes, bool]]:
     """Build an SF2 file using the low-load layout.
 
@@ -110,12 +112,39 @@ def build_low_load_sf2(
     gen.driver_code_top  = HI
     gen.driver_code_size = 0x20
 
+    # v3.5.60: 2000 A.D. cluster (Echo_Beat at $0400 loads here) can
+    # have its F1 view populated with real per-voice patterns instead
+    # of the empty placeholder. Detect + extract before calling
+    # `placeholder_edit_area`; if matched, pass the streams through so
+    # the editor shows real orderlists + sequences. F2-F5 tables stay
+    # placeholder either way (no per-instrument data in 2000 A.D.).
+    # See `memory/vibrants-2000ad-cluster-re.md`.
+    v2k_streams = None
+    try:
+        from sidm2.vibrants_2000ad_detector import detect_2000ad_layout
+        from sidm2.vibrants_2000ad_extractor import extract_2000ad_voice_streams
+        v2k_layout = detect_2000ad_layout(c64_data, sid_la, psid_copyright)
+    except Exception:
+        v2k_layout = None
+    if v2k_layout is not None:
+        streams = extract_2000ad_voice_streams(c64_data, sid_la, v2k_layout)
+        if any(streams):
+            v2k_streams = streams
+            logger.info(
+                f"  Low-load 2000 A.D. cluster detected: V0={len(streams[0])}B "
+                f"V1={len(streams[1])}B V2={len(streams[2])}B "
+                f"NP21-synth streams (editor view only)"
+            )
+
     # Safe placeholder Block 5 + zero-filled Block 3 tables in the edit
     # area (identical shape to _inject_player_raw_minimal so SF2II's
     # editor model is valid even though it's empty). Shared with the
-    # minimal-embed path via sidm2.placeholder_edit_area.
+    # minimal-embed path via sidm2.placeholder_edit_area. When
+    # `v2k_streams` is set, the orderlist + sequence area is populated
+    # with real data instead of placeholders.
     sf2_edit_data, music_data_params = (
-        placeholder_edit_area.build_placeholder_edit_area(EDIT, gen))
+        placeholder_edit_area.build_placeholder_edit_area(
+            EDIT, gen, voice_streams=v2k_streams))
     gen.driver_size += len(sf2_edit_data)
 
     header_bytes = gen.generate_complete_headers(music_data_params)

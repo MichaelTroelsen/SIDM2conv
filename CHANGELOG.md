@@ -25,6 +25,67 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.60] - 2026-05-27
+
+### Added — Echo_Beat editor F1 view (2000 A.D. cluster complete)
+
+v3.5.59 wired the 2000 A.D. extractor into the standard
+`np21_edit_area_builder` path, which got Galax_it_y editor support but
+left Echo_Beat with the empty placeholder editor view because Echo_Beat
+loads at $0400 and routes through `low_load_layout` instead.
+
+This release closes the cluster: `placeholder_edit_area.build_placeholder_edit_area`
+now accepts an optional `voice_streams` argument that, when provided,
+synthesizes real orderlists + per-segment sequences from the
+NP21-shape streams (segmented at `$A0` instrument-set markers). F2-F5
+tables stay zero either way — the populated path is meant for cases
+like the 2000 A.D. cluster where F1 patterns can be reconstructed but
+instrument/wave/pulse/filter data can't.
+
+`low_load_layout.build_low_load_sf2` gained a `psid_copyright` keyword
+(threaded through from `laxity_raw_np21_builder`) and runs the 2000 A.D.
+detector + extractor before calling `placeholder_edit_area`. On a hit,
+the streams flow through as `voice_streams=...`; otherwise the
+function falls through to the existing empty-placeholder behavior.
+
+### Echo_Beat orderlist + segment counts
+
+| Voice | Stream size | Segments |
+|-------|-------------|----------|
+| V0    | 92 B        | 4        |
+| V1    | 62 B        | 3        |
+| V2    | 62 B        | 3        |
+
+These correspond to the four `$8C 01 / $8F 01 / $8A 01 / $88 01`
+command+pattern pairs in V0's orderlist (and the smaller V1/V2
+orderlists). Each segment becomes one SF2 sub-pattern.
+
+### Tests
+
+* `pyscript/test_placeholder_edit_area.py` — +6 tests for the
+  populated path (seq_count, orderlist references, sequence bytes,
+  F-tables still zero, empty-voice fallback, default behavior).
+* `pyscript/test_low_load_layout.py` — +2 tests for the Echo_Beat
+  integration (populated-vs-placeholder size delta, `psid_copyright`
+  keyword optional).
+* Full pytest: 1272 → 1280 (+8).
+* Full Laxity corpus: 286/286 C2 audio + 286/286 C4 audio + 286/286
+  C4 metadata, zero convert fails — at parity with v3.5.59.
+
+### What's still deferred
+
+* **Frequency LUT decoding** — both Galax_it_y and Echo_Beat still
+  display notes as opaque byte values instead of C-X / D#X labels.
+* **F1 edit propagation** — the embedded 2000 A.D. binary keeps
+  reading its own pattern data at runtime, so edits in the editor
+  don't propagate to playback. (The ch_seq_ptr / shadow-buffer trick
+  doesn't apply — different byte format, different player code.)
+
+The "2000 A.D. cluster" deferral list from the v3.5.58 memory note is
+otherwise drained.
+
+---
+
 ## [3.5.59] - 2026-05-27
 
 ### Added — 2000 A.D. cluster extractor + editor view (Galax_it_y)

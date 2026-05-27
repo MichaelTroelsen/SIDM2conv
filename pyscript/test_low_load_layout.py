@@ -223,5 +223,60 @@ class TestDifferentLoadAddresses(unittest.TestCase):
         self.assertIsNotNone(result)
 
 
+class TestEchoBeat2000ADIntegration(unittest.TestCase):
+    """v3.5.60: Echo_Beat (load $0400, 1988 2000 A.D. cluster) routes
+    through low_load_layout. With psid_copyright propagated and the
+    cluster detector exposed to this path, the edit area should hold
+    real per-voice patterns instead of the empty placeholder."""
+
+    def _load_echo_beat(self):
+        sid = (Path(__file__).parent.parent / "SID" / "Laxity"
+               / "Echo_Beat.sid").read_bytes()
+        do = struct.unpack('>H', sid[6:8])[0]
+        c64 = sid[do:]
+        psid_load = struct.unpack('>H', sid[8:10])[0]
+        if psid_load == 0:
+            load = c64[0] | (c64[1] << 8)
+            binary = c64[2:]
+        else:
+            load = psid_load
+            binary = c64
+        copyright = sid[0x56:0x76].rstrip(b'\x00').decode('latin-1', 'replace')
+        return load, binary, copyright
+
+    def test_echo_beat_populates_more_than_placeholder(self):
+        """Real Echo_Beat binary → 2000 A.D. detector fires in
+        low_load_layout and the edit area holds multiple sequences
+        instead of the single placeholder sequence.
+
+        Compared against a same-sized non-2000-A.D. binary (no
+        signature match) at the same load address: the Echo_Beat
+        output must be larger because it emits N>1 sequences."""
+        load, binary, copyright = self._load_echo_beat()
+        self.assertEqual(load, 0x0400, "Echo_Beat must load at $0400")
+        sf2_echo, skip_aux = low_load_layout.build_low_load_sf2(
+            binary, load, init_addr=load, play_addr=load + 6,
+            psid_copyright=copyright)
+        self.assertTrue(skip_aux)
+        # Same-size dummy binary that doesn't match 2000 A.D. signature
+        # → falls through to the placeholder path.
+        dummy = bytes(len(binary))
+        sf2_dummy, _ = low_load_layout.build_low_load_sf2(
+            dummy, load, init_addr=load, play_addr=load + 6,
+            psid_copyright=copyright)
+        # Populated edit area should produce a strictly larger file
+        # (additional sequence slots beyond the single placeholder).
+        self.assertGreater(len(sf2_echo), len(sf2_dummy),
+                           "Echo_Beat populated path should emit a larger "
+                           "edit area than the placeholder")
+
+    def test_psid_copyright_kwarg_optional(self):
+        """The new psid_copyright keyword is optional — existing
+        callers without it still work."""
+        result = low_load_layout.build_low_load_sf2(
+            bytes(200), 0x0F00, 0x0F00, 0x0F06)
+        self.assertIsNotNone(result)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

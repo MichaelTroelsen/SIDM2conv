@@ -166,5 +166,93 @@ class TestConstants(unittest.TestCase):
         self.assertEqual(placeholder_edit_area.SEQ_PTR_SIZE, 0x80)
 
 
+class TestPopulatedPath(unittest.TestCase):
+    """The v3.5.60 voice_streams path: emit real orderlists + sequences
+    from synthesized NP21-shape per-voice byte streams."""
+
+    def setUp(self):
+        # 3 distinct synthesized streams, each with a single $A0-prefixed
+        # pattern (note + duration pair).
+        self.streams = [
+            bytes([0xA0, 0x10, 0x82]),   # V0: instr-set, note $10, dur $82
+            bytes([0xA0, 0x20, 0x84]),   # V1: instr-set, note $20, dur $84
+            bytes([0xA0, 0x30, 0x86]),   # V2
+        ]
+        self.gen = SF2HeaderGenerator(driver_size=0x100)
+        self.edit_base = 0x2000
+        self.edit_bytes, self.music_params = (
+            placeholder_edit_area.build_placeholder_edit_area(
+                self.edit_base, self.gen, voice_streams=self.streams))
+
+    def test_seq_count_matches_segment_count(self):
+        """3 voices × 1 segment each = 3 sequences."""
+        self.assertEqual(self.music_params['seq_count'], 3)
+
+    def test_orderlists_reference_distinct_patterns(self):
+        """Each voice's orderlist points at its own SF2 pattern index
+        (not all pointing at pattern 0 like the placeholder)."""
+        ol_offset = 6 + 2 * placeholder_edit_area.SEQ_PTR_SIZE
+        OL_SIZE = placeholder_edit_area.OL_SIZE
+        # V0 orderlist: $A0 $00 $FE …
+        # V1 orderlist: $A0 $01 $FE …
+        # V2 orderlist: $A0 $02 $FE …
+        for v in range(3):
+            base = ol_offset + v * OL_SIZE
+            self.assertEqual(self.edit_bytes[base], 0xA0)
+            self.assertEqual(self.edit_bytes[base + 1], v,
+                             f"V{v} should reference pattern {v}")
+            self.assertEqual(self.edit_bytes[base + 2], 0xFE)
+
+    def test_sequences_contain_voice_data(self):
+        """The 3 emitted sequences contain the note + duration bytes
+        from each voice's stream (followed by $7F end markers)."""
+        seq_offset = (6
+                      + 2 * placeholder_edit_area.SEQ_PTR_SIZE
+                      + 3 * placeholder_edit_area.OL_SIZE)
+        SEQ_SIZE = placeholder_edit_area.SEQ_SIZE
+        for v in range(3):
+            base = seq_offset + v * SEQ_SIZE
+            # Each stream is $A0 note dur — segmenter strips the $A0
+            # marker as the segment boundary and the segment body is
+            # `[0xA0, note, dur]` (the marker is preserved in the
+            # bytes_ field of the Segment named tuple per the
+            # segmenter's contract).
+            seq = self.edit_bytes[base:base + SEQ_SIZE]
+            # Find the unique note byte per voice
+            note_byte = 0x10 + v * 0x10
+            self.assertIn(note_byte, seq,
+                          f"V{v} sequence should contain note ${note_byte:02X}")
+            # The sequence should end with $7F markers (padding)
+            self.assertEqual(seq[-1], 0x7F)
+
+    def test_f_tables_still_zero_with_streams(self):
+        """F2-F5 + arp/tempo/hr/init tables stay zero even when streams
+        are provided — populated path only changes the F1 area."""
+        tables_offset = (6
+                         + 2 * placeholder_edit_area.SEQ_PTR_SIZE
+                         + 3 * placeholder_edit_area.OL_SIZE
+                         + 3 * placeholder_edit_area.SEQ_SIZE)  # 3 sequences now
+        tail = self.edit_bytes[tables_offset:]
+        self.assertEqual(tail, bytes(len(tail)),
+                         "F2-F5 + editor tables should still be zero")
+
+    def test_empty_voice_gets_placeholder_pattern(self):
+        """A voice with an empty stream still gets one placeholder
+        pattern in its orderlist (so SF2II's editor model stays valid)."""
+        gen = SF2HeaderGenerator(driver_size=0x100)
+        edit, params = placeholder_edit_area.build_placeholder_edit_area(
+            0x2000, gen, voice_streams=[b'', b'', b''])
+        # 3 placeholder patterns appended
+        self.assertEqual(params['seq_count'], 3)
+
+    def test_voice_streams_none_falls_back_to_placeholder(self):
+        """Default behavior (voice_streams=None) matches the original
+        placeholder shape — seq_count=1, all orderlists identical."""
+        gen = SF2HeaderGenerator(driver_size=0x100)
+        edit, params = placeholder_edit_area.build_placeholder_edit_area(
+            0x2000, gen)
+        self.assertEqual(params['seq_count'], 1)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
