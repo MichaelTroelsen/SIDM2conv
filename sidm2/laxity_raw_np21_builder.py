@@ -59,6 +59,7 @@ from . import np21_codegen
 from . import low_load_layout
 from . import high_load_layout
 from . import np21_edit_area_builder
+from .table_extraction import extract_all_laxity_tables
 
 logger = logging.getLogger(__name__)
 

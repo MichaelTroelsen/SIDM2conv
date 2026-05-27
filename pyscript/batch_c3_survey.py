@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CONV = ROOT / "scripts" / "sid_to_sf2.py"
 
-RE_SKIP = re.compile(r"skipping patch")
+RE_SKIP = re.compile(r"skipping patch|reverted default ch_seq_ptr patch|skip_ch_seq_patch")
 RE_WAVE = re.compile(r"Stage 7 wave-split-copy")
 RE_INSTR = re.compile(r"Stage 7 .*instr", re.I)
 RE_PULSE = re.compile(r"Stage 7 .*pulse", re.I)

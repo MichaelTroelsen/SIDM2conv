@@ -25,6 +25,111 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.63] - 2026-05-27
+
+### Fixed — F3 wave-split-copy emission silently disabled since v3.5.54
+
+A "refresh SID/ root C3 status" survey caught a critical bug that had
+been hiding in the converter for 9 releases. The v3.5.54 Phase 19
+refactor extracted `_inject_laxity_raw_np21` from `sf2_writer.py` into
+`sidm2/laxity_raw_np21_builder.py` but missed importing
+`extract_all_laxity_tables` at the new module's top. The function was
+called at line 267 inside a `try` block:
+
+```python
+np21_note_binary_addr = None
+np21_wave_data_binary_addr = None
+try:
+    laxity_tables = extract_all_laxity_tables(c64_data, sid_la)
+    ...
+    if laxity_tables.get('wave_addr'):
+        np21_note_binary_addr = laxity_tables['wave_addr']
+    if laxity_tables.get('wave_data_addr'):
+        np21_wave_data_binary_addr = laxity_tables['wave_data_addr']
+    ...
+except Exception as e:
+    logger.warning(
+        f"  Per-file table-address detection failed ({e!r}); "
+        f"falling back to Stinsen-derived defaults"
+    )
+```
+
+The bare `except Exception` caught the `NameError`. The fallback path
+logged a one-line warning that was easy to miss in 100-line conversion
+outputs. Both `np21_note_binary_addr` and `np21_wave_data_binary_addr`
+stayed `None`, so the wave-split-copy emission condition at line ~406
+never matched:
+
+```python
+if (num_patterns > 0
+    and np21_note_binary_addr is not None
+    and np21_wave_data_binary_addr is not None
+    ...):
+    wave_routine = np21_codegen.emit_wave_split_copy_routine(...)
+```
+
+Result: F3 (wave) edit propagation was silently disabled for every
+Stinsens-class file in the corpus.
+
+### Impact (verified via C3 wiring survey on SID/ root)
+
+Before fix: 0/17 files had F3 wired (Stinsens included).
+After fix:  13/17 files have F3 wired. Stinsens has all 5 columns
+            wired (F1/F2/F3/F4/F5) again — matching its v3.5.17
+            baseline.
+
+The 4 files still without F3 (Colorama, Delicate, Dreams, Omniphunk)
+have player layouts where the table-extraction returns no
+`wave_data_addr` — a real limitation, not the import bug.
+
+### Why C2 audio stayed green
+
+The v3.5.33 zig64 audio gate NOPs the wave-copy JSR when it causes
+audio divergence at runtime. So a missing wave-copy emission produced
+the same final byte sequence as a wave-copy that the gate disabled.
+Audio fidelity was preserved through the bug; only editor-side F3
+edit propagation was disabled.
+
+### Why no test caught it
+
+The C2 reference suite verifies byte-identical SF2 output for 14 known
+files. Since the bug only changed the *editor-area* emission (not the
+embedded NP21 binary, and not the trampoline+translator code
+generation), and since the gate NOPs wave-copy for audio-divergent
+cases anyway, the C2 byte-comparison didn't catch the absent
+wave-copy bytes — they're optional anyway.
+
+This is the second extract-but-don't-import bug in the v3.5.54
+refactor batch (the first was caught at v3.5.54 release time via the
+C2 suite: `self._build_low_load_sf2` and `self.np21_edit_area_builder`
+left in the body after a partial rewrite — fixed before release).
+This third one slipped past because the failure mode wasn't observable
+in the C2 byte-comparison gate.
+
+### Tests + corpus regression
+
+* Full pytest: 1289 passes (unchanged from v3.5.62).
+* Full Laxity corpus: 286/286 C2 audio + 286/286 C4 audio + 286/286
+  C4 metadata, zero convert fails — at parity with v3.5.62 (audio
+  fidelity preserved as expected; only editor-side wave-copy
+  re-emerges).
+* SID/ root corpus: 17/17 same on C2+C4; +13 files re-gain F3
+  wave-split-copy emission in the editor area.
+
+### Recommendation for future refactors
+
+Replace the bare `except Exception` in the table-detection block with
+specific exception types (the actual exceptions worth catching are
+the binary-format errors raised by `table_extraction`). `NameError`,
+`AttributeError`, and `ImportError` should propagate so structural
+bugs surface immediately during refactor.
+
+Also: extract-and-import audits should grep for symbol use in the new
+module against its import block, not just assume the C2 suite will
+catch missing imports. This bug demonstrates the audit gap.
+
+---
+
 ## [3.5.62] - 2026-05-27
 
 ### Added — Per-pattern transpose decoding for 2000 A.D. cluster

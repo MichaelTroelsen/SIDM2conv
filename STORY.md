@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.62 (2026-05-27) — 1289 tests, 286-file corpus, **100% audio-verified (286/286 byte-identical via zig64). 2000 A.D. cluster RE drained: per-pattern transpose now applied to editor sub-patterns.**
-**Latest chapter:** [v3.5.62 — Per-pattern transpose decoding for 2000 A.D. cluster](#v3562--per-pattern-transpose-decoding-for-2000-ad-cluster-2026-05-27)
+**Current version:** v3.5.63 (2026-05-27) — 1289 tests, 286-file corpus, **100% audio-verified (286/286 byte-identical via zig64). F3 wave-split-copy restored for 13/17 SID/ root files (silent regression since v3.5.54).**
+**Latest chapter:** [v3.5.63 — Fix: F3 wave-split-copy import bug](#v3563--fix-f3-wave-split-copy-import-bug-2026-05-27)
 
 ---
 
@@ -529,6 +529,115 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.63 — Fix: F3 wave-split-copy import bug (2026-05-27)
+
+This started as a routine "refresh SID/ root C3 status" check — the
+sid-root-4-criterion-status memo was from v3.5.17, fifty releases
+back, and worth re-measuring against current code. The plan was
+benign: re-run `batch_c3_survey.py` over the 17 root files, compare
+to the memo, identify what's regressed and what's improved.
+
+What came back didn't look like a survey result. It looked like a
+fire.
+
+The v3.5.17 memo said Stinsens had F1+F2+F3+F4+F5 all wired and
+verified. The fresh survey said F3 was wired on **0 of 17 files**.
+Stinsens had F2/F4/F5 but no F3. Beast had F2/F4/F5 but no F3. Every
+single file in the SID/ root that the memo claimed had F3 propagation
+was now missing it.
+
+The fix surfaced after twenty minutes of staring at the right code
+block:
+
+```python
+np21_note_binary_addr = None
+np21_wave_data_binary_addr = None
+try:
+    laxity_tables = extract_all_laxity_tables(c64_data, sid_la)
+    ...
+except Exception as e:
+    logger.warning(...)
+```
+
+The function was never imported. The `try` raised `NameError`. The
+bare `except Exception` caught it and logged a one-line warning. Both
+binary addresses stayed `None`. The eligibility check for the
+wave-split-copy emission tested those addresses against `is not None`
+and quietly fell through to no-emit.
+
+The bug was introduced in v3.5.54 — the Phase 19 refactor that pulled
+`_inject_laxity_raw_np21` out of `sf2_writer.py` into its own module.
+The release notes at the time mentioned "two stray `self.` references
+the body-rewrite regex didn't catch" — and those were fixed before
+v3.5.54 shipped, caught by the C2 byte-comparison suite. This third
+extract-and-import gap survived because the bug didn't change a single
+byte of the SF2 output the C2 suite was comparing against.
+
+### Why C2 didn't catch it
+
+The v3.5.33 audio gate NOPs the wave-copy JSR at runtime when it
+causes audio divergence. The byte-level behavior of "wave-copy
+absent" and "wave-copy present but JSR NOP'd" are identical on the
+SID-register-write trace that C2 compares. So C2 went green with the
+bug present, byte-for-byte the same as without it. The only
+externally-visible difference was the editor-side: SF2II reads the
+emitted bytes when an F3 edit fires, and there were no bytes to
+read.
+
+### Impact
+
+Before: F3 wired in 0 of 17 SID/ root files.
+After:  F3 wired in 13 of 17. The 4 holdouts (Colorama, Delicate,
+        Dreams, Omniphunk) are files where the table-extraction
+        legitimately returns no `wave_data_addr` — a real player-
+        layout limitation, not the import bug.
+
+Stinsens is back to all 5 columns wired: F1+F2+F3+F4+F5. Same as
+the v3.5.17 baseline.
+
+### Why I'd never have caught this without the survey
+
+The C3 wiring is editor-side; it doesn't affect audio fidelity. The
+audio gate masks the symptom. The `WARNING` log line was buried in
+the conversion output — present in every conversion since v3.5.54
+but easy to miss. No test exercised the wave-copy emission path; no
+audio measurement could see its absence.
+
+A status survey was the right tool. The bug surfaced because the
+survey forced a comparison against the v3.5.17 baseline, which
+asserted "Stinsens has F3 wired+verified." The empirical "F3=- for
+all files" result told me something was wrong with the survey's
+regex, or with the code. Tracing it down to the missing import took
+30 minutes total.
+
+### Recommendations baked into the changelog
+
+Two:
+
+1. **Don't use bare `except Exception` in extract+rewrite blocks.**
+   The narrower the catch, the harder it is for structural bugs to
+   hide. `NameError`, `AttributeError`, `ImportError` should
+   propagate.
+2. **Audit extract-and-import gaps explicitly.** The C2 suite is
+   excellent at catching behavior regressions in the byte-output but
+   blind to structural regressions that don't change bytes. Manual
+   imports-vs-usage greps after large refactors.
+
+This release is just the one-line import fix. No new features.
+
+### Per-criterion delta
+
+| Criterion | v3.5.62 → v3.5.63 |
+|-----------|--------------------|
+| C1 (loads) | 286/286 — unchanged |
+| C2 (audio) | 286/286 — unchanged |
+| **C3 (editor)** | **+13 SID/ root files re-gain F3 wave-split-copy emission; Stinsens back to all 5 columns** |
+| C4 (round-trip) | unchanged |
+
+Tests: 1289 unchanged.
+
+---
 
 ### v3.5.62 — Per-pattern transpose decoding for 2000 A.D. cluster (2026-05-27)
 
