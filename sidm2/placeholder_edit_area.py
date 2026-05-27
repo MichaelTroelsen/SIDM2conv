@@ -100,8 +100,18 @@ def _build_populated_orderlists(
     for v in range(3):
         voice_body = voice_streams[v] if v < len(voice_streams) else b''
         for seg in segment_voice_stream(voice_body):
+            # v3.5.66 fix #3+#7: bound total segments at SEQ_PTR_SIZE
+            # (the seq_ptr table caps at 128 entries; emitting beyond
+            # would silently alias via `pat_idx & 0x7F`); also strip the
+            # leading $A0-$BF synthesizer marker that the v2k extractor
+            # emits — see np21_edit_area_builder.py for the rationale.
+            if next_pat_idx >= SEQ_PTR_SIZE:
+                break
             seq = bytearray()
-            for b in seg.bytes_:
+            seg_bytes = seg.bytes_
+            if seg_bytes and 0xA0 <= seg_bytes[0] <= 0xBF:
+                seg_bytes = seg_bytes[1:]
+            for b in seg_bytes:
                 # NP21 ↔ SF2 packed byte conversion:
                 # $00 (no event), $01-$6F (notes), and $7E-$FF (controls)
                 # pass through identity; $70-$7D clamp to SF2 max pitch $6F.
@@ -115,6 +125,8 @@ def _build_populated_orderlists(
             sf2_sequences.append(bytes(seq[:SEQ_SIZE]))
             per_voice_pat_indices[v].append(next_pat_idx)
             next_pat_idx += 1
+        if next_pat_idx >= SEQ_PTR_SIZE:
+            break
 
     # Voices with zero segments still need a pattern to terminate their
     # orderlist; emit a single all-$7F sequence as a placeholder.

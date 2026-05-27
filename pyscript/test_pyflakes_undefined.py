@@ -27,14 +27,14 @@ warnings are filtered out.
 * Same checker pyflakes/flake8/ruff all use under the hood for F821.
 
 If pyflakes isn't installed in the test environment, the test SKIPS
-with a clear message. This is so the CI doesn't hard-fail on a
-missing dev dep — but local runs should install it via
-`pip install pyflakes` to get full coverage.
+with a clear message that points at `requirements-dev.txt`. CI workflows
+should install dev deps via `pip install -r requirements-dev.txt` so
+this gate runs on every commit.
 
 # Recommended invocation
 
 ```
-pip install pyflakes
+pip install -r requirements-dev.txt
 pytest pyscript/test_pyflakes_undefined.py -v
 ```
 """
@@ -96,7 +96,9 @@ class TestNoUndefinedNamesInSidm2(unittest.TestCase):
         if rc < 0:
             self.skipTest(
                 "pyflakes not installed in this environment; "
-                "install with `pip install pyflakes` to run this test")
+                "install dev deps with `pip install -r requirements-dev.txt` "
+                "to run this gate (v3.5.66 lists pyflakes in dev deps so "
+                "CI runs the check on every commit)")
         findings = _undefined_name_findings(out)
         self.assertEqual(
             findings, [],

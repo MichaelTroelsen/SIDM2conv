@@ -25,6 +25,123 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.66] - 2026-05-27
+
+### Fixed — Code-review sweep (14 of 15 findings)
+
+A `/code-review xhigh` pass over the v3.5.58 → v3.5.65 diff (the
+2000 A.D. cluster + defensive engineering arc) surfaced 15 findings.
+14 are addressed here.
+
+### Correctness fixes
+
+* **Broad `except Exception:` in two more 2000 A.D. detection sites**
+  (`sidm2/low_load_layout.py:127`, `sidm2/np21_edit_area_builder.py:186`)
+  narrowed to `(ImportError, AttributeError)` + `logger.debug`. v3.5.64
+  fixed only the laxity-builder site; these two were missed. Same
+  v3.5.63 anti-pattern: a future renamed/broken import would silently
+  fall to placeholder with no log trace.
+* **`TableExtractionError` added to laxity-builder narrowed except**
+  (`sidm2/laxity_raw_np21_builder.py:328`). The v3.5.65 narrowing
+  inadvertently dropped this — `TableExtractionError` extends
+  `Exception` directly (not `ValueError`), and the project raises it
+  at 14 sites in `table_extraction.py`. A hand-crafted/corrupted SID
+  smaller than the 64B floor would crash hard where pre-v3.5.65 fell
+  back to Stinsen defaults.
+* **Leading `$A0` segment-marker stripped from v2k SF2 sequence body**
+  (`sidm2/np21_edit_area_builder.py:435`,
+  `sidm2/placeholder_edit_area.py:104`). The 2000 A.D. extractor emits
+  `$A0` as a segmenter boundary marker; SF2II reads it in sequence
+  context as "set instrument 0", showing a spurious instrument-reset
+  at the head of every editor pattern. The strip applies only when
+  the input is from the v2k path; the standard NP21 path preserves
+  `$A0-$BF` bytes (they're real instrument-set events there).
+* **`pat_idx ≥ SEQ_PTR_SIZE` cap added** in both `_build_populated_orderlists`
+  and the main `np21_edit_area_builder` orderlist build. Prevents the
+  orderlist's `pat_idx & 0x7F` masking from silently aliasing
+  sequences ≥128 back to 0-127 if a future cluster file produces
+  enough segments. Currently latent (Echo_Beat=8 segs, Galax=12) but
+  enforces a hard stop at 128.
+* **Pattern-ptr table SIZE bound added in extractor**
+  (`sidm2/vibrants_2000ad_extractor.py`). Detection validates the
+  table base address is in-range but didn't bound table SIZE. The
+  extractor's `_read_pattern_addr` now uses `max_pat_idx =
+  pat_hi_off - pat_lo_off` (Galax=6 entries, Echo=4 entries) and
+  rejects pat_idx beyond it.
+* **`$FF` orderlist-loop marker semantics documented**. v3.5.62-v3.5.65
+  collapsed `$FE` (stop) and `$FF` (loop) as both "end of emission"
+  — code unchanged in v3.5.66 because iteration 2+ of a $FF-loop
+  re-reads the same orderlist bytes with the same transpose state
+  (commands replace, not accumulate), so no new sub-patterns. Comment
+  added explaining the equivalence.
+
+### Detector hardening
+
+* **`_find_pattern_ptr_table` first-match-only fixed**. The previous
+  `c64_data.find(sig)` returned the first occurrence; if a coincidental
+  prefix appeared in data before real player code, the suffix check
+  failed and the whole file was rejected. Now loops past suffix
+  failures to find later real matches.
+* **Hardcoded `$BF` scratch-slot check documented + soft-coupled**.
+  The locator validation requires `c64_data[p+3] == 0xBF` (current-
+  pat-ptr LO scratch). Comment + docstring updated to note this is a
+  Galax-class assumption; future cluster variants with different
+  scratch layout would silently fail detection.
+* **Stale docstrings updated**: `Vibrants2000ADLayout` field comments
+  and module-top architecture summary corrected to reflect v3.5.59's
+  dynamic pattern_ptr scan (the old "load+$788" claim was Galax-only).
+
+### Defense-in-depth
+
+* **Walk caps `_MAX_ORDERLIST_STEPS` and `_MAX_PATTERN_PAIRS` now
+  count EVERY iteration**, not just successful pattern emits. A
+  pathological binary composed of command bytes would have bypassed
+  the cap and walked the binary length.
+* **`high_load_layout` 2000 A.D. detection wired** (parallel to the
+  low_load_layout and np21_edit_area_builder hooks). Currently latent
+  (no high-load 2000 A.D. file in the corpus) but architecturally
+  symmetric.
+* **`minimal_embed_builder` now threads `psid_copyright`** through to
+  `build_low_load_sf2` and `build_high_load_sf2`. Latent for the
+  current cluster (which routes via `laxity_raw_np21_builder`) but
+  closes the gap for future routing changes.
+* **Segmenter `max_segment_size` snapped to even**. NP21 byte-pair
+  formats (duration, note) need even-aligned sub-splits. Default 200
+  is even, but an odd custom value would silently split mid-pair.
+
+### Hygiene
+
+* **Dead defensive clamp removed** (`vibrants_2000ad_extractor.py:244`).
+  `elif np21_note < 0x01` was unreachable (transpose is always 0-31,
+  b2 reaches the clamp branch only when ≥ 1).
+* **Stage 7 tests now also check OUTPUT BYTES** in addition to log
+  lines. Future log-message rewording can't hide regressions. Tests
+  also gained `tearDownClass` to clean up `out/_test_*.sf2`.
+* **Duplicate Stinsens conversion removed** from
+  `TestImportSurfaceMatchesUsage.test_no_nameerror_when_calling_with_known_file`
+  (reused class-level log).
+* **`requirements-dev.txt`** added — pyflakes (v3.5.65 gate) and
+  pytest now declared dev deps; `test_pyflakes_undefined.py` skip
+  message points at the new install instructions.
+
+### Deferred (1 of 15)
+
+* **Finding #11**: 52-line track_count=0 fallback in
+  `np21_edit_area_builder.py:308` duplicates `placeholder_edit_area.
+  build_placeholder_edit_area()` with subtly different bytes
+  (`[0x00, 0xFE]` orderlists vs `[0xA0, 0x00, 0xFE]`; no F2-F5
+  tables). Direct replacement would change byte output and require
+  C2 baseline updates — deferred to a dedicated refactor push.
+  Comment added pointing at the duplication.
+
+### Tests + corpus
+
+* Full pytest: 1301 → 1303 (+3 byte-signature Stage 7 tests, -1 duplicate Stinsens conversion).
+* Full Laxity corpus: 286/286 C2 + C4 audio + metadata, zero convert
+  fails — all 14 fixes are byte-preserving for the existing corpus.
+
+---
+
 ## [3.5.65] - 2026-05-27
 
 ### Added — Pyflakes-based undefined-name gate, plus 5 bug fixes it surfaced

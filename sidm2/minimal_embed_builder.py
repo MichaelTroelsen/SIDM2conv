@@ -141,8 +141,16 @@ def build_minimal_embed_sf2(
     # header+handlers in $0D7E-$0FFF, which a sub-$1000 binary overlaps
     # → silent SF2. Reuse the low-load builder.
     if 0 < sid_la < 0x1000:
+        # v3.5.66: thread psid_copyright so the 2000 A.D. detector
+        # inside low_load_layout has the same context whether the file
+        # reaches it via laxity_raw_np21_builder or via the minimal-
+        # embed fallback. Currently moot for the 2 known cluster files
+        # (they route through the laxity path), but a future variant
+        # routed to the minimal-embed driver would otherwise lose the
+        # editor view silently.
         ll_result = low_load_layout.build_low_load_sf2(
-            c64_data, sid_la, init_addr, play_addr)
+            c64_data, sid_la, init_addr, play_addr,
+            psid_copyright=psid_copyright)
         if ll_result is not None:
             sf2_bytes, skip_aux = ll_result
             return MinimalEmbedResult(sf2_bytes=sf2_bytes, skip_aux=skip_aux)
@@ -157,7 +165,8 @@ def build_minimal_embed_sf2(
     if sid_la + len(c64_data) + MIN_POST_BINARY > 0x10000:
         # Try the high-load alternate layout (edit area before binary)
         hl_result = high_load_layout.build_high_load_sf2(
-            c64_data, sid_la, init_addr, play_addr)
+            c64_data, sid_la, init_addr, play_addr,
+            psid_copyright=psid_copyright)
         if hl_result is not None:
             sf2_bytes, skip_aux = hl_result
             logger.info(

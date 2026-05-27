@@ -108,6 +108,16 @@ def extract_2000ad_voice_streams(
     pat_lo_off = layout.pattern_ptr_lo_addr - sid_la
     pat_hi_off = layout.pattern_ptr_hi_addr - sid_la
 
+    # v3.5.66: pattern_ptr table size = (hi_addr - lo_addr), assuming
+    # the HI sub-table immediately follows the LO sub-table (verified
+    # in both Galax_it_y (6 entries) and Echo_Beat (4 entries) cluster
+    # files). Bound pat_idx against this in `_read_pattern_addr` so a
+    # corrupted/malformed orderlist with pat_idx > table_size doesn't
+    # silently read adjacent binary data as a pattern address.
+    max_pat_idx = pat_hi_off - pat_lo_off
+    if max_pat_idx <= 0:
+        return [b'', b'', b'']
+
     streams: List[bytes] = []
     for v in range(3):
         streams.append(_walk_voice(
@@ -116,6 +126,7 @@ def extract_2000ad_voice_streams(
             ol_addr=layout.voice_orderlist_addrs[v],
             pat_lo_off=pat_lo_off,
             pat_hi_off=pat_hi_off,
+            max_pat_idx=max_pat_idx,
         ))
     return streams
 
@@ -127,6 +138,7 @@ def _walk_voice(
     ol_addr: int,
     pat_lo_off: int,
     pat_hi_off: int,
+    max_pat_idx: int = 128,
 ) -> bytes:
     """Walk one voice's orderlist + patterns, emit one NP21-shape stream.
 
@@ -144,25 +156,50 @@ def _walk_voice(
     ol_steps = 0
     transpose = 0
 
+    # v3.5.66 fix #10/12: count EVERY orderlist iteration toward the
+    # step cap, not just successful pattern walks. The pre-fix code
+    # only incremented `ol_steps` after a pattern emit, so a malformed
+    # binary with many consecutive command bytes ($80-$FE) could walk
+    # the entire binary length before terminating.
     while (ol_off + ol_idx < len(c64_data)
            and ol_steps < _MAX_ORDERLIST_STEPS
            and len(stream) < _MAX_STREAM_BYTES):
+        ol_steps += 1
         b = c64_data[ol_off + ol_idx]
         if b == 0xFE or b == 0xFF:
-            # $FE = stop, $FF = loop. Either way, end emission here —
-            # the SF2 editor doesn't loop the displayed pattern, so
-            # truncating at the first end-or-loop is correct.
+            # $FE = stop (player jumps to STOP routine).
+            # $FF = loop (player resets Y to 0 and re-reads the
+            #             orderlist from byte 0).
+            #
+            # Both terminate the editor-view emission here:
+            #   - $FE: song ends; no more material to show.
+            #   - $FF: iteration 2+ re-reads the SAME orderlist bytes
+            #     with whatever transpose state iteration 1 left in
+            #     $14EF+X. Because the orderlist command handler does
+            #     `transpose = cmd & $1F` (replace, not accumulate),
+            #     iteration 2's transpose at any given orderlist
+            #     offset equals iteration 1's transpose at the same
+            #     offset. Same patterns at same transposes ⇒ no new
+            #     editor sub-patterns to emit. Truncating at $FF is
+            #     correct as long as the player doesn't change
+            #     between iterations via global state — which the
+            #     v3.5.62 RE confirms it doesn't.
             break
         if b >= 0x80:
             # Orderlist command: `transpose = command_byte & $1F`
             # (handler at body+$0443: `AND #$1F; STA $XXEF,X`). The
             # value applies to all subsequent pattern notes until the
             # next command. Continue to read the next orderlist byte
-            # (the actual pattern index).
+            # (the actual pattern index). ol_steps was already
+            # incremented at the top of the loop (v3.5.66 fix #10).
             transpose = b & 0x1F
             ol_idx += 1
             continue
         pat_idx = b
+        # v3.5.66: reject pat_idx beyond the actual table size to
+        # prevent reading adjacent binary data as pattern addresses.
+        if pat_idx >= max_pat_idx:
+            break
         pat_addr = _read_pattern_addr(c64_data, pat_lo_off, pat_hi_off, pat_idx)
         if pat_addr is None:
             break
@@ -171,10 +208,14 @@ def _walk_voice(
             break
         # Emit instrument-set marker so the segmenter splits at this
         # boundary (each 2000 A.D. pattern → one SF2 sub-pattern).
+        # The leading $A0 is stripped before being emitted to the SF2
+        # sequence body by `np21_edit_area_builder` (and the same fix
+        # in `placeholder_edit_area`) so SF2II's pattern view doesn't
+        # show a spurious "set instrument 0" event at the head of
+        # every sub-pattern.
         stream.append(0xA0)
         _walk_pattern(c64_data, pat_off, stream, transpose=transpose)
         ol_idx += 1
-        ol_steps += 1
 
     return bytes(stream)
 
@@ -216,9 +257,14 @@ def _walk_pattern(
     """
     q = pat_off
     pairs = 0
+    # v3.5.66 fix #10/12: count EVERY iteration toward the pairs cap,
+    # not just successful (duration, note) emits, so a corrupted
+    # pattern composed of consecutive command bytes doesn't bypass the
+    # cap and walk the binary length.
     while (q < len(c64_data)
            and pairs < _MAX_PATTERN_PAIRS
            and len(stream) < _MAX_STREAM_BYTES):
+        pairs += 1
         b1 = c64_data[q]
         if b1 == 0xFF:
             return
@@ -235,20 +281,18 @@ def _walk_pattern(
         # Chromatic mapping: NP21_note = (byte_2 + transpose) + 1,
         # clamped to $6F. byte_2 = 0 stays as NP21 $00 (rest/gate-off);
         # see module docstring for the LUT + transpose rationale.
+        # b2 reaches the else branch only when b2 >= 1, transpose is
+        # `cmd & $1F` (0..31), so np21_note is always >= 2; no low
+        # clamp needed.
         if b2 == 0x00:
             stream.append(0x00)
         else:
             np21_note = b2 + transpose + 1
             if np21_note > 0x6F:
                 np21_note = 0x6F
-            elif np21_note < 0x01:
-                # Transpose could in theory be negative if we ever
-                # extend handling beyond AND-$1F; defend against $00
-                # falling into "rest" semantics by clamping low.
-                np21_note = 0x01
             stream.append(np21_note)
         # Emit NP21 duration ($80 | low 4 bits of ticks).
         ticks = b1 & 0x1F
         stream.append(0x80 | min(ticks, 0x0F))
         q += 2
-        pairs += 1
+        # pairs already incremented at loop top (v3.5.66)

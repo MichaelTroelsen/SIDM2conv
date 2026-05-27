@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.5.65** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-27
+**SIDM2 v3.5.66** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-27
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -172,6 +172,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.5.66** (2026-05-27): xhigh-effort `/code-review` sweep — 14 of 15 findings fixed. Highlights: narrowed `except Exception:` → `(ImportError, AttributeError)` in low_load + np21_edit_area_builder 2000 A.D. detection (would have caught a future v3.5.63-class regression); added `TableExtractionError` to the laxity narrowed-except tuple (preserves graceful fallback for malformed binaries); strip leading $A0 segment-marker from v2k SF2 sequence body (editor no longer shows spurious "set instrument 0" before each pattern); pat_idx≥128 cap in placeholder + np21_edit_area_builder (prevents silent orderlist aliasing); pattern_ptr table-size bound in extractor; high_load_layout 2000 A.D. detection wired (parallel to low_load); ol_steps + pairs caps now count every iteration; dead negative-transpose clamp removed; stale docstrings updated. New `requirements-dev.txt` lists pyflakes as a real dev dep. Stage 7 tests now also check OUTPUT BYTES (log-message rewording can't hide regressions). 1301 → 1303 tests (+2 net: +3 byte-signature, -1 duplicate).
 
 **v3.5.65** (2026-05-27): Pyflakes-based undefined-name gate + 5 real bug fixes it surfaced. `pyscript/test_pyflakes_undefined.py` runs pyflakes against `sidm2/` and asserts zero "undefined name" findings. Bugs caught and fixed: (1) `conversion_pipeline.py:244` `List` → `list` (typing.List not imported), (2) `galway_table_extractor.py:122` typo `table_name` → `effect_name`, (3) `sid_player.py:143,150` typo `sid_path` → `filepath`, (4) `laxity_raw_np21_builder.py:774,779` two stray `self.data` references the v3.5.54 refactor missed (silently swallowed by `except Exception`; the ch_seq_ptr safety gate has been bypassed for ALL files since), (5) `table_validator.py` missing `TableInfo` import (`TYPE_CHECKING` block — siddecompiler imports table_validator). 1300 → 1301 tests (+1).
 

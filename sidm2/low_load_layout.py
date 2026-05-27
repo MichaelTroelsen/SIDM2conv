@@ -124,7 +124,14 @@ def build_low_load_sf2(
         from sidm2.vibrants_2000ad_detector import detect_2000ad_layout
         from sidm2.vibrants_2000ad_extractor import extract_2000ad_voice_streams
         v2k_layout = detect_2000ad_layout(c64_data, sid_la, psid_copyright)
-    except Exception:
+    except (ImportError, AttributeError) as e:
+        # v3.5.66: narrow the catch to import-level failures (the
+        # v3.5.63 anti-pattern was a bare `except Exception` hiding
+        # NameError). Let structural bugs propagate. Log at DEBUG so a
+        # missing-module regression is visible in verbose conversions.
+        logger.debug(
+            f"  2000 A.D. detector import failed ({e!r}); "
+            f"falling through to placeholder.")
         v2k_layout = None
     if v2k_layout is not None:
         streams = extract_2000ad_voice_streams(c64_data, sid_la, v2k_layout)

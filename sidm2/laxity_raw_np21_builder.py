@@ -60,6 +60,7 @@ from . import low_load_layout
 from . import high_load_layout
 from . import np21_edit_area_builder
 from .table_extraction import extract_all_laxity_tables
+from .exceptions import TableExtractionError
 
 logger = logging.getLogger(__name__)
 
@@ -193,8 +194,10 @@ def build_laxity_raw_np21_sf2(data) -> Optional[LaxityRawNp21Result]:
     # plays correctly via the embedded binary.
     MIN_POST_BINARY = 0x800
     if sid_la + len(c64_data) + MIN_POST_BINARY > 0x10000:
+        psid_copyright = (getattr(header, 'copyright', '') or '') if header else ''
         hl_result = high_load_layout.build_high_load_sf2(
-            c64_data, sid_la, init_addr, play_addr)
+            c64_data, sid_la, init_addr, play_addr,
+            psid_copyright=psid_copyright)
         if hl_result is not None:
             hl_bytes, hl_skip_aux = hl_result
             # np21_file_off: where the embedded binary starts in the file.
@@ -325,14 +328,19 @@ def build_laxity_raw_np21_sf2(data) -> Optional[LaxityRawNp21Result]:
             f"Pulse=${gen.pulse_addr:04X}, Filter=${gen.filter_addr:04X}, "
             f"Instr=${gen.instr_addr:04X}, Cmd=${gen.cmd_addr:04X}"
         )
-    except (ValueError, IndexError, KeyError, struct.error) as e:
-        # Catch only data-format problems from the binary-parsing path;
-        # let NameError / ImportError / AttributeError propagate so
-        # structural bugs (like the v3.5.54 missing-import regression
-        # this except block silently swallowed for 9 releases — see
-        # memory/v3.5.63-import-fix.md) surface immediately at the
-        # first conversion rather than masquerading as a benign
-        # "falling back to defaults" warning.
+    except (ValueError, IndexError, KeyError, struct.error,
+            TableExtractionError) as e:
+        # v3.5.66: added TableExtractionError — the project's idiomatic
+        # "data-format problem during binary parsing" exception (raised
+        # at 14 sites in table_extraction.py for malformed binaries).
+        # It extends Exception directly, not ValueError, so the v3.5.65
+        # narrowing accidentally let it propagate as a crash.
+        #
+        # The original narrowing intent stands: NameError / ImportError /
+        # AttributeError / TypeError still propagate so structural bugs
+        # surface immediately rather than masquerading as a benign
+        # "falling back to defaults" warning (see
+        # memory/v3.5.63-import-fix.md).
         logger.warning(
             f"  Per-file table-address detection failed ({e!r}); "
             f"falling back to Stinsen-derived defaults"

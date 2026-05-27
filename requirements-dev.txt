@@ -1,0 +1,20 @@
+# SID to SF2 Converter - Development Dependencies
+#
+# Install with: pip install -r requirements-dev.txt
+#
+# This file is consumed by:
+#   - Local pre-commit verification
+#   - CI workflows that run the full test suite
+#
+# Without these installs, certain test gates SKIP cleanly — but real
+# regression risk is left uncovered. v3.5.65 shipped a pyflakes-based
+# undefined-name gate that catches the v3.5.63-class import bugs; the
+# gate auto-skips when pyflakes isn't importable, which is why this
+# file makes pyflakes a project-level expectation.
+
+# Test framework (also implicitly used in production scripts)
+pytest>=7.0
+
+# Static checker for undefined-name regressions
+# (v3.5.65: catches the v3.5.54-style "extract but don't import" bug class)
+pyflakes>=3.0

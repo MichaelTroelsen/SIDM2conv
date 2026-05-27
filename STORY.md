@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.65 (2026-05-27) — 1301 tests, 286-file corpus, **100% audio-verified (286/286 byte-identical via zig64). Pyflakes undefined-name gate added; surfaced + fixed 5 latent bugs including 2 more `self.` refs in the v3.5.54 refactor batch.**
-**Latest chapter:** [v3.5.65 — Pyflakes gate + 5 fixes it surfaced](#v3565--pyflakes-gate--5-fixes-it-surfaced-2026-05-27)
+**Current version:** v3.5.66 (2026-05-27) — 1303 tests, 286-file corpus, **100% audio-verified (286/286 byte-identical via zig64). /code-review sweep — 14 of 15 findings addressed.**
+**Latest chapter:** [v3.5.66 — Code-review sweep](#v3566--code-review-sweep-2026-05-27)
 
 ---
 
@@ -529,6 +529,122 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.66 — Code-review sweep (2026-05-27)
+
+After v3.5.65 closed the v3.5.54-refactor bug arc, a `/code-review
+xhigh` pass over the 8-commit v3.5.58 → v3.5.65 diff surfaced 15
+findings — mostly latent issues + cleanup, plus three confirmed real
+correctness bugs the prior defensive engineering missed. This release
+addresses 14 of them.
+
+The most important fixes:
+
+**Two more bare `except Exception:` sites** — `sidm2/low_load_layout.py`
+and `sidm2/np21_edit_area_builder.py`, both around the 2000 A.D.
+detector imports. The v3.5.64 narrow-except fix only landed at the
+laxity-builder site; these two were missed and would have hidden the
+exact same regression class. Narrowed to `(ImportError, AttributeError)`
++ `logger.debug` so a future broken import surfaces immediately.
+
+**`TableExtractionError` restored to the laxity narrowed-except tuple**.
+v3.5.65's narrowing dropped it inadvertently — TableExtractionError
+extends `Exception` directly (not `ValueError`), and the project
+raises it from 14 sites in `table_extraction.py` for malformed binaries.
+A hand-crafted SID smaller than the 64B table-detection floor would
+crash hard where pre-v3.5.65 fell back to Stinsen defaults. Added back
+with the same design intent: catch data-format errors, let structural
+bugs propagate.
+
+**Leading `$A0` stripped from v2k SF2 sequence body**. The 2000 A.D.
+extractor emits `$A0` as a segmenter boundary marker — but in SF2's
+SEQUENCE byte format, `$A0` means "set instrument 0", and SF2II's
+pattern view was showing a spurious instrument-reset event at the
+head of every editor pattern. The strip is gated to v2k_streams so
+the standard NP21 path (where `$A0-$BF` ARE real instrument-set
+events) is unaffected.
+
+**`pat_idx ≥ 128` cap and pattern_ptr table SIZE bound** added — both
+were latent edge cases. The orderlist's `pat_idx & 0x7F` mask would
+silently alias sequences if total segments crossed 128; the
+pattern_ptr table base address was validated but not its size, so a
+corrupted orderlist with high pat_idx could read adjacent binary
+data as a pattern address. Both bugs are unreachable in the current
+corpus (max 12 segments per file, max pat_idx = 4 in Echo_Beat) but
+the caps now enforce the contract explicitly.
+
+**Defense-in-depth additions**: walk caps now count every iteration
+(not just successful pattern emits), so a command-byte-heavy
+malformed binary can't bypass them; high_load_layout gained the
+2000 A.D. detection hook for parity with low_load_layout;
+`minimal_embed_builder` now threads `psid_copyright` through to
+both low- and high-load delegates.
+
+**Pyflakes is now a project-level dev dep** via the new
+`requirements-dev.txt`. v3.5.65 added the gate but left install
+instructions in the test's skip message — CI workflows running on
+clean venvs would silently skip the check. Now `pip install -r
+requirements-dev.txt` is the documented entrypoint.
+
+**Stage 7 tests now check OUTPUT BYTES** in addition to log lines.
+v3.5.64's tests asserted on `"Stage 7 wave-split-copy routine"`
+substrings, which would silently break if anyone reworded the log
+message even while emission still worked. The byte-signature check
+matches the actual 6502 routine prelude in the SF2 output —
+log-independent, refactor-resistant.
+
+### The one deferred finding
+
+Finding #11 (a 52-line inline track_count=0 fallback in
+`np21_edit_area_builder.py` that duplicates `placeholder_edit_area.
+build_placeholder_edit_area()`) was deferred. The two paths emit
+subtly different bytes — orderlist `[0x00, 0xFE]` vs `[0xA0, 0x00,
+0xFE]`, plus no F2-F5 tables in the inline version. Direct
+replacement would change byte output and break the C2 reference
+suite. Documented as a dedicated-push refactor.
+
+### What the sweep didn't find
+
+Several findings flagged as PLAUSIBLE or LATENT turned out, on
+verification, to be unreachable on the current corpus — for example,
+the "wave-copy stomp 2000 A.D. binary" concern was refuted because
+`np21_wave_data_binary_addr` stays None for non-Stinsen-class files;
+the "shadow buffer 256B truncation" was refuted because the shadow
+buffer is dead data for 2000 A.D. files (different player). These
+defense-in-depth gates already guard against the worst cases.
+
+The remaining unfixed cosmetic finding (#11 dedup) is the only
+genuine "we know it's not as clean as it should be but byte-output
+constraints make it expensive" item. Everything else either landed
+or was provably moot.
+
+### Per-criterion delta
+
+| Criterion | v3.5.65 → v3.5.66 |
+|-----------|--------------------|
+| C1 (loads) | 286/286 — unchanged |
+| C2 (audio) | 286/286 — unchanged |
+| C3 (editor) | +leading-$A0 strip removes editor-UX noise; 14 defensive fixes harden future regressions |
+| C4 (round-trip) | unchanged |
+
+Tests: 1301 → 1303 (+2 net: +3 byte-signature Stage 7 tests, -1 duplicate).
+
+### Lesson
+
+The defensive engineering arc (v3.5.63 → v3.5.64 → v3.5.65 → v3.5.66)
+shows a pattern. The bug surfaced (v3.5.63), got a targeted defense
+(v3.5.64), got a generic gate (v3.5.65), got a /code-review pass that
+found two more instances of the same class (v3.5.66). Each step
+narrowed the future blast radius. The /code-review at xhigh effort
+was the right tool to close the loop — it found the missed sites the
+narrowed-except fix at v3.5.64 didn't reach, and it found the
+`TableExtractionError` gap that the narrowing accidentally created.
+
+If a future regression of this class ever ships again, the pattern
+should be: defensive fix → /code-review sweep → close the missed
+sites → make the gate a hard CI dep. v3.5.66 codifies that pattern.
+
+---
 
 ### v3.5.65 — Pyflakes gate + 5 fixes it surfaced (2026-05-27)
 

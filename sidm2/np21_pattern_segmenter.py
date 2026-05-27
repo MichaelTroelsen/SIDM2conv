@@ -85,6 +85,15 @@ def segment_voice_stream(body: bytes, *, max_segment_size: int = 200) -> list[Se
 
     # Enforce max_segment_size by sub-splitting any oversize chunk at byte
     # boundaries. This is rare in practice but defensive.
+    #
+    # v3.5.66 note: max_segment_size MUST be even for NP21 byte-pair
+    # formats (e.g., 2000 A.D.'s (duration, note) pairs). At an odd
+    # offset the split lands between byte 1 and byte 2 of a pair,
+    # making downstream parsers re-interpret the second half's bytes
+    # as duration where they were actually notes. Default 200 is even.
+    # Callers passing a custom value should also pass an even number.
+    if max_segment_size % 2 != 0:
+        max_segment_size -= 1  # snap to even
     out: list[Segment] = []
     for seg in segments:
         if len(seg.bytes_) <= max_segment_size:

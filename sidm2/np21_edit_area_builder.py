@@ -183,7 +183,12 @@ def build_np21_sf2_edit_area(
                 extract_2000ad_voice_streams,
             )
             v2k_layout = detect_2000ad_layout(c64_data, sid_la, psid_copyright)
-        except Exception:
+        except (ImportError, AttributeError) as e:
+            # v3.5.66: narrow from `except Exception` so structural bugs
+            # surface (matches the v3.5.65 fix at the laxity site).
+            logger.debug(
+                f"  2000 A.D. detector import failed ({e!r}); "
+                f"falling through.")
             v2k_layout = None
         if v2k_layout is not None:
             streams = extract_2000ad_voice_streams(c64_data, sid_la, v2k_layout)
@@ -305,6 +310,14 @@ def build_np21_sf2_edit_area(
         # editor's iteration sees valid data. Point all Block 5 addresses
         # at this minimal edit area, appended after the NP21 binary like
         # the normal path.
+        #
+        # v3.5.66 note: this builds a near-twin of
+        # `placeholder_edit_area.build_placeholder_edit_area()` but
+        # writes slightly different bytes (orderlist `[0x00, 0xFE]`
+        # here vs `[0xA0, 0x00, 0xFE]` in the helper; no F2-F5 tables
+        # here). Direct replacement would change byte output and break
+        # the C2 reference suite — refactor deferred. The reuse
+        # opportunity is documented at memory/v3.5.65-import-fix.md.
         OL_SIZE  = 0x100
         SEQ_SIZE = 0x100
         sf2_data_base = sid_la + len(c64_data)
@@ -420,6 +433,15 @@ def build_np21_sf2_edit_area(
     per_voice_pat_indices: list[list[int]] = [[], [], []]
     next_pat_idx = 0
 
+    # v3.5.66 fix #7: For v2k (2000 A.D.) streams, the leading $A0 byte
+    # of each segment is a SYNTHETIC marker the extractor emits to
+    # create segmenter boundaries — NOT a real "set instrument 0"
+    # event from the player. Strip it when emitting to the SF2 sequence
+    # body so SF2II's pattern view doesn't show a spurious instrument
+    # reset before each pattern. For the standard NP21 path, $A0-$BF
+    # bytes ARE real instrument-set events and must be preserved.
+    strip_v2k_segment_marker = v2k_streams is not None
+
     for v in range(3):
         # Voice v's flat byte stream comes from raw_patterns[voice_init_idx[v]]
         if num_patterns > 0 and 0 <= voice_init_idx[v] < num_patterns:
@@ -428,8 +450,18 @@ def build_np21_sf2_edit_area(
             voice_body = b""
         segments = segment_voice_stream(voice_body)
         for seg in segments:
+            # v3.5.66 fix #3: bound total segments at SEQ_PTR_SIZE (128).
+            # The seq_ptr table caps at 128 entries; if next_pat_idx
+            # exceeds that, `pat_idx & 0x7F` in the orderlist silently
+            # aliases later indices back to earlier slots.
+            if next_pat_idx >= SEQ_PTR_SIZE:
+                break
             seq = bytearray()
-            for b in seg.bytes_:
+            seg_bytes = seg.bytes_
+            if (strip_v2k_segment_marker and seg_bytes
+                    and 0xA0 <= seg_bytes[0] <= 0xBF):
+                seg_bytes = seg_bytes[1:]
+            for b in seg_bytes:
                 # Byte format is identical (NP21 == SF2 packed) for all
                 # ranges except 0x7F (we strip those during extraction)
                 # and 0x70-0x7D (clamp to SF2 max pitch 0x6F).
@@ -447,11 +479,13 @@ def build_np21_sf2_edit_area(
             sf2_sequences.append(bytes(seq[:SEQ_SIZE]))
             per_voice_pat_indices[v].append(next_pat_idx)
             next_pat_idx += 1
+        if next_pat_idx >= SEQ_PTR_SIZE:
+            break  # outer voice loop too
 
     # If a voice produced zero segments (empty stream), give it a
     # placeholder pattern so its orderlist can still terminate cleanly.
     for v in range(3):
-        if not per_voice_pat_indices[v]:
+        if not per_voice_pat_indices[v] and next_pat_idx < SEQ_PTR_SIZE:
             placeholder = bytearray(b'\x7F' * SEQ_SIZE)
             sf2_sequences.append(bytes(placeholder))
             per_voice_pat_indices[v].append(next_pat_idx)

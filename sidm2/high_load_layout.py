@@ -75,6 +75,8 @@ def build_high_load_sf2(
     sid_la: int,
     init_addr: int,
     play_addr: int,
+    *,
+    psid_copyright: str = '',
 ) -> Optional[Tuple[bytes, bool]]:
     """Build an SF2 file using the high-load layout.
 
@@ -123,12 +125,39 @@ def build_high_load_sf2(
     gen.driver_code_top  = HANDLER_BASE
     gen.driver_code_size = 0x20
 
+    # v3.5.66 fix #9: parallel to the low_load_layout/np21_edit_area
+    # wire-ins, attempt 2000 A.D. cluster detection. Currently no known
+    # cluster file has high enough load address to trigger this layout,
+    # but a future cluster member with sid_la >= $2000 would otherwise
+    # silently fall to the empty placeholder.
+    v2k_streams = None
+    try:
+        from sidm2.vibrants_2000ad_detector import detect_2000ad_layout
+        from sidm2.vibrants_2000ad_extractor import extract_2000ad_voice_streams
+        v2k_layout = detect_2000ad_layout(c64_data, sid_la, psid_copyright)
+    except (ImportError, AttributeError) as e:
+        logger.debug(
+            f"  2000 A.D. detector import failed ({e!r}); "
+            f"falling through to placeholder.")
+        v2k_layout = None
+    if v2k_layout is not None:
+        streams = extract_2000ad_voice_streams(c64_data, sid_la, v2k_layout)
+        if any(streams):
+            v2k_streams = streams
+            logger.info(
+                f"  High-load 2000 A.D. cluster detected: "
+                f"V0={len(streams[0])}B V1={len(streams[1])}B "
+                f"V2={len(streams[2])}B NP21-synth streams (editor view only)"
+            )
+
     # Build placeholder Block 5 + zero-filled F1-F5 tables in the edit
     # area at $1000. The placeholder builder mutates gen with all
     # table addresses (instr_addr / cmd_addr / wave_addr / etc.).
+    # When v2k_streams is set, the orderlist + sequence area holds
+    # real F1 data instead of placeholders.
     sf2_edit_data, music_data_params = (
         placeholder_edit_area.build_placeholder_edit_area(
-            EDIT_AREA_BASE, gen))
+            EDIT_AREA_BASE, gen, voice_streams=v2k_streams))
     gen.driver_size = (EDIT_AREA_BASE - LOAD_BASE) + len(sf2_edit_data)
 
     header_bytes = gen.generate_complete_headers(music_data_params)

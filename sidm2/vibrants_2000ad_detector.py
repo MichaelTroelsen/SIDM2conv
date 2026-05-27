@@ -31,11 +31,17 @@ followed by `30 01 60 A9` at `[9..12]`.
 Voice byte-stream architecture (orderlist + pattern model, NP21-style):
 
 - Per-voice orderlist pointers at `load+$493` (LO bytes, 3 entries for
-  V0/V1/V2) and `load+$496` (HI bytes, 3 entries).
+  V0/V1/V2) and `load+$496` (HI bytes, 3 entries). These offsets are
+  fixed across cluster files (encoded as the same LDA absolute,X in
+  the player code body).
 - Each voice's orderlist is a sequence of pattern indices terminated
   by `$FE` (end) or `$FF` (loop).
-- Pattern pointers themselves are at `load+$788` (LO) and `load+$78E`
-  (HI), indexed by the pattern index from the orderlist.
+- Pattern pointers themselves are at FILE-SPECIFIC addresses — `$1788`
+  / `$178E` for Galax_it_y, `$0A29` / `$0A2D` for Echo_Beat. The
+  player code is identical between cluster files but the data sections
+  vary in size per song, so anything past the variable-sized data
+  shifts in absolute terms. Located dynamically via
+  `_find_pattern_ptr_table` (opcode-signature scan).
 - Each pattern is a sequence of byte pairs (duration+octave, note)
   until a `$FF` terminator at the pattern level.
 
@@ -74,10 +80,11 @@ class Vibrants2000ADLayout(NamedTuple):
 
     All addresses are absolute C64 addresses (load_addr + offset).
     """
-    voice_orderlist_lo_addr: int   # load + $493 (3 bytes: V0/V1/V2 ptr LO)
-    voice_orderlist_hi_addr: int   # load + $496 (3 bytes: V0/V1/V2 ptr HI)
-    pattern_ptr_lo_addr: int       # load + $788 (LO bytes for pattern ptr table)
-    pattern_ptr_hi_addr: int       # load + $78E (HI bytes for pattern ptr table)
+    voice_orderlist_lo_addr: int   # load + $493 (3 bytes: V0/V1/V2 ptr LO; fixed offset)
+    voice_orderlist_hi_addr: int   # load + $496 (3 bytes: V0/V1/V2 ptr HI; fixed offset)
+    pattern_ptr_lo_addr: int       # File-specific: $1788 (Galax) / $0A29 (Echo);
+                                   # located by `_find_pattern_ptr_table` dynamic scan.
+    pattern_ptr_hi_addr: int       # File-specific: $178E (Galax) / $0A2D (Echo).
     voice_orderlist_addrs: tuple   # (V0_orderlist, V1_orderlist, V2_orderlist) absolute addrs
 
 
@@ -155,22 +162,44 @@ def _find_pattern_ptr_table(c64_data: bytes, sid_la: int) -> Optional[tuple]:
     The two LDA absolute-Y operands give the two table addresses. The
     `$14` byte (scratch page) is `(load_hi + 4)`. Returns
     `(pat_lo_addr, pat_hi_addr)` or None if not found.
+
+    The validation also hardcodes the scratch-slot LOW byte (`$BF` for
+    the current-pattern-pointer-LO slot at `$14BF+X`). This is the
+    standard Galax/Echo player layout; if a future cluster file
+    relocates the scratch slot, the validation will reject it and the
+    detector returns None. The locator's `find()` is also first-match-
+    only — if a coincidental signature prefix appears in data BEFORE
+    the real player code and the suffix doesn't match, the file is
+    rejected silently.
     """
     scratch_hi = (sid_la >> 8) + 4
     if scratch_hi > 0xFF:
         return None
     sig = bytes([0x48, 0x98, 0x9D, 0xF2, scratch_hi, 0x68, 0xA8, 0xB9])
-    idx = c64_data.find(sig)
-    if idx < 0:
-        return None
-    p = idx + len(sig)
-    if p + 8 > len(c64_data):
-        return None
-    pat_lo_addr = c64_data[p] | (c64_data[p + 1] << 8)
-    if c64_data[p + 2] != 0x9D or c64_data[p + 3] != 0xBF or c64_data[p + 4] != scratch_hi:
-        return None
-    if c64_data[p + 5] != 0xB9:
-        return None
+    # v3.5.66: scan past first-match failures so a coincidental prefix
+    # in data doesn't reject the whole file.
+    start = 0
+    while True:
+        idx = c64_data.find(sig, start)
+        if idx < 0:
+            return None
+        p = idx + len(sig)
+        if p + 8 > len(c64_data):
+            return None
+        pat_lo_addr = c64_data[p] | (c64_data[p + 1] << 8)
+        # Standard Galax-class scratch slot: STA $XXBF,X for current
+        # pat ptr LO. If a future cluster file uses a different scratch
+        # slot, the byte at `p+3` would differ and validation falls
+        # through to the next `find()` iteration.
+        if (c64_data[p + 2] == 0x9D
+                and c64_data[p + 3] == 0xBF
+                and c64_data[p + 4] == scratch_hi
+                and c64_data[p + 5] == 0xB9):
+            break
+        # Suffix mismatch — try the next occurrence (a coincidental
+        # prefix in data); v3.5.58-v3.5.65 bailed here, rejecting files
+        # whose real signature came after a data-region false match.
+        start = idx + 1
     pat_hi_addr = c64_data[p + 6] | (c64_data[p + 7] << 8)
     return pat_lo_addr, pat_hi_addr
 
