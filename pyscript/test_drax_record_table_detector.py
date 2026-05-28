@@ -40,13 +40,14 @@ def _load_sid(path: Path):
     return load, binary
 
 
-# RE-verified table LOCATIONS (semantics TBD — see
-# memory/drax-np21-cluster-re.md).
+# RE-verified: (note-control read operand, true instrument-table base).
+# The base is the operand − 2 (byte 0 = AD, byte 1 = SR), confirmed
+# across all 6 cluster files (v3.5.70). See memory/drax-np21-cluster-re.md.
 _DRAX_EXPECTED = {
-    "Colorama": 0x1BDD,
-    "Delicate": 0x1C51,
-    "Dreams": 0x1B8A,
-    "Omniphunk": 0x1B73,
+    "Colorama": (0x1BDD, 0x1BDB),
+    "Delicate": (0x1C51, 0x1C4F),
+    "Dreams": (0x1B8A, 0x1B88),
+    "Omniphunk": (0x1B73, 0x1B71),
 }
 
 _LAXITY_G4 = ["21_G4_demo_tune_1", "21_G4_demo_tune_2",
@@ -55,24 +56,53 @@ _LAXITY_G4 = ["21_G4_demo_tune_1", "21_G4_demo_tune_2",
 
 class TestDraxClusterDetection(unittest.TestCase):
     def test_drax_files_locate_expected_table(self):
-        for name, expected in _DRAX_EXPECTED.items():
+        for name, (operand, base) in _DRAX_EXPECTED.items():
             load, binary = _load_sid(ROOT / "SID" / f"{name}.sid")
             result = detect_drax_record_table(binary, load)
             self.assertIsNotNone(result, f"{name} should match")
             self.assertIsInstance(result, DraxRecordTableLayout)
             self.assertEqual(
-                result.record_table_addr, expected,
-                f"{name}: expected record table ${expected:04X}, "
-                f"got ${result.record_table_addr:04X}")
+                result.note_ctrl_read_operand, operand,
+                f"{name}: expected +2 read operand ${operand:04X}, "
+                f"got ${result.note_ctrl_read_operand:04X}")
+            self.assertEqual(
+                result.instrument_table_addr, base,
+                f"{name}: expected instrument base ${base:04X} "
+                f"(operand-2), got ${result.instrument_table_addr:04X}")
             self.assertEqual(result.field0_high_mask, 0xC0,
                              f"{name}: expected $C0 high-bit mask")
+
+    def test_instrument_base_is_operand_minus_2(self):
+        for name in _DRAX_EXPECTED:
+            load, binary = _load_sid(ROOT / "SID" / f"{name}.sid")
+            result = detect_drax_record_table(binary, load)
+            self.assertEqual(
+                result.instrument_table_addr,
+                result.note_ctrl_read_operand - 2)
+
+    def test_instr0_ad_sr_are_sane_envelopes(self):
+        """Byte 0 = AD, byte 1 = SR. Instrument 0's values should look
+        like real SID envelopes (not the $00/$FF that a wrong base would
+        give). Verified values per file (v3.5.70 RE)."""
+        expected_ad_sr = {
+            "Colorama": (0x07, 0xF8), "Delicate": (0x07, 0xF9),
+            "Dreams": (0x07, 0xDB), "Omniphunk": (0x02, 0xF6),
+        }
+        for name, (exp_ad, exp_sr) in expected_ad_sr.items():
+            load, binary = _load_sid(ROOT / "SID" / f"{name}.sid")
+            result = detect_drax_record_table(binary, load)
+            off = result.instrument_table_addr - load
+            self.assertEqual(binary[off], exp_ad,
+                             f"{name}: instr0 AD byte")
+            self.assertEqual(binary[off + 1], exp_sr,
+                             f"{name}: instr0 SR byte")
 
     def test_table_in_binary_range(self):
         for name in _DRAX_EXPECTED:
             load, binary = _load_sid(ROOT / "SID" / f"{name}.sid")
             result = detect_drax_record_table(binary, load)
-            self.assertGreaterEqual(result.record_table_addr, load)
-            self.assertLess(result.record_table_addr, load + len(binary))
+            self.assertGreaterEqual(result.instrument_table_addr, load)
+            self.assertLess(result.note_ctrl_read_operand, load + len(binary))
 
 
 class TestLaxityG4Detection(unittest.TestCase):
@@ -97,7 +127,8 @@ class TestFallbackContract(unittest.TestCase):
         load, binary = _load_sid(ROOT / "SID" / "Beast.sid")
         result = detect_drax_record_table(binary, load)
         if result is not None:
-            self.assertNotEqual(result.record_table_addr, 0x19AD)
+            self.assertNotEqual(result.note_ctrl_read_operand, 0x19AD)
+            self.assertNotEqual(result.instrument_table_addr, 0x19AD)
 
 
 class TestSyntheticBinaries(unittest.TestCase):
@@ -116,7 +147,8 @@ class TestSyntheticBinaries(unittest.TestCase):
         binary, load = self._build(tbl_addr=0x1B8A)
         result = detect_drax_record_table(binary, load)
         self.assertIsNotNone(result)
-        self.assertEqual(result.record_table_addr, 0x1B8A)
+        self.assertEqual(result.note_ctrl_read_operand, 0x1B8A)
+        self.assertEqual(result.instrument_table_addr, 0x1B88)
         self.assertEqual(result.field0_high_mask, 0xC0)
 
     def test_missing_tya_and_mask_rejected(self):

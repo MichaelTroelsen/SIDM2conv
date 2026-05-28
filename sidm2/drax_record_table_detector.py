@@ -88,15 +88,28 @@ from typing import NamedTuple, Optional
 
 
 class DraxRecordTableLayout(NamedTuple):
-    """Located DRAX/NP21-G4 INSTRUMENT table (8-byte records).
+    """Located DRAX/NP21-G4 INSTRUMENT table (8-byte records, indexed by
+    instrument_number * 8, up to 32 instruments).
 
-    `record_table_addr` is the instrument-table base (indexed by
-    instrument_number * 8, up to 32 instruments). Field semantics of
-    each 8-byte record are only partially RE'd — see module docstring.
+    v3.5.70: `instrument_table_addr` is the TRUE record base — verified
+    across all 6 cluster files (4 DRAX + 2 Laxity-G4) to be the
+    detected note-control read operand MINUS 2. Record layout:
+
+        +0  AD  (attack/decay)  → $D405   [confirmed via backward trace]
+        +1  SR  (sustain/release) → $D406  [byte after AD, by adjacency]
+        +2  packed note-offset(low nibble) + control(high bits) → $D404
+        +3  pulse-related
+        +4  command / flags
+        +5  (used)
+        +6,+7  unreferenced (padding)
+
+    `note_ctrl_read_operand` is the +2 field address the detector keys
+    on (kept for back-compat / cross-checking).
     """
-    record_table_addr: int   # absolute address of the instrument-table base
-    field0_read_addr: int    # absolute address of the `LDA table,Y` (+0 field) instr
-    field0_high_mask: int    # high-bit mask applied to the +0 field (e.g. $C0)
+    instrument_table_addr: int  # TRUE record base = note_ctrl_read_operand - 2
+    note_ctrl_read_operand: int  # the +2 field operand the detector matched
+    field0_read_addr: int        # absolute address of the +2-field `LDA table,Y` instr
+    field0_high_mask: int        # high-bit mask applied to the +2 field (e.g. $C0)
 
 
 def detect_drax_record_table(
@@ -136,7 +149,11 @@ def detect_drax_record_table(
         for k in range(i + 6, window_end):
             if c64_data[k] == 0x98 and c64_data[k + 1] == 0x29:
                 return DraxRecordTableLayout(
-                    record_table_addr=tbl,
+                    # The matched read is the +2 note-control field; the
+                    # record base (byte 0 = AD) is 2 bytes earlier
+                    # (verified across all 6 cluster files, v3.5.70).
+                    instrument_table_addr=tbl - 2,
+                    note_ctrl_read_operand=tbl,
                     field0_read_addr=sid_la + i,
                     field0_high_mask=c64_data[k + 2],
                 )

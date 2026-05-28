@@ -25,6 +25,77 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.70] - 2026-05-28
+
+### Added — DRAX instrument-table base, confirmed across all 6 files
+
+v3.5.69 resolved that $1B8A is the instrument table but left the exact
+record base and field layout per-file unconfirmed. v3.5.70 nails it:
+the instrument record base = the detector's note-control operand − 2,
+with byte 0 = AD and byte 1 = SR. Verified across all six cluster
+files (4 DRAX: Colorama/Delicate/Dreams/Omniphunk + 2 Laxity-G4:
+21_G4_demo_tune_1/Ocean_Reloaded).
+
+### How it was confirmed (robust to file-specific scratch)
+
+The DRAX per-voice scratch ($18xx) is relocated per file (placed after
+the variable-size code/data), so a hardcoded scratch pattern only
+matched Dreams. The generalizable method: backward dataflow trace from
+the FIXED SID register writes (alignment-independent byte search):
+
+```
+STA $D405,Y (AD)  ->  AD output scratch  ->  AD source scratch  ->
+LDA <record_base>,Y ; STA <ad_scratch>,X
+```
+
+The chain terminates at `LDA <base>,Y` where base = detector operand
+− 2 in every file. Each file's scratch addresses differ; the record
+base offset (−2) and the AD/SR-first layout are constant.
+
+| File | det operand | instr base | instr0 AD/SR |
+|------|-------------|-----------|--------------|
+| Dreams    | $1B8A | $1B88 | $07/$DB |
+| Colorama  | $1BDD | $1BDB | $07/$F8 |
+| Delicate  | $1C51 | $1C4F | $07/$F9 |
+| Omniphunk | $1B73 | $1B71 | $02/$F6 |
+| 21_G4_demo_tune_1 | $1A91 | $1A8F | $04/$F7 |
+| Ocean_Reloaded    | $1A88 | $1A86 | $03/$89 |
+
+All AD/SR pairs are sane SID envelope values (not the $00/$FF a wrong
+base would yield).
+
+### Detector change
+
+`DraxRecordTableLayout` now exposes:
+* `instrument_table_addr` — the TRUE record base (= operand − 2)
+* `note_ctrl_read_operand` — the +2 field address the signature keys on
+* `field0_read_addr`, `field0_high_mask` (unchanged)
+
+(Renamed from the single `record_table_addr`, which conflated the two.)
+
+### Output-stage map (Dreams; per-file entry point for the extractor)
+
+SID register ← scratch source: FREQ_LO←$100C, FREQ_HI←$100F,
+PW_LO←$190C, PW_HI←$190F, CTRL←$1918, AD←$1912, SR←$1915. The full
+instrument extractor should trace these per file (not hardcode), since
+the scratch addresses are file-specific.
+
+### Discipline note
+
+This generalization was made ONLY after per-file confirmation — the
+opposite of the v3.5.67/68 mislabels, which generalized a layout from
+one file and were wrong. The lesson is now applied: confirm each file,
+trace from fixed anchors, don't hardcode relocated scratch.
+
+### Tests
+
+* `pyscript/test_drax_record_table_detector.py`: 1312 → 1314 (+2:
+  instrument-base-is-operand-minus-2, instr0 AD/SR sanity). Existing
+  tests updated for the new field names.
+* No corpus regression — detector not wired into conversion.
+
+---
+
 ## [3.5.69] - 2026-05-28
 
 ### Resolved — DRAX $1B8A is the instrument table

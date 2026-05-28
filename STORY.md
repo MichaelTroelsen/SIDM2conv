@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.69 (2026-05-28) — 1312 tests, 286-file corpus, **100% audio-verified. DRAX $1B8A resolved as the instrument table (8-byte records indexed by instrument×8).**
-**Latest chapter:** [v3.5.69 — DRAX $1B8A resolved: instrument table](#v3569--drax-1b8a-resolved-instrument-table-2026-05-28)
+**Current version:** v3.5.70 (2026-05-28) — 1314 tests, 286-file corpus, **100% audio-verified. DRAX instrument-table base confirmed (det−2, AD/SR-first) across all 6 cluster files.**
+**Latest chapter:** [v3.5.70 — DRAX instrument-table base, confirmed across all 6 files](#v3570--drax-instrument-table-base-confirmed-across-all-6-files-2026-05-28)
 
 ---
 
@@ -529,6 +529,58 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.70 — DRAX instrument-table base, confirmed across all 6 files (2026-05-28)
+
+v3.5.69 established that $1B8A is the instrument table. v3.5.70 pins
+the exact record base and validates it across the whole cluster —
+this time generalizing *only after* per-file confirmation, the inverse
+of the v3.5.67/68 mislabels.
+
+Tracing the AD/SR scratch back from the output stage showed the
+instrument record base is two bytes before the detector's anchor:
+byte 0 = AD, byte 1 = SR, byte 2 = the packed note-control field the
+detector keys on. For Dreams: base $1B88, detector $1B8A.
+
+The first instinct was to call it "det − 2" and move on — but the
+AD-source byte pattern that proved it for Dreams (`LDA record,Y;
+STA $18CE,X`) didn't exist in the other files. The DRAX per-voice
+scratch ($18xx) is relocated per file, so $18CE is Dreams-specific.
+Generalizing required a method robust to that: a backward dataflow
+trace starting from the FIXED SID register writes (`STA $D405,Y` for
+AD), following each file's own scratch chain back to `LDA <base>,Y`.
+
+That trace confirmed the −2 offset and the AD/SR-first layout in all
+six files (4 DRAX + 2 Laxity-G4), with every instrument-0 AD/SR pair
+landing on sane SID envelope values ($07/$DB, $07/$F8, $02/$F6, …).
+A wrong base would have produced $00/$FF garbage; it didn't.
+
+The detector now exposes `instrument_table_addr` (the true base) and
+`note_ctrl_read_operand` (the +2 anchor it matches). The output-stage
+map (which scratch feeds each SID register) is recorded as the
+per-file entry point for the eventual instrument extractor — which
+must trace from the fixed registers, never hardcode the relocated
+scratch.
+
+### The arc's discipline, stated plainly
+
+v3.5.67 generalized a format from one file → wrong (mislabel).
+v3.5.68 corrected, marked unknown. v3.5.69 resolved the identity with
+a proper tool. v3.5.70 generalized the layout — but only after
+confirming all six files independently, via a method (trace from fixed
+anchors) immune to the per-file relocation that fooled the earlier
+passes. Same cluster, four releases, each one tightening the
+"confirm before you claim" loop.
+
+### Per-criterion delta
+
+| Criterion | v3.5.69 → v3.5.70 |
+|-----------|--------------------|
+| C1-C4 | all unchanged — detector not wired into conversion |
+
+Tests: 1312 → 1314 (+2).
+
+---
 
 ### v3.5.69 — DRAX $1B8A resolved: instrument table (2026-05-28)
 
