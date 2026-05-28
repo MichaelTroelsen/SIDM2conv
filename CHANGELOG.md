@@ -25,6 +25,68 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.68] - 2026-05-28
+
+### Fixed — Correct the v3.5.67 DRAX table mislabel
+
+v3.5.67 shipped `np21_packed_wave_detector` claiming the DRAX table at
+$1B8A (Dreams) was a flat single-byte "wave table" (low nibble = note,
+high 2 bits = waveform). That was an over-claim from a partial trace.
+
+Fuller disassembly (Dreams $1316-$137F) shows the SAME Y index reads
+fields at +0, +1, +2, +3, +4 of an **8-byte structured record**:
+
+```
+LDA $1B8A,Y    ; +0  packed note(low nibble) + ctrl(high 2 bits)
+LDA $1B8B,Y    ; +1  AD-ish
+LDA $1B8C,Y    ; +2  command (BEQ skip if zero)
+LDA $1B8D,Y    ; +3  → scratch
+LDA $1B8E,Y    ; +4  flag bits (AND #$02)
+```
+
+The data's clean 8-byte periodicity confirms the stride. The +0-field
+decode (`AND #$0F` note / `AND #$C0` selector) IS real — that part of
+the v3.5.67 RE was correct — but the high-2-bits path is a gate/control
+update, not a clean waveform select, and the table is NOT flat
+single-byte entries. Whether it's the wave-step table or the
+instrument table is still unresolved.
+
+### What changed
+
+* `sidm2/np21_packed_wave_detector.py` → renamed
+  `sidm2/drax_record_table_detector.py`.
+* `detect_packed_wave_table` → `detect_drax_record_table`.
+* `PackedWaveLayout(wave_table_addr, wave_read_addr, waveform_mask)` →
+  `DraxRecordTableLayout(record_table_addr, field0_read_addr,
+  field0_high_mask)`.
+* Docstrings + memory note (`drax-np21-cluster-re.md`) corrected to
+  describe the 8-byte-record structure and flag the unresolved
+  wave-vs-instrument identity.
+* Test file renamed to `test_drax_record_table_detector.py`.
+
+The locator itself is unchanged in behavior — it still correctly finds
+the table base across all 4 DRAX files (Colorama $1BDD, Delicate $1C51,
+Dreams $1B8A, Omniphunk $1B73) via the same +0-field read signature,
+and remains fallback-only (mislocates on Beast/Angular pulse/filter
+reads). Only the semantic labels were wrong.
+
+### Lesson
+
+For binary-format RE: confirm the record STRIDE (how the index
+advances + how many fields are read per index) before claiming a
+table's format. Dumping the data and eyeballing periodicity would have
+caught the 8-byte stride immediately. The detector was built one trace
+too early; do not build the extractor until the record semantics
+(and wave-vs-instrument identity) are confirmed.
+
+### Tests
+
+* `pyscript/test_drax_record_table_detector.py` (9 tests, renamed from
+  the v3.5.67 file). Full pytest: 1312 (unchanged count).
+* No corpus regression — detector is not wired into conversion.
+
+---
+
 ## [3.5.67] - 2026-05-28
 
 ### Added — NP21-G4 packed-wave detector (DRAX cluster checkpoint)

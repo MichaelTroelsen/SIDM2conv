@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.67 (2026-05-28) — 1312 tests, 286-file corpus, **100% audio-verified. DRAX/NP21-G4 packed-wave detector checkpoint (4 "None wired" SID/ root files identified as one cluster).**
-**Latest chapter:** [v3.5.67 — DRAX packed-wave detector checkpoint](#v3567--drax-packed-wave-detector-checkpoint-2026-05-28)
+**Current version:** v3.5.68 (2026-05-28) — 1312 tests, 286-file corpus, **100% audio-verified. DRAX cluster located (4 "None wired" files); v3.5.67's "wave table" label corrected to "8-byte record table, identity TBD".**
+**Latest chapter:** [v3.5.68 — Correcting the DRAX table mislabel](#v3568--correcting-the-drax-table-mislabel-2026-05-28)
 
 ---
 
@@ -530,7 +530,61 @@ A few patterns showed up over and over and are worth naming:
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
 
+### v3.5.68 — Correcting the DRAX table mislabel (2026-05-28)
+
+v3.5.67 shipped a detector that called the DRAX table at $1B8A a flat
+single-byte "wave table." Starting to build the extractor on top of it
+surfaced the problem within the hour: dumping the table showed clean
+8-byte periodicity, and fuller disassembly showed the same Y index
+reading fields at +0/+1/+2/+3/+4 of an 8-byte record. It's a
+structured-record table, not flat single-byte entries.
+
+The +0-field decode I'd traced (`AND #$0F` for the note, `AND #$C0`
+for a high-bit selector) was real — that byte does pack a note offset
+and a 2-bit control selector. The error was extrapolating "the whole
+table is flat single-byte steps" from that one field. And the
+high-2-bits path turned out to be a gate/control update, not the clean
+waveform select I'd claimed.
+
+So v3.5.68 is a correction release. The detector still does its real
+job — it locates a genuine DRAX table at the right address across all
+four files — but the names and docs lied about what that table is.
+Renamed `np21_packed_wave_detector` → `drax_record_table_detector`,
+`wave_table_addr` → `record_table_addr`, and rewrote the docstrings and
+memory note to describe the 8-byte-record structure and flag the
+still-unresolved question: is this the wave-step table or the
+instrument table? Until that's settled, the module only claims to
+LOCATE the table, not to interpret it.
+
+The lesson, recorded in the memory note: for binary-format RE, confirm
+the record STRIDE — how the index advances and how many fields are
+read per index — before claiming a table's format. A 30-second data
+dump would have shown the 8-byte periodicity and prevented the
+mislabel. The detector was built one trace too early.
+
+This is also why the checkpoint-first pattern earned its keep: because
+v3.5.67 shipped only a detector (not an extractor wired into
+conversion), the mislabel cost nothing downstream — no SF2 output was
+ever wrong, no corpus regression, just names and docs to fix. Catching
+it while starting the extractor (rather than after shipping a
+extractor built on the wrong format) is the system working as intended.
+
+### Per-criterion delta
+
+| Criterion | v3.5.67 → v3.5.68 |
+|-----------|--------------------|
+| C1-C4 | all unchanged — detector not wired into conversion |
+
+Tests: 1312 (unchanged count; the 9 detector tests moved to the
+renamed file with corrected semantics).
+
+---
+
 ### v3.5.67 — DRAX packed-wave detector checkpoint (2026-05-28)
+
+*(Superseded by v3.5.68 — the "wave table" label below was wrong; the
+table is 8-byte structured records, identity TBD. Kept for the
+narrative.)*
 
 With the 2000 A.D. cluster drained and the defensive arc closed, the
 next open axis was C3 (editor wiring) for the four SID/ root files the
