@@ -25,6 +25,79 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.67] - 2026-05-28
+
+### Added — NP21-G4 packed-wave detector (DRAX cluster checkpoint)
+
+Targets the 4 SID/ root files the v3.5.63 status survey flagged as
+"None wired" for C3 editor data: Colorama, Delicate, Dreams,
+Omniphunk. All four are **Thomas Mogensen (DRAX)** NP21-fork players
+sharing one codebase (verified: identical JMP-vector prelude + shared
+code region; Omniphunk 2022 diverged slightly but keeps the wave-read
+shape).
+
+### Why they were unwired
+
+`find_wave_table_from_player_code` is built for the Stinsen/Beast/
+Angular 2-byte (note_offset, waveform) wave rows. The DRAX/G4 variant
+packs both into ONE byte per wave-program step:
+
+* bits 0-3 (low nibble): note offset
+* bits 6-7 (high 2 bits): waveform select
+
+So the 2-byte heuristic returns no `wave_data_addr` and the editor
+falls to the empty placeholder. (Audio is unaffected — C2 17/17 for
+SID/ root via the embedded-binary path; only C3 wiring was missing.)
+
+### New module: `sidm2/np21_packed_wave_detector.py`
+
+Locates the packed wave table via the read-path signature:
+
+```
+B9 <lo> <hi>   ; LDA wave_table,Y
+A8             ; TAY
+29 0F          ; AND #$0F   (low nibble = note offset)
+...
+98             ; TYA
+29 <mask>      ; AND #<mask> (high bits = waveform select)
+```
+
+RE-verified addresses: Colorama $1BDD, Delicate $1C51, Dreams $1B8A,
+Omniphunk $1B73 (all $C0 waveform mask). Also matches Laxity's own G4
+files (21_G4_demo_tune_*, Ocean_Reloaded) — DRAX forked Laxity's G4
+NewPlayer, so they share the format.
+
+### FALLBACK-only
+
+⚠ The packed-split idiom (`LDA abs,Y; TAY; AND #$0F; … TYA; AND #mask`)
+also appears at the PULSE / FILTER read sites of the 2-byte-format
+players (Beast/Angular), where it would mislocate the wave table
+(returns $1B3F for Beast, whose real wave table is $19AD/$19E7). So
+this detector must only be consulted as a fallback — when
+`extract_all_laxity_tables` returns no `wave_data_addr`. A test pins
+that Beast's match is NOT its real wave table, so a future maintainer
+doesn't wire it as a primary source.
+
+### Status: detector checkpoint, not wired into conversion
+
+Mirrors the v3.5.58 "ship the detector first" pattern. The
+wave-program extractor (decode single-byte stream → SF2 editor rows)
+and the F3 write-back routine (re-pack edited rows → single-byte
+format) are the next steps. Full F1-F5 wiring for the DRAX cluster is
+a multi-day effort; the detector is the first bounded increment.
+RE writeup: `memory/drax-np21-cluster-re.md`.
+
+### Tests
+
+* `pyscript/test_np21_packed_wave_detector.py` (9 tests): 4 DRAX
+  RE-verified addresses, 4 Laxity-G4 matches, Stinsen non-match,
+  Beast fallback-contract pin, 4 synthetic edge cases.
+* Full pytest: 1303 → 1312 (+9).
+* No corpus regression run needed — detector is not wired into the
+  conversion pipeline (zero behavior change).
+
+---
+
 ## [3.5.66] - 2026-05-27
 
 ### Fixed — Code-review sweep (14 of 15 findings)

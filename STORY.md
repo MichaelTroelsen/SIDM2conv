@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.66 (2026-05-27) — 1303 tests, 286-file corpus, **100% audio-verified (286/286 byte-identical via zig64). /code-review sweep — 14 of 15 findings addressed.**
-**Latest chapter:** [v3.5.66 — Code-review sweep](#v3566--code-review-sweep-2026-05-27)
+**Current version:** v3.5.67 (2026-05-28) — 1312 tests, 286-file corpus, **100% audio-verified. DRAX/NP21-G4 packed-wave detector checkpoint (4 "None wired" SID/ root files identified as one cluster).**
+**Latest chapter:** [v3.5.67 — DRAX packed-wave detector checkpoint](#v3567--drax-packed-wave-detector-checkpoint-2026-05-28)
 
 ---
 
@@ -529,6 +529,81 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.67 — DRAX packed-wave detector checkpoint (2026-05-28)
+
+With the 2000 A.D. cluster drained and the defensive arc closed, the
+next open axis was C3 (editor wiring) for the four SID/ root files the
+v3.5.63 status survey flagged as "None wired": Colorama, Delicate,
+Dreams, Omniphunk.
+
+The survey paid off again. All four turned out to be **Thomas Mogensen
+(DRAX)** tunes — and DRAX, it turns out, forked Laxity's G4 NewPlayer.
+The four files share one codebase (identical JMP-vector prelude, shared
+code region; only the 2022 Omniphunk diverged slightly). So RE on one
+transfers to four — far better ROI than the V20 singletons that the
+memory notes correctly flagged as not worth it.
+
+The reason the existing converter couldn't wire them: DRAX's wave
+table is **single-byte packed**. Where Stinsen/Beast/Angular use
+2-byte (note_offset, waveform) rows, DRAX packs both into one byte —
+low nibble is the note offset, high two bits select the waveform. The
+`find_wave_table_from_player_code` heuristic, built for the 2-byte
+layout, returns no `wave_data_addr`, so the editor falls to the empty
+placeholder.
+
+Tracing the player ($D404 write site → backward to the wave read)
+surfaced the read path:
+
+```
+B9 8A 1B    LDA $1B8A,Y    ; wave table, Y = wave-program position
+A8          TAY
+29 0F       AND #$0F       ; low nibble = note offset
+...
+98          TYA
+29 C0       AND #$C0       ; high 2 bits = waveform select
+```
+
+That `LDA abs,Y; TAY; AND #$0F; … TYA; AND #mask` idiom is a portable
+signature. It locates the wave table in all four DRAX files at their
+RE-verified addresses (Colorama $1BDD, Delicate $1C51, Dreams $1B8A,
+Omniphunk $1B73) and in Laxity's own G4 files too.
+
+### The fallback subtlety
+
+The same packed-split idiom appears in the 2-byte-format players
+(Beast/Angular) — but at their PULSE or FILTER read sites, not their
+wave read. So the detector would mislocate if used as the primary
+wave source for those files (it returns $1B3F for Beast, whose real
+wave table is $19AD via the 2-byte detector). The detector is
+therefore fallback-only: consulted just when the 2-byte heuristic
+fails. A test pins that Beast's match is NOT its real wave table, so
+the contract can't silently rot.
+
+### Why ship just the detector
+
+This is the v3.5.58 pattern again: ship the detector as a checkpoint,
+defer the extractor + write-in. Full F1-F5 wiring for the DRAX cluster
+is multi-day — the single-byte wave format needs a decode-to-editor-
+rows extractor AND an F3 write-back routine that re-packs edited rows
+into the single-byte format, plus separate RE for the ch_seq_ptr
+(F1) and instrument/pulse/filter tables (F2/F4/F5). The detector is
+the first bounded, shippable increment, and the RE writeup
+(`memory/drax-np21-cluster-re.md`) makes the rest efficient to pick up.
+
+### Per-criterion delta
+
+| Criterion | v3.5.66 → v3.5.67 |
+|-----------|--------------------|
+| C1 (loads) | 286/286 — unchanged |
+| C2 (audio) | 286/286 — unchanged |
+| C3 (editor) | DRAX cluster wave table now locatable (building block; not yet wired) |
+| C4 (round-trip) | unchanged |
+
+Tests: 1303 → 1312 (+9). No corpus regression run — the detector
+isn't wired into conversion, so behavior is unchanged.
+
+---
 
 ### v3.5.66 — Code-review sweep (2026-05-27)
 

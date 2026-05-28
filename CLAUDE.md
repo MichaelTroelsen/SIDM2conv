@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.5.66** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-27
+**SIDM2 v3.5.67** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-28
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -172,6 +172,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.5.67** (2026-05-28): DRAX/NP21-G4 packed-wave detector checkpoint. The 4 SID/ root "None wired" files (Colorama/Delicate/Dreams/Omniphunk) are Thomas Mogensen (DRAX) NP21-fork players sharing one codebase; their wave table is SINGLE-BYTE packed (low nibble=note offset, high 2 bits=waveform), which `find_wave_table_from_player_code` (built for 2-byte rows) misses. New `sidm2/np21_packed_wave_detector.py` locates it via the read-path signature (`B9 lo hi; TAY; AND #$0F; … TYA; AND #mask`) — RE-verified addresses Colorama $1BDD, Delicate $1C51, Dreams $1B8A, Omniphunk $1B73. FALLBACK-only (the idiom also appears at pulse/filter sites in Beast/Angular). Detector + 9 tests; NOT wired into conversion yet (extractor + F3 write-back are the next steps). See `memory/drax-np21-cluster-re.md`. 1303 → 1312 tests.
 
 **v3.5.66** (2026-05-27): xhigh-effort `/code-review` sweep — 14 of 15 findings fixed. Highlights: narrowed `except Exception:` → `(ImportError, AttributeError)` in low_load + np21_edit_area_builder 2000 A.D. detection (would have caught a future v3.5.63-class regression); added `TableExtractionError` to the laxity narrowed-except tuple (preserves graceful fallback for malformed binaries); strip leading $A0 segment-marker from v2k SF2 sequence body (editor no longer shows spurious "set instrument 0" before each pattern); pat_idx≥128 cap in placeholder + np21_edit_area_builder (prevents silent orderlist aliasing); pattern_ptr table-size bound in extractor; high_load_layout 2000 A.D. detection wired (parallel to low_load); ol_steps + pairs caps now count every iteration; dead negative-transpose clamp removed; stale docstrings updated. New `requirements-dev.txt` lists pyflakes as a real dev dep. Stage 7 tests now also check OUTPUT BYTES (log-message rewording can't hide regressions). 1301 → 1303 tests (+2 net: +3 byte-signature, -1 duplicate).
 
