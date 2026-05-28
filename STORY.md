@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.68 (2026-05-28) — 1312 tests, 286-file corpus, **100% audio-verified. DRAX cluster located (4 "None wired" files); v3.5.67's "wave table" label corrected to "8-byte record table, identity TBD".**
-**Latest chapter:** [v3.5.68 — Correcting the DRAX table mislabel](#v3568--correcting-the-drax-table-mislabel-2026-05-28)
+**Current version:** v3.5.69 (2026-05-28) — 1312 tests, 286-file corpus, **100% audio-verified. DRAX $1B8A resolved as the instrument table (8-byte records indexed by instrument×8).**
+**Latest chapter:** [v3.5.69 — DRAX $1B8A resolved: instrument table](#v3569--drax-1b8a-resolved-instrument-table-2026-05-28)
 
 ---
 
@@ -529,6 +529,69 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.5.69 — DRAX $1B8A resolved: instrument table (2026-05-28)
+
+After the v3.5.68 correction left the table's identity open, this
+release settles it — using exactly the discipline the mislabel taught:
+reach for a proper tool before concluding.
+
+The first hand-trace had chased `$18B9` (the scratch that holds 0/1/2/3
+and feeds Y at a *different* read) and got tangled. A clean py65
+disassembly cut through it: the Y for the `$1B8A,Y` field reads comes
+from `$18C8,X`, and `$18C8` is set to `instrument_number × 8`:
+
+```
+$11A9: CMP #$A0             ; sequence byte >= $A0 = set-instrument cmd
+$11AD: AND #$1F             ; instrument number 0-31
+$11AF: ASL A; ASL A; ASL A  ; × 8
+$11B2: STA $18C8,X
+```
+
+It's set on the set-instrument command and never incremented per
+frame. So the reads index whole 8-byte records — `$1B8A` is the
+**instrument table**, not a wave-program table. The `& $1F` mask caps
+it at 32 instruments (256 bytes), and the next table (a wave/arp
+program) starts right after at ~$1C8F. The `× 8` stride matches the
+data's 8-byte periodicity exactly.
+
+So the detector I shipped in v3.5.67-68 has, all along, been correctly
+locating the DRAX **instrument** table — the F2 anchor, not F3. That's
+genuinely useful: the existing converter's instrument detection was
+confused for these files (the conversion log showed instrument
+wave_ptr/pulse_ptr "exceeding table size" — it found the wrong
+instrument table). The DRAX cluster now has a correct instrument-table
+locator.
+
+This is a docs-and-memory release: the detector's behavior is
+unchanged (same table, same addresses); only the now-verified identity
+label and the supporting evidence were added.
+
+### Two lessons, two releases
+
+The v3.5.67→68→69 micro-arc is a tidy case study in RE discipline:
+
+- v3.5.67: claimed "single-byte wave table" off a partial trace. Wrong.
+- v3.5.68: corrected to "8-byte records, identity TBD" — honest about
+  what wasn't known.
+- v3.5.69: resolved it with a clean disassembler + scratch-evolution
+  trace. Confirmed: instrument table.
+
+The recurring failure mode was hand-decoding 6502 and chasing the
+wrong scratch; the fix both times was a proper tool (py65) and
+confirming the *stride* and *index source* before claiming a format.
+And the checkpoint-first pattern meant the wrong label cost nothing
+downstream — no SF2 output was ever affected.
+
+### Per-criterion delta
+
+| Criterion | v3.5.68 → v3.5.69 |
+|-----------|--------------------|
+| C1-C4 | all unchanged — detector not wired into conversion |
+
+Tests: 1312 (unchanged).
+
+---
 
 ### v3.5.68 — Correcting the DRAX table mislabel (2026-05-28)
 

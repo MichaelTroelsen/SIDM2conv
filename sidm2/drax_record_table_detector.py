@@ -1,24 +1,43 @@
-"""Detect the DRAX/NP21-G4 8-byte structured-record table.
+"""Detect the DRAX/NP21-G4 instrument table (8-byte records).
 
-Supersedes `np21_packed_wave_detector` (v3.5.67), which mislabeled this
-table as a flat single-byte "wave table". v3.5.68 correction: it is a
-table of **8-byte structured records**, not flat single-byte entries.
+History:
+  - v3.5.67 `np21_packed_wave_detector` mislabeled this as a flat
+    single-byte "wave table".
+  - v3.5.68 corrected to "8-byte structured-record table, identity TBD".
+  - v3.5.69 RESOLVED the identity: it is the **INSTRUMENT TABLE**.
 
-# What this is
+# What this is (resolved v3.5.69)
 
-A subset of the NP21-G4 NewPlayer family (Laxity's G4 variant + Thomas
-Mogensen / DRAX's fork) uses a per-voice step/instrument table whose
-records are 8 bytes wide. The player reads several fields of the same
-record with one Y index (Dreams, $1316-$137F):
+The Y index at the field reads comes from `$18C8,X`, which is set to
+`instrument_number * 8`:
 
-    LDA $1B8A,Y    ; +0 field
-    LDA $1B8B,Y    ; +1 field
-    LDA $1B8C,Y    ; +2 field
-    LDA $1B8D,Y    ; +3 field
-    LDA $1B8E,Y    ; +4 field
+    $11A9: CMP #$A0           ; sequence byte ≥ $A0 = "set instrument"
+    $11AD: AND #$1F           ; instrument number 0-31
+    $11AF: ASL A / ASL / ASL  ; × 8
+    $11B2: STA $18C8,X        ; → Y source for the $1B8A reads
 
-The data confirms the 8-byte stride (clean 8-byte periodicity in the
-table region).
+`$18C8` is SET on the set-instrument command and is NEVER incremented
+per-frame (no INC/ADC on it), so the reads index whole 8-byte
+instrument records — this is the instrument table, not a wave-program
+table. The `& $1F` mask caps it at 32 instruments × 8 = 256 bytes;
+the next table (a wave/arp program) begins right after at ~$1C8F.
+
+The player reads several fields of the current instrument's record
+with that Y (Dreams, $1316-$137F):
+
+    LDA $1B8A,Y    ; +0  packed note-offset(low nibble) + ctrl(high bits)
+    LDA $1B8B,Y    ; +1  (AD-ish; AND #$0F << 4 → $18E3)
+    LDA $1B8C,Y    ; +2  command (BEQ skip if zero)
+    LDA $1B8D,Y    ; +3  → $1906/$1909 scratch
+    LDA $1B8E,Y    ; +4  flag bits (AND #$02)
+
+The data confirms the 8-byte stride (clean 8-byte periodicity, ~32
+records before the region ends).
+
+The +0-field decode (note in low nibble, 2-bit selector in high bits)
+is real; the full per-field semantics (bytes 1-7) are only partially
+RE'd — enough to confirm "instrument record", not enough to emit a
+faithful SF2 instrument row yet.
 
 ## The +0 field IS a packed note+waveform byte
 
@@ -40,14 +59,7 @@ is 8-byte records, and the other fields (+1 = AD-ish, +2 = command,
 
 ## Wave table vs instrument table: UNRESOLVED
 
-Whether this 8-byte-record table is the wave-program-step table or the
-instrument table is not yet determined. The field layout (packed
-note+wf at +0, AD-ish at +1, command at +2) is consistent with either.
-Resolving it needs tracing whether Y is a per-frame wave-step position
-or a per-note instrument index. Until resolved, this module only
-claims to LOCATE the table, not to interpret its full semantics.
-
-# Detected addresses (RE-verified locations, semantics TBD)
+# Detected instrument-table addresses (RE-verified)
 
     Colorama  $1BDD    Delicate  $1C51
     Dreams    $1B8A    Omniphunk $1B73
@@ -58,26 +70,33 @@ Also matches Laxity's own G4 files (21_G4_demo_tune_*, Ocean_Reloaded).
 
 ⚠ The `LDA abs,Y; TAY; AND #$0F; … TYA; AND #mask` idiom also appears at
 the PULSE/FILTER read sites of the 2-byte-format players (Beast/Angular),
-where it returns a non-table address (e.g. $1B3F for Beast, whose real
-wave table is $19AD via the 2-byte detector). So this locator must only
-be consulted as a fallback, when the standard 2-byte detector fails.
+where it returns a non-instrument-table address (e.g. $1B3F for Beast).
+So this locator must only be consulted as a fallback — and note its
+real use is the DRAX cluster's F2 (instrument) anchor, NOT F3 (wave);
+the existing 2-byte wave detector already handles Beast/Angular.
 
 # Status
 
-Detection only. No extractor and no wire-in. The exact record format
-(and wave-vs-instrument identity) is still under investigation — see
-`memory/drax-np21-cluster-re.md`. Do NOT build an extractor on this
-until the record semantics are confirmed.
+Detection only. No extractor and no wire-in yet. The table IDENTITY is
+now resolved (instrument table), but the full 8-byte record FIELD
+semantics (bytes 1-7) are only partially RE'd — not yet enough to emit
+a faithful SF2 instrument row. Building the instrument extractor is the
+next step. See `memory/drax-np21-cluster-re.md`.
 """
 from __future__ import annotations
 from typing import NamedTuple, Optional
 
 
 class DraxRecordTableLayout(NamedTuple):
-    """Located DRAX/NP21-G4 8-byte-record table (semantics TBD)."""
-    record_table_addr: int   # absolute address of the 8-byte-record table base
+    """Located DRAX/NP21-G4 INSTRUMENT table (8-byte records).
+
+    `record_table_addr` is the instrument-table base (indexed by
+    instrument_number * 8, up to 32 instruments). Field semantics of
+    each 8-byte record are only partially RE'd — see module docstring.
+    """
+    record_table_addr: int   # absolute address of the instrument-table base
     field0_read_addr: int    # absolute address of the `LDA table,Y` (+0 field) instr
-    field0_high_mask: int    # the high-bit mask applied to the +0 field (e.g. $C0)
+    field0_high_mask: int    # high-bit mask applied to the +0 field (e.g. $C0)
 
 
 def detect_drax_record_table(

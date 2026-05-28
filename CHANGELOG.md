@@ -25,6 +25,62 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.5.69] - 2026-05-28
+
+### Resolved — DRAX $1B8A is the instrument table
+
+v3.5.68 left the $1B8A table's identity open ("8-byte records, wave-vs-
+instrument TBD"). v3.5.69 resolves it: **it's the instrument table.**
+
+Method (py65 clean disassembly + scratch-evolution trace, applying the
+discipline the v3.5.67 mislabel taught):
+
+1. py65-disassembled the read routine (no hand-decode). The Y index for
+   the `$1B8A,Y` / `$1B8C,Y` / `$1B8E,Y` field reads comes from
+   `$18C8,X` (loaded at $12FA) — NOT `$18B9,X`, which is the note/freq
+   index for the $17C9 frequency table. (The first hand-trace chased
+   $18B9 and got confused by its 0/1/2/3 values.)
+2. Traced every `$18C8` reference: it is SET to `instrument*8` and
+   never incremented per-frame:
+   ```
+   $11A9: CMP #$A0             ; sequence byte >= $A0 = set-instrument
+   $11AD: AND #$1F             ; instrument number 0-31
+   $11AF: ASL A; ASL A; ASL A  ; * 8
+   $11B2: STA $18C8,X
+   ```
+   No INC/ADC on $18C8 anywhere. So the reads index whole 8-byte
+   instrument records — instrument table, not a per-frame-stepped wave
+   program.
+3. The `* 8` stride matches the data's 8-byte periodicity. `& $1F`
+   caps at 32 instruments (256 bytes); the next table (a wave/arp
+   program) begins right after at ~$1C8F (Dreams).
+
+### What changed
+
+* `sidm2/drax_record_table_detector.py` docstrings + class doc updated
+  to state the resolved identity (instrument table, F2 anchor) and the
+  evidence. **No code-behavior change** — the locator still finds the
+  same table base at the same addresses (Colorama $1BDD, Delicate
+  $1C51, Dreams $1B8A, Omniphunk $1B73).
+* `memory/drax-np21-cluster-re.md` + `MEMORY.md` updated with the
+  resolution and the "chase the right scratch" lesson.
+
+### What's still open
+
+The per-field semantics of the 8-byte instrument record (bytes 1-7)
+are only partially RE'd — enough to confirm "instrument record", not
+yet enough to emit a faithful SF2 instrument row. Building the
+instrument extractor (and finding the wave/arp program at ~$1C8F) are
+the next steps. The detector remains fallback-only and is NOT wired
+into conversion.
+
+### Tests
+
+* `pyscript/test_drax_record_table_detector.py` (9 tests, unchanged).
+  Full pytest: 1312. No corpus regression — detector not wired in.
+
+---
+
 ## [3.5.68] - 2026-05-28
 
 ### Fixed — Correct the v3.5.67 DRAX table mislabel

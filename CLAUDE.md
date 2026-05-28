@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.5.68** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-28
+**SIDM2 v3.5.69** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-28
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -172,6 +172,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.5.69** (2026-05-28): **DRAX $1B8A identity RESOLVED — it's the instrument table.** Via py65 clean disasm: Y for the $1B8A field reads comes from $18C8,X = `instrument*8` (set on the $A0-$BF set-instrument command at $11A9; `& $1F` → up to 32 instruments; never per-frame incremented). So 8-byte records indexed by instrument → instrument table, not a wave table. (First trace chased the wrong scratch $18B9 = note-index; py65 showed the real source $18C8.) `drax_record_table_detector` docs + memory updated; it's the DRAX F2 (instrument) anchor. Per-field record semantics still partial. Detector behavior unchanged (docs-only release). 1312 tests.
 
 **v3.5.68** (2026-05-28): **Correction of the v3.5.67 mislabel.** Fuller disassembly showed $1B8A (Dreams) is an 8-byte STRUCTURED-RECORD table (same Y reads fields at +0..+4), NOT the flat single-byte wave table v3.5.67 claimed. The +0 field IS a packed note(low nibble)+ctrl(high 2 bits) byte (that decode was real), but the table is 8-byte records, and its wave-vs-instrument identity is unresolved. Renamed `np21_packed_wave_detector` → `drax_record_table_detector` (`detect_drax_record_table`, `DraxRecordTableLayout.record_table_addr`); the locator still correctly finds the table base across all 4 DRAX files. Memory note corrected with the lesson (confirm record stride before claiming a table's format). 1312 tests (unchanged count; module renamed).
 
