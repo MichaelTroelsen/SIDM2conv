@@ -25,6 +25,64 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.6.0] - 2026-05-28
+
+### Milestone — C3 editor-fidelity push + defensive-engineering hardening
+
+A consolidation release marking the v3.5.58 → v3.5.70 arc. No new code
+in 3.6.0 itself — it tags the cumulative state as a milestone. The arc
+broke into four threads:
+
+**1. 2000 A.D. cluster — full editor view (v3.5.58-62)**
+The 1988 2000 A.D. shared player (Echo_Beat + Galax_it_y) went from
+empty-placeholder editor view to fully-labeled F1 patterns: detector
+(58), extractor + Galax_it_y wire-in (59), Echo_Beat via low_load
+path (60), chromatic note labels via freq-LUT decode (61), per-pattern
+transpose decoding (62). Both files now show real, correctly-pitched
+sub-patterns in SF2II's editor.
+
+**2. Defensive engineering — 7 latent bugs found + fixed (v3.5.63-65)**
+A status survey caught an F3 wave-copy import bug silently broken
+since the v3.5.54 refactor (audio gate had masked it). The fix spawned
+a defensive arc: Stage 7 emission regression tests + a narrowed
+exception catch (64), then a pyflakes undefined-name gate that
+surfaced 5 more latent bugs including two more stray `self.` refs from
+the same refactor (65). Pyflakes is now a declared dev dep.
+
+**3. Code-review sweep (v3.5.66)**
+`/code-review xhigh` over the cluster diff → 14 of 15 findings fixed,
+including two more bare-`except Exception` sites that re-introduced the
+v3.5.63 anti-pattern, a TableExtractionError gap, and editor-noise +
+latent-aliasing hardening.
+
+**4. DRAX cluster — located + characterized (v3.5.67-70)**
+The 4 remaining "None wired" SID/ root files (Colorama/Delicate/
+Dreams/Omniphunk) were identified as one Thomas Mogensen (DRAX)
+NP21-fork cluster. The instrument table was located (a packed-field
+read-path signature), its identity resolved (instrument table, not
+wave table — corrected after a v3.5.67 mislabel), and its record base
+(det − 2, AD/SR-first) confirmed across all 6 cluster files via a
+backward dataflow trace from the fixed SID registers. Detector shipped
+as a checkpoint; the instrument extractor is the documented next step.
+
+### State at 3.6.0
+
+* Corpus: 286/286 C2 audio + 286/286 C4 audio + 286/286 C4 metadata,
+  zero convert failures (held throughout the arc).
+* Tests: 1249 → 1314 (+65).
+* No remaining architectural CONV_FAILs; all output byte-identical to
+  source SID under zig64.
+
+### Recurring lesson, recorded across the arc
+
+Every RE increment reinforced the same discipline: confirm before you
+claim, trace from fixed anchors, never generalize a layout from one
+file. The v3.5.67→70 DRAX micro-arc (mislabel → correction →
+resolution → proven generalization) is the clearest case study; the
+defensive arc (v3.5.63→66) is the structural-bug analogue.
+
+---
+
 ## [3.5.70] - 2026-05-28
 
 ### Added — DRAX instrument-table base, confirmed across all 6 files

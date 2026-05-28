@@ -2,8 +2,8 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.5.70 (2026-05-28) — 1314 tests, 286-file corpus, **100% audio-verified. DRAX instrument-table base confirmed (det−2, AD/SR-first) across all 6 cluster files.**
-**Latest chapter:** [v3.5.70 — DRAX instrument-table base, confirmed across all 6 files](#v3570--drax-instrument-table-base-confirmed-across-all-6-files-2026-05-28)
+**Current version:** v3.6.0 (2026-05-28) — 1314 tests, 286-file corpus, **100% audio-verified. Milestone: C3 editor-fidelity push (2000 A.D. cluster) + defensive-engineering hardening + DRAX cluster located.**
+**Latest chapter:** [v3.6.0 — Milestone: C3 push + hardening](#v360--milestone-c3-push--hardening-2026-05-28)
 
 ---
 
@@ -529,6 +529,43 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`.
+
+### v3.6.0 — Milestone: C3 push + hardening (2026-05-28)
+
+A line drawn under the v3.5.58 → v3.5.70 arc. v3.6.0 adds no code — it
+marks the cumulative state. Four threads ran through it:
+
+1. **2000 A.D. cluster → full editor view.** Echo_Beat + Galax_it_y
+   went from empty placeholder to correctly-pitched F1 patterns:
+   detector, extractor, both load-path wire-ins, chromatic labels (freq
+   LUT), and per-pattern transpose. (v3.5.58-62)
+2. **Defensive engineering.** A status survey caught an F3 wave-copy
+   import bug silently dead since the v3.5.54 refactor — the audio gate
+   had masked it. That spawned regression tests, a narrowed exception
+   catch, and a pyflakes gate that found 5 more latent bugs (two of
+   them the same stray-`self.` refactor artifact). 7 latent bugs fixed
+   total. (v3.5.63-65)
+3. **Code-review sweep.** `/code-review xhigh` → 14 of 15 findings
+   fixed, including two more bare-except sites of the exact class the
+   defensive arc was created to prevent. (v3.5.66)
+4. **DRAX cluster located.** The last 4 "None wired" files identified
+   as one Thomas Mogensen NP21-fork cluster; instrument table located,
+   identity resolved (after a mislabel + correction), record base
+   confirmed across all 6 files. Detector shipped; extractor is next.
+   (v3.5.67-70)
+
+**State:** 286/286 corpus audio held throughout; tests 1249 → 1314;
+no architectural CONV_FAILs remain.
+
+**The throughline** is a discipline lesson, learned and re-applied: in
+binary-format RE, confirm before you claim, trace from fixed anchors,
+never generalize a layout from one file. The DRAX micro-arc
+(mislabel → correction → resolution → proven generalization) and the
+defensive arc (bug → targeted fix → generic gate → sweep) are the same
+shape at different altitudes — each tightening the loop between "I
+think this is true" and "I've shown it's true."
+
+---
 
 ### v3.5.70 — DRAX instrument-table base, confirmed across all 6 files (2026-05-28)
 
