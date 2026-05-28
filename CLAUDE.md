@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.6.0** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-28
+**SIDM2 v3.6.1** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-28
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -95,7 +95,7 @@ Auto-selects best driver by player type via `DriverSelector.PLAYER_REGISTRY` (si
 
 **Regenerator 2000 Project Generator** (archived 2026-04-29 → `archive/cleanup_2026-04-29/orphaned_utils/gen_regen2000_project.py`): Generates `.regen2000proj` directly from a PRG binary with NP21 labels pre-applied. Restore from archive if needed.
 
-**zig64 SID Tracer** (`tools/sidm2-sid-trace.exe`): Pre-built cycle-accurate SID register tracer. Usage: `sidm2-sid-trace.exe file.prg [frames] [init_hex] [play_hex]`. Output: CSV on stderr. Source: `C:\Users\mit\Downloads\zig64\src\examples\sidm2_sid_trace.zig`
+**zig64 SID Tracer** (`tools/sidm2-sid-trace.exe`): Pre-built cycle-accurate SID register tracer. Usage: `sidm2-sid-trace.exe file.prg [frames] [init_hex] [play_hex] [subtune]`. Pass init/play (from the PSID header) + subtune for non-Laxity files (e.g. Galway); defaults are $1000/$1003/0. Output: CSV on stderr. Source: `C:\Users\mit\Downloads\zig64\src\examples\sidm2_sid_trace.zig` (rebuild: `zig build`).
 
 ---
 
@@ -172,6 +172,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.6.1** (2026-05-28): **Martin Galway 1st-gen editor extractor — built + validated, NOT yet wired into conversion.** New `sidm2/galway_1stgen_detector.py` (deterministic detector, 3 dispatch variants indirect/indexed/masked, relocation-safe), `galway_1stgen_extractor.py` (channel-PC recovery via init-emulation + subtune sweep, 17/21 corpus; bytecode flattener resolving Call/Ret/For/Next/Jmp/CT/JT with per-file empirically-probed opcode lengths, 36/51 voices desync-free; Vlm+FLoad instrument decode; `galway_to_voice_streams` → SF2 orderlists/sequences), and `galway_trace.py` (universal instrument palette from a cycle-accurate trace). Engine RE'd from Martin Galway's own source (github.com/MartinGalway/C64_music). **Validation unblocked**: rebuilt the zig64 tracer (`tools/sidm2-sid-trace.exe`) to accept `init/play/subtune` so Galway files trace cycle-accurately; instrument extraction confirmed against it (Wizball/Terra_Cresta all played instruments captured). `sid_init_runner.run_init` gained a `subtune` arg. The stub `convert_galway_to_sf2` is NOT yet replaced — final SF2-emission wiring is next. 1314 → 1364 tests (+50). Engine map: `docs/analysis/GALWAY_1STGEN_ENGINE.md`.
 
 **v3.5.70** (2026-05-28): DRAX instrument-table BASE confirmed = detector operand − 2 (byte 0 = AD, byte 1 = SR), verified across all 6 cluster files (4 DRAX + 2 Laxity-G4) via a per-file backward dataflow trace from the fixed `STA $D40x,Y` output writes (robust to the file-specific $18xx scratch addresses). Detector now exposes `instrument_table_addr` (= operand − 2) + `note_ctrl_read_operand`; instr0 AD/SR are all sane SID envelopes. 1312 → 1314 tests (+2). Discipline note: generalized only AFTER per-file confirmation (the earlier one-file generalizations were the v3.5.67/68 mislabels).
 

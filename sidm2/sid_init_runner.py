@@ -32,9 +32,14 @@ from typing import Optional
 
 
 def run_init(c64_data: bytes, sid_la: int, init_addr: int,
-             max_cycles: int = 1_000_000) -> Optional[bytearray]:
+             max_cycles: int = 1_000_000, subtune: int = 0) -> Optional[bytearray]:
     """Run the SID's INIT routine in a 6502 emulator and return
     the 64KB memory image post-init.
+
+    Args:
+        subtune: value passed in A (PSID subtune index, 0-based). Some
+            players leave the per-voice pointers unset / spin forever for
+            certain subtunes, so callers may sweep this.
 
     Returns None if the run errors out (unimplemented opcode, infinite
     loop guard tripped, etc.). The caller should fall back to
@@ -70,7 +75,7 @@ def run_init(c64_data: bytes, sid_la: int, init_addr: int,
     # Set up PC for INIT
     mpu.pc = init_addr
     # Standard PSID convention: A=subtune (0 = first subtune), X/Y=0
-    mpu.a = 0
+    mpu.a = subtune & 0xFF
     mpu.x = 0
     mpu.y = 0
 

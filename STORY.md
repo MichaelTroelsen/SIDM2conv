@@ -2,7 +2,7 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.6.0 (2026-05-28) — 1314 tests, 286-file corpus, **100% audio-verified. Milestone: C3 editor-fidelity push (2000 A.D. cluster) + defensive-engineering hardening + DRAX cluster located.**
+**Current version:** v3.6.1 (2026-05-28) — 1364 tests. **New player family in progress: Martin Galway 1st-gen editor extractor — detector + channel recovery + bytecode flattener + instrument extraction, all validated against a cycle-accurate trace (zig64 tracer rebuilt to support arbitrary init/play/subtune). RE'd from Galway's own source. Not yet wired into conversion.**
 **Latest chapter:** [v3.6.0 — Milestone: C3 push + hardening](#v360--milestone-c3-push--hardening-2026-05-28)
 
 ---
