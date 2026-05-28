@@ -90,8 +90,8 @@ class DriverSelector:
                 'Galway',
             ],
             'driver_file': 'sf2driver11_00.prg',
-            'accuracy': '88-96%',
-            'description': 'Martin Galway — table extraction and injection into Driver 11 template',
+            'accuracy': 'audio 100% (embedded player) + 1st-gen editor view',
+            'description': 'Martin Galway — embed real player for audio + populate editor from the 1st-gen bytecode extractor',
         },
         # --- ADD NEW PLAYERS BELOW ---
         # 'myplayer': {

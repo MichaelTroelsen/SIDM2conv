@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.6.1** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-28
+**SIDM2 v3.6.2** | SID→SF2 Converter | C64 Music Tools | Updated 2026-05-28
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -172,6 +172,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.6.2** (2026-05-28): **Galway conversion WIRED — `convert_galway_to_sf2` now produces a real, working SF2.** Replaced the lossy table-remap stub (`GalwayConversionIntegrator`) with: embed the real player (audio, via `minimal_embed_builder` — now accepts `voice_streams`) + populate the editor view from the 1st-gen extractor (notes + control flow + instruments). Also resolves the PSID embedded load address (Galway rips ship `load=0` with the real load word as the first 2 data bytes — previously unhandled, which broke both embed placement and recovery). Verified: generated `Wizball.sf2` plays cycle-accurately (frame-0 osc1 $1F1F/AD$06/SR$FA/ctrl$41 matches the original) AND carries 1127 notes / 5 instruments in the editor; Terra_Cresta 2800 notes / 9 instruments. Galway driver registry description/accuracy updated. 1364 → 1365 tests (+1 end-to-end). **Galway now works** (audio + 1st-gen editor view); Hubbard is next.
 
 **v3.6.1** (2026-05-28): **Martin Galway 1st-gen editor extractor — built + validated, NOT yet wired into conversion.** New `sidm2/galway_1stgen_detector.py` (deterministic detector, 3 dispatch variants indirect/indexed/masked, relocation-safe), `galway_1stgen_extractor.py` (channel-PC recovery via init-emulation + subtune sweep, 17/21 corpus; bytecode flattener resolving Call/Ret/For/Next/Jmp/CT/JT with per-file empirically-probed opcode lengths, 36/51 voices desync-free; Vlm+FLoad instrument decode; `galway_to_voice_streams` → SF2 orderlists/sequences), and `galway_trace.py` (universal instrument palette from a cycle-accurate trace). Engine RE'd from Martin Galway's own source (github.com/MartinGalway/C64_music). **Validation unblocked**: rebuilt the zig64 tracer (`tools/sidm2-sid-trace.exe`) to accept `init/play/subtune` so Galway files trace cycle-accurately; instrument extraction confirmed against it (Wizball/Terra_Cresta all played instruments captured). `sid_init_runner.run_init` gained a `subtune` arg. The stub `convert_galway_to_sf2` is NOT yet replaced — final SF2-emission wiring is next. 1314 → 1364 tests (+50). Engine map: `docs/analysis/GALWAY_1STGEN_ENGINE.md`.
 

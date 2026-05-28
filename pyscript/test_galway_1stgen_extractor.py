@@ -267,3 +267,21 @@ def test_galway_streams_segment_into_sf2(monkeypatch=None):
         assert 0xFE in ol
     # at least one real note ($01-$6F) made it into the sequences
     assert any(0x01 <= b <= 0x6F for seq in seqs for b in seq)
+
+
+# ---- End-to-end: wired Galway conversion -> SF2 ----
+
+def test_galway_conversion_produces_populated_sf2(tmp_path):
+    # convert_galway_to_sf2 should emit a real SF2 (embedded player for audio
+    # + editor populated from the extractor), replacing the old stub.
+    from sidm2.conversion_pipeline import convert_galway_to_sf2
+    src = os.path.join(SID_DIR, "Wizball.sid")
+    if not os.path.exists(src):
+        pytest.skip("Wizball.sid not present")
+    out = str(tmp_path / "wizball.sf2")
+    assert convert_galway_to_sf2(src, out) is True
+    data = open(out, "rb").read()
+    # PRG load word = minimal-embed LOAD_BASE $0D7E
+    assert data[0] == 0x7E and data[1] == 0x0D
+    # embedded 8320-byte player + populated edit area => substantial file
+    assert len(data) > 15000

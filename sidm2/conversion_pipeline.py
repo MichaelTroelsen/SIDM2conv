@@ -630,7 +630,15 @@ def convert_galway_to_sf2(input_path: str, output_path: str, config: ConversionC
         # Extract C64 music data (after header)
         c64_data = sid_data[header.data_offset:]
 
-        logger.debug(f"  Load address: ${header.load_address:04X}")
+        # Resolve the PSID embedded load address: when the header load field
+        # is 0, the real load address is the first 2 bytes of the data (LE)
+        # and the binary proper starts after them. (Galway rips use this.)
+        sid_la = header.load_address
+        if sid_la == 0 and len(c64_data) >= 2:
+            sid_la = c64_data[0] | (c64_data[1] << 8)
+            c64_data = c64_data[2:]
+
+        logger.debug(f"  Load address: ${sid_la:04X}")
         logger.debug(f"  Init address: ${header.init_address:04X}")
         logger.debug(f"  Play address: ${header.play_address:04X}")
         logger.debug(f"  Music data size: {len(c64_data):,} bytes")
@@ -647,61 +655,57 @@ def convert_galway_to_sf2(input_path: str, output_path: str, config: ConversionC
             logger.warning("File does not appear to be Martin Galway format based on header analysis")
             logger.warning("Attempting conversion anyway...")
 
-        # Perform conversion using GalwayConversionIntegrator
+        # v3.6.2: emit a minimal-embed SF2 — the REAL player embedded for
+        # audio, with the editor view populated from the Galway 1st-gen
+        # extractor (notes + control flow + instrument segment markers).
+        # Replaces the former lossy table-remap (GalwayConversionIntegrator),
+        # which never produced faithful output. Falls back to an empty editor
+        # (audio still embedded) when channel recovery fails.
         try:
-            # Load SF2 Driver 11 template
-            driver11_template_path = Path('G5/drivers/sf2driver_driver11_00.prg')
-            if not driver11_template_path.exists():
-                # Try alternative location
-                driver11_template_path = Path('G5/examples/Driver 11 Test - Arpeggio.sf2')
+            from sidm2.galway_1stgen_extractor import (
+                recover_channels, flatten_all_channels, extract_instruments,
+                galway_to_voice_streams)
+            from sidm2 import minimal_embed_builder
 
-            if not driver11_template_path.exists():
-                logger.error(
-                    f"SF2 Driver 11 template not found at {driver11_template_path}\n"
-                    f"  Suggestion: Verify repository structure is intact\n"
-                    f"  Check: Ensure G5/drivers/ directory exists and contains driver templates\n"
-                    f"  Try: Re-clone the repository if files are missing\n"
-                    f"  See: docs/README.md#installation"
-                )
-                raise sidm2_errors.FileNotFoundError(
-                    path=str(driver11_template_path),
-                    context="SF2 Driver 11 template",
-                    suggestions=[
-                        "Verify repository structure is intact",
-                        "Check that G5/drivers/ directory exists",
-                        "Re-clone the repository if files are missing"
-                    ],
-                    docs_link="README.md#installation"
-                )
+            songs = getattr(header, 'songs', 1) or 1
+            start_song = getattr(header, 'start_song', 1) or 1
+            voice_streams = None
+            instruments = []
+            state = recover_channels(
+                c64_data, sid_la, header.init_address,
+                songs=songs, start_song=start_song)
+            if state is not None:
+                voices, _ = flatten_all_channels(state)
+                instruments = extract_instruments(state.ram, voices)
+                voice_streams = galway_to_voice_streams(voices, instruments)
+                n_notes = sum(1 for s in voice_streams for b in s
+                              if 0x01 <= b <= 0x6F)
+                logger.info(
+                    f"  Galway editor view: {n_notes} notes across 3 voices, "
+                    f"{len(instruments)} instruments (subtune {state.subtune})")
+            else:
+                logger.info(
+                    "  Galway channel recovery failed — embedding player for "
+                    "audio with an empty editor view")
 
-            with open(driver11_template_path, 'rb') as f:
-                sf2_template = f.read()
+            result = minimal_embed_builder.build_minimal_embed_sf2(
+                c64_data, sid_la, header.init_address,
+                header.play_address,
+                psid_copyright=(getattr(header, 'copyright', '') or ''),
+                psid_filepath=input_path,
+                voice_streams=voice_streams)
 
-            logger.debug(f"  Loaded SF2 template: {len(sf2_template)} bytes from {driver11_template_path}")
-
-            integrator = GalwayConversionIntegrator(input_path)
-            sf2_data, confidence = integrator.integrate(
-                c64_data,
-                header.load_address,
-                sf2_template
-            )
-
-            if sf2_data:
-                # Write SF2 file
+            if result is not None and result.sf2_bytes:
                 with open(output_path, 'wb') as f:
-                    f.write(sf2_data)
-
-                logger.info(f"Galway conversion successful!")
+                    f.write(result.sf2_bytes)
+                logger.info("Galway conversion successful!")
                 logger.info(f"  Output: {output_path}")
-                logger.info(f"  Size: {len(sf2_data)} bytes")
-                logger.info(f"  Confidence: {confidence*100:.0f}%")
-                logger.info(f"  Expected accuracy: {confidence*100:.0f}%")
+                logger.info(f"  Size: {len(result.sf2_bytes)} bytes")
                 return True
             else:
                 logger.error(
                     "Galway conversion produced no output\n"
-                    "  Suggestion: Check if the SID file is a valid Martin Galway music\n"
-                    "  Try: Use --driver driver11 for better compatibility\n"
+                    "  Check: Verify the SID file is valid Martin Galway music\n"
                     "  See: docs/guides/TROUBLESHOOTING.md#conversion-failures"
                 )
                 return False
@@ -709,7 +713,6 @@ def convert_galway_to_sf2(input_path: str, output_path: str, config: ConversionC
         except Exception as e:
             logger.error(
                 f"Galway conversion failed: {e}\n"
-                f"  Suggestion: Try a different driver (--driver driver11)\n"
                 f"  Check: Verify SID file is valid Martin Galway music\n"
                 f"  See: docs/guides/TROUBLESHOOTING.md#galway-conversion-errors"
             )

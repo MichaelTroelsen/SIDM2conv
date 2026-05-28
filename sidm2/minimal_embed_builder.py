@@ -94,6 +94,7 @@ def build_minimal_embed_sf2(
     *,
     psid_copyright: str = '',
     psid_filepath: Optional[str] = None,
+    voice_streams: Optional[list] = None,
 ) -> Optional[MinimalEmbedResult]:
     """Build a minimal-embed SF2 file for a non-Laxity SID.
 
@@ -106,6 +107,11 @@ def build_minimal_embed_sf2(
             Empty string skips the detector.
         psid_filepath: Source SID path, attached to ConversionError
             if the high-load architectural check fails.
+        voice_streams: Optional 3 NP21-shape byte streams to populate the
+            editor view (e.g. from the Galway extractor). When None, the
+            editor stays the empty placeholder. Only threaded through the
+            normal-load layout; the sub-$1000 / high-load fallbacks ignore
+            it (they keep the placeholder editor).
 
     Returns:
         MinimalEmbedResult on success; None if c64_data is empty or
@@ -212,10 +218,12 @@ def build_minimal_embed_sf2(
     POST_BINARY_GUARD = 0x100
     sf2_data_base = sid_la + len(c64_data) + POST_BINARY_GUARD
 
-    # Build placeholder Block 5 (3 tracks x 1 pattern) + zero-filled
-    # F1-F5 + Arp/Tempo/HR/Init tables. Shared with the low-load path.
+    # Build Block 5 + zero-filled F1-F5 + Arp/Tempo/HR/Init tables.
+    # When voice_streams is provided (e.g. the Galway extractor), the
+    # orderlists+sequences hold real F1 patterns instead of the placeholder.
     sf2_edit_data, music_data_params = (
-        placeholder_edit_area.build_placeholder_edit_area(sf2_data_base, gen))
+        placeholder_edit_area.build_placeholder_edit_area(
+            sf2_data_base, gen, voice_streams=voice_streams))
     gen.driver_size += POST_BINARY_GUARD + len(sf2_edit_data)
 
     header_bytes = gen.generate_complete_headers(music_data_params)
