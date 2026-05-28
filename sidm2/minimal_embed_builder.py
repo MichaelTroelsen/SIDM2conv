@@ -95,6 +95,8 @@ def build_minimal_embed_sf2(
     psid_copyright: str = '',
     psid_filepath: Optional[str] = None,
     voice_streams: Optional[list] = None,
+    subtune: int = 0,
+    instruments: Optional[list] = None,
 ) -> Optional[MinimalEmbedResult]:
     """Build a minimal-embed SF2 file for a non-Laxity SID.
 
@@ -198,9 +200,12 @@ def build_minimal_embed_sf2(
 
     LOAD_BASE      = 0x0D7E
     HANDLER_BASE   = 0x0F90
+    # INIT handler bakes the subtune into A (`LDA #subtune; JSR init; RTS`,
+    # 6 bytes) so SF2II's editor playback selects the right tune — many
+    # multi-tune rips (e.g. Galway/Wizball) leave subtune 0 silent.
     INIT_HANDLER   = HANDLER_BASE + 0
-    PLAY_HANDLER   = HANDLER_BASE + 4
-    STOP_HANDLER   = HANDLER_BASE + 8
+    PLAY_HANDLER   = HANDLER_BASE + 6
+    STOP_HANDLER   = HANDLER_BASE + 10
 
     from sidm2.sf2_header_generator import SF2HeaderGenerator
     gen = SF2HeaderGenerator(driver_size=len(c64_data) + (sid_la - LOAD_BASE))
@@ -223,7 +228,8 @@ def build_minimal_embed_sf2(
     # orderlists+sequences hold real F1 patterns instead of the placeholder.
     sf2_edit_data, music_data_params = (
         placeholder_edit_area.build_placeholder_edit_area(
-            sf2_data_base, gen, voice_streams=voice_streams))
+            sf2_data_base, gen, voice_streams=voice_streams,
+            instruments=instruments))
     gen.driver_size += POST_BINARY_GUARD + len(sf2_edit_data)
 
     header_bytes = gen.generate_complete_headers(music_data_params)
@@ -242,11 +248,14 @@ def build_minimal_embed_sf2(
     file_data[1] = LOAD_BASE >> 8
     file_data[2:2 + len(header_bytes)] = header_bytes
 
-    # Handler stubs at HANDLER_BASE
+    # Handler stubs at HANDLER_BASE:
+    #   INIT (+0, 6 bytes): LDA #subtune ; JSR init ; RTS
+    #   PLAY (+6, 4 bytes): JSR play ; RTS
+    #   STOP (+10, 6 bytes): LDA #0 ; STA $D418 ; RTS  (silence)
     hnd_off = 2 + (HANDLER_BASE - LOAD_BASE)
-    file_data[hnd_off:hnd_off + 4]      = bytes([0x20, init_addr & 0xFF, init_addr >> 8, 0x60])
-    file_data[hnd_off + 4:hnd_off + 8]  = bytes([0x20, play_addr & 0xFF, play_addr >> 8, 0x60])
-    file_data[hnd_off + 8:hnd_off + 14] = bytes([0xA9, 0x00, 0x8D, 0x18, 0xD4, 0x60])
+    file_data[hnd_off:hnd_off + 6]       = bytes([0xA9, subtune & 0xFF, 0x20, init_addr & 0xFF, init_addr >> 8, 0x60])
+    file_data[hnd_off + 6:hnd_off + 10]  = bytes([0x20, play_addr & 0xFF, play_addr >> 8, 0x60])
+    file_data[hnd_off + 10:hnd_off + 16] = bytes([0xA9, 0x00, 0x8D, 0x18, 0xD4, 0x60])
 
     # Embed SID binary verbatim — NO ch_seq_ptr patch
     np21_off = 2 + gap

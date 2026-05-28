@@ -2,7 +2,7 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.6.2 (2026-05-28) — 1365 tests. **New player family WORKS: Martin Galway 1st-gen. `convert_galway_to_sf2` now emits a real SF2 — the embedded player for cycle-accurate audio + a populated editor view (notes + control flow + instruments) from a bytecode extractor RE'd from Galway's own source. zig64 tracer rebuilt to validate (arbitrary init/play/subtune). Hubbard is next.**
+**Current version:** v3.6.3 (2026-05-28) — 1357 tests. **Martin Galway 1st-gen SID→SF2 works: a real SF2 II load-test confirmed the file loads; v3.6.3 fixed it to PLAY (bake the subtune into the embed INIT handler — SF2 II calls init with A=0, but the music is a later subtune) and SHOW instruments (populate the Driver-11 instrument + wave tables from the extractor). Audio = embedded player; editor = notes + instruments from a bytecode extractor RE'd from Galway's own source. Hubbard is next.**
 **Latest chapter:** [v3.6.0 — Milestone: C3 push + hardening](#v360--milestone-c3-push--hardening-2026-05-28)
 
 ---

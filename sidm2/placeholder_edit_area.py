@@ -154,6 +154,7 @@ def build_placeholder_edit_area(
     sf2_data_base: int,
     gen: "SF2HeaderGenerator",
     voice_streams: Optional[List[bytes]] = None,
+    instruments: Optional[List] = None,
 ) -> Tuple[bytes, dict]:
     """Build the editor-view edit area and populate gen with addresses.
 
@@ -239,12 +240,29 @@ def build_placeholder_edit_area(
     # rather than into high-RAM, so the editor's renderer reads real file
     # bytes (zeros) instead of unpredictable emulated $C000+ contents that
     # may collide with a non-Laxity binary loaded there.
+    # Instruments: 32 rows × 6 cols [AD, SR, HR, Filter, Pulse, Wave]. When
+    # `instruments` is provided (e.g. the Galway extractor), populate AD/SR
+    # per instrument and point its Wave column at a matching wave-table row,
+    # so the editor's F2 view shows real instruments instead of empty rows.
+    # (For embedded-player files this is a display only — audio comes from
+    # the embedded player, not these tables.)
     gen.instr_addr = sf2_data_base + len(edit)
     gen.cmd_addr   = gen.instr_addr + 0x70    # NP21-style bias retained
-    edit.extend(bytes(32 * 6))                # 32 rows × 6 cols Instruments
+    instr_tbl = bytearray(32 * 6)
+    if instruments:
+        for i, ins in enumerate(instruments[:32]):
+            ad = getattr(ins, 'ad', 0) & 0xFF
+            sr = getattr(ins, 'sr', 0) & 0xFF
+            instr_tbl[i * 6:i * 6 + 6] = bytes([ad, sr, 0, 0, 0, i])
+    edit.extend(instr_tbl)
 
     gen.wave_addr  = sf2_data_base + len(edit)
-    edit.extend(bytes(32 * 2))                # 32 rows × 2 cols Wave
+    wave_tbl = bytearray(32 * 2)              # 32 rows × 2 cols [note_off, waveform]
+    if instruments:
+        for i, ins in enumerate(instruments[:32]):
+            ctrl = getattr(ins, 'ctrl', 0) & 0xFF
+            wave_tbl[i * 2:i * 2 + 2] = bytes([0x00, ctrl])
+    edit.extend(wave_tbl)
 
     gen.pulse_addr = sf2_data_base + len(edit)
     edit.extend(bytes(16 * 3))                # 16 rows × 3 cols Pulse

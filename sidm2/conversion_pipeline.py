@@ -693,7 +693,9 @@ def convert_galway_to_sf2(input_path: str, output_path: str, config: ConversionC
                 header.play_address,
                 psid_copyright=(getattr(header, 'copyright', '') or ''),
                 psid_filepath=input_path,
-                voice_streams=voice_streams)
+                voice_streams=voice_streams,
+                subtune=(state.subtune if state is not None else 0),
+                instruments=instruments)
 
             if result is not None and result.sf2_bytes:
                 with open(output_path, 'wb') as f:

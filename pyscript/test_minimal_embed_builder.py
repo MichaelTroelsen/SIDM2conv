@@ -136,7 +136,8 @@ class TestBuildMinimalEmbedSf2(unittest.TestCase):
         self.assertEqual(result.sf2_bytes[off:off + 256], payload)
 
     def test_handler_stubs_at_handler_base(self):
-        """INIT/PLAY/STOP handler stubs are at $0F90."""
+        """INIT/PLAY/STOP handler stubs are at $0F90. INIT bakes the subtune
+        into A (LDA #subtune; JSR init; RTS)."""
         result = minimal_embed_builder.build_minimal_embed_sf2(
             c64_data=bytes(256),
             sid_la=0x1000,
@@ -146,23 +147,37 @@ class TestBuildMinimalEmbedSf2(unittest.TestCase):
         LOAD_BASE = 0x0D7E
         HANDLER_BASE = 0x0F90
         hnd_off = 2 + (HANDLER_BASE - LOAD_BASE)
-        # INIT: JSR $1234; RTS
+        # INIT (+0, 6 bytes): LDA #0; JSR $1234; RTS  (default subtune 0)
         self.assertEqual(
-            bytes(result.sf2_bytes[hnd_off:hnd_off + 4]),
-            bytes([0x20, 0x34, 0x12, 0x60]),
-            "INIT handler should be JSR $1234; RTS"
+            bytes(result.sf2_bytes[hnd_off:hnd_off + 6]),
+            bytes([0xA9, 0x00, 0x20, 0x34, 0x12, 0x60]),
+            "INIT handler should be LDA #0; JSR $1234; RTS"
         )
-        # PLAY: JSR $1238; RTS
+        # PLAY (+6, 4 bytes): JSR $1238; RTS
         self.assertEqual(
-            bytes(result.sf2_bytes[hnd_off + 4:hnd_off + 8]),
+            bytes(result.sf2_bytes[hnd_off + 6:hnd_off + 10]),
             bytes([0x20, 0x38, 0x12, 0x60]),
             "PLAY handler should be JSR $1238; RTS"
         )
-        # STOP: LDA #0; STA $D418; RTS
+        # STOP (+10, 6 bytes): LDA #0; STA $D418; RTS
         self.assertEqual(
-            bytes(result.sf2_bytes[hnd_off + 8:hnd_off + 14]),
+            bytes(result.sf2_bytes[hnd_off + 10:hnd_off + 16]),
             bytes([0xA9, 0x00, 0x8D, 0x18, 0xD4, 0x60]),
             "STOP handler should silence voice volume"
+        )
+
+    def test_init_handler_bakes_subtune(self):
+        """A non-zero subtune is baked into the INIT handler's LDA #imm so
+        SF2II editor playback selects the right tune."""
+        result = minimal_embed_builder.build_minimal_embed_sf2(
+            c64_data=bytes(256), sid_la=0x1000,
+            init_addr=0x1234, play_addr=0x1238, subtune=3,
+        )
+        hnd_off = 2 + (0x0F90 - 0x0D7E)
+        self.assertEqual(
+            bytes(result.sf2_bytes[hnd_off:hnd_off + 6]),
+            bytes([0xA9, 0x03, 0x20, 0x34, 0x12, 0x60]),
+            "INIT handler should bake subtune 3: LDA #3; JSR $1234; RTS"
         )
 
     def test_trampoline_only_when_sid_la_ge_1007(self):
