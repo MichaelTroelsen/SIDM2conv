@@ -272,16 +272,26 @@ def test_galway_streams_segment_into_sf2(monkeypatch=None):
 # ---- End-to-end: wired Galway conversion -> SF2 ----
 
 def test_galway_conversion_produces_populated_sf2(tmp_path):
-    # convert_galway_to_sf2 should emit a real SF2 (embedded player for audio
-    # + editor populated from the extractor), replacing the old stub.
+    # convert_galway_to_sf2 now defaults to the Stage A Driver 11 transpile:
+    # a real, editable Driver 11 SF2 (the driver plays the tables, so edits
+    # affect playback) rather than the display-only embed. Validate it parses
+    # as Driver 11 and carries real notes.
     from sidm2.conversion_pipeline import convert_galway_to_sf2
+    from sidm2.models import SF2DriverInfo
+    from sidm2 import sf2_parser
+    from sidm2.galway_driver11_emitter import unpack_sequence
     src = os.path.join(SID_DIR, "Wizball.sid")
     if not os.path.exists(src):
         pytest.skip("Wizball.sid not present")
     out = str(tmp_path / "wizball.sf2")
     assert convert_galway_to_sf2(src, out) is True
-    data = open(out, "rb").read()
-    # PRG load word = minimal-embed LOAD_BASE $0D7E
-    assert data[0] == 0x7E and data[1] == 0x0D
-    # embedded 8320-byte player + populated edit area => substantial file
-    assert len(data) > 15000
+    data = bytearray(open(out, "rb").read())
+    di = SF2DriverInfo()
+    la = sf2_parser.parse_sf2_blocks(data, di)
+    assert la == 0x0D7E            # Driver 11 "Arpeggio" template load address
+    assert di.track_count == 3
+    # seq0 pointer resolves and the sequence carries real notes ($01-$6F)
+    off = lambda a: a - la + 2
+    s0 = data[off(di.sequence_ptrs_lo)] | (data[off(di.sequence_ptrs_hi)] << 8)
+    seq0 = bytes(data[off(s0):off(s0) + 0x100])
+    assert any(0x01 <= n <= 0x6F for n in unpack_sequence(seq0))

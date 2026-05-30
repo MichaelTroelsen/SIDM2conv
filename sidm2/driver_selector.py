@@ -90,8 +90,8 @@ class DriverSelector:
                 'Galway',
             ],
             'driver_file': 'sf2driver11_00.prg',
-            'accuracy': 'audio 100% (embedded player) + 1st-gen editor view',
-            'description': 'Martin Galway — embed real player for audio + populate editor from the 1st-gen bytecode extractor',
+            'accuracy': 'Stage A: editable Driver 11 transpile (correct notes, approximated timbre); embed fallback',
+            'description': 'Martin Galway 1st-gen — transpile the bytecode-extracted score to an editable, playable Driver 11 SF2 (notes/timing/envelopes correct; pulse/FM/filter modulation approximated — Stage B will add a native Galway driver). Falls back to embedded-player audio when recovery fails.',
         },
         # --- ADD NEW PLAYERS BELOW ---
         # 'myplayer': {
@@ -120,7 +120,7 @@ class DriverSelector:
         'driver11_sf2': '100%',
         'driver11_default': 'Safe default',
         'np20': '70-90%',
-        'galway': '88-96%',
+        'galway': 'notes 100% / timbre approximated (Stage A Driver 11)',
     }
 
     @classmethod

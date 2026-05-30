@@ -674,6 +674,40 @@ def convert_galway_to_sf2(input_path: str, output_path: str, config: ConversionC
             state = recover_channels(
                 c64_data, sid_la, header.init_address,
                 songs=songs, start_song=start_song)
+
+            # Stage A (v3.7+): real Driver 11 transpile — produces an EDITABLE
+            # SF2 whose playback reflects edits (Driver 11 plays the tables),
+            # unlike the embed fallback below (audio from the embedded player,
+            # editor view display-only). Sound is approximated; see
+            # docs/analysis/GALWAY_TO_DRIVER11_MAPPING.md. Falls back to embed
+            # on too-few-notes or any emission error.
+            mode = getattr(config, 'galway_mode', 'driver11') if config else 'driver11'
+            if state is not None and mode != 'embed':
+                try:
+                    from sidm2.galway_to_driver11 import galway_to_driver11
+                    from sidm2.galway_driver11_emitter import emit_driver11_sf2
+                    song = galway_to_driver11(state)
+                    if song.note_count >= 16:
+                        sf2_bytes = emit_driver11_sf2(song)
+                        with open(output_path, 'wb') as f:
+                            f.write(sf2_bytes)
+                        logger.info(
+                            "Galway -> Driver 11 conversion successful "
+                            f"({song.note_count} notes, {len(song.instruments)} "
+                            f"instruments, tick {song.tempo}, subtune {song.subtune})")
+                        logger.info(f"  Output: {output_path} "
+                                    f"({len(sf2_bytes)} bytes)")
+                        return True
+                    logger.info(
+                        f"  Driver 11 transpile yielded only {song.note_count} "
+                        "notes; falling back to embed")
+                except Exception as e:
+                    import traceback as _tb
+                    logger.warning(
+                        f"  Driver 11 transpile failed ({e}); falling back to "
+                        "embedded-player path")
+                    logger.debug(_tb.format_exc())
+
             if state is not None:
                 voices, _ = flatten_all_channels(state)
                 instruments = extract_instruments(state.ram, voices)

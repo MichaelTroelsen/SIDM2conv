@@ -408,6 +408,7 @@ class GalwayInstrument(NamedTuple):
     vadsd: int          # attack/decay-sustain duration seed
     vrd: int            # release duration seed
     waveforms: tuple    # decoded waveform names, e.g. ("pulse",)
+    pinit: int = 0      # PINIT: initial 12-bit pulse width (Dn offset 22)
 
     @property
     def ad(self) -> int:
@@ -428,12 +429,15 @@ def _decode_instrument(ram, ptr: int, vwf_off: int = 0) -> GalwayInstrument:
     vsrv = ram[(base + 2) & 0xFFFF]
     vadsd = ram[(base + 3) & 0xFFFF]
     vrd = ram[(base + 4) & 0xFFFF]
+    # PINIT (initial pulse width) is at Dn offset 22, i.e. 2 bytes before VWF
+    # (Dn offset 24). 12-bit value, little-endian.
+    pinit = (ram[(base - 2) & 0xFFFF] | (ram[(base - 1) & 0xFFFF] << 8)) & 0x0FFF
     waves = tuple(name for bit, name in _WAVEFORMS if vwf & bit)
     return GalwayInstrument(
         ptr=ptr, ctrl=vwf,
         attack=vadv >> 4, decay=vadv & 0x0F,
         sustain=vsrv >> 4, release=vsrv & 0x0F,
-        vadsd=vadsd, vrd=vrd, waveforms=waves,
+        vadsd=vadsd, vrd=vrd, waveforms=waves, pinit=pinit,
     )
 
 

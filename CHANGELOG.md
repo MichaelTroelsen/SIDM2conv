@@ -25,6 +25,145 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.9.0] - 2026-05-30
+
+### Stage B2 — the native Galway driver becomes a FULL standard table-driven SF2 driver
+
+v3.8.0 played Wizball through the from-scratch native driver, but with hand-tuned
+synth shortcuts: a single waveform byte per instrument, the pulse width stashed in
+an instrument column, and empty pulse/filter tables in the editor. The editor
+couldn't render the wave/pulse/filter programs, and editing them did nothing.
+
+v3.9.0 ports the **real Driver-11 table interpreters** into the 6502 driver, so
+all three synth tables are now standard SF2II programs that the editor renders
+**and** the driver plays — edits to a table change playback.
+
+**Delivered:**
+- RE'd the Driver-11 table program formats from SF2II's own docs →
+  `docs/analysis/DRIVER11_TABLE_FORMATS.txt`.
+- `drivers_src/galway/galway_driver.asm`:
+  - `wave_step` — 2-col wave programs (waveform + semitone, `$7f` jump), 1 row/frame.
+  - `pulse_step` — 3-col pulse programs (`8X` set width / `0X` add-per-frame / `7f`
+    jump), replacing the hand-tuned PWM.
+  - `filt_prog_step` — global filter program (`9Y YY RB` set passband/cutoff/res/
+    bitmask, `0X` add-to-cutoff, `7f` jump), started by an instrument flag `$40`;
+    replaces the hand-tuned cutoff sweep.
+  - Per-voice / global program state in scratch RAM `$1800+`.
+- `bin/build_galway_native_song.py` emits **standard-format** wave/pulse/filter
+  tables, real instrument columns (AD/SR/Flags/Filter/Pulse/Wave) with pointers
+  into the programs, lead instruments flagged for the filter, and instrument
+  **names** (id=4 TableText aux — previously passed empty).
+- Each table verified **byte-for-byte against the real Wizball SID**: waveform
+  `$41`; pulse `$800 +8/frame`; filter `D417 $F1` / `D418 $1F` / cutoff `$89→$78`.
+
+**User-confirmed in stock SID Factory II:** all three tables render as editable
+programs, editing a table changes playback, and the instrument list is populated
+with names.
+
+### Fixed
+- **SF2II `Unpack` 1024-event overflow** — long sequences expanded past SF2II's
+  fixed event buffer and corrupted the heap (intermittent crash). Sequences are
+  now capped by unpacked-event count, not just packed byte length.
+- **freqtable / state-region overlap** — driver growth pushed the note→freq table
+  across `$16cc-$1702` (SF2II's per-frame playback-state region), which SF2II
+  then corrupted → crash. Freqtable pinned at `$1710`; a build guard in
+  `assemble()` now fails the build on any spill into the state region or past the
+  edit area.
+
+### Notes
+- 6502 gotchas logged: `STY abs,x` is not a valid addressing mode (use `STA
+  abs,x`); long routines overflow `bpl`/`bne` branch range (use a near branch +
+  `jmp`).
+- Still **not** the default `convert_galway_to_sf2` (lives in the `bin/` build
+  scripts) — wiring it in is the next milestone, along with faithful per-frame FM
+  and full-length songs. 1390 tests pass (81 galway).
+
+---
+
+## [3.8.0] - 2026-05-30
+
+### Stage B milestone — a from-scratch NATIVE Galway SF2 driver that loads in
+### stock SID Factory II and plays a real Galway tune
+
+The second half of the staged Galway plan (`docs/analysis/GALWAY_SF2_DRIVER_PLAN.md`).
+Where Stage A (v3.7.0) transposed Galway onto the existing Driver 11 (correct
+notes, approximated timbre), Stage B authors a **purpose-built Galway driver** —
+6502 code + descriptor that stock, unmodified SID Factory II loads and drives,
+with the song in editable tables so edits affect playback.
+
+**Proven end-to-end this milestone:**
+- **B0** — RE'd the SF2 driver descriptor binary format from SF2II's C++
+  (`docs/analysis/SF2_DRIVER_BINARY_FORMAT.md`); SF2II is data-driven, so a new
+  driver needs no editor changes.
+- **B1** — toolchain (64tass) + a skeleton driver that **loads in stock SF2II**
+  (`drivers_src/galway/galway_driver.asm`, built via `bin/build_galway_driver_full.py`).
+- **B2/B3** — a full SF2-format sequencer in 6502: 3 voices, orderlist chaining,
+  packed sequences, note durations, per-instrument ADSR + waveform, transpose.
+- **B4** — `bin/build_galway_native_song.py`: a real Galway SID → the native
+  driver. **Wizball plays through the from-scratch driver** (15 patterns, parses
+  as driver "Galway", 3 tracks, headless-verified).
+- **B5 (start)** — pulse-width modulation (sweeping pulse) for a more Galway-ish
+  timbre.
+
+**Engineering note:** a "6510 emulation exceeded cycle window" load error (the
+editor emulates the driver each frame until a top-level RTS) was diagnosed
+entirely with the in-repo instrumented build (`bin/SIDFactoryII.exe --skip-intro`
++ parse log + screenshots) and a py65 model of SF2II's suspend mechanism, then
+fixed with a parser anti-runaway guard.
+
+**Status:** the native driver is an in-development artifact (in `drivers_src/` +
+`bin/` build scripts), **not yet the default** `convert_galway_to_sf2` path
+(which remains the Stage A Driver 11 transpile). Faithful timbre (porting
+Galway's real FM/PM `SOUNDn` synth) + full-length songs are the remaining work.
+
+---
+
+## [3.7.0] - 2026-05-29
+
+### Galway → SF2: real EDITABLE + PLAYABLE Driver 11 transpile (Stage A)
+
+Replaces the v3.6.x default for Galway conversion. Previously Galway SIDs
+were converted by **embedding the original player** (audio faithful, but the
+SF2 editor view was display-only — edits didn't affect playback). v3.7.0 adds
+**Stage A** of a staged plan (`docs/analysis/GALWAY_SF2_DRIVER_PLAN.md`): a
+genuine Driver 11 SF2 the editor can edit AND whose playback reflects edits.
+
+**What it does.** The 1st-gen bytecode extractor (notes/instruments, RE'd from
+Galway's own source) feeds a new mapping → emission pipeline:
+- `sidm2/galway_to_driver11.py` — pure-data mapping to a `GalwayDriver11Song`
+  IR. Pitch: Galway's `LoFrq/HiFrq` is the standard PAL table, so note byte =
+  index + 1 (calibrated + asserted per file). Duration: raw stream bytes are
+  already musical frames → row count via a GCD-of-common-durations tempo
+  (`derive_tick`). Instruments: AD/SR/waveform + per-instrument pulse width
+  from `PINIT`.
+- `sidm2/galway_driver11_emitter.py` — overwrites the bundled `Driver 11 Test
+  - Arpeggio.sf2` template's music data. Packed-sequence format ported
+  authoritatively from SF2II source (`datasource_sequence.cpp` Pack/Unpack);
+  column-major tables; long-track segmentation; aux-chain rebuild + `$0FFB`
+  repoint.
+- `convert_galway_to_sf2` now defaults to the transpile (`config.galway_mode`
+  override), falling back to embed on too-few-notes or any emission error.
+
+**Verified.** Wizball/Terra_Cresta/Commando emit real Driver 11 SF2s; the V0
+melody is byte-exact through pack→file→reparse→unpack. **SF2II GUI load-test
+(user-confirmed): opens, shows notes + instruments, plays via F1, notes/pitch/
+timing correct.** Two silent-playback bugs found and fixed during the GUI test:
+pulse voices need a pulse-width program (Galway leads are pulse-heavy — a
+`$000` pulse is silent), and instrument flags/HR defaults.
+
+**Known limits (→ Stage B).** Timbre is approximated: pulse-width *modulation*,
+FM/vibrato/portamento, and filter come from Galway's per-frame synth and can't
+be represented in Driver 11's static tables. Stage B will author a native
+Galway SF2 driver (his real synth) for faithful sound. Also: the emitter
+overwrites the template's standalone-player bootstrap (fine for SF2II editing;
+re-pack to export a standalone PRG).
+
+1357 → 1389 tests (+32: mapping, packer round-trip, emission, pulse-program
+regression guard). Driver registry + `GALWAY_TO_DRIVER11_MAPPING.md` updated;
+the fictional "88-96%" accuracy figure retired.
+
+---
+
 ## [3.6.0] - 2026-05-28
 
 ### Milestone — C3 editor-fidelity push + defensive-engineering hardening
