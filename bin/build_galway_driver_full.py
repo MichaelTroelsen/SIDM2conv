@@ -105,6 +105,8 @@ def gen_includes():
         f.write(f"WAVE  = ${gen.wave_addr:04x}\n")
         f.write(f"PULSE = ${gen.pulse_addr:04x}\n")
         f.write(f"FILTER = ${gen.filter_addr:04x}\n")
+        f.write("FMTAB = $3500\n")        # FM table (RAM; unused by the test pattern)
+        f.write("VFMSTART = $34d0\n")
 
     # freqtable indexed by note byte $00..$6F: [0]=0, [i]=PAL freq of semitone i-1
     with open(os.path.join(GAL, "freqtable.inc"), "w") as f:

@@ -24,10 +24,21 @@ from sidm2.galway_driver11_emitter import segment_track, unpack_sequence
 from sidm2.sid_player import FREQ_TABLE_LO, FREQ_TABLE_HI
 
 
-def gen_includes_song(segs, instrs):
+# FM table lives in the edit area above the standard tables (which end ~$34C6).
+# Col-major 256x3 (lo, hi, dur) + a 3-byte per-voice start index (VFMSTART).
+VFMSTART_ADDR = 0x34D0
+FMTAB_ADDR = 0x3500
+
+
+def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True):
     """Build a multi-pattern native-driver edit area from packed voice patterns.
     segs[v] = list of packed sequences for voice v. Returns (gen, edit, mdp, seq0)
-    and writes drivers_src/galway/layout.inc."""
+    and writes drivers_src/galway/layout.inc.
+
+    fm_data: optional (vfmstart[3], entries) where entries is a list of
+    (offset_lo, offset_hi, dur) FM rows; None -> no FM (all freeze).
+    filter_lead: flag instruments 0/1 to start the filter program (v3.9.0); the
+    trace build sets False (its filter sweep would close on a single long note)."""
     from sidm2.sf2_header_generator import SF2HeaderGenerator
     from sidm2 import placeholder_edit_area
     gen = SF2HeaderGenerator()
@@ -62,7 +73,7 @@ def gen_includes_song(segs, instrs):
         edit[io + 1 * 32 + i] = sr
         # Route the lead voice (V0's instruments 0/1) through one shared filter
         # program at row 0; flag $40 (re)starts it on note-on.
-        if i in (0, 1):
+        if filter_lead and i in (0, 1):
             edit[io + 2 * 32 + i] = 0x40   # col2 flags: start filter program
             edit[io + 3 * 32 + i] = 0x00   # col3: filter-program start row
         # Standard SF2II wave program (2 rows/instrument): [wf,+0][7f,loop].
@@ -94,6 +105,22 @@ def gen_includes_song(segs, instrs):
     edit[fo + 0 * fr + 1], edit[fo + 1 * fr + 1], edit[fo + 2 * fr + 1] = 0x0F, 0xF4, 0xFF
     edit[fo + 0 * fr + 2], edit[fo + 1 * fr + 2], edit[fo + 2 * fr + 2] = 0x7F, 0x00, 0x01
 
+    # FM table region (extend the edit area to cover it). Default all-zero -> every
+    # FMTAB entry has dur 0 = freeze (offset 0) = no FM. Trace build passes fm_data.
+    need = FMTAB_ADDR + 3 * 256 - B.EDIT_BASE
+    if len(edit) < need:
+        edit.extend(bytearray(need - len(edit)))
+    vfo = VFMSTART_ADDR - B.EDIT_BASE
+    fmo = FMTAB_ADDR - B.EDIT_BASE
+    if fm_data is not None:
+        vfmstart, entries = fm_data
+        for v in range(3):
+            edit[vfo + v] = vfmstart[v] & 0xFF
+        for i, (lo, hi, dur) in enumerate(entries[:256]):
+            edit[fmo + 0 * 256 + i] = lo & 0xFF
+            edit[fmo + 1 * 256 + i] = hi & 0xFF
+            edit[fmo + 2 * 256 + i] = dur & 0xFF
+
     with open(os.path.join(ROOT, "drivers_src", "galway", "layout.inc"), "w") as f:
         f.write("; auto-generated (native song) by build_galway_native_song.py\n")
         for v in range(3):
@@ -106,6 +133,8 @@ def gen_includes_song(segs, instrs):
         f.write(f"WAVE  = ${gen.wave_addr:04x}\n")
         f.write(f"PULSE = ${gen.pulse_addr:04x}\n")
         f.write(f"FILTER = ${gen.filter_addr:04x}\n")
+        f.write(f"FMTAB = ${FMTAB_ADDR:04x}\n")
+        f.write(f"VFMSTART = ${VFMSTART_ADDR:04x}\n")
     return gen, bytes(edit), mdp, seq0
 
 

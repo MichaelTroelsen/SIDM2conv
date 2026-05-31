@@ -93,6 +93,18 @@ F_MODE  = $1824          ; SID mode bits for $D418 high nibble (from passband)
 F_ACT   = $1825          ; 1 = a filter program is running
 VIFLAGS = $1826          ; per-voice instrument flags byte (col2) (3)
 VIFILT  = $1829          ; per-voice instrument filter-program start row (3)
+; --- FM offset-list runner (TRACE-DRIVEN pitch program): per-voice frequency
+;     accumulator that walks the FM table (FMTAB col-major 256x3: lo,hi,dur) from
+;     the voice's VFMSTART entry, adding the signed offset to FM_ACC each frame;
+;     freq written = vfreq + FM_ACC. dur 0 = freeze. Reproduces the real
+;     per-frame pitch envelope (slide/vibrato) captured by the trace. ----------
+FM_ON     = $182c        ; per-voice: 1 = FM running (3)
+FM_IDX    = $182f        ; per-voice: current FMTAB entry index (3)
+FM_CNT    = $1832        ; per-voice: frames left on current entry (3)
+FM_ACC_LO = $1835        ; per-voice: accumulated freq offset lo (3)
+FM_ACC_HI = $1838        ; per-voice: accumulated freq offset hi (3)
+FM_OFF_LO = $183b        ; per-voice: current entry offset lo (3)
+FM_OFF_HI = $183e        ; per-voice: current entry offset hi (3)
 
         .include "layout.inc"
 INSTR_AD    = INSTR + 0*32
@@ -148,8 +160,10 @@ iv:     lda #$41
         sta VIPULSE,x
         lda #$fe
         sta VGMASK,x             ; start gated off
-        lda #$ff
-        sta vib_delay,x          ; no vibrato until a note triggers
+        lda #$00
+        sta FM_ON,x              ; FM idle until a note triggers
+        sta FM_ACC_LO,x
+        sta FM_ACC_HI,x
         ; orderlist ptr = OL_x ; then load the first pattern
         lda ollo,x
         sta vol_lo,x
@@ -180,7 +194,7 @@ do_play:
         bne dp_vib
         jsr do_row               ; row tick: step the sequencer
 dp_vib:
-        jsr vib_update           ; per-voice vibrato (frequency modulation)
+        jsr fm_step              ; per-voice FM offset-list -> $D400/1 each frame
         jsr wave_step            ; per-voice wave-program -> $D404 each frame
         rts
 
@@ -424,40 +438,62 @@ fp_write:
         sta $d416
         rts
 
-; --- per-voice vibrato: after a short delay, oscillate each voice's frequency
-;     around its base note (a gentle triangle, +-~64) -------------------------
-vib_update:
+; --- per-voice FM offset-list runner (trace-driven): writes $D400/1 = vfreq +
+;     FM_ACC every frame. For FM-on voices, walk FMTAB from FM_IDX, accumulating
+;     the current signed offset into FM_ACC for its duration; dur 0 = freeze. The
+;     offset list is the real per-frame pitch envelope captured from the player. -
+fm_step:
         ldx #$02
-vu_l:   lda vib_delay,x
-        beq vu_apply
-        dec vib_delay,x
-        jmp vu_next              ; still in delay: leave freq at base
-vu_apply:
-        lda vib_phase,x
-        clc
-        adc #VIBSPD
-        sta vib_phase,x
-        ; triangle magnitude 0..127 from the phase
-        bpl vu_pos
-        eor #$ff                 ; phase >= 128 -> 255-phase
-vu_pos:
-        sec
-        sbc #$40                 ; centre -> signed delta -64..+63
-        sta tmpf                 ; delta (signed byte)
-        ldy sidbase,x
-        clc                      ; freq = base + sign_extend(delta)
-        adc vfreq_lo,x
-        sta SID+0,y
-        lda tmpf
-        bmi vu_neg
+fm_l:
+        lda FM_ON,x
+        bne fm_run
+        jmp fm_write             ; FM off -> freq = vfreq (FM_ACC stays 0)
+fm_run:
+        lda FM_CNT,x
+        beq fm_load              ; current entry expired -> load next
+        jmp fm_add
+fm_load:
+        ldy FM_IDX,x
+        lda FMTAB+512,y          ; dur column
+        bne fm_haveent
+        ; dur 0 -> freeze: offset 0, hold, do not advance
         lda #$00
-        jmp vu_hi
-vu_neg: lda #$ff
-vu_hi:  adc vfreq_hi,x
+        sta FM_OFF_LO,x
+        sta FM_OFF_HI,x
+        lda #$ff
+        sta FM_CNT,x
+        jmp fm_add
+fm_haveent:
+        sta FM_CNT,x
+        lda FMTAB,y              ; lo column = offset lo
+        sta FM_OFF_LO,x
+        lda FMTAB+256,y          ; hi column = offset hi
+        sta FM_OFF_HI,x
+        inc FM_IDX,x
+fm_add:
+        lda FM_ACC_LO,x          ; FM_ACC += signed offset
+        clc
+        adc FM_OFF_LO,x
+        sta FM_ACC_LO,x
+        lda FM_ACC_HI,x
+        adc FM_OFF_HI,x
+        sta FM_ACC_HI,x
+        lda FM_CNT,x
+        beq fm_write
+        dec FM_CNT,x
+fm_write:
+        ldy sidbase,x            ; freq = vfreq + FM_ACC
+        lda vfreq_lo,x
+        clc
+        adc FM_ACC_LO,x
+        sta SID+0,y
+        lda vfreq_hi,x
+        adc FM_ACC_HI,x
         sta SID+1,y
-vu_next:
         dex
-        bpl vu_l
+        bmi fm_done
+        jmp fm_l
+fm_done:
         rts
 do_row:
         lda #TEMPO
@@ -539,11 +575,13 @@ pr_note:
         ldy sidoff
         sta SID+4,y
         jmp advw
+pn_adv:
+        jmp advw                 ; trampoline (advw now out of branch range)
 pn_not_off:
         cmp #$7e
-        beq advw
+        beq pn_adv
         cmp #$70
-        bcs advw
+        bcs pn_adv
         clc                      ; apply transpose
         adc vtrans,x
         asl
@@ -579,6 +617,15 @@ pn_not_off:
         sta VPI,x
         lda #$00
         sta VPC,x                ; force reload on the next frame
+        ; (re)start this voice's FM offset-list at its VFMSTART entry (x = voice)
+        lda VFMSTART,x
+        sta FM_IDX,x
+        lda #$00
+        sta FM_CNT,x             ; force entry load next frame
+        sta FM_ACC_LO,x
+        sta FM_ACC_HI,x
+        lda #$01
+        sta FM_ON,x
         lda VIFLAGS,x            ; flag $40 -> (re)start the filter program
         and #$40
         beq pn_nofilt
