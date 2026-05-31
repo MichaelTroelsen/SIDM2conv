@@ -21,6 +21,8 @@ import build_galway_driver_full as B
 from sidm2.sid_parser import SIDParser
 from sidm2 import galway_trace_extract as T
 from sidm2.sid_player import FREQ_TABLE_LO, FREQ_TABLE_HI
+from sidm2.galway_to_driver11 import D11Row, SF2_GATE_ON, SF2_GATE_OFF
+from sidm2.galway_driver11_emitter import segment_track
 
 TEMPO = 8        # frames per editor row (keeps sequences small; FM is per-frame)
 
@@ -103,8 +105,13 @@ def main():
         fm_all.extend(entries)
         onset_rows = note.onset // TEMPO
         hold_rows = max(1, (note.end - note.onset) // TEMPO)
-        seq = emit_rest(onset_rows) + emit_note(v, nb, hold_rows) + bytes([0x7F])
-        segs[v] = [seq]
+        # Build the voice as D11Rows and pack via segment_track — the SAME packer
+        # the SF2II-playable static build uses (mirrors datasource_sequence.cpp),
+        # so SF2II's editor parses + plays it. (Hand-built packing didn't play.)
+        rows = [D11Row(note=SF2_GATE_OFF) for _ in range(onset_rows)]
+        rows.append(D11Row(note=nb, instrument=v))
+        rows += [D11Row(note=SF2_GATE_ON) for _ in range(hold_rows - 1)]
+        segs[v] = segment_track(rows)
         # instrument v: waveform from the note WITH the gate bit set ($x1) so the
         # wave program gates the voice on; AD/SR Galway lead defaults. Lead voices
         # get the filter flag via gen_includes_song (instr 0/1).

@@ -144,6 +144,7 @@ cleanup_backup_*.txt
 out/
 drivers_src/galway/*.inc
 drivers_src/galway/_*.asm
+tools/_*.prg
 
 # Debug output files
 SF2/*.dump
