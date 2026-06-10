@@ -105,6 +105,12 @@ FM_ACC_LO = $1835        ; per-voice: accumulated freq offset lo (3)
 FM_ACC_HI = $1838        ; per-voice: accumulated freq offset hi (3)
 FM_OFF_LO = $183b        ; per-voice: current entry offset lo (3)
 FM_OFF_HI = $183e        ; per-voice: current entry offset hi (3)
+vbasenote = $1841        ; per-voice: base note index (note+transpose) for the
+                         ; wave-table semitone column; wave_step recomputes
+                         ; vfreq = freqtable[vbasenote + col1] each frame (3)
+VWC     = $1844          ; per-voice: frames left holding the current wave row
+                         ; (col2 of the 3-col wave table; 0/1 = advance every
+                         ; frame, so 2-col-era programs behave identically) (3)
 
         .include "layout.inc"
 INSTR_AD    = INSTR + 0*32
@@ -164,6 +170,8 @@ iv:     lda #$41
         sta FM_ON,x              ; FM idle until a note triggers
         sta FM_ACC_LO,x
         sta FM_ACC_HI,x
+        sta vbasenote,x          ; base note index (set on each note trigger)
+        sta VWC,x                ; wave-row hold expired -> resolve on frame 1
         ; orderlist ptr = OL_x ; then load the first pattern
         lda ollo,x
         sta vol_lo,x
@@ -194,16 +202,24 @@ do_play:
         bne dp_vib
         jsr do_row               ; row tick: step the sequencer
 dp_vib:
-        jsr fm_step              ; per-voice FM offset-list -> $D400/1 each frame
-        jsr wave_step            ; per-voice wave-program -> $D404 each frame
+        jsr wave_step            ; wave-program -> $D404 + recompute vfreq (semitone col)
+        jsr fm_step              ; per-voice freq -> $D400/1 (writes vfreq + FM_ACC=0)
         rts
 
-; --- per-voice wave-program runner: resolve $7f jumps, write $D404 = waveform &
-;     gate-mask, advance one row. (Semitone offset deferred — Galway leads +0.) -
+; --- per-voice wave-program runner (3-col wave table: col0 waveform / $7f jump,
+;     col1 signed semitone offset / jump target, col2 frames to HOLD the row —
+;     0/1 = advance every frame, so 2-col-era programs behave identically).
+;     Each frame: resolve $7f jumps when the hold expires, write $D404 =
+;     waveform & gate-mask, and apply col1 as a signed semitone offset to the
+;     note (vfreq = freqtable[vbasenote + col1]; fm_step then writes it). The
+;     hold column lets a trace-RLE'd pitch envelope (the full Galway
+;     slide/vibrato) fit the 256-row table. col1 $00 => no offset. ------------
 wave_step:
         ldx #$02
 ws_l:
-        ldy VWI,x
+        lda VWC,x
+        bne ws_hold              ; mid-row: keep applying the current row
+        ldy VWI,x                ; hold expired -> resolve the row at VWI
         lda #$08
         sta ws_grd
 ws_read:
@@ -218,17 +234,54 @@ ws_read:
         sty ws_row
         jmp ws_write
 ws_have:
-        sty ws_row               ; remember the resolved row
+        sty ws_row               ; current row (resolved, never $7f)
+        tya
+        sta VWI,x
+        lda WAVE+512,y           ; col2 = frames to hold this row (0 -> 1)
+        bne ws_setc
+        lda #$01
+ws_setc:
+        sta VWC,x
+ws_hold:
+        ldy VWI,x
+        sty ws_row
+        lda WAVE+256,y           ; col1 = signed semitone offset
+        bmi ws_neg               ; bit7 set -> negative offset
+        clc                      ; positive: vbasenote + offset, clamp high to $6f
+        adc vbasenote,x
+        cmp #$70
+        bcc ws_sok
+        lda #$6f
+        bne ws_sok               ; $6f != 0 -> always taken (near branch, no jmp)
+ws_neg:
+        clc                      ; negative: vbasenote + offset, clamp low to $00
+        adc vbasenote,x
+        bcs ws_sok               ; carry set -> no underflow
+        lda #$00
+ws_sok:
+        asl                      ; note index -> freqtable word offset
+        tay
+        lda freqtable,y          ; vfreq = freqtable[clamped note]
+        sta vfreq_lo,x
+        lda freqtable+1,y
+        sta vfreq_hi,x
+        ldy ws_row               ; restore resolved row + reload waveform for $D404
+        lda WAVE,y
         and VGMASK,x             ; apply gate mask (on=$ff, off=$fe)
 ws_write:
         ldy sidbase,x
         sta SID+4,y
-        ldy ws_row               ; advance to the next row for next frame
+        dec VWC,x                ; consume one hold frame; on expiry advance
+        bne ws_nv                ; (still holding -> same row next frame)
+        ldy ws_row
         iny
         tya
         sta VWI,x
+ws_nv:
         dex
-        bpl ws_l
+        bmi ws_done              ; (bpl ws_l now out of branch range)
+        jmp ws_l
+ws_done:
         rts
 
 ; --- per-voice pulse-program runner: walk the standard pulse table (set/add/
@@ -584,6 +637,7 @@ pn_not_off:
         bcs pn_adv
         clc                      ; apply transpose
         adc vtrans,x
+        sta vbasenote,x          ; base note index for the wave-table semitone col
         asl
         tay
         lda freqtable,y
@@ -611,6 +665,8 @@ pn_not_off:
         sta SID+4,y
         lda VIWAVE,x             ; restart the wave program at the instrument's row
         sta VWI,x
+        lda #$00
+        sta VWC,x                ; hold expired -> resolve the new row this frame
         lda #$ff
         sta VGMASK,x             ; gate on
         lda VIPULSE,x            ; restart the pulse program too

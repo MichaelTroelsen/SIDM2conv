@@ -30,7 +30,8 @@ VFMSTART_ADDR = 0x34D0
 FMTAB_ADDR = 0x3500
 
 
-def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True):
+def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
+                      wave_programs=None):
     """Build a multi-pattern native-driver edit area from packed voice patterns.
     segs[v] = list of packed sequences for voice v. Returns (gen, edit, mdp, seq0)
     and writes drivers_src/galway/layout.inc.
@@ -38,7 +39,16 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True):
     fm_data: optional (vfmstart[3], entries) where entries is a list of
     (offset_lo, offset_hi, dur) FM rows; None -> no FM (all freeze).
     filter_lead: flag instruments 0/1 to start the filter program (v3.9.0); the
-    trace build sets False (its filter sweep would close on a single long note)."""
+    trace build sets False (its filter sweep would close on a single long note).
+    wave_programs: optional list (indexed by instrument) of custom wave programs;
+    each entry is a list of (col0_waveform, col1_semitone, col2_hold) rows
+    (2-tuples accepted, hold=0), or None for the default 2-row [wf,+0][7f,loop].
+    col1 of a $7f (jump) row is the loop target RELATIVE to the program's start;
+    col1 of any other row is the signed semitone offset the driver applies and
+    col2 the frames to hold the row (0/1 = every frame) — see wave_step. Programs
+    are laid out sequentially into the 256-row WAVE table; the trace build uses
+    this to carry the RLE'd per-frame pitch envelope (the real Galway
+    slide/vibrato) in SF2II-native, editor-loaded, editable form."""
     from sidm2.sf2_header_generator import SF2HeaderGenerator
     from sidm2 import placeholder_edit_area
     gen = SF2HeaderGenerator()
@@ -61,11 +71,13 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True):
             o = (seq0 + p * 0x100) - B.EDIT_BASE
             edit[o:o + len(pk)] = pk
         off += len(segs[v])
-    # column-major instruments + wave table
+    # column-major instruments + wave table. Wave/pulse/filter live in the
+    # full-stride relocated region (see B.relocate_driver_tables) — the
+    # placeholder packs them only a few rows apart, which a 256-byte column
+    # stride would read straight through.
     io = gen.instr_addr - B.EDIT_BASE
-    wo = gen.wave_addr - B.EDIT_BASE
-    po = gen.pulse_addr - B.EDIT_BASE
-    fo = gen.filter_addr - B.EDIT_BASE
+    wo, po, fo = B.relocate_driver_tables(gen, edit)
+    wave_cursor = 0                 # sequential WAVE-row allocator
     for i, ins in enumerate(instrs[:32]):
         ad, sr, wf = ins[0], ins[1], ins[2]
         pw = (ins[3] if len(ins) > 3 else 0x08) & 0x0F
@@ -76,14 +88,28 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True):
         if filter_lead and i in (0, 1):
             edit[io + 2 * 32 + i] = 0x40   # col2 flags: start filter program
             edit[io + 3 * 32 + i] = 0x00   # col3: filter-program start row
-        # Standard SF2II wave program (2 rows/instrument): [wf,+0][7f,loop].
-        # Instrument col5 = the program's start row; the driver runs it.
-        wrow = 2 * i
-        edit[io + 5 * 32 + i] = wrow
-        edit[wo + 0 * 256 + wrow] = wf or 0x41     # col0 waveform
-        edit[wo + 1 * 256 + wrow] = 0x00           # col1 +0 semitones
-        edit[wo + 0 * 256 + wrow + 1] = 0x7f       # col0 jump
-        edit[wo + 1 * 256 + wrow + 1] = wrow       # col1 -> loop on waveform
+        # Wave program. Default = 2-row [wf,+0][7f,loop]; custom = RLE'd
+        # semitone program (trace build). Instrument col5 = the program start row.
+        wp = None
+        if wave_programs is not None and i < len(wave_programs):
+            wp = wave_programs[i]
+        if wp is None:
+            wp = [(wf or 0x41, 0x00, 0x00), (0x7f, 0, 0)]   # loop -> own start
+        start = wave_cursor
+        for r, row in enumerate(wp):
+            c0, c1 = row[0], row[1]
+            c2 = row[2] if len(row) > 2 else 0
+            edit[wo + 0 * 256 + start + r] = c0 & 0xFF
+            # $7f jump row: col1 = loop target (relative-to-start -> absolute);
+            # any other row: col1 = signed semitone offset (used as-is).
+            edit[wo + 1 * 256 + start + r] = ((start + c1) if c0 == 0x7f else c1) & 0xFF
+            edit[wo + 2 * 256 + start + r] = c2 & 0xFF
+        edit[io + 5 * 32 + i] = start & 0xFF
+        wave_cursor += len(wp)
+        if wave_cursor > 256:
+            raise ValueError(
+                f"WAVE table overflow: {wave_cursor} rows > 256 "
+                f"(reduce per-voice envelope length / loop sooner)")
         # Standard SF2II pulse program (3 rows): set width (pw<<8), then ramp
         # +$008/frame (Galway's measured Wizball PWM), loop. Col4 -> start row.
         prow = 4 * i

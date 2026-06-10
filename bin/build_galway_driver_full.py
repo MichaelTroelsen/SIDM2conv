@@ -58,24 +58,56 @@ def find_64tass():
     raise FileNotFoundError("64tass not found")
 
 
+# The driver reads wave/pulse/filter with a 256-byte column stride (and the
+# wave table now has 3 columns: waveform, semitone, hold-frames), but the
+# placeholder edit area packs those tables only a few rows apart — stride
+# reads would land in adjacent data. Relocate all three into a dedicated
+# region above FMTAB ($3500-$37FF) with full 256-row column spacing and
+# repoint gen (-> Block 3 descriptor) + the layout. SF2II copies each
+# DECLARED table by address, so it loads them anywhere.
+WAVE_RELOC = 0x3800
+
+
+def relocate_driver_tables(gen, edit):
+    """Repoint gen's wave/pulse/filter at the full-stride region and extend
+    `edit` (a bytearray) to cover it. Returns (wo, po, fo) edit offsets."""
+    gen.wave_columns = 3
+    gen.wave_addr = WAVE_RELOC                    # cols $3800/$3900/$3A00
+    gen.pulse_addr = gen.wave_addr + 3 * 256      # cols $3B00/$3C00/$3D00
+    gen.filter_addr = gen.pulse_addr + 3 * 256    # cols $3E00/$3F00/$4000
+    end = gen.filter_addr + 3 * 256 - EDIT_BASE
+    if len(edit) < end:
+        edit.extend(bytearray(end - len(edit)))
+    return (gen.wave_addr - EDIT_BASE, gen.pulse_addr - EDIT_BASE,
+            gen.filter_addr - EDIT_BASE)
+
+
 def _inject_test_data(edit, gen, mdp):
     """Overwrite the placeholder edit area with 3 packed voice sequences + a
-    column-major instrument table + wave table the native driver reads."""
+    column-major instrument table + wave/pulse programs the native driver reads."""
     seq0 = mdp['seq00_addr']
     for v in range(3):
         so = (seq0 + v * SEQ_STRIDE) - EDIT_BASE
         edit[so:so + len(V_SEQ[v])] = V_SEQ[v]
-    # column-major instruments (6 cols x 32 rows): col0=AD,col1=SR,col5=wave_idx
+    # column-major instruments (6 cols x 32 rows): col0=AD,col1=SR,col5=wave row
     io = gen.instr_addr - EDIT_BASE
-    wo = gen.wave_addr - EDIT_BASE
+    wo, po, fo = relocate_driver_tables(gen, edit)
     for i, ins in enumerate(TEST_INSTR):
         ad, sr, wf = ins[0], ins[1], ins[2]
-        pw = ins[3] if len(ins) > 3 else 0x08
+        pw = (ins[3] if len(ins) > 3 else 0x08) & 0x0F
         edit[io + 0 * 32 + i] = ad
         edit[io + 1 * 32 + i] = sr
-        edit[io + 4 * 32 + i] = pw        # pulse-width base (hi nibble)
-        edit[io + 5 * 32 + i] = i         # wave-table row index = instrument i
-        edit[wo + i] = wf                 # wave col0 row i = waveform byte
+        edit[io + 4 * 32 + i] = 4 * i     # pulse-program start row
+        edit[io + 5 * 32 + i] = 2 * i     # wave-program start row
+        # 2-row wave program: [wf, +0 semitones, every frame][$7f -> loop]
+        edit[wo + 0 * 256 + 2 * i] = wf
+        edit[wo + 0 * 256 + 2 * i + 1] = 0x7f
+        edit[wo + 1 * 256 + 2 * i + 1] = 2 * i
+        # 2-row pulse program: set width (pw<<8) for 1 frame, freeze (self-jump)
+        edit[po + 0 * 256 + 4 * i] = 0x80 | pw
+        edit[po + 2 * 256 + 4 * i] = 0x01
+        edit[po + 0 * 256 + 4 * i + 1] = 0x7f
+        edit[po + 2 * 256 + 4 * i + 1] = 4 * i + 1
 
 
 def gen_includes():

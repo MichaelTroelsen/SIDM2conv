@@ -177,6 +177,10 @@ class SF2HeaderGenerator:
         # `extract_all_laxity_tables()` and set these before generating
         # headers; if left at defaults, behaviour matches pre-2026-05-06.
         self.wave_addr = 0x1942        # Wave table
+        # Wave-table column count in the Block 3 descriptor. 2 = standard
+        # Driver 11 format. The native Galway driver declares 3 (col2 = frames
+        # to hold the row) so trace-RLE'd pitch envelopes fit 256 rows.
+        self.wave_columns = 2
         self.pulse_addr = 0x1A3B       # Pulse table (row-major, 64x4)
         self.filter_addr = 0x1989      # tbl_filter_seq
         self.instr_addr = 0x1A6B       # Instruments (column-major, 32x8 — emitted as 6 cols)
@@ -376,7 +380,7 @@ class SF2HeaderGenerator:
             ),
             TableDescriptor(
                 name="Wave", table_id=2, address=self.wave_addr,
-                columns=2, rows=256, visible_rows=16,
+                columns=self.wave_columns, rows=256, visible_rows=16,
                 table_type=0x00, layout=0x01, properties=0x01,
                 ins_del_rule=0x00, enter_rule=0x00, color_rule=0x00,
                 text_field_size=0,
