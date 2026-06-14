@@ -3,10 +3,11 @@
 Replaces the static-flattener song data (which invents phantom notes + mistimes
 rests) with the REAL player's cycle-accurate output: per voice, every note gated
 at its true onset row, carrying its real pitch envelope (the Galway slide/
-vibrato) as an SF2-native WAVE-table program — RLE'd to (waveform, semitone,
-hold-frames) rows with the settled tail looped, so a full-length song's
-envelopes fit the 256-row table AND stay editor-visible/editable in SF2II.
-Notes sharing a (waveform, envelope) shape share one instrument + program.
+vibrato) as a STANDARD 2-column SF2II WAVE-table program — one (waveform,
+semitone) row per frame with the settled tail looped, so a full-length song's
+envelopes fit the 256-row table AND render + edit + PLAY in stock SF2II (a 3rd
+column silenced playback). Notes sharing a (waveform, envelope) shape share one
+instrument + program.
 
 Usage:  py -3 bin/build_galway_trace_song.py [SID/Galway_Martin/Wizball.sid] [frames]
 Verifies headless that the driver's per-frame note matches the emitted program
@@ -58,10 +59,11 @@ def semitone_envelope(note):
 def _best_loop_split(seq, maxp=128):
     """Split `seq` into (body, loop): Galway sustains settle into vibrato/
     arpeggio cycles, so find the tail period p (<= maxp, >=2 clean periods at
-    the end) and strip ALL trailing whole periods — the loop replays them. The
-    smallest matching p is NOT enough (a trailing run of equal values matches
-    p=1 and hides the real cycle), so pick the p minimising emitted RLE rows.
-    Falls back to looping the final value: graceful, in-tune degradation."""
+    the end) and strip ALL trailing whole periods — the loop replays them. One
+    wave row per frame (no RLE — SF2II's Wave table has no hold column), so the
+    cost is just body+loop length; pick the p minimising it. A genuinely
+    constant tail matches p=1 (loop a single value); a vibrato tail's smallest
+    matching p IS its real period. Falls back to looping the final value."""
     n = len(seq)
     best_rows, best = None, (seq[:n - 1], seq[n - 1:])
     for p in range(1, min(maxp, n // 2) + 1):
@@ -70,36 +72,25 @@ def _best_loop_split(seq, maxp=128):
         k = n - p
         while k - p >= 0 and seq[k - p:k] == seq[k:k + p]:
             k -= p
-        rows = len(_rle(seq[:k])) + len(_rle(seq[k:k + p]))
+        rows = k + p                                 # body + loop, one row/frame
         if best_rows is None or rows < best_rows:
             best_rows, best = rows, (seq[:k], seq[k:k + p])
     return best
 
 
-def _rle(seq, max_run=255):
-    """(value, run) pairs, runs capped at 255 (the hold column is one byte)."""
-    out, i = [], 0
-    while i < len(seq):
-        j = i
-        while j < len(seq) and seq[j] == seq[i] and j - i < max_run:
-            j += 1
-        out.append((seq[i], j - i))
-        i = j
-    return out
-
-
 def wave_program(note):
-    """Build a 3-col wave program [(waveform, semitone, hold-frames)... ,
-    ($7f, loop_rel, 0)] carrying the note's full stepped pitch envelope:
-    RLE'd body at exact per-frame timing + the settled periodic tail looped.
-    col1 of the $7f row is the loop target RELATIVE to the program start."""
+    """Build a standard 2-col wave program [(waveform, semitone)... ,
+    ($7f, loop_rel)] carrying the note's full stepped pitch envelope: ONE row
+    per frame for the body + the settled periodic tail looped. col1 of the $7f
+    row is the loop target RELATIVE to the program start. 2 columns = SF2II's
+    native Wave layout, so the program renders + edits + PLAYS in stock SF2II."""
     nb, sem = semitone_envelope(note)
     wfgate = (note.waveform & 0xF0) | 0x01           # waveform + gate bit
     body, loop = _best_loop_split(sem)
-    rows = [(wfgate, s & 0xFF, run) for s, run in _rle(body)]
+    rows = [(wfgate, s & 0xFF) for s in body]
     loop_rel = len(rows)
-    rows += [(wfgate, s & 0xFF, run) for s, run in _rle(loop)]
-    rows.append((0x7f, loop_rel, 0))
+    rows += [(wfgate, s & 0xFF) for s in loop]
+    rows.append((0x7f, loop_rel))
     return nb, rows
 
 
@@ -114,7 +105,7 @@ def trim_program(rows, max_rows):
     if keep < 0:                                     # loop alone too big
         loop, body, keep = loop[:max_rows - 1], [], 0
     body = body[:keep]
-    return body + loop + [(0x7f, len(body), 0)]
+    return body + loop + [(0x7f, len(body))]
 
 
 def fit_budget(programs, budget=WAVE_BUDGET):
@@ -133,23 +124,19 @@ def fit_budget(programs, budget=WAVE_BUDGET):
 
 
 def reconstruct_program(rows, nb, n_frames):
-    """Replay a wave program with the driver's exact semantics (resolve $7f
-    jumps, hold each row col2 frames with 0 -> 1, clamp note to [0,$6f]) to its
-    per-frame note BYTE, for the headless note-index-space check."""
-    out, r, cnt, cur = [], 0, 0, 0
+    """Replay a 2-col wave program with the driver's exact semantics (resolve
+    $7f jumps, one row per frame, clamp note to [0,$6f]) to its per-frame note
+    BYTE, for the headless note-index-space check."""
+    out, r = [], 0
     for _ in range(n_frames):
-        if cnt == 0:
-            guard = 8
-            while rows[r][0] == 0x7f and guard:
-                r = rows[r][1]
-                guard -= 1
-            cur = rows[r][1]
-            cnt = max(1, rows[r][2] if len(rows[r]) > 2 else 1)
-        s = cur - 256 if cur >= 0x80 else cur
+        guard = 8
+        while rows[r][0] == 0x7f and guard:
+            r = rows[r][1]
+            guard -= 1
+        s = rows[r][1]
+        s = s - 256 if s >= 0x80 else s
         out.append(max(0, min(0x6f, nb + s)))
-        cnt -= 1
-        if cnt == 0:
-            r += 1
+        r += 1
     return out
 
 

@@ -178,8 +178,9 @@ class SF2HeaderGenerator:
         # headers; if left at defaults, behaviour matches pre-2026-05-06.
         self.wave_addr = 0x1942        # Wave table
         # Wave-table column count in the Block 3 descriptor. 2 = standard
-        # Driver 11 format. The native Galway driver declares 3 (col2 = frames
-        # to hold the row) so trace-RLE'd pitch envelopes fit 256 rows.
+        # Driver 11 / SF2II Wave format (col0 waveform, col1 semitone). The
+        # native Galway driver keeps this at 2 so the table renders + edits +
+        # PLAYS in stock SF2II (a 3rd column silenced playback).
         self.wave_columns = 2
         self.pulse_addr = 0x1A3B       # Pulse table (row-major, 64x4)
         self.filter_addr = 0x1989      # tbl_filter_seq

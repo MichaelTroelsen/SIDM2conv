@@ -108,9 +108,6 @@ FM_OFF_HI = $183e        ; per-voice: current entry offset hi (3)
 vbasenote = $1841        ; per-voice: base note index (note+transpose) for the
                          ; wave-table semitone column; wave_step recomputes
                          ; vfreq = freqtable[vbasenote + col1] each frame (3)
-VWC     = $1844          ; per-voice: frames left holding the current wave row
-                         ; (col2 of the 3-col wave table; 0/1 = advance every
-                         ; frame, so 2-col-era programs behave identically) (3)
 
         .include "layout.inc"
 INSTR_AD    = INSTR + 0*32
@@ -171,7 +168,6 @@ iv:     lda #$41
         sta FM_ACC_LO,x
         sta FM_ACC_HI,x
         sta vbasenote,x          ; base note index (set on each note trigger)
-        sta VWC,x                ; wave-row hold expired -> resolve on frame 1
         ; orderlist ptr = OL_x ; then load the first pattern
         lda ollo,x
         sta vol_lo,x
@@ -206,20 +202,19 @@ dp_vib:
         jsr fm_step              ; per-voice freq -> $D400/1 (writes vfreq + FM_ACC=0)
         rts
 
-; --- per-voice wave-program runner (3-col wave table: col0 waveform / $7f jump,
-;     col1 signed semitone offset / jump target, col2 frames to HOLD the row —
-;     0/1 = advance every frame, so 2-col-era programs behave identically).
-;     Each frame: resolve $7f jumps when the hold expires, write $D404 =
-;     waveform & gate-mask, and apply col1 as a signed semitone offset to the
-;     note (vfreq = freqtable[vbasenote + col1]; fm_step then writes it). The
-;     hold column lets a trace-RLE'd pitch envelope (the full Galway
-;     slide/vibrato) fit the 256-row table. col1 $00 => no offset. ------------
+; --- per-voice wave-program runner (standard 2-col wave table, like Driver 11:
+;     col0 = waveform (or $7f jump marker), col1 = signed semitone offset (or,
+;     on a $7f row, the jump-target row). ONE row per frame. Each frame: resolve
+;     $7f jumps, write $D404 = waveform & gate-mask, and apply col1 as a signed
+;     semitone offset to the note (vfreq = freqtable[vbasenote + col1], clamped
+;     to [0,$6f]); fm_step then writes vfreq. col1 $00 => no offset. The trace
+;     build emits the full per-frame Galway pitch envelope this way — one row
+;     per frame with the settled tail looped — keeping the wave table in SF2II's
+;     native 2-column format so it renders + edits + PLAYS in stock SF2II. -----
 wave_step:
         ldx #$02
 ws_l:
-        lda VWC,x
-        bne ws_hold              ; mid-row: keep applying the current row
-        ldy VWI,x                ; hold expired -> resolve the row at VWI
+        ldy VWI,x                ; current row
         lda #$08
         sta ws_grd
 ws_read:
@@ -234,17 +229,7 @@ ws_read:
         sty ws_row
         jmp ws_write
 ws_have:
-        sty ws_row               ; current row (resolved, never $7f)
-        tya
-        sta VWI,x
-        lda WAVE+512,y           ; col2 = frames to hold this row (0 -> 1)
-        bne ws_setc
-        lda #$01
-ws_setc:
-        sta VWC,x
-ws_hold:
-        ldy VWI,x
-        sty ws_row
+        sty ws_row               ; resolved row (never $7f)
         lda WAVE+256,y           ; col1 = signed semitone offset
         bmi ws_neg               ; bit7 set -> negative offset
         clc                      ; positive: vbasenote + offset, clamp high to $6f
@@ -271,13 +256,10 @@ ws_sok:
 ws_write:
         ldy sidbase,x
         sta SID+4,y
-        dec VWC,x                ; consume one hold frame; on expiry advance
-        bne ws_nv                ; (still holding -> same row next frame)
-        ldy ws_row
+        ldy ws_row               ; advance one row for next frame
         iny
         tya
         sta VWI,x
-ws_nv:
         dex
         bmi ws_done              ; (bpl ws_l now out of branch range)
         jmp ws_l
@@ -600,22 +582,28 @@ pr_go:
         sta wptr+1
         jmp pr_read
 pr_cmd:
+        ; Classify by the HIGH BIT first ($00-$7f = note, $80+ = cmd/instr/dur).
+        ; SF2II's 6510 emulator computes CMP's carry from bit7 of (A-operand)
+        ; rather than (A>=operand), so a wide compare like `cmp #$c0` mis-sets
+        ; carry when the operand is far above A (e.g. note $19 vs $c0) and the
+        ; note is misread as a command -> silent playback. Splitting on $80
+        ; first keeps every compare within +-$7f, where its carry is correct.
+        cmp #$80
+        bcc pr_note              ; $00-$7f -> note
         cmp #$c0
-        bcc pr_instr
-        jsr advw                 ; command byte: skip
-        jmp pr_read
-pr_instr:
+        bcs pr_skipcmd           ; $c0-$ff -> command byte: skip
         cmp #$a0
-        bcc pr_dur
-        and #$1f
-        jsr set_instr_v
+        bcs pr_setinst           ; $a0-$bf -> set instrument
+        and #$0f                 ; $80-$9f -> duration
+        sta pending_dur
         jsr advw
         jmp pr_read
-pr_dur:
-        cmp #$80
-        bcc pr_note
-        and #$0f
-        sta pending_dur
+pr_skipcmd:
+        jsr advw
+        jmp pr_read
+pr_setinst:
+        and #$1f
+        jsr set_instr_v
         jsr advw
         jmp pr_read
 pr_note:
@@ -665,8 +653,6 @@ pn_not_off:
         sta SID+4,y
         lda VIWAVE,x             ; restart the wave program at the instrument's row
         sta VWI,x
-        lda #$00
-        sta VWC,x                ; hold expired -> resolve the new row this frame
         lda #$ff
         sta VGMASK,x             ; gate on
         lda VIPULSE,x            ; restart the pulse program too

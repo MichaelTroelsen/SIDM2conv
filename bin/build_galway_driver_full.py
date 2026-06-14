@@ -58,23 +58,26 @@ def find_64tass():
     raise FileNotFoundError("64tass not found")
 
 
-# The driver reads wave/pulse/filter with a 256-byte column stride (and the
-# wave table now has 3 columns: waveform, semitone, hold-frames), but the
+# The driver reads wave/pulse/filter with a 256-byte column stride, but the
 # placeholder edit area packs those tables only a few rows apart — stride
 # reads would land in adjacent data. Relocate all three into a dedicated
 # region above FMTAB ($3500-$37FF) with full 256-row column spacing and
 # repoint gen (-> Block 3 descriptor) + the layout. SF2II copies each
 # DECLARED table by address, so it loads them anywhere.
+# Wave is a STANDARD 2-column table (waveform, semitone) — like Driver 11 —
+# so it renders + edits + PLAYS in stock SF2II (a 3rd column is non-standard
+# for the Wave table and silenced playback). Pulse/Filter are 3-column
+# (their standard SF2II layout).
 WAVE_RELOC = 0x3800
 
 
 def relocate_driver_tables(gen, edit):
     """Repoint gen's wave/pulse/filter at the full-stride region and extend
     `edit` (a bytearray) to cover it. Returns (wo, po, fo) edit offsets."""
-    gen.wave_columns = 3
-    gen.wave_addr = WAVE_RELOC                    # cols $3800/$3900/$3A00
-    gen.pulse_addr = gen.wave_addr + 3 * 256      # cols $3B00/$3C00/$3D00
-    gen.filter_addr = gen.pulse_addr + 3 * 256    # cols $3E00/$3F00/$4000
+    gen.wave_columns = 2
+    gen.wave_addr = WAVE_RELOC                    # cols $3800/$3900
+    gen.pulse_addr = gen.wave_addr + 2 * 256      # cols $3A00/$3B00/$3C00
+    gen.filter_addr = gen.pulse_addr + 3 * 256    # cols $3D00/$3E00/$3F00
     end = gen.filter_addr + 3 * 256 - EDIT_BASE
     if len(edit) < end:
         edit.extend(bytearray(end - len(edit)))
@@ -99,7 +102,7 @@ def _inject_test_data(edit, gen, mdp):
         edit[io + 1 * 32 + i] = sr
         edit[io + 4 * 32 + i] = 4 * i     # pulse-program start row
         edit[io + 5 * 32 + i] = 2 * i     # wave-program start row
-        # 2-row wave program: [wf, +0 semitones, every frame][$7f -> loop]
+        # 2-row wave program: [wf, +0 semitones][$7f -> loop] (1 row/frame)
         edit[wo + 0 * 256 + 2 * i] = wf
         edit[wo + 0 * 256 + 2 * i + 1] = 0x7f
         edit[wo + 1 * 256 + 2 * i + 1] = 2 * i

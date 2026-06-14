@@ -41,14 +41,14 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
     filter_lead: flag instruments 0/1 to start the filter program (v3.9.0); the
     trace build sets False (its filter sweep would close on a single long note).
     wave_programs: optional list (indexed by instrument) of custom wave programs;
-    each entry is a list of (col0_waveform, col1_semitone, col2_hold) rows
-    (2-tuples accepted, hold=0), or None for the default 2-row [wf,+0][7f,loop].
-    col1 of a $7f (jump) row is the loop target RELATIVE to the program's start;
-    col1 of any other row is the signed semitone offset the driver applies and
-    col2 the frames to hold the row (0/1 = every frame) — see wave_step. Programs
-    are laid out sequentially into the 256-row WAVE table; the trace build uses
-    this to carry the RLE'd per-frame pitch envelope (the real Galway
-    slide/vibrato) in SF2II-native, editor-loaded, editable form."""
+    each entry is a list of (col0_waveform, col1_semitone) rows, or None for the
+    default 2-row [wf,+0][7f,loop]. col1 of a $7f (jump) row is the loop target
+    RELATIVE to the program's start; col1 of any other row is the signed semitone
+    offset the driver applies (one row per frame) — see wave_step. Programs are
+    laid out sequentially into the 256-row, 2-column WAVE table (SF2II's native
+    Wave layout); the trace build uses this to carry the per-frame pitch envelope
+    (the real Galway slide/vibrato) in SF2II-native, editor-loaded, editable
+    form. Long notes fit via the settled-tail loop + body trimming."""
     from sidm2.sf2_header_generator import SF2HeaderGenerator
     from sidm2 import placeholder_edit_area
     gen = SF2HeaderGenerator()
@@ -88,22 +88,21 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
         if filter_lead and i in (0, 1):
             edit[io + 2 * 32 + i] = 0x40   # col2 flags: start filter program
             edit[io + 3 * 32 + i] = 0x00   # col3: filter-program start row
-        # Wave program. Default = 2-row [wf,+0][7f,loop]; custom = RLE'd
-        # semitone program (trace build). Instrument col5 = the program start row.
+        # Wave program (standard SF2II 2-col: col0 waveform, col1 semitone).
+        # Default = 2-row [wf,+0][7f,loop]; custom = per-frame semitone program
+        # (trace build). Instrument col5 = the program start row.
         wp = None
         if wave_programs is not None and i < len(wave_programs):
             wp = wave_programs[i]
         if wp is None:
-            wp = [(wf or 0x41, 0x00, 0x00), (0x7f, 0, 0)]   # loop -> own start
+            wp = [(wf or 0x41, 0x00), (0x7f, 0)]            # loop -> own start
         start = wave_cursor
         for r, row in enumerate(wp):
             c0, c1 = row[0], row[1]
-            c2 = row[2] if len(row) > 2 else 0
             edit[wo + 0 * 256 + start + r] = c0 & 0xFF
             # $7f jump row: col1 = loop target (relative-to-start -> absolute);
             # any other row: col1 = signed semitone offset (used as-is).
             edit[wo + 1 * 256 + start + r] = ((start + c1) if c0 == 0x7f else c1) & 0xFF
-            edit[wo + 2 * 256 + start + r] = c2 & 0xFF
         edit[io + 5 * 32 + i] = start & 0xFF
         wave_cursor += len(wp)
         if wave_cursor > 256:
