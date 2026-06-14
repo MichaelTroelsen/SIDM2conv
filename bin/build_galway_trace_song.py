@@ -46,98 +46,111 @@ def note_freq(note_byte):
     return FREQ_TABLE_LO[note_byte - 1] | (FREQ_TABLE_HI[note_byte - 1] << 8)
 
 
-def semitone_envelope(note):
-    """Per-frame signed semitone offset of the note's real pitch envelope,
-    relative to the note's base note byte. The driver's wave_step applies col1 =
-    semitone each frame, so this reproduces the Galway slide/vibrato in
-    SF2II-native, editor-loaded, editable form (stepped to integer semitones)."""
+def detect_multispeed(sid_path, init, play, subtune):
+    """Galway tunes are CIA-multispeed: the play routine runs N times per PAL
+    video frame. The trace is per-play-call, so the driver must replay N ticks
+    per SF2II (50 Hz) frame to match wall-clock speed. Detect N by emulating
+    init+play and reading the CIA timer-A interval the player sets each call:
+    find the timer pattern's period and scale it to one frame (19656 cycles)."""
+    import struct
+    from py65.devices.mpu6502 import MPU
+    PAL = 19656
+    d = open(sid_path, "rb").read()
+    off = struct.unpack(">H", d[6:8])[0]
+    la = struct.unpack(">H", d[8:0x0A])[0]
+    body = d[off:]
+    if la == 0:
+        la = body[0] | (body[1] << 8); body = body[2:]
+    m = MPU()
+    for i, b in enumerate(body):
+        m.memory[(la + i) & 0xFFFF] = b
+
+    def call(a, areg=0):
+        S = 0xFF00
+        m.memory[0x1FF] = (S - 1) >> 8; m.memory[0x1FE] = (S - 1) & 0xFF
+        m.sp = 0xFD; m.pc = a; m.a = areg
+        for _ in range(3000000):
+            if m.pc == S:
+                return
+            m.step()
+    call(init, subtune)
+    timers = []
+    for _ in range(48):
+        call(play)
+        t = m.memory[0xDC04] | (m.memory[0xDC05] << 8)
+        timers.append(t if t else PAL)
+    # smallest period p of the timer pattern
+    p = next((q for q in range(1, 17)
+              if all(timers[i] == timers[i % q] for i in range(len(timers)))), 1)
+    n = round(p * PAL / max(1, sum(timers[:p])))
+    return max(1, n)
+
+
+def pulse_program(seg, qstep):
+    """RLE the real per-play-call pulse-width (quantized to `qstep`) into 8X
+    'set width' commands (b0=$80|hi, b1=lo, dur). The FINAL value is held by a
+    $7f freeze, so a constant pulse is just 2 rows; middle segments longer than
+    the 1-byte dur are split. Absolute sets follow Galway's real PWM and never
+    wrap, so no click. Coarsening qstep trades pulse detail for table rows."""
+    if not seg:
+        return [(0x7F, 0, 0)]                        # freeze at row 0
+    q = [(w // qstep) * qstep for w in seg]
+    rows, i, n = [], 0, len(q)
+    while i < n:
+        v = q[i]
+        j = i
+        while j < n and q[j] == v:
+            j += 1
+        b0, b1 = 0x80 | ((v >> 8) & 0x0F), v & 0xFF
+        if j >= n:                                   # last value: freeze holds it
+            rows.append((b0, b1, 1))
+        else:
+            hold = j - i
+            while hold > 255:
+                rows.append((b0, b1, 255))
+                hold -= 255
+            rows.append((b0, b1, hold))
+        i = j
+    rows.append((0x7F, 0, len(rows)))                # freeze (holds last value)
+    return rows
+
+
+def sweep_pulse_program():
+    """The pre-click LEAD 'sweep' sound, made click-free: a bounded full-range
+    triangle PWM (set $010, ramp +8/tick up to $FF0, then -8/tick back to $010,
+    loop). Same sweep speed/range as the old wrapping ramp the lead sounded best
+    with, but it bounces instead of wrapping $FFF->$000, so no click. The -8 add
+    is $FF8 (12-bit two's complement); exact step counts keep it in [$010,$FF0]
+    so it never under/overflows."""
+    return [
+        (0x80, 0x10, 1),        # set $010
+        (0x00, 0x08, 255),      # +8
+        (0x00, 0x08, 253),      # +8  -> $FF0   (up half: 508 ticks)
+        (0x0F, 0xF8, 255),      # -8  ($FF8)
+        (0x0F, 0xF8, 253),      # -8  -> $010   (down half)
+        (0x7F, 0, 1),           # loop to row 1 (bounce; never re-sets)
+    ]
+
+
+def fm_program(note):
+    """Build a row-major FM program for the note: a frame-0 base correction (so
+    the absolute pitch is exact despite the nearest-note quantisation) + the
+    RLE'd per-frame frequency deltas (runs split to fit the 1-byte dur) + a
+    (0,0,0) freeze terminator. Each entry is (offset_lo, offset_hi, dur); the
+    driver's fm_step adds `offset` to the voice frequency every frame for `dur`
+    frames. Lossless RLE — the full Galway slide/vibrato is reproduced, with no
+    256-row wave-table cap (the FM table is driver-private, 16-bit indexed)."""
     nb = freq_to_note(note.base_freq)
-    recon = T.reconstruct_freq(note)                 # per-frame absolute freq
-    return nb, [freq_to_note(f) - nb for f in recon[:max(1, note.end - note.onset)]]
-
-
-def _best_loop_split(seq, maxp=128):
-    """Split `seq` into (body, loop): Galway sustains settle into vibrato/
-    arpeggio cycles, so find the tail period p (<= maxp, >=2 clean periods at
-    the end) and strip ALL trailing whole periods — the loop replays them. One
-    wave row per frame (no RLE — SF2II's Wave table has no hold column), so the
-    cost is just body+loop length; pick the p minimising it. A genuinely
-    constant tail matches p=1 (loop a single value); a vibrato tail's smallest
-    matching p IS its real period. Falls back to looping the final value."""
-    n = len(seq)
-    best_rows, best = None, (seq[:n - 1], seq[n - 1:])
-    for p in range(1, min(maxp, n // 2) + 1):
-        if seq[n - 2 * p:n - p] != seq[n - p:]:
-            continue
-        k = n - p
-        while k - p >= 0 and seq[k - p:k] == seq[k:k + p]:
-            k -= p
-        rows = k + p                                 # body + loop, one row/frame
-        if best_rows is None or rows < best_rows:
-            best_rows, best = rows, (seq[:k], seq[k:k + p])
-    return best
-
-
-def wave_program(note):
-    """Build a standard 2-col wave program [(waveform, semitone)... ,
-    ($7f, loop_rel)] carrying the note's full stepped pitch envelope: ONE row
-    per frame for the body + the settled periodic tail looped. col1 of the $7f
-    row is the loop target RELATIVE to the program start. 2 columns = SF2II's
-    native Wave layout, so the program renders + edits + PLAYS in stock SF2II."""
-    nb, sem = semitone_envelope(note)
-    wfgate = (note.waveform & 0xF0) | 0x01           # waveform + gate bit
-    body, loop = _best_loop_split(sem)
-    rows = [(wfgate, s & 0xFF) for s in body]
-    loop_rel = len(rows)
-    rows += [(wfgate, s & 0xFF) for s in loop]
-    rows.append((0x7f, loop_rel))
-    return nb, rows
-
-
-def trim_program(rows, max_rows):
-    """Shrink a program to max_rows by dropping body rows just before the loop
-    (the envelope jumps into its settled cycle early — graceful, in-tune)."""
-    if len(rows) <= max_rows:
-        return rows
-    loop_rel = rows[-1][1]
-    body, loop = rows[:loop_rel], rows[loop_rel:-1]
-    keep = max_rows - 1 - len(loop)
-    if keep < 0:                                     # loop alone too big
-        loop, body, keep = loop[:max_rows - 1], [], 0
-    body = body[:keep]
-    return body + loop + [(0x7f, len(body))]
-
-
-def fit_budget(programs, budget=WAVE_BUDGET):
-    """Trim the largest programs until the shared WAVE table fits. Logs trims."""
-    total = sum(len(p) for p in programs)
-    while total > budget:
-        i = max(range(len(programs)), key=lambda k: len(programs[k]))
-        target = max(8, len(programs[i]) - (total - budget))
-        if target >= len(programs[i]):
-            target = len(programs[i]) - 1
-        if target < 3:
-            raise ValueError("wave programs cannot fit the 256-row table")
-        print(f"  budget: trimming program {i} {len(programs[i])} -> {target} rows")
-        programs[i] = trim_program(programs[i], target)
-        total = sum(len(p) for p in programs)
-
-
-def reconstruct_program(rows, nb, n_frames):
-    """Replay a 2-col wave program with the driver's exact semantics (resolve
-    $7f jumps, one row per frame, clamp note to [0,$6f]) to its per-frame note
-    BYTE, for the headless note-index-space check."""
-    out, r = [], 0
-    for _ in range(n_frames):
-        guard = 8
-        while rows[r][0] == 0x7f and guard:
-            r = rows[r][1]
-            guard -= 1
-        s = rows[r][1]
-        s = s - 256 if s >= 0x80 else s
-        out.append(max(0, min(0x6f, nb + s)))
-        r += 1
-    return out
+    corr = note.base_freq - note_freq(nb)
+    entries = [(corr & 0xFF, (corr >> 8) & 0xFF, 1)]
+    for d, run in note.fm:
+        while run > 255:
+            entries.append((d & 0xFF, (d >> 8) & 0xFF, 255))
+            run -= 255
+        if run > 0:
+            entries.append((d & 0xFF, (d >> 8) & 0xFF, run))
+    entries.append((0, 0, 0))                        # freeze terminator
+    return nb, entries
 
 
 def main():
@@ -145,16 +158,21 @@ def main():
         ROOT, "SID", "Galway_Martin", "Wizball.sid")
     frames = int(sys.argv[2]) if len(sys.argv) > 2 else 1800
     h = SIDParser(sid).parse_header()
-    song = T.extract(sid, frames, h.init_address, h.play_address,
-                     (h.start_song or 1) - 1)
+    subtune = (h.start_song or 1) - 1
+    song = T.extract(sid, frames, h.init_address, h.play_address, subtune)
     rows_total = frames // TEMPO
-    print(f"trace: {frames} frames, {rows_total} rows @ tempo {TEMPO}")
+    multispeed = detect_multispeed(sid, h.init_address, h.play_address, subtune)
+    print(f"trace: {frames} play-calls, {rows_total} rows @ tempo {TEMPO}, "
+          f"multispeed={multispeed} (play-calls/video-frame) -> "
+          f"{frames / multispeed / 50.12:.1f}s")
 
-    # One instrument + wave program per unique (waveform, envelope) shape,
-    # shared across notes and voices; per voice, every traced note becomes a
-    # sequence row at its true onset with its shape's instrument.
+    # One instrument + FM program per unique (waveform, envelope) shape, shared
+    # across notes and voices; per voice, every traced note becomes a sequence
+    # row at its true onset carrying its shape's instrument. The pitch envelope
+    # lives in the driver-private FM table (lossless RLE, 16-bit indexed) so the
+    # wave table stays a short standard 2-row program (waveform only).
     shape_to_instr = {}
-    instrs, programs = [], []
+    instrs, fmprogs, pulse_src = [], [], []
     note_seq = [[] for _ in range(3)]    # (onset_row, end_row, note_byte, instr)
     overflow = 0
     for v, voice in enumerate(song.voices):
@@ -162,8 +180,8 @@ def main():
             orow = note.onset // TEMPO
             if orow >= rows_total:
                 continue
-            nb, rows = wave_program(note)
-            key = tuple(rows)
+            nb, fm = fm_program(note)
+            key = ((note.waveform & 0xF0), tuple(fm))
             idx = shape_to_instr.get(key)
             if idx is None:
                 if len(instrs) >= 32:                # instrument table is full
@@ -173,16 +191,31 @@ def main():
                     idx = len(instrs)
                     shape_to_instr[key] = idx
                     instrs.append((0x06, 0xFA, (note.waveform & 0xF0) | 0x01, 0x08))
-                    programs.append(rows)
+                    fmprogs.append(fm)
+                    pulse_src.append((v, note))      # defining note for the pulse
             end_row = min(rows_total, max(orow + 1, note.end // TEMPO))
             note_seq[v].append((orow, end_row, nb, idx))
     if overflow:
         print(f"  WARNING: {overflow} notes past the 32-instrument cap reuse instr 0")
     if not instrs:
         raise SystemExit("no notes traced — nothing to build")
-    fit_budget(programs)
-    print(f"  {sum(len(ns) for ns in note_seq)} notes, {len(instrs)} instruments/"
-          f"programs, wave rows {sum(len(p) for p in programs)}/{WAVE_BUDGET}")
+    # Per-instrument pulse program: the REAL per-play-call pulse-width envelope
+    # (song.pulse) downsampled to 8X "set width" commands. Coarsen the time step
+    # until the shared 256-row PULSE table fits. Absolute sets never wrap -> no
+    # click (unlike a free-running ramp), and they follow Galway's measured PWM.
+    # The lead voice (osc1) sounds best with the classic full-range pulse SWEEP
+    # (click-free triangle); the other voices use their REAL measured pulse.
+    qstep = 0x40
+    while True:
+        pulseprogs = [sweep_pulse_program() if v == 0
+                      else pulse_program(song.pulse[v][n.onset:n.end], qstep)
+                      for (v, n) in pulse_src]
+        if sum(len(p) for p in pulseprogs) <= 250 or qstep >= 0x1000:
+            break
+        qstep *= 2
+    print(f"  {sum(len(ns) for ns in note_seq)} notes, {len(instrs)} instruments, "
+          f"{sum(len(p) for p in fmprogs)} FM entries, "
+          f"{sum(len(p) for p in pulseprogs)} pulse rows (qstep ${qstep:x})")
 
     # Sequence rows packed via segment_track — the SAME packer the SF2II-playable
     # static build uses (datasource_sequence.cpp format) so SF2II parses + plays.
@@ -211,7 +244,9 @@ def main():
     B.TEMPO = TEMPO
     gen, edit, mdp, seq0 = N.gen_includes_song(segs, instrs,
                                                filter_lead=False,
-                                               wave_programs=programs)
+                                               fm_programs=fmprogs,
+                                               multispeed=multispeed,
+                                               pulse_programs=pulseprogs)
     prg = B.assemble()
     sf2 = B.wrap(prg, gen, edit, mdp, instr_names=names)
     out = os.path.join(ROOT, "out", "galway_trace_song.sf2")
@@ -235,67 +270,64 @@ def main():
         m.memory[(B.EDIT_BASE + i) & 0xFFFF] = b
 
     def call(a):
-        SENT = 0x4000
+        SENT = 0x9000            # above the FM region ($4040+), driver returns here
         r = (SENT - 1) & 0xFFFF
         m.memory[0x1FF] = r >> 8; m.memory[0x1FE] = r & 0xFF
         m.sp = 0xFD; m.pc = a
-        for _ in range(60000):
+        for _ in range(300000):          # multispeed do_play runs the player Nx
             if m.pc == SENT:
                 return
             m.step()
     call(0x1000)
     sidf = [0xD400, 0xD407, 0xD40E]
     sidc = [0xD404, 0xD40B, 0xD412]
+    # The driver does `multispeed` play-ticks per do_play (one SF2II video frame),
+    # so call it frames//multispeed times to replay the whole trace; the SID state
+    # sampled after do_play k is the trace at play-call (k+1)*multispeed-1.
+    vframes = frames // multispeed
     got = [[] for _ in range(3)]
     gate = [[] for _ in range(3)]
-    for _ in range(frames):
+    for _ in range(vframes):
         call(0x1003)
         for v in range(3):
             got[v].append(m.memory[sidf[v]] | (m.memory[sidf[v] + 1] << 8))
             gate[v].append(m.memory[sidc[v]] & 0x01)
 
+    # per-play-call real frequency per voice (placed at each note's true onset)
+    gf = [[0] * frames for _ in range(3)]
+    for v, voice in enumerate(song.voices):
+        for note in voice.notes:
+            for i, f in enumerate(T.reconstruct_freq(note)):
+                if note.onset + i < frames:
+                    gf[v][note.onset + i] = f
+
     all_faithful = True
     for v, voice in enumerate(song.voices):
         if not note_seq[v]:
-            # no notes = gate never opens (freq may be nonzero from the shared
-            # wave table, but with the gate off the voice is silent).
             silent = not any(gate[v])
             print(f"  osc{v+1}: no notes -> driver {'SILENT ok' if silent else 'GATE ON (X)'}")
             continue
-        # Compare in NOTE-INDEX space: the driver's per-frame note byte vs the
-        # program's intended note byte (nb + held semitone). Exact, since both
-        # quantise through the same freqtable. Allow a small alignment shift for
-        # the sequencer's trigger phase (note triggers at onset_row * TEMPO).
-        got_note = [freq_to_note(f) for f in got[v]]
-        bad_tot = span_tot = rdiff_tot = real_tot = 0
-        for k, ((orow, end_row, nb, idx), note) in enumerate(
-                zip(note_seq[v], voice.notes)):
-            trig = orow * TEMPO
-            span = min(end_row * TEMPO, frames) - trig
-            if span <= 0:
-                continue
-            prog = reconstruct_program(programs[idx], nb, span)
-            best_bad = span
-            for sh in range(0, TEMPO + 1):
-                bad = sum(1 for i in range(span - sh)
-                          if got_note[trig + sh + i] != prog[i])
-                best_bad = min(best_bad, bad)
-            bad_tot += best_bad
-            span_tot += span
-            # program-vs-REAL: how faithfully the RLE'd/looped program tracks
-            # the actual trace (informational — a trimmed/looped tail won't
-            # match a still-evolving real envelope).
-            real = [freq_to_note(f) for f in T.reconstruct_freq(note)]
-            cmp_n = min(len(prog), len(real))
-            rdiff_tot += sum(1 for i in range(cmp_n) if prog[i] != real[i])
-            real_tot += cmp_n
-        faithful = bad_tot == 0
+        # Compare the driver's per-video-frame frequency against the real trace
+        # sampled at the matching play-call. The FM program is a lossless RLE of
+        # the real deltas, so active-note frames should match within freqtable
+        # rounding (a few units).
+        bad = worst = cmp = 0
+        for k in range(vframes):
+            pc = min((k + 1) * multispeed - 1, frames - 1)
+            if gf[v][pc] == 0:
+                continue                                # gate off / between notes
+            cmp += 1
+            diff = abs(got[v][k] - gf[v][pc])
+            worst = max(worst, diff)
+            if diff > 4:
+                bad += 1
+        faithful = bad == 0
         all_faithful = all_faithful and faithful
-        print(f"  osc{v+1}: {len(note_seq[v])} notes; driver-vs-program "
-              f"{bad_tot}/{span_tot} off {'FAITHFUL' if faithful else 'CHECK'}; "
-              f"program-vs-real {rdiff_tot}/{real_tot} note-bytes differ")
-    print("TRACE BUILD " + ("FAITHFUL — driver replays the emitted envelopes exactly"
-                            if all_faithful else "CHECK — driver diverged from program"))
+        print(f"  osc{v+1}: {len(note_seq[v])} notes; driver-vs-real "
+              f"{bad}/{cmp} sampled frames off >4 (worst {worst}) "
+              f"{'FAITHFUL' if faithful else 'CHECK'}")
+    print("TRACE BUILD " + ("FAITHFUL — driver reproduces the real per-frame pitch"
+                            if all_faithful else "CHECK — driver diverged from trace"))
 
 
 if __name__ == "__main__":

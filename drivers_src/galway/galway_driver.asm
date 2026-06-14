@@ -30,6 +30,8 @@ VIBSPD   = $10           ; vibrato phase increment per frame
 VIBDLY   = $0c           ; delay (frames) before vibrato kicks in
 ; scratch
 wptr        = $fa           ; working pointer (seq / orderlist)
+fmptr       = $ec           ; working pointer into FMTAB (fm_step indirect read) (2)
+ms_cnt      = $f0           ; multispeed tick countdown within one video frame
 tmpf        = $f6           ; freq/ADSR temp (lo/hi)
 widx        = $f5           ; wave-index temp
 pending_dur = $f4           ; duration parsed this event
@@ -94,12 +96,14 @@ F_ACT   = $1825          ; 1 = a filter program is running
 VIFLAGS = $1826          ; per-voice instrument flags byte (col2) (3)
 VIFILT  = $1829          ; per-voice instrument filter-program start row (3)
 ; --- FM offset-list runner (TRACE-DRIVEN pitch program): per-voice frequency
-;     accumulator that walks the FM table (FMTAB col-major 256x3: lo,hi,dur) from
-;     the voice's VFMSTART entry, adding the signed offset to FM_ACC each frame;
-;     freq written = vfreq + FM_ACC. dur 0 = freeze. Reproduces the real
-;     per-frame pitch envelope (slide/vibrato) captured by the trace. ----------
+;     accumulator that walks the FM table (FMTAB ROW-major, 3 bytes/entry:
+;     lo,hi,dur) via a 16-bit pointer from the note's instrument FM-start,
+;     adding the signed offset to FM_ACC each frame; freq written = vfreq +
+;     FM_ACC. dur 0 = freeze. Row-major + 16-bit ptr removes the old 256-entry
+;     cap so full-length Galway slides (1000s of frames) fit. Each note's pitch
+;     envelope is selected by its instrument (IFM_LO/IFM_HI -> VIFM -> FMP). ----
 FM_ON     = $182c        ; per-voice: 1 = FM running (3)
-FM_IDX    = $182f        ; per-voice: current FMTAB entry index (3)
+FM_IDX    = $182f        ; per-voice: (legacy, unused) (3)
 FM_CNT    = $1832        ; per-voice: frames left on current entry (3)
 FM_ACC_LO = $1835        ; per-voice: accumulated freq offset lo (3)
 FM_ACC_HI = $1838        ; per-voice: accumulated freq offset hi (3)
@@ -108,6 +112,10 @@ FM_OFF_HI = $183e        ; per-voice: current entry offset hi (3)
 vbasenote = $1841        ; per-voice: base note index (note+transpose) for the
                          ; wave-table semitone column; wave_step recomputes
                          ; vfreq = freqtable[vbasenote + col1] each frame (3)
+FMP_LO    = $1844        ; per-voice: current FMTAB read pointer lo (3)
+FMP_HI    = $1847        ; per-voice: current FMTAB read pointer hi (3)
+VIFM_LO   = $184a        ; per-voice: current instrument's FM-start addr lo (3)
+VIFM_HI   = $184d        ; per-voice: current instrument's FM-start addr hi (3)
 
         .include "layout.inc"
 INSTR_AD    = INSTR + 0*32
@@ -120,6 +128,16 @@ INSTR_WAVE  = INSTR + 5*32
 ; --- Block-2 playback-state region (editor reads these) -------------------
 ST_FIRST    = $16cc
 ST_LAST     = $1702
+; (SF2II writes the SID channel offsets 0,7,14 to $16cc-$16ce, so keep our
+;  state bytes clear of that range.)
+ST_STATE    = $16d0       ; m_DriverStateAddress: $80 playing / $40 stopped.
+                          ; SF2II reads this to drive the play cursor (follow)
+                          ; and to detect a self-stop.
+ST_TCNT     = $16d1       ; m_TempoCounterAddress: 0 on the frame a new row
+                          ; ticks (SF2II advances its follow cursor on 0).
+ST_PLAY     = $16d2       ; internal: 1 = playing, 0 = stopped/idle. SF2II calls
+                          ; STOP on load + on the stop key, INIT on play, so this
+                          ; gates do_play (no playback until the user presses play).
 ST_TICK     = $16db
 
         * = ST_FIRST
@@ -167,6 +185,11 @@ iv:     lda #$41
         sta FM_ON,x              ; FM idle until a note triggers
         sta FM_ACC_LO,x
         sta FM_ACC_HI,x
+        sta FM_CNT,x
+        sta FMP_LO,x
+        sta FMP_HI,x
+        sta VIFM_LO,x
+        sta VIFM_HI,x
         sta vbasenote,x          ; base note index (set on each note trigger)
         ; orderlist ptr = OL_x ; then load the first pattern
         lda ollo,x
@@ -184,22 +207,43 @@ iv:     lda #$41
         sta F_CNT
         lda #$01
         sta zp_tcnt
+        sta ST_PLAY              ; INIT = play: enable do_play
+        lda #$80
+        sta ST_STATE             ; report "playing"
         rts
 
 ; --- PLAY -----------------------------------------------------------------
+;     Runs the player MULTISPEED times per call. SF2II calls do_play once per
+;     PAL video frame (50 Hz), but the original is CIA-multispeed (Galway's
+;     Wizball = 4 play-calls/frame). Trace data is per-play-call, so to match
+;     the real wall-clock speed the driver replays MULTISPEED play-ticks each
+;     video frame. MULTISPEED comes from layout.inc (1 = single-speed). --------
 do_play:
+        lda ST_PLAY              ; idle until SF2II issues play (INIT); STOP clears
+        bne dp_go
+        rts
+dp_go:
+        lda #$80
+        sta ST_STATE             ; report "playing" to SF2II (drives follow cursor)
+        lda #$01
+        sta ST_TCNT              ; non-zero unless a row ticks this frame (do_row)
         inc ST_TICK
         lda F_MODE               ; filter passband bits (from the filter program)
         ora #$0f                 ; + main volume
         sta SID_VOL
-        jsr pulse_step           ; per-voice pulse-program -> $D402/3 each frame
+        lda #MULTISPEED
+        sta ms_cnt
+dp_tick:
+        jsr pulse_step           ; per-voice pulse-program -> $D402/3 each tick
         jsr filt_prog_step       ; global filter program -> $D415/6/7 + mode
         dec zp_tcnt
         bne dp_vib
         jsr do_row               ; row tick: step the sequencer
 dp_vib:
-        jsr wave_step            ; wave-program -> $D404 + recompute vfreq (semitone col)
-        jsr fm_step              ; per-voice freq -> $D400/1 (writes vfreq + FM_ACC=0)
+        jsr wave_step            ; wave-program -> $D404 + recompute vfreq
+        jsr fm_step              ; per-voice freq -> $D400/1 (+ FM accumulate)
+        dec ms_cnt
+        bne dp_tick              ; next multispeed tick this frame
         rts
 
 ; --- per-voice wave-program runner (standard 2-col wave table, like Driver 11:
@@ -488,8 +532,12 @@ fm_run:
         beq fm_load              ; current entry expired -> load next
         jmp fm_add
 fm_load:
-        ldy FM_IDX,x
-        lda FMTAB+512,y          ; dur column
+        lda FMP_LO,x             ; point fmptr at the current row-major entry
+        sta fmptr
+        lda FMP_HI,x
+        sta fmptr+1
+        ldy #$02
+        lda (fmptr),y            ; byte 2 = dur
         bne fm_haveent
         ; dur 0 -> freeze: offset 0, hold, do not advance
         lda #$00
@@ -500,11 +548,18 @@ fm_load:
         jmp fm_add
 fm_haveent:
         sta FM_CNT,x
-        lda FMTAB,y              ; lo column = offset lo
+        ldy #$00
+        lda (fmptr),y            ; byte 0 = offset lo
         sta FM_OFF_LO,x
-        lda FMTAB+256,y          ; hi column = offset hi
+        iny
+        lda (fmptr),y            ; byte 1 = offset hi
         sta FM_OFF_HI,x
-        inc FM_IDX,x
+        lda FMP_LO,x             ; advance pointer by 3 bytes
+        clc
+        adc #$03
+        sta FMP_LO,x
+        bcc fm_add
+        inc FMP_HI,x
 fm_add:
         lda FM_ACC_LO,x          ; FM_ACC += signed offset
         clc
@@ -531,6 +586,8 @@ fm_write:
 fm_done:
         rts
 do_row:
+        lda #$00
+        sta ST_TCNT              ; a new row ticked this frame (SF2II follow cursor++)
         lda #TEMPO
         sta zp_tcnt
         ldx #$00
@@ -659,9 +716,11 @@ pn_not_off:
         sta VPI,x
         lda #$00
         sta VPC,x                ; force reload on the next frame
-        ; (re)start this voice's FM offset-list at its VFMSTART entry (x = voice)
-        lda VFMSTART,x
-        sta FM_IDX,x
+        ; (re)start the FM offset-list at this note's instrument FM-start.
+        lda VIFM_LO,x
+        sta FMP_LO,x
+        lda VIFM_HI,x
+        sta FMP_HI,x
         lda #$00
         sta FM_CNT,x             ; force entry load next frame
         sta FM_ACC_LO,x
@@ -760,6 +819,10 @@ ol_adv_done:
 ; set instrument for voice X: A = index
 set_instr_v:
         tay
+        lda IFM_LO,y             ; this instrument's FM-start address (lo/hi)
+        sta VIFM_LO,x
+        lda IFM_HI,y
+        sta VIFM_HI,x
         lda INSTR_AD,y
         sta tmpf
         lda INSTR_SR,y
@@ -784,6 +847,10 @@ set_instr_v:
 
 ; --- STOP -----------------------------------------------------------------
 do_stop:
+        lda #$00
+        sta ST_PLAY              ; STOP: gate do_play off (silent, no advance)
+        lda #$40
+        sta ST_STATE             ; report "stopped"
         ldx #$18
 cz:     lda #$00
         sta SID,x

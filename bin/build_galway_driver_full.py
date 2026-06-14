@@ -111,11 +111,27 @@ def _inject_test_data(edit, gen, mdp):
         edit[po + 2 * 256 + 4 * i] = 0x01
         edit[po + 0 * 256 + 4 * i + 1] = 0x7f
         edit[po + 2 * 256 + 4 * i + 1] = 4 * i + 1
+    # FM region: a single freeze terminator at FMTAB ($4040); every instrument's
+    # FM-start points to it, so fm_step freezes (freq = vfreq, no FM) for the
+    # test pattern. (Matches the IFM_LO/IFM_HI/FMTAB addresses in layout.inc.)
+    IFMLO, IFMHI, FMTAB = 0x4000, 0x4020, 0x4040
+    need = FMTAB + 3 - EDIT_BASE
+    if len(edit) < need:
+        edit.extend(bytearray(need - len(edit)))
+    for i in range(len(TEST_INSTR)):
+        edit[IFMLO - EDIT_BASE + i] = FMTAB & 0xFF
+        edit[IFMHI - EDIT_BASE + i] = (FMTAB >> 8) & 0xFF
+    edit[FMTAB - EDIT_BASE + 0] = 0x00       # freeze entry (offset 0, dur 0)
+    edit[FMTAB - EDIT_BASE + 1] = 0x00
+    edit[FMTAB - EDIT_BASE + 2] = 0x00
 
 
 def gen_includes():
     gen = SF2HeaderGenerator()
     gen.DRIVER_INIT, gen.DRIVER_PLAY, gen.DRIVER_STOP = DRV_INIT, DRV_PLAY, DRV_STOP
+    gen.PLAYER_ADDRESSES = dict(gen.PLAYER_ADDRESSES)
+    gen.PLAYER_ADDRESSES["driver_state"] = 0x16D0   # Block-2 play-state contract
+    gen.PLAYER_ADDRESSES["tempo_counter"] = 0x16D1
     gen.driver_name = "Galway"
     gen.driver_code_top = 0x1000
     # PROVEN voice_streams path: each voice gets its own pattern. Use bare-note
@@ -140,8 +156,10 @@ def gen_includes():
         f.write(f"WAVE  = ${gen.wave_addr:04x}\n")
         f.write(f"PULSE = ${gen.pulse_addr:04x}\n")
         f.write(f"FILTER = ${gen.filter_addr:04x}\n")
-        f.write("FMTAB = $3500\n")        # FM table (RAM; unused by the test pattern)
-        f.write("VFMSTART = $34d0\n")
+        f.write("IFM_LO = $4000\n")        # per-instrument FM-start tables
+        f.write("IFM_HI = $4020\n")
+        f.write("FMTAB  = $4040\n")        # row-major FM data (test pattern: freeze)
+        f.write("MULTISPEED = 1\n")        # test pattern is single-speed
 
     # freqtable indexed by note byte $00..$6F: [0]=0, [i]=PAL freq of semitone i-1
     with open(os.path.join(GAL, "freqtable.inc"), "w") as f:
