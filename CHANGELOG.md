@@ -25,6 +25,60 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.10.0] - 2026-06-20
+
+### Full-fidelity, full-length Galway — slide + pulse decoupled per note
+
+v3.9.0 made the native Galway driver a full table-driven SF2 driver, but the
+trace-driven converter (`bin/build_galway_trace_song.py`) could only reproduce a
+long song approximately: each instrument was keyed on
+`(waveform, AD, SR, FM-shape)`, cramming timbre × slide into the single 32-slot
+instrument table. On Ocean Loader 1 (~6.6 min through-composed, ~8000 notes) that
+forced slide-clustering — one note's slide reused for a whole cluster — which
+corrupted pitch (the authoritative real-SF2II diff showed freq drifting and pulse
+at 71% / 8% / 13% on the three voices).
+
+v3.10.0 **decouples the per-note synth program from the instrument**, so the full
+9-minute song reproduces at ~100% on every SID register in stock SID Factory II.
+
+**Delivered:**
+- **Per-note synth bundles via the sequence command channel.** `$c0-$ff` (a
+  previously-skipped no-op command) now selects a per-note BUNDLE of
+  (FM slide + pulse-width envelope), fully decoupled from the instrument. The
+  instrument carries timbre only (`waveform, AD, SR`). Ocean Loader fits in
+  **18 instruments + 32 bundles** with no clustering.
+- `drivers_src/galway/galway_driver.asm`:
+  - `pr_skipcmd` → `pr_setprog`: sets the voice's FM pointer (`IFM`) **and** pulse
+    start (`IPULSE`) from per-command tables; `set_instr_v` no longer sets FM or
+    pulse; `do_init` defaults both to program 0.
+  - **1-frame FM-trigger fix**: the driver applied a note's first slide delta on
+    the trigger frame — 1 frame ahead of the real SID, whose onset frame shows the
+    base pitch before any slide. `pr_note` now holds the base for the trigger
+    frame (`FM_CNT=1` + `FM_OFF=0`), aligning every FM-modulated voice.
+- `bin/build_galway_native_song.py`: `gen_includes_song` builds per-command FM and
+  pulse tables (dedup by content; pulse truncated to ≤256 rows) plus a new
+  `IPULSE` table (`layout.inc`, stride 64); pulse removed from the instrument loop.
+- `bin/build_galway_trace_song.py`: bundle builder; an end-clamp so a long note's
+  reconstructed tail no longer pushes the next note late; and a **PSID export**
+  (`out/galway_trace_song.sid`, `init=$1000` `play=$1003`) of the raw driver image
+  so the native driver renders to WAV (it does not round-trip through
+  `scripts/sf2_to_sid`).
+- `bin/sf2ii_vs_real.py`: the **"listen" tool** — runs an instrumented SF2II
+  (`bin/SIDFactoryII_dbg.exe`) and diffs its actual per-frame SID output against
+  the real SID, per voice (freq / waveform / pulse / AD-SR). This is what exposed
+  the pulse gap that the pitch-only headless metric missed.
+
+**Result (real SF2II, every register):** osc1 100/100/100/100, osc2 100/100/99/100,
+osc3 100/100/100/100 (freq/waveform/pulse/AD-SR) — pulse was 71/8/13% before.
+Short (≤72 s) builds are a clean 100/100/100. 87 galway tests green.
+
+**Still:** the C64 memory wall (`$D000`) caps a single SF2's raw length at ~27650
+play-calls (9.19 min); the default `convert_galway_to_sf2` remains the Stage A
+Driver 11 transpile (this work lives in `bin/` scripts). Plan:
+`docs/analysis/GALWAY_SF2_DRIVER_PLAN.md`.
+
+---
+
 ## [3.9.0] - 2026-05-30
 
 ### Stage B2 — the native Galway driver becomes a FULL standard table-driven SF2 driver
