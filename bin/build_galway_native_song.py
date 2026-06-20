@@ -36,7 +36,7 @@ FMTAB_ADDR = 0x4040
 
 def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
                       wave_programs=None, fm_programs=None, multispeed=1,
-                      pulse_programs=None):
+                      pulse_programs=None, pulse_by_cmd=None):
     """Build a multi-pattern native-driver edit area from packed voice patterns.
     segs[v] = list of packed sequences for voice v. Returns (gen, edit, mdp, seq0)
     and writes drivers_src/galway/layout.inc.
@@ -121,39 +121,51 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
             raise ValueError(
                 f"WAVE table overflow: {wave_cursor} rows > 256 "
                 f"(reduce per-voice envelope length / loop sooner)")
-        # Pulse program. Default = generic ramp (set pw<<8, +$8/frame, loop).
-        # Custom (trace build) = a downsampled REAL pulse envelope: (b0,b1,c2)
-        # rows of 8X "set width" commands following Galway's measured PWM, ending
-        # in a $7f freeze (self-jump). Absolute (set) commands never wrap, so no
-        # click. Laid out sequentially; instrument col4 = the start row.
-        pp = pulse_programs[i] if (pulse_programs is not None
-                                   and i < len(pulse_programs)) else None
-        if pp is None:
-            prow = pulse_cursor
-            edit[po + 0 * 256 + prow] = 0x80 | pw
-            edit[po + 1 * 256 + prow] = 0x00
-            edit[po + 2 * 256 + prow] = 0x01
-            edit[po + 0 * 256 + prow + 1] = 0x00
-            edit[po + 1 * 256 + prow + 1] = 0x08
-            edit[po + 2 * 256 + prow + 1] = 0xff
-            edit[po + 0 * 256 + prow + 2] = 0x7f
-            edit[po + 1 * 256 + prow + 2] = 0x00
-            edit[po + 2 * 256 + prow + 2] = prow + 1
-            edit[io + 4 * 32 + i] = prow
-            pulse_cursor += 3
-        else:
-            start = pulse_cursor
-            for r, (b0, b1, c2) in enumerate(pp):
-                edit[po + 0 * 256 + start + r] = b0 & 0xFF
-                edit[po + 1 * 256 + start + r] = b1 & 0xFF
-                # $7f row: col2 = loop target RELATIVE to start -> absolute (a
-                # target == own row = freeze; otherwise loop). Set rows: col2=dur.
-                edit[po + 2 * 256 + start + r] = ((start + c2) if (b0 & 0xFF) == 0x7f
-                                                  else c2) & 0xFF
-            edit[io + 4 * 32 + i] = start & 0xFF
-            pulse_cursor += len(pp)
-            if pulse_cursor > 256:
-                raise ValueError(f"PULSE table overflow: {pulse_cursor} rows > 256")
+        # (pulse is no longer per-instrument — see the per-command PULSE section
+        #  below; the instrument's col4 pulse pointer is left 0/unused.)
+
+    # --- Per-command PULSE programs (decoupled from the instrument, like FM) ---
+    # The sequence command ($c0-$ff) selects BOTH the FM and the pulse program.
+    # Distinct pulse programs are laid into the 256-row PULSE table (dedup by
+    # content); IPULSE[cmd] = the program's start row. Long programs are frozen
+    # early (truncated) if the distinct set would overflow 256 rows. Absent
+    # pulse_by_cmd (legacy/test builds), a single generic ramp at index 0 serves
+    # every note (matches the old default-ramp behaviour, now shared).
+    DEFAULT_PULSE = [(0x80, 0x00, 1), (0x00, 0x08, 0xFF), (0x7F, 0x00, 2)]
+    pcmd = list(pulse_by_cmd) if pulse_by_cmd else [DEFAULT_PULSE]
+    pcmd = [p if p else DEFAULT_PULSE for p in pcmd][:64]
+    # collect distinct programs and truncate the longest until they fit 256 rows
+    distinct = []
+    pidx = {}                                      # tuple(prog) -> distinct slot
+    for p in pcmd:
+        k = tuple(p)
+        if k not in pidx:
+            pidx[k] = len(distinct)
+            distinct.append(list(p))
+    def _ptot():
+        return sum(len(p) for p in distinct)
+    while _ptot() > 250:
+        j = max(range(len(distinct)), key=lambda t: len(distinct[t]))
+        if len(distinct[j]) <= 3:
+            break
+        keep = len(distinct[j]) - 2
+        distinct[j] = distinct[j][:keep - 1] + [(0x7F, 0, keep - 1)]
+    # emit distinct programs into the PULSE table, recording each start row
+    dstart = []
+    for prog in distinct:
+        s = pulse_cursor
+        for r, (b0, b1, c2) in enumerate(prog):
+            edit[po + 0 * 256 + s + r] = b0 & 0xFF
+            edit[po + 1 * 256 + s + r] = b1 & 0xFF
+            # $7f row: col2 = loop target RELATIVE to start -> absolute (target ==
+            # own row = freeze); set/add rows: col2 = duration.
+            edit[po + 2 * 256 + s + r] = ((s + c2) if (b0 & 0xFF) == 0x7F else c2) & 0xFF
+        dstart.append(s)
+        pulse_cursor += len(prog)
+    if pulse_cursor > 256:
+        raise ValueError(f"PULSE table overflow: {pulse_cursor} rows > 256")
+    ipulse = [dstart[pidx[tuple(p)]] for p in pcmd]   # IPULSE[cmd] = start row
+
     # One shared filter program (row 0) reproducing Galway's measured Wizball
     # filter in standard SF2II form: LP, cutoff $890, res $F, route voice 1, then
     # sweep the cutoff down (-12/frame), looping. Restarted by each flag-$40 note.
@@ -166,29 +178,46 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
     # FMTAB of 3-byte (offset_lo, offset_hi, dur) entries. Each instrument's
     # program is laid sequentially and ends with a (0,0,0) freeze terminator;
     # instruments with no FM get a lone terminator (freeze -> freq = vfreq).
-    fmprogs = fm_programs or []
+    # Place the FM region ABOVE the relocated wave/pulse/filter (which are above
+    # the edit area), so it never collides with the instrument table / sequences
+    # on big songs (a fixed $4000 base does).
+    NFM = 64                                       # FM-program table stride (cmd 0..63)
+    ifmlo_addr = gen.filter_addr + 3 * 256
+    ifmhi_addr = ifmlo_addr + NFM
+    ipulse_addr = ifmhi_addr + NFM                 # per-command pulse start rows
+    fmtab_addr = ipulse_addr + NFM
+    # FM programs are selected PER NOTE via the sequence command channel
+    # ($c0-$ff -> index), DECOUPLED from the instrument. fm_programs is the master
+    # list indexed by that command (index 0 = flat/freeze, the default). This lets
+    # a long song carry many distinct slide shapes without inflating the <=32
+    # instrument table. Absent fm_programs (non-trace builds), a lone flat program
+    # at index 0 makes every note default to no modulation.
+    fmprogs = list(fm_programs) if fm_programs else [[(0, 0, 0)]]
     fmtab = bytearray()
-    ifm = []                                       # (lo, hi) start addr per instrument
-    for i in range(len(instrs[:32])):
-        start = FMTAB_ADDR + len(fmtab)
-        prog = list(fmprogs[i]) if i < len(fmprogs) and fmprogs[i] else []
+    ifm = []                                       # (lo, hi) start addr per FM program
+    for i in range(min(len(fmprogs), NFM)):
+        start = fmtab_addr + len(fmtab)
+        prog = list(fmprogs[i]) if fmprogs[i] else []
         if not prog or prog[-1][2] != 0:
             prog = prog + [(0, 0, 0)]              # ensure freeze terminator
         for lo, hi, dur in prog:
             fmtab += bytes([lo & 0xFF, hi & 0xFF, dur & 0xFF])
         ifm.append((start & 0xFF, (start >> 8) & 0xFF))
-    fm_end = FMTAB_ADDR + len(fmtab)
-    if fm_end > 0xC000:
-        raise ValueError(f"FMTAB overflow: ends ${fm_end:04X} (> $C000)")
+    fm_end = fmtab_addr + len(fmtab)
+    if fm_end > 0xCF00:
+        raise ValueError(f"FMTAB overflow: ends ${fm_end:04X} (> $CF00)")
     need = fm_end - B.EDIT_BASE
     if len(edit) < need:
         edit.extend(bytearray(need - len(edit)))
-    ilo = IFMLO_ADDR - B.EDIT_BASE
-    ihi = IFMHI_ADDR - B.EDIT_BASE
+    ilo = ifmlo_addr - B.EDIT_BASE
+    ihi = ifmhi_addr - B.EDIT_BASE
     for i, (lo, hi) in enumerate(ifm):
         edit[ilo + i] = lo
         edit[ihi + i] = hi
-    fmo = FMTAB_ADDR - B.EDIT_BASE
+    ipo = ipulse_addr - B.EDIT_BASE                # IPULSE[cmd] = pulse start row
+    for i, row in enumerate(ipulse[:NFM]):
+        edit[ipo + i] = row & 0xFF
+    fmo = fmtab_addr - B.EDIT_BASE
     edit[fmo:fmo + len(fmtab)] = fmtab
 
     with open(os.path.join(ROOT, "drivers_src", "galway", "layout.inc"), "w") as f:
@@ -203,9 +232,10 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
         f.write(f"WAVE  = ${gen.wave_addr:04x}\n")
         f.write(f"PULSE = ${gen.pulse_addr:04x}\n")
         f.write(f"FILTER = ${gen.filter_addr:04x}\n")
-        f.write(f"FMTAB = ${FMTAB_ADDR:04x}\n")
-        f.write(f"IFM_LO = ${IFMLO_ADDR:04x}\n")
-        f.write(f"IFM_HI = ${IFMHI_ADDR:04x}\n")
+        f.write(f"FMTAB = ${fmtab_addr:04x}\n")
+        f.write(f"IFM_LO = ${ifmlo_addr:04x}\n")
+        f.write(f"IFM_HI = ${ifmhi_addr:04x}\n")
+        f.write(f"IPULSE = ${ipulse_addr:04x}\n")
         f.write(f"MULTISPEED = {max(1, int(multispeed))}\n")
     return gen, bytes(edit), mdp, seq0
 

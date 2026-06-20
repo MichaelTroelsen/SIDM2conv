@@ -33,6 +33,8 @@ class TraceNote(NamedTuple):
     base_freq: int      # SID frequency at onset (before FM accumulates)
     waveform: int       # control byte at onset (waveform + gate)
     fm: List[Tuple[int, int]]   # RLE (signed per-frame freq delta, run length)
+    ad: int = 0         # $D405 attack/decay at onset (instrument envelope)
+    sr: int = 0         # $D406 sustain/release at onset
 
 
 class TraceVoice(NamedTuple):
@@ -126,6 +128,8 @@ def extract(sid_path: str, frames: int, init: int, play: int,
         ctrl = _series(reg.get((vi, "control"), {}), frames)
         flo = _series(reg.get((vi, "freq_lo"), {}), frames)
         fhi = _series(reg.get((vi, "freq_hi"), {}), frames)
+        ad = _series(reg.get((vi, "attack_decay"), {}), frames)
+        sr = _series(reg.get((vi, "sustain_release"), {}), frames)
         plo = _series(reg.get((vi, "pw_lo"), {}), frames)
         phi = _series(reg.get((vi, "pw_hi"), {}), frames)
         freq = [(fhi[i] << 8) | flo[i] for i in range(frames)]
@@ -149,7 +153,8 @@ def extract(sid_path: str, frames: int, init: int, play: int,
             seg = freq[on:end]
             deltas = [seg[i] - seg[i - 1] for i in range(1, len(seg))]
             notes.append(TraceNote(onset=on, end=end, base_freq=seg[0] if seg else 0,
-                                   waveform=ctrl[on], fm=_rle(deltas)))
+                                   waveform=ctrl[on], fm=_rle(deltas),
+                                   ad=ad[on], sr=sr[on]))
         voices.append(TraceVoice(notes=notes, active=bool(notes)))
 
     flo = _series(reg.get((None, "freq_lo"), {}), frames)

@@ -72,12 +72,17 @@ WAVE_RELOC = 0x3800
 
 
 def relocate_driver_tables(gen, edit):
-    """Repoint gen's wave/pulse/filter at the full-stride region and extend
-    `edit` (a bytearray) to cover it. Returns (wo, po, fo) edit offsets."""
+    """Repoint gen's wave/pulse/filter at a full-stride region placed ABOVE the
+    current edit-area extent (orderlists + sequences + instrument/placeholder
+    tables) and extend `edit` to cover it. A fixed base ($3800) collides with
+    the edit area on big songs (the instrument table + sequences run past it);
+    placing the tables above the extent keeps them clear. Returns (wo,po,fo)."""
     gen.wave_columns = 2
-    gen.wave_addr = WAVE_RELOC                    # cols $3800/$3900
-    gen.pulse_addr = gen.wave_addr + 2 * 256      # cols $3A00/$3B00/$3C00
-    gen.filter_addr = gen.pulse_addr + 3 * 256    # cols $3D00/$3E00/$3F00
+    base = max(WAVE_RELOC, EDIT_BASE + len(edit))
+    base = (base + 0xFF) & ~0xFF                  # page-align above the edit area
+    gen.wave_addr = base                          # cols base+0 / +256
+    gen.pulse_addr = gen.wave_addr + 2 * 256      # 3 cols
+    gen.filter_addr = gen.pulse_addr + 3 * 256    # 3 cols
     end = gen.filter_addr + 3 * 256 - EDIT_BASE
     if len(edit) < end:
         edit.extend(bytearray(end - len(edit)))
@@ -111,10 +116,12 @@ def _inject_test_data(edit, gen, mdp):
         edit[po + 2 * 256 + 4 * i] = 0x01
         edit[po + 0 * 256 + 4 * i + 1] = 0x7f
         edit[po + 2 * 256 + 4 * i + 1] = 4 * i + 1
-    # FM region: a single freeze terminator at FMTAB ($4040); every instrument's
-    # FM-start points to it, so fm_step freezes (freq = vfreq, no FM) for the
-    # test pattern. (Matches the IFM_LO/IFM_HI/FMTAB addresses in layout.inc.)
-    IFMLO, IFMHI, FMTAB = 0x4000, 0x4020, 0x4040
+    # FM region: a single freeze terminator at FMTAB; every instrument's FM-start
+    # points to it, so fm_step freezes (freq = vfreq, no FM) for the test pattern.
+    # Placed above the relocated filter (dynamic, matches layout.inc).
+    IFMLO = gen.filter_addr + 3 * 256
+    IFMHI = IFMLO + 32
+    FMTAB = IFMHI + 32
     need = FMTAB + 3 - EDIT_BASE
     if len(edit) < need:
         edit.extend(bytearray(need - len(edit)))
@@ -156,9 +163,9 @@ def gen_includes():
         f.write(f"WAVE  = ${gen.wave_addr:04x}\n")
         f.write(f"PULSE = ${gen.pulse_addr:04x}\n")
         f.write(f"FILTER = ${gen.filter_addr:04x}\n")
-        f.write("IFM_LO = $4000\n")        # per-instrument FM-start tables
-        f.write("IFM_HI = $4020\n")
-        f.write("FMTAB  = $4040\n")        # row-major FM data (test pattern: freeze)
+        f.write(f"IFM_LO = ${gen.filter_addr + 3 * 256:04x}\n")   # FM-start tables
+        f.write(f"IFM_HI = ${gen.filter_addr + 3 * 256 + 32:04x}\n")
+        f.write(f"FMTAB  = ${gen.filter_addr + 3 * 256 + 64:04x}\n")  # row-major FM
         f.write("MULTISPEED = 1\n")        # test pattern is single-speed
 
     # freqtable indexed by note byte $00..$6F: [0]=0, [i]=PAL freq of semitone i-1

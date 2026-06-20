@@ -101,7 +101,8 @@ VIFILT  = $1829          ; per-voice instrument filter-program start row (3)
 ;     adding the signed offset to FM_ACC each frame; freq written = vfreq +
 ;     FM_ACC. dur 0 = freeze. Row-major + 16-bit ptr removes the old 256-entry
 ;     cap so full-length Galway slides (1000s of frames) fit. Each note's pitch
-;     envelope is selected by its instrument (IFM_LO/IFM_HI -> VIFM -> FMP). ----
+;     envelope is selected PER NOTE by the $c0-$ff sequence command (index ->
+;     IFM_LO/IFM_HI -> VIFM -> FMP), decoupled from the instrument. ------------
 FM_ON     = $182c        ; per-voice: 1 = FM running (3)
 FM_IDX    = $182f        ; per-voice: (legacy, unused) (3)
 FM_CNT    = $1832        ; per-voice: frames left on current entry (3)
@@ -178,7 +179,6 @@ iv:     lda #$41
         sta VPHI,x
         sta VPADL,x
         sta VPADH,x
-        sta VIPULSE,x
         lda #$fe
         sta VGMASK,x             ; start gated off
         lda #$00
@@ -188,8 +188,13 @@ iv:     lda #$41
         sta FM_CNT,x
         sta FMP_LO,x
         sta FMP_HI,x
+        lda IFM_LO               ; default FM = program 0 (flat) until a cmd selects
         sta VIFM_LO,x
+        lda IFM_HI
         sta VIFM_HI,x
+        lda IPULSE               ; default pulse = program 0 until a cmd selects
+        sta VIPULSE,x
+        lda #$00
         sta vbasenote,x          ; base note index (set on each note trigger)
         ; orderlist ptr = OL_x ; then load the first pattern
         lda ollo,x
@@ -234,12 +239,15 @@ dp_go:
         lda #MULTISPEED
         sta ms_cnt
 dp_tick:
-        jsr pulse_step           ; per-voice pulse-program -> $D402/3 each tick
         jsr filt_prog_step       ; global filter program -> $D415/6/7 + mode
         dec zp_tcnt
         bne dp_vib
         jsr do_row               ; row tick: step the sequencer
 dp_vib:
+        ; pulse_step runs AFTER do_row so a note's pulse reset (pr_note sets
+        ; VPI=VIPULSE, VPC=0) takes effect on the SAME frame as the note — else
+        ; the pulse sweep lags one frame (audible on the lead's per-note ramp).
+        jsr pulse_step           ; per-voice pulse-program -> $D402/3 each tick
         jsr wave_step            ; wave-program -> $D404 + recompute vfreq
         jsr fm_step              ; per-voice freq -> $D400/1 (+ FM accumulate)
         dec ms_cnt
@@ -648,14 +656,28 @@ pr_cmd:
         cmp #$80
         bcc pr_note              ; $00-$7f -> note
         cmp #$c0
-        bcs pr_skipcmd           ; $c0-$ff -> command byte: skip
+        bcs pr_setprog           ; $c0-$ff -> set per-note synth program (slide+pulse)
         cmp #$a0
         bcs pr_setinst           ; $a0-$bf -> set instrument
         and #$0f                 ; $80-$9f -> duration
         sta pending_dur
         jsr advw
         jmp pr_read
-pr_skipcmd:
+pr_setprog:
+        ; $c0-$ff: select this voice's PER-NOTE synth program (a bundle of FM
+        ; slide + pulse-width envelope), decoupled from the instrument. index =
+        ; byte & $3f selects both the FM-start pointer (IFM) and the pulse-program
+        ; start row (IPULSE); pr_note restarts both from these. Lets a long song
+        ; carry many distinct slide+pulse shapes without inflating the <=32
+        ; instrument table (timbre = instrument; slide+pulse = this command).
+        and #$3f
+        tay
+        lda IFM_LO,y
+        sta VIFM_LO,x
+        lda IFM_HI,y
+        sta VIFM_HI,x
+        lda IPULSE,y
+        sta VIPULSE,x
         jsr advw
         jmp pr_read
 pr_setinst:
@@ -716,16 +738,25 @@ pn_not_off:
         sta VPI,x
         lda #$00
         sta VPC,x                ; force reload on the next frame
-        ; (re)start the FM offset-list at this note's instrument FM-start.
+        ; (re)start the FM offset-list at this note's FM program (set per note by
+        ; the $c0-$ff command). The trigger frame shows the BASE pitch (FM_ACC=0);
+        ; the first FM delta is applied the NEXT frame — matching the real SID,
+        ; whose frequency at the onset frame is the base note before any slide
+        ; accumulates. (FM_CNT=1 + FM_OFF=0 holds zero for this frame, then
+        ; FM_CNT hits 0 next frame and loads entry 0.) Applying the first delta on
+        ; the trigger frame put every FM-modulated voice 1 frame ahead of the
+        ; trace (audible phase-shift on the lead + arps).
         lda VIFM_LO,x
         sta FMP_LO,x
         lda VIFM_HI,x
         sta FMP_HI,x
         lda #$00
-        sta FM_CNT,x             ; force entry load next frame
         sta FM_ACC_LO,x
         sta FM_ACC_HI,x
+        sta FM_OFF_LO,x          ; no offset on the trigger frame
+        sta FM_OFF_HI,x
         lda #$01
+        sta FM_CNT,x             ; hold base this frame; load entry 0 next frame
         sta FM_ON,x
         lda VIFLAGS,x            ; flag $40 -> (re)start the filter program
         and #$40
@@ -818,17 +849,14 @@ ol_adv_done:
 
 ; set instrument for voice X: A = index
 set_instr_v:
+        ; Neither FM nor pulse is tied to the instrument any more — both are
+        ; selected per note by the $c0-$ff command (see pr_setprog). The
+        ; instrument sets only timbre: AD/SR/flags/filter/waveform.
         tay
-        lda IFM_LO,y             ; this instrument's FM-start address (lo/hi)
-        sta VIFM_LO,x
-        lda IFM_HI,y
-        sta VIFM_HI,x
         lda INSTR_AD,y
         sta tmpf
         lda INSTR_SR,y
         sta tmpf+1
-        lda INSTR_PULSE,y        ; pulse-program start row
-        sta VIPULSE,x
         lda INSTR_FLAGS,y        ; flags ($40 = start filter program)
         sta VIFLAGS,x
         lda INSTR_FILT,y         ; filter-program start row
