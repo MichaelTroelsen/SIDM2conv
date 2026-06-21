@@ -35,11 +35,15 @@ class TraceNote(NamedTuple):
     fm: List[Tuple[int, int]]   # RLE (signed per-frame freq delta, run length)
     ad: int = 0         # $D405 attack/decay at onset (instrument envelope)
     sr: int = 0         # $D406 sustain/release at onset
+    tie: bool = False   # legato continuation (pitch changed WITHOUT a gate re-trigger
+                        # in the real player) -> the driver must not re-attack/reset
 
 
 class TraceVoice(NamedTuple):
     notes: List[TraceNote]
     active: bool        # did this voice ever sound?
+    legato: bool = False  # holds the gate + changes pitch via the player (Galway
+                          # legato); its pulse free-runs rather than resetting per note
 
 
 class TraceSong(NamedTuple):
@@ -117,6 +121,46 @@ def _rle(deltas: List[int], max_run: int = 255) -> List[Tuple[int, int]]:
     return out
 
 
+def _legato_splits(freq: List[int], start: int, end: int) -> List[int]:
+    """Within a single gate-on region [start, end), return extra note onsets where
+    the pitch SETTLES at a new level — i.e. legato note changes the gate doesn't
+    mark. Galway holds the gate and changes pitch via the player, so a gate-based
+    detector sees one giant note; this recovers the real melody.
+
+    Robust against false splits: a vibrato (oscillates back to the current centre)
+    never settles at a new level, and a slide (pitch keeps moving) only settles —
+    and so only starts a new note — once it reaches and holds its destination. The
+    centre tracks slow drift so a gradual portamento doesn't trip the band.
+    """
+    import math
+
+    def st(f):
+        return 12 * math.log2(max(f, 1) / 3000.0)
+
+    BAND = 0.75          # semitones away from centre = "left the note"
+    SETTLE = 5           # frames a new level must hold to count as a new note
+    splits: List[int] = []
+    centre = st(freq[start])
+    cand = None
+    held = 0
+    i = start + 1
+    while i < end:
+        s = st(freq[i])
+        if abs(s - centre) <= BAND:
+            centre = 0.85 * centre + 0.15 * s    # follow vibrato centre / slow drift
+            cand, held = None, 0
+        else:
+            if cand is not None and abs(s - cand) <= 0.5:
+                held += 1
+            else:
+                cand, held = s, 1
+            if held >= SETTLE:                   # settled at a new level -> new note
+                splits.append(i - held + 1)
+                centre, cand, held = cand, None, 0
+        i += 1
+    return splits
+
+
 def extract(sid_path: str, frames: int, init: int, play: int,
             subtune: int) -> TraceSong:
     """Extract a :class:`TraceSong` from a cycle-accurate trace of the real player."""
@@ -136,10 +180,33 @@ def extract(sid_path: str, frames: int, init: int, play: int,
         pulse_all.append([((phi[i] & 0x0F) << 8) | plo[i] for i in range(frames)])
 
         # note onsets: gate (bit 0) goes 0 -> 1; frame 0 counts if gated.
-        onsets = [fr for fr in range(1, frames)
-                  if (ctrl[fr] & 1) and not (ctrl[fr - 1] & 1)]
+        gate_on = [fr for fr in range(1, frames)
+                   if (ctrl[fr] & 1) and not (ctrl[fr - 1] & 1)]
         if ctrl[0] & 1:
-            onsets = [0] + onsets
+            gate_on = [0] + gate_on
+        # Add LEGATO note boundaries: within each gate-on region (gate held until
+        # the next gate-off), split where the pitch settles at a new level. Galway
+        # plays melodies legato (no re-gate), so without this each voice collapses
+        # to one note whose FM/pulse spans the whole tune (unbounded -> diverges +
+        # blows the 256-row pulse table). Re-gated tunes (Ocean) have short regions
+        # with no settled-level change, so they pick up no spurious splits.
+        onsets = set(gate_on)
+        # Apply legato splitting ONLY to a predominantly-LEGATO voice: one that
+        # holds the gate and changes pitch via the player (very few re-gates), like
+        # Galway's Wizball. A normally re-gated voice (Ocean's bass re-triggers
+        # every few frames) already segments itself by gate and must be left alone
+        # — splitting its sustained notes corrupts them.
+        legato_voice = len(gate_on) < max(8, frames // 100)
+        if legato_voice:
+            for on in gate_on:
+                region_end = frames
+                for fr in range(on + 1, frames):
+                    if not (ctrl[fr] & 1):
+                        region_end = fr
+                        break
+                onsets.update(_legato_splits(freq, on, region_end))
+        gate_set = set(gate_on)
+        onsets = sorted(onsets)
 
         notes: List[TraceNote] = []
         for k, on in enumerate(onsets):
@@ -152,10 +219,13 @@ def extract(sid_path: str, frames: int, init: int, play: int,
                     end = fr; break
             seg = freq[on:end]
             deltas = [seg[i] - seg[i - 1] for i in range(1, len(seg))]
+            # A note from a LEGATO split (not a real gate 0->1) is a tie: the player
+            # changed pitch with the gate still on, so it must not re-attack.
             notes.append(TraceNote(onset=on, end=end, base_freq=seg[0] if seg else 0,
                                    waveform=ctrl[on], fm=_rle(deltas),
-                                   ad=ad[on], sr=sr[on]))
-        voices.append(TraceVoice(notes=notes, active=bool(notes)))
+                                   ad=ad[on], sr=sr[on], tie=on not in gate_set))
+        voices.append(TraceVoice(notes=notes, active=bool(notes),
+                                 legato=legato_voice))
 
     flo = _series(reg.get((None, "freq_lo"), {}), frames)
     fhi = _series(reg.get((None, "freq_hi"), {}), frames)

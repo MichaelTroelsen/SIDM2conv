@@ -124,6 +124,56 @@ def pulse_program(seg, step):
     return rows
 
 
+def _set_threshold_pulse(seg, thresh):
+    """SET-staircase encoding of a pulse series: hold one absolute width until the
+    real value drifts more than `thresh` from it, then set the new value. The
+    staircase stays within `thresh` of the real envelope everywhere (pick
+    thresh < the tool/ear pulse tolerance $80), and a slow wide ramp collapses to
+    ~range/(2*thresh) rows regardless of length — the add engine can't, because it
+    adds an integer EVERY frame so it can't render a sub-1/frame slope without
+    over-applying."""
+    rows, i, n = [], 0, len(seg)
+    while i < n:
+        anchor = seg[i]
+        j = i + 1
+        while j < n and abs(seg[j] - anchor) <= thresh:
+            j += 1
+        b0, b1, ln = 0x80 | ((anchor >> 8) & 0x0F), anchor & 0xFF, j - i
+        while ln > 255:
+            rows.append((b0, b1, 255)); ln -= 255
+        rows.append((b0, b1, ln))
+        i = j
+    rows.append((0x7F, 0, len(rows)))                # self-jump = freeze
+    return rows
+
+
+def faithful_legato_pulse_program(series, on0, max_rows=80):
+    """Encode a LEGATO voice's REAL free-running pulse envelope as ONE program
+    (replacing the old generic-triangle approximation, which left the
+    PULSE-waveform voices at 8-64% in SF2II). A legato voice re-gates exactly once
+    (its single gate-on `on0`, where the driver restarts the pulse via VPI=VIPULSE,
+    VPC=0), then free-runs across all tied notes — so one program covering frame
+    `on0` to the end IS the whole voice's pulse, played in phase.
+
+    A smooth fast sweep (the lead) compresses exactly with the add-based RLE, so
+    use it whenever it fits the shared 256-row PULSE table. A slow wide ramp (the
+    accompaniment) explodes the add-RLE — per-frame SID 12-bit quantization stores
+    a +0.5/frame slope as a +1,0,+1,0 dither (1-frame runs) AND the add engine
+    can't reproduce a sub-1/frame slope without over-applying — so fall back to a
+    SET staircase whose steps stay within the $80 pulse tolerance."""
+    seg = series[on0:]
+    if not seg:
+        return [(0x7F, 0, 0)]
+    add = pulse_program(seg, 1)                      # exact per-frame add (best for sweeps)
+    if len(add) <= max_rows:
+        return add
+    for thresh in (16, 32, 48, 64, 96):              # finest staircase that fits
+        rows = _set_threshold_pulse(seg, thresh)
+        if len(rows) <= max_rows:
+            return rows
+    return _set_threshold_pulse(seg, 0x7F)
+
+
 def sweep_pulse_program():
     """The pre-click LEAD 'sweep' sound, made click-free: a bounded full-range
     triangle PWM (set $010, ramp +8/tick up to $FF0, then -8/tick back to $010,
@@ -216,7 +266,7 @@ def main():
         ROOT, "SID", "Galway_Martin", "Wizball.sid")
     frames = int(sys.argv[2]) if len(sys.argv) > 2 else 1800
     h = SIDParser(sid).parse_header()
-    subtune = (h.start_song or 1) - 1
+    subtune = int(sys.argv[3]) if len(sys.argv) > 3 else (h.start_song or 1) - 1
     song = T.extract(sid, frames, h.init_address, h.play_address, subtune)
     # Adaptive tempo: the editor row grid must be fine enough for the fastest
     # notes. Use the GCD of all note onsets as frames-per-row (clamped 1..8) so
@@ -229,7 +279,22 @@ def main():
         for n in voice.notes:
             if n.onset:
                 g = math.gcd(g, n.onset)
-    TEMPO = max(1, min(8, g or 8))
+    if g >= 2:
+        TEMPO = max(1, min(8, g))
+    else:
+        # Legato note splits land on arbitrary frames, collapsing the onset GCD to
+        # 1 (-> tempo 1 -> 1 row/play-call -> huge sequences). Use the DOMINANT
+        # per-voice onset spacing (the most common gap = the player's note grid;
+        # ~20 play-calls for Wizball) as the row period, so gate-aligned notes land
+        # exactly on rows. Allow a coarser grid than re-gated tunes (clamp 32).
+        from collections import Counter
+        gc = Counter()
+        for voice in song.voices:
+            on = sorted(n.onset for n in voice.notes)
+            for a, b in zip(on, on[1:]):
+                if b > a:
+                    gc[b - a] += 1
+        TEMPO = max(1, min(32, gc.most_common(1)[0][0])) if gc else 8
     rows_total = frames // TEMPO
     multispeed = detect_multispeed(sid, h.init_address, h.play_address, subtune)
     print(f"trace: {frames} play-calls, {rows_total} rows @ tempo {TEMPO}, "
@@ -259,13 +324,22 @@ def main():
         b2i, bfm, bpul = {}, [], []        # synth bundles: (fm, pulse) per command
         nseq = [[] for _ in range(3)]
         iov = bov = 0
+        # Legato voices have a free-running PWM -> one FAITHFUL per-frame pulse
+        # program for the whole voice (not per-note), starting at its single
+        # gate-on; re-gated voices (Ocean) keep per-note pulse.
+        def _first_gate(voice):
+            return next((n.onset for n in voice.notes if not n.tie), 0)
+        vpulse = [faithful_legato_pulse_program(song.pulse[v], _first_gate(voice))
+                  if voice.legato else None
+                  for v, voice in enumerate(song.voices)]
         for v, voice in enumerate(song.voices):
             for note in voice.notes:
                 orow = note.onset // TEMPO
                 if orow >= rows_total:
                     continue
                 nb, fm = fm_program(note, FLAT_DEV)
-                pul = pulse_program(song.pulse[v][note.onset:note.end], pq)
+                pul = (vpulse[v] if vpulse[v] is not None
+                       else pulse_program(song.pulse[v][note.onset:note.end], pq))
                 # coarsen AD/SR PER NIBBLE only as a fallback (Galway ramps Attack);
                 # per-nibble keeps Decay + Release alive.
                 def qn(b):
@@ -293,7 +367,7 @@ def main():
                         bfm.append(fm)               # 1st note in bundle = its fm+pulse
                         bpul.append(pul)
                 end_row = min(rows_total, max(orow + 1, note.end // TEMPO))
-                nseq[v].append((orow, end_row, nb, iidx, bidx))
+                nseq[v].append((orow, end_row, nb, iidx, bidx, note.tie))
         return s2i, ins, bfm, bpul, nseq, iov, bov
 
     # Fit both INDEPENDENT budgets (32 instruments, 63 synth bundles). Only a
@@ -339,7 +413,7 @@ def main():
         drows, cur = [], 0
         last_i = last_f = -1
         nv = note_seq[v]
-        for ni, (orow, end_row, nb, iidx, fidx) in enumerate(nv):
+        for ni, (orow, end_row, nb, iidx, fidx, tie) in enumerate(nv):
             orow = max(orow, cur)
             # Clamp this note's end to the NEXT note's onset so a long note's
             # reconstructed tail never pushes the next note late. Without this the
@@ -351,9 +425,13 @@ def main():
             if orow >= end_row:
                 continue
             drows += [D11Row(note=SF2_GATE_OFF) for _ in range(orow - cur)]
+            # tie = legato note change: keep the gate (no re-attack) + let pulse
+            # free-run. Only on a sustained voice (a tie at row 0 / after a rest has
+            # nothing to continue, so drop it there).
             drows.append(D11Row(note=nb,
                                 instrument=(iidx if iidx != last_i else None),
-                                command=(fidx if fidx != last_f else None)))
+                                command=(fidx if fidx != last_f else None),
+                                tie=bool(tie) and cur > 0))
             last_i, last_f = iidx, fidx
             drows += [D11Row(note=SF2_GATE_ON) for _ in range(end_row - orow - 1)]
             cur = end_row

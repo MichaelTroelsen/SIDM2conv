@@ -53,14 +53,15 @@ def test_wizball_song4_structure_and_exact_reconstruction():
     song = T.extract(WIZBALL, 1800, h.init_address, h.play_address,
                      (h.start_song or 1) - 1)
     v0, v1, v2 = song.voices
-    # Real song-4: osc1 melodic (one legato note), osc2 SILENT, osc3 enters ~800.
-    assert v0.active and len(v0.notes) == 1
+    # Real song-4 plays LEGATO (gate held, pitch changed via the player). Both
+    # sounding voices are flagged legato and segmented into notes by settled-pitch
+    # change (not gate). osc2 is SILENT; osc3 enters ~800 as a melody (many notes).
+    assert v0.active and v0.legato and v0.notes[0].onset == 0
     assert not v1.active and len(v1.notes) == 0
-    assert v2.active and len(v2.notes) == 1
-    assert v0.notes[0].onset == 0
+    assert v2.active and v2.legato and len(v2.notes) > 10   # was 1 before splitting
     assert 700 <= v2.notes[0].onset <= 900
-    # FM offset list reconstructs the captured frequency envelope EXACTLY.
+    # FM offset list reconstructs each note's captured frequency envelope EXACTLY.
     for v in (v0, v2):
-        n = v.notes[0]
-        recon = T.reconstruct_freq(n)
-        assert len(recon) == (n.end - n.onset)
+        for n in v.notes:
+            recon = T.reconstruct_freq(n)
+            assert len(recon) == (n.end - n.onset)

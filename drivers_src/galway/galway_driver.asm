@@ -35,6 +35,8 @@ ms_cnt      = $f0           ; multispeed tick countdown within one video frame
 tmpf        = $f6           ; freq/ADSR temp (lo/hi)
 widx        = $f5           ; wave-index temp
 pending_dur = $f4           ; duration parsed this event
+tieflag     = $f1           ; nonzero if the current note is a TIE ($90-$9f dur):
+                            ; legato continuation -> no gate re-attack, pulse free-runs
 np_guard    = $f3           ; orderlist-walk guard (anti-runaway)
 sidoff      = $f8           ; SID register offset for current voice
 zp_guard    = $f9           ; sequence-parse guard (anti-runaway)
@@ -659,8 +661,12 @@ pr_cmd:
         bcs pr_setprog           ; $c0-$ff -> set per-note synth program (slide+pulse)
         cmp #$a0
         bcs pr_setinst           ; $a0-$bf -> set instrument
-        and #$0f                 ; $80-$9f -> duration
+        sta tieflag              ; $80-$9f -> duration; bit $10 = tie marker
+        and #$0f
         sta pending_dur
+        lda tieflag
+        and #$10                 ; isolate tie bit -> tieflag (0 or $10)
+        sta tieflag
         jsr advw
         jmp pr_read
 pr_setprog:
@@ -724,20 +730,23 @@ pn_not_off:
         sta SID+0,y
         lda tmpf+1
         sta SID+1,y
+        lda tieflag              ; TIE -> change pitch only: no gate re-attack, and
+        bne pn_tied              ; leave the pulse program free-running (legato)
         lda vwf,x                ; retrigger: gate off then on
         and #$fe
         sta SID+4,y
         lda vwf,x
         ora #$01
         sta SID+4,y
-        lda VIWAVE,x             ; restart the wave program at the instrument's row
-        sta VWI,x
-        lda #$ff
-        sta VGMASK,x             ; gate on
         lda VIPULSE,x            ; restart the pulse program too
         sta VPI,x
         lda #$00
         sta VPC,x                ; force reload on the next frame
+pn_tied:
+        lda VIWAVE,x             ; restart the wave program at the instrument's row
+        sta VWI,x
+        lda #$ff
+        sta VGMASK,x             ; gate on (wave_step keeps the gate asserted)
         ; (re)start the FM offset-list at this note's FM program (set per note by
         ; the $c0-$ff command). The trigger frame shows the BASE pitch (FM_ACC=0);
         ; the first FM delta is applied the NEXT frame — matching the real SID,
