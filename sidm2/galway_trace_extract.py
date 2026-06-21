@@ -161,6 +161,28 @@ def _legato_splits(freq: List[int], start: int, end: int) -> List[int]:
     return splits
 
 
+def _adsr_splits(ad: List[int], sr: List[int], start: int, end: int) -> List[int]:
+    """Within one gate-on region, return extra onsets where the AD/SR envelope
+    register changes and HOLDS for a few frames — Galway rewrites the envelope
+    mid-note (e.g. Comic Bakery's lead drops its sustain while the note stays
+    gated). Each split starts a tie note carrying the new AD/SR, so the editor
+    shows the change and the driver writes it live (set_instr_v touches only the
+    $D405/6 envelope registers, not the gate / FM / pulse). A 1-2 frame transient
+    (hard-restart blip) is ignored by the hold check."""
+    HOLD = 3
+    splits: List[int] = []
+    cur = (ad[start], sr[start])
+    i = start + 1
+    while i < end:
+        v = (ad[i], sr[i])
+        if v != cur and all(i + k < end and (ad[i + k], sr[i + k]) == v
+                            for k in range(HOLD)):
+            splits.append(i)
+            cur = v
+        i += 1
+    return splits
+
+
 def extract(sid_path: str, frames: int, init: int, play: int,
             subtune: int) -> TraceSong:
     """Extract a :class:`TraceSong` from a cycle-accurate trace of the real player."""
@@ -191,20 +213,23 @@ def extract(sid_path: str, frames: int, init: int, play: int,
         # blows the 256-row pulse table). Re-gated tunes (Ocean) have short regions
         # with no settled-level change, so they pick up no spurious splits.
         onsets = set(gate_on)
-        # Apply legato splitting ONLY to a predominantly-LEGATO voice: one that
-        # holds the gate and changes pitch via the player (very few re-gates), like
-        # Galway's Wizball. A normally re-gated voice (Ocean's bass re-triggers
-        # every few frames) already segments itself by gate and must be left alone
-        # — splitting its sustained notes corrupts them.
+        # Apply legato splitting to EVERY gate-on region (per-region, not per-voice).
+        # Within a held gate Galway changes pitch AND rewrites the AD/SR envelope via
+        # the player; split where the pitch SETTLES at a new level and where the
+        # envelope changes-and-holds, so the editor shows the real melody (not one
+        # held note) and each segment carries its true envelope. Short re-gated notes
+        # never settle / hold a new envelope, so they pick up no spurious splits —
+        # safe for re-gated voices (Ocean) too. The voice `legato` flag (few
+        # gate-ons) is kept separately, only for the pulse/tempo model.
         legato_voice = len(gate_on) < max(8, frames // 100)
-        if legato_voice:
-            for on in gate_on:
-                region_end = frames
-                for fr in range(on + 1, frames):
-                    if not (ctrl[fr] & 1):
-                        region_end = fr
-                        break
-                onsets.update(_legato_splits(freq, on, region_end))
+        for on in gate_on:
+            region_end = frames
+            for fr in range(on + 1, frames):
+                if not (ctrl[fr] & 1):
+                    region_end = fr
+                    break
+            onsets.update(_legato_splits(freq, on, region_end))
+            onsets.update(_adsr_splits(ad, sr, on, region_end))
         gate_set = set(gate_on)
         onsets = sorted(onsets)
 

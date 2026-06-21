@@ -346,10 +346,14 @@ def main():
     import math
     global TEMPO
     multispeed = detect_multispeed(sid, h.init_address, h.play_address, subtune)
+    # Tempo grid = the musical note grid = the GATE-ONS only. Legato/AD-SR split
+    # notes (ties) land on arbitrary modulation frames; including them collapses the
+    # GCD to 1 and coarsens the grid. Ties quantise to the gate-on grid harmlessly
+    # (their pitch is FM, their pulse is free-running — neither needs the row).
     g = 0
     for voice in song.voices:
         for n in voice.notes:
-            if n.onset:
+            if n.onset and not n.tie:
                 g = math.gcd(g, n.onset)
     if any(v.legato for v in song.voices):
         # Legato tunes reset the pulse on each note, and the pulse changes fast, so
@@ -366,7 +370,7 @@ def main():
         from collections import Counter
         gc = Counter()
         for voice in song.voices:
-            on = sorted(n.onset for n in voice.notes)
+            on = sorted(n.onset for n in voice.notes if not n.tie)
             for a, b in zip(on, on[1:]):
                 if b > a:
                     gc[b - a] += 1
@@ -421,13 +425,19 @@ def main():
             return ends
         rends = [_region_ends(voice.notes) for voice in song.voices]
         EMPTY_PUL = [(0x7F, 0, 0)]
+        # A voice needs the per-GATE-REGION pulse model whenever it has TIE notes
+        # (held regions split into sub-notes) — not only when the whole voice is
+        # legato. Otherwise a held note's per-note pulse would cover only up to the
+        # first split and then freeze across the ties (the driver doesn't restart
+        # pulse on a tie). Re-gated voices with no ties keep the per-note pulse.
+        region_pulse = [vc.legato or any(n.tie for n in vc.notes) for vc in song.voices]
         for v, voice in enumerate(song.voices):
             for ni, note in enumerate(voice.notes):
                 orow = note.onset // TEMPO
                 if orow >= rows_total:
                     continue
                 nb, fm = fm_program(note, FLAT_DEV)
-                if voice.legato:
+                if region_pulse[v]:
                     # Budget each region's pulse rows PROPORTIONAL to its length:
                     # a long sustained region (e.g. the 36s intro) needs many rows
                     # for its slow sweep, a 60-frame re-gate needs ~3. A flat budget
@@ -437,9 +447,14 @@ def main():
                     if note.tie:
                         pul = EMPTY_PUL
                     else:
-                        rl = rends[v][ni] - note.onset
+                        # `faithful_pulse_program` returns the EXACT per-frame program
+                        # when it fits the budget, else coarsens. Give a generous flat
+                        # budget so SHORT regions (Comic Bakery's held lead notes) stay
+                        # exact; only genuinely long sweeps (Wizball's 36s intro) hit
+                        # the cap and coarsen. pq (from the fit loop) shrinks it only
+                        # if the shared pulse table overflows.
                         pul = faithful_pulse_program(song.pulse[v][note.onset:rends[v][ni]],
-                                                     max(3, min(96, rl // (64 * pq))))
+                                                     max(8, 96 // pq))
                 else:
                     pul = pulse_program(song.pulse[v][note.onset:note.end], pq)
                 # coarsen AD/SR PER NIBBLE only as a fallback (Galway ramps Attack);
@@ -545,7 +560,14 @@ def main():
             drows += [D11Row(note=SF2_GATE_ON) for _ in range(end_row - orow - 1)]
             cur = end_row
         drows += [D11Row(note=SF2_GATE_OFF) for _ in range(rows_total - cur)]
-        segs.append(segment_track(drows) if drows else [bytes([0x7F])])
+        packed = segment_track(drows) if drows else [bytes([0x7F])]
+        segs.append(packed)
+        if os.environ.get("GALWAY_DEBUG_NOTES"):
+            from sidm2.galway_driver11_emitter import unpack_sequence
+            emitted = sum(1 for r in drows if 1 <= (r.note or 0) <= 0x6F)
+            unp = sum(1 for s in packed for n in unpack_sequence(s) if 1 <= n <= 0x6F)
+            print(f"  [dbg] osc{v+1}: note-ons emitted={emitted} unpacked(editor)={unp} "
+                  f"sequences={len(packed)} rows={rows_total}")
 
     def _wftag(wf):
         for bit, t in ((0x80, "noise"), (0x40, "pulse"), (0x20, "saw"), (0x10, "tri")):
