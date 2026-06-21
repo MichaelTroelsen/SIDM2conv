@@ -15,6 +15,7 @@ Verifies headless that the driver's per-frame note matches the emitted program
 """
 import os
 import sys
+import math
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -319,6 +320,7 @@ def sweep_pulse_program():
 
 
 FLAT_DEV = 16        # within-note pitch deviation (SID units) treated as "flat"
+ARP_IN_WAVE = os.environ.get("GALWAY_ARP_WAVE", "1") != "0"   # arps -> editable wave table
 
 
 def fm_program(note, flat_dev=FLAT_DEV):
@@ -356,6 +358,46 @@ def fm_program(note, flat_dev=FLAT_DEV):
             entries.append((d & 0xFF, (d >> 8) & 0xFF, run))
     entries.append((0, 0, 0))                        # freeze terminator
     return nb, entries
+
+
+def _find_period(seq, maxp=32):
+    """Shortest p (1..maxp) such that seq repeats with period p; else len (capped)."""
+    n = len(seq)
+    for p in range(1, min(maxp, n) + 1):
+        if all(seq[i] == seq[i - p] for i in range(p, n)):
+            return p
+    return min(n, maxp)
+
+
+def arp_wave_program(note, nb, wf):
+    """If the note's pitch is a discrete-semitone ARPEGGIO (visits >=2 distinct
+    semitone levels spanning >=2, moving both up and down — a chord arp, not a
+    vibrato or slide), return its WAVE-table program: one (waveform, semitone) row
+    per arp frame + a $7f loop-to-start. SF2II's wave table is editable and
+    `wave_step` applies col1 as freqtable[note+semitone], so the arp's pitches are
+    IDENTICAL to the trace — moving it from the (driver-internal) FM to the wave
+    table is loss-free AND surfaces it for editing. Returns None if not an arp."""
+    recon = T.reconstruct_freq(note)
+    if len(recon) < 3:
+        return None
+    seq = [freq_to_note(f) - nb for f in recon]       # per-frame semitone offset
+    levels = set(seq)
+    up = any(seq[i] > seq[i - 1] for i in range(1, len(seq)))
+    dn = any(seq[i] < seq[i - 1] for i in range(1, len(seq)))
+    if not (up and dn and len(levels) >= 2 and max(levels) - min(levels) >= 2):
+        return None
+    # ON-GRID gate: a real arp's frequencies sit ON exact semitones (integer wave
+    # column reproduces them exactly); a wide VIBRATO sits ~0.5 semitone off-grid and
+    # the integer column can't hold it — keep those in the FM. Detrend by the base
+    # note's own sub-semitone detune (median) before measuring off-grid spread.
+    sts = [12 * math.log2(max(f, 1) / max(note.base_freq, 1)) for f in recon]
+    med = sorted(s - round(s) for s in sts)[len(sts) // 2]
+    if max(abs((s - med) - round(s - med)) for s in sts) > 0.25:
+        return None
+    period = _find_period(seq)
+    rows = [(wf, s & 0xFF) for s in seq[:period]]      # signed semitone in col1
+    rows.append((0x7F, 0))                             # loop to row 0
+    return rows
 
 
 def fm_curve(fm, npts=5):
@@ -526,7 +568,7 @@ def main():
         return [ridx[find(k)] for k in range(n)], [bexact[r] for r in roots]
 
     def build(adq, pq):
-        s2i, ins = {}, []                  # timbre instruments (wf,ad,sr)
+        s2i, ins, iwave = {}, [], []       # instruments (wf,ad,sr,arp) + wave programs
         nseq = [[] for _ in range(3)]
         iov = 0
         # PULSE is restarted by the driver on each gate-on (a non-tie note;
@@ -555,6 +597,26 @@ def main():
         # first split and then freeze across the ties (the driver doesn't restart
         # pulse on a tie). Re-gated voices with no ties keep the per-note pulse.
         region_pulse = [vc.legato or any(n.tie for n in vc.notes) for vc in song.voices]
+        # Budget the 256-row WAVE table: adopt the most-COMMON arps (by note count)
+        # into the editable wave table; rarer arps stay in the FM so the shared table
+        # (arps + flat programs, deduped) never overflows. ~24 rows reserved for the
+        # flat (non-arp) wave programs.
+        arp_adopted = set()
+        if ARP_IN_WAVE:
+            arp_count = {}
+            for voice in song.voices:
+                for note in voice.notes:
+                    if note.onset // TEMPO >= rows_total:
+                        continue
+                    wf = (note.waveform & 0xF0) | 0x01
+                    a = arp_wave_program(note, freq_to_note(note.base_freq), wf)
+                    if a:
+                        arp_count[tuple(a)] = arp_count.get(tuple(a), 0) + 1
+            rows = 0
+            for a, _ in sorted(arp_count.items(), key=lambda kv: -kv[1]):
+                if rows + len(a) <= 256 - 24:
+                    arp_adopted.add(a)
+                    rows += len(a)
         b2i, bexact, bcount, bwave = {}, [], [], []   # distinct EXACT (fm,pulse) bundles
         for v, voice in enumerate(song.voices):
             for ni, note in enumerate(voice.notes):
@@ -587,16 +649,37 @@ def main():
                 def qn(b):
                     return (((b >> 4) // adq * adq) << 4) | ((b & 0xF) // adq * adq)
                 ad, sr = qn(note.ad), qn(note.sr)
-                ikey = ((note.waveform & 0xF0), ad, sr)
+                wf = (note.waveform & 0xF0) | 0x01
+                # ARPEGGIO -> editable wave table: a chord-arp note's pitch is moved
+                # from the driver-internal FM into the per-instrument wave program's
+                # semitone column (editor shows/edits/plays it). The instrument key
+                # gains the arp, so a timbre with two different arps becomes two
+                # instruments. On overflow, fall back to a flat-wave instrument and
+                # keep the arp in the FM (pitch stays right, just not editor-visible).
+                arp_rows = arp_wave_program(note, nb, wf) if ARP_IN_WAVE else None
+                if arp_rows is not None and tuple(arp_rows) not in arp_adopted:
+                    arp_rows = None                       # not budgeted -> keep in FM
+                ikey = ((note.waveform & 0xF0), ad, sr, tuple(arp_rows) if arp_rows else None)
                 iidx = s2i.get(ikey)
-                if iidx is None:
-                    if len(ins) >= 32:
+                if iidx is None and len(ins) < 32:
+                    iidx = len(ins)
+                    s2i[ikey] = iidx
+                    ins.append((ad, sr, wf, 0x08))
+                    iwave.append(arp_rows)
+                if iidx is None:                          # instrument table full
+                    fkey = ((note.waveform & 0xF0), ad, sr, None)
+                    iidx = s2i.get(fkey)
+                    if iidx is None and len(ins) < 32:
+                        iidx = len(ins)
+                        s2i[fkey] = iidx
+                        ins.append((ad, sr, wf, 0x08))
+                        iwave.append(None)
+                    if iidx is None:
                         iov += 1
                         iidx = 0
-                    else:
-                        iidx = len(ins)
-                        s2i[ikey] = iidx
-                        ins.append((ad, sr, (note.waveform & 0xF0) | 0x01, 0x08))
+                    arp_rows = None                       # keep the arp in the FM
+                if arp_rows is not None:
+                    fm = [(0, 0, 0)]                       # arp now in the wave table
                 bk = (tuple(fm), tuple(pul))     # EXACT bundle (no FM quantisation)
                 bi = b2i.get(bk)
                 if bi is None:
@@ -617,14 +700,14 @@ def main():
         for v in range(3):
             nseq[v] = [(orow, er, nb, iidx, mapping[bi], tie)
                        for (orow, er, nb, iidx, bi, tie) in nseq[v]]
-        return s2i, ins, bfm, bpul, nseq, iov
+        return s2i, ins, bfm, bpul, nseq, iov, iwave
 
     # Bundles always fit 64 (cluster_bundles merges). The fit loop only handles the
     # 32-instrument cap (adq = coarsen AD/SR) and the pulse-table-rows cap (pq).
     PULSE_TABLE_ROWS = 1024      # row-major PULSETAB via 16-bit pointer (was 256)
     adq = pq = 1
     while True:
-        _, instrs, fmprogs, pulse_by_cmd, note_seq, iov = build(adq, pq)
+        _, instrs, fmprogs, pulse_by_cmd, note_seq, iov, iwave = build(adq, pq)
         prows = sum(len(p) for p in {tuple(p) for p in pulse_by_cmd})
         pov = prows > PULSE_TABLE_ROWS
         if iov == 0 and not pov:
@@ -722,6 +805,7 @@ def main():
               f"envelope, {len(filt_instr_set)} instr(s) flagged")
     gen, edit, mdp, seq0 = N.gen_includes_song(segs, instrs,
                                                filter_lead=False,
+                                               wave_programs=iwave,
                                                fm_programs=fmprogs,
                                                multispeed=multispeed,
                                                pulse_by_cmd=pulse_by_cmd,

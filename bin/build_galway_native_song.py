@@ -92,6 +92,7 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
     io = gen.instr_addr - B.EDIT_BASE
     wo, po, fo = B.relocate_driver_tables(gen, edit)
     wave_cursor = 0                 # sequential WAVE-row allocator
+    wave_dedup = {}                 # content -> start row (share identical arps)
     pulse_cursor = 0                # sequential PULSE-row allocator
     for i, ins in enumerate(instrs[:32]):
         ad, sr, wf = ins[0], ins[1], ins[2]
@@ -114,6 +115,12 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
             wp = wave_programs[i]
         if wp is None:
             wp = [(wf or 0x41, 0x00), (0x7f, 0)]            # loop -> own start
+        # Dedup identical wave programs (many instruments share one arp, e.g. a
+        # [0,3,7,12] chord) so the 256-row table isn't blown by repeats.
+        wkey = tuple(wp)
+        if wkey in wave_dedup:
+            edit[io + 5 * 32 + i] = wave_dedup[wkey] & 0xFF
+            continue
         start = wave_cursor
         for r, row in enumerate(wp):
             c0, c1 = row[0], row[1]
@@ -122,6 +129,7 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
             # any other row: col1 = signed semitone offset (used as-is).
             edit[wo + 1 * 256 + start + r] = ((start + c1) if c0 == 0x7f else c1) & 0xFF
         edit[io + 5 * 32 + i] = start & 0xFF
+        wave_dedup[wkey] = start
         wave_cursor += len(wp)
         if wave_cursor > 256:
             raise ValueError(
