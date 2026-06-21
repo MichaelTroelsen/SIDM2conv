@@ -346,35 +346,41 @@ def main():
     import math
     global TEMPO
     multispeed = detect_multispeed(sid, h.init_address, h.play_address, subtune)
-    # Tempo grid = the musical note grid = the GATE-ONS only. Legato/AD-SR split
-    # notes (ties) land on arbitrary modulation frames; including them collapses the
-    # GCD to 1 and coarsens the grid. Ties quantise to the gate-on grid harmlessly
-    # (their pitch is FM, their pulse is free-running — neither needs the row).
-    g = 0
-    for voice in song.voices:
-        for n in voice.notes:
-            if n.onset and not n.tie:
-                g = math.gcd(g, n.onset)
+    # Row budget: the edit area (sequences + tables) must clear the $D000 memory
+    # wall, so cap total rows (~12000 fits; ~13500 overflows osc3). budget_tempo is
+    # the coarsest grid forced by length; the finer the better for accuracy, so it's
+    # a FLOOR, not the value.
+    ROW_BUDGET = 12000
+    budget_tempo = max(1, -(-frames // ROW_BUDGET))
+    has_ties = any(n.tie for v in song.voices for n in v.notes)
     if any(v.legato for v in song.voices):
-        # Legato tunes reset the pulse on each note, and the pulse changes fast, so
-        # a note's pulse reset must land FRAME-accurately or it drifts out of the
-        # $80 tolerance (the lead's pulse fell to ~19% at the old coarse grid). Use
-        # ONE row per video frame (TEMPO=multispeed): frame-accurate AND a
-        # manageable sequence length (TEMPO=1 = 1 row/play-call blows it up).
-        TEMPO = max(1, multispeed)
-    elif g >= 2:
-        TEMPO = max(1, min(8, g))
+        # Legato tunes need ONE row per video frame for frame-accurate pulse resets
+        # (the lead's pulse fell to ~19% at a coarse grid). TEMPO=multispeed.
+        TEMPO = max(multispeed, budget_tempo)
+    elif has_ties:
+        # A held-note voice has within-gate SPLIT melody at arbitrary frames; a
+        # coarse gate-on grid drops it (Terra Cresta's lead needs tempo 1). Place it
+        # as finely as the memory budget allows.
+        TEMPO = budget_tempo
     else:
-        # Re-gated tune with no common onset divisor: use the DOMINANT per-voice
-        # onset spacing (the player's note grid) so gate-aligned notes land on rows.
-        from collections import Counter
-        gc = Counter()
+        # Pure re-gated (no within-gate splits): align the grid to the note spacing
+        # for a clean editor, but never coarser than the budget.
+        g = 0
         for voice in song.voices:
-            on = sorted(n.onset for n in voice.notes if not n.tie)
-            for a, b in zip(on, on[1:]):
-                if b > a:
-                    gc[b - a] += 1
-        TEMPO = max(1, min(32, gc.most_common(1)[0][0])) if gc else 8
+            for n in voice.notes:
+                if n.onset and not n.tie:
+                    g = math.gcd(g, n.onset)
+        if g >= 2:
+            TEMPO = max(budget_tempo, min(8, g))
+        else:
+            from collections import Counter
+            gc = Counter()
+            for voice in song.voices:
+                on = sorted(n.onset for n in voice.notes if not n.tie)
+                for a, b in zip(on, on[1:]):
+                    if b > a:
+                        gc[b - a] += 1
+            TEMPO = max(budget_tempo, min(32, gc.most_common(1)[0][0]) if gc else 8)
     if os.environ.get("GALWAY_TEMPO"):
         TEMPO = int(os.environ["GALWAY_TEMPO"])
     rows_total = frames // TEMPO
