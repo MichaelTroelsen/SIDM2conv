@@ -25,6 +25,67 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.11.0] - 2026-06-21
+
+### Full-fidelity, full-length Wizball — legato extraction + 16-bit pulse pointer
+
+v3.10.0 brought a 9-minute Ocean Loader to ~100% in stock SF2II, but the default
+**Wizball** tune stayed benched: its trace extracted only ~2 notes per voice.
+This release makes the full 135-second default Wizball play faithfully on every
+SID register.
+
+**Two root problems, two fixes:**
+
+1. **Legato note extraction** (`sidm2/galway_trace_extract.py`, commit `3bb2829`).
+   Wizball's default tune is fully LEGATO — every voice holds the gate open and
+   changes pitch through the player (portamento/vibrato), so the gate-based
+   detector collapsed each voice to ~1-2 notes. New `_legato_splits` recovers the
+   real melody by detecting where pitch SETTLES at a new level (robust against
+   vibrato/slide false splits), applied only to predominantly-legato voices so
+   re-gated tunes (Ocean) are untouched. Split notes are tagged `tie=True`. The
+   driver (`galway_driver.asm`) gained tie handling: the `$90-$9f` duration's
+   `$10` bit marks a TIE; `pr_note`'s `pn_tied` path changes pitch without
+   re-gating and leaves the pulse free-running (the wave program still restarts to
+   hold the gate). This took the 30-second build to faithful (osc pulse
+   64/10/8% → 99%).
+
+2. **16-bit pulse pointer** (commit `9a2f697`). At full length the lead's pulse
+   fell to ~19% in real SF2II while freq/waveform/AD-SR were already 100%. Root
+   cause: the driver's PULSE table was capped at 256 rows by an 8-bit index, but
+   the full song needs ~573 pulse rows — so the PWM was squeezed to half
+   resolution. Fix: convert the pulse engine to FM's **16-bit pointer** model.
+   `pulse_step` now walks a ROW-major PULSETAB (3 bytes/entry, `$7f` = freeze) via
+   a per-voice `PPTR` (= `VIPUL`, the command's start address), exactly like
+   `fm_step` — no row cap. The emitter (`build_galway_native_song.py`) lays
+   distinct pulse programs row-major after FMTAB with per-command `IPULSE_LO/HI`
+   start addresses (cap lifted 256 → memory wall); the test-pattern builder
+   (`build_galway_driver_full.py`) matches. A subtle bug fixed in the process:
+   the new `pptr` zero-page pointer at `$ea/$eb` collided with `vhold[1]/vhold[2]`,
+   so voices 1 & 2 never advanced their sequencer (osc1 fine, osc2/3 silent) —
+   moved to `$b9`.
+
+**Build changes** (`bin/build_galway_trace_song.py`): pulse is now per-GATE-REGION
+(the driver resets pulse on each gate-on and free-runs across legato ties),
+length-proportional row budget, faithful add-linear / SET-staircase / stride
+encoders within the `$80` pulse tolerance, `PULSE_TABLE_ROWS` 256 → 1024, and
+legato tunes auto-use **one editor row per video frame** (`TEMPO = multispeed`) so
+note/pulse resets land frame-accurately. (Tempo 8 = 1 row/2 frames drops to ~92%;
+tempo 2 is identical sound but 2× the rows; tempo 4 is the efficient sweet spot.)
+Optional subtune arg added for testing.
+
+**Result** (real-SF2II `bin/sf2ii_vs_real.py`, full 135s default Wizball):
+osc1 100/100/100/100, osc2 99/100/99/100, osc3 100/100/99/100
+(freq/waveform/pulse/AD-SR); a 120s full-window cross-check holds at 96-100%.
+**Ocean Loader unchanged at 100/100/100/100** (shared driver/emitter re-verified).
+87 galway tests green.
+
+**Tradeoff:** the pulse table is now driver-internal row-major (pointer-walked),
+so it's no longer rendered as an editable table in the SF2II editor (playback
+faithful; wave/instrument/sequence editing unaffected). Still NOT the default
+`convert_galway_to_sf2` (lives in `bin/`). Out: `out/Wizball_full.sf2`.
+
+---
+
 ## [3.10.0] - 2026-06-20
 
 ### Full-fidelity, full-length Galway — slide + pulse decoupled per note
