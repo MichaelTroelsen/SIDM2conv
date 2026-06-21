@@ -467,19 +467,26 @@ def main():
     # coarseness rounded a downward slide and a flat vibrato into the same bucket
     # (Rambo's lead played a phantom slide). Nearest-merge keeps audibly-distinct
     # shapes (slide vs vibrato are far apart) and only fuses near-duplicates.
-    def cluster_bundles(bexact, bcount, cap):
+    def cluster_bundles(bexact, bcount, bwave, cap):
         """Map distinct exact (fm,pulse) bundles onto <=cap by greedy nearest-merge.
-        Distance = FM-contour L1 (the audible pitch shape) + a moderate penalty for a
-        differing pulse, so pulse-only twins merge before any FM shapes do, and a
-        slide is never merged into a vibrato. Returns (exact_idx -> final_idx, reps)."""
+        Distance = FM-contour L1 (the audible pitch shape) + a penalty only when BOTH
+        bundles have an AUDIBLE pulse (a real program on a PULSE-waveform note). A
+        bundle whose pulse doesn't matter — a tie's EMPTY program, or a saw/tri/noise
+        note where pulse-width is inaudible — merges freely on pulse, freeing slots so
+        the genuinely-audible pulses (Rambo osc2 is mostly pulse) survive. A slide is
+        never merged into a vibrato. Returns (exact_idx -> final_idx, reps)."""
         n = len(bexact)
         if n <= cap:
             return list(range(n)), list(bexact)
+        EMPTY = [(0x7F, 0, 0)]
         curves = [fm_curve(fm) for fm, _ in bexact]
-        PULSE_PEN = 120
+        # pmatter: this bundle's pulse audibly matters (real program + pulse waveform)
+        pmatter = [(pul != EMPTY) and bwave[i] for i, (_, pul) in enumerate(bexact)]
+        PULSE_PEN = 400
         def dist(i, j):
             fd = sum(abs(a - b) for a, b in zip(curves[i], curves[j]))
-            return fd + (0 if bexact[i][1] == bexact[j][1] else PULSE_PEN)
+            pfree = (not pmatter[i]) or (not pmatter[j]) or bexact[i][1] == bexact[j][1]
+            return fd + (0 if pfree else PULSE_PEN)
         parent = list(range(n))
         cnt = list(bcount)
         active = list(range(n))
@@ -493,10 +500,14 @@ def main():
                         best = (d, x, y)
             _, x, y = best
             i, j = active[x], active[y]
-            if cnt[j] > cnt[i]:                  # keep the more-populous as the rep
+            # the rep must keep an AUDIBLE pulse if exactly one side has one.
+            if pmatter[j] and not pmatter[i]:
+                i, j = j, i
+            elif not (pmatter[i] and not pmatter[j]) and cnt[j] > cnt[i]:
                 i, j = j, i
             parent[j] = i
             cnt[i] += cnt[j]
+            pmatter[i] = pmatter[i] or pmatter[j]
             active.remove(j)
         def find(k):
             while parent[k] != k:
@@ -536,7 +547,7 @@ def main():
         # first split and then freeze across the ties (the driver doesn't restart
         # pulse on a tie). Re-gated voices with no ties keep the per-note pulse.
         region_pulse = [vc.legato or any(n.tie for n in vc.notes) for vc in song.voices]
-        b2i, bexact, bcount = {}, [], []   # distinct EXACT (fm,pulse) bundles + counts
+        b2i, bexact, bcount, bwave = {}, [], [], []   # distinct EXACT (fm,pulse) bundles
         for v, voice in enumerate(song.voices):
             for ni, note in enumerate(voice.notes):
                 orow = note.onset // TEMPO
@@ -585,12 +596,14 @@ def main():
                     b2i[bk] = bi
                     bexact.append((fm, pul))
                     bcount.append(0)
+                    bwave.append(False)
                 bcount[bi] += 1
+                bwave[bi] = bwave[bi] or bool(note.waveform & 0x40)   # any PULSE note?
                 end_row = min(rows_total, max(orow + 1, note.end // TEMPO))
                 nseq[v].append((orow, end_row, nb, iidx, bi, note.tie))
         # Fit the (fm,pulse) bundles to the 64-entry command channel by nearest-merge,
         # then remap each note's exact bundle index to its merged index.
-        mapping, reps = cluster_bundles(bexact, bcount, 63)
+        mapping, reps = cluster_bundles(bexact, bcount, bwave, 63)
         bfm = [fm for fm, _ in reps]
         bpul = [pul for _, pul in reps]
         for v in range(3):
