@@ -458,19 +458,58 @@ def main():
     # carries (note, instrument, fm-index); pitch = the note byte; the FM program
     # carries the within-note modulation; the instrument carries AD/SR+waveform.
     #
-    # adq/fmq are FALLBACK quantisers, only engaged if a pathological tune blows
-    # the 32-instrument or 63-FM budget (Ocean Loader uses neither: 18 + 24).
-    # A per-note "synth program" (the command) BUNDLES the slide (FM) AND the
-    # pulse-width envelope, both decoupled from the instrument. pulse, like the
-    # slide, varies per note in Galway; keying it on the instrument made many
-    # notes share one wrong pulse (osc2/osc3 pulse 8-13% in SF2II). Bundling
-    # (fm, pulse) into the one command channel (<=63 distinct) gives each note its
-    # exact pulse too. Ocean Loader: 18 instruments + 32 bundles.
-    def build(adq, fmq, pq):
+    # The per-note "synth program" (the command, <=64 distinct) BUNDLES the slide
+    # (FM) AND the pulse envelope — SF2II's sequence format only allows ONE command
+    # index per row, so they can't be independent channels. When a dense tune needs
+    # >64 distinct (fm,pulse) bundles, fit them by NEAREST-MERGE (cluster_bundles):
+    # keep every bundle exact, then repeatedly merge the two MOST-SIMILAR until <=63.
+    # The old approach quantised the FM contour by a doubling `fmq`, which at high
+    # coarseness rounded a downward slide and a flat vibrato into the same bucket
+    # (Rambo's lead played a phantom slide). Nearest-merge keeps audibly-distinct
+    # shapes (slide vs vibrato are far apart) and only fuses near-duplicates.
+    def cluster_bundles(bexact, bcount, cap):
+        """Map distinct exact (fm,pulse) bundles onto <=cap by greedy nearest-merge.
+        Distance = FM-contour L1 (the audible pitch shape) + a moderate penalty for a
+        differing pulse, so pulse-only twins merge before any FM shapes do, and a
+        slide is never merged into a vibrato. Returns (exact_idx -> final_idx, reps)."""
+        n = len(bexact)
+        if n <= cap:
+            return list(range(n)), list(bexact)
+        curves = [fm_curve(fm) for fm, _ in bexact]
+        PULSE_PEN = 120
+        def dist(i, j):
+            fd = sum(abs(a - b) for a, b in zip(curves[i], curves[j]))
+            return fd + (0 if bexact[i][1] == bexact[j][1] else PULSE_PEN)
+        parent = list(range(n))
+        cnt = list(bcount)
+        active = list(range(n))
+        while len(active) > cap:
+            best = None
+            for x in range(len(active)):
+                i = active[x]
+                for y in range(x + 1, len(active)):
+                    d = dist(i, active[y])
+                    if best is None or d < best[0]:
+                        best = (d, x, y)
+            _, x, y = best
+            i, j = active[x], active[y]
+            if cnt[j] > cnt[i]:                  # keep the more-populous as the rep
+                i, j = j, i
+            parent[j] = i
+            cnt[i] += cnt[j]
+            active.remove(j)
+        def find(k):
+            while parent[k] != k:
+                k = parent[k]
+            return k
+        roots = sorted(set(find(k) for k in range(n)))
+        ridx = {r: idx for idx, r in enumerate(roots)}
+        return [ridx[find(k)] for k in range(n)], [bexact[r] for r in roots]
+
+    def build(adq, pq):
         s2i, ins = {}, []                  # timbre instruments (wf,ad,sr)
-        b2i, bfm, bpul = {}, [], []        # synth bundles: (fm, pulse) per command
         nseq = [[] for _ in range(3)]
-        iov = bov = 0
+        iov = 0
         # PULSE is restarted by the driver on each gate-on (a non-tie note;
         # VPI=VIPULSE, VPC=0) and free-runs across that region's legato ties — so a
         # voice's pulse is one program PER GATE-REGION (gate-on -> next gate-on),
@@ -497,6 +536,7 @@ def main():
         # first split and then freeze across the ties (the driver doesn't restart
         # pulse on a tie). Re-gated voices with no ties keep the per-note pulse.
         region_pulse = [vc.legato or any(n.tie for n in vc.notes) for vc in song.voices]
+        b2i, bexact, bcount = {}, [], []   # distinct EXACT (fm,pulse) bundles + counts
         for v, voice in enumerate(song.voices):
             for ni, note in enumerate(voice.notes):
                 orow = note.onset // TEMPO
@@ -538,37 +578,37 @@ def main():
                         iidx = len(ins)
                         s2i[ikey] = iidx
                         ins.append((ad, sr, (note.waveform & 0xF0) | 0x01, 0x08))
-                bkey = (fm_sig(fm, fmq), tuple(pul))
-                bidx = b2i.get(bkey)
-                if bidx is None:
-                    if len(bfm) >= 63:
-                        bov += 1
-                        bidx = 0
-                    else:
-                        bidx = len(bfm)
-                        b2i[bkey] = bidx
-                        bfm.append(fm)               # 1st note in bundle = its fm+pulse
-                        bpul.append(pul)
+                bk = (tuple(fm), tuple(pul))     # EXACT bundle (no FM quantisation)
+                bi = b2i.get(bk)
+                if bi is None:
+                    bi = len(bexact)
+                    b2i[bk] = bi
+                    bexact.append((fm, pul))
+                    bcount.append(0)
+                bcount[bi] += 1
                 end_row = min(rows_total, max(orow + 1, note.end // TEMPO))
-                nseq[v].append((orow, end_row, nb, iidx, bidx, note.tie))
-        return s2i, ins, bfm, bpul, nseq, iov, bov
+                nseq[v].append((orow, end_row, nb, iidx, bi, note.tie))
+        # Fit the (fm,pulse) bundles to the 64-entry command channel by nearest-merge,
+        # then remap each note's exact bundle index to its merged index.
+        mapping, reps = cluster_bundles(bexact, bcount, 63)
+        bfm = [fm for fm, _ in reps]
+        bpul = [pul for _, pul in reps]
+        for v in range(3):
+            nseq[v] = [(orow, er, nb, iidx, mapping[bi], tie)
+                       for (orow, er, nb, iidx, bi, tie) in nseq[v]]
+        return s2i, ins, bfm, bpul, nseq, iov
 
-    # Fit both INDEPENDENT budgets (32 instruments, 63 synth bundles). Only a
-    # pathological tune trips either; coarsen the offending one minimally
-    # (cluster fm shapes, then downsample pulse, then quantise AD/SR).
+    # Bundles always fit 64 (cluster_bundles merges). The fit loop only handles the
+    # 32-instrument cap (adq = coarsen AD/SR) and the pulse-table-rows cap (pq).
     PULSE_TABLE_ROWS = 1024      # row-major PULSETAB via 16-bit pointer (was 256)
-    adq = fmq = pq = 1
+    adq = pq = 1
     while True:
-        _, instrs, fmprogs, pulse_by_cmd, note_seq, iov, bov = build(adq, fmq, pq)
-        # the PULSE table holds the DISTINCT bundle pulse programs (gen_includes_song
-        # dedups); if they overflow 256 rows, shrink the per-region budget (pq).
+        _, instrs, fmprogs, pulse_by_cmd, note_seq, iov = build(adq, pq)
         prows = sum(len(p) for p in {tuple(p) for p in pulse_by_cmd})
         pov = prows > PULSE_TABLE_ROWS
-        if iov == 0 and bov == 0 and not pov:
+        if iov == 0 and not pov:
             break
-        if bov and fmq < 0x800:
-            fmq *= 2
-        elif (bov or pov) and pq < 8:
+        if pov and pq < 8:
             pq *= 2
         elif iov and adq < 16:
             adq *= 2
@@ -576,19 +616,28 @@ def main():
             break
     if iov:
         print(f"  WARNING: {iov} notes past the 32-instrument cap reuse instr 0")
-    if bov:
-        print(f"  WARNING: {bov} notes past the 63-bundle cap reuse bundle 0")
     if pov:
         print(f"  WARNING: pulse table {prows} > {PULSE_TABLE_ROWS} rows — will be truncated")
     if not instrs:
         raise SystemExit("no notes traced — nothing to build")
-    if fmq != 1 or adq != 1 or pq != 1:
-        print(f"  (fallback quant: fm fmq=${fmq:02x}, pulse step={pq}, "
-              f"AD/SR nibble-q={adq})")
+    if adq != 1 or pq != 1:
+        print(f"  (fallback quant: pulse step={pq}, AD/SR nibble-q={adq})")
     print(f"  {sum(len(ns) for ns in note_seq)} notes, {len(instrs)} instruments, "
           f"{len(fmprogs)} synth bundles (fm+pulse), "
           f"{sum(len(p) for p in fmprogs)} FM entries, "
           f"{sum(len(p) for p in pulse_by_cmd)} pulse rows")
+
+    if os.environ.get("GALWAY_DEBUG_FM"):
+        rr = [int(x) for x in os.environ["GALWAY_DEBUG_FM"].split(",")]
+        v, lo, hi = rr[0], rr[1], rr[2]
+        print(f"  [fm] adq={adq} pq={pq} bundles={len(fmprogs)}")
+        last_f = -1
+        for (orow, end_row, nb, iidx, fidx, tie) in note_seq[v]:
+            if lo <= orow <= hi:
+                emit = fidx if fidx != last_f else None
+                print(f"  [fm] osc{v+1} row {orow}-{end_row} nb={nb} iidx={iidx} "
+                      f"fidx={fidx} cmd_emit={emit} tie={tie} fm={fmprogs[fidx][:8]}")
+            last_f = fidx
 
     # Sequence rows packed via segment_track — the SAME packer the SF2II-playable
     # static build uses (datasource_sequence.cpp format) so SF2II parses + plays.
