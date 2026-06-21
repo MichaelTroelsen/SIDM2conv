@@ -31,6 +31,8 @@ VIBDLY   = $0c           ; delay (frames) before vibrato kicks in
 ; scratch
 wptr        = $fa           ; working pointer (seq / orderlist)
 fmptr       = $ec           ; working pointer into FMTAB (fm_step indirect read) (2)
+pptr        = $b9           ; working pointer into PULSETAB (pulse_step indirect read) (2)
+                            ; ($ea/$eb collide with vhold[1]/vhold[2]!)
 ms_cnt      = $f0           ; multispeed tick countdown within one video frame
 tmpf        = $f6           ; freq/ADSR temp (lo/hi)
 widx        = $f5           ; wave-index temp
@@ -71,17 +73,18 @@ VGMASK  = $1803          ; per-voice $D404 AND-mask: $ff gated-on, $fe gated-off
 VIWAVE  = $1806          ; per-voice instrument wave-program start row (3)
 ws_row  = $ee            ; wave_step scratch: resolved row
 ws_grd  = $ef            ; wave_step scratch / pulse_step $7f-jump guard
-; --- pulse program runner (STANDARD SF2II pulse table, col-major 256x3:
+; --- pulse program runner (ROW-major PULSETAB, 3 bytes/entry, walked via a
+;     16-bit pointer exactly like FM — removes the old 256-row col-major cap so a
+;     full-length song's pulse envelopes (1000s of frames -> 100s of rows) fit:
 ;     8X XX YY = set 12-bit width (X|XX) for YY frames; 0X XX YY = add (X|XX) to
-;     width each frame for YY; 7f -- XX = jump (self = end). Replaces the old
-;     hand-tuned PWM; editor renders the programs and the driver plays them. ---
-VPI     = $1809          ; per-voice pulse-program row (3)
+;     width each frame for YY; 7f -- -- = freeze (end). The per-note pulse program
+;     is selected by the $c0-$ff command (index -> IPULSE_LO/HI -> VIPUL -> PPTR),
+;     decoupled from the instrument. (No longer a render-in-editor table.) -------
 VPC     = $180c          ; per-voice frames left on current row (3)
 VPLO    = $180f          ; per-voice current 12-bit pulse lo (3)
 VPHI    = $1812          ; per-voice current 12-bit pulse hi (3)
 VPADL   = $1815          ; per-voice per-frame add lo (3)
 VPADH   = $1818          ; per-voice per-frame add hi (3)
-VIPULSE = $181b          ; per-voice instrument pulse-program start row (3)
 ; --- filter program runner (STANDARD SF2II filter table, col-major 256x3:
 ;     9Y YY RB = set passband/cutoff/res/bitmask; 0X XX YY = add to cutoff each
 ;     frame for YY; 7f -- XX = jump. ONE global SID filter; started when a note
@@ -119,6 +122,10 @@ FMP_LO    = $1844        ; per-voice: current FMTAB read pointer lo (3)
 FMP_HI    = $1847        ; per-voice: current FMTAB read pointer hi (3)
 VIFM_LO   = $184a        ; per-voice: current instrument's FM-start addr lo (3)
 VIFM_HI   = $184d        ; per-voice: current instrument's FM-start addr hi (3)
+PPTR_LO   = $1850        ; per-voice: current PULSETAB read pointer lo (3)
+PPTR_HI   = $1853        ; per-voice: current PULSETAB read pointer hi (3)
+VIPUL_LO  = $1856        ; per-voice: current cmd's pulse-program start addr lo (3)
+VIPUL_HI  = $1859        ; per-voice: current cmd's pulse-program start addr hi (3)
 
         .include "layout.inc"
 INSTR_AD    = INSTR + 0*32
@@ -175,8 +182,7 @@ iv:     lda #$41
         sta VIWAVE,x
         sta vfreq_lo,x
         sta vfreq_hi,x
-        sta VPI,x                ; pulse program: row 0, force reload (VPC=0)
-        sta VPC,x
+        sta VPC,x                ; pulse: VPC=0 -> reload on the first frame
         sta VPLO,x
         sta VPHI,x
         sta VPADL,x
@@ -194,8 +200,12 @@ iv:     lda #$41
         sta VIFM_LO,x
         lda IFM_HI
         sta VIFM_HI,x
-        lda IPULSE               ; default pulse = program 0 until a cmd selects
-        sta VIPULSE,x
+        lda IPULSE_LO            ; default pulse = program 0 until a cmd selects
+        sta VIPUL_LO,x
+        sta PPTR_LO,x            ; point the read pointer at it
+        lda IPULSE_HI
+        sta VIPUL_HI,x
+        sta PPTR_HI,x
         lda #$00
         sta vbasenote,x          ; base note index (set on each note trigger)
         ; orderlist ptr = OL_x ; then load the first pattern
@@ -247,7 +257,7 @@ dp_tick:
         jsr do_row               ; row tick: step the sequencer
 dp_vib:
         ; pulse_step runs AFTER do_row so a note's pulse reset (pr_note sets
-        ; VPI=VIPULSE, VPC=0) takes effect on the SAME frame as the note — else
+        ; PPTR=VIPUL, VPC=0) takes effect on the SAME frame as the note — else
         ; the pulse sweep lags one frame (audible on the lead's per-note ramp).
         jsr pulse_step           ; per-voice pulse-program -> $D402/3 each tick
         jsr wave_step            ; wave-program -> $D404 + recompute vfreq
@@ -327,22 +337,16 @@ pulse_step:
 pl_l:
         lda VPC,x
         bne pl_apply             ; still on current row -> just apply the add
-        lda #$08
-        sta ws_grd               ; $7f-jump guard
-        ldy VPI,x
-pl_read:
-        lda PULSE,y              ; byte0 = cmd nibble | width-hi nibble
+        ; row expired -> load the next PULSETAB entry via the 16-bit pointer
+        lda PPTR_LO,x
+        sta pptr
+        lda PPTR_HI,x
+        sta pptr+1
+        ldy #$00
+        lda (pptr),y             ; byte0 = cmd nibble | width-hi nibble (or $7f)
         cmp #$7f
         bne pl_decode
-        sty tmpf                 ; jump row: target = byte2
-        lda PULSE+512,y
-        cmp tmpf
-        beq pl_end               ; self-jump -> end (freeze)
-        sta VPI,x                ; (STA abs,x is valid; STY abs,x is not)
-        tay
-        dec ws_grd
-        bne pl_read
-pl_end:
+        ; $7f = freeze: add 0, hold, do NOT advance the pointer
         lda #$00
         sta VPADL,x
         sta VPADH,x
@@ -351,13 +355,19 @@ pl_end:
         jmp pl_apply
 pl_decode:
         sta tmpf                 ; byte0
-        lda PULSE+256,y          ; byte1 = width lo
-        sta tmpf+1
-        lda PULSE+512,y          ; byte2 = frame count
+        ldy #$02
+        lda (pptr),y             ; byte2 = frame count
         sta VPC,x
-        iny                      ; advance past this row
-        tya
-        sta VPI,x
+        lda PPTR_LO,x            ; advance pointer by 3 bytes (row-major)
+        clc
+        adc #$03
+        sta PPTR_LO,x
+        bcc pl_b1
+        inc PPTR_HI,x
+pl_b1:
+        ldy #$01
+        lda (pptr),y             ; byte1 = width lo
+        sta tmpf+1
         lda tmpf
         bmi pl_set               ; bit7 set -> 8X (set width)
         and #$0f                 ; 0X (add): VPAD = (byte0&0f):byte1
@@ -673,7 +683,7 @@ pr_setprog:
         ; $c0-$ff: select this voice's PER-NOTE synth program (a bundle of FM
         ; slide + pulse-width envelope), decoupled from the instrument. index =
         ; byte & $3f selects both the FM-start pointer (IFM) and the pulse-program
-        ; start row (IPULSE); pr_note restarts both from these. Lets a long song
+        ; start addr (IPULSE_LO/HI); pr_note restarts both. Lets a long song
         ; carry many distinct slide+pulse shapes without inflating the <=32
         ; instrument table (timbre = instrument; slide+pulse = this command).
         and #$3f
@@ -682,8 +692,10 @@ pr_setprog:
         sta VIFM_LO,x
         lda IFM_HI,y
         sta VIFM_HI,x
-        lda IPULSE,y
-        sta VIPULSE,x
+        lda IPULSE_LO,y
+        sta VIPUL_LO,x
+        lda IPULSE_HI,y
+        sta VIPUL_HI,x
         jsr advw
         jmp pr_read
 pr_setinst:
@@ -738,8 +750,10 @@ pn_not_off:
         lda vwf,x
         ora #$01
         sta SID+4,y
-        lda VIPULSE,x            ; restart the pulse program too
-        sta VPI,x
+        lda VIPUL_LO,x           ; restart the pulse program too (16-bit pointer)
+        sta PPTR_LO,x
+        lda VIPUL_HI,x
+        sta PPTR_HI,x
         lda #$00
         sta VPC,x                ; force reload on the next frame
 pn_tied:

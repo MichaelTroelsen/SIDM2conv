@@ -105,32 +105,40 @@ def _inject_test_data(edit, gen, mdp):
         pw = (ins[3] if len(ins) > 3 else 0x08) & 0x0F
         edit[io + 0 * 32 + i] = ad
         edit[io + 1 * 32 + i] = sr
-        edit[io + 4 * 32 + i] = 4 * i     # pulse-program start row
         edit[io + 5 * 32 + i] = 2 * i     # wave-program start row
         # 2-row wave program: [wf, +0 semitones][$7f -> loop] (1 row/frame)
         edit[wo + 0 * 256 + 2 * i] = wf
         edit[wo + 0 * 256 + 2 * i + 1] = 0x7f
         edit[wo + 1 * 256 + 2 * i + 1] = 2 * i
-        # 2-row pulse program: set width (pw<<8) for 1 frame, freeze (self-jump)
-        edit[po + 0 * 256 + 4 * i] = 0x80 | pw
-        edit[po + 2 * 256 + 4 * i] = 0x01
-        edit[po + 0 * 256 + 4 * i + 1] = 0x7f
-        edit[po + 2 * 256 + 4 * i + 1] = 4 * i + 1
     # FM region: a single freeze terminator at FMTAB; every instrument's FM-start
     # points to it, so fm_step freezes (freq = vfreq, no FM) for the test pattern.
     # Placed above the relocated filter (dynamic, matches layout.inc).
     IFMLO = gen.filter_addr + 3 * 256
     IFMHI = IFMLO + 32
-    FMTAB = IFMHI + 32
-    need = FMTAB + 3 - EDIT_BASE
+    IPULSE_LO = IFMHI + 32          # per-command pulse-start addr lo/hi (pointer model)
+    IPULSE_HI = IPULSE_LO + 32
+    FMTAB = IPULSE_HI + 32
+    PULSETAB = FMTAB + 3           # row-major pulse table (3 bytes/entry), after FMTAB
+    # one 2-entry pulse program per instrument: [8X|pw set, 1 frame][$7f freeze]
+    pulsetab = bytearray()
+    pstart = []
+    for i, ins in enumerate(TEST_INSTR):
+        pw = (ins[3] if len(ins) > 3 else 0x08) & 0x0F
+        pstart.append(PULSETAB + len(pulsetab))
+        pulsetab += bytes([0x80 | pw, 0x00, 0x01, 0x7F, 0x00, 0x00])
+    pulsetab_end = PULSETAB + len(pulsetab)
+    need = pulsetab_end - EDIT_BASE
     if len(edit) < need:
         edit.extend(bytearray(need - len(edit)))
     for i in range(len(TEST_INSTR)):
         edit[IFMLO - EDIT_BASE + i] = FMTAB & 0xFF
         edit[IFMHI - EDIT_BASE + i] = (FMTAB >> 8) & 0xFF
+        edit[IPULSE_LO - EDIT_BASE + i] = pstart[i] & 0xFF
+        edit[IPULSE_HI - EDIT_BASE + i] = (pstart[i] >> 8) & 0xFF
     edit[FMTAB - EDIT_BASE + 0] = 0x00       # freeze entry (offset 0, dur 0)
     edit[FMTAB - EDIT_BASE + 1] = 0x00
     edit[FMTAB - EDIT_BASE + 2] = 0x00
+    edit[PULSETAB - EDIT_BASE:pulsetab_end - EDIT_BASE] = pulsetab
 
 
 def gen_includes():
@@ -163,9 +171,13 @@ def gen_includes():
         f.write(f"WAVE  = ${gen.wave_addr:04x}\n")
         f.write(f"PULSE = ${gen.pulse_addr:04x}\n")
         f.write(f"FILTER = ${gen.filter_addr:04x}\n")
-        f.write(f"IFM_LO = ${gen.filter_addr + 3 * 256:04x}\n")   # FM-start tables
-        f.write(f"IFM_HI = ${gen.filter_addr + 3 * 256 + 32:04x}\n")
-        f.write(f"FMTAB  = ${gen.filter_addr + 3 * 256 + 64:04x}\n")  # row-major FM
+        base = gen.filter_addr + 3 * 256
+        f.write(f"IFM_LO = ${base:04x}\n")          # FM-start tables (32 each)
+        f.write(f"IFM_HI = ${base + 32:04x}\n")
+        f.write(f"IPULSE_LO = ${base + 64:04x}\n")  # pulse-start tables (pointer model)
+        f.write(f"IPULSE_HI = ${base + 96:04x}\n")
+        f.write(f"FMTAB  = ${base + 128:04x}\n")     # row-major FM
+        f.write(f"PULSETAB = ${base + 131:04x}\n")   # row-major pulse (after FMTAB+3)
         f.write("MULTISPEED = 1\n")        # test pattern is single-speed
 
     # freqtable indexed by note byte $00..$6F: [0]=0, [i]=PAL freq of semitone i-1

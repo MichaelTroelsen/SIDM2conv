@@ -124,6 +124,72 @@ def pulse_program(seg, step):
     return rows
 
 
+def _add_linear_pulse(seg, tol):
+    """Approximate a pulse series by piecewise-linear, integer-slope ADD segments
+    (one row per segment) kept within `tol` of the real value. Correct where naive
+    step-downsampling is not: the segment slope IS the per-frame add, so it never
+    over-applies (skipping samples and adding the step-spanning delta every frame
+    ramps `step`x too fast). Greedy longest-run: at each point pick the integer
+    slope that stays within `tol` for the most frames. Compresses both the lead's
+    fast sweep AND a slow accompaniment ramp to few rows, so a 2-minute song's
+    pulse fits the shared 256-row table."""
+    n = len(seg)
+    if n == 0:
+        return [(0x7F, 0, 0)]
+    v = seg[0]
+    rows = [(0x80 | ((v >> 8) & 0x0F), v & 0xFF, 1)]   # set start (holds frame 0)
+    cur, i = v, 1
+    while i < n:
+        # candidate slopes ADAPTED to the signal (local average over several
+        # windows + the immediate gap) so a steep jump gets a steep slope without
+        # a huge brute-force search; a fixed small range explodes on big deltas.
+        cand_d = {seg[i] - cur}
+        for w in (1, 2, 4, 8, 16, 32, 64):
+            if i - 1 + w < n:
+                cand_d.add(round((seg[i - 1 + w] - seg[i - 1]) / w))
+        best_d, best_len = 0, 0
+        for d in cand_d:
+            d = max(-0x7ff, min(0x7ff, d))
+            val, k = cur, 0
+            while i + k < n:
+                val += d
+                if abs(val - seg[i + k]) > tol:
+                    break
+                k += 1
+            if k > best_len:
+                best_len, best_d = k, d
+        if best_len == 0:                              # can't stay in tol -> 1-frame jump
+            best_len, best_d = 1, max(-0x7ff, min(0x7ff, seg[i] - cur))
+        run, d12 = best_len, best_d & 0xFFF
+        b0, b1 = (d12 >> 8) & 0x0F, d12 & 0xFF          # 0X add (bit7 clear)
+        while run > 255:
+            rows.append((b0, b1, 255)); run -= 255
+        rows.append((b0, b1, run))
+        cur += best_d * best_len
+        i += best_len
+    rows.append((0x7F, 0, len(rows)))                  # self-jump = freeze
+    return rows
+
+
+def _set_stride_pulse(seg, budget):
+    """Guaranteed-fit fallback: a SET staircase sampled at a fixed stride so the
+    program is always <= `budget` rows. Coarse in value but correctly TIMED (each
+    SET holds its real sample for `stride` frames — no over-apply), and it tracks
+    the real envelope's shape. Used only when a multi-minute voice's pulse is too
+    complex for any in-tolerance fit (the lead's continuous PWM over 2+ minutes
+    has more slope changes than the shared 256-row table can hold)."""
+    n = len(seg)
+    if n == 0:
+        return [(0x7F, 0, 0)]
+    stride = max(1, -(-n // max(1, budget - 1)))       # ceil(n / (budget-1))
+    rows = []
+    for s in range(0, n, stride):
+        v = seg[s]
+        rows.append((0x80 | ((v >> 8) & 0x0F), v & 0xFF, min(stride, n - s)))
+    rows.append((0x7F, 0, len(rows)))                  # self-jump = freeze
+    return rows
+
+
 def _set_threshold_pulse(seg, thresh):
     """SET-staircase encoding of a pulse series: hold one absolute width until the
     real value drifts more than `thresh` from it, then set the new value. The
@@ -147,31 +213,36 @@ def _set_threshold_pulse(seg, thresh):
     return rows
 
 
-def faithful_legato_pulse_program(series, on0, max_rows=80):
-    """Encode a LEGATO voice's REAL free-running pulse envelope as ONE program
-    (replacing the old generic-triangle approximation, which left the
-    PULSE-waveform voices at 8-64% in SF2II). A legato voice re-gates exactly once
-    (its single gate-on `on0`, where the driver restarts the pulse via VPI=VIPULSE,
-    VPC=0), then free-runs across all tied notes — so one program covering frame
-    `on0` to the end IS the whole voice's pulse, played in phase.
+def faithful_pulse_program(seg, max_rows=80):
+    """Encode a pulse SEGMENT (one gate-region's real per-frame pulse) faithfully,
+    fitting `max_rows`. The driver restarts the pulse on each gate-on (VPI=VIPULSE,
+    VPC=0) and free-runs it across the region's legato ties, so ONE program per
+    gate-region reproduces that region's pulse in phase.
 
     A smooth fast sweep (the lead) compresses exactly with the add-based RLE, so
-    use it whenever it fits the shared 256-row PULSE table. A slow wide ramp (the
-    accompaniment) explodes the add-RLE — per-frame SID 12-bit quantization stores
-    a +0.5/frame slope as a +1,0,+1,0 dither (1-frame runs) AND the add engine
-    can't reproduce a sub-1/frame slope without over-applying — so fall back to a
-    SET staircase whose steps stay within the $80 pulse tolerance."""
-    seg = series[on0:]
+    use it whenever it fits. A slow wide ramp (the accompaniment) explodes the
+    add-RLE — per-frame SID 12-bit quantization stores a +0.5/frame slope as a
+    +1,0,+1,0 dither (1-frame runs) AND the add engine can't reproduce a sub-1/
+    frame slope without over-applying — so fall back, finest-first, to linear
+    integer-slope add-fits then SET staircases within the $80 pulse tolerance, and
+    finally a guaranteed-fit stride staircase."""
     if not seg:
         return [(0x7F, 0, 0)]
-    add = pulse_program(seg, 1)                      # exact per-frame add (best for sweeps)
-    if len(add) <= max_rows:
-        return add
-    for thresh in (16, 32, 48, 64, 96):              # finest staircase that fits
-        rows = _set_threshold_pulse(seg, thresh)
-        if len(rows) <= max_rows:
-            return rows
-    return _set_threshold_pulse(seg, 0x7F)
+    exact = pulse_program(seg, 1)                    # exact per-frame add (best for sweeps)
+    if len(exact) <= max_rows:
+        return exact
+    cands = ([_add_linear_pulse(seg, tol) for tol in (16, 24, 32, 48, 64, 96, 128)] +
+             [_set_threshold_pulse(seg, th) for th in (16, 32, 48, 64, 96)])
+    for c in cands:
+        if len(c) <= max_rows:
+            return c
+    return _set_stride_pulse(seg, max_rows)          # guaranteed-fit coarse fallback
+
+
+def faithful_legato_pulse_program(series, on0, max_rows=80, end=None):
+    """Thin wrapper: faithfully encode `series[on0:end]` (a gate-region, or the
+    whole voice when it gates once)."""
+    return faithful_pulse_program(series[on0:end], max_rows)
 
 
 def sweep_pulse_program():
@@ -274,19 +345,24 @@ def main():
     # instead of being quantised away.
     import math
     global TEMPO
+    multispeed = detect_multispeed(sid, h.init_address, h.play_address, subtune)
     g = 0
     for voice in song.voices:
         for n in voice.notes:
             if n.onset:
                 g = math.gcd(g, n.onset)
-    if g >= 2:
+    if any(v.legato for v in song.voices):
+        # Legato tunes reset the pulse on each note, and the pulse changes fast, so
+        # a note's pulse reset must land FRAME-accurately or it drifts out of the
+        # $80 tolerance (the lead's pulse fell to ~19% at the old coarse grid). Use
+        # ONE row per video frame (TEMPO=multispeed): frame-accurate AND a
+        # manageable sequence length (TEMPO=1 = 1 row/play-call blows it up).
+        TEMPO = max(1, multispeed)
+    elif g >= 2:
         TEMPO = max(1, min(8, g))
     else:
-        # Legato note splits land on arbitrary frames, collapsing the onset GCD to
-        # 1 (-> tempo 1 -> 1 row/play-call -> huge sequences). Use the DOMINANT
-        # per-voice onset spacing (the most common gap = the player's note grid;
-        # ~20 play-calls for Wizball) as the row period, so gate-aligned notes land
-        # exactly on rows. Allow a coarser grid than re-gated tunes (clamp 32).
+        # Re-gated tune with no common onset divisor: use the DOMINANT per-voice
+        # onset spacing (the player's note grid) so gate-aligned notes land on rows.
         from collections import Counter
         gc = Counter()
         for voice in song.voices:
@@ -295,8 +371,9 @@ def main():
                 if b > a:
                     gc[b - a] += 1
         TEMPO = max(1, min(32, gc.most_common(1)[0][0])) if gc else 8
+    if os.environ.get("GALWAY_TEMPO"):
+        TEMPO = int(os.environ["GALWAY_TEMPO"])
     rows_total = frames // TEMPO
-    multispeed = detect_multispeed(sid, h.init_address, h.play_address, subtune)
     print(f"trace: {frames} play-calls, {rows_total} rows @ tempo {TEMPO}, "
           f"multispeed={multispeed} (play-calls/video-frame) -> "
           f"{frames / multispeed / 50.12:.1f}s")
@@ -324,22 +401,47 @@ def main():
         b2i, bfm, bpul = {}, [], []        # synth bundles: (fm, pulse) per command
         nseq = [[] for _ in range(3)]
         iov = bov = 0
-        # Legato voices have a free-running PWM -> one FAITHFUL per-frame pulse
-        # program for the whole voice (not per-note), starting at its single
-        # gate-on; re-gated voices (Ocean) keep per-note pulse.
-        def _first_gate(voice):
-            return next((n.onset for n in voice.notes if not n.tie), 0)
-        vpulse = [faithful_legato_pulse_program(song.pulse[v], _first_gate(voice))
-                  if voice.legato else None
-                  for v, voice in enumerate(song.voices)]
+        # PULSE is restarted by the driver on each gate-on (a non-tie note;
+        # VPI=VIPULSE, VPC=0) and free-runs across that region's legato ties — so a
+        # voice's pulse is one program PER GATE-REGION (gate-on -> next gate-on),
+        # not one per voice. A sustained voice that gates once is just the single-
+        # region case; a re-gating voice (the full Wizball lead gates 177x) gets
+        # many SHORT regions that compress well and dedup across repeated phrases,
+        # so the whole song's pulse fits the shared 256-row table. Tie notes never
+        # restart the pulse, so their program is unused -> empty (keeps bundles
+        # deduping by fm only). `pq` is the per-region row budget (raised by the fit
+        # loop only if the pulse table overflows).
+        def _region_ends(notes):
+            ends = [frames] * len(notes)
+            nxt = frames
+            for k in range(len(notes) - 1, -1, -1):
+                ends[k] = nxt
+                if not notes[k].tie:
+                    nxt = notes[k].onset
+            return ends
+        rends = [_region_ends(voice.notes) for voice in song.voices]
+        EMPTY_PUL = [(0x7F, 0, 0)]
         for v, voice in enumerate(song.voices):
-            for note in voice.notes:
+            for ni, note in enumerate(voice.notes):
                 orow = note.onset // TEMPO
                 if orow >= rows_total:
                     continue
                 nb, fm = fm_program(note, FLAT_DEV)
-                pul = (vpulse[v] if vpulse[v] is not None
-                       else pulse_program(song.pulse[v][note.onset:note.end], pq))
+                if voice.legato:
+                    # Budget each region's pulse rows PROPORTIONAL to its length:
+                    # a long sustained region (e.g. the 36s intro) needs many rows
+                    # for its slow sweep, a 60-frame re-gate needs ~3. A flat budget
+                    # starved the intro -> its ramp collapsed to a coarse staircase
+                    # (pulse frozen for ~80 frames). `pq` (raised by the fit loop on
+                    # table overflow) scales the divisor to keep the table <=256.
+                    if note.tie:
+                        pul = EMPTY_PUL
+                    else:
+                        rl = rends[v][ni] - note.onset
+                        pul = faithful_pulse_program(song.pulse[v][note.onset:rends[v][ni]],
+                                                     max(3, min(96, rl // (64 * pq))))
+                else:
+                    pul = pulse_program(song.pulse[v][note.onset:note.end], pq)
                 # coarsen AD/SR PER NIBBLE only as a fallback (Galway ramps Attack);
                 # per-nibble keeps Decay + Release alive.
                 def qn(b):
@@ -373,14 +475,19 @@ def main():
     # Fit both INDEPENDENT budgets (32 instruments, 63 synth bundles). Only a
     # pathological tune trips either; coarsen the offending one minimally
     # (cluster fm shapes, then downsample pulse, then quantise AD/SR).
+    PULSE_TABLE_ROWS = 1024      # row-major PULSETAB via 16-bit pointer (was 256)
     adq = fmq = pq = 1
     while True:
         _, instrs, fmprogs, pulse_by_cmd, note_seq, iov, bov = build(adq, fmq, pq)
-        if iov == 0 and bov == 0:
+        # the PULSE table holds the DISTINCT bundle pulse programs (gen_includes_song
+        # dedups); if they overflow 256 rows, shrink the per-region budget (pq).
+        prows = sum(len(p) for p in {tuple(p) for p in pulse_by_cmd})
+        pov = prows > PULSE_TABLE_ROWS
+        if iov == 0 and bov == 0 and not pov:
             break
         if bov and fmq < 0x800:
             fmq *= 2
-        elif bov and pq < 8:
+        elif (bov or pov) and pq < 8:
             pq *= 2
         elif iov and adq < 16:
             adq *= 2
@@ -390,6 +497,8 @@ def main():
         print(f"  WARNING: {iov} notes past the 32-instrument cap reuse instr 0")
     if bov:
         print(f"  WARNING: {bov} notes past the 63-bundle cap reuse bundle 0")
+    if pov:
+        print(f"  WARNING: pulse table {prows} > {PULSE_TABLE_ROWS} rows — will be truncated")
     if not instrs:
         raise SystemExit("no notes traced — nothing to build")
     if fmq != 1 or adq != 1 or pq != 1:
