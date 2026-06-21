@@ -188,6 +188,37 @@ def main():
             print("        semitone deltas (ours-real): " +
                   "  ".join(f"{k:+d}:{v2}" for k, v2 in top))
 
+    # --- global FILTER: cutoff ($D416) + res/routing ($D417). ($D418 mode is set
+    #     at init, so the play-trace can't see it — skip.) Only compares frames
+    #     where the original routes a voice through the filter (res nibble != 0). ---
+    rcut = rser(None, "freq_hi", n)
+    rres = rser(None, "res_control", n)
+
+    def fmatch(metric, dof):
+        hit = tot = 0
+        for f in fr_list:
+            b = ours.get(f)
+            if b is None:
+                continue
+            pc = (f - off - dof) * ms + (ms - 1)
+            if pc < 0 or pc >= n or not (rres[pc] & 0x0F):
+                continue
+            tot += 1
+            if metric == "cut" and abs(b[22] - rcut[pc]) <= 16:
+                hit += 1
+            elif metric == "res" and b[23] == rres[pc]:
+                hit += 1
+        return hit, tot
+
+    fb = max(range(-4, 5), key=lambda d: fmatch("cut", d)[0])
+    ch, ct = fmatch("cut", fb)
+    rh, rt = fmatch("res", 0)
+    if ct:
+        print(f" filter: cutoff {100 * ch // ct}%@{fb:+d} ({ch}/{ct})  "
+              f"res/route {100 * rh // rt if rt else 0}% ({rh}/{rt})")
+    else:
+        print(" filter: (original routes no voice through the filter)")
+
 
 if __name__ == "__main__":
     main()

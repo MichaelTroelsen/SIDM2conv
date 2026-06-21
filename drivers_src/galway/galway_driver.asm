@@ -251,14 +251,15 @@ dp_go:
         lda #MULTISPEED
         sta ms_cnt
 dp_tick:
-        jsr filt_prog_step       ; global filter program -> $D415/6/7 + mode
         dec zp_tcnt
         bne dp_vib
         jsr do_row               ; row tick: step the sequencer
 dp_vib:
-        ; pulse_step runs AFTER do_row so a note's pulse reset (pr_note sets
-        ; PPTR=VIPUL, VPC=0) takes effect on the SAME frame as the note — else
-        ; the pulse sweep lags one frame (audible on the lead's per-note ramp).
+        ; filt_prog_step / pulse_step run AFTER do_row so a note's RESET (pr_note
+        ; sets F_IDX=VIFILT/F_CNT=0 for the filter, PPTR=VIPUL/VPC=0 for the pulse)
+        ; takes effect on the SAME frame as the note — else the cutoff/pulse sweep
+        ; lags one frame (audible on the lead's per-note resonant pluck + ramp).
+        jsr filt_prog_step       ; global filter program -> $D415/6/7 + mode
         jsr pulse_step           ; per-voice pulse-program -> $D402/3 each tick
         jsr wave_step            ; wave-program -> $D404 + recompute vfreq
         jsr fm_step              ; per-voice freq -> $D400/1 (+ FM accumulate)

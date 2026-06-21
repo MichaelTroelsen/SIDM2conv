@@ -86,6 +86,62 @@ def detect_multispeed(sid_path, init, play, subtune):
     return max(1, n)
 
 
+def extract_filter_program(song, sid_path, init, play, subtune):
+    """Reproduce the tune's REAL filter (was hardcoded to Wizball's). Galway runs
+    one routed voice through a resonant low-pass whose cutoff RESETS and sweeps on
+    each note (a per-note "pluck"). Returns (filter_rows, routed_voice):
+
+    - routed_voice: the SID voice whose notes restart the filter (from $D417's
+      routing nibble) — the build flags its instruments $40.
+    - filter_rows: the cutoff envelope as per-frame SET rows
+      `(0x90|mode, cutoff, res:route)` captured at a representative routed-voice
+      note, then a $7f freeze. One SET per frame reproduces the envelope EXACTLY
+      (it's only ~12 frames before the next note restarts it); the driver's
+      filt_prog_step writes $D415/6 (cutoff) + $D417 (res/route) + $D418 mode.
+
+    Returns (None, None) when the tune uses no filter (routing nibble 0)."""
+    import struct
+    from collections import Counter
+    from py65.devices.mpu6502 import MPU
+    rescnt = Counter(r for r in song.filt_res if r)
+    if not rescnt:
+        return None, None
+    rb = rescnt.most_common(1)[0][0]            # $D417 = res<<4 | routing
+    route = rb & 0x0F
+    rv = next((v for v in range(3) if route & (1 << v)), None)
+    if rv is None or not song.voices[rv].active:
+        return None, None
+    # $D418 mode bits are set at INIT (not in the play trace) — emulate init to read.
+    d = open(sid_path, "rb").read()
+    off = struct.unpack(">H", d[6:8])[0]; la = struct.unpack(">H", d[8:0x0A])[0]
+    body = d[off:]
+    if la == 0:
+        la = body[0] | (body[1] << 8); body = body[2:]
+    m = MPU()
+    for i, b in enumerate(body):
+        m.memory[(la + i) & 0xFFFF] = b
+    m.memory[0x1FF] = 0xFE; m.memory[0x1FE] = 0xFF; m.sp = 0xFD; m.pc = init; m.a = subtune
+    for _ in range(3000000):
+        if m.pc == 0xFF00:
+            break
+        m.step()
+    mode_bits = (m.memory[0xD418] >> 4) & 7      # SID filter mode (1=LP, 2=BP, 4=HP)
+    if not mode_bits:
+        mode_bits = 1                            # default low-pass
+    # capture the cutoff envelope at a representative routed-voice note (skip the
+    # first, which can be atypical); 24 frames covers the sweep + the slow tail.
+    onsets = [n.onset for n in song.voices[rv].notes if not n.tie]
+    if not onsets:
+        return None, None
+    on = onsets[min(2, len(onsets) - 1)]
+    d416 = [(song.filt_cutoff[fr] >> 8) & 0xFF
+            for fr in range(on, min(on + 24, song.frames))]
+    hi = (0x8 | mode_bits) << 4                  # byte0 high nibble: set-bit + mode
+    rows = [(hi | (c >> 4), (c & 0x0F) << 4, rb) for c in d416]
+    rows.append((0x7F, 0, len(rows)))            # self-jump = freeze (hold last cutoff)
+    return rows, rv
+
+
 def pulse_program(seg, step):
     """Encode the real per-play-call pulse-width envelope as an ADD-based program:
     one 8X 'set width' at the start value, then a 0X 'add delta' command spanning
@@ -339,6 +395,10 @@ def main():
     h = SIDParser(sid).parse_header()
     subtune = int(sys.argv[3]) if len(sys.argv) > 3 else (h.start_song or 1) - 1
     song = T.extract(sid, frames, h.init_address, h.play_address, subtune)
+    # Per-tune FILTER: reproduce the real cutoff envelope + routing (was hardcoded
+    # to Wizball's). filt_voice = the routed voice whose instruments restart it.
+    filt_prog, filt_voice = extract_filter_program(
+        song, sid, h.init_address, h.play_address, subtune)
     # Adaptive tempo: the editor row grid must be fine enough for the fastest
     # notes. Use the GCD of all note onsets as frames-per-row (clamped 1..8) so
     # rapid melodies/arps (notes a few play-calls apart) land on row boundaries
@@ -583,11 +643,20 @@ def main():
     names = [f"{_wftag(ins[2])} {i + 1:02d}" for i, ins in enumerate(instrs)]
 
     B.TEMPO = TEMPO
+    # Flag the routed voice's instruments $40 so the filter envelope restarts on
+    # each of its notes (the filter affects whichever voice $D417 routes).
+    filt_instr_set = ({row[3] for row in note_seq[filt_voice]}
+                      if filt_voice is not None else None)
+    if filt_prog:
+        print(f"  filter: routed osc{filt_voice + 1}, {len(filt_prog)}-row cutoff "
+              f"envelope, {len(filt_instr_set)} instr(s) flagged")
     gen, edit, mdp, seq0 = N.gen_includes_song(segs, instrs,
                                                filter_lead=False,
                                                fm_programs=fmprogs,
                                                multispeed=multispeed,
-                                               pulse_by_cmd=pulse_by_cmd)
+                                               pulse_by_cmd=pulse_by_cmd,
+                                               filter_program=filt_prog,
+                                               filter_instr_set=filt_instr_set)
     prg = B.assemble()
     sf2 = B.wrap(prg, gen, edit, mdp, instr_names=names)
     out = os.path.join(ROOT, "out", "galway_trace_song.sf2")

@@ -36,7 +36,8 @@ FMTAB_ADDR = 0x4040
 
 def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
                       wave_programs=None, fm_programs=None, multispeed=1,
-                      pulse_programs=None, pulse_by_cmd=None):
+                      pulse_programs=None, pulse_by_cmd=None,
+                      filter_program=None, filter_instr_set=None):
     """Build a multi-pattern native-driver edit area from packed voice patterns.
     segs[v] = list of packed sequences for voice v. Returns (gen, edit, mdp, seq0)
     and writes drivers_src/galway/layout.inc.
@@ -97,9 +98,12 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
         pw = (ins[3] if len(ins) > 3 else 0x08) & 0x0F
         edit[io + 0 * 32 + i] = ad
         edit[io + 1 * 32 + i] = sr
-        # Route the lead voice (V0's instruments 0/1) through one shared filter
-        # program at row 0; flag $40 (re)starts it on note-on.
-        if filter_lead and i in (0, 1):
+        # Flag $40 (re)starts the global filter program at row 0 on note-on. For a
+        # trace build it's set on the ROUTED voice's instruments (filter_instr_set,
+        # from $D417's routing); the legacy filter_lead path flags instruments 0/1.
+        flag_filter = (i in filter_instr_set) if filter_instr_set is not None \
+            else (filter_lead and i in (0, 1))
+        if flag_filter:
             edit[io + 2 * 32 + i] = 0x40   # col2 flags: start filter program
             edit[io + 3 * 32 + i] = 0x00   # col3: filter-program start row
         # Wave program (standard SF2II 2-col: col0 waveform, col1 semitone).
@@ -151,13 +155,18 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
         keep = len(distinct[j]) - 2
         distinct[j] = distinct[j][:keep - 1] + [(0x7F, 0, 0)]   # freeze early
 
-    # One shared filter program (row 0) reproducing Galway's measured Wizball
-    # filter in standard SF2II form: LP, cutoff $890, res $F, route voice 1, then
-    # sweep the cutoff down (-12/frame), looping. Restarted by each flag-$40 note.
+    # Filter program (row 0), restarted by each flag-$40 note. `filter_program` (a
+    # trace build) carries the tune's REAL per-frame cutoff envelope as SET rows;
+    # absent it, fall back to the measured Wizball filter (LP, cutoff $890, res $F,
+    # route voice 1, sweep down). Col-major 256x3, ends in a $7f self-jump freeze.
     fr = 256
-    edit[fo + 0 * fr + 0], edit[fo + 1 * fr + 0], edit[fo + 2 * fr + 0] = 0x98, 0x90, 0xF1
-    edit[fo + 0 * fr + 1], edit[fo + 1 * fr + 1], edit[fo + 2 * fr + 1] = 0x0F, 0xF4, 0xFF
-    edit[fo + 0 * fr + 2], edit[fo + 1 * fr + 2], edit[fo + 2 * fr + 2] = 0x7F, 0x00, 0x01
+    fprog = filter_program if filter_program else [
+        (0x98, 0x90, 0xF1), (0x0F, 0xF4, 0xFF), (0x7F, 0x00, 0x01)]
+    for r, (b0, b1, b2) in enumerate(fprog[:fr]):
+        edit[fo + 0 * fr + r] = b0 & 0xFF
+        edit[fo + 1 * fr + r] = b1 & 0xFF
+        # $7f freeze row: col2 = self row index (self-jump); other rows: as given.
+        edit[fo + 2 * fr + r] = (r if (b0 & 0xFF) == 0x7F else b2) & 0xFF
 
     # FM region: per-instrument FM-start tables (IFM_LO/IFM_HI) + a row-major
     # FMTAB of 3-byte (offset_lo, offset_hi, dur) entries. Each instrument's
