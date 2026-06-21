@@ -178,8 +178,15 @@ def _pack_entry(table_id: int, layer_text_lists: List[List[str]]) -> bytes:
 # crash RestoreFromSaveData — so we emit minimal-valid versions.
 
 _BODY3_PLAY_MARKERS         = bytes([0x01, 0x00])         # 1 layer, 0 markers
-_BODY2_HARDWARE_PREFS       = bytes([0x01, 0x00])         # SIDModel=8580, Region=PAL
 _BODY1_EDITING_PREFS        = bytes([0x00, 0x00, 0x04])   # Sharp notation, hl 0, interval 4
+
+
+def _hardware_prefs_body(sid_model: int = 8580, region: str = "PAL") -> bytes:
+    """HardwarePreferences body (aux id=2): [SIDModel, Region], MOS6581=0 / MOS8580=1,
+    PAL=0 / NTSC=1. SF2II reads this PER SONG (else the config default). Galway tunes
+    are 6581 — wrong model = wrong filter curve, so the model must be carried here."""
+    return bytes([0x00 if sid_model == 6581 else 0x01,
+                  0x01 if region == "NTSC" else 0x00])
 
 _AUX_CHAIN_END_MARKER       = bytes([0x00, 0x00, 0x00, 0x00, 0x00])
 
@@ -200,6 +207,7 @@ def _make_aux_block(bid: int, param: int, body: bytes) -> bytes:
 def assemble_aux_chain(
     table_text_body: bytes,
     desc_body: Optional[bytes] = None,
+    sid_model: int = 8580,
 ) -> bytes:
     """Assemble the SF2 aux chain in bundled order [3, 2, 1, 4, 5, END].
 
@@ -223,7 +231,7 @@ def assemble_aux_chain(
     """
     out = bytearray()
     out.extend(_make_aux_block(3, 2, _BODY3_PLAY_MARKERS))             # PlayMarkers
-    out.extend(_make_aux_block(2, 1, _BODY2_HARDWARE_PREFS))           # HardwarePreferences
+    out.extend(_make_aux_block(2, 1, _hardware_prefs_body(sid_model))) # HardwarePreferences
     out.extend(_make_aux_block(1, 1, _BODY1_EDITING_PREFS))            # EditingPreferences
     out.extend(_make_aux_block(4, 2, table_text_body))                 # TableText
     if desc_body:

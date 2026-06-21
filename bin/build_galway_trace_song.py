@@ -658,7 +658,10 @@ def main():
                                                filter_program=filt_prog,
                                                filter_instr_set=filt_instr_set)
     prg = B.assemble()
-    sf2 = B.wrap(prg, gen, edit, mdp, instr_names=names)
+    # Galway tunes are 6581 — bake it into the SF2 (HardwarePreferences aux block)
+    # so SF2II plays the correct chip/filter model, not the config default (8580).
+    sid_model = int(os.environ.get("GALWAY_SID", "6581"))
+    sf2 = B.wrap(prg, gen, edit, mdp, instr_names=names, sid_model=sid_model)
     out = os.path.join(ROOT, "out", "galway_trace_song.sf2")
     open(out, "wb").write(sf2)
     print(f"wrote {out} ({len(sf2)} bytes)")
@@ -684,6 +687,9 @@ def main():
     struct.pack_into(">H", hdr, 12, 0x1003)      # play
     struct.pack_into(">H", hdr, 14, 1)           # songs
     struct.pack_into(">H", hdr, 16, 1)           # start song
+    # PSID v2NG flags: bits 4-5 = SID model (01=6581, 10=8580) so SID players use
+    # the right chip for the WAV render too.
+    struct.pack_into(">H", hdr, 0x76, (0x01 if sid_model == 6581 else 0x02) << 4)
     nm = os.path.splitext(os.path.basename(sid))[0].encode()[:31]
     hdr[0x16:0x16 + len(nm)] = nm
     sidout = os.path.join(ROOT, "out", "galway_trace_song.sid")

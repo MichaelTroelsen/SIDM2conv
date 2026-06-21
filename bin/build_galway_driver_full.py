@@ -227,7 +227,7 @@ def assemble():
     return data
 
 
-def wrap(driver_prg, gen, edit, mdp, instr_names=None):
+def wrap(driver_prg, gen, edit, mdp, instr_names=None, sid_model=6581):
     drv_load = driver_prg[0] | (driver_prg[1] << 8)
     drv_code = driver_prg[2:]
     assert drv_load == 0x1000
@@ -248,7 +248,8 @@ def wrap(driver_prg, gen, edit, mdp, instr_names=None):
     try:
         tt = sf2_aux_bodies.build_table_text_data(instr_names or [], [], 1, 0)
         sf2_aux_bodies.inject_aux_chain_into_sf2(
-            f, sf2_aux_bodies.assemble_aux_chain(tt, sf2_aux_bodies.build_description_data("Galway")))
+            f, sf2_aux_bodies.assemble_aux_chain(
+                tt, sf2_aux_bodies.build_description_data("Galway"), sid_model=sid_model))
     except Exception:
         pass
     return bytes(f)
