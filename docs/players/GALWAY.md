@@ -3,7 +3,7 @@
 **Composer:** Martin Galway
 **Corpus:** `SID/Galway_Martin/` (40 `.sid` files)
 **Registry key:** `galway` (`sidm2/driver_selector.py` → `PLAYER_REGISTRY`)
-**Status (v3.11.0):** trace-driven native driver reaches **~100% on every SID register** for validated tunes in stock SID Factory II.
+**Status (v3.11.0):** trace-driven native driver reaches **~100% on every SID register** for validated tunes in stock SID Factory II. **Validated: Wizball · Ocean Loader 1 · Comic Bakery · Terra Cresta** (4 / 40).
 
 ---
 
@@ -34,8 +34,12 @@ Transpiles the 1st-gen bytecode-extracted score onto a real **Driver 11** SF2 (`
 |------|------------------------------------------------------|-------|
 | **Wizball** (default subtune 4) | osc1 100/100/100/100 · osc2 99/100/99/100 · osc3 100/100/99/100 | Full 135 s, legato; `out/Wizball_full.sf2` (v3.11.0) |
 | **Ocean Loader 1** | osc1 100/100/100/100 · osc2 100/100/99/100 · osc3 100/100/100/100 | Full ~9 min, re-gated (v3.10.0) |
+| **Comic Bakery** | osc1 100/100/100/100 · osc2 100/100/100/100 · osc3 100/100/100/100 | Full ~8 min; needed per-region legato + mid-note AD/SR splitting; `out/Comic_Bakery.sf2` |
+| **Terra Cresta** | osc1 100/100/100/100 · osc2 100/100/100/100 · osc3 100/100/100/100 (hi-fi 2.7 min) | Dense — lead needs tempo 1 → hi-fi build caps at ~2.7 min (`out/Terra_Cresta_hifi.sf2`); full ~8 min at tempo 2 is ~90% pitch (`out/Terra_Cresta_full.sf2`) |
 
 All other tunes below are **buildable via the trace-driven path** (it is player-agnostic — it reads the real SID output) but have **not been individually validated**. `play=$0000` means the player installs its own CIA/IRQ at init (resolved by the trace).
+
+> **Conversion progress:** 4 of 40 individually validated (Wizball, Ocean Loader 1, Comic Bakery, Terra Cresta). Each new tune has hardened the trace path: 16-bit pulse pointer (full-length pulse), per-region legato splitting + mid-note AD/SR following (held-note melody + envelope), and budget-based tempo (frame-accurate grid for dense leads). Terra Cresta is the first to hit the C64 `$D000` memory wall — a dense >5 min lead can't get the full length AND a tempo-1 grid in one SF2.
 
 ---
 
@@ -47,7 +51,7 @@ All other tunes below are **buildable via the trace-driven path** (it is player-
 | Arkanoid_alternative_drums | $3ef8 | $0000 | 2 | 1 | buildable |
 | Athena | $6000 | $6003 | 9 | 1 | buildable (2nd-gen) |
 | Combat_School | $1000 | $0000 | 16 | 1 | buildable |
-| Comic_Bakery | $7f00 | $7f03 | 14 | 1 | buildable (1st-gen) |
+| **Comic_Bakery** | $7f00 | $7f03 | 14 | 1 | ✅ **validated ~100%** (1st-gen) |
 | Commando_High-Score | $081f | $0816 | 1 | 1 | buildable |
 | Daley_Thompsons_Decathlon_loader | $4c00 | $4ca8 | 1 | 1 | buildable |
 | Game_Over | $0f00 | $0000 | 2 | 1 | buildable (1st-gen) |
@@ -78,7 +82,7 @@ All other tunes below are **buildable via the trace-driven path** (it is player-
 | Street_Hawk | $7f00 | $7f1e | 26 | 1 | buildable |
 | Street_Hawk_Prototype | $8003 | $8000 | 1 | 1 | buildable |
 | Swag | $57c0 | $57c7 | 2 | 2 | buildable |
-| Terra_Cresta | $b712 | $b703 | 11 | 1 | buildable |
+| **Terra_Cresta** | $b712 | $b703 | 11 | 1 | ✅ **validated ~100%** (hi-fi 2.7 min) |
 | Times_of_Lore | $4ffe | $4ff0 | 11 | 1 | buildable (2nd-gen) |
 | **Wizball** | $6390 | $6600 | 9 | 4 | ✅ **validated ~100%** |
 | Yie_Ar_Kung_Fu | $9e00 | $9e40 | 19 | 19 | buildable |
