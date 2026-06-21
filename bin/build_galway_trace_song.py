@@ -483,22 +483,30 @@ def main():
         # pmatter: this bundle's pulse audibly matters (real program + pulse waveform)
         pmatter = [(pul != EMPTY) and bwave[i] for i, (_, pul) in enumerate(bexact)]
         PULSE_PEN = 400
-        def dist(i, j):
-            fd = sum(abs(a - b) for a, b in zip(curves[i], curves[j]))
-            pfree = (not pmatter[i]) or (not pmatter[j]) or bexact[i][1] == bexact[j][1]
-            return fd + (0 if pfree else PULSE_PEN)
+        FM_MAX = 1000              # never merge audibly-distinct FM (a slide into a vibrato)
+        def fmdist(i, j):
+            return sum(abs(a - b) for a, b in zip(curves[i], curves[j]))
         parent = list(range(n))
         cnt = list(bcount)
         active = list(range(n))
         while len(active) > cap:
-            best = None
+            # Cost = per-note error * how many notes take the hit (the smaller bundle
+            # gets reassigned to the rep), so the loss lands on the FEWEST notes.
+            best = None            # (cost, x, y) among FM-allowed pairs
+            fb = None              # least-FM-distance fallback if none are allowed
             for x in range(len(active)):
                 i = active[x]
                 for y in range(x + 1, len(active)):
-                    d = dist(i, active[y])
-                    if best is None or d < best[0]:
-                        best = (d, x, y)
-            _, x, y = best
+                    j = active[y]
+                    fd = fmdist(i, j)
+                    if fb is None or fd < fb[0]:
+                        fb = (fd, x, y)
+                    if fd <= FM_MAX:
+                        pfree = (not pmatter[i]) or (not pmatter[j]) or bexact[i][1] == bexact[j][1]
+                        cost = (fd + (0 if pfree else PULSE_PEN)) * min(cnt[i], cnt[j])
+                        if best is None or cost < best[0]:
+                            best = (cost, x, y)
+            _, x, y = best if best else fb
             i, j = active[x], active[y]
             # the rep must keep an AUDIBLE pulse if exactly one side has one.
             if pmatter[j] and not pmatter[i]:
