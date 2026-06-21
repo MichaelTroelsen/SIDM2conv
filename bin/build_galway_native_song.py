@@ -65,6 +65,8 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
     gen.PLAYER_ADDRESSES["driver_state"] = 0x16D0   # $80 playing / $40 stopped
     gen.PLAYER_ADDRESSES["tempo_counter"] = 0x16D1  # 0 on each new row (follow)
     gen.driver_name = "Galway"
+    gen.driver_version_major = 17     # own F12 overlay slot (bin/overlay/*_driver17_00.png)
+    gen.driver_version_minor = 0
     gen.driver_code_top = 0x1000
     # voice_streams that segment into len(segs[v]) patterns per voice (content
     # is overwritten; only the segment COUNT + orderlist structure matters).

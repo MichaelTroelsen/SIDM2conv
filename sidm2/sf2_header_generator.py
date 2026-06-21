@@ -168,6 +168,13 @@ class SF2HeaderGenerator:
         self.driver_size = driver_size
         # Use short driver name to match Driver 11 format (max ~10 chars to avoid block overflow)
         self.driver_name = "Laxity"  # Short name to prevent block structure corruption
+        # Driver descriptor version (Block 1). SF2II's F12 command-overlay picks the
+        # overlay image by this version ("<major>_<minor>" substring of the PNG
+        # filename in bin/overlay/). Default 1.0; the native Galway driver overrides
+        # to 17.0 so it gets its OWN overlay slot (bin/overlay/*_driver17_00.png,
+        # a copy of Driver 11.00's — Galway reuses Driver 11's command set).
+        self.driver_version_major = 1
+        self.driver_version_minor = 0
 
         # Block 3 driver-table addresses. Defaults match Stinsen's NP21 binary
         # layout. Per-file overrides keep SF2II's editor view from reading
@@ -255,10 +262,10 @@ class SF2HeaderGenerator:
         content.extend(struct.pack("<H", self.driver_code_size))
 
         # 6. Driver version major
-        content.append(1)  # Version 1.x
+        content.append(self.driver_version_major & 0xFF)
 
         # 7. Driver version minor
-        content.append(0)  # Version x.0
+        content.append(self.driver_version_minor & 0xFF)
 
         # Optional 8. Driver version revision (not included for now)
 

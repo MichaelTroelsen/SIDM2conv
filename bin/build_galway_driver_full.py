@@ -148,6 +148,8 @@ def gen_includes():
     gen.PLAYER_ADDRESSES["driver_state"] = 0x16D0   # Block-2 play-state contract
     gen.PLAYER_ADDRESSES["tempo_counter"] = 0x16D1
     gen.driver_name = "Galway"
+    gen.driver_version_major = 17     # own F12 overlay slot (bin/overlay/*_driver17_00.png)
+    gen.driver_version_minor = 0
     gen.driver_code_top = 0x1000
     # PROVEN voice_streams path: each voice gets its own pattern. Use bare-note
     # streams for the structure, then overwrite each with the packed ($A0) form.
