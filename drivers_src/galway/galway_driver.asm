@@ -13,6 +13,11 @@
 SID         = $d400
 SID_VOL     = $d418
 
+; --- digi feasibility spike state (only used when DIGI_SPIKE=1) ---
+digi_idx    = $f0         ; byte index into digi_sample (>=LEN -> idle/silent)
+digi_trig   = $f1         ; frames until the drum re-triggers
+digi_wcnt   = $f2         ; $D418 writes remaining this frame
+
 ; per-voice state (indexed 0..2)
 vsp_lo      = $e0           ; current sequence ptr lo
 vsp_hi      = $e3           ; current sequence ptr hi
@@ -227,6 +232,10 @@ iv:     lda #$41
         sta ST_PLAY              ; INIT = play: enable do_play
         lda #$80
         sta ST_STATE             ; report "playing"
+.if DIGI_SPIKE
+        lda #$00
+        sta digi_idx             ; start the (continuously looped) sample at 0
+.endif
         rts
 
 ; --- PLAY -----------------------------------------------------------------
@@ -928,18 +937,20 @@ dsz:    lda #$00                 ; silence all SID voices ($D400-$D418 -> 0)
         sta SID,x
         dex
         bpl dsz
-        ldy #$10                 ; ~16 square periods (fits a frame's cycle budget)
-dsl:    lda #$0f                 ; volume full
+        lda #160                 ; $D418 writes this frame
+        sta digi_wcnt
+dsl:    ldy digi_idx
+        cpy #DIGI_SAMPLE_LEN
+        bcc dsp                  ; idx < LEN -> play
+        ldy #$00                 ; else LOOP: wrap to the sample start
+        sty digi_idx
+dsp:    lda digi_sample,y        ; next 4-bit PCM nibble
         sta SID_VOL
-        ldx #$40
-dd1:    dex
-        bne dd1
-        lda #$00                 ; volume zero
-        sta SID_VOL
-        ldx #$40
-dd2:    dex
-        bne dd2
-        dey
+        inc digi_idx
+        ldx #$0e                 ; ~101-cycle inter-sample gap (~9.5 kHz)
+dd:     dex
+        bne dd
+        dec digi_wcnt
         bne dsl
         rts
 .endif
@@ -963,3 +974,7 @@ olhi:
         * = $1710
 freqtable:
         .include "freqtable.inc"
+
+.if DIGI_SPIKE
+.include "digi_sample.inc"
+.endif
