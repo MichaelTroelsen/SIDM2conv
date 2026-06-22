@@ -14,8 +14,11 @@ SID         = $d400
 SID_VOL     = $d418
 
 ; --- digi engine state (DIGI_SPIKE=1): trigger-driven sample player ---
-dtp         = $f0         ; ZP: 16-bit pointer into digi_triggers (2)
-dbp         = $f2         ; ZP: 16-bit pointer into digi_bank (active sample) (2)
+; ZP at $c9-$cc: FREE between the music's vtrans ($c6-$c8) and vfreq ($d0). MUST
+; NOT reuse the music's ZP ($f0-$f4 = ms_cnt/tieflag/np_guard/pending_dur) — the
+; music runs BEFORE the digi each frame and would clobber these pointers.
+dtp         = $c9         ; ZP: 16-bit pointer into digi_triggers (2)
+dbp         = $cb         ; ZP: 16-bit pointer into digi_bank (active sample) (2)
 dcdown      = $1900       ; frames until the next trigger fires
 dcnt        = $1901       ; 16-bit samples remaining in the active sample (2)
 dwc         = $1903       ; $D418 writes left this frame
@@ -259,9 +262,6 @@ do_play:
         bne dp_go
         rts
 dp_go:
-.if DIGI_SPIKE
-        jmp digi_stream          ; FEASIBILITY SPIKE: stream a $D418 square wave
-.endif
         lda #$80
         sta ST_STATE             ; report "playing" to SF2II (drives follow cursor)
         lda #$01
@@ -287,6 +287,9 @@ dp_vib:
         jsr fm_step              ; per-voice freq -> $D400/1 (+ FM accumulate)
         dec ms_cnt
         bne dp_tick              ; next multispeed tick this frame
+.if DIGI_SPIKE
+        jsr digi_stream          ; interleave: stream the digi drums over the music
+.endif
         rts
 
 ; --- per-voice wave-program runner (standard 2-col wave table, like Driver 11:
@@ -937,9 +940,7 @@ cz:     lda #$00
 ; Walks digi_triggers (frame-delta, sample-id) and streams the active sample's
 ; 4-bit nibbles to $D418 from do_play (proven to render in stock SF2II). One
 ; tune's drums/voice play on their real rhythm. (No music yet — digi-only test.)
-digi_stream:
-        lda #$80
-        sta ST_STATE             ; keep SF2II calling do_play
+digi_stream:                     ; called AFTER the music body each frame
         lda #$10
         sta dfg                  ; cap chained fires/frame (anti-runaway guard)
         lda dcdown
@@ -992,8 +993,8 @@ dnp:    lda dcnt                 ; dec 16-bit remaining count
         dec dcnt+1
 dnd:    dec dcnt
         jmp ddl
-dsil:   lda #$00                 ; sample done -> silence until the next trigger
-        sta SID_VOL
+dsil:   lda #$0f                 ; between drums -> FULL volume (the music is heard;
+        sta SID_VOL              ; the digi modulates the master volume, like the orig)
 ddl:    ldx #$06                 ; ~80-cycle gap (16-bit handling replaces delay pad)
 ddd:    dex
         bne ddd

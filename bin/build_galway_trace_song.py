@@ -821,7 +821,21 @@ def main():
     # Galway tunes are 6581 — bake it into the SF2 (HardwarePreferences aux block)
     # so SF2II plays the correct chip/filter model, not the config default (8580).
     sid_model = int(os.environ.get("GALWAY_SID", "6581"))
-    sf2 = B.wrap(prg, gen, edit, mdp, instr_names=names, sid_model=sid_model)
+    # DIGI ($D418 volume samples): when GALWAY_DIGI_SPIKE is set, the driver carries
+    # the digi engine (interleaved with the music) and we inject the sample-bank blob
+    # (bin/build_galway_digi.py: out/digi_blob.bin + digi_addrs.inc) high in memory.
+    digi_blob, digi_addr = None, 0
+    blobf = os.path.join(ROOT, "out", "digi_blob.bin")
+    addrf = os.path.join(ROOT, "drivers_src", "galway", "digi_addrs.inc")
+    if os.environ.get("GALWAY_DIGI_SPIKE", "0") != "0" and os.path.exists(blobf) \
+            and os.path.exists(addrf):
+        digi_blob = open(blobf, "rb").read()
+        for ln in open(addrf):
+            if "DIGI_BLOB_ADDR" in ln:
+                digi_addr = int(ln.split("$")[1].strip(), 16)
+        print(f"  digi blob: {len(digi_blob)} B @ ${digi_addr:04X}")
+    sf2 = B.wrap(prg, gen, edit, mdp, instr_names=names, sid_model=sid_model,
+                 digi_blob=digi_blob, digi_addr=digi_addr)
     out = os.path.join(ROOT, "out", "galway_trace_song.sf2")
     open(out, "wb").write(sf2)
     print(f"wrote {out} ({len(sf2)} bytes)")
