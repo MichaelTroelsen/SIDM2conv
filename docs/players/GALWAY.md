@@ -3,7 +3,7 @@
 **Composer:** Martin Galway
 **Corpus:** `SID/Galway_Martin/` (40 `.sid` files)
 **Registry key:** `galway` (`sidm2/driver_selector.py` → `PLAYER_REGISTRY`)
-**Status:** trace-driven native driver reaches **~100% on every SID register** for validated tunes in stock SID Factory II. **SF2II-validated: Wizball · Ocean Loader 1 · Comic Bakery · Terra Cresta · Rambo** (5 / 40). A full-corpus batch build (`out/galway_sf2/`) is **31 / 40 trace-faithful** (≈100% headless pitch), **3 near** (90-94%), and **6 blocked on `play=$0000`** (self-installed IRQ — tracer can't derive the play vector yet).
+**Status:** trace-driven native driver reaches **~100% on every SID register** for validated tunes in stock SID Factory II. **SF2II-validated: Wizball · Ocean Loader 1 · Comic Bakery · Terra Cresta · Rambo** (5 / 40). A full-corpus batch build (`out/galway_sf2/`) now covers **all 40**: **37 trace-faithful** (≈100% headless pitch) and **3 near** (90-94%) — **0 blocked**. The `play=$0000` self-installed-IRQ tunes (Arkanoid, Game Over, …) are now traceable: the tracer derives the handler from the installed vector ($FFFE or KERNAL CINV $0314) and drives each frame as a simulated 6502 IRQ.
 
 **Arpeggios are now editable.** Discrete-semitone chord arps (e.g. Terra Cresta's `0-3-7-12`) are surfaced into SF2II's **wave-table semitone column** — visible, editable, and they drive playback (`wave_step` applies them live). Wide vibratos (off the note grid) stay in the driver-internal FM. Gated by `GALWAY_ARP_WAVE` (default on).
 
@@ -40,9 +40,9 @@ Transpiles the 1st-gen bytecode-extracted score onto a real **Driver 11** SF2 (`
 | **Terra Cresta** | osc1 100/100/100/100 · osc2 100/100/100/100 · osc3 100/100/100/100 (full 2 min) | Chord arps now in the editable wave table — full build 100% on every register; `out/Terra_Cresta.sf2` |
 | **Rambo (First Blood II)** | osc1 99/100/~/100 · osc2 100/100/95/100 · osc3 98/100/100/100 (full 3.4 min) | Dense (95 bundles > 64-channel) — nearest-merge clustering keeps the audible pitch + osc2 pulse; `out/Rambo.sf2` |
 
-All other tunes below are **buildable via the trace-driven path** (it is player-agnostic — it reads the real SID output). The batch build saves each to `out/galway_sf2/<name>.sf2`. **`play=$0000`** tunes install their own CIA/IRQ at init and have **no separate play address** — the tracer can't derive the play vector yet, so they currently produce an empty trace (the next milestone).
+All other tunes below are **buildable via the trace-driven path** (it is player-agnostic — it reads the real SID output). The batch build saves each to `out/galway_sf2/<name>.sf2`. **`play=$0000`** tunes self-install an IRQ at init (a raster handler at `$FFFE`, or the KERNAL `CINV $0314`) with no separate play address — the tracer now derives the handler from the installed vector and drives each frame as a simulated 6502 IRQ, so they build like any other.
 
-> **Conversion progress:** 5 of 40 SF2II-validated; 31 of 40 trace-faithful headless. Each tune hardened the trace path: 16-bit pulse pointer (full-length pulse), per-region legato + mid-note AD/SR following, budget-based tempo, **nearest-merge (fm,pulse) bundle clustering** (dense tunes that exceed the 64-command channel — Rambo), and **chord arps → editable wave table**.
+> **Conversion progress:** 5 of 40 SF2II-validated; **all 40 build** (37 trace-faithful headless + 3 near, 0 blocked). Each tune hardened the trace path: 16-bit pulse pointer (full-length pulse), per-region legato + mid-note AD/SR following, budget-based tempo, **nearest-merge (fm,pulse) bundle clustering** (dense tunes that exceed the 64-command channel — Rambo), **chord arps → editable wave table**, and **`play=$0000` self-installed-IRQ tracing** (the last 6 tunes).
 
 ---
 
@@ -50,14 +50,14 @@ All other tunes below are **buildable via the trace-driven path** (it is player-
 
 | File | Init | Play | Subtunes | Default | Status |
 |------|------|------|----------|---------|--------|
-| Arkanoid | $4000 | $0000 | 20 | 1 | ❌ play=$0000 (1st-gen) |
-| Arkanoid_alternative_drums | $3ef8 | $0000 | 2 | 1 | ❌ play=$0000 |
+| Arkanoid | $4000 | $0000 | 20 | 1 | ✅ faithful 100/100/100 (1st-gen, play=$0000) |
+| Arkanoid_alternative_drums | $3ef8 | $0000 | 2 | 1 | ✅ faithful 100/100/99 (play=$0000) |
 | Athena | $6000 | $6003 | 9 | 1 | ✅ faithful 100/100/100 (2nd-gen) |
-| Combat_School | $1000 | $0000 | 16 | 1 | ❌ play=$0000 |
+| Combat_School | $1000 | $0000 | 16 | 1 | ✅ faithful 100/100 (play=$0000, **subtune 1**) |
 | **Comic_Bakery** | $7f00 | $7f03 | 14 | 1 | ✅ **SF2II-validated ~100%** (1st-gen) |
 | Commando_High-Score | $081f | $0816 | 1 | 1 | ✅ faithful 100/100/100 |
 | Daley_Thompsons_Decathlon_loader | $4c00 | $4ca8 | 1 | 1 | ✅ faithful 100/100/100 |
-| Game_Over | $0f00 | $0000 | 2 | 1 | ❌ play=$0000 (1st-gen) |
+| Game_Over | $0f00 | $0000 | 2 | 1 | ✅ faithful 100/100/100 (1st-gen, play=$0000) |
 | Green_Beret | $9fce | $cff0 | 21 | 1 | ✅ faithful 100/100/100 (1st-gen) |
 | Helikopter_Jagd | $bd80 | $a000 | 16 | 1 | ⚠️ near 90/100/100 |
 | Highlander | $a0a0 | $a0d3 | 1 | 1 | ✅ faithful 98/99/99 |
@@ -67,9 +67,9 @@ All other tunes below are **buildable via the trace-driven path** (it is player-
 | Kong_Strikes_Back | $9600 | $8ac9 | 1 | 1 | ✅ faithful 100/100/100 |
 | Match_Day | $c6a0 | $c6d0 | 7 | 1 | ✅ faithful 100/100/100 |
 | Miami_Vice | $f900 | $e0b2 | 2 | 1 | ✅ faithful 100/100/99 |
-| MicroProse_Soccer_V1 | $c000 | $0000 | 14 | 5 | ❌ play=$0000 |
+| MicroProse_Soccer_V1 | $c000 | $0000 | 14 | 5 | ✅ faithful 100/100/100 (play=$0000, KERNAL IRQ) |
 | MicroProse_Soccer_indoor | $bc00 | $bc03 | 17 | 8 | ✅ faithful 100/100/100 |
-| MicroProse_Soccer_intro | $9f80 | $0000 | 1 | 1 | ❌ play=$0000 |
+| MicroProse_Soccer_intro | $9f80 | $0000 | 1 | 1 | ✅ faithful 100/100/100 (play=$0000) |
 | MicroProse_Soccer_outdoor | $c035 | $c01a | 8 | 5 | ✅ faithful 100/100/100 |
 | Mikie | $7ce8 | $7cf4 | 12 | 1 | ✅ faithful 100/100/99 |
 | Neverending_Story | $95e8 | $95f4 | 1 | 1 | ⚠️ near 94/100/100 |
@@ -91,7 +91,7 @@ All other tunes below are **buildable via the trace-driven path** (it is player-
 | Yie_Ar_Kung_Fu | $9e00 | $9e40 | 19 | 19 | ✅ faithful 100/100/100 |
 | Yie_Ar_Kung_Fu_II | $bac3 | $baeb | 7 | 1 | ✅ faithful 100/100/100 |
 
-*Legend: ✅ **SF2II-validated** = confirmed ~100% per-register in instrumented SID Factory II. ✅ **faithful** = trace build reproduces the real per-frame pitch headless (osc1/osc2/osc3 %), saved to `out/galway_sf2/`, not yet listen-confirmed. ⚠️ **near** = small pitch divergence. ❌ **play=$0000** = self-installed IRQ, not yet traceable. (Survey length 8000 frames — some tunes' ideal length/tempo differs.)*
+*Legend: ✅ **SF2II-validated** = confirmed ~100% per-register in instrumented SID Factory II. ✅ **faithful** = trace build reproduces the real per-frame pitch headless (osc1/osc2/osc3 %), saved to `out/galway_sf2/`, not yet listen-confirmed. ⚠️ **near** = small pitch divergence. (play=$0000 = self-installed IRQ; now traced via the installed vector.) (Survey length 8000 frames — some tunes' ideal length/tempo differs.)*
 
 *Init/play/subtune values are from each file's PSID header. "1st-gen / 2nd-gen" marks the player generation where known from Galway's own source repo (1st: Wizball/Arkanoid/Green Beret/Game Over/Rambo/Comic Bakery; 2nd: Athena/Times of Lore/Insects in Space).*
 
