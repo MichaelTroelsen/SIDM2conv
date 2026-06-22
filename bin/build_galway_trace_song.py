@@ -53,6 +53,12 @@ def detect_multispeed(sid_path, init, play, subtune):
     per SF2II (50 Hz) frame to match wall-clock speed. Detect N by emulating
     init+play and reading the CIA timer-A interval the player sets each call:
     find the timer pattern's period and scale it to one frame (19656 cycles)."""
+    # play=$0000 tunes self-install a RASTER IRQ (one play per video frame) and
+    # INIT never RTSes — the CIA-timer probe below would spin py65 for its full
+    # step cap (~60s). The tracer already samples these at one IRQ per frame, so
+    # multispeed is 1 by construction.
+    if play == 0:
+        return 1
     import struct
     from py65.devices.mpu6502 import MPU
     PAL = 19656
