@@ -240,6 +240,9 @@ do_play:
         bne dp_go
         rts
 dp_go:
+.if DIGI_SPIKE
+        jmp digi_stream          ; FEASIBILITY SPIKE: stream a $D418 square wave
+.endif
         lda #$80
         sta ST_STATE             ; report "playing" to SF2II (drives follow cursor)
         lda #$01
@@ -909,6 +912,37 @@ cz:     lda #$00
         dex
         bpl cz
         rts
+
+.if DIGI_SPIKE
+; --- FEASIBILITY SPIKE ----------------------------------------------------
+; Tests whether stock SF2II renders SUB-FRAME $D418 writes from do_play as audio
+; (the digi/volume trick). Silences the 3 voices, then busy-streams a ~800 Hz
+; square to the master-volume register for ~one frame's worth of cycles. If
+; SF2II's reSID is cycle-accurate on register writes, the user hears a clean
+; tone; if it only snapshots registers per frame, it stays silent.
+digi_stream:
+        lda #$80
+        sta ST_STATE             ; keep SF2II's "playing" state so it keeps calling
+        ldx #$18
+dsz:    lda #$00                 ; silence all SID voices ($D400-$D418 -> 0)
+        sta SID,x
+        dex
+        bpl dsz
+        ldy #$10                 ; ~16 square periods (fits a frame's cycle budget)
+dsl:    lda #$0f                 ; volume full
+        sta SID_VOL
+        ldx #$40
+dd1:    dex
+        bne dd1
+        lda #$00                 ; volume zero
+        sta SID_VOL
+        ldx #$40
+dd2:    dex
+        bne dd2
+        dey
+        bne dsl
+        rts
+.endif
 
 ; SID voice register offsets
 sidbase:
