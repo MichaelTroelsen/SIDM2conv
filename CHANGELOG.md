@@ -25,6 +25,47 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.12.0] - 2026-06-22
+
+### Whole Galway corpus builds (40/40) + editable chord-arp wave tables + play=$0000
+
+The trace-driven Galway path went from **4 validated / 6 blocked** to **the entire
+40-tune corpus building**: 37 trace-faithful (≈100% headless pitch) + 3 near, **0
+blocked**. SF2II-validated set now 5 (added Rambo). Batch output: `out/galway_sf2/`.
+
+**`play=$0000` self-installed-IRQ tracing** (unblocks the last 6 — Arkanoid,
+Arkanoid alt-drums, Game Over, Combat School, MicroProse Soccer V1 + intro). These
+tunes' INIT installs its own IRQ — a raster handler at the hardware vector `$FFFE`
+(`$01=$35` banks the KERNAL out) or the KERNAL `CINV $0314` — and never RTSes, so
+the standard init+play trace got an empty result and `c64.call(init)` hung. The
+tracer (`tools/sidm2_sid_trace.zig`, rebuilt ReleaseFast) gained a `play=$0000`
+path: bounded INIT until the vector installs, derive the handler from whichever
+vector the player changed, then drive each frame by simulating a 6502 IRQ entry
+(push return-PC `$FFF0` + status → jump to handler → halt on RTI→RTS sentinel),
+with a per-frame step cap so a quirky handler can never hang. `detect_multispeed`
+shortcuts `play=0 → 1` (raster = one play per frame; the CIA-timer probe otherwise
+spun py65 ~60 s per build). Combat School's music is subtune 1.
+
+**Chord arpeggios → editable WAVE table** (`GALWAY_ARP_WAVE`, default on). A
+discrete-semitone, on-grid chord arp (e.g. Terra Cresta's `0-3-7-12`) is now
+emitted into SF2II's wave-table semitone column instead of the driver-internal FM —
+visible, editable, and it drives playback (`wave_step`). Wide vibratos (½-semitone
+off-grid) stay in the FM. The 256-row table is budgeted (common arps adopted, rare
+ones kept in FM) and identical programs deduped. Terra Cresta now 100% on every
+register in real SF2II (was CHECK).
+
+**Nearest-merge `(fm,pulse)` bundle clustering** (dense tunes — Rambo's 95 bundles
+exceed the 64-entry `$c0-$ff` command channel). Replaces the contour-quantising
+`fmq` that merged a downward slide into a flat vibrato (phantom pitch slide). Keeps
+every bundle exact, then greedily merges the most-similar pairs (FM-contour L1,
+count-weighted, hard FM-distance cap, pulse-audibility-aware so tie/saw pulses merge
+free and the loss lands where it's inaudible) until ≤63. Full Rambo: freq ~99/100/98,
+osc2 pulse 33%→95%, osc3 (saw) 100%.
+
+87 galway tests green. Full per-tune status: `docs/players/GALWAY.md`.
+
+---
+
 ## [3.11.0] - 2026-06-21
 
 ### Full-fidelity, full-length Wizball — legato extraction + 16-bit pulse pointer
