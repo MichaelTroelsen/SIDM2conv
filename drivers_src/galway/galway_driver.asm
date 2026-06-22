@@ -13,10 +13,13 @@
 SID         = $d400
 SID_VOL     = $d418
 
-; --- digi feasibility spike state (only used when DIGI_SPIKE=1) ---
-digi_idx    = $f0         ; byte index into digi_sample (>=LEN -> idle/silent)
-digi_trig   = $f1         ; frames until the drum re-triggers
-digi_wcnt   = $f2         ; $D418 writes remaining this frame
+; --- digi engine state (DIGI_SPIKE=1): trigger-driven sample player ---
+dtp         = $f0         ; ZP: 16-bit pointer into digi_triggers (2)
+dbp         = $f2         ; ZP: 16-bit pointer into digi_bank (active sample) (2)
+dcdown      = $1900       ; frames until the next trigger fires
+dcnt        = $1901       ; 16-bit samples remaining in the active sample (2)
+dwc         = $1903       ; $D418 writes left this frame
+dfg         = $1904       ; anti-runaway: max chained (delta-0) fires per frame
 
 ; per-voice state (indexed 0..2)
 vsp_lo      = $e0           ; current sequence ptr lo
@@ -233,8 +236,15 @@ iv:     lda #$41
         lda #$80
         sta ST_STATE             ; report "playing"
 .if DIGI_SPIKE
-        lda #$00
-        sta digi_idx             ; start the (continuously looped) sample at 0
+        lda #<digi_triggers      ; point the trigger walker at the start
+        sta dtp
+        lda #>digi_triggers
+        sta dtp+1
+        ldy #$00
+        lda (dtp),y              ; first frame-delta -> countdown
+        sta dcdown
+        sty dcnt                 ; no active sample yet (16-bit count)
+        sty dcnt+1
 .endif
         rts
 
@@ -923,34 +933,71 @@ cz:     lda #$00
         rts
 
 .if DIGI_SPIKE
-; --- FEASIBILITY SPIKE ----------------------------------------------------
-; Tests whether stock SF2II renders SUB-FRAME $D418 writes from do_play as audio
-; (the digi/volume trick). Silences the 3 voices, then busy-streams a ~800 Hz
-; square to the master-volume register for ~one frame's worth of cycles. If
-; SF2II's reSID is cycle-accurate on register writes, the user hears a clean
-; tone; if it only snapshots registers per frame, it stays silent.
+; --- DIGI ENGINE (milestone 2): trigger-driven $D418 sample player ----------
+; Walks digi_triggers (frame-delta, sample-id) and streams the active sample's
+; 4-bit nibbles to $D418 from do_play (proven to render in stock SF2II). One
+; tune's drums/voice play on their real rhythm. (No music yet — digi-only test.)
 digi_stream:
         lda #$80
-        sta ST_STATE             ; keep SF2II's "playing" state so it keeps calling
-        ldx #$18
-dsz:    lda #$00                 ; silence all SID voices ($D400-$D418 -> 0)
-        sta SID,x
-        dex
-        bpl dsz
-        lda #160                 ; $D418 writes this frame
-        sta digi_wcnt
-dsl:    ldy digi_idx
-        cpy #DIGI_SAMPLE_LEN
-        bcc dsp                  ; idx < LEN -> play
-        ldy #$00                 ; else LOOP: wrap to the sample start
-        sty digi_idx
-dsp:    lda digi_sample,y        ; next 4-bit PCM nibble
+        sta ST_STATE             ; keep SF2II calling do_play
+        lda #$10
+        sta dfg                  ; cap chained fires/frame (anti-runaway guard)
+        lda dcdown
+        bne ddec                 ; still counting down to the next trigger
+df:     dec dfg
+        beq dpark                ; guard tripped -> stop firing this frame
+        ldy #$01
+        lda (dtp),y              ; sample-id
+        cmp #$ff
+        beq dpark                ; end marker -> no more triggers
+        cmp #$fe
+        beq dadv                 ; no-op (gap filler) -> just advance
+        tax
+        lda digi_off_lo,x        ; load the sample: bank pointer + length
+        sta dbp
+        lda digi_off_hi,x
+        sta dbp+1
+        lda digi_len_lo,x        ; 16-bit length (whole drums can exceed 255)
+        sta dcnt
+        lda digi_len_hi,x
+        sta dcnt+1
+dadv:   lda dtp                  ; trigger pointer += 2
+        clc
+        adc #$02
+        sta dtp
+        bcc dnc
+        inc dtp+1
+dnc:    ldy #$00
+        lda (dtp),y              ; next frame-delta
+        sta dcdown
+        beq df                   ; delta 0 -> another hit this same frame
+        jmp dstr
+dpark:  lda #$ff
+        sta dcdown               ; park: no further triggers
+        jmp dstr
+ddec:   dec dcdown
+dstr:   lda #192                 ; $D418 writes this frame: 192*50/s = ~9.6 kHz
+        sta dwc                  ; (~matches the original; ~15.4k cyc/call, under cap)
+dsl:    lda dcnt                 ; active sample remaining? (16-bit)
+        ora dcnt+1
+        beq dsil
+        ldy #$00
+        lda (dbp),y              ; next 4-bit PCM nibble
         sta SID_VOL
-        inc digi_idx
-        ldx #$0e                 ; ~101-cycle inter-sample gap (~9.5 kHz)
-dd:     dex
-        bne dd
-        dec digi_wcnt
+        inc dbp                  ; advance sample read pointer (16-bit)
+        bne dnp
+        inc dbp+1
+dnp:    lda dcnt                 ; dec 16-bit remaining count
+        bne dnd
+        dec dcnt+1
+dnd:    dec dcnt
+        jmp ddl
+dsil:   lda #$00                 ; sample done -> silence until the next trigger
+        sta SID_VOL
+ddl:    ldx #$06                 ; ~80-cycle gap (16-bit handling replaces delay pad)
+ddd:    dex
+        bne ddd
+        dec dwc
         bne dsl
         rts
 .endif
@@ -976,5 +1023,5 @@ freqtable:
         .include "freqtable.inc"
 
 .if DIGI_SPIKE
-.include "digi_sample.inc"
+.include "digi_addrs.inc"
 .endif

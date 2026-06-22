@@ -229,17 +229,24 @@ def assemble():
     return data
 
 
-def wrap(driver_prg, gen, edit, mdp, instr_names=None, sid_model=6581):
+def wrap(driver_prg, gen, edit, mdp, instr_names=None, sid_model=6581,
+         digi_blob=None, digi_addr=0):
     drv_load = driver_prg[0] | (driver_prg[1] << 8)
     drv_code = driver_prg[2:]
     assert drv_load == 0x1000
     edit_end = EDIT_BASE + len(edit)
-    gen.driver_size = edit_end - LOAD_BASE
+    # The digi sample bank (if any) sits high, past the edit area. driver_size must
+    # COVER it so SF2II loads it into the emulator's RAM (else the driver reads
+    # unmapped memory -> "emulation of 6510 code" on load).
+    file_top = edit_end
+    if digi_blob:
+        file_top = max(file_top, digi_addr + len(digi_blob))
+    gen.driver_size = file_top - LOAD_BASE
     header_bytes = gen.generate_complete_headers(mdp)
     if LOAD_BASE + len(header_bytes) > drv_load:
         raise SystemExit("headers overlap driver")
 
-    file_size = 2 + (edit_end - LOAD_BASE)
+    file_size = 2 + (file_top - LOAD_BASE)
     f = bytearray(file_size)
     f[0], f[1] = LOAD_BASE & 0xFF, LOAD_BASE >> 8
     f[2:2 + len(header_bytes)] = header_bytes
@@ -247,6 +254,9 @@ def wrap(driver_prg, gen, edit, mdp, instr_names=None, sid_model=6581):
     f[doff:doff + len(drv_code)] = drv_code
     eoff = 2 + (EDIT_BASE - LOAD_BASE)
     f[eoff:eoff + len(edit)] = edit
+    if digi_blob:
+        boff = 2 + (digi_addr - LOAD_BASE)
+        f[boff:boff + len(digi_blob)] = digi_blob
     try:
         tt = sf2_aux_bodies.build_table_text_data(instr_names or [], [], 1, 0)
         sf2_aux_bodies.inject_aux_chain_into_sf2(
@@ -294,7 +304,19 @@ def main():
     print(f"layout: edit ${EDIT_BASE:04X}-${EDIT_BASE+len(edit)-1:04X}, seq0=${seq0:04X}, tempo={TEMPO}")
     prg = assemble()
     print(f"assembled driver: {len(prg)} bytes, load ${prg[0]|(prg[1]<<8):04X}")
-    sf2 = wrap(prg, gen, edit, mdp)
+    # Load the digi sample-bank blob (sample bank + index + triggers), if present,
+    # so wrap() can place it high AND set driver_size to cover it.
+    digi_blob, digi_addr = None, 0
+    blobf = os.path.join(OUTDIR, "digi_blob.bin")
+    addrf = os.path.join(GAL, "digi_addrs.inc")
+    if os.environ.get("GALWAY_DIGI_SPIKE", "0") != "0" and os.path.exists(blobf) \
+            and os.path.exists(addrf):
+        digi_blob = open(blobf, "rb").read()
+        for ln in open(addrf):
+            if "DIGI_BLOB_ADDR" in ln:
+                digi_addr = int(ln.split("$")[1].strip(), 16)
+        print(f"digi blob: {len(digi_blob)} B @ ${digi_addr:04X}")
+    sf2 = wrap(prg, gen, edit, mdp, digi_blob=digi_blob, digi_addr=digi_addr)
     out = os.path.join(OUTDIR, "galway_driver.sf2")
     open(out, "wb").write(sf2)
     print(f"wrote {out} ({len(sf2)} bytes)")
