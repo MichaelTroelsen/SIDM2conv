@@ -53,14 +53,19 @@ def detect_multispeed(sid_path, init, play, subtune):
     per SF2II (50 Hz) frame to match wall-clock speed. Detect N by emulating
     init+play and reading the CIA timer-A interval the player sets each call:
     find the timer pattern's period and scale it to one frame (19656 cycles)."""
-    # play=$0000 tunes self-install a RASTER IRQ (one play per video frame) and
-    # INIT never RTSes — the CIA-timer probe below would spin py65 for its full
-    # step cap (~60s). The tracer already samples these at one IRQ per frame, so
-    # multispeed is 1 by construction.
-    if play == 0:
-        return 1
     import struct
     from py65.devices.mpu6502 import MPU
+    _ov = os.environ.get("GALWAY_MS")        # manual multispeed override
+    if _ov:
+        return int(_ov)
+    # play=$0000 tunes self-install a RASTER IRQ; INIT never RTSes. The tracer
+    # samples one IRQ per video frame, so multispeed is 1 by construction. (Some
+    # players are conditionally multi-raster — e.g. Arkanoid's $4086<->$40b3
+    # ping-pong gated on $45EB — but SF2II's single-do_play cycle cap can't fit a
+    # multispeed-2 music + a full-rate digi anyway; GALWAY_MS forces it if wanted.)
+    if play == 0:
+        return 1
+    PAL = 19656
     PAL = 19656
     d = open(sid_path, "rb").read()
     off = struct.unpack(">H", d[6:8])[0]
