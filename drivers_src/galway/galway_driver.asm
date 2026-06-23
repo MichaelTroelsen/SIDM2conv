@@ -977,8 +977,8 @@ dpark:  lda #$ff
         sta dcdown               ; park: no further triggers
         jmp dstr
 ddec:   dec dcdown
-dstr:   lda #192                 ; $D418 writes this frame: 192*50/s = ~9.6 kHz
-        sta dwc                  ; (~matches the original; ~15.4k cyc/call, under cap)
+dstr:   lda #128                 ; $D418 writes/call (fit music+digi under the cap at
+        sta dwc                  ; the 9.75 kHz gap; short drums play whole in 1 frame)
 dsl:    lda dcnt                 ; active sample remaining? (16-bit)
         ora dcnt+1
         beq dsil
@@ -995,8 +995,8 @@ dnd:    dec dcnt
         jmp ddl
 dsil:   lda #$0f                 ; between drums -> FULL volume (the music is heard;
         sta SID_VOL              ; the digi modulates the master volume, like the orig)
-ddl:    ldx #$06                 ; ~80-cycle gap (16-bit handling replaces delay pad)
-ddd:    dex
+ddl:    ldx #$0a                 ; ~101-cycle gap = 9.75 kHz (the ORIGINAL digi rate;
+ddd:    dex                      ; the gap, NOT writes/sec, sets the sample PITCH)
         bne ddd
         dec dwc
         bne dsl

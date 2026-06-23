@@ -854,9 +854,13 @@ def main():
     load = prg[0] | (prg[1] << 8)
     body = prg[2:]
     end = max(load + len(body), B.EDIT_BASE + len(edit))
+    if digi_blob:                                # include the high digi bank so the
+        end = max(end, digi_addr + len(digi_blob))   # PSID render plays the drums too
     img = bytearray(end - load)
     img[0:len(body)] = body
     img[B.EDIT_BASE - load:B.EDIT_BASE - load + len(edit)] = edit
+    if digi_blob:
+        img[digi_addr - load:digi_addr - load + len(digi_blob)] = digi_blob
     hdr = bytearray(0x7C)
     hdr[0:4] = b"PSID"
     struct.pack_into(">H", hdr, 4, 2)            # version 2
