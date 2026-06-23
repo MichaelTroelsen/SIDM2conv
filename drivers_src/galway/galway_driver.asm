@@ -23,6 +23,11 @@ dcdown      = $1900       ; frames until the next trigger fires
 dcnt        = $1901       ; 16-bit samples remaining in the active sample (2)
 dwc         = $1903       ; $D418 writes left this frame
 dfg         = $1904       ; anti-runaway: max chained (delta-0) fires per frame
+; --- DIGI_NCO=1: sawtooth-oscillator melody (Arkanoid's digi is a continuous
+;     sawtooth LEAD, not drums). nptr walks a per-frame 8-bit phase-increment
+;     table; the NCO phase-accumulates per $D418 write. nptr reuses dtp's ZP. ---
+nphase      = $1905       ; NCO 8-bit phase accumulator
+nincr       = $1906       ; this frame's phase increment (0 = rest)
 
 ; per-voice state (indexed 0..2)
 vsp_lo      = $e0           ; current sequence ptr lo
@@ -239,6 +244,14 @@ iv:     lda #$41
         lda #$80
         sta ST_STATE             ; report "playing"
 .if DIGI_SPIKE
+.if DIGI_NCO
+        lda #<digi_nco_tab       ; point nptr (=dtp ZP) at the per-frame melody
+        sta dtp
+        lda #>digi_nco_tab
+        sta dtp+1
+        lda #$00
+        sta nphase               ; NCO phase = 0
+.else
         lda #<digi_triggers      ; point the trigger walker at the start
         sta dtp
         lda #>digi_triggers
@@ -248,6 +261,7 @@ iv:     lda #$41
         sta dcdown
         sty dcnt                 ; no active sample yet (16-bit count)
         sty dcnt+1
+.endif
 .endif
         rts
 
@@ -941,6 +955,36 @@ cz:     lda #$00
 ; 4-bit nibbles to $D418 from do_play (proven to render in stock SF2II). One
 ; tune's drums/voice play on their real rhythm. (No music yet — digi-only test.)
 digi_stream:                     ; called AFTER the music body each frame
+.if DIGI_NCO
+; --- NCO sawtooth-lead engine: one phase-increment byte per frame drives a
+;     phase accumulator written to $D418 (the authentic continuous sawtooth). ---
+        ldy #$00
+        lda (dtp),y              ; this frame's phase increment
+        sta nincr
+        inc dtp                  ; advance to the next frame's byte
+        bne ni0
+        inc dtp+1
+ni0:    lda nincr
+        bne nplay                ; incr 0 = rest -> leave $D418 to the music ($0f)
+        rts
+nplay:  lda #108                 ; NCO $D418 writes this call (gap ~103 = 9566 Hz;
+        sta dwc                  ; keep music+NCO under SF2II's per-call cycle cap)
+nloop:  lda nphase
+        clc
+        adc nincr
+        sta nphase               ; phase += incr
+        lsr a
+        lsr a
+        lsr a
+        lsr a                    ; high nibble = sawtooth output 0..15
+        sta SID_VOL
+        ldx #$0e
+nd:     dex
+        bne nd
+        dec dwc
+        bne nloop
+        rts
+.else
         lda #$10
         sta dfg                  ; cap chained fires/frame (anti-runaway guard)
         lda dcdown
@@ -1001,6 +1045,7 @@ ddd:    dex                      ; the gap, NOT writes/sec, sets the sample PITC
         dec dwc
         bne dsl
         rts
+.endif
 .endif
 
 ; SID voice register offsets

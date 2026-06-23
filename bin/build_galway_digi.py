@@ -91,6 +91,62 @@ def fuzzy_dedupe(pcms, len_tol=12, diff_tol=1.4):
     return bank, sids
 
 
+DRIVER_RATE = 9566.0          # the NCO engine's $D418 write rate (gap ~103 cyc)
+
+
+def nco_incr_table(writes):
+    """Per video-frame, measure the $D418 SAWTOOTH pitch and convert it to the
+    driver NCO's 8-bit phase increment. Arkanoid's digi is a continuous sawtooth
+    LEAD (phase += step each nibble, written every `gap` cycles); pitch = the per-
+    frame (step/gap). incr = round(freq * 256 / DRIVER_RATE); 0 = rest (the music
+    IRQ took the whole frame -> leave the master volume to the music)."""
+    import numpy as np
+    fr = {}
+    for c, n in writes:
+        fr.setdefault(c // CYC_PER_FRAME, []).append((c, n))
+    nframes = max(fr) + 1
+    incrs = []
+    for f in range(nframes):
+        items = fr.get(f, [])
+        if len(items) < 8:
+            incrs.append(0)                     # rest
+            continue
+        cs = [c for c, _ in items]
+        ns = [n for _, n in items]
+        gaps = np.diff(cs)
+        inner = gaps[gaps < 1000]               # within-frame write spacing
+        g = np.median(inner) if len(inner) else np.median(gaps)
+        ds = [((ns[i] - ns[i - 1]) % 16) for i in range(1, len(ns))]
+        ds = [d - 16 if d > 8 else d for d in ds]
+        from collections import Counter
+        step = Counter(ds).most_common(1)[0][0]
+        if step == 0 or g <= 0:
+            incrs.append(0)
+            continue
+        freq = abs(step) / 16.0 * 985248.0 / g
+        incr = int(round(freq * 256.0 / DRIVER_RATE))
+        incrs.append(max(0, min(255, incr)) if incr >= 1 else 0)
+    return incrs
+
+
+def emit_nco(name, tune, writes):
+    incrs = nco_incr_table(writes)
+    voiced = sum(1 for i in incrs if i)
+    print(f"  NCO melody: {len(incrs)} frames, {voiced} voiced "
+          f"({100*voiced//max(1,len(incrs))}%), incr range "
+          f"{min([i for i in incrs if i], default=0)}-{max(incrs)}")
+    blob = bytes(incrs) + bytes((0,))           # trailing 0 = end/rest
+    open(os.path.join(ROOT, "out", "digi_blob.bin"), "wb").write(blob)
+    inc = os.path.join(ROOT, "drivers_src", "galway", "digi_addrs.inc")
+    with open(inc, "w") as f:
+        f.write(f"; auto-generated NCO digi melody for {name} (tune {tune}); "
+                f"data in out/digi_blob.bin @ ${BANK_ADDR:04x}\n")
+        f.write(f"DIGI_NCO_FRAMES = {len(incrs)}\n")
+        f.write(f"DIGI_BLOB_ADDR = ${BANK_ADDR:04x}\n")
+        f.write(f"digi_nco_tab   = ${BANK_ADDR:04x}\n")
+    print(f"  wrote {inc} + out/digi_blob.bin ({len(blob)} B @ ${BANK_ADDR:04x})")
+
+
 def main():
     name = sys.argv[1]
     seconds = int(sys.argv[2]) if len(sys.argv) > 2 else 12
@@ -99,6 +155,9 @@ def main():
 
     print(f"VICE dump of {name} ({seconds}s, tune {tune})...")
     writes = dump_d418(sidpath, seconds, tune)
+    if os.environ.get("GALWAY_DIGI_NCO"):
+        emit_nco(name, tune, writes)
+        return
     bursts = segment(writes)
     pcms = [[n for _, n in b] for b in bursts]
     onsets = [b[0][0] // CYC_PER_FRAME for b in bursts]   # onset video frame
