@@ -19,6 +19,7 @@ SID_VOL     = $d418
 ; music runs BEFORE the digi each frame and would clobber these pointers.
 dtp         = $c9         ; ZP: 16-bit pointer into digi_triggers (2)
 dbp         = $cb         ; ZP: 16-bit pointer into digi_bank (active sample) (2)
+nptr        = $cd         ; ZP: 16-bit pointer into digi_nco_tab (HYBRID lead) (2)
 dcdown      = $1900       ; frames until the next trigger fires
 dcnt        = $1901       ; 16-bit samples remaining in the active sample (2)
 dwc         = $1903       ; $D418 writes left this frame
@@ -244,7 +245,22 @@ iv:     lda #$41
         lda #$80
         sta ST_STATE             ; report "playing"
 .if DIGI_SPIKE
-.if DIGI_NCO
+.if DIGI_HYBRID
+        lda #<digi_nco_tab       ; nptr -> per-frame sawtooth-lead increments
+        sta nptr
+        lda #>digi_nco_tab
+        sta nptr+1
+        lda #<digi_triggers      ; dtp -> drum trigger list
+        sta dtp
+        lda #>digi_triggers
+        sta dtp+1
+        ldy #$00
+        lda (dtp),y              ; first frame-delta -> countdown
+        sta dcdown
+        sty dcnt                 ; no active drum yet
+        sty dcnt+1
+        sty nphase               ; NCO phase = 0
+.elsif DIGI_NCO
         lda #<digi_nco_tab       ; point nptr (=dtp ZP) at the per-frame melody
         sta dtp
         lda #>digi_nco_tab
@@ -955,7 +971,104 @@ cz:     lda #$00
 ; 4-bit nibbles to $D418 from do_play (proven to render in stock SF2II). One
 ; tune's drums/voice play on their real rhythm. (No music yet — digi-only test.)
 digi_stream:                     ; called AFTER the music body each frame
-.if DIGI_NCO
+.if DIGI_HYBRID
+; --- HYBRID engine: NCO sawtooth lead + PCM drum samples on one $D418 channel.
+;     Each frame: advance the lead pointer (keep the melody time-aligned), service
+;     the drum trigger countdown, then EITHER stream the active drum sample (it
+;     ducks the lead, as the single channel does in the original) OR run the NCO. ---
+        ldy #$00
+        lda (nptr),y             ; this frame's lead phase-increment
+        sta nincr
+        inc nptr                 ; advance lead pointer (16-bit) every frame
+        bne hb0
+        inc nptr+1
+hb0:    lda dcdown
+        beq hbfire               ; countdown elapsed -> fire next trigger(s)
+        dec dcdown
+        jmp hbrender
+hbfire: lda #$10
+        sta dfg                  ; anti-runaway: cap chained (delta-0) fires/frame
+hbfl:   dec dfg
+        beq hbpark
+        ldy #$01
+        lda (dtp),y              ; sample-id
+        cmp #$ff
+        beq hbpark               ; end marker
+        cmp #$fe
+        beq hbadv                ; gap filler -> just advance
+        tax
+        lda digi_off_lo,x        ; start a drum sample (bank ptr + 16-bit length)
+        sta dbp
+        lda digi_off_hi,x
+        sta dbp+1
+        lda digi_len_lo,x
+        sta dcnt
+        lda digi_len_hi,x
+        sta dcnt+1
+hbadv:  lda dtp                  ; trigger pointer += 2
+        clc
+        adc #$02
+        sta dtp
+        bcc hbnc
+        inc dtp+1
+hbnc:   ldy #$00
+        lda (dtp),y              ; next frame-delta
+        sta dcdown
+        beq hbfl                 ; delta 0 -> another hit this same frame
+        jmp hbrender
+hbpark: lda #$ff
+        sta dcdown               ; park: no further triggers
+hbrender:
+        lda dcnt                 ; drum sample active? (16-bit count)
+        ora dcnt+1
+        bne hbpcm
+        ; --- no drum -> NCO sawtooth lead ---
+        lda nincr
+        bne hbnplay
+        rts                      ; incr 0 = rest -> leave $D418 to the music ($0f)
+hbnplay:
+        lda #108                 ; lead $D418 writes this call (gap ~103 = 9566 Hz)
+        sta dwc
+hbnloop:
+        lda nphase
+        clc
+        adc nincr
+        sta nphase               ; phase += incr
+        lsr a
+        lsr a
+        lsr a
+        lsr a                    ; high nibble = sawtooth output 0..15
+        sta SID_VOL
+        ldx #$0e
+hbnd:   dex
+        bne hbnd
+        dec dwc
+        bne hbnloop
+        rts
+        ; --- drum active -> stream PCM nibbles (ducks the lead) ---
+hbpcm:  lda #128                 ; drum $D418 writes this call
+        sta dwc
+hbpl:   lda dcnt
+        ora dcnt+1
+        beq hbpdone              ; sample exhausted mid-frame -> stop (lead resumes)
+        ldy #$00
+        lda (dbp),y              ; next 4-bit PCM nibble
+        sta SID_VOL
+        inc dbp                  ; advance sample read pointer (16-bit)
+        bne hbpd1
+        inc dbp+1
+hbpd1:  lda dcnt                 ; dec 16-bit remaining count
+        bne hbpd2
+        dec dcnt+1
+hbpd2:  dec dcnt
+        ldx #$0a                 ; ~101-cycle gap = 9.75 kHz (the drum sample pitch)
+hbpgd:  dex
+        bne hbpgd
+        dec dwc
+        bne hbpl
+hbpdone:
+        rts
+.elsif DIGI_NCO
 ; --- NCO sawtooth-lead engine: one phase-increment byte per frame drives a
 ;     phase accumulator written to $D418 (the authentic continuous sawtooth). ---
         ldy #$00

@@ -147,6 +147,129 @@ def emit_nco(name, tune, writes):
     print(f"  wrote {inc} + out/digi_blob.bin ({len(blob)} B @ ${BANK_ADDR:04x})")
 
 
+def classify_frame(items):
+    """Classify one video frame's $D418 writes. Returns ('saw', incr) for a tonal
+    sawtooth-lead frame, ('drum', None) for a percussive PCM frame, or ('rest', 0).
+    Arkanoid_alternative_drums layers real PCM drum samples (complex enveloped
+    waveforms, no dominant per-nibble step) over the sawtooth lead; the two never
+    overlap (one $D418 channel), so each frame is cleanly one OR the other."""
+    import numpy as np
+    from collections import Counter
+    if len(items) < 8:
+        return ('rest', 0)
+    cs = [c for c, _ in items]
+    ns = [n for _, n in items]
+    gaps = np.diff(cs)
+    inner = gaps[gaps < 1000]
+    g = float(np.median(inner)) if len(inner) else float(np.median(gaps))
+    ds = [((ns[i] - ns[i - 1]) % 16) for i in range(1, len(ns))]
+    ds = [d - 16 if d > 8 else d for d in ds]
+    step, sc = Counter(ds).most_common(1)[0]
+    domfrac = sc / len(ds)
+    if domfrac >= 0.5 and step != 0 and g > 0:        # clean sawtooth -> tonal lead
+        freq = abs(step) / 16.0 * 985248.0 / g
+        incr = int(round(freq * 256.0 / DRIVER_RATE))
+        incr = max(0, min(255, incr)) if incr >= 1 else 0
+        return ('saw', incr)
+    return ('drum', None)                              # PCM percussion
+
+
+def emit_hybrid(name, tune, writes):
+    """HYBRID digi: sawtooth-lead NCO melody (the 'S' frames) + PCM drum samples
+    (the 'D' frames), in one blob. The driver runs the NCO each frame UNLESS a drum
+    sample is active, in which case it streams the PCM (the drum ducks the lead, as
+    the single $D418 channel does in the original)."""
+    fr = {}
+    for c, n in writes:
+        fr.setdefault(c // CYC_PER_FRAME, []).append((c, n))
+    nframes = max(fr) + 1
+    kinds = [classify_frame(fr.get(f, [])) for f in range(nframes)]
+    nco = [k[1] if k[0] == 'saw' else 0 for k in kinds]   # incr per frame (0 on drums)
+
+    # Segment maximal runs of consecutive 'drum' frames into one PCM sample each;
+    # onset = the run's first frame. fuzzy-dedupe into a small bank (kick/snare/...).
+    runs = []
+    f = 0
+    while f < nframes:
+        if kinds[f][0] == 'drum':
+            start = f
+            nib = []
+            while f < nframes and kinds[f][0] == 'drum':
+                nib += [n for _, n in fr.get(f, [])]
+                f += 1
+            if len(nib) >= 24:
+                runs.append((start, nib))
+        else:
+            f += 1
+    onsets = [r[0] for r in runs]
+    pcms = [r[1] for r in runs]
+    bank, sids = fuzzy_dedupe(pcms)
+    # Representative = the cluster's MEDIAN-length member, capped at MAX_DRUM_NIB.
+    # (max-length over-merges a roll/fill into one 16-20 frame "drum" that swallows
+    # the lead for that whole span; a real Galway drum hit decays within ~4-8 frames,
+    # and the single $D418 channel only ducks the lead for the hit's true length.)
+    MAX_DRUM_NIB = 1024            # ~8 frames @128 nibbles/frame
+    def representative(s):
+        members = sorted((pcms[i] for i in range(len(pcms)) if sids[i] == s), key=len)
+        return members[len(members) // 2][:MAX_DRUM_NIB]   # median, trimmed
+    reps = [representative(s) for s in range(len(bank))]
+    voiced = sum(1 for i in nco if i)
+    print(f"  NCO lead: {nframes} frames, {voiced} voiced "
+          f"({100*voiced//max(1,nframes)}%)")
+    print(f"  drums: {len(runs)} hits -> {len(reps)} unique samples "
+          f"({sum(len(r) for r in reps)} nibbles)")
+
+    # Blob layout @ BANK_ADDR: [nco_tab+0][bank flat][off_lo][off_hi][len_lo][len_hi][triggers]
+    n = len(reps)
+    nco_bytes = bytes(nco) + bytes((0,))
+    flat = bytearray(b for r in reps for b in r)
+    offs, cur = [], 0
+    for r in reps:
+        offs.append(cur)
+        cur += len(r)
+    a_nco = BANK_ADDR
+    a_bank = a_nco + len(nco_bytes)
+    off_lo = bytes((a_bank + o) & 0xFF for o in offs)
+    off_hi = bytes(((a_bank + o) >> 8) & 0xFF for o in offs)
+    len_lo = bytes(len(r) & 0xFF for r in reps)
+    len_hi = bytes((len(r) >> 8) & 0xFF for r in reps)
+    trig = bytearray()
+    prev = 0
+    for fr_on, sid in sorted(zip(onsets, sids)):
+        delta = fr_on - prev
+        while delta > 254:
+            trig += bytes((0xFE, 0xFE))
+            delta -= 254
+        trig += bytes((delta & 0xFF, sid & 0xFF))
+        prev = fr_on
+    trig += bytes((0x00, 0xFF))
+
+    blob = nco_bytes + bytes(flat) + off_lo + off_hi + len_lo + len_hi + bytes(trig)
+    a_offlo = a_bank + len(flat)
+    a_offhi = a_offlo + n
+    a_lenlo = a_offhi + n
+    a_lenhi = a_lenlo + n
+    a_trig = a_lenhi + n
+    open(os.path.join(ROOT, "out", "digi_blob.bin"), "wb").write(blob)
+    inc = os.path.join(ROOT, "drivers_src", "galway", "digi_addrs.inc")
+    with open(inc, "w") as f:
+        f.write(f"; auto-generated HYBRID digi (NCO lead + PCM drums) for {name} "
+                f"(tune {tune}); data in out/digi_blob.bin @ ${BANK_ADDR:04x}\n")
+        f.write(f"DIGI_NCO_FRAMES = {len(nco)}\n")
+        f.write(f"DIGI_NSAMP    = {n}\n")
+        f.write(f"DIGI_BLOB_ADDR = ${a_nco:04x}\n")
+        f.write(f"DIGI_BLOB_LEN  = {len(blob)}\n")
+        f.write(f"digi_nco_tab  = ${a_nco:04x}\n")
+        f.write(f"digi_bank     = ${a_bank:04x}\n")
+        f.write(f"digi_off_lo   = ${a_offlo:04x}\n")
+        f.write(f"digi_off_hi   = ${a_offhi:04x}\n")
+        f.write(f"digi_len_lo   = ${a_lenlo:04x}\n")
+        f.write(f"digi_len_hi   = ${a_lenhi:04x}\n")
+        f.write(f"digi_triggers = ${a_trig:04x}\n")
+    print(f"  wrote {inc} + out/digi_blob.bin ({len(blob)} B @ "
+          f"${a_nco:04x}-${a_nco+len(blob):04x})")
+
+
 def main():
     name = sys.argv[1]
     seconds = int(sys.argv[2]) if len(sys.argv) > 2 else 12
@@ -155,6 +278,9 @@ def main():
 
     print(f"VICE dump of {name} ({seconds}s, tune {tune})...")
     writes = dump_d418(sidpath, seconds, tune)
+    if os.environ.get("GALWAY_DIGI_HYBRID"):
+        emit_hybrid(name, tune, writes)
+        return
     if os.environ.get("GALWAY_DIGI_NCO"):
         emit_nco(name, tune, writes)
         return

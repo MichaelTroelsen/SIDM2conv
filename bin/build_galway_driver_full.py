@@ -201,8 +201,10 @@ def assemble():
     prg = os.path.join(OUTDIR, "galway_driver.prg")
     digi = os.environ.get("GALWAY_DIGI_SPIKE", "0")
     nco = "1" if os.environ.get("GALWAY_DIGI_NCO") else "0"
+    hybrid = "1" if os.environ.get("GALWAY_DIGI_HYBRID") else "0"
     r = subprocess.run([find_64tass(), "--cbm-prg", "-o", prg,
                         "-D", f"DIGI_SPIKE={digi}", "-D", f"DIGI_NCO={nco}",
+                        "-D", f"DIGI_HYBRID={hybrid}",
                         os.path.join(GAL, "galway_driver.asm")],
                        capture_output=True, text=True, cwd=GAL)
     if r.returncode != 0:
