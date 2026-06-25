@@ -81,10 +81,16 @@
       "Read(//tmp/**)",
       "Edit(src/**)",
       "Edit(tests/**)",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(wc -l)",
+      "Bash(wc -c)"
     ],
     "deny": [
       "Edit(.env*)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "mcp-c64"
+  ],
+  "enableAllProjectMcpServers": true
 }
