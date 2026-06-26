@@ -53,6 +53,7 @@ def main():
     sf2 = sys.argv[2]
     seconds = int(sys.argv[3]) if len(sys.argv) > 3 else 30
     ms = int(sys.argv[4]) if len(sys.argv) > 4 else 1
+    sub_arg = int(sys.argv[5]) if len(sys.argv) > 5 else None   # subtune (else PSID default)
     nframes = int(seconds * 50.12)
 
     print(f"capturing {seconds}s of SF2II playback of {sf2} ...")
@@ -60,8 +61,8 @@ def main():
     print(f"  captured {len(ours)} SF2II frames")
 
     h = SIDParser(sid).parse_header()
-    reg = T.run_trace(sid, nframes * ms + 8, h.init_address, h.play_address,
-                      (h.start_song or 1) - 1)
+    subtune = sub_arg if sub_arg is not None else (h.start_song or 1) - 1
+    reg = T.run_trace(sid, nframes * ms + 8, h.init_address, h.play_address, subtune)
 
     def rser(vi, fld, n):
         d = reg.get((vi, fld), {})
