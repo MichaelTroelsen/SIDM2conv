@@ -657,7 +657,7 @@ def main():
                         # (Commando/Street_Hawk/Match_Day pulse). pq shrinks it on overflow.
                         rlen = rends[v][ni] - note.onset
                         pul = faithful_pulse_program(song.pulse[v][note.onset:rends[v][ni]],
-                                                     max(8, rlen // 4 // pq))
+                                                     max(8, max(96, rlen // 4) // pq))
                 else:
                     pul = pulse_program(song.pulse[v][note.onset:note.end], pq)
                 # coarsen AD/SR PER NIBBLE only as a fallback (Galway ramps Attack);
