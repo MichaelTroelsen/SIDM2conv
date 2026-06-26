@@ -651,8 +651,13 @@ def main():
                         # exact; only genuinely long sweeps (Wizball's 36s intro) hit
                         # the cap and coarsen. pq (from the fit loop) shrinks it only
                         # if the shared pulse table overflows.
+                        # Budget PROPORTIONAL to region length (~1 row / 4 frames) so a
+                        # long legato region's PWM keeps its resolution; a flat 96-row cap
+                        # crammed a whole-tune PWM into ~36 frames/row -> it collapsed flat
+                        # (Commando/Street_Hawk/Match_Day pulse). pq shrinks it on overflow.
+                        rlen = rends[v][ni] - note.onset
                         pul = faithful_pulse_program(song.pulse[v][note.onset:rends[v][ni]],
-                                                     max(8, 96 // pq))
+                                                     max(8, rlen // 4 // pq))
                 else:
                     pul = pulse_program(song.pulse[v][note.onset:note.end], pq)
                 # coarsen AD/SR PER NIBBLE only as a fallback (Galway ramps Attack);
@@ -715,7 +720,8 @@ def main():
 
     # Bundles always fit 64 (cluster_bundles merges). The fit loop only handles the
     # 32-instrument cap (adq = coarsen AD/SR) and the pulse-table-rows cap (pq).
-    PULSE_TABLE_ROWS = 1024      # row-major PULSETAB via 16-bit pointer (was 256)
+    PULSE_TABLE_ROWS = 2048      # row-major PULSETAB via 16-bit pointer (was 256, then 1024;
+                                 # raised so multi-voice legato PWM keeps full resolution)
     adq = pq = 1
     while True:
         _, instrs, fmprogs, pulse_by_cmd, note_seq, iov, iwave = build(adq, pq)
