@@ -203,9 +203,11 @@ def assemble():
     nco = "1" if os.environ.get("GALWAY_DIGI_NCO") else "0"
     hybrid = "1" if os.environ.get("GALWAY_DIGI_HYBRID") else "0"
     sweep = "1" if os.environ.get("GALWAY_DIGI_SWEEP") else "0"
+    rle = "1" if os.environ.get("GALWAY_DIGI_RLE") else "0"
     r = subprocess.run([find_64tass(), "--cbm-prg", "-o", prg,
                         "-D", f"DIGI_SPIKE={digi}", "-D", f"DIGI_NCO={nco}",
                         "-D", f"DIGI_HYBRID={hybrid}", "-D", f"DIGI_SWEEP={sweep}",
+                        "-D", f"DIGI_RLE={rle}",
                         os.path.join(GAL, "galway_driver.asm")],
                        capture_output=True, text=True, cwd=GAL)
     if r.returncode != 0:

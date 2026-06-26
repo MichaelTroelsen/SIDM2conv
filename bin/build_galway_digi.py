@@ -69,7 +69,7 @@ def segment(writes, gap=3000, minlen=24):
     return bursts
 
 
-def fuzzy_dedupe(pcms, len_tol=12, diff_tol=1.4):
+def fuzzy_dedupe(pcms, len_tol=12, diff_tol=float(os.environ.get("GALWAY_DRUM_DIFFTOL", "1.4"))):
     """Greedy-cluster near-identical sample PCMs. Returns (bank, sid_per_pcm).
     Two samples match if their lengths are within len_tol and the mean per-sample
     abs difference over the overlap is below diff_tol (4-bit scale 0..15)."""
@@ -318,46 +318,96 @@ def rle_gaps(gaps, tol=8):
     return segs
 
 
+# Optional knobs for FULL-LENGTH builds (the 20KB digi bank can't hold a full-resolution
+# sweep for a multi-minute tune). GALWAY_SWEEP_CAP merges each frame's gap segments down
+# to <=N (N=2 keeps the bright-start->pause character; N=1 is a flat gap). GALWAY_DIGI_RLE
+# run-length-encodes consecutive identical frame-records ([rep][incr][nsegs][ldx,run]*),
+# which the DIGI_RLE driver holds for `rep` frames -- together these fit a 2:22 tune.
+SWEEP_CAP = int(os.environ.get("GALWAY_SWEEP_CAP", "0"))   # 0 = unlimited (full sweep)
+SWEEP_RLE = bool(os.environ.get("GALWAY_DIGI_RLE"))
+# Frames [0:INTRO) always use the FULL sweep (the exposed solo digi intro, where timbre
+# matters most); the busier body honors SWEEP_CAP. Lets a full-length build keep the
+# validated bright intro while the flat-capped body fits the 20KB bank.
+SWEEP_INTRO = int(os.environ.get("GALWAY_SWEEP_INTRO", "0"))
+
+
+def _cap_segments(segs, cap):
+    """Merge a frame's (gap,run) segments down to <=cap, preserving total run count
+    (count-weighted mean gap per merged group) so the sweep coarsens but stays in time."""
+    if not cap or len(segs) <= cap:
+        return segs
+    n = len(segs)
+    out = []
+    for k in range(cap):
+        grp = segs[k * n // cap:(k + 1) * n // cap] or [segs[min(k, n - 1)]]
+        tot = sum(r for _, r in grp)
+        gap = sum(g * r for g, r in grp) // max(1, tot)
+        out.append((gap, tot))
+    return out
+
+
 def sweep_records(writes):
     """Per-frame DIGI_SWEEP records reproducing the source's gap sweep. Lead frame ->
     [incr][nsegs][ldx,run]*nsegs (incr = raw 4-bit step). Rest/drum frame -> [0][0].
-    Cycle-budget caps total writes/frame (trims trailing segments). Returns the
-    concatenated blob bytes (one record per frame, in order -> driver streams it)."""
+    Honors GALWAY_SWEEP_CAP (coarsen) + GALWAY_DIGI_RLE (repeat-prefix, full-length).
+    Returns the complete blob bytes (incl. terminator)."""
     fr = {}
     for c, n in writes:
         fr.setdefault(c // CYC_PER_FRAME, []).append((c, n))
     nframes = max(fr) + 1
-    out = bytearray()
+    recs = []                              # per-frame (incr, [(ldx,run),...])
     nseg_tot = 0
     for f in range(nframes):
         items = fr.get(f, [])
         sg = saw_step_gap(items)
         if sg is None:
-            out += bytes((0, 0))           # rest/drum -> empty record (pointer advances 2)
+            recs.append((0, ()))           # rest/drum -> empty record
             continue
         step, _ = sg
         cs = [c for c, _ in items]
         gaps = [cs[i + 1] - cs[i] for i in range(len(cs) - 1)]
         gaps = gaps + [gaps[-1]] if gaps else []   # pad to len(writes) (per-write delay)
-        segs = rle_gaps(gaps)
+        fcap = 0 if f < SWEEP_INTRO else SWEEP_CAP  # intro = full sweep; body = capped
+        segs = _cap_segments(rle_gaps(gaps), fcap)
         # cycle-budget cap: keep whole segments while sum(run*gap_cyc) <= NCO_BUDGET
         capped, used = [], 0
         for gap, run in segs:
             ldx = _sweep_ldx(gap)
             gap_cyc = LEAD_FIXED_SWEEP + 5 * ldx
-            if used + run * gap_cyc > NCO_BUDGET and capped:
-                room = max(0, (NCO_BUDGET - used) // gap_cyc)
+            if used + run * gap_cyc > NCO_BUDGET:
+                room = (NCO_BUDGET - used) // gap_cyc
+                if not capped:
+                    room = max(1, room)        # ALWAYS bound the 1st seg (cap1 frames have
+                                               # only one -> else it blows the cycle window)
                 if room:
                     capped.append((ldx, min(room, run, 255)))
                 break
             capped.append((ldx, min(run, 255)))
             used += run * gap_cyc
-        rec = bytearray((step & 0x0F, len(capped)))
-        for ldx, run in capped:
-            rec += bytes((ldx, run))
-        out += rec
+        recs.append((step & 0x0F, tuple(capped)))
         nseg_tot += len(capped)
-    print(f"  sweep lead: {nframes} frames, {nseg_tot} gap segments, {len(out)} B")
+    # serialize: RLE (repeat-prefixed, holds consecutive dups) or plain (1 record/frame)
+    out = bytearray()
+    if SWEEP_RLE:
+        i = 0
+        while i < nframes:
+            j = i
+            while j + 1 < nframes and recs[j + 1] == recs[i] and j - i < 254:
+                j += 1
+            incr, caps = recs[i]
+            out += bytes((j - i + 1, incr, len(caps)))   # [rep][incr][nsegs]
+            for ldx, run in caps:
+                out += bytes((ldx, run))
+            i = j + 1
+        out += bytes((0, 0, 0))            # rep=0 terminator
+    else:
+        for incr, caps in recs:
+            out += bytes((incr, len(caps)))
+            for ldx, run in caps:
+                out += bytes((ldx, run))
+        out += bytes((0, 0))
+    mode = f"RLE cap{SWEEP_CAP or '-'}" if SWEEP_RLE else "plain"
+    print(f"  sweep lead ({mode}): {nframes} frames, {nseg_tot} gap segments, {len(out)} B")
     return bytes(out)
 
 
@@ -427,26 +477,48 @@ def emit_hybrid(name, tune, writes, pitch):
     # ~52 cyc; delay loop `ldx #N: dex/bne` = 5N-1). Solve ldx for the source gap.
     drum_ldx = max(1, min(255, int(round((gap_cyc - 52) / 5.0))))
     drum_wpf = max(32, min(190, int(np.median(dwpf)))) if dwpf else 128
-    # Representative = the cluster's MEDIAN-length member, capped at MAX_DRUM_NIB.
-    # (max-length over-merges a roll/fill into one 16-20 frame "drum" that swallows
-    # the lead for that whole span; a real Galway drum hit decays within ~4-8 frames,
-    # and the single $D418 channel only ducks the lead for the hit's true length.)
-    MAX_DRUM_NIB = 1024            # ~8 frames @128 nibbles/frame
-    def representative(s):
-        members = sorted((pcms[i] for i in range(len(pcms)) if sids[i] == s), key=len)
-        return members[len(members) // 2][:MAX_DRUM_NIB]   # median, trimmed
-    reps = [representative(s) for s in range(len(bank))]
-    voiced = sum(1 for _, _, c in table if c)
-    print(f"  lead: {nframes} frames, {voiced} voiced (tight-NCO, fast gap)")
-    print(f"  drums: {len(runs)} hits -> {len(reps)} unique samples "
-          f"({sum(len(r) for r in reps)} nibbles)")
-
-    # Blob layout @ BANK_ADDR: [nco_tab 3B/frame][bank flat][off_lo][off_hi][len_lo][len_hi][triggers]
-    n = len(reps)
+    # --- lead bytes FIRST, so the drum bank auto-fits whatever bank space remains:
+    #     truncating a drum mid-decay leaves a non-zero tail -> audible CLICK, so keep
+    #     each sample as long as the budget allows (ideally its full natural decay). ---
     if os.environ.get("GALWAY_DIGI_SWEEP"):
-        nco_bytes = sweep_records(writes) + bytes((0, 0))   # gap-sweep lead (DIGI_SWEEP)
+        nco_bytes = sweep_records(writes)                   # gap-sweep lead (incl. terminator)
     else:
         nco_bytes = b"".join(bytes((i, l, c)) for i, l, c in table) + bytes((0, 1, 0))
+    n = len(bank)
+    # triggers ([frame-delta, sample-id] pairs); length independent of sample size
+    trig = bytearray()
+    prev = 0
+    for fr_on, sid in sorted(zip(onsets, sids)):
+        delta = fr_on - prev
+        while delta > 254:
+            trig += bytes((0xFE, 0xFE))
+            delta -= 254
+        trig += bytes((delta & 0xFF, sid & 0xFF))
+        prev = fr_on
+    trig += bytes((0x00, 0xFF))
+    # auto-fit: max nibbles/sample that still fits the bank after lead + tables + triggers
+    # (GALWAY_DRUM_MAX is an UPPER cap, default large -> samples kept full unless squeezed).
+    BANK_LIMIT = 0xD000 - BANK_ADDR    # $8000-$CFFF; past $D000 is I/O (would corrupt SID)
+    drum_budget = BANK_LIMIT - len(nco_bytes) - 4 * n - len(trig) - 64   # 64B safety
+    fit = max(64, drum_budget // max(1, n))
+    MAX_DRUM_NIB = min(int(os.environ.get("GALWAY_DRUM_MAX", "8192")), fit)
+    def representative(s):
+        members = sorted((pcms[i] for i in range(len(pcms)) if sids[i] == s), key=len)
+        rep = members[len(members) // 2]
+        if len(rep) > MAX_DRUM_NIB:        # truncated mid-ring -> abrupt stop = a CLICK.
+            rep = list(rep[:MAX_DRUM_NIB])  # linearly fade the tail to silence so it
+            F = min(80, len(rep) // 4)      # releases cleanly (full-length samples: as-is).
+            for k in range(F):
+                idx = len(rep) - F + k
+                rep[idx] = rep[idx] * (F - 1 - k) // (F - 1) if F > 1 else 0
+            return bytes(rep)
+        return bytes(rep)
+    reps = [representative(s) for s in range(len(bank))]
+    voiced = sum(1 for _, _, c in table if c)
+    print(f"  lead: {nframes} frames, {voiced} voiced; drums: {len(runs)} hits -> {n} "
+          f"samples, <={MAX_DRUM_NIB} nib/sample ({sum(len(r) for r in reps)} nibbles)")
+
+    # Blob layout @ BANK_ADDR: [lead][bank flat][off_lo][off_hi][len_lo][len_hi][triggers]
     a_nco = BANK_ADDR
     flat = bytearray(b for r in reps for b in r)
     offs, cur = [], 0
@@ -458,18 +530,12 @@ def emit_hybrid(name, tune, writes, pitch):
     off_hi = bytes(((a_bank + o) >> 8) & 0xFF for o in offs)
     len_lo = bytes(len(r) & 0xFF for r in reps)
     len_hi = bytes((len(r) >> 8) & 0xFF for r in reps)
-    trig = bytearray()
-    prev = 0
-    for fr_on, sid in sorted(zip(onsets, sids)):
-        delta = fr_on - prev
-        while delta > 254:
-            trig += bytes((0xFE, 0xFE))
-            delta -= 254
-        trig += bytes((delta & 0xFF, sid & 0xFF))
-        prev = fr_on
-    trig += bytes((0x00, 0xFF))
 
     blob = nco_bytes + bytes(flat) + off_lo + off_hi + len_lo + len_hi + bytes(trig)
+    if len(blob) > BANK_LIMIT:
+        print(f"  !! WARNING: digi blob {len(blob)} B EXCEEDS the {BANK_LIMIT} B bank "
+              f"(${BANK_ADDR:04x}-$cfff) by {len(blob)-BANK_LIMIT} B -> would overrun "
+              f"$D000 I/O. Reduce GALWAY_SWEEP_CAP / GALWAY_DRUM_MAX or shorten the tune.")
     a_offlo = a_bank + len(flat)
     a_offhi = a_offlo + n
     a_lenlo = a_offhi + n
