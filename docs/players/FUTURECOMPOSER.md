@@ -256,6 +256,21 @@ the orderlists/blocks/instruments after it, fill those pointer tables, set the e
 address, write a PRG @ $1800. A good first milestone is an FC->FC round-trip
 (parse a native tune, re-serialize, diff) before wiring the SF2 source.
 
+### Writer IMPLEMENTED + validated (`sidm2/fc_writer.py`)
+`write_fc(FCSong) -> PRG @ $1800` is the inverse of `fc_parser`: copies the player
+template ($1800..instr_base) from `song._mem`, writes instruments at $2188 (32
+slots), chunks each voice into blocks (<256 B because the in-block index $2124,x is
+8-bit; instr/dur state threads across blocks), chains them via per-voice orderlists
+([block#...]$ff), and fills the voice ptrs ($1ea1/$1ea4) + block-ptr table ($1ea7).
+Pointer-table addresses read from the template via fc_parser's code-operand offsets
+(relocation-safe). VALIDATED: FC->FC round-trip reproduces identical per-voice
+note/dur/instr/tie streams for all 7 corpus tunes (incl. 1314-note VOICES_IN_SPC),
+AND a written module is BYTE-IDENTICAL in siddump to the original (150/150 frames,
+cycle-accurate). Tests: `pyscript/test_fc_writer.py` (6). Limits/next: one block-
+chain per voice (no orderlist repeat compression / per-block transpose), glides not
+re-emitted, <=64 blocks total. NEXT for the full round-trip: parse a Driver-11 SF2
+back to notes+instruments and feed `write_fc` -> loadable in the real C64 editor.
+
 ## The FC disk (`bin/FC10/...D64`)
 
 Holds four editor versions (V1.0–V4.1), the **relocator**, the manual, and native
