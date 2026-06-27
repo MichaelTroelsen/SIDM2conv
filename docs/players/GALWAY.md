@@ -42,7 +42,19 @@ Transpiles the 1st-gen bytecode-extracted score onto a real **Driver 11** SF2 (`
 
 All other tunes below are **buildable via the trace-driven path** (it is player-agnostic — it reads the real SID output). The batch build saves each to `out/galway_sf2/<name>.sf2`. **`play=$0000`** tunes self-install an IRQ at init (a raster handler at `$FFFE`, or the KERNAL `CINV $0314`) with no separate play address — the tracer now derives the handler from the installed vector and drives each frame as a simulated 6502 IRQ, so they build like any other.
 
-> **Conversion progress:** 5 of 40 SF2II-validated; **all 40 build** (37 trace-faithful headless + 3 near, 0 blocked). Each tune hardened the trace path: 16-bit pulse pointer (full-length pulse), per-region legato + mid-note AD/SR following, budget-based tempo, **nearest-merge (fm,pulse) bundle clustering** (dense tunes that exceed the 64-command channel — Rambo), **chord arps → editable wave table**, and **`play=$0000` self-installed-IRQ tracing** (the last 6 tunes).
+> **Conversion progress (objective, 2026-06-27):** all 40 build; **30 / 40 objectively clean
+> in real SF2II** (≥95% freq, ≥90% pulse per voice, via `bin/sf2ii_vs_real.py` capturing the
+> instrumented SF2II's actual output), ~36/40 by ear. Corpus rebuilt fresh with correct subtunes
+> (`bin/build_galway_corpus.py`; overrides Combat_School=st1, Yie_Ar_Kung_Fu_II=st3 where the
+> PSID default is a sparse jingle). Built SF2s collected in `galway_sf2/` (+ `galway_sf2/README.md`).
+> The earlier headless "37 faithful" overstated — the objective per-voice metric is the truth.
+> Last shared win was the pulse-PWM fix (legato whole-tune PWM was collapsing to flat; budget
+> `max(96, rlen//4)` + PULSE_TABLE_ROWS 2048 → +3 tunes). The 10 residual gaps are distinct deep
+> per-tune issues, no shared fix left: Mikie/Neverending fast-pitch-detail, Street_Hawk coarse
+> tempo, Daley slide, Green_Beret continuous-pulse-across-regates, Hunchback freq-0 rests, Insects
+> vibrato±1, + 3 marginal (92-94%, inaudible). Validate: `py -3 bin/batch_validate_galway.py 16`.
+>
+> **Older note (headless metric):** 5 of 40 SF2II-validated; all 40 build (37 trace-faithful headless + 3 near, 0 blocked). Each tune hardened the trace path: 16-bit pulse pointer (full-length pulse), per-region legato + mid-note AD/SR following, budget-based tempo, **nearest-merge (fm,pulse) bundle clustering** (dense tunes that exceed the 64-command channel — Rambo), **chord arps → editable wave table**, and **`play=$0000` self-installed-IRQ tracing** (the last 6 tunes).
 
 ---
 
