@@ -271,6 +271,27 @@ chain per voice (no orderlist repeat compression / per-block transpose), glides 
 re-emitted, <=64 blocks total. NEXT for the full round-trip: parse a Driver-11 SF2
 back to notes+instruments and feed `write_fc` -> loadable in the real C64 editor.
 
+### SF2->FC reader + FULL ROUND-TRIP DONE (`sidm2/sf2_to_fc.py`, `bin/sf2_to_fc.py`)
+`sf2_to_fcsong(sf2_bytes, template) -> FCSong` walks the SF2 orderlists/sequences
+back to per-voice (note, instr, rows, tie) events and maps them to FCNotes: dur =
+rows-1; fc_note = sf2_note - base - 1 (base = calibrate_base(template freq) - 1,
+the exact inverse of fc_to_song); $00/out-of-range -> rest; instrument THREADS
+across sequences (the player carries it; the SF2 only re-emits on change — getting
+this wrong reset instruments to 0). Player code, freq/arp/drum tables and the 8-byte
+instrument records come from the TEMPLATE FC module (the Driver-11 SF2 doesn't carry
+FC's arp/drum bytes), so use the original FC tune as template.
+
+CLI: `py -3 bin/sf2_to_fc.py edited.sf2 template.sid out.prg`.
+
+**VALIDATED end-to-end**: FC -> fc_to_sf2 -> SF2 -> sf2_to_fcsong -> write_fc -> FC
+module plays BYTE-IDENTICAL to the original in siddump (200/200 frames). Audible
+notes round-trip exactly for the corpus (Triangle/HEART exact; GAME_OVER/VOICES_IN_
+SPC differ only on FC note 0 + instr 0 silent placeholders, which fc_to_sf2 clamps
+to the SF2 note floor — inaudible). Tests: `pyscript/test_sf2_to_fc.py`; 16 FC tests
+green. Lossy edges: FC notes 0/1 (SF2 floor clamp), exact rest-note values, glides,
+and Driver-11-table timbre (arps/drums) — instruments are taken from the template,
+so timbre is preserved as long as the SF2's instrument set isn't re-defined.
+
 ## The FC disk (`bin/FC10/...D64`)
 
 Holds four editor versions (V1.0–V4.1), the **relocator**, the manual, and native
