@@ -147,7 +147,20 @@ Steps to debug:
    long-intro songs, OR auto-detect long intros and pick the driver.
 8. Run the converter on the whole corpus; validate each tune per-voice.
 
-## Task #2 — SF2->FC writer (NOW UNBLOCKED + well-specified)
+## Task #2 — DONE (full FC<->SF2 round-trip complete, 2026-06-27)
+Editor decrunched, native format decoded, and the round-trip BUILT + validated:
+- `sidm2/fc_writer.py` — write_fc(FCSong) -> native FC PRG @ $1800 (FC->FC round-
+  trip byte-identical in siddump).
+- `sidm2/sf2_to_fc.py` + `bin/sf2_to_fc.py` — sf2_to_fcsong(sf2, template) reads a
+  Driver-11 SF2 back to an FCSong. End-to-end FC->SF2->FC plays byte-identical
+  (200/200 siddump frames). 16 FC tests green. CLI: `py -3 bin/sf2_to_fc.py
+  edited.sf2 template.sid out.prg`.
+Lossy edges (documented): FC notes 0/1 (SF2 floor clamp, silent), exact rest values,
+glides; instruments come from the template so timbre is preserved.
+Possible follow-ups: reconstruct FC instruments from Driver-11 columns (template-
+free SF2->FC); preserve orderlist repeats/transpose in fc_writer for compactness.
+
+## (historical) Task #2 — SF2->FC writer (was: unblocked + well-specified)
 The FC editor was DECRUNCHED (out/fc_editor_v1_decrunched.prg) and its SAVE routine
 RE'd: a native FC V1.0 module = a PRG @ $1800 = player + song data, saved $1800..
 ($03ff:$03fe). IDENTICAL to the layout fc_parser already reads. So the writer is the
