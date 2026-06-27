@@ -222,6 +222,40 @@ intros break) until the D15 emitter adaptation is done.
 
 ---
 
+## Decrunching the editor (for task #2 = native module format / SF2->FC export)
+
+`future comp.v1.0.prg` is crunched (BASIC `1988 SYS2072` -> depacker copied to
+`$00f8`/`$0100` -> final `JMP $C000`). Decrunched headlessly in VICE
+(`C:\winvice\bin\x64sc.exe`) -> `out/fc_editor_v1_decrunched.prg` ($0800-$FFFF RAM):
+
+    x64sc -warp -autostart "future comp.v1.0.prg" -moncommands cmds.txt
+    # cmds.txt (run at startup; GOTCHA: VICE `g <addr>` SETS pc, not run-until,
+    #   so use a breakpoint with an attached command):
+    bank ram
+    break c000
+    command 1 "save \"dump.prg\" 0 0800 ffff"
+    g
+    # (launch with WorkingDirectory=out/, wait ~10s in -warp, then kill x64sc)
+
+Verified: editor entry **$C000**; the **FC player is at $1800** (byte-identical to
+the SID-rip player — validates the RE), a second copy at $dd2b. Editor = "COMPOSER
+NO: 00.18 V1.0, FINLAND TRACKING, 13.06.1988". The decrunched dump is the place to
+RE the editor's SAVE/LOAD routines (menu "SAVE SONG"/"SAVE NAME:" near $CD78) to
+learn the native on-disk module format for the SF2->FC writer (task #2).
+
+### Native FC V1.0 on-disk module format (RE'd from the editor SAVE routine)
+SAVE routine at $cd82 (KERNAL SAVE $ffd8 @ $cdaa): start = $1800 (`LDA #$00/STA $fb;
+LDA #$18/STA $fc`), end = ($03ff:$03fe), `LDA #$fb` (ZP ptr), `JSR $ffd8`. LOAD at
+$cdbb (KERNAL LOAD $ffd5 @ $cdd7). So **a native FC V1.0 module is a PRG loaded at
+$1800 = the player + all song data, from $1800 up to the editor's end-pointer
+$03fe/$03ff.** This is IDENTICAL to the SID-rip / native-`.prg` layout the parser
+already reads. So an **SF2->FC writer (task #2)** = the inverse of `fc_parser`:
+start from the $1800 player template (fixed code + freq table + the pointer-table
+slots at $1ea1/$1ea4 voice ptrs, $1ea7 block-ptr table, $2188 instruments), lay out
+the orderlists/blocks/instruments after it, fill those pointer tables, set the end
+address, write a PRG @ $1800. A good first milestone is an FC->FC round-trip
+(parse a native tune, re-serialize, diff) before wiring the SF2 source.
+
 ## The FC disk (`bin/FC10/...D64`)
 
 Holds four editor versions (V1.0–V4.1), the **relocator**, the manual, and native

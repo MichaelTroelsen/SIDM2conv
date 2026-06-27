@@ -147,10 +147,30 @@ Steps to debug:
    long-intro songs, OR auto-detect long intros and pick the driver.
 8. Run the converter on the whole corpus; validate each tune per-voice.
 
+## Task #2 — SF2->FC writer (NOW UNBLOCKED + well-specified)
+The FC editor was DECRUNCHED (out/fc_editor_v1_decrunched.prg) and its SAVE routine
+RE'd: a native FC V1.0 module = a PRG @ $1800 = player + song data, saved $1800..
+($03ff:$03fe). IDENTICAL to the layout fc_parser already reads. So the writer is the
+INVERSE of fc_parser:
+1. Player template: copy the fixed player code + freq table ($1d64) + pointer-table
+   SLOTS from an existing module ($1800 up through the instrument base $2188). These
+   addresses are HARDCODED in the player code so data must honor them: voice
+   orderlist ptrs $1ea1(lo[3])/$1ea4(hi[3]); block-ptr table $1ea7 (lo/hi per
+   block*2); instrument base $2188 (8 bytes/instr); freq table $1d64/$1dc4.
+2. Lay out orderlists + blocks AFTER the instruments ($2288+); fill the pointer
+   tables to point at them; write instruments at $2188.
+3. Emit PRG @ $1800; end address = top of data.
+FIRST MILESTONE: FC->FC round-trip — parse a native tune (out/fc_native/GAME_OVER.prg
+or bin/FC10/"- game over.prg"), re-serialize via the new sidm2/fc_writer.py, and
+verify it re-parses to the same notes (and ideally byte-diffs small / plays same via
+siddump). THEN wire an SF2 source (parse the Driver-11 SF2 back to notes/instruments
+-> FC tables). New file: sidm2/fc_writer.py. Reference: docs/players/FUTURECOMPOSER.md
+"Native FC V1.0 on-disk module format".
+
 ## Longer-horizon (documented, not started)
 - Task #1 (memory): the OTHER ~15 Fun_Fun rips use a SECOND player (init $C000, play
   $C475) or Sound Monitor — page-aligned orderlist pointer tables RE'd partially.
-- Task #2: SF2->FC native-module writer (round-trip back to the C64 FC editor).
+- D15 osc3/bass fix (the in-progress --d15 long-intro path, see top of this doc).
 - Stage-B: PWM sweep, vibrato, mctrl&$80 noise-attack.
 </work_remaining>
 
