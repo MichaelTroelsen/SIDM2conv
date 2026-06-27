@@ -66,6 +66,7 @@ class D11Instrument:
     filter_idx: int
     pulse_idx: int
     wave_idx: int
+    pulse_width: int = 0     # D15 only: static pulse hi-byte (no pulse table)
 
 
 @dataclass

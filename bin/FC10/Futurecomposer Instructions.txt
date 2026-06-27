@@ -1,0 +1,214 @@
+ Instructions for Future-Composer V4.1
+ -------------------------------------
+
+
+
+
+   1) What is new, what has changed?
+      ------------------------------
+      -'Main-Edit', was much improved
+
+      -'Info-Page' with discoptions, has
+        gone for ever.
+ New: -Instrucions and editor were one-
+       filed.
+      -Different and expanded menus.
+      -Relocate-mode for music-routine
+      -Blocks, tracks, soundparameter
+       and music-datas may saved sepa-
+       rate and loaded back to any point
+       (remixing is now possible!).
+      -You can edit subtunes. E.g. for
+       title and gametune.
+
+
+2) Main Editor
+   -----------
+
+ a)Used Keys
+   ---------
+   F1 - Restart playing the actual tune
+   F3 - Stop playing.
+   F5 - Continue playing.
+   F7 - Fast play
+   F8 - Back to main-menu
+ctrl+1- Edit track I
+ctrl+2- Edit track II
+ctrl+3- Edit track III
+ctrl+f- Edit soundparameter
+shft+1- Play tune 1
+shft+2- Play tune 2
+shft+3- Play tune 3
+com.+1- Switchoff track 1NP    and
+com.+2- Switchoff track 2KS  restart
+com.+3- Switchoff track 3.Mactual tune
+   @  - Take block(_only in block-edit)
+   &  - Put block (_only in block-edit)
+   *  - Edit a block
+
+ ...better activate your printer, eh...
+
+
+
+Used Keys Part II
+-----------------
+Inst  -Creat a space. Now even track-
+       edit.
+Del   -Suck a byte. Also now trackedit
+
+*Blockoperations
+Shft+A-Define Start of Track-Block
+Shft+E-Define End of Track-Block
+Shft+C-Copy defined Track-Block
+Shft+K-Kill defined Track-Block
+
+Start- and Endaddress are displayed be-
+low third track.
+
+Actual Cursortrackposition is displayed
+  at the left-upper-corner. Sometimes
+ there is a wrong number displayed, ex-
+   specially when had changed tracks.
+     Press 'Home' to set it right.
+
+  *NOT all keycommands possible in the
+            block-edit-mode.
+
+         >>> What a luxury <<<
+
+
+
+How to edit more than one tune :
+--------------------------------
+
+When your first tune was finished you
+easily edit the second behind the end
+byte ($ff or $fe) of the first one.
+Do the same with the third tune.
+
+Now you can switch between the songs
+like explained in the menu before.
+
+*The numbers in left-down-corner mean:
+
+T1: trck-point  blck-pos  blck-count
+T2: trck-point  blck-pos  blck-count
+T3: trck-point  blck-pos  blck-count
+
+
+
+
+    IMPORTANT:End the last Tune with
+
+       $FE/$FF followed by $FD !
+
+
+
+
+b) Track-Edit
+   ----------
+
+    -Number between $00-$2b jumps to
+     block.
+    -Number over $3f repeats the next
+     block $xx-$3f times.   .g. 43 02
+     repeats the block 02 four times.
+    -Number over $7f transposes all the
+     following tracks.
+    -Number $ff starts the track over.
+    -Number $fe stops playing.
+
+>> Dunnu how to print, bad luck lamer <<
+
+
+
+
+c) Soundparameter-Edit (ctrl+f remeber?)
+   -------------------
+
+     xx xx xx xx xx xx xx xx
+     .  .  .  .  .  .  .  .
+Pulse.  .  .  .  .  .  .  MCTRL Register
+level   .  .  .  .  .  .   01 Filter
+        .  .  .  .  .  .   04 Arpeggio
+Waveform.  .  .  .  .  .   10 Drumsound
+           .  .  .  .  .   40 WF gateoff
+Att/Dec.....  .  .  .  .     will be $40
+              .  .  .  .   80 WF gateon
+Sust/Rel.......  .  .  .     will be $81
+                 .  .  .
+Unused............  .  .
+                    .  .
+Vibrato/Drumtype.....  MPulse Cycle CTRL (00 01 10 11)
+Arpeggio CTRL (00= 00 0c 18 otherwise : 00 0x 0y )
+
+
+        >>> confusing .... ? <<<
+
+
+
+
+3) Block-Edit
+   ----------
+
+* Notes   : e.g. c-3, d-6, g#3
+* Sound   : snd.xx     xx = Sound Number
+* Duration: dur.xx     xx = Note Length
+* Glide   : gl:xx,y    y  = Delay before
+                            glide
+                       xx = Glide rate
+                           (If over $7f,
+                           then glide up
+                           at rate xx-
+                           $80)
+
+
+
+         >>> That's it ... <<<
+
+
+
+
+4) Discmenu:
+   ---------
+
+   Here you can load, save and relocate
+   almost everything. Enjoy it!
+   There are no more declarations necessary, or?
+
+5) Other Options:
+   --------------
+
+   New song  - kills song, except soundparameter.
+   demo song - the name speaks for itself.
+   swap track- exchange two complete tracks.
+
+      >>> Better than soundmon <<<
+
+
+
+'Left Arrow' to enter Sequence-Editor
+
+'Upwards Arrow' to enter Filter-Editor
+ 
+
+to init Tune: LDA #$00-02
+              JSR $1800
+
+to play Tune: JSR $1806
+
+You can't load a relocated or packed
+Tune back into the Editor, so save it
+normally before packing or relocating.
+
+Don't give this Program to any form ofLAMER !!!
+
+(C) 1988/89 By The Beat-Machine
+
+Beat-Machine is a legal Company
+Order your Sounds now ...
+
+
+
+
+

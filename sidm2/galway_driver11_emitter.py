@@ -147,13 +147,22 @@ def _template_path() -> str:
 
 
 def emit_driver11_sf2(song: GalwayDriver11Song,
-                      template_path: Optional[str] = None) -> bytes:
+                      template_path: Optional[str] = None,
+                      sequences: Optional[List[bytes]] = None,
+                      orderlists: Optional[List[List[int]]] = None,
+                      instr_layout: str = 'd11') -> bytes:
     """Build a Driver 11 ``.sf2`` from the song IR using the bundled template.
 
     Writes the instrument/wave/tempo/init tables (column-major), the three
     orderlists + pointers, and the packed sequences + pointers, growing the
     file to hold the sequence data, then rebuilds the aux chain so the
     ``$0FFB`` pointer stays valid after the music region moved.
+
+    If ``sequences`` (a list of packed sequence byte-strings) and ``orderlists``
+    (3 lists of sequence indices) are given, they are written verbatim instead of
+    segmenting ``song.tracks`` — this lets a caller preserve a source's own
+    pattern/orderlist structure (e.g. Future Composer's short repeated blocks)
+    rather than flattening voices into a few huge sequences.
     """
     template_path = template_path or _template_path()
     out = bytearray(open(template_path, 'rb').read())
@@ -173,13 +182,20 @@ def emit_driver11_sf2(song: GalwayDriver11Song,
 
     tbl = di.table_addresses
 
-    # --- Instruments (column-major 6 x 32): [AD,SR,Flags,Filter,Pulse,Wave] ---
+    # --- Instruments (column-major) ---
+    # D11 layout: [AD,SR,Flags,Filter,Pulse(idx),Wave]
+    # D15 layout: [AD,SR,Pulse(width),-,Wave,...] (9 cols; pulse is a static byte
+    #   written straight to $d403, no pulse table; wave ptr at col4). RE'd from
+    #   sf2driver15_00.prg note-on ($1113-$1124) + SID writes ($129b-$12b3).
     if 'Instruments' in tbl:
         ia = tbl['Instruments']['addr']
         nrows = tbl['Instruments']['rows']           # 32
         for r, ins in enumerate(song.instruments[:nrows]):
-            cols = [ins.ad, ins.sr, ins.flags,
-                    ins.filter_idx, ins.pulse_idx, ins.wave_idx]
+            if instr_layout == 'd15':
+                cols = [ins.ad, ins.sr, ins.pulse_width, 0, ins.wave_idx]
+            else:
+                cols = [ins.ad, ins.sr, ins.flags,
+                        ins.filter_idx, ins.pulse_idx, ins.wave_idx]
             for c, val in enumerate(cols):
                 w8(ia + c * nrows + r, val)
 
@@ -222,18 +238,25 @@ def emit_driver11_sf2(song: GalwayDriver11Song,
         w8(iaddr + 0 * irows + 0, 0x00)              # tempo table row index
         w8(iaddr + 1 * irows + 0, 0x0F)              # main volume = max
 
-    # --- Sequences: segment each track, assign global indices ---
-    track_seq_indices: List[List[int]] = [[], [], []]
-    packed_sequences: List[bytes] = []
-    for v in range(3):
-        rows = song.tracks[v] if v < len(song.tracks) else []
-        for pk in segment_track(rows):
+    # --- Sequences: either use caller-supplied block structure, or segment ---
+    if sequences is not None and orderlists is not None:
+        packed_sequences = list(sequences[:_MAX_SEQUENCES])
+        track_seq_indices = [
+            [s for s in orderlists[v] if s < len(packed_sequences)]
+            if v < len(orderlists) else []
+            for v in range(3)]
+    else:
+        track_seq_indices = [[], [], []]
+        packed_sequences = []
+        for v in range(3):
+            rows = song.tracks[v] if v < len(song.tracks) else []
+            for pk in segment_track(rows):
+                if len(packed_sequences) >= _MAX_SEQUENCES:
+                    break
+                track_seq_indices[v].append(len(packed_sequences))
+                packed_sequences.append(pk)
             if len(packed_sequences) >= _MAX_SEQUENCES:
                 break
-            track_seq_indices[v].append(len(packed_sequences))
-            packed_sequences.append(pk)
-        if len(packed_sequences) >= _MAX_SEQUENCES:
-            break
     for v in range(3):                               # ensure every track has ≥1 seq
         if not track_seq_indices[v]:
             track_seq_indices[v].append(len(packed_sequences))
