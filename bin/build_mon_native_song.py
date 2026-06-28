@@ -143,6 +143,67 @@ def extract_wave_programs(m, sid, sub, idx_map, instr_rows, frames):
     return progs
 
 
+def filter_trace(sid, sub, secs):
+    """Per-frame global filter state from siddump (fill-forward): (cutoff11, ctrl)
+    where cutoff11 = ($D415&7)|($D416<<3) and ctrl = $D417 (res+routing)."""
+    import subprocess
+    import re
+    txt = subprocess.run(['py', '-3', 'pyscript/siddump_complete.py', sid,
+                          f'-a{sub}', f'-t{secs}'], capture_output=True, text=True).stdout
+    cut, ctrl, out = 0, 0xF1, []
+    for ln in txt.splitlines():
+        if not ln.startswith('|') or 'Frame' in ln:
+            continue
+        c = [x.strip() for x in ln.split('|')]
+        if len(c) < 6:
+            continue
+        mm = re.match(r'^([0-9A-F\.]{4})\s+([0-9A-F\.]{2})', c[5])
+        if mm:
+            if '.' not in mm.group(1):
+                cut = int(mm.group(1), 16)
+            if '.' not in mm.group(2):
+                ctrl = int(mm.group(2), 16)
+        out.append((cut, ctrl))
+    return out
+
+
+def _filt_set_row(cutoff11, ctrl):
+    """A filt_prog_step SET row reproducing $D416 = cutoff11>>3 (low 3 bits 0),
+    passband LOW, res/routing = ctrl. byte0 = $90|Y (X=1 Low, Y=cutoff hi nibble),
+    byte1 = (C&$0f)<<4, byte2 = ctrl."""
+    C = (cutoff11 >> 3) & 0xFF
+    return (0x90 | ((C >> 4) & 0x0F), (C & 0x0F) << 4, ctrl & 0xFF)
+
+
+def filt_is_restart(ftr, R):
+    """A global filter restart at frame R = the cutoff CHANGES at R and was STABLE
+    the frame before (a fresh sweep begins, start value higher OR lower than the
+    held value). Caught at a note boundary (R = onset+1). R==1 = the song's first
+    filtered note."""
+    if R < 1 or R >= len(ftr) or ftr[R][0] == ftr[R - 1][0]:
+        return False
+    return R == 1 or ftr[R - 1][0] == ftr[R - 2][0]
+
+
+def filter_program_for(ftr, onset, dur_f):
+    """Per-note FILTER program (the caller decides via `drives` whether this note is
+    the assigned filter trigger). Returns (flag=$40, set-row-per-frame program). The
+    driver applies row 0 on the ONSET frame (F_CNT=0, no 1-frame hold), so capture
+    from onset (k=0): row 0 = the held cutoff, the sweep starts at onset+1."""
+    n = len(ftr)
+    if onset + 1 >= n:
+        return 0, None
+    cuts = []
+    for k in range(0, min(dur_f, 24)):
+        idx = onset + k
+        cuts.append(ftr[idx] if idx < n else ftr[-1])
+    settle = max((k for k in range(1, len(cuts)) if cuts[k][0] != cuts[k - 1][0]),
+                 default=0)
+    prog = [_filt_set_row(cu, ct) for cu, ct in cuts[:settle + 1]]
+    prog.append((0x7F, 0, len(prog)))      # freeze on the settled cutoff
+    return 0x40, prog
+
+
 def _wave_prog_for(frames, v, onset, dur_f):
     """Per-note WAVE program (waveform/gate envelope) sampled per FRAME from the
     trace, trimmed to the settle point. MoN's waveform attack varies per note (the
@@ -172,9 +233,33 @@ def build_native_song(m, sid, sub, idx_map, instr_rows):
     span = max(sum(ev.dur for ev in m.voices[v]) for v in range(3)) * fpt
     secs = span // 50 + 4
     frames = F.per_frame(sid, [f'-a{sub}', f'-t{secs}'])
-    rev = {slot: mon_i for mon_i, slot in idx_map.items()}
+    ftr = filter_trace(sid, sub, secs)
+    # The filter is ONE GLOBAL resource — each restart (cutoff jumps up) is caused by
+    # exactly ONE note. Voices share onset frames, so assign each restart to a single
+    # voice that has a note one frame before it (preferring the voice that drives the
+    # most, to keep filter programs concentrated). A note drives the filter iff its
+    # onset is the assigned trigger for one of these global restarts.
+    onsets = [set() for _ in range(3)]
+    for v in range(3):
+        fr = 0
+        for ev in m.voices[v]:
+            if ev.retrig:
+                onsets[v].add(fr)
+            fr += ev.dur * fpt
+    restarts = [R for R in range(1, len(ftr)) if filt_is_restart(ftr, R)]
+    cover = [0, 0, 0]
+    for R in restarts:
+        for v in range(3):
+            if (R - 1) in onsets[v]:
+                cover[v] += 1
+    pri = sorted(range(3), key=lambda v: -cover[v])         # voice priority for ties
+    drives = set()                                          # (voice, onset_frame)
+    for R in restarts:
+        cands = [v for v in pri if (R - 1) in onsets[v]]
+        if cands:
+            drives.add((cands[0], R - 1))
     bundles, bidx = [], {}
-    instrs, iidx, wave_programs = [], {}, []
+    instrs, iidx, wave_programs, instr_flags, filter_programs = [], {}, [], [], []
 
     def bundle_of(fp, pp):
         k = (tuple(fp), tuple(pp))
@@ -183,14 +268,17 @@ def build_native_song(m, sid, sub, idx_map, instr_rows):
             bundles.append((fp, pp))
         return bidx[k]
 
-    def instr_of(mon_i, wp):
+    def instr_of(mon_i, wp, flag, filt):
         ins = m.instrument(mon_i)
         ad, sr, raw = ins['ad'], ins['sr'], ins['waveform'] or 0x41
-        key = (ad, sr, raw, wp)
+        fk = tuple(filt) if filt else None
+        key = (ad, sr, raw, wp, flag, fk)
         if key not in iidx:
             iidx[key] = len(instrs)
             instrs.append((ad, sr, raw))
             wave_programs.append([(w, 0x00) for w in wp] + [(0x7F, len(wp) - 1)])
+            instr_flags.append(flag)
+            filter_programs.append(filt)
         return iidx[key]
 
     segs = [[] for _ in range(3)]
@@ -202,7 +290,8 @@ def build_native_song(m, sid, sub, idx_map, instr_rows):
             for ev in events:
                 dur_f = ev.dur * fpt
                 base = m.note_freq(ev.note)
-                slot = instr_of(ev.instr, _wave_prog_for(frames, v, fr, dur_f))
+                flag, filt = filter_program_for(ftr, fr, dur_f) if (v, fr) in drives else (0, None)
+                slot = instr_of(ev.instr, _wave_prog_for(frames, v, fr, dur_f), flag, filt)
                 cmd = bundle_of(fm_program_for(frames, v, fr, dur_f, base),
                                 pulse_program_for(frames, v, fr, dur_f))
                 note = max(SF2_NOTE_MIN, min(ev.note, SF2_NOTE_MAX))
@@ -214,7 +303,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows):
                 fr += dur_f
             for pk in segment_track(rows):
                 segs[v].append(pk)
-    return segs, bundles, instrs, wave_programs
+    return segs, bundles, instrs, wave_programs, instr_flags, filter_programs
 
 
 def main():
@@ -227,23 +316,28 @@ def main():
     used = mon_to_sf2.used_instruments(m)
     instr_rows, wave_table, pulse_table, idx_map = mon_to_sf2.build_instruments(m, used)
 
-    # B2/B3: per-note FM+pulse bundles ($c0-$ff command) AND per-note WAVE programs
-    # (distinct instruments, $a0-$bf) — both extracted from the original trace.
-    segs, bundles, instrs, wave_programs = build_native_song(m, sid, sub, idx_map, instr_rows)
+    # B2/B3: per-note FM+pulse bundles ($c0-$ff command), per-note WAVE programs
+    # (distinct instruments, $a0-$bf), and per-note FILTER programs (flag-$40
+    # instruments) — all extracted from the original trace.
+    (segs, bundles, instrs, wave_programs,
+     instr_flags, filter_programs) = build_native_song(m, sid, sub, idx_map, instr_rows)
     pulse_programs = [static_pulse(0x800) for _ in instrs]   # unused (command owns pulse)
 
     # redirect the shared build pipeline at the MoN driver copy
     B.GAL = MON_DIR
     B.TEMPO = m.speed + 1                       # native driver frames/row = tick frames
+    nfilt = sum(1 for f in instr_flags if f & 0x40)
     print(f"{os.path.basename(sid)} sub{sub}: load=${la:04X} segs/voice={[len(s) for s in segs]} "
-          f"instr={len(instrs)} bundles={len(bundles)} tempo={B.TEMPO}")
+          f"instr={len(instrs)} bundles={len(bundles)} filter_instr={nfilt} tempo={B.TEMPO}")
     if len(bundles) > 64:
         print(f"  WARNING: {len(bundles)} bundles > 64 (command cap) — needs clustering")
     if len(instrs) > 32:
         print(f"  WARNING: {len(instrs)} instruments > 32 — needs clustering")
 
     gen, edit, mdp, seq0 = RN.gen_includes_song(segs, instrs, wave_programs,
-                                                pulse_programs, bundles=bundles)
+                                                pulse_programs, bundles=bundles,
+                                                instr_flags=instr_flags,
+                                                filter_programs=filter_programs)
     # gen_includes_song writes ROM_DIR/layout.inc (hardcoded) — copy to the MoN driver
     shutil.copyfile(os.path.join(ROM_DIR, "layout.inc"), os.path.join(MON_DIR, "layout.inc"))
     write_mon_freqtable(m)

@@ -115,7 +115,7 @@ def pulse_program(s, tempo=4):
 
 def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
                       drum_set=frozenset(), seek_set=frozenset(), multispeed=1,
-                      bundles=None):
+                      bundles=None, instr_flags=None, filter_programs=None):
     """Native ROMUZAK edit area: per-voice packed SECTOR sequences + column-major
     instruments + per-instrument wave programs. Writes drivers_src/romuzak/layout.inc.
     (Adapted from build_galway_native_song.gen_includes_song; pulse/FM left default
@@ -143,6 +143,29 @@ def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
         off += len(segs[v])
     io = gen.instr_addr - B.EDIT_BASE
     wo, po, fo = B.relocate_driver_tables(gen, edit)
+    # FILTER programs (col-major 256x3 at fo): per-instrument, deduped. col2 flag $40
+    # + col3 = the program's start row. The driver's pr_note restarts the global filter
+    # from VIFILT (col3) on a flag-$40 note.
+    filt_cursor, filt_dedup = 0, {}
+    for i in range(min(len(instrs), 32)):
+        fprog = filter_programs[i] if filter_programs else None
+        if fprog:
+            fkey = tuple(fprog)
+            if fkey in filt_dedup:
+                edit[io + 3 * 32 + i] = filt_dedup[fkey] & 0xFF
+            else:
+                start = filt_cursor
+                for r, (b0, b1, b2) in enumerate(fprog):
+                    edit[fo + 0 * 256 + start + r] = b0 & 0xFF
+                    edit[fo + 1 * 256 + start + r] = b1 & 0xFF
+                    edit[fo + 2 * 256 + start + r] = ((start + b2) if (b0 & 0xFF) == 0x7F
+                                                      else b2) & 0xFF
+                edit[io + 3 * 32 + i] = start & 0xFF
+                filt_dedup[fkey] = start
+                filt_cursor += len(fprog)
+                if filt_cursor > 256:
+                    raise ValueError(f"FILTER overflow: {filt_cursor} rows > 256")
+
     wave_cursor = 0
     wave_dedup = {}
     for i, ins in enumerate(instrs[:32]):
@@ -153,6 +176,8 @@ def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
             edit[io + 2 * 32 + i] = 0x20      # col2 flag $20 -> drum (col1 = freq hi)
         elif i in seek_set:
             edit[io + 2 * 32 + i] = 0x10      # col2 flag $10 -> SEEK (pulse holds last frame)
+        elif (instr_flags[i] if instr_flags else 0) & 0x40:
+            edit[io + 2 * 32 + i] = 0x40      # col2 flag $40 -> start filter program
         wp = wave_programs[i] if i < len(wave_programs) else [(wf or 0x41, 0), (0x7F, 0)]
         wkey = tuple(wp)
         if wkey in wave_dedup:
