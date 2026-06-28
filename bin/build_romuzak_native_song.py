@@ -108,7 +108,7 @@ def pulse_program(s):
 
 
 def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
-                      drum_set=frozenset(), multispeed=1):
+                      drum_set=frozenset(), seek_set=frozenset(), multispeed=1):
     """Native ROMUZAK edit area: per-voice packed SECTOR sequences + column-major
     instruments + per-instrument wave programs. Writes drivers_src/romuzak/layout.inc.
     (Adapted from build_galway_native_song.gen_includes_song; pulse/FM left default
@@ -144,6 +144,8 @@ def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
         edit[io + 1 * 32 + i] = sr
         if i in drum_set:
             edit[io + 2 * 32 + i] = 0x20      # col2 flag $20 -> drum (col1 = freq hi)
+        elif i in seek_set:
+            edit[io + 2 * 32 + i] = 0x10      # col2 flag $10 -> SEEK (pulse holds last frame)
         wp = wave_programs[i] if i < len(wave_programs) else [(wf or 0x41, 0), (0x7F, 0)]
         wkey = tuple(wp)
         if wkey in wave_dedup:
@@ -254,12 +256,14 @@ def main():
                       else [(0x80, 0x08, 1), (0x7F, 0, 0)] for i in range(len(instr_rows))]
     # Drums (B7 bit0): override the Stage-A nearest-semitone wave program with the
     # native high-byte drum program + flag the instrument so wave_step uses drum mode.
-    drum_set = set()
+    drum_set, seek_set = set(), set()
     for i in range(min(len(instr_rows), 32)):
         s = rmz.sounds[i]
         if s != (0xFF,) * 8 and (s[7] & 0x01):
             wave_programs[i] = drum_wave_program(rmz, s[4], s[6], instrs[i][2])
             drum_set.add(i)
+        elif s != (0xFF,) * 8 and (s[7] & 0x10):       # SEEK -> pulse holds last frame
+            seek_set.add(i)
         # ARP keeps the Stage-A rotated-root body (note+[0,12,7,3], no onset): the real
         # arp is note-relative (verified vs trace, both osc1 note C-5 and osc3 note C-4).
         # The earlier -12 onset was overfit to osc1's opening and broke osc3 by an octave.
@@ -269,7 +273,7 @@ def main():
           f"instr={len(instrs)} drums={sorted(drum_set)} tempo={B.TEMPO}")
 
     gen, edit, mdp, seq0 = gen_includes_song(segs, instrs, wave_programs,
-                                             pulse_programs, drum_set)
+                                             pulse_programs, drum_set, seek_set)
     if not write_freqtable(d, la):
         print("  WARNING: $2CA2 freq table not located — using PAL fallback")
     prg = B.assemble()

@@ -487,6 +487,20 @@ pl_set:
         sta VPADL,x
         sta VPADH,x
 pl_apply:
+        ; SEEK voices (VIFLAGS $10) HOLD the pulse on the note's LAST frame -- the
+        ; frame before do_row advances (zp_tcnt==1) of the note's last row (vhold==0).
+        ; The real player ramps the SEEK only while the note still sustains; tied
+        ; notes (vhold>0) ramp through the row boundary. (PWM voices ramp every frame.)
+        lda VIFLAGS,x
+        and #$10
+        beq pl_add
+        lda zp_tcnt
+        cmp #$01
+        bne pl_add
+        lda vhold,x
+        bne pl_add
+        jmp pl_consume           ; SEEK last frame -> hold (skip the add)
+pl_add:
         lda VPLO,x               ; pulse += add (12-bit)
         clc
         adc VPADL,x
@@ -495,6 +509,7 @@ pl_apply:
         adc VPADH,x
         and #$0f
         sta VPHI,x
+pl_consume:
         lda VPC,x                ; consume a frame
         beq pl_wr
         dec VPC,x
