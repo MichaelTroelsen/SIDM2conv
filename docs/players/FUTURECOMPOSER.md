@@ -182,12 +182,23 @@ notes; my `8F 00 8F 00…` packing is functionally identical, verified).
     pulse(2), -, wave_idx(4)]`, static pulse byte (`D11Instrument.pulse_width`).
     Result on Triangle_Intro: **the song plays AND the long-silent-intro voices
     gate** — osc1 (arp) + osc2 play (312 / 415 gate-on). The all-rest intro works.
-  - **REMAINING BUG: osc3 (bass / track2) is silent** — no freq/ADSR/gate at all,
-    its note-on never fires, while track0/track1 do. The orderlist→seq is correct
-    (seq 0x1D = `A1 85 17` = set-instr1, note B-1), voice map `$13d1`=[0,7,14] and
-    pointers match Mood. So it's a per-voice note-on / `$5b,x` state-machine issue
-    specific to track2 (the first voice processed, X=2). Needs D15 state-machine
-    tracing. Default emit stays D11 flat; `--d15` is the in-progress long-intro path.
+  - **LEAD NOW FIXED** with `build_structured(merge_rests=False)` (the `--d15`
+    default): keep rest blocks as SHORT separate sequences replayed by the orderlist
+    (the Mood idiom), NOT merged into a long rest *prefix* (a long prefix breaks the
+    voice; a 96-row prefix is fine but 288 is not). Result: osc1 (arp) enters @196,
+    osc2 (lead) enters @580 — both timings correct.
+  - **REMAINING BUG: osc3 (bass / track2 = voice index X=2) is dead** — no gate,
+    despite a valid instr1 pulse wave program (wave rows 2-3) and correct orderlist/
+    seq (seq 0x1D = `A1 85 17` = set-instr1, B-1), voice map `$13d1`=[0,7,14], all
+    matching Mood. Isolation done: reordering so the bass is OFF X=2 makes osc3 gate
+    (but breaks the rest-intro voices' timing); a rest lead-in on the bass does NOT
+    help; arp/lead (with rest intros) on X=2 are fine. So it's an **X=2-first-voice
+    + immediate-content** state-machine timing quirk ($5b,x cycles 2->1[fetch]->0
+    [gate-on], init=2). Static analysis says it should work; dynamics disagree.
+    **Needs cycle-level 6502 single-step tracing** of the X=2 first-frames path
+    ($104d fetch / $10ee gate-on / $12d8 DEC) — black-box capture testing is
+    exhausted. Default stays D11 flat; `--d15` = experimental long-intro path
+    (lead+arp correct, bass open).
 The default emit stays **Driver 11 flat** (works for most FC songs; only long silent
 intros break) until the D15 emitter adaptation is done.
 

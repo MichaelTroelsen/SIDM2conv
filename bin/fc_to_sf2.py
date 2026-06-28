@@ -152,14 +152,16 @@ def _block_rows(block_notes, base, cur_instr):
     return out, cur_instr
 
 
-def build_structured(fc, base):
+def build_structured(fc, base, merge_rests=True):
     """Preserve FC's block/orderlist structure: emit one (deduplicated) Driver 11
     sequence per FC block instance, and a per-voice orderlist that replays them.
 
     FC voices stagger their entries with a short rest block repeated many times
-    (e.g. the lead is silent for 6x block-0). Flattening that into one giant
-    sequence breaks SF2II's driver; replaying a short rest sequence via the
-    orderlist (exactly like FC) keeps every sequence small and plays correctly.
+    (e.g. the lead is silent for 6x block-0). With ``merge_rests`` the rest-only
+    blocks are folded into the following content sequence (avoids all-rest
+    sequences but makes a long rest *prefix*); without it each rest block stays a
+    short separate sequence replayed by the orderlist (the Driver 15 idiom, cf.
+    the Mood example's repeated 64-rest sequence).
     """
     from sidm2.galway_driver11_emitter import segment_track
     seq_index = {}
@@ -180,9 +182,9 @@ def build_structured(fc, base):
         pending = []                                 # deferred rest-only blocks
         for block_notes in fc.voice_blocks[v]:
             rows, cur_instr = _block_rows(block_notes, base, cur_instr)
-            if all(b.is_rest for b in block_notes):  # never emit an all-rest
-                pending += rows                      # sequence: SF2II's driver
-                continue                             # stalls the orderlist on one
+            if merge_rests and all(b.is_rest for b in block_notes):
+                pending += rows
+                continue
             add(pending + rows, v)
             pending = []
         if pending:
@@ -252,7 +254,10 @@ def main():
         # Driver 15 path: handles long silent intros (all-rest sequences), so emit
         # FC's real block structure via the orderlist. D15 instrument columns +
         # static pulse handled by instr_layout='d15'. See docs/players/FUTURECOMPOSER.md.
-        sequences, orderlists = build_structured(fc, song.pitch_base)
+        # No merge: keep rest blocks as short separate sequences replayed by the
+        # orderlist (the Driver 15 idiom). A long merged rest *prefix* breaks the
+        # voice on D15; short rest sequences play (fixes the lead's intro).
+        sequences, orderlists = build_structured(fc, song.pitch_base, merge_rests=False)
         tpl = 'G5/examples/Driver 15 Test - Mood.sf2'
         sf2 = emit_driver11_sf2(song, template_path=tpl, sequences=sequences,
                                 orderlists=orderlists, instr_layout='d15')
