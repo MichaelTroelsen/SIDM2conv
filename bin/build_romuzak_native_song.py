@@ -114,7 +114,8 @@ def pulse_program(s, tempo=4):
 
 
 def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
-                      drum_set=frozenset(), seek_set=frozenset(), multispeed=1):
+                      drum_set=frozenset(), seek_set=frozenset(), multispeed=1,
+                      bundles=None):
     """Native ROMUZAK edit area: per-voice packed SECTOR sequences + column-major
     instruments + per-instrument wave programs. Writes drivers_src/romuzak/layout.inc.
     (Adapted from build_galway_native_song.gen_includes_song; pulse/FM left default
@@ -176,35 +177,76 @@ def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
     ipulse_lo_addr = ifmhi_addr + NFM
     ipulse_hi_addr = ipulse_lo_addr + NFM
     fmtab_addr = ipulse_hi_addr + NFM
-    fmtab = bytes([0, 0, 0])                       # lone freeze terminator (no FM)
-    # dedup the per-instrument pulse programs -> distinct slots (<= NFM)
-    distinct, pidx = [], {}
-    for p in pulse_programs:
-        k = tuple(p)
-        if k not in pidx:
-            pidx[k] = len(distinct)
-            distinct.append(p)
-    pulsetab_addr = fmtab_addr + len(fmtab)
-    pulsetab = bytearray()
-    paddr = []                                     # start addr of each distinct program
-    for p in distinct[:NFM]:
-        paddr.append(pulsetab_addr + len(pulsetab))
-        for c0, c1, c2 in p:
-            pulsetab += bytes([c0 & 0xFF, c1 & 0xFF, 0 if (c0 & 0xFF) == 0x7F else (c2 & 0xFF)])
-    need = pulsetab_addr + len(pulsetab) - B.EDIT_BASE
-    if len(edit) < need:
-        edit.extend(bytearray(need - len(edit)))
-    for i in range(NFM):
-        edit[(ifmlo_addr - B.EDIT_BASE) + i] = fmtab_addr & 0xFF
-        edit[(ifmhi_addr - B.EDIT_BASE) + i] = (fmtab_addr >> 8) & 0xFF
-        a = paddr[i] if i < len(paddr) else (paddr[0] if paddr else pulsetab_addr)
-        edit[(ipulse_lo_addr - B.EDIT_BASE) + i] = a & 0xFF
-        edit[(ipulse_hi_addr - B.EDIT_BASE) + i] = (a >> 8) & 0xFF
-    edit[fmtab_addr - B.EDIT_BASE:fmtab_addr - B.EDIT_BASE + len(fmtab)] = fmtab
-    edit[pulsetab_addr - B.EDIT_BASE:pulsetab_addr - B.EDIT_BASE + len(pulsetab)] = pulsetab
-    # INSTR_PULSE (col4) = each instrument's pulse-program index k
-    for i in range(min(len(pulse_programs), 32)):
-        edit[io + 4 * 32 + i] = pidx[tuple(pulse_programs[i])] & 0xFF
+    if bundles is not None:
+        # PER-COMMAND BUNDLES (MoN B2): each $c0-$ff command selects a bundle of
+        # (FM program, pulse program). IFM[i]/IPULSE[i] point at bundle i's FM and
+        # pulse start. Distinct FM and pulse programs are deduped into FMTAB/PULSETAB
+        # and shared between bundles. This carries per-NOTE pitch (slides + arps)
+        # without inflating the <=32 instrument table.
+        fmdedup, fmtab = {}, bytearray()
+        pdedup, pulsetab_tmp = {}, bytearray()
+        fm_addr_of, p_addr_of = [], []
+        pulsetab_addr = 0                          # fixed up after fmtab is sized
+        for fp, pp in bundles[:NFM]:
+            fk = tuple(fp)
+            if fk not in fmdedup:
+                fmdedup[fk] = fmtab_addr + len(fmtab)
+                for e0, e1, e2 in fp:
+                    fmtab += bytes([e0 & 0xFF, e1 & 0xFF, e2 & 0xFF])
+            fm_addr_of.append(fmdedup[fk])
+        pulsetab_addr = fmtab_addr + len(fmtab)
+        for fp, pp in bundles[:NFM]:
+            pk = tuple(pp)
+            if pk not in pdedup:
+                pdedup[pk] = pulsetab_addr + len(pulsetab_tmp)
+                for c0, c1, c2 in pp:
+                    pulsetab_tmp += bytes([c0 & 0xFF, c1 & 0xFF,
+                                           0 if (c0 & 0xFF) == 0x7F else (c2 & 0xFF)])
+            p_addr_of.append(pdedup[pk])
+        fmtab, pulsetab = bytes(fmtab), bytes(pulsetab_tmp)
+        need = pulsetab_addr + len(pulsetab) - B.EDIT_BASE
+        if len(edit) < need:
+            edit.extend(bytearray(need - len(edit)))
+        for i in range(NFM):
+            fa = fm_addr_of[i] if i < len(fm_addr_of) else fmtab_addr
+            pa = p_addr_of[i] if i < len(p_addr_of) else (p_addr_of[0] if p_addr_of else pulsetab_addr)
+            edit[(ifmlo_addr - B.EDIT_BASE) + i] = fa & 0xFF
+            edit[(ifmhi_addr - B.EDIT_BASE) + i] = (fa >> 8) & 0xFF
+            edit[(ipulse_lo_addr - B.EDIT_BASE) + i] = pa & 0xFF
+            edit[(ipulse_hi_addr - B.EDIT_BASE) + i] = (pa >> 8) & 0xFF
+        edit[fmtab_addr - B.EDIT_BASE:fmtab_addr - B.EDIT_BASE + len(fmtab)] = fmtab
+        edit[pulsetab_addr - B.EDIT_BASE:pulsetab_addr - B.EDIT_BASE + len(pulsetab)] = pulsetab
+        # every note carries a command -> col4 (set_instr pulse) is overridden; leave 0.
+    else:
+        fmtab = bytes([0, 0, 0])                   # lone freeze terminator (no FM)
+        # dedup the per-instrument pulse programs -> distinct slots (<= NFM)
+        distinct, pidx = [], {}
+        for p in pulse_programs:
+            k = tuple(p)
+            if k not in pidx:
+                pidx[k] = len(distinct)
+                distinct.append(p)
+        pulsetab_addr = fmtab_addr + len(fmtab)
+        pulsetab = bytearray()
+        paddr = []                                 # start addr of each distinct program
+        for p in distinct[:NFM]:
+            paddr.append(pulsetab_addr + len(pulsetab))
+            for c0, c1, c2 in p:
+                pulsetab += bytes([c0 & 0xFF, c1 & 0xFF, 0 if (c0 & 0xFF) == 0x7F else (c2 & 0xFF)])
+        need = pulsetab_addr + len(pulsetab) - B.EDIT_BASE
+        if len(edit) < need:
+            edit.extend(bytearray(need - len(edit)))
+        for i in range(NFM):
+            edit[(ifmlo_addr - B.EDIT_BASE) + i] = fmtab_addr & 0xFF
+            edit[(ifmhi_addr - B.EDIT_BASE) + i] = (fmtab_addr >> 8) & 0xFF
+            a = paddr[i] if i < len(paddr) else (paddr[0] if paddr else pulsetab_addr)
+            edit[(ipulse_lo_addr - B.EDIT_BASE) + i] = a & 0xFF
+            edit[(ipulse_hi_addr - B.EDIT_BASE) + i] = (a >> 8) & 0xFF
+        edit[fmtab_addr - B.EDIT_BASE:fmtab_addr - B.EDIT_BASE + len(fmtab)] = fmtab
+        edit[pulsetab_addr - B.EDIT_BASE:pulsetab_addr - B.EDIT_BASE + len(pulsetab)] = pulsetab
+        # INSTR_PULSE (col4) = each instrument's pulse-program index k
+        for i in range(min(len(pulse_programs), 32)):
+            edit[io + 4 * 32 + i] = pidx[tuple(pulse_programs[i])] & 0xFF
 
     with open(os.path.join(ROOT, "drivers_src", "romuzak", "layout.inc"), "w") as f:
         f.write("; auto-generated (native song) by build_romuzak_native_song.py\n")

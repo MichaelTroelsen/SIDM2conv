@@ -46,49 +46,84 @@ def static_pulse(pw):
     return [(0x80 | ((pw >> 8) & 0x0F), pw & 0xFF, 1), (0x7F, 0, 0)]
 
 
-import math
+from sidm2.galway_to_driver11 import D11Row, SF2_NOTE_MIN, SF2_NOTE_MAX, SF2_GATE_ON
+from sidm2.galway_driver11_emitter import segment_track
+
+FM_CAP = 128                                       # max frames of FM captured per note
 
 
-def extract_arps(m, sid_path, sub, secs=12):
-    """Trace-driven ARP detection (B2): for each MoN instrument, read the original
-    per-frame freq over a note that uses it and compute the per-frame semitone
-    offset from the onset note. A short repeating cycle of EXACT integer semitones
-    (e.g. F-4/C-5/A-4 -> [0,7,4]) is an arpeggio -> a wave-table program (the native
-    wave_step adds col1 semitones to the note). Continuous non-integer glides (V1
-    portamento) don't form a clean cycle and are left to the FM slide program (B3).
-    Returns {mon_instr: [offset,...]} (the arp cycle), only for instruments that arp."""
+def fm_program_for(frames, v, onset, dur_f, base):
+    """Per-note FM program (B2): reproduce the original's exact per-frame freq for
+    this note. offset[k] = (trace_freq[onset+k] - base) & $FFFF; the driver's FM
+    runner accumulates per-frame deltas, so emit delta[k]=offset[k]-offset[k-1] as
+    (lo,hi,run) RLE entries + a freeze. Handles BOTH portamento slides (constant
+    delta) and arps (per-frame deltas) byte-exactly. base = the note's freqtable
+    value (== the driver's vfreq), so offset[0]=0 (frame 0 plays at base)."""
+    targ, hold = [], 0
+    for k in range(min(dur_f, FM_CAP)):
+        idx = onset + k
+        tf = frames[idx][0][v]['freq'] if idx < len(frames) else None
+        hold = ((tf - base) & 0xFFFF) if tf is not None else hold
+        targ.append(hold)
+    # The driver's pr_note holds base pitch on the TRIGGER frame (FM_CNT=1/FM_OFF=0),
+    # so FM entries apply from frame 1 onward — drop delta[0] (frame 0 = base).
+    deltas = [(targ[k] - targ[k - 1]) & 0xFFFF for k in range(1, len(targ))]
+    prog, run, rl = [], None, 0
+    for delta in deltas:
+        if delta == run:
+            rl += 1
+        else:
+            if run is not None:
+                prog.append((run & 0xFF, (run >> 8) & 0xFF, rl))
+            run, rl = delta, 1
+    if run is not None:
+        prog.append((run & 0xFF, (run >> 8) & 0xFF, rl))
+    if not prog or all(e[0] == 0 and e[1] == 0 for e in prog):
+        return [(0, 0, 0)]                          # flat -> program 0 (freeze)
+    prog.append((0, 0, 0))                          # hold the last offset
+    return prog
+
+
+def build_native_song(m, sid, sub, idx_map, instr_rows):
+    """Walk the MoN song -> per-voice packed sequences with a per-NOTE command byte
+    selecting an (FM program, pulse program) BUNDLE. The FM program carries the
+    note's exact per-frame pitch (slide/arp) from the trace; the pulse program is
+    the instrument's static width (B2 — PWM is B3). Returns (segs, bundles)."""
     import mon_fidelity as F
-    frames = F.per_frame(sid_path, [f'-a{sub}', f'-t{secs}'])
+    frames = F.per_frame(sid, [f'-a{sub}', '-t10'])
     fpt = m.frames_per_tick
-    arps, seen = {}, set()
+    inst_pulse = [static_pulse((ir.pulse_width & 0x0F) << 8) for ir in instr_rows]
+    bundles, bidx = [], {}
+
+    def bundle_of(fp, pp):
+        k = (tuple(fp), tuple(pp))
+        if k not in bidx:
+            bidx[k] = len(bundles)
+            bundles.append((fp, pp))
+        return bidx[k]
+
+    segs = [[] for _ in range(3)]
     for v in range(3):
         fr = 0
-        for ev in m.voices[v]:
-            dur_f = ev.dur * fpt
-            if ev.retrig and ev.instr not in seen and dur_f >= 3 and fr + dur_f <= len(frames):
-                seen.add(ev.instr)
-                base = frames[fr][0][v]['freq']
-                offs = []
-                ok = True
-                for k in range(min(dur_f, 12)):
-                    f2 = frames[fr + k][0][v]['freq']
-                    if not (base and f2):
-                        ok = False
-                        break
-                    semi = 12 * math.log2(f2 / base)
-                    r = round(semi)
-                    if abs(semi - r) > 0.18 or not (0 <= r <= 36):   # must be on-grid
-                        ok = False
-                        break
-                    offs.append(r)
-                if ok and len(offs) >= 3:
-                    # smallest repeating period
-                    period = next((p for p in range(1, len(offs) // 2 + 1)
-                                   if all(offs[i] == offs[i % p] for i in range(len(offs)))), 0)
-                    if period >= 2 and len(set(offs[:period])) >= 2:   # a real arp (varies)
-                        arps[ev.instr] = offs[:period]
-            fr += dur_f
-    return arps
+        for _pat, events in m._voice_blocks(v):
+            rows = []
+            cur_inst = cur_cmd = None
+            for ev in events:
+                slot = idx_map.get(ev.instr, 0)
+                dur_f = ev.dur * fpt
+                base = m.note_freq(ev.note)
+                fp = fm_program_for(frames, v, fr, dur_f, base)
+                cmd = bundle_of(fp, inst_pulse[slot])
+                note = max(SF2_NOTE_MIN, min(ev.note, SF2_NOTE_MAX))
+                rows.append(D11Row(note=note,
+                                   instrument=slot if slot != cur_inst else None,
+                                   command=cmd if cmd != cur_cmd else None))
+                cur_inst, cur_cmd = slot, cmd
+                rows.extend(D11Row(note=SF2_GATE_ON) for _ in range(max(0, ev.dur - 1)))
+                fr += dur_f
+            for pk in segment_track(rows):
+                segs[v].append(pk)
+    return segs, bundles
 
 
 def main():
@@ -100,36 +135,28 @@ def main():
     m = MON(d, la, sub)
     used = mon_to_sf2.used_instruments(m)
     instr_rows, wave_table, pulse_table, idx_map = mon_to_sf2.build_instruments(m, used)
-    sequences, orderlists = mon_to_sf2.build_structured(m, 0, idx_map)
 
-    # per-voice packed sequences in PLAY order (orderlist expanded)
-    segs = [[sequences[idx] for idx in orderlists[v]] or [bytes([0x7F])] for v in range(3)]
-    # native instrument = (AD, SR, waveform); wave program = held waveform; pulse = static
+    # native instrument = (AD, SR, waveform); wave program = held waveform (FM carries
+    # all per-frame pitch); pulse handled per-note via the bundle.
     instrs = [(ir.ad, ir.sr, (wave_table[ir.wave_idx][0] or 0x41)
                if ir.wave_idx < len(wave_table) else 0x41)
               for ir in instr_rows]
     wave_programs = [RN._wave_program(wave_table, ir.wave_idx) for ir in instr_rows]
     pulse_programs = [static_pulse((ir.pulse_width & 0x0F) << 8) for ir in instr_rows]
 
-    # B2: trace-driven ARP -> wave-table semitone-offset program (replaces the held
-    # waveform for instruments that arpeggiate). idx_map: MoN instr -> compact slot.
-    arps = extract_arps(m, sid, sub)
-    rev = {slot: mon_i for mon_i, slot in idx_map.items()}
-    for slot in range(len(instr_rows)):
-        mon_i = rev.get(slot)
-        if mon_i in arps:
-            wf = instrs[slot][2] or 0x41
-            wave_programs[slot] = [(wf, off) for off in arps[mon_i]] + [(0x7F, 0)]
-    if arps:
-        print(f"  arps: " + ", ".join(f"instr${i:02X}={arps[i]}" for i in arps))
+    # B2: per-NOTE FM bundles (slides + arps) selected via the $c0-$ff command channel
+    segs, bundles = build_native_song(m, sid, sub, idx_map, instr_rows)
 
     # redirect the shared build pipeline at the MoN driver copy
     B.GAL = MON_DIR
     B.TEMPO = m.speed + 1                       # native driver frames/row = tick frames
     print(f"{os.path.basename(sid)} sub{sub}: load=${la:04X} segs/voice={[len(s) for s in segs]} "
-          f"instr={len(instrs)} tempo={B.TEMPO}")
+          f"instr={len(instrs)} bundles={len(bundles)} tempo={B.TEMPO}")
+    if len(bundles) > 64:
+        print(f"  WARNING: {len(bundles)} bundles > 64 (command cap) — needs clustering")
 
-    gen, edit, mdp, seq0 = RN.gen_includes_song(segs, instrs, wave_programs, pulse_programs)
+    gen, edit, mdp, seq0 = RN.gen_includes_song(segs, instrs, wave_programs,
+                                                pulse_programs, bundles=bundles)
     # gen_includes_song writes ROM_DIR/layout.inc (hardcoded) — copy to the MoN driver
     shutil.copyfile(os.path.join(ROM_DIR, "layout.inc"), os.path.join(MON_DIR, "layout.inc"))
     write_mon_freqtable(m)
