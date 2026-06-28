@@ -57,10 +57,11 @@ pyscript/test_fc_parser.py pyscript/test_fc_writer.py pyscript/test_sf2_to_fc.py
 (16 passed). pyflakes gate green.
 
 ### Corpus note-for-note validation + instrument-0 HOLD fix (2026-06-28, NEW)
-Validated all 5 supported $1800 tunes note-for-note (scratchpad
-`fc_validate_corpus.py`: build D15 SF2 -> wrap as PSID probe (load=la, init=$1000,
-play=$1006, via `parse_sf2_blocks`+`PSIDHeader`) -> siddump probe AND original ->
-compare per-voice unbracketed note-onset sequences). **Found + fixed a real general
+Validated the whole supported corpus note-for-note via the committed tool
+`bin/fc_validate.py` (build D15 SF2 -> wrap as PSID probe load=la/init=$1000/
+play=$1006 via `parse_sf2_blocks`+`PSIDHeader` -> siddump probe AND original ->
+compare per-voice unbracketed note-onset sequences). Run: `py -3 bin/fc_validate.py`
+(whole corpus) or with a path for one tune. **Found + fixed a real general
 bug**: FC **instrument 0 is a HOLD sentinel** (a note on instr 0 makes no sound — it
 sustains the ringing note; at song start, nothing ringing = silence). The converter
 emitted them as audible notes (`_norm_waveform(0)`=$41) -> spurious B-3/B-1 onsets at
@@ -74,11 +75,14 @@ instr-0 holds fold into the prior note's duration (identical audio by constructi
 so `test_sf2_to_fc._audible` excludes instr-0; +3 new `pyscript/test_fc_to_sf2.py`.
 **19 FC tests green**, pyflakes clean. NOTE: Triangle was already EXACT pre-fix, so
 the SF2II-loaded `out/Tri_d15.sf2` is unchanged. Committed + pushed (`fd28e7a`).
-**Also validated the 4 NATIVE D64 modules** (scratchpad `fc_validate_native.py`):
-GAME_OVER + HEART all-3-voices EXACT; VOICES_IN_SPC + IT'S_A_SIN match off-by-≤1
+**Also validated the 4 NATIVE D64 modules** (now folded into `bin/fc_validate.py`):
+GAME_OVER + HEART all-3-voices EXACT; VOICES_IN_SPC + IT'S_A_SIN match off-by-1
 (40s-window edge). **The handoff's "IT'S_A_SIN has 1 silent voice" is RESOLVED** in
-the current D15 + instr-0-fix converter (osc1/2/3 = 271/334/64, all play). So the
-converter is note-accurate across all 5 supported SID rips AND all 4 native modules.
+the current D15 + instr-0-fix converter (osc1/2/3 = 271/334/64, all play).
+**`bin/fc_validate.py` overall: 25/27 voices note-accurate** across the 9-tune corpus.
+The 2 residual (Carillo osc1, Is_There osc3) are confirmed Stage-A per-frame-synth
+(0 glides in Carillo voice0 — it is the 25 instr-0 grace notes feeding FC's engine;
+static D11/D15 tables cannot reproduce them -> needs Stage B / a native FC driver).
 
 ### D15 long-intro path — MAJOR PROGRESS THIS SESSION
 - LEAD FIXED: --d15 with build_structured(merge_rests=False) keeps rest blocks as
