@@ -96,9 +96,9 @@ def pulse_program(s):
     if b7 & 0x10:                                       # SEEK: from 0, +B0/frame
         return [(0x80, 0x00, 1), (0x00, b0 & 0xFF, 0xFF), (0x7F, 0, 0)]
     if (b7 & 0x40) or (b1 & 0x40):                      # pulse waveform: PWM ramp
-        base = ((b0 & 0x0F) << 8) | ((b0 >> 4) << 4)
-        return [(0x80 | ((base >> 8) & 0x0F), base & 0xFF, 1),
-                (0x00, b6 & 0xF0, 0xFF), (0x7F, 0, 0)]
+        base = ((b0 & 0x0F) << 8) | b0                  # real holds $101 for b0=$01
+        return [(0x80 | ((base >> 8) & 0x0F), base & 0xFF, 4),  # hold base ~4 frames,
+                (0x00, b6 & 0xF0, 0xFF), (0x7F, 0, 0)]          # then ramp by B6&$F0
     return [(0x80, 0x08, 1), (0x7F, 0, 0)]              # non-pulse voice: static $800
 
 
