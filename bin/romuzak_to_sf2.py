@@ -137,18 +137,37 @@ def calibrate_base(rmz):
 
 
 def build_instruments(rmz):
-    """ROMUZAK 8-byte sound -> Driver 11 instrument + wave/pulse tables (first pass:
-    waveform / AD / SR / static pulse; B7 effects TODO)."""
+    """ROMUZAK 8-byte sound -> Driver 11 instrument + wave/pulse tables.
+    B7 effect byte (like FC mctrl): bit1=ARP (semitones in the next sound row),
+    bit4=SEEK (pulse-width ramps from 0 by B0/tick), bit6=waveform->pulse after 2
+    DUR. (bit0 DRUM + bit5 FILTER: TODO — need the drum table / trace-driven filter.)"""
     instr_rows, wave_table, pulse_table = [], [], []
-    for s in rmz.sounds:
+    for idx, s in enumerate(rmz.sounds):
         b0, b1, b2, b3, b4, b5, b6, b7 = s
         wf = _norm_waveform(b1)
         wave_row = len(wave_table)
-        wave_table.append((wf, 0x00))
-        wave_table.append((0x7F, wave_row))
+        if b7 & 0x02:                               # ARPEGGIO: 4 semitones in row idx+1
+            arp = rmz.sounds[idx + 1] if idx + 1 < len(rmz.sounds) else (0,) * 8
+            for sem in (arp[0] & 0x7F, arp[1] & 0x7F, arp[2] & 0x7F, arp[3] & 0x7F):
+                wave_table.append((wf, sem))
+            wave_table.append((0x7F, wave_row))
+        elif b7 & 0x40:                             # waveform -> $41 pulse after 2 DUR
+            wave_table.append((wf, 0x00))
+            wave_table.append((wf, 0x00))
+            prow = len(wave_table)
+            wave_table.append((0x41, 0x00))
+            wave_table.append((0x7F, prow))
+        else:                                       # plain held waveform
+            wave_table.append((wf, 0x00))
+            wave_table.append((0x7F, wave_row))
         pulse_row = len(pulse_table)
-        pw = (b0 & 0x0F) << 8 | (b0 >> 4) << 4      # B0: digit1=lo*16, digit2=hi
-        pulse_table.extend(_pulse_program(pw or 0x800, pulse_row))
+        pw = ((b0 & 0x0F) << 8) | ((b0 >> 4) << 4)  # B0: digit1=lo*16, digit2=hi
+        if b7 & 0x10:                               # SEEK: PW from 0, +B0 each tick
+            pulse_table.append((0x80, 0x00, 0x01))  # set 0
+            pulse_table.append((0x00, b0, 0x01))    # add B0
+            pulse_table.append((0x7F, 0x00, pulse_row + 1))  # loop the add (ramp)
+        else:
+            pulse_table.extend(_pulse_program(pw or 0x800, pulse_row))
         instr_rows.append(D11Instrument(
             ad=b2, sr=b3, flags=0x80, filter_idx=0x00,
             pulse_idx=pulse_row, wave_idx=wave_row,
