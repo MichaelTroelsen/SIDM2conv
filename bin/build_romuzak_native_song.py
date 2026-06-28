@@ -98,9 +98,14 @@ def pulse_program(s, tempo=4):
         return [(0x80 | ((b0 >> 8) & 0x0F), b0 & 0xFF, 1),  # set B0 ($028), then ramp
                 (0x00, b0 & 0xFF, 0xFF), (0x7F, 0, 0)]       # +B0/frame (reset per note)
     base = ((b0 & 0x0F) << 8) | b0                      # B0 base (real $101 for b0=$01)
-    if (b7 & 0x40) or (b1 & 0x40):                      # pulse waveform: PWM ramp
-        return [(0x80 | ((base >> 8) & 0x0F), base & 0xFF, max(1, tempo)),  # hold 1 row
-                (0x00, b6 & 0xF0, 0xFF), (0x7F, 0, 0)]                       # then ramp
+    if (b7 & 0x40) or (b1 & 0x40):                      # pulse waveform: TRIANGLE PWM
+        incr = b6 & 0xF0                                # ramp step (B6 high nibble)
+        span = (b6 & 0x0F) or 0xFF                      # steps each direction (B6 low nib)
+        down = (0x1000 - incr) & 0xFFF                  # negative add (12-bit wraparound)
+        return [(0x80 | ((base >> 8) & 0x0F), base & 0xFF, 1),  # base 1 frame (reset frame)
+                (0x00, incr & 0xFF, span),                          # ramp UP   span steps
+                ((down >> 8) & 0x0F, down & 0xFF, span),            # ramp DOWN span steps
+                (0x7F, 0, 0)]                                       # then freeze
     if b0 == 0:                                         # no pulse source: the real player
         return [(0x7F, 0, 0)]                           # leaves $D402/3 unchanged (freeze)
     # non-ramp with a B0 (incl. drums): static B0 base (snd 04 B0=$08 -> pw $808, matching
