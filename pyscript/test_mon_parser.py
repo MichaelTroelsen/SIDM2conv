@@ -79,3 +79,50 @@ def test_notes_match_siddump():
         total += n
         assert match == n, f"voice {v}: {match}/{n} (parser {mine[:n]} vs {real[v][:n]})"
     assert total_ok == total and total >= 24
+
+
+def test_tempo_model():
+    # the tempo gate fires the sequencer every speed+1 frames
+    m = _mon()
+    assert m.frames_per_tick == 4             # subtune 3 speed $03 -> 4 frames/tick
+
+
+def _siddump_onset_frames(seconds=12):
+    """-> {0,1,2: [(frame, abs_note), ...]} retriggered onsets (WF column present)."""
+    txt = subprocess.run(["py", "-3", "pyscript/siddump_complete.py", HAWKEYE,
+                          "-a3", f"-t{seconds}"], capture_output=True, text=True,
+                         cwd=ROOT).stdout
+    V = {0: [], 1: [], 2: []}
+    for ln in txt.splitlines():
+        if not ln.startswith("|") or "Frame" in ln:
+            continue
+        c = [x.strip() for x in ln.split("|")]
+        if len(c) < 6:
+            continue
+        try:
+            fr = int(c[1])
+        except ValueError:
+            continue
+        for vi, cell in enumerate(c[2:5]):
+            mm = re.match(r"^([0-9A-F]{4})\s+[A-G][-#]\d\s+([0-9A-F]{2})", cell)
+            if mm and mm.group(1) != "0000":
+                V[vi].append((fr, int(mm.group(2), 16) - 0x80))
+    return V
+
+
+def test_onset_timing_matches_siddump():
+    # frame-accurate timing: the parser's predicted onset frames (cumulative
+    # ticks * frames_per_tick) must match the real player's onsets exactly.
+    m = _mon()
+    real = _siddump_onset_frames()
+    fpt = m.frames_per_tick
+    for v in range(3):
+        frame = 0
+        mine = []
+        for ev in m.voices[v]:
+            if ev.retrig:
+                mine.append((frame, ev.note))
+            frame += ev.dur * fpt
+        rv = real[v]
+        assert len(mine) == len(rv), f"voice {v}: {len(mine)} onsets vs siddump {len(rv)}"
+        assert mine == rv, f"voice {v}: {mine} vs {rv}"

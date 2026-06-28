@@ -6,10 +6,15 @@ memory):
     ($80-$FF -> transpose/instrument base, $40-$7F -> other params) + $FE (pattern end)
     / $FF (orderlist loop).
   - PATTERNS (ptr from the $8409 table, pattern#*2): a byte stream where $00-$6F = NOTE,
-    $70-$7F = instrument program, $80-$BF = DURATION (for the following note), $C0-$DF =
-    slide, $E0-$FF = commands.
+    $70-$7F = instrument program, $80-$BF = DURATION, $C0-$DF = slide, $Ex = command,
+    $Fx-odd = filter, $Fx-even = legato note. $FE in an orderlist = SONG END (halt).
   - per-subtune orderlist-pointer sets are at `$7B00 | $83FC[subtune]` (6 bytes = 3 voice
     lo + 3 voice hi); per-subtune speed at `$83F5[subtune]`.
+
+TIMING (calibrated frame-exact vs siddump, all 3 voices): the sequencer advances one
+"tick" every speed+1 frames (the $9116 tempo gate). DURATION is STICKY ($90CE, set by
+$80-$BF bytes, a 2nd byte adds) and a note lasts (byte & $3F) ticks = that * (speed+1)
+frames. MONEvent.dur is in TICKS; multiply by MON.frames_per_tick for frames.
 
 This is the note/structure layer (Stage A). Effect/instrument semantics (slide, vibrato,
 filter, the $8580/$8589 programs) are decoded separately for timbre/Stage-B.
@@ -51,10 +56,11 @@ def _find(d, *sig):
 @dataclass
 class MONEvent:
     note: int = 0          # MoN note value (after transpose); -1 = none
-    dur: int = 1           # duration in ticks
+    dur: int = 1           # duration in TICKS (frames = dur * (speed+1))
     instr: int = 0         # current instrument program
     is_rest: bool = False
     slide: int = 0
+    retrig: bool = True    # False = legato ($F0-even prefix): freq change, no gate restart
 
 
 class MON:
@@ -66,6 +72,12 @@ class MON:
         self.subtune = subtune
         self.speed = self._u8(self.tbl_speed + subtune)
         self.voices = [self._voice(v) for v in range(3)]
+
+    @property
+    def frames_per_tick(self):
+        """The tempo gate (DEC $9116; reload $7AFE on <0; CMP $7AFE) fires the
+        sequencer once every speed+1 frames."""
+        return self.speed + 1
 
     # -- memory access (absolute SID addresses) --
     def _u8(self, a):
@@ -108,53 +120,112 @@ class MON:
     # -- decode one voice (orderlist -> patterns -> events) --
     def _voice(self, voice):
         ol = self._orderlist_ptr(voice)
-        events, transpose, instr = [], 0, 0
+        events = []
+        # Per-voice state that PERSISTS across patterns (mirrors the player's
+        # per-voice RAM): transpose ($90F9), slide base ($9139), instrument
+        # program, and the sticky stored duration $90CE (note dur = stored+1
+        # ticks; only $80-$BF bytes change it).
+        st = {'transpose': 0, 'slide_base': 0, 'instr': 0, 'stored': 0, 'slide': 0}
         i, guard = 0, 0
         while guard < 512:
             guard += 1
             b = self._u8(ol + i); i += 1
-            if b == 0xFF:                       # orderlist loop/end
+            if b == 0xFE:                       # $FE = SONG END (halts player globally)
                 break
-            if b == 0xFE:                       # pattern-end marker (skip)
+            if b == 0xFF:                       # $FF = orderlist loop point (one pass here)
+                break
+            if b >= 0x80:                       # $80-$FF: transpose ($90F9 = b & $1F)
+                st['transpose'] = b & 0x1F
                 continue
-            if b >= 0x80:                       # $80-$FF: transpose / instrument base
-                transpose = b & 0x1F
+            if b >= 0x60:                       # $60-$7F: slide base ($9139 = b & $0F)
+                st['slide_base'] = b & 0x0F
                 continue
-            if b >= 0x40:                       # $40-$7F: other per-voice param (skip)
+            if b >= 0x40:                       # $40-$5F: other per-voice param (skip)
                 continue
             # b < $40 = pattern number
-            instr = self._pattern(b, transpose, instr, events)
+            self._pattern(b, st, events)
         return events
 
-    def _pattern(self, pat, transpose, instr, events):
+    def _emit(self, events, raw, st, retrig):
+        note = (raw + st['transpose']) & 0x7F
+        events.append(MONEvent(note=note, dur=st['stored'] + 1, instr=st['instr'],
+                               slide=st['slide'], retrig=retrig))
+
+    def _pattern(self, pat, st, events):
+        """Faithful emulation of the player's pattern-byte dispatch chain
+        ($7C64..$7D22). One note is emitted per sequencer read; prefixes
+        (filter $Fx-odd, command $Ex, slide $Cx, instrument $7x, duration
+        $8x-$Bx) consume following bytes and modify state. $FF = pattern end."""
         ptr = self._u16(self.tbl_pat + pat * 2)
-        cur_dur = 1
-        j, guard = 0, 0
-        while guard < 1024:
+        j = [0]
+
+        def rd():
+            b = self._u8(ptr + j[0]); j[0] += 1
+            return b
+
+        guard, have, b = 0, False, 0
+        while guard < 4096:
             guard += 1
-            b = self._u8(ptr + j); j += 1
-            hi = b & 0xF0
-            if hi == 0xF0:                      # command (filter/gate) — may consume a byte
-                if b & 0x01:
-                    j += 1                       # filter writes a following byte
-                continue
-            if hi == 0xE0:                      # command (TBD) — consume nothing for now
-                continue
-            if 0xC0 <= b <= 0xDF:               # slide (sets state; not a note)
-                continue
-            if 0x70 <= b <= 0x7F:               # set instrument program
-                instr = b & 0x0F
-                continue
-            if 0x80 <= b <= 0xBF:               # DURATION for the following note
-                cur_dur = (b & 0x3F)
-                continue
-            if b == 0xFF:                        # safety: pattern terminator
+            if not have:
+                b = rd()
+            have = False
+            if b == 0xFF:                       # pattern terminator
                 break
-            # b <= $6F = NOTE
-            note = (b + transpose) & 0x7F
-            events.append(MONEvent(note=note, dur=max(1, cur_dur), instr=instr))
-            cur_dur = 1
-        return instr
+            # $7C64: high nibble $F0?
+            if (b & 0xF0) == 0xF0:
+                if b & 0x01:                    # $Fx odd -> filter: 1 value byte, redispatch next
+                    v = rd()
+                    if v == 0xFF:
+                        break
+                    b = rd()
+                    if b == 0xFF:
+                        break
+                    # fall through to $7C89 with the new b
+                else:                           # $F0 even -> legato note (no retrigger)
+                    nb = rd()
+                    if nb == 0xFF:
+                        break
+                    self._emit(events, nb, st, retrig=False)
+                    continue
+            # $7C89: $Ex command (reads 3 bytes; redispatches the middle one).
+            # Subtune 3 has none; handled minimally to stay in sync.
+            if (b & 0xF0) == 0xE0:
+                rd()                             # $912E param (idx+1)
+                redis = rd()                     # redispatched token (idx+2)
+                rd()                             # $912B param (idx+3)
+                if redis == 0xFF:
+                    break
+                b, have = redis, True
+                continue
+            # $Cx slide ($C0-$DF): set state, read next, fall through linearly
+            if (b & 0xE0) == 0xC0:
+                st['slide'] = (b & 0x1F) + st['slide_base']
+                b = rd()
+                if b == 0xFF:
+                    break
+            # $7x instrument program: set, read next, fall through
+            if (b & 0xF0) == 0x70:
+                st['instr'] = b & 0x0F
+                b = rd()
+                if b == 0xFF:
+                    break
+            # $8x-$Bx DURATION (sticky $90CE): stored=(b&$3F)-1, optional 2nd adds.
+            # Player then re-dispatches the following byte from $7C64.
+            if (b & 0xC0) == 0x80:
+                stored = (b & 0x3F) - 1
+                b = rd()
+                if b == 0xFF:
+                    break
+                if (b & 0xC0) == 0x80:           # 2nd duration byte adds
+                    stored = (stored + (b & 0x3F)) & 0xFF
+                    b = rd()
+                    if b == 0xFF:
+                        break
+                st['stored'] = stored & 0xFF
+                have = True
+                continue
+            # $7D22: NOTE
+            self._emit(events, b, st, retrig=True)
 
     def note_freq(self, note):
         return self._u16(self.tbl_freq + note * 2)
