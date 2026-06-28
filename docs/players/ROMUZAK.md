@@ -146,10 +146,16 @@ implemented this session:
   per note.
 
 Build: `py -3 bin/build_romuzak_native_song.py [SID]` → `out/romuzak/<tune>_native.sf2`.
-Verify: `py -3 bin/sf2ii_vs_real.py <orig>.sid <native>.sf2 28`.
-**Result (both tunes): osc2 (bass) byte-PERFECT on every register (freq/waveform/
-pulse/AD-SR 100%); osc3 (drums) ~99%.** Remaining: osc1 arp 2-frame onset (note-12)
-and a few post-intro arp frames; full GUI confirm. Plan:
+Verify: `py -3 bin/romuzak_native_validate.py <orig>.sid <seconds>` — a DETERMINISTIC
+full-length py65 trace diff (reliable, unlike the real-time `sf2ii_vs_real`, which
+drifts past ~16s). Measure within ONE song loop (Delirious loops ~110s, Road longer):
+a single per-voice alignment offset can't span the loop boundary.
+
+**Result — both tunes, full loop: freq + waveform + AD-SR = 100% on EVERY voice
+(byte-perfect).** Pulse 90-97% on the melodic voices (osc1/osc2); the drum voice's
+pulse is don't-care (noise). The arp is note-relative `note+[0,12,7,3]`; the drum is
+`(table+B6)<<8 | note_lo`; the pulse holds a B0 base then ramps by `B6 & $F0`. Remaining
+polish: the last few % of pulse, full GUI confirm in SF2II. Plan:
 `docs/analysis/ROMUZAK_SF2_DRIVER_PLAN.md`.
 
 ## Open issues / TODO
