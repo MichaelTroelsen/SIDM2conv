@@ -33,9 +33,10 @@ def _find_tables(d):
             ptr_ys.append(d[i + 1] | (d[i + 2] << 8))
     track = ptr_ys[0] if ptr_ys else 0
     sector = ptr_ys[1] if len(ptr_ys) > 1 else 0
+    drum = ptr_ys[2] if len(ptr_ys) > 2 else 0   # `LDA $2D60,Y` drum/arp ptr table
     # the 8-byte sound table sits right after the 64-entry ($80-byte) sector ptr table
     sound = (sector + 0x80) & 0xFFFF
-    return track, sector, sound
+    return track, sector, sound, drum
 
 
 def load_sid(path):
@@ -53,7 +54,7 @@ class RMZ:
     """Decoded ROMUZAK song: per-voice flat note events + 8-byte sounds."""
     def __init__(self, d, la):
         self.d, self.la = d, la
-        self.track_ptrs, self.sect_ptrs, self.sound_tbl = _find_tables(d)
+        self.track_ptrs, self.sect_ptrs, self.sound_tbl, self.drum_tbl = _find_tables(d)
         self.voices = [self._track(v) for v in range(3)]   # [(note,dur,instr,rest)]
         self.sounds = [tuple(self._u8(self.sound_tbl + s * 8 + k) for k in range(8))
                        for s in range(32)]
@@ -116,6 +117,18 @@ class RMZ:
                 break
         return ol
 
+    def drum_sequence(self, b4):
+        """Drum B4 -> [(waveform, value), ...] from $2D60[B4] until $FF."""
+        ptr = self._u16(self.drum_tbl + b4 * 2)
+        seq = []
+        i = 0
+        while i < 64:
+            wf = self._u8(ptr + i); i += 1
+            if wf == 0xFF:
+                break
+            seq.append((wf, self._u8(ptr + i))); i += 1
+        return seq
+
     def _track(self, v):
         """Flat note events for the (legacy) flat build."""
         seq = []
@@ -146,7 +159,13 @@ def build_instruments(rmz):
         b0, b1, b2, b3, b4, b5, b6, b7 = s
         wf = _norm_waveform(b1)
         wave_row = len(wave_table)
-        if b7 & 0x02:                               # ARPEGGIO: 4 semitones in row idx+1
+        if b7 & 0x01:                               # DRUM: per-frame (waveform,pitch)
+            for dwf, dval in (rmz.drum_sequence(b4) or [(wf, 0)]):
+                wave_table.append((dwf, 0x80 | (dval & 0x7F)))
+            settle = len(wave_table)
+            wave_table.append((0x10, 0x00))         # gate-off settle
+            wave_table.append((0x7F, settle))
+        elif b7 & 0x02:                             # ARPEGGIO: 4 semitones in row idx+1
             arp = rmz.sounds[idx + 1] if idx + 1 < len(rmz.sounds) else (0,) * 8
             for sem in (arp[0] & 0x7F, arp[1] & 0x7F, arp[2] & 0x7F, arp[3] & 0x7F):
                 wave_table.append((wf, sem))
