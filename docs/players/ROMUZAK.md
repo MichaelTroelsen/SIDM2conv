@@ -117,15 +117,27 @@ Validate note-for-note vs the original siddump with `py -3 bin/romuzak_validate.
 (per voice, ordered unbracketed note-onsets). Both tunes' **bass voice aligns at a
 modal semitone offset of exactly 0**, the probe note-count equals the original's (faithful
 timing), and **all three voices decode to exactly equal length** (synced tracks); the
-lead voices over-count because arps/drums emit extra onsets (see Sound fidelity below).
+all three voices decode to exactly equal length (synced tracks). osc1 over-counts only
+because the silent-intro rests emit gate-off silent anchors (inaudible; an FC-style
+artifact, not a pitch error — its real melody matches).
+
+**Drum pitch**: a `$2D60` drum entry's value is the frequency HIGH byte (the player keeps
+the note's freq LOW byte and rewrites the high byte per frame), mapped to the nearest PAL
+semitone — NOT a semitone directly (the old decode was ~7-30 semitones off). **Arp**: the
+4 offsets live in the NEXT sound record `[d0,d1,d2,d3]` (d3 = root 0) and play ROTATED
+RIGHT (root-first) `[0,d0,d1,d2]`. Both verified vs the osc3 trace -> osc3 freq **26% ->
+85%**, waveform **37% -> 99%**, note-onsets EXACT on both tunes.
 
 ## Open issues / TODO
 
-- ~~**Per-tune base + tempo**~~ — **FIXED**: base is a fixed 0 and tempo is derived
-  per-tune from the tick-divider reload (Road now tempo 4, base 0; bass validates).
-- **Sound fidelity**: arp *phase* + drum *pitch* are Stage-A-approximate (per-frame
-  effects, same limit as FC); add the **trace-driven pulse/filter** (`fc_to_sf2.
-  _trace_pulse_programs` / `_trace_filter_program`) and tune the arp order.
+- ~~**Per-tune base + tempo**~~ — **FIXED** (base 0; tempo = reload; bass validates).
+- ~~**Orderlist desync**~~ — **FIXED**: sector durations (PSE = embedded `b&$1F`, all
+  events `value+1` ticks, `$E0` glide = 0 rows) -> all 3 voices exactly equal length.
+- ~~**Arp phase + drum pitch**~~ — **FIXED** (drum value = freq high byte; arp rotated
+  root-first). osc2/osc3 now ~99%/EXACT.
+- **Remaining sound fidelity**: ±1-semitone drum jitter (the low-byte is approximated),
+  pulse-width MODULATION (B5/B6 vibrato), CONT/GLD/APM glides, and B7 bit5 FILTER (none
+  in Delirious). Optional: trace-driven pulse/filter (`fc_to_sf2._trace_*`).
 - **The other Fun_Fun players**: 12 are SoundMonitor (`$C000`), 1 unknown (Byte_Bite).
   ROMUZAK's `SOUNDMONITOR_CNV` is a reference for that RE.
 

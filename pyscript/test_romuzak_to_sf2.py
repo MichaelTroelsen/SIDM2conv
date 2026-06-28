@@ -94,6 +94,24 @@ def test_voices_equal_length():
     assert total(1) == total(2)
 
 
+def test_drum_value_is_freq_hibyte():
+    # a drum table value is the freq HIGH byte -> nearest PAL semitone, NOT a
+    # semitone directly. B4=2 [$40,$08,$06,$04] -> B-5,~C-3,G-2,~C#2 (the osc3 trace).
+    assert R._drum_semitone(0x40) == 71            # B-5
+    assert R._drum_semitone(0x06) == 31            # G-2
+    assert R._drum_semitone(0x40) != 0x40          # not the raw value
+
+
+def test_arp_plays_root_first():
+    # arp data 0C 07 03 00 ([12,7,3,0], root last) plays rotated right -> [0,12,7,3]
+    rmz, _ = _rmz()
+    assert rmz.sounds[7] == (0x0C, 0x07, 0x03, 0x00, 0x0C, 0x07, 0x03, 0x00)
+    ir, wt, pt = R.build_instruments(rmz)
+    wrow = ir[6].wave_idx                            # snd 06 = ARP (B7 $42)
+    offs = [wt[wrow + k][1] & 0x7F for k in range(4)]
+    assert offs == [0, 12, 7, 3]
+
+
 def test_emit_parseable_sf2():
     from sidm2.sf2_parser import parse_sf2_blocks, SF2DriverInfo
     rmz, la = _rmz()

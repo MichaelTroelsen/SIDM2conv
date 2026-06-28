@@ -17,8 +17,18 @@ from sidm2.sid_parser import SIDParser
 from sidm2.galway_to_driver11 import (
     D11Instrument, D11Row, GalwayDriver11Song,
     SF2_NOTE_MIN, SF2_NOTE_MAX, SF2_GATE_ON, SF2_GATE_OFF,
-    _norm_waveform, _pulse_program,
+    _norm_waveform, _pulse_program, _nearest_pal,
 )
+
+
+def _drum_semitone(value):
+    """A drum table entry's value is the frequency HIGH byte (the player keeps the
+    note's freq LOW byte and overwrites the high byte per frame); map it to the
+    nearest absolute SF2 semitone via the PAL freq table. (RE'd from the $30EB note
+    engine + verified vs the original osc3 drum trace: B4=2 [$40,$08,$06,$04] ->
+    B-5,C-3,G-2,C#2.) The old code treated the value as a semitone directly (wrong)."""
+    semi, _ = _nearest_pal((value << 8) | 0x80)
+    return max(0, min(95, semi))
 from sidm2.galway_driver11_emitter import emit_driver11_sf2
 
 def _find_tables(d):
@@ -185,14 +195,18 @@ def build_instruments(rmz):
         wf = _norm_waveform(b1)
         wave_row = len(wave_table)
         if b7 & 0x01:                               # DRUM: per-frame (waveform,pitch)
+            wave_table.append((wf, 0x00))           # frame 0 = note pitch (the onset)
             for dwf, dval in (rmz.drum_sequence(b4) or [(wf, 0)]):
-                wave_table.append((dwf, 0x80 | (dval & 0x7F)))
+                wave_table.append((dwf, 0x80 | _drum_semitone(dval)))
             settle = len(wave_table)
             wave_table.append((0x10, 0x00))         # gate-off settle
             wave_table.append((0x7F, settle))
-        elif b7 & 0x02:                             # ARPEGGIO: 4 semitones in row idx+1
+        elif b7 & 0x02:                             # ARPEGGIO: offsets in next sound row
             arp = rmz.sounds[idx + 1] if idx + 1 < len(rmz.sounds) else (0,) * 8
-            for sem in (arp[0] & 0x7F, arp[1] & 0x7F, arp[2] & 0x7F, arp[3] & 0x7F):
+            # Stored [d0,d1,d2,d3] with d3 = root 0; the engine plays it ROTATED
+            # RIGHT (root-first) -> [d3,d0,d1,d2] = [0,12,7,3]. Verified vs trace:
+            # data 0C 07 03 00 on note C-5 -> C-5,C-6,G-5,D#5 (offsets 0,12,7,3).
+            for sem in (arp[3] & 0x7F, arp[0] & 0x7F, arp[1] & 0x7F, arp[2] & 0x7F):
                 wave_table.append((wf, sem))
             wave_table.append((0x7F, wave_row))
         elif b7 & 0x40:                             # waveform -> $41 pulse after 2 DUR
