@@ -57,3 +57,22 @@ def test_real_instrument_change_still_emits_setinstr():
     ], base=0)
     ons = _note_ons(rows)
     assert [r.instrument for r in ons] == [1, 2]
+
+
+def test_long_rest_run_broken_with_silent_anchors():
+    # a voice silent for 200 ticks (note >= NUM_NOTES is a rest) then a note.
+    rows = [FCNote(note=99, dur=199, instr=0), FCNote(note=20, dur=0, instr=3)]
+    assert F._has_long_rest_run(rows) is True
+    out = F.build_track(rows, base=0, silent_idx=7)
+    anchors = [r for r in out if r.note == 1 and r.instrument == 7]
+    assert len(anchors) >= 2                    # 200 / 64 -> a few anchors
+    # the real note after the run still re-asserts its own instrument
+    assert any(r.note not in (1,) and r.instrument == 3 for r in out)
+    # without a silent instrument, no anchors are inserted (plain rests)
+    plain = F.build_track(rows, base=0, silent_idx=None)
+    assert all(r.instrument != 7 for r in plain)
+
+
+def test_short_rests_get_no_anchors():
+    rows = [FCNote(note=99, dur=10, instr=0), FCNote(note=20, dur=0, instr=1)]
+    assert F._has_long_rest_run(rows) is False

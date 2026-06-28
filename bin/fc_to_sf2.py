@@ -206,20 +206,71 @@ def build_structured(fc, base, merge_rests=True):
     return sequences, orderlists
 
 
-def build_track(rows, base):
+# A long unbroken run of note-off rows (a voice with a long silent intro, e.g.
+# Triangle_Intro's lead is silent for ~288 ticks) STALLS playback in stock SID
+# Factory II: the voice never advances past the rests, so it stays silent the
+# whole song (the bundled driver's note-off hold counter, INC'd by every $00,
+# suppresses sequence advance). The raw driver run by siddump plays it fine, so
+# the data is correct — it is an SF2II-side stall. We break any rest run longer
+# than this many rows with a SILENT anchor note (a real note event on a
+# waveform-$00 instrument: it makes no sound but resets the hold counter so
+# playback advances). USER-CONFIRMED to un-stall the lead in real SF2II.
+_MAX_REST_RUN = 64
+
+
+def _append_silent_instrument(instr_rows, wave_table, pulse_table):
+    """Append a silent instrument (wave program writes $00 to the control reg =
+    gate off / no waveform = no sound) for rest-run anchors. Returns its index."""
+    wrow = len(wave_table)
+    wave_table.append((0x00, 0x00))            # silent: no waveform, gate off
+    wave_table.append((0x7F, wrow))
+    idx = len(instr_rows)
+    instr_rows.append(D11Instrument(ad=0x00, sr=0x00, flags=0x80, filter_idx=0x00,
+                                    pulse_idx=0, wave_idx=wrow, pulse_width=0x00))
+    return idx
+
+
+def _has_long_rest_run(notes):
+    """True if a voice has a contiguous note-off run >= _MAX_REST_RUN rows (which
+    would stall it in SF2II — see _MAX_REST_RUN)."""
+    run = 0
+    for n in notes:
+        if n.is_rest:
+            run += max(1, n.dur + 1)
+            if run >= _MAX_REST_RUN:
+                return True
+        else:
+            run = 0
+    return False
+
+
+def build_track(rows, base, silent_idx=None):
     """Flatten FCNote rows -> Driver 11 sequence rows (note + sustain/rest rows).
 
     An FC note of duration ``dur`` plays for ``dur+1`` player ticks (the counter
     runs dur..0..-1), so it maps to ``dur+1`` Driver 11 rows. One row == one
     player tick; the master-speed frames/tick is carried by the song tempo.
+
+    When ``silent_idx`` is given, runs of more than ``_MAX_REST_RUN`` note-off
+    rows are broken with a silent anchor note (see _MAX_REST_RUN) so a long
+    silent intro doesn't stall the voice in SF2II.
     """
     out = []
     cur_instr = None
+    rest_run = 0
     for n in rows:
         nrows = max(1, n.dur + 1)
         if n.is_rest:
-            out.extend(D11Row(note=SF2_GATE_OFF) for _ in range(nrows))
+            for _ in range(nrows):
+                if silent_idx is not None and rest_run >= _MAX_REST_RUN:
+                    out.append(D11Row(note=1, instrument=silent_idx))
+                    cur_instr = silent_idx          # next note re-asserts its own
+                    rest_run = 0
+                else:
+                    out.append(D11Row(note=SF2_GATE_OFF))
+                    rest_run += 1
             continue
+        rest_run = 0
         if n.instr == 0:
             # instr 0 = HOLD the current note (sustain, no retrigger — see
             # _block_rows); at song start this is silence.
@@ -243,7 +294,13 @@ def fc_to_song(fc):
     # to get (speed+1) frames/row we set tempo == speed.
     tempo = max(1, fc.speed)
     instr_rows, wave_table, pulse_table = build_instruments(fc, base)
-    tracks = [build_track(v, base) for v in fc.voices]
+    # A voice with a long silent intro stalls in SF2II; if any voice has one, add
+    # a silent instrument and break the long rest runs with anchors (see
+    # _MAX_REST_RUN). Only when needed, so simple tunes stay anchor-free.
+    silent_idx = None
+    if any(_has_long_rest_run(v) for v in fc.voices):
+        silent_idx = _append_silent_instrument(instr_rows, wave_table, pulse_table)
+    tracks = [build_track(v, base, silent_idx) for v in fc.voices]
     return GalwayDriver11Song(
         instruments=instr_rows, wave_table=wave_table, pulse_table=pulse_table,
         tracks=tracks, tempo=tempo, pitch_base=base, subtune=0)

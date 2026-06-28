@@ -117,12 +117,18 @@ def sf2_to_fcsong(sf2_bytes: bytes, template: FCSong) -> FCSong:
 
     base = calibrate_base(template.freq_lo, template.freq_hi) - 1
 
+    # fc_to_sf2 may append a synthetic SILENT instrument (index past the real FC
+    # instruments) for rest-run anchors that un-stall long silent intros in SF2II.
+    # Those anchor notes make no sound, so map them back to rests — they must not
+    # round-trip into the FC module as real notes.
+    n_fc_instr = len(template.instruments)
+
     voices: List[List[FCNote]] = []
     for v in range(3):
         notes: List[FCNote] = []
         for note, instr, rows, tie in _track_events(sf2, off, di, v):
             dur = max(0, min(rows - 1, 0x3F))
-            if note == 0x00 or note >= 0x70:           # note-off / out of range -> rest
+            if note == 0x00 or note >= 0x70 or instr >= n_fc_instr:  # off/oor/anchor -> rest
                 fc_note = REST_NOTE
             else:
                 fc_note = (note - base - 1) & 0xFF
