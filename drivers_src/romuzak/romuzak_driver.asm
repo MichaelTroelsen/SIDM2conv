@@ -421,9 +421,11 @@ ws_write:
         jmp ws_l
 ws_done:
         rts
-; DRUM wave row: col1 = freq HIGH byte (write to vfreq_hi, KEEP vfreq_lo = the
-; note's freq low byte set on note-on -> freq = drum_hi<<8 | note_lo, exactly like
-; the ROMUZAK player). col1 $00 = keep current vfreq (the onset / gate-off settle).
+; DRUM wave row: col1 = freq HIGH byte written to vfreq_hi, KEEPING vfreq_lo = the
+; note's freq low byte (set on note-on) -> freq = drum_hi<<8 | note_lo. col1 $00 =
+; keep the current vfreq (the onset / gate-off settle). NOTE: the real player adds a
+; per-drum base octave to some drums (B4=1 is +$04xx); cracking that exactly needs
+; the drum-engine disasm (a documented residual -- ~13% of osc3 frames).
 ws_drum:                         ; Y still = resolved row (ws_row) from ws_have
         lda WAVE+256,y           ; col1 = freq high byte
         beq ws_w404              ; 0 -> keep note pitch (onset / settle)

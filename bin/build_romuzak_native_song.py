@@ -72,14 +72,16 @@ def _wave_program(wave_table, start):
     return prog or [(0x41, 0x00), (0x7F, 0)]
 
 
-def drum_wave_program(rmz, b4, wf):
+def drum_wave_program(rmz, b4, b6, wf):
     """Native drum program: onset row (note pitch, kept) + one row per drum-table
-    entry carrying the freq HIGH byte (driver's drum mode), a gate-off settle, then
-    a $7f loop on the settle. The driver keeps the note's freq LOW byte, so the
-    played freq = drum_hi<<8 | note_lo, exactly like the ROMUZAK player."""
+    entry carrying the freq HIGH byte (driver's drum mode), then a $7f loop on the
+    whole cycle. The driver keeps the note's freq LOW byte, so freq = drum_hi<<8 |
+    note_lo. The played HIGH byte = drum_table_value + B6 (the sound's byte 6, the
+    'freq-drum' offset) -- verified vs trace: snd 02 B6=$04 -> table+4 = $2C/$0A/...,
+    snd 04 B6=$00 -> table unchanged = $40/$08/..."""
     prog = [(wf or 0x11, 0x00)]                       # onset: keep note pitch 1 frame
     for dwf, dval in (rmz.drum_sequence(b4) or [(wf, 0)]):
-        prog.append((dwf & 0xFF, dval & 0xFF))        # freq HIGH byte per frame
+        prog.append((dwf & 0xFF, (dval + b6) & 0xFF))  # freq HIGH byte = table + B6
     prog.append((0x7F, 0))                            # loop the WHOLE cycle (onset +
     return prog                                       #   table repeats, per the trace)
 
@@ -213,7 +215,7 @@ def main():
     for i in range(min(len(instr_rows), 32)):
         s = rmz.sounds[i]
         if s != (0xFF,) * 8 and (s[7] & 0x01):
-            wave_programs[i] = drum_wave_program(rmz, s[4], instrs[i][2])
+            wave_programs[i] = drum_wave_program(rmz, s[4], s[6], instrs[i][2])
             drum_set.add(i)
 
     B.TEMPO = find_tempo(d) + 1          # native driver: frames/row = tick frames
