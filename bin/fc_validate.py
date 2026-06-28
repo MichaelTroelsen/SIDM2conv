@@ -54,7 +54,7 @@ def _psid(data, load, init, play):
 def _probe(d, la):
     """Convert FC data -> D15 SF2 -> PSID probe (init=$1000/play=$1006)."""
     fc = parse_fc(d, la)
-    song = fc_to_song(fc)
+    song = fc_to_song(fc, d)
     silent_idx = len(song.instruments) - 1
     seqs, ols = build_structured(fc, song.pitch_base, silent_idx, merge_rests=False)
     sf2 = emit_driver11_sf2(song, template_path=D15_TEMPLATE,

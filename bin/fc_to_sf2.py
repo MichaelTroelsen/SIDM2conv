@@ -84,7 +84,78 @@ def _instr_change(n_instr, cur_instr):
     return None, cur_instr
 
 
-def build_instruments(fc, base):
+def _trace_pulse_programs(sid_data, la, fc):
+    """Trace the ORIGINAL FC SID and capture each pulse instrument's real per-frame
+    pulse-width sweep, returned as {instr_idx: [(col0,col1,col2), ...]} Driver-11
+    pulse programs. FC sweeps the pulse width per note (e.g. $100->$4A0 in an
+    8-frame cycle); the hardcoded triangle PWM can't match it, so replay the real
+    trajectory. An instrument is identified in the trace by its initial pulse value
+    (byte [0] << 8), which the player reloads on each note-on with that instrument.
+    """
+    import subprocess
+    from scripts.sf2_to_sid import PSIDHeader
+    h = PSIDHeader(load_address=la, init_address=la, play_address=la + 6)
+    h.songs = 1
+    h.start_song = 1
+    tmp = os.path.join('out', '_pulsetrace.sid')
+    os.makedirs('out', exist_ok=True)
+    open(tmp, 'wb').write(h.to_bytes() + sid_data)
+    txt = subprocess.run(['py', '-3', 'pyscript/siddump_complete.py', tmp, '-t8'],
+                         capture_output=True, text=True).stdout
+    V = {0: [], 1: [], 2: []}                          # per voice: (pulse12, ctl)
+    for ln in txt.splitlines():
+        if not ln.startswith('|') or 'Frame' in ln:
+            continue
+        c = [x.strip() for x in ln.split('|')]
+        if len(c) < 6:
+            continue
+        for vi in range(3):
+            t = c[2 + vi].split()
+            V[vi].append((t[-1] if t else '...', t[3] if len(t) > 3 else '..'))
+
+    def capture(target_hi):
+        for vi in range(3):
+            seq = V[vi]
+            for i in range(1, len(seq) - 18):
+                pul, ctl = seq[i]
+                try:
+                    pv = int(pul, 16)
+                except ValueError:
+                    continue
+                if (pv >> 8) == target_hi and ctl not in ('..', '00'):
+                    traj = []
+                    for j in range(i, i + 18):
+                        p = seq[j][0]
+                        try:
+                            traj.append(int(p, 16))
+                        except ValueError:
+                            traj.append(traj[-1] if traj else pv)
+                    return traj
+        return None
+
+    progs = {}
+    for idx, ins in enumerate(fc.instruments):
+        if not (ins.waveform & 0x40) or ins.pulse == 0:
+            continue
+        traj = capture(ins.pulse)
+        if not traj:
+            continue
+        # one cycle = up to where the width returns near the initial (the per-note
+        # reset), else the whole captured window held at the end.
+        clen = len(traj)
+        for k in range(1, len(traj)):
+            if abs(traj[k] - traj[0]) <= 0x40:
+                clen = k
+                break
+        rows = [(0x80 | ((traj[0] >> 8) & 0x0F), traj[0] & 0xFF, 0x01)]
+        for k in range(clen - 1):
+            dv = (traj[k + 1] - traj[k]) & 0xFFF
+            rows.append(((dv >> 8) & 0x0F, dv & 0xFF, 0x01))
+        progs[idx] = rows                              # caller appends + adds the $7F loop
+    return progs
+
+
+def build_instruments(fc, base, pulse_progs=None):
     """FC 8-byte sound records -> Driver 11 instrument rows + wave/pulse tables.
 
     Three timbre classes are reproduced as Driver 11 wave programs (col1 $00-$7f
@@ -96,8 +167,9 @@ def build_instruments(fc, base):
     - Plain: a single waveform held.
     """
     fc_instruments = fc.instruments
+    pulse_progs = pulse_progs or {}
     instr_rows, wave_table, pulse_table = [], [], []
-    for ins in fc_instruments[:32]:
+    for idx, ins in enumerate(fc_instruments[:32]):
         wf = _norm_waveform(ins.waveform)
         wave_row = len(wave_table)
         if ins.mctrl & 0x10:                          # drum
@@ -124,7 +196,11 @@ def build_instruments(fc, base):
             wave_table.append((wf, 0x00))
             wave_table.append((0x7F, wave_row))
         pulse_row = len(pulse_table)
-        if ins.waveform & 0x40:                  # pulse waveform -> PWM sweep
+        traced = pulse_progs.get(idx)
+        if traced is not None:                   # trace-driven: replay the real sweep
+            pulse_table.extend(traced)
+            pulse_table.append((0x7F, 0x00, pulse_row))   # loop the captured cycle
+        elif ins.waveform & 0x40:                # pulse waveform -> hardcoded PWM sweep
             pulse_table.extend(_pwm_program(pulse_row))
         else:
             pulse_table.extend(_pulse_program(0x800, pulse_row))
@@ -298,7 +374,7 @@ def build_track(rows, base, silent_idx=None):
     return out
 
 
-def fc_to_song(fc):
+def fc_to_song(fc, sid_data=None):
     # -1: the PAL-table calibration lands a semitone high vs Driver 11's own
     # freq table (confirmed by a clean from-INIT siddump: FC note 24 must emit
     # SF2 note B-1 / $0430, not C-2). So nudge the modal base down one.
@@ -308,7 +384,10 @@ def fc_to_song(fc):
     # tempo value V holds each row V+1 frames (measured: V=2 -> 3 frames/row), so
     # to get (speed+1) frames/row we set tempo == speed.
     tempo = max(1, fc.speed)
-    instr_rows, wave_table, pulse_table = build_instruments(fc, base)
+    # With the original SID data, trace each pulse instrument's real per-frame
+    # width sweep and replay it (much closer than the hardcoded triangle PWM).
+    pulse_progs = _trace_pulse_programs(sid_data, fc.load, fc) if sid_data else None
+    instr_rows, wave_table, pulse_table = build_instruments(fc, base, pulse_progs)
     # Always append the silent anchor instrument (LAST instrument) so both the flat
     # and structured paths can break long rest runs / all-rest blocks that would
     # otherwise stall a voice in SF2II (see _MAX_REST_RUN). Unused if a tune has no
@@ -334,7 +413,7 @@ def main():
         return 2
     use_d15 = '--d15' in sys.argv
     fc = parse_fc(d, la)
-    song = fc_to_song(fc)
+    song = fc_to_song(fc, d)                           # d -> trace-driven pulse sweeps
     silent_idx = len(song.instruments) - 1            # the appended silent anchor
     # Structured emit (both drivers): one sequence per FC block + a real per-voice
     # orderlist, so the SF2 editor shows the song's actual patterns. Anchors un-stall
