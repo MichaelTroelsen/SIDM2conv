@@ -10,7 +10,6 @@ Usage:  py -3 bin/romuzak_to_sf2.py SID/Fun_Fun/Delirious_9_tune_1.sid [out.sf2]
 """
 import os
 import sys
-from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -94,28 +93,34 @@ class RMZ:
                     out.append([0, cur_dur, cur_snd, True])
         return out
 
-    def _track(self, v):
-        """Walk a track orderlist -> flat note events (repeat + transposes applied)."""
+    def _orderlist(self, v):
+        """Walk a track orderlist -> [(sector, note_transpose, sound_transpose)]
+        (repeats expanded; transposes tracked). The real song structure."""
         addr = self._u16(self.track_ptrs + v * 2)
-        seq = []
+        ol = []
         i, ntr, str_, guard = 0, 0, 0, 0
         while guard < 1024:
             guard += 1
             b = self._u8(addr + i); i += 1
             if b < 0x40:                          # play sector
-                seq += self._sector(self._u16(self.sect_ptrs + b * 2), ntr, str_)
+                ol.append((b, ntr, str_))
             elif b < 0x80:                        # repeat next sector (b-$40+1)x
                 rep = b - 0x40 + 1
                 sec = self._u8(addr + i); i += 1
-                ev = self._sector(self._u16(self.sect_ptrs + sec * 2), ntr, str_)
-                for _ in range(rep):
-                    seq += [list(e) for e in ev]
+                ol += [(sec, ntr, str_)] * rep
             elif b < 0xC0:                        # note transpose
                 ntr = b - 0x80
             elif b < 0xFC:                        # sound transpose
                 str_ = b - 0xC0
             else:                                 # fc goto / fd / fe / ff -> end
                 break
+        return ol
+
+    def _track(self, v):
+        """Flat note events for the (legacy) flat build."""
+        seq = []
+        for sector, ntr, str_ in self._orderlist(v):
+            seq += self._sector(self._u16(self.sect_ptrs + sector * 2), ntr, str_)
         return seq
 
 
@@ -183,6 +188,58 @@ def build_track(events, base, silent_idx):
     return out
 
 
+def _sector_rows(events, base, silent_idx):
+    """One sector's note events -> Driver 11 rows. cur_instr=None per sector so each
+    sequence sets its own instrument (dedup-safe); silent anchors for all-rest sectors
+    (the PSE-00 silent intro) — exactly like fc_to_sf2._block_rows."""
+    out = []
+    cur = None
+    rest_run = 0
+    for note, dur, instr, is_rest in events:
+        nrows = max(1, dur)
+        if is_rest:
+            for _ in range(nrows):
+                if rest_run >= _MAX_REST_RUN:
+                    out.append(D11Row(note=1, instrument=silent_idx)); cur = silent_idx; rest_run = 0
+                else:
+                    out.append(D11Row(note=SF2_GATE_OFF)); rest_run += 1
+            continue
+        rest_run = 0
+        n = max(SF2_NOTE_MIN, min(note + base, SF2_NOTE_MAX))
+        inst = None
+        if instr != cur:
+            inst = instr; cur = instr
+        out.append(D11Row(note=n, instrument=inst))
+        out.extend(D11Row(note=SF2_GATE_ON) for _ in range(nrows - 1))
+    if silent_idx is not None and out and all(r.note == SF2_GATE_OFF for r in out):
+        out[-1] = D11Row(note=1, instrument=silent_idx)
+    return out
+
+
+def build_structured(rmz, base, silent_idx):
+    """Emit one (deduplicated) Driver 11 sequence per SECTOR instance + a per-voice
+    orderlist that replays them — so the SF2 editor shows the song's real patterns."""
+    from sidm2.galway_driver11_emitter import segment_track
+    seq_index = {}
+    sequences = []
+    orderlists = [[], [], []]
+
+    def add(rows, v):
+        for pk in segment_track(rows):
+            idx = seq_index.get(pk)
+            if idx is None:
+                idx = len(sequences)
+                seq_index[pk] = idx
+                sequences.append(pk)
+            orderlists[v].append(idx)
+
+    for v in range(3):
+        for sector, ntr, str_ in rmz._orderlist(v):
+            ev = rmz._sector(rmz._u16(rmz.sect_ptrs + sector * 2), ntr, str_)
+            add(_sector_rows(ev, base, silent_idx), v)
+    return sequences, orderlists
+
+
 def _append_silent_instrument(instr_rows, wave_table, pulse_table):
     wrow = len(wave_table)
     wave_table.append((0x00, 0x00))
@@ -205,16 +262,16 @@ def main():
     base = calibrate_base(rmz)
     instr_rows, wave_table, pulse_table = build_instruments(rmz)
     silent_idx = _append_silent_instrument(instr_rows, wave_table, pulse_table)
-    tracks = [build_track(v, base, silent_idx) for v in rmz.voices]
-    # Tempo: ROMUZAK ticks the note counters off a ~6-frame divider (calibrated vs
-    # the original siddump — osc3 matches 113/113 at SF2II tempo 5). TODO: derive
-    # from the song's SET SPEED byte for per-tune correctness.
+    # Structured: one sequence per SECTOR + a real orderlist (the song's patterns),
+    # like fc_to_sf2. Tempo: ROMUZAK's ~6-frame tick (SF2II tempo 5, calibrated vs
+    # siddump). TODO: derive base + tempo from the song's SET SPEED for per-tune.
+    sequences, orderlists = build_structured(rmz, base, silent_idx)
     song = GalwayDriver11Song(
         instruments=instr_rows, wave_table=wave_table, pulse_table=pulse_table,
-        tracks=tracks, tempo=5, pitch_base=base, subtune=0)
-    print(f"load=${la:04X} base={base} voices={[len(v) for v in rmz.voices]} "
-          f"sounds={sum(1 for s in rmz.sounds if s != (0xFF,)*8)}")
-    sf2 = emit_driver11_sf2(song)
+        tracks=[], tempo=5, pitch_base=base, subtune=0)
+    print(f"load=${la:04X} base={base} sectors/voice={[len(rmz._orderlist(v)) for v in range(3)]} "
+          f"sequences={len(sequences)} sounds={sum(1 for s in rmz.sounds if s != (0xFF,)*8)}")
+    sf2 = emit_driver11_sf2(song, sequences=sequences, orderlists=orderlists)
     os.makedirs(os.path.dirname(out) or '.', exist_ok=True)
     open(out, 'wb').write(sf2)
     print(f"emitted {len(sf2)} bytes -> {out}")
