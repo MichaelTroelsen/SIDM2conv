@@ -73,7 +73,12 @@ instr-0 grace notes = Stage-A timbre limitation, not a clean note bug. Round-tri
 instr-0 holds fold into the prior note's duration (identical audio by construction),
 so `test_sf2_to_fc._audible` excludes instr-0; +3 new `pyscript/test_fc_to_sf2.py`.
 **19 FC tests green**, pyflakes clean. NOTE: Triangle was already EXACT pre-fix, so
-the SF2II-loaded `out/Tri_d15.sf2` is unchanged. Committed (not pushed) — see Git.
+the SF2II-loaded `out/Tri_d15.sf2` is unchanged. Committed + pushed (`fd28e7a`).
+**Also validated the 4 NATIVE D64 modules** (scratchpad `fc_validate_native.py`):
+GAME_OVER + HEART all-3-voices EXACT; VOICES_IN_SPC + IT'S_A_SIN match off-by-≤1
+(40s-window edge). **The handoff's "IT'S_A_SIN has 1 silent voice" is RESOLVED** in
+the current D15 + instr-0-fix converter (osc1/2/3 = 271/334/64, all play). So the
+converter is note-accurate across all 5 supported SID rips AND all 4 native modules.
 
 ### D15 long-intro path — MAJOR PROGRESS THIS SESSION
 - LEAD FIXED: --d15 with build_structured(merge_rests=False) keeps rest blocks as
