@@ -95,11 +95,15 @@ def pulse_program(s):
     b0, b1, b6, b7 = s[0], s[1], s[6], s[7]
     if b7 & 0x10:                                       # SEEK: from 0, +B0/frame
         return [(0x80, 0x00, 1), (0x00, b0 & 0xFF, 0xFF), (0x7F, 0, 0)]
+    base = ((b0 & 0x0F) << 8) | b0                      # B0 base (real $101 for b0=$01)
     if (b7 & 0x40) or (b1 & 0x40):                      # pulse waveform: PWM ramp
-        base = ((b0 & 0x0F) << 8) | b0                  # real holds $101 for b0=$01
         return [(0x80 | ((base >> 8) & 0x0F), base & 0xFF, 4),  # hold base ~4 frames,
                 (0x00, b6 & 0xF0, 0xFF), (0x7F, 0, 0)]          # then ramp by B6&$F0
-    return [(0x80, 0x08, 1), (0x7F, 0, 0)]              # non-pulse voice: static $800
+    if b0 == 0:                                         # no pulse source: the real player
+        return [(0x7F, 0, 0)]                           # leaves $D402/3 unchanged (freeze)
+    # non-ramp with a B0 (incl. drums): static B0 base (snd 04 B0=$08 -> pw $808, matching
+    # the real drum frames byte-exactly even though it's noise).
+    return [(0x80 | ((base >> 8) & 0x0F), base & 0xFF, 1), (0x7F, 0, 0)]
 
 
 def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
