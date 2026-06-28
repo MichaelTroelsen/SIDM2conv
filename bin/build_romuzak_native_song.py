@@ -102,21 +102,6 @@ def pulse_program(s):
     return [(0x80, 0x08, 1), (0x7F, 0, 0)]              # non-pulse voice: static $800
 
 
-def arp_wave_program(rmz, idx, wf):
-    """Native arp program: a 2-frame onset at note-12 (the real player plays the note
-    one octave down before the chord cycle -- verified vs trace: note 3C arp body is
-    C-5/C-6/G-5/D#5 but frames 1-2 = C-4 = note-12), then the rotated-root chord
-    [0,d0,d1,d2] looping (loop skips the onset)."""
-    a = rmz.sounds[idx + 1] if idx + 1 < 32 else (0,) * 8
-    offs = [a[3] & 0x7F, a[0] & 0x7F, a[1] & 0x7F, a[2] & 0x7F]   # [0,12,7,3]
-    prog = [(wf or 0x41, 0xF4), (wf or 0x41, 0xF4)]               # onset: -12 (signed)
-    body = len(prog)
-    for o in offs:
-        prog.append((wf or 0x41, o))
-    prog.append((0x7F, body))                                    # loop the chord body
-    return prog
-
-
 def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
                       drum_set=frozenset(), multispeed=1):
     """Native ROMUZAK edit area: per-voice packed SECTOR sequences + column-major
@@ -270,8 +255,9 @@ def main():
         if s != (0xFF,) * 8 and (s[7] & 0x01):
             wave_programs[i] = drum_wave_program(rmz, s[4], s[6], instrs[i][2])
             drum_set.add(i)
-        elif s != (0xFF,) * 8 and (s[7] & 0x02):       # ARP: add the note-12 onset
-            wave_programs[i] = arp_wave_program(rmz, i, instrs[i][2])
+        # ARP keeps the Stage-A rotated-root body (note+[0,12,7,3], no onset): the real
+        # arp is note-relative (verified vs trace, both osc1 note C-5 and osc3 note C-4).
+        # The earlier -12 onset was overfit to osc1's opening and broke osc3 by an octave.
 
     B.TEMPO = find_tempo(d) + 1          # native driver: frames/row = tick frames
     print(f"{os.path.basename(sid)}: load=${la:04X} segs/voice={[len(s) for s in segs]} "
