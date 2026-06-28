@@ -195,10 +195,19 @@ notes; my `8F 00 8F 00…` packing is functionally identical, verified).
     help; arp/lead (with rest intros) on X=2 are fine. So it's an **X=2-first-voice
     + immediate-content** state-machine timing quirk ($5b,x cycles 2->1[fetch]->0
     [gate-on], init=2). Static analysis says it should work; dynamics disagree.
-    **Needs cycle-level 6502 single-step tracing** of the X=2 first-frames path
-    ($104d fetch / $10ee gate-on / $12d8 DEC) — black-box capture testing is
-    exhausted. Default stays D11 flat; `--d15` = experimental long-intro path
-    (lead+arp correct, bass open).
+    **6502-traced (py65) and the build is CORRECT.** Single-stepping the D15
+    driver on out/Tri_d15.sf2: frame2 X=2 fetches its orderlist, frame4 gate-on,
+    frame5 osc3 ctrl=$41 (pulse+gate). siddump (its own emulator) AND reSID/WAV
+    confirm: osc3 plays 8 bass notes (B-1,C-2,D-2,E-2,F#2,…). So all three voices
+    play in THREE independent cycle-accurate emulators. The SF2II_dbg "osc3 dead"
+    disagrees with all of them. A CMP-carry-bug scan of the whole play path found
+    only 2 carry-discrepant compares ($1076, $104f) and BOTH are followed by BNE
+    (Z-based, carry unused) — so the SF2II CMP bug does NOT break osc3. Conclusion:
+    the SF2II_dbg auto-play capture is the outlier (it has misled before), the build
+    is logically correct, and it should play in the real SF2II GUI — TO BE CONFIRMED
+    BY EAR (load out/Tri_d15.sf2, F1). Render to listen: out/_d15_probe.wav (the
+    D15 driver via reSID, init=$1000/play=$1006). py65 tracer is the harness if a
+    real SF2II-emulator quirk turns up. Default stays D11 flat; `--d15` experimental.
 The default emit stays **Driver 11 flat** (works for most FC songs; only long silent
 intros break) until the D15 emitter adaptation is done.
 
