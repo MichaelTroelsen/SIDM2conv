@@ -141,41 +141,55 @@ def build_instruments(fc, base):
     return instr_rows, wave_table, pulse_table
 
 
-def _block_rows(block_notes, base, cur_instr):
+def _block_rows(block_notes, base, cur_instr, silent_idx=None):
     """Convert one FC block's notes to Driver 11 rows, threading instrument state
-    across blocks (returns updated cur_instr). Same note/rest/tie logic as
-    build_track, but per-block so the block stays its own short sequence."""
+    (returns updated cur_instr). Same note/rest/tie/anchor logic as build_track,
+    but per-block so the block stays its own short sequence. Callers pass
+    cur_instr=None per block so each sequence sets its own instrument on the first
+    note — the sequences are de-duplicated and replayed from different orderlist
+    positions, so a sequence that relied on a threaded instrument would sound with
+    the wrong (or silent-anchor) timbre in some positions."""
     out = []
+    rest_run = 0
     for n in block_notes:
         nrows = max(1, n.dur + 1)
         if n.is_rest:
-            out.extend(D11Row(note=SF2_GATE_OFF) for _ in range(nrows))
+            for _ in range(nrows):
+                if silent_idx is not None and rest_run >= _MAX_REST_RUN:
+                    out.append(D11Row(note=1, instrument=silent_idx))
+                    cur_instr = silent_idx
+                    rest_run = 0
+                else:
+                    out.append(D11Row(note=SF2_GATE_OFF))
+                    rest_run += 1
             continue
+        rest_run = 0
         if n.instr == 0:
-            # FC instrument 0 = HOLD: the note's pitch is ignored and the voice
-            # keeps ringing the current note (verified vs original siddump — the
-            # real player neither re-gates nor changes frequency on instr 0; the
-            # mid-phrase instr-0 "grace notes" are inaudible holds, and at song
-            # start, with nothing playing, instr 0 is silence). Emit as sustain.
+            # FC instrument 0 = HOLD (sustain the current note — see build_track).
             out.extend(D11Row(note=SF2_GATE_ON) for _ in range(nrows))
             continue
         note = max(SF2_NOTE_MIN, min(n.note + base + 1, SF2_NOTE_MAX))
         inst, cur_instr = _instr_change(n.instr, cur_instr)
         out.append(D11Row(note=note, instrument=inst, tie=n.tie))
         out.extend(D11Row(note=SF2_GATE_ON) for _ in range(nrows - 1))
+    # An all-note-off sequence stalls the D11 orderlist (it never advances past
+    # the rests); anchor the last row so the orderlist moves on.
+    if silent_idx is not None and out and all(r.note == SF2_GATE_OFF for r in out):
+        out[-1] = D11Row(note=1, instrument=silent_idx)
     return out, cur_instr
 
 
-def build_structured(fc, base, merge_rests=True):
+def build_structured(fc, base, silent_idx=None, merge_rests=True):
     """Preserve FC's block/orderlist structure: emit one (deduplicated) Driver 11
-    sequence per FC block instance, and a per-voice orderlist that replays them.
+    sequence per FC block instance, and a per-voice orderlist that replays them —
+    so the SF2 editor shows the song's real patterns. ``silent_idx`` enables the
+    rest-run / all-rest anchors (see _block_rows) that keep long silent intros and
+    rest blocks from stalling the voice.
 
     FC voices stagger their entries with a short rest block repeated many times
     (e.g. the lead is silent for 6x block-0). With ``merge_rests`` the rest-only
-    blocks are folded into the following content sequence (avoids all-rest
-    sequences but makes a long rest *prefix*); without it each rest block stays a
-    short separate sequence replayed by the orderlist (the Driver 15 idiom, cf.
-    the Mood example's repeated 64-rest sequence).
+    blocks are folded into the following content sequence; without it each rest
+    block stays a short separate sequence replayed by the orderlist.
     """
     from sidm2.galway_driver11_emitter import segment_track
     seq_index = {}
@@ -192,10 +206,11 @@ def build_structured(fc, base, merge_rests=True):
             orderlists[v].append(idx)
 
     for v in range(3):
-        cur_instr = None
         pending = []                                 # deferred rest-only blocks
         for block_notes in fc.voice_blocks[v]:
-            rows, cur_instr = _block_rows(block_notes, base, cur_instr)
+            # cur_instr=None per block: each sequence is self-contained (sets its
+            # own instrument) so de-dup + replay can't carry a stale instrument.
+            rows, _ = _block_rows(block_notes, base, None, silent_idx)
             if merge_rests and all(b.is_rest for b in block_notes):
                 pending += rows
                 continue
@@ -294,12 +309,11 @@ def fc_to_song(fc):
     # to get (speed+1) frames/row we set tempo == speed.
     tempo = max(1, fc.speed)
     instr_rows, wave_table, pulse_table = build_instruments(fc, base)
-    # A voice with a long silent intro stalls in SF2II; if any voice has one, add
-    # a silent instrument and break the long rest runs with anchors (see
-    # _MAX_REST_RUN). Only when needed, so simple tunes stay anchor-free.
-    silent_idx = None
-    if any(_has_long_rest_run(v) for v in fc.voices):
-        silent_idx = _append_silent_instrument(instr_rows, wave_table, pulse_table)
+    # Always append the silent anchor instrument (LAST instrument) so both the flat
+    # and structured paths can break long rest runs / all-rest blocks that would
+    # otherwise stall a voice in SF2II (see _MAX_REST_RUN). Unused if a tune has no
+    # long rests. main() reads its index as len(instruments) - 1.
+    silent_idx = _append_silent_instrument(instr_rows, wave_table, pulse_table)
     tracks = [build_track(v, base, silent_idx) for v in fc.voices]
     return GalwayDriver11Song(
         instruments=instr_rows, wave_table=wave_table, pulse_table=pulse_table,
@@ -321,23 +335,21 @@ def main():
     use_d15 = '--d15' in sys.argv
     fc = parse_fc(d, la)
     song = fc_to_song(fc)
-    print(f"load=${la:04X} instruments={len(fc.instruments)} "
-          f"base={song.pitch_base} tempo={song.tempo} driver={'15' if use_d15 else '11'}")
+    silent_idx = len(song.instruments) - 1            # the appended silent anchor
+    # Structured emit (both drivers): one sequence per FC block + a real per-voice
+    # orderlist, so the SF2 editor shows the song's actual patterns. Anchors un-stall
+    # long silent intros / rest blocks; the emitter lays sequences in fixed editor
+    # slots. USER-CONFIRMED: orderlist matches the song and it plays.
+    sequences, orderlists = build_structured(fc, song.pitch_base, silent_idx,
+                                             merge_rests=False)
+    print(f"load=${la:04X} instruments={len(fc.instruments)} base={song.pitch_base} "
+          f"tempo={song.tempo} driver={'15' if use_d15 else '11'} sequences={len(sequences)}")
     if use_d15:
-        # Driver 15 path: handles long silent intros (all-rest sequences), so emit
-        # FC's real block structure via the orderlist. D15 instrument columns +
-        # static pulse handled by instr_layout='d15'. See docs/players/FUTURECOMPOSER.md.
-        # No merge: keep rest blocks as short separate sequences replayed by the
-        # orderlist (the Driver 15 idiom). A long merged rest *prefix* breaks the
-        # voice on D15; short rest sequences play (fixes the lead's intro).
-        sequences, orderlists = build_structured(fc, song.pitch_base, merge_rests=False)
         tpl = 'G5/examples/Driver 15 Test - Mood.sf2'
         sf2 = emit_driver11_sf2(song, template_path=tpl, sequences=sequences,
                                 orderlists=orderlists, instr_layout='d15')
     else:
-        # Driver 11 (default): flat emit. arps/bass/drums play; a voice with a long
-        # silent intro plays wrong (use --d15 for those). See the doc.
-        sf2 = emit_driver11_sf2(song)
+        sf2 = emit_driver11_sf2(song, sequences=sequences, orderlists=orderlists)
     os.makedirs(os.path.dirname(out) or '.', exist_ok=True)
     open(out, 'wb').write(sf2)
     print(f"emitted {len(sf2)} bytes -> {out}")
