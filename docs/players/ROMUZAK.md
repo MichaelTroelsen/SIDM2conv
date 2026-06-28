@@ -151,12 +151,13 @@ full-length py65 trace diff (reliable, unlike the real-time `sf2ii_vs_real`, whi
 drifts past ~16s). Measure within ONE song loop (Delirious loops ~110s, Road longer):
 a single per-voice alignment offset can't span the loop boundary.
 
-**Result — both tunes, full loop: freq + waveform + AD-SR = 100% on EVERY voice
-(byte-perfect).** Pulse 90-97% on the melodic voices (osc1/osc2); the drum voice's
-pulse is don't-care (noise). The arp is note-relative `note+[0,12,7,3]`; the drum is
-`(table+B6)<<8 | note_lo`; the pulse holds a B0 base then ramps by `B6 & $F0`. Remaining
-polish: the last few % of pulse, full GUI confirm in SF2II. Plan:
-`docs/analysis/ROMUZAK_SF2_DRIVER_PLAN.md`.
+**Result — both tunes, full song loop: BYTE-PERFECT. freq + waveform + pulse + AD-SR =
+100% on EVERY voice.** Every SID register matches the original frame-for-frame. The
+mechanisms RE'd: freq via the exact `$2CA2` table; arp note-relative `note+[0,12,7,3]`;
+drum `(table+B6)<<8 | note_lo`; pulse PWM = a TRIANGLE (up `B6&$F0` × `B6&$0F` steps,
+then down), hold the base 1 frame; SEEK ramps `+B0`/frame and HOLDS the note's last
+frame (driver `VIFLAGS $10` + `zp_tcnt==1`/`vhold==0`). Only remaining: a hands-on GUI
+confirm in SF2II. Plan: `docs/analysis/ROMUZAK_SF2_DRIVER_PLAN.md`.
 
 ## Open issues / TODO
 
