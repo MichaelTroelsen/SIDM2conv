@@ -32,7 +32,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from pyscript.siddump_complete import (
     parse_sid_file, detect_note, format_voice_column, format_frame_row,
     Channel, Filter, SIDHeader, FREQ_TBL_LO, FREQ_TBL_HI, FILTER_NAMES,
-    run_siddump, main
+    run_siddump, main,
+    _bits, note_cents, bits_header, format_voice_bits, format_frame_row_bits,
+    WAVE_BITS, MODE_BITS, ROUTE_BITS,
 )
 from sidm2.errors import InvalidInputError
 
@@ -404,6 +406,61 @@ class TestFrameFormatting(unittest.TestCase):
 
         # Should contain profiling info (cycles, raster lines)
         self.assertIn('5000', output)
+
+
+class TestBitFieldMode(unittest.TestCase):
+    """Test the --bits / --written bit-field column renderer (opt-in)."""
+
+    def test_bits_decoding(self):
+        # $41 = Gate + Pulse; $81 = Gate + Noise; $11 = Gate + Triangle
+        self.assertEqual(_bits(0x41, WAVE_BITS), 'G.....#.')
+        self.assertEqual(_bits(0x81, WAVE_BITS), 'G......N')
+        self.assertEqual(_bits(0x11, WAVE_BITS), 'G...^...')
+        self.assertEqual(_bits(0x00, WAVE_BITS), '........')
+
+    def test_filter_mode_and_route_bits(self):
+        # $D418 type byte: bit4=LP, bit5=BP, bit6=HP, bit7=3off
+        self.assertEqual(_bits(0x10, MODE_BITS), 'L...')
+        self.assertEqual(_bits(0x50, MODE_BITS), 'L.H.')
+        # $D417 ctrl byte: bits0-2 route voice1/2/3, bit3 external
+        self.assertEqual(_bits(0x01, ROUTE_BITS), '1...')
+        self.assertEqual(_bits(0x07, ROUTE_BITS), '123.')
+
+    def test_note_cents(self):
+        # exact table frequency -> +00 cents
+        midc = FREQ_TBL_LO[48] | (FREQ_TBL_HI[48] << 8)
+        self.assertTrue(note_cents(48, midc, FREQ_TBL_LO, FREQ_TBL_HI).endswith('+00'))
+        self.assertTrue(note_cents(48, midc, FREQ_TBL_LO, FREQ_TBL_HI).startswith('C-4'))
+        # inactive note -> placeholder, never crashes
+        self.assertEqual(note_cents(-1, 0, FREQ_TBL_LO, FREQ_TBL_HI).strip(), '...')
+
+    def test_bits_header_has_legend(self):
+        hdr = bits_header(False)
+        self.assertIn('GSRT^/#N', hdr)
+        self.assertIn('legend', hdr)
+        self.assertIn('Cut', hdr)
+
+    def test_format_voice_bits_row(self):
+        chn = Channel(freq=0x1168, pulse=0x800, wave=0x41, adsr=0x0DD9, note=48)
+        out = format_voice_bits(0, chn, Channel(), True, None,
+                                FREQ_TBL_LO, FREQ_TBL_HI)
+        self.assertIn('1168', out)
+        self.assertIn('G.....#.', out)      # gate + pulse
+        self.assertIn('C-4', out)
+
+    def test_written_mode_gates_on_writes(self):
+        # With a 'written' set excluding a register, that field shows placeholder
+        # even though the value differs from prev (write-precision behaviour).
+        chn = Channel(freq=0x2000, pulse=0x800, wave=0x41, adsr=0x0DD9, note=60)
+        prev = Channel(freq=0x1000, pulse=0x700, wave=0x21, adsr=0x0AA9, note=48)
+        out = format_voice_bits(0, chn, prev, False, set(),  # nothing written
+                                FREQ_TBL_LO, FREQ_TBL_HI)
+        self.assertIn('....', out)          # freq not shown (not written)
+        self.assertNotIn('2000', out)
+        # now mark the freq registers as written -> value appears
+        out2 = format_voice_bits(0, chn, prev, False, {0xD400, 0xD401},
+                                 FREQ_TBL_LO, FREQ_TBL_HI)
+        self.assertIn('2000', out2)
 
 
 class TestCLIArgumentParsing(unittest.TestCase):

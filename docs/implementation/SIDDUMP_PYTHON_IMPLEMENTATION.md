@@ -189,11 +189,38 @@ All siddump.exe command-line arguments supported:
 | `-s<value>` | Subtune number | ✅ |
 | `-t<value>` | Time in seconds | ✅ |
 | `-z` | Show time as mm:ss.ff | ✅ |
+| `-b` / `--bits` | Bit-field column mode (extension, see below) | ✅ |
+| `-w` / `--written` | Write-precision mode (implies `-b`) | ✅ |
 
 **Example**:
 ```bash
 python pyscript/siddump_complete.py input.sid -t30 -f50 -p
 ```
+
+### Bit-field column mode (`-b`/`--bits`) — sid2txt-inspired extension
+
+An opt-in alternate renderer (the classic table above is unchanged). It breaks the
+waveform/filter control bytes into **named single-character bit columns** so a driver's
+gate/sync/ring/waveform and filter routing are readable at a glance, and shows note
+**cents** (live detune from the equal-tempered table):
+
+- Waveform `$D404/0B/12` → `[G]ate [S]ync [R]ing [T]est [^]tri [/]saw [#]pulse [N]oise`
+  (e.g. `$41` → `G.....#.`, `$81` → `G......N`).
+- Filter mode `$D418` → `[L]ow [B]and [H]igh [3]off`; routing `$D417` → `v1 v2 v3 [E]xt`
+  + resonance nibble.
+- Notes show cents, e.g. `B-5-35` (35 cents flat).
+
+`-w`/`--written` further gates each column on whether the playroutine **actually wrote**
+that register this frame (via the emulator's SID write capture) instead of value-diffing
+— this exposes per-frame rewrites a change-only dump hides (useful for driver RE).
+
+```bash
+python pyscript/siddump_complete.py input.sid -t2 -b      # bit-field columns
+python pyscript/siddump_complete.py input.sid -t2 -w      # only registers written
+```
+
+Idea credit: the bit-field columns, cents, and write-precision are adapted from
+**sid2txt v1.0** (Stello, WTFPL) — `bin/sid2txt-1.0/index.html`.
 
 ### Output Format
 

@@ -23,6 +23,8 @@ Options:
     -s         Display time in minutes:seconds:frame format
     -t<value>  Playback time in seconds, default 60
     -z         Include CPU cycles+rastertime (PAL)+rastertime, badline corrected
+    -b         Bit-field column mode: waveform/filter bytes -> named bit columns + cents
+    -w         Show only registers the playroutine actually WROTE this frame (implies -b)
 
 Author: Python port by Claude Sonnet 4.5 (2025-12-22)
 Original: siddump v1.08 (C implementation)
@@ -86,6 +88,50 @@ FREQ_TBL_HI = bytes([
 
 # Filter type names
 FILTER_NAMES = ["Off", "Low", "Bnd", "L+B", "Hi ", "L+H", "B+H", "LBH"]
+
+# ------------------------------------------------------------------------------
+# Bit-field column mode (sid2txt-inspired). Opt-in via --bits; the classic
+# output above is untouched. Each waveform/filter byte is broken into named
+# single-character bit columns so driver behaviour is readable at a glance.
+# ------------------------------------------------------------------------------
+
+# Waveform control byte ($D404/0B/12) bit -> display letter, in bit0..bit7 order.
+WAVE_BITS = [
+    (0x01, 'G'),   # Gate
+    (0x02, 'S'),   # Sync
+    (0x04, 'R'),   # Ring mod
+    (0x08, 'T'),   # Test
+    (0x10, '^'),   # Triangle
+    (0x20, '/'),   # Sawtooth
+    (0x40, '#'),   # Pulse
+    (0x80, 'N'),   # Noise
+]
+WAVE_HDR = ''.join(l for _, l in WAVE_BITS)        # "GSRT^/#N"
+
+# Filter mode ($D418) bits 4-6 + bit7 = voice-3-off.
+MODE_BITS = [(0x10, 'L'), (0x20, 'B'), (0x40, 'H'), (0x80, '3')]
+MODE_HDR = ''.join(l for _, l in MODE_BITS)        # "LBH3"
+
+# Filter routing ($D417) bits 0-3 = route voice1/2/3 + external into filter.
+ROUTE_BITS = [(0x01, '1'), (0x02, '2'), (0x04, '3'), (0x08, 'E')]
+ROUTE_HDR = ''.join(l for _, l in ROUTE_BITS)      # "123E"
+
+
+def _bits(value: int, table) -> str:
+    """Render a byte as fixed-position bit letters ('.' where the bit is clear)."""
+    return ''.join(l if (value & m) else '.' for m, l in table)
+
+
+def note_cents(note: int, freq: int, freq_tbl_lo: bytes, freq_tbl_hi: bytes) -> str:
+    """Note name + cents offset of the live frequency from the table, e.g. 'C#4+12'."""
+    if note < 0:
+        return "...   "
+    import math
+    tbl = freq_tbl_lo[note] | (freq_tbl_hi[note] << 8)
+    cents = 0
+    if tbl > 0 and freq > 0:
+        cents = max(-99, min(99, int(round(1200.0 * math.log2(freq / tbl)))))
+    return f"{NOTE_NAMES[note]}{cents:+03d}"
 
 
 @dataclass
@@ -431,6 +477,109 @@ def format_frame_row(frame_num: int, channels: List[Channel],
 
 
 # ==============================================================================
+# Bit-field Renderer (--bits)
+# ==============================================================================
+
+def bits_header(profiling: bool) -> str:
+    """Two-line header for --bits mode (column labels + legend)."""
+    voice = f"Freq {'Note':<6} {WAVE_HDR} ADSR Pul"
+    head = ("| Frame | " + " | ".join([voice] * 3) +
+            f" | Cut {MODE_HDR} Re {ROUTE_HDR} V |")
+    legend = ("  legend: waveform [G]ate [S]ync [R]ing [T]est [^]tri [/]saw "
+              "[#]pulse [N]oise | mode [L]ow [B]and [H]igh [3]off | "
+              "route v[1] v[2] v[3] [E]xt")
+    if profiling:
+        head += " Cycl RL RB |"
+    return head + "\n" + legend
+
+
+def _bits_show(field_addrs, written, prev_val, cur_val, is_first):
+    """Decide whether a field changed/was written this frame (--written aware)."""
+    if is_first:
+        return True
+    if written is not None:
+        return any(a in written for a in field_addrs)
+    return cur_val != prev_val
+
+
+def format_voice_bits(voice, chn, prevchn, is_first, written,
+                      freq_tbl_lo, freq_tbl_hi) -> str:
+    """One voice's bit-field column."""
+    base = 0xD400 + voice * 7
+    # Frequency + note (with cents)
+    if _bits_show((base, base + 1), written, prevchn.freq, chn.freq, is_first):
+        freq_s = f"{chn.freq:04X}"
+        if chn.wave >= 0x10 and chn.note >= 0:
+            note_s = note_cents(chn.note, chn.freq, freq_tbl_lo, freq_tbl_hi)
+        else:
+            note_s = f"{'...':<6}"
+    else:
+        freq_s, note_s = "....", f"{'...':<6}"
+    # Waveform bit-field
+    if _bits_show((base + 4,), written, prevchn.wave, chn.wave, is_first):
+        wave_s = _bits(chn.wave, WAVE_BITS)
+    else:
+        wave_s = '.' * len(WAVE_HDR)
+    # ADSR
+    if _bits_show((base + 5, base + 6), written, prevchn.adsr, chn.adsr, is_first):
+        adsr_s = f"{chn.adsr:04X}"
+    else:
+        adsr_s = "...."
+    # Pulse width
+    if _bits_show((base + 2, base + 3), written, prevchn.pulse, chn.pulse, is_first):
+        pulse_s = f"{chn.pulse:03X}"
+    else:
+        pulse_s = "..."
+    return f"{freq_s:<4} {note_s:<6} {wave_s} {adsr_s} {pulse_s}"
+
+
+def format_frame_row_bits(frame_num, channels, prev_channels, filt, prevfilt,
+                          is_first, written, timeseconds, cycles, profiling,
+                          freq_tbl_lo, freq_tbl_hi) -> str:
+    """A full --bits frame row."""
+    out = []
+    if timeseconds:
+        out.append(f"|{frame_num // 3000:01d}:{(frame_num // 50) % 60:02d}."
+                   f"{frame_num % 50:02d}| ")
+    else:
+        out.append(f"| {frame_num:5d} | ")
+
+    for voice in range(3):
+        out.append(format_voice_bits(voice, channels[voice], prev_channels[voice],
+                                     is_first, written, freq_tbl_lo, freq_tbl_hi))
+        out.append(" | ")
+
+    # Filter cutoff (11-bit, 3 hex)
+    cut = (f"{filt.cutoff & 0x7FF:03X}"
+           if _bits_show((0xD415, 0xD416), written, prevfilt.cutoff, filt.cutoff, is_first)
+           else "...")
+    # Filter mode bits + voice-3-off ($D418 high bits)
+    mode = (_bits(filt.type, MODE_BITS)
+            if _bits_show((0xD418,), written, prevfilt.type, filt.type, is_first)
+            else '.' * len(MODE_HDR))
+    # Resonance ($D417 high nibble)
+    res = (f"{filt.ctrl >> 4:X} "
+           if _bits_show((0xD417,), written, prevfilt.ctrl, filt.ctrl, is_first)
+           else ". ")
+    # Routing bits ($D417 low nibble)
+    route = (_bits(filt.ctrl, ROUTE_BITS)
+             if _bits_show((0xD417,), written, prevfilt.ctrl, filt.ctrl, is_first)
+             else '.' * len(ROUTE_HDR))
+    # Master volume ($D418 low nibble)
+    vol = (f"{filt.type & 0xF:X}"
+           if _bits_show((0xD418,), written, prevfilt.type, filt.type, is_first)
+           else ".")
+    out.append(f"{cut} {mode} {res}{route} {vol} |")
+
+    if profiling:
+        rasterlines = (cycles + 62) // 63
+        badlines = (cycles + 503) // 504
+        rasterlines_bad = (badlines * 40 + cycles + 62) // 63
+        out.append(f" {cycles:4d} {rasterlines:02X} {rasterlines_bad:02X} |")
+    return ''.join(out)
+
+
+# ==============================================================================
 # Main Siddump Logic
 # ==============================================================================
 
@@ -468,8 +617,9 @@ def run_siddump(filename: str, args):
                 freq_tbl_lo[note] = freq_int & 0xFF
                 freq_tbl_hi[note] = (freq_int >> 8) & 0xFF
 
-    # Create CPU emulator
-    cpu = CPU6502Emulator(capture_writes=False)  # We'll read registers manually
+    # Create CPU emulator. Write capture is only needed for --written (which shows a
+    # register only if the playroutine actually wrote it this frame, vs value-diff).
+    cpu = CPU6502Emulator(capture_writes=args.written)
 
     # Load C64 data into memory
     load_address = header.load_address
@@ -531,15 +681,18 @@ def run_siddump(filename: str, args):
     print(f"Middle C frequency is ${middle_c_freq:04X}\n")
 
     # Print table header
-    print("| Frame | Freq Note/Abs WF ADSR Pul | Freq Note/Abs WF ADSR Pul | Freq Note/Abs WF ADSR Pul | FCut RC Typ V |", end='')
-    if args.profiling:
-        print(" Cycl RL RB |", end='')
-    print()
+    if args.bits:
+        print(bits_header(args.profiling))
+    else:
+        print("| Frame | Freq Note/Abs WF ADSR Pul | Freq Note/Abs WF ADSR Pul | Freq Note/Abs WF ADSR Pul | FCut RC Typ V |", end='')
+        if args.profiling:
+            print(" Cycl RL RB |", end='')
+        print()
 
-    print("+-------+---------------------------+---------------------------+---------------------------+---------------+", end='')
-    if args.profiling:
-        print("------------+", end='')
-    print()
+        print("+-------+---------------------------+---------------------------+---------------------------+---------------+", end='')
+        if args.profiling:
+            print("------------+", end='')
+        print()
 
     # Frame loop
     frame = 0
@@ -548,6 +701,8 @@ def run_siddump(filename: str, args):
 
     while frame < args.firstframe + total_frames:
         # Run play routine
+        if args.written:
+            cpu.sid_writes.clear()       # capture only this frame's register writes
         cpu.reset(play_address, 0, 0, 0)
 
         instr_count = 0
@@ -590,6 +745,26 @@ def run_siddump(filename: str, args):
         filt.cutoff = (cpu.mem[0xD415] & 0x07) | (cpu.mem[0xD416] << 3)
         filt.ctrl = cpu.mem[0xD417]
         filt.type = cpu.mem[0xD418]
+
+        # Bit-field display path (--bits): self-contained, change-only / write-aware.
+        if args.bits:
+            if frame >= args.firstframe:
+                display_frame = frame - args.firstframe
+                is_first = (frame == args.firstframe)
+                written = ({w.address for w in cpu.sid_writes}
+                           if args.written else None)
+                print(format_frame_row_bits(
+                    display_frame, channels, prev_channels, filt, prevfilt,
+                    is_first, written, args.timeseconds, cpu.cycles,
+                    args.profiling, freq_tbl_lo, freq_tbl_hi))
+                for voice in range(3):
+                    prev_channels[voice] = Channel(
+                        freq=channels[voice].freq, pulse=channels[voice].pulse,
+                        wave=channels[voice].wave, adsr=channels[voice].adsr,
+                        note=channels[voice].note)
+                prevfilt = Filter(cutoff=filt.cutoff, ctrl=filt.ctrl, type=filt.type)
+            frame += 1
+            continue
 
         # Display frame (if in range)
         if frame >= args.firstframe:
@@ -705,6 +880,14 @@ Warning: CPU emulation may be inaccurate for some edge cases.
                        help='Playback time in seconds, default=60')
     parser.add_argument('-z', '--profiling', action='store_true',
                        help='Include CPU cycles+rastertime (PAL)+rastertime, badline corrected')
+    parser.add_argument('-b', '--bits', action='store_true',
+                       help='Bit-field column mode: break the waveform/filter bytes into '
+                            'named bit columns ([G]ate/[S]ync/[R]ing/[T]est/tri/saw/pulse/'
+                            'noise, filter [L]ow/[B]and/[H]igh, routing) + note cents')
+    parser.add_argument('-w', '--written', action='store_true',
+                       help='Show a register only if the playroutine actually WROTE it '
+                            'this frame (write-hook precision), not merely value-changed. '
+                            'Implies --bits')
 
     args = parser.parse_args()
 
@@ -714,6 +897,9 @@ Warning: CPU emulation may be inaccurate for some edge cases.
 
     if args.lowres and not args.spacing:
         args.lowres = False
+
+    if args.written:
+        args.bits = True   # --written is only implemented in the bit-field renderer
 
     return args
 
