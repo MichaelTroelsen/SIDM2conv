@@ -113,6 +113,36 @@ def pulse_program_for(frames, v, onset, dur_f):
     return prog
 
 
+def extract_wave_programs(m, sid, sub, idx_map, instr_rows, frames):
+    """Per-instrument WAVE program (B3 gate envelope): wave_step advances one row per
+    FRAME and writes col0 to $D404 (gate bit preserved, VGMASK=$ff on a note). Sample
+    the original's per-frame waveform over a note that uses each instrument, hold the
+    last change point, and loop there — reproduces the $43->$42 / $41->$40 gate-off
+    (note release) mid-note. col1 = 0 (pitch comes from the FM program, not semitones).
+    Returns {slot: [(wf,0),...,(7f,loop_row)]}."""
+    fpt = m.frames_per_tick
+    progs = {}
+    for v in range(3):
+        fr = 0
+        for ev in m.voices[v]:
+            slot = idx_map.get(ev.instr, 0)
+            dur_f = ev.dur * fpt
+            if ev.retrig and slot not in progs and dur_f >= 2:
+                wfs, last = [], 0x41
+                for k in range(min(dur_f, 32)):
+                    idx = fr + k
+                    w = frames[idx][0][v]['wf'] if idx < len(frames) else None
+                    last = w if w is not None else last
+                    wfs.append(last & 0xFF)
+                settle = max((k for k in range(1, len(wfs)) if wfs[k] != wfs[k - 1]),
+                             default=0)
+                prog = [(wfs[k], 0x00) for k in range(settle + 1)]
+                prog.append((0x7F, settle))               # loop on the settled waveform
+                progs[slot] = prog
+            fr += dur_f
+    return progs
+
+
 def build_native_song(m, sid, sub, idx_map, instr_rows):
     """Walk the MoN song -> per-voice packed sequences with a per-NOTE command byte
     selecting an (FM program, pulse program) BUNDLE. Both carry the note's exact
@@ -171,8 +201,14 @@ def main():
     rev = {slot: mon_i for mon_i, slot in idx_map.items()}
     raw_wf = [m.instrument(rev[s])['waveform'] or 0x41 for s in range(len(instr_rows))]
     instrs = [(ir.ad, ir.sr, raw_wf[s]) for s, ir in enumerate(instr_rows)]
-    wave_programs = [[(raw_wf[s], 0x00), (0x7F, 0)] for s in range(len(instr_rows))]
     pulse_programs = [static_pulse((ir.pulse_width & 0x0F) << 8) for ir in instr_rows]
+
+    # B3: per-instrument WAVE program (gate envelope), trace-driven, from one trace
+    import mon_fidelity as _F
+    _frames = _F.per_frame(sid, [f'-a{sub}', '-t10'])
+    wave_progs = extract_wave_programs(m, sid, sub, idx_map, instr_rows, _frames)
+    wave_programs = [wave_progs.get(s, [(raw_wf[s], 0x00), (0x7F, 0)])
+                     for s in range(len(instr_rows))]
 
     # B2: per-NOTE FM bundles (slides + arps) selected via the $c0-$ff command channel
     segs, bundles = build_native_song(m, sid, sub, idx_map, instr_rows)
