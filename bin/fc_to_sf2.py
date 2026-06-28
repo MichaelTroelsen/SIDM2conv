@@ -155,7 +155,70 @@ def _trace_pulse_programs(sid_data, la, fc):
     return progs
 
 
-def build_instruments(fc, base, pulse_progs=None):
+def _trace_filter_program(sid_data, la, fc):
+    """Trace the ORIGINAL FC SID's global filter and return a Driver-11 filter
+    program (list of (col0,col1,col2) rows) or None. FC filter instruments
+    (mctrl & $01) sweep the cutoff per note (e.g. low-pass, res $B, voice-1
+    routing, cutoff $600 -> $280, reset each note). Format (per DRIVER11 docs):
+    set `XY YY RB` (X=passband 9-F, YYY=12-bit cutoff, R=res, B=channel bitmask);
+    add `0X XX YY` (XXX=signed add, YY=frames); `7F .. idx` jump."""
+    if not any(ins.mctrl & 0x01 for ins in fc.instruments):
+        return None
+    import subprocess
+    from scripts.sf2_to_sid import PSIDHeader
+    h = PSIDHeader(load_address=la, init_address=la, play_address=la + 6)
+    h.songs = 1
+    h.start_song = 1
+    tmp = os.path.join('out', '_filtertrace.sid')
+    os.makedirs('out', exist_ok=True)
+    open(tmp, 'wb').write(h.to_bytes() + sid_data)
+    txt = subprocess.run(['py', '-3', 'pyscript/siddump_complete.py', tmp, '-t8'],
+                         capture_output=True, text=True).stdout
+    rows = []                                          # (cut12, rc, typ) per frame
+    last_rc, last_typ = 0x00, 'Low'
+    for ln in txt.splitlines():
+        if not ln.startswith('|') or 'Frame' in ln:
+            continue
+        c = [x.strip() for x in ln.split('|')]
+        if len(c) < 6:
+            continue
+        f = c[5].split()                               # FCut RC Typ V
+        try:
+            cut = int(f[0], 16)
+        except (ValueError, IndexError):
+            cut = None
+        if len(f) > 1 and f[1] not in ('..', ''):
+            last_rc = int(f[1], 16)
+        if len(f) > 2 and f[2] not in ('...', ''):
+            last_typ = f[2]
+        rows.append((cut, last_rc, last_typ))
+    # find the cutoff sweep: a run starting at the max cutoff, descending to a reset
+    starts = [i for i, (cut, rc, _) in enumerate(rows)
+              if cut and rc and (rc & 0x0F) and i + 1 < len(rows)
+              and rows[i + 1][0] and rows[i + 1][0] < cut]
+    if not starts:
+        return None
+    i0 = starts[0]
+    init_cut, rc, typ = rows[i0]
+    traj = [rows[i0][0]]
+    for j in range(i0 + 1, min(i0 + 24, len(rows))):
+        cut = rows[j][0]
+        if cut is None:
+            break
+        if abs(cut - init_cut) <= 0x40 and j > i0 + 1:  # reset to start = cycle end
+            break
+        traj.append(cut)
+    passband = {'Low': 0x9, 'Band': 0xA, 'High': 0xC}.get(typ, 0x9)
+    res, bitmask = (rc >> 4) & 0x0F, rc & 0x0F
+    prog = [((passband << 4) | ((init_cut >> 8) & 0x0F), init_cut & 0xFF,
+             (res << 4) | bitmask)]                     # set
+    for k in range(len(traj) - 1):
+        dv = (traj[k + 1] - traj[k]) & 0xFFF
+        prog.append(((dv >> 8) & 0x0F, dv & 0xFF, 0x01))  # add, 1 frame
+    return prog
+
+
+def build_instruments(fc, base, pulse_progs=None, filter_prog=None):
     """FC 8-byte sound records -> Driver 11 instrument rows + wave/pulse tables.
 
     Three timbre classes are reproduced as Driver 11 wave programs (col1 $00-$7f
@@ -206,15 +269,24 @@ def build_instruments(fc, base, pulse_progs=None):
             pulse_table.extend(_pulse_program(0x800, pulse_row))
         # D15 uses a static pulse byte (hi of 12-bit width) -> 50% for pulse voices
         pw = 0x08 if (ins.waveform & 0x40) else 0x00
+        flags = 0x80
+        if filter_prog and (ins.mctrl & 0x01):   # filter instrument: start the
+            flags |= 0x40                         # global filter program (row 0)
         instr_rows.append(D11Instrument(
-            ad=ins.ad, sr=ins.sr, flags=0x80,
+            ad=ins.ad, sr=ins.sr, flags=flags,
             filter_idx=0x00, pulse_idx=pulse_row, wave_idx=wave_row,
             pulse_width=pw))
+    filter_table = []
+    if filter_prog:
+        # loop back to row 0 (re-sets cutoff + re-sweeps) — FC resets the cutoff
+        # each note; the program only restarts on instrument-set (per block), so
+        # looping keeps the cutoff sweeping ~per note instead of holding.
+        filter_table = list(filter_prog) + [(0x7F, 0x00, 0x00)]
     if not instr_rows:
         wave_table = [(0x41, 0x00), (0x7F, 0x00)]
         pulse_table = list(_pulse_program(0x800, 0))
         instr_rows = [D11Instrument(0x09, 0x00, 0x80, 0, 0, 0)]
-    return instr_rows, wave_table, pulse_table
+    return instr_rows, wave_table, pulse_table, filter_table
 
 
 def _block_rows(block_notes, base, cur_instr, silent_idx=None):
@@ -385,9 +457,12 @@ def fc_to_song(fc, sid_data=None):
     # to get (speed+1) frames/row we set tempo == speed.
     tempo = max(1, fc.speed)
     # With the original SID data, trace each pulse instrument's real per-frame
-    # width sweep and replay it (much closer than the hardcoded triangle PWM).
+    # width sweep and the global filter cutoff sweep and replay them (much closer
+    # than the hardcoded triangle PWM / no filter at all).
     pulse_progs = _trace_pulse_programs(sid_data, fc.load, fc) if sid_data else None
-    instr_rows, wave_table, pulse_table = build_instruments(fc, base, pulse_progs)
+    filter_prog = _trace_filter_program(sid_data, fc.load, fc) if sid_data else None
+    instr_rows, wave_table, pulse_table, filter_table = build_instruments(
+        fc, base, pulse_progs, filter_prog)
     # Always append the silent anchor instrument (LAST instrument) so both the flat
     # and structured paths can break long rest runs / all-rest blocks that would
     # otherwise stall a voice in SF2II (see _MAX_REST_RUN). Unused if a tune has no
@@ -396,7 +471,8 @@ def fc_to_song(fc, sid_data=None):
     tracks = [build_track(v, base, silent_idx) for v in fc.voices]
     return GalwayDriver11Song(
         instruments=instr_rows, wave_table=wave_table, pulse_table=pulse_table,
-        tracks=tracks, tempo=tempo, pitch_base=base, subtune=0)
+        filter_table=filter_table, tracks=tracks, tempo=tempo,
+        pitch_base=base, subtune=0)
 
 
 def main():

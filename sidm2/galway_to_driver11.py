@@ -96,6 +96,7 @@ class GalwayDriver11Song:
     instruments: List[D11Instrument] = field(default_factory=list)
     wave_table: List[Tuple[int, int]] = field(default_factory=list)  # (wf,note-off)/(7F,jmp)
     pulse_table: List[Tuple[int, int, int]] = field(default_factory=list)
+    filter_table: List[Tuple[int, int, int]] = field(default_factory=list)  # global filter program
     tracks: List[List[D11Row]] = field(default_factory=list)         # 3 voices, flat rows
     tempo: int = 4                  # frames per row (TICK)
     pitch_base: int = 0

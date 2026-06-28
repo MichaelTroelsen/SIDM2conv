@@ -217,6 +217,16 @@ def emit_driver11_sf2(song: GalwayDriver11Song,
             for c in range(min(pcols, len(row))):
                 w8(pa + c * prows + r, row[c])
 
+    # --- Filter (column-major 3 x N): trace-driven global cutoff sweep program;
+    #     started by an instrument's Flags $40 bit (filter_idx = row 0). ---
+    if 'Filter' in tbl and getattr(song, 'filter_table', None):
+        fa = tbl['Filter']['addr']
+        frows = tbl['Filter']['rows']
+        fcols = tbl['Filter'].get('columns', 3)
+        for r, row in enumerate(song.filter_table[:frows]):
+            for c in range(min(fcols, len(row))):
+                w8(fa + c * frows + r, row[c])
+
     # --- HR (column-major 2 x 16): row 0 = $0F 00 (standard hard-restart) ---
     if 'HR' in tbl:
         ha = tbl['HR']['addr']
@@ -274,7 +284,6 @@ def emit_driver11_sf2(song: GalwayDriver11Song,
     seq_lo = off(di.sequence_ptrs_lo)
     seq_hi = off(di.sequence_ptrs_hi)
     stride = di.sequence_size if di.sequence_size else 0x100
-    seq_end_addr = di.sequence_start
     for idx, pk in enumerate(packed_sequences):
         slot_addr = di.sequence_start + idx * stride
         slot_off = off(slot_addr)
@@ -285,7 +294,6 @@ def emit_driver11_sf2(song: GalwayDriver11Song,
         out[slot_off:slot_off + len(pk)] = pk
         out[seq_lo + idx] = slot_addr & 0xFF
         out[seq_hi + idx] = (slot_addr >> 8) & 0xFF
-        seq_end_addr = slot_addr + stride
     # Null out unused sequence pointers so stale template pointers can't be hit.
     for idx in range(len(packed_sequences), _MAX_SEQUENCES):
         out[seq_lo + idx] = 0x00
