@@ -8,6 +8,8 @@ One document per **player** (the C64 music routine a SID file was made with). SI
 | **SF2-exported / Driver 11** | [DRIVER11.md](DRIVER11.md) | `sf2driver11_00.prg` | 100% (SF2-exported) | round-trip / safe default |
 | **NewPlayer 20** | [NP20.md](NP20.md) | `sf2driver_np20_00.prg` | 70–90% | `SID/` (NP20.G4 variants) |
 | **Martin Galway** | [GALWAY.md](GALWAY.md) | native (`bin/`) / Driver 11 transpile | ~100% (validated tunes) | `SID/Galway_Martin/` (40) |
+| **Future Composer V1.0** | [FUTURECOMPOSER.md](FUTURECOMPOSER.md) | Driver 11 transpile (`bin/fc_to_sf2.py`) | notes/order byte-exact; trace-driven pulse/filter | `SID/Fun_Fun/` ($1800 variant, 5) |
+| **ROMUZAK V6.3** | [ROMUZAK.md](ROMUZAK.md) | Driver 11 transpile (`bin/romuzak_to_sf2.py`) | notes/order byte-exact (Delirious); sounds Stage-A | `SID/Fun_Fun/` (Delirious, Road) |
 
 ## Player-id → driver mapping
 
