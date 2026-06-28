@@ -143,15 +143,34 @@ def extract_wave_programs(m, sid, sub, idx_map, instr_rows, frames):
     return progs
 
 
+def _wave_prog_for(frames, v, onset, dur_f):
+    """Per-note WAVE program (waveform/gate envelope) sampled per FRAME from the
+    trace, trimmed to the settle point. MoN's waveform attack varies per note (the
+    $7x wprog), so it's captured per note, not per instrument."""
+    wfs, last = [], 0x41
+    for k in range(min(dur_f, 32)):
+        idx = onset + k
+        w = frames[idx][0][v]['wf'] if idx < len(frames) else None
+        last = w if w is not None else last
+        wfs.append(last & 0xFF)
+    settle = max((k for k in range(1, len(wfs)) if wfs[k] != wfs[k - 1]), default=0)
+    return tuple(wfs[:settle + 1])
+
+
 def build_native_song(m, sid, sub, idx_map, instr_rows):
-    """Walk the MoN song -> per-voice packed sequences with a per-NOTE command byte
-    selecting an (FM program, pulse program) BUNDLE. Both carry the note's exact
-    per-frame envelope from the trace (FM = pitch slide/arp; pulse = PWM).
-    Returns (segs, bundles)."""
+    """Walk the MoN song -> per-voice packed sequences. Each note carries:
+      - an INSTRUMENT byte ($a0-$bf) = a distinct (AD/SR/waveform + per-note WAVE
+        program) — captures the waveform attack/gate envelope, which varies per note
+        via the $7x wprog (so per-note, deduped into <=32 instruments);
+      - a COMMAND byte ($c0-$ff) = an (FM, pulse) bundle = the note's per-frame pitch
+        (slide/arp) + PWM from the trace.
+    Returns (segs, bundles, instrs, wave_programs)."""
     import mon_fidelity as F
     frames = F.per_frame(sid, [f'-a{sub}', '-t10'])
     fpt = m.frames_per_tick
+    rev = {slot: mon_i for mon_i, slot in idx_map.items()}
     bundles, bidx = [], {}
+    instrs, iidx, wave_programs = [], {}, []
 
     def bundle_of(fp, pp):
         k = (tuple(fp), tuple(pp))
@@ -160,6 +179,16 @@ def build_native_song(m, sid, sub, idx_map, instr_rows):
             bundles.append((fp, pp))
         return bidx[k]
 
+    def instr_of(mon_i, wp):
+        ins = m.instrument(mon_i)
+        ad, sr, raw = ins['ad'], ins['sr'], ins['waveform'] or 0x41
+        key = (ad, sr, raw, wp)
+        if key not in iidx:
+            iidx[key] = len(instrs)
+            instrs.append((ad, sr, raw))
+            wave_programs.append([(w, 0x00) for w in wp] + [(0x7F, len(wp) - 1)])
+        return iidx[key]
+
     segs = [[] for _ in range(3)]
     for v in range(3):
         fr = 0
@@ -167,12 +196,11 @@ def build_native_song(m, sid, sub, idx_map, instr_rows):
             rows = []
             cur_inst = cur_cmd = None
             for ev in events:
-                slot = idx_map.get(ev.instr, 0)
                 dur_f = ev.dur * fpt
                 base = m.note_freq(ev.note)
-                fp = fm_program_for(frames, v, fr, dur_f, base)
-                pp = pulse_program_for(frames, v, fr, dur_f)
-                cmd = bundle_of(fp, pp)
+                slot = instr_of(ev.instr, _wave_prog_for(frames, v, fr, dur_f))
+                cmd = bundle_of(fm_program_for(frames, v, fr, dur_f, base),
+                                pulse_program_for(frames, v, fr, dur_f))
                 note = max(SF2_NOTE_MIN, min(ev.note, SF2_NOTE_MAX))
                 rows.append(D11Row(note=note,
                                    instrument=slot if slot != cur_inst else None,
@@ -182,7 +210,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows):
                 fr += dur_f
             for pk in segment_track(rows):
                 segs[v].append(pk)
-    return segs, bundles
+    return segs, bundles, instrs, wave_programs
 
 
 def main():
@@ -195,23 +223,10 @@ def main():
     used = mon_to_sf2.used_instruments(m)
     instr_rows, wave_table, pulse_table, idx_map = mon_to_sf2.build_instruments(m, used)
 
-    # native instrument = (AD, SR, waveform); wave program = held waveform (FM carries
-    # all per-frame pitch; pulse via the per-note bundle). Use the RAW MoN waveform
-    # ($43 = pulse+sync etc.) — _norm_waveform strips bits ($43->$41), wrong for fidelity.
-    rev = {slot: mon_i for mon_i, slot in idx_map.items()}
-    raw_wf = [m.instrument(rev[s])['waveform'] or 0x41 for s in range(len(instr_rows))]
-    instrs = [(ir.ad, ir.sr, raw_wf[s]) for s, ir in enumerate(instr_rows)]
-    pulse_programs = [static_pulse((ir.pulse_width & 0x0F) << 8) for ir in instr_rows]
-
-    # B3: per-instrument WAVE program (gate envelope), trace-driven, from one trace
-    import mon_fidelity as _F
-    _frames = _F.per_frame(sid, [f'-a{sub}', '-t10'])
-    wave_progs = extract_wave_programs(m, sid, sub, idx_map, instr_rows, _frames)
-    wave_programs = [wave_progs.get(s, [(raw_wf[s], 0x00), (0x7F, 0)])
-                     for s in range(len(instr_rows))]
-
-    # B2: per-NOTE FM bundles (slides + arps) selected via the $c0-$ff command channel
-    segs, bundles = build_native_song(m, sid, sub, idx_map, instr_rows)
+    # B2/B3: per-note FM+pulse bundles ($c0-$ff command) AND per-note WAVE programs
+    # (distinct instruments, $a0-$bf) — both extracted from the original trace.
+    segs, bundles, instrs, wave_programs = build_native_song(m, sid, sub, idx_map, instr_rows)
+    pulse_programs = [static_pulse(0x800) for _ in instrs]   # unused (command owns pulse)
 
     # redirect the shared build pipeline at the MoN driver copy
     B.GAL = MON_DIR
@@ -220,6 +235,8 @@ def main():
           f"instr={len(instrs)} bundles={len(bundles)} tempo={B.TEMPO}")
     if len(bundles) > 64:
         print(f"  WARNING: {len(bundles)} bundles > 64 (command cap) — needs clustering")
+    if len(instrs) > 32:
+        print(f"  WARNING: {len(instrs)} instruments > 32 — needs clustering")
 
     gen, edit, mdp, seq0 = RN.gen_includes_song(segs, instrs, wave_programs,
                                                 pulse_programs, bundles=bundles)
