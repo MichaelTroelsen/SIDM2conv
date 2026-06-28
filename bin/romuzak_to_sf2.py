@@ -1,0 +1,225 @@
+"""ROMUZAK V6.x SID -> editable Driver 11 SF2 (Stage A), like bin/fc_to_sf2.py.
+
+ROMUZAK (Oliver Blasnik, 1989) is an expanded Future Composer: 3 TRACKS (orderlists)
+reference SECTORS (patterns) of NOTE/DUR/SND commands, with 8-byte SOUND records.
+Format fully RE'd (player disasm + decrunched editor + the V6.x manual); see the
+`romuzak-player-re` memory. We decode it and transpile onto a real Driver 11 SF2,
+reusing the FC IR + emitter + silent-intro anchors + trace-driven pulse/filter.
+
+Usage:  py -3 bin/romuzak_to_sf2.py SID/Fun_Fun/Delirious_9_tune_1.sid [out.sf2]
+"""
+import os
+import sys
+from collections import Counter
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from sidm2.sid_parser import SIDParser
+from sidm2.galway_to_driver11 import (
+    D11Instrument, D11Row, GalwayDriver11Song,
+    SF2_NOTE_MIN, SF2_NOTE_MAX, SF2_GATE_ON, SF2_GATE_OFF,
+    _norm_waveform, _pulse_program,
+)
+from sidm2.galway_driver11_emitter import emit_driver11_sf2
+
+def _find_tables(d):
+    """Locate the 3 data tables by their player-code signatures (relocation-safe):
+      TRACK ptrs:  `B9 lo hi 85 F8`  (LDA track,Y ; STA $F8)  — 1st occurrence
+      SECTOR ptrs: `B9 lo hi 85 F8`  (LDA sector,Y; STA $F8)  — 2nd occurrence
+      SOUND tbl:   `BD lo hi 85 F8`  (LDA sound,X ; STA $F8)
+    (Delirious -> $3640/$3676/$36F6; works on the relocated Road rip too.)"""
+    ptr_ys = []
+    for i in range(len(d) - 4):
+        if d[i] == 0xB9 and d[i + 3] == 0x85 and d[i + 4] == 0xF8:
+            ptr_ys.append(d[i + 1] | (d[i + 2] << 8))
+    track = ptr_ys[0] if ptr_ys else 0
+    sector = ptr_ys[1] if len(ptr_ys) > 1 else 0
+    # the 8-byte sound table sits right after the 64-entry ($80-byte) sector ptr table
+    sound = (sector + 0x80) & 0xFFFF
+    return track, sector, sound
+
+
+def load_sid(path):
+    raw = open(path, 'rb').read()
+    h = SIDParser(path).parse_header()
+    d = raw[h.data_offset:]
+    la = h.load_address
+    if la == 0 and len(d) >= 2:
+        la = d[0] | (d[1] << 8)
+        d = d[2:]
+    return d, la
+
+
+class RMZ:
+    """Decoded ROMUZAK song: per-voice flat note events + 8-byte sounds."""
+    def __init__(self, d, la):
+        self.d, self.la = d, la
+        self.track_ptrs, self.sect_ptrs, self.sound_tbl = _find_tables(d)
+        self.voices = [self._track(v) for v in range(3)]   # [(note,dur,instr,rest)]
+        self.sounds = [tuple(self._u8(self.sound_tbl + s * 8 + k) for k in range(8))
+                       for s in range(32)]
+
+    def _u8(self, a):
+        o = a - self.la
+        return self.d[o] if 0 <= o < len(self.d) else 0xFF
+
+    def _u16(self, a):
+        return self._u8(a) | (self._u8(a + 1) << 8)
+
+    def _sector(self, addr, ntr, str_):
+        """Decode one sector -> [(note,dur,instr,is_rest)] (CONT extends prev)."""
+        out = []
+        i = 0
+        cur_dur, cur_snd = 1, 0
+        while i < 256:
+            b = self._u8(addr + i); i += 1
+            if b == 0xFF:
+                break
+            if b < 0x60:                          # NOTE (chromatic)
+                out.append([(b + ntr) & 0xFF, cur_dur, (cur_snd + str_) & 0x1F, False])
+            elif b < 0x80:                        # DUR
+                cur_dur = (b & 0x1F) or 1
+            elif b < 0xA0:                        # PSE / pause
+                out.append([0, cur_dur, cur_snd, True])
+            elif b < 0xC0:                        # SND
+                cur_snd = b & 0x1F
+            elif b < 0xE0:                        # SND base (rare)
+                cur_snd = b & 0x1F
+            elif b == 0xE0:                       # +1 param (GLD/APM) — skip param
+                i += 1
+            elif b == 0xF0:                       # CONT -> extend previous note
+                if out:
+                    out[-1][1] += cur_dur
+                else:
+                    out.append([0, cur_dur, cur_snd, True])
+        return out
+
+    def _track(self, v):
+        """Walk a track orderlist -> flat note events (repeat + transposes applied)."""
+        addr = self._u16(self.track_ptrs + v * 2)
+        seq = []
+        i, ntr, str_, guard = 0, 0, 0, 0
+        while guard < 1024:
+            guard += 1
+            b = self._u8(addr + i); i += 1
+            if b < 0x40:                          # play sector
+                seq += self._sector(self._u16(self.sect_ptrs + b * 2), ntr, str_)
+            elif b < 0x80:                        # repeat next sector (b-$40+1)x
+                rep = b - 0x40 + 1
+                sec = self._u8(addr + i); i += 1
+                ev = self._sector(self._u16(self.sect_ptrs + sec * 2), ntr, str_)
+                for _ in range(rep):
+                    seq += [list(e) for e in ev]
+            elif b < 0xC0:                        # note transpose
+                ntr = b - 0x80
+            elif b < 0xFC:                        # sound transpose
+                str_ = b - 0xC0
+            else:                                 # fc goto / fd / fe / ff -> end
+                break
+        return seq
+
+
+def calibrate_base(rmz):
+    """ROMUZAK notes are chromatic ($00=c-0). Find the octave offset to the SF2 range
+    by centering the median note in a comfortable octave (like FC's base nudge)."""
+    notes = [n for v in rmz.voices for (n, _, _, r) in v if not r]
+    if not notes:
+        return 0
+    notes.sort()
+    med = notes[len(notes) // 2]
+    # aim the median near SF2 note ~0x30; SF2 note = rmz_note + base
+    return 0x30 - med
+
+
+def build_instruments(rmz):
+    """ROMUZAK 8-byte sound -> Driver 11 instrument + wave/pulse tables (first pass:
+    waveform / AD / SR / static pulse; B7 effects TODO)."""
+    instr_rows, wave_table, pulse_table = [], [], []
+    for s in rmz.sounds:
+        b0, b1, b2, b3, b4, b5, b6, b7 = s
+        wf = _norm_waveform(b1)
+        wave_row = len(wave_table)
+        wave_table.append((wf, 0x00))
+        wave_table.append((0x7F, wave_row))
+        pulse_row = len(pulse_table)
+        pw = (b0 & 0x0F) << 8 | (b0 >> 4) << 4      # B0: digit1=lo*16, digit2=hi
+        pulse_table.extend(_pulse_program(pw or 0x800, pulse_row))
+        instr_rows.append(D11Instrument(
+            ad=b2, sr=b3, flags=0x80, filter_idx=0x00,
+            pulse_idx=pulse_row, wave_idx=wave_row,
+            pulse_width=(b0 >> 4) & 0x0F))
+    return instr_rows, wave_table, pulse_table
+
+
+_MAX_REST_RUN = 64
+
+
+def build_track(events, base, silent_idx):
+    """Flat note events -> Driver 11 rows (note + sustain/rest), with silent anchors
+    for long rests (the silent intro), exactly like fc_to_sf2.build_track."""
+    out = []
+    cur_instr = None
+    rest_run = 0
+    for note, dur, instr, is_rest in events:
+        nrows = max(1, dur)
+        if is_rest:
+            for _ in range(nrows):
+                if rest_run >= _MAX_REST_RUN:
+                    out.append(D11Row(note=1, instrument=silent_idx))
+                    cur_instr = silent_idx
+                    rest_run = 0
+                else:
+                    out.append(D11Row(note=SF2_GATE_OFF))
+                    rest_run += 1
+            continue
+        rest_run = 0
+        n = max(SF2_NOTE_MIN, min(note + base, SF2_NOTE_MAX))
+        inst = None
+        if instr != cur_instr:
+            inst = instr
+            cur_instr = instr
+        out.append(D11Row(note=n, instrument=inst))
+        out.extend(D11Row(note=SF2_GATE_ON) for _ in range(nrows - 1))
+    return out
+
+
+def _append_silent_instrument(instr_rows, wave_table, pulse_table):
+    wrow = len(wave_table)
+    wave_table.append((0x00, 0x00))
+    wave_table.append((0x7F, wrow))
+    idx = len(instr_rows)
+    instr_rows.append(D11Instrument(ad=0, sr=0, flags=0x80, filter_idx=0,
+                                    pulse_idx=0, wave_idx=wrow, pulse_width=0))
+    return idx
+
+
+def main():
+    if len(sys.argv) < 2:
+        print(__doc__)
+        return 1
+    path = sys.argv[1]
+    out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(
+        'out', os.path.splitext(os.path.basename(path))[0] + '.sf2')
+    d, la = load_sid(path)
+    rmz = RMZ(d, la)
+    base = calibrate_base(rmz)
+    instr_rows, wave_table, pulse_table = build_instruments(rmz)
+    silent_idx = _append_silent_instrument(instr_rows, wave_table, pulse_table)
+    tracks = [build_track(v, base, silent_idx) for v in rmz.voices]
+    # Tempo: ROMUZAK ticks the note counters off a ~6-frame divider (calibrated vs
+    # the original siddump — osc3 matches 113/113 at SF2II tempo 5). TODO: derive
+    # from the song's SET SPEED byte for per-tune correctness.
+    song = GalwayDriver11Song(
+        instruments=instr_rows, wave_table=wave_table, pulse_table=pulse_table,
+        tracks=tracks, tempo=5, pitch_base=base, subtune=0)
+    print(f"load=${la:04X} base={base} voices={[len(v) for v in rmz.voices]} "
+          f"sounds={sum(1 for s in rmz.sounds if s != (0xFF,)*8)}")
+    sf2 = emit_driver11_sf2(song)
+    os.makedirs(os.path.dirname(out) or '.', exist_ok=True)
+    open(out, 'wb').write(sf2)
+    print(f"emitted {len(sf2)} bytes -> {out}")
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
