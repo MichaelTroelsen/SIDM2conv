@@ -166,8 +166,12 @@ def build_native_song(m, sid, sub, idx_map, instr_rows):
         (slide/arp) + PWM from the trace.
     Returns (segs, bundles, instrs, wave_programs)."""
     import mon_fidelity as F
-    frames = F.per_frame(sid, [f'-a{sub}', '-t10'])
     fpt = m.frames_per_tick
+    # trace the WHOLE one-pass song length (the longest voice), else notes past the
+    # window get degenerate held programs ("sound goes bad after N seconds").
+    span = max(sum(ev.dur for ev in m.voices[v]) for v in range(3)) * fpt
+    secs = span // 50 + 4
+    frames = F.per_frame(sid, [f'-a{sub}', f'-t{secs}'])
     rev = {slot: mon_i for mon_i, slot in idx_map.items()}
     bundles, bidx = [], {}
     instrs, iidx, wave_programs = [], {}, []
