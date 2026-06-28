@@ -11,9 +11,9 @@ this to work" — keep pushing on the open items.
 
 <work_completed>
 ## DONE + committed/pushed to master (github MichaelTroelsen/SIDM2conv)
-Latest commit: 052f8fb. Earlier FC commits: c9dd5ff (converter), 0f9f5d0 (editor
-decrunch + native format), d71ff40 (fc_writer), 469e451 (sf2_to_fc), 48d812a (D15
-lead fix), de8292b/052f8fb (handoff + D15 trace).
+Latest commit: 6d4cb9f (handoff refresh). Earlier FC commits: c9dd5ff (converter),
+0f9f5d0 (editor decrunch + native format), d71ff40 (fc_writer), 469e451 (sf2_to_fc),
+48d812a (D15 lead fix), de8292b/052f8fb (handoff + D15 trace).
 
 ### FC V1.0 parser — sidm2/fc_parser.py (COMPLETE, validated, tested)
 Decodes the $1800 FC V1.0 player (orderlists, blocks, 8-byte instruments, 96-entry
@@ -55,6 +55,25 @@ pyscript/test_fc_parser.py (6), test_fc_writer.py (6), test_sf2_to_fc.py — wai
 counts: parser 6 + writer 6 + sf2_to_fc tests. Run: `py -3 -m pytest
 pyscript/test_fc_parser.py pyscript/test_fc_writer.py pyscript/test_sf2_to_fc.py -q`
 (16 passed). pyflakes gate green.
+
+### Corpus note-for-note validation + instrument-0 HOLD fix (2026-06-28, NEW)
+Validated all 5 supported $1800 tunes note-for-note (scratchpad
+`fc_validate_corpus.py`: build D15 SF2 -> wrap as PSID probe (load=la, init=$1000,
+play=$1006, via `parse_sf2_blocks`+`PSIDHeader`) -> siddump probe AND original ->
+compare per-voice unbracketed note-onset sequences). **Found + fixed a real general
+bug**: FC **instrument 0 is a HOLD sentinel** (a note on instr 0 makes no sound — it
+sustains the ringing note; at song start, nothing ringing = silence). The converter
+emitted them as audible notes (`_norm_waveform(0)`=$41) -> spurious B-3/B-1 onsets at
+phrase boundaries. Fix in `bin/fc_to_sf2.py`: instr-0 notes now emit `SF2_GATE_ON`
+sustain rows (pitch ignored), never a note-on; new `_instr_change` helper never sets
+or becomes instr 0. **Result: 4/5 tunes note-EXACT** (Triangle_Intro, Triangle_2_years,
+Demo_of_the_Year_88, Is_There osc1/osc2 — all were broken on 1-2 voices). Residual:
+Carillo osc1 (123 vs 135) + Is_There osc3 (62/87) = FC per-frame ARP/effect on the
+instr-0 grace notes = Stage-A timbre limitation, not a clean note bug. Round-trip:
+instr-0 holds fold into the prior note's duration (identical audio by construction),
+so `test_sf2_to_fc._audible` excludes instr-0; +3 new `pyscript/test_fc_to_sf2.py`.
+**19 FC tests green**, pyflakes clean. NOTE: Triangle was already EXACT pre-fix, so
+the SF2II-loaded `out/Tri_d15.sf2` is unchanged. Committed (not pushed) — see Git.
 
 ### D15 long-intro path — MAJOR PROGRESS THIS SESSION
 - LEAD FIXED: --d15 with build_structured(merge_rests=False) keeps rest blocks as

@@ -75,6 +75,15 @@ def _drum_note(freq, base):
     return max(0, min(idx + base + 1, 95))
 
 
+def _instr_change(n_instr, cur_instr):
+    """Return the instrument to SET for this note (or None for no change) and the
+    updated current instrument. Plain note path — instr 0 is handled earlier as a
+    sustain (see _block_rows), so here a 0 simply means no change."""
+    if n_instr != 0 and n_instr != cur_instr:
+        return n_instr, n_instr
+    return None, cur_instr
+
+
 def build_instruments(fc, base):
     """FC 8-byte sound records -> Driver 11 instrument rows + wave/pulse tables.
 
@@ -142,11 +151,16 @@ def _block_rows(block_notes, base, cur_instr):
         if n.is_rest:
             out.extend(D11Row(note=SF2_GATE_OFF) for _ in range(nrows))
             continue
+        if n.instr == 0:
+            # FC instrument 0 = HOLD: the note's pitch is ignored and the voice
+            # keeps ringing the current note (verified vs original siddump — the
+            # real player neither re-gates nor changes frequency on instr 0; the
+            # mid-phrase instr-0 "grace notes" are inaudible holds, and at song
+            # start, with nothing playing, instr 0 is silence). Emit as sustain.
+            out.extend(D11Row(note=SF2_GATE_ON) for _ in range(nrows))
+            continue
         note = max(SF2_NOTE_MIN, min(n.note + base + 1, SF2_NOTE_MAX))
-        inst = None
-        if n.instr != cur_instr:
-            inst = n.instr
-            cur_instr = n.instr
+        inst, cur_instr = _instr_change(n.instr, cur_instr)
         out.append(D11Row(note=note, instrument=inst, tie=n.tie))
         out.extend(D11Row(note=SF2_GATE_ON) for _ in range(nrows - 1))
     return out, cur_instr
@@ -206,11 +220,13 @@ def build_track(rows, base):
         if n.is_rest:
             out.extend(D11Row(note=SF2_GATE_OFF) for _ in range(nrows))
             continue
+        if n.instr == 0:
+            # instr 0 = HOLD the current note (sustain, no retrigger — see
+            # _block_rows); at song start this is silence.
+            out.extend(D11Row(note=SF2_GATE_ON) for _ in range(nrows))
+            continue
         note = max(SF2_NOTE_MIN, min(n.note + base + 1, SF2_NOTE_MAX))
-        inst = None
-        if n.instr != cur_instr:
-            inst = n.instr
-            cur_instr = n.instr
+        inst, cur_instr = _instr_change(n.instr, cur_instr)
         out.append(D11Row(note=note, instrument=inst, tie=n.tie))
         out.extend(D11Row(note=SF2_GATE_ON) for _ in range(nrows - 1))
     return out

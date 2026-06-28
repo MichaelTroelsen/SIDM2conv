@@ -42,12 +42,19 @@ def _load_prg(p):
 
 
 def _audible(song):
-    return [[(n.note, n.instr) for n in v if not n.is_rest] for v in song.voices]
+    # instrument 0 is FC's "hold" sentinel: such a note makes no sound, it just
+    # holds the currently-ringing note (verified vs original siddump). fc_to_sf2
+    # emits it as a sustain, so it folds into the prior note's duration on the
+    # round-trip — identical audio, but not a separate note. Exclude it from the
+    # audible comparison.
+    return [[(n.note, n.instr) for n in v if not n.is_rest and n.instr != 0]
+            for v in song.voices]
 
 
 def _assert_audible_match(orig, other):
     """Per voice, sounding notes must match — except FC notes 0/1, which fc_to_sf2
-    clamps to the SF2 note floor (a lossy, inaudible low/silent placeholder)."""
+    clamps to the SF2 note floor (a lossy, inaudible low/silent placeholder), and
+    instrument-0 holds, which are inaudible (see _audible)."""
     o, b = _audible(orig), _audible(other)
     for v in range(3):
         assert len(o[v]) == len(b[v]), f"voice {v} note count"
