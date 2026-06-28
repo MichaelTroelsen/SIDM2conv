@@ -136,8 +136,8 @@ class MON:
         ol = self._orderlist_ptr(voice)
         st = {'transpose': 0, 'instr_base': 0, 'instr': 0, 'stored': 0, 'wprog': 0}
         blocks = []
-        i, guard = 0, 0
-        while guard < 512:
+        i, guard, repeat = 0, 0, 1
+        while guard < 1024:
             guard += 1
             b = self._u8(ol + i); i += 1
             if b == 0xFE:                       # $FE = SONG END (halts player globally)
@@ -150,12 +150,15 @@ class MON:
             if b >= 0x60:                       # $60-$7F: instrument base ($9139 = b & $0F)
                 st['instr_base'] = b & 0x0F
                 continue
-            if b >= 0x40:                       # $40-$5F: other per-voice param (skip)
+            if b >= 0x40:                       # $40-$5F: REPEAT counter for the next pattern
+                repeat = (b & 0x3F) + 1         #   ($9118 = b&$3F -> pattern replays N+1 times)
                 continue
-            # b < $40 = pattern number
-            blk = []
-            self._pattern(b, st, blk)
-            blocks.append((b, blk))
+            # b < $40 = pattern number (played `repeat` times, then repeat resets to 1)
+            for _ in range(repeat):
+                blk = []
+                self._pattern(b, st, blk)
+                blocks.append((b, blk))
+            repeat = 1
         return blocks
 
     def _emit(self, events, raw, st, retrig):

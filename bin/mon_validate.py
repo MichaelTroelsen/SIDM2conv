@@ -87,18 +87,19 @@ def main():
 
     total_ok = total = 0
     for v in range(3):
-        so = sd[v]
-        po = pa[v]
-        # compare onset FRAMES (siddump note name is ground truth; the parser's
-        # note is the MoN byte which == siddump abs note -> compare frames only,
-        # plus that the COUNT lines up).
+        # Compare only within the OVERLAPPING frame range: the parser emits ONE
+        # orderlist pass while siddump keeps playing (looping short orderlists)
+        # and stops at the window edge — so clip both to min(last-onset frame) so
+        # neither the loop nor the window edge creates phantom mismatches.
+        limit = min(sd[v][-1][0] if sd[v] else 0, pa[v][-1][0] if pa[v] else 0)
+        so = [x for x in sd[v] if x[0] <= limit]
+        po = [x for x in pa[v] if x[0] <= limit]
         n = min(len(so), len(po))
         frame_ok = sum(1 for i in range(n) if so[i][0] == po[i][0])
         total_ok += frame_ok
         total += max(len(so), len(po))
         status = 'EXACT' if (frame_ok == len(so) == len(po)) else f'{frame_ok}/{max(len(so), len(po))}'
         print(f"  V{v}: siddump={len(so):3} parser={len(po):3} frame-match={status}")
-        # show first divergence
         for i in range(n):
             if so[i][0] != po[i][0]:
                 print(f"       first diff @idx {i}: siddump frame {so[i][0]} ({so[i][1]}) "

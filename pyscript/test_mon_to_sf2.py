@@ -40,15 +40,17 @@ def test_emit_and_structure():
     assert [len(o) for o in orderlists] == [1, 1, 1]
 
 
-def test_sf2_roundtrip_onsets():
+@pytest.mark.parametrize("subtune", [2, 3])
+def test_sf2_roundtrip_onsets(subtune):
     # the emitted SF2, played back, must reproduce the original onsets exactly
-    # (note + aligned frame), all 3 voices.
+    # (note + aligned frame), all 3 voices. Subtune 2 also exercises the $40-$5F
+    # orderlist pattern-repeat counter; subtune 3 is the simple case.
     val = _load_mod("mon_sf2_validate", os.path.join("bin", "mon_sf2_validate.py"))
     os.chdir(ROOT)
     os.makedirs("out", exist_ok=True)
-    probe = os.path.join("out", "_mon_test_probe.sid")
-    open(probe, "wb").write(val.build_probe(HAWKEYE, 3))
-    orig = val.onsets(HAWKEYE, ["-a3", "-t12"])
+    probe = os.path.join("out", f"_mon_test_probe_{subtune}.sid")
+    open(probe, "wb").write(val.build_probe(HAWKEYE, subtune))
+    orig = val.onsets(HAWKEYE, [f"-a{subtune}", "-t12"])
     sf2 = val.onsets(probe, ["-t12"])
     deltas = [sf2[v][0][0] - orig[v][0][0] for v in range(3) if orig[v] and sf2[v]]
     off = sorted(deltas)[len(deltas) // 2]
@@ -56,5 +58,5 @@ def test_sf2_roundtrip_onsets():
         o = orig[v]
         limit = o[-1][0]
         s = [(f - off, nm) for (f, nm) in sf2[v] if f - off <= limit + 1]
-        assert len(s) == len(o), f"voice {v}: {len(s)} vs {len(o)}"
-        assert s == o, f"voice {v}: {s} vs {o}"
+        assert len(s) == len(o), f"subtune {subtune} voice {v}: {len(s)} vs {len(o)}"
+        assert s == o, f"subtune {subtune} voice {v}: {s} vs {o}"
