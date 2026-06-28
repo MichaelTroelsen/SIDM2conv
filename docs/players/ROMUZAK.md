@@ -128,6 +128,30 @@ semitone — NOT a semitone directly (the old decode was ~7-30 semitones off). *
 RIGHT (root-first) `[0,d0,d1,d2]`. Both verified vs the osc3 trace -> osc3 freq **26% ->
 85%**, waveform **37% -> 99%**, note-onsets EXACT on both tunes.
 
+## Native driver (Stage B — byte-100% fidelity, `drivers_src/romuzak/`)
+
+For TRUE byte-100% the editable Driver-11 tables aren't enough: they quantise
+frequency to the 96-note grid, but ROMUZAK's drums set an OFF-grid frequency
+(`drum_freq = note_freq` with the HIGH byte overwritten by `table_value + B6`). So
+`drivers_src/romuzak/romuzak_driver.asm` (a native SF2II driver, adapted from the
+Galway one) + `bin/build_romuzak_native_song.py` write `$D400/1` directly. RE'd +
+implemented this session:
+- **Exact freq table** — the driver uses ROMUZAK's own `$2CA2` table (not generic
+  PAL), so on-grid voices match byte-for-byte.
+- **Drum high-byte wave mode** (instrument flag `$20`): `col1` is the freq high byte;
+  the played high byte = `drum_table_value + B6` (the sound's byte 6), keeping the
+  note's low byte.
+- **Per-instrument pulse**: `INSTR_PULSE` (col4) indexes a pulse program; the width
+  ramps by `B6 & $F0` per frame from a B0-derived base (SEEK = from 0 by B0), reset
+  per note.
+
+Build: `py -3 bin/build_romuzak_native_song.py [SID]` → `out/romuzak/<tune>_native.sf2`.
+Verify: `py -3 bin/sf2ii_vs_real.py <orig>.sid <native>.sf2 28`.
+**Result (both tunes): osc2 (bass) byte-PERFECT on every register (freq/waveform/
+pulse/AD-SR 100%); osc3 (drums) ~99%.** Remaining: osc1 arp 2-frame onset (note-12)
+and a few post-intro arp frames; full GUI confirm. Plan:
+`docs/analysis/ROMUZAK_SF2_DRIVER_PLAN.md`.
+
 ## Open issues / TODO
 
 - ~~**Per-tune base + tempo**~~ — **FIXED** (base 0; tempo = reload; bass validates).
