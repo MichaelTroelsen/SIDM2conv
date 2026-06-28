@@ -93,16 +93,23 @@ $2E88; JMP $2EB7` (no `LDA` prefix), so Road's **real play is `$2C03`, not init+
 `RMZ` decodes tracks/sectors/sounds; `build_structured` emits one Driver-11 sequence
 per SECTOR + a per-voice orderlist (real song patterns), reusing the FC fixed-slot
 emitter + silent-intro anchors. `build_instruments` decodes the B7 effects into
-wave/pulse programs (arp, drum, SEEK, →pulse). Tempo = SF2II 5 (ROMUZAK's ~6-frame
-tick, calibrated vs siddump).
+wave/pulse programs (arp, drum, SEEK, →pulse). `base` is a **fixed 0** (ROMUZAK note
+values ARE SF2 chromatic semitones — verified note-for-note on both tunes). `find_tempo`
+derives the SF2II tempo **per tune** from the player's tick-divider reload constant
+(`DEC divider; BPL; LDA #reload; STA divider`): tick = `reload + 1` frames, tempo =
+`reload + 2`. Delirious reload `$03` → tempo 5; Road reload `$02` → tempo 4.
 
 Run: `py -3 bin/romuzak_to_sf2.py SID/Fun_Fun/Delirious_9_tune_1.sid out/romuzak/x.sf2`
 
+Validate note-for-note vs the original siddump with `py -3 bin/romuzak_validate.py`
+(per voice, ordered unbracketed note-onsets). Both tunes' **bass voice aligns at a
+modal semitone offset of exactly 0**; the lead voices over-count because arps/drums
+emit extra onsets (see Sound fidelity below).
+
 ## Open issues / TODO
 
-- **Per-tune base + tempo**: `calibrate_base` centers the median per-tune (should be a
-  fixed offset); tempo is hardcoded to Delirious's. Road's notes don't yet line up —
-  derive both from the song's `SET SPEED` byte. (Road decodes 627/776/565 events.)
+- ~~**Per-tune base + tempo**~~ — **FIXED**: base is a fixed 0 and tempo is derived
+  per-tune from the tick-divider reload (Road now tempo 4, base 0; bass validates).
 - **Sound fidelity**: arp *phase* + drum *pitch* are Stage-A-approximate (per-frame
   effects, same limit as FC); add the **trace-driven pulse/filter** (`fc_to_sf2.
   _trace_pulse_programs` / `_trace_filter_program`) and tune the arp order.

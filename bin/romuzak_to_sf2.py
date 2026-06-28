@@ -138,15 +138,27 @@ class RMZ:
 
 
 def calibrate_base(rmz):
-    """ROMUZAK notes are chromatic ($00=c-0). Find the octave offset to the SF2 range
-    by centering the median note in a comfortable octave (like FC's base nudge)."""
-    notes = [n for v in rmz.voices for (n, _, _, r) in v if not r]
-    if not notes:
-        return 0
-    notes.sort()
-    med = notes[len(notes) // 2]
-    # aim the median near SF2 note ~0x30; SF2 note = rmz_note + base
-    return 0x30 - med
+    """ROMUZAK note values ARE SF2 chromatic semitones ($00 = C-0), so the base is a
+    FIXED 0 — verified note-for-note against the original siddump on both corpus tunes
+    (the bass voice aligns at a modal semitone offset of exactly 0 for Delirious AND
+    Road; see bin/romuzak_validate.py). The earlier per-tune median-centering was wrong
+    — it left Delirious at 0 by luck but shifted Road +2 semitones."""
+    return 0
+
+
+def find_tempo(d):
+    """Derive the SF2II tempo from the player's tick-divider reload constant.
+
+    The play routine runs `DEC divider ; BPL skip ; LDA #reload ; STA divider`, so the
+    note-duration tick fires every (reload + 1) video frames. SF2II advances one row per
+    `tempo` frames; Delirious's 4-frame tick (reload $03) is faithful at SF2II tempo 5,
+    so tempo = reload + 2. This is PER-TUNE: Delirious reload $03 -> 5, Road $02 -> 4.
+    Located by signature (relocation-safe); falls back to 5 if not found."""
+    for i in range(len(d) - 9):
+        if (d[i] == 0xCE and d[i + 3] == 0x10 and d[i + 5] == 0xA9
+                and d[i + 7] == 0x8D and d[i + 1] == d[i + 8] and d[i + 2] == d[i + 9]):
+            return d[i + 6] + 2
+    return 5
 
 
 def build_instruments(rmz):
@@ -301,13 +313,14 @@ def main():
     instr_rows, wave_table, pulse_table = build_instruments(rmz)
     silent_idx = _append_silent_instrument(instr_rows, wave_table, pulse_table)
     # Structured: one sequence per SECTOR + a real orderlist (the song's patterns),
-    # like fc_to_sf2. Tempo: ROMUZAK's ~6-frame tick (SF2II tempo 5, calibrated vs
-    # siddump). TODO: derive base + tempo from the song's SET SPEED for per-tune.
+    # like fc_to_sf2. base = fixed 0 (ROMUZAK note == SF2 semitone); tempo derived
+    # per-tune from the player's tick-divider reload (find_tempo).
     sequences, orderlists = build_structured(rmz, base, silent_idx)
+    tempo = find_tempo(d)
     song = GalwayDriver11Song(
         instruments=instr_rows, wave_table=wave_table, pulse_table=pulse_table,
-        tracks=[], tempo=5, pitch_base=base, subtune=0)
-    print(f"load=${la:04X} base={base} sectors/voice={[len(rmz._orderlist(v)) for v in range(3)]} "
+        tracks=[], tempo=tempo, pitch_base=base, subtune=0)
+    print(f"load=${la:04X} base={base} tempo={tempo} sectors/voice={[len(rmz._orderlist(v)) for v in range(3)]} "
           f"sequences={len(sequences)} sounds={sum(1 for s in rmz.sounds if s != (0xFF,)*8)}")
     sf2 = emit_driver11_sf2(song, sequences=sequences, orderlists=orderlists)
     os.makedirs(os.path.dirname(out) or '.', exist_ok=True)

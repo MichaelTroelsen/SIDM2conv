@@ -14,6 +14,7 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'bin'))
 
 DELIRIOUS = os.path.join(ROOT, 'SID', 'Fun_Fun', 'Delirious_9_tune_1.sid')
+ROAD = os.path.join(ROOT, 'SID', 'Fun_Fun', 'Road_of_Excess_end.sid')
 pytestmark = pytest.mark.skipif(not os.path.exists(DELIRIOUS), reason="corpus SID missing")
 
 import romuzak_to_sf2 as R  # noqa: E402
@@ -48,6 +49,28 @@ def test_sector_decode_notes():
     notes = [n for n, dur, ins, rest in ev if not rest]
     assert notes[:4] == [0x18, 0x0C, 0x1A, 0x1B]   # 24, 12, 26, 27 (matches siddump)
     assert ev[0][2] == 1                            # instrument = SND.01
+
+
+def test_base_is_fixed_zero():
+    # ROMUZAK note values are SF2 chromatic semitones -> base 0 for every tune
+    # (the old median-centering left Delirious at 0 by luck but Road at +2).
+    rmz, _ = _rmz()
+    assert R.calibrate_base(rmz) == 0
+
+
+def test_tempo_from_tick_divider():
+    # Per-tune tempo derived from the player's tick-divider reload constant:
+    # Delirious reload $03 (4-frame tick) -> 5; Road reload $02 (3-frame tick) -> 4.
+    d, _ = R.load_sid(DELIRIOUS)
+    assert R.find_tempo(d) == 5
+
+
+@pytest.mark.skipif(not os.path.exists(ROAD), reason="Road SID missing")
+def test_road_tempo_differs():
+    d, la = R.load_sid(ROAD)
+    assert la == 0x2C00
+    assert R.find_tempo(d) == 4
+    assert R.calibrate_base(R.RMZ(d, la)) == 0
 
 
 def test_emit_parseable_sf2():
