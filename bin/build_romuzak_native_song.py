@@ -72,7 +72,19 @@ def _wave_program(wave_table, start):
     return prog or [(0x41, 0x00), (0x7F, 0)]
 
 
-def gen_includes_song(segs, instrs, wave_programs, multispeed=1):
+def drum_wave_program(rmz, b4, wf):
+    """Native drum program: onset row (note pitch, kept) + one row per drum-table
+    entry carrying the freq HIGH byte (driver's drum mode), a gate-off settle, then
+    a $7f loop on the settle. The driver keeps the note's freq LOW byte, so the
+    played freq = drum_hi<<8 | note_lo, exactly like the ROMUZAK player."""
+    prog = [(wf or 0x11, 0x00)]                       # onset: keep note pitch 1 frame
+    for dwf, dval in (rmz.drum_sequence(b4) or [(wf, 0)]):
+        prog.append((dwf & 0xFF, dval & 0xFF))        # freq HIGH byte per frame
+    prog.append((0x7F, 0))                            # loop the WHOLE cycle (onset +
+    return prog                                       #   table repeats, per the trace)
+
+
+def gen_includes_song(segs, instrs, wave_programs, drum_set=frozenset(), multispeed=1):
     """Native ROMUZAK edit area: per-voice packed SECTOR sequences + column-major
     instruments + per-instrument wave programs. Writes drivers_src/romuzak/layout.inc.
     (Adapted from build_galway_native_song.gen_includes_song; pulse/FM left default
@@ -106,6 +118,8 @@ def gen_includes_song(segs, instrs, wave_programs, multispeed=1):
         ad, sr, wf = ins[0], ins[1], ins[2]
         edit[io + 0 * 32 + i] = ad
         edit[io + 1 * 32 + i] = sr
+        if i in drum_set:
+            edit[io + 2 * 32 + i] = 0x20      # col2 flag $20 -> drum (col1 = freq hi)
         wp = wave_programs[i] if i < len(wave_programs) else [(wf or 0x41, 0), (0x7F, 0)]
         wkey = tuple(wp)
         if wkey in wave_dedup:
@@ -193,12 +207,20 @@ def main():
                if ir.wave_idx < len(wave_table) else 0x41)
               for ir in instr_rows]
     wave_programs = [_wave_program(wave_table, ir.wave_idx) for ir in instr_rows]
+    # Drums (B7 bit0): override the Stage-A nearest-semitone wave program with the
+    # native high-byte drum program + flag the instrument so wave_step uses drum mode.
+    drum_set = set()
+    for i in range(min(len(instr_rows), 32)):
+        s = rmz.sounds[i]
+        if s != (0xFF,) * 8 and (s[7] & 0x01):
+            wave_programs[i] = drum_wave_program(rmz, s[4], instrs[i][2])
+            drum_set.add(i)
 
     B.TEMPO = find_tempo(d) + 1          # native driver: frames/row = tick frames
     print(f"{os.path.basename(sid)}: load=${la:04X} segs/voice={[len(s) for s in segs]} "
-          f"instr={len(instrs)} tempo={B.TEMPO}")
+          f"instr={len(instrs)} drums={sorted(drum_set)} tempo={B.TEMPO}")
 
-    gen, edit, mdp, seq0 = gen_includes_song(segs, instrs, wave_programs)
+    gen, edit, mdp, seq0 = gen_includes_song(segs, instrs, wave_programs, drum_set)
     if not write_freqtable(d, la):
         print("  WARNING: $2CA2 freq table not located — using PAL fallback")
     prg = B.assemble()

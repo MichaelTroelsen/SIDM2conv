@@ -382,6 +382,9 @@ ws_read:
         jmp ws_write
 ws_have:
         sty ws_row               ; resolved row (never $7f)
+        lda VIFLAGS,x            ; DRUM instrument (flag $20)? col1 = freq HI byte,
+        and #$20                 ;   not a semitone -> off-grid drum pitch (byte-exact)
+        bne ws_drum
         lda WAVE+256,y           ; col1 = signed semitone offset
         bmi ws_neg               ; bit7 set -> negative offset
         clc                      ; positive: vbasenote + offset, clamp high to $6f
@@ -402,6 +405,7 @@ ws_sok:
         sta vfreq_lo,x
         lda freqtable+1,y
         sta vfreq_hi,x
+ws_w404:
         ldy ws_row               ; restore resolved row + reload waveform for $D404
         lda WAVE,y
         and VGMASK,x             ; apply gate mask (on=$ff, off=$fe)
@@ -417,6 +421,14 @@ ws_write:
         jmp ws_l
 ws_done:
         rts
+; DRUM wave row: col1 = freq HIGH byte (write to vfreq_hi, KEEP vfreq_lo = the
+; note's freq low byte set on note-on -> freq = drum_hi<<8 | note_lo, exactly like
+; the ROMUZAK player). col1 $00 = keep current vfreq (the onset / gate-off settle).
+ws_drum:                         ; Y still = resolved row (ws_row) from ws_have
+        lda WAVE+256,y           ; col1 = freq high byte
+        beq ws_w404              ; 0 -> keep note pitch (onset / settle)
+        sta vfreq_hi,x
+        jmp ws_w404
 
 ; --- per-voice pulse-program runner: walk the standard pulse table (set/add/
 ;     jump), applying the per-frame add and writing $D402/3 each frame. --------
