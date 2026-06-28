@@ -57,9 +57,8 @@ def _find(d, *sig):
 class MONEvent:
     note: int = 0          # MoN note value (after transpose); -1 = none
     dur: int = 1           # duration in TICKS (frames = dur * (speed+1))
-    instr: int = 0         # current instrument program
-    is_rest: bool = False
-    slide: int = 0
+    instr: int = 0         # instrument index ($90DA, set by $Cx) -> $860C AD/SR/WF/PW record
+    wprog: int = 0         # wave-program index ($7x -> $8580/$8589); Stage-B modulation
     retrig: bool = True    # False = legato ($F0-even prefix): freq change, no gate restart
 
 
@@ -110,6 +109,11 @@ class MON:
         # freq table $8337: `TAY (A8); LDA $8337,Y (B9 37 83); STA $9133,X (9D ..)`.
         fo = _find(d, 0xA8, 0xB9, None, None, 0x9D)
         self.tbl_freq = (d[fo + 2] | (d[fo + 3] << 8)) if fo is not None else 0x8337
+        # instrument-record table $860C: the note handler reads AD via
+        #   `LDA $860e,X (BD 0E 86); STA $d405,Y (99 05 D4)`. $860E is record+2 (AD),
+        #   so the 8-byte-record base = operand - 2.
+        io = _find(d, 0xBD, None, None, 0x99, 0x05, 0xD4)
+        self.tbl_instr = ((d[io + 1] | (d[io + 2] << 8)) - 2) if io is not None else 0x860C
 
     # -- orderlist pointers for this subtune --
     def _orderlist_ptr(self, voice):
@@ -119,13 +123,19 @@ class MON:
 
     # -- decode one voice (orderlist -> patterns -> events) --
     def _voice(self, voice):
+        """Flat event list for the whole voice (all patterns concatenated)."""
+        return [ev for _pat, blk in self._voice_blocks(voice) for ev in blk]
+
+    def _voice_blocks(self, voice):
+        """Walk the orderlist -> [(pattern_number, [MONEvent, ...]), ...], one block
+        per orderlist pattern entry. The per-voice state PERSISTS across blocks
+        (mirrors the player's per-voice RAM): transpose ($90F9), instrument base
+        ($9139), current instrument ($90DA), wave-program, and the sticky stored
+        duration $90CE — so identical pattern numbers under different transposes
+        decode to different events (the caller dedups by the resulting rows)."""
         ol = self._orderlist_ptr(voice)
-        events = []
-        # Per-voice state that PERSISTS across patterns (mirrors the player's
-        # per-voice RAM): transpose ($90F9), slide base ($9139), instrument
-        # program, and the sticky stored duration $90CE (note dur = stored+1
-        # ticks; only $80-$BF bytes change it).
-        st = {'transpose': 0, 'slide_base': 0, 'instr': 0, 'stored': 0, 'slide': 0}
+        st = {'transpose': 0, 'instr_base': 0, 'instr': 0, 'stored': 0, 'wprog': 0}
+        blocks = []
         i, guard = 0, 0
         while guard < 512:
             guard += 1
@@ -137,19 +147,21 @@ class MON:
             if b >= 0x80:                       # $80-$FF: transpose ($90F9 = b & $1F)
                 st['transpose'] = b & 0x1F
                 continue
-            if b >= 0x60:                       # $60-$7F: slide base ($9139 = b & $0F)
-                st['slide_base'] = b & 0x0F
+            if b >= 0x60:                       # $60-$7F: instrument base ($9139 = b & $0F)
+                st['instr_base'] = b & 0x0F
                 continue
             if b >= 0x40:                       # $40-$5F: other per-voice param (skip)
                 continue
             # b < $40 = pattern number
-            self._pattern(b, st, events)
-        return events
+            blk = []
+            self._pattern(b, st, blk)
+            blocks.append((b, blk))
+        return blocks
 
     def _emit(self, events, raw, st, retrig):
         note = (raw + st['transpose']) & 0x7F
         events.append(MONEvent(note=note, dur=st['stored'] + 1, instr=st['instr'],
-                               slide=st['slide'], retrig=retrig))
+                               wprog=st['wprog'], retrig=retrig))
 
     def _pattern(self, pat, st, events):
         """Faithful emulation of the player's pattern-byte dispatch chain
@@ -197,15 +209,16 @@ class MON:
                     break
                 b, have = redis, True
                 continue
-            # $Cx slide ($C0-$DF): set state, read next, fall through linearly
+            # $Cx ($C0-$DF): INSTRUMENT select ($90DA = b&$1F + instr_base) -> $860C
+            # record (AD/SR/waveform/PW). Prefix: read next, fall through linearly.
             if (b & 0xE0) == 0xC0:
-                st['slide'] = (b & 0x1F) + st['slide_base']
+                st['instr'] = (b & 0x1F) + st['instr_base']
                 b = rd()
                 if b == 0xFF:
                     break
-            # $7x instrument program: set, read next, fall through
+            # $7x: wave-PROGRAM select ($8580/$8589 modulation). Prefix: read next.
             if (b & 0xF0) == 0x70:
-                st['instr'] = b & 0x0F
+                st['wprog'] = b & 0x0F
                 b = rd()
                 if b == 0xFF:
                     break
@@ -229,3 +242,20 @@ class MON:
 
     def note_freq(self, note):
         return self._u16(self.tbl_freq + note * 2)
+
+    def instrument(self, idx):
+        """8-byte instrument record at $860C + idx*8 (selected by the $Cx byte ->
+        $90DA). Byte-verified vs siddump WF/ADSR/Pulse. Returns a dict:
+          ad, sr       : the $D405/$D406 envelope bytes (record[2], record[3])
+          waveform     : the SID control byte (record[1], e.g. $41 saw+gate)
+          pw           : 12-bit pulse width = (record[0] & $0F) << 8 ($D403=lo nib, $D402=0)
+          wave_prog    : pointer to the record's own wave/arp program (record[5]/[6])
+          flags        : record[7]
+          raw          : the 8 bytes"""
+        r = [self._u8(self.tbl_instr + (idx & 0x1F) * 8 + k) for k in range(8)]
+        return {
+            'ad': r[2], 'sr': r[3], 'waveform': r[1],
+            'pw': (r[0] & 0x0F) << 8,
+            'wave_prog': r[5] | (r[6] << 8),
+            'flags': r[7], 'raw': r,
+        }
