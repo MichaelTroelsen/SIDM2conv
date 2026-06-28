@@ -67,10 +67,21 @@ $2E88; JMP $2EB7` (no `LDA` prefix), so Road's **real play is `$2C03`, not init+
 | byte | meaning |
 |---|---|
 | `$00-$5F` | NOTE (chromatic, `$00`=c-0 … `$5F`=b-7 → maps straight to SF2) |
-| `$60-$7F` | DUR (note length = `b & $1F`, 01-20) |
-| `$80-$9F` | PSE / pause |
+| `$60-$7F` | DUR — reload value `b & $1F` (note plays **`reload + 1`** ticks/rows) |
+| `$80-$9F` | PSE — pause = **`b & $1F`** ticks (fallback current DUR if 0), then **+1** |
 | `$A0-$BF` | SND (sound/instrument = `b & $1F`) |
-| `$C0-$DF` | SND base | `$E0 xx` GLD/APM (1 param) | `$F0` CONT (extend last note) |
+| `$C0-$DF` | SND base | `$E0 xx` GLD/APM (2-byte, 0 rows) | `$F0` CONT (+`reload+1`) |
+
+**Durations** (RE'd from the `$2FE9/$302B/$3079` handler): a shared per-voice counter
+(`$2C3E`) is reloaded on every NOTE/CONT and loaded directly by PSE; it decrements one
+per tick and the event ends only when it goes **negative**, so every event lasts
+`value + 1` ticks. A tick = `reload + 1` video frames (the `$2C6F` divider). The
+**silent-intro** sector 00 = `8F FF` is therefore a 15(+1)-row rest, not a single row.
+This makes **all three voices exactly equal-length** (synced tracks) — the prior decode
+(PSE = current DUR, no `+1`, `$E0` mis-skip) left them up to ~124/463 rows apart and the
+song drifted. Driver-11 plays `tempo + 1` frames/row, so the faithful **tempo = reload**
+(Delirious 3, Road 2); onset timing then matches the original to a constant 2-frame
+phase offset with zero drift.
 
 **8-byte SOUND record** (≈ FC's instrument), sound table ends with 8× `$FF`:
 
@@ -96,15 +107,17 @@ emitter + silent-intro anchors. `build_instruments` decodes the B7 effects into
 wave/pulse programs (arp, drum, SEEK, →pulse). `base` is a **fixed 0** (ROMUZAK note
 values ARE SF2 chromatic semitones — verified note-for-note on both tunes). `find_tempo`
 derives the SF2II tempo **per tune** from the player's tick-divider reload constant
-(`DEC divider; BPL; LDA #reload; STA divider`): tick = `reload + 1` frames, tempo =
-`reload + 2`. Delirious reload `$03` → tempo 5; Road reload `$02` → tempo 4.
+(`DEC divider; BPL; LDA #reload; STA divider`): the driver plays `tempo + 1` frames/row,
+so tempo = `reload` matches the `reload + 1`-frame tick. Delirious reload `$03` → tempo 3;
+Road reload `$02` → tempo 2.
 
 Run: `py -3 bin/romuzak_to_sf2.py SID/Fun_Fun/Delirious_9_tune_1.sid out/romuzak/x.sf2`
 
 Validate note-for-note vs the original siddump with `py -3 bin/romuzak_validate.py`
 (per voice, ordered unbracketed note-onsets). Both tunes' **bass voice aligns at a
-modal semitone offset of exactly 0**; the lead voices over-count because arps/drums
-emit extra onsets (see Sound fidelity below).
+modal semitone offset of exactly 0**, the probe note-count equals the original's (faithful
+timing), and **all three voices decode to exactly equal length** (synced tracks); the
+lead voices over-count because arps/drums emit extra onsets (see Sound fidelity below).
 
 ## Open issues / TODO
 

@@ -59,18 +59,39 @@ def test_base_is_fixed_zero():
 
 
 def test_tempo_from_tick_divider():
-    # Per-tune tempo derived from the player's tick-divider reload constant:
-    # Delirious reload $03 (4-frame tick) -> 5; Road reload $02 (3-frame tick) -> 4.
+    # Per-tune tempo = reload (the driver plays tempo+1 frames/row, matching the
+    # (reload+1)-frame tick): Delirious reload $03 -> tempo 3; Road $02 -> 2.
     d, _ = R.load_sid(DELIRIOUS)
-    assert R.find_tempo(d) == 5
+    assert R.find_tempo(d) == 3
 
 
 @pytest.mark.skipif(not os.path.exists(ROAD), reason="Road SID missing")
 def test_road_tempo_differs():
     d, la = R.load_sid(ROAD)
     assert la == 0x2C00
-    assert R.find_tempo(d) == 4
+    assert R.find_tempo(d) == 2
     assert R.calibrate_base(R.RMZ(d, la)) == 0
+
+
+def test_silent_intro_sector_duration():
+    # sector 00 ("8F FF") is a PSE of 15 -> 16 rows, the silent-intro unit
+    # (regression for the old cur_dur=1 bug that made it a single row).
+    rmz, _ = _rmz()
+    ev = rmz._sector(rmz._u16(rmz.sect_ptrs + 0), 0, 0)
+    assert len(ev) == 1 and ev[0][3] is True       # one rest event
+    assert ev[0][1] == 16                           # 15 + 1 rows
+
+
+def test_voices_equal_length():
+    # corrected durations make the two accompaniment voices exactly equal-length
+    # (synced tracks); the old decode left them ~124 rows apart.
+    rmz, _ = _rmz()
+
+    def total(v):
+        return sum(sum(r[1] for r in rmz._sector(rmz._u16(rmz.sect_ptrs + s * 2),
+                                                  nt, st))
+                   for s, nt, st in rmz._orderlist(v))
+    assert total(1) == total(2)
 
 
 def test_emit_parseable_sf2():

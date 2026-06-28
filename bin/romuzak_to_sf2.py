@@ -67,31 +67,42 @@ class RMZ:
         return self._u8(a) | (self._u8(a + 1) << 8)
 
     def _sector(self, addr, ntr, str_):
-        """Decode one sector -> [(note,dur,instr,is_rest)] (CONT extends prev)."""
+        """Decode one sector -> [(note,rows,instr,is_rest)] (CONT extends prev).
+
+        Durations come from the player's shared per-voice tick counter ($2C3E):
+        a DUR byte ($60-$7F) sets the reload value `b & $1F` ($2C3B); the counter
+        is reloaded on every NOTE/CONT, decrements one per tick, and the event ends
+        only when it goes NEGATIVE -> the event lasts `reload + 1` ticks (= rows).
+        A PSE byte ($80-$9F) loads the counter DIRECTLY with its own `b & $1F`
+        (falling back to the current DUR when that is 0), so a pause is NOT the last
+        DUR — sector 00 = `8F FF` is a 15(+1)-row rest, the silent-intro unit.
+        (RE'd from the $2FE9/$302B/$3079 handler; see docs/players/ROMUZAK.md.)"""
         out = []
         i = 0
-        cur_dur, cur_snd = 1, 0
+        dur_reload, cur_snd = 0, 0
         while i < 256:
             b = self._u8(addr + i); i += 1
             if b == 0xFF:
                 break
             if b < 0x60:                          # NOTE (chromatic)
-                out.append([(b + ntr) & 0xFF, cur_dur, (cur_snd + str_) & 0x1F, False])
-            elif b < 0x80:                        # DUR
-                cur_dur = (b & 0x1F) or 1
-            elif b < 0xA0:                        # PSE / pause
-                out.append([0, cur_dur, cur_snd, True])
+                out.append([(b + ntr) & 0xFF, dur_reload + 1,
+                            (cur_snd + str_) & 0x1F, False])
+            elif b < 0x80:                        # DUR -> reload value (b & $1F)
+                dur_reload = b & 0x1F
+            elif b < 0xA0:                         # PSE: counter = (b&$1F) or DUR
+                pr = (b & 0x1F) or dur_reload
+                out.append([0, pr + 1, cur_snd, True])
             elif b < 0xC0:                        # SND
                 cur_snd = b & 0x1F
             elif b < 0xE0:                        # SND base (rare)
                 cur_snd = b & 0x1F
-            elif b == 0xE0:                       # +1 param (GLD/APM) — skip param
+            elif b == 0xE0:                       # GLD/APM glide: 1 param byte, 0 rows
                 i += 1
-            elif b == 0xF0:                       # CONT -> extend previous note
+            elif b == 0xF0:                       # CONT -> extend prev by DUR+1 ticks
                 if out:
-                    out[-1][1] += cur_dur
+                    out[-1][1] += dur_reload + 1
                 else:
-                    out.append([0, cur_dur, cur_snd, True])
+                    out.append([0, dur_reload + 1, cur_snd, True])
         return out
 
     def _orderlist(self, v):
@@ -150,15 +161,17 @@ def find_tempo(d):
     """Derive the SF2II tempo from the player's tick-divider reload constant.
 
     The play routine runs `DEC divider ; BPL skip ; LDA #reload ; STA divider`, so the
-    note-duration tick fires every (reload + 1) video frames. SF2II advances one row per
-    `tempo` frames; Delirious's 4-frame tick (reload $03) is faithful at SF2II tempo 5,
-    so tempo = reload + 2. This is PER-TUNE: Delirious reload $03 -> 5, Road $02 -> 4.
-    Located by signature (relocation-safe); falls back to 5 if not found."""
+    duration tick fires every (reload + 1) video frames. One decoded row = one tick
+    (durations are emitted in ticks, see _sector); the Driver-11 plays `tempo + 1`
+    video frames per row (verified note-for-note vs the original onset timing), so to
+    match a (reload + 1)-frame tick we set tempo = reload. This is PER-TUNE: Delirious
+    reload $03 -> tempo 3, Road $02 -> tempo 2. Located by signature (relocation-safe);
+    falls back to 3 if not found."""
     for i in range(len(d) - 9):
         if (d[i] == 0xCE and d[i + 3] == 0x10 and d[i + 5] == 0xA9
                 and d[i + 7] == 0x8D and d[i + 1] == d[i + 8] and d[i + 2] == d[i + 9]):
-            return d[i + 6] + 2
-    return 5
+            return d[i + 6]
+    return 3
 
 
 def build_instruments(rmz):
