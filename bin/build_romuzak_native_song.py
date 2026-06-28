@@ -86,20 +86,21 @@ def drum_wave_program(rmz, b4, b6, wf):
     return prog                                       #   table repeats, per the trace)
 
 
-def pulse_program(s):
+def pulse_program(s, tempo=4):
     """ROMUZAK 8-byte SOUND -> native pulse program (set base, then ramp). From the
-    trace: pulse-wave instruments (B7 bit6 WF->pulse, or B1 pulse) ramp the width by
-    B6 & $F0 per frame from a B0-derived base (osc1 snd06 B6=$5F->+$50, osc2 snd01
-    B6=$3F->+$30); SEEK (B7 bit4) ramps from 0 by B0. The driver restarts it per note.
-    Format: 8X XX = set width (X|XX) 1 frame; 0X XX = add per frame; 7f = freeze."""
+    trace: pulse-wave instruments (B7 bit6 WF->pulse, or B1 pulse) hold a B0-derived
+    base for ONE ROW (tempo frames) then ramp by B6 & $F0 per frame (osc1 snd06
+    B6=$5F->+$50, osc2 snd01 B6=$3F->+$30); SEEK (B7 bit4) ramps from B0 by B0. The
+    driver restarts it per note. Format: 8X XX = set width (X|XX) for N frames; 0X XX
+    = add per frame; 7f = freeze."""
     b0, b1, b6, b7 = s[0], s[1], s[6], s[7]
     if b7 & 0x10:                                       # SEEK: start at B0, +B0/frame
         return [(0x80 | ((b0 >> 8) & 0x0F), b0 & 0xFF, 1),  # set B0 ($028), then ramp
                 (0x00, b0 & 0xFF, 0xFF), (0x7F, 0, 0)]       # +B0/frame (reset per note)
     base = ((b0 & 0x0F) << 8) | b0                      # B0 base (real $101 for b0=$01)
     if (b7 & 0x40) or (b1 & 0x40):                      # pulse waveform: PWM ramp
-        return [(0x80 | ((base >> 8) & 0x0F), base & 0xFF, 4),  # hold base ~4 frames,
-                (0x00, b6 & 0xF0, 0xFF), (0x7F, 0, 0)]          # then ramp by B6&$F0
+        return [(0x80 | ((base >> 8) & 0x0F), base & 0xFF, max(1, tempo)),  # hold 1 row
+                (0x00, b6 & 0xF0, 0xFF), (0x7F, 0, 0)]                       # then ramp
     if b0 == 0:                                         # no pulse source: the real player
         return [(0x7F, 0, 0)]                           # leaves $D402/3 unchanged (freeze)
     # non-ramp with a B0 (incl. drums): static B0 base (snd 04 B0=$08 -> pw $808, matching
@@ -252,7 +253,7 @@ def main():
               for ir in instr_rows]
     wave_programs = [_wave_program(wave_table, ir.wave_idx) for ir in instr_rows]
     # Per-instrument pulse program (B0 base + B6&$F0 ramp, or SEEK); silent instr -> static.
-    pulse_programs = [pulse_program(rmz.sounds[i]) if i < 32 and rmz.sounds[i] != (0xFF,) * 8
+    pulse_programs = [pulse_program(rmz.sounds[i], find_tempo(d) + 1) if i < 32 and rmz.sounds[i] != (0xFF,) * 8
                       else [(0x80, 0x08, 1), (0x7F, 0, 0)] for i in range(len(instr_rows))]
     # Drums (B7 bit0): override the Stage-A nearest-semitone wave program with the
     # native high-byte drum program + flag the instrument so wave_step uses drum mode.
