@@ -218,6 +218,62 @@ def _wave_prog_for(frames, v, onset, dur_f):
     return tuple(wfs[:settle + 1])
 
 
+def _fm_curve(fp, length=24):
+    """Cumulative FM offset shape (signed) over `length` frames — the audible pitch
+    contour, for clustering distance. fp = [(lo,hi,dur),...]."""
+    acc, cur = 0, []
+    for lo, hi, dur in fp:
+        off = lo | (hi << 8)
+        if off >= 0x8000:
+            off -= 0x10000
+        for _ in range(max(1, dur)):
+            acc += off
+            cur.append(acc)
+            if len(cur) >= length:
+                return cur
+    while len(cur) < length:
+        cur.append(acc)
+    return cur
+
+
+def greedy_cluster(items, count, dist, cap):
+    """Map `items` onto <=cap representatives by greedy nearest-merge: repeatedly
+    fuse the two whose merge costs the least (per-item distance * the SMALLER item's
+    note count, so the loss lands on the fewest notes). dist(i,j) -> float. Returns
+    (mapping[old_idx]->rep_idx_in_items, sorted_unique_reps)."""
+    n = len(items)
+    if n <= cap:
+        return list(range(n)), list(range(n))
+    parent = list(range(n))
+    cnt = list(count)
+    active = list(range(n))
+    while len(active) > cap:
+        best = None
+        for x in range(len(active)):
+            i = active[x]
+            for y in range(x + 1, len(active)):
+                j = active[y]
+                cost = dist(i, j) * min(cnt[i], cnt[j])
+                if best is None or cost < best[0]:
+                    best = (cost, x, y)
+        _, x, y = best
+        i, j = active[x], active[y]
+        if cnt[j] > cnt[i]:                  # keep the rep used by MORE notes
+            i, j = j, i
+        parent[j] = i
+        cnt[i] += cnt[j]
+        active.remove(j)
+
+    def find(k):
+        while parent[k] != k:
+            k = parent[k]
+        return k
+    reps = sorted(set(find(k) for k in range(n)))
+    reppos = {r: p for p, r in enumerate(reps)}
+    mapping = [reppos[find(k)] for k in range(n)]
+    return mapping, reps
+
+
 def build_native_song(m, sid, sub, idx_map, instr_rows):
     """Walk the MoN song -> per-voice packed sequences. Each note carries:
       - an INSTRUMENT byte ($a0-$bf) = a distinct (AD/SR/waveform + per-note WAVE
@@ -258,49 +314,83 @@ def build_native_song(m, sid, sub, idx_map, instr_rows):
         cands = [v for v in pri if (R - 1) in onsets[v]]
         if cands:
             drives.add((cands[0], R - 1))
-    bundles, bidx = [], {}
-    instrs, iidx, wave_programs, instr_flags, filter_programs = [], {}, [], [], []
+    # --- PASS 1: collect EXACT bundles + instruments (with note counts) + per-note records
+    exb, bidx, bcount = [], {}, []          # exact (fm,pulse) bundles
+    exi, iidx, icount = [], {}, []          # exact (ad,sr,raw,wave,flag,filt) instruments
+    note_recs = [[] for _ in range(3)]      # per voice: list of blocks; each = list of notes
 
     def bundle_of(fp, pp):
         k = (tuple(fp), tuple(pp))
         if k not in bidx:
-            bidx[k] = len(bundles)
-            bundles.append((fp, pp))
+            bidx[k] = len(exb)
+            exb.append((fp, pp))
+            bcount.append(0)
+        bcount[bidx[k]] += 1
         return bidx[k]
 
     def instr_of(mon_i, wp, flag, filt):
         ins = m.instrument(mon_i)
         ad, sr, raw = ins['ad'], ins['sr'], ins['waveform'] or 0x41
-        fk = tuple(filt) if filt else None
-        key = (ad, sr, raw, wp, flag, fk)
+        key = (ad, sr, raw, wp, flag, tuple(filt) if filt else None)
         if key not in iidx:
-            iidx[key] = len(instrs)
-            instrs.append((ad, sr, raw))
-            wave_programs.append([(w, 0x00) for w in wp] + [(0x7F, len(wp) - 1)])
-            instr_flags.append(flag)
-            filter_programs.append(filt)
+            iidx[key] = len(exi)
+            exi.append((ad, sr, raw, [(w, 0x00) for w in wp] + [(0x7F, len(wp) - 1)],
+                        flag, filt))
+            icount.append(0)
+        icount[iidx[key]] += 1
         return iidx[key]
 
-    segs = [[] for _ in range(3)]
     for v in range(3):
         fr = 0
         for _pat, events in m._voice_blocks(v):
-            rows = []
-            cur_inst = cur_cmd = None
+            blk = []
             for ev in events:
                 dur_f = ev.dur * fpt
                 base = m.note_freq(ev.note)
                 flag, filt = filter_program_for(ftr, fr, dur_f) if (v, fr) in drives else (0, None)
-                slot = instr_of(ev.instr, _wave_prog_for(frames, v, fr, dur_f), flag, filt)
-                cmd = bundle_of(fm_program_for(frames, v, fr, dur_f, base),
-                                pulse_program_for(frames, v, fr, dur_f))
-                note = max(SF2_NOTE_MIN, min(ev.note, SF2_NOTE_MAX))
+                bi = bundle_of(fm_program_for(frames, v, fr, dur_f, base),
+                               pulse_program_for(frames, v, fr, dur_f))
+                ii = instr_of(ev.instr, _wave_prog_for(frames, v, fr, dur_f), flag, filt)
+                blk.append((max(SF2_NOTE_MIN, min(ev.note, SF2_NOTE_MAX)), ev.dur, bi, ii))
+                fr += dur_f
+            note_recs[v].append(blk)
+
+    # --- CLUSTER to fit the driver caps (64 commands, 32 instruments) ---
+    bcurves = [_fm_curve(fp) for fp, _ in exb]
+
+    def bdist(i, j):
+        fd = sum(abs(a - b) for a, b in zip(bcurves[i], bcurves[j]))
+        pp = 0 if exb[i][1] == exb[j][1] else 300
+        return fd + pp
+
+    def idist(i, j):
+        a, b = exi[i], exi[j]
+        d = abs(a[0] - b[0]) + abs(a[1] - b[1]) + (200 if a[2] != b[2] else 0)
+        d += 60 * sum(1 for x, y in zip(a[3], b[3]) if x != y) + 60 * abs(len(a[3]) - len(b[3]))
+        d += 0 if (a[4] == b[4] and a[5] == b[5]) else 150
+        return d
+
+    bmap, breps = greedy_cluster(exb, bcount, bdist, 63)
+    imap, ireps = greedy_cluster(exi, icount, idist, 32)
+    bundles = [exb[r] for r in breps]
+    instrs = [exi[r][:3] for r in ireps]
+    wave_programs = [exi[r][3] for r in ireps]
+    instr_flags = [exi[r][4] for r in ireps]
+    filter_programs = [exi[r][5] for r in ireps]
+
+    # --- PASS 2: emit rows with the clustered indices ---
+    segs = [[] for _ in range(3)]
+    for v in range(3):
+        for blk in note_recs[v]:
+            rows = []
+            cur_inst = cur_cmd = None
+            for note, dur, bi, ii in blk:
+                slot, cmd = imap[ii], bmap[bi]
                 rows.append(D11Row(note=note,
                                    instrument=slot if slot != cur_inst else None,
                                    command=cmd if cmd != cur_cmd else None))
                 cur_inst, cur_cmd = slot, cmd
-                rows.extend(D11Row(note=SF2_GATE_ON) for _ in range(max(0, ev.dur - 1)))
-                fr += dur_f
+                rows.extend(D11Row(note=SF2_GATE_ON) for _ in range(max(0, dur - 1)))
             for pk in segment_track(rows):
                 segs[v].append(pk)
     return segs, bundles, instrs, wave_programs, instr_flags, filter_programs
