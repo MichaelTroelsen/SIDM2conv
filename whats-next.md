@@ -105,16 +105,25 @@ play all 3 voices fully on D11; ITS_A_SIN has 1 silent voice (long intro).
 </work_completed>
 
 <work_remaining>
-## IMMEDIATE (resume here): fix osc3 silence in the D15 build
-Command to reproduce:
-  `py -3 bin/fc_to_sf2.py SID/Fun_Fun/Triangle_Intro.sid out/Tri_d15.sf2 --d15`
-Then capture (kill any SIDFactoryII_dbg first):
-  use `bin/sf2ii_vs_real.capture_sf2ii('out/Tri_d15.sf2', 16)` and check per-voice
-  gate-on counts (ctrl regs r4/r11/r18 bit0; freq r0/1, r7/8, r14/15).
-Symptom: osc3 (track2/bass) is TOTALLY silent — freq=0000, ctrl=$40, ADSR=00, gate
-never on. osc1+osc2 gate. The bass orderlist->sequence is CORRECT (track2 ol@1AFA =
-`A0 1D 1E 1F...`; seq 0x1D = `A1 85 17 82 17...` = set-instr1, note $17=B-1). Voice
-map $13d1=[0,7,14] and ol pointers [18fa,19fa,1afa] match the stock Mood file.
+## D15 osc3/bass — PARTIAL (lead fixed; bass = X=2 driver quirk, needs 6502 trace)
+PROGRESS (committed 48d812a): the LEAD is fixed. `--d15` now uses
+`build_structured(merge_rests=False)` -> rest blocks stay SHORT separate sequences
+replayed by the orderlist (the Mood idiom), NOT a merged long rest prefix (a long
+prefix breaks the voice). Result: osc1 (arp) @196, osc2 (lead) @580 — correct.
+REMAINING: osc3 (bass, track2 = voice index X=2) is DEAD (no gate) despite a valid
+instr1 pulse wave program (wave rows 2-3) and a correct orderlist/seq. ISOLATION
+done this session: (a) reorder so the bass is OFF X=2 -> osc3 gates (but the rest-
+intro voices' timing breaks); (b) a rest lead-in on the bass does NOT help; (c)
+arp/lead (with rest intros) on X=2 are fine. => an **X=2-first-voice + immediate-
+content** state-machine timing quirk. $5b,x cycles 2->1[orderlist fetch @ $104d]->
+0[gate-on @ $10ee/$1104], init=2, DEC @ $12d8. Static analysis says X=2 should
+fetch+gate; dynamics disagree. BLACK-BOX CAPTURE TESTING IS EXHAUSTED. Next step =
+cycle-level 6502 single-step (e.g. VICE with breakpoints on $104d/$1104/$12d8 while
+playing out/Tri_d15.sf2 in SF2II_dbg, or model the X=2 first 3 frames in py65).
+Reproduce: `py -3 bin/fc_to_sf2.py SID/Fun_Fun/Triangle_Intro.sid out/Tri_d15.sf2
+--d15` then `bin/sf2ii_vs_real.capture_sf2ii('out/Tri_d15.sf2',18)` (ctrl r4/r11/r18
+bit0; freq r0/1,r7/8,r14/15). d15 disasm: scratchpad/d15_disasm.txt (regen from
+bin/drivers/sf2driver15_00.prg). Default emit = D11 flat; --d15 experimental.
 
 Steps to debug:
 1. Trace D15's per-voice note-on/gate state machine. Voices loop X=2,1,0 (osc3 is
