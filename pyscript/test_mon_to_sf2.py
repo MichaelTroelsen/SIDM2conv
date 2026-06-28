@@ -29,9 +29,12 @@ def test_emit_and_structure():
     mon_to_sf2 = _load_mod("mon_to_sf2", os.path.join("bin", "mon_to_sf2.py"))
     d, la, _ = load_sid(HAWKEYE)
     m = MON(d, la, 3)
-    instr_rows, wave_table, pulse_table = mon_to_sf2.build_instruments(m)
-    assert len(instr_rows) == mon_to_sf2.N_INSTR
-    sequences, orderlists = mon_to_sf2.build_structured(m, 0)
+    used = mon_to_sf2.used_instruments(m)
+    instr_rows, wave_table, pulse_table, idx_map = mon_to_sf2.build_instruments(m, used)
+    # subtune 3 uses exactly 3 instruments ($0A,$0B,$18) -> 3 compact slots
+    assert len(instr_rows) == len(used) == 3
+    assert set(idx_map) == set(used)
+    sequences, orderlists = mon_to_sf2.build_structured(m, 0, idx_map)
     # subtune 3 = one pattern per voice -> 3 sequences, one orderlist entry each
     assert len(sequences) == 3
     assert [len(o) for o in orderlists] == [1, 1, 1]

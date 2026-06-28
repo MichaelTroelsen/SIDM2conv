@@ -37,8 +37,9 @@ def build_probe(path, subtune):
     d, la, _ = load_sid(path)
     m = MON(d, la, subtune)
     base = 0
-    instr_rows, wave_table, pulse_table = mon_to_sf2.build_instruments(m)
-    sequences, orderlists = mon_to_sf2.build_structured(m, base)
+    used = mon_to_sf2.used_instruments(m)
+    instr_rows, wave_table, pulse_table, idx_map = mon_to_sf2.build_instruments(m, used)
+    sequences, orderlists = mon_to_sf2.build_structured(m, base, idx_map)
     song = GalwayDriver11Song(
         instruments=instr_rows, wave_table=wave_table, pulse_table=pulse_table,
         tracks=[], tempo=m.speed, pitch_base=base, subtune=subtune)
