@@ -986,6 +986,17 @@ set_instr_v:
         sta VIFLAGS,x
         lda INSTR_FILT,y         ; filter-program start row
         sta VIFILT,x
+        ; ROMUZAK pulse is PER-INSTRUMENT (not per-command): the instrument's col4
+        ; (INSTR_PULSE) is a pulse-program index -> IPULSE_LO/HI -> VIPUL; pr_note
+        ; restarts PPTR from VIPUL each note (the SEEK/PWM ramp resets per note).
+        sty ws_grd               ; save instrument index (ws_grd free during set_instr)
+        lda INSTR_PULSE,y
+        tay
+        lda IPULSE_LO,y
+        sta VIPUL_LO,x
+        lda IPULSE_HI,y
+        sta VIPUL_HI,x
+        ldy ws_grd               ; restore instrument index
         lda INSTR_WAVE,y
         sta VIWAVE,x             ; instrument's wave-program start row
         tay

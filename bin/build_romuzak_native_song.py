@@ -86,7 +86,24 @@ def drum_wave_program(rmz, b4, b6, wf):
     return prog                                       #   table repeats, per the trace)
 
 
-def gen_includes_song(segs, instrs, wave_programs, drum_set=frozenset(), multispeed=1):
+def pulse_program(s):
+    """ROMUZAK 8-byte SOUND -> native pulse program (set base, then ramp). From the
+    trace: pulse-wave instruments (B7 bit6 WF->pulse, or B1 pulse) ramp the width by
+    B6 & $F0 per frame from a B0-derived base (osc1 snd06 B6=$5F->+$50, osc2 snd01
+    B6=$3F->+$30); SEEK (B7 bit4) ramps from 0 by B0. The driver restarts it per note.
+    Format: 8X XX = set width (X|XX) 1 frame; 0X XX = add per frame; 7f = freeze."""
+    b0, b1, b6, b7 = s[0], s[1], s[6], s[7]
+    if b7 & 0x10:                                       # SEEK: from 0, +B0/frame
+        return [(0x80, 0x00, 1), (0x00, b0 & 0xFF, 0xFF), (0x7F, 0, 0)]
+    if (b7 & 0x40) or (b1 & 0x40):                      # pulse waveform: PWM ramp
+        base = ((b0 & 0x0F) << 8) | ((b0 >> 4) << 4)
+        return [(0x80 | ((base >> 8) & 0x0F), base & 0xFF, 1),
+                (0x00, b6 & 0xF0, 0xFF), (0x7F, 0, 0)]
+    return [(0x80, 0x08, 1), (0x7F, 0, 0)]              # non-pulse voice: static $800
+
+
+def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
+                      drum_set=frozenset(), multispeed=1):
     """Native ROMUZAK edit area: per-voice packed SECTOR sequences + column-major
     instruments + per-instrument wave programs. Writes drivers_src/romuzak/layout.inc.
     (Adapted from build_galway_native_song.gen_includes_song; pulse/FM left default
@@ -137,7 +154,9 @@ def gen_includes_song(segs, instrs, wave_programs, drum_set=frozenset(), multisp
         if wave_cursor > 256:
             raise ValueError(f"WAVE overflow: {wave_cursor} rows > 256")
 
-    # default pulse (index 0) + flat FM; per-command tables minimal (B3 wires SEEK)
+    # FM: flat (no per-frame FM in B3). Pulse: PER-INSTRUMENT programs, deduplicated,
+    # laid row-major into PULSETAB; IPULSE[k] = program k's start addr; the instrument
+    # column INSTR_PULSE (col4) holds k, and set_instr_v sets VIPUL = IPULSE[k].
     NFM = 64
     ifmlo_addr = gen.filter_addr + 3 * 256
     ifmhi_addr = ifmlo_addr + NFM
@@ -145,18 +164,34 @@ def gen_includes_song(segs, instrs, wave_programs, drum_set=frozenset(), multisp
     ipulse_hi_addr = ipulse_lo_addr + NFM
     fmtab_addr = ipulse_hi_addr + NFM
     fmtab = bytes([0, 0, 0])                       # lone freeze terminator (no FM)
+    # dedup the per-instrument pulse programs -> distinct slots (<= NFM)
+    distinct, pidx = [], {}
+    for p in pulse_programs:
+        k = tuple(p)
+        if k not in pidx:
+            pidx[k] = len(distinct)
+            distinct.append(p)
     pulsetab_addr = fmtab_addr + len(fmtab)
-    pulsetab = bytes([0x80, 0x00, 1, 0x00, 0x08, 0xFF, 0x7F, 0x00, 0])  # generic ramp
+    pulsetab = bytearray()
+    paddr = []                                     # start addr of each distinct program
+    for p in distinct[:NFM]:
+        paddr.append(pulsetab_addr + len(pulsetab))
+        for c0, c1, c2 in p:
+            pulsetab += bytes([c0 & 0xFF, c1 & 0xFF, 0 if (c0 & 0xFF) == 0x7F else (c2 & 0xFF)])
     need = pulsetab_addr + len(pulsetab) - B.EDIT_BASE
     if len(edit) < need:
         edit.extend(bytearray(need - len(edit)))
-    for i in range(NFM):                           # all commands -> flat FM / ramp pulse
+    for i in range(NFM):
         edit[(ifmlo_addr - B.EDIT_BASE) + i] = fmtab_addr & 0xFF
         edit[(ifmhi_addr - B.EDIT_BASE) + i] = (fmtab_addr >> 8) & 0xFF
-        edit[(ipulse_lo_addr - B.EDIT_BASE) + i] = pulsetab_addr & 0xFF
-        edit[(ipulse_hi_addr - B.EDIT_BASE) + i] = (pulsetab_addr >> 8) & 0xFF
+        a = paddr[i] if i < len(paddr) else (paddr[0] if paddr else pulsetab_addr)
+        edit[(ipulse_lo_addr - B.EDIT_BASE) + i] = a & 0xFF
+        edit[(ipulse_hi_addr - B.EDIT_BASE) + i] = (a >> 8) & 0xFF
     edit[fmtab_addr - B.EDIT_BASE:fmtab_addr - B.EDIT_BASE + len(fmtab)] = fmtab
     edit[pulsetab_addr - B.EDIT_BASE:pulsetab_addr - B.EDIT_BASE + len(pulsetab)] = pulsetab
+    # INSTR_PULSE (col4) = each instrument's pulse-program index k
+    for i in range(min(len(pulse_programs), 32)):
+        edit[io + 4 * 32 + i] = pidx[tuple(pulse_programs[i])] & 0xFF
 
     with open(os.path.join(ROOT, "drivers_src", "romuzak", "layout.inc"), "w") as f:
         f.write("; auto-generated (native song) by build_romuzak_native_song.py\n")
@@ -209,6 +244,9 @@ def main():
                if ir.wave_idx < len(wave_table) else 0x41)
               for ir in instr_rows]
     wave_programs = [_wave_program(wave_table, ir.wave_idx) for ir in instr_rows]
+    # Per-instrument pulse program (B0 base + B6&$F0 ramp, or SEEK); silent instr -> static.
+    pulse_programs = [pulse_program(rmz.sounds[i]) if i < 32 and rmz.sounds[i] != (0xFF,) * 8
+                      else [(0x80, 0x08, 1), (0x7F, 0, 0)] for i in range(len(instr_rows))]
     # Drums (B7 bit0): override the Stage-A nearest-semitone wave program with the
     # native high-byte drum program + flag the instrument so wave_step uses drum mode.
     drum_set = set()
@@ -222,7 +260,8 @@ def main():
     print(f"{os.path.basename(sid)}: load=${la:04X} segs/voice={[len(s) for s in segs]} "
           f"instr={len(instrs)} drums={sorted(drum_set)} tempo={B.TEMPO}")
 
-    gen, edit, mdp, seq0 = gen_includes_song(segs, instrs, wave_programs, drum_set)
+    gen, edit, mdp, seq0 = gen_includes_song(segs, instrs, wave_programs,
+                                             pulse_programs, drum_set)
     if not write_freqtable(d, la):
         print("  WARNING: $2CA2 freq table not located — using PAL fallback")
     prg = B.assemble()
