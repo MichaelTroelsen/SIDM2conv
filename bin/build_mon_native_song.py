@@ -274,7 +274,7 @@ def greedy_cluster(items, count, dist, cap):
     return mapping, reps
 
 
-def build_native_song(m, sid, sub, idx_map, instr_rows):
+def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None):
     """Walk the MoN song -> per-voice packed sequences. Each note carries:
       - an INSTRUMENT byte ($a0-$bf) = a distinct (AD/SR/waveform + per-note WAVE
         program) — captures the waveform attack/gate envelope, which varies per note
@@ -285,11 +285,15 @@ def build_native_song(m, sid, sub, idx_map, instr_rows):
     import mon_fidelity as F
     fpt = m.frames_per_tick
     # trace the WHOLE one-pass song length (the longest voice), else notes past the
-    # window get degenerate held programs ("sound goes bad after N seconds").
-    span = max(sum(ev.dur for ev in m.voices[v]) for v in range(3)) * fpt
-    secs = span // 50 + 4
-    frames = F.per_frame(sid, [f'-a{sub}', f'-t{secs}'])
-    ftr = filter_trace(sid, sub, secs)
+    # window get degenerate held programs. Traces can be passed in (windowed builds
+    # reuse one trace across all windows instead of re-siddumping per window).
+    if traces is not None:
+        frames, ftr = traces
+    else:
+        span = max(sum(ev.dur for ev in m.voices[v]) for v in range(3)) * fpt
+        secs = span // 50 + 4
+        frames = F.per_frame(sid, [f'-a{sub}', f'-t{secs}'])
+        ftr = filter_trace(sid, sub, secs)
     # The filter is ONE GLOBAL resource — each restart (cutoff jumps up) is caused by
     # exactly ONE note. Voices share onset frames, so assign each restart to a single
     # voice that has a note one frame before it (preferring the voice that drives the
@@ -340,20 +344,28 @@ def build_native_song(m, sid, sub, idx_map, instr_rows):
         icount[iidx[key]] += 1
         return iidx[key]
 
+    t0, t1 = win if win else (0, 1 << 30)
     for v in range(3):
         fr = 0
         for _pat, events in m._voice_blocks(v):
             blk = []
             for ev in events:
                 dur_f = ev.dur * fpt
+                if not (t0 <= fr < t1):                       # outside the window
+                    fr += dur_f
+                    continue
+                ticks = ev.dur
+                if fr + dur_f > t1:                           # clip the last note to the window
+                    ticks = max(1, (t1 - fr) // fpt)
                 base = m.note_freq(ev.note)
                 flag, filt = filter_program_for(ftr, fr, dur_f) if (v, fr) in drives else (0, None)
                 bi = bundle_of(fm_program_for(frames, v, fr, dur_f, base),
                                pulse_program_for(frames, v, fr, dur_f))
                 ii = instr_of(ev.instr, _wave_prog_for(frames, v, fr, dur_f), flag, filt)
-                blk.append((max(SF2_NOTE_MIN, min(ev.note, SF2_NOTE_MAX)), ev.dur, bi, ii))
+                blk.append((max(SF2_NOTE_MIN, min(ev.note, SF2_NOTE_MAX)), ticks, bi, ii, fr))
                 fr += dur_f
-            note_recs[v].append(blk)
+            if blk:
+                note_recs[v].append(blk)
 
     # --- CLUSTER to fit the driver caps (64 commands, 32 instruments) ---
     bcurves = [_fm_curve(fp) for fp, _ in exb]
@@ -381,10 +393,15 @@ def build_native_song(m, sid, sub, idx_map, instr_rows):
     # --- PASS 2: emit rows with the clustered indices ---
     segs = [[] for _ in range(3)]
     for v in range(3):
+        first = True
         for blk in note_recs[v]:
             rows = []
+            if win and first and blk:                        # leading rest to position the
+                lead = (blk[0][4] - t0) // fpt               # window's first note at its tick
+                rows.extend(D11Row(note=0x00) for _ in range(max(0, lead)))
+            first = False
             cur_inst = cur_cmd = None
-            for note, dur, bi, ii in blk:
+            for note, dur, bi, ii, _onfr in blk:
                 slot, cmd = imap[ii], bmap[bi]
                 rows.append(D11Row(note=note,
                                    instrument=slot if slot != cur_inst else None,
@@ -396,74 +413,69 @@ def build_native_song(m, sid, sub, idx_map, instr_rows):
     return segs, bundles, instrs, wave_programs, instr_flags, filter_programs
 
 
+def emit_one(m, br, out_path, label):
+    """Assemble + wrap one build result (segs, bundles, instrs, ...) into an SF2."""
+    segs, bundles, instrs, wave_programs, instr_flags, filter_programs = br
+    pulse_programs = [static_pulse(0x800) for _ in instrs]
+    B.GAL = MON_DIR
+    B.TEMPO = m.speed + 1
+    nfilt = sum(1 for f in instr_flags if f & 0x40)
+    flags = ""
+    if len(bundles) > 64:
+        flags += " BUNDLES>64"
+    if len(instrs) > 32:
+        flags += " INSTR>32"
+    gen, edit, mdp, seq0 = RN.gen_includes_song(segs, instrs, wave_programs,
+                                                pulse_programs, bundles=bundles,
+                                                instr_flags=instr_flags,
+                                                filter_programs=filter_programs)
+    shutil.copyfile(os.path.join(ROM_DIR, "layout.inc"), os.path.join(MON_DIR, "layout.inc"))
+    write_mon_freqtable(m)
+    prg = B.assemble()
+    sf2 = B.wrap(prg, gen, edit, mdp, instr_names=[f"instr {i}" for i in range(len(instrs))])
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    open(out_path, "wb").write(sf2)
+    from sidm2.models import SF2DriverInfo
+    from sidm2 import sf2_parser
+    di = SF2DriverInfo()
+    pla = sf2_parser.parse_sf2_blocks(bytearray(sf2), di)
+    print(f"  {label}: instr={len(instrs)} bundles={len(bundles)} filter={nfilt} "
+          f"{len(sf2)}B top~${gen.filter_addr:04X} parse={'OK' if pla == B.LOAD_BASE else 'FAIL'}{flags}")
+    return gen.filter_addr
+
+
 def main():
     sid = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
         ROOT, "SID", "Tel_Jeroen", "Hawkeye.sid")
     sub = int(sys.argv[2]) if len(sys.argv) > 2 else 3
+    winsec = int(sys.argv[3]) if len(sys.argv) > 3 else 0   # 0 = whole song; else split
 
     d, la, _ = load_sid(sid)
     m = MON(d, la, sub)
     used = mon_to_sf2.used_instruments(m)
     instr_rows, wave_table, pulse_table, idx_map = mon_to_sf2.build_instruments(m, used)
+    base = os.path.splitext(os.path.basename(sid))[0]
+    print(f"{os.path.basename(sid)} sub{sub}: load=${la:04X}")
 
-    # B2/B3: per-note FM+pulse bundles ($c0-$ff command), per-note WAVE programs
-    # (distinct instruments, $a0-$bf), and per-note FILTER programs (flag-$40
-    # instruments) — all extracted from the original trace.
-    (segs, bundles, instrs, wave_programs,
-     instr_flags, filter_programs) = build_native_song(m, sid, sub, idx_map, instr_rows)
-    pulse_programs = [static_pulse(0x800) for _ in instrs]   # unused (command owns pulse)
+    if winsec > 0:
+        import mon_fidelity as F
+        fpt = m.frames_per_tick
+        span = max(sum(ev.dur for ev in m.voices[v]) for v in range(3)) * fpt
+        secs = span // 50 + 4
+        print(f"  tracing full song ({secs}s) once...")
+        traces = (F.per_frame(sid, [f'-a{sub}', f'-t{secs}']), filter_trace(sid, sub, secs))
+        winf = winsec * 50
+        nparts = (span + winf - 1) // winf
+        for part, t0 in enumerate(range(0, span, winf), 1):
+            br = build_native_song(m, sid, sub, idx_map, instr_rows,
+                                   win=(t0, t0 + winf), traces=traces)
+            out = os.path.join(ROOT, "out", "mon", f"{base}_sub{sub}_part{part:02d}.sf2")
+            emit_one(m, br, out, f"part {part}/{nparts} ({t0 // 50}-{(t0 + winf) // 50}s)")
+        return
 
-    # redirect the shared build pipeline at the MoN driver copy
-    B.GAL = MON_DIR
-    B.TEMPO = m.speed + 1                       # native driver frames/row = tick frames
-    nfilt = sum(1 for f in instr_flags if f & 0x40)
-    print(f"{os.path.basename(sid)} sub{sub}: load=${la:04X} segs/voice={[len(s) for s in segs]} "
-          f"instr={len(instrs)} bundles={len(bundles)} filter_instr={nfilt} tempo={B.TEMPO}")
-    if len(bundles) > 64:
-        print(f"  WARNING: {len(bundles)} bundles > 64 (command cap) — needs clustering")
-    if len(instrs) > 32:
-        print(f"  WARNING: {len(instrs)} instruments > 32 — needs clustering")
-
-    gen, edit, mdp, seq0 = RN.gen_includes_song(segs, instrs, wave_programs,
-                                                pulse_programs, bundles=bundles,
-                                                instr_flags=instr_flags,
-                                                filter_programs=filter_programs)
-    # gen_includes_song writes ROM_DIR/layout.inc (hardcoded) — copy to the MoN driver
-    shutil.copyfile(os.path.join(ROM_DIR, "layout.inc"), os.path.join(MON_DIR, "layout.inc"))
-    write_mon_freqtable(m)
-
-    prg = B.assemble()
-    names = [f"instr {i}" for i in range(len(instrs))]
-    sf2 = B.wrap(prg, gen, edit, mdp, instr_names=names)
-    out = os.path.join(ROOT, "out", "mon",
-                       os.path.splitext(os.path.basename(sid))[0] + f"_sub{sub}_native.sf2")
-    os.makedirs(os.path.dirname(out), exist_ok=True)
-    open(out, "wb").write(sf2)
-    print(f"wrote {out} ({len(sf2)} bytes); tables top ~${gen.filter_addr:04X}")
-
-    from sidm2.models import SF2DriverInfo
-    from sidm2 import sf2_parser
-    di = SF2DriverInfo()
-    pla = sf2_parser.parse_sf2_blocks(bytearray(sf2), di)
-    print(f"PARSE: load=${pla:04X} tracks={di.track_count}",
-          "OK" if pla == B.LOAD_BASE else "FAIL")
-
-    # headless: each voice should reproduce its first sequence's note freqs (MoN table)
-    exp = [[m.note_freq(n) for n in RN.playing_notes(segs[v][0])] for v in range(3)]
-    B.N_ROWS = 24
-    rows = B.headless_audio(prg, edit)
-    bad = 0
-    print("  row:  V0      V1      V2     (expected, MoN tuning)")
-    for r in range(min(B.N_ROWS, *[len(e) for e in exp])):
-        e = [exp[v][r] for v in range(3)]
-        g = rows[r]
-        good = all(abs(g[v] - e[v]) <= 0x40 or e[v] == 0 for v in range(3))
-        bad += 0 if good else 1
-        if r < 12:
-            print(f"  {r}: " + " ".join(f"${g[v]:04X}" for v in range(3))
-                  + "  (" + "/".join(f"${e[v]:04X}" for v in range(3)) + ") "
-                  + ("ok" if good else "X"))
-    print("SONG NOTES OK on native driver" if bad == 0 else f"NOTE MISMATCH ({bad} rows)")
+    br = build_native_song(m, sid, sub, idx_map, instr_rows)
+    out = os.path.join(ROOT, "out", "mon", f"{base}_sub{sub}_native.sf2")
+    emit_one(m, br, out, f"{base}_sub{sub}")
 
 
 if __name__ == "__main__":
