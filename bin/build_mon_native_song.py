@@ -84,15 +84,43 @@ def fm_program_for(frames, v, onset, dur_f, base):
     return prog
 
 
+def pulse_program_for(frames, v, onset, dur_f):
+    """Per-note PULSE program (B3 PWM): reproduce the original's per-frame pulse
+    width. 8X = set width frame 0; 0X = add per-frame delta (12-bit) for `run`
+    frames; 7f = freeze. The driver restarts the pulse program per note (PPTR=
+    VIPUL/VPC=0), so frame 0 sets the base — no 1-frame offset (unlike FM)."""
+    targ, hold = [], None
+    for k in range(min(dur_f, FM_CAP)):
+        idx = onset + k
+        pv = frames[idx][0][v]['pul'] if idx < len(frames) else None
+        if pv is not None:
+            hold = pv
+        targ.append(hold if hold is not None else 0x800)
+    prog = [(0x80 | ((targ[0] >> 8) & 0x0F), targ[0] & 0xFF, 1)]   # 8X set frame 0
+    prev, run, rl = targ[0], None, 0
+    for k in range(1, len(targ)):
+        delta = (targ[k] - prev) & 0xFFF                          # 12-bit signed add
+        prev = targ[k]
+        if delta == run:
+            rl += 1
+        else:
+            if run is not None:
+                prog.append(((run >> 8) & 0x0F, run & 0xFF, rl))
+            run, rl = delta, 1
+    if run is not None:
+        prog.append(((run >> 8) & 0x0F, run & 0xFF, rl))
+    prog.append((0x7F, 0, 0))                                     # freeze (hold last)
+    return prog
+
+
 def build_native_song(m, sid, sub, idx_map, instr_rows):
     """Walk the MoN song -> per-voice packed sequences with a per-NOTE command byte
-    selecting an (FM program, pulse program) BUNDLE. The FM program carries the
-    note's exact per-frame pitch (slide/arp) from the trace; the pulse program is
-    the instrument's static width (B2 — PWM is B3). Returns (segs, bundles)."""
+    selecting an (FM program, pulse program) BUNDLE. Both carry the note's exact
+    per-frame envelope from the trace (FM = pitch slide/arp; pulse = PWM).
+    Returns (segs, bundles)."""
     import mon_fidelity as F
     frames = F.per_frame(sid, [f'-a{sub}', '-t10'])
     fpt = m.frames_per_tick
-    inst_pulse = [static_pulse((ir.pulse_width & 0x0F) << 8) for ir in instr_rows]
     bundles, bidx = [], {}
 
     def bundle_of(fp, pp):
@@ -113,7 +141,8 @@ def build_native_song(m, sid, sub, idx_map, instr_rows):
                 dur_f = ev.dur * fpt
                 base = m.note_freq(ev.note)
                 fp = fm_program_for(frames, v, fr, dur_f, base)
-                cmd = bundle_of(fp, inst_pulse[slot])
+                pp = pulse_program_for(frames, v, fr, dur_f)
+                cmd = bundle_of(fp, pp)
                 note = max(SF2_NOTE_MIN, min(ev.note, SF2_NOTE_MAX))
                 rows.append(D11Row(note=note,
                                    instrument=slot if slot != cur_inst else None,
@@ -137,11 +166,12 @@ def main():
     instr_rows, wave_table, pulse_table, idx_map = mon_to_sf2.build_instruments(m, used)
 
     # native instrument = (AD, SR, waveform); wave program = held waveform (FM carries
-    # all per-frame pitch); pulse handled per-note via the bundle.
-    instrs = [(ir.ad, ir.sr, (wave_table[ir.wave_idx][0] or 0x41)
-               if ir.wave_idx < len(wave_table) else 0x41)
-              for ir in instr_rows]
-    wave_programs = [RN._wave_program(wave_table, ir.wave_idx) for ir in instr_rows]
+    # all per-frame pitch; pulse via the per-note bundle). Use the RAW MoN waveform
+    # ($43 = pulse+sync etc.) — _norm_waveform strips bits ($43->$41), wrong for fidelity.
+    rev = {slot: mon_i for mon_i, slot in idx_map.items()}
+    raw_wf = [m.instrument(rev[s])['waveform'] or 0x41 for s in range(len(instr_rows))]
+    instrs = [(ir.ad, ir.sr, raw_wf[s]) for s, ir in enumerate(instr_rows)]
+    wave_programs = [[(raw_wf[s], 0x00), (0x7F, 0)] for s in range(len(instr_rows))]
     pulse_programs = [static_pulse((ir.pulse_width & 0x0F) << 8) for ir in instr_rows]
 
     # B2: per-NOTE FM bundles (slides + arps) selected via the $c0-$ff command channel

@@ -1001,17 +1001,11 @@ set_instr_v:
         sta VIFLAGS,x
         lda INSTR_FILT,y         ; filter-program start row
         sta VIFILT,x
-        ; ROMUZAK pulse is PER-INSTRUMENT (not per-command): the instrument's col4
-        ; (INSTR_PULSE) is a pulse-program index -> IPULSE_LO/HI -> VIPUL; pr_note
-        ; restarts PPTR from VIPUL each note (the SEEK/PWM ramp resets per note).
-        sty ws_grd               ; save instrument index (ws_grd free during set_instr)
-        lda INSTR_PULSE,y
-        tay
-        lda IPULSE_LO,y
-        sta VIPUL_LO,x
-        lda IPULSE_HI,y
-        sta VIPUL_HI,x
-        ldy ws_grd               ; restore instrument index
+        ; MoN: pulse is PER-COMMAND (the $c0-$ff bundle), NOT per-instrument. Do NOT
+        ; set VIPUL here — set_instr runs AFTER the command in token order, so writing
+        ; VIPUL would clobber the note's bundle pulse program. The command owns both
+        ; FM and pulse; the instrument owns only timbre (AD/SR/flags/filter/waveform).
+        ; (Y is still the instrument index from the top of set_instr_v.)
         lda INSTR_WAVE,y
         sta VIWAVE,x             ; instrument's wave-program start row
         tay
