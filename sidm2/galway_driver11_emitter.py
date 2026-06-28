@@ -262,20 +262,30 @@ def emit_driver11_sf2(song: GalwayDriver11Song,
             track_seq_indices[v].append(len(packed_sequences))
             packed_sequences.append(bytes([0x7F]))
 
-    # Write packed sequences contiguously from sequence_start, growing the file.
+    # Write each packed sequence into its OWN fixed-stride slot at
+    # sequence_start + idx*sequence_size. SF2II's editor reads sequences from
+    # these fixed slots (DataSourceSequence at sequence_start + idx*m_SequenceSize),
+    # NOT via the pointer table — so packing sequences contiguously makes a slot
+    # read run across several of them with no early $7F, unpacking to thousands of
+    # events and overflowing SF2II's 1024-event m_Events buffer (heap corruption →
+    # hang on load). One sequence per slot keeps each slot read self-terminating.
+    # (The driver itself follows the pointer table, which we point at the slots, so
+    # playback is unchanged.) Each packed sequence is < _SEQ_BYTE_LIMIT < stride.
     seq_lo = off(di.sequence_ptrs_lo)
     seq_hi = off(di.sequence_ptrs_hi)
-    cur_addr = di.sequence_start
-    cur_off = off(cur_addr)
+    stride = di.sequence_size if di.sequence_size else 0x100
+    seq_end_addr = di.sequence_start
     for idx, pk in enumerate(packed_sequences):
-        if cur_off + len(pk) > len(out):
-            out.extend(bytearray(cur_off + len(pk) - len(out)))
-        out[cur_off:cur_off + len(pk)] = pk
-        out[seq_lo + idx] = cur_addr & 0xFF
-        out[seq_hi + idx] = (cur_addr >> 8) & 0xFF
-        cur_addr += len(pk)
-        cur_off += len(pk)
-    seq_end_addr = cur_addr
+        slot_addr = di.sequence_start + idx * stride
+        slot_off = off(slot_addr)
+        if slot_off + stride > len(out):
+            out.extend(bytearray(slot_off + stride - len(out)))
+        for k in range(stride):                       # clear the slot, then write
+            out[slot_off + k] = 0x00
+        out[slot_off:slot_off + len(pk)] = pk
+        out[seq_lo + idx] = slot_addr & 0xFF
+        out[seq_hi + idx] = (slot_addr >> 8) & 0xFF
+        seq_end_addr = slot_addr + stride
     # Null out unused sequence pointers so stale template pointers can't be hit.
     for idx in range(len(packed_sequences), _MAX_SEQUENCES):
         out[seq_lo + idx] = 0x00
