@@ -561,8 +561,9 @@ fp_freeze:
         sta F_CNT
         jmp fp_apply
 fp_dec:
-        cmp #$90
-        bcs fp_set               ; byte0 >= $90 -> set-filter row
+        lda FILTER,y             ; reload byte0; bit7 distinguishes set ($9x) from add
+        bmi fp_set               ; ($0x) — CMP-bug-safe (SF2II miscomputes `cmp #$90`
+                                 ; vs $0x add rows, >$7f apart; mirror pulse_step bmi)
         ; --- 0X add-to-cutoff: F_AD = ((byte0&f):byte1) << 4 ---
         and #$0f
         sta tmpf+1               ; XXX hi nibble

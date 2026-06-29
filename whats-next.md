@@ -108,8 +108,13 @@ CLUSTERING + WINDOWING for dense/long tunes (subtune 0):
    (signatures relocation-safe; subtunes 6-11 use a $92xx subtune-block COPY path at init
    that the parser does NOT yet emulate — it only reads the in-place $7B(83FC) sets for
    subtunes 0-5).
-4. Optional: GUI-confirm sub0 parts load+play in stock SF2II (argv-load Heisenbug — use
-   `pyscript/sf2_open_in_editor.py`).
+4. GUI-CONFIRMED (2026-06-29): sub0 parts LOAD + PLAY in real SF2II. `bin/mon_sf2ii_confirm.py
+   PART SUB SECS [START_SEC]` captures the instrumented SF2II_dbg's actual per-frame SID
+   output (argv-load + auto-play) and diffs vs the original. Part1: freq/wf/pulse 100/100/100
+   (osc3 99.8/97.6/99.2), FILTER 98.7%. CMP-BUG FIX needed first: filt_prog_step dispatched
+   add-rows via `cmp #$90; bcs` — SF2II's 6510 miscomputes carry when |A-op|>$7f, so $0x add
+   rows (vs $90) were misread as set-rows -> filter 1.6% in real SF2II. Fixed to a bit7 test
+   (`lda FILTER,y; bmi fp_set`), mirroring pulse_step. See [[sf2ii-cmp-carry-bug]].
 </work_remaining>
 
 <attempted_approaches>
