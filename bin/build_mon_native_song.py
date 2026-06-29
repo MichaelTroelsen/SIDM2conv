@@ -274,7 +274,8 @@ def greedy_cluster(items, count, dist, cap):
     return mapping, reps
 
 
-def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None):
+def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
+                      count_only=False):
     """Walk the MoN song -> per-voice packed sequences. Each note carries:
       - an INSTRUMENT byte ($a0-$bf) = a distinct (AD/SR/waveform + per-note WAVE
         program) — captures the waveform attack/gate envelope, which varies per note
@@ -367,6 +368,45 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None):
             if blk:
                 note_recs[v].append(blk)
 
+    # Adaptive packing probes the PRE-cluster resource counts for a candidate window
+    # (cheap: pass-1 only, no clustering / assemble) to grow windows up to the caps.
+    # Returns (#bundles, #instruments, #wave-rows, #filter-rows, #sequences). The two
+    # row counts are the deduped totals laid into the 256-row WAVE/FILTER tables; the
+    # sequence count is the total packed sequences across all voices (the native
+    # driver's seq-pointer table holds 128 — overflow corrupts the LAST voice, osc3).
+    if count_only:
+        wkeys, wrows, fkeys, frows = set(), 0, set(), 0
+        for _ad, _sr, _raw, waveprog, _flag, filt in exi:
+            wk = tuple(waveprog)
+            if wk not in wkeys:
+                wkeys.add(wk)
+                wrows += len(waveprog)
+            if filt:
+                fk = tuple(filt)
+                if fk not in fkeys:
+                    fkeys.add(fk)
+                    frows += len(filt)
+        # mirror pass-2's row build (raw indices — exact while under the cluster caps,
+        # where the cluster map is the identity) to count sequences accurately.
+        nseg = 0
+        for v in range(3):
+            first = True
+            for blk in note_recs[v]:
+                rows = []
+                if win and first and blk:
+                    lead = (blk[0][4] - t0) // fpt
+                    rows.extend(D11Row(note=0x00) for _ in range(max(0, lead)))
+                first = False
+                cur_inst = cur_cmd = None
+                for note, dur, bi, ii, _onfr in blk:
+                    rows.append(D11Row(note=note,
+                                       instrument=ii if ii != cur_inst else None,
+                                       command=bi if bi != cur_cmd else None))
+                    cur_inst, cur_cmd = ii, bi
+                    rows.extend(D11Row(note=SF2_GATE_ON) for _ in range(max(0, dur - 1)))
+                nseg += len(segment_track(rows))
+        return len(exb), len(exi), wrows, frows, nseg
+
     # --- CLUSTER to fit the driver caps (64 commands, 32 instruments) ---
     bcurves = [_fm_curve(fp) for fp, _ in exb]
 
@@ -439,6 +479,8 @@ def emit_one(m, br, out_path, label):
     from sidm2 import sf2_parser
     di = SF2DriverInfo()
     pla = sf2_parser.parse_sf2_blocks(bytearray(sf2), di)
+    if gen.filter_addr >= 0xC000:                # approaching the $D000 memory wall
+        flags += " MEMWALL"
     print(f"  {label}: instr={len(instrs)} bundles={len(bundles)} filter={nfilt} "
           f"{len(sf2)}B top~${gen.filter_addr:04X} parse={'OK' if pla == B.LOAD_BASE else 'FAIL'}{flags}")
     return gen.filter_addr
@@ -448,7 +490,12 @@ def main():
     sid = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
         ROOT, "SID", "Tel_Jeroen", "Hawkeye.sid")
     sub = int(sys.argv[2]) if len(sys.argv) > 2 else 3
-    winsec = int(sys.argv[3]) if len(sys.argv) > 3 else 0   # 0 = whole song; else split
+    # 3rd arg: a number N = fixed N-second windows; "auto" = adaptive max-size windows
+    # (grow each window right up to the driver caps -> fewest files, NO clustering loss);
+    # absent/0 = whole song in one file.
+    warg = sys.argv[3] if len(sys.argv) > 3 else "0"
+    adaptive = warg.lower() in ("auto", "a", "-1")
+    winsec = 0 if adaptive else int(warg)
 
     d, la, _ = load_sid(sid)
     m = MON(d, la, sub)
@@ -457,20 +504,51 @@ def main():
     base = os.path.splitext(os.path.basename(sid))[0]
     print(f"{os.path.basename(sid)} sub{sub}: load=${la:04X}")
 
-    if winsec > 0:
+    if adaptive or winsec > 0:
         import mon_fidelity as F
         fpt = m.frames_per_tick
         span = max(sum(ev.dur for ev in m.voices[v]) for v in range(3)) * fpt
         secs = span // 50 + 4
         print(f"  tracing full song ({secs}s) once...")
         traces = (F.per_frame(sid, [f'-a{sub}', f'-t{secs}']), filter_trace(sid, sub, secs))
-        winf = winsec * 50
-        nparts = (span + winf - 1) // winf
-        for part, t0 in enumerate(range(0, span, winf), 1):
+
+        if adaptive:
+            # Greedily grow each window to the largest span whose PRE-cluster resource
+            # counts still fit ALL the driver caps (so the build stays clustering-free
+            # AND no table overflows = byte-exact), probing with the cheap count_only
+            # path. Caps: <=63 bundles, <=32 instruments (greedy_cluster identity
+            # thresholds) and <=256 rows in each of the WAVE / FILTER tables.
+            # Caps: bundles, instruments, WAVE/FILTER table rows, and total sequences
+            # (the native seq-pointer table = 128 entries; 120 leaves margin so osc3,
+            # laid last, never overflows).
+            CAP_B, CAP_I, CAP_TBL, CAP_SEG, STEP = 63, 32, 256, 120, 100   # 2s probe step
+
+            def fits(t0, t1):
+                nb, ni, nw, nf, ns = build_native_song(
+                    m, sid, sub, idx_map, instr_rows, win=(t0, t1),
+                    traces=traces, count_only=True)
+                return (nb <= CAP_B and ni <= CAP_I and nw <= CAP_TBL
+                        and nf <= CAP_TBL and ns <= CAP_SEG)
+
+            bounds, t0 = [], 0
+            while t0 < span:
+                t1 = min(t0 + STEP, span)
+                while t1 < span and fits(t0, min(t1 + STEP, span)):
+                    t1 = min(t1 + STEP, span)
+                bounds.append((t0, t1))
+                t0 = t1
+            was30 = (span + 1499) // 1500
+            print(f"  packed into {len(bounds)} adaptive parts (vs {was30} at fixed 30s)")
+        else:
+            winf = winsec * 50
+            bounds = [(t0, min(t0 + winf, span)) for t0 in range(0, span, winf)]
+
+        nparts = len(bounds)
+        for part, (t0, t1) in enumerate(bounds, 1):
             br = build_native_song(m, sid, sub, idx_map, instr_rows,
-                                   win=(t0, t0 + winf), traces=traces)
+                                   win=(t0, t1), traces=traces)
             out = os.path.join(ROOT, "out", "mon", f"{base}_sub{sub}_part{part:02d}.sf2")
-            emit_one(m, br, out, f"part {part}/{nparts} ({t0 // 50}-{(t0 + winf) // 50}s)")
+            emit_one(m, br, out, f"part {part}/{nparts} ({t0 // 50}-{t1 // 50}s)")
         return
 
     br = build_native_song(m, sid, sub, idx_map, instr_rows)

@@ -70,11 +70,22 @@ CLUSTERING + WINDOWING for dense/long tunes (subtune 0):
   frame window, positions the first note with a leading rest (note 0 = gate off), shares
   ONE trace across all windows. `main()`: 3rd CLI arg WINSEC -> emits one SF2 per window
   (`emit_one` factored out). `py -3 bin/build_mon_native_song.py SID 0 30`.
-  Subtune 0 (the ~6.4-min main theme, ~6000 notes: V0 1713 / V1 3052 / V2 1209) ->
-  13 x 30s parts: out/mon/Hawkeye_sub0_partNN.sf2 + saved out/hawkeye_subtune_0_partNN.sf2.
-  Each part fits the caps WITHOUT clustering (instr<=26, bundles<=54) + under the $D000
-  memory wall (top<=$5E00). Part 1 fidelity: osc1/osc2 freq/wf/pulse 100%; osc3 freq 100/
-  wf 98/pulse 99; FILTER ~75% (window-boundary seam).
+  Subtune 0 (the ~6.4-min main theme, ~6000 notes: V0 1713 / V1 3052 / V2 1209).
+- ADAPTIVE WINDOWING (the user's chosen fix for "13 files is clunky") — `... SID 0 auto`
+  grows each window to the LARGEST span whose PRE-cluster resource counts still fit ALL
+  caps, so every part stays clustering-free + overflow-free = byte-exact, with the FEWEST
+  files. Caps probed via a cheap `count_only=True` path on `build_native_song` (pass-1 +
+  a faithful pass-2 segment count, NO clustering/assemble): <=63 bundles, <=32 instruments,
+  <=256 WAVE rows, <=256 FILTER rows, and <=120 SEQUENCES. The sequence cap was the subtle
+  one: the native seq-pointer table (SEQPTRLO $1a06 / SEQPTRHI $1a86) holds 128 entries and
+  voices are laid in order, so >128 total sequences silently corrupts the LAST voice (osc3)
+  — a 106s window gave osc3 27% until this cap was added. RESULT: subtune 0 -> **8 parts**
+  (was 13). Per-part fidelity (`bin/mon_part_fidelity.py PART SUB SECS [START_SEC]`, which
+  wraps a windowed part as a native PSID play=$1003 and aligns to the original at START_SEC):
+  part 1 (0-88s) osc 100/100/100, osc3 99.8/97.8/99.3; part 5 (densest, bundles=63) 99.5-
+  99.8%; part 8 98.9-100%. NO clustering loss. FILTER still the seam issue (60-87%/part —
+  longer windows accumulate more global-filter drift; this is open issue #1, unchanged in
+  nature). out/mon/Hawkeye_sub0_partNN.sf2.
 </work_completed>
 
 <work_remaining>
@@ -84,8 +95,10 @@ CLUSTERING + WINDOWING for dense/long tunes (subtune 0):
    so there may be a real windowed-filter bug beyond the boundary effect — investigate
    filter_program_for/drives under windowing (the leading rest + note clip-to-window may
    truncate a filter program; or the windowed onset frames vs the absolute `drives` set).
-2. SUBTUNE 0 UX: 13 files is clunky. Options: larger windows (fewer files; watch the caps
-   — part 9 already hit 54 bundles at 30s); or a single embedded-player SF2 for sub0.
+2. SUBTUNE 0 UX: DONE for the editable route — adaptive windowing (`... SID 0 auto`) cut
+   13 -> 8 files with zero fidelity loss (see ADAPTIVE WINDOWING above). Further reduction
+   would need a non-editable single embedded-player SF2 (the user chose to keep it editable),
+   or fixing the filter seam so even larger windows stay clean.
 3. GENERALIZE: batch all 12 Hawkeye subtunes; then the 179-tune Tel_Jeroen corpus
    (signatures relocation-safe; subtunes 6-11 use a $92xx subtune-block COPY path at init
    that the parser does NOT yet emulate — it only reads the in-place $7B(83FC) sets for
@@ -165,10 +178,12 @@ CLUSTERING + WINDOWING for dense/long tunes (subtune 0):
   100% byte-exact, full length. out/mon/Hawkeye_sub{2,3}_native.sf2; out/hawkeye_subtune_2.sf2
   saved per user request. User confirmed sub2 "very close" / "this is good" before the
   filter; the filter then landed it at 100%.
-- Subtune 0: 13 x 30s parts, out/mon/Hawkeye_sub0_partNN.sf2 + out/hawkeye_subtune_0_partNN.sf2.
-  Pitch/waveform/pulse ~100% per part; FILTER ~75% (open issue #1 above). Each part fits
-  caps + memory. (out/hawkeye_subtune_0.sf2 = the OLD single-file clustered build = BAD,
-  ignore/replace.)
+- Subtune 0: ADAPTIVE WINDOWING -> 8 parts (was 13), `py -3 bin/build_mon_native_song.py
+  SID/Tel_Jeroen/Hawkeye.sid 0 auto`, out/mon/Hawkeye_sub0_partNN.sf2. Pitch/waveform/pulse
+  ~100% per part (verified parts 1/5/8 via bin/mon_part_fidelity.py); FILTER 60-87% (open
+  issue #1). Each part clustering-free + under all caps + memory. (out/hawkeye_subtune_0.sf2
+  = the OLD single-file clustered build = BAD, ignore/replace. The fixed-30s `... 0 30` path
+  still works if needed.)
 - All code committed on master (latest: the windowing commit). Working tree clean except
   out/* artifacts (gitignored) + pre-existing untracked binaries. 9 tests green; ROMUZAK
   native build re-verified unaffected by the shared gen_includes_song changes.
