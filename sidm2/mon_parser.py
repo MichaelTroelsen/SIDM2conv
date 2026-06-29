@@ -103,16 +103,33 @@ class MON:
         #   destination ($7afe) is the speed-reload byte read each frame; match the
         #   LDA-abs,X just before LDY #$17 won't generalize, so anchor on $83FC-7.
         self.tbl_speed = self.tbl_olptr - 7                         # $83F5 = $83FC-7
-        # pattern-pointer table $8409: `ASL A (0A); TAY (A8); LDA $8409,Y (B9 09 84)`.
-        po = _find(d, 0x0A, 0xA8, 0xB9, None, None, 0x85, 0xFD)
+        # pattern-pointer table: `ASL A (0A); TAY (A8); LDA tab,Y (B9 ..); STA zp (85 ..)`.
+        # The STA zp byte is engine-relocation-specific (Hawkeye $FD, Cybernoid $BD), so
+        # don't pin it; take the FIRST such read (the orderlist->pattern one).
+        po = _find(d, 0x0A, 0xA8, 0xB9, None, None, 0x85, None)
         self.tbl_pat = (d[po + 3] | (d[po + 4] << 8)) if po is not None else 0x8409
         # freq table is SPLIT into two arrays indexed by note byte (NOT interleaved):
-        #   LO bytes $8337: `TAY (A8); LDA $8337,Y (B9 37 83); STA $9133,X (9D 33 91)`.
-        #   HI bytes $8396: `LDA $8396,Y (B9 96 83); STA $9136,X (9D 36 91)`.
-        fo = _find(d, 0xA8, 0xB9, None, None, 0x9D, 0x33, 0x91)
-        self.tbl_freq = (d[fo + 2] | (d[fo + 3] << 8)) if fo is not None else 0x8337
-        ho = _find(d, 0xB9, None, None, 0x9D, 0x36, 0x91)
-        self.tbl_freq_hi = (d[ho + 1] | (d[ho + 2] << 8)) if ho is not None else 0x8396
+        #   LO read `TAY (A8); LDA loTab,Y (B9 ..); STA scratch,X (9D ..)`,
+        #   HI read `LDA hiTab,Y (B9 ..); STA scratch+3,X (9D ..)`. The scratch dest is
+        #   relocation-specific ($9133/$9136 Hawkeye, $BF4C/$BF4F Cybernoid), so locate
+        #   the LO table as the MOST-COMMON A8-B9-9D read target, then the HI table as the
+        #   B9-9D read whose dest is loDest+3 (the high byte stored next to the low).
+        lo_reads = [(d[i + 2] | (d[i + 3] << 8), d[i + 5] | (d[i + 6] << 8))
+                    for i in range(len(d) - 6)
+                    if d[i] == 0xA8 and d[i + 1] == 0xB9 and d[i + 4] == 0x9D]
+        if lo_reads:
+            from collections import Counter
+            tab = Counter(t for t, _ in lo_reads).most_common(1)[0][0]
+            self.tbl_freq = tab
+            lo_dest = next(de for t, de in lo_reads if t == tab)
+        else:
+            self.tbl_freq, lo_dest = 0x8337, 0x9133
+        self.tbl_freq_hi = self.tbl_freq + (0x8396 - 0x8337)        # default stride
+        for i in range(len(d) - 5):
+            if (d[i] == 0xB9 and d[i + 3] == 0x9D
+                    and (d[i + 4] | (d[i + 5] << 8)) == lo_dest + 3):
+                self.tbl_freq_hi = d[i + 1] | (d[i + 2] << 8)
+                break
         # instrument-record table $860C: the note handler reads AD via
         #   `LDA $860e,X (BD 0E 86); STA $d405,Y (99 05 D4)`. $860E is record+2 (AD),
         #   so the 8-byte-record base = operand - 2.
