@@ -12,6 +12,7 @@ PWM / filter sweeps / per-frame slides / the gate envelope follow (B2+).
 
 Usage:  py -3 bin/build_mon_native_song.py [SID/Tel_Jeroen/Hawkeye.sid] [subtune]
 """
+import bisect
 import os
 import shutil
 import sys
@@ -175,32 +176,78 @@ def _filt_set_row(cutoff11, ctrl):
     return (0x90 | ((C >> 4) & 0x0F), (C & 0x0F) << 4, ctrl & 0xFF)
 
 
-def filt_is_restart(ftr, R):
-    """A global filter restart at frame R = the cutoff CHANGES at R and was STABLE
-    the frame before (a fresh sweep begins, start value higher OR lower than the
-    held value). Caught at a note boundary (R = onset+1). R==1 = the song's first
-    filtered note."""
-    if R < 1 or R >= len(ftr) or ftr[R][0] == ftr[R - 1][0]:
-        return False
-    return R == 1 or ftr[R - 1][0] == ftr[R - 2][0]
+def _filt_add_row(d416_delta, count):
+    """A filt_prog_step ADD-to-cutoff row changing $D416 by `d416_delta` per frame
+    for `count` frames. The driver applies ((byte0&f):byte1) << 4 to the 16-bit cutoff
+    (F_CHI = $D416), so to step $D416 by d416_delta the pre-shift 12-bit value is
+    (d416_delta << 4). byte0's low nibble = hi, byte1 = lo, byte2 = frame count.
+    (byte0 <= $0F so the driver reads it as an ADD, not a $90+ SET or $7F jump.)"""
+    twelve = (d416_delta << 4) & 0xFFF        # signed delta -> 12-bit
+    return ((twelve >> 8) & 0x0F, twelve & 0xFF, max(1, min(count, 255)))
 
 
-def filter_program_for(ftr, onset, dur_f):
-    """Per-note FILTER program (the caller decides via `drives` whether this note is
-    the assigned filter trigger). Returns (flag=$40, set-row-per-frame program). The
-    driver applies row 0 on the ONSET frame (F_CNT=0, no 1-frame hold), so capture
-    from onset (k=0): row 0 = the held cutoff, the sweep starts at onset+1."""
+# MoN's filter is a per-note cutoff ENVELOPE (RE'd: $90F6,X frame counter reset on
+# note-on drives a threshold/delta table -> attack/decay/sustain on $D416; see
+# memory/hawkeye-mon-filter-engine-re.md). It restarts on each note of the filter-
+# routed voice, so it maps onto filt_prog_step as ONE program restarted per note.
+FILT_FAST = 0x40                              # 11-bit cutoff jump that marks an attack
+
+
+def detect_filter_drives(ftr, onsets_by_voice):
+    """Find the filter-envelope restarts = the note-ons of the filter-routed voice.
+    Each envelope ATTACK shows as a fast cutoff jump (>= FILT_FAST in 11-bit); map it
+    back to the nearest note-on (any voice) within a few frames — that note triggers
+    the envelope. Returns {onset_frame: voice}."""
+    import bisect
+    n = len(ftr)
+    pairs = sorted({(o, v) for v in range(3) for o in onsets_by_voice[v]})
+    of_frames = sorted({o for o, _ in pairs})
+    drives, f = {}, 1
+    while f < n:
+        if abs(ftr[f][0] - ftr[f - 1][0]) >= FILT_FAST:
+            j = bisect.bisect_right(of_frames, f) - 1        # nearest onset <= f
+            cand = [of_frames[k] for k in (j, j + 1)
+                    if 0 <= k < len(of_frames) and -1 <= (f - of_frames[k]) <= 4]
+            if cand:
+                o = min(cand, key=lambda x: abs(x - f))
+                if o not in drives:
+                    drives[o] = next(v for oo, v in pairs if oo == o)
+            f += 1
+            while f < n and abs(ftr[f][0] - ftr[f - 1][0]) >= FILT_FAST:
+                f += 1
+        else:
+            f += 1
+    return drives
+
+
+def filter_program_for(ftr, onset, span):
+    """Per-note FILTER program = the cutoff ENVELOPE captured from the note-on until
+    the next restart (`span`), compressed into a SET row + ADD-rows (one per run of
+    constant per-frame delta) + a freeze. This reproduces the full attack/decay/rise/
+    sustain exactly and compactly (vs the old settle-then-freeze, which truncated the
+    slow envelopes). The driver applies row 0 on the onset frame, so capture from k=0."""
     n = len(ftr)
     if onset + 1 >= n:
         return 0, None
-    cuts = []
-    for k in range(0, min(dur_f, 24)):
-        idx = onset + k
-        cuts.append(ftr[idx] if idx < n else ftr[-1])
-    settle = max((k for k in range(1, len(cuts)) if cuts[k][0] != cuts[k - 1][0]),
-                 default=0)
-    prog = [_filt_set_row(cu, ct) for cu, ct in cuts[:settle + 1]]
-    prog.append((0x7F, 0, len(prog)))      # freeze on the settled cutoff
+    cap = max(2, min(span, 220))
+    seq = [ftr[onset + k] if onset + k < n else ftr[-1] for k in range(cap)]
+    cut = [c >> 3 for c, _ in seq]                    # $D416 (8-bit) per frame
+    ctl = [ct for _, ct in seq]
+    prog = [_filt_set_row(seq[0][0], seq[0][1])]      # SET base cutoff + res/routing
+    k = 1
+    while k < len(seq):
+        if ctl[k] != ctl[k - 1]:                      # res/routing change -> SET row
+            prog.append(_filt_set_row(seq[k][0], seq[k][1]))
+            k += 1
+            continue
+        delta = cut[k] - cut[k - 1]
+        run = 1
+        while (k + run < len(seq) and ctl[k + run] == ctl[k]
+               and cut[k + run] - cut[k + run - 1] == delta):
+            run += 1
+        prog.append(_filt_add_row(delta, run))
+        k += run
+    prog.append((0x7F, 0, len(prog)))                 # freeze on the final cutoff
     return 0x40, prog
 
 
@@ -295,30 +342,37 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
         secs = span // 50 + 4
         frames = F.per_frame(sid, [f'-a{sub}', f'-t{secs}'])
         ftr = filter_trace(sid, sub, secs)
-    # The filter is ONE GLOBAL resource — each restart (cutoff jumps up) is caused by
-    # exactly ONE note. Voices share onset frames, so assign each restart to a single
-    # voice that has a note one frame before it (preferring the voice that drives the
-    # most, to keep filter programs concentrated). A note drives the filter iff its
-    # onset is the assigned trigger for one of these global restarts.
+    # The filter is ONE GLOBAL per-note cutoff ENVELOPE on the filter-routed voice;
+    # it restarts on that voice's note-ons. Find those note-ons (the envelope attacks,
+    # mapped back to the triggering note) -> `drives`; the span until the next restart
+    # is how long each envelope program runs before re-triggering.
     onsets = [set() for _ in range(3)]
+    onset_instr = [dict() for _ in range(3)]               # onset_frame -> MoN instrument
     for v in range(3):
         fr = 0
         for ev in m.voices[v]:
             if ev.retrig:
                 onsets[v].add(fr)
+                onset_instr[v][fr] = ev.instr
             fr += ev.dur * fpt
-    restarts = [R for R in range(1, len(ftr)) if filt_is_restart(ftr, R)]
-    cover = [0, 0, 0]
-    for R in restarts:
-        for v in range(3):
-            if (R - 1) in onsets[v]:
-                cover[v] += 1
-    pri = sorted(range(3), key=lambda v: -cover[v])         # voice priority for ties
-    drives = set()                                          # (voice, onset_frame)
-    for R in restarts:
-        cands = [v for v in pri if (R - 1) in onsets[v]]
-        if cands:
-            drives.add((cands[0], R - 1))
+    drive_map = detect_filter_drives(ftr, onsets)           # {onset_frame: voice}
+    drives = {(v, o) for o, v in drive_map.items()}
+    drive_frames = sorted(drive_map)
+
+    def _gap(onset):
+        j = bisect.bisect_right(drive_frames, onset)
+        return (drive_frames[j] - onset) if j < len(drive_frames) else 220
+
+    # The cutoff envelope is per-INSTRUMENT and deterministic from note-on, so capture
+    # ONE canonical program per driving instrument — from its LONGEST-gap note (the most
+    # complete envelope, to sustain). Short notes reuse it; the driver's per-note restart
+    # truncates it. This keeps it to a few filter programs (dedup) instead of one per note.
+    canon_onset = {}                                       # MoN instrument -> longest-gap onset
+    for o, v in drive_map.items():
+        i = onset_instr[v].get(o)
+        if i is not None and (i not in canon_onset or _gap(o) > _gap(canon_onset[i])):
+            canon_onset[i] = o
+    canon_filt = {i: filter_program_for(ftr, o, _gap(o)) for i, o in canon_onset.items()}
     # --- PASS 1: collect EXACT bundles + instruments (with note counts) + per-note records
     exb, bidx, bcount = [], {}, []          # exact (fm,pulse) bundles
     exi, iidx, icount = [], {}, []          # exact (ad,sr,raw,wave,flag,filt) instruments
@@ -359,7 +413,8 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                 if fr + dur_f > t1:                           # clip the last note to the window
                     ticks = max(1, (t1 - fr) // fpt)
                 base = m.note_freq(ev.note)
-                flag, filt = filter_program_for(ftr, fr, dur_f) if (v, fr) in drives else (0, None)
+                flag, filt = (canon_filt.get(ev.instr, (0, None))
+                              if (v, fr) in drives else (0, None))
                 bi = bundle_of(fm_program_for(frames, v, fr, dur_f, base),
                                pulse_program_for(frames, v, fr, dur_f))
                 ii = instr_of(ev.instr, _wave_prog_for(frames, v, fr, dur_f), flag, filt)

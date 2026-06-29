@@ -89,12 +89,17 @@ CLUSTERING + WINDOWING for dense/long tunes (subtune 0):
 </work_completed>
 
 <work_remaining>
-1. SUBTUNE 0 FILTER SEAM (~75% per part): the global filter state doesn't carry across
-   window boundaries — each part's filter starts fresh, so the first seconds differ until
-   the first in-window restart resyncs. NB even part 1 (song start, no carry-over) is 75%,
-   so there may be a real windowed-filter bug beyond the boundary effect — investigate
-   filter_program_for/drives under windowing (the leading rest + note clip-to-window may
-   truncate a filter program; or the windowed onset frames vs the absolute `drives` set).
+1. SUBTUNE 0 FILTER — RESOLVED (60%->92-98%). The filter was RE'd to a per-instrument
+   cutoff ENVELOPE (FCTRL=$90F6,X frame counter reset on note-on -> threshold/delta table;
+   see memory/hawkeye-mon-filter-engine-re.md). build_mon_native_song.py now generates the
+   envelope as a SET + ADD-row filter program (`filter_program_for` + `_filt_add_row`),
+   detects restarts as envelope ATTACKS mapped to note-ons (`detect_filter_drives`), and
+   uses ONE canonical (longest-gap) program per driving instrument so they dedup.
+   Part fidelity: part1 98.2%, part5 95.4%, part8 92.2% (was ~60-75%); sub2/sub3 stay 100%
+   byte-exact. RESIDUAL ~2-8% = multi-voice last-wins ($D416 written by >1 voice/frame, a
+   capped voice briefly winning) — would need per-voice filter programs in the driver (big
+   change, mostly-inaudible single-frame blips); the single-global-program model tops out
+   here and the sweep is now correct.
 2. SUBTUNE 0 UX: DONE for the editable route — adaptive windowing (`... SID 0 auto`) cut
    13 -> 8 files with zero fidelity loss (see ADAPTIVE WINDOWING above). Further reduction
    would need a non-editable single embedded-player SF2 (the user chose to keep it editable),
