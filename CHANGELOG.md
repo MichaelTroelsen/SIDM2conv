@@ -25,6 +25,49 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.13.0] - 2026-06-29
+
+### Three new players: Future Composer, ROMUZAK, and Hawkeye / Maniacs of Noise
+
+Three new C64 music engines gained SID→SF2 support, all built on the shared
+trace-driven native-driver pipeline first developed for Galway.
+
+**Hawkeye / Maniacs of Noise** (Jeroen Tel) — the headline. The MoN two-level
+orderlist→pattern engine was reverse-engineered (`sidm2/mon_parser.py`, frame-exact:
+SPLIT frequency table lo `$8337`/hi `$8396`, `$FE` = song-end halt, `$FF` = loop
+point, `$40-$5F` = pattern-repeat counter, 8-byte instrument records at `$860C`).
+Stage A (`bin/mon_to_sf2.py`) emits an editable Driver-11 SF2 — **GUI-confirmed in
+stock SF2II for subtunes 2 & 3** (sub3 28/28 onsets, sub2 174/174, all EXACT). Stage B
+is a from-scratch native SF2 driver (`drivers_src/mon/`, `bin/build_mon_native_song.py`,
+`bin/mon_fidelity.py`): **subtunes 2 and 3 reproduce freq + waveform + pulse + filter
+at 100% byte-exact on all three voices, full song length, in a single editable SF2 each.**
+Per-note (FM, pulse) bundles ride the `$c0-$ff` command channel (slides + arps; the FM
+program drops delta[0] for the driver's 1-frame `pr_note` hold); per-note WAVE programs
+become distinct instruments (gate envelope); the global resonant filter is restarted
+per note by a flag-`$40` instrument. For the dense ~6.4-minute main theme (subtune 0,
+~6000 notes — over the 64-bundle / 32-instrument / `$D000` caps), a greedy nearest-merge
+bundle/instrument clusterer plus window-splitting (`py -3 bin/build_mon_native_song.py
+SID 0 30` → 13×30s parts) keeps each part ~100% on pitch/waveform/pulse (filter ~75%,
+window-boundary seam — open issue). 9 mon tests.
+
+**ROMUZAK V6.3** (Oliver Blasnik) — Stage-A Driver-11 transpiler plus a from-scratch
+native SF2 driver (`drivers_src/romuzak/`) reaching note/orderlist-exact and **byte-exact
+waveform/pulse/AD-SR (~98–100%)** on both Fun_Fun tunes; deterministic validator
+`bin/romuzak_native_validate.py`; loads and plays in stock SF2II.
+
+**Future Composer** ("The Beat-Machine" V4.1) — format fully RE'd from `Triangle_Intro.sid`
+(`sidm2/fc_parser.py` + `bin/fc_to_sf2.py`, 4 tests); the Stage-A Driver-11 transpiler is
+trace-validated (every V2 melody note matches siddump). Handles the `$1800` player variant
+(5/20 Fun_Fun files); other load addresses need player-base detection. Native driver TODO.
+
+### Tools
+
+- **siddump** (`pyscript/siddump_complete.py`): opt-in `-b`/`--bits` bit-field column mode
+  (waveform/filter bytes → named bit columns + note cents) and `-w`/`--written`
+  write-precision mode (only registers the playroutine actually wrote this frame).
+
+---
+
 ## [3.12.0] - 2026-06-22
 
 ### Whole Galway corpus builds (40/40) + editable chord-arp wave tables + play=$0000
