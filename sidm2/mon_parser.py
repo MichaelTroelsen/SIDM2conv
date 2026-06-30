@@ -97,7 +97,9 @@ class MON:
         # setDst,Y`). setSrc's LOW byte comes from a per-subtune index table (loTab); its
         # HIGH byte is either a 2nd table (hiTab — Cybernoid) or FIXED (Hawkeye). Resolve
         # both by finding which `LDA tab,X; STA m` self-modify writes the B9 operand bytes.
+        self.ol_mode, self.tbl_olptr_hi = "selfmod", None
         cp = _find(d, 0xA0, 0x05, 0xB9, None, None, 0x99)
+        cp_bd = _find(d, 0xA0, 0x05, 0xBD, None, None, 0x99)
         if cp is not None:
             ss_lo = self.la + cp + 3            # C64 addr of the B9 set-source lo operand
             self.olset_hi = d[cp + 4]           # default (fixed) high byte
@@ -105,8 +107,17 @@ class MON:
             self.tbl_olptr = (d[lo_sm + 1] | (d[lo_sm + 2] << 8)) if lo_sm is not None else 0x83FC
             hi_sm = _find(d, 0xBD, None, None, 0x8D, (ss_lo + 1) & 0xFF, ((ss_lo + 1) >> 8) & 0xFF)
             self.tbl_olptr_hi = (d[hi_sm + 1] | (d[hi_sm + 2] << 8)) if hi_sm is not None else None
+        elif cp_bd is not None:
+            # STRIDE-INDEX variant (Cybernoid_II): `...; (ASL A)^n; TAX; LDY #5;
+            # LDA olBase,X; STA setDst,Y` — X = subtune*stride+5, so the 6-byte OL set for
+            # a subtune is olBase + subtune*stride (stride = 2^(#ASL before the copy)).
+            self.ol_mode = "stride"
+            self.ol_base = d[cp_bd + 3] | (d[cp_bd + 4] << 8)
+            n_asl = sum(1 for k in range(max(0, cp_bd - 12), cp_bd) if d[k] == 0x0A)
+            self.ol_stride = 1 << n_asl if n_asl else 1
+            self.tbl_olptr, self.olset_hi = self.ol_base, 0x00
         else:
-            self.tbl_olptr, self.tbl_olptr_hi, self.olset_hi = 0x83FC, None, 0x7B
+            self.tbl_olptr, self.olset_hi = 0x83FC, 0x7B
         # speed table: `LDA speedTab,X; STA speedReload`. The tables (speed + olptr lo/hi
         # + others) sit in one small per-subtune block; the speed table is the lowest of
         # the setup's `LDA tab,X` reads. Anchor on the min of (loTab, hiTab) minus the
@@ -157,21 +168,29 @@ class MON:
             clo, chi = d[i + 1], d[i + 2]
             for j in range(i + 3, min(i + 48, len(d) - 2)):
                 if d[j] == 0x8D and d[j + 1] == clo and d[j + 2] == chi:   # STA same counter
-                    for k in range(i + 3, j):               # LDA reload in between
+                    # the reload VALUE is the nearest `LDA abs` before this STA — between
+                    # the DEC and STA (Hawkeye) OR just ahead of the DEC (Cybernoid_II
+                    # loads it pre-DEC). Then the setup `LDA speedTab,X; STA reload` gives
+                    # the table.
+                    for k in range(j - 1, max(0, j - 18), -1):
                         if d[k] == 0xAD:
                             rl = d[k + 1] | (d[k + 2] << 8)
                             sm = _find(d, 0xBD, None, None, 0x8D, rl & 0xFF, (rl >> 8) & 0xFF)
                             if sm is not None:
                                 return d[sm + 1] | (d[sm + 2] << 8)
+                            break
                     break
         return self.tbl_olptr - 7
 
     # -- orderlist pointers for this subtune --
     def _orderlist_ptr(self, voice):
-        lo = self._u8(self.tbl_olptr + self.subtune)        # per-subtune set-source lo
-        hi = (self._u8(self.tbl_olptr_hi + self.subtune)    # ...hi from a 2nd table, or
-              if self.tbl_olptr_hi else self.olset_hi)      # the fixed high byte (Hawkeye)
-        setaddr = (hi << 8) | lo                            # the 6-byte OL-pointer set
+        if self.ol_mode == "stride":                        # Cybernoid_II: olBase+sub*stride
+            setaddr = self.ol_base + self.subtune * self.ol_stride
+        else:
+            lo = self._u8(self.tbl_olptr + self.subtune)    # per-subtune set-source lo
+            hi = (self._u8(self.tbl_olptr_hi + self.subtune)  # ...hi from a 2nd table, or
+                  if self.tbl_olptr_hi else self.olset_hi)  # the fixed high byte (Hawkeye)
+            setaddr = (hi << 8) | lo                        # the 6-byte OL-pointer set
         return self._u8(setaddr + voice) | (self._u8(setaddr + 3 + voice) << 8)
 
     # -- decode one voice (orderlist -> patterns -> events) --
