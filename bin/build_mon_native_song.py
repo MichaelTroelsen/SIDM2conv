@@ -51,6 +51,7 @@ from sidm2.galway_to_driver11 import D11Row, SF2_NOTE_MIN, SF2_NOTE_MAX, SF2_GAT
 from sidm2.galway_driver11_emitter import segment_track
 
 FM_CAP = 128                                       # max frames of FM captured per note
+WAVE_CAP = 96                                      # max frames of wave/gate envelope per note
 
 
 def fm_program_for(frames, v, onset, dur_f, base):
@@ -130,7 +131,7 @@ def extract_wave_programs(m, sid, sub, idx_map, instr_rows, frames):
             dur_f = ev.dur * fpt
             if ev.retrig and slot not in progs and dur_f >= 2:
                 wfs, last = [], 0x41
-                for k in range(min(dur_f, 32)):
+                for k in range(min(dur_f, WAVE_CAP)):
                     idx = fr + k
                     w = frames[idx][0][v]['wf'] if idx < len(frames) else None
                     last = w if w is not None else last
@@ -254,9 +255,12 @@ def filter_program_for(ftr, onset, span):
 def _wave_prog_for(frames, v, onset, dur_f):
     """Per-note WAVE program (waveform/gate envelope) sampled per FRAME from the
     trace, trimmed to the settle point. MoN's waveform attack varies per note (the
-    $7x wprog), so it's captured per note, not per instrument."""
+    $7x wprog), so it's captured per note, not per instrument. Cap covers the
+    note's GATE-OFF (release): a note gated on then released ($41->$40) needs rows up
+    to the release frame (~48 in Cybernoid). settle trims trailing constant frames,
+    so a generous cap is free for short/constant notes."""
     wfs, last = [], 0x41
-    for k in range(min(dur_f, 32)):
+    for k in range(min(dur_f, WAVE_CAP)):
         idx = onset + k
         w = frames[idx][0][v]['wf'] if idx < len(frames) else None
         last = w if w is not None else last
