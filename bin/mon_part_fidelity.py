@@ -31,8 +31,10 @@ sla = parse_sf2_blocks(sf2, info)
 probe = os.path.join("out", "_verify_part_probe.sid")
 open(probe, "wb").write(v._psid(bytes(sf2[2:]), sla, 0x1000, 0x1003))
 
-orig = F.per_frame(os.path.join("SID", "Tel_Jeroen", "Hawkeye.sid"),
-                   [f"-a{sub}", f"-t{(off0 // 50) + secs + 1}"])
+# infer the original SID from the part filename ("<Tune>_sub<N>..." -> <Tune>.sid)
+tune = os.path.basename(part).split("_sub")[0].split("_native")[0]
+orig_sid = os.path.join("SID", "Tel_Jeroen", f"{tune}.sid")
+orig = F.per_frame(orig_sid, [f"-a{sub}", f"-t{(off0 // 50) + secs + 1}"])
 prb = F.per_frame(probe, [f"-t{secs + 1}"])
 n = min(len(orig) - off0, len(prb), secs * 50)
 print(f"{os.path.basename(part)}  {n} frames from {off0 // 50}s (native play=$1003)\n")

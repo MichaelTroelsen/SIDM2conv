@@ -412,13 +412,18 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                 ticks = ev.dur
                 if fr + dur_f > t1:                           # clip the last note to the window
                     ticks = max(1, (t1 - fr) // fpt)
-                base = m.note_freq(ev.note)
+                # base = the freq the DRIVER plays for the (clamped) note, so the FM
+                # offsets reconstruct exactly. Use the clamped note for the base too —
+                # else a note clamped to SF2_NOTE_MIN (e.g. MoN's $00 silent note) drifts
+                # the whole note's freq by note_freq(clamped)-note_freq(raw).
+                note_c = max(SF2_NOTE_MIN, min(ev.note, SF2_NOTE_MAX))
+                base = m.note_freq(note_c)
                 flag, filt = (canon_filt.get(ev.instr, (0, None))
                               if (v, fr) in drives else (0, None))
                 bi = bundle_of(fm_program_for(frames, v, fr, dur_f, base),
                                pulse_program_for(frames, v, fr, dur_f))
                 ii = instr_of(ev.instr, _wave_prog_for(frames, v, fr, dur_f), flag, filt)
-                blk.append((max(SF2_NOTE_MIN, min(ev.note, SF2_NOTE_MAX)), ticks, bi, ii, fr))
+                blk.append((note_c, ticks, bi, ii, fr))
                 fr += dur_f
             if blk:
                 note_recs[v].append(blk)
