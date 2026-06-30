@@ -50,7 +50,10 @@ def static_pulse(pw):
 from sidm2.galway_to_driver11 import D11Row, SF2_NOTE_MIN, SF2_NOTE_MAX, SF2_GATE_ON
 from sidm2.galway_driver11_emitter import segment_track
 
-FM_CAP = 128                                       # max frames of FM captured per note
+FM_CAP = 256                                       # max frames of FM captured per note
+                                                   # (covers long held-note vibrato; the
+                                                   # offset is pitch-independent so vibrato
+                                                   # programs dedup across notes)
 WAVE_CAP = 96                                      # max frames of wave/gate envelope per note
 
 
@@ -68,8 +71,15 @@ def fm_program_for(frames, v, onset, dur_f, base):
         hold = ((tf - base) & 0xFFFF) if tf is not None else hold
         targ.append(hold)
     # The driver's pr_note holds base pitch on the TRIGGER frame (FM_CNT=1/FM_OFF=0),
-    # so FM entries apply from frame 1 onward — drop delta[0] (frame 0 = base).
-    deltas = [(targ[k] - targ[k - 1]) & 0xFFFF for k in range(1, len(targ))]
+    # so FM entries apply from frame 1 onward. Measure the offset from 0 (not targ[0]):
+    # the cumulative reaches targ[f] at frame f>=1, so a note whose first frame is
+    # DETUNED from its nominal note_freq (targ[0]!=0 — portamento/slide starts) keeps
+    # that offset instead of losing it. (For clean retriggers targ[0]==0 -> unchanged,
+    # so Hawkeye/Cybernoid byte-exact notes are not affected.) Only frame 0 plays base.
+    deltas, prev = [], 0
+    for k in range(1, len(targ)):
+        deltas.append((targ[k] - prev) & 0xFFFF)
+        prev = targ[k]
     prog, run, rl = [], None, 0
     for delta in deltas:
         if delta == run:
