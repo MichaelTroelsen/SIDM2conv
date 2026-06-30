@@ -54,7 +54,16 @@ FM_CAP = 256                                       # max frames of FM captured p
                                                    # (covers long held-note vibrato; the
                                                    # offset is pitch-independent so vibrato
                                                    # programs dedup across notes)
-WAVE_CAP = 96                                      # max frames of wave/gate envelope per note
+WAVE_CAP = 96                                      # max frames of wave/gate envelope/note
+
+# NEAR-LOSSLESS bundle clustering: the $c0-$ff command channel holds <=64 (FM,pulse)
+# bundles. Dense windows have more DISTINCT bundles than that, almost all from slightly-
+# different per-note FM (pitch) contours. Rather than splitting the window (the lossless
+# default), allow merging two bundles when their pitch contours differ by less than
+# BUNDLE_TOL (cumulative |freq-offset| over the first 24 frames) AND their pulse program
+# is identical — an inaudible merge. The packer grows a window as long as greedy
+# within-tol merging can still fit it to 63 bundles. Tuned so freq fidelity stays ~100%.
+BUNDLE_TOL = 0                                      # 0 = OFF (lossless split); raised below
 
 
 def fm_program_for(frames, v, onset, dur_f, base):
@@ -262,6 +271,30 @@ def filter_program_for(ftr, onset, span):
     return 0x40, prog
 
 
+def _rle_wave(wfs):
+    if os.environ.get("WAVE_RLE") == "0":           # diagnostic: unrolled (count=1/row)
+        return [(w & 0xFF, 1) for w in wfs] + [(0x7F, len(wfs) - 1)]
+    return _rle_wave_impl(wfs)
+
+
+def _rle_wave_impl(wfs):
+    """Run-length encode a per-frame waveform list into the native driver's RLE wave
+    table: each row = (waveform, frame_count) holding that waveform for `count` frames
+    (col1 is a count, not a semitone — MoN's pitch is the FM program). A long gate-off
+    ($41 x48 then $40) packs into ~2 rows instead of 49. Ends with a $7f row looping
+    back to the last run (the settled waveform = the sustain). Counts are <= WAVE_CAP
+    (96) < 256, so they fit the 1-byte column."""
+    runs = []
+    for w in wfs:
+        if runs and runs[-1][0] == w:
+            runs[-1][1] += 1
+        else:
+            runs.append([w, 1])
+    rows = [(w & 0xFF, c) for w, c in runs]
+    rows.append((0x7F, len(rows) - 1))          # loop to the settled run
+    return rows
+
+
 def _wave_prog_for(frames, v, onset, dur_f):
     """Per-note WAVE program (waveform/gate envelope) sampled per FRAME from the
     trace, trimmed to the settle point. MoN's waveform attack varies per note (the
@@ -297,11 +330,14 @@ def _fm_curve(fp, length=24):
     return cur
 
 
-def greedy_cluster(items, count, dist, cap):
+def greedy_cluster(items, count, dist, cap, gate=None):
     """Map `items` onto <=cap representatives by greedy nearest-merge: repeatedly
     fuse the two whose merge costs the least (per-item distance * the SMALLER item's
     note count, so the loss lands on the fewest notes). dist(i,j) -> float. Returns
-    (mapping[old_idx]->rep_idx_in_items, sorted_unique_reps)."""
+    (mapping[old_idx]->rep_idx_in_items, sorted_unique_reps).
+    Optional gate(i,j)->bool marks INAUDIBLE merges: gated merges are always preferred,
+    and an ungated (audible) merge is used only when no gated merge exists but the count
+    is still over cap (a forced fallback the adaptive packer is sized to avoid)."""
     n = len(items)
     if n <= cap:
         return list(range(n)), list(range(n))
@@ -309,7 +345,7 @@ def greedy_cluster(items, count, dist, cap):
     cnt = list(count)
     active = list(range(n))
     while len(active) > cap:
-        best = None
+        best = best_gated = None
         for x in range(len(active)):
             i = active[x]
             for y in range(x + 1, len(active)):
@@ -317,7 +353,9 @@ def greedy_cluster(items, count, dist, cap):
                 cost = dist(i, j) * min(cnt[i], cnt[j])
                 if best is None or cost < best[0]:
                     best = (cost, x, y)
-        _, x, y = best
+                if gate is not None and gate(i, j) and (best_gated is None or cost < best_gated[0]):
+                    best_gated = (cost, x, y)
+        _, x, y = best_gated if best_gated is not None else best
         i, j = active[x], active[y]
         if cnt[j] > cnt[i]:                  # keep the rep used by MORE notes
             i, j = j, i
@@ -333,6 +371,50 @@ def greedy_cluster(items, count, dist, cap):
     reppos = {r: p for p, r in enumerate(reps)}
     mapping = [reppos[find(k)] for k in range(n)]
     return mapping, reps
+
+
+def effective_bundle_count(items, counts, tol, cap=63):
+    """How few bundles a window needs AFTER merging only INAUDIBLE pairs (same pulse
+    program, FM-contour L1 <= tol). Greedy nearest-merge within tol until <=cap or no
+    within-tol pair remains. The packer compares this (not the raw count) to the 63-
+    bundle cap, so a window can grow past 64 raw bundles as long as the excess collapses
+    losslessly. tol==0 disables (returns the raw count = lossless split behaviour)."""
+    n = len(items)
+    if tol <= 0 or n <= cap:
+        return n
+    if n > 96:                                  # bound the probe work; too big to fit anyway
+        return n
+    curves = [_fm_curve(fp) for fp, _ in items]
+    pulses = [p for _, p in items]
+    INF = 1 << 30
+    D = [[0] * n for _ in range(n)]
+    for i in range(n):
+        ci = curves[i]
+        for j in range(i + 1, n):
+            dd = INF if pulses[i] != pulses[j] else sum(abs(a - b) for a, b in zip(ci, curves[j]))
+            D[i][j] = D[j][i] = dd
+    active = list(range(n))
+    cnt = list(counts)
+    while len(active) > cap:
+        best = None
+        for x in range(len(active)):
+            i = active[x]
+            for y in range(x + 1, len(active)):
+                j = active[y]
+                if D[i][j] > tol:
+                    continue
+                c = D[i][j] * (cnt[i] if cnt[i] < cnt[j] else cnt[j])
+                if best is None or c < best[0]:
+                    best = (c, x, y)
+        if best is None:
+            break                               # no inaudible merge left -> can't shrink
+        _, x, y = best
+        i, j = active[x], active[y]
+        if cnt[j] > cnt[i]:
+            i, j = j, i
+        cnt[i] += cnt[j]
+        active.remove(j)
+    return len(active)
 
 
 def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
@@ -407,8 +489,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
         key = (ad, sr, raw, wp, flag, tuple(filt) if filt else None)
         if key not in iidx:
             iidx[key] = len(exi)
-            exi.append((ad, sr, raw, [(w, 0x00) for w in wp] + [(0x7F, len(wp) - 1)],
-                        flag, filt))
+            exi.append((ad, sr, raw, _rle_wave(wp), flag, filt))
             icount.append(0)
         icount[iidx[key]] += 1
         return iidx[key]
@@ -479,7 +560,10 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                     cur_inst, cur_cmd = ii, bi
                     rows.extend(D11Row(note=SF2_GATE_ON) for _ in range(max(0, dur - 1)))
                 nseg += len(segment_track(rows))
-        return len(exb), len(exi), wrows, frows, nseg
+        # effective (not raw) bundle count: a window can grow past 64 raw bundles if the
+        # excess merges away inaudibly (see effective_bundle_count / BUNDLE_TOL).
+        nb = effective_bundle_count(exb, bcount, BUNDLE_TOL)
+        return nb, len(exi), wrows, frows, nseg
 
     # --- CLUSTER to fit the driver caps (64 commands, 32 instruments) ---
     bcurves = [_fm_curve(fp) for fp, _ in exb]
@@ -496,7 +580,11 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
         d += 0 if (a[4] == b[4] and a[5] == b[5]) else 150
         return d
 
-    bmap, breps = greedy_cluster(exb, bcount, bdist, 63)
+    def bgate(i, j):                         # an INAUDIBLE bundle merge: same pulse +
+        if exb[i][1] != exb[j][1]:           # FM-contour L1 within tolerance
+            return False
+        return sum(abs(a - b) for a, b in zip(bcurves[i], bcurves[j])) <= BUNDLE_TOL
+    bmap, breps = greedy_cluster(exb, bcount, bdist, 63, gate=bgate if BUNDLE_TOL > 0 else None)
     imap, ireps = greedy_cluster(exi, icount, idist, 32)
     bundles = [exb[r] for r in breps]
     instrs = [exi[r][:3] for r in ireps]

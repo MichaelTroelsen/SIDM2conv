@@ -2,10 +2,27 @@
 Reverse-engineer the Hawkeye music player (Jeroen Tel / "Maniacs of Noise" / MoN engine)
 and build a SID->SF2 converter for it (the player after ROMUZAK). Standing goal: notes
 correct, song-order correct, then SOUND FIDELITY via a native SF2 driver that loads in
-stock SID Factory II. The user iteratively asked to: convert/confirm subtune 3, then
-subtune 2, then push fidelity ("keep pushing" -> they chose the NATIVE DRIVER route over
-Driver-11-tables or embed), then convert subtune 0. Target: SID/Tel_Jeroen/Hawkeye.sid.
+stock SID Factory II. Later extended to Cybernoid + Cybernoid_II (same MoN engine), and a
+part-count-reduction effort for the dense ~6.6-min tunes. Targets: SID/Tel_Jeroen/{Hawkeye,
+Cybernoid,Cybernoid_II}.sid.
 </original_task>
+
+<latest_session>
+CYBERNOID PART-COUNT + LEAD-FIDELITY (2026-06-30 session 2):
+- RLE WAVE ROWS (committed-pending): wave table col1 repurposed as a frame-COUNT (MoN pitch
+  is FM, not semitone). Driver wave_step rewritten count-gated (VWCNT=$185c); emitter
+  `_rle_wave`. Cybernoid sub0 **18 -> 11 parts, files -39%**, PROVEN byte-identical (0 diff
+  vs unrolled; Hawkeye sub2/3 stay byte-exact). Also added inert near-lossless bundle
+  clustering (BUNDLE_TOL=0 default; greedy_cluster gate=, effective_bundle_count) — measured
+  0 benefit for Cybernoid (wave co-limits), kept for other tunes. `WAVE_RLE=0` env = unrolled.
+- **OPEN — LEAD ("track 1") SOUNDS WRONG when vibrating (user-confirmed real).** Every per-
+  frame SID register is BYTE-EXACT yet the rendered WAV differs 110% (RMS envelope matches
+  12% = notes/timing right). Cause = intra-frame register-write CYCLE timing -> accumulating
+  phase error on the vibrato'd pulse lead (track 2 less vibrato = fine). Fundamental limit of
+  trace-replay. Next: try moving the freq write to the START of the native play loop
+  (currently last); real fix = procedural MoN-engine driver. Full detail + tools in
+  memory/cybernoid-mon-orderlist-re.md. Pulse also not visible (driver-internal bundle).
+</latest_session>
 
 <work_completed>
 STAGE A (editable Driver-11 SF2) — DONE earlier this session, USER-GUI-CONFIRMED for

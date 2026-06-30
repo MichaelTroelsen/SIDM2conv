@@ -153,6 +153,7 @@ PPTR_LO   = $1850        ; per-voice: current PULSETAB read pointer lo (3)
 PPTR_HI   = $1853        ; per-voice: current PULSETAB read pointer hi (3)
 VIPUL_LO  = $1856        ; per-voice: current cmd's pulse-program start addr lo (3)
 VIPUL_HI  = $1859        ; per-voice: current cmd's pulse-program start addr hi (3)
+VWCNT     = $185c        ; per-voice: frames left on current WAVE row (RLE count) (3)
 
         .include "layout.inc"
 INSTR_AD    = INSTR + 0*32
@@ -206,6 +207,7 @@ iv:     lda #$41
         sta vtrans,x
         lda #$00
         sta VWI,x                ; wave program starts at row 0
+        sta VWCNT,x              ; 0 -> wave_step resolves + loads the row's count
         sta VIWAVE,x
         sta vfreq_lo,x
         sta vfreq_hi,x
@@ -363,74 +365,64 @@ dp_vib:
 ;     build emits the full per-frame Galway pitch envelope this way — one row
 ;     per frame with the settled tail looped — keeping the wave table in SF2II's
 ;     native 2-column format so it renders + edits + PLAYS in stock SF2II. -----
+; RLE wave program (MoN): the table stays column-major 256x2, but col1 is now a FRAME
+; COUNT (not a semitone -- MoN's pitch is the FM program, so the semitone was always 0).
+; A row (waveform, count) holds its waveform for `count` frames before advancing, so a
+; long gate-off ($41 x48, $40) packs into ~2 rows instead of 49. $7f rows are jumps
+; (col1 = target row) for the sustain loop. Per-voice VWCNT,x = frames left on the row.
+; (The old per-frame semitone+drum paths are dropped: MoN never set them.)
 wave_step:
         ldx #$02
 ws_l:
-        ldy VWI,x                ; current row
+        lda VWCNT,x
+        bne ws_play              ; still holding the current row -> just replay it
+        ; --- row expired: step to the next row, resolving $7f jumps, load its count ---
+        ldy VWI,x
         lda #$08
         sta ws_grd
 ws_read:
         lda WAVE,y               ; col0 = waveform (or $7f jump marker)
         cmp #$7f
-        bne ws_have
-        lda WAVE+256,y           ; col1 = jump target row
+        bne ws_got
+        lda WAVE+256,y           ; $7f: col1 = jump target row
         tay
         dec ws_grd
         bne ws_read
-        lda #$00                 ; $7f-loop guard tripped -> silence
-        sty ws_row
-        jmp ws_write
-ws_have:
-        sty ws_row               ; resolved row (never $7f)
-        lda VIFLAGS,x            ; DRUM instrument (flag $20)? col1 = freq HI byte,
-        and #$20                 ;   not a semitone -> off-grid drum pitch (byte-exact)
-        bne ws_drum
-        lda WAVE+256,y           ; col1 = signed semitone offset
-        bmi ws_neg               ; bit7 set -> negative offset
-        clc                      ; positive: vbasenote + offset, clamp high to $6f
-        adc vbasenote,x
-        cmp #$70
-        bcc ws_sok
-        lda #$6f
-        bne ws_sok               ; $6f != 0 -> always taken (near branch, no jmp)
-ws_neg:
-        clc                      ; negative: vbasenote + offset, clamp low to $00
-        adc vbasenote,x
-        bcs ws_sok               ; carry set -> no underflow
+        tya                      ; $7f-loop guard tripped -> park + silence
+        sta VWI,x                ; (STY abs,x is invalid -> TYA/STA)
+        lda #$01
+        sta VWCNT,x
         lda #$00
-ws_sok:
-        asl                      ; note index -> freqtable word offset
+        ldy sidbase,x
+        sta SID+4,y
+        jmp ws_next
+ws_got:
+        tya
+        sta VWI,x                ; resolved row (never $7f); Y still = the row
+        lda WAVE+256,y           ; col1 = frame count for this row
+        sta VWCNT,x
+ws_play:
+        lda vbasenote,x          ; MoN: semitone 0 -> vfreq = freqtable[vbasenote]
+        asl                      ;   (FM adds the per-frame pitch offset afterwards)
         tay
-        lda freqtable,y          ; vfreq = freqtable[clamped note]
+        lda freqtable,y
         sta vfreq_lo,x
         lda freqtable+1,y
         sta vfreq_hi,x
-ws_w404:
-        ldy ws_row               ; restore resolved row + reload waveform for $D404
+        ldy VWI,x                ; waveform col0 -> $D404 (masked by the gate)
         lda WAVE,y
-        and VGMASK,x             ; apply gate mask (on=$ff, off=$fe)
-ws_write:
+        and VGMASK,x
         ldy sidbase,x
         sta SID+4,y
-        ldy ws_row               ; advance one row for next frame
-        iny
-        tya
-        sta VWI,x
+        dec VWCNT,x              ; consume one frame; on expiry step to the next row
+        bne ws_next
+        inc VWI,x
+ws_next:
         dex
         bmi ws_done              ; (bpl ws_l now out of branch range)
         jmp ws_l
 ws_done:
         rts
-; DRUM wave row: col1 = freq HIGH byte written to vfreq_hi, KEEPING vfreq_lo = the
-; note's freq low byte (set on note-on) -> freq = drum_hi<<8 | note_lo. col1 $00 =
-; keep the current vfreq (the onset / gate-off settle). NOTE: the real player adds a
-; per-drum base octave to some drums (B4=1 is +$04xx); cracking that exactly needs
-; the drum-engine disasm (a documented residual -- ~13% of osc3 frames).
-ws_drum:                         ; Y still = resolved row (ws_row) from ws_have
-        lda WAVE+256,y           ; col1 = freq high byte
-        beq ws_w404              ; 0 -> keep note pitch (onset / settle)
-        sta vfreq_hi,x
-        jmp ws_w404
 
 ; --- per-voice pulse-program runner: walk the standard pulse table (set/add/
 ;     jump), applying the per-frame add and writing $D402/3 each frame. --------
@@ -877,6 +869,8 @@ pn_not_off:
 pn_tied:
         lda VIWAVE,x             ; restart the wave program at the instrument's row
         sta VWI,x
+        lda #$00
+        sta VWCNT,x              ; 0 -> wave_step resolves the start row + loads count
         lda #$ff
         sta VGMASK,x             ; gate on (wave_step keeps the gate asserted)
         ; (re)start the FM offset-list at this note's FM program (set per note by
