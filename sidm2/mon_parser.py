@@ -92,17 +92,26 @@ class MON:
         # orderlist-ptr-set table-index $83FC: `LDA $83fc,X (BD FC 83); STA $7b6b
         #   (8D 6B 7B); LDY #5 (A0 05)`. Then `LDA $7b2c,Y (B9 2C 7B); STA $8403,Y
         #   (99 03 84)` -> the orderlist-ptr SETS live at page = $7b2c's hi byte.
-        off = _find(d, 0xBD, None, None, 0x8D, None, None, 0xA0, 0x05,
-                    0xB9, None, None, 0x99)
-        if off is not None:
-            self.tbl_olptr = d[off + 1] | (d[off + 2] << 8)         # $83FC
-            self.olset_hi = d[off + 10]                             # $7B (the LDA $7b2c,Y hi)
+        # The subtune setup self-modifies a 6-byte 'set' source pointer (3 orderlist-ptr
+        # lo + 3 hi) then copies it to the live OL pointers (`LDY #5; LDA setSrc,Y; STA
+        # setDst,Y`). setSrc's LOW byte comes from a per-subtune index table (loTab); its
+        # HIGH byte is either a 2nd table (hiTab — Cybernoid) or FIXED (Hawkeye). Resolve
+        # both by finding which `LDA tab,X; STA m` self-modify writes the B9 operand bytes.
+        cp = _find(d, 0xA0, 0x05, 0xB9, None, None, 0x99)
+        if cp is not None:
+            ss_lo = self.la + cp + 3            # C64 addr of the B9 set-source lo operand
+            self.olset_hi = d[cp + 4]           # default (fixed) high byte
+            lo_sm = _find(d, 0xBD, None, None, 0x8D, ss_lo & 0xFF, (ss_lo >> 8) & 0xFF)
+            self.tbl_olptr = (d[lo_sm + 1] | (d[lo_sm + 2] << 8)) if lo_sm is not None else 0x83FC
+            hi_sm = _find(d, 0xBD, None, None, 0x8D, (ss_lo + 1) & 0xFF, ((ss_lo + 1) >> 8) & 0xFF)
+            self.tbl_olptr_hi = (d[hi_sm + 1] | (d[hi_sm + 2] << 8)) if hi_sm is not None else None
         else:
-            self.tbl_olptr, self.olset_hi = 0x83FC, 0x7B
-        # speed table $83F5: `LDA $83f5,X (BD F5 83); STA $7afe (8D FE 7A)` — the STA
-        #   destination ($7afe) is the speed-reload byte read each frame; match the
-        #   LDA-abs,X just before LDY #$17 won't generalize, so anchor on $83FC-7.
-        self.tbl_speed = self.tbl_olptr - 7                         # $83F5 = $83FC-7
+            self.tbl_olptr, self.tbl_olptr_hi, self.olset_hi = 0x83FC, None, 0x7B
+        # speed table: `LDA speedTab,X; STA speedReload`. The tables (speed + olptr lo/hi
+        # + others) sit in one small per-subtune block; the speed table is the lowest of
+        # the setup's `LDA tab,X` reads. Anchor on the min of (loTab, hiTab) minus the
+        # observed gap, but locate it directly when possible (below) for robustness.
+        self.tbl_speed = self._find_speed_tbl(d)
         # pattern-pointer table: `ASL A (0A); TAY (A8); LDA tab,Y (B9 ..); STA zp (85 ..)`.
         # The STA zp byte is engine-relocation-specific (Hawkeye $FD, Cybernoid $BD), so
         # don't pin it; take the FIRST such read (the orderlist->pattern one).
@@ -136,10 +145,33 @@ class MON:
         io = _find(d, 0xBD, None, None, 0x99, 0x05, 0xD4)
         self.tbl_instr = ((d[io + 1] | (d[io + 2] << 8)) - 2) if io is not None else 0x860C
 
+    def _find_speed_tbl(self, d):
+        """Locate the per-subtune speed table. The play routine's tempo gate reloads a
+        counter from a 'speed-reload' byte (`DEC counter ... LDA reload ... STA counter`);
+        the subtune setup fills that byte from the speed table (`LDA speedTab,X; STA
+        reload`). Find the gate, then the table that feeds its reload. Falls back to the
+        Hawkeye offset (loTab-7)."""
+        for i in range(len(d) - 3):
+            if d[i] != 0xCE:                                # DEC counter (abs)
+                continue
+            clo, chi = d[i + 1], d[i + 2]
+            for j in range(i + 3, min(i + 48, len(d) - 2)):
+                if d[j] == 0x8D and d[j + 1] == clo and d[j + 2] == chi:   # STA same counter
+                    for k in range(i + 3, j):               # LDA reload in between
+                        if d[k] == 0xAD:
+                            rl = d[k + 1] | (d[k + 2] << 8)
+                            sm = _find(d, 0xBD, None, None, 0x8D, rl & 0xFF, (rl >> 8) & 0xFF)
+                            if sm is not None:
+                                return d[sm + 1] | (d[sm + 2] << 8)
+                    break
+        return self.tbl_olptr - 7
+
     # -- orderlist pointers for this subtune --
     def _orderlist_ptr(self, voice):
-        lo = self._u8(self.tbl_olptr + self.subtune)        # $83FC[sub] = low byte
-        setaddr = (self.olset_hi << 8) | lo                 # $7B(low) = the 6-byte set
+        lo = self._u8(self.tbl_olptr + self.subtune)        # per-subtune set-source lo
+        hi = (self._u8(self.tbl_olptr_hi + self.subtune)    # ...hi from a 2nd table, or
+              if self.tbl_olptr_hi else self.olset_hi)      # the fixed high byte (Hawkeye)
+        setaddr = (hi << 8) | lo                            # the 6-byte OL-pointer set
         return self._u8(setaddr + voice) | (self._u8(setaddr + 3 + voice) << 8)
 
     # -- decode one voice (orderlist -> patterns -> events) --
