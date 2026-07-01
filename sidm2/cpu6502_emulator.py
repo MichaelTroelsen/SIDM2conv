@@ -297,9 +297,9 @@ class CPU6502Emulator:
                 temp2 = (temp2 & 0xF) | ((self.a & 0xF0) - (value & 0xF0))
             if temp2 & 0x100:
                 temp2 -= 0x60
-            if temp < 0x100:
-                self.flags |= StatusFlags.CARRY
-            else:
+            if temp >= 0:               # carry = no borrow (was `temp < 0x100`, always
+                self.flags |= StatusFlags.CARRY   # true since temp in [-256,255] -> carry
+            else:                        # was stuck SET, corrupting 16-bit SBC chains)
                 self.flags &= ~StatusFlags.CARRY
             self.set_nz(temp & 0xFF)
             if ((self.a ^ temp) & 0x80) and ((self.a ^ value) & 0x80):
@@ -309,9 +309,9 @@ class CPU6502Emulator:
             self.a = temp2 & 0xFF
         else:
             self.set_nz(temp & 0xFF)
-            if temp < 0x100:
-                self.flags |= StatusFlags.CARRY
-            else:
+            if temp >= 0:               # carry = no borrow (was `temp < 0x100`, always
+                self.flags |= StatusFlags.CARRY   # true since temp in [-256,255] -> carry
+            else:                        # was stuck SET, corrupting 16-bit SBC chains)
                 self.flags &= ~StatusFlags.CARRY
             if ((self.a ^ temp) & 0x80) and ((self.a ^ value) & 0x80):
                 self.flags |= StatusFlags.OVERFLOW
