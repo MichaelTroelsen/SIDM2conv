@@ -28,31 +28,45 @@ warg = sys.argv[2] if len(sys.argv) > 2 else "30"
 SID = os.path.join("SID", "Tel_Jeroen", "Myth.sid")
 os.chdir(ROOT)
 d, la, h = load_sid(SID)
-SRC, DST = (0x2000, 0x9000) if SUB == 0 else (0x3E00, 0xA400)
-INITB, PLAYB = DST, DST + 6
-FREQLOOK = DST + (0x93EE - 0x9000)
-FREQLO, FREQHI = DST + (0x90F4 - 0x9000), DST + (0x9153 - 0x9000)
-DURREL, INSTRX, NOTEIDX = 0x90E8, 0x90E5, 0x90F1
 
 mpu = MPU()
 for i, b in enumerate(d):
     mpu.memory[(la + i) & 0xFFFF] = b
-for i in range(0x1000):
-    mpu.memory[DST + i] = mpu.memory[SRC + i]
 
+# Run the REAL wrapper init for this subtune ($1D00): it does the correct copy of the
+# subtune's sub-player to its runtime page + inits it + stores the play address at
+# $1FFD/$1FFE. Stop just before the self-IRQ install ($1D59 SEI). This handles BOTH
+# sub0 ($2000->$9000, play $9006) and sub2 ($3000->$A400, play $A406) without hardcoding.
+mpu.a, mpu.x, mpu.y = SUB, 0, 0
+mpu.pc = 0x1D00
+mpu.memory[0x01FF] = mpu.memory[0x01FE] = 0xFF
+mpu.sp = 0xFD
+for _ in range(2_000_000):
+    if mpu.pc in (0x1D59, 0x0000):
+        break
+    mpu.step()
+PLAYB = mpu.memory[0x1FFD] | (mpu.memory[0x1FFE] << 8)
+DST = PLAYB & 0xFF00                    # sub-player runtime page ($9000 sub0 / $A400 sub2)
 
-def _run(pc, a=0):
-    mpu.a, mpu.x, mpu.y = a & 0xFF, 0, 0
-    mpu.pc = pc
-    mpu.memory[0x01FF] = mpu.memory[0x01FE] = 0xFF
-    mpu.sp = 0xFD
-    for _ in range(500000):
-        if mpu.pc == 0x0000:
-            return
-        mpu.step()
+# DATA addresses share the SAME offset from DST across subtunes (the engine's data layout
+# is identical; only the CODE offsets differ between the recompiled sub-players).
+FREQLO, FREQHI = DST + 0xF4, DST + 0x153
+NOTEIDX, DURREL, INSTRX = DST + 0xF1, DST + 0xE8, DST + 0xE5
+STATE_LO, STATE_HI = DST + 0xCA, DST + 0xF4
 
-
-_run(INITB, SUB)
+# The note-trigger freq lookup PC differs per sub-player (recompiled). Find it by signature:
+# `TAY; LDA freqLO,Y; STA freqOut,X` = A8 B9 <FREQLO> 9D <DST+$69> (sub0 $93EE, sub2 $A7B7).
+FREQLOOK = None
+for a in range(DST, DST + 0x1000):
+    if (mpu.memory[a] == 0xA8 and mpu.memory[a + 1] == 0xB9
+            and (mpu.memory[a + 2] | (mpu.memory[a + 3] << 8)) == FREQLO
+            and mpu.memory[a + 4] == 0x9D
+            and (mpu.memory[a + 5] | (mpu.memory[a + 6] << 8)) == DST + 0x69):
+        FREQLOOK = a + 1                # the LDA (X=voice, Y=note index) fires per onset
+        break
+if FREQLOOK is None:
+    print(f"sub{SUB}: could not locate freq lookup — unsupported sub-player.")
+    sys.exit(1)
 
 # capture the relocated freq tables (note-indexed)
 FREQ_LO = [mpu.memory[FREQLO + i] for i in range(0x70)]
@@ -61,7 +75,7 @@ FREQ_HI = [mpu.memory[FREQHI + i] for i in range(0x70)]
 
 def _state_hash():
     """A hash of the sub-player's per-voice sequencer state, to detect the song loop."""
-    return bytes(mpu.memory[0x90CA:0x90F4]) + bytes(mpu.memory[0x0F:0x11])
+    return bytes(mpu.memory[STATE_LO:STATE_HI]) + bytes(mpu.memory[0x0F:0x11])
 
 
 def capture(nframes, detect_loop=False):
@@ -150,13 +164,13 @@ class MythShim:
 
 def main():
     adaptive = warg.lower() in ("auto", "a")
+    print(f"Myth sub{SUB}: play=${PLAYB:04X} (page ${DST:04X}), freq-lookup ${FREQLOOK:04X}")
     if adaptive:
-        print(f"Myth sub{SUB}: relocate $%04X->$%04X, extracting full song (loop-detect)..."
-              % (SRC, DST))
+        print("  extracting full song (loop-detect)...")
         events, frames, ftr, instr_map = capture(60000, detect_loop=True)
     else:
         span_s = int(warg)
-        print(f"Myth sub{SUB}: relocate $%04X->$%04X, extracting {span_s}s..." % (SRC, DST))
+        print(f"  extracting {span_s}s...")
         events, frames, ftr, instr_map = capture(span_s * 50 + 50)
     counts = [len(events[v]) for v in range(3)]
     gaps = []
