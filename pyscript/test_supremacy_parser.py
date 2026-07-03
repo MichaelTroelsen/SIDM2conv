@@ -1,0 +1,54 @@
+"""Regression tests for the Supremacy (Jeroen Tel / MoN flat variant) parser path in
+sidm2/mon_parser.py (ol_mode='supremacy').
+
+Ground truth = py65 trace of the player's freq-lookup ($1644) note stream. Subtune 0 is
+a 3-voice canon; all three voices decode byte-exact. (The arp/command voices in subtunes
+1-2 are a known WIP — see memory/myth-supremacy-mon-re.md — and are not asserted here.)
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from sidm2.mon_parser import load_sid, MON
+
+SID = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                   "SID", "Tel_Jeroen", "Supremacy.sid")
+
+# Subtune-0 collapsed note onsets (consecutive same-pitch merged), from the py65
+# freq-lookup ground truth — identical across the 3 canon voices for the first bars.
+SUB0_ONSETS = [0x39, 0x3B, 0x3C, 0x3E, 0x39, 0x3E, 0x3C, 0x3B,
+               0x39, 0x38, 0x34, 0x40, 0x3E, 0x3C, 0x3B, 0x39]
+
+
+def _collapsed(m, voice):
+    out = []
+    for ev in m.voices[voice]:
+        if not out or out[-1] != ev.note:
+            out.append(ev.note)
+    return out
+
+
+def test_supremacy_detected():
+    d, la, h = load_sid(SID)
+    m = MON(d, la, 0)
+    assert m.ol_mode == "supremacy"
+    assert m.tbl_olptr == 0x16DC
+    assert (m.tbl_pat_lo, m.tbl_pat_hi) == (0x16F3, 0x171C)
+    assert (m.tbl_freq, m.tbl_freq_hi) == (0x1644, 0x168A)
+    assert m.note_base == -3            # $16E3[0] = $FD, signed
+
+
+def test_supremacy_sub0_all_voices_byte_exact():
+    d, la, h = load_sid(SID)
+    m = MON(d, la, 0)
+    for v in range(3):
+        got = _collapsed(m, v)
+        assert got[:len(SUB0_ONSETS)] == SUB0_ONSETS, f"voice {v}: {got[:16]}"
+
+
+def test_supremacy_note_freq_table():
+    # note $39 must resolve via the located split freq table (sane 16-bit value)
+    d, la, h = load_sid(SID)
+    m = MON(d, la, 0)
+    f = m.note_freq(0x39)
+    assert 0x0200 <= f <= 0x4000, hex(f)

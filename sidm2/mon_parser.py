@@ -67,9 +67,17 @@ class MON:
 
     def __init__(self, d, la, subtune=0):
         self.d, self.la = d, la
+        self.note_base = 0
         self._locate()
         self.subtune = subtune
-        self.speed = self._u8(self.tbl_speed + subtune)
+        if getattr(self, "ol_mode", None) == "supremacy":
+            # per-subtune tables are stride-8 (subtune*8); speed carries a $80 tempo flag
+            # (mask it off for the frame count); note base is a SIGNED byte added to notes.
+            self.speed = self._u8(self.tbl_speed + subtune * 8) & 0x7F
+            b = self._u8(self.tbl_base + subtune * 8)
+            self.note_base = b - 256 if b >= 0x80 else b
+        else:
+            self.speed = self._u8(self.tbl_speed + subtune)
         self.voices = [self._voice(v) for v in range(3)]
 
     @property
@@ -89,6 +97,8 @@ class MON:
     # -- table location (relocation-safe via player-code signatures) --
     def _locate(self):
         d = self.d
+        if self._locate_supremacy(d):           # distinct flat variant -> its own path
+            return
         # orderlist-ptr-set table-index $83FC: `LDA $83fc,X (BD FC 83); STA $7b6b
         #   (8D 6B 7B); LDY #5 (A0 05)`. Then `LDA $7b2c,Y (B9 2C 7B); STA $8403,Y
         #   (99 03 84)` -> the orderlist-ptr SETS live at page = $7b2c's hi byte.
@@ -156,6 +166,44 @@ class MON:
         io = _find(d, 0xBD, None, None, 0x99, 0x05, 0xD4)
         self.tbl_instr = ((d[io + 1] | (d[io + 2] << 8)) - 2) if io is not None else 0x860C
 
+    def _locate_supremacy(self, d):
+        """Detect + locate the SUPREMACY variant (a flat MoN player, play=$1003, no
+        relocation). It has a distinctive per-(subtune,voice) orderlist pointer table
+        (indexed subtune*8 + voice*2) and a note = pattern_byte + transpose + subtune_base
+        formula. Relocation-safe signatures (see memory/myth-supremacy-mon-re.md):
+          orderlist: `TXA;ASL;ADC selfmodIdx;TAY;LDA olptr,Y;STA $E0`
+                     = 8A 0A 6D ?? ?? A8 B9 <olptr> 85 E0
+          freq:      `TAY;LDA freqLo,Y;STA zp,X;LDA freqHi,Y;STA zp,X`
+                     = A8 B9 <lo> 95 ?? B9 <hi> 95
+          base:      `STA idx;TAY;LDA baseTab,Y;STA ...` = 8D ?? ?? A8 B9 <base> 8D
+          pattern:   `LDA patLo,Y;STA $E0;LDA patHi,Y;STA $E1` where patHi != patLo+1
+                     = B9 <lo> 85 E0 B9 <hi> 85 E1 (split tables)."""
+        ol = _find(d, 0x8A, 0x0A, 0x6D, None, None, 0xA8, 0xB9, None, None, 0x85, 0xE0)
+        if ol is None:
+            return False
+        self.ol_mode = "supremacy"
+        self.tbl_olptr = d[ol + 7] | (d[ol + 8] << 8)          # $16DC
+        fr = _find(d, 0xA8, 0xB9, None, None, 0x95, None, 0xB9, None, None, 0x95)
+        self.tbl_freq = (d[fr + 2] | (d[fr + 3] << 8)) if fr is not None else 0x1644
+        self.tbl_freq_hi = (d[fr + 7] | (d[fr + 8] << 8)) if fr is not None else 0x168A
+        bs = _find(d, 0x8D, None, None, 0xA8, 0xB9, None, None, 0x8D)
+        self.tbl_base = (d[bs + 5] | (d[bs + 6] << 8)) if bs is not None else 0x16E3
+        self.tbl_speed = self.tbl_base - 1                     # $16E2 (speed table, stride 8)
+        # pattern-ptr SPLIT tables: the B9..$E0 / B9..$E1 pair whose two operands are NOT
+        # consecutive (the orderlist pair is lo/lo+1; the pattern pair is separate tables).
+        self.tbl_pat_lo, self.tbl_pat_hi = 0x16F3, 0x171C
+        for i in range(len(d) - 9):
+            if (d[i] == 0xB9 and d[i + 3] == 0x85 and d[i + 4] == 0xE0
+                    and d[i + 5] == 0xB9 and d[i + 8] == 0x85 and d[i + 9] == 0xE1):
+                lo = d[i + 1] | (d[i + 2] << 8)
+                hi = d[i + 6] | (d[i + 7] << 8)
+                if hi != lo + 1:                               # split -> pattern table
+                    self.tbl_pat_lo, self.tbl_pat_hi = lo, hi
+                    break
+        # instrument table $186D + ctrl $1947 (used for the native build later, not decode)
+        self.tbl_instr = 0x186D
+        return True
+
     def _find_speed_tbl(self, d):
         """Locate the per-subtune speed table. The play routine's tempo gate reloads a
         counter from a 'speed-reload' byte (`DEC counter ... LDA reload ... STA counter`);
@@ -184,6 +232,8 @@ class MON:
 
     # -- orderlist pointers for this subtune --
     def _orderlist_ptr(self, voice):
+        if self.ol_mode == "supremacy":                     # per-(subtune,voice) ptr table
+            return self._u16(self.tbl_olptr + self.subtune * 8 + voice * 2)
         if self.ol_mode == "stride":                        # Cybernoid_II: olBase+sub*stride
             setaddr = self.ol_base + self.subtune * self.ol_stride
         else:
@@ -208,6 +258,27 @@ class MON:
         ol = self._orderlist_ptr(voice)
         st = {'transpose': 0, 'instr_base': 0, 'instr': 0, 'stored': 0, 'wprog': 0}
         blocks = []
+        if self.ol_mode == "supremacy":
+            i, guard, repeat = 0, 0, 1
+            while guard < 1024:
+                guard += 1
+                b = self._u8(ol + i); i += 1
+                if b in (0xFE, 0xFF):               # song end / loop (one pass)
+                    break
+                if b >= 0x80:                       # transpose ($1007 = b & $7F)
+                    st['transpose'] = b & 0x7F
+                    continue
+                if b >= 0x70:                       # $70-$7F: modifier ($100D) — no note effect
+                    continue
+                if b >= 0x40:                       # $40-$6F: repeat next pattern N+1 times
+                    repeat = (b & 0x1F) + 1
+                    continue
+                for _ in range(repeat):             # b < $40 = pattern index
+                    blk = []
+                    self._pattern(b, st, blk)
+                    blocks.append((b, blk))
+                repeat = 1
+            return blocks
         i, guard, repeat = 0, 0, 1
         while guard < 1024:
             guard += 1
@@ -234,7 +305,7 @@ class MON:
         return blocks
 
     def _emit(self, events, raw, st, retrig):
-        note = (raw + st['transpose']) & 0x7F
+        note = (raw + st['transpose'] + self.note_base) & 0x7F
         events.append(MONEvent(note=note, dur=st['stored'] + 1, instr=st['instr'],
                                wprog=st['wprog'], retrig=retrig))
 
@@ -243,6 +314,9 @@ class MON:
         ($7C64..$7D22). One note is emitted per sequencer read; prefixes
         (filter $Fx-odd, command $Ex, slide $Cx, instrument $7x, duration
         $8x-$Bx) consume following bytes and modify state. $FF = pattern end."""
+        if self.ol_mode == "supremacy":
+            self._pattern_supremacy(pat, st, events)
+            return
         ptr = self._u16(self.tbl_pat + pat * 2)
         j = [0]
 
@@ -314,6 +388,32 @@ class MON:
                 continue
             # $7D22: NOTE
             self._emit(events, b, st, retrig=True)
+
+    def _pattern_supremacy(self, pat, st, events):
+        """Supremacy pattern dispatch (pattern ptr from the SPLIT $16F3/$171C tables):
+          $FF = end; $F0-$FE = command + 1 arg (2 bytes); $C0-$DF = instrument prefix
+          ($90DA = b&$1F + instr_base); $80-$BF = duration (sticky, stored=(b&$3F)-1);
+          $70-$7F = wave-program/arp selector (b&$0F); <$70 = NOTE."""
+        ptr = self._u8(self.tbl_pat_lo + pat) | (self._u8(self.tbl_pat_hi + pat) << 8)
+        j, guard = 0, 0
+        while guard < 4096:
+            guard += 1
+            b = self._u8(ptr + j); j += 1
+            if b == 0xFF:
+                break
+            if b >= 0xF0:                           # command + 1 arg
+                j += 1
+                continue
+            if b >= 0xC0:                           # instrument select
+                st['instr'] = (b & 0x1F) + st['instr_base']
+                continue
+            if b >= 0x80:                           # duration (sticky)
+                st['stored'] = (b & 0x3F) - 1 if (b & 0x3F) else 0
+                continue
+            if b >= 0x70:                           # wave-program / arp
+                st['wprog'] = b & 0x0F
+                continue
+            self._emit(events, b, st, retrig=True)  # note
 
     def note_freq(self, note):
         """SID freq for a note byte, from MoN's SPLIT freq table (lo $8337[note],
