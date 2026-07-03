@@ -248,6 +248,37 @@ GOTCHAS hit this session:
   handler $93CA, pattern dispatch $22DE+, play=$0000 self-IRQ at $1D59.
 </critical_context>
 
+<session_2026-07-03_FINAL>
+BOTH new MoN players COMPLETE (all real subtunes), ~100% freq/wf/pulse, on master (6 commits):
+  699c878 SBC carry fix (Cybernoid vibrato) | d642532+ce5129c+5aa4684 Supremacy (parser variant,
+  arp note/wave boundary, $1869 instr table) | cf9f9b5+4e0811c Myth (native build via py65
+  emulation, then generalized to all subtunes).
+- SUPREMACY complete: `bin/build_mon_native_song.py SID/Tel_Jeroen/Supremacy.sid {0,1,2} auto`.
+  sub0 34 parts / sub1 24 / sub2 70; freq 95-100, wf/pulse ~100, filter 100. Ear-confirmed.
+- MYTH complete: `bin/build_myth_native_song.py {0,2} auto`. sub0 7 parts (freq/wf/pulse 100,
+  filter ~53, ear-confirmed); sub2 2 parts (freq/wf/pulse 100, filter 96); sub1 EMPTY (skip).
+  Emulation path: run REAL wrapper init $1D00(A=sub) -> correct copy + play addr @$1FFD/$1FFE;
+  DST=play&$FF00; data addrs DST+fixed offsets; freq-lookup PC found by signature
+  `A8 B9 <DST+$F4> 9D <DST+$69>`. (sub2 gotcha resolved: copy SOURCE is $3000 not $3E00.)
+- ONLY soft spot: Myth sub0 filter ~53% (ear-confirmed fine; low-priority polish). Full detail:
+  memory/myth-supremacy-mon-re.md.
+</session_2026-07-03_FINAL>
+
+<session_2026-07-03_summary>
+SBC vibrato fix + BOTH new MoN players (Supremacy + Myth) landed, ear-confirmed, on master:
+- 699c878 SBC carry fix (Cybernoid vibrato); d642532+ce5129c+5aa4684 Supremacy (parser variant
+  in mon_parser ol_mode='supremacy', arp note/wave boundary fix, $1869 instrument table);
+  cf9f9b5 Myth native build via py65 EMULATION extraction (bin/build_myth_native_song.py).
+- Supremacy: `py -3 bin/build_mon_native_song.py SID/Tel_Jeroen/Supremacy.sid 0 auto` (34 parts,
+  ~95-100% freq/wf/pulse, filter 100). USER-CONFIRMED GOOD in SF2II.
+- Myth: `py -3 bin/build_myth_native_song.py 0 auto` (loop ~267s, 7 parts, freq/wf/pulse 100,
+  filter ~53). USER-CONFIRMED GOOD in SF2II. Emulation path: relocate $2000->$9000, drive play
+  $9006/frame, extract events+per-frame SID+tables, MON-shim -> shared build_native_song.
+- OPEN/optional: Myth filter ~53% (low priority — sounds fine); Myth sub2 ($3E00->$A400, wired
+  untested); Supremacy sub1/sub2 native; part-count optimization. Full detail:
+  memory/myth-supremacy-mon-re.md + siddump-sbc-carry-bug.md + cybernoid-mon-orderlist-re.md.
+</session_2026-07-03_summary>
+
 <current_state>
 - COMMITTED + ON MASTER (699c878): the SBC carry fix + `pyscript/test_cpu6502_sbc.py`. Branch
   `fix-siddump-sbc-carry` merged (fast-forward) and deleted. Working tree clean except the
