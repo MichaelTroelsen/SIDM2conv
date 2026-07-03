@@ -200,8 +200,12 @@ class MON:
                 if hi != lo + 1:                               # split -> pattern table
                     self.tbl_pat_lo, self.tbl_pat_hi = lo, hi
                     break
-        # instrument table $186D + ctrl $1947 (used for the native build later, not decode)
-        self.tbl_instr = 0x186D
+        # instrument table: the note handler reads the control byte via
+        #   `LDA instrTab,Y (B9 ..); STA $104F,X (9D 4F 10)` (Y = instr*7). 7-byte records:
+        #   [0]=ctrl/$D404, [1]=AD/$D405, [2]=SR/$D406, [3]=pw (&$0F -> $D403 hi).
+        it = _find(d, 0xB9, None, None, 0x9D, 0x4F, 0x10)
+        self.tbl_instr = (d[it + 1] | (d[it + 2] << 8)) if it is not None else 0x1869
+        self.instr_stride = 7
         return True
 
     def _find_speed_tbl(self, d):
@@ -437,6 +441,14 @@ class MON:
           wave_prog    : pointer to the record's own wave/arp program (record[5]/[6])
           flags        : record[7]
           raw          : the 8 bytes"""
+        if getattr(self, "ol_mode", None) == "supremacy":
+            # 7-byte records at $1869: [0]=ctrl/waveform, [1]=AD, [2]=SR, [3]=pw (low nibble)
+            r = [self._u8(self.tbl_instr + (idx & 0x1F) * 7 + k) for k in range(7)]
+            return {
+                'ad': r[1], 'sr': r[2], 'waveform': r[0],
+                'pw': (r[3] & 0x0F) << 8,
+                'wave_prog': 0, 'flags': 0, 'raw': r,
+            }
         r = [self._u8(self.tbl_instr + (idx & 0x1F) * 8 + k) for k in range(8)]
         return {
             'ad': r[2], 'sr': r[3], 'waveform': r[1],
