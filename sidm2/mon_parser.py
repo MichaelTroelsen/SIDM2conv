@@ -265,6 +265,12 @@ class MON:
                 b = self._u8(ol + i); i += 1
                 if b in (0xFE, 0xFF):               # song end / loop (one pass)
                     break
+                if b == 0xFA:                       # 2-byte command (skip 1 arg)
+                    i += 1
+                    continue
+                if b == 0xFD:                       # 4-byte command (skip 3 args)
+                    i += 3
+                    continue
                 if b >= 0x80:                       # transpose ($1007 = b & $7F)
                     st['transpose'] = b & 0x7F
                     continue
@@ -390,10 +396,12 @@ class MON:
             self._emit(events, b, st, retrig=True)
 
     def _pattern_supremacy(self, pat, st, events):
-        """Supremacy pattern dispatch (pattern ptr from the SPLIT $16F3/$171C tables):
-          $FF = end; $F0-$FE = command + 1 arg (2 bytes); $C0-$DF = instrument prefix
-          ($90DA = b&$1F + instr_base); $80-$BF = duration (sticky, stored=(b&$3F)-1);
-          $70-$7F = wave-program/arp selector (b&$0F); <$70 = NOTE."""
+        """Supremacy PATTERN dispatch (pattern ptr from the SPLIT $16F3/$171C tables).
+        NOTE: this is the PATTERN processor, distinct from the ORDERLIST processor
+        ($1212, where $FD is a 4-byte command). Empirically (validated vs py65 on the
+        non-arp voices) patterns use: $FF = end; $F0-$FE = command + 1 arg (2 bytes);
+        $C0-$DF = instrument prefix; $80-$BF = duration (sticky); $70-$7F = wave-
+        program/arp; <$70 = NOTE (b + transpose + base)."""
         ptr = self._u8(self.tbl_pat_lo + pat) | (self._u8(self.tbl_pat_hi + pat) << 8)
         j, guard = 0, 0
         while guard < 4096:
@@ -410,10 +418,10 @@ class MON:
             if b >= 0x80:                           # duration (sticky)
                 st['stored'] = (b & 0x3F) - 1 if (b & 0x3F) else 0
                 continue
-            if b >= 0x70:                           # wave-program / arp
-                st['wprog'] = b & 0x0F
-                continue
-            self._emit(events, b, st, retrig=True)  # note
+            if b >= 0x60:                           # $60-$7F: wave-program / arp ($1212:
+                st['wprog'] = b & 0x1F              #   CMP #$60 -> $1064 = b&$1F). NOTE is
+                continue                            #   strictly <$60 (a $6x byte is NOT a note)
+            self._emit(events, b, st, retrig=True)  # note (b < $60)
 
     def note_freq(self, note):
         """SID freq for a note byte, from MoN's SPLIT freq table (lo $8337[note],

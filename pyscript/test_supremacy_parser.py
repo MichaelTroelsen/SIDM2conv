@@ -46,6 +46,18 @@ def test_supremacy_sub0_all_voices_byte_exact():
         assert got[:len(SUB0_ONSETS)] == SUB0_ONSETS, f"voice {v}: {got[:16]}"
 
 
+def test_supremacy_arp_voices_base_note():
+    # The arpeggio voices (sub1 v2, sub2 v0/v1) don't decode to identical onset
+    # streams (the freq-lookup ground truth sees the wave-program arp expansion), but
+    # the parser must still decode the correct BASE note the arp is built on. This
+    # guards the $60 note/wave boundary fix (a $6x byte is a wave selector, not a note).
+    d, la, h = load_sid(SID)
+    for sub, voice, first in [(1, 2, 0x31), (2, 0, 0x15), (2, 1, 0x31)]:
+        m = MON(d, la, sub)
+        got = _collapsed(m, voice)
+        assert got and got[0] == first, f"sub{sub} v{voice}: {[hex(x) for x in got[:6]]}"
+
+
 def test_supremacy_note_freq_table():
     # note $39 must resolve via the located split freq table (sane 16-bit value)
     d, la, h = load_sid(SID)
