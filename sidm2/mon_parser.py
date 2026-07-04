@@ -206,7 +206,39 @@ class MON:
         it = _find(d, 0xB9, None, None, 0x9D, 0x4F, 0x10)
         self.tbl_instr = (d[it + 1] | (d[it + 2] << 8)) if it is not None else 0x1869
         self.instr_stride = 7
+        # arp / wave-program table (Stage-B pitch): the $60-$7F pattern byte -> $1064
+        # index; the engine does `LDA $1064,X; TAY; LDA idxtab,Y; CLC; ADC #baseoff;
+        # STA $E0; LDA #basehi` -> program = arp_base + idxtab[wprog]. Each program is
+        # [duration][signed semitone steps...][$ff loop | $fe end]; the step value is
+        # ADDed to the note ($106D + $F0 -> freq lookup) so it is a pitch-independent arp.
+        ap = _find(d, 0xBD, 0x64, 0x10, 0xA8, 0xB9, None, None, 0x18, 0x69,
+                   None, 0x85, 0xE0, 0xA9)
+        if ap is not None:
+            self.tbl_arp_idx = d[ap + 5] | (d[ap + 6] << 8)
+            self.tbl_arp_base = (d[ap + 13] << 8) | d[ap + 9]
+        else:
+            self.tbl_arp_idx, self.tbl_arp_base = 0x1746, 0x17C0
         return True
+
+    def arp_program(self, wprog):
+        """Supremacy arp/wave-program (Stage-B): the compact LOOPING SEMITONE table the
+        $60-$7F pattern byte selects. Returns {'dur','steps','loop'} where `steps` are the
+        signed semitone offsets added to the note each step (pitch-independent -> ~16
+        programs total, byte-exact from ROM, vs the trace's per-pitch Hz-offset explosion).
+        See memory/myth-supremacy-mon-re.md (arp engine $15CB, table $1746/$17C0)."""
+        if getattr(self, "ol_mode", None) != "supremacy":
+            return None
+        idx = self._u8(self.tbl_arp_idx + (wprog & 0x1F))
+        addr = self.tbl_arp_base + idx
+        dur = self._u8(addr)
+        steps, i = [], addr + 1
+        while len(steps) <= 32:
+            b = self._u8(i)
+            if b in (0xFF, 0xFE):
+                return {"dur": dur, "steps": steps, "loop": b == 0xFF}
+            steps.append(b - 256 if b >= 128 else b)
+            i += 1
+        return {"dur": dur, "steps": steps, "loop": False}
 
     def _find_speed_tbl(self, d):
         """Locate the per-subtune speed table. The play routine's tempo gate reloads a
