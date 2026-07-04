@@ -213,14 +213,32 @@ def _filt_add_row(d416_delta, count):
 FILT_FAST = 0x40                              # 11-bit cutoff jump that marks an attack
 
 
-def detect_filter_drives(ftr, onsets_by_voice):
+def routed_voice(ftr):
+    """The single voice routed to the filter, from the dominant $D417 low-nibble routing
+    bit (bit n = voice n). Returns 0/1/2, or None if no routing or >1 voice is routed
+    (then drives map to any voice, as before). Restricting drive detection to the routed
+    voice's note-ons is what fixes long-ramp tunes: the envelope restarts ONLY on that
+    voice's notes, so crediting an unrouted voice's note (Myth sub0 mis-credited 7 to the
+    unrouted voice 0) corrupts the canonical envelope capture."""
+    from collections import Counter
+    c = Counter(ct & 0x07 for _, ct in ftr if (ct & 0x07))
+    if not c:
+        return None
+    route = c.most_common(1)[0][0]
+    return {1: 0, 2: 1, 4: 2}.get(route)         # single-bit routing only
+
+
+def detect_filter_drives(ftr, onsets_by_voice, routed=None):
     """Find the filter-envelope restarts = the note-ons of the filter-routed voice.
     Each envelope ATTACK shows as a fast cutoff jump (>= FILT_FAST in 11-bit); map it
-    back to the nearest note-on (any voice) within a few frames — that note triggers
-    the envelope. Returns {onset_frame: voice}."""
+    back to the nearest note-on within a few frames — that note triggers the envelope.
+    When `routed` (0/1/2) is given, only that voice's note-ons are eligible (the engine
+    restarts the envelope on the ROUTED voice only); else any voice. Returns
+    {onset_frame: voice}."""
     import bisect
     n = len(ftr)
-    pairs = sorted({(o, v) for v in range(3) for o in onsets_by_voice[v]})
+    voices = (routed,) if routed is not None else range(3)
+    pairs = sorted({(o, v) for v in voices for o in onsets_by_voice[v]})
     of_frames = sorted({o for o, _ in pairs})
     drives, f = {}, 1
     while f < n:
@@ -241,11 +259,11 @@ def detect_filter_drives(ftr, onsets_by_voice):
 
 
 def filter_program_for(ftr, onset, span):
-    """Per-note FILTER program = the cutoff ENVELOPE captured from the note-on until
-    the next restart (`span`), compressed into a SET row + ADD-rows (one per run of
-    constant per-frame delta) + a freeze. This reproduces the full attack/decay/rise/
-    sustain exactly and compactly (vs the old settle-then-freeze, which truncated the
-    slow envelopes). The driver applies row 0 on the onset frame, so capture from k=0."""
+    """Per-note FILTER program = the cutoff ENVELOPE captured from the note-on frame
+    `onset` for `span` frames, compressed into a SET row + ADD-rows (one per run of
+    constant per-frame delta) + a freeze. Reproduces the full attack/decay/rise/sustain
+    exactly. Capture starts at the onset (row 0 is applied on the note frame, matching the
+    driver's per-note restart), so the note-on frame's own cutoff is the SET base."""
     n = len(ftr)
     if onset + 1 >= n:
         return 0, None
@@ -451,7 +469,8 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                 onsets[v].add(fr)
                 onset_instr[v][fr] = ev.instr
             fr += ev.dur * fpt
-    drive_map = detect_filter_drives(ftr, onsets)           # {onset_frame: voice}
+    routed = routed_voice(ftr)                              # restart only on this voice
+    drive_map = detect_filter_drives(ftr, onsets, routed)   # {onset_frame: voice}
     drives = {(v, o) for o, v in drive_map.items()}
     drive_frames = sorted(drive_map)
 
@@ -459,16 +478,51 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
         j = bisect.bisect_right(drive_frames, onset)
         return (drive_frames[j] - onset) if j < len(drive_frames) else 220
 
-    # The cutoff envelope is per-INSTRUMENT and deterministic from note-on, so capture
-    # ONE canonical program per driving instrument — from its LONGEST-gap note (the most
-    # complete envelope, to sustain). Short notes reuse it; the driver's per-note restart
-    # truncates it. This keeps it to a few filter programs (dedup) instead of one per note.
-    canon_onset = {}                                       # MoN instrument -> longest-gap onset
+    # The cutoff envelope restarts on each drive (a note-on-aligned restart, correctly
+    # found by detect_filter_drives) and is deterministic from there. Capture ONE canonical
+    # program per (MoN instrument, envelope shape), from the FULLEST (longest-span) drive of
+    # that key. The capture starts at the drive onset (phase-correct, as the original did —
+    # the driver restarts on the same note frame) and runs the full span to the next drive
+    # so the whole ramp->sustain is captured (short notes reuse it, truncated by the driver's
+    # per-note restart). NB: the shape signature reads one frame PAST the onset to skip the
+    # note-on frame's transitional value.
+    nftr = len(ftr)
+
+    def _shape_sig(o):
+        """Length-invariant shape signature (settled attack-base hi, initial delta hi)
+        read from o+1 to skip the note-on frame's transitional cutoff."""
+        s = min(o + 1, nftr - 1)
+        base = ftr[s][0] >> 3
+        d = 0
+        for k in range(1, min(4, nftr - s)):
+            d = (ftr[s + k][0] >> 3) - base
+            if d:
+                break
+        return (base & 0xF8, max(-8, min(8, d)))
+
+    # Key the canonical by the composite (MoN instrument, shape): this unifies the two
+    # regimes. When a tune's filter shape is fixed per instrument (Hawkeye — each instrument
+    # selects one sel-table), (instr, shape) collapses to per-instrument. When an instrument
+    # plays across sections with different envelopes (Myth sub0), it splits into one
+    # canonical per shape it actually uses, so each note gets its own section's envelope.
+    canon_src = {}                                        # (instr, shape) -> (onset, span)
+    drive_key = {}                                        # drive onset -> (instr, shape)
     for o, v in drive_map.items():
-        i = onset_instr[v].get(o)
-        if i is not None and (i not in canon_onset or _gap(o) > _gap(canon_onset[i])):
-            canon_onset[i] = o
-    canon_filt = {i: filter_program_for(ftr, o, _gap(o)) for i, o in canon_onset.items()}
+        key = (onset_instr[v].get(o, -1), _shape_sig(o))
+        drive_key[o] = key
+        span = _gap(o)
+        if key not in canon_src or span > canon_src[key][1]:
+            canon_src[key] = (o, span)
+    canon_prog = {key: filter_program_for(ftr, o, span)
+                  for key, (o, span) in canon_src.items()}
+    canon_filt = {o: canon_prog[drive_key[o]] for o in drive_key}         # keyed by onset
+    if os.environ.get("FILT_DEBUG"):
+        print(f"  [FILT_DEBUG] drives={len(drive_frames)} canon={len(canon_src)} "
+              f"routed={routed}")
+        for (i, sig), (o, span) in sorted(canon_src.items()):
+            flag, prog = canon_prog[(i, sig)]
+            print(f"    instr {i} shape base={sig[0]} d={sig[1]:+d}: onset={o} span={span} "
+                  f"rows={len(prog) if prog else 0}")
     # --- PASS 1: collect EXACT bundles + instruments (with note counts) + per-note records
     exb, bidx, bcount = [], {}, []          # exact (fm,pulse) bundles
     exi, iidx, icount = [], {}, []          # exact (ad,sr,raw,wave,flag,filt) instruments
@@ -513,7 +567,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                 # the whole note's freq by note_freq(clamped)-note_freq(raw).
                 note_c = max(SF2_NOTE_MIN, min(ev.note, SF2_NOTE_MAX))
                 base = m.note_freq(note_c)
-                flag, filt = (canon_filt.get(ev.instr, (0, None))
+                flag, filt = (canon_filt.get(fr, (0, None))
                               if (v, fr) in drives else (0, None))
                 bi = bundle_of(fm_program_for(frames, v, fr, dur_f, base),
                                pulse_program_for(frames, v, fr, dur_f))
