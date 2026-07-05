@@ -68,12 +68,15 @@ class MON:
     def __init__(self, d, la, subtune=0):
         self.d, self.la = d, la
         self.note_base = 0
+        self.tempo_toggle = False
         self._locate()
         self.subtune = subtune
         if getattr(self, "ol_mode", None) == "supremacy":
-            # per-subtune tables are stride-8 (subtune*8); speed carries a $80 tempo flag
-            # (mask it off for the frame count); note base is a SIGNED byte added to notes.
-            self.speed = self._u8(self.tbl_speed + subtune * 8) & 0x7F
+            # per-subtune tables are stride-8 (subtune*8). The speed byte's $80 bit is a
+            # SWING-TEMPO flag (see tick_to_frame); note base is a SIGNED byte added to notes.
+            raw = self._u8(self.tbl_speed + subtune * 8)
+            self.speed = raw & 0x7F
+            self.tempo_toggle = bool(raw & 0x80)
             b = self._u8(self.tbl_base + subtune * 8)
             self.note_base = b - 256 if b >= 0x80 else b
         else:
@@ -83,8 +86,24 @@ class MON:
     @property
     def frames_per_tick(self):
         """The tempo gate (DEC $9116; reload $7AFE on <0; CMP $7AFE) fires the
-        sequencer once every speed+1 frames."""
+        sequencer once every speed+1 frames. For swing tunes (tempo_toggle) this
+        is only the LONG period — use tick_to_frame for exact frame positions."""
         return self.speed + 1
+
+    def tick_to_frame(self, ticks):
+        """Cumulative sequencer ticks -> exact frame offset from the first tick.
+
+        Constant tempo: one tick every speed+1 frames. Swing tempo (Supremacy
+        speed byte bit7, RE'd from the $1128-$114D gate: the reload toggles $E2
+        via EOR #$FF and picks speed-1 on the negative phase): tick periods
+        ALTERNATE speed, speed+1, speed, ... — e.g. Supremacy sub2 speed=2
+        alternates 2,3 frames (avg 2.5), which the old constant speed+1 model
+        got 20% wrong (the whats-next.md ~9-frame note-length drift).
+        """
+        if not self.tempo_toggle:
+            return ticks * (self.speed + 1)
+        pair = 2 * self.speed + 1                 # one short + one long period
+        return pair * (ticks // 2) + self.speed * (ticks % 2)
 
     # -- memory access (absolute SID addresses) --
     def _u8(self, a):

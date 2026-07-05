@@ -85,3 +85,44 @@ def test_supremacy_note_freq_table():
     m = MON(d, la, 0)
     f = m.note_freq(0x39)
     assert 0x0200 <= f <= 0x4000, hex(f)
+
+
+def test_supremacy_swing_tempo_flag():
+    """The speed byte's $80 bit is the SWING-TEMPO flag (RE'd from the $1128-$114D
+    tempo gate: the reload toggles $E2 and alternates speed / speed+1 frame periods).
+    sub0=$02 / sub1=$04 constant; sub2=$82 swing."""
+    d, la, h = load_sid(SID)
+    for sub, speed, toggle in [(0, 2, False), (1, 4, False), (2, 2, True)]:
+        m = MON(d, la, sub)
+        assert (m.speed, m.tempo_toggle) == (speed, toggle), f"sub{sub}"
+
+
+def test_tick_to_frame_grids():
+    d, la, h = load_sid(SID)
+    m0 = MON(d, la, 0)                    # constant: 3 frames/tick
+    assert [m0.tick_to_frame(t) for t in range(5)] == [0, 3, 6, 9, 12]
+    m2 = MON(d, la, 2)                    # swing 2,3: ticks at 0,2,5,7,10,...
+    assert [m2.tick_to_frame(t) for t in range(6)] == [0, 2, 5, 7, 10, 12]
+    # 20% length difference vs the old constant model — the whats-next.md blocker:
+    # 24 ticks = 60 frames (was 72 under speed+1=3)
+    assert m2.tick_to_frame(24) == 60
+
+
+def test_supremacy_sub2_onset_frames_match_siddump():
+    """End-to-end swing-grid regression: parser onset frames (tick_to_frame + the
+    constant +2 engine output delay) must equal the siddump ground truth. Frames
+    hardcoded from pyscript/siddump_complete.py -a2 (validated EXACT 97/97 + 37/37
+    across 30s by bin/mon_validate.py on 2026-07-05)."""
+    d, la, h = load_sid(SID)
+    m = MON(d, la, 2)
+    expect = {0: [2, 42, 82, 122, 162, 202, 242, 282],
+              1: [2, 62, 82, 142, 162, 222, 242, 322]}
+    for v, want in expect.items():
+        ticks, got = 0, []
+        for ev in m.voices[v]:
+            if ev.retrig:
+                got.append(m.tick_to_frame(ticks) + 2)
+            ticks += ev.dur
+            if len(got) >= len(want):
+                break
+        assert got[:len(want)] == want, f"v{v}: {got[:len(want)]}"

@@ -37,18 +37,19 @@ def siddump_onsets(sidpath, subtune, seconds):
 
 
 def parser_onsets(path, subtune, max_frame):
-    """-> {0,1,2: [(frame, mon_note), ...]} predicted retrig onsets per voice."""
+    """-> {0,1,2: [(frame, mon_note), ...]} predicted retrig onsets per voice
+    (exact tick grid via MON.tick_to_frame — handles swing tempos)."""
     d, la, _ = load_sid(path)
     m = MON(d, la, subtune)
-    fpt = m.frames_per_tick
     V = {}
     for v in range(3):
-        frame = 0
+        ticks = 0
         out = []
         for ev in m.voices[v]:
+            frame = m.tick_to_frame(ticks)
             if ev.retrig:
                 out.append((frame, ev.note))
-            frame += ev.dur * fpt
+            ticks += ev.dur
             if frame > max_frame:
                 break
         V[v] = out
@@ -64,8 +65,18 @@ def main():
 
     sd = siddump_onsets(path, subtune, seconds)
     pa, m = parser_onsets(path, subtune, max_frame)
+
+    # constant engine output offset: sequencer state reaches the SID a fixed
+    # 1-2 frames after the tick (engine-variant dependent) — calibrate it out
+    # as the median first-onset delta, like mon_sf2_validate.
+    deltas = [sd[v][0][0] - pa[v][0][0] for v in range(3) if sd[v] and pa[v]]
+    off = sorted(deltas)[len(deltas) // 2] if deltas else 0
+    pa = {v: [(f + off, n) for f, n in pa[v]] for v in range(3)}
+
+    swing = f" swing({m.speed},{m.speed + 1})" if m.tempo_toggle else ""
     print(f"{os.path.basename(path)} subtune {subtune}  "
-          f"speed={m.speed} frames/tick={m.frames_per_tick}  window={seconds}s\n")
+          f"speed={m.speed} frames/tick={m.frames_per_tick}{swing}  "
+          f"onset offset={off}  window={seconds}s\n")
 
     total_ok = total = 0
     for v in range(3):
