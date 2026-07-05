@@ -1,10 +1,29 @@
 # SIDM2 Documentation Index
 
-**Complete navigation to all project documentation after v2.3.0 consolidation**
+**Complete navigation to all project documentation**
 
-**Last Updated**: 2026-05-09
-**Version**: v3.4.1
-**Status**: Consolidated & Organized (post-cleanup_2026-04-28); all four converter criteria closed; F10-load 100% solo on canonical corpus
+**Last Updated**: 2026-07-05
+**Version**: v3.13.0
+**Status**: Native-driver era — Laxity production + native SF2 drivers for Galway / ROMUZAK / Maniacs of Noise; consolidated player knowledge in `docs/players/`
+
+---
+
+## 🎹 Players (SID → SF2 support) — START HERE for conversion work
+
+| Document | Purpose |
+|----------|---------|
+| [players/README.md](players/README.md) | **Player support index** — every supported player, driver, corpus |
+| [players/PLAYBOOK.md](players/PLAYBOOK.md) | **The consolidated cross-player playbook** — staged porting method, shared pipeline, size caps, gotchas, new-player checklist |
+| [reference/ACCURACY_MATRIX.md](reference/ACCURACY_MATRIX.md) | **Accuracy source of truth** (v3.13.0) |
+| [players/LAXITY.md](players/LAXITY.md) | Laxity NewPlayer v21 (production, 99.93–100%) |
+| [players/GALWAY.md](players/GALWAY.md) | Martin Galway (native driver ~100%, 40-tune corpus) |
+| [players/MON.md](players/MON.md) | Maniacs of Noise / Jeroen Tel — Hawkeye, Cybernoid, Myth, Supremacy (byte-exact native) |
+| [players/ROMUZAK.md](players/ROMUZAK.md) | ROMUZAK V6.3 (native driver, byte-exact wf/pulse/AD-SR) |
+| [players/FUTURECOMPOSER.md](players/FUTURECOMPOSER.md) | Future Composer (Stage A) |
+| [players/DRIVER11.md](players/DRIVER11.md) | SF2-exported / Driver 11 (100%) |
+| [players/NP20.md](players/NP20.md) | NewPlayer 20 (70–90%) |
+| [players/CLUSTERS.md](players/CLUSTERS.md) | NP21-adjacent clusters (Stinsen/Beast/Angular, DRAX, 2000 A.D., Wizax, V20) |
+| [../whats-next.md](../whats-next.md) | Active frontier handoff (MoN part-count structural rebuild) |
 
 ---
 
@@ -75,10 +94,11 @@ Technical specifications and format details:
 | Document | Content |
 |----------|---------|
 | [SF2_FORMAT_SPEC.md](reference/SF2_FORMAT_SPEC.md) | Complete SF2 format specification |
-| [SF2_TRACKS_AND_SEQUENCES.md](reference/SF2_TRACKS_AND_SEQUENCES.md) | Tracks and sequences format guide |
-| [SF2_INSTRUMENTS_REFERENCE.md](reference/SF2_INSTRUMENTS_REFERENCE.md) | Instruments format guide |
-| [SID_REGISTERS_REFERENCE.md](reference/SID_REGISTERS_REFERENCE.md) | SID chip register quick reference |
+| [SF2_TRACKS_AND_SEQUENCES.md](SF2_TRACKS_AND_SEQUENCES.md) | Tracks and sequences format guide |
+| [SF2_INSTRUMENTS_REFERENCE.md](SF2_INSTRUMENTS_REFERENCE.md) | Instruments format guide |
+| [SID_REGISTERS_REFERENCE.md](SID_REGISTERS_REFERENCE.md) | SID chip register quick reference |
 | [DRIVER_REFERENCE.md](reference/DRIVER_REFERENCE.md) | All SF2 drivers (11-16, NP20, Laxity) |
+| [ACCURACY_MATRIX.md](reference/ACCURACY_MATRIX.md) | **Accuracy source of truth** — all players, wired + native |
 | [CONVERSION_STRATEGY.md](reference/CONVERSION_STRATEGY.md) | Laxity → SF2 mapping details |
 | [format-specification.md](reference/format-specification.md) | PSID/RSID formats |
 
@@ -87,7 +107,6 @@ Technical specifications and format details:
 |----------|---------|
 | [LAXITY_DRIVER_TECHNICAL_REFERENCE.md](reference/LAXITY_DRIVER_TECHNICAL_REFERENCE.md) | **Laxity driver technical details** - Architecture, memory layout, pointer patching | v2.0.0 |
 | [STINSENS_PLAYER_DISASSEMBLY.md](reference/STINSENS_PLAYER_DISASSEMBLY.md) | Laxity NewPlayer v21 disassembly |
-| [SF2_DRIVER11_DISASSEMBLY.md](reference/SF2_DRIVER11_DISASSEMBLY.md) | SF2 Driver 11 player analysis |
 | [SF2_CLASSES.md](reference/SF2_CLASSES.md) | SF2 class structure reference |
 | [external-repositories.md](reference/external-repositories.md) | External source code repositories |
 | [jc64dis-source-repository.md](reference/jc64dis-source-repository.md) | **JC64dis source code** - Complete Java source for C64 emulator and 6502 disassembler |
@@ -124,27 +143,22 @@ System architecture and module documentation:
 
 Technical analysis, validation results, and findings:
 
-### Consolidated Analysis (NEW - v2.3.0)
-| Document | Content | Version |
-|----------|---------|---------|
-| [MIDI_VALIDATION_COMPLETE.md](../archive/cleanup_2026-04-28/old_docs/meta_reports/MIDI_VALIDATION_COMPLETE.md) (archived) | **Complete MIDI validation results** - 100.66% accuracy, perfect matches | v2.0.0 |
-
-### Project Analysis
+### Current Analysis (docs/analysis/ — native-driver era)
 | Document | Content |
 |----------|---------|
-| [CONSOLIDATION_2025-12-21_COMPLETE.md](../archive/cleanup_2026-04-28/old_docs/meta_reports/CONSOLIDATION_2025-12-21_COMPLETE.md) (archived) | **Authoritative consolidation documentation** - Complete Phase 1-4 documentation |
-| [ACCURACY_ROADMAP.md](../archive/cleanup_2026-04-28/old_docs/old_analysis/ACCURACY_ROADMAP.md) (archived) | Accuracy improvement plan - Path to 99% accuracy |
-| [PACK_STATUS.md](analysis/PACK_STATUS.md) | Packer status - SF2→SID implementation details |
-| [TRACK_VIEW_TEST_RESULTS.md](analysis/TRACK_VIEW_TEST_RESULTS.md) | Track view testing results |
-| [ACCURACY_FIX_VERIFICATION_REPORT.md](../archive/cleanup_2026-04-28/old_docs/completion_reports/ACCURACY_FIX_VERIFICATION_REPORT.md) (archived) | Accuracy optimization verification - 99.93% → 100% fixes |
-| [ACCURACY_OPTIMIZATION_ANALYSIS.md](../archive/cleanup_2026-04-28/old_docs/old_analysis/ACCURACY_OPTIMIZATION_ANALYSIS.md) (archived) | Root cause analysis of accuracy improvements |
+| [GALWAY_SF2_DRIVER_PLAN.md](analysis/GALWAY_SF2_DRIVER_PLAN.md) | **Galway native-driver staged plan** (Stage A/B — the template all later players followed) |
+| [ROMUZAK_SF2_DRIVER_PLAN.md](analysis/ROMUZAK_SF2_DRIVER_PLAN.md) | ROMUZAK native-driver plan |
+| [GALWAY_1STGEN_ENGINE.md](analysis/GALWAY_1STGEN_ENGINE.md) | Galway 1st-gen bytecode engine map |
+| [GALWAY_FM_PM_SYNTH.md](analysis/GALWAY_FM_PM_SYNTH.md) | Galway per-frame FM/PM synth analysis |
+| [GALWAY_TO_DRIVER11_MAPPING.md](analysis/GALWAY_TO_DRIVER11_MAPPING.md) | Stage-A transpile mapping |
+| [SF2_DRIVER_BINARY_FORMAT.md](analysis/SF2_DRIVER_BINARY_FORMAT.md) | SF2 driver descriptor format (RE'd — needed for native drivers) |
+| [DRIVER11_TABLE_FORMATS.txt](analysis/DRIVER11_TABLE_FORMATS.txt) | Driver 11 wave/pulse/filter table interpreter spec |
+| [DRIVER_FEATURES_COMPARISON.md](analysis/DRIVER_FEATURES_COMPARISON.md) | SF2 drivers 11-16 / NP20 / Laxity comparison |
+| [DRIVER_LIMITATIONS.md](analysis/DRIVER_LIMITATIONS.md) | Known SF2 driver limitations |
+| [SF2_VALIDATION_STATUS.md](analysis/SF2_VALIDATION_STATUS.md) | SF2 validation system status |
+| [CONVERSION_MASTERY_ANALYSIS.md](analysis/CONVERSION_MASTERY_ANALYSIS.md) | Conversion mastery deep analysis |
 
-### External Tools Analysis
-| Document | Content | Version |
-|----------|---------|---------|
-| [EXTERNAL_TOOLS_REPLACEMENT_ANALYSIS.md](analysis/EXTERNAL_TOOLS_REPLACEMENT_ANALYSIS.md) | **External tools replacement** - siddump.py, sidwinder.py complete analysis | v2.8.0 |
-| [SIDWINDER_PYTHON_DESIGN.md](analysis/SIDWINDER_PYTHON_DESIGN.md) | **SIDwinder Python implementation design** - 100% Python replacement architecture | v2.8.0 |
-| [JC64DIS_SID_HANDLING_ANALYSIS.md](analysis/JC64DIS_SID_HANDLING_ANALYSIS.md) | **JC64dis SID file handling** - Complete technical analysis, player detection, frequency analysis, integration strategies | v1.0.0 |
+> **Archived analysis** (pre-2026 deep dives: SF2 format dives, siddump/SIDwinder design, JC64, pattern DB, Galway batch timing, etc.) moved to [archive/analysis_2026-01-02/](archive/analysis_2026-01-02/).
 
 ### External Tools Integration
 | Document | Content | Version |
@@ -161,34 +175,6 @@ Technical analysis, validation results, and findings:
 | [POLICY_ANALYSIS.md](integration/POLICY_ANALYSIS.md) | **Policy analysis** - Analysis of quality-first approach vs strict Driver 11 policy | v2.0.0 |
 | [POLICY_IMPLEMENTATION_SUMMARY.md](integration/POLICY_IMPLEMENTATION_SUMMARY.md) | **Policy implementation** - Technical implementation details, file changes | v2.0.0 |
 | [CONVERSION_POLICY.md](integration/CONVERSION_POLICY.md) | **Conversion Policy v1.0** - Earlier draft (superseded by v2.0 APPROVED) | v1.0.0 |
-
-### Implementation Analysis
-| Document | Content |
-|----------|---------|
-| [SIDDECOMPILER_INTEGRATION_ANALYSIS.md](analysis/SIDDECOMPILER_INTEGRATION_ANALYSIS.md) | SIDdecompiler integration analysis |
-| [DRIVER_DETECTION_RESEARCH.md](analysis/DRIVER_DETECTION_RESEARCH.md) | SF2 driver detection research and patterns |
-| [DRIVER_FEATURES_COMPARISON.md](analysis/DRIVER_FEATURES_COMPARISON.md) | Comparison of SF2 drivers (11-16, NP20, Laxity) |
-| [DRIVER_LIMITATIONS.md](analysis/DRIVER_LIMITATIONS.md) | Known limitations of SF2 drivers |
-| [CONVERSION_GUIDE.md](analysis/CONVERSION_GUIDE.md) | SID → SF2 conversion guide and best practices |
-| [GALWAY_BATCH_TIMING_RESULTS.md](analysis/GALWAY_BATCH_TIMING_RESULTS.md) | Martin Galway player batch conversion results |
-| [HYBRID_PIPELINE_SUCCESS.md](analysis/HYBRID_PIPELINE_SUCCESS.md) | Hybrid pipeline implementation success report |
-| [MARTIN_GALWAY_PLAYER_DEEP_ANALYSIS.md](analysis/MARTIN_GALWAY_PLAYER_DEEP_ANALYSIS.md) | Deep analysis of Martin Galway music player |
-| [PYTHON_FILE_ANALYSIS.md](analysis/PYTHON_FILE_ANALYSIS.md) | Python codebase structure and file organization |
-| [SIDTOOL_INTEGRATION_PLAN.md](analysis/SIDTOOL_INTEGRATION_PLAN.md) | SIDTool integration planning |
-| [TRACK3_ANALYSIS_SUMMARY.md](analysis/TRACK3_ANALYSIS_SUMMARY.md) | Voice 3 usage analysis summary |
-| [PATTERN_DATABASE_FINAL_RESULTS.md](analysis/PATTERN_DATABASE_FINAL_RESULTS.md) | **Pattern database final results** - 658 SID files analyzed, player type distribution | v2.8.0 |
-| [pattern_test_results.txt](analysis/pattern_test_results.txt) | **Pattern test results** - Raw test output from pattern matching validation | v2.8.0 |
-
-### Technical Deep Dives
-| Document | Content |
-|----------|---------|
-| [TECHNICAL_ANALYSIS.md](analysis/TECHNICAL_ANALYSIS.md) | General technical analysis and findings |
-| [SF2_DEEP_DIVE.md](analysis/SF2_DEEP_DIVE.md) | Deep dive into SF2 format internals |
-| [SF2_HEADER_BLOCK_ANALYSIS.md](analysis/SF2_HEADER_BLOCK_ANALYSIS.md) | SF2 header block structure analysis |
-| [SF2_KNOWLEDGE_CONSOLIDATION.md](analysis/SF2_KNOWLEDGE_CONSOLIDATION.md) | Consolidated SF2 format knowledge |
-| [SF2_VALIDATION_STATUS.md](analysis/SF2_VALIDATION_STATUS.md) | SF2 validation system status |
-| [SIDDUMP_DEEP_DIVE.md](analysis/SIDDUMP_DEEP_DIVE.md) | Deep dive into siddump functionality |
-| [CONSOLIDATION_INSIGHTS.md](analysis/CONSOLIDATION_INSIGHTS.md) | Insights from documentation consolidation |
 
 ### Status Documents
 | Document | Content |
@@ -223,7 +209,6 @@ Detailed implementation guides and reports:
 | [SIDDECOMPILER_INTEGRATION.md](implementation/SIDDECOMPILER_INTEGRATION.md) | SIDdecompiler integration | v1.4 |
 | [SIDDECOMPILER_LESSONS_LEARNED.md](implementation/SIDDECOMPILER_LESSONS_LEARNED.md) | Lessons learned from SIDdecompiler integration | - |
 | [RUNTIME_TABLE_BUILDING_IMPLEMENTATION.md](implementation/RUNTIME_TABLE_BUILDING_IMPLEMENTATION.md) | Runtime table building | - |
-| [SF2_VIEWER_V2.4_COMPLETE.md](implementation/SF2_VIEWER_V2.4_COMPLETE.md) | SF2 Viewer v2.4 completion | v2.4.0 |
 | [SF2_VIEWER_FEATURE_PARITY_PLAN.md](implementation/SF2_VIEWER_FEATURE_PARITY_PLAN.md) | SF2 Viewer feature parity planning | - |
 
 ### Laxity Driver Implementation (Detailed)
@@ -390,7 +375,13 @@ Historical reports, completed work, and consolidated documentation:
 → See [SIDDUMP_PYTHON_IMPLEMENTATION.md](implementation/SIDDUMP_PYTHON_IMPLEMENTATION.md) (v2.6.0, 100% accuracy)
 
 **...use Python SIDwinder**
-→ See [SIDWINDER_PYTHON_DESIGN.md](analysis/SIDWINDER_PYTHON_DESIGN.md) (v2.8.0, cross-platform)
+→ See [SIDWINDER_PYTHON_DESIGN.md](archive/analysis_2026-01-02/SIDWINDER_PYTHON_DESIGN.md) (archived; v2.8.0, cross-platform)
+
+**...convert a Galway / ROMUZAK / Maniacs-of-Noise SID with a native driver**
+→ See [players/PLAYBOOK.md](players/PLAYBOOK.md) and the per-player docs in [players/](players/README.md)
+
+**...port a NEW player to SF2**
+→ Follow the checklist in [players/PLAYBOOK.md §6](players/PLAYBOOK.md)
 
 **...track project improvements**
 → See [IMPROVEMENTS_TODO.md](../IMPROVEMENTS_TODO.md) (active task tracking)
@@ -465,6 +456,13 @@ python cleanup.py --clean         # Execute cleanup
 
 ## Recent Changes
 
+### v3.13.0 (2026-07-05) - Native-Driver Era Consolidation
+- Added the 🎹 Players section (docs/players/ was previously unindexed): support index, **PLAYBOOK.md** (consolidated cross-player knowledge), MON.md, CLUSTERS.md
+- Rewrote [reference/ACCURACY_MATRIX.md](reference/ACCURACY_MATRIX.md) for v3.13.0 (was v3.1.1)
+- Replaced the stale analysis tables with the current docs/analysis/ contents; noted the archive move to archive/analysis_2026-01-02/
+- Fixed dead/moved links (SF2 format quick refs live in docs/ root; SIDwinder design archived; SF2_DRIVER11_DISASSEMBLY / SF2_VIEWER_V2.4_COMPLETE removed)
+- New improvement roadmap: [ROADMAP.md](ROADMAP.md)
+
 ### v2.8.0 (2025-12-24) - INDEX Comprehensive Update
 - Added 40+ missing documentation files to INDEX
 - New sections: Project Management & Planning, Solutions, Compliance, Experiments, Learning Resources
@@ -506,9 +504,9 @@ python cleanup.py --clean         # Execute cleanup
 
 ---
 
-**Document Status**: Comprehensive INDEX with all MD files cataloged (v2.8.0)
-**Last Updated**: 2025-12-24
-**Last Major Consolidation**: 2025-12-21
+**Document Status**: Comprehensive INDEX with all MD files cataloged (v3.13.0)
+**Last Updated**: 2026-07-05
+**Last Major Consolidation**: 2026-07-05 (native-driver era; players/ tree indexed)
 **Maintainer**: SIDM2 Project
 **Completeness**: ✅ All MD files indexed with descriptions
 

@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.13.0** | SID→SF2 Converter | C64 Music Tools | Updated 2026-06-29
+**SIDM2 v3.13.1** | SID→SF2 Converter | C64 Music Tools | Updated 2026-07-05
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -140,9 +140,9 @@ SIDM2/
 | SF2-exported → Driver 11 | 100% | ✅ Perfect (including SidFactory_II/Laxity) |
 | Native Laxity NP21 → Laxity driver | 99.93-100% | ✅ Production |
 | Native Laxity NP21 → Driver 11 | 1-8% | ⚠️ Use Laxity driver instead |
-| Martin Galway → trace native driver | ~100% | ✅ 40/40 build (`bin/`, not default); see `docs/players/GALWAY.md` |
+| Martin Galway → trace native driver | ~100% | ✅ 40/40 build, 30/40 objectively clean (`bin/`, not default); see `docs/players/GALWAY.md` |
 | ROMUZAK V6.3 → native driver | ~98-100% | ✅ Byte-exact wf/pulse/AD-SR (`bin/`, not default) |
-| Hawkeye/Maniacs of Noise → native driver | 100% byte-exact | ✅ Subtunes 2 & 3 full-length; subtune 0 windowed (`bin/`, not default) |
+| Maniacs of Noise (Jeroen Tel) → native driver | 100% byte-exact (Hawkeye sub 2/3) | ✅ Hawkeye + Cybernoid I/II + Myth + Supremacy all build (`bin/`, not default); see `docs/players/MON.md` |
 | Future Composer → Driver 11 | trace-validated | 🚧 Stage A only, `$1800` variant; native driver TODO |
 
 **Critical**: "SidFactory_II/Laxity" ≠ native Laxity! Check player-id: "SidFactory" = use Driver 11, "Laxity_NewPlayer_V21" = use Laxity driver
@@ -158,6 +158,8 @@ SIDM2/
 **User Guides** (3,400+ lines): `TUTORIALS.md`, `FAQ.md`, `BEST_PRACTICES.md`, `SF2_VIEWER_GUIDE.md`, `CONVERSION_COCKPIT_USER_GUIDE.md`, `LAXITY_DRIVER_USER_GUIDE.md`, `VALIDATION_GUIDE.md`, `LOGGING_AND_ERROR_HANDLING_GUIDE.md`
 
 **Technical**: `docs/ARCHITECTURE.md`, `docs/COMPONENTS_REFERENCE.md`, `docs/reference/SF2_FORMAT_SPEC.md`
+
+**Players (consolidated 2026-07-05)**: `docs/players/PLAYBOOK.md` (**the cross-player porting method** — staged Stage A/B pipeline, size caps, gotchas, new-player checklist), `docs/players/README.md` (support index), per-player docs (`LAXITY`, `GALWAY`, `MON`, `ROMUZAK`, `FUTURECOMPOSER`, `DRIVER11`, `NP20`, `CLUSTERS`), `docs/reference/ACCURACY_MATRIX.md` (accuracy source of truth, v3.13.0), `docs/ROADMAP.md` (consolidation/optimization plan)
 
 **Complete index**: `docs/INDEX.md`
 
@@ -176,6 +178,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.13.1** (2026-07-05): **Docs-only consolidation release — the cross-player knowledge base.** New `docs/players/PLAYBOOK.md` (the consolidated porting method: staged RE→Stage A→Stage B→Stage C pipeline, technique catalog, SF2II caps, fidelity ladder, all gotchas, new-player checklist), `docs/players/MON.md` (Hawkeye/Cybernoid/Myth/Supremacy — was undocumented despite being the v3.13.0 headline), `docs/players/CLUSTERS.md` (DRAX/Stinsen/Beast/Angular/2000AD/Wizax/V20). Rewritten to v3.13 state: `docs/reference/ACCURACY_MATRIX.md` (was v3.1.1), `docs/ROADMAP.md` (prioritized optimization plan: unify the 3-copy native driver, shared native-build + fidelity libs incl. the `_semi()` reference-freq drift, registry-wire the bin/ players, universal trace-first fallback toward "any SID → 99%/100% editable"), `README.md` (stale 3.6.0/3.2.1 headers + false limitations), `docs/INDEX.md` (players tree indexed, ~12 dead links fixed), `docs/players/README.md`. No code changes (version constant only).
 
 **v3.13.0** (2026-06-29): **Three new players land — Future Composer, ROMUZAK, and Hawkeye/Maniacs-of-Noise (Jeroen Tel) — each SID→SF2, the last two with from-scratch NATIVE SF2 drivers that load in stock SID Factory II.** All Stage-B work reuses the shared trace-driven native-driver pipeline first built for Galway (`bin/build_*_native_song.py` + `bin/build_*_driver_full.py` + per-frame fidelity metric). (1) **Future Composer** ("The Beat-Machine" V4.1): format fully RE'd from `Triangle_Intro.sid` (`sidm2/fc_parser.py` + `bin/fc_to_sf2.py`, 4 tests); Stage-A Driver-11 transpiler is trace-validated (every V2 melody note matches siddump). Handles the `$1800` player variant (5/20 Fun_Fun files); other load addresses need player-base detection. (2) **ROMUZAK V6.3** (Oliver Blasnik): Stage-A Driver-11 transpiler **plus** a from-scratch native SF2 driver (`drivers_src/romuzak/`) reaching note/orderlist-exact + **byte-exact waveform/pulse/AD-SR (~98–100%)** on both Fun_Fun tunes; deterministic validator `bin/romuzak_native_validate.py`; loads+plays in stock SF2II. (3) **Hawkeye / Maniacs of Noise** (the headline): MoN two-level orderlist→pattern engine RE'd (`sidm2/mon_parser.py`, frame-exact: SPLIT freq table lo `$8337`/hi `$8396`, `$FE`=song-end, `$FF`=loop, `$40-$5F`=pattern-repeat counter, 8-byte instrument records `$860C`). Stage A (`bin/mon_to_sf2.py`) → editable Driver-11 SF2, **GUI-confirmed sub 2 & 3** (sub3 28/28 onsets, sub2 174/174, all EXACT). Stage B native driver (`drivers_src/mon/`, `bin/build_mon_native_song.py`, `bin/mon_fidelity.py`): **subtunes 2 AND 3 = freq + waveform + pulse + FILTER ALL 100% BYTE-EXACT on all 3 voices, full song length, single editable SF2 each.** Mechanism: per-note (FM, pulse) bundles via the `$c0-$ff` command channel (slides+arps, drop delta[0] for the 1-frame `pr_note` hold); per-note WAVE programs as distinct instruments (gate envelope); global resonant FILTER restarted per note by a flag-`$40` instrument. For the dense ~6.4-min main theme (subtune 0, ~6000 notes > the 64-bundle/32-instrument/$D000 caps): **greedy nearest-merge clustering** + **window-splitting** (13×30s parts, `py -3 bin/build_mon_native_song.py SID 0 30`) — each part ~100% pitch/waveform/pulse, filter ~75% (window-boundary seam, open). 9 mon tests green. Status/handoff: `whats-next.md`; memory `hawkeye-mon-player-re.md`, `romuzak-player-re.md`, `future-composer-player.md`. Also this cycle: `siddump_complete.py` gained `--bits` bit-field column mode + `--written` write-precision mode.
 

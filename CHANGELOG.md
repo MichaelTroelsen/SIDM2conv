@@ -25,6 +25,48 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.13.1] - 2026-07-05
+
+### Documentation consolidation — the cross-player knowledge base (docs-only release)
+
+Consolidated four player ports' worth of knowledge into the docs tree before taking
+on new players. No code changes (version constant only).
+
+**New documents**
+- `docs/players/PLAYBOOK.md` — **the consolidated cross-player porting playbook**:
+  staged method (RE → Stage A Driver-11 transpile → Stage B native driver → Stage C
+  structural), shared Stage-B pipeline anatomy, technique catalog (bundles, clustering,
+  legato extraction, wave/filter-envelope programs, self-IRQ tracing, emulation
+  extraction, digi), SF2II hard caps (63 bundles / 32 instruments / 256 rows / 960
+  events / $D000 wall), the fidelity-measurement ladder, all encoded gotchas (SF2II
+  CMP carry, siddump SBC bug, 6502 traps, argv Heisenbug), and a new-player checklist.
+- `docs/players/MON.md` — Maniacs of Noise (Jeroen Tel): Hawkeye, Cybernoid I/II,
+  Myth, Supremacy — engine RE, the 5 orderlist-model variants, per-tune fidelity
+  status, hard-won lessons, and the part-count structural-RE frontier.
+- `docs/players/CLUSTERS.md` — NP21-adjacent clusters (Stinsen/Beast/Angular, DRAX,
+  Vibrants 2000 A.D., Wizax-A, Zetrex/YP, V20 umbrella) and their RE lessons.
+
+**Rewritten to v3.13 state**
+- `docs/reference/ACCURACY_MATRIX.md` (was v3.1.1/2026-01-02 despite being the cited
+  source of truth): wired-pipeline matrix + native-driver builds + editor-view
+  clusters + anti-matrix of known-bad pairings.
+- `docs/ROADMAP.md` (was v3.5.5-era): prioritized consolidation/optimization plan —
+  unify the 3-copy native driver (~1,300-line shared core) behind 64tass feature
+  flags; extract shared native-build + fidelity libraries (including the `_semi()`
+  semitone reference-frequency drift across validators); registry-wire the `bin/`
+  players; lossless part-count via structural synth RE; a universal trace-first
+  fallback as the path to "any SID → 99% fidelity, 100% editable".
+- `README.md` — version headers (3.6.0/3.2.1 → 3.13.x), player-support tables
+  (native-driver builds added), Known Limitations (stale "filter 0% / no
+  multi-subtune / Galway 88-96%" claims replaced with the real v3.13 limits).
+- `docs/INDEX.md` — new Players section (docs/players/ was unindexed), current
+  analysis table, ~12 dead/moved links fixed.
+- `docs/players/README.md` — MoN + clusters rows added; Jeroen Tel moved out of
+  "not yet supported"; PLAYBOOK/ACCURACY_MATRIX cross-links.
+- `CLAUDE.md` — limitations table + consolidated doc pointers.
+
+---
+
 ## [3.13.0] - 2026-06-29
 
 ### Three new players: Future Composer, ROMUZAK, and Hawkeye / Maniacs of Noise

@@ -3,23 +3,26 @@
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 [![codecov](https://codecov.io/gh/MichaelTroelsen/SIDM2conv/branch/master/graph.svg)](https://codecov.io/gh/MichaelTroelsen/SIDM2conv)
 
-**Version 3.6.0** | Build Date: 2026-05-28 | Production Ready ✅
+**Version 3.13.0** | Build Date: 2026-06-29 | Production Ready ✅
 
-A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files with **100% frame accuracy** for Laxity NewPlayer v21 files (verified on Stinsen + Unboxed against zig64 ground truth).
+A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files with **100% frame accuracy** for Laxity NewPlayer v21 files (verified against zig64 ground truth) and **from-scratch native SF2 drivers** reaching byte-exact fidelity for Martin Galway, ROMUZAK, and Maniacs of Noise (Jeroen Tel) players.
+
+**Mission:** combine static code with AI-driven reverse engineering to convert **any SID** into an SF2 that plays at ≥99% fidelity and is 100% editable in stock SID Factory II. Method + consolidated knowledge: [docs/players/PLAYBOOK.md](docs/players/PLAYBOOK.md).
 
 ## Overview
 
 SIDM2 analyzes SID files and extracts music data for conversion to SID Factory II editable format. Features automatic driver selection, interactive HTML documentation, SF2 Viewer GUI, batch conversion tools, and comprehensive validation.
 
 **Key Features**:
-- ✅ **99.93% accuracy** for Laxity NewPlayer v21 files (custom driver)
+- ✅ **99.93–100% accuracy** for Laxity NewPlayer v21 files (custom driver, filter 100%)
 - ✅ **100% accuracy** for SF2-exported SID files (perfect roundtrip)
+- ✅ **Native SF2 drivers** (load in stock SF2II) for Galway, ROMUZAK, and Maniacs of Noise — MoN Hawkeye subtunes 2 & 3 are **100% byte-exact on every SID register** ([docs/players/](docs/players/README.md))
+- ✅ **Multi-subtune support** in the native builds (per-subtune extraction; long tunes windowed into parts)
 - ✅ **Auto driver selection** based on player type detection
 - ✅ **HTML annotation tool** with 3,700+ semantic annotations per file
-- ✅ **Dynamic ROM/RAM detection** for accurate memory region annotations
 - ✅ **Interactive trace visualization** for frame-by-frame register analysis
 - ✅ **Validation dashboard** with enhanced search and accuracy trends
-- ✅ **200+ unit tests** with 100% pass rate
+- ✅ **1,400+ unit tests** with 100% pass rate
 - ✅ **658+ SID files** cataloged and tested
 
 **Note**: This is an experimental reverse-engineering tool. Results may require manual refinement in SID Factory II.
@@ -339,13 +342,22 @@ Automatically selects the best driver based on player type detection via `Driver
 
 | Source Format | player-id string | Driver | Accuracy | Status |
 |--------------|-----------------|--------|----------|--------|
-| Laxity NewPlayer v21 | `Laxity_NewPlayer_V21` | Laxity | **99.93%** | ✅ Production |
+| Laxity NewPlayer v21 | `Laxity_NewPlayer_V21` | Laxity | **99.93–100%** | ✅ Production |
 | SF2-exported SID | `SidFactory_II/*` | Driver 11 | **100%** | ✅ Perfect |
 | NewPlayer 20.G4 | `NewPlayer_20.G4` | NP20 | 70-90% | ✅ Good |
-| Martin Galway | `Martin_Galway` | Galway | 88-96% | ✅ Good |
+| Martin Galway | `Martin_Galway` | Galway (Stage A transpile) | notes/timing exact | ✅ Editable |
 | Unknown | any | Driver 11 | Varies | ✅ Safe default |
 
 **Note**: `SidFactory_II/Laxity` = SF2-exported by author Laxity → Driver 11 (not the Laxity player driver).
+
+**Native-driver builds** (not yet auto-selected — invoked from `bin/`; see [docs/players/](docs/players/README.md) and [docs/reference/ACCURACY_MATRIX.md](docs/reference/ACCURACY_MATRIX.md)):
+
+| Player | Entry point | Fidelity |
+|--------|-------------|----------|
+| Martin Galway (40 tunes) | `bin/build_galway_corpus.py` | ~100% per register; 30/40 objectively clean in real SF2II |
+| Maniacs of Noise — Hawkeye/Cybernoid/Myth/Supremacy | `bin/build_mon_native_song.py` | Hawkeye sub 2/3 **100% byte-exact**; others ~95-100% |
+| ROMUZAK V6.3 | `bin/build_romuzak_native_song.py` | byte-exact waveform/pulse/AD-SR (~98-100%) |
+| Future Composer ($1800 variant) | `bin/fc_to_sf2.py` | Stage A: notes/order trace-validated |
 
 **Manual override**:
 ```bash
@@ -411,7 +423,7 @@ conversion-cockpit.bat
 - Frame-by-frame SID register trace
 - Cross-platform implementation
 - 27 unit tests, 100% pass rate
-- Docs: [docs/analysis/SIDWINDER_PYTHON_DESIGN.md](docs/analysis/SIDWINDER_PYTHON_DESIGN.md)
+- Docs: [docs/archive/analysis_2026-01-02/SIDWINDER_PYTHON_DESIGN.md](docs/archive/analysis_2026-01-02/SIDWINDER_PYTHON_DESIGN.md) (archived)
 
 **VSID Integration** (`sidm2.vsid_wrapper`):
 - SID to WAV conversion via VICE emulator
@@ -794,16 +806,15 @@ Located in `tools/` directory (Windows binaries, optional fallbacks):
 
 ### Known Limitations
 
-1. **Filter Accuracy**: 0% (Laxity filter format not converted)
-   - Impact: Static filter values not preserved
-   - Workaround: Manual filter editing in SF2 editor
+1. **Native-driver builds are `bin/`-only**: the Galway/ROMUZAK/MoN native pipelines are not yet wired into the auto-selecting converter (`sid-to-sf2.bat`); invoke their `bin/build_*.py` entry points directly.
 
-2. **Voice 3**: Untested (no test files available)
+2. **Part-count on dense tunes**: SF2II hard caps (63 command bundles / 32 instruments / 256 wave rows / $D000 memory wall) force long, dense tunes into multiple SF2 part files (e.g. Supremacy sub2 = 70 parts). The lossless fix (structural synth-engine RE) is in progress — see `whats-next.md` and [PLAYBOOK.md §3](docs/players/PLAYBOOK.md).
 
-3. **Multi-subtune**: Not supported (only first subtune converted)
+3. **Multi-subtune**: the wired pipeline converts one subtune; the native builds take a subtune argument.
 
-4. **Player Support**: Only Laxity NewPlayer V21 achieves 99.93% accuracy
-   - Other formats use standard drivers (70-90% accuracy)
+4. **Player coverage**: Rob Hubbard and most non-$1800 Future Composer variants have no pipeline yet ([docs/players/README.md](docs/players/README.md)).
+
+5. **Trace-replay cycle floor**: byte-exact per-frame register replay can still differ subtly on high-resonance filtered voices (reSID responds to exact write cycles) — a fundamental ~2% audio residual, inaudible in practice.
 
 **Complete limitations**: [docs/guides/FAQ.md#limitations](docs/guides/FAQ.md)
 
@@ -1082,4 +1093,4 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 **🤖 Generated with [Claude Code](https://claude.com/claude-code)**
 
-**Last Updated**: 2026-04-28 | **Version**: 3.2.1
+**Last Updated**: 2026-07-05 | **Version**: 3.13.0
