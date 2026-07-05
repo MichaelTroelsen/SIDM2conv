@@ -200,12 +200,39 @@ Everything below is the LOSSLESS PART-COUNT structural rebuild (issue 2). Ordere
        _fm_unroll(step=)). One program serves every pitch AND duration.
    RESULTS: 30s window bundles 32->24; 45s 82->70; part2 (30-60s) flag-on = osc1 87/87/94,
    osc2 96/96/98, osc3 63.5/98/100 vs flag-off 82/85/53 (freq BETTER, pulse 100%).
-   Hawkeye/ROMUZAK regressions clean (100%). NEXT LEVER (the osc3-freq 63% + the 60s-window
-   145 bundles): **PORTAMENTO/SLIDE engine** — the 30-60s canon notes start OFF-pitch
-   (first delta -$1BA etc.) and glide; needs the ROM slide-engine RE ($102F/$1029/$102C
-   target+speed) -> a pitch-independent SLIDE entry (like the vibrato one). Also NOTE:
-   fixed-30s flag-off builds still WAVE-overflow at part 6 (canonicalization is flag-gated);
-   parts >=2 were NEVER measured before today — add part2+ to the standard validation.
+   Hawkeye/ROMUZAK regressions clean (100%). Also NOTE: fixed-30s flag-off builds still
+   WAVE-overflow at part 6 (canonicalization is flag-gated); parts >=2 were NEVER measured
+   before today — add part2+ to the standard validation.
+
+5. **PORTAMENTO / 30-60s SECTION — DIAGNOSED 2026-07-05, implementation reverted (a first
+   attempt made sub0 worse; accuracy-first). This is a DECODE problem before a driver one.**
+   The osc3-freq-63% section (sub2 V2 from onset idx 88, fr 1512+; 60s-window bundle
+   residual) findings, all from the $11B9-$1246 disasm + pattern-$0C hand-decode + trace:
+   (a) V2's real note at fr1512 lasts 36 ticks; the parser emits 24t + two $Cx-retriggers
+       at 1572/1582 that siddump does NOT show as onsets -> the prefix-chain RETRIGGER
+       (step-1 fix, correct in 0-30s) is INSTRUMENT-CONDITIONAL — likely a flag bit in
+       instrument record byte [0] (-> $1020; bit6 = arp enable, other bits TBD).
+   (b) ORDERLIST is a FALL-THROUGH prefix chain ($11DF: >=$80 transpose&$7F -> read next;
+       >=$70 -> $100D instr-base -> read; >=$40 repeat&$1F -> read; then STA pattern) —
+       BUT implementing it verbatim broke sub0's validated note order while leaving V2
+       unchanged. The reader's re-entry semantics must be settled with a py65 GROUND-TRUTH
+       POSITION TRACE before trusting either model (the current independent-dispatch model
+       is what all existing validation rests on).
+   (c) PATTERN commands: $FA/$FD are NOT top-level bytes — only recognized as the byte
+       AFTER a duration ($1295: $FA -> $1212 = 2-byte -> $10DB; $FD -> $121F) or after an
+       instrument ($127D: $FD -> $121F). **$FD = the 4-byte SLIDE: speed -> $102F, note ->
+       $F0 (+transpose +$12BD), target -> $1032, then FINALIZES at $12C1 (it IS a note
+       trigger).** Top-level $E0-$FF = the REST handler $124A ($F6 = b&$1F, $F0 = $FF,
+       ctrl/AD/SR zeroed, exits via $1343 — whether it consumes a duration slot is TBD).
+   (d) THE TOOL TO BUILD FIRST: a py65 EVENT-BOUNDARY tracer (intercept the finalize at
+       $12C1/$1343 logging Y, $E6, $E9, $F3/$F6, $1016 per event) — the same method as the
+       freq-lookup tracer that cracked the note formula. With per-event ground truth the
+       retrigger condition, rest timing, additive-duration and orderlist-chain questions
+       all become mechanical. THEN the driver SLIDE entry (target+speed, like the scaled
+       vibrato) is straightforward.
+   Reference data: sub2 V2 orderlist `... 26 00 C0 88 79 0C C0 C0 18 0C ...`; pattern $0C
+   @ $1AD1 = `C9 8C 61 2E 88 63 29 A0 27 90 67 26 88 63 26 CB FD 03 43 08 FF ...` (note the
+   `CB FD 03 43 08` instrument+slide chain and the trailing $FF).
 
 3-old. (historical) **Wave [attack][steady-loop] structural rebuild** (the INSTRUMENT cap, 87->~5). The waveform is
    attack + steady + release (RE'd); emit it as [attack transient][steady + $7f loop] so the note
