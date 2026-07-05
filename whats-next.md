@@ -220,9 +220,31 @@ Everything below is the LOSSLESS PART-COUNT structural rebuild (issue 2). Ordere
    all 15 parts (used to crash at 6). Hawkeye 100/100/100 unchanged; 1488 tests.
    The sub0 collapsed-notes test constant was recaptured from the event tracer (the old
    freq-lookup list carried one phantom pitch from a non-trigger lookup).
-   REMAINING (smaller): (i) driver SLIDE entry (MONEvent.slide is parsed but the FM side
-   still uses the trace-Hz capture — a structural entry like the scaled vibrato would
-   dedup slide bundles); (ii) sub1 loop-aware validation + sub0's 1-frame jitter.
+   REMAINING (smaller): (ii) sub1 loop-aware validation + sub0's 1-frame jitter.
+
+7. **DRIVER SLIDE ENTRY — ✅ LANDED 2026-07-05 (+ FIRST sub1 NATIVE BUILD).** Trace-
+   calibrated: rate = 7 << (speed-1) Hz/frame (sp5=112, sp6=224), ramps from the frame
+   after the trigger, clamps at the target. Driver: SEMITONE-family entries now dispatch
+   on byte1 (0 = instant arp set; 1-31 = SLIDE speed): FM_TGT = freqtable[note+ivl]-vfreq,
+   fm_add ramps FM_ACC and clamps on sign-flip/arrival (FM_TGT/FM_SLIDE state $1870-$1878;
+   pr_note cancels). PITCH-INDEPENDENT: one entry serves every pitch because the DRIVER
+   computes the target + clamp (the clamp frame varies per pitch). Build: _slide_fm_program
+   (slide entry + spliced tail vibrato via _vibrato_program; _fm_unroll_full models ALL
+   entry types), exact-guarded; ~8/16 sub1 slides convert into 3 programs (speed-26
+   down-jumps + non-round-rule depths stay trace-Hz). ALSO: (a) the scaled mul now ROUNDS
+   ((step*scale+128)>>8 — matches depth 47@step362; NB the ROM's true depth rule is
+   NEITHER pure trunc nor round — guards arbitrate per note); (b) arp guard added at the
+   SEMITONE level (freq_to_semi): unguarded arps broke sub1 osc1 to 32% (wprog $14 is a
+   WAVE shape, not a pitch arp) while Hz-exact guarding rejected all DETUNED canon notes
+   (bimodal: bad=0 or bad=all — the constant few-Hz detune is semitone-invisible);
+   (c) driver code relocated: out-of-line FM handlers (scaled mul + slide setup) moved to
+   the free $1880-$19FF window (main bank overflowed SF2II's pinned state region $16CC+;
+   also 64tass is CASE-INSENSITIVE: fm_slide label collided with the FM_SLIDE symbol).
+   RESULTS: **sub1 FIRST native build: flag-off 100/99.9/99.9 freq (osc1/2/3!), flag-on
+   97.7/95.9/95.1 with bundles 61->41, auto = 23 parts**; sub2 part1 92/98/98.5 bundles
+   50->40 but auto 26->31 (the rounding trade rejects some v2 vibrato acceptances — if
+   26 matters, make the mul rounding selectable per program); Hawkeye 100/100/100.
+   1490 tests (+2 slide unroll/clamp + pitch-independence).
 
 6. **FREE-RUNNING-PULSE HYPOTHESIS REVERSED (2026-07-05, post-decode).** With the CORRECT
    note boundaries, Supremacy's pulse RESETS per note (every (instr,wprog) key = 1 distinct

@@ -100,15 +100,49 @@ def test_vibrato_program_detection_and_unroll():
 def test_vibrato_program_rejects_non_vibrato():
     assert BM._vibrato_program([(0x10, 0, 3), (0x20, 0, 3), (0, 0, 0)], 427) is None
     assert BM._vibrato_program([(0, 0, 9), (0, 0, 0)], 427) is None
-    # depth not an exact step fraction -> reject (byte-exactness guard):
-    # 52 -> scale round(52*256/427)=31, but (427*31)>>8 == 51 != 52
-    assert BM._vibrato_program([(0x34, 0, 2), (0xCC, 0xFF, 5), (0x34, 0, 5),
+    # depth not an exact step fraction -> reject (byte-exactness guard): with the
+    # ROM's rounded multiply, step 427 reaches 50 (scale 30) and 52 (scale 31)
+    # but never 51
+    assert BM._vibrato_program([(0x33, 0, 2), (0xCD, 0xFF, 5), (0x33, 0, 5),
                                 (0, 0, 0)], 427) is None
 
 
 def test_pulse_unroll_models_driver():
     prog = [(0x88, 0x00, 1), (0x0F, 0xF0, 3), (0x7F, 0, 0)]   # set $800, add -$10 x3
     assert BM._pulse_unroll(prog, 6) == [0x800, 0x7F0, 0x7E0, 0x7D0, 0x7D0, 0x7D0]
+
+
+class _LinFT:
+    """Linear fake freqtable: note n -> 1000 + 100n (semitone step = 100)."""
+    def note_freq(self, n):
+        return 1000 + (n & 0x7F) * 100
+
+
+def test_slide_entry_unroll_ramps_and_clamps():
+    m = _LinFT()
+    # SLIDE entry: interval +2 at speed 3 -> rate 7<<2 = 28 Hz/frame toward +200
+    prog = [(2, 3, 0x80 | 20), (0, 0, 0)]
+    u = BM._fm_unroll_full(prog, 12, m, 40)
+    assert u[0] == 0                                    # trigger frame = base
+    assert (u[1], u[2]) == (28, 56)                     # ramp from frame 1
+    assert u[8] == 200 and u[11] == 200                 # clamped at the target
+    assert max(u) == 200                                # never overshoots
+    # down-slide clamps symmetrically
+    prog = [((-2) & 0xFF, 3, 0x80 | 20), (0, 0, 0)]
+    u = BM._fm_unroll_full(prog, 12, m, 40)
+    assert u[1] == (-28) & 0xFFFF
+    assert u[11] == (-200) & 0xFFFF
+
+
+def test_slide_program_builder_pitch_independence():
+    # one encoded slide entry serves any pitch: same program, different notes,
+    # both clamp at their own freqtable targets
+    m = _LinFT()
+    prog = [(2, 3, 0x80 | 30), (0, 0, 0)]
+    u40 = BM._fm_unroll_full(prog, 20, m, 40)
+    u50 = BM._fm_unroll_full(prog, 20, m, 50)
+    assert u40[15] == 200 and u50[15] == 200            # both arrive (step 100 here)
+    assert u40[1] == u50[1] == 28                       # same rate
 
 
 def test_arp_round_trip_matches_rom_phase():

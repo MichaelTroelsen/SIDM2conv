@@ -165,6 +165,9 @@ VSTEP_HI  = $1866        ;   (the note's semitone step, set at pr_note — the u
 mul_a     = $1869        ; scaled-entry multiply scratch: scale bits
 mul_m     = $186a        ; 24-bit shifted step (3)
 mul_p     = $186d        ; 24-bit product (3)
+FM_TGT_LO = $1870        ; per-voice SLIDE target offset (freqtable[note+ivl]-vfreq) (3)
+FM_TGT_HI = $1873        ;   (3)
+FM_SLIDE  = $1876        ; per-voice: 1 = slide active (fm_add clamps at FM_TGT) (3)
 
         .include "layout.inc"
 INSTR_AD    = INSTR + 0*32
@@ -723,20 +726,29 @@ fm_semi:
         and #$7f                 ; dur (>= 1)
         sta FM_CNT,x
         ldy #$00
-        lda (fmptr),y            ; byte 0 = signed semitone offset
+        lda (fmptr),y            ; byte 0 = signed semitone offset / slide interval
         clc
         adc vbasenote,x
         and #$7f
         asl                      ; freqtable is interleaved lo/hi (note*2)
         tay
         sec
-        lda freqtable,y          ; FM_ACC = freqtable[note+S] - vfreq (held)
+        lda freqtable,y          ; offset = freqtable[note+S] - vfreq
         sbc vfreq_lo,x
-        sta FM_ACC_LO,x
+        sta FM_TGT_LO,x
         lda freqtable+1,y
         sbc vfreq_hi,x
+        sta FM_TGT_HI,x
+        ldy #$01
+        lda (fmptr),y            ; byte 1: 0 = instant semitone set (arps);
+        beq fm_inst              ;   1-31 = SLIDE speed (rate = 7 << (speed-1))
+        jmp fm_slset             ; slide setup lives past fm_done (branch range)
+fm_inst:
+        lda FM_TGT_LO,x          ; instant: FM_ACC = the offset, no per-frame add
+        sta FM_ACC_LO,x
+        lda FM_TGT_HI,x
         sta FM_ACC_HI,x
-        lda #$00                 ; no per-frame add during the hold
+        lda #$00
         sta FM_OFF_LO,x
         sta FM_OFF_HI,x
 fm_adv3:
@@ -749,7 +761,9 @@ fm_adv3:
         jmp fm_add
 fm_loopent:
         dec ws_grd               ; degenerate loop chain -> freeze this frame
-        beq fm_freeze
+        bne fm_loopok            ; (near-branch + jmp: fm_freeze is out of range)
+        jmp fm_freeze
+fm_loopok:
         ldy #$00
         lda (fmptr),y            ; byte 0 = loop-back entry index
         sta tmpf
@@ -771,6 +785,30 @@ fm_add:
         lda FM_ACC_HI,x
         adc FM_OFF_HI,x
         sta FM_ACC_HI,x
+        lda FM_SLIDE,x           ; active slide: clamp at the target
+        beq fm_nosl
+        sec                      ; D = TGT - ACC
+        lda FM_TGT_LO,x
+        sbc FM_ACC_LO,x
+        sta tmpf
+        lda FM_TGT_HI,x
+        sbc FM_ACC_HI,x
+        sta tmpf+1
+        ora tmpf
+        beq fm_clamp             ; arrived exactly
+        lda tmpf+1
+        eor FM_OFF_HI,x          ; sign(D) != sign(OFF) -> overshot
+        bpl fm_nosl
+fm_clamp:
+        lda FM_TGT_LO,x
+        sta FM_ACC_LO,x
+        lda FM_TGT_HI,x
+        sta FM_ACC_HI,x
+        lda #$00
+        sta FM_OFF_LO,x
+        sta FM_OFF_HI,x
+        sta FM_SLIDE,x
+fm_nosl:
         lda FM_CNT,x
         beq fm_write
         dec FM_CNT,x
@@ -788,60 +826,6 @@ fm_write:
         jmp fm_l
 fm_done:
         rts
-; SCALED FM entry (out-of-line for branch range): offset = +-(VSTEP * byte0) >> 8
-; — a pitch-proportional vibrato leg. 24-bit shift-add multiply, ~200 cycles,
-; runs only when an entry loads (once per leg).
-fm_scaled:
-        ldy #$00
-        lda (fmptr),y            ; byte 0 = scale (fraction of a semitone step /256)
-        sta mul_a
-        lda VSTEP_LO,x
-        sta mul_m
-        lda VSTEP_HI,x
-        sta mul_m+1
-        lda #$00
-        sta mul_m+2
-        sta mul_p
-        sta mul_p+1
-        sta mul_p+2
-        ldy #$08
-fm_mul:
-        lsr mul_a
-        bcc fm_mulskip
-        lda mul_p
-        clc
-        adc mul_m
-        sta mul_p
-        lda mul_p+1
-        adc mul_m+1
-        sta mul_p+1
-        lda mul_p+2
-        adc mul_m+2
-        sta mul_p+2
-fm_mulskip:
-        asl mul_m
-        rol mul_m+1
-        rol mul_m+2
-        dey
-        bne fm_mul
-        ldy #$01                 ; product>>8 = mul_p+1/mul_p+2; hi bit0 = negative
-        lda (fmptr),y
-        and #$01
-        beq fm_scpos
-        sec                      ; negate (two's complement 16-bit)
-        lda #$00
-        sbc mul_p+1
-        sta FM_OFF_LO,x
-        lda #$00
-        sbc mul_p+2
-        sta FM_OFF_HI,x
-        jmp fm_adv3
-fm_scpos:
-        lda mul_p+1
-        sta FM_OFF_LO,x
-        lda mul_p+2
-        sta FM_OFF_HI,x
-        jmp fm_adv3
 do_row:
         lda #$00
         sta ST_TCNT              ; a new row ticked this frame (SF2II follow cursor++)
@@ -1050,6 +1034,7 @@ pn_tied:
         sta FM_ACC_HI,x
         sta FM_OFF_LO,x          ; no offset on the trigger frame
         sta FM_OFF_HI,x
+        sta FM_SLIDE,x           ; cancel any running slide
         lda #$01
         sta FM_CNT,x             ; hold base this frame; load entry 0 next frame
         sta FM_ON,x
@@ -1500,6 +1485,115 @@ olhi:
         * = $1710
 freqtable:
         .include "freqtable.inc"
+
+; Out-of-line FM entry handlers (SCALED vibrato + SLIDE setup): placed in
+; the free window between the driver scratch ($1800-$187f) and the edit
+; area ($1A00) — the main code bank was overflowing into SF2II's pinned
+; playback-state region ($16cc-$1702).
+        * = $1880
+; SCALED FM entry (out-of-line for branch range): offset = +-(VSTEP * byte0) >> 8
+; — a pitch-proportional vibrato leg. 24-bit shift-add multiply, ~200 cycles,
+; runs only when an entry loads (once per leg).
+fm_scaled:
+        ldy #$00
+        lda (fmptr),y            ; byte 0 = scale (fraction of a semitone step /256)
+        sta mul_a
+        lda VSTEP_LO,x
+        sta mul_m
+        lda VSTEP_HI,x
+        sta mul_m+1
+        lda #$00
+        sta mul_m+2
+        sta mul_p
+        sta mul_p+1
+        sta mul_p+2
+        ldy #$08
+fm_mul:
+        lsr mul_a
+        bcc fm_mulskip
+        lda mul_p
+        clc
+        adc mul_m
+        sta mul_p
+        lda mul_p+1
+        adc mul_m+1
+        sta mul_p+1
+        lda mul_p+2
+        adc mul_m+2
+        sta mul_p+2
+fm_mulskip:
+        asl mul_m
+        rol mul_m+1
+        rol mul_m+2
+        dey
+        bne fm_mul
+        lda mul_p                ; ROUND: (step*scale + $80) >> 8 — matches the
+        clc                      ; ROM's vibrato depths exactly (47 @ step 362
+        adc #$80                 ; needs rounding; truncation gives 46)
+        sta mul_p
+        lda mul_p+1
+        adc #$00
+        sta mul_p+1
+        lda mul_p+2
+        adc #$00
+        sta mul_p+2
+        ldy #$01                 ; product>>8 = mul_p+1/mul_p+2; hi bit0 = negative
+        lda (fmptr),y
+        and #$01
+        beq fm_scpos
+        sec                      ; negate (two's complement 16-bit)
+        lda #$00
+        sbc mul_p+1
+        sta FM_OFF_LO,x
+        lda #$00
+        sbc mul_p+2
+        sta FM_OFF_HI,x
+        jmp fm_adv3
+fm_scpos:
+        lda mul_p+1
+        sta FM_OFF_LO,x
+        lda mul_p+2
+        sta FM_OFF_HI,x
+        jmp fm_adv3
+; SLIDE setup (out-of-line for branch range; entered from the semitone-entry
+; dispatch with A = speed). The MoN $FD portamento, trace-calibrated: speed 5 ->
+; 112 Hz/frame, speed 6 -> 224 = 7 << (speed-1); ramps from the NEXT frame and
+; fm_add clamps at FM_TGT. Rate sign follows the target direction (FM_ACC is 0
+; on a fresh note, so sign(TGT) = the direction).
+fm_slset:
+        sta mul_a                ; speed
+        lda #$07
+        sta mul_m
+        lda #$00
+        sta mul_m+1
+fm_slsh:
+        dec mul_a
+        beq fm_sldir
+        asl mul_m                ; rate = 7 << (speed-1), 16-bit
+        rol mul_m+1
+        bmi fm_sldir             ; cap (huge speeds saturate; guard rejects those)
+        jmp fm_slsh
+fm_sldir:
+        lda FM_TGT_HI,x
+        bmi fm_slneg
+        lda mul_m                ; slide up: OFF = +rate
+        sta FM_OFF_LO,x
+        lda mul_m+1
+        sta FM_OFF_HI,x
+        jmp fm_slon
+fm_slneg:
+        sec                      ; slide down: OFF = -rate
+        lda #$00
+        sbc mul_m
+        sta FM_OFF_LO,x
+        lda #$00
+        sbc mul_m+1
+        sta FM_OFF_HI,x
+fm_slon:
+        lda #$01
+        sta FM_SLIDE,x
+        jmp fm_adv3
+
 
 .if DIGI_SPIKE
 .include "digi_addrs.inc"

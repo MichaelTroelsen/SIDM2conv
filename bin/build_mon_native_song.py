@@ -49,6 +49,7 @@ def static_pulse(pw):
 
 from sidm2.galway_to_driver11 import D11Row, SF2_NOTE_MIN, SF2_NOTE_MAX, SF2_GATE_ON
 from sidm2.galway_driver11_emitter import segment_track
+from sidm2.fidelity_common import freq_to_semi
 
 FM_CAP = 256                                       # max frames of FM captured per note
                                                    # (covers long held-note vibrato; the
@@ -447,7 +448,7 @@ def _fm_unroll(prog, n, step=0):
                 break
             continue
         if (hi & 0xFE) == 0x40:                  # scaled (pitch-proportional)
-            off = (step * lo) >> 8
+            off = (step * lo + 128) >> 8
             if hi & 1:
                 off = (-off) & 0xFFFF
         else:
@@ -463,14 +464,126 @@ def _fm_unroll(prog, n, step=0):
     return out
 
 
+def _fm_unroll_full(prog, n, m, note):
+    """Per-frame accumulated freq offsets for a program using ANY entry type
+    (freeze / Hz run / loop / SCALED vibrato / SEMITONE / SLIDE), matching the
+    driver's fm_step exactly. Needs the song's freq table (via m.note_freq) for
+    semitone/slide targets and the scaled-vibrato step."""
+    nf = m.note_freq
+    base = nf(note & 0x7F)
+    step = nf((note + 1) & 0x7F) - base
+    out, acc, off, i, guard = [0], 0, 0, 0, 64
+    slide_tgt = None
+
+    def s16(v):
+        return v - 0x10000 if v >= 0x8000 else v
+    while len(out) < n and i < len(prog):
+        b0, b1, b2 = prog[i]
+        if b2 == 0:
+            off, slide_tgt = 0, None            # freeze: hold acc
+            break
+        if b2 == 0x7F:                          # loop entry
+            i = b0
+            guard -= 1
+            if guard == 0:
+                break
+            continue
+        if b2 >= 0x80:                          # semitone family
+            dur = b2 & 0x7F
+            s = b0 - 256 if b0 >= 0x80 else b0
+            tgt = (nf((note + s) & 0x7F) - base) & 0xFFFF
+            if b1 == 0:                         # instant semitone set (arps)
+                acc, off, slide_tgt = tgt, 0, None
+            else:                               # SLIDE: ramp toward tgt, clamp
+                rate = 7 << (b1 - 1)
+                off = rate if not (tgt & 0x8000) else (-rate) & 0xFFFF
+                slide_tgt = tgt
+        elif (b1 & 0xFE) == 0x40:               # scaled vibrato leg
+            dur = b2
+            o = (step * b0 + 128) >> 8
+            off = ((-o) & 0xFFFF) if (b1 & 1) else o
+            slide_tgt = None
+        else:                                   # plain Hz run
+            dur = b2
+            off = b0 | (b1 << 8)
+            slide_tgt = None
+        i += 1
+        for _ in range(dur):
+            acc = (acc + off) & 0xFFFF
+            if slide_tgt is not None:
+                d = s16((slide_tgt - acc) & 0xFFFF)
+                if d == 0 or (d < 0) != (s16(off) < 0):
+                    acc, off, slide_tgt = slide_tgt, 0, None
+            out.append(acc)
+            if len(out) >= n:
+                break
+    while len(out) < n:
+        out.append(acc)
+    return out
+
+
+def _slide_fm_program(m, ev, note_c, capture, dur_f):
+    """Structural program for a $FD slide note: ONE pitch-independent SLIDE entry
+    (interval + speed; the DRIVER computes the target from the freqtable and
+    clamps on arrival — the clamp frame varies with pitch, which is why this
+    can't be unrolled) plus the tail vibrato when the capture shows one.
+    Trace-calibrated: rate = 7 << (speed-1) Hz/frame from the frame after the
+    trigger. Returns None unless the unrolled candidate reproduces the capture
+    exactly (minus 3 boundary frames) — e.g. the speed-26 down-jumps stay
+    trace-Hz."""
+    speed, target = ev.slide
+    if not (1 <= speed <= 8):
+        return None
+    ivl = ((target - ev.note + 64) & 0x7F) - 64
+    if ivl == 0:
+        return None
+    cap = _fm_unroll(capture, dur_f)
+    cmp_f = max(1, dur_f - 3)
+    dur_e = min(dur_f, 0x7F)
+    cands = [[(ivl & 0xFF, speed, 0x80 | dur_e), (0, 0, 0)]]
+    # tail vibrato: deltas resume after the arrival hold — splice a vibrato
+    # program after a shorter slide entry (the entry's tail just holds the
+    # clamped target, so its length is pitch-independent)
+    deltas = [cap[k + 1] - cap[k] for k in range(len(cap) - 1)]
+    v = next((k + 1 for k in range(3, len(deltas)) if deltas[k] and not deltas[k - 1]), None)
+    if v is not None and v >= 4:
+        tail = []
+        run, rl = None, 0
+        for dlt in deltas[v - 1:cmp_f - 1]:
+            d16 = dlt & 0xFFFF
+            if d16 == run:
+                rl += 1
+            else:
+                if run is not None:
+                    tail.append((run & 0xFF, (run >> 8) & 0xFF, rl))
+                run, rl = d16, 1
+        if run is not None:
+            tail.append((run & 0xFF, (run >> 8) & 0xFF, rl))
+        step = m.note_freq((note_c + 1) & 0x7F) - m.note_freq(note_c)
+        vib = _vibrato_program(tail + [(0, 0, 0)], step) if step > 0 else None
+        if vib is not None and v >= 2:
+            # head covers frames 1..v-1 (the slide + clamped hold); the first
+            # vibrato leg then lands on frame v, matching the capture. Loop
+            # targets inside vib are entry indices relative to ITS start —
+            # shift them past the head entry.
+            head = [(ivl & 0xFF, speed, 0x80 | min(v - 1, 0x7F))]
+            fixed = [(b0 + len(head), b1, b2) if b2 == 0x7F else (b0, b1, b2)
+                     for b0, b1, b2 in vib]
+            cands.insert(0, head + fixed)
+    for cand in cands:
+        if _fm_unroll_full(cand, cmp_f, m, note_c) == cap[:cmp_f]:
+            return cand
+    return None
+
+
 def _vibrato_program(prog, step):
     """Detect a pitch-proportional VIBRATO in a captured Hz FM program and re-emit
     it as a duration- AND pitch-independent looping SCALED program:
         [0,0,delay] [scale,$40|dir,half-leg] loop{ [scale,$41^dir,L] [scale,$40|dir,L] }
     The ROM computes the wobble as a fixed fraction of the note's semitone step
-    (depth = (step*scale)>>8), so ONE program serves every pitch — collapsing v2's
+    (depth = (step*scale+128)>>8, ROUNDED like the ROM), so ONE program serves every pitch — collapsing v2's
     per-note FM explosion. Returns None unless the captured legs are EXACTLY
-    (step*scale)>>8 for an integer scale (the caller additionally guards with an
+    (step*scale+128)>>8 for an integer scale (the caller additionally guards with an
     unrolled comparison over the note's frames)."""
     if step <= 0:
         return None
@@ -504,7 +617,7 @@ def _vibrato_program(prog, step):
     if any(r[2] != L for r in legs[1:-1]) or legs[-1][2] > L:
         return None
     scale = round(d0 * 256 / step)
-    if not (1 <= scale <= 255) or (step * scale) >> 8 != d0:
+    if not (1 <= scale <= 255) or (step * scale + 128) >> 8 != d0:
         return None                              # not an exact step fraction
     dir0 = 0 if vals[0] > 0 else 1
     out = []
@@ -891,11 +1004,33 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                 base = m.note_freq(note_c)
                 flag, filt = (canon_filt.get(fr, (0, None))
                               if (v, fr) in drives else (0, None))
-                fmp = _arp_fm_for(m, ev)
-                if fmp is None:
-                    fmp = fm_program_for(frames, v, fr, dur_f, base)
-                    fcmp = max(1, dur_f - 3)
-                    if ARP_STRUCT:
+                fmp = fm_program_for(frames, v, fr, dur_f, base)
+                fcmp = max(1, dur_f - 3)
+                arp = _arp_fm_for(m, ev)
+                if arp is not None:
+                    # SEMITONE-level guard: the $60-$7F selector is not always a
+                    # pitch arp (sub1 v0's wprog $14 is a wave shape — unguarded
+                    # arps broke its osc1 to 32%), but detuned notes (the canon
+                    # voices) differ from the pure arp by a constant few Hz at
+                    # EVERY frame while sounding identical. Accept when the arp
+                    # matches the capture on the audible semitone grid minus the
+                    # per-note onset-spike frames; a wrong arp shape differs by
+                    # whole semitones and is rejected.
+                    cap_u = _fm_unroll(fmp, fcmp)
+                    arp_u = _fm_unroll_full(arp, fcmp, m, note_c)
+
+                    def _s(off):
+                        return freq_to_semi((base + (off - 0x10000 if off >= 0x8000
+                                                     else off)) & 0xFFFF)
+                    bad = sum(1 for a, b in zip(cap_u, arp_u) if _s(a) != _s(b))
+                    if bad <= max(4, dur_f // 8):
+                        fmp = arp
+                if not _is_struct_fm(fmp):
+                    if ARP_STRUCT and getattr(ev, 'slide', None):
+                        sl = _slide_fm_program(m, ev, note_c, fmp, dur_f)
+                        if sl is not None:
+                            fmp = sl
+                    if ARP_STRUCT and not _is_struct_fm(fmp):
                         # pitch-proportional VIBRATO -> one looping SCALED program
                         # for every pitch/duration (exact-guarded via unroll)
                         step = m.note_freq((note_c + 1) & 0x7F) - base
