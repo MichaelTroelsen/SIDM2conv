@@ -1256,6 +1256,10 @@ def main():
         import mon_fidelity as F
         span = m.tick_to_frame(max(sum(ev.dur for ev in m.voices[v])
                                    for v in range(3)))
+        # events are placed at tick_to_frame(tk) + onset_delay, so the last note's
+        # end lands delay frames past the raw tick span — without this the final
+        # window's clip loop shaves the song's last tick (3007-vs-3008 rows).
+        span += getattr(m, "onset_delay", 0)
         secs = span // 50 + 4
         print(f"  tracing full song ({secs}s) once...")
         traces = (F.per_frame(sid, [f'-a{sub}', f'-t{secs}']), filter_trace(sid, sub, secs))

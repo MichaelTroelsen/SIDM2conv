@@ -28,7 +28,11 @@ off0 = int(sys.argv[4]) * 50 if len(sys.argv) > 4 else 0
 sf2 = bytearray(open(part, "rb").read())
 info = SF2DriverInfo()
 sla = parse_sf2_blocks(sf2, info)
-probe = os.path.join("out", "_verify_part_probe.sid")
+# probe name derived from the part file: concurrent fidelity runs previously
+# clobbered a single shared probe and measured each other's SF2s (near-zero
+# freq/pulse with wf ~25-45% = the corrupted-probe signature)
+probe = os.path.join(
+    "out", f"_verify_probe_{os.path.splitext(os.path.basename(part))[0]}.sid")
 open(probe, "wb").write(v._psid(bytes(sf2[2:]), sla, 0x1000, 0x1003))
 
 # infer the original SID from the part filename ("<Tune>_sub<N>..." -> <Tune>.sid)
