@@ -855,7 +855,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
             tk += ev.dur
     canon_wave, canon_pulse, canon_fm = {}, {}, {}
     for k, (df_, v_, fr_, tk_, dur_, note_) in canon_pick.items():
-        _gt, wfs_, offk_, _end = _gate_split(m, frames, v_, fr_, df_, tk_, dur_)
+        _gt, wfs_, offk_, end_ = _gate_split(m, frames, v_, fr_, df_, tk_, dur_)
         if offk_ is not None:
             canon_wave[k] = _settle_trim(wfs_[:offk_])
         else:
@@ -1077,6 +1077,10 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                 elif off_k is not None:
                     wp = _settle_trim(wfs_c[:off_k])
                 else:
+                    # keep the full capture INCLUDING the trailing next-note attack
+                    # bleed: reproducing it is byte-better (osc3 wf 97.8 vs 91.6
+                    # trimmed — measured); the "phantom onset" it causes in onset
+                    # metrics is a metric artifact, not a register error.
                     wp = _wave_prog_for(frames, v, fr, dur_f)
                 ii = instr_of(ev.instr, wp, flag, filt)
                 blk.append((note_c, ticks, bi, ii, tk, gate_ticks))

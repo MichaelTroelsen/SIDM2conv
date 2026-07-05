@@ -350,7 +350,12 @@ class MON:
             while guard < 1024:
                 guard += 1
                 b = self._u8(ol + i); i += 1
-                if b in (0xFE, 0xFF):               # song end / loop (one pass)
+                if b == 0xFE:                       # $FE = GLOBAL song HALT ($11DD ->
+                    self._ol_loop_ticks[voice] = sum(   # $117B zeroes freqs + gates
+                        ev.dur for _p, bl in blocks     # play off) — the FIRST voice
+                        for ev in bl)                   # to reach it stops the song,
+                    break                               # so cut all voices there too
+                if b == 0xFF:                       # loop marker (one pass)
                     break
                 if b == 0x00:                       # $11CD: an orderlist step starting
                     self._ol_loop_ticks[voice] = sum(   # with $00 = GLOBAL SONG LOOP —
