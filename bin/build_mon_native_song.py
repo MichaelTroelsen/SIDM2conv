@@ -369,6 +369,126 @@ def _wave_prog_for(frames, v, onset, dur_f):
     return tuple(wfs[:settle + 1])
 
 
+def _wave_unroll_eq(a, b, n):
+    """True iff wave programs a and b (per-frame wf tuples; the driver loops on
+    the LAST/settled value) produce identical $D404 output for n frames."""
+    m_ = min(n, max(len(a), len(b)))
+    for k in range(m_):
+        if (a[k] if k < len(a) else a[-1]) != (b[k] if k < len(b) else b[-1]):
+            return False
+    return True
+
+
+def _gate_split(m, frames, v, fr, dur_f, tk, ticks):
+    """STRUCTURAL WAVE step 3b: MoN's release is a terminal GATE-OFF whose position
+    is duration-RELATIVE (Supremacy v1: near tick 17 of 24, frame 1 of a short echo
+    note), so per-note wave captures differ per duration and explode the instrument
+    cap. Split the release out of the wave program into sequence GATE-OFF rows
+    (note byte $00 -> VGMASK=$fe; wave_step then outputs program&$fe = the captured
+    $40 tail). Returns (gate_ticks, wfs, off_k, end):
+      gate_ticks : gate-on rows for the note (== ticks when no split found)
+      wfs        : the raw per-frame capture (for the masked-reproduction check)
+      off_k      : original gate-off frame within the note (None = no split)
+      end        : capture end minus next-note attack bleed
+    Residuals (why this is flag-gated): the engine writes $D404 ~1 frame before the
+    freq, so the gate-off can sit 1 frame off the tick grid (accepted skew) and the
+    last 1-2 captured frames can hold the next note's attack bleed — <=2-3 frames
+    per note, the same unreproducible boundary class as the onset spikes."""
+    if not ARP_STRUCT or dur_f < 2 or dur_f > WAVE_CAP:
+        return ticks, None, None, dur_f
+    wfs, last = [], 0x41
+    for k in range(dur_f):
+        idx = fr + k
+        w = frames[idx][0][v]['wf'] if idx < len(frames) else None
+        last = w if w is not None else last
+        wfs.append(last & 0xFF)
+    end = dur_f
+    while end > 0 and (wfs[end - 1] & 1) and end >= dur_f - 2:
+        end -= 1                                 # drop next-note attack bleed
+    off_k = end
+    while off_k > 0 and (wfs[off_k - 1] & 1) == 0:
+        off_k -= 1                               # start of the terminal gate-off run
+    if off_k == end or off_k < 1 or (end - off_k) < 2:
+        return ticks, wfs, None, end             # no (meaningful) terminal release
+    steady = wfs[off_k - 1]
+    if any(w != (steady & 0xFE) for w in wfs[off_k:end]):
+        return ticks, wfs, None, end             # tail is not a pure gate drop
+    base_f = m.tick_to_frame(tk)
+    # gate-off row = first tick at/after the observed gate-off (<=1-frame skew from
+    # the wf-leads-freq register timing is accepted)
+    t_off = m.frame_to_tick(base_f + off_k) - tk
+    drv_off = m.tick_to_frame(tk + t_off) - base_f
+    if t_off < 1 or t_off >= ticks or drv_off - off_k > 1:
+        return ticks, wfs, None, end
+    return t_off, wfs, off_k, end
+
+
+def _fm_unroll(prog, n):
+    """Per-frame accumulated freq offsets (relative to the note's base) a Hz-delta
+    FM program produces over n frames (model of fm_step: frame 0 = base hold,
+    entries apply offset per frame for byte2 frames, (0,0,0) = freeze)."""
+    out, acc, i = [0], 0, 0
+    while len(out) < n and i < len(prog):
+        lo, hi, run = prog[i]
+        if run == 0:
+            break                                # freeze: hold acc
+        off = lo | (hi << 8)
+        for _ in range(run):
+            acc = (acc + off) & 0xFFFF
+            out.append(acc)
+            if len(out) >= n:
+                break
+        i += 1
+    while len(out) < n:
+        out.append(acc)
+    return out
+
+
+def _pulse_unroll(prog, n):
+    """Per-frame 12-bit pulse values a pulse program produces over n frames
+    (model of pulse_step: 8X set / 0X add per frame, byte2 = frame count,
+    $7f = freeze)."""
+    out, cur, i = [], 0, 0
+    while len(out) < n and i < len(prog):
+        b0, b1, b2 = prog[i]
+        if b0 == 0x7F:
+            break                                # freeze: hold cur
+        val12 = ((b0 & 0x0F) << 8) | b1
+        for _ in range(max(1, b2)):
+            if b0 & 0x80:
+                cur = val12
+            else:
+                cur = (cur + val12) & 0xFFF
+            out.append(cur)
+            if len(out) >= n:
+                break
+        i += 1
+    while len(out) < n:
+        out.append(cur)
+    return out
+
+
+def _settle_trim(body):
+    """Trim a per-frame wf list at its settle point (driver loops on the last row)."""
+    settle = max((k for k in range(1, len(body)) if body[k] != body[k - 1]), default=0)
+    return tuple(body[:settle + 1])
+
+
+def _wave_masked_ok(prog, wfs, drv_gate_f, off_k, end):
+    """True iff `prog` (driver wave program; loops on its last value), gated off
+    from row-frame drv_gate_f, reproduces the captured wfs[:end] — frames in
+    [off_k, drv_gate_f) are the accepted <=1-frame gate skew and are skipped."""
+    for k in range(end):
+        out = prog[k] if k < len(prog) else prog[-1]
+        if k >= drv_gate_f:
+            out &= 0xFE
+        elif k >= off_k:
+            continue                             # declared skew frame
+        if out != wfs[k]:
+            return False
+    return True
+
+
 def _is_struct_fm(fp):
     """True for FM programs containing SEMITONE/LOOP entries (byte2 >= $7f) —
     their pitch shape is note-relative, so the Hz-based cluster curve is
@@ -519,6 +639,13 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     delay = getattr(m, "onset_delay", 0)
     onsets = [set() for _ in range(3)]
     onset_instr = [dict() for _ in range(3)]               # onset_frame -> MoN instrument
+    # STRUCTURAL WAVE (whats-next step 3): the per-note wave capture unrolls the
+    # engine's attack+steady+release gate envelope, so notes of different DURATIONS
+    # get distinct programs and explode the 32-instrument cap. Canonicalize per
+    # (MoN instrument, wprog) to the LONGEST note's program, substituted per note
+    # ONLY when its unrolled output is byte-identical over that note's frames —
+    # lossless by construction (the substitution guard in the main pass).
+    canon_pick = {}                              # (instr, wprog) -> (dur_f, v, fr, tk, dur)
     for v in range(3):
         tk = 0
         for ev in m.voices[v]:
@@ -526,7 +653,30 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                 fr = m.tick_to_frame(tk) + delay
                 onsets[v].add(fr)
                 onset_instr[v][fr] = ev.instr
+                dur_f = m.tick_to_frame(tk + ev.dur) - m.tick_to_frame(tk)
+                k = (ev.instr, ev.wprog)
+                if dur_f >= 2 and (k not in canon_pick or dur_f > canon_pick[k][0]):
+                    canon_pick[k] = (dur_f, v, fr, tk, ev.dur, ev.note)
             tk += ev.dur
+    canon_wave, canon_pulse, canon_fm = {}, {}, {}
+    for k, (df_, v_, fr_, tk_, dur_, note_) in canon_pick.items():
+        _gt, wfs_, offk_, _end = _gate_split(m, frames, v_, fr_, df_, tk_, dur_)
+        if offk_ is not None:
+            canon_wave[k] = _settle_trim(wfs_[:offk_])
+        else:
+            canon_wave[k] = _wave_prog_for(frames, v_, fr_, df_)
+        # STRUCTURAL PULSE (step 4): a shorter note's captured program is a PREFIX
+        # of the longest note's when the sweep restarts per note — substituting the
+        # canonical is exact when the unrolled outputs match over the note's frames
+        # (minus the 1-frame boundary bleed; guard in the main pass).
+        canon_pulse[k] = pulse_program_for(frames, v_, fr_, df_)
+        # STRUCTURAL FM for NON-arp notes: the capture tail holds the duration-
+        # relative end-of-note freq drop (offset -> -base), so same-contour notes
+        # of different durations get distinct programs. Hz offsets are relative to
+        # the note's own base (pitch-independent contours), so one canonical
+        # serves all pitches; guard = contour equality minus ~3 boundary frames.
+        nb_ = max(SF2_NOTE_MIN, min(note_, SF2_NOTE_MAX))
+        canon_fm[k] = fm_program_for(frames, v_, fr_, df_, m.note_freq(nb_))
     routed = routed_voice(ftr)                              # restart only on this voice
     drive_map = detect_filter_drives(ftr, onsets, routed)   # {onset_frame: voice}
     drives = {(v, o) for o, v in drive_map.items()}
@@ -629,10 +779,40 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                 base = m.note_freq(note_c)
                 flag, filt = (canon_filt.get(fr, (0, None))
                               if (v, fr) in drives else (0, None))
-                fmp = _arp_fm_for(m, ev) or fm_program_for(frames, v, fr, dur_f, base)
-                bi = bundle_of(fmp, pulse_program_for(frames, v, fr, dur_f))
-                ii = instr_of(ev.instr, _wave_prog_for(frames, v, fr, dur_f), flag, filt)
-                blk.append((note_c, ticks, bi, ii, tk))
+                fmp = _arp_fm_for(m, ev)
+                if fmp is None:
+                    fmp = fm_program_for(frames, v, fr, dur_f, base)
+                    cf = canon_fm.get((ev.instr, ev.wprog))
+                    fcmp = max(1, dur_f - 3)
+                    if (ARP_STRUCT and cf is not None and cf != fmp
+                            and not _is_struct_fm(cf)
+                            and _fm_unroll(cf, fcmp) == _fm_unroll(fmp, fcmp)):
+                        fmp = cf
+                pp = pulse_program_for(frames, v, fr, dur_f)
+                cp = canon_pulse.get((ev.instr, ev.wprog))
+                # compare minus the last frame: the capture's final frame holds the
+                # NEXT note's base reset (the same 1-frame register skew as the
+                # wave bleed) — the note's own program reproduces that bleed, the
+                # canonical continues the sweep instead (<=1 frame/note, flag-gated)
+                cmp_f = max(1, dur_f - 1)
+                if (ARP_STRUCT and cp is not None and cp != pp
+                        and _pulse_unroll(cp, cmp_f) == _pulse_unroll(pp, cmp_f)):
+                    pp = cp
+                bi = bundle_of(fmp, pp)
+                gate_ticks, wfs_c, off_k, end_c = _gate_split(m, frames, v, fr,
+                                                              dur_f, tk, ticks)
+                cw = canon_wave.get((ev.instr, ev.wprog))
+                drv_gate = m.tick_to_frame(tk + gate_ticks) - m.tick_to_frame(tk)
+                skew0 = off_k if off_k is not None else end_c
+                if (cw is not None and wfs_c is not None
+                        and _wave_masked_ok(cw, wfs_c, drv_gate, skew0, end_c)):
+                    wp = cw                       # canonical reproduces this note's capture
+                elif off_k is not None:
+                    wp = _settle_trim(wfs_c[:off_k])
+                else:
+                    wp = _wave_prog_for(frames, v, fr, dur_f)
+                ii = instr_of(ev.instr, wp, flag, filt)
+                blk.append((note_c, ticks, bi, ii, tk, gate_ticks))
                 tk += ev.dur
             if blk:
                 note_recs[v].append(blk)
@@ -667,12 +847,13 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                     rows.extend(D11Row(note=0x00) for _ in range(max(0, lead)))
                 first = False
                 cur_inst = cur_cmd = None
-                for note, dur, bi, ii, _onfr in blk:
+                for note, dur, bi, ii, _ontk, gate in blk:
                     rows.append(D11Row(note=note,
                                        instrument=ii if ii != cur_inst else None,
                                        command=bi if bi != cur_cmd else None))
                     cur_inst, cur_cmd = ii, bi
-                    rows.extend(D11Row(note=SF2_GATE_ON) for _ in range(max(0, dur - 1)))
+                    rows.extend(D11Row(note=SF2_GATE_ON) for _ in range(max(0, gate - 1)))
+                    rows.extend(D11Row(note=0x00) for _ in range(max(0, dur - gate)))
                 nseg += len(segment_track(rows))
         # effective (not raw) bundle count: a window can grow past 64 raw bundles if the
         # excess merges away inaudibly (see effective_bundle_count / BUNDLE_TOL).
@@ -721,13 +902,14 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                 rows.extend(D11Row(note=0x00) for _ in range(max(0, lead)))
             first = False
             cur_inst = cur_cmd = None
-            for note, dur, bi, ii, _onfr in blk:
+            for note, dur, bi, ii, _ontk, gate in blk:
                 slot, cmd = imap[ii], bmap[bi]
                 rows.append(D11Row(note=note,
                                    instrument=slot if slot != cur_inst else None,
                                    command=cmd if cmd != cur_cmd else None))
                 cur_inst, cur_cmd = slot, cmd
-                rows.extend(D11Row(note=SF2_GATE_ON) for _ in range(max(0, dur - 1)))
+                rows.extend(D11Row(note=SF2_GATE_ON) for _ in range(max(0, gate - 1)))
+                rows.extend(D11Row(note=0x00) for _ in range(max(0, dur - gate)))
             for pk in segment_track(rows):
                 segs[v].append(pk)
     return segs, bundles, instrs, wave_programs, instr_flags, filter_programs

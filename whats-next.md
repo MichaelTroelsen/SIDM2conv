@@ -160,7 +160,32 @@ Everything below is the LOSSLESS PART-COUNT structural rebuild (issue 2). Ordere
    `py -3 bin/mon_part_fidelity.py out/mon/Supremacy_sub2_part01.sf2 2 8 0` (freq should be ~98%,
    bundles collapsed). No regression on Hawkeye/Cybernoid/Myth (flag off = untouched).
 
-3. **Wave [attack][steady-loop] structural rebuild** (the INSTRUMENT cap, 87->~5). The waveform is
+3+4 (partial). **Wave gate-split + canonical wave/pulse/FM — ✅ LANDED 2026-07-05 (flag-gated).**
+   All three per-note program captures suffer the same disease: the tail holds DURATION-
+   RELATIVE boundary content (wave: terminal gate-off + next-note attack bleed; pulse: the
+   next note's base reset 1 frame early; FM: the end-of-note freq drop), so same-shape notes
+   of different durations get distinct programs. Landed (all under MON_ARP_STRUCT=1, each with
+   an exact unrolled-output guard + <=1-3 accepted boundary frames/note):
+   (a) WAVE GATE-SPLIT: terminal gate-off -> sequence note-$00 rows (VGMASK=$fe masks the
+       looping steady = the captured $40 tail); program = attack+steady only. NOTE the engine
+       writes $D404 ~1 frame BEFORE the freq (per-register delay skew) -> gate-off sits 1 off
+       the tick grid (tolerated) and captures have 1-2 bleed frames.
+   (b) CANONICAL WAVE/PULSE/FM per (instr, wprog): longest note's program substituted when
+       it reproduces the note's capture (masked for wave; minus 1/3 boundary frames for
+       pulse/FM). Canonical-under-mask even fixes short "echo" notes better than their own
+       capture ($41&$fe = the real $40 tail).
+   RESULTS Supremacy sub2: 30s window bundles 79->32, instr 18->11, wave rows 73->24; part1
+   fidelity freq 92/98/100, wf 92/97/97, pulse 98/100/100, filter 100 (boundary-frame cost
+   ~3-8% wf — the documented flag trade); **auto parts 36 -> 34**. Flag-off + Hawkeye byte-
+   identical (verified). Tests: test_mon_wave_struct.py (4). REMAINING part-count levers:
+   (i) FREE-RUNNING PULSE PHASE (v2 instr 14/30/31: sweeps continue ACROSS notes -> 10-15
+       distinct set-row phases/key; needs a driver "no pulse reset on note-on" instrument
+       flag + per-voice stream emission) — the binding constraint at 45s+ windows;
+   (ii) full-song canonicals are weaker than per-window ones (the standalone 30s build got
+       50 bundles vs the 32 probe with window-local canonicals) — consider window-local
+       canonical selection in the adaptive packer.
+
+3-old. (historical) **Wave [attack][steady-loop] structural rebuild** (the INSTRUMENT cap, 87->~5). The waveform is
    attack + steady + release (RE'd); emit it as [attack transient][steady + $7f loop] so the note
    duration is held by the sequence gate-on rows (not the wave program). Byte-exact (attack is
    instrument-fixed; steady constant). Handle the ~40-frame internal re-trigger (confirm whether
