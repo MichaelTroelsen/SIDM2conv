@@ -222,8 +222,19 @@ Everything below is the LOSSLESS PART-COUNT structural rebuild (issue 2). Ordere
    freq-lookup list carried one phantom pitch from a non-trigger lookup).
    REMAINING (smaller): (i) driver SLIDE entry (MONEvent.slide is parsed but the FM side
    still uses the trace-Hz capture — a structural entry like the scaled vibrato would
-   dedup slide bundles); (ii) sub1 loop-aware validation + sub0's 1-frame jitter;
-   (iii) part2 pulse-stream at 91% (was 100 pre-rests — re-check the stream/rest overlap).
+   dedup slide bundles); (ii) sub1 loop-aware validation + sub0's 1-frame jitter.
+
+6. **FREE-RUNNING-PULSE HYPOTHESIS REVERSED (2026-07-05, post-decode).** With the CORRECT
+   note boundaries, Supremacy's pulse RESETS per note (every (instr,wprog) key = 1 distinct
+   set-row start) — the earlier "phase drift" evidence sampled the pulse at the WRONG onsets.
+   The freerun detection now correctly never fires; the driver PFREE/$08 feature + stream
+   machinery stay DORMANT (harmless, may serve other tunes). Part2's pulse dip was NOT the
+   stream: it was FIXED-WINDOW forced bundle merges at the 63 cap (by-design cluster loss —
+   stream bundles are now also merge-protected via stream_set in bdist). THE ADAPTIVE build
+   is the lossless path: its part 2 (38-72s) = osc3 99.7/98.5/100, osc2 96/95/99, osc1
+   86/86/93 (osc1 = the wave-split boundary-skew class on v0's short retriggered notes —
+   the next fidelity nibble if wanted). LESSON: re-verify "free-running" claims whenever
+   note boundaries change; fidelity conclusions inherit decode errors.
 
 5-old. (historical diagnosis) **PORTAMENTO / 30-60s SECTION — DIAGNOSED 2026-07-05, implementation reverted (a first
    attempt made sub0 worse; accuracy-first). This is a DECODE problem before a driver one.**

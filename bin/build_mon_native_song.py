@@ -990,9 +990,14 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     # --- CLUSTER to fit the driver caps (64 commands, 32 instruments) ---
     bcurves = [_fm_curve(fp) for fp, _ in exb]
 
+    stream_set = {tuple(s) for s in freerun if s}
+
     def bdist(i, j):
         if _is_struct_fm(exb[i][0]) or _is_struct_fm(exb[j][0]):
             return 1 << 20                    # structural programs: never force-merge
+        pi, pj = tuple(exb[i][1]), tuple(exb[j][1])
+        if pi != pj and (pi in stream_set or pj in stream_set):
+            return 1 << 20                    # never merge a free-run STREAM bundle away
         fd = sum(abs(a - b) for a, b in zip(bcurves[i], bcurves[j]))
         pp = 0 if exb[i][1] == exb[j][1] else 300
         return fd + pp
@@ -1006,7 +1011,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
 
     def bgate(i, j):                         # an INAUDIBLE bundle merge: same pulse +
         if exb[i][1] != exb[j][1]:           # FM-contour L1 within tolerance
-            return False
+            return False                     # (also protects free-run stream bundles)
         if _is_struct_fm(exb[i][0]) or _is_struct_fm(exb[j][0]):
             return False                     # structural programs never gate-merge
         return sum(abs(a - b) for a, b in zip(bcurves[i], bcurves[j])) <= BUNDLE_TOL
