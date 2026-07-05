@@ -447,8 +447,9 @@ def _fm_unroll(prog, n, step=0):
             if guard == 0:
                 break
             continue
-        if (hi & 0xFE) == 0x40:                  # scaled (pitch-proportional)
-            off = (step * lo + 128) >> 8
+        if (hi & 0xFC) == 0x40:                  # scaled (pitch-proportional);
+            rnd = 0 if (hi & 2) else 128         # bit1 = truncate
+            off = (step * lo + rnd) >> 8
             if hi & 1:
                 off = (-off) & 0xFFFF
         else:
@@ -498,9 +499,9 @@ def _fm_unroll_full(prog, n, m, note):
                 rate = 7 << (b1 - 1)
                 off = rate if not (tgt & 0x8000) else (-rate) & 0xFFFF
                 slide_tgt = tgt
-        elif (b1 & 0xFE) == 0x40:               # scaled vibrato leg
+        elif (b1 & 0xFC) == 0x40:               # scaled vibrato leg (bit1 = trunc)
             dur = b2
-            o = (step * b0 + 128) >> 8
+            o = (step * b0 + (0 if (b1 & 2) else 128)) >> 8
             off = ((-o) & 0xFFFF) if (b1 & 1) else o
             slide_tgt = None
         else:                                   # plain Hz run
@@ -617,9 +618,16 @@ def _vibrato_program(prog, step):
     if any(r[2] != L for r in legs[1:-1]) or legs[-1][2] > L:
         return None
     scale = round(d0 * 256 / step)
+    trunc = 0
     if not (1 <= scale <= 255) or (step * scale + 128) >> 8 != d0:
-        return None                              # not an exact step fraction
-    dir0 = 0 if vals[0] > 0 else 1
+        # the ROM's depth rule is neither pure rounding nor truncation — try the
+        # TRUNCATED multiply (marker bit1) before giving up
+        scale = next((k for k in range(max(1, scale - 1), min(256, scale + 2))
+                      if (step * k) >> 8 == d0), None)
+        if scale is None:
+            return None                          # no exact step fraction either way
+        trunc = 2
+    dir0 = (0 if vals[0] > 0 else 1) | trunc
     out = []
     if delay:
         out.append((0, 0, min(delay, 126)))

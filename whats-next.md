@@ -220,7 +220,25 @@ Everything below is the LOSSLESS PART-COUNT structural rebuild (issue 2). Ordere
    all 15 parts (used to crash at 6). Hawkeye 100/100/100 unchanged; 1488 tests.
    The sub0 collapsed-notes test constant was recaptured from the event tracer (the old
    freq-lookup list carried one phantom pitch from a non-trigger lookup).
-   REMAINING (smaller): (ii) sub1 loop-aware validation + sub0's 1-frame jitter.
+   REMAINING (smaller): sub0's 1-frame jitter (V1/V2 onsets land +1 frame from idx 74 —
+   engine output jitter, cosmetic).
+
+8. **SUB1 ORDERLIST WRAP — OPEN (found 2026-07-05 while adding loop-aware validation).**
+   Sub1's orderlists have NO $FF terminator (V0 @$1D67 = `8E 17 8C 17 82 18 80 18 8E 19
+   8C 19 00 FA 08 D2 88 0C 07 03...`; V1 = V0+4, V2 = V0+8 — overlapping/shared tails).
+   The REAL player wraps V1 at ol position ~4 (~fr1920, tracer olsel e9 4->0) via some
+   NON-$FF condition — likely the $FA/$10DB loop-counter mechanism ($10DB was set 3->8
+   early; song-end DECs it at $111F). The parser walks PAST the real wrap into the
+   shared-tail bytes -> its "one pass" for sub1 = ~3040+ frames of partly-garbage decode
+   -> **sub1 native parts >= 2 are SUSPECT** (part01/0-30s measured good; the 23-part
+   count includes overrun content). NEXT: extend bin/mon_event_trace.py with a snapshot
+   at the orderlist-RESET site (find the STA that zeroes $E9/$90C5-style state on wrap;
+   log $10DB/$E9/Y) -> the wrap rule becomes a mechanical lookup like everything else.
+   mon_validate already has the loop-aware clip scaffolding (vpass; currently inert for
+   sub1 because the parser's pass length is the overrun one). Also landed with this
+   commit: per-program mul rounding (scaled marker bit1 = TRUNCATE; driver + models +
+   _vibrato_program tries round-then-trunc) — NB sub2 stays 31 parts: the earlier 26
+   included UNGUARDED (lossy) arp substitutions; 31 is the verified count.
 
 7. **DRIVER SLIDE ENTRY — ✅ LANDED 2026-07-05 (+ FIRST sub1 NATIVE BUILD).** Trace-
    calibrated: rate = 7 << (speed-1) Hz/frame (sp5=112, sp6=224), ramps from the frame

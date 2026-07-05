@@ -100,10 +100,10 @@ def test_vibrato_program_detection_and_unroll():
 def test_vibrato_program_rejects_non_vibrato():
     assert BM._vibrato_program([(0x10, 0, 3), (0x20, 0, 3), (0, 0, 0)], 427) is None
     assert BM._vibrato_program([(0, 0, 9), (0, 0, 0)], 427) is None
-    # depth not an exact step fraction -> reject (byte-exactness guard): with the
-    # ROM's rounded multiply, step 427 reaches 50 (scale 30) and 52 (scale 31)
-    # but never 51
-    assert BM._vibrato_program([(0x33, 0, 2), (0xCD, 0xFF, 5), (0x33, 0, 5),
+    # depth not an exact step fraction -> reject (byte-exactness guard): step 427
+    # reaches 48 (scale 29) and 50 (scale 30) under either rounding rule, but
+    # never 49
+    assert BM._vibrato_program([(0x31, 0, 2), (0xCF, 0xFF, 5), (0x31, 0, 5),
                                 (0, 0, 0)], 427) is None
 
 

@@ -37,11 +37,14 @@ def siddump_onsets(sidpath, subtune, seconds):
 
 
 def parser_onsets(path, subtune, max_frame):
-    """-> {0,1,2: [(frame, mon_note), ...]} predicted retrig onsets per voice
-    (exact tick grid via MON.tick_to_frame — handles swing tempos)."""
+    """-> ({0,1,2: [(frame, mon_note), ...]}, m, pass_frames): predicted retrig
+    onsets per voice (exact tick grid via MON.tick_to_frame — handles swing
+    tempos) plus the ONE-PASS length in frames (the parser decodes one orderlist
+    pass; the real player LOOPS — e.g. Supremacy sub1 wraps at ~38s — so the
+    comparison must clip to one pass)."""
     d, la, _ = load_sid(path)
     m = MON(d, la, subtune)
-    V = {}
+    V, vpass = {}, {}
     for v in range(3):
         ticks = 0
         out = []
@@ -52,8 +55,10 @@ def parser_onsets(path, subtune, max_frame):
             ticks += ev.dur
             if frame > max_frame:
                 break
+        else:
+            vpass[v] = m.tick_to_frame(ticks)   # this voice's full one-pass length
         V[v] = out
-    return V, m
+    return V, m, vpass
 
 
 def main():
@@ -64,7 +69,7 @@ def main():
     max_frame = seconds * 50
 
     sd = siddump_onsets(path, subtune, seconds)
-    pa, m = parser_onsets(path, subtune, max_frame)
+    pa, m, vpass = parser_onsets(path, subtune, max_frame)
 
     # constant engine output offset: sequencer state reaches the SID a fixed
     # 1-2 frames after the tick (engine-variant dependent) — calibrate it out
@@ -85,6 +90,11 @@ def main():
         # and stops at the window edge — so clip both to min(last-onset frame) so
         # neither the loop nor the window edge creates phantom mismatches.
         limit = min(sd[v][-1][0] if sd[v] else 0, pa[v][-1][0] if pa[v] else 0)
+        # LOOP-AWARE: the parser decodes ONE orderlist pass; the real player wraps
+        # (per voice — e.g. Supremacy sub1 V1 at ~38s). Clip both streams to this
+        # voice's one-pass length so pass-2 onsets don't count as mismatches.
+        if v in vpass:
+            limit = min(limit, vpass[v] - 1)
         so = [x for x in sd[v] if x[0] <= limit]
         po = [x for x in pa[v] if x[0] <= limit]
         n = min(len(so), len(po))

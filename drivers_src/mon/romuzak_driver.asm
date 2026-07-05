@@ -710,10 +710,10 @@ fm_notfrz:
         beq fm_loopent
         sta FM_CNT,x             ; --- Hz-delta run (original form) ---
         ldy #$01
-        lda (fmptr),y            ; byte 1 = offset hi — $40/$41 marks a SCALED
-        and #$fe                 ;   (pitch-proportional vibrato) entry:
+        lda (fmptr),y            ; byte 1 = offset hi — $40-$43 marks a SCALED
+        and #$fc                 ;   (pitch-proportional vibrato) entry:
         eor #$40                 ;   offset = +-(VSTEP * byte0) >> 8
-        bne fm_plainhz           ;   (eor test — SF2II CMP-carry-safe)
+        bne fm_plainhz           ;   bit0 = negative, bit1 = TRUNCATE (no round)
         jmp fm_scaled            ;   (mul block lives past fm_done: branch range)
 fm_plainhz:
         lda (fmptr),y
@@ -1527,9 +1527,13 @@ fm_mulskip:
         rol mul_m+2
         dey
         bne fm_mul
-        lda mul_p                ; ROUND: (step*scale + $80) >> 8 — matches the
-        clc                      ; ROM's vibrato depths exactly (47 @ step 362
-        adc #$80                 ; needs rounding; truncation gives 46)
+        ldy #$01                 ; bit1 of the marker = TRUNCATE (the ROM's depth
+        lda (fmptr),y            ; rule is neither pure trunc nor round — the
+        and #$02                 ; build's guard picks whichever reproduces the
+        bne fm_notrnd            ; capture exactly, per program)
+        lda mul_p                ; ROUND: (step*scale + $80) >> 8 — matches e.g.
+        clc                      ; depth 47 @ step 362 (truncation gives 46)
+        adc #$80
         sta mul_p
         lda mul_p+1
         adc #$00
@@ -1537,6 +1541,7 @@ fm_mulskip:
         lda mul_p+2
         adc #$00
         sta mul_p+2
+fm_notrnd:
         ldy #$01                 ; product>>8 = mul_p+1/mul_p+2; hi bit0 = negative
         lda (fmptr),y
         and #$01
