@@ -62,6 +62,9 @@ class MONEvent:
     retrig: bool = True    # False = legato ($F0-even prefix): freq change, no gate restart
     rest: bool = False     # Supremacy top-level $E0-$FE: silence ($F0=$FF) for `dur` ticks
     slide: tuple = None    # Supremacy $FD (after an instr/dur prefix): (speed, target_note)
+    tie: bool = False      # Supremacy $FB after the PREVIOUS event: this note skips the
+                           # instrument/gate restart ($12C5 branch), and the previous
+                           # note's gate-off is suppressed ($1155 check on $100A,X)
 
 
 class MON:
@@ -434,8 +437,9 @@ class MON:
 
     def _emit(self, events, raw, st, retrig):
         note = (raw + st['transpose'] + self.note_base) & 0x7F
+        tie = st.pop('pending_tie', False)      # $FB after the previous event ($12C5:
         events.append(MONEvent(note=note, dur=st['stored'] + 1, instr=st['instr'],
-                               wprog=st['wprog'], retrig=retrig))
+                               wprog=st['wprog'], retrig=retrig and not tie, tie=tie))
         st['dur_acc'] = 0                       # finalize resets the $F3 accumulator
 
     def _pattern(self, pat, st, events):
@@ -538,6 +542,19 @@ class MON:
             if st.get('last_note_raw') is not None:
                 self._emit(events, st['last_note_raw'], st, retrig=True)
 
+        def fin():
+            # ROM event EPILOGUE ($1335 — run on the note/retrig/slide finalize
+            # path only; the REST handler enters at $1343 PAST this): peek the
+            # next pattern byte; $FB = a 1-byte TIE flag (INC $100A,X), consumed
+            # here. Effect: the NEXT note skips the instrument/gate restart
+            # ($12C5) and THIS note's gate-off is suppressed ($1155). The old
+            # top-level decode read it as a 27-tick REST — 27 phantom ticks per
+            # $FB desynced sub0 V2 from 138.6s (freq fell to 44-85%).
+            nonlocal j
+            if self._u8(ptr + j) == 0xFB:
+                j += 1
+                st['pending_tie'] = True
+
         while guard < 4096:
             guard += 1
             b = self._u8(ptr + j); j += 1
@@ -549,6 +566,7 @@ class MON:
             if b == 0xFD:                           # top-level $FD ($121F): the 4-byte
                 self._slide(events, ptr, j, st)     #   SLIDE (tracer: sub1 v1 fr240,
                 j += 3                              #   Y 23->27)
+                fin()
                 continue
             if b >= 0xE0:                           # remaining $E0+: REST ($124A — $F6 =
                 dr = b & 0x1F                       #   b&$1F, $F0 = $FF, ctrl/AD/SR zeroed).
@@ -569,8 +587,10 @@ class MON:
                 if peek == 0xFD:
                     self._slide(events, ptr, j + 1, st)
                     j += 4
+                    fin()
                 elif peek >= 0xC0:
                     retrig_last()
+                    fin()
                 continue
             if b >= 0x80:                           # duration ($1289: ADC $F3 — ADDITIVE
                 st['dur_acc'] = st.get('dur_acc', 0) + (b & 0x3F)
@@ -588,8 +608,10 @@ class MON:
                 if peek == 0xFD:
                     self._slide(events, ptr, j + 1, st)
                     j += 4
+                    fin()
                 elif peek >= 0xC0:
                     retrig_last()
+                    fin()
                 continue
             if b >= 0x60:                           # $60-$7F: wave-program / arp
                 st['wprog'] = b & 0x1F              #   ($12AC: $1064 = b&$1F). NOTE is
@@ -597,9 +619,11 @@ class MON:
                 # $12B4: next byte >= $60 = finalize -> retrigger.
                 if peek >= 0x60:
                     retrig_last()
+                    fin()
                 continue
             st['last_note_raw'] = b                 # note (b < $60)
             self._emit(events, b, st, retrig=True)
+            fin()
 
     def _slide(self, events, ptr, j, st):
         """The $FD 4-byte SLIDE ($121F, reached as the byte AFTER an instrument or

@@ -952,7 +952,48 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
             canon_src[key] = (o, span)
     canon_prog = {key: filter_program_for(ftr, o, span)
                   for key, (o, span) in canon_src.items()}
-    canon_filt = {o: canon_prog[drive_key[o]] for o in drive_key}         # keyed by onset
+
+    # PER-DRIVE EXACTNESS GUARD (same model as wave/pulse/FM): the canonical program
+    # reproduces its SOURCE's ftr slice, so substituting it for drive `o` is exact iff
+    # the two slices agree over o's span (driver freezes past the 220-frame capture
+    # cap). Inexact drives fall back to their OWN captured program — lossless; the
+    # extra rows/instruments are counted by the window-fit probes.
+    def _filt_exact(o, span, key):
+        oc, sc = canon_src[key]
+        cap = max(2, min(sc, 220))
+        for j in range(min(span, 220)):
+            a = ftr[min(o + j, nftr - 1)]
+            b = ftr[min(oc + min(j, cap - 1), nftr - 1)]
+            if (a[0] >> 3, a[1]) != (b[0] >> 3, b[1]):
+                return False
+        fz = ftr[min(oc + cap - 1, nftr - 1)]         # driver holds the frozen value
+        for j in range(220, span):
+            a = ftr[min(o + j, nftr - 1)]
+            if (a[0] >> 3, a[1]) != (fz[0] >> 3, fz[1]):
+                return False
+        return True
+
+    canon_filt = {}                                                       # keyed by onset
+    for o, key in drive_key.items():
+        span = _gap(o)
+        canon_filt[o] = (canon_prog[key] if _filt_exact(o, span, key)
+                         else filter_program_for(ftr, o, span))
+
+    # WINDOW-START residual filter (the "seam"): a window beginning between drives
+    # played the previous drive's envelope TAIL in the original, but the part's
+    # driver has no filter program until the first in-window drive. Attach a
+    # synthetic restart to the window's first note (any voice — the filter is
+    # global) capturing the residual ftr from that note to the first drive.
+    # Lossless (pure capture); also covers song start when the original sets the
+    # filter at init before any envelope drive.
+    first_drive = next((o for o in drive_frames if t0w <= o < t1w), None)
+    lead_end = first_drive if first_drive is not None else min(t1w, nftr)
+    cands = [(o, v) for v in range(3) for o in onsets[v] if t0w <= o < lead_end]
+    if cands and (first_drive is None or first_drive > t0w):
+        o0, v0 = min(cands)
+        if (v0, o0) not in drives and lead_end - o0 >= 2:
+            canon_filt[o0] = filter_program_for(ftr, o0, lead_end - o0)
+            drives.add((v0, o0))
     if os.environ.get("FILT_DEBUG"):
         print(f"  [FILT_DEBUG] drives={len(drive_frames)} canon={len(canon_src)} "
               f"routed={routed}")
@@ -993,15 +1034,33 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
             for ev in events:
                 fr = m.tick_to_frame(tk) + delay
                 dur_f = m.tick_to_frame(tk + ev.dur) - m.tick_to_frame(tk)
+                etk, edur = tk, ev.dur                        # effective tick/duration
                 if not (t0 <= fr < t1):                       # outside the window
-                    tk += ev.dur
-                    continue
+                    # BOUNDARY CONTINUATION: a note gated across the window START
+                    # otherwise leaves its voice silent until its next onset (a 6s
+                    # window lost 44% of a voice — Cybernoid_II part7 V1). Re-enter
+                    # the note at t0: every program is captured from the t0 phase,
+                    # so the tail replays the original's remaining frames exactly
+                    # (the exactness guards reject phase-0 structural substitutions
+                    # for these mid-note captures automatically).
+                    end_f = m.tick_to_frame(tk + ev.dur) + delay
+                    if (win is None or getattr(ev, 'rest', False)
+                            or not (fr < t0 < end_f)):
+                        tk += ev.dur
+                        continue
+                    etk = m.frame_to_tick(max(0, t0 - delay))
+                    edur = tk + ev.dur - etk
+                    fr = m.tick_to_frame(etk) + delay
+                    dur_f = m.tick_to_frame(etk + edur) - m.tick_to_frame(etk)
+                    if edur < 1 or dur_f < 1:
+                        tk += ev.dur
+                        continue
                 if getattr(ev, 'rest', False):                # REST: gate-off rows only
                     blk.append((None, ev.dur, None, None, tk, 0))
                     tk += ev.dur
                     continue
-                ticks = ev.dur
-                while ticks > 1 and (m.tick_to_frame(tk + ticks)
+                ticks = edur
+                while ticks > 1 and (m.tick_to_frame(etk + ticks)
                                      + delay) > t1:           # clip the last note to the window
                     ticks -= 1
                 # base = the freq the DRIVER plays for the (clamped) note, so the FM
@@ -1067,9 +1126,9 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                         pp = cp
                 bi = bundle_of(fmp, pp)
                 gate_ticks, wfs_c, off_k, end_c = _gate_split(m, frames, v, fr,
-                                                              dur_f, tk, ticks)
+                                                              dur_f, etk, ticks)
                 cw = canon_wave.get((ev.instr, ev.wprog))
-                drv_gate = m.tick_to_frame(tk + gate_ticks) - m.tick_to_frame(tk)
+                drv_gate = m.tick_to_frame(etk + gate_ticks) - m.tick_to_frame(etk)
                 skew0 = off_k if off_k is not None else end_c
                 if (cw is not None and wfs_c is not None
                         and _wave_masked_ok(cw, wfs_c, drv_gate, skew0, end_c)):
@@ -1083,7 +1142,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                     # metrics is a metric artifact, not a register error.
                     wp = _wave_prog_for(frames, v, fr, dur_f)
                 ii = instr_of(ev.instr, wp, flag, filt)
-                blk.append((note_c, ticks, bi, ii, tk, gate_ticks))
+                blk.append((note_c, ticks, bi, ii, etk, gate_ticks))
                 tk += ev.dur
             if blk:
                 note_recs[v].append(blk)

@@ -20,6 +20,7 @@ MoN is a two-level **orderlist → pattern** player with a per-frame effects eng
 - **Freq table is SPLIT:** lo bytes and hi bytes are two separate note-indexed tables (Hawkeye `$8337` / `$8396`), *not* interleaved.
 - **Filter:** a per-instrument **cutoff envelope** (not a sweep or static table) — a per-voice frame counter reset on note-on indexes a 10-byte threshold/delta table (attack base, 3 signed segment deltas, sustain, 4 thresholds); 4 selectable tables + an unused triangle-LFO mode. Only `$D416` (cutoff hi) is written.
 - **Synth engines (Supremacy variant):** pitch arps are compact looping semitone tables (`dur, steps…, $FF loop`), selected by the `$60-$7F` pattern byte and restarted per note; the waveform is a plain attack + steady + release gate envelope (only the steady length varies per note).
+- **`$FB` = TIE flag (Supremacy variant):** consumed by the event EPILOGUE ($1335 — note/retrig/slide finalize only, not rests): peek the byte after the event; `$FB` sets `$100A,X`, which (a) suppresses this note's gate-off ($1155) and (b) makes the NEXT note skip the whole instrument/gate restart ($12C5) — a legato pitch change. It consumes NO time. Decoding it as a top-level `$E0+` rest (27 phantom ticks each) desynced Supremacy sub0 V2 from 138.6s.
 
 ### Orderlist-model variants (one parser, `ol_mode` per tune)
 
@@ -83,7 +84,7 @@ All rows re-measured 2026-07-05 with adaptive (`auto`) windows and today's build
 | **Myth** | 2 | 2 | 100/99-100/100/96 | sub1 is empty (NOP'd in the wrapper) |
 | **Supremacy** | 0 | **10** (was 34) | 92-95 / 86-90 / 97-99 / **100** | real length 234s ($FE global halt) |
 | **Supremacy** | 1 | **1** (was 24) | 93-98 / 86-98 / 92-98 / **100** | real length 38s ($00 global loop) |
-| **Supremacy** | 2 | **1** (was 70) | 87-98 / 87-96 / 93-98 / **100** | real length 150s; whole song, one editable SF2 |
+| **Supremacy** | 2 | **1** (was 70) | 87-98 / 87-96 / 93-98 / **100** | real length 150s; whole song, one editable SF2; **ear-confirmed 2026-07-05** |
 
 Fidelity is measured with `bin/mon_part_fidelity.py PART SUB SECS OFF0_SECS` (per-frame semitone-freq / waveform / pulse / filter-cutoff vs siddump) and `bin/mon_sf2ii_confirm.py` (instrumented real-SF2II capture).
 
@@ -99,6 +100,7 @@ Fidelity is measured with `bin/mon_part_fidelity.py PART SUB SECS OFF0_SECS` (pe
 - **SF2II CMP-carry:** any native-driver dispatch on values >$7F apart must bit-test (`bmi`/`and`), not `cmp` (SF2II's bundled 6510 computes CMP carry from bit7 of A−op).
 - **Never run two MoN builds concurrently** — every build regenerates the shared scratch `drivers_src/mon/layout.inc` + `freqtable.inc` (and `drivers_src/romuzak/layout.inc`), so parallel builds assemble each other's tables into garbage SF2s (near-zero fidelity on random parts). Fidelity *measurements* are safe to parallelize since `mon_part_fidelity` derives a unique probe filename per part (2026-07-05; it previously shared one probe and raced too — corrupted-probe signature: freq ~0%, pulse 1-5%, wf 25-45%).
 - **Don't trust SID-output "loop detected" probes alone** — Hawkeye sub0's output at 294s matches 120s for >10s because the orderlist *repeats the same entry transposed*, not because the song loops. A py65 **orderlist read-watch** (log reads of the orderlist bytes per frame) settles the real walk; it confirmed the player walks all 110 entries in 4800 ticks, exactly the parser model.
+- **Uniform freq=wf=pulse percentages = misalignment, freq-only loss = decode/FM.** Two boundary classes fixed 2026-07-05 in `build_mon_native_song`: (1) notes gated ACROSS a window start were dropped (onset outside window) — a 6s window lost 44% of a voice; now re-entered at t0 as a capture-from-t0 continuation. (2) filter drives are per-note exactness-guarded + each window gets a synthetic residual-envelope restart on its first note — filter went from 30-90% to 98-100% corpus-wide.
 
 ---
 
