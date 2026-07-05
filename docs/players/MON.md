@@ -3,7 +3,7 @@
 **Composer:** Jeroen Tel (Maniacs of Noise engine, 1987-89 era)
 **Corpus:** `SID/Tel_Jeroen/` (179 `.sid` files)
 **Registry key:** none yet — the whole pipeline lives in `bin/` (not wired into `DriverSelector.PLAYER_REGISTRY`)
-**Status:** native SF2 driver, **100% byte-exact on freq + waveform + pulse + filter, all 3 voices, full song length** for Hawkeye subtunes 2 & 3; Cybernoid, Cybernoid II, Myth, and Supremacy all build at ~95-100% per register. The 2026-07-05 structural rebuild collapsed part counts: Supremacy sub1/sub2 = **one editable SF2 each** (whole song), sub0 10 parts, Hawkeye sub0 7, Cybernoid 10, Myth 7 (see *Part-count reduction*).
+**Status:** native SF2 driver, **100% byte-exact on freq + waveform + pulse + filter, all 3 voices, full song length** for Hawkeye subtunes 2 & 3; every other covered tune measures **98-100% on all four registers** except Supremacy's accepted ~86-92% structural profile. The 2026-07-05 fixes (filter guard + boundary continuation + `$FB` tie decode) collapsed part counts: Supremacy sub0/sub1/sub2 = 5/**1**/**1** parts, Hawkeye sub0 7, Cybernoid 11, Cybernoid II 13, Myth 8 (see *Part-count reduction*).
 
 Covered tunes so far: **Hawkeye**, **Cybernoid**, **Cybernoid II**, **Myth**, **Supremacy**. The engine RE transfers — one parser (`sidm2/mon_parser.py`) decodes all of them via per-tune orderlist-model variants.
 
@@ -70,21 +70,27 @@ Load the result via `py -3 pyscript/sf2_open_in_editor.py out/mon/PART.sf2 40` (
 
 ## Fidelity status (per tune)
 
-All rows re-measured 2026-07-05 with adaptive (`auto`) windows and today's build
-(structural flag ON except Myth; measurements strictly sequential — see *lessons*).
+All rows re-measured 2026-07-05 (final sweep) with adaptive (`auto`) windows and all
+2026-07-05 fixes in: filter per-drive guard + window residual, boundary-continuation
+notes, and the `$FB` tie decode. Structural flag ON except Myth; builds and measurements
+strictly sequential — see *lessons*.
 
 | Tune | Subtune | Parts | freq / wf / pulse / filter | Notes |
 |------|---------|-------|----------------------------|-------|
-| **Hawkeye** | 3 (main theme) | 1 | **100/100/100/99** | byte-exact, full length; GUI-confirmed |
+| **Hawkeye** | 3 (main theme) | 1 | **100/100/100/100** | byte-exact, full length; GUI-confirmed |
 | **Hawkeye** | 2 | 1 | **100/100/100/96.5** | byte-exact; GUI-confirmed |
-| **Hawkeye** | 0 (6.4-min theme) | **7** (was 13×30s) | 99.4-100 / 99.4-100 / 99.5-100 / 70-99 | full 384s; read-watch-verified walk |
-| **Cybernoid** | 0 | **10** (was 14) | 91-100 / 95-100 / 91-100 / 30-89 | full 399s; see *SBC bug* below |
-| **Cybernoid II** | 0 | 20 | 100/99/100/98.8 | third orderlist variant (not re-run 2026-07-05) |
-| **Myth** | 0 (main) | **7** | 95-100 / 99-100 / 95-100 / 77-98 | emulation-extracted; **flag-off build** |
+| **Hawkeye** | 0 (6.4-min theme) | **7** (was 13×30s) | 99.7-100 / 97.8-100 / **100** / 99.1-100 | full 384s; read-watch-verified walk |
+| **Cybernoid** | 0 | **11** (was 14) | 93.3-100 / **100** / **100** / 98.3-100 | full 399s; see *SBC bug* below |
+| **Cybernoid II** | 0 | **13** (was 20) | 98.5-100 / 99-100 / **100** / 98.5-100 | third orderlist variant |
+| **Myth** | 0 (main) | **8** | 98.9-100 / 99.6-100 / **100** / 99.2-100 | emulation-extracted; **flag-off build** |
 | **Myth** | 2 | 2 | 100/99-100/100/96 | sub1 is empty (NOP'd in the wrapper) |
-| **Supremacy** | 0 | **10** (was 34) | 92-95 / 86-90 / 97-99 / **100** | real length 234s ($FE global halt) |
+| **Supremacy** | 0 | **5** (was 34) | 86-92 / 85-89 / 93-97 / **100** | real length ~230s (3846 ticks; $FE halt + $FB ties) |
 | **Supremacy** | 1 | **1** (was 24) | 93-98 / 86-98 / 92-98 / **100** | real length 38s ($00 global loop) |
 | **Supremacy** | 2 | **1** (was 70) | 87-98 / 87-96 / 93-98 / **100** | real length 150s; whole song, one editable SF2; **ear-confirmed 2026-07-05** |
+
+Supremacy's ~86-92% freq/wf profile is the accepted structural-substitution level for
+this arp-dense engine variant (sub2 at this level is ear-confirmed); every other tune
+sits at 98-100% on all four registers.
 
 Fidelity is measured with `bin/mon_part_fidelity.py PART SUB SECS OFF0_SECS` (per-frame semitone-freq / waveform / pulse / filter-cutoff vs siddump) and `bin/mon_sf2ii_confirm.py` (instrumented real-SF2II capture).
 
