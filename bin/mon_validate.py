@@ -10,12 +10,11 @@ in siddump, not as fresh onsets).
   py -3 bin/mon_validate.py path.sid SUBTUNE      # any tune/subtune
 """
 import os
-import re
-import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sidm2.mon_parser import load_sid, MON
+from sidm2.fidelity_common import siddump_note_onsets
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NAMES = ['C-', 'C#', 'D-', 'D#', 'E-', 'F-', 'F#', 'G-', 'G#', 'A-', 'A#', 'B-']
@@ -31,27 +30,10 @@ def note_name(n):
 
 
 def siddump_onsets(sidpath, subtune, seconds):
-    """-> {0,1,2: [(frame, note_name), ...]} retriggered onsets per voice."""
-    txt = subprocess.run(
-        ['py', '-3', 'pyscript/siddump_complete.py', sidpath,
-         f'-a{subtune}', f'-t{seconds}'], capture_output=True, text=True).stdout
-    V = {0: [], 1: [], 2: []}
-    for ln in txt.splitlines():
-        if not ln.startswith('|') or 'Frame' in ln:
-            continue
-        c = [x.strip() for x in ln.split('|')]
-        if len(c) < 6:
-            continue
-        try:
-            fr = int(c[1])
-        except ValueError:
-            continue
-        for vi, cell in enumerate(c[2:5]):
-            # unbracketed note with WF present = a fresh gated onset
-            m = re.match(r'^([0-9A-F]{4})\s+([A-G][-#]\d)\s+([0-9A-F]{2})\b', cell)
-            if m and m.group(1) != '0000':
-                V[vi].append((fr, m.group(2)))
-    return V
+    """-> {0,1,2: [(frame, note_name), ...]} retriggered onsets per voice
+    (unbracketed note with WF present = a fresh gated onset)."""
+    return siddump_note_onsets(sidpath, [f'-a{subtune}', f'-t{seconds}'],
+                               require_wf=True)
 
 
 def parser_onsets(path, subtune, max_frame):

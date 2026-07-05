@@ -15,7 +15,6 @@ under-reports here -- trust sf2ii_vs_real for the drum; PULSE shows a ramp that 
 correct in SHAPE but a few frames out of phase (the real player holds the base ~3
 frames before ramping), so it under-reports too. Use both tools together.
 """
-import math
 import os
 import sys
 from collections import Counter
@@ -25,43 +24,18 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "bin"))
 
 from sidm2.sid_parser import SIDParser
-from sidm2 import galway_trace_extract as T
 from sidm2.sf2_parser import parse_sf2_blocks
 from sidm2.models import SF2DriverInfo
-from scripts.sf2_to_sid import PSIDHeader
-
-
-def _psid(data, load, init, play):
-    h = PSIDHeader(load_address=load, init_address=init, play_address=play)
-    h.songs, h.start_song = 1, 1
-    return h.to_bytes() + data
-
-
-def _semi(f):
-    return -1 if f < 8 else max(0, min(95, round(12 * math.log2(f / 0x1167) + 48)))
+from sidm2.fidelity_common import (
+    psid_wrap as _psid,
+    freq_to_semi as _semi,
+    zig64_trace_voices,
+    best_gated_offset,
+)
 
 
 def _trace(path, init, play, sub, n):
-    reg = T.run_trace(path, n, init, play, sub)
-
-    def ser(vi, fld):
-        d = reg.get((vi, fld), {})
-        out, cur = [], 0
-        for i in range(n):
-            if i in d:
-                cur = d[i]
-            out.append(cur)
-        return out
-    V = {}
-    for v in range(3):
-        V[v] = {
-            "freq": [(ser(v, "freq_hi")[i] << 8) | ser(v, "freq_lo")[i] for i in range(n)],
-            "wf": ser(v, "control"),
-            "pw": [((ser(v, "pw_hi")[i] & 0xF) << 8) | ser(v, "pw_lo")[i] for i in range(n)],
-            "ad": ser(v, "attack_decay"),
-            "sr": ser(v, "sustain_release"),
-        }
-    return V
+    return zig64_trace_voices(path, n, init, play, sub)
 
 
 def main():
@@ -90,8 +64,7 @@ def main():
         return real[v]["freq"][i] > 0 and (real[v]["wf"][i] & 1)
 
     def best(v, cmp):
-        bo, bh, bt, bd = 0, -1, 1, None
-        for off in DR:
+        def count(off):
             h = t = 0
             dh = Counter()
             for i in range(n):
@@ -102,9 +75,8 @@ def main():
                     h += ok
                     if d is not None:
                         dh[d] += 1
-            if h > bh:
-                bo, bh, bt, bd = off, h, t, dh
-        return bo, bh, bt, bd
+            return h, t, dh
+        return best_gated_offset(DR, count)
 
     def c_freq(v, i, j):
         d = _semi(ours[v]["freq"][j]) - _semi(real[v]["freq"][i])

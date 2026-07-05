@@ -167,25 +167,8 @@ def extract_wave_programs(m, sid, sub, idx_map, instr_rows, frames):
 def filter_trace(sid, sub, secs):
     """Per-frame global filter state from siddump (fill-forward): (cutoff11, ctrl)
     where cutoff11 = ($D415&7)|($D416<<3) and ctrl = $D417 (res+routing)."""
-    import subprocess
-    import re
-    txt = subprocess.run(['py', '-3', 'pyscript/siddump_complete.py', sid,
-                          f'-a{sub}', f'-t{secs}'], capture_output=True, text=True).stdout
-    cut, ctrl, out = 0, 0xF1, []
-    for ln in txt.splitlines():
-        if not ln.startswith('|') or 'Frame' in ln:
-            continue
-        c = [x.strip() for x in ln.split('|')]
-        if len(c) < 6:
-            continue
-        mm = re.match(r'^([0-9A-F\.]{4})\s+([0-9A-F\.]{2})', c[5])
-        if mm:
-            if '.' not in mm.group(1):
-                cut = int(mm.group(1), 16)
-            if '.' not in mm.group(2):
-                ctrl = int(mm.group(2), 16)
-        out.append((cut, ctrl))
-    return out
+    from sidm2.fidelity_common import siddump_filter_trace
+    return siddump_filter_trace(sid, [f'-a{sub}', f'-t{secs}'])
 
 
 def _filt_set_row(cutoff11, ctrl):

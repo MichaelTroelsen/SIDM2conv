@@ -10,8 +10,6 @@ orderlist $FE while the SF2 loops, so we only compare up to the original's last 
   py -3 bin/mon_sf2_validate.py path.sid SUBTUNE
 """
 import os
-import re
-import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -19,18 +17,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 from sidm2.mon_parser import load_sid, MON          # noqa: E402
 from sidm2.sf2_parser import parse_sf2_blocks, SF2DriverInfo  # noqa: E402
-from scripts.sf2_to_sid import PSIDHeader           # noqa: E402
+from sidm2.fidelity_common import psid_wrap as _psid          # noqa: E402,F401 (re-exported)
+from sidm2.fidelity_common import siddump_note_onsets         # noqa: E402
 import bin.mon_to_sf2 as mon_to_sf2                  # noqa: E402
 
 from sidm2.galway_to_driver11 import GalwayDriver11Song  # noqa: E402
 from sidm2.galway_driver11_emitter import emit_driver11_sf2  # noqa: E402
-
-
-def _psid(data, load, init, play):
-    h = PSIDHeader(load_address=load, init_address=init, play_address=play)
-    h.songs = 1
-    h.start_song = 1
-    return h.to_bytes() + data
 
 
 def build_probe(path, subtune):
@@ -50,24 +42,7 @@ def build_probe(path, subtune):
 
 
 def onsets(path, args):
-    txt = subprocess.run(['py', '-3', 'pyscript/siddump_complete.py', path] + args,
-                         capture_output=True, text=True).stdout
-    V = {0: [], 1: [], 2: []}
-    for ln in txt.splitlines():
-        if not ln.startswith('|') or 'Frame' in ln:
-            continue
-        c = [x.strip() for x in ln.split('|')]
-        if len(c) < 6:
-            continue
-        try:
-            fr = int(c[1])
-        except ValueError:
-            continue
-        for vi, cell in enumerate(c[2:5]):
-            m = re.match(r'^([0-9A-F]{4})\s+([A-G][-#]\d)\s+([0-9A-F]{2})', cell)
-            if m and m.group(1) != '0000':
-                V[vi].append((fr, m.group(2)))
-    return V
+    return siddump_note_onsets(path, args, require_wf=True)
 
 
 def main():

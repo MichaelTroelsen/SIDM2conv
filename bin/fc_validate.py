@@ -19,8 +19,6 @@ freq ornaments, and dropped glides — can't be reproduced by static Driver-11/1
 tables. See docs/players/FUTURECOMPOSER.md.
 """
 import os
-import re
-import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -30,7 +28,8 @@ from fc_to_sf2 import load_sid, fc_to_song, build_structured
 from sidm2.fc_parser import parse_fc, detect_player
 from sidm2.galway_driver11_emitter import emit_driver11_sf2
 from sidm2.sf2_parser import parse_sf2_blocks, SF2DriverInfo
-from scripts.sf2_to_sid import PSIDHeader
+from sidm2.fidelity_common import psid_wrap as _psid
+from sidm2.fidelity_common import siddump_note_onsets
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SECONDS = 40
@@ -42,13 +41,6 @@ CORPUS = [os.path.join('SID', 'Fun_Fun', n + '.sid') for n in (
     'Demo_of_the_Year_88_Elite_1997', 'Is_There_a_Difference')]
 CORPUS += [os.path.join('out', 'fc_native', n + '.prg') for n in (
     'GAME_OVER', 'HEART', 'ITS_A_SIN', 'VOICES_IN_SPC_')]
-
-
-def _psid(data, load, init, play):
-    h = PSIDHeader(load_address=load, init_address=init, play_address=play)
-    h.songs = 1
-    h.start_song = 1
-    return h.to_bytes() + data
 
 
 def _probe(d, la):
@@ -66,20 +58,8 @@ def _probe(d, la):
 
 def _notes(sidpath):
     """-> {0,1,2: [note_name, ...]} ordered unbracketed note-onsets per voice."""
-    txt = subprocess.run(['py', '-3', 'pyscript/siddump_complete.py', sidpath,
-                          f'-t{SECONDS}'], capture_output=True, text=True).stdout
-    V = {0: [], 1: [], 2: []}
-    for ln in txt.splitlines():
-        if not ln.startswith('|') or 'Frame' in ln:
-            continue
-        c = [x.strip() for x in ln.split('|')]
-        if len(c) < 6:
-            continue
-        for vi, cell in enumerate(c[2:5]):
-            m = re.match(r'^([0-9A-F]{4})\s+([A-G][-#]\d)\b', cell)
-            if m and m.group(1) != '0000':
-                V[vi].append(m.group(2))
-    return V
+    V = siddump_note_onsets(sidpath, [f'-t{SECONDS}'])
+    return {v: [name for _, name in V[v]] for v in range(3)}
 
 
 def validate(path):

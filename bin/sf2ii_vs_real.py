@@ -64,14 +64,10 @@ def main():
     subtune = sub_arg if sub_arg is not None else (h.start_song or 1) - 1
     reg = T.run_trace(sid, nframes * ms + 8, h.init_address, h.play_address, subtune)
 
+    from sidm2.fidelity_common import fill_forward
+
     def rser(vi, fld, n):
-        d = reg.get((vi, fld), {})
-        out, cur = [], 0
-        for i in range(n):
-            if i in d:
-                cur = d[i]
-            out.append(cur)
-        return out
+        return fill_forward(reg.get((vi, fld), {}), n)
 
     n = nframes * ms + 8
     real = {}

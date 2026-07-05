@@ -26,8 +26,8 @@ The Stage-A path is already factored right — `sidm2/galway_driver11_emitter.py
 - The adaptive-window `fits()` loop (caps probe → window split) is duplicated between the MoN and Myth mains → shared `pack_adaptive_windows()`.
 - Move the SF2II cap constants (63 bundles / 32 instruments / 256 rows / 120 sequences / 960 events / $D000 wall) into **one** `sidm2/sf2_caps.py` consumed everywhere they are currently re-declared.
 
-### A3. Shared fidelity library (`sidm2/fidelity_common.py`)
-~250-300 copy-pasted lines across 6 validators, including a **real latent bug**: the semitone converter `_semi()` exists 3× with *drifting reference frequencies* (`0x1168` vs `0x1167` vs inline log2). Extract: PSID wrapping (×4), semitone conversion (×3, pick one reference), siddump table parser (×4), zig64 CSV fill-forward serializer (×2), gated best-offset matcher + histogram (×2). Then every player's validator is a thin config over one measured core — and the measurement ladder (onset → per-frame → real-SF2II → audio) becomes uniform.
+### A3. Shared fidelity library (`sidm2/fidelity_common.py`) — ✅ DONE 2026-07-05
+~250-300 copy-pasted lines across 6 validators, including a **real latent bug**: the semitone converter `_semi()` existed 3× with *drifting reference frequencies* (`0x1168` vs `0x1167` vs inline log2). Extracted: PSID wrapping (×4), semitone conversion (canonicalized on `SEMI_REF=0x1167` = PAL C-4), siddump table parsers (×4 → `siddump_per_frame` / `siddump_note_onsets` / `siddump_filter_trace`), zig64 fill-forward serializer (×2), gated best-offset matcher (×2). Verified by byte-diffing every validator's output against pre-refactor baselines (all identical, including mon_fidelity across the reference change) + 13 unit tests (`pyscript/test_fidelity_common.py`).
 
 ### A4. Wire the `bin/` players into the default pipeline
 ROMUZAK, MoN, and FC are absent from `PLAYER_REGISTRY`; Galway-native is `bin/`-only. Add registry entries + converters so `sid-to-sf2.bat` auto-routes them (native builds behind a `--native` flag or as the default where byte-exact). This is the difference between "we have the tech" and "the tool converts it".

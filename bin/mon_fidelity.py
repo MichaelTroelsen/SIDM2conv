@@ -10,59 +10,13 @@ Stage-B work (no GUI), complementing bin/mon_sf2_validate.py (note onsets only).
   py -3 bin/mon_fidelity.py path.sid SUB SECONDS
 """
 import os
-import re
-import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 import bin.mon_sf2_validate as v   # build_probe, _psid
-
-
-def per_frame(path, args):
-    """Parse siddump -> per-frame fill-forwarded state.
-    Returns frames[i] = {v: {'freq','wf','pul'}, 'fcut'} with ints (None until first set)."""
-    txt = subprocess.run(['py', '-3', 'pyscript/siddump_complete.py', path] + args,
-                         capture_output=True, text=True).stdout
-    st = [{'freq': None, 'wf': None, 'pul': None} for _ in range(3)]
-    fc = [None]
-    frames = []
-
-    def cv(x):
-        return None if (not x or '.' in x) else int(x, 16)
-
-    for ln in txt.splitlines():
-        if not ln.startswith('|') or 'Frame' in ln:
-            continue
-        c = [x.strip() for x in ln.split('|')]
-        if len(c) < 6:
-            continue
-        try:
-            fr = int(c[1])
-        except ValueError:
-            continue
-        for vi in range(3):
-            m = re.match(r'^([0-9A-F\.]{4})\s+\S+\s+\S+\s+([0-9A-F\.]{2})\s+'
-                         r'[0-9A-F\.]{4}\s+([0-9A-F\.]{3})', c[2 + vi])
-            if m:
-                for k, val in zip(('freq', 'wf', 'pul'), m.groups()):
-                    cvv = cv(val)
-                    if cvv is not None:
-                        st[vi][k] = cvv
-        fm = re.match(r'^([0-9A-F\.]{4})', c[5])
-        if fm:
-            cvv = cv(fm.group(1))
-            if cvv is not None:
-                fc[0] = cvv
-        frames.append(({vi: dict(st[vi]) for vi in range(3)}, fc[0]))
-    return frames
-
-
-def _semi(freq):
-    if not freq:
-        return -1
-    import math
-    return round(12 * math.log2(freq / 0x1168) + 48) if freq > 0 else -1
+from sidm2.fidelity_common import siddump_per_frame as per_frame  # noqa: F401 (re-exported)
+from sidm2.fidelity_common import freq_to_semi as _semi           # noqa: F401 (re-exported)
 
 
 def main():

@@ -13,8 +13,6 @@ so the converter is checked against the real player's output, not by ear.
   py -3 bin/romuzak_validate.py path/to.sid     # one tune
 """
 import os
-import re
-import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -27,20 +25,14 @@ from romuzak_to_sf2 import (
 from sidm2.galway_to_driver11 import GalwayDriver11Song
 from sidm2.galway_driver11_emitter import emit_driver11_sf2
 from sidm2.sf2_parser import parse_sf2_blocks, SF2DriverInfo
-from scripts.sf2_to_sid import PSIDHeader
+from sidm2.fidelity_common import psid_wrap as _psid
+from sidm2.fidelity_common import siddump_note_onsets
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SECONDS = 40
 
 CORPUS = [os.path.join('SID', 'Fun_Fun', n + '.sid') for n in (
     'Delirious_9_tune_1', 'Road_of_Excess_end')]
-
-
-def _psid(data, load, init, play):
-    h = PSIDHeader(load_address=load, init_address=init, play_address=play)
-    h.songs = 1
-    h.start_song = 1
-    return h.to_bytes() + data
 
 
 def _probe(path):
@@ -62,20 +54,8 @@ def _probe(path):
 
 def _notes(sidpath):
     """-> {0,1,2: [note_name, ...]} ordered unbracketed note-onsets per voice."""
-    txt = subprocess.run(['py', '-3', 'pyscript/siddump_complete.py', sidpath,
-                          f'-t{SECONDS}'], capture_output=True, text=True).stdout
-    V = {0: [], 1: [], 2: []}
-    for ln in txt.splitlines():
-        if not ln.startswith('|') or 'Frame' in ln:
-            continue
-        c = [x.strip() for x in ln.split('|')]
-        if len(c) < 6:
-            continue
-        for vi, cell in enumerate(c[2:5]):
-            m = re.match(r'^([0-9A-F]{4})\s+([A-G][-#]\d)\b', cell)
-            if m and m.group(1) != '0000':
-                V[vi].append(m.group(2))
-    return V
+    V = siddump_note_onsets(sidpath, [f'-t{SECONDS}'])
+    return {v: [name for _, name in V[v]] for v in range(3)}
 
 
 def validate(path):
