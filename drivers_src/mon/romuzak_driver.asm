@@ -663,38 +663,92 @@ fm_l:
         bne fm_run
         jmp fm_write             ; FM off -> freq = vfreq (FM_ACC stays 0)
 fm_run:
+        lda #$10                 ; per-voice runaway guard for chained $7f loop
+        sta ws_grd               ; entries (reuses the wave_step scratch byte)
         lda FM_CNT,x
         beq fm_load              ; current entry expired -> load next
         jmp fm_add
+; --- FM entry dispatch on byte2 (all forms 3 bytes: byte0, byte1, byte2):
+;       $00       freeze: offset 0, hold forever (unchanged)
+;       $01-$7e   Hz-delta run: FM_OFF = byte0/byte1 signed, applied byte2 frames
+;                 (the emitter caps RLE runs at 126 so byte2 stays < $7f)
+;       $7f       LOOP: byte0 = entry index; FMP = VIFM + byte0*3, re-dispatch
+;       $80-$ff   SEMITONE hold (structural arps): S = byte0 signed semitones,
+;                 dur = byte2 & $7f; FM_ACC = freqtable[(vbasenote+S)&$7f] - vfreq
+;                 (pitch-INDEPENDENT — one chord-arp program serves every note).
+;     Dispatch is bit-test first (bmi), then cmp #$7f only with A in $01-$7f —
+;     SF2II CMP-carry-safe. ---
 fm_load:
         lda FMP_LO,x             ; point fmptr at the current row-major entry
         sta fmptr
         lda FMP_HI,x
         sta fmptr+1
         ldy #$02
-        lda (fmptr),y            ; byte 2 = dur
-        bne fm_haveent
-        ; dur 0 -> freeze: offset 0, hold, do not advance
-        lda #$00
+        lda (fmptr),y            ; byte 2 = entry type/dur
+        bne fm_notfrz
+fm_freeze:
+        lda #$00                 ; freeze: offset 0, hold, do not advance
         sta FM_OFF_LO,x
         sta FM_OFF_HI,x
         lda #$ff
         sta FM_CNT,x
         jmp fm_add
-fm_haveent:
-        sta FM_CNT,x
+fm_notfrz:
+        bmi fm_semi              ; bit7 -> semitone entry
+        cmp #$7f                 ; A is $01-$7f here (CMP-carry-safe)
+        beq fm_loopent
+        sta FM_CNT,x             ; --- Hz-delta run (original form) ---
         ldy #$00
         lda (fmptr),y            ; byte 0 = offset lo
         sta FM_OFF_LO,x
         iny
         lda (fmptr),y            ; byte 1 = offset hi
         sta FM_OFF_HI,x
+        jmp fm_adv3
+fm_semi:
+        and #$7f                 ; dur (>= 1)
+        sta FM_CNT,x
+        ldy #$00
+        lda (fmptr),y            ; byte 0 = signed semitone offset
+        clc
+        adc vbasenote,x
+        and #$7f
+        asl                      ; freqtable is interleaved lo/hi (note*2)
+        tay
+        sec
+        lda freqtable,y          ; FM_ACC = freqtable[note+S] - vfreq (held)
+        sbc vfreq_lo,x
+        sta FM_ACC_LO,x
+        lda freqtable+1,y
+        sbc vfreq_hi,x
+        sta FM_ACC_HI,x
+        lda #$00                 ; no per-frame add during the hold
+        sta FM_OFF_LO,x
+        sta FM_OFF_HI,x
+fm_adv3:
         lda FMP_LO,x             ; advance pointer by 3 bytes
         clc
         adc #$03
         sta FMP_LO,x
         bcc fm_add
         inc FMP_HI,x
+        jmp fm_add
+fm_loopent:
+        dec ws_grd               ; degenerate loop chain -> freeze this frame
+        beq fm_freeze
+        ldy #$00
+        lda (fmptr),y            ; byte 0 = loop-back entry index
+        sta tmpf
+        asl                      ; idx*3 (idx <= 84, no carry)
+        clc
+        adc tmpf
+        clc
+        adc VIFM_LO,x            ; FMP = program start + idx*3
+        sta FMP_LO,x
+        lda VIFM_HI,x
+        adc #$00
+        sta FMP_HI,x
+        jmp fm_load              ; re-dispatch at the loop target
 fm_add:
         lda FM_ACC_LO,x          ; FM_ACC += signed offset
         clc

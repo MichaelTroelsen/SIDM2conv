@@ -90,19 +90,74 @@ def fm_program_for(frames, v, onset, dur_f, base):
         deltas.append((targ[k] - prev) & 0xFFFF)
         prev = targ[k]
     prog, run, rl = [], None, 0
+
+    def flush(r, n):
+        # byte2 must stay $01-$7e: $7f is the LOOP entry and $80+ the SEMITONE
+        # entry in the driver's FM dispatch — split longer runs.
+        while n > 0:
+            c = min(n, 126)
+            prog.append((r & 0xFF, (r >> 8) & 0xFF, c))
+            n -= c
     for delta in deltas:
         if delta == run:
             rl += 1
         else:
             if run is not None:
-                prog.append((run & 0xFF, (run >> 8) & 0xFF, rl))
+                flush(run, rl)
             run, rl = delta, 1
     if run is not None:
-        prog.append((run & 0xFF, (run >> 8) & 0xFF, rl))
+        flush(run, rl)
     if not prog or all(e[0] == 0 and e[1] == 0 for e in prog):
         return [(0, 0, 0)]                          # flat -> program 0 (freeze)
     prog.append((0, 0, 0))                          # hold the last offset
     return prog
+
+
+# --- STRUCTURAL ARPS (whats-next step 2): emit the player's own compact looping
+# semitone arp table (MON.arp_program) as a LOOPING SEMITONE FM program instead of
+# the per-note Hz-delta unroll. Pitch-independent -> one program per chord shape
+# (the ROM has ~16), collapsing the FM side of the bundle explosion. Gated by
+# MON_ARP_STRUCT=1 while the wave/pulse structural prongs land (all three caps must
+# drop for the part count to fall).
+ARP_STRUCT = os.environ.get("MON_ARP_STRUCT", "") == "1"
+
+
+def arp_fm_program(arp):
+    """MON.arp_program dict -> looping SEMITONE FM program, phase-aligned to the ROM:
+    step k occupies frames [k*fps, (k+1)*fps) of the note (fps = (dur>>4)+1, the
+    $106A -$10/frame counter). The driver's pr_note holds BASE pitch on the trigger
+    frame, which covers frame 0 of step0 — so entry 0 is step0 for the REMAINING
+    fps-1 frames (omitted at fps==1), then steps 1..N-1, then step0 again at full
+    fps, looping over that rotation. (Residual: when steps[0] != 0 the trigger
+    frame plays base instead of base+steps[0] — 1 frame/note, the same class as
+    the unreproducible onset spike.)"""
+    fps = min((arp['dur'] >> 4) + 1, 0x7F)
+    steps = arp['steps']
+    prog = []
+    if fps > 1:
+        prog.append((steps[0] & 0xFF, 0, 0x80 | (fps - 1)))
+    lead = len(prog)                                # loop target = start of the rotation
+    for s in steps[1:] + steps[:1]:
+        prog.append((s & 0xFF, 0, 0x80 | fps))
+    if arp.get('loop'):
+        prog.append((lead, 0, 0x7F))
+    else:
+        prog.append((0, 0, 0))                      # $fe END -> hold
+    return prog
+
+
+def _arp_fm_for(m, ev):
+    """The structural FM program for a note, or None to fall back to the trace
+    unroll (non-arp notes, non-Supremacy engines, flag off)."""
+    if not ARP_STRUCT or not hasattr(m, "arp_program") or getattr(m, "tbl_arp_idx", 0) == 0:
+        return None
+    try:
+        arp = m.arp_program(ev.wprog)
+    except Exception:
+        return None
+    if not arp or not arp.get('steps') or arp['steps'] == [0]:
+        return None
+    return arp_fm_program(arp)
 
 
 def pulse_program_for(frames, v, onset, dur_f):
@@ -314,6 +369,14 @@ def _wave_prog_for(frames, v, onset, dur_f):
     return tuple(wfs[:settle + 1])
 
 
+def _is_struct_fm(fp):
+    """True for FM programs containing SEMITONE/LOOP entries (byte2 >= $7f) —
+    their pitch shape is note-relative, so the Hz-based cluster curve is
+    meaningless for them; they must never be similarity-merged (they already
+    dedup exactly, being pitch-independent)."""
+    return any(e[2] >= 0x7F for e in fp)
+
+
 def _fm_curve(fp, length=FM_CAP):
     """Cumulative FM offset shape (signed) over `length` frames (freeze-extended) —
     the audible pitch contour, for clustering distance. fp = [(lo,hi,dur),...].
@@ -398,7 +461,11 @@ def effective_bundle_count(items, counts, tol, cap=63):
     for i in range(n):
         ci = curves[i]
         for j in range(i + 1, n):
-            dd = INF if pulses[i] != pulses[j] else sum(abs(a - b) for a, b in zip(ci, curves[j]))
+            if (pulses[i] != pulses[j]
+                    or _is_struct_fm(items[i][0]) or _is_struct_fm(items[j][0])):
+                dd = INF                     # structural programs never merge
+            else:
+                dd = sum(abs(a - b) for a, b in zip(ci, curves[j]))
             D[i][j] = D[j][i] = dd
     active = list(range(n))
     cnt = list(counts)
@@ -562,8 +629,8 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                 base = m.note_freq(note_c)
                 flag, filt = (canon_filt.get(fr, (0, None))
                               if (v, fr) in drives else (0, None))
-                bi = bundle_of(fm_program_for(frames, v, fr, dur_f, base),
-                               pulse_program_for(frames, v, fr, dur_f))
+                fmp = _arp_fm_for(m, ev) or fm_program_for(frames, v, fr, dur_f, base)
+                bi = bundle_of(fmp, pulse_program_for(frames, v, fr, dur_f))
                 ii = instr_of(ev.instr, _wave_prog_for(frames, v, fr, dur_f), flag, filt)
                 blk.append((note_c, ticks, bi, ii, tk))
                 tk += ev.dur
@@ -616,6 +683,8 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     bcurves = [_fm_curve(fp) for fp, _ in exb]
 
     def bdist(i, j):
+        if _is_struct_fm(exb[i][0]) or _is_struct_fm(exb[j][0]):
+            return 1 << 20                    # structural programs: never force-merge
         fd = sum(abs(a - b) for a, b in zip(bcurves[i], bcurves[j]))
         pp = 0 if exb[i][1] == exb[j][1] else 300
         return fd + pp
@@ -630,6 +699,8 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     def bgate(i, j):                         # an INAUDIBLE bundle merge: same pulse +
         if exb[i][1] != exb[j][1]:           # FM-contour L1 within tolerance
             return False
+        if _is_struct_fm(exb[i][0]) or _is_struct_fm(exb[j][0]):
+            return False                     # structural programs never gate-merge
         return sum(abs(a - b) for a, b in zip(bcurves[i], bcurves[j])) <= BUNDLE_TOL
     bmap, breps = greedy_cluster(exb, bcount, bdist, 63, gate=bgate if BUNDLE_TOL > 0 else None)
     imap, ireps = greedy_cluster(exi, icount, idist, 32)

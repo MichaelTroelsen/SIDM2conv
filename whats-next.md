@@ -136,7 +136,23 @@ Everything below is the LOSSLESS PART-COUNT structural rebuild (issue 2). Ordere
    100/100/100 (delay 0), Cybernoid sub0 99.9/99/96 + 100/100. Remaining sub-issues (separate):
    sub1 V1/V2 arp-voice decode, sub0 staggered canon entries (parser misses per-voice lead rests).
 
-2. **Re-apply the FM wiring** (driver semitone+loop entries + arp_fm_program + _fm_for_note; all
+2. **FM wiring — ✅ DONE 2026-07-05 (structural arps live behind MON_ARP_STRUCT=1).**
+   Driver fm_step gained SEMITONE entries (byte2 bit7: dur=byte2&$7f, FM_ACC =
+   freqtable[(vbasenote+S)&$7f]-vfreq, pitch-independent) + LOOP entries (byte2=$7f,
+   FMP=VIFM+byte0*3, ws_grd runaway guard); Hz-run byte2 capped at 126 in the emitter.
+   `arp_fm_program` is PHASE-ALIGNED to the ROM (step0 gets fps-1 frames — pr_note's
+   base hold covers frame 0 — then the rotation step1..stepN,step0 at full fps, loop
+   to the rotation start; validated by a fm_step-model round-trip test). Structural
+   programs are cluster-exempt (_is_struct_fm: never similarity-merged). RESULTS
+   (Supremacy sub2): bundles 79->52 on a 30s window; **auto parts 43 -> 36**; part1
+   fidelity osc1 92.2/100/100, osc2 98/100/100, osc3 100/100/100, filter 100 — the
+   trace path (96/100/100) minus the unreproducible per-note tail/onset spikes and
+   the steps[0]!=0 trigger frame. Flag stays OPT-IN until steps 3-4 land (trace path
+   is still the fidelity default). Flag-off + Hawkeye/Cybernoid: unchanged (verified).
+   Tests: pyscript/test_mon_arp_struct.py (4). NEXT LEVER: instruments (32) + WAVE
+   rows (256) now bind alone -> step 3.
+
+2-old. (historical) **Re-apply the FM wiring** (driver semitone+loop entries + arp_fm_program + _fm_for_note; all
    documented in memory to re-apply verbatim). After step 1, the arp path should hit the trace
    path's ~98% (byte-exact minus the ~2-frame onset freq=0 spike/note, which the driver's
    frame-0=base model can't reproduce — same residual as the trace path). Validate:
