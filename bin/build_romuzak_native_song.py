@@ -172,12 +172,11 @@ def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
         ad, sr, wf = ins[0], ins[1], ins[2]
         edit[io + 0 * 32 + i] = ad
         edit[io + 1 * 32 + i] = sr
-        if i in drum_set:
-            edit[io + 2 * 32 + i] = 0x20      # col2 flag $20 -> drum (col1 = freq hi)
-        elif i in seek_set:
-            edit[io + 2 * 32 + i] = 0x10      # col2 flag $10 -> SEEK (pulse holds last frame)
-        elif (instr_flags[i] if instr_flags else 0) & 0x40:
-            edit[io + 2 * 32 + i] = 0x40      # col2 flag $40 -> start filter program
+        # col2 flags: $20 drum (col1 = freq hi) | $10 SEEK (pulse holds last frame)
+        # | $40 start filter program | $08 pulse free-run (stream keeps its phase)
+        fb = 0x20 if i in drum_set else (0x10 if i in seek_set else 0)
+        fb |= (instr_flags[i] if instr_flags else 0) & 0x48
+        edit[io + 2 * 32 + i] = fb
         wp = wave_programs[i] if i < len(wave_programs) else [(wf or 0x41, 0), (0x7F, 0)]
         wkey = tuple(wp)
         if wkey in wave_dedup:

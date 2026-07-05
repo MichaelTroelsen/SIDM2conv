@@ -158,6 +158,13 @@ SWTOG     = $185f        ; swing-tempo phase toggle (EOR #$ff per row, mirroring
                          ; MoN ROM's $E2 at $1134-$1138): negative phase reloads
                          ; TEMPO2 (the SHORT period), positive reloads TEMPO.
                          ; Constant tunes set TEMPO2 = TEMPO so the toggle is inert.
+PFREE     = $1860        ; per-voice: pulse free-run stream started (VIFLAGS $08) (3)
+VSTEP_LO  = $1863        ; per-voice: freqtable[vbasenote+1]-freqtable[vbasenote] (3)
+VSTEP_HI  = $1866        ;   (the note's semitone step, set at pr_note — the unit
+                         ;    for SCALED vibrato FM entries) (3)
+mul_a     = $1869        ; scaled-entry multiply scratch: scale bits
+mul_m     = $186a        ; 24-bit shifted step (3)
+mul_p     = $186d        ; 24-bit product (3)
 
         .include "layout.inc"
 INSTR_AD    = INSTR + 0*32
@@ -220,6 +227,7 @@ iv:     lda #$41
         sta VPHI,x
         sta VPADL,x
         sta VPADH,x
+        sta PFREE,x              ; free-run pulse stream not started
         lda #$fe
         sta VGMASK,x             ; start gated off
         lda #$00
@@ -698,12 +706,18 @@ fm_notfrz:
         cmp #$7f                 ; A is $01-$7f here (CMP-carry-safe)
         beq fm_loopent
         sta FM_CNT,x             ; --- Hz-delta run (original form) ---
+        ldy #$01
+        lda (fmptr),y            ; byte 1 = offset hi — $40/$41 marks a SCALED
+        and #$fe                 ;   (pitch-proportional vibrato) entry:
+        eor #$40                 ;   offset = +-(VSTEP * byte0) >> 8
+        bne fm_plainhz           ;   (eor test — SF2II CMP-carry-safe)
+        jmp fm_scaled            ;   (mul block lives past fm_done: branch range)
+fm_plainhz:
+        lda (fmptr),y
+        sta FM_OFF_HI,x
         ldy #$00
         lda (fmptr),y            ; byte 0 = offset lo
         sta FM_OFF_LO,x
-        iny
-        lda (fmptr),y            ; byte 1 = offset hi
-        sta FM_OFF_HI,x
         jmp fm_adv3
 fm_semi:
         and #$7f                 ; dur (>= 1)
@@ -774,6 +788,60 @@ fm_write:
         jmp fm_l
 fm_done:
         rts
+; SCALED FM entry (out-of-line for branch range): offset = +-(VSTEP * byte0) >> 8
+; — a pitch-proportional vibrato leg. 24-bit shift-add multiply, ~200 cycles,
+; runs only when an entry loads (once per leg).
+fm_scaled:
+        ldy #$00
+        lda (fmptr),y            ; byte 0 = scale (fraction of a semitone step /256)
+        sta mul_a
+        lda VSTEP_LO,x
+        sta mul_m
+        lda VSTEP_HI,x
+        sta mul_m+1
+        lda #$00
+        sta mul_m+2
+        sta mul_p
+        sta mul_p+1
+        sta mul_p+2
+        ldy #$08
+fm_mul:
+        lsr mul_a
+        bcc fm_mulskip
+        lda mul_p
+        clc
+        adc mul_m
+        sta mul_p
+        lda mul_p+1
+        adc mul_m+1
+        sta mul_p+1
+        lda mul_p+2
+        adc mul_m+2
+        sta mul_p+2
+fm_mulskip:
+        asl mul_m
+        rol mul_m+1
+        rol mul_m+2
+        dey
+        bne fm_mul
+        ldy #$01                 ; product>>8 = mul_p+1/mul_p+2; hi bit0 = negative
+        lda (fmptr),y
+        and #$01
+        beq fm_scpos
+        sec                      ; negate (two's complement 16-bit)
+        lda #$00
+        sbc mul_p+1
+        sta FM_OFF_LO,x
+        lda #$00
+        sbc mul_p+2
+        sta FM_OFF_HI,x
+        jmp fm_adv3
+fm_scpos:
+        lda mul_p+1
+        sta FM_OFF_LO,x
+        lda mul_p+2
+        sta FM_OFF_HI,x
+        jmp fm_adv3
 do_row:
         lda #$00
         sta ST_TCNT              ; a new row ticked this frame (SF2II follow cursor++)
@@ -910,6 +978,15 @@ pn_not_off:
         sta tmpf
         lda freqtable+1,y
         sta tmpf+1
+        ; VSTEP = the note's semitone step (freqtable[n+1] - freqtable[n]) — the
+        ; unit for SCALED (pitch-proportional vibrato) FM entries
+        sec
+        lda freqtable+2,y
+        sbc tmpf
+        sta VSTEP_LO,x
+        lda freqtable+3,y
+        sbc tmpf+1
+        sta VSTEP_HI,x
         lda tmpf                 ; remember the base freq for vibrato
         sta vfreq_lo,x
         lda tmpf+1
@@ -931,12 +1008,24 @@ pn_not_off:
         lda vwf,x
         ora #$01
         sta SID+4,y
+        ; pulse FREE-RUN (VIFLAGS $08): MoN sweeps whose phase never resets are
+        ; emitted as ONE per-voice stream program — after the first flagged note
+        ; starts it, later note-ons keep PPTR/VPC (the stream runs across notes).
+        lda VIFLAGS,x
+        and #$08
+        beq pn_prst
+        lda PFREE,x
+        bne pn_noprst            ; stream already running -> keep the phase
+        lda #$01
+        sta PFREE,x              ; first flagged note: start the stream normally
+pn_prst:
         lda VIPUL_LO,x           ; restart the pulse program too (16-bit pointer)
         sta PPTR_LO,x
         lda VIPUL_HI,x
         sta PPTR_HI,x
         lda #$00
         sta VPC,x                ; force reload on the next frame
+pn_noprst:
 pn_tied:
         lda VIWAVE,x             ; restart the wave program at the instrument's row
         sta VWI,x

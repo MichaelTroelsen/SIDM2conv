@@ -77,6 +77,40 @@ def _run_fm_model(prog, freqtable, basenote, vfreq, nframes):
     return out
 
 
+def test_vibrato_program_detection_and_unroll():
+    # captured Hz vibrato: 9-frame delay, centered legs (+$32 x2 first, then
+    # alternating 5-frame legs) — the exact instr-31 shape at note $39, whose
+    # semitone step is 427: depth $32 == (427*30)>>8 -> scale 30.
+    step = 427
+    prog = [(0, 0, 9), (0x32, 0, 2), (0xCE, 0xFF, 5), (0x32, 0, 5),
+            (0xCE, 0xFF, 5), (0x32, 0, 5), (0, 0, 0)]
+    vib = BM._vibrato_program(prog, step)
+    assert vib is not None
+    assert vib[0] == (0, 0, 9)                          # delay
+    assert vib[1] == (30, 0x40, 2)                      # half first leg, positive
+    assert vib[-1] == (2, 0, 0x7F)                      # loop over the steady legs
+    # the scaled program must unroll identically to the Hz capture
+    assert BM._fm_unroll(vib, 30, step) == BM._fm_unroll(prog, 30)
+    # and serve ANOTHER pitch exactly (pitch-proportional): step 214 -> depth 25
+    prog2 = [(0, 0, 9), (25, 0, 2), (0x100 - 25, 0xFF, 5), (25, 0, 5),
+             (0x100 - 25, 0xFF, 5), (0, 0, 0)]
+    assert BM._fm_unroll(vib, 24, 214) == BM._fm_unroll(prog2, 24)
+
+
+def test_vibrato_program_rejects_non_vibrato():
+    assert BM._vibrato_program([(0x10, 0, 3), (0x20, 0, 3), (0, 0, 0)], 427) is None
+    assert BM._vibrato_program([(0, 0, 9), (0, 0, 0)], 427) is None
+    # depth not an exact step fraction -> reject (byte-exactness guard):
+    # 52 -> scale round(52*256/427)=31, but (427*31)>>8 == 51 != 52
+    assert BM._vibrato_program([(0x34, 0, 2), (0xCC, 0xFF, 5), (0x34, 0, 5),
+                                (0, 0, 0)], 427) is None
+
+
+def test_pulse_unroll_models_driver():
+    prog = [(0x88, 0x00, 1), (0x0F, 0xF0, 3), (0x7F, 0, 0)]   # set $800, add -$10 x3
+    assert BM._pulse_unroll(prog, 6) == [0x800, 0x7F0, 0x7E0, 0x7D0, 0x7D0, 0x7D0]
+
+
 def test_arp_round_trip_matches_rom_phase():
     # freqtable where note n has freq 1000+n so semitone math is legible
     ft = [1000 + n for n in range(128)]

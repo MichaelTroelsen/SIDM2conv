@@ -160,19 +160,26 @@ def _arp_fm_for(m, ev):
     return arp_fm_program(arp)
 
 
-def pulse_program_for(frames, v, onset, dur_f):
+def pulse_program_for(frames, v, onset, dur_f, cap=FM_CAP):
     """Per-note PULSE program (B3 PWM): reproduce the original's per-frame pulse
     width. 8X = set width frame 0; 0X = add per-frame delta (12-bit) for `run`
     frames; 7f = freeze. The driver restarts the pulse program per note (PPTR=
-    VIPUL/VPC=0), so frame 0 sets the base — no 1-frame offset (unlike FM)."""
+    VIPUL/VPC=0), so frame 0 sets the base — no 1-frame offset (unlike FM).
+    cap > FM_CAP is used for the free-running per-voice STREAM programs."""
     targ, hold = [], None
-    for k in range(min(dur_f, FM_CAP)):
+    for k in range(min(dur_f, cap)):
         idx = onset + k
         pv = frames[idx][0][v]['pul'] if idx < len(frames) else None
         if pv is not None:
             hold = pv
         targ.append(hold if hold is not None else 0x800)
     prog = [(0x80 | ((targ[0] >> 8) & 0x0F), targ[0] & 0xFF, 1)]   # 8X set frame 0
+
+    def flush(r, n):
+        while n > 0:                                              # byte2 is one byte
+            c = min(n, 255)
+            prog.append(((r >> 8) & 0x0F, r & 0xFF, c))
+            n -= c
     prev, run, rl = targ[0], None, 0
     for k in range(1, len(targ)):
         delta = (targ[k] - prev) & 0xFFF                          # 12-bit signed add
@@ -181,10 +188,10 @@ def pulse_program_for(frames, v, onset, dur_f):
             rl += 1
         else:
             if run is not None:
-                prog.append(((run >> 8) & 0x0F, run & 0xFF, rl))
+                flush(run, rl)
             run, rl = delta, 1
     if run is not None:
-        prog.append(((run >> 8) & 0x0F, run & 0xFF, rl))
+        flush(run, rl)
     prog.append((0x7F, 0, 0))                                     # freeze (hold last)
     return prog
 
@@ -423,16 +430,28 @@ def _gate_split(m, frames, v, fr, dur_f, tk, ticks):
     return t_off, wfs, off_k, end
 
 
-def _fm_unroll(prog, n):
-    """Per-frame accumulated freq offsets (relative to the note's base) a Hz-delta
-    FM program produces over n frames (model of fm_step: frame 0 = base hold,
-    entries apply offset per frame for byte2 frames, (0,0,0) = freeze)."""
-    out, acc, i = [0], 0, 0
+def _fm_unroll(prog, n, step=0):
+    """Per-frame accumulated freq offsets (relative to the note's base) an FM
+    program produces over n frames (model of fm_step: frame 0 = base hold,
+    entries apply offset per frame for byte2 frames, (0,0,0) = freeze,
+    byte2=$7f = loop to entry byte0, hi=$40/$41 = SCALED +-(step*lo)>>8)."""
+    out, acc, i, guard = [0], 0, 0, 64
     while len(out) < n and i < len(prog):
         lo, hi, run = prog[i]
         if run == 0:
             break                                # freeze: hold acc
-        off = lo | (hi << 8)
+        if run == 0x7F:                          # loop entry
+            i = lo
+            guard -= 1
+            if guard == 0:
+                break
+            continue
+        if (hi & 0xFE) == 0x40:                  # scaled (pitch-proportional)
+            off = (step * lo) >> 8
+            if hi & 1:
+                off = (-off) & 0xFFFF
+        else:
+            off = lo | (hi << 8)
         for _ in range(run):
             acc = (acc + off) & 0xFFFF
             out.append(acc)
@@ -441,6 +460,61 @@ def _fm_unroll(prog, n):
         i += 1
     while len(out) < n:
         out.append(acc)
+    return out
+
+
+def _vibrato_program(prog, step):
+    """Detect a pitch-proportional VIBRATO in a captured Hz FM program and re-emit
+    it as a duration- AND pitch-independent looping SCALED program:
+        [0,0,delay] [scale,$40|dir,half-leg] loop{ [scale,$41^dir,L] [scale,$40|dir,L] }
+    The ROM computes the wobble as a fixed fraction of the note's semitone step
+    (depth = (step*scale)>>8), so ONE program serves every pitch — collapsing v2's
+    per-note FM explosion. Returns None unless the captured legs are EXACTLY
+    (step*scale)>>8 for an integer scale (the caller additionally guards with an
+    unrolled comparison over the note's frames)."""
+    if step <= 0:
+        return None
+    rows = [r for r in prog if r[2] != 0]        # strip the freeze terminator
+    i, delay = 0, 0
+    if rows and rows[0][:2] == (0, 0):
+        delay = rows[0][2]
+        i = 1
+    legs = rows[i:]
+    if len(legs) < 3:
+        return None
+    # drop up to 2 trailing boundary rows (the end-of-note freq drop)
+    def sval(lo, hi):
+        v = lo | (hi << 8)
+        return v - 0x10000 if v >= 0x8000 else v
+    d0 = abs(sval(*legs[0][:2]))
+    while legs and (abs(sval(*legs[-1][:2])) != d0 or legs[-1][2] > legs[0][2] + 8):
+        legs.pop()
+        if len(rows) - i - len(legs) > 2:
+            return None
+    if len(legs) < 3:
+        return None
+    L = legs[1][2]                               # steady leg length
+    if not (1 <= L <= 126 and 1 <= legs[0][2] <= L):
+        return None
+    vals = [sval(lo, hi) for lo, hi, _ in legs]
+    if any(abs(v) != d0 or v == 0 for v in vals):
+        return None
+    if any(vals[k] * vals[k + 1] >= 0 for k in range(len(vals) - 1)):
+        return None                              # signs must alternate
+    if any(r[2] != L for r in legs[1:-1]) or legs[-1][2] > L:
+        return None
+    scale = round(d0 * 256 / step)
+    if not (1 <= scale <= 255) or (step * scale) >> 8 != d0:
+        return None                              # not an exact step fraction
+    dir0 = 0 if vals[0] > 0 else 1
+    out = []
+    if delay:
+        out.append((0, 0, min(delay, 126)))
+    out.append((scale, 0x40 | dir0, legs[0][2]))
+    lead = len(out)
+    out.append((scale, 0x40 | (dir0 ^ 1), L))
+    out.append((scale, 0x40 | dir0, L))
+    out.append((lead, 0, 0x7F))                  # loop over the two steady legs
     return out
 
 
@@ -677,6 +751,40 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
         # serves all pitches; guard = contour equality minus ~3 boundary frames.
         nb_ = max(SF2_NOTE_MIN, min(note_, SF2_NOTE_MAX))
         canon_fm[k] = fm_program_for(frames, v_, fr_, df_, m.note_freq(nb_))
+
+    # FREE-RUNNING PULSE (the 45s+ binding constraint): some MoN sweeps never
+    # reset — each note continues the previous note's phase, so per-note captures
+    # get a distinct set-row start per note. Detect phase drift per voice (a key
+    # with >= 3 distinct set-row starts) and emit ONE per-voice STREAM program
+    # (the whole window's per-frame pulse, RLE'd) shared by every note on the
+    # voice; the driver's VIFLAGS $08 keeps PPTR across note-ons (PFREE latch).
+    # Only when the voice's instruments are not shared with other voices (the
+    # $08 flag lives in the shared instrument record).
+    t0w, t1w = win if win else (0, 1 << 30)
+    freerun = [None, None, None]
+    if ARP_STRUCT:
+        vkeys, vnotes = [set() for _ in range(3)], [[] for _ in range(3)]
+        starts = {}
+        for v in range(3):
+            tk = 0
+            for ev in m.voices[v]:
+                fr = m.tick_to_frame(tk) + delay
+                dur_f = m.tick_to_frame(tk + ev.dur) - m.tick_to_frame(tk)
+                if ev.retrig and t0w <= fr < t1w and dur_f >= 2:
+                    vkeys[v].add((ev.instr, ev.wprog))
+                    vnotes[v].append((fr, dur_f))
+                    pv = frames[fr][0][v]['pul'] if fr < len(frames) else None
+                    starts.setdefault((v, ev.instr, ev.wprog), set()).add(pv)
+                tk += ev.dur
+        for v in range(3):
+            drift = any(len(starts.get((v,) + k, ())) >= 3 for k in vkeys[v])
+            shared = vkeys[v] & (vkeys[(v + 1) % 3] | vkeys[(v + 2) % 3])
+            if drift and not shared and vnotes[v]:
+                on0 = vnotes[v][0][0]
+                span = min(t1w, vnotes[v][-1][0] + vnotes[v][-1][1]) - on0
+                stream = pulse_program_for(frames, v, on0, span, cap=span)
+                if len(stream) <= 700:           # sanity: keep PULSETAB bounded
+                    freerun[v] = stream
     routed = routed_voice(ftr)                              # restart only on this voice
     drive_map = detect_filter_drives(ftr, onsets, routed)   # {onset_frame: voice}
     drives = {(v, o) for o, v in drive_map.items()}
@@ -782,22 +890,34 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                 fmp = _arp_fm_for(m, ev)
                 if fmp is None:
                     fmp = fm_program_for(frames, v, fr, dur_f, base)
-                    cf = canon_fm.get((ev.instr, ev.wprog))
                     fcmp = max(1, dur_f - 3)
+                    if ARP_STRUCT:
+                        # pitch-proportional VIBRATO -> one looping SCALED program
+                        # for every pitch/duration (exact-guarded via unroll)
+                        step = m.note_freq((note_c + 1) & 0x7F) - base
+                        vib = _vibrato_program(fmp, step) if step > 0 else None
+                        if (vib is not None
+                                and _fm_unroll(vib, fcmp, step) == _fm_unroll(fmp, fcmp)):
+                            fmp = vib
+                    cf = canon_fm.get((ev.instr, ev.wprog))
                     if (ARP_STRUCT and cf is not None and cf != fmp
-                            and not _is_struct_fm(cf)
+                            and not _is_struct_fm(fmp) and not _is_struct_fm(cf)
                             and _fm_unroll(cf, fcmp) == _fm_unroll(fmp, fcmp)):
                         fmp = cf
-                pp = pulse_program_for(frames, v, fr, dur_f)
-                cp = canon_pulse.get((ev.instr, ev.wprog))
-                # compare minus the last frame: the capture's final frame holds the
-                # NEXT note's base reset (the same 1-frame register skew as the
-                # wave bleed) — the note's own program reproduces that bleed, the
-                # canonical continues the sweep instead (<=1 frame/note, flag-gated)
-                cmp_f = max(1, dur_f - 1)
-                if (ARP_STRUCT and cp is not None and cp != pp
-                        and _pulse_unroll(cp, cmp_f) == _pulse_unroll(pp, cmp_f)):
-                    pp = cp
+                if freerun[v] is not None:
+                    pp = freerun[v]               # one per-voice stream, phase kept
+                    flag |= 0x08                  # driver: no pulse reset on note-on
+                else:
+                    pp = pulse_program_for(frames, v, fr, dur_f)
+                    cp = canon_pulse.get((ev.instr, ev.wprog))
+                    # compare minus the last frame: the capture's final frame holds
+                    # the NEXT note's base reset (the same 1-frame register skew as
+                    # the wave bleed) — the note's own program reproduces that bleed,
+                    # the canonical continues the sweep instead (<=1 frame/note)
+                    cmp_f = max(1, dur_f - 1)
+                    if (ARP_STRUCT and cp is not None and cp != pp
+                            and _pulse_unroll(cp, cmp_f) == _pulse_unroll(pp, cmp_f)):
+                        pp = cp
                 bi = bundle_of(fmp, pp)
                 gate_ticks, wfs_c, off_k, end_c = _gate_split(m, frames, v, fr,
                                                               dur_f, tk, ticks)

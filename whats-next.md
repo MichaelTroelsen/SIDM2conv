@@ -185,6 +185,28 @@ Everything below is the LOSSLESS PART-COUNT structural rebuild (issue 2). Ordere
        50 bundles vs the 32 probe with window-local canonicals) — consider window-local
        canonical selection in the adaptive packer.
 
+4b. **FREE-RUNNING PULSE + SCALED VIBRATO — ✅ LANDED 2026-07-05 (flag-gated).**
+   (a) PULSE FREE-RUN: driver VIFLAGS $08 + PFREE latch (pr_note keeps PPTR/VPC after the
+       first flagged note) + per-voice STREAM program (whole-window pulse RLE; detection =
+       a key with >=3 distinct set-row starts, voice-instrument-disjoint guard). Part2 v2
+       pulse 47% -> **100%**. GOTCHA FIXED: RN.gen_includes_song's flags emission DROPPED
+       all bits except its own ($20/$10/$40 if/elif) — now ORs instr_flags & $48; the $08
+       silently missing = the stream restarting per note.
+   (b) SCALED VIBRATO FM entries: MoN vibrato depth = (semitone_step * scale) >> 8 (pitch-
+       PROPORTIONAL; e.g. scale 30 = the v2 lead). Driver: hi=$40/$41 Hz entries -> offset =
+       +-(VSTEP*byte0)>>8 via a 24-bit shift-add mul (out-of-line past fm_done — inline it
+       blew branch ranges, 3 asm errors); VSTEP = freqtable[n+1]-freqtable[n] set at pr_note.
+       Build: _vibrato_program (delay + centered half-leg + looping legs, EXACT-guarded via
+       _fm_unroll(step=)). One program serves every pitch AND duration.
+   RESULTS: 30s window bundles 32->24; 45s 82->70; part2 (30-60s) flag-on = osc1 87/87/94,
+   osc2 96/96/98, osc3 63.5/98/100 vs flag-off 82/85/53 (freq BETTER, pulse 100%).
+   Hawkeye/ROMUZAK regressions clean (100%). NEXT LEVER (the osc3-freq 63% + the 60s-window
+   145 bundles): **PORTAMENTO/SLIDE engine** — the 30-60s canon notes start OFF-pitch
+   (first delta -$1BA etc.) and glide; needs the ROM slide-engine RE ($102F/$1029/$102C
+   target+speed) -> a pitch-independent SLIDE entry (like the vibrato one). Also NOTE:
+   fixed-30s flag-off builds still WAVE-overflow at part 6 (canonicalization is flag-gated);
+   parts >=2 were NEVER measured before today — add part2+ to the standard validation.
+
 3-old. (historical) **Wave [attack][steady-loop] structural rebuild** (the INSTRUMENT cap, 87->~5). The waveform is
    attack + steady + release (RE'd); emit it as [attack transient][steady + $7f loop] so the note
    duration is held by the sequence gate-on rows (not the wave program). Byte-exact (attack is
