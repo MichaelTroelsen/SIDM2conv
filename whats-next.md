@@ -236,16 +236,18 @@ Everything below is the LOSSLESS PART-COUNT structural rebuild (issue 2). Ordere
    sub2 until it's fixed.** sub0 has no $00 in range (long orderlists; V0 span 698s?? —
    verify sub0's real length separately). Old "70 parts" arithmetic: much of it was
    OVERRUN CONTENT past the real loop.
-9. **SUB2 SINGLE-PART DEFECT — OPEN.** The 150s one-file build collapses past ~35s
-   (5-14% freq at 40s+) while 0-30s measures 87-97%. Evidence gathered: decode EXACT
-   (1230/1230); the DRIVER's swing row grid verified exact in py65 (rows at 0,2,5,...,80 —
-   SWTOG-flip watch); emitted rows correct (v1 note 47 at row 32); segments are 640/411-row
-   packed sequences (v1 = 7 segs, totals 3007 — NB one row short of 3008: a clip off-by-one
-   to also check). Symptom: the PROBE grows an extra phantom C-4 onset at raw fr79 (not on
-   the row grid!) then shifts one event — suspect a WAVE-program regating artifact (a $D404
-   gate-bit transition mid-note reads as an onset) or a segment-chain issue past seg0.
-   Windowed builds (<=30s) are unaffected. NEXT: py65-probe the built SF2 around fr75-85
-   (log $D404 writes + PPTR/VWI/vsp state) to see what fires at 79.
+9. **SUB2 SINGLE-PART "DEFECT" — ✅ RESOLVED: IT WAS A MEASUREMENT ARTIFACT.**
+   `mon_part_fidelity PART SUB SECS OFF0` shifts only the ORIGINAL by OFF0 (windowed parts
+   start at their window) — measuring a WHOLE-SONG part "at 40s" compared song@40s against
+   part@0s. **TRAP: for single-part builds always use OFF0=0 and a full-length SECS.**
+   Measured correctly over the full 150s: osc1 86.5/86.5/93.6, osc2 97.6/95.5/97.9, osc3
+   92.8/97.8/93.4, filter 100 — the residuals are the documented flag-path boundary classes.
+   The py65 driver probe also identified the "phantom onset at fr79": the wave program's
+   trailing BLEED row regates for 1 frame at the note tail (the known <=1-frame class; a
+   possible polish = trim trailing gate-ON rows from captured wave programs when the note
+   ends gated-off). **BOTTOM LINE: Supremacy sub2 = ONE editable SF2 for the whole real
+   150s song (13 instr / 18 bundles), sub1 = ONE part (95-98%). From 70 parts at the start
+   of 2026-07-05.** Minor left: the 3007-vs-3008 rows clip off-by-one; sub0's real length.
 
 8-old. **SUB1 ORDERLIST WRAP — OPEN (found 2026-07-05 while adding loop-aware validation).**
    Sub1's orderlists have NO $FF terminator (V0 @$1D67 = `8E 17 8C 17 82 18 80 18 8E 19
