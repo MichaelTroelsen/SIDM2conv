@@ -1,458 +1,254 @@
 <original_task>
-User request (a single directive, then repeated "go on"): "please fix the optional issues"
-listed in the PRIOR whats-next.md, then — when part-count turned out to need deep work —
-"go on" (repeatedly) to pursue the lossless part-count re-architecture.
+The session began with: "I want you to reconsolidate your knowledge... update ALL docs and
+combine all knowledge and make suggestions to improvements to optimize size and fidelity and
+tools. We need this before we take on more players. The dream and mission statement is to
+create tools that combine static code combined with AI to convert any SID into a SF2 99%
+fidelity play and 100% editable."
 
-The three "optional issues" from the prior handoff (Supremacy + Myth MoN native builds were
-already COMPLETE and committed):
-  1. Myth sub0 FILTER ~53% (the one weak register; ear-confirmed fine but low fidelity).
-  2. PART-COUNT: Supremacy sub2 = 70 files, Myth sub0 = 7 files (correct/byte-exact, just many).
-  3. GUI/ear-confirm the not-yet-listened parts (needs the user's ears — cannot be done by me).
-
-Project: SIDM2, C64 music tools. This thread is the Jeroen Tel / "Maniacs of Noise" (MoN)
-SID->SF2 native-driver line of work (SID/Tel_Jeroen/). Standing goal: notes/order correct,
-then SOUND FIDELITY (~100% freq/waveform/pulse/filter), BYTE-EXACT where possible. The
-byte-exactness is the project's crown jewel — do NOT ship lossy output silently.
+That consolidation was completed and shipped as v3.13.1; the user then said "start on the
+roadmap - fidelity lib first" and afterwards repeatedly "go on" / "continue" through the
+roadmap's MoN structural-rebuild items. The bulk of the session became the Jeroen Tel /
+Maniacs-of-Noise (MoN) Supremacy structural work (SID/Tel_Jeroen/Supremacy.sid), executing
+and far exceeding the old whats-next plan (note-timing -> FM arps -> wave -> pulse ->
+slides -> song-length discovery).
 </original_task>
 
 <work_completed>
+ALL COMMITTED AND PUSHED to master (MichaelTroelsen/SIDM2conv). Commit chain this session:
 
-=== ISSUE 1: MYTH sub0 FILTER — FIXED + COMMITTED (a10bdd0) ===
-Raised the MoN native-driver filter fidelity on multi-shape tunes, no regressions.
-- Myth sub0: ~53% -> ~90% weighted (part1 77%, parts 2-7 = 90-98%).
-- Hawkeye sub3: 56% -> 99% (bonus; freq/wf/pulse already 100%).
-- NO regression: Hawkeye sub2 96.5%, Myth sub2 95.7% (full-song, 1 part), Supremacy 100% (no
-  filter drives).
-Root cause (in `bin/build_mon_native_song.py`, `build_native_song`): (a) drives were
-mis-attributed to unrouted voices (Myth sub0 routes filter to voice 1 via $D417 low nibble, but
-7 drives were credited to the unrouted voice 0); (b) the per-instrument canonical filter program
-conflated Myth sub0's co-existing envelope SHAPES (up-ramp-from-64 / down-ramp-from-128 /
-closed-at-0 across song sections); (c) a 1-frame phase error (note-on leads the cutoff reset).
-Three fixes:
-  1. `routed_voice(ftr)` — dominant single-bit $D417 low-nibble routing bit -> 0/1/2 (or None).
-     `detect_filter_drives(ftr, onsets, routed)` now restricts restart mapping to that voice.
-  2. Canonical filter program keyed by COMPOSITE (MoN instrument, envelope shape) instead of
-     per-instrument. Hawkeye's shape is fixed per instrument -> collapses to per-instrument
-     (unchanged, 96.5%); Myth sub0's instrument spans sections -> splits into its shapes.
-     `_shape_sig(o)` reads one frame PAST the onset (skip the note-on transitional cutoff);
-     signature = (settled base hi & 0xF8, initial delta hi clamped -8..+8). Canonical = the
-     FULLEST-span drive of each (instr, shape) key, captured from the onset (phase-correct).
-  3. Removed the earlier `global_filter_program` / `_filter_reset_frames` dead ends (see below).
-Guarded by NEW `pyscript/test_mon_filter.py` (7 tests: routed-voice detection, drive restriction,
-fast-sweep NOT over-detected, a filter-program round-trip through a faithful model of the driver's
-`filt_prog_step`, up/down ramps distinct). All 1459 pyscript tests pass.
-Verify: `py -3 bin/build_myth_native_song.py 0 auto` then
-`py -3 bin/mon_part_fidelity.py out/mon/Myth_sub0_part01.sf2 0 46 0` -> filter 77%.
+1. 68e569d (v3.13.1 docs consolidation): NEW docs/players/PLAYBOOK.md (the cross-player
+   porting method: staged RE->StageA->StageB->StageC pipeline, technique catalog, SF2II
+   caps, fidelity ladder, gotchas, new-player checklist), NEW docs/players/MON.md +
+   CLUSTERS.md, rewritten docs/reference/ACCURACY_MATRIX.md (v3.1.1->v3.13), rewritten
+   docs/ROADMAP.md (prioritized optimization plan), README.md/docs/INDEX.md/CLAUDE.md
+   refreshed, version bumped (sidm2/__init__.py 3.13.1), CHANGELOG/STORY updated.
 
-=== ISSUE 2: PART-COUNT — root cause proven; structural rebuild STARTED, arp parser committed ===
+2. 647fddf (roadmap A3): NEW sidm2/fidelity_common.py — shared validator plumbing:
+   freq_to_semi (canonical SEMI_REF=0x1167), psid_wrap, siddump_per_frame/
+   siddump_note_onsets/siddump_filter_trace/iter_siddump_rows, fill_forward/zig64_voices/
+   zig64_trace_voices, best_gated_offset. Refactored 8 consumers (mon_fidelity,
+   mon_sf2_validate, mon_validate, romuzak_validate, romuzak_native_validate, fc_validate,
+   build_mon_native_song.filter_trace, sf2ii_vs_real.rser). VERIFIED: all validator outputs
+   byte-identical to pre-refactor baselines (out/_a3_baseline/ vs out/_a3_after/).
+   NEW pyscript/test_fidelity_common.py (13 tests).
 
---- 2a. ANALYSIS (answered the user's own question; hypothesis confirmed) ---
-The user asked "what is the issue with the size? instruments, wave, pulse, notes? ... some of
-the problem is you replicate wave/pulse/instruments/filters very close to each other; the
-original SID fits in 32K." CONFIRMED with data. For Supremacy sub2, PRE-cluster resource usage
-of a 30s window vs the SF2II driver HARD caps (per SF2 file): bundles 178/63, instruments 87/32,
-wave-rows 570/256 — THREE caps blow at once, and the song is 588s -> ~8s/part -> ~70 files.
-NEAR-DUP PROOF: the 87 instruments collapse to only 5 distinct (AD,SR,waveform) cores — all 87
-exist from WAVE-PROGRAM variety. Bundles: 178 -> 95 distinct pulse-progs, 171 distinct FM contours.
-ROOT CAUSE: the trace-driven build captures per-NOTE, unrolling the player's CONTINUOUS/COMPACT
-looping tables (why the original fits in 32K). Proven with `bin/_freerun_proof.py` (deleted):
-free-running per-voice streams from the trace do NOT compress (817 wave RLE rows/30s, up to 741
-FM rows/voice) and are only 62-97% semitone-exact — because the trace is UNROLLED OUTPUT; the
-player's compactness lives in table JUMPS/LOOPS the trace can't recover. => NO trace-based method
-(per-note bundles OR free-running streams) can reduce the part count losslessly. The ONLY path =
-structural RE of the player's synth engine (extract its looping wave/pulse/arp tables + selectors).
+3. bcfd165 + 9fa4260 (MoN note-timing step 1): Supremacy speed byte bit7 = SWING tempo
+   (tick periods alternate speed,speed+1 — RE'd from the $1128-$114D gate toggle of $E2);
+   MON.tick_to_frame/frame_to_tick/tempo_toggle/onset_delay(=2 supremacy); native driver
+   swing reload (SWTOG=$185f toggle in do_row, TEMPO2 in layout.inc via
+   build_romuzak_native_song's writer + emit_one); build_mon_native_song frame accumulation
+   made tick-exact; PREFIX-CHAIN RETRIGGER decode (a $Cx/dur/wave byte followed by another
+   prefix finalizes = retriggers the previous note); _fm_curve cluster distance extended to
+   full freeze-extended programs (a 24-frame-prefix compare had let a forced merge freeze a
+   voice at freq 0 for 20 frames). mon_part_fidelity gained a small constant-offset search.
 
---- 2b. STRUCTURAL RE — BOTH SYNTH ENGINES CRACKED (documented in memory) ---
-Disassembled Supremacy sub2's synth engine (`bin/_mon_disasm.py START END SID` + emulation write-PC
-probes, since raw disasm misaligns on illegal opcodes):
-  * ARP/PITCH engine ($15CB-$1643): the $60-$7F pattern byte -> `AND #$1F -> $1064,X` (arp index);
-    ptr = $1746[$1064] + $17C0 -> program bytes; per-voice position $1067, dur counter $106A
-    (-$10/frame). Byte $FF=LOOP (nibble-offset target), $FE=END, else=ARP VALUE -> $106D. Applied:
-    `$106D + $F0 -> freq lookup` => $106D is a SIGNED SEMITONE OFFSET (pitch-INDEPENDENT). Resets
-    per note ($1067=0 at note-on). Table dump ($1746 index=[00 05 0a 0f...], $17C0 programs):
-    `10 00 03 07 ff`=[dur$10; arp 0,+3,+7 minor; loop], `10 00 04 07 ff`=major, etc. ~16 chord arps.
-  * WAVEFORM/GATE engine (`bin/_supr_wf_probe.py`, deleted): per-frame $D404 = $104F,X AND $1013,X.
-    NOT a complex table — a plain attack+steady+release gate envelope, SAME for every note, only
-    the steady LENGTH varies. v1: 3-frame onset transient ($D404 $10,$41,$11), steady $41, gate-off
-    release. v0 (wprog27 octave arp): onset $40,$41,$81, steady $41, note RE-TRIGGERS ~every 40
-    frames (re-attack). So the 87-from-5 instrument explosion = capturing the VARIABLE-length steady
-    + internal re-triggers per note. FIX (future) = wave program [attack][steady + $7f LOOP],
-    duration held by the sequence -> collapses 87 -> ~5.
-  * Instrument table = $1868 stride 7: [0]=$1020 effect [1]=$1869 ctrl/wf [2]=AD [3]=SR [4]=pulse.
+4. e67f491 (structural arps, MON_ARP_STRUCT=1): driver fm_step entry dispatch on byte2
+   ($00 freeze | $01-$7e Hz run, emitter splits RLE at 126 | $7f LOOP: FMP=VIFM+byte0*3,
+   ws_grd guard | $80-$ff SEMITONE: dur=byte2&$7f, FM_ACC=freqtable[(vbasenote+S)&$7f]-vfreq).
+   arp_fm_program PHASE-ALIGNED (step0 gets fps-1 frames because pr_note's base hold covers
+   frame 0; rotation step1..stepN,step0; loop to rotation start). _is_struct_fm cluster
+   exemption. NEW pyscript/test_mon_arp_struct.py.
 
---- 2c. ARP PARSER — COMMITTED (400d2e0), byte-exact, tested ---
-`sidm2/mon_parser.py`: added `MON.arp_program(wprog)` + arp-table location in `_locate_supremacy`
-(relocation-safe signature `BD 64 10 A8 B9 <idx> 18 69 <off> 85 E0 A9 <hi>` -> tbl_arp_idx=$1746,
-tbl_arp_base=$17C0). Returns `{'dur','steps','loop'}` (steps = signed semitone offsets). Verified
-byte-exact from ROM (wprog 0 [0,3,7] minor, 1 [0,4,7] major, 4 [0,3,8], 27 octave) AND against a
-py65 $106D trace (v1 wprog4 [0,3,8] cycles exact; v0 octave; v2 none). NOTE: uses `self._u8(a)`
-(the memory accessor is `_u8`, NOT `_mem`). Guarded by `test_supremacy_arp_table` in
-`pyscript/test_supremacy_parser.py`. All 18 supremacy/filter/mon-parser tests pass.
+5. 00ac20a (wave/pulse/FM canonicalization): the unifying insight — all per-note captures
+   carry DURATION-RELATIVE boundary tails. _gate_split (terminal gate-off -> sequence
+   note-$00 rows; VGMASK=$fe masks the looping steady into the $40 tail; tolerates the
+   1-frame wf-leads-freq register skew + 1-2 bleed frames); canonical longest-note
+   wave/pulse/FM per (instr,wprog) with exact unrolled guards (_wave_masked_ok,
+   _pulse_unroll, _fm_unroll). NEW pyscript/test_mon_wave_struct.py.
 
---- 2d. FM WIRING — PROTOTYPED, DEMONSTRATED (bundles 178->127, arp byte-exact 1 note), then REVERTED
-(blocked on note-timing; not byte-exact over the window) ---
-Reverted from `drivers_src/mon/romuzak_driver.asm` + `bin/build_mon_native_song.py`. The exact
-changes (to RE-APPLY next session) are documented in memory/myth-supremacy-mon-re.md:
-  * Driver fm_step: SEMITONE entry (byte2 bit7 set -> dur=byte2&$7f, byte0=signed S,
-    FM_ACC = freqtable[(vbasenote+S)&$7f] - vfreq; the accumulate branch unchanged for Hz-delta).
-    LOOP entry (byte2=$7f -> FMP = VIFM + byte0*3, where byte0 = loop-back entry index; matches
-    the ROM's $ff+nibble-offset). Runaway guard via ws_grd (set at fm_run, dec in fm_loop, freeze
-    at 0). ENCODING: byte2 $00=freeze, $01-$7e=Hz-delta (durs must be capped <127 in the emitter!),
-    $7f=loop, $80-$ff=semitone. `cmp #$7f` used only when A is $01-$7f (SF2II CMP-carry-safe).
-  * Build: `arp_fm_program(prog, fpt)` = [base-hold (0,0,$81)] + per-step semitone entries
-    (fps=(dur>>4)+1 frames each) + loop-to-entry-1 (1,0,$7f). `_fm_for_note(...)` (flag
-    MON_ARP_STRUCT) uses arp_fm_program when the note's wprog gives a non-trivial arp (steps!=[0]);
-    else fm_program_for. Also capped fm_program_for Hz runs at 126 (so byte2 stays <$80).
-  * RESULT: count_only bundles 178 -> 127 (real collapse). Flag-OFF = zero regression (Hawkeye
-    sub3 100/100/100). Frame-diff vs original (voice 1, first note): frames 2-79 BYTE-EXACT — the
-    semitone entry, loop entry, and 1-frame base-hold lead-in ALL work.
+6. 6fc06f6 (free-running pulse + scaled vibrato): driver VIFLAGS $08 + PFREE latch
+   (pr_note keeps PPTR/VPC after the first flagged note) + per-voice stream emission;
+   EMITTER BUG FIXED: gen_includes_song's instrument-flags if/elif DROPPED all bits except
+   its own — now ORs instr_flags & $48. SCALED VIBRATO entries: hi=$40/$41 Hz entries ->
+   offset = +-(VSTEP*byte0)>>8 via 24-bit shift-add mul (out-of-line past fm_done);
+   VSTEP = freqtable[n+1]-freqtable[n] set at pr_note; _vibrato_program + exact guards.
 
-=== ISSUE 3: GUI/ear-confirm — cannot be done by me (needs user's ears). Not attempted. ===
+7. 3cf1cf9 (THE EVENT TRACER + complete pattern decode): NEW bin/mon_event_trace.py —
+   py65 logs sequencer state at $1203 (orderlist select), $12C1 (event finalize), $1343
+   (epilogue): frame/voice/Y/$E3/$E6/$E9/$F0/$F3/$F6/$1026/$1064/$102F/$1032/$1007/$100D/
+   $1016/$10DB. It answered EVERY decode question: pattern reader enters at $1212
+   (top-level $FA = 2-byte cmd -> $10DB; $FD = 4-byte SLIDE); $FD after instr/dur prefixes
+   = the same slide (speed->$102F, note->$F0, target->$1032, gated trigger); remaining
+   top-level $E0+ = REST (b&$1F ticks, $F0=$FF, updates sticky dur); retrigger peeks
+   INCLUDE $FF/$FE (`A4 FF` = a 36-tick gated hold; only TOP-LEVEL $FF ends a pattern);
+   durations are ADDITIVE into $F3 until finalize (`A0 A0` = 64 ticks). MONEvent gained
+   rest/slide fields; build emits rests as note-$00 rows. Supremacy sub2 = 962/962 onsets
+   EXACT over 120s. The old sub0 test constant had a phantom pitch (freq-lookup fires on
+   non-trigger lookups) — recaptured from the event tracer.
 
-=== GIT / TESTS ===
-Two commits this session on master (both pushed? NOT verified — check `git status` for ahead count):
-  a10bdd0 MoN filter: composite (instr, shape) canonical + routed-voice drives  (2 files)
-  400d2e0 Supremacy: parse the arp/wave-program table (structural FM-cap foundation)  (2 files)
-All pyscript tests green (1459). Memory updated: myth-supremacy-mon-re.md (extensive; the arp +
-waveform engine RE, the FM-wiring prototype, and the note-timing blocker).
+8. 312e2b9: free-running-pulse hypothesis REVERSED — with correct note boundaries the
+   pulse RESETS per note (the "phase drift" had sampled at wrong onsets); detection now
+   correctly never fires (PFREE feature dormant); stream bundles merge-protected anyway.
+
+9. 2e973ee (driver SLIDE entry + first sub1 native build): rate = 7 << (speed-1) Hz/frame
+   (trace-calibrated: sp5=112, sp6=224), ramps from frame 1, driver clamps at
+   FM_TGT ($1870+ state) on sign-flip/arrival — pitch-independent (the clamp frame varies
+   per pitch). SEMITONE entries dispatch on byte1 (0=instant arp, 1-31=slide speed).
+   _slide_fm_program (+ spliced tail vibrato), _fm_unroll_full (universal all-entry-type
+   guard model), _slide candidates exact-guarded. ARP GUARD added at the SEMITONE level
+   (freq_to_semi): unguarded arps broke sub1 osc1 to 32% (wprog $14 = a WAVE shape, not a
+   pitch arp); Hz-exact guarding rejected all DETUNED canon notes (bimodal bad=0/bad=all).
+   Driver code relocated: out-of-line FM handlers at `* = $1880` (main bank overflowed the
+   pinned state region $16CC-$1702); 64tass is CASE-INSENSITIVE (fm_slide label collided
+   with the FM_SLIDE symbol).
+
+10. 1e3303b: per-program mul rounding (scaled marker bit1 = TRUNCATE, $40-$43; the ROM's
+    depth rule is neither pure trunc nor round — guards arbitrate per note); loop-aware
+    mon_validate scaffolding (vpass).
+
+11. 924b498 (THE BIG ONE): **orderlist byte $00 = GLOBAL SONG LOOP** (py65 write-watch on
+    $E9-$EB: all three voices reset together at $11CF-$11D6 STY $E9/$EA/$EB when an
+    orderlist step STARTS with $00, checked at $11CD). Pattern 0 never existed. Parser:
+    _ol_loop_ticks marks -> song_loop_ticks = min across voices -> _clip_to_song_loop
+    re-decode. REAL LENGTHS: sub1 = 38s (was 374s overrun), sub2 = 150s (was 490s).
+
+12. b8df39a: the sub2 single-part "defect" was a MEASUREMENT ARTIFACT — mon_part_fidelity's
+    OFF0 shifts only the ORIGINAL; whole-song parts need OFF0=0 + full SECS. Measured
+    correctly over 150s: osc1 86.5/86.5/93.6, osc2 97.6/95.5/97.9, osc3 92.8/97.8/93.4,
+    filter 100. The fr79 "phantom onset" = the wave program's trailing bleed row regating
+    1 frame (byte-correct to keep).
+
+13. d604e5b: **$FE = GLOBAL song HALT** ($11DD -> $117B zeroes freqs + gates play off) —
+    song ends at the FIRST voice's $FE; sub0's real length = 234s (V2's $FE; V0's own is at
+    698s = the old overrun). Also measured-and-rejected: trimming the wave bleed (osc3 wf
+    97.8 -> 91.6 — reproducing the bleed is byte-correct).
+
+SUPREMACY END STATE (2026-07-05): sub0 = 10 adaptive parts (234s, part1 92-95 freq /
+88-90 wf / 95-99 pulse / filter 100), sub1 = 1 part (38s, 95.1-97.7 freq), sub2 = 1 part
+(150s, 86.5-97.6 freq, filter 100, 13 instruments / 18 bundles). From 34 / never-built /
+70 parts at session start. Onset decode EXACT: sub2 962/962 @120s (1230/1230 @150s), sub1
+136/136 @60s (loop-aware), sub0 V0 137/137 (V1/V2 = constant 1-frame engine jitter from
+idx 74). Hawkeye sub3+sub2 stayed 100/100/100 byte-exact throughout (verified repeatedly);
+Cybernoid sub0 regression clean (99.9/99/96 + 100/100). Full suite: 1490 passed.
+
+Memory files updated throughout: memory/myth-supremacy-mon-re.md (the primary MoN log,
+extensively appended per commit), memory/docs-consolidation-2026-07.md (new), MEMORY.md
+(compacted to grouped one-liners).
 </work_completed>
 
 <work_remaining>
-Everything below is the LOSSLESS PART-COUNT structural rebuild (issue 2). Ordered:
+All small/optional; the structural rebuild is essentially complete for Supremacy.
 
-1. **Note-timing reconciliation — ✅ DONE 2026-07-05 (TWO root causes, both fixed + committed).**
-   (a) **SWING TEMPO**: the Supremacy speed byte's $80 bit (sub2 = $82) makes the tempo-gate
-   reload ($1128-$114D) toggle $E2 and alternate periods speed/speed+1 (2,3 = avg 2.5 f/tick,
-   NOT the constant speed+1=3). Fixed: `MON.tick_to_frame/frame_to_tick/tempo_toggle/onset_delay`
-   (mon_parser), driver swing reload (SWTOG in drivers_src/mon do_row + TEMPO2 in layout),
-   build_mon_native_song fr accumulation now tick-exact. (b) **PREFIX-CHAIN RETRIGGER**: a $Cx
-   instrument (or dur/wave) byte followed by another prefix >= $C0 finalizes the event WITHOUT
-   a note byte = retriggers the previous note with sticky dur ($1246-$12C1 disasm) — the missing
-   3rd onset per phrase on sub2 V2. Also fixed `_fm_curve` cluster blindness (24-frame prefix ->
-   full freeze-extended program; a forced merge had frozen a voice at freq 0 for 20 frames).
-   RESULTS: mon_validate Supremacy sub2 = 220/220 EXACT (all 3 voices); part1 fidelity (adaptive)
-   = osc1 96/100/100 (residual = the unreproducible 2-frame onset spikes), osc2 100/100/100,
-   osc3 100/100/100, filter 100; **auto part count 70 -> 43**. NO regressions: Hawkeye sub3 + sub2
-   100/100/100 (delay 0), Cybernoid sub0 99.9/99/96 + 100/100. Remaining sub-issues (separate):
-   sub1 V1/V2 arp-voice decode, sub0 staggered canon entries (parser misses per-voice lead rests).
+1. **GUI/ear-confirm the new single-file builds** (NEEDS THE USER): load
+   out/mon/Supremacy_sub2_part01.sf2 (whole 150s song), Supremacy_sub1_part01.sf2 (38s),
+   and a couple of sub0 parts in real SF2II via
+   `py -3 pyscript/sf2_open_in_editor.py out/mon/<file>.sf2 40` (argv Heisenbug retries;
+   native play=$1003). Rebuild first if out/ is stale:
+   `MON_ARP_STRUCT=1 py -3 bin/build_mon_native_song.py SID/Tel_Jeroen/Supremacy.sid {0,1,2} auto`.
 
-2. **FM wiring — ✅ DONE 2026-07-05 (structural arps live behind MON_ARP_STRUCT=1).**
-   Driver fm_step gained SEMITONE entries (byte2 bit7: dur=byte2&$7f, FM_ACC =
-   freqtable[(vbasenote+S)&$7f]-vfreq, pitch-independent) + LOOP entries (byte2=$7f,
-   FMP=VIFM+byte0*3, ws_grd runaway guard); Hz-run byte2 capped at 126 in the emitter.
-   `arp_fm_program` is PHASE-ALIGNED to the ROM (step0 gets fps-1 frames — pr_note's
-   base hold covers frame 0 — then the rotation step1..stepN,step0 at full fps, loop
-   to the rotation start; validated by a fm_step-model round-trip test). Structural
-   programs are cluster-exempt (_is_struct_fm: never similarity-merged). RESULTS
-   (Supremacy sub2): bundles 79->52 on a 30s window; **auto parts 43 -> 36**; part1
-   fidelity osc1 92.2/100/100, osc2 98/100/100, osc3 100/100/100, filter 100 — the
-   trace path (96/100/100) minus the unreproducible per-note tail/onset spikes and
-   the steps[0]!=0 trigger frame. Flag stays OPT-IN until steps 3-4 land (trace path
-   is still the fidelity default). Flag-off + Hawkeye/Cybernoid: unchanged (verified).
-   Tests: pyscript/test_mon_arp_struct.py (4). NEXT LEVER: instruments (32) + WAVE
-   rows (256) now bind alone -> step 3.
+2. **3007-vs-3008 rows clip off-by-one** (cosmetic, ~2.5 frames at song end): sub2's
+   per-voice emitted rows total 3007 while song_loop_ticks=3008 — check
+   _clip_to_song_loop / the window clip in build_native_song's pass loop.
 
-2-old. (historical) **Re-apply the FM wiring** (driver semitone+loop entries + arp_fm_program + _fm_for_note; all
-   documented in memory to re-apply verbatim). After step 1, the arp path should hit the trace
-   path's ~98% (byte-exact minus the ~2-frame onset freq=0 spike/note, which the driver's
-   frame-0=base model can't reproduce — same residual as the trace path). Validate:
-   `MON_ARP_STRUCT=1 py -3 bin/build_mon_native_song.py SID/Tel_Jeroen/Supremacy.sid 2 8` then
-   `py -3 bin/mon_part_fidelity.py out/mon/Supremacy_sub2_part01.sf2 2 8 0` (freq should be ~98%,
-   bundles collapsed). No regression on Hawkeye/Cybernoid/Myth (flag off = untouched).
+3. **sub0 V1/V2 constant 1-frame onset jitter from onset idx 74** (cosmetic — engine
+   output jitter after the long dur-64 hold; native builds self-align via the trace).
 
-3+4 (partial). **Wave gate-split + canonical wave/pulse/FM — ✅ LANDED 2026-07-05 (flag-gated).**
-   All three per-note program captures suffer the same disease: the tail holds DURATION-
-   RELATIVE boundary content (wave: terminal gate-off + next-note attack bleed; pulse: the
-   next note's base reset 1 frame early; FM: the end-of-note freq drop), so same-shape notes
-   of different durations get distinct programs. Landed (all under MON_ARP_STRUCT=1, each with
-   an exact unrolled-output guard + <=1-3 accepted boundary frames/note):
-   (a) WAVE GATE-SPLIT: terminal gate-off -> sequence note-$00 rows (VGMASK=$fe masks the
-       looping steady = the captured $40 tail); program = attack+steady only. NOTE the engine
-       writes $D404 ~1 frame BEFORE the freq (per-register delay skew) -> gate-off sits 1 off
-       the tick grid (tolerated) and captures have 1-2 bleed frames.
-   (b) CANONICAL WAVE/PULSE/FM per (instr, wprog): longest note's program substituted when
-       it reproduces the note's capture (masked for wave; minus 1/3 boundary frames for
-       pulse/FM). Canonical-under-mask even fixes short "echo" notes better than their own
-       capture ($41&$fe = the real $40 tail).
-   RESULTS Supremacy sub2: 30s window bundles 79->32, instr 18->11, wave rows 73->24; part1
-   fidelity freq 92/98/100, wf 92/97/97, pulse 98/100/100, filter 100 (boundary-frame cost
-   ~3-8% wf — the documented flag trade); **auto parts 36 -> 34**. Flag-off + Hawkeye byte-
-   identical (verified). Tests: test_mon_wave_struct.py (4). REMAINING part-count levers:
-   (i) FREE-RUNNING PULSE PHASE (v2 instr 14/30/31: sweeps continue ACROSS notes -> 10-15
-       distinct set-row phases/key; needs a driver "no pulse reset on note-on" instrument
-       flag + per-voice stream emission) — the binding constraint at 45s+ windows;
-   (ii) full-song canonicals are weaker than per-window ones (the standalone 30s build got
-       50 bundles vs the 32 probe with window-local canonicals) — consider window-local
-       canonical selection in the adaptive packer.
+4. **Apply today's decode rules to the OTHER MoN tunes**: Hawkeye sub0 (13x30s windowed —
+   re-run with the current build; the caps may now fit far fewer parts), Myth sub0 filter
+   part1 (77%), Cybernoid part counts. The $00/$FE global markers are supremacy-branch
+   only — check whether the Hawkeye-family orderlists ($FE=song-end already handled there)
+   need the same global-cut treatment for multi-voice overruns.
 
-4b. **FREE-RUNNING PULSE + SCALED VIBRATO — ✅ LANDED 2026-07-05 (flag-gated).**
-   (a) PULSE FREE-RUN: driver VIFLAGS $08 + PFREE latch (pr_note keeps PPTR/VPC after the
-       first flagged note) + per-voice STREAM program (whole-window pulse RLE; detection =
-       a key with >=3 distinct set-row starts, voice-instrument-disjoint guard). Part2 v2
-       pulse 47% -> **100%**. GOTCHA FIXED: RN.gen_includes_song's flags emission DROPPED
-       all bits except its own ($20/$10/$40 if/elif) — now ORs instr_flags & $48; the $08
-       silently missing = the stream restarting per note.
-   (b) SCALED VIBRATO FM entries: MoN vibrato depth = (semitone_step * scale) >> 8 (pitch-
-       PROPORTIONAL; e.g. scale 30 = the v2 lead). Driver: hi=$40/$41 Hz entries -> offset =
-       +-(VSTEP*byte0)>>8 via a 24-bit shift-add mul (out-of-line past fm_done — inline it
-       blew branch ranges, 3 asm errors); VSTEP = freqtable[n+1]-freqtable[n] set at pr_note.
-       Build: _vibrato_program (delay + centered half-leg + looping legs, EXACT-guarded via
-       _fm_unroll(step=)). One program serves every pitch AND duration.
-   RESULTS: 30s window bundles 32->24; 45s 82->70; part2 (30-60s) flag-on = osc1 87/87/94,
-   osc2 96/96/98, osc3 63.5/98/100 vs flag-off 82/85/53 (freq BETTER, pulse 100%).
-   Hawkeye/ROMUZAK regressions clean (100%). Also NOTE: fixed-30s flag-off builds still
-   WAVE-overflow at part 6 (canonicalization is flag-gated); parts >=2 were NEVER measured
-   before today — add part2+ to the standard validation.
+5. **Cross-tune regression command set** (run after any MoN change):
+   - `py -3 bin/mon_validate.py SID/Tel_Jeroen/Supremacy.sid {0,1,2} {60,60,120}`
+   - `py -3 bin/build_mon_native_song.py SID/Tel_Jeroen/Hawkeye.sid 3 auto` +
+     `py -3 bin/mon_part_fidelity.py out/mon/Hawkeye_sub3_part01.sf2 3 2 0` (expect 100/100/100)
+   - full: `py -3 -m pytest pyscript/ -q` (1490)
 
-5. **PORTAMENTO / 30-60s SECTION — ✅ RESOLVED 2026-07-05 via the py65 EVENT TRACER
-   (`bin/mon_event_trace.py`, the tool item (d) below recommended — it answered every
-   question in one session).** Tracer-verified pattern semantics now in the parser:
-   top-level $FA = 2-byte cmd ($10DB) and $FD = 4-byte SLIDE (the reader enters at $1212);
-   $FD after instr/dur prefixes = the same slide (speed->$102F, note->$F0, target->$1032,
-   gated trigger); remaining top-level $E0+ = REST (b&$1F ticks of silence, updates the
-   sticky dur); retrigger peeks include $FF/$FE (`A4 FF` = a 36-tick gated hold; top-level
-   $FF = pattern end); durations are ADDITIVE into $F3 until finalize (`A0 A0` = 64 ticks).
-   MONEvent gained rest/slide fields; the native build emits rests as gate-off rows.
-   VALIDATION: sub2 962/962 EXACT @120s; sub0 V0 137/137 (V1/V2 exact minus a constant
-   1-frame engine jitter from idx 74); sub1 136/136 within one orderlist pass (it LOOPS at
-   ~38s; beyond = one-pass-model phase, a VALIDATOR limitation). Part2 fidelity: osc3 freq
-   63.5 -> 99.3, wf 98; **auto parts 31 -> 26** (70 at session start); fixed-30s now builds
-   all 15 parts (used to crash at 6). Hawkeye 100/100/100 unchanged; 1488 tests.
-   The sub0 collapsed-notes test constant was recaptured from the event tracer (the old
-   freq-lookup list carried one phantom pitch from a non-trigger lookup).
-   REMAINING (smaller): sub0's 1-frame jitter (V1/V2 onsets land +1 frame from idx 74 —
-   engine output jitter, cosmetic).
-
-8-RESOLVED + 9-OPEN (2026-07-05 late):
-8. **SUB1 WRAP SOLVED — orderlist byte $00 = GLOBAL SONG LOOP** (found via a py65 write-
-   watch on $E9-$EB: all three voices reset together at $11CF-$11D6, `STY $E9/$EA/$EB`,
-   when an orderlist step STARTS with $00 — checked at $11CD before the $FE/chain).
-   Parser: _ol_loop_ticks marks + song_loop_ticks = min across voices + _clip_to_song_loop
-   (second decode pass truncates every voice). RESULTS: **the real song lengths emerge —
-   sub1 = 38s (was 374s of overrun!), sub2 = 150s (was 490s!)**; mon_validate loop-aware:
-   sub1 136/136 EXACT @60s, sub2 1230/1230 EXACT @150s (full real span, all voices).
-   **Sub1 native = ONE part (verified 95-98% freq across the whole song). Sub2 auto = ONE
-   part (13 instr / 18 bundles!) BUT see item 9 — use fixed-30s windows (6 parts) for
-   sub2 until it's fixed.** sub0 has no $00 in range (long orderlists; V0 span 698s?? —
-   verify sub0's real length separately). Old "70 parts" arithmetic: much of it was
-   OVERRUN CONTENT past the real loop.
-9. **SUB2 SINGLE-PART "DEFECT" — ✅ RESOLVED: IT WAS A MEASUREMENT ARTIFACT.**
-   `mon_part_fidelity PART SUB SECS OFF0` shifts only the ORIGINAL by OFF0 (windowed parts
-   start at their window) — measuring a WHOLE-SONG part "at 40s" compared song@40s against
-   part@0s. **TRAP: for single-part builds always use OFF0=0 and a full-length SECS.**
-   Measured correctly over the full 150s: osc1 86.5/86.5/93.6, osc2 97.6/95.5/97.9, osc3
-   92.8/97.8/93.4, filter 100 — the residuals are the documented flag-path boundary classes.
-   The py65 driver probe also identified the "phantom onset at fr79": the wave program's
-   trailing BLEED row regates for 1 frame at the note tail (the known <=1-frame class; a
-   possible polish = trim trailing gate-ON rows from captured wave programs when the note
-   ends gated-off). **BOTTOM LINE: Supremacy sub2 = ONE editable SF2 for the whole real
-   150s song (13 instr / 18 bundles), sub1 = ONE part (95-98%). From 70 parts at the start
-   of 2026-07-05.** Minor left: the 3007-vs-3008 rows clip off-by-one; sub0's real length.
-
-8-old. **SUB1 ORDERLIST WRAP — OPEN (found 2026-07-05 while adding loop-aware validation).**
-   Sub1's orderlists have NO $FF terminator (V0 @$1D67 = `8E 17 8C 17 82 18 80 18 8E 19
-   8C 19 00 FA 08 D2 88 0C 07 03...`; V1 = V0+4, V2 = V0+8 — overlapping/shared tails).
-   The REAL player wraps V1 at ol position ~4 (~fr1920, tracer olsel e9 4->0) via some
-   NON-$FF condition — likely the $FA/$10DB loop-counter mechanism ($10DB was set 3->8
-   early; song-end DECs it at $111F). The parser walks PAST the real wrap into the
-   shared-tail bytes -> its "one pass" for sub1 = ~3040+ frames of partly-garbage decode
-   -> **sub1 native parts >= 2 are SUSPECT** (part01/0-30s measured good; the 23-part
-   count includes overrun content). NEXT: extend bin/mon_event_trace.py with a snapshot
-   at the orderlist-RESET site (find the STA that zeroes $E9/$90C5-style state on wrap;
-   log $10DB/$E9/Y) -> the wrap rule becomes a mechanical lookup like everything else.
-   mon_validate already has the loop-aware clip scaffolding (vpass; currently inert for
-   sub1 because the parser's pass length is the overrun one). Also landed with this
-   commit: per-program mul rounding (scaled marker bit1 = TRUNCATE; driver + models +
-   _vibrato_program tries round-then-trunc) — NB sub2 stays 31 parts: the earlier 26
-   included UNGUARDED (lossy) arp substitutions; 31 is the verified count.
-
-7. **DRIVER SLIDE ENTRY — ✅ LANDED 2026-07-05 (+ FIRST sub1 NATIVE BUILD).** Trace-
-   calibrated: rate = 7 << (speed-1) Hz/frame (sp5=112, sp6=224), ramps from the frame
-   after the trigger, clamps at the target. Driver: SEMITONE-family entries now dispatch
-   on byte1 (0 = instant arp set; 1-31 = SLIDE speed): FM_TGT = freqtable[note+ivl]-vfreq,
-   fm_add ramps FM_ACC and clamps on sign-flip/arrival (FM_TGT/FM_SLIDE state $1870-$1878;
-   pr_note cancels). PITCH-INDEPENDENT: one entry serves every pitch because the DRIVER
-   computes the target + clamp (the clamp frame varies per pitch). Build: _slide_fm_program
-   (slide entry + spliced tail vibrato via _vibrato_program; _fm_unroll_full models ALL
-   entry types), exact-guarded; ~8/16 sub1 slides convert into 3 programs (speed-26
-   down-jumps + non-round-rule depths stay trace-Hz). ALSO: (a) the scaled mul now ROUNDS
-   ((step*scale+128)>>8 — matches depth 47@step362; NB the ROM's true depth rule is
-   NEITHER pure trunc nor round — guards arbitrate per note); (b) arp guard added at the
-   SEMITONE level (freq_to_semi): unguarded arps broke sub1 osc1 to 32% (wprog $14 is a
-   WAVE shape, not a pitch arp) while Hz-exact guarding rejected all DETUNED canon notes
-   (bimodal: bad=0 or bad=all — the constant few-Hz detune is semitone-invisible);
-   (c) driver code relocated: out-of-line FM handlers (scaled mul + slide setup) moved to
-   the free $1880-$19FF window (main bank overflowed SF2II's pinned state region $16CC+;
-   also 64tass is CASE-INSENSITIVE: fm_slide label collided with the FM_SLIDE symbol).
-   RESULTS: **sub1 FIRST native build: flag-off 100/99.9/99.9 freq (osc1/2/3!), flag-on
-   97.7/95.9/95.1 with bundles 61->41, auto = 23 parts**; sub2 part1 92/98/98.5 bundles
-   50->40 but auto 26->31 (the rounding trade rejects some v2 vibrato acceptances — if
-   26 matters, make the mul rounding selectable per program); Hawkeye 100/100/100.
-   1490 tests (+2 slide unroll/clamp + pitch-independence).
-
-6. **FREE-RUNNING-PULSE HYPOTHESIS REVERSED (2026-07-05, post-decode).** With the CORRECT
-   note boundaries, Supremacy's pulse RESETS per note (every (instr,wprog) key = 1 distinct
-   set-row start) — the earlier "phase drift" evidence sampled the pulse at the WRONG onsets.
-   The freerun detection now correctly never fires; the driver PFREE/$08 feature + stream
-   machinery stay DORMANT (harmless, may serve other tunes). Part2's pulse dip was NOT the
-   stream: it was FIXED-WINDOW forced bundle merges at the 63 cap (by-design cluster loss —
-   stream bundles are now also merge-protected via stream_set in bdist). THE ADAPTIVE build
-   is the lossless path: its part 2 (38-72s) = osc3 99.7/98.5/100, osc2 96/95/99, osc1
-   86/86/93 (osc1 = the wave-split boundary-skew class on v0's short retriggered notes —
-   the next fidelity nibble if wanted). LESSON: re-verify "free-running" claims whenever
-   note boundaries change; fidelity conclusions inherit decode errors.
-
-5-old. (historical diagnosis) **PORTAMENTO / 30-60s SECTION — DIAGNOSED 2026-07-05, implementation reverted (a first
-   attempt made sub0 worse; accuracy-first). This is a DECODE problem before a driver one.**
-   The osc3-freq-63% section (sub2 V2 from onset idx 88, fr 1512+; 60s-window bundle
-   residual) findings, all from the $11B9-$1246 disasm + pattern-$0C hand-decode + trace:
-   (a) V2's real note at fr1512 lasts 36 ticks; the parser emits 24t + two $Cx-retriggers
-       at 1572/1582 that siddump does NOT show as onsets -> the prefix-chain RETRIGGER
-       (step-1 fix, correct in 0-30s) is INSTRUMENT-CONDITIONAL — likely a flag bit in
-       instrument record byte [0] (-> $1020; bit6 = arp enable, other bits TBD).
-   (b) ORDERLIST is a FALL-THROUGH prefix chain ($11DF: >=$80 transpose&$7F -> read next;
-       >=$70 -> $100D instr-base -> read; >=$40 repeat&$1F -> read; then STA pattern) —
-       BUT implementing it verbatim broke sub0's validated note order while leaving V2
-       unchanged. The reader's re-entry semantics must be settled with a py65 GROUND-TRUTH
-       POSITION TRACE before trusting either model (the current independent-dispatch model
-       is what all existing validation rests on).
-   (c) PATTERN commands: $FA/$FD are NOT top-level bytes — only recognized as the byte
-       AFTER a duration ($1295: $FA -> $1212 = 2-byte -> $10DB; $FD -> $121F) or after an
-       instrument ($127D: $FD -> $121F). **$FD = the 4-byte SLIDE: speed -> $102F, note ->
-       $F0 (+transpose +$12BD), target -> $1032, then FINALIZES at $12C1 (it IS a note
-       trigger).** Top-level $E0-$FF = the REST handler $124A ($F6 = b&$1F, $F0 = $FF,
-       ctrl/AD/SR zeroed, exits via $1343 — whether it consumes a duration slot is TBD).
-   (d) THE TOOL TO BUILD FIRST: a py65 EVENT-BOUNDARY tracer (intercept the finalize at
-       $12C1/$1343 logging Y, $E6, $E9, $F3/$F6, $1016 per event) — the same method as the
-       freq-lookup tracer that cracked the note formula. With per-event ground truth the
-       retrigger condition, rest timing, additive-duration and orderlist-chain questions
-       all become mechanical. THEN the driver SLIDE entry (target+speed, like the scaled
-       vibrato) is straightforward.
-   Reference data: sub2 V2 orderlist `... 26 00 C0 88 79 0C C0 C0 18 0C ...`; pattern $0C
-   @ $1AD1 = `C9 8C 61 2E 88 63 29 A0 27 90 67 26 88 63 26 CB FD 03 43 08 FF ...` (note the
-   `CB FD 03 43 08` instrument+slide chain and the trailing $FF).
-
-3-old. (historical) **Wave [attack][steady-loop] structural rebuild** (the INSTRUMENT cap, 87->~5). The waveform is
-   attack + steady + release (RE'd); emit it as [attack transient][steady + $7f loop] so the note
-   duration is held by the sequence gate-on rows (not the wave program). Byte-exact (attack is
-   instrument-fixed; steady constant). Handle the ~40-frame internal re-trigger (confirm whether
-   it's a sequence note-on -> dur naturally short, or an internal retrigger needing a wave-program
-   retrigger row).
-
-4. **Pulse structural** (pulse-progs were 95 -> RE similarly if it also explodes; may be arp/gate
-   driven and collapse with the above).
-
-5. **Only when ALL THREE caps (bundles/instruments/wave-rows) drop under does the part count fall.**
-   A single prong yields NO part reduction (measured: caps bind simultaneously). Then measure the
-   Supremacy sub2 auto part count (was 70) and Myth sub0 (was 7).
-
-6. **SF2II load-test + byte-exact validation** across Hawkeye/Cybernoid/Myth/Supremacy (all
-   subtunes) before committing. SF2II load: `py -3 pyscript/sf2_open_in_editor.py out/mon/PART.sf2
-   40` (argv Heisenbug -> up to 40 retries; native play=$1003).
-
-OPTIONAL/LOW: Myth sub0 filter part1 77% (the rapid multi-section opening; other parts 90-98%;
-ear-confirmed fine). GUI-confirm the unlistened parts (needs the user).
+6. **Roadmap (docs/ROADMAP.md) continuation beyond MoN**: A1 native-driver unification
+   (one asm + 64tass -D flags; drivers_src/mon has diverged FURTHER this session — swing,
+   SWTOG/PFREE/VSTEP/FM_TGT state, scaled/slide entries, $1880 out-of-line bank — fold
+   these in as MoN feature flags when unifying), A2 shared native-build lib, A4 registry
+   wiring, D1 universal trace-first fallback, FC Stage B, Hubbard.
 </work_remaining>
 
 <attempted_approaches>
-FILTER (issue 1) — dead ends before the composite-key fix:
-- `global_filter_program` (one global canonical for all driven notes): CATASTROPHIC (filter 2.7%)
-  — Myth sub0 mixes UP-ramp and DOWN-ramp envelopes; one global shape is fundamentally wrong.
-- `_filter_reset_frames(ftr)` (detect resets from the cutoff trace alone, threshold FILT_FAST=$40):
-  over-detected 909 "resets" on Hawkeye sub2 (its normal ±8 hi/frame sweep == FILT_FAST) -> shattered
-  spans -> Hawkeye 96.5%->31%. LESSON: do NOT derive resets from a trace-only threshold; use the
-  note-on-aligned drives from detect_filter_drives. Both functions removed.
-- Snapping the canonical capture to the reset frame + a `lead_hold` param: introduced/needed a phase
-  fix but was superseded by capturing from the onset (phase-correct by construction).
-The WINNING insight: shape is per-(instrument) for Hawkeye but per-(section) for Myth sub0 ->
-the COMPOSITE (instrument, shape) key unifies both.
-
-PART-COUNT (issue 2) — proven-dead trace-based approaches (do NOT retry):
-- Semitone-arp from the TRACE (detect arps by matching per-frame freq to freqtable[note+S]):
-  bundles 178->177 only. The variety is FREE-RUNNING PHASE not pitch; also the trace arps aren't
-  100% clean (freq=0 onset spikes). Reverted.
-- Lossy wave-program suffix-merge (ignore the leading-run count): cut instr 29->22 but dropped
-  waveform fidelity 99.8%->90-95%. REJECTED (conflicts with accuracy-over-speed).
-- Free-running per-voice streams FROM THE TRACE: 817 wave RLE rows/30s (cap 256), 741 FM rows/voice,
-  62-97% semitone. Does NOT compress + not byte-exact. The trace is unrolled output.
-CONCLUSION reached via these: only the STRUCTURAL (player-table) RE works. That is now in progress
-(arp parser committed; FM wiring prototyped + reverted on the note-timing blocker).
-
-FM WIRING (2d) — the note-timing blocker (NOT a dead end, just unfinished):
-- First attempt used a per-note verify (compare arp expansion to frames[fr]) to fall back safely —
-  but that comparison is against the raw trace at the PARSER's fr, which has the alignment offset,
-  so it rejected correct arp programs. Dropped the per-note verify; validate the WHOLE build via
-  mon_part_fidelity instead.
-- fps=(dur>>4)+1 and the base-hold-lead + loop-to-entry-1 are CORRECT (frames 2-79 byte-exact).
-  The residual is purely the parser note-duration vs original note-length mismatch (step 1 above).
+DEAD ENDS / MEASURED-AND-REJECTED (do not retry):
+- ORDERLIST FALL-THROUGH CHAIN implemented verbatim from the $11DF disasm: BROKE sub0's
+  validated note order while fixing nothing (reverted). The committed independent-dispatch
+  model is what all validation rests on. The chain is real in the ROM but its re-entry
+  semantics differ from a naive per-step chain; only revisit with tracer olsel evidence.
+- TOP-LEVEL $FA/$FD as rest/2-byte-skip variants (multiple wrong combinations tried before
+  the tracer): the reader enters at $1212 — $FA/$FD are top-level commands AND prefix
+  suffixes; everything else $E0+ is a rest. Only the tracer settled it.
+- Hz-EXACT arp guard: rejected every detuned canon note (bimodal bad=0 or bad=all — a
+  constant few-Hz detune differs at every frame but is semitone-invisible). Use the
+  SEMITONE-level guard (freq_to_semi), threshold max(4, dur_f//8) bad frames.
+- UNGUARDED arps: sub1 osc1 32% freq (wprog $14 is a wave shape, not a pitch arp).
+- WAVE-BLEED TRIM (dropping the trailing next-note attack rows from unsplit wave
+  programs): osc3 wf 97.8 -> 91.6. Reproducing the bleed is byte-correct; the phantom
+  onsets it causes are an onset-metric artifact only.
+- FREE-RUNNING PULSE hypothesis: an artifact of wrong note boundaries; with the correct
+  decode every (instr,wprog) key has ONE set-row start. The driver PFREE/$08 feature and
+  stream machinery remain but are dormant.
+- Chasing the sub2 "40s+ collapse": it was mon_part_fidelity's OFF0 semantics (shifts only
+  the original). ALWAYS measure whole-song parts with OFF0=0.
+- A single mul rounding rule: ROM depths need round for some (47@step362), trunc for
+  others — hence the per-program bit1 flag; sub2's auto count stayed 31 pre-$00-discovery
+  because the old 26 had included lossy unguarded arps (moot now — sub2 = 1 part).
+- FM prototype with byte2 run counts up to 255: the new $7f/$80+ entry space requires the
+  emitter to split Hz RLE runs at 126 (done) — old programs with 127+ runs would misparse.
 </attempted_approaches>
 
 <critical_context>
-- KEY FILES:
-  * `bin/build_mon_native_song.py` — the shared trace-driven native build. `build_native_song`
-    (the pass-1 bundle/instrument extraction + count_only + clustering + pass-2 emission). The
-    filter fix lives here (routed_voice, detect_filter_drives, _shape_sig, canon_filt composite
-    key). Caps: 63 bundles ($c0-$ff), 32 instruments ($a0-$bf), 256 WAVE rows, 256 FILTER rows,
-    120 sequences (128 real, 120 margin), $D000 mem wall. `emit_one` sets B.TEMPO=m.speed+1.
-  * `bin/build_myth_native_song.py` — Myth's emulation-based build (py65 relocate+init+play/frame;
-    MythShim feeds build_native_song via traces=). fpt=1 for Myth sub0 (row-count bound).
-  * `sidm2/mon_parser.py` — the MoN parser. ol_mode variants: selfmod / stride / supremacy. NEW:
-    `arp_program(wprog)` + tbl_arp_idx/tbl_arp_base in `_locate_supremacy`. Memory accessor is
-    `_u8(addr)` (absolute SID addr -> byte). MONEvent has `.wprog` (the $60-$7F selector).
-  * `drivers_src/mon/romuzak_driver.asm` — the native driver (a copy of the ROMUZAK/Galway engine).
-    fm_step (accumulator: FM_ACC += offset/frame, freq = vfreq + FM_ACC), wave_step (col1 = RLE
-    FRAME COUNT here, NOT the base engine's semitone col — ws_play hardcodes vfreq=freqtable
-    [vbasenote]), pulse_step, filt_prog_step. pr_note (note trigger: sets vbasenote/vfreq, gate
-    retrigger, restarts pulse/wave/FM/filter). VIFM/FMP (per-voice FM start / read ptr). vbasenote
-    = $1841. freqtable = the song's own table (write_mon_freqtable).
-  * `pyscript/test_mon_filter.py` (NEW, 7 tests), `pyscript/test_supremacy_parser.py` (added
-    test_supremacy_arp_table).
-- BUILD-SCRATCH REGENERATED every build (git checkout before committing!): `drivers_src/mon/
-  {layout,freqtable}.inc`, `drivers_src/romuzak/layout.inc`. `bin/SIDFactoryII_dbg.exe` is a
-  PRE-EXISTING modified binary — NEVER commit it. `whats-next.md` is tracked (this doc).
-- COMMANDS:
-  * Supremacy: `py -3 bin/build_mon_native_song.py SID/Tel_Jeroen/Supremacy.sid {0,1,2} auto|30|8`
-  * Myth: `py -3 bin/build_myth_native_song.py {0,2} auto|30`
-  * Fidelity vs siddump (part 1 aligns to song frame 0): `py -3 bin/mon_part_fidelity.py PART SUB
-    SECS OFF0_SECS` — freq(semitone)/wf/pulse per voice + filter cutoff %.
-  * count_only resource probe (fast, no assemble): call build_native_song(..., count_only=True)
-    -> (bundles, instruments, wave-rows, filter-rows, sequences). See the inline scripts I ran.
-  * Disasm: `py -3 bin/_mon_disasm.py START END SID/Tel_Jeroen/Supremacy.sid` (misaligns on illegal
-    opcodes -> cross-check with an emulation write-PC probe).
-  * Tests: `py -3 -m pytest pyscript/ -q` (~112s, 1459) or the mon subset (test_mon_parser,
-    test_mon_to_sf2, test_supremacy_parser, test_mon_filter -> 18-ish, ~4s).
-- SF2II CMP-CARRY caveat (any native-driver ASM): SF2II's 6510 computes CMP carry from bit7 of
-  (A-op), only right for |A-op|<=$7f. Dispatch on values >$7f apart must use bit-tests (bmi/and),
-  NOT cmp. (My fm_step `cmp #$7f` is safe only because A is already narrowed to $01-$7f there.)
-- 6502 gotchas (from CLAUDE.md): `STY abs,x` invalid (use TYA/STA); long routines overflow
-  bpl/bne range (use near-branch + jmp). Bash tool = Git Bash (heredocs OK; `@'...'@` FAILS —
-  use `git commit -F -` with a heredoc).
-- MEMORY (persistent): `myth-supremacy-mon-re.md` is the primary reference — it now contains the
-  full filter fix, the size analysis, the proven-infeasible trace approaches, the arp + waveform
-  engine RE, the FM-wiring prototype (exact driver+build changes to re-apply), and the note-timing
-  blocker. Also: siddump-sbc-carry-bug.md, cybernoid-mon-orderlist-re.md, hawkeye-mon-*.md.
-- USER PREFERENCE (memory feedback-accuracy-over-speed): accuracy/byte-exactness over speed/cost.
-  Do NOT ship lossy output to reduce file count. This drove rejecting the lossy suffix-merge.
+- FLAG: the structural path = MON_ARP_STRUCT=1 (env). Flag-off = the plain trace path
+  (byte-identical to pre-session behavior; Hawkeye's 100/100/100 lives there). Every
+  structural substitution (arp/slide/vibrato/canonical wave+pulse) is exact- or
+  semitone-guarded per note with trace fallback.
+- SUPREMACY ENGINE FACTS (all py65-tracer-proven): swing tempo (speed byte bit7; periods
+  alternate speed,speed+1, SHORT first after tick 0); onset_delay = 2 frames (output phase
+  runs before the sequencer); $D404 writes lead freq writes by ~1 frame (per-register skew
+  -> gate-split tolerates 1, capture tails hold 1-2 bleed frames); durations ADD into $F3
+  until event finalize; sticky duration = $F6; REST = top-level $E0+ (dur = b&$1F, also
+  sets sticky); $FD = 4-byte slide (speed/$102F, note/$F0, target/$1032, %12C1 gated
+  trigger; slide rate = 7<<(speed-1) Hz/frame from frame 1, clamps at target; speed-26
+  down-jumps land ~frame 4 and are NOT modeled — guard keeps them trace-Hz); vibrato =
+  pitch-proportional (depth = (step*scale ±rounding)>>8, scale ~30-34, centered half first
+  leg); $00 orderlist step = GLOBAL loop; $FE = GLOBAL halt; orderlists overlap/share
+  tails across voices (sub1 V1 = V0+4).
+- DRIVER (drivers_src/mon/romuzak_driver.asm) state added this session: SWTOG $185f,
+  PFREE $1860(3), VSTEP $1863/1866(3+3), mul scratch $1869-$186f, FM_TGT $1870/1873(3+3),
+  FM_SLIDE $1876(3). Out-of-line FM handlers (scaled mul + slide setup) live at
+  `* = $1880` (free window $1880-$19FF between driver scratch and EDIT_BASE $1A00) because
+  the main bank overflowed SF2II's pinned state region ($16CC-$1702). FM entry encoding:
+  byte2 = $00 freeze / $01-$7e Hz run / $7f loop (byte0 = entry index) / $80|dur semitone
+  family, where byte1 = 0 instant, 1-31 slide speed; Hz entries with byte1(hi) = $40-$43
+  = scaled vibrato (bit0 sign, bit1 truncate). 64tass gotchas: CASE-INSENSITIVE labels
+  (fm_slide vs FM_SLIDE!), branch ranges (near-branch + jmp), `* =` org sections fine.
+- BUILD (bin/build_mon_native_song.py): _fm_unroll_full = the universal driver model
+  (use it for any new entry type); _gate_split/_wave_masked_ok/_pulse_unroll/_settle_trim;
+  canonical per (instr,wprog) from canon_pick (longest note, whole clipped song);
+  bundles/instr protected from bad merges (_is_struct_fm, stream_set, full-length curves).
+  blk tuples = (note_c|None, ticks, bi, ii, tk, gate_ticks); note None = rest rows.
+- MEASUREMENT TOOLS + TRAPS: bin/mon_event_trace.py = THE decode ground truth (extend it
+  for any new question — log more state at more PCs); event-tracer 'note' kind = real
+  gated triggers (the freq-lookup trace fires on non-trigger lookups — one phantom pitch
+  was in the old sub0 test constant); mon_part_fidelity: windowed parts use OFF0 = window
+  start seconds; WHOLE-SONG parts MUST use OFF0=0 + full SECS; adaptive part filenames do
+  NOT encode their window offsets — read them from the build stdout ("part 2/26 (38-72s)").
+- BUILD-SCRATCH: drivers_src/mon/{layout,freqtable}.inc + drivers_src/romuzak/layout.inc
+  regenerated every build — `git checkout --` them before committing. Never commit
+  bin/SIDFactoryII_dbg.exe. Bash tool = Git Bash (heredocs OK).
+- SF2II CMP-carry rule for any driver asm: never `cmp` values >$7f apart (bit-test first);
+  my dispatchs use bmi/eor/and patterns.
+- USER STANDING RULE: accuracy/byte-exactness over speed/cost/file count; never ship lossy
+  silently (every lossy trade this session is flag-gated + documented + measured).
+- Older shipped context this session: v3.13.1 docs (docs/players/PLAYBOOK.md is the
+  cross-player method reference), sidm2/fidelity_common.py (use freq_to_semi etc. for any
+  new validator), docs/ROADMAP.md = the plan beyond MoN.
 </critical_context>
 
 <current_state>
-- WORKING TREE CLEAN except `whats-next.md` (this doc). All exploratory part-count code (driver +
-  build FM wiring, free-running experiments, scratch probes) REVERTED. Committed state = the arp
-  parser + filter fix only, both byte-exact + tested.
-- COMMITS (this session, on master; verify pushed via `git status`):
-  * a10bdd0 — filter fix (Myth sub0 ~53%->~90%, Hawkeye sub3 56%->99%, no regressions, 7 tests)
-  * 400d2e0 — Supremacy arp-table parser (byte-exact, tested)
-- ISSUE 1 (Myth filter): DONE + committed.
-- ISSUE 2 (part-count): NOT reduced yet — proven that ONLY a structural synth-engine RE can do it
-  losslessly. Both engines RE'd; arp parser committed; FM wiring PROVEN VIABLE (bundles 178->127,
-  arp byte-exact for a full note) but reverted, blocked on ONE bounded task: reconcile the parser's
-  note durations with the original's note lengths (~9-frame drift). This is the immediate next step.
-- ISSUE 3 (GUI/ear-confirm): open (needs the user).
-- SCRATCH RE TOOLS kept (untracked, referenced in memory): `bin/_mon_disasm.py`. Deleted after use:
-  _supr_synth_probe, _supr_wf_probe, _freerun_proof, _myth_filt_diag*, _supr_wave_*, _size_analysis,
-  _semi_probe (all recreatable from memory notes).
-- NO pending decision blocks progress; the next action is unambiguous (note-timing reconciliation,
-  step 1 of work_remaining). The structural approach is de-risked — the hard conceptual work
-  (proving trace can't compress + cracking both synth engines + demonstrating byte-exact arp) is
-  DONE. Remaining is bounded implementation + validation, realistically a focused follow-up session.
+- Working tree CLEAN except whats-next.md (this file). Everything committed AND pushed
+  through d604e5b on master. Tests: 1490 passed, 7 skipped, 2 xfailed.
+- out/mon/ artifacts may be stale relative to HEAD for some tunes — rebuild before
+  measuring or GUI-testing (commands in work_remaining #1/#5).
+- Supremacy: DONE to the structural-rebuild standard (sub0 10 parts / sub1 1 part /
+  sub2 1 part, all validated headless; NOT yet ear/GUI-confirmed by the user).
+- Hawkeye/Cybernoid/Myth: untouched by regressions (verified), not yet rebuilt to exploit
+  the new machinery (work_remaining #4).
+- No blockers. The natural next actions are: user ear-check of the single-file builds,
+  then either propagating the machinery to Hawkeye sub0/Myth, or returning to
+  docs/ROADMAP.md items A1/A2 (driver unification — now with this session's driver
+  features to fold in) and D1 (universal trace-first fallback).
 </current_state>
