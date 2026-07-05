@@ -154,6 +154,10 @@ PPTR_HI   = $1853        ; per-voice: current PULSETAB read pointer hi (3)
 VIPUL_LO  = $1856        ; per-voice: current cmd's pulse-program start addr lo (3)
 VIPUL_HI  = $1859        ; per-voice: current cmd's pulse-program start addr hi (3)
 VWCNT     = $185c        ; per-voice: frames left on current WAVE row (RLE count) (3)
+SWTOG     = $185f        ; swing-tempo phase toggle (EOR #$ff per row, mirroring the
+                         ; MoN ROM's $E2 at $1134-$1138): negative phase reloads
+                         ; TEMPO2 (the SHORT period), positive reloads TEMPO.
+                         ; Constant tunes set TEMPO2 = TEMPO so the toggle is inert.
 
         .include "layout.inc"
 INSTR_AD    = INSTR + 0*32
@@ -251,6 +255,7 @@ iv:     lda #$41
         sta F_CLO
         sta F_CHI
         sta F_CNT
+        sta SWTOG                ; swing phase starts at 0 (first row reloads SHORT)
         lda #$01
         sta zp_tcnt
         sta ST_PLAY              ; INIT = play: enable do_play
@@ -718,7 +723,19 @@ fm_done:
 do_row:
         lda #$00
         sta ST_TCNT              ; a new row ticked this frame (SF2II follow cursor++)
+        ; swing-tempo reload (MoN ROM $1128-$114D): alternate TEMPO2 (short) and
+        ; TEMPO (long) per row, short phase first — matches the ROM's $E2 toggle
+        ; starting at 0. Constant tunes have TEMPO2 == TEMPO. (bmi = bit test,
+        ; SF2II CMP-carry-safe.)
+        lda SWTOG
+        eor #$ff
+        sta SWTOG
+        bmi dr_short
         lda #TEMPO
+        jmp dr_setcnt
+dr_short:
+        lda #TEMPO2
+dr_setcnt:
         sta zp_tcnt
         ldx #$00
 vloop:

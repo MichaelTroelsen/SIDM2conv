@@ -115,8 +115,12 @@ def test_supremacy_sub2_onset_frames_match_siddump():
     across 30s by bin/mon_validate.py on 2026-07-05)."""
     d, la, h = load_sid(SID)
     m = MON(d, la, 2)
+    # V2's third onset per phrase (72, 152, ...) exists only via the prefix-chain
+    # RETRIGGER (a $Cx byte followed by another prefix replays the previous note) —
+    # this guards both the swing grid AND the retrigger decode.
     expect = {0: [2, 42, 82, 122, 162, 202, 242, 282],
-              1: [2, 62, 82, 142, 162, 222, 242, 322]}
+              1: [2, 62, 82, 142, 162, 222, 242, 322],
+              2: [2, 62, 72, 82, 142, 152, 162, 222, 232, 242]}
     for v, want in expect.items():
         ticks, got = 0, []
         for ev in m.voices[v]:

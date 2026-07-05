@@ -281,6 +281,8 @@ def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
         f.write(f"SEQPTRLO = ${mdp['seq_ptr_lo_addr']:04x}\n")
         f.write(f"SEQPTRHI = ${mdp['seq_ptr_hi_addr']:04x}\n")
         f.write(f"TEMPO = {B.TEMPO}\n")
+        # swing-tempo short period (MoN driver); constant tunes: TEMPO2 == TEMPO
+        f.write(f"TEMPO2 = {getattr(B, 'TEMPO2', None) or B.TEMPO}\n")
         f.write(f"INSTR = ${gen.instr_addr:04x}\n")
         f.write(f"WAVE  = ${gen.wave_addr:04x}\n")
         f.write(f"PULSE = ${gen.pulse_addr:04x}\n")

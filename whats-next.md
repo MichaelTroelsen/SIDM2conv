@@ -120,16 +120,21 @@ waveform engine RE, the FM-wiring prototype, and the note-timing blocker).
 <work_remaining>
 Everything below is the LOSSLESS PART-COUNT structural rebuild (issue 2). Ordered:
 
-1. **Note-timing reconciliation (THE current blocker; do FIRST).** The parser's note DURATION
-   doesn't match the original's note LENGTH: Supremacy sub2 voice-1 note $31 has parser dur=72
-   frames but the original runs ~81 frames, so the arp-wired build switches notes ~9 frames early
-   and every later note desyncs (freq dropped to ~44% window-wide even though the first note is
-   byte-exact). The trace path MASKS this (it replays the original's exact per-frame output ->
-   self-correcting, ~98%); the arp path EXPOSES it. Investigate: is it fpt/tempo rounding
-   (Supremacy fpt=3), an internal note re-trigger the parser folds into ONE MONEvent, or a
-   rest/hold miscount? Tools: compare the parser's per-note frame boundaries (fr accumulation in
-   build_native_song) to the actual siddump onset frames. Fix so the parser's note frames == the
-   driver's playback frames == the original's note lengths.
+1. **Note-timing reconciliation — ✅ DONE 2026-07-05 (TWO root causes, both fixed + committed).**
+   (a) **SWING TEMPO**: the Supremacy speed byte's $80 bit (sub2 = $82) makes the tempo-gate
+   reload ($1128-$114D) toggle $E2 and alternate periods speed/speed+1 (2,3 = avg 2.5 f/tick,
+   NOT the constant speed+1=3). Fixed: `MON.tick_to_frame/frame_to_tick/tempo_toggle/onset_delay`
+   (mon_parser), driver swing reload (SWTOG in drivers_src/mon do_row + TEMPO2 in layout),
+   build_mon_native_song fr accumulation now tick-exact. (b) **PREFIX-CHAIN RETRIGGER**: a $Cx
+   instrument (or dur/wave) byte followed by another prefix >= $C0 finalizes the event WITHOUT
+   a note byte = retriggers the previous note with sticky dur ($1246-$12C1 disasm) — the missing
+   3rd onset per phrase on sub2 V2. Also fixed `_fm_curve` cluster blindness (24-frame prefix ->
+   full freeze-extended program; a forced merge had frozen a voice at freq 0 for 20 frames).
+   RESULTS: mon_validate Supremacy sub2 = 220/220 EXACT (all 3 voices); part1 fidelity (adaptive)
+   = osc1 96/100/100 (residual = the unreproducible 2-frame onset spikes), osc2 100/100/100,
+   osc3 100/100/100, filter 100; **auto part count 70 -> 43**. NO regressions: Hawkeye sub3 + sub2
+   100/100/100 (delay 0), Cybernoid sub0 99.9/99/96 + 100/100. Remaining sub-issues (separate):
+   sub1 V1/V2 arp-voice decode, sub0 staggered canon entries (parser misses per-voice lead rests).
 
 2. **Re-apply the FM wiring** (driver semitone+loop entries + arp_fm_program + _fm_for_note; all
    documented in memory to re-apply verbatim). After step 1, the arp path should hit the trace

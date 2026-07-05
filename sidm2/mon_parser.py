@@ -105,6 +105,27 @@ class MON:
         pair = 2 * self.speed + 1                 # one short + one long period
         return pair * (ticks // 2) + self.speed * (ticks % 2)
 
+    def frame_to_tick(self, frame):
+        """Smallest tick T with tick_to_frame(T) >= frame (ceil — the first
+        sequencer tick at or after a frame position; used for window/lead math)."""
+        if frame <= 0:
+            return 0
+        if not self.tempo_toggle:
+            return (frame + self.speed) // (self.speed + 1)
+        pair = 2 * self.speed + 1
+        k, r = divmod(frame, pair)
+        if r == 0:
+            return 2 * k
+        return 2 * k + (1 if r <= self.speed else 2)
+
+    @property
+    def onset_delay(self):
+        """Constant frames between a sequencer tick and its SID output (the engine
+        writes registers in the OUTPUT phase after the sequencer). Supremacy's play
+        runs output BEFORE the sequencer -> +2; the Hawkeye/Cybernoid engine
+        validated at 0 (mon_validate offset 0, native builds byte-exact)."""
+        return 2 if getattr(self, "ol_mode", None) == "supremacy" else 0
+
     # -- memory access (absolute SID addresses) --
     def _u8(self, a):
         o = a - self.la
@@ -453,12 +474,23 @@ class MON:
     def _pattern_supremacy(self, pat, st, events):
         """Supremacy PATTERN dispatch (pattern ptr from the SPLIT $16F3/$171C tables).
         NOTE: this is the PATTERN processor, distinct from the ORDERLIST processor
-        ($1212, where $FD is a 4-byte command). Empirically (validated vs py65 on the
-        non-arp voices) patterns use: $FF = end; $F0-$FE = command + 1 arg (2 bytes);
-        $C0-$DF = instrument prefix; $80-$BF = duration (sticky); $70-$7F = wave-
-        program/arp; <$70 = NOTE (b + transpose + base)."""
+        ($1212, where $FD is a 4-byte command). From the $1246-$12C1 disasm, each
+        EVENT is a linear prefix chain [instr]?[dur]*[wave]?[note]? — and each prefix
+        handler PEEKS the next byte: if it is not a valid continuation the event
+        FINALIZES at $12C1 without a new note byte, i.e. it RETRIGGERS the previous
+        note ($F0,X unchanged) with the sticky duration. That retrigger is how a
+        phrase plays a note 3x from only 2 note bytes (e.g. sub2 V2 `... 84 30 CE
+        DF ...`: the lone `CE` sets instr $0E and retriggers note $30).
+        Byte map: $FF = end; $F0-$FE = command + 1 arg (2 bytes); $C0-$DF =
+        instrument prefix; $80-$BF = duration (sticky); $60-$7F = wave-program/arp
+        selector; <$60 = NOTE (b + transpose + base)."""
         ptr = self._u8(self.tbl_pat_lo + pat) | (self._u8(self.tbl_pat_hi + pat) << 8)
         j, guard = 0, 0
+
+        def retrig_last():
+            if st.get('last_note_raw') is not None:
+                self._emit(events, st['last_note_raw'], st, retrig=True)
+
         while guard < 4096:
             guard += 1
             b = self._u8(ptr + j); j += 1
@@ -467,16 +499,31 @@ class MON:
             if b >= 0xF0:                           # command + 1 arg
                 j += 1
                 continue
-            if b >= 0xC0:                           # instrument select
+            if b >= 0xC0:                           # instrument select ($1263)
                 st['instr'] = (b & 0x1F) + st['instr_base']
+                peek = self._u8(ptr + j)
+                # $127D-$1283: next byte $FD = command; >= $C0 = finalize -> the
+                # event ends WITHOUT a note byte = retrigger the previous note.
+                if peek >= 0xC0 and peek not in (0xFD, 0xFF):
+                    retrig_last()
                 continue
-            if b >= 0x80:                           # duration (sticky)
+            if b >= 0x80:                           # duration (sticky, $1289)
                 st['stored'] = (b & 0x3F) - 1 if (b & 0x3F) else 0
+                peek = self._u8(ptr + j)
+                # $1295-$12A2: $FD = command, $FA = orderlist jump, >= $C0 =
+                # finalize -> retrigger with the new duration.
+                if peek >= 0xC0 and peek not in (0xFA, 0xFD, 0xFF):
+                    retrig_last()
                 continue
-            if b >= 0x60:                           # $60-$7F: wave-program / arp ($1212:
-                st['wprog'] = b & 0x1F              #   CMP #$60 -> $1064 = b&$1F). NOTE is
-                continue                            #   strictly <$60 (a $6x byte is NOT a note)
-            self._emit(events, b, st, retrig=True)  # note (b < $60)
+            if b >= 0x60:                           # $60-$7F: wave-program / arp
+                st['wprog'] = b & 0x1F              #   ($12AC: $1064 = b&$1F). NOTE is
+                peek = self._u8(ptr + j)            #   strictly <$60.
+                # $12B4: next byte >= $60 = finalize -> retrigger.
+                if peek >= 0x60 and peek != 0xFF:
+                    retrig_last()
+                continue
+            st['last_note_raw'] = b                 # note (b < $60)
+            self._emit(events, b, st, retrig=True)
 
     def note_freq(self, note):
         """SID freq for a note byte, from MoN's SPLIT freq table (lo $8337[note],

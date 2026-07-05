@@ -36,8 +36,24 @@ tune = os.path.basename(part).split("_sub")[0].split("_native")[0]
 orig_sid = os.path.join("SID", "Tel_Jeroen", f"{tune}.sid")
 orig = F.per_frame(orig_sid, [f"-a{sub}", f"-t{(off0 // 50) + secs + 1}"])
 prb = F.per_frame(probe, [f"-t{secs + 1}"])
-n = min(len(orig) - off0, len(prb), secs * 50)
-print(f"{os.path.basename(part)}  {n} frames from {off0 // 50}s (native play=$1003)\n")
+n = min(len(orig) - off0, len(prb), secs * 50) - 4
+
+# constant engine output delay (e.g. Supremacy writes SID registers 2 frames after
+# the sequencer tick, which the native driver doesn't reproduce): align it out with
+# a small freq-match search, like every other fidelity tool (mon_fidelity etc.).
+def _score(d):
+    s = 0
+    for i in range(0, n, 2):
+        for vi in range(3):
+            a = orig[off0 + d + i][0][vi]["freq"]
+            b = prb[i][0][vi]["freq"]
+            if a and b and F._semi(a) == F._semi(b):
+                s += 1
+    return s
+dly = max(range(0, 5), key=_score)
+off0 += dly
+print(f"{os.path.basename(part)}  {n} frames from {off0 // 50}s "
+      f"(native play=$1003, engine delay={dly})\n")
 print(f"  {'voice':6} {'freq%':>6} {'wf%':>6} {'pulse%':>7}")
 for vi in range(3):
     keys = ("freq", "wf", "pul")

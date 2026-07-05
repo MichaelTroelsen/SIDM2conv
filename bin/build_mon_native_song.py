@@ -141,13 +141,14 @@ def extract_wave_programs(m, sid, sub, idx_map, instr_rows, frames):
     last change point, and loop there — reproduces the $43->$42 / $41->$40 gate-off
     (note release) mid-note. col1 = 0 (pitch comes from the FM program, not semitones).
     Returns {slot: [(wf,0),...,(7f,loop_row)]}."""
-    fpt = m.frames_per_tick
+    delay = getattr(m, "onset_delay", 0)
     progs = {}
     for v in range(3):
-        fr = 0
+        tk = 0
         for ev in m.voices[v]:
             slot = idx_map.get(ev.instr, 0)
-            dur_f = ev.dur * fpt
+            fr = m.tick_to_frame(tk) + delay
+            dur_f = m.tick_to_frame(tk + ev.dur) - m.tick_to_frame(tk)
             if ev.retrig and slot not in progs and dur_f >= 2:
                 wfs, last = [], 0x41
                 for k in range(min(dur_f, WAVE_CAP)):
@@ -160,7 +161,7 @@ def extract_wave_programs(m, sid, sub, idx_map, instr_rows, frames):
                 prog = [(wfs[k], 0x00) for k in range(settle + 1)]
                 prog.append((0x7F, settle))               # loop on the settled waveform
                 progs[slot] = prog
-            fr += dur_f
+            tk += ev.dur
     return progs
 
 
@@ -313,9 +314,14 @@ def _wave_prog_for(frames, v, onset, dur_f):
     return tuple(wfs[:settle + 1])
 
 
-def _fm_curve(fp, length=24):
-    """Cumulative FM offset shape (signed) over `length` frames — the audible pitch
-    contour, for clustering distance. fp = [(lo,hi,dur),...]."""
+def _fm_curve(fp, length=FM_CAP):
+    """Cumulative FM offset shape (signed) over `length` frames (freeze-extended) —
+    the audible pitch contour, for clustering distance. fp = [(lo,hi,dur),...].
+    MUST cover the full program, not a prefix: same-arp notes of different DURATIONS
+    are identical for their common prefix but a shorter program's tail (the captured
+    end-of-note freq-0 spike, offset -> -base, then freeze) played on a longer note
+    freezes the voice at freq 0 for the rest of the note — a 24-frame prefix curve
+    let exactly that forced merge through (Supremacy sub2 v1, 20 silent frames)."""
     acc, cur = 0, []
     for lo, hi, dur in fp:
         off = lo | (hi << 8)
@@ -428,14 +434,14 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
         (slide/arp) + PWM from the trace.
     Returns (segs, bundles, instrs, wave_programs)."""
     import mon_fidelity as F
-    fpt = m.frames_per_tick
     # trace the WHOLE one-pass song length (the longest voice), else notes past the
     # window get degenerate held programs. Traces can be passed in (windowed builds
     # reuse one trace across all windows instead of re-siddumping per window).
     if traces is not None:
         frames, ftr = traces
     else:
-        span = max(sum(ev.dur for ev in m.voices[v]) for v in range(3)) * fpt
+        span = m.tick_to_frame(max(sum(ev.dur for ev in m.voices[v])
+                                   for v in range(3)))
         secs = span // 50 + 4
         frames = F.per_frame(sid, [f'-a{sub}', f'-t{secs}'])
         ftr = filter_trace(sid, sub, secs)
@@ -443,15 +449,17 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     # it restarts on that voice's note-ons. Find those note-ons (the envelope attacks,
     # mapped back to the triggering note) -> `drives`; the span until the next restart
     # is how long each envelope program runs before re-triggering.
+    delay = getattr(m, "onset_delay", 0)
     onsets = [set() for _ in range(3)]
     onset_instr = [dict() for _ in range(3)]               # onset_frame -> MoN instrument
     for v in range(3):
-        fr = 0
+        tk = 0
         for ev in m.voices[v]:
             if ev.retrig:
+                fr = m.tick_to_frame(tk) + delay
                 onsets[v].add(fr)
                 onset_instr[v][fr] = ev.instr
-            fr += ev.dur * fpt
+            tk += ev.dur
     routed = routed_voice(ftr)                              # restart only on this voice
     drive_map = detect_filter_drives(ftr, onsets, routed)   # {onset_frame: voice}
     drives = {(v, o) for o, v in drive_map.items()}
@@ -533,17 +541,19 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
 
     t0, t1 = win if win else (0, 1 << 30)
     for v in range(3):
-        fr = 0
+        tk = 0
         for _pat, events in m._voice_blocks(v):
             blk = []
             for ev in events:
-                dur_f = ev.dur * fpt
+                fr = m.tick_to_frame(tk) + delay
+                dur_f = m.tick_to_frame(tk + ev.dur) - m.tick_to_frame(tk)
                 if not (t0 <= fr < t1):                       # outside the window
-                    fr += dur_f
+                    tk += ev.dur
                     continue
                 ticks = ev.dur
-                if fr + dur_f > t1:                           # clip the last note to the window
-                    ticks = max(1, (t1 - fr) // fpt)
+                while ticks > 1 and (m.tick_to_frame(tk + ticks)
+                                     + delay) > t1:           # clip the last note to the window
+                    ticks -= 1
                 # base = the freq the DRIVER plays for the (clamped) note, so the FM
                 # offsets reconstruct exactly. Use the clamped note for the base too —
                 # else a note clamped to SF2_NOTE_MIN (e.g. MoN's $00 silent note) drifts
@@ -555,8 +565,8 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                 bi = bundle_of(fm_program_for(frames, v, fr, dur_f, base),
                                pulse_program_for(frames, v, fr, dur_f))
                 ii = instr_of(ev.instr, _wave_prog_for(frames, v, fr, dur_f), flag, filt)
-                blk.append((note_c, ticks, bi, ii, fr))
-                fr += dur_f
+                blk.append((note_c, ticks, bi, ii, tk))
+                tk += ev.dur
             if blk:
                 note_recs[v].append(blk)
 
@@ -586,7 +596,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
             for blk in note_recs[v]:
                 rows = []
                 if win and first and blk:
-                    lead = (blk[0][4] - t0) // fpt
+                    lead = blk[0][4] - m.frame_to_tick(max(0, t0 - delay))
                     rows.extend(D11Row(note=0x00) for _ in range(max(0, lead)))
                 first = False
                 cur_inst = cur_cmd = None
@@ -636,7 +646,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
         for blk in note_recs[v]:
             rows = []
             if win and first and blk:                        # leading rest to position the
-                lead = (blk[0][4] - t0) // fpt               # window's first note at its tick
+                lead = blk[0][4] - m.frame_to_tick(max(0, t0 - delay))   # window's first note tick
                 rows.extend(D11Row(note=0x00) for _ in range(max(0, lead)))
             first = False
             cur_inst = cur_cmd = None
@@ -657,7 +667,11 @@ def emit_one(m, br, out_path, label):
     segs, bundles, instrs, wave_programs, instr_flags, filter_programs = br
     pulse_programs = [static_pulse(0x800) for _ in instrs]
     B.GAL = MON_DIR
-    B.TEMPO = m.speed + 1
+    B.TEMPO = m.frames_per_tick
+    # swing tunes (Supremacy $80 speed flag): the driver's row grid alternates
+    # TEMPO2 (short) / TEMPO (long), matching MON.tick_to_frame. Constant tunes
+    # set TEMPO2 == TEMPO (the driver toggle is inert).
+    B.TEMPO2 = m.speed if getattr(m, "tempo_toggle", False) else m.frames_per_tick
     nfilt = sum(1 for f in instr_flags if f & 0x40)
     flags = ""
     if len(bundles) > 64:
@@ -705,8 +719,8 @@ def main():
 
     if adaptive or winsec > 0:
         import mon_fidelity as F
-        fpt = m.frames_per_tick
-        span = max(sum(ev.dur for ev in m.voices[v]) for v in range(3)) * fpt
+        span = m.tick_to_frame(max(sum(ev.dur for ev in m.voices[v])
+                                   for v in range(3)))
         secs = span // 50 + 4
         print(f"  tracing full song ({secs}s) once...")
         traces = (F.per_frame(sid, [f'-a{sub}', f'-t{secs}']), filter_trace(sid, sub, secs))

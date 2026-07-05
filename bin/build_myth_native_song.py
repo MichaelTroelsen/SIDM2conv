@@ -147,6 +147,16 @@ class MythShim:
     def frames_per_tick(self):
         return self._fpt
 
+    # constant-tempo grid (Myth has no swing flag; fpt is emulation-derived)
+    tempo_toggle = False
+    onset_delay = 0
+
+    def tick_to_frame(self, ticks):
+        return ticks * self._fpt
+
+    def frame_to_tick(self, frame):
+        return max(0, (frame + self._fpt - 1) // self._fpt)
+
     def _voice_blocks(self, v):
         return [(0, self.voices[v])] if self.voices[v] else []
 
