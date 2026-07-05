@@ -875,6 +875,10 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                 if not (t0 <= fr < t1):                       # outside the window
                     tk += ev.dur
                     continue
+                if getattr(ev, 'rest', False):                # REST: gate-off rows only
+                    blk.append((None, ev.dur, None, None, tk, 0))
+                    tk += ev.dur
+                    continue
                 ticks = ev.dur
                 while ticks > 1 and (m.tick_to_frame(tk + ticks)
                                      + delay) > t1:           # clip the last note to the window
@@ -968,6 +972,9 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                 first = False
                 cur_inst = cur_cmd = None
                 for note, dur, bi, ii, _ontk, gate in blk:
+                    if note is None:                          # REST -> gate-off rows
+                        rows.extend(D11Row(note=0x00) for _ in range(dur))
+                        continue
                     rows.append(D11Row(note=note,
                                        instrument=ii if ii != cur_inst else None,
                                        command=bi if bi != cur_cmd else None))
@@ -1023,6 +1030,9 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
             first = False
             cur_inst = cur_cmd = None
             for note, dur, bi, ii, _ontk, gate in blk:
+                if note is None:                              # REST -> gate-off rows
+                    rows.extend(D11Row(note=0x00) for _ in range(dur))
+                    continue
                 slot, cmd = imap[ii], bmap[bi]
                 rows.append(D11Row(note=note,
                                    instrument=slot if slot != cur_inst else None,

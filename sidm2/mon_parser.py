@@ -60,6 +60,8 @@ class MONEvent:
     instr: int = 0         # instrument index ($90DA, set by $Cx) -> $860C AD/SR/WF/PW record
     wprog: int = 0         # wave-program index ($7x -> $8580/$8589); Stage-B modulation
     retrig: bool = True    # False = legato ($F0-even prefix): freq change, no gate restart
+    rest: bool = False     # Supremacy top-level $E0-$FE: silence ($F0=$FF) for `dur` ticks
+    slide: tuple = None    # Supremacy $FD (after an instr/dur prefix): (speed, target_note)
 
 
 class MON:
@@ -390,6 +392,7 @@ class MON:
         note = (raw + st['transpose'] + self.note_base) & 0x7F
         events.append(MONEvent(note=note, dur=st['stored'] + 1, instr=st['instr'],
                                wprog=st['wprog'], retrig=retrig))
+        st['dur_acc'] = 0                       # finalize resets the $F3 accumulator
 
     def _pattern(self, pat, st, events):
         """Faithful emulation of the player's pattern-byte dispatch chain
@@ -496,34 +499,77 @@ class MON:
             b = self._u8(ptr + j); j += 1
             if b == 0xFF:
                 break
-            if b >= 0xF0:                           # command + 1 arg
-                j += 1
+            if b == 0xFA:                           # top-level $FA ($1212): 2-byte command
+                j += 1                              #   (arg -> $10DB) — the event reader
+                continue                            #   enters at $1212, so this is legal
+            if b == 0xFD:                           # top-level $FD ($121F): the 4-byte
+                self._slide(events, ptr, j, st)     #   SLIDE (tracer: sub1 v1 fr240,
+                j += 3                              #   Y 23->27)
+                continue
+            if b >= 0xE0:                           # remaining $E0+: REST ($124A — $F6 =
+                dr = b & 0x1F                       #   b&$1F, $F0 = $FF, ctrl/AD/SR zeroed).
+                if dr:                              #   Silence for b&$1F ticks (tracer:
+                    st['stored'] = dr - 1           #   sub1 v2 fr800, $F0 = 16 ticks);
+                    st['dur_acc'] = 0               #   also updates the sticky duration.
+                    events.append(MONEvent(
+                        note=0, dur=dr, instr=st['instr'],
+                        wprog=st['wprog'], retrig=False, rest=True))
                 continue
             if b >= 0xC0:                           # instrument select ($1263)
                 st['instr'] = (b & 0x1F) + st['instr_base']
                 peek = self._u8(ptr + j)
-                # $127D-$1283: next byte $FD = command; >= $C0 = finalize -> the
-                # event ends WITHOUT a note byte = retrigger the previous note.
-                if peek >= 0xC0 and peek not in (0xFD, 0xFF):
+                # $127D-$1283: next byte $FD = the 4-byte SLIDE; other >= $C0 =
+                # finalize -> the event ends WITHOUT a note byte = retrigger the
+                # previous note. $FF INCLUDED (event-tracer ground truth: it
+                # finalizes here, unconsumed — only a TOP-LEVEL $FF ends the pattern).
+                if peek == 0xFD:
+                    self._slide(events, ptr, j + 1, st)
+                    j += 4
+                elif peek >= 0xC0:
                     retrig_last()
                 continue
-            if b >= 0x80:                           # duration (sticky, $1289)
-                st['stored'] = (b & 0x3F) - 1 if (b & 0x3F) else 0
+            if b >= 0x80:                           # duration ($1289: ADC $F3 — ADDITIVE
+                st['dur_acc'] = st.get('dur_acc', 0) + (b & 0x3F)
+                # within one event: `A0 A0` = 64 ticks, event-tracer verified on
+                # sub0 pattern $03; STA $F6 = the accumulated total becomes sticky)
+                st['stored'] = max(st['dur_acc'], 1) - 1
                 peek = self._u8(ptr + j)
-                # $1295-$12A2: $FD = command, $FA = orderlist jump, >= $C0 =
-                # finalize -> retrigger with the new duration.
-                if peek >= 0xC0 and peek not in (0xFA, 0xFD, 0xFF):
+                if peek == 0xFA:                    # $FA = 2 bytes (arg -> $10DB), then
+                    j += 2                          #   the chain continues ($1212->$121F)
+                    peek = self._u8(ptr + j)
+                # $1295-$12A2: $FD = the 4-byte SLIDE; other >= $C0 = finalize ->
+                # retrigger with the new duration. `A4 FF` (dur 36 + $FF) is the
+                # pattern-$1C hold the fr1510 event trace shows as a real 36-tick
+                # gated retrigger.
+                if peek == 0xFD:
+                    self._slide(events, ptr, j + 1, st)
+                    j += 4
+                elif peek >= 0xC0:
                     retrig_last()
                 continue
             if b >= 0x60:                           # $60-$7F: wave-program / arp
                 st['wprog'] = b & 0x1F              #   ($12AC: $1064 = b&$1F). NOTE is
                 peek = self._u8(ptr + j)            #   strictly <$60.
                 # $12B4: next byte >= $60 = finalize -> retrigger.
-                if peek >= 0x60 and peek != 0xFF:
+                if peek >= 0x60:
                     retrig_last()
                 continue
             st['last_note_raw'] = b                 # note (b < $60)
             self._emit(events, b, st, retrig=True)
+
+    def _slide(self, events, ptr, j, st):
+        """The $FD 4-byte SLIDE ($121F, reached as the byte AFTER an instrument or
+        duration prefix): speed -> $102F, note -> $F0 (+transpose+base), target ->
+        $1032 (+transpose+base), then FINALIZES at $12C1 — i.e. it IS a gated note
+        trigger that glides note -> target at `speed` (event-tracer verified:
+        sub1 v1 fr80 = note $33 -> target $35, speed 6, 5 bytes consumed)."""
+        speed = self._u8(ptr + j)
+        nb = self._u8(ptr + j + 1)
+        tb = self._u8(ptr + j + 2)
+        st['last_note_raw'] = nb
+        self._emit(events, nb, st, retrig=True)
+        events[-1].slide = (speed,
+                            (tb + st['transpose'] + self.note_base) & 0x7F)
 
     def note_freq(self, note):
         """SID freq for a note byte, from MoN's SPLIT freq table (lo $8337[note],

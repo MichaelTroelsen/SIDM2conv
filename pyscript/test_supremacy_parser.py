@@ -15,14 +15,19 @@ SID = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                    "SID", "Tel_Jeroen", "Supremacy.sid")
 
 # Subtune-0 collapsed note onsets (consecutive same-pitch merged), from the py65
-# freq-lookup ground truth — identical across the 3 canon voices for the first bars.
-SUB0_ONSETS = [0x39, 0x3B, 0x3C, 0x3E, 0x39, 0x3E, 0x3C, 0x3B,
-               0x39, 0x38, 0x34, 0x40, 0x3E, 0x3C, 0x3B, 0x39]
+# EVENT-BOUNDARY tracer (bin/mon_event_trace.py, kind='note' = actual $12C1 gate
+# triggers) — the earlier freq-lookup-derived list carried one phantom pitch (a
+# non-trigger lookup); onset frames are additionally validated EXACT vs siddump
+# by bin/mon_validate.py (sub0 V0 137/137 over 60s).
+SUB0_ONSETS = [0x39, 0x3B, 0x3C, 0x39, 0x3E, 0x3C, 0x3B, 0x39,
+               0x38, 0x34, 0x40, 0x3E, 0x3C, 0x3B, 0x39, 0x40]
 
 
 def _collapsed(m, voice):
     out = []
     for ev in m.voices[voice]:
+        if ev.rest:                       # rests are silences, not pitches
+            continue
         if not out or out[-1] != ev.note:
             out.append(ev.note)
     return out
@@ -106,6 +111,22 @@ def test_tick_to_frame_grids():
     # 20% length difference vs the old constant model — the whats-next.md blocker:
     # 24 ticks = 60 frames (was 72 under speed+1=3)
     assert m2.tick_to_frame(24) == 60
+
+
+def test_supremacy_rests_and_slides_decoded():
+    """The event-tracer-verified pattern semantics: top-level $E0+ = REST (b&$1F
+    ticks of silence, e.g. sub1 v2's $F0 = 16 ticks at fr800), and $FD = the
+    4-byte SLIDE (speed, note, target — a gated trigger; sub1 v1 fr80 = note
+    $33 -> target $35 speed 6). Additive durations: sub0 pattern $03's `A0 A0`
+    note lasts 64 ticks. All onset-frame-validated EXACT by bin/mon_validate.py
+    (sub2 962/962 @120s, sub0 V0 137/137 @60s, sub1 136/136 @37s/one pass)."""
+    d, la, h = load_sid(SID)
+    m1 = MON(d, la, 1)
+    assert any(ev.rest and ev.dur == 16 for ev in m1.voices[2])
+    slides = [ev for ev in m1.voices[1] if ev.slide]
+    assert slides and slides[0].slide[0] == 6            # speed 6 (tracer-verified)
+    m0 = MON(d, la, 0)
+    assert any(ev.dur == 64 for ev in m0.voices[0])      # the additive `A0 A0` hold
 
 
 def test_supremacy_sub2_onset_frames_match_siddump():

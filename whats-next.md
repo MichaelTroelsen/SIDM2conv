@@ -204,7 +204,28 @@ Everything below is the LOSSLESS PART-COUNT structural rebuild (issue 2). Ordere
    WAVE-overflow at part 6 (canonicalization is flag-gated); parts >=2 were NEVER measured
    before today — add part2+ to the standard validation.
 
-5. **PORTAMENTO / 30-60s SECTION — DIAGNOSED 2026-07-05, implementation reverted (a first
+5. **PORTAMENTO / 30-60s SECTION — ✅ RESOLVED 2026-07-05 via the py65 EVENT TRACER
+   (`bin/mon_event_trace.py`, the tool item (d) below recommended — it answered every
+   question in one session).** Tracer-verified pattern semantics now in the parser:
+   top-level $FA = 2-byte cmd ($10DB) and $FD = 4-byte SLIDE (the reader enters at $1212);
+   $FD after instr/dur prefixes = the same slide (speed->$102F, note->$F0, target->$1032,
+   gated trigger); remaining top-level $E0+ = REST (b&$1F ticks of silence, updates the
+   sticky dur); retrigger peeks include $FF/$FE (`A4 FF` = a 36-tick gated hold; top-level
+   $FF = pattern end); durations are ADDITIVE into $F3 until finalize (`A0 A0` = 64 ticks).
+   MONEvent gained rest/slide fields; the native build emits rests as gate-off rows.
+   VALIDATION: sub2 962/962 EXACT @120s; sub0 V0 137/137 (V1/V2 exact minus a constant
+   1-frame engine jitter from idx 74); sub1 136/136 within one orderlist pass (it LOOPS at
+   ~38s; beyond = one-pass-model phase, a VALIDATOR limitation). Part2 fidelity: osc3 freq
+   63.5 -> 99.3, wf 98; **auto parts 31 -> 26** (70 at session start); fixed-30s now builds
+   all 15 parts (used to crash at 6). Hawkeye 100/100/100 unchanged; 1488 tests.
+   The sub0 collapsed-notes test constant was recaptured from the event tracer (the old
+   freq-lookup list carried one phantom pitch from a non-trigger lookup).
+   REMAINING (smaller): (i) driver SLIDE entry (MONEvent.slide is parsed but the FM side
+   still uses the trace-Hz capture — a structural entry like the scaled vibrato would
+   dedup slide bundles); (ii) sub1 loop-aware validation + sub0's 1-frame jitter;
+   (iii) part2 pulse-stream at 91% (was 100 pre-rests — re-check the stream/rest overlap).
+
+5-old. (historical diagnosis) **PORTAMENTO / 30-60s SECTION — DIAGNOSED 2026-07-05, implementation reverted (a first
    attempt made sub0 worse; accuracy-first). This is a DECODE problem before a driver one.**
    The osc3-freq-63% section (sub2 V2 from onset idx 88, fr 1512+; 60s-window bundle
    residual) findings, all from the $11B9-$1246 disasm + pattern-$0C hand-decode + trace:
