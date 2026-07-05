@@ -223,7 +223,31 @@ Everything below is the LOSSLESS PART-COUNT structural rebuild (issue 2). Ordere
    REMAINING (smaller): sub0's 1-frame jitter (V1/V2 onsets land +1 frame from idx 74 —
    engine output jitter, cosmetic).
 
-8. **SUB1 ORDERLIST WRAP — OPEN (found 2026-07-05 while adding loop-aware validation).**
+8-RESOLVED + 9-OPEN (2026-07-05 late):
+8. **SUB1 WRAP SOLVED — orderlist byte $00 = GLOBAL SONG LOOP** (found via a py65 write-
+   watch on $E9-$EB: all three voices reset together at $11CF-$11D6, `STY $E9/$EA/$EB`,
+   when an orderlist step STARTS with $00 — checked at $11CD before the $FE/chain).
+   Parser: _ol_loop_ticks marks + song_loop_ticks = min across voices + _clip_to_song_loop
+   (second decode pass truncates every voice). RESULTS: **the real song lengths emerge —
+   sub1 = 38s (was 374s of overrun!), sub2 = 150s (was 490s!)**; mon_validate loop-aware:
+   sub1 136/136 EXACT @60s, sub2 1230/1230 EXACT @150s (full real span, all voices).
+   **Sub1 native = ONE part (verified 95-98% freq across the whole song). Sub2 auto = ONE
+   part (13 instr / 18 bundles!) BUT see item 9 — use fixed-30s windows (6 parts) for
+   sub2 until it's fixed.** sub0 has no $00 in range (long orderlists; V0 span 698s?? —
+   verify sub0's real length separately). Old "70 parts" arithmetic: much of it was
+   OVERRUN CONTENT past the real loop.
+9. **SUB2 SINGLE-PART DEFECT — OPEN.** The 150s one-file build collapses past ~35s
+   (5-14% freq at 40s+) while 0-30s measures 87-97%. Evidence gathered: decode EXACT
+   (1230/1230); the DRIVER's swing row grid verified exact in py65 (rows at 0,2,5,...,80 —
+   SWTOG-flip watch); emitted rows correct (v1 note 47 at row 32); segments are 640/411-row
+   packed sequences (v1 = 7 segs, totals 3007 — NB one row short of 3008: a clip off-by-one
+   to also check). Symptom: the PROBE grows an extra phantom C-4 onset at raw fr79 (not on
+   the row grid!) then shifts one event — suspect a WAVE-program regating artifact (a $D404
+   gate-bit transition mid-note reads as an onset) or a segment-chain issue past seg0.
+   Windowed builds (<=30s) are unaffected. NEXT: py65-probe the built SF2 around fr75-85
+   (log $D404 writes + PPTR/VWI/vsp state) to see what fires at 79.
+
+8-old. **SUB1 ORDERLIST WRAP — OPEN (found 2026-07-05 while adding loop-aware validation).**
    Sub1's orderlists have NO $FF terminator (V0 @$1D67 = `8E 17 8C 17 82 18 80 18 8E 19
    8C 19 00 FA 08 D2 88 0C 07 03...`; V1 = V0+4, V2 = V0+8 — overlapping/shared tails).
    The REAL player wraps V1 at ol position ~4 (~fr1920, tracer olsel e9 4->0) via some

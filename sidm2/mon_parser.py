@@ -83,7 +83,16 @@ class MON:
             self.note_base = b - 256 if b >= 0x80 else b
         else:
             self.speed = self._u8(self.tbl_speed + subtune)
+        self.song_loop_ticks = 0
+        self._ol_loop_ticks = {}
         self.voices = [self._voice(v) for v in range(3)]
+        if self._ol_loop_ticks:
+            # Supremacy $00 orderlist marker = GLOBAL song loop: the first voice
+            # to reach one restarts ALL orderlists. Cut every voice's one-pass
+            # decode at the earliest mark (else the parser overruns into the
+            # overlapping shared-tail orderlist bytes — sub1's tails alias V0+4).
+            self.song_loop_ticks = min(self._ol_loop_ticks.values())
+            self.voices = [self._voice(v) for v in range(3)]
 
     @property
     def frames_per_tick(self):
@@ -343,6 +352,12 @@ class MON:
                 b = self._u8(ol + i); i += 1
                 if b in (0xFE, 0xFF):               # song end / loop (one pass)
                     break
+                if b == 0x00:                       # $11CD: an orderlist step starting
+                    self._ol_loop_ticks[voice] = sum(   # with $00 = GLOBAL SONG LOOP —
+                        ev.dur for _p, bl in blocks     # ALL voices' positions reset
+                        for ev in bl)                   # ($11CF-$11D6 STY $E9/$EA/$EB).
+                    break                           # The parser stops; __init__ cuts
+                                                    # every voice at the EARLIEST mark.
                 if b == 0xFA:                       # 2-byte command (skip 1 arg)
                     i += 1
                     continue
@@ -362,7 +377,7 @@ class MON:
                     self._pattern(b, st, blk)
                     blocks.append((b, blk))
                 repeat = 1
-            return blocks
+            return self._clip_to_song_loop(blocks)
         i, guard, repeat = 0, 0, 1
         while guard < 1024:
             guard += 1
@@ -387,6 +402,30 @@ class MON:
                 blocks.append((b, blk))
             repeat = 1
         return blocks
+
+    def _clip_to_song_loop(self, blocks):
+        """Truncate a voice's decoded blocks at the GLOBAL song-loop tick (the
+        earliest $00 orderlist marker across all voices — set by __init__'s
+        second decode pass; 0 = no loop found = no clipping)."""
+        lim = getattr(self, 'song_loop_ticks', 0)
+        if not lim:
+            return blocks
+        from dataclasses import replace
+        out, tk = [], 0
+        for pat, blk in blocks:
+            nb = []
+            for ev in blk:
+                if tk >= lim:
+                    break
+                if tk + ev.dur > lim:
+                    ev = replace(ev, dur=lim - tk)
+                nb.append(ev)
+                tk += ev.dur
+            if nb:
+                out.append((pat, nb))
+            if tk >= lim:
+                break
+        return out
 
     def _emit(self, events, raw, st, retrig):
         note = (raw + st['transpose'] + self.note_base) & 0x7F
