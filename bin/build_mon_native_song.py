@@ -902,7 +902,14 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
         # of the longest note's when the sweep restarts per note — substituting the
         # canonical is exact when the unrolled outputs match over the note's frames
         # (minus the 1-frame boundary bleed; guard in the main pass).
-        canon_pulse[k] = pulse_program_for(frames, v_, fr_, df_)
+        cpk = pulse_program_for(frames, v_, fr_, df_)
+        if (getattr(m, 'hard_restart', 0) and len(cpk) >= 3
+                and cpk[-1][0] == 0x7F):
+            # loop the wobble cycle instead of freezing (row 1 = first ADD);
+            # the driver's $7f+byte1 LOOP rows + cross-note phase keep make
+            # this the engine's per-instrument free-running pulse
+            cpk = cpk[:-1] + [(0x7F, 1, 0)]
+        canon_pulse[k] = cpk
         # STRUCTURAL FM for NON-arp notes: the capture tail holds the duration-
         # relative end-of-note freq drop (offset -> -base), so same-contour notes
         # of different durations get distinct programs. Hz offsets are relative to
@@ -1132,6 +1139,8 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                             break
                 flag, filt = (canon_filt.get(cfr, (0, None))
                               if (v, cfr) in drives else (0, None))
+                if getattr(m, 'hard_restart', 0):
+                    flag |= 0x08                  # free-running pulse (PFREE)
                 fmp = fm_program_for(frames, v, cfr, dur_f, base)
                 # guard-compare window: skip the ~3 end-of-note boundary frames,
                 # but NEVER go below 2 — _fm_unroll's frame 0 is always the base
@@ -1163,7 +1172,11 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                         sl = _slide_fm_program(m, ev, note_c, fmp, dur_f)
                         if sl is not None:
                             fmp = sl
-                    if ARP_STRUCT and not _is_struct_fm(fmp):
+                    # scaled-vibrato entries need FMSCALE_ON in the driver —
+                    # disabled for hard_restart (Hubbard) builds, so skip the
+                    # vibrato substitution there (canon_fm below is enough)
+                    if (ARP_STRUCT and not _is_struct_fm(fmp)
+                            and not getattr(m, 'hard_restart', 0)):
                         # pitch-proportional VIBRATO -> one looping SCALED program
                         # for every pitch/duration (exact-guarded via unroll)
                         step = m.note_freq((note_c + 1) & 0x7F) - base
@@ -1173,9 +1186,26 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                             fmp = vib
                     cf = canon_fm.get((ev.instr, ev.wprog))
                     if (ARP_STRUCT and cf is not None and cf != fmp
-                            and not _is_struct_fm(fmp) and not _is_struct_fm(cf)
-                            and _fm_unroll(cf, fcmp) == _fm_unroll(fmp, fcmp)):
-                        fmp = cf
+                            and not _is_struct_fm(fmp) and not _is_struct_fm(cf)):
+                        if _fm_unroll(cf, fcmp) == _fm_unroll(fmp, fcmp):
+                            fmp = cf
+                        elif getattr(m, 'hard_restart', 0):
+                            # SEMITONE-grid acceptance (Hubbard): same-instrument
+                            # vibratos/drum-dives at different pitches differ by
+                            # sub-semitone Hz but share the audible contour — one
+                            # canonical serves all pitches (bundle collapse:
+                            # Commando 1191 raw bundles for the whole song)
+                            cu = _fm_unroll(cf, fcmp)
+                            pu = _fm_unroll(fmp, fcmp)
+
+                            def _sg(off):
+                                return freq_to_semi((base + (off - 0x10000
+                                                    if off >= 0x8000 else off))
+                                                    & 0xFFFF)
+                            bad = sum(1 for a, b in zip(cu, pu)
+                                      if _sg(a) != _sg(b))
+                            if bad <= max(2, dur_f // 8):
+                                fmp = cf
                 if freerun[v] is not None:
                     pp = freerun[v]               # one per-voice stream, phase kept
                     flag |= 0x08                  # driver: no pulse reset on note-on
@@ -1189,9 +1219,16 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                     # floor 2: same vacuous-guard class as the FM fcmp fix —
                     # short notes compared over <=1 frame accept any canonical
                     cmp_f = max(2, dur_f - 1)
-                    if (ARP_STRUCT and cp is not None and cp != pp
-                            and _pulse_unroll(cp, cmp_f) == _pulse_unroll(pp, cmp_f)):
-                        pp = cp
+                    if ARP_STRUCT and cp is not None and cp != pp:
+                        if getattr(m, 'hard_restart', 0):
+                            # Hubbard: the per-instrument pulse wobble free-runs;
+                            # per-note captures differ only in PHASE. Use the
+                            # instrument canonical ALWAYS (phase restarts per
+                            # note — PWM phase is inaudible; this is the
+                            # whole-song bundle-collapse trade, ear-gated)
+                            pp = cp
+                        elif _pulse_unroll(cp, cmp_f) == _pulse_unroll(pp, cmp_f):
+                            pp = cp
                 bi = bundle_of(fmp, pp)
                 gate_ticks, wfs_c, off_k, end_c = _gate_split(m, frames, v, cfr,
                                                               dur_f, etk, ticks)

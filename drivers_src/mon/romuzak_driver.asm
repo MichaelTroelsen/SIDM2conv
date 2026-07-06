@@ -488,6 +488,14 @@ pl_l:
         lda (pptr),y             ; byte0 = cmd nibble | width-hi nibble (or $7f)
         cmp #$7f
         bne pl_decode
+.if HARD_RESTART
+        iny                      ; $7f + byte1 != 0 = LOOP to program row byte1
+        lda (pptr),y             ;   (the free-running per-instrument pulse
+        beq pl_frz               ;   wobble repeats its cycle forever);
+        jsr pl_loop              ;   byte1 = 0 keeps the plain freeze
+        jmp pl_apply             ; hold current value this frame (loop seam)
+pl_frz:
+.endif
         ; $7f = freeze: add 0, hold, do NOT advance the pointer
         lda #$00
         sta VPADL,x
@@ -1073,6 +1081,13 @@ pn_not_hr:
         lda VIFLAGS,x
         and #$08
         beq pn_prst
+.if HARD_RESTART
+        lda VIPUL_LO,x           ; Hubbard free-running pulse: keep phase across
+        cmp PFREE,x              ;   same-program notes; restart only when the
+        beq pn_noprst            ;   instrument's pulse program CHANGES
+        sta PFREE,x
+        jmp pn_prst
+.endif
         lda PFREE,x
         bne pn_noprst            ; stream already running -> keep the phase
         lda #$01
@@ -1586,6 +1601,25 @@ pn_hr:  lda #$fe                 ; $7D row: gate off + AD/SR=0 — the ROM's
         lda #$03                 ; re-arm 1 frame before the next row's trigger
         sta HRC,x
         jmp advw
+
+pl_loop:
+        ; PPTR = VIPUL + byte1*3 and force a reload next frame (A = byte1)
+        sta tmpf
+        asl
+        clc
+        adc tmpf                 ; byte1 * 3
+        clc
+        adc VIPUL_LO,x
+        sta PPTR_LO,x
+        lda VIPUL_HI,x
+        adc #$00
+        sta PPTR_HI,x
+        lda #$01                 ; 1 frame hold, reload on the next frame
+        sta VPC,x
+        lda #$00
+        sta VPADL,x
+        sta VPADH,x
+        rts
 
 fm_hrarm:
         dec HRC,x                ; countdown; on 0 write the instrument ADSR
