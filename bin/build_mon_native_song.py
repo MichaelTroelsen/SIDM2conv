@@ -239,6 +239,7 @@ def _hr_rows(rows, hard_restart):
     for i in range(1, len(rows)):
         r = rows[i]
         if (r.note not in (0x00, SF2_GATE_ON, HR)
+                and not getattr(r, 'tie', False)
                 and rows[i - 1].note in (0x00, SF2_GATE_ON)):
             # ...GATE_ON rows too: Hubbard notes chain back-to-back with no
             # gate-off tail, and the ROM's release routine kills gate + ADSR
@@ -1109,7 +1110,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                         tk += ev.dur
                         continue
                 if getattr(ev, 'rest', False):                # REST: gate-off rows only
-                    blk.append((None, ev.dur, None, None, tk, 0))
+                    blk.append((None, ev.dur, None, None, tk, 0, False))
                     tk += ev.dur
                     continue
                 ticks = edur
@@ -1247,7 +1248,8 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                     # metrics is a metric artifact, not a register error.
                     wp = _wave_prog_for(frames, v, cfr, dur_f)
                 ii = instr_of(ev.instr, wp, flag, filt)
-                blk.append((note_c, ticks, bi, ii, etk, gate_ticks))
+                blk.append((note_c, ticks, bi, ii, etk, gate_ticks,
+                            getattr(ev, 'tie', False)))
                 tk += ev.dur
             if blk:
                 note_recs[v].append(blk)
@@ -1282,11 +1284,11 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                     rows.extend(D11Row(note=0x00) for _ in range(max(0, lead)))
                 first = False
                 cur_inst = cur_cmd = None
-                for note, dur, bi, ii, _ontk, gate in blk:
+                for note, dur, bi, ii, _ontk, gate, tie in blk:
                     if note is None:                          # REST -> gate-off rows
                         rows.extend(D11Row(note=0x00) for _ in range(dur))
                         continue
-                    rows.append(D11Row(note=note,
+                    rows.append(D11Row(note=note, tie=tie,
                                        instrument=ii if ii != cur_inst else None,
                                        command=bi if bi != cur_cmd else None))
                     cur_inst, cur_cmd = ii, bi
@@ -1349,12 +1351,12 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                 rows.extend(D11Row(note=0x00) for _ in range(max(0, lead)))
             first = False
             cur_inst = cur_cmd = None
-            for note, dur, bi, ii, _ontk, gate in blk:
+            for note, dur, bi, ii, _ontk, gate, tie in blk:
                 if note is None:                              # REST -> gate-off rows
                     rows.extend(D11Row(note=0x00) for _ in range(dur))
                     continue
                 slot, cmd = imap[ii], bmap[bi]
-                rows.append(D11Row(note=note,
+                rows.append(D11Row(note=note, tie=tie,
                                    instrument=slot if slot != cur_inst else None,
                                    command=cmd if cmd != cur_cmd else None))
                 cur_inst, cur_cmd = slot, cmd

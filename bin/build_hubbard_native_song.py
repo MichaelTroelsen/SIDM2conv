@@ -54,10 +54,13 @@ class HubbardShim:
                 if n.instr >= 0:
                     cur_instr = n.instr
                 if n.append and out:
-                    # tie: the engine does not re-gate — extend the note
-                    out[-1] = MONEvent(note=out[-1].note,
-                                       dur=out[-1].dur + n.ticks,
-                                       instr=out[-1].instr, wprog=0, retrig=True)
+                    # TIE: the engine does not re-gate but the effects keep
+                    # running — emit a per-segment tie event (own <=FM_CAP
+                    # capture; merging built 512-frame chains whose FM
+                    # truncated flat = the Monty-intro ornament defect)
+                    out.append(MONEvent(note=out[-1].note, dur=n.ticks,
+                                        instr=cur_instr, wprog=0,
+                                        retrig=False, tie=True))
                     continue
                 pitch = n.pitch if n.pitch >= 0 else 0
                 out.append(MONEvent(note=pitch, dur=n.ticks, instr=cur_instr,
