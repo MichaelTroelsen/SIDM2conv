@@ -1116,6 +1116,20 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                 note_c = max(SF2_NOTE_MIN, min(ev.note, SF2_NOTE_MAX))
                 base = m.note_freq(note_c)
                 cfr = _snap_onset(m, frames, v, fr)           # capture onset (gate-rise)
+                if base == 0:
+                    # OUT-OF-RANGE pitch (Hubbard drums read runtime state past
+                    # the freq table; static lookup = 0): the driver's base-hold
+                    # trigger frame played SILENCE (1 bad frame per drum note).
+                    # Resolve the row's note from the trace so the hold frame
+                    # plays the sounding semitone; the FM offsets re-absorb.
+                    for kk in (1, 0, 2):
+                        tf = (frames[cfr + kk][0][v]['freq']
+                              if cfr + kk < len(frames) else 0)
+                        if tf:
+                            note_c = max(SF2_NOTE_MIN,
+                                         min(freq_to_semi(tf), SF2_NOTE_MAX))
+                            base = m.note_freq(note_c)
+                            break
                 flag, filt = (canon_filt.get(cfr, (0, None))
                               if (v, cfr) in drives else (0, None))
                 fmp = fm_program_for(frames, v, cfr, dur_f, base)
