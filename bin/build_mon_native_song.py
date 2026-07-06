@@ -1315,6 +1315,14 @@ def main():
 
     d, la, _ = load_sid(sid)
     m = MON(d, la, sub)
+    # PSEUDO-PARSE GATE: files from OTHER engine generations sometimes "parse"
+    # with a mis-located speed table (Turbo_Outrun speed=255 -> a 3280s trace
+    # that looks like a hang). Real MoN tunes run speed 1-8.
+    if not (1 <= m.frames_per_tick <= 8):
+        sys.exit(f"{os.path.basename(sid)} sub{sub}: implausible speed byte "
+                 f"{m.speed} (frames/tick={m.frames_per_tick}) — this is a "
+                 f"pseudo-parse of an unsupported engine variant, not a real "
+                 f"MoN decode. Refusing to build.")
     used = mon_to_sf2.used_instruments(m)
     instr_rows, wave_table, pulse_table, idx_map = mon_to_sf2.build_instruments(m, used)
     base = os.path.splitext(os.path.basename(sid))[0]

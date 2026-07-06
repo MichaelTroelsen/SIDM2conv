@@ -94,6 +94,30 @@ old "structural profile": sub2's waveform + pulse are now 100% EXACT over the fu
 150s (tonal voices 100% exact-freq); the residual freq gap is the drum class (its
 instrument-attack pitch rides one frame late) plus arp-guard-tolerated frames.
 
+### Tel-corpus expansion (2026-07-06) — 15 more tunes build (default subtune, auto)
+
+Corpus survey: `SID/Tel_Jeroen/` = 179 files → MoN/Deenen 72, MoN/FutureComposer 44,
+Soundmonitor 39, Rob Hubbard 18, other 6 (player-id.exe). 21 parse with the existing
+three orderlist models (the id-groups cut across our models: Supremacy/Myth/Gaplus are
+Deenen-tagged yet parse). 2 of those are PSEUDO-parses (Turbo_Outrun,
+Thats_the_Way_It_Is_main: garbage speed bytes 255/225 from a mis-located speed table —
+now rejected by a frames/tick 1-8 gate instead of "hanging" on a 3280s trace).
+
+| New tune | Parts | min freq/wf/pulse/filter | Class |
+|----------|-------|--------------------------|-------|
+| Daring_Dots, Pal_sine_hoener_tune_1, Thats_preview, Sample, Viool_Tello, Tomcat | 1-4 | 96.6-100 / 95-100 / 100 / 99-100 | **clean** |
+| Hawkeye_Proto_1 | 4 | 100 / 88 / 100 / 99.7 | one wf dip |
+| Gaplus | 27 | 87.1 / 100 / 100 / 97.7 | freq quirk |
+| M_A_C_C | 7 | 83.3 / 99.8 / 100 / 99.5 | freq quirk |
+| Children_Songs / Gaplus_preview / Iets_van_JT | 11/18/10 | 48.7-66.9 freq, wf+pulse ~100 | **freq-quirk class** (unmodeled pitch effect — diagnose like the preamble: boundary dump first) |
+| G_I_Hero | 13 | 78 uniform | alignment class |
+| Ice_Age | 23 | ~0 | **V0 = 2× V1/V2 ticks** — per-voice loop/overrun, needs this variant's loop semantics |
+| Wizzy | 3 | part3 collapses | uneven voices (1024/512/128 ticks) — per-voice `$FF` orderlist LOOP not replayed (one-pass decode; same class as Hawkeye sub2 V1) |
+
+Remaining Tel work = the per-tune quirk classes above + FOUR new engine arcs
+(user priority 2026-07-06): **1. Rob Hubbard (18), 2. Soundmonitor (39),
+3. MoN/Deenen mainstream (72, Robocop3/Turrican-era)**, plus stray one-offs.
+
 Fidelity is measured with `bin/mon_part_fidelity.py PART SUB SECS OFF0_SECS` (per-frame semitone-freq / waveform / pulse / filter-cutoff vs siddump) and `bin/mon_sf2ii_confirm.py` (instrumented real-SF2II capture).
 
 ---
