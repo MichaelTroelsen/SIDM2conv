@@ -54,7 +54,11 @@ def _score(d):
             if a and b and F._semi(a) == F._semi(b):
                 s += 1
     return s
-dly = max(range(0, 5), key=_score)
+# bidirectional: a window whose boundary-continuation tick rounds off the swing
+# grid can start a frame or two EARLY relative to the window label (negative
+# delay) — a one-sided search mis-aligns the whole part (39% "loss" that was
+# really a constant -1 shift). Constant shifts are a nuisance parameter.
+dly = max(range(-4 if off0 >= 4 else -off0, 7), key=_score)
 off0 += dly
 print(f"{os.path.basename(part)}  {n} frames from {off0 // 50}s "
       f"(native play=$1003, engine delay={dly})\n")

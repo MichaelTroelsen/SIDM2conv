@@ -21,6 +21,7 @@ MoN is a two-level **orderlist → pattern** player with a per-frame effects eng
 - **Filter:** a per-instrument **cutoff envelope** (not a sweep or static table) — a per-voice frame counter reset on note-on indexes a 10-byte threshold/delta table (attack base, 3 signed segment deltas, sustain, 4 thresholds); 4 selectable tables + an unused triangle-LFO mode. Only `$D416` (cutoff hi) is written.
 - **Synth engines (Supremacy variant):** pitch arps are compact looping semitone tables (`dur, steps…, $FF loop`), selected by the `$60-$7F` pattern byte and restarted per note; the waveform is a plain attack + steady + release gate envelope (only the steady length varies per note).
 - **`$FB` = TIE flag (Supremacy variant):** consumed by the event EPILOGUE ($1335 — note/retrig/slide finalize only, not rests): peek the byte after the event; `$FB` sets `$100A,X`, which (a) suppresses this note's gate-off ($1155) and (b) makes the NEXT note skip the whole instrument/gate restart ($12C5) — a legato pitch change. It consumes NO time. Decoding it as a top-level `$E0+` rest (27 phantom ticks each) desynced Supremacy sub0 V2 from 138.6s.
+- **Hard-restart PREAMBLE (Supremacy variant):** EVERY retrigger writes freq `$0000` + wf `$41` for exactly ONE frame before the note proper (base freq + first wave row land the next frame). Trace-verified on all three voices, all instruments. The native driver reproduces it via `NOTE_PREAMBLE` builds: `NPRE,x` set at pr_note; `wave_step`/`fm_step` write `$41`/`$0000` on that frame and FREEZE their state (the preamble is an EXTRA frame — consuming a row there destroys each note's attack row; the uniform 1-frame stream shift is absorbed by alignment). Result: waveform 100% exact, tonal voices 100% exact-freq; only the drum class keeps ~2 boundary frames (its instrument-attack `$FF00` pitch rides one frame late).
 
 ### Orderlist-model variants (one parser, `ol_mode` per tune)
 
@@ -84,13 +85,14 @@ strictly sequential — see *lessons*.
 | **Cybernoid II** | 0 | **13** (was 20) | 99.5-100 / 99-100 / **100** / 98.5-100 | third orderlist variant |
 | **Myth** | 0 (main) | **8** | 98.9-100 / 99.6-100 / **100** / 99.2-100 | emulation-extracted; **flag-off build** |
 | **Myth** | 2 | 2 | 100/99-100/100/96 | sub1 is empty (NOP'd in the wrapper) |
-| **Supremacy** | 0 | **5** (was 34) | 86-92 / 85-89 / 93-97 / **100** | real length ~230s (3846 ticks; $FE halt + $FB ties) |
-| **Supremacy** | 1 | **1** (was 24) | 93-98 / 86-98 / 92-98 / **100** | real length 38s ($00 global loop) |
-| **Supremacy** | 2 | **1** (was 70) | 87-98 / 87-96 / 93-98 / **100** | real length 150s; whole song, one editable SF2; **ear-confirmed 2026-07-05** |
+| **Supremacy** | 0 | **5** (was 34) | 90-95 / 92.7-99 / 96-100 / **100** | real length ~230s (3846 ticks; $FE halt + $FB ties) |
+| **Supremacy** | 1 | **1** (was 24) | 94.4-98 / 93.4-99 / 91.6-98 / **100** | real length 38s ($00 global loop) |
+| **Supremacy** | 2 | **1** (was 70) | 93.3-99 / **100** / **100** / **100** | real length 150s; whole song, one editable SF2 |
 
-Supremacy's ~86-92% freq/wf profile is the accepted structural-substitution level for
-this arp-dense engine variant (sub2 at this level is ear-confirmed); every other tune
-sits at 98-100% on all four registers.
+The 2026-07-06 hard-restart PREAMBLE (see engine notes) dissolved most of Supremacy's
+old "structural profile": sub2's waveform + pulse are now 100% EXACT over the full
+150s (tonal voices 100% exact-freq); the residual freq gap is the drum class (its
+instrument-attack pitch rides one frame late) plus arp-guard-tolerated frames.
 
 Fidelity is measured with `bin/mon_part_fidelity.py PART SUB SECS OFF0_SECS` (per-frame semitone-freq / waveform / pulse / filter-cutoff vs siddump) and `bin/mon_sf2ii_confirm.py` (instrumented real-SF2II capture).
 

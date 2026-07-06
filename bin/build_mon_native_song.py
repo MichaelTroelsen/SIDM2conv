@@ -1271,6 +1271,10 @@ def emit_one(m, br, out_path, label):
     # TEMPO2 (short) / TEMPO (long), matching MON.tick_to_frame. Constant tunes
     # set TEMPO2 == TEMPO (the driver toggle is inert).
     B.TEMPO2 = m.speed if getattr(m, "tempo_toggle", False) else m.frames_per_tick
+    # Supremacy engine hard-restart preamble: EVERY retrigger frame plays freq $0000
+    # + wf $41 for one frame before the note proper (trace-RE'd; the Hawkeye-family
+    # engines have no such frame — measured 100% without it).
+    B.NOTE_PREAMBLE = 1 if getattr(m, "ol_mode", None) == "supremacy" else 0
     nfilt = sum(1 for f in instr_flags if f & 0x40)
     flags = ""
     if len(bundles) > 64:

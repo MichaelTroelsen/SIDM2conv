@@ -168,6 +168,13 @@ mul_p     = $186d        ; 24-bit product (3)
 FM_TGT_LO = $1870        ; per-voice SLIDE target offset (freqtable[note+ivl]-vfreq) (3)
 FM_TGT_HI = $1873        ;   (3)
 FM_SLIDE  = $1876        ; per-voice: 1 = slide active (fm_add clamps at FM_TGT) (3)
+pl_ld     = $187c        ; pulse_step scratch: 1 = a row was loaded this frame (used
+                         ;   by the NOTE_PREAMBLE re-arm)
+NPRE      = $1879        ; per-voice: 1 = hard-restart PREAMBLE frame pending (3) —
+                         ;   the Supremacy engine's trigger frame writes freq $0000 +
+                         ;   wf $41 (RE'd from the sub2 trace: EVERY retrigger frame,
+                         ;   all voices); wave_step/fm_step consume state normally but
+                         ;   override this frame's SID writes (NOTE_PREAMBLE builds)
 
         .include "layout.inc"
 INSTR_AD    = INSTR + 0*32
@@ -240,6 +247,7 @@ iv:     lda #$41
         sta FM_CNT,x
         sta FMP_LO,x
         sta FMP_HI,x
+        sta NPRE,x               ; no preamble pending
         lda IFM_LO               ; default FM = program 0 (flat) until a cmd selects
         sta VIFM_LO,x
         lda IFM_HI
@@ -428,6 +436,15 @@ ws_play:
         ldy VWI,x                ; waveform col0 -> $D404 (masked by the gate)
         lda WAVE,y
         and VGMASK,x
+.if NOTE_PREAMBLE
+        ldy NPRE,x               ; preamble frame: write $41 and FREEZE the row —
+        beq wsp_wf               ;   the preamble is an EXTRA frame (engine-verified:
+        lda #$41                 ;   row0 must still play on the NEXT frame; consuming
+        ldy sidbase,x            ;   it here destroyed each note's attack row)
+        sta SID+4,y
+        jmp ws_next
+wsp_wf:
+.endif
         ldy sidbase,x
         sta SID+4,y
         dec VWCNT,x              ; consume one frame; on expiry step to the next row
@@ -445,6 +462,10 @@ ws_done:
 pulse_step:
         ldx #$02
 pl_l:
+.if NOTE_PREAMBLE
+        lda #$00                 ; no row loaded (yet) this frame for this voice
+        sta pl_ld
+.endif
         lda VPC,x
         bne pl_apply             ; still on current row -> just apply the add
         ; row expired -> load the next PULSETAB entry via the 16-bit pointer
@@ -465,6 +486,10 @@ pl_l:
         jmp pl_apply
 pl_decode:
         sta tmpf                 ; byte0
+.if NOTE_PREAMBLE
+        lda #$01                 ; a row load happened this frame (preamble re-arm)
+        sta pl_ld
+.endif
         ldy #$02
         lda (pptr),y             ; byte2 = frame count
         sta VPC,x
@@ -527,6 +552,9 @@ pl_wr:
         sta SID+2,y
         lda VPHI,x
         sta SID+3,y
+.if NOTE_PREAMBLE
+        jsr pl_prearm            ; preamble frame: re-arm the just-loaded row
+.endif
         dex
         bmi pl_done              ; (bpl pl_l would branch too far -> use jmp)
         jmp pl_l
@@ -670,6 +698,17 @@ fp_write:
 fm_step:
         ldx #$02
 fm_l:
+.if NOTE_PREAMBLE
+        ldy NPRE,x               ; preamble frame: freq $0000 + FREEZE the FM state
+        beq fml_n                ;   (no CNT/ACC consumption — the note's freq stream
+        lda #$00                 ;   starts on the NEXT frame, one frame later than
+        sta NPRE,x               ;   the old grid; a uniform shift the alignment
+        ldy sidbase,x            ;   absorbs). Cleared here: wave_step ran first.
+        sta SID+0,y
+        sta SID+1,y
+        jmp fm_nextv
+fml_n:
+.endif
         lda FM_ON,x
         bne fm_run
         jmp fm_write             ; FM off -> freq = vfreq (FM_ACC stays 0)
@@ -821,6 +860,7 @@ fm_write:
         lda vfreq_hi,x
         adc FM_ACC_HI,x
         sta SID+1,y
+fm_nextv:
         dex
         bmi fm_done
         jmp fm_l
@@ -992,6 +1032,10 @@ pn_not_off:
         lda vwf,x
         ora #$01
         sta SID+4,y
+.if NOTE_PREAMBLE
+        lda #$01                 ; Supremacy hard-restart: this frame's final SID
+        sta NPRE,x               ;   state is freq $0000 + wf $41 (the wave_step /
+.endif                           ;   fm_step writes below override, one frame only)
         ; pulse FREE-RUN (VIFLAGS $08): MoN sweeps whose phase never resets are
         ; emitted as ONE per-voice stream program — after the first flagged note
         ; starts it, later note-ons keep PPTR/VPC (the stream runs across notes).
@@ -1491,6 +1535,27 @@ freqtable:
 ; area ($1A00) — the main code bank was overflowing into SF2II's pinned
 ; playback-state region ($16cc-$1702).
         * = $1880
+.if NOTE_PREAMBLE
+; NOTE_PREAMBLE pulse re-arm (out-of-line: the main bank is at the $16CC cap):
+; on the preamble frame the reset value was already written (the engine writes
+; it on this frame too), but the engine HOLDS it across the preamble — undo the
+; row consumption so the stream replays the row next frame.
+pl_prearm:
+        lda NPRE,x
+        beq pl_karm
+        lda pl_ld                ; only if a row actually loaded this frame
+        beq pl_karm
+        lda #$00
+        sta VPC,x
+        lda PPTR_LO,x            ; PPTR -= 3 (undo the row advance)
+        sec
+        sbc #$03
+        sta PPTR_LO,x
+        bcs pl_karm
+        dec PPTR_HI,x
+pl_karm:
+        rts
+.endif
 ; SCALED FM entry (out-of-line for branch range): offset = +-(VSTEP * byte0) >> 8
 ; — a pitch-proportional vibrato leg. 24-bit shift-add multiply, ~200 cycles,
 ; runs only when an entry loads (once per leg).
