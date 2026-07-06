@@ -286,6 +286,9 @@ def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
         f.write(f"NOTE_PREAMBLE = {getattr(B, 'NOTE_PREAMBLE', 0)}\n")
         # Hubbard release "kill adsr" + per-retrigger ADSR re-arm (MoN driver)
         f.write(f"HARD_RESTART = {getattr(B, 'HARD_RESTART', 0)}\n")
+        # scaled-vibrato FM entries ($40-$43 hi marker) — off for engines whose
+        # REAL Hz deltas reach that range (Hubbard drum dives to $43xx)
+        f.write(f"FMSCALE_ON = {getattr(B, 'FM_SCALED', 1)}\n")
         f.write(f"INSTR = ${gen.instr_addr:04x}\n")
         f.write(f"WAVE  = ${gen.wave_addr:04x}\n")
         f.write(f"PULSE = ${gen.pulse_addr:04x}\n")

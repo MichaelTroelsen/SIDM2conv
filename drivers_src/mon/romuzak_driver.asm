@@ -766,12 +766,14 @@ fm_notfrz:
         beq fm_loopent
         sta FM_CNT,x             ; --- Hz-delta run (original form) ---
         ldy #$01
+.if FMSCALE_ON
         lda (fmptr),y            ; byte 1 = offset hi — $40-$43 marks a SCALED
         and #$fc                 ;   (pitch-proportional vibrato) entry:
         eor #$40                 ;   offset = +-(VSTEP * byte0) >> 8
         bne fm_plainhz           ;   bit0 = negative, bit1 = TRUNCATE (no round)
         jmp fm_scaled            ;   (mul block lives past fm_done: branch range)
-fm_plainhz:
+.endif                           ; (Hubbard: REAL deltas hit $40-$43 hi — drum
+fm_plainhz:                      ;   dives to $43xx — so the marker is disabled)
         lda (fmptr),y
         sta FM_OFF_HI,x
         ldy #$00

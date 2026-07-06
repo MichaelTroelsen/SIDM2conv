@@ -1168,7 +1168,9 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                     # the NEXT note's base reset (the same 1-frame register skew as
                     # the wave bleed) — the note's own program reproduces that bleed,
                     # the canonical continues the sweep instead (<=1 frame/note)
-                    cmp_f = max(1, dur_f - 1)
+                    # floor 2: same vacuous-guard class as the FM fcmp fix —
+                    # short notes compared over <=1 frame accept any canonical
+                    cmp_f = max(2, dur_f - 1)
                     if (ARP_STRUCT and cp is not None and cp != pp
                             and _pulse_unroll(cp, cmp_f) == _pulse_unroll(pp, cmp_f)):
                         pp = cp
@@ -1321,6 +1323,8 @@ def emit_one(m, br, out_path, label):
     # Hubbard release "kill adsr" (AD=SR=0 on gate-off) + per-retrigger ADSR re-arm —
     # decisive for the audible attack punch, invisible to register-state metrics.
     B.HARD_RESTART = 1 if getattr(m, "hard_restart", 0) else 0
+    # scaled FM entries collide with real $40-$43xx Hz deltas (Hubbard drum dives)
+    B.FM_SCALED = 0 if getattr(m, "hard_restart", 0) else 1
     nfilt = sum(1 for f in instr_flags if f & 0x40)
     flags = ""
     if len(bundles) > 64:
