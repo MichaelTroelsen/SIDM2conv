@@ -36,8 +36,11 @@ probe = os.path.join(
 open(probe, "wb").write(v._psid(bytes(sf2[2:]), sla, 0x1000, 0x1003))
 
 # infer the original SID from the part filename ("<Tune>_sub<N>..." -> <Tune>.sid)
-tune = os.path.basename(part).split("_sub")[0].split("_native")[0]
-orig_sid = os.path.join("SID", "Tel_Jeroen", f"{tune}.sid")
+tune = os.path.basename(part).split("_sub")[0].split("_song")[0].split("_native")[0]
+for folder in ("Tel_Jeroen", "Hubbard_Rob"):
+    orig_sid = os.path.join("SID", folder, f"{tune}.sid")
+    if os.path.exists(orig_sid):
+        break
 orig = F.per_frame(orig_sid, [f"-a{sub}", f"-t{(off0 // 50) + secs + 1}"])
 prb = F.per_frame(probe, [f"-t{secs + 1}"])
 n = min(len(orig) - off0, len(prb), secs * 50) - 4

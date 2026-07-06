@@ -28,9 +28,12 @@ if not ours:
     sys.exit(1)
 print(f"  captured {len(ours)} SF2II frames (loaded + ran)")
 
-tune = os.path.basename(part).split("_sub")[0].split("_native")[0]
-orig = F.per_frame(os.path.join("SID", "Tel_Jeroen", f"{tune}.sid"),
-                   [f"-a{sub}", f"-t{(off0 // 50) + secs + 2}"])
+tune = os.path.basename(part).split("_sub")[0].split("_song")[0].split("_native")[0]
+for _folder in ("Tel_Jeroen", "Hubbard_Rob"):
+    _cand = os.path.join("SID", _folder, f"{tune}.sid")
+    if os.path.exists(_cand):
+        break
+orig = F.per_frame(_cand, [f"-a{sub}", f"-t{(off0 // 50) + secs + 2}"])
 
 
 def ov(b, v):

@@ -989,6 +989,14 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     first_drive = next((o for o in drive_frames if t0w <= o < t1w), None)
     lead_end = first_drive if first_drive is not None else min(t1w, nftr)
     cands = [(o, v) for v in range(3) for o in onsets[v] if t0w <= o < lead_end]
+    # a tune whose filter is TRULY UNUSED (no drives, cutoff AND res/routing
+    # both zero throughout) must not get the synthetic residual program:
+    # emitting one sets a passband bit in F_MODE and the driver then writes
+    # $D418 = mode|$0f every frame (Hubbard v1 never touches the filter; its
+    # $D418 must stay $0F — VICE-dump-verified: vol match 0% -> 100%)
+    if not drive_frames and all(c == 0 and ct == 0
+                                for c, ct in ftr[:min(nftr, 3000)]):
+        cands = []
     if cands and (first_drive is None or first_drive > t0w):
         o0, v0 = min(cands)
         if (v0, o0) not in drives and lead_end - o0 >= 2:
@@ -1275,6 +1283,9 @@ def emit_one(m, br, out_path, label):
     # + wf $41 for one frame before the note proper (trace-RE'd; the Hawkeye-family
     # engines have no such frame — measured 100% without it).
     B.NOTE_PREAMBLE = 1 if getattr(m, "ol_mode", None) == "supremacy" else 0
+    # Hubbard release "kill adsr" (AD=SR=0 on gate-off) + per-retrigger ADSR re-arm —
+    # decisive for the audible attack punch, invisible to register-state metrics.
+    B.HARD_RESTART = 1 if getattr(m, "hard_restart", 0) else 0
     nfilt = sum(1 for f in instr_flags if f & 0x40)
     flags = ""
     if len(bundles) > 64:

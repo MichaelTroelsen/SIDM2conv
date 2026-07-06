@@ -170,6 +170,14 @@ FM_TGT_HI = $1873        ;   (3)
 FM_SLIDE  = $1876        ; per-voice: 1 = slide active (fm_add clamps at FM_TGT) (3)
 pl_ld     = $187c        ; pulse_step scratch: 1 = a row was loaded this frame (used
                          ;   by the NOTE_PREAMBLE re-arm)
+VAD       = $1880        ; per-voice: current instrument AD (3) — HARD_RESTART builds
+VSR       = $1883        ; per-voice: current instrument SR (3) — rewrite ADSR on
+                         ;   EVERY retrigger + zero it when the OUTPUT gate falls
+                         ;   (Rob Hubbard's release "kill adsr": without it the real
+                         ;   SID envelope re-attacks mushy/quiet — invisible to
+                         ;   register-state metrics)
+WFPRV     = $1886        ; per-voice: last $D404 value written by wave_step (3) —
+                         ;   detects the gate 1->0 falling edge for the ADSR kill
 NPRE      = $1879        ; per-voice: 1 = hard-restart PREAMBLE frame pending (3) —
                          ;   the Supremacy engine's trigger frame writes freq $0000 +
                          ;   wf $41 (RE'd from the sub2 trace: EVERY retrigger frame,
@@ -248,6 +256,9 @@ iv:     lda #$41
         sta FMP_LO,x
         sta FMP_HI,x
         sta NPRE,x               ; no preamble pending
+.if HARD_RESTART
+        sta WFPRV,x              ; gate-edge tracker clear
+.endif
         lda IFM_LO               ; default FM = program 0 (flat) until a cmd selects
         sta VIFM_LO,x
         lda IFM_HI
@@ -447,6 +458,21 @@ wsp_wf:
 .endif
         ldy sidbase,x
         sta SID+4,y
+.if HARD_RESTART
+        sta tmpf                 ; ADSR kill on the OUTPUT gate falling edge:
+        eor WFPRV,x              ;   Hubbard zeroes AD/SR at release start so
+        and #$01                 ;   the next attack fires at full punch
+        beq hrk_done
+        lda tmpf
+        and #$01
+        bne hrk_done             ; gate rose -> no kill
+        lda #$00
+        sta SID+5,y
+        sta SID+6,y
+hrk_done:
+        lda tmpf
+        sta WFPRV,x
+.endif
         dec VWCNT,x              ; consume one frame; on expiry step to the next row
         bne ws_next
         inc VWI,x
@@ -985,6 +1011,11 @@ pr_note:
         and #$fe
         ldy sidoff
         sta SID+4,y
+.if HARD_RESTART
+        lda #$00                 ; Hubbard release "kill adsr": AD=SR=0 during
+        sta SID+5,y              ;   the release gap resets the envelope so the
+        sta SID+6,y              ;   next attack fires at full punch
+.endif
         jmp advw
 pn_adv:
         jmp advw                 ; trampoline (advw now out of branch range)
@@ -1032,6 +1063,12 @@ pn_not_off:
         lda vwf,x
         ora #$01
         sta SID+4,y
+.if HARD_RESTART
+        lda VAD,x                ; re-arm ADSR on EVERY retrigger (the release
+        sta SID+5,y              ;   kill zeroed it; the ROM rewrites the
+        lda VSR,x                ;   instrument AD/SR at every note fetch)
+        sta SID+6,y
+.endif
 .if NOTE_PREAMBLE
         lda #$01                 ; Supremacy hard-restart: this frame's final SID
         sta NPRE,x               ;   state is freq $0000 + wf $41 (the wave_step /
@@ -1200,6 +1237,12 @@ set_instr_v:
         sta SID+5,y
         lda tmpf+1
         sta SID+6,y
+.if HARD_RESTART
+        lda tmpf                 ; remember for the per-retrigger ADSR re-arm
+        sta VAD,x
+        lda tmpf+1
+        sta VSR,x
+.endif
         rts
 
 ; --- STOP -----------------------------------------------------------------
@@ -1534,7 +1577,7 @@ freqtable:
 ; the free window between the driver scratch ($1800-$187f) and the edit
 ; area ($1A00) — the main code bank was overflowing into SF2II's pinned
 ; playback-state region ($16cc-$1702).
-        * = $1880
+        * = $1890
 .if NOTE_PREAMBLE
 ; NOTE_PREAMBLE pulse re-arm (out-of-line: the main bank is at the $16CC cap):
 ; on the preamble frame the reset value was already written (the engine writes

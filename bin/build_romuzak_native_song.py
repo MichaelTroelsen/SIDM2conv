@@ -284,6 +284,8 @@ def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
         f.write(f"TEMPO2 = {getattr(B, 'TEMPO2', None) or B.TEMPO}\n")
         # Supremacy hard-restart preamble (MoN driver): trigger frame = freq 0 + $41
         f.write(f"NOTE_PREAMBLE = {getattr(B, 'NOTE_PREAMBLE', 0)}\n")
+        # Hubbard release "kill adsr" + per-retrigger ADSR re-arm (MoN driver)
+        f.write(f"HARD_RESTART = {getattr(B, 'HARD_RESTART', 0)}\n")
         f.write(f"INSTR = ${gen.instr_addr:04x}\n")
         f.write(f"WAVE  = ${gen.wave_addr:04x}\n")
         f.write(f"PULSE = ${gen.pulse_addr:04x}\n")
