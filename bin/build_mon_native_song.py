@@ -210,7 +210,7 @@ def extract_wave_programs(m, sid, sub, idx_map, instr_rows, frames):
         tk = 0
         for ev in m.voices[v]:
             slot = idx_map.get(ev.instr, 0)
-            fr = m.tick_to_frame(tk) + delay
+            fr = _snap_onset(m, frames, v, m.tick_to_frame(tk) + delay)
             dur_f = m.tick_to_frame(tk + ev.dur) - m.tick_to_frame(tk)
             if ev.retrig and slot not in progs and dur_f >= 2:
                 wfs, last = [], 0x41
@@ -226,6 +226,40 @@ def extract_wave_programs(m, sid, sub, idx_map, instr_rows, frames):
                 progs[slot] = prog
             tk += ev.dur
     return progs
+
+
+def _hr_rows(rows, hard_restart):
+    """HARD_RESTART builds: turn the FINAL gate-off row before each note into the
+    $7D hard-restart row (driver: gate off + AD/SR=0). Matches the ROM's timing —
+    the "kill adsr" fires at note-length end, 1-3 frames before the next fetch;
+    killing at the gate fall instead executed the drums' release ring."""
+    if not hard_restart:
+        return rows
+    HR = 0x7D
+    for i in range(1, len(rows)):
+        r = rows[i]
+        if (r.note not in (0x00, SF2_GATE_ON, HR)
+                and rows[i - 1].note == 0x00):
+            rows[i - 1] = D11Row(note=HR)
+    return rows
+
+
+def _snap_onset(m, frames, v, fr):
+    """Per-note capture alignment (shim opt-in `snap_gate`): snap `fr` to the
+    actual GATE-RISE frame in the trace. Hubbard drums gate for exactly ONE
+    frame ($15 for one frame, then $80 noise, then released $14 — VICE-dump
+    verified); a global capture phase that lands one frame late drops that
+    frame out of the wave program and the note's ATTACK never fires. A ±2/+3
+    window around the grid frame recovers the true onset per note."""
+    if not getattr(m, 'snap_gate', False):
+        return fr
+
+    def g(k):
+        return (frames[k][0][v]['wf'] & 1) if 0 <= k < len(frames) else 0
+    for k in range(max(0, fr - 2), min(len(frames), fr + 4)):
+        if g(k) and not g(k - 1):
+            return k
+    return fr
 
 
 def filter_trace(sid, sub, secs):
@@ -845,7 +879,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
         tk = 0
         for ev in m.voices[v]:
             if ev.retrig:
-                fr = m.tick_to_frame(tk) + delay
+                fr = _snap_onset(m, frames, v, m.tick_to_frame(tk) + delay)
                 onsets[v].add(fr)
                 onset_instr[v][fr] = ev.instr
                 dur_f = m.tick_to_frame(tk + ev.dur) - m.tick_to_frame(tk)
@@ -1077,9 +1111,10 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                 # the whole note's freq by note_freq(clamped)-note_freq(raw).
                 note_c = max(SF2_NOTE_MIN, min(ev.note, SF2_NOTE_MAX))
                 base = m.note_freq(note_c)
-                flag, filt = (canon_filt.get(fr, (0, None))
-                              if (v, fr) in drives else (0, None))
-                fmp = fm_program_for(frames, v, fr, dur_f, base)
+                cfr = _snap_onset(m, frames, v, fr)           # capture onset (gate-rise)
+                flag, filt = (canon_filt.get(cfr, (0, None))
+                              if (v, cfr) in drives else (0, None))
+                fmp = fm_program_for(frames, v, cfr, dur_f, base)
                 # guard-compare window: skip the ~3 end-of-note boundary frames,
                 # but NEVER go below 2 — _fm_unroll's frame 0 is always the base
                 # hold, so fcmp=1 compares nothing and any canonical/arp/vibrato
@@ -1127,7 +1162,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                     pp = freerun[v]               # one per-voice stream, phase kept
                     flag |= 0x08                  # driver: no pulse reset on note-on
                 else:
-                    pp = pulse_program_for(frames, v, fr, dur_f)
+                    pp = pulse_program_for(frames, v, cfr, dur_f)
                     cp = canon_pulse.get((ev.instr, ev.wprog))
                     # compare minus the last frame: the capture's final frame holds
                     # the NEXT note's base reset (the same 1-frame register skew as
@@ -1138,7 +1173,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                             and _pulse_unroll(cp, cmp_f) == _pulse_unroll(pp, cmp_f)):
                         pp = cp
                 bi = bundle_of(fmp, pp)
-                gate_ticks, wfs_c, off_k, end_c = _gate_split(m, frames, v, fr,
+                gate_ticks, wfs_c, off_k, end_c = _gate_split(m, frames, v, cfr,
                                                               dur_f, etk, ticks)
                 cw = canon_wave.get((ev.instr, ev.wprog))
                 drv_gate = m.tick_to_frame(etk + gate_ticks) - m.tick_to_frame(etk)
@@ -1153,7 +1188,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                     # bleed: reproducing it is byte-better (osc3 wf 97.8 vs 91.6
                     # trimmed — measured); the "phantom onset" it causes in onset
                     # metrics is a metric artifact, not a register error.
-                    wp = _wave_prog_for(frames, v, fr, dur_f)
+                    wp = _wave_prog_for(frames, v, cfr, dur_f)
                 ii = instr_of(ev.instr, wp, flag, filt)
                 blk.append((note_c, ticks, bi, ii, etk, gate_ticks))
                 tk += ev.dur
@@ -1200,7 +1235,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                     cur_inst, cur_cmd = ii, bi
                     rows.extend(D11Row(note=SF2_GATE_ON) for _ in range(max(0, gate - 1)))
                     rows.extend(D11Row(note=0x00) for _ in range(max(0, dur - gate)))
-                nseg += len(segment_track(rows))
+                nseg += len(segment_track(_hr_rows(rows, getattr(m, 'hard_restart', 0))))
         # effective (not raw) bundle count: a window can grow past 64 raw bundles if the
         # excess merges away inaudibly (see effective_bundle_count / BUNDLE_TOL).
         nb = effective_bundle_count(exb, bcount, BUNDLE_TOL)
@@ -1264,7 +1299,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                 cur_inst, cur_cmd = slot, cmd
                 rows.extend(D11Row(note=SF2_GATE_ON) for _ in range(max(0, gate - 1)))
                 rows.extend(D11Row(note=0x00) for _ in range(max(0, dur - gate)))
-            for pk in segment_track(rows):
+            for pk in segment_track(_hr_rows(rows, getattr(m, 'hard_restart', 0))):
                 segs[v].append(pk)
     return segs, bundles, instrs, wave_programs, instr_flags, filter_programs
 

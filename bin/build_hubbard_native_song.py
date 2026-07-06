@@ -37,6 +37,8 @@ class HubbardShim:
 
     tempo_toggle = False
     hard_restart = 1          # Hubbard's release "kill adsr" + per-note ADSR re-arm
+    snap_gate = True          # snap capture onsets to the trace's gate-rise frame
+                              # (drums gate for ONE frame; a late phase loses it)
 
     def __init__(self, m, song, phase):
         self.m = m
