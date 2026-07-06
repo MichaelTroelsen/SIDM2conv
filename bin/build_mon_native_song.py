@@ -1072,7 +1072,12 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                 flag, filt = (canon_filt.get(fr, (0, None))
                               if (v, fr) in drives else (0, None))
                 fmp = fm_program_for(frames, v, fr, dur_f, base)
-                fcmp = max(1, dur_f - 3)
+                # guard-compare window: skip the ~3 end-of-note boundary frames,
+                # but NEVER go below 2 — _fm_unroll's frame 0 is always the base
+                # hold, so fcmp=1 compares nothing and any canonical/arp/vibrato
+                # substitution passes vacuously (Cybernoid part7's 3-frame notes
+                # took a +$46/frame slide canonical -> +0.25-semitone runs).
+                fcmp = max(2, dur_f - 3)
                 arp = _arp_fm_for(m, ev)
                 if arp is not None:
                     # SEMITONE-level guard: the $60-$7F selector is not always a

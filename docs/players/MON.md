@@ -80,8 +80,8 @@ strictly sequential — see *lessons*.
 | **Hawkeye** | 3 (main theme) | 1 | **100/100/100/100** | byte-exact, full length; GUI-confirmed |
 | **Hawkeye** | 2 | 1 | **100/100/100/96.5** | byte-exact; GUI-confirmed |
 | **Hawkeye** | 0 (6.4-min theme) | **7** (was 13×30s) | 99.7-100 / 97.8-100 / **100** / 99.1-100 | full 384s; read-watch-verified walk |
-| **Cybernoid** | 0 | **11** (was 14) | 93.3-100 / **100** / **100** / 98.3-100 | full 399s; see *SBC bug* below |
-| **Cybernoid II** | 0 | **13** (was 20) | 98.5-100 / 99-100 / **100** / 98.5-100 | third orderlist variant |
+| **Cybernoid** | 0 | **11** (was 14) | 98.0-100 / **100** / **100** / 98.3-100 | full 399s; see *SBC bug* below |
+| **Cybernoid II** | 0 | **13** (was 20) | 99.5-100 / 99-100 / **100** / 98.5-100 | third orderlist variant |
 | **Myth** | 0 (main) | **8** | 98.9-100 / 99.6-100 / **100** / 99.2-100 | emulation-extracted; **flag-off build** |
 | **Myth** | 2 | 2 | 100/99-100/100/96 | sub1 is empty (NOP'd in the wrapper) |
 | **Supremacy** | 0 | **5** (was 34) | 86-92 / 85-89 / 93-97 / **100** | real length ~230s (3846 ticks; $FE halt + $FB ties) |
