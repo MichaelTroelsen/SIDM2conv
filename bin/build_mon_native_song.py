@@ -239,7 +239,11 @@ def _hr_rows(rows, hard_restart):
     for i in range(1, len(rows)):
         r = rows[i]
         if (r.note not in (0x00, SF2_GATE_ON, HR)
-                and rows[i - 1].note == 0x00):
+                and rows[i - 1].note in (0x00, SF2_GATE_ON)):
+            # ...GATE_ON rows too: Hubbard notes chain back-to-back with no
+            # gate-off tail, and the ROM's release routine kills gate + ADSR
+            # TOGETHER at length end — without this, gated-note chains never
+            # hard-restart and the mix washes out (the Commando lead drowned)
             rows[i - 1] = D11Row(note=HR)
     return rows
 
@@ -1272,6 +1276,10 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
             return False                     # structural programs never gate-merge
         return sum(abs(a - b) for a, b in zip(bcurves[i], bcurves[j])) <= BUNDLE_TOL
     bmap, breps = greedy_cluster(exb, bcount, bdist, 63, gate=bgate if BUNDLE_TOL > 0 else None)
+    if len(exb) > len(breps):
+        print(f"  WARNING: {len(exb) - len(breps)} of {len(exb)} bundles FORCE-MERGED "
+              f"(ungated) — the window exceeds the 63-bundle cap; freq/pulse programs "
+              f"WILL be wrong for merged notes. Use adaptive ('auto') windows.")
     imap, ireps = greedy_cluster(exi, icount, idist, 32)
     bundles = [exb[r] for r in breps]
     instrs = [exi[r][:3] for r in ireps]
