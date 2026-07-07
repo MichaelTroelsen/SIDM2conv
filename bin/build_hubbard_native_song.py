@@ -71,12 +71,13 @@ class HubbardShim:
                     prev_norel = n.no_release
                     continue
                 pitch = n.pitch if n.pitch >= 0 else 0
-                if prev_norel and out:
-                    # the previous note's bit5 (no release) skipped the
-                    # length-end ADSR kill, and the ROM's fetch writes ctrl
-                    # over an already-on gate — NO edge, NO re-attack: this
-                    # note is a tie with a pitch update (a retrigger + $7D
-                    # pre-kill here audibly chops the sustained voice)
+                if (prev_norel or getattr(n, 'no_fetch', False)) and out:
+                    # No gate edge, no re-attack: (a) the previous note's
+                    # bit5 (no release) skipped the length-end ADSR kill and
+                    # the ROM's fetch writes ctrl over an already-on gate;
+                    # (b) v2 pitch bit7 (no-fetch) changes pitch WITHOUT the
+                    # instrument fetch. Both = a tie with a pitch update (a
+                    # retrigger + $7D pre-kill audibly chops the voice)
                     out.append(MONEvent(note=pitch, dur=n.ticks,
                                         instr=cur_instr, wprog=0,
                                         retrig=False, tie=True))

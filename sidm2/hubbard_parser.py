@@ -82,6 +82,8 @@ class HubbardLayout:
     swallow_period: int = 0   #   expiry (every `period` frames) the player
                               #   SKIPS the speed dec — one tick stretches by
                               #   a frame (Sanxion 109, Delta 5, Thundercats 4)
+    v2_notes: bool = False    # v2 note format (Delta class): $60-len = 1-byte
+                              #   rest, 4-byte porta, pitch bit7 = no-fetch
 
 
 SONGS_COPY_SIG = [0xBD, None, None, 0x99, None, None, 0xE8, 0xC8, 0xC0, 0x06, 0xD0]
@@ -221,6 +223,12 @@ class HubbardModule:
                 lay.swallow_addr = d[j + 1] | (d[j + 2] << 8)
                 lay.swallow_period = d[j + 6] + 1
                 break
+
+        # v2 note format: the pattern parser tests len-byte bits 5+6 together
+        # (AND #$60 / CMP #$60 / BNE) — 1-byte rests, 4-byte porta, pitch
+        # bit7 no-fetch (Delta class)
+        lay.v2_notes = any(w_lo <= j < w_hi
+                           for j in _find_all(d, [0x29, 0x60, 0xC9, 0x60, 0xD0]))
         return lay
 
     # ---------------- decode ----------------
@@ -256,9 +264,30 @@ class HubbardModule:
 
     def track_patterns(self, song, voice):
         """Pattern-number list until $ff (loop) / $fe (halt).
-        Returns (patterns, loops)."""
+        Returns (patterns, loops).
+
+        v2 tracks (Delta class) interleave REPEAT counts: [pat0 (1x),
+        cnt1, pat1 (cnt1 x), cnt2, pat2, ...] — the ROM inits the repeat
+        counter to 1, plays the pattern at pos, and on expiry reads the
+        next byte as the count for the FOLLOWING pattern."""
         ptr = self.track_ptrs(song)[voice]
         pats, i = [], 0
+        if getattr(self.lay, 'v2_notes', False):
+            count = 1
+            while i < 512:
+                b = self._u8(ptr + i)
+                if b == 0xFF:
+                    return pats, True
+                if b == 0xFE:
+                    return pats, False
+                pats.extend([b] * max(1, count))
+                i += 1
+                nxt = self._u8(ptr + i)
+                if nxt in (0xFF, 0xFE):
+                    continue
+                count = nxt
+                i += 1
+            return pats, False
         while i < 512:
             b = self._u8(ptr + i)
             if b == 0xFF:
@@ -278,10 +307,20 @@ class HubbardNote:
     porta: int = 0            # signed portamento byte (0 = none)
     append: bool = False      # tie: no re-gate, keeps previous pitch
     no_release: bool = False  # bit5
+    no_fetch: bool = False    # v2 pitch bit7: pitch change WITHOUT the
+                              #   instrument fetch (no PW/ADSR write, no gate
+                              #   edge) — a tie with a pitch update
 
 
 def decode_pattern(m, pat):
-    """Pattern -> [HubbardNote]. Follows getnotedata exactly."""
+    """Pattern -> [HubbardNote]. Follows getnotedata exactly.
+
+    v2 note format (Delta class, detected via the parser's AND #$60 check):
+    len bits5+6 BOTH set = a 1-byte REST/hold note; a NEGATIVE 2nd byte
+    (porta) carries an EXTRA parameter byte (4-byte spec — reading it as
+    3 bytes desyncs the whole stream); pitch bit7 = NO-FETCH (pitch change
+    without re-fetching instrument/PW/ADSR = a tie with a pitch update)."""
+    v2 = getattr(m.lay, 'v2_notes', False)
     ptr = m._u8(m.lay.patptl + pat) | (m._u8(m.lay.patpth + pat) << 8)
     out, y, guard = [], 0, 0
     while guard < 1024:
@@ -292,6 +331,12 @@ def decode_pattern(m, pat):
         length = b0 & 0x1F
         no_rel = bool(b0 & 0x20)
         append = bool(b0 & 0x40)
+        if v2 and (b0 & 0x60) == 0x60:
+            # 1-byte REST/hold: keeps the current output, no pitch/fetch
+            out.append(HubbardNote(ticks=length + 1, append=True,
+                                   no_release=True))
+            y += 1
+            continue
         note = HubbardNote(ticks=length + 1, append=append, no_release=no_rel)
         y += 1
         if append:
@@ -304,9 +349,14 @@ def decode_pattern(m, pat):
             y += 1
             if b1 & 0x80:
                 note.porta = b1
+                if v2:
+                    y += 1               # v2 porta: extra parameter byte
             else:
                 note.instr = b1
-        note.pitch = m._u8(ptr + y)
+        pb = m._u8(ptr + y)
+        if v2 and (pb & 0x80):
+            note.no_fetch = True         # pitch change, NO instrument fetch
+        note.pitch = pb & 0x7F if v2 else pb
         y += 1
         out.append(note)
     return out
