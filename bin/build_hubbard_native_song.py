@@ -24,7 +24,8 @@ os.chdir(ROOT)
 
 from sidm2.mon_parser import MONEvent
 from sidm2.hubbard_parser import (HubbardModule, decode_song, load_sid,
-                                  detect_module_map)
+                                  detect_module_map, swallow_state,
+                                  ticks_to_frames)
 import build_mon_native_song as BM
 
 SID = sys.argv[1] if len(sys.argv) > 1 else os.path.join("SID", "Hubbard_Rob",
@@ -84,15 +85,25 @@ class HubbardShim:
                                         instr=cur_instr, wprog=0, retrig=True))
                 prev_norel = n.no_release
 
+    sw_per = 0                # v2 fractional tempo: dead-frame period
+    sw_c0 = 0                 #   and first dead frame (song-global)
+
     @property
     def frames_per_tick(self):
         return self._fpt
 
     def tick_to_frame(self, ticks):
-        return ticks * self._fpt
+        return ticks_to_frames(ticks, self._fpt, self.sw_per, self.sw_c0)
 
     def frame_to_tick(self, frame):
-        return max(0, (frame + self._fpt - 1) // self._fpt)
+        if not self.sw_per:
+            return max(0, (frame + self._fpt - 1) // self._fpt)
+        t = max(0, (frame + self._fpt - 1) // self._fpt)   # lower bound-ish
+        while self.tick_to_frame(t) > frame and t > 0:
+            t -= 1
+        while self.tick_to_frame(t) < frame:
+            t += 1
+        return t
 
     def _voice_blocks(self, v):
         return [(0, self.voices[v])] if self.voices[v] else []
@@ -219,6 +230,19 @@ def main():
     voices, totals = decode_song(m, dsong)
     phase = find_phase(SID, SONG, m, voices)
     shim = HubbardShim(m, dsong, phase)
+    if m.lay.swallow_period:
+        shim.sw_per = m.lay.swallow_period
+        shim.sw_c0 = swallow_state(d, la, h.init_address, SONG, m.lay)
+        print(f"  fractional tempo: swallow period={shim.sw_per} "
+              f"first-skip={shim.sw_c0}")
+
+    def part_swallow(t0):
+        """(period, frames-until-first-skip) at part window start t0."""
+        if not shim.sw_per:
+            return None
+        per, c0 = shim.sw_per, shim.sw_c0
+        d0 = c0 if t0 <= c0 else c0 + ((t0 - c0 + per - 1) // per) * per
+        return (per, d0 - t0)
     span = shim.tick_to_frame(max(sum(ev.dur for ev in shim.voices[v])
                                   for v in range(3))) + phase
     base = os.path.splitext(os.path.basename(SID))[0]
@@ -240,6 +264,7 @@ def main():
                                   traces=traces)
         if hpr:
             shim.hp_state = hpr.state_at(0)
+        shim.swallow = part_swallow(0)
         out = os.path.join(ROOT, "out", "hubbard",
                            f"{base}_song{SONG}_part01.sf2")
         BM.emit_one(shim, br, out, f"{base} 0-{t1 // 50}s")
@@ -255,18 +280,21 @@ def main():
                 and nf <= CAP_TBL and ns <= CAP_SEG)
 
     bounds, t0 = [], 0
-    while t0 < span:
+    maxp = int(os.environ.get('HUBBARD_MAX_PARTS', '0')) or 10**9
+    while t0 < span and len(bounds) < maxp:
         t1 = min(t0 + STEP, span)
         while t1 < span and fits(t0, min(t1 + STEP, span)):
             t1 = min(t1 + STEP, span)
         bounds.append((t0, t1))
         t0 = t1
-    print(f"  packed into {len(bounds)} adaptive parts")
+    print(f"  packed into {len(bounds)} adaptive parts"
+          + (" (HUBBARD_MAX_PARTS cap)" if len(bounds) >= maxp else ""))
     for part, (t0, t1) in enumerate(bounds, 1):
         br = BM.build_native_song(shim, SID, SONG, {}, [], win=(t0, t1),
                                   traces=traces)
         if hpr:
             shim.hp_state = hpr.state_at(t0)
+        shim.swallow = part_swallow(t0)
         out = os.path.join(ROOT, "out", "hubbard",
                            f"{base}_song{SONG}_part{part:02d}.sf2")
         BM.emit_one(shim, br, out,

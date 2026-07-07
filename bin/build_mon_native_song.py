@@ -1395,6 +1395,9 @@ def emit_one(m, br, out_path, label):
     # scaled FM entries collide with real $40-$43xx Hz deltas (Hubbard drum dives)
     B.FM_SCALED = 0 if getattr(m, "hard_restart", 0) else 1
     B.HP_ENGINE = 1 if getattr(m, "hp_engine", 0) else 0
+    # Hubbard v2 fractional tempo (the swallow counter): the shim sets
+    # swallow = (period, frames-until-first-skip) per part window
+    B.TEMPO_SWALLOW = 1 if getattr(m, "swallow", None) else 0
     nfilt = sum(1 for f in instr_flags if f & 0x40)
     flags = ""
     if len(bundles) > 64:
@@ -1449,6 +1452,11 @@ def emit_one(m, br, out_path, label):
         for v in range(3):
             poke(0x19C3 + v, hp.get("pdly", [0, 0, 0])[v])   # PDLY
             poke(0x19C6 + v, hp.get("pdir", [0, 0, 0])[v])   # PDIR
+        sw = getattr(m, "swallow", None)
+        if sw:
+            per, first = sw
+            poke(0x19CC, max(0, first))                      # SWC (countdown)
+            poke(0x19CD, max(0, per - 1))                    # SWP (reload)
         prg = bytes(prg)
     sf2 = B.wrap(prg, gen, edit, mdp, instr_names=[f"instr {i}" for i in range(len(instrs))])
     os.makedirs(os.path.dirname(out_path), exist_ok=True)

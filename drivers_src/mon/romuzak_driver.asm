@@ -177,6 +177,10 @@ PDLY      = $19C3        ; per-voice: HP pulse delay counter (3) — poked initi
                          ;   image and NEVER resets it at note fetch)
 PDIR      = $19C6        ; per-voice: HP pulse direction, 0=up (3) — poked initial
 HPSKIP    = $19C9        ; per-voice: 1 = hold the pulse this frame (note onset) (3)
+SWC       = $19CC        ; TEMPO_SWALLOW: countdown; on expiry THIS frame's
+                         ;   row-tick dec is skipped (Hubbard v2 fractional
+                         ;   tempo). Poked initial = frames until first skip.
+SWP       = $19CD        ; TEMPO_SWALLOW: reload value = period-1 (poked)
 HPMAP     = $19E0        ; emitted-instrument-slot -> ROM instrument index (32) —
                          ;   the ROM keys live PW state by ROM instrument; the emit
                          ;   pipeline splits one ROM instrument into several slots
@@ -390,6 +394,13 @@ dp_go:
 dp_novol:
         lda #MULTISPEED
         sta ms_cnt
+.if TEMPO_SWALLOW
+        dec SWC                  ; Hubbard v2 fractional tempo: every period-th
+        bpl dp_tick              ;   frame the row-tick dec is SKIPPED (the
+        lda SWP                  ;   ROM's swallow counter) — the effects chain
+        sta SWC                  ;   still runs. MULTISPEED must be 1.
+        jmp dp_vib
+.endif
 dp_tick:
         dec zp_tcnt
         bne dp_vib
