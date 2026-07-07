@@ -1722,11 +1722,11 @@ pn_hr:  lda #$fe                 ; $7D row: gate off + AD/SR=0 — the ROM's
         ldy sidoff               ;   release ring)
         sta SID+4,y
         lda #$00
-        sta SID+5,y
-        sta SID+6,y
-        lda #$03                 ; re-arm 1 frame before the next row's trigger
-        sta HRC,x
-        jmp advw
+        sta SID+5,y              ; NO delayed pre-arm (HRC stays 0): the ROM
+        sta SID+6,y              ;   writes AD/SR ON the fetch frame, after the
+        jmp advw                 ;   gate-on write — pr_note's retrigger re-arm
+                                 ;   is byte-exact; the old 1-frame-early HRC
+                                 ;   write was the dump diff's adsr residual
 
 hp_init0:
         sta VINST,x              ; PDLY/PDIR keep their POKED initial values —
