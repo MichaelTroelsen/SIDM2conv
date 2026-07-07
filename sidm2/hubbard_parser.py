@@ -383,6 +383,44 @@ def ticks_to_frames(t, fpt, period=0, ctr0=0):
         f = f2
 
 
+def measure_tick_schedule(d, la, init_addr, play_addr, speed_addr, frames,
+                          song=0):
+    """GROUND-TRUTH tick grid: replay the ROM and record the frame of every
+    tick (= every frame the speed counter RELOADS upward). Immune to tempo-
+    mechanism idioms (swallow counters, funktempo, skip gates) — it observes
+    the schedule instead of modelling the code. Returns tick_frame where
+    tick_frame[t] = frame index of tick t.
+
+    Uses the siddump CPU (raster fake + banking) — some rips' play routines
+    crash on a bare py65 (Tarzan needs $D012 to move)."""
+    from sidm2.cpu6502_emulator import CPU6502Emulator
+    cpu = CPU6502Emulator()
+    cpu.load_memory(bytes(d), la)
+    cpu.mem[0x01] = 0x37
+    cpu.reset(init_addr, song, 0, 0)
+    for _ in range(1_000_000):
+        if not cpu.run_instruction():
+            break
+
+    ticks = []
+    prev = cpu.mem[speed_addr]
+    for fr in range(frames):
+        cpu.mem[0xD012] = (cpu.mem[0xD012] + 1) & 0xFF   # fake raster
+        if (cpu.mem[0xD012] == 0
+                or ((cpu.mem[0xD011] & 0x80) and cpu.mem[0xD012] >= 0x38)):
+            cpu.mem[0xD011] ^= 0x80
+            cpu.mem[0xD012] = 0x00
+        cpu.reset(play_addr, 0, 0, 0)
+        for _ in range(1_000_000):
+            if not cpu.run_instruction():
+                break
+        cur = cpu.mem[speed_addr]
+        if cur > prev:            # reload = a tick fired this frame
+            ticks.append(fr)
+        prev = cur
+    return ticks
+
+
 def detect_module_map(d, la, init_addr, nsongs):
     """Compilation rips: map PSID song index -> embedded module index.
 

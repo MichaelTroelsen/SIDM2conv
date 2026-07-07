@@ -91,7 +91,7 @@ def main():
             r = subprocess.run(
                 [sys.executable, 'bin/build_hubbard_native_song.py',
                  path, str(s), 'auto'],
-                capture_output=True, text=True, timeout=1800)
+                capture_output=True, text=True, timeout=5400)
             tail = (r.stdout or '').strip().splitlines()
             print('   ', tail[-1] if tail else '(no output)')
             if r.returncode != 0:
