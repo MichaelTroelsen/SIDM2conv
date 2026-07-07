@@ -20,6 +20,11 @@ from sidm2.sf2_parser import parse_sf2_blocks, SF2DriverInfo
 part = sys.argv[1]
 sub = int(sys.argv[2])
 secs = int(sys.argv[3])
+if secs <= 0:
+    # secs=0 used to make n negative -> ALL comparison loops empty -> a
+    # VACUOUS "100.0" (real, painful lesson: a silent SF2 measured perfect).
+    # Default to 20s, capped below by the probe's actual length.
+    secs = 20
 # 4th arg = the part's start second in the original song (its window t0). The part
 # plays from its own frame 0 (a leading rest positions the first note), so part frame
 # k == original frame off0+k.
@@ -44,6 +49,9 @@ for folder in ("Tel_Jeroen", "Hubbard_Rob"):
 orig = F.per_frame(orig_sid, [f"-a{sub}", f"-t{(off0 // 50) + secs + 1}"])
 prb = F.per_frame(probe, [f"-t{secs + 1}"])
 n = min(len(orig) - off0, len(prb), secs * 50) - 4
+if n <= 0:
+    sys.exit(f"FIDELITY ERROR: empty comparison window (n={n}) — "
+             f"orig={len(orig)} off0={off0} probe={len(prb)} secs={secs}")
 
 # constant engine output delay (e.g. Supremacy writes SID registers 2 frames after
 # the sequencer tick, which the native driver doesn't reproduce): align it out with

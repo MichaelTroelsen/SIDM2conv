@@ -395,11 +395,13 @@ dp_novol:
         lda #MULTISPEED
         sta ms_cnt
 .if TEMPO_SWALLOW
-        dec SWC                  ; Hubbard v2 fractional tempo: every period-th
-        bpl dp_tick              ;   frame the row-tick dec is SKIPPED (the
-        lda SWP                  ;   ROM's swallow counter) — the effects chain
-        sta SWC                  ;   still runs. MULTISPEED must be 1.
-        jmp dp_vib
+        lda SWP                  ; unpoked (0) = swallow OFF — a zero/garbage
+        beq dp_tick              ;   reload would eat EVERY tick (a silent SF2
+        dec SWC                  ;   that VACUOUSLY measured 100.0 — real bug)
+        bpl dp_tick              ; Hubbard v2 fractional tempo: every period-th
+        lda SWP                  ;   frame the row-tick dec is SKIPPED (the
+        sta SWC                  ;   ROM's swallow counter) — the effects chain
+        jmp dp_vib               ;   still runs. MULTISPEED must be 1.
 .endif
 dp_tick:
         dec zp_tcnt

@@ -1452,11 +1452,20 @@ def emit_one(m, br, out_path, label):
         for v in range(3):
             poke(0x19C3 + v, hp.get("pdly", [0, 0, 0])[v])   # PDLY
             poke(0x19C6 + v, hp.get("pdir", [0, 0, 0])[v])   # PDIR
-        sw = getattr(m, "swallow", None)
-        if sw:
-            per, first = sw
-            poke(0x19CC, max(0, first))                      # SWC (countdown)
-            poke(0x19CD, max(0, per - 1))                    # SWP (reload)
+        prg = bytes(prg)
+    sw = getattr(m, "swallow", None)
+    if sw:
+        # fractional tempo pokes are INDEPENDENT of the HP pulse engine —
+        # leaving them inside the hp_engine block shipped an SF2 whose driver
+        # read SWP=0 and swallowed EVERY tick (silence)
+        prg = bytearray(prg)
+        pload = prg[0] | (prg[1] << 8)
+        need = 0x1A00 - pload + 2
+        if len(prg) < need:
+            prg.extend(bytes(need - len(prg)))
+        per, first = sw
+        prg[0x19CC - pload + 2] = max(0, first) & 0xFF       # SWC (countdown)
+        prg[0x19CD - pload + 2] = max(0, per - 1) & 0xFF     # SWP (reload)
         prg = bytes(prg)
     sf2 = B.wrap(prg, gen, edit, mdp, instr_names=[f"instr {i}" for i in range(len(instrs))])
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
