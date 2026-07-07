@@ -1,88 +1,98 @@
 <original_task>
-This session: (1) executed the MoN handoff (adaptive corpus rebuild, filter/boundary/
-tie/preamble fixes — Supremacy wf+pulse now 100% EXACT), (2) completed the Tel-corpus
-survey (15 new tunes converted; 4 new player arcs identified and prioritized by the
-user: 1. Rob Hubbard, 2. Soundmonitor, 3. MoN/Deenen), (3) BUILT THE ROB HUBBARD ARC
-end-to-end in one day: format RE (C=Hacking #5 ground truth), parser (100% onsets),
-Stage A (11 editable SF2s, 99.85% onsets, ear-approved), Stage B native driver
-(Zoids 100% registers; Commando ear-approved "mix is good"; 10 tunes built natively).
+Mission: tools that combine static code + AI to convert any SID into an SF2 at
+99% fidelity playback and 100% editable. This session arc: complete Hubbard V1
+(HP pulse engine to default, no-release ties, subsongs, compilation rips) and
+open+largely-crack Hubbard V2 (the "64 unparseable" files).
 </original_task>
 
 <work_completed>
-ALL COMMITTED AND PUSHED through dda7d88. Key commits this session:
-02bd52d/68e4fa0/a7a7ceb/5a17c5b/6c32aa1 (MoN arc: races found+fixed, $FB tie decode,
-filter guard+residual, boundary continuation, fcmp floor, hard-restart PREAMBLE —
-Supremacy sub2 = 93.3 freq / 100 wf / 100 pulse / 100 filter over the full 150s),
-37640fd (Tel corpus: 15 new tunes + pseudo-parse gate), 6c9c885/14fc73b/c6e6619
-(Hubbard parser + validator + Stage A), 762a4d6/87e478a/c76c607/dda7d88 (Hubbard
-Stage B: $7D hard-restart rows + HRC delayed re-arm, gate-rise snap, FMSCALE_ON,
-$D418 synthetic-filter suppression, _hr_rows GATE_ON extension).
+ALL COMMITTED AND PUSHED through b9594d2. The day's chain:
+3857c1c HP pulse engine complete -> default (Monty/Commando/Zoids pulse 100)
+b7bf3d4 no-release (bit5) chains = ties (killed the audible 2-frame chop)
+7979e19 ADSR re-arm ON the fetch frame (dropped the 1-frame-early HRC pre-arm)
+81f1fd9 compilation rips (5_Title_Tunes = 5 embedded players) + track-loop expansion
+4a8d7f1 V2 wave 1: widened freq sigs + split-songs tables (8 new files 97-100%)
+076fa2b V2 wave 2: the fractional-tempo SWALLOW counter decoded (10 more files)
+bd8427a measure_tick_schedule on the siddump CPU (idiom-immune tick grid)
+c42f8e7 native TEMPO_SWALLOW driver flag -> Delta first V2 native build
+7a1a4de the silent-Delta fix + the VACUOUS-100.0 fidelity bug (secs=0 -> n=-4!)
+eded980 v2 NOTE format (4-byte porta/1-byte rest/pitch-bit7 no-fetch) + v2 TRACK
+        repeat counts -> ALL Delta subsongs 100% onsets; theme s11 built+delivered
+9cacf36 Delta pulse 100.0 (v2 fetch RESETS pulse; PFREE now v1-only) + periodic
+        pulse LOOP rows + tie-chain-spanning capture
+d4bb79e corpus runner v2-aware; 29 files / 64 validating subsongs
+b9594d2 Last_V8 batch-killer fixed (HPReplay on siddump CPU: 3h->27s) +
+        init-seeded per-voice instruments (Last_V8 pulse 3/100/48 -> 100/100/100)
 
-HUBBARD STAGE B STATE (out/hubbard/, all *_song0_partNN.sf2):
-- Zoids: 15 parts, part1 100/100/100/100 (VICE registers ~100% incl ADSR 89-99).
-- Commando: 45 parts, parts1-3 96-97/100/100, ADSR 90-92%, EAR-CONFIRMED mix.
-- One_Man_and_his_Droid: 100/100/100 on parts 1-3. Gremlins/Crazy_Comets 97-100.
-- Monty: 21 parts; parts2-3 ~100; part1 = THE TWO REMAINING DEFECTS (below).
-- Master_of_Magic part1 90/90 (same class); batch output has the rest.
+HONEST STATE (real windows; the vacuous secs=0 bug is fixed and guarded):
+- Monty p1 100/99.8/100 + filter 100; VICE dump residual 1.38% (drum parity).
+- Delta theme (s11, PSID default): freq/pulse/filter 100.0 all voices; wf 85-96
+  (tremolo/noise-blip ordering = last texture item). User-delivered as WAV.
+- Last_V8 p1 100/100/100 after init-instrument fix.
+- Hawkeye sub3 (MoN regression) 100.0 — its TRUE length is 2.5s ($FE halt);
+  longer windows over-run into loop-vs-halt divergence (measurement trap).
+- Corpus batch (29 files/64 subsongs) running detached, PID in session.
 </work_completed>
 
 <work_remaining>
-1. **Hubbard lead-voice defects** (Monty part1 82.5 freq / 80.1 pulse, all on V1=lead;
-   user ear: "close but not 100%"):
-   (a) ornament FM: repeated 6-frame rises (~$540/frame) played flat — short/appended
-       note capture misses; diagnose with the per-note capture dump method.
-   (b) free-running pulse: ~90-frame phase-drift runs — implement per-instrument
-       PERIODIC pulse programs + driver PFREE ($08) cross-note phase (dormant).
-2. **Part-count compression** (Commando 45, Monty 21): the Supremacy structural path
-   (per-instrument pulse/drum-FM programs instead of per-note captures).
-3. **Hubbard variants** (20 files): Warhawk/Spellbound (speed semantics), Knucklebusters
-   (per-voice speed: V2 already 100%), Star_Paws/Bangkok (runaway decodes), + later
-   Hubbard routines (more fx bits) for the remaining ~50 Hubbard-tagged files.
-4. **Next player arcs** (user priority): Soundmonitor (39 files; bin/sound monitor/ =
-   user's reference material), MoN/Deenen (72 files, Robocop3/Turrican engine).
-5. MoN leftovers: Supremacy V0 drum-attack frame ($FF00 rides 1 late); Hubbard-style
-   VICE-dump ADSR audit for MoN tunes (the metric blind spot applies there too).
+1. Corpus batch completion + spot-measure v2 part1s with REAL windows; report.
+2. Delta wf texture (85-96): per-note wave capture vs the noise-blip multiplex
+   (specific notes carry an $81 noise frame; canonical wave programs uniform).
+3. V2 laggards: IK_plus (V0 decode runaway + percussion pitch bytes), Thundercats
+   68% (note-format), Tarzan (speed addr misdetected; play needs raster fake),
+   Mega_Apocalypse (runaway), Knucklebusters (per-voice speed), Game_Killer
+   (tick stretch every 10 frames with NO swallow sig — wire measured schedule
+   into shim grid + poke an approximated period/phase), 6 no-sig files
+   (Casio_Extended cluster), Samantha_Fox/Kings_of_the_Beach etc. partials.
+4. Editor '???' rows: $7D hard-restart + out-of-range notes are display-only
+   artifacts in SF2II — consider a friendlier encoding.
+5. Part-count compression for dense tunes (Delta s0 = 2s parts at the 63-bundle
+   cap; the ARP_STRUCT structural path packs it into ONE part but its canonicals
+   misfire on Hubbard — port the good prongs).
+6. CLAUDE.md/CHANGELOG/STORY version bump (v3.14.0: the Hubbard v1+v2 arcs).
+7. Next players (user priority): Soundmonitor (bin/sound monitor/ = user's
+   reference), MoN/Deenen (Robocop3/Turrican).
 </work_remaining>
 
 <attempted_approaches>
-- Gate-EDGE ADSR kill: WRONG — the ROM kills at NOTE-LENGTH END; a drum's body is its
-  release ring (Zoids drums died). The $7D-row model is correct.
-- FM_CNT=0 preamble variant: shifted vibratos 1 frame early; keep FM_CNT=1 (pure
-  insertion). Trust empirics over phase algebra — iterate with the VICE dump.
-- Fixed-second windows for measurement/testing: BYPASS the cap probe -> ungated
-  bundle force-merges -> garbage programs ("$900 pulse mystery"). AUTO windows only.
-- Register-STATE % metrics as the only truth: BLIND to ADSR values, $D418, 1-frame
-  gate windows, and content-static tempo errors. The VICE register-stream dump diff
-  (vsid -sounddev dump) is the truth-teller; audio attack-rate/RMS A/B catches what
-  registers can't.
+- mon_part_fidelity secs=0 was VACUOUSLY 100.0 (n=-4, empty loops) — a silent
+  SF2 measured perfect. Fixed: secs<=0 defaults 20s + hard error on empty
+  window. NEVER trust a fidelity number without knowing its window; part
+  windows must match (song length for jingles; off0 = part start).
+- Blanket MON_ARP_STRUCT=1 on Hubbard: packs Delta whole-song into 1 part but
+  canonical wave/pulse misfire (2.0% pulse) — port prongs selectively.
+- Bare-py65 call harnesses: THREE Hubbard rips (Tarzan, Last_V8, +) spin
+  without the raster fake -> use sidm2.cpu6502_emulator with $D012 increment
+  (see measure_tick_schedule/HPReplay/initial_instruments/swallow_state).
+- Background Bash tasks die at a 10-min cap; cProfile on a slow build never
+  returns. Long batches: PowerShell Start-Process detached + log file. ONE
+  heavy job at a time (CPU contention made 25s builds take 90+ min = the
+  fake 'hangs').
 </attempted_approaches>
 
 <critical_context>
-- METHOD: docs/players/PLAYBOOK.md + memory/hubbard-player-re.md (the complete arc
-  log incl. every gotcha: 64tass case-collisions ×2, VICE $FF-fill RAM, siddump vs
-  note-onset frame origins, drum runtime-state pitches, ±8 drum gate-on windows).
-- Hubbard format: memory/hubbard-player-re.md; C=Hacking #5 source at
-  docs/analysis/hubbard/chacking5_monty_disassembly.txt (effects: vibrato osc
-  01233210, pulse $08xx-$0Exx bounce stored INTO the instrument, portamento/frame,
-  drums=noise 1st frame + freqhi--, skydive, octarp note/note+12).
-- Driver flags (layout.inc, from shim attrs): HARD_RESTART (+$7D rows, VAD/VSR/HRC
-  state $1880-$1888, out-of-line handlers at $1890), FMSCALE_ON (0 for Hubbard:
-  real deltas hit the $40-$43 scaled marker), NOTE_PREAMBLE (Supremacy only).
-- MoN builds: ALL flags default -> byte-identical (Hawkeye sub3 regression-checked
-  after every driver change: 100/100/100/100). NEVER run two MoN/Hubbard builds
-  concurrently (shared drivers_src scratch). git checkout -- the .inc files.
-- Fidelity rig: bin/mon_part_fidelity.py PART SONG SECS OFF0 (folders: Tel_Jeroen +
-  Hubbard_Rob); VICE dump diff snippets in the session log / memory; WAV A/B via
-  sidm2.vsid_wrapper.export_to_wav + numpy attack-rate/RMS.
-- User: ear-driven acceptance; the ear caught THREE defects all metrics missed.
-  Standing rule: accuracy first, never ship lossy silently.
+- V2 FORMAT (all RE'd from Delta $BE79-$BF9A, per-file signature-gated):
+  split lo/hi songs tables (X=song*3+voice); swallow counter (skip speed dec
+  every Nth frame; sig CE../10../A9 v/8D same/4C; phase=post-init counter via
+  py65); v2 notes ($60-len 1-byte rest, 4-byte porta, pitch bit7 = no-fetch
+  tie); v2 tracks ([pat,cnt,pat,cnt...] repeat counts); fetch RESETS pulse
+  from the record (no PFREE); per-voice init instruments (instrnr sig).
+- Driver: TEMPO_SWALLOW (SWC $19CC/SWP $19CD poked; SWP==0 = off — an unpoked
+  driver previously swallowed EVERY tick = silence); HP state $19C0-$19CB +
+  HPMAP $19E0 (NEVER below $1940 — the out-of-line code region $1890-$193C).
+- Fidelity rig: mon_part_fidelity PART SONG SECS OFF0 (secs REQUIRED-ish,
+  window must fit the song/part); VICE dump diff = ADSR/$D418 truth; VICE
+  dump regs/values are DECIMAL.
+- HP engine v1-only (v2 instrument records unknown layout — HP pokes would
+  read garbage; v2 uses captured programs which measure 100 anyway).
+- The corpus runner: bin/hubbard_build_all.py (29 files; sequential;
+  TimeoutExpired-proof). Launch detached via PowerShell; log out/_batch_all.log.
 </critical_context>
 
 <current_state>
-Working tree clean at dda7d88 (pushed). The 9-tune native batch may still be
-completing — artifacts land in out/hubbard/; check the batch output for
-Last_V8/Geoff_Capes/5_Title_Tunes/Chimera numbers. Tests: 1490 green at last full
-run; mon+hubbard+romuzak subsets green after every driver change.
-Next natural actions: the two Monty lead defects (ornament FM + free-run pulse),
-then part-count compression, then variants/Soundmonitor.
+Working tree clean at b9594d2 (pushed). Corpus batch running detached
+(check out/_batch_all.log). SF2II may still be open with Delta part1 loaded.
+User's ear-driven acceptance: Monty "very good 99%" -> chop fixed; Delta
+theme delivered after the wrong-subsong catch (user: "delta is song 12 of
+13") — awaiting the user's verdict on the re-render with pulse 100.
 </current_state>
