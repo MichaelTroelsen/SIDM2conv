@@ -20,7 +20,8 @@ sys.path.insert(0, os.path.join(ROOT, "bin"))
 os.chdir(ROOT)
 
 from sidm2.hubbard_parser import (HubbardModule, decode_song, load_sid,
-                                  detect_module_map)
+                                  detect_module_map, swallow_state,
+                                  ticks_to_frames)
 from sidm2.fidelity_common import siddump_note_onsets
 
 FILES = ['Monty_on_the_Run', 'Commando', 'Crazy_Comets', 'Zoids', 'Gremlins',
@@ -29,7 +30,10 @@ FILES = ['Monty_on_the_Run', 'Commando', 'Crazy_Comets', 'Zoids', 'Gremlins',
          'Last_V8_C128_version',
          # v2 split-songs class + widened freq sig (parser upgrade 2026-07-07)
          'Action_Biker', 'Confuzion', 'Devils_Galop', 'Gerry_the_Germ',
-         'Hunter_Patrol', 'I_Ball', 'Ninja', 'Thing_on_a_Spring']
+         'Hunter_Patrol', 'I_Ball', 'Ninja', 'Thing_on_a_Spring',
+         # v2 swallow-tempo + v2 note/track format (TEMPO_SWALLOW driver)
+         'Delta', 'Lightforce', 'Sanxion', 'Saboteur_II', 'Shockway_Rider',
+         'Star_Paws', 'Wiz', 'Auf_Wiedersehen_Monty', 'Deep_Strike']
 MIN_ONSETS = 8            # below this = game SFX, not music
 MIN_PCT = 95.0
 ALWAYS_S0 = True          # song 0 of every corpus file is already metric-proven
@@ -46,6 +50,8 @@ def validate(path, d, la, h, song, n_mod, mm):
         dsong = song
     voices, _ = decode_song(m, dsong)
     fpt = m.frames_per_tick
+    per = m.lay.swallow_period
+    c0 = swallow_state(d, la, h.init_address, song, m.lay) if per else 0
     real = siddump_note_onsets(path, [f'-a{song}', '-t15'])
     rf = [set(fr for fr, _ in (real[v] if isinstance(real, (list, tuple))
                                else real.get(v, [])) if fr < 700)
@@ -53,7 +59,7 @@ def validate(path, d, la, h, song, n_mod, mm):
     nall = sum(len(x) for x in rf)
     if nall < MIN_ONSETS:
         return None, nall, 0.0
-    pf = [set(tk * fpt for tk, n in voices[v]
+    pf = [set(ticks_to_frames(tk, fpt, per, c0) for tk, n in voices[v]
               if not n.append and n.pitch >= 0) for v in range(3)]
     best = max(sum(len(rf[v] & set(fr + ph for fr in pf[v] if fr + ph < 700))
                    for v in range(3)) for ph in range(6))
