@@ -53,6 +53,7 @@ class HubbardShim:
         self.voices = [[] for _ in range(3)]
         for v in range(3):
             cur_instr = 0
+            prev_norel = False
             out = self.voices[v]
             for tk, n in voices[v]:
                 if n.instr >= 0:
@@ -65,10 +66,22 @@ class HubbardShim:
                     out.append(MONEvent(note=out[-1].note, dur=n.ticks,
                                         instr=cur_instr, wprog=0,
                                         retrig=False, tie=True))
+                    prev_norel = n.no_release
                     continue
                 pitch = n.pitch if n.pitch >= 0 else 0
-                out.append(MONEvent(note=pitch, dur=n.ticks, instr=cur_instr,
-                                    wprog=0, retrig=True))
+                if prev_norel and out:
+                    # the previous note's bit5 (no release) skipped the
+                    # length-end ADSR kill, and the ROM's fetch writes ctrl
+                    # over an already-on gate — NO edge, NO re-attack: this
+                    # note is a tie with a pitch update (a retrigger + $7D
+                    # pre-kill here audibly chops the sustained voice)
+                    out.append(MONEvent(note=pitch, dur=n.ticks,
+                                        instr=cur_instr, wprog=0,
+                                        retrig=False, tie=True))
+                else:
+                    out.append(MONEvent(note=pitch, dur=n.ticks,
+                                        instr=cur_instr, wprog=0, retrig=True))
+                prev_norel = n.no_release
 
     @property
     def frames_per_tick(self):
