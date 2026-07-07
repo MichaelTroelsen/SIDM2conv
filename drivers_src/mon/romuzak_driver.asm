@@ -171,10 +171,18 @@ FM_SLIDE  = $1876        ; per-voice: 1 = slide active (fm_add clamps at FM_TGT)
 pl_ld     = $187c        ; pulse_step scratch: 1 = a row was loaded this frame (used
                          ;   by the NOTE_PREAMBLE re-arm)
 VAD       = $1880        ; per-voice: current instrument AD (3) — HARD_RESTART builds
-VINST     = $18F0        ; per-voice: current instrument index (3) — HP engine
-PDLY      = $18F3        ; per-voice: HP pulse delay counter (3)
-PDIR      = $18F6        ; per-voice: HP pulse direction, 0=up (3)
-HPSKIP    = $18F9        ; per-voice: 1 = hold the pulse this frame (note onset) (3)
+VINST     = $19C0        ; per-voice: current ROM instrument index (3) — HP engine
+PDLY      = $19C3        ; per-voice: HP pulse delay counter (3) — poked initial
+                         ;   values (the ROM ships nonzero pulsedelay in its load
+                         ;   image and NEVER resets it at note fetch)
+PDIR      = $19C6        ; per-voice: HP pulse direction, 0=up (3) — poked initial
+HPSKIP    = $19C9        ; per-voice: 1 = hold the pulse this frame (note onset) (3)
+HPMAP     = $19E0        ; emitted-instrument-slot -> ROM instrument index (32) —
+                         ;   the ROM keys live PW state by ROM instrument; the emit
+                         ;   pipeline splits one ROM instrument into several slots
+                         ; ($19C0-$19FF is free: HPW_HI ends $19C0, edit at $1A00.
+                         ;  NOT $18F0 — the out-of-line CODE section runs $1890-$193C
+                         ;  and runtime state writes there corrupted fm_hrarm.)
 HPVAL     = $1940        ; per-instrument pulseval byte (32) — poked by the emitter
 HPFX      = $1960        ; per-instrument fx byte (32) — bit3 = fast-PWM mode
 HPW_LO    = $1980        ; per-instrument LIVE pulse lo (32) — init = instrument PW
@@ -490,25 +498,30 @@ pulse_step:
         ;     set = fast-PWM (lo += pulseval per frame, hi fixed — Commando);
         ;     clear = classic bounce (step = pv&$e0 every (pv&$1f)+1 frames,
         ;     rails hi==$0e up / $08 down — Monty). pv==0 = static. ---
+        ; SID pulse writes happen ONLY at note fetch (pr_note writes the live
+        ; record) and on STEP frames (here) — never in between. Instruments are
+        ; SHARED state: two voices on one instrument step the same record on
+        ; interleaved parities; each voice's register must sample only its OWN
+        ; step frames or it leaks the other voice's parity (the Monty V0 bug).
         ldx #$02
 hp_l:
         ldy VINST,x
         lda HPVAL,y
         bne hp_run
-        jmp hp_wr
+        jmp hp_next              ; pv=0: no pulsework for this instrument
 hp_run:
-        lda HPSKIP,x             ; the ROM skips pulsework only on THIS VOICE's
-        beq hp_run2              ;   note-onset frames (soundwork otherwise runs
-        lda #$00                 ;   every frame) — hold the PW on the trigger
+        lda HPSKIP,x             ; the ROM skips pulsework on THIS VOICE's fetch
+        beq hp_run2              ;   frames (appends too) — counter holds, no write
+        lda #$00
         sta HPSKIP,x
-        jmp hp_wr
+        jmp hp_next
 hp_run2:
         lda HPVAL,y
         sta tmpf                 ; pv
         lda HPFX,y
         and #$08
         beq hp_classic
-        lda HPW_LO,y             ; MODE A: lo += pv every frame
+        lda HPW_LO,y             ; MODE A: lo += pv every frame, hi fixed
         clc
         adc tmpf
         sta HPW_LO,y
@@ -516,7 +529,7 @@ hp_run2:
 hp_classic:
         dec PDLY,x
         bmi hp_step
-        jmp hp_wr
+        jmp hp_next              ; not a step frame: register keeps its value
 hp_step:
         lda tmpf
         and #$1f
@@ -558,6 +571,7 @@ hp_wr:
         sta SID+2,y
         lda tmpf
         sta SID+3,y
+hp_next:
         dex
         bmi hp_done
         jmp hp_l
@@ -1151,6 +1165,18 @@ pn_not_hr:
         sta SID+0,y
         lda tmpf+1
         sta SID+1,y
+.if HP_ENGINE
+        lda #$01                 ; hold the HP pulse on the fetch frame (the ROM
+        sta HPSKIP,x             ;   skips pulsework on EVERY fetch — appends too)
+        ldy VINST,x              ; the ROM's fetch writes the instrument's LIVE
+        lda HPW_LO,y             ;   PW record to the pulse register (the only
+        sta tmpf                 ;   non-step write in the engine)
+        lda HPW_HI,y
+        ldy sidoff
+        sta SID+3,y
+        lda tmpf
+        sta SID+2,y
+.endif
         lda tieflag              ; TIE -> change pitch only: no gate re-attack, and
         bne pn_tied              ; leave the pulse program free-running (legato)
         lda vwf,x                ; retrigger: gate off then on
@@ -1164,10 +1190,6 @@ pn_not_hr:
         sta SID+5,y              ;   kill zeroed it; the ROM rewrites the
         lda VSR,x                ;   instrument AD/SR at every note fetch)
         sta SID+6,y
-.if HP_ENGINE
-        lda #$01                 ; hold the HP pulse on the onset frame (the
-        sta HPSKIP,x             ;   ROM's per-voice pulsework skip)
-.endif
 .endif
 .if NOTE_PREAMBLE
         lda #$01                 ; Supremacy hard-restart: this frame's final SID
@@ -1318,7 +1340,10 @@ ol_adv_done:
 ; set instrument for voice X: A = index
 set_instr_v:
 .if HP_ENGINE
-        sta VINST,x              ; HP pulse engine: current instrument per voice
+        tay                      ; HP pulse engine: VINST = the ROM instrument
+        lda HPMAP,y              ;   (live PW state is per ROM instrument; the
+        sta VINST,x              ;   emit pipeline splits it across slots)
+        tya
 .endif
         ; Neither FM nor pulse is tied to the instrument any more — both are
         ; selected per note by the $c0-$ff command (see pr_setprog). The
@@ -1688,7 +1713,6 @@ freqtable:
 ; area ($1A00) — the main code bank was overflowing into SF2II's pinned
 ; playback-state region ($16cc-$1702).
         * = $1890
-        .cerror * > $1940, "HP engine tables overlap out-of-line code"
 .if HARD_RESTART
 ; HARD_RESTART out-of-line handlers (main bank is at the $16CC cap)
 pn_hr:  lda #$fe                 ; $7D row: gate off + AD/SR=0 — the ROM's
@@ -1705,11 +1729,9 @@ pn_hr:  lda #$fe                 ; $7D row: gate off + AD/SR=0 — the ROM's
         jmp advw
 
 hp_init0:
-        sta VINST,x
-        sta PDLY,x
-        sta PDIR,x
-        sta HPSKIP,x
-        rts
+        sta VINST,x              ; PDLY/PDIR keep their POKED initial values —
+        sta HPSKIP,x             ;   the ROM ships nonzero pulsedelay in its load
+        rts                      ;   image (Monty V2 starts at 29)
 
 pl_loop:
         ; PPTR = VIPUL + byte1*3 and force a reload next frame (A = byte1)
@@ -1872,6 +1894,13 @@ fm_slon:
         sta FM_SLIDE,x
         jmp fm_adv3
 
+        ; END of the out-of-line section. With the HP engine its tables+state
+        ; occupy $1940-$19FF, so code must stay below $1940 — a runtime state
+        ; write on top of code here corrupted fm_hrarm (the fr62 crash class).
+        ; Without it (MoN: FMSCALE_ON grows the section) the edit area at
+        ; $1A00 is the only hard wall.
+        .cerror HP_ENGINE && (* > $1940), "out-of-line code overlaps HP engine tables ($1940)"
+        .cerror * > $1a00, "out-of-line code overruns the edit area ($1A00)"
 
 .if DIGI_SPIKE
 .include "digi_addrs.inc"

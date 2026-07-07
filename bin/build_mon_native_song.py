@@ -1073,6 +1073,12 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
         ins = m.instrument(mon_i)
         ad, sr, raw = ins['ad'], ins['sr'], ins['waveform'] or 0x41
         key = (ad, sr, raw, wp, flag, tuple(filt) if filt else None)
+        if getattr(m, 'hp_engine', 0):
+            # the HP pulse engine keys live PW state by ROM instrument — two
+            # timbre-identical instruments with different PW/pulseval/fx must
+            # stay distinct slots or one drum inherits the other's pulse
+            key += (ins.get('pw', 0x800), ins.get('pulseval', 0),
+                    ins.get('fx', 0))
         if key not in iidx:
             iidx[key] = len(exi)
             exi.append((ad, sr, raw, _rle_wave(wp), flag, filt, mon_i))
@@ -1403,23 +1409,46 @@ def emit_one(m, br, out_path, label):
     write_mon_freqtable(m)
     prg = B.assemble()
     if getattr(m, "hp_engine", 0):
-        # poke the HP pulse-engine tables (per emitted instrument slot):
+        # poke the HP pulse-engine tables, keyed by ROM INSTRUMENT (the ROM's
+        # live PW state is per instrument record; the emit pipeline splits one
+        # ROM instrument across several slots — HPMAP $19E0 maps slot -> src):
         # HPVAL $1940 (pulseval), HPFX $1960 (fx: bit3 = fast-PWM),
-        # HPW_LO/HI $1980/$19A0 (live PW, init = the instrument record's PW)
+        # HPW_LO/HI $1980/$19A0 (live PW at window start), PDLY/PDIR $19C3/$19C6
+        # (per-voice counters at window start — the ROM ships nonzero initials
+        # and never resets them at note fetch).
         prg = bytearray(prg)
         pload = prg[0] | (prg[1] << 8)
-        need = 0x19C0 - pload + 2
+        need = 0x1A00 - pload + 2
         if len(prg) < need:                       # the tables are EQUATES past
-            prg.extend(bytes(need - len(prg)))
+            prg.extend(bytes(need - len(prg)))    #   the assembled image end
+
+        def poke(addr, val):
+            off = addr - pload + 2
+            if 0 <= off < len(prg):
+                prg[off] = val & 0xFF
+        hp = getattr(m, "hp_state", None) or {}
+        live_pw = hp.get("live_pw", {})
         for slot, src in enumerate(instr_src[:32]):
             ins = m.instrument(src)
-            for addr, val in ((0x1940, ins.get('pulseval', 0)),
-                              (0x1960, ins.get('fx', 0)),
-                              (0x1980, ins.get('pw', 0x800) & 0xFF),
-                              (0x19A0, (ins.get('pw', 0x800) >> 8) & 0x0F)):
-                off = addr + slot - pload + 2
-                if 0 <= off < len(prg):
-                    prg[off] = val & 0xFF
+            rom_i = src & 0x1F
+            poke(0x19E0 + slot, rom_i)                       # HPMAP
+            pw = live_pw.get(rom_i, ins.get('pw', 0x800))
+            fx = ins.get('fx', 0)
+            if not hp.get('mode_a', True):
+                fx &= ~0x08          # this ROM revision has no fast-PWM mode;
+            elif fx & 0x08:
+                # mode A integrates pv per FRAME of absolute time; the emitted
+                # stream starts `phase` frames earlier than the original, so
+                # pre-advance the accumulator or it lags by pv*phase forever
+                pw = (pw + ins.get('pulseval', 0)
+                      * getattr(m, 'onset_delay', 0)) & 0x0FFF
+            poke(0x1940 + rom_i, ins.get('pulseval', 0))     # HPVAL
+            poke(0x1960 + rom_i, fx)                         # HPFX
+            poke(0x1980 + rom_i, pw & 0xFF)                  # HPW_LO
+            poke(0x19A0 + rom_i, (pw >> 8) & 0x0F)           # HPW_HI
+        for v in range(3):
+            poke(0x19C3 + v, hp.get("pdly", [0, 0, 0])[v])   # PDLY
+            poke(0x19C6 + v, hp.get("pdir", [0, 0, 0])[v])   # PDIR
         prg = bytes(prg)
     sf2 = B.wrap(prg, gen, edit, mdp, instr_names=[f"instr {i}" for i in range(len(instrs))])
     os.makedirs(os.path.dirname(out_path), exist_ok=True)

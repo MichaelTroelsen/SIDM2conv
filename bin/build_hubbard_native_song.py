@@ -39,8 +39,10 @@ class HubbardShim:
     hard_restart = 1          # Hubbard's release "kill adsr" + per-note ADSR re-arm
     snap_gate = True          # snap capture onsets to the trace's gate-rise frame
                               # (drums gate for ONE frame; a late phase loses it)
-    hp_engine = 1 if os.environ.get('HUBBARD_PULSE_ENGINE') else 0
-                              # WIP: the per-instrument ROM pulse engine (opt-in)
+    hp_engine = 0 if os.environ.get('HUBBARD_PULSE_ENGINE') == '0' else 1
+                              # the per-instrument ROM pulse engine (DEFAULT —
+                              # Monty/Commando/Zoids pulse 100% vs <=98.6 with
+                              # captured programs; =0 to fall back)
 
     def __init__(self, m, song, phase):
         self.m = m
@@ -93,6 +95,72 @@ class HubbardShim:
                 'wave_prog': 0, 'flags': 0, 'raw': [0] * 8}
 
 
+class HPReplay:
+    """py65-replay of the ORIGINAL ROM for the HP pulse engine's initial state.
+
+    The ROM ships nonzero pulsedelay values in its load image (Monty: [0,1,29])
+    and NEVER resets the counter at note fetch, so a part starting mid-song must
+    inherit the exact per-voice pulsedelay/pulsedir and per-instrument live PW
+    the ROM had at that frame. Addresses are found relocation-safe from the
+    pulsework code itself."""
+
+    def __init__(self, sid, song, m):
+        from py65.devices.mpu6502 import MPU
+        d, la, h = load_sid(sid)
+        self.m = m
+        self.mpu = MPU()
+        for i, b in enumerate(d):
+            self.mpu.memory[(la + i) & 0xFFFF] = b
+        raw = bytes(d)
+        self.pd = self.pdir = None
+        pd_i = -1
+        for i in range(len(raw) - 7):
+            # pulsedelay: AND #$1F ... DEC abs,x / BPL
+            if (raw[i] == 0xDE and raw[i + 3] == 0x10
+                    and b'\x29\x1f' in raw[max(0, i - 8):i]):
+                self.pd = raw[i + 1] | (raw[i + 2] << 8)
+                pd_i = i
+            # pulsedir: CMP #$0E / BNE / INC abs,x
+            if (raw[i] == 0xC9 and raw[i + 1] == 0x0E and raw[i + 2] == 0xD0
+                    and raw[i + 4] == 0xFE):
+                self.pdir = raw[i + 5] | (raw[i + 6] << 8)
+        # mode A (fx bit3 fast-PWM) exists only in later revisions: AND #$08 in
+        # the pulsework body (Commando/Zoids yes, Monty no — its drums carry
+        # bit3 with a different meaning and must NOT select fast-PWM)
+        self.mode_a = (pd_i >= 0
+                       and b'\x29\x08' in raw[max(0, pd_i - 96):pd_i + 96])
+        self._call(h.init_address, song)
+        self.play = h.play_address
+        self.frame = 0
+
+    def _call(self, addr, a=0):
+        mp = self.mpu
+        mp.a, mp.x, mp.y = a & 0xFF, 0, 0
+        mp.pc = addr
+        mp.memory[0x1FF] = 0xFF
+        mp.memory[0x1FE] = 0xFE
+        mp.sp = 0xFD
+        for _ in range(2_000_000):
+            if mp.pc == 0xFFFF:
+                return
+            mp.step()
+
+    def state_at(self, frame):
+        """State snapshot at ORIG frame `frame` (non-decreasing calls only)."""
+        while self.frame < frame:
+            self._call(self.play)
+            self.frame += 1
+        mem = self.mpu.memory
+        base = self.m.lay.instr
+        return {
+            'pdly': [mem[self.pd + v] for v in range(3)] if self.pd else [0] * 3,
+            'pdir': [mem[self.pdir + v] & 1 for v in range(3)] if self.pdir else [0] * 3,
+            'live_pw': {i: (mem[base + i * 8] | (mem[base + i * 8 + 1] << 8)) & 0x0FFF
+                        for i in range(32)},
+            'mode_a': self.mode_a,
+        }
+
+
 def find_phase(path, song, m, voices):
     """The per-file onset phase (0-2 frames): the initial speed-counter value
     shifts the first note-tick. Measured against a 30s siddump."""
@@ -129,11 +197,15 @@ def main():
     traces = (F.per_frame(SID, [f'-a{SONG}', f'-t{secs}']),
               BM.filter_trace(SID, SONG, secs))
 
+    hpr = HPReplay(SID, SONG, m) if shim.hp_engine else None
+
     adaptive = warg.lower() in ("auto", "a")
     if not adaptive:
         t1 = min(span, int(warg) * 50)
         br = BM.build_native_song(shim, SID, SONG, {}, [], win=(0, t1),
                                   traces=traces)
+        if hpr:
+            shim.hp_state = hpr.state_at(0)
         out = os.path.join(ROOT, "out", "hubbard",
                            f"{base}_song{SONG}_part01.sf2")
         BM.emit_one(shim, br, out, f"{base} 0-{t1 // 50}s")
@@ -159,6 +231,8 @@ def main():
     for part, (t0, t1) in enumerate(bounds, 1):
         br = BM.build_native_song(shim, SID, SONG, {}, [], win=(t0, t1),
                                   traces=traces)
+        if hpr:
+            shim.hp_state = hpr.state_at(t0)
         out = os.path.join(ROOT, "out", "hubbard",
                            f"{base}_song{SONG}_part{part:02d}.sf2")
         BM.emit_one(shim, br, out,
