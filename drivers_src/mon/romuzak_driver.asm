@@ -171,6 +171,14 @@ FM_SLIDE  = $1876        ; per-voice: 1 = slide active (fm_add clamps at FM_TGT)
 pl_ld     = $187c        ; pulse_step scratch: 1 = a row was loaded this frame (used
                          ;   by the NOTE_PREAMBLE re-arm)
 VAD       = $1880        ; per-voice: current instrument AD (3) — HARD_RESTART builds
+VINST     = $18F0        ; per-voice: current instrument index (3) — HP engine
+PDLY      = $18F3        ; per-voice: HP pulse delay counter (3)
+PDIR      = $18F6        ; per-voice: HP pulse direction, 0=up (3)
+HPSKIP    = $18F9        ; per-voice: 1 = hold the pulse this frame (note onset) (3)
+HPVAL     = $1940        ; per-instrument pulseval byte (32) — poked by the emitter
+HPFX      = $1960        ; per-instrument fx byte (32) — bit3 = fast-PWM mode
+HPW_LO    = $1980        ; per-instrument LIVE pulse lo (32) — init = instrument PW
+HPW_HI    = $19A0        ; per-instrument LIVE pulse hi (32)
 HRC       = $1886        ; per-voice: HARD_RESTART re-arm countdown (3) — the $7D
                          ;   row kills AD/SR, then re-arms them 1 frame BEFORE the
                          ;   next trigger (the ROM re-arms at fetch; a same-frame
@@ -259,6 +267,9 @@ iv:     lda #$41
         sta FMP_HI,x
         sta NPRE,x               ; no preamble pending
         sta HRC,x                ; no pending ADSR re-arm
+.if HP_ENGINE
+        jsr hp_init0             ; zero VINST/PDLY/PDIR (branch-range: out-of-line)
+.endif
         lda IFM_LO               ; default FM = program 0 (flat) until a cmd selects
         sta VIFM_LO,x
         lda IFM_HI
@@ -471,6 +482,88 @@ ws_done:
 ; --- per-voice pulse-program runner: walk the standard pulse table (set/add/
 ;     jump), applying the per-frame add and writing $D402/3 each frame. --------
 pulse_step:
+.if HP_ENGINE
+        ; --- Rob Hubbard per-INSTRUMENT pulse engine (phase-true BY CONSTRUCTION:
+        ;     this IS the ROM's pulsework, RE'd from Monty $8250 + Commando $5230).
+        ;     PW state lives per INSTRUMENT (shared across voices, like instr+0/1
+        ;     in the ROM); delay/direction per voice. Two modes on fx bit3:
+        ;     set = fast-PWM (lo += pulseval per frame, hi fixed — Commando);
+        ;     clear = classic bounce (step = pv&$e0 every (pv&$1f)+1 frames,
+        ;     rails hi==$0e up / $08 down — Monty). pv==0 = static. ---
+        ldx #$02
+hp_l:
+        ldy VINST,x
+        lda HPVAL,y
+        bne hp_run
+        jmp hp_wr
+hp_run:
+        lda HPSKIP,x             ; the ROM skips pulsework only on THIS VOICE's
+        beq hp_run2              ;   note-onset frames (soundwork otherwise runs
+        lda #$00                 ;   every frame) — hold the PW on the trigger
+        sta HPSKIP,x
+        jmp hp_wr
+hp_run2:
+        lda HPVAL,y
+        sta tmpf                 ; pv
+        lda HPFX,y
+        and #$08
+        beq hp_classic
+        lda HPW_LO,y             ; MODE A: lo += pv every frame
+        clc
+        adc tmpf
+        sta HPW_LO,y
+        jmp hp_wr
+hp_classic:
+        dec PDLY,x
+        bmi hp_step
+        jmp hp_wr
+hp_step:
+        lda tmpf
+        and #$1f
+        sta PDLY,x
+        lda tmpf
+        and #$e0
+        sta tmpf                 ; step
+        lda PDIR,x
+        bne hp_down
+        lda HPW_LO,y             ; up leg
+        clc
+        adc tmpf
+        sta HPW_LO,y
+        lda HPW_HI,y
+        adc #$00
+        and #$0f
+        sta HPW_HI,y
+        cmp #$0e
+        bne hp_wr
+        inc PDIR,x               ; reached $0Exx -> go down
+        jmp hp_wr
+hp_down:
+        sec
+        lda HPW_LO,y
+        sbc tmpf
+        sta HPW_LO,y
+        lda HPW_HI,y
+        sbc #$00
+        and #$0f
+        sta HPW_HI,y
+        cmp #$08
+        bne hp_wr
+        dec PDIR,x               ; reached $08xx -> go up
+hp_wr:
+        lda HPW_HI,y
+        sta tmpf
+        lda HPW_LO,y
+        ldy sidbase,x
+        sta SID+2,y
+        lda tmpf
+        sta SID+3,y
+        dex
+        bmi hp_done
+        jmp hp_l
+hp_done:
+        rts
+.else
         ldx #$02
 pl_l:
 .if NOTE_PREAMBLE
@@ -579,6 +672,7 @@ pl_wr:
         jmp pl_l
 pl_done:
         rts
+.endif                           ; HARD_RESTART pulse-engine / program-walker
 
 ; --- global filter-program runner: walk the standard filter table (set passband/
 ;     cutoff/res/bitmask, add-to-cutoff, jump), writing $D415/6 (cutoff), $D417
@@ -1070,6 +1164,10 @@ pn_not_hr:
         sta SID+5,y              ;   kill zeroed it; the ROM rewrites the
         lda VSR,x                ;   instrument AD/SR at every note fetch)
         sta SID+6,y
+.if HP_ENGINE
+        lda #$01                 ; hold the HP pulse on the onset frame (the
+        sta HPSKIP,x             ;   ROM's per-voice pulsework skip)
+.endif
 .endif
 .if NOTE_PREAMBLE
         lda #$01                 ; Supremacy hard-restart: this frame's final SID
@@ -1219,6 +1317,9 @@ ol_adv_done:
 
 ; set instrument for voice X: A = index
 set_instr_v:
+.if HP_ENGINE
+        sta VINST,x              ; HP pulse engine: current instrument per voice
+.endif
         ; Neither FM nor pulse is tied to the instrument any more — both are
         ; selected per note by the $c0-$ff command (see pr_setprog). The
         ; instrument sets only timbre: AD/SR/flags/filter/waveform.
@@ -1587,6 +1688,7 @@ freqtable:
 ; area ($1A00) — the main code bank was overflowing into SF2II's pinned
 ; playback-state region ($16cc-$1702).
         * = $1890
+        .cerror * > $1940, "HP engine tables overlap out-of-line code"
 .if HARD_RESTART
 ; HARD_RESTART out-of-line handlers (main bank is at the $16CC cap)
 pn_hr:  lda #$fe                 ; $7D row: gate off + AD/SR=0 — the ROM's
@@ -1601,6 +1703,13 @@ pn_hr:  lda #$fe                 ; $7D row: gate off + AD/SR=0 — the ROM's
         lda #$03                 ; re-arm 1 frame before the next row's trigger
         sta HRC,x
         jmp advw
+
+hp_init0:
+        sta VINST,x
+        sta PDLY,x
+        sta PDIR,x
+        sta HPSKIP,x
+        rts
 
 pl_loop:
         ; PPTR = VIPUL + byte1*3 and force a reload next frame (A = byte1)
@@ -1653,6 +1762,7 @@ pl_prearm:
 pl_karm:
         rts
 .endif
+.if FMSCALE_ON
 ; SCALED FM entry (out-of-line for branch range): offset = +-(VSTEP * byte0) >> 8
 ; — a pitch-proportional vibrato leg. 24-bit shift-add multiply, ~200 cycles,
 ; runs only when an entry loads (once per leg).
@@ -1722,6 +1832,7 @@ fm_scpos:
         lda mul_p+2
         sta FM_OFF_HI,x
         jmp fm_adv3
+.endif                           ; FMSCALE_ON (the scaled-entry mul block)
 ; SLIDE setup (out-of-line for branch range; entered from the semitone-entry
 ; dispatch with A = speed). The MoN $FD portamento, trace-calibrated: speed 5 ->
 ; 112 Hz/frame, speed 6 -> 224 = 7 << (speed-1); ramps from the NEXT frame and

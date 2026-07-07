@@ -39,6 +39,8 @@ class HubbardShim:
     hard_restart = 1          # Hubbard's release "kill adsr" + per-note ADSR re-arm
     snap_gate = True          # snap capture onsets to the trace's gate-rise frame
                               # (drums gate for ONE frame; a late phase loses it)
+    hp_engine = 1 if os.environ.get('HUBBARD_PULSE_ENGINE') else 0
+                              # WIP: the per-instrument ROM pulse engine (opt-in)
 
     def __init__(self, m, song, phase):
         self.m = m
@@ -87,6 +89,7 @@ class HubbardShim:
         return {'ad': ins['ad'], 'sr': ins['sr'],
                 'waveform': ins['ctrl'] or 0x41,
                 'pw': (ins['pwlo'] | (ins['pwhi'] << 8)) & 0x0FFF,
+                'pulseval': ins['pulsespeed'], 'fx': ins['fx'],
                 'wave_prog': 0, 'flags': 0, 'raw': [0] * 8}
 
 

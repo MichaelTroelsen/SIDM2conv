@@ -1075,7 +1075,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
         key = (ad, sr, raw, wp, flag, tuple(filt) if filt else None)
         if key not in iidx:
             iidx[key] = len(exi)
-            exi.append((ad, sr, raw, _rle_wave(wp), flag, filt))
+            exi.append((ad, sr, raw, _rle_wave(wp), flag, filt, mon_i))
             icount.append(0)
         icount[iidx[key]] += 1
         return iidx[key]
@@ -1262,7 +1262,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     # driver's seq-pointer table holds 128 — overflow corrupts the LAST voice, osc3).
     if count_only:
         wkeys, wrows, fkeys, frows = set(), 0, set(), 0
-        for _ad, _sr, _raw, waveprog, _flag, filt in exi:
+        for _ad, _sr, _raw, waveprog, _flag, filt, _src in exi:
             wk = tuple(waveprog)
             if wk not in wkeys:
                 wkeys.add(wk)
@@ -1339,6 +1339,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     wave_programs = [exi[r][3] for r in ireps]
     instr_flags = [exi[r][4] for r in ireps]
     filter_programs = [exi[r][5] for r in ireps]
+    instr_src = [exi[r][6] for r in ireps]        # source (engine) instrument index
 
     # --- PASS 2: emit rows with the clustered indices ---
     segs = [[] for _ in range(3)]
@@ -1364,12 +1365,13 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                 rows.extend(D11Row(note=0x00) for _ in range(max(0, dur - gate)))
             for pk in segment_track(_hr_rows(rows, getattr(m, 'hard_restart', 0))):
                 segs[v].append(pk)
-    return segs, bundles, instrs, wave_programs, instr_flags, filter_programs
+    return segs, bundles, instrs, wave_programs, instr_flags, filter_programs, instr_src
 
 
 def emit_one(m, br, out_path, label):
     """Assemble + wrap one build result (segs, bundles, instrs, ...) into an SF2."""
-    segs, bundles, instrs, wave_programs, instr_flags, filter_programs = br
+    (segs, bundles, instrs, wave_programs, instr_flags, filter_programs,
+     instr_src) = br
     pulse_programs = [static_pulse(0x800) for _ in instrs]
     B.GAL = MON_DIR
     B.TEMPO = m.frames_per_tick
@@ -1386,6 +1388,7 @@ def emit_one(m, br, out_path, label):
     B.HARD_RESTART = 1 if getattr(m, "hard_restart", 0) else 0
     # scaled FM entries collide with real $40-$43xx Hz deltas (Hubbard drum dives)
     B.FM_SCALED = 0 if getattr(m, "hard_restart", 0) else 1
+    B.HP_ENGINE = 1 if getattr(m, "hp_engine", 0) else 0
     nfilt = sum(1 for f in instr_flags if f & 0x40)
     flags = ""
     if len(bundles) > 64:
@@ -1399,6 +1402,25 @@ def emit_one(m, br, out_path, label):
     shutil.copyfile(os.path.join(ROM_DIR, "layout.inc"), os.path.join(MON_DIR, "layout.inc"))
     write_mon_freqtable(m)
     prg = B.assemble()
+    if getattr(m, "hp_engine", 0):
+        # poke the HP pulse-engine tables (per emitted instrument slot):
+        # HPVAL $1940 (pulseval), HPFX $1960 (fx: bit3 = fast-PWM),
+        # HPW_LO/HI $1980/$19A0 (live PW, init = the instrument record's PW)
+        prg = bytearray(prg)
+        pload = prg[0] | (prg[1] << 8)
+        need = 0x19C0 - pload + 2
+        if len(prg) < need:                       # the tables are EQUATES past
+            prg.extend(bytes(need - len(prg)))
+        for slot, src in enumerate(instr_src[:32]):
+            ins = m.instrument(src)
+            for addr, val in ((0x1940, ins.get('pulseval', 0)),
+                              (0x1960, ins.get('fx', 0)),
+                              (0x1980, ins.get('pw', 0x800) & 0xFF),
+                              (0x19A0, (ins.get('pw', 0x800) >> 8) & 0x0F)):
+                off = addr + slot - pload + 2
+                if 0 <= off < len(prg):
+                    prg[off] = val & 0xFF
+        prg = bytes(prg)
     sf2 = B.wrap(prg, gen, edit, mdp, instr_names=[f"instr {i}" for i in range(len(instrs))])
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     open(out_path, "wb").write(sf2)
