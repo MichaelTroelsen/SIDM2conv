@@ -23,7 +23,8 @@ sys.path.insert(0, os.path.join(ROOT, "bin"))
 os.chdir(ROOT)
 
 from sidm2.mon_parser import MONEvent
-from sidm2.hubbard_parser import HubbardModule, decode_song, load_sid
+from sidm2.hubbard_parser import (HubbardModule, decode_song, load_sid,
+                                  detect_module_map)
 import build_mon_native_song as BM
 
 SID = sys.argv[1] if len(sys.argv) > 1 else os.path.join("SID", "Hubbard_Rob",
@@ -125,9 +126,18 @@ class HPReplay:
         for i, b in enumerate(d):
             self.mpu.memory[(la + i) & 0xFFFF] = b
         raw = bytes(d)
+        # compilation rips: window the pulsework signature scan to m's module
+        # (each embedded player has its own pulsedelay/pulsedir)
+        mhits = HubbardModule.module_hits(d)
+        if len(mhits) > 1:
+            k = getattr(m, 'module', 0)
+            w_lo = 0 if k == 0 else mhits[k - 1] + 1
+            w_hi = mhits[k] + 1
+        else:
+            w_lo, w_hi = 0, len(raw)
         self.pd = self.pdir = None
         pd_i = -1
-        for i in range(len(raw) - 7):
+        for i in range(max(0, w_lo), min(len(raw) - 7, w_hi)):
             # pulsedelay: AND #$1F ... DEC abs,x / BPL
             if (raw[i] == 0xDE and raw[i + 3] == 0x10
                     and b'\x29\x1f' in raw[max(0, i - 8):i]):
@@ -194,10 +204,21 @@ def find_phase(path, song, m, voices):
 
 def main():
     d, la, h = load_sid(SID)
-    m = HubbardModule(d, la)
-    voices, totals = decode_song(m, SONG)
+    n_mod = HubbardModule.module_count(d)
+    if n_mod > 1:
+        # compilation rip: PSID song -> embedded module (its own full player);
+        # the song WITHIN a module is always table entry 0
+        mm = detect_module_map(d, la, h.init_address, max(SONG + 1, n_mod))
+        mod = mm.get(SONG, 0)
+        print(f"  compilation rip: {n_mod} modules, psid song {SONG} -> module {mod}")
+        m = HubbardModule(d, la, module=mod)
+        dsong = 0
+    else:
+        m = HubbardModule(d, la)
+        dsong = SONG
+    voices, totals = decode_song(m, dsong)
     phase = find_phase(SID, SONG, m, voices)
-    shim = HubbardShim(m, SONG, phase)
+    shim = HubbardShim(m, dsong, phase)
     span = shim.tick_to_frame(max(sum(ev.dur for ev in shim.voices[v])
                                   for v in range(3))) + phase
     base = os.path.splitext(os.path.basename(SID))[0]

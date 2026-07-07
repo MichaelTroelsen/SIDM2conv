@@ -76,12 +76,27 @@ class HubbardLayout:
     zp_pat: int = 0           # ZP pair for the pattern pointer
 
 
-class HubbardModule:
-    """Detected + decoded Hubbard v1 module (all songs)."""
+SONGS_COPY_SIG = [0xBD, None, None, 0x99, None, None, 0xE8, 0xC8, 0xC0, 0x06, 0xD0]
 
-    def __init__(self, d, la):
-        self.d, self.la = d, la
-        self.lay = self._locate()
+
+class HubbardModule:
+    """Detected + decoded Hubbard v1 module (all songs).
+
+    Compilation rips (e.g. 5_Title_Tunes) embed SEVERAL complete players in one
+    file; `module` selects which one — every code-signature search is windowed
+    to that module's region (between the neighbouring songs-copy hits)."""
+
+    def __init__(self, d, la, module=0):
+        self.d, self.la, self.module = d, la, module
+        self.lay = self._locate(module)
+
+    @staticmethod
+    def module_count(d):
+        return len(_find_all(d, SONGS_COPY_SIG))
+
+    @staticmethod
+    def module_hits(d):
+        return _find_all(d, SONGS_COPY_SIG)
 
     def _u8(self, addr):
         off = addr - self.la
@@ -91,15 +106,29 @@ class HubbardModule:
         return self._u8(addr) | (self._u8(addr + 1) << 8)
 
     # ---------------- detection ----------------
-    def _locate(self):
+    def _locate(self, module=0):
         d = self.d
         lay = HubbardLayout()
         # songs copy loop: LDA songs,X / STA trk,Y / INX / INY / CPY #6 / BNE
-        hits = _find_all(d, [0xBD, None, None, 0x99, None, None,
-                             0xE8, 0xC8, 0xC0, 0x06, 0xD0])
-        if not hits:
+        mhits = _find_all(d, SONGS_COPY_SIG)
+        if not mhits:
             raise ValueError("no Hubbard songs-copy signature")
-        i = hits[0]
+        if module >= len(mhits):
+            raise ValueError(f"module {module} of {len(mhits)}")
+        i = mhits[module]
+        # Rob's module layout = [play code ... init (songs-copy loop)]: the
+        # code signatures PRECEDE their module's songs-copy hit. Window =
+        # (previous module's songs-copy, this one]; single-module files use
+        # the whole image (some rips rearrange init).
+        if len(mhits) == 1:
+            w_lo, w_hi = 0, len(d)
+        else:
+            w_lo = 0 if module == 0 else mhits[module - 1] + 1
+            w_hi = i + 1
+
+        def first_in(cands):
+            inw = [c for c in cands if w_lo <= c < w_hi]
+            return inw[0] if inw else None
         lay.songs = d[i + 1] | (d[i + 2] << 8)
         lay.trk_ptr_a = d[i + 4] | (d[i + 5] << 8)
 
@@ -108,10 +137,9 @@ class HubbardModule:
                              0xB9, None, None, 0x85, None])
         # disambiguate from other TAY/LDA abs,Y pairs by requiring consecutive
         # ZP stores (a pointer pair)
-        cand = [i for i in hits if d[i + 10] == d[i + 5] + 1]
-        if not cand:
+        i = first_in([j for j in hits if d[j + 10] == d[j + 5] + 1])
+        if i is None:
             raise ValueError("no Hubbard pattern-pointer signature")
-        i = cand[0]
         lay.patptl = d[i + 2] | (d[i + 3] << 8)
         lay.patpth = d[i + 7] | (d[i + 8] << 8)
         lay.zp_pat = d[i + 5]
@@ -120,30 +148,32 @@ class HubbardModule:
         hits = _find_all(d, [0x0A, 0xA8, 0xB9, None, None, 0x8D, None, None,
                              0xB9, None, None])
         cand = []
-        for i in hits:
-            lo = d[i + 3] | (d[i + 4] << 8)
-            hi = d[i + 9] | (d[i + 10] << 8)
+        for j in hits:
+            lo = d[j + 3] | (d[j + 4] << 8)
+            hi = d[j + 9] | (d[j + 10] << 8)
             if hi == lo + 1:
-                cand.append((i, lo))
-        if not cand:
+                cand.append(j)
+        i = first_in(cand)
+        if i is None:
             raise ValueError("no Hubbard freq-table signature")
-        lay.freq = cand[0][1]
+        lay.freq = d[i + 3] | (d[i + 4] << 8)
 
         # instr: ASL ASL ASL TAX / LDA instr+2,X
-        hits = _find_all(d, [0x0A, 0x0A, 0x0A, 0xAA, 0xBD, None, None])
-        if not hits:
+        i = first_in(_find_all(d, [0x0A, 0x0A, 0x0A, 0xAA, 0xBD, None, None]))
+        if i is None:
             raise ValueError("no Hubbard instrument signature")
-        i = hits[0]
         lay.instr = (d[i + 5] | (d[i + 6] << 8)) - 2
 
         # speed: DEC speed / BPL / LDA resetspd / STA speed
         hits = _find_all(d, [0xCE, None, None, 0x10, None, 0xAD, None, None,
                              0x8D, None, None])
-        for i in hits:
-            sp = d[i + 1] | (d[i + 2] << 8)
-            if (d[i + 9] | (d[i + 10] << 8)) == sp:
+        for j in hits:
+            if not (w_lo <= j < w_hi):
+                continue
+            sp = d[j + 1] | (d[j + 2] << 8)
+            if (d[j + 9] | (d[j + 10] << 8)) == sp:
                 lay.speed_addr = sp
-                lay.resetspd_addr = d[i + 6] | (d[i + 7] << 8)
+                lay.resetspd_addr = d[j + 6] | (d[j + 7] << 8)
                 break
         return lay
 
@@ -231,12 +261,14 @@ def decode_pattern(m, pat):
     return out
 
 
-def decode_song(m, song=0):
-    """Song -> per-voice flat [(tick, HubbardNote)] one-pass streams +
-    per-voice total ticks."""
-    voices, totals = [], []
+def decode_song(m, song=0, expand_loops=True):
+    """Song -> per-voice flat [(tick, HubbardNote)] streams + per-voice total
+    ticks. A LOOPING track shorter than the longest voice is repeated to cover
+    the full song span (e.g. a short ostinato track against long melody
+    tracks — 5_Title_Tunes module 4's V1 is an 18-tick loop)."""
+    voices, totals, loops = [], [], []
     for v in range(3):
-        pats, loops = m.track_patterns(song, v)
+        pats, looped = m.track_patterns(song, v)
         tk, evs = 0, []
         for p in pats:
             for n in decode_pattern(m, p):
@@ -244,4 +276,59 @@ def decode_song(m, song=0):
                 tk += n.ticks
         voices.append(evs)
         totals.append(tk)
+        loops.append(looped)
+    if expand_loops:
+        span = max(totals)
+        for v in range(3):
+            base = list(voices[v])
+            period = totals[v]
+            if not loops[v] or period <= 0 or period >= span:
+                continue
+            tk = period
+            while tk < span:
+                for otk, n in base:
+                    if tk + otk >= span:
+                        break
+                    voices[v].append((tk + otk, n))
+                tk += period
+            totals[v] = span
     return voices, totals
+
+
+def detect_module_map(d, la, init_addr, nsongs):
+    """Compilation rips: map PSID song index -> embedded module index.
+
+    Each PSID song's INIT pokes a $40 'music on' flag into ITS module's
+    variable block (and clears the others'). Replay init per song via py65,
+    find the address that is $40 only for that song, and rank it against the
+    module songs-copy hits (the flag precedes its module's player code)."""
+    from py65.devices.mpu6502 import MPU
+    hits = [la + i for i in _find_all(d, SONGS_COPY_SIG)]
+    imgs = []
+    for s in range(nsongs):
+        mpu = MPU()
+        for k, b in enumerate(d):
+            mpu.memory[(la + k) & 0xFFFF] = b
+        mpu.a, mpu.x, mpu.y = s, 0, 0
+        mpu.pc = init_addr
+        mpu.memory[0x1FF] = 0xFF
+        mpu.memory[0x1FE] = 0xFE
+        mpu.sp = 0xFD
+        for _ in range(2_000_000):
+            if mpu.pc == 0xFFFF:
+                break
+            mpu.step()
+        imgs.append(bytes(mpu.memory[la:la + len(d)]))
+    mapping = {}
+    for s in range(nsongs):
+        flags = [la + a for a in range(len(d))
+                 if imgs[s][a] == 0x40
+                 and all(imgs[t][a] != 0x40 for t in range(nsongs) if t != s)]
+        mod = None
+        if len(flags) == 1:
+            f = flags[0]
+            above = [k for k, h in enumerate(hits) if h > f]
+            if above:
+                mod = above[0]
+        mapping[s] = mod if mod is not None else 0
+    return mapping
