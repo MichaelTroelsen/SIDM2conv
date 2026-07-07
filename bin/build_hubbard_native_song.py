@@ -25,7 +25,7 @@ os.chdir(ROOT)
 from sidm2.mon_parser import MONEvent
 from sidm2.hubbard_parser import (HubbardModule, decode_song, load_sid,
                                   detect_module_map, swallow_state,
-                                  ticks_to_frames)
+                                  ticks_to_frames, initial_instruments)
 import build_mon_native_song as BM
 
 SID = sys.argv[1] if len(sys.argv) > 1 else os.path.join("SID", "Hubbard_Rob",
@@ -49,7 +49,7 @@ class HubbardShim:
                               # notes — enable the per-voice free-run STREAM
                               # detection (set in main for v2_notes files)
 
-    def __init__(self, m, song, phase):
+    def __init__(self, m, song, phase, init_instr=(0, 0, 0)):
         self.m = m
         self.speed = m.resetspd
         self._fpt = m.frames_per_tick
@@ -57,8 +57,8 @@ class HubbardShim:
         voices, _ = decode_song(m, song)
         self.voices = [[] for _ in range(3)]
         for v in range(3):
-            cur_instr = 0
-            prev_norel = False
+            cur_instr = init_instr[v]     # the ROM's per-voice default (init-
+            prev_norel = False            # seeded; notes w/o instr byte inherit)
             out = self.voices[v]
             for tk, n in voices[v]:
                 if n.instr >= 0:
@@ -134,12 +134,15 @@ class HPReplay:
     pulsework code itself."""
 
     def __init__(self, sid, song, m):
-        from py65.devices.mpu6502 import MPU
+        # siddump CPU (raster fake + banking): several rips' play routines
+        # spin forever on a bare py65 (Last_V8 = 2M steps/frame = a 3-HOUR
+        # replay that killed every corpus batch; Tarzan same class)
+        from sidm2.cpu6502_emulator import CPU6502Emulator
         d, la, h = load_sid(sid)
         self.m = m
-        self.mpu = MPU()
-        for i, b in enumerate(d):
-            self.mpu.memory[(la + i) & 0xFFFF] = b
+        self.cpu = CPU6502Emulator()
+        self.cpu.load_memory(bytes(d), la)
+        self.cpu.mem[0x01] = 0x37
         raw = bytes(d)
         # compilation rips: window the pulsework signature scan to m's module
         # (each embedded player has its own pulsedelay/pulsedir)
@@ -172,23 +175,23 @@ class HPReplay:
         self.frame = 0
 
     def _call(self, addr, a=0):
-        mp = self.mpu
-        mp.a, mp.x, mp.y = a & 0xFF, 0, 0
-        mp.pc = addr
-        mp.memory[0x1FF] = 0xFF
-        mp.memory[0x1FE] = 0xFE
-        mp.sp = 0xFD
-        for _ in range(2_000_000):
-            if mp.pc == 0xFFFF:
+        cpu = self.cpu
+        cpu.mem[0xD012] = (cpu.mem[0xD012] + 1) & 0xFF       # fake raster
+        if (cpu.mem[0xD012] == 0
+                or ((cpu.mem[0xD011] & 0x80) and cpu.mem[0xD012] >= 0x38)):
+            cpu.mem[0xD011] ^= 0x80
+            cpu.mem[0xD012] = 0x00
+        cpu.reset(addr, a & 0xFF, 0, 0)
+        for _ in range(1_000_000):
+            if not cpu.run_instruction():
                 return
-            mp.step()
 
     def state_at(self, frame):
         """State snapshot at ORIG frame `frame` (non-decreasing calls only)."""
         while self.frame < frame:
             self._call(self.play)
             self.frame += 1
-        mem = self.mpu.memory
+        mem = self.cpu.mem
         base = self.m.lay.instr
         return {
             'pdly': [mem[self.pd + v] for v in range(3)] if self.pd else [0] * 3,
@@ -233,7 +236,8 @@ def main():
         dsong = SONG
     voices, totals = decode_song(m, dsong)
     phase = find_phase(SID, SONG, m, voices)
-    shim = HubbardShim(m, dsong, phase)
+    ii = initial_instruments(d, la, h.init_address, SONG, m.lay)
+    shim = HubbardShim(m, dsong, phase, init_instr=ii)
     if m.lay.swallow_period:
         shim.sw_per = m.lay.swallow_period
         shim.sw_c0 = swallow_state(d, la, h.init_address, SONG, m.lay)

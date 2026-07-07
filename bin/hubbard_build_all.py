@@ -94,10 +94,17 @@ def main():
             if DRY:
                 built.append((name, s))
                 continue
-            r = subprocess.run(
-                [sys.executable, 'bin/build_hubbard_native_song.py',
-                 path, str(s), 'auto'],
-                capture_output=True, text=True, timeout=5400)
+            try:
+                r = subprocess.run(
+                    [sys.executable, 'bin/build_hubbard_native_song.py',
+                     path, str(s), 'auto'],
+                    capture_output=True, text=True, timeout=5400)
+            except subprocess.TimeoutExpired:
+                # one pathological build must NOT kill the whole batch
+                # (Last_V8's 3h HPReplay spin did, three times)
+                print('    TIMEOUT (>90min) — skipping')
+                failed.append((name, s, 'timeout'))
+                continue
             tail = (r.stdout or '').strip().splitlines()
             print('   ', tail[-1] if tail else '(no output)')
             if r.returncode != 0:

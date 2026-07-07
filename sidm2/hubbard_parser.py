@@ -84,6 +84,9 @@ class HubbardLayout:
                               #   a frame (Sanxion 109, Delta 5, Thundercats 4)
     v2_notes: bool = False    # v2 note format (Delta class): $60-len = 1-byte
                               #   rest, 4-byte porta, pitch bit7 = no-fetch
+    instrnr_addr: int = 0     # per-voice CURRENT instrument array (the fetch's
+                              #   LDA instrnr,X) — init seeds per-voice defaults
+                              #   that notes without an instrument byte inherit
 
 
 SONGS_COPY_SIG = [0xBD, None, None, 0x99, None, None, 0xE8, 0xC8, 0xC0, 0x06, 0xD0]
@@ -229,6 +232,13 @@ class HubbardModule:
         # bit7 no-fetch (Delta class)
         lay.v2_notes = any(w_lo <= j < w_hi
                            for j in _find_all(d, [0x29, 0x60, 0xC9, 0x60, 0xD0]))
+
+        # per-voice current-instrument array: LDA instrnr,X / STX tmp /
+        # ASL ASL ASL / TAX (the note fetch) — init seeds per-voice defaults
+        j = first_in(_find_all(d, [0xBD, None, None, 0x8E, None, None,
+                                   0x0A, 0x0A, 0x0A, 0xAA]))
+        if j is not None:
+            lay.instrnr_addr = d[j + 1] | (d[j + 2] << 8)
         return lay
 
     # ---------------- decode ----------------
@@ -394,6 +404,23 @@ def decode_song(m, song=0, expand_loops=True):
                 tk += period
             totals[v] = span
     return voices, totals
+
+
+def initial_instruments(d, la, init_addr, song, lay):
+    """Per-voice instrument defaults after INIT (before the first fetch) —
+    notes without an instrument byte inherit them (Last_V8's V2 played rom
+    instr 3's PW; our decoder assumed 0 -> the HP engine used instr 0's)."""
+    if not lay.instrnr_addr:
+        return [0, 0, 0]
+    from sidm2.cpu6502_emulator import CPU6502Emulator
+    cpu = CPU6502Emulator()
+    cpu.load_memory(bytes(d), la)
+    cpu.mem[0x01] = 0x37
+    cpu.reset(init_addr, song & 0xFF, 0, 0)
+    for _ in range(1_000_000):
+        if not cpu.run_instruction():
+            break
+    return [cpu.mem[lay.instrnr_addr + v] & 0x1F for v in range(3)]
 
 
 def swallow_state(d, la, init_addr, song, lay):
