@@ -26,7 +26,10 @@ from sidm2.fidelity_common import siddump_note_onsets
 FILES = ['Monty_on_the_Run', 'Commando', 'Crazy_Comets', 'Zoids', 'Gremlins',
          'Master_of_Magic', 'One_Man_and_his_Droid', 'Last_V8',
          'Geoff_Capes_Strongman_Challenge', '5_Title_Tunes', 'Chimera',
-         'Last_V8_C128_version']
+         'Last_V8_C128_version',
+         # v2 split-songs class + widened freq sig (parser upgrade 2026-07-07)
+         'Action_Biker', 'Confuzion', 'Devils_Galop', 'Gerry_the_Germ',
+         'Hunter_Patrol', 'I_Ball', 'Ninja', 'Thing_on_a_Spring']
 MIN_ONSETS = 8            # below this = game SFX, not music
 MIN_PCT = 95.0
 ALWAYS_S0 = True          # song 0 of every corpus file is already metric-proven

@@ -65,6 +65,10 @@ def _find_all(d, sig):
 @dataclass
 class HubbardLayout:
     songs: int = 0            # 6-byte-per-song track-pointer table
+    songs_split: bool = False  # v2 (Thing_on_a_Spring class): songs/track ptrs
+                               # are SPLIT lo/hi tables indexed X=song*3+voice;
+                               # `songs` = lo base, `songs_hi` = hi base
+    songs_hi: int = 0
     trk_ptr_a: int = 0        # currtrk half A (feeds ZP pointer LOW)
     patptl: int = 0           # pattern pointer table lo
     patpth: int = 0           # pattern pointer table hi
@@ -111,26 +115,39 @@ class HubbardModule:
         lay = HubbardLayout()
         # songs copy loop: LDA songs,X / STA trk,Y / INX / INY / CPY #6 / BNE
         mhits = _find_all(d, SONGS_COPY_SIG)
-        if not mhits:
-            raise ValueError("no Hubbard songs-copy signature")
-        if module >= len(mhits):
-            raise ValueError(f"module {module} of {len(mhits)}")
-        i = mhits[module]
-        # Rob's module layout = [play code ... init (songs-copy loop)]: the
-        # code signatures PRECEDE their module's songs-copy hit. Window =
-        # (previous module's songs-copy, this one]; single-module files use
-        # the whole image (some rips rearrange init).
-        if len(mhits) == 1:
-            w_lo, w_hi = 0, len(d)
+        if mhits:
+            if module >= len(mhits):
+                raise ValueError(f"module {module} of {len(mhits)}")
+            i = mhits[module]
+            # Rob's module layout = [play code ... init (songs-copy loop)]:
+            # the code signatures PRECEDE their module's songs-copy hit.
+            # Window = (previous module's songs-copy, this one]; single-module
+            # files use the whole image (some rips rearrange init).
+            if len(mhits) == 1:
+                w_lo, w_hi = 0, len(d)
+            else:
+                w_lo = 0 if module == 0 else mhits[module - 1] + 1
+                w_hi = i + 1
+            lay.songs = d[i + 1] | (d[i + 2] << 8)
+            lay.trk_ptr_a = d[i + 4] | (d[i + 5] << 8)
         else:
-            w_lo = 0 if module == 0 else mhits[module - 1] + 1
-            w_hi = i + 1
+            # v2 (Thing_on_a_Spring class): no copy loop — per-voice track
+            # pointers load from SPLIT lo/hi tables straight into a ZP pair:
+            # LDA lo,X / STA zp / LDA hi,X / STA zp+1
+            w_lo, w_hi = 0, len(d)
+            hits = _find_all(d, [0xBD, None, None, 0x85, None,
+                                 0xBD, None, None, 0x85, None])
+            cand = [j for j in hits if d[j + 9] == d[j + 4] + 1]
+            if not cand:
+                raise ValueError("no Hubbard songs-copy signature")
+            j = cand[0]
+            lay.songs_split = True
+            lay.songs = d[j + 1] | (d[j + 2] << 8)
+            lay.songs_hi = d[j + 6] | (d[j + 7] << 8)
 
         def first_in(cands):
             inw = [c for c in cands if w_lo <= c < w_hi]
             return inw[0] if inw else None
-        lay.songs = d[i + 1] | (d[i + 2] << 8)
-        lay.trk_ptr_a = d[i + 4] | (d[i + 5] << 8)
 
         # pattern ptr load: TAY / LDA patptl,Y / STA zp / LDA patpth,Y / STA zp
         hits = _find_all(d, [0xA8, 0xB9, None, None, 0x85, None,
@@ -144,19 +161,33 @@ class HubbardModule:
         lay.patpth = d[i + 7] | (d[i + 8] << 8)
         lay.zp_pat = d[i + 5]
 
-        # freq: ASL / TAY / LDA freq,Y / STA abs / LDA freq+1,Y
-        hits = _find_all(d, [0x0A, 0xA8, 0xB9, None, None, 0x8D, None, None,
-                             0xB9, None, None])
-        cand = []
-        for j in hits:
-            lo = d[j + 3] | (d[j + 4] << 8)
-            hi = d[j + 9] | (d[j + 10] << 8)
-            if hi == lo + 1:
-                cand.append(j)
-        i = first_in(cand)
+        # freq: LDA freq,Y / STA / LDA freq+1,Y — an interleaved lo,hi pair.
+        # v1 uses STA abs ($8D) with a leading ASL/TAY; later revisions use
+        # STA abs,X ($9D — Delta) or STA zp ($85). Prefer the strict v1 form,
+        # fall back to the relaxed pair scans.
+        def freq_scan(sig, off_lo, off_hi):
+            cand = []
+            for j in _find_all(d, sig):
+                lo = d[j + off_lo] | (d[j + off_lo + 1] << 8)
+                hi = d[j + off_hi] | (d[j + off_hi + 1] << 8)
+                if hi == lo + 1 and lo >= 0x100:
+                    cand.append((j, lo))
+            return cand
+        i = None
+        for sig, off_lo, off_hi in (
+                ([0x0A, 0xA8, 0xB9, None, None, 0x8D, None, None,
+                  0xB9, None, None], 3, 9),                       # v1 strict
+                ([0xB9, None, None, 0x8D, None, None, 0xB9, None, None], 1, 7),
+                ([0xB9, None, None, 0x9D, None, None, 0xB9, None, None], 1, 7),
+                ([0xB9, None, None, 0x85, None, 0xB9, None, None], 1, 6)):
+            cand = freq_scan(sig, off_lo, off_hi)
+            j = first_in([c for c, _ in cand])
+            if j is not None:
+                lay.freq = dict(cand)[j]
+                i = j
+                break
         if i is None:
             raise ValueError("no Hubbard freq-table signature")
-        lay.freq = d[i + 3] | (d[i + 4] << 8)
 
         # instr: ASL ASL ASL TAX / LDA instr+2,X
         i = first_in(_find_all(d, [0x0A, 0x0A, 0x0A, 0xAA, 0xBD, None, None]))
@@ -197,8 +228,13 @@ class HubbardModule:
                 "sr": b[4], "vibdepth": b[5], "pulsespeed": b[6], "fx": b[7]}
 
     def track_ptrs(self, song):
-        """The 3 per-voice track pointers for a song. The 6-byte record is the
-        two 3-byte halves of the init copy: half A feeds the ZP LOW byte."""
+        """The 3 per-voice track pointers for a song. v1: 6-byte record = the
+        two 3-byte halves of the init copy (half A feeds the ZP LOW byte).
+        v2 (songs_split): separate lo/hi tables indexed song*3+voice."""
+        if self.lay.songs_split:
+            return [self._u8(self.lay.songs + song * 3 + v)
+                    | (self._u8(self.lay.songs_hi + song * 3 + v) << 8)
+                    for v in range(3)]
         base = self.lay.songs + song * 6
         return [self._u8(base + v) | (self._u8(base + 3 + v) << 8)
                 for v in range(3)]
