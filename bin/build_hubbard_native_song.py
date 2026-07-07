@@ -45,6 +45,9 @@ class HubbardShim:
                               # the per-instrument ROM pulse engine (DEFAULT —
                               # Monty/Commando/Zoids pulse 100% vs <=98.6 with
                               # captured programs; =0 to fall back)
+    freerun_pulse = 0         # v2 (Delta class): the PW accumulates across
+                              # notes — enable the per-voice free-run STREAM
+                              # detection (set in main for v2_notes files)
 
     def __init__(self, m, song, phase):
         self.m = m
@@ -236,6 +239,9 @@ def main():
         shim.sw_c0 = swallow_state(d, la, h.init_address, SONG, m.lay)
         print(f"  fractional tempo: swallow period={shim.sw_per} "
               f"first-skip={shim.sw_c0}")
+    if getattr(m.lay, 'v2_notes', False):
+        shim.hp_engine = 0        # v2 instrument records: HP pokes would read
+        shim.freerun_pulse = 1    # garbage; their PW free-runs across notes
 
     def part_swallow(t0):
         """(period, frames-until-first-skip) at part window start t0."""

@@ -161,19 +161,43 @@ def _arp_fm_for(m, ev):
     return arp_fm_program(arp)
 
 
-def pulse_program_for(frames, v, onset, dur_f, cap=FM_CAP):
+def pulse_program_for(frames, v, onset, dur_f, cap=FM_CAP, allow_loop=False):
     """Per-note PULSE program (B3 PWM): reproduce the original's per-frame pulse
     width. 8X = set width frame 0; 0X = add per-frame delta (12-bit) for `run`
     frames; 7f = freeze. The driver restarts the pulse program per note (PPTR=
     VIPUL/VPC=0), so frame 0 sets the base — no 1-frame offset (unlike FM).
-    cap > FM_CAP is used for the free-running per-voice STREAM programs."""
+    cap > FM_CAP is used for the free-running per-voice STREAM programs.
+
+    allow_loop (v2 Hubbard): PERIODIC pulse (Delta's sawtooth PWM wraps every
+    ~9 frames for the whole note; a capped capture froze mid-ramp) is emitted
+    as set + ONE cycle of adds + a $7F LOOP row — exact forever, 3 rows."""
     targ, hold = [], None
-    for k in range(min(dur_f, cap)):
+    for k in range(min(dur_f, cap if not allow_loop else dur_f)):
         idx = onset + k
         pv = frames[idx][0][v]['pul'] if idx < len(frames) else None
         if pv is not None:
             hold = pv
         targ.append(hold if hold is not None else 0x800)
+    if allow_loop and len(targ) >= 24:
+        for p in range(2, min(128, len(targ) // 2)):
+            if all(targ[k] == targ[k + p] for k in range(1, len(targ) - p)):
+                prog = [(0x80 | ((targ[0] >> 8) & 0x0F), targ[0] & 0xFF, 1)]
+                prev = targ[0]
+                run, rl = None, 0
+                for k in range(1, 1 + p):
+                    delta = (targ[k] - prev) & 0xFFF
+                    prev = targ[k]
+                    if delta == run:
+                        rl += 1
+                    else:
+                        if run is not None:
+                            prog.append(((run >> 8) & 0x0F, run & 0xFF, rl))
+                        run, rl = delta, 1
+                if run is not None:
+                    prog.append(((run >> 8) & 0x0F, run & 0xFF, rl))
+                prog.append((0x7F, 1, 0))          # LOOP to row 1 (first add)
+                return prog
+        targ = targ[:cap]                          # no cycle: bound the RLE
     prog = [(0x80 | ((targ[0] >> 8) & 0x0F), targ[0] & 0xFF, 1)]   # 8X set frame 0
 
     def flush(r, n):
@@ -929,7 +953,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     # $08 flag lives in the shared instrument record).
     t0w, t1w = win if win else (0, 1 << 30)
     freerun = [None, None, None]
-    if ARP_STRUCT:
+    if ARP_STRUCT or getattr(m, 'freerun_pulse', 0):
         vkeys, vnotes = [set() for _ in range(3)], [[] for _ in range(3)]
         starts = {}
         for v in range(3):
@@ -943,15 +967,27 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                     pv = frames[fr][0][v]['pul'] if fr < len(frames) else None
                     starts.setdefault((v, ev.instr, ev.wprog), set()).add(pv)
                 tk += ev.dur
+        explicit = bool(getattr(m, 'freerun_pulse', 0))
+        min_drift = 2 if explicit else 3
+        max_rows = 2600 if explicit else 700
         for v in range(3):
-            drift = any(len(starts.get((v,) + k, ())) >= 3 for k in vkeys[v])
+            drift = any(len(starts.get((v,) + k, ())) >= min_drift
+                        for k in vkeys[v])
             shared = vkeys[v] & (vkeys[(v + 1) % 3] | vkeys[(v + 2) % 3])
             if drift and not shared and vnotes[v]:
                 on0 = vnotes[v][0][0]
                 span = min(t1w, vnotes[v][-1][0] + vnotes[v][-1][1]) - on0
                 stream = pulse_program_for(frames, v, on0, span, cap=span)
-                if len(stream) <= 700:           # sanity: keep PULSETAB bounded
+                # sanity: keep PULSETAB bounded (Delta's continuous PWM barely
+                # RLE-compresses — explicit v2 free-run mode allows long streams;
+                # rows are 3B and the table space above the code is ample)
+                if len(stream) <= max_rows:
                     freerun[v] = stream
+        if os.environ.get("MON_DEBUG_FREERUN"):
+            print(f"    freerun: t0w={t0w} t1w={t1w} delay={delay} "
+                  f"starts={dict(list(starts.items())[:4])} "
+                  f"nnotes={[len(x) for x in vnotes]} "
+                  f"streams={[len(s) if s else None for s in freerun]}")
     routed = routed_voice(ftr)                              # restart only on this voice
     drive_map = detect_filter_drives(ftr, onsets, routed)   # {onset_frame: voice}
     drives = {(v, o) for o, v in drive_map.items()}
@@ -1091,7 +1127,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
         tk = 0
         for _pat, events in m._voice_blocks(v):
             blk = []
-            for ev in events:
+            for ei, ev in enumerate(events):
                 fr = m.tick_to_frame(tk) + delay
                 dur_f = m.tick_to_frame(tk + ev.dur) - m.tick_to_frame(tk)
                 etk, edur = tk, ev.dur                        # effective tick/duration
@@ -1146,8 +1182,13 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                             break
                 flag, filt = (canon_filt.get(cfr, (0, None))
                               if (v, cfr) in drives else (0, None))
-                if getattr(m, 'hard_restart', 0):
-                    flag |= 0x08                  # free-running pulse (PFREE)
+                if (getattr(m, 'hard_restart', 0)
+                        and not getattr(m, 'freerun_pulse', 0)):
+                    flag |= 0x08                  # free-running pulse (PFREE) —
+                                                  # v1 captured-mode wobbles keep
+                                                  # phase; v2 (Delta) FETCH RESETS
+                                                  # the PW from the record, so the
+                                                  # program must restart per note
                 fmp = fm_program_for(frames, v, cfr, dur_f, base)
                 # guard-compare window: skip the ~3 end-of-note boundary frames,
                 # but NEVER go below 2 — _fm_unroll's frame 0 is always the base
@@ -1217,7 +1258,20 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                     pp = freerun[v]               # one per-voice stream, phase kept
                     flag |= 0x08                  # driver: no pulse reset on note-on
                 else:
-                    pp = pulse_program_for(frames, v, cfr, dur_f)
+                    pdur = dur_f
+                    if getattr(m, 'freerun_pulse', 0) and not getattr(ev, 'tie', False):
+                        # ties never restart the pulse program — only the chain
+                        # HEAD's program runs, so its capture must span the
+                        # whole tie chain (Delta's drones froze mid-ramp)
+                        ct, j = etk + edur, ei + 1
+                        while j < len(events) and getattr(events[j], 'tie', False):
+                            ct += events[j].dur
+                            j += 1
+                        cf = min(m.tick_to_frame(ct) + delay, t1)
+                        pdur = max(dur_f, cf - fr)
+                    pp = pulse_program_for(
+                        frames, v, cfr, pdur,
+                        allow_loop=bool(getattr(m, 'freerun_pulse', 0)))
                     cp = canon_pulse.get((ev.instr, ev.wprog))
                     # compare minus the last frame: the capture's final frame holds
                     # the NEXT note's base reset (the same 1-frame register skew as
