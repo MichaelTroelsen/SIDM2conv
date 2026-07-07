@@ -78,6 +78,10 @@ class HubbardLayout:
     resetspd_addr: int = 0
     zp_trk: int = 0           # ZP pair for the track pointer
     zp_pat: int = 0           # ZP pair for the pattern pointer
+    swallow_addr: int = 0     # v2 fractional tempo: a second countdown; on
+    swallow_period: int = 0   #   expiry (every `period` frames) the player
+                              #   SKIPS the speed dec — one tick stretches by
+                              #   a frame (Sanxion 109, Delta 5, Thundercats 4)
 
 
 SONGS_COPY_SIG = [0xBD, None, None, 0x99, None, None, 0xE8, 0xC8, 0xC0, 0x06, 0xD0]
@@ -206,6 +210,17 @@ class HubbardModule:
                 lay.speed_addr = sp
                 lay.resetspd_addr = d[j + 6] | (d[j + 7] << 8)
                 break
+
+        # v2 fractional tempo (the swallow counter): DEC abs / BPL / LDA #v /
+        # STA same-abs / JMP — on expiry the speed dec is skipped one frame
+        for j in _find_all(d, [0xCE, None, None, 0x10, None, 0xA9, None,
+                               0x8D, None, None, 0x4C]):
+            if not (w_lo <= j < w_hi):
+                continue
+            if d[j + 1] == d[j + 8] and d[j + 2] == d[j + 9]:
+                lay.swallow_addr = d[j + 1] | (d[j + 2] << 8)
+                lay.swallow_period = d[j + 6] + 1
+                break
         return lay
 
     # ---------------- decode ----------------
@@ -329,6 +344,43 @@ def decode_song(m, song=0, expand_loops=True):
                 tk += period
             totals[v] = span
     return voices, totals
+
+
+def swallow_state(d, la, init_addr, song, lay):
+    """Post-init value of the v2 fractional-tempo (swallow) counter — the
+    schedule's phase: skips land on frames C, C+period, C+2*period, ..."""
+    if not lay.swallow_addr:
+        return 0
+    from py65.devices.mpu6502 import MPU
+    mpu = MPU()
+    for k, b in enumerate(d):
+        mpu.memory[(la + k) & 0xFFFF] = b
+    mpu.a, mpu.x, mpu.y = song & 0xFF, 0, 0
+    mpu.pc = init_addr
+    mpu.memory[0x1FF] = 0xFF
+    mpu.memory[0x1FE] = 0xFE
+    mpu.sp = 0xFD
+    for _ in range(2_000_000):
+        if mpu.pc == 0xFFFF:
+            break
+        mpu.step()
+    return mpu.memory[lay.swallow_addr]
+
+
+def ticks_to_frames(t, fpt, period=0, ctr0=0):
+    """Frame index of tick t under the v2 fractional tempo: every `period`
+    frames one frame is DEAD (the speed dec is skipped; first dead frame =
+    ctr0, the counter's post-init value). period=0 = pure v1 grid."""
+    base = t * fpt
+    if not period:
+        return base
+    f = base
+    while True:
+        dead = 0 if f < ctr0 else (f - ctr0) // period + 1
+        f2 = base + dead
+        if f2 == f:
+            return f
+        f = f2
 
 
 def detect_module_map(d, la, init_addr, nsongs):
