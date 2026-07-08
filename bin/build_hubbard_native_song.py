@@ -243,9 +243,15 @@ def main():
         shim.sw_c0 = swallow_state(d, la, h.init_address, SONG, m.lay)
         print(f"  fractional tempo: swallow period={shim.sw_per} "
               f"first-skip={shim.sw_c0}")
-    if getattr(m.lay, 'v2_notes', False):
-        shim.hp_engine = 0        # v2 instrument records: HP pokes would read
-        shim.freerun_pulse = 1    # garbage; their PW free-runs across notes
+    if getattr(m.lay, 'v2_notes', False) or m.lay.swallow_period:
+        # V2-era files (Delta note-format OR swallow-tempo): their instrument
+        # records / pulsework differ from V1's, so the HP engine mis-drives
+        # the pulse (Lightforce's per-instrument BOUNCE came out as a runaway
+        # ramp). Fall back to CAPTURED pulse programs — they reproduce whatever
+        # the original does exactly (bounce, free-run, or ramp). freerun_pulse
+        # enables both the per-voice free-run stream and the periodic LOOP row.
+        shim.hp_engine = 0
+        shim.freerun_pulse = 1
 
     def part_swallow(t0):
         """(period, frames-until-first-skip) at part window start t0."""
