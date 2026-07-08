@@ -18,8 +18,25 @@ sys.path.insert(0, os.path.join(ROOT, "bin"))
 os.chdir(ROOT)
 
 from sidm2.mon_parser import MONEvent
-from sidm2.dmc_parser import load_sid, DMCModule, decode_song
+from sidm2.dmc_parser import (load_sid, DMCModule, decode_song, measure_onsets)
+from sidm2.sid_player import FREQ_TABLE_LO, FREQ_TABLE_HI
+from sidm2.fidelity_common import freq_to_semi
 import build_mon_native_song as BM
+
+
+def _pal(note):
+    n = max(0, min(95, note))
+    return FREQ_TABLE_LO[n] | (FREQ_TABLE_HI[n] << 8)
+
+
+def _sem(frames, v, onset):
+    """Semitone at a note's onset frame (settled past the 1-frame attack)."""
+    for k in (1, 2, 0):
+        idx = onset + k
+        f = frames[idx][0][v]['freq'] if idx < len(frames) else 0
+        if f:
+            return freq_to_semi(f)
+    return 48
 
 SID = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
     "SID", "JohannesBjerregaard", "Rockbuster.sid")
@@ -34,15 +51,35 @@ class DMCShim:
     snap_gate = True          # snap capture onsets to the trace's gate-rise frame
     hp_engine = 0             # DMC pulse comes from captured programs (its own PWM)
 
-    def __init__(self, m, phase, budget_ticks):
+    def __init__(self, m, phase, budget_ticks, onsets=None, frames=None):
         self.m = m
-        self._fpt = m.lay.tempo_reload + 1
-        self.onset_delay = phase
+        # ONSET-ALIGNED mode (onsets given): work in FRAMES (fpt=1). Each note is
+        # placed at its exact emulated gate-rise frame with dur = the frame gap,
+        # and its pitch resolved from the trace (absolute semitone) — so the
+        # driver triggers on the true frame and the FM capture reproduces the
+        # wavetable arp in phase. Falls back to the tick*fpt grid otherwise.
+        self._fpt = 1 if onsets else (m.lay.tempo_reload + 1)
+        self.onset_delay = 0 if onsets else phase
         voices = decode_song(m, tick_budget=budget_ticks)
         self.voices = [[] for _ in range(3)]
         for v in range(3):
             cur = 0
             out = self.voices[v]
+            if onsets is not None:
+                notes = [n for _, n in voices[v] if n.pitch >= 0]
+                ons = onsets[v]
+                k = 0
+                for i, o in enumerate(ons):
+                    if k >= len(notes):
+                        break
+                    n = notes[k]; k += 1
+                    if n.sound >= 0:
+                        cur = n.sound
+                    nxt = ons[i + 1] if i + 1 < len(ons) else o + 8
+                    note = _sem(frames, v, o) if frames is not None else n.pitch
+                    out.append(MONEvent(note=note, dur=max(1, nxt - o),
+                                        instr=cur, wprog=0, retrig=True))
+                continue
             for tk, n in voices[v]:
                 if n.pitch < 0:               # REST
                     out.append(MONEvent(note=0, dur=n.ticks, instr=cur,
@@ -67,7 +104,7 @@ class DMCShim:
         return [(0, self.voices[v])] if self.voices[v] else []
 
     def note_freq(self, note):
-        return self.m.note_freq(note & 0x7F)
+        return _pal(note) if self._fpt == 1 else self.m.note_freq(note & 0x7F)
 
     def instrument(self, idx):
         s = self.m.sound(idx)             # [AD,SR,PWinit,PWrails,PWspeed,vib,f6,f7]
@@ -108,13 +145,32 @@ def main():
     print(f"{base}: fpt={fpt} phase={phase} span={span // 50}s "
           f"events={[len(v) for v in voices0]}")
 
-    shim = DMCShim(m, phase, budget_ticks=span_ticks + 8)
-
     import mon_fidelity as F
     secs = span // 50 + 4
     print(f"  tracing full song ({secs}s)...")
     traces = (F.per_frame(SID, [f'-a0', f'-t{secs}']),
               BM.filter_trace(SID, 0, secs))
+
+    # EXACT emulated gate-rise onsets (1x tunes) — verify they agree with the
+    # trace before trusting them (multispeed/self-IRQ variants emulate too slow).
+    onsets = measure_onsets(d, la, h.init_address, h.play_address,
+                            len(traces[0]))
+    from sidm2.fidelity_common import siddump_note_onsets
+    real = siddump_note_onsets(SID, ['-a0', f'-t{min(secs, 15)}'])
+    agree = 0
+    tot = 0
+    for v in range(3):
+        rl = set(fr for fr, _ in (real[v] if isinstance(real, (list, tuple))
+                                  else real.get(v, [])) if fr < 700)
+        em = set(onsets[v])
+        # allow +-1 frame
+        agree += sum(1 for fr in rl if fr in em or fr + 1 in em or fr - 1 in em)
+        tot += len(rl)
+    use_onsets = tot and agree / tot >= 0.85
+    print(f"  emulated onsets agree with trace: {agree}/{tot} "
+          f"-> {'ONSET-ALIGNED' if use_onsets else 'tick-grid (fallback)'}")
+    shim = DMCShim(m, phase, budget_ticks=span_ticks + 8,
+                   onsets=onsets if use_onsets else None, frames=traces[0])
 
     adaptive = warg.lower() in ("auto", "a")
     if not adaptive:

@@ -253,6 +253,41 @@ def decode_song(m, song=0, tick_budget=4000):
     return voices
 
 
+def measure_onsets(d, la, init_addr, play_addr, frames, song=0):
+    """EXACT per-voice note-onset frames via py65 replay: the frame of every
+    $D404 gate-rise (bit0 0->1). Ground truth for note placement — sidesteps the
+    tick/tempo model entirely. Returns [ [frames...] x3 ]. (Valid only where the
+    tune runs at 1x under a single play-call/frame; multispeed/self-IRQ variants
+    read too slow — caller should sanity-check vs siddump.)"""
+    from py65.devices.mpu6502 import MPU
+    mpu = MPU()
+    for i, b in enumerate(d):
+        mpu.memory[(la + i) & 0xFFFF] = b
+
+    def call(a, acc=0):
+        mpu.a, mpu.x, mpu.y = acc & 0xFF, 0, 0
+        mpu.pc = a
+        mpu.memory[0x1FF] = 0xFF
+        mpu.memory[0x1FE] = 0xFE
+        mpu.sp = 0xFD
+        for _ in range(2_000_000):
+            if mpu.pc in (0xFFFF, 0x0000):
+                return
+            mpu.step()
+
+    call(init_addr, song)
+    onsets = [[], [], []]
+    prev = [0, 0, 0]
+    for fr in range(frames):
+        call(play_addr)
+        for v in range(3):
+            g = mpu.memory[0xD404 + v * 7] & 1
+            if g == 1 and prev[v] == 0:
+                onsets[v].append(fr)
+            prev[v] = g
+    return onsets
+
+
 def summary(path):
     d, la, h = load_sid(path)
     m = DMCModule(d, la)
