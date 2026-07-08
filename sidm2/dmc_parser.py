@@ -58,6 +58,7 @@ class DMCLayout:
     trk_lo: int = 0          # per-voice track (orderlist) pointer tables (lo/hi)
     trk_hi: int = 0
     trk_pos: int = 0         # per-voice track-position array (init state)
+    tempo_reload: int = 0    # frames/tick immediate (DEC tempo/BPL/LDA #imm/STA)
 
 
 class DMCModule:
@@ -126,6 +127,14 @@ class DMCModule:
             if hi > lo and d[i + 4] != d[i + 9]:
                 lay.trk_lo, lay.trk_hi = lo, hi
                 break
+
+        # tempo: DEC tempo / BPL / LDA #imm / STA tempo (same addr) — the reload
+        # immediate is the per-tune speed (baked per relocated player).
+        for i in _find_all(d, [0xCE, None, None, 0x10, None, 0xA9, None,
+                               0x8D, None, None]):
+            if d[i + 1] == d[i + 8] and d[i + 2] == d[i + 9]:
+                lay.tempo_reload = d[i + 6]
+                break
         return lay
 
     # ---- accessors ----
@@ -140,6 +149,91 @@ class DMCModule:
     def sound(self, n):
         b = self.lay.sound + (n & 0x1F) * 8
         return [self._u8(b + k) for k in range(8)]
+
+
+@dataclass
+class DMCNote:
+    ticks: int                # duration in note-ticks (cmd & $1F, +1)
+    pitch: int = -1           # note index into the freq table (-1 = none/rest)
+    sound: int = -1           # instrument (-1 = keep)
+    effect: tuple = ()        # (byte1, byte2) when cmd bit6 set
+    flag5: int = 0            # cmd bit5
+
+
+def _voice_track_ptr(m, voice):
+    """Per-voice track (orderlist) data pointer, from the lo/hi tables."""
+    return (m._u8(m.lay.trk_lo + voice) | (m._u8(m.lay.trk_hi + voice) << 8))
+
+
+def decode_track(m, voice, max_sectors=512):
+    """Sector-number list for a voice until $FF (loop) / $FE (end)."""
+    ptr = _voice_track_ptr(m, voice)
+    out, i, loop = [], 0, False
+    while i < max_sectors:
+        b = m._u8(ptr + i)
+        if b == 0xFF:
+            loop = True
+            break
+        if b == 0xFE:
+            break
+        out.append(b)
+        i += 1
+    return out, loop
+
+
+def decode_sector(m, sector, max_events=256):
+    """Decode one sector (pattern) into [DMCNote]. Follows the play routine:
+    command byte (dur low5 / bit5 flag / bit6 = 2 effect bytes / bit7 = sound
+    byte) then a pitch byte; a $C0 top-3-bits value is a sector control (end/
+    jump) — treated as end here; a bare $FF ends the sector."""
+    ptr = m.sector_ptr(sector)
+    out, y, cur_sound = [], 0, -1
+    for _ in range(max_events):
+        cmd = m._u8(ptr + y)
+        if cmd == 0xFF:
+            break
+        y += 1
+        dur = (cmd & 0x1F) + 1
+        if (cmd & 0xE0) == 0xC0:      # REST: duration, no note (consumes 1 byte)
+            out.append(DMCNote(ticks=dur, pitch=-1))
+            continue
+        flag5 = cmd & 0x20
+        sound = -1
+        if cmd & 0x80:                # sound byte follows
+            sound = m._u8(ptr + y); y += 1
+            cur_sound = sound
+        eff = ()
+        if cmd & 0x40:                # two effect bytes follow
+            eff = (m._u8(ptr + y), m._u8(ptr + y + 1)); y += 2
+        pitch = m._u8(ptr + y); y += 1
+        out.append(DMCNote(ticks=dur, pitch=pitch, sound=sound, effect=eff,
+                           flag5=flag5))
+    return out
+
+
+def decode_song(m, song=0, tick_budget=4000):
+    """Per-voice flat [(tick, DMCNote)] streams. Walks each voice's track ->
+    sectors, expanding the track loop up to tick_budget ticks."""
+    voices = []
+    for v in range(3):
+        sectors, loop = decode_track(m, v)
+        evs, tk, guard = [], 0, 0
+        si = 0
+        while tk < tick_budget and guard < 100000:
+            guard += 1
+            if si >= len(sectors):
+                if loop and sectors:
+                    si = 0
+                else:
+                    break
+            for n in decode_sector(m, sectors[si]):
+                evs.append((tk, n))
+                tk += n.ticks
+                if tk >= tick_budget:
+                    break
+            si += 1
+        voices.append(evs)
+    return voices
 
 
 def summary(path):
