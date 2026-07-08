@@ -259,21 +259,24 @@ def measure_onsets(d, la, init_addr, play_addr, frames, song=0):
     tick/tempo model entirely. Returns [ [frames...] x3 ]. (Valid only where the
     tune runs at 1x under a single play-call/frame; multispeed/self-IRQ variants
     read too slow — caller should sanity-check vs siddump.)"""
-    from py65.devices.mpu6502 import MPU
-    mpu = MPU()
-    for i, b in enumerate(d):
-        mpu.memory[(la + i) & 0xFFFF] = b
+    # siddump CPU + $D012 raster fake + banking — a bare py65 diverges on players
+    # that read the raster ($D012) or bank ROMs (the same reason Hubbard's
+    # measure_tick_schedule uses it).
+    from sidm2.cpu6502_emulator import CPU6502Emulator
+    cpu = CPU6502Emulator()
+    cpu.load_memory(bytes(d), la)
+    cpu.mem[0x01] = 0x37
 
     def call(a, acc=0):
-        mpu.a, mpu.x, mpu.y = acc & 0xFF, 0, 0
-        mpu.pc = a
-        mpu.memory[0x1FF] = 0xFF
-        mpu.memory[0x1FE] = 0xFE
-        mpu.sp = 0xFD
-        for _ in range(2_000_000):
-            if mpu.pc in (0xFFFF, 0x0000):
+        cpu.mem[0xD012] = (cpu.mem[0xD012] + 1) & 0xFF
+        if (cpu.mem[0xD012] == 0
+                or ((cpu.mem[0xD011] & 0x80) and cpu.mem[0xD012] >= 0x38)):
+            cpu.mem[0xD011] ^= 0x80
+            cpu.mem[0xD012] = 0x00
+        cpu.reset(a, acc & 0xFF, 0, 0)
+        for _ in range(1_000_000):
+            if not cpu.run_instruction():
                 return
-            mpu.step()
 
     call(init_addr, song)
     onsets = [[], [], []]
@@ -281,8 +284,8 @@ def measure_onsets(d, la, init_addr, play_addr, frames, song=0):
     for fr in range(frames):
         call(play_addr)
         for v in range(3):
-            g = mpu.memory[0xD404 + v * 7] & 1
-            if g == 1 and prev[v] == 0:
+            g = cpu.mem[0xD404 + v * 7] & 1
+            if g == 1 and prev[v] == 0:      # gate re-attack = a note onset
                 onsets[v].append(fr)
             prev[v] = g
     return onsets
