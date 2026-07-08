@@ -3,7 +3,10 @@
 One document per **player** (the C64 music routine a SID file was made with). SIDM2 auto-selects a driver by player type via `DriverSelector.PLAYER_REGISTRY` (`sidm2/driver_selector.py` — the single source of truth for the *wired* pipeline). Several newer players live in `bin/` and are not yet registry-wired — see the table.
 
 > **Cross-player methodology** (how a new player gets ported, the shared native-driver pipeline, size caps, gotchas): [PLAYBOOK.md](PLAYBOOK.md).
+> **The target native drivers we authored** (memory map + feature flags of the from-scratch SF2 drivers): [NATIVE_DRIVER.md](NATIVE_DRIVER.md).
 > **Accuracy numbers**: [../reference/ACCURACY_MATRIX.md](../reference/ACCURACY_MATRIX.md).
+
+**Source vs target:** most docs below describe a **source** player (the C64 routine we convert *from*). The trace-driven ports (Galway, MoN, ROMUZAK, Hubbard) also required us to author a **target** — a from-scratch native SF2 driver; those are documented together in [NATIVE_DRIVER.md](NATIVE_DRIVER.md). Open per-player work has its own plan doc (e.g. [HUBBARD_V2_PLAN.md](HUBBARD_V2_PLAN.md)).
 
 | Player | Doc | Path | Fidelity | Corpus |
 |--------|-----|------|----------|--------|
