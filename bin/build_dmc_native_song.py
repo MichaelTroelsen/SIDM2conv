@@ -66,17 +66,21 @@ class DMCShim:
             cur = 0
             out = self.voices[v]
             if onsets is not None:
-                notes = [n for _, n in voices[v] if n.pitch >= 0]
+                # Place a note at EVERY emulated onset (pitch from the trace) —
+                # NOT limited to the decode's note count (a voice whose decode
+                # count != onset count otherwise went silent). The decode only
+                # supplies the INSTRUMENT timeline (by approximate frame).
+                ofpt = m.lay.tempo_reload + 1
+                changes = sorted((tk * ofpt, n.sound)
+                                 for tk, n in voices[v] if n.sound >= 0)
                 ons = onsets[v]
-                k = 0
+                ci = 0
+                cur = changes[0][1] if changes else 0
                 for i, o in enumerate(ons):
-                    if k >= len(notes):
-                        break
-                    n = notes[k]; k += 1
-                    if n.sound >= 0:
-                        cur = n.sound
+                    while ci < len(changes) and changes[ci][0] <= o + 2:
+                        cur = changes[ci][1]; ci += 1
                     nxt = ons[i + 1] if i + 1 < len(ons) else o + 8
-                    note = _sem(frames, v, o) if frames is not None else n.pitch
+                    note = _sem(frames, v, o) if frames is not None else 48
                     out.append(MONEvent(note=note, dur=max(1, nxt - o),
                                         instr=cur, wprog=0, retrig=True))
                 continue
