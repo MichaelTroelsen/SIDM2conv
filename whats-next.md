@@ -91,22 +91,25 @@ $A000 player — not worth fixing; the native converter is the path).
 </work_completed>
 
 <work_remaining>
-DMC — the two named next steps (both cleanly scoped in memory):
-1. **WAVETABLE-ARP MODEL** (the real fidelity unlock, RECOMMENDED as a fresh focused
-   effort — NOT more trace-capture tuning). Decode $1A00/$1B00 per sound into
-   per-instrument SEMITONE arp programs (the Galway/MoN structural-arp path: MoN's
-   $80-$FF FM semitone-hold entries in drivers_src/mon/romuzak_driver.asm, and
-   build_mon_native_song.arp_fm_program / _arp_fm_for / ARP_STRUCT). This fixes the
-   arp-voice PITCH problem (trace-resolve fails on a per-frame octave sweep) that the
-   emulated onset schedule can't. The wavetable format is already RE'd ($80|note,
-   $7E/$7F loop). Steps: (a) find per-sound wavetable start (from the sound record's
-   wave-pointer field, or emulate to observe the start index like Balloon's idx 16);
-   (b) decode the arp step sequence + loop; (c) emit as a looping semitone FM program
-   per instrument; (d) set MONEvent.note = the arp base and let the driver arp.
-2. **PER-VOICE LEGATO ONSET DETECTION**: legato voices (notes change pitch without
-   re-gating) under-count via gate-rise. NEEDS a note-vs-arp discriminator that DID
-   NOT work when tried naively (see attempted). Only worth it if the wavetable-arp
-   model doesn't already resolve these voices.
+DMC next steps (REVISED — the wavetable-arp model was tried and is a DEAD END):
+1. **WAVETABLE-ARP SEMITONE MODEL: DEAD END, do NOT retry.** Implemented + tested
+   2026-07-08: a per-event FM override hook (build_mon_native_song._arp_fm_for ->
+   m.fm_arp_program) + DMCShim semitone-hold arp programs from the trace. REGRESSED
+   (Rockbuster osc3 93->75, Omega 40/41->16/6, Wanna v1 unchanged). Semitone-hold
+   entries play freqtable[base+S] = quantized-to-semitone in PAL tuning, but DMC's
+   freq table isn't PAL and arp steps aren't on-semitone -> strictly LESS exact than
+   the Hz-delta capture, which already reproduces DMC's per-frame freq bit-for-bit.
+   The Hz-delta onset-aligned capture is the RIGHT representation. Reverted; memory
+   documents this.
+2. **PER-VOICE ONSET/STRUCTURAL residual** is the real remaining problem (NOT the
+   arp): Wanna v1 = 33% under BOTH the Hz-delta AND semitone representations, so its
+   issue is invariant to the FM encoding — it's onset placement or a structural decode
+   issue in that specific voice. Next: diagnose Wanna_Get_Sick osc1 concretely — dump
+   its emulated onsets vs the trace's actual osc1 onsets (are notes placed at the
+   right frames?), and whether the trace-resolved base note (_sem) is right. The four
+   onset-detection approaches (gate-rise/pitch-step/debounce/global-schedule) are all
+   exhausted (see attempted); the remaining path is per-voice diagnosis, not another
+   global onset heuristic.
 3. **MULTISPEED / SELF-IRQ variants** (Chase, Dummy_II): the 1x py65/siddump-CPU replay
    reads them wrong (Chase 4x too slow). PSID speed flag is 0 yet they play denser ->
    the PLAYER self-installs faster timing. Detect + emulate at the right rate (Hubbard's
