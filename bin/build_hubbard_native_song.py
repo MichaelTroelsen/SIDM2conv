@@ -91,18 +91,28 @@ class HubbardShim:
 
     sw_per = 0                # v2 fractional tempo: dead-frame period
     sw_c0 = 0                 #   and first dead frame (song-global)
+    sched_frames = None       # TEMPO_SCHED: exact per-tick frame list (relative
+                              #   to tick 0) from measure_tick_schedule — the
+                              #   ground-truth grid both capture AND driver ride
+    sched_tempo = 0           # base (unstretched) tick period
 
     @property
     def frames_per_tick(self):
         return self._fpt
 
     def tick_to_frame(self, ticks):
+        if self.sched_frames is not None:
+            sf = self.sched_frames
+            if ticks < len(sf):
+                return sf[ticks]
+            return sf[-1] + (ticks - len(sf) + 1) * self.sched_tempo
         return ticks_to_frames(ticks, self._fpt, self.sw_per, self.sw_c0)
 
     def frame_to_tick(self, frame):
-        if not self.sw_per:
+        if self.sched_frames is None and not self.sw_per:
             return max(0, (frame + self._fpt - 1) // self._fpt)
-        t = max(0, (frame + self._fpt - 1) // self._fpt)   # lower bound-ish
+        step = self.sched_tempo or self._fpt
+        t = max(0, (frame + step - 1) // step)             # lower bound-ish
         while self.tick_to_frame(t) > frame and t > 0:
             t -= 1
         while self.tick_to_frame(t) < frame:
@@ -202,6 +212,48 @@ class HPReplay:
         }
 
 
+def compute_schedule(sid, song, m, h):
+    """Derive the exact tempo schedule from a py65 replay of the ORIGINAL.
+
+    Returns (sched_frames, base_tempo, period_bitmap) or None if the schedule
+    is a clean single-period swallow (caller keeps the simpler swallow path).
+    - sched_frames[i] = frame of note-tick i, RELATIVE to tick 0.
+    - base_tempo = the shortest inter-tick gap (unstretched period).
+    - period_bitmap[f] = 1 if frame-in-period f skips the row-tick dec, sized to
+      the smallest detected period P (<=128); None if no periodicity found.
+    """
+    from sidm2.hubbard_parser import measure_tick_schedule
+    ticks = measure_tick_schedule(m.d, m.la, h.init_address, h.play_address,
+                                  m.lay.speed_addr, 900, song=song)
+    if len(ticks) < 8:
+        return None
+    t0 = ticks[0]
+    sched_frames = [t - t0 for t in ticks]
+    gaps = [sched_frames[i + 1] - sched_frames[i]
+            for i in range(len(sched_frames) - 1)]
+    base = min(gaps)
+    if base < 1:
+        return None
+    # per-frame stretch array: each gap holds (gap-base) stretch frames, placed
+    # at the END of the interval (just before the next tick fires)
+    stretch = [0] * (sched_frames[-1] + 1)
+    for i in range(len(sched_frames) - 1):
+        extra = gaps[i] - base
+        for j in range(extra):
+            stretch[sched_frames[i + 1] - 1 - j] = 1
+    # detect the smallest repeating period P (<=128) over the measured span
+    span = len(stretch)
+    period = None
+    for P in range(1, min(129, span // 2 + 1)):
+        if all(stretch[f] == stretch[f + P]
+               for f in range(span - P)):
+            period = P
+            break
+    if period is None:
+        return sched_frames, base, None
+    return sched_frames, base, stretch[:period]
+
+
 def find_phase(path, song, m, voices):
     """The per-file onset phase (0-2 frames): the initial speed-counter value
     shifts the first note-tick. Measured against a 30s siddump."""
@@ -238,11 +290,27 @@ def main():
     phase = find_phase(SID, SONG, m, voices)
     ii = initial_instruments(d, la, h.init_address, SONG, m.lay)
     shim = HubbardShim(m, dsong, phase, init_instr=ii)
+    sched_bitmap = None
     if m.lay.swallow_period:
+        # A swallow signature was found -> its schedule is a clean single-period
+        # skip; the swallow counter reproduces it exactly (Delta 100%). (The
+        # freq residual on swallow files like Lightforce is a separate FM-during-
+        # hold issue, NOT the tempo grid — the measured schedule matches swallow.)
         shim.sw_per = m.lay.swallow_period
         shim.sw_c0 = swallow_state(d, la, h.init_address, SONG, m.lay)
         print(f"  fractional tempo: swallow period={shim.sw_per} "
               f"first-skip={shim.sw_c0}")
+    else:
+        # No swallow signature: the tempo may still stretch irregularly
+        # (Game_Killer stretches every ~10 frames with no swallow idiom). Derive
+        # the exact per-frame schedule from a py65 replay and drive it via
+        # TEMPO_SCHED — the general fallback for any non-standard tempo.
+        sc = compute_schedule(SID, SONG, m, h)
+        if sc is not None and sc[2] is not None and sum(sc[2]) > 0:
+            shim.sched_frames, shim.sched_tempo, sched_bitmap = sc
+            print(f"  irregular tempo: SCHEDULE base={shim.sched_tempo} "
+                  f"period={len(sched_bitmap)} "
+                  f"stretches/period={sum(sched_bitmap)}")
     if getattr(m.lay, 'v2_notes', False) or m.lay.swallow_period:
         # V2-era files (Delta note-format OR swallow-tempo): their instrument
         # records / pulsework differ from V1's, so the HP engine mis-drives
@@ -260,6 +328,14 @@ def main():
         per, c0 = shim.sw_per, shim.sw_c0
         d0 = c0 if t0 <= c0 else c0 + ((t0 - c0 + per - 1) // per) * per
         return (per, d0 - t0)
+
+    def part_sched(t0):
+        """(period_bitmap, phase) for the TEMPO_SCHED driver at part start t0.
+        The part plays from its own frame 0 = absolute frame t0, so the driver's
+        SCHEDIDX starts at t0 % period."""
+        if sched_bitmap is None:
+            return None
+        return (sched_bitmap, t0 % len(sched_bitmap))
     span = shim.tick_to_frame(max(sum(ev.dur for ev in shim.voices[v])
                                   for v in range(3))) + phase
     base = os.path.splitext(os.path.basename(SID))[0]
@@ -282,6 +358,7 @@ def main():
         if hpr:
             shim.hp_state = hpr.state_at(0)
         shim.swallow = part_swallow(0)
+        shim.sched = part_sched(0)
         out = os.path.join(ROOT, "out", "hubbard",
                            f"{base}_song{SONG}_part01.sf2")
         BM.emit_one(shim, br, out, f"{base} 0-{t1 // 50}s")
@@ -312,6 +389,7 @@ def main():
         if hpr:
             shim.hp_state = hpr.state_at(t0)
         shim.swallow = part_swallow(t0)
+        shim.sched = part_sched(t0)
         out = os.path.join(ROOT, "out", "hubbard",
                            f"{base}_song{SONG}_part{part:02d}.sf2")
         BM.emit_one(shim, br, out,

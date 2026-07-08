@@ -293,6 +293,9 @@ def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
         f.write(f"HP_ENGINE = {getattr(B, 'HP_ENGINE', 0)}\n")
         # Hubbard v2 fractional tempo: skip the row-tick dec every Nth frame
         f.write(f"TEMPO_SWALLOW = {getattr(B, 'TEMPO_SWALLOW', 0)}\n")
+        # Hubbard v2 IRREGULAR tempo: per-frame stretch bitmap (generalized
+        # swallow) — used when the real schedule isn't a single periodic skip
+        f.write(f"TEMPO_SCHED = {getattr(B, 'TEMPO_SCHED', 0)}\n")
         f.write(f"INSTR = ${gen.instr_addr:04x}\n")
         f.write(f"WAVE  = ${gen.wave_addr:04x}\n")
         f.write(f"PULSE = ${gen.pulse_addr:04x}\n")

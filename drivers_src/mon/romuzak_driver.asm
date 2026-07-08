@@ -181,6 +181,16 @@ SWC       = $19CC        ; TEMPO_SWALLOW: countdown; on expiry THIS frame's
                          ;   row-tick dec is skipped (Hubbard v2 fractional
                          ;   tempo). Poked initial = frames until first skip.
 SWP       = $19CD        ; TEMPO_SWALLOW: reload value = period-1 (poked)
+SCHEDLEN  = $19CE        ; TEMPO_SCHED: stretch-bitmap period length (poked).
+                         ;   Generalizes the single swallow counter to an
+                         ;   arbitrary per-frame stretch pattern derived from
+                         ;   measure_tick_schedule — needed when the real tempo
+                         ;   stretch is irregular (Lightforce, Game_Killer).
+SCHEDIDX  = $19CF        ; TEMPO_SCHED: current frame-in-period (poked = phase)
+SCHEDTAB  = $1940        ; TEMPO_SCHED: 1 byte/frame-in-period, nonzero = stretch
+                         ;   (reuses the HP table region — TEMPO_SCHED and
+                         ;   HP_ENGINE are mutually exclusive: HP=V1 no-swallow,
+                         ;   SCHED=V2 swallow)
 HPMAP     = $19E0        ; emitted-instrument-slot -> ROM instrument index (32) —
                          ;   the ROM keys live PW state by ROM instrument; the emit
                          ;   pipeline splits one ROM instrument into several slots
@@ -394,6 +404,19 @@ dp_go:
 dp_novol:
         lda #MULTISPEED
         sta ms_cnt
+.if TEMPO_SCHED
+        ldx SCHEDIDX             ; per-frame stretch bitmap (the generalized
+        lda SCHEDTAB,x           ;   swallow): SCHEDTAB[idx] nonzero = skip the
+        inx                      ;   row-tick dec THIS frame; idx wraps at
+        cpx SCHEDLEN             ;   SCHEDLEN. Reproduces an irregular real tempo
+        bne ts_nowrap            ;   schedule exactly (measure_tick_schedule).
+        ldx #$00
+ts_nowrap:
+        stx SCHEDIDX
+        cmp #$00
+        beq dp_tick              ; 0 -> normal tick dec
+        jmp dp_vib               ; stretch -> skip the dec (row held one frame)
+.else
 .if TEMPO_SWALLOW
         lda SWP                  ; unpoked (0) = swallow OFF — a zero/garbage
         beq dp_tick              ;   reload would eat EVERY tick (a silent SF2
@@ -402,6 +425,7 @@ dp_novol:
         lda SWP                  ;   frame the row-tick dec is SKIPPED (the
         sta SWC                  ;   ROM's swallow counter) — the effects chain
         jmp dp_vib               ;   still runs. MULTISPEED must be 1.
+.endif
 .endif
 dp_tick:
         dec zp_tcnt

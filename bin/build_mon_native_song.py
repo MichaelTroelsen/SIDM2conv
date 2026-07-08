@@ -1452,6 +1452,13 @@ def emit_one(m, br, out_path, label):
     # Hubbard v2 fractional tempo (the swallow counter): the shim sets
     # swallow = (period, frames-until-first-skip) per part window
     B.TEMPO_SWALLOW = 1 if getattr(m, "swallow", None) else 0
+    # Hubbard v2 IRREGULAR tempo: the shim sets sched = (bitmap, phase) per part
+    # (a per-frame stretch pattern from measure_tick_schedule). Takes precedence
+    # over the single swallow counter.
+    B.TEMPO_SCHED = 1 if getattr(m, "sched", None) else 0
+    if B.TEMPO_SCHED:
+        B.TEMPO_SWALLOW = 0
+        B.TEMPO = getattr(m, "sched_tempo", B.TEMPO)
     nfilt = sum(1 for f in instr_flags if f & 0x40)
     flags = ""
     if len(bundles) > 64:
@@ -1508,7 +1515,8 @@ def emit_one(m, br, out_path, label):
             poke(0x19C6 + v, hp.get("pdir", [0, 0, 0])[v])   # PDIR
         prg = bytes(prg)
     sw = getattr(m, "swallow", None)
-    if sw:
+    sched = getattr(m, "sched", None)
+    if sw or sched:
         # fractional tempo pokes are INDEPENDENT of the HP pulse engine —
         # leaving them inside the hp_engine block shipped an SF2 whose driver
         # read SWP=0 and swallowed EVERY tick (silence)
@@ -1517,9 +1525,19 @@ def emit_one(m, br, out_path, label):
         need = 0x1A00 - pload + 2
         if len(prg) < need:
             prg.extend(bytes(need - len(prg)))
-        per, first = sw
-        prg[0x19CC - pload + 2] = max(0, first) & 0xFF       # SWC (countdown)
-        prg[0x19CD - pload + 2] = max(0, per - 1) & 0xFF     # SWP (reload)
+        if sched:
+            # TEMPO_SCHED: poke the per-frame stretch bitmap ($1940), the period
+            # length ($19CE) and the part's starting phase ($19CF)
+            bitmap, phase = sched
+            bm = bitmap[:128]
+            for i, b in enumerate(bm):
+                prg[0x1940 + i - pload + 2] = 1 if b else 0
+            prg[0x19CE - pload + 2] = len(bm) & 0xFF             # SCHEDLEN
+            prg[0x19CF - pload + 2] = phase % max(1, len(bm))    # SCHEDIDX
+        else:
+            per, first = sw
+            prg[0x19CC - pload + 2] = max(0, first) & 0xFF       # SWC (countdown)
+            prg[0x19CD - pload + 2] = max(0, per - 1) & 0xFF     # SWP (reload)
         prg = bytes(prg)
     sf2 = B.wrap(prg, gen, edit, mdp, instr_names=[f"instr {i}" for i in range(len(instrs))])
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
