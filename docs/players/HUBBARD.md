@@ -101,7 +101,7 @@ The build measures itself with `bin/mon_part_fidelity.py PART SONG SECS OFF0` (s
 | **V1** (Monty, Commando, Zoids, Gremlins, Master_of_Magic, One_Man, Last_V8, Last_V8_C128, Geoff_Capes, Crazy_Comets, Chimera, 5_Title_Tunes) | 12 | ✅ built + validated subsongs; pulse/freq/filter 100% |
 | **V2 split-songs** (Action_Biker, Confuzion, Gerry_the_Germ, Hunter_Patrol, Ninja, Thing_on_a_Spring) | 6 | ✅ built (97–100% onsets) |
 | **V2 swallow — Delta** | 1 | ✅ theme (s11) freq/pulse/filter 100%, wf 85–96% |
-| **V2 swallow — rest** (Lightforce, Sanxion, Saboteur_II, Shockway_Rider, Star_Paws, Auf_Wiedersehen_Monty, Deep_Strike) | 7 | ⚠️ **decode 100%; native build fails** `STATE-REGION OVERLAP $16CC-$1702` (filter programs spill into SF2II's playback-state region — relocate tables) |
+| **V2 swallow — rest** (Lightforce, Sanxion, Saboteur_II, Shockway_Rider, Star_Paws, Auf_Wiedersehen_Monty, Deep_Strike) | 7 | ✅ **assemble + play** (state-region overflow fixed, commit 5c0de20); Lightforce waveform 100 + filter 100, freq 85-98; pulse free-run polish pending (same class as Delta's wf residual) |
 | **Spin class** (Devils_Galop, I_Ball, Wiz) | 3 | ⚠️ build times out (play-routine spin during trace) |
 | **Format laggards** | ~7 | 🚧 IK+ (V0 decode runaway + percussion note bytes), Thundercats 68% (note-format), Tarzan (speed-addr misdetect), Mega_Apocalypse (runaway), Knucklebusters (per-voice speed), Game_Killer (tick stretch with NO swallow sig — the `measure_tick_schedule` empirical grid validates it 100%; needs driver wiring) |
 | **No-signature** | 6 | ❌ Casio_Extended / Robs_Life / Era_of_Eidolon / Task_Force / Dont_Step_on_My_Wire / Up_up_and_Away — a different/later player, unexplored |

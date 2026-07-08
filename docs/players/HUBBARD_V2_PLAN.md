@@ -8,7 +8,19 @@ RE and [NATIVE_DRIVER.md](NATIVE_DRIVER.md) for the driver memory map.
 
 ---
 
-## Front 1 — the state-region overflow (unblocks 7 files at once) ⭐ highest leverage
+## Front 1 — the state-region overflow ✅ FIXED (2026-07-08, commit 5c0de20)
+
+**Resolution:** relocated the four tail data tables (`sidbase`/`frbits`/`ollo`/`olhi`,
+12 bytes) from their inline position at the code-bank end (`$16C1-$16CC`) into the free
+13-byte gap above the state region (`$1703-$170F`, below the freqtable). The overflow
+was those tables' last byte landing on `$16CC` under the full V2 flag set — a 9-line
+driver change, no interpreter logic touched. Lightforce/Sanxion/Saboteur_II confirmed
+assembling; regression anchors clean (Hawkeye sub3 100/100/100/100, Monty part1
+100/99.8/100, Delta theme 100/96/100). Lightforce now plays waveform 100 + filter 100
+(freq 85-98; **pulse still needs the free-run polish — moved to the cross-cutting
+list**, same class as Delta's wf residual).
+
+*Original diagnosis (kept for the record):*
 
 **Symptom:** `Lightforce, Sanxion, Saboteur_II, Shockway_Rider, Star_Paws,
 Auf_Wiedersehen_Monty, Deep_Strike` decode 100% but fail assembly with
