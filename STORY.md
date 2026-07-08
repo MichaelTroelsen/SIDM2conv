@@ -2,7 +2,9 @@
 
 *How an "experimental converter" became a byte-accurate bridge between two C64 music tools that don't speak each other's language.*
 
-**Current version:** v3.13.1 (2026-07-05) — **The knowledge consolidation.** Four player ports in five weeks left the project's know-how scattered across memory files, session handoffs, and code comments — while the user-facing docs still described the pre-native-driver world (README claimed "filter 0%, no multi-subtune, Galway 88-96%"; the accuracy matrix hadn't been reviewed in twelve releases; the entire Maniacs-of-Noise line was documented nowhere). This release writes it all down before the next player: **`docs/players/PLAYBOOK.md`** distills the staged porting method — parser RE, Stage-A Driver-11 transpile, Stage-B native driver, Stage-C structural rebuild — with the technique catalog, the SF2II hard caps, the fidelity-measurement ladder, and every gotcha that cost a session (the SF2II CMP-carry rule, the siddump SBC bug, the argv Heisenbug). New `docs/players/MON.md` and `CLUSTERS.md`, a rewritten `ACCURACY_MATRIX.md`, and a fresh `docs/ROADMAP.md` that names the debt: the native driver exists as three near-identical ~1,300-line copies, the table packer and validators are copy-pasted (including a semitone-reference drift between them), and the road to "any SID → 99% fidelity, 100% editable" runs through a universal trace-first fallback the Myth build already proved possible. Docs only — no code changed.
+**Current version:** v3.14.0 (2026-07-08) — **Rob Hubbard, two generations.** The fifth from-scratch native player, and the first that was two formats sharing one codebase. V1 (~12 tunes: Monty, Commando, Zoids, Last V8, …) plays **pulse + freq + filter byte-exact on all three voices** — the pulse via a per-instrument engine that *is* Hubbard's own ROM pulsework re-implemented in the driver, so it's exact by construction. Then the "64 unparseable" files turned out to be incremental deltas, not a rewrite: V2 (the Delta class) adds split song tables, a fractional-tempo "swallow counter," and a 4-byte note format — Delta's title theme (PSID song 12/13, caught by the user after we'd polished the wrong subtune) now plays freq/pulse/filter 100%. Three source-of-truth tools earned their keep this cycle: the VICE register dump caught a 2-frame bass chop the ear heard and the % metric didn't; a *vacuous-100.0* bug (a silent SF2 measured perfect) is fixed and guarded; and a batch-killing 3-hour emulation replay became 27 seconds. New `docs/players/HUBBARD.md` (source), `docs/players/NATIVE_DRIVER.md` (the target drivers we authored), `docs/players/HUBBARD_V2_PLAN.md` (the open front). Honest state: ~19 tunes build, ~28 decode ≥95%; the V2 swallow-class state-region relocation and six no-signature files remain.
+
+**Prior:** v3.13.1 (2026-07-05) — **The knowledge consolidation.** Four player ports in five weeks left the project's know-how scattered across memory files, session handoffs, and code comments — while the user-facing docs still described the pre-native-driver world (README claimed "filter 0%, no multi-subtune, Galway 88-96%"; the accuracy matrix hadn't been reviewed in twelve releases; the entire Maniacs-of-Noise line was documented nowhere). This release writes it all down before the next player: **`docs/players/PLAYBOOK.md`** distills the staged porting method — parser RE, Stage-A Driver-11 transpile, Stage-B native driver, Stage-C structural rebuild — with the technique catalog, the SF2II hard caps, the fidelity-measurement ladder, and every gotcha that cost a session (the SF2II CMP-carry rule, the siddump SBC bug, the argv Heisenbug). New `docs/players/MON.md` and `CLUSTERS.md`, a rewritten `ACCURACY_MATRIX.md`, and a fresh `docs/ROADMAP.md` that names the debt: the native driver exists as three near-identical ~1,300-line copies, the table packer and validators are copy-pasted (including a semitone-reference drift between them), and the road to "any SID → 99% fidelity, 100% editable" runs through a universal trace-first fallback the Myth build already proved possible. Docs only — no code changed.
 
 **Previous:** v3.13.0 (2026-06-29) — **Three new composers join the bridge — and Jeroen Tel's Hawkeye plays back byte-perfect.** The trace-driven native-driver machinery built for Galway turned out to be a general engine, and this release pointed it at three more players. **Future Composer** ("The Beat-Machine") and **ROMUZAK** (Oliver Blasnik) both gained SID→SF2 paths — ROMUZAK going all the way to a from-scratch native SF2 driver that reproduces waveform, pulse and AD-SR byte-exactly. But the headline is **Hawkeye / Maniacs of Noise** (Jeroen Tel). Its two-level orderlist→pattern engine was reverse-engineered frame-exact (a *split* frequency table — low bytes and high bytes in separate arrays — was the first puzzle), then rebuilt as a native driver. The hard-won fidelity trick from Galway carried straight over: per-note (FM, pulse) bundles ride a command channel, per-note waveform envelopes become distinct instruments, and the one global resonant filter is restarted per note by a flagged instrument. Result: **subtunes 2 and 3 reproduce frequency, waveform, pulse and filter at 100% byte-exact on all three voices, full song length, in a single editable SF2** — GUI-confirmed in stock SID Factory II. The ~6.4-minute main theme (subtune 0, ~6000 notes) overflows every SF2 table cap and the `$D000` memory wall, so it ships split into thirteen 30-second parts, each ~100% on pitch/waveform/pulse (the filter seam across window boundaries is the one open thread). Net: the converter now speaks four composers' dialects with native-driver fidelity, not just Laxity's.
 
@@ -539,6 +541,44 @@ A few patterns showed up over and over and are worth naming:
 ## Per-version index
 
 This section is the running release log, updated at each version bump. Older entries get compressed but kept for the narrative arc. For technical detail beyond what's here, see `CHANGELOG.md`. (v3.10.0–v3.13.0 are narrated in the header paragraphs above; full detail in `CHANGELOG.md`.)
+
+### v3.14.0 — Rob Hubbard, two generations (2026-07-08)
+
+The fifth from-scratch native player, and the first that turned out to be **two
+formats in a trench coat.** Ground truth was Anthony McSweeney's commented *Monty
+on the Run* disassembly (C=Hacking #5). In two days the whole V1 arc landed — parser
+(100% onsets), Stage A transpile, and a Stage B native driver that plays **pulse +
+freq + filter byte-exact on all three voices** for Monty, Commando, Zoids, Last V8
+and the rest of the ~30-tune V1 set.
+
+The V1 headline was the **per-instrument pulse engine**: rather than *capturing*
+Hubbard's pulsework into programs, we re-implemented his ROM routine in 6502 inside
+the shared driver (`HP_ENGINE`) — live PW state keyed per instrument, both the
+classic `$08↔$0E` bounce and the fast-PWM variant, counters seeded from the load
+image. Pulse is then 100% *by construction* because it **is** the engine. Three
+defects the register-state metric was blind to — and the ear was not — got fixed by
+the VICE register-stream dump diff: no-release (bit5) chains are **ties** not
+retriggers (a 2-frame bass chop every 1.28 s), ADSR re-arms **on** the fetch frame
+(not one early), and compilation rips like *5 Title Tunes* embed **five complete
+players** (module-windowed signatures + an init-flag module map).
+
+Then the "64 unparseable" files turned out to be **incremental deltas, not a
+rewrite.** V2 (the Delta class) keeps V1's note semantics but adds: split lo/hi song
+tables, a **fractional-tempo "swallow counter"** (skip the tick-dec every Nth frame —
+now a poked `TEMPO_SWALLOW` driver feature), a 4-byte-porta / 1-byte-rest / no-fetch
+note format, and repeat-count tracks. Delta — the actual title theme is PSID **song
+12 of 13**, a fact the user caught after we'd polished the wrong subtune — plays
+freq/pulse/filter **100%** (waveform texture 85–96% remains). One-line lesson of the
+day: V2's fetch **resets** the pulse from the record, so dropping the V1 free-run
+flag took Delta's pulse from 11% to 100%.
+
+Also this cycle: a **vacuous-100.0** measurement bug (a `secs=0` window measured a
+*silent* SF2 as perfect) is fixed and guarded; the play-routine **spin class** (rips
+that hang a bare py65) is routed through the siddump CPU with a raster fake, cutting
+a build that had been silently killing the corpus batch from **3 hours to 27
+seconds**. New source doc: `docs/players/HUBBARD.md`. Honest state: ~19 tunes build,
+~28 decode ≥95%; the swallow-class **state-region relocation** (filter programs spill
+into `$16CC-$1702`) and six no-signature files are the open front.
 
 ### v3.13.1 — The knowledge consolidation (2026-07-05)
 

@@ -13,6 +13,7 @@ One document per **player** (the C64 music routine a SID file was made with). SI
 | **Martin Galway** | [GALWAY.md](GALWAY.md) | Stage A wired (`galway`); native in `bin/` | native ~100% (30/40 objectively clean in real SF2II) | `SID/Galway_Martin/` (40) |
 | **Maniacs of Noise (Jeroen Tel)** — Hawkeye, Cybernoid I/II, Myth, Supremacy | [MON.md](MON.md) | `bin/` only | **100% byte-exact** (Hawkeye sub 2/3, full length); others ~95-100% per register | `SID/Tel_Jeroen/` (179) |
 | **ROMUZAK V6.3** | [ROMUZAK.md](ROMUZAK.md) | `bin/` only | native: byte-exact wf/pulse/AD-SR (~98–100%) | `SID/Fun_Fun/` (Delirious, Road_of_Excess) |
+| **Rob Hubbard** (V1 + V2/Delta) — Monty, Commando, Zoids, Last V8, Delta, Lightforce, … | [HUBBARD.md](HUBBARD.md) | `bin/` only | V1 native: pulse/freq/filter **100%**; V2 Delta theme 100% (wf 85–96%) | `SID/Hubbard_Rob/` (95); ~19 built, ~28 decode ≥95% |
 | **Future Composer** | [FUTURECOMPOSER.md](FUTURECOMPOSER.md) | `bin/` only | Stage A: notes/order trace-validated | `SID/Fun_Fun/` ($1800 variant, 5/20) |
 | **NP21-adjacent clusters** (Stinsen/Beast/Angular, DRAX, 2000 A.D., Wizax, Zetrex/V20) | [CLUSTERS.md](CLUSTERS.md) | inside the Laxity path | audio 100%; editor-view varies | `SID/` root + Laxity corpus |
 
@@ -35,7 +36,7 @@ One document per **player** (the C64 music routine a SID file was made with). SI
 
 | Composer | Corpus | Notes |
 |----------|--------|-------|
-| Rob Hubbard | `SID/Hubbard_Rob/` (95) | Per-channel bytecode interpreter (Galway-shaped problem). No pipeline exists yet. |
+| Rob Hubbard — remaining V2 laggards | `SID/Hubbard_Rob/` (~13 of 95) | IK+/Thundercats/Tarzan/Mega_Apocalypse/Knucklebusters/Game_Killer note-format & speed variants; 6 no-signature files (Casio_Extended cluster); the swallow-class state-region relocation. See [HUBBARD.md](HUBBARD.md). |
 | Future Composer (non-$1800 variants) | `SID/Fun_Fun/` (15/20) | Needs player-base detection; format already RE'd. |
 | Jeroen Tel non-MoN / remaining MoN tunes | `SID/Tel_Jeroen/` | The MoN parser + native pipeline generalize; each new tune may need an orderlist-model variant (5 exist so far). |
 

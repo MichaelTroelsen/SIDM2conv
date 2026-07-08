@@ -25,6 +25,26 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.14.0] - 2026-07-08
+
+### Added — Rob Hubbard native SF2 player (V1 + V2)
+- **Parser** `sidm2/hubbard_parser.py` — relocation-safe signature detection for both format generations; module map for compilation rips; swallow-tempo, V2 note/track format, and per-voice init-instrument decoders. Ground truth: C=Hacking #5 Monty disassembly (`docs/analysis/hubbard/`).
+- **Stage A** `bin/hubbard_to_sf2.py` (editable Driver-11 transpile) and **Stage B** `bin/build_hubbard_native_song.py` (native, via the shared MoN builder/driver).
+- **V1** (~12 tunes + validated subsongs): pulse + freq + filter **100%** via the per-instrument **HP pulse engine** (the ROM's pulsework re-implemented in `drivers_src/mon/romuzak_driver.asm`, exact by construction; classic-bounce + fast-PWM variants; load-image-seeded counters; `HPMAP` slot→instrument).
+- **V2** (Delta class): split lo/hi song tables, the fractional-tempo **swallow counter** → poked `TEMPO_SWALLOW` driver flag, 4-byte-porta / 1-byte-rest / no-fetch note format, repeat-count tracks, pulse-resets-per-fetch. **Delta** theme (PSID song 12/13) plays freq/pulse/filter **100%** (waveform 85-96%); 6 split-songs files built.
+- `bin/hubbard_build_all.py` corpus runner (sequential, `TimeoutExpired`-proof); `pyscript/test_hubbard_parser.py`; `docs/players/HUBBARD.md`; memory `hubbard-player-re.md`.
+
+### Fixed
+- **Vacuous-100.0 fidelity bug**: `bin/mon_part_fidelity.py` with `secs=0` computed a negative comparison window → empty loops → a *fake* 100.0 (a silent SF2 measured perfect). `secs<=0` now defaults to 20s; an empty window is a hard error.
+- **No-release (bit5) chains** decoded as retriggers chopped the sustained voice 2 frames every ~1.28s → now ties. **ADSR re-arm** moved onto the fetch frame (was 1 frame early). **V2 pulse** free-run flag dropped (V2 resets pulse per fetch; Delta pulse 11%→100%).
+- **Play-routine spin class** (Last_V8, Tarzan, …) routed through the siddump CPU with a `$D012` raster fake (`HPReplay`, `measure_tick_schedule`, `initial_instruments`, `swallow_state`) — a batch-killing 3-hour py65 replay → 27s.
+
+### Known issues
+- V2 **swallow-class state-region overlap** (`$16CC-$1702`): 7 files decode 100% but fail assembly (filter programs spill into SF2II's playback-state region — needs table relocation).
+- 3 spin-class build timeouts (Devils_Galop, I_Ball, Wiz); ~7 note-format/speed laggards (IK+, Thundercats, Tarzan, Mega_Apocalypse, Knucklebusters, Game_Killer); 6 no-signature files (Casio_Extended cluster).
+
+---
+
 ## [3.13.1] - 2026-07-05
 
 ### Documentation consolidation — the cross-player knowledge base (docs-only release)
