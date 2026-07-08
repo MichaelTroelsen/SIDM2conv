@@ -1701,6 +1701,15 @@ ddd:    dex                      ; the gap, NOT writes/sec, sets the sample PITC
 .endif
 .endif
 
+; These 4 tiny data tables (12 bytes) used to sit inline at the end of the
+; code bank ($16C1-$16CC) — but with the full V2 flag set (HP_ENGINE +
+; HARD_RESTART + TEMPO_SWALLOW) the code grows enough that olhi's last byte
+; landed on $16CC = ST_FIRST, one byte into SF2II's pinned state region (the
+; assemble guard's "STATE-REGION OVERLAP"). Relocate them into the free
+; 13-byte gap ABOVE the state region ($1703-$170F, below the freqtable at
+; $1710) — they are read by absolute index (sidbase,x etc.) so any address
+; works, and the code bank now ends well clear of $16CC.
+        * = $1703
 ; SID voice register offsets
 sidbase:
         .byte $00, $07, $0e
