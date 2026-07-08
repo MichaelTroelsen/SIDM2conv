@@ -59,6 +59,7 @@ class DMCLayout:
     trk_hi: int = 0
     trk_pos: int = 0         # per-voice track-position array (init state)
     tempo_reload: int = 0    # frames/tick immediate (DEC tempo/BPL/LDA #imm/STA)
+    tempo_addr: int = 0      # the global tempo counter address
 
 
 class DMCModule:
@@ -129,12 +130,28 @@ class DMCModule:
                 break
 
         # tempo: DEC tempo / BPL / LDA #imm / STA tempo (same addr) — the reload
-        # immediate is the per-tune speed (baked per relocated player).
+        # immediate is the per-tune speed (baked per relocated player). Several
+        # sites match this idiom (per-voice waveform/wavetable counters too);
+        # the real TEMPO counter is a single GLOBAL byte, never accessed indexed
+        # (,x / ,y), whereas per-voice counters are (STA $addr,x). Pick the
+        # candidate whose address has NO indexed reference.
+        indexed = set()               # addresses touched by abs,x / abs,y ops
+        for j in range(len(d) - 2):
+            op = d[j]
+            if op in (0xBD, 0x9D, 0xB9, 0x99, 0xBC, 0x1E, 0xDE, 0xFE,
+                      0x3D, 0x5D, 0x7D, 0xDD, 0xFD, 0x1D, 0x39, 0x59, 0x79,
+                      0xD9, 0xF9, 0x19):
+                indexed.add(d[j + 1] | (d[j + 2] << 8))
+        cands = []
         for i in _find_all(d, [0xCE, None, None, 0x10, None, 0xA9, None,
                                0x8D, None, None]):
             if d[i + 1] == d[i + 8] and d[i + 2] == d[i + 9]:
-                lay.tempo_reload = d[i + 6]
-                break
+                cands.append((d[i + 1] | (d[i + 2] << 8), d[i + 6]))
+        glob = [(a, r) for a, r in cands if a not in indexed]
+        if glob:
+            lay.tempo_addr, lay.tempo_reload = glob[0]
+        elif cands:
+            lay.tempo_addr, lay.tempo_reload = cands[0]
         return lay
 
     # ---- accessors ----
