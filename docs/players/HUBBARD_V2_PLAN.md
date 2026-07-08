@@ -56,6 +56,29 @@ files and confirm they assemble + spot-measure part1.
 
 ---
 
+## Front 1b — the swallow-schedule freq residual (NEW, unifies with Game_Killer)
+
+After Front 1 + the pulse fix, the swallow-class files **play** with pulse / waveform /
+filter **100%**, but freq sits at ~86% (Lightforce). Diagnosed: the residual is
+**exactly on the swallow-tempo frames** (~1 in `period`), and `measure_tick_schedule`
+shows the tune's **real** stretch pattern is *denser and irregular* (Lightforce:
+stretches at frames 4,8,11,15,18,22… — gaps 4,3,4,3…) than the single period-7 the
+`DEC/BPL/LDA/STA` signature detected. The one-counter `TEMPO_SWALLOW` driver mode
+approximates an irregular schedule, so the driver and the capture disagree by a frame
+exactly on the stretch frames.
+
+**This is the same root as Game_Killer** (its 9/11-alternating ≈period-10 stretch also
+isn't a single counter). **Shared fix — a schedule-table driver mode:** derive the
+exact per-frame stretch bitmap from `measure_tick_schedule` at build time, poke it as a
+compact table (or a run-length list), and have the driver consult it instead of a
+single `SWC/SWP` counter. Both the capture (`shim.tick_to_frame`) and the driver then
+ride the *same* measured schedule → freq to 100%. Unblocks the swallow-class freq
+residual AND Game_Killer/Thundercats-class tempo variants in one mechanism.
+
+Effort: ~half a day (a new driver `.if TEMPO_SCHED` block + a poked bitmap + shim
+wiring). Higher value than any single laggard — it lifts all 7 swallow files from
+~86% freq to ~100% and folds in the no-signature tempo cases.
+
 ## Front 2 — the play-routine spin class (3 files)
 
 **Symptom:** `Devils_Galop, I_Ball, Wiz` builds time out (>90 min). The batch now
