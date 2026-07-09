@@ -89,6 +89,18 @@ def test_indexed_store_sound_fallback():
 
 
 @pytest.mark.skipif(not os.path.isdir(CORP), reason="Bjerregaard corpus absent")
+def test_state_copy_sound_generation():
+    """The state-copy generation (Flimbos_Quest / Stormlord_V2 / STII8 / …) zeroes
+    per-voice state at note-on then copies the sound record in: `LDA #$00 / STA st,X
+    / STA st,X / LDA sound_ad,Y / STA ad_state,X`. The AD-load fallback locates the
+    table (its AD field = the record base)."""
+    assert _mod("Stormlord_V2")[0].lay.sound == 0x1B1C
+    assert _mod("STII8")[0].lay.sound == 0x1A56
+    m = _mod("Flimbos_Quest_main")[0]
+    assert m.lay.sound == 0x19C9 and m.lay.freq and m.lay.trk_lo
+
+
+@pytest.mark.skipif(not os.path.isdir(CORP), reason="Bjerregaard corpus absent")
 def test_adc_vibrato_freq_generation():
     """The ADC-vibrato generation (Domino_Dancing / Alf_TV_Theme / …) writes the
     freq accumulator through a per-frame vibrato add: `LDA acc,X / CLC / ADC vib,X /

@@ -134,6 +134,16 @@ class DMCModule:
             for i in _find_all(d, [0xB9, None, None, 0xBC, None, None, 0x99, 0x06, 0xD4]):
                 lay.sound = (d[i + 1] | (d[i + 2] << 8)) - 1   # SR field -> AD = SR-1
                 break
+        # FALLBACK for the state-COPY generation (Flimbos_Quest / Kamikaze / Myth_Demo
+        # / Stormlord_V2 / STII8): note-on zeroes per-voice state then copies the sound
+        # record into it — `LDA #$00 / STA st,X / STA st,X / LDA sound_ad,Y / STA
+        # ad_state,X`. The AD state later drives $D405. Anchor on that AD load; the
+        # `B9` operand is the sound table's AD field (record base).
+        if not lay.sound:
+            for i in _find_all(d, [0xA9, 0x00, 0x9D, None, None, 0x9D, None, None,
+                                   0xB9, None, None, 0x9D, None, None]):
+                lay.sound = d[i + 9] | (d[i + 10] << 8)
+                break
 
         # freq table: two steps (avoids matching the sound table's AD/SR reads).
         #   (1) the freq accumulator lo/hi from the D400/D401 emit. The player
