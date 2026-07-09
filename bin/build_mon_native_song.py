@@ -64,7 +64,9 @@ WAVE_CAP = 96                                      # max frames of wave/gate env
 # BUNDLE_TOL (cumulative |freq-offset| over the first 24 frames) AND their pulse program
 # is identical — an inaudible merge. The packer grows a window as long as greedy
 # within-tol merging can still fit it to 63 bundles. Tuned so freq fidelity stays ~100%.
-BUNDLE_TOL = 0                                      # 0 = OFF (lossless split); raised below
+BUNDLE_TOL = int(os.environ.get("BUNDLE_TOL", "0"))  # 0 = OFF (lossless split). Raising it
+# lets NEAR-identical (same-pulse) FM contours merge inaudibly so a window fits more of the
+# song -> fewer SF2 parts. See docs/analysis/PART_REDUCTION_PLAN.md (Phase 1).
 
 
 def fm_program_for(frames, v, onset, dur_f, base):
@@ -1358,6 +1360,11 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
         # effective (not raw) bundle count: a window can grow past 64 raw bundles if the
         # excess merges away inaudibly (see effective_bundle_count / BUNDLE_TOL).
         nb = effective_bundle_count(exb, bcount, BUNDLE_TOL)
+        if os.environ.get("BUNDLE_DECOMPOSE"):
+            nfm = len({tuple(fp) for fp, pp in exb})
+            npul = len({tuple(pp) for fp, pp in exb})
+            print(f"  DECOMPOSE {win}: pairs={len(exb)} distinct_FM={nfm} "
+                  f"distinct_pulse={npul} effective@tol{BUNDLE_TOL}={nb}")
         return nb, len(exi), wrows, frows, nseg
 
     # --- CLUSTER to fit the driver caps (64 commands, 32 instruments) ---

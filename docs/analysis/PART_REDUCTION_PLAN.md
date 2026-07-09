@@ -36,11 +36,19 @@ the **(FM, pulse) pairs** actually used. This sizes every phase below: if a wind
 the win is in FM structuralisation instead. Deliverable: a per-song FM/pulse/pair histogram.
 
 ### Phase 1 — more aggressive near-lossless clustering *(low risk, fast)*
-The greedy bundle-merge already exists (`cluster_bundles` + `bgate` = "inaudible" merges:
-same pulse, FM within a hard distance). Widen the tolerance a notch and merge the two
-*most-similar* bundles until ≤63 — the loss lands on the fewest, least-audible notes (a tie's
-empty pulse, a saw note's don't-care PWM). Every extra merge that fits a window is one fewer
-part. Measure fidelity before/after per player; keep only merges under a loss threshold.
+The greedy bundle-merge already exists (`bgate` = "inaudible" merges: same pulse, FM within
+`BUNDLE_TOL`). `BUNDLE_TOL` was `0` (off) and is now env-configurable
+(`BUNDLE_TOL=<n> py -3 …`); a decompose probe is env-gated (`BUNDLE_DECOMPOSE=1`).
+
+**RESULT (measured 2026-07-09) — Phase 1 is a DUD for DMC.** Decompose of a 30 s Shape
+window: **116 (FM,pulse) pairs, 88 distinct FM, 70 distinct pulse** — genuinely diverse in
+*both* axes (DMC captures a unique per-note wavetable arp *and* per-note PWM). Part counts by
+`BUNDLE_TOL`: Shape 38→37, Namnam 28→26, Billie_Jean 15→14 — and only at *absurd*
+tolerances (1000–3000, audibly lossy); at inaudible tolerances (≤300) the reduction is **0**.
+The same-pulse-merge premise barely applies because the pulse programs are too varied. So for
+DMC, lossless clustering **cannot** reduce parts — the explosion is architectural. *(Still
+worth checking on Hubbard/MoN, whose FM is often structural and pulse per-instrument, so
+same-pulse near-FM merges should apply far more — TODO.)*
 
 ### Phase 2 — decouple pulse from the bundle *(high impact, medium risk)*
 The structural fix. Move the pulse component **out** of the command byte so the bundle carries
@@ -53,6 +61,11 @@ The structural fix. Move the pulse component **out** of the command byte so the 
   become the new bottleneck (it's at ~31/32 for a few songs).
 
 Expected: for pulse-diverse songs the bundle count roughly halves → parts roughly halve.
+**Sizing (from Phase 0):** decoupling DMC's 116 pairs → 88 FM (the FM channel) + 70 pulse
+(to the 256-row pulse table) → the split cap becomes FM=63 instead of pairs=63, so a 30 s
+window that held 116 pairs holds ~88 FM → parts shrink ~`116/88 ≈ 25 %`, and pulse never
+forces a split again. Modest for DMC (FM diversity dominates), larger where pulse drives the
+count. **This is DMC's only lossless lever short of Phase 4.**
 
 ### Phase 3 — structural FM for arp/vibrato players *(Hubbard / MoN)*
 Where the FM is *structural* (looping arps, pitch-proportional vibrato), emit one
