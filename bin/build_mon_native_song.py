@@ -123,6 +123,12 @@ def fm_program_for(frames, v, onset, dur_f, base):
 # MON_ARP_STRUCT=1 while the wave/pulse structural prongs land (all three caps must
 # drop for the part count to fall).
 ARP_STRUCT = os.environ.get("MON_ARP_STRUCT", "") == "1"
+# PART REDUCTION Phase 2 (docs/analysis/PART_REDUCTION_PLAN.md): collapse the PULSE side
+# of the (FM,pulse) bundle to ONE canonical program per instrument, so the command channel
+# holds ~distinct-FM (Hubbard ~24) instead of distinct-pairs (~68) -> far fewer parts. Just
+# the pulse-canonical, without ARP_STRUCT's FM changes. Opt-in per shim (`pulse_canon`) or
+# via MON_PULSE_CANON=1.
+PULSE_CANON = os.environ.get("MON_PULSE_CANON", "") == "1"
 
 
 def arp_fm_program(arp):
@@ -1282,7 +1288,8 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                     # floor 2: same vacuous-guard class as the FM fcmp fix —
                     # short notes compared over <=1 frame accept any canonical
                     cmp_f = max(2, dur_f - 1)
-                    if ARP_STRUCT and cp is not None and cp != pp:
+                    pcanon = ARP_STRUCT or PULSE_CANON or getattr(m, 'pulse_canon', 0)
+                    if pcanon and cp is not None and cp != pp:
                         if getattr(m, 'hard_restart', 0):
                             # Hubbard: the per-instrument pulse wobble free-runs;
                             # per-note captures differ only in PHASE. Use the

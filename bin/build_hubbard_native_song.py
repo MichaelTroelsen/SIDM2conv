@@ -45,6 +45,12 @@ class HubbardShim:
                               # the per-instrument ROM pulse engine (DEFAULT —
                               # Monty/Commando/Zoids pulse 100% vs <=98.6 with
                               # captured programs; =0 to fall back)
+    pulse_canon = 0 if os.environ.get('HUBBARD_PULSE_CANON') == '0' else 1
+                              # PART REDUCTION (Phase 2): collapse the bundle's PULSE
+                              # side to ONE canonical per instrument (the ROM pulse
+                              # free-runs, so per-note captures differ only in
+                              # inaudible phase). Commando 45 parts -> 4 at 100/100/
+                              # 100. Gated to hard_restart; V2 uses freerun instead.
     freerun_pulse = 0         # v2 (Delta class): the PW accumulates across
                               # notes — enable the per-voice free-run STREAM
                               # detection (set in main for v2_notes files)

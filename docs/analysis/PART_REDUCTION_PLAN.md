@@ -85,6 +85,18 @@ window that held 116 pairs holds ~88 FM → parts shrink ~`116/88 ≈ 25 %`, and
 forces a split again. Modest for DMC (FM diversity dominates), larger where pulse drives the
 count. **This is DMC's only lossless lever short of Phase 4.**
 
+**SHIPPED for Hubbard (2026-07-09) — a huge, lossless win.** The mechanism already existed
+(the per-instrument pulse **canonical**, `pp = cp`, "the whole-song bundle-collapse trade")
+but was gated behind `ARP_STRUCT` (which also mangles FM). Surgically un-gated via a
+`pulse_canon` shim flag (+ `MON_PULSE_CANON=1`), enabled by default on the Hubbard shim
+(gated to `hard_restart`; V2/Delta's freerun path and all other players are untouched). The
+ROM pulse free-runs per instrument, so per-note captures differ only in inaudible phase →
+collapsing them to one canonical per instrument is lossless. Measured: **Commando 45 → 4
+parts, Monty 22 → 4 parts, both at 100/100/100 + filter 100 %** (distinct_pulse 50 → 4–6,
+pairs 68 → ~25, now tracking distinct-FM). Delta (V2) unchanged (3 parts, freerun path). 37
+tests green. **TODO: try `pulse_canon` on the MoN shim** (Hawkeye/Cybernoid — likely the same
+per-instrument pulse), then rebuild the Hubbard/MoN corpus and refresh `docs/SF2.md`.
+
 ### Phase 3 — structural FM for arp/vibrato players *(Hubbard / MoN)*
 Where the FM is *structural* (looping arps, pitch-proportional vibrato), emit one
 pitch-independent looping program per shape instead of a per-note Hz-delta capture — many
