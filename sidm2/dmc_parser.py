@@ -58,6 +58,8 @@ class DMCLayout:
     freq_hi: int = 0         # 0 = interleaved (freq[note*2]); else SPLIT hi array (freq[note] / freq_hi[note])
     trk_lo: int = 0          # per-voice track (orderlist) pointer tables (lo/hi)
     trk_hi: int = 0
+    trk_interleaved: bool = False  # track ptrs interleaved lo/hi, indexed voice*2 (a
+                                   # generation where TXA/ASL/TAY -> LDA trk,Y; hi=lo+1)
     trk_pos: int = 0         # per-voice track-position array (init state)
     tempo_reload: int = 0    # frames/tick immediate (DEC tempo/BPL/LDA #imm/STA)
     tempo_addr: int = 0      # the global tempo counter address
@@ -169,6 +171,31 @@ class DMCModule:
                 lay.trk_lo, lay.trk_hi = lo, hi
                 break
 
+        # INTERLEAVED-TRACK generation (Deel_2 / Fruitbank / Slimbo4): the primary
+        # BD-form track sig misses because the track ptr is read `TXA / ASL / TAY /
+        # LDA trk,Y / STA z / LDA trk+1,Y / STA z2` (Y = voice*2, interleaved lo/hi).
+        # WORSE, that same read matches the sector-ptr sig FIRST, so `sector_lo` was
+        # mis-set to the TRACK table. When we detect this idiom, take the track from
+        # it (interleaved, voice*2) AND re-locate the real SECTOR table, which is the
+        # SPLIT `TAY / LDA sec_lo,Y / STA z / LDA sec_hi,Y / STA z2` read.
+        if not lay.trk_lo:
+            for i in _find_all(d, [0x8A, 0x0A, 0xA8, 0xB9, None, None, 0x85, None,
+                                   0xB9, None, None, 0x85, None]):
+                lo = d[i + 4] | (d[i + 5] << 8)
+                hi = d[i + 9] | (d[i + 10] << 8)
+                if hi == lo + 1 and d[i + 7] != d[i + 12]:
+                    lay.trk_lo, lay.trk_hi = lo, lo + 1
+                    lay.trk_interleaved = True
+                    break
+            if lay.trk_interleaved:
+                for i in _find_all(d, [0xA8, 0xB9, None, None, 0x85, None,
+                                       0xB9, None, None, 0x85, None]):
+                    sl = d[i + 2] | (d[i + 3] << 8)
+                    sh = d[i + 7] | (d[i + 8] << 8)
+                    if sh > sl + 1 and d[i + 5] != d[i + 10]:
+                        lay.sector_lo, lay.sector_hi = sl, sh  # override the mislabel
+                        break
+
         # tempo: DEC tempo / BPL / LDA #imm / STA tempo (same addr) — the reload
         # immediate is the per-tune speed (baked per relocated player). Several
         # sites match this idiom (per-voice waveform/wavetable counters too);
@@ -221,7 +248,11 @@ class DMCNote:
 
 
 def _voice_track_ptr(m, voice):
-    """Per-voice track (orderlist) data pointer, from the lo/hi tables."""
+    """Per-voice track (orderlist) data pointer, from the lo/hi tables. The
+    interleaved generation packs lo/hi consecutively, indexed by voice*2."""
+    if m.lay.trk_interleaved:
+        base = m.lay.trk_lo + voice * 2
+        return m._u8(base) | (m._u8(base + 1) << 8)
     return (m._u8(m.lay.trk_lo + voice) | (m._u8(m.lay.trk_hi + voice) << 8))
 
 

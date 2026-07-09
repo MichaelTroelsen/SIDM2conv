@@ -14,11 +14,11 @@ in `bin/DMC/`). Balloon.sid was the RE exemplar (load `$1000`, init `$1440`, pla
 pipeline).
 **Status:** format fully RE'd; parser + decoder done. Native Stage B **works end-to-end** —
 **Rockbuster ≈97%** (freq 65→97, waveform 87→100, pulse 100/100/100), most eligible files
-2/3 voices at 90–100%. Corpus survey (`bin/dmc_build_all.py --dry`, all 88 files): **27
-ELIGIBLE** (onset-aligned build; +9 this cycle from split-freq + three sound-generation
-fallbacks), **~26 FALLBACK** (tables located but onsets disagree — multispeed/self-IRQ/
-legato), **~35 NO-TABLES** (signature miss — the corpus spans multiple DMC code
-generations; see below). `bin/` only, not registry-wired.
+2/3 voices at 90–100%. Corpus survey (`bin/dmc_build_all.py --dry`, all 88 files): **30
+ELIGIBLE** (onset-aligned build; split-freq + three sound-generation fallbacks + the
+interleaved-track generation), **~26 FALLBACK** (tables located but onsets disagree —
+multispeed/self-IRQ/legato), **~32 NO-TABLES** (signature miss — the corpus spans multiple
+DMC code generations; see below). `bin/` only, not registry-wired.
 
 ---
 
@@ -213,6 +213,15 @@ collision and no base choice avoids it; it would need a driver FM-encoding chang
   another idiom) + the multi-signature-miss files. Remaining full coverage is per-version
   dataflow RE (like the DRAX cluster), high-leverage (unlocks Domino_Dancing, Stormlord,
   Flimbos_Quest, Crazy_Comets_remix, …).
+- **Interleaved-track generation handled** (Deel_2 / Fruitbank / Slimbo4 — the `trk`-only
+  cluster). These read the track ptr via `TXA / ASL / TAY / LDA trk,Y` (interleaved lo/hi,
+  indexed **voice×2**) — a read that *also* matched the sector signature first, so the parser
+  had mislabelled the track table as the sector table and missed both. Now detected: take the
+  track from that idiom (`trk_interleaved`, voice×2 stride in `_voice_track_ptr`) and
+  re-locate the real **split** sector table (`TAY / LDA sec_lo,Y / … / LDA sec_hi,Y`). →
+  Deel_2 (osc2·osc3 ~100), Fruitbank (~95), Slimbo4 (osc1·osc2 ~99). The track note-format
+  (bit7 = control) isn't fully decoded, so the instrument timeline is approximate — but
+  freq/wf/pulse come from the trace, so fidelity holds.
 - **Decode variants:** the "0% variant" cluster (Billie_Jean track sig mis-locates to the
   `$1440` code region) + the 70–90% `$C0` sector desync. Onset-align already covers many
   (it's decode-independent for pitch/timing). Low priority.

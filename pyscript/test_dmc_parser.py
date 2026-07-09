@@ -89,6 +89,19 @@ def test_indexed_store_sound_fallback():
 
 
 @pytest.mark.skipif(not os.path.isdir(CORP), reason="Bjerregaard corpus absent")
+def test_interleaved_track_generation():
+    """Deel_2 / Fruitbank / Slimbo4 read the track ptr `TXA/ASL/TAY / LDA trk,Y`
+    (interleaved lo/hi, indexed voice*2) — a read that also matched the sector sig
+    first, mislabelling the sector table. The parser must set trk_interleaved, take
+    the track from that idiom, and re-locate the real SPLIT sector table."""
+    m, la, h = _mod("Deel_2")
+    assert m.lay.trk_interleaved and m.lay.trk_lo == 0x6640
+    assert m.lay.sector_lo == 0x66C1 and m.lay.sector_hi == 0x66FE  # split, corrected
+    assert (m.lay.sound and m.lay.freq)                            # all four located
+    assert not _mod("Balloon")[0].lay.trk_interleaved              # no regression
+
+
+@pytest.mark.skipif(not os.path.isdir(CORP), reason="Bjerregaard corpus absent")
 def test_freq_table_is_chromatic():
     """The freq table must be a rising chromatic scale (~1.0595 per step)."""
     m, la, h = _mod("Balloon")
