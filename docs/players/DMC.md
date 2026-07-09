@@ -12,10 +12,12 @@ in `bin/DMC/`). Balloon.sid was the RE exemplar (load `$1000`, init `$1440`, pla
 **Parser:** `sidm2/dmc_parser.py`; tests `pyscript/test_dmc_parser.py` (6, green).
 **Native Stage B:** `bin/build_dmc_native_song.py` (DMCShim → the shared MoN native
 pipeline).
-**Status:** format fully RE'd; parser + decoder done (29/43 main-player files ≥90%
-per-voice onsets). Native Stage B **works end-to-end** — **Rockbuster ≈97%** (freq 65→97,
-waveform 87→100, pulse 100/100/100); 21/43 files onset-eligible, most 2/3 voices at
-90–100%. `bin/` only, not registry-wired.
+**Status:** format fully RE'd; parser + decoder done. Native Stage B **works end-to-end** —
+**Rockbuster ≈97%** (freq 65→97, waveform 87→100, pulse 100/100/100), most eligible files
+2/3 voices at 90–100%. Corpus survey (`bin/dmc_build_all.py --dry`, all 88 files): **18
+ELIGIBLE** (onset-aligned build), **26 FALLBACK** (tables located but onsets disagree —
+multispeed/self-IRQ/legato), **44 NO-TABLES** (signature miss — the corpus spans multiple
+DMC code generations; see below). `bin/` only, not registry-wired.
 
 ---
 
@@ -125,7 +127,10 @@ wavetable arp at the wrong phase; onset-aligning fixed it. The build self-checks
 emulated-vs-siddump onsets (≥85%) and falls back otherwise.
 
 Run: `py -3 bin/build_dmc_native_song.py SID/JohannesBjerregaard/<name>.sid [secs|auto]`
-→ `out/dmc/<name>_partNN.sf2`. (`DMC_MAX_PARTS` caps parts.)
+→ `out/dmc/<name>_partNN.sf2`. (`DMC_MAX_PARTS` caps parts.) Corpus runner:
+`py -3 bin/dmc_build_all.py --dry` categorises all 88 (ELIGIBLE / FALLBACK / NO-TABLES);
+without `--dry` it builds every ELIGIBLE file (sequential — the shared MoN scratch forbids
+concurrency — with a per-file timeout).
 
 **Fidelity measurement** — DMC files aren't under `Tel_Jeroen/`/`Hubbard_Rob/`, so
 `mon_part_fidelity.py` returns 0; measure directly: wrap the SF2 via
@@ -162,11 +167,20 @@ collision and no base choice avoids it; it would need a driver FM-encoding chang
 - **Multispeed / self-IRQ variants** (Chase, Dummy_II): 1× replay reads them wrong (Chase
   4× too slow — PSID speed flag 0 but they self-install faster timing). Falls back to the
   tick grid. Lower priority.
+- **NO-TABLES = multiple DMC generations (44/88, the big coverage front).** The signature
+  parser (built on Balloon = the `init+$440/play+$3` DMC4 generation) misses tables on 44
+  files that span *many* load addresses and fingerprints (`init+$0/play+$6`, `init+$c40`,
+  `init+$7764`, …). Miss counts: `snd` 32, `frq` 32, `trk` 16, `sec` 9. The variants write
+  the SID envelope registers with **`STA $D405,Y` (`99`) in a batched store block** rather
+  than the `LDA abs,Y / STA $D405,X` (`9D`) idiom the parser anchors on — i.e. a different
+  code generation, not a relocation. 12 files miss exactly one signature (9 only `snd`:
+  In_the_Mood/Spy_vs_Spy_III/Thunder_Force/M_A_C_H/…; 3 only `frq`: the `$3f00` Fat cluster)
+  and are the nearest wins. Generalising across generations is a Hubbard-V1/V2-scale RE
+  effort (per-generation signatures), high-leverage (unlocks Domino_Dancing, Stormlord,
+  Flimbos_Quest, Spy_vs_Spy_III, Crazy_Comets_remix, …).
 - **Decode variants:** the "0% variant" cluster (Billie_Jean track sig mis-locates to the
   `$1440` code region) + the 70–90% `$C0` sector desync. Onset-align already covers many
   (it's decode-independent for pitch/timing). Low priority.
-- **Corpus runner:** build the 21 onset-eligible natives + a spot-measure runner (à la
-  `bin/hubbard_build_all.py`).
 - **Editor-view / F-key population** for editability (Stage A / F1–F5), once fidelity lands.
 
 ## Dead ends (do not re-tread)
