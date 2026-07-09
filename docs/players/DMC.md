@@ -180,10 +180,17 @@ collision and no base choice avoids it; it would need a driver FM-encoding chang
   9 gates, 100%), and the legato schedule has its own failure mode (decode phase
   misalignment) that hurt Cant_Stop osc2 (98→68). Six trigger heuristics (gate-count ratio,
   gate≤2, gap>FM_CAP, and a direct trace-truncation measure) each trade one voice for
-  another — **no trace-derived heuristic reliably predicts gate-vs-legato per voice.** The
-  clean path is a **per-voice A/B**: build both schedules for each voice and keep whichever
-  reconstructs the trace better (expensive; a real design, not a heuristic). Plus **pulse
-  extraction** on a few voices (Scandalous osc1 p25, Shape osc1 p0.3).
+  another — **no trace-derived heuristic reliably predicts gate-vs-legato per voice.** A
+  **per-voice A/B** (build both schedules, keep whichever reconstructs the trace better) was
+  built and tested — it is *guaranteed non-regressing* (gate is the default, replaced only
+  when the decode schedule measurably wins) and correctly chose gate for the ambiguous
+  voices. **But it yields no practical gain:** the 256-row WAVE cap forces the A/B
+  measurement window down to ~10s, and the legato benefit only appears *past* the FM_CAP
+  truncation (frame 256 = 5s) over *longer* windows — so the short A/B window can't see it
+  and picks gate. Capturing the gain would need a **full-song (multi-part) A/B** or a
+  freq-only build that skips the wave table (so the cap doesn't force the short window) —
+  heavier designs, deferred. Plus **pulse extraction** on a few voices (Scandalous osc1 p25,
+  Shape osc1 p0.3).
 - **Multispeed / self-IRQ variants** (Chase, Dummy_II): 1× replay reads them wrong (Chase
   4× too slow — PSID speed flag 0 but they self-install faster timing). Falls back to the
   tick grid. Lower priority.
