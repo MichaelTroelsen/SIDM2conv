@@ -6,10 +6,15 @@ Identifies and optionally removes experimental, temporary, and test files
 that accumulate during development.
 
 Usage:
-    python cleanup.py --scan           # Scan and show what would be cleaned
-    python cleanup.py --clean          # Actually remove files (requires confirmation)
-    python cleanup.py --clean --force  # Remove without confirmation
-    python cleanup.py --output-only    # Clean only output directory
+    python cleanup.py --scan             # Scan and show what would be cleaned
+    python cleanup.py --archive          # MOVE flagged files into archive/cleanup_<date>/ (safe, reversible)
+    python cleanup.py --clean            # Actually DELETE files (requires confirmation)
+    python cleanup.py --archive --force  # Archive without confirmation
+    python cleanup.py --output-only      # Clean only output directory
+
+By default --archive is recommended over --clean: it moves files into
+archive/cleanup_<date>/ (mirroring their relative path) instead of hard-deleting,
+per the project's archive-before-explain protocol. --clean deletes irreversibly.
 """
 
 import os
@@ -268,55 +273,112 @@ class CleanupTool:
         print(f"Total size: {self.total_size / (1024 * 1024):.1f} MB")
         print("="*80)
 
-    def clean(self, force=False, update_inventory=False):
-        """Actually remove the files and directories"""
+    def _archive_dest(self, archive_root, path):
+        """Destination inside the archive that mirrors `path`'s location relative
+        to the project root (so `output/test_x` -> `<archive>/output/test_x` and a
+        root file keeps its name). Adds a numeric suffix if the target already
+        exists (repeat runs the same day never overwrite an earlier archive)."""
+        dest = archive_root / path.relative_to(self.root_dir)
+        if dest.exists():
+            stem, suffix, n = dest.stem, dest.suffix, 1
+            while dest.exists():
+                dest = dest.with_name(f"{stem}_{n}{suffix}")
+                n += 1
+        return dest
+
+    def clean(self, force=False, update_inventory=False, archive=False):
+        """Remove the flagged files/directories, or (archive=True) MOVE them into
+        archive/cleanup_<date>/ preserving their relative path — the project's
+        archive-before-explain protocol (see feedback-archive-protocol): reversible,
+        nothing is hard-deleted."""
+        # A file can match several patterns and a dir several scan passes, so the
+        # lists carry duplicates (harmless when deleting, but archiving the same
+        # path twice errors "not found" on the second move). Dedupe by path, first
+        # occurrence wins, order preserved.
+        seen = set()
+        self.files_to_clean = [(p, c) for p, c in self.files_to_clean
+                               if not (p in seen or seen.add(p))]
+        seen = set()
+        self.dirs_to_clean = [p for p in self.dirs_to_clean
+                              if not (p in seen or seen.add(p))]
+
         if not self.files_to_clean and not self.dirs_to_clean:
             print("\n[OK] Nothing to clean!")
             return False
 
+        verb = "archive" if archive else "remove"
+        archive_root = None
+        if archive:
+            archive_root = self.root_dir / 'archive' / f'cleanup_{datetime.now().strftime("%Y-%m-%d")}'
+
         # Confirmation
         if not force:
-            print(f"\n[WARNING] About to remove {len(self.files_to_clean)} files and {len(self.dirs_to_clean)} directories")
+            print(f"\n[WARNING] About to {verb} {len(self.files_to_clean)} files and {len(self.dirs_to_clean)} directories")
             print(f"          Total size: {self.total_size / (1024 * 1024):.1f} MB")
+            if archive:
+                print(f"          Destination: {archive_root.relative_to(self.root_dir)}/")
             response = input("\nProceed? (yes/no): ")
             if response.lower() != 'yes':
                 print("Cleanup cancelled.")
                 return False
 
-        # Create backup list
-        backup_list = self.root_dir / f'cleanup_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.txt'
+        # Manifest of what was touched. In archive mode it lives INSIDE the archive
+        # dir (travels with the files); otherwise at the root as a delete record.
+        if archive:
+            archive_root.mkdir(parents=True, exist_ok=True)
+            backup_list = archive_root / 'MANIFEST.txt'
+        else:
+            backup_list = self.root_dir / f'cleanup_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.txt'
         with open(backup_list, 'w') as f:
             f.write("SIDM2 Cleanup Report\n")
-            f.write(f"Date: {datetime.now().isoformat()}\n\n")
-            f.write("Files removed:\n")
+            f.write(f"Date: {datetime.now().isoformat()}\n")
+            f.write(f"Mode: {'archive (moved)' if archive else 'clean (deleted)'}\n\n")
+            f.write(f"Files {verb}d:\n")
             for path, category in self.files_to_clean:
                 f.write(f"  {path.relative_to(self.root_dir)} ({category})\n")
-            f.write("\nDirectories removed:\n")
+            f.write(f"\nDirectories {verb}d:\n")
             for path in self.dirs_to_clean:
                 f.write(f"  {path.relative_to(self.root_dir)}\n")
 
-        print(f"\n[INFO] Backup list created: {backup_list}")
+        print(f"\n[INFO] Manifest created: {backup_list.relative_to(self.root_dir)}")
 
-        # Remove files
-        print("\n[CLEANUP] Removing files...")
+        # Files
+        print(f"\n[CLEANUP] {'Archiving' if archive else 'Removing'} files...")
         for path, category in self.files_to_clean:
+            rel = path.relative_to(self.root_dir)
             try:
-                path.unlink()
-                print(f"  [OK] {path.relative_to(self.root_dir)}")
+                if archive:
+                    dest = self._archive_dest(archive_root, path)
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(path), str(dest))
+                    print(f"  [OK] {rel} -> {dest.relative_to(self.root_dir)}")
+                else:
+                    path.unlink()
+                    print(f"  [OK] {rel}")
             except Exception as e:
-                print(f"  [ERROR] {path.relative_to(self.root_dir)}: {e}")
+                print(f"  [ERROR] {rel}: {e}")
 
-        # Remove directories
-        print("\n[CLEANUP] Removing directories...")
+        # Directories
+        print(f"\n[CLEANUP] {'Archiving' if archive else 'Removing'} directories...")
         for path in self.dirs_to_clean:
+            rel = path.relative_to(self.root_dir)
             try:
-                shutil.rmtree(path)
-                print(f"  [OK] {path.relative_to(self.root_dir)}")
+                if archive:
+                    dest = self._archive_dest(archive_root, path)
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(path), str(dest))
+                    print(f"  [OK] {rel} -> {dest.relative_to(self.root_dir)}")
+                else:
+                    shutil.rmtree(path)
+                    print(f"  [OK] {rel}")
             except Exception as e:
-                print(f"  [ERROR] {path.relative_to(self.root_dir)}: {e}")
+                print(f"  [ERROR] {rel}: {e}")
 
-        print(f"\n[COMPLETE] Cleanup finished! {len(self.files_to_clean)} files and {len(self.dirs_to_clean)} directories removed.")
-        print(f"           Backup list: {backup_list}")
+        action = "archived" if archive else "removed"
+        print(f"\n[COMPLETE] Cleanup finished! {len(self.files_to_clean)} files and {len(self.dirs_to_clean)} directories {action}.")
+        if archive:
+            print(f"           Archived to: {archive_root.relative_to(self.root_dir)}/")
+        print(f"           Manifest: {backup_list.relative_to(self.root_dir)}")
 
         # Update inventory if requested
         if update_inventory:
@@ -394,7 +456,8 @@ class CleanupTool:
 def main():
     parser = argparse.ArgumentParser(description='SIDM2 Project Cleanup Tool')
     parser.add_argument('--scan', action='store_true', help='Scan and show what would be cleaned')
-    parser.add_argument('--clean', action='store_true', help='Actually remove files')
+    parser.add_argument('--archive', action='store_true', help='MOVE flagged files into archive/cleanup_<date>/ (safe, reversible)')
+    parser.add_argument('--clean', action='store_true', help='Actually DELETE files (irreversible)')
     parser.add_argument('--force', action='store_true', help='Skip confirmation')
     parser.add_argument('--output-only', action='store_true', help='Clean only output directory')
     parser.add_argument('--experiments', action='store_true', help='Clean only experiments directory')
@@ -404,7 +467,7 @@ def main():
     args = parser.parse_args()
 
     # Default to scan if no action specified
-    if not args.scan and not args.clean:
+    if not args.scan and not args.clean and not args.archive:
         args.scan = True
 
     tool = CleanupTool()
@@ -431,13 +494,15 @@ def main():
     # Report
     tool.print_report()
 
-    # Clean if requested
-    if args.clean:
-        cleaned = tool.clean(force=args.force, update_inventory=args.update_inventory)
+    # Act if requested (archive is preferred over delete)
+    if args.clean or args.archive:
+        cleaned = tool.clean(force=args.force, update_inventory=args.update_inventory,
+                             archive=args.archive)
         if cleaned and args.update_inventory:
             print("\n[TIP] FILE_INVENTORY.md has been updated")
     else:
-        print("\n[TIP] To clean these files, run: python cleanup.py --clean")
+        print("\n[TIP] To archive these files (safe, reversible): python cleanup.py --archive")
+        print("[TIP] To delete them irreversibly:              python cleanup.py --clean")
         if args.update_inventory:
             print("[TIP] Add --update-inventory to auto-update FILE_INVENTORY.md after cleanup")
 
