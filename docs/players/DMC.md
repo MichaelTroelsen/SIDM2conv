@@ -164,6 +164,13 @@ collision and no base choice avoids it; it would need a driver FM-encoding chang
 
 ## Open issues / TODO
 
+- **Per-voice legato onset undercount** (the residual on eligible files). All 18 eligible
+  build (0 fail), but fidelity is heterogeneous per voice: Fourth_Dimension 100/100/100 all
+  three, Dreaming/Zoom near-perfect, but a legato voice whose gate-rise undercounts its
+  pitch-changes drops (Cant_Stop osc1/osc3 ~40, Dreaming osc3 51). Needs onset detection
+  that separates a legato note-change from an arp step (arp = every frame; note = at a tick
+  boundary + settled) — the known-open problem. Plus **pulse extraction** on a few voices
+  (Scandalous osc1 p25, Shape osc1 p0.3).
 - **Multispeed / self-IRQ variants** (Chase, Dummy_II): 1× replay reads them wrong (Chase
   4× too slow — PSID speed flag 0 but they self-install faster timing). Falls back to the
   tick grid. Lower priority.
