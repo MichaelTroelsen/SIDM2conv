@@ -94,8 +94,20 @@ ROM pulse free-runs per instrument, so per-note captures differ only in inaudibl
 collapsing them to one canonical per instrument is lossless. Measured: **Commando 45 → 4
 parts, Monty 22 → 4 parts, both at 100/100/100 + filter 100 %** (distinct_pulse 50 → 4–6,
 pairs 68 → ~25, now tracking distinct-FM). Delta (V2) unchanged (3 parts, freerun path). 37
-tests green. **TODO: try `pulse_canon` on the MoN shim** (Hawkeye/Cybernoid — likely the same
-per-instrument pulse), then rebuild the Hubbard/MoN corpus and refresh `docs/SF2.md`.
+tests green.
+
+**MoN (tested `MON_PULSE_CANON=1`) — a smaller, lossless win.** MoN modules are
+`hard_restart=0`, so only the *strictly-lossless* variant fires (`pp = cp` when the unrolled
+pulse is identical), not Hubbard's phase-tolerant one. Still, its pulse is per-instrument
+enough that distinct_pulse collapses (Cybernoid_II sub0: ~50 → 4–6, **20 → 13 parts**, pulse
+100 %), and the **byte-exact crown jewel is safe** — Hawkeye sub2 is byte-identical before/after
+(both osc1 97.5 / osc2·3 100 over a 60 s window; a measurement-window artifact, unchanged by
+the flag). The win is smaller because once pulse collapses, MoN's splits are bound by the
+*other* caps (wave/filter/memory), not bundles. Left as **opt-in** (`MON_PULSE_CANON=1`)
+pending broader crown-jewel validation (Supremacy/Myth) before defaulting on for MoN.
+
+**Realizing the win:** Hubbard corpus rebuilt with `pulse_canon` on (`bin/hubbard_build_all.py`)
+→ refresh `docs/SF2.md` via `pyscript/gen_sf2_index.py`.
 
 ### Phase 3 — structural FM for arp/vibrato players *(Hubbard / MoN)*
 Where the FM is *structural* (looping arps, pitch-proportional vibrato), emit one
