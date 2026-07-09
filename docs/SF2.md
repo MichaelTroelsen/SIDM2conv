@@ -152,6 +152,217 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 
 ---
 
+<!-- BEGIN GENERATED: build inventory -->
+
+## Complete build inventory
+
+**174 songs built** across 5 native players (each song may span several SF2 parts).
+
+*Auto-generated from the built SF2 files under `out/` by `pyscript/gen_sf2_index.py` — re-run after building more tunes. "Parts" = the number of SF2 files a song is split into (a long song exceeds the SF2II table/`$D000` caps and ships as windowed parts; 1 = a single file).*
+
+### DMC (Demo Music Creator) — Johannes Bjerregaard  ·  `native`  ·  32 songs / 236 SF2 files
+
+| Song | Parts |
+|------|------:|
+| Billie Jean | 15 |
+| Blobby | 1 |
+| Blue Monday 88 | 1 |
+| Cant Stop | 3 |
+| Chase v2 | 9 |
+| Deel 2 | 1 |
+| DMC Demo IV tune 1 | 8 |
+| Dreaming | 3 |
+| Dreaming 2 | 5 |
+| Dummy II | 1 |
+| Fat 6 | 1 |
+| First Try PSX | 1 |
+| Fourth Dimension | 3 |
+| Fruitbank | 1 |
+| In the Mood | 1 |
+| M A C H | 2 |
+| MSI Demo | 36 |
+| Namnam Special | 28 |
+| Omega Force One | 23 |
+| Predictable main | 1 |
+| Rockbuster | 4 |
+| Scandalous | 7 |
+| Shape | 38 |
+| Slimbo4 | 1 |
+| Some Soul | 30 |
+| Special Agent | 1 |
+| Spy vs Spy III | 1 |
+| Thunder Force | 1 |
+| Tiny Symphony | 6 |
+| Twilight Beyond | 1 |
+| Wanna Get Sick | 1 |
+| Zoom | 1 |
+
+### Maniacs of Noise — Jeroen Tel  ·  `native`  ·  25 songs / 289 SF2 files
+
+| Song | Parts |
+|------|------:|
+| Children Songs sub0 | 11 |
+| Cybernoid II sub0 | 20 |
+| Cybernoid sub0 | 12 |
+| Daring Dots sub0 | 1 |
+| G I Hero sub0 | 13 |
+| Gaplus preview sub0 | 18 |
+| Gaplus sub0 | 27 |
+| Hawkeye Proto 1 sub0 | 4 |
+| Hawkeye sub0 | 7 |
+| Hawkeye sub2 | 2 |
+| Hawkeye sub3 | 1 |
+| Hawkeye sub3 native | 1 |
+| Ice Age sub0 | 23 |
+| Iets van JT sub0 | 10 |
+| M A C C sub0 | 7 |
+| Myth sub0 | 8 |
+| Pal sine hoener tune 1 sub0 | 3 |
+| Sample sub0 | 4 |
+| Supremacy sub0 | 16 |
+| Supremacy sub1 | 23 |
+| Supremacy sub2 | 70 |
+| Thats preview sub0 | 1 |
+| Tomcat sub0 | 3 |
+| Viool Tello sub0 | 1 |
+| Wizzy sub0 | 3 |
+
+### Rob Hubbard — Rob Hubbard  ·  `native`  ·  73 songs / 846 SF2 files
+
+| Song | Parts |
+|------|------:|
+| 5 Title Tunes | 1 |
+| 5 Title Tunes song0 | 6 |
+| 5 Title Tunes song1 | 6 |
+| 5 Title Tunes song2 | 6 |
+| 5 Title Tunes song3 | 10 |
+| 5 Title Tunes song4 | 14 |
+| Action Biker song0 | 5 |
+| Action Biker song1 | 1 |
+| Action Biker song2 | 1 |
+| Auf Wiedersehen Monty song0 | 1 |
+| Chimera | 1 |
+| Chimera song0 | 76 |
+| Chimera song1 | 14 |
+| Commando | 1 |
+| Commando song0 | 45 |
+| Commando song16 | 4 |
+| Commando song2 | 1 |
+| Confuzion song0 | 6 |
+| Crazy Comets | 1 |
+| Crazy Comets song0 | 15 |
+| Crazy Comets song1 | 4 |
+| Deep Strike song0 | 1 |
+| Delta song0 | 221 |
+| Delta song11 | 3 |
+| Delta song12 | 3 |
+| Game Killer song0 | 2 |
+| Geoff Capes Strongman Challenge | 1 |
+| Geoff Capes Strongman Challenge song0 | 3 |
+| Geoff Capes Strongman Challenge song3 | 2 |
+| Geoff Capes Strongman Challenge song4 | 2 |
+| Geoff Capes Strongman Challenge song5 | 2 |
+| Gerry the Germ song0 | 12 |
+| Gerry the Germ song1 | 14 |
+| Gerry the Germ song4 | 9 |
+| Gerry the Germ song6 | 11 |
+| Gremlins | 1 |
+| Gremlins song0 | 8 |
+| Gremlins song1 | 22 |
+| Gremlins song2 | 15 |
+| Gremlins song3 | 18 |
+| Gremlins song4 | 8 |
+| Gremlins song5 | 5 |
+| Gremlins song6 | 35 |
+| Hunter Patrol song0 | 25 |
+| Last V8 | 1 |
+| Last V8 C128 version song0 | 17 |
+| Last V8 C128 version song1 | 1 |
+| Last V8 C128 version song2 | 1 |
+| Last V8 song0 | 18 |
+| Last V8 song1 | 1 |
+| Last V8 song11 | 4 |
+| Last V8 song2 | 1 |
+| Lightforce song0 | 9 |
+| Master of Magic | 1 |
+| Master of Magic song0 | 18 |
+| Master of Magic song1 | 1 |
+| Master of Magic song2 | 1 |
+| Monty on the Run | 1 |
+| Monty on the Run song0 | 22 |
+| Monty on the Run song1 | 1 |
+| Monty on the Run song2 | 3 |
+| Ninja song0 | 28 |
+| One Man and his Droid | 1 |
+| One Man and his Droid song0 | 18 |
+| Saboteur II song0 | 1 |
+| Sanxion song0 | 1 |
+| Shockway Rider song0 | 1 |
+| Star Paws song0 | 1 |
+| Thing on a Spring song0 | 33 |
+| Zoids | 1 |
+| Zoids song0 | 16 |
+| Zoids song1 | 1 |
+| Zoids song2 | 1 |
+
+### Martin Galway — Martin Galway  ·  `native`  ·  40 songs / 40 SF2 files
+
+| Song | Parts |
+|------|------:|
+| Arkanoid | 1 |
+| Arkanoid alternative drums | 1 |
+| Athena | 1 |
+| Combat School | 1 |
+| Comic Bakery | 1 |
+| Commando High-Score | 1 |
+| Daley Thompsons Decathlon loader | 1 |
+| Game Over | 1 |
+| Green Beret | 1 |
+| Helikopter Jagd | 1 |
+| Highlander | 1 |
+| Hunchback II | 1 |
+| Hyper Sports | 1 |
+| Insects in Space | 1 |
+| Kong Strikes Back | 1 |
+| Match Day | 1 |
+| Miami Vice | 1 |
+| MicroProse Soccer indoor | 1 |
+| MicroProse Soccer intro | 1 |
+| MicroProse Soccer outdoor | 1 |
+| MicroProse Soccer V1 | 1 |
+| Mikie | 1 |
+| Neverending Story | 1 |
+| Ocean Loader 1 | 1 |
+| Ocean Loader 2 | 1 |
+| Parallax | 1 |
+| Ping Pong | 1 |
+| Rambo First Blood Part II | 1 |
+| Rastan | 1 |
+| Rolands Ratrace | 1 |
+| Short Circuit | 1 |
+| Slap Fight | 1 |
+| Street Hawk | 1 |
+| Street Hawk Prototype | 1 |
+| Swag | 1 |
+| Terra Cresta | 1 |
+| Times of Lore | 1 |
+| Wizball | 1 |
+| Yie Ar Kung Fu | 1 |
+| Yie Ar Kung Fu II | 1 |
+
+### ROMUZAK V6.3 — Oliver Blasnik  ·  `native`  ·  4 songs / 4 SF2 files
+
+| Song | Parts |
+|------|------:|
+| Delirious 9 tune 1 | 1 |
+| Delirious 9 tune 1 native | 1 |
+| Road of Excess end | 1 |
+| Road of Excess end native | 1 |
+
+<!-- END GENERATED -->
+
+---
+
 *Generated 2026-07-09. Fidelity figures are the latest measured/documented values; native
 builds live in `bin/` and are not yet registry-wired into the auto pipeline. For the method
 behind the numbers see [`docs/players/PLAYBOOK.md`](players/PLAYBOOK.md).*
