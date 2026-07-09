@@ -1,0 +1,177 @@
+# DMC (Demo Music Creator) player — SID → SF2 support
+
+**Format:** **DMC (Demo Music Creator)** — one of the most-used C64 music editors ever.
+The corpus is DMC-family: the **DMC4 Player written by Brian/Graffity in '91** (per the
+DMC4 editor ReadMe). A DMC parser is therefore high-leverage — it generalises across
+hundreds of HVSC tunes, not just this corpus.
+**Composer / corpus:** `SID/JohannesBjerregaard/` — **88 `.sid` files**, ~all by
+**Johannes Bjerregaard** (he authored DMC). Many are covers/remakes (Blue_Monday_88,
+Billie_Jean, Domino_Dancing, Crazy_Comets_remix) plus the DMC_Demo_IV tunes.
+**Ground truth:** the **DMC4 editor** (`~/Downloads/dmc4editor11_win64.zip`; disk images
+in `bin/DMC/`). Balloon.sid was the RE exemplar (load `$1000`, init `$1440`, play `$1003`).
+**Parser:** `sidm2/dmc_parser.py`; tests `pyscript/test_dmc_parser.py` (6, green).
+**Native Stage B:** `bin/build_dmc_native_song.py` (DMCShim → the shared MoN native
+pipeline).
+**Status:** format fully RE'd; parser + decoder done (29/43 main-player files ≥90%
+per-voice onsets). Native Stage B **works end-to-end** — **Rockbuster ≈97%** (freq 65→97,
+waveform 87→100, pulse 100/100/100); 21/43 files onset-eligible, most 2/3 voices at
+90–100%. `bin/` only, not registry-wired.
+
+---
+
+## How it was reverse-engineered
+
+RE'd from **Balloon.sid** (PSID `load=$0000` embedded — the real load word is the first
+two data bytes → `$1000`) via py65 disassembly of the play body + emulation-tracing:
+1. **Disassembly** of `play $1003 = JMP $1050` (the play body) — the sequencer model.
+2. **Emulation trace** (the siddump `CPU6502Emulator` + a `$D012` raster fake) — the
+   per-frame SID writes and the wavetable-arp behaviour, which no static read reveals.
+3. **The DMC4 editor's three views** (Track / Sector / Sound) named the model.
+
+The player is **relocated to many load addresses** (absolute addresses in code differ per
+file — the same trap as Hubbard V2), so every table is **signature-located**, never
+hardcoded. The player fingerprint is the `(init−load, play−load)` offset; the dominant
+DMC player is **`init+$440, play+$3`** (load `$1000` → init `$1440`, play `$1003`).
+
+## Format model — Track → Sector → Sound
+
+Matches the editor's three views. All addresses below are for load `$1000` (relocatable).
+Player state lives in the code page `$1006–$104F`, per-voice indexed by `X ∈ {0,1,2}`.
+
+- **Track** = the orderlist (per-voice sequence of sectors).
+- **Sector** = a pattern.
+- **Sound** = an instrument.
+
+**Tempo:** a countdown at `$1039` reloads to `#imm` (Balloon `$04` = 4 frames/tick); a
+note-tick fires only when it reaches 0. Detected from the code as `DEC tempo / BPL / LDA
+#imm / STA` → `frames_per_tick = imm + 1`, per tune. (Gotcha: DMC has both a **global**
+tempo counter and **per-voice** counters read indexed `,x`/`,y` — the tempo detector must
+pick the global one, else the whole schedule is wrong.)
+
+**Track (orderlist), per voice:** data pointer `$104A,x` (lo) / `$104D,x` (hi); bytes =
+**sector numbers**. `$FF` = loop (reset all 3 voice positions → restart), `$FE` = end.
+
+**Sector-pointer table:** `$1900` (lo) / `$1980` (hi), indexed by sector number.
+
+**Sector (pattern) event:** first byte = the **command**:
+
+| bits | meaning |
+|---|---|
+| low 5 (`& $1F`) | duration (note-tick countdown) |
+| bit 5 (`$20`) | flag → `$1044,x` |
+| bit 6 (`$40`) | two more **effect** bytes follow → `$1023,x`, `$1026,x` |
+| bit 7 (`$80`) | a **sound** (instrument) byte follows → `sound × 8` offset |
+| `(cmd & $E0) == $C0` | **REST** (duration, no note; consumes one byte) |
+
+Then a **pitch** byte (a freq-table row selector — see wavetable below). A `$FF` here
+ends the sector → advance the track position.
+
+**Sound (instrument) table:** `$1500`, **8 bytes/sound** (offset = sound# × 8):
+
+| +0 | +1 | +2 | +3 | +4 | +5 | +6 | +7 |
+|----|----|----|----|----|----|----|----|
+| AD (`$D405`) | SR (`$D406`) | PW init | PW rails (nibbles min/max) | PW speed | vibrato | filter | flags |
+
+- **PWM engine** (`$1171`): a per-voice 12-bit accumulator (`$100B,x`/`$100E,x`) bounces
+  up (dir flag `$1030,x`) until ≥ +3-hi, then down until ≤ +3-lo — the classic DMC
+  pulse-width sweep, at +4-hi step.
+- **Vibrato** (Sound +5): per-voice 16-bit accumulator `$1011,x`/`$1014,x`, phase `$103A,x`.
+- **Filter** (Sound +7 bit0 → `$D417` via per-voice masks; Sound +6 → `$100A`).
+
+**Freq table:** `$135F`, **interleaved lo/hi** (indexed by note × 2).
+
+**Wavetables — the DMC signature:** `$1A00` (arp) / `$1B00` (waveform), **advanced one
+step per frame** → a fast per-frame arpeggio. The freq-table **row = the wavetable arp
+value**, not the raw note byte — so DMC plays notes far above its own table via octave
+shift.
+
+- **`$1A00` arp byte:** bit7 set + low 7 bits = **absolute note index** (`$DF`→95,
+  `$AE`→46, `$A3`→35, `$BD`→61 — all `$80|note`, verified). `$00` = hold/base.
+  `$7E`/`$7F` = loop-back control.
+- **`$1B00`:** the waveform (gate bit + waveform) per step.
+- Per-sound wavetable **start** comes from the sound record's wave pointer field.
+
+**SID emit** (`$1314+`, per voice): `$1011/$1014 → $D400/1` (freq), `$1036 → $D404`
+(waveform), `$100B/$100E → $D402/3` (pulse), `$D416`/`$D418` (filter). DMC drives
+freq + waveform + pulse + filter — a full-featured player.
+
+## Parser + decoder (`sidm2/dmc_parser.py`)
+
+Signature-locates the sector-ptr / sound / freq / track tables (relocation-safe, resolves
+on 44/88 files); `DMCNote` dataclass; `decode_track` / `decode_sector` / `decode_song`
+(`$C0` = rest, `$FF` = loop/end); tempo from the **global** counter (excludes the per-voice
+counters accessed `,x`/`,y`). `measure_onsets` uses the siddump CPU + a `$D012` raster
+fake + banking to record every per-voice `$D404` gate-rise = the exact onset frames.
+
+**Onset validation vs siddump (per-voice phase — the correct metric; a single global
+phase undercounts because voices trigger a few frames apart within a tick): 29/43
+main-player files ≥90%**, 20 of them ≥95% (Dummy_II / Blobby / Jazz_1 ≈99–100).
+
+## Native Stage B (`bin/build_dmc_native_song.py`)
+
+`DMCShim` feeds the shared trace-driven pipeline (`build_mon_native_song.build_native_song`
++ `emit_one`, also used by MoN / Hubbard / ROMUZAK). Two modes:
+
+- **(a) Onset-aligned** (default when emulated onsets agree ≥85% with siddump): `fpt = 1`,
+  one native note per emulated gate-rise, pitch = the trace-resolved **absolute semitone**
+  (via the full-range PAL table), `note_freq` = `_pal[semi]`. Triggering on the **true**
+  frame lets the FM capture reproduce DMC's per-frame arp **in phase** — this is what took
+  Rockbuster from ~65% to ~97%.
+- **(b) Tick-grid fallback** for legato / multispeed / self-IRQ variants where the onset
+  check fails.
+
+The native ceiling was **onset alignment**, not the arp: `tick × fpt` placement started the
+wavetable arp at the wrong phase; onset-aligning fixed it. The build self-checks
+emulated-vs-siddump onsets (≥85%) and falls back otherwise.
+
+Run: `py -3 bin/build_dmc_native_song.py SID/JohannesBjerregaard/<name>.sid [secs|auto]`
+→ `out/dmc/<name>_partNN.sf2`. (`DMC_MAX_PARTS` caps parts.)
+
+**Fidelity measurement** — DMC files aren't under `Tel_Jeroen/`/`Hubbard_Rob/`, so
+`mon_part_fidelity.py` returns 0; measure directly: wrap the SF2 via
+`mon_sf2_validate._psid(bytes(sf2[2:]), sla, 0x1000, 0x1003)`, trace both with
+`mon_fidelity.per_frame`, diff `freq_to_semi`/wf/pulse over a **non-zero** window
+(`secs=0` yields a vacuous 100.0 — a silent SF2 measures "perfect").
+
+## Open issues / TODO
+
+- **Per-voice adaptive base-note resolution** (the primary residual). Fast-arp voices
+  (e.g. Wanna_Get_Sick osc1 @33%, Omega_Force_One) have a **1-frame arp attack spike** at
+  onset+1; the `_sem` resolver picks a *fixed* onset frame, and no fixed frame works for
+  all voices (frame o+1 traps the spike; frame 0 helps Blobby/Billie but crashes
+  Tiny_Symphony v3). Fix must be **adaptive per note** — pick the base semitone that
+  minimises total FM offset over the note / excludes 1-frame spikes — validated on the
+  opposing-pull pair (Wanna osc1 vs Tiny v3) without regressing Rockbuster/Blobby.
+  **Caveat:** Wanna v1 stayed 33% under *every* base choice and *both* FM representations
+  tried → its residual may be structural (its fast alternating arp), not base-note.
+- **Multispeed / self-IRQ variants** (Chase, Dummy_II): 1× replay reads them wrong (Chase
+  4× too slow — PSID speed flag 0 but they self-install faster timing). Falls back to the
+  tick grid. Lower priority.
+- **Decode variants:** the "0% variant" cluster (Billie_Jean track sig mis-locates to the
+  `$1440` code region) + the 70–90% `$C0` sector desync. Onset-align already covers many
+  (it's decode-independent for pitch/timing). Low priority.
+- **Corpus runner:** build the 21 onset-eligible natives + a spot-measure runner (à la
+  `bin/hubbard_build_all.py`).
+- **Editor-view / F-key population** for editability (Stage A / F1–F5), once fidelity lands.
+
+## Dead ends (do not re-tread)
+
+- **`note_freq` bound to DMC's own freq table** — wrong; DMC plays notes above its table
+  via octave shift. Use the full PAL table + trace-resolved semitone.
+- **Global tick→frame schedule** calibrated from the best voice — regressed the good
+  voices, didn't fix the bad ones.
+- **Pitch-step onset detection** (gate-rise OR freq jump) — 100% coverage but over-emits
+  on the per-frame arp (Dummy_II 423 vs 106 real), breaking 1:1 placement.
+- **Debounced settle onset detection** (semitone held ≥3 frames) — improved legato coverage
+  but regressed the build (Blobby 74/87/99 → 1/1/98). Coverage ≠ native fidelity.
+- **Wavetable-arp SEMITONE model** (Galway/MoN structural-arp path) — **regresses**
+  (Rockbuster osc3 93→75, Omega 40→16). WHY: semitone-hold entries play `freqtable[base+S]`
+  quantised to whole semitones in PAL tuning, but DMC's freq table isn't PAL and arp steps
+  aren't on-semitone → strictly **less** exact than the Hz-delta onset-aligned capture,
+  which already reproduces DMC's per-frame freq bit-for-bit. The Hz-delta capture is the
+  right representation.
+- **Minimal-embed SF2** for Rockbuster — plays byte-identical under siddump but **crashes
+  SF2II** on load (`$A000` high-load player). Abandoned in favour of the native build.
+
+See the `johannes-bjerregaard-player` memory for the full RE trail, and
+[PLAYBOOK.md](PLAYBOOK.md) for the shared porting method.

@@ -40,6 +40,17 @@ Thumbs.db
 # Output files
 output/
 
+# Rendered audio (reproducible from SID/ via VSID) — never source.
+*.wav
+
+# External reference tools / ground-truth editor disk images (downloaded
+# third-party binaries, cited by docs but not project source).
+bin/DMC/
+bin/RoMusak/
+bin/sid2txt-1.0/
+bin/FC10/sid2txt-1.0/
+bin/sound monitor/
+
 # Generated SF2 test corpus — reproducible from SID/ via sid_to_sf2.py;
 # treat as ephemeral test artifacts, not source.
 SF2/*.sf2
@@ -57,6 +68,8 @@ bin/__sf2dbg__*.sf2
 bin/_*.py
 bin/_*.csv
 bin/_*.txt
+bin/_*.err
+bin/_*.out
 bin/_*.prg
 # Generated SF2 + round-trip outputs from sid_to_sf2 / sf2_to_sid
 # (reproducible from SID/; ephemeral test artifacts, not source).

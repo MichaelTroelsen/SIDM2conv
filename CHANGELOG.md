@@ -25,6 +25,23 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.15.0] - 2026-07-09
+
+### Added — DMC (Demo Music Creator) native SF2 player — Johannes Bjerregaard
+- **Parser** `sidm2/dmc_parser.py` — relocation-safe, signature-located Track/Sector/Sound/Freq tables (the player relocates to many load addresses like Hubbard V2). `DMCNote` dataclass; `decode_track`/`decode_sector`/`decode_song` (`$C0`=REST, `$FF` loop/end); tempo from the **global** countdown (excludes the per-voice `,x`/`,y` counters). `measure_onsets` = siddump CPU + `$D012` raster fake → every per-voice `$D404` gate-rise = exact onset frames. Ground truth: the DMC4 editor (`bin/DMC/`); RE exemplar Balloon.sid.
+- **Format** (Track→Sector→Sound): orderlist of sectors (`$FF` loop/`$FE` end) → pattern events (command byte: dur=low5, bit5 flag, bit6=2 effect bytes, bit7=sound; `(cmd&$E0)==$C0`=REST) → 8-byte Sound records (`$1500`: AD/SR/PW-init/PW-rails/PW-speed/vibrato/filter/flags, classic DMC PWM sweep). Freq table `$135F` interleaved lo/hi. The **wavetable** (`$1A00` arp / `$1B00` waveform, 1 step/frame) supplies a fast per-frame arp — the freq-table row is the wavetable value (`$80|note` absolute), so DMC plays notes far above its own table via octave shift.
+- **Native Stage B** `bin/build_dmc_native_song.py` (DMCShim → the shared MoN native pipeline). **Onset-aligned** mode: `fpt=1`, one native note per emulated gate-rise, pitch = the trace-resolved absolute semitone (full-range PAL) — triggering on the true frame reproduces the arp in phase.
+- `pyscript/test_dmc_parser.py` (6, green); new `docs/players/DMC.md`; memory `johannes-bjerregaard-player.md`.
+
+### Fidelity
+- Parser+decoder: **29/43 main-player files ≥90%** per-voice onsets (20 ≥95%). Native: **Rockbuster freq 65→97, waveform 87→100, pulse 100/100/100**; 21/43 files onset-eligible (incl. several decode-FAIL variants — onset-align is decode-independent for pitch/timing), most 2/3 voices 90–100%. The build self-checks emulated-vs-siddump onsets (≥85%) and falls back to a tick grid otherwise.
+
+### Open / dead ends
+- **Open:** per-voice **adaptive** base-note resolution for fast-arp voices (a 1-frame arp attack spike at onset+1 traps the fixed-frame `_sem` resolver — Wanna_Get_Sick osc1 @33%, Omega_Force_One); multispeed/self-IRQ variants (Chase); the 0%-variant track signature.
+- **Dead ends** (do not retry): the wavetable-arp *semitone* model regresses (DMC's freq table isn't PAL → the Hz-delta onset-aligned capture is strictly more exact); a global tick→frame schedule; pitch-step / debounced onset detection; a minimal-embed SF2 (plays under siddump but crashes SF2II on load).
+
+---
+
 ## [3.14.0] - 2026-07-08
 
 ### Added — Rob Hubbard native SF2 player (V1 + V2)
