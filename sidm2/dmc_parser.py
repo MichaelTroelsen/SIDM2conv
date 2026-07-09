@@ -98,6 +98,19 @@ class DMCModule:
         for i in _find_all(d, [0xB9, None, None, 0x9D, 0x05, 0xD4]):
             lay.sound = d[i + 1] | (d[i + 2] << 8)
             break
+        # FALLBACK for the "state" generation (In_the_Mood class): AD/SR aren't
+        # written straight to $D405/6 — the note-on copies the record into per-voice
+        # state via `LDA base,Y / STA st,X / LDA base+1,Y / AND #$0F` (SR nibble).
+        # Anchor on that AD+SR read pair. (The snd generation is multi-idiom; other
+        # variants store the offset and index the table with a different shape — they
+        # need per-version dataflow RE, so this catches only the AND-#$0F sub-variant.)
+        if not lay.sound:
+            for i in _find_all(d, [0xB9, None, None, 0x9D, None, None,
+                                   0xB9, None, None, 0x29, 0x0F]):
+                base = d[i + 1] | (d[i + 2] << 8)
+                if (d[i + 7] | (d[i + 8] << 8)) == base + 1:   # AD (+0) then SR (+1)
+                    lay.sound = base
+                    break
 
         # freq table: two steps (avoids matching the sound table's AD/SR reads).
         #   (1) the freq accumulator lo/hi from the D400/D401 emit. The player

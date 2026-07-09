@@ -58,6 +58,17 @@ def test_split_freq_table_generation():
 
 
 @pytest.mark.skipif(not os.path.isdir(CORP), reason="Bjerregaard corpus absent")
+def test_state_generation_sound_fallback():
+    """The 'state' DMC generation (In_the_Mood class) copies the sound record into
+    per-voice state at note-on (LDA base,Y / STA st,X / LDA base+1,Y / AND #$0F)
+    rather than writing AD straight to $D405, so the primary sound signature misses.
+    The AD+SR-read fallback must locate the table."""
+    m, la, h = _mod("In_the_Mood")
+    assert m.lay.sound == 0x4500                 # located via the fallback
+    assert (m.lay.sector_lo and m.lay.freq and m.lay.trk_lo)  # all four located
+
+
+@pytest.mark.skipif(not os.path.isdir(CORP), reason="Bjerregaard corpus absent")
 def test_freq_table_is_chromatic():
     """The freq table must be a rising chromatic scale (~1.0595 per step)."""
     m, la, h = _mod("Balloon")
