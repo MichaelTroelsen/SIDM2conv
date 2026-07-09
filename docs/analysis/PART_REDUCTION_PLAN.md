@@ -103,8 +103,16 @@ enough that distinct_pulse collapses (Cybernoid_II sub0: ~50 → 4–6, **20 →
 100 %), and the **byte-exact crown jewel is safe** — Hawkeye sub2 is byte-identical before/after
 (both osc1 97.5 / osc2·3 100 over a 60 s window; a measurement-window artifact, unchanged by
 the flag). The win is smaller because once pulse collapses, MoN's splits are bound by the
-*other* caps (wave/filter/memory), not bundles. Left as **opt-in** (`MON_PULSE_CANON=1`)
-pending broader crown-jewel validation (Supremacy/Myth) before defaulting on for MoN.
+*other* caps (wave/filter/memory), not bundles.
+
+**Verdict after the crown-jewel check: NOT default-safe for MoN — kept opt-in.** Cybernoid is
+clean, but **Supremacy sub1 breaks** with `pulse_canon`: it drops 23 → 2 parts but part01
+falls to ~93 % and **part02 collapses (freq 7–18 %, pulse ~0)**. Once pulse collapses the
+adaptive splitter over-grows the windows, and Supremacy's structural-arc / boundary-continuation
+/ per-drive-filter pulse handling doesn't survive that (unlike Hubbard's `hp_engine`, which is
+byte-exact by construction). So MoN keeps `MON_PULSE_CANON=1` **opt-in only**; defaulting it on
+would regress the byte-exact crown jewel. A safe MoN default would need the splitter to still
+cap window growth by the *raw* (pre-canonical) bundle count, or a per-tune guard — future work.
 
 **Realizing the win:** Hubbard corpus rebuilt with `pulse_canon` on (`bin/hubbard_build_all.py`)
 → refresh `docs/SF2.md` via `pyscript/gen_sf2_index.py`.
