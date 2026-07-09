@@ -89,6 +89,19 @@ def test_indexed_store_sound_fallback():
 
 
 @pytest.mark.skipif(not os.path.isdir(CORP), reason="Bjerregaard corpus absent")
+def test_adc_vibrato_freq_generation():
+    """The ADC-vibrato generation (Domino_Dancing / Alf_TV_Theme / …) writes the
+    freq accumulator through a per-frame vibrato add: `LDA acc,X / CLC / ADC vib,X /
+    STA $D400,Y`. The accumulator is the LDA operand (not the ADC/vibrato operand);
+    the parser must find it and locate the (split) freq table chromatically."""
+    m, la, h = _mod("Domino_Dancing")
+    assert m.lay.freq and m.lay.freq_hi                # split table located
+    assert (m.lay.sector_lo and m.lay.sound and m.lay.trk_lo)
+    for note in (24, 36, 48, 60):
+        assert freq_to_semi(m.note_freq(note)) == note
+
+
+@pytest.mark.skipif(not os.path.isdir(CORP), reason="Bjerregaard corpus absent")
 def test_interleaved_track_generation():
     """Deel_2 / Fruitbank / Slimbo4 read the track ptr `TXA/ASL/TAY / LDA trk,Y`
     (interleaved lo/hi, indexed voice*2) — a read that also matched the sector sig

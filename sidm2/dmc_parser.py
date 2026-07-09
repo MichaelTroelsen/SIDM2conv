@@ -146,6 +146,21 @@ class DMCModule:
         for i in _find_all(d, [0xBD, None, None, 0x99, 0x01, 0xD4]):
             acc_hi = d[i + 1] | (d[i + 2] << 8)
             break
+        # ADC-vibrato generation (Domino_Dancing / Alf_TV_Theme / Music_Demo / Test):
+        # the accumulator is written with a per-frame vibrato add, so the emit is
+        #   LDA acc_lo,X / CLC / ADC vib,X / STA $D400,Y   (lo, carry cleared)
+        #   LDA acc_hi,X /       ADC vib,X / STA $D401,Y   (hi, carry propagates)
+        # -> the acc is the LDA operand, not the ADC (vibrato) operand.
+        if acc_lo is None:
+            for i in _find_all(d, [0xBD, None, None, 0x18, 0x7D, None, None,
+                                   0x99, 0x00, 0xD4]):
+                acc_lo = d[i + 1] | (d[i + 2] << 8)
+                break
+        if acc_hi is None:
+            for i in _find_all(d, [0xBD, None, None, 0x7D, None, None,
+                                   0x99, 0x01, 0xD4]):
+                acc_hi = d[i + 1] | (d[i + 2] << 8)
+                break
         #   (2) the freq TABLE load: LDA freq_lo,y / STA acc_lo,x ; LDA freq_hi,y /
         #       STA acc_hi,x. Two table layouts: INTERLEAVED (Balloon: one array,
         #       note*2 -> freq_hi == freq_lo+1) and SPLIT (the $3f00 "Fat"
