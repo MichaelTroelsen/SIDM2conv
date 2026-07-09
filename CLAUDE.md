@@ -174,6 +174,8 @@ SIDM2/
 
 **Before Commit**: Run `test-all.bat` (200+ tests) | Update README.md, CLAUDE.md, docs/ if changed | Run `update-inventory.bat` if files added/removed
 
+**After building native SF2s**: run `py -3 pyscript/gen_sf2_index.py` to refresh the complete build inventory (all songs + part counts) in `docs/SF2.md` (the curated fidelity tables above the GENERATED markers are hand-maintained).
+
 **On Version Bump**: Update `CLAUDE.md` (this file), `CHANGELOG.md`, AND `STORY.md` (the project narrative — append to per-version index; update Eras / deep-tech sections only if a new architectural finding warrants it). Bump `sidm2/__init__.py __version__` + `__build_date__`.
 
 **Debug**: Check `output.txt` → Compare dumps (`siddump_complete.py`) → Compare audio
