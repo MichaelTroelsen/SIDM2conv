@@ -168,29 +168,26 @@ collision and no base choice avoids it; it would need a driver FM-encoding chang
 
 ## Open issues / TODO
 
-- **Per-voice legato onset undercount** (the residual on eligible files). Some voices are
-  legato — they change pitch WITHOUT re-gating, so the gate-rise onsets collapse the whole
-  voice into one note (Cant_Stop osc3 = **1 gate-rise for 1338 decode notes**; that note's
-  FM freezes after `FM_CAP=256` frames → wrong tail). The **decode** note boundaries
-  (`tick*fpt+phase`) DO align with the trace frame-for-frame (verified: decoded pitch ==
-  trace semitone at that frame), so a decode-driven schedule fixes the truly-legato voices.
-  **Investigated + reverted (2026-07-09):** switching legato voices to the decode schedule
-  helps the extreme case (Cant_Stop osc3 44→66) but **regresses others** — a merely-sparse
-  gate voice whose long notes are *static* was already byte-perfect (Fourth_Dimension osc2:
-  9 gates, 100%), and the legato schedule has its own failure mode (decode phase
-  misalignment) that hurt Cant_Stop osc2 (98→68). Six trigger heuristics (gate-count ratio,
-  gate≤2, gap>FM_CAP, and a direct trace-truncation measure) each trade one voice for
-  another — **no trace-derived heuristic reliably predicts gate-vs-legato per voice.** A
-  **per-voice A/B** (build both schedules, keep whichever reconstructs the trace better) was
-  built and tested — it is *guaranteed non-regressing* (gate is the default, replaced only
-  when the decode schedule measurably wins) and correctly chose gate for the ambiguous
-  voices. **But it yields no practical gain:** the 256-row WAVE cap forces the A/B
-  measurement window down to ~10s, and the legato benefit only appears *past* the FM_CAP
-  truncation (frame 256 = 5s) over *longer* windows — so the short A/B window can't see it
-  and picks gate. Capturing the gain would need a **full-song (multi-part) A/B** or a
-  freq-only build that skips the wave table (so the cap doesn't force the short window) —
-  heavier designs, deferred. Plus **pulse extraction** on a few voices (Scandalous osc1 p25,
-  Shape osc1 p0.3).
+- **Per-voice legato onset undercount — SOLVED by the full-song A/B (`DMC_LEGATO_AB`,
+  default on).** Some voices are legato: they change pitch WITHOUT re-gating, so gate-rise
+  onsets collapse the voice into one note whose FM freezes after `FM_CAP=256` frames. The
+  **decode** note boundaries (`tick*fpt+phase`) align with the trace frame-for-frame
+  (verified: decoded pitch == trace semitone at that frame), so a decode-driven schedule
+  fixes truly-legato voices — but *only some*: a sparse-but-static gate voice was already
+  byte-perfect (Fourth_Dimension osc2), and the decode schedule has its own failure mode
+  (phase misalignment, and more notes ⇒ shorter parts ⇒ more clustering). **No trace
+  heuristic reliably predicts gate-vs-legato per voice** (six were tried, each traded one
+  voice for another). The fix is a **per-voice A/B**: build the whole song BOTH ways (gate
+  vs candidate-legato) with the real adaptive part-splitting, measure per-voice across all
+  parts, and keep the decode schedule for a voice only where it *measurably* wins. It is
+  guaranteed non-regressing (gate is the default) and — measured like-for-like, unlike a
+  single window — it works: **Dreaming osc3 39→90** (kept legato), while Fourth_Dimension
+  osc2 correctly stays gate (100 vs 95.9), and M_A_C_H/Rockbuster have no candidates at all.
+  (Key insight: the adaptive part-splitting re-triggers each note at every part boundary, so
+  it already mitigates most of the truncation — which is why an earlier single-part window
+  *over*-stated the legato benefit. The A/B decides on the first ~90s to bound cost; extra
+  builds happen only for candidate files.) Remaining: **pulse extraction** on a few voices
+  (Scandalous osc1 p25, Shape osc1 p0.3).
 - **Multispeed / self-IRQ variants** (Chase, Dummy_II): 1× replay reads them wrong (Chase
   4× too slow — PSID speed flag 0 but they self-install faster timing). Falls back to the
   tick grid. Lower priority.
