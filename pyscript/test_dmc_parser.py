@@ -69,6 +69,16 @@ def test_state_generation_sound_fallback():
 
 
 @pytest.mark.skipif(not os.path.isdir(CORP), reason="Bjerregaard corpus absent")
+def test_absolute_store_sound_fallback():
+    """The unrolled-per-voice generation (Thunder_Force / M_A_C_H) writes voice 1's
+    AD via `LDA base,Y / STA $D405` with an ABSOLUTE store (8D), not $D405,X — with
+    AD/SR consecutive, so base serves m.sound directly. The 8D fallback locates it."""
+    m, la, h = _mod("Thunder_Force")
+    assert m.lay.sound == 0x89DE                 # AD field == record base here
+    assert (m.lay.sector_lo and m.lay.freq and m.lay.trk_lo)
+
+
+@pytest.mark.skipif(not os.path.isdir(CORP), reason="Bjerregaard corpus absent")
 def test_freq_table_is_chromatic():
     """The freq table must be a rising chromatic scale (~1.0595 per step)."""
     m, la, h = _mod("Balloon")

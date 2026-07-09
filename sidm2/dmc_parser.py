@@ -98,6 +98,14 @@ class DMCModule:
         for i in _find_all(d, [0xB9, None, None, 0x9D, 0x05, 0xD4]):
             lay.sound = d[i + 1] | (d[i + 2] << 8)
             break
+        # FALLBACK for the absolute-store generation (Thunder_Force / M_A_C_H): the
+        # per-voice apply is UNROLLED, so voice 1's AD is `LDA base,Y / STA $D405`
+        # with an ABSOLUTE store (8D), not $D405,X. AD/SR are consecutive here, so
+        # base = the AD-field address serves m.sound (s[0]=AD, s[1]=SR).
+        if not lay.sound:
+            for i in _find_all(d, [0xB9, None, None, 0x8D, 0x05, 0xD4]):
+                lay.sound = d[i + 1] | (d[i + 2] << 8)
+                break
         # FALLBACK for the "state" generation (In_the_Mood class): AD/SR aren't
         # written straight to $D405/6 — the note-on copies the record into per-voice
         # state via `LDA base,Y / STA st,X / LDA base+1,Y / AND #$0F` (SR nibble).

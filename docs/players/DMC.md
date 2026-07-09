@@ -14,11 +14,11 @@ in `bin/DMC/`). Balloon.sid was the RE exemplar (load `$1000`, init `$1440`, pla
 pipeline).
 **Status:** format fully RE'd; parser + decoder done. Native Stage B **works end-to-end** —
 **Rockbuster ≈97%** (freq 65→97, waveform 87→100, pulse 100/100/100), most eligible files
-2/3 voices at 90–100%. Corpus survey (`bin/dmc_build_all.py --dry`, all 88 files): **21
-ELIGIBLE** (onset-aligned build; +3 from split-freq + state-generation support), **26
-FALLBACK** (tables located but onsets disagree — multispeed/self-IRQ/legato), **~41
-NO-TABLES** (signature miss — the corpus spans multiple DMC code generations; see below).
-`bin/` only, not registry-wired.
+2/3 voices at 90–100%. Corpus survey (`bin/dmc_build_all.py --dry`, all 88 files): **24
+ELIGIBLE** (onset-aligned build; +6 this cycle from split-freq + two sound-generation
+fallbacks), **~26 FALLBACK** (tables located but onsets disagree — multispeed/self-IRQ/
+legato), **~38 NO-TABLES** (signature miss — the corpus spans multiple DMC code
+generations; see below). `bin/` only, not registry-wired.
 
 ---
 
@@ -187,13 +187,15 @@ collision and no base choice avoids it; it would need a driver FM-encoding chang
   code generation, not a relocation. 12 files miss exactly one signature (nearest wins).
   **The `$3f00` "Fat" freq-only cluster is now handled** (split-freq support, above):
   Fat_6/First_Try_PSX → ELIGIBLE (build ~60–84%), Fat_Complete_2 → FALLBACK. The `snd`
-  generation copies the record into per-voice **state** at note-on (`LDA base,Y / STA st,X /
-  LDA base+1,Y / AND #$0F`) instead of writing AD to `$D405`; **In_the_Mood is now handled**
-  by an AD+SR-read fallback and builds **100/100/100 all three voices**. But it's multi-idiom
-  — the other 8 (`Spy_vs_Spy_III`/`Thunder_Force`/`M_A_C_H`/…) store a `sound×8` offset and
-  index the table with a different (per-version) shape, needing dataflow RE like the DRAX
-  cluster. Full coverage is a Hubbard-V1/V2-scale effort, high-leverage (unlocks
-  Domino_Dancing, Stormlord, Flimbos_Quest, Spy_vs_Spy_III, Crazy_Comets_remix, …).
+  generation is **multi-idiom**; three sub-variants now handled via gated fallbacks (each
+  runs only when the primary sig misses → no regression): **(1) state** (In_the_Mood — `LDA
+  base,Y / STA st,X / LDA base+1,Y / AND #$0F`) → **100/100/100**; **(2) absolute-store
+  unrolled** (Thunder_Force/M_A_C_H/Predictable_main — voice-1 AD via `LDA base,Y / STA
+  $D405` absolute `8D`, AD/SR consecutive) → M_A_C_H **100/100/100**, Thunder_Force v1 100 /
+  v2·v3 ~96, Predictable freq·pulse 100 (wf 50). Still NO-TABLES: Spy_vs_Spy_III (no
+  `ASL×3`), Special_Agent (`ASL×3` → abs offset var), Twilight_Beyond, Depeche_Mode_Songs —
+  each a distinct per-version code shape needing dataflow RE (like the DRAX cluster).
+  High-leverage (unlocks Domino_Dancing, Stormlord, Flimbos_Quest, Crazy_Comets_remix, …).
 - **Decode variants:** the "0% variant" cluster (Billie_Jean track sig mis-locates to the
   `$1440` code region) + the 70–90% `$C0` sector desync. Onset-align already covers many
   (it's decode-independent for pitch/timing). Low priority.
