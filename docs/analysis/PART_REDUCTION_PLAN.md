@@ -27,6 +27,24 @@ every ~64 distinct **(FM, pulse) combinations** — even though the wave/pulse/f
 (256 rows) and the instrument list (32) still have headroom. The bundle channel is the
 bottleneck; nothing else is close.
 
+## Phase 0 findings (measured) — the decomposition is player-dependent
+
+| Player (song, window) | distinct FM | distinct pulse | (FM,pulse) pairs | driver of the explosion |
+|---|---|---|---|---|
+| **DMC** (Shape, 30 s) | 88 (diverse) | 70 (diverse) | 116 | both axes — unique per-note arp + PWM |
+| **Hubbard** (Commando, 14 s) | **24 (structural, flat)** | 50 (grows) | 68 | **pulse** — FM is reused |
+
+The decompose (`BUNDLE_DECOMPOSE=1`) shows Hubbard's FM shapes are structural (24, flat as the
+window grows) while pulse diversity drives the split; DMC is diverse in *both*. So:
+- **DMC** — clustering (Phase 1) is a **dud** (proven); decoupling (Phase 2) is modest (~25 %).
+- **Hubbard / MoN** — decoupling (Phase 2) is **transformative**: move pulse off the command
+  channel and the bundle channel needs only ~24 FM slots (< 63) → **Commando's 45 parts could
+  collapse toward 1**. This is the big lever for the "all songs like Hubbard" corpus.
+
+**Revised priority: Phase 2 first** (decouple pulse — huge for Hubbard/MoN, modest for DMC),
+then Phase 3 (structural FM) for any residual FM-driven splits. Phase 1 is shelved (no lossless
+win where FM/pulse are both diverse).
+
 ## Plan (phased, lowest-risk first)
 
 ### Phase 0 — decompose the bundles *(quick, do first)*
