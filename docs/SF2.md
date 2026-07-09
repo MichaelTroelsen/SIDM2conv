@@ -2,14 +2,14 @@
 
 A consolidated list of the SF2 files SIDM2 produces: the **original player** (the C64 music
 routine the SID was written with), the **SF2 driver** that plays the converted file, and the
-measured **fidelity**. See [`docs/reference/ACCURACY_MATRIX.md`](docs/reference/ACCURACY_MATRIX.md)
-for the source-of-truth accuracy data and [`docs/players/`](docs/players/) for per-player detail.
+measured **fidelity**. See [`docs/reference/ACCURACY_MATRIX.md`](reference/ACCURACY_MATRIX.md)
+for the source-of-truth accuracy data and [`docs/players/`](players/) for per-player detail.
 
 **Fidelity** is per-frame register match vs the original SID, per voice, as **freq / waveform /
 pulse [/ filter]** (%). **100/100/100** = byte-exact on all three oscillators (the crown
 standard). "Original player" = the source C64 routine; "SF2 driver" = the target driver the
 converted SF2 runs on (a stock **Driver 11**, the native **Laxity** driver, or a from-scratch
-**native** driver we authored — see [`docs/players/NATIVE_DRIVER.md`](docs/players/NATIVE_DRIVER.md)).
+**native** driver we authored — see [`docs/players/NATIVE_DRIVER.md`](players/NATIVE_DRIVER.md)).
 
 ---
 
@@ -54,7 +54,7 @@ corpora and are not enumerated here — see the summary table.)*
 
 Native build: `py -3 bin/build_dmc_native_song.py SID/JohannesBjerregaard/<tune>.sid auto`.
 Per-voice **freq/wf/pulse** measured over a 15 s window (the real `auto` multi-part build
-scores higher on legato voices — see [`docs/players/DMC.md`](docs/players/DMC.md)). All use the
+scores higher on legato voices — see [`docs/players/DMC.md`](players/DMC.md)). All use the
 **native** driver. **33 of 88** files are onset-eligible; the strongest measured:
 
 | Tune | osc1 | osc2 | osc3 | Notes |
@@ -154,4 +154,4 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 
 *Generated 2026-07-09. Fidelity figures are the latest measured/documented values; native
 builds live in `bin/` and are not yet registry-wired into the auto pipeline. For the method
-behind the numbers see [`docs/players/PLAYBOOK.md`](docs/players/PLAYBOOK.md).*
+behind the numbers see [`docs/players/PLAYBOOK.md`](players/PLAYBOOK.md).*
