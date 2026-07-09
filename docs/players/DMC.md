@@ -168,13 +168,22 @@ collision and no base choice avoids it; it would need a driver FM-encoding chang
 
 ## Open issues / TODO
 
-- **Per-voice legato onset undercount** (the residual on eligible files). All 18 eligible
-  build (0 fail), but fidelity is heterogeneous per voice: Fourth_Dimension 100/100/100 all
-  three, Dreaming/Zoom near-perfect, but a legato voice whose gate-rise undercounts its
-  pitch-changes drops (Cant_Stop osc1/osc3 ~40, Dreaming osc3 51). Needs onset detection
-  that separates a legato note-change from an arp step (arp = every frame; note = at a tick
-  boundary + settled) — the known-open problem. Plus **pulse extraction** on a few voices
-  (Scandalous osc1 p25, Shape osc1 p0.3).
+- **Per-voice legato onset undercount** (the residual on eligible files). Some voices are
+  legato — they change pitch WITHOUT re-gating, so the gate-rise onsets collapse the whole
+  voice into one note (Cant_Stop osc3 = **1 gate-rise for 1338 decode notes**; that note's
+  FM freezes after `FM_CAP=256` frames → wrong tail). The **decode** note boundaries
+  (`tick*fpt+phase`) DO align with the trace frame-for-frame (verified: decoded pitch ==
+  trace semitone at that frame), so a decode-driven schedule fixes the truly-legato voices.
+  **Investigated + reverted (2026-07-09):** switching legato voices to the decode schedule
+  helps the extreme case (Cant_Stop osc3 44→66) but **regresses others** — a merely-sparse
+  gate voice whose long notes are *static* was already byte-perfect (Fourth_Dimension osc2:
+  9 gates, 100%), and the legato schedule has its own failure mode (decode phase
+  misalignment) that hurt Cant_Stop osc2 (98→68). Six trigger heuristics (gate-count ratio,
+  gate≤2, gap>FM_CAP, and a direct trace-truncation measure) each trade one voice for
+  another — **no trace-derived heuristic reliably predicts gate-vs-legato per voice.** The
+  clean path is a **per-voice A/B**: build both schedules for each voice and keep whichever
+  reconstructs the trace better (expensive; a real design, not a heuristic). Plus **pulse
+  extraction** on a few voices (Scandalous osc1 p25, Shape osc1 p0.3).
 - **Multispeed / self-IRQ variants** (Chase, Dummy_II): 1× replay reads them wrong (Chase
   4× too slow — PSID speed flag 0 but they self-install faster timing). Falls back to the
   tick grid. Lower priority.
