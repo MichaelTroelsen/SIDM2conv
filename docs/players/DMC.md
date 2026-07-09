@@ -14,10 +14,10 @@ in `bin/DMC/`). Balloon.sid was the RE exemplar (load `$1000`, init `$1440`, pla
 pipeline).
 **Status:** format fully RE'd; parser + decoder done. Native Stage B **works end-to-end** —
 **Rockbuster ≈97%** (freq 65→97, waveform 87→100, pulse 100/100/100), most eligible files
-2/3 voices at 90–100%. Corpus survey (`bin/dmc_build_all.py --dry`, all 88 files): **24
-ELIGIBLE** (onset-aligned build; +6 this cycle from split-freq + two sound-generation
+2/3 voices at 90–100%. Corpus survey (`bin/dmc_build_all.py --dry`, all 88 files): **27
+ELIGIBLE** (onset-aligned build; +9 this cycle from split-freq + three sound-generation
 fallbacks), **~26 FALLBACK** (tables located but onsets disagree — multispeed/self-IRQ/
-legato), **~38 NO-TABLES** (signature miss — the corpus spans multiple DMC code
+legato), **~35 NO-TABLES** (signature miss — the corpus spans multiple DMC code
 generations; see below). `bin/` only, not registry-wired.
 
 ---
@@ -192,10 +192,14 @@ collision and no base choice avoids it; it would need a driver FM-encoding chang
   base,Y / STA st,X / LDA base+1,Y / AND #$0F`) → **100/100/100**; **(2) absolute-store
   unrolled** (Thunder_Force/M_A_C_H/Predictable_main — voice-1 AD via `LDA base,Y / STA
   $D405` absolute `8D`, AD/SR consecutive) → M_A_C_H **100/100/100**, Thunder_Force v1 100 /
-  v2·v3 ~96, Predictable freq·pulse 100 (wf 50). Still NO-TABLES: Spy_vs_Spy_III (no
-  `ASL×3`), Special_Agent (`ASL×3` → abs offset var), Twilight_Beyond, Depeche_Mode_Songs —
-  each a distinct per-version code shape needing dataflow RE (like the DRAX cluster).
-  High-leverage (unlocks Domino_Dancing, Stormlord, Flimbos_Quest, Crazy_Comets_remix, …).
+  v2·v3 ~96, Predictable freq·pulse 100 (wf 50); **(3) stack/indexed-store** (Special_Agent
+  /Spy_vs_Spy_III/Twilight_Beyond — the store index is reloaded between field read and SID
+  write: `LDA field,Y / LDY var,X / STA $D405,Y` for AD, `/STA $D406,Y` for SR with AD=SR−1)
+  → Spy v1 & Special_Agent v1·v3 **100/100/100**, Twilight v1 100. That's **7 of the 9
+  `snd`-only files** unlocked. Still NO-TABLES: **Depeche_Mode_Songs** (multi-song, yet
+  another idiom) + the multi-signature-miss files. Remaining full coverage is per-version
+  dataflow RE (like the DRAX cluster), high-leverage (unlocks Domino_Dancing, Stormlord,
+  Flimbos_Quest, Crazy_Comets_remix, …).
 - **Decode variants:** the "0% variant" cluster (Billie_Jean track sig mis-locates to the
   `$1440` code region) + the 70–90% `$C0` sector desync. Onset-align already covers many
   (it's decode-independent for pitch/timing). Low priority.

@@ -79,6 +79,16 @@ def test_absolute_store_sound_fallback():
 
 
 @pytest.mark.skipif(not os.path.isdir(CORP), reason="Bjerregaard corpus absent")
+def test_indexed_store_sound_fallback():
+    """The stack/indexed-store generations (Special_Agent / Spy / Twilight) reload
+    the store index between the field read and the SID write:
+      LDA field,Y / LDY var,X / STA $D405,Y  (AD)  or  ... / STA $D406,Y (SR, AD=SR-1).
+    Two more gated fallbacks locate the AD field."""
+    assert _mod("Special_Agent")[0].lay.sound == 0x5AE1    # AD via STA $D405,Y
+    assert _mod("Spy_vs_Spy_III")[0].lay.sound == 0x6517   # AD = (SR $6518) - 1
+
+
+@pytest.mark.skipif(not os.path.isdir(CORP), reason="Bjerregaard corpus absent")
 def test_freq_table_is_chromatic():
     """The freq table must be a rising chromatic scale (~1.0595 per step)."""
     m, la, h = _mod("Balloon")

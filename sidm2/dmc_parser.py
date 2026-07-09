@@ -119,6 +119,19 @@ class DMCModule:
                 if (d[i + 7] | (d[i + 8] << 8)) == base + 1:   # AD (+0) then SR (+1)
                     lay.sound = base
                     break
+        # FALLBACK for the stack/indexed-store generations (Special_Agent / Spy /
+        # Twilight): the per-voice apply reloads the store index (`LDY var,X`) between
+        # the field read and the SID write, so the AD/SR write is
+        #   LDA field,Y / LDY var,X / STA $D405,Y   (AD, sound = field)   or
+        #   LDA field,Y / LDY var,X / STA $D406,Y   (SR, sound = field-1; AD/SR adjacent)
+        if not lay.sound:
+            for i in _find_all(d, [0xB9, None, None, 0xBC, None, None, 0x99, 0x05, 0xD4]):
+                lay.sound = d[i + 1] | (d[i + 2] << 8)         # AD field
+                break
+        if not lay.sound:
+            for i in _find_all(d, [0xB9, None, None, 0xBC, None, None, 0x99, 0x06, 0xD4]):
+                lay.sound = (d[i + 1] | (d[i + 2] << 8)) - 1   # SR field -> AD = SR-1
+                break
 
         # freq table: two steps (avoids matching the sound table's AD/SR reads).
         #   (1) the freq accumulator lo/hi from the D400/D401 emit. The player
