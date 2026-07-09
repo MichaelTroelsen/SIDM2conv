@@ -29,14 +29,60 @@ def _pal(note):
     return FREQ_TABLE_LO[n] | (FREQ_TABLE_HI[n] << 8)
 
 
-def _sem(frames, v, onset):
-    """Semitone at a note's onset frame (settled past the 1-frame attack)."""
-    for k in (1, 2, 0):
-        idx = onset + k
-        f = frames[idx][0][v]['freq'] if idx < len(frames) else 0
-        if f:
-            return freq_to_semi(f)
-    return 48
+SEM_MODE = os.environ.get("DMC_SEM_MODE", "adapt").lower()
+
+
+def _freq_at(frames, v, idx):
+    return frames[idx][0][v]['freq'] if 0 <= idx < len(frames) else 0
+
+
+def _sem(frames, v, onset, end=None):
+    """Base semitone for a note = the semitone the driver plays on its TRIGGER
+    frame (frame 0 holds `base`; the FM capture reproduces frames 1+ exactly).
+    The metric-optimal base is therefore the original's freq at the note's actual
+    gate-rise frame — but the gate-rise sits at onset+0 for some voices and
+    onset+1 for others (gate-then-freq timing), and a 1-frame arp attack SPIKE at
+    onset+1 traps a fixed offset. `adapt` resolves it per note."""
+    if SEM_MODE == "spike":                       # legacy fixed order (1,2,0)
+        for k in (1, 2, 0):
+            f = _freq_at(frames, v, onset + k)
+            if f:
+                return freq_to_semi(f)
+        return 48
+    if SEM_MODE == "trig":                         # frame 0 first (skip zeros)
+        for k in (0, 1, 2):
+            f = _freq_at(frames, v, onset + k)
+            if f:
+                return freq_to_semi(f)
+        return 48
+    # adapt: base = the freq at the note's GATE-RISE frame (the driver holds `base`
+    # on the trigger frame; the FM capture reproduces every later frame exactly, so
+    # this is the metric-optimal base for frame 0). ONE exception: frame 1's jump is
+    # encoded as delta1 = (trace[o+1] - base); the driver's FM dispatch reads a raw
+    # delta whose HIGH BYTE is $40-$43 as a SCALED-vibrato entry instead (an
+    # unavoidable format collision -> the whole note corrupts). That only bites a
+    # big UPWARD jump from a low base (a drum/arp voice whose gate-rise sits an
+    # octave-plus below its loud excursion). When it would collide, seat the base at
+    # the high value instead (delta1 -> ~0, and the downward return delta has
+    # hi >= $bc, safe) — one frame of the base pitch is wrong, but the note plays.
+    o = onset
+    for k in range(max(0, onset - 1), onset + 3):  # snap to the wf&1 gate-rise
+        wf = frames[k][0][v]['wf'] if k < len(frames) else 0
+        pwf = frames[k - 1][0][v]['wf'] if 0 < k < len(frames) else 0
+        if (wf & 1) and not (pwf & 1):
+            o = k
+            break
+    f0 = _freq_at(frames, v, o) or _freq_at(frames, v, o + 1) \
+        or _freq_at(frames, v, o + 2)
+    if not f0:
+        return 48
+    s0 = freq_to_semi(f0)
+    f1 = _freq_at(frames, v, o + 1)
+    if f1:
+        delta1 = (f1 - _pal(s0)) & 0xFFFF
+        if ((delta1 >> 8) & 0xFC) == 0x40:         # unencodable raw delta
+            return freq_to_semi(f1)
+    return s0
 
 SID = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
     "SID", "JohannesBjerregaard", "Rockbuster.sid")
@@ -80,7 +126,7 @@ class DMCShim:
                     while ci < len(changes) and changes[ci][0] <= o + 2:
                         cur = changes[ci][1]; ci += 1
                     nxt = ons[i + 1] if i + 1 < len(ons) else o + 8
-                    note = _sem(frames, v, o) if frames is not None else 48
+                    note = _sem(frames, v, o, nxt) if frames is not None else 48
                     out.append(MONEvent(note=note, dur=max(1, nxt - o),
                                         instr=cur, wprog=0, retrig=True))
                 continue

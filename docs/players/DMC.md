@@ -133,17 +133,32 @@ Run: `py -3 bin/build_dmc_native_song.py SID/JohannesBjerregaard/<name>.sid [sec
 `mon_fidelity.per_frame`, diff `freq_to_semi`/wf/pulse over a **non-zero** window
 (`secs=0` yields a vacuous 100.0 — a silent SF2 measures "perfect").
 
+## Base-note resolution (`_sem`, RESOLVED 2026-07-09)
+
+The driver holds `base` (= `note_freq(note)`) on each note's **trigger frame**, and the FM
+capture reproduces every *later* frame exactly — so the metric-optimal base is the
+original's freq at the note's **gate-rise frame** (frame 0). `_sem` (mode `adapt`, default)
+snaps to the `wf&1` gate-rise and takes that semitone. One exception makes it non-trivial:
+
+- **The FM `$40-$43` high-byte collision.** The driver's FM dispatch reads a raw Hz delta
+  whose *high byte* is `$40-$43` as a **scaled-vibrato** entry, not a delta — an
+  unencodable-delta format collision that corrupts the whole note. Only `delta1 =
+  trace[o+1] − base` depends on the base (all later deltas are base-independent). A
+  drum/arp voice whose gate-rise sits an octave-plus **below** its loud excursion (e.g.
+  Tiny_Symphony osc3: gate-rise semi 24, then a noise spike at semi 72 → `delta1 = 16710 =
+  $4146`, hi `$41`) collides. `adapt` detects this and seats the base at the **high** value
+  instead (`delta1 → ~0`; the downward return delta has hi `≥ $bc`, safe) — one frame of
+  base pitch is wrong, but the note plays.
+
+Result (15 s windows, freq %): **Wanna_Get_Sick osc1 66→100, Blobby osc1/2 75/87→87/100,
+Tiny_Symphony osc1 98→100 while osc3 holds 98** (a fixed frame-0 base crashed osc3 to 1.6).
+Rockbuster unchanged (~97). Env `DMC_SEM_MODE=spike|trig|adapt` selects the legacy
+fixed-order resolvers for comparison. *(Latent, unfixed: a base-independent mid-note
+`+$40xx` single-frame jump — a fast arp that repeats the octave-plus leap — hits the same
+collision and no base choice avoids it; it would need a driver FM-encoding change.)*
+
 ## Open issues / TODO
 
-- **Per-voice adaptive base-note resolution** (the primary residual). Fast-arp voices
-  (e.g. Wanna_Get_Sick osc1 @33%, Omega_Force_One) have a **1-frame arp attack spike** at
-  onset+1; the `_sem` resolver picks a *fixed* onset frame, and no fixed frame works for
-  all voices (frame o+1 traps the spike; frame 0 helps Blobby/Billie but crashes
-  Tiny_Symphony v3). Fix must be **adaptive per note** — pick the base semitone that
-  minimises total FM offset over the note / excludes 1-frame spikes — validated on the
-  opposing-pull pair (Wanna osc1 vs Tiny v3) without regressing Rockbuster/Blobby.
-  **Caveat:** Wanna v1 stayed 33% under *every* base choice and *both* FM representations
-  tried → its residual may be structural (its fast alternating arp), not base-note.
 - **Multispeed / self-IRQ variants** (Chase, Dummy_II): 1× replay reads them wrong (Chase
   4× too slow — PSID speed flag 0 but they self-install faster timing). Falls back to the
   tick grid. Lower priority.
