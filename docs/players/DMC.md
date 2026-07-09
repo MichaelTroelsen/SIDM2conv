@@ -14,10 +14,11 @@ in `bin/DMC/`). Balloon.sid was the RE exemplar (load `$1000`, init `$1440`, pla
 pipeline).
 **Status:** format fully RE'd; parser + decoder done. Native Stage B **works end-to-end** —
 **Rockbuster ≈97%** (freq 65→97, waveform 87→100, pulse 100/100/100), most eligible files
-2/3 voices at 90–100%. Corpus survey (`bin/dmc_build_all.py --dry`, all 88 files): **18
-ELIGIBLE** (onset-aligned build), **26 FALLBACK** (tables located but onsets disagree —
-multispeed/self-IRQ/legato), **44 NO-TABLES** (signature miss — the corpus spans multiple
-DMC code generations; see below). `bin/` only, not registry-wired.
+2/3 voices at 90–100%. Corpus survey (`bin/dmc_build_all.py --dry`, all 88 files): **20
+ELIGIBLE** (onset-aligned build; +2 from split-freq support), **26 FALLBACK** (tables
+located but onsets disagree — multispeed/self-IRQ/legato), **~42 NO-TABLES** (signature miss
+— the corpus spans multiple DMC code generations; see below). `bin/` only, not
+registry-wired.
 
 ---
 
@@ -80,7 +81,10 @@ ends the sector → advance the track position.
 - **Vibrato** (Sound +5): per-voice 16-bit accumulator `$1011,x`/`$1014,x`, phase `$103A,x`.
 - **Filter** (Sound +7 bit0 → `$D417` via per-voice masks; Sound +6 → `$100A`).
 
-**Freq table:** `$135F`, **interleaved lo/hi** (indexed by note × 2).
+**Freq table:** two layouts across DMC generations — **interleaved lo/hi** (Balloon `$135F`,
+indexed by note × 2) or **split** (separate lo/hi arrays like MoN — the `$3f00` "Fat"
+generation). The parser detects both (`freq_hi == 0` ⇒ interleaved) and `note_freq` reads
+each accordingly.
 
 **Wavetables — the DMC signature:** `$1A00` (arp) / `$1B00` (waveform), **advanced one
 step per frame** → a fast per-frame arpeggio. The freq-table **row = the wavetable arp
@@ -180,10 +184,12 @@ collision and no base choice avoids it; it would need a driver FM-encoding chang
   `init+$7764`, …). Miss counts: `snd` 32, `frq` 32, `trk` 16, `sec` 9. The variants write
   the SID envelope registers with **`STA $D405,Y` (`99`) in a batched store block** rather
   than the `LDA abs,Y / STA $D405,X` (`9D`) idiom the parser anchors on — i.e. a different
-  code generation, not a relocation. 12 files miss exactly one signature (9 only `snd`:
-  In_the_Mood/Spy_vs_Spy_III/Thunder_Force/M_A_C_H/…; 3 only `frq`: the `$3f00` Fat cluster)
-  and are the nearest wins. Generalising across generations is a Hubbard-V1/V2-scale RE
-  effort (per-generation signatures), high-leverage (unlocks Domino_Dancing, Stormlord,
+  code generation, not a relocation. 12 files miss exactly one signature (nearest wins).
+  **The `$3f00` "Fat" freq-only cluster is now handled** (split-freq support, above):
+  Fat_6/First_Try_PSX → ELIGIBLE (build ~60–84%), Fat_Complete_2 → FALLBACK. The remaining 9
+  miss only `snd` (In_the_Mood/Spy_vs_Spy_III/Thunder_Force/M_A_C_H/…) — the `STA $D405,Y`
+  batched-store generation. Generalising the rest is a Hubbard-V1/V2-scale RE effort
+  (per-generation signatures), high-leverage (unlocks Domino_Dancing, Stormlord,
   Flimbos_Quest, Spy_vs_Spy_III, Crazy_Comets_remix, …).
 - **Decode variants:** the "0% variant" cluster (Billie_Jean track sig mis-locates to the
   `$1440` code region) + the 70–90% `$C0` sector desync. Onset-align already covers many

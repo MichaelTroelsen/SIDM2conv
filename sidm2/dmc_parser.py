@@ -54,7 +54,8 @@ class DMCLayout:
     sector_lo: int = 0        # sector-pointer table lo / hi (indexed by sector#)
     sector_hi: int = 0
     sound: int = 0            # 8-byte sound (instrument) records
-    freq: int = 0            # interleaved lo/hi freq table (note*2)
+    freq: int = 0            # freq table lo bytes (interleaved note*2 if freq_hi==0)
+    freq_hi: int = 0         # 0 = interleaved (freq[note*2]); else SPLIT hi array (freq[note] / freq_hi[note])
     trk_lo: int = 0          # per-voice track (orderlist) pointer tables (lo/hi)
     trk_hi: int = 0
     trk_pos: int = 0         # per-voice track-position array (init state)
@@ -109,15 +110,20 @@ class DMCModule:
         for i in _find_all(d, [0xBD, None, None, 0x99, 0x01, 0xD4]):
             acc_hi = d[i + 1] | (d[i + 2] << 8)
             break
-        #   (2) the freq TABLE load: LDA freq,y / STA acc_lo,x ; LDA freq+1,y /
-        #       STA acc_hi,x  (interleaved table into the stride-3 accumulator)
+        #   (2) the freq TABLE load: LDA freq_lo,y / STA acc_lo,x ; LDA freq_hi,y /
+        #       STA acc_hi,x. Two table layouts: INTERLEAVED (Balloon: one array,
+        #       note*2 -> freq_hi == freq_lo+1) and SPLIT (the $3f00 "Fat"
+        #       generation: separate lo/hi arrays, like MoN -> freq_hi far above).
         if acc_lo is not None and acc_hi is not None:
             for i in _find_all(d, [0xB9, None, None, 0x9D, acc_lo & 0xFF, acc_lo >> 8,
                                    0xB9, None, None, 0x9D, acc_hi & 0xFF, acc_hi >> 8]):
                 lo = d[i + 1] | (d[i + 2] << 8)
                 hi = d[i + 7] | (d[i + 8] << 8)
-                if hi == lo + 1:
+                if hi == lo + 1:              # interleaved: freq[note*2]
                     lay.freq = lo
+                    break
+                if hi > lo + 1:              # split: freq_lo[note] / freq_hi[note]
+                    lay.freq, lay.freq_hi = lo, hi
                     break
 
         # per-voice track pointer tables: LDA trk_lo,x / STA z ; LDA trk_hi,x / STA z
@@ -160,7 +166,10 @@ class DMCModule:
                 | (self._u8(self.lay.sector_hi + sector) << 8))
 
     def note_freq(self, note):
-        base = self.lay.freq + (note & 0x7F) * 2
+        n = note & 0x7F
+        if self.lay.freq_hi:                      # SPLIT lo/hi arrays
+            return self._u8(self.lay.freq + n) | (self._u8(self.lay.freq_hi + n) << 8)
+        base = self.lay.freq + n * 2              # INTERLEAVED (note*2)
         return self._u8(base) | (self._u8(base + 1) << 8)
 
     def sound(self, n):

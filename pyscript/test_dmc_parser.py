@@ -45,6 +45,19 @@ def test_relocation_safe():
 
 
 @pytest.mark.skipif(not os.path.isdir(CORP), reason="Bjerregaard corpus absent")
+def test_split_freq_table_generation():
+    """The $3f00 'Fat' DMC generation uses a SPLIT freq table (separate lo/hi
+    arrays, like MoN) rather than Balloon's interleaved note*2 layout. The parser
+    must locate both arrays and note_freq must read them as a chromatic scale."""
+    m, la, h = _mod("Fat_6")
+    assert m.lay.freq and m.lay.freq_hi          # split detected (hi array present)
+    assert m.lay.freq_hi > m.lay.freq + 1        # distinct arrays, not interleaved
+    assert (m.lay.sector_lo and m.lay.sound and m.lay.trk_lo)  # all four located
+    for note in (24, 36, 48, 60):                # exact octaves -> chromatic scale
+        assert freq_to_semi(m.note_freq(note)) == note
+
+
+@pytest.mark.skipif(not os.path.isdir(CORP), reason="Bjerregaard corpus absent")
 def test_freq_table_is_chromatic():
     """The freq table must be a rising chromatic scale (~1.0595 per step)."""
     m, la, h = _mod("Balloon")
