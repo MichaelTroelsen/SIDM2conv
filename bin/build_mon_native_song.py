@@ -281,6 +281,23 @@ def _hr_rows(rows, hard_restart):
     return rows
 
 
+def prune_stale_parts(prefix, nparts):
+    """Delete `<prefix>_partNN.sf2` files with NN > nparts. A rebuild that packs
+    into fewer parts than a previous era otherwise leaves the old higher-numbered
+    parts on disk — the inventory then reports phantom files (Supremacy_sub2
+    showed 70 when the real build was 10) and a listener plays a stale tail."""
+    import glob
+    import re
+    removed = 0
+    for f in glob.glob(f"{prefix}_part*.sf2"):
+        mm = re.search(r"_part(\d+)\.sf2$", f)
+        if mm and int(mm.group(1)) > nparts:
+            os.remove(f)
+            removed += 1
+    if removed:
+        print(f"  pruned {removed} stale part files beyond part{nparts:02d}")
+
+
 def _snap_onset(m, frames, v, fr):
     """Per-note capture alignment (shim opt-in `snap_gate`): snap `fr` to the
     actual GATE-RISE frame in the trace. Hubbard drums gate for exactly ONE
@@ -1662,6 +1679,8 @@ def main():
                                    win=(t0, t1), traces=traces)
             out = os.path.join(ROOT, "out", "mon", f"{base}_sub{sub}_part{part:02d}.sf2")
             emit_one(m, br, out, f"part {part}/{nparts} ({t0 // 50}-{t1 // 50}s)")
+        prune_stale_parts(os.path.join(ROOT, "out", "mon", f"{base}_sub{sub}"),
+                          nparts)
         return
 
     br = build_native_song(m, sid, sub, idx_map, instr_rows)

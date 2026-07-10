@@ -415,6 +415,8 @@ def main():
                            f"{base}_song{SONG}_part{part:02d}.sf2")
         BM.emit_one(shim, br, out,
                     f"part {part}/{len(bounds)} ({t0 // 50}-{t1 // 50}s)")
+    BM.prune_stale_parts(os.path.join(ROOT, "out", "hubbard",
+                                      f"{base}_song{SONG}"), len(bounds))
 
 
 if __name__ == "__main__":

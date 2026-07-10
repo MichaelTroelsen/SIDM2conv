@@ -250,6 +250,9 @@ def build_song(shim, base_name, traces, span, emit=True):
             BM.emit_one(shim, br, out, f"part {part}/{len(bounds)} "
                         f"({t0 // 50}-{t1 // 50}s)")
         parts.append((out, t0, t1))
+    if emit:
+        BM.prune_stale_parts(os.path.join(ROOT, "out", "dmc", base_name),
+                             len(bounds))
     return parts
 
 
