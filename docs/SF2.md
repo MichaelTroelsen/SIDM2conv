@@ -55,7 +55,7 @@ corpora and are not enumerated here — see the summary table.)*
 Native build: `py -3 bin/build_dmc_native_song.py SID/JohannesBjerregaard/<tune>.sid auto`.
 Per-voice **freq/wf/pulse** measured over a 15 s window (the real `auto` multi-part build
 scores higher on legato voices — see [`docs/players/DMC.md`](players/DMC.md)). All use the
-**native** driver. **33 of 88** files are onset-eligible; the strongest measured:
+**native** driver. **41 of 88** files are onset-eligible; the strongest measured:
 
 | Tune | osc1 | osc2 | osc3 | Notes |
 |---|---|---|---|---|
@@ -158,7 +158,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 
 ## Complete build inventory
 
-**161 songs built** across 5 native players (each song may span several SF2 parts).
+**162 songs built** across 5 native players (each song may span several SF2 parts).
 
 *Auto-generated from the built SF2 files under `out/` by `pyscript/gen_sf2_index.py` — re-run after building more tunes. "Parts" = the number of SF2 files a song is split into (a long song exceeds the SF2II table/`$D000` caps and ships as windowed parts; 1 = a single file).*
 
@@ -199,7 +199,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Wanna Get Sick | 1 |
 | Zoom | 1 |
 
-### Maniacs of Noise — Jeroen Tel  ·  `native`  ·  24 songs / 266 SF2 files
+### Maniacs of Noise — Jeroen Tel  ·  `native`  ·  25 songs / 268 SF2 files
 
 | Song | Parts |
 |------|------:|
@@ -222,13 +222,14 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Pal sine hoener tune 1 sub0 | 3 |
 | Sample sub0 | 4 |
 | Supremacy sub0 | 16 |
+| Supremacy sub1 | 2 |
 | Supremacy sub2 | 70 |
 | Thats preview sub0 | 1 |
 | Tomcat sub0 | 3 |
 | Viool Tello sub0 | 1 |
 | Wizzy sub0 | 3 |
 
-### Rob Hubbard — Rob Hubbard  ·  `native`  ·  61 songs / 1581 SF2 files
+### Rob Hubbard — Rob Hubbard  ·  `native`  ·  61 songs / 529 SF2 files
 
 | Song | Parts |
 |------|------:|
@@ -240,7 +241,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Action Biker song0 | 1 |
 | Action Biker song1 | 1 |
 | Action Biker song2 | 1 |
-| Auf Wiedersehen Monty song0 | 274 |
+| Auf Wiedersehen Monty song0 | 43 |
 | Chimera song0 | 12 |
 | Chimera song1 | 1 |
 | Commando song0 | 4 |
@@ -285,10 +286,10 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Monty on the Run song2 | 1 |
 | Ninja song0 | 21 |
 | One Man and his Droid song0 | 11 |
-| Saboteur II song0 | 112 |
+| Saboteur II song0 | 86 |
 | Sanxion song0 | 28 |
-| Shockway Rider song0 | 638 |
-| Star Paws song0 | 188 |
+| Shockway Rider song0 | 21 |
+| Star Paws song0 | 10 |
 | Thing on a Spring song0 | 4 |
 | Zoids song0 | 4 |
 | Zoids song1 | 1 |
