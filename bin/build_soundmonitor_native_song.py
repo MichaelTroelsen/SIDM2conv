@@ -161,8 +161,13 @@ class SMShim:
                     while gi < len(gates) and gates[gi] <= f:
                         last_evt = gates[gi]
                         gi += 1
+                    # split margin: decode boundaries arrive every ~12-30
+                    # frames, so a threshold of FM_CAP left events up to ~280
+                    # frames — the tail past the 256-frame FM capture FROZE
+                    # (Dance's glides). Split at FM_CAP-40 so events stay
+                    # under the capture window.
                     if (f >= 0 and note != prev and f not in gate_near
-                            and f - last_evt >= BM.FM_CAP - 2):
+                            and f - last_evt >= BM.FM_CAP - 40):
                         tie_set.add(f)
                         last_evt = f
                     prev = note
