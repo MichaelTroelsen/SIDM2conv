@@ -114,6 +114,7 @@ class SMShim:
             notes = [(fr, note, instr) for fr, kind, note, instr in streams[v]
                      if kind in ('note', 'legato')]
             changes = [(fr, instr) for fr, note, instr in notes]
+            tie_set = set()
             if v in legato_set:
                 # decode-driven: one note per PITCH CHANGE at its decode frame
                 # (aligned by `phase`) — the schedule for voices whose gated
@@ -127,6 +128,24 @@ class SMShim:
             else:
                 ons = list(onsets[v]) if onsets else [fr + phase
                                                       for fr, _, _ in notes]
+                # TIE SPLITS: SM notes that arrive while the gate is already on
+                # change pitch WITHOUT a gate-rise (mixed voices do this per
+                # section, so the per-voice legato A/B can't catch it — Fuck_Off
+                # osc2 held a wrong pitch for 1080 frames). The decode knows
+                # every note boundary; add the uncovered ones as TIE events
+                # (the native driver re-seats freq + starts a fresh FM/wave
+                # capture without restarting the envelope — the Supremacy $FB
+                # mechanism).
+                gate_near = set()
+                for g in ons:
+                    gate_near.update(range(g - 2, g + 3))
+                prev = None
+                for fr, note, instr in notes:
+                    f = fr + phase
+                    if f >= 0 and note != prev and f not in gate_near:
+                        tie_set.add(f)
+                    prev = note
+                ons = sorted(set(ons) | tie_set)
             if not ons:
                 continue
             if ons[0] > 0:
@@ -140,8 +159,10 @@ class SMShim:
                     ci += 1
                 nxt = ons[i + 1] if i + 1 < len(ons) else min(o + 8, span)
                 note = _sem(frames, v, o) if frames is not None else 48
+                tie = o in tie_set
                 out.append(MONEvent(note=note, dur=max(1, nxt - o),
-                                    instr=cur, wprog=0, retrig=True))
+                                    instr=cur, wprog=0, retrig=not tie,
+                                    tie=tie))
 
     @property
     def frames_per_tick(self):

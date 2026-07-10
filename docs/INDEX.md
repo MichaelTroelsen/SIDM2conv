@@ -19,6 +19,9 @@
 | [players/GALWAY.md](players/GALWAY.md) | Martin Galway (native driver ~100%, 40-tune corpus) |
 | [players/MON.md](players/MON.md) | Maniacs of Noise / Jeroen Tel — Hawkeye, Cybernoid, Myth, Supremacy (byte-exact native) |
 | [players/ROMUZAK.md](players/ROMUZAK.md) | ROMUZAK V6.3 (native driver, byte-exact wf/pulse/AD-SR) |
+| [players/HUBBARD.md](players/HUBBARD.md) | Rob Hubbard V1+V2 (native; V1 pulse/freq/filter 100%) |
+| [players/DMC.md](players/DMC.md) | DMC / Johannes Bjerregaard (native; Rockbuster ≈97%) |
+| [players/SOUNDMONITOR.md](players/SOUNDMONITOR.md) | Sound Monitor / Hülsbeck (Stage A 32/33 voices; native first cut) |
 | [players/FUTURECOMPOSER.md](players/FUTURECOMPOSER.md) | Future Composer (Stage A) |
 | [players/DRIVER11.md](players/DRIVER11.md) | SF2-exported / Driver 11 (100%) |
 | [players/NP20.md](players/NP20.md) | NewPlayer 20 (70–90%) |

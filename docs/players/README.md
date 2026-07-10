@@ -18,6 +18,7 @@ One document per **player** (the C64 music routine a SID file was made with). SI
 | **ROMUZAK V6.3** | [ROMUZAK.md](ROMUZAK.md) | `bin/` only | native: byte-exact wf/pulse/AD-SR (~98–100%) | `SID/Fun_Fun/` (Delirious, Road_of_Excess) |
 | **Rob Hubbard** (V1 + V2/Delta) — Monty, Commando, Zoids, Last V8, Delta, Lightforce, … | [HUBBARD.md](HUBBARD.md) | `bin/` only | V1 native: pulse/freq/filter **100%**; V2 Delta theme 100% (wf 85–96%) | `SID/Hubbard_Rob/` (95); ~19 built, ~28 decode ≥95% |
 | **DMC (Demo Music Creator)** — Johannes Bjerregaard | [DMC.md](DMC.md) | `bin/` only | native: **Rockbuster ≈97%** (freq/wf/pulse); 21/43 onset-eligible, most 2/3 voices 90–100% | `SID/JohannesBjerregaard/` (88) |
+| **Sound Monitor (Musicmaster)** — Chris Hülsbeck '86 | [SOUNDMONITOR.md](SOUNDMONITOR.md) | `bin/` only | Stage A 32/33 voices note-accurate; native: Final_Luv 98–99.9 skew-tolerant every register (1 part / 161s) | `SID/Fun_Fun/` (11 × `$C000/$C475`) |
 | **Future Composer** | [FUTURECOMPOSER.md](FUTURECOMPOSER.md) | `bin/` only | Stage A: notes/order trace-validated | `SID/Fun_Fun/` ($1800 variant, 5/20) |
 | **NP21-adjacent clusters** (Stinsen/Beast/Angular, DRAX, 2000 A.D., Wizax, Zetrex/V20) | [CLUSTERS.md](CLUSTERS.md) | inside the Laxity path | audio 100%; editor-view varies | `SID/` root + Laxity corpus |
 
