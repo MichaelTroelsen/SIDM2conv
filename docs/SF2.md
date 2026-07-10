@@ -99,10 +99,11 @@ Flimbos_Quest/Kamikaze locate, FALLBACK). ~21 files remain NO-TABLES.
 |---|---|---|
 | **Hawkeye** sub 2 & 3 | **100/100/100/100** | byte-exact, full length, single editable SF2 |
 | Hawkeye sub 0 | ~100 pitch/wf/pulse (13×30 s parts) | filter ~75% at window seams |
-| Cybernoid I | ~95–100 / ~99–100 / ~100 / ~99 | 11–20 parts |
-| Cybernoid II | ~99–100 per register | |
+| **Cybernoid II** sub 0 | **100/100/100** (part01) | rest-tail fix 2026-07-10; 13 parts |
+| Cybernoid I | 97–100 freq / **100 wf** / **100 pulse** | rest-tail fix; 13 parts |
 | Myth (sub 0, sub 2) | freq/wf/pulse ~100, filter ~90–96 | emulation-extracted |
-| Supremacy (3 subtunes) | freq 96–99, wf/pulse ~99.8–100, filter 100 | 24–70 parts |
+| **Supremacy** sub 1 | **99.9 × every register** | rest-tail fix (was 94.3 wf); 2 parts |
+| Supremacy sub 0 / sub 2 | sub0 ~78–90 (structural); sub2 94–100 (osc2 = pure ±1-frame write-jitter — **100 skew-tolerant**, audibly exact) | 13 / 10 parts (was 16/70 incl. stale) |
 
 Build: `bin/build_mon_native_song.py` / `bin/build_myth_native_song.py`. Driver: native MoN.
 
@@ -199,13 +200,13 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Wanna Get Sick | 1 |
 | Zoom | 1 |
 
-### Maniacs of Noise — Jeroen Tel  ·  `native`  ·  25 songs / 268 SF2 files
+### Maniacs of Noise — Jeroen Tel  ·  `native`  ·  25 songs / 200 SF2 files
 
 | Song | Parts |
 |------|------:|
 | Children Songs sub0 | 11 |
-| Cybernoid II sub0 | 20 |
-| Cybernoid sub0 | 12 |
+| Cybernoid II sub0 | 13 |
+| Cybernoid sub0 | 14 |
 | Daring Dots sub0 | 1 |
 | G I Hero sub0 | 13 |
 | Gaplus preview sub0 | 18 |
@@ -221,9 +222,9 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Myth sub0 | 8 |
 | Pal sine hoener tune 1 sub0 | 3 |
 | Sample sub0 | 4 |
-| Supremacy sub0 | 16 |
+| Supremacy sub0 | 13 |
 | Supremacy sub1 | 2 |
-| Supremacy sub2 | 70 |
+| Supremacy sub2 | 10 |
 | Thats preview sub0 | 1 |
 | Tomcat sub0 | 3 |
 | Viool Tello sub0 | 1 |
