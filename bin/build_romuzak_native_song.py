@@ -286,6 +286,12 @@ def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
         f.write(f"NOTE_PREAMBLE = {getattr(B, 'NOTE_PREAMBLE', 0)}\n")
         # Hubbard release "kill adsr" + per-retrigger ADSR re-arm (MoN driver)
         f.write(f"HARD_RESTART = {getattr(B, 'HARD_RESTART', 0)}\n")
+        # $7f+byte1 pulse-program LOOP rows WITHOUT the rest of HARD_RESTART
+        # (periodic PWM engines: Hubbard v2 sawtooth, Sound Monitor triangle)
+        f.write(f"PULSE_LOOP = {getattr(B, 'PULSE_LOOP', 0)}\n")
+        # tie notes also re-init the pulse program (SM-class engines whose
+        # note-set writes the PW base on EVERY note incl. legato)
+        f.write(f"PULSE_TIE = {getattr(B, 'PULSE_TIE', 0)}\n")
         # scaled-vibrato FM entries ($40-$43 hi marker) — off for engines whose
         # REAL Hz deltas reach that range (Hubbard drum dives to $43xx)
         f.write(f"FMSCALE_ON = {getattr(B, 'FM_SCALED', 1)}\n")

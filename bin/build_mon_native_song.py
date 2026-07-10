@@ -205,6 +205,45 @@ def pulse_program_for(frames, v, onset, dur_f, cap=FM_CAP, allow_loop=False):
                     prog.append(((run >> 8) & 0x0F, run & 0xFF, rl))
                 prog.append((0x7F, 1, 0))          # LOOP to row 1 (first add)
                 return prog
+        # OFFSET-PERIODIC: a transient prefix then a steady cycle (SM's long
+        # one-way ramps settle into a 12-bit-wrap sawtooth; the from-frame-1
+        # check above fails on the transient and the capture FROZE mid-sweep —
+        # a 17-second audible pulse freeze on Fuck_Off osc2). The capture's
+        # last frames hold the NEXT note's base-reset bleed (tie-chain spans),
+        # which breaks tail periodicity — detect on a bleed-trimmed copy.
+        tt = targ[:-3] if len(targ) > 27 else targ
+        for p in range(2, min(128, len(tt) // 3)):
+            if len(tt) < 2 * p + 2:
+                break
+            if not all(tt[-k] == tt[-k - p] for k in range(1, p + 1)):
+                continue
+            s = len(tt) - 2 * p                    # extend the cycle backwards
+            while s > 1 and tt[s - 1] == tt[s - 1 + p]:
+                s -= 1
+            prog = [(0x80 | ((tt[0] >> 8) & 0x0F), tt[0] & 0xFF, 1)]
+            prev = tt[0]
+            loop_row = None
+            run, rl = None, 0
+            for k in range(1, s + p):
+                if k == s:                          # cycle start: flush + mark row
+                    if run is not None:
+                        prog.append(((run >> 8) & 0x0F, run & 0xFF, rl))
+                        run, rl = None, 0
+                    loop_row = len(prog)
+                delta = (tt[k] - prev) & 0xFFF
+                prev = tt[k]
+                if delta == run:
+                    rl += 1
+                else:
+                    if run is not None:
+                        prog.append(((run >> 8) & 0x0F, run & 0xFF, rl))
+                    run, rl = delta, 1
+            if run is not None:
+                prog.append(((run >> 8) & 0x0F, run & 0xFF, rl))
+            if loop_row is None or loop_row > 250:  # byte1 is one byte; keep sane
+                break
+            prog.append((0x7F, loop_row, 0))
+            return prog
         targ = targ[:cap]                          # no cycle: bound the RLE
     prog = [(0x80 | ((targ[0] >> 8) & 0x0F), targ[0] & 0xFF, 1)]   # 8X set frame 0
 
@@ -1298,9 +1337,15 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                             j += 1
                         cf = min(m.tick_to_frame(ct) + delay, t1)
                         pdur = max(dur_f, cf - fr)
+                    # loops ONLY where a capped capture would FREEZE (pdur past
+                    # the cap): the driver's loop row costs a 1-frame hold per
+                    # lap, which drifts a fully-captured short note that the
+                    # plain program reproduces exactly (SM v0 pulse 100 -> 58.9
+                    # when loops applied unconditionally — measured)
                     pp = pulse_program_for(
                         frames, v, cfr, pdur,
-                        allow_loop=bool(getattr(m, 'freerun_pulse', 0)))
+                        allow_loop=bool(getattr(m, 'freerun_pulse', 0))
+                        and pdur > FM_CAP)
                     cp = canon_pulse.get((ev.instr, ev.wprog))
                     # compare minus the last frame: the capture's final frame holds
                     # the NEXT note's base reset (the same 1-frame register skew as
@@ -1497,6 +1542,11 @@ def emit_one(m, br, out_path, label):
     # Hubbard release "kill adsr" (AD=SR=0 on gate-off) + per-retrigger ADSR re-arm —
     # decisive for the audible attack punch, invisible to register-state metrics.
     B.HARD_RESTART = 1 if getattr(m, "hard_restart", 0) else 0
+    # $7f+byte1 pulse LOOP rows standalone (periodic PWM: the SM triangle) — a
+    # HARD_RESTART build already compiles the path, this enables it without HR
+    B.PULSE_LOOP = 1 if getattr(m, "pulse_loop", 0) else 0
+    # SM-class: the note-set re-inits the PW base on EVERY note incl. tie/legato
+    B.PULSE_TIE = 1 if getattr(m, "pulse_tie", 0) else 0
     # scaled FM entries collide with real $40-$43xx Hz deltas (Hubbard drum dives)
     B.FM_SCALED = 0 if getattr(m, "hard_restart", 0) else 1
     B.HP_ENGINE = 1 if getattr(m, "hp_engine", 0) else 0

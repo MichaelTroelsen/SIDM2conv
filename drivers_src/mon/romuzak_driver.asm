@@ -632,7 +632,7 @@ pl_l:
         lda (pptr),y             ; byte0 = cmd nibble | width-hi nibble (or $7f)
         cmp #$7f
         bne pl_decode
-.if HARD_RESTART
+.if HARD_RESTART + PULSE_LOOP    ; loop rows also standalone (periodic PWM)
         iny                      ; $7f + byte1 != 0 = LOOP to program row byte1
         lda (pptr),y             ;   (the free-running per-instrument pulse
         beq pl_frz               ;   wobble repeats its cycle forever);
@@ -1258,6 +1258,17 @@ pn_prst:
         sta VPC,x                ; force reload on the next frame
 pn_noprst:
 pn_tied:
+.if PULSE_TIE
+        lda tieflag              ; SM-class engines re-init the PW on EVERY note
+        beq pn_tpn               ;   incl. legato/tie (the note-set always runs);
+        lda VIPUL_LO,x           ;   the retrigger path already restarted it, so
+        sta PPTR_LO,x            ;   only the TIE entry needs the restart here
+        lda VIPUL_HI,x
+        sta PPTR_HI,x
+        lda #$00
+        sta VPC,x
+pn_tpn:
+.endif
         lda VIWAVE,x             ; restart the wave program at the instrument's row
         sta VWI,x
         lda #$00
@@ -1778,7 +1789,8 @@ hp_init0:
         sta VINST,x              ; PDLY/PDIR keep their POKED initial values —
         sta HPSKIP,x             ;   the ROM ships nonzero pulsedelay in its load
         rts                      ;   image (Monty V2 starts at 29)
-
+.endif
+.if HARD_RESTART + PULSE_LOOP    ; pl_loop also standalone (periodic PWM engines)
 pl_loop:
         ; PPTR = VIPUL + byte1*3 and force a reload next frame (A = byte1)
         sta tmpf
@@ -1797,7 +1809,8 @@ pl_loop:
         sta VPADL,x
         sta VPADH,x
         rts
-
+.endif
+.if HARD_RESTART
 fm_hrarm:
         dec HRC,x                ; countdown; on 0 write the instrument ADSR
         bne fmh_rts              ;   (1 frame before the coming trigger — a

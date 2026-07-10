@@ -102,6 +102,16 @@ class SMShim:
     hard_restart = 0
     snap_gate = True
     hp_engine = 0             # SM pulse/vibrato come from captured programs
+    freerun_pulse = 1         # SM's triangle PWM is PERIODIC: allow_loop captures
+                              # one cycle + LOOP (exact forever) instead of a
+                              # capped capture that FREEZES mid-sweep on long
+                              # notes (the audible pulse residual)
+    pulse_loop = 1            # compile the driver's $7f+byte1 LOOP path (it is
+                              # HARD_RESTART-gated otherwise, and SM is not HR)
+    pulse_tie = 1             # SM's note-set re-inits the PW base (rec[4]) on
+                              # EVERY note incl. legato -> tie events restart
+                              # the pulse program too (each tie's own captured
+                              # segment plays; no cross-chain freeze)
 
     def __init__(self, m, streams, span, onsets=None, frames=None,
                  legato_set=frozenset(), phase=0):
