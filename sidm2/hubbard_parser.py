@@ -87,6 +87,9 @@ class HubbardLayout:
     instrnr_addr: int = 0     # per-voice CURRENT instrument array (the fetch's
                               #   LDA instrnr,X) — init seeds per-voice defaults
                               #   that notes without an instrument byte inherit
+    pulsespeed_tbl: int = 0   # SPLIT per-instrument pulse-speed array (the
+                              #   transposed-track revisions keep speed in a
+                              #   separate stride-8 table, not record[6])
     trk_transpose: int = 0    # track bit7-byte TRANSPOSE encoding: 0 = none (V1 —
                               #   tracks are plain pattern numbers), 1 = one-byte
                               #   ($80|semis, transpose = b & $7F; Shockway/
@@ -249,6 +252,21 @@ class HubbardModule:
         if j is not None:
             lay.instrnr_addr = d[j + 1] | (d[j + 2] << 8)
 
+        # SPLIT pulse-speed table (the transposed-track revisions): the instrument
+        # fetch pushes pulse state as LDA field,X / PHA — pwlo (instr+0) and pwhi
+        # (instr+1) plus a THIRD push from a base OUTSIDE the 8-byte record
+        # (Shockway $F2F1 vs instr $F286) = a separate per-instrument pulse-SPEED
+        # array (stride 8, same X). V1 keeps speed in record[6].
+        j = first_in(_find_all(d, [0xBD, None, None, 0x8E, None, None,
+                                   0x0A, 0x0A, 0x0A, 0xAA]))
+        if j is not None and lay.instr:
+            for k in range(j, min(j + 0x50, len(d) - 4)):
+                if d[k] == 0xBD and d[k + 3] == 0x48:      # LDA abs,X / PHA
+                    b = d[k + 1] | (d[k + 2] << 8)
+                    if not (lay.instr <= b < lay.instr + 8):
+                        lay.pulsespeed_tbl = b
+                        break
+
         # track bit7 TRANSPOSE commands (the later swallow revisions; ROM-verified
         # on Shockway $ED99 / Saboteur_II $F09A / Auf_Wiedersehen $E49D):
         #   LDA (trk),Y / BPL pattern / CMP #$FF / BEQ loop [/ CMP #$FE / BEQ halt]
@@ -282,8 +300,11 @@ class HubbardModule:
     def instrument(self, n):
         base = self.lay.instr + (n & 0x1F) * 8
         b = [self._u8(base + k) for k in range(8)]
+        speed = b[6]
+        if self.lay.pulsespeed_tbl:              # transposed-track revisions keep
+            speed = self._u8(self.lay.pulsespeed_tbl + (n & 0x1F) * 8)
         return {"pwlo": b[0], "pwhi": b[1], "ctrl": b[2], "ad": b[3],
-                "sr": b[4], "vibdepth": b[5], "pulsespeed": b[6], "fx": b[7]}
+                "sr": b[4], "vibdepth": b[5], "pulsespeed": speed, "fx": b[7]}
 
     def track_ptrs(self, song):
         """The 3 per-voice track pointers for a song. v1: 6-byte record = the
