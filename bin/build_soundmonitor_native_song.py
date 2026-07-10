@@ -128,7 +128,8 @@ class SMShim:
         fpt = speeds.most_common(1)[0][0] + 1
         self._fpt = 1
         self.onset_delay = 0
-        if onsets is not None and len(speeds) == 1 and fpt > 1:
+        if (onsets is not None and len(speeds) == 1 and fpt > 1
+                and os.environ.get('SM_GRID', '1') != '0'):
             res = Counter(f % fpt for v in range(3) for f in onsets[v])
             if len(res) == 1:
                 self.onset_delay = res.most_common(1)[0][0]
