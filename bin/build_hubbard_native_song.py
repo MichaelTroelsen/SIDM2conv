@@ -317,13 +317,16 @@ def main():
             print(f"  irregular tempo: SCHEDULE base={shim.sched_tempo} "
                   f"period={len(sched_bitmap)} "
                   f"stretches/period={sum(sched_bitmap)}")
-    if getattr(m.lay, 'v2_notes', False) or m.lay.swallow_period:
+    if ((getattr(m.lay, 'v2_notes', False) or m.lay.swallow_period)
+            and os.environ.get('HUBBARD_FORCE_HP') != '1'):
         # V2-era files (Delta note-format OR swallow-tempo): their instrument
         # records / pulsework differ from V1's, so the HP engine mis-drives
         # the pulse (Lightforce's per-instrument BOUNCE came out as a runaway
         # ramp). Fall back to CAPTURED pulse programs — they reproduce whatever
         # the original does exactly (bounce, free-run, or ramp). freerun_pulse
         # enables both the per-voice free-run stream and the periodic LOOP row.
+        # HUBBARD_FORCE_HP=1 keeps the HP engine (experiment: the transposed-
+        # track class is V1-notes + swallow — its records may be V1-layout).
         shim.hp_engine = 0
         shim.freerun_pulse = 1
 

@@ -52,6 +52,23 @@ n = min(len(orig) - off0, len(prb), secs * 50) - 4
 if n <= 0:
     sys.exit(f"FIDELITY ERROR: empty comparison window (n={n}) — "
              f"orig={len(orig)} off0={off0} probe={len(prb)} secs={secs}")
+# AUTO-CAP at the part's end: a windowed part covers only its own span, then the
+# driver LOOPS it from the start — measuring past that compares the replayed
+# beginning against later song content and fabricates a giant tail "residual"
+# (Shockway part01 = 0-22s, measured at 25s -> a phantom 148-frame freq run at
+# 1098+). Detect the loop restart by self-similarity: the earliest late frame
+# where a 40-frame window of all-voice freqs equals the probe's own opening.
+def _sig(i):
+    return tuple(prb[i + j][0][v]["freq"] for j in range(40) for v in range(3))
+if n > 300:
+    head = _sig(2)
+    for i in range(250, n - 45):
+        if _sig(i) == head:
+            print(f"  [note] probe loops back to its start at frame {i} — "
+                  f"capping the window there (was {n} frames; the part ends "
+                  f"before `secs`)")
+            n = i
+            break
 
 # constant engine output delay (e.g. Supremacy writes SID registers 2 frames after
 # the sequencer tick, which the native driver doesn't reproduce): align it out with
@@ -127,6 +144,32 @@ for vi in range(3):
         return 100.0 * (ok[k] + skew[k]) / tot[k] if tot[k] else 100.0
     print(f"  osc{vi + 1:<3} {pct('freq'):6.1f} {pct('wf'):6.1f} {pct('pul'):7.1f}"
           f"   ({spct('freq'):5.1f}/{spct('wf'):5.1f}/{spct('pul'):5.1f})")
+    # MISMATCH CLUSTERS: where the real residual lives. For any register under
+    # 99.5% strict, compress its mismatch frames into runs and show the top 3 —
+    # a cluster at a note onset = capture/base problem there; a long sustained
+    # run = a wrong program; scattered singletons = timing jitter.
+    for k in keys:
+        if pct(k) >= 99.5 or not tot[k]:
+            continue
+        miss = []
+        for i in range(n):
+            if not (0 <= o0 + i < len(orig)):
+                continue
+            a, b = _val(orig[o0 + i], k), _val(prb[i], k)
+            if (a is None and b is None) or a == b:
+                continue
+            miss.append(i)
+        runs, s = [], None
+        for j, f in enumerate(miss):
+            if s is None:
+                s = f
+            if j + 1 == len(miss) or miss[j + 1] > f + 3:   # gap>3 ends a run
+                runs.append((s, f))
+                s = None
+        runs.sort(key=lambda r: r[0] - r[1])                 # longest first
+        top = "  ".join(f"{a}-{b}({b - a + 1}f)" for a, b in runs[:3])
+        print(f"        {k:4} residual: {len(miss)}f in {len(runs)} runs; "
+              f"top: {top}")
 ftot = fok = 0
 for i in range(n):
     o, p = orig[off0 + i][1], prb[i][1]

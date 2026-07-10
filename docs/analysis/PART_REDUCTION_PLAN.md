@@ -142,7 +142,25 @@ builder also gained the span-sanity guard (>2.5× median = suspect mis-decode wa
 **Follow-on front:** this class's *fidelity* is still poor (Shockway part01 freq 62–85,
 pulse ~0 — the swallow freerun pulse model doesn't fit the transposed-track generation);
 it was garbage-decoded entirely before, so this is the first honest baseline, not a
-regression. Also: Deep_Strike s0 FAILs mid-build with a WAVE-overflow crash
+regression.
+
+**Transposed-class pulse experiment (2026-07-10, `HUBBARD_FORCE_HP=1`):** forcing the V1
+HP pulse engine (the class is V1-notes + swallow) gives **osc2 93.8 / 99.8 / pulse
+0→100** and improves osc1 freq/wf (70.7/92.0) — but regresses osc3 wf (96→70, a periodic
+10-frame wave cycle desync) and osc1/osc3 pulse stay ~0–6. So the class has **mixed
+instrument semantics** (some records V1-HP, some not) — it needs its own instrument-record
+RE before the default flips. Env experiment kept; default unchanged (freerun).
+
+**Analyser upgrades round 2 (`bin/mon_part_fidelity.py`):** (3) **mismatch-cluster
+report** — registers under 99.5 % list their residual as frame-runs (top 3), separating a
+wrong program (one long run) from timing jitter (scattered 1-frame runs). It immediately
+localized Supremacy sub1 osc2's whole 6 % wf residual to **3 runs** and diagnosed it: the
+original writes **wf `$00`** (waveform off) during long rests while the native driver
+holds the instrument waveform with gate clear — a driver-level rest representation gap,
+now a concrete identified fix. (4) **part-loop auto-cap** — a windowed part loops back to
+its start when its content ends; measuring past that fabricated a phantom 148-frame tail
+residual (Shockway part01 = 22 s, measured at 25 s). The analyser now detects the probe's
+self-loop by a 40-frame all-voice freq self-similarity scan and caps the window there. Also: Deep_Strike s0 FAILs mid-build with a WAVE-overflow crash
 in `gen_includes_song` (count-vs-emit divergence — the adaptive `fits()` passed but emit
 overflowed; 25 partial parts on disk). Devils_Galop/I_Ball/Wiz still spin-class timeouts.
 
