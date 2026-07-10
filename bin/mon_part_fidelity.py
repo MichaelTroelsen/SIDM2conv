@@ -40,9 +40,12 @@ probe = os.path.join(
     "out", f"_verify_probe_{os.path.splitext(os.path.basename(part))[0]}.sid")
 open(probe, "wb").write(v._psid(bytes(sf2[2:]), sla, 0x1000, 0x1003))
 
-# infer the original SID from the part filename ("<Tune>_sub<N>..." -> <Tune>.sid)
+# infer the original SID from the part filename ("<Tune>_sub<N>..." -> <Tune>.sid).
+# strip the _partNN suffix too (Fun_Fun/Bjerregaard parts have no _sub segment).
 tune = os.path.basename(part).split("_sub")[0].split("_song")[0].split("_native")[0]
-for folder in ("Tel_Jeroen", "Hubbard_Rob"):
+if "_part" in tune:
+    tune = tune.split("_part")[0]
+for folder in ("Tel_Jeroen", "Hubbard_Rob", "Fun_Fun", "JohannesBjerregaard"):
     orig_sid = os.path.join("SID", folder, f"{tune}.sid")
     if os.path.exists(orig_sid):
         break
