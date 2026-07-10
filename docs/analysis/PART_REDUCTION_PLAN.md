@@ -120,12 +120,34 @@ Monty 22→4, Commando 45→4, Chimera 76→12, Zoids→4, Thing_on_a_Spring 33�
 under its first real `auto` build**: Shockway_Rider 638 parts, Auf_Wiedersehen 274,
 Star_Paws 188, Saboteur_II 112 (the old inventory's "1 file" entries for these were stale
 manual whole-song artifacts, not comparable). `pulse_canon` is not the cause (it can only
-reduce bundle counts); the swallow files' windows are being capped by something else —
-**next analysis target: instrument the swallow-class splits** (à la `_dmc_split_analysis`)
-to find the binding cap. Also: Deep_Strike s0 now FAILs mid-build with a WAVE-overflow
-crash in `gen_includes_song` (count-vs-emit divergence — the adaptive `fits()` passed but
-emit overflowed; 25 partial parts on disk). Devils_Galop/I_Ball/Wiz still spin-class
-timeouts.
+reduce bundle counts).
+
+**Swallow-explosion root cause (measured 2026-07-10): a V2 track over-decode, not caps.**
+Healthy files decode all three voices to EQUAL one-pass lengths (Monty 350/350/350 s,
+Delta 545×3, Commando 236×3 — synced tracks). The exploders are wildly unequal: Shockway
+261/868/**3210 s**, Star_Paws 43/512/1658 s, Saboteur_II 398/848/2773 s, Auf_W
+364/825/1900 s. One voice's track decodes ~10× too long (a V2 repeat-count / track
+mis-decode), `decode_song`'s loop expansion then unrolls the other voices to match → a
+4013 s span → 638 parts *of repeats*. The windows are normal (~6 s); the SPAN is wrong.
+Fix = the V2 swallow-class track decode in `sidm2/hubbard_parser.py`; cheap guard = flag
+builds whose per-voice one-pass lengths differ >2× as suspect mis-decodes instead of
+building an hour of song. Also: Deep_Strike s0 FAILs mid-build with a WAVE-overflow crash
+in `gen_includes_song` (count-vs-emit divergence — the adaptive `fits()` passed but emit
+overflowed; 25 partial parts on disk). Devils_Galop/I_Ball/Wiz still spin-class timeouts.
+
+**Fidelity-analyser upgrade (2026-07-10, `bin/mon_part_fidelity.py`)** — chasing the last
+1–2 %: (1) **per-voice delay refinement** (±2 frames per voice on top of the shared engine
+delay — the original staggers per-voice register writes; one global delay cost a phantom
+~1–2 % on the offset voice); (2) **residual classification** — each mismatch is checked
+against the original's ±1-frame neighbours: a match there = 1-frame **transition skew**
+(inaudible register-write phase), reported as a separate *skew-tolerant* score; whatever
+remains is REAL residual worth chasing. First results: Commando osc2's 0.7 % is *content*,
+not skew (worth investigating); the MoN pulse-canon Supremacy cost is confirmed real
+(osc3 pulse 99.9→94.2 / 100→83.7, non-skew). It also exposed that the earlier "part02
+collapses to 7–18 %" claim was a **measurement artifact** (wrong window offset — the
+pulse-canon build shifted part boundaries from 0-32/32-38 to 0-28/28-38); the corrected
+verdict: pulse_canon on Supremacy costs a real but modest ~6–16 % osc3 pulse, so the
+MoN opt-in (not default) decision stands.
 
 ### Phase 3 — structural FM for arp/vibrato players *(Hubbard / MoN)*
 Where the FM is *structural* (looping arps, pitch-proportional vibrato), emit one

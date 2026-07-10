@@ -71,26 +71,62 @@ def _score(d):
 # really a constant -1 shift). Constant shifts are a nuisance parameter.
 dly = max(range(-4 if off0 >= 4 else -off0, 7), key=_score)
 off0 += dly
+
+# PER-VOICE delay refinement: voices can sit a frame apart from the shared delay
+# (the original staggers its per-voice register writes across the play call, the
+# driver writes them together). One global dly then costs a phantom ~1-2% on the
+# offset voice. Refine ±2 frames per voice by freq agreement.
+def _vscore(vi, extra):
+    s = 0
+    base = off0 + extra
+    for i in range(0, n, 2):
+        if 0 <= base + i < len(orig):
+            a = orig[base + i][0][vi]["freq"]
+            b = prb[i][0][vi]["freq"]
+            if a and b and F._semi(a) == F._semi(b):
+                s += 1
+    return s
+vdly = [max(range(-2, 3), key=lambda e, v=vi: _vscore(v, e)) for vi in range(3)]
+
 print(f"{os.path.basename(part)}  {n} frames from {off0 // 50}s "
-      f"(native play=$1003, engine delay={dly})\n")
-print(f"  {'voice':6} {'freq%':>6} {'wf%':>6} {'pulse%':>7}")
+      f"(native play=$1003, engine delay={dly}, per-voice {vdly})\n")
+print(f"  {'voice':6} {'freq%':>6} {'wf%':>6} {'pulse%':>7}   skew-tolerant (f/w/p)")
 for vi in range(3):
     keys = ("freq", "wf", "pul")
     tot = {k: 0 for k in keys}
     ok = {k: 0 for k in keys}
+    skew = {k: 0 for k in keys}          # mismatch that equals a ±1-frame neighbour
+    o0 = off0 + vdly[vi]
+
+    def _val(frames_row, k):
+        v = frames_row[0][vi][k]
+        return None if v is None else (F._semi(v) if k == "freq" else v)
     for i in range(n):
-        o, p = orig[off0 + i][0][vi], prb[i][0][vi]
+        if not (0 <= o0 + i < len(orig)):
+            continue
+        o, p = orig[o0 + i], prb[i]
         for k in keys:
-            if o[k] is None and p[k] is None:
+            a, b = _val(o, k), _val(p, k)
+            if a is None and b is None:
                 continue
             tot[k] += 1
-            if k == "freq":
-                ok[k] += F._semi(o[k]) == F._semi(p[k])
-            else:
-                ok[k] += o[k] == p[k]
+            if a == b:
+                ok[k] += 1
+                continue
+            # RESIDUAL CLASSIFICATION: if the probe value matches the original one
+            # frame earlier/later (a value TRANSITION landing a frame off), the
+            # mismatch is 1-frame SKEW — an inaudible register-write phase artifact,
+            # not a content error. Whatever remains after skew is REAL residual.
+            prev = _val(orig[o0 + i - 1], k) if o0 + i - 1 >= 0 else None
+            nxt = _val(orig[o0 + i + 1], k) if o0 + i + 1 < len(orig) else None
+            if b is not None and (b == prev or b == nxt):
+                skew[k] += 1
     def pct(k):
         return 100.0 * ok[k] / tot[k] if tot[k] else 100.0
-    print(f"  osc{vi + 1:<3} {pct('freq'):6.1f} {pct('wf'):6.1f} {pct('pul'):7.1f}")
+    def spct(k):
+        return 100.0 * (ok[k] + skew[k]) / tot[k] if tot[k] else 100.0
+    print(f"  osc{vi + 1:<3} {pct('freq'):6.1f} {pct('wf'):6.1f} {pct('pul'):7.1f}"
+          f"   ({spct('freq'):5.1f}/{spct('wf'):5.1f}/{spct('pul'):5.1f})")
 ftot = fok = 0
 for i in range(n):
     o, p = orig[off0 + i][1], prb[i][1]
