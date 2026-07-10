@@ -21,11 +21,12 @@ END = "<!-- END GENERATED -->"
 
 # out/ subdir -> (player, composer, driver). Order = display order.
 PLAYERS = [
-    ("dmc",        "DMC (Demo Music Creator)", "Johannes Bjerregaard", "native"),
-    ("mon",        "Maniacs of Noise",          "Jeroen Tel",           "native"),
-    ("hubbard",    "Rob Hubbard",               "Rob Hubbard",          "native"),
-    ("galway_sf2", "Martin Galway",             "Martin Galway",        "native"),
-    ("romuzak",    "ROMUZAK V6.3",              "Oliver Blasnik",       "native"),
+    ("dmc",          "DMC (Demo Music Creator)",    "Johannes Bjerregaard", "native"),
+    ("mon",          "Maniacs of Noise",            "Jeroen Tel",           "native"),
+    ("hubbard",      "Rob Hubbard",                 "Rob Hubbard",          "native"),
+    ("galway_sf2",   "Martin Galway",               "Martin Galway",        "native"),
+    ("romuzak",      "ROMUZAK V6.3",                "Oliver Blasnik",       "native"),
+    ("soundmonitor", "Sound Monitor (Musicmaster)", "Fun Fun",              "native"),
 ]
 # probe / scratch prefixes to ignore
 SKIP = re.compile(r"(^_|_ab$|_abg|_abl|_tmp|_probe|verify_probe|dmcfid)", re.I)

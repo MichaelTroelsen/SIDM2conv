@@ -25,6 +25,28 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.17.0] - 2026-07-10
+
+### Sound Monitor (Chris Hulsbeck, 1986) - the seventh from-scratch player, RE'd to native SF2s in one day
+
+**The full arc - format RE -> parser -> Stage A -> Stage B - landed in a single session.** The 11-file `SID/Fun_Fun/` cluster (`init=$C000/play=$C475`, driver self-identifies "MUSICMASTER CREATED BY CHRIS HUELSBECK") shares byte-identical player code at a fixed load, so every table is a hardcoded absolute address - no relocation machinery.
+
+#### Added
+- **`sidm2/soundmonitor_parser.py`** - full format decode: linear ROW model with 8-bit wraparound (`row_start > row_count` is normal), per-row per-voice bar/note-transpose/sound-transpose tables, `(ctrl, data)` step pairs (rest / tie / note with the complete data-flag map: `$0F` instr, `$10` glide, `$20`/`$80` transpose suppression, `$40` arpeggio), the **chord-arp bank inside the row-header record** (8-byte semitone tables selected by the bar's last data byte), 24-byte sound records. Onset-validated **99.9% corpus-wide** (10/11 files 100%).
+- **`bin/soundmonitor_to_sf2.py`** (Stage A) - editable Driver-11 SF2s; SM maps ~1:1 (1 step = 1 row, note index = SF2 semitone, speed = tempo); per-note arps -> per-combo instruments with 8-row wave programs. **32/33 voices note-accurate** (`bin/soundmonitor_sf2_validate.py`).
+- **`bin/build_soundmonitor_native_song.py`** (Stage B, SMShim -> the shared MoN engine) - onset-aligned + per-voice legato A/B + **FM_CAP-gated TIE SPLITS** (decode note boundaries lacking a gate-rise become native tie events - Fuck_Off osc2 66.6 -> **99.8-100** strict freq/wf without a part explosion). **Final_Luv: the whole 161s song in ONE part at 98.1-99.9 skew-tolerant on every register (filter 99.9)**; corpus = 11 songs / 52 parts in `out/soundmonitor/`.
+- `docs/players/SOUNDMONITOR.md`; `pyscript/test_soundmonitor_parser.py` + `test_soundmonitor_to_sf2.py` (12 tests).
+
+#### Engine discoveries (locked in docs/memory)
+- The "$CB65 digi engine" is the **arpeggio engine** (8-step cycle over the row-header chord bank); `$C31B` is the **triangle-PWM engine** (dispatcher Y=2/9/16 lands `STA $D400,Y` on the pulse registers), not a freq bend.
+- **REST writes the instrument's byte-8 release waveform** - a GATED release wf (`$11/$81`) keeps the voice ringing through "rests" (whole voices are legato).
+- **The runtime Driver 11 does NOT parse `$90-$9F` tie durations** (editor-only; emitting them desyncs the driver into garbage - regression-tested).
+
+#### Fixed
+- `bin/mon_part_fidelity.py` finds originals in `Fun_Fun`/`JohannesBjerregaard` and strips `_partNN` names.
+
+---
+
 ## [3.16.0] - 2026-07-10
 
 ### The part-reduction + fidelity-truth campaign (all native players)

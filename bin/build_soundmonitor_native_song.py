@@ -135,15 +135,26 @@ class SMShim:
                 # every note boundary; add the uncovered ones as TIE events
                 # (the native driver re-seats freq + starts a fresh FM/wave
                 # capture without restarting the envelope — the Supremacy $FB
-                # mechanism).
+                # mechanism). ONLY past the FM capture window: a pitch change
+                # within FM_CAP frames of the last event is already reproduced
+                # exactly by the captured FM program — splitting those doubles
+                # the bundle count (Dance 10 -> 20 parts) for zero fidelity.
                 gate_near = set()
                 for g in ons:
                     gate_near.update(range(g - 2, g + 3))
+                gates = sorted(ons)
+                gi = 0
+                last_evt = -10**9      # most recent gate or tie before f
                 prev = None
-                for fr, note, instr in notes:
+                for fr, note, instr in notes:      # ascending frames
                     f = fr + phase
-                    if f >= 0 and note != prev and f not in gate_near:
+                    while gi < len(gates) and gates[gi] <= f:
+                        last_evt = gates[gi]
+                        gi += 1
+                    if (f >= 0 and note != prev and f not in gate_near
+                            and f - last_evt >= BM.FM_CAP - 2):
                         tie_set.add(f)
+                        last_evt = f
                     prev = note
                 ons = sorted(set(ons) | tie_set)
             if not ons:

@@ -159,7 +159,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 
 ## Complete build inventory
 
-**162 songs built** across 5 native players (each song may span several SF2 parts).
+**173 songs built** across 6 native players (each song may span several SF2 parts).
 
 *Auto-generated from the built SF2 files under `out/` by `pyscript/gen_sf2_index.py` — re-run after building more tunes. "Parts" = the number of SF2 files a song is split into (a long song exceeds the SF2II table/`$D000` caps and ships as windowed parts; 1 = a single file).*
 
@@ -349,6 +349,22 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Delirious 9 tune 1 native | 1 |
 | Road of Excess end | 1 |
 | Road of Excess end native | 1 |
+
+### Sound Monitor (Musicmaster) — Fun Fun  ·  `native`  ·  11 songs / 52 SF2 files
+
+| Song | Parts |
+|------|------:|
+| Dance at Night remix | 15 |
+| Dreamix | 9 |
+| Dreamix Two | 5 |
+| Final Luv | 1 |
+| Fuck Off | 2 |
+| Fun Mix | 3 |
+| Just Cant Get Enough | 1 |
+| No Title | 2 |
+| Poppy Road | 5 |
+| Thats All | 7 |
+| Times Up | 2 |
 
 <!-- END GENERATED -->
 
