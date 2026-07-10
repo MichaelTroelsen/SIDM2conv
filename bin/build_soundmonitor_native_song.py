@@ -128,13 +128,8 @@ class SMShim:
         fpt = speeds.most_common(1)[0][0] + 1
         self._fpt = 1
         self.onset_delay = 0
-        if (onsets is not None and len(speeds) == 1 and fpt > 1
-                and os.environ.get('SM_GRID', '1') != '0'):
-            res = Counter(f % fpt for v in range(3) for f in onsets[v])
-            if len(res) == 1:
-                self.onset_delay = res.most_common(1)[0][0]
-                self._fpt = fpt
         self.voices = [[] for _ in range(3)]
+        prep = []
         for v in range(3):
             out = self.voices[v]
             notes = [(fr, note, instr) for fr, kind, note, instr in streams[v]
@@ -188,11 +183,36 @@ class SMShim:
                         last_evt = f
                     prev = note
                 ons = sorted(set(ons) | tie_set)
+            prep.append((v, out, ons, tie_set, changes))
+
+        # GRID SELECTION over ALL voices' events: pick the COARSEST grid
+        # (multiples of the step) where every GATE shares one residue and
+        # every TIE lands within +-1 frame of it (a >1-frame tie snap
+        # regressed the tie-heavy files hard — Final_Luv pulse 100 -> 8).
+        # Coarser grids = tighter editor rows (Poppy_Road's notes are all on
+        # a 12-frame musical grid -> 1 row per 4 steps).
+        if (onsets is not None and len(speeds) == 1 and fpt > 1
+                and os.environ.get('SM_GRID', '1') != '0'):
+            gate_frames = [f for v in range(3) for f in onsets[v]]
+            tie_frames = [f for _, _, ons, ties, _ in prep for f in ties]
+            for mult in (4, 2, 1):
+                g = fpt * mult
+                res = Counter(f % g for f in gate_frames)
+                if len(res) != 1:
+                    continue
+                r = res.most_common(1)[0][0]
+                if all(min((f - r) % g, g - ((f - r) % g)) <= 1
+                       for f in tie_frames):
+                    self.onset_delay = r
+                    self._fpt = g
+                    break
+
+        for v, out, ons, tie_set, changes in prep:
             if not ons:
                 continue
             # events carry (tick, frame): ticks drive durations/rows on the
             # step grid; frames drive trace-resolved pitch (_sem). Tie frames
-            # from the decode can sit 1 off the gate grid -> snap by rounding.
+            # can sit 1 off the gate grid -> snap by rounding.
             fpt_, dly = self._fpt, self.onset_delay
             evs, seen = [], set()
             for f in ons:
