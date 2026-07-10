@@ -156,8 +156,13 @@ report** — registers under 99.5 % list their residual as frame-runs (top 3), s
 wrong program (one long run) from timing jitter (scattered 1-frame runs). It immediately
 localized Supremacy sub1 osc2's whole 6 % wf residual to **3 runs** and diagnosed it: the
 original writes **wf `$00`** (waveform off) during long rests while the native driver
-holds the instrument waveform with gate clear — a driver-level rest representation gap,
-now a concrete identified fix. (4) **part-loop auto-cap** — a windowed part loops back to
+held the release waveform. **FIXED (same day):** the per-note wave capture now extends
+across the following rest events (gate-off rows output `program & $fe`, so a captured
+`$00` row reproduces the wave-off exactly), and the capture cap was raised 96 → 256
+frames (the wave-off landed at frame 98 of a 100-frame note; settle-trim keeps hold-tails
+free so the raise costs rows only where the trace genuinely changes). **Supremacy sub1:
+94.3 → 99.9 on every voice/register** at the same 2 parts. Regression sweep clean:
+Hawkeye sub2 100/100/100/100, Commando unchanged, In_the_Mood 100×3. (4) **part-loop auto-cap** — a windowed part loops back to
 its start when its content ends; measuring past that fabricated a phantom 148-frame tail
 residual (Shockway part01 = 22 s, measured at 25 s). The analyser now detects the probe's
 self-loop by a 40-frame all-voice freq self-similarity scan and caps the window there. Also: Deep_Strike s0 FAILs mid-build with a WAVE-overflow crash

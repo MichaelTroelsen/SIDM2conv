@@ -439,7 +439,11 @@ def _wave_prog_for(frames, v, onset, dur_f):
     to the release frame (~48 in Cybernoid). settle trims trailing constant frames,
     so a generous cap is free for short/constant notes."""
     wfs, last = [], 0x41
-    for k in range(min(dur_f, WAVE_CAP)):
+    # cap at 256 (not WAVE_CAP=96): a long note + rest tail can change $D404 past
+    # frame 96 (Supremacy's wave-off lands at frame 98 of a 100-frame note);
+    # settle-trim keeps hold-tails free and the table stores RLE, so a generous
+    # cap costs rows only where the trace genuinely keeps changing.
+    for k in range(min(dur_f, 256)):
         idx = onset + k
         w = frames[idx][0][v]['wf'] if idx < len(frames) else None
         last = w if w is not None else last
@@ -1315,7 +1319,23 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                     # bleed: reproducing it is byte-better (osc3 wf 97.8 vs 91.6
                     # trimmed — measured); the "phantom onset" it causes in onset
                     # metrics is a metric artifact, not a register error.
-                    wp = _wave_prog_for(frames, v, cfr, dur_f)
+                    # WAVE REST-TAIL: the engine can change $D404 during the REST
+                    # after a note (Supremacy writes wf $00 = wave-off mid-rest;
+                    # holding the release waveform instead cost a 60-frame run =
+                    # its whole osc2 residual). Extend the capture window across
+                    # the following rest events up to the next note — settle-trim
+                    # keeps hold-tails free, so rows are added only where the
+                    # trace actually changes; gate-off rows output program&$fe,
+                    # so a captured $00 row reproduces the wave-off exactly.
+                    wave_dur = dur_f
+                    jr, gtk = ei + 1, etk + edur
+                    while jr < len(events) and getattr(events[jr], 'rest', False):
+                        gtk += events[jr].dur
+                        jr += 1
+                    if gtk > etk + edur:
+                        rest_end = min(m.tick_to_frame(gtk) + delay, t1)
+                        wave_dur = max(dur_f, min(rest_end - cfr, WAVE_CAP))
+                    wp = _wave_prog_for(frames, v, cfr, wave_dur)
                 ii = instr_of(ev.instr, wp, flag, filt)
                 blk.append((note_c, ticks, bi, ii, etk, gate_ticks,
                             getattr(ev, 'tie', False)))
