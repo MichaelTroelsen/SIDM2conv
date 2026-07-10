@@ -621,9 +621,14 @@ pl_l:
         lda #$00                 ; no row loaded (yet) this frame for this voice
         sta pl_ld
 .endif
+.if PULSE_LOOP
+        lda #$04                 ; seamless-loop jump budget (degenerate guard)
+        sta ws_grd
+.endif
         lda VPC,x
         bne pl_apply             ; still on current row -> just apply the add
         ; row expired -> load the next PULSETAB entry via the 16-bit pointer
+pl_reload:
         lda PPTR_LO,x
         sta pptr
         lda PPTR_HI,x
@@ -637,6 +642,10 @@ pl_l:
         lda (pptr),y             ;   (the free-running per-instrument pulse
         beq pl_frz               ;   wobble repeats its cycle forever);
         jsr pl_loop              ;   byte1 = 0 keeps the plain freeze
+.if PULSE_LOOP
+        dec ws_grd               ; SEAMLESS: load+apply the loop-target row THIS
+        bne pl_reload            ;   frame (the 1-frame hold seam drifted SM's
+.endif                           ;   exact-period PWM +1 frame per lap — measured)
         jmp pl_apply             ; hold current value this frame (loop seam)
 pl_frz:
 .endif
