@@ -25,6 +25,27 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.16.0] - 2026-07-10
+
+### The part-reduction + fidelity-truth campaign (all native players)
+
+**Files per song** (goal: ~1 file per subtune; analysis `docs/analysis/PART_REDUCTION_PLAN.md`):
+- **Root cause measured**: ~95% of song splits were forced by the 64-slot `$c0-$ff` (FM,pulse) **bundle** channel. Phase-0 decompose: Hubbard FM is structural (24 shapes/song, pulse drives the explosion); DMC is diverse in both axes (clustering = dud, proven).
+- **pulse_canon** (per-instrument pulse canonical): **Commando 45→4 parts, Monty 22→4, Chimera 76→12 — byte-exact**. Gated to `hp_engine` builds after discovering it lossy for captured-pulse classes (Shockway osc3 pulse 0.3→100 with it off); MoN opt-in only (`MON_PULSE_CANON=1`; Supremacy costs real osc3 pulse).
+- **Track bit7 TRANSPOSE generation decoded** (three ROM-verified encodings: 1-byte `$80|semis` Shockway/Star_Paws/Saboteur_II, 2-byte `$80 nn` Auf_Wiedersehen): the parser had decoded them as pattern numbers 128+ → garbage patterns → one voice 10× too long → loop expansion → **Shockway = 638 parts of repeats; now 21** (Star_Paws 188→10, Auf_W 274→43, Saboteur 112→86). Also a fidelity fix (everything past the first `$8x` byte used to decode as garbage) + a span-sanity guard (>2.5× median = suspect mis-decode) + the **split pulse-speed table** (`lay.pulsespeed_tbl`) + the class's **pulse engine decoded** (self-modifying per-instrument rails; fetch-frame step + fx-arp re-fetch = the documented remaining residual).
+- **Builders auto-prune stale higher-numbered parts** (Supremacy_sub2 showed 70 files for a 10-part build). Hubbard corpus 846 (stale mix) / 1581 (first honest full rebuild) → **529 files**, rebuilt again with all fixes.
+
+**Fidelity**:
+- **Wave REST-TAIL fix** (shared engine): the per-note wave capture now extends across following rests (gate-off rows output `program&$fe`, so a captured `$00` reproduces the engine's mid-rest wave-off) and the capture cap rose 96→256 frames. **Supremacy sub1 94.3→99.9 on every voice/register; Cybernoid II part01 100/100/100 all voices; Cybernoid I wf/pulse 100.** Crown jewel (Hawkeye sub2 100×4) regression-checked intact.
+- **DMC 33→41 eligible** (state-copy, staged-emit, ADC-vibrato-freq, interleaved-track generations — each ROM-anchored, gated, tested) + the **full-song per-voice legato A/B** (`DMC_LEGATO_AB`, guaranteed non-regressing; Dreaming osc3 39→90).
+
+**Fidelity measuring** (`bin/mon_part_fidelity.py`):
+- per-voice delay refinement; **skew-vs-content classification** (±1-frame transition skew = inaudible write phase, reported separately — Supremacy sub2 osc2 = 47.7 strict / **100.0 skew-tolerant**, audibly exact); **mismatch-cluster report** (residual as frame-runs — it localized and effectively fixed the Supremacy residual); **part-loop auto-cap** (a windowed part loops to its own start; measuring past that fabricated phantom tail residuals).
+
+**Infra**: `docs/SF2.md` build index + `pyscript/gen_sf2_index.py` (complete inventory, all songs + part counts, auto-refreshed). **CI security scan green after 199 consecutive red runs** — 8 live bandit findings properly repaired (shell-exec → argv subprocess, https enforcement, tempfile, SQL-identifier validation, justified nosec ×2), `archive/` dead code excluded. Sound Monitor arc opened (11-file `$C000/$C475` Fun_Fun cluster; ROMUZAK's `SOUNDMONITOR_CNV` = the reference). 1512 tests green.
+
+---
+
 ## [3.15.0] - 2026-07-09
 
 ### Added — DMC (Demo Music Creator) native SF2 player — Johannes Bjerregaard
