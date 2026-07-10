@@ -8,7 +8,10 @@ import sf2_load_retry
 
 def test_missing_file_returns_missing_verdict():
     """load_with_retry on a non-existent path returns verdict='MISSING'."""
-    res = sf2_load_retry.load_with_retry('/tmp/does_not_exist.sf2', max_attempts=3)
+    import os
+    import tempfile
+    missing = os.path.join(tempfile.gettempdir(), '__sidm2_does_not_exist__.sf2')
+    res = sf2_load_retry.load_with_retry(missing, max_attempts=3)
     assert res['verdict'] == 'MISSING'
     assert res['attempts'] == 0
     assert res['first_pass'] is None

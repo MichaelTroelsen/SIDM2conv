@@ -14,12 +14,14 @@ from pathlib import Path
 
 def download_file(url, destination):
     """Download a file with progress indication."""
+    if not url.startswith("https://"):        # only the hardcoded https release
+        raise ValueError(f"refusing non-https download URL: {url}")
     print(f"[>] Downloading from: {url}")
     print(f"[>] Saving to: {destination}")
 
     try:
         # Download with progress
-        with urllib.request.urlopen(url) as response:
+        with urllib.request.urlopen(url) as response:  # nosec B310 - https enforced above
             total_size = int(response.headers.get('content-length', 0))
             block_size = 8192
             downloaded = 0

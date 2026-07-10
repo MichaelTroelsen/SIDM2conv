@@ -190,8 +190,11 @@ jobs:
     - name: Install bandit
       run: pip install bandit
 
+    # -x: test_converter.py (test scaffolding) and archive/ (quarantined dead
+    # code kept by the archive-before-delete protocol — never imported or run;
+    # live-code findings are FIXED, not excluded)
     - name: Run security scan
-      run: bandit -r . -ll -ii -x ./test_converter.py
+      run: bandit -r . -ll -ii -x ./test_converter.py,./archive
 
   release:
     name: Create Release

@@ -146,7 +146,8 @@ def type_string(s, interval=0.025):
         time.sleep(interval)
 
 
-def screenshot(label, outdir='/tmp/sf2_screens'):
+def screenshot(label, outdir=None):
+    outdir = outdir or os.path.join(tempfile.gettempdir(), 'sf2_screens')
     os.makedirs(outdir, exist_ok=True)
     path = os.path.join(outdir, f'{int(time.time()*1000)}_{label}.png')
     pyautogui.screenshot(path)
@@ -306,7 +307,8 @@ def test_one(sf2_path: str, total_timeout: float = 12.0, capture_screens=False) 
             stderr_f.flush(); stderr_f.seek(0)
             full = stderr_f.read()
             # Save full stderr alongside the file for inspection
-            log_path = f'/tmp/sf2_load_{Path(sf2_path).stem}.log'
+            log_path = os.path.join(tempfile.gettempdir(),
+                                    f'sf2_load_{Path(sf2_path).stem}.log')
             with open(log_path, 'w', encoding='utf-8') as f:
                 f.write(full)
             result['stderr_log'] = log_path

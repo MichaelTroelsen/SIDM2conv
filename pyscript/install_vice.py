@@ -13,6 +13,8 @@ from pathlib import Path
 
 def download_file(url, dest_path):
     """Download a file with progress indication."""
+    if not url.startswith("https://"):        # only the hardcoded https release
+        raise ValueError(f"refusing non-https download URL: {url}")
     print(f"Downloading from {url}...")
 
     def report_progress(block_num, block_size, total_size):
@@ -23,7 +25,7 @@ def download_file(url, dest_path):
             mb_total = total_size / (1024 * 1024)
             print(f"\rProgress: {percent:.1f}% ({mb_downloaded:.1f}/{mb_total:.1f} MB)", end='')
 
-    urllib.request.urlretrieve(url, dest_path, reporthook=report_progress)
+    urllib.request.urlretrieve(url, dest_path, reporthook=report_progress)  # nosec B310 - https enforced above
     print()  # New line after progress
 
 def extract_zip(zip_path, extract_to):

@@ -217,7 +217,13 @@ class ValidationDatabase:
         Returns:
             result_id of the created result
         """
-        # Build column names and values from kwargs
+        # Build column names and values from kwargs. Values are parameterized
+        # (?); the column NAMES come from internal call sites only — validate
+        # them as identifiers anyway so no caller can smuggle SQL.
+        import re
+        for k in kwargs:
+            if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', k):
+                raise ValueError(f"invalid column name: {k!r}")
         columns = ['run_id'] + list(kwargs.keys())
         values = [run_id] + list(kwargs.values())
         placeholders = ','.join(['?' for _ in columns])
@@ -226,7 +232,7 @@ class ValidationDatabase:
         cursor.execute(f"""
             INSERT INTO file_results ({','.join(columns)})
             VALUES ({placeholders})
-        """, values)
+        """, values)  # nosec B608 - identifiers validated above, values parameterized
 
         self.conn.commit()
         return cursor.lastrowid

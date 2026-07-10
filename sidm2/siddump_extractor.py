@@ -595,7 +595,9 @@ def load_extracted_data(input_file: str = "sf2_music_data_extracted.pkl") -> Tup
         (sequences, orderlists) tuple
     """
     with open(input_file, 'rb') as f:
-        data = pickle.load(f)
+        # internal intermediate written by this same tool's save path — not
+        # untrusted input (the file never crosses a trust boundary)
+        data = pickle.load(f)  # nosec B301
 
     return data['sequences'], data['orderlists']
 

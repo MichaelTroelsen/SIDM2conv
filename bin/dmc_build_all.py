@@ -90,8 +90,9 @@ def main():
         (built if r.returncode == 0 else failed).append(
             name if r.returncode == 0 else (name, (r.stderr or '')[-200:]))
         # restore the shared generated driver scratch between builds
-        for f in ("layout.inc", "freqtable.inc"):
-            os.system(f'git checkout -- "drivers_src/mon/{f}" 2>NUL')
+        subprocess.run(['git', 'checkout', '--', 'drivers_src/mon/layout.inc',
+                        'drivers_src/mon/freqtable.inc'],
+                       capture_output=True)
     print(f"\nBUILT {len(built)}; FAILED {len(failed)}")
     for item in failed:
         print(f"  FAIL {item}")
