@@ -367,10 +367,20 @@ def main():
     vr, _ = decode_song(m, dsong, expand_loops=False)
     op = sorted(max((tk + n.ticks for tk, n in vr[v]), default=0)
                 for v in range(3))
-    if op[2] > 2.5 * max(1, op[1]):
-        print(f"  WARNING: per-voice one-pass tick lengths {op} differ >2.5x — "
-              f"suspect track mis-decode (unhandled track-command generation); "
-              f"the build may be mostly repeats/garbage past the shortest voice.")
+    if op[2] > 2.5 * max(1, op[1]) and os.environ.get('HUBBARD_ALLOW_UNEQUAL') != '1':
+        # HARD refusal (was a warning): Devils_Galop's mis-decode span made the
+        # builder trace 20,975 s (5.8 h of siddump) before doing anything useful.
+        # A >2.5x-unequal decode is a mis-decoded track generation; the build
+        # would be repeats/garbage past the shortest voice. HUBBARD_ALLOW_UNEQUAL=1
+        # overrides for investigation.
+        sys.exit(f"REFUSING build: per-voice one-pass tick lengths {op} differ "
+                 f">2.5x — suspect track mis-decode (unhandled track-command "
+                 f"generation). Set HUBBARD_ALLOW_UNEQUAL=1 to override.")
+    if span > 900 * 50 and os.environ.get('HUBBARD_ALLOW_UNEQUAL') != '1':
+        # absolute sanity: no corpus tune is longer than ~9 min (Delta 545 s);
+        # a multi-hour span = a mis-decode even when the voices agree.
+        sys.exit(f"REFUSING build: span {span // 50}s exceeds 900s — suspect "
+                 f"track mis-decode. Set HUBBARD_ALLOW_UNEQUAL=1 to override.")
 
     import mon_fidelity as F
     secs = span // 50 + 4
