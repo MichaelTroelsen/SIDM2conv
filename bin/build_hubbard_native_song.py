@@ -47,10 +47,15 @@ class HubbardShim:
                               # captured programs; =0 to fall back)
     pulse_canon = 0 if os.environ.get('HUBBARD_PULSE_CANON') == '0' else 1
                               # PART REDUCTION (Phase 2): collapse the bundle's PULSE
-                              # side to ONE canonical per instrument (the ROM pulse
-                              # free-runs, so per-note captures differ only in
-                              # inaudible phase). Commando 45 parts -> 4 at 100/100/
-                              # 100. Gated to hard_restart; V2 uses freerun instead.
+                              # side to ONE canonical per instrument. SAFE ONLY under
+                              # hp_engine (the HP tables drive the SID, so the
+                              # captured-pulse content is unused -> pure bundle
+                              # collapse; Commando 45 parts -> 4 at 100/100/100).
+                              # For captured-pulse builds (hp_engine=0: swallow/
+                              # transposed classes) the canonical is the ACTUAL
+                              # pulse and is LOSSY (Shockway osc3 0.3 -> 100 with
+                              # it off) — main() clears it whenever hp_engine is
+                              # gated off.
     freerun_pulse = 0         # v2 (Delta class): the PW accumulates across
                               # notes — enable the per-voice free-run STREAM
                               # detection (set in main for v2_notes files)
@@ -296,6 +301,8 @@ def main():
     phase = find_phase(SID, SONG, m, voices)
     ii = initial_instruments(d, la, h.init_address, SONG, m.lay)
     shim = HubbardShim(m, dsong, phase, init_instr=ii)
+    if not shim.hp_engine:
+        shim.pulse_canon = 0  # captured pulse is the output -> canonical is lossy
     sched_bitmap = None
     if m.lay.swallow_period:
         # A swallow signature was found -> its schedule is a clean single-period
@@ -329,6 +336,8 @@ def main():
         # track class is V1-notes + swallow — its records may be V1-layout).
         shim.hp_engine = 0
         shim.freerun_pulse = 1
+        shim.pulse_canon = 0  # captured pulse IS the output here — the canonical
+                              # merge is lossy (Shockway osc3 pulse 0.3 -> 100)
 
     def part_swallow(t0):
         """(period, frames-until-first-skip) at part window start t0."""
