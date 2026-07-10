@@ -89,3 +89,29 @@ def test_commando_detects():
     voices, totals = decode_song(m, 0)
     assert totals == [3936, 3936, 3936]
     assert m.frames_per_tick == 3
+
+
+def test_track_transpose_generations():
+    """The later swallow revisions use bit7 track bytes as TRANSPOSE commands
+    (ROM-verified: Shockway $ED99 one-byte `$80|semis`, Auf_Wiedersehen $E49D
+    two-byte `$80 nn`). Decoding them as pattern numbers 128+ made one voice
+    'decode' 10x too long (Shockway 3210s -> a 638-part build of repeats).
+    With the fix, per-voice one-pass lengths come out near-equal (synced
+    tracks) and V1 files stay tmode=0."""
+    import os
+    from sidm2.hubbard_parser import HubbardModule, decode_song, load_sid
+
+    def one_pass(name):
+        d, la, h = load_sid(os.path.join("SID", "Hubbard_Rob", name + ".sid"))
+        m = HubbardModule(d, la)
+        vr, _ = decode_song(m, 0, expand_loops=False)
+        return m.lay.trk_transpose, [max((tk + n.ticks for tk, n in vr[v]),
+                                         default=0) for v in range(3)]
+    tm, op = one_pass("Shockway_Rider")
+    assert tm == 1 and max(op) < 2 * min(op)          # was 261 vs 3210s-worth
+    tm, op = one_pass("Saboteur_II")
+    assert tm == 1 and len(set(op)) == 1              # perfectly synced
+    tm, op = one_pass("Auf_Wiedersehen_Monty")
+    assert tm == 2 and max(op) < 1.5 * min(op)
+    tm, op = one_pass("Monty_on_the_Run")
+    assert tm == 0 and len(set(op)) == 1              # V1 untouched

@@ -87,6 +87,15 @@ class HubbardLayout:
     instrnr_addr: int = 0     # per-voice CURRENT instrument array (the fetch's
                               #   LDA instrnr,X) — init seeds per-voice defaults
                               #   that notes without an instrument byte inherit
+    trk_transpose: int = 0    # track bit7-byte TRANSPOSE encoding: 0 = none (V1 —
+                              #   tracks are plain pattern numbers), 1 = one-byte
+                              #   ($80|semis, transpose = b & $7F; Shockway/
+                              #   Star_Paws/Saboteur_II), 2 = two-byte ($80 nn,
+                              #   transpose = the NEXT byte; Auf_Wiedersehen).
+                              #   Without this the $8x bytes decode as pattern
+                              #   numbers 128+ -> garbage patterns -> one voice
+                              #   "decodes" 10x too long -> a 4013s span -> 638
+                              #   SF2 parts of repeats (Shockway).
 
 
 SONGS_COPY_SIG = [0xBD, None, None, 0x99, None, None, 0xE8, 0xC8, 0xC0, 0x06, 0xD0]
@@ -239,6 +248,22 @@ class HubbardModule:
                                    0x0A, 0x0A, 0x0A, 0xAA]))
         if j is not None:
             lay.instrnr_addr = d[j + 1] | (d[j + 2] << 8)
+
+        # track bit7 TRANSPOSE commands (the later swallow revisions; ROM-verified
+        # on Shockway $ED99 / Saboteur_II $F09A / Auf_Wiedersehen $E49D):
+        #   LDA (trk),Y / BPL pattern / CMP #$FF / BEQ loop [/ CMP #$FE / BEQ halt]
+        # then either  AND #$7F / STA transpose,X          (one-byte: $80|semis)
+        # or           INY / LDA (trk),Y -> transpose      (two-byte: $80 nn)
+        if any(True for _ in _find_all(d, [0xB1, None, 0x10, None, 0xC9, 0xFF,
+                                           0xF0, None, 0x29, 0x7F])) or \
+           any(True for _ in _find_all(d, [0xB1, None, 0x10, None, 0xC9, 0xFF,
+                                           0xF0, None, 0xC9, 0xFE, 0xF0, None,
+                                           0x29, 0x7F])):
+            lay.trk_transpose = 1
+        elif any(True for _ in _find_all(d, [0xB1, None, 0x10, None, 0xC9, 0xFF,
+                                             0xF0, None, 0xC9, 0xFE, 0xF0, None,
+                                             0xC8, 0xB1, None])):
+            lay.trk_transpose = 2
         return lay
 
     # ---------------- decode ----------------
@@ -272,41 +297,60 @@ class HubbardModule:
         return [self._u8(base + v) | (self._u8(base + 3 + v) << 8)
                 for v in range(3)]
 
-    def track_patterns(self, song, voice):
+    def track_patterns(self, song, voice, with_transpose=False):
         """Pattern-number list until $ff (loop) / $fe (halt).
-        Returns (patterns, loops).
+        Returns (patterns, loops); with_transpose=True returns
+        ([(pattern, transpose)], loops) instead.
 
         v2 tracks (Delta class) interleave REPEAT counts: [pat0 (1x),
         cnt1, pat1 (cnt1 x), cnt2, pat2, ...] — the ROM inits the repeat
         counter to 1, plays the pattern at pos, and on expiry reads the
-        next byte as the count for the FOLLOWING pattern."""
+        next byte as the count for the FOLLOWING pattern.
+
+        The later swallow revisions (lay.trk_transpose) use bit7 track
+        bytes as TRANSPOSE commands (1 = `$80|semis`, 2 = `$80 nn`),
+        applied to following patterns' pitches. Without this they decode
+        as pattern numbers 128+ (garbage patterns -> a 10x-long voice)."""
         ptr = self.track_ptrs(song)[voice]
-        pats, i = [], 0
+        tmode = getattr(self.lay, 'trk_transpose', 0)
+        pats, i, trans = [], 0, 0
+
+        def done(loops):
+            return (pats if with_transpose
+                    else [p for p, _ in pats]), loops
         if getattr(self.lay, 'v2_notes', False):
             count = 1
             while i < 512:
                 b = self._u8(ptr + i)
                 if b == 0xFF:
-                    return pats, True
+                    return done(True)
                 if b == 0xFE:
-                    return pats, False
-                pats.extend([b] * max(1, count))
+                    return done(False)
+                pats.extend([(b, 0)] * max(1, count))
                 i += 1
                 nxt = self._u8(ptr + i)
                 if nxt in (0xFF, 0xFE):
                     continue
                 count = nxt
                 i += 1
-            return pats, False
+            return done(False)
         while i < 512:
             b = self._u8(ptr + i)
             if b == 0xFF:
-                return pats, True
+                return done(True)
             if b == 0xFE:
-                return pats, False
-            pats.append(b)
+                return done(False)
+            if b >= 0x80 and tmode == 1:      # $80|semis -> transpose
+                trans = b & 0x7F
+                i += 1
+                continue
+            if b >= 0x80 and tmode == 2:      # $80 nn -> transpose = nn
+                trans = self._u8(ptr + i + 1)
+                i += 2
+                continue
+            pats.append((b, trans))
             i += 1
-        return pats, False
+        return done(False)
 
 
 @dataclass
@@ -377,12 +421,15 @@ def decode_song(m, song=0, expand_loops=True):
     ticks. A LOOPING track shorter than the longest voice is repeated to cover
     the full song span (e.g. a short ostinato track against long melody
     tracks — 5_Title_Tunes module 4's V1 is an 18-tick loop)."""
+    import dataclasses
     voices, totals, loops = [], [], []
     for v in range(3):
-        pats, looped = m.track_patterns(song, v)
+        pats, looped = m.track_patterns(song, v, with_transpose=True)
         tk, evs = 0, []
-        for p in pats:
+        for p, trans in pats:
             for n in decode_pattern(m, p):
+                if trans and n.pitch >= 0:   # track transpose: shift real notes
+                    n = dataclasses.replace(n, pitch=n.pitch + trans)
                 evs.append((tk, n))
                 tk += n.ticks
         voices.append(evs)

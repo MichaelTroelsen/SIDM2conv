@@ -347,6 +347,18 @@ def main():
     base = os.path.splitext(os.path.basename(SID))[0]
     print(f"{base} song{SONG}: fpt={m.frames_per_tick} phase={phase} "
           f"span={span // 50}s events={[len(v) for v in shim.voices]}")
+    # SPAN SANITY (the Shockway lesson): Hubbard tracks are synced, so per-voice
+    # one-pass lengths agree (a short looping ostinato may be legitimately tiny,
+    # so compare the LONGEST against the median). A voice decoding far past the
+    # median = a track mis-decode (an unhandled track-command generation) — flag
+    # it instead of silently building an hour of garbage repeats (638 parts once).
+    vr, _ = decode_song(m, dsong, expand_loops=False)
+    op = sorted(max((tk + n.ticks for tk, n in vr[v]), default=0)
+                for v in range(3))
+    if op[2] > 2.5 * max(1, op[1]):
+        print(f"  WARNING: per-voice one-pass tick lengths {op} differ >2.5x — "
+              f"suspect track mis-decode (unhandled track-command generation); "
+              f"the build may be mostly repeats/garbage past the shortest voice.")
 
     import mon_fidelity as F
     secs = span // 50 + 4
