@@ -14,11 +14,11 @@ in `bin/DMC/`). Balloon.sid was the RE exemplar (load `$1000`, init `$1440`, pla
 pipeline).
 **Status:** format fully RE'd; parser + decoder done. Native Stage B **works end-to-end** —
 **Rockbuster ≈97%** (freq 65→97, waveform 87→100, pulse 100/100/100), most eligible files
-2/3 voices at 90–100%. Corpus survey (`bin/dmc_build_all.py --dry`, all 88 files): **36
-ELIGIBLE** (onset-aligned build; split/ADC-vibrato freq + four sound-generation fallbacks +
-the interleaved-track generation), **~26 FALLBACK** (tables located but onsets disagree —
-multispeed/self-IRQ/legato), **~26 NO-TABLES** (signature miss — the corpus spans multiple
-DMC code generations; see below). `bin/` only, not registry-wired.
+2/3 voices at 90–100%. Corpus survey (`bin/dmc_build_all.py --dry`, all 88 files): **41
+ELIGIBLE** (onset-aligned build; split/ADC-vibrato/staged freq + five sound-generation
+fallbacks + the interleaved-track generation), **~26 FALLBACK** (tables located but onsets
+disagree — multispeed/self-IRQ/legato), **~21 NO-TABLES** (signature miss — the corpus spans
+multiple DMC code generations; see below). `bin/` only, not registry-wired.
 
 ---
 

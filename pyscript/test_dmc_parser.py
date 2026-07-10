@@ -101,6 +101,19 @@ def test_state_copy_sound_generation():
 
 
 @pytest.mark.skipif(not os.path.isdir(CORP), reason="Bjerregaard corpus absent")
+def test_staged_emit_generation():
+    """The abs,X staged-emit generation (Eagles / Camel_Riders / Ragtime / Spacegame
+    / Who_Is_Robb) reads the sound record with X = sound#*8 (`LDA ad,X / STA $D405,Y`,
+    AD/SR adjacent) and the freq table interleaved via `ASL/TAY / LDA freq,Y / STA
+    staging(abs)` — both missing from the acc-anchored primary signatures."""
+    m = _mod("Eagles")[0]
+    assert m.lay.sound == 0x862D and m.lay.freq == 0x8402
+    assert (m.lay.sector_lo and m.lay.trk_lo)
+    for note in (24, 36, 48, 60):
+        assert freq_to_semi(m.note_freq(note)) == note
+
+
+@pytest.mark.skipif(not os.path.isdir(CORP), reason="Bjerregaard corpus absent")
 def test_adc_vibrato_freq_generation():
     """The ADC-vibrato generation (Domino_Dancing / Alf_TV_Theme / …) writes the
     freq accumulator through a per-frame vibrato add: `LDA acc,X / CLC / ADC vib,X /

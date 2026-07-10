@@ -144,6 +144,18 @@ class DMCModule:
                                    0xB9, None, None, 0x9D, None, None]):
                 lay.sound = d[i + 9] | (d[i + 10] << 8)
                 break
+        # FALLBACK for the abs,X staged-emit generation (Eagles / Camel_Riders /
+        # Ragtime / Spacegame / Who_Is_Robb): the emit indexes the sound record with
+        # X = sound#*8 and stores via Y = voice reg offset:
+        #   LDA ad,X / STA $D405,Y ; LDA ad+1,X / STA $D406,Y   (AD/SR adjacent)
+        # lay.sound = the AD field (record stride 8, so s[0]=AD, s[1]=SR line up).
+        if not lay.sound:
+            for i in _find_all(d, [0xBD, None, None, 0x99, 0x05, 0xD4,
+                                   0xBD, None, None, 0x99, 0x06, 0xD4]):
+                ad = d[i + 1] | (d[i + 2] << 8)
+                if (d[i + 7] | (d[i + 8] << 8)) == ad + 1:
+                    lay.sound = ad
+                    break
 
         # freq table: two steps (avoids matching the sound table's AD/SR reads).
         #   (1) the freq accumulator lo/hi from the D400/D401 emit. The player
@@ -185,6 +197,17 @@ class DMCModule:
                     break
                 if hi > lo + 1:              # split: freq_lo[note] / freq_hi[note]
                     lay.freq, lay.freq_hi = lo, hi
+                    break
+        # FALLBACK for the abs,X staged-emit generation (Eagles class): freq is read
+        # interleaved via `ASL A / TAY / LDA freq,Y / STA staging(abs) / LDA freq+1,Y`
+        # and only later stored to $D400/1 from the staging var — so the acc-anchored
+        # step-2 above never matches.
+        if not lay.freq:
+            for i in _find_all(d, [0x0A, 0xA8, 0xB9, None, None, 0x8D, None, None,
+                                   0xB9, None, None]):
+                lo = d[i + 3] | (d[i + 4] << 8)
+                if (d[i + 9] | (d[i + 10] << 8)) == lo + 1:
+                    lay.freq = lo            # interleaved (note*2)
                     break
 
         # per-voice track pointer tables: LDA trk_lo,x / STA z ; LDA trk_hi,x / STA z
