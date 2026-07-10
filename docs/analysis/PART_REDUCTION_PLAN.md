@@ -129,9 +129,20 @@ Delta 545×3, Commando 236×3 — synced tracks). The exploders are wildly unequ
 364/825/1900 s. One voice's track decodes ~10× too long (a V2 repeat-count / track
 mis-decode), `decode_song`'s loop expansion then unrolls the other voices to match → a
 4013 s span → 638 parts *of repeats*. The windows are normal (~6 s); the SPAN is wrong.
-Fix = the V2 swallow-class track decode in `sidm2/hubbard_parser.py`; cheap guard = flag
-builds whose per-voice one-pass lengths differ >2× as suspect mis-decodes instead of
-building an hour of song. Also: Deep_Strike s0 FAILs mid-build with a WAVE-overflow crash
+
+**FIXED (2026-07-10, ROM-verified):** the exploders' tracks use **bit7 TRANSPOSE
+commands** the parser decoded as pattern numbers 128+ (garbage patterns → the 10×-long
+voice). Three encodings found in the players' own code: one-byte `$80|semis` (Shockway
+`$ED99`, Star_Paws; Saboteur_II adds a `$FE` check) and two-byte `$80 nn`
+(Auf_Wiedersehen `$E49D`). Parser now detects the idiom (`lay.trk_transpose`,
+signature-gated — V1 files untouched), skips/records the transpose in `track_patterns`,
+and applies it to note pitches in `decode_song`. One-pass voice lengths now near-equal
+(Saboteur 193×3 exactly). **Shockway rebuilds 638 → 21 parts** (span 4013→419 s). The
+builder also gained the span-sanity guard (>2.5× median = suspect mis-decode warning).
+**Follow-on front:** this class's *fidelity* is still poor (Shockway part01 freq 62–85,
+pulse ~0 — the swallow freerun pulse model doesn't fit the transposed-track generation);
+it was garbage-decoded entirely before, so this is the first honest baseline, not a
+regression. Also: Deep_Strike s0 FAILs mid-build with a WAVE-overflow crash
 in `gen_includes_song` (count-vs-emit divergence — the adaptive `fits()` passed but emit
 overflowed; 25 partial parts on disk). Devils_Galop/I_Ball/Wiz still spin-class timeouts.
 
