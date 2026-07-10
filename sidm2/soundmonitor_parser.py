@@ -1,5 +1,6 @@
-"""Sound Monitor (Chris Hulsbeck, 1986) player parser -- the Fun_Fun $C000/$C475
-cluster (driver name "Musicmaster", string at $CBD4 in every rip).
+"""Sound Monitor (Chris Huelsbeck, 1986) player parser -- the Fun_Fun $C000/$C475
+cluster (driver name "Musicmaster", credit string at $CBD4 -- truncated away in
+some rips, e.g. Final_Luv).
 
 Format RE'd 2026-07-10 from the play routine disasm (see
 memory/soundmonitor-player.md for the full trail). Unlike the relocatable players
@@ -21,15 +22,27 @@ data and the row header):
 
 BAR data: a sequence of (ctrl, data) byte pairs, one pair per step (LENGTH steps/row):
   ctrl == 0x00 -> REST (gate off)
-  ctrl == 0x80 -> TIE (hold previous note, no retrigger)
-  else         -> NOTE: note = (ctrl & 0x7F) + row transpose[voice] (skipped if
-                  data & 0x20); instrument = (data & 0x0F) + row sound-transpose[voice]
-                  (skipped if data & 0x80). data & 0x40 = digi/percussion trigger.
+  ctrl == 0x80 -> TIE (bit7 = retrigger flag with note 0 = hold, no new note)
+  ctrl bit7 set -> NOTE with retrigger; ctrl 0x01-0x7F -> legato NOTE (pitch change
+                  without re-gating). In both: note = (ctrl & 0x7F) + row
+                  transpose[voice] (skipped if data & 0x20); instrument =
+                  (data & 0x0F) + row sound-transpose[voice] (skipped if
+                  data & 0x80) -- NOTE: the transpose add is NOT masked to 4 bits,
+                  so effective instrument indices routinely exceed 15.
+  data & 0x10 -> PORTAMENTO/GLIDE: pitch walks chromatically from the previous note
+                 to this one (empirically confirmed on Dreamix: exactly the data=$17
+                 notes glide, the data=$07 ones jump).
+  data & 0x40 -> ARPEGGIO on: the engine at $CB65/$CB8A cycles an 8-entry table of
+                 SEMITONE OFFSETS (index = frame counter & 7) added to the note.
+                 The table lives INSIDE the row-header record, at offset = the LAST
+                 data byte of this voice's bar (read once per row at $C9D9); e.g.
+                 offset $28 -> "0C 00 0C 00..." = octave arp. The header record past
+                 its 6 fixed bytes is a bank of these 8-byte chord tables.
 
-SOUND (instrument) table: 24-byte records at SOUND_BASE + instr*24 (16-byte base
-timbre + optional 8-byte FF-terminated arp/drum extension appended only if byte16 !=
-0xFF). Base-record field mapping is not yet decoded (TODO -- not required for
-note/timing decode).
+SOUND (instrument) table: 24-byte records at SOUND_BASE + instr*24: byte0=waveform
+(SID ctrl), byte1=AD, byte2=SR (confirmed vs siddump), remaining base fields TODO;
+bytes 16-23 = an optional extension block copied only if byte16 != 0xFF (role TODO --
+distinct from the row-header arp tables above).
 
 Freq table: note index -> SID 16-bit freq, direct (not interleaved) split
 FREQ_LO=$C416 / FREQ_HI=$C3B7.
@@ -79,10 +92,19 @@ def load_sid(path):
     return bytes(data), load, h
 
 
+# The play routine's first 16 bytes at $C475 (JSR $CA17 / LDA $C00F / BEQ /
+# JSR $C90D / LDX $02C3 / BNE), byte-identical across the cluster. Detection
+# can NOT rely on the "MUSICMASTER CREATED BY CHRIS HUELSBECK" string at $CBD4:
+# some rips (Final_Luv) are truncated right before it.
+_PLAY_SIG = bytes.fromhex("2017caad0fc0f003200dc9aec302d023")
+
+
 def is_soundmonitor(data, la, h):
-    """Detect: fixed init/play entry points + the Musicmaster signature."""
-    return (h.init_address == SM_INIT and h.play_address == SM_PLAY
-            and b"MUSICMASTER" in data)
+    """Detect: fixed init/play entry points + the play-routine byte signature."""
+    if h.init_address != SM_INIT or h.play_address != SM_PLAY:
+        return False
+    off = SM_PLAY - la
+    return data[off:off + len(_PLAY_SIG)] == _PLAY_SIG
 
 
 class SoundMonitorModule:
@@ -135,8 +157,19 @@ class SoundMonitorModule:
         return self._u8(FREQ_LO + note) | (self._u8(FREQ_HI + note) << 8)
 
     def sound(self, idx):
-        base = SOUND_BASE + (idx & 0x0F) * SOUND_STRIDE
+        # Full 8-bit index: the player masks the RAW data nibble (& $0F) BEFORE
+        # adding the row sound-transpose, never after, so indices exceed 15.
+        base = SOUND_BASE + (idx & 0xFF) * SOUND_STRIDE
         return bytes(self._u8(base + i) for i in range(SOUND_STRIDE))
+
+    def row_arp(self, voice, row):
+        """The 8-entry semitone-offset arp table for (voice, row), or None.
+        Selected by the LAST data byte of the voice's bar, indexing into the
+        row-header record ($C9D9 reads it once per row; $CB8A cycles it)."""
+        hdr = self.row_header(row)
+        bar = self.bar_ptr(voice, row)
+        base = self._u8(bar + hdr['length'] * 2 - 1)
+        return tuple(self._u8(hdr['ptr'] + base + i) for i in range(8))
 
     def row_chain(self, max_rows=512):
         """Linear row sequence starting at row_start, incrementing (with natural
@@ -153,27 +186,35 @@ class SoundMonitorModule:
         return chain
 
     def events(self):
-        """-> {voice: [(row, step, kind, note, instrument), ...]}, kind in
-        ('rest', 'tie', 'note'). Row order per row_chain(); per-row LENGTH steps
-        per voice. Timing (frames/step = row 'speed') is left to the caller."""
+        """-> {voice: [(row, step, kind, note, instrument, arp, glide), ...]},
+        kind in ('rest', 'tie', 'note', 'legato'). 'note' = retriggered (ctrl
+        bit7); 'legato' = pitch change without re-gate (ctrl bit7 clear). arp =
+        the 8-tuple of semitone offsets when data & $40, else None. glide =
+        True when data & $10 (portamento from the previous pitch). Row order
+        per row_chain(); per-row LENGTH steps per voice. Timing (frames/step =
+        row 'speed') is left to the caller."""
         out = {0: [], 1: [], 2: []}
         for row, hdr in self.row_chain():
             for v in range(3):
                 ptr = self.bar_ptr(v, row)
                 transpose = self.row_transpose(v, row)
                 sound_transpose = self.row_sound_transpose(v, row)
+                arp_table = self.row_arp(v, row)
                 for step in range(hdr['length']):
                     ctrl, data = self.bar_step(ptr, step)
                     if ctrl == 0x00:
-                        out[v].append((row, step, 'rest', None, None))
+                        out[v].append((row, step, 'rest', None, None, None, False))
                     elif ctrl == 0x80:
-                        out[v].append((row, step, 'tie', None, None))
+                        out[v].append((row, step, 'tie', None, None, None, False))
                     else:
+                        kind = 'note' if ctrl & 0x80 else 'legato'
                         note = ctrl & 0x7F
                         if not (data & 0x20):
                             note = (note + transpose) & 0xFF
                         instrument = data & 0x0F
                         if not (data & 0x80):
                             instrument = (instrument + sound_transpose) & 0xFF
-                        out[v].append((row, step, 'note', note, instrument))
+                        arp = arp_table if (data & 0x40) else None
+                        out[v].append((row, step, kind, note, instrument, arp,
+                                       bool(data & 0x10)))
         return out

@@ -40,7 +40,9 @@ def semi_name(semi, oct_shift=0):
 
 
 def decode_onsets(m, max_frame):
-    """-> {voice: [(frame, raw_note), ...]} via the row/step timing model."""
+    """-> {voice: [(frame, raw_note, arp, glide), ...]} via the row/step timing
+    model. arp = the row's 8-entry semitone-offset table when the note has
+    data&$40; glide = data&$10 (portamento -- onset pitch is mid-walk)."""
     onsets = {0: [], 1: [], 2: []}
     frame = 0
     first_row = True
@@ -48,6 +50,7 @@ def decode_onsets(m, max_frame):
         speed, length = hdr['speed'], hdr['length']
         bar = [m.bar_ptr(v, row) for v in range(3)]
         transp = [m.row_transpose(v, row) for v in range(3)]
+        arps = [m.row_arp(v, row) for v in range(3)]
         for step in range(length):
             fps = 8 if (first_row and step == 0) else (speed + 1)
             for v in range(3):
@@ -56,7 +59,8 @@ def decode_onsets(m, max_frame):
                     note = ctrl & 0x7F
                     if not (data & 0x20):
                         note = (note + transp[v]) & 0xFF
-                    onsets[v].append((frame, note))
+                    arp = arps[v] if (data & 0x40) else None
+                    onsets[v].append((frame, note, arp, bool(data & 0x10)))
             frame += fps
         first_row = False
         if frame > max_frame:
@@ -65,13 +69,13 @@ def decode_onsets(m, max_frame):
 
 
 def real_onsets(sidpath, seconds):
-    """-> {voice: [(frame, note_name), ...]} parsed straight from siddump text
-    (siddump_note_onsets in fidelity_common assumes a note-name pattern that
-    doesn't need adjusting here, but we want the RAW cell text including the
-    '...'/'(..)' distinction, so this reimplements the row walk directly)."""
+    """-> {voice: [(frame, note_name), ...]} parsed straight from siddump text.
+    BRACKETED rows (pitch change without a gate re-write) are included: Sound
+    Monitor only re-gates a voice that a REST previously silenced, so a note
+    following a TIE is a genuine note event that siddump renders bracketed."""
     txt = run_siddump(sidpath, [f'-t{seconds}'])
     V = {0: [], 1: [], 2: []}
-    cell_pat = re.compile(r'\s*([0-9A-F]{4})\s+([A-G][-#]\d|\.\.\.|\([A-G][-#]\d\))')
+    cell_pat = re.compile(r'\s*([0-9A-F]{4})\s+(\(?)([A-G][-#]\d|\.\.\.)')
     for line in txt.splitlines():
         mm = re.match(r'^\|\s*(\d+)\s*\|(.*)\|\s*$', line)
         if not mm:
@@ -80,8 +84,8 @@ def real_onsets(sidpath, seconds):
         cells = mm.group(2).split('|')
         for v in range(3):
             cm = cell_pat.match(cells[v])
-            if cm and cm.group(2) != '...' and not cm.group(2).startswith('('):
-                V[v].append((frame, cm.group(2)))
+            if cm and cm.group(3) != '...':
+                V[v].append((frame, cm.group(3)))
     return V
 
 
@@ -92,27 +96,41 @@ def validate(path, seconds):
     decoded = decode_onsets(m, max_frame)
     real = real_onsets(path, seconds)
 
-    best = (None, -1, 0)
-    for oct_shift in (1, 0, -1, 2):
-        tot = match = 0
-        for v in range(3):
-            for frm, note in decoded[v]:
-                if frm > max_frame:
-                    continue
-                semi = freq_to_semi(m.freq(note))
-                if semi < 0:
-                    continue
-                name = semi_name(semi, oct_shift)
-                hit = next((rn for rf, rn in real[v] if abs(rf - frm) <= FRAME_TOL), None)
-                if hit is None:
-                    continue
-                tot += 1
-                if hit == name:
-                    match += 1
-        pct = 100 * match / tot if tot else 0
-        if pct > best[2]:
-            best = (oct_shift, tot, pct)
-    return best
+    tot = match = 0
+    for v in range(3):
+        for frm, note, arp, glide in decoded[v]:
+            if frm > max_frame:
+                continue
+            # Accepted onset pitches: the plain note, or (for arp notes) the
+            # note plus any of the 8 cycle offsets -- the onset frame lands on
+            # an engine-dependent phase of the arp cycle, and any cycle entry
+            # is a genuinely played pitch of this note event. For GLIDE notes
+            # (data&$10) the onset pitch is mid-portamento, so accept within
+            # +/-3 semitones of the target.
+            offsets = {0} if arp is None else ({0} | set(arp))
+            if glide:
+                offsets |= {off + k for off in set(offsets)
+                            for k in (-3, -2, -1, 1, 2, 3)}
+            names = set()
+            for off in offsets:
+                semi = freq_to_semi(m.freq((note + off) & 0xFF))
+                if semi >= 0:
+                    names.add(semi_name(semi))
+            if not names:
+                continue
+            # NEAREST real onset within tolerance (not first-in-window: the
+            # previous note can sit exactly FRAME_TOL frames earlier and would
+            # otherwise shadow the true match a couple of frames later).
+            cands = [(abs(rf - frm), rn) for rf, rn in real[v]
+                     if abs(rf - frm) <= FRAME_TOL]
+            if not cands:
+                continue
+            tot += 1
+            # Prefer any in-tolerance candidate that matches; else the nearest.
+            if any(rn in names for _, rn in cands):
+                match += 1
+    pct = 100 * match / tot if tot else 0
+    return tot, match, pct
 
 
 def main():
@@ -122,14 +140,14 @@ def main():
     args = ap.parse_args()
     os.chdir(ROOT)
     targets = args.paths or CORPUS
-    print(f"{'tune':28} {'best_oct':>8} {'matched/total':>15} {'pct':>7}")
+    print(f"{'tune':28} {'matched/total':>15} {'pct':>7}")
     for path in targets:
         if not os.path.exists(path):
             print(f"{os.path.basename(path):28} MISSING")
             continue
-        oct_shift, tot, pct = validate(path, args.seconds)
-        print(f"{os.path.splitext(os.path.basename(path))[0]:28} {oct_shift!s:>8} "
-              f"{tot:>15} {pct:6.1f}%")
+        tot, match, pct = validate(path, args.seconds)
+        print(f"{os.path.splitext(os.path.basename(path))[0]:28} "
+              f"{match}/{tot:>7} {pct:6.1f}%")
     return 0
 
 
