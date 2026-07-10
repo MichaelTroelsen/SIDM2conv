@@ -116,8 +116,23 @@ class SMShim:
     def __init__(self, m, streams, span, onsets=None, frames=None,
                  legato_set=frozenset(), phase=0):
         self.m = m
+        # STEP-GRID mode: SM's step is (speed+1) frames and every emulated
+        # gate-rise lands on that grid at one residue (measured: all ~ 1 mod 3
+        # across the corpus). Running the driver at TEMPO=speed (fpt frames/row)
+        # instead of TEMPO=1 stores 1/3 the sequence rows -> the per-window
+        # byte/event caps go 3x further (fewer parts) and the editor shows
+        # notes densely (one musical step per row). Falls back to fpt=1 when
+        # the grid isn't clean (mixed speeds, e.g. Dreamix's speed-3 row).
+        from collections import Counter
+        speeds = Counter(hdr['speed'] for _, hdr in m.row_chain())
+        fpt = speeds.most_common(1)[0][0] + 1
         self._fpt = 1
         self.onset_delay = 0
+        if onsets is not None and len(speeds) == 1 and fpt > 1:
+            res = Counter(f % fpt for v in range(3) for f in onsets[v])
+            if len(res) == 1:
+                self.onset_delay = res.most_common(1)[0][0]
+                self._fpt = fpt
         self.voices = [[] for _ in range(3)]
         for v in range(3):
             out = self.voices[v]
@@ -174,19 +189,31 @@ class SMShim:
                 ons = sorted(set(ons) | tie_set)
             if not ons:
                 continue
-            if ons[0] > 0:
-                out.append(MONEvent(note=0, dur=ons[0], instr=0,
+            # events carry (tick, frame): ticks drive durations/rows on the
+            # step grid; frames drive trace-resolved pitch (_sem). Tie frames
+            # from the decode can sit 1 off the gate grid -> snap by rounding.
+            fpt_, dly = self._fpt, self.onset_delay
+            evs, seen = [], set()
+            for f in ons:
+                t = max(0, round((f - dly) / fpt_)) if fpt_ > 1 else f
+                if t not in seen:
+                    seen.add(t)
+                    evs.append((t, f))
+            span_t = span // fpt_ if fpt_ > 1 else span
+            if evs[0][0] > 0:
+                out.append(MONEvent(note=0, dur=evs[0][0], instr=0,
                                     wprog=0, retrig=False, rest=True))
             ci = 0
             cur = changes[0][1] if changes else 0
-            for i, o in enumerate(ons):
+            tail = max(1, 8 // fpt_)
+            for i, (t, o) in enumerate(evs):
                 while ci < len(changes) and changes[ci][0] + phase <= o + 2:
                     cur = changes[ci][1]
                     ci += 1
-                nxt = ons[i + 1] if i + 1 < len(ons) else min(o + 8, span)
+                nxt = evs[i + 1][0] if i + 1 < len(evs) else min(t + tail, span_t)
                 note = _sem(frames, v, o) if frames is not None else 48
                 tie = o in tie_set
-                out.append(MONEvent(note=note, dur=max(1, nxt - o),
+                out.append(MONEvent(note=note, dur=max(1, nxt - t),
                                     instr=cur, wprog=0, retrig=not tie,
                                     tie=tie))
 
