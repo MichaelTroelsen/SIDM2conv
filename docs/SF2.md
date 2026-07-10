@@ -230,7 +230,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Viool Tello sub0 | 1 |
 | Wizzy sub0 | 3 |
 
-### Rob Hubbard — Rob Hubbard  ·  `native`  ·  61 songs / 529 SF2 files
+### Rob Hubbard — Rob Hubbard  ·  `native`  ·  61 songs / 589 SF2 files
 
 | Song | Parts |
 |------|------:|
@@ -252,7 +252,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Crazy Comets song0 | 5 |
 | Crazy Comets song1 | 1 |
 | Deep Strike song0 | 25 |
-| Delta song0 | 165 |
+| Delta song0 | 221 |
 | Delta song11 | 3 |
 | Delta song12 | 3 |
 | Geoff Capes Strongman Challenge song0 | 1 |
@@ -288,8 +288,8 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Ninja song0 | 21 |
 | One Man and his Droid song0 | 11 |
 | Saboteur II song0 | 86 |
-| Sanxion song0 | 28 |
-| Shockway Rider song0 | 21 |
+| Sanxion song0 | 31 |
+| Shockway Rider song0 | 22 |
 | Star Paws song0 | 10 |
 | Thing on a Spring song0 | 4 |
 | Zoids song0 | 4 |
