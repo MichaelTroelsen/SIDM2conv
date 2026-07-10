@@ -24,7 +24,7 @@ converted SF2 runs on (a stock **Driver 11**, the native **Laxity** driver, or a
 | ROMUZAK V6.3 | Oliver Blasnik | **native** (ROMUZAK) | `SID/Fun_Fun/` (2) | byte-exact wf/pulse/AD-SR (~98–100%) | `bin/` |
 | Rob Hubbard V1 | Rob Hubbard | **native** (MoN engine) | `SID/Hubbard_Rob/` | pulse/freq/filter **100%** | `bin/` |
 | Rob Hubbard V2 (Delta) | Rob Hubbard | **native** | `SID/Hubbard_Rob/` | Delta theme freq/pulse/filter 100% (wf 85–96) | `bin/` |
-| DMC (Demo Music Creator) | Johannes Bjerregaard | **native** (MoN engine) | `SID/JohannesBjerregaard/` (88) | see below; **33 eligible** | `bin/` |
+| DMC (Demo Music Creator) | Johannes Bjerregaard | **native** (MoN engine) | `SID/JohannesBjerregaard/` (88) | see below; **41 eligible** | `bin/` |
 | Future Composer ($1800) | Michael Troelsen | Driver 11 (Stage A) | `SID/Fun_Fun/` | notes/order trace-validated | `bin/` |
 | NewPlayer 20.G4 | various | NP20 | `SID/` (NP20 variants) | 70–90% | ✅ auto (registry) |
 
@@ -84,10 +84,12 @@ scores higher on legato voices — see [`docs/players/DMC.md`](players/DMC.md)).
 Other eligible (build, not individually measured here): Billie_Jean, Cant_Stop, Chase_v2,
 DMC_Demo_IV_tune_1, Dreaming_2, MSI_Demo, Namnam_Special, Omega_Force_One, Shape, Some_Soul.
 
-**DMC generations decoded** (why a file is eligible): the parser is relocation-safe and now
-handles the interleaved/split freq table, three sound-record idioms (state / absolute-store /
-indexed-store), and the interleaved-track + ADC-vibrato-freq generations. ~32 files remain
-NO-TABLES (further per-generation RE — Stormlord, Flimbos_Quest, Crazy_Comets_remix, …).
+**DMC generations decoded** (why a file is eligible — **41 of 88** now): the parser is
+relocation-safe and handles three freq layouts (interleaved / split / ADC-vibrato / staged),
+five sound-record idioms (state / absolute-store / indexed-store / state-copy / staged-emit),
+and the interleaved-track generation. Newly eligible this cycle: Myth_Demo, Stormlord_V2,
+STII8, Eagles, Camel_Riders_Inc, Ragtime_Anno_87, Spacegame_Music, Who_Is_Robb_Vol_1 (+
+Flimbos_Quest/Kamikaze locate, FALLBACK). ~21 files remain NO-TABLES.
 
 ---
 
@@ -156,7 +158,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 
 ## Complete build inventory
 
-**174 songs built** across 5 native players (each song may span several SF2 parts).
+**161 songs built** across 5 native players (each song may span several SF2 parts).
 
 *Auto-generated from the built SF2 files under `out/` by `pyscript/gen_sf2_index.py` — re-run after building more tunes. "Parts" = the number of SF2 files a song is split into (a long song exceeds the SF2II table/`$D000` caps and ships as windowed parts; 1 = a single file).*
 
@@ -197,7 +199,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Wanna Get Sick | 1 |
 | Zoom | 1 |
 
-### Maniacs of Noise — Jeroen Tel  ·  `native`  ·  25 songs / 289 SF2 files
+### Maniacs of Noise — Jeroen Tel  ·  `native`  ·  24 songs / 266 SF2 files
 
 | Song | Parts |
 |------|------:|
@@ -220,88 +222,75 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Pal sine hoener tune 1 sub0 | 3 |
 | Sample sub0 | 4 |
 | Supremacy sub0 | 16 |
-| Supremacy sub1 | 23 |
 | Supremacy sub2 | 70 |
 | Thats preview sub0 | 1 |
 | Tomcat sub0 | 3 |
 | Viool Tello sub0 | 1 |
 | Wizzy sub0 | 3 |
 
-### Rob Hubbard — Rob Hubbard  ·  `native`  ·  73 songs / 846 SF2 files
+### Rob Hubbard — Rob Hubbard  ·  `native`  ·  61 songs / 1581 SF2 files
 
 | Song | Parts |
 |------|------:|
-| 5 Title Tunes | 1 |
-| 5 Title Tunes song0 | 6 |
-| 5 Title Tunes song1 | 6 |
-| 5 Title Tunes song2 | 6 |
-| 5 Title Tunes song3 | 10 |
-| 5 Title Tunes song4 | 14 |
-| Action Biker song0 | 5 |
+| 5 Title Tunes song0 | 1 |
+| 5 Title Tunes song1 | 1 |
+| 5 Title Tunes song2 | 2 |
+| 5 Title Tunes song3 | 2 |
+| 5 Title Tunes song4 | 1 |
+| Action Biker song0 | 1 |
 | Action Biker song1 | 1 |
 | Action Biker song2 | 1 |
-| Auf Wiedersehen Monty song0 | 1 |
-| Chimera | 1 |
-| Chimera song0 | 76 |
-| Chimera song1 | 14 |
-| Commando | 1 |
-| Commando song0 | 45 |
+| Auf Wiedersehen Monty song0 | 274 |
+| Chimera song0 | 12 |
+| Chimera song1 | 1 |
+| Commando song0 | 4 |
 | Commando song16 | 4 |
 | Commando song2 | 1 |
-| Confuzion song0 | 6 |
-| Crazy Comets | 1 |
-| Crazy Comets song0 | 15 |
-| Crazy Comets song1 | 4 |
-| Deep Strike song0 | 1 |
-| Delta song0 | 221 |
+| Confuzion song0 | 5 |
+| Crazy Comets song0 | 5 |
+| Crazy Comets song1 | 1 |
+| Deep Strike song0 | 25 |
+| Delta song0 | 165 |
 | Delta song11 | 3 |
 | Delta song12 | 3 |
-| Game Killer song0 | 2 |
-| Geoff Capes Strongman Challenge | 1 |
-| Geoff Capes Strongman Challenge song0 | 3 |
-| Geoff Capes Strongman Challenge song3 | 2 |
-| Geoff Capes Strongman Challenge song4 | 2 |
-| Geoff Capes Strongman Challenge song5 | 2 |
-| Gerry the Germ song0 | 12 |
-| Gerry the Germ song1 | 14 |
-| Gerry the Germ song4 | 9 |
-| Gerry the Germ song6 | 11 |
-| Gremlins | 1 |
-| Gremlins song0 | 8 |
-| Gremlins song1 | 22 |
-| Gremlins song2 | 15 |
-| Gremlins song3 | 18 |
-| Gremlins song4 | 8 |
-| Gremlins song5 | 5 |
-| Gremlins song6 | 35 |
-| Hunter Patrol song0 | 25 |
-| Last V8 | 1 |
-| Last V8 C128 version song0 | 17 |
+| Geoff Capes Strongman Challenge song0 | 1 |
+| Geoff Capes Strongman Challenge song3 | 1 |
+| Geoff Capes Strongman Challenge song4 | 1 |
+| Geoff Capes Strongman Challenge song5 | 1 |
+| Gerry the Germ song0 | 2 |
+| Gerry the Germ song1 | 1 |
+| Gerry the Germ song4 | 1 |
+| Gerry the Germ song6 | 1 |
+| Gremlins song0 | 1 |
+| Gremlins song1 | 1 |
+| Gremlins song2 | 1 |
+| Gremlins song3 | 1 |
+| Gremlins song4 | 2 |
+| Gremlins song5 | 1 |
+| Gremlins song6 | 1 |
+| Hunter Patrol song0 | 8 |
+| Last V8 C128 version song0 | 2 |
 | Last V8 C128 version song1 | 1 |
 | Last V8 C128 version song2 | 1 |
-| Last V8 song0 | 18 |
+| Last V8 song0 | 2 |
 | Last V8 song1 | 1 |
 | Last V8 song11 | 4 |
 | Last V8 song2 | 1 |
 | Lightforce song0 | 9 |
-| Master of Magic | 1 |
-| Master of Magic song0 | 18 |
+| Master of Magic song0 | 6 |
 | Master of Magic song1 | 1 |
 | Master of Magic song2 | 1 |
-| Monty on the Run | 1 |
-| Monty on the Run song0 | 22 |
+| Monty on the Run song0 | 4 |
 | Monty on the Run song1 | 1 |
-| Monty on the Run song2 | 3 |
-| Ninja song0 | 28 |
-| One Man and his Droid | 1 |
-| One Man and his Droid song0 | 18 |
-| Saboteur II song0 | 1 |
-| Sanxion song0 | 1 |
-| Shockway Rider song0 | 1 |
-| Star Paws song0 | 1 |
-| Thing on a Spring song0 | 33 |
-| Zoids | 1 |
-| Zoids song0 | 16 |
+| Monty on the Run song2 | 1 |
+| Ninja song0 | 21 |
+| One Man and his Droid song0 | 11 |
+| Saboteur II song0 | 112 |
+| Sanxion song0 | 28 |
+| Shockway Rider song0 | 638 |
+| Star Paws song0 | 188 |
+| Thing on a Spring song0 | 4 |
+| Zoids song0 | 4 |
 | Zoids song1 | 1 |
 | Zoids song2 | 1 |
 

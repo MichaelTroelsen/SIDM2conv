@@ -114,8 +114,18 @@ byte-exact by construction). So MoN keeps `MON_PULSE_CANON=1` **opt-in only**; d
 would regress the byte-exact crown jewel. A safe MoN default would need the splitter to still
 cap window growth by the *raw* (pre-canonical) bundle count, or a per-tune guard — future work.
 
-**Realizing the win:** Hubbard corpus rebuilt with `pulse_canon` on (`bin/hubbard_build_all.py`)
-→ refresh `docs/SF2.md` via `pyscript/gen_sf2_index.py`.
+**Realizing the win — corpus rebuild results (2026-07-10).** V1 collapsed as predicted:
+Monty 22→4, Commando 45→4, Chimera 76→12, Zoids→4, Thing_on_a_Spring 33→4, Gremlins s6
+35→1, Hunter_Patrol 25→8; Delta (V2 freerun) 221→165. **BUT the V2 swallow class explodes
+under its first real `auto` build**: Shockway_Rider 638 parts, Auf_Wiedersehen 274,
+Star_Paws 188, Saboteur_II 112 (the old inventory's "1 file" entries for these were stale
+manual whole-song artifacts, not comparable). `pulse_canon` is not the cause (it can only
+reduce bundle counts); the swallow files' windows are being capped by something else —
+**next analysis target: instrument the swallow-class splits** (à la `_dmc_split_analysis`)
+to find the binding cap. Also: Deep_Strike s0 now FAILs mid-build with a WAVE-overflow
+crash in `gen_includes_song` (count-vs-emit divergence — the adaptive `fits()` passed but
+emit overflowed; 25 partial parts on disk). Devils_Galop/I_Ball/Wiz still spin-class
+timeouts.
 
 ### Phase 3 — structural FM for arp/vibrato players *(Hubbard / MoN)*
 Where the FM is *structural* (looping arps, pitch-proportional vibrato), emit one
