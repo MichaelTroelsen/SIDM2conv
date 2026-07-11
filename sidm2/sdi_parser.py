@@ -182,6 +182,28 @@ def locate(d, la):
             _f = _freq_scan          # keep pyflakes quiet; freq set above
             lay.state = _w(d, j + 11)
             return lay
+    elif _find(d, [0xBC, -1, -1, 0xA2, 0x15]) is not None:
+        # variant E (play+4, the v2.1-source generation): LDY $tp,X /
+        # LDX #$15 (21 = 3 channels x 7-byte stride, the source's loop)
+        i = _find(d, [0xBC, -1, -1, 0xA2, 0x15])
+        lay.variant = 'E'
+        lay.init_block = _w(d, i + 1)            # tp array
+        # tl/th: LDA $tl,Y / STA st,X / STA st2,X / LDA $th,Y / ...
+        j = _find(d, [0xB9, -1, -1, 0x9D, -1, -1, 0x9D, -1, -1,
+                      0xB9, -1, -1, 0x9D, -1, -1, 0x9D, -1, -1])
+        if j is None:
+            return None
+        lay.track_lo_arr = _w(d, j + 1)
+        lay.track_hi_arr = _w(d, j + 10)
+        # seq tables: LDA $lo,Y / STA zp / LDA $hi,Y / STA zp / LDA #$FF
+        j = _find(d, [0xB9, -1, -1, 0x85, -1, 0xB9, -1, -1, 0x85, -1,
+                      0xA9, 0xFF])
+        if j is None:
+            return None
+        lay.seq_lo = _w(d, j + 1)
+        lay.seq_hi = _w(d, j + 6)
+        _freq_scan(d, la, lay)
+        return lay
     else:
         # variant B track read: LDA $lo,X / STA zp / LDA $hi,X / STA zp /
         #   LDY $pos,X / LDA (zp),Y  (per-voice pointer ARRAYS, stride 3)
@@ -305,6 +327,13 @@ class SDIModule:
             self.track_ptrs = [(d[lo + v] | (d[hi + v] << 8))
                                for v in range(3)]
             self.tempo_reload = max(0, self.lay.tempo_imm)
+        elif self.lay.variant == 'E':            # tp -> tl/th (v2.1 source)
+            tp0 = d[self.lay.init_block - la]    # subtune 0's track set
+            lo, hi = self.lay.track_lo_arr - la, self.lay.track_hi_arr - la
+            self.track_ptrs = [(d[lo + tp0 + v] | (d[hi + tp0 + v] << 8))
+                               for v in range(3)]
+            self.tempo_reload = 3                # tempo PROGRAMS; validator
+                                                 # auto-calibrates fpt
         else:                                    # B: per-voice arrays
             lo, hi = self.lay.track_lo_arr - la, self.lay.track_hi_arr - la
             self.track_ptrs = [(d[lo + v] | (d[hi + v] << 8))
@@ -336,6 +365,14 @@ class SDIModule:
         """Walk track+sequences -> [SDIEvent] (frames on the tick grid)."""
         if self.lay.variant == 'D':
             return self._decode_voice_d(v, max_ticks)
+        if self.lay.variant == 'E':
+            import os as _os
+            if _os.environ.get('SDI_E_DRAFT') != '1':
+                raise NotImplementedError(
+                    "SDI variant E (play+4) decode is a DRAFT (3.9% on "
+                    "2_Young_2_Die) — row grammar needs the hand-parse "
+                    "refinement loop; set SDI_E_DRAFT=1 to run it anyway")
+            return self._decode_voice_e(v, max_ticks)
         lay = self.lay
         tpos = 0
         transpose = 0
@@ -392,6 +429,103 @@ class SDIModule:
                     break
             tpos += 1
         return events
+
+    def _decode_voice_e(self, v, max_ticks=40000):
+        """Variant E (play+4 = the v2.1-source generation). TRACK: positive
+        = seq#; $80-$bf = transpose (b-$a0 signed); $c0-$f6 = track DELAY
+        (& $3f) then seq#; $f7 = voice off; $f8-$ff = 16-bit jump (& 7 =
+        hi, next byte = lo -> LOOP). SEQ row = [ONE optional cmd]
+        [optional dur] [note|$5f]; cmds: $5f no-op / $80-$9f sound /
+        $a0 filter toggle / $a1-$bf glide / $c0-$ef arp (sound redirect)
+        / $f0+ release; dur: $60-$7f & $1f, $e0 -> next byte, $e1-$ff ->
+        b-$c0; note $f0+ -> release + gate row, $5f gate row, else NOTE
+        (+transpose). Seq END = byte 0 at row start."""
+        track = self.track_ptrs[v]
+        tpos = 0
+        transpose = 0
+        tick = 0
+        events = []
+        guard = 0
+        seen = set()
+        while tick < max_ticks and guard < 6000:
+            guard += 1
+            b = self._u8(track + tpos)
+            if b == 0xF7:                        # voice off
+                break
+            if b >= 0xF8:                        # 16-bit jump = track loop
+                key = tpos
+                if key in seen:
+                    break
+                seen.add(key)
+                lo = self._u8(track + tpos + 1)
+                tgt = (track + lo + ((b & 7) << 8))
+                tpos = tgt - track
+                if not (0 <= tpos < 0x4000):
+                    break
+                continue
+            if b >= 0xC0:                        # track delay (ticks)
+                tick += (b & 0x3F)
+                tpos += 1
+                continue
+            if b >= 0x80:                        # transpose = b - $a0
+                t = (b - 0xA0) & 0xFF
+                transpose = t - 0x100 if t >= 0x80 else t
+                tpos += 1
+                continue
+            seq = self.seq_addr(b)
+            tick = self._play_seq_e(v, seq, tick, transpose, events,
+                                    max_ticks)
+            tpos += 1
+        return events
+
+    def _play_seq_e(self, v, seq, tick, transpose, events, max_ticks):
+        instr = getattr(self, "_cur_instr", [0, 0, 0])
+        pos = 0
+        dur = 0
+        guard = 0
+        while tick < max_ticks and guard < 20000:
+            guard += 1
+            b = self._u8(seq + pos)
+            if b == 0x00:                        # seq END at row start
+                break
+            pos += 1
+            # ONE optional command byte
+            if (b == 0x5F or b >= 0x80):
+                if 0x80 <= b <= 0x9F:            # sound set
+                    instr[v] = b & 0x1F
+                    self._cur_instr = instr
+                elif 0xC0 <= b <= 0xEF:          # arp (redirects sound)
+                    pass
+                # $a0 filter toggle / $a1-$bf glide / $f0+ release: no
+                # decode-level state needed for onset validation
+                b = self._u8(seq + pos)
+                pos += 1
+            # optional duration byte
+            if b >= 0xE1:
+                dur = (b - 0xC0) & 0xFF
+                b = self._u8(seq + pos)
+                pos += 1
+            elif b == 0xE0:
+                dur = self._u8(seq + pos)
+                pos += 1
+                b = self._u8(seq + pos)
+                pos += 1
+            elif 0x60 <= b <= 0x7F:
+                dur = b & 0x1F
+                b = self._u8(seq + pos)
+                pos += 1
+            # note byte
+            if b >= 0xF0:                        # release -> gate row
+                b = 0x5F
+            if b == 0x5F:
+                events.append(SDIEvent(tick * self.fpt, 'rest', None,
+                                       instr[v], dur + 1))
+            else:
+                note = (b + transpose) & 0xFF
+                events.append(SDIEvent(tick * self.fpt, 'note', note,
+                                       instr[v], dur + 1))
+            tick += dur + 1
+        return tick
 
     def _decode_voice_d(self, v, max_ticks=40000):
         """D tracks = arrays of (seq#, header) PAIRS: header hi nibble =
