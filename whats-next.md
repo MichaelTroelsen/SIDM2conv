@@ -1,180 +1,109 @@
 <original_task>
-Standing mission (project): static RE + AI tools converting any SID into an SF2 at
-99% fidelity + 100% editable. This session (2026-07-11), chronological:
-1. "read whats-next" -> resumed the previous handoff; user chose (AskUserQuestion)
-   to START ON THE INSTRUMENT-CAP OPTIMIZER (over Gallefoss/SDI or the sweep).
-2. "cont" mid-session (continue) — the only other user input; the whole arc ran
-   autonomously per the handoff's design (memory/soundmonitor-player.md "THE
-   INSTRUMENT-CAP OPTIMIZER" section).
-STANDING RULES: accuracy over speed; never ship lossy silently; archive-not-delete;
-NEVER run pyscript/sf2_open_in_editor.py (launch SF2II via
-`bin/SIDFactoryII.exe --skip-intro <abs path>`, workdir bin); ONE MoN-engine build
-at a time; `git checkout -- drivers_src/mon/layout.inc drivers_src/mon/freqtable.inc
-drivers_src/romuzak/layout.inc` after every native build.
+Standing mission: any SID -> SF2 at 99% fidelity + 100% editable. Session
+2026-07-11 (two releases in one day): user chose the INSTRUMENT-CAP OPTIMIZER
+(v3.18.0), then "rebuild the dmc corpus with the new default", then
+"please do 3. then 2." (= SM residual pockets, then part-bloat levers), then
+"can we work on glen now" -> the Gallefoss/SDI arc opened. v3.19.0 released.
+STANDING RULES: accuracy over speed; never ship lossy silently; NEVER run
+pyscript/sf2_open_in_editor.py; ONE MoN-engine build at a time; git checkout
+drivers_src includes after every native build; DON'T edit builder modules
+while a corpus runner is active (subprocess imports race — nearly burned
+Fun_Mix).
 </original_task>
 
 <work_completed>
-ALL COMMITTED + PUSHED (master == origin/master @ 53240b7). v3.18.0 RELEASED
-(CLAUDE.md/CHANGELOG/STORY/__init__ bumped; docs/SF2.md regenerated; artifact
-ef593833-e303-4745-88e5-23190f4eef5b republished). Full suite 1524 green.
-
-THE INSTRUMENT-CAP OPTIMIZER (commits 171b0de + a210d83) — all measured:
-- WAVE PRONG: (a) RELEASE_WF driver feature (drivers_src/mon/romuzak_driver.asm):
-  gated-off frames write per-voice VRELWF ($193D) = the instrument's release wf
-  VERBATIM (poked IRELWF $1960, 32 bytes, = SM rec[8]; mutually exclusive with
-  HP_ENGINE/TEMPO_SCHED region reuse) instead of program&$fe. `_rel_split` moves
-  each note's trailing rec[8] run into gate-off sequence rows -> wave programs
-  collapse to the duration-independent body. Guards: register-exact (_wave_rel_ok)
-  + tail within 1 frame of a row tick. RELEASE_WF=0 compiles BYTE-IDENTICALLY —
-  Hawkeye sub2 SF2 proven identical TWICE (after each commit).
-  (b) `_first_row_norm`: gate-clear frame 0 + gate-set frame 1 -> frame 1's value
-  (boundary bleed; 1-frame class). Shim flags wave_canon/release_wf; kills
-  SM_WCANON=0/SM_RELWF=0. exi tuple is now 8 wide (relwf at [7]); build_native_song
-  returns 8-tuple; instr key + idist include relwf.
-- FILTER PRONG: Dance part-8 window was 9 src -> 32 slots ALL from filter splits
-  (15 programs/247 rows). TWO root causes: (1) SM SWITCHES FILTER ROUTING PER
-  SECTION — detect_filter_drives gained `dynamic` mode (flag filter_tie): credit
-  the voice the $D417 routing bits point at ON the attack frame (the fixed
-  dominant-voice restriction dropped every re-attack in re-routed sections; the
-  re-attacks aligned with v0's notes at ctl=$f1 while v1 dominates globally).
-  (2) SM restarts the envelope on EVERY note-set incl. same-pitch legato sets (no
-  row): tie events are now drive-eligible (drive_onsets) + SMShim inserts
-  same-pitch ties at observed re-attacks (±2 frames, routing-credited dict
-  filt_resplit; kill SM_FTIE=0). Driver restarts filter on tie rows already
-  (VIFLAGS $40 check runs for every note). Window result: 32->14 slots,
-  filter 247->60 rows / 5 programs.
-- THE GRID-PART INTER-VOICE DESYNC BUG (pre-existing, SHIPPED IN v3.17.0):
-  SMShim.frame_to_tick was IDENTITY; on grid builds the engine's per-part lead
-  (first_tick - frame_to_tick(t0)) went negative -> clamped 0 -> ALL 3 VOICES
-  started their first in-window note at ROW 0 for every grid part >= 2. Masked by
-  part01-only strict sweeps + per-voice-delay tooling. Fix: round(frame/fpt).
-  Dance part05: 28-65% freq at any single delay -> 100.0 EVERY register EVERY
-  voice + filter 98.3.
-- SM CORPUS REBUILT (bin/_sm_build_all.py, SM_GRID=0 for Final_Luv/Thats_All):
-  11 songs / 28 parts (was 32): Dance 11->8, Fun_Mix 3->2, Dreamix_Two 3->2.
-  CORPUS-WIDE STRICT SWEEP (bin/_opt_sweep_corpus.py — GLOBAL delay, EVERY part,
-  first-audible-frame skip; parses out/_sm_build_all.log for windows):
-  99.08% freq+wf corpus-wide; most parts 100.0 flat, filter 99.9-100.
-  WAV RMS: Poppy_Road 0.92, Dance 1.05 (no loudness regression).
-  Dance's binder is now BUNDLES 62-63/63 on every window.
-
-DMC WITHIN-FRAME AUDIT + DEFAULT FLIP (commit e0cf467, work_remaining #3 done):
-- bin/_dmc_wf_audit.py: 24/88 DMC files retrigger OFF+ON in one play call
-  (Jazz_1 3 state onsets vs 316 write-stream; list in memory
-  johannes-bjerregaard-player.md). WORSE than loudness: missed onsets FAILED the
-  onset-agreement gate -> whole files on the tick-grid fallback.
-- Balloon A/B (part01, own 4s span, best delay): state = wf 0/70/36 pulse 1/0/95;
-  within-frame = wf 100/100/92 pulse 100/100/100 (agreement 71/175 -> 174/175 =
-  ONSET-ALIGNED unlocked; Domino_Dancing flips too; Jazz_1 fails BOTH ways =
-  multispeed, byte-identical tick-grid output either way — the gate protects it).
-- within_frame=True is now the DMC DEFAULT (DMC_WF=0 reverts). DMC corpus NOT
-  yet rebuilt with it (out/dmc is stale vs the new default).
-
-Diagnostics added: INSTR_DECOMPOSE=1 env (pre-cluster per-source-instrument slot
-decomposition in build_native_song), FILT_DEBUG unchanged. Scratch (untracked):
-bin/_opt_diag.py (one-window probe), bin/_opt_measure.py, bin/_opt_measure_parts.py,
-bin/_opt_sweep_corpus.py (corpus sweep), bin/_opt_filtdump.py, bin/_dmc_wf_audit.py,
-bin/_sm_build_all.py (updated: SM_GRID=0 set, romuzak layout checkout).
-Memories updated: soundmonitor-player.md (optimizer results + desync bug + final
-corpus + residual pockets), johannes-bjerregaard-player.md (audit + flagged list).
+ALL PUSHED (master @ dc93464 = v3.19.0). Full suite 1524 green. See
+CHANGELOG v3.18.0 + v3.19.0 for the complete list. Highlights beyond the
+changelogs:
+- Measuring traps found this session (in memory): per-voice-delay metrics
+  can't see inter-voice desync; rounded-second window labels wreck sweeps of
+  grid parts (parse the f-form frame bounds); grid probes lead by the grid
+  RESIDUE (Balloon -4) — search delays wide; vacuous guards (tolerance >
+  compared frames) accept garbage.
+- SM corpus: out/soundmonitor = 11 songs / 27 parts, sweep out/_opt_sweep.log
+  = 99.23% strict freq+wf. Dance parts 2-6 + Fuck_Off part01 (242s) = 100.0
+  every register. Honest residuals: Dance drum-roll (part07 v1 76), Thats_All
+  v2 pulse 71-85 + part03 v1 88.7, Dreamix_Two v1 pulse 61-71 + filt 53-88
+  (release-tail class), 1s stub parts at song ends (cosmetic).
+- DMC corpus: out/dmc = 56 songs / ~944 files (grid pass). Grid collapses
+  SEQUENCE-bound files (Balloon 77->1); BUNDLE-bound files keep counts (Alf
+  40 parts at bundles 50-62/63 — the proven DMC diversity boundary). Files
+  with off-grid onset minorities (Cant_Stop 273/26 split residues,
+  French_Frites) honestly stay fpt=1.
+- Gallefoss/SDI: source EXTRACTED + first-pass format map (see
+  memory/gallefoss-sdi-player.md — extraction recipe, track/seq bytes,
+  zN instrument tables, section map of sdi21-n49.asm).
 </work_completed>
 
 <work_remaining>
-1. **DONE (a20583b): DMC corpus rebuilt with the within-frame default** —
-   bin/dmc_build_all.py survey flipped to within-frame: **41 -> 56 ELIGIBLE**
-   (18 FALLBACK / 14 NO-TABLES / 0 errors), ALL 56 built clean = out/dmc 56
-   songs / 1135 part files; SF2.md + DMC.md + CLAUDE.md + memory updated,
-   artifact republished. STILL OPEN: the fpt=1 part bloat (Cant_Stop 114,
-   Balloon 77 parts) — the SM STEP-GRID generalization would cut those 3-5x
-   (apply per file with A/B; the grid x tie caveat applies).
-2. **SM residual pockets** (bounded, documented in memory): Dance part03 v0
-   pulse 4.0 (!) + part04 v1 pulse 43.7 + part08 v1 52/45/47 (song end) +
-   part02 filter 32.3; Dreamix_Two v1 release-tail slides (known class — the
-   RELEASE_WF feature may now make the tail-slide expressible!); Thats_All
-   part03 v1 89. Also grid × tie-chain interaction (Final_Luv/Thats_All still
-   SM_GRID=0, root cause undiagnosed).
-3. **The bundle channel = the next part-reduction lever**: after the optimizer,
-   EVERY Dance window binds on bundles 62-63/63 (the (FM,pulse) command
-   channel). docs/analysis/PART_REDUCTION_PLAN.md Phase 1 (BUNDLE_TOL) +
-   arp-struct are the mapped tools; SM's chord arps are STRUCTURAL (8-byte
-   semitone tables in the row headers — the parser knows them!) so a
-   MON_ARP_STRUCT-style semitone-arp emission for SM could collapse the FM side
-   losslessly.
-4. **Cross-player instrument-cap audit** (user: "this applies for all players"):
-   run INSTR_DECOMPOSE=1 on a MoN/Hubbard window; Hubbard uses hp_engine keys
-   (different mechanics) but MoN may have tail classes; RELEASE_WF is generic —
-   any shim can provide 'release_wf' per instrument.
-5. **Gallefoss/SDI arc** (user priority; memory/gallefoss-sdi-player.md):
-   extract the SDI 2.1 ASSEMBLER SOURCE from bin/SIDDuzz/SDI-21-BMTass.d64
-   (need a d64 reader — check bin/DMC tooling), map the play+3 cluster (222
-   files) from the source, then parser -> Stage A -> Stage B. Apply the
-   step-grid from day one; grid × tie caveat applies.
-6. Smaller: SM sound-record bytes 7/14/15 + the 16-23 extension block (the
-   editor binary bin/'sound monitor'/soundmonitor 1.1.prg = ground-truth
-   shortcut); Demo_of_the_Year_87_menu $C020 variant.
+1. **Gallefoss/SDI parser** (arc open, source readable): read the remaining
+   source sections (SEQUENCER top 857-940, WAVEFORM PROGRAM 1451+, the data/
+   table DEFINITIONS after init ~1994; the spd49 variant diff) + grep the
+   65KB SDI.2.1.6-docs.txt for the editor-side format docs; then map
+   30seconds.sid (play+3 exemplar, la=$1000) onto the layout -> sidm2/
+   sdi_parser.py (signature-located tables; expect per-generation drift 1992
+   vs 2012) -> onset validate -> Stage A -> Stage B (SMShim/DMCShim pattern,
+   step-grid from day one).
+2. DMC bundle-bound files (Alf/Cant_Stop class): needs a DMC bundle lever —
+   v3.16 proved clustering is a dud; candidates: DMC pulse canonicals
+   (pulse_canon pattern — DMC PWM restarts per note like SM?) or wavetable-
+   arp structural programs (the $1A00 table IS known to the parser; the SM
+   arp_struct pattern now exists to copy — but the freq table isn't PAL,
+   mind the dead-end note in docs/players/DMC.md).
+3. SM residuals (small): Dreamix_Two release-tail pulse/filter; drum-roll
+   phase class; 1s stub parts (absorb-or-drop cosmetic); grid x tie root
+   cause (Final_Luv/Thats_All still SM_GRID=0).
+4. Version-history docs for the DMC per-tune fidelity table in docs/SF2.md
+   are stale vs the grid corpus (re-measure the strongest files with wide
+   delay + own-span windows someday).
+5. Cross-player: INSTR_DECOMPOSE audit on MoN/Hubbard; RELEASE_WF is generic
+   (any shim can provide 'release_wf').
 </work_remaining>
 
 <attempted_approaches>
-DO NOT RE-TREAD (this session's additions):
-- Filter ties on the DOMINANT routed voice only: barely landed (drives 570->585)
-  — SM re-routes per section; the attack-frame routing credit was the real fix.
-- Filter-tie insertion for pitch-change ties only: the re-attacks are mostly on
-  SAME-PITCH note-sets and v0 GATE rows — the drive-eligibility + dynamic
-  routing did the work; the same-pitch tie insertion adds little on Dance but
-  is kept (harmless, catches non-gate note-sets).
-- Jazz_1 as a DMC within-frame testbed: it fails the agreement gate in BOTH
-  modes (multispeed class) -> byte-identical tick-grid output; use Balloon/
-  Domino_Dancing to demonstrate the effect.
-- Measuring later parts at delay 0 or with per-voice delays: the desync bug was
-  invisible to both for a whole release. GLOBAL best-delay per part, strict,
-  from each voice's first audible frame (bin/_opt_sweep_corpus.py) is the
-  honest metric.
-- Naive 25s measurement of a 5s part (Balloon): scores garbage past the part's
-  span — always clamp to the part window.
-- vsid export_to_wav needs pathlib.Path args (str -> AttributeError).
+DO NOT RE-TREAD (adds to the v3.18.0 handoff list):
+- Arp acceptance with flat tolerance: VACUOUS for short notes (accepted
+  garbage drum steps). Tolerance must scale with compared frames.
+- Freerun pulse STREAMS on pulse_tie engines: categorically wrong (the
+  engine resets PW per note); banned in build_native_song.
+- Sweeping grid parts with rounded-second windows or narrow delay searches:
+  both produce catastrophic-looking numbers on byte-faithful builds.
+- DMC grid residue test including legato decode frames: their phase differs;
+  test gates only.
+- Editing bin/build_soundmonitor_native_song.py (or any builder) while
+  _sm_build_all/dmc_build_all runs: per-file subprocesses import the edited
+  module mid-run.
 </attempted_approaches>
 
 <critical_context>
-- ENV: Windows, `py -3`; /tmp in Bash = C:\Users\mit\AppData\Local\Temp. Long
-  jobs: PowerShell Start-Process detached + log redirect (Bash tool cap = 10
-  min); ONE MoN-ENGINE BUILD AT A TIME; checkout drivers_src includes after
-  builds (bin/_sm_build_all.py does it per file).
-- MEASURING LADDER (v3.18 edition): (1) corpus sweep bin/_opt_sweep_corpus.py
-  (global delay, every part — catches desync), (2) INSTR_DECOMPOSE=1 +
-  FILT_DEBUG (cap decomposition), (3) WAV RMS via vsid (Path args!), (4) CPU
-  write-stream dumps, (5) crown jewel = Hawkeye sub2 BYTE-COMPARE (stash the
-  old SF2, rebuild, cmp — stronger than re-measuring).
-- SM shim flags now: freerun_pulse=1, pulse_loop=1, pulse_tie=1, sid_model=6581,
-  wave_canon=1, release_wf=1, filter_tie=1 (env kills SM_WCANON/SM_RELWF/
-  SM_FTIE=0), snap_gate=True, grid auto (SM_GRID=0 kill).
-- Driver conditionals: RELEASE_WF joins HARD_RESTART/PULSE_LOOP/PULSE_TIE/
-  NOTE_PREAMBLE etc. in layout.inc (written by build_romuzak_native_song's
-  gen; B.RELEASE_WF set in emit_one from m.release_wf). IRELWF poked in
-  emit_one after assemble.
-- build_native_song returns 8-tuple (…, instr_src, instr_relwf); emit_one
-  unpacks it; count_only unchanged 5-tuple.
-- detect_filter_drives(ftr, onsets_by_voice, routed, dynamic=False) — dynamic
-  only when the shim sets filter_tie; MoN path byte-identical (proven).
-- DMC builder: within_frame default ON (DMC_WF=0 reverts); the 0.85
-  onset-agreement gate still routes multispeed files to tick-grid.
-- The Balloon state-build parts are stashed in the session scratchpad
-  (balloon_state/) — gone after session end; rebuild with DMC_WF=0 if needed.
-- v3.18.0 released this session: 4 commits (171b0de wave prong, a210d83 filter
-  prong + desync fix, e0cf467 DMC default, 53240b7 release docs), all pushed.
+- SMShim flags now: freerun_pulse=1 pulse_loop=1 pulse_tie=1 wave_canon=1
+  release_wf=1 fm_loop=1 filter_tie=1 arp_struct=1 pulse_canon=1 (env kills:
+  SM_WCANON/SM_RELWF/SM_FMLOOP/SM_FTIE/SM_ARP/SM_PCANON=0, SM_GRID=0,
+  sid_model=6581). tbl_arp_idx=1 + arp_program(w) expose the deduped
+  row-header chord tables; MONEvent.wprog = arp id (0=none).
+- DMCShim: within_frame default (DMC_WF=0), grid (DMC_GRID=0), _onset_mode
+  keys note_freq (PAL when onset-aligned!), _grid keys frame_to_tick round.
+- Engine (build_mon_native_song): _rel_split/RELEASE_WF, _first_row_norm,
+  _wave_rel_ok, _rel/gate split ARP gates, fm_program_for(allow_loop),
+  detect_filter_drives(dynamic + reversal), drive_onsets incl. ties (ftie),
+  streams banned for pulse_tie, arp tolerance scaled. exi = 8-tuple,
+  build_native_song returns 8-tuple, IRELWF poked $1960.
+- Crown jewel verified BYTE-IDENTICAL 4x this session (stash-compare method:
+  cp the SF2, rebuild, cmp — stronger than re-measuring).
+- SDI extraction recipe + format map: memory/gallefoss-sdi-player.md.
+  c1541 at /c/winvice/bin/ (petcat too). PETSCII disk = the readable source.
+- Sweep tooling: bin/_opt_sweep_corpus.py (frame-exact, global best-delay,
+  first-audible skip); bin/_opt_measure_parts.py; bin/_dmc_wf_audit.py;
+  INSTR_DECOMPOSE=1/FILT_DEBUG=1/BUNDLE_DECOMPOSE=1 envs.
 </critical_context>
 
 <current_state>
-- Repo: master == origin/master @ 53240b7, tree CLEAN except intentional
-  untracked (SID/Gallefoss_Glenn, SID/Jeff, SID/Red_kommel_jeroen, bin/LFT,
-  bin/SIDDuzz, archive/cleanup_2026-07-09, bin/_*.py scratch, out/).
-  Version constant 3.18.0. Full suite 1524 passed (this session, post-changes).
-- SM corpus: out/soundmonitor/ = 11 songs / 28 parts, all fixes, sweep-verified
-  99.08% strict freq+wf corpus-wide (log: out/_opt_sweep.log; build log:
-  out/_sm_build_all.log — _opt_sweep_corpus.py parses it for windows).
-- DMC corpus: out/dmc STALE vs the new within-frame default (only Balloon +
-  Jazz_1 rebuilt this session, Balloon with the new default).
-- Crown jewel: out/mon/Hawkeye_sub2_native.sf2 byte-identical to pre-session.
-- NEXT SESSION: user's standing priority = Gallefoss/SDI (work_remaining 5);
-  the DMC corpus rebuild (1) is mechanical and could run detached alongside;
-  the bundle lever (3) is the next SM part-reduction step. Ask which.
+- Repo: master == origin/master @ dc93464 (v3.19.0), tree CLEAN except
+  intentional untracked (+ bin/SIDDuzz/extracted = the SDI sources,
+  bin/_rebuild_both.py + _opt_* scratch). 1524 tests green post-changes.
+- out/soundmonitor 27 parts (swept); out/dmc ~944 files (grid corpus,
+  Alf rebuilt post-legato-fix). Artifact republished (same URL).
+- NEXT: the Gallefoss/SDI parser (work_remaining 1) — the arc is open with
+  the format substantially mapped; start at the SEQUENCER section + the
+  data-table definitions, then 30seconds.sid.
 </current_state>
