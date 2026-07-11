@@ -100,6 +100,34 @@ class SDILayout:
     flags_col: int = 0        # bit0 = ignore track transpose
 
 
+def _freq_scan(d, la, lay):
+    """Content-verified freq table locate: the two abs,Y read targets exactly
+    $60 apart whose combined words double per octave — robust across the
+    per-song code shifts (the editor assembles the player per song)."""
+    reads = set()
+    k = 0
+    raw = bytes(d)
+    while True:
+        k = raw.find(b"\xb9", k)
+        if k < 0 or k + 2 >= len(raw):
+            break
+        a = raw[k + 1] | (raw[k + 2] << 8)
+        if la <= a < la + len(d) - 0xC0:
+            reads.add(a)
+        k += 1
+    for a in sorted(reads):
+        for lo_a, hi_a in ((a + 0x60, a), (a, a + 0x60)):
+            if lo_a not in reads or hi_a not in reads:
+                continue
+            f = [(d[lo_a - la + n] | (d[hi_a - la + n] << 8))
+                 for n in range(96)]
+            hits = sum(1 for n in range(36, 60)
+                       if f[n] and abs(f[n + 12] / f[n] - 2) < 0.02)
+            if hits >= 20:
+                lay.freq_lo, lay.freq_hi = lo_a, hi_a
+                return
+
+
 def locate(d, la):
     """Extract the layout from code patterns (operands wildcarded — the
     editor assembles the player per song, addresses are NOT fixed)."""
@@ -109,6 +137,17 @@ def locate(d, la):
     if i is not None:
         lay.init_block = _w(d, i + 3)
         lay.state = _w(d, i + 6)
+    elif _find(d, [0x0A, 0x0A, 0x0A, 0xA8, 0xA2, 0x00, 0xB9, -1, -1,
+                   0x9D, -1, -1, 0xB9, -1, -1, 0x9D, -1, -1,
+                   0xC8, 0xC8, 0xE8, 0xE0, 0x03]) is not None:
+        # variant C (the v2.1-source generation): subtune-indexed 8-byte
+        # records [tl,th x3, tempo, vol]; init = A*8 -> Y, copy 3 ptr pairs
+        i = _find(d, [0x0A, 0x0A, 0x0A, 0xA8, 0xA2, 0x00, 0xB9, -1, -1,
+                      0x9D, -1, -1, 0xB9, -1, -1, 0x9D, -1, -1,
+                      0xC8, 0xC8, 0xE8, 0xE0, 0x03])
+        lay.variant = 'C'
+        lay.init_block = _w(d, i + 7)            # subtune record base
+        lay.state = _w(d, i + 10)                # trklo state cells
     else:
         # variant B track read: LDA $lo,X / STA zp / LDA $hi,X / STA zp /
         #   LDY $pos,X / LDA (zp),Y  (per-voice pointer ARRAYS, stride 3)
@@ -145,40 +184,15 @@ def locate(d, la):
                       0xB9, -1, -1, 0x4C])
         if j is not None:
             lay.wfprg_start_col = _w(d, j + 8)   # arp record base
-        # freq tables: the two abs,Y read targets exactly $60 apart whose
-        # combined words double per octave (content-verified — robust
-        # against the per-song code shifts)
-        reads = set()
-        k = 0
-        raw = bytes(d)
-        while True:
-            k = raw.find(b"\xb9", k)
-            if k < 0 or k + 2 >= len(raw):
-                break
-            a = raw[k + 1] | (raw[k + 2] << 8)
-            if la <= a < la + len(d) - 0x60:
-                reads.add(a)
-            k += 1
-        for a in sorted(reads):
-            for lo_a, hi_a in ((a + 0x60, a), (a, a + 0x60)):
-                if lo_a not in reads or hi_a not in reads:
-                    continue
-                f = [(d[lo_a - la + n] | (d[hi_a - la + n] << 8))
-                     for n in range(96)]
-                hits = sum(1 for n in range(36, 60)
-                           if f[n] and abs(f[n + 12] / f[n] - 2) < 0.02)
-                if hits >= 20:
-                    lay.freq_lo, lay.freq_hi = lo_a, hi_a
-                    break
-            if lay.freq_lo:
-                break
-    # SEQ ptr tables (both variants): TAY / LDA $llll,Y / STA zp / ...
+        pass
+    # SEQ ptr tables (all variants): TAY / LDA $llll,Y / STA zp / ...
     i = _find(d, [0xA8, 0xB9, -1, -1, 0x85, -1, 0xB9, -1, -1, 0x85, -1])
     if i is None:
         return None
     lay.seq_lo = _w(d, i + 2)
     lay.seq_hi = _w(d, i + 7)
-    if lay.variant == 'B':
+    if lay.variant in ('B', 'C'):
+        _freq_scan(d, la, lay)
         return lay
     # FREQ tables via the glide compare:
     #   LDY $tgt,X / SEC / LDA $lo,Y / CMP $cur,X / LDA $hi,Y / SBC $cur+3,X
@@ -247,6 +261,11 @@ class SDIModule:
             self.track_ptrs = [(d[blk + v] | (d[blk + 3 + v] << 8))
                                for v in range(3)]
             self.tempo_reload = d[blk + 6]
+        elif self.lay.variant == 'C':            # subtune 0: [lo,hi]x3,tempo
+            blk = self.lay.init_block - la
+            self.track_ptrs = [(d[blk + 2 * v] | (d[blk + 2 * v + 1] << 8))
+                               for v in range(3)]
+            self.tempo_reload = d[blk + 6]
         else:                                    # B: per-voice arrays
             lo, hi = self.lay.track_lo_arr - la, self.lay.track_hi_arr - la
             self.track_ptrs = [(d[lo + v] | (d[hi + v] << 8))
@@ -282,12 +301,12 @@ class SDIModule:
         guard = 0
         track = self.track_ptrs[v]
         seen_loop = set()
-        vb = self.lay.variant == 'B'
+        var = self.lay.variant
         while tick < max_ticks and guard < 100000:
             guard += 1
             b = self._u8(track + tpos)
             if b == 0xFF:
-                if vb:                           # B: song RESTART -> stop
+                if var != 'A':                   # B/C: RESTART -> stop
                     break
                 new = self._u8(track + tpos + 1)  # A: LOOP to position
                 if (tpos, new) in seen_loop:
@@ -295,12 +314,19 @@ class SDIModule:
                 seen_loop.add((tpos, new))
                 tpos = new
                 continue
-            if not vb and b == 0xFE:             # A: track STOP
+            if var != 'B' and b == 0xFE:         # A/C: track STOP
                 break
-            if not vb and b == 0xFD:             # A: flag/tempo byte
+            if var == 'A' and b == 0xFD:         # A: flag/tempo byte
                 tpos += 1
                 continue
-            if b >= (0x80 if vb else 0xC0):      # transpose (+$20, signed)
+            if var == 'C' and b >= 0x80:         # C: transpose = b - $a0
+                t = (b - 0xA0) & 0xFF
+                if b < 0xA0:                     # borrow path: ^$1f + 1
+                    t = ((t ^ 0x1F) + 1) & 0xFF
+                transpose = t - 0x100 if t >= 0x80 else t
+                tpos += 1
+                continue
+            if b >= (0x80 if var == 'B' else 0xC0):  # transpose (+$20, signed)
                 transpose = (b + 0x20) & 0xFF
                 if transpose >= 0x80:
                     transpose -= 0x100
@@ -378,9 +404,52 @@ class SDIModule:
             row_start = True
         return tick
 
+    def _play_seq_c(self, v, seq, tick, transpose, events, max_ticks):
+        """Variant C (the Bahbar class — v2.1-source layout but the 1992
+        encoding SWAPS the source's ranges): byte 0 = seq END; $01-$5e
+        note; $5f gate/hold row; **$60-$7f SOUND set (& $1f)**;
+        **$80-$9f DURATION (& $1f, rows last exactly dur ticks)**;
+        $a0-$bf glide select; $c0-$ef arp select; $f0-$fc release (gate
+        row); $fd/$fe wf specials (skip a byte). Hand-parsed against
+        Bahbar seq08: 72=snd 8c=dur12 15=note 86=dur6 15 8c 13 ... —
+        every real onset gap matches."""
+        instr = getattr(self, "_cur_instr", [0, 0, 0])
+        pos = 0
+        dur = 1
+        guard = 0
+        while tick < max_ticks and guard < 20000:
+            guard += 1
+            b = self._u8(seq + pos)
+            pos += 1
+            if b == 0xFF:                        # sequence END
+                break
+            if b >= 0xFD:                        # $fd gate-toggle / $fe:
+                events.append(SDIEvent(tick * self.fpt, 'off', None,
+                                       instr[v], dur))
+                tick += dur                      #   hold/gate rows
+                continue
+            if b >= 0xC0:                        # arp select + PARAM byte
+                pos += 1
+                continue
+            if b >= 0x80:                        # DURATION (& $3f, exact)
+                dur = max(1, b & 0x3F)
+                continue
+            if b >= 0x60:                        # SOUND set
+                instr[v] = b & 0x1F
+                self._cur_instr = instr
+                continue
+            note = (b + transpose) & 0xFF        # NOTE row (any < $60)
+            events.append(SDIEvent(tick * self.fpt, 'note', note,
+                                   instr[v], dur))
+            tick += dur
+        return tick
+
     def _play_seq(self, v, seq, tick, transpose, events, max_ticks):
         if self.lay.variant == 'B':
             return self._play_seq_b(v, seq, tick, transpose, events,
+                                    max_ticks)
+        if self.lay.variant == 'C':
+            return self._play_seq_c(v, seq, tick, transpose, events,
                                     max_ticks)
         lay = self.lay
         pos = 0
