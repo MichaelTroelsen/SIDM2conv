@@ -79,8 +79,14 @@ def _w(d, off):
 @dataclass
 class SDILayout:
     """Table addresses extracted from the rip's own code operands."""
+    variant: str = 'A'        # 'A' = init-copy gen (30seconds); 'B' = the
+                              #  per-voice-array gen (Airwalk: $ff=restart,
+                              #  any other >=$80 = transpose, no repeats)
     state: int = 0            # $0334-family base (track lo x3 from here)
-    init_block: int = 0       # the 8-byte init copy source (tl x3, th x3, tempo, x)
+    init_block: int = 0       # A: the 8-byte init copy source
+    track_lo_arr: int = 0     # B: per-voice track ptr lo array (3)
+    track_hi_arr: int = 0     # B: per-voice track ptr hi array (3)
+    tempo_imm: int = -1       # B: tempo reload immediate (poked)
     seq_lo: int = 0
     seq_hi: int = 0
     freq_lo: int = 0
@@ -98,12 +104,26 @@ def locate(d, la):
     """Extract the layout from code patterns (operands wildcarded — the
     editor assembles the player per song, addresses are NOT fixed)."""
     lay = SDILayout()
-    # INIT copy: LDX #$07 / LDA $xxxx,X / STA $yyyy,X / DEX / BPL
+    # variant A INIT copy: LDX #$07 / LDA $xxxx,X / STA $yyyy,X / DEX / BPL
     i = _find(d, [0xA2, 0x07, 0xBD, -1, -1, 0x9D, -1, -1, 0xCA, 0x10, 0xF7])
-    if i is None:
-        return None
-    lay.init_block = _w(d, i + 3)
-    lay.state = _w(d, i + 6)
+    if i is not None:
+        lay.init_block = _w(d, i + 3)
+        lay.state = _w(d, i + 6)
+    else:
+        # variant B track read: LDA $lo,X / STA zp / LDA $hi,X / STA zp /
+        #   LDY $pos,X / LDA (zp),Y  (per-voice pointer ARRAYS, stride 3)
+        i = _find(d, [0xBD, -1, -1, 0x85, -1, 0xBD, -1, -1, 0x85, -1,
+                      0xBC, -1, -1, 0xB1, -1])
+        if i is None:
+            return None
+        lay.variant = 'B'
+        lay.track_lo_arr = _w(d, i + 1)
+        lay.track_hi_arr = _w(d, i + 6)
+        lay.state = _w(d, i + 11)
+        # tempo reload immediate: DEC $t / BPL +n / LDA #imm / STA $t
+        j = _find(d, [0xCE, -1, -1, 0x10, -1, 0xA9, -1, 0x8D, -1, -1])
+        if j is not None:
+            lay.tempo_imm = d[j + 6]
     # SEQ ptr tables: TAY / LDA $llll,Y / STA zp / LDA $hhhh,Y / STA zp
     i = _find(d, [0xA8, 0xB9, -1, -1, 0x85, -1, 0xB9, -1, -1, 0x85, -1])
     if i is None:
@@ -172,10 +192,16 @@ class SDIModule:
         self.lay = locate(d, la)
         if self.lay is None:
             raise ValueError("not an SDI play+3 rip (signatures missing)")
-        blk = self.lay.init_block - la
-        self.track_ptrs = [(d[blk + v] | (d[blk + 3 + v] << 8))
-                           for v in range(3)]
-        self.tempo_reload = d[blk + 6]
+        if self.lay.variant == 'A':
+            blk = self.lay.init_block - la
+            self.track_ptrs = [(d[blk + v] | (d[blk + 3 + v] << 8))
+                               for v in range(3)]
+            self.tempo_reload = d[blk + 6]
+        else:                                    # B: per-voice arrays
+            lo, hi = self.lay.track_lo_arr - la, self.lay.track_hi_arr - la
+            self.track_ptrs = [(d[lo + v] | (d[hi + v] << 8))
+                               for v in range(3)]
+            self.tempo_reload = max(0, self.lay.tempo_imm)
         self.fpt = self.tempo_reload + 1
 
     def _u8(self, addr):
@@ -195,7 +221,13 @@ class SDIModule:
         return self._u8(self.lay.flags_col + (instr % max(1, self.lay.stride)))
 
     def decode_voice(self, v, max_ticks=40000):
-        """Walk track+sequences -> [SDIEvent] (frames on the tick grid)."""
+        """Walk track+sequences -> [SDIEvent] (frames on the tick grid).
+        Variant B's SEQ encoding differs (interleaved 8-byte instrument
+        records, $70-$7f release rows, $60-$6f sustain-modify — dispatch
+        partially mapped, see memory) — decode is gated off until mapped."""
+        if self.lay.variant != 'A':
+            raise NotImplementedError(
+                "SDI variant B seq decode not mapped yet (tables locate)")
         lay = self.lay
         tpos = 0
         transpose = 0
@@ -206,26 +238,31 @@ class SDIModule:
         guard = 0
         track = self.track_ptrs[v]
         seen_loop = set()
+        vb = self.lay.variant == 'B'
         while tick < max_ticks and guard < 100000:
             guard += 1
             b = self._u8(track + tpos)
-            if b == 0xFF:                       # LOOP to position
-                new = self._u8(track + tpos + 1)
+            if b == 0xFF:
+                if vb:                           # B: song RESTART -> stop
+                    break
+                new = self._u8(track + tpos + 1)  # A: LOOP to position
                 if (tpos, new) in seen_loop:
                     break                        # full track loop -> stop
                 seen_loop.add((tpos, new))
                 tpos = new
                 continue
-            if b == 0xFD:                       # flag/tempo byte
+            if not vb and b == 0xFE:             # A: track STOP
+                break
+            if not vb and b == 0xFD:             # A: flag/tempo byte
                 tpos += 1
                 continue
-            if b >= 0xC0:                       # transpose (+$20, signed)
+            if b >= (0x80 if vb else 0xC0):      # transpose (+$20, signed)
                 transpose = (b + 0x20) & 0xFF
                 if transpose >= 0x80:
                     transpose -= 0x100
                 tpos += 1
                 continue
-            if b >= 0x80:                       # sequence repeat count
+            if b >= 0x80:                        # A: sequence repeat count
                 repeat = b & 0x3F
                 tpos += 1
                 continue
