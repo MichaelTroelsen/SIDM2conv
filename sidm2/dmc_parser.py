@@ -375,12 +375,20 @@ def decode_song(m, song=0, tick_budget=4000):
     return voices
 
 
-def measure_onsets(d, la, init_addr, play_addr, frames, song=0):
+def measure_onsets(d, la, init_addr, play_addr, frames, song=0,
+                   within_frame=False):
     """EXACT per-voice note-onset frames via py65 replay: the frame of every
     $D404 gate-rise (bit0 0->1). Ground truth for note placement — sidesteps the
     tick/tempo model entirely. Returns [ [frames...] x3 ]. (Valid only where the
     tune runs at 1x under a single play-call/frame; multispeed/self-IRQ variants
-    read too slow — caller should sanity-check vs siddump.)"""
+    read too slow — caller should sanity-check vs siddump.)
+
+    within_frame=True detects gate rises in the WRITE STREAM instead of the
+    end-of-frame register state: players that retrigger by writing gate OFF
+    then ON inside one play call (Sound Monitor's note-set) leave the frame
+    state 1->1, so the state-based scan misses EVERY such retrigger — the
+    note plays legato, the envelope never re-attacks, and the build renders
+    at half loudness while every per-frame register metric reads 100%."""
     # siddump CPU + $D012 raster fake + banking — a bare py65 diverges on players
     # that read the raster ($D012) or bank ROMs (the same reason Hubbard's
     # measure_tick_schedule uses it).
@@ -403,6 +411,22 @@ def measure_onsets(d, la, init_addr, play_addr, frames, song=0):
     call(init_addr, song)
     onsets = [[], [], []]
     prev = [0, 0, 0]
+    if within_frame:
+        wfreg = {0xD404: 0, 0xD40B: 1, 0xD412: 2}
+        for fr in range(frames):
+            n0 = len(cpu.sid_writes)
+            call(play_addr)
+            hit = [False, False, False]
+            for w in cpu.sid_writes[n0:]:
+                v = wfreg.get(w.address)
+                if v is None:
+                    continue
+                g = w.value & 1
+                if g == 1 and prev[v] == 0 and not hit[v]:
+                    onsets[v].append(fr)
+                    hit[v] = True
+                prev[v] = g
+        return onsets
     for fr in range(frames):
         call(play_addr)
         for v in range(3):

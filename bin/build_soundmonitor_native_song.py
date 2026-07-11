@@ -112,6 +112,7 @@ class SMShim:
                               # EVERY note incl. legato -> tie events restart
                               # the pulse program too (each tie's own captured
                               # segment plays; no cross-chain freeze)
+    sid_model = 6581          # per the HVSC flag (user-confirmed 6581)
 
     def __init__(self, m, streams, span, onsets=None, frames=None,
                  legato_set=frozenset(), phase=0):
@@ -392,8 +393,13 @@ def main():
     traces = (F.per_frame(SID, ['-a0', f'-t{secs}']),
               BM.filter_trace(SID, 0, secs))
 
+    # within_frame: SM's note-set retriggers by writing gate OFF then ON inside
+    # ONE play call — end-of-frame state stays 1, so the state-based scan (and
+    # siddump!) miss EVERY such retrigger. Building those notes legato choked
+    # the envelope (no re-attack -> decays to sustain and stays there): the
+    # whole song rendered at HALF loudness with every register metric at 100%.
     onsets = measure_onsets(d, la, h.init_address, h.play_address,
-                            min(span, len(traces[0])))
+                            min(span, len(traces[0])), within_frame=True)
     from sidm2.fidelity_common import siddump_note_onsets
     real = siddump_note_onsets(SID, ['-a0', f'-t{min(secs, 15)}'])
     agree = 0

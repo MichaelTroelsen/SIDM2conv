@@ -69,10 +69,13 @@ class PSIDHeader:
         self.author = author[:32].ljust(32, '\x00')
         self.copyright = copyright[:32].ljust(32, '\x00')
 
-        # Flags (bits for SID model, video standard, etc.)
-        # Bit 0-1: SID model (0=6581, 1=8580, 2=both, 3=both)
-        # Bit 2-3: Video standard (0=unknown, 1=PAL, 2=NTSC, 3=both)
-        self.flags = sid_model | (1 << 2)  # PAL
+        # Flags per the PSID v2 spec:
+        # bits 2-3: video standard (01=PAL); bits 4-5: SID model (01=6581,
+        # 10=8580). The old layout put the model in bits 0-1 (the MUS flag
+        # area), so every wrapped probe declared model UNKNOWN and VICE
+        # rendered on its default chip instead of the tune's (a WAV loudness
+        # A/B against a 6581 original came out at half RMS from that alone).
+        self.flags = (1 << 2) | ((2 if sid_model else 1) << 4)
 
         self.start_page = 0
         self.page_length = 0
