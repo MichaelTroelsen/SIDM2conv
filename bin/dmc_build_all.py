@@ -38,7 +38,12 @@ def survey(path):
     m = DMCModule(d, la)
     if not (m.lay.sector_lo and m.lay.sound and m.lay.freq and m.lay.trk_lo):
         return "NO-TABLES", 0, 0, "signature miss (variant)"
-    onsets = measure_onsets(d, la, h.init_address, h.play_address, AGREE_FRAMES)
+    # WITHIN-FRAME onsets, mirroring the builder's default (DMC_WF=0 reverts):
+    # 24/88 files retrigger OFF+ON inside one play call — the state-based scan
+    # missed those onsets AND failed this survey's agreement gate, keeping the
+    # files on the tick-grid fallback (Balloon: wf 0 -> 100 once unlocked).
+    onsets = measure_onsets(d, la, h.init_address, h.play_address, AGREE_FRAMES,
+                            within_frame=os.environ.get("DMC_WF", "1") != "0")
     real = siddump_note_onsets(path, ['-a0', '-t16'])
     agree = tot = 0
     for v in range(3):
@@ -91,7 +96,8 @@ def main():
             name if r.returncode == 0 else (name, (r.stderr or '')[-200:]))
         # restore the shared generated driver scratch between builds
         subprocess.run(['git', 'checkout', '--', 'drivers_src/mon/layout.inc',
-                        'drivers_src/mon/freqtable.inc'],
+                        'drivers_src/mon/freqtable.inc',
+                        'drivers_src/romuzak/layout.inc'],
                        capture_output=True)
     print(f"\nBUILT {len(built)}; FAILED {len(failed)}")
     for item in failed:
