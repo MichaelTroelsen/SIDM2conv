@@ -80,13 +80,13 @@ corpus + residual pockets), johannes-bjerregaard-player.md (audit + flagged list
 </work_completed>
 
 <work_remaining>
-1. **DMC corpus rebuild with the within-frame default** (out/dmc is stale).
-   Balloon alone went wf 0->100; the other 23 flagged files should improve
-   similarly. Sequential runner needed (mirror bin/_sm_build_all.py; DMC corpus
-   ~43 onset-eligible files, hours). Then update docs/players/DMC.md numbers +
-   gen_sf2_index. NOTE: many DMC files are 77-parts-class (fpt=1 bloat) — the
-   SM step-grid generalization (whats-next of v3.17.0, still open) would cut
-   those 3-5x; consider doing grid + rebuild together to avoid two full passes.
+1. **DONE (a20583b): DMC corpus rebuilt with the within-frame default** —
+   bin/dmc_build_all.py survey flipped to within-frame: **41 -> 56 ELIGIBLE**
+   (18 FALLBACK / 14 NO-TABLES / 0 errors), ALL 56 built clean = out/dmc 56
+   songs / 1135 part files; SF2.md + DMC.md + CLAUDE.md + memory updated,
+   artifact republished. STILL OPEN: the fpt=1 part bloat (Cant_Stop 114,
+   Balloon 77 parts) — the SM STEP-GRID generalization would cut those 3-5x
+   (apply per file with A/B; the grid x tie caveat applies).
 2. **SM residual pockets** (bounded, documented in memory): Dance part03 v0
    pulse 4.0 (!) + part04 v1 pulse 43.7 + part08 v1 52/45/47 (song end) +
    part02 filter 32.3; Dreamix_Two v1 release-tail slides (known class — the
