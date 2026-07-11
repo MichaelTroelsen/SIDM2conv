@@ -146,7 +146,7 @@ SIDM2/
 | Rob Hubbard V1 → native driver | pulse/freq/filter 100% (Monty/Commando/Zoids/Last_V8) | ✅ ~12 V1 tunes + subsongs (`bin/`, not default); per-instrument pulse engine; see `docs/players/HUBBARD.md` |
 | Rob Hubbard V2 (Delta class) → native driver | Delta theme freq/pulse/filter 100% (wf 85-96%) | 🚧 6 split-songs built; swallow-class state-region relocation + spin-class + note-format laggards open; see `docs/players/HUBBARD.md` |
 | Future Composer → Driver 11 | trace-validated | 🚧 Stage A only, `$1800` variant; native driver TODO |
-| DMC (Demo Music Creator, Johannes Bjerregaard) → native driver | Rockbuster freq/wf/pulse ~97/100/100 | 🚧 Format RE'd; 21/43 onset-eligible (`bin/`, not default); fast-arp base-note residual open; see `docs/players/DMC.md` |
+| DMC (Demo Music Creator, Johannes Bjerregaard) → native driver | Rockbuster freq/wf/pulse ~97/100/100; Balloon wf/pulse 0→100 via within-frame onsets | 🚧 **56/88 onset-eligible** (within-frame default 2026-07-11), all build (`bin/`, not default); fast-arp base-note residual open; see `docs/players/DMC.md` |
 | Sound Monitor (Hülsbeck) → native driver | corpus strict sweep 99.08% freq+wf (global-delay, EVERY part); most parts 100.0 + filter ~100; 11 songs/28 parts | ✅ 11/11 Fun_Fun files build (`bin/`, not default); see `docs/players/SOUNDMONITOR.md` |
 
 **Critical**: "SidFactory_II/Laxity" ≠ native Laxity! Check player-id: "SidFactory" = use Driver 11, "Laxity_NewPlayer_V21" = use Laxity driver

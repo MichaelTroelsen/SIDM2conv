@@ -23,6 +23,9 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ## [Unreleased]
 
+### DMC corpus rebuilt with within-frame onsets (2026-07-11, post-v3.18.0)
+- `bin/dmc_build_all.py` survey now uses within-frame onsets (matching the builder default): **41 -> 56 ELIGIBLE** (18 FALLBACK, 14 NO-TABLES, 0 errors); **all 56 build clean** -> `out/dmc/` = 56 songs / 1135 part files. `docs/SF2.md` + `docs/players/DMC.md` updated.
+
 ---
 
 ## [3.18.0] - 2026-07-11

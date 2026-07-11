@@ -24,7 +24,7 @@ converted SF2 runs on (a stock **Driver 11**, the native **Laxity** driver, or a
 | ROMUZAK V6.3 | Oliver Blasnik | **native** (ROMUZAK) | `SID/Fun_Fun/` (2) | byte-exact wf/pulse/AD-SR (~98–100%) | `bin/` |
 | Rob Hubbard V1 | Rob Hubbard | **native** (MoN engine) | `SID/Hubbard_Rob/` | pulse/freq/filter **100%** | `bin/` |
 | Rob Hubbard V2 (Delta) | Rob Hubbard | **native** | `SID/Hubbard_Rob/` | Delta theme freq/pulse/filter 100% (wf 85–96) | `bin/` |
-| DMC (Demo Music Creator) | Johannes Bjerregaard | **native** (MoN engine) | `SID/JohannesBjerregaard/` (88) | see below; **41 eligible** | `bin/` |
+| DMC (Demo Music Creator) | Johannes Bjerregaard | **native** (MoN engine) | `SID/JohannesBjerregaard/` (88) | see below; **56 eligible** (within-frame onsets, 2026-07-11) | `bin/` |
 | Future Composer ($1800) | Michael Troelsen | Driver 11 (Stage A) | `SID/Fun_Fun/` | notes/order trace-validated | `bin/` |
 | NewPlayer 20.G4 | various | NP20 | `SID/` (NP20 variants) | 70–90% | ✅ auto (registry) |
 
@@ -55,7 +55,7 @@ corpora and are not enumerated here — see the summary table.)*
 Native build: `py -3 bin/build_dmc_native_song.py SID/JohannesBjerregaard/<tune>.sid auto`.
 Per-voice **freq/wf/pulse** measured over a 15 s window (the real `auto` multi-part build
 scores higher on legato voices — see [`docs/players/DMC.md`](players/DMC.md)). All use the
-**native** driver. **41 of 88** files are onset-eligible; the strongest measured:
+**native** driver. **56 of 88** files are onset-eligible (within-frame onset detection unlocked 15 more, 2026-07-11 — see `docs/players/DMC.md`); the strongest measured:
 
 | Tune | osc1 | osc2 | osc3 | Notes |
 |---|---|---|---|---|
@@ -87,9 +87,10 @@ DMC_Demo_IV_tune_1, Dreaming_2, MSI_Demo, Namnam_Special, Omega_Force_One, Shape
 **DMC generations decoded** (why a file is eligible — **41 of 88** now): the parser is
 relocation-safe and handles three freq layouts (interleaved / split / ADC-vibrato / staged),
 five sound-record idioms (state / absolute-store / indexed-store / state-copy / staged-emit),
-and the interleaved-track generation. Newly eligible this cycle: Myth_Demo, Stormlord_V2,
-STII8, Eagles, Camel_Riders_Inc, Ragtime_Anno_87, Spacegame_Music, Who_Is_Robb_Vol_1 (+
-Flimbos_Quest/Kamikaze locate, FALLBACK). ~21 files remain NO-TABLES.
+and the interleaved-track generation. **2026-07-11: within-frame onset detection** (the
+note-set retriggers gate OFF+ON inside one play call — invisible to end-of-frame state)
+unlocked 15 more files (Balloon wf 0->100 / pulse 0->100, Domino_Dancing, Cant_Stop, the
+Jazz set…): survey now **56 ELIGIBLE / 18 FALLBACK / 14 NO-TABLES**, all 56 build clean.
 
 ---
 
@@ -159,47 +160,70 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 
 ## Complete build inventory
 
-**176 songs built** across 6 native players (each song may span several SF2 parts).
+**199 songs built** across 6 native players (each song may span several SF2 parts).
 
 *Auto-generated from the built SF2 files under `out/` by `pyscript/gen_sf2_index.py` — re-run after building more tunes. "Parts" = the number of SF2 files a song is split into (a long song exceeds the SF2II table/`$D000` caps and ships as windowed parts; 1 = a single file).*
 
-### DMC (Demo Music Creator) — Johannes Bjerregaard  ·  `native`  ·  34 songs / 344 SF2 files
+### DMC (Demo Music Creator) — Johannes Bjerregaard  ·  `native`  ·  57 songs / 1135 SF2 files
 
 | Song | Parts |
 |------|------:|
+| Again Its JB | 20 |
+| Alf TV Theme | 40 |
 | Balloon | 77 |
 | Billie Jean | 15 |
-| Blobby | 1 |
-| Blue Monday 88 | 1 |
-| Cant Stop | 3 |
-| Chase v2 | 9 |
-| Deel 2 | 1 |
+| Blobby | 2 |
+| Blue Monday 88 | 7 |
+| Camel Riders Inc | 12 |
+| Cant Stop | 114 |
+| Chase v2 | 11 |
+| Cute Tune | 38 |
+| Deel 2 | 8 |
+| Depeche Mode Songs | 6 |
 | DMC Demo IV tune 1 | 8 |
-| Dreaming | 3 |
-| Dreaming 2 | 5 |
-| Dummy II | 1 |
-| Fat 6 | 1 |
-| First Try PSX | 1 |
-| Fourth Dimension | 3 |
-| Fruitbank | 1 |
-| In the Mood | 1 |
+| DMC Demo IV tune 2 | 25 |
+| DMC Demo IV tune 3 | 16 |
+| Domino Dancing | 7 |
+| Dragon Sword | 28 |
+| Dreaming | 14 |
+| Dreaming 2 | 28 |
+| Dummy II | 26 |
+| Dummynaytos | 28 |
+| Eagles | 7 |
+| Fat 6 | 24 |
+| First Try PSX | 53 |
+| Fourth Dimension | 7 |
+| French Frites | 64 |
+| Fruitbank | 11 |
+| Hit the Baze | 10 |
+| In the Mood | 4 |
 | Jazz 1 | 31 |
 | M A C H | 2 |
+| Mixerplot | 9 |
 | MSI Demo | 36 |
+| Music Demo | 31 |
+| Myth Demo | 11 |
 | Namnam Special | 28 |
-| Omega Force One | 23 |
-| Predictable main | 1 |
-| Rockbuster | 4 |
-| Scandalous | 7 |
+| Omega Force One | 45 |
+| Predictable main | 4 |
+| Ragtime Anno 87 | 3 |
+| Roadblaster | 1 |
+| Rockbuster | 22 |
+| Scandalous | 11 |
 | Shape | 38 |
-| Slimbo4 | 1 |
+| Slimbo4 | 10 |
 | Some Soul | 30 |
-| Special Agent | 1 |
-| Spy vs Spy III | 1 |
-| Thunder Force | 1 |
+| Spacegame Music | 2 |
+| Special Agent | 27 |
+| Spy vs Spy III | 23 |
+| STII8 | 8 |
+| Stormlord V2 | 2 |
+| Test | 10 |
+| Thunder Force | 8 |
 | Tiny Symphony | 6 |
-| Twilight Beyond | 1 |
-| Wanna Get Sick | 1 |
+| Twilight Beyond | 4 |
+| Wanna Get Sick | 7 |
+| Who Is Robb Vol 1 | 15 |
 | Zoom | 1 |
 
 ### Maniacs of Noise — Jeroen Tel  ·  `native`  ·  26 songs / 201 SF2 files

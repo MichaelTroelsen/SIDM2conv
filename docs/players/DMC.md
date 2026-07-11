@@ -130,6 +130,17 @@ The native ceiling was **onset alignment**, not the arp: `tick × fpt` placement
 wavetable arp at the wrong phase; onset-aligning fixed it. The build self-checks
 emulated-vs-siddump onsets (≥85%) and falls back otherwise.
 
+**Within-frame onsets are the default since 2026-07-11** (`DMC_WF=0` reverts): the
+2026-07-11 audit (`bin/_dmc_wf_audit.py`) found **24/88 files whose note-set retriggers
+gate OFF+ON inside one play call** — invisible to end-of-frame register state (the Sound
+Monitor half-loudness class). Worse than loudness: the missed onsets **failed the ≥85%
+agreement gate**, dumping whole files onto the tick-grid fallback. Measured on Balloon
+part01 (its own span, best delay): state-based = wf 0/70/36, pulse 1/0/95 → within-frame =
+**wf 100/100/92, pulse 100/100/100** (agreement 71/175 → 174/175). The corpus survey went
+**41 → 56 ELIGIBLE** (18 FALLBACK, 14 NO-TABLES); all 56 build clean (2026-07-11 rebuild,
+1135 part files). The gate still protects multispeed variants (Jazz_1 fails both modes and
+produces byte-identical tick-grid output either way).
+
 Run: `py -3 bin/build_dmc_native_song.py SID/JohannesBjerregaard/<name>.sid [secs|auto]`
 → `out/dmc/<name>_partNN.sf2`. (`DMC_MAX_PARTS` caps parts.) Corpus runner:
 `py -3 bin/dmc_build_all.py --dry` categorises all 88 (ELIGIBLE / FALLBACK / NO-TABLES);
