@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.17.0** | SID→SF2 Converter | C64 Music Tools | Updated 2026-07-10
+**SIDM2 v3.18.0** | SID→SF2 Converter | C64 Music Tools | Updated 2026-07-11
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -147,7 +147,7 @@ SIDM2/
 | Rob Hubbard V2 (Delta class) → native driver | Delta theme freq/pulse/filter 100% (wf 85-96%) | 🚧 6 split-songs built; swallow-class state-region relocation + spin-class + note-format laggards open; see `docs/players/HUBBARD.md` |
 | Future Composer → Driver 11 | trace-validated | 🚧 Stage A only, `$1800` variant; native driver TODO |
 | DMC (Demo Music Creator, Johannes Bjerregaard) → native driver | Rockbuster freq/wf/pulse ~97/100/100 | 🚧 Format RE'd; 21/43 onset-eligible (`bin/`, not default); fast-arp base-note residual open; see `docs/players/DMC.md` |
-| Sound Monitor (Hülsbeck) → native driver | Final_Luv 98.1-99.9 skew-tolerant every register (1 part/161s); Stage A 32/33 voices | ✅ 11/11 Fun_Fun files build (`bin/`, not default); see `docs/players/SOUNDMONITOR.md` |
+| Sound Monitor (Hülsbeck) → native driver | corpus strict sweep 99.08% freq+wf (global-delay, EVERY part); most parts 100.0 + filter ~100; 11 songs/28 parts | ✅ 11/11 Fun_Fun files build (`bin/`, not default); see `docs/players/SOUNDMONITOR.md` |
 
 **Critical**: "SidFactory_II/Laxity" ≠ native Laxity! Check player-id: "SidFactory" = use Driver 11, "Laxity_NewPlayer_V21" = use Laxity driver
 
@@ -184,6 +184,8 @@ SIDM2/
 ---
 
 ## Version History
+
+**v3.18.0** (2026-07-11): **THE INSTRUMENT-CAP OPTIMIZER (user directive) — fewer parts AND higher fidelity, plus two blindness-class bug finds.** User insight measured true: per-note capture manufactures artificial instrument variety (Dance part 1: 10 source instruments -> 31 slots). Three register-exact-guarded transforms: (1) **RELEASE_WF driver feature** — gated-off frames write the instrument's release wf (poked IRELWF = SM rec[8]) VERBATIM instead of program&$fe; `_rel_split` moves duration-positioned release tails into gate-off rows -> programs collapse to the duration-independent body (RELEASE_WF=0 proven BYTE-IDENTICAL via Hawkeye sub2, twice). (2) First-row boundary-bleed normalization (gate-clear frame 0 -> the note's own wf; 1-frame class). (3) **Dynamic filter-drive routing** — SM switches filter routing per section; drives credited to the voice the $D417 bits point at ON the attack frame + tie events drive-eligible + same-pitch filter ties at observed re-attacks (Dance part-8 window: 32->14 slots, filter 247->60 rows). **BUG FIND 1 (shipped in v3.17.0): grid-part inter-voice desync** — SMShim.frame_to_tick identity made every grid part >=2 start ALL voices at row 0; Dance part05 28-65% freq -> **100.0 every register every voice** after the fix; masked by part01-only sweeps + per-voice-delay tooling (LESSON: later parts need GLOBAL-delay metrics). **BUG FIND 2: DMC within-frame blindness** — audit found 24/88 DMC files retriggering OFF+ON in one play call; the missed onsets also FAILED the agreement gate -> whole files on tick-grid fallback. Balloon part01: wf 0/70/36 pulse 1/0/95 -> **wf 100/100/92 pulse 100/100/100**; within_frame now the DMC default (DMC_WF=0 reverts; gate still protects multispeed). **SM corpus: 11 songs / 28 parts** (was 32), corpus-wide strict sweep (global delay, EVERY part) **99.08% freq+wf**, WAV RMS 0.92-1.05. New diagnostics: INSTR_DECOMPOSE=1 (pre-cluster slot decomposition), bin/_dmc_wf_audit.py, bin/_opt_sweep_corpus.py. 1524 tests green.
 
 **v3.13.1** (2026-07-05): **Docs-only consolidation release — the cross-player knowledge base.** New `docs/players/PLAYBOOK.md` (the consolidated porting method: staged RE→Stage A→Stage B→Stage C pipeline, technique catalog, SF2II caps, fidelity ladder, all gotchas, new-player checklist), `docs/players/MON.md` (Hawkeye/Cybernoid/Myth/Supremacy — was undocumented despite being the v3.13.0 headline), `docs/players/CLUSTERS.md` (DRAX/Stinsen/Beast/Angular/2000AD/Wizax/V20). Rewritten to v3.13 state: `docs/reference/ACCURACY_MATRIX.md` (was v3.1.1), `docs/ROADMAP.md` (prioritized optimization plan: unify the 3-copy native driver, shared native-build + fidelity libs incl. the `_semi()` reference-freq drift, registry-wire the bin/ players, universal trace-first fallback toward "any SID → 99%/100% editable"), `README.md` (stale 3.6.0/3.2.1 headers + false limitations), `docs/INDEX.md` (players tree indexed, ~12 dead links fixed), `docs/players/README.md`. No code changes (version constant only).
 

@@ -25,6 +25,30 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.18.0] - 2026-07-11
+
+### The instrument-cap optimizer - fewer parts AND higher fidelity, plus two blindness-class bug finds
+
+**The user's insight measured true**: original C64 songs never had more than ~32 instruments - the editors wrapped few instruments in wave/filter/pulse *code*, while our per-note capture manufactures artificial instrument variety. Dance part 1 measured 10 source instruments exploding into 31 driver slots; the optimizer collapses the capture artifacts with register-exact guards.
+
+#### Added
+- **RELEASE_WF driver feature** (`drivers_src/mon/romuzak_driver.asm`, flag-gated): gated-off frames write the instrument's release waveform (poked `IRELWF` table = SM sound-record byte 8) **verbatim** instead of `program&$fe` - a gated release (`$11`) rings through rests exactly like Sound Monitor. `_rel_split` moves each note's duration-positioned release tail out of the wave program into gate-off sequence rows, so programs collapse to the duration-independent body (guard: register-exact + tail within 1 frame of a row tick). `RELEASE_WF=0` compiles **byte-identically** (Hawkeye sub2 SF2 proven identical).
+- **First-row wave normalization** (`_first_row_norm`): frame-0 boundary bleed (`[64,65..]`/`[128,65..]` vs `[65..]`) normalized to the note's own waveform - guarded by the gate-clear->gate-set shape; a 1-frame class, same as onset spikes.
+- **Dynamic filter-drive routing** (`detect_filter_drives(dynamic=True)`): SM switches filter routing per section; drives are now credited to the voice the `$D417` routing bits point at **on the attack frame** (the fixed dominant-voice restriction dropped every re-attack in sections routed elsewhere). Plus **filter ties**: tie events are drive-eligible, and the SM shim inserts same-pitch ties at observed cutoff re-attacks so every envelope restart has a row. Dance part-8 window: 32 -> 14 slots, filter 247 -> 60 rows (15 -> 5 programs).
+- `INSTR_DECOMPOSE=1` - pre-cluster per-source-instrument diagnostic in `build_native_song` (the 9-instruments-vs-37-programs audit, now cross-player).
+- Kill-switches: `SM_WCANON=0`, `SM_RELWF=0`, `SM_FTIE=0`, `DMC_WF=0`.
+
+#### Fixed
+- **The grid-part inter-voice desync** (pre-existing, shipped in the v3.17.0 corpus): `SMShim.frame_to_tick` was identity, but on grid builds it must invert `tick_to_frame` - the per-part lead computation clamped to 0 for every grid part >= 2, starting **all three voices at row 0** (an inter-voice desync of up to the first-note offsets). Masked by part01-only strict sweeps and per-voice-delay tooling. Dance part05 went from 28-65% freq at any single delay to **100.0 on every register, every voice** (filter 98.3).
+- **DMC within-frame onsets by default** (`DMC_WF=0` reverts): the audit (`bin/_dmc_wf_audit.py`) found **24/88 DMC files** retriggering gate OFF+ON inside one play call (the SM half-loudness class) - worse, the missed onsets failed the onset-agreement gate and dumped whole files onto the tick-grid fallback. Balloon part01 (own span, best delay): state = wf 0/70/36, pulse 1/0/95 -> within-frame = **wf 100/100/92, pulse 100/100/100** (agreement 71/175 -> 174/175, ONSET-ALIGNED unlocked; Domino_Dancing flips too). The gate still protects multispeed variants.
+
+#### Results
+- **SM corpus: 11 songs / 28 parts** (was 32; Dance 11 -> 8, Fun_Mix 3 -> 2, Dreamix_Two 3 -> 2), rebuilt with every fix.
+- **Corpus-wide strict sweep (global delay, every part - the metric that cannot mask desync): 99.08% freq+wf**; most parts 100.0 flat with filter 99.9-100. WAV RMS ratios: Poppy_Road 0.92, Dance 1.05.
+- Crown jewel re-proven **byte-identical twice** (Hawkeye sub2, all flags off). Full suite: **1524 passed**.
+
+---
+
 ## [3.17.0] - 2026-07-10
 
 ### Sound Monitor (Chris Hulsbeck, 1986) - the seventh from-scratch player, RE'd to native SF2s in one day

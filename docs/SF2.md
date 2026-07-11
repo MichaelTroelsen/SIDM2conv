@@ -159,14 +159,15 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 
 ## Complete build inventory
 
-**174 songs built** across 6 native players (each song may span several SF2 parts).
+**176 songs built** across 6 native players (each song may span several SF2 parts).
 
 *Auto-generated from the built SF2 files under `out/` by `pyscript/gen_sf2_index.py` — re-run after building more tunes. "Parts" = the number of SF2 files a song is split into (a long song exceeds the SF2II table/`$D000` caps and ships as windowed parts; 1 = a single file).*
 
-### DMC (Demo Music Creator) — Johannes Bjerregaard  ·  `native`  ·  32 songs / 236 SF2 files
+### DMC (Demo Music Creator) — Johannes Bjerregaard  ·  `native`  ·  34 songs / 344 SF2 files
 
 | Song | Parts |
 |------|------:|
+| Balloon | 77 |
 | Billie Jean | 15 |
 | Blobby | 1 |
 | Blue Monday 88 | 1 |
@@ -182,6 +183,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Fourth Dimension | 3 |
 | Fruitbank | 1 |
 | In the Mood | 1 |
+| Jazz 1 | 31 |
 | M A C H | 2 |
 | MSI Demo | 36 |
 | Namnam Special | 28 |
@@ -351,13 +353,13 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Road of Excess end | 1 |
 | Road of Excess end native | 1 |
 
-### Sound Monitor (Musicmaster) — Fun Fun  ·  `native`  ·  11 songs / 32 SF2 files
+### Sound Monitor (Musicmaster) — Fun Fun  ·  `native`  ·  11 songs / 28 SF2 files
 
 | Song | Parts |
 |------|------:|
-| Dance at Night remix | 11 |
+| Dance at Night remix | 8 |
 | Dreamix | 5 |
-| Dreamix Two | 3 |
+| Dreamix Two | 2 |
 | Final Luv | 1 |
 | Fuck Off | 2 |
 | Fun Mix | 2 |
