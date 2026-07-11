@@ -158,6 +158,30 @@ def locate(d, la):
         lay.variant = 'D'
         lay.track_lo_arr = _w(d, i + 1)
         lay.track_hi_arr = _w(d, i + 6)
+        # tempo: DEC $t / BMI ... LDA #imm / STA $t (same operand)
+        j = _find(d, [0xCE, -1, -1, 0x30])
+        if j is not None:
+            t_lo, t_hi = d[j + 1], d[j + 2]
+            k = _find(d, [0xA9, -1, 0x8D, t_lo, t_hi])
+            if k is not None:
+                lay.tempo_imm = d[k + 1]
+        # freq tables from the note-set reads: LDA $lo,Y / STA $a,X /
+        # STA $b,X / LDA $hi,Y / STA $c,X / STA $d,X
+        j = _find(d, [0xB9, -1, -1, 0x9D, -1, -1, 0x9D, -1, -1,
+                      0xB9, -1, -1, 0x9D, -1, -1, 0x9D, -1, -1])
+        if j is not None:
+            lay.freq_lo = _w(d, j + 1)
+            lay.freq_hi = _w(d, j + 10)
+        # D seq tables: LDA $lo,Y / STA zp / LDA $hi,Y / STA zp /
+        # LDY $pos,X / LDA (zp),Y — abs,Y (Y = seq#), no TAY
+        j = _find(d, [0xB9, -1, -1, 0x85, -1, 0xB9, -1, -1, 0x85, -1,
+                      0xBC, -1, -1, 0xB1, -1])
+        if j is not None:
+            lay.seq_lo = _w(d, j + 1)
+            lay.seq_hi = _w(d, j + 6)
+            _f = _freq_scan          # keep pyflakes quiet; freq set above
+            lay.state = _w(d, j + 11)
+            return lay
     else:
         # variant B track read: LDA $lo,X / STA zp / LDA $hi,X / STA zp /
         #   LDY $pos,X / LDA (zp),Y  (per-voice pointer ARRAYS, stride 3)
@@ -276,14 +300,11 @@ class SDIModule:
             self.track_ptrs = [(d[blk + 2 * v] | (d[blk + 2 * v + 1] << 8))
                                for v in range(3)]
             self.tempo_reload = d[blk + 6]
-        elif self.lay.variant == 'D':            # arrays + 2-byte track hdr
+        elif self.lay.variant == 'D':            # arrays of (seq#,hdr) pairs
             lo, hi = self.lay.track_lo_arr - la, self.lay.track_hi_arr - la
             self.track_ptrs = [(d[lo + v] | (d[hi + v] << 8))
                                for v in range(3)]
-            # per-voice speed nibble from the track header byte 1; use v0's
-            self.track_start = [self._raw(t, 0) for t in self.track_ptrs]
-            self.tempo_reload = self._raw(self.track_ptrs[0], 1) & 0x0F
-            self.track_ptrs = [t + 2 for t in self.track_ptrs]
+            self.tempo_reload = max(0, self.lay.tempo_imm)
         else:                                    # B: per-voice arrays
             lo, hi = self.lay.track_lo_arr - la, self.lay.track_hi_arr - la
             self.track_ptrs = [(d[lo + v] | (d[hi + v] << 8))
@@ -313,6 +334,8 @@ class SDIModule:
 
     def decode_voice(self, v, max_ticks=40000):
         """Walk track+sequences -> [SDIEvent] (frames on the tick grid)."""
+        if self.lay.variant == 'D':
+            return self._decode_voice_d(v, max_ticks)
         lay = self.lay
         tpos = 0
         transpose = 0
@@ -369,6 +392,82 @@ class SDIModule:
                     break
             tpos += 1
         return events
+
+    def _decode_voice_d(self, v, max_ticks=40000):
+        """D tracks = arrays of (seq#, header) PAIRS: header hi nibble =
+        transpose, lo nibble = seq REPEAT count; seq# $fe = voice off;
+        track byte $ff = wrap to position 0 (song loop -> stop)."""
+        track = self.track_ptrs[v]
+        tpos = 0
+        tick = 0
+        events = []
+        guard = 0
+        while tick < max_ticks and guard < 4000:
+            guard += 1
+            seq_no = self._u8(track + tpos)
+            if seq_no == 0xFF:                   # wrap -> song loop
+                break
+            if seq_no == 0xFE:                   # voice off
+                break
+            hdr = self._u8(track + tpos + 1)
+            transpose = hdr >> 4
+            repeat = hdr & 0x0F
+            seq = self.seq_addr(seq_no)
+            for _ in range(repeat + 1):
+                tick = self._play_seq_d(v, seq, tick, transpose, events,
+                                        max_ticks)
+                if tick >= max_ticks:
+                    break
+            tpos += 2
+        return events
+
+    def _play_seq_d(self, v, seq, tick, transpose, events, max_ticks):
+        """Variant D (Another_Day class): rows last dur+1 ticks. First
+        byte: $a0-$ff = set-dur + HOLD row (& $1f, no gate change);
+        $80-$9f = instrument (& $1f); $60-$7f = gate-off/REST row
+        (& $1f = dur); < $60 = NOTE followed by a DUR byte whose flags
+        consume extras (bit7 = filter cmd +2 bytes, bit5 = glide +2
+        bytes, & $1f = duration). Seq END = $ff. Transpose comes from
+        the TRACK pair header (hi nibble), passed in by the caller."""
+        instr = getattr(self, "_cur_instr", [0, 0, 0])
+        pos = 0
+        dur = 0
+        guard = 0
+        while tick < max_ticks and guard < 20000:
+            guard += 1
+            b = self._u8(seq + pos)
+            pos += 1
+            if b == 0xFF:                        # sequence END
+                break
+            if b >= 0xA0:                        # set-dur + HOLD row
+                dur = b & 0x1F
+                events.append(SDIEvent(tick * self.fpt, 'rest', None,
+                                       instr[v], dur + 1))
+                tick += dur + 1
+                continue
+            if b >= 0x80:                        # instrument set
+                instr[v] = b & 0x1F
+                self._cur_instr = instr
+                continue
+            if b >= 0x60:                        # gate-off/REST row
+                dur = b & 0x1F
+                events.append(SDIEvent(tick * self.fpt, 'off', None,
+                                       instr[v], dur + 1))
+                tick += dur + 1
+                continue
+            # NOTE + dur byte (+flag extras)
+            note = (b + transpose) & 0xFF
+            db = self._u8(seq + pos)
+            pos += 1
+            if db & 0x80:                        # filter command: +2 bytes
+                pos += 2
+            elif db & 0x20:                      # glide: +2 param bytes
+                pos += 2
+            dur = db & 0x1F
+            events.append(SDIEvent(tick * self.fpt, 'note', note,
+                                   instr[v], dur + 1))
+            tick += dur + 1
+        return tick
 
     def _play_seq_b(self, v, seq, tick, transpose, events, max_ticks):
         """Variant B row model: $80-$bf dur (b-$80; $3f -> next byte) /
@@ -468,9 +567,8 @@ class SDIModule:
 
     def _play_seq(self, v, seq, tick, transpose, events, max_ticks):
         if self.lay.variant == 'D':
-            raise NotImplementedError(
-                "SDI variant D seq decode not mapped yet (tables locate; "
-                "freq layout differs from the $60-apart pair — see memory)")
+            return self._play_seq_d(v, seq, tick, transpose, events,
+                                    max_ticks)
         if self.lay.variant == 'B':
             return self._play_seq_b(v, seq, tick, transpose, events,
                                     max_ticks)
