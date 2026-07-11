@@ -164,7 +164,13 @@ class DMCShim:
         # DMC_GRID=0 kill-switch.
         if onsets is not None and os.environ.get('DMC_GRID', '1') != '0':
             ofpt = m.lay.tempo_reload + 1
-            allf = [f for _, _, ons, _ in prep if ons for f in ons]
+            # residue test over GATE onsets only: legato voices' decode
+            # boundaries sit at their own phase (tk*ofpt+phase) and poisoned
+            # the single-residue check (Alf_TV_Theme stayed fpt=1 at 40
+            # parts with all 372 gates on one residue). Legato events are
+            # synthetic and round-snap to the grid like SM ties.
+            allf = [f for v, _, ons, _ in prep
+                    if ons and v not in legato_set for f in ons]
             if allf:
                 for mult in (4, 2, 1):
                     g = ofpt * mult
