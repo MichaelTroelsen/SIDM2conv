@@ -113,6 +113,15 @@ class SMShim:
                               # the pulse program too (each tie's own captured
                               # segment plays; no cross-chain freeze)
     sid_model = 6581          # per the HVSC flag (user-confirmed 6581)
+    # THE INSTRUMENT-CAP OPTIMIZER (user directive 2026-07-11): SM's per-note
+    # wave captures manufacture artificial instrument variety (Dance part 1:
+    # 10 source instruments -> 31 slots). Two guarded transforms collapse it:
+    wave_canon = 1 if os.environ.get('SM_WCANON', '1') != '0' else 0
+                              # first-row boundary-bleed normalization (a
+                              # 1-frame class; kill-switch SM_WCANON=0)
+    release_wf = 1 if os.environ.get('SM_RELWF', '1') != '0' else 0
+                              # rec[8] release tails -> gate-off rows + the
+                              # driver's RELEASE_WF feature (SM_RELWF=0 off)
 
     def __init__(self, m, streams, span, onsets=None, frames=None,
                  legato_set=frozenset(), phase=0):
@@ -259,6 +268,9 @@ class SMShim:
         rec = self.m.sound(idx)
         return {'ad': rec[1], 'sr': rec[2],
                 'waveform': rec[0] or 0x41,   # hint; real wf captured per-frame
+                'release_wf': rec[8],         # REST writes this to $D404 — the
+                                              # duration-positioned tail byte
+                                              # (drives the RELEASE_WF split)
                 'pw': 0x800, 'pulseval': 0, 'fx': 0,
                 'wave_prog': 0, 'flags': 0, 'raw': list(rec)}
 

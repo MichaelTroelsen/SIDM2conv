@@ -129,6 +129,11 @@ ARP_STRUCT = os.environ.get("MON_ARP_STRUCT", "") == "1"
 # the pulse-canonical, without ARP_STRUCT's FM changes. Opt-in per shim (`pulse_canon`) or
 # via MON_PULSE_CANON=1.
 PULSE_CANON = os.environ.get("MON_PULSE_CANON", "") == "1"
+# INSTRUMENT-CAP OPTIMIZER wave prong (user directive 2026-07-11; see
+# memory/soundmonitor-player.md "THE INSTRUMENT-CAP OPTIMIZER"): first-row
+# boundary-bleed normalization + frame-0-tolerant canonical acceptance.
+# Opt-in per shim (`wave_canon`) or via MON_WAVE_CANON=1.
+WAVE_CANON = os.environ.get("MON_WAVE_CANON", "") == "1"
 
 
 def arp_fm_program(arp):
@@ -815,6 +820,90 @@ def _wave_masked_ok(prog, wfs, drv_gate_f, off_k, end):
     return True
 
 
+def _relwf_of(m, mon_i):
+    """The instrument's RELEASE waveform (SM sound-record byte 8) or None.
+    Non-None enables the tail split (_rel_split) + the driver's RELEASE_WF
+    feature for this instrument; only shims that set `release_wf` (SM) and
+    expose 'release_wf' per instrument participate — MoN/Hubbard/DMC paths
+    are untouched."""
+    if not getattr(m, 'release_wf', 0):
+        return None
+    rw = m.instrument(mon_i).get('release_wf')
+    return rw & 0xFF if rw is not None else None
+
+
+def _rel_split(m, frames, v, fr, dur_f, tk, ticks, relwf):
+    """RELEASE-WF split (the instrument-cap optimizer's class-2 fix): SM-class
+    engines write the instrument's release waveform (sound-record byte 8) at
+    note-off — a DURATION-relative frame — so per-note wave captures differ per
+    duration and explode the 32-slot instrument cap (Dance part 1: 10 source
+    instruments -> 31 slots, almost all trailing-run variants). Find the
+    trailing run of `relwf` in the capture and move it OUT of the wave program
+    into sequence GATE-OFF rows: the driver's RELEASE_WF feature writes VRELWF
+    (poked per instrument = relwf) VERBATIM on gated-off frames, so the tail is
+    reproduced by the note's row schedule and the program collapses to the
+    duration-independent body. Returns (gate_ticks, wfs, off_k, end) like
+    _gate_split; off_k None = no split (exact per-note program kept).
+    Guard: the release frame must sit within 1 frame of a row tick (SM's
+    note-offs land on the step grid, so grid builds align exactly)."""
+    wfs, last = [], 0x41
+    for k in range(min(dur_f, 256)):
+        idx = fr + k
+        w = frames[idx][0][v]['wf'] if idx < len(frames) else None
+        last = w if w is not None else last
+        wfs.append(last & 0xFF)
+    end = len(wfs)
+    off_k = end
+    while off_k > 0 and wfs[off_k - 1] == relwf:
+        off_k -= 1
+    if off_k == 0 or end - off_k < 2:
+        return ticks, wfs, None, end             # no (meaningful) trailing run
+    base_f = m.tick_to_frame(tk)
+    # nearest row tick to the observed release frame (frame_to_tick is not a
+    # true inverse on the SM grid shim, so derive frames-per-tick locally)
+    fpt = max(1, m.tick_to_frame(tk + 1) - base_f)
+    t_off = max(1, min(ticks - 1, round(off_k / fpt))) if ticks > 1 else 0
+    if t_off < 1:
+        return ticks, wfs, None, end
+    drv_off = m.tick_to_frame(tk + t_off) - base_f
+    if abs(drv_off - off_k) > 1:
+        return ticks, wfs, None, end             # off the row grid: keep exact
+    return t_off, wfs, off_k, end
+
+
+def _first_row_norm(wp):
+    """WAVE-CANON first-row normalization (the optimizer's class-1 fix): frame
+    0 of a capture can hold the pre-note boundary state (gate-off $40 / $80
+    bleed from SM's within-frame retrigger), making [64,65,..] / [128,65,..] /
+    [65,..] distinct programs for the same instrument. Replace a gate-CLEAR
+    frame 0 followed by a gate-SET frame 1 with frame 1's value (the note's
+    own waveform) — unroll-equal from frame 1 by construction; the loss is one
+    boundary frame per note, the same accepted class as the onset spikes.
+    A real gated noise attack ([129,65,..]) has bit0 SET and is never touched."""
+    if len(wp) >= 2 and not (wp[0] & 1) and (wp[1] & 1):
+        return _settle_trim((wp[1],) + tuple(wp[1:]))
+    return wp
+
+
+def _wave_rel_ok(prog, wfs, drv_gate_f, off_k, end, relwf, skip0):
+    """True iff `prog` (driver wave program; loops on its last value), gated
+    off from row-frame drv_gate_f with RELEASE_WF output `relwf`, reproduces
+    the captured wfs[:end]. Frames between the observed and driver gate-off
+    ([min,max) of off_k/drv_gate_f) are the accepted <=1-frame skew; frame 0
+    is skipped under WAVE-CANON (the normalized boundary-bleed frame)."""
+    lo, hi = ((min(off_k, drv_gate_f), max(off_k, drv_gate_f))
+              if off_k is not None else (end, end))
+    for k in range(1 if skip0 else 0, end):
+        if lo <= k < hi:
+            continue                             # declared skew frame
+        out = prog[k] if k < len(prog) else prog[-1]
+        if k >= drv_gate_f:
+            out = relwf
+        if out != wfs[k]:
+            return False
+    return True
+
+
 def _is_struct_fm(fp):
     """True for FM programs containing SEMITONE/LOOP entries (byte2 >= $7f) —
     their pitch shape is note-relative, so the Hz-based cluster curve is
@@ -984,13 +1073,25 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                 if dur_f >= 2 and (k not in canon_pick or dur_f > canon_pick[k][0]):
                     canon_pick[k] = (dur_f, v, fr, tk, ev.dur, ev.note)
             tk += ev.dur
+    # WAVE-CANON (the instrument-cap optimizer, shim flag `wave_canon`):
+    # first-row boundary-bleed normalization + frame-0-tolerant canonical
+    # acceptance. RELEASE-WF (shim flag `release_wf` + per-instrument
+    # 'release_wf' byte): duration-positioned release tails split into
+    # gate-off rows. Both SM-gated; MoN/Hubbard/DMC behavior unchanged.
+    wcanon = WAVE_CANON or getattr(m, 'wave_canon', 0)
     canon_wave, canon_pulse, canon_fm = {}, {}, {}
     for k, (df_, v_, fr_, tk_, dur_, note_) in canon_pick.items():
-        _gt, wfs_, offk_, end_ = _gate_split(m, frames, v_, fr_, df_, tk_, dur_)
-        if offk_ is not None:
-            canon_wave[k] = _settle_trim(wfs_[:offk_])
+        relwf_ = _relwf_of(m, k[0])
+        if relwf_ is not None:
+            _gt, wfs_, offk_, end_ = _rel_split(m, frames, v_, fr_, df_, tk_,
+                                                dur_, relwf_)
         else:
-            canon_wave[k] = _wave_prog_for(frames, v_, fr_, df_)
+            _gt, wfs_, offk_, end_ = _gate_split(m, frames, v_, fr_, df_, tk_, dur_)
+        if offk_ is not None:
+            cwp = _settle_trim(wfs_[:offk_])
+        else:
+            cwp = _wave_prog_for(frames, v_, fr_, df_)
+        canon_wave[k] = _first_row_norm(cwp) if wcanon else cwp
         # STRUCTURAL PULSE (step 4): a shorter note's captured program is a PREFIX
         # of the longest note's when the sweep restarts per note — substituting the
         # canonical is exact when the unrolled outputs match over the note's frames
@@ -1176,7 +1277,8 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     def instr_of(mon_i, wp, flag, filt):
         ins = m.instrument(mon_i)
         ad, sr, raw = ins['ad'], ins['sr'], ins['waveform'] or 0x41
-        key = (ad, sr, raw, wp, flag, tuple(filt) if filt else None)
+        relwf = _relwf_of(m, mon_i)
+        key = (ad, sr, raw, wp, flag, tuple(filt) if filt else None, relwf)
         if getattr(m, 'hp_engine', 0):
             # the HP pulse engine keys live PW state by ROM instrument — two
             # timbre-identical instruments with different PW/pulseval/fx must
@@ -1185,7 +1287,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                     ins.get('fx', 0))
         if key not in iidx:
             iidx[key] = len(exi)
-            exi.append((ad, sr, raw, _rle_wave(wp), flag, filt, mon_i))
+            exi.append((ad, sr, raw, _rle_wave(wp), flag, filt, mon_i, relwf))
             icount.append(0)
         icount[iidx[key]] += 1
         return iidx[key]
@@ -1366,16 +1468,27 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                         elif _pulse_unroll(cp, cmp_f) == _pulse_unroll(pp, cmp_f):
                             pp = cp
                 bi = bundle_of(fmp, pp)
-                gate_ticks, wfs_c, off_k, end_c = _gate_split(m, frames, v, cfr,
-                                                              dur_f, etk, ticks)
+                relwf = _relwf_of(m, ev.instr)
+                if relwf is not None:
+                    gate_ticks, wfs_c, off_k, end_c = _rel_split(
+                        m, frames, v, cfr, dur_f, etk, ticks, relwf)
+                else:
+                    gate_ticks, wfs_c, off_k, end_c = _gate_split(
+                        m, frames, v, cfr, dur_f, etk, ticks)
                 cw = canon_wave.get((ev.instr, ev.wprog))
                 drv_gate = m.tick_to_frame(etk + gate_ticks) - m.tick_to_frame(etk)
                 skew0 = off_k if off_k is not None else end_c
                 if (cw is not None and wfs_c is not None
-                        and _wave_masked_ok(cw, wfs_c, drv_gate, skew0, end_c)):
+                        and (_wave_rel_ok(cw, wfs_c, drv_gate, off_k, end_c,
+                                          relwf, wcanon)
+                             if relwf is not None
+                             else _wave_masked_ok(cw, wfs_c, drv_gate, skew0,
+                                                  end_c))):
                     wp = cw                       # canonical reproduces this note's capture
                 elif off_k is not None:
                     wp = _settle_trim(wfs_c[:off_k])
+                    if wcanon:
+                        wp = _first_row_norm(wp)
                 else:
                     # keep the full capture INCLUDING the trailing next-note attack
                     # bleed: reproducing it is byte-better (osc3 wf 97.8 vs 91.6
@@ -1398,12 +1511,36 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                         rest_end = min(m.tick_to_frame(gtk) + delay, t1)
                         wave_dur = max(dur_f, min(rest_end - cfr, WAVE_CAP))
                     wp = _wave_prog_for(frames, v, cfr, wave_dur)
+                    if wcanon:
+                        wp = _first_row_norm(wp)
                 ii = instr_of(ev.instr, wp, flag, filt)
                 blk.append((note_c, ticks, bi, ii, etk, gate_ticks,
                             getattr(ev, 'tie', False)))
                 tk += ev.dur
             if blk:
                 note_recs[v].append(blk)
+
+    # INSTR_DECOMPOSE=1: pre-cluster instrument decomposition — how many SLOTS each
+    # SOURCE instrument exploded into and why (the wave program is the usual culprit:
+    # first-byte boundary bleed / duration-positioned release tails / hold-length
+    # variants — see memory/soundmonitor-player.md "THE INSTRUMENT-CAP OPTIMIZER").
+    if os.environ.get("INSTR_DECOMPOSE"):
+        by_src = {}
+        for k in range(len(exi)):
+            by_src.setdefault(exi[k][6], []).append(k)
+        print(f"  INSTR_DECOMPOSE {win}: {len(by_src)} source instruments -> "
+              f"{len(exi)} slots")
+        for src in sorted(by_src):
+            ks = by_src[src]
+            print(f"    src {src}: {len(ks)} slot(s)")
+            for k in sorted(ks, key=lambda k: -icount[k]):
+                ad, sr, raw, wrle, flag, filt, _s, rw = exi[k][:8]
+                print(f"      n={icount[k]:3d} ad={ad:02x} sr={sr:02x} "
+                      f"flag={flag:02x} filt={'Y' if filt else '-'} "
+                      f"rel={'%02x' % rw if rw is not None else '--'} wave={wrle}")
+        fprogs = {tuple(filt) for e in exi for filt in [e[5]] if filt}
+        print(f"    filter: {len(fprogs)} distinct programs, "
+              f"{sum(len(p) for p in fprogs)} rows")
 
     # Adaptive packing probes the PRE-cluster resource counts for a candidate window
     # (cheap: pass-1 only, no clustering / assemble) to grow windows up to the caps.
@@ -1413,7 +1550,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     # driver's seq-pointer table holds 128 — overflow corrupts the LAST voice, osc3).
     if count_only:
         wkeys, wrows, fkeys, frows = set(), 0, set(), 0
-        for _ad, _sr, _raw, waveprog, _flag, filt, _src in exi:
+        for _ad, _sr, _raw, waveprog, _flag, filt, _src, _rw in exi:
             wk = tuple(waveprog)
             if wk not in wkeys:
                 wkeys.add(wk)
@@ -1476,6 +1613,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
         d = abs(a[0] - b[0]) + abs(a[1] - b[1]) + (200 if a[2] != b[2] else 0)
         d += 60 * sum(1 for x, y in zip(a[3], b[3]) if x != y) + 60 * abs(len(a[3]) - len(b[3]))
         d += 0 if (a[4] == b[4] and a[5] == b[5]) else 150
+        d += 0 if a[7] == b[7] else 150          # release wf differs (RELEASE_WF)
         return d
 
     def bgate(i, j):                         # an INAUDIBLE bundle merge: same pulse +
@@ -1496,6 +1634,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     instr_flags = [exi[r][4] for r in ireps]
     filter_programs = [exi[r][5] for r in ireps]
     instr_src = [exi[r][6] for r in ireps]        # source (engine) instrument index
+    instr_relwf = [exi[r][7] for r in ireps]      # per-slot release wf (RELEASE_WF)
 
     # --- PASS 2: emit rows with the clustered indices ---
     segs = [[] for _ in range(3)]
@@ -1521,13 +1660,14 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                 rows.extend(D11Row(note=0x00) for _ in range(max(0, dur - gate)))
             for pk in segment_track(_hr_rows(rows, getattr(m, 'hard_restart', 0))):
                 segs[v].append(pk)
-    return segs, bundles, instrs, wave_programs, instr_flags, filter_programs, instr_src
+    return (segs, bundles, instrs, wave_programs, instr_flags, filter_programs,
+            instr_src, instr_relwf)
 
 
 def emit_one(m, br, out_path, label):
     """Assemble + wrap one build result (segs, bundles, instrs, ...) into an SF2."""
     (segs, bundles, instrs, wave_programs, instr_flags, filter_programs,
-     instr_src) = br
+     instr_src, instr_relwf) = br
     pulse_programs = [static_pulse(0x800) for _ in instrs]
     B.GAL = MON_DIR
     B.TEMPO = m.frames_per_tick
@@ -1547,6 +1687,11 @@ def emit_one(m, br, out_path, label):
     B.PULSE_LOOP = 1 if getattr(m, "pulse_loop", 0) else 0
     # SM-class: the note-set re-inits the PW base on EVERY note incl. tie/legato
     B.PULSE_TIE = 1 if getattr(m, "pulse_tie", 0) else 0
+    # SM-class: gated-off frames write the instrument's RELEASE waveform (poked
+    # IRELWF) verbatim instead of program&$fe — the instrument-cap optimizer's
+    # tail split (only meaningful when the shim provides per-instrument
+    # 'release_wf'; mutually exclusive with HP_ENGINE/TEMPO_SCHED, see the asm)
+    B.RELEASE_WF = 1 if getattr(m, "release_wf", 0) else 0
     # scaled FM entries collide with real $40-$43xx Hz deltas (Hubbard drum dives)
     B.FM_SCALED = 0 if getattr(m, "hard_restart", 0) else 1
     B.HP_ENGINE = 1 if getattr(m, "hp_engine", 0) else 0
@@ -1614,6 +1759,19 @@ def emit_one(m, br, out_path, label):
         for v in range(3):
             poke(0x19C3 + v, hp.get("pdly", [0, 0, 0])[v])   # PDLY
             poke(0x19C6 + v, hp.get("pdir", [0, 0, 0])[v])   # PDIR
+        prg = bytes(prg)
+    if B.RELEASE_WF:
+        # poke IRELWF ($1960, 32 bytes): per-slot release waveform. Slots whose
+        # instrument declared none get 0 (their notes never emit gate-off rows
+        # under the tail split, so the byte is only reached on true rests —
+        # where wf 0 matches the original's idle wave-off)
+        prg = bytearray(prg)
+        pload = prg[0] | (prg[1] << 8)
+        need = 0x1A00 - pload + 2
+        if len(prg) < need:
+            prg.extend(bytes(need - len(prg)))
+        for slot, rw in enumerate(instr_relwf[:32]):
+            prg[0x1960 + slot - pload + 2] = (rw or 0) & 0xFF
         prg = bytes(prg)
     sw = getattr(m, "swallow", None)
     sched = getattr(m, "sched", None)

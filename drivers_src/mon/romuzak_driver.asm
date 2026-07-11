@@ -215,6 +215,16 @@ NPRE      = $1879        ; per-voice: 1 = hard-restart PREAMBLE frame pending (3
                          ;   wf $41 (RE'd from the sub2 trace: EVERY retrigger frame,
                          ;   all voices); wave_step/fm_step consume state normally but
                          ;   override this frame's SID writes (NOTE_PREAMBLE builds)
+VRELWF    = $193D        ; per-voice: current instrument's RELEASE waveform (3) —
+                         ;   RELEASE_WF builds: gated-off frames write this byte
+                         ;   VERBATIM to $D404 instead of program&$fe (SM-class
+                         ;   engines: REST writes the sound record's byte 8, which
+                         ;   can keep bit0 SET — a gated release rings through
+                         ;   rests). ($193D-$193F free: out-of-line code ends $193C.)
+IRELWF    = $1960        ; per-instrument release waveform (32) — poked by the
+                         ;   emitter (RELEASE_WF builds). Reuses the HPFX region:
+                         ;   RELEASE_WF is mutually exclusive with HP_ENGINE and
+                         ;   TEMPO_SCHED (both Hubbard-only, RELEASE_WF is SM-class).
 
         .include "layout.inc"
 INSTR_AD    = INSTR + 0*32
@@ -289,6 +299,9 @@ iv:     lda #$41
         sta FMP_HI,x
         sta NPRE,x               ; no preamble pending
         sta HRC,x                ; no pending ADSR re-arm
+.if RELEASE_WF
+        sta VRELWF,x             ; release wf 0 until an instrument is set
+.endif
 .if HP_ENGINE
         jsr hp_init0             ; zero VINST/PDLY/PDIR (branch-range: out-of-line)
 .endif
@@ -502,7 +515,15 @@ ws_play:
         sta vfreq_hi,x
         ldy VWI,x                ; waveform col0 -> $D404 (masked by the gate)
         lda WAVE,y
+.if RELEASE_WF
+        ldy VGMASK,x             ; SM-class: gated-off frames write the current
+        iny                      ;   instrument's RELEASE waveform ($ff -> 0 = on)
+        beq wsp_von              ;   VERBATIM (it may keep bit0 set: a gated
+        lda VRELWF,x             ;   release rings through rests) instead of the
+wsp_von:                         ;   program&$fe mask
+.else
         and VGMASK,x
+.endif
 .if NOTE_PREAMBLE
         ldy NPRE,x               ; preamble frame: write $41 and FREEZE the row —
         beq wsp_wf               ;   the preamble is an EXTRA frame (engine-verified:
@@ -1162,8 +1183,12 @@ pr_note:
         bne pn_not_off
         lda #$fe                 ; gate off: wave_step keeps writing gate-off
         sta VGMASK,x
+.if RELEASE_WF
+        lda VRELWF,x             ; SM-class: the gate-off row writes the release
+.else                            ;   waveform verbatim (wave_step repeats it)
         lda vwf,x
         and #$fe
+.endif
         ldy sidoff
         sta SID+4,y
         jmp advw
@@ -1414,6 +1439,10 @@ set_instr_v:
         sta VIFLAGS,x
         lda INSTR_FILT,y         ; filter-program start row
         sta VIFILT,x
+.if RELEASE_WF
+        lda IRELWF,y             ; instrument's release waveform (poked table)
+        sta VRELWF,x
+.endif
         ; MoN: pulse is PER-COMMAND (the $c0-$ff bundle), NOT per-instrument. Do NOT
         ; set VIPUL here — set_instr runs AFTER the command in token order, so writing
         ; VIPUL would clobber the note's bundle pulse program. The command owns both

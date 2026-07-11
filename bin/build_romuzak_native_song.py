@@ -292,6 +292,11 @@ def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
         # tie notes also re-init the pulse program (SM-class engines whose
         # note-set writes the PW base on EVERY note incl. legato)
         f.write(f"PULSE_TIE = {getattr(B, 'PULSE_TIE', 0)}\n")
+        # gated-off frames write the instrument's RELEASE waveform (IRELWF,
+        # poked) verbatim instead of program&$fe — lets duration-positioned
+        # release tails move out of the wave programs into gate-off rows
+        # (SM-class: REST writes the sound record's byte 8)
+        f.write(f"RELEASE_WF = {getattr(B, 'RELEASE_WF', 0)}\n")
         # scaled-vibrato FM entries ($40-$43 hi marker) — off for engines whose
         # REAL Hz deltas reach that range (Hubbard drum dives to $43xx)
         f.write(f"FMSCALE_ON = {getattr(B, 'FM_SCALED', 1)}\n")
