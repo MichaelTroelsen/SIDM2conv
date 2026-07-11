@@ -36,14 +36,17 @@ changelogs:
 </work_completed>
 
 <work_remaining>
-1. **Gallefoss/SDI parser** (arc open, source readable): read the remaining
-   source sections (SEQUENCER top 857-940, WAVEFORM PROGRAM 1451+, the data/
-   table DEFINITIONS after init ~1994; the spd49 variant diff) + grep the
-   65KB SDI.2.1.6-docs.txt for the editor-side format docs; then map
-   30seconds.sid (play+3 exemplar, la=$1000) onto the layout -> sidm2/
-   sdi_parser.py (signature-located tables; expect per-generation drift 1992
-   vs 2012) -> onset validate -> Stage A -> Stage B (SMShim/DMCShim pattern,
-   step-grid from day one).
+1. **Gallefoss/SDI parser — SHIPPED to 172/229 play+3 decode-capable**
+   (commits 5e01520..0e79154; sidm2/sdi_parser.py + test_sdi_parser.py +
+   bin/_sdi_validate.py): variant A (50 files; 4x100%, rest 98-99.5),
+   B (42; Airwalk/Airwalk_II 100%), C (80; Banana_Man 98.9, Basselusk
+   94.9, Bahbar 91.4). REMAINING: variant D (Another_Day class) recon'd +
+   gated (2-byte track header w/ per-voice speed; freq layout differs;
+   needs a flow-following disasm); the Commando/Delta-cover locate-NONE
+   sub-group; the play+4 generation (213 files); then instrument tables
+   -> Stage A -> Stage B (step-grid native; C's note-on writes $D404=$08
+   TEST bit = hard-restart-style). Full trail in
+   memory/gallefoss-sdi-player.md.
 2. DMC bundle-bound files (Alf/Cant_Stop class): needs a DMC bundle lever —
    v3.16 proved clustering is a dud; candidates: DMC pulse canonicals
    (pulse_canon pattern — DMC PWM restarts per note like SM?) or wavetable-
