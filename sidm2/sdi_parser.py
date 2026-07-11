@@ -148,6 +148,16 @@ def locate(d, la):
         lay.variant = 'C'
         lay.init_block = _w(d, i + 7)            # subtune record base
         lay.state = _w(d, i + 10)                # trklo state cells
+    elif _find(d, [0xBD, -1, -1, 0x85, -1, 0xBD, -1, -1, 0x85, -1,
+                   0xA0, 0x00, 0xB1, -1]) is not None:
+        # variant D (Another_Day class): per-voice ptr arrays like B, but
+        # init DEREFERENCES the track's 2-byte header (byte0 = start pos,
+        # byte1 & $0f = per-voice speed) — LDY #$00 / LDA (zp),Y
+        i = _find(d, [0xBD, -1, -1, 0x85, -1, 0xBD, -1, -1, 0x85, -1,
+                      0xA0, 0x00, 0xB1, -1])
+        lay.variant = 'D'
+        lay.track_lo_arr = _w(d, i + 1)
+        lay.track_hi_arr = _w(d, i + 6)
     else:
         # variant B track read: LDA $lo,X / STA zp / LDA $hi,X / STA zp /
         #   LDY $pos,X / LDA (zp),Y  (per-voice pointer ARRAYS, stride 3)
@@ -191,7 +201,7 @@ def locate(d, la):
         return None
     lay.seq_lo = _w(d, i + 2)
     lay.seq_hi = _w(d, i + 7)
-    if lay.variant in ('B', 'C'):
+    if lay.variant in ('B', 'C', 'D'):
         _freq_scan(d, la, lay)
         return lay
     # FREQ tables via the glide compare:
@@ -266,12 +276,24 @@ class SDIModule:
             self.track_ptrs = [(d[blk + 2 * v] | (d[blk + 2 * v + 1] << 8))
                                for v in range(3)]
             self.tempo_reload = d[blk + 6]
+        elif self.lay.variant == 'D':            # arrays + 2-byte track hdr
+            lo, hi = self.lay.track_lo_arr - la, self.lay.track_hi_arr - la
+            self.track_ptrs = [(d[lo + v] | (d[hi + v] << 8))
+                               for v in range(3)]
+            # per-voice speed nibble from the track header byte 1; use v0's
+            self.track_start = [self._raw(t, 0) for t in self.track_ptrs]
+            self.tempo_reload = self._raw(self.track_ptrs[0], 1) & 0x0F
+            self.track_ptrs = [t + 2 for t in self.track_ptrs]
         else:                                    # B: per-voice arrays
             lo, hi = self.lay.track_lo_arr - la, self.lay.track_hi_arr - la
             self.track_ptrs = [(d[lo + v] | (d[hi + v] << 8))
                                for v in range(3)]
             self.tempo_reload = max(0, self.lay.tempo_imm)
         self.fpt = self.tempo_reload + 1
+
+    def _raw(self, addr, off):
+        k = addr - self.la + off
+        return self.d[k] if 0 <= k < len(self.d) else 0
 
     def _u8(self, addr):
         off = addr - self.la
@@ -445,6 +467,10 @@ class SDIModule:
         return tick
 
     def _play_seq(self, v, seq, tick, transpose, events, max_ticks):
+        if self.lay.variant == 'D':
+            raise NotImplementedError(
+                "SDI variant D seq decode not mapped yet (tables locate; "
+                "freq layout differs from the $60-apart pair — see memory)")
         if self.lay.variant == 'B':
             return self._play_seq_b(v, seq, tick, transpose, events,
                                     max_ticks)
