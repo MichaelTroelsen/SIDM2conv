@@ -330,7 +330,9 @@ class SDIModule:
         elif self.lay.variant == 'E':            # tp -> tl/th (v2.1 source)
             tp0 = d[self.lay.init_block - la]    # subtune 0's track set
             lo, hi = self.lay.track_lo_arr - la, self.lay.track_hi_arr - la
-            self.track_ptrs = [(d[lo + tp0 + v] | (d[hi + tp0 + v] << 8))
+            # the init loop DEYs per channel (voice2 first at Y=tp0):
+            # voice v reads tl[tp0 - 2 + v]
+            self.track_ptrs = [(d[lo + tp0 - 2 + v] | (d[hi + tp0 - 2 + v] << 8))
                                for v in range(3)]
             self.tempo_reload = 3                # tempo PROGRAMS; validator
                                                  # auto-calibrates fpt
@@ -366,12 +368,6 @@ class SDIModule:
         if self.lay.variant == 'D':
             return self._decode_voice_d(v, max_ticks)
         if self.lay.variant == 'E':
-            import os as _os
-            if _os.environ.get('SDI_E_DRAFT') != '1':
-                raise NotImplementedError(
-                    "SDI variant E (play+4) decode is a DRAFT (3.9% on "
-                    "2_Young_2_Die) — row grammar needs the hand-parse "
-                    "refinement loop; set SDI_E_DRAFT=1 to run it anyway")
             return self._decode_voice_e(v, max_ticks)
         lay = self.lay
         tpos = 0
@@ -514,15 +510,20 @@ class SDIModule:
                 dur = b & 0x1F
                 b = self._u8(seq + pos)
                 pos += 1
-            # note byte
-            if b >= 0xF0:                        # release -> gate row
+            # note byte: bit7 = RETRIGGER flag (clear = legato/tie);
+            # pitch = & $7f; $f0+ = release -> gate row; $5f/0 = gate row
+            if b >= 0xF0:
                 b = 0x5F
-            if b == 0x5F:
+            masked = b & 0x7F
+            if masked in (0x5F, 0x00):
                 events.append(SDIEvent(tick * self.fpt, 'rest', None,
                                        instr[v], dur + 1))
             else:
-                note = (b + transpose) & 0xFF
-                events.append(SDIEvent(tick * self.fpt, 'note', note,
+                note = (masked + transpose) & 0xFF
+                # bit7 SET = tie/legato, CLEAR = retrigger (verified on
+                # 2_Young v0: real onsets re-gate on bit7-clear notes)
+                kind = 'tie' if (b & 0x80) else 'note'
+                events.append(SDIEvent(tick * self.fpt, kind, note,
                                        instr[v], dur + 1))
             tick += dur + 1
         return tick
