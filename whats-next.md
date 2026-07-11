@@ -1,222 +1,294 @@
 <original_task>
-Standing mission (project): static RE + AI tools converting any SID into an SF2 at 99%
-fidelity + 100% editable. This session's explicit user tasks, chronological:
-1. "read whats-next" -> resume the DMC arc.
-2. "update docs, cleanup, commit and push"; "fix remaining open issues; build a DMC.MD
-   like the other players; update story.md".
-3. Cleanup via ARCHIVE (never delete); "add a --archive mode to cleanup.py".
-4. "keep unlocking DMC" (repeatedly).
-5. "do the legato full-song a/b".
-6. SF2.MD: "list ALL songs we converted incl. 100/100/100, original player, SF2 player,
-   parts per song; keep it updated"; "flyt til docs og åben den" (artifact).
-7. **"reduce the number of files per song — analyse what causes the split"** (ALL
-   players; each subtune may be its own file).
-8. **"improve the fidelity analyser to get the last 1-2% perfection"** (while continuing
-   file-count reduction).
-9. "CI/CD pipeline fails with security scan — investigate and fix".
-10. **"when we are done we should work on SOUND MONITOR from the FunFun folder"** (the
-    next arc — this is where the fresh session starts).
-11. "update docs. bump version. commit and push" (v3.16.0) + "complete work remaining"
-    (done — see current_state).
-STANDING RULES: accuracy over speed; never ship lossy silently; archive-before-delete;
-NEVER run pyscript/sf2_open_in_editor.py (PyAutoGUI hijacks the user's window — launch
-SF2II via `bin/SIDFactoryII.exe --skip-intro <abs path>`, workdir bin).
+Standing mission (project): static RE + AI tools converting any SID into an SF2 at
+99% fidelity + 100% editable. This session's explicit user tasks, chronological:
+1. "read whats-next" -> resume at the Sound Monitor arc (work_remaining #1 of the
+   previous handoff).
+2. "yes, start on Sound Monitor" -> the full arc: format RE -> parser -> Stage A ->
+   ("continue with stage B") -> Stage B native.
+3. "yes commit. the push next phase" (commit cadence maintained throughout).
+4. GUI listening loop: "can we hear any soundmonitor tunes in SF2 editor" / "load
+   fuck_off into sf2" / "load poppy road into sf2" (multiple).
+5. "final_luv and fuck_off are not 100% fidelity but close. please continue
+   improving soundmonitor" -> the pulse-fix round.
+6. "i have looked at songs. i think the speed in the editor is the reason why there
+   is a need to split songs into more files. There is to much space between notes."
+   + "if it were more compressed it would use less space?" -> the step-grid round.
+7. "if this method works it could be used in other players." (grid generalization)
+8. "the notes could be tigther. the bass sound is almost not audiable" -> coarse
+   grid + THE HALF-LOUDNESS BUG hunt.
+9. "It should 6581." / "the volume is just very low" / "The bass worked before.
+   try again." -> root-caused to within-frame gate retriggers; "It sounds right
+   now." = user confirmation.
+10. "what is cause the number of files to larger than 1?" / "can you show the exact
+    numbers for dance?" -> the per-cap analysis.
+11. "try the wave-program canonicalization on Dance. This finding is very good. I
+    think it sould be possible to build some kind of optimizer for this. In the old
+    days (the original SID) did not have more thant 32 instruments, so the players
+    back then must inclusde some fancy code the wave, filter and pulse. the
+    instruments ADSR should be similar." + "THis applies for all players." -> the
+    INSTRUMENT-CAP OPTIMIZER (designed, not yet built = the next arc).
+12. Earlier user directive (2026-07-10): "after soundmonitor it is time for
+    Gallefoss_Glenn look in SID folder" -> arc OPENED (recon done).
+STANDING RULES: accuracy over speed; never ship lossy silently; archive-not-delete;
+NEVER run pyscript/sf2_open_in_editor.py (launch SF2II via
+`bin/SIDFactoryII.exe --skip-intro <abs path>`, workdir bin); ONE MoN-engine build
+at a time; `git checkout -- drivers_src/mon/layout.inc drivers_src/mon/freqtable.inc
+drivers_src/romuzak/layout.inc` after every native build.
 </original_task>
 
 <work_completed>
-ALL COMMITTED + PUSHED (master == origin/master @ 85cf19b, v3.16.0, CI GREEN, 1512
-tests pass). Commit chain this session (messages carry full detail):
-- d1da5ff corpora: SID/JohannesBjerregaard(88)/deenen/Gray_Matt/LFT.
-- 5643f18 v3.15.0 docs (NEW docs/players/DMC.md; .gitignore: *.wav, bin/_*.err/.out,
-  external tool dirs bin/DMC|RoMusak|sid2txt-1.0|'sound monitor').
-- ac1b24f DMC adaptive base-note `_sem` (the FM $40-$43 collision, see critical_context):
-  Wanna osc1 66->100, Blobby 75/87->87/100, Tiny osc1 98->100 (osc3 protected).
-- a05e123 bin/dmc_build_all.py (corpus runner: --dry survey / sequential build).
-- 5b92f4b DMC 18/18 eligible built, 0 fail.
-- 0a7af9d/8e716c0/a5745ef/a21aa93/c6ba313/b47ab14/f21c1ab/f469951 SEVEN new DMC
-  generations decoded+tested (split-freq $3f00 Fat; state AND#$0F=In_the_Mood 100x3;
-  absolute-store=M_A_C_H 100x3+Thunder_Force+Predictable; indexed-store=Spy/Special_
-  Agent/Twilight; interleaved-track=Deel_2/Fruitbank/Slimbo4; ADC-vibrato-freq=Alf/
-  Music_Demo/Test+Domino locates; state-copy=Myth_Demo/Stormlord_V2/STII8+Flimbos/
-  Kamikaze locate; staged-emit=Eagles/Camel/Ragtime/Spacegame/Who_Is_Robb 99-100%).
-  **DMC: 18 -> 41/88 ELIGIBLE.** 14 dmc tests.
-- be7da59/9d4d147 legato FULL-SONG per-voice A/B shipped (DMC_LEGATO_AB default on,
-  adaptive path; candidates=pitch-change>1.3x gate; decide on first ~90s; keep legato
-  only where it wins >1.0): Dreaming osc3 39->90; Fourth_Dimension osc2 protected.
-- 3a15a6c/a4e16eb/ca31465 docs/SF2.md build index (+HALL OF FAME) + pyscript/
-  gen_sf2_index.py (auto inventory between GENERATED markers) + CLAUDE.md note.
-  Artifact: https://claude.ai/code/artifact/ef593833-e303-4745-88e5-23190f4eef5b 🎛️.
-- 97b794d..cc230bd PART-REDUCTION analysis (docs/analysis/PART_REDUCTION_PLAN.md —
-  READ THIS for the campaign): ~95% of splits = the 63-cap (FM,pulse) bundle channel;
-  decompose (BUNDLE_DECOMPOSE=1): DMC diverse both axes (Phase-1 clustering=PROVEN DUD),
-  Hubbard FM structural (24 shapes; pulse drives explosion).
-- d3edfd4 Phase-2 pulse_canon (per-instrument pulse canonical, `pulse_canon` shim flag /
-  MON_PULSE_CANON): **Commando 45->4, Monty 22->4, Chimera 76->12 parts, BYTE-EXACT.**
-- f334fc8/3b8dd68 MoN pulse_canon = OPT-IN only (real ~6-16% osc3 pulse cost on
-  Supremacy; my first "collapse" claim was a measurement offset error, corrected).
-- ae59bab **Hubbard track bit7 TRANSPOSE generation** (3 ROM-verified encodings):
-  Shockway 638->21 parts, Star_Paws 188->10, Auf_W 274->43, Saboteur 112->86 — first
-  CORRECT decode of these; span-sanity guard; 8 hubbard tests.
-- 15147d6 **wave REST-TAIL fix** (shared engine; capture extends across rests; cap
-  96->256): Supremacy sub1 94.3->99.9 EVERY register; Cybernoid_II part01 100x3;
-  Cybernoid I wf/pulse 100. Crown jewel (Hawkeye sub2 100x4) regression-checked.
-- 03bbb7b/d6fe158 **fidelity analyser** (bin/mon_part_fidelity.py): per-voice delay
-  (±2), skew-vs-content classification (±1-frame transition = separate skew-tolerant
-  score), mismatch-CLUSTER report (frame-runs, top 3, <99.5% registers), part-LOOP
-  auto-cap (40-frame all-voice freq self-similarity).
-- e2dee23/7347503 stale-part purge + builders AUTO-PRUNE (prune_stale_parts in
-  build_mon_native_song, wired into mon/hubbard/dmc emit loops).
-- 6cb48e2 Hubbard split pulse-speed table (lay.pulsespeed_tbl, ROM fetch $EE45).
-- 0a47001 **pulse_canon GATED to hp_engine builds** (lossy for captured-pulse classes:
-  Shockway osc3 pulse 0.3->100 with it off; main() force-clears when hp_engine off).
-- 2212b4d **CI security scan FIXED after 199 consecutive red runs** (8 live bandit
-  findings properly repaired; workflow -x ./archive; verified with the exact CI cmd).
-- 5e0cf78 **v3.16.0** (constants, CHANGELOG, CLAUDE.md, STORY.md chapter+chain,
-  whats-next). Full suite 1512 passed.
-- 9d8c05d builder HARD-REFUSES mis-decode spans (>2.5x unequal voices or >900s;
-  HUBBARD_ALLOW_UNEQUAL=1 override) — Devils_Galop had started a 20,975s (5.8h) trace.
-- 521f247 comprehensive handoff.
-- 85cf19b **work-remaining item 1 COMPLETED**: killed TWO RACING corpus runners found
-  mid-flight; parser-identified the only stale-lossy artifacts (Delta s0/s11/s12 +
-  Sanxion = captured-pulse builds from the pre-gating era); rebuilt them correctly
-  (Sanxion 31 parts; Delta s11/s12=3; **Delta s0 165->221 parts = the honest count**,
-  correctness over compactness); docs/SF2.md final (Hubbard 589 / MoN 200 / DMC 236 /
-  Galway 40 / ROMUZAK 4 files); artifact republished (same URL).
-Also: cleanup.py --archive mode (archive/cleanup_<date>/ + MANIFEST, dedup); archive/
-cleanup_2026-07-09/ = 115 archived scratch files; transposed-class FULLY diagnosed
-(fetch $EE45 field map V1-compatible; pulse engine $EF85-$EFE5 SELF-MODIFYING rails
-decoded; osc1 residual = fetch-frame step + fx-arp re-fetch; osc2/osc3 pulse=100);
-SOUND MONITOR arc opened (memory/soundmonitor-player.md + MEMORY.md indexed).
-Memories updated: johannes-bjerregaard-player, hubbard-player-re, myth-supremacy-mon-re,
-soundmonitor-player (NEW).
+ALL COMMITTED + PUSHED (master == origin/master @ 75860b0). The commit chain tells
+the story; every claim below is measured, not assumed.
+
+SOUND MONITOR — COMPLETE ARC (v3.17.0 released mid-session):
+- `sidm2/soundmonitor_parser.py`: full format decode of the 11-file Fun_Fun
+  $C000/$C475 cluster (Hülsbeck "MUSICMASTER" driver; byte-identical player at a
+  fixed load -> hardcoded table addresses, no relocation). ROW model with 8-bit
+  wraparound (`row_start > row_count` is normal); per-row per-voice BAR ptr +
+  NOTE-transpose + SOUND-transpose tables; (ctrl,data) step pairs; complete
+  data-flag map ($0F instr / $10 GLIDE / $20 no-note-transpose / $40 ARP / $80
+  no-sound-transpose); the CHORD-ARP BANK lives INSIDE the row-header record
+  (8-byte semitone tables selected by the bar's LAST data byte); 24-byte sound
+  records (byte0=WF, 1=AD, 2=SR, 4=PW nibble-swapped, 5/6=PWM up/down, 8=RELEASE
+  WAVEFORM — gated release ($11/$81) keeps voices ringing through "rests", 9=fx
+  flags, 12/13=vibrato). Onset-validated 99.9% corpus-wide.
+- Stage A `bin/soundmonitor_to_sf2.py` -> editable Driver-11 SF2s (out/sm_sf2/),
+  32/33 voices note-accurate (`bin/soundmonitor_sf2_validate.py`).
+- Stage B `bin/build_soundmonitor_native_song.py` (SMShim -> shared MoN engine):
+  onset-aligned, per-voice legato A/B, FM_CAP-40-gated TIE-SPLITS (native tie =
+  the Supremacy-$FB freq re-seat), STEP-GRID mode with coarse auto-grid (largest
+  multiple of speed+1 where all gates share one residue AND ties land within ±1;
+  SM_GRID=0 kill-switch), sid_model=6581 declared. Output out/soundmonitor/.
+- Tests: pyscript/test_soundmonitor_parser.py (9) + test_soundmonitor_to_sf2.py (3).
+- docs/players/SOUNDMONITOR.md + players README/INDEX rows; docs/SF2.md refreshed
+  (gen_sf2_index.py gained the soundmonitor folder).
+
+THE FIDELITY-FIX ROUNDS (all driver changes crown-jewel-verified — Hawkeye sub2
+rebuilt + measured 100.0x4 after EACH):
+- PULSE_TIE driver flag: SM re-inits PW on EVERY note incl. legato; the MoN tie
+  path skipped the pulse restart -> 17-second pulse freezes. Fuck_Off osc2 pulse
+  57.6->96.3.
+- PULSE_LOOP driver flag: the $7f+byte1 pulse LOOP path was compile-gated behind
+  HARD_RESTART; non-HR builds read loop rows as FREEZE. Gate widened to
+  `HARD_RESTART + PULSE_LOOP` (+ pl_loop re-blocked; layout.inc writer + B-flags).
+- SEAMLESS LOOPS (PULSE_LOOP builds only): the loop row's 1-frame hold seam
+  drifted SM's exact-period PWM +1 frame/lap; the loop now re-enters the row
+  loader same-frame (ws_grd budget guard). Fuck_Off osc3 pulse 53->99.7.
+- allow_loop gated to pdur>FM_CAP (unconditional loops REGRESSED fully-captured
+  short notes: v0 pulse 100->58.9); offset-periodic detection with 3-frame
+  boundary-bleed trim in pulse_program_for.
+- Tie-split margin FM_CAP-40 (events stayed under the 256-frame capture).
+
+THE HALF-LOUDNESS BUG (the session's biggest find, commit b503c77):
+- User: "the bass sound is almost not audiable" -> "the volume is just very low"
+  -> "The bass worked before" -> after fix: "It sounds right now."
+- ROOT CAUSE: SM's note-set retriggers by writing gate OFF then ON inside ONE
+  play call. End-of-frame register state stays 1 -> measure_onsets, siddump, and
+  EVERY fidelity metric built on them were blind. We built those notes LEGATO:
+  envelope attacked once, decayed to sustain, stayed quiet. VICE WAV RMS 1846 vs
+  the original's 3683 (bass band -63%) while every register metric read 100%.
+- HUNT TRAIL (reusable method): WAV RMS A/B (vsid_wrapper.export_to_wav) ->
+  per-second RMS profile (uniform halving) -> band-split (bass -63%) -> bass-note
+  amplitude envelope (ours dies in 30ms, orig rings 500ms) -> CPU WRITE-STREAM
+  dump at an onset frame (orig writes wf $40 then $41 + AD/SR in one frame).
+- FIX: `measure_onsets(within_frame=True)` in sidm2/dmc_parser.py — gate-rise
+  detection in the WRITE STREAM (per-voice, first rise per frame); SM builder
+  passes True; the state-based default is unchanged (DMC unaffected).
+- BONUS: the fix REDUCED parts (properly retriggered notes make short, repeating,
+  dedupable capture programs): Dreamix 9->5, Dance 13->11, Poppy_Road ->1.
+- Also fixed en route: scripts/sf2_to_sid.py PSIDHeader flags now follow the PSID
+  v2 spec (model in bits 4-5; the old bits-0-1 layout left every wrapped probe's
+  SID model UNKNOWN -> VICE rendered probes on its default chip).
+
+FINAL SM CORPUS (uniform rebuild, all fixes): **11 songs / 32 parts** (52 at the
+round's start): Final_Luv/Poppy_Road/No_Title/Just_Cant_Get_Enough=1, Times_Up/
+Fun_Mix/Fuck_Off=2, Thats_All/Dreamix_Two=3, Dreamix=5, Dance=11. Loudness
+verified on Poppy_Road (RMS 3323 vs orig 3683) + Final_Luv (2704 vs 2998).
+Fidelity (delay-aware strict from first audible frame): Poppy 100/100/100 x2 +
+100/100/96; earlier sweep had Fun_Mix/Times_Up/JCGE/Fuck_Off byte-perfect —
+NOTE: that sweep predates the retrigger rebuild; a final corpus-wide sweep after
+b503c77 was NOT run (only Poppy + spot RMS checks).
+
+THE DANCE CAP ANALYSIS (user asked "exact numbers"):
+- Per-part cap usage measured via count_only: Dance's binder = the 32-INSTRUMENT
+  cap (6/11 parts at 30-32/32) + the FILTER table (253/256 rows on parts 8-11).
+  Bundles peak 56/63 and never bind. (Corrects the earlier "bundles dominate"
+  assumption for this file.)
+- Diagnostic (part-1 window): 9 real SM instruments -> 37 captured wave programs;
+  decomposes into exactly 3 capture-artifact classes: (1) first-byte boundary
+  bleed ([65,..] vs [64,65,..] vs [128,65,..]), (2) duration-positioned release
+  tails (rec[8] wf at note-length-dependent offsets), (3) hold-length variants.
+- TRIED: MON_ARP_STRUCT=1 on Dance — still 11 parts (guards reject SM shapes:
+  _gate_split needs dur<=WAVE_CAP=96, SM notes run longer; release wf $11 on a
+  $41 note inexpressible via the &$fe gate mask; first-byte bleed unhandled).
+
+GALLEFOSS/SDI ARC OPENED (user priority after SM):
+- memory/gallefoss-sdi-player.md: 442-file corpus recon (largest yet); clusters
+  init+0/play+3 (222 files) + init+0/play+4 (114) + ~15 small (digi/self-IRQ/
+  GRG_tiny); sidid identifies only 6/441. FULL ground truth staged in
+  bin/SIDDuzz/: **SDI-21-BMTass.d64 = the SDI 2.1 ASSEMBLER SOURCE** (GRG
+  co-wrote SDI: "Written by Geir Tjelta and Glenn Rune Gallefoss"), the editor
+  d64, 65KB docs, note tables, manual PDF.
+
+Memories updated: soundmonitor-player.md (phases 1-9 + the optimizer design +
+final corpus), MEMORY.md index, new-player-priority.md, gallefoss-sdi-player.md
+(new). Scratch (untracked): bin/_sm_disasm.py, bin/_sm_build_all.py,
+bin/_sm_measure_direct.py, bin/_grg_classify.py.
 </work_completed>
 
 <work_remaining>
-1. **SOUND MONITOR — the next arc (user directive; START HERE).**
-   memory/soundmonitor-player.md has the recon: **11 Fun_Fun files** init=$C000/
-   play=$C475 (Dance_at_Night_remix, Dreamix, Dreamix_Two, Final_Luv, Fuck_Off, Fun_Mix,
-   Just_Cant_Get_Enough, No_Title, Poppy_Road, Thats_All, Times_Up) + Demo_of_the_Year_
-   87_menu ($C020 variant). Player $C000-$CBFA in-image; song data below at varying
-   loads ($7000/$9000/$A000). init: A2 01 8E 0F C0 (LDX#1/STX $C00F); play $C475:
-   20 17 CA AD 0F C0 F0 03 20 0D C9 (JSR $CA17...). Format = Hülsbeck Soundmonitor
-   (1986, 64'er). STEPS:
-   a. Read ROMUZAK's SOUNDMONITOR_CNV parsing code in out/romuzak_editor_decrunched.prg
-      (entry $1000; find the CNV menu routine) — a literal reference parser of SM data.
-   b. Disasm the play body ($CA17 on Dance_at_Night_remix) via a probe like
-      bin/_hub_disasm.py (untracked; pattern: load_sid + the _disasm_filter_handler
-      OPS-table exec trick).
-   c. Format map -> sidm2/soundmonitor_parser.py (signature/relocation-light: the
-      player sits at fixed $C000; find the song-data pointers init consumes — state
-      seen at $02C3/$02C6).
-   d. Onset-validate vs siddump -> Stage A -> Stage B via the shared MoN engine
-      (docs/players/PLAYBOOK.md; shim pattern = bin/build_dmc_native_song.py DMCShim).
-   e. Extra refs: bin/'sound monitor/' disks (sound_monitor_v1.0.t64.gz, cct 1.1 d64,
-      Relocator, RockMonitor5.zip); public 64'er format docs (web).
-2. Transposed-track Hubbard class fidelity (Shockway/Star_Paws/Saboteur/Auf_W; osc1
-   pulse 27, osc3 wf 70): implement (a) fetch-frame pulsework step (ROM applies ONE
-   +speed step on the fetch frame; orig first frame = init+speed), (b) fx-arp RE-FETCH
-   decode (arp steps re-fetch -> PW resets per flip; the decode holds one longer note).
-   Consider per-voice engine A/B (osc2=HP proven 100). Engine fully decoded in
-   memory/hubbard-player-re.md.
-3. Devils_Galop/I_Ball/Wiz = ANOTHER unhandled Hubbard track generation (builds now
-   hard-refused instead of tracing hours) — decode like the transpose generation.
-4. DMC: ~21 NO-TABLES left (next shared cluster: 2nd/Skateboard/Tuba, all la=$c367
-   init+$0/play+$6); Special_Agent osc2 pulse 57/100/1; Scandalous osc1 pulse 29;
-   Predictable wf 50 on osc2/3.
-5. Deep_Strike WAVE-overflow count-vs-emit divergence (fits() passed, emit raised
-   "WAVE overflow: 258 rows" in gen_includes_song); Hawkeye sub0 filter window-seams;
-   MoN safe pulse_canon default (cap window growth by RAW pre-canonical bundle count).
-6. Registry-wire native players into auto sid-to-sf2 (docs/ROADMAP.md). Staged corpora:
-   SID/LFT (**Blackbird tracker + its player SOURCE in bin/LFT/blackbird-1.2** —
-   highest-leverage future player), SID/deenen, SID/Gray_Matt, SID/Gallefoss_Glenn
-   (all untracked in git — intentional).
+1. **THE INSTRUMENT-CAP OPTIMIZER (user directive; cross-player; START HERE).**
+   Design in memory/soundmonitor-player.md ("THE INSTRUMENT-CAP OPTIMIZER"
+   section). Steps:
+   a. Shim-gated + guarded (like pulse_canon) transforms in
+      bin/build_mon_native_song.py:
+      - first-row normalization of wave programs (guard: unroll-equal from
+        frame 1) — merges the [65..]/[64,65..]/[128,65..] boundary-bleed class;
+      - tail-aware canonical acceptance (programs equal after removing each's
+        duration-positioned release-tail run);
+      - a per-instrument RELEASE-WF driver feature (1-byte instrument field =
+        SM rec[8]; gate-off rows write it instead of program&$fe) — makes the
+        tails expressible and kills class 2 entirely;
+      - the same treatment for FILTER programs (Dance parts 8-11 at 253/256).
+   b. Measure ladder per change: Dance parts + per-part caps (count_only), the
+      delay-aware strict sweep, WAV RMS A/B, crown jewel (Hawkeye sub2 100.0x4),
+      and a Hubbard/DMC spot part (engine is shared!).
+   c. Cross-player audit with the same diagnostic (9-instruments-vs-37-programs
+      script pattern is in the session log; reconstruct from the memory notes):
+      MoN, Hubbard, DMC instrument counts vs real instrument counts.
+2. **Final corpus-wide fidelity sweep post-b503c77** (only Poppy was fully
+   re-measured after the retrigger rebuild): run the delay-aware strict sweep
+   (pattern in bin/_sm_measure_direct.py + best-delay search) + WAV RMS for all
+   11; update memory numbers. Expect improvements (retriggers also fixed
+   envelope-adjacent captures).
+3. **Within-frame retrigger audit for DMC** (the same blindness likely affects
+   some of its 88 files): compare measure_onsets(False) vs (True) onset counts
+   per file; where they differ materially, rebuild + A/B (state-based default
+   was ear-validated, so change only with measurements).
+4. **Gallefoss/SDI arc** (memory/gallefoss-sdi-player.md has the full plan):
+   extract the BMTass source from bin/SIDDuzz/SDI-21-BMTass.d64 (need a d64
+   reader — check bin/DMC tooling for one), map the play+3 cluster's tables from
+   the player's own source, then parser -> Stage A -> Stage B. Mind version
+   drift (2013 source vs 1992 rips). Apply the step-grid from day one; grid ×
+   tie interaction caveat applies.
+5. Smaller SM residuals (documented in memory): Dance's noise-drum section
+   (~280 frames, octave-off drum-capture phase class); Dreamix_Two v1
+   release-tail slides (orig slides pitch DURING gate-off decay; a new residual
+   class — the release-wf/optimizer work may enable fixing it); grid × tie-chain
+   interaction (Final_Luv/Thats_All forced SM_GRID=0 — root cause undiagnosed);
+   Demo_of_the_Year_87_menu $C020 variant; sound-record bytes 7/14/15 + the
+   16-23 extension block (the editor binary bin/'sound monitor'/soundmonitor
+   1.1.prg is the ground-truth shortcut).
+6. Version bump when the optimizer lands (v3.18.0): CLAUDE.md + CHANGELOG +
+   STORY.md + sidm2/__init__.py; gen_sf2_index refresh; artifact republish
+   (same URL ef593833-e303-4745-88e5-23190f4eef5b).
 </work_remaining>
 
 <attempted_approaches>
 DO NOT RE-TREAD:
-- DMC Phase-1 bundle clustering (BUNDLE_TOL): 0 parts saved at inaudible tolerances —
-  DMC bundles genuinely diverse in BOTH axes.
-- SIX single-threshold legato heuristics: each trades one voice for another; only the
-  full-song per-voice A/B works (shipped).
-- Single-window legato A/B: the 256-row WAVE cap forces ~10s windows; the legato gain
-  only shows past FM_CAP (5s) over longer spans -> always picks gate.
-- MoN pulse_canon default-on: REJECTED (real osc3 pulse loss on Supremacy). My initial
-  "part02 collapses 7-18%" was a MEASUREMENT ERROR (pulse_canon shifts part boundaries;
-  wrong off0) — the analyser's loop auto-cap + correct offsets prevent this class now.
-- Hubbard transposed class: FORCE_HP + split speed table alone = insufficient (osc1
-  5.6->7.2); the pulse ENGINE differs (decoded); capture path was ALSO being ruined by
-  pulse_canon (fixed by gating -> osc3 100).
-- freerun-stream-misfire hypothesis for Shockway osc1: WRONG (debug: no stream on osc1).
-- Constant-transpose-offset hypothesis for Shockway freq runs: WRONG (pitches verified
-  correct; mismatches sit at arp-flip note boundaries).
-- DMC wavetable-arp SEMITONE model, global tick->frame schedule, pitch-step/debounced
-  onset detection, minimal-embed SF2: all dead ends (see docs/players/DMC.md).
-- `git add -A` after git mv swept 567 unrelated files into a commit -> reset + force-
-  push-with-lease. STAGE FILES EXPLICITLY.
-- Two detached corpus runners ended up racing (a leftover from a timed-out launcher
-  call whose detached child survived): CHECK for existing hubbard/mon processes before
-  launching batch builds (Get-CimInstance Win32_Process | ? CommandLine -match ...).
+- Chasing SOUNDMONITOR_CNV inside the ROMUZAK editor dump: the menu text is
+  walked positionally, no code pointer findable — disassembling the SM player
+  directly was faster.
+- The credit string as SM detection: Final_Luv's rip is truncated at exactly
+  $CBD4 where "MUSICMASTER CREATED BY CHRIS HUELSBECK" starts. Use the
+  play-routine byte signature.
+- Emitting $90-$9F tie duration bytes to RUNTIME Driver 11: editor-only feature
+  (datasource_sequence.cpp) — desyncs the driver into garbage (locked by a
+  regression test in test_soundmonitor_to_sf2.py).
+- Header byte4 as a next-row chain: row order is LINEAR with 8-bit wraparound;
+  byte4 = volume-fade speed.
+- Unconditional pulse loops (allow_loop for short notes): the loop seam
+  regressed fully-captured notes (v0 100->58.9). Loops only when pdur>FM_CAP.
+- MoN pulse_canon semantics for SM ties pre-PULSE_TIE: ties froze the previous
+  program (the 17s freeze).
+- 8580 SF2 flag "to fix the bass": user rejected (correct chip = 6581) AND it
+  wasn't the cause anyway.
+- $D418/$D417/ADSR-value theories for the low volume: registers were all equal;
+  the $1F-vs-$0F LP bit gave only 1846->2070. The real cause was the envelope
+  history (within-frame retriggers).
+- naive delay-0 strict sweeps on grid builds: a constant 1-frame lead reads as
+  a 33-62% collapse. Check gate-rise DELTAS first; use best-delay search.
+- mon_part_fidelity pulse numbers: its per-voice delay is freq-tuned and
+  misreports per-frame-changing pulse (a byte-identical region scored 24%).
+  Always cross-check with a direct fixed-delay compare.
+- MON_ARP_STRUCT=1 as the Dance instrument-collapse: no effect (guards reject
+  SM shapes; see work_remaining 1a for what's actually needed).
+- The step grid on tie-chain-heavy files (Final_Luv pulse 100->8, Thats_All
+  95-100->79-95): SM_GRID=0 for those two; root cause of the grid × tie-restart
+  interaction NOT yet found.
+- 12-frame coarse grid for Poppy: vetoed by the tie-±1 rule automatically —
+  the auto-grid picked 6; the veto logic is correct, don't loosen it blindly.
 </attempted_approaches>
 
 <critical_context>
-- ENV: Windows, `py -3`; Bash + PowerShell tools. Long jobs: PowerShell Start-Process
-  detached + log (Bash bg dies at 10min). PS `*>>` logs are UTF-16 (grep fails
-  silently; read via PowerShell Get-Content). $env: vars set before Start-Process are
-  inherited by the child.
-- ONE MoN-ENGINE BUILD AT A TIME (shared drivers_src/mon scratch). After ANY driver
-  build: `git checkout -- drivers_src/mon/layout.inc drivers_src/mon/freqtable.inc
-  drivers_src/romuzak/layout.inc`.
-- MEASURING: `py -3 bin/mon_part_fidelity.py <part.sf2> <sub> <secs> [t0_seconds]` —
-  pass the part's REAL window from the build log. Features: per-voice delay, skew-
-  tolerant score, cluster report, loop auto-cap. TRUST skew classification: 47.7
-  strict / 100.0 skew-tolerant = ±1-frame write jitter = AUDIBLY EXACT (Supremacy sub2
-  osc2, Lightforce osc1). DMC measuring: recreate bin/_dmc_fidelity.py from the mon
-  tool pattern if missing (untracked scratch); SF2 wrap = mon_sf2_validate._psid(
-  bytes(sf2[2:]), sla, 0x1000, 0x1003).
-- THE FM $40-$43 COLLISION (shared driver): raw Hz deltas with high byte $40-$43
-  dispatch as SCALED-VIBRATO -> corrupt the note. Only delta1=trace[onset+1]-base
-  depends on the base; DMC `_sem` mode `adapt` seats the base high when delta1 would
-  collide.
-- pulse_canon: hp_engine builds ONLY (V1: captured pulse unused -> pure bundle
-  collapse). Captured-pulse builds: LOSSY, force-cleared. MON_PULSE_CANON=1 opt-in.
-- Hubbard track bit7 TRANSPOSE (lay.trk_transpose): mode 1 = `$80|semis` (sig B1 zz 10
-  ?? C9 FF F0 ?? [C9 FE F0 ??] 29 7F — Shockway $ED99/Star_Paws/Saboteur_II); mode 2 =
-  `$80 nn` (sig ...C8 B1 zz — Auf_W $E49D). Transpose ADDS to (pitch&$7F) at fetch.
-- Transposed-class pulse engine (Shockway $EF85-$EFE5, SELF-MODIFYING): split record
-  $F2F1[i*8]+0=speed (0=static), +2=rails (LSR*4 patches TOP CMP operand $EFB5;
-  AND#$0F patches BOTTOM $EFCF); PW±speed, hi&$0F, dir flips at rails; PW AND dir
-  RESET at every fetch ($EE5A/$EE7B); ROM applies ONE step ON the fetch frame.
-- Hubbard tracks are SYNCED (equal one-pass voice lengths = healthy); the builder
-  hard-refuses >2.5x-unequal or >900s spans (HUBBARD_ALLOW_UNEQUAL=1 override).
-- Wave rest-tail: gate-off rows output program&$fe -> captured $00 rows reproduce
-  mid-rest wave-off; _wave_prog_for cap=256 (settle-trim keeps hold-tails free).
-- Bandit CI gate: `bandit -r . -ll -ii -x ./test_converter.py,./archive`. bin/_*.py is
-  untracked/ignored (local-only). NO os.system / shell=True / hardcoded /tmp in
-  tracked code.
-- cleanup.py: --archive MOVES to archive/cleanup_<date>/ + MANIFEST (use this);
-  --clean DELETES (avoid). Builders auto-prune stale _partNN files > the new count.
-- After native builds: `py -3 pyscript/gen_sf2_index.py` refreshes docs/SF2.md; the
-  artifact republish (same file path) keeps URL ef593833-e303-4745-88e5-23190f4eef5b.
-- On version bump: CLAUDE.md + CHANGELOG.md + STORY.md (chapter + chain) +
-  sidm2/__init__.py (__version__/__build_date__).
+- ENV: Windows, `py -3`; PowerShell + Git Bash tools. /tmp in Bash =
+  C:\Users\mit\AppData\Local\Temp (Windows Python can't open '/tmp/...' paths!).
+  Long jobs: run_in_background Bash; ONE MoN-ENGINE BUILD AT A TIME (shared
+  drivers_src scratch); after ANY native build: `git checkout --
+  drivers_src/mon/layout.inc drivers_src/mon/freqtable.inc
+  drivers_src/romuzak/layout.inc` (and bin/SIDFactoryII_dbg.exe gets touched by
+  sf2ii_vs_real — checkout too).
+- SID REGISTER MAP (was misread twice this session — voice bases are 7 apart):
+  voice1 $D400-06 (flo,fhi,pwlo,pwhi,wf,AD,SR), voice2 $D407-0D, voice3
+  $D40E-14; $D415/16 cutoff, $D417 res/route, $D418 mode/vol.
+- MEASURING LADDER (the session's methodology yield): per-frame register
+  metrics CANNOT see within-frame gate retriggers OR envelope state. The full
+  ladder: (1) register sweeps (best-delay, from first audible frame), (2)
+  sf2ii_vs_real (bin/, instrumented SF2II = what SF2II REALLY plays; opens a
+  brief GUI window), (3) WAV RMS A/B via sidm2.vsid_wrapper.export_to_wav
+  (VICE; needs correct PSID model flags — now fixed), (4) CPU WRITE-STREAM
+  dumps (sidm2.cpu6502_emulator, cpu.sid_writes per frame) for within-frame
+  truth, (5) the user's ear (beat 3 layers of instrumentation TWICE).
+- SM driver flags on SMShim: freerun_pulse=1 (allow_loop + tie-chain capture
+  spans), pulse_loop=1 (compiles the $7f loop path), pulse_tie=1 (ties re-init
+  PW), sid_model=6581, hp_engine=0, hard_restart=0, snap_gate=True. Grid: auto
+  (mults 4/2/1 of speed+1; gates one-residue + ties ±1; SM_GRID=0 disables).
+- Driver asm (drivers_src/mon/romuzak_driver.asm) new conditionals:
+  `.if HARD_RESTART + PULSE_LOOP` (loop path + pl_loop), `.if PULSE_LOOP`
+  (seamless re-enter, ws_grd budget=4), `.if PULSE_TIE` (tie pulse restart in
+  pn_tied). PULSE_LOOP=0 + PULSE_TIE=0 compiles byte-identically to before —
+  Hubbard/MoN unaffected (verified via Hawkeye rebuilds).
+- The engine's per-frame pulse write order: pulse_step runs AFTER do_row (same
+  frame note resets); the loop seam applies only in non-seamless (HR) builds.
+- fits()/caps: CAP_B=63 bundles, CAP_I=32 instruments (instr_of key = (MoN
+  instr, wave program, flags, filter)), wave/filter tables 256 rows, CAP_SEG
+  =120, seq event limit 960 (SF2II's 1024 Unpack buffer). The adaptive splitter
+  grows windows until a cap would burst.
+- Wave programs = per-frame wf-byte tuples, settle-trimmed (_wave_prog_for);
+  canonical acceptance via _wave_masked_ok/_wave_unroll_eq; _gate_split is
+  ARP_STRUCT-gated and requires dur<=WAVE_CAP=96.
+- The user's editor-density preference: notes should sit close (the step grid
+  = 1 musical step/row; Poppy auto-picked fpt=6 = 2 steps/row).
+- SM corpus fidelity classification: strict-vs-skew (±1 frame = audibly exact,
+  the accepted Supremacy class); intros/idle registers differ inaudibly (both
+  silent); the honest strict numbers live in memory phase 8-9 notes.
+- Artifact: docs/SF2.md mirrors to claude.ai artifact
+  ef593833-e303-4745-88e5-23190f4eef5b (republish by re-publishing the same
+  file path).
+- v3.17.0 was released THIS session (CLAUDE.md/CHANGELOG/STORY.md updated);
+  the post-release fixes (loudness, grid, 32-part corpus) are committed but NOT
+  yet version-bumped — fold into v3.18.0 with the optimizer.
 </critical_context>
 
 <current_state>
-- Repo: master == origin/master @ 85cf19b, **v3.16.0**, working tree CLEAN. CI GREEN
-  (the security scan fixed after 199 red runs). Full suite 1512 passed. NO background
-  builds running. Untracked-but-intentional: SID/Gallefoss_Glenn, bin/LFT, bin/SIDDuzz,
-  archive/cleanup_2026-07-09, out/ artifacts (gitignored).
-- ALL bounded work-remaining items from the prior handoff are COMPLETE: the corpus
-  correctness rebuild is done (Delta s0/s11/s12 + Sanxion rebuilt without the lossy
-  canonical; Delta s0 = 221 parts, the honest count), docs/SF2.md is final (Hubbard
-  589 / MoN 200 / DMC 236 / Galway 40 / ROMUZAK 4 files), artifact republished.
-- Fidelity state (current builds): Hubbard V1 byte-exact at ~4 parts/song; Supremacy
-  sub1 99.9 every register; Cybernoid_II part01 100x3; DMC 41/88 eligible (In_the_Mood
-  / M_A_C_H / Fourth_Dimension 100x3); Shockway 21 parts (osc2/osc3 pulse 100; osc1
-  fetch-step + arp-refetch residual, decoded & documented).
-- THE NEXT SESSION STARTS ON **SOUND MONITOR** (work_remaining #1) — recon done, ground
-  truth staged (ROMUZAK SOUNDMONITOR_CNV in out/romuzak_editor_decrunched.prg), plan in
-  memory/soundmonitor-player.md. First action: disassemble the CNV parser, then the
-  $CA17 play body of Dance_at_Night_remix.
-- No temporary changes or workarounds in place; everything is committed or reverted.
+- Repo: master == origin/master @ 75860b0, working tree CLEAN (only intentional
+  untracked: SID/Gallefoss_Glenn, bin/LFT, bin/SIDDuzz, bin/'sound monitor',
+  archive/cleanup_2026-07-09, out/ artifacts, bin/_*.py scratch). Version
+  constant 3.17.0.
+- Tests: full suite was 1524 green at v3.17.0; player-subset tests green after
+  every later change; a FULL suite run after b503c77/75860b0 has NOT been done
+  (only subsets) — run `py -3 -m pytest pyscript/ -q` before the next release.
+- SM corpus: out/soundmonitor/ = 11 songs / 32 parts, ALL built with every fix
+  (retriggers, pulse fixes, grids; Final_Luv+Thats_All via SM_GRID=0). Loudness
+  verified on Poppy_Road + Final_Luv; corpus-wide post-retrigger fidelity sweep
+  pending (work_remaining 2).
+- Stage A corpus: out/sm_sf2/ (11 editable Driver-11 SF2s) — predates the
+  session's Stage-B fixes but Stage A is unaffected by them.
+- The user last confirmed by ear: Poppy_Road "sounds right now" (post-retrigger).
+  SF2II windows may still be open on their desktop.
+- NEXT SESSION STARTS ON: the instrument-cap optimizer (work_remaining 1) —
+  design complete in memory/soundmonitor-player.md; Dance is the testbed
+  (9 instruments -> 37 wave programs measured); OR the Gallefoss/SDI arc
+  (work_remaining 4) if the user prefers the new player first. Ask.
+- No temporary changes or workarounds in place; drivers_src scratch clean.
 </current_state>
