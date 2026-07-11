@@ -328,8 +328,18 @@ def main():
 
     # EXACT emulated gate-rise onsets (1x tunes) — verify they agree with the
     # trace before trusting them (multispeed/self-IRQ variants emulate too slow).
+    # WITHIN-FRAME onsets (DEFAULT since the 2026-07-11 audit; DMC_WF=0 reverts):
+    # 24/88 DMC files retrigger OFF+ON inside one play call (the SM half-loudness
+    # class) — the state-based scan missed EVERY such retrigger, which not only
+    # built those notes legato but FAILED the onset-agreement gate below, dumping
+    # whole files onto the inferior tick-grid fallback. Measured on Balloon
+    # part01 (its own 4s span, best delay): state = wf 0/70/36, pulse 1/0/95;
+    # within-frame = wf 100/100/92, pulse 100/100/100 (agreement 71/175 ->
+    # 174/175 = ONSET-ALIGNED unlocked). The gate still protects multispeed
+    # variants (Jazz_1 fails both ways -> tick-grid, byte-identical output).
     onsets = measure_onsets(d, la, h.init_address, h.play_address,
-                            len(traces[0]))
+                            len(traces[0]),
+                            within_frame=os.environ.get("DMC_WF", "1") != "0")
     from sidm2.fidelity_common import siddump_note_onsets
     real = siddump_note_onsets(SID, ['-a0', f'-t{min(secs, 15)}'])
     agree = 0
