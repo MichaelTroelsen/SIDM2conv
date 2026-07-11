@@ -122,6 +122,11 @@ class SMShim:
     release_wf = 1 if os.environ.get('SM_RELWF', '1') != '0' else 0
                               # rec[8] release tails -> gate-off rows + the
                               # driver's RELEASE_WF feature (SM_RELWF=0 off)
+    fm_loop = 1 if os.environ.get('SM_FMLOOP', '1') != '0' else 0
+                              # periodic FM tails (constant-depth vibrato) on
+                              # notes longer than FM_CAP loop instead of
+                              # freezing at the capture cap (guarded exact;
+                              # SM_FMLOOP=0 off)
     filter_tie = 1 if os.environ.get('SM_FTIE', '1') != '0' else 0
                               # SM restarts the cutoff envelope on EVERY
                               # note-set of the routed voice incl. legato ->
@@ -319,12 +324,28 @@ def build_song(shim, base_name, traces, span, emit=True):
             shim, SID, 0, {}, [], win=(t0, t1), traces=traces, count_only=True)
         return (nb <= CAP_B and ni <= CAP_I and nw <= CAP_TBL
                 and nf <= CAP_TBL and ns <= CAP_SEG)
+    # GRID-ALIGN interior part boundaries: an arbitrary t0 makes the engine's
+    # window-start tick round((t0-delay)/fpt) land up to ±(fpt-1)/2 frames off
+    # the trace, shifting each later part's voices by DIFFERENT amounts vs the
+    # global alignment (Dance part09 v1 played its drum roll 2 frames early:
+    # 48% freq strict on a per-frame-alternating section). Snapping t0 to the
+    # gate grid (t0 ≡ onset_delay mod fpt) makes the tick origin exact.
+    fpt = shim.frames_per_tick
+    dly = getattr(shim, 'onset_delay', 0)
+
+    def align(f):
+        if fpt <= 1 or f >= span:
+            return f
+        return max(0, f - ((f - dly) % fpt))
     bounds, t0 = [], 0
     maxp = int(os.environ.get('SM_MAX_PARTS', '0')) or 10**9
     while t0 < span and len(bounds) < maxp:
-        t1 = min(t0 + STEP, span)
-        while t1 < span and fits(t0, min(t1 + STEP, span)):
-            t1 = min(t1 + STEP, span)
+        t1 = align(min(t0 + STEP, span))
+        if t1 <= t0:
+            t1 = min(t0 + STEP, span)
+        while t1 < span and fits(t0, align(min(t1 + STEP, span))):
+            nxt = align(min(t1 + STEP, span))
+            t1 = nxt if nxt > t1 else min(t1 + STEP, span)
         bounds.append((t0, t1))
         t0 = t1
     parts = []
@@ -334,8 +355,12 @@ def build_song(shim, base_name, traces, span, emit=True):
         if emit:
             br = BM.build_native_song(shim, SID, 0, {}, [], win=(t0, t1),
                                       traces=traces)
+            # exact FRAME bounds in the label: grid-aligned bounds are no
+            # longer 2s multiples, and a sweep that reconstructs t0 from the
+            # rounded seconds lands frames off (strict scores collapse on
+            # grid content). _opt_sweep_corpus parses the f-form.
             BM.emit_one(shim, br, out, f"part {part}/{len(bounds)} "
-                        f"({t0 // 50}-{t1 // 50}s)")
+                        f"({t0 // 50}-{t1 // 50}s, {t0}-{t1}f)")
         parts.append((out, t0, t1))
     if emit:
         BM.prune_stale_parts(os.path.join(ROOT, "out", "soundmonitor",

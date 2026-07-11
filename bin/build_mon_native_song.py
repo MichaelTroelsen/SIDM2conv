@@ -69,13 +69,19 @@ BUNDLE_TOL = int(os.environ.get("BUNDLE_TOL", "0"))  # 0 = OFF (lossless split).
 # song -> fewer SF2 parts. See docs/analysis/PART_REDUCTION_PLAN.md (Phase 1).
 
 
-def fm_program_for(frames, v, onset, dur_f, base):
+def fm_program_for(frames, v, onset, dur_f, base, allow_loop=False):
     """Per-note FM program (B2): reproduce the original's exact per-frame freq for
     this note. offset[k] = (trace_freq[onset+k] - base) & $FFFF; the driver's FM
     runner accumulates per-frame deltas, so emit delta[k]=offset[k]-offset[k-1] as
     (lo,hi,run) RLE entries + a freeze. Handles BOTH portamento slides (constant
     delta) and arps (per-frame deltas) byte-exactly. base = the note's freqtable
-    value (== the driver's vfreq), so offset[0]=0 (frame 0 plays at base)."""
+    value (== the driver's vfreq), so offset[0]=0 (frame 0 plays at base).
+    allow_loop (shim flag `fm_loop`, notes longer than FM_CAP only): a periodic
+    delta tail (SM's constant-depth triangle vibrato) is emitted as cycle
+    entries + a $7f LOOP instead of freezing at the capture cap — the freeze
+    held Dreamix_Two's lead at the vibrato PEAK for the rest of every long
+    note (v1 freq 79.9). Guard: >=2 observed cycles, zero net delta per cycle,
+    and the unrolled program must reproduce the whole capture exactly."""
     targ, hold = [], 0
     for k in range(min(dur_f, FM_CAP)):
         idx = onset + k
@@ -101,15 +107,42 @@ def fm_program_for(frames, v, onset, dur_f, base):
             c = min(n, 126)
             prog.append((r & 0xFF, (r >> 8) & 0xFF, c))
             n -= c
-    for delta in deltas:
-        if delta == run:
-            rl += 1
-        else:
-            if run is not None:
-                flush(run, rl)
-            run, rl = delta, 1
-    if run is not None:
-        flush(run, rl)
+
+    def rle(seq):
+        r_, n_ = None, 0
+        for d in seq:
+            if d == r_:
+                n_ += 1
+            else:
+                if r_ is not None:
+                    flush(r_, n_)
+                r_, n_ = d, 1
+        if r_ is not None:
+            flush(r_, n_)
+
+    if allow_loop and dur_f > FM_CAP and len(deltas) >= 60:
+        N = len(deltas)
+        for p_ in range(2, 41):
+            k = N - 1
+            while k >= p_ and deltas[k] == deltas[k - p_]:
+                k -= 1
+            cs = k + 1                              # deltas[cs:] repeat with period p_
+            if (N - cs >= 2 * p_
+                    and sum(deltas[cs:cs + p_]) & 0xFFFF == 0):
+                rle(deltas[:cs])
+                tgt = len(prog)                     # loop target = cycle start entry
+                rle(deltas[cs:cs + p_])
+                prog.append((tgt, 0, 0x7F))         # $7f LOOP to the cycle start
+                # exactness guard: the unrolled loop must reproduce the capture
+                acc, tv = 0, [0]
+                for d in deltas:
+                    acc = (acc + d) & 0xFFFF
+                    tv.append(acc)
+                if _fm_unroll(prog, N + 1) == tv:
+                    return prog
+                prog.clear()                        # guard failed -> plain path
+                break
+    rle(deltas)
     if not prog or all(e[0] == 0 and e[1] == 0 for e in prog):
         return [(0, 0, 0)]                          # flat -> program 0 (freeze)
     prog.append((0, 0, 0))                          # hold the last offset
@@ -443,6 +476,16 @@ def detect_filter_drives(ftr, onsets_by_voice, routed=None, dynamic=False):
                                  else next(v for oo, v in pairs if oo == o))
             f += 1
             while f < n and abs(ftr[f][0] - ftr[f - 1][0]) >= FILT_FAST:
+                if (dynamic
+                        and (ftr[f][0] - ftr[f - 1][0])
+                        * (ftr[f - 1][0] - ftr[f - 2][0]) < 0):
+                    # SM: a FAST envelope (-136/frame > FILT_FAST) makes the
+                    # whole descent one "jump run", swallowing the NEXT attack
+                    # embedded in it (Dance part02: re-attacks +608 mid-sweep
+                    # never credited -> the probe froze while the original
+                    # kept enveloping; filter 33.6%). A direction REVERSAL
+                    # inside the run is a new attack — re-process it.
+                    break
                 f += 1
         else:
             f += 1
@@ -1149,7 +1192,15 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     # $08 flag lives in the shared instrument record).
     t0w, t1w = win if win else (0, 1 << 30)
     freerun = [None, None, None]
-    if ARP_STRUCT or getattr(m, 'freerun_pulse', 0):
+    # NO STREAMS for pulse_tie engines (SM): their note-set RE-INITS the PW on
+    # every note (that's what pulse_tie models), so a phase-keeping stream is
+    # categorically wrong — and the drift detector false-positives on the ±1
+    # frame register-timing split of the SAME reset value ({$600,$630} = 2
+    # "distinct" starts). Dance part03 v0 ran one looping stream across 23
+    # notes, ignoring every PW reset: pulse 4.0% strict. freerun_pulse on an
+    # SM shim means allow_loop + tie-chain capture spans only.
+    if ((ARP_STRUCT or getattr(m, 'freerun_pulse', 0))
+            and not getattr(m, 'pulse_tie', 0)):
         vkeys, vnotes = [set() for _ in range(3)], [[] for _ in range(3)]
         starts = {}
         for v in range(3):
@@ -1388,7 +1439,8 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                                                   # phase; v2 (Delta) FETCH RESETS
                                                   # the PW from the record, so the
                                                   # program must restart per note
-                fmp = fm_program_for(frames, v, cfr, dur_f, base)
+                fmp = fm_program_for(frames, v, cfr, dur_f, base,
+                                     allow_loop=bool(getattr(m, 'fm_loop', 0)))
                 # guard-compare window: skip the ~3 end-of-note boundary frames,
                 # but NEVER go below 2 — _fm_unroll's frame 0 is always the base
                 # hold, so fcmp=1 compares nothing and any canonical/arp/vibrato
