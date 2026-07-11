@@ -23,8 +23,32 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ## [Unreleased]
 
-### DMC corpus rebuilt with within-frame onsets (2026-07-11, post-v3.18.0)
-- `bin/dmc_build_all.py` survey now uses within-frame onsets (matching the builder default): **41 -> 56 ELIGIBLE** (18 FALLBACK, 14 NO-TABLES, 0 errors); **all 56 build clean** -> `out/dmc/` = 56 songs / 1135 part files. `docs/SF2.md` + `docs/players/DMC.md` updated.
+---
+
+## [3.19.0] - 2026-07-11
+
+### Residual-pocket fixes + the part-bloat levers - and the Gallefoss/SDI arc opens on the player's own source
+
+Same-day follow-up to v3.18.0 (user: "do 3. then 2." = the SM residual pockets, then the part-bloat levers).
+
+#### SM residual pockets (four fixes, each crown-jewel byte-verified)
+- **No pulse STREAMS for pulse_tie engines**: SM re-inits PW on every note, so the phase-keeping freerun stream was categorically wrong - and its drift detector false-positived on the ±1-frame register split of the SAME reset value. Dance part03 v0 pulse **4.0 -> 100.0**.
+- **Grid-aligned part boundaries** + exact FRAME bounds in part labels (a sweep reconstructing t0 from rounded seconds strict-collapses on grid content - the sweeper parses the f-form now).
+- **FM loops** (`fm_loop`, `SM_FMLOOP=0` kill): periodic vibrato tails on >FM_CAP notes loop instead of freezing at the capture cap (the freeze held Dreamix_Two's lead at the vibrato PEAK - v1 freq 88.3 -> 98.3). Guarded: >=2 observed cycles, zero net delta/cycle, unroll == capture.
+- **Reversal-aware filter drives** (dynamic mode): a fast envelope (-136/frame > FILT_FAST) made whole descents one "jump run" that swallowed embedded re-attacks; a direction reversal inside a run is a new attack. Dance filter part02 **33.6 -> 100.0**, part01 89.5 -> 100.0.
+- Classified honestly: the remaining v2 "pulse misses" have **zero gated mismatches** (idle-PWM divergence, both silent - inaudible); the Dance drum-roll section is the documented capture-phase class.
+
+#### Part-bloat levers
+- **DMC STEP-GRID** (`DMC_GRID=0` kill): onset-aligned builds ran at fpt=1 (a row per FRAME) - 4-5x sequence bloat. When every gate onset shares one grid residue (self-gating per file), the driver runs at the real tick. **Balloon: 77 parts -> ONE 400s SF2** (wf 100/100/100, pulse 100/100/100). Grid probes lead by the residue - measure with a wide global delay search. Scope: collapses SEQUENCE-bound files; bundle-bound files (Alf 40 parts at bundles 50-62/63) keep their counts (the known DMC bundle-diversity boundary). DMC corpus: 1135 -> ~944 part files.
+- **SM STRUCTURAL ARPS** (`arp_struct`, `SM_ARP=0` kill): the row-header chord tables become looping SEMITONE FM programs (pitch-independent, one per chord shape) via the engine's `_arp_fm_for`. Fuck_Off (906 arp notes): whole song **99.97% strict** WITH arps. Guard fix en route: the arp acceptance tolerance was VACUOUS for short notes (4 allowed bad vs 3 compared frames) - drum sections played garbage steps; tolerance now scales with compared frames.
+- **SM PULSE CANONICALS** (`pulse_canon`, `SM_PCANON=0` kill; the non-HR path is unroll-guarded = lossless): SM's PWM restarts per note, so shorter captures are exact prefixes. Dance 9 -> 8 parts AND parts 1-6 healed to 100.0 flat (the v2 pulse pockets went to 100 too).
+- **SM corpus final: 11 songs / 27 parts** (52 at the arc's start, 32 at v3.17.0, 28 at v3.18.0); corpus-wide strict sweep **99.23% freq+wf** - Fuck_Off part01 (242s) and Dance parts 2-6 at 100.0 on every register.
+
+#### DMC corpus rebuilt with within-frame onsets (pre-grid pass, same day)
+- `bin/dmc_build_all.py` survey flipped to within-frame (matching the builder default): **41 -> 56 ELIGIBLE** (18 FALLBACK, 14 NO-TABLES, 0 errors); all 56 build clean twice (within-frame pass, then the grid pass).
+
+#### Gallefoss / SID Duzz' It — the arc opens on the player's own source
+- Extracted the **SDI 2.1 player source** (1994 lines, commented, PETSCII -> ASCII via c1541+petcat) from the user-staged d64s: "SDI player v2.1 n49 (c)2012 SHAPE / Geir Tjelta & Glenn Rune Gallefoss" -> `bin/SIDDuzz/extracted/`. First-pass format map recorded in memory: feature-flag assembly (explains the 222/114 rip clusters), init/subtune tables, track bytes (seq#/transpose/delay/16-bit loop), seq bytes (duration/release/gate-tie), column-major zN instrument tables, waveform/pulse/arp/filter/tempo programs.
 
 ---
 

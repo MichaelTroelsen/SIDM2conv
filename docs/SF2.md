@@ -164,13 +164,13 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 
 *Auto-generated from the built SF2 files under `out/` by `pyscript/gen_sf2_index.py` — re-run after building more tunes. "Parts" = the number of SF2 files a song is split into (a long song exceeds the SF2II table/`$D000` caps and ships as windowed parts; 1 = a single file).*
 
-### DMC (Demo Music Creator) — Johannes Bjerregaard  ·  `native`  ·  57 songs / 1135 SF2 files
+### DMC (Demo Music Creator) — Johannes Bjerregaard  ·  `native`  ·  57 songs / 944 SF2 files
 
 | Song | Parts |
 |------|------:|
-| Again Its JB | 20 |
+| Again Its JB | 12 |
 | Alf TV Theme | 40 |
-| Balloon | 77 |
+| Balloon | 1 |
 | Billie Jean | 15 |
 | Blobby | 2 |
 | Blue Monday 88 | 7 |
@@ -180,39 +180,39 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Cute Tune | 38 |
 | Deel 2 | 8 |
 | Depeche Mode Songs | 6 |
-| DMC Demo IV tune 1 | 8 |
-| DMC Demo IV tune 2 | 25 |
+| DMC Demo IV tune 1 | 7 |
+| DMC Demo IV tune 2 | 15 |
 | DMC Demo IV tune 3 | 16 |
 | Domino Dancing | 7 |
-| Dragon Sword | 28 |
-| Dreaming | 14 |
+| Dragon Sword | 7 |
+| Dreaming | 15 |
 | Dreaming 2 | 28 |
-| Dummy II | 26 |
-| Dummynaytos | 28 |
+| Dummy II | 11 |
+| Dummynaytos | 1 |
 | Eagles | 7 |
-| Fat 6 | 24 |
-| First Try PSX | 53 |
-| Fourth Dimension | 7 |
+| Fat 6 | 23 |
+| First Try PSX | 47 |
+| Fourth Dimension | 6 |
 | French Frites | 64 |
 | Fruitbank | 11 |
 | Hit the Baze | 10 |
-| In the Mood | 4 |
+| In the Mood | 3 |
 | Jazz 1 | 31 |
 | M A C H | 2 |
 | Mixerplot | 9 |
 | MSI Demo | 36 |
-| Music Demo | 31 |
+| Music Demo | 32 |
 | Myth Demo | 11 |
-| Namnam Special | 28 |
-| Omega Force One | 45 |
+| Namnam Special | 20 |
+| Omega Force One | 25 |
 | Predictable main | 4 |
 | Ragtime Anno 87 | 3 |
 | Roadblaster | 1 |
-| Rockbuster | 22 |
-| Scandalous | 11 |
+| Rockbuster | 17 |
+| Scandalous | 19 |
 | Shape | 38 |
-| Slimbo4 | 10 |
-| Some Soul | 30 |
+| Slimbo4 | 11 |
+| Some Soul | 29 |
 | Spacegame Music | 2 |
 | Special Agent | 27 |
 | Spy vs Spy III | 23 |
@@ -220,7 +220,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Stormlord V2 | 2 |
 | Test | 10 |
 | Thunder Force | 8 |
-| Tiny Symphony | 6 |
+| Tiny Symphony | 5 |
 | Twilight Beyond | 4 |
 | Wanna Get Sick | 7 |
 | Who Is Robb Vol 1 | 15 |
@@ -377,7 +377,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Road of Excess end | 1 |
 | Road of Excess end native | 1 |
 
-### Sound Monitor (Musicmaster) — Fun Fun  ·  `native`  ·  11 songs / 28 SF2 files
+### Sound Monitor (Musicmaster) — Fun Fun  ·  `native`  ·  11 songs / 27 SF2 files
 
 | Song | Parts |
 |------|------:|
@@ -391,7 +391,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | No Title | 1 |
 | Poppy Road | 1 |
 | Thats All | 3 |
-| Times Up | 2 |
+| Times Up | 1 |
 
 <!-- END GENERATED -->
 
