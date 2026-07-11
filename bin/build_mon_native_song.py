@@ -1640,7 +1640,9 @@ def emit_one(m, br, out_path, label):
             prg[0x19CC - pload + 2] = max(0, first) & 0xFF       # SWC (countdown)
             prg[0x19CD - pload + 2] = max(0, per - 1) & 0xFF     # SWP (reload)
         prg = bytes(prg)
-    sf2 = B.wrap(prg, gen, edit, mdp, instr_names=[f"instr {i}" for i in range(len(instrs))])
+    sf2 = B.wrap(prg, gen, edit, mdp,
+                 instr_names=[f"instr {i}" for i in range(len(instrs))],
+                 sid_model=getattr(m, "sid_model", 6581))
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     open(out_path, "wb").write(sf2)
     from sidm2.models import SF2DriverInfo

@@ -351,19 +351,19 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Road of Excess end | 1 |
 | Road of Excess end native | 1 |
 
-### Sound Monitor (Musicmaster) — Fun Fun  ·  `native`  ·  11 songs / 43 SF2 files
+### Sound Monitor (Musicmaster) — Fun Fun  ·  `native`  ·  11 songs / 32 SF2 files
 
 | Song | Parts |
 |------|------:|
-| Dance at Night remix | 14 |
-| Dreamix | 9 |
-| Dreamix Two | 4 |
+| Dance at Night remix | 11 |
+| Dreamix | 5 |
+| Dreamix Two | 3 |
 | Final Luv | 1 |
 | Fuck Off | 2 |
-| Fun Mix | 3 |
+| Fun Mix | 2 |
 | Just Cant Get Enough | 1 |
 | No Title | 1 |
-| Poppy Road | 3 |
+| Poppy Road | 1 |
 | Thats All | 3 |
 | Times Up | 2 |
 
