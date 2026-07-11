@@ -120,16 +120,66 @@ def locate(d, la):
         lay.track_lo_arr = _w(d, i + 1)
         lay.track_hi_arr = _w(d, i + 6)
         lay.state = _w(d, i + 11)
-        # tempo reload immediate: DEC $t / BPL +n / LDA #imm / STA $t
+        # tempo reload immediate: DEC $t / BPL +n / LDA #imm / STA $t —
+        # but init POKES the immediate from a song byte (LDA $src / STA
+        # $imm_addr), so follow the poke; the static byte is pre-poke junk
         j = _find(d, [0xCE, -1, -1, 0x10, -1, 0xA9, -1, 0x8D, -1, -1])
         if j is not None:
             lay.tempo_imm = d[j + 6]
-    # SEQ ptr tables: TAY / LDA $llll,Y / STA zp / LDA $hhhh,Y / STA zp
+            imm_addr = la + j + 6
+            k = _find(d, [0xAD, -1, -1, 0x8D, imm_addr & 0xFF,
+                          (imm_addr >> 8) & 0xFF])
+            if k is not None:
+                src = _w(d, k + 1)
+                if 0 <= src - la < len(d):
+                    lay.tempo_imm = d[src - la]
+        # instrument records (interleaved 8-byte): the sound-set tail
+        #   ASL x3 / STA $x,X / TAY / LDA $base,Y / AND #$F0
+        j = _find(d, [0x0A, 0x0A, 0x0A, 0x9D, -1, -1, 0xA8,
+                      0xB9, -1, -1, 0x29, 0xF0])
+        if j is not None:
+            lay.ad_col = _w(d, j + 8)            # record base (byte 0)
+            lay.stride = 8
+        # arp records: ASL x3 / STA $x,X / TAY / LDA $base,Y / JMP
+        j = _find(d, [0x0A, 0x0A, 0x0A, 0x9D, -1, -1, 0xA8,
+                      0xB9, -1, -1, 0x4C])
+        if j is not None:
+            lay.wfprg_start_col = _w(d, j + 8)   # arp record base
+        # freq tables: the two abs,Y read targets exactly $60 apart whose
+        # combined words double per octave (content-verified — robust
+        # against the per-song code shifts)
+        reads = set()
+        k = 0
+        raw = bytes(d)
+        while True:
+            k = raw.find(b"\xb9", k)
+            if k < 0 or k + 2 >= len(raw):
+                break
+            a = raw[k + 1] | (raw[k + 2] << 8)
+            if la <= a < la + len(d) - 0x60:
+                reads.add(a)
+            k += 1
+        for a in sorted(reads):
+            for lo_a, hi_a in ((a + 0x60, a), (a, a + 0x60)):
+                if lo_a not in reads or hi_a not in reads:
+                    continue
+                f = [(d[lo_a - la + n] | (d[hi_a - la + n] << 8))
+                     for n in range(96)]
+                hits = sum(1 for n in range(36, 60)
+                           if f[n] and abs(f[n + 12] / f[n] - 2) < 0.02)
+                if hits >= 20:
+                    lay.freq_lo, lay.freq_hi = lo_a, hi_a
+                    break
+            if lay.freq_lo:
+                break
+    # SEQ ptr tables (both variants): TAY / LDA $llll,Y / STA zp / ...
     i = _find(d, [0xA8, 0xB9, -1, -1, 0x85, -1, 0xB9, -1, -1, 0x85, -1])
     if i is None:
         return None
     lay.seq_lo = _w(d, i + 2)
     lay.seq_hi = _w(d, i + 7)
+    if lay.variant == 'B':
+        return lay
     # FREQ tables via the glide compare:
     #   LDY $tgt,X / SEC / LDA $lo,Y / CMP $cur,X / LDA $hi,Y / SBC $cur+3,X
     i = _find(d, [0xBC, -1, -1, 0x38, 0xB9, -1, -1, 0xDD, -1, -1,
@@ -221,13 +271,7 @@ class SDIModule:
         return self._u8(self.lay.flags_col + (instr % max(1, self.lay.stride)))
 
     def decode_voice(self, v, max_ticks=40000):
-        """Walk track+sequences -> [SDIEvent] (frames on the tick grid).
-        Variant B's SEQ encoding differs (interleaved 8-byte instrument
-        records, $70-$7f release rows, $60-$6f sustain-modify — dispatch
-        partially mapped, see memory) — decode is gated off until mapped."""
-        if self.lay.variant != 'A':
-            raise NotImplementedError(
-                "SDI variant B seq decode not mapped yet (tables locate)")
+        """Walk track+sequences -> [SDIEvent] (frames on the tick grid)."""
         lay = self.lay
         tpos = 0
         transpose = 0
@@ -278,7 +322,66 @@ class SDIModule:
             tpos += 1
         return events
 
+    def _play_seq_b(self, v, seq, tick, transpose, events, max_ticks):
+        """Variant B row model: $80-$bf dur (b-$80; $3f -> next byte) /
+        $c0-$df instrument (& $1f, 8-byte records) / $e0-$ff arp select
+        (records; byte0 redirects the instrument) / $60-$6f sustain-modify
+        — all CONTINUE; terminals: $70-$7f gate-off row, $5f dur2+note,
+        $00-$5e note (+transpose, unconditional). $60 at ROW START = seq
+        end. Row lasts dur+1 ticks."""
+        instr = getattr(self, "_cur_instr", [0, 0, 0])
+        pos = 0
+        dur = 0
+        guard = 0
+        row_start = True
+        while tick < max_ticks and guard < 20000:
+            guard += 1
+            b = self._u8(seq + pos)
+            if row_start and b == 0x60:          # sequence END marker
+                break
+            pos += 1
+            row_start = False
+            if 0x80 <= b <= 0xBF:                # duration prefix
+                dur = b - 0x80
+                if dur == 0x3F:
+                    dur = self._u8(seq + pos) & 0x3F
+                    pos += 1
+                continue
+            if 0xC0 <= b <= 0xDF:                # instrument set
+                instr[v] = b & 0x1F
+                self._cur_instr = instr
+                continue
+            if b >= 0xE0:                        # arp select (instr redirect)
+                continue
+            if 0x70 <= b <= 0x7F:                # gate-off/release row
+                events.append(SDIEvent(tick * self.fpt, 'off', None,
+                                       instr[v], dur + 1))
+                tick += dur + 1
+                row_start = True
+                continue
+            if 0x61 <= b <= 0x6F:                # sustain-modify (mid-row)
+                continue
+            if b == 0x5F:                        # gate-time + note row
+                pos += 1                         # gate-time byte (unused here)
+                note = (self._u8(seq + pos) + transpose) & 0xFF
+                pos += 1
+                events.append(SDIEvent(tick * self.fpt, 'note', note,
+                                       instr[v], dur + 1))
+                tick += dur + 1
+                row_start = True
+                continue
+            # NOTE row (transpose is unconditional in B)
+            note = (b + transpose) & 0xFF
+            events.append(SDIEvent(tick * self.fpt, 'note', note,
+                                   instr[v], dur + 1))
+            tick += dur + 1
+            row_start = True
+        return tick
+
     def _play_seq(self, v, seq, tick, transpose, events, max_ticks):
+        if self.lay.variant == 'B':
+            return self._play_seq_b(v, seq, tick, transpose, events,
+                                    max_ticks)
         lay = self.lay
         pos = 0
         dur = 0
