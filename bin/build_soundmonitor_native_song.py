@@ -122,9 +122,16 @@ class SMShim:
     release_wf = 1 if os.environ.get('SM_RELWF', '1') != '0' else 0
                               # rec[8] release tails -> gate-off rows + the
                               # driver's RELEASE_WF feature (SM_RELWF=0 off)
+    filter_tie = 1 if os.environ.get('SM_FTIE', '1') != '0' else 0
+                              # SM restarts the cutoff envelope on EVERY
+                              # note-set of the routed voice incl. legato ->
+                              # tie events are filter-drive-eligible in the
+                              # engine, and the shim adds same-pitch ties at
+                              # observed cutoff re-attacks so each restart has
+                              # a row to fire from (SM_FTIE=0 off)
 
     def __init__(self, m, streams, span, onsets=None, frames=None,
-                 legato_set=frozenset(), phase=0):
+                 legato_set=frozenset(), phase=0, filt_resplit=None):
         self.m = m
         # STEP-GRID mode: SM's step is (speed+1) frames and every emulated
         # gate-rise lands on that grid at one residue (measured: all ~ 1 mod 3
@@ -192,6 +199,26 @@ class SMShim:
                         tie_set.add(f)
                         last_evt = f
                     prev = note
+                # FILTER TIES (the instrument-cap optimizer's filter prong):
+                # SM restarts its cutoff envelope on EVERY note-set of the
+                # filter-routed voice — including same-pitch legato sets,
+                # which produce no row at all above. Without a row, each
+                # re-attack stays embedded in the previous drive's captured
+                # filter program, so every drive gets a DISTINCT program
+                # (Dance part 8: 15 programs / 247 rows / 32 slots). Add a
+                # same-pitch TIE at each decode note-set that coincides with
+                # an observed cutoff re-attack (±2 frames): the row lets the
+                # driver restart the canonical envelope there; the per-drive
+                # exactness guard keeps everything else byte-identical.
+                if self.filter_tie and filt_resplit:
+                    # filt_resplit: {attack_frame: routed voice AT that frame}
+                    # — SM switches routing per section, so credit per frame
+                    for fr, note, instr in notes:
+                        f = fr + phase
+                        if (f >= 0 and f not in gate_near and f not in tie_set
+                                and any(filt_resplit.get(f + d) == v
+                                        for d in (-2, -1, 0, 1, 2))):
+                            tie_set.add(f)
                 ons = sorted(set(ons) | tie_set)
             prep.append((v, out, ons, tie_set, changes))
 
@@ -256,7 +283,14 @@ class SMShim:
         return ticks * self._fpt
 
     def frame_to_tick(self, frame):
-        return max(0, frame)
+        # MUST invert tick_to_frame on the grid: the engine computes each
+        # part's lead rest rows as first_tick - frame_to_tick(window_start);
+        # the old identity version made lead NEGATIVE (clamped 0) for every
+        # grid part >= 2, so ALL VOICES started their first in-window note at
+        # row 0 — a per-voice inter-voice DESYNC of up to the first-note
+        # offsets (Dance part05 measured v0 freq 28.7 vs v1 97 at one global
+        # delay). round matches the event-tick snapping.
+        return max(0, round(frame / self._fpt))
 
     def _voice_blocks(self, v):
         return [(0, self.voices[v])] if self.voices[v] else []
@@ -429,13 +463,27 @@ def main():
     print(f"  decode->trace phase: +{phase} frames")
     adaptive = warg.lower() in ("auto", "a")
 
+    # FILTER-TIE resplit input: every observed cutoff re-attack frame (fast
+    # $D416 jump — BM.FILT_FAST, same threshold as drive detection) mapped to
+    # the voice the $D417 routing bits credit AT that frame (SM switches
+    # filter routing per section). The shim adds same-pitch ties at note-sets
+    # that coincide, so the driver can restart the canonical envelope there.
+    ftr = traces[1]
+    resplit = {f: {1: 0, 2: 1, 4: 2}.get(ftr[f][1] & 0x07)
+               for f in range(1, len(ftr))
+               if abs(ftr[f][0] - ftr[f - 1][0]) >= BM.FILT_FAST}
+    if resplit:
+        print(f"  filter: {len(resplit)} re-attack frames "
+              f"(routing-credited per frame)")
+
     legato_set = frozenset()
     ab_on = (adaptive and use_onsets
              and os.environ.get("SM_LEGATO_AB", "1") != "0")
     if ab_on:
         cands = legato_candidates(streams, onsets)
         if cands:
-            sk = dict(onsets=onsets, frames=traces[0], phase=phase)
+            sk = dict(onsets=onsets, frames=traces[0], phase=phase,
+                      filt_resplit=resplit)
             ab_span = min(span, 90 * 50)
             print(f"  legato A/B: candidates {sorted(cands)} "
                   f"— building both configs over {ab_span // 50}s...")
@@ -452,7 +500,8 @@ def main():
                   f"-> legato voices {sorted(legato_set)}")
 
     shim = SMShim(m, streams, span, onsets=onsets if use_onsets else None,
-                  frames=traces[0], legato_set=legato_set, phase=phase)
+                  frames=traces[0], legato_set=legato_set, phase=phase,
+                  filt_resplit=resplit)
 
     if not adaptive:
         t1 = min(span, int(warg) * 50)

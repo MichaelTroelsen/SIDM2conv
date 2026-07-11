@@ -407,28 +407,40 @@ def routed_voice(ftr):
     return {1: 0, 2: 1, 4: 2}.get(route)         # single-bit routing only
 
 
-def detect_filter_drives(ftr, onsets_by_voice, routed=None):
+def detect_filter_drives(ftr, onsets_by_voice, routed=None, dynamic=False):
     """Find the filter-envelope restarts = the note-ons of the filter-routed voice.
     Each envelope ATTACK shows as a fast cutoff jump (>= FILT_FAST in 11-bit); map it
     back to the nearest note-on within a few frames — that note triggers the envelope.
     When `routed` (0/1/2) is given, only that voice's note-ons are eligible (the engine
-    restarts the envelope on the ROUTED voice only); else any voice. Returns
+    restarts the envelope on the ROUTED voice only); else any voice. `dynamic` (SM's
+    filter_tie): credit the voice the $D417 routing bits point at ON THE ATTACK FRAME —
+    SM tunes switch filter routing per section (Dance routes v1 globally-dominant but
+    v0 in whole sections; the fixed `routed` restriction dropped every v0 re-attack,
+    leaving them embedded in per-drive captures = distinct programs). Returns
     {onset_frame: voice}."""
     import bisect
     n = len(ftr)
-    voices = (routed,) if routed is not None else range(3)
+    voices = (routed,) if routed is not None and not dynamic else range(3)
     pairs = sorted({(o, v) for v in voices for o in onsets_by_voice[v]})
+    by_voice = {v: sorted(o for o, vv in pairs if vv == v) for v in range(3)}
     of_frames = sorted({o for o, _ in pairs})
     drives, f = {}, 1
     while f < n:
         if abs(ftr[f][0] - ftr[f - 1][0]) >= FILT_FAST:
-            j = bisect.bisect_right(of_frames, f) - 1        # nearest onset <= f
-            cand = [of_frames[k] for k in (j, j + 1)
-                    if 0 <= k < len(of_frames) and -1 <= (f - of_frames[k]) <= 4]
+            frames_ = of_frames
+            v_at = None
+            if dynamic:
+                v_at = {1: 0, 2: 1, 4: 2}.get(ftr[f][1] & 0x07)
+                if v_at is not None:
+                    frames_ = by_voice[v_at]
+            j = bisect.bisect_right(frames_, f) - 1          # nearest onset <= f
+            cand = [frames_[k] for k in (j, j + 1)
+                    if 0 <= k < len(frames_) and -1 <= (f - frames_[k]) <= 4]
             if cand:
                 o = min(cand, key=lambda x: abs(x - f))
                 if o not in drives:
-                    drives[o] = next(v for oo, v in pairs if oo == o)
+                    drives[o] = (v_at if v_at is not None
+                                 else next(v for oo, v in pairs if oo == o))
             f += 1
             while f < n and abs(ftr[f][0] - ftr[f - 1][0]) >= FILT_FAST:
                 f += 1
@@ -1061,17 +1073,32 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     # ONLY when its unrolled output is byte-identical over that note's frames —
     # lossless by construction (the substitution guard in the main pass).
     canon_pick = {}                              # (instr, wprog) -> (dur_f, v, fr, tk, dur)
+    # FILTER-TIE (shim flag `filter_tie`, SM-class): the engine restarts its
+    # cutoff envelope on EVERY note-set of the routed voice incl. legato — tie
+    # events are rows the driver's filter restart already fires on (the
+    # VIFLAGS $40 check runs for ties too), so make them drive-ELIGIBLE.
+    # Without this, mid-span re-attacks stay embedded in per-drive captures
+    # and every drive gets a distinct program (Dance part 8: 15 programs /
+    # 247 rows, 32 slots — nearly all identical envelopes at different
+    # re-attack schedules).
+    ftie = getattr(m, 'filter_tie', 0)
+    drive_onsets = [set() for _ in range(3)]
     for v in range(3):
         tk = 0
         for ev in m.voices[v]:
             if ev.retrig:
                 fr = _snap_onset(m, frames, v, m.tick_to_frame(tk) + delay)
                 onsets[v].add(fr)
+                drive_onsets[v].add(fr)
                 onset_instr[v][fr] = ev.instr
                 dur_f = m.tick_to_frame(tk + ev.dur) - m.tick_to_frame(tk)
                 k = (ev.instr, ev.wprog)
                 if dur_f >= 2 and (k not in canon_pick or dur_f > canon_pick[k][0]):
                     canon_pick[k] = (dur_f, v, fr, tk, ev.dur, ev.note)
+            elif ftie and getattr(ev, 'tie', False):
+                fr = _snap_onset(m, frames, v, m.tick_to_frame(tk) + delay)
+                drive_onsets[v].add(fr)
+                onset_instr[v][fr] = ev.instr
             tk += ev.dur
     # WAVE-CANON (the instrument-cap optimizer, shim flag `wave_canon`):
     # first-row boundary-bleed normalization + frame-0-tolerant canonical
@@ -1158,7 +1185,9 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                   f"nnotes={[len(x) for x in vnotes]} "
                   f"streams={[len(s) if s else None for s in freerun]}")
     routed = routed_voice(ftr)                              # restart only on this voice
-    drive_map = detect_filter_drives(ftr, onsets, routed)   # {onset_frame: voice}
+    drive_map = detect_filter_drives(ftr, drive_onsets if ftie else onsets,
+                                     routed,
+                                     dynamic=bool(ftie))    # {onset_frame: voice}
     drives = {(v, o) for o, v in drive_map.items()}
     drive_frames = sorted(drive_map)
 
