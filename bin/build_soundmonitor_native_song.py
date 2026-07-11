@@ -86,7 +86,7 @@ def decode_streams(m):
             fr = frame_of.get((row, step))
             if fr is None:
                 continue
-            streams[v].append((fr, kind, note, instr))
+            streams[v].append((fr, kind, note, instr, arp))
     return streams, frame
 
 
@@ -122,6 +122,15 @@ class SMShim:
     release_wf = 1 if os.environ.get('SM_RELWF', '1') != '0' else 0
                               # rec[8] release tails -> gate-off rows + the
                               # driver's RELEASE_WF feature (SM_RELWF=0 off)
+    pulse_canon = 1 if os.environ.get('SM_PCANON', '1') != '0' else 0
+                              # canonical-pulse substitution (the non-HR path
+                              # is UNROLL-GUARDED = lossless): SM's PWM
+                              # restarts per note (PULSE_TIE), so shorter
+                              # notes' captures are exact prefixes of the
+                              # canonical — without this every duration is a
+                              # distinct program and the (FM,pulse) bundle
+                              # channel explodes (Dance binds on bundles
+                              # 62-63/63 in every window). SM_PCANON=0 off.
     fm_loop = 1 if os.environ.get('SM_FMLOOP', '1') != '0' else 0
                               # periodic FM tails (constant-depth vibrato) on
                               # notes longer than FM_CAP loop instead of
@@ -152,18 +161,36 @@ class SMShim:
         self.onset_delay = 0
         self.voices = [[] for _ in range(3)]
         prep = []
+        # STRUCTURAL ARPS (the bundle lever): SM's chord arps are 8-step
+        # semitone tables from the row headers, cycled 1 step/frame and reset
+        # at the note-set — expressible EXACTLY as a looping SEMITONE FM
+        # program (pitch-independent, one program per chord shape) instead of
+        # a per-note Hz unroll. Dedup the tables -> wprog ids; _arp_fm_for
+        # emits the program and the engine's semitone-grid guard accepts or
+        # falls back per note. SM_ARP=0 kill-switch.
+        self._arps = []
+        arp_ids = {}
         for v in range(3):
             out = self.voices[v]
-            notes = [(fr, note, instr) for fr, kind, note, instr in streams[v]
+            notes = [(fr, note, instr, arp)
+                     for fr, kind, note, instr, arp in streams[v]
                      if kind in ('note', 'legato')]
-            changes = [(fr, instr) for fr, note, instr in notes]
+            changes = []
+            for fr, note, instr, arp in notes:
+                w = 0
+                if arp is not None and any(arp):
+                    if arp not in arp_ids:
+                        arp_ids[arp] = len(self._arps) + 1
+                        self._arps.append(arp)
+                    w = arp_ids[arp]
+                changes.append((fr, instr, w))
             tie_set = set()
             if v in legato_set:
                 # decode-driven: one note per PITCH CHANGE at its decode frame
                 # (aligned by `phase`) — the schedule for voices whose gated
                 # release waveform makes gate-rises collapse the whole voice.
                 ons, prev = [], None
-                for fr, note, instr in notes:
+                for fr, note, instr, arp in notes:
                     f = fr + phase
                     if f >= 0 and note != prev:
                         ons.append(f)
@@ -189,7 +216,7 @@ class SMShim:
                 gi = 0
                 last_evt = -10**9      # most recent gate or tie before f
                 prev = None
-                for fr, note, instr in notes:      # ascending frames
+                for fr, note, instr, arp in notes:  # ascending frames
                     f = fr + phase
                     while gi < len(gates) and gates[gi] <= f:
                         last_evt = gates[gi]
@@ -218,7 +245,7 @@ class SMShim:
                 if self.filter_tie and filt_resplit:
                     # filt_resplit: {attack_frame: routed voice AT that frame}
                     # — SM switches routing per section, so credit per frame
-                    for fr, note, instr in notes:
+                    for fr, note, instr, arp in notes:
                         f = fr + phase
                         if (f >= 0 and f not in gate_near and f not in tie_set
                                 and any(filt_resplit.get(f + d) == v
@@ -268,16 +295,18 @@ class SMShim:
                                     wprog=0, retrig=False, rest=True))
             ci = 0
             cur = changes[0][1] if changes else 0
+            cur_w = changes[0][2] if changes else 0
             tail = max(1, 8 // fpt_)
             for i, (t, o) in enumerate(evs):
                 while ci < len(changes) and changes[ci][0] + phase <= o + 2:
                     cur = changes[ci][1]
+                    cur_w = changes[ci][2]
                     ci += 1
                 nxt = evs[i + 1][0] if i + 1 < len(evs) else min(t + tail, span_t)
                 note = _sem(frames, v, o) if frames is not None else 48
                 tie = o in tie_set
                 out.append(MONEvent(note=note, dur=max(1, nxt - t),
-                                    instr=cur, wprog=0, retrig=not tie,
+                                    instr=cur, wprog=cur_w, retrig=not tie,
                                     tie=tie))
 
     @property
@@ -299,6 +328,20 @@ class SMShim:
 
     def _voice_blocks(self, v):
         return [(0, self.voices[v])] if self.voices[v] else []
+
+    # STRUCTURAL ARPS: expose the deduped row-header chord tables via the
+    # engine's MoN-style interface (_arp_fm_for). SM cycles 8 semitone
+    # offsets at 1 step/frame ('dur' 0 -> fps 1), reset at the note-set ->
+    # a looping SEMITONE program is exact by construction (the driver looks
+    # up the same freq table the engine indexes). tbl_arp_idx nonzero passes
+    # the engine's gate; arp_struct enables it without MON_ARP_STRUCT.
+    arp_struct = 1 if os.environ.get('SM_ARP', '1') != '0' else 0
+    tbl_arp_idx = 1
+
+    def arp_program(self, wprog):
+        if not wprog or wprog > len(self._arps):
+            return None
+        return {'dur': 0, 'steps': list(self._arps[wprog - 1]), 'loop': True}
 
     def note_freq(self, note):
         return _pal(note)
@@ -419,7 +462,7 @@ def find_phase(streams, onsets):
     """Align the decode frame clock to the emulated gate-rises (the decode's
     first step is nominally frame 0; emulation places it a couple of frames
     later)."""
-    dec = [set(fr for fr, kind, _, _ in streams[v] if kind == 'note')
+    dec = [set(fr for fr, kind, _, _, _ in streams[v] if kind == 'note')
            for v in range(3)]
 
     def score(ph):
@@ -439,7 +482,7 @@ def legato_candidates(streams, onsets):
     for v in range(3):
         g = len(onsets[v])
         pc, prev = 0, None
-        for fr, kind, note, instr in streams[v]:
+        for fr, kind, note, instr, arp in streams[v]:
             if kind in ('note', 'legato') and note != prev:
                 pc += 1
                 prev = note

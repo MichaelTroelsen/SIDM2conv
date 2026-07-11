@@ -110,9 +110,12 @@ class DMCShim:
         # one FM-CAP-truncated note). Which voices go in the set is decided by the
         # full-song per-voice A/B in main() — never a blind heuristic.
         self._fpt = 1 if onsets else (m.lay.tempo_reload + 1)
+        self._grid = False
+        self._onset_mode = onsets is not None
         self.onset_delay = 0 if onsets else phase
         voices = decode_song(m, tick_budget=budget_ticks)
         self.voices = [[] for _ in range(3)]
+        prep = []
         for v in range(3):
             cur = 0
             out = self.voices[v]
@@ -133,26 +136,14 @@ class DMCShim:
                         if fr >= 0 and n.pitch != prev:
                             ons.append(fr)
                             prev = n.pitch
-                    if ons and ons[0] > 0:
-                        out.append(MONEvent(note=0, dur=ons[0], instr=0,
-                                            wprog=0, retrig=False, rest=True))
                 else:
                     # Gate-rise frames: a note per onset, pitch from the trace —
                     # NOT limited to the decode count (a voice whose decode count
                     # != onset count otherwise went silent).
                     ons = list(onsets[v])
-                if not ons:
-                    continue
-                ci = 0
-                cur = changes[0][1] if changes else 0
-                for i, o in enumerate(ons):
-                    while ci < len(changes) and changes[ci][0] <= o + 2:
-                        cur = changes[ci][1]; ci += 1
-                    nxt = ons[i + 1] if i + 1 < len(ons) else o + 8
-                    note = _sem(frames, v, o, nxt) if frames is not None else 48
-                    out.append(MONEvent(note=note, dur=max(1, nxt - o),
-                                        instr=cur, wprog=0, retrig=True))
+                prep.append((v, out, ons, changes))
                 continue
+            prep.append((v, out, None, None))
             for tk, n in voices[v]:
                 if n.pitch < 0:               # REST
                     out.append(MONEvent(note=0, dur=n.ticks, instr=cur,
@@ -163,6 +154,57 @@ class DMCShim:
                 out.append(MONEvent(note=n.pitch, dur=n.ticks, instr=cur,
                                     wprog=0, retrig=True))
 
+        # STEP-GRID for onset-aligned builds (the SM grid, generalized per the
+        # v3.17.0 plan): fpt=1 stores one sequence row per FRAME — a real tick
+        # of 4-5 frames bloats every sequence 4-5x and burns the per-window
+        # byte/event caps as fast (Balloon 77 parts, Cant_Stop 114). When every
+        # onset (gates AND legato decode boundaries) sits on the (tempo+1)-
+        # frame grid at ONE residue, run the driver at that grid instead.
+        # Self-gating per file: any off-grid onset -> fpt=1 exactly as before.
+        # DMC_GRID=0 kill-switch.
+        if onsets is not None and os.environ.get('DMC_GRID', '1') != '0':
+            ofpt = m.lay.tempo_reload + 1
+            allf = [f for _, _, ons, _ in prep if ons for f in ons]
+            if allf:
+                for mult in (4, 2, 1):
+                    g = ofpt * mult
+                    res = {f % g for f in allf}
+                    if len(res) == 1:
+                        self._fpt = g
+                        self.onset_delay = res.pop()
+                        self._grid = True
+                        break
+
+        if onsets is not None:
+            fpt_, dly = self._fpt, self.onset_delay
+            for v, out, ons, changes in prep:
+                if not ons:
+                    continue
+                if fpt_ > 1:
+                    evs, seen = [], set()
+                    for f in ons:
+                        t = max(0, round((f - dly) / fpt_))
+                        if t not in seen:
+                            seen.add(t)
+                            evs.append((t, f))
+                else:
+                    evs = [(f, f) for f in ons]
+                if v in legato_set and evs[0][0] > 0:
+                    out.append(MONEvent(note=0, dur=evs[0][0], instr=0,
+                                        wprog=0, retrig=False, rest=True))
+                ci = 0
+                cur = changes[0][1] if changes else 0
+                tail = max(1, 8 // fpt_)
+                for i, (t, o) in enumerate(evs):
+                    while ci < len(changes) and changes[ci][0] <= o + 2:
+                        cur = changes[ci][1]
+                        ci += 1
+                    nxt_t = evs[i + 1][0] if i + 1 < len(evs) else t + tail
+                    nxt_f = evs[i + 1][1] if i + 1 < len(evs) else o + 8
+                    note = _sem(frames, v, o, nxt_f) if frames is not None else 48
+                    out.append(MONEvent(note=note, dur=max(1, nxt_t - t),
+                                        instr=cur, wprog=0, retrig=True))
+
     @property
     def frames_per_tick(self):
         return self._fpt
@@ -171,13 +213,22 @@ class DMCShim:
         return ticks * self._fpt
 
     def frame_to_tick(self, frame):
+        if self._grid:
+            # grid mode mirrors the SM shim: must invert tick_to_frame or the
+            # engine's per-part lead goes negative -> inter-voice desync (the
+            # a210d83 bug class)
+            return max(0, round(frame / self._fpt))
         return max(0, (frame + self._fpt - 1) // self._fpt)
 
     def _voice_blocks(self, v):
         return [(0, self.voices[v])] if self.voices[v] else []
 
     def note_freq(self, note):
-        return _pal(note) if self._fpt == 1 else self.m.note_freq(note & 0x7F)
+        # keyed on ONSET MODE, not fpt: grid builds keep fpt>1 but their notes
+        # are trace-resolved PAL semitones (fpt==1 as the proxy fed the DMC
+        # module's own table to PAL indices — Balloon's grid build played
+        # garbage pitches)
+        return _pal(note) if self._onset_mode else self.m.note_freq(note & 0x7F)
 
     def instrument(self, idx):
         s = self.m.sound(idx)             # [AD,SR,PWinit,PWrails,PWspeed,vib,f6,f7]
@@ -233,12 +284,26 @@ def build_song(shim, base_name, traces, span, emit=True):
             shim, SID, 0, {}, [], win=(t0, t1), traces=traces, count_only=True)
         return (nb <= CAP_B and ni <= CAP_I and nw <= CAP_TBL
                 and nf <= CAP_TBL and ns <= CAP_SEG)
+    # GRID-ALIGN interior part boundaries (the SM a210d83/d4e9cf6 class): an
+    # arbitrary t0 makes the window-start tick land off the trace by up to
+    # ±(fpt-1)/2 frames, shifting each later part's voices vs the global
+    # alignment. No-op at fpt=1.
+    fpt = shim.frames_per_tick
+    dly = getattr(shim, 'onset_delay', 0)
+
+    def align(f):
+        if fpt <= 1 or f >= span:
+            return f
+        return max(0, f - ((f - dly) % fpt))
     bounds, t0 = [], 0
     maxp = int(os.environ.get('DMC_MAX_PARTS', '0')) or 10**9
     while t0 < span and len(bounds) < maxp:
-        t1 = min(t0 + STEP, span)
-        while t1 < span and fits(t0, min(t1 + STEP, span)):
-            t1 = min(t1 + STEP, span)
+        t1 = align(min(t0 + STEP, span))
+        if t1 <= t0:
+            t1 = min(t0 + STEP, span)
+        while t1 < span and fits(t0, align(min(t1 + STEP, span))):
+            nxt = align(min(t1 + STEP, span))
+            t1 = nxt if nxt > t1 else min(t1 + STEP, span)
         bounds.append((t0, t1))
         t0 = t1
     parts = []
@@ -248,7 +313,7 @@ def build_song(shim, base_name, traces, span, emit=True):
             br = BM.build_native_song(shim, SID, 0, {}, [], win=(t0, t1),
                                       traces=traces)
             BM.emit_one(shim, br, out, f"part {part}/{len(bounds)} "
-                        f"({t0 // 50}-{t1 // 50}s)")
+                        f"({t0 // 50}-{t1 // 50}s, {t0}-{t1}f)")
         parts.append((out, t0, t1))
     if emit:
         BM.prune_stale_parts(os.path.join(ROOT, "out", "dmc", base_name),

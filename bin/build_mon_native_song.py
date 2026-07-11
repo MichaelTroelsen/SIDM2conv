@@ -195,8 +195,12 @@ def arp_fm_program(arp):
 
 def _arp_fm_for(m, ev):
     """The structural FM program for a note, or None to fall back to the trace
-    unroll (non-arp notes, non-Supremacy engines, flag off)."""
-    if not ARP_STRUCT or not hasattr(m, "arp_program") or getattr(m, "tbl_arp_idx", 0) == 0:
+    unroll (non-arp notes, non-Supremacy engines, flag off). Shims can opt in
+    per-player via `arp_struct` (SM: the row-header chord tables) without the
+    global MON_ARP_STRUCT env."""
+    if ((not ARP_STRUCT and not getattr(m, "arp_struct", 0))
+            or not hasattr(m, "arp_program")
+            or getattr(m, "tbl_arp_idx", 0) == 0):
         return None
     try:
         arp = m.arp_program(ev.wprog)
@@ -1464,7 +1468,12 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
                         return freq_to_semi((base + (off - 0x10000 if off >= 0x8000
                                                      else off)) & 0xFFFF)
                     bad = sum(1 for a, b in zip(cap_u, arp_u) if _s(a) != _s(b))
-                    if bad <= max(4, dur_f // 8):
+                    # tolerance must scale with the COMPARED frames: short
+                    # notes compare fcmp=3 frames, so the flat max(4,...)
+                    # accepted ANY arp vacuously (Fuck_Off's drum section
+                    # played garbage steps — 143 five-frame runs)
+                    tol = min(max(1, fcmp // 3), max(4, dur_f // 8))
+                    if bad <= tol:
                         fmp = arp
                 if not _is_struct_fm(fmp):
                     if ARP_STRUCT and getattr(ev, 'slide', None):
