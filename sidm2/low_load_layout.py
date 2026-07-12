@@ -30,10 +30,13 @@ doesn't OOB-crash on an empty editor view.
 
 # The constraints
 
-  - LOAD_BASE floor is $0500 (keeps the header clear of zeropage
-    $00-$FF, stack $0100-$01FF, and the BASIC/KERNAL vector+buffer
-    region $0200-$04FF — verified by py65 read-before-write analysis
-    in `pyscript/find_rbw_scratch.py`).
+  - LOAD_BASE hard floor is $0100 (only zeropage is off-limits at
+    load time; $0100-$04FF — stack, BASIC/KERNAL vector+buffer region
+    — is inactive at SF2 parse time since the C64 emulator hasn't
+    started, so header bytes there are parsed before being clobbered;
+    lowered from $0500 in v3.5.56 to recover Echo_Beat's $0400 load.
+    Scratch safety verified by py65 read-before-write analysis in
+    `pyscript/find_rbw_scratch.py`).
   - $0500-$08FF is default C64 screen RAM but SF2II's player emulation
     never drives VIC, so it's free except where the embedded player
     has its own scratch. Laxity-class players either zero scratch at

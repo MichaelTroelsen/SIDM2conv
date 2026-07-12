@@ -49,7 +49,9 @@ Table Formats Supported:
   * pulse          : 4 bytes per entry, 64 max (Y*4 indexing)
   * filter         : 4 bytes per entry, 32 max (Y*4 indexing)
 
-Expected Conversion Accuracy: 70%
+Expected Conversion Accuracy: 99.93-100% (native Laxity NP21 source; see
+docs/reference/ACCURACY_MATRIX.md — the 70% figure predated the v3.0.1
+driver restoration)
 
 
 JCH NewPlayer v20
@@ -74,7 +76,9 @@ Table Formats Supported:
   * pulse          : 4 bytes per entry, 64 max
   * filter         : 4 bytes per entry, 32 max
 
-Expected Conversion Accuracy: 95%
+Expected Conversion Accuracy: 70-90% (measured; see
+docs/reference/ACCURACY_MATRIX.md — the earlier 95% figure was an
+unvalidated estimate)
 
 
 ========================================================================================================================

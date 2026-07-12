@@ -223,6 +223,16 @@ $10D0  90 08         BCC    $10DA          ; If below $C0, handle as command
 
 Location: **$1A6B-$1AAB** (64 bytes, 8 instruments × 8 bytes)
 
+> **CAUTION — layout unverified (2026-07-12):** this section's prose
+> describes row-major 8-byte records (offsets 0-7 per instrument), but
+> the hex dump below reads naturally as COLUMNS (e.g. `25 25 25 25 26
+> 26 27 a0` = an AD column for 8 instruments), and the player's read
+> idiom at $10BA is direct-Y column access (`LDY instr / LDA $base,Y`
+> per field array, no ×8). Other cluster docs also disagree
+> (LAXITY_DRIVER_TECHNICAL_REFERENCE.md: column-major; DRAX memory:
+> row-major records). Confirm the stride against the binary before
+> relying on either reading — see the v3.5.68 DRAX mislabel lesson.
+
 Each instrument is 8 bytes:
 
 ```asm

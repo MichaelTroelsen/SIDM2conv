@@ -21,7 +21,8 @@
 | $76 | 2 | Flags (v2+) |
 | $78 | 1 | Start page (v2+) |
 | $79 | 1 | Page length (v2+) |
-| $7A | 2 | Reserved (v2+) |
+| $7A | 1 | Second SID address (v3+; middle byte, addr = $Dxx0, e.g. $42 → $D420; 0 = none / reserved in v2) |
+| $7B | 1 | Third SID address (v4+; same encoding; 0 = none / reserved in v2/v3) |
 
 ### Concrete Example: Angular.sid
 
@@ -75,8 +76,11 @@ See `docs/SID_FILE_ANALYSIS.md` for complete binary analysis.
 | 1 | PSID specific |
 | 2-3 | Clock: 0=Unknown, 1=PAL, 2=NTSC, 3=Both |
 | 4-5 | SID model: 0=Unknown, 1=6581, 2=8580, 3=Both |
-| 6-7 | Second SID address (v3+) |
-| 8-9 | Third SID address (v4+) |
+| 6-7 | Second SID model (v3+): same encoding as bits 4-5 |
+| 8-9 | Third SID model (v4+): same encoding as bits 4-5 |
+
+(Second/third SID *addresses* live in header bytes $7A/$7B, not in the
+flags word — see the header table above.)
 
 ### Speed Flags
 

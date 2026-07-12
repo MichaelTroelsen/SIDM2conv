@@ -853,6 +853,11 @@ Total:  | 8,192  | Complete SF2 driver file
 Columns: AD, SR, Flags, Filter, Pulse, Wave, Reserved×2
 Address: $1A6B
 ```
+Note: 32 entries is the SF2 EDITOR table capacity (the Block 3
+descriptor dims); a native NP21 song typically populates fewer
+(Stinsen: 8). Field ordering/stride differs between docs and
+NP21-fork clusters — see the caution note in
+STINSENS_PLAYER_DISASSEMBLY.md before assuming either layout.
 
 **Wave Table** (Dual Arrays):
 ```
