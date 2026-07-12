@@ -41,8 +41,21 @@ master; full suite 1534 green). See CHANGELOG v3.20.0 + docs/players/SDI.md.
 <work_remaining>
 SDI residuals (docs/players/SDI.md "Open items" + memory
 gallefoss-sdi-player.md):
-1. C walk phase (Bahbar vs Banana_Man sub-classes) — emulate the first
-   walk step's timing vs note-on, then un-gate C's instr_pitch.
+1. C walk phase — IN PROGRESS (task: un-gate C pitch). FINDINGS SO FAR
+   (2026-07-12, post-v3.20.0): (a) the naive RESTING-walk model is DEAD:
+   C walks step every OTHER frame ($1594 AND #$01 gate; wf >= $90 =
+   RELATIVE loop-back by wf-$90), so Bahbar's melodic instruments park
+   at +5 only ~fr+10 — OUTSIDE the strict sampler's fr+{0,2,3,5} window,
+   while row 0 (arg 0) hits at fr+0. Applying resting pitch would
+   regress Bahbar again. The sampler sees EARLY walk rows (0..2), not
+   the park. (b) The REAL C gap shape: 54/80 files < 80 strict; the
+   interesting class = HIGH windowed + collapsed strict (Micro_Mix
+   100/22.7, Little_Bee 100/36.4, Denver 98.9/26.4, Magic_Moment
+   98.1/37.0) = timing exact, pitch off by a consistent IN-WINDOW
+   amount — suspect per-file/per-voice TRANSPOSE error or an early-row
+   offset, NOT the resting-pitch class. NEXT ACTION: delta histogram
+   (PATTERNS.md D1) over those 4 files; if constant per instrument/
+   voice, that pins the mechanism for a large slice of the 54.
 2. E: Evil_Within (all 3 voices decode the SAME track — tp mapping; note
    its tick gaps x3 == real gaps exactly, tempo model is right), Arabia
    (row grammar misparse — structure wrong, not just tempo), the conduct
