@@ -343,9 +343,14 @@ class SDIModule:
         elif self.lay.variant == 'E':            # tp -> tl/th (v2.1 source)
             tp0 = d[self.lay.init_block - la]    # subtune 0's track set
             lo, hi = self.lay.track_lo_arr - la, self.lay.track_hi_arr - la
-            # the init loop DEYs per channel (voice2 first at Y=tp0):
-            # voice v reads tl[tp0 - 2 + v]
-            self.track_ptrs = [(d[lo + tp0 - 2 + v] | (d[hi + tp0 - 2 + v] << 8))
+            # the init loop DEYs per channel from Y=tp0; the tl/th array
+            # GAP = the compiled channel count (3, or 4 when the ghost
+            # 4th/fx channel is compiled in — 64_Antheme): the LAST
+            # channel walked gets tl[tp0], so SID voice v reads
+            # tl[tp0 - (nch-1) + v]
+            nch = self.lay.track_hi_arr - self.lay.track_lo_arr
+            base = tp0 - (nch - 1)
+            self.track_ptrs = [(d[lo + base + v] | (d[hi + base + v] << 8))
                                for v in range(3)]
             self.tempo_reload = 3
             # unroll the subtune's TEMPO PROGRAM: s0 bit7 = constant
