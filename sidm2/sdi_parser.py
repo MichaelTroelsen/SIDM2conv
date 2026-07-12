@@ -939,73 +939,62 @@ class SDIModule:
             row_start = True
         return tick
 
-    def _c_regate(self, instr):
+    def _c_regates(self, instr, span):
         """Variant C walk-regate ROLLS: simulate the wfprg walk's
-        effective per-frame wf writes; if the loop body re-gates the
-        voice (gate bit 0->1 transitions — drum rolls: Neverending v2
-        plays ONE 24-tick note whose walk re-gates every 6 frames),
-        return (first_regate_frame, period_frames), else None.
-        Flow-dis verified $10C8-$11F8 (Neverending_Story)."""
+        effective per-frame wf writes for `span` frames and return the
+        re-gate schedule [(frame, arg), ...]. A re-gate = a gate 0->1
+        rise OR a TEST+GATE hard-restart row ($09-class: bit3 test
+        resets the osc). Handles both periodic rolls (Neverending v2:
+        a $09 row re-executed every 6 frames via the $96 jump-back)
+        and irregular multi-$09 fills (Ninja_IV). Flow-dis verified
+        $10C8-$11F8 + $1174/$1183 ($FE hold / $FD gate toggle)."""
         lay = self.lay
         if not (lay.wf_col and lay.wfprg_start_col and lay.c_rec_stride):
-            return None
+            return []
+        span = min(span, 512)
         cache = getattr(self, '_c_regate_cache', None)
         if cache is None:
             cache = self._c_regate_cache = {}
-        if instr in cache:
-            return cache[instr]
-        y = self._u8(lay.wfprg_start_col + (instr & 0x1F) * lay.c_rec_stride)
-        regates = []
-        prev_gate = 1                            # note-on frame = gated
-        for fr in range(48):
-            wf = self._u8(lay.wf_col + y)
-            if 0x90 <= wf < 0xF0:                # jump-back, execute target
-                y = (y - (wf - 0x90)) & 0xFF
+        got = cache.get(instr)
+        if got is None:                          # one 512-frame sim/instr
+            y = self._u8(lay.wfprg_start_col
+                         + (instr & 0x1F) * lay.c_rec_stride)
+            regates = []
+            prev_gate = 1                        # note-on frame = gated
+            for fr in range(512):
                 wf = self._u8(lay.wf_col + y)
-                if 0x90 <= wf < 0xF0:            # self-parked $9x row
-                    break
-            gate = wf & 1
-            # a re-gate = gate rise OR a TEST+GATE hard-restart row
-            # ($09-class: bit3 test resets the osc — Neverending v2's
-            # roll loop re-executes its $09 row every 6 frames)
-            if fr and ((gate and not prev_gate)
-                       or (wf & 0x09) == 0x09):
-                regates.append((fr, self._u8(lay.wfarg_col + y)))
-            prev_gate = gate
-            y = (y + 1) & 0xFF
-        got = None
-        if len(regates) >= 2:
-            period = regates[1][0] - regates[0][0]
-            # require a steady cycle (a one-off re-attack is not a roll)
-            if period > 1 and all(
-                    b[0] - a[0] == period
-                    for a, b in zip(regates, regates[1:])):
-                got = (regates[0][0], period, regates[0][1])
-        cache[instr] = got
-        return got
+                if 0x90 <= wf < 0xF0:            # jump-back, execute tgt
+                    y = (y - (wf - 0x90)) & 0xFF
+                    wf = self._u8(lay.wf_col + y)
+                    if 0x90 <= wf < 0xF0:        # self-parked $9x row
+                        break
+                gate = wf & 1
+                if fr and ((gate and not prev_gate)
+                           or (wf & 0x09) == 0x09):
+                    regates.append((fr, self._u8(lay.wfarg_col + y)))
+                prev_gate = gate
+                y = (y + 1) & 0xFF
+            got = cache[instr] = regates
+        return [r for r in got if r[0] < span]
 
-    def _c_emit_note(self, events, tick, note, instr, dur, raw_note=None):
-        """Emit a C note row + synthetic re-gate notes when the
-        instrument's walk is a roll (each re-gate is a real gate rise
-        the validator/Stage A must see as an onset). Re-gate notes
-        carry the RE-GATE ROW's own pitch arg (the roll's heard pitch),
+    def _c_emit_note(self, events, tick, note, instr, run_ticks,
+                     raw_note=None):
+        """Emit a C note row + synthetic re-gate notes over the note's
+        RUN (the note row plus following $FE hold rows — $FE keeps the
+        gate and the walk keeps running, flow-dis $1174). Re-gate notes
+        carry the re-gate row's own pitch arg (the roll's heard pitch),
         not the onset row's."""
-        events.append(SDIEvent(tick * self.fpt, 'note', note, instr, dur))
-        roll = self._c_regate(instr)
-        if roll:
-            first, period, arg = roll
+        events.append(SDIEvent(tick * self.fpt, 'note', note, instr,
+                               run_ticks))
+        base = tick * self.fpt
+        for off, arg in self._c_regates(instr, run_ticks * self.fpt):
             if arg & 0x80:
                 rnote = arg & 0x7F
             elif arg < 0x60 and raw_note is not None:
                 rnote = (raw_note + arg) & 0xFF
             else:
                 rnote = note
-            base = tick * self.fpt
-            span = dur * self.fpt
-            off = first
-            while off < span:
-                events.append(SDIEvent(base + off, 'note', rnote, instr, 1))
-                off += period
+            events.append(SDIEvent(base + off, 'note', rnote, instr, 1))
 
     def _play_seq_c(self, v, seq, tick, transpose, events, max_ticks):
         """Variant C (the Bahbar class — v2.1-source layout but the 1992
@@ -1020,23 +1009,56 @@ class SDIModule:
         pos = 0
         dur = 1
         guard = 0
+        # pending NOTE RUN: [start_tick, note, raw, instr, run_ticks] —
+        # $FE hold rows extend the run instead of gating off
+        pending = None
+
+        def flush():
+            nonlocal pending
+            if pending:
+                st, nt, rw, ins, rt = pending
+                self._c_emit_note(events, st, nt, ins, rt, raw_note=rw)
+                pending = None
+
+        gate = getattr(self, "_c_gate", None)
+        if gate is None:
+            gate = self._c_gate = [True, True, True]
         while tick < max_ticks and guard < 20000:
             guard += 1
             b = self._u8(seq + pos)
             pos += 1
             if b == 0xFF:                        # sequence END
                 break
-            if b >= 0xFD:                        # $fd gate-toggle / $fe:
-                events.append(SDIEvent(tick * self.fpt, 'off', None,
-                                       instr[v], dur))
-                tick += dur                      #   hold/gate rows
+            if b == 0xFE:                        # HOLD row (gate + walk
+                if pending:                      # keep running — $1174)
+                    pending[4] += dur
+                else:
+                    events.append(SDIEvent(tick * self.fpt, 'rest', None,
+                                           instr[v], dur))
+                tick += dur
+                continue
+            if b == 0xFD:                        # GATE TOGGLE row ($1183:
+                last = pending                   # EOR #$01 on the gate)
+                flush()
+                gate[v] = not gate[v]
+                if gate[v] and last:             # toggle back ON = a real
+                    self._c_emit_note(events, tick, last[1], last[3],
+                                      dur, raw_note=last[2])
+                else:
+                    events.append(SDIEvent(tick * self.fpt, 'off', None,
+                                           instr[v], dur))
+                tick += dur
                 continue
             if b >= 0xC0:                        # CHORD/arp row (terminal)
                 if b & 0x10:                     # bit4: chord UPDATE — one
                     pos += 1                     #   byte (n2); no retrigger
-                    events.append(SDIEvent(tick * self.fpt, 'rest', None,
-                                           instr[v], dur))
+                    if pending:                  #   gate holds: extend run
+                        pending[4] += dur
+                    else:
+                        events.append(SDIEvent(tick * self.fpt, 'rest',
+                                               None, instr[v], dur))
                 else:                            # chord NOTE row: n1 + n2,
+                    flush()
                     n1 = (self._u8(seq + pos) + transpose) & 0xFF
                     ip = self.instr_pitch(instr[v])
                     if ip is not None:
@@ -1044,8 +1066,8 @@ class SDIModule:
                               else (n1 + ip[1])) & 0xFF
                     raw1 = (self._u8(seq + pos) + transpose) & 0xFF
                     pos += 2                     #   retriggers with n1
-                    self._c_emit_note(events, tick, n1, instr[v], dur,
-                                      raw_note=raw1)
+                    gate[v] = True
+                    pending = [tick, n1, raw1, instr[v], dur]
                 tick += dur
                 continue
             if b >= 0x80:                        # DURATION (& $3f, exact)
@@ -1055,15 +1077,17 @@ class SDIModule:
                 instr[v] = b & 0x1F
                 self._cur_instr = instr
                 continue
+            flush()
             raw = (b + transpose) & 0xFF         # NOTE row (any < $60)
             note = raw
             ip = self.instr_pitch(instr[v])      # + the wfprg pitch offset
             if ip is not None:
                 note = (ip[1] if ip[0] == 'abs'
                         else (note + ip[1])) & 0xFF
-            self._c_emit_note(events, tick, note, instr[v], dur,
-                              raw_note=raw)
+            gate[v] = True
+            pending = [tick, note, raw, instr[v], dur]
             tick += dur
+        flush()
         return tick
 
     def _play_seq(self, v, seq, tick, transpose, events, max_ticks):
@@ -1235,6 +1259,8 @@ class SDIModule:
 
     def events(self):
         self._cur_instr = [0, 0, 0]
+        self._c_gate = [True, True, True]        # per-voice $FD toggle
+        self._c_regate_cache = {}                # (c_pitch_model-agnostic)
         if self.lay.variant == 'V':
             # flat tick clock (A/B-tested: emulating the $Cx global-tempo
             # commands through a tick->call map LOST to a flat fpt with
