@@ -10,6 +10,10 @@
         "ASM_PATH": "C:\\c64-projects\\asm",
         "BASIC_PATH": "C:\\c64-projects\\basic"
       }
+    },
+    "sidm2-siddump": {
+      "command": "python",
+      "args": ["mcp-siddump/server.py"]
     }
   }
 }
