@@ -4,7 +4,7 @@
 
 This document consolidates everything learned porting **seven player families** (Laxity NP21, SF2/Driver 11, NP20, Martin Galway, Future Composer, ROMUZAK, Maniacs of Noise) plus the NP21-adjacent clusters. It is the method to follow — and the traps to avoid — before taking on the next player.
 
-*Updated 2026-07-05 (v3.13.0 era). Per-player detail: the docs in this directory. Accuracy numbers: [../reference/ACCURACY_MATRIX.md](../reference/ACCURACY_MATRIX.md).*
+*Updated 2026-07-05 (v3.13.0 era). Per-player detail: the docs in this directory. Accuracy numbers: [../reference/ACCURACY_MATRIX.md](../reference/ACCURACY_MATRIX.md). **Named recurring mechanisms, diagnostics, and failure classes: [PATTERNS.md](PATTERNS.md)** - check it for a matching symptom before writing new code.*
 
 ---
 
