@@ -98,12 +98,17 @@ gallefoss-sdi-player.md):
    RE-GATING the voice (drum-roll wfprg loops toggling the gate bit
    every cycle; note-on writes $D404=$08 TEST first, $11D9-$11DB).
    Our sequencer-level note matches only the first re-gate; the
-   validator counts every gate rise. FIX (next session): extend the
-   C walk simulation to detect re-gate cycles in the $9x loop body
-   and EXPAND rolls into synthetic re-gate notes (decoder-level —
-   Stage A needs the roll expansion anyway to sound right). Same
-   likely explains Everytime's twin noise voices (heard semi 94-95
-   const = noise-freq rows in the loop, args $FF).
+   validator counts every gate rise. FIX SHIPPED (commit 7d102e0):
+   _c_regate() + _c_emit_note() expand rolls into synthetic re-gate
+   notes (re-gate = gate 0->1 rise OR a $09 TEST+GATE hard-restart
+   row; per-row pitch args) — Neverending windowed 43.6 -> 100.0,
+   corpus 3 improved / 0 regressed, windowed median 98.1, strict
+   median 86.0. STILL OPEN in this class: Everytime 28/21 (twin noise
+   voices heard semi 94-95 const — NOT fixed by rolls; its instr14
+   walk has no $09 row in the loop, args $FF — mechanism still
+   unidentified, trace bin/_sdi_c_walk_trace.py Everytime) and
+   Ninja_IV 33/33 (v1/v2 real onsets dense from fr4 but our decode
+   has a long silent prefix — different bug, likely track-level).
    OLD FINDINGS (superseded, kept for context): FINDINGS SO FAR
    (2026-07-12, post-v3.20.0): (a) the naive RESTING-walk model is DEAD:
    C walks step every OTHER frame ($1594 AND #$01 gate; wf >= $90 =
