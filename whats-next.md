@@ -212,15 +212,29 @@ gallefoss-sdi-player.md):
      sound and $60-$7F = dur&$1F. Settle by EMULATION SEMANTICS:
      log, per consumed row, which state cells change (dur/sound/
      note/gate-time) — the B1-trace tooling extends naturally.
-     FIRST OBSERVATION (2026-07-12, snapshot harness v0): 2_Young v0
-     consumed only ONE row-head read at $EEE1 in 120 frames (head
-     $C0; cells $E92A 00->4F / $E92D 01->00 / $E92E 5F->3B) — either
-     the row cadence is far slower than the current model assumes,
-     or subsequent rows dispatch from the LOOKAHEAD byte without
-     re-reading at $EEE1. Build the v1 harness with WRITE-watches +
-     PC attribution (which instruction wrote which cell), not
-     before/after snapshots — snapshot labels proved unreliable
-     ($E92A got $4F which no AND #$1F path can produce).
+     V1 HARNESS BUILT (bin/_sdi_e_semantics.py, gitignored scratch,
+     ON DISK): write-watches + DEC/INC watches with PC attribution +
+     full row-byte capture at the $EEE1 head read. FINDINGS (2_Young):
+     - v0 = a ONE-ROW looping drone seq (head $C0, Y stays 0); its
+       per-frame engines: $E98B = $40/$00 LFO toggle from $EB9F,
+       $E961 = 2-frame stepper 0-3 from $EBA7, $E966 = 8-countdown
+       from $ECA1 (gate/HR timer), note compute confirmed at $EFBA
+       ($E92E = 3B).
+     - v1 rows: fr0 [83 62 0C] (8 frames), fr8 [85 61 0C] (6 frames),
+       fr14 [62 0C ..] then NO MORE $EEE1 reads in 400 frames —
+       either very long holds or a SECOND row-read site the harness
+       misses (check: other B1 PCs, or dispatch from the lookahead
+       byte). Row grammar so far: optional $8x prefix, $6x = SOUND
+       (&$1F), note byte (bit7 clear = retrigger ✓). $83->8fr vs
+       $85->6fr is NON-LINEAR -> supports a TEMPO-PROGRAM tick clock
+       (Arabia's observed tick gaps 2,2,5,5 agree; the init-side
+       tempo-program extraction already exists in SDIModule).
+     - $E92A got $4F at row parse ($EF52) — impossible via the
+       AND #$1F path I dis'd, so my $EF50 alignment is wrong; re-dis
+       that stretch before trusting the sound-cell label.
+     NEXT CONCRETE STEP: find v1's missing row reads (log ALL B1 PCs
+     per voice), then correlate 10+ rows against real onsets to fix
+     [prefix][sound][note] + tick clock; then the rewrite.
      THEN rewrite _decode_voice_e/_play_seq_e on the true grammar:
      4th-channel conductor timeline (nch=4 gens: ghost = tl[base+3];
      merge its $E943 writes on the tick clock), bit7 tie semantics,
