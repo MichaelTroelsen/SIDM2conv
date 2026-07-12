@@ -442,11 +442,20 @@ class SDIModule:
             tp0 = d[self.lay.init_block - la]    # subtune 0's track set
             lo, hi = self.lay.track_lo_arr - la, self.lay.track_hi_arr - la
             # the init loop DEYs per channel from Y=tp0; the tl/th array
-            # GAP = the compiled channel count (3, or 4 when the ghost
-            # 4th/fx channel is compiled in — 64_Antheme): the LAST
+            # GAP = channels x SUBTUNES (Evil_Within: 6 = 2 subtunes x 3
+            # — taking the gap as the channel count sent base negative
+            # and gave all 3 voices garbage/identical tracks). The
+            # compiled channel count is 3, or 4 when the ghost 4th/fx
+            # channel is compiled in (64_Antheme, gap 4). The LAST
             # channel walked gets tl[tp0], so SID voice v reads
             # tl[tp0 - (nch-1) + v]
-            nch = self.lay.track_hi_arr - self.lay.track_lo_arr
+            gap = self.lay.track_hi_arr - self.lay.track_lo_arr
+            if gap in (3, 4):
+                nch = gap
+            elif gap % 4 == 0 and gap % 3 != 0:
+                nch = 4
+            else:
+                nch = 3
             base = tp0 - (nch - 1)
             self.track_ptrs = [(d[lo + base + v] | (d[hi + base + v] << 8))
                                for v in range(3)]
