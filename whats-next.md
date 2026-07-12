@@ -212,6 +212,15 @@ gallefoss-sdi-player.md):
      sound and $60-$7F = dur&$1F. Settle by EMULATION SEMANTICS:
      log, per consumed row, which state cells change (dur/sound/
      note/gate-time) — the B1-trace tooling extends naturally.
+     FIRST OBSERVATION (2026-07-12, snapshot harness v0): 2_Young v0
+     consumed only ONE row-head read at $EEE1 in 120 frames (head
+     $C0; cells $E92A 00->4F / $E92D 01->00 / $E92E 5F->3B) — either
+     the row cadence is far slower than the current model assumes,
+     or subsequent rows dispatch from the LOOKAHEAD byte without
+     re-reading at $EEE1. Build the v1 harness with WRITE-watches +
+     PC attribution (which instruction wrote which cell), not
+     before/after snapshots — snapshot labels proved unreliable
+     ($E92A got $4F which no AND #$1F path can produce).
      THEN rewrite _decode_voice_e/_play_seq_e on the true grammar:
      4th-channel conductor timeline (nch=4 gens: ghost = tl[base+3];
      merge its $E943 writes on the tick clock), bit7 tie semantics,
