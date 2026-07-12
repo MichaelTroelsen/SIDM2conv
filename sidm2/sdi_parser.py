@@ -100,6 +100,10 @@ class SDILayout:
     d_flags_col: int = 0      # D: record byte+7 (low nibble = walk prog #)
     d_wfprg_lo: int = 0       # D: per-walk-program pointer table (lo)
     d_wfprg_hi: int = 0       # D: per-walk-program pointer table (hi)
+    e_z0: int = 0             # E: per-sound wfprg start row (z0 column)
+    e_w: int = 0              # E: wfprg waveform column
+    e_f: int = 0              # E: wfprg arg/pitch column
+    e_ad: int = 0             # E: arp records (2-byte: prg start, instr)
     flags_col: int = 0        # bit0 = ignore track transpose
 
 
@@ -247,6 +251,26 @@ def locate(d, la):
         j = _find(d, [0xBD, -1, -1, 0x8D, -1, -1, 0xA9, 0x01, 0x8D])
         if j is not None:
             lay.ad_col = _w(d, j + 1)            # s array
+        # wfprg (parallel w/f columns): wfrout2 = LDY wfp,X / LDA w,Y /
+        # CMP #$FF ($FF loop handler: LDA f,Y / STA wfp,X)
+        j = _find(d, [0xBC, -1, -1, 0xB9, -1, -1, 0xC9, 0xFF,
+                      0xD0, -1, 0xB9, -1, -1, 0x9D])
+        if j is not None:
+            lay.e_w = _w(d, j + 4)
+            lay.e_f = _w(d, j + 11)
+        # set-instrument tail: TAY / LDA z0,Y / TAY / CLC / ADC #$01 /
+        # STA wfp,X — note-on applies ROW 0's waveform AND pitch (f[z0])
+        # to the SID immediately; the walk continues from z0+1
+        j = _find(d, [0xA8, 0xB9, -1, -1, 0xA8, 0x18, 0x69, 0x01, 0x9D])
+        if j is not None:
+            lay.e_z0 = _w(d, j + 2)
+        # arp records (seq $c0-$ef, source bn4): AND #$3F / ASL /
+        # STA arpnum2,X / TAX / LDA ad+1,X / AND #$3F -> sound2; records
+        # 2-byte [arp prg start, speed<<6 | instrument]
+        j = _find(d, [0x29, 0x3F, 0x0A, 0x9D, -1, -1, 0xAA,
+                      0xBD, -1, -1, 0x29, 0x3F])
+        if j is not None:
+            lay.e_ad = _w(d, j + 8) - 1          # ad (+1 read in code)
         _freq_scan(d, la, lay)
         return lay
     else:
@@ -571,8 +595,11 @@ class SDIModule:
                 if 0x80 <= b <= 0x9F:            # sound set
                     instr[v] = b & 0x1F
                     self._cur_instr = instr
-                elif 0xC0 <= b <= 0xEF:          # arp (redirects sound)
-                    pass
+                elif 0xC0 <= b <= 0xEF:          # arp select: the record
+                    if self.lay.e_ad:            #   REDIRECTS the sound
+                        rec = self.lay.e_ad + ((b & 0x3F) << 1)
+                        instr[v] = self._u8(rec + 1) & 0x3F
+                        self._cur_instr = instr
                 # $a0 filter toggle / $a1-$bf glide / $f0+ release: no
                 # decode-level state needed for onset validation
                 b = self._u8(seq + pos)
@@ -602,8 +629,15 @@ class SDIModule:
             else:
                 note = (masked + transpose) & 0xFF
                 # bit7 SET = tie/legato, CLEAR = retrigger (verified on
-                # 2_Young v0: real onsets re-gate on bit7-clear notes)
+                # 2_Young v0: real onsets re-gate on bit7-clear notes).
+                # Retriggers re-run the set-instrument tail -> row-0
+                # wfprg pitch applies; ties skip it (jmp wfrout)
                 kind = 'tie' if (b & 0x80) else 'note'
+                if kind == 'note':
+                    ip = self.instr_pitch(instr[v])
+                    if ip is not None:
+                        note = (ip[1] if ip[0] == 'abs'
+                                else (note + ip[1])) & 0x7F
                 events.append(SDIEvent(tick * self.fpt, kind, note,
                                        instr[v], dur + 1))
             tick += dur + 1
@@ -929,6 +963,17 @@ class SDIModule:
         lay = self.lay
         if lay.variant == 'D':
             return self._d_walk_pitch(instr)
+        if lay.variant == 'E':
+            # onset pitch = wfprg ROW 0's f column, applied to the SID on
+            # the note-on frame by the set-instrument tail (byte-verified
+            # on 2_Young_2_Die $EE1F): bit7 = ABSOLUTE else + note, & $7F
+            if not (lay.e_z0 and lay.e_f):
+                return None
+            st = self._u8(lay.e_z0 + (instr & 0x1F))
+            arg = self._u8(lay.e_f + st)
+            if arg & 0x80:
+                return ('abs', arg & 0x7F)
+            return ('rel', arg) if arg else None
         if lay.variant == 'C':
             # C's wfprg IS the pitch carrier (walk mapped: wf $18AD-class,
             # arg added to note2 per row) but the ONSET offset depends on
