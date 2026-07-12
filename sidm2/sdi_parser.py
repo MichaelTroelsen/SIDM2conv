@@ -104,6 +104,9 @@ class SDILayout:
     e_w: int = 0              # E: wfprg waveform column
     e_f: int = 0              # E: wfprg arg/pitch column
     e_ad: int = 0             # E: arp records (2-byte: prg start, instr)
+    v_speed_tbl: int = 0      # V: per-seq length-in-ticks table
+    v_oct_col: int = 0        # V: instrument octave nibble column
+    v_mult: int = 1           # V: wrapper play-calls per video frame
     flags_col: int = 0        # bit0 = ignore track transpose
 
 
@@ -169,6 +172,54 @@ def locate(d, la):
                       0x9D, -1, -1, 0xB9, -1, -1, 0x9D, -1, -1])
         if j is not None:
             lay.wfprg_start_col = _w(d, j + 7)   # the +2 byte column
+    elif _find(d, [0xAC, -1, -1, 0xB9, -1, -1, 0x85, -1, 0xB9, -1, -1,
+                   0x85, -1, 0xBC, -1, -1, 0xB1, -1]) is not None:
+        # variant V (the VE-2x/-4x wrapper class, e.g. Oh_Boy): play=$0000
+        # rips - a raster wrapper drives a 3-JMP module (init/play/fast) at
+        # 2x/4x. Tracker-style engine: $40-byte per-voice state blocks at
+        # $0400/$0440/$0480, per-VOICE track ptr arrays (conductor = LDY
+        # $04D6 / LDA $tlo,Y / STA zp / LDA $thi,Y / STA zp / LDY pos,X /
+        # LDA (zp),Y), fixed 3-byte seq rows [note, fx, next-dur] on a
+        # global tempo, per-seq LENGTH-in-ticks table (the track advances
+        # when it expires, independent of the row stream)
+        i = _find(d, [0xAC, -1, -1, 0xB9, -1, -1, 0x85, -1, 0xB9, -1, -1,
+                      0x85, -1, 0xBC, -1, -1, 0xB1, -1])
+        lay.variant = 'V'
+        lay.track_lo_arr = _w(d, i + 4)
+        lay.track_hi_arr = _w(d, i + 9)
+        lay.state = _w(d, i + 14)                # track-pos state cells
+        # seq set: AND #$3F / TAY / LDA $lo,Y / STA ptr,X / STA zp /
+        # LDA $hi,Y / STA ptr+1,X / STA zp / LDA $speed,Y / STA cnt,X
+        j = _find(d, [0x29, 0x3F, 0xA8, 0xB9, -1, -1, 0x9D, -1, -1,
+                      0x85, -1, 0xB9, -1, -1, 0x9D, -1, -1, 0x85, -1,
+                      0xB9, -1, -1, 0x9D])
+        if j is None:
+            return None
+        lay.seq_lo = _w(d, j + 4)
+        lay.seq_hi = _w(d, j + 12)
+        lay.v_speed_tbl = _w(d, j + 20)
+        # freq tables: LDA $lo,Y / STA zp / STA zp / LDA $hi,Y / STA / STA
+        j = _find(d, [0xB9, -1, -1, 0x85, -1, 0x85, -1,
+                      0xB9, -1, -1, 0x85, -1, 0x85, -1])
+        if j is not None:
+            lay.freq_lo = _w(d, j + 1)
+            lay.freq_hi = _w(d, j + 8)
+        # instrument OCTAVE nibble column: LDY snd,X / LDA $oct,Y /
+        # AND #$0F / BEQ (freq doubled N-1 times = +12*(N-1) semis)
+        j = _find(d, [0xBC, -1, -1, 0xB9, -1, -1, 0x29, 0x0F, 0xF0])
+        if j is not None:
+            lay.v_oct_col = _w(d, j + 4)
+        # global tempo init: LDA $t / STA $04D0 / STA $04D1
+        j = _find(d, [0xAD, -1, -1, 0x8D, 0xD0, 0x04, 0x8D, 0xD1, 0x04])
+        if j is not None:
+            src = _w(d, j + 1)
+            if 0 <= src - la < len(d):
+                lay.tempo_imm = d[src - la]
+        # wrapper speed: the raster handler's LDA $04 / CMP #mult
+        j = _find(d, [0xA5, 0x04, 0xC9])
+        if j is not None and 1 <= d[j + 3] <= 8:
+            lay.v_mult = d[j + 3]
+        return lay
     elif _find(d, [0xBD, -1, -1, 0x85, -1, 0xBD, -1, -1, 0x85, -1,
                    0xA0, 0x00, 0xB1, -1]) is not None:
         # variant D (Another_Day class): per-voice ptr arrays like B, but
@@ -432,6 +483,12 @@ class SDIModule:
                         if b & 0x80:
                             break
                     self.tempo_seq = seq or [4]
+        elif self.lay.variant == 'V':            # per-VOICE ptr arrays
+            lo, hi = self.lay.track_lo_arr - la, self.lay.track_hi_arr - la
+            self.track_ptrs = [(d[lo + v] | (d[hi + v] << 8))
+                               for v in range(3)]
+            # tempo_imm = play calls per tick (global counter reload)
+            self.tempo_reload = max(1, self.lay.tempo_imm) - 1
         else:                                    # B: per-voice arrays
             lo, hi = self.lay.track_lo_arr - la, self.lay.track_hi_arr - la
             self.track_ptrs = [(d[lo + v] | (d[hi + v] << 8))
@@ -474,6 +531,8 @@ class SDIModule:
             return self._decode_voice_d(v, max_ticks)
         if self.lay.variant == 'E':
             return self._decode_voice_e(v, max_ticks)
+        if self.lay.variant == 'V':
+            return self._decode_voice_v(v, max_ticks)
         lay = self.lay
         tpos = 0
         transpose = 0
@@ -642,6 +701,74 @@ class SDIModule:
                                        instr[v], dur + 1))
             tick += dur + 1
         return tick
+
+    def _decode_voice_v(self, v, max_ticks=40000):
+        """Variant V (the VE wrapper class): tracker rows. The track walks
+        entries; each SEQ entry runs for speed_tbl[seq#] TICKS (the track
+        advances on expiry, independent of the row stream). Rows are
+        3 bytes [note, fx, next-dur]; a per-voice countdown (seeded by the
+        seq's FIRST byte) triggers the next row. fx $F0/$F1 = tie (freq
+        only, no re-gate); fx & $E0 == $40 = glide to the note. Pitch =
+        note + transpose + 12*(oct-1) from the instrument's octave nibble
+        (the player doubles the freq word oct-1 times)."""
+        lay = self.lay
+        track = self.track_ptrs[v]
+        tpos = 0
+        transpose = 0
+        sound = 0
+        tick = 0
+        events = []
+        guard = 0
+        while tick < max_ticks and guard < 8000:
+            guard += 1
+            b = self._u8(track + tpos)
+            tpos += 1
+            if b == 0xFE:                        # voice off
+                break
+            if b == 0xFF:                        # jump (song loop) -> stop
+                break
+            c = b & 0xC0
+            if c == 0x80:                        # transpose = b - $a0
+                transpose = b - 0xA0
+                continue
+            if c == 0xC0:                        # track-level INSTRUMENT
+                sound = b & 0x1F
+                continue
+            # $00-$3F and $40-$7F (hard-restart flag) both start seq b&$3f
+            seq_no = b & 0x3F
+            seq = self.seq_addr(seq_no)
+            length = self._u8(lay.v_speed_tbl + seq_no) or 256
+            cnt = self._u8(seq) or 256           # delay to the first row
+            pos = 1
+            for _ in range(length):
+                cnt -= 1
+                if cnt <= 0:
+                    note = self._u8(seq + pos)
+                    fx = self._u8(seq + pos + 1)
+                    cnt = self._u8(seq + pos + 2) or 256
+                    pos += 3
+                    if (fx & 0xE0) == 0:         # fx = per-note INSTRUMENT
+                        sound = fx & 0x1F        #   (the $1669 &$E0==0 path)
+                    elif (fx & 0xE0) == 0xC0:    # global TEMPO = fx & $0f
+                        self._v_tempo.append((tick, fx & 0x0F))
+                    if note < 0x60:
+                        semi = (note + transpose) & 0x7F
+                        if lay.v_oct_col:
+                            oct_n = self._u8(lay.v_oct_col + sound) & 0x0F
+                            if oct_n >= 2:
+                                semi += 12 * (oct_n - 1)
+                        kind = ('tie' if fx in (0xF0, 0xF1)
+                                else 'glide' if (fx & 0xE0) == 0x40
+                                else 'note')
+                        events.append(SDIEvent(tick, kind,
+                                               semi & 0x7F, sound, 1))
+                    elif note == 0x5F:
+                        events.append(SDIEvent(tick, 'off',
+                                               None, sound, 1))
+                tick += 1
+                if tick >= max_ticks:
+                    break
+        return events
 
     def _decode_voice_d(self, v, max_ticks=40000):
         """D tracks = arrays of (seq#, header) PAIRS: header hi nibble =
@@ -1004,4 +1131,17 @@ class SDIModule:
 
     def events(self):
         self._cur_instr = [0, 0, 0]
+        if self.lay.variant == 'V':
+            # flat tick clock (A/B-tested: emulating the $Cx global-tempo
+            # commands through a tick->call map LOST to a flat fpt with
+            # per-file calibration - Oh_Boy windowed 47->23 vs 70 flat;
+            # the commands are recorded in _v_tempo for future use).
+            # Frames are in PLAY CALLS; divide by lay.v_mult for video
+            # frames (the wrapper drives the module 2x/4x per frame).
+            self._v_tempo = []
+            evs = [self.decode_voice(v) for v in range(3)]
+            for ev in evs:
+                for e in ev:
+                    e.frame = e.frame * self.fpt
+            return evs
         return [self.decode_voice(v) for v in range(3)]
