@@ -171,10 +171,21 @@ gallefoss-sdi-player.md):
    + arg/wf column alignment byte-exact, then build a frame-paced
    walk simulator (D's `_d_walk_pitch` style but stepping, not
    resolving to one resting value) gated behind the fixed stride.
-2. E: Evil_Within (all 3 voices decode the SAME track — tp mapping; note
-   its tick gaps x3 == real gaps exactly, tempo model is right), Arabia
-   (row grammar misparse — structure wrong, not just tempo), the conduct
-   program (dual row condition), glide-heavy strict sampling.
+2. E (strict median 57.8 -> 61.9, commit d9b1a53; sweep scratch
+   bin/_sdi_e_resweep.py -> out/_sdi_e_resweep1.log):
+   - Evil_Within FIXED (was all-3-voices-same-track): the tl/th array
+     GAP = channels x SUBTUNES (gap 6 = 2 subtunes x 3ch); now factors
+     to the compiled channel count. 0-ish -> 51.9/32.7; its residual =
+     the general E timing/conduct items below.
+   - Arabia (69.1/16.2) SCOPED: real structure = sparse note PAIRS
+     every ~80 frames; our decode is dense — a genuine E sub-grammar
+     (track bytes $C7/$C3/$F8 codes unknown to the E walker). Needs
+     the C-style treatment: flow-dis its track/seq reader + B1 read
+     trace (bin/_sdi_c_walk_trace.py pattern works for E too).
+   - Same low-both-metrics class: Zap 23/10, Xard 45/23, Sweeper 44/23
+     — likely the same sub-grammar; diagnose WITH Arabia.
+   - Still open: the conduct program (dual row condition), glide-heavy
+     strict sampling (shared with C's Magic_Moment class).
 3. V: its own wfprg walk (drum absolutes +32-class, -1 detunes), tempo
    commands done right (the naive tick->call map LOST the A/B to a flat
    calibrated clock — Oh_Boy 47 vs 70 windowed).
