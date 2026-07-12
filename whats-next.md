@@ -177,11 +177,27 @@ gallefoss-sdi-player.md):
      GAP = channels x SUBTUNES (gap 6 = 2 subtunes x 3ch); now factors
      to the compiled channel count. 0-ish -> 51.9/32.7; its residual =
      the general E timing/conduct items below.
-   - Arabia (69.1/16.2) SCOPED: real structure = sparse note PAIRS
-     every ~80 frames; our decode is dense — a genuine E sub-grammar
-     (track bytes $C7/$C3/$F8 codes unknown to the E walker). Needs
-     the C-style treatment: flow-dis its track/seq reader + B1 read
-     trace (bin/_sdi_c_walk_trace.py pattern works for E too).
+   - Arabia (69.1/16.2) SCOPED + PARTIALLY DIS'D (2026-07-12): real
+     structure = sparse onsets among dense rows. B1 trace (all-B1 py65
+     probe): track reads $EE69 (head) + $EE95/$EEA0 (per-opcode arg
+     PCs differ: $C7's arg via $EE95, $A0's via $EEA0); seq reads
+     $EEE1 (row head) + $EF37/$EF56 (operands) + $EF65 (LOOKAHEAD —
+     the next row's head is PEEKED and Y stored as the new position,
+     $EF6A-$EF6B; peek==0 = seq loop marker). Row dispatcher at
+     $EEE1-$EF7F hand-read: head $5F = rest/hold; $F0+ = RELEASE
+     nibble PREFIX (continues row); $C0-$EF = arp-record redirect
+     (idx*2 into $F5B8, known); $A0 exact = self-modifies $EF7E to 5
+     (default gate-time?); $A1-$BF = GATE-TIME row ((b&$1F)*4 ->
+     $E948,X); $80-$9F = DURATION (&$3F -> $E94A/$E92D/$E947,X) then
+     an operand chain ($E0 glide cases at $EF39-$EF44); $60-$7F =
+     SOUND set then note; <$60 = NOTE (path at $EF61, pushes #$5F,
+     stores via $E943 GLOBAL — tail $EF6E-$EF7F = PHA/PLA lookahead
+     dispatch, NOT yet fully understood). KEY MUSIC FACT: Arabia v0
+     plays repeated [61 xx] rows with DESCENDING xx every 5 frames
+     that do NOT re-gate (a manual glide) — real onsets only every
+     ~75 frames. Our E walker emits each as a note -> dense garbage.
+     NEXT: finish the $EF61-$EF7F tail dis (when does a note row
+     re-gate vs glide?), then port; Zap/Xard/Sweeper likely same.
    - Same low-both-metrics class: Zap 23/10, Xard 45/23, Sweeper 44/23
      — likely the same sub-grammar; diagnose WITH Arabia.
    - Still open: the conduct program (dual row condition), glide-heavy
