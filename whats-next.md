@@ -191,13 +191,33 @@ gallefoss-sdi-player.md):
      $E948,X); $80-$9F = DURATION (&$3F -> $E94A/$E92D/$E947,X) then
      an operand chain ($E0 glide cases at $EF39-$EF44); $60-$7F =
      SOUND set then note; <$60 = NOTE (path at $EF61, pushes #$5F,
-     stores via $E943 GLOBAL — tail $EF6E-$EF7F = PHA/PLA lookahead
-     dispatch, NOT yet fully understood). KEY MUSIC FACT: Arabia v0
-     plays repeated [61 xx] rows with DESCENDING xx every 5 frames
-     that do NOT re-gate (a manual glide) — real onsets only every
-     ~75 frames. Our E walker emits each as a note -> dense garbage.
-     NEXT: finish the $EF61-$EF7F tail dis (when does a note row
-     re-gate vs glide?), then port; Zap/Xard/Sweeper likely same.
+     stores via $E943 GLOBAL). TAIL RESOLVED (same day): rows PUSH
+     their trailing byte ($5F sentinel = no note) -> common lookahead
+     tail -> dispatch at $EFA0: **THE CONDUCT PROGRAM IS CRACKED** —
+     $EF6F CPX #$15: the GHOST 4TH CHANNEL (state offset $15) does
+     not play; its note bytes STA $E943 = a GLOBAL CONDUCTOR PITCH
+     BASE. Real-voice note pitch = (op & $7F) + $E943 + poked
+     transpose (self-modified ADC #$00 at $EFB0) + $E929,X - $19.
+     Note operand bit7 = TIE/GLIDE (bit7 clear = retrigger, writes
+     $01/$0F hard-restart AD/SR at $EFF5-$EFFA). Arabia's [61 xx]
+     descending rows = bit7-set glide steps vs the conductor base ✓.
+     DISPATCHER IS BYTE-IDENTICAL ACROSS ALL E FILES (2_Young/Kirby/
+     Arabia/Xard/Sweeper at $EEE3; Zap relocated $13E1) -> ONE true
+     grammar; the current _play_seq_e is an approximation that holds
+     only when the conductor is unused.
+     CONTRADICTION TO RESOLVE BEFORE REWRITING (do NOT trust either
+     blindly): the hand-dis reads seq head $80-$9F as DURATION
+     (&$3F -> $E94A/$E92D/$E947,X) and $60-$7F as SOUND, while the
+     CURRENT walker (2_Young-verified, 78 windowed) has $80-$9F =
+     sound and $60-$7F = dur&$1F. Settle by EMULATION SEMANTICS:
+     log, per consumed row, which state cells change (dur/sound/
+     note/gate-time) — the B1-trace tooling extends naturally.
+     THEN rewrite _decode_voice_e/_play_seq_e on the true grammar:
+     4th-channel conductor timeline (nch=4 gens: ghost = tl[base+3];
+     merge its $E943 writes on the tick clock), bit7 tie semantics,
+     lookahead row reads (peek 0 = seq loop), -$19 pitch bias.
+     Expected: lifts Arabia/Zap/Xard/Sweeper AND the whole E corpus
+     (52 files, median 61.9).
    - Same low-both-metrics class: Zap 23/10, Xard 45/23, Sweeper 44/23
      — likely the same sub-grammar; diagnose WITH Arabia.
    - Still open: the conduct program (dual row condition), glide-heavy
