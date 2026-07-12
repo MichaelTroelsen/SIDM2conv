@@ -1109,17 +1109,40 @@ class SDIModule:
                 return None
             y = self._u8(lay.wfprg_start_col
                          + (instr & 0x1F) * lay.c_rec_stride)
-            for _ in range(8):                   # walk to the first row
-                wf = self._u8(lay.wf_col + y)    # with a plausible pitch
+            seen = []                            # visited row order
+            loop = None
+            for _ in range(24):
+                wf = self._u8(lay.wf_col + y)
                 if 0x90 <= wf < 0xF0:            # jump-back: execute the
                     y = (y - (wf - 0x90)) & 0xFF  # target row this frame
-                arg = self._u8(lay.wfarg_col + y)
-                if arg & 0x80:
-                    return ('abs', arg & 0x7F)
-                if arg < 0x60:                   # attack-spike rows
-                    return ('rel', arg) if arg else None
-                y = (y + 1) & 0xFF               # (>= $60, bit7 clear)
-            return None
+                    if y in seen:                # steady state = the loop
+                        loop = seen[seen.index(y):]
+                        break
+                seen.append(y)
+                y = (y + 1) & 0xFF
+            # TWO heard-pitch models, selected per file by strict
+            # agreement (self.c_pitch_model, default 'onset'):
+            # 'onset'  — the walk RESTARTS at note-on; the sampler sees
+            #            the early rows -> first plausible arg from st
+            #            (Micro_Mix/Bahbar/Banana_Man class, traced)
+            # 'steady' — the walk free-runs across retriggers (tie-
+            #            style drums) -> majority arg of the loop body
+            #            (Everytime $FF drums, Survival 33 -> 100)
+            if getattr(self, 'c_pitch_model', 'onset') == 'steady':
+                body = loop if loop else seen
+            else:
+                body = seen
+            args = [self._u8(lay.wfarg_col + r) for r in body]
+            args = [a for a in args if a & 0x80 or a < 0x60]
+            if not args:
+                return None
+            if getattr(self, 'c_pitch_model', 'onset') == 'steady':
+                arg = max(args, key=args.count)  # loop majority
+            else:
+                arg = args[0]                    # first row at note-on
+            if arg & 0x80:
+                return ('abs', arg & 0x7F)
+            return ('rel', arg) if arg else None
         if lay.variant != 'A' or not (lay.wfprg_start_col and lay.wf_col
                                       and lay.wfarg_col):
             return None

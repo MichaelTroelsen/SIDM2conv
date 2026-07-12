@@ -42,8 +42,16 @@ master; full suite 1534 green). See CHANGELOG v3.20.0 + docs/players/SDI.md.
 SDI residuals (docs/players/SDI.md "Open items" + memory
 gallefoss-sdi-player.md):
 1. C walk phase — RESOLVED 2026-07-12 (later same session): strict
-   median 66.7 -> 84.6 (windowed stable 98.1; 50/80 files >= 80 strict,
-   was 26/80). THE MECHANISM (py65-verified, bin/_sdi_c_walk_trace.py
+   median 66.7 -> 84.6 -> **86.0** with the TWO-MODEL refinement
+   (55/80 files >= 80 strict, was 26/80; <50 strict: 8 -> 5 files).
+   TWO WALK-RESTART MODELS, selected per file by strict agreement
+   (the E/V calibration precedent; sweep validate() A/Bs them,
+   bin/sdi_to_sf2.py --c-steady passes the winner):
+   'onset' (default) = walk restarts at note-on, first plausible arg
+   from the start row; 'steady' = walk FREE-RUNS across retriggers
+   (tie-style drums) -> majority arg of the $9x loop body (Survival
+   33 -> 100/100 STRICT, Denver 80 -> 82.4; Everytime's $FF-arg drums
+   were the motivating find but its residual is elsewhere). THE MECHANISM (py65-verified, bin/_sdi_c_walk_trace.py
    on Micro_Mix + Bahbar): instrument records are 11 BYTES (sound-set
    tail computes snd*11 via ASL x3 + ADC x3 at the STA $174D,X site —
    stride now extracted by locate() as c_rec_stride); walk start row =
@@ -68,10 +76,21 @@ gallefoss-sdi-player.md):
    rows slide pitch every frame, no walk reads at all (Magic_Moment v1:
    ctrl $09/$81 then $10 with semi 42,38,35,30,...; Survival 100/33 =
    same shape) — needs glide-aware strict sampling, same as E's open
-   item; (ii) the low-WINDOWED subclass (Tanks_3000 64/4.4, Everytime
-   28/21, Neverending_Story 44/22, Ninja_IV 33/33) = timing/decode
-   errors, not pitch — diagnose separately (D1 histogram would show
-   wrong-stream shapes).
+   item; (ii) the low-WINDOWED subclass — Tanks_3000 DIAGNOSED (py65,
+   2026-07-12): the image embeds a DORMANT SECOND PLAYER COPY at
+   $25xx-$2B8F whose C patterns match and whose tables reference the
+   same song data (hence 64% windowed by luck), while the LIVE player
+   runs at $1000 (play vector $1F43 = JMP $1003; init $1F40 = JMP
+   $1F46 shim) and matches NO variant signature — an unrecognized
+   sub-generation (per-voice dur counters $1083+7v reloaded at $11BA,
+   row clock ~12 f/tick vs the dormant record's tempo=1). New
+   PATTERNS.md D2 addendum: "the dormant-copy variant". NEXT: flow-dis
+   the live $1000 player (fresh variant or a shifted known grammar?);
+   check Everytime (28/21) / Neverending_Story (44/22) / Ninja_IV
+   (33/33) for the same dual-copy shape (follow the play JMP chain
+   FIRST, then demand the matched pattern PC is reachable —
+   bounded_init/PC-breakpoint check in locate would kill this class
+   generically).
    OLD FINDINGS (superseded, kept for context): FINDINGS SO FAR
    (2026-07-12, post-v3.20.0): (a) the naive RESTING-walk model is DEAD:
    C walks step every OTHER frame ($1594 AND #$01 gate; wf >= $90 =

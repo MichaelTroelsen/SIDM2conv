@@ -126,14 +126,16 @@ def build_rows(m, ev, slot_of, silent_idx):
     return all_rows
 
 
-def convert(path, out):
+def convert(path, out, c_pitch_model=None):
     d, la, h = load_sid(path)
     lay = locate(d, la)
     if lay is None:
         print(f"not a located SDI rip: {path}")
         return 1
     m = SDIModule(d, la)
-    ev = m.events()
+    if c_pitch_model:                # C walk-restart model ('onset' is
+        m.c_pitch_model = c_pitch_model   # the default; 'steady' for
+    ev = m.events()                  # free-running tie-drum files)
     used = Counter(e.instr for v in range(3) for e in ev[v]
                    if e.kind in ('note', 'tie', 'glide'))
     instr_rows, wave_table, pulse_table, slot_of, defaults = \
@@ -172,11 +174,15 @@ def main():
     if len(sys.argv) < 2:
         print(__doc__)
         return 1
+    model = None
+    if "--c-steady" in sys.argv:     # per-file calibrated via the sweep
+        sys.argv.remove("--c-steady")
+        model = "steady"
     path = sys.argv[1]
     out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(
         'out', 'sdi_sf2',
         os.path.splitext(os.path.basename(path))[0] + '.sf2')
-    return convert(path, out)
+    return convert(path, out, c_pitch_model=model)
 
 
 if __name__ == '__main__':

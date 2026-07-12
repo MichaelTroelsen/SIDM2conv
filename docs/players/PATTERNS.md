@@ -124,6 +124,16 @@ offsets *before* touching the decoder. Paid for twice in one day (SDI V: the
 "D" pattern matched a wrapper; identical operands across different songs =
 matching invariant player code, not per-song data).
 
+**The dormant-copy variant (does NOT score zero):** an image can embed a
+SECOND, never-executed player copy whose patterns match and whose tables
+point at the *same song data* — the decode then half-works (SDI
+Tanks_3000: 64% windowed from the dormant `$25xx` copy while the live
+player runs at `$1000`; the play vector was `JMP $1003`). Moderate
+windowed + collapsed strict can be THIS, not a pitch carrier. Detector:
+follow the init/play JMP chain and check the matched pattern's PC is
+reachable from the live entry (a py65 PC-breakpoint that never fires =
+dormant code).
+
 ### D3. Content-verified table location
 Don't trust a lone byte pattern for data tables — verify the *content*: freq
 tables = two abs,Y read targets exactly `$60` apart whose combined words
