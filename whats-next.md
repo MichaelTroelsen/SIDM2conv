@@ -1,9 +1,7 @@
 <original_task>
 Standing mission: any SID -> SF2 at 99% fidelity + 100% editable. Session
-2026-07-11 (two releases in one day): user chose the INSTRUMENT-CAP OPTIMIZER
-(v3.18.0), then "rebuild the dmc corpus with the new default", then
-"please do 3. then 2." (= SM residual pockets, then part-bloat levers), then
-"can we work on glen now" -> the Gallefoss/SDI arc opened. v3.19.0 released.
+2026-07-12: user directives "complete the SDI first", then the knowledge
+tiers ("Do 1 and 2"). v3.20.0 released (commit 157afc5).
 STANDING RULES: accuracy over speed; never ship lossy silently; NEVER run
 pyscript/sf2_open_in_editor.py; ONE MoN-engine build at a time; git checkout
 drivers_src includes after every native build; DON'T edit builder modules
@@ -12,101 +10,90 @@ Fun_Mix).
 </original_task>
 
 <work_completed>
-ALL PUSHED (master @ dc93464 = v3.19.0). Full suite 1524 green. See
-CHANGELOG v3.18.0 + v3.19.0 for the complete list. Highlights beyond the
-changelogs:
-- Measuring traps found this session (in memory): per-voice-delay metrics
-  can't see inter-voice desync; rounded-second window labels wreck sweeps of
-  grid parts (parse the f-form frame bounds); grid probes lead by the grid
-  RESIDUE (Balloon -4) — search delays wide; vacuous guards (tolerance >
-  compared frames) accept garbage.
-- SM corpus: out/soundmonitor = 11 songs / 27 parts, sweep out/_opt_sweep.log
-  = 99.23% strict freq+wf. Dance parts 2-6 + Fuck_Off part01 (242s) = 100.0
-  every register. Honest residuals: Dance drum-roll (part07 v1 76), Thats_All
-  v2 pulse 71-85 + part03 v1 88.7, Dreamix_Two v1 pulse 61-71 + filt 53-88
-  (release-tail class), 1s stub parts at song ends (cosmetic).
-- DMC corpus: out/dmc = 56 songs / ~944 files (grid pass). Grid collapses
-  SEQUENCE-bound files (Balloon 77->1); BUNDLE-bound files keep counts (Alf
-  40 parts at bundles 50-62/63 — the proven DMC diversity boundary). Files
-  with off-grid onset minorities (Cant_Stop 273/26 split residues,
-  French_Frites) honestly stay fpt=1.
-- Gallefoss/SDI: source EXTRACTED + first-pass format map (see
-  memory/gallefoss-sdi-player.md — extraction recipe, track/seq bytes,
-  zN instrument tables, section map of sdi21-n49.asm).
+v3.20.0 = THE SDI PITCH-CARRIER CAMPAIGN + THE KNOWLEDGE BASE (all on
+master; full suite 1534 green). See CHANGELOG v3.20.0 + docs/players/SDI.md.
+- SDI six variants decoded (A-E + V). D wfprg resting-pitch port -> 12
+  files 100.0 STRICT (Another_Day 81->100, Banana 69->100); D $ff = track
+  LOOP not stop (Sveitser 69.5->99.2, Space_Suit 49.6->69.9); E row-0
+  pitch (byte-verified 2_Young $EE1F: set-instr tail applies f[z0[sound]]
+  ON the note-on frame) + $c0-$ef arp records REDIRECT the sound + timing
+  calibrated per file by STRICT agreement (Kirby 16.5->71.0 from
+  calibration alone); V = the "VE-2x/4x multispeed" files were FALSE D
+  LOCATES (play=$0000 wrapper drives a 3-JMP module 2x/4x; V's seq-row
+  read is byte-identical to D's track read -> V dispatches BEFORE D) —
+  full tracker engine decoded from 0.0 (state blocks $0400+v*$40, per-seq
+  length-in-ticks, per-note instrument in the fx byte, octave-nibble
+  pitch); C wfprg LOCATED but GATED (onset apply regressed Bahbar
+  94.3->81.4 — the walk phase differs per sub-class).
+- Final corpus map (dual-metric sweep out/_sdi_sweep2.log, 249 validated,
+  windowed/strict medians): A 98.3/98.3, D 100/100, C 98/66.7, B 89/74.8,
+  E 72/57.8, V 70/21.8; 122 locate-NONE (play+4 tail + covers).
+- STAGE A: 254 SF2s, 0 failures (bin/sdi_to_sf2.py -> out/sdi_sf2/,
+  indexed in docs/SF2.md with Composer/Released columns).
+- KNOWLEDGE BASE: docs/players/PATTERNS.md (technique catalog — named
+  mechanisms P1-P9 / diagnostics D1-D8 / failure classes F1-F4, each with
+  sightings; the pitch-carrying instrument = P1, 5 independent finds) +
+  sidm2/player_idioms.py (find_pattern/find_all/scan_freq_tables/
+  follow_immediate_poke/bounded_init; tests lock idioms against corpus
+  files; sdi_parser consumes it). Linked from PLAYBOOK/README/INDEX.
 </work_completed>
 
 <work_remaining>
-1. **Gallefoss/SDI parser — SHIPPED to 172/229 play+3 decode-capable**
-   (commits 5e01520..0e79154; sidm2/sdi_parser.py + test_sdi_parser.py +
-   bin/_sdi_validate.py): variant A (50 files; 4x100%, rest 98-99.5),
-   B (42; Airwalk/Airwalk_II 100%), C (80; Banana_Man 98.9, Basselusk
-   94.9, Bahbar 91.4). REMAINING: variant D (Another_Day class) recon'd +
-   gated (2-byte track header w/ per-voice speed; freq layout differs;
-   needs a flow-following disasm); the Commando/Delta-cover locate-NONE
-   sub-group; the play+4 generation (213 files); then instrument tables
-   -> Stage A -> Stage B (step-grid native; C's note-on writes $D404=$08
-   TEST bit = hard-restart-style). Full trail in
-   memory/gallefoss-sdi-player.md.
-2. DMC bundle-bound files (Alf/Cant_Stop class): needs a DMC bundle lever —
-   v3.16 proved clustering is a dud; candidates: DMC pulse canonicals
-   (pulse_canon pattern — DMC PWM restarts per note like SM?) or wavetable-
-   arp structural programs (the $1A00 table IS known to the parser; the SM
-   arp_struct pattern now exists to copy — but the freq table isn't PAL,
-   mind the dead-end note in docs/players/DMC.md).
-3. SM residuals (small): Dreamix_Two release-tail pulse/filter; drum-roll
-   phase class; 1s stub parts (absorb-or-drop cosmetic); grid x tie root
-   cause (Final_Luv/Thats_All still SM_GRID=0).
-4. Version-history docs for the DMC per-tune fidelity table in docs/SF2.md
-   are stale vs the grid corpus (re-measure the strongest files with wide
-   delay + own-span windows someday).
-5. Cross-player: INSTR_DECOMPOSE audit on MoN/Hubbard; RELEASE_WF is generic
-   (any shim can provide 'release_wf').
+SDI residuals (docs/players/SDI.md "Open items" + memory
+gallefoss-sdi-player.md):
+1. C walk phase (Bahbar vs Banana_Man sub-classes) — emulate the first
+   walk step's timing vs note-on, then un-gate C's instr_pitch.
+2. E: Evil_Within (all 3 voices decode the SAME track — tp mapping; note
+   its tick gaps x3 == real gaps exactly, tempo model is right), Arabia
+   (row grammar misparse — structure wrong, not just tempo), the conduct
+   program (dual row condition), glide-heavy strict sampling.
+3. V: its own wfprg walk (drum absolutes +32-class, -1 detunes), tempo
+   commands done right (the naive tick->call map LOST the A/B to a flat
+   calibrated clock — Oh_Boy 47 vs 70 windowed).
+4. D pocket: Holy_Josh 65.7 / Max_Mix_1 75.0 (long tracks, cause unknown).
+5. Acid_Jazz sixth layout (play=$1B36, absolute state arrays $22ED+).
+6. SDI STAGE B native via the shared MoN engine (step-grid; the C-class
+   note-on writes $D404=$08 TEST bit — mind the gate model).
+Backlog: SM bundle channel (binds 62-63/63); DMC bundle-bound files;
+cross-player INSTR_DECOMPOSE audit; new players per
+memory/new-player-priority.md (MoN/Deenen after Gallefoss).
 </work_remaining>
 
 <attempted_approaches>
-DO NOT RE-TREAD (adds to the v3.18.0 handoff list):
-- Arp acceptance with flat tolerance: VACUOUS for short notes (accepted
-  garbage drum steps). Tolerance must scale with compared frames.
-- Freerun pulse STREAMS on pulse_tie engines: categorically wrong (the
-  engine resets PW per note); banned in build_native_song.
-- Sweeping grid parts with rounded-second windows or narrow delay searches:
-  both produce catastrophic-looking numbers on byte-faithful builds.
-- DMC grid residue test including legato decode frames: their phase differs;
-  test gates only.
-- Editing bin/build_soundmonitor_native_song.py (or any builder) while
-  _sm_build_all/dmc_build_all runs: per-file subprocesses import the edited
-  module mid-run.
+DO NOT RE-TREAD (see docs/players/PATTERNS.md for the named catalog):
+- C onset pitch from arg[start] blindly: regresses Bahbar (walk phase).
+- V tempo emulation via naive tick->call map: lost the A/B to flat fpt.
+- Selecting E/V timing models by windowed onsets: picks wrong mappers —
+  select by STRICT agreement.
+- Treating 0.0-on-both-metrics as a decode bug: it is a FALSE LOCATE
+  until the operands are verified (paid twice: PATTERNS.md D2).
+- Flow-dis alone for state semantics: it misses paths behind unfollowed
+  dispatch — complement with raw-binary greps for state-cell writes
+  (V's per-note instrument at $1669).
+- Plus all v3.18/19 entries (vacuous tolerances, freerun pulse streams on
+  pulse_tie, rounded-second sweep windows, editing builders mid-run).
 </attempted_approaches>
 
 <critical_context>
-- SMShim flags now: freerun_pulse=1 pulse_loop=1 pulse_tie=1 wave_canon=1
-  release_wf=1 fm_loop=1 filter_tie=1 arp_struct=1 pulse_canon=1 (env kills:
-  SM_WCANON/SM_RELWF/SM_FMLOOP/SM_FTIE/SM_ARP/SM_PCANON=0, SM_GRID=0,
-  sid_model=6581). tbl_arp_idx=1 + arp_program(w) expose the deduped
-  row-header chord tables; MONEvent.wprog = arp id (0=none).
-- DMCShim: within_frame default (DMC_WF=0), grid (DMC_GRID=0), _onset_mode
-  keys note_freq (PAL when onset-aligned!), _grid keys frame_to_tick round.
-- Engine (build_mon_native_song): _rel_split/RELEASE_WF, _first_row_norm,
-  _wave_rel_ok, _rel/gate split ARP gates, fm_program_for(allow_loop),
-  detect_filter_drives(dynamic + reversal), drive_onsets incl. ties (ftie),
-  streams banned for pulse_tie, arp tolerance scaled. exi = 8-tuple,
-  build_native_song returns 8-tuple, IRELWF poked $1960.
-- Crown jewel verified BYTE-IDENTICAL 4x this session (stash-compare method:
-  cp the SF2, rebuild, cmp — stronger than re-measuring).
-- SDI extraction recipe + format map: memory/gallefoss-sdi-player.md.
-  c1541 at /c/winvice/bin/ (petcat too). PETSCII disk = the readable source.
-- Sweep tooling: bin/_opt_sweep_corpus.py (frame-exact, global best-delay,
-  first-audible skip); bin/_opt_measure_parts.py; bin/_dmc_wf_audit.py;
-  INSTR_DECOMPOSE=1/FILT_DEBUG=1/BUNDLE_DECOMPOSE=1 envs.
+- sdi_parser: SDILayout has per-variant fields (d_*, e_*, v_*); locate
+  dispatch order A -> C -> V -> D -> E -> B (V BEFORE D is load-bearing).
+  E/V validators calibrate timing per file (bin/_sdi_sweep.py, gitignored
+  scratch). V frames are PLAY CALLS -> divide by lay.v_mult.
+- instr_pitch(): A row-1, D _d_walk_pitch (resting row), E row-0 f[z0],
+  C returns None (gated), V handled inline in _decode_voice_v.
+- player_idioms.bounded_init: stop on JMP-self spin, NOT first vector
+  write (vectors install before module init — SDI V left voices unset).
+- SDI 2.1 source: bin/SIDDuzz/extracted/sdi21-n49.asm (c1541+petcat at
+  /c/winvice/bin/). WAVEFORM PROGRAM section line 1451, SET INSTRUMENTS
+  670, SEQUENCER 857.
+- Crown jewel stash-compare method: cp the SF2, rebuild, cmp.
+- SM/DMC state unchanged from v3.19.0 (out/soundmonitor 27 parts,
+  out/dmc ~944 files).
 </critical_context>
 
 <current_state>
-- Repo: master == origin/master @ dc93464 (v3.19.0), tree CLEAN except
-  intentional untracked (+ bin/SIDDuzz/extracted = the SDI sources,
-  bin/_rebuild_both.py + _opt_* scratch). 1524 tests green post-changes.
-- out/soundmonitor 27 parts (swept); out/dmc ~944 files (grid corpus,
-  Alf rebuilt post-legato-fix). Artifact republished (same URL).
-- NEXT: the Gallefoss/SDI parser (work_remaining 1) — the arc is open with
-  the format substantially mapped; start at the SEQUENCER section + the
-  data-table definitions, then 30seconds.sid.
+- Repo: master @ 157afc5 (v3.20.0), tree clean except intentional
+  untracked (SID/ corpora, bin/SIDDuzz, out/, scratch). 1534 tests green.
+- out/sdi_sf2 = 254 Stage A SF2s; docs/SF2.md regenerated.
+- NEXT: SDI residuals above, or Stage B, or the next player — user's call.
 </current_state>
