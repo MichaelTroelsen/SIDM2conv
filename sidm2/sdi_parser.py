@@ -97,6 +97,9 @@ class SDILayout:
     wfprg_start_col: int = 0  # per-instrument wf-program start index
     wf_col: int = 0           # wf-program waveform column
     wfarg_col: int = 0        # wf-program arg column ($7f rows: loop target)
+    d_flags_col: int = 0      # D: record byte+7 (low nibble = walk prog #)
+    d_wfprg_lo: int = 0       # D: per-walk-program pointer table (lo)
+    d_wfprg_hi: int = 0       # D: per-walk-program pointer table (hi)
     flags_col: int = 0        # bit0 = ignore track transpose
 
 
@@ -195,6 +198,21 @@ def locate(d, la):
             lay.seq_hi = _w(d, j + 6)
             _f = _freq_scan          # keep pyflakes quiet; freq set above
             lay.state = _w(d, j + 11)
+            # wfprg WALK (3-byte rows [wf, pitch, extra]; row+3 byte $FE =
+            # stop / $FF = loop-to-0; pitch bit7 = ABSOLUTE semitone else
+            # relative to note+transpose, result & $7F): TAY / LDA lo,Y /
+            # STA zp / LDA hi,Y / STA zp / LDY pos,X / LDA (zp),Y /
+            # AND mask,X
+            j = _find(d, [0xA8, 0xB9, -1, -1, 0x85, -1, 0xB9, -1, -1,
+                          0x85, -1, 0xBC, -1, -1, 0xB1, -1, 0x3D])
+            if j is not None:
+                lay.d_wfprg_lo = _w(d, j + 2)
+                lay.d_wfprg_hi = _w(d, j + 7)
+            # instrument record flags byte (+7; low nibble = walk prog #):
+            # LDA $flags,Y / STA zp,X / JMP
+            j = _find(d, [0xB9, -1, -1, 0x95, -1, 0x4C])
+            if j is not None:
+                lay.d_flags_col = _w(d, j + 1)
             return lay
     elif _find(d, [0xBC, -1, -1, 0xA2, 0x15]) is not None:
         # variant E (play+4, the v2.1-source generation): LDY $tp,X /
@@ -653,8 +671,11 @@ class SDIModule:
                                        instr[v], dur + 1))
                 tick += dur + 1
                 continue
-            # NOTE + dur byte (+flag extras)
+            # NOTE + dur byte (+flag extras); + the wfprg resting pitch
             note = (b + transpose) & 0xFF
+            ip = self.instr_pitch(instr[v])
+            if ip is not None:
+                note = ip[1] if ip[0] == 'abs' else (note + ip[1]) & 0x7F
             db = self._u8(seq + pos)
             pos += 1
             if db & 0x80:                        # filter command: +2 bytes
@@ -666,6 +687,37 @@ class SDIModule:
                                    instr[v], dur + 1))
             tick += dur + 1
         return tick
+
+    def _d_walk_pitch(self, instr):
+        """Variant D: simulate the instrument's wfprg walk (one 3-byte row
+        per frame from fr+1) to its RESTING pitch — a $FE-terminated walk
+        parks on its last row, which is the sustained heard pitch (the
+        onset frame itself carries the raw note; attack rows spike past).
+        Loops ($FF) are arps unless every row agrees. -> ('rel'|'abs', p)
+        or None."""
+        lay = self.lay
+        if not (lay.d_flags_col and lay.d_wfprg_lo and lay.d_wfprg_hi):
+            return None
+        wfi = self._u8(lay.d_flags_col + (instr & 0x1F) * 8) & 0x0F
+        if wfi == 0:                             # nibble 0 = walk disabled
+            return None
+        ptr = (self._u8(lay.d_wfprg_lo + wfi)
+               | (self._u8(lay.d_wfprg_hi + wfi) << 8))
+        pos = 0
+        pitches = []
+        for _ in range(64):
+            pitches.append(self._u8(ptr + pos + 1))
+            ctrl = self._u8(ptr + pos + 3)
+            if ctrl == 0xFE:                     # stop: last pitch holds
+                p = pitches[-1]
+                return ('abs', p & 0x7F) if p & 0x80 else ('rel', p)
+            if ctrl == 0xFF:                     # loop: arp unless constant
+                if len(set(pitches)) == 1:
+                    p = pitches[0]
+                    return ('abs', p & 0x7F) if p & 0x80 else ('rel', p)
+                return None
+            pos += 3
+        return None
 
     def _b_arp_off(self, arp):
         """Variant B: the selected arp's step-0 semitone offset (the pitch
@@ -875,6 +927,8 @@ class SDIModule:
         30seconds) or, for noise/drum programs (wf bit7), the ABSOLUTE
         drum semitone. -> ('rel'|'abs', semitones) or None."""
         lay = self.lay
+        if lay.variant == 'D':
+            return self._d_walk_pitch(instr)
         if lay.variant == 'C':
             # C's wfprg IS the pitch carrier (walk mapped: wf $18AD-class,
             # arg added to note2 per row) but the ONSET offset depends on
