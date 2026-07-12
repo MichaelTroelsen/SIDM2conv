@@ -288,6 +288,24 @@ gallefoss-sdi-player.md):
      from tempo_seq, per-tick vs per-row?) + add track delay to the
      accumulator. CORPUS-GATE (52 E files) — timing = broad blast
      radius. Grammar/pitch are DONE; only the clock remains.
+     ROOT CAUSE FOUND (2026-07-12, emulation): the extracted
+     tempo_seq=[2,3] is SPURIOUS — Arabia's ad_col/wf_col/wfarg_col
+     ($F5BF-F5C3) point INTO the track-pointer array, so the tempo
+     bytes (01 82 00 87...) are garbage that happens to decode to
+     [2,3]. REAL clock (row-head $EEE1 emulation): 1 tick = 5 frames,
+     row dur = (byte & $1F) + 1 ticks (v0 steady = dur-1 5-frame
+     rows; v2 gaps 15/5/30/10 = dur 3/1/6/2 x5 EXACTLY). BUT our
+     _play_seq_e emits dur EXACTLY 2x real for v2 (our 6,2,6,2,12,4
+     vs real 3,1,3,1,6,2) -> true mapper = x2.5, which the sweep's
+     integer x2/x3 bracket -> drift. TWO bugs: (a) E tempo locate is
+     wrong for this gen (points at track ptrs); (b) Arabia dur decode
+     is 2x (its dur bytes encode unlike 2_Young's proven
+     (b&$1F+1)xtempo — maybe &$3F or the $E0/$E1 explicit-dur path is
+     mis-taken). FIX: extend bin/_sdi_e_semantics.py to print row
+     dur-bytes beside the measured 5-frame-grid gaps, derive the real
+     dur formula, set E fpt=5 flat where the program locate is bogus.
+     CORPUS-GATE. This is the whole E-timing unlock; Zap/Xard/Sweeper
+     almost certainly share the 2x-dur bug.
      THEN rewrite _decode_voice_e/_play_seq_e on the true grammar:
      4th-channel conductor timeline (nch=4 gens: ghost = tl[base+3];
      merge its $E943 writes on the tick clock), bit7 tie semantics,
