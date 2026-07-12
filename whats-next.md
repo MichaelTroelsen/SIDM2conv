@@ -304,12 +304,24 @@ gallefoss-sdi-player.md):
      run ~5 ahead of real then re-converge (our 47=real47, our 52 vs
      real 42, our 107 vs real 102, our 127=real127) = extra/missing
      NOTE EVENTS, not a clock error.
-     REAL NEXT STEP: the tie/glide (bit7) + rest/$5F handling in
-     _play_seq_e — which rows re-gate. Emulate the $D404 gate per
-     frame for Arabia v2, list the TRUE onset frames, diff against
-     our 'note'-kind events; the extras are rows we wrongly emit as
-     notes (likely bit7 or the $F0 release-prefix path). This is the
-     SAME class as C's walk-regate/glide work — reuse that lens.
+     REAL CAUSE ISOLATED ($D404 gate-rise emulation vs our notes,
+     Arabia v2): it is NOT density — the onset COUNT matches (11 real
+     / 11 ours in 160 frames). Our notes are a CONSTANT +6 FRAMES
+     LATE after the first: real 1,6,21,41,46,76,86,101,121,126,146 vs
+     our(frame_of_tick) 0,12,27,47,52,82,92,107,127,132,152 — note[0]
+     aligns (0~1) then every later note = real+6. +6 > the +-4 strict
+     window => strict collapses to 16 while windowed stays 69.
+     So it's a SINGLE early-delay error: our first row/track-delay
+     spans ~12 frames where real spans 5 (over-long by ~7). Suspect
+     the opening track DELAY byte ($C7 in v0's track = (C7&$3F)=7
+     ticks -> tick+=7 -> ~17 frames via frame_of_tick, likely applied
+     to the wrong voice or in wrong units, OR double-counted with the
+     first row's dur). FIX: trace the exact tick value at our first
+     v2 note vs the real first-onset frame; correct the C0-F6 delay
+     accounting (it should feed the SAME frame_of_tick clock, once).
+     Small blast radius (delay only) but STILL corpus-gate. Likely a
+     few-% Arabia gain; the bigger E lift is elsewhere (the 19 <50
+     files — re-sweep and D1 each class fresh).
      THEN rewrite _decode_voice_e/_play_seq_e on the true grammar:
      4th-channel conductor timeline (nch=4 gens: ghost = tl[base+3];
      merge its $E943 writes on the tick clock), bit7 tie semantics,
