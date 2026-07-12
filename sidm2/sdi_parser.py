@@ -809,12 +809,35 @@ class SDIModule:
                                        instr[v], dur + 1))
                 tick += dur + 1
                 continue
-            # NOTE (retrigger)
+            # NOTE (retrigger) — + the instrument's wfprg pitch (row-1
+            # arg: melodic offset, or the absolute drum semitone)
             note = (b + self._transpose_for(v, transpose)) & 0xFF
+            ip = self.instr_pitch(instr[v])
+            if ip is not None:
+                note = ip[1] if ip[0] == 'abs' else (note + ip[1]) & 0xFF
             events.append(SDIEvent(tick * self.fpt, 'note', note,
                                    instr[v], dur + 1))
             tick += dur + 1
         return tick
+
+    def instr_pitch(self, instr):
+        """Variant A: the instrument's wfprg row-1 (row 0 = the $01 init
+        row) carries PITCH — waveform + arg where arg = a semitone OFFSET
+        added to the note (melodic instruments: verified +2/+4/+5/+9 on
+        30seconds) or, for noise/drum programs (wf bit7), the ABSOLUTE
+        drum semitone. -> ('rel'|'abs', semitones) or None."""
+        lay = self.lay
+        if lay.variant != 'A' or not (lay.wfprg_start_col and lay.wf_col
+                                      and lay.wfarg_col):
+            return None
+        st = self._u8(lay.wfprg_start_col + (instr % max(1, lay.stride)))
+        wf = self._u8(lay.wf_col + st + 1)
+        arg = self._u8(lay.wfarg_col + st + 1)
+        if wf == 0x7F or arg >= 0x60:
+            return None
+        if wf & 0x80:
+            return ('abs', arg)
+        return ('rel', arg)
 
     def _transpose_for(self, v, transpose):
         # instrument flag bit0 = ignore track transpose; instrument is

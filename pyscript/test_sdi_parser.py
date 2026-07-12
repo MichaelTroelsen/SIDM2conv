@@ -43,8 +43,10 @@ class TestSDIParser(unittest.TestCase):
         self.assertGreater(len(notes), 300)
         self.assertEqual(notes[0].frame, 0)
         # raw $24; instr 4's flag bit0 suppresses the $ec (+12) track
-        # transpose (validated: trace agrees 99.5% with suppression on)
-        self.assertEqual(notes[0].note, 0x24)
+        # transpose, and its wfprg row-1 = ($81, $48) = a DRUM program
+        # carrying the ABSOLUTE pitch 72 — matching the traced onset freq
+        # table[72] exactly (STRICT validation 99.6%)
+        self.assertEqual(notes[0].note, 72)
         self.assertEqual(notes[1].frame, 24)         # dur 7+1 ticks * 3 f/t
 
     def test_freq_table(self):
