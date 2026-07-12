@@ -86,11 +86,24 @@ gallefoss-sdi-player.md):
    row clock ~12 f/tick vs the dormant record's tempo=1). New
    PATTERNS.md D2 addendum: "the dormant-copy variant". NEXT: flow-dis
    the live $1000 player (fresh variant or a shifted known grammar?);
-   check Everytime (28/21) / Neverending_Story (44/22) / Ninja_IV
-   (33/33) for the same dual-copy shape (follow the play JMP chain
-   FIRST, then demand the matched pattern PC is reachable —
-   bounded_init/PC-breakpoint check in locate would kill this class
-   generically).
+   the reachability check (follow the play JMP chain, demand matched
+   pattern PCs execute) in locate would kill this class generically.
+   (iii) WALK-REGATE ROLLS — Everytime/Neverending_Story/Ninja_IV
+   DIAGNOSED (2026-07-12, flow-dis $10C8-$11F8 + B1 read trace on
+   Neverending): the C track/seq DECODE IS CORRECT (track grammar
+   verified instruction-level: $80-$FD all transpose bias $A0 incl.
+   the ^$1F+1 borrow path, $FF restart, $FE stop, NO repeats; seq $8x
+   dur = AND #$3F, matches ours). Neverending v2 really is ONE
+   24-tick note — the 6-frame "onsets" are the INSTRUMENT WALK
+   RE-GATING the voice (drum-roll wfprg loops toggling the gate bit
+   every cycle; note-on writes $D404=$08 TEST first, $11D9-$11DB).
+   Our sequencer-level note matches only the first re-gate; the
+   validator counts every gate rise. FIX (next session): extend the
+   C walk simulation to detect re-gate cycles in the $9x loop body
+   and EXPAND rolls into synthetic re-gate notes (decoder-level —
+   Stage A needs the roll expansion anyway to sound right). Same
+   likely explains Everytime's twin noise voices (heard semi 94-95
+   const = noise-freq rows in the loop, args $FF).
    OLD FINDINGS (superseded, kept for context): FINDINGS SO FAR
    (2026-07-12, post-v3.20.0): (a) the naive RESTING-walk model is DEAD:
    C walks step every OTHER frame ($1594 AND #$01 gate; wf >= $90 =
