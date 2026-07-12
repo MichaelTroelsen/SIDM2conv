@@ -148,6 +148,20 @@ def locate(d, la):
         lay.variant = 'C'
         lay.init_block = _w(d, i + 7)            # subtune record base
         lay.state = _w(d, i + 10)                # trklo state cells
+        # WFPRG (the pitch carrier): walk = LDY pos,X / LDA wf,Y /
+        # CMP #$90 / BCC ($90+ = loop-back); arg col: LDA arg,Y / CLC /
+        # ADC note2,X / STA (played semi = note2 + arg[row])
+        j = _find(d, [0xBC, -1, -1, 0xB9, -1, -1, 0xC9, 0x90, 0x90])
+        if j is not None:
+            lay.wf_col = _w(d, j + 4)
+        j = _find(d, [0xB9, -1, -1, 0x18, 0x7D, -1, -1, 0x9D])
+        if j is not None:
+            lay.wfarg_col = _w(d, j + 1)
+        # per-instrument records (wfprg start = byte +2): the 3-col read
+        j = _find(d, [0xB9, -1, -1, 0x9D, -1, -1, 0xB9, -1, -1,
+                      0x9D, -1, -1, 0xB9, -1, -1, 0x9D, -1, -1])
+        if j is not None:
+            lay.wfprg_start_col = _w(d, j + 7)   # the +2 byte column
     elif _find(d, [0xBD, -1, -1, 0x85, -1, 0xBD, -1, -1, 0x85, -1,
                    0xA0, 0x00, 0xB1, -1]) is not None:
         # variant D (Another_Day class): per-voice ptr arrays like B, but
@@ -753,6 +767,9 @@ class SDIModule:
                                            instr[v], dur))
                 else:                            # chord NOTE row: n1 + n2,
                     n1 = (self._u8(seq + pos) + transpose) & 0xFF
+                    ip = self.instr_pitch(instr[v])
+                    if ip is not None:
+                        n1 = (n1 + ip[1]) & 0xFF
                     pos += 2                     #   retriggers with n1
                     events.append(SDIEvent(tick * self.fpt, 'note', n1,
                                            instr[v], dur))
@@ -766,6 +783,9 @@ class SDIModule:
                 self._cur_instr = instr
                 continue
             note = (b + transpose) & 0xFF        # NOTE row (any < $60)
+            ip = self.instr_pitch(instr[v])      # + the wfprg pitch offset
+            if ip is not None:
+                note = (note + ip[1]) & 0xFF
             events.append(SDIEvent(tick * self.fpt, 'note', note,
                                    instr[v], dur))
             tick += dur
@@ -855,6 +875,14 @@ class SDIModule:
         30seconds) or, for noise/drum programs (wf bit7), the ABSOLUTE
         drum semitone. -> ('rel'|'abs', semitones) or None."""
         lay = self.lay
+        if lay.variant == 'C':
+            # C's wfprg IS the pitch carrier (walk mapped: wf $18AD-class,
+            # arg added to note2 per row) but the ONSET offset depends on
+            # WHEN the first walk step lands vs note-on — applying arg[start]
+            # blindly REGRESSED Bahbar 94.3 -> 81.4 while helping the
+            # Banana_Man class (+9). Disabled until the walk phase is
+            # settled by emulation; tables stay located for Stage A/B.
+            return None
         if lay.variant != 'A' or not (lay.wfprg_start_col and lay.wf_col
                                       and lay.wfarg_col):
             return None
