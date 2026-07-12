@@ -250,15 +250,31 @@ gallefoss-sdi-player.md):
      grammar for the ghost's own stream unverified — harmless since
      the timeline only matters when $E943 actually moves; find a
      file where it does before investing).
-     ARABIA'S REAL LEAD: D1 delta histogram = SCATTER (1 x19, 11 x17,
-     -3 x10, 34 x10 ...) — not a constant bias, so SECTIONS decode
-     shifted = track-code semantics. The B1 trace showed $C7's arg
-     read at $EE95 but $A0's at $EEA0 — DIFFERENT handler PCs; the
-     current model treats $A0-$BF as transpose and $C0-$F6 as
-     delay+seq. Dis the two track handlers at $EE6B-$EEC0 to get the
-     true track grammar (transpose vs delay vs something else), then
-     re-histogram. Zap/Xard/Sweeper (gap 3, no conductor) likely
-     share this track-level cause.
+     ARABIA — THREE CAUSES RULED OUT (2026-07-12, disassembly +
+     A/B):
+     - TRACK GRAMMAR CONFIRMED CORRECT (dis $EE5F-$EEB3): <$80 = seq
+       ($E946); $80-$BF = transpose SBC #$A0 -> $E929,X then next;
+       $C0-$F6 = delay AND #$3F -> $E910,X then next; $F7 = off;
+       $F8-$FF = 16-bit jump (b&7 = hi). EXACTLY the current model.
+       (The "$C7 vs $A0 different PC" was just the transpose-vs-delay
+       branch — same handler, no mystery.)
+     - NOTE FORMULA CONFIRMED (dis $EFAF-$EFBD, bytes
+       18 69 00 18 6D 43 E9 18 7D 29 E9): note = (op&$7F) + selfmod
+       (#$00 static) + $E943(conductor) + $E929,X(transpose). NO
+       -$18 bias — my earlier "SBC #$18" was `18`=CLC. So the current
+       (note+transpose) model is pitch-exact for static-conductor
+       files; the conductor infra covers the rest.
+     - instr_pitch: A/B disabling E instr_pitch = ZERO score change
+       on all 6 files (it already returns None for these).
+     => Arabia's residual is TIMING/DENSITY, not pitch: real onsets
+     are SPARSE (~75-frame pairs) but our tempo-mapped decode density
+     mismatches, so the +-4 matcher pairs real onsets with wrong
+     decoded notes (scatter). This is the E TIMING-CALIBRATION domain
+     (the conduct program / per-file tempo, a known-hard separate
+     axis) NOT a grammar bug. NEXT: instrument the sweep to dump, for
+     Arabia, our tempo-mapped NOTE frames vs real onset frames side
+     by side; the gap is a tempo/delay-accumulation error. Zap/Xard/
+     Sweeper (gap 3) likely share it.
      THEN rewrite _decode_voice_e/_play_seq_e on the true grammar:
      4th-channel conductor timeline (nch=4 gens: ghost = tl[base+3];
      merge its $E943 writes on the tick clock), bit7 tie semantics,
