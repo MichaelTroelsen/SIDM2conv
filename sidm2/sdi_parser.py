@@ -90,6 +90,9 @@ class SDILayout:
     d_flags_col: int = 0      # D: record byte+7 (low nibble = walk prog #)
     d_wfprg_lo: int = 0       # D: per-walk-program pointer table (lo)
     d_wfprg_hi: int = 0       # D: per-walk-program pointer table (hi)
+    c_rec_stride: int = 0     # C: instrument record size in bytes (the
+                              #    sound-set tail computes snd*stride via
+                              #    ASL x3 + ADC chain; Micro_Mix: 11)
     e_z0: int = 0             # E: per-sound wfprg start row (z0 column)
     e_w: int = 0              # E: wfprg waveform column
     e_f: int = 0              # E: wfprg arg/pitch column
@@ -142,6 +145,18 @@ def locate(d, la):
                       0x9D, -1, -1, 0xB9, -1, -1, 0x9D, -1, -1])
         if j is not None:
             lay.wfprg_start_col = _w(d, j + 7)   # the +2 byte column
+        # record stride from the sound-set tail: LDA $snd,X / ASL x3 /
+        # ADC $snd,X (repeated) / STA -> stride = 8 + #ADCs (py65-
+        # verified on Micro_Mix: 3 ADCs = 11-byte records; Y = snd*11)
+        j = _find(d, [0xBD, -1, -1, 0x0A, 0x0A, 0x0A, 0x7D, -1, -1])
+        if j is not None:
+            src = _w(d, j + 1)
+            k = j + 6
+            adcs = 0
+            while (d[k] == 0x7D and _w(d, k + 1) == src):
+                adcs += 1
+                k += 3
+            lay.c_rec_stride = 8 + adcs
     elif _find(d, [0xAC, -1, -1, 0xB9, -1, -1, 0x85, -1, 0xB9, -1, -1,
                    0x85, -1, 0xBC, -1, -1, 0xB1, -1]) is not None:
         # variant V (the VE-2x/-4x wrapper class, e.g. Oh_Boy): play=$0000
@@ -957,7 +972,8 @@ class SDIModule:
                     n1 = (self._u8(seq + pos) + transpose) & 0xFF
                     ip = self.instr_pitch(instr[v])
                     if ip is not None:
-                        n1 = (n1 + ip[1]) & 0xFF
+                        n1 = (ip[1] if ip[0] == 'abs'
+                              else (n1 + ip[1])) & 0xFF
                     pos += 2                     #   retriggers with n1
                     events.append(SDIEvent(tick * self.fpt, 'note', n1,
                                            instr[v], dur))
@@ -973,7 +989,8 @@ class SDIModule:
             note = (b + transpose) & 0xFF        # NOTE row (any < $60)
             ip = self.instr_pitch(instr[v])      # + the wfprg pitch offset
             if ip is not None:
-                note = (note + ip[1]) & 0xFF
+                note = (ip[1] if ip[0] == 'abs'
+                        else (note + ip[1])) & 0xFF
             events.append(SDIEvent(tick * self.fpt, 'note', note,
                                    instr[v], dur))
             tick += dur
@@ -1077,12 +1094,31 @@ class SDIModule:
                 return ('abs', arg & 0x7F)
             return ('rel', arg) if arg else None
         if lay.variant == 'C':
-            # C's wfprg IS the pitch carrier (walk mapped: wf $18AD-class,
-            # arg added to note2 per row) but the ONSET offset depends on
-            # WHEN the first walk step lands vs note-on — applying arg[start]
-            # blindly REGRESSED Bahbar 94.3 -> 81.4 while helping the
-            # Banana_Man class (+9). Disabled until the walk phase is
-            # settled by emulation; tables stay located for Stage A/B.
+            # py65-VERIFIED walk model (2026-07-12, Micro_Mix + Bahbar,
+            # bin/_sdi_c_walk_trace.py): start row = record byte +2 at
+            # wfprg_start_col + instr*c_rec_stride; ONE row per frame
+            # from the note-on frame; wf >= $90 jumps BACK (wf-$90) rows
+            # and executes that row ($91 = 1-row park, $93 = 3-row chord
+            # arp). The onset frame plays note2 + arg[start row] (arg
+            # bit7 = ABSOLUTE, per the n49 source's `lda f-1,y / bmi`).
+            # The old "regressed Bahbar" gate was a STRIDE BUG artifact
+            # (instr % max(1, 0) == 0 read the same row for every
+            # instrument) — Bahbar's real args are all zero.
+            if not (lay.wf_col and lay.wfarg_col and lay.wfprg_start_col
+                    and lay.c_rec_stride):
+                return None
+            y = self._u8(lay.wfprg_start_col
+                         + (instr & 0x1F) * lay.c_rec_stride)
+            for _ in range(8):                   # walk to the first row
+                wf = self._u8(lay.wf_col + y)    # with a plausible pitch
+                if 0x90 <= wf < 0xF0:            # jump-back: execute the
+                    y = (y - (wf - 0x90)) & 0xFF  # target row this frame
+                arg = self._u8(lay.wfarg_col + y)
+                if arg & 0x80:
+                    return ('abs', arg & 0x7F)
+                if arg < 0x60:                   # attack-spike rows
+                    return ('rel', arg) if arg else None
+                y = (y + 1) & 0xFF               # (>= $60, bit7 clear)
             return None
         if lay.variant != 'A' or not (lay.wfprg_start_col and lay.wf_col
                                       and lay.wfarg_col):

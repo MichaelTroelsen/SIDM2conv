@@ -41,7 +41,38 @@ master; full suite 1534 green). See CHANGELOG v3.20.0 + docs/players/SDI.md.
 <work_remaining>
 SDI residuals (docs/players/SDI.md "Open items" + memory
 gallefoss-sdi-player.md):
-1. C walk phase — IN PROGRESS (task: un-gate C pitch). FINDINGS SO FAR
+1. C walk phase — RESOLVED 2026-07-12 (later same session): strict
+   median 66.7 -> 84.6 (windowed stable 98.1; 50/80 files >= 80 strict,
+   was 26/80). THE MECHANISM (py65-verified, bin/_sdi_c_walk_trace.py
+   on Micro_Mix + Bahbar): instrument records are 11 BYTES (sound-set
+   tail computes snd*11 via ASL x3 + ADC x3 at the STA $174D,X site —
+   stride now extracted by locate() as c_rec_stride); walk start row =
+   record byte +2 ($17B9 column); the walk steps ONE ROW PER FRAME from
+   the note-on frame; wf >= $90 = jump BACK (wf-$90) rows and execute
+   that row THIS frame ($91 = 1-row park reading arg[Y-1], $93 = a
+   looping 3-row chord arp e.g. {+12,+7,+4}). arg bit7 = ABSOLUTE.
+   instr_pitch now returns the first-valid-row arg (skips >= $60
+   spike rows, follows jump-backs). 3 lock tests added
+   (pyscript/test_sdi_parser.py TestSDIVariantCWalk).
+   DEAD HYPOTHESES (do not re-tread): (a) "walk steps every other
+   frame / $1594 AND #$01 gate" — FALSE for Micro_Mix AND Bahbar (both
+   step 1/frame; the no-walk frame is fr+1 only, an HR/transient
+   frame); (b) "walk phase differs per sub-class caused the Bahbar
+   regression" — FALSE: the old regression was the STRIDE BUG
+   (instr % max(1, stride=0) == 0 -> every instrument read the same
+   record; Bahbar's args are all zero so correct decode is a no-op
+   there — it now scores 97.1/97.1); (c) the 2.1 SOURCE's "$90+ = AND
+   #$7F literal waveform" grammar does NOT match this rip generation
+   (the rip's $9x = jump-back — trace beats source, PATTERNS.md).
+   C RESIDUALS (new item 1b): (i) glide-class voices — sequence glide
+   rows slide pitch every frame, no walk reads at all (Magic_Moment v1:
+   ctrl $09/$81 then $10 with semi 42,38,35,30,...; Survival 100/33 =
+   same shape) — needs glide-aware strict sampling, same as E's open
+   item; (ii) the low-WINDOWED subclass (Tanks_3000 64/4.4, Everytime
+   28/21, Neverending_Story 44/22, Ninja_IV 33/33) = timing/decode
+   errors, not pitch — diagnose separately (D1 histogram would show
+   wrong-stream shapes).
+   OLD FINDINGS (superseded, kept for context): FINDINGS SO FAR
    (2026-07-12, post-v3.20.0): (a) the naive RESTING-walk model is DEAD:
    C walks step every OTHER frame ($1594 AND #$01 gate; wf >= $90 =
    RELATIVE loop-back by wf-$90), so Bahbar's melodic instruments park
@@ -53,9 +84,50 @@ gallefoss-sdi-player.md):
    100/22.7, Little_Bee 100/36.4, Denver 98.9/26.4, Magic_Moment
    98.1/37.0) = timing exact, pitch off by a consistent IN-WINDOW
    amount — suspect per-file/per-voice TRANSPOSE error or an early-row
-   offset, NOT the resting-pitch class. NEXT ACTION: delta histogram
-   (PATTERNS.md D1) over those 4 files; if constant per instrument/
-   voice, that pins the mechanism for a large slice of the 54.
+   offset, NOT the resting-pitch class.
+   ROUND 2 (same day, bin/_sdi_c_delta_hist.py — gitignored, D1 delta
+   histogram over the 4 files above, broken out by (instrument,
+   fr+dk) not just aggregated): the delta is 100% DETERMINISTIC per
+   (instrument, frame-offset-since-onset) — ZERO scatter across every
+   sampled onset (e.g. Denver instr21 n=49 at EACH of fr+{0,2,3,5}:
+   {3,7,7,10} exactly, every time). This proves it's a real stepping
+   program, not noise — but also KILLS the single-static-row model:
+   several instruments show a multi-step staircase across fr+0..+5
+   (Denver instr21, Magic_Moment instr21: 65,8,5,-7), so a frame-paced
+   simulator is required, not a lookup.
+   BUG FOUND (confirmed, currently dormant/harmless): `instr_pitch`'s
+   shared A-style formula indexes `wfprg_start_col + (instr %
+   max(1, lay.stride))`; `lay.stride` is ONLY computed in the 'A'
+   branch (sdi_parser.py:362-366) — `locate()` returns early for
+   B/C/D at line 348, before that runs. So for C, stride stays the
+   dataclass default 0 -> `instr % 1 == 0` ALWAYS -> every instrument
+   in a file reads the SAME table row. Verified: dumping
+   wfprg_start_col+instr%1 gave IDENTICAL wf/arg for every instrument
+   in Micro_Mix/Little_Bee/Denver/Magic_Moment; indexing directly by
+   `+instr` (no modulo) immediately produced per-instrument-distinct
+   rows. Harmless today only because C's instr_pitch short-circuits to
+   None before reaching this code (sdi_parser.py:1079-1086) — MUST be
+   fixed (proper stride, not just `+instr`, since some instrument
+   counts may exceed the column and alias into the next column) before
+   any row model is re-tried.
+   SOURCE CONTRADICTION (unresolved): the C-locate comment
+   (sdi_parser.py:131-134) says "wf,Y CMP #$90 / BCC = $90+ is a
+   RELATIVE loop-back" — but re-reading the actual 2.1 source engine
+   (bin/SIDDuzz/extracted/sdi21-n49.asm:1580-1635, `wf{CBM-@}kik` /
+   `wf{CBM-@}stand`) shows $90-$E1 wf bytes are just AND-$7F-masked as
+   a literal SID waveform register value (no loop), and the pitch ARG
+   byte is read via `LDA f-1,Y` — one position BEHIND the current wf
+   read position (an off-by-one between the wf and arg columns). The
+   generic source may not match this rip's compiled variant (editor
+   assembles per-song, feature-flagged per CLAUDE.md history) — do NOT
+   trust the source grammar blindly; the $90+ semantics need a fresh
+   py65 disassembly trace of an actual C rip (Bahbar or Micro_Mix),
+   same method used to nail D's walk and A's wfprg.
+   NEXT ACTION: py65-trace Micro_Mix (or Bahbar) through its WFPRG
+   interpreter at a real note-on to get the ACTUAL row-advance cadence
+   + arg/wf column alignment byte-exact, then build a frame-paced
+   walk simulator (D's `_d_walk_pitch` style but stepping, not
+   resolving to one resting value) gated behind the fixed stride.
 2. E: Evil_Within (all 3 voices decode the SAME track — tp mapping; note
    its tick gaps x3 == real gaps exactly, tempo model is right), Arabia
    (row grammar misparse — structure wrong, not just tempo), the conduct

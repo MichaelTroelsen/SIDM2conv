@@ -56,5 +56,43 @@ class TestSDIParser(unittest.TestCase):
         self.assertAlmostEqual(f48 / f36, 2.0, delta=0.01)
 
 
+MICRO = os.path.join(ROOT, "SID", "Gallefoss_Glenn", "Micro_Mix.sid")
+
+
+@unittest.skipUnless(os.path.exists(MICRO), "Gallefoss corpus not staged")
+class TestSDIVariantCWalk(unittest.TestCase):
+    """Variant-C wfprg walk locks — py65-verified 2026-07-12 on
+    Micro_Mix + Bahbar (bin/_sdi_c_walk_trace.py): 11-byte instrument
+    records (sound-set tail = ASL x3 + ADC x3), walk start = record
+    byte +2, one row/frame, wf >= $90 jumps BACK (wf-$90) rows."""
+    @classmethod
+    def setUpClass(cls):
+        from sidm2.sdi_parser import load_sid, SDIModule
+        cls.d, cls.la, cls.h = load_sid(MICRO)
+        cls.m = SDIModule(cls.d, cls.la)
+
+    def test_variant_and_stride(self):
+        lay = self.m.lay
+        self.assertEqual(lay.variant, 'C')
+        self.assertEqual(lay.c_rec_stride, 11)   # emu: Y = instr * 11
+        self.assertEqual(lay.wfprg_start_col, 0x17B9)
+        self.assertEqual(lay.wf_col, 0x18AD)
+
+    def test_walk_start_rows(self):
+        """Emulated record reads: instr 4 -> row 132, instr 16 -> 77,
+        instr 9 -> 22 (the wrong-stride bug read row st=const for ALL)."""
+        lay = self.m.lay
+        for instr, row in ((4, 132), (16, 77), (9, 22)):
+            self.assertEqual(
+                self.m._u8(lay.wfprg_start_col + instr * lay.c_rec_stride),
+                row)
+
+    def test_instr_pitch(self):
+        """instr 16 = the looping {+12,+7,+4} chord arp (emu fr+0 heard
+        note2+12); instr 4 parks at arg 0 -> None (note2 exact)."""
+        self.assertEqual(self.m.instr_pitch(16), ('rel', 12))
+        self.assertIsNone(self.m.instr_pitch(4))
+
+
 if __name__ == "__main__":
     unittest.main()
