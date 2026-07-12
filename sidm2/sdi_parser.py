@@ -202,6 +202,19 @@ def locate(d, la):
             return None
         lay.seq_lo = _w(d, j + 1)
         lay.seq_hi = _w(d, j + 6)
+        # tempo PROGRAMS: TAY / LDA $starts,Y / CLC / ADC #pos / TAY /
+        # LDA $prog,Y / BPL   (prog byte & $7f = tick length - 1;
+        # bit7 = loop-to-start marker)
+        j = _find(d, [0xA8, 0xB9, -1, -1, 0x18, 0x69, -1, 0xA8,
+                      0xB9, -1, -1, 0x10])
+        if j is not None:
+            lay.wfarg_col = _w(d, j + 2)         # tempo START offsets tbl
+            lay.wf_col = _w(d, j + 9)            # tempo PROGRAM bytes tbl
+        # the s array (per-subtune tempo prg index / $80+constant):
+        # LDA $s,X / STA $imm / LDA #$01 / STA (init)
+        j = _find(d, [0xBD, -1, -1, 0x8D, -1, -1, 0xA9, 0x01, 0x8D])
+        if j is not None:
+            lay.ad_col = _w(d, j + 1)            # s array
         _freq_scan(d, la, lay)
         return lay
     else:
@@ -334,14 +347,39 @@ class SDIModule:
             # voice v reads tl[tp0 - 2 + v]
             self.track_ptrs = [(d[lo + tp0 - 2 + v] | (d[hi + tp0 - 2 + v] << 8))
                                for v in range(3)]
-            self.tempo_reload = 3                # tempo PROGRAMS; validator
-                                                 # auto-calibrates fpt
+            self.tempo_reload = 3
+            # unroll the subtune's TEMPO PROGRAM: s0 bit7 = constant
+            # (& $7f); else program bytes (& $7f = tick length - 1,
+            # bit7 = loop marker, included)
+            self.tempo_seq = None
+            if self.lay.ad_col and self.lay.wf_col:
+                s0 = d[self.lay.ad_col - la]
+                if s0 & 0x80:
+                    self.tempo_seq = [(s0 & 0x7F) + 1]
+                else:
+                    start = d[self.lay.wfarg_col - la + s0]
+                    seq = []
+                    for k in range(64):
+                        b = d[self.lay.wf_col - la + start + k]
+                        seq.append((b & 0x7F) + 1)
+                        if b & 0x80:
+                            break
+                    self.tempo_seq = seq or [4]
         else:                                    # B: per-voice arrays
             lo, hi = self.lay.track_lo_arr - la, self.lay.track_hi_arr - la
             self.track_ptrs = [(d[lo + v] | (d[hi + v] << 8))
                                for v in range(3)]
             self.tempo_reload = max(0, self.lay.tempo_imm)
         self.fpt = self.tempo_reload + 1
+
+    def frame_of_tick(self, t):
+        """E tempo programs: cumulative frames for tick t (cycle-unrolled)."""
+        seq = getattr(self, 'tempo_seq', None)
+        if not seq:
+            return t * self.fpt
+        n = len(seq)
+        cyc = sum(seq)
+        return (t // n) * cyc + sum(seq[:t % n])
 
     def _raw(self, addr, off):
         k = addr - self.la + off
