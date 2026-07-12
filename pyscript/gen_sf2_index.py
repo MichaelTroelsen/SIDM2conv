@@ -28,6 +28,49 @@ PLAYERS = [
     ("romuzak",      "ROMUZAK V6.3",                "Oliver Blasnik",       "native"),
     ("soundmonitor", "Sound Monitor (Musicmaster)", "Fun Fun",              "native"),
 ]
+# out/ subdir -> SID corpus dir(s) holding the ORIGINAL files, for the
+# per-song PSID metadata (title/author/released at header +$16/+$36/+$56)
+SID_DIRS = {
+    "dmc":          ["SID/JohannesBjerregaard"],
+    "mon":          ["SID/Tel_Jeroen"],
+    "hubbard":      ["SID/Hubbard_Rob"],
+    "galway_sf2":   ["SID/Galway_Martin"],
+    "romuzak":      ["SID/Fun_Fun"],
+    "soundmonitor": ["SID/Fun_Fun"],
+}
+# suffixes the builders append to the source SID's stem
+SUFFIX = re.compile(r"(_sub\d+|_song\d+|_native)$", re.I)
+
+
+def _psid_meta(path):
+    """(author, released) from the PSID/RSID header, or None."""
+    try:
+        raw = open(path, "rb").read(0x80)
+        if raw[:4] not in (b"PSID", b"RSID"):
+            return None
+        author = raw[0x36:0x56].split(b"\0")[0].decode("latin-1").strip()
+        released = raw[0x56:0x76].split(b"\0")[0].decode("latin-1").strip()
+        return author, released
+    except OSError:
+        return None
+
+
+def _sid_lookup(subdir):
+    """case-insensitive stem -> sid path for the player's corpus dirs."""
+    look = {}
+    for d in SID_DIRS.get(subdir, []):
+        for p in glob.glob(os.path.join(ROOT, d, "*.sid")):
+            look[os.path.splitext(os.path.basename(p))[0].lower()] = p
+    return look
+
+
+def song_meta(subdir, key, look):
+    """PSID (author, released) for a built song key, or None."""
+    for cand in (key, SUFFIX.sub("", key)):
+        p = look.get(cand.lower())
+        if p:
+            return _psid_meta(p)
+    return None
 # probe / scratch prefixes to ignore
 SKIP = re.compile(r"(^_|_ab$|_abg|_abl|_tmp|_probe|verify_probe|dmcfid)", re.I)
 PART = re.compile(r"_part\d+$", re.I)
@@ -67,10 +110,14 @@ def render():
         out.append(f"### {player} — {composer}  ·  `{driver}`  ·  "
                    f"{len(songs)} songs / {total_parts} SF2 files")
         out.append("")
-        out.append("| Song | Parts |")
-        out.append("|------|------:|")
+        out.append("| Song | Composer | Released | Parts |")
+        out.append("|------|----------|----------|------:|")
+        look = _sid_lookup(subdir)
         for key in sorted(songs, key=str.lower):
-            out.append(f"| {key.replace('_', ' ')} | {songs[key]} |")
+            meta = song_meta(subdir, key, look)
+            author, released = meta if meta else ("", "")
+            out.append(f"| {key.replace('_', ' ')} | {author} | {released} "
+                       f"| {songs[key]} |")
         out.append("")
     out.insert(4, f"**{grand} songs built** across "
                   f"{len([p for p in PLAYERS if songs_in(p[0])])} native players "

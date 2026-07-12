@@ -166,232 +166,232 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 
 ### DMC (Demo Music Creator) — Johannes Bjerregaard  ·  `native`  ·  57 songs / 944 SF2 files
 
-| Song | Parts |
-|------|------:|
-| Again Its JB | 12 |
-| Alf TV Theme | 40 |
-| Balloon | 1 |
-| Billie Jean | 15 |
-| Blobby | 2 |
-| Blue Monday 88 | 7 |
-| Camel Riders Inc | 12 |
-| Cant Stop | 114 |
-| Chase v2 | 11 |
-| Cute Tune | 38 |
-| Deel 2 | 8 |
-| Depeche Mode Songs | 6 |
-| DMC Demo IV tune 1 | 7 |
-| DMC Demo IV tune 2 | 15 |
-| DMC Demo IV tune 3 | 16 |
-| Domino Dancing | 7 |
-| Dragon Sword | 7 |
-| Dreaming | 15 |
-| Dreaming 2 | 28 |
-| Dummy II | 11 |
-| Dummynaytos | 1 |
-| Eagles | 7 |
-| Fat 6 | 23 |
-| First Try PSX | 47 |
-| Fourth Dimension | 6 |
-| French Frites | 64 |
-| Fruitbank | 11 |
-| Hit the Baze | 10 |
-| In the Mood | 3 |
-| Jazz 1 | 31 |
-| M A C H | 2 |
-| Mixerplot | 9 |
-| MSI Demo | 36 |
-| Music Demo | 32 |
-| Myth Demo | 11 |
-| Namnam Special | 20 |
-| Omega Force One | 25 |
-| Predictable main | 4 |
-| Ragtime Anno 87 | 3 |
-| Roadblaster | 1 |
-| Rockbuster | 17 |
-| Scandalous | 19 |
-| Shape | 38 |
-| Slimbo4 | 11 |
-| Some Soul | 29 |
-| Spacegame Music | 2 |
-| Special Agent | 27 |
-| Spy vs Spy III | 23 |
-| STII8 | 8 |
-| Stormlord V2 | 2 |
-| Test | 10 |
-| Thunder Force | 8 |
-| Tiny Symphony | 5 |
-| Twilight Beyond | 4 |
-| Wanna Get Sick | 7 |
-| Who Is Robb Vol 1 | 15 |
-| Zoom | 1 |
+| Song | Composer | Released | Parts |
+|------|----------|----------|------:|
+| Again Its JB | Johannes Bjerregaard | 1989 Upfront | 12 |
+| Alf TV Theme | Johannes Bjerregaard | 1988 Maniacs of Noise | 40 |
+| Balloon | Johannes Bjerregaard | 1990 Johannes Bjerregaard | 1 |
+| Billie Jean | Johannes Bjerregaard | 1990 Johannes Bjerregaard | 15 |
+| Blobby | Johannes Bjerregaard | 19?? Johannes Bjerregaard | 2 |
+| Blue Monday 88 | Johannes Bjerregaard | 1989 The Dominators | 7 |
+| Camel Riders Inc | Johannes Bjerregaard (The Jerk) | 1987 The Jerk | 12 |
+| Cant Stop | Johannes Bjerregaard | 1988 Upfront | 114 |
+| Chase v2 | Johannes Bjerregaard | 1988 Johannes Bjerregaard | 11 |
+| Cute Tune | Johannes Bjerregaard | 1988-90 Johannes Bjerregaard | 38 |
+| Deel 2 | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 8 |
+| Depeche Mode Songs | Johannes Bjerregaard | 1986 Danish Music Company | 6 |
+| DMC Demo IV tune 1 | Johannes Bjerregaard | 1988 Danish Music Company | 7 |
+| DMC Demo IV tune 2 | Johannes Bjerregaard | 1988 Danish Music Company | 15 |
+| DMC Demo IV tune 3 | Johannes Bjerregaard | 1988 Danish Music Company | 16 |
+| Domino Dancing | Johannes Bjerregaard | 1988 Maniacs of Noise | 7 |
+| Dragon Sword | Johannes Bjerregaard | 2018 Johannes Bjerregaard | 7 |
+| Dreaming | Johannes Bjerregaard | 1988 Danish Music Company | 15 |
+| Dreaming 2 | Johannes Bjerregaard | 1987 Danish Music Company | 28 |
+| Dummy II | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 11 |
+| Dummynaytos | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 1 |
+| Eagles | Johannes Bjerregaard | 1987 Hewson | 7 |
+| Fat 6 | Johannes Bjerregaard | 1988 Johannes Bjerregaard | 23 |
+| First Try PSX | Johannes Bjerregaard | 1988 Johannes Bjerregaard | 47 |
+| Fourth Dimension | Johannes Bjerregaard | 1988 Danish Music Company | 6 |
+| French Frites | Johannes Bjerregaard | 1990 Johannes Bjerregaard | 64 |
+| Fruitbank | Johannes Bjerregaard | 1989 Mastertronic/Dig. Design | 11 |
+| Hit the Baze | Johannes Bjerregaard | 1988 Danish Music Company | 10 |
+| In the Mood | Johannes Bjerregaard | 1988 Triton Technology | 3 |
+| Jazz 1 | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 31 |
+| M A C H | Johannes Bjerregaard | 1987 Starvision | 2 |
+| Mixerplot | Johannes Bjerregaard | 1989 Upfront | 9 |
+| MSI Demo | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 36 |
+| Music Demo | Johannes Bjerregaard | 1988 Maniacs of Noise | 32 |
+| Myth Demo | Johannes Bjerregaard | 1989 Maniacs of Noise | 11 |
+| Namnam Special | Johannes Bjerregaard | 1988 Danish Music Company | 20 |
+| Omega Force One | Johannes Bjerregaard | 1988 64'er/Markt & Technik | 25 |
+| Predictable main | Johannes Bjerregaard | 1989 Bones/Maniacs of Noise | 4 |
+| Ragtime Anno 87 | Johannes Bjerregaard | 1987 Johannes Bjerregaard | 3 |
+| Roadblaster | Johannes Bjerregaard | 19?? Johannes Bjerregaard | 1 |
+| Rockbuster | Johannes Bjerregaard | 1988 Danish Music Company | 17 |
+| Scandalous | Johannes Bjerregaard | 1989 The Dominators | 19 |
+| Shape | Johannes Bjerregaard | 1988 Upfront | 38 |
+| Slimbo4 | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 11 |
+| Some Soul | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 29 |
+| Spacegame Music | Johannes Bjerregaard | 1987 The Main Force 2772 | 2 |
+| Special Agent | Johannes Bjerregaard | 1987 Firebird | 27 |
+| Spy vs Spy III | Johannes Bjerregaard | 1987 Johannes Bjerregaard | 23 |
+| STII8 | Johannes Bjerregaard | 2014 Johannes Bjerregaard | 8 |
+| Stormlord V2 | Johannes Bjerregaard | 1989 Maniacs of Noise | 2 |
+| Test | Johannes Bjerregaard | 1989 Johannes Bjerregaard | 10 |
+| Thunder Force | Johannes Bjerregaard | 1987 Rack-It | 8 |
+| Tiny Symphony | Johannes Bjerregaard | 1988 Danish Music Company | 5 |
+| Twilight Beyond | Johannes Bjerregaard | 1988 Danish Music Company | 4 |
+| Wanna Get Sick | Johannes Bjerregaard | 1989 Upfront | 7 |
+| Who Is Robb Vol 1 | Johannes Bjerregaard (The Jerk) | 198? The Jerk | 15 |
+| Zoom | Johannes Bjerregaard | 1988 Discovery Software Int'l | 1 |
 
 ### Maniacs of Noise — Jeroen Tel  ·  `native`  ·  26 songs / 201 SF2 files
 
-| Song | Parts |
-|------|------:|
-| Children Songs sub0 | 11 |
-| Cybernoid II sub0 | 13 |
-| Cybernoid sub0 | 14 |
-| Daring Dots sub0 | 1 |
-| G I Hero sub0 | 13 |
-| Gaplus preview sub0 | 18 |
-| Gaplus sub0 | 27 |
-| Hawkeye Proto 1 sub0 | 4 |
-| Hawkeye sub0 | 7 |
-| Hawkeye sub2 | 2 |
-| Hawkeye sub2 native | 1 |
-| Hawkeye sub3 | 1 |
-| Hawkeye sub3 native | 1 |
-| Ice Age sub0 | 23 |
-| Iets van JT sub0 | 10 |
-| M A C C sub0 | 7 |
-| Myth sub0 | 8 |
-| Pal sine hoener tune 1 sub0 | 3 |
-| Sample sub0 | 4 |
-| Supremacy sub0 | 13 |
-| Supremacy sub1 | 2 |
-| Supremacy sub2 | 10 |
-| Thats preview sub0 | 1 |
-| Tomcat sub0 | 3 |
-| Viool Tello sub0 | 1 |
-| Wizzy sub0 | 3 |
+| Song | Composer | Released | Parts |
+|------|----------|----------|------:|
+| Children Songs sub0 | Jeroen Tel | 1988 Maniacs of Noise | 11 |
+| Cybernoid II sub0 | Jeroen Tel | 1988 Hewson | 13 |
+| Cybernoid sub0 | Jeroen Tel | 1988 Hewson | 14 |
+| Daring Dots sub0 | Jeroen Tel | 1988 Maniacs of Noise | 1 |
+| G I Hero sub0 | Jeroen Tel | 1988 Maniacs of Noise | 13 |
+| Gaplus preview sub0 | Jeroen Tel | 1988 Maniacs of Noise | 18 |
+| Gaplus sub0 | Jeroen Tel | 1988 Mastertronic | 27 |
+| Hawkeye Proto 1 sub0 | Jeroen Tel | 198? Maniacs of Noise | 4 |
+| Hawkeye sub0 | Jeroen Tel | 1988 Thalamus | 7 |
+| Hawkeye sub2 | Jeroen Tel | 1988 Thalamus | 2 |
+| Hawkeye sub2 native |  |  | 1 |
+| Hawkeye sub3 | Jeroen Tel | 1988 Thalamus | 1 |
+| Hawkeye sub3 native |  |  | 1 |
+| Ice Age sub0 | Jeroen Tel | 1988 Maniacs of Noise | 23 |
+| Iets van JT sub0 | Jeroen Tel | 1988 Maniacs of Noise | 10 |
+| M A C C sub0 | Jeroen Tel | 1988 Maniacs of Noise | 7 |
+| Myth sub0 | Jeroen Tel | 1989 System 3 | 8 |
+| Pal sine hoener tune 1 sub0 | Jeroen Tel | 2020 Offence | 3 |
+| Sample sub0 | Jeroen Tel | 1988 Maniacs of Noise | 4 |
+| Supremacy sub0 | Jeroen Tel | 1991 Virgin | 13 |
+| Supremacy sub1 | Jeroen Tel | 1991 Virgin | 2 |
+| Supremacy sub2 | Jeroen Tel | 1991 Virgin | 10 |
+| Thats preview sub0 | Jeroen Tel | 1988 Maniacs of Noise | 1 |
+| Tomcat sub0 | Jeroen Tel | 1989 Digital L&M/Players | 3 |
+| Viool Tello sub0 | Jeroen Tel | 1988 Maniacs of Noise | 1 |
+| Wizzy sub0 | Jeroen Tel | 1988 Maniacs of Noise | 3 |
 
 ### Rob Hubbard — Rob Hubbard  ·  `native`  ·  61 songs / 589 SF2 files
 
-| Song | Parts |
-|------|------:|
-| 5 Title Tunes song0 | 1 |
-| 5 Title Tunes song1 | 1 |
-| 5 Title Tunes song2 | 2 |
-| 5 Title Tunes song3 | 2 |
-| 5 Title Tunes song4 | 1 |
-| Action Biker song0 | 1 |
-| Action Biker song1 | 1 |
-| Action Biker song2 | 1 |
-| Auf Wiedersehen Monty song0 | 43 |
-| Chimera song0 | 12 |
-| Chimera song1 | 1 |
-| Commando song0 | 4 |
-| Commando song16 | 4 |
-| Commando song2 | 1 |
-| Confuzion song0 | 5 |
-| Crazy Comets song0 | 5 |
-| Crazy Comets song1 | 1 |
-| Deep Strike song0 | 25 |
-| Delta song0 | 221 |
-| Delta song11 | 3 |
-| Delta song12 | 3 |
-| Geoff Capes Strongman Challenge song0 | 1 |
-| Geoff Capes Strongman Challenge song3 | 1 |
-| Geoff Capes Strongman Challenge song4 | 1 |
-| Geoff Capes Strongman Challenge song5 | 1 |
-| Gerry the Germ song0 | 2 |
-| Gerry the Germ song1 | 1 |
-| Gerry the Germ song4 | 1 |
-| Gerry the Germ song6 | 1 |
-| Gremlins song0 | 1 |
-| Gremlins song1 | 1 |
-| Gremlins song2 | 1 |
-| Gremlins song3 | 1 |
-| Gremlins song4 | 2 |
-| Gremlins song5 | 1 |
-| Gremlins song6 | 1 |
-| Hunter Patrol song0 | 8 |
-| Last V8 C128 version song0 | 2 |
-| Last V8 C128 version song1 | 1 |
-| Last V8 C128 version song2 | 1 |
-| Last V8 song0 | 2 |
-| Last V8 song1 | 1 |
-| Last V8 song11 | 4 |
-| Last V8 song2 | 1 |
-| Lightforce song0 | 9 |
-| Master of Magic song0 | 6 |
-| Master of Magic song1 | 1 |
-| Master of Magic song2 | 1 |
-| Monty on the Run song0 | 4 |
-| Monty on the Run song1 | 1 |
-| Monty on the Run song2 | 1 |
-| Ninja song0 | 21 |
-| One Man and his Droid song0 | 11 |
-| Saboteur II song0 | 86 |
-| Sanxion song0 | 31 |
-| Shockway Rider song0 | 22 |
-| Star Paws song0 | 10 |
-| Thing on a Spring song0 | 4 |
-| Zoids song0 | 4 |
-| Zoids song1 | 1 |
-| Zoids song2 | 1 |
+| Song | Composer | Released | Parts |
+|------|----------|----------|------:|
+| 5 Title Tunes song0 | Rob Hubbard | 1985 Rob Hubbard | 1 |
+| 5 Title Tunes song1 | Rob Hubbard | 1985 Rob Hubbard | 1 |
+| 5 Title Tunes song2 | Rob Hubbard | 1985 Rob Hubbard | 2 |
+| 5 Title Tunes song3 | Rob Hubbard | 1985 Rob Hubbard | 2 |
+| 5 Title Tunes song4 | Rob Hubbard | 1985 Rob Hubbard | 1 |
+| Action Biker song0 | Rob Hubbard | 1985 Mastertronic | 1 |
+| Action Biker song1 | Rob Hubbard | 1985 Mastertronic | 1 |
+| Action Biker song2 | Rob Hubbard | 1985 Mastertronic | 1 |
+| Auf Wiedersehen Monty song0 | Rob Hubbard & Ben Daglish | 1987 Gremlin Graphics | 43 |
+| Chimera song0 | Rob Hubbard | 1985 Firebird | 12 |
+| Chimera song1 | Rob Hubbard | 1985 Firebird | 1 |
+| Commando song0 | Rob Hubbard | 1985 Elite | 4 |
+| Commando song16 | Rob Hubbard | 1985 Elite | 4 |
+| Commando song2 | Rob Hubbard | 1985 Elite | 1 |
+| Confuzion song0 | Rob Hubbard | 1985 Incentive | 5 |
+| Crazy Comets song0 | Rob Hubbard | 1985 Martech | 5 |
+| Crazy Comets song1 | Rob Hubbard | 1985 Martech | 1 |
+| Deep Strike song0 | Rob Hubbard | 1987 Durell | 25 |
+| Delta song0 | Rob Hubbard | 1987 Thalamus | 221 |
+| Delta song11 | Rob Hubbard | 1987 Thalamus | 3 |
+| Delta song12 | Rob Hubbard | 1987 Thalamus | 3 |
+| Geoff Capes Strongman Challenge song0 | Rob Hubbard | 1986 Martech | 1 |
+| Geoff Capes Strongman Challenge song3 | Rob Hubbard | 1986 Martech | 1 |
+| Geoff Capes Strongman Challenge song4 | Rob Hubbard | 1986 Martech | 1 |
+| Geoff Capes Strongman Challenge song5 | Rob Hubbard | 1986 Martech | 1 |
+| Gerry the Germ song0 | Rob Hubbard | 1986 Firebird | 2 |
+| Gerry the Germ song1 | Rob Hubbard | 1986 Firebird | 1 |
+| Gerry the Germ song4 | Rob Hubbard | 1986 Firebird | 1 |
+| Gerry the Germ song6 | Rob Hubbard | 1986 Firebird | 1 |
+| Gremlins song0 | Rob Hubbard | 1985 Rob Hubbard | 1 |
+| Gremlins song1 | Rob Hubbard | 1985 Rob Hubbard | 1 |
+| Gremlins song2 | Rob Hubbard | 1985 Rob Hubbard | 1 |
+| Gremlins song3 | Rob Hubbard | 1985 Rob Hubbard | 1 |
+| Gremlins song4 | Rob Hubbard | 1985 Rob Hubbard | 2 |
+| Gremlins song5 | Rob Hubbard | 1985 Rob Hubbard | 1 |
+| Gremlins song6 | Rob Hubbard | 1985 Rob Hubbard | 1 |
+| Hunter Patrol song0 | Rob Hubbard | 1985 Mastertronic | 8 |
+| Last V8 C128 version song0 | Rob Hubbard | 1985 MAD/Mastertronic | 2 |
+| Last V8 C128 version song1 | Rob Hubbard | 1985 MAD/Mastertronic | 1 |
+| Last V8 C128 version song2 | Rob Hubbard | 1985 MAD/Mastertronic | 1 |
+| Last V8 song0 | Rob Hubbard | 1985 MAD/Mastertronic | 2 |
+| Last V8 song1 | Rob Hubbard | 1985 MAD/Mastertronic | 1 |
+| Last V8 song11 | Rob Hubbard | 1985 MAD/Mastertronic | 4 |
+| Last V8 song2 | Rob Hubbard | 1985 MAD/Mastertronic | 1 |
+| Lightforce song0 | Rob Hubbard | 1986 Faster Than Light (FTL) | 9 |
+| Master of Magic song0 | Rob Hubbard | 1985 MAD/Mastertronic | 6 |
+| Master of Magic song1 | Rob Hubbard | 1985 MAD/Mastertronic | 1 |
+| Master of Magic song2 | Rob Hubbard | 1985 MAD/Mastertronic | 1 |
+| Monty on the Run song0 | Rob Hubbard | 1985 Gremlin Graphics | 4 |
+| Monty on the Run song1 | Rob Hubbard | 1985 Gremlin Graphics | 1 |
+| Monty on the Run song2 | Rob Hubbard | 1985 Gremlin Graphics | 1 |
+| Ninja song0 | Rob Hubbard | 1986 Entertainment USA | 21 |
+| One Man and his Droid song0 | Rob Hubbard | 1985 Mastertronic | 11 |
+| Saboteur II song0 | Rob Hubbard | 1987 Rob Hubbard | 86 |
+| Sanxion song0 | Rob Hubbard | 1986 Thalamus | 31 |
+| Shockway Rider song0 | Rob Hubbard | 1987 Faster Than Light (FTL) | 22 |
+| Star Paws song0 | Rob Hubbard | 1987 Software Projects | 10 |
+| Thing on a Spring song0 | Rob Hubbard | 1985 Gremlin Graphics | 4 |
+| Zoids song0 | Rob Hubbard | 1986 Martech | 4 |
+| Zoids song1 | Rob Hubbard | 1986 Martech | 1 |
+| Zoids song2 | Rob Hubbard | 1986 Martech | 1 |
 
 ### Martin Galway — Martin Galway  ·  `native`  ·  40 songs / 40 SF2 files
 
-| Song | Parts |
-|------|------:|
-| Arkanoid | 1 |
-| Arkanoid alternative drums | 1 |
-| Athena | 1 |
-| Combat School | 1 |
-| Comic Bakery | 1 |
-| Commando High-Score | 1 |
-| Daley Thompsons Decathlon loader | 1 |
-| Game Over | 1 |
-| Green Beret | 1 |
-| Helikopter Jagd | 1 |
-| Highlander | 1 |
-| Hunchback II | 1 |
-| Hyper Sports | 1 |
-| Insects in Space | 1 |
-| Kong Strikes Back | 1 |
-| Match Day | 1 |
-| Miami Vice | 1 |
-| MicroProse Soccer indoor | 1 |
-| MicroProse Soccer intro | 1 |
-| MicroProse Soccer outdoor | 1 |
-| MicroProse Soccer V1 | 1 |
-| Mikie | 1 |
-| Neverending Story | 1 |
-| Ocean Loader 1 | 1 |
-| Ocean Loader 2 | 1 |
-| Parallax | 1 |
-| Ping Pong | 1 |
-| Rambo First Blood Part II | 1 |
-| Rastan | 1 |
-| Rolands Ratrace | 1 |
-| Short Circuit | 1 |
-| Slap Fight | 1 |
-| Street Hawk | 1 |
-| Street Hawk Prototype | 1 |
-| Swag | 1 |
-| Terra Cresta | 1 |
-| Times of Lore | 1 |
-| Wizball | 1 |
-| Yie Ar Kung Fu | 1 |
-| Yie Ar Kung Fu II | 1 |
+| Song | Composer | Released | Parts |
+|------|----------|----------|------:|
+| Arkanoid | Martin Galway | 1987 Imagine | 1 |
+| Arkanoid alternative drums | Martin Galway | 1987 Imagine | 1 |
+| Athena | Martin Galway | 1987 Imagine | 1 |
+| Combat School | Martin Galway | 1987 Ocean | 1 |
+| Comic Bakery | Martin Galway | 1986 Imagine | 1 |
+| Commando High-Score | Martin Galway | 1986 Martin Galway | 1 |
+| Daley Thompsons Decathlon loader | Martin Galway | 1984 Ocean | 1 |
+| Game Over | Martin Galway | 1987 Imagine | 1 |
+| Green Beret | Martin Galway | 1986 Imagine/Konami | 1 |
+| Helikopter Jagd | Martin Galway | 1986 Ocean | 1 |
+| Highlander | Martin Galway | 1986 Ocean | 1 |
+| Hunchback II | Martin Galway | 1984 Ocean | 1 |
+| Hyper Sports | Martin Galway | 1985 Imagine/Konami | 1 |
+| Insects in Space | Martin Galway | 1989 Hewson | 1 |
+| Kong Strikes Back | Martin Galway | 1984 Ocean | 1 |
+| Match Day | Martin Galway | 1986 Ocean | 1 |
+| Miami Vice | Martin Galway | 1986 Ocean | 1 |
+| MicroProse Soccer indoor | Martin Galway | 1988 MicroProse | 1 |
+| MicroProse Soccer intro | Martin Galway | 1988 MicroProse | 1 |
+| MicroProse Soccer outdoor | Martin Galway | 1988 MicroProse | 1 |
+| MicroProse Soccer V1 | Martin Galway | 1988 MicroProse | 1 |
+| Mikie | Martin Galway | 1986 Imagine | 1 |
+| Neverending Story | Martin Galway | 1985 Ocean | 1 |
+| Ocean Loader 1 | Martin Galway | 1985 Ocean | 1 |
+| Ocean Loader 2 | Martin Galway | 1985 Ocean | 1 |
+| Parallax | Martin Galway | 1986 Ocean | 1 |
+| Ping Pong | Martin Galway | 1986 Imagine | 1 |
+| Rambo First Blood Part II | Martin Galway | 1985 Ocean | 1 |
+| Rastan | Martin Galway | 1988 Imagine | 1 |
+| Rolands Ratrace | Martin Galway | 1985 Ocean | 1 |
+| Short Circuit | Martin Galway | 1986 Ocean | 1 |
+| Slap Fight | Martin Galway | 1987 Imagine | 1 |
+| Street Hawk | Martin Galway | 1986 Ocean | 1 |
+| Street Hawk Prototype | Martin Galway | 1985 Ocean | 1 |
+| Swag | Martin Galway | 1984 Micromania | 1 |
+| Terra Cresta | Martin Galway | 1986 Imagine | 1 |
+| Times of Lore | Martin Galway | 1988 Origin Systems | 1 |
+| Wizball | Martin Galway | 1987 Ocean | 1 |
+| Yie Ar Kung Fu | Martin Galway | 1985 Imagine | 1 |
+| Yie Ar Kung Fu II | Martin Galway | 1986 Imagine | 1 |
 
 ### ROMUZAK V6.3 — Oliver Blasnik  ·  `native`  ·  4 songs / 4 SF2 files
 
-| Song | Parts |
-|------|------:|
-| Delirious 9 tune 1 | 1 |
-| Delirious 9 tune 1 native | 1 |
-| Road of Excess end | 1 |
-| Road of Excess end native | 1 |
+| Song | Composer | Released | Parts |
+|------|----------|----------|------:|
+| Delirious 9 tune 1 | Michael Troelsen (Fun Fun) | 1990 Genesis Project | 1 |
+| Delirious 9 tune 1 native | Michael Troelsen (Fun Fun) | 1990 Genesis Project | 1 |
+| Road of Excess end | Michael Troelsen (Fun Fun) | 1990 Triangle | 1 |
+| Road of Excess end native | Michael Troelsen (Fun Fun) | 1990 Triangle | 1 |
 
 ### Sound Monitor (Musicmaster) — Fun Fun  ·  `native`  ·  11 songs / 27 SF2 files
 
-| Song | Parts |
-|------|------:|
-| Dance at Night remix | 8 |
-| Dreamix | 5 |
-| Dreamix Two | 2 |
-| Final Luv | 1 |
-| Fuck Off | 2 |
-| Fun Mix | 2 |
-| Just Cant Get Enough | 1 |
-| No Title | 1 |
-| Poppy Road | 1 |
-| Thats All | 3 |
-| Times Up | 1 |
+| Song | Composer | Released | Parts |
+|------|----------|----------|------:|
+| Dance at Night remix | Michael Troelsen (Coto) | 1987 Danish Cracking Crew | 8 |
+| Dreamix | Michael Troelsen (Fun Fun) | 1987 Triangle | 5 |
+| Dreamix Two | Michael Troelsen (Fun Fun) | 1987 Triangle | 2 |
+| Final Luv | Michael Troelsen (Fun Fun) | 1987 Triangle | 1 |
+| Fuck Off | Michael Troelsen (Fun Fun) | 1987 Triangle | 2 |
+| Fun Mix | Michael Troelsen (Coto) | 1987 Danish Cracking Crew | 2 |
+| Just Cant Get Enough | Michael Troelsen (Fun Fun) | 1988 Triangle | 1 |
+| No Title | Michael Troelsen (Fun Fun) | 1987 Triangle | 1 |
+| Poppy Road | Michael Troelsen (Fun Fun) | 1987 Triangle | 1 |
+| Thats All | Michael Troelsen (Fun Fun) | 1987 Triangle | 3 |
+| Times Up | Michael Troelsen (Fun Fun) | 1987 Triangle | 1 |
 
 <!-- END GENERATED -->
 
