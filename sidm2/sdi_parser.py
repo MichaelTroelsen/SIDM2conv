@@ -773,7 +773,9 @@ class SDIModule:
     def _decode_voice_d(self, v, max_ticks=40000):
         """D tracks = arrays of (seq#, header) PAIRS: header hi nibble =
         transpose, lo nibble = seq REPEAT count; seq# $fe = voice off;
-        track byte $ff = wrap to position 0 (song loop -> stop)."""
+        track byte $ff = wrap to position 0 (the player LOOPS - Another_Day
+        $11A4: CMP #$FF -> LDY #$00; short looping tracks like Space_Suit
+        v1 = one pair + $ff under-decoded to 7 events before this)."""
         track = self.track_ptrs[v]
         tpos = 0
         tick = 0
@@ -782,8 +784,11 @@ class SDIModule:
         while tick < max_ticks and guard < 4000:
             guard += 1
             seq_no = self._u8(track + tpos)
-            if seq_no == 0xFF:                   # wrap -> song loop
-                break
+            if seq_no == 0xFF:                   # wrap to 0 = song LOOP
+                if tpos == 0:                    # degenerate all-$ff track
+                    break
+                tpos = 0
+                continue
             if seq_no == 0xFE:                   # voice off
                 break
             hdr = self._u8(track + tpos + 1)
