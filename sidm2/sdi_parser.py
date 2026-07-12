@@ -253,6 +253,12 @@ def locate(d, la):
                       0xB9, -1, -1, 0x4C])
         if j is not None:
             lay.wfprg_start_col = _w(d, j + 8)   # arp record base
+        # arp/pitch OFFSET table (played semi = note + tbl[arp*8+step]&$7f):
+        # LDA $t,Y / AND #$7F / CLC / ADC $note2,X / TAY / CLC / LDA $freq,Y
+        j = _find(d, [0xB9, -1, -1, 0x29, 0x7F, 0x18, 0x7D, -1, -1,
+                      0xA8, 0x18, 0xB9])
+        if j is not None:
+            lay.wfarg_col = _w(d, j + 1)         # B pitch/arp table
         pass
     # SEQ ptr tables (all variants): TAY / LDA $llll,Y / STA zp / ...
     i = _find(d, [0xA8, 0xB9, -1, -1, 0x85, -1, 0xB9, -1, -1, 0x85, -1])
@@ -647,6 +653,13 @@ class SDIModule:
             tick += dur + 1
         return tick
 
+    def _b_arp_off(self, arp):
+        """Variant B: the selected arp's step-0 semitone offset (the pitch
+        table located via the freq-add pattern), 0 when no arp."""
+        if arp is None or not self.lay.wfarg_col:
+            return 0
+        return self._u8(self.lay.wfarg_col + arp * 8) & 0x7F
+
     def _play_seq_b(self, v, seq, tick, transpose, events, max_ticks):
         """Variant B row model: $80-$bf dur (b-$80; $3f -> next byte) /
         $c0-$df instrument (& $1f, 8-byte records) / $e0-$ff arp select
@@ -658,6 +671,7 @@ class SDIModule:
         pos = 0
         dur = 0
         guard = 0
+        arp = None
         row_start = True
         while tick < max_ticks and guard < 20000:
             guard += 1
@@ -672,11 +686,13 @@ class SDIModule:
                     dur = self._u8(seq + pos) & 0x3F
                     pos += 1
                 continue
-            if 0xC0 <= b <= 0xDF:                # instrument set
+            if 0xC0 <= b <= 0xDF:                # instrument set (clears arp)
                 instr[v] = b & 0x1F
                 self._cur_instr = instr
+                arp = None
                 continue
             if b >= 0xE0:                        # arp select (instr redirect)
+                arp = b & 0x1F
                 continue
             if 0x70 <= b <= 0x7F:                # gate-off/release row
                 events.append(SDIEvent(tick * self.fpt, 'off', None,
@@ -688,15 +704,18 @@ class SDIModule:
                 continue
             if b == 0x5F:                        # gate-time + note row
                 pos += 1                         # gate-time byte (unused here)
-                note = (self._u8(seq + pos) + transpose) & 0xFF
+                note = (self._u8(seq + pos) + transpose
+                        + self._b_arp_off(arp)) & 0xFF
                 pos += 1
                 events.append(SDIEvent(tick * self.fpt, 'note', note,
                                        instr[v], dur + 1))
                 tick += dur + 1
                 row_start = True
                 continue
-            # NOTE row (transpose is unconditional in B)
-            note = (b + transpose) & 0xFF
+            # NOTE row (transpose unconditional in B; + the arp's step-0
+            # semitone offset — B pitch lives in the arp table like A's
+            # wfprg args)
+            note = (b + transpose + self._b_arp_off(arp)) & 0xFF
             events.append(SDIEvent(tick * self.fpt, 'note', note,
                                    instr[v], dur + 1))
             tick += dur + 1
