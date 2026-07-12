@@ -101,14 +101,20 @@ gallefoss-sdi-player.md):
    validator counts every gate rise. FIX SHIPPED (commit 7d102e0):
    _c_regate() + _c_emit_note() expand rolls into synthetic re-gate
    notes (re-gate = gate 0->1 rise OR a $09 TEST+GATE hard-restart
-   row; per-row pitch args) — Neverending windowed 43.6 -> 100.0,
-   corpus 3 improved / 0 regressed, windowed median 98.1, strict
-   median 86.0. STILL OPEN in this class: Everytime 28/21 (twin noise
-   voices heard semi 94-95 const — NOT fixed by rolls; its instr14
-   walk has no $09 row in the loop, args $FF — mechanism still
-   unidentified, trace bin/_sdi_c_walk_trace.py Everytime) and
-   Ninja_IV 33/33 (v1/v2 real onsets dense from fr4 but our decode
-   has a long silent prefix — different bug, likely track-level).
+   row; per-row pitch args) — Neverending windowed 43.6 -> 100.0.
+   ROUND 2 (commit 0bf03c4): flow-dis of the $FE/$FD handlers
+   ($1174/$1183) corrected the grammar — $FE = HOLD (gate + walk keep
+   running; our old 'off' was WRONG), $FD = GATE TOGGLE (EOR #$01).
+   _play_seq_c now models NOTE RUNS (note + $FE holds = one gated
+   span) and _c_regates() returns the full (aperiodic) re-gate
+   schedule over the run. Selector weighs 2*strict+windowed.
+   FINAL C CORPUS: windowed median 98.3, strict median 86.0
+   (6 improved / 0 regressed vs pre-rework). STILL OPEN, niche:
+   Everytime 28/21 (twin noise voices, mechanism unidentified);
+   Ninja_IV 33/33 = GATELESS TEST-CLICK percussion (emu shows ZERO
+   gate rises on v1/v2 — the siddump onset heuristic counts
+   something else; n=12, low value — consider excluding or aligning
+   the onset definition).
    OLD FINDINGS (superseded, kept for context): FINDINGS SO FAR
    (2026-07-12, post-v3.20.0): (a) the naive RESTING-walk model is DEAD:
    C walks step every OTHER frame ($1594 AND #$01 gate; wf >= $90 =
