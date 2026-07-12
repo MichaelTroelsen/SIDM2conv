@@ -25,6 +25,26 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.20.0] - 2026-07-12
+
+### The SDI pitch-carrier campaign - six variants decoded, 254 Stage A SF2s, and the knowledge base ships
+
+User directives: "complete the SDI first", then the knowledge tiers ("do 1 and 2").
+
+#### SDI (SID Duzz' It, Gallefoss/Tjelta) - the strict-score campaign
+- **Variant D wfprg resting-pitch port**: D's walk RE'd from Another_Day ($13E5: 3-byte rows [wf, pitch, extra]; $FE parks on the last row = the sustained heard pitch; pitch bit7 = absolute). **12 D files to 100.0 STRICT** (Another_Day 81->100, Banana 69->100, Culture_Mix 62->100). Plus the $ff track byte = LOOP-to-0, not stop (Sveitser_Ost 69.5->99.2, Space_Suit 49.6->69.9).
+- **Variant E row-0 pitch** (byte-verified at 2_Young $EE1F): the set-instrument tail applies wfprg row 0's f[z0[sound]] ON the note-on frame; arp records ($c0-$ef) REDIRECT the sound ($F566 = ad+1, closing the old recon note); timing model selected per file by STRICT agreement (Kirby 16.5->71.0 from calibration alone).
+- **Variant V - the "multispeed D" files were FALSE LOCATES** (play=$0000 wrapper class, module seq-row read byte-identical to D's track read): full tracker engine decoded ($40-byte state blocks, per-seq length-in-ticks table, 3-byte rows, per-note instrument in the fx byte, octave-nibble pitch). From 0.0 blind to windowed 65-91.
+- **Variant C wfprg located but GATED**: applying the onset offset regressed Bahbar 94.3->81.4 while helping Banana_Man (+9) - the walk phase differs per sub-class; pending emulation.
+- **Final corpus map** (dual-metric sweep, 249 validated files, medians windowed/strict): A 98.3/98.3, D 100/100, C 98/67, B 89/75, E 72/58, V 70/22; 122 locate-NONE (play+4 tail). New `docs/players/SDI.md`.
+- **Stage A: 254 SF2s emitted, 0 failures** (`bin/sdi_to_sf2.py` -> `out/sdi_sf2/`, indexed in docs/SF2.md).
+
+#### The knowledge base (tier 1 + 2)
+- **`docs/players/PATTERNS.md`** - the technique catalog: named recurring mechanisms (the pitch-carrying instrument = 5 independent finds; tie-vs-retrigger; the wrapper class; within-frame retriggers...), diagnostics (delta histogram, false-locate zero, content-verified location, strict-agreement calibration), and failure classes, each with symptom -> exploit -> sightings. Linked from PLAYBOOK.md.
+- **`sidm2/player_idioms.py`** - knowledge as code: find_pattern/find_all/word_at, scan_freq_tables (content-verified), follow_immediate_poke, bounded_init (vector + JMP-self spin detection). Tests lock each idiom against corpus files; sdi_parser consumes the library.
+
+---
+
 ## [3.19.0] - 2026-07-11
 
 ### Residual-pocket fixes + the part-bloat levers - and the Gallefoss/SDI arc opens on the player's own source

@@ -160,7 +160,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 
 ## Complete build inventory
 
-**199 songs built** across 6 native players (each song may span several SF2 parts).
+**453 songs built** across 7 native players (each song may span several SF2 parts).
 
 *Auto-generated from the built SF2 files under `out/` by `pyscript/gen_sf2_index.py` — re-run after building more tunes. "Parts" = the number of SF2 files a song is split into (a long song exceeds the SF2II table/`$D000` caps and ships as windowed parts; 1 = a single file).*
 
@@ -392,6 +392,265 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Poppy Road | Michael Troelsen (Fun Fun) | 1987 Triangle | 1 |
 | Thats All | Michael Troelsen (Fun Fun) | 1987 Triangle | 3 |
 | Times Up | Michael Troelsen (Fun Fun) | 1987 Triangle | 1 |
+
+### SID Duzz' It (SDI) — Gallefoss/Tjelta  ·  `Driver 11 (Stage A)`  ·  254 songs / 254 SF2 files
+
+| Song | Composer | Released | Parts |
+|------|----------|----------|------:|
+| 2 Young 2 Die | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| 30seconds | Glenn Rune Gallefoss | 1992 Digital Designs | 1 |
+| 64 Antheme | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Ablegoeyer | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Aerodynamic | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Agrajag | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Airwalk | Glenn Rune Gallefoss (Shark) | 1994 SHAPE/Blues Muz' | 1 |
+| Airwalk II | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
+| Aldebaran | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Alf Theme | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Another Day in Paradize | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
+| Arabia | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Arcane | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Babar | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
+| Bahbar | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Banana | Glenn Rune Gallefoss (Shark) | 1990 Collision/Kraftverk | 1 |
+| Banana Man | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Basselusk | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Batman in Jp | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Beverly Kraven | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
+| Blowfish | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Boiled Beans | Glenn Rune Gallefoss (Shark) | 1993 SHAPE/Blues Muz' | 1 |
+| Bossa Butt | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
+| Bouncing | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Burpmania | Glenn Rune Gallefoss (Shark) | 1993 SHAPE/Blues Muz' | 1 |
+| Buttlern | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Calmdown II another one | Glenn Rune Gallefoss (Shark) | 1994 SHAPE/Blues Muz' | 1 |
+| Calmdown Whats this | Glenn Rune Gallefoss (Shark) | 1993 SHAPE/Blues Muz' | 1 |
+| Cheese Pop | Glenn Rune Gallefoss (Shark) | 1994 SHAPE/Blues Muz' | 1 |
+| Close preview | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Coming Soon | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
+| Commercial Countdown | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
+| Commies | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Computare Maximus Dominanus | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
+| Country-Dip | Glenn Rune Gallefoss (Shark) | 1995 Plush | 1 |
+| Crizz Crozz | Glenn Rune Gallefoss | 1993 Digital Designs | 1 |
+| Culture Mix 1 | Glenn Rune Gallefoss (Shark) | 1990 Collision | 1 |
+| Culture Mix 2 | Glenn Rune Gallefoss (Shark) | 1990 Collision | 1 |
+| Dancing in the Moonlight | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Danske-baaten | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Das Boot | Glenn Rune Gallefoss (Shark) | 1993 Regina | 1 |
+| Death of the Pulse v1 0 | Glenn Rune Gallefoss (Shark) | 1994 SHAPE/Blues Muz' | 1 |
+| Deelight | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Delphines | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Denver | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Derilicts | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Destruction | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Devotion | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
+| Dialects | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Different Reality VE-4x | Glenn Rune Gallefoss | 1996 SHAPE/Blues Muz' | 1 |
+| Digital Designs Intro 2 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Domino Dancing | Glenn Rune Gallefoss | 1993 Digital Designs | 1 |
+| Dorull | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Dream | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
+| Dreamland | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Eastbottom | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Effect Freak | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| End | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| End 94 | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
+| End Music | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Enigma Elg moose | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Eurovision | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Everytime | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Evil Within | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Extreme | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Fading Away | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Fast Pussy | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
+| Filthy Hit VE-4x | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
+| Fin Sang | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Finish Line | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Fjellgeit ode to Fearlight | Glenn Rune Gallefoss | 1994 Blues Muz' | 1 |
+| Flames | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Flavour | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Flimbos | Glenn Rune Gallefoss | 1992 Digital Designs | 1 |
+| Forbannet | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Funhouse | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Funk Facet | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
+| Funkman | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Funkriff | Glenn Rune Gallefoss | 1993 Digital Designs | 1 |
+| Funkriff v2 | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Galvanized | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Genesis P | Glenn Rune Gallefoss (Shark) | 1994 SHAPE/Blues Muz' | 1 |
+| Get hyped | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Got Da Bluez | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Granturismo | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Graut | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| GT Groove | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
+| Guaranteed | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
+| Happy Birthday Tg-Acme | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
+| Hava Nagila | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
+| Heartbeat | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Heartbit | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| High Pressure | Glenn Rune Gallefoss (Shark) | 1993 Regina | 1 |
+| Hithouse | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Holy Josh | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
+| House Fantasy | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Hyperfool | Glenn Rune Gallefoss (Shark) | 1994 SHAPE/Blues Muz' | 1 |
+| I Aint Mad | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Implocation VE-4x | Glenn Rune Gallefoss | 1993 SHAPE/Blues Muz' | 1 |
+| Infra Red | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Interlude | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Intro Aktig | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Intro Lime | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
+| Intro Zax | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Intro Zax II | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Iridion | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Jazz My Azz | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Jazzmjux | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Jazzy-d | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| JB Groove I | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
+| JB Groove II | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
+| Jessie Jazz | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
+| Joikaboller | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| JS Beta Song | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| JS Fanfare | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Juba-Jazz | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Jule Fun | Glenn Rune Gallefoss | 1992 Digital Designs | 1 |
+| Kalkun Yak | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
+| Karamell | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Kirby | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Koke Stek | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Kururin | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Lame | Glenn Rune Gallefoss (Shark) | 1990 Collision/Kraftverk | 1 |
+| Lederhosen | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Lesbians | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Little Bee | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Long Ting | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Looping | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Magic Moment | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Max Mix 1 | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
+| Menthol | Glenn Rune Gallefoss | 1993 Digital Designs | 1 |
+| Micro Mix | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Microwave | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Milkshake | Glenn Rune Gallefoss (Shark) | 1994 SHAPE/Blues Muz' | 1 |
+| Mini Poelse | Glenn Rune Gallefoss (Shark) | 1990 Collision/Kraftverk | 1 |
+| Moonraker | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Morphosis | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
+| Mozell | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Mummy | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
+| Napalm | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
+| Nasty Hombre | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Neverending Story | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Nightjazz | Glenn Rune Gallefoss | 1992 Blues Muz' | 1 |
+| Ninja IV | Glenn Rune Gallefoss | 1991 Digital Designs | 1 |
+| Nitro Dot | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Noice | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
+| Norvegia thats a cheese | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Norway rulls | Glenn Rune Gallefoss & Bjarte V | 1993 Digital Designs | 1 |
+| Oh Boy VE-2x | Glenn Rune Gallefoss | 1993 SHAPE/Blues Muz' | 1 |
+| Oldie | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Onkie Donkie | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
+| Opening | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Orbital | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Oswaldo | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Outrun | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Painful | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Paranoid | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Pervers | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Phneumatic | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Pjatt | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Polkapop | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
+| Potatoes | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Praiser | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
+| Prelude | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Preview Zax | Glenn Rune Gallefoss | 1993 Digital Designs | 1 |
+| Product | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Promises | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Psychic | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
+| Psycho | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
+| Psycho II | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
+| Psycho IV | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Pulstro | Glenn Rune Gallefoss (Shark) | 1993 Regina | 1 |
+| Pultost VE-4x | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
+| Punkfunk | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Pust | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
+| Quaternion | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Radbrekk I | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
+| Rapture | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Rar Takt | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Raw and Mean | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Rectum | Glenn Rune Gallefoss (Shark) | 1993 Regina/Blues Muz' | 1 |
+| Reggie | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Reyn Only | Glenn Rune Gallefoss (Shark) | 1993 Regina/Blues Muz' | 1 |
+| Rhyme | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Rintintin | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
+| RNA Reset Now Asshole | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Rough Boy | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Rumbah | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Sacrebleu | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Sad Song | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Sad Toob | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
+| Screaming | Glenn Rune Gallefoss | 1993 Digital Designs | 1 |
+| SCS TRC Intro Music | Glenn Rune Gallefoss (Shark) | 1994 Regina/Blues Muz' | 1 |
+| Sharkie | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Shocking | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Short One | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Short Zax | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Slamtime | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Slapfart | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
+| Slowjazz | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Slowmotion | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Snip Snap | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Snufs | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Solar Plexus | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Sorrows | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Sound Test | Glenn Rune Gallefoss | 1992 Digital Designs | 1 |
+| Space Suit | Glenn Rune Gallefoss (Shark) | 1990 Collision/Kraftverk | 1 |
+| Spellbound | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
+| Stairway 1 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Stairway 2 | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Stort Plaster | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz'/HVSC | 1 |
+| Strangers | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Suburbia | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Sugarhill | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Survival | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Sveitser Ost | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
+| Sweeper | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Syk Sang | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Synchro | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
+| T-Shirt | Glenn Rune Gallefoss | 1993 Digital Designs | 1 |
+| Tango | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
+| Tanks 3000 | Glenn R. Gallefoss & R. Bayliss | 2006 Protovision | 1 |
+| Tarmslyng | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Techno | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Techno-Kaare | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Techno Chaos | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Techno Rave | Glenn Rune Gallefoss & Mitch | 1994 SHAPE/Crest | 1 |
+| Teddy Bear | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
+| Tekkno Tuna Sandwich | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
+| Ten Seconds | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
+| Terpentin | Glenn Rune Gallefoss | 1993 Digital Designs | 1 |
+| Test-trip | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Tight Jeans | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Timbuktu | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Tissemann | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Toto | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Trakten | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Trooper | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Tunfiskpizza | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
+| Twin Peaks | Glenn Rune Gallefoss (Shark) | 1991 The Freaks | 1 |
+| U May C | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Underwear VE-4x | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
+| Velomatrix | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
+| Vikings | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Virtual | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Vozza Jazz | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
+| Warbeat | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Wash and Go | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| What Is Love | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Xard | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| Yesterday | G. R. Gallefoss & B. Vosseteig | 1994 SHAPE/Blues Muz' | 1 |
+| Zap | Glenn Rune Gallefoss | 2007 SHAPE/Blues Muz' | 1 |
+| Zexest | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| Zoophyte | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
 
 <!-- END GENERATED -->
 

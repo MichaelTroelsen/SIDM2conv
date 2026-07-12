@@ -39,6 +39,8 @@ from dataclasses import dataclass, field
 from typing import Optional
 import struct
 
+from sidm2.player_idioms import find_pattern, word_at, scan_freq_tables
+
 
 def load_sid(path):
     """(data_at_load, load_addr, header) — PSID/RSID, embedded-load aware."""
@@ -58,22 +60,10 @@ def load_sid(path):
     return bytes(data), load, H
 
 
-def _find(d, pat):
-    """First offset of `pat` in d; pat = list of ints, -1 = wildcard."""
-    n = len(pat)
-    for i in range(len(d) - n):
-        ok = True
-        for k, b in enumerate(pat):
-            if b >= 0 and d[i + k] != b:
-                ok = False
-                break
-        if ok:
-            return i
-    return None
-
-
-def _w(d, off):
-    return d[off] | (d[off + 1] << 8)
+# the wildcarded-locate workhorses live in sidm2.player_idioms (shared by
+# every parser); these aliases keep the pattern tables below readable
+_find = find_pattern
+_w = word_at
 
 
 @dataclass
@@ -111,31 +101,11 @@ class SDILayout:
 
 
 def _freq_scan(d, la, lay):
-    """Content-verified freq table locate: the two abs,Y read targets exactly
-    $60 apart whose combined words double per octave — robust across the
-    per-song code shifts (the editor assembles the player per song)."""
-    reads = set()
-    k = 0
-    raw = bytes(d)
-    while True:
-        k = raw.find(b"\xb9", k)
-        if k < 0 or k + 2 >= len(raw):
-            break
-        a = raw[k + 1] | (raw[k + 2] << 8)
-        if la <= a < la + len(d) - 0xC0:
-            reads.add(a)
-        k += 1
-    for a in sorted(reads):
-        for lo_a, hi_a in ((a + 0x60, a), (a, a + 0x60)):
-            if lo_a not in reads or hi_a not in reads:
-                continue
-            f = [(d[lo_a - la + n] | (d[hi_a - la + n] << 8))
-                 for n in range(96)]
-            hits = sum(1 for n in range(36, 60)
-                       if f[n] and abs(f[n + 12] / f[n] - 2) < 0.02)
-            if hits >= 20:
-                lay.freq_lo, lay.freq_hi = lo_a, hi_a
-                return
+    """Content-verified freq table locate (player_idioms.scan_freq_tables:
+    two abs,Y read targets $60 apart whose words double per octave)."""
+    got = scan_freq_tables(d, la)
+    if got is not None:
+        lay.freq_lo, lay.freq_hi = got
 
 
 def locate(d, la):

@@ -27,6 +27,7 @@ PLAYERS = [
     ("galway_sf2",   "Martin Galway",               "Martin Galway",        "native"),
     ("romuzak",      "ROMUZAK V6.3",                "Oliver Blasnik",       "native"),
     ("soundmonitor", "Sound Monitor (Musicmaster)", "Fun Fun",              "native"),
+    ("sdi_sf2",      "SID Duzz' It (SDI)",          "Gallefoss/Tjelta",     "Driver 11 (Stage A)"),
 ]
 # out/ subdir -> SID corpus dir(s) holding the ORIGINAL files, for the
 # per-song PSID metadata (title/author/released at header +$16/+$36/+$56)
@@ -37,6 +38,7 @@ SID_DIRS = {
     "galway_sf2":   ["SID/Galway_Martin"],
     "romuzak":      ["SID/Fun_Fun"],
     "soundmonitor": ["SID/Fun_Fun"],
+    "sdi_sf2":      ["SID/Gallefoss_Glenn"],
 }
 # suffixes the builders append to the source SID's stem
 SUFFIX = re.compile(r"(_sub\d+|_song\d+|_native)$", re.I)
