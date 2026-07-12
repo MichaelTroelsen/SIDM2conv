@@ -746,8 +746,17 @@ class SDIModule:
                                        instr[v], dur))
                 tick += dur                      #   hold/gate rows
                 continue
-            if b >= 0xC0:                        # arp select + PARAM byte
-                pos += 1
+            if b >= 0xC0:                        # CHORD/arp row (terminal)
+                if b & 0x10:                     # bit4: chord UPDATE — one
+                    pos += 1                     #   byte (n2); no retrigger
+                    events.append(SDIEvent(tick * self.fpt, 'rest', None,
+                                           instr[v], dur))
+                else:                            # chord NOTE row: n1 + n2,
+                    n1 = (self._u8(seq + pos) + transpose) & 0xFF
+                    pos += 2                     #   retriggers with n1
+                    events.append(SDIEvent(tick * self.fpt, 'note', n1,
+                                           instr[v], dur))
+                tick += dur
                 continue
             if b >= 0x80:                        # DURATION (& $3f, exact)
                 dur = max(1, b & 0x3F)
