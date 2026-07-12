@@ -275,6 +275,19 @@ gallefoss-sdi-player.md):
      Arabia, our tempo-mapped NOTE frames vs real onset frames side
      by side; the gap is a tempo/delay-accumulation error. Zap/Xard/
      Sweeper (gap 3) likely share it.
+     SIDE-BY-SIDE CAPTURED (Arabia, tempo_seq=[2,3], ghost $F5FE):
+       v0 REAL 6,81,86,161,166,241,246 (pairs ~75 apart) vs OUR
+          0,22,117,122,132,142,162 (denser, misaligned);
+       v2 REAL 7,22,42,47,77,87,102 vs OUR 0,12,27,47,52,82,92 —
+          v2 NEARLY aligns then DRIFTS (47=47, 77~82, 87~92, 102~107):
+          a compounding tempo error, ~+5 per ~40 frames.
+     => the 2-entry tempo program [2,3] (frame_of_tick) is applied
+     slightly wrong OR the per-voice track DELAY ($E910,X, the $C0-$F6
+     code) is not folded into the tick->frame map. Fix path: emulate
+     the tempo counter to re-derive frame_of_tick (which cell reloads
+     from tempo_seq, per-tick vs per-row?) + add track delay to the
+     accumulator. CORPUS-GATE (52 E files) — timing = broad blast
+     radius. Grammar/pitch are DONE; only the clock remains.
      THEN rewrite _decode_voice_e/_play_seq_e on the true grammar:
      4th-channel conductor timeline (nch=4 gens: ghost = tl[base+3];
      merge its $E943 writes on the tick clock), bit7 tie semantics,
