@@ -232,19 +232,33 @@ gallefoss-sdi-player.md):
      - $E92A got $4F at row parse ($EF52) — impossible via the
        AND #$1F path I dis'd, so my $EF50 alignment is wrong; re-dis
        that stretch before trusting the sound-cell label.
-     FULL v1 ROW STREAM RECOVERED (all-B1 probe; the "3 rows then
-     silence" was a harness artifact): rows every 6-21 frames, format
-     [optional $8x][sound $6x][note]. KEY CORRELATION — the row
-     DURATION follows the SOUND, not the $8x prefix: sound 2 -> 9
-     frames (x3 observations), sound 1 -> 6 (x3), sound 6 -> 21;
-     prefix-less rows [62 0C]/[61 0C] inherit exactly the per-sound
-     durations. HYPOTHESIS: row duration = a per-sound INSTRUMENT
-     RECORD field (a z column — SDI's column-major instrument
-     design), on the tempo-program tick clock; $8x = a modifier
-     (first row [83 62]=8fr vs sound-2's 9 — override/offset?).
-     NEXT CONCRETE STEP: dump the z columns around e_z0 for sounds
-     1/2/6, find the column whose values map to ticks 6/9/21 (mind
-     the tempo program), verify on Kirby, then the rewrite.
+     CONTRADICTION RESOLVED — THE CURRENT GRAMMAR IS CORRECT: the
+     abs,Y column-read watch proved $8x = SOUND SET (head $83 -> the
+     row-parse column read at $EFE4 uses Y=3; $85 -> Y=5; Y persists
+     across prefix-less rows) and $6x = DURATION ($62 -> (2+1)*3 = 9
+     frames, $61 -> 6, $66 -> 21, all exact vs observed; tempo_seq =
+     [3]). My Arabia hand-dis had SWAPPED the branch targets — the
+     duration-follows-sound correlation was sound+dur traveling
+     together in the data. NO grammar rewrite needed.
+     CONDUCTOR: infrastructure SHIPPED (e_ghost_track for nch=4 gens;
+     ghost-mode decode -> _e_conduct timeline; RELATIVE delta applied
+     to real-voice notes, zero when static -> no-regression by
+     construction). BUT emulation shows Arabia's $E943 gets ONE write
+     (fr0, value 0, from X=$15 at $EF77) in 500 frames — the
+     conductor is STATIC there; NOT Arabia's failure cause. The
+     ghost-seq decode also produced 0 notes (its rows are $5F-heavy;
+     grammar for the ghost's own stream unverified — harmless since
+     the timeline only matters when $E943 actually moves; find a
+     file where it does before investing).
+     ARABIA'S REAL LEAD: D1 delta histogram = SCATTER (1 x19, 11 x17,
+     -3 x10, 34 x10 ...) — not a constant bias, so SECTIONS decode
+     shifted = track-code semantics. The B1 trace showed $C7's arg
+     read at $EE95 but $A0's at $EEA0 — DIFFERENT handler PCs; the
+     current model treats $A0-$BF as transpose and $C0-$F6 as
+     delay+seq. Dis the two track handlers at $EE6B-$EEC0 to get the
+     true track grammar (transpose vs delay vs something else), then
+     re-histogram. Zap/Xard/Sweeper (gap 3, no conductor) likely
+     share this track-level cause.
      THEN rewrite _decode_voice_e/_play_seq_e on the true grammar:
      4th-channel conductor timeline (nch=4 gens: ghost = tl[base+3];
      merge its $E943 writes on the tick clock), bit7 tie semantics,

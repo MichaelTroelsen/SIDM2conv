@@ -459,6 +459,13 @@ class SDIModule:
             base = tp0 - (nch - 1)
             self.track_ptrs = [(d[lo + base + v] | (d[hi + base + v] << 8))
                                for v in range(3)]
+            # nch=4: the ghost 4th/fx channel = the CONDUCT program —
+            # its note bytes never play; they STA the GLOBAL pitch
+            # base $E943-class cell real voices add to their notes
+            # (Arabia note-handler dis: CPX #$15 at the row tail)
+            self.e_ghost_track = ((d[lo + base + 3]
+                                   | (d[hi + base + 3] << 8))
+                                  if nch == 4 else None)
             self.tempo_reload = 3
             # unroll the subtune's TEMPO PROGRAM: s0 bit7 = constant
             # (& $7f); else program bytes (& $7f = tick length - 1,
@@ -584,7 +591,7 @@ class SDIModule:
             tpos += 1
         return events
 
-    def _decode_voice_e(self, v, max_ticks=40000):
+    def _decode_voice_e(self, v, max_ticks=40000, track=None):
         """Variant E (play+4 = the v2.1-source generation). TRACK: positive
         = seq#; $80-$bf = transpose (b-$a0 signed); $c0-$f6 = track DELAY
         (& $3f) then seq#; $f7 = voice off; $f8-$ff = 16-bit jump (& 7 =
@@ -594,7 +601,7 @@ class SDIModule:
         / $f0+ release; dur: $60-$7f & $1f, $e0 -> next byte, $e1-$ff ->
         b-$c0; note $f0+ -> release + gate row, $5f gate row, else NOTE
         (+transpose). Seq END = byte 0 at row start."""
-        track = self.track_ptrs[v]
+        track = self.track_ptrs[v] if track is None else track
         tpos = 0
         transpose = 0
         tick = 0
@@ -679,6 +686,12 @@ class SDIModule:
             if masked in (0x5F, 0x00):
                 events.append(SDIEvent(tick * self.fpt, 'rest', None,
                                        instr[v], dur + 1))
+            elif getattr(self, '_e_ghost_mode', False):
+                # CONDUCT channel: the raw note byte is STA'd to the
+                # global pitch base (Arabia dis, CPX #$15 tail) — no
+                # transpose/instr transforms apply
+                events.append(SDIEvent(tick * self.fpt, 'note',
+                                       masked, instr[v], dur + 1))
             else:
                 note = (masked + transpose) & 0xFF
                 # bit7 SET = tie/legato, CLEAR = retrigger (verified on
@@ -691,6 +704,18 @@ class SDIModule:
                     if ip is not None:
                         note = (ip[1] if ip[0] == 'abs'
                                 else (note + ip[1])) & 0x7F
+                conduct = getattr(self, '_e_conduct', None)
+                if conduct:
+                    # the ghost channel's base as-of this tick, applied
+                    # RELATIVE to its first value (zero delta when the
+                    # conductor is static -> 3-channel files unchanged)
+                    fr = tick * self.fpt
+                    cur = conduct[0][1]
+                    for cf, cv in conduct:
+                        if cf > fr:
+                            break
+                        cur = cv
+                    note = (note + cur - conduct[0][1]) & 0x7F
                 events.append(SDIEvent(tick * self.fpt, kind, note,
                                        instr[v], dur + 1))
             tick += dur + 1
@@ -1270,6 +1295,18 @@ class SDIModule:
         self._cur_instr = [0, 0, 0]
         self._c_gate = [True, True, True]        # per-voice $FD toggle
         self._c_regate_cache = {}                # (c_pitch_model-agnostic)
+        self._e_conduct = None
+        if (self.lay.variant == 'E'
+                and getattr(self, 'e_ghost_track', None)):
+            self._e_ghost_mode = True            # decode the CONDUCT
+            try:                                 # channel's raw notes
+                gev = self._decode_voice_e(0, track=self.e_ghost_track)
+            finally:
+                self._e_ghost_mode = False
+            self._cur_instr = [0, 0, 0]
+            tl = [(e.frame, e.note) for e in gev if e.kind == 'note']
+            if tl:
+                self._e_conduct = tl
         if self.lay.variant == 'V':
             # flat tick clock (A/B-tested: emulating the $Cx global-tempo
             # commands through a tick->call map LOST to a flat fpt with
