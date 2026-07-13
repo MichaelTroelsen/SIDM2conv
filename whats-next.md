@@ -353,6 +353,17 @@ gallefoss-sdi-player.md):
    calibrated clock — Oh_Boy 47 vs 70 windowed).
 4. D pocket: Holy_Josh 65.7 / Max_Mix_1 75.0 (long tracks, cause unknown).
 5. Acid_Jazz sixth layout (play=$1B36, absolute state arrays $22ED+).
+5b. MULTI-SUBTUNE (commit 168cbc0): SDIModule(subtune=N) done for
+   A/C/E (E: tp=init_block[N]; C/A: record init_block+N*8). Converted
+   the 5 E extras (Aldebaran sub1-3, Evil_Within sub1, Phneumatic
+   sub1) -> out/sdi_sf2 259. STILL SUBTUNE-0-ONLY: (a) variant B
+   multi-subtune (Coming_Soon, Commercial_Countdown) — B indexes
+   subtunes differently (sub1 tracks == sub0; find the B song table);
+   (b) Tanks_3000's 12 subtunes need the live-$1000-player RE first
+   (dormant-copy locate); (c) the 11 locate-NONE multi-subtune files
+   (Super_Galaxy 54, Ghosts_n_Goblins 34, Hockey_Mania 24, ...) need
+   variant support before any subtune. ~417 Gallefoss subtunes remain
+   undecoded overall (671 songs across 473 files; 259 SF2s).
 6. SDI STAGE B native via the shared MoN engine (step-grid; the C-class
    note-on writes $D404=$08 TEST bit — mind the gate model).
 Backlog: SM bundle channel (binds 62-63/63); DMC bundle-bound files;
