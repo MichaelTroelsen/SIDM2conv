@@ -417,19 +417,23 @@ class SDIModule:
     """Decoded song: per-voice event streams with the play routine's frame
     clock (row step every tempo_reload+1 frames, first step at frame 0)."""
 
-    def __init__(self, d, la):
+    def __init__(self, d, la, subtune=0):
         self.d = d
         self.la = la
+        self.subtune = subtune
         self.lay = locate(d, la)
         if self.lay is None:
             raise ValueError("not an SDI play+3 rip (signatures missing)")
         if self.lay.variant == 'A':
-            blk = self.lay.init_block - la
+            # init copies a fixed 8-byte block (no A-index); the
+            # subtune record is init_block + sub*8 where a song table
+            # exists (multi-subtune A rips), else sub 0
+            blk = self.lay.init_block - la + subtune * 8
             self.track_ptrs = [(d[blk + v] | (d[blk + 3 + v] << 8))
                                for v in range(3)]
             self.tempo_reload = d[blk + 6]
-        elif self.lay.variant == 'C':            # subtune 0: [lo,hi]x3,tempo
-            blk = self.lay.init_block - la
+        elif self.lay.variant == 'C':            # init = A*8 -> record:
+            blk = self.lay.init_block - la + subtune * 8  # [lo,hi]x3,tempo
             self.track_ptrs = [(d[blk + 2 * v] | (d[blk + 2 * v + 1] << 8))
                                for v in range(3)]
             self.tempo_reload = d[blk + 6]
@@ -439,7 +443,10 @@ class SDIModule:
                                for v in range(3)]
             self.tempo_reload = max(0, self.lay.tempo_imm)
         elif self.lay.variant == 'E':            # tp -> tl/th (v2.1 source)
-            tp0 = d[self.lay.init_block - la]    # subtune 0's track set
+            # init reads tp = init_block[subtune] (byte-verified on
+            # Evil_Within/Phneumatic: init_block = 02 05.. = tp for
+            # sub0/sub1; each subtune's tp points at its channel run)
+            tp0 = d[self.lay.init_block - la + subtune]
             lo, hi = self.lay.track_lo_arr - la, self.lay.track_hi_arr - la
             # the init loop DEYs per channel from Y=tp0; the tl/th array
             # GAP = channels x SUBTUNES (Evil_Within: 6 = 2 subtunes x 3

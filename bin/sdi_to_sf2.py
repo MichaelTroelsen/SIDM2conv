@@ -126,13 +126,24 @@ def build_rows(m, ev, slot_of, silent_idx):
     return all_rows
 
 
-def convert(path, out, c_pitch_model=None):
+def convert(path, out, c_pitch_model=None, subtune=0):
     d, la, h = load_sid(path)
     lay = locate(d, la)
     if lay is None:
         print(f"not a located SDI rip: {path}")
         return 1
-    m = SDIModule(d, la)
+    if subtune and lay.variant not in ('A', 'C', 'E'):
+        print(f"variant {lay.variant} has no subtune-select support: {path}")
+        return 1
+    m = SDIModule(d, la, subtune=subtune)
+    if subtune:
+        # guard: skip if this subtune duplicates subtune 0's tracks
+        # (the variant doesn't actually index by subtune -> B-class)
+        m0 = SDIModule(d, la, subtune=0)
+        if m.track_ptrs == m0.track_ptrs:
+            print(f"subtune {subtune} duplicates subtune 0 (no "
+                  f"per-subtune tracks): {path}")
+            return 1
     if c_pitch_model:                # C walk-restart model ('onset' is
         m.c_pitch_model = c_pitch_model   # the default; 'steady' for
     ev = m.events()                  # free-running tie-drum files)
@@ -178,11 +189,18 @@ def main():
     if "--c-steady" in sys.argv:     # per-file calibrated via the sweep
         sys.argv.remove("--c-steady")
         model = "steady"
+    subtune = 0
+    if "--subtune" in sys.argv:      # convert a specific subtune (A/C/E)
+        i = sys.argv.index("--subtune")
+        subtune = int(sys.argv[i + 1])
+        del sys.argv[i:i + 2]
     path = sys.argv[1]
+    base = os.path.splitext(os.path.basename(path))[0]
+    if subtune:
+        base += f"_sub{subtune}"
     out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(
-        'out', 'sdi_sf2',
-        os.path.splitext(os.path.basename(path))[0] + '.sf2')
-    return convert(path, out, c_pitch_model=model)
+        'out', 'sdi_sf2', base + '.sf2')
+    return convert(path, out, c_pitch_model=model, subtune=subtune)
 
 
 if __name__ == '__main__':
