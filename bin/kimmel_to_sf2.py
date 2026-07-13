@@ -11,10 +11,13 @@ Cut-1 approximations (all logged, none silent):
     sweep, octave/waveform toggles, drum blips) is NOT ported — Stage A emits
     the base note/instrument only (Stage B material),
   - every note re-gates (the runtime Driver 11 has no ties — the Sound Monitor
-    lesson); Kimmel's note stream has no explicit tie/rest byte anyway,
-  - only subtune 0 is decoded (Radax has 6).
+    lesson); Kimmel's note stream has no explicit tie/rest byte anyway.
+
+All of Radax's six subtunes decode via ``--subtune N`` (the parser is now
+relocation/multi-subtune aware); single-subtune tunes ignore it.
 
 Usage:  py -3 bin/kimmel_to_sf2.py SID/Red_kommel_jeroen/Think_Twice_V.sid [out.sf2]
+        py -3 bin/kimmel_to_sf2.py SID/Red_kommel_jeroen/Radax.sid --subtune 3
 """
 import os
 import sys

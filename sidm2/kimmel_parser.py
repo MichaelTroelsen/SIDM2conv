@@ -49,16 +49,31 @@ tempo threshold) are resolved by EMULATING init once and reading the runtime
 RAM — this also transparently handles Radax's $6000 relocated/self-modifying
 init and its multi-subtune dispatch.
 
+Multi-subtune: Radax is a relocating multi-subtune init — subtune 0 runs the
+original file image ($6000 tables) while subtunes 1-5 run a copy relocated to
+$E000 whose orderlist cells the static file tables never see. KimmelModule
+follows the (post-init, per-subtune-patched) play vector to the play core and
+locates the ACTIVE tables in the post-init RAM image nearest that core
+(``locate_mem``); it falls back to the static file-based ``locate`` when the
+memory copy decodes no notes (subtune 0 and every single-subtune tune). So a
+plain ``subtune=`` argument now decodes any of Radax's six songs correctly.
+
 Status: DRAFT Stage-A decoder. Onset-pitch medians (siddump ground truth,
 25 s window, exact-semitone, best global offset):
-  Think_Twice_V  100 / 100 / 100
-  Radax (sub 0)  100 / 100 / 100
+  Think_Twice_V   100 / 100 / 100
   Think_Twice_III 100 / 100 / 100
   Rhaa_Lovely_II  100 / 100 / 92.9 (voice 2, n=14 — one effect note)
-Open items: only subtune 0 is decoded (Radax has 6); rest/gate-off notes are
-played as notes in Stage A; the FM/pulse/arp effects engine ($12CC) is not
-yet ported (Stage B); orderlist walk is capped by a guard, not song-length
-aware for the looping tail.
+  Radax sub0      100 / 100 / 100
+  Radax sub1      100 / 100 / 100
+  Radax sub2      100 / 100 / 100
+  Radax sub3      100 /   -  / 90   (voice 1 silent in the real tune, decoded as
+                                     rest-as-notes; voice 2 one effect note)
+  Radax sub4      100 / 100 / 100
+  Radax sub5      100 / 100 / 100
+Open items: rest/gate-off notes are played as notes in Stage A (the reason
+Radax sub3's runtime-muted voice 1 still decodes notes); the FM/pulse/arp
+effects engine ($12CC) is not yet ported (Stage B); orderlist walk stops at the
+first loop marker (one pass), not song-length aware for the looping tail.
 """
 from dataclasses import dataclass, field
 
@@ -149,6 +164,75 @@ def locate(d, la):
     return lay
 
 
+def _find_all_mem(mem, sig, lo=0, hi=0x10000):
+    """_find_all over a full 64 KB memory image (post-init RAM)."""
+    out, n = [], len(sig)
+    for i in range(lo, hi - n):
+        if all(s is None or mem[i + k] == s for k, s in enumerate(sig)):
+            out.append(i)
+    return out
+
+
+def _play_core(mem, play_addr, span=96):
+    """Follow the play vector's JMP wrappers to the first JSR target (the real
+    per-frame play core). Radax's per-subtune init patches this vector so the
+    core lands in the relocated player copy ($E000 for subtunes 1-5)."""
+    a, hops = play_addr, 0
+    while a < play_addr + span and hops < 8:
+        op = mem[a]
+        if op == 0x20:                                  # JSR target = core
+            return mem[a + 1] | (mem[a + 2] << 8)
+        if op == 0x4C:                                  # JMP wrapper -> follow
+            play_addr = mem[a + 1] | (mem[a + 2] << 8)
+            a = play_addr
+            span += 96
+            hops += 1
+            continue
+        a += 1
+    return play_addr
+
+
+def _nearest(hits, core):
+    return min(hits, key=lambda h: abs(h - core)) if hits else None
+
+
+def locate_mem(mem, core):
+    """Locate the ACTIVE player's tables in the post-init memory image, picking
+    the signature copy nearest the play core. This follows Radax's relocation
+    (subtunes 1-5 run a copy at $E000) where the static file-image tables are
+    stale. Returns a KimmelLayout or None."""
+    lay = KimmelLayout()
+    i = _nearest(_find_all_mem(mem, _FREQ_SIG), core)
+    if i is None:
+        return None
+    lay.freqhi = mem[i + 5] | (mem[i + 6] << 8)
+    lay.freqlo = mem[i + 14] | (mem[i + 15] << 8)
+    lay.pitch_var = mem[i + 2] | (mem[i + 3] << 8)
+
+    oh = [j for j in _find_all_mem(mem, _ORD_SIG)
+          if mem[j + 7] == mem[j + 2] and mem[j + 6] == mem[j + 1] + 1
+          and mem[j + 9] == mem[j + 4] + 1]
+    j = _nearest(oh, core)
+    if j is None:
+        return None
+    lay.ord_lo = mem[j + 1] | (mem[j + 2] << 8)
+    lay.ord_hi = mem[j + 6] | (mem[j + 7] << 8)
+    lay.zp = mem[j + 4]
+
+    ih = [k for k in _find_all_mem(mem, _INSTR_SIG)
+          if mem[k + 4] == lay.zp and mem[k + 9] == lay.zp + 1]
+    k = _nearest(ih, core)
+    if k is None:
+        return None
+    lay.instr_lo_var = mem[k + 1] | (mem[k + 2] << 8)
+    lay.instr_hi_var = mem[k + 6] | (mem[k + 7] << 8)
+
+    t = _nearest(_find_all_mem(mem, _TEMPO_SIG), core)
+    if t is not None:
+        lay.tempo_cell = mem[t + 1] | (mem[t + 2] << 8)
+    return lay
+
+
 @dataclass
 class KimmelEvent:
     frame: int         # onset frame (tick * fpt) BEFORE the init offset
@@ -165,19 +249,56 @@ class KimmelModule:
     by emulating init once, then statically walks the orderlist/patterns from
     the post-init RAM image (immune to Radax's relocating init)."""
 
-    def __init__(self, path=None, d=None, la=None, init_addr=None, subtune=0):
+    def __init__(self, path=None, d=None, la=None, init_addr=None,
+                 play_addr=None, subtune=0):
         if path is not None:
             d, la, h = load_sid(path)
             init_addr = h.init_address
+            play_addr = h.play_address
         self.d, self.la, self.subtune = d, la, subtune
-        self.lay = locate(d, la)
-        if self.lay is None:
+        file_lay = locate(d, la)
+        if file_lay is None:
             raise ValueError("not a located Kimmel rip")
         self.mem = self._emulate_init(init_addr, subtune)
+
+        # Pick the ACTIVE layout. Radax is a relocating multi-subtune init:
+        # subtune 0 runs the original file image ($6000 tables), subtunes 1-5
+        # run a relocated copy ($E000) whose orderlist cells the static file
+        # tables never see. Follow the (post-init, per-subtune-patched) play
+        # vector to the play core and locate tables nearest it; if that copy
+        # decodes no notes (the file image is the live one, e.g. sub 0 / all
+        # single-subtune tunes) fall back to the proven file-based layout.
+        self.lay = file_lay
+        if play_addr is not None:
+            core = _play_core(self.mem, play_addr)
+            mem_lay = locate_mem(self.mem, core)
+            if mem_lay is not None and self._live_note_count(mem_lay) > 0:
+                self.lay = mem_lay
+
         self.fpt = self.mem[self.lay.tempo_cell] if self.lay.tempo_cell else 6
         self.fpt = max(1, self.fpt)
         self.instr_base = (self.mem[self.lay.instr_lo_var]
                            | (self.mem[self.lay.instr_hi_var] << 8))
+
+    def _live_note_count(self, lay, cap=64):
+        """Quick liveness probe: total notes the first orderlist entries of all
+        three voices yield under `lay`. Used to reject a stale relocated copy."""
+        total = 0
+        for v in range(3):
+            s = lay.stride * v
+            optr = (self.mem[(lay.ord_lo + s) & 0xFFFF]
+                    | (self.mem[(lay.ord_hi + s) & 0xFFFF] << 8))
+            hi = self.mem[(optr + 1) & 0xFFFF]
+            if hi <= 1:
+                continue
+            patptr = self.mem[optr & 0xFFFF] | (hi << 8)
+            off = 0
+            while off < cap * 2:
+                if self.mem[(patptr + off) & 0xFFFF] == 0:
+                    break
+                total += 1
+                off += 2
+        return total
 
     def _emulate_init(self, init_addr, subtune, steps=1_000_000):
         from sidm2.cpu6502_emulator import CPU6502Emulator
