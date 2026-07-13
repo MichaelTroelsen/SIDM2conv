@@ -119,20 +119,28 @@ by strict agreement (D5).
 - **Multi-subtune**: A/C/E supported; B indexes subtunes differently
   (unsupported); Tanks_3000's 12 subtunes need its live player first;
   ~417 of 671 songs still undecoded (single-subtune-per-file default).
-- **Variant DELTA (5 files, DONE 2026-07-13)**: the play+3 JMP-wrapped,
-  ZERO-PAGE-state E-family cluster (Commando/Delta/Delta_Slow/DMC_Demo_remake/
-  Short_Deel). Track grammar = E's exactly (incl. the trailing $Cx delay);
-  tables relocation-located by signature; SEQ row = [sound $80-$bf & $3f]
-  [dur $60-$7f & $1f, persists][note <$5f + transpose], $00 = seq END.
-  RE'd + emulation-verified (bin/_sdi_delta_seqwatch.py / _sdi_e_gatewatch.py).
-  windowed 73-100 / strict 52-83 (Delta_Slow 100/83). Base note only (the
-  wfprg arg walk arps the pitch — Stage B target, like E). Lock:
-  TestSDIVariantDelta.
+- **Variant DELTA (8 files, DONE 2026-07-13)**: the play+3 JMP-wrapped,
+  self-mod-dispatch E-family cluster. TWO state layouts, SAME grammar:
+  ZERO-PAGE state (Commando/Delta/Delta_Slow/DMC_Demo_remake/Short_Deel) and
+  PAGE-$03 state (Invention_1/Lightforce/Neurotica_short). Track grammar =
+  E's exactly (incl. the trailing $Cx delay); tables relocation-located by
+  signature (zp B4 / abs BC forms); SEQ row = [sound $80-$bf & $3f][dur
+  $60-$7f & $1f, persists][note <$5f + transpose], $00 = seq END. RE'd +
+  emulation-verified (bin/_sdi_delta_seqwatch.py / _sdi_e_gatewatch.py).
+  Medians windowed 89.8 / strict 55.5 (Invention_1 98.7/98.7, Delta_Slow
+  100/83, Neurotica 100/83). GUARD: the abs (BC) form shares the ptr-load
+  shape with variant B and with 9 unrelated engines, so the entry REQUIRES
+  the Delta play-dispatch sig `C9 02 F0 ?? C9 01 F0` (CMP #$02 track /
+  CMP #$01 seq) — present in all 8 genuine, none of the 9 false-positives.
+  Base note only (the wfprg arg walk arps the pitch — Stage B, like E).
+  Lock: TestSDIVariantDelta.
 - **Coverage**: the 32 locate-NONE play+3 files are ALL SDI-family (player-id:
   GRG/Geir_Tjelta/SIDDuzz'It — NOT foreign DMC/Hubbard rips) behind init/play
-  JMP wrappers, in sub-variant clusters. DELTA-class (8) cracked (5 locate; 3
-  stragglers Invention_1/Lightforce/Neurotica_short = a shifted sub-variant,
-  add sigs). Other clusters ([LDX LDA STA STA], [TAX LDA STA LDA] wrapper) TODO.
+  JMP wrappers, in sub-variant clusters. DELTA-class (8) fully cracked (zp +
+  page-$03). Remaining NONE clusters: [LDX LDA STA STA] (Mountain_March/
+  Prehistoric_Tale/Title_Needed), [TAX LDA STA LDA] wrapper (Commando_Arcade/
+  Hysteria_Pimped), + the 9 abs-form false-positives the dispatch guard
+  correctly excludes (Crystal_Gazer/Doors_of_Perception/... = other engines).
   ~73 more locate-NONE with other play-init offsets.
 - **Stage B native** via the shared MoN engine (step-grid; note: C-class
   note-on writes `$D404 = $08` TEST bit — mind the gate model).

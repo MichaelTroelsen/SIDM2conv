@@ -344,44 +344,70 @@ def locate(d, la):
             lay.e_ad = _w(d, j + 8) - 1          # ad (+1 read in code)
         _freq_scan(d, la, lay)
         return lay
-    elif _find(d, [0xBD, -1, -1, 0x85, -1, 0xBD, -1, -1, 0x85, -1,
-                   0xB4, -1, 0xB1, -1]) is not None:
-        # variant DELTA: an E-FAMILY engine with ZERO-PAGE state + play+3,
-        # behind an init/play JMP wrapper (the "Delta-class" 8-file cluster:
-        # Commando/Delta/Lightforce/... — all GRG/Tjelta covers). The TRACK
-        # grammar is E's EXACTLY (per-voice ptr arrays; <$80 seq#, $c0-$f6
-        # TRAILING delay, $80-$bf transpose b-$a0, >=$f7 jump), but the state
-        # cells are in zero page so LDY is B4 (zp,X) not BC (abs,X) — that
-        # single byte is what distinguishes it from variant B here. Tables
-        # all located by relocation-safe signatures (RE'd + emulation-verified
-        # 2026-07-13 on Delta.sid: bin/_sdi_delta_seqwatch.py). SEQ row =
-        # [sound $80-$bf &$3f][dur $60-$7f &$1f, persists][note <$5f
-        # +transpose]; $5f rest; $00 = seq END. Base note + a wfprg arp walk
-        # (arg col; not modeled yet, like E — Stage B captures it).
+    elif (_find(d, [0xC9, 0x02, 0xF0, -1, 0xC9, 0x01, 0xF0]) is not None
+          and (_find(d, [0xBD, -1, -1, 0x85, -1, 0xBD, -1, -1, 0x85, -1,
+                         0xB4, -1, 0xB1, -1]) is not None
+               or (_find(d, [0xBD, -1, -1, 0x85, -1, 0xBD, -1, -1, 0x85, -1,
+                             0xBC, -1, -1, 0xB1, -1]) is not None
+                   and _find(d, [0xB9, -1, -1, 0x85, -1, 0xB9, -1, -1, 0x85,
+                                 -1, 0xBC, -1, -1, 0xB1, -1]) is not None))):
+        # GUARD: the Delta-family play routine dispatches on a per-voice
+        # state byte — CMP #$02 (=read track) / BEQ / CMP #$01 (=read seq)
+        # / BEQ. This `C9 02 F0 ?? C9 01 F0` is present in every genuine
+        # Delta file (zp + page-$03) and in NONE of the 9 abs-form
+        # false-positives (which merely share the track/seq ptr-load shape
+        # but are other engines) — verified 2026-07-13.
+        # variant DELTA: an E-FAMILY engine with SELF-MOD play dispatch +
+        # play+3, behind an init/play JMP wrapper (the "Delta-class" GRG/
+        # Tjelta covers: Commando/Delta/Lightforce/...). The TRACK grammar is
+        # E's EXACTLY (per-voice ptr arrays; <$80 seq#, $c0-$f6 TRAILING delay,
+        # $80-$bf transpose b-$a0, >=$f7 jump). TWO state layouts, SAME grammar:
+        #  - ZERO-PAGE state (Delta): the pos LDY is B4 (zp,X); freq table sits
+        #    below the load addr (explicit freq sig, content-scan misses).
+        #  - PAGE-$03 state (Lightforce/Invention_1/Neurotica_short): pos LDY is
+        #    BC (abs,X) — same byte as variant B, so the entry demands the
+        #    BC-no-TAY seq form too (which NO real B file has: B uses the
+        #    TAY-prefixed seq at line 430 -> 0 collisions, verified); freq via
+        #    content-scan. The offline decoder is state-page-agnostic (it walks
+        #    track_ptrs/seq bytes, never the runtime state cells). RE'd +
+        #    emulation-verified 2026-07-13 (bin/_sdi_delta_seqwatch.py). SEQ row
+        #    = [sound $80-$bf &$3f][dur $60-$7f &$1f, persists][note <$5f
+        #    +transpose]; $5f rest; $00 = seq END. Base note + a wfprg arp walk
+        #    (not modeled yet, like E — Stage B captures it).
         lay.variant = 'DELTA'
-        i = _find(d, [0xBD, -1, -1, 0x85, -1, 0xBD, -1, -1, 0x85, -1,
-                      0xB4, -1, 0xB1, -1])
+        i = (_find(d, [0xBD, -1, -1, 0x85, -1, 0xBD, -1, -1, 0x85, -1,
+                       0xB4, -1, 0xB1, -1])
+             or _find(d, [0xBD, -1, -1, 0x85, -1, 0xBD, -1, -1, 0x85, -1,
+                          0xBC, -1, -1, 0xB1, -1]))
         lay.track_lo_arr = _w(d, i + 1)
         lay.track_hi_arr = _w(d, i + 6)
-        # seq ptr tables: LDA $lo,Y / STA zp / LDA $hi,Y / STA zp / LDY zp,X
-        j = _find(d, [0xB9, -1, -1, 0x85, -1, 0xB9, -1, -1, 0x85, -1,
-                      0xB4, -1, 0xB1, -1])
+        # seq ptr tables (zp B4 or abs BC form): LDA lo,Y / STA / LDA hi,Y /
+        # STA / LDY pos,X / LDA (zp),Y
+        j = (_find(d, [0xB9, -1, -1, 0x85, -1, 0xB9, -1, -1, 0x85, -1,
+                       0xB4, -1, 0xB1, -1])
+             or _find(d, [0xB9, -1, -1, 0x85, -1, 0xB9, -1, -1, 0x85, -1,
+                          0xBC, -1, -1, 0xB1, -1]))
         if j is None:
             return None
         lay.seq_lo = _w(d, j + 1)
         lay.seq_hi = _w(d, j + 6)
-        # freq lo/hi: LDA $lo,X / STA $d400,Y / LDA $hi,X / STA $d401,Y
+        # freq: explicit LDA lo,X / STA $d400,Y (zp gen, below-load table),
+        # else the content-scan (page-$03 gen has an in-file table)
         j = _find(d, [0xBD, -1, -1, 0x99, 0x00, 0xD4, 0xBD, -1, -1,
                       0x99, 0x01, 0xD4])
-        if j is None:
+        if j is not None:
+            lay.freq_lo = _w(d, j + 1)
+            lay.freq_hi = _w(d, j + 7)
+        else:
+            _freq_scan(d, la, lay)
+        if not (lay.freq_lo and lay.freq_hi):
             return None
-        lay.freq_lo = _w(d, j + 1)
-        lay.freq_hi = _w(d, j + 7)
-        # wfprg pitch walk: LDA $arg,Y / STA pos,X / TAY / LDA $wf,Y / STA
+        # wfprg pitch walk (arg/wf cols) — zp (STA $95,X) or abs (STA $9D)
+        # form; optional (instr_pitch is base-note only for DELTA)
         j = _find(d, [0xB9, -1, -1, 0x95, -1, 0xA8, 0xB9, -1, -1, 0x95, -1])
         if j is not None:
-            lay.e_f = _w(d, j + 1)               # arg/pitch column
-            lay.e_w = _w(d, j + 7)               # waveform column
+            lay.e_f = _w(d, j + 1)
+            lay.e_w = _w(d, j + 7)
         return lay
     else:
         # variant B track read: LDA $lo,X / STA zp / LDA $hi,X / STA zp /

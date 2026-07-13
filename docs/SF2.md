@@ -160,7 +160,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 
 ## Complete build inventory
 
-**540 songs built** across 7 native players (each song may span several SF2 parts).
+**543 songs built** across 7 native players (each song may span several SF2 parts).
 
 *Auto-generated from the built SF2 files under `out/` by `pyscript/gen_sf2_index.py` — re-run after building more tunes. "Parts" = the number of SF2 files a song is split into (a long song exceeds the SF2II table/`$D000` caps and ships as windowed parts; 1 = a single file).*
 
@@ -393,7 +393,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Thats All | Michael Troelsen (Fun Fun) | 1987 Triangle | 3 |
 | Times Up | Michael Troelsen (Fun Fun) | 1987 Triangle | 1 |
 
-### SID Duzz' It (SDI) — Gallefoss/Tjelta  ·  `Driver 11 (Stage A)`  ·  341 songs / 341 SF2 files
+### SID Duzz' It (SDI) — Gallefoss/Tjelta  ·  `Driver 11 (Stage A)`  ·  344 songs / 344 SF2 files
 
 | Song | Composer | Released | Parts |
 |------|----------|----------|------:|
@@ -543,6 +543,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Intro Lime | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
 | Intro Zax | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
 | Intro Zax II | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Invention 1 | Glenn Rune Gallefoss | 1999 SHAPE | 1 |
 | Iridion | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
 | Jazz My Azz | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
 | Jazzmjux | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
@@ -567,6 +568,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Lederhosen | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
 | Lesbians | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
 | Lethal Weapon | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 1 |
+| Lightforce | Glenn Rune Gallefoss | 2000 SHAPE/Blues Muz' | 1 |
 | Little Bee | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
 | Long Ting | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
 | Looping | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
@@ -587,6 +589,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Nasty Hombre | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
 | Nephritis | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 1 |
 | Neurotica | Glenn Rune Gallefoss | 1998 SHAPE/Blues Muz' | 1 |
+| Neurotica short | Glenn Rune Gallefoss | 1999 Onslaught | 1 |
 | Neverending Story | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
 | Nightjazz | Glenn Rune Gallefoss | 1992 Blues Muz' | 1 |
 | NineOneOne | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' | 1 |
