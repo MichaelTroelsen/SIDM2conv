@@ -111,6 +111,31 @@ def _freq_scan(d, la, lay):
         lay.freq_lo, lay.freq_hi = got
 
 
+def _sdi_e_wrapper_init(d):
+    """The 'sixth layout' E wrapper init (Acid_Jazz/Afterburner class,
+    $0FFF load). Distinctive tail: LDY $tp,X / LDX #(nch-1) — nch = 3
+    (imm $02) or 4 (imm $03, the conduct-channel gen). The record-copy
+    preamble varies (1 vs 2 STA per byte) so we anchor on the tail and
+    require it be preceded by a record LDA rec,X (BD) within 20 bytes
+    (rejects stray LDY,X/LDX#2 pairs). Returns the tp-array address, or
+    None. (The classic $E8FF gen uses LDX #$15 — handled separately.)"""
+    pos = 0
+    while pos < len(d):
+        cands = []
+        for imm in (0x02, 0x03):
+            r = _find(d[pos:], [0xBC, -1, -1, 0xA2, imm])
+            if r is not None:
+                cands.append(pos + r)
+        if not cands:
+            return None
+        i = min(cands)
+        window = d[max(0, i - 20):i]
+        if 0xBD in window and 0x8D in window:   # record copy precedes
+            return word_at(d, i + 1)            # the tp array
+        pos = i + 1
+    return None
+
+
 def locate(d, la):
     """Extract the layout from code patterns (operands wildcarded — the
     editor assembles the player per song, addresses are NOT fixed)."""
@@ -254,12 +279,22 @@ def locate(d, la):
             if j is not None:
                 lay.d_flags_col = _w(d, j + 1)
             return lay
-    elif _find(d, [0xBC, -1, -1, 0xA2, 0x15]) is not None:
-        # variant E (play+4, the v2.1-source generation): LDY $tp,X /
-        # LDX #$15 (21 = 3 channels x 7-byte stride, the source's loop)
-        i = _find(d, [0xBC, -1, -1, 0xA2, 0x15])
+    elif (_find(d, [0xBC, -1, -1, 0xA2, 0x15]) is not None
+          or _sdi_e_wrapper_init(d) is not None):
+        # variant E (play+4, the v2.1-source generation). TWO init
+        # shapes, SAME row grammar + tables (all located by the shared
+        # signatures below):
+        #  - classic ($E8FF gen): LDY $tp,X / LDX #$15 (21 = 3ch x 7)
+        #  - WRAPPER ("sixth layout", $0FFF load, init $0FFF->JMP real,
+        #    play $1003->JMP real; 69-file cluster incl. Acid_Jazz):
+        #    LDA rec,X / STA / LDA rec+1,X / STA / LDY $tp,X / LDX #imm
+        #    where imm = nch-1 ($02 = 3ch, $03 = 4ch conduct gen)
         lay.variant = 'E'
-        lay.init_block = _w(d, i + 1)            # tp array
+        i = _find(d, [0xBC, -1, -1, 0xA2, 0x15])
+        if i is not None:
+            lay.init_block = _w(d, i + 1)        # tp array (classic)
+        else:
+            lay.init_block = _sdi_e_wrapper_init(d)  # tp array (wrapper)
         # tl/th: LDA $tl,Y / STA st,X / STA st2,X / LDA $th,Y / ...
         j = _find(d, [0xB9, -1, -1, 0x9D, -1, -1, 0x9D, -1, -1,
                       0xB9, -1, -1, 0x9D, -1, -1, 0x9D, -1, -1])
