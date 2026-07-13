@@ -30,7 +30,7 @@ from sidm2.galway_driver11_emitter import emit_driver11_sf2, segment_track
 def used_instruments(m):
     used = set()
     for v in range(3):
-        for e in m.decode_voice(v):
+        for e in m.decode_voice(v, stop_on_loop=True):
             if e['kind'] == 'note':
                 used.add(e['instr'])
     return sorted(used) or [0]
@@ -90,9 +90,14 @@ def main():
     subtune = int(sys.argv[3]) if len(sys.argv) > 3 else 0
 
     d, la, h = load_sid(path)
-    m = DeenenModule(d, la, subtune)
+    m = DeenenModule(d, la, subtune, h)
     if not m.loc.ok():
         print(f"deenen locate FAILED ({m.loc.summary()}) for {path}")
+        return 1
+    force = '--force' in sys.argv
+    if not m.plausible() and not force:
+        print(f"deenen decode IMPLAUSIBLE (degenerate/filler) for {path}; "
+              f"refusing to build garbage. Pass --force to override.")
         return 1
 
     used = used_instruments(m)

@@ -36,7 +36,7 @@ def name_to_semi(nm):
 
 def validate(path, subtune, secs):
     d, la, h = load_sid(path)
-    m = DeenenModule(d, la, subtune)
+    m = DeenenModule(d, la, subtune, h)
     if not m.loc.ok():
         return None
     win = secs * 50
@@ -94,23 +94,28 @@ def main():
         r = validate(path, st, secs)
         print(path, '->', r)
         return 0
-    print(f"{'tune':26} {'locate':>6} {'onset%':>7} {'pitch%':>7} {'ph':>4} {'so':>4} "
-          f"{'real':>12} {'parse':>12}")
-    oks = 0
+    print(f"{'tune':26} {'locate':>6} {'plaus':>5} {'onset%':>7} {'pitch%':>7} "
+          f"{'ph':>4} {'so':>4} {'real':>12} {'parse':>12}")
+    oks = wins = 0
     for nm in REPLAY:
         p = f'SID/deenen/{nm}.sid'
         d, la, h = load_sid(p)
-        m = DeenenModule(d, la, 0)
+        m = DeenenModule(d, la, 0, h)
         loc = 'Y' if m.loc.ok() else ('sig' if m.loc.dispatch else 'N')
+        plaus = 'Y' if (m.loc.ok() and m.plausible()) else '-'
         r = validate(p, 0, secs)
         if r is None:
-            print(f"{nm:26} {loc:>6} {'--':>7} {'--':>7}")
+            print(f"{nm:26} {loc:>6} {plaus:>5} {'--':>7} {'--':>7}")
             continue
         oks += 1
         oc, pr, ph, so, rl, pl = r
-        print(f"{nm:26} {loc:>6} {oc:7.1f} {pr:7.1f} {ph:4d} {so:4d} "
+        # a "win" = plausible decode with strong onset+pitch agreement
+        if plaus == 'Y' and oc >= 75 and pr >= 75:
+            wins += 1
+        print(f"{nm:26} {loc:>6} {plaus:>5} {oc:7.1f} {pr:7.1f} {ph:4d} {so:4d} "
               f"{str(rl):>12} {str(pl):>12}")
-    print(f"\nlocated+decoded: {oks}/{len(REPLAY)}")
+    print(f"\nlocated+decoded: {oks}/{len(REPLAY)}   clean wins (plaus,"
+          f" onset>=75, pitch>=75): {wins}")
     return 0
 
 

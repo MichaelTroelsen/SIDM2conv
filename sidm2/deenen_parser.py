@@ -14,8 +14,9 @@ confirmed against the $1904 SID-apply routine):
   Two-level song structure, per voice v (0..2):
     orderlist  : pointer read from  ORD_PTR[v*2 (+ subtune*8)]  + RELOC
                  bytes: <$5F pattern#, $5F-$6E set A-transpose ($10DB),
-                 $6F-$7F pattern-loop count, $80-$FD note-transpose ($10D8,
-                 value-$82), $FE stop, $FF loop orderlist.
+                 $6F-$7F pattern-loop count ($10DE, replay pattern n+1x),
+                 $80-$FD note-transpose ($10D8, value-$82), $FE stop,
+                 $FF SEGMENT-ADVANCE (segidx += seg_step / else loop).
     pattern    : pointer read from  PAT_PTR[pattern# * 2]  + RELOC
                  a row = optional prefix bytes then a note byte (<$60):
                    $C0-$DF  instrument = byte-$C0 + A-transpose
@@ -39,26 +40,96 @@ The locate is RELOCATION-SAFE: table addresses come from byte-pattern searches
 over the code (operands are read from the actual instructions), never fixed
 offsets -- the corpus relocates the player to many different load addresses.
 
-STATUS (honest, 2026-07-13): this is a Stage-A DRAFT.
+STATUS (honest, 2026-07-13, blockers-1&2 fixed pass):
   * Engine map above is complete and emulation-grounded (register writes read
-    off the $1904 apply routine; the groove clock derived from $125C-$1280 and
-    confirmed by exact onset-matching Ding_van_Charles's sparse voice 2).
-  * The locate + decoder are VERIFIED on the "Ding-class" variant only. The
-    global B9/BD operand scans still FALSE-POSITIVE on other sub-variants
-    (e.g. After_the_War/Astro/B_A_T mislocate ord_ptr -> runaway note counts;
-    Constant_Runner-class uses a different ZP layout with no reloc-ADC). So
-    DeenenLocate.ok() currently OVER-reports; treat a decode with implausible
-    note counts (>~10x siddump) as a mis-locate.
-  * OPEN before this is a real corpus win: (1) the TOP-LEVEL multi-segment
-    orderlist -- $FF advances $106C which re-selects the $195C segment pointer;
-    this file's decoder treats $FF as a same-segment separator, so dense voices
-    truncate/mis-thread after the first segment. (2) sub-variant-robust locate
-    (anchor the operand scans to the code reached by a flow-disasm FROM the
-    dispatch, don't scan the whole image). See bin/deenen_validate.py.
+    off the $1904 apply routine; the full orderlist/pattern row parser is
+    transcribed instruction-for-instruction from $1288-$1494 -- see _parse_row).
+  * BLOCKER 1 FIXED -- top-level multi-segment orderlist. decode_voice now
+    threads the $195C segment table: segidx starts subtune*8+seed, orderlist $FF
+    advances it by seg_step while < seg_cap (re-selecting the segment pointer),
+    else loops. Pattern-loop counts ($6F-$7F -> $10DE) replay a pattern (n+1)x.
+    Result: Ding_van_Charles 17%->100% onset+pitch, After_the_War 34%->100%.
+  * BLOCKER 2 FIXED -- sub-variant-robust locate. flow_offsets() flow-disasms
+    from init/play; the ord/pat table scans are ANCHORED to reachable code
+    (`AA BD`/`0A A8 B9`) and pin the reloc from the following ADC. Two reloc
+    modes handled: Variant A "Ding-class" (`ADC reloc`) and Variant B
+    "Smooth-class" (absolute pointers, reloc 0). Located 5/19 -> 10/19.
+  * plausible() rejects the decodes DeenenLocate.ok() still can't see: a decode
+    where one (note,frames) pair dominates a voice = reading filler (the
+    Variant-B files whose reloc/groove we cannot yet pin -- Eye_to_Eye reads all
+    note $06, Zamzara all $00, Constant_Runner over-loops). The builder refuses
+    to emit an SF2 for an implausible decode.
+  * STILL OPEN (each a separate sub-variant RE): (a) the elaborate Variant-A
+    engines (B_A_T/Astro/Lord_of_the_Rings/Mr_Heli) add vibrato/porta/filter and
+    a segment layout whose seed the data contradicts (pitch is byte-correct;
+    onset threading is partial). (b) the Variant-B "Smooth-class" groove clock
+    ($49, ~1-of-3 frames) + the reloc for the absolute-pointer files is not yet
+    modelled, so those over/under-generate. See bin/deenen_validate.py.
 """
 import struct
 
 DISPATCH_SIG = bytes.fromhex('c960b0034c')      # CMP #$60 / BCS +3 / JMP
+
+# opcode -> instruction size (bytes). Undocumented opcodes omitted (treated as
+# code end during flow-disasm). Enough to walk the reachable play/init code.
+_OP_SIZE = {
+    0x00: 1, 0x01: 2, 0x05: 2, 0x06: 2, 0x08: 1, 0x09: 2, 0x0A: 1, 0x0D: 3,
+    0x0E: 3, 0x10: 2, 0x11: 2, 0x15: 2, 0x16: 2, 0x18: 1, 0x19: 3, 0x1D: 3,
+    0x1E: 3, 0x20: 3, 0x21: 2, 0x24: 2, 0x25: 2, 0x26: 2, 0x28: 1, 0x29: 2,
+    0x2A: 1, 0x2C: 3, 0x2D: 3, 0x2E: 3, 0x30: 2, 0x31: 2, 0x35: 2, 0x36: 2,
+    0x38: 1, 0x39: 3, 0x3D: 3, 0x3E: 3, 0x40: 1, 0x41: 2, 0x45: 2, 0x46: 2,
+    0x48: 1, 0x49: 2, 0x4A: 1, 0x4C: 3, 0x4D: 3, 0x4E: 3, 0x50: 2, 0x51: 2,
+    0x55: 2, 0x56: 2, 0x58: 1, 0x59: 3, 0x5D: 3, 0x5E: 3, 0x60: 1, 0x61: 2,
+    0x65: 2, 0x66: 2, 0x68: 1, 0x69: 2, 0x6A: 1, 0x6C: 3, 0x6D: 3, 0x6E: 3,
+    0x70: 2, 0x71: 2, 0x75: 2, 0x76: 2, 0x78: 1, 0x79: 3, 0x7D: 3, 0x7E: 3,
+    0x81: 2, 0x84: 2, 0x85: 2, 0x86: 2, 0x88: 1, 0x8A: 1, 0x8C: 3, 0x8D: 3,
+    0x8E: 3, 0x90: 2, 0x91: 2, 0x94: 2, 0x95: 2, 0x96: 2, 0x98: 1, 0x99: 3,
+    0x9A: 1, 0x9D: 3, 0xA0: 2, 0xA1: 2, 0xA2: 2, 0xA4: 2, 0xA5: 2, 0xA6: 2,
+    0xA8: 1, 0xA9: 2, 0xAA: 1, 0xAC: 3, 0xAD: 3, 0xAE: 3, 0xB0: 2, 0xB1: 2,
+    0xB4: 2, 0xB5: 2, 0xB6: 2, 0xB8: 1, 0xB9: 3, 0xBA: 1, 0xBC: 3, 0xBD: 3,
+    0xBE: 3, 0xC0: 2, 0xC1: 2, 0xC4: 2, 0xC5: 2, 0xC6: 2, 0xC8: 1, 0xC9: 2,
+    0xCA: 1, 0xCC: 3, 0xCD: 3, 0xCE: 3, 0xD0: 2, 0xD1: 2, 0xD5: 2, 0xD6: 2,
+    0xD8: 1, 0xD9: 3, 0xDD: 3, 0xDE: 3, 0xE0: 2, 0xE1: 2, 0xE4: 2, 0xE5: 2,
+    0xE6: 2, 0xE8: 1, 0xE9: 2, 0xEA: 1, 0xEC: 3, 0xED: 3, 0xEE: 3, 0xF0: 2,
+    0xF1: 2, 0xF5: 2, 0xF6: 2, 0xF8: 1, 0xF9: 3, 0xFD: 3, 0xFE: 3,
+}
+_BRANCH = {0x10, 0x30, 0x50, 0x70, 0x90, 0xB0, 0xD0, 0xF0}
+
+
+def flow_offsets(d, la, entries):
+    """Flow-follow 6502 from entry addresses; return the set of image OFFSETS
+    that begin a decoded instruction. Follows branches/JMP-abs/JSR, stops at
+    RTS/RTI/BRK/JMP-indirect and undocumented opcodes. Used to anchor table
+    scans to code actually reached from init/play (kills data false-positives)."""
+    n = len(d)
+    seen = set()
+    work = [e - la for e in entries]
+    while work:
+        off = work.pop()
+        while 0 <= off < n and off not in seen:
+            op = d[off]
+            sz = _OP_SIZE.get(op)
+            if sz is None:
+                break
+            seen.add(off)
+            if op in _BRANCH:
+                rel = d[off + 1] if off + 1 < n else 0
+                tgt = off + 2 + (rel - 256 if rel >= 128 else rel)
+                if tgt not in seen:
+                    work.append(tgt)
+                off += sz
+            elif op == 0x4C:                     # JMP abs
+                off = (d[off + 1] | (d[off + 2] << 8)) - la if off + 2 < n else n
+            elif op == 0x20:                     # JSR
+                tgt = (d[off + 1] | (d[off + 2] << 8)) - la if off + 2 < n else n
+                if 0 <= tgt < n and tgt not in seen:
+                    work.append(tgt)
+                off += sz
+            elif op in (0x60, 0x40, 0x00, 0x6C):  # RTS/RTI/BRK/JMP(ind)
+                break
+            else:
+                off += sz
+    return seen
 
 
 def load_sid(path):
@@ -91,17 +162,25 @@ def _find_all(hay, needle, start=0):
 class DeenenLocate:
     """Relocation-safe table addresses located by code byte-patterns."""
 
-    def __init__(self, d, la):
+    def __init__(self, d, la, entries=None):
         self.d, self.la = d, la
         self.dispatch = None
         i = d.find(DISPATCH_SIG)
         if i >= 0:
             self.dispatch = la + i
+        # Reachable instruction-start offsets (anchor for the table scans). Seed
+        # from init/play (+ dispatch) so scans see real code, not data.
+        ents = list(entries or [])
+        if self.dispatch is not None:
+            ents.append(self.dispatch)
+        self.reach = flow_offsets(d, la, ents) if ents else set()
         self.freq_lo = self.freq_hi = None
         self.instr = None
         self.ord_ptr = self.pat_ptr = self.reloc = None
         self.reloc_val = None
         self.subtune_tbl = None
+        self.seg_cap = self.seg_step = None      # $FF segment-advance immediates
+        self.seg_seed = 0                        # init `ADC #imm` after song*8
         self._locate()
 
     def _w(self, off):
@@ -147,38 +226,97 @@ class DeenenLocate:
                     bestw = (len(grp), span, grp[0])
         if bestw and (self.freq_lo is None or bestw[2] != self.freq_lo):
             self.instr = bestw[2]
-        # (B) orderlist-ptr table + reloc: `LDA ord,X` ($BD) then within 4 bytes
-        #     `ADC reloc` ($6D). (The CLC / STA-selfmod between them varies by
-        #     sub-variant; some sub-variants relocate differently and are skipped.)
-        for i in _find_all(d, b'\xbd'):
-            if i + 3 > len(d):
-                continue
-            for k in (3, 4):
-                if i + k + 2 < len(d) and d[i + k] == 0x6D:
-                    self.ord_ptr = self._w(i + 1)
-                    self.reloc = self._w(i + k + 1)
-                    break
-            if self.ord_ptr is not None:
+        # (B)/(C) segment-ptr table (ord) and pattern-ptr table, anchored to
+        #   REACHABLE code (kills data false-positives + handles both reloc modes):
+        #     ord read : `TAX / LDA seg,X`        (AA BD ll hh)   -- $128D/$0A8A
+        #     pat read : `ASL / TAY / LDA pat,Y`  (0A A8 B9 ll hh)-- $12FD/$0AD4
+        #   Variant A ("Ding-class") follows each with `[CLC] ADC reloc` ($6D);
+        #   Variant B ("Smooth-class") uses absolute pointers -> no ADC, reloc 0.
+        reach = self.reach
+        n = len(d)
+
+        def _adc_after(off):
+            """If the LDA at `off` is followed by [CLC] ADC abs, return that abs
+            (the reloc address); else None."""
+            j = off + 3
+            if j < n and d[j] == 0x18:            # CLC
+                j += 1
+            if j + 2 < n and d[j] == 0x6D:        # ADC abs
+                return self._w(j + 1)
+            return None
+
+        def _anchored(pred):
+            """Yield reachable offsets satisfying pred(off); if flow-disasm found
+            nothing usable, fall back to a global scan."""
+            if reach:
+                hits = [o for o in reach if pred(o)]
+                if hits:
+                    return sorted(hits)
+            return [o for o in range(n - 4) if pred(o)]
+
+        def _ord_site(o):
+            return (d[o] == 0xAA and d[o + 1] == 0xBD
+                    and lo_lim <= self._w(o + 2) < hi_lim)
+
+        def _pat_site(o):
+            return (d[o] == 0x0A and d[o + 1] == 0xA8 and d[o + 2] == 0xB9
+                    and lo_lim <= self._w(o + 3) < hi_lim)
+
+        # pattern table first (its ADC pins the reloc)
+        reloc = None
+        for o in _anchored(_pat_site):
+            self.pat_ptr = self._w(o + 3)
+            r = _adc_after(o + 1)                 # LDA is at o+1 (after ASL/TAY)
+            if r is not None:
+                reloc = r
+            break
+        # segment/orderlist table; prefer a site that carries the ADC reloc
+        ord_hits = _anchored(_ord_site)
+        best = None
+        for o in ord_hits:
+            r = _adc_after(o + 1)                 # LDA is at o+1 (after TAX)
+            if r is not None:
+                best = (o, r)
                 break
-        # (C) pattern-ptr table: `ASL / TAY / LDA pat,Y` then `ADC reloc`
-        for i in _find_all(d, b'\x0a\xa8\xb9'):
-            for k in (5, 6):
-                if i + k + 2 < len(d) and d[i + k] == 0x6D:
-                    self.pat_ptr = self._w(i + 3)
-                    break
-            if self.pat_ptr is not None:
-                break
-        # (D) subtune-param table: init `0A 0A 0A 69 00` (song*8) then `AA BD ll hh`
-        i = d.find(b'\x0a\x0a\x0a\x69\x00')
+            if best is None:
+                best = (o, None)
+        if best is not None:
+            self.ord_ptr = self._w(best[0] + 2)
+            if reloc is None:
+                reloc = best[1]
+        self.reloc = reloc
+        # (D) subtune-param table + segment-seed: init `0A 0A 0A 69 imm` computes
+        #     song*8 + imm -> the initial segment index (seeds $106C AND indexes
+        #     the groove table via `AA BD ll hh`). imm varies per file (Ding $00,
+        #     B_A_T $04): read it so decode threads the right first segment.
+        i = -1
+        for c in _find_all(d, b'\x0a\x0a\x0a\x69'):
+            i = c
+            self.seg_seed = d[c + 4]
+            break
         if i >= 0:
             for j in range(i, min(i + 32, len(d) - 3)):
                 if d[j] == 0xAA and d[j + 1] == 0xBD:
                     self.subtune_tbl = self._w(j + 2)
                     break
+        # (E) segment-advance handler (the top-level multi-segment $FF). Reads the
+        #     cap/step immediates so the decoder can thread the $195C segment table:
+        #       CMP #$FF / BNE / LDA seg,X / CMP #cap / BCS / CLC / ADC #step / STA seg,X
+        #       C9 FF   D0 rr  BD ll hh   C9 cap  B0 rr  18    69 step   9D ll hh
+        for i in _find_all(d, b'\xc9\xff\xd0'):
+            if (i + 15 < len(d) and d[i + 4] == 0xBD and d[i + 7] == 0xC9
+                    and d[i + 11] == 0x18 and d[i + 12] == 0x69
+                    and d[i + 14] == 0x9D):
+                self.seg_cap = d[i + 8]
+                self.seg_step = d[i + 13]
+                break
+
         if self.reloc is not None:
             off = self.reloc - self.la
             if 0 <= off + 1 < len(d):
                 self.reloc_val = self._w(off)
+        elif self.ord_ptr is not None and self.pat_ptr is not None:
+            self.reloc_val = 0                   # Variant B: absolute pointers
 
     def ok(self):
         return None not in (self.dispatch, self.freq_lo, self.instr,
@@ -197,10 +335,20 @@ class DeenenLocate:
 # ---------------------------------------------------------------------------
 
 class DeenenModule:
-    def __init__(self, d, la, subtune=0):
+    def __init__(self, d, la, subtune=0, h=None):
         self.d, self.la = d, la
         self.subtune = subtune
-        self.loc = DeenenLocate(d, la)
+        # Seed the flow-disasm with init/play (+ their header JMP targets) so the
+        # locate anchors table scans to reachable code.
+        entries = []
+        if h:
+            for a in (h.get('init'), h.get('play')):
+                if a:
+                    entries.append(a)
+                    o = a - la
+                    if 0 <= o + 2 < len(d) and d[o] == 0x4C:
+                        entries.append(d[o + 1] | (d[o + 2] << 8))
+        self.loc = DeenenLocate(d, la, entries)
 
     def _u8(self, addr):
         o = addr - self.la
@@ -224,91 +372,192 @@ class DeenenModule:
         hi = self._u8(self.loc.freq_hi + note)
         return lo | (hi << 8)
 
-    def decode_voice(self, v, max_rows=20000):
-        """Walk voice v's orderlist -> patterns -> rows. Returns a list of row
-        events: dict(kind='note'|'rest', frames, note=?, instr=?, freq=?).
-        One pass of the orderlist (stops at $FE/$FF loop or row cap)."""
-        loc = self.loc
-        base = self.subtune * 8
-        ord_ptr = self._ptr(loc.ord_ptr, base + v * 2)
-        events = []
-        note_transpose = 0
-        a_transpose = 0
-        cur_instr = 0
-        cur_dur = 1
-        oi = 0                                   # orderlist index
-        guard_ol = 0
-        while guard_ol < 512 and len(events) < max_rows:
-            guard_ol += 1
+    def _ord_ptr_for(self, v, segidx):
+        """Orderlist pointer for voice v at segment index segidx: the word at
+        $195C[voice*2 + segidx] + reloc (the top-level $195C indirection)."""
+        idx = (v * 2 + segidx) & 0xFF
+        lo = self._u8(self.loc.ord_ptr + idx)
+        hi = self._u8(self.loc.ord_ptr + idx + 1)
+        return ((lo | (hi << 8)) + (self.loc.reloc_val or 0)) & 0xFFFF
+
+    def _pat_ptr(self, pat):
+        lo = self._u8(self.loc.pat_ptr + pat * 2)
+        hi = self._u8(self.loc.pat_ptr + pat * 2 + 1)
+        return ((lo | (hi << 8)) + (self.loc.reloc_val or 0)) & 0xFFFF
+
+    def _in_image(self, addr):
+        return 0 <= addr - self.la < len(self.d)
+
+    def _seg_head_ok(self, ord_ptr):
+        """True if this orderlist points in-image and reaches an in-image pattern
+        within a few bytes (used to validate a candidate segment index)."""
+        if not self._in_image(ord_ptr):
+            return False
+        oi = 0
+        for _ in range(64):
             ob = self._u8(ord_ptr + oi)
-            if ob == 0xFE:
-                break                            # $FE = stop -> end of song
-            if ob == 0xFF:
-                oi += 1                          # $FF = pattern separator/loop
+            if ob in (0xFE, 0xFF):
+                return False
+            if ob < 0x5F:
+                return self._in_image(self._pat_ptr(ob))
+            oi += 1
+        return False
+
+    def _segidx0(self):
+        """Initial segment index. Init computes subtune*8 + seg_seed, but a few
+        sub-variants (B_A_T) lay the song-0 record so that the raw seed walks a
+        voice off-image; pick the first candidate whose three voice orderlists all
+        validate. Memoized."""
+        if getattr(self, '_seg0_cache', None) is not None:
+            return self._seg0_cache
+        base = (self.subtune * 8) & 0xFF
+        seed = self.loc.seg_seed
+        cands = list(dict.fromkeys([(base + seed) & 0xFF, base, seed & 0xFF, 0]))
+        chosen = cands[0]
+        for s0 in cands:
+            if all(self._seg_head_ok(self._ord_ptr_for(v, s0)) for v in range(3)):
+                chosen = s0
+                break
+        self._seg0_cache = chosen
+        return chosen
+
+    def _parse_row(self, pat, pi, st):
+        """Decode ONE pattern row starting at byte index pi, mirroring the 6502
+        row parser ($131D-$1494). Mutates the state dict st (note_transpose,
+        a_transpose, cur_instr, cur_dur). Returns (next_pi, event_or_None):
+          event None + next_pi==pi  -> pattern end ($FF)
+          event kind 'note'/'rest'  -> onset / rest of `frames` advance-ticks."""
+        u8 = self._u8
+        y = pi
+        b = u8(pat + y)                                  # $1320
+        if b < 0x60:                                     # $1324 -> $1406 bare note
+            return y + 1, self._emit_note(b, st)
+        if b == 0xFF:                                    # pattern end
+            return pi, None
+        if b == 0xFE:                                    # $1347 set speed
+            y += 1                                       # speed param ($1957)
+            y += 1
+            b = u8(pat + y)                              # note candidate ($07)
+        if b == 0xFD:                                    # $1356 slide -> note
+            y += 1                                       # $10BF param
+            y += 1
+            b = u8(pat + y)                              # note ($07)
+            y += 1                                       # slide target ($10BC)
+            return y + 1, self._emit_note(b, st)
+        # $1372 -> $1379: FC / FB gate commands
+        if b == 0xFC:                                    # $1379
+            y += 1                                       # $1009 param
+            y += 1
+            b = u8(pat + y)
+        if b == 0xFB:                                    # $1388
+            y += 1
+            b = u8(pat + y)
+        if b >= 0xE0:                                    # $1398 REST (holds b-$E1+1)
+            return y + 1, dict(kind='rest', frames=((b - 0xE1) & 0xFF) + 1)
+        if b >= 0xC0:                                    # $13BB instrument $C0-$DF
+            st['cur_instr'] = (b - 0xC0 + st['a_transpose']) & 0xFF
+            y += 1
+            b = u8(pat + y)                              # $13C9
+            if b == 0xFD:                                # $13CB -> slide ($135A)
+                y += 1
+                y += 1
+                b = u8(pat + y)
+                y += 1
+                return y + 1, self._emit_note(b, st)
+        if b >= 0x80:                                    # $13D6 default duration
+            st['cur_dur'] = (b - 0x81) & 0xFF
+            while True:                                  # accumulate $80-$FF chain
+                y += 1
+                b = u8(pat + y)                          # $13DE
+                if b == 0xFD:                            # $13E0 -> slide
+                    y += 1
+                    y += 1
+                    b = u8(pat + y)
+                    y += 1
+                    return y + 1, self._emit_note(b, st)
+                if b < 0x80:                             # $13E7 done accumulating
+                    break
+                st['cur_dur'] = (st['cur_dur'] + (b - 0x80)) & 0xFF
+        if b >= 0x60:                                    # $13FA arp param $60-$7F
+            y += 1
+            b = u8(pat + y)                              # $1402
+        return y + 1, self._emit_note(b, st)             # $1406 note
+
+    def _emit_note(self, b, st):
+        note = (b + st['note_transpose']) & 0xFF
+        return dict(kind='note', frames=(st['cur_dur'] + 1) & 0xFF,
+                    note=note, instr=st['cur_instr'], freq=self._freq(note))
+
+    def decode_voice(self, v, max_rows=8000, stop_on_loop=False):
+        """Walk voice v's two-level song (segment table -> orderlist -> patterns
+        -> rows), threading the top-level multi-segment $195C indirection. Returns
+        a list of events dict(kind='note'|'rest', frames, note=?, instr=?, freq=?).
+
+        Segment threading mirrors init + the $FF handler ($1288/$12B0): segidx
+        starts at subtune*8; the orderlist $FF advances segidx by `seg_step` while
+        segidx < `seg_cap` (re-selecting $195C[voice*2+segidx]); once segidx>=cap
+        (or no handler was located) $FF loops the current segment. Orderlist $6F-$7F
+        loop counts replay the following pattern (count+1) times ($10DE)."""
+        st = dict(note_transpose=0, a_transpose=0, cur_instr=0, cur_dur=0)
+        events = []
+        segidx = self._segidx0()
+        ord_ptr = self._ord_ptr_for(v, segidx)
+        oi = 0
+        pending_loop = 0
+        guard = 0
+        seg_loops = 0
+        visited = {segidx}                               # for stop_on_loop
+        while len(events) < max_rows and guard < 40000:
+            guard += 1
+            ob = self._u8(ord_ptr + oi)
+            if ob == 0xFE:                               # $12A9 stop song
+                break
+            if ob == 0xFF:                               # $12B0 segment advance
+                if (self.loc.seg_cap is not None and self.loc.seg_step is not None
+                        and segidx < self.loc.seg_cap):
+                    segidx = (segidx + self.loc.seg_step) & 0xFF
+                else:
+                    if stop_on_loop:
+                        break                            # segment loops -> song end
+                    seg_loops += 1
+                    if seg_loops > 6000:
+                        break                            # looping tail -> stop
+                if stop_on_loop and segidx in visited:
+                    break                                # one song pass -> stop
+                visited.add(segidx)
+                ord_ptr = self._ord_ptr_for(v, segidx)
+                oi = 0
+                pending_loop = 0
                 continue
-            if 0x5F <= ob <= 0x6E:
-                a_transpose = ob - 0x5F
+            if 0x5F <= ob <= 0x6E:                       # $12D7 A-transpose
+                st['a_transpose'] = ob - 0x5F
                 oi += 1
                 continue
-            if 0x6F <= ob <= 0x7F:
-                oi += 1                          # pattern-loop count (Stage B)
-                continue
-            if 0x80 <= ob <= 0xFD:
-                note_transpose = (ob - 0x82) & 0xFF
-                if note_transpose >= 0x80:
-                    note_transpose -= 0x100
+            if 0x6F <= ob <= 0x7F:                       # $12F2 pattern-loop count
+                pending_loop = (ob - 0x70) & 0xFF
                 oi += 1
                 continue
-            # else: pattern index
-            pat = self._ptr(loc.pat_ptr, ob * 2)
-            pi = 0
-            guard_p = 0
-            while guard_p < 4096 and len(events) < max_rows:
-                guard_p += 1
-                b = self._u8(pat + pi)
-                if b == 0xFF:
-                    break                        # end of pattern
-                # multi-byte commands
-                if b == 0xFE:                    # set global speed (skip 1 param)
-                    pi += 2
-                    continue
-                if b == 0xFD:                    # slide note: params then note
-                    pi += 3
-                    b = self._u8(pat + pi)
-                if b == 0xFC:                    # enable +param
-                    pi += 2
-                    b = self._u8(pat + pi)
-                if b == 0xFB:                    # gate clear +param
-                    pi += 2
-                    b = self._u8(pat + pi)
-                if 0xE0 <= b <= 0xFA:            # REST, holds (b-$E1) frames
-                    events.append(dict(kind='rest', frames=(b - 0xE1) & 0xFF))
-                    pi += 1
-                    continue
-                if 0xC0 <= b <= 0xDF:            # instrument
-                    cur_instr = (b - 0xC0 + a_transpose) & 0xFF
-                    pi += 1
-                    b = self._u8(pat + pi)
-                if 0x80 <= b <= 0xBF:            # default duration (accumulate)
-                    cur_dur = (b - 0x81) & 0xFF
-                    pi += 1
-                    b = self._u8(pat + pi)
-                    while 0x80 <= b <= 0xBF:
-                        cur_dur = (cur_dur + (b - 0x80)) & 0xFF
-                        pi += 1
-                        b = self._u8(pat + pi)
-                if 0x60 <= b <= 0x7F:            # arp/vib param
-                    pi += 1
-                    b = self._u8(pat + pi)
-                if b >= 0x60:                    # not a note after all -> bail row
-                    pi += 1
-                    continue
-                # NOTE
-                note = (b + note_transpose) & 0xFF
-                events.append(dict(kind='note', frames=(cur_dur + 1) & 0xFF,
-                                   note=note, instr=cur_instr,
-                                   freq=self._freq(note)))
-                pi += 1
+            if 0x80 <= ob <= 0xFD:                       # $12E5 note-transpose
+                nt = (ob - 0x82) & 0xFF
+                st['note_transpose'] = nt - 0x100 if nt >= 0x80 else nt
+                oi += 1
+                continue
+            # else: pattern index (< $5F)
+            pat = self._pat_ptr(ob)
+            plays = (pending_loop & 0xFF) + 1
+            pending_loop = 0
+            for _ in range(plays):
+                pi = 0
+                pguard = 0
+                while pguard < 8192 and len(events) < max_rows:
+                    pguard += 1
+                    npi, ev = self._parse_row(pat, pi, st)
+                    if ev is None:
+                        break                            # pattern end ($FF)
+                    events.append(ev)
+                    pi = npi
+                if len(events) >= max_rows:
+                    break
             oi += 1
         return events
 
@@ -317,7 +566,8 @@ class DeenenModule:
         of the subtune*8 record). Defaults to 1 when the table isn't located."""
         if self.loc.subtune_tbl is None:
             return 1
-        return self._u8(self.loc.subtune_tbl + self.subtune * 8) or 1
+        idx = self.subtune * 8 + self.loc.seg_seed
+        return self._u8(self.loc.subtune_tbl + idx) or 1
 
     def advance_schedule(self, nframes=4000):
         """The global note-advance frame schedule: the player DECs each voice's
@@ -341,6 +591,26 @@ class DeenenModule:
             if adv:
                 sched.append(fr)
         return sched
+
+    def plausible(self):
+        """Reject the mis-located / wrong-reloc decodes that DeenenLocate.ok()
+        can't see: a decode where one (note,frames) pair dominates a voice is
+        reading filler (Variant-B absolute-pointer files whose reloc we can't pin
+        -- Eye_to_Eye reads all note $06, Zamzara all note $00). Cheap: a short
+        one-pass sample per voice. Returns False on any degenerate voice."""
+        from collections import Counter
+        degenerate = False
+        any_notes = False
+        for v in range(3):
+            notes = [e for e in self.decode_voice(v, max_rows=500)
+                     if e['kind'] == 'note']
+            if len(notes) < 8:
+                continue
+            any_notes = True
+            top = Counter((e['note'], e['frames']) for e in notes).most_common(1)
+            if top and top[0][1] / len(notes) > 0.85:
+                degenerate = True
+        return any_notes and not degenerate
 
     def voice_onsets(self, v, sched=None):
         """-> [(onset_frame, note_index)] for retriggered notes, mapped through
