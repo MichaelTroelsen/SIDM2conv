@@ -362,10 +362,15 @@ gallefoss-sdi-player.md):
    wired for the wrapper gen (e_ghost_track stays None; gap logic
    needs the wrapper's tl/th layout). NEXT for these: verify nch=4
    detection + the conduct pitch base for the wrapper cluster.
-   Remaining NONE: 85 files (was 161 with off-other; the true
-   unrecognized-variant count). Next-biggest cluster: the 56 play+3
-   files that fail A-E (a distinct gen); fingerprint + crack like
-   this one.
+   Remaining NONE: 85 files. Next cluster = 50 play+3 files that fail
+   A-E, ALSO wrapped (init $1000 = JMP realinit). TWO load groups:
+   $1000 (18) + $2D80 (18) + tail. CAUTION: this cluster is MIXED —
+   names include DMC_Demo, Delta, Commando (possible DMC/Hubbard rips
+   in the Gallefoss composer-folder, NOT SDI). Triage per-file first:
+   follow the init JMP, check if the real player matches an SDI
+   variant signature OR another player entirely (run the DMC/Hubbard
+   parsers' locate on them). Only wrap-crack the ones that are
+   genuinely SDI. Not a single clean crack like the sixth layout.
 5b. MULTI-SUBTUNE (commit 168cbc0): SDIModule(subtune=N) done for
    A/C/E (E: tp=init_block[N]; C/A: record init_block+N*8). Converted
    the 5 E extras (Aldebaran sub1-3, Evil_Within sub1, Phneumatic
