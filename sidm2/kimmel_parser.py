@@ -113,6 +113,7 @@ class KimmelLayout:
     instr_lo_var: int = 0  # RAM var holding the instrument-table ptr LO ($1059)
     instr_hi_var: int = 0  # RAM var holding the instrument-table ptr HI ($105A)
     tempo_cell: int = 0    # tempo threshold cell ($1001); fpt = mem[cell]
+    arp_tbl: int = 0       # arpeggio semitone-offset table ($1176) — 12-entry blocks
     stride: int = 7        # per-voice state stride
 
 
@@ -127,6 +128,8 @@ _ORD_SIG = [0xBD, None, None, 0x85, None, 0xBD, None, None, 0x85, None]
 _INSTR_SIG = [0xBD, None, None, 0x85, None, 0xAD, None, None, 0x85, None]
 # play tempo compare: CMP tempo / BNE / DEC dur,X
 _TEMPO_SIG = [0xCD, None, None, 0xD0, None, 0xDE, None, None]
+# $12CC arp step: LDA pitch,X / CLC / ADC arptbl,Y / TAY  ->  arptbl operand
+_ARP_SIG = [0xBD, None, None, 0x18, 0x79, None, None, 0xA8]
 
 
 def locate(d, la):
@@ -160,6 +163,9 @@ def locate(d, la):
 
     for t in _find_all(d, _TEMPO_SIG):
         lay.tempo_cell = d[t + 1] | (d[t + 2] << 8)
+        break
+    for a in _find_all(d, _ARP_SIG):
+        lay.arp_tbl = d[a + 5] | (d[a + 6] << 8)
         break
     return lay
 
@@ -230,6 +236,9 @@ def locate_mem(mem, core):
     t = _nearest(_find_all_mem(mem, _TEMPO_SIG), core)
     if t is not None:
         lay.tempo_cell = mem[t + 1] | (mem[t + 2] << 8)
+    a = _nearest(_find_all_mem(mem, _ARP_SIG), core)
+    if a is not None:
+        lay.arp_tbl = mem[a + 5] | (mem[a + 6] << 8)
     return lay
 
 
@@ -316,11 +325,31 @@ class KimmelModule:
         return self.mem[(self.lay.freqlo + p) & 0xFFFF] \
             | (self.mem[(self.lay.freqhi + p) & 0xFFFF] << 8)
 
-    def instrument(self, n):
-        base = (self.instr_base + (n & 0x07) * 8) & 0xFFFF
+    def voice_instr_base(self, voice):
+        """Per-voice instrument-table base. The note-on code builds the pointer
+        from ``$1059,X`` (LO, X-indexed per voice) + ``$105A`` (HI, shared), so
+        each voice can point at its OWN instrument bank — Radax/TT-III/Rhaa give
+        voice 1 a bank $40 bytes (8 records) above voices 0/2. Reading every
+        voice from voice 0's bank (the old behaviour) mis-timbres voice 1."""
+        lo = self.mem[(self.lay.instr_lo_var + self.lay.stride * voice) & 0xFFFF]
+        hi = self.mem[self.lay.instr_hi_var & 0xFFFF]
+        return lo | (hi << 8)
+
+    def instrument(self, n, voice=0):
+        base = (self.voice_instr_base(voice) + (n & 0x07) * 8) & 0xFFFF
         r = [self.mem[(base + k) & 0xFFFF] for k in range(8)]
         return {"pwhi": r[0], "wave": r[1], "ad": r[2], "sr": r[3],
                 "pulse_speed": r[4], "slide": r[5], "arp": r[6], "fx": r[7]}
+
+    def arp_block(self, arp_off):
+        """The 12-entry arpeggio block at ``arp_tbl + arp_off``. The $12CC engine
+        adds ``block[frame_counter % 12]`` (a semitone offset) to the note's
+        pitch index every frame, so a non-zero block IS the chord arpeggio. An
+        all-zero block = no arp (a held note)."""
+        if not self.lay.arp_tbl:
+            return [0] * 12
+        base = (self.lay.arp_tbl + (arp_off & 0xFF)) & 0xFFFF
+        return [self.mem[(base + i) & 0xFFFF] for i in range(12)]
 
     def orderlist_ptr(self, voice):
         s = self.lay.stride * voice
