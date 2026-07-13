@@ -94,5 +94,35 @@ class TestSDIVariantCWalk(unittest.TestCase):
         self.assertIsNone(self.m.instr_pitch(4))
 
 
+ARABIA = os.path.join(ROOT, "SID", "Gallefoss_Glenn", "Arabia.sid")
+
+
+@unittest.skipUnless(os.path.exists(ARABIA), "Gallefoss corpus not staged")
+class TestSDIVariantETrackDelay(unittest.TestCase):
+    """Variant-E $Cx track-delay is TRAILING, not leading — emulation
+    (bin/_sdi_e_gatewatch.py / _sdi_e_trackwatch.py, 2026-07-13): the
+    player ($EE8F) stores b&$3f to the delay cell $e910,X and the gate
+    ($EE50) pays it only AFTER the seq it was read with (before advancing
+    to the NEXT track entry). Arabia v2 track = a0 00 c3 0a...: seq00
+    (2 ticks) then c3, then seq0a. The c3=3 delay must NOT push seq0a's
+    onset — real seq0a starts at fr4 (gate rise fr6), tick ~2, not tick 5.
+    Regression guard for the +3-tick / +6-frame drift that collapsed the
+    E strict window."""
+    @classmethod
+    def setUpClass(cls):
+        from sidm2.sdi_parser import load_sid, SDIModule
+        cls.d, cls.la, cls.h = load_sid(ARABIA)
+        cls.m = SDIModule(cls.d, cls.la)
+        cls.m.fpt = 1                             # decode in ticks
+
+    def test_trailing_delay_no_preshift(self):
+        ev = self.m.events()
+        ticks = [e.frame for e in ev[2] if e.kind == 'note'][:5]
+        # tick 0 = seq00 note-21 blip (real gate rise fr1); tick 2 =
+        # seq0a's first note (real fr6). If the c3=3 delay were applied
+        # BEFORE seq0a (the old bug) this would be tick 5.
+        self.assertEqual(ticks, [0, 2, 8, 16, 18])
+
+
 if __name__ == "__main__":
     unittest.main()

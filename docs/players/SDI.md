@@ -97,10 +97,21 @@ by strict agreement (D5).
   pitch base `$E943` real voices offset from) and shipped as zero-delta-safe
   infrastructure; the ghost timeline for the **wrapper** nch=4 generation
   is not yet wired (Afterburner 80/40, Ambient 78/18).
-- E laggards: **Arabia** — grammar, pitch, AND base timing all dis-verified
-  correct; residual is a single **+6-frame early track-delay** at the
-  seq→delay→next-seq boundary (not density). Glide-heavy files still park
-  strict in slides.
+- **E `$Cx` track-delay = TRAILING** (FIXED 2026-07-13): the player
+  (`$EE8F`) stores `b&$3f` to the per-voice delay cell `$e910,X`; the gate
+  (`$EE50`) pays it only AFTER the seq it was read with, before advancing to
+  the NEXT track entry — a trailing hold, not a leading pre-seq delay. Our
+  decoder had added it before the following seq (the +3-tick/+6-frame drift).
+  Emulation-verified (`bin/_sdi_e_gatewatch.py` gate rises +
+  `_sdi_e_trackwatch.py` armed-but-unpaid delay). Corpus: E strict median
+  47.5 → **50.8**, windowed 70.7 → 75.0, 43 files up (JS_Beta +24, Moi_Funk
+  +21, Evil_Within +16, Sweeper +15, Xard +6) vs 10 tiny regressions on
+  already-broken files (windowed still up there). Lock:
+  `TestSDIVariantETrackDelay`.
+- E laggards: **Arabia** (nch=4 ghost/conductor file) — grammar, pitch, base
+  timing AND the trailing-delay all dis/emu-verified; its residual is now the
+  unwired **wrapper conduct/ghost timeline** (pitch), not the track-delay.
+  Glide-heavy files still park strict in slides.
 - **C niche**: Everytime (noise twins), Ninja_IV (gateless test-click
   percussion — a metric disagreement), Tanks_3000 (dormant-copy image; its
   live `$1000` player is an unrecognized variant), Magic_Moment glides.

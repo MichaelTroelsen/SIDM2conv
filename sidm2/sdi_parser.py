@@ -647,6 +647,7 @@ class SDIModule:
         tpos = 0
         transpose = 0
         tick = 0
+        pending_delay = 0                        # $Cx = TRAILING delay
         events = []
         guard = 0
         seen = set()
@@ -666,8 +667,14 @@ class SDIModule:
                 if not (0 <= tpos < 0x4000):
                     break
                 continue
-            if b >= 0xC0:                        # track delay (ticks)
-                tick += (b & 0x3F)
+            if b >= 0xC0:                        # track delay: ARM only.
+                # The player ($EE8F) stores b&$3f to the per-voice delay
+                # cell $e910,X; the gate ($EE50) pays it only AFTER the
+                # seq it is read with, before advancing to the NEXT track
+                # entry. So it is a TRAILING hold, not a pre-seq delay
+                # (emulation-verified: Arabia seq0a starts immediately
+                # after seq00 with delay=3 armed-but-unpaid).
+                pending_delay = b & 0x3F
                 tpos += 1
                 continue
             if b >= 0x80:                        # transpose = b - $a0
@@ -678,6 +685,8 @@ class SDIModule:
             seq = self.seq_addr(b)
             tick = self._play_seq_e(v, seq, tick, transpose, events,
                                     max_ticks)
+            tick += pending_delay                # pay AFTER the seq
+            pending_delay = 0
             tpos += 1
         return events
 
