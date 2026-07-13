@@ -158,6 +158,20 @@ class TestSDIVariantDelta(unittest.TestCase):
         ticks = [(e.frame, e.note) for e in ev[0] if e.kind == 'note'][:4]
         self.assertEqual(ticks, [(0, 27), (2, 27), (4, 39), (6, 27)])
 
+    def test_single_store_e_gen_locates(self):
+        """The single-store tl/th E generation (L-Forza_Remix: init copies
+        each track-ptr byte once, LDA tl,Y/STA/LDA th,Y/STA/CPX #$15) locates
+        as E via the fallback tl/th sig + decodes well (~95 onset+pitch)."""
+        from sidm2.sdi_parser import load_sid, SDIModule
+        p = os.path.join(ROOT, "SID", "Gallefoss_Glenn", "L-Forza_Remix.sid")
+        if not os.path.exists(p):
+            self.skipTest("L-Forza_Remix not staged")
+        d, la, h = load_sid(p)
+        m = SDIModule(d, la)
+        self.assertEqual(m.lay.variant, 'E')
+        self.assertGreater(len([e for e in m.events()[0]
+                                if e.kind == 'note']), 500)
+
     def test_abs_form_page03_straggler(self):
         """The page-$03-state sub-variant (Invention_1) locates as DELTA via
         the abs (BC) track/seq form + the play-dispatch guard — NOT a false

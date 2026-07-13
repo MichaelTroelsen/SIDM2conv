@@ -160,7 +160,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 
 ## Complete build inventory
 
-**543 songs built** across 7 native players (each song may span several SF2 parts).
+**547 songs built** across 7 native players (each song may span several SF2 parts).
 
 *Auto-generated from the built SF2 files under `out/` by `pyscript/gen_sf2_index.py` — re-run after building more tunes. "Parts" = the number of SF2 files a song is split into (a long song exceeds the SF2II table/`$D000` caps and ships as windowed parts; 1 = a single file).*
 
@@ -393,7 +393,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Thats All | Michael Troelsen (Fun Fun) | 1987 Triangle | 3 |
 | Times Up | Michael Troelsen (Fun Fun) | 1987 Triangle | 1 |
 
-### SID Duzz' It (SDI) — Gallefoss/Tjelta  ·  `Driver 11 (Stage A)`  ·  344 songs / 344 SF2 files
+### SID Duzz' It (SDI) — Gallefoss/Tjelta  ·  `Driver 11 (Stage A)`  ·  348 songs / 348 SF2 files
 
 | Song | Composer | Released | Parts |
 |------|----------|----------|------:|
@@ -445,6 +445,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Careless Whisper | Glenn Rune Gallefoss | 1996 SHAPE/Blues Muz' | 1 |
 | Cheese Pop | Glenn Rune Gallefoss (Shark) | 1994 SHAPE/Blues Muz' | 1 |
 | Close preview | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Club 69 | Glenn Rune Gallefoss | 2004 SHAPE/Blues Muz' | 1 |
 | Coming Soon | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
 | Commando | Glenn Rune Gallefoss | 1999 Nostalgia | 1 |
 | Commercial Countdown | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
@@ -564,8 +565,11 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Kleptoekko | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' | 1 |
 | Koke Stek | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
 | Kururin | Glenn Rune Gallefoss | 2006 SHAPE/Blues Muz' | 1 |
+| L-Forza long edit | Glenn Rune Gallefoss | 2010 Recollection | 1 |
+| L-Forza Remix | Glenn Rune Gallefoss | 2009 Byterapers | 1 |
 | Lame | Glenn Rune Gallefoss (Shark) | 1990 Collision/Kraftverk | 1 |
 | Lederhosen | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
+| Leon Latex | Glenn Rune Gallefoss | 2007 SHAPE | 1 |
 | Lesbians | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
 | Lethal Weapon | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 1 |
 | Lightforce | Glenn Rune Gallefoss | 2000 SHAPE/Blues Muz' | 1 |

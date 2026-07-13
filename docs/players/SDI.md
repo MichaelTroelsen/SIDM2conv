@@ -137,7 +137,13 @@ by strict agreement (D5).
 - **Coverage**: the 32 locate-NONE play+3 files are ALL SDI-family (player-id:
   GRG/Geir_Tjelta/SIDDuzz'It — NOT foreign DMC/Hubbard rips) behind init/play
   JMP wrappers, in sub-variant clusters. DELTA-class (8) fully cracked (zp +
-  page-$03). Remaining NONE clusters: [LDX LDA STA STA] (Mountain_March/
+  page-$03). E single-store-init gen (+4: L-Forza_Remix/L-Forza_long_edit
+  95.4/95.4, Leon_Latex 64/30, Club_69 42/20) routed to the E decoder via a
+  fallback tl/th sig (init copies each ptr byte once vs twice). Remaining NONE
+  is a HETEROGENEOUS long tail (structural map 2026-07-13): ~22 play+4
+  (E-family init/table variants, e.g. Pepita = another tl/th shape), 10 D-seq
+  + 7 E-seq play+3 hybrids, ~40 one-off covers/foreign/digi at weird play-init
+  offsets. Clusters: [LDX LDA STA STA] (Mountain_March/
   Prehistoric_Tale/Title_Needed), [TAX LDA STA LDA] wrapper (Commando_Arcade/
   Hysteria_Pimped), + the 9 abs-form false-positives the dispatch guard
   correctly excludes (Crystal_Gazer/Doors_of_Perception/... = other engines).

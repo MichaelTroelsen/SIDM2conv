@@ -298,10 +298,20 @@ def locate(d, la):
         # tl/th: LDA $tl,Y / STA st,X / STA st2,X / LDA $th,Y / ...
         j = _find(d, [0xB9, -1, -1, 0x9D, -1, -1, 0x9D, -1, -1,
                       0xB9, -1, -1, 0x9D, -1, -1, 0x9D, -1, -1])
-        if j is None:
-            return None
-        lay.track_lo_arr = _w(d, j + 1)
-        lay.track_hi_arr = _w(d, j + 10)
+        if j is not None:
+            lay.track_lo_arr = _w(d, j + 1)
+            lay.track_hi_arr = _w(d, j + 10)
+        else:
+            # SINGLE-STORE tl/th gen (Club_69/L-Forza class): the init stores
+            # each track-ptr byte ONCE (LDA tl,Y / STA st,X / LDA th,Y /
+            # STA st,X / CPX #$15) instead of the double-copy above — same
+            # E tables + grammar, only the init copy shape differs.
+            j = _find(d, [0xB9, -1, -1, 0x9D, -1, -1, 0xB9, -1, -1,
+                          0x9D, -1, -1, 0xE0, 0x15])
+            if j is None:
+                return None
+            lay.track_lo_arr = _w(d, j + 1)
+            lay.track_hi_arr = _w(d, j + 7)
         # seq tables: LDA $lo,Y / STA zp / LDA $hi,Y / STA zp / LDA #$FF
         j = _find(d, [0xB9, -1, -1, 0x85, -1, 0xB9, -1, -1, 0x85, -1,
                       0xA9, 0xFF])
