@@ -56,7 +56,10 @@ def _wave_program(wave, arp_block, fx, base_row):
     rows = []
     drum = (fx & 0xF0) != 0
     if drum:
-        rows.append((0x81, 0x00))          # noise attack, 1 frame
+        # the $130C engine forces 1 frame of noise at freq|=$8000 (a bright
+        # high-pitched click / octave-snap) on every note onset. Reproduce with
+        # a noise row at a high ABSOLUTE semitone ($80-$DF = absolute note).
+        rows.append((0x81, 0x80 | 0x50))   # noise attack, high snap, 1 frame
         body0 = base_row + 1
     else:
         body0 = base_row
@@ -80,6 +83,17 @@ def _table_caps(wave_table, pulse_table):
     """Guard the Driver-11 table sizes (256 rows each)."""
     assert len(wave_table) <= 256, f"wave table overflow: {len(wave_table)}"
     assert len(pulse_table) <= 256, f"pulse table overflow: {len(pulse_table)}"
+
+
+def _slide_speed16(ins):
+    """The $138E engine slides the note freq by ``PWhi & $F0`` per frame whenever
+    that nibble is non-zero (the `$1003` gate); `fx` bit4 picks direction
+    (set = up, clear = down). Returns a signed 16-bit per-frame speed (0 = none)
+    — the SF2 Driver-11 T0 command's XXYY 16-bit speed maps 1:1 to it."""
+    rate = ins["pwhi"] & 0xF0
+    if rate == 0:
+        return 0
+    return rate if (ins["fx"] & 0x10) else ((-rate) & 0xFFFF)
 
 
 def _pulse_ramp(pwhi, pulse_speed, base_row):
@@ -144,11 +158,16 @@ def _append_silent_instrument(instr_rows, wave_table):
 _MAX_REST_RUN = 64
 
 
-def build_rows(m, ev, slot_of, silent_idx):
-    """Event streams (tick-domain) -> per-voice Driver-11 rows."""
+def build_rows(m, ev, slot_of, silent_idx, slide_cmd):
+    """Event streams (tick-domain) -> per-voice Driver-11 rows.
+
+    ``slide_cmd`` maps a signed-16-bit slide speed -> command index (0 speed =
+    the T0 0000 stop command). The freq-slide/portamento ($138E engine) is
+    emitted as a T0 slide sequence command, issued on a note only when the
+    active slide speed CHANGES (start / rate-change / stop-on-transition)."""
     all_rows = []
     for v in range(3):
-        rows, cur, rest_run, tick = [], None, 0, 0
+        rows, cur, cur_slide, tick = [], None, 0, 0
         for e in ev[v]:
             etick = e.frame // max(1, m.fpt)
             while tick < etick:                       # decode gaps -> rests
@@ -160,14 +179,59 @@ def build_rows(m, ev, slot_of, silent_idx):
             slot = slot_of.get((v, e.instr), 0)
             inst = slot if slot != cur else None
             cur = slot if inst is not None else cur
-            rows.append(D11Row(note=n, instrument=inst))
+            speed = _slide_speed16(m.instrument(e.instr, v))
+            cmd = None
+            if speed != cur_slide:                    # start / change / stop
+                cmd = slide_cmd.get(speed)
+                cur_slide = speed
+            rows.append(D11Row(note=n, instrument=inst, command=cmd))
             rows.extend(D11Row(note=SF2_GATE_ON) for _ in range(dur - 1))
             tick += dur
-            rest_run = 0
         if rows and all(r.note == SF2_GATE_OFF for r in rows):
             rows[-1] = D11Row(note=1, instrument=silent_idx)
         all_rows.append(rows)
     return all_rows
+
+
+def _build_slide_commands(m, ev):
+    """Collect every distinct slide speed the tune uses -> a command-index map
+    and the SF2 command-table rows (type=Cmd_Slide $00, p1=hi, p2=lo). Index 0
+    is reserved for the T0 0000 stop command."""
+    speeds = {0}
+    for v in range(3):
+        for e in ev[v]:
+            speeds.add(_slide_speed16(m.instrument(e.instr, v)))
+    slide_cmd, cmd_table = {0: 0}, [(0x00, 0x00, 0x00)]     # index 0 = stop
+    for sp in sorted(s for s in speeds if s):
+        if len(cmd_table) >= 64:
+            break
+        slide_cmd[sp] = len(cmd_table)
+        cmd_table.append((0x00, (sp >> 8) & 0xFF, sp & 0xFF))
+    return slide_cmd, cmd_table
+
+
+def _patch_command_table(sf2, cmd_table):
+    """Write the command table into an already-emitted SF2 (the shared Driver-11
+    emitter doesn't emit commands). Column-major (type, p1, p2) x 64 rows —
+    format per docs/reference/SF2_FORMAT_SPEC.md. Read-only use of sf2_parser."""
+    from sidm2.models import SF2DriverInfo
+    from sidm2 import sf2_parser
+    out = bytearray(sf2)
+    di = SF2DriverInfo()
+    la = sf2_parser.parse_sf2_blocks(out, di)
+    if la is None or 'Commands' not in di.table_addresses:
+        return bytes(out)
+    ent = di.table_addresses['Commands']
+    addr, rows, cols = ent['addr'], ent['rows'], ent.get('columns', 3)
+
+    def w(a, val):
+        o = a - la + 2
+        if 0 <= o < len(out):
+            out[o] = val & 0xFF
+    for r, row in enumerate(cmd_table[:rows]):
+        for c in range(min(cols, len(row))):
+            w(addr + c * rows + r, row[c])
+    return bytes(out)
 
 
 def convert(path, out, subtune=0):
@@ -177,7 +241,8 @@ def convert(path, out, subtune=0):
     instr_rows, wave_table, pulse_table, slot_of = build_instruments(m, used)
     silent_idx = _append_silent_instrument(instr_rows, wave_table)
     _table_caps(wave_table, pulse_table)
-    all_rows = build_rows(m, ev, slot_of, silent_idx)
+    slide_cmd, cmd_table = _build_slide_commands(m, ev)
+    all_rows = build_rows(m, ev, slot_of, silent_idx, slide_cmd)
 
     sequences, orderlists = [], [[], [], []]
     seq_index = {}
@@ -198,9 +263,10 @@ def convert(path, out, subtune=0):
           f"instruments={len(instr_rows)} sequences={len(sequences)} "
           f"events={[len(e) for e in ev]}")
     sf2 = emit_driver11_sf2(song, sequences=sequences, orderlists=orderlists)
+    sf2 = _patch_command_table(sf2, cmd_table)
     os.makedirs(os.path.dirname(out) or '.', exist_ok=True)
     open(out, 'wb').write(sf2)
-    print(f"emitted {len(sf2)} bytes -> {out}")
+    print(f"emitted {len(sf2)} bytes -> {out}  (slide cmds={len(cmd_table)})")
     return 0
 
 
