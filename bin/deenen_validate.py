@@ -45,38 +45,53 @@ def validate(path, subtune, secs):
     realm = siddump_note_onsets(path, [f'-a{subtune}', f'-t{secs}'], require_wf=True)
     real = [[(f, name_to_semi(nm)) for f, nm in realm[v] if f < win] for v in range(3)]
 
-    # search a global frame phase + semitone offset maximizing total onset hits
-    def hits(ph, so):
-        tot = 0
-        for v in range(3):
-            rf = real[v]
-            for pf, ps in parser[v]:
-                cand = [rs for rf2, rs in rf if abs(rf2 - (pf + ph)) <= FRAME_TOL]
-                if cand and any((ps + so) % 12 == rs % 12 for rs in cand):
-                    tot += 1
-        return tot
-    best = (-1, 0, 0)
+    # Monotonic 1-1 alignment (each real onset + each parser onset consumed once)
+    # so coverage is honest (<=100%, no flood over-count). Search a global frame
+    # phase + semitone offset maximizing total frame-aligned onset hits.
+    def align(myl, rf, ph, so):
+        """-> (omatch, pmatch): frame-aligned pairs, and of those, pitch-class
+        agreeing pairs, under a monotonic 1-1 walk of both sorted streams."""
+        i = j = om = pm = 0
+        myl = sorted((pf + ph, ps) for pf, ps in myl)
+        rf = sorted(rf)
+        while i < len(myl) and j < len(rf):
+            pf, ps = myl[i]
+            rf2, rs = rf[j]
+            if abs(pf - rf2) <= FRAME_TOL:
+                om += 1
+                if (ps + so) % 12 == rs % 12:
+                    pm += 1
+                i += 1
+                j += 1
+            elif pf < rf2 - FRAME_TOL:
+                i += 1
+            else:
+                j += 1
+        return om, pm
+
+    # `so` (semitone offset) does not affect frame alignment -> pick `ph` by onset
+    # match, then pick `so` by pitch match at that phase.
+    best = (-1, 0)
     for ph in range(-6, 7):
-        for so in range(-12, 13):
-            hh = hits(ph, so)
-            if hh > best[0]:
-                best = (hh, ph, so)
-    _, ph, so = best
+        tot = sum(align(parser[v], real[v], ph, 0)[0] for v in range(3))
+        if tot > best[0]:
+            best = (tot, ph)
+    ph = best[1]
+    bso = (-1, 0)
+    for so in range(-12, 13):
+        pm = sum(align(parser[v], real[v], ph, so)[1] for v in range(3))
+        if pm > bso[0]:
+            bso = (pm, so)
+    so = bso[1]
 
     onset_cov, pitch_rate = [], []
     for v in range(3):
         rf = real[v]
         if not rf:
             continue
-        omatch = pmatch = 0
-        for pf, ps in parser[v]:
-            cand = [rs for rf2, rs in rf if abs(rf2 - (pf + ph)) <= FRAME_TOL]
-            if cand:
-                omatch += 1
-                if any((ps + so) % 12 == rs % 12 for rs in cand):
-                    pmatch += 1
-        onset_cov.append(100.0 * omatch / len(rf))
-        pitch_rate.append(100.0 * pmatch / omatch if omatch else 0.0)
+        om, pm = align(parser[v], rf, ph, so)
+        onset_cov.append(100.0 * om / len(rf))
+        pitch_rate.append(100.0 * pm / om if om else 0.0)
     if not onset_cov:
         return None
     return (statistics.median(onset_cov), statistics.median(pitch_rate),

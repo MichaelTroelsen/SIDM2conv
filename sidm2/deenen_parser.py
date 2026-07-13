@@ -338,6 +338,9 @@ class DeenenModule:
     def __init__(self, d, la, subtune=0, h=None):
         self.d, self.la = d, la
         self.subtune = subtune
+        self.init_addr = (h or {}).get('init')
+        self.play_addr = (h or {}).get('play')
+        self._rate_cache = None
         # Seed the flow-disasm with init/play (+ their header JMP targets) so the
         # locate anchors table scans to reachable code.
         entries = []
@@ -412,7 +415,12 @@ class DeenenModule:
             return self._seg0_cache
         base = (self.subtune * 8) & 0xFF
         seed = self.loc.seg_seed
-        cands = list(dict.fromkeys([(base + seed) & 0xFF, base, seed & 0xFF, 0]))
+        # segidx0 is the per-voice SEGMENT BASE cell ($0CAC-class), which the init
+        # zeroes -> 0 for subtune 0. The `0A0A0A 69 imm` immediate we read into
+        # seg_seed is the SUBTUNE-table index (song*8+imm), NOT the segment base
+        # (emulator-confirmed on B_A_T: seed=4 there, but the real segment base is
+        # 0). So try 0/base BEFORE the seed-derived candidates.
+        cands = list(dict.fromkeys([base, 0, (base + seed) & 0xFF, seed & 0xFF]))
         chosen = cands[0]
         for s0 in cands:
             if all(self._seg_head_ok(self._ord_ptr_for(v, s0)) for v in range(3)):
@@ -592,6 +600,139 @@ class DeenenModule:
                 sched.append(fr)
         return sched
 
+    def _emulate_onsets(self, frames=1500):
+        """Run the real player (py65) init + `frames` play calls; return per-voice
+        [(onset_frame, freq)] gate-rise onsets. Lazy py65 import -> [] if absent.
+        This is the ground-truth used ONLY to measure the per-file groove rate;
+        the note/pitch content itself comes from the static decoder."""
+        if self.init_addr is None or self.play_addr is None:
+            return None
+        try:
+            from py65.devices.mpu6502 import MPU
+        except Exception:
+            return None
+        d, la = self.d, self.la
+
+        class Mem:
+            def __init__(s):
+                s.m = bytearray(0x10000)
+            def __len__(s):
+                return len(s.m)
+            def __getitem__(s, a):
+                return s.m[a]
+            def __setitem__(s, a, v):
+                if isinstance(a, slice):
+                    s.m[a] = v
+                else:
+                    s.m[a] = v & 0xFF
+
+        mem = Mem()
+        mem.m[la:la + len(d)] = d
+        mem.m[1] = 0x37
+        mpu = MPU(memory=mem)
+
+        def call(addr):
+            mpu.a = 0
+            mpu.pc = addr
+            mpu.sp = 0xFF
+            # cap well above any single init/play frame; IRQ players (play=$0000)
+            # or ones that never RTS to top SP hit the cap instead of hanging.
+            for _ in range(60000):
+                if mem.m[mpu.pc] == 0x60 and mpu.sp >= 0xFF:
+                    break
+                mpu.step()
+
+        # IRQ-driven replays (play at $0000 / not a callable subroutine) can't be
+        # frame-stepped this way -> skip (caller falls back to advance_schedule).
+        if not (self.la <= self.play_addr < self.la + len(d)):
+            return None
+        call(self.init_addr)
+        onsets = [[], [], []]
+        prev = [0, 0, 0]
+        for fr in range(frames):
+            call(self.play_addr)
+            for v in range(3):
+                g = mem.m[0xD404 + v * 7] & 1
+                if g and not prev[v]:
+                    f = mem.m[0xD400 + v * 7] | (mem.m[0xD401 + v * 7] << 8)
+                    onsets[v].append((fr, f))
+                prev[v] = g
+        return onsets
+
+    # Candidate groove rates (real frames per decoder TICK). The Deenen tempo is
+    # always one of a few small rationals (measured: 2, 2.5, 3; higher for the
+    # multispeed/relocated variants).
+    _RATE_CANDS = (1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0)
+
+    def groove_rate(self, frames=1000, window=900):
+        """Real frames per decoder note-duration TICK. The groove rate is the one
+        global scalar that maps the decoder's tick clock onto the real (emulated)
+        frame clock; measured by picking, over a small candidate set, the R whose
+        uniform schedule (frame = R*tick) best aligns the decoder's onset stream to
+        the real gate-rise stream under a monotonic 1-1 match (a single scalar can
+        only align hundreds of onsets at the true tempo, so this is a measurement,
+        not an overfit). Emulation-based (py65); 0.0 if unmeasurable -> caller falls
+        back to advance_schedule. Cached."""
+        if self._rate_cache is not None:
+            return self._rate_cache
+        self._rate_cache = 0.0
+        onsets = self._emulate_onsets(frames)
+        if not onsets:
+            return 0.0
+        from sidm2.fidelity_common import freq_to_semi
+        real = [sorted((f, freq_to_semi(fr) % 12) for f, fr in onsets[v] if f < window)
+                for v in range(3)]
+        if sum(len(r) for r in real) < 12:
+            return 0.0
+        decoded = [[(t, freq_to_semi(e['freq']) % 12)
+                    for t, e in self._voice_ticks(v)] for v in range(3)]
+
+        def align(myl, rl, so, tol=4):
+            i = j = hits = 0
+            while i < len(myl) and j < len(rl):
+                pf, ps = myl[i]
+                rf, rs = rl[j]
+                if abs(pf - rf) <= tol:
+                    if (ps + so) % 12 == rs:
+                        hits += 1
+                    i += 1
+                    j += 1
+                elif pf < rf - tol:
+                    i += 1
+                else:
+                    j += 1
+            return hits
+
+        best = (-1, 0.0)
+        for R in self._RATE_CANDS:
+            myl = [sorted((round(R * t), pc) for t, pc in decoded[v]
+                          if R * t < window) for v in range(3)]
+            for so in range(-3, 4):
+                tot = sum(align(myl[v], real[v], so) for v in range(3))
+                if tot > best[0]:
+                    best = (tot, R)
+        self._rate_cache = best[1]
+        return self._rate_cache
+
+    def _voice_ticks(self, v, max_rows=4000):
+        """decode_voice(v) as [(cumulative_tick_before_note, event)] for notes."""
+        out = []
+        t = 0
+        for e in self.decode_voice(v, max_rows=max_rows):
+            if e['kind'] == 'note':
+                out.append((t, e))
+            t += e['frames']
+        return out
+
+    def groove_schedule(self, nframes=4000):
+        """Uniform advance schedule tick->frame using the emulation-measured
+        groove_rate(); falls back to advance_schedule() when the rate can't be
+        measured (no py65 / degenerate)."""
+        r = self.groove_rate()
+        if r and r > 0:
+            return [round(r * t) for t in range(nframes)]
+        return self.advance_schedule(nframes)
+
     def plausible(self):
         """Reject the mis-located / wrong-reloc decodes that DeenenLocate.ok()
         can't see: a decode where one (note,frames) pair dominates a voice is
@@ -601,22 +742,29 @@ class DeenenModule:
         from collections import Counter
         degenerate = False
         any_notes = False
+        counts = []
         for v in range(3):
             notes = [e for e in self.decode_voice(v, max_rows=500)
                      if e['kind'] == 'note']
+            counts.append(len(notes))
             if len(notes) < 8:
                 continue
             any_notes = True
             top = Counter((e['note'], e['frames']) for e in notes).most_common(1)
             if top and top[0][1] / len(notes) > 0.85:
                 degenerate = True
+        # A dead voice (0 notes) beside a busy one is a broken decode -- the ord
+        # table / reloc is wrong for that voice (Mr_Heli v0=0 while v1/v2 play).
+        # No genuine 3-voice Deenen tune leaves a whole voice empty.
+        if any(c == 0 for c in counts) and any(c > 20 for c in counts):
+            return False
         return any_notes and not degenerate
 
     def voice_onsets(self, v, sched=None):
         """-> [(onset_frame, note_index)] for retriggered notes, mapped through
         the groove clock (advance-tick -> real frame)."""
         if sched is None:
-            sched = self.advance_schedule()
+            sched = self.groove_schedule()
         tick = 0
         out = []
         for e in self.decode_voice(v):
