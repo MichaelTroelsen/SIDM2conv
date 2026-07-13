@@ -119,9 +119,21 @@ by strict agreement (D5).
 - **Multi-subtune**: A/C/E supported; B indexes subtunes differently
   (unsupported); Tanks_3000's 12 subtunes need its live player first;
   ~417 of 671 songs still undecoded (single-subtune-per-file default).
-- **Coverage**: 85 locate-NONE files remain, led by a 50-file play+3
-  cluster that is ALSO wrapped but MIXED (DMC_Demo/Delta/Commando names =
-  possible non-SDI rips) — triage per-file before wrap-cracking.
+- **Variant DELTA (5 files, DONE 2026-07-13)**: the play+3 JMP-wrapped,
+  ZERO-PAGE-state E-family cluster (Commando/Delta/Delta_Slow/DMC_Demo_remake/
+  Short_Deel). Track grammar = E's exactly (incl. the trailing $Cx delay);
+  tables relocation-located by signature; SEQ row = [sound $80-$bf & $3f]
+  [dur $60-$7f & $1f, persists][note <$5f + transpose], $00 = seq END.
+  RE'd + emulation-verified (bin/_sdi_delta_seqwatch.py / _sdi_e_gatewatch.py).
+  windowed 73-100 / strict 52-83 (Delta_Slow 100/83). Base note only (the
+  wfprg arg walk arps the pitch — Stage B target, like E). Lock:
+  TestSDIVariantDelta.
+- **Coverage**: the 32 locate-NONE play+3 files are ALL SDI-family (player-id:
+  GRG/Geir_Tjelta/SIDDuzz'It — NOT foreign DMC/Hubbard rips) behind init/play
+  JMP wrappers, in sub-variant clusters. DELTA-class (8) cracked (5 locate; 3
+  stragglers Invention_1/Lightforce/Neurotica_short = a shifted sub-variant,
+  add sigs). Other clusters ([LDX LDA STA STA], [TAX LDA STA LDA] wrapper) TODO.
+  ~73 more locate-NONE with other play-init offsets.
 - **Stage B native** via the shared MoN engine (step-grid; note: C-class
   note-on writes `$D404 = $08` TEST bit — mind the gate model).
 

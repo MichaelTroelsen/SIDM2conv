@@ -160,7 +160,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 
 ## Complete build inventory
 
-**535 songs built** across 7 native players (each song may span several SF2 parts).
+**540 songs built** across 7 native players (each song may span several SF2 parts).
 
 *Auto-generated from the built SF2 files under `out/` by `pyscript/gen_sf2_index.py` — re-run after building more tunes. "Parts" = the number of SF2 files a song is split into (a long song exceeds the SF2II table/`$D000` caps and ships as windowed parts; 1 = a single file).*
 
@@ -393,7 +393,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Thats All | Michael Troelsen (Fun Fun) | 1987 Triangle | 3 |
 | Times Up | Michael Troelsen (Fun Fun) | 1987 Triangle | 1 |
 
-### SID Duzz' It (SDI) — Gallefoss/Tjelta  ·  `Driver 11 (Stage A)`  ·  336 songs / 336 SF2 files
+### SID Duzz' It (SDI) — Gallefoss/Tjelta  ·  `Driver 11 (Stage A)`  ·  341 songs / 341 SF2 files
 
 | Song | Composer | Released | Parts |
 |------|----------|----------|------:|
@@ -446,6 +446,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Cheese Pop | Glenn Rune Gallefoss (Shark) | 1994 SHAPE/Blues Muz' | 1 |
 | Close preview | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
 | Coming Soon | Glenn Rune Gallefoss | 1994 The Radbrekkjers | 1 |
+| Commando | Glenn Rune Gallefoss | 1999 Nostalgia | 1 |
 | Commercial Countdown | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
 | Commies | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
 | Computare Maximus Dominanus | Glenn Rune Gallefoss | 1994 SHAPE/Blues Muz' | 1 |
@@ -463,6 +464,8 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Death of the Pulse v1 0 | Glenn Rune Gallefoss (Shark) | 1994 SHAPE/Blues Muz' | 1 |
 | Deelight | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
 | Delphines | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Delta | Glenn Rune Gallefoss | 2001 SHAPE/Blues Muz' | 1 |
+| Delta Slow | Glenn Rune Gallefoss | 2001 Nostalgia | 1 |
 | Denver | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
 | Derilicts | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
 | Destruction | Glenn Rune Gallefoss (Shark) | 1993 Digital Designs | 1 |
@@ -470,6 +473,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Dialects | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
 | Different Reality VE-4x | Glenn Rune Gallefoss | 1996 SHAPE/Blues Muz' | 1 |
 | Digital Designs Intro 2 | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
+| DMC Demo remake | Glenn Rune Gallefoss | 2004 SHAPE/Blues Muz' | 1 |
 | Domino Dancing | Glenn Rune Gallefoss | 1993 Digital Designs | 1 |
 | Dorull | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
 | Dreadful | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 1 |
@@ -657,6 +661,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | ShapeDigi | Glenn Rune Gallefoss | 1997 SHAPE/Blues Muz' | 1 |
 | Sharkie | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
 | Shocking | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
+| Short Deel | Glenn Rune Gallefoss | 2000 Nostalgia | 1 |
 | Short One | Glenn Rune Gallefoss (Shark) | 1991 Digital Designs | 1 |
 | Short Zax | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
 | Sidastic | Glenn Rune Gallefoss | 1999 SHAPE/Blues Muz' | 1 |

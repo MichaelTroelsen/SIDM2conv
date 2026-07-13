@@ -344,6 +344,45 @@ def locate(d, la):
             lay.e_ad = _w(d, j + 8) - 1          # ad (+1 read in code)
         _freq_scan(d, la, lay)
         return lay
+    elif _find(d, [0xBD, -1, -1, 0x85, -1, 0xBD, -1, -1, 0x85, -1,
+                   0xB4, -1, 0xB1, -1]) is not None:
+        # variant DELTA: an E-FAMILY engine with ZERO-PAGE state + play+3,
+        # behind an init/play JMP wrapper (the "Delta-class" 8-file cluster:
+        # Commando/Delta/Lightforce/... — all GRG/Tjelta covers). The TRACK
+        # grammar is E's EXACTLY (per-voice ptr arrays; <$80 seq#, $c0-$f6
+        # TRAILING delay, $80-$bf transpose b-$a0, >=$f7 jump), but the state
+        # cells are in zero page so LDY is B4 (zp,X) not BC (abs,X) — that
+        # single byte is what distinguishes it from variant B here. Tables
+        # all located by relocation-safe signatures (RE'd + emulation-verified
+        # 2026-07-13 on Delta.sid: bin/_sdi_delta_seqwatch.py). SEQ row =
+        # [sound $80-$bf &$3f][dur $60-$7f &$1f, persists][note <$5f
+        # +transpose]; $5f rest; $00 = seq END. Base note + a wfprg arp walk
+        # (arg col; not modeled yet, like E — Stage B captures it).
+        lay.variant = 'DELTA'
+        i = _find(d, [0xBD, -1, -1, 0x85, -1, 0xBD, -1, -1, 0x85, -1,
+                      0xB4, -1, 0xB1, -1])
+        lay.track_lo_arr = _w(d, i + 1)
+        lay.track_hi_arr = _w(d, i + 6)
+        # seq ptr tables: LDA $lo,Y / STA zp / LDA $hi,Y / STA zp / LDY zp,X
+        j = _find(d, [0xB9, -1, -1, 0x85, -1, 0xB9, -1, -1, 0x85, -1,
+                      0xB4, -1, 0xB1, -1])
+        if j is None:
+            return None
+        lay.seq_lo = _w(d, j + 1)
+        lay.seq_hi = _w(d, j + 6)
+        # freq lo/hi: LDA $lo,X / STA $d400,Y / LDA $hi,X / STA $d401,Y
+        j = _find(d, [0xBD, -1, -1, 0x99, 0x00, 0xD4, 0xBD, -1, -1,
+                      0x99, 0x01, 0xD4])
+        if j is None:
+            return None
+        lay.freq_lo = _w(d, j + 1)
+        lay.freq_hi = _w(d, j + 7)
+        # wfprg pitch walk: LDA $arg,Y / STA pos,X / TAY / LDA $wf,Y / STA
+        j = _find(d, [0xB9, -1, -1, 0x95, -1, 0xA8, 0xB9, -1, -1, 0x95, -1])
+        if j is not None:
+            lay.e_f = _w(d, j + 1)               # arg/pitch column
+            lay.e_w = _w(d, j + 7)               # waveform column
+        return lay
     else:
         # variant B track read: LDA $lo,X / STA zp / LDA $hi,X / STA zp /
         #   LDY $pos,X / LDA (zp),Y  (per-voice pointer ARRAYS, stride 3)
@@ -532,6 +571,12 @@ class SDIModule:
                                for v in range(3)]
             # tempo_imm = play calls per tick (global counter reload)
             self.tempo_reload = max(1, self.lay.tempo_imm) - 1
+        elif self.lay.variant == 'DELTA':        # E-family, ZP state, play+3
+            lo, hi = self.lay.track_lo_arr - la, self.lay.track_hi_arr - la
+            self.track_ptrs = [(d[lo + v] | (d[hi + v] << 8))
+                               for v in range(3)]
+            self.tempo_seq = None                # no tempo program; the
+            self.tempo_reload = 4                # validator calibrates fpt
         else:                                    # B: per-voice arrays
             lo, hi = self.lay.track_lo_arr - la, self.lay.track_hi_arr - la
             self.track_ptrs = [(d[lo + v] | (d[hi + v] << 8))
@@ -572,7 +617,7 @@ class SDIModule:
         """Walk track+sequences -> [SDIEvent] (frames on the tick grid)."""
         if self.lay.variant == 'D':
             return self._decode_voice_d(v, max_ticks)
-        if self.lay.variant == 'E':
+        if self.lay.variant in ('E', 'DELTA'):   # DELTA = E's track grammar
             return self._decode_voice_e(v, max_ticks)
         if self.lay.variant == 'V':
             return self._decode_voice_v(v, max_ticks)
@@ -683,12 +728,63 @@ class SDIModule:
                 tpos += 1
                 continue
             seq = self.seq_addr(b)
-            tick = self._play_seq_e(v, seq, tick, transpose, events,
-                                    max_ticks)
+            if self.lay.variant == 'DELTA':
+                tick = self._play_seq_delta(v, seq, tick, transpose, events,
+                                            max_ticks)
+            else:
+                tick = self._play_seq_e(v, seq, tick, transpose, events,
+                                        max_ticks)
             tick += pending_delay                # pay AFTER the seq
             pending_delay = 0
             tpos += 1
         return events
+
+    def _play_seq_delta(self, v, seq, tick, transpose, events, max_ticks):
+        """DELTA seq row (emulation-verified on Delta.sid $118B):
+        [sound $80-$bf & $3f][dur $60-$7f & $1f (persists) | $e0 next-byte |
+        $e1-$ff = b-$c1][note]; note $5f = rest/gate row, $00 at row start =
+        seq END, else NOTE = (byte + transpose) & $7f. Row lasts dur+1 ticks;
+        base pitch only (the wfprg arg walk arps it — modeled at Stage B)."""
+        sound = 0
+        pos = 0
+        dur = 0
+        guard = 0
+        while tick < max_ticks and guard < 20000:
+            guard += 1
+            b = self._u8(seq + pos)
+            if b == 0x00:                        # seq END at row start
+                break
+            pos += 1
+            if 0x80 <= b <= 0xBF:                # sound set
+                sound = b & 0x3F
+                b = self._u8(seq + pos)
+                pos += 1
+            if 0x60 <= b <= 0x7F:                # duration (& $1f, persists)
+                dur = b & 0x1F
+                b = self._u8(seq + pos)
+                pos += 1
+            elif b == 0xE0:
+                dur = self._u8(seq + pos)
+                pos += 1
+                b = self._u8(seq + pos)
+                pos += 1
+            elif b >= 0xE1:
+                dur = (b - 0xC1) & 0xFF
+                b = self._u8(seq + pos)
+                pos += 1
+            if b == 0x5F or b == 0x00:           # rest / gate row
+                events.append(SDIEvent(tick * self.fpt, 'rest', None,
+                                       sound, dur + 1))
+            else:
+                note = (b + transpose) & 0x7F
+                ip = self.instr_pitch(sound)
+                if ip is not None:
+                    note = (ip[1] if ip[0] == 'abs'
+                            else (note + ip[1])) & 0x7F
+                events.append(SDIEvent(tick * self.fpt, 'note', note,
+                                       sound, dur + 1))
+            tick += dur + 1
+        return tick
 
     def _play_seq_e(self, v, seq, tick, transpose, events, max_ticks):
         instr = getattr(self, "_cur_instr", [0, 0, 0])

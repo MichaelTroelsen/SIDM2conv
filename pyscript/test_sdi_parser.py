@@ -124,5 +124,40 @@ class TestSDIVariantETrackDelay(unittest.TestCase):
         self.assertEqual(ticks, [0, 2, 8, 16, 18])
 
 
+DELTA = os.path.join(ROOT, "SID", "Gallefoss_Glenn", "Delta.sid")
+
+
+@unittest.skipUnless(os.path.exists(DELTA), "Gallefoss corpus not staged")
+class TestSDIVariantDelta(unittest.TestCase):
+    """Variant DELTA locks — the play+3 JMP-wrapped, zero-page-state
+    E-family cluster (Commando/Delta/Lightforce/...), RE'd + emulation-
+    verified 2026-07-13 (bin/_sdi_delta_seqwatch.py). Track grammar = E's;
+    tables located by relocation-safe signatures; SEQ row =
+    [sound $80-$bf][dur $60-$7f][note <$5f +transpose], $00 = seq END."""
+    @classmethod
+    def setUpClass(cls):
+        from sidm2.sdi_parser import load_sid, SDIModule
+        cls.d, cls.la, cls.h = load_sid(DELTA)
+        cls.m = SDIModule(cls.d, cls.la)
+
+    def test_variant_and_tables(self):
+        lay = self.m.lay
+        self.assertEqual(lay.variant, 'DELTA')
+        self.assertEqual(lay.track_lo_arr, 0x13E8)
+        self.assertEqual(lay.seq_lo, 0x148D)
+        self.assertEqual(lay.freq_lo, 0x0FFA)
+        self.assertEqual(lay.e_f, 0x13B9)         # wfprg arg/pitch column
+        self.assertEqual(self.m.track_ptrs,
+                         [0x13EE, 0x144C, 0x146E])
+
+    def test_seq_row_decode(self):
+        """v0 seq00 = 81 61 1b 85 1b 27..: sound-set + dur-1 + note $1b,
+        rows every 2 ticks (dur 1 persists); base note = byte + transpose."""
+        self.m.fpt = 1
+        ev = self.m.events()
+        ticks = [(e.frame, e.note) for e in ev[0] if e.kind == 'note'][:4]
+        self.assertEqual(ticks, [(0, 27), (2, 27), (4, 39), (6, 27)])
+
+
 if __name__ == "__main__":
     unittest.main()
