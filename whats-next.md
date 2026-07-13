@@ -304,6 +304,22 @@ gallefoss-sdi-player.md):
      run ~5 ahead of real then re-converge (our 47=real47, our 52 vs
      real 42, our 107 vs real 102, our 127=real127) = extra/missing
      NOTE EVENTS, not a clock error.
+     *** FAILED FIX — DO NOT RETRY: the "multiple leading commands
+     per row" theory (loop $5F + $80-$BF prefix consumption in
+     _play_seq_e) REGRESSED the whole class (Arabia 69->16, Zap/Xard/
+     Sweeper/Evil_Within all down; only Kirby +2). Reverted clean.
+     LESSON: seq $00 DOES end correctly at the $00 byte — the trailing
+     `61 3F 61 BE..` is the NEXT seq's contiguous data, NOT skipped
+     rows. So the +6 is an OVER-COUNTED rest-row + track-delay, not
+     lost content. Refined target: our old parse emits [note21 @t0,
+     rest @t1] for seq00 then a $C3 3-tick track delay then seq0A
+     note15 @t5 (frame 12); REAL has note21@fr1 -> note15@fr6 = 2
+     ticks. So ~3 ticks over: the rest row and/or the $C3 delay are
+     double-applied. NEXT: emulate the real per-tick advance THROUGH
+     the seq-end -> track-delay -> next-seq boundary (watch the tick
+     counter cell, not just $EEE1 reads) to see if $C3 delay overlaps
+     the seq's last row. Do NOT edit _play_seq_e again until that
+     boundary is traced — structural guesses regress the corpus.
      REAL CAUSE ISOLATED ($D404 gate-rise emulation vs our notes,
      Arabia v2): it is NOT density — the onset COUNT matches (11 real
      / 11 ours in 160 frames). Our notes are a CONSTANT +6 FRAMES
