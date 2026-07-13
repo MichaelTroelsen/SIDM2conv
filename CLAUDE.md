@@ -148,7 +148,7 @@ SIDM2/
 | Future Composer → Driver 11 | trace-validated | 🚧 Stage A only, `$1800` variant; native driver TODO |
 | DMC (Demo Music Creator, Johannes Bjerregaard) → native driver | Rockbuster ~97/100/100; Balloon 77 parts → ONE 400s SF2 (wf/pulse 100×3, step-grid) | 🚧 **56/88 onset-eligible**, all build (`bin/`, not default); bundle-bound files keep high part counts; see `docs/players/DMC.md` |
 | Sound Monitor (Hülsbeck) → native driver | corpus strict sweep 99.23% freq+wf (global-delay, EVERY part); Dance parts 2-6 + Fuck_Off 242s at 100.0 every register; 11 songs/27 parts | ✅ 11/11 Fun_Fun files build (`bin/`, not default); see `docs/players/SOUNDMONITOR.md` |
-| SID Duzz' It (Gallefoss/Tjelta) → Driver 11 (Stage A) | strict onset+pitch medians: A 98.3, D 100, C 66.7, B 74.8, E 57.8, V 21.8 (249 validated) | 🚧 254 Stage A SF2s (0 failures, `bin/`, not default); native Stage B TODO; see `docs/players/SDI.md` |
+| SID Duzz' It (Gallefoss/Tjelta) → Driver 11 (Stage A) | strict onset+pitch medians: A 98.3, D 100, **C 86.0** (was 66.7), B 74.8, E 47.5 (114 files incl. the harder wrapper gen), V 21.8 | 🚧 **312 located, 336 Stage A SF2s** (0 failures, `bin/`, not default); C walk decoded + multi-subtune (A/C/E) + "sixth layout" wrapper cracked; native Stage B TODO; see `docs/players/SDI.md` |
 
 **Critical**: "SidFactory_II/Laxity" ≠ native Laxity! Check player-id: "SidFactory" = use Driver 11, "Laxity_NewPlayer_V21" = use Laxity driver
 

@@ -1,9 +1,15 @@
 # SDI — SID Duzz' It (Geir Tjelta & Glenn Rune Gallefoss)
 
-**Status (2026-07-12):** parser + onset/pitch validation across SIX decoded
+**Status (2026-07-13):** parser + onset/pitch validation across SIX decoded
 variants; Stage A (editable Driver 11) shipping via `bin/sdi_to_sf2.py`;
-Stage B native = next arc. Corpus: `SID/Gallefoss_Glenn/` (~350 files) +
-`SID/Red_kommel_jeroen/` staging.
+Stage B native = next arc. Corpus: `SID/Gallefoss_Glenn/` (473 files, 671
+songs) + `SID/Red_kommel_jeroen/` staging. **312 files located, 336 Stage-A
+SF2s** (subtune 0 + 5 verified E extra subtunes).
+
+**This cycle (2026-07-13):** variant **C walk decoded** (strict median
+66.7→86.0), **multi-subtune** support (A/C/E), and the **"sixth layout"
+wrapper cracked** — the 69-file `$0FFF` play+4 cluster is variant E behind
+an init/play JMP wrapper (+62 files located, E corpus 52→114).
 
 **Ground truth:** the authors' own commented player source — SDI 2.1 n49,
 1994 lines, `bin/SIDDuzz/extracted/sdi21-n49.asm` (c1541+petcat from the
@@ -46,15 +52,21 @@ windowed→strict gap:
   81→100, Banana 69→100, Culture_Mix 62→100).
 - **E**: wfprg **row 0**, applied ON the note-on frame by the
   set-instrument tail (byte-verified at 2_Young `$EE1F`); ties skip it.
-  Plus `$c0-$ef` arp records **redirect the sound** (`ad+1` byte). Timing
-  calibrated per file by strict agreement (Kirby 16.5→71.0 from calibration
-  alone — the conduct program is still unresolved).
+  Plus `$c0-$ef` arp records **redirect the sound** (`ad+1` byte). Note
+  formula (dis-verified): `note + conduct($E943) + transpose`. Timing
+  calibrated per file by strict agreement.
 - **V**: instrument **octave nibble** (+12·(oct−1)) + per-note instrument
   in the row's fx byte (`&$E0==0`).
-- **C**: the wfprg walk is fully located (wf/arg/start columns) but the
-  onset application **regressed Bahbar** 94.3→81.4 while helping the
-  Banana_Man class — the walk phase differs per sub-class, so it is GATED
-  OFF pending emulation. C stands on seq notes (Bahbar 94.3 strict).
+- **C**: RESOLVED (2026-07-13) — the wfprg walk is a py65-verified
+  frame-paced program: 11-byte instrument records (stride from the
+  `ASL x3 + ADC x3` sound-set tail), walk start = record byte +2, ONE row
+  per frame, `wf ≥ $90` = jump BACK `(wf−$90)` rows and execute that row
+  (`$91` = 1-row park, `$93` = 3-row chord arp). Two per-file restart
+  models ('onset'/'steady' free-running loop) selected by strict agreement;
+  drum **rolls** (a `$09` TEST+GATE row re-executed each loop) expand into
+  synthetic re-gate notes. The earlier "regressed Bahbar" gate was a
+  dormant **stride bug** (`instr % 1`), not walk phase. **C strict median
+  66.7 → 86.0** (55/80 files ≥ 80 strict, was 26).
 
 ## Variant V — the wrapper class (was "multispeed D", was 0.0)
 
@@ -81,25 +93,33 @@ by strict agreement (D5).
 
 ## Open items
 
-- **C walk phase** (Bahbar vs Banana_Man sub-classes) — needs emulation of
-  the first walk step's timing vs note-on.
-- **E conduct program** (the dual row condition) — per-file calibration
-  sidesteps it for validation; Stage B sidesteps it via `measure_onsets`.
-- E laggards: glide-heavy files (strict parks in slides), Evil_Within
-  (voice-mapping collapses: all 3 voices decode the same track),
-  Arabia (row grammar misparse).
-- D pocket: `$FF` track-loop under-decode (Space_Suit/Sveitser_Ost/Lame —
-  fix queued), Holy_Josh/Max_Mix cause unknown.
+- **E conduct program**: decoded (the ghost 4th channel writes a global
+  pitch base `$E943` real voices offset from) and shipped as zero-delta-safe
+  infrastructure; the ghost timeline for the **wrapper** nch=4 generation
+  is not yet wired (Afterburner 80/40, Ambient 78/18).
+- E laggards: **Arabia** — grammar, pitch, AND base timing all dis-verified
+  correct; residual is a single **+6-frame early track-delay** at the
+  seq→delay→next-seq boundary (not density). Glide-heavy files still park
+  strict in slides.
+- **C niche**: Everytime (noise twins), Ninja_IV (gateless test-click
+  percussion — a metric disagreement), Tanks_3000 (dormant-copy image; its
+  live `$1000` player is an unrecognized variant), Magic_Moment glides.
 - V residual: its own wfprg walk (drum absolutes, detunes), tempo commands.
-- Acid_Jazz layout; 38 locate-NONE `play=init+3` files (likely non-SDI
-  covers); the `play=init+4` cluster beyond the located E files.
+- **Multi-subtune**: A/C/E supported; B indexes subtunes differently
+  (unsupported); Tanks_3000's 12 subtunes need its live player first;
+  ~417 of 671 songs still undecoded (single-subtune-per-file default).
+- **Coverage**: 85 locate-NONE files remain, led by a 50-file play+3
+  cluster that is ALSO wrapped but MIXED (DMC_Demo/Delta/Commando names =
+  possible non-SDI rips) — triage per-file before wrap-cracking.
 - **Stage B native** via the shared MoN engine (step-grid; note: C-class
   note-on writes `$D404 = $08` TEST bit — mind the gate model).
 
 ## Stage A
 
-`bin/sdi_to_sf2.py` → `out/sdi_sf2/`: 1 SDI tick = 1 Driver-11 row, pitch
-resolved through the song's own freq table to the PAL semitone grid, AD/SR
-from the located instrument tables (A/B; defaults logged for C/D/E/V), ties
-re-gate (runtime Driver 11 cannot parse tie bytes — the Sound Monitor
-lesson).
+`bin/sdi_to_sf2.py [--subtune N] [--c-steady]` → `out/sdi_sf2/`: 1 SDI tick
+= 1 Driver-11 row, pitch resolved through the song's own freq table to the
+PAL semitone grid, AD/SR from the located instrument tables (A/B; defaults
+logged for C/D/E/V), ties re-gate (runtime Driver 11 cannot parse tie bytes
+— the Sound Monitor lesson). `--subtune N` converts a specific subtune
+(A/C/E; a guard skips subtunes that duplicate subtune 0). **336 SF2s**
+(0 conversion failures on located files).
