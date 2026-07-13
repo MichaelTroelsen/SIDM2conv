@@ -352,7 +352,20 @@ gallefoss-sdi-player.md):
    commands done right (the naive tick->call map LOST the A/B to a flat
    calibrated clock — Oh_Boy 47 vs 70 windowed).
 4. D pocket: Holy_Josh 65.7 / Max_Mix_1 75.0 (long tracks, cause unknown).
-5. Acid_Jazz sixth layout (play=$1B36, absolute state arrays $22ED+).
+5. Acid_Jazz sixth layout — DONE (commit 63b240b): the $0FFF play+4
+   cluster is a WRAPPER around variant E (init/play JMP to the real
+   player; same E grammar+tables at relocated addrs). _sdi_e_wrapper_
+   init anchors on LDY $tp,X / LDX #(nch-1) [$02=3ch, $03=4ch conduct]
+   + a preceding record-copy. +62 files located (E 52->114), SF2s
+   254->336. The nch=4 conduct-gen files score lower (Afterburner
+   80/40, Ambient 78/18) — the conduct/ghost-channel timeline isn't
+   wired for the wrapper gen (e_ghost_track stays None; gap logic
+   needs the wrapper's tl/th layout). NEXT for these: verify nch=4
+   detection + the conduct pitch base for the wrapper cluster.
+   Remaining NONE: 85 files (was 161 with off-other; the true
+   unrecognized-variant count). Next-biggest cluster: the 56 play+3
+   files that fail A-E (a distinct gen); fingerprint + crack like
+   this one.
 5b. MULTI-SUBTUNE (commit 168cbc0): SDIModule(subtune=N) done for
    A/C/E (E: tp=init_block[N]; C/A: record init_block+N*8). Converted
    the 5 E extras (Aldebaran sub1-3, Evil_Within sub1, Phneumatic
