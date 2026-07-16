@@ -7,10 +7,17 @@
 listed (the v3.14.0–v3.20.0 arrivals — Hubbard, DMC, Sound Monitor, SDI — had been missing
 since v3.13.0).
 
-> **Provenance:** the Hubbard / DMC / Sound Monitor / SDI figures below are carried over
-> from `CLAUDE.md`'s Known Limitations table and the per-player docs of the release that
-> shipped them; they were **not** re-measured for this refresh. Kimmel and Deenen were
-> re-validated against the code on 2026-07-16. Each row links the doc that owns its number.
+> **Provenance:** every row below was **re-measured on 2026-07-16** — Hubbard, DMC, Sound
+> Monitor and SDI by an adversarial audit (`.claude/agents/sidm2-fidelity-falsify.md`),
+> Kimmel and Deenen against their validators. The audit's finding: **no headline
+> percentage was wrong** — SM's 99.23% reproduces to the digit, SDI's medians within 0.2
+> on a full 324-file sweep, Balloon's 100×3 exact over 19996 frames. What was wrong was
+> the *packaging*: vacuous claims (Hubbard's "filter 100%" — a register the player never
+> writes), unstated windows, build counts sitting in an accuracy column, and a lost
+> `win`/`strict` label. Those are corrected here.
+>
+> **Read the caveats in each row, not just the number.** A percentage without its window,
+> its n, and whether the metric was fitted is not a measurement.
 
 ---
 
@@ -38,11 +45,11 @@ Per-frame register fidelity (freq / waveform / pulse / filter) measured vs the o
 | — Myth (sub0, sub2) | `bin/build_myth_native_song.py` | freq/wf/pulse ~100%, filter ~90-96% | ✅ (emulation-extracted) |
 | — Supremacy (3 subtunes) | `bin/build_mon_native_song.py` | freq 96-99, wf/pulse ~99.8-100, filter 100 (24-70 parts — part-count frontier) | ✅ |
 | **ROMUZAK V6.3** (2 tunes) | `bin/build_romuzak_native_song.py` | note/orderlist-exact + byte-exact wf/pulse/AD-SR (~98-100%) | ✅ [ROMUZAK.md](../players/ROMUZAK.md) |
-| **Rob Hubbard V1** — Monty, Commando, Zoids, Last V8 | `bin/build_hubbard_native_song.py`, corpus `bin/hubbard_build_all.py` | pulse/freq/filter **100%**; ~12 V1 tunes + subsongs built; per-instrument pulse engine | ✅ [HUBBARD.md](../players/HUBBARD.md) |
-| **Rob Hubbard V2** (Delta class) | same | Delta theme freq/pulse/filter **100%** (wf 85–96%); 6 split-songs built | 🚧 [HUBBARD.md](../players/HUBBARD.md) — swallow-class state-region relocation + spin-class + note-format laggards open |
-| **DMC (Demo Music Creator)** — Johannes Bjerregaard | `bin/build_dmc_native_song.py`, corpus `bin/dmc_build_all.py` | Rockbuster ~97/100/100; Balloon 77 parts → **ONE 400s SF2** (wf/pulse 100×3, step-grid); **56/88 onset-eligible**, all build | 🚧 [DMC.md](../players/DMC.md) — bundle-bound files keep high part counts |
-| **Sound Monitor (Musicmaster)** — Hülsbeck | `bin/build_soundmonitor_native_song.py` (Stage A: `bin/soundmonitor_to_sf2.py`) | corpus strict sweep **99.23%** freq+wf (global-delay, every part); Dance parts 2–6 + Fuck_Off 242s at **100.0 every register**; 11 songs / 27 parts | ✅ [SOUNDMONITOR.md](../players/SOUNDMONITOR.md) |
-| **SID Duzz' It (SDI)** — Gallefoss/Tjelta | `bin/sdi_to_sf2.py` | Stage A strict onset+pitch medians: A 98.3, D 100, C 86.0, B 74.8, E 50.8, DELTA 89.8/55.5, V 21.8; **324 located, 348 SF2s, 0 failures** | 🚧 [SDI.md](../players/SDI.md) — native Stage B TODO |
+| **Rob Hubbard V1** — Monty, Commando, Zoids, Last V8 | `bin/build_hubbard_native_song.py`, corpus `bin/hubbard_build_all.py` | **pulse 100%** (all voices, all 4 tunes, n=386–996/voice — a *modelled* engine, `hp_engine=1`, measured against the original's real output: the strongest number here). freq **99.3–100** (not 100: Commando osc2 99.3). **Filter: not exercised** — Hubbard never writes cutoff/resonance, so the old "filter 100%" was `0==0` for 1000 frames and meant nothing. 12 V1 tunes + subsongs built. Measured on part01 of each; later parts not re-measurable without a rebuild. | ✅ [HUBBARD.md](../players/HUBBARD.md) |
+| **Rob Hubbard V2** (Delta class) | same | Delta theme freq **100%**, wf **85–97%** — same 996-frame window, and the wf residual is entirely **±1-frame skew** (skew-tolerant reads 100/100/100), i.e. the doc quotes the *pessimistic* figure. **Pulse 100% is captured, not modelled** (`hp_engine=0` for Delta: the SF2 replays a pulse stream captured from the original's trace — a round-trip result, not engine understanding). **Filter: not exercised** (see V1). 6 split-songs + Delta + 7 swallow built. | 🚧 [HUBBARD.md](../players/HUBBARD.md) — swallow-class state-region relocation + spin-class + note-format laggards open |
+| **DMC (Demo Music Creator)** — Johannes Bjerregaard | `bin/build_dmc_native_song.py`, corpus `bin/dmc_build_all.py` | **Balloon**: 77 parts → **ONE 400s SF2**, wf/pulse **100×3 over the full 400s** (n=19996/voice, 0 skips, 28/30/2 distinct pulse values — the best-evidenced number in this table). Its freq is **80.6/100/97.7** — the weakest DMC figure, previously omitted. **Rockbuster** freq/wf/pulse ~97/100/100 (mean freq 97.6) — but that is **part 1 of 16, first ~20s**; parts 2–16 have no measurement (the tool always compares from frame 0). **Every DMC % is window-dependent and the window is a free parameter** — Thunder_Force part01 reads 100/89/95 at 6s and 44/38/39 at 20s. Quote a window or the number is meaningless. | 🚧 [DMC.md](../players/DMC.md) — bundle-bound files keep high part counts; "56/88 onset-eligible" and "all build" are a **mode-selection count** and a **build count**, not accuracy (an ELIGIBLE file can still score badly: Twilight_Beyond is eligible at 99% onset-agree yet part01 reads 39/39/54) |
+| **Sound Monitor (Musicmaster)** — Hülsbeck | `bin/build_soundmonitor_native_song.py` (Stage A: `bin/soundmonitor_to_sf2.py`) | corpus strict sweep **99.23% freq+wf**, frame-weighted over **n≈841k** voice-frame observations, per-part median 99.97 — reproduces to the digit and postdates the v3.17.0 desync fix. Covers **26 of 27 parts** (Dance part01's window is missing from the sweep log; restoring it gives **99.25%**, so the omission *understates*). freq+wf is the best 2 of 4 register groups — **pulse 96.67 / filter 97.33** corpus-wide. **Fuck_Off** part01 (242s) is 100.0 on every register; **Dance: only parts 03 and 04** reach 100.0 everywhere (part02 v2 pulse 93.1, part05 filter 98.5, part06 v1 freq 96.9). 11 songs / 27 parts built. | ✅ [SOUNDMONITOR.md](../players/SOUNDMONITOR.md) — the headline is produced by untracked scratch tooling (`bin/_opt_sweep_corpus.py`) and no tracked test asserts it: **not reproducible from a fresh clone** |
+| **SID Duzz' It (SDI)** — Gallefoss/Tjelta | `bin/sdi_to_sf2.py` | Stage A medians, **strict** (pitch-exact) unless marked: A 98.3, D 100, C 86.0, B 74.8, E 50.8, **DELTA win 89.8 / strict 55.5**, V 21.8. n per variant: A 50, B 43, C 80, D 18, E 118, DELTA 8, V 6. **Only A and D are unfitted**; C/E/DELTA/V pick a timing model best-of-N against the reference (see SDI.md). **343 locate → 348 SF2s** (343 + 5 subtune extras); **324 sweep-validated** — the medians rest on those. "0 failures" = emitted without error, **not** a fidelity statement: 274/324 ship with some default instrument data. | 🚧 [SDI.md](../players/SDI.md) — native Stage B TODO |
 | **Future Composer** ($1800 variant) | `bin/fc_to_sf2.py` | Stage A only: notes/order trace-validated | 🚧 [FUTURECOMPOSER.md](../players/FUTURECOMPOSER.md) |
 | **Jeroen Kimmel** (Hubbard-derived, 4 tunes / 9 SF2s) | `bin/kimmel_to_sf2.py` | Stage A: **11/12 voice-medians exact 100%** (frame-pitch, not gate-onset — see doc); arp/PWM/freq-slide(T0)/drum driver-verified byte-exact | ✅ [KIMMEL.md](../players/KIMMEL.md) |
 | **Charles Deenen** (MoN/Deenen replay, 40-file corpus) | `bin/deenen_to_sf2.py`, `bin/deenen_sm_build.py` | Stage A: 4 clean wins ~100/100 onset+pitch (10/19 located) + 8 freebies at 100%; implausible decodes REFUSED | 🚧 [DEENEN.md](../players/DEENEN.md) |
@@ -64,7 +71,6 @@ Audio is 100% (embedded binary); these rows describe **editor** fidelity — see
 |-----------------|----------|---------|
 | Native Laxity NP21 → Driver 11 | 1–8% | Laxity driver |
 | MoN → Stage-A Driver 11 for *sound* | notes exact, timbre flat | native build (`bin/build_mon_native_song.py`) |
-| Rob Hubbard → anything | no pipeline exists | future work |
 
 ---
 
