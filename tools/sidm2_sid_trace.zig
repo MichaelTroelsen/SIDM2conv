@@ -10,7 +10,6 @@
 
 const std = @import("std");
 const C64 = @import("zig64");
-const flagz = @import("flagz");
 
 // Addresses read from SID header (vary per file):
 // init_addr = header bytes 10-11 (big-endian)
@@ -119,6 +118,29 @@ pub fn main() !void {
         // KERNAL ($01=$35), else at the KERNAL IRQ vector CINV ($0314).
         const hv: u16 = c64.cpu.readWord(0xFFFE);
         const handler: u16 = if (hv != fffe0 and hv != 0) hv else c64.cpu.readWord(0x0314);
+        // FIX: the old code printed "installed" and proceeded unconditionally, even
+        // when `installed` never became true and `handler` resolved to an invalid
+        // $0000 — producing a fake "0 writes" trace indistinguishable from a real
+        // silent tune. This happens for players whose INIT polls a RAM flag that only
+        // its own IRQ handler sets (a self-test handshake) — this bounded-INIT
+        // emulation never delivers a real interrupt (zig64's runStep has no
+        // autonomous VIC/CIA interrupt controller — only c64.call-style explicit
+        // dispatch), so that flag can never be set and INIT spins forever. Detect
+        // this and fail loudly instead of silently faking success.
+        // An IRQ handler must live in code space. $0000-$01FF is zero page +
+        // the stack: a "handler" there is always a mis-read of an uninitialized
+        // or stale vector, never a real entry point (e.g. LFT/A_Mind_Is_Born
+        // resolves $0031). Treat it as unresolved rather than trace garbage.
+        if (!installed or handler < 0x0200) {
+            std.debug.print(
+                "FAILED: self-installing IRQ vector never resolved after {d} steps (installed={}, handler=${X:04}). " ++
+                "This player's INIT likely waits on its own IRQ firing as a handshake before finishing setup; " ++
+                "this tracer has no autonomous VIC/CIA interrupt delivery so that can never happen here. " ++
+                "Not a 0-write tune — untraceable with this tool.\n",
+                .{ g, installed, handler },
+            );
+            std.process.exit(1);
+        }
         std.debug.print("INIT installed IRQ handler @ ${X:04} ($01=${X:02})\n",
             .{ handler, c64.cpu.readByte(0x0001) });
         // RTS sentinel in RAM under the banked-out KERNAL ($FFF0 is unused here):
@@ -126,6 +148,7 @@ pub fn main() !void {
         c64.cpu.writeByte(0x60, 0xFFF0);
 
         std.debug.print("frame,cycle,register,old_val,new_val\n", .{});
+        var total_writes: u64 = 0;
         var frame: u32 = 0;
         while (frame < num_frames) : (frame += 1) {
             // Simulate a 6502 IRQ entry: push return PC ($FFF0) then status.
@@ -149,6 +172,7 @@ pub fn main() !void {
                     break;
                 }
                 if (c64.sid.last_change) |ch| {
+                    total_writes += 1;
                     std.debug.print("{d},{d},{s},${X:02},${X:02}\n", .{
                         frame, ch.cycle, @tagName(ch.meaning), ch.old_value, ch.new_value,
                     });
@@ -161,6 +185,22 @@ pub fn main() !void {
                 break;
             }
             std.debug.print("--- Frame {d} ---\n", .{frame});
+        }
+        // A resolved handler that drives ZERO SID writes is not evidence of a
+        // silent tune — it means the IRQ emulation never actually reached the
+        // player (stale/wrong vector, banking the sentinel can't survive, or a
+        // handshake this tracer can't satisfy). Emitting an empty CSV here is
+        // indistinguishable from a real silent trace and has silently passed
+        // consumers that compare traces for equality. Fail loudly instead.
+        if (total_writes == 0) {
+            std.debug.print(
+                "FAILED: IRQ handler @ ${X:04} produced 0 SID writes over {d} frames. " ++
+                "The handler resolved but never drove the SID — the vector is likely stale/wrong, " ++
+                "or this player needs interrupt delivery this tracer cannot provide. " ++
+                "This is NOT a verified silent tune — treat as untraceable.\n",
+                .{ handler, num_frames },
+            );
+            std.process.exit(1);
         }
         return;
     }
@@ -177,11 +217,13 @@ pub fn main() !void {
     std.debug.print("frame,cycle,register,old_val,new_val\n", .{});
 
     // Run frames, tracing SID writes each time PLAY is called
+    var total_writes: u64 = 0;
     var frame: u32 = 0;
     while (frame < num_frames) : (frame += 1) {
         const changes = try c64.callSidTrace(play_addr, allocator);
         defer allocator.free(changes);
 
+        total_writes += changes.len;
         for (changes) |ch| {
             std.debug.print("{d},{d},{s},${X:02},${X:02}\n", .{
                 frame,
@@ -192,5 +234,18 @@ pub fn main() !void {
             });
         }
         std.debug.print("--- Frame {d}: {d} SID changes ---\n", .{ frame, changes.len });
+    }
+    // Same honest-failure rule as the IRQ path: a PLAY routine that writes no
+    // SID register at all over the whole window means we never reached the real
+    // player (wrong play address, a wrapper we mis-entered, or an INIT that did
+    // not complete). Never let that masquerade as a valid empty trace.
+    if (total_writes == 0) {
+        std.debug.print(
+            "FAILED: PLAY @ ${X:04} produced 0 SID writes over {d} frames. " ++
+            "Wrong play address, an unhandled wrapper, or INIT did not complete. " ++
+            "This is NOT a verified silent tune — treat as untraceable.\n",
+            .{ play_addr, num_frames },
+        );
+        std.process.exit(1);
     }
 }

@@ -33,11 +33,22 @@ from typing import List, Tuple, Optional
 
 
 def _trace(prg_path: Path, frames: int, init_addr: int, play_addr: int,
-           tracer: Path) -> List[Tuple[str, str, str]]:
-    """Run zig64 and return (frame, register, value) tuples."""
+           tracer: Path) -> Optional[List[Tuple[str, str, str]]]:
+    """Run zig64 and return (frame, register, value) tuples.
+
+    Returns None if the tracer could not produce a trustworthy trace (it
+    exited non-zero or reported an explicit FAILED diagnostic). None means
+    "no evidence", which is NOT the same as an empty trace and must never
+    be compared for equality — see verify_sf2_audio.
+    """
     r = subprocess.run([str(tracer), str(prg_path), str(frames),
                         f"{init_addr:04x}", f"{play_addr:04x}"],
                        capture_output=True, text=True)
+    # The tracer signals an untraceable file both ways; honour either. Its
+    # FAILED line contains commas, so it must be rejected before parsing or
+    # it would simply be filtered out and look like a clean empty trace.
+    if r.returncode != 0 or "FAILED:" in r.stderr:
+        return None
     rows = []
     for L in r.stderr.splitlines():
         if not L or L.startswith("frame") or L.startswith("---"):
@@ -75,7 +86,11 @@ def verify_sf2_audio(sf2_bytes: bytes, sid_path: Path,
 
     Returns:
         True if every (frame, register, value) tuple matches.
-        False if any divergence is detected.
+        False if any divergence is detected, OR if the comparison could not
+        be made at all (tracer failure / empty reference trace) — the gate
+        fails closed, since verifying nothing is not a pass. The one
+        deliberate exception is a missing tracer binary, which still returns
+        True to preserve behaviour on systems without zig64 installed.
     """
     if tracer_path is None:
         # Default: tools/sidm2-sid-trace.exe relative to package root
@@ -112,6 +127,15 @@ def verify_sf2_audio(sf2_bytes: bytes, sid_path: Path,
         sid_prg_path.unlink(missing_ok=True)
         sf2_prg_path.unlink(missing_ok=True)
 
+    # Fail closed: absence of evidence is not evidence of a match. A tracer
+    # failure (None) or an empty reference trace means we verified NOTHING —
+    # returning True there certified unchecked output (two empty traces used
+    # to compare equal and pass, e.g. any SF2 built from an RSID whose IRQ the
+    # tracer cannot drive, such as SID/Laxity/Broken_Ass.sid).
+    if sid_rows is None or sf2_rows is None:
+        return False
+    if not sid_rows:
+        return False
     if len(sid_rows) != len(sf2_rows):
         return False
     for a, b in zip(sid_rows, sf2_rows):

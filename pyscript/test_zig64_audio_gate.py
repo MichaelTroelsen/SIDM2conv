@@ -108,5 +108,73 @@ class TestZig64AudioGate(unittest.TestCase):
         )
 
 
+class TestZig64AudioGateFailsClosed(unittest.TestCase):
+    """The gate must never treat *absence of evidence* as a match.
+
+    Regression for a silent false-pass: when the tracer could not drive a
+    file at all it emitted an empty trace, so an empty SID trace and an
+    empty SF2 trace compared equal (len 0 == len 0, loop body never ran)
+    and the gate returned True — certifying output it had never checked.
+    """
+
+    ROOT = Path(__file__).parent.parent
+    SID_DIR = ROOT / "SID"
+    TRACER = ROOT / "tools" / "sidm2-sid-trace.exe"
+
+    def test_empty_reference_trace_returns_false(self):
+        """An empty reference trace means nothing was verified → False."""
+        from unittest import mock
+        sid = self.SID_DIR / "Stinsens_Last_Night_of_89.sid"
+        if not sid.exists():
+            self.skipTest(f"missing {sid}")
+        if not self.TRACER.exists():
+            self.skipTest("tracer not present")
+        with mock.patch("sidm2.zig64_audio_gate._trace", return_value=[]):
+            self.assertFalse(
+                verify_sf2_audio(b"\x00\x10" + bytes(64), sid,
+                                  0x0F90, 0x0F94, 0x1000, 0x1003,
+                                  tracer_path=self.TRACER, frames=4),
+                "Two empty traces must NOT be certified as a match"
+            )
+
+    def test_tracer_failure_returns_false(self):
+        """_trace returning None (tracer failed) → False, not a pass."""
+        from unittest import mock
+        sid = self.SID_DIR / "Stinsens_Last_Night_of_89.sid"
+        if not sid.exists():
+            self.skipTest(f"missing {sid}")
+        if not self.TRACER.exists():
+            self.skipTest("tracer not present")
+        with mock.patch("sidm2.zig64_audio_gate._trace", return_value=None):
+            self.assertFalse(
+                verify_sf2_audio(b"\x00\x10" + bytes(64), sid,
+                                  0x0F90, 0x0F94, 0x1000, 0x1003,
+                                  tracer_path=self.TRACER, frames=4),
+                "A tracer failure must NOT be certified as a match"
+            )
+
+    def test_untraceable_rsid_does_not_certify_garbage(self):
+        """End-to-end: Broken_Ass is an RSID whose IRQ this tracer cannot
+        drive. Feeding the gate pure garbage as the 'SF2' must fail.
+
+        Before the fix this returned True — 64 zero bytes were certified
+        byte-identical to the tune.
+        """
+        sid = self.SID_DIR / "Laxity" / "Broken_Ass.sid"
+        if not sid.exists():
+            self.skipTest(f"missing {sid}")
+        if not self.TRACER.exists():
+            self.skipTest("tracer not present")
+        d = sid.read_bytes()
+        ia = struct.unpack(">H", d[10:12])[0]
+        pa = struct.unpack(">H", d[12:14])[0]
+        self.assertFalse(
+            verify_sf2_audio(b"\x00\x10" + bytes(64), sid,
+                              0x0F90, 0x0F94, ia, pa,
+                              tracer_path=self.TRACER, frames=16),
+            "Untraceable SID must not certify arbitrary SF2 bytes"
+        )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
