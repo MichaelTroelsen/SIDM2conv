@@ -449,6 +449,10 @@ class DeenenModule:
                     if 0 <= o + 2 < len(d) and d[o] == 0x4C:
                         entries.append(d[o + 1] | (d[o + 2] << 8))
         self.loc = DeenenLocate(d, la, entries)
+        # The orderlist grammar, read from THIS file's code (see DeenenGrammar).
+        # pat_thr == $40 marks the Jeroen Tel MoN class — the same byte grammar
+        # sidm2/mon_parser.py:397-404 already implements for Hawkeye/Cybernoid.
+        self.gram = DeenenGrammar(d, la)
 
     def _u8(self, addr):
         o = addr - self.la
@@ -605,6 +609,11 @@ class DeenenModule:
         loop counts replay the following pattern (count+1) times ($10DE)."""
         st = dict(note_transpose=0, a_transpose=0, cur_instr=0, cur_dur=0)
         events = []
+        # Route by the grammar this file's own code declares. pat_thr == $40 is
+        # the Jeroen Tel MoN class; anything else keeps the Ding-class path that
+        # the 4 current clean wins were measured on.
+        tel = (self.gram.read_ok and self.gram.pat_thr == 0x40
+               and self.gram.ff_mode == 'restart')
         segidx = self._segidx0()
         ord_ptr = self._ord_ptr_for(v, segidx)
         oi = 0
@@ -617,7 +626,20 @@ class DeenenModule:
             ob = self._u8(ord_ptr + oi)
             if ob == 0xFE:                               # $12A9 stop song
                 break
-            if ob == 0xFF:                               # $12B0 segment advance
+            if ob == 0xFF:
+                if tel:
+                    # Tel class ($13FA): $FF is RESTART TO INDEX 0, not a segment
+                    # advance — LDA #$00 / STA $d7,X. Without this the Ding path
+                    # ran away (Constant_Runner v2: 500 notes for a real 44).
+                    if stop_on_loop:
+                        break                            # one pass -> song end
+                    seg_loops += 1
+                    if seg_loops > 6000:
+                        break
+                    oi = 0
+                    pending_loop = 0
+                    continue
+                # $12B0 segment advance (Ding class)
                 if (self.loc.seg_cap is not None and self.loc.seg_step is not None
                         and segidx < self.loc.seg_cap):
                     segidx = (segidx + self.loc.seg_step) & 0xFF
@@ -634,20 +656,40 @@ class DeenenModule:
                 oi = 0
                 pending_loop = 0
                 continue
-            if 0x5F <= ob <= 0x6E:                       # $12D7 A-transpose
-                st['a_transpose'] = ob - 0x5F
-                oi += 1
-                continue
-            if 0x6F <= ob <= 0x7F:                       # $12F2 pattern-loop count
-                pending_loop = (ob - 0x70) & 0xFF
-                oi += 1
-                continue
-            if 0x80 <= ob <= 0xFD:                       # $12E5 note-transpose
-                nt = (ob - 0x82) & 0xFF
-                st['note_transpose'] = nt - 0x100 if nt >= 0x80 else nt
-                oi += 1
-                continue
-            # else: pattern index (< $5F)
+            if tel:
+                # Jeroen Tel MoN classes, verified two ways: Constant_Runner's
+                # $13F3 routine (SEC/SBC #$40 -> $e0,X with DEC $e0,X at $145B =
+                # the repeat counter; SBC #$60 -> $dd,X; SBC #$80 -> $da,X), and
+                # sidm2/mon_parser.py:397-404, which already ships this grammar.
+                if ob >= 0x80:                           # transpose
+                    nt = (ob - 0x80) & 0xFF
+                    st['note_transpose'] = nt - 0x100 if nt >= 0x80 else nt
+                    oi += 1
+                    continue
+                if ob >= 0x60:                           # instrument / A-transpose
+                    st['a_transpose'] = ob - 0x60
+                    oi += 1
+                    continue
+                if ob >= 0x40:                           # pattern-REPEAT count
+                    pending_loop = (ob & 0x3F) & 0xFF
+                    oi += 1
+                    continue
+                # else: pattern index (< $40)
+            else:
+                if 0x5F <= ob <= 0x6E:                   # $12D7 A-transpose
+                    st['a_transpose'] = ob - 0x5F
+                    oi += 1
+                    continue
+                if 0x6F <= ob <= 0x7F:                   # $12F2 pattern-loop count
+                    pending_loop = (ob - 0x70) & 0xFF
+                    oi += 1
+                    continue
+                if 0x80 <= ob <= 0xFD:                   # $12E5 note-transpose
+                    nt = (ob - 0x82) & 0xFF
+                    st['note_transpose'] = nt - 0x100 if nt >= 0x80 else nt
+                    oi += 1
+                    continue
+                # else: pattern index (< $5F)
             pat = self._pat_ptr(ob)
             plays = (pending_loop & 0xFF) + 1
             pending_loop = 0
@@ -837,6 +879,17 @@ class DeenenModule:
         -- Eye_to_Eye reads all note $06, Zamzara all note $00). Cheap: a short
         one-pass sample per voice. Returns False on any degenerate voice."""
         from collections import Counter
+        # Tel-class ($40) files: their ORDERLIST grammar is decoded now and the
+        # structure comes out exact (Constant_Runner's note counts match the real
+        # player on all three voices: 113/101/44). But their PATTERN-ROW grammar
+        # is still the Deenen one and is demonstrably wrong -- pitch 35.6%. A
+        # structurally-perfect decode with wrong pitches is precisely the lossy
+        # output this project does not ship silently, and plausible() is
+        # structural so it cannot see it. Refuse until the rows are ported
+        # (sidm2/mon_parser.py already has that grammar too -- see DEENEN.md).
+        if (self.gram.read_ok and self.gram.pat_thr == 0x40
+                and self.gram.ff_mode == 'restart'):
+            return False
         degenerate = False
         any_notes = False
         counts = []
