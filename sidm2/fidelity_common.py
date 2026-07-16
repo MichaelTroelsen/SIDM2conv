@@ -159,6 +159,28 @@ def siddump_note_onsets(path, args, require_wf=False):
     return V
 
 
+def siddump_freq_track(path, args, voice):
+    """siddump -> {frame: raw_16bit_freq} (fill-forward) for one voice (0,1,2).
+
+    Unlike siddump_note_onsets (which only yields rows siddump considers a fresh
+    onset), this tracks the register continuously frame-by-frame -- needed to see
+    a frequency that SETTLES a frame or two after the onset row (e.g. a one-frame
+    attack-transient value before the target pitch locks in). A '....' cell means
+    "unchanged this frame", so the last written value carries forward."""
+    txt = run_siddump(path, args)
+    freq_re = re.compile(r'^([0-9A-F.]{4})')
+    out = {}
+    last = 0
+    for fr, c in iter_siddump_rows(txt):
+        if fr is None:
+            continue
+        mm = freq_re.match(c[2 + voice])
+        if mm and '.' not in mm.group(1):
+            last = int(mm.group(1), 16)
+        out[fr] = last
+    return out
+
+
 def siddump_filter_trace(path, args):
     """siddump -> per-row global filter state (fill-forward): [(cutoff11, ctrl)]
     where cutoff11 = ($D415&7)|($D416<<3) and ctrl = $D417 (res+routing).

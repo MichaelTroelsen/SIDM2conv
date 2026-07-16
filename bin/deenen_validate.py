@@ -18,20 +18,26 @@ sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 
 from sidm2.deenen_parser import DeenenModule, load_sid, DISPATCH_SIG
-from sidm2.fidelity_common import freq_to_semi, siddump_note_onsets
+from sidm2.fidelity_common import freq_to_semi, siddump_note_onsets, siddump_freq_track
 
-NAMES = ['C-', 'C#', 'D-', 'D#', 'E-', 'F-', 'F#', 'G-', 'G#', 'A-', 'A#', 'B-']
 FRAME_TOL = 4
+# The onset row's own frequency can be a 1-frame attack transient (e.g. a noise-
+# flavored click before the tone locks in) rather than the settled target -- seen
+# on Constant_Runner (engine-note-exact per bin/deenen_engine_check.py, yet the
+# strict same-frame pitch check read 35.6%). A 0..2-frame settle window recovers
+# it (15.9->99.1 / 93.2->97.7 on its two affected voices) and plateaus at 2 (no
+# further gain at 3-4), verified corpus-wide with zero regression on the 4
+# existing clean wins. Voice(s) that DON'T recover under this window (e.g.
+# Constant_Runner voice1, flat ~35-40% at every window size 0-4) are a different,
+# real issue -- an apparent unmodelled arpeggio/sweep effect instrument, not a
+# metric artifact -- and should NOT be waved through by widening this further.
+PITCH_SETTLE_WINDOW = 2
 
 REPLAY = ['After_the_War', 'Astro_Marine_Corps', 'B_A_T', 'Back_to_the_Future_III',
           'Constant_Runner', 'Cool_Tune', 'Ding_van_Charles', 'Eye_to_Eye_intro',
           'F1_Simulator', 'Hotline_Intro', 'Hotline_Intro_Tune', 'Koekoek',
           'Lord_of_the_Rings', 'Mantalos', 'Mr_Heli', 'Satan', 'Shitty_Disco_Dump',
           'Smooth_Criminal', 'Zamzara']
-
-
-def name_to_semi(nm):
-    return NAMES.index(nm[:2]) + 12 * int(nm[2])
 
 
 def validate(path, subtune, secs):
@@ -43,24 +49,37 @@ def validate(path, subtune, secs):
     parser = [[(f, freq_to_semi(m._freq(n))) for f, n in m.voice_onsets(v) if f < win]
               for v in range(3)]
     realm = siddump_note_onsets(path, [f'-a{subtune}', f'-t{secs}'], require_wf=True)
-    real = [[(f, name_to_semi(nm)) for f, nm in realm[v] if f < win] for v in range(3)]
+    real_frames = [[f for f, _ in realm[v] if f < win] for v in range(3)]
+    freq_track = [siddump_freq_track(path, [f'-a{subtune}', f'-t{secs}'], v)
+                  for v in range(3)]
+    max_frame = [max(freq_track[v]) if freq_track[v] else 0 for v in range(3)]
 
     # Monotonic 1-1 alignment (each real onset + each parser onset consumed once)
     # so coverage is honest (<=100%, no flood over-count). Search a global frame
     # phase + semitone offset maximizing total frame-aligned onset hits.
-    def align(myl, rf, ph, so):
+    def align(myl, rf, ph, so, v):
         """-> (omatch, pmatch): frame-aligned pairs, and of those, pitch-class
-        agreeing pairs, under a monotonic 1-1 walk of both sorted streams."""
+        agreeing pairs, under a monotonic 1-1 walk of both sorted streams. Pitch
+        is checked over rf2..rf2+PITCH_SETTLE_WINDOW (see module docstring) using
+        the continuous raw frequency track, not just the onset row's own value."""
         i = j = om = pm = 0
         myl = sorted((pf + ph, ps) for pf, ps in myl)
         rf = sorted(rf)
+        track = freq_track[v]
         while i < len(myl) and j < len(rf):
             pf, ps = myl[i]
-            rf2, rs = rf[j]
+            rf2 = rf[j]
             if abs(pf - rf2) <= FRAME_TOL:
                 om += 1
-                if (ps + so) % 12 == rs % 12:
-                    pm += 1
+                target = (ps + so) % 12
+                for lag in range(0, PITCH_SETTLE_WINDOW + 1):
+                    f2 = rf2 + lag
+                    if f2 > max_frame[v]:
+                        continue
+                    rs = freq_to_semi(track.get(f2, 0))
+                    if rs >= 0 and rs % 12 == target:
+                        pm += 1
+                        break
                 i += 1
                 j += 1
             elif pf < rf2 - FRAME_TOL:
@@ -73,29 +92,29 @@ def validate(path, subtune, secs):
     # match, then pick `so` by pitch match at that phase.
     best = (-1, 0)
     for ph in range(-6, 7):
-        tot = sum(align(parser[v], real[v], ph, 0)[0] for v in range(3))
+        tot = sum(align(parser[v], real_frames[v], ph, 0, v)[0] for v in range(3))
         if tot > best[0]:
             best = (tot, ph)
     ph = best[1]
     bso = (-1, 0)
     for so in range(-12, 13):
-        pm = sum(align(parser[v], real[v], ph, so)[1] for v in range(3))
+        pm = sum(align(parser[v], real_frames[v], ph, so, v)[1] for v in range(3))
         if pm > bso[0]:
             bso = (pm, so)
     so = bso[1]
 
     onset_cov, pitch_rate = [], []
     for v in range(3):
-        rf = real[v]
+        rf = real_frames[v]
         if not rf:
             continue
-        om, pm = align(parser[v], rf, ph, so)
+        om, pm = align(parser[v], rf, ph, so, v)
         onset_cov.append(100.0 * om / len(rf))
         pitch_rate.append(100.0 * pm / om if om else 0.0)
     if not onset_cov:
         return None
     return (statistics.median(onset_cov), statistics.median(pitch_rate),
-            ph, so, [len(r) for r in real], [len(p) for p in parser])
+            ph, so, [len(r) for r in real_frames], [len(p) for p in parser])
 
 
 def main():
