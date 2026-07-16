@@ -174,11 +174,37 @@ index `FREQ_LO $12AF` / `FREQ_HI $130E` (`$130E-$12AF = $5F`), exactly what
 `_emit_note` does.
 
 **Therefore Constant_Runner's residual 35.6% pitch is NOT a row-grammar issue.**
-Its orderlist, rows, note formation, tables and reloc are all now verified
-correct, and its structure decodes exact (`[113,101,44]` == real, onsets 100.0×3).
-The pitch bug is somewhere else and is the next thing to find — a plausible
-suspect is the initial value of `$da,X` (the note transpose) after init, which
-the decoder assumes is 0.
+
+### PROVEN: Constant_Runner's decode is EXACT — the metric is wrong, not the decoder
+
+`bin/deenen_engine_check.py` compares the decoder against **the player's own
+computed note**, watching the note handler's `STA $f2,X` (`$152A`) under py65 —
+no metric in between, no inference about SID output:
+
+```
+Constant_Runner   v0 100.0% n=92   v1 100.0% n=80   v2 100.0% n=34
+```
+
+**All three voices, every note, exact.** Meanwhile `deenen_validate` reports
+pitch 35.6% for the same file. So the decoder reproduces the player perfectly and
+the onset+pitch metric disagrees — a metric artifact, not a decode error.
+
+Two suspects were tested and **refuted**, so don't retry them:
+* **`$da,X` seeded by init** — no: it is `$00` on all three voices after init,
+  exactly as the decoder assumes.
+* **note index ≠ semitone** (the tune's own freq table being off-grid) — no:
+  both Ding's `$10F3` and Constant_Runner's `$12AF` tables give
+  `index == freq_to_semi(freq)` exactly.
+* Slide density was a third guess and is **weak**: B_A_T has MORE `$FD` slide
+  bytes (27) than Constant_Runner (23) and still scores 100/100.
+
+**The guard stays on** (`plausible()` refuses the `$40` class) despite the proof.
+The engine-check validates NOTES ONLY — not timing, timbre or effects — so
+"the notes are right" is not yet "the SF2 is right", and until the metric
+disagreement is *explained* rather than merely observed, emitting would be
+shipping something we cannot describe. Explaining it is the next task; it is
+worth real effort, because if the metric is undercounting here it may be
+undercounting elsewhere in this corpus.
 
 **Zamzara needs its own row-grammar port** (`$C8`/`$F6` bases, no `$FF` row-end)
 — that is a separate, real piece of work, and it explains its 25.0/0.0.
