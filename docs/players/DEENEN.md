@@ -121,6 +121,41 @@ were correct all along — the "64" first observed was the **hi-byte read of ind
 
 ---
 
+## ⚠️ READ THIS FIRST: half the corpus is the JEROEN TEL engine (2026-07-16)
+
+> **The `pattern < $40` files are running the MoN (Jeroen Tel) engine that SIDM2
+> already supports. Do not write a decoder for them — `sidm2/mon_parser.py`
+> already implements their exact byte grammar. The work is LOCATE, not decode.**
+
+`mon_parser.py:397-404` (shipping, tested, used for Hawkeye/Cybernoid):
+```python
+if b >= 0x80:                    # $80-$FF: transpose ($90F9 = b & $1F)
+if b >= 0x60:                    # $60-$7F: instrument base ($9139 = b & $0F)
+if b >= 0x40:                    # $40-$5F: REPEAT counter for the next pattern
+    repeat = (b & 0x3F) + 1      #   ($9118 = b&$3F -> replays N+1 times)
+```
+That is **byte-for-byte** what Constant_Runner's `$13F3` routine does
+(`SEC / SBC #$40 -> $e0,X`, then `DEC $e0,X` at `$145B` = the repeat counter;
+`SBC #$60 -> $dd,X`; `SBC #$80 -> $da,X`).
+
+**The 12 `< $40` files:** Airwolf, Constant_Runner, Day_After_the_Beat,
+Double_Dragon, F1_Simulator, Mantalos, Melig, Mr_Heli, Say_Hello_to_the_Boring_Times,
+Zamzara, Zamzara_v1, Zynon.
+**Two are already proven Tel-engine** — `Melig` and `Say_Hello` are two of the three
+"MoN TTWII" freebies that decode EXACT at subtune 0 through `mon_parser`. The other
+10 fail only because MoN's *locate* doesn't find their rips (`mon_validate` returns
+`0/0` — a vacuous no-evidence result, not a decode failure).
+
+**Next step for this corpus is therefore NOT a Deenen decoder.** It is: extend
+`mon_parser`'s locate to these rips, which also puts them on the MoN **native Stage B**
+path (100% byte-exact on Hawkeye) rather than Stage A transpile.
+
+**How this was missed for three sessions:** the KB *did* have it — in the
+`maniacs-of-noise` card, which lists these exact byte ranges. Searching it for
+"Deenen" / "variant B" / "groove" returned nothing, because the knowledge was filed
+under a different player. **Search the KB by MECHANISM (the byte ranges, the opcode
+shape), not by composer or variant name.**
+
 ## THE GRAMMAR IS PER-FILE (2026-07-16) — the real shape of the problem
 
 > **There is no "Variant A grammar" and "Variant B grammar". Every rip carries
