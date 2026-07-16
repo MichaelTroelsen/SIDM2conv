@@ -453,6 +453,40 @@ class DeenenModule:
         # pat_thr == $40 marks the Jeroen Tel MoN class — the same byte grammar
         # sidm2/mon_parser.py:397-404 already implements for Hawkeye/Cybernoid.
         self.gram = DeenenGrammar(d, la)
+        self._fix_selfmod_ord_ptr()
+
+    def _fix_selfmod_ord_ptr(self):
+        """Some rips (Zamzara) fetch the per-voice orderlist through a SHARED
+        subroutine whose `LDA tbl,y` operand is SELF-MODIFIED per voice from a
+        real pointer table, rather than a plain `TAX/LDA abs,X` DeenenLocate's
+        generic scan can find directly. That generic scan can false-positive
+        on unrelated code with the same byte shape (on Zamzara it landed on an
+        SFX-init dispatch table instead of the real per-voice orderlist).
+
+        Detected by finding the two `STA abs` stores that target the fetch
+        instruction's OWN operand bytes (`gram.fetch+1`, `gram.fetch+2`) --
+        each immediately preceded by `LDA tbl,X` (`BD ll hh`), whose operand
+        is the real per-voice pointer table. Verified emulation-side on
+        Zamzara: table `$C4AC`, voice*2-indexed (the SAME convention
+        `_ord_ptr_for` already uses for segidx=0), three distinct in-image
+        pointers ($CE22/$CEBA/$CF3C) -- confirmed a false-positive `$C4B2`
+        replaced with the correct `$C4AC`, matching what the fetch site
+        actually reads once self-modified."""
+        if not (self.gram.read_ok and self.gram.fetch is not None):
+            return
+        d = self.d
+        lo_target, hi_target = self.gram.fetch + 1, self.gram.fetch + 2
+        lo_site = d.find(bytes([0x8D, lo_target & 0xFF, (lo_target >> 8) & 0xFF]))
+        hi_site = d.find(bytes([0x8D, hi_target & 0xFF, (hi_target >> 8) & 0xFF]))
+        if lo_site < 3 or hi_site < 3:
+            return
+        if d[lo_site - 3] != 0xBD or d[hi_site - 3] != 0xBD:
+            return                                       # not LDA abs,X-preceded
+        tbl = d[lo_site - 2] | (d[lo_site - 1] << 8)
+        tbl_hi = d[hi_site - 2] | (d[hi_site - 1] << 8)
+        if tbl_hi != tbl + 1:                              # lo/hi tables must be adjacent
+            return
+        self.loc.ord_ptr = tbl
 
     def _u8(self, addr):
         o = addr - self.la
