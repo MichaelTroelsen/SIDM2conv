@@ -160,7 +160,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 
 ## Complete build inventory
 
-**547 songs built** across 7 native players (each song may span several SF2 parts).
+**568 songs built** across 9 native players (each song may span several SF2 parts).
 
 *Auto-generated from the built SF2 files under `out/` by `pyscript/gen_sf2_index.py` — re-run after building more tunes. "Parts" = the number of SF2 files a song is split into (a long song exceeds the SF2II table/`$D000` caps and ships as windowed parts; 1 = a single file).*
 
@@ -745,6 +745,37 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Zap | Glenn Rune Gallefoss | 2007 SHAPE/Blues Muz' | 1 |
 | Zexest | Glenn Rune Gallefoss (Shark) | 1992 Digital Designs | 1 |
 | Zoophyte | Glenn Rune Gallefoss | 1995 SHAPE/Blues Muz' | 1 |
+
+### Jeroen Kimmel (Hubbard-derived) — Jeroen Kimmel  ·  `Driver 11 (Stage A)`  ·  9 songs / 9 SF2 files
+
+| Song | Composer | Released | Parts |
+|------|----------|----------|------:|
+| Radax | Jeroen Kimmel | 1989 Magic Disk 64/CP Verlag | 1 |
+| Radax sub1 | Jeroen Kimmel | 1989 Magic Disk 64/CP Verlag | 1 |
+| Radax sub2 | Jeroen Kimmel | 1989 Magic Disk 64/CP Verlag | 1 |
+| Radax sub3 | Jeroen Kimmel | 1989 Magic Disk 64/CP Verlag | 1 |
+| Radax sub4 | Jeroen Kimmel | 1989 Magic Disk 64/CP Verlag | 1 |
+| Radax sub5 | Jeroen Kimmel | 1989 Magic Disk 64/CP Verlag | 1 |
+| Rhaa Lovely II tune 2 | Jeroen Kimmel (Red) | 1987 The Judges | 1 |
+| Think Twice III | Jeroen Kimmel (Red) | 1987 The Judges | 1 |
+| Think Twice V | Jeroen Kimmel (Red) | 1987 The Judges | 1 |
+
+### Maniacs of Noise / Deenen — Charles Deenen  ·  `Driver 11 (Stage A)`  ·  12 songs / 12 SF2 files
+
+| Song | Composer | Released | Parts |
+|------|----------|----------|------:|
+| After the War | Charles Deenen | 1989 Dinamic | 1 |
+| Aids See Ass | Charles Deenen (TSS) | 198? HC-Ass 5005 | 1 |
+| B A T | Charles Deenen | 1990 Ubisoft | 1 |
+| Crazy Music | Charles Deenen (TMC) | 1987 Hotline | 1 |
+| Ding van Charles | Charles Deenen | 19?? Maniacs of Noise | 1 |
+| Give It a Try | Charles Deenen (TMC) | 1987 Scoop Designs | 1 |
+| I Saw 2 HC-Ass 5005s Fucking | Charles Deenen (TMC) | 1987 HC-Ass 5005 | 1 |
+| Lord of the Rings | Charles Deenen | 1990 Interplay | 1 |
+| Melig | Charles Deenen | 1989 Maniacs of Noise | 1 |
+| Say Hello to the Boring Times | Charles Deenen | 1988 Maniacs of Noise | 1 |
+| Soldier of Light | Charles Deenen & Jeroen Tel | 1988 Reptilia Design/Softek Int | 1 |
+| Super Heavy | Charles Deenen (TSS) | 198? HC-Ass 5005 | 1 |
 
 <!-- END GENERATED -->
 
