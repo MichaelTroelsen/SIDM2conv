@@ -121,6 +121,59 @@ were correct all along — the "64" first observed was the **hi-byte read of ind
 
 ---
 
+## THE GRAMMAR IS PER-FILE (2026-07-16) — the real shape of the problem
+
+> **There is no "Variant A grammar" and "Variant B grammar". Every rip carries
+> its own class boundaries as immediates in its orderlist-fetch routine.**
+> `decode_voice` hardcodes Ding_van_Charles's. Files that never exercise the
+> differences score 100%; the rest are silently mangled.
+
+Read off the real disassembly (`sidm2.deenen_parser.DeenenGrammar` reports it
+per file; `bin/_deenen_vb.py` is the emulation probe):
+
+| file | fetch | pattern | `$FF` | note-transpose |
+|------|-------|---------|-------|----------------|
+| Ding_van_Charles | `$12A6` | `< $5F` | **segment-advance** (cap 26, step 27) | `A-$82` |
+| B_A_T / Lord_of_the_Rings | `$0EE6` / `$0F34` | `< $5F` | segment-advance | — |
+| After_the_War | `$0E94` | **`< $6F`** | segment-advance | **`A-$84`** (`SBC #$80 / CLC / ADC #$FC`) |
+| Constant_Runner | `$13F3` | **`< $40`** | **restart to index 0** | `A-$80` |
+| Mantalos | `$0D95` | `< $40` | segment-advance | — |
+| Zamzara | `$BE27` | `< $40` | restart | — |
+| Soldier_of_Light | `$0CDC` | **`< $50`** | restart | uses `AND #$1F`, not `SBC` |
+
+**Constant_Runner, decoded from the 6502 (`$13F3`):**
+```
+CMP #$fe / BEQ            ; stop
+CMP #$ff / BNE            ; $FF -> LDA #$00 / STA $d7,X  = RESTART TO INDEX 0
+CMP #$40 / BCC pattern    ; < $40  -> PATTERN index
+CMP #$80 / BCC mid
+SBC #$80                  ; >= $80 -> A-$80 -> $da,X   note transpose
+mid: CMP #$60 / BCC low
+SBC #$60                  ; $60-$7F -> A-$60 -> $dd,X  A-transpose
+low: SEC / SBC #$40       ; $40-$5F -> A-$40 -> $e0,X  PATTERN LOOP COUNT
+                          ;   ($145B does DEC $e0,X — that is what proves it)
+```
+So `8C 43 0B` is *transpose, loop-count 3, pattern $0B* — play `$0B` four times.
+**`$43` was never a pattern.** Under Ding's `< $5F` threshold it became pattern
+67, whose table entry (`$136D + $86 = $13F3`) is **the code itself**, giving the
+out-of-file pointer `$D1B9`. Same for `$4E` → `$40C9`. That, plus `$FF` having no
+model (`seg_cap`/`seg_step` are `None` for this class), is the whole 500-notes-
+versus-44 runaway on v2. Emulation confirms the real player never fetches those
+indices, and that v2 is genuinely silent for the first 400 frames.
+
+**Status:** `DeenenGrammar` reads `fetch` / `pat_thr` / `ff_mode` and is
+**tested** (`pyscript/test_deenen_grammar.py`) — but is **not yet consumed by
+the decoder**. A first attempt to also parse the class chain by byte-scanning
+for `CMP #imm / BCC` + `SBC #imm` produced garbage on Ding itself (`loop=$70-$5E`,
+inverted — Ding branches with **BCS** where Constant_Runner uses **BCC**) and
+would have altered all four currently-100% files. **Next step:** a real flow-walk
+of the CMP/BCC/BCS chain, then wire it in and validate file-by-file. Do not wire
+a byte-scan.
+
+**After_the_War's `A-$84` is a live suspect:** it is the only clean win below 100
+(pitch 98.1) and the only one whose note-transpose base differs from the
+hardcoded `$82`.
+
 ## Open — each a separate sub-variant RE
 
 * **(a) ZP-loop-counter orderlist variant** (Astro/Mr_Heli): `$88,X` nested loop
@@ -132,6 +185,10 @@ were correct all along — the "64" first observed was the **hi-byte read of ind
   frames, per Smooth `$0A6D-$0A83`) **and** real reloc for the relocated/IRQ files
   (Eye_to_Eye load `$4000` play `$0000`; Zamzara `$bd70`). The "reloc 0" absolute
   assumption reads filler for several.
+  > **Superseded in part:** "Variant B" is not one thing — see *The grammar is
+  > per-file* above. Constant_Runner's failure was the grammar, not the reloc:
+  > its ord table (`$195C`), its absolute pointers (`$1AD1/$1AEA/$1B07`) and its
+  > reloc (0) were all **correct** already, verified by emulation.
 * **(d) 9 files not located** — freq/instr `B9`-pair or dispatch not found (Satan reloc
   off-image; Smooth/Shitty freq pair missing). Needs flow-anchoring extended to the
   freq/instr scans, or Variant-B-specific signatures.

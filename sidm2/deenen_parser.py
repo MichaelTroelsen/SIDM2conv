@@ -159,6 +159,103 @@ def _find_all(hay, needle, start=0):
     return out
 
 
+class DeenenGrammar:
+    """The orderlist grammar, READ FROM THE FILE'S OWN CODE.
+
+    The Deenen replay is not one grammar. Every rip carries its class
+    boundaries as immediates in its orderlist-fetch routine, and they differ:
+    the pattern threshold is $5F on Ding_van_Charles, $40 on Constant_Runner,
+    $6F on After_the_War, $50 on Soldier_of_Light; `$FF` means SEGMENT-ADVANCE
+    on the Ding class but RESTART-TO-INDEX-0 on the Constant_Runner class; and
+    the note-transpose base is $82 on Ding but $84 on After_the_War
+    (`SBC #$80 / CLC / ADC #$FC`).
+
+    Hardcoding Ding's constants (as this parser originally did) decodes any file
+    that happens not to exercise the differences and silently mangles the rest —
+    Constant_Runner read $43/$4E as pattern indices whose pointers land outside
+    the file, and ran away to 500 notes on a voice that really has 44.
+
+    So: disassemble the fetch site and read the immediates. Anything we cannot
+    recognise falls back to the Ding constants, which is exactly the previous
+    behaviour — this can add fidelity but not take it away.
+
+    Shape (Constant_Runner $13F3, the reference for the reader):
+        LDA ord,Y ; CMP #$FE / BEQ stop
+                  ; CMP #$FF / BNE + <handler>   handler A9 00 = restart
+                  ;                              handler BD .. C9 cap .. 69 step = seg
+                  ; CMP #thr / BCC pattern
+                  ; CMP #$80 / BCC mid ; SBC #$80 [CLC ADC #imm]  -> note transpose
+        mid:      ; CMP #b   / BCC low ; SBC #b                   -> A-transpose
+        low:      ; SEC / SBC #b                                  -> loop count
+
+    STATUS -- read but NOT yet consumed by the decoder (2026-07-16)
+    --------------------------------------------------------------
+    Only `fetch`, `pat_thr` and `ff_mode` are reported here, because only those
+    are verified against the real disassembly (Ding $12A6, Constant_Runner
+    $13F3, After_the_War $0E94, Soldier_of_Light $0CDC).
+
+    The class chain (A-transpose / loop-count boundaries and their SBC bases) is
+    deliberately NOT parsed. A first attempt scanned for `CMP #imm / BCC` + `SBC
+    #imm` and produced garbage on the very file it should reproduce exactly —
+    Ding came back `loop=$70-$5E` (inverted) because Ding branches with BCS where
+    Constant_Runner uses BCC, and the SBC scan caught unrelated instructions. It
+    would have altered all four currently-100% files. Parsing it needs a real
+    flow-walk of the CMP/BCC/BCS chain, not a byte scan.
+
+    `decode_voice` therefore still uses its hardcoded Ding constants. This class
+    is the evidence + the entry point for that work; wiring it up is the next
+    step, and it must be validated file-by-file before it replaces anything.
+    """
+
+    def __init__(self, d, la):
+        self.fetch = None            # the LDA ord,Y site
+        self.pat_thr = None          # byte < this is a PATTERN index
+        self.ff_mode = None          # 'seg' (advance) | 'restart' (index 0)
+        self.read_ok = False
+        self._read(d, la)
+
+    def _read(self, d, la):
+        # The orderlist fetch: LDA abs,Y immediately followed by CMP #$FE.
+        i = None
+        for k in range(len(d) - 24):
+            if d[k] == 0xB9 and d[k + 3] == 0xC9 and d[k + 4] == 0xFE:
+                i = k
+                break
+        if i is None:
+            return
+        self.fetch = la + i
+        # The $FF test within a few bytes of the $FE test.
+        j = None
+        for k in range(i + 5, min(i + 14, len(d) - 8)):
+            if d[k] == 0xC9 and d[k + 1] == 0xFF:
+                j = k
+                break
+        if j is None:
+            return
+        # $FF handler: A9 00 -> restart to index 0; LDA abs,X -> segment advance.
+        h = j + 4
+        if d[h] == 0xA9 and d[h + 1] == 0x00:
+            self.ff_mode = 'restart'
+        elif d[h] == 0xBD:
+            self.ff_mode = 'seg'
+        # The class chain: first CMP #imm / BCC after the handler is the
+        # pattern threshold. Scan a bounded window so we cannot run into data.
+        k = j + 2
+        end = min(j + 0x40, len(d) - 3)
+        while k < end and not (d[k] == 0xC9 and d[k + 2] == 0x90):
+            k += 1
+        if k >= end:
+            return
+        self.pat_thr = d[k + 1]
+        self.read_ok = True
+
+    def __repr__(self):
+        f = f'${self.fetch:04X}' if self.fetch is not None else 'None'
+        t = f'${self.pat_thr:02X}' if self.pat_thr is not None else 'None'
+        return (f'<DeenenGrammar fetch={f} pattern<{t} $FF={self.ff_mode} '
+                f'read_ok={self.read_ok}>')
+
+
 class DeenenLocate:
     """Relocation-safe table addresses located by code byte-patterns."""
 
