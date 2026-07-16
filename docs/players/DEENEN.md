@@ -156,6 +156,33 @@ path (100% byte-exact on Hawkeye) rather than Stage A transpile.
 under a different player. **Search the KB by MECHANISM (the byte ranges, the opcode
 shape), not by composer or variant name.**
 
+### The pattern ROWS did not need porting — only the orderlist did
+
+Checked by disassembly (the row dispatch is the `C9 60 B0 03 4C` signature; the
+class constants are the CMP/SBC immediates that follow):
+
+| file | row-class CMPs | SBCs | verdict |
+|------|----------------|------|---------|
+| Ding_van_Charles | `$60 $FF $FE $FD $FC $FB $E0 $C0` | `$E1 $C0 $81` | the implemented grammar |
+| Constant_Runner | `$60 $FF $FE $FD $FC $FB $E0 $C0` | `$E1 $C0 $81` | **identical to Ding** |
+| Mantalos | `$60 $FF $FE $FD $FC $FB $E0 $C0` | `$E1 $C0 $81` | **identical to Ding** |
+| **Zamzara** | `$60 $FD $FE $FC $E0 $C0 $80 …` | `$C8 $F6 $C8 $C8 $E1` | **its own row grammar** |
+
+So `_parse_row` is already right for the Tel-class files, and the note formation
+is too — Constant_Runner's `$1519` handler is `LDA $d0 / CLC / ADC $da,X` then
+index `FREQ_LO $12AF` / `FREQ_HI $130E` (`$130E-$12AF = $5F`), exactly what
+`_emit_note` does.
+
+**Therefore Constant_Runner's residual 35.6% pitch is NOT a row-grammar issue.**
+Its orderlist, rows, note formation, tables and reloc are all now verified
+correct, and its structure decodes exact (`[113,101,44]` == real, onsets 100.0×3).
+The pitch bug is somewhere else and is the next thing to find — a plausible
+suspect is the initial value of `$da,X` (the note transpose) after init, which
+the decoder assumes is 0.
+
+**Zamzara needs its own row-grammar port** (`$C8`/`$F6` bases, no `$FF` row-end)
+— that is a separate, real piece of work, and it explains its 25.0/0.0.
+
 ## THE GRAMMAR IS PER-FILE (2026-07-16) — the real shape of the problem
 
 > **There is no "Variant A grammar" and "Variant B grammar". Every rip carries
