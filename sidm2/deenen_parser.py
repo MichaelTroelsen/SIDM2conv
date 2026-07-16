@@ -592,6 +592,79 @@ class DeenenModule:
             b = u8(pat + y)                              # $1402
         return y + 1, self._emit_note(b, st)             # $1406 note
 
+    def _parse_row_zamzara(self, pat, pi, st):
+        """Decode ONE pattern row for the Zamzara-class row grammar
+        ($BE88-$BF9F on Zamzara.sid, dispatch $BE8A), routed via
+        `_is_zamzara_row_class()`. Verified byte-for-byte against a live py65
+        trace 2026-07-16 (captured row `FE F4 C3 A0 A0 76 1A` = filter-write,
+        instrument, duration x2, arp, note -- decodes to exactly 7 bytes,
+        matching the emulator's own $e9,X advance count for that row).
+
+        Differs from Ding's `_parse_row`: the arp threshold is $70 (not $60);
+        $FE writes the SID filter register ($D417) directly instead of staging
+        a zero-page shadow (not modelled -- Driver 11 has no per-row filter
+        write path yet); duration accumulation is RE-ENTRANT (an overflow byte
+        re-enters the top-level dispatch, not a simple linear loop) but nets
+        the same shape as long as $FD can appear mid-accumulate; the $FD slide
+        consumes exactly 2 bytes (a first param, structurally skipped, and a
+        second byte that is BOTH the slide target and -- unmodified -- the
+        note that follows), one fewer than Ding's 3-byte slide encoding."""
+        u8 = self._u8
+        y = pi
+        b = u8(pat + y)
+        if b == 0xFF:                                     # pattern end
+            return pi, None
+        if b < 0x60:                                       # bare note
+            return y + 1, self._emit_note(b, st)
+        if b == 0xFD:                                       # slide -> note
+            y += 1                                          # param (structurally skipped)
+            y += 1                                          # 2nd byte: slide target AND the note
+            b = u8(pat + y)
+            return y + 1, self._emit_note(b, st)
+        if b == 0xFE:                                       # filter write -> $D417 (not modelled)
+            y += 1                                          # filter value (skipped)
+            y += 1
+            b = u8(pat + y)
+        elif b == 0xFC:                                      # gate/unknown param
+            y += 1
+            y += 1
+            b = u8(pat + y)
+        if b >= 0xE0:                                        # rest
+            return y + 1, dict(kind='rest', frames=((b - 0xE1) & 0xFF) + 1)
+        if b >= 0xC0:                                        # instrument
+            st['cur_instr'] = (b - 0xC0) & 0xFF
+            y += 1
+            b = u8(pat + y)
+        if b >= 0x80:                                        # duration, re-entrant accumulate
+            st['cur_dur'] = (b - 0x81) & 0xFF
+            while True:
+                y += 1
+                b = u8(pat + y)
+                if b == 0xFD:                                # slide can interrupt accumulation
+                    y += 1
+                    b = u8(pat + y)
+                    return y + 1, self._emit_note(b, st)
+                if b < 0x80:
+                    break
+                st['cur_dur'] = (st['cur_dur'] + (b - 0x80)) & 0xFF
+        if b >= 0x70:                                        # arp param (Ding's threshold is $60)
+            y += 1
+            b = u8(pat + y)
+        return y + 1, self._emit_note(b, st)
+
+    def _is_zamzara_row_class(self):
+        """True if this rip uses the Zamzara-class row grammar, not Ding's.
+        Detected by a direct `STA $D417` (8D 17 D4) within the row dispatch's
+        own code window -- Zamzara's $FE handler pokes the SID filter register
+        straight from the row parser, which no Ding-class file does (checked
+        against the whole SID/deenen corpus 2026-07-16: False on every
+        currently-decoding file, True only on Zamzara + Smooth_Criminal)."""
+        if self.loc.dispatch is None:
+            return False
+        off = self.loc.dispatch - self.la
+        window = self.d[off:off + 0x120]
+        return bytes([0x8D, 0x17, 0xD4]) in window
+
     def _emit_note(self, b, st):
         note = (b + st['note_transpose']) & 0xFF
         return dict(kind='note', frames=(st['cur_dur'] + 1) & 0xFF,
@@ -614,6 +687,8 @@ class DeenenModule:
         # the 4 current clean wins were measured on.
         tel = (self.gram.read_ok and self.gram.pat_thr == 0x40
                and self.gram.ff_mode == 'restart')
+        row_parser = (self._parse_row_zamzara if self._is_zamzara_row_class()
+                      else self._parse_row)
         segidx = self._segidx0()
         ord_ptr = self._ord_ptr_for(v, segidx)
         oi = 0
@@ -698,7 +773,7 @@ class DeenenModule:
                 pguard = 0
                 while pguard < 8192 and len(events) < max_rows:
                     pguard += 1
-                    npi, ev = self._parse_row(pat, pi, st)
+                    npi, ev = row_parser(pat, pi, st)
                     if ev is None:
                         break                            # pattern end ($FF)
                     events.append(ev)
