@@ -25,6 +25,87 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.21.0] - 2026-07-16
+
+### Two players ported (Kimmel, Deenen) - and the audio gate stops certifying what it never checked
+
+#### Fixed - the zig64 audio gate was passing unverified output (SECURITY-OF-CORRECTNESS)
+- **`verify_sf2_audio` returned True when it had verified NOTHING.** It compared two
+  traces for equality, so when the tracer could not drive a file at all, both sides came
+  back empty, `len(0) == len(0)`, the compare loop never executed, and the gate passed.
+  **Demonstrated: 64 bytes of zeros were certified "byte-identical audio" to
+  `SID/Laxity/Broken_Ass.sid`** - a file in the primary supported corpus, along with
+  `Sanxion_Loader_Remix`.
+- `_trace` compounded it: it ignored the tracer's exit code, and the tracer's `FAILED:`
+  line *contains commas*, so it was silently dropped by the `len(p) >= 5` row filter and
+  looked like a clean empty trace. **Fixing the tracer alone could never have closed
+  this** - the gate had to reject empty evidence itself.
+- **Gate now fails closed**: `_trace` returns `None` on tracer failure (non-zero exit or
+  `FAILED:` marker) - "no evidence", distinct from an empty trace; `verify_sf2_audio`
+  returns False on `None` or an empty reference trace. The missing-tracer fail-open
+  (return True on systems without zig64) is deliberate, pre-existing, and documented.
+- **Tracer honest-failure** (`tools/sidm2_sid_trace.zig`): reject IRQ handlers below
+  `$0200` (zero page/stack is always a stale-vector mis-read - LFT/`A_Mind_Is_Born`
+  resolved `$0031`); count SID writes on both the IRQ and normal PLAY paths and fail when
+  a whole window produces zero (means the player was never reached: stale vector, wrong
+  play address, INIT incomplete); exit non-zero on every FAILED path, which
+  `mcp-siddump/server.py` already surfaces.
+- **RSID corpus sweep @200 frames: silently-empty fake successes 20 -> 0**; honest
+  failures 3 -> 22; traced ok 66 -> 73 (some only ever needed a longer window - Arkanoid
+  gives 0 writes at 5 frames and 460 at 200).
+- 22 RSID files are now honestly reported as untraceable (6 Matt Gray all resolving the
+  same stale `$CBD4`; Myth, Stormlord, Savage, BMX_Kidz). zig64 has no autonomous VIC/CIA
+  interrupt delivery - a real limitation, now visible instead of hidden.
+- 3 regression tests added, **each verified to fail against the pre-fix gate**. Full suite
+  1542 passed / 7 skipped / 2 xfailed, no regressions.
+
+#### Added - Jeroen Kimmel player (Hubbard-derived; first RE of this engine)
+- `SID/Red_kommel_jeroen/` (4 files) is **one** engine, not two generations: Radax (1989
+  CP-Verlag) and the three 1987 "The Judges" tunes are the same driver at different
+  tempos. `player-id` tags it `Jeroen_Kimmel`; `hubbard_parser` does **not** decode it.
+- New `sidm2/kimmel_parser.py` (signature-based relocation-safe locate + py65
+  emulate-init + static orderlist/pattern walk) and `bin/kimmel_to_sf2.py` -> 9 SF2s.
+- **11/12 voice-medians exact 100%** (frame-pitch; Rhaa v2 = 92.9%, n=14).
+- **Multi-subtune**: Radax's init is a *relocating* dispatcher - sub0 runs the `$6000`
+  image, subtunes 1-5 relocate a player copy to `$E000` and seed **that** copy's
+  orderlist cells, so the file-image tables never see them. Tables are now located in the
+  post-init RAM image nearest the play core. 6/6 distinct streams (was 1/6).
+- **`$12CC` effects engine ported**: arp (wave-table rows), PWM (pulse-table ramp,
+  byte-exact), **freq-slide via the Driver 11 T0 sequence command** - the first SIDM2
+  Stage-A builder to emit sequence commands - and drum snap. Key RE finding: the
+  instrument **PWhi byte doubles as the slide rate**. Bug fixed en route: the instrument
+  table base is **per-voice** (`LDA $1059,X`); reading all voices from v0's bank gave
+  wrong v1 timbre.
+- Verified **through the real Driver 11** (`bin/_kimmel_sf2_trace.py`: SF2 -> sf2_to_sid
+  -> zig64), not against a model.
+- **Validation trap documented**: gate-onset metrics return near-zero for this legato
+  engine - validate on frame-pitch coverage.
+- New `docs/players/KIMMEL.md`.
+
+#### Added - Charles Deenen corpus (MoN/Deenen replay + dialects)
+- `SID/deenen/` (40 files) is **not** the MoN engine SIDM2 already supports; player-id
+  splits it into MoN/Deenen replay (19), MoN/FutureComposer (15), Soundmonitor (3),
+  Hubbard V1 (2), 1 SFX bank.
+- **8 freebie wins at ~100% before any new RE** - a third of the useful corpus was
+  already supported and merely misfiled. 3 Sound Monitor behind a bank-switch play
+  wrapper that pushed the play signature +2 (`bin/deenen_sm_build.py` relaxes the gate);
+  2 Hubbard V1 through the unchanged pipeline; 3 MoN TTWII exact at **subtune 0** (the
+  default subtune 3 is a mis-located-speed-table pseudo-parse trap).
+- New `sidm2/deenen_parser.py`: dispatch signature, two-level orderlist->pattern model,
+  split freq tables, flow-anchored relocation-safe locate (Variant A `ADC reloc` /
+  Variant B absolute).
+- **The groove clock varies per file** - note counters advance ~2 of every 5 frames, and
+  the rate is measured by emulation (`groove_rate()` picks the one global scalar best
+  aligning onsets under a monotonic 1-1 match). Hardcoding ~2.5 was the biggest onset
+  error; ratio-of-medians is wrong (over-generation skews it to 5.25).
+- **4 clean wins** at ~100/100 (Ding_van_Charles, B_A_T, Lord_of_the_Rings,
+  After_the_War 100/98.1); 10/19 located.
+- **The builder refuses to emit garbage**: `plausible()` rejects degenerate/runaway
+  decodes plus a dead-voice guard; `--force` overrides.
+- New `docs/players/DEENEN.md`.
+
+---
+
 ## [3.20.0] - 2026-07-12
 
 ### The SDI pitch-carrier campaign - six variants decoded, 254 Stage A SF2s, and the knowledge base ships

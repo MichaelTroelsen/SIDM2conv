@@ -1,0 +1,166 @@
+# Charles Deenen — SID → SF2 support
+
+**Corpus:** `SID/deenen/` — 40 `.sid`, all tagged "Charles Deenen / 1988 Maniacs of Noise".
+
+> **The corpus is NOT one player, and it is NOT the MoN engine SIDM2 already
+> supports.** [MON.md](MON.md) documents the *Jeroen Tel* Hawkeye/Cybernoid engine.
+> These are different dialects that happen to share the MoN banner.
+
+`player-id.exe` (`tools/player-id.exe -m`, `tools/sidid.cfg`) splits them:
+
+| Group | N | Status |
+|-------|---|--------|
+| **MoN/Deenen game replay** | 19 | the fresh RE below — 10 located, **4 clean wins** |
+| **MoN/FutureComposer** (*not* the `$1800` FC variant) | 15 | untouched |
+| **Soundmonitor** | 3 | **freebie wins at 100%** (see below) |
+| **Rob_Hubbard V1** | 2 | **freebie wins at ~100%**, stock pipeline unchanged |
+| SFX bank | 1 | n/a |
+
+**Status:** **Stage A**, standalone `bin/` builders — **not** wired into
+`driver_selector`/`conversion_pipeline`. Parser: `sidm2/deenen_parser.py`.
+Output: `out/deenen_sf2/` (12 validated SF2s).
+
+---
+
+## The freebies — 8 files at ~100% before any new RE
+
+Worth reading as a method note: **a third of the useful corpus was already supported
+and merely misfiled.** Classification before RE paid for itself.
+
+* **3 Sound Monitor** — `Aids_See_Ass` 212/212, `Super_Heavy` 262/262,
+  `I_Saw_2_HC-Ass..` 205/205 = **100%**. They are stock SM at fixed addresses
+  (`$A000` bars / `$AE00` sound / `$C416` freq) behind a **bank-switch play wrapper**
+  (play `$C020` → `JSR $C475`) carrying a 2-byte prefix. That pushed the play
+  **signature +2**, so `is_soundmonitor()` rejected them. Fix: `bin/deenen_sm_build.py`
+  relaxes the play-sig gate (accept +0..+3) and reuses the stock SM builder.
+  See [SOUNDMONITOR.md](SOUNDMONITOR.md).
+* **2 Hubbard V1** — `Crazy_Music`, `Give_It_a_Try` ≈100% through the unchanged stock
+  pipeline. See [HUBBARD.md](HUBBARD.md).
+* **3 MoN TTWII files decode EXACT at subtune 0** — `Say_Hello` 451/451,
+  `Soldier_of_Light` 114/114, `Melig` 89/89.
+  > **GOTCHA:** the MoN default **subtune 3 is a mis-located-speed-table pseudo-parse
+  > trap** (speed=155 garbage). The real song is **subtune 0**. `Double_Dragon` is
+  > partial (V2 exact, V0 misaligned); `Zynon` pseudo-parses and is rejected.
+
+---
+
+## The Deenen-replay engine (fresh RE, emulation-grounded on Ding_van_Charles)
+
+* **Dispatch signature:** `C9 60 B0 03 4C` (`CMP #$60 / BCS +3 / JMP note-handler`) — 15/19.
+* **Two-level:** per-voice **orderlist** (ptr `$195C[v*2 + subtune*8]` + reloc) →
+  **pattern** (ptr `$11B1[pat*2]` + reloc).
+* **Orderlist grammar:** `<$5F` pattern#, `$5F-$6E` A-transpose, `$6F-$7F` pattern-loop
+  count, `$80-$FD` note-transpose (val−$82), `$FE` stop, `$FF` **segment-advance**.
+* **Pattern row:** prefixes then a note — `$C0-$DF` instrument (+A-transpose),
+  `$80-$BF` default-duration (val−$81, **accumulates**), `$60-$7F` arp param,
+  `<$60` NOTE, `$E0-$FA` rest, `$FD/$FC/$FB/$FE` slide/enable/gate/speed.
+* **Note→SID:** pitch = note+transpose → **split** freq tables FREQ_LO/FREQ_HI
+  (95-entry, `hi − lo = $5F`). Instrument record @ `INSTR + i*8`:
+  `[0]` packed PW, `[1]` waveform, `[2]` AD, `[3]` SR, `[4]` flags (bit3 = filter),
+  `[7]` flags.
+* **Relocation-safe locate:** every table address comes from **code operands** (freq =
+  the `LDA abs,Y` pair differing by `$5F`; instr = the consecutive-operand `LDA abs,Y`
+  cluster; ord/pat/reloc via `LDA..,X/Y` → `ADC reloc`). `flow_offsets()` flow-disassembles
+  from init/play so scans anchor to **reachable** `AA BD` / `0A A8 B9` and pin reloc
+  from the trailing ADC. Two reloc modes: **Variant A "Ding-class"** (`ADC reloc`) and
+  **Variant B "Smooth-class"** (absolute pointers, reloc 0).
+
+### The groove clock — the timing key
+
+Note-duration counters advance only **~2 of every 5 frames**, gated by `$10CB`
+(reload-4) + `$106F == $106B`.
+
+> **The rate is NOT a constant — it VARIES per file**, and hardcoding ~2.5 was the
+> single biggest onset error. Emulator-measured `DEC $0D2A-class,X` decrement periods:
+> B_A_T **3**, LotR **2**, Ding **2.5** (alternating 2/3), Astro **2**, After_War **2.5**.
+
+`groove_rate()` measures it by **emulation only**: pick the one global scalar R from
+`{1.5, 2, 2.5, 3, 3.5, 4, 5, 6}` whose uniform schedule `frame = R × tick` best aligns
+the decoder onset stream to the real gate-rise stream under a monotonic 1-1 match. A
+single scalar cannot overfit hundreds of onsets except at the true tempo.
+**Ratio-of-medians was tried first and is WRONG** — decode over-generation skews the
+median to 5.25.
+
+---
+
+## Fidelity — `bin/deenen_validate.py`
+
+**10/19 located · 4 clean wins** (plausible, onset ≥75, pitch ≥75):
+
+| Tune | onset% | pitch% | note |
+|------|--------|--------|------|
+| **Ding_van_Charles** | **100.0** | **100.0** | the RE reference |
+| **B_A_T** | **100.0** | **100.0** | needed the segment-seed fix |
+| **Lord_of_the_Rings** | **100.0** | **100.0** | |
+| **After_the_War** | **100.0** | 98.1 | |
+| Astro_Marine_Corps | 77.4 | 64.7 | v0 exact; v1/v2 undercount → own ZP-loop engine |
+| Constant_Runner | 100.0 | 15.9 | v0/v1 **exact** [113,101]; only v2 runs away |
+| Eye_to_Eye_intro | 100.0 | 62.5 | Variant B, reloc |
+| Zamzara | 75.0 | 40.0 | Variant B, reloc |
+| Mr_Heli | 19.7 | 0.0 | ZP-loop variant |
+| Mantalos | 0.0 | 0.0 | Variant B |
+
+**Refused, not emitted** (`plausible()` = False): Mr_Heli, Constant_Runner, Eye_to_Eye,
+Mantalos, Zamzara. **Not located** (9): F1_Simulator, Hotline_Intro_Tune, Satan,
+Shitty_Disco_Dump, Smooth_Criminal, Cool_Tune, Hotline_Intro, Koekoek, BTTF3.
+
+> **The builder REFUSES to emit garbage.** `plausible()` rejects degenerate/runaway
+> decodes that `ok()` cannot see (Eye_to_Eye all-note-`$06`, Zamzara all-`$00`,
+> Constant_Runner over-loop), plus a **dead-voice guard**: a 0-note voice beside a
+> >20-note voice means a broken decode (Mr_Heli v0). `--force` overrides.
+> This is deliberate: never ship lossy output silently.
+
+### The B_A_T segment-seed bug (worth remembering)
+
+`seg_seed=4` was the **subtune-table index**, not the segment base. Init
+`0A0A0A 69 04` = `song*8+4` → the `$1AA2` subtune table. The real per-voice segment
+base (`$0CAC`-class) inits to **0**: the emulator shows voices reading `$195C` words
+@0/@2/@4, so `segidx0 = 0`, advancing by `+seg_step` to @63/@65/@67. `_segidx0()` now
+tries base/0 **before** the seed candidates. The located `seg_cap=62`/`seg_step=63`
+were correct all along — the "64" first observed was the **hi-byte read of index 63**.
+
+---
+
+## Open — each a separate sub-variant RE
+
+* **(a) ZP-loop-counter orderlist variant** (Astro/Mr_Heli): `$88,X` nested loop
+  counters, handler `c9 ff d0 .. b5 88 f0 04 d6 88` at `$0DD2` — **not** the linear
+  seg-step.
+* **(b) Constant_Runner v2 only** — engine otherwise decodes (v0/v1 exact); v2's
+  `ord_ptr` starts at pattern `$4e`, out of range.
+* **(c) Variant B "Smooth-class"** — needs its own groove clock (`$49`, advance ~1-of-3
+  frames, per Smooth `$0A6D-$0A83`) **and** real reloc for the relocated/IRQ files
+  (Eye_to_Eye load `$4000` play `$0000`; Zamzara `$bd70`). The "reloc 0" absolute
+  assumption reads filler for several.
+* **(d) 9 files not located** — freq/instr `B9`-pair or dispatch not found (Satan reloc
+  off-image; Smooth/Shitty freq pair missing). Needs flow-anchoring extended to the
+  freq/instr scans, or Variant-B-specific signatures.
+* **(e) minor:** the builder decode caps at 8000 rows (seq-dedup keeps SF2s 12–40 KB,
+  so not urgent).
+* Not wired into `driver_selector`/`conversion_pipeline`. No TDZ KB card yet.
+
+**Next lever:** Variant-B groove+reloc (unlocks ~4), then the elaborate Variant-A
+segment seed. Beyond this corpus: the **72-file MoN/Deenen group** in `SID/Tel_Jeroen/`
+([MON.md](MON.md) line ~119) and the 15 MoN/FutureComposer dialect files.
+
+## Tooling
+
+| Tool | Purpose |
+|------|---------|
+| `sidm2/deenen_parser.py` | engine map + locate + decoder + groove clock |
+| `bin/deenen_to_sf2.py` | Stage A builder (`--force` to override `plausible()`) |
+| `bin/deenen_validate.py` | onset+pitch validator (corpus by default, or single file) |
+| `bin/deenen_sm_build.py` | Sound Monitor freebie shim (relaxed play-sig gate) |
+| `bin/_deenen_emu.py` | memory-bus-instrumented py65 (how groove was measured) |
+| `bin/_deenen_groove.py` / `_deenen_common.py` / `_deenen_flowdis.py` / `_deenen_probe_deltas.py` | RE scratch (gitignored) |
+
+## Commits
+
+`7ad0b1b` engine map + relocation-safe locate + freebie/MoN wins → `36341bf` both
+decoder blockers fixed (2 clean wins, 10/19 located) → `2905e9e` segment-seed +
+per-file groove (B_A_T, LotR → 4 clean wins).
+
+## See also
+
+[MON.md](MON.md) · [SOUNDMONITOR.md](SOUNDMONITOR.md) · [HUBBARD.md](HUBBARD.md) ·
+[PLAYBOOK.md](PLAYBOOK.md) · [PATTERNS.md](PATTERNS.md)

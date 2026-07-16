@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.20.0** | SID→SF2 Converter | C64 Music Tools | Updated 2026-07-12
+**SIDM2 v3.21.0** | SID→SF2 Converter | C64 Music Tools | Updated 2026-07-16
 
 Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
 
@@ -95,7 +95,7 @@ Auto-selects best driver by player type via `DriverSelector.PLAYER_REGISTRY` (si
 
 **Regenerator 2000 Project Generator** (archived 2026-04-29 → `archive/cleanup_2026-04-29/orphaned_utils/gen_regen2000_project.py`): Generates `.regen2000proj` directly from a PRG binary with NP21 labels pre-applied. Restore from archive if needed.
 
-**zig64 SID Tracer** (`tools/sidm2-sid-trace.exe`): Pre-built cycle-accurate SID register tracer. Usage: `sidm2-sid-trace.exe file.prg [frames] [init_hex] [play_hex] [subtune]`. Pass init/play (from the PSID header) + subtune for non-Laxity files (e.g. Galway); defaults are $1000/$1003/0. Output: CSV on stderr. Source: `C:\Users\mit\Downloads\zig64\src\examples\sidm2_sid_trace.zig` (rebuild: `zig build`).
+**zig64 SID Tracer** (`tools/sidm2-sid-trace.exe`): Pre-built cycle-accurate SID register tracer. Usage: `sidm2-sid-trace.exe file.prg [frames] [init_hex] [play_hex] [subtune]`. Pass init/play (from the PSID header) + subtune for non-Laxity files (e.g. Galway); defaults are $1000/$1003/0. Output: CSV on stderr. **Fails honestly (v3.21.0)**: prints `FAILED:` + exits non-zero when it cannot drive a file (unresolved/implausible IRQ handler, or 0 SID writes across the window) — an empty trace is NEVER emitted as if it were a silent tune. **Check the exit code**; don't just parse stderr. 22 RSID files are honestly untraceable (no autonomous VIC/CIA interrupt delivery). Gotcha: a too-short window looks identical to a broken trace (Arkanoid = 0 writes at 5 frames, 460 at 200) — use ≥200 frames before calling a file broken. Source of truth: `tools/sidm2_sid_trace.zig` **in this repo** (rebuild: copy to `C:\Users\mit\Downloads\zig64\src\examples\`, `zig build`, copy `zig-out/bin/sidm2-sid-trace.exe` back — the zig64 copy goes stale).
 
 ---
 
@@ -145,6 +145,8 @@ SIDM2/
 | Maniacs of Noise (Jeroen Tel) → native driver | 100% byte-exact (Hawkeye sub 2/3) | ✅ Hawkeye + Cybernoid I/II + Myth + Supremacy all build (`bin/`, not default); see `docs/players/MON.md` |
 | Rob Hubbard V1 → native driver | pulse/freq/filter 100% (Monty/Commando/Zoids/Last_V8) | ✅ ~12 V1 tunes + subsongs (`bin/`, not default); per-instrument pulse engine; see `docs/players/HUBBARD.md` |
 | Rob Hubbard V2 (Delta class) → native driver | Delta theme freq/pulse/filter 100% (wf 85-96%) | 🚧 6 split-songs built; swallow-class state-region relocation + spin-class + note-format laggards open; see `docs/players/HUBBARD.md` |
+| Jeroen Kimmel (Hubbard-derived) → Driver 11 | **11/12 voice-medians exact 100%** (frame-pitch) | ✅ 4 files / 9 SF2s incl. Radax 6 subtunes; arp+PWM+freq-slide(T0)+drum ported (`bin/`, not default); see `docs/players/KIMMEL.md` |
+| Charles Deenen (MoN/Deenen replay) → Driver 11 | 4 clean wins ~100/100 (Ding, B_A_T, LotR, After_the_War); 10/19 located | 🚧 + 8 freebies at 100% (3 SM shim, 2 Hubbard, 3 MoN-TTWII sub0); builder REFUSES implausible decodes (`bin/`, not default); see `docs/players/DEENEN.md` |
 | Future Composer → Driver 11 | trace-validated | 🚧 Stage A only, `$1800` variant; native driver TODO |
 | DMC (Demo Music Creator, Johannes Bjerregaard) → native driver | Rockbuster ~97/100/100; Balloon 77 parts → ONE 400s SF2 (wf/pulse 100×3, step-grid) | 🚧 **56/88 onset-eligible**, all build (`bin/`, not default); bundle-bound files keep high part counts; see `docs/players/DMC.md` |
 | Sound Monitor (Hülsbeck) → native driver | corpus strict sweep 99.23% freq+wf (global-delay, EVERY part); Dance parts 2-6 + Fuck_Off 242s at 100.0 every register; 11 songs/27 parts | ✅ 11/11 Fun_Fun files build (`bin/`, not default); see `docs/players/SOUNDMONITOR.md` |

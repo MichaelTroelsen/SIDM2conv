@@ -1,9 +1,12 @@
 # SIDM2 Conversion Accuracy Matrix
 **Single Source of Truth for Accuracy Data**
 
-**Version**: 3.13.0
-**Last Updated**: 2026-07-05
-**Status**: ✅ Production Reference — rewritten for the native-driver era (Galway/FC/ROMUZAK/MoN)
+**Version**: 3.21.0
+**Last Updated**: 2026-07-16
+**Status**: ⚠️ Production Reference — **partially stale**. Kimmel/Deenen added v3.21.0, but
+the players shipped between v3.13.0 and v3.20.0 (**Hubbard, DMC, Sound Monitor, SDI**) are
+still missing from the tables below; their numbers live in `CLAUDE.md`'s Known Limitations
+table and the per-player docs under `docs/players/`. A full refresh is outstanding.
 
 ---
 
@@ -32,6 +35,8 @@ Per-frame register fidelity (freq / waveform / pulse / filter) measured vs the o
 | — Supremacy (3 subtunes) | `bin/build_mon_native_song.py` | freq 96-99, wf/pulse ~99.8-100, filter 100 (24-70 parts — part-count frontier) | ✅ |
 | **ROMUZAK V6.3** (2 tunes) | `bin/build_romuzak_native_song.py` | note/orderlist-exact + byte-exact wf/pulse/AD-SR (~98-100%) | ✅ [ROMUZAK.md](../players/ROMUZAK.md) |
 | **Future Composer** ($1800 variant) | `bin/fc_to_sf2.py` | Stage A only: notes/order trace-validated | 🚧 [FUTURECOMPOSER.md](../players/FUTURECOMPOSER.md) |
+| **Jeroen Kimmel** (Hubbard-derived, 4 tunes / 9 SF2s) | `bin/kimmel_to_sf2.py` | Stage A: **11/12 voice-medians exact 100%** (frame-pitch, not gate-onset — see doc); arp/PWM/freq-slide(T0)/drum driver-verified byte-exact | ✅ [KIMMEL.md](../players/KIMMEL.md) |
+| **Charles Deenen** (MoN/Deenen replay, 40-file corpus) | `bin/deenen_to_sf2.py`, `bin/deenen_sm_build.py` | Stage A: 4 clean wins ~100/100 onset+pitch (10/19 located) + 8 freebies at 100%; implausible decodes REFUSED | 🚧 [DEENEN.md](../players/DEENEN.md) |
 
 ## Editor-view clusters (inside the Laxity path)
 
