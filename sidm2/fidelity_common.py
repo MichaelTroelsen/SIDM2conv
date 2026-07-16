@@ -23,6 +23,36 @@ import subprocess
 SEMI_REF = 0x1167
 
 
+def score_pct(ok, tot):
+    """ok/tot as a percentage, or **None when tot == 0** (no evidence).
+
+    NEVER returns a perfect score for an empty comparison. `0/0` is "no test
+    ran", not "100% agreement" — a distinction this project has now been bitten
+    by three separate times:
+
+    - v3.21.0: `zig64_audio_gate.verify_sf2_audio` compared two traces for
+      equality; when the tracer could not drive a file both came back empty,
+      `len(0) == len(0)`, and the gate certified 64 zero bytes as byte-identical
+      to `SID/Laxity/Broken_Ass.sid`.
+    - The `secs <= 0` vacuous-100 documented in `docs/players/HUBBARD.md` — fixed
+      there, but every sibling scorer kept its own `if tot else 100.0` copy.
+    - 2026-07-16 fidelity audit: those copies were still live in 10 files, and in
+      two of them (`build_dmc_native_song`, `build_soundmonitor_native_song`) the
+      fabricated 100.0 fed a real A/B build decision — a voice with no data
+      silently voted, because 100.0 vs 100.0 compares equal.
+
+    Callers MUST handle None explicitly. That is the point: "I measured nothing"
+    should be impossible to confuse with "it matched perfectly", and impossible
+    to accidentally compare. Use `fmt_pct` to render it.
+    """
+    return 100.0 * ok / tot if tot else None
+
+
+def fmt_pct(p, width=5, prec=1):
+    """Render a `score_pct` result. None -> 'n/a', never a number."""
+    return f"{p:{width}.{prec}f}" if p is not None else "n/a".rjust(width)
+
+
 def freq_to_semi(freq):
     """16-bit SID freq value -> nearest note index (0..95), or -1 for silence.
 

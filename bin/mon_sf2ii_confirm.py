@@ -87,8 +87,10 @@ for v in range(3):
                 ok[k] += (o["pul"] or 0) == p["pul"]
 
     def pct(k):
-        return 100.0 * ok[k] / tot[k] if tot[k] else 100.0
-    print(f"  osc{v + 1:<3} {pct('freq'):6.1f} {pct('wf'):6.1f} {pct('pul'):7.1f}")
+        # None when nothing was comparable — see fidelity_common.score_pct.
+        return F.score_pct(ok[k], tot[k])
+    print(f"  osc{v + 1:<3} {F.fmt_pct(pct('freq'), 6)} {F.fmt_pct(pct('wf'), 6)}"
+          f" {F.fmt_pct(pct('pul'), 7)}")
 ftot = fok = 0
 for f in fr:
     oc = orig[off0 + (f - offg)][1]
@@ -96,5 +98,8 @@ for f in fr:
         continue
     ftot += 1
     fok += oc == ocut(ours[f])
-print(f"\n  filter cutoff match: {100.0 * fok / ftot if ftot else 100:.1f}%")
+_f = F.score_pct(fok, ftot)
+print(f"\n  filter cutoff match: "
+      + (f"{_f:.1f}%" if _f is not None
+         else "n/a (no filter data — the tune never writes cutoff)"))
 print("\n  RESULT: part LOADS and PLAYS in real SF2II.")

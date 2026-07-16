@@ -28,7 +28,7 @@ from sidm2.soundmonitor_parser import (load_sid, is_soundmonitor,
                                        SoundMonitorModule)
 from sidm2.dmc_parser import measure_onsets
 from sidm2.sid_player import FREQ_TABLE_LO, FREQ_TABLE_HI
-from sidm2.fidelity_common import freq_to_semi
+from sidm2.fidelity_common import freq_to_semi, score_pct
 import build_mon_native_song as BM
 
 
@@ -411,6 +411,11 @@ def build_song(shim, base_name, traces, span, emit=True):
     return parts
 
 
+def _r(p):
+    """Round a score for display; None (no evidence) stays visibly 'n/a'."""
+    return round(p, 1) if p is not None else "n/a"
+
+
 def measure_song_voices(parts, traces):
     """Per-voice freq% across all parts vs the original (the DMC A/B metric)."""
     import bin.mon_sf2_validate as V
@@ -455,7 +460,9 @@ def measure_song_voices(parts, traces):
                     continue
                 tot[v] += 1
                 ok[v] += (a and b and F._semi(a) == F._semi(b))
-    return [100.0 * ok[v] / tot[v] if tot[v] else 100.0 for v in range(3)]
+    # None for a voice with no comparable frames — NOT 100.0. See
+    # sidm2.fidelity_common.score_pct: an empty comparison is "no test ran".
+    return [score_pct(ok[v], tot[v]) for v in range(3)]
 
 
 def find_phase(streams, onsets):
@@ -562,10 +569,18 @@ def main():
                                    legato_set=frozenset(cands), **sk),
                             "_abl", traces, ab_span)
             fl = measure_song_voices(pl, traces)
-            legato_set = frozenset(v for v in cands if fl[v] > fg[v] + 1.0)
-            print(f"  legato A/B: gate={[round(fg[v], 1) for v in sorted(cands)]} "
-                  f"legato={[round(fl[v], 1) for v in sorted(cands)]} "
-                  f"-> legato voices {sorted(legato_set)}")
+            # A voice with no comparable frames scores None on BOTH sides: the
+            # A/B is INCONCLUSIVE for it, so it keeps the default (gate). Same
+            # outcome as before, but now it is a decision rather than an artifact
+            # of two fabricated 100.0s comparing equal — and it is visible.
+            legato_set = frozenset(
+                v for v in cands
+                if fl[v] is not None and fg[v] is not None and fl[v] > fg[v] + 1.0)
+            _ab = [v for v in sorted(cands) if fl[v] is None or fg[v] is None]
+            print(f"  legato A/B: gate={[_r(fg[v]) for v in sorted(cands)]} "
+                  f"legato={[_r(fl[v]) for v in sorted(cands)]} "
+                  f"-> legato voices {sorted(legato_set)}"
+                  + (f"  (no data, kept gate: {_ab})" if _ab else ""))
 
     shim = SMShim(m, streams, span, onsets=onsets if use_onsets else None,
                   frames=traces[0], legato_set=legato_set, phase=phase,

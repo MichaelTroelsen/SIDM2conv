@@ -17,6 +17,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 import bin.mon_sf2_validate as v   # build_probe, _psid
 from sidm2.fidelity_common import siddump_per_frame as per_frame  # noqa: F401 (re-exported)
 from sidm2.fidelity_common import freq_to_semi as _semi           # noqa: F401 (re-exported)
+from sidm2.fidelity_common import score_pct, fmt_pct              # noqa: F401 (re-exported)
 
 
 def main():
@@ -63,8 +64,10 @@ def main():
                 elif o[k] == p[k]:
                     ok[k] += 1
         def pct(k):
-            return 100.0 * ok[k] / tot[k] if tot[k] else 100.0
-        print(f"  osc{vi + 1:<3} {pct('freq'):6.1f} {pct('wf'):6.1f} {pct('pul'):7.1f}")
+            # None when nothing was comparable — see fidelity_common.score_pct.
+            return score_pct(ok[k], tot[k])
+        print(f"  osc{vi + 1:<3} {fmt_pct(pct('freq'), 6)} {fmt_pct(pct('wf'), 6)}"
+              f" {fmt_pct(pct('pul'), 7)}")
     # global filter
     ftot = fok = 0
     for i in range(n):
@@ -75,7 +78,10 @@ def main():
         ftot += 1
         if o == p:
             fok += 1
-    print(f"\n  filter cutoff match: {100.0 * fok / ftot if ftot else 100:.1f}%")
+    _f = score_pct(fok, ftot)
+    print(f"\n  filter cutoff match: "
+          + (f"{_f:.1f}%" if _f is not None
+             else "n/a (no filter data — the tune never writes cutoff)"))
     return 0
 
 

@@ -142,11 +142,14 @@ for vi in range(3):
             if b is not None and (b == prev or b == nxt):
                 skew[k] += 1
     def pct(k):
-        return 100.0 * ok[k] / tot[k] if tot[k] else 100.0
+        # None when nothing was comparable — see fidelity_common.score_pct.
+        return F.score_pct(ok[k], tot[k])
     def spct(k):
-        return 100.0 * (ok[k] + skew[k]) / tot[k] if tot[k] else 100.0
-    print(f"  osc{vi + 1:<3} {pct('freq'):6.1f} {pct('wf'):6.1f} {pct('pul'):7.1f}"
-          f"   ({spct('freq'):5.1f}/{spct('wf'):5.1f}/{spct('pul'):5.1f})")
+        return F.score_pct(ok[k] + skew[k], tot[k])
+    print(f"  osc{vi + 1:<3} {F.fmt_pct(pct('freq'), 6)} {F.fmt_pct(pct('wf'), 6)}"
+          f" {F.fmt_pct(pct('pul'), 7)}"
+          f"   ({F.fmt_pct(spct('freq'))}/{F.fmt_pct(spct('wf'))}"
+          f"/{F.fmt_pct(spct('pul'))})")
     # MISMATCH CLUSTERS: where the real residual lives. For any register under
     # 99.5% strict, compress its mismatch frames into runs and show the top 3 —
     # a cluster at a note onset = capture/base problem there; a long sustained
@@ -180,4 +183,7 @@ for i in range(n):
         continue
     ftot += 1
     fok += o == p
-print(f"\n  filter cutoff match: {100.0 * fok / ftot if ftot else 100:.1f}%")
+_f = F.score_pct(fok, ftot)
+print(f"\n  filter cutoff match: "
+      + (f"{_f:.1f}%" if _f is not None
+         else "n/a (no filter data — the tune never writes cutoff)"))
