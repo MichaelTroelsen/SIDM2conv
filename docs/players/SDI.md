@@ -1,10 +1,24 @@
 # SDI — SID Duzz' It (Geir Tjelta & Glenn Rune Gallefoss)
 
-**Status (2026-07-13):** parser + onset/pitch validation across SIX decoded
+**Status (2026-07-16):** parser + onset/pitch validation across SIX decoded
 variants; Stage A (editable Driver 11) shipping via `bin/sdi_to_sf2.py`;
-Stage B native = next arc. Corpus: `SID/Gallefoss_Glenn/` (473 files, 671
-songs) + `SID/Red_kommel_jeroen/` staging. **312 files located, 336 Stage-A
-SF2s** (subtune 0 + 5 verified E extra subtunes).
+Stage B native = next arc. Corpus: `SID/Gallefoss_Glenn/` (473 files; 441 in
+the flat dir, 671 songs) + `SID/Red_kommel_jeroen/` staging.
+**343 of 441 files locate → 348 Stage-A SF2s** (343 + 5 verified E extra
+subtunes). **324 of those are sweep-validated** — the medians below rest on
+those, not on all 343.
+
+> **THREE DIFFERENT DENOMINATORS — do not conflate them** (the 2026-07-16 audit
+> did, and nearly caused 19 good SF2s to be deleted as "orphans"):
+> - **343 locate** — `locate()` returns a layout. This is the *builder's* gate:
+>   `convert()` checks `lay is None` and nothing else, so it emits one SF2 per
+>   located file. 343 + 5 subtune extras = the 348 on disk, exactly. There are
+>   **no orphans**.
+> - **324 sweep-validated** — `bin/_sdi_sweep.py` additionally needs usable
+>   ground-truth onsets; it drops 19 that locate but cannot be scored (e.g.
+>   `Barbers_Adagio_64`, `play=$0000`, 0 real onsets — correctly excluded, so it
+>   inflates no median).
+> - **671 songs** — subtunes. ~417 remain undecoded.
 
 **This cycle (2026-07-13):** variant **C walk decoded** (strict median
 66.7→86.0), **multi-subtune** support (A/C/E), and the **"sixth layout"
@@ -158,5 +172,11 @@ by strict agreement (D5).
 PAL semitone grid, AD/SR from the located instrument tables (A/B; defaults
 logged for C/D/E/V), ties re-gate (runtime Driver 11 cannot parse tie bytes
 — the Sound Monitor lesson). `--subtune N` converts a specific subtune
-(A/C/E; a guard skips subtunes that duplicate subtune 0). **336 SF2s**
+(A/C/E; a guard skips subtunes that duplicate subtune 0). **348 SF2s**
 (0 conversion failures on located files).
+
+> **"0 failures" is not a fidelity statement** — it means "emitted without
+> raising". `convert()` ships an SF2 whenever `locate()` succeeds, printing
+> `WARN: N instruments use DEFAULT timbre/ADSR`. **274 of 324 (85%) carry some
+> default instrument data**: flags missing in all 274, ADSR in 173, wfprg in 75.
+> Most shipped SDI SF2s are PARTIAL, and the builder says so per file.

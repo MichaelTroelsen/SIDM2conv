@@ -17,12 +17,39 @@ the real editor binary `bin/sound monitor/soundmonitor 1.1.prg` (untracked).
 **Stage B:** `bin/build_soundmonitor_native_song.py` (SMShim → the shared MoN native
 pipeline). Output `out/soundmonitor/`. `bin/` only, not registry-wired.
 
-**Status (2026-07-10, all in one day):** format fully RE'd; parser onset-validated
-**99.9% corpus-wide** (10/11 files 100%); Stage A **32/33 voices note-accurate**;
-Stage B first cut: **Final_Luv = the whole 161s song in ONE part at 98.1-99.9
-skew-tolerant on every register (filter 99.9)**; Dance ~100% audible (the whole
-residual = the 91-frame silent intro); Dreamix osc3 (legato+glide) and Fuck_Off osc2
-(mixed legato) are the open voices.
+**Status (2026-07-16):** format fully RE'd; parser onset-validated **99.9% corpus-wide**
+(10/11 files 100%); Stage A **32/33 voices note-accurate**; Stage B shipping at
+**11 songs / 27 parts**.
+
+**Corpus fidelity — the current headline (audited 2026-07-16):**
+**99.23% freq+wf**, strict, frame-weighted over **n ≈ 841k** voice-frame observations
+(420,438 voice-frames × 2 registers); per-part **median 99.97**. Reproduces to the digit
+(`bin/_opt_sweep_corpus.py`). It postdates the v3.17.0 grid-part desync fix (`a210d83`,
+2026-07-11) — v3.18.0's post-fix figure was 99.08%, v3.19.0's is this one.
+
+Read it with its caveats:
+* **It covers 26 of 27 parts.** `Dance_at_Night_remix part01`'s window is missing from
+  `out/_sm_build_all.log`, which the sweep parses, so it is never measured — and the
+  sweep's own footer prints `total parts: 26`. Restoring it gives **99.25%**, i.e. the
+  omission *understates* (that part is freq+wf 100.0 × 3).
+* **freq+wf is the best 2 of 4 register groups.** Corpus-wide: freq 99.22 / wf 99.18 /
+  **pulse 96.67** / **filter 97.33**. The pulse gap is 1-frame PWM skew (below).
+* **A real tail is absorbed by the frame-weighting:** Dance part07 90.6% over 89s,
+  Dreamix_Two part02 93.4% over 85s (**filter 57.9**), Thats_All part03 95.7% over 49s.
+* **The delay search is an alignment correction, not fitting** — it picked `+0` on 19/26
+  parts and `+1` on 7/26, never ±2. Pre-entry silence skipping excludes 1.5% of frames.
+
+**Per-part 100.0 on EVERY register:** `Fuck_Off` part01 (242s) and `Dance` parts **03 and
+04** only. (Dance part02 v2 pulse 93.1, part05 filter 98.5, part06 v1 freq 96.9 — the
+"parts 2–6 at 100.0" claim in CHANGELOG v3.19.0 → CLAUDE.md → the accuracy matrix was
+wrong; corrected 2026-07-16.) Earlier milestone, still true: **Final_Luv = the whole 161s
+song in ONE part** at 98.1–99.9 skew-tolerant on every register. Dreamix osc3
+(legato+glide) and Fuck_Off osc2 (mixed legato) are the open voices.
+
+> ⚠️ **The headline is not reproducible from a fresh clone.** `bin/_opt_sweep_corpus.py`,
+> `bin/_sm_build_all.py` and `out/_opt_sweep.log` are all untracked + gitignored, and **no
+> tracked test asserts any Sound Monitor fidelity number** — it is not regression-locked.
+> Anyone re-deriving 99.23% needs those scratch artifacts to exist locally.
 
 ---
 

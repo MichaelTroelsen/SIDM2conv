@@ -22,7 +22,7 @@
 | [players/HUBBARD.md](players/HUBBARD.md) | Rob Hubbard V1+V2 (native; V1 pulse/freq/filter 100%) |
 | [players/DMC.md](players/DMC.md) | DMC / Johannes Bjerregaard (native; Rockbuster ≈97%) |
 | [players/SOUNDMONITOR.md](players/SOUNDMONITOR.md) | Sound Monitor / Hülsbeck (Stage A 32/33 voices; native first cut) |
-| [players/SDI.md](players/SDI.md) | SID Duzz' It / Gallefoss+Tjelta (6 variants decoded; 254 Stage A SF2s) |
+| [players/SDI.md](players/SDI.md) | SID Duzz' It / Gallefoss+Tjelta (6 variants decoded; 343 locate → 348 Stage A SF2s, 324 sweep-validated) |
 | [players/PATTERNS.md](players/PATTERNS.md) | The technique catalog — named mechanisms, diagnostics, failure classes |
 | [players/FUTURECOMPOSER.md](players/FUTURECOMPOSER.md) | Future Composer (Stage A) |
 | [players/DRIVER11.md](players/DRIVER11.md) | SF2-exported / Driver 11 (100%) |

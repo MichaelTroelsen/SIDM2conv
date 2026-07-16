@@ -13,12 +13,26 @@ in `bin/DMC/`). Balloon.sid was the RE exemplar (load `$1000`, init `$1440`, pla
 **Native Stage B:** `bin/build_dmc_native_song.py` (DMCShim → the shared MoN native
 pipeline).
 **Status:** format fully RE'd; parser + decoder done. Native Stage B **works end-to-end** —
-**Rockbuster ≈97%** (freq 65→97, waveform 87→100, pulse 100/100/100), most eligible files
-2/3 voices at 90–100%. Corpus survey (`bin/dmc_build_all.py --dry`, all 88 files): **41
-ELIGIBLE** (onset-aligned build; split/ADC-vibrato/staged freq + five sound-generation
-fallbacks + the interleaved-track generation), **~26 FALLBACK** (tables located but onsets
-disagree — multispeed/self-IRQ/legato), **~21 NO-TABLES** (signature miss — the corpus spans
-multiple DMC code generations; see below). `bin/` only, not registry-wired.
+**Rockbuster ≈97%** (freq 65→97, waveform 87→100, pulse 100/100/100) *on part 1 of 16, the
+first ~20s*; most eligible files 2/3 voices at 90–100%. Corpus survey
+(`bin/dmc_build_all.py --dry`, all 88 files, re-run 2026-07-16): **56 ELIGIBLE**
+(onset-aligned build; split/ADC-vibrato/staged freq + five sound-generation fallbacks + the
+interleaved-track generation), **18 FALLBACK** (tables located but onsets disagree —
+multispeed/self-IRQ/legato), **14 NO-TABLES** (signature miss — the corpus spans multiple
+DMC code generations; see below), 0 ERROR. `bin/` only, not registry-wired.
+
+> **ELIGIBLE IS NOT AN ACCURACY FIGURE** (2026-07-16 audit). It means *the decoder's
+> emulated onsets agree ≥85% with siddump*, which selects a **build mode** — the built SF2
+> is never involved. An eligible file can still score badly: **Twilight_Beyond** is ELIGIBLE
+> at 99% onset-agree yet its part01 reads freq **39.2/39.2/54.1**. Likewise "all build" is a
+> build count, not a fidelity claim. Quote a per-register measurement, not this survey.
+
+> **EVERY DMC PERCENTAGE IS WINDOW-DEPENDENT, AND THE WINDOW IS A FREE PARAMETER.**
+> `bin/_dmc_fidelity.py` takes `secs` from argv and never bounds it to the part's span, so
+> past a part's end an exhausted probe is scored against the still-playing original. Same
+> file, same artifact: **Thunder_Force part01 = 100/89.2/94.9 at 6s, 82.5/74.2/77.6 at 10s,
+> 43.5/37.8/38.8 at 20s.** A DMC number without its window is meaningless. (This is the
+> post-end-silence trap — `docs/players/PLAYBOOK.md` §4.)
 
 ---
 
