@@ -3,10 +3,14 @@
 
 **Version**: 3.21.0
 **Last Updated**: 2026-07-16
-**Status**: ⚠️ Production Reference — **partially stale**. Kimmel/Deenen added v3.21.0, but
-the players shipped between v3.13.0 and v3.20.0 (**Hubbard, DMC, Sound Monitor, SDI**) are
-still missing from the tables below; their numbers live in `CLAUDE.md`'s Known Limitations
-table and the per-player docs under `docs/players/`. A full refresh is outstanding.
+**Status**: ✅ Production Reference — refreshed v3.21.0. All 11 ported players are now
+listed (the v3.14.0–v3.20.0 arrivals — Hubbard, DMC, Sound Monitor, SDI — had been missing
+since v3.13.0).
+
+> **Provenance:** the Hubbard / DMC / Sound Monitor / SDI figures below are carried over
+> from `CLAUDE.md`'s Known Limitations table and the per-player docs of the release that
+> shipped them; they were **not** re-measured for this refresh. Kimmel and Deenen were
+> re-validated against the code on 2026-07-16. Each row links the doc that owns its number.
 
 ---
 
@@ -34,6 +38,11 @@ Per-frame register fidelity (freq / waveform / pulse / filter) measured vs the o
 | — Myth (sub0, sub2) | `bin/build_myth_native_song.py` | freq/wf/pulse ~100%, filter ~90-96% | ✅ (emulation-extracted) |
 | — Supremacy (3 subtunes) | `bin/build_mon_native_song.py` | freq 96-99, wf/pulse ~99.8-100, filter 100 (24-70 parts — part-count frontier) | ✅ |
 | **ROMUZAK V6.3** (2 tunes) | `bin/build_romuzak_native_song.py` | note/orderlist-exact + byte-exact wf/pulse/AD-SR (~98-100%) | ✅ [ROMUZAK.md](../players/ROMUZAK.md) |
+| **Rob Hubbard V1** — Monty, Commando, Zoids, Last V8 | `bin/build_hubbard_native_song.py`, corpus `bin/hubbard_build_all.py` | pulse/freq/filter **100%**; ~12 V1 tunes + subsongs built; per-instrument pulse engine | ✅ [HUBBARD.md](../players/HUBBARD.md) |
+| **Rob Hubbard V2** (Delta class) | same | Delta theme freq/pulse/filter **100%** (wf 85–96%); 6 split-songs built | 🚧 [HUBBARD.md](../players/HUBBARD.md) — swallow-class state-region relocation + spin-class + note-format laggards open |
+| **DMC (Demo Music Creator)** — Johannes Bjerregaard | `bin/build_dmc_native_song.py`, corpus `bin/dmc_build_all.py` | Rockbuster ~97/100/100; Balloon 77 parts → **ONE 400s SF2** (wf/pulse 100×3, step-grid); **56/88 onset-eligible**, all build | 🚧 [DMC.md](../players/DMC.md) — bundle-bound files keep high part counts |
+| **Sound Monitor (Musicmaster)** — Hülsbeck | `bin/build_soundmonitor_native_song.py` (Stage A: `bin/soundmonitor_to_sf2.py`) | corpus strict sweep **99.23%** freq+wf (global-delay, every part); Dance parts 2–6 + Fuck_Off 242s at **100.0 every register**; 11 songs / 27 parts | ✅ [SOUNDMONITOR.md](../players/SOUNDMONITOR.md) |
+| **SID Duzz' It (SDI)** — Gallefoss/Tjelta | `bin/sdi_to_sf2.py` | Stage A strict onset+pitch medians: A 98.3, D 100, C 86.0, B 74.8, E 50.8, DELTA 89.8/55.5, V 21.8; **324 located, 348 SF2s, 0 failures** | 🚧 [SDI.md](../players/SDI.md) — native Stage B TODO |
 | **Future Composer** ($1800 variant) | `bin/fc_to_sf2.py` | Stage A only: notes/order trace-validated | 🚧 [FUTURECOMPOSER.md](../players/FUTURECOMPOSER.md) |
 | **Jeroen Kimmel** (Hubbard-derived, 4 tunes / 9 SF2s) | `bin/kimmel_to_sf2.py` | Stage A: **11/12 voice-medians exact 100%** (frame-pitch, not gate-onset — see doc); arp/PWM/freq-slide(T0)/drum driver-verified byte-exact | ✅ [KIMMEL.md](../players/KIMMEL.md) |
 | **Charles Deenen** (MoN/Deenen replay, 40-file corpus) | `bin/deenen_to_sf2.py`, `bin/deenen_sm_build.py` | Stage A: 4 clean wins ~100/100 onset+pitch (10/19 located) + 8 freebies at 100%; implausible decodes REFUSED | 🚧 [DEENEN.md](../players/DEENEN.md) |

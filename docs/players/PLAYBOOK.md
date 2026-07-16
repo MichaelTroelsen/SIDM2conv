@@ -33,6 +33,7 @@ SID file
   │  ground truth (pick per player)
   ├─ siddump (pyscript/siddump_complete.py)      ── per-frame register table
   ├─ zig64  (tools/sidm2-sid-trace.exe)          ── cycle-accurate CSV
+  ├─ vsid wrapper (sid-reference-project, VICE)  ── RSID/play=$0000 fallback
   └─ py65 emulation probe                        ── intercept table lookups
   │
   ├─ parser (sidm2/<player>_parser.py) → notes, durations, instruments
@@ -69,7 +70,7 @@ SID file
 | Gate/waveform envelope | per-note **wave programs**, RLE'd; steady-state loop `$7F` | MoN B3 |
 | Resonant filter | **cutoff envelope** programs (SET + ADD rows), restart per note via flag-`$40` instrument, drives restricted to the `$D417`-routed voice, canonical per **(instrument, shape)** | Hawkeye → Myth filter fix |
 | Chord arps, editable | discrete-semitone arps → SF2II **wave-table semitone column** (on-grid test: exact semitones after detrend) | Terra Cresta (v3.12) |
-| `play=$0000` self-installed IRQ | trace INIT until a vector installs ($FFFE or CINV $0314), then simulate a 6502 IRQ per frame with a step cap | Arkanoid (v3.12) |
+| `play=$0000` self-installed IRQ | trace INIT until a vector installs ($FFFE or CINV $0314), then simulate a 6502 IRQ per frame with a step cap. **When that fails, use the VICE wrapper** (below) — zig64 has no autonomous VIC/CIA delivery, so a player whose INIT waits on its own IRQ as a handshake can never complete here | Arkanoid (v3.12); RSID gap (v3.21.0) |
 | Relocating compilation wrappers | py65 **emulation extraction** — run the real wrapper init, find the freq-lookup PC by signature, intercept per frame | Myth |
 | $D418 volume-digi samples | VICE `-sounddev dump` capture → NCO phase-accumulator lead + PCM drum bank hybrid, gap-sweep records | Arkanoid digi |
 | Table location across relocated rips | **code-signature scanning** (never absolute addresses); resolve self-modified pointers by *which* operand the setup writes | Cybernoid |
@@ -100,7 +101,36 @@ SID file
 3. **Real SF2II capture** — the instrumented `SIDFactoryII_dbg.exe` diffed against a zig64 trace (`sf2ii_vs_real.py`); this catches what headless metrics miss (it exposed the Galway pulse gap).
 4. **Audio A/B** — VICE render + spectral distance (`listen_compare.py`) and the **user's ears** (GUI confirm). Load SF2s via `pyscript/sf2_open_in_editor.py FILE 40` (SF2II's argv-load Heisenbug).
 
+**Picking a tracer — and the RSID gap:**
+`tools/sidm2-sid-trace.exe` (zig64) drives a tune by calling its **PSID-declared play
+address** once per frame. RSID files that install their own IRQ declare `play=$0000`:
+there is nothing to call, and zig64 has **no autonomous VIC/CIA interrupt delivery**, so a
+player whose INIT waits on its own IRQ as a handshake can never finish. Since **v3.21.0**
+the tracer *says so* (`FAILED:` + non-zero exit) instead of emitting an empty trace that
+was indistinguishable from a silent tune — see the trust rules below.
+
+**The escape hatch:** `scripts/dev/vsid-trace.js` in the *separate*
+`sid-reference-project` wraps VICE's `vsid`, which runs a full emulated C64 and lets the
+machine drive the player. **21 of SIDM2's 22 untraceable RSIDs trace under it**
+(`Broken_Ass` 1068 writes, `Myth` 259, `A_Mind_Is_Born` 100; only `Final_Countdown_BASIC`
+returns 0, plausibly genuine). Cross-validated on a PSID both tools drive: **exactly 90**
+changed-value writes each over 16 frames of Stinsen.
+```
+node scripts/dev/vsid-trace.js <file.sid> --frames 200 --json --changed-only
+```
+Gotchas: `--changed-only` is required to match zig64's semantics (vsid records redundant
+writes too); **vsid exits 1 on normal termination** — check for the dump file, not the
+exit code; **cycle timings are NOT comparable** between the tools (~1 frame apart), only
+the write *sequence* agrees. Not wired into SIDM2.
+
 **Trust rules learned the hard way:**
+- **An equality check over evidence must first assert the evidence exists.** The zig64
+  audio gate compared two traces for equality, so when the tracer couldn't drive a file
+  both sides came back empty, `len(0)==len(0)`, and it returned True — certifying 64 zero
+  bytes as byte-identical to `Broken_Ass.sid` (v3.21.0 fix: fail closed). `compare(a, b)`
+  where both are empty is not a match; it's "no test ran". Audit any gate of that shape.
+- **A too-short window looks exactly like a broken trace** — Arkanoid gives 0 writes at 5
+  frames and 460 at 200. Re-check at ≥200 frames before calling a file broken.
 - Byte-exact registers but wrong sound → **suspect the capture CPU** (the siddump SBC carry bug made a 16-bit vibrato too wide project-wide; cross-check py65 + VICE).
 - Trace-replay has a **cycle-level floor** (~0.17 VICE spectral distance on high-resonance filtered voices); write-order/schedule reproduction does *not* close it — don't chase it.
 - Aligned-waveform diff is the wrong audio metric for tonal voices (phase decorrelates identical-sounding audio); use RMS envelope + band spectra.
