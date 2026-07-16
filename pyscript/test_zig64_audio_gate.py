@@ -138,19 +138,46 @@ class TestZig64AudioGateFailsClosed(unittest.TestCase):
             )
 
     def test_tracer_failure_returns_false(self):
-        """_trace returning None (tracer failed) → False, not a pass."""
+        """_trace returning None (tracer failed) → False, not a pass.
+
+        The vsid fallback is stubbed out here: this test covers the
+        no-fallback-available path, which must stay fail-closed.
+        """
         from unittest import mock
         sid = self.SID_DIR / "Stinsens_Last_Night_of_89.sid"
         if not sid.exists():
             self.skipTest(f"missing {sid}")
         if not self.TRACER.exists():
             self.skipTest("tracer not present")
-        with mock.patch("sidm2.zig64_audio_gate._trace", return_value=None):
+        with mock.patch("sidm2.zig64_audio_gate._trace", return_value=None), \
+             mock.patch("sidm2.zig64_audio_gate._verify_via_vsid",
+                        return_value=(None, None)):
             self.assertFalse(
                 verify_sf2_audio(b"\x00\x10" + bytes(64), sid,
                                   0x0F90, 0x0F94, 0x1000, 0x1003,
                                   tracer_path=self.TRACER, frames=4),
                 "A tracer failure must NOT be certified as a match"
+            )
+
+    def test_no_vsid_fallback_stays_fail_closed(self):
+        """With the VICE wrapper absent, an untraceable RSID must return
+        False — never silently pass for lack of a fallback."""
+        from unittest import mock
+        sid = self.SID_DIR / "Laxity" / "Broken_Ass.sid"
+        if not sid.exists():
+            self.skipTest(f"missing {sid}")
+        if not self.TRACER.exists():
+            self.skipTest("tracer not present")
+        d = sid.read_bytes()
+        ia = struct.unpack(">H", d[10:12])[0]
+        pa = struct.unpack(">H", d[12:14])[0]
+        with mock.patch("sidm2.zig64_audio_gate._vsid_trace_js",
+                        return_value=None):
+            self.assertFalse(
+                verify_sf2_audio(b"\x00\x10" + bytes(64), sid,
+                                  0x0F90, 0x0F94, ia, pa,
+                                  tracer_path=self.TRACER, frames=8),
+                "No fallback available → must fail closed, not pass"
             )
 
     def test_untraceable_rsid_does_not_certify_garbage(self):
@@ -173,6 +200,102 @@ class TestZig64AudioGateFailsClosed(unittest.TestCase):
                               0x0F90, 0x0F94, ia, pa,
                               tracer_path=self.TRACER, frames=16),
             "Untraceable SID must not certify arbitrary SF2 bytes"
+        )
+
+
+class TestVsidRsidFallback(unittest.TestCase):
+    """The VICE fallback: zig64 cannot drive an RSID whose player installs
+    its own IRQ (play=$0000), so both sides are re-traced under vsid.
+
+    Skipped unless the wrapper (a separate project) + node + vsid.exe are
+    present — absence is normal and simply leaves the gate fail-closed.
+    """
+
+    ROOT = Path(__file__).parent.parent
+    SID_DIR = ROOT / "SID"
+    TRACER = ROOT / "tools" / "sidm2-sid-trace.exe"
+
+    @classmethod
+    def setUpClass(cls):
+        from sidm2.zig64_audio_gate import _vsid_trace_js
+        if _vsid_trace_js() is None:
+            raise unittest.SkipTest("vsid-trace.js wrapper not available")
+        if not cls.TRACER.exists():
+            raise unittest.SkipTest("tracer not present")
+
+    def _psid_init_play(self, p: Path):
+        d = p.read_bytes()
+        return (struct.unpack(">H", d[10:12])[0],
+                struct.unpack(">H", d[12:14])[0])
+
+    def test_fallback_traces_an_rsid_zig64_cannot(self):
+        """Broken_Ass (RSID, play=$0000) yields nothing from zig64 but a
+        real trace from vsid."""
+        from sidm2.zig64_audio_gate import _trace_vsid, _vsid_trace_js
+        sid = self.SID_DIR / "Laxity" / "Broken_Ass.sid"
+        if not sid.exists():
+            self.skipTest(f"missing {sid}")
+        rows = _trace_vsid(sid, 8, _vsid_trace_js())
+        self.assertIsNotNone(rows, "vsid must drive this RSID")
+        self.assertGreater(len(rows), 50,
+                           "expected a substantial trace, not a trickle")
+        # rows must be (frame, register_name, "$XX") like zig64's
+        f, reg, val = rows[0]
+        self.assertTrue(f.isdigit(), f"frame should be numeric, got {f!r}")
+        self.assertRegex(reg, r"^(osc\d|filter|volume|pot|env|adc)",
+                         f"unexpected register name {reg!r}")
+        self.assertRegex(val, r"^\$[0-9A-F]{2}$", f"bad value {val!r}")
+
+    def test_rsid_sf2_verifies_against_real_evidence(self):
+        """End-to-end: a real SF2 built from an RSID now VERIFIES — and the
+        pass is backed by a non-empty comparison, not an empty-vs-empty one
+        (the bug this whole gate exists to prevent)."""
+        import subprocess as sp
+        import tempfile as tf
+        from unittest import mock
+        import sidm2.zig64_audio_gate as G
+
+        sid = self.SID_DIR / "Laxity" / "Broken_Ass.sid"
+        if not sid.exists():
+            self.skipTest(f"missing {sid}")
+        out = Path(tf.mktemp(suffix=".sf2"))
+        sp.run([sys.executable, str(self.ROOT / "scripts" / "sid_to_sf2.py"),
+                str(sid), str(out), "-q"],
+               capture_output=True, text=True, cwd=str(self.ROOT))
+        if not out.exists():
+            self.skipTest("SF2 build failed for Broken_Ass")
+        sf2 = out.read_bytes()
+        out.unlink(missing_ok=True)
+        ia, pa = self._psid_init_play(sid)
+
+        seen = {}
+        real = G._verify_via_vsid
+
+        def spy(*a, **k):
+            s, f = real(*a, **k)
+            seen["sid"], seen["sf2"] = s, f
+            return s, f
+
+        with mock.patch.object(G, "_verify_via_vsid", side_effect=spy):
+            ok = G.verify_sf2_audio(sf2, sid, 0x0F90, 0x0F94, ia, pa,
+                                     tracer_path=self.TRACER, frames=16)
+        self.assertTrue(seen, "the vsid fallback should have fired")
+        self.assertTrue(seen["sid"], "fallback produced no reference evidence")
+        self.assertGreater(len(seen["sid"]), 100,
+                           "a True here must rest on real rows")
+        self.assertTrue(ok, "a faithful SF2 from an RSID must verify")
+
+    def test_rsid_garbage_rejected_through_fallback(self):
+        """The fallback must not become a new way to pass garbage."""
+        sid = self.SID_DIR / "Laxity" / "Broken_Ass.sid"
+        if not sid.exists():
+            self.skipTest(f"missing {sid}")
+        ia, pa = self._psid_init_play(sid)
+        self.assertFalse(
+            verify_sf2_audio(b"\x00\x10" + bytes(64), sid,
+                              0x0F90, 0x0F94, ia, pa,
+                              tracer_path=self.TRACER, frames=8),
+            "garbage must be rejected even when the fallback runs"
         )
 
 
