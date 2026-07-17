@@ -36,6 +36,60 @@ def used_instruments(m):
     return sorted(used) or [0]
 
 
+def _wave_program(m, di, wf, base_row):
+    """Driver 11 wave rows for Deenen instrument `di`, or None if it has no
+    wave program (-> the caller's plain held-waveform default).
+
+    Mirrors the engine RE'd in `sidm2.deenen_parser.wave_program` (see its
+    docstring; verified against the live player's own freq shadow). Two
+    stream modes, chosen by the stream header's bit7:
+
+    * RAW (bit7 SET) = PERCUSSION. Each byte is written to BOTH SID freq hi
+      and lo, so the pitch is `b<<8|b` -- a fixed sweep INDEPENDENT of the
+      played note. Emitted as Driver 11 ABSOLUTE-note rows (`col1 $80-$DF`,
+      documented in SF2_FORMAT_SPEC.md as "Absolute note (great for drums)"
+      and already used by bin/fc_to_sf2.py's drum path + kimmel_to_sf2.py).
+      NOTE this QUANTIZES: `b<<8|b` is not exactly a semitone, so the row
+      plays the nearest one. Inaudible on a click, but it IS an approximation
+      -- the only lossy step here, and it is deliberate, not silent.
+    * note mode (bit7 CLEAR) = a real pitch program: `>= $7F` is an absolute
+      note, otherwise a RELATIVE semitone added to the played note (`col1
+      $01-$7D`). Constant_Runner's instr 0 is this: absolute $81 then
+      +5,+4,+3,+2,+1,+0 = a descending slide into pitch.
+
+    The engine plays the note's OWN pitch for exactly ONE frame before the
+    stream takes over (observed live: voice1 frame 1 = the base note, frame 2+
+    = the drum), so -- exactly like fc_to_sf2's drum path -- lead with one
+    root row. `speed` (frames per step, from the header) is honoured by
+    repeating each row; `$FE` (hold-forever) becomes a self-jump; `$FF`
+    (loop) jumps back to the stream's own loop target.
+    """
+    wp = m.wave_program(di)
+    if wp is None or not wp['steps']:
+        return None
+    rows = [(wf, 0x00)]                                  # the 1 root frame
+    step_row = {}                                        # stream step -> row idx
+    for si, (kind, val) in enumerate(wp['steps']):
+        if kind == 'hold':                               # $FE: sustain forever
+            here = len(rows)
+            rows.append((0x7F, here - 1))                # re-play the last row
+            return rows
+        if kind == 'loop':                               # $FF: back to the loop target
+            rows.append((0x7F, step_row.get(val, 0)))
+            return rows
+        step_row[si] = len(rows)
+        if kind == 'raw':                                # percussion: absolute pitch
+            col1 = 0x80 | max(0, min(95, freq_to_semi((val << 8) | val)))
+        elif val >= 0x7F:                                # absolute note
+            col1 = 0x80 | max(0, min(95, val & 0x7F))
+        else:                                            # relative semitone
+            col1 = val & 0x7F
+        for _ in range(wp['speed']):                     # frames per step
+            rows.append((wf, col1))
+    rows.append((0x7F, len(rows) - 1))                   # ran off the end -> hold
+    return rows
+
+
 def build_instruments(m, used):
     """One Driver 11 instrument per used Deenen instrument record (8-byte:
     packed-PW, waveform, AD, SR, flags...)."""
@@ -45,8 +99,13 @@ def build_instruments(m, used):
         idx_map[di] = len(instr_rows)
         wf = _norm_waveform(ins['wf'])
         wave_row = len(wave_table)
-        wave_table.append((wf, 0x00))
-        wave_table.append((0x7F, wave_row))
+        prog = _wave_program(m, di, wf, wave_row)
+        if prog is not None:
+            wave_table.extend((c0, c1 if c0 != 0x7F else c1 + wave_row)
+                              for c0, c1 in prog)
+        else:
+            wave_table.append((wf, 0x00))
+            wave_table.append((0x7F, wave_row))
         pulse_row = len(pulse_table)
         pulse_table.extend(_pulse_program(ins['pw'] or 0x800, pulse_row))
         instr_rows.append(D11Instrument(
