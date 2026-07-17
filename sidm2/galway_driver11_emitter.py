@@ -234,12 +234,23 @@ def emit_driver11_sf2(song: GalwayDriver11Song,
         w8(ha + 0 * hrows + 0, 0x0F)
         w8(ha + 1 * hrows + 0, 0x00)
 
-    # --- Tempo (1 x 256): [tick][$7F][$00] = constant speed, wrap to row 0 ---
+    # --- Tempo (1 x 256): [tick...][$7F][$00] = speed chain, wrap to row 0 ---
+    # A bare int gives the historical [tick][$7F][$00] constant speed. A list
+    # emits a repeating chain, the format's own way to average out a FRACTIONAL
+    # speed ([1,2] = alternate 2 and 3 frames/row = 2.5 average) — needed by
+    # sources whose tick is not a whole number of frames (Deenen's groove clock
+    # measures 2.5 on Ding/After_the_War). $00 is the chain TERMINATOR, so a
+    # value of 0 would truncate the chain rather than mean "0 frames": callers
+    # must keep every entry >= 1.
     if 'Tempo' in tbl:
         ta = tbl['Tempo']['addr']
-        w8(ta + 0, song.tempo)
-        w8(ta + 1, 0x7F)
-        w8(ta + 2, 0x00)
+        chain = (list(song.tempo) if isinstance(song.tempo, (list, tuple))
+                 else [song.tempo])
+        chain = ([v for v in chain if v] or [1])[:0x7E]
+        for k, val in enumerate(chain):
+            w8(ta + k, val)
+        w8(ta + len(chain), 0x7F)
+        w8(ta + len(chain) + 1, 0x00)
 
     # --- Init (2 x 32): row 0 = (tempo row 0, main volume $0F) ---
     if 'I' in tbl or 'Init' in tbl:

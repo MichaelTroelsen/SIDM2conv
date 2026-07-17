@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from math import gcd
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 from sidm2.sid_player import FREQ_TABLE_LO, FREQ_TABLE_HI
 from sidm2.galway_1stgen_extractor import (
@@ -98,7 +98,13 @@ class GalwayDriver11Song:
     pulse_table: List[Tuple[int, int, int]] = field(default_factory=list)
     filter_table: List[Tuple[int, int, int]] = field(default_factory=list)  # global filter program
     tracks: List[List[D11Row]] = field(default_factory=list)         # 3 voices, flat rows
-    tempo: int = 4                  # frames per row (TICK)
+    # Tempo table value(s). A bare int is a constant speed; a list is a repeating
+    # CHAIN, which is the only way to express a FRACTIONAL average speed (the
+    # format spec's "02 03 7F 00 = alternating 2-3"). MEASURED, and it disagrees
+    # with the spec's "value = frames per row" by one: the real driver plays
+    # value+1 frames per row (Driver 11 tempo=1 -> 2 frames/row, 2 -> 3, 3 -> 4,
+    # swept against siddump on Constant_Runner + B_A_T). Trust the measurement.
+    tempo: Union[int, List[int]] = 4
     pitch_base: int = 0
     subtune: int = 0
 

@@ -307,21 +307,52 @@ hardcoded `$82`.
 * **(d) 9 files not located** — freq/instr `B9`-pair or dispatch not found (Satan reloc
   off-image; Smooth/Shitty freq pair missing). Needs flow-anchoring extended to the
   freq/instr scans, or Variant-B-specific signatures.
-* **(e) minor:** the builder decode caps at 8000 rows (seq-dedup keeps SF2s 12–40 KB,
-  so not urgent).
+* **(e) ~~minor: builder decode caps at 8000 rows~~** — resolved: the builder now
+  emits ONE playthrough (see *The Stage A SF2 build* above), not the looped 8000.
 * Not wired into `driver_selector`/`conversion_pipeline`. No TDZ KB card yet.
 
 **Next lever:** Variant-B groove+reloc (unlocks ~4), then the elaborate Variant-A
 segment seed. Beyond this corpus: the **72-file MoN/Deenen group** in `SID/Tel_Jeroen/`
 ([MON.md](MON.md) line ~119) and the 15 MoN/FutureComposer dialect files.
 
+## The Stage A SF2 build — three correctness fixes (2026-07-17)
+
+`bin/deenen_validate.py` scores the **decoder** (onset+pitch vs siddump) and is
+structurally blind to what `bin/deenen_to_sf2.py` *emits*. That gap hid three
+SF2-side bugs — the decoder read 6 clean wins the whole time while the shipped
+SF2s were wrong. All three are now fixed and caught by a new audio validator.
+
+* **Wrong tempo.** The builder hardcoded Driver 11 `tempo=1` = 2 frames/row, but
+  the decoder's groove clock says a row is `R` frames and **R is per-file** (2.0
+  Astro/LotR, 2.5 Ding/After_the_War, 3.0 B_A_T/Constant_Runner/Zamzara). So the
+  R=3 files shipped playing **1.5× too fast**. Fixed: `tempo_chain(m)` emits
+  `R−1` (the driver plays `value+1` frames/row — **measured**, off-by-one from
+  the format spec), using a two-entry **tempo chain** (`[1,2]` = alternate 2,3
+  frames/row) for the fractional R=2.5 files. Verified by diffing real onset
+  deltas against the original SID: Constant_Runner voice1 `[12,12,8,4,…]` →
+  `[18,18,12,6,…]` = the original exactly.
+* **Whole voices silently dropped.** `voice_rows` decoded the default 8000-event
+  looped stream as *literal* rows (30k–150k rows/voice), blowing past the
+  emitter's 128-sequence pointer table — which drops overflow orderlist entries
+  **with no warning**. Voice 2 is packed last, so it lost *every* entry on
+  Constant_Runner / Zamzara / After_the_War / Astro, and LotR lost voices 1 **and**
+  2. Fixed: decode **one playthrough** (`stop_on_loop=True`; the orderlist already
+  ends `FF 00` = loop) → every located file now ≤52 sequences, zero drops. The
+  builder also now **refuses** (like `plausible()`) to emit a song whose voices
+  would be dropped, instead of printing a cheerful byte count.
+* **Silent percussion step unrepresentable.** A raw drum byte `$00` writes freq 0
+  (hard silence) in the original; the builder mapped it to absolute note 0 (a
+  pitch). Fixed: emit a waveform-off row. Only Astro instr 8 exercises it.
+
 ## Tooling
 
 | Tool | Purpose |
 |------|---------|
 | `sidm2/deenen_parser.py` | engine map + locate + decoder + groove clock |
-| `bin/deenen_to_sf2.py` | Stage A builder (`--force` to override `plausible()`) |
-| `bin/deenen_validate.py` | onset+pitch validator (corpus by default, or single file) |
+| `bin/deenen_to_sf2.py` | Stage A builder (`--force` to override `plausible()`); `build_song` = the shared build path, `tempo_chain` = per-file speed |
+| `bin/deenen_validate.py` | onset+pitch validator of the **decoder** (corpus by default, or single file) |
+| `bin/deenen_sf2_validate.py` | audio validator of the **emitted SF2**: per-voice, per-time percussion check (CR 65/65, After_the_War 62/62, Astro 333/333) |
+| `bin/deenen_engine_check.py` | ground truth for **notes only** — certifies the note index, NOT the frequency/timing/SF2 |
 | `bin/deenen_sm_build.py` | Sound Monitor freebie shim (relaxed play-sig gate) |
 | `bin/_deenen_emu.py` | memory-bus-instrumented py65 (how groove was measured) |
 | `bin/_deenen_groove.py` / `_deenen_common.py` / `_deenen_flowdis.py` / `_deenen_probe_deltas.py` | RE scratch (gitignored) |
