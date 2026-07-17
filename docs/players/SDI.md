@@ -162,8 +162,29 @@ by strict agreement (D5).
   Hysteria_Pimped), + the 9 abs-form false-positives the dispatch guard
   correctly excludes (Crystal_Gazer/Doors_of_Perception/... = other engines).
   ~73 more locate-NONE with other play-init offsets.
-- **Stage B native** via the shared MoN engine (step-grid; note: C-class
-  note-on writes `$D404 = $08` TEST bit — mind the gate model).
+- **Stage B native** — BEACHHEAD SHIPPED (`bin/build_sdi_native_song.py`, first
+  cut). See below.
+
+## Stage B native — the pitch-ceiling lift (`bin/build_sdi_native_song.py`)
+
+The Stage-A strict ceiling (~50 on E/DELTA/V) is the per-frame **wfprg arpeggio**
+a static decoder can't model. Stage B captures it: a trace-driven shim into
+`build_mon_native_song` (the DMC/Sound-Monitor pattern) places notes at emulated
+`$D404` gate-rises (`measure_onsets`), takes base pitch from the trace, and the
+engine reproduces every per-frame freq/waveform/pulse/filter byte-exact.
+
+First cut (onset-aligned, single window, inline phase-aligned freq+wf fidelity —
+never emits blind). Proven on two variant-E files:
+
+| file | Stage A strict | Stage B (per-frame freq+wf, v0/v1/v2) |
+|------|---------------|----------------------------------------|
+| 2_Young_2_Die | ~67 | **98.4 / 85.3 / 99.9** |
+| Tranedans | **13.4** | **88.7 / 91.9 / 99.3** |
+
+v1 residuals are the known drum/hat re-gate capture class. Open Stage B units:
+adaptive part-splitting (the 63-bundle cap warns on long windows now), an
+E/DELTA corpus sweep, the **C-class `$D404=$08` TEST hard-restart** gate model,
+and V multispeed (2×/4× — `measure_onsets` emulates too slow; needs the wrapper).
 
 ## Stage A
 
