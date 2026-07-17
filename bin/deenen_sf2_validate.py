@@ -1,37 +1,35 @@
-"""Does the emitted Deenen SF2 play the percussion -- on the right voice, at the
-right time, in the right order? (audio check)
+"""Does the emitted Deenen SF2 actually play the song -- the right notes on the
+right voices at the right times, AND the percussion sweeps? (audio check)
 
 Why this exists
 ---------------
 `bin/deenen_validate.py` scores the DECODER (onset+pitch vs siddump). It is
-structurally BLIND to what `bin/deenen_to_sf2.py` emits -- so the wave/
-percussion rows for the $1723 engine (see `DeenenModule.wave_program`) shipped
-decoded and emitted but never audio-verified. This closes that gap: build the
+structurally BLIND to what `bin/deenen_to_sf2.py` emits -- so builder bugs ship
+silently: a whole voice dropped past the 128-sequence cap, the wrong tempo (every
+onset mistimed), percussion rows that don't fire. This closes that gap: build the
 SF2 exactly as the builder ships it, wrap it as a PSID probe, siddump it, and
-check the real SID output.
+check the real SID output against the decoder's own schedule. TWO parts:
 
-It compares PER-FRAME FREQUENCY, not note onsets. The percussion is a
-within-note sweep (instr 1: semitones 69,37,26,23,18,11,68 across consecutive
-frames, then hold) -- an onset-only comparison, like `bin/mon_sf2_validate.py`
-does, cannot see it AT ALL and would report success without testing anything.
+1. MELODIC onsets, every voice. For each note the decoder schedules on voice V,
+   does an onset appear at that frame in the SF2? Catches the dropped voice (0%)
+   and the wrong tempo (onsets unfittable by one small boot offset). One global
+   offset for all 3 voices -- a voice needing a different one reads low, which is
+   the inter-voice desync signal.
 
-What the verdict means
-----------------------
-For every note the decoder says voice V plays with percussion instrument I, this
-walks the frames THAT note occupies, on THAT voice, and compares the pitch run
-the SF2 really produces against the run the original engine would produce. A
-pitch coming out of some other voice, or some other note, cannot satisfy the
-check.
+2. PERCUSSION sweeps, per note. The $1723 wave engine plays a within-note pitch
+   sweep (instr 1: 69,37,26,23,18,11,68 then hold) that an onset check cannot see
+   at all. For each percussion note on voice V, walk THAT note's frames on THAT
+   voice and compare the pitch run to the engine's.
 
-That is the whole point of the rewrite. The first version of this tool pooled
-every semitone from all 3 voices across the entire window into ONE set and asked
-only "does this pitch appear ANYWHERE?" -- so an unrelated note supplied the
-evidence and a PASS meant almost nothing. It reported PASS on Constant_Runner
-while that SF2 was missing its entire voice 2 and playing 1.5x too fast. A check
-that pools its evidence proves only that the pitch exists in the universe.
+Both parts attribute per-voice, per-note. The FIRST version of the percussion
+half pooled every semitone from all 3 voices into ONE set and asked "does this
+pitch appear ANYWHERE?" -- an unrelated note supplied the evidence, so PASS meant
+almost nothing (green while the SF2 was missing voice 2 and 1.5x too fast). A
+check that pools its evidence proves only the value exists in the universe.
 
-Still NOT a fidelity percentage: it audits the percussion streams only, not
-pitch/timing of the song as a whole. Quote it as what it is.
+NOT a single fidelity percentage: melodic recall + percussion reproduction are
+reported separately. Decoder-vs-original fidelity is bin/deenen_validate.py's job;
+this is builder faithfulness -- did the SF2 keep what the decoder produced.
 
   py -3 bin/deenen_sf2_validate.py                     # Constant_Runner
   py -3 bin/deenen_sf2_validate.py SID/deenen/After_the_War.sid 120
@@ -51,6 +49,8 @@ from sidm2.galway_driver11_emitter import emit_driver11_sf2     # noqa: E402
 import deenen_to_sf2 as B                                       # noqa: E402
 
 MAX_OFFSET = 24          # driver boot lag, in frames: small and bounded by design
+HR_FLOOR = 2             # Driver 11 gates off 2 frames before each note, so a
+                         # note spanning <= 2 frames cannot articulate at all
 
 
 def build_probe(path, subtune=0):
@@ -186,6 +186,83 @@ def prefix_agrees(got, want, minlen=2):
     return n >= minlen and got[:n] == want[:n]
 
 
+def melodic_onsets(m, song, sched, probe, secs):
+    """Builder faithfulness: at the frame the decoder schedules each note on
+    voice V, is the SF2 actually sounding that note's PITCH?
+
+    The decoder-vs-original onset fidelity is already scored by
+    bin/deenen_validate.py (the clean-win metric). This isolates the OTHER half:
+    does deenen_to_sf2 transcribe that decode into the SF2 without losing or
+    mistiming it? -- the pair of bugs that shipped silently before (a whole voice
+    dropped past the 128-sequence cap, and the wrong tempo).
+
+    It asks: does the scheduled note's PITCH sound SOMEWHERE within that note's
+    own frame span, on that voice? -- not whether a fresh onset fired at a precise
+    frame. Three things make onset-precise matching wrong here, all verified on
+    the corpus:
+      * a legato note-change plays the right pitch with no fresh siddump onset
+        (Lord_of_the_Rings' dur-16 notes);
+      * a wave-program instrument (arpeggio or drum) plays the root for one frame
+        then modulates away, so the root is present only briefly (Astro instr 14,
+        an octave arp);
+      * the previous note's drum tail can overrun this note's onset frame
+        (After_the_War row 1, whose root sounds a few frames in).
+    Scanning the span absorbs all three while still catching a genuine drop -- a
+    dropped note leaves the SF2 holding the PREVIOUS pitch for the whole span, so
+    the scheduled pitch never appears.
+
+    A note whose articulable span (span - HR_FLOOR) is empty is SUB-ARTICULABLE,
+    not lost: Driver 11's hard-restart gates off HR_FLOOR frames before every
+    note, so a <=2-frame note has no sounding frame at all -- it can't articulate
+    on this target regardless of the builder. Verified on Lord_of_the_Rings: all
+    21 v1 misses are dur-1 (2-frame) notes and ARE present in the emitted
+    sequence; the HR floor eats them, the builder didn't drop them. That abstains
+    rather than fails (same discipline as the percussion half).
+
+    ONE boot offset for the whole file (a single global tempo counter drives all
+    3 voices), fitted over 0..MAX_OFFSET; a voice needing a different offset reads
+    low -- the inter-voice desync signal. Returns
+    [(voice, hits, scheduled, sub_articulable), ...].
+    """
+    # A note on a WAVE-PROGRAM instrument (raw percussion OR note-mode arpeggio)
+    # has its pitch set by the program, not the note root -- it plays the root
+    # for at most one frame then modulates. Checking the root against such a note
+    # is a category error: raw ones are the percussion half's job, note-mode arps
+    # are a separate (currently unvalidated) concern. Melodic = plain notes only.
+    wave_instr = {i for i in B.used_instruments(m)
+                  if (m.wave_program(i) or {}).get('steps')}
+    rf = row_frames(song, max((ev[-1][0] + ev[-1][2]) if ev else 0
+                              for ev in sched.values()) + 2)
+    exp = {v: [(rf[r], B._semi(m, note),
+                rf[min(r + _dur, len(rf) - 1)] - rf[r])         # frame span
+               for (r, di, _dur, note) in sched[v]
+               if rf[r] < 50 * secs and di not in wave_instr]
+           for v in range(3)}
+    track = {v: siddump_freq_track(probe, [f'-t{secs}'], v) for v in range(3)}
+
+    def sounds(v, f0, span, semi):
+        # scan the articulable window [onset-1 .. onset + (span - HR_FLOOR)]
+        return any(freq_to_semi(track[v].get(f, 0)) == semi
+                   for f in range(f0 - 1, f0 + max(1, span - HR_FLOOR) + 1))
+
+    def tally(off):
+        out = []
+        for v in range(3):
+            hits = sub = 0
+            for f, semi, span in exp[v]:
+                if span > HR_FLOOR and sounds(v, f + off, span, semi):
+                    hits += 1
+                elif span <= HR_FLOOR:
+                    sub += 1
+            out.append((hits, sub))
+        return out
+
+    best = max(range(MAX_OFFSET + 1),
+               key=lambda o: sum(h + s for h, s in tally(o)))
+    t = tally(best)
+    return best, [(v, t[v][0], len(exp[v]), t[v][1]) for v in range(3)]
+
+
 def main():
     os.chdir(ROOT)
     path = (sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].isdigit()
@@ -198,17 +275,9 @@ def main():
     if not m.plausible() and '--force' not in sys.argv:
         print(f'{name}: the builder REFUSES this file (plausible()=False -- a '
               f'degenerate/filler decode). Its SF2 is not shipped, so auditing '
-              f'its percussion audio tests nothing real. Pass --force to probe '
-              f'it anyway (informational only).')
+              f'its audio tests nothing real. Pass --force to probe it anyway '
+              f'(informational only).')
         return 0
-    perc = {i: m.wave_program(i) for i in B.used_instruments(m)}
-    perc = {i: wp for i, wp in perc.items() if wp and wp['raw'] and wp['steps']}
-    if not perc:
-        print(f'{name}: no RAW/percussion streams -- nothing for this tool to check')
-        return 0
-    if any(drop):
-        print(f'{name}: WARNING orderlist entries dropped by the sequence cap: '
-              f'{drop} -- a dropped voice is SILENT and cannot be audited')
 
     os.makedirs('out', exist_ok=True)
     probe = os.path.join('out', '_deenen_sf2_probe.sid')
@@ -216,6 +285,34 @@ def main():
         f.write(psid)
 
     sched = voice_schedule(m)
+
+    # --- Part 1: MELODIC onsets, every voice (catches dropped voice / tempo) ---
+    mel_off, mel = melodic_onsets(m, song, sched, probe, secs)
+    print(f'{name}: MELODIC pitch faithfulness (decoder schedule -> SF2, '
+          f'offset {mel_off})   tempo={song.tempo} (R={m.groove_rate()})')
+    mel_ok = True
+    for v, hits, exp, sub in mel:
+        lost = exp - hits - sub                       # neither sounded nor sub-artic
+        pct = score_pct(hits, exp - sub)              # of the articulable notes
+        subnote = f', {sub} sub-articulable (Driver 11 HR floor)' if sub else ''
+        mark = '   <-- LOST' if lost else ''
+        if lost:
+            mel_ok = False
+        print(f'  voice {v}: {hits}/{exp - sub} articulable notes sound the right '
+              f'pitch ({fmt_pct(pct)}%){subnote}{mark}')
+    if any(drop):
+        mel_ok = False
+        print(f'  DROPPED by the 128-sequence cap: {drop} -- a fully dropped '
+              f'voice is SILENT in the SF2')
+    print()
+
+    # --- Part 2: PERCUSSION sweeps (within-note, invisible to onsets) ---
+    perc = {i: m.wave_program(i) for i in B.used_instruments(m)}
+    perc = {i: wp for i, wp in perc.items() if wp and wp['raw'] and wp['steps']}
+    if not perc:
+        verdict = 'PASS' if mel_ok else 'FAIL'
+        print(f'{name}: no percussion streams; melodic-only. {verdict}')
+        return 0 if mel_ok else 1
     nrows = max((ev[-1][0] + ev[-1][2]) if ev else 0 for ev in sched.values())
     rf = row_frames(song, nrows + 2)
     track = {v: siddump_freq_track(probe, [f'-t{secs}'], v) for v in range(3)}
@@ -281,9 +378,8 @@ def main():
             best, best_res = (tot, off), res
     off = best[1]
 
-    print(f'{name}: percussion instruments {sorted(perc)}   tempo={song.tempo} '
-          f'(R={m.groove_rate()})   SF2 probe = {len(psid)} bytes, {secs}s '
-          f'(to frame {last_frame})')
+    print(f'{name}: PERCUSSION instruments {sorted(perc)}   SF2 probe = '
+          f'{len(psid)} bytes, {secs}s (to frame {last_frame})')
     print(f'  boot offset fitted to {off} frame(s); each occurrence is checked on '
           f'ITS OWN voice, over ITS OWN frames.')
     print()
@@ -318,13 +414,21 @@ def main():
               f'reach them) and {t_unmeas} root-only, too short for the drum to '
               f'sound (unmeasurable). Neither is evidence either way; only the '
               f'{t_tested} tested occurrences count.')
-    if ok_all and t_tested:
-        print(f'PASS: {t_ok}/{t_tested} percussion notes play the decoded sweep on '
-              f'the correct voice, over that note\'s own frames.')
+    perc_ok = ok_all and t_tested
+    if perc_ok:
+        print(f'percussion: {t_ok}/{t_tested} notes play the decoded sweep on the '
+              f'correct voice, over that note\'s own frames.')
     else:
-        print(f'FAIL: {t_ok}/{t_tested} percussion notes reproduced. The SF2 does '
-              f'not play what the decode says, or there was nothing to test.')
-    return 0 if (ok_all and t_tested) else 1
+        print(f'percussion: {t_ok}/{t_tested} reproduced -- the SF2 does not play '
+              f'what the decode says, or there was nothing to test.')
+    print()
+    if mel_ok and perc_ok:
+        print('PASS: the emitted SF2 plays the melodic notes AND the percussion '
+              'sweeps the decoder expects.')
+    else:
+        gaps = ('melodic ' if not mel_ok else '') + ('percussion' if not perc_ok else '')
+        print(f'FAIL: emitted-SF2 gap in {gaps.strip()}. See above.')
+    return 0 if (mel_ok and perc_ok) else 1
 
 
 if __name__ == '__main__':

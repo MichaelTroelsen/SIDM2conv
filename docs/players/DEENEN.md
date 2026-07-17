@@ -352,6 +352,32 @@ SF2s were wrong. All three are now fixed and caught by a new audio validator.
   (hard silence) in the original; the builder mapped it to absolute note 0 (a
   pitch). Fixed: emit a waveform-off row. Only Astro instr 8 exercises it.
 
+### Builder faithfulness — the emitted SF2, measured (2026-07-18)
+
+`bin/deenen_sf2_validate.py` now audits the **emitted SF2** in two parts, each
+attributing per-voice/per-note against the decoder's own schedule (never pooled):
+
+1. **Melodic pitch** — for every plain (non-wave-program) note the decoder
+   schedules on voice V, does that pitch sound somewhere in the note's own frame
+   span, on V? Scanning the span (not one onset frame) absorbs legato note-changes,
+   arpeggio/drum modulation, and a previous drum's tail overrunning the onset,
+   while a genuine drop (SF2 stuck on the previous pitch) still fails.
+2. **Percussion sweeps** — the within-note `$1723` sweeps an onset check can't see.
+
+Two honest abstentions: notes on a **wave-program instrument** (their pitch is the
+program's output, not the root — raw ones are checked by part 2, note-mode arps are
+a separate gap), and **sub-articulable** notes whose span ≤ 2 frames, which Driver
+11's hard-restart (gate-off 2 frames before every note) cannot sound at all —
+verified: LotR v1's 21 fastest notes are dur-1 and ARE in the emitted sequence; the
+HR floor eats them, the builder didn't drop them.
+
+Result over the 7 clean wins: **6 are 100% faithful** on every voice (melodic +
+percussion). **After_the_War is 127/128 melodic** — the single miss is voice 0's
+opening, where the original plays a portamento **slide** (25→27→…→43) the decoder
+captures as a static note and the emission doesn't reproduce (the same unmodelled
+`$FD` slide class as Zamzara's — a real, tiny gap, correctly surfaced, not a
+tempo/dropped-voice regression).
+
 ## Tooling
 
 | Tool | Purpose |
@@ -359,7 +385,7 @@ SF2s were wrong. All three are now fixed and caught by a new audio validator.
 | `sidm2/deenen_parser.py` | engine map + locate + decoder + groove clock |
 | `bin/deenen_to_sf2.py` | Stage A builder (`--force` to override `plausible()`); `build_song` = the shared build path, `tempo_chain` = per-file speed |
 | `bin/deenen_validate.py` | onset+pitch validator of the **decoder** (corpus by default, or single file) |
-| `bin/deenen_sf2_validate.py` | audio validator of the **emitted SF2**: per-voice, per-time percussion check (CR 65/65, After_the_War 62/62, Astro 333/333) |
+| `bin/deenen_sf2_validate.py` | audio validator of the **emitted SF2**: per-voice MELODIC pitch faithfulness + per-note PERCUSSION sweeps (see *Builder faithfulness* below) |
 | `bin/deenen_engine_check.py` | ground truth for **notes only** — certifies the note index, NOT the frequency/timing/SF2 |
 | `bin/deenen_sm_build.py` | Sound Monitor freebie shim (relaxed play-sig gate) |
 | `bin/_deenen_emu.py` | memory-bus-instrumented py65 (how groove was measured) |
