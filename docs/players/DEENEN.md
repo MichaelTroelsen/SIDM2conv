@@ -36,11 +36,18 @@ and merely misfiled.** Classification before RE paid for itself.
   See [SOUNDMONITOR.md](SOUNDMONITOR.md).
 * **2 Hubbard V1** — `Crazy_Music`, `Give_It_a_Try` ≈100% through the unchanged stock
   pipeline. See [HUBBARD.md](HUBBARD.md).
-* **3 MoN TTWII files decode EXACT at subtune 0** — `Say_Hello` 451/451,
-  `Soldier_of_Light` 114/114, `Melig` 89/89.
+* **5 MoN files decode EXACT via `mon_parser`** — `Say_Hello` 451/451,
+  `Soldier_of_Light` 114/114, `Melig` 89/89, and (**2026-07-18, the "instr 0 =
+  rest" fix**) `Double_Dragon` sub0 **109/109** and `Zynon` sub0/1/2 **26/115/45,
+  all exact**.
   > **GOTCHA:** the MoN default **subtune 3 is a mis-located-speed-table pseudo-parse
-  > trap** (speed=155 garbage). The real song is **subtune 0**. `Double_Dragon` is
-  > partial (V2 exact, V0 misaligned); `Zynon` pseudo-parses and is rejected.
+  > trap** (speed=155 garbage). The real song is **subtune 0** (Zynon: 0/1/2).
+  > `Double_Dragon`/`Zynon` were "partial"/"rejected" ONLY because MoN
+  > **instrument 0 is the rest/silent slot** (all-zero 8-byte record) and
+  > `mon_parser` counted its events as note onsets. Fixed in `_emit`
+  > (`_silent_instr` → `retrig=False`); the real V0 is silent until its first note.
+  > Bonus: `Cybernoid` sub0 41/54 → **53/53**. Zero regressions to the byte-exact
+  > Hawkeye/Cyb subtunes. See [[mon-locate-investigation]] / [MON.md](MON.md).
 
 ---
 

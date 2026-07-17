@@ -438,9 +438,29 @@ class MON:
     def _emit(self, events, raw, st, retrig):
         note = (raw + st['transpose'] + self.note_base) & 0x7F
         tie = st.pop('pending_tie', False)      # $FB after the previous event ($12C5:
+        # Instrument 0 in MoN is the REST/silent slot: its 8-byte record is all
+        # zero (verified across Hawkeye/Cybernoid/Cybernoid_II/Double_Dragon), so
+        # a zero SID voice (waveform 0, no envelope) makes no sound on real
+        # hardware -- siddump shows NO fresh onset for it. An event on such an
+        # instrument is a REST, not a retriggered note; marking it non-retrig
+        # keeps it out of the onset comparison (it stays an event so durations/
+        # timing are preserved, and the SF2 renders it via the same silent
+        # instrument). This is what let Double_Dragon's 8x-instr0 intro read as
+        # notes; the real V0 is silent until frame 340.
+        if retrig and not tie and self._silent_instr(st['instr']):
+            retrig = False
         events.append(MONEvent(note=note, dur=st['stored'] + 1, instr=st['instr'],
                                wprog=st['wprog'], retrig=retrig and not tie, tie=tie))
         st['dur_acc'] = 0                       # finalize resets the $F3 accumulator
+
+    def _silent_instr(self, i):
+        """True if instrument i's 8-byte record is entirely zero (the MoN rest
+        slot -- a voice it drives produces no sound). Cached."""
+        c = self.__dict__.setdefault('_silent_cache', {})
+        if i not in c:
+            base = self.tbl_instr + (i & 0xFF) * 8
+            c[i] = all(self._u8(base + k) == 0 for k in range(8))
+        return c[i]
 
     def _pattern(self, pat, st, events):
         """Faithful emulation of the player's pattern-byte dispatch chain
