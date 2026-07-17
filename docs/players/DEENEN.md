@@ -10,7 +10,7 @@
 
 | Group | N | Status |
 |-------|---|--------|
-| **MoN/Deenen game replay** | 19 | the fresh RE below — 10 located, **6 clean wins** |
+| **MoN/Deenen game replay** | 19 | the fresh RE below — 10 located, **7 clean wins** |
 | **MoN/FutureComposer** (*not* the `$1800` FC variant) | 15 | untouched |
 | **Soundmonitor** | 3 | **freebie wins at 100%** (see below) |
 | **Rob_Hubbard V1** | 2 | **freebie wins at ~100%**, stock pipeline unchanged |
@@ -92,7 +92,7 @@ median to 5.25.
 
 ## Fidelity — `bin/deenen_validate.py`
 
-**10/19 located · 6 clean wins** (plausible, onset ≥75, pitch ≥75) — as of 2026-07-17:
+**10/19 located · 7 clean wins** (plausible, onset ≥75, pitch ≥75) — as of 2026-07-18:
 
 | Tune | onset% | pitch% | note |
 |------|--------|--------|------|
@@ -101,15 +101,16 @@ median to 5.25.
 | **Lord_of_the_Rings** | **100.0** | **100.0** | |
 | **After_the_War** | **100.0** | **100.0** | |
 | **Zamzara** | **100.0** | **100.0** | own row + orderlist grammar; freq tables were byte-swapped (see below) |
+| **Constant_Runner** | **100.0** | **97.7** | decode **exact** [113,101,44]; voice1 is PERCUSSION, decoded + emitted + audio-verified (65/65). The stale `plausible()` blanket that refused it was removed 2026-07-18 |
 | **Astro_Marine_Corps** | **77.4** | **91.5** | unlocked by the pitch-settle-window fix |
-| Constant_Runner | 100.0 | 97.7 | decode **exact** [113,101,44]; refused — voice1 arpeggio unmodelled |
 | Eye_to_Eye_intro | 100.0 | 62.5 | reloc |
 | Mr_Heli | 19.7 | 43.3 | ZP-loop variant |
 | Mantalos | 33.3 | 50.0 | `ff_mode=='seg'` → Ding path; separately broken |
 
-**Refused, not emitted** (`plausible()` = False): Mr_Heli, Constant_Runner, Eye_to_Eye,
-Mantalos. **Not located** (9): F1_Simulator, Hotline_Intro_Tune, Satan,
-Shitty_Disco_Dump, Smooth_Criminal, Cool_Tune, Hotline_Intro, Koekoek, BTTF3.
+**Refused, not emitted** (`plausible()` = False): Mr_Heli (dead voice0), Eye_to_Eye
+(runaway reloc), Mantalos (degenerate). **Not located** (9): F1_Simulator,
+Hotline_Intro_Tune, Satan, Shitty_Disco_Dump, Smooth_Criminal, Cool_Tune,
+Hotline_Intro, Koekoek, BTTF3.
 
 > ⚠️ **`bin/deenen_engine_check.py` read 100/100/100 on Zamzara while every
 > frequency it emitted was byte-swapped.** That tool watches the note-INDEX
@@ -132,10 +133,17 @@ Shitty_Disco_Dump, Smooth_Criminal, Cool_Tune, Hotline_Intro, Koekoek, BTTF3.
 > decodes that `ok()` cannot see (Eye_to_Eye all-note-`$06`; Zamzara used to read
 > all-`$00` here before its orderlist/row grammar was ported — it now decodes
 > cleanly and passes), plus a **dead-voice guard**: a 0-note voice beside a
-> >20-note voice means a broken decode (Mr_Heli v0). It also refuses the whole
-> `$40`-class *except* Zamzara-class rips, whose rows ARE ported (Constant_Runner
-> stays refused: structurally exact, but its voice1 arpeggio is unmodelled).
-> `--force` overrides. This is deliberate: never ship lossy output silently.
+> >20-note voice means a broken decode (Mr_Heli v0). `--force` overrides. This is
+> deliberate: never ship lossy output silently.
+>
+> A class-wide `$40`-blanket refusal used to sit here too, but it was **removed
+> 2026-07-18**: its premise ("the tel-class rows aren't ported; pitch 35.6% is
+> the proof") was retracted on both counts — the rows were always parsed by the
+> shared `_parse_row` (engine-check confirms Constant_Runner 100/100/100), and
+> 35.6% was an attack-transient metric bug (now 97.7, the residual being voice1's
+> now-modelled + audio-verified percussion). The degenerate/dead-voice guards do
+> the real work; removing the blanket flipped **only** Constant_Runner → the 7th
+> clean win, leaving Mr_Heli/Mantalos/Eye_to_Eye correctly refused.
 
 ### The B_A_T segment-seed bug (worth remembering)
 

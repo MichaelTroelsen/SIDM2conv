@@ -1307,24 +1307,23 @@ class DeenenModule:
         -- Eye_to_Eye reads all note $06, Zamzara all note $00). Cheap: a short
         one-pass sample per voice. Returns False on any degenerate voice."""
         from collections import Counter
-        # Tel-class ($40) files: their ORDERLIST grammar is decoded now and the
-        # structure comes out exact (Constant_Runner's note counts match the real
-        # player on all three voices: 113/101/44). But their PATTERN-ROW grammar
-        # is still the Deenen one and is demonstrably wrong -- pitch 35.6%. A
-        # structurally-perfect decode with wrong pitches is precisely the lossy
-        # output this project does not ship silently, and plausible() is
-        # structural so it cannot see it. Refuse until the rows are ported
-        # (sidm2/mon_parser.py already has that grammar too -- see DEENEN.md).
-        # EXEMPT Zamzara-class files: they share tel's pat_thr==$40/ff_mode==
-        # 'restart' shallow signature but carry their OWN, separate row AND
-        # orderlist grammar, ported+verified byte-exact against the player's
-        # own computed notes 2026-07-17 (100/100/100 on all 3 voices over a
-        # full 30s window) -- this blanket refusal predates that port and is
-        # now stale for them specifically.
-        if (self.gram.read_ok and self.gram.pat_thr == 0x40
-                and self.gram.ff_mode == 'restart'
-                and not self._is_zamzara_row_class()):
-            return False
+        # HISTORY: a blanket refusal of the whole tel-class (pat_thr==$40 /
+        # ff_mode=='restart') used to sit here, on the belief that "the
+        # PATTERN-ROW grammar is still the Deenen one and is demonstrably wrong
+        # -- pitch 35.6%". BOTH halves of that premise are now retracted:
+        #   * The tel-class ROWS were never unported. `_parse_row` is the shared
+        #     grammar (Ding == Constant_Runner == Mantalos; d83e7f0) and
+        #     `bin/deenen_engine_check.py` confirms Constant_Runner decodes to the
+        #     player's OWN computed note EXACTLY -- 100/100/100 on all 3 voices.
+        #   * The 35.6% was an attack-transient metric bug (2dccee7); the settled
+        #     metric reads onset 100.0 / pitch 97.7. The residual is voice1's
+        #     PERCUSSION, which is now decoded, emitted, and audio-verified
+        #     per-voice/per-time (bin/deenen_sf2_validate.py: 65/65).
+        # So there is no class-wide reason to refuse; the general degenerate /
+        # dead-voice checks below are the real gate and still correctly refuse the
+        # actually-broken tel-class files (Mr_Heli's dead voice0; Mantalos is
+        # ff_mode=='seg' and caught likewise). Removing the blanket flips ONLY
+        # Constant_Runner True -- verified against the corpus.
         degenerate = False
         any_notes = False
         counts = []
