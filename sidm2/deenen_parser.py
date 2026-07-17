@@ -454,6 +454,7 @@ class DeenenModule:
         # sidm2/mon_parser.py:397-404 already implements for Hawkeye/Cybernoid.
         self.gram = DeenenGrammar(d, la)
         self._fix_selfmod_ord_ptr()
+        self._fix_freq_table_order()
 
     def _fix_selfmod_ord_ptr(self):
         """Some rips (Zamzara) fetch the per-voice orderlist through a SHARED
@@ -487,6 +488,55 @@ class DeenenModule:
         if tbl_hi != tbl + 1:                              # lo/hi tables must be adjacent
             return
         self.loc.ord_ptr = tbl
+
+    def _fix_freq_table_order(self):
+        """DeenenLocate pairs the two split freq tables by ADDRESS ORDER (the
+        lower of the two is taken as FREQ_LO, since hi-lo == $5F holds on the
+        Ding class). Zamzara lays them out the other way round -- $C3EE is its
+        HI table and $C44D its LO one -- so the address-order convention
+        silently BYTE-SWAPS every frequency it computes (note 60 -> $8623 =
+        34339 instead of the real $2386 = 9094).
+
+        Nothing that checks note INDICES can see this (the index stays exactly
+        right -- bin/deenen_engine_check.py reads 100% on a file whose every
+        emitted frequency is byte-swapped); it only shows up against real SID
+        output, as a pitch score that no amount of decode fixing moves.
+
+        Decide from the CODE instead of the address order: find the zero-page
+        shadows feeding $D400 (freq lo) and $D401 (freq hi) via `LDA zp,X /
+        STA $D40x,Y`, then see which located table's `LDA tbl,Y / STA zp,X`
+        cluster writes which shadow. Acts ONLY on positive evidence of a swap
+        and abstains whenever either shadow, or the table->shadow link, can't
+        be found -- so rips whose SID write has a different shape keep the
+        located order untouched. Corpus-checked 2026-07-17: fires on Zamzara
+        ONLY, positively CONFIRMS Constant_Runner + Mr_Heli as already-correct,
+        and abstains on all 5 clean wins (none of them use this write shape),
+        i.e. zero blast radius on the files that already score 100%."""
+        lo, hi = self.loc.freq_lo, self.loc.freq_hi
+        if lo is None or hi is None:
+            return
+        d = self.d
+        zp_lo = zp_hi = None
+        for i in range(len(d) - 4):                       # LDA zp,X / STA $D40x,Y
+            if d[i] == 0xB5 and d[i + 2] == 0x99 and d[i + 4] == 0xD4:
+                if d[i + 3] == 0x00:
+                    zp_lo = d[i + 1]
+                elif d[i + 3] == 0x01:
+                    zp_hi = d[i + 1]
+        if zp_lo is None or zp_hi is None:
+            return
+        def shadows_of(tbl):
+            """zp,X shadows this table's `LDA tbl,Y` sites store into."""
+            out = set()
+            for i in range(len(d) - 2):
+                if d[i] == 0xB9 and (d[i + 1] | (d[i + 2] << 8)) == tbl:
+                    j = i + 3
+                    while j < len(d) - 1 and d[j] == 0x95:   # consecutive STA zp,X
+                        out.add(d[j + 1])
+                        j += 2
+            return out
+        if zp_lo in shadows_of(hi) and zp_hi in shadows_of(lo):
+            self.loc.freq_lo, self.loc.freq_hi = hi, lo
 
     def _u8(self, addr):
         o = addr - self.la

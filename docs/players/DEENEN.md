@@ -10,7 +10,7 @@
 
 | Group | N | Status |
 |-------|---|--------|
-| **MoN/Deenen game replay** | 19 | the fresh RE below — 10 located, **4 clean wins** |
+| **MoN/Deenen game replay** | 19 | the fresh RE below — 10 located, **6 clean wins** |
 | **MoN/FutureComposer** (*not* the `$1800` FC variant) | 15 | untouched |
 | **Soundmonitor** | 3 | **freebie wins at 100%** (see below) |
 | **Rob_Hubbard V1** | 2 | **freebie wins at ~100%**, stock pipeline unchanged |
@@ -55,9 +55,16 @@ and merely misfiled.** Classification before RE paid for itself.
   `$80-$BF` default-duration (val−$81, **accumulates**), `$60-$7F` arp param,
   `<$60` NOTE, `$E0-$FA` rest, `$FD/$FC/$FB/$FE` slide/enable/gate/speed.
 * **Note→SID:** pitch = note+transpose → **split** freq tables FREQ_LO/FREQ_HI
-  (95-entry, `hi − lo = $5F`). Instrument record @ `INSTR + i*8`:
+  (95-entry, `|hi − lo| = $5F`). Instrument record @ `INSTR + i*8`:
   `[0]` packed PW, `[1]` waveform, `[2]` AD, `[3]` SR, `[4]` flags (bit3 = filter),
   `[7]` flags.
+  > ⚠️ **WHICH of the pair is LO is NOT decided by address order.** Ding-class rips
+  > put LO at the lower address (`hi = lo + $5F`); **Zamzara reverses it** (`$C3EE`
+  > = HI, `$C44D` = LO). Assuming "lower = LO" byte-swaps every frequency while
+  > leaving note indices perfect — invisible to any index-level check. Decide from
+  > the **SID write** (`LDA zp,X / STA $D400,Y` = LO, `$D401` = HI) and trace the zp
+  > back to its table. `DeenenModule._fix_freq_table_order()` does this, on positive
+  > evidence only.
 * **Relocation-safe locate:** every table address comes from **code operands** (freq =
   the `LDA abs,Y` pair differing by `$5F`; instr = the consecutive-operand `LDA abs,Y`
   cluster; ord/pat/reloc via `LDA..,X/Y` → `ADC reloc`). `flow_offsets()` flow-disassembles
@@ -85,30 +92,45 @@ median to 5.25.
 
 ## Fidelity — `bin/deenen_validate.py`
 
-**10/19 located · 4 clean wins** (plausible, onset ≥75, pitch ≥75):
+**10/19 located · 6 clean wins** (plausible, onset ≥75, pitch ≥75) — as of 2026-07-17:
 
 | Tune | onset% | pitch% | note |
 |------|--------|--------|------|
 | **Ding_van_Charles** | **100.0** | **100.0** | the RE reference |
 | **B_A_T** | **100.0** | **100.0** | needed the segment-seed fix |
 | **Lord_of_the_Rings** | **100.0** | **100.0** | |
-| **After_the_War** | **100.0** | 98.1 | |
-| Astro_Marine_Corps | 77.4 | 64.7 | v0 exact; v1/v2 undercount → own ZP-loop engine |
-| Constant_Runner | 100.0 | 15.9 | v0/v1 **exact** [113,101]; only v2 runs away |
-| Eye_to_Eye_intro | 100.0 | 62.5 | Variant B, reloc |
-| Zamzara | 75.0 | 40.0 | Variant B, reloc |
-| Mr_Heli | 19.7 | 0.0 | ZP-loop variant |
-| Mantalos | 0.0 | 0.0 | Variant B |
+| **After_the_War** | **100.0** | **100.0** | |
+| **Zamzara** | **100.0** | **100.0** | own row + orderlist grammar; freq tables were byte-swapped (see below) |
+| **Astro_Marine_Corps** | **77.4** | **91.5** | unlocked by the pitch-settle-window fix |
+| Constant_Runner | 100.0 | 97.7 | decode **exact** [113,101,44]; refused — voice1 arpeggio unmodelled |
+| Eye_to_Eye_intro | 100.0 | 62.5 | reloc |
+| Mr_Heli | 19.7 | 43.3 | ZP-loop variant |
+| Mantalos | 33.3 | 50.0 | `ff_mode=='seg'` → Ding path; separately broken |
 
 **Refused, not emitted** (`plausible()` = False): Mr_Heli, Constant_Runner, Eye_to_Eye,
-Mantalos, Zamzara. **Not located** (9): F1_Simulator, Hotline_Intro_Tune, Satan,
+Mantalos. **Not located** (9): F1_Simulator, Hotline_Intro_Tune, Satan,
 Shitty_Disco_Dump, Smooth_Criminal, Cool_Tune, Hotline_Intro, Koekoek, BTTF3.
 
+> ⚠️ **`bin/deenen_engine_check.py` read 100/100/100 on Zamzara while every
+> frequency it emitted was byte-swapped.** That tool watches the note-INDEX
+> store; the corruption was downstream in index→frequency (`DeenenLocate`
+> pairs the split freq tables by ADDRESS ORDER — `hi-lo == $5F` — but Zamzara
+> lays them out reversed). A ground-truth tool certifies only the quantity it
+> actually watches. **Note-exact decode + a pitch metric that still disagrees
+> ⇒ suspect index→frequency BEFORE inventing an unmodelled effect** (this was
+> first misdiagnosed as a portamento — wrong). Fixed by
+> `DeenenModule._fix_freq_table_order()`, which decides from the SID write
+> (`LDA zp,X / STA $D400,Y`) rather than the address order, acts only on
+> positive evidence, and abstains otherwise (fires on Zamzara alone).
+
 > **The builder REFUSES to emit garbage.** `plausible()` rejects degenerate/runaway
-> decodes that `ok()` cannot see (Eye_to_Eye all-note-`$06`, Zamzara all-`$00`,
-> Constant_Runner over-loop), plus a **dead-voice guard**: a 0-note voice beside a
-> >20-note voice means a broken decode (Mr_Heli v0). `--force` overrides.
-> This is deliberate: never ship lossy output silently.
+> decodes that `ok()` cannot see (Eye_to_Eye all-note-`$06`; Zamzara used to read
+> all-`$00` here before its orderlist/row grammar was ported — it now decodes
+> cleanly and passes), plus a **dead-voice guard**: a 0-note voice beside a
+> >20-note voice means a broken decode (Mr_Heli v0). It also refuses the whole
+> `$40`-class *except* Zamzara-class rips, whose rows ARE ported (Constant_Runner
+> stays refused: structurally exact, but its voice1 arpeggio is unmodelled).
+> `--force` overrides. This is deliberate: never ship lossy output silently.
 
 ### The B_A_T segment-seed bug (worth remembering)
 
