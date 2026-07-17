@@ -502,40 +502,84 @@ class DeenenModule:
         emitted frequency is byte-swapped); it only shows up against real SID
         output, as a pitch score that no amount of decode fixing moves.
 
-        Decide from the CODE instead of the address order: find the zero-page
-        shadows feeding $D400 (freq lo) and $D401 (freq hi) via `LDA zp,X /
-        STA $D40x,Y`, then see which located table's `LDA tbl,Y / STA zp,X`
-        cluster writes which shadow. Acts ONLY on positive evidence of a swap
-        and abstains whenever either shadow, or the table->shadow link, can't
-        be found -- so rips whose SID write has a different shape keep the
-        located order untouched. Corpus-checked 2026-07-17: fires on Zamzara
-        ONLY, positively CONFIRMS Constant_Runner + Mr_Heli as already-correct,
-        and abstains on all 5 clean wins (none of them use this write shape),
-        i.e. zero blast radius on the files that already score 100%."""
+        Decide from the CODE instead of the address order: find the per-voice
+        shadow feeding $D400 (freq lo) and the one feeding $D401 (freq hi),
+        then see which located table's `LDA tbl,Y` cluster stores into which
+        shadow. Acts ONLY on positive evidence of a swap and abstains whenever
+        either shadow, or the table<->shadow link, can't be established -- a
+        rip whose SID write has an unrecognized shape keeps the located order
+        untouched rather than being guessed at.
+
+        Corpus-checked 2026-07-17: **all 10 located files come back positively
+        VERIFIED** (no abstentions), and the ONLY one it rewrites is Zamzara --
+        so every clean win's freq order is now confirmed from code rather than
+        assumed from the address-order convention, at zero blast radius."""
         lo, hi = self.loc.freq_lo, self.loc.freq_hi
         if lo is None or hi is None:
             return
         d = self.d
-        zp_lo = zp_hi = None
-        for i in range(len(d) - 4):                       # LDA zp,X / STA $D40x,Y
-            if d[i] == 0xB5 and d[i + 2] == 0x99 and d[i + 4] == 0xD4:
-                if d[i + 3] == 0x00:
-                    zp_lo = d[i + 1]
-                elif d[i + 3] == 0x01:
-                    zp_hi = d[i + 1]
-        if zp_lo is None or zp_hi is None:
+
+        def shadow_feeding(reg_lo_byte):
+            """The per-voice shadow an `STA $D400|$D401,Y` reads its value from.
+            Two shapes occur in this corpus: `LDA zp,X` (Zamzara) and
+            `LDA abs,X` (Ding class). Returns ('zp'|'abs', addr) or None.
+            Scans back from the store for the nearest indexed LDA, allowing
+            only a carry/immediate-add gap between them (`CLC`/`SEC`/`ADC #`/
+            `SBC #` -- Ding does `LDA $1086,x / CLC / STA $d400,y` and
+            `LDA $1089,x / ADC #$00 / STA $d401,y`), so an unrelated LDA
+            further up can't be mistaken for the feeder."""
+            for i in range(len(d) - 2):
+                if not (d[i] == 0x99 and d[i + 1] == reg_lo_byte
+                        and d[i + 2] == 0xD4):
+                    continue
+                for k in range(i - 2, max(-1, i - 7), -1):
+                    if d[k] == 0xB5:                        # LDA zp,X
+                        end, val = k + 2, ('zp', d[k + 1])
+                    elif d[k] == 0xBD:                      # LDA abs,X
+                        end, val = k + 3, ('abs', d[k + 1] | (d[k + 2] << 8))
+                    else:
+                        continue
+                    if end > i:
+                        continue
+                    gap = d[end:i]
+                    ok = True
+                    gi = 0
+                    while gi < len(gap):
+                        if gap[gi] in (0x18, 0x38):         # CLC / SEC
+                            gi += 1
+                        elif gap[gi] in (0x69, 0xE9):       # ADC # / SBC #
+                            gi += 2
+                        else:
+                            ok = False
+                            break
+                    if ok and gi == len(gap):
+                        return val
+            return None
+
+        sh_lo = shadow_feeding(0x00)                        # feeds $D400 = freq LO
+        sh_hi = shadow_feeding(0x01)                        # feeds $D401 = freq HI
+        if sh_lo is None or sh_hi is None or sh_lo == sh_hi:
             return
+
         def shadows_of(tbl):
-            """zp,X shadows this table's `LDA tbl,Y` sites store into."""
+            """Shadows this table's `LDA tbl,Y` sites store straight into."""
             out = set()
             for i in range(len(d) - 2):
                 if d[i] == 0xB9 and (d[i + 1] | (d[i + 2] << 8)) == tbl:
                     j = i + 3
-                    while j < len(d) - 1 and d[j] == 0x95:   # consecutive STA zp,X
-                        out.add(d[j + 1])
-                        j += 2
+                    while j < len(d) - 2:
+                        if d[j] == 0x95:                    # STA zp,X
+                            out.add(('zp', d[j + 1]))
+                            j += 2
+                        elif d[j] == 0x9D:                  # STA abs,X
+                            out.add(('abs', d[j + 1] | (d[j + 2] << 8)))
+                            j += 3
+                        else:
+                            break
             return out
-        if zp_lo in shadows_of(hi) and zp_hi in shadows_of(lo):
+
+        s_lo, s_hi = shadows_of(lo), shadows_of(hi)
+        if sh_lo in s_hi and sh_hi in s_lo:                 # positively swapped
             self.loc.freq_lo, self.loc.freq_hi = hi, lo
 
     def _u8(self, addr):

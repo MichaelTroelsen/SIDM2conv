@@ -120,8 +120,13 @@ Shitty_Disco_Dump, Smooth_Criminal, Cool_Tune, Hotline_Intro, Koekoek, BTTF3.
 > ⇒ suspect index→frequency BEFORE inventing an unmodelled effect** (this was
 > first misdiagnosed as a portamento — wrong). Fixed by
 > `DeenenModule._fix_freq_table_order()`, which decides from the SID write
-> (`LDA zp,X / STA $D400,Y`) rather than the address order, acts only on
-> positive evidence, and abstains otherwise (fires on Zamzara alone).
+> rather than the address order: it finds the per-voice shadow feeding
+> `$D400`/`$D401` (both shapes occur — `LDA zp,X` on Zamzara, `LDA abs,X` on
+> the Ding class), then checks which table's `LDA tbl,Y` cluster stores into
+> which shadow. Acts only on positive evidence and abstains otherwise.
+> **All 10 located files now come back positively VERIFIED** (no
+> abstentions), and Zamzara is the only one it rewrites — so every clean
+> win's freq order is confirmed from code, not assumed.
 
 > **The builder REFUSES to emit garbage.** `plausible()` rejects degenerate/runaway
 > decodes that `ok()` cannot see (Eye_to_Eye all-note-`$06`; Zamzara used to read
