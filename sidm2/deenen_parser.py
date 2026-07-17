@@ -632,29 +632,79 @@ class DeenenModule:
         `_is_zamzara_row_class()`. Verified byte-for-byte against a live py65
         trace 2026-07-16 (captured row `FE F4 C3 A0 A0 76 1A` = filter-write,
         instrument, duration x2, arp, note -- decodes to exactly 7 bytes,
-        matching the emulator's own $e9,X advance count for that row).
+        matching the emulator's own $e9,X advance count for that row) --
+        BUT that first verification never exercised the duration-then-slide
+        path; re-derived from a full $BDE0-$C080 disassembly the same session
+        after that gap surfaced as a real note-value mismatch (Zamzara voice0
+        ground-truth-checked at 0-19% against the player's own computed note).
 
         Differs from Ding's `_parse_row`: the arp threshold is $70 (not $60);
         $FE writes the SID filter register ($D417) directly instead of staging
         a zero-page shadow (not modelled -- Driver 11 has no per-row filter
-        write path yet); duration accumulation is RE-ENTRANT (an overflow byte
-        re-enters the top-level dispatch, not a simple linear loop) but nets
-        the same shape as long as $FD can appear mid-accumulate; the $FD slide
-        consumes exactly 2 bytes (a first param, structurally skipped, and a
-        second byte that is BOTH the slide target and -- unmodified -- the
-        note that follows), one fewer than Ding's 3-byte slide encoding."""
+        write path yet); a bare/top-level $FD slide consumes exactly 3 bytes
+        (1st: scratch/target-lo, unused here; 2nd: the note, read via a DEY
+        after the 3rd fetch; 3rd: an ADC-transposed value stored to an
+        absolute scratch addr $C4C3, also unused here) -- SAME 3-byte shape
+        as Ding, just with the roles of bytes 2/3 swapped. Duration
+        accumulation ($BEFC-$BF1C) is NOT an unbounded loop: real hardware
+        allows at most ONE inline accumulate step (AND #$7F, ADD) after the
+        initial SET; a THIRD consecutive $80+ byte re-enters the full $BE91
+        dispatch chain (JMP, not a tight loop) rather than accumulating again
+        -- not modelled past that depth (FE/FC/rest/instrument re-entry this
+        deep is unverified and unexercised in the corpus so far).
+
+        EVERY note-forming path ($BF3B onward) falls through into a
+        post-formation tail ($BF9B-$BFA9): an UNCONDITIONAL `INC $e9,X` (at
+        $BFA2), landing at `e9x_pos + 1`, THEN a peek of the byte at that new
+        position for an early pattern-end ($FF) check -- confirmed via a live
+        register trace (e9,x jumped 6->7 immediately after a note-store with
+        no further dispatch happening on that byte). If the peeked byte is
+        NOT $FF, real hardware discards it and $e9,x simply STAYS at
+        `e9x_pos + 1` (`BNE lbfba` skips straight past $BFAC, no further
+        advance) -- that position gets freshly re-examined on the next row
+        call. If it IS $FF, real hardware falls into $BFAC and resets $e9,x
+        to 0 THAT SAME FRAME (the same reset path a normal top-of-row $FF
+        hit takes, not on some later call that re-discovers it) -- so
+        `note_return` returns the `None` sentinel instead of a position;
+        `decode_voice`'s row-walk loop appends the event and stops
+        re-entering `row_parser` for this playthrough, mirroring the
+        immediate reset. Rests bypass this tail entirely (`STA $f2,x` /
+        `JMP $bfba`, never reaching $BF3B) and so are NOT affected -- they
+        still return a plain `y + 1`.
+
+        `note_return(e9x_pos, b)` takes the real $e9,X CURSOR position, not
+        necessarily the byte-position the note VALUE was read from -- for
+        every non-slide path those are the same (each step is a paired
+        `INC e9,x`/`INY`, so $e9,x and the pattern-fetch Y stay in lockstep).
+        The SLIDE path is the one exception: its own `DEY`-then-refetch
+        dance (read pos+3 into a scratch/target, THEN DEY and re-read pos+2
+        as the actual note) leaves real $e9,x sitting at pos+3 -- one byte
+        AHEAD of the note's own read position -- even before the tail's own
+        `INC` runs. Confirmed via a live per-voice row-entry trace (watching
+        $e9,x at every $BE7D dispatch): voice0's slide-terminated row1 lands
+        at entry 7 (note-read pos 5, so pos+2), while voice1's arp-terminated
+        row1 (no slide) lands at entry 4 (note-read pos 3, so pos+1) -- the
+        two paths need different offsets passed to `note_return`, both
+        bytes-for-byte verified this session after two earlier guesses (a
+        universal `+1`, then a universal `+2`) each broke the
+        previously-100% voice1/voice2."""
         u8 = self._u8
+
+        def note_return(e9x_pos, b):
+            peek_pos = e9x_pos + 1
+            peek = u8(pat + peek_pos)
+            return (None if peek == 0xFF else peek_pos), self._emit_note(b, st)
+
         y = pi
         b = u8(pat + y)
         if b == 0xFF:                                     # pattern end
             return pi, None
-        if b < 0x60:                                       # bare note
-            return y + 1, self._emit_note(b, st)
-        if b == 0xFD:                                       # slide -> note
-            y += 1                                          # param (structurally skipped)
-            y += 1                                          # 2nd byte: slide target AND the note
+        if b < 0x60:                                       # bare note (no slide, in lockstep)
+            return note_return(y, b)
+        if b == 0xFD:                                       # slide -> note (3 bytes)
+            y += 2                                          # skip 2 (target-lo, then the note)
             b = u8(pat + y)
-            return y + 1, self._emit_note(b, st)
+            return note_return(y + 1, b)                     # e9,x is 1 ahead of the note read
         if b == 0xFE:                                       # filter write -> $D417 (not modelled)
             y += 1                                          # filter value (skipped)
             y += 1
@@ -663,28 +713,34 @@ class DeenenModule:
             y += 1
             y += 1
             b = u8(pat + y)
-        if b >= 0xE0:                                        # rest
+        if b >= 0xE0:                                        # rest (no post-formation tail)
             return y + 1, dict(kind='rest', frames=((b - 0xE1) & 0xFF) + 1)
         if b >= 0xC0:                                        # instrument
             st['cur_instr'] = (b - 0xC0) & 0xFF
             y += 1
             b = u8(pat + y)
-        if b >= 0x80:                                        # duration, re-entrant accumulate
+        if b >= 0x80:                                        # duration: set, then AT MOST 1 accumulate
             st['cur_dur'] = (b - 0x81) & 0xFF
-            while True:
+            y += 1
+            b = u8(pat + y)
+            if b == 0xFD:                                    # slide interrupts (full 3-byte slide)
+                y += 2
+                b = u8(pat + y)
+                return note_return(y + 1, b)                  # e9,x is 1 ahead of the note read
+            if b >= 0x80:                                     # the one allowed accumulate step
+                st['cur_dur'] = (st['cur_dur'] + (b & 0x7F)) & 0xFF
                 y += 1
                 b = u8(pat + y)
-                if b == 0xFD:                                # slide can interrupt accumulation
-                    y += 1
+                if b == 0xFD:
+                    y += 2
                     b = u8(pat + y)
-                    return y + 1, self._emit_note(b, st)
-                if b < 0x80:
-                    break
-                st['cur_dur'] = (st['cur_dur'] + (b - 0x80)) & 0xFF
+                    return note_return(y + 1, b)                # e9,x is 1 ahead of the note read
+                # A THIRD consecutive $80+ byte here re-enters the full
+                # $BE91 dispatch on real hardware -- not modelled.
         if b >= 0x70:                                        # arp param (Ding's threshold is $60)
             y += 1
             b = u8(pat + y)
-        return y + 1, self._emit_note(b, st)
+        return note_return(y, b)
 
     def _is_zamzara_row_class(self):
         """True if this rip uses the Zamzara-class row grammar, not Ding's.
@@ -721,8 +777,21 @@ class DeenenModule:
         # the 4 current clean wins were measured on.
         tel = (self.gram.read_ok and self.gram.pat_thr == 0x40
                and self.gram.ff_mode == 'restart')
-        row_parser = (self._parse_row_zamzara if self._is_zamzara_row_class()
-                      else self._parse_row)
+        # Zamzara's ORDERLIST grammar is its own dialect too, not just its rows.
+        # It happens to share tel's pat_thr==$40/ff_mode=='restart' shallow
+        # signature, but its high-byte semantics differ: disassembly ($BE3C-
+        # $BE56 on Zamzara.sid) shows only TWO tiers (CMP #$40, CMP #$80) with
+        # no $60 a_transpose/instrument branch at all -- $40-$7F is `AND #$1F`
+        # -> note_transpose (unsigned, no -0x80 subtraction unlike tel's), and
+        # $80-$FD is `AND #$3F` -> the pattern-repeat counter (consumed at
+        # pattern-end via $BFAC's DEC/replay-from-row-0 loop, netting the same
+        # "play count+1 times" shape `pending_loop` already implements). Using
+        # tel's 3-tier grammar here silently mis-assigned these two fields
+        # (e.g. orderlist byte $8C read as transpose=12 instead of repeat=12),
+        # which is what broke Zamzara's pitch score independently of the row
+        # grammar and orderlist-pointer fixes.
+        zclass = self._is_zamzara_row_class()
+        row_parser = self._parse_row_zamzara if zclass else self._parse_row
         segidx = self._segidx0()
         ord_ptr = self._ord_ptr_for(v, segidx)
         oi = 0
@@ -736,10 +805,12 @@ class DeenenModule:
             if ob == 0xFE:                               # $12A9 stop song
                 break
             if ob == 0xFF:
-                if tel:
-                    # Tel class ($13FA): $FF is RESTART TO INDEX 0, not a segment
-                    # advance — LDA #$00 / STA $d7,X. Without this the Ding path
-                    # ran away (Constant_Runner v2: 500 notes for a real 44).
+                if tel or zclass:
+                    # Tel class ($13FA) and Zamzara class ($BE32, same shape)
+                    # both RESTART TO INDEX 0 on $FF, not a segment advance —
+                    # LDA #$00 / STA $d7,X (tel) or STA $b7,x/$cc,x/$e9,x
+                    # (Zamzara, $BE32-$BE3A). Without this the Ding path ran
+                    # away (Constant_Runner v2: 500 notes for a real 44).
                     if stop_on_loop:
                         break                            # one pass -> song end
                     seg_loops += 1
@@ -765,7 +836,24 @@ class DeenenModule:
                 oi = 0
                 pending_loop = 0
                 continue
-            if tel:
+            if zclass:
+                # Zamzara-class orderlist grammar ($BE3C-$BE56, disassembly-
+                # verified): only two tiers, no $60 branch at all. CMP #$80 /
+                # BCC lbe50 branches to the $40<=ob<$80 case (repeat count,
+                # AND #$3F -> fb,x); the FALL-THROUGH (ob>=$80, no branch
+                # taken) is AND #$1F -> e2,x (note-transpose) -- confirmed via
+                # a live py65 register trace (fb,x=3 from byte $43, e2,x=12
+                # from byte $8C), after an initial reading of the branch
+                # direction had these two swapped.
+                if ob >= 0x80:                           # note-transpose
+                    st['note_transpose'] = ob & 0x1F      # -> e2,x, unsigned
+                    oi += 1
+                    continue
+                if ob >= 0x40:                           # pattern-REPEAT count
+                    pending_loop = ob & 0x3F              # -> fb,x
+                    oi += 1
+                    continue
+            elif tel:
                 # Jeroen Tel MoN classes, verified two ways: Constant_Runner's
                 # $13F3 routine (SEC/SBC #$40 -> $e0,X with DEC $e0,X at $145B =
                 # the repeat counter; SBC #$60 -> $dd,X; SBC #$80 -> $da,X), and
@@ -811,6 +899,12 @@ class DeenenModule:
                     if ev is None:
                         break                            # pattern end ($FF)
                     events.append(ev)
+                    if npi is None:
+                        break                            # Zamzara: this note's
+                        # own post-formation peek already found $FF -- real
+                        # hardware resets $e9,x to 0 this same frame, so stop
+                        # re-entering row_parser for this playthrough instead
+                        # of making it re-discover the same $FF on a new call.
                     pi = npi
                 if len(events) >= max_rows:
                     break
@@ -951,15 +1045,23 @@ class DeenenModule:
                     j += 1
             return hits
 
-        best = (-1, 0.0)
+        # Ties on raw hit count are common (a rate that's a harmonic of the
+        # true one, e.g. R=2.0 vs the true R=3.0, can align just as many
+        # onsets by chance while emitting far MORE candidate onsets than the
+        # window actually has -- Zamzara: R=2.0 hits 10/21 candidates, R=3.0
+        # hits 10/10, same raw score but 3.0 is the honest fit). Break ties
+        # toward fewer candidates (tighter fit, closer to the real onset
+        # count) rather than the first-seen candidate in iteration order.
+        best = (-1, 10 ** 9, 0.0)                          # (tot, ncand, R)
         for R in self._RATE_CANDS:
             myl = [sorted((round(R * t), pc) for t, pc in decoded[v]
                           if R * t < window) for v in range(3)]
+            ncand = sum(len(myl[v]) for v in range(3))
             for so in range(-3, 4):
                 tot = sum(align(myl[v], real[v], so) for v in range(3))
-                if tot > best[0]:
-                    best = (tot, R)
-        self._rate_cache = best[1]
+                if (tot, -ncand) > (best[0], -best[1]):
+                    best = (tot, ncand, R)
+        self._rate_cache = best[2]
         return self._rate_cache
 
     def _voice_ticks(self, v, max_rows=4000):
@@ -996,8 +1098,15 @@ class DeenenModule:
         # output this project does not ship silently, and plausible() is
         # structural so it cannot see it. Refuse until the rows are ported
         # (sidm2/mon_parser.py already has that grammar too -- see DEENEN.md).
+        # EXEMPT Zamzara-class files: they share tel's pat_thr==$40/ff_mode==
+        # 'restart' shallow signature but carry their OWN, separate row AND
+        # orderlist grammar, ported+verified byte-exact against the player's
+        # own computed notes 2026-07-17 (100/100/100 on all 3 voices over a
+        # full 30s window) -- this blanket refusal predates that port and is
+        # now stale for them specifically.
         if (self.gram.read_ok and self.gram.pat_thr == 0x40
-                and self.gram.ff_mode == 'restart'):
+                and self.gram.ff_mode == 'restart'
+                and not self._is_zamzara_row_class()):
             return False
         degenerate = False
         any_notes = False
