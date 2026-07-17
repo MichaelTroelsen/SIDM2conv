@@ -455,6 +455,7 @@ class DeenenModule:
         self.gram = DeenenGrammar(d, la)
         self._fix_selfmod_ord_ptr()
         self._fix_freq_table_order()
+        self.wave_eng = self._locate_wave_engine()
 
     def _fix_selfmod_ord_ptr(self):
         """Some rips (Zamzara) fetch the per-voice orderlist through a SHARED
@@ -581,6 +582,128 @@ class DeenenModule:
         s_lo, s_hi = shadows_of(lo), shadows_of(hi)
         if sh_lo in s_hi and sh_hi in s_lo:                 # positively swapped
             self.loc.freq_lo, self.loc.freq_hi = hi, lo
+
+    def _locate_wave_engine(self):
+        """Locate the per-instrument WAVE/PERCUSSION stream engine, or None.
+
+        Dispatcher shape (Constant_Runner $1704, disassembly + live-trace
+        verified 2026-07-17):
+
+            LDA flags_zp / AND #$08 / BEQ no-wave      ; instr[flags_off] bit3
+            LDA idx_zp   / LSR x4 / TAY / DEY          ; instr[idx_off] high nibble - 1
+            LDA arp_tbl,Y / CLC / ADC #bias / TAY      ; -> wave-pointer index
+            LDA wave_lo,Y / STA p / LDA wave_hi,Y / STA p+1
+
+        Everything is read from operands (arp_tbl, bias, the two pointer
+        tables, and BOTH zero-page shadows), then the shadows are mapped back
+        to instrument-record offsets via their `LDA instr+k,Y / STA zp` load
+        sites -- so nothing here is hardcoded to one rip. `bias` genuinely
+        varies per file ($0a Constant_Runner, $19 After_the_War, $11 Astro,
+        $1e Mantalos, $14 Mr_Heli), which is why it is read, not assumed.
+
+        The bare `4A 4A 4A 4A A8 88 B9` idiom is NOT unique (3 hits/file --
+        high-nibble-extract + table-index is a common shape here), so the
+        signature anchors the whole dispatcher including the `18 69 imm A8`
+        tail. That yields exactly ONE hit on every rip that has the engine
+        (After_the_War, Astro, Constant_Runner, Eye_to_Eye, Mantalos,
+        Mr_Heli) and ZERO on the rips that don't (B_A_T, Ding, LotR --
+        Zamzara has a wave/arp engine too but a DIFFERENT one, driven from
+        its row grammar's $C4F0/$C502 tables; not this shape)."""
+        d, la = self.d, self.la
+        if self.loc.instr is None:
+            return None
+
+        def rec_off(zp):
+            """Instrument-record offset whose `LDA instr+k,Y` feeds this zp."""
+            for i in range(len(d) - 4):
+                if d[i] == 0xB9 and d[i + 3] == 0x85 and d[i + 4] == zp:
+                    a = d[i + 1] | (d[i + 2] << 8)
+                    if 0 <= a - self.loc.instr < 8:
+                        return a - self.loc.instr
+            return None
+
+        for j in range(len(d) - 21):
+            if not (d[j] == 0xA5 and d[j + 2] == 0x29 and d[j + 3] == 0x08
+                    and d[j + 4] == 0xF0 and d[j + 6] == 0xA5
+                    and d[j + 8:j + 12] == bytes([0x4A] * 4)
+                    and d[j + 12] == 0xA8 and d[j + 13] == 0x88
+                    and d[j + 14] == 0xB9 and d[j + 17] == 0x18
+                    and d[j + 18] == 0x69 and d[j + 20] == 0xA8):
+                continue
+            wave_lo = wave_hi = None
+            for k in range(j + 21, min(j + 48, len(d) - 8)):
+                if (d[k] == 0xB9 and d[k + 3] == 0x85
+                        and d[k + 5] == 0xB9 and d[k + 8] == 0x85):
+                    wave_lo = d[k + 1] | (d[k + 2] << 8)
+                    wave_hi = d[k + 6] | (d[k + 7] << 8)
+                    break
+            if wave_lo is None:
+                continue
+            f_off, i_off = rec_off(d[j + 1]), rec_off(d[j + 7])
+            if f_off is None or i_off is None:
+                continue
+            return dict(pc=la + j, flags_off=f_off, idx_off=i_off,
+                        arp_tbl=d[j + 15] | (d[j + 16] << 8), bias=d[j + 19],
+                        wave_lo=wave_lo, wave_hi=wave_hi)
+        return None
+
+    def wave_program(self, i):
+        """Instrument i's wave/percussion stream, or None if it has none.
+
+        Byte grammar ($1723-$1784 on Constant_Runner), verified against the
+        LIVE player's own freq shadow, not just read off a listing:
+
+          stream[0] = HEADER: bit7 = RAW mode, (>>4)&7 = frames-per-step - 1,
+                      &$0F = the step index $FF loops back to.
+          stream[1..] = steps:
+            $FF -> loop to (header & $0F) + 1
+            $FE -> HOLD this step forever (the sustain/terminator; the engine
+                   DECs the step counter and re-reads $FE every frame)
+            else, RAW mode (header bit7 SET)  -> `STA $75,x / STA $fb,x`, i.e.
+                   the byte goes to BOTH freq hi and lo: raw freq = b<<8|b,
+                   COMPLETELY INDEPENDENT of the played note. This is
+                   PERCUSSION, not arpeggio.
+            else, note mode (header bit7 CLEAR) -> b >= $7F is an absolute
+                   note (b & $7F); otherwise a RELATIVE semitone added to the
+                   base note index (`CLC / ADC $f2,x` / `AND #$7F`).
+
+        ⚠️ Constant_Runner's instruments 1/2/6 are all RAW/percussion, NOT
+        arpeggios -- an earlier note in this project claimed the opposite by
+        reading the relative-offset branch without checking the header bit
+        that selects it. Instrument 1's stream `3C 09 05 04 03 02 38` decodes
+        to semitones [69, 37, 26, 23, 18, 11, 68] -- byte-for-byte the sweep
+        the live player emits on voice1 (confirmed by watching $fb,x/$75,x
+        across real frames). Read the SELECTOR, not the first branch you find.
+
+        Returns dict(ptr, header, speed, loop, raw, steps=[(kind, value)])
+        with kind in {'raw','note','loop','hold'}."""
+        we = self.wave_eng
+        if we is None:
+            return None
+        rec = [self._u8(self.loc.instr + (i & 0xFF) * 8 + k) for k in range(8)]
+        if not (rec[we['flags_off']] & 0x08):            # bit3 = engine enable
+            return None
+        aidx = (rec[we['idx_off']] >> 4) - 1
+        if aidx < 0:
+            return None
+        y = (self._u8(we['arp_tbl'] + aidx) + we['bias']) & 0xFF
+        ptr = self._u8(we['wave_lo'] + y) | (self._u8(we['wave_hi'] + y) << 8)
+        if not self._in_image(ptr):
+            return None
+        hdr = self._u8(ptr)
+        raw = bool(hdr & 0x80)
+        steps = []
+        for k in range(1, 65):                           # bounded: streams are short
+            b = self._u8(ptr + k)
+            if b == 0xFF:
+                steps.append(('loop', hdr & 0x0F))
+                break
+            if b == 0xFE:
+                steps.append(('hold', None))
+                break
+            steps.append(('raw' if raw else 'note', b))
+        return dict(ptr=ptr, header=hdr, speed=((hdr >> 4) & 7) + 1,
+                    loop=hdr & 0x0F, raw=raw, steps=steps)
 
     def _u8(self, addr):
         o = addr - self.la
