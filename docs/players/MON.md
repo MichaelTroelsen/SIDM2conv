@@ -144,15 +144,43 @@ untouched.
   gate-off/rest (1 byte, no note); **bit7** → an instrument command byte precedes
   the note; else ctrl+note; note = raw+transpose; `$FF` ends the pattern.
 
-**Status (onset-EXACT via `mon_validate`, 3 tiers):**
+**Status (onset-EXACT via `mon_validate`, 2026-07-18 update):**
 - **6 EXACT** (basic grammar): 05-09-87, Ikari_Union, Lost_in_China, Scout,
   Trying_Out_2_v1, Trying_Out_3.
 - **~7 middle (60–88%)** — pattern-clean; residual is **instrument-generated
   arp/legato** (Beginning V3 gates once at frame 60 then arps C#5/C#6 the pattern
   never encodes). Stage-B / instrument-modelling territory, not a grammar gap.
-- **~10 broken (<40%, Alloyrun-class)** — use grammar the EXACT files don't:
-  **orderlist `$40-$7F` commands** ($43 as a pattern index → OOR ptr) + heavier
-  **`$C0-$FF` pattern ctrls**. Next B1 RE unit. See `memory/mainstream-mon-tel.md`.
+- **2 files LIFTED via 3 per-file-gated dispatch quirks** (`_locate_b1_row_variant`,
+  disassembled from Alloyrun/Starball, all signature-detected so untouched files are
+  provably unaffected — 05-09-87/Scout/Bantam/etc. share fragments of the same
+  compiled code but never exercise these paths in their own song data):
+  - **orderlist REPEAT** (`$40-$7F`, no bit7): the byte the memory doc flagged as
+    "`$43` used as a pattern index → OOR" is not a pattern index at all — it's
+    `AND #$40; BEQ; AND #$3F; STA,X reload` (disassembled at Alloyrun `$E127-$E137`,
+    **byte-identical in Scout's dispatch**, which stayed EXACT because Scout's data
+    never sets bit6). Sets a per-voice counter = `byte&$3F`; the NEXT orderlist
+    pattern then replays `(counter+1)` times before the orderlist advances
+    (disassembled end-of-pattern check at `$E210-$E22B`).
+  - **pattern-index off-by-one** (Alloyrun only): `SEC; SBC #$01` right before the
+    `ASL;TAY` table index — this compile's orderlist pattern numbers are 1-based.
+  - **CLASSIC row grammar** (Alloyrun + Starball only): these two don't use the
+    simple ctrl-byte-length grammar at all — their row dispatch
+    (`$E182-$E19A`) is the **same** `$8x`-duration / `$Cx`-instrument /
+    `$Ex`-command chain already implemented and Hawkeye/Cybernoid-validated as
+    `_pattern()`. Reused verbatim rather than re-derived.
+  - **Result**: Alloyrun 1.1%→**61%** (55/90), Starball 1.0%→**76%** (71/93); both
+    now have at least one EXACT voice. Zero change to the other 21 bucket files —
+    each remaining broken file (Zynon_Zak, Tel_1, Bantam, Monitor_Madness_1/2,
+    Trying_Out_2, Chrome_Met1) is its own compiled micro-variant (confirmed by
+    disassembly diff — Bantam's row dispatch masks with `SBC #$1` before `AND
+    #$7F`, a THIRD distinct shape from both 05-09-87 and Alloyrun) and needs its own
+    RE pass, not a shared fix. `Alloyrun_v2` still decodes to 0 events (separate,
+    unrelated: the copy-loop/feeder locate itself misses at that file's relocation).
+  - **Residual on Alloyrun V1**: raw-byte reconstruction confirms the decode is
+    correct (dur=10 note=D#2 matches the pattern bytes exactly) but siddump shows an
+    EXTRA onset at tick+1 with the same pitch — an instrument-driven gate blip the
+    pattern never encodes, i.e. the **same Stage-B category as the middle tier**,
+    not a further grammar gap. See `memory/mainstream-mon-tel.md`.
 
 ## Hard-won lessons (encoded in code/tests — do not re-learn)
 

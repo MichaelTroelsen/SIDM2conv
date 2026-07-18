@@ -199,6 +199,8 @@ class MON:
         # don't pin it; take the FIRST such read (the orderlist->pattern one).
         po = _find(d, 0x0A, 0xA8, 0xB9, None, None, 0x85, None)
         self.tbl_pat = (d[po + 3] | (d[po + 4] << 8)) if po is not None else 0x8409
+        if getattr(self, "_tel", False):
+            self._locate_b1_row_variant(d, po)
         # freq table is SPLIT into two arrays indexed by note byte (NOT interleaved):
         #   LO read `TAY (A8); LDA loTab,Y (B9 ..); STA scratch,X (9D ..)`,
         #   HI read `LDA hiTab,Y (B9 ..); STA scratch+3,X (9D ..)`. The scratch dest is
@@ -303,6 +305,44 @@ class MON:
         self._speed_fixed = True
         self._tel = True                         # use the tel orderlist+row grammar
         return True
+
+    def _locate_b1_row_variant(self, d, po):
+        """B1 'tel' generation: some compiles extend the base orderlist/row grammar
+        (05-09-87-style) with per-file dispatch quirks. Detected structurally (never
+        assumed) so files without these bytes are provably untouched:
+
+        REPEAT op (orderlist $40-$7F, disassembled from Alloyrun $E127-$E137 and
+        confirmed byte-identical in Scout's dispatch -- Scout is one of the 6 EXACT
+        wins, so this code path is proven safe/inert when a song's orderlist never
+        emits a $40-$7F byte): `AND #$40; BEQ ..; AND #$3F; STA,X reload` sets a
+        per-voice repeat counter = byte&$3F; the pattern selected by the NEXT
+        orderlist byte then replays (repeat+1) times before the orderlist advances
+        (disassembled at $E210-$E22B: DEC the counter each pattern-end, BPL -> redo).
+
+        PATTERN-INDEX off-by-one (Alloyrun only, $E13A: SEC;SBC#$01 before the
+        ASL/TAY table index): this compile's orderlist pattern numbers are 1-based.
+
+        CLASSIC ROW grammar (Alloyrun/Starball only, disassembled at Alloyrun
+        $E182-$E19A): instead of the simple ctrl-byte-encodes-length grammar, the
+        row byte stream is dispatched through the SAME $8x-duration/$Cx-instrument/
+        $Ex-command chain already implemented (and Hawkeye/Cybernoid-validated) in
+        `_pattern` -- reuse it rather than re-deriving it."""
+        self._tel_repeat = False
+        self._tel_pat_off1 = False
+        self._tel_classic_row = False
+        if po is None:
+            return
+        pre = d[max(0, po - 40):po]
+        i40 = pre.find(bytes([0x29, 0x40]))
+        if i40 != -1 and i40 + 2 < len(pre) and pre[i40 + 2] == 0xF0:
+            i3f = pre.find(bytes([0x29, 0x3F]), i40)
+            if i3f != -1 and i3f + 2 < len(pre) and pre[i3f + 2] == 0x9D:
+                self._tel_repeat = True
+        self._tel_pat_off1 = po >= 3 and d[po - 3:po] == bytes([0x38, 0xE9, 0x01])
+        row = bytes(d[po:po + 220])
+        if (row.find(bytes([0x29, 0xE0, 0xC9, 0xC0])) != -1
+                or row.find(bytes([0x29, 0xC0, 0xC9, 0x80])) != -1):
+            self._tel_classic_row = True
 
     def _locate_supremacy(self, d):
         """Detect + locate the SUPREMACY variant (a flat MoN player, play=$1003, no
@@ -428,13 +468,24 @@ class MON:
         DISTINCT from the Hawkeye/Cyb grammar:
           ORDERLIST: byte bit7 set -> transpose = byte & $1F (per voice, `AND #$1F;
             STA $1735,X`); byte < $80 -> pattern index (ASL -> tbl_pat); $FF/$FE end.
-          PATTERN ROW: ctrl -> length = (ctrl & $1F) + 1 ticks. ctrl bit6 set ->
-            GATE-OFF/rest (`BVS`; DEC gate-mask; NO note, NO command byte; 1 byte).
-            Else ctrl bit7 set -> one INSTRUMENT command byte precedes the note
-            (`BPL` skips it); then a NOTE byte = raw + transpose -> the split freq
-            tables. $FF -> pattern end. Notes are RAW+transpose (no note_base)."""
+            Some compiles ALSO have bit6 set ($40-$7F, no bit7) -> REPEAT: the NEXT
+            pattern plays (byte&$3F)+1 times before the orderlist advances (see
+            `_locate_b1_row_variant`; gated so files without the dispatch code are
+            untouched). One compile (Alloyrun) 1-base-indexes patterns (-1 before
+            the table lookup); also gated.
+          PATTERN ROW (default/"simple"): ctrl -> length = (ctrl & $1F) + 1 ticks.
+            ctrl bit6 set -> GATE-OFF/rest (`BVS`; DEC gate-mask; NO note, NO
+            command byte; 1 byte). Else ctrl bit7 set -> one INSTRUMENT command
+            byte precedes the note (`BPL` skips it); then a NOTE byte = raw +
+            transpose -> the split freq tables. $FF -> pattern end. Notes are
+            RAW+transpose (no note_base). Some compiles (Alloyrun/Starball) use the
+            richer $8x-duration/$Cx-instrument/$Ex-command chain instead -- already
+            implemented (and Hawkeye/Cybernoid-validated) as `_pattern`; reused
+            verbatim when `_locate_b1_row_variant` detects that dispatch code."""
         ol = self._orderlist_ptr(voice)
-        transpose, instr = 0, 0
+        transpose, instr, repeat = 0, 0, 1
+        st = {'transpose': 0, 'instr_base': 0, 'instr': 0, 'stored': 0, 'wprog': 0}
+        classic = getattr(self, "_tel_classic_row", False)
         blocks = []
         i = guard = 0
         while guard < 2048:
@@ -443,30 +494,39 @@ class MON:
             if b in (0xFF, 0xFE):               # orderlist end (one pass)
                 break
             if b & 0x80:                        # transpose command ($1735,X = b & $1F)
-                transpose = b & 0x1F
+                transpose = st['transpose'] = b & 0x1F
                 continue
-            pp = self._u16(self.tbl_pat + b * 2)   # b < $80 = pattern index
-            blk = []
-            j = pg = 0
-            while pg < 1024:
-                pg += 1
-                ctrl = self._u8(pp + j); j += 1
-                if ctrl == 0xFF:                # pattern terminator
-                    break
-                length = (ctrl & 0x1F) + 1
-                if ctrl & 0x40:                 # bit6: gate-off / rest (no note byte)
-                    blk.append(MONEvent(note=-1, dur=length, instr=instr,
-                                        retrig=False, rest=True))
-                    continue
-                if ctrl & 0x80:                 # bit7: instrument command byte precedes note
-                    instr = self._u8(pp + j); j += 1
-                note = self._u8(pp + j); j += 1
-                if note == 0xFF:
-                    break
-                blk.append(MONEvent(note=(note + transpose) & 0x7F, dur=length,
-                                    instr=instr, retrig=True))
-            if blk:
-                blocks.append((b, blk))
+            if getattr(self, "_tel_repeat", False) and (b & 0x40):  # $40-$7F: repeat
+                repeat = (b & 0x3F) + 1                             # the NEXT pattern
+                continue
+            idx = ((b - 1) & 0xFF) if getattr(self, "_tel_pat_off1", False) else b
+            for _ in range(repeat):
+                blk = []
+                if classic:
+                    self._pattern(idx, st, blk)
+                else:
+                    pp = self._u16(self.tbl_pat + idx * 2)
+                    j = pg = 0
+                    while pg < 1024:
+                        pg += 1
+                        ctrl = self._u8(pp + j); j += 1
+                        if ctrl == 0xFF:                # pattern terminator
+                            break
+                        length = (ctrl & 0x1F) + 1
+                        if ctrl & 0x40:                 # bit6: gate-off / rest (no note byte)
+                            blk.append(MONEvent(note=-1, dur=length, instr=instr,
+                                                retrig=False, rest=True))
+                            continue
+                        if ctrl & 0x80:                 # bit7: instrument command byte precedes note
+                            instr = self._u8(pp + j); j += 1
+                        note = self._u8(pp + j); j += 1
+                        if note == 0xFF:
+                            break
+                        blk.append(MONEvent(note=(note + transpose) & 0x7F, dur=length,
+                                            instr=instr, retrig=True))
+                if blk:
+                    blocks.append((b, blk))
+            repeat = 1
         return blocks
 
     def _voice_blocks(self, voice):
