@@ -129,6 +129,15 @@ class SDIShim:
             else:
                 ons = gate
             out = self.voices[v]
+            # LEADING REST for a late-entering voice: events are placed
+            # sequentially by duration, so without a rest of `ons[0]` frames the
+            # whole voice is shifted EARLY by its first-onset frame. Negligible
+            # when a voice starts at frame ~0, but catastrophic for a voice that
+            # enters late (Bahbar v2's first gate is frame 769 — it was playing
+            # 769 frames early, 0% on every part past the first).
+            if ons and ons[0] > 0:
+                out.append(MONEvent(note=0, dur=ons[0], instr=0,
+                                    wprog=0, retrig=False, rest=True))
             ci = 0
             cur = changes[0][1] if changes else 0
             for i, o in enumerate(ons):
