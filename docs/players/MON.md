@@ -170,12 +170,19 @@ untouched.
     `_pattern()`. Reused verbatim rather than re-derived.
   - **Result**: Alloyrun 1.1%→**61%** (55/90), Starball 1.0%→**76%** (71/93); both
     now have at least one EXACT voice. Zero change to the other 21 bucket files —
-    each remaining broken file (Zynon_Zak, Tel_1, Bantam, Monitor_Madness_1/2,
-    Trying_Out_2, Chrome_Met1) is its own compiled micro-variant (confirmed by
-    disassembly diff — Bantam's row dispatch masks with `SBC #$1` before `AND
-    #$7F`, a THIRD distinct shape from both 05-09-87 and Alloyrun) and needs its own
+    each remaining broken file is its own compiled micro-variant and needs its own
     RE pass, not a shared fix. `Alloyrun_v2` still decodes to 0 events (separate,
     unrelated: the copy-loop/feeder locate itself misses at that file's relocation).
+  - **Same-day #2: Bantam's row-ctrl off-by-one.** Bantam's row dispatch is
+    structurally identical to Scout's (raw ctrl `AND #$7F` for length, ctrl's bit7
+    tests for an instrument-command byte) EXCEPT it does `SEC;SBC#$01` on the ctrl
+    byte before BOTH the length mask and the bit7 test (`$80E8-$80F9`) — so its
+    instrument-command threshold sits at raw-ctrl≥`$81`, one higher than every
+    other compile in the bucket. Detected structurally (`_tel_row_ctrl_off1`: find
+    the row-ctrl fetch via the same zp the tbl_pat lookup uses, then check for
+    `SEC;SBC#$01` before the first `AND #imm`) so it fires only for files with that
+    exact byte sequence. **Bantam 2.7%→73%** (67/92, V0 now EXACT). Zero change to
+    every other bucket file (full resweep, including Alloyrun/Starball unchanged).
   - **Residual on Alloyrun V1**: raw-byte reconstruction confirms the decode is
     correct (dur=10 note=D#2 matches the pattern bytes exactly) but siddump shows an
     EXTRA onset at tick+1 with the same pitch — an instrument-driven gate blip the

@@ -326,10 +326,18 @@ class MON:
         $E182-$E19A): instead of the simple ctrl-byte-encodes-length grammar, the
         row byte stream is dispatched through the SAME $8x-duration/$Cx-instrument/
         $Ex-command chain already implemented (and Hawkeye/Cybernoid-validated) in
-        `_pattern` -- reuse it rather than re-deriving it."""
+        `_pattern` -- reuse it rather than re-deriving it.
+
+        ROW-CTRL off-by-one (Bantam only, disassembled $80E3-$80F9): unlike Scout's
+        identically-shaped simple grammar (raw ctrl AND #$7F for length, raw ctrl's
+        bit7 tested for the instrument-command branch), Bantam's compile does
+        `SEC;SBC#$01` on the ctrl byte BEFORE both the length mask and the bit7
+        test -- so its instrument-command threshold is raw-ctrl>=$81, one higher
+        than every other compile in the bucket."""
         self._tel_repeat = False
         self._tel_pat_off1 = False
         self._tel_classic_row = False
+        self._tel_row_ctrl_off1 = False
         if po is None:
             return
         pre = d[max(0, po - 40):po]
@@ -343,6 +351,21 @@ class MON:
         if (row.find(bytes([0x29, 0xE0, 0xC9, 0xC0])) != -1
                 or row.find(bytes([0x29, 0xC0, 0xC9, 0x80])) != -1):
             self._tel_classic_row = True
+        elif po >= 6:
+            # locate the row-ctrl fetch: the FIRST `B1 zp` (same zp the tbl_pat
+            # lookup stored to, d[po+6]) after po, then check the ~20 bytes after
+            # it for a SEC;SBC#$01 preceding the first AND #imm (the length mask).
+            zp = d[po + 6]
+            cf = None
+            for i in range(po, min(po + 80, len(d) - 1)):
+                if d[i] == 0xB1 and d[i + 1] == zp:
+                    cf = i
+                    break
+            if cf is not None:
+                win = d[cf:cf + 24]
+                ai = next((i for i in range(len(win) - 1) if win[i] == 0x29), None)
+                if ai is not None and bytes(win[:ai]).find(bytes([0x38, 0xE9, 0x01])) != -1:
+                    self._tel_row_ctrl_off1 = True
 
     def _locate_supremacy(self, d):
         """Detect + locate the SUPREMACY variant (a flat MoN player, play=$1003, no
@@ -481,11 +504,15 @@ class MON:
             RAW+transpose (no note_base). Some compiles (Alloyrun/Starball) use the
             richer $8x-duration/$Cx-instrument/$Ex-command chain instead -- already
             implemented (and Hawkeye/Cybernoid-validated) as `_pattern`; reused
-            verbatim when `_locate_b1_row_variant` detects that dispatch code."""
+            verbatim when `_locate_b1_row_variant` detects that dispatch code. One
+            compile (Bantam) applies `SEC;SBC#$01` to ctrl before the length mask
+            AND the bit7 test (shifting the instrument-command threshold); also
+            gated (`_tel_row_ctrl_off1`)."""
         ol = self._orderlist_ptr(voice)
         transpose, instr, repeat = 0, 0, 1
         st = {'transpose': 0, 'instr_base': 0, 'instr': 0, 'stored': 0, 'wprog': 0}
         classic = getattr(self, "_tel_classic_row", False)
+        row_off1 = getattr(self, "_tel_row_ctrl_off1", False)
         blocks = []
         i = guard = 0
         while guard < 2048:
@@ -510,8 +537,11 @@ class MON:
                     while pg < 1024:
                         pg += 1
                         ctrl = self._u8(pp + j); j += 1
-                        if ctrl == 0xFF:                # pattern terminator
+                        if ctrl == 0xFF:                # pattern terminator (checked pre-adjust)
                             break
+                        if row_off1:                     # Bantam: length/bit7 test the ctrl-1'd
+                            ctrl = (ctrl - 1) & 0xFF      # value, not the raw byte (see
+                                                          # _locate_b1_row_variant)
                         length = (ctrl & 0x1F) + 1
                         if ctrl & 0x40:                 # bit6: gate-off / rest (no note byte)
                             blk.append(MONEvent(note=-1, dur=length, instr=instr,
