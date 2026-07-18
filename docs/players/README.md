@@ -25,6 +25,7 @@ One document per **player** (the C64 music routine a SID file was made with). SI
 | **Charles Deenen** (MoN/Deenen replay + dialects) | [DEENEN.md](DEENEN.md) | `bin/` only | 4 clean wins ~100% (10/19 located) + 8 freebies at 100% | `SID/deenen/` (40) |
 | **Future Composer** | [FUTURECOMPOSER.md](FUTURECOMPOSER.md) | `bin/` only | Stage A: notes/order trace-validated | `SID/Fun_Fun/` ($1800 variant, 5/20) |
 | **NP21-adjacent clusters** (Stinsen/Beast/Angular, DRAX, 2000 A.D., Wizax, Zetrex/V20) | [CLUSTERS.md](CLUSTERS.md) | inside the Laxity path | audio 100%; editor-view varies | `SID/` root + Laxity corpus |
+| **Blackbird** (Linus Åkesson / "lft") | [BLACKBIRD.md](BLACKBIRD.md) | recon only, not wired | locate/table-layout solved (11/59 files exact template match); decompression algorithm identified but not yet correctly decoding | `SID/LFT/` (59; ~27 genuinely Blackbird across tool versions) |
 
 ## Player-id → driver mapping
 
