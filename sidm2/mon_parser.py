@@ -230,6 +230,8 @@ class MON:
         #   so the 8-byte-record base = operand - 2.
         io = _find(d, 0xBD, None, None, 0x99, 0x05, 0xD4)
         self.tbl_instr = ((d[io + 1] | (d[io + 2] << 8)) - 2) if io is not None else 0x860C
+        if getattr(self, "_tel", False):
+            self._locate_tel_instr_fields(d, io)
 
     def _locate_b1(self, d):
         """MoN 'B1-indirect' variant (mainstream Jeroen Tel: Alloyrun, Beginning,
@@ -377,6 +379,53 @@ class MON:
                     self._tel_row_len_mask = win[ai + 1]
                     if bytes(win[:ai]).find(bytes([0x38, 0xE9, 0x01])) != -1:
                         self._tel_row_ctrl_off1 = True
+
+    def _locate_tel_instr_fields(self, d, ad_io):
+        """B1-tel instrument table shape check (disassembled from Tel_1, whose
+        onsets were badly wrong despite an otherwise byte-for-byte 05-09-87-style
+        grammar): the shared `tbl_instr` locate assumes ROW-MAJOR 8-byte records
+        (Hawkeye/Cybernoid), but Tel_1's actual layout is COLUMN-major -- separate
+        parallel arrays for pulse-lo/hi ($D402/$D403), waveform ($D404), AD
+        ($D405), SR ($D406), each indexed DIRECTLY by instrument number (no *8),
+        e.g. `LDA $1520,X; STA $D404,Y` / `LDA $1525,X; STA $D405,Y` five bytes
+        apart. `_silent_instr`'s row-major guess silently reads the WRONG bytes
+        for such files -- Tel_1's instrument 0 (the padding/rest slot used
+        throughout its orderlists) tested non-silent, so the parser emitted
+        phantom onsets the pattern never intended. Locate the real waveform/AD/SR
+        array bases by searching NEAR the already-confirmed AD site (`ad_io`,
+        same anchor `tbl_instr` uses) rather than a blind file-first `_find` (a
+        stray unrelated `BD..99 0N D4` elsewhere in the file is not rare enough to
+        risk -- caught two false positives this way, Orion_Intro/Chrome_Met1,
+        where the "near" window still snagged an unrelated D404 write; REQUIRE
+        `ad-wf == sr-ad` too, the evenly-spaced-column signature every genuine
+        match showed, before trusting it). Only wires in when all three are found
+        AND evenly spaced; `_silent_instr` falls back to the row-major guess
+        otherwise (Hawkeye/Cybernoid never hit this path -- `_tel` is B1-only)."""
+        self._tel_instr_fields = None
+        if ad_io is None:
+            return
+        def near(reg):
+            lo, hi = max(0, ad_io - 80), min(len(d) - 3, ad_io + 80)
+            for i in range(lo, hi):
+                if d[i] != 0xBD:
+                    continue
+                for gap in range(3, 7):
+                    j = i + gap
+                    if j + 3 <= len(d) and d[j] == 0x99 and d[j + 1] == reg and d[j + 2] == 0xD4:
+                        return d[i + 1] | (d[i + 2] << 8)
+            return None
+        ad = d[ad_io + 1] | (d[ad_io + 2] << 8)
+        wf, sr = near(0x04), near(0x06)
+        if wf is None or sr is None or ad - wf != sr - ad or ad <= wf:
+            return
+        fields = [wf, ad, sr]
+        stride = ad - wf
+        pl, ph = near(0x02), near(0x03)
+        if ph is not None and wf - ph == stride:
+            fields.append(ph)
+            if pl is not None and ph - pl == stride:
+                fields.append(pl)
+        self._tel_instr_fields = fields
 
     def _locate_supremacy(self, d):
         """Detect + locate the SUPREMACY variant (a flat MoN player, play=$1003, no
@@ -565,8 +614,9 @@ class MON:
                         note = self._u8(pp + j); j += 1
                         if note == 0xFF:
                             break
+                        retrig = not self._silent_instr(instr)  # instr 0 = rest slot
                         blk.append(MONEvent(note=(note + transpose) & 0x7F, dur=length,
-                                            instr=instr, retrig=True))
+                                            instr=instr, retrig=retrig))
                 if blk:
                     blocks.append((b, blk))
             repeat = 1
@@ -690,12 +740,22 @@ class MON:
         st['dur_acc'] = 0                       # finalize resets the $F3 accumulator
 
     def _silent_instr(self, i):
-        """True if instrument i's 8-byte record is entirely zero (the MoN rest
-        slot -- a voice it drives produces no sound). Cached."""
+        """True if instrument i's record is entirely zero (the MoN rest slot -- a
+        voice it drives produces no sound). Cached. Hawkeye/Cybernoid-style tables
+        are row-major (8-byte records, `tbl_instr + i*8`); several B1-tel compiles
+        (disassembled from Tel_1) are COLUMN-major instead -- 3-5 separate
+        same-length parallel arrays (waveform/AD/SR/pulse), each indexed directly
+        by instrument number (`field_base + i`, no *8). `_locate_tel_instr_fields`
+        locates the real field bases when this shape is detected; use them when
+        available instead of assuming row-major."""
         c = self.__dict__.setdefault('_silent_cache', {})
         if i not in c:
-            base = self.tbl_instr + (i & 0xFF) * 8
-            c[i] = all(self._u8(base + k) == 0 for k in range(8))
+            fields = getattr(self, "_tel_instr_fields", None)
+            if fields:
+                c[i] = all(self._u8(base + i) == 0 for base in fields)
+            else:
+                base = self.tbl_instr + (i & 0xFF) * 8
+                c[i] = all(self._u8(base + k) == 0 for k in range(8))
         return c[i]
 
     def _pattern(self, pat, st, events):

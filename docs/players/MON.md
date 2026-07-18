@@ -144,11 +144,12 @@ untouched.
   gate-off/rest (1 byte, no note); **bit7** → an instrument command byte precedes
   the note; else ctrl+note; note = raw+transpose; `$FF` ends the pattern.
 
-**Status (onset-EXACT via `mon_validate`, 2026-07-18 update — 11/24 EXACT, was 6):**
-- **11 EXACT**: the original 6 (05-09-87, Ikari_Union, Lost_in_China, Scout,
+**Status (onset-EXACT via `mon_validate`, 2026-07-18 update — 12/24 EXACT, was 6):**
+- **12 EXACT**: the original 6 (05-09-87, Ikari_Union, Lost_in_China, Scout,
   Trying_Out_2_v1, Trying_Out_3) + 5 that turned out to need only the row
   length-mask fix below, not new grammar (Happy_JT, Beginning, Beginning_v2,
-  DemoSong, Reggae_Example — see same-day #3).
+  DemoSong, Reggae_Example — see same-day #3) + 1 that needed the column-major
+  instrument table fix (Chrome_Met1 — see same-day #4).
 - **~2 near-exact (92%/78%)** — Orion_Intro, Trying_Out; single-voice residual,
   not yet diagnosed (didn't get the Alloyrun-style hand-trace this session).
 - **Same-day follow-up (3 rounds, all in `_locate_b1_row_variant`, all
@@ -203,6 +204,28 @@ untouched.
     entirely) or the untouched broken files (Tel_1, Monitor_Madness_1/2,
     Trying_Out_2, Chrome_Met1 — confirmed unaffected because their own real mask
     already reads `$1F`, matching the old default).
+  - **Same-day #4: `_silent_instr` assumed row-major, several compiles are
+    column-major.** Investigating Tel_1 (still 24% despite byte-identical
+    grammar to 05-09-87) found the SIMPLE grammar's note-append never called
+    `_silent_instr` at all (only `_pattern`/`_emit` did), so the "instrument 0 =
+    rest slot" convention was silently skipped for every B1-tel file using the
+    simple row grammar — added the same check there. Separately, `_silent_instr`
+    itself assumed Hawkeye's ROW-MAJOR 8-byte-record layout (`tbl_instr + i*8`);
+    disassembling Tel_1 showed a COLUMN-major layout instead — five SEPARATE
+    same-length parallel arrays (pulse-lo/hi, waveform, AD, SR), each indexed
+    DIRECTLY by instrument number (`field_base + i`, no `*8`), confirmed by
+    checking instrument 0 reads all-zero across all five real arrays but garbage
+    under the row-major guess. New `_locate_tel_instr_fields` locates the real
+    waveform/AD/SR array bases (anchored near the already-trusted AD site, not a
+    blind file-first search — two false positives caught mid-session, Orion_Intro
+    and Chrome_Met1, where an unrelated nearby `STA $D404` briefly regressed both;
+    fixed by REQUIRING the three fields be evenly spaced, `ad-wf == sr-ad`, the
+    signature every genuine match showed). Full resweep after the fix: **zero
+    regressions, plus a bonus — Chrome_Met1 jumped straight to onset-EXACT**
+    (1.5%→100%, it was column-major too and had nothing else wrong). Tel_1 itself
+    only partially improved (its instrument-0 padding now correctly suppressed)
+    but has a SEPARATE, undiagnosed timing bug past that — not the same file the
+    fix was ultimately most valuable for. **12/24 bucket files now onset-EXACT.**
   - **Residual on Alloyrun V1**: raw-byte reconstruction confirms the decode is
     correct (dur=10 note=D#2 matches the pattern bytes exactly) but siddump shows an
     EXTRA onset at tick+1 with the same pitch — an instrument-driven gate blip the
