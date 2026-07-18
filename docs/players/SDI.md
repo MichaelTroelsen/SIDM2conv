@@ -183,18 +183,28 @@ never emits blind). Proven on two variant-E files:
 
 v1 residuals are the known drum/hat re-gate capture class.
 
-**Ground through 2026-07-18:** adaptive part-splitting (`auto` splits the whole
-song, no cap force-merge — Tranedans 260s→30 parts); **DELTA/E legato voices**
-now take their tie-boundary schedule from the trace's own pitch-change frames
-(drift-free, emitted as ties — Delta_Slow v2 22.7→79.9); the **C-class
-`$D404=$08` TEST gate is a non-issue** (the trace capture sidesteps it — Bahbar
-99.6/76/78); **variant V / self-IRQ (`play=$0000`) is now refused** (measure_onsets
-can't drive it — needs the 2×/4× wrapper drive, an open unit). A 30s-cap sample
-sweep (`bin/_sdi_stageb_sweep.py`) shows most E/DELTA/C voices at **90-100%**
-(Kirby 99.7/99.8/99.5, Short_Deel/Neurotica ~99), with a recurring **weak v1
-drum/hat/fast-arp voice class** (~45-80%) as the honest capture-level ceiling.
-Open: the V wrapper drive, the weak-voice class, a full-song headline sweep, and
-wiring Stage B into a shipping path (currently standalone, one file at a time).
+**Ground through to ~100% (2026-07-18).** Fixes, each a general lever:
+- **adaptive part-splitting** (`auto` splits the whole song, no cap force-merge);
+- **DELTA/E legato voices** take their tie-boundary schedule from the trace's own
+  pitch-change frames (drift-free ties);
+- **tighter legato criterion** — fast arp voices that re-gate regularly stay on
+  the gate-rise path (Moi_Funk v1 37→83);
+- **leading rest** for late-entering voices (they were shifted early by their
+  whole start offset — Bahbar v2 played 769f early; broad lift to 98-100%);
+- **last-note sustain** — hold the final note while the voice stays active
+  (Neurotica_short 54/59/62 → 99.9/99.6/99.9; the "deep-song drift" was a
+  truncated sustained tail);
+- **noise-aware metric** — a noise frame is scored on its waveform, not a
+  meaningless pitch (2_Young v1 85→100);
+- the **C-class `$D404=$08` TEST gate is a non-issue** (the capture sidesteps it);
+- **variant V / self-IRQ (`play=$0000`) is refused** (needs the 2×/4× wrapper).
+
+Result: most E/DELTA/C voices are **98-100%** (2_Young 100/100/100, Delta_Slow
+100/100/100, Neurotica 99.9/99.6/99.9, Moi_Funk 99.9/99.9/98.6, Kirby ~99.7). The
+lone residual is **Bahbar v1/v2 ~92.7/90.4** — genuinely tonal fast per-frame arps
+(the honest FM-capture ceiling; lifting it needs shared-MoN-engine FM work).
+Open: the V wrapper drive; wiring Stage B into a shipping path (currently
+standalone, one file at a time).
 
 ## Stage A
 
