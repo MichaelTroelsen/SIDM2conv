@@ -1,0 +1,176 @@
+SDI 2.1.6 KEYS OVERVIEW [18.05.2013 11:59]
+-------------------------------------------------------------------------------
+All parameters you change and values you enter are hexidecimal.
+Input keys: 0123456789ABCDEF
+
+
+OVERALL KEYBOARD COMMANDS for SEQUENCER, TRACKER & SOUND EDITOR:
+-------------------------------------------------------------------------------
+<-              Fast forward play
+CBM 1-4         Track on/off
+F1              Play from mark (mark made with F2)
+F2              Set play mark
+F3              Stop/Continue play
+F6              Tracker data on/off
+F7/F8           Select octave (individual octaves for each track)
+=               Play current line (press again to stop)
+Z               Play song from current line
+RUNSTOP         Sound Editor (Press again to exit)
+/               Toggle Sequencer/Tracker & Sound editor edit on same screen
+SH L            Load music
+CBM S           Dump music
+CBM +/-         Next/Previous song
+?               Set speed calls
+CBM Q           Quantize (0/2) for recording notes
+CRSR            Left/Right/Up/Down
+
+
+KEYBOARD COMMANDS FOR SEQUENCER AND TRACKER:
+-------------------------------------------------------------------------------
+F5              Toggle Tracker or Sequencer
+CBM *           Set speed channels (place cursor on track)
+H               Hunt for next unused sequence and replace it.
+S/L             Tab jump left/right
+V               View player counters/Full screen sequencer
+SH CLRHOME      To start of song
+SH S            Save Music
+SH A            Increase cursor jump
+CBM A           Decrease cursor jump
+SH C            Copy sequence (whole sequence)
+SH V            Paste into sequence (whole sequence)
+SH D            Double sequence length
+CBM C           Clone sequence and insert on next track line
+CBM F           Fill sequence with empty lines (From cursor position)
+CBM H           Hunt for next unused sequence - Insert it in the next track line
+CBM I           Insert a track line
+CBM K           Kill sequence/Unused/Make a sequence ready for use
+M               Set start mark (grey background is marked area)
+SH M            Set end mark
+CBM M           Copy marked area to cursor position
+:/[             Set track transpose
+;/]             Set sequence number
+
+
+KEYBOARD COMMANDS IN SEQUENCER:
+-------------------------------------------------------------------------------
+F4              Edit/Synth/Record mode (Grey/Blue/Red)
+INSTDEL         Delete a line
+SH INSTDEL      Insert a line
+CLRHOME         Cycle Sequence Top/Middle/Bottom
+SPACE           Delete down (depends on cursor jump)
+SH SPACE        Delete up (depends on cursor jump)
+SH X            Narrow sequence fom cursor pos. (remove every 2nd line)
+CBM X           Expand sequnce from cursor pos. (place cursor on a odd line)
+CBM RTYU        Set sequencer mark.
+CBM 5678        Jump to sequencer mark.
+,/.             Jump down/up 16 lines
+>/<             Increase/Decrease notes from cursor position.
+CBM RETURN      Start playing music from top of current sequence.
+SH RETURN       Play and Loop music from top of current sequence.
+RETURN          Play song from current line (same as Z)
+N               Turn note to tie/normal
+SH N            All marked notes turned to normal
+CBM N           All marked notes turned to tie
+G               Gate on (GAT in sequence)
+SH G            Gate off (gat in sequence)
+
+When entering notes in the sequencer you have 
+2 octaves present at all times:
+------------------------------
+    1 2  4 5 6  8 9  + - £
+CTRL Q WE R T YU I OP @ * UpArrow
+
+Hold down SHIFT to get tie/attack notes.
+
+
+TRACKER KEYBOARD COMMANDS:
+-------------------------------------------------------------------------------
+>               Increase transpose values or sequence values.
+<               Increase transpose values or sequence values.
+INSTDEL         Delete a track line
+SH INSTDEL      Insert a track line
+RETURN          Set loop mark for current channel
+SH RETURN       Set stop mark for current channel
+SH 1-3          Swap tracks (including all sub songs - music must be off)
+
+
+SOUND/INSTRUMENT EDITOR KEYBOARD COMMANDS:
+-------------------------------------------------------------------------------
+N               Name sound/instrument (return to exit)
++/-             Select sound
+SH +/-          Select sound with focus on displaying their programs
+>/<             Select arpeggio number with focus on the arpeggio data.
+SH A            Arpeggio program table
+SH F            Filter program table
+SH I            Initial volume and Filter channels/Filter speed table
+SH P            Pulse program table
+SH S            Sound setup table
+SH T            Tempo program table
+SH V            Vibrato program table
+SH W            Waveform program table
+M               Mark sound
+SH M            Copy sound
+
+When working with cursor inside the different programs:
+
+RETURN          Put current program line into sound setup
+                Only for waveform, pulse, filter and vibrato.
+                (Return in tempo table will set default tempo for this song.)
+SH RETURN       Delete program from sound setup.
+                Only for waveform, pulse, filter and vibrato.
+,/.             Jump 4 lines up/down
+CLRHOME         Go to current sound's program line (if there's one).
+                (For arpeggio it will display current arpeggio at top).
+SH CLRHOME      Go to top of program line table
+INSTDEL         Delete a program line. (not for sound setup table)
+SH INSTDEL      Insert a program line. (not for sound setup table)
+
+
+LOAD MENUE COMMANDS:
+-------------------------------------------------------------------------------
+SPACE          Read a new directory into memory
+SH SPACE       Go to DOS command screen
+*              Display files A-Z
+SH *           Display files Z-A
+A-Z            Set display path
+CTRL 1-0       Select disk drive 11,12,13,14,15,16,17,8,9 and 10.
+CRSR           Select music
+RETURN         LOAD MUSIC
+SH RETURN      CLEAR MEMORY or Load track+sequener data only.
+,/.            Jump 8 files up/down
+CLRHOME        Top of directory
+SH CLRHOME     Bottom of directory
+RUNSTOP        Exit
+
+SAVE/DUMP COMMANDS:
+-------------------------------------------------------------------------------
+RunStop        Exit
+Return         Save/Dump music
+SPACE/InstDel  Delete text
+Keyboard       Input text
+
+DOS COMMANDS:
+-------------------------------------------------------------------------------
+Keyboard        Input text
+CRSR            Move cursror around.
+CLRHOME         Go to start of command line.
+SH CLRHOME      Clear command line.
+RETURN          Send disk command.
+RunStop         Exit to load menue.
+
+PC/EMULATOR USERS:
+-------------------------------------------------------------------------------
+Restore         Page Up
+CTRL            Tab Key
+RunStop         CapsLock / Escape
+Return          Enter
+CBM             CTRL
+<-              § (The key above the Tab key)
+=               ' (They key above right shift and to the left of the enter key)
+/               /_ (Can also be the underscore key)
+?               ?_ (Can be the shift + underscore key)
+CRSR            Arrow keys
+*               ^¨}
+ClrHome         Home
+A#?             Insert
+h-?             Delete

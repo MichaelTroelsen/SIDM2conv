@@ -1,0 +1,14 @@
+1.0
+	Initial release
+
+1.1
+	Feature: Unpack buffers can be relocated also for sid format.
+	Bugfix: Realtime clock was running at wrong speed after invoking cartridge routines.
+	Bugfix: Duration of track 00 was sometimes computed incorrectly by birdcruncher.
+	Bugfix: Default output name in birdcruncher was a.sid regardless of format.
+
+1.2
+	Feature: Possible to mark .sid files as being compatible with both sid models.
+	Bugfix: Editor erroneously allowed pulse-width operator '-' (it behaved like '+').
+	Bugfix: Birdcruncher didn't handle blank tracks properly.
+	Bugfix: Birdcruncher was applying the groove timing backwards.

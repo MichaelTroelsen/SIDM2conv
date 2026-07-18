@@ -1,0 +1,1650 @@
+Loaded: stinsen_step3.prg @ $0D7E
+Mem[$1000]: 4C 92 16 4C 06 10   (INIT)
+Mem[$1003]: 4C 06 10 A9 00 2C   (PLAY)
+Calling INIT @ $1000...
+INIT done. SID regs:
+[sid] registers: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+Running 300 frames via PLAY @ $1003...
+frame,cycle,register,old_val,new_val
+--- Frame 0: 0 SID changes ---
+1,1421,osc3_freq_lo,$00,$16
+1,1428,osc3_freq_hi,$00,$01
+1,1442,osc3_attack_decay,$00,$0F
+1,1466,osc3_control,$00,$20
+1,1633,osc2_freq_lo,$00,$16
+1,1640,osc2_freq_hi,$00,$01
+1,1654,osc2_attack_decay,$00,$0F
+1,1678,osc2_control,$00,$20
+1,1885,osc1_freq_lo,$00,$16
+1,1892,osc1_freq_hi,$00,$01
+1,1906,osc1_attack_decay,$00,$0F
+1,1930,osc1_control,$00,$20
+1,2029,filter_mode_volume,$00,$0F
+--- Frame 1: 13 SID changes ---
+2,2462,osc3_pw_hi,$00,$88
+2,2859,osc2_pw_hi,$00,$88
+2,3296,osc1_pw_hi,$00,$88
+--- Frame 2: 3 SID changes ---
+3,3667,osc3_freq_lo,$16,$00
+3,3674,osc3_freq_hi,$01,$00
+3,3712,osc3_control,$20,$40
+3,3905,osc2_freq_lo,$16,$00
+3,3912,osc2_freq_hi,$01,$00
+3,3950,osc2_control,$20,$40
+3,4183,osc1_freq_lo,$16,$00
+3,4190,osc1_freq_hi,$01,$00
+3,4228,osc1_control,$20,$40
+--- Frame 3: 9 SID changes ---
+4,4549,osc3_pw_lo,$00,$70
+4,4556,osc3_pw_hi,$88,$81
+4,4884,osc2_pw_lo,$00,$70
+4,4891,osc2_pw_hi,$88,$81
+4,5219,osc1_pw_lo,$00,$70
+4,5226,osc1_pw_hi,$88,$81
+--- Frame 4: 6 SID changes ---
+5,5615,osc3_pw_lo,$70,$B0
+5,5880,osc2_pw_lo,$70,$B0
+5,6105,osc1_pw_lo,$70,$B0
+--- Frame 5: 3 SID changes ---
+6,6482,osc3_pw_lo,$B0,$F0
+6,6714,osc2_pw_lo,$B0,$F0
+6,6986,osc1_pw_lo,$B0,$F0
+--- Frame 6: 3 SID changes ---
+7,7341,osc3_pw_lo,$F0,$30
+7,7348,osc3_pw_hi,$81,$82
+7,7606,osc2_pw_lo,$F0,$30
+7,7613,osc2_pw_hi,$81,$82
+7,7831,osc1_pw_lo,$F0,$30
+7,7838,osc1_pw_hi,$81,$82
+--- Frame 7: 6 SID changes ---
+8,8211,osc3_pw_lo,$30,$70
+8,8446,osc2_pw_lo,$30,$70
+8,8721,osc1_pw_lo,$30,$70
+--- Frame 8: 3 SID changes ---
+9,9091,osc3_pw_lo,$70,$80
+9,9316,osc2_pw_lo,$70,$80
+9,9541,osc1_pw_lo,$70,$80
+--- Frame 9: 3 SID changes ---
+10,9911,osc3_pw_lo,$80,$90
+10,10176,osc2_pw_lo,$80,$90
+10,10401,osc1_pw_lo,$80,$90
+--- Frame 10: 3 SID changes ---
+11,10778,osc3_pw_lo,$90,$A0
+11,11010,osc2_pw_lo,$90,$A0
+11,11282,osc1_pw_lo,$90,$A0
+--- Frame 11: 3 SID changes ---
+12,11635,osc3_pw_lo,$A0,$B0
+12,11900,osc2_pw_lo,$A0,$B0
+12,12125,osc1_pw_lo,$A0,$B0
+--- Frame 12: 3 SID changes ---
+13,12495,osc3_pw_lo,$B0,$C0
+13,12720,osc2_pw_lo,$B0,$C0
+13,12985,osc1_pw_lo,$B0,$C0
+--- Frame 13: 3 SID changes ---
+14,13315,osc3_pw_lo,$C0,$D0
+14,13580,osc2_pw_lo,$C0,$D0
+14,13805,osc1_pw_lo,$C0,$D0
+--- Frame 14: 3 SID changes ---
+15,14182,osc3_pw_lo,$D0,$E0
+15,14414,osc2_pw_lo,$D0,$E0
+15,14686,osc1_pw_lo,$D0,$E0
+--- Frame 15: 3 SID changes ---
+16,15041,osc3_pw_lo,$E0,$F0
+16,15306,osc2_pw_lo,$E0,$F0
+16,15531,osc1_pw_lo,$E0,$F0
+--- Frame 16: 3 SID changes ---
+17,15901,osc3_pw_lo,$F0,$00
+17,15908,osc3_pw_hi,$82,$83
+17,16126,osc2_pw_lo,$F0,$00
+17,16133,osc2_pw_hi,$82,$83
+17,16391,osc1_pw_lo,$F0,$00
+17,16398,osc1_pw_hi,$82,$83
+--- Frame 17: 6 SID changes ---
+18,16721,osc3_pw_lo,$00,$10
+18,16986,osc2_pw_lo,$00,$10
+18,17211,osc1_pw_lo,$00,$10
+--- Frame 18: 3 SID changes ---
+19,17581,osc3_pw_lo,$10,$20
+19,17806,osc2_pw_lo,$10,$20
+19,18071,osc1_pw_lo,$10,$20
+--- Frame 19: 3 SID changes ---
+20,18408,osc3_pw_lo,$20,$30
+20,18680,osc2_pw_lo,$20,$30
+20,18912,osc1_pw_lo,$20,$30
+--- Frame 20: 3 SID changes ---
+21,19305,osc3_pw_lo,$30,$40
+21,19530,osc2_pw_lo,$30,$40
+21,19795,osc1_pw_lo,$30,$40
+--- Frame 21: 3 SID changes ---
+22,20165,osc3_pw_lo,$40,$50
+22,20390,osc2_pw_lo,$40,$50
+22,20615,osc1_pw_lo,$40,$50
+--- Frame 22: 3 SID changes ---
+23,20985,osc3_pw_lo,$50,$60
+23,21250,osc2_pw_lo,$50,$60
+23,21475,osc1_pw_lo,$50,$60
+--- Frame 23: 3 SID changes ---
+24,21852,osc3_pw_lo,$60,$70
+24,22084,osc2_pw_lo,$60,$70
+24,22356,osc1_pw_lo,$60,$70
+--- Frame 24: 3 SID changes ---
+25,22711,osc3_pw_lo,$70,$80
+25,22976,osc2_pw_lo,$70,$80
+25,23201,osc1_pw_lo,$70,$80
+--- Frame 25: 3 SID changes ---
+26,23571,osc3_pw_lo,$80,$90
+26,23796,osc2_pw_lo,$80,$90
+26,24061,osc1_pw_lo,$80,$90
+--- Frame 26: 3 SID changes ---
+27,24391,osc3_pw_lo,$90,$A0
+27,24656,osc2_pw_lo,$90,$A0
+27,24881,osc1_pw_lo,$90,$A0
+--- Frame 27: 3 SID changes ---
+28,25251,osc3_pw_lo,$A0,$B0
+28,25476,osc2_pw_lo,$A0,$B0
+28,25741,osc1_pw_lo,$A0,$B0
+--- Frame 28: 3 SID changes ---
+29,26078,osc3_pw_lo,$B0,$C0
+29,26350,osc2_pw_lo,$B0,$C0
+29,26582,osc1_pw_lo,$B0,$C0
+--- Frame 29: 3 SID changes ---
+30,26975,osc3_pw_lo,$C0,$D0
+30,27200,osc2_pw_lo,$C0,$D0
+30,27465,osc1_pw_lo,$C0,$D0
+--- Frame 30: 3 SID changes ---
+31,27795,osc3_pw_lo,$D0,$E0
+31,28060,osc2_pw_lo,$D0,$E0
+31,28285,osc1_pw_lo,$D0,$E0
+--- Frame 31: 3 SID changes ---
+32,28655,osc3_pw_lo,$E0,$F0
+32,28880,osc2_pw_lo,$E0,$F0
+32,29145,osc1_pw_lo,$E0,$F0
+--- Frame 32: 3 SID changes ---
+33,29482,osc3_pw_lo,$F0,$00
+33,29489,osc3_pw_hi,$83,$84
+33,29754,osc2_pw_lo,$F0,$00
+33,29761,osc2_pw_hi,$83,$84
+33,29986,osc1_pw_lo,$F0,$00
+33,29993,osc1_pw_hi,$83,$84
+--- Frame 33: 6 SID changes ---
+34,30381,osc3_pw_lo,$00,$10
+34,30646,osc2_pw_lo,$00,$10
+34,30871,osc1_pw_lo,$00,$10
+--- Frame 34: 3 SID changes ---
+35,31241,osc3_pw_lo,$10,$20
+35,31466,osc2_pw_lo,$10,$20
+35,31691,osc1_pw_lo,$10,$20
+--- Frame 35: 3 SID changes ---
+36,32061,osc3_pw_lo,$20,$30
+36,32326,osc2_pw_lo,$20,$30
+36,32551,osc1_pw_lo,$20,$30
+--- Frame 36: 3 SID changes ---
+37,32921,osc3_pw_lo,$30,$40
+37,33146,osc2_pw_lo,$30,$40
+37,33411,osc1_pw_lo,$30,$40
+--- Frame 37: 3 SID changes ---
+38,33748,osc3_pw_lo,$40,$50
+38,34020,osc2_pw_lo,$40,$50
+38,34252,osc1_pw_lo,$40,$50
+--- Frame 38: 3 SID changes ---
+39,34645,osc3_pw_lo,$50,$60
+39,34870,osc2_pw_lo,$50,$60
+39,35135,osc1_pw_lo,$50,$60
+--- Frame 39: 3 SID changes ---
+40,35475,osc3_pw_lo,$60,$70
+40,35750,osc2_pw_lo,$60,$70
+40,35985,osc1_pw_lo,$60,$70
+--- Frame 40: 3 SID changes ---
+41,36355,osc3_pw_lo,$70,$60
+41,36362,osc3_pw_hi,$84,$94
+41,36580,osc2_pw_lo,$70,$60
+41,36587,osc2_pw_hi,$84,$94
+41,36845,osc1_pw_lo,$70,$60
+41,36852,osc1_pw_hi,$84,$94
+--- Frame 41: 6 SID changes ---
+42,37182,osc3_pw_lo,$60,$50
+42,37189,osc3_pw_hi,$94,$A4
+42,37454,osc2_pw_lo,$60,$50
+42,37461,osc2_pw_hi,$94,$A4
+42,37686,osc1_pw_lo,$60,$50
+42,37693,osc1_pw_hi,$94,$A4
+--- Frame 42: 6 SID changes ---
+43,38081,osc3_pw_lo,$50,$40
+43,38088,osc3_pw_hi,$A4,$B4
+43,38306,osc2_pw_lo,$50,$40
+43,38313,osc2_pw_hi,$A4,$B4
+43,38571,osc1_pw_lo,$50,$40
+43,38578,osc1_pw_hi,$A4,$B4
+--- Frame 43: 6 SID changes ---
+44,38941,osc3_pw_lo,$40,$30
+44,38948,osc3_pw_hi,$B4,$C4
+44,39166,osc2_pw_lo,$40,$30
+44,39173,osc2_pw_hi,$B4,$C4
+44,39391,osc1_pw_lo,$40,$30
+44,39398,osc1_pw_hi,$B4,$C4
+--- Frame 44: 6 SID changes ---
+45,39761,osc3_pw_lo,$30,$20
+45,39768,osc3_pw_hi,$C4,$D4
+45,39986,osc2_pw_lo,$30,$20
+45,39993,osc2_pw_hi,$C4,$D4
+45,40251,osc1_pw_lo,$30,$20
+45,40258,osc1_pw_hi,$C4,$D4
+--- Frame 45: 6 SID changes ---
+46,40621,osc3_pw_lo,$20,$10
+46,40628,osc3_pw_hi,$D4,$E4
+46,40846,osc2_pw_lo,$20,$10
+46,40853,osc2_pw_hi,$D4,$E4
+46,41071,osc1_pw_lo,$20,$10
+46,41078,osc1_pw_hi,$D4,$E4
+--- Frame 46: 6 SID changes ---
+47,41448,osc3_pw_lo,$10,$00
+47,41455,osc3_pw_hi,$E4,$F4
+47,41720,osc2_pw_lo,$10,$00
+47,41727,osc2_pw_hi,$E4,$F4
+47,41952,osc1_pw_lo,$10,$00
+47,41959,osc1_pw_hi,$E4,$F4
+--- Frame 47: 6 SID changes ---
+48,42345,osc3_pw_lo,$00,$F0
+48,42352,osc3_pw_hi,$F4,$03
+48,42570,osc2_pw_lo,$00,$F0
+48,42577,osc2_pw_hi,$F4,$03
+48,42835,osc1_pw_lo,$00,$F0
+48,42842,osc1_pw_hi,$F4,$03
+--- Frame 48: 6 SID changes ---
+49,43165,osc3_pw_lo,$F0,$E0
+49,43172,osc3_pw_hi,$03,$13
+49,43430,osc2_pw_lo,$F0,$E0
+49,43437,osc2_pw_hi,$03,$13
+49,43655,osc1_pw_lo,$F0,$E0
+49,43662,osc1_pw_hi,$03,$13
+--- Frame 49: 6 SID changes ---
+50,44025,osc3_pw_lo,$E0,$D0
+50,44032,osc3_pw_hi,$13,$23
+50,44250,osc2_pw_lo,$E0,$D0
+50,44257,osc2_pw_hi,$13,$23
+50,44515,osc1_pw_lo,$E0,$D0
+50,44522,osc1_pw_hi,$13,$23
+--- Frame 50: 6 SID changes ---
+51,44852,osc3_pw_lo,$D0,$C0
+51,44859,osc3_pw_hi,$23,$33
+51,45124,osc2_pw_lo,$D0,$C0
+51,45131,osc2_pw_hi,$23,$33
+51,45356,osc1_pw_lo,$D0,$C0
+51,45363,osc1_pw_hi,$23,$33
+--- Frame 51: 6 SID changes ---
+52,45751,osc3_pw_lo,$C0,$B0
+52,45758,osc3_pw_hi,$33,$43
+52,45976,osc2_pw_lo,$C0,$B0
+52,45983,osc2_pw_hi,$33,$43
+52,46241,osc1_pw_lo,$C0,$B0
+52,46248,osc1_pw_hi,$33,$43
+--- Frame 52: 6 SID changes ---
+53,46571,osc3_pw_lo,$B0,$A0
+53,46578,osc3_pw_hi,$43,$53
+53,46836,osc2_pw_lo,$B0,$A0
+53,46843,osc2_pw_hi,$43,$53
+53,47061,osc1_pw_lo,$B0,$A0
+53,47068,osc1_pw_hi,$43,$53
+--- Frame 53: 6 SID changes ---
+54,47431,osc3_pw_lo,$A0,$90
+54,47438,osc3_pw_hi,$53,$63
+54,47656,osc2_pw_lo,$A0,$90
+54,47663,osc2_pw_hi,$53,$63
+54,47921,osc1_pw_lo,$A0,$90
+54,47928,osc1_pw_hi,$53,$63
+--- Frame 54: 6 SID changes ---
+55,48251,osc3_pw_lo,$90,$80
+55,48258,osc3_pw_hi,$63,$73
+55,48516,osc2_pw_lo,$90,$80
+55,48523,osc2_pw_hi,$63,$73
+55,48741,osc1_pw_lo,$90,$80
+55,48748,osc1_pw_hi,$63,$73
+--- Frame 55: 6 SID changes ---
+56,49118,osc3_pw_lo,$80,$70
+56,49125,osc3_pw_hi,$73,$83
+56,49350,osc2_pw_lo,$80,$70
+56,49357,osc2_pw_hi,$73,$83
+56,49622,osc1_pw_lo,$80,$70
+56,49629,osc1_pw_hi,$73,$83
+--- Frame 56: 6 SID changes ---
+57,50015,osc3_pw_lo,$70,$60
+57,50022,osc3_pw_hi,$83,$93
+57,50240,osc2_pw_lo,$70,$60
+57,50247,osc2_pw_hi,$83,$93
+57,50465,osc1_pw_lo,$70,$60
+57,50472,osc1_pw_hi,$83,$93
+--- Frame 57: 6 SID changes ---
+58,50835,osc3_pw_lo,$60,$50
+58,50842,osc3_pw_hi,$93,$A3
+58,51060,osc2_pw_lo,$60,$50
+58,51067,osc2_pw_hi,$93,$A3
+58,51325,osc1_pw_lo,$60,$50
+58,51332,osc1_pw_hi,$93,$A3
+--- Frame 58: 6 SID changes ---
+59,51695,osc3_pw_lo,$50,$40
+59,51702,osc3_pw_hi,$A3,$B3
+59,51920,osc2_pw_lo,$50,$40
+59,51927,osc2_pw_hi,$A3,$B3
+59,52145,osc1_pw_lo,$50,$40
+59,52152,osc1_pw_hi,$A3,$B3
+--- Frame 59: 6 SID changes ---
+60,52522,osc3_pw_lo,$40,$30
+60,52529,osc3_pw_hi,$B3,$C3
+60,52794,osc2_pw_lo,$40,$30
+60,52801,osc2_pw_hi,$B3,$C3
+60,53026,osc1_pw_lo,$40,$30
+60,53033,osc1_pw_hi,$B3,$C3
+--- Frame 60: 6 SID changes ---
+61,53421,osc3_pw_lo,$30,$20
+61,53428,osc3_pw_hi,$C3,$D3
+61,53646,osc2_pw_lo,$30,$20
+61,53653,osc2_pw_hi,$C3,$D3
+61,53911,osc1_pw_lo,$30,$20
+61,53918,osc1_pw_hi,$C3,$D3
+--- Frame 61: 6 SID changes ---
+62,54241,osc3_pw_lo,$20,$10
+62,54248,osc3_pw_hi,$D3,$E3
+62,54506,osc2_pw_lo,$20,$10
+62,54513,osc2_pw_hi,$D3,$E3
+62,54731,osc1_pw_lo,$20,$10
+62,54738,osc1_pw_hi,$D3,$E3
+--- Frame 62: 6 SID changes ---
+63,55101,osc3_pw_lo,$10,$00
+63,55108,osc3_pw_hi,$E3,$F3
+63,55326,osc2_pw_lo,$10,$00
+63,55333,osc2_pw_hi,$E3,$F3
+63,55591,osc1_pw_lo,$10,$00
+63,55598,osc1_pw_hi,$E3,$F3
+--- Frame 63: 6 SID changes ---
+64,55921,osc3_pw_lo,$00,$F0
+64,55928,osc3_pw_hi,$F3,$02
+64,56186,osc2_pw_lo,$00,$F0
+64,56193,osc2_pw_hi,$F3,$02
+64,56411,osc1_pw_lo,$00,$F0
+64,56418,osc1_pw_hi,$F3,$02
+--- Frame 64: 6 SID changes ---
+65,56788,osc3_pw_lo,$F0,$E0
+65,56795,osc3_pw_hi,$02,$12
+65,57020,osc2_pw_lo,$F0,$E0
+65,57027,osc2_pw_hi,$02,$12
+65,57292,osc1_pw_lo,$F0,$E0
+65,57299,osc1_pw_hi,$02,$12
+--- Frame 65: 6 SID changes ---
+66,57645,osc3_pw_lo,$E0,$D0
+66,57652,osc3_pw_hi,$12,$22
+66,57910,osc2_pw_lo,$E0,$D0
+66,57917,osc2_pw_hi,$12,$22
+66,58135,osc1_pw_lo,$E0,$D0
+66,58142,osc1_pw_hi,$12,$22
+--- Frame 66: 6 SID changes ---
+67,58505,osc3_pw_lo,$D0,$C0
+67,58512,osc3_pw_hi,$22,$32
+67,58730,osc2_pw_lo,$D0,$C0
+67,58737,osc2_pw_hi,$22,$32
+67,58995,osc1_pw_lo,$D0,$C0
+67,59002,osc1_pw_hi,$22,$32
+--- Frame 67: 6 SID changes ---
+68,59325,osc3_pw_lo,$C0,$B0
+68,59332,osc3_pw_hi,$32,$42
+68,59590,osc2_pw_lo,$C0,$B0
+68,59597,osc2_pw_hi,$32,$42
+68,59815,osc1_pw_lo,$C0,$B0
+68,59822,osc1_pw_hi,$32,$42
+--- Frame 68: 6 SID changes ---
+69,60192,osc3_pw_lo,$B0,$A0
+69,60199,osc3_pw_hi,$42,$52
+69,60424,osc2_pw_lo,$B0,$A0
+69,60431,osc2_pw_hi,$42,$52
+69,60696,osc1_pw_lo,$B0,$A0
+69,60703,osc1_pw_hi,$42,$52
+--- Frame 69: 6 SID changes ---
+70,61091,osc3_pw_lo,$A0,$90
+70,61098,osc3_pw_hi,$52,$62
+70,61316,osc2_pw_lo,$A0,$90
+70,61323,osc2_pw_hi,$52,$62
+70,61541,osc1_pw_lo,$A0,$90
+70,61548,osc1_pw_hi,$52,$62
+--- Frame 70: 6 SID changes ---
+71,61911,osc3_pw_lo,$90,$80
+71,61918,osc3_pw_hi,$62,$72
+71,62176,osc2_pw_lo,$90,$80
+71,62183,osc2_pw_hi,$62,$72
+71,62401,osc1_pw_lo,$90,$80
+71,62408,osc1_pw_hi,$62,$72
+--- Frame 71: 6 SID changes ---
+72,62781,osc3_pw_lo,$80,$70
+72,62788,osc3_pw_hi,$72,$82
+72,63016,osc2_pw_lo,$80,$70
+72,63023,osc2_pw_hi,$72,$82
+72,63291,osc1_pw_lo,$80,$70
+72,63298,osc1_pw_hi,$72,$82
+--- Frame 72: 6 SID changes ---
+73,63633,osc3_pw_lo,$70,$80
+73,63910,osc2_pw_lo,$70,$80
+73,64147,osc1_pw_lo,$70,$80
+--- Frame 73: 3 SID changes ---
+74,64597,osc3_pw_lo,$80,$90
+74,64946,osc2_pw_lo,$80,$90
+74,65255,osc1_pw_lo,$80,$90
+--- Frame 74: 3 SID changes ---
+75,65711,osc3_pw_lo,$90,$A0
+75,66039,osc2_pw_lo,$90,$A0
+75,66327,osc1_pw_lo,$90,$A0
+--- Frame 75: 3 SID changes ---
+76,66706,osc3_pw_lo,$A0,$B0
+76,67002,osc2_pw_lo,$A0,$B0
+76,67338,osc1_pw_lo,$A0,$B0
+--- Frame 76: 3 SID changes ---
+77,67774,osc3_pw_lo,$B0,$C0
+77,67999,osc2_pw_lo,$B0,$C0
+77,68264,osc1_pw_lo,$B0,$C0
+--- Frame 77: 3 SID changes ---
+78,68601,osc3_pw_lo,$C0,$D0
+78,68873,osc2_pw_lo,$C0,$D0
+78,69105,osc1_pw_lo,$C0,$D0
+--- Frame 78: 3 SID changes ---
+79,69500,osc3_pw_lo,$D0,$E0
+79,69725,osc2_pw_lo,$D0,$E0
+79,69990,osc1_pw_lo,$D0,$E0
+--- Frame 79: 3 SID changes ---
+80,70320,osc3_pw_lo,$E0,$F0
+80,70585,osc2_pw_lo,$E0,$F0
+80,70810,osc1_pw_lo,$E0,$F0
+--- Frame 80: 3 SID changes ---
+81,71180,osc3_pw_lo,$F0,$00
+81,71187,osc3_pw_hi,$82,$83
+81,71405,osc2_pw_lo,$F0,$00
+81,71412,osc2_pw_hi,$82,$83
+81,71670,osc1_pw_lo,$F0,$00
+81,71677,osc1_pw_hi,$82,$83
+--- Frame 81: 6 SID changes ---
+82,72000,osc3_pw_lo,$00,$10
+82,72265,osc2_pw_lo,$00,$10
+82,72490,osc1_pw_lo,$00,$10
+--- Frame 82: 3 SID changes ---
+83,72867,osc3_pw_lo,$10,$20
+83,73099,osc2_pw_lo,$10,$20
+83,73371,osc1_pw_lo,$10,$20
+--- Frame 83: 3 SID changes ---
+84,73724,osc3_pw_lo,$20,$30
+84,73989,osc2_pw_lo,$20,$30
+84,74214,osc1_pw_lo,$20,$30
+--- Frame 84: 3 SID changes ---
+85,74584,osc3_pw_lo,$30,$40
+85,74809,osc2_pw_lo,$30,$40
+85,75074,osc1_pw_lo,$30,$40
+--- Frame 85: 3 SID changes ---
+86,75404,osc3_pw_lo,$40,$50
+86,75669,osc2_pw_lo,$40,$50
+86,75894,osc1_pw_lo,$40,$50
+--- Frame 86: 3 SID changes ---
+87,76271,osc3_pw_lo,$50,$60
+87,76503,osc2_pw_lo,$50,$60
+87,76775,osc1_pw_lo,$50,$60
+--- Frame 87: 3 SID changes ---
+88,77170,osc3_pw_lo,$60,$70
+88,77395,osc2_pw_lo,$60,$70
+88,77620,osc1_pw_lo,$60,$70
+--- Frame 88: 3 SID changes ---
+89,77990,osc3_pw_lo,$70,$80
+89,78255,osc2_pw_lo,$70,$80
+89,78480,osc1_pw_lo,$70,$80
+--- Frame 89: 3 SID changes ---
+90,78850,osc3_pw_lo,$80,$90
+90,79075,osc2_pw_lo,$80,$90
+90,79340,osc1_pw_lo,$80,$90
+--- Frame 90: 3 SID changes ---
+91,79670,osc3_pw_lo,$90,$A0
+91,79935,osc2_pw_lo,$90,$A0
+91,80160,osc1_pw_lo,$90,$A0
+--- Frame 91: 3 SID changes ---
+92,80537,osc3_pw_lo,$A0,$B0
+92,80769,osc2_pw_lo,$A0,$B0
+92,81041,osc1_pw_lo,$A0,$B0
+--- Frame 92: 3 SID changes ---
+93,81394,osc3_pw_lo,$B0,$C0
+93,81659,osc2_pw_lo,$B0,$C0
+93,81884,osc1_pw_lo,$B0,$C0
+--- Frame 93: 3 SID changes ---
+94,82254,osc3_pw_lo,$C0,$D0
+94,82479,osc2_pw_lo,$C0,$D0
+94,82744,osc1_pw_lo,$C0,$D0
+--- Frame 94: 3 SID changes ---
+95,83074,osc3_pw_lo,$D0,$E0
+95,83339,osc2_pw_lo,$D0,$E0
+95,83564,osc1_pw_lo,$D0,$E0
+--- Frame 95: 3 SID changes ---
+96,83941,osc3_pw_lo,$E0,$F0
+96,84173,osc2_pw_lo,$E0,$F0
+96,84445,osc1_pw_lo,$E0,$F0
+--- Frame 96: 3 SID changes ---
+97,84800,osc3_pw_lo,$F0,$00
+97,84807,osc3_pw_hi,$83,$84
+97,85065,osc2_pw_lo,$F0,$00
+97,85072,osc2_pw_hi,$83,$84
+97,85290,osc1_pw_lo,$F0,$00
+97,85297,osc1_pw_hi,$83,$84
+--- Frame 97: 6 SID changes ---
+98,85660,osc3_pw_lo,$00,$10
+98,85885,osc2_pw_lo,$00,$10
+98,86150,osc1_pw_lo,$00,$10
+--- Frame 98: 3 SID changes ---
+99,86480,osc3_pw_lo,$10,$20
+99,86745,osc2_pw_lo,$10,$20
+99,86970,osc1_pw_lo,$10,$20
+--- Frame 99: 3 SID changes ---
+100,87340,osc3_pw_lo,$20,$30
+100,87565,osc2_pw_lo,$20,$30
+100,87830,osc1_pw_lo,$20,$30
+--- Frame 100: 3 SID changes ---
+101,88207,osc3_pw_lo,$30,$40
+101,88439,osc2_pw_lo,$30,$40
+101,88671,osc1_pw_lo,$30,$40
+--- Frame 101: 3 SID changes ---
+102,89064,osc3_pw_lo,$40,$50
+102,89329,osc2_pw_lo,$40,$50
+102,89554,osc1_pw_lo,$40,$50
+--- Frame 102: 3 SID changes ---
+103,89924,osc3_pw_lo,$50,$60
+103,90149,osc2_pw_lo,$50,$60
+103,90414,osc1_pw_lo,$50,$60
+--- Frame 103: 3 SID changes ---
+104,90754,osc3_pw_lo,$60,$70
+104,91029,osc2_pw_lo,$60,$70
+104,91264,osc1_pw_lo,$60,$70
+--- Frame 104: 3 SID changes ---
+105,91641,osc3_pw_lo,$70,$60
+105,91648,osc3_pw_hi,$84,$94
+105,91873,osc2_pw_lo,$70,$60
+105,91880,osc2_pw_hi,$84,$94
+105,92145,osc1_pw_lo,$70,$60
+105,92152,osc1_pw_hi,$84,$94
+--- Frame 105: 6 SID changes ---
+106,92500,osc3_pw_lo,$60,$50
+106,92507,osc3_pw_hi,$94,$A4
+106,92765,osc2_pw_lo,$60,$50
+106,92772,osc2_pw_hi,$94,$A4
+106,92990,osc1_pw_lo,$60,$50
+106,92997,osc1_pw_hi,$94,$A4
+--- Frame 106: 6 SID changes ---
+107,93360,osc3_pw_lo,$50,$40
+107,93367,osc3_pw_hi,$A4,$B4
+107,93585,osc2_pw_lo,$50,$40
+107,93592,osc2_pw_hi,$A4,$B4
+107,93850,osc1_pw_lo,$50,$40
+107,93857,osc1_pw_hi,$A4,$B4
+--- Frame 107: 6 SID changes ---
+108,94180,osc3_pw_lo,$40,$30
+108,94187,osc3_pw_hi,$B4,$C4
+108,94445,osc2_pw_lo,$40,$30
+108,94452,osc2_pw_hi,$B4,$C4
+108,94670,osc1_pw_lo,$40,$30
+108,94677,osc1_pw_hi,$B4,$C4
+--- Frame 108: 6 SID changes ---
+109,95040,osc3_pw_lo,$30,$20
+109,95047,osc3_pw_hi,$C4,$D4
+109,95265,osc2_pw_lo,$30,$20
+109,95272,osc2_pw_hi,$C4,$D4
+109,95530,osc1_pw_lo,$30,$20
+109,95537,osc1_pw_hi,$C4,$D4
+--- Frame 109: 6 SID changes ---
+110,95867,osc3_pw_lo,$20,$10
+110,95874,osc3_pw_hi,$D4,$E4
+110,96139,osc2_pw_lo,$20,$10
+110,96146,osc2_pw_hi,$D4,$E4
+110,96371,osc1_pw_lo,$20,$10
+110,96378,osc1_pw_hi,$D4,$E4
+--- Frame 110: 6 SID changes ---
+111,96764,osc3_pw_lo,$10,$00
+111,96771,osc3_pw_hi,$E4,$F4
+111,97029,osc2_pw_lo,$10,$00
+111,97036,osc2_pw_hi,$E4,$F4
+111,97254,osc1_pw_lo,$10,$00
+111,97261,osc1_pw_hi,$E4,$F4
+--- Frame 111: 6 SID changes ---
+112,97624,osc3_pw_lo,$00,$F0
+112,97631,osc3_pw_hi,$F4,$03
+112,97849,osc2_pw_lo,$00,$F0
+112,97856,osc2_pw_hi,$F4,$03
+112,98074,osc1_pw_lo,$00,$F0
+112,98081,osc1_pw_hi,$F4,$03
+--- Frame 112: 6 SID changes ---
+113,98444,osc3_pw_lo,$F0,$E0
+113,98451,osc3_pw_hi,$03,$13
+113,98709,osc2_pw_lo,$F0,$E0
+113,98716,osc2_pw_hi,$03,$13
+113,98934,osc1_pw_lo,$F0,$E0
+113,98941,osc1_pw_hi,$03,$13
+--- Frame 113: 6 SID changes ---
+114,99311,osc3_pw_lo,$E0,$D0
+114,99318,osc3_pw_hi,$13,$23
+114,99543,osc2_pw_lo,$E0,$D0
+114,99550,osc2_pw_hi,$13,$23
+114,99815,osc1_pw_lo,$E0,$D0
+114,99822,osc1_pw_hi,$13,$23
+--- Frame 114: 6 SID changes ---
+115,100170,osc3_pw_lo,$D0,$C0
+115,100177,osc3_pw_hi,$23,$33
+115,100435,osc2_pw_lo,$D0,$C0
+115,100442,osc2_pw_hi,$23,$33
+115,100660,osc1_pw_lo,$D0,$C0
+115,100667,osc1_pw_hi,$23,$33
+--- Frame 115: 6 SID changes ---
+116,101030,osc3_pw_lo,$C0,$B0
+116,101037,osc3_pw_hi,$33,$43
+116,101255,osc2_pw_lo,$C0,$B0
+116,101262,osc2_pw_hi,$33,$43
+116,101520,osc1_pw_lo,$C0,$B0
+116,101527,osc1_pw_hi,$33,$43
+--- Frame 116: 6 SID changes ---
+117,101850,osc3_pw_lo,$B0,$A0
+117,101857,osc3_pw_hi,$43,$53
+117,102115,osc2_pw_lo,$B0,$A0
+117,102122,osc2_pw_hi,$43,$53
+117,102340,osc1_pw_lo,$B0,$A0
+117,102347,osc1_pw_hi,$43,$53
+--- Frame 117: 6 SID changes ---
+118,102710,osc3_pw_lo,$A0,$90
+118,102717,osc3_pw_hi,$53,$63
+118,102935,osc2_pw_lo,$A0,$90
+118,102942,osc2_pw_hi,$53,$63
+118,103200,osc1_pw_lo,$A0,$90
+118,103207,osc1_pw_hi,$53,$63
+--- Frame 118: 6 SID changes ---
+119,103537,osc3_pw_lo,$90,$80
+119,103544,osc3_pw_hi,$63,$73
+119,103809,osc2_pw_lo,$90,$80
+119,103816,osc2_pw_hi,$63,$73
+119,104041,osc1_pw_lo,$90,$80
+119,104048,osc1_pw_hi,$63,$73
+--- Frame 119: 6 SID changes ---
+120,104434,osc3_pw_lo,$80,$70
+120,104441,osc3_pw_hi,$73,$83
+120,104659,osc2_pw_lo,$80,$70
+120,104666,osc2_pw_hi,$73,$83
+120,104924,osc1_pw_lo,$80,$70
+120,104931,osc1_pw_hi,$73,$83
+--- Frame 120: 6 SID changes ---
+121,105254,osc3_pw_lo,$70,$60
+121,105261,osc3_pw_hi,$83,$93
+121,105519,osc2_pw_lo,$70,$60
+121,105526,osc2_pw_hi,$83,$93
+121,105744,osc1_pw_lo,$70,$60
+121,105751,osc1_pw_hi,$83,$93
+--- Frame 121: 6 SID changes ---
+122,106114,osc3_pw_lo,$60,$50
+122,106121,osc3_pw_hi,$93,$A3
+122,106339,osc2_pw_lo,$60,$50
+122,106346,osc2_pw_hi,$93,$A3
+122,106604,osc1_pw_lo,$60,$50
+122,106611,osc1_pw_hi,$93,$A3
+--- Frame 122: 6 SID changes ---
+123,106941,osc3_pw_lo,$50,$40
+123,106948,osc3_pw_hi,$A3,$B3
+123,107213,osc2_pw_lo,$50,$40
+123,107220,osc2_pw_hi,$A3,$B3
+123,107445,osc1_pw_lo,$50,$40
+123,107452,osc1_pw_hi,$A3,$B3
+--- Frame 123: 6 SID changes ---
+124,107840,osc3_pw_lo,$40,$30
+124,107847,osc3_pw_hi,$B3,$C3
+124,108105,osc2_pw_lo,$40,$30
+124,108112,osc2_pw_hi,$B3,$C3
+124,108330,osc1_pw_lo,$40,$30
+124,108337,osc1_pw_hi,$B3,$C3
+--- Frame 124: 6 SID changes ---
+125,108700,osc3_pw_lo,$30,$20
+125,108707,osc3_pw_hi,$C3,$D3
+125,108925,osc2_pw_lo,$30,$20
+125,108932,osc2_pw_hi,$C3,$D3
+125,109150,osc1_pw_lo,$30,$20
+125,109157,osc1_pw_hi,$C3,$D3
+--- Frame 125: 6 SID changes ---
+126,109520,osc3_pw_lo,$20,$10
+126,109527,osc3_pw_hi,$D3,$E3
+126,109785,osc2_pw_lo,$20,$10
+126,109792,osc2_pw_hi,$D3,$E3
+126,110010,osc1_pw_lo,$20,$10
+126,110017,osc1_pw_hi,$D3,$E3
+--- Frame 126: 6 SID changes ---
+127,110380,osc3_pw_lo,$10,$00
+127,110387,osc3_pw_hi,$E3,$F3
+127,110605,osc2_pw_lo,$10,$00
+127,110612,osc2_pw_hi,$E3,$F3
+127,110870,osc1_pw_lo,$10,$00
+127,110877,osc1_pw_hi,$E3,$F3
+--- Frame 127: 6 SID changes ---
+128,111207,osc3_pw_lo,$00,$F0
+128,111214,osc3_pw_hi,$F3,$02
+128,111479,osc2_pw_lo,$00,$F0
+128,111486,osc2_pw_hi,$F3,$02
+128,111711,osc1_pw_lo,$00,$F0
+128,111718,osc1_pw_hi,$F3,$02
+--- Frame 128: 6 SID changes ---
+129,112104,osc3_pw_lo,$F0,$E0
+129,112111,osc3_pw_hi,$02,$12
+129,112329,osc2_pw_lo,$F0,$E0
+129,112336,osc2_pw_hi,$02,$12
+129,112594,osc1_pw_lo,$F0,$E0
+129,112601,osc1_pw_hi,$02,$12
+--- Frame 129: 6 SID changes ---
+130,112924,osc3_pw_lo,$E0,$D0
+130,112931,osc3_pw_hi,$12,$22
+130,113189,osc2_pw_lo,$E0,$D0
+130,113196,osc2_pw_hi,$12,$22
+130,113414,osc1_pw_lo,$E0,$D0
+130,113421,osc1_pw_hi,$12,$22
+--- Frame 130: 6 SID changes ---
+131,113784,osc3_pw_lo,$D0,$C0
+131,113791,osc3_pw_hi,$22,$32
+131,114009,osc2_pw_lo,$D0,$C0
+131,114016,osc2_pw_hi,$22,$32
+131,114274,osc1_pw_lo,$D0,$C0
+131,114281,osc1_pw_hi,$22,$32
+--- Frame 131: 6 SID changes ---
+132,114611,osc3_pw_lo,$C0,$B0
+132,114618,osc3_pw_hi,$32,$42
+132,114883,osc2_pw_lo,$C0,$B0
+132,114890,osc2_pw_hi,$32,$42
+132,115115,osc1_pw_lo,$C0,$B0
+132,115122,osc1_pw_hi,$32,$42
+--- Frame 132: 6 SID changes ---
+133,115510,osc3_pw_lo,$B0,$A0
+133,115517,osc3_pw_hi,$42,$52
+133,115735,osc2_pw_lo,$B0,$A0
+133,115742,osc2_pw_hi,$42,$52
+133,116000,osc1_pw_lo,$B0,$A0
+133,116007,osc1_pw_hi,$42,$52
+--- Frame 133: 6 SID changes ---
+134,116330,osc3_pw_lo,$A0,$90
+134,116337,osc3_pw_hi,$52,$62
+134,116595,osc2_pw_lo,$A0,$90
+134,116602,osc2_pw_hi,$52,$62
+134,116820,osc1_pw_lo,$A0,$90
+134,116827,osc1_pw_hi,$52,$62
+--- Frame 134: 6 SID changes ---
+135,117190,osc3_pw_lo,$90,$80
+135,117197,osc3_pw_hi,$62,$72
+135,117415,osc2_pw_lo,$90,$80
+135,117422,osc2_pw_hi,$62,$72
+135,117680,osc1_pw_lo,$90,$80
+135,117687,osc1_pw_hi,$62,$72
+--- Frame 135: 6 SID changes ---
+136,118060,osc3_pw_lo,$80,$70
+136,118067,osc3_pw_hi,$72,$82
+136,118295,osc2_pw_lo,$80,$70
+136,118302,osc2_pw_hi,$72,$82
+136,118530,osc1_pw_lo,$80,$70
+136,118537,osc1_pw_hi,$72,$82
+--- Frame 136: 6 SID changes ---
+137,118919,osc3_pw_lo,$70,$80
+137,119203,osc2_pw_lo,$70,$80
+137,119447,osc1_pw_lo,$70,$80
+--- Frame 137: 3 SID changes ---
+138,119840,osc3_pw_lo,$80,$90
+138,120065,osc2_pw_lo,$80,$90
+138,120330,osc1_pw_lo,$80,$90
+--- Frame 138: 3 SID changes ---
+139,120660,osc3_pw_lo,$90,$A0
+139,120925,osc2_pw_lo,$90,$A0
+139,121150,osc1_pw_lo,$90,$A0
+--- Frame 139: 3 SID changes ---
+140,121520,osc3_pw_lo,$A0,$B0
+140,121745,osc2_pw_lo,$A0,$B0
+140,122010,osc1_pw_lo,$A0,$B0
+--- Frame 140: 3 SID changes ---
+141,122347,osc3_pw_lo,$B0,$C0
+141,122619,osc2_pw_lo,$B0,$C0
+141,122851,osc1_pw_lo,$B0,$C0
+--- Frame 141: 3 SID changes ---
+142,123246,osc3_pw_lo,$C0,$D0
+142,123471,osc2_pw_lo,$C0,$D0
+142,123736,osc1_pw_lo,$C0,$D0
+--- Frame 142: 3 SID changes ---
+143,124066,osc3_pw_lo,$D0,$E0
+143,124331,osc2_pw_lo,$D0,$E0
+143,124556,osc1_pw_lo,$D0,$E0
+--- Frame 143: 3 SID changes ---
+144,124926,osc3_pw_lo,$E0,$F0
+144,125151,osc2_pw_lo,$E0,$F0
+144,125416,osc1_pw_lo,$E0,$F0
+--- Frame 144: 3 SID changes ---
+145,125746,osc3_pw_lo,$F0,$00
+145,125753,osc3_pw_hi,$82,$83
+145,126011,osc2_pw_lo,$F0,$00
+145,126018,osc2_pw_hi,$82,$83
+145,126236,osc1_pw_lo,$F0,$00
+145,126243,osc1_pw_hi,$82,$83
+--- Frame 145: 6 SID changes ---
+146,126706,osc3_pw_lo,$00,$10
+146,127075,osc2_pw_lo,$00,$10
+146,127404,osc1_pw_lo,$00,$10
+--- Frame 146: 3 SID changes ---
+147,127811,osc3_pw_lo,$10,$20
+147,128090,osc2_pw_lo,$10,$20
+147,128329,osc1_pw_lo,$10,$20
+--- Frame 147: 3 SID changes ---
+148,128708,osc3_pw_lo,$20,$30
+148,129004,osc2_pw_lo,$20,$30
+148,129340,osc1_pw_lo,$20,$30
+--- Frame 148: 3 SID changes ---
+149,129776,osc3_pw_lo,$30,$40
+149,130001,osc2_pw_lo,$30,$40
+149,130266,osc1_pw_lo,$30,$40
+--- Frame 149: 3 SID changes ---
+150,130603,osc3_pw_lo,$40,$50
+150,130875,osc2_pw_lo,$40,$50
+150,131107,osc1_pw_lo,$40,$50
+--- Frame 150: 3 SID changes ---
+151,131502,osc3_pw_lo,$50,$60
+151,131727,osc2_pw_lo,$50,$60
+151,131992,osc1_pw_lo,$50,$60
+--- Frame 151: 3 SID changes ---
+152,132322,osc3_pw_lo,$60,$70
+152,132587,osc2_pw_lo,$60,$70
+152,132812,osc1_pw_lo,$60,$70
+--- Frame 152: 3 SID changes ---
+153,133182,osc3_pw_lo,$70,$80
+153,133407,osc2_pw_lo,$70,$80
+153,133672,osc1_pw_lo,$70,$80
+--- Frame 153: 3 SID changes ---
+154,134002,osc3_pw_lo,$80,$90
+154,134267,osc2_pw_lo,$80,$90
+154,134492,osc1_pw_lo,$80,$90
+--- Frame 154: 3 SID changes ---
+155,134869,osc3_pw_lo,$90,$A0
+155,135101,osc2_pw_lo,$90,$A0
+155,135373,osc1_pw_lo,$90,$A0
+--- Frame 155: 3 SID changes ---
+156,135726,osc3_pw_lo,$A0,$B0
+156,135991,osc2_pw_lo,$A0,$B0
+156,136216,osc1_pw_lo,$A0,$B0
+--- Frame 156: 3 SID changes ---
+157,136586,osc3_pw_lo,$B0,$C0
+157,136811,osc2_pw_lo,$B0,$C0
+157,137076,osc1_pw_lo,$B0,$C0
+--- Frame 157: 3 SID changes ---
+158,137406,osc3_pw_lo,$C0,$D0
+158,137671,osc2_pw_lo,$C0,$D0
+158,137896,osc1_pw_lo,$C0,$D0
+--- Frame 158: 3 SID changes ---
+159,138273,osc3_pw_lo,$D0,$E0
+159,138505,osc2_pw_lo,$D0,$E0
+159,138777,osc1_pw_lo,$D0,$E0
+--- Frame 159: 3 SID changes ---
+160,139172,osc3_pw_lo,$E0,$F0
+160,139397,osc2_pw_lo,$E0,$F0
+160,139622,osc1_pw_lo,$E0,$F0
+--- Frame 160: 3 SID changes ---
+161,139992,osc3_pw_lo,$F0,$00
+161,139999,osc3_pw_hi,$83,$84
+161,140257,osc2_pw_lo,$F0,$00
+161,140264,osc2_pw_hi,$83,$84
+161,140482,osc1_pw_lo,$F0,$00
+161,140489,osc1_pw_hi,$83,$84
+--- Frame 161: 6 SID changes ---
+162,140852,osc3_pw_lo,$00,$10
+162,141077,osc2_pw_lo,$00,$10
+162,141342,osc1_pw_lo,$00,$10
+--- Frame 162: 3 SID changes ---
+163,141672,osc3_pw_lo,$10,$20
+163,141937,osc2_pw_lo,$10,$20
+163,142162,osc1_pw_lo,$10,$20
+--- Frame 163: 3 SID changes ---
+164,142539,osc3_pw_lo,$20,$30
+164,142771,osc2_pw_lo,$20,$30
+164,143043,osc1_pw_lo,$20,$30
+--- Frame 164: 3 SID changes ---
+165,143396,osc3_pw_lo,$30,$40
+165,143661,osc2_pw_lo,$30,$40
+165,143886,osc1_pw_lo,$30,$40
+--- Frame 165: 3 SID changes ---
+166,144256,osc3_pw_lo,$40,$50
+166,144481,osc2_pw_lo,$40,$50
+166,144746,osc1_pw_lo,$40,$50
+--- Frame 166: 3 SID changes ---
+167,145076,osc3_pw_lo,$50,$60
+167,145341,osc2_pw_lo,$50,$60
+167,145566,osc1_pw_lo,$50,$60
+--- Frame 167: 3 SID changes ---
+168,145953,osc3_pw_lo,$60,$70
+168,146195,osc2_pw_lo,$60,$70
+168,146477,osc1_pw_lo,$60,$70
+--- Frame 168: 3 SID changes ---
+169,146872,osc3_pw_lo,$70,$60
+169,146879,osc3_pw_hi,$84,$94
+169,147097,osc2_pw_lo,$70,$60
+169,147104,osc2_pw_hi,$84,$94
+169,147322,osc1_pw_lo,$70,$60
+169,147329,osc1_pw_hi,$84,$94
+--- Frame 169: 6 SID changes ---
+170,147692,osc3_pw_lo,$60,$50
+170,147699,osc3_pw_hi,$94,$A4
+170,147917,osc2_pw_lo,$60,$50
+170,147924,osc2_pw_hi,$94,$A4
+170,148182,osc1_pw_lo,$60,$50
+170,148189,osc1_pw_hi,$94,$A4
+--- Frame 170: 6 SID changes ---
+171,148552,osc3_pw_lo,$50,$40
+171,148559,osc3_pw_hi,$A4,$B4
+171,148777,osc2_pw_lo,$50,$40
+171,148784,osc2_pw_hi,$A4,$B4
+171,149002,osc1_pw_lo,$50,$40
+171,149009,osc1_pw_hi,$A4,$B4
+--- Frame 171: 6 SID changes ---
+172,149372,osc3_pw_lo,$40,$30
+172,149379,osc3_pw_hi,$B4,$C4
+172,149637,osc2_pw_lo,$40,$30
+172,149644,osc2_pw_hi,$B4,$C4
+172,149862,osc1_pw_lo,$40,$30
+172,149869,osc1_pw_hi,$B4,$C4
+--- Frame 172: 6 SID changes ---
+173,150239,osc3_pw_lo,$30,$20
+173,150246,osc3_pw_hi,$C4,$D4
+173,150471,osc2_pw_lo,$30,$20
+173,150478,osc2_pw_hi,$C4,$D4
+173,150743,osc1_pw_lo,$30,$20
+173,150750,osc1_pw_hi,$C4,$D4
+--- Frame 173: 6 SID changes ---
+174,151096,osc3_pw_lo,$20,$10
+174,151103,osc3_pw_hi,$D4,$E4
+174,151361,osc2_pw_lo,$20,$10
+174,151368,osc2_pw_hi,$D4,$E4
+174,151586,osc1_pw_lo,$20,$10
+174,151593,osc1_pw_hi,$D4,$E4
+--- Frame 174: 6 SID changes ---
+175,151956,osc3_pw_lo,$10,$00
+175,151963,osc3_pw_hi,$E4,$F4
+175,152181,osc2_pw_lo,$10,$00
+175,152188,osc2_pw_hi,$E4,$F4
+175,152446,osc1_pw_lo,$10,$00
+175,152453,osc1_pw_hi,$E4,$F4
+--- Frame 175: 6 SID changes ---
+176,152776,osc3_pw_lo,$00,$F0
+176,152783,osc3_pw_hi,$F4,$03
+176,153041,osc2_pw_lo,$00,$F0
+176,153048,osc2_pw_hi,$F4,$03
+176,153266,osc1_pw_lo,$00,$F0
+176,153273,osc1_pw_hi,$F4,$03
+--- Frame 176: 6 SID changes ---
+177,153643,osc3_pw_lo,$F0,$E0
+177,153650,osc3_pw_hi,$03,$13
+177,153875,osc2_pw_lo,$F0,$E0
+177,153882,osc2_pw_hi,$03,$13
+177,154147,osc1_pw_lo,$F0,$E0
+177,154154,osc1_pw_hi,$03,$13
+--- Frame 177: 6 SID changes ---
+178,154502,osc3_pw_lo,$E0,$D0
+178,154509,osc3_pw_hi,$13,$23
+178,154767,osc2_pw_lo,$E0,$D0
+178,154774,osc2_pw_hi,$13,$23
+178,154992,osc1_pw_lo,$E0,$D0
+178,154999,osc1_pw_hi,$13,$23
+--- Frame 178: 6 SID changes ---
+179,155362,osc3_pw_lo,$D0,$C0
+179,155369,osc3_pw_hi,$23,$33
+179,155587,osc2_pw_lo,$D0,$C0
+179,155594,osc2_pw_hi,$23,$33
+179,155852,osc1_pw_lo,$D0,$C0
+179,155859,osc1_pw_hi,$23,$33
+--- Frame 179: 6 SID changes ---
+180,156182,osc3_pw_lo,$C0,$B0
+180,156189,osc3_pw_hi,$33,$43
+180,156447,osc2_pw_lo,$C0,$B0
+180,156454,osc2_pw_hi,$33,$43
+180,156672,osc1_pw_lo,$C0,$B0
+180,156679,osc1_pw_hi,$33,$43
+--- Frame 180: 6 SID changes ---
+181,157042,osc3_pw_lo,$B0,$A0
+181,157049,osc3_pw_hi,$43,$53
+181,157267,osc2_pw_lo,$B0,$A0
+181,157274,osc2_pw_hi,$43,$53
+181,157532,osc1_pw_lo,$B0,$A0
+181,157539,osc1_pw_hi,$43,$53
+--- Frame 181: 6 SID changes ---
+182,157869,osc3_pw_lo,$A0,$90
+182,157876,osc3_pw_hi,$53,$63
+182,158141,osc2_pw_lo,$A0,$90
+182,158148,osc2_pw_hi,$53,$63
+182,158373,osc1_pw_lo,$A0,$90
+182,158380,osc1_pw_hi,$53,$63
+--- Frame 182: 6 SID changes ---
+183,158766,osc3_pw_lo,$90,$80
+183,158773,osc3_pw_hi,$63,$73
+183,158991,osc2_pw_lo,$90,$80
+183,158998,osc2_pw_hi,$63,$73
+183,159256,osc1_pw_lo,$90,$80
+183,159263,osc1_pw_hi,$63,$73
+--- Frame 183: 6 SID changes ---
+184,159626,osc3_pw_lo,$80,$70
+184,159633,osc3_pw_hi,$73,$83
+184,159851,osc2_pw_lo,$80,$70
+184,159858,osc2_pw_hi,$73,$83
+184,160076,osc1_pw_lo,$80,$70
+184,160083,osc1_pw_hi,$73,$83
+--- Frame 184: 6 SID changes ---
+185,160446,osc3_pw_lo,$70,$60
+185,160453,osc3_pw_hi,$83,$93
+185,160711,osc2_pw_lo,$70,$60
+185,160718,osc2_pw_hi,$83,$93
+185,160936,osc1_pw_lo,$70,$60
+185,160943,osc1_pw_hi,$83,$93
+--- Frame 185: 6 SID changes ---
+186,161313,osc3_pw_lo,$60,$50
+186,161320,osc3_pw_hi,$93,$A3
+186,161545,osc2_pw_lo,$60,$50
+186,161552,osc2_pw_hi,$93,$A3
+186,161817,osc1_pw_lo,$60,$50
+186,161824,osc1_pw_hi,$93,$A3
+--- Frame 186: 6 SID changes ---
+187,162172,osc3_pw_lo,$50,$40
+187,162179,osc3_pw_hi,$A3,$B3
+187,162437,osc2_pw_lo,$50,$40
+187,162444,osc2_pw_hi,$A3,$B3
+187,162662,osc1_pw_lo,$50,$40
+187,162669,osc1_pw_hi,$A3,$B3
+--- Frame 187: 6 SID changes ---
+188,163032,osc3_pw_lo,$40,$30
+188,163039,osc3_pw_hi,$B3,$C3
+188,163257,osc2_pw_lo,$40,$30
+188,163264,osc2_pw_hi,$B3,$C3
+188,163522,osc1_pw_lo,$40,$30
+188,163529,osc1_pw_hi,$B3,$C3
+--- Frame 188: 6 SID changes ---
+189,163852,osc3_pw_lo,$30,$20
+189,163859,osc3_pw_hi,$C3,$D3
+189,164117,osc2_pw_lo,$30,$20
+189,164124,osc2_pw_hi,$C3,$D3
+189,164342,osc1_pw_lo,$30,$20
+189,164349,osc1_pw_hi,$C3,$D3
+--- Frame 189: 6 SID changes ---
+190,164712,osc3_pw_lo,$20,$10
+190,164719,osc3_pw_hi,$D3,$E3
+190,164937,osc2_pw_lo,$20,$10
+190,164944,osc2_pw_hi,$D3,$E3
+190,165202,osc1_pw_lo,$20,$10
+190,165209,osc1_pw_hi,$D3,$E3
+--- Frame 190: 6 SID changes ---
+191,165539,osc3_pw_lo,$10,$00
+191,165546,osc3_pw_hi,$E3,$F3
+191,165811,osc2_pw_lo,$10,$00
+191,165818,osc2_pw_hi,$E3,$F3
+191,166043,osc1_pw_lo,$10,$00
+191,166050,osc1_pw_hi,$E3,$F3
+--- Frame 191: 6 SID changes ---
+192,166436,osc3_pw_lo,$00,$F0
+192,166443,osc3_pw_hi,$F3,$02
+192,166661,osc2_pw_lo,$00,$F0
+192,166668,osc2_pw_hi,$F3,$02
+192,166926,osc1_pw_lo,$00,$F0
+192,166933,osc1_pw_hi,$F3,$02
+--- Frame 192: 6 SID changes ---
+193,167256,osc3_pw_lo,$F0,$E0
+193,167263,osc3_pw_hi,$02,$12
+193,167521,osc2_pw_lo,$F0,$E0
+193,167528,osc2_pw_hi,$02,$12
+193,167746,osc1_pw_lo,$F0,$E0
+193,167753,osc1_pw_hi,$02,$12
+--- Frame 193: 6 SID changes ---
+194,168116,osc3_pw_lo,$E0,$D0
+194,168123,osc3_pw_hi,$12,$22
+194,168341,osc2_pw_lo,$E0,$D0
+194,168348,osc2_pw_hi,$12,$22
+194,168606,osc1_pw_lo,$E0,$D0
+194,168613,osc1_pw_hi,$12,$22
+--- Frame 194: 6 SID changes ---
+195,168943,osc3_pw_lo,$D0,$C0
+195,168950,osc3_pw_hi,$22,$32
+195,169215,osc2_pw_lo,$D0,$C0
+195,169222,osc2_pw_hi,$22,$32
+195,169447,osc1_pw_lo,$D0,$C0
+195,169454,osc1_pw_hi,$22,$32
+--- Frame 195: 6 SID changes ---
+196,169842,osc3_pw_lo,$C0,$B0
+196,169849,osc3_pw_hi,$32,$42
+196,170107,osc2_pw_lo,$C0,$B0
+196,170114,osc2_pw_hi,$32,$42
+196,170332,osc1_pw_lo,$C0,$B0
+196,170339,osc1_pw_hi,$32,$42
+--- Frame 196: 6 SID changes ---
+197,170702,osc3_pw_lo,$B0,$A0
+197,170709,osc3_pw_hi,$42,$52
+197,170927,osc2_pw_lo,$B0,$A0
+197,170934,osc2_pw_hi,$42,$52
+197,171152,osc1_pw_lo,$B0,$A0
+197,171159,osc1_pw_hi,$42,$52
+--- Frame 197: 6 SID changes ---
+198,171522,osc3_pw_lo,$A0,$90
+198,171529,osc3_pw_hi,$52,$62
+198,171787,osc2_pw_lo,$A0,$90
+198,171794,osc2_pw_hi,$52,$62
+198,172012,osc1_pw_lo,$A0,$90
+198,172019,osc1_pw_hi,$52,$62
+--- Frame 198: 6 SID changes ---
+199,172382,osc3_pw_lo,$90,$80
+199,172389,osc3_pw_hi,$62,$72
+199,172607,osc2_pw_lo,$90,$80
+199,172614,osc2_pw_hi,$62,$72
+199,172872,osc1_pw_lo,$90,$80
+199,172879,osc1_pw_hi,$62,$72
+--- Frame 199: 6 SID changes ---
+200,173219,osc3_pw_lo,$80,$70
+200,173226,osc3_pw_hi,$72,$82
+200,173501,osc2_pw_lo,$80,$70
+200,173508,osc2_pw_hi,$72,$82
+200,173743,osc1_pw_lo,$80,$70
+200,173750,osc1_pw_hi,$72,$82
+--- Frame 200: 6 SID changes ---
+201,174148,osc3_pw_lo,$70,$80
+201,174385,osc2_pw_lo,$70,$80
+201,174662,osc1_pw_lo,$70,$80
+--- Frame 201: 3 SID changes ---
+202,174992,osc3_pw_lo,$80,$90
+202,175257,osc2_pw_lo,$80,$90
+202,175482,osc1_pw_lo,$80,$90
+--- Frame 202: 3 SID changes ---
+203,175852,osc3_pw_lo,$90,$A0
+203,176077,osc2_pw_lo,$90,$A0
+203,176342,osc1_pw_lo,$90,$A0
+--- Frame 203: 3 SID changes ---
+204,176679,osc3_pw_lo,$A0,$B0
+204,176951,osc2_pw_lo,$A0,$B0
+204,177183,osc1_pw_lo,$A0,$B0
+--- Frame 204: 3 SID changes ---
+205,177578,osc3_pw_lo,$B0,$C0
+205,177803,osc2_pw_lo,$B0,$C0
+205,178068,osc1_pw_lo,$B0,$C0
+--- Frame 205: 3 SID changes ---
+206,178438,osc3_pw_lo,$C0,$D0
+206,178663,osc2_pw_lo,$C0,$D0
+206,178888,osc1_pw_lo,$C0,$D0
+--- Frame 206: 3 SID changes ---
+207,179258,osc3_pw_lo,$D0,$E0
+207,179523,osc2_pw_lo,$D0,$E0
+207,179748,osc1_pw_lo,$D0,$E0
+--- Frame 207: 3 SID changes ---
+208,180118,osc3_pw_lo,$E0,$F0
+208,180343,osc2_pw_lo,$E0,$F0
+208,180568,osc1_pw_lo,$E0,$F0
+--- Frame 208: 3 SID changes ---
+209,180945,osc3_pw_lo,$F0,$00
+209,180952,osc3_pw_hi,$82,$83
+209,181217,osc2_pw_lo,$F0,$00
+209,181224,osc2_pw_hi,$82,$83
+209,181449,osc1_pw_lo,$F0,$00
+209,181456,osc1_pw_hi,$82,$83
+--- Frame 209: 6 SID changes ---
+210,181842,osc3_pw_lo,$00,$10
+210,182067,osc2_pw_lo,$00,$10
+210,182332,osc1_pw_lo,$00,$10
+--- Frame 210: 3 SID changes ---
+211,182662,osc3_pw_lo,$10,$20
+211,182927,osc2_pw_lo,$10,$20
+211,183152,osc1_pw_lo,$10,$20
+--- Frame 211: 3 SID changes ---
+212,183522,osc3_pw_lo,$20,$30
+212,183747,osc2_pw_lo,$20,$30
+212,184012,osc1_pw_lo,$20,$30
+--- Frame 212: 3 SID changes ---
+213,184349,osc3_pw_lo,$30,$40
+213,184621,osc2_pw_lo,$30,$40
+213,184853,osc1_pw_lo,$30,$40
+--- Frame 213: 3 SID changes ---
+214,185248,osc3_pw_lo,$40,$50
+214,185473,osc2_pw_lo,$40,$50
+214,185738,osc1_pw_lo,$40,$50
+--- Frame 214: 3 SID changes ---
+215,186068,osc3_pw_lo,$50,$60
+215,186333,osc2_pw_lo,$50,$60
+215,186558,osc1_pw_lo,$50,$60
+--- Frame 215: 3 SID changes ---
+216,186928,osc3_pw_lo,$60,$70
+216,187153,osc2_pw_lo,$60,$70
+216,187418,osc1_pw_lo,$60,$70
+--- Frame 216: 3 SID changes ---
+217,187748,osc3_pw_lo,$70,$80
+217,188013,osc2_pw_lo,$70,$80
+217,188238,osc1_pw_lo,$70,$80
+--- Frame 217: 3 SID changes ---
+218,188688,osc3_pw_lo,$80,$90
+218,189037,osc2_pw_lo,$80,$90
+218,189346,osc1_pw_lo,$80,$90
+--- Frame 218: 3 SID changes ---
+219,189802,osc3_pw_lo,$90,$A0
+219,190130,osc2_pw_lo,$90,$A0
+219,190418,osc1_pw_lo,$90,$A0
+--- Frame 219: 3 SID changes ---
+220,190797,osc3_pw_lo,$A0,$B0
+220,191093,osc2_pw_lo,$A0,$B0
+220,191429,osc1_pw_lo,$A0,$B0
+--- Frame 220: 3 SID changes ---
+221,191865,osc3_pw_lo,$B0,$C0
+221,192090,osc2_pw_lo,$B0,$C0
+221,192355,osc1_pw_lo,$B0,$C0
+--- Frame 221: 3 SID changes ---
+222,192692,osc3_pw_lo,$C0,$D0
+222,192964,osc2_pw_lo,$C0,$D0
+222,193196,osc1_pw_lo,$C0,$D0
+--- Frame 222: 3 SID changes ---
+223,193591,osc3_pw_lo,$D0,$E0
+223,193816,osc2_pw_lo,$D0,$E0
+223,194081,osc1_pw_lo,$D0,$E0
+--- Frame 223: 3 SID changes ---
+224,194411,osc3_pw_lo,$E0,$F0
+224,194676,osc2_pw_lo,$E0,$F0
+224,194901,osc1_pw_lo,$E0,$F0
+--- Frame 224: 3 SID changes ---
+225,195271,osc3_pw_lo,$F0,$00
+225,195278,osc3_pw_hi,$83,$84
+225,195496,osc2_pw_lo,$F0,$00
+225,195503,osc2_pw_hi,$83,$84
+225,195761,osc1_pw_lo,$F0,$00
+225,195768,osc1_pw_hi,$83,$84
+--- Frame 225: 6 SID changes ---
+226,196091,osc3_pw_lo,$00,$10
+226,196356,osc2_pw_lo,$00,$10
+226,196581,osc1_pw_lo,$00,$10
+--- Frame 226: 3 SID changes ---
+227,196958,osc3_pw_lo,$10,$20
+227,197190,osc2_pw_lo,$10,$20
+227,197462,osc1_pw_lo,$10,$20
+--- Frame 227: 3 SID changes ---
+228,197855,osc3_pw_lo,$20,$30
+228,198080,osc2_pw_lo,$20,$30
+228,198305,osc1_pw_lo,$20,$30
+--- Frame 228: 3 SID changes ---
+229,198675,osc3_pw_lo,$30,$40
+229,198940,osc2_pw_lo,$30,$40
+229,199165,osc1_pw_lo,$30,$40
+--- Frame 229: 3 SID changes ---
+230,199535,osc3_pw_lo,$40,$50
+230,199760,osc2_pw_lo,$40,$50
+230,199985,osc1_pw_lo,$40,$50
+--- Frame 230: 3 SID changes ---
+231,200362,osc3_pw_lo,$50,$60
+231,200634,osc2_pw_lo,$50,$60
+231,200866,osc1_pw_lo,$50,$60
+--- Frame 231: 3 SID changes ---
+232,201271,osc3_pw_lo,$60,$70
+232,201506,osc2_pw_lo,$60,$70
+232,201781,osc1_pw_lo,$60,$70
+--- Frame 232: 3 SID changes ---
+233,202111,osc3_pw_lo,$70,$60
+233,202118,osc3_pw_hi,$84,$94
+233,202376,osc2_pw_lo,$70,$60
+233,202383,osc2_pw_hi,$84,$94
+233,202601,osc1_pw_lo,$70,$60
+233,202608,osc1_pw_hi,$84,$94
+--- Frame 233: 6 SID changes ---
+234,202971,osc3_pw_lo,$60,$50
+234,202978,osc3_pw_hi,$94,$A4
+234,203196,osc2_pw_lo,$60,$50
+234,203203,osc2_pw_hi,$94,$A4
+234,203461,osc1_pw_lo,$60,$50
+234,203468,osc1_pw_hi,$94,$A4
+--- Frame 234: 6 SID changes ---
+235,203791,osc3_pw_lo,$50,$40
+235,203798,osc3_pw_hi,$A4,$B4
+235,204056,osc2_pw_lo,$50,$40
+235,204063,osc2_pw_hi,$A4,$B4
+235,204281,osc1_pw_lo,$50,$40
+235,204288,osc1_pw_hi,$A4,$B4
+--- Frame 235: 6 SID changes ---
+236,204658,osc3_pw_lo,$40,$30
+236,204665,osc3_pw_hi,$B4,$C4
+236,204890,osc2_pw_lo,$40,$30
+236,204897,osc2_pw_hi,$B4,$C4
+236,205162,osc1_pw_lo,$40,$30
+236,205169,osc1_pw_hi,$B4,$C4
+--- Frame 236: 6 SID changes ---
+237,205515,osc3_pw_lo,$30,$20
+237,205522,osc3_pw_hi,$C4,$D4
+237,205780,osc2_pw_lo,$30,$20
+237,205787,osc2_pw_hi,$C4,$D4
+237,206005,osc1_pw_lo,$30,$20
+237,206012,osc1_pw_hi,$C4,$D4
+--- Frame 237: 6 SID changes ---
+238,206375,osc3_pw_lo,$20,$10
+238,206382,osc3_pw_hi,$D4,$E4
+238,206600,osc2_pw_lo,$20,$10
+238,206607,osc2_pw_hi,$D4,$E4
+238,206865,osc1_pw_lo,$20,$10
+238,206872,osc1_pw_hi,$D4,$E4
+--- Frame 238: 6 SID changes ---
+239,207195,osc3_pw_lo,$10,$00
+239,207202,osc3_pw_hi,$E4,$F4
+239,207460,osc2_pw_lo,$10,$00
+239,207467,osc2_pw_hi,$E4,$F4
+239,207685,osc1_pw_lo,$10,$00
+239,207692,osc1_pw_hi,$E4,$F4
+--- Frame 239: 6 SID changes ---
+240,208062,osc3_pw_lo,$00,$F0
+240,208069,osc3_pw_hi,$F4,$03
+240,208294,osc2_pw_lo,$00,$F0
+240,208301,osc2_pw_hi,$F4,$03
+240,208566,osc1_pw_lo,$00,$F0
+240,208573,osc1_pw_hi,$F4,$03
+--- Frame 240: 6 SID changes ---
+241,208961,osc3_pw_lo,$F0,$E0
+241,208968,osc3_pw_hi,$03,$13
+241,209186,osc2_pw_lo,$F0,$E0
+241,209193,osc2_pw_hi,$03,$13
+241,209411,osc1_pw_lo,$F0,$E0
+241,209418,osc1_pw_hi,$03,$13
+--- Frame 241: 6 SID changes ---
+242,209781,osc3_pw_lo,$E0,$D0
+242,209788,osc3_pw_hi,$13,$23
+242,210046,osc2_pw_lo,$E0,$D0
+242,210053,osc2_pw_hi,$13,$23
+242,210271,osc1_pw_lo,$E0,$D0
+242,210278,osc1_pw_hi,$13,$23
+--- Frame 242: 6 SID changes ---
+243,210641,osc3_pw_lo,$D0,$C0
+243,210648,osc3_pw_hi,$23,$33
+243,210866,osc2_pw_lo,$D0,$C0
+243,210873,osc2_pw_hi,$23,$33
+243,211131,osc1_pw_lo,$D0,$C0
+243,211138,osc1_pw_hi,$23,$33
+--- Frame 243: 6 SID changes ---
+244,211461,osc3_pw_lo,$C0,$B0
+244,211468,osc3_pw_hi,$33,$43
+244,211726,osc2_pw_lo,$C0,$B0
+244,211733,osc2_pw_hi,$33,$43
+244,211951,osc1_pw_lo,$C0,$B0
+244,211958,osc1_pw_hi,$33,$43
+--- Frame 244: 6 SID changes ---
+245,212328,osc3_pw_lo,$B0,$A0
+245,212335,osc3_pw_hi,$43,$53
+245,212560,osc2_pw_lo,$B0,$A0
+245,212567,osc2_pw_hi,$43,$53
+245,212832,osc1_pw_lo,$B0,$A0
+245,212839,osc1_pw_hi,$43,$53
+--- Frame 245: 6 SID changes ---
+246,213185,osc3_pw_lo,$A0,$90
+246,213192,osc3_pw_hi,$53,$63
+246,213450,osc2_pw_lo,$A0,$90
+246,213457,osc2_pw_hi,$53,$63
+246,213675,osc1_pw_lo,$A0,$90
+246,213682,osc1_pw_hi,$53,$63
+--- Frame 246: 6 SID changes ---
+247,214045,osc3_pw_lo,$90,$80
+247,214052,osc3_pw_hi,$63,$73
+247,214270,osc2_pw_lo,$90,$80
+247,214277,osc2_pw_hi,$63,$73
+247,214535,osc1_pw_lo,$90,$80
+247,214542,osc1_pw_hi,$63,$73
+--- Frame 247: 6 SID changes ---
+248,214865,osc3_pw_lo,$80,$70
+248,214872,osc3_pw_hi,$73,$83
+248,215130,osc2_pw_lo,$80,$70
+248,215137,osc2_pw_hi,$73,$83
+248,215355,osc1_pw_lo,$80,$70
+248,215362,osc1_pw_hi,$73,$83
+--- Frame 248: 6 SID changes ---
+249,215732,osc3_pw_lo,$70,$60
+249,215739,osc3_pw_hi,$83,$93
+249,215964,osc2_pw_lo,$70,$60
+249,215971,osc2_pw_hi,$83,$93
+249,216236,osc1_pw_lo,$70,$60
+249,216243,osc1_pw_hi,$83,$93
+--- Frame 249: 6 SID changes ---
+250,216591,osc3_pw_lo,$60,$50
+250,216598,osc3_pw_hi,$93,$A3
+250,216856,osc2_pw_lo,$60,$50
+250,216863,osc2_pw_hi,$93,$A3
+250,217081,osc1_pw_lo,$60,$50
+250,217088,osc1_pw_hi,$93,$A3
+--- Frame 250: 6 SID changes ---
+251,217451,osc3_pw_lo,$50,$40
+251,217458,osc3_pw_hi,$A3,$B3
+251,217676,osc2_pw_lo,$50,$40
+251,217683,osc2_pw_hi,$A3,$B3
+251,217941,osc1_pw_lo,$50,$40
+251,217948,osc1_pw_hi,$A3,$B3
+--- Frame 251: 6 SID changes ---
+252,218271,osc3_pw_lo,$40,$30
+252,218278,osc3_pw_hi,$B3,$C3
+252,218536,osc2_pw_lo,$40,$30
+252,218543,osc2_pw_hi,$B3,$C3
+252,218761,osc1_pw_lo,$40,$30
+252,218768,osc1_pw_hi,$B3,$C3
+--- Frame 252: 6 SID changes ---
+253,219131,osc3_pw_lo,$30,$20
+253,219138,osc3_pw_hi,$C3,$D3
+253,219356,osc2_pw_lo,$30,$20
+253,219363,osc2_pw_hi,$C3,$D3
+253,219621,osc1_pw_lo,$30,$20
+253,219628,osc1_pw_hi,$C3,$D3
+--- Frame 253: 6 SID changes ---
+254,219998,osc3_pw_lo,$20,$10
+254,220005,osc3_pw_hi,$D3,$E3
+254,220230,osc2_pw_lo,$20,$10
+254,220237,osc2_pw_hi,$D3,$E3
+254,220462,osc1_pw_lo,$20,$10
+254,220469,osc1_pw_hi,$D3,$E3
+--- Frame 254: 6 SID changes ---
+255,220855,osc3_pw_lo,$10,$00
+255,220862,osc3_pw_hi,$E3,$F3
+255,221120,osc2_pw_lo,$10,$00
+255,221127,osc2_pw_hi,$E3,$F3
+255,221345,osc1_pw_lo,$10,$00
+255,221352,osc1_pw_hi,$E3,$F3
+--- Frame 255: 6 SID changes ---
+256,221715,osc3_pw_lo,$00,$F0
+256,221722,osc3_pw_hi,$F3,$02
+256,221940,osc2_pw_lo,$00,$F0
+256,221947,osc2_pw_hi,$F3,$02
+256,222205,osc1_pw_lo,$00,$F0
+256,222212,osc1_pw_hi,$F3,$02
+--- Frame 256: 6 SID changes ---
+257,222535,osc3_pw_lo,$F0,$E0
+257,222542,osc3_pw_hi,$02,$12
+257,222800,osc2_pw_lo,$F0,$E0
+257,222807,osc2_pw_hi,$02,$12
+257,223025,osc1_pw_lo,$F0,$E0
+257,223032,osc1_pw_hi,$02,$12
+--- Frame 257: 6 SID changes ---
+258,223402,osc3_pw_lo,$E0,$D0
+258,223409,osc3_pw_hi,$12,$22
+258,223634,osc2_pw_lo,$E0,$D0
+258,223641,osc2_pw_hi,$12,$22
+258,223906,osc1_pw_lo,$E0,$D0
+258,223913,osc1_pw_hi,$12,$22
+--- Frame 258: 6 SID changes ---
+259,224261,osc3_pw_lo,$D0,$C0
+259,224268,osc3_pw_hi,$22,$32
+259,224526,osc2_pw_lo,$D0,$C0
+259,224533,osc2_pw_hi,$22,$32
+259,224751,osc1_pw_lo,$D0,$C0
+259,224758,osc1_pw_hi,$22,$32
+--- Frame 259: 6 SID changes ---
+260,225121,osc3_pw_lo,$C0,$B0
+260,225128,osc3_pw_hi,$32,$42
+260,225346,osc2_pw_lo,$C0,$B0
+260,225353,osc2_pw_hi,$32,$42
+260,225611,osc1_pw_lo,$C0,$B0
+260,225618,osc1_pw_hi,$32,$42
+--- Frame 260: 6 SID changes ---
+261,225941,osc3_pw_lo,$B0,$A0
+261,225948,osc3_pw_hi,$42,$52
+261,226206,osc2_pw_lo,$B0,$A0
+261,226213,osc2_pw_hi,$42,$52
+261,226431,osc1_pw_lo,$B0,$A0
+261,226438,osc1_pw_hi,$42,$52
+--- Frame 261: 6 SID changes ---
+262,226801,osc3_pw_lo,$A0,$90
+262,226808,osc3_pw_hi,$52,$62
+262,227026,osc2_pw_lo,$A0,$90
+262,227033,osc2_pw_hi,$52,$62
+262,227291,osc1_pw_lo,$A0,$90
+262,227298,osc1_pw_hi,$52,$62
+--- Frame 262: 6 SID changes ---
+263,227628,osc3_pw_lo,$90,$80
+263,227635,osc3_pw_hi,$62,$72
+263,227900,osc2_pw_lo,$90,$80
+263,227907,osc2_pw_hi,$62,$72
+263,228132,osc1_pw_lo,$90,$80
+263,228139,osc1_pw_hi,$62,$72
+--- Frame 263: 6 SID changes ---
+264,228535,osc3_pw_lo,$80,$70
+264,228542,osc3_pw_hi,$72,$82
+264,228810,osc2_pw_lo,$80,$70
+264,228817,osc2_pw_hi,$72,$82
+264,229045,osc1_pw_lo,$80,$70
+264,229052,osc1_pw_hi,$72,$82
+--- Frame 264: 6 SID changes ---
+265,229427,osc3_pw_lo,$70,$80
+265,229664,osc2_pw_lo,$70,$80
+265,229941,osc1_pw_lo,$70,$80
+--- Frame 265: 3 SID changes ---
+266,230271,osc3_pw_lo,$80,$90
+266,230536,osc2_pw_lo,$80,$90
+266,230761,osc1_pw_lo,$80,$90
+--- Frame 266: 3 SID changes ---
+267,231138,osc3_pw_lo,$90,$A0
+267,231370,osc2_pw_lo,$90,$A0
+267,231642,osc1_pw_lo,$90,$A0
+--- Frame 267: 3 SID changes ---
+268,231997,osc3_pw_lo,$A0,$B0
+268,232262,osc2_pw_lo,$A0,$B0
+268,232487,osc1_pw_lo,$A0,$B0
+--- Frame 268: 3 SID changes ---
+269,232857,osc3_pw_lo,$B0,$C0
+269,233082,osc2_pw_lo,$B0,$C0
+269,233347,osc1_pw_lo,$B0,$C0
+--- Frame 269: 3 SID changes ---
+270,233677,osc3_pw_lo,$C0,$D0
+270,233942,osc2_pw_lo,$C0,$D0
+270,234167,osc1_pw_lo,$C0,$D0
+--- Frame 270: 3 SID changes ---
+271,234537,osc3_pw_lo,$D0,$E0
+271,234762,osc2_pw_lo,$D0,$E0
+271,235027,osc1_pw_lo,$D0,$E0
+--- Frame 271: 3 SID changes ---
+272,235364,osc3_pw_lo,$E0,$F0
+272,235636,osc2_pw_lo,$E0,$F0
+272,235868,osc1_pw_lo,$E0,$F0
+--- Frame 272: 3 SID changes ---
+273,236261,osc3_pw_lo,$F0,$00
+273,236268,osc3_pw_hi,$82,$83
+273,236486,osc2_pw_lo,$F0,$00
+273,236493,osc2_pw_hi,$82,$83
+273,236751,osc1_pw_lo,$F0,$00
+273,236758,osc1_pw_hi,$82,$83
+--- Frame 273: 6 SID changes ---
+274,237121,osc3_pw_lo,$00,$10
+274,237346,osc2_pw_lo,$00,$10
+274,237571,osc1_pw_lo,$00,$10
+--- Frame 274: 3 SID changes ---
+275,237941,osc3_pw_lo,$10,$20
+275,238206,osc2_pw_lo,$10,$20
+275,238431,osc1_pw_lo,$10,$20
+--- Frame 275: 3 SID changes ---
+276,238808,osc3_pw_lo,$20,$30
+276,239040,osc2_pw_lo,$20,$30
+276,239312,osc1_pw_lo,$20,$30
+--- Frame 276: 3 SID changes ---
+277,239667,osc3_pw_lo,$30,$40
+277,239932,osc2_pw_lo,$30,$40
+277,240157,osc1_pw_lo,$30,$40
+--- Frame 277: 3 SID changes ---
+278,240527,osc3_pw_lo,$40,$50
+278,240752,osc2_pw_lo,$40,$50
+278,241017,osc1_pw_lo,$40,$50
+--- Frame 278: 3 SID changes ---
+279,241347,osc3_pw_lo,$50,$60
+279,241612,osc2_pw_lo,$50,$60
+279,241837,osc1_pw_lo,$50,$60
+--- Frame 279: 3 SID changes ---
+280,242207,osc3_pw_lo,$60,$70
+280,242432,osc2_pw_lo,$60,$70
+280,242697,osc1_pw_lo,$60,$70
+--- Frame 280: 3 SID changes ---
+281,243034,osc3_pw_lo,$70,$80
+281,243306,osc2_pw_lo,$70,$80
+281,243538,osc1_pw_lo,$70,$80
+--- Frame 281: 3 SID changes ---
+282,243931,osc3_pw_lo,$80,$90
+282,244156,osc2_pw_lo,$80,$90
+282,244421,osc1_pw_lo,$80,$90
+--- Frame 282: 3 SID changes ---
+283,244751,osc3_pw_lo,$90,$A0
+283,245016,osc2_pw_lo,$90,$A0
+283,245241,osc1_pw_lo,$90,$A0
+--- Frame 283: 3 SID changes ---
+284,245611,osc3_pw_lo,$A0,$B0
+284,245836,osc2_pw_lo,$A0,$B0
+284,246101,osc1_pw_lo,$A0,$B0
+--- Frame 284: 3 SID changes ---
+285,246438,osc3_pw_lo,$B0,$C0
+285,246710,osc2_pw_lo,$B0,$C0
+285,246942,osc1_pw_lo,$B0,$C0
+--- Frame 285: 3 SID changes ---
+286,247337,osc3_pw_lo,$C0,$D0
+286,247602,osc2_pw_lo,$C0,$D0
+286,247827,osc1_pw_lo,$C0,$D0
+--- Frame 286: 3 SID changes ---
+287,248197,osc3_pw_lo,$D0,$E0
+287,248422,osc2_pw_lo,$D0,$E0
+287,248647,osc1_pw_lo,$D0,$E0
+--- Frame 287: 3 SID changes ---
+288,249017,osc3_pw_lo,$E0,$F0
+288,249282,osc2_pw_lo,$E0,$F0
+288,249507,osc1_pw_lo,$E0,$F0
+--- Frame 288: 3 SID changes ---
+289,249877,osc3_pw_lo,$F0,$00
+289,249884,osc3_pw_hi,$83,$84
+289,250102,osc2_pw_lo,$F0,$00
+289,250109,osc2_pw_hi,$83,$84
+289,250367,osc1_pw_lo,$F0,$00
+289,250374,osc1_pw_hi,$83,$84
+--- Frame 289: 6 SID changes ---
+290,250797,osc3_pw_lo,$00,$10
+290,251166,osc2_pw_lo,$00,$10
+290,251535,osc1_pw_lo,$00,$10
+--- Frame 290: 3 SID changes ---
+291,251902,osc3_pw_lo,$10,$20
+291,252181,osc2_pw_lo,$10,$20
+291,252420,osc1_pw_lo,$10,$20
+--- Frame 291: 3 SID changes ---
+292,252799,osc3_pw_lo,$20,$30
+292,253135,osc2_pw_lo,$20,$30
+292,253431,osc1_pw_lo,$20,$30
+--- Frame 292: 3 SID changes ---
+293,253867,osc3_pw_lo,$30,$40
+293,254092,osc2_pw_lo,$30,$40
+293,254357,osc1_pw_lo,$30,$40
+--- Frame 293: 3 SID changes ---
+294,254694,osc3_pw_lo,$40,$50
+294,254966,osc2_pw_lo,$40,$50
+294,255198,osc1_pw_lo,$40,$50
+--- Frame 294: 3 SID changes ---
+295,255593,osc3_pw_lo,$50,$60
+295,255818,osc2_pw_lo,$50,$60
+295,256083,osc1_pw_lo,$50,$60
+--- Frame 295: 3 SID changes ---
+296,256463,osc3_pw_lo,$60,$70
+296,256698,osc2_pw_lo,$60,$70
+296,256933,osc1_pw_lo,$60,$70
+--- Frame 296: 3 SID changes ---
+297,257303,osc3_pw_lo,$70,$60
+297,257310,osc3_pw_hi,$84,$94
+297,257568,osc2_pw_lo,$70,$60
+297,257575,osc2_pw_hi,$84,$94
+297,257793,osc1_pw_lo,$70,$60
+297,257800,osc1_pw_hi,$84,$94
+--- Frame 297: 6 SID changes ---
+298,258163,osc3_pw_lo,$60,$50
+298,258170,osc3_pw_hi,$94,$A4
+298,258388,osc2_pw_lo,$60,$50
+298,258395,osc2_pw_hi,$94,$A4
+298,258613,osc1_pw_lo,$60,$50
+298,258620,osc1_pw_hi,$94,$A4
+--- Frame 298: 6 SID changes ---
+299,258990,osc3_pw_lo,$50,$40
+299,258997,osc3_pw_hi,$A4,$B4
+299,259262,osc2_pw_lo,$50,$40
+299,259269,osc2_pw_hi,$A4,$B4
+299,259494,osc1_pw_lo,$50,$40
+299,259501,osc1_pw_hi,$A4,$B4
+--- Frame 299: 6 SID changes ---

@@ -1,0 +1,15 @@
+# this is a comment
+
+@00:00:0700:substream1.prg
+@02:00:0600:substream2.prg
+@06:00:0700:substream3.prg
+@0a:00:0600:substream4.prg
+@0e:00:0700:substream5.prg
+@12:00:0600:substream6.prg
+@16:00:0700:substream7.prg
+@1a:00:0600:substream8.prg
+@1f:00:0700:substream9.prg
+@23:00:0600:substream10.prg
+@27:00:0700:substream11.prg
+@2c:00:0600:substream12.prg
+@30:00:0700:substream13.prg

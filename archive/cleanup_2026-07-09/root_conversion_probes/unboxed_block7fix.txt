@@ -1,0 +1,27 @@
+Conversion Information
+======================================================================
+File: Unboxed_Ending_8580.sid
+Date: 2026-05-05 08:54:34
+Converter: SIDM2 v2.8.0
+
+Source File:
+  Title:           Unboxed Ending (8580)
+  Author:          Thomas Mogensen (DRAX)
+  Copyright:       2018 Bonzai
+  Player Type:     Laxity_NewPlayer_V21
+  Format:          PSID v2
+  Load Address:    $0000
+  Init Address:    $1000
+  Play Address:    $1003
+  Songs:           1
+
+Driver Selection:
+  Selected Driver: LAXITY (sf2driver_laxity_00.prg)
+  Expected Acc:    99.93%
+  Reason:          Laxity-specific driver for maximum accuracy
+  Alternative:     Driver 11 (1-8% accuracy)
+
+Conversion Results:
+  Status:          SUCCESS
+  Output File:     unboxed_block7fix.sf2
+  Output Size:     7,683 bytes

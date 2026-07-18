@@ -1,0 +1,4 @@
+======================================================================
+PATTERN ANALYSIS
+Total patterns:      100
+Potential savings:   500 bytes

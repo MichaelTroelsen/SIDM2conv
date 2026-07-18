@@ -1,0 +1,73 @@
+SDI 2.1.6 NOTETABLES FOR THE WAVEFORM PROGRAM (For all versions of SDI)
+-------------------------------------------------------------------------------
+
+##  = Value you put into the waveform program.
+RES = Resulting note output.
+
+The following values (##) can be entered in the note column of the 
+waveform program, and will result in the note you can see under RES.
+
+
+NOTE TABLE (UPWARDS)
+(Assuming you are using C-0 as base note in the sequencer.)
+-------------------------------------------------------------------------------
+OCTAV0  OCTAV1  OCTAV2  OCTAV3  OCTAV4  OCTAV5  OCTAV6  OCTAV7
+-------------------------------------------------------------------------------
+## RES  ## RES  ## RES  ## RES  ## RES  ## RES  ## RES  ## RES
+00 C-0  0C C-1  18 C-2  24 C-3  30 C-4  3C C-5  48 C-6  54 C-7
+01 C#0  0D C#1  19 C#2  25 C#3  31 C#4  3D C#5  49 C#6  55 C#7
+02 D-0  0E D-1  1A D-2  26 D-3  32 D-4  3E D-5  4A D-6  56 D-7
+03 D#0  0F D#1  1B D#2  27 D#3  33 D#4  3F D#5  4B D#6  57 D#7
+04 E-0  10 E-1  1C E-2  28 E-3  34 E-4  40 E-5  4C E-6  58 E-7
+05 F-0  11 F-1  1D F-2  29 F-3  35 F-4  41 F-5  4D F-6  59 F-7
+06 F#0  12 F#1  1E F#2  2A F#3  36 F#4  42 F#5  4E F#6  5A F#7
+07 G-0  13 G-1  1F G-2  2B G-3  37 G-4  43 G-5  4F G-6  5B G-7
+08 G#0  14 G#1  20 G#2  2C G#3  38 G#4  44 G#5  50 G#6  5C G#7
+09 A-0  15 A-1  21 A-2  2D A-3  39 A-4  45 A-5  51 A-6  5D A-7
+0A A#0  16 A#1  22 A#2  2E A#3  3A A#4  46 A#5  52 A#6  5E A#7
+0B H-0  17 H-1  23 H-2  2F H-3  3B H-4  47 H-5  53 H-6  5F H-7
+
+
+NOTE TABLE (DOWNWARDS)
+(Assuming you are using C-3 as base note in the sequencer.)
+-------------------------------------------------------------------------------
+OCTAV0  OCTAV1  OCTAV2
+-------------------------------------------------------------------------------
+## RES  ## RES  ## RES
+        68 C-1  74 C-2
+        69 C#1  75 C#2
+        6A D-1  76 D-2
+        6B D#1  77 D#2
+60 E-0  6C E-1  78 E-2
+61 F-0  6D F-1  79 F-2
+62 F#0  6E F#1  7A F#2
+63 G-0  6F G-1  7B G-2
+64 G#0  70 G#1  7C G#2
+65 A-0  71 A-1  7D A-2
+66 A#0  72 A#1  7E A#2
+67 H-0  74 H-1  7F H-2
+
+
+FIXED NOTE TABLE
+(Notes in sequence does not affect these values - mostly used 
+for drums and rythmic sounds.)
+-------------------------------------------------------------------------------
+OCTAV0  OCTAV1  OCTAV2  OCTAV3  OCTAV4  OCTAV5  OCTAV6  OCTAV7
+-------------------------------------------------------------------------------
+## RES  ## RES  ## RES  ## RES  ## RES  ## RES  ## RES  ## RES
+80 C-0  8C C-1  98 C-2  A4 C-3  B0 C-4  BC C-5  C8 C-6  D4 C-7
+81 C#0  8D C#1  99 C#2  A5 C#3  B1 C#4  BD C#5  C9 C#6  D5 C#7
+82 D-0  8E D-1  9A D-2  A6 D-3  B2 D-4  BE D-5  CA D-6  D6 D-7
+83 D#0  8F D#1  9B D#2  A7 D#3  B3 D#4  BF D#5  CB D#6  D7 D#7
+84 E-0  90 E-1  9C E-2  A8 E-3  B4 E-4  C0 E-5  CC E-6  D8 E-7
+85 F-0  91 F-1  9D F-2  A9 F-3  B5 F-4  C1 F-5  CD F-6  D9 F-7
+86 F#0  92 F#1  9E F#2  AA F#3  B6 F#4  C2 F#5  CE F#6  DA F#7
+87 G-0  93 G-1  9F G-2  AB G-3  B7 G-4  C3 G-5  CF G-6  DB G-7
+88 G#0  94 G#1  A0 G#2  AC G#3  B8 G#4  C4 G#5  D0 G#6  DC G#7
+89 A-0  95 A-1  A1 A-2  AD A-3  B9 A-4  C5 A-5  D1 A-6  DD A-7
+8A A#0  96 A#1  A2 A#2  AE A#3  BA A#4  C6 A#5  D2 A#6  DE A#7
+8B H-0  97 H-1  A3 H-2  AF H-3  BB H-4  C7 H-5  D3 H-6  DF H-7
+
+
+VALUES E0-FF IS NOT USED.
+They are for future expansion

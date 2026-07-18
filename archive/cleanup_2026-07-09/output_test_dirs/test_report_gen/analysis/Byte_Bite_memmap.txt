@@ -1,0 +1,5 @@
+======================================================================
+MEMORY MAP
+Total size:     3262 bytes (100%)
+Code regions:    700 bytes (21%)
+Data regions:   2562 bytes (78%)

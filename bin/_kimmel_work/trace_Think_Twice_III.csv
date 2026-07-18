@@ -1,0 +1,1418 @@
+Loaded: Think_Twice_III.prg @ $B100
+Mem[$BAC9]: A9 05 8D F4 B1 A9   (INIT)
+Mem[$B5CA]: A5 FB 48 A5 FC 48   (PLAY)
+Calling INIT @ $BAC9 (subtune 0)...
+INIT done. SID regs:
+[sid] registers: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 6F 
+Running 200 frames via PLAY @ $B5CA...
+frame,cycle,register,old_val,new_val
+0,561,osc1_freq_hi,$00,$05
+0,572,osc1_freq_lo,$00,$ED
+0,632,osc1_control,$00,$41
+0,648,osc1_pw_lo,$00,$FD
+0,661,osc1_pw_hi,$00,$01
+0,718,osc1_freq_lo,$ED,$F7
+0,844,osc2_freq_hi,$00,$1D
+0,855,osc2_freq_lo,$00,$DF
+0,919,osc2_control,$00,$41
+0,935,osc2_pw_lo,$00,$EC
+0,948,osc2_pw_hi,$00,$03
+0,1092,osc3_freq_hi,$00,$01
+0,1103,osc3_freq_lo,$00,$1C
+--- Frame 0: 13 SID changes ---
+1,1419,osc1_freq_lo,$F7,$ED
+1,1499,osc1_pw_lo,$FD,$14
+1,1512,osc1_pw_hi,$01,$02
+1,1569,osc1_freq_lo,$ED,$01
+1,1576,osc1_freq_hi,$05,$06
+1,1655,osc2_freq_hi,$1D,$23
+1,1666,osc2_freq_lo,$DF,$86
+1,1746,osc2_pw_lo,$EC,$30
+1,1759,osc2_pw_hi,$03,$04
+--- Frame 1: 9 SID changes ---
+2,2219,osc1_freq_hi,$06,$05
+2,2230,osc1_freq_lo,$01,$ED
+2,2310,osc1_pw_lo,$14,$2B
+2,2380,osc1_freq_lo,$ED,$0B
+2,2387,osc1_freq_hi,$05,$06
+2,2506,osc2_freq_hi,$23,$1A
+2,2517,osc2_freq_lo,$86,$9C
+2,2597,osc2_pw_lo,$30,$74
+--- Frame 2: 8 SID changes ---
+3,3070,osc1_freq_hi,$06,$05
+3,3081,osc1_freq_lo,$0B,$ED
+3,3161,osc1_pw_lo,$2B,$42
+3,3231,osc1_freq_lo,$ED,$01
+3,3238,osc1_freq_hi,$05,$06
+3,3317,osc2_freq_hi,$1A,$1D
+3,3328,osc2_freq_lo,$9C,$DF
+3,3408,osc2_pw_lo,$74,$B8
+--- Frame 3: 8 SID changes ---
+4,3881,osc1_freq_hi,$06,$05
+4,3892,osc1_freq_lo,$01,$ED
+4,3968,osc1_pw_lo,$42,$59
+4,4038,osc1_freq_lo,$ED,$F7
+4,4232,osc1_control,$41,$00
+4,4236,osc1_pw_lo,$59,$00
+4,4248,osc1_pw_hi,$02,$01
+4,4274,osc1_attack_decay,$00,$0F
+4,4282,osc1_sustain_release,$00,$D0
+4,4336,osc1_freq_hi,$05,$06
+4,4347,osc1_freq_lo,$F7,$A7
+4,4375,osc1_control,$00,$41
+4,4451,osc2_freq_hi,$1D,$23
+4,4462,osc2_freq_lo,$DF,$86
+4,4542,osc2_pw_lo,$B8,$FC
+4,4807,osc2_control,$41,$00
+4,4811,osc2_pw_lo,$FC,$00
+4,4823,osc2_pw_hi,$04,$01
+4,4849,osc2_attack_decay,$00,$0A
+4,4857,osc2_sustain_release,$00,$10
+4,4913,osc2_freq_hi,$23,$1D
+4,4924,osc2_freq_lo,$86,$DF
+4,4952,osc2_control,$00,$41
+--- Frame 4: 23 SID changes ---
+5,5759,osc1_control,$41,$81
+5,5763,osc1_freq_hi,$06,$81
+5,5926,osc2_control,$41,$81
+5,5930,osc2_freq_hi,$1D,$81
+--- Frame 5: 4 SID changes ---
+6,6325,osc1_freq_hi,$81,$06
+6,6396,osc1_control,$81,$41
+6,6412,osc1_pw_lo,$00,$17
+6,6568,osc2_freq_hi,$81,$1F
+6,6579,osc2_freq_lo,$DF,$A5
+6,6643,osc2_control,$81,$41
+6,6659,osc2_pw_lo,$00,$44
+--- Frame 6: 7 SID changes ---
+7,7225,osc1_pw_lo,$17,$2E
+7,7295,osc1_freq_lo,$A7,$C5
+7,7421,osc2_freq_hi,$1F,$27
+7,7433,osc2_freq_lo,$A5,$DF
+7,7513,osc2_pw_lo,$44,$88
+--- Frame 7: 5 SID changes ---
+8,7997,osc1_freq_lo,$C5,$A7
+8,8073,osc1_pw_lo,$2E,$45
+8,8143,osc1_freq_lo,$A7,$C5
+8,8229,osc2_freq_hi,$27,$1D
+8,8320,osc2_pw_lo,$88,$CC
+--- Frame 8: 5 SID changes ---
+9,8804,osc1_freq_lo,$C5,$A7
+9,8880,osc1_pw_lo,$45,$5C
+9,8950,osc1_freq_lo,$A7,$B1
+9,9083,osc2_freq_hi,$1D,$1F
+9,9094,osc2_freq_lo,$DF,$A5
+9,9174,osc2_pw_lo,$CC,$10
+9,9187,osc2_pw_hi,$01,$02
+--- Frame 9: 7 SID changes ---
+10,9678,osc1_freq_lo,$B1,$A7
+10,9759,osc1_pw_lo,$5C,$73
+10,9915,osc2_freq_hi,$1F,$27
+10,9927,osc2_freq_lo,$A5,$DF
+10,10007,osc2_pw_lo,$10,$54
+--- Frame 10: 5 SID changes ---
+11,10567,osc1_pw_lo,$73,$8A
+11,10637,osc1_freq_lo,$A7,$B1
+11,10763,osc2_freq_hi,$27,$1D
+11,10854,osc2_pw_lo,$54,$98
+--- Frame 11: 4 SID changes ---
+12,11338,osc1_freq_lo,$B1,$A7
+12,11414,osc1_pw_lo,$8A,$A1
+12,11484,osc1_freq_lo,$A7,$B1
+12,11570,osc2_freq_hi,$1D,$1F
+12,11581,osc2_freq_lo,$DF,$A5
+12,11661,osc2_pw_lo,$98,$DC
+--- Frame 12: 6 SID changes ---
+13,12145,osc1_freq_lo,$B1,$A7
+13,12221,osc1_pw_lo,$A1,$B8
+13,12291,osc1_freq_lo,$A7,$BB
+13,12417,osc2_freq_hi,$1F,$27
+13,12429,osc2_freq_lo,$A5,$DF
+13,12509,osc2_pw_lo,$DC,$20
+13,12522,osc2_pw_hi,$02,$03
+--- Frame 13: 7 SID changes ---
+14,12993,osc1_freq_lo,$BB,$A7
+14,13069,osc1_pw_lo,$B8,$CF
+14,13139,osc1_freq_lo,$A7,$C5
+14,13232,osc2_freq_hi,$27,$1D
+14,13323,osc2_pw_lo,$20,$64
+--- Frame 14: 5 SID changes ---
+15,13827,osc1_freq_lo,$C5,$A7
+15,13903,osc1_pw_lo,$CF,$E6
+15,13973,osc1_freq_lo,$A7,$BB
+15,14099,osc2_freq_hi,$1D,$1F
+15,14110,osc2_freq_lo,$DF,$A5
+15,14190,osc2_pw_lo,$64,$A8
+--- Frame 15: 6 SID changes ---
+16,14674,osc1_freq_lo,$BB,$A7
+16,14750,osc1_pw_lo,$E6,$FD
+16,14820,osc1_freq_lo,$A7,$B1
+16,14906,osc2_freq_hi,$1F,$27
+16,14918,osc2_freq_lo,$A5,$DF
+16,14998,osc2_pw_lo,$A8,$EC
+--- Frame 16: 6 SID changes ---
+17,15482,osc1_freq_lo,$B1,$A7
+17,15558,osc1_pw_lo,$FD,$14
+17,15571,osc1_pw_hi,$01,$02
+17,15628,osc1_freq_lo,$A7,$B1
+17,15754,osc2_freq_hi,$27,$1D
+17,15851,osc2_pw_lo,$EC,$30
+17,15864,osc2_pw_hi,$03,$04
+--- Frame 17: 7 SID changes ---
+18,16335,osc1_freq_lo,$B1,$A7
+18,16411,osc1_pw_lo,$14,$2B
+18,16567,osc2_freq_hi,$1D,$1F
+18,16578,osc2_freq_lo,$DF,$A5
+18,16658,osc2_pw_lo,$30,$74
+--- Frame 18: 5 SID changes ---
+19,17224,osc1_pw_lo,$2B,$42
+19,17294,osc1_freq_lo,$A7,$C5
+19,17427,osc2_freq_hi,$1F,$27
+19,17439,osc2_freq_lo,$A5,$DF
+19,17519,osc2_pw_lo,$74,$B8
+--- Frame 19: 5 SID changes ---
+20,18023,osc1_freq_lo,$C5,$A7
+20,18099,osc1_pw_lo,$42,$59
+20,18169,osc1_freq_lo,$A7,$C5
+20,18255,osc2_freq_hi,$27,$1D
+20,18346,osc2_pw_lo,$B8,$FC
+--- Frame 20: 5 SID changes ---
+21,18830,osc1_freq_lo,$C5,$A7
+21,18906,osc1_pw_lo,$59,$70
+21,18976,osc1_freq_lo,$A7,$B1
+21,19102,osc2_freq_hi,$1D,$1F
+21,19113,osc2_freq_lo,$DF,$A5
+21,19193,osc2_pw_lo,$FC,$40
+21,19206,osc2_pw_hi,$04,$05
+--- Frame 21: 7 SID changes ---
+22,19677,osc1_freq_lo,$B1,$A7
+22,19758,osc1_pw_lo,$70,$87
+22,19914,osc2_freq_hi,$1F,$27
+22,19926,osc2_freq_lo,$A5,$DF
+22,20006,osc2_pw_lo,$40,$84
+--- Frame 22: 5 SID changes ---
+23,20566,osc1_pw_lo,$87,$9E
+23,20636,osc1_freq_lo,$A7,$B1
+23,20762,osc2_freq_hi,$27,$1D
+23,20853,osc2_pw_lo,$84,$C8
+--- Frame 23: 4 SID changes ---
+24,21337,osc1_freq_lo,$B1,$A7
+24,21413,osc1_pw_lo,$9E,$B5
+24,21483,osc1_freq_lo,$A7,$B1
+24,21576,osc2_freq_hi,$1D,$1F
+24,21587,osc2_freq_lo,$DF,$A5
+24,21667,osc2_pw_lo,$C8,$0C
+24,21680,osc2_pw_hi,$05,$06
+--- Frame 24: 7 SID changes ---
+25,22171,osc1_freq_lo,$B1,$A7
+25,22247,osc1_pw_lo,$B5,$CC
+25,22357,osc1_freq_lo,$A7,$BB
+25,22443,osc2_freq_hi,$1F,$27
+25,22455,osc2_freq_lo,$A5,$DF
+25,22535,osc2_pw_lo,$0C,$50
+--- Frame 25: 6 SID changes ---
+26,23019,osc1_freq_lo,$BB,$A7
+26,23095,osc1_pw_lo,$CC,$E3
+26,23165,osc1_freq_lo,$A7,$C5
+26,23251,osc2_freq_hi,$27,$1D
+26,23342,osc2_pw_lo,$50,$94
+--- Frame 26: 5 SID changes ---
+27,23826,osc1_freq_lo,$C5,$A7
+27,23902,osc1_pw_lo,$E3,$FA
+27,24012,osc1_freq_lo,$A7,$BB
+27,24098,osc2_freq_hi,$1D,$1F
+27,24109,osc2_freq_lo,$DF,$A5
+27,24189,osc2_pw_lo,$94,$D8
+--- Frame 27: 6 SID changes ---
+28,24673,osc1_freq_lo,$BB,$A7
+28,24749,osc1_pw_lo,$FA,$11
+28,24762,osc1_pw_hi,$02,$03
+28,24819,osc1_freq_lo,$A7,$B1
+28,24905,osc2_freq_hi,$1F,$27
+28,24917,osc2_freq_lo,$A5,$DF
+28,24997,osc2_pw_lo,$D8,$1C
+28,25010,osc2_pw_hi,$06,$07
+--- Frame 28: 8 SID changes ---
+29,25481,osc1_freq_lo,$B1,$A7
+29,25557,osc1_pw_lo,$11,$28
+29,25667,osc1_freq_lo,$A7,$B1
+29,25760,osc2_freq_hi,$27,$1D
+29,25857,osc2_pw_lo,$1C,$60
+--- Frame 29: 5 SID changes ---
+30,26361,osc1_freq_lo,$B1,$A7
+30,26437,osc1_pw_lo,$28,$3F
+30,26593,osc2_freq_hi,$1D,$1F
+30,26604,osc2_freq_lo,$DF,$A5
+30,26684,osc2_pw_lo,$60,$A4
+--- Frame 30: 5 SID changes ---
+31,27250,osc1_pw_lo,$3F,$56
+31,27360,osc1_freq_lo,$A7,$C5
+31,27446,osc2_freq_hi,$1F,$27
+31,27458,osc2_freq_lo,$A5,$DF
+31,27538,osc2_pw_lo,$A4,$E8
+--- Frame 31: 5 SID changes ---
+32,28022,osc1_freq_lo,$C5,$A7
+32,28098,osc1_pw_lo,$56,$6D
+32,28168,osc1_freq_lo,$A7,$C5
+32,28254,osc2_freq_hi,$27,$1D
+32,28345,osc2_pw_lo,$E8,$2C
+32,28358,osc2_pw_hi,$07,$08
+--- Frame 32: 6 SID changes ---
+33,28829,osc1_freq_lo,$C5,$A7
+33,28905,osc1_pw_lo,$6D,$84
+33,29015,osc1_freq_lo,$A7,$B1
+33,29101,osc2_freq_hi,$1D,$1F
+33,29112,osc2_freq_lo,$DF,$A5
+33,29192,osc2_pw_lo,$2C,$70
+--- Frame 33: 6 SID changes ---
+34,29676,osc1_freq_lo,$B1,$A7
+34,29757,osc1_pw_lo,$84,$9B
+34,29920,osc2_freq_hi,$1F,$27
+34,29932,osc2_freq_lo,$A5,$DF
+34,30012,osc2_pw_lo,$70,$B4
+--- Frame 34: 5 SID changes ---
+35,30632,osc1_pw_lo,$9B,$B2
+35,30702,osc1_freq_lo,$A7,$B1
+35,30788,osc2_freq_hi,$27,$1D
+35,30879,osc2_pw_lo,$B4,$F8
+--- Frame 35: 4 SID changes ---
+36,31363,osc1_freq_lo,$B1,$A7
+36,31439,osc1_pw_lo,$B2,$C9
+36,31509,osc1_freq_lo,$A7,$B1
+36,31595,osc2_freq_hi,$1D,$1F
+36,31606,osc2_freq_lo,$DF,$A5
+36,31686,osc2_pw_lo,$F8,$3C
+36,31739,osc2_pw_hi,$08,$09
+--- Frame 36: 7 SID changes ---
+37,32170,osc1_freq_lo,$B1,$A7
+37,32246,osc1_pw_lo,$C9,$E0
+37,32356,osc1_freq_lo,$A7,$BB
+37,32442,osc2_freq_hi,$1F,$27
+37,32454,osc2_freq_lo,$A5,$DF
+37,32534,osc2_pw_lo,$3C,$80
+--- Frame 37: 6 SID changes ---
+38,33018,osc1_freq_lo,$BB,$A7
+38,33094,osc1_pw_lo,$E0,$F7
+38,33164,osc1_freq_lo,$A7,$C5
+38,33250,osc2_freq_hi,$27,$1D
+38,33341,osc2_pw_lo,$80,$C4
+--- Frame 38: 5 SID changes ---
+39,33825,osc1_freq_lo,$C5,$A7
+39,33901,osc1_pw_lo,$F7,$0E
+39,33954,osc1_pw_hi,$03,$04
+39,34011,osc1_freq_lo,$A7,$BB
+39,34104,osc2_freq_hi,$1D,$1F
+39,34115,osc2_freq_lo,$DF,$A5
+39,34195,osc2_pw_lo,$C4,$08
+39,34208,osc2_pw_hi,$09,$0A
+--- Frame 39: 8 SID changes ---
+40,34699,osc1_freq_lo,$BB,$A7
+40,34775,osc1_pw_lo,$0E,$25
+40,34845,osc1_freq_lo,$A7,$B1
+40,34931,osc2_freq_hi,$1F,$27
+40,34943,osc2_freq_lo,$A5,$DF
+40,35063,osc2_pw_lo,$08,$4C
+--- Frame 40: 6 SID changes ---
+41,35507,osc1_freq_lo,$B1,$A7
+41,35623,osc1_pw_lo,$25,$3C
+41,35693,osc1_freq_lo,$A7,$B1
+41,35779,osc2_freq_hi,$27,$1D
+41,35876,osc2_pw_lo,$4C,$90
+--- Frame 41: 5 SID changes ---
+42,36360,osc1_freq_lo,$B1,$A7
+42,36436,osc1_pw_lo,$3C,$53
+42,36592,osc2_freq_hi,$1D,$1F
+42,36603,osc2_freq_lo,$DF,$A5
+42,36723,osc2_pw_lo,$90,$D4
+--- Frame 42: 5 SID changes ---
+43,37289,osc1_pw_lo,$53,$6A
+43,37359,osc1_freq_lo,$A7,$C5
+43,37445,osc2_freq_hi,$1F,$27
+43,37457,osc2_freq_lo,$A5,$DF
+43,37537,osc2_pw_lo,$D4,$18
+43,37550,osc2_pw_hi,$0A,$0B
+--- Frame 43: 6 SID changes ---
+44,38021,osc1_freq_lo,$C5,$A7
+44,38097,osc1_pw_lo,$6A,$81
+44,38167,osc1_freq_lo,$A7,$C5
+44,38260,osc2_freq_hi,$27,$1D
+44,38391,osc2_pw_lo,$18,$5C
+44,38616,osc2_control,$41,$00
+44,38620,osc2_pw_lo,$5C,$00
+44,38632,osc2_pw_hi,$0B,$01
+44,38761,osc2_control,$00,$41
+--- Frame 44: 9 SID changes ---
+45,39178,osc1_freq_lo,$C5,$A7
+45,39254,osc1_pw_lo,$81,$98
+45,39324,osc1_freq_lo,$A7,$B1
+45,39410,osc2_freq_hi,$1D,$1F
+45,39421,osc2_freq_lo,$DF,$A5
+45,39528,osc2_control,$41,$81
+45,39532,osc2_freq_hi,$1F,$81
+--- Frame 45: 7 SID changes ---
+46,39898,osc1_freq_lo,$B1,$A7
+46,39979,osc1_pw_lo,$98,$AF
+46,40175,osc2_freq_hi,$81,$27
+46,40187,osc2_freq_lo,$A5,$DF
+46,40251,osc2_control,$81,$41
+46,40267,osc2_pw_lo,$00,$44
+--- Frame 46: 6 SID changes ---
+47,40827,osc1_pw_lo,$AF,$C6
+47,40897,osc1_freq_lo,$A7,$B1
+47,40983,osc2_freq_hi,$27,$1D
+47,41074,osc2_pw_lo,$44,$88
+--- Frame 47: 4 SID changes ---
+48,41558,osc1_freq_lo,$B1,$A7
+48,41634,osc1_pw_lo,$C6,$DD
+48,41744,osc1_freq_lo,$A7,$B1
+48,41830,osc2_freq_hi,$1D,$1F
+48,41841,osc2_freq_lo,$DF,$A5
+48,41921,osc2_pw_lo,$88,$CC
+--- Frame 48: 6 SID changes ---
+49,42405,osc1_freq_lo,$B1,$A7
+49,42481,osc1_pw_lo,$DD,$F4
+49,42551,osc1_freq_lo,$A7,$BB
+49,42644,osc2_freq_hi,$1F,$27
+49,42656,osc2_freq_lo,$A5,$DF
+49,42736,osc2_pw_lo,$CC,$10
+49,42749,osc2_pw_hi,$01,$02
+--- Frame 49: 7 SID changes ---
+50,43240,osc1_freq_lo,$BB,$A7
+50,43356,osc1_pw_lo,$F4,$0B
+50,43369,osc1_pw_hi,$04,$05
+50,43426,osc1_freq_lo,$A7,$C5
+50,43512,osc2_freq_hi,$27,$1D
+50,43603,osc2_pw_lo,$10,$54
+--- Frame 50: 6 SID changes ---
+51,44087,osc1_freq_lo,$C5,$A7
+51,44163,osc1_pw_lo,$0B,$22
+51,44233,osc1_freq_lo,$A7,$BB
+51,44319,osc2_freq_hi,$1D,$1F
+51,44330,osc2_freq_lo,$DF,$A5
+51,44410,osc2_pw_lo,$54,$98
+--- Frame 51: 6 SID changes ---
+52,44894,osc1_freq_lo,$BB,$A7
+52,44970,osc1_pw_lo,$22,$39
+52,45080,osc1_freq_lo,$A7,$B1
+52,45166,osc2_freq_hi,$1F,$27
+52,45178,osc2_freq_lo,$A5,$DF
+52,45258,osc2_pw_lo,$98,$DC
+--- Frame 52: 6 SID changes ---
+53,45742,osc1_freq_lo,$B1,$A7
+53,45818,osc1_pw_lo,$39,$50
+53,45888,osc1_freq_lo,$A7,$B1
+53,45974,osc2_freq_hi,$27,$1D
+53,46071,osc2_pw_lo,$DC,$20
+53,46124,osc2_pw_hi,$02,$03
+--- Frame 53: 6 SID changes ---
+54,46555,osc1_freq_lo,$B1,$A7
+54,46671,osc1_pw_lo,$50,$67
+54,46834,osc2_freq_hi,$1D,$1F
+54,46845,osc2_freq_lo,$DF,$A5
+54,46925,osc2_pw_lo,$20,$64
+--- Frame 54: 5 SID changes ---
+55,47511,osc1_pw_lo,$67,$7E
+55,47581,osc1_freq_lo,$A7,$C5
+55,47667,osc2_freq_hi,$1F,$27
+55,47679,osc2_freq_lo,$A5,$DF
+55,47799,osc2_pw_lo,$64,$A8
+--- Frame 55: 5 SID changes ---
+56,48243,osc1_freq_lo,$C5,$A7
+56,48359,osc1_pw_lo,$7E,$95
+56,48429,osc1_freq_lo,$A7,$C5
+56,48515,osc2_freq_hi,$27,$1D
+56,48606,osc2_pw_lo,$A8,$EC
+--- Frame 56: 5 SID changes ---
+57,49090,osc1_freq_lo,$C5,$A7
+57,49166,osc1_pw_lo,$95,$AC
+57,49236,osc1_freq_lo,$A7,$B1
+57,49322,osc2_freq_hi,$1D,$1F
+57,49333,osc2_freq_lo,$DF,$A5
+57,49453,osc2_pw_lo,$EC,$30
+57,49466,osc2_pw_hi,$03,$04
+--- Frame 57: 7 SID changes ---
+58,49897,osc1_freq_lo,$B1,$A7
+58,50018,osc1_pw_lo,$AC,$C3
+58,50174,osc2_freq_hi,$1F,$27
+58,50186,osc2_freq_lo,$A5,$DF
+58,50266,osc2_pw_lo,$30,$74
+--- Frame 58: 5 SID changes ---
+59,50826,osc1_pw_lo,$C3,$DA
+59,50896,osc1_freq_lo,$A7,$B1
+59,50989,osc2_freq_hi,$27,$1D
+59,51120,osc2_pw_lo,$74,$B8
+--- Frame 59: 4 SID changes ---
+60,51584,osc1_freq_lo,$B1,$A7
+60,51700,osc1_pw_lo,$DA,$F1
+60,51770,osc1_freq_lo,$A7,$B1
+60,51856,osc2_freq_hi,$1D,$1F
+60,51867,osc2_freq_lo,$DF,$A5
+60,51947,osc2_pw_lo,$B8,$FC
+--- Frame 60: 6 SID changes ---
+61,52431,osc1_freq_lo,$B1,$A7
+61,52507,osc1_pw_lo,$F1,$08
+61,52520,osc1_pw_hi,$05,$06
+61,52577,osc1_freq_lo,$A7,$BB
+61,52663,osc2_freq_hi,$1F,$27
+61,52675,osc2_freq_lo,$A5,$DF
+61,52795,osc2_pw_lo,$FC,$40
+61,52808,osc2_pw_hi,$04,$05
+--- Frame 61: 8 SID changes ---
+62,53239,osc1_freq_lo,$BB,$A7
+62,53355,osc1_pw_lo,$08,$1F
+62,53425,osc1_freq_lo,$A7,$C5
+62,53511,osc2_freq_hi,$27,$1D
+62,53602,osc2_pw_lo,$40,$84
+--- Frame 62: 5 SID changes ---
+63,54086,osc1_freq_lo,$C5,$A7
+63,54162,osc1_pw_lo,$1F,$36
+63,54232,osc1_freq_lo,$A7,$BB
+63,54318,osc2_freq_hi,$1D,$1F
+63,54329,osc2_freq_lo,$DF,$A5
+63,54449,osc2_pw_lo,$84,$C8
+--- Frame 63: 6 SID changes ---
+64,54893,osc1_freq_lo,$BB,$A7
+64,55009,osc1_pw_lo,$36,$4D
+64,55079,osc1_freq_lo,$A7,$B1
+64,55172,osc2_freq_hi,$1F,$27
+64,55184,osc2_freq_lo,$A5,$DF
+64,55264,osc2_pw_lo,$C8,$0C
+64,55277,osc2_pw_hi,$05,$06
+--- Frame 64: 7 SID changes ---
+65,55768,osc1_freq_lo,$B1,$A7
+65,55844,osc1_pw_lo,$4D,$64
+65,55914,osc1_freq_lo,$A7,$B1
+65,56000,osc2_freq_hi,$27,$1D
+65,56137,osc2_pw_lo,$0C,$50
+--- Frame 65: 5 SID changes ---
+66,56581,osc1_freq_lo,$B1,$A7
+66,56697,osc1_pw_lo,$64,$7B
+66,56853,osc2_freq_hi,$1D,$1F
+66,56864,osc2_freq_lo,$DF,$A5
+66,56944,osc2_pw_lo,$50,$94
+--- Frame 66: 5 SID changes ---
+67,57510,osc1_pw_lo,$7B,$92
+67,57580,osc1_freq_lo,$A7,$C5
+67,57666,osc2_freq_hi,$1F,$27
+67,57678,osc2_freq_lo,$A5,$DF
+67,57798,osc2_pw_lo,$94,$D8
+--- Frame 67: 5 SID changes ---
+68,58242,osc1_freq_lo,$C5,$A7
+68,58358,osc1_pw_lo,$92,$A9
+68,58428,osc1_freq_lo,$A7,$C5
+68,58514,osc2_freq_hi,$27,$1D
+68,58605,osc2_pw_lo,$D8,$1C
+68,58618,osc2_pw_hi,$06,$07
+--- Frame 68: 6 SID changes ---
+69,59089,osc1_freq_lo,$C5,$A7
+69,59165,osc1_pw_lo,$A9,$C0
+69,59235,osc1_freq_lo,$A7,$B1
+69,59328,osc2_freq_hi,$1D,$1F
+69,59339,osc2_freq_lo,$DF,$A5
+69,59459,osc2_pw_lo,$1C,$60
+--- Frame 69: 6 SID changes ---
+70,59963,osc1_freq_lo,$B1,$A7
+70,60044,osc1_pw_lo,$C0,$D7
+70,60200,osc2_freq_hi,$1F,$27
+70,60212,osc2_freq_lo,$A5,$DF
+70,60292,osc2_pw_lo,$60,$A4
+--- Frame 70: 5 SID changes ---
+71,60852,osc1_pw_lo,$D7,$EE
+71,60922,osc1_freq_lo,$A7,$B1
+71,61048,osc2_freq_hi,$27,$1D
+71,61139,osc2_pw_lo,$A4,$E8
+--- Frame 71: 4 SID changes ---
+72,61623,osc1_freq_lo,$B1,$A7
+72,61699,osc1_pw_lo,$EE,$05
+72,61712,osc1_pw_hi,$06,$07
+72,61769,osc1_freq_lo,$A7,$B1
+72,61855,osc2_freq_hi,$1D,$1F
+72,61866,osc2_freq_lo,$DF,$A5
+72,61946,osc2_pw_lo,$E8,$2C
+72,61959,osc2_pw_hi,$07,$08
+--- Frame 72: 8 SID changes ---
+73,62430,osc1_freq_lo,$B1,$A7
+73,62506,osc1_pw_lo,$05,$1C
+73,62576,osc1_freq_lo,$A7,$BB
+73,62702,osc2_freq_hi,$1F,$27
+73,62714,osc2_freq_lo,$A5,$DF
+73,62794,osc2_pw_lo,$2C,$70
+--- Frame 73: 6 SID changes ---
+74,63278,osc1_freq_lo,$BB,$A7
+74,63354,osc1_pw_lo,$1C,$33
+74,63424,osc1_freq_lo,$A7,$C5
+74,63517,osc2_freq_hi,$27,$1D
+74,63608,osc2_pw_lo,$70,$B4
+--- Frame 74: 5 SID changes ---
+75,64112,osc1_freq_lo,$C5,$A7
+75,64188,osc1_pw_lo,$33,$4A
+75,64258,osc1_freq_lo,$A7,$BB
+75,64384,osc2_freq_hi,$1D,$1F
+75,64395,osc2_freq_lo,$DF,$A5
+75,64475,osc2_pw_lo,$B4,$F8
+--- Frame 75: 6 SID changes ---
+76,64959,osc1_freq_lo,$BB,$A7
+76,65035,osc1_pw_lo,$4A,$61
+76,65105,osc1_freq_lo,$A7,$B1
+76,65191,osc2_freq_hi,$1F,$27
+76,65203,osc2_freq_lo,$A5,$DF
+76,65283,osc2_pw_lo,$F8,$3C
+76,65296,osc2_pw_hi,$08,$09
+--- Frame 76: 7 SID changes ---
+77,65767,osc1_freq_lo,$B1,$A7
+77,65843,osc1_pw_lo,$61,$78
+77,65913,osc1_freq_lo,$A7,$B1
+77,66039,osc2_freq_hi,$27,$1D
+77,66136,osc2_pw_lo,$3C,$80
+--- Frame 77: 5 SID changes ---
+78,66620,osc1_freq_lo,$B1,$A7
+78,66696,osc1_pw_lo,$78,$8F
+78,66852,osc2_freq_hi,$1D,$1F
+78,66863,osc2_freq_lo,$DF,$A5
+78,66943,osc2_pw_lo,$80,$C4
+--- Frame 78: 5 SID changes ---
+79,67509,osc1_pw_lo,$8F,$A6
+79,67579,osc1_freq_lo,$A7,$C5
+79,67712,osc2_freq_hi,$1F,$27
+79,67724,osc2_freq_lo,$A5,$DF
+79,67804,osc2_pw_lo,$C4,$08
+79,67817,osc2_pw_hi,$09,$0A
+--- Frame 79: 6 SID changes ---
+80,68308,osc1_freq_lo,$C5,$A7
+80,68384,osc1_pw_lo,$A6,$BD
+80,68454,osc1_freq_lo,$A7,$C5
+80,68540,osc2_freq_hi,$27,$1D
+80,68631,osc2_pw_lo,$08,$4C
+--- Frame 80: 5 SID changes ---
+81,69115,osc1_freq_lo,$C5,$A7
+81,69191,osc1_pw_lo,$BD,$D4
+81,69261,osc1_freq_lo,$A7,$B1
+81,69387,osc2_freq_hi,$1D,$1F
+81,69398,osc2_freq_lo,$DF,$A5
+81,69478,osc2_pw_lo,$4C,$90
+--- Frame 81: 6 SID changes ---
+82,69962,osc1_freq_lo,$B1,$A7
+82,70043,osc1_pw_lo,$D4,$EB
+82,70199,osc2_freq_hi,$1F,$27
+82,70211,osc2_freq_lo,$A5,$DF
+82,70291,osc2_pw_lo,$90,$D4
+--- Frame 82: 5 SID changes ---
+83,70851,osc1_pw_lo,$EB,$02
+83,70864,osc1_pw_hi,$07,$08
+83,70921,osc1_freq_lo,$A7,$B1
+83,71047,osc2_freq_hi,$27,$1D
+83,71138,osc2_pw_lo,$D4,$18
+83,71151,osc2_pw_hi,$0A,$0B
+--- Frame 83: 6 SID changes ---
+84,71622,osc1_freq_lo,$B1,$A7
+84,71698,osc1_pw_lo,$02,$19
+84,71768,osc1_freq_lo,$A7,$B1
+84,71861,osc2_freq_hi,$1D,$1F
+84,71872,osc2_freq_lo,$DF,$A5
+84,71952,osc2_pw_lo,$18,$5C
+84,72217,osc2_control,$41,$00
+84,72221,osc2_pw_lo,$5C,$00
+84,72233,osc2_pw_hi,$0B,$01
+84,72323,osc2_freq_hi,$1F,$1D
+84,72334,osc2_freq_lo,$A5,$DF
+84,72362,osc2_control,$00,$41
+--- Frame 84: 12 SID changes ---
+85,72779,osc1_freq_lo,$B1,$A7
+85,72855,osc1_pw_lo,$19,$30
+85,72925,osc1_freq_lo,$A7,$BB
+85,73011,osc2_freq_hi,$1D,$27
+85,73090,osc2_control,$41,$81
+85,73094,osc2_freq_hi,$27,$81
+--- Frame 85: 6 SID changes ---
+86,73500,osc1_freq_lo,$BB,$A7
+86,73576,osc1_pw_lo,$30,$47
+86,73646,osc1_freq_lo,$A7,$C5
+86,73772,osc2_freq_hi,$81,$1D
+86,73847,osc2_control,$81,$41
+86,73863,osc2_pw_lo,$00,$44
+--- Frame 86: 6 SID changes ---
+87,74347,osc1_freq_lo,$C5,$A7
+87,74423,osc1_pw_lo,$47,$5E
+87,74493,osc1_freq_lo,$A7,$BB
+87,74579,osc2_freq_hi,$1D,$1F
+87,74590,osc2_freq_lo,$DF,$A5
+87,74670,osc2_pw_lo,$44,$88
+--- Frame 87: 6 SID changes ---
+88,75154,osc1_freq_lo,$BB,$A7
+88,75230,osc1_pw_lo,$5E,$75
+88,75300,osc1_freq_lo,$A7,$B1
+88,75426,osc2_freq_hi,$1F,$27
+88,75438,osc2_freq_lo,$A5,$DF
+88,75518,osc2_pw_lo,$88,$CC
+--- Frame 88: 6 SID changes ---
+89,76002,osc1_freq_lo,$B1,$A7
+89,76078,osc1_pw_lo,$75,$8C
+89,76148,osc1_freq_lo,$A7,$B1
+89,76241,osc2_freq_hi,$27,$1D
+89,76338,osc2_pw_lo,$CC,$10
+89,76351,osc2_pw_hi,$01,$02
+--- Frame 89: 6 SID changes ---
+90,76842,osc1_freq_lo,$B1,$A7
+90,76918,osc1_pw_lo,$8C,$A3
+90,77114,osc2_freq_hi,$1D,$1F
+90,77125,osc2_freq_lo,$DF,$A5
+90,77205,osc2_pw_lo,$10,$54
+--- Frame 90: 5 SID changes ---
+91,77771,osc1_pw_lo,$A3,$BA
+91,77841,osc1_freq_lo,$A7,$C5
+91,77927,osc2_freq_hi,$1F,$27
+91,77939,osc2_freq_lo,$A5,$DF
+91,78019,osc2_pw_lo,$54,$98
+--- Frame 91: 5 SID changes ---
+92,78503,osc1_freq_lo,$C5,$A7
+92,78579,osc1_pw_lo,$BA,$D1
+92,78649,osc1_freq_lo,$A7,$C5
+92,78775,osc2_freq_hi,$27,$1D
+92,78866,osc2_pw_lo,$98,$DC
+--- Frame 92: 5 SID changes ---
+93,79350,osc1_freq_lo,$C5,$A7
+93,79426,osc1_pw_lo,$D1,$E8
+93,79496,osc1_freq_lo,$A7,$B1
+93,79582,osc2_freq_hi,$1D,$1F
+93,79593,osc2_freq_lo,$DF,$A5
+93,79673,osc2_pw_lo,$DC,$20
+93,79686,osc2_pw_hi,$02,$03
+--- Frame 93: 7 SID changes ---
+94,80157,osc1_freq_lo,$B1,$A7
+94,80238,osc1_pw_lo,$E8,$FF
+94,80441,osc2_freq_hi,$1F,$27
+94,80453,osc2_freq_lo,$A5,$DF
+94,80533,osc2_pw_lo,$20,$64
+--- Frame 94: 5 SID changes ---
+95,81113,osc1_pw_lo,$FF,$16
+95,81126,osc1_pw_hi,$08,$09
+95,81183,osc1_freq_lo,$A7,$B1
+95,81269,osc2_freq_hi,$27,$1D
+95,81360,osc2_pw_lo,$64,$A8
+--- Frame 95: 5 SID changes ---
+96,81844,osc1_freq_lo,$B1,$A7
+96,81920,osc1_pw_lo,$16,$2D
+96,81990,osc1_freq_lo,$A7,$B1
+96,82116,osc2_freq_hi,$1D,$1F
+96,82127,osc2_freq_lo,$DF,$A5
+96,82207,osc2_pw_lo,$A8,$EC
+--- Frame 96: 6 SID changes ---
+97,82691,osc1_freq_lo,$B1,$A7
+97,82767,osc1_pw_lo,$2D,$44
+97,82837,osc1_freq_lo,$A7,$BB
+97,82923,osc2_freq_hi,$1F,$27
+97,82935,osc2_freq_lo,$A5,$DF
+97,83015,osc2_pw_lo,$EC,$30
+97,83028,osc2_pw_hi,$03,$04
+--- Frame 97: 7 SID changes ---
+98,83499,osc1_freq_lo,$BB,$A7
+98,83575,osc1_pw_lo,$44,$5B
+98,83645,osc1_freq_lo,$A7,$C5
+98,83771,osc2_freq_hi,$27,$1D
+98,83862,osc2_pw_lo,$30,$74
+--- Frame 98: 5 SID changes ---
+99,84346,osc1_freq_lo,$C5,$A7
+99,84422,osc1_pw_lo,$5B,$72
+99,84492,osc1_freq_lo,$A7,$BB
+99,84585,osc2_freq_hi,$1D,$1F
+99,84596,osc2_freq_lo,$DF,$A5
+99,84676,osc2_pw_lo,$74,$B8
+--- Frame 99: 6 SID changes ---
+100,85180,osc1_freq_lo,$BB,$A7
+100,85256,osc1_pw_lo,$72,$89
+100,85326,osc1_freq_lo,$A7,$B1
+100,85452,osc2_freq_hi,$1F,$27
+100,85464,osc2_freq_lo,$A5,$DF
+100,85544,osc2_pw_lo,$B8,$FC
+--- Frame 100: 6 SID changes ---
+101,86028,osc1_freq_lo,$B1,$A7
+101,86104,osc1_pw_lo,$89,$A0
+101,86174,osc1_freq_lo,$A7,$B1
+101,86260,osc2_freq_hi,$27,$1D
+101,86357,osc2_pw_lo,$FC,$40
+101,86370,osc2_pw_hi,$04,$05
+--- Frame 101: 6 SID changes ---
+102,86841,osc1_freq_lo,$B1,$A7
+102,86917,osc1_pw_lo,$A0,$B7
+102,87113,osc2_freq_hi,$1D,$1F
+102,87124,osc2_freq_lo,$DF,$A5
+102,87204,osc2_pw_lo,$40,$84
+--- Frame 102: 5 SID changes ---
+103,87770,osc1_pw_lo,$B7,$CE
+103,87840,osc1_freq_lo,$A7,$C5
+103,87926,osc2_freq_hi,$1F,$27
+103,87938,osc2_freq_lo,$A5,$DF
+103,88018,osc2_pw_lo,$84,$C8
+--- Frame 103: 5 SID changes ---
+104,88502,osc1_freq_lo,$C5,$A7
+104,88578,osc1_pw_lo,$CE,$E5
+104,88648,osc1_freq_lo,$A7,$C5
+104,88781,osc2_freq_hi,$27,$1D
+104,88872,osc2_pw_lo,$C8,$0C
+104,88885,osc2_pw_hi,$05,$06
+--- Frame 104: 6 SID changes ---
+105,89376,osc1_freq_lo,$C5,$A7
+105,89452,osc1_pw_lo,$E5,$FC
+105,89522,osc1_freq_lo,$A7,$B1
+105,89608,osc2_freq_hi,$1D,$1F
+105,89619,osc2_freq_lo,$DF,$A5
+105,89699,osc2_pw_lo,$0C,$50
+--- Frame 105: 6 SID changes ---
+106,90183,osc1_freq_lo,$B1,$A7
+106,90264,osc1_pw_lo,$FC,$13
+106,90277,osc1_pw_hi,$09,$0A
+106,90460,osc2_freq_hi,$1F,$27
+106,90472,osc2_freq_lo,$A5,$DF
+106,90552,osc2_pw_lo,$50,$94
+--- Frame 106: 6 SID changes ---
+107,91112,osc1_pw_lo,$13,$2A
+107,91182,osc1_freq_lo,$A7,$B1
+107,91268,osc2_freq_hi,$27,$1D
+107,91359,osc2_pw_lo,$94,$D8
+--- Frame 107: 4 SID changes ---
+108,91843,osc1_freq_lo,$B1,$A7
+108,91919,osc1_pw_lo,$2A,$41
+108,92029,osc1_freq_lo,$A7,$B1
+108,92115,osc2_freq_hi,$1D,$1F
+108,92126,osc2_freq_lo,$DF,$A5
+108,92206,osc2_pw_lo,$D8,$1C
+108,92219,osc2_pw_hi,$06,$07
+--- Frame 108: 7 SID changes ---
+109,92690,osc1_freq_lo,$B1,$A7
+109,92766,osc1_pw_lo,$41,$58
+109,92836,osc1_freq_lo,$A7,$BB
+109,92929,osc2_freq_hi,$1F,$27
+109,92941,osc2_freq_lo,$A5,$DF
+109,93021,osc2_pw_lo,$1C,$60
+--- Frame 109: 6 SID changes ---
+110,93525,osc1_freq_lo,$BB,$A7
+110,93601,osc1_pw_lo,$58,$6F
+110,93711,osc1_freq_lo,$A7,$C5
+110,93797,osc2_freq_hi,$27,$1D
+110,93888,osc2_pw_lo,$60,$A4
+--- Frame 110: 5 SID changes ---
+111,94372,osc1_freq_lo,$C5,$A7
+111,94448,osc1_pw_lo,$6F,$86
+111,94518,osc1_freq_lo,$A7,$BB
+111,94604,osc2_freq_hi,$1D,$1F
+111,94615,osc2_freq_lo,$DF,$A5
+111,94695,osc2_pw_lo,$A4,$E8
+--- Frame 111: 6 SID changes ---
+112,95179,osc1_freq_lo,$BB,$A7
+112,95255,osc1_pw_lo,$86,$9D
+112,95365,osc1_freq_lo,$A7,$B1
+112,95451,osc2_freq_hi,$1F,$27
+112,95463,osc2_freq_lo,$A5,$DF
+112,95543,osc2_pw_lo,$E8,$2C
+112,95556,osc2_pw_hi,$07,$08
+--- Frame 112: 7 SID changes ---
+113,96027,osc1_freq_lo,$B1,$A7
+113,96103,osc1_pw_lo,$9D,$B4
+113,96173,osc1_freq_lo,$A7,$B1
+113,96259,osc2_freq_hi,$27,$1D
+113,96356,osc2_pw_lo,$2C,$70
+--- Frame 113: 5 SID changes ---
+114,96840,osc1_freq_lo,$B1,$A7
+114,96916,osc1_pw_lo,$B4,$CB
+114,97119,osc2_freq_hi,$1D,$1F
+114,97130,osc2_freq_lo,$DF,$A5
+114,97210,osc2_pw_lo,$70,$B4
+--- Frame 114: 5 SID changes ---
+115,97796,osc1_pw_lo,$CB,$E2
+115,97866,osc1_freq_lo,$A7,$C5
+115,97952,osc2_freq_hi,$1F,$27
+115,97964,osc2_freq_lo,$A5,$DF
+115,98044,osc2_pw_lo,$B4,$F8
+--- Frame 115: 5 SID changes ---
+116,98528,osc1_freq_lo,$C5,$A7
+116,98604,osc1_pw_lo,$E2,$F9
+116,98714,osc1_freq_lo,$A7,$C5
+116,98800,osc2_freq_hi,$27,$1D
+116,98891,osc2_pw_lo,$F8,$3C
+116,98904,osc2_pw_hi,$08,$09
+--- Frame 116: 6 SID changes ---
+117,99375,osc1_freq_lo,$C5,$A7
+117,99451,osc1_pw_lo,$F9,$10
+117,99464,osc1_pw_hi,$0A,$0B
+117,99521,osc1_freq_lo,$A7,$B1
+117,99607,osc2_freq_hi,$1D,$1F
+117,99618,osc2_freq_lo,$DF,$A5
+117,99698,osc2_pw_lo,$3C,$80
+--- Frame 117: 7 SID changes ---
+118,100182,osc1_freq_lo,$B1,$A7
+118,100263,osc1_pw_lo,$10,$27
+118,100459,osc2_freq_hi,$1F,$27
+118,100471,osc2_freq_lo,$A5,$DF
+118,100551,osc2_pw_lo,$80,$C4
+--- Frame 118: 5 SID changes ---
+119,101111,osc1_pw_lo,$27,$3E
+119,101181,osc1_freq_lo,$A7,$B1
+119,101274,osc2_freq_hi,$27,$1D
+119,101365,osc2_pw_lo,$C4,$08
+119,101378,osc2_pw_hi,$09,$0A
+--- Frame 119: 5 SID changes ---
+120,101869,osc1_freq_lo,$B1,$A7
+120,101985,osc1_pw_lo,$3E,$55
+120,102055,osc1_freq_lo,$A7,$B1
+120,102141,osc2_freq_hi,$1D,$1F
+120,102152,osc2_freq_lo,$DF,$A5
+120,102232,osc2_pw_lo,$08,$4C
+--- Frame 120: 6 SID changes ---
+121,102716,osc1_freq_lo,$B1,$A7
+121,102792,osc1_pw_lo,$55,$6C
+121,102862,osc1_freq_lo,$A7,$BB
+121,102948,osc2_freq_hi,$1F,$27
+121,102960,osc2_freq_lo,$A5,$DF
+121,103040,osc2_pw_lo,$4C,$90
+--- Frame 121: 6 SID changes ---
+122,103524,osc1_freq_lo,$BB,$A7
+122,103600,osc1_pw_lo,$6C,$83
+122,103710,osc1_freq_lo,$A7,$C5
+122,103796,osc2_freq_hi,$27,$1D
+122,103887,osc2_pw_lo,$90,$D4
+--- Frame 122: 5 SID changes ---
+123,104371,osc1_freq_lo,$C5,$A7
+123,104447,osc1_pw_lo,$83,$9A
+123,104517,osc1_freq_lo,$A7,$BB
+123,104603,osc2_freq_hi,$1D,$1F
+123,104614,osc2_freq_lo,$DF,$A5
+123,104694,osc2_pw_lo,$D4,$18
+123,104747,osc2_pw_hi,$0A,$0B
+--- Frame 123: 7 SID changes ---
+124,105178,osc1_freq_lo,$BB,$A7
+124,105254,osc1_pw_lo,$9A,$B1
+124,105364,osc1_freq_lo,$A7,$B1
+124,105457,osc2_freq_hi,$1F,$27
+124,105469,osc2_freq_lo,$A5,$DF
+124,105549,osc2_pw_lo,$18,$5C
+124,105774,osc2_control,$41,$00
+124,105778,osc2_pw_lo,$5C,$00
+124,105790,osc2_pw_hi,$0B,$01
+124,105920,osc2_freq_hi,$27,$1D
+124,105959,osc2_control,$00,$41
+--- Frame 124: 11 SID changes ---
+125,106336,osc1_freq_lo,$B1,$A7
+125,106452,osc1_pw_lo,$B1,$C8
+125,106522,osc1_freq_lo,$A7,$B1
+125,106692,osc2_control,$41,$81
+125,106696,osc2_freq_hi,$1D,$81
+--- Frame 125: 5 SID changes ---
+126,107102,osc1_freq_lo,$B1,$A7
+126,107178,osc1_pw_lo,$C8,$DF
+126,107334,osc2_freq_hi,$81,$1F
+126,107345,osc2_freq_lo,$DF,$A5
+126,107409,osc2_control,$81,$41
+126,107425,osc2_pw_lo,$00,$44
+--- Frame 126: 6 SID changes ---
+127,107991,osc1_pw_lo,$DF,$F6
+127,108101,osc1_freq_lo,$A7,$C5
+127,108187,osc2_freq_hi,$1F,$27
+127,108199,osc2_freq_lo,$A5,$DF
+127,108279,osc2_pw_lo,$44,$88
+--- Frame 127: 5 SID changes ---
+128,108763,osc1_freq_lo,$C5,$A7
+128,108839,osc1_pw_lo,$F6,$0D
+128,108852,osc1_pw_hi,$0B,$0C
+128,108909,osc1_freq_lo,$A7,$C5
+128,108995,osc2_freq_hi,$27,$1D
+128,109086,osc2_pw_lo,$88,$CC
+--- Frame 128: 6 SID changes ---
+129,109570,osc1_freq_lo,$C5,$A7
+129,109646,osc1_pw_lo,$0D,$24
+129,109756,osc1_freq_lo,$A7,$B1
+129,109849,osc2_freq_hi,$1D,$1F
+129,109860,osc2_freq_lo,$DF,$A5
+129,109940,osc2_pw_lo,$CC,$10
+129,109953,osc2_pw_hi,$01,$02
+--- Frame 129: 7 SID changes ---
+130,110444,osc1_freq_lo,$B1,$A7
+130,110525,osc1_pw_lo,$24,$3B
+130,110681,osc2_freq_hi,$1F,$27
+130,110693,osc2_freq_lo,$A5,$DF
+130,110773,osc2_pw_lo,$10,$54
+--- Frame 130: 5 SID changes ---
+131,111333,osc1_pw_lo,$3B,$52
+131,111443,osc1_freq_lo,$A7,$B1
+131,111529,osc2_freq_hi,$27,$1D
+131,111620,osc2_pw_lo,$54,$98
+--- Frame 131: 4 SID changes ---
+132,112104,osc1_freq_lo,$B1,$A7
+132,112180,osc1_pw_lo,$52,$69
+132,112250,osc1_freq_lo,$A7,$B1
+132,112336,osc2_freq_hi,$1D,$1F
+132,112347,osc2_freq_lo,$DF,$A5
+132,112427,osc2_pw_lo,$98,$DC
+--- Frame 132: 6 SID changes ---
+133,112911,osc1_freq_lo,$B1,$A7
+133,112987,osc1_pw_lo,$69,$80
+133,113097,osc1_freq_lo,$A7,$BB
+133,113183,osc2_freq_hi,$1F,$27
+133,113195,osc2_freq_lo,$A5,$DF
+133,113275,osc2_pw_lo,$DC,$20
+133,113288,osc2_pw_hi,$02,$03
+--- Frame 133: 7 SID changes ---
+134,113759,osc1_freq_lo,$BB,$A7
+134,113835,osc1_pw_lo,$80,$97
+134,113905,osc1_freq_lo,$A7,$C5
+134,113998,osc2_freq_hi,$27,$1D
+134,114089,osc2_pw_lo,$20,$64
+--- Frame 134: 5 SID changes ---
+135,114593,osc1_freq_lo,$C5,$A7
+135,114709,osc1_pw_lo,$97,$AE
+135,114779,osc1_freq_lo,$A7,$BB
+135,114865,osc2_freq_hi,$1D,$1F
+135,114876,osc2_freq_lo,$DF,$A5
+135,114956,osc2_pw_lo,$64,$A8
+--- Frame 135: 6 SID changes ---
+136,115440,osc1_freq_lo,$BB,$A7
+136,115516,osc1_pw_lo,$AE,$C5
+136,115586,osc1_freq_lo,$A7,$B1
+136,115672,osc2_freq_hi,$1F,$27
+136,115684,osc2_freq_lo,$A5,$DF
+136,115804,osc2_pw_lo,$A8,$EC
+--- Frame 136: 6 SID changes ---
+137,116248,osc1_freq_lo,$B1,$A7
+137,116364,osc1_pw_lo,$C5,$DC
+137,116434,osc1_freq_lo,$A7,$B1
+137,116520,osc2_freq_hi,$27,$1D
+137,116617,osc2_pw_lo,$EC,$30
+137,116630,osc2_pw_hi,$03,$04
+--- Frame 137: 6 SID changes ---
+138,117101,osc1_freq_lo,$B1,$A7
+138,117177,osc1_pw_lo,$DC,$F3
+138,117333,osc2_freq_hi,$1D,$1F
+138,117344,osc2_freq_lo,$DF,$A5
+138,117464,osc2_pw_lo,$30,$74
+--- Frame 138: 5 SID changes ---
+139,118030,osc1_pw_lo,$F3,$0A
+139,118043,osc1_pw_hi,$0C,$0D
+139,118100,osc1_freq_lo,$A7,$C5
+139,118193,osc2_freq_hi,$1F,$27
+139,118205,osc2_freq_lo,$A5,$DF
+139,118285,osc2_pw_lo,$74,$B8
+--- Frame 139: 6 SID changes ---
+140,118789,osc1_freq_lo,$C5,$A7
+140,118865,osc1_pw_lo,$0A,$21
+140,118935,osc1_freq_lo,$A7,$C5
+140,119021,osc2_freq_hi,$27,$1D
+140,119152,osc2_pw_lo,$B8,$FC
+--- Frame 140: 5 SID changes ---
+141,119596,osc1_freq_lo,$C5,$A7
+141,119712,osc1_pw_lo,$21,$38
+141,119782,osc1_freq_lo,$A7,$B1
+141,119868,osc2_freq_hi,$1D,$1F
+141,119879,osc2_freq_lo,$DF,$A5
+141,119959,osc2_pw_lo,$FC,$40
+141,119972,osc2_pw_hi,$04,$05
+--- Frame 141: 7 SID changes ---
+142,120443,osc1_freq_lo,$B1,$A7
+142,120524,osc1_pw_lo,$38,$4F
+142,120680,osc2_freq_hi,$1F,$27
+142,120692,osc2_freq_lo,$A5,$DF
+142,120812,osc2_pw_lo,$40,$84
+--- Frame 142: 5 SID changes ---
+143,121372,osc1_pw_lo,$4F,$66
+143,121442,osc1_freq_lo,$A7,$B1
+143,121528,osc2_freq_hi,$27,$1D
+143,121619,osc2_pw_lo,$84,$C8
+--- Frame 143: 4 SID changes ---
+144,122103,osc1_freq_lo,$B1,$A7
+144,122179,osc1_pw_lo,$66,$7D
+144,122249,osc1_freq_lo,$A7,$B1
+144,122342,osc2_freq_hi,$1D,$1F
+144,122353,osc2_freq_lo,$DF,$A5
+144,122473,osc2_pw_lo,$C8,$0C
+144,122486,osc2_pw_hi,$05,$06
+--- Frame 144: 7 SID changes ---
+145,122937,osc1_freq_lo,$B1,$A7
+145,123053,osc1_pw_lo,$7D,$94
+145,123123,osc1_freq_lo,$A7,$BB
+145,123209,osc2_freq_hi,$1F,$27
+145,123221,osc2_freq_lo,$A5,$DF
+145,123301,osc2_pw_lo,$0C,$50
+--- Frame 145: 6 SID changes ---
+146,123785,osc1_freq_lo,$BB,$A7
+146,123861,osc1_pw_lo,$94,$AB
+146,123931,osc1_freq_lo,$A7,$C5
+146,124017,osc2_freq_hi,$27,$1D
+146,124148,osc2_pw_lo,$50,$94
+--- Frame 146: 5 SID changes ---
+147,124592,osc1_freq_lo,$C5,$A7
+147,124708,osc1_pw_lo,$AB,$C2
+147,124778,osc1_freq_lo,$A7,$BB
+147,124864,osc2_freq_hi,$1D,$1F
+147,124875,osc2_freq_lo,$DF,$A5
+147,124955,osc2_pw_lo,$94,$D8
+--- Frame 147: 6 SID changes ---
+148,125439,osc1_freq_lo,$BB,$A7
+148,125515,osc1_pw_lo,$C2,$D9
+148,125585,osc1_freq_lo,$A7,$B1
+148,125671,osc2_freq_hi,$1F,$27
+148,125683,osc2_freq_lo,$A5,$DF
+148,125803,osc2_pw_lo,$D8,$1C
+148,125816,osc2_pw_hi,$06,$07
+--- Frame 148: 7 SID changes ---
+149,126247,osc1_freq_lo,$B1,$A7
+149,126363,osc1_pw_lo,$D9,$F0
+149,126433,osc1_freq_lo,$A7,$B1
+149,126526,osc2_freq_hi,$27,$1D
+149,126623,osc2_pw_lo,$1C,$60
+--- Frame 149: 5 SID changes ---
+150,127127,osc1_freq_lo,$B1,$A7
+150,127203,osc1_pw_lo,$F0,$07
+150,127216,osc1_pw_hi,$0D,$0E
+150,127359,osc2_freq_hi,$1D,$1F
+150,127410,osc2_freq_lo,$DF,$A5
+150,127490,osc2_pw_lo,$60,$A4
+--- Frame 150: 6 SID changes ---
+151,128056,osc1_pw_lo,$07,$1E
+151,128126,osc1_freq_lo,$A7,$C5
+151,128212,osc2_freq_hi,$1F,$27
+151,128224,osc2_freq_lo,$A5,$DF
+151,128304,osc2_pw_lo,$A4,$E8
+--- Frame 151: 5 SID changes ---
+152,128788,osc1_freq_lo,$C5,$A7
+152,128864,osc1_pw_lo,$1E,$35
+152,128934,osc1_freq_lo,$A7,$C5
+152,129060,osc2_freq_hi,$27,$1D
+152,129151,osc2_pw_lo,$E8,$2C
+152,129164,osc2_pw_hi,$07,$08
+--- Frame 152: 6 SID changes ---
+153,129635,osc1_freq_lo,$C5,$A7
+153,129711,osc1_pw_lo,$35,$4C
+153,129781,osc1_freq_lo,$A7,$B1
+153,129867,osc2_freq_hi,$1D,$1F
+153,129878,osc2_freq_lo,$DF,$A5
+153,129958,osc2_pw_lo,$2C,$70
+--- Frame 153: 6 SID changes ---
+154,130442,osc1_freq_lo,$B1,$A7
+154,130523,osc1_pw_lo,$4C,$63
+154,130726,osc2_freq_hi,$1F,$27
+154,130738,osc2_freq_lo,$A5,$DF
+154,130818,osc2_pw_lo,$70,$B4
+--- Frame 154: 5 SID changes ---
+155,131398,osc1_pw_lo,$63,$7A
+155,131468,osc1_freq_lo,$A7,$B1
+155,131554,osc2_freq_hi,$27,$1D
+155,131645,osc2_pw_lo,$B4,$F8
+--- Frame 155: 4 SID changes ---
+156,132129,osc1_freq_lo,$B1,$A7
+156,132205,osc1_pw_lo,$7A,$91
+156,132275,osc1_freq_lo,$A7,$B1
+156,132401,osc2_freq_hi,$1D,$1F
+156,132412,osc2_freq_lo,$DF,$A5
+156,132492,osc2_pw_lo,$F8,$3C
+156,132505,osc2_pw_hi,$08,$09
+--- Frame 156: 7 SID changes ---
+157,132976,osc1_freq_lo,$B1,$A7
+157,133052,osc1_pw_lo,$91,$A8
+157,133122,osc1_freq_lo,$A7,$BB
+157,133208,osc2_freq_hi,$1F,$27
+157,133220,osc2_freq_lo,$A5,$DF
+157,133300,osc2_pw_lo,$3C,$80
+--- Frame 157: 6 SID changes ---
+158,133784,osc1_freq_lo,$BB,$A7
+158,133860,osc1_pw_lo,$A8,$BF
+158,133930,osc1_freq_lo,$A7,$C5
+158,134056,osc2_freq_hi,$27,$1D
+158,134147,osc2_pw_lo,$80,$C4
+--- Frame 158: 5 SID changes ---
+159,134631,osc1_freq_lo,$C5,$A7
+159,134707,osc1_pw_lo,$BF,$D6
+159,134777,osc1_freq_lo,$A7,$BB
+159,134870,osc2_freq_hi,$1D,$1F
+159,134881,osc2_freq_lo,$DF,$A5
+159,134961,osc2_pw_lo,$C4,$08
+159,134974,osc2_pw_hi,$09,$0A
+--- Frame 159: 7 SID changes ---
+160,135465,osc1_freq_lo,$BB,$A7
+160,135541,osc1_pw_lo,$D6,$ED
+160,135611,osc1_freq_lo,$A7,$B1
+160,135737,osc2_freq_hi,$1F,$27
+160,135749,osc2_freq_lo,$A5,$DF
+160,135829,osc2_pw_lo,$08,$4C
+--- Frame 160: 6 SID changes ---
+161,136313,osc1_freq_lo,$B1,$A7
+161,136389,osc1_pw_lo,$ED,$04
+161,136402,osc1_pw_hi,$0E,$0F
+161,136459,osc1_freq_lo,$A7,$B1
+161,136545,osc2_freq_hi,$27,$1D
+161,136642,osc2_pw_lo,$4C,$90
+--- Frame 161: 6 SID changes ---
+162,137126,osc1_freq_lo,$B1,$A7
+162,137202,osc1_pw_lo,$04,$1B
+162,137398,osc2_freq_hi,$1D,$1F
+162,137409,osc2_freq_lo,$DF,$A5
+162,137489,osc2_pw_lo,$90,$D4
+--- Frame 162: 5 SID changes ---
+163,138055,osc1_pw_lo,$1B,$32
+163,138125,osc1_freq_lo,$A7,$C5
+163,138211,osc2_freq_hi,$1F,$27
+163,138223,osc2_freq_lo,$A5,$DF
+163,138303,osc2_pw_lo,$D4,$18
+163,138316,osc2_pw_hi,$0A,$0B
+--- Frame 163: 6 SID changes ---
+164,138787,osc1_freq_lo,$C5,$A7
+164,138863,osc1_pw_lo,$32,$49
+164,138933,osc1_freq_lo,$A7,$C5
+164,139127,osc1_control,$41,$00
+164,139131,osc1_pw_lo,$49,$00
+164,139143,osc1_pw_hi,$0F,$01
+164,139242,osc1_freq_lo,$C5,$A7
+164,139270,osc1_control,$00,$41
+164,139346,osc2_freq_hi,$27,$1D
+164,139437,osc2_pw_lo,$18,$5C
+164,139702,osc2_control,$41,$00
+164,139706,osc2_pw_lo,$5C,$00
+164,139718,osc2_pw_hi,$0B,$01
+164,139808,osc2_freq_hi,$1D,$1A
+164,139819,osc2_freq_lo,$DF,$9C
+164,139847,osc2_control,$00,$41
+--- Frame 164: 16 SID changes ---
+165,140614,osc1_control,$41,$81
+165,140618,osc1_freq_hi,$06,$81
+165,140737,osc2_freq_hi,$1A,$1F
+165,140748,osc2_freq_lo,$9C,$A5
+165,140815,osc2_control,$41,$81
+165,140819,osc2_freq_hi,$1F,$81
+--- Frame 165: 6 SID changes ---
+166,141174,osc1_freq_hi,$81,$06
+166,141290,osc1_control,$81,$41
+166,141306,osc1_pw_lo,$00,$17
+166,141462,osc2_freq_hi,$81,$27
+166,141474,osc2_freq_lo,$A5,$DF
+166,141538,osc2_control,$81,$41
+166,141554,osc2_pw_lo,$00,$44
+--- Frame 166: 7 SID changes ---
+167,142114,osc1_pw_lo,$17,$2E
+167,142184,osc1_freq_lo,$A7,$B1
+167,142270,osc2_freq_hi,$27,$1A
+167,142281,osc2_freq_lo,$DF,$9C
+167,142401,osc2_pw_lo,$44,$88
+--- Frame 167: 5 SID changes ---
+168,142845,osc1_freq_lo,$B1,$A7
+168,142961,osc1_pw_lo,$2E,$45
+168,143031,osc1_freq_lo,$A7,$B1
+168,143117,osc2_freq_hi,$1A,$1F
+168,143128,osc2_freq_lo,$9C,$A5
+168,143208,osc2_pw_lo,$88,$CC
+--- Frame 168: 6 SID changes ---
+169,143692,osc1_freq_lo,$B1,$A7
+169,143768,osc1_pw_lo,$45,$5C
+169,143838,osc1_freq_lo,$A7,$BB
+169,143931,osc2_freq_hi,$1F,$27
+169,143943,osc2_freq_lo,$A5,$DF
+169,144063,osc2_pw_lo,$CC,$10
+169,144076,osc2_pw_hi,$01,$02
+--- Frame 169: 7 SID changes ---
+170,144567,osc1_freq_lo,$BB,$A7
+170,144643,osc1_pw_lo,$5C,$73
+170,144713,osc1_freq_lo,$A7,$C5
+170,144799,osc2_freq_hi,$27,$1A
+170,144810,osc2_freq_lo,$DF,$9C
+170,144890,osc2_pw_lo,$10,$54
+--- Frame 170: 6 SID changes ---
+171,145374,osc1_freq_lo,$C5,$A7
+171,145450,osc1_pw_lo,$73,$8A
+171,145520,osc1_freq_lo,$A7,$BB
+171,145606,osc2_freq_hi,$1A,$1F
+171,145617,osc2_freq_lo,$9C,$A5
+171,145737,osc2_pw_lo,$54,$98
+--- Frame 171: 6 SID changes ---
+172,146221,osc1_freq_lo,$BB,$A7
+172,146297,osc1_pw_lo,$8A,$A1
+172,146367,osc1_freq_lo,$A7,$B1
+172,146453,osc2_freq_hi,$1F,$27
+172,146465,osc2_freq_lo,$A5,$DF
+172,146545,osc2_pw_lo,$98,$DC
+--- Frame 172: 6 SID changes ---
+173,147029,osc1_freq_lo,$B1,$A7
+173,147105,osc1_pw_lo,$A1,$B8
+173,147175,osc1_freq_lo,$A7,$B1
+173,147261,osc2_freq_hi,$27,$1A
+173,147272,osc2_freq_lo,$DF,$9C
+173,147398,osc2_pw_lo,$DC,$20
+173,147411,osc2_pw_hi,$02,$03
+--- Frame 173: 7 SID changes ---
+174,147882,osc1_freq_lo,$B1,$A7
+174,147958,osc1_pw_lo,$B8,$CF
+174,148121,osc2_freq_hi,$1A,$1F
+174,148132,osc2_freq_lo,$9C,$A5
+174,148212,osc2_pw_lo,$20,$64
+--- Frame 174: 5 SID changes ---
+175,148798,osc1_pw_lo,$CF,$E6
+175,148868,osc1_freq_lo,$A7,$C5
+175,148994,osc2_freq_hi,$1F,$27
+175,149006,osc2_freq_lo,$A5,$DF
+175,149086,osc2_pw_lo,$64,$A8
+--- Frame 175: 5 SID changes ---
+176,149570,osc1_freq_lo,$C5,$A7
+176,149646,osc1_pw_lo,$E6,$FD
+176,149716,osc1_freq_lo,$A7,$C5
+176,149802,osc2_freq_hi,$27,$1A
+176,149813,osc2_freq_lo,$DF,$9C
+176,149893,osc2_pw_lo,$A8,$EC
+--- Frame 176: 6 SID changes ---
+177,150377,osc1_freq_lo,$C5,$A7
+177,150453,osc1_pw_lo,$FD,$14
+177,150466,osc1_pw_hi,$01,$02
+177,150523,osc1_freq_lo,$A7,$B1
+177,150649,osc2_freq_hi,$1A,$1F
+177,150660,osc2_freq_lo,$9C,$A5
+177,150740,osc2_pw_lo,$EC,$30
+177,150753,osc2_pw_hi,$03,$04
+--- Frame 177: 8 SID changes ---
+178,151224,osc1_freq_lo,$B1,$A7
+178,151305,osc1_pw_lo,$14,$2B
+178,151461,osc2_freq_hi,$1F,$27
+178,151473,osc2_freq_lo,$A5,$DF
+178,151553,osc2_pw_lo,$30,$74
+--- Frame 178: 5 SID changes ---
+179,152113,osc1_pw_lo,$2B,$42
+179,152183,osc1_freq_lo,$A7,$B1
+179,152316,osc2_freq_hi,$27,$1A
+179,152327,osc2_freq_lo,$DF,$9C
+179,152407,osc2_pw_lo,$74,$B8
+--- Frame 179: 5 SID changes ---
+180,152911,osc1_freq_lo,$B1,$A7
+180,152987,osc1_pw_lo,$42,$59
+180,153057,osc1_freq_lo,$A7,$B1
+180,153143,osc2_freq_hi,$1A,$1F
+180,153154,osc2_freq_lo,$9C,$A5
+180,153234,osc2_pw_lo,$B8,$FC
+--- Frame 180: 6 SID changes ---
+181,153718,osc1_freq_lo,$B1,$A7
+181,153794,osc1_pw_lo,$59,$70
+181,153864,osc1_freq_lo,$A7,$BB
+181,153990,osc2_freq_hi,$1F,$27
+181,154002,osc2_freq_lo,$A5,$DF
+181,154082,osc2_pw_lo,$FC,$40
+181,154095,osc2_pw_hi,$04,$05
+--- Frame 181: 7 SID changes ---
+182,154566,osc1_freq_lo,$BB,$A7
+182,154642,osc1_pw_lo,$70,$87
+182,154712,osc1_freq_lo,$A7,$C5
+182,154798,osc2_freq_hi,$27,$1A
+182,154809,osc2_freq_lo,$DF,$9C
+182,154889,osc2_pw_lo,$40,$84
+--- Frame 182: 6 SID changes ---
+183,155373,osc1_freq_lo,$C5,$A7
+183,155449,osc1_pw_lo,$87,$9E
+183,155519,osc1_freq_lo,$A7,$BB
+183,155645,osc2_freq_hi,$1A,$1F
+183,155656,osc2_freq_lo,$9C,$A5
+183,155736,osc2_pw_lo,$84,$C8
+--- Frame 183: 6 SID changes ---
+184,156220,osc1_freq_lo,$BB,$A7
+184,156296,osc1_pw_lo,$9E,$B5
+184,156366,osc1_freq_lo,$A7,$B1
+184,156459,osc2_freq_hi,$1F,$27
+184,156471,osc2_freq_lo,$A5,$DF
+184,156551,osc2_pw_lo,$C8,$0C
+184,156564,osc2_pw_hi,$05,$06
+--- Frame 184: 7 SID changes ---
+185,157055,osc1_freq_lo,$B1,$A7
+185,157131,osc1_pw_lo,$B5,$CC
+185,157201,osc1_freq_lo,$A7,$B1
+185,157327,osc2_freq_hi,$27,$1A
+185,157338,osc2_freq_lo,$DF,$9C
+185,157424,osc2_pw_lo,$0C,$50
+--- Frame 185: 6 SID changes ---
+186,157908,osc1_freq_lo,$B1,$A7
+186,157984,osc1_pw_lo,$CC,$E3
+186,158140,osc2_freq_hi,$1A,$1F
+186,158151,osc2_freq_lo,$9C,$A5
+186,158231,osc2_pw_lo,$50,$94
+--- Frame 186: 5 SID changes ---
+187,158797,osc1_pw_lo,$E3,$FA
+187,158867,osc1_freq_lo,$A7,$C5
+187,158993,osc2_freq_hi,$1F,$27
+187,159005,osc2_freq_lo,$A5,$DF
+187,159085,osc2_pw_lo,$94,$D8
+--- Frame 187: 5 SID changes ---
+188,159569,osc1_freq_lo,$C5,$A7
+188,159645,osc1_pw_lo,$FA,$11
+188,159658,osc1_pw_hi,$02,$03
+188,159715,osc1_freq_lo,$A7,$C5
+188,159801,osc2_freq_hi,$27,$1A
+188,159812,osc2_freq_lo,$DF,$9C
+188,159892,osc2_pw_lo,$D8,$1C
+188,159905,osc2_pw_hi,$06,$07
+--- Frame 188: 8 SID changes ---
+189,160376,osc1_freq_lo,$C5,$A7
+189,160452,osc1_pw_lo,$11,$28
+189,160522,osc1_freq_lo,$A7,$B1
+189,160655,osc2_freq_hi,$1A,$1F
+189,160666,osc2_freq_lo,$9C,$A5
+189,160746,osc2_pw_lo,$1C,$60
+--- Frame 189: 6 SID changes ---
+190,161250,osc1_freq_lo,$B1,$A7
+190,161331,osc1_pw_lo,$28,$3F
+190,161487,osc2_freq_hi,$1F,$27
+190,161499,osc2_freq_lo,$A5,$DF
+190,161579,osc2_pw_lo,$60,$A4
+--- Frame 190: 5 SID changes ---
+191,162139,osc1_pw_lo,$3F,$56
+191,162209,osc1_freq_lo,$A7,$B1
+191,162335,osc2_freq_hi,$27,$1A
+191,162346,osc2_freq_lo,$DF,$9C
+191,162426,osc2_pw_lo,$A4,$E8
+--- Frame 191: 5 SID changes ---
+192,162910,osc1_freq_lo,$B1,$A7
+192,162986,osc1_pw_lo,$56,$6D
+192,163056,osc1_freq_lo,$A7,$B1
+192,163142,osc2_freq_hi,$1A,$1F
+192,163153,osc2_freq_lo,$9C,$A5
+192,163233,osc2_pw_lo,$E8,$2C
+192,163246,osc2_pw_hi,$07,$08
+--- Frame 192: 7 SID changes ---
+193,163717,osc1_freq_lo,$B1,$A7
+193,163793,osc1_pw_lo,$6D,$84
+193,163863,osc1_freq_lo,$A7,$BB
+193,163989,osc2_freq_hi,$1F,$27
+193,164001,osc2_freq_lo,$A5,$DF
+193,164081,osc2_pw_lo,$2C,$70
+--- Frame 193: 6 SID changes ---
+194,164565,osc1_freq_lo,$BB,$A7
+194,164641,osc1_pw_lo,$84,$9B
+194,164711,osc1_freq_lo,$A7,$C5
+194,164804,osc2_freq_hi,$27,$1A
+194,164815,osc2_freq_lo,$DF,$9C
+194,164895,osc2_pw_lo,$70,$B4
+--- Frame 194: 6 SID changes ---
+195,165399,osc1_freq_lo,$C5,$A7
+195,165475,osc1_pw_lo,$9B,$B2
+195,165585,osc1_freq_lo,$A7,$BB
+195,165671,osc2_freq_hi,$1A,$1F
+195,165682,osc2_freq_lo,$9C,$A5
+195,165762,osc2_pw_lo,$B4,$F8
+--- Frame 195: 6 SID changes ---
+196,166246,osc1_freq_lo,$BB,$A7
+196,166322,osc1_pw_lo,$B2,$C9
+196,166392,osc1_freq_lo,$A7,$B1
+196,166478,osc2_freq_hi,$1F,$27
+196,166490,osc2_freq_lo,$A5,$DF
+196,166570,osc2_pw_lo,$F8,$3C
+196,166583,osc2_pw_hi,$08,$09
+--- Frame 196: 7 SID changes ---
+197,167054,osc1_freq_lo,$B1,$A7
+197,167130,osc1_pw_lo,$C9,$E0
+197,167200,osc1_freq_lo,$A7,$B1
+197,167326,osc2_freq_hi,$27,$1A
+197,167337,osc2_freq_lo,$DF,$9C
+197,167423,osc2_pw_lo,$3C,$80
+--- Frame 197: 6 SID changes ---
+198,167907,osc1_freq_lo,$B1,$A7
+198,167983,osc1_pw_lo,$E0,$F7
+198,168139,osc2_freq_hi,$1A,$1F
+198,168150,osc2_freq_lo,$9C,$A5
+198,168230,osc2_pw_lo,$80,$C4
+--- Frame 198: 5 SID changes ---
+199,168796,osc1_pw_lo,$F7,$0E
+199,168809,osc1_pw_hi,$03,$04
+199,168906,osc1_freq_lo,$A7,$C5
+199,168999,osc2_freq_hi,$1F,$27
+199,169011,osc2_freq_lo,$A5,$DF
+199,169091,osc2_pw_lo,$C4,$08
+199,169104,osc2_pw_hi,$09,$0A
+--- Frame 199: 7 SID changes ---
