@@ -182,5 +182,5 @@ the write *sequence* agrees. Not wired into SIDM2.
 | Driver-11 table formats | `docs/analysis/DRIVER11_TABLE_FORMATS.txt`, `docs/analysis/SF2_DRIVER_BINARY_FORMAT.md` |
 | Native-driver plans | `docs/analysis/GALWAY_SF2_DRIVER_PLAN.md`, `ROMUZAK_SF2_DRIVER_PLAN.md` |
 | Active frontier handoff | `whats-next.md` (repo root) |
-| Deep RE session memories | `memory/*.md` (agent memory; per-player `*-re.md` files) |
+| Deep RE session memories | `memory/*.md` — **not a repo path**: the Claude Code auto-memory store outside this git repo (per-player `*-re.md` files); ask your assistant to recall a named file |
 | Consolidation/optimization roadmap | `docs/ROADMAP.md` |
