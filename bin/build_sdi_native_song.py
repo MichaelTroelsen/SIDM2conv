@@ -96,9 +96,30 @@ class SDIShim:
             # instrument-change schedule from the offline decode (which sound is
             # active at each frame); the onset FRAMES + pitch come from the trace.
             evs = m.decode_voice(v)
-            changes = sorted((e.frame, e.instr) for e in evs
-                             if e.kind in ('note', 'tie', 'glide'))
-            ons = list(onsets[v])
+            notes = [e for e in evs if e.kind in ('note', 'tie', 'glide')]
+            changes = sorted((e.frame, e.instr) for e in notes)
+            # LEGATO voices (DELTA/E's tie engine): the note re-gates rarely, so
+            # measure_onsets (gate-rise detection) collapses the whole voice into
+            # ~1 note (Delta_Slow v2: 1 gate-rise, but the real voice GLIDES to a
+            # new pitch every ~5 frames under one held gate). The decode marks the
+            # pitch changes but on a UNIFORM tick grid that drifts from the real
+            # (non-uniform 4/5/5 segment) lengths. So drive legato voices from the
+            # TRACE's own pitch-change frames -- drift-free and exactly the
+            # trace-driven placement Stage B is built on -- with TIES (retrig
+            # False) so the envelope never re-attacks (the real waveform stays
+            # $41). Voices whose gate-rises keep up with the decode stay on them.
+            gate = list(onsets[v])
+            legato = notes and len(gate) < 0.5 * len(notes)
+            if legato:
+                start = gate[0] if gate else 2
+                ons, prev = [], None
+                for f in range(start, len(frames)):
+                    s = freq_to_semi(frames[f][0][v]['freq'])
+                    if s >= 0 and s != prev:
+                        ons.append(f)
+                        prev = s
+            else:
+                ons = gate
             out = self.voices[v]
             ci = 0
             cur = changes[0][1] if changes else 0
@@ -107,9 +128,15 @@ class SDIShim:
                     cur = changes[ci][1]
                     ci += 1
                 nxt = ons[i + 1] if i + 1 < len(ons) else o + 8
+                # A legato voice re-gates once and then GLIDES (real waveform
+                # stays $41); emit TIES after the first note so the envelope
+                # doesn't re-attack (matching the trace) while each segment still
+                # gets its own in-cap FM capture of that portion of the glide.
+                # (One sustained note freezes at FM_CAP; retrig re-gates wrong.)
+                tie = legato and i > 0
                 out.append(MONEvent(note=_sem(frames, v, o),
                                     dur=max(1, nxt - o), instr=cur,
-                                    wprog=0, retrig=True))
+                                    wprog=0, retrig=not tie, tie=tie))
 
     @property
     def frames_per_tick(self):
