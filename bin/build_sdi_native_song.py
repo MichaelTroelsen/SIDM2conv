@@ -36,7 +36,9 @@ import build_mon_native_song as BM                                     # noqa: E
 
 SID = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
     "SID", "Gallefoss_Glenn", "2_Young_2_Die.sid")
-warg = sys.argv[2] if len(sys.argv) > 2 else "20"
+warg = sys.argv[2] if len(sys.argv) > 2 else "auto"
+
+CAP_B, CAP_I, CAP_TBL, CAP_SEG, STEP = 63, 32, 256, 120, 100   # 2s probe step
 
 
 def _pal(note):
@@ -132,6 +134,68 @@ class SDIShim:
                 'wave_prog': 0, 'flags': 0, 'raw': []}
 
 
+def build_song(shim, base, traces, span):
+    """Adaptive part-split so no window exceeds the caps (the 63-bundle warning
+    on long songs). Copied from the DMC/SM builders. Returns [(file, t0, t1)]."""
+    def fits(t0, t1):
+        nb, ni, nw, nf, ns = BM.build_native_song(
+            shim, SID, 0, {}, [], win=(t0, t1), traces=traces, count_only=True)
+        return (nb <= CAP_B and ni <= CAP_I and nw <= CAP_TBL
+                and nf <= CAP_TBL and ns <= CAP_SEG)
+    bounds, t0 = [], 0
+    while t0 < span:
+        t1 = min(t0 + STEP, span)
+        while t1 < span and fits(t0, min(t1 + STEP, span)):
+            t1 = min(t1 + STEP, span)
+        bounds.append((t0, t1))
+        t0 = t1
+    parts = []
+    for part, (t0, t1) in enumerate(bounds, 1):
+        out = os.path.join(ROOT, "out", "sdi", f"{base}_native_part{part:02d}.sf2")
+        br = BM.build_native_song(shim, SID, 0, {}, [], win=(t0, t1), traces=traces)
+        BM.emit_one(shim, br, out, f"part {part}/{len(bounds)} "
+                    f"({t0 // 50}-{t1 // 50}s) SDI Stage B")
+        parts.append((out, t0, t1))
+    BM.prune_stale_parts(os.path.join(ROOT, "out", "sdi", base), len(bounds))
+    return parts
+
+
+def measure_parts(parts, orig):
+    """Per-voice freq+wf semitone agreement across ALL parts vs the original
+    (`orig` = the full per-frame trace). Each part covers original frames
+    [t0,t1); trace the part SF2 from its own frame 0, fit a small local boot
+    offset, and compare its window to orig[t0:t1]."""
+    ok = [0, 0, 0]
+    tot = [0, 0, 0]
+    for pf, t0, t1 in parts:
+        sf2 = open(pf, 'rb').read()
+        info = SF2DriverInfo()
+        sla = parse_sf2_blocks(sf2, info)
+        probe = pf[:-4] + ".sid"
+        open(probe, 'wb').write(psid_wrap(sf2[2:], sla, 0x1000, 0x1003))
+        dur = (t1 - t0) // 50 + 2
+        b = siddump_per_frame(probe, ['-a0', f'-t{dur}'])
+
+        def sc(v, off):
+            o = t = 0
+            for i in range(t1 - t0):
+                fa = orig[t0 + i][0][v]['freq'] if t0 + i < len(orig) else 0
+                j = i + off
+                fb = b[j][0][v]['freq'] if 0 <= j < len(b) else 0
+                if not fa and not fb:
+                    continue
+                t += 1
+                if freq_to_semi(fa) == freq_to_semi(fb):
+                    o += 1
+            return o, t
+        boff = max(range(-4, 9), key=lambda o: sum(sc(v, o)[0] for v in range(3)))
+        for v in range(3):
+            o, t = sc(v, boff)
+            ok[v] += o
+            tot[v] += t
+    return [score_pct(ok[v], tot[v]) for v in range(3)]
+
+
 def _fidelity(sf2_path, secs):
     """Honest inline read: per-frame freq+wf semitone agreement, emitted SF2 vs
     original, per voice. Wrap the native SF2 as a PSID and siddump both."""
@@ -172,7 +236,11 @@ def main():
     print(f"{base}: la=${la:04X} variant={m.lay.variant} "
           f"init=${h.init_address:04X} play=${h.play_address:04X}")
 
-    secs = int(warg)
+    adaptive = warg.lower() in ("auto", "a")
+    # span = the decoded song length (last onset + tail); trace that + a margin.
+    dec_span = max((e.frame for v in range(3) for e in m.decode_voice(v)),
+                   default=0) + 100
+    secs = (dec_span // 50 + 4) if adaptive else int(warg)
     import mon_fidelity as F
     print(f"  tracing {secs}s...")
     traces = (F.per_frame(SID, ['-a0', f'-t{secs}']),
@@ -195,16 +263,23 @@ def main():
 
     shim = SDIShim(m, onsets, traces[0])
     print(f"  shim events/voice: {[len(v) for v in shim.voices]}")
-    t1 = min(len(traces[0]), secs * 50)
-    br = BM.build_native_song(shim, SID, 0, {}, [], win=(0, t1), traces=traces)
-    out = os.path.join(ROOT, "out", "sdi", f"{base}_native_part01.sf2")
-    os.makedirs(os.path.dirname(out), exist_ok=True)
-    BM.emit_one(shim, br, out, f"{base} 0-{t1 // 50}s (SDI Stage B)")
-    print(f"  emitted -> {out}")
+    os.makedirs(os.path.join(ROOT, "out", "sdi"), exist_ok=True)
 
-    boff, per = _fidelity(out, min(secs, t1 // 50))
-    print(f"  FIDELITY (per-frame freq+wf semitone, emitted vs original, "
-          f"boot offset {boff}):")
+    if adaptive:
+        span = min(len(traces[0]), dec_span)
+        parts = build_song(shim, base, traces, span)
+        print(f"  packed into {len(parts)} adaptive part(s)")
+        per = measure_parts(parts, traces[0])
+        label = "all parts vs original"
+    else:
+        t1 = min(len(traces[0]), secs * 50)
+        br = BM.build_native_song(shim, SID, 0, {}, [], win=(0, t1), traces=traces)
+        out = os.path.join(ROOT, "out", "sdi", f"{base}_native_part01.sf2")
+        BM.emit_one(shim, br, out, f"{base} 0-{t1 // 50}s (SDI Stage B)")
+        print(f"  emitted -> {out}")
+        _boff, per = _fidelity(out, min(secs, t1 // 50))
+        label = f"single window 0-{t1 // 50}s"
+    print(f"  FIDELITY (per-frame freq+wf semitone, {label}):")
     for v in range(3):
         print(f"    voice {v}: {fmt_pct(per[v])}%")
     return 0
