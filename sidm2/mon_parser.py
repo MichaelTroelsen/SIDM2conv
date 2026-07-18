@@ -343,12 +343,30 @@ class MON:
         (6-bit) -- a strictly WIDER mask is safe to read even for files that don't
         need it (any length under the old mask decodes identically; the old $1F
         default was silently wrapping any real length >=32 into a bogus value),
-        so this is read for every non-classic file rather than gated to one."""
+        so this is read for every non-classic file rather than gated to one.
+
+        ROW TIE flag (bit5 of the ctrl byte, Tel_1 disassembled $114A-$1166):
+        the "sustain tick" handler that runs every frame a note is still
+        counting down checks `LDA $170E,X; AND #$20; BNE skip` (the row's OWN
+        stored ctrl byte) BEFORE writing a gate-off at the note's last tick
+        (`LDA wf; AND #$FE; STA $D404,Y`) -- bit5 SET on a row means "skip my
+        own end-of-note gate-off", which leaves the SID gate bit held high
+        into the next row, so that row's fresh waveform write (same gate
+        value, no falling edge) does NOT retrigger the envelope on real
+        hardware even though a new note byte was decoded. Detected via the
+        `BD ?? ?? 29 20 D0` signature (LDA tab,X; AND #$20; BNE) AND gated to
+        `row_mask == 0x1F` -- files whose length mask is wider (`$3F`/`$7F`)
+        already consume bit5 as part of the length field, so it can't also be
+        a tie flag there (checked empirically too: every already-EXACT file
+        with this signature never sets bit5 in its own song data, so enabling
+        this is a no-op for them; it only changes behavior for files that
+        actually use bit5)."""
         self._tel_repeat = False
         self._tel_pat_off1 = False
         self._tel_classic_row = False
         self._tel_row_ctrl_off1 = False
         self._tel_row_len_mask = 0x1F
+        self._tel_row_tie = False
         if po is None:
             return
         pre = d[max(0, po - 40):po]
@@ -379,6 +397,9 @@ class MON:
                     self._tel_row_len_mask = win[ai + 1]
                     if bytes(win[:ai]).find(bytes([0x38, 0xE9, 0x01])) != -1:
                         self._tel_row_ctrl_off1 = True
+            if self._tel_row_len_mask == 0x1F:
+                tie_sig = _find(d, 0xBD, None, None, 0x29, 0x20, 0xD0)
+                self._tel_row_tie = tie_sig is not None
 
     def _locate_tel_instr_fields(self, d, ad_io):
         """B1-tel instrument table shape check (disassembled from Tel_1, whose
@@ -574,6 +595,8 @@ class MON:
         classic = getattr(self, "_tel_classic_row", False)
         row_off1 = getattr(self, "_tel_row_ctrl_off1", False)
         row_mask = getattr(self, "_tel_row_len_mask", 0x1F)
+        row_tie = getattr(self, "_tel_row_tie", False)
+        tie_pending = False               # set by the PRECEDING row's bit5 ($114D-$114F)
         blocks = []
         i = guard = 0
         while guard < 2048:
@@ -608,13 +631,18 @@ class MON:
                         if ctrl & 0x40:                 # bit6: gate-off / rest (no note byte)
                             blk.append(MONEvent(note=-1, dur=length, instr=instr,
                                                 retrig=False, rest=True))
+                            tie_pending = False          # explicit gate-off: next row is fresh
                             continue
                         if ctrl & 0x80:                 # bit7: instrument command byte precedes note
                             instr = self._u8(pp + j); j += 1
                         note = self._u8(pp + j); j += 1
                         if note == 0xFF:
                             break
-                        retrig = not self._silent_instr(instr)  # instr 0 = rest slot
+                        retrig = (not self._silent_instr(instr)) and not tie_pending
+                        if row_tie:                      # bit5 SET: this row skips its own
+                            tie_pending = bool(ctrl & 0x20)  # end-of-note gate-off ($114D-$1166),
+                                                              # so the NEXT row inherits gate=1
+                                                              # unbroken -> no real retrigger there
                         blk.append(MONEvent(note=(note + transpose) & 0x7F, dur=length,
                                             instr=instr, retrig=retrig))
                 if blk:

@@ -231,6 +231,33 @@ untouched.
     EXTRA onset at tick+1 with the same pitch — an instrument-driven gate blip the
     pattern never encodes, i.e. the **same Stage-B category as the middle tier**,
     not a further grammar gap. See `memory/mainstream-mon-tel.md`.
+  - **Same-day #5 (new session): the row's OWN bit5 is a TIE flag, not noise.**
+    Tel_1's remaining bug (24%, "extra ~2-tick gap" per the prior handoff) was
+    diagnosed via a raw zig64/vsid register trace (`osc1_control` writes), not
+    static byte guessing alone: a fast descending run alternated real onsets with
+    siddump-BRACKETED (legato) notes every other row, even though every row's
+    ctrl/note decode was already correct. Disassembling the "sustain tick"
+    handler ($114A-$1166, runs every frame a note is still counting down) found
+    `LDA $170E,X (the row's own stored ctrl byte); AND #$20; BNE skip-gate-off`
+    — bit5 SET on a row means "don't release the gate at my own last tick",
+    which leaves the SID gate held high into the next row, so that row's fresh
+    waveform write (same gate value, no falling edge) does NOT retrigger the
+    envelope on real hardware even though the pattern data changed to a genuinely
+    new note. Implemented as `_tel_row_tie` (`sidm2/mon_parser.py`): detected via
+    the `BD ?? ?? 29 20 D0` signature, gated to `row_mask == 0x1F` (files whose
+    length mask is wider already consume bit5 as part of the length field, so it
+    can't double as a tie flag there — checked empirically too: every
+    already-EXACT file carrying this signature never sets bit5 in its own song
+    data, so enabling it is a no-op for them). **Tel_1 24%→86%** (122/142); one
+    genuine residual remains starting frame464, hand-traced via the SAME register
+    trace to a DIFFERENT mechanism — an instrument wave-program/arpeggio effect
+    that does its own independent mid-note gate cycling (confirmed: gate toggles
+    off only 1 frame after the onset, far too early to be the end-of-note
+    mechanism) — real Stage-B territory (unmodelled wave-program engine), not a
+    further row-grammar bug. Full 23-file resweep + the 5-check byte-exact gate:
+    zero regressions. Monitor_Madness_1/2 and Trying_Out_2 also carry this same
+    signature but stayed at ~0-2% — they have a different, more fundamental bug
+    the tie fix doesn't reach (see `memory/mainstream-mon-tel.md`).
 
 ## Hard-won lessons (encoded in code/tests — do not re-learn)
 
