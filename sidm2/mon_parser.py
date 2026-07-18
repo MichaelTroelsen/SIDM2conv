@@ -333,11 +333,20 @@ class MON:
         bit7 tested for the instrument-command branch), Bantam's compile does
         `SEC;SBC#$01` on the ctrl byte BEFORE both the length mask and the bit7
         test -- so its instrument-command threshold is raw-ctrl>=$81, one higher
-        than every other compile in the bucket."""
+        than every other compile in the bucket.
+
+        ROW LENGTH MASK (read directly from each file's own `AND #imm` operand,
+        not assumed): 05-09-87 masks `$1F` (5-bit length); Zynon_Zak's otherwise
+        byte-identical dispatch ($C098: `AND #$3F`, disassembled) masks `$3F`
+        (6-bit) -- a strictly WIDER mask is safe to read even for files that don't
+        need it (any length under the old mask decodes identically; the old $1F
+        default was silently wrapping any real length >=32 into a bogus value),
+        so this is read for every non-classic file rather than gated to one."""
         self._tel_repeat = False
         self._tel_pat_off1 = False
         self._tel_classic_row = False
         self._tel_row_ctrl_off1 = False
+        self._tel_row_len_mask = 0x1F
         if po is None:
             return
         pre = d[max(0, po - 40):po]
@@ -364,8 +373,10 @@ class MON:
             if cf is not None:
                 win = d[cf:cf + 24]
                 ai = next((i for i in range(len(win) - 1) if win[i] == 0x29), None)
-                if ai is not None and bytes(win[:ai]).find(bytes([0x38, 0xE9, 0x01])) != -1:
-                    self._tel_row_ctrl_off1 = True
+                if ai is not None and ai + 1 < len(win):
+                    self._tel_row_len_mask = win[ai + 1]
+                    if bytes(win[:ai]).find(bytes([0x38, 0xE9, 0x01])) != -1:
+                        self._tel_row_ctrl_off1 = True
 
     def _locate_supremacy(self, d):
         """Detect + locate the SUPREMACY variant (a flat MoN player, play=$1003, no
@@ -513,6 +524,7 @@ class MON:
         st = {'transpose': 0, 'instr_base': 0, 'instr': 0, 'stored': 0, 'wprog': 0}
         classic = getattr(self, "_tel_classic_row", False)
         row_off1 = getattr(self, "_tel_row_ctrl_off1", False)
+        row_mask = getattr(self, "_tel_row_len_mask", 0x1F)
         blocks = []
         i = guard = 0
         while guard < 2048:
@@ -542,7 +554,8 @@ class MON:
                         if row_off1:                     # Bantam: length/bit7 test the ctrl-1'd
                             ctrl = (ctrl - 1) & 0xFF      # value, not the raw byte (see
                                                           # _locate_b1_row_variant)
-                        length = (ctrl & 0x1F) + 1
+                        length = (ctrl & row_mask) + 1  # mask read from this file's own
+                                                          # code (_locate_b1_row_variant)
                         if ctrl & 0x40:                 # bit6: gate-off / rest (no note byte)
                             blk.append(MONEvent(note=-1, dur=length, instr=instr,
                                                 retrig=False, rest=True))

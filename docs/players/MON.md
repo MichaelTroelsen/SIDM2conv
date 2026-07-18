@@ -144,17 +144,18 @@ untouched.
   gate-off/rest (1 byte, no note); **bit7** → an instrument command byte precedes
   the note; else ctrl+note; note = raw+transpose; `$FF` ends the pattern.
 
-**Status (onset-EXACT via `mon_validate`, 2026-07-18 update):**
-- **6 EXACT** (basic grammar): 05-09-87, Ikari_Union, Lost_in_China, Scout,
-  Trying_Out_2_v1, Trying_Out_3.
-- **~7 middle (60–88%)** — pattern-clean; residual is **instrument-generated
-  arp/legato** (Beginning V3 gates once at frame 60 then arps C#5/C#6 the pattern
-  never encodes). Stage-B / instrument-modelling territory, not a grammar gap.
-- **2 files LIFTED via 3 per-file-gated dispatch quirks** (`_locate_b1_row_variant`,
-  disassembled from Alloyrun/Starball, all signature-detected so untouched files are
-  provably unaffected — 05-09-87/Scout/Bantam/etc. share fragments of the same
-  compiled code but never exercise these paths in their own song data):
-  - **orderlist REPEAT** (`$40-$7F`, no bit7): the byte the memory doc flagged as
+**Status (onset-EXACT via `mon_validate`, 2026-07-18 update — 11/24 EXACT, was 6):**
+- **11 EXACT**: the original 6 (05-09-87, Ikari_Union, Lost_in_China, Scout,
+  Trying_Out_2_v1, Trying_Out_3) + 5 that turned out to need only the row
+  length-mask fix below, not new grammar (Happy_JT, Beginning, Beginning_v2,
+  DemoSong, Reggae_Example — see same-day #3).
+- **~2 near-exact (92%/78%)** — Orion_Intro, Trying_Out; single-voice residual,
+  not yet diagnosed (didn't get the Alloyrun-style hand-trace this session).
+- **Same-day follow-up (3 rounds, all in `_locate_b1_row_variant`, all
+  signature-detected so untouched files are provably unaffected)** — 05-09-87/
+  Scout/Bantam/etc. share fragments of the same compiled code but never exercise
+  these paths in their own song data:
+  - **Same-day #1: Alloyrun/Starball.** **orderlist REPEAT** (`$40-$7F`, no bit7): the byte the memory doc flagged as
     "`$43` used as a pattern index → OOR" is not a pattern index at all — it's
     `AND #$40; BEQ; AND #$3F; STA,X reload` (disassembled at Alloyrun `$E127-$E137`,
     **byte-identical in Scout's dispatch**, which stayed EXACT because Scout's data
@@ -181,8 +182,27 @@ untouched.
     other compile in the bucket. Detected structurally (`_tel_row_ctrl_off1`: find
     the row-ctrl fetch via the same zp the tbl_pat lookup uses, then check for
     `SEC;SBC#$01` before the first `AND #imm`) so it fires only for files with that
-    exact byte sequence. **Bantam 2.7%→73%** (67/92, V0 now EXACT). Zero change to
-    every other bucket file (full resweep, including Alloyrun/Starball unchanged).
+    exact byte sequence. **Bantam 2.7%→73%.**
+  - **Same-day #3: the row length mask was never actually `$1F` everywhere.** The
+    original grammar RE (05-09-87) read `AND #$1F` for the row-ctrl length field
+    and that became the hardcoded Python constant — but disassembling Zynon_Zak
+    showed an otherwise byte-identical dispatch masking `AND #$3F` (`$C098`) one
+    bit wider. Rather than special-case Zynon_Zak, `_locate_b1_row_variant` now
+    reads the **actual mask operand from each file's own code** at the row-ctrl
+    site (`_tel_row_len_mask`) and uses it directly — safe by construction: any
+    file whose real lengths fit under the old `$1F` decodes identically (the extra
+    mask bits are simply unused), so this can only fix files that were silently
+    wrapping longer notes, never regress a working one. **5 more files hit
+    onset-EXACT this same change**: Happy_JT, Beginning, Beginning_v2, DemoSong,
+    Reggae_Example (all real masks were `$3F`/`$7F`, none needed a repeat/off1/
+    classic-row quirk — length wrapping was the ENTIRE gap). Plus **Zynon_Zak
+    35.6%→84%**, **Orion_Intro 77%→92%**, **Trying_Out 61%→78%**, and Bantam
+    ticked up again to **77%** (its `$7F` mask, read for real once `_tel_row_len_mask`
+    covers the off1 branch too). **11/24 bucket files are now onset-EXACT** (was
+    6). Zero change to Alloyrun/Starball (classic-row grammar bypasses this mask
+    entirely) or the untouched broken files (Tel_1, Monitor_Madness_1/2,
+    Trying_Out_2, Chrome_Met1 — confirmed unaffected because their own real mask
+    already reads `$1F`, matching the old default).
   - **Residual on Alloyrun V1**: raw-byte reconstruction confirms the decode is
     correct (dur=10 note=D#2 matches the pattern bytes exactly) but siddump shows an
     EXTRA onset at tick+1 with the same pitch — an instrument-driven gate blip the
