@@ -22,7 +22,7 @@ SIDM2 analyzes SID files and extracts music data for conversion to SID Factory I
 - ✅ **HTML annotation tool** with 3,700+ semantic annotations per file
 - ✅ **Interactive trace visualization** for frame-by-frame register analysis
 - ✅ **Validation dashboard** with enhanced search and accuracy trends
-- ✅ **1,400+ unit tests** with 100% pass rate
+- ✅ **1,900+ unit tests**
 - ✅ **658+ SID files** cataloged and tested
 
 **Note**: This is an experimental reverse-engineering tool. Results may require manual refinement in SID Factory II.
@@ -726,7 +726,7 @@ SIDM2/
 │   ├── conversion_cockpit_gui.py, sf2_viewer_gui.py
 │   ├── siddump_complete.py, sidwinder_trace.py
 │   ├── generate_stinsen_html.py
-│   └── test_*.py       # 200+ unit tests
+│   └── test_*.py       # ~1,900 unit tests
 ├── scripts/            # Production conversion tools
 │   ├── sid_to_sf2.py, sf2_to_sid.py
 │   └── validate_sid_accuracy.py
@@ -736,7 +736,7 @@ SIDM2/
 │   └── vsid_wrapper.py
 ├── drivers/laxity/     # Custom Laxity driver
 ├── G5/drivers/         # SF2 driver templates
-├── docs/               # Documentation (50+ files)
+├── docs/               # Documentation (245 files)
 ├── analysis/           # Generated HTML documentation
 └── *.bat               # Windows launchers
 ```
@@ -746,7 +746,7 @@ SIDM2/
 ### Running Tests
 
 ```bash
-# All tests (200+)
+# All tests (~1,900)
 test-all.bat                    # Windows
 python -m pytest                # macOS/Linux
 
@@ -824,9 +824,9 @@ Located in `tools/` directory (Windows binaries, optional fallbacks):
 
 ### Codebase
 
-- **Python Files**: ~37 active scripts
-- **Test Coverage**: 233+ tests across 17+ test files
-- **Documentation**: 52+ markdown files (4,800+ lines of user guides)
+- **Python Files**: ~528 (`pyscript/` 202, `bin/` 176, `sidm2/` 128, `scripts/` 22)
+- **Tests**: 1916 collected across 125 `test_*.py` files (`test-all.bat` runs 7 suites)
+- **Documentation**: ~192 live markdown files (245 under `docs/`, incl. archive)
 - **Lines of Code**: ~17,500 (Python + documentation + tests)
 
 ### Performance
@@ -839,7 +839,7 @@ Located in `tools/` directory (Windows binaries, optional fallbacks):
 
 ### Test Results
 
-- **Unit Tests**: 233+ tests, 100% pass rate
+- **Unit Tests**: 1916 collected
 - **Dashboard Tests**: 17 tests for validation dashboard v2.0
 - **Trace Tests**: 16 tests for SIDwinder HTML exporter
 - **Integration Tests**: 18 file validation suite, 100% success

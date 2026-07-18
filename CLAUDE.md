@@ -2,14 +2,14 @@
 
 **SIDM2 v3.21.0** | SID→SF2 Converter | C64 Music Tools | Updated 2026-07-16
 
-Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs (4,300+ lines), CI/CD (5 workflows), 200+ tests
+Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs, CI/CD (5 workflows), ~1,900 tests
 
 ---
 
 ## Critical Rules
 
 1. **Keep Root Clean**: ALL .py files in `pyscript/` only. No .py in root.
-2. **Run Tests**: `test-all.bat` (164+ tests) before committing
+2. **Run Tests**: `test-all.bat` (7 suites) before committing; `python -m pytest` runs all ~1,900
 3. **Update Docs**: Update README.md, CLAUDE.md, docs/ when changing code
 
 **Enforcement**: `cleanup.bat --scan` | **See**: `docs/guides/ROOT_FOLDER_RULES.md`
@@ -41,7 +41,7 @@ python pyscript/generate_stinsen_html.py file.sid       # HTML docs (3,700+ anno
 
 # Batch Operations
 batch-convert-laxity.bat      # All Laxity files
-test-all.bat                  # 200+ tests
+test-all.bat                  # 7 suites (pytest runs all ~1,900)
 cleanup.bat                   # Clean + inventory
 
 # Python Tools
@@ -108,7 +108,7 @@ SIDM2/
 ├── pyscript/           # ALL Python scripts (v2.6)
 │   ├── siddump_complete.py, sidwinder_trace.py  # Python tools
 │   ├── conversion_cockpit_gui.py, sf2_viewer_gui.py
-│   └── test_*.py                    # 200+ unit tests
+│   └── test_*.py                    # ~1,900 unit tests
 ├── scripts/            # Production tools
 │   ├── sid_to_sf2.py               # Main converter
 │   ├── sf2_to_sid.py, validate_sid_accuracy.py
@@ -169,7 +169,7 @@ SIDM2/
 
 **Technical**: `docs/ARCHITECTURE.md`, `docs/COMPONENTS_REFERENCE.md`, `docs/reference/SF2_FORMAT_SPEC.md`
 
-**Players (consolidated 2026-07-05)**: `docs/players/PLAYBOOK.md` (**the cross-player porting method** — staged Stage A/B pipeline, size caps, gotchas, new-player checklist), `docs/players/README.md` (support index), per-player docs (`LAXITY`, `GALWAY`, `MON`, `ROMUZAK`, `FUTURECOMPOSER`, `DRIVER11`, `NP20`, `CLUSTERS`), `docs/reference/ACCURACY_MATRIX.md` (accuracy source of truth, v3.21.0), `docs/ROADMAP.md` (consolidation/optimization plan)
+**Players (consolidated 2026-07-05)**: `docs/players/PLAYBOOK.md` (**the cross-player porting method** — staged Stage A/B pipeline, size caps, gotchas, new-player checklist), `docs/players/README.md` (support index), per-player docs (`LAXITY`, `GALWAY`, `MON`, `ROMUZAK`, `HUBBARD` + `HUBBARD_V2_PLAN`, `KIMMEL`, `DEENEN`, `DMC`, `SOUNDMONITOR`, `SDI`, `FUTURECOMPOSER`, `DRIVER11`, `NP20`, `CLUSTERS`), `PATTERNS.md` (**the RE technique catalog** — cited as D2/D4 below), `NATIVE_DRIVER.md`, `docs/reference/ACCURACY_MATRIX.md` (accuracy source of truth, v3.21.0), `docs/ROADMAP.md` (consolidation/optimization plan)
 
 **Complete index**: `docs/INDEX.md`
 
@@ -179,7 +179,7 @@ SIDM2/
 
 **Tools**: Task(Explore) for broad searches | Read/Grep for specific files | EnterPlanMode for multi-file changes
 
-**Before Commit**: Run `test-all.bat` (200+ tests) | Update README.md, CLAUDE.md, docs/ if changed | Run `update-inventory.bat` if files added/removed
+**Before Commit**: Run `test-all.bat` (7 suites) | Update README.md, CLAUDE.md, docs/ if changed | Run `update-inventory.bat` if files added/removed
 
 **After building native SF2s**: run `py -3 pyscript/gen_sf2_index.py` to refresh the complete build inventory (all songs + part counts) in `docs/SF2.md` (the curated fidelity tables above the GENERATED markers are hand-maintained).
 

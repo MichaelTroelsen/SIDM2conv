@@ -1018,7 +1018,7 @@ $0F03:       Filter table
    - Formats and prints conversion success message
    - Includes driver selection info and validation results
 
-**Availability Flags** (12 total):
+**Availability Flags** (13 total):
 - `LAXITY_CONVERTER_AVAILABLE`
 - `GALWAY_CONVERTER_AVAILABLE`
 - `SIDWINDER_INTEGRATION_AVAILABLE`
@@ -1031,8 +1031,9 @@ $0F03:       Filter table
 - `OUTPUT_ORGANIZER_AVAILABLE`
 - `SIDDUMP_INTEGRATION_AVAILABLE`
 - `ACCURACY_INTEGRATION_AVAILABLE`
+- `ASM_ANNOTATION_AVAILABLE`
 
-**Module Exports** (`__all__`): All 7 functions + all 12 availability flags
+**Module Exports** (`__all__`): All 7 functions + all 13 availability flags
 
 **Test Coverage**: 65.89% (299/445 statements covered, 34/34 tests passing)
 - Statement coverage: 299/445 (65.89%)
@@ -1055,7 +1056,7 @@ if LAXITY_CONVERTER_AVAILABLE and player_type == "NewPlayer_v21/Laxity":
 ```
 
 **Related Files**:
-- `scripts/sid_to_sf2.py` - Thin CLI wrapper that imports from this module (802 lines)
+- `scripts/sid_to_sf2.py` - Thin CLI wrapper that imports from this module (874 lines)
 - `pyscript/test_sid_to_sf2_script.py` - Unit tests (24/24 passing, 100% pass rate)
 - `docs/implementation/SID_TO_SF2_REFACTORING_SUMMARY.md` - Refactoring documentation
 
@@ -1075,5 +1076,5 @@ if LAXITY_CONVERTER_AVAILABLE and player_type == "NewPlayer_v21/Laxity":
 - `docs/reference/CONVERSION_STRATEGY.md` - Laxity to SF2 mapping
 - `docs/guides/VALIDATION_GUIDE.md` - Comprehensive validation system guide (v2.0.0)
 - `archive/cleanup_2026-04-28/old_docs/old_analysis/ACCURACY_ROADMAP.md` (archived) - Accuracy improvement plan
-- `PIPELINE_EXECUTION_REPORT.md` - Pipeline execution analysis
+- `docs/archive/2025-12-06/PIPELINE_EXECUTION_REPORT.md` (archived) - Pipeline execution analysis
 - `docs/implementation/SID_TO_SF2_REFACTORING_SUMMARY.md` - Conversion pipeline refactoring

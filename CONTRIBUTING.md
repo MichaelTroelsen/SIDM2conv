@@ -464,7 +464,7 @@ Complete developer guide covering:
 - **Performance Optimization** - Profiling and bottleneck identification
 
 ### **Architecture Documentation**
-**See**: `docs/ARCHITECTURE.md` (834 lines)
+**See**: `docs/ARCHITECTURE.md` (1,079 lines)
 
 Reference documentation including:
 - Detailed conversion pipeline flowcharts

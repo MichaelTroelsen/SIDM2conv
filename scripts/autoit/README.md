@@ -232,7 +232,7 @@ If AutoIt doesn't work for your use case:
    - See: `docs/guides/SF2_EDITOR_MANUAL_WORKFLOW_GUIDE.md`
 
 2. **Other Automation Tools** - AutoHotkey, Sikuli, etc.
-   - See: `docs/analysis/GUI_AUTOMATION_COMPREHENSIVE_ANALYSIS.md`
+   - See: `docs/archive/analysis_2026-01-02/GUI_AUTOMATION_COMPREHENSIVE_ANALYSIS.md` (archived)
 
 ## Version History
 
