@@ -197,14 +197,19 @@ v1 residuals are the known drum/hat re-gate capture class.
 - **noise-aware metric** — a noise frame is scored on its waveform, not a
   meaningless pitch (2_Young v1 85→100);
 - the **C-class `$D404=$08` TEST gate is a non-issue** (the capture sidesteps it);
-- **variant V / self-IRQ (`play=$0000`) is refused** (needs the 2×/4× wrapper).
+- **variant V / self-IRQ (`play=$0000`) driven directly** — siddump/measure_onsets
+  choke on it, so the module (init/play/fast at base/+3/+6, located via the
+  wrapper's `JSR base; CLI`) is driven via py65 at `v_mult` play-calls/frame; that
+  py65 trace is the ground truth, and the emitted SF2 is validated against it.
+  **All 6 V files build** (Different_Reality 99.1/99.4/99.1, Oh_Boy 99.7/99.7/80.3,
+  Implocation 97/99.8/96, …).
 
-Result: most E/DELTA/C voices are **98-100%** (2_Young 100/100/100, Delta_Slow
-100/100/100, Neurotica 99.9/99.6/99.9, Moi_Funk 99.9/99.9/98.6, Kirby ~99.7). The
-lone residual is **Bahbar v1/v2 ~92.7/90.4** — genuinely tonal fast per-frame arps
-(the honest FM-capture ceiling; lifting it needs shared-MoN-engine FM work).
-Open: the V wrapper drive; wiring Stage B into a shipping path (currently
-standalone, one file at a time).
+**All six variants (A/B/C/D/E/V) now have Stage B.** Most E/DELTA/C/V voices are
+**98-100%** (2_Young 100/100/100, Delta_Slow 100/100/100, Neurotica 99.9/99.6/99.9,
+Moi_Funk 99.9/99.9/98.6, Kirby ~99.7). The lone residual is a **fast per-frame arp
+voice class** (Bahbar v1/v2 ~92.7/90.4, Filthy_Hit v0 76) — genuinely tonal, the
+honest FM-capture ceiling (lifting it needs shared-MoN-engine FM work). Open:
+wiring Stage B into a shipping path (currently standalone, one file at a time).
 
 ## Stage A
 
