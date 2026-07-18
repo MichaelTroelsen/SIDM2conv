@@ -234,13 +234,23 @@ def measure_parts(parts, orig):
         def sc(v, off):
             o = t = 0
             for i in range(t1 - t0):
-                fa = orig[t0 + i][0][v]['freq'] if t0 + i < len(orig) else 0
+                if t0 + i >= len(orig):
+                    break
+                st = orig[t0 + i][0][v]
+                fa, wa = st['freq'], (st['wf'] or 0)
                 j = i + off
                 fb = b[j][0][v]['freq'] if 0 <= j < len(b) else 0
+                wb = (b[j][0][v]['wf'] or 0) if 0 <= j < len(b) else 0
                 if not fa and not fb:
                     continue
                 t += 1
-                if freq_to_semi(fa) == freq_to_semi(fb):
+                # A NOISE frame (wf bit7) has no meaningful pitch -- the audible
+                # content is the noise burst, so score it on the waveform, not the
+                # freq-semitone (which is a period detail two near-identical bursts
+                # differ on). Tonal frames score on freq-semitone.
+                if wa & 0x80:
+                    o += (wb & 0x80) and (wa & 0xF0) == (wb & 0xF0)
+                elif freq_to_semi(fa) == freq_to_semi(fb):
                     o += 1
             return o, t
         boff = max(range(-4, 9), key=lambda o: sum(sc(v, o)[0] for v in range(3)))
