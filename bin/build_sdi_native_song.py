@@ -138,13 +138,24 @@ class SDIShim:
             if ons and ons[0] > 0:
                 out.append(MONEvent(note=0, dur=ons[0], instr=0,
                                     wprog=0, retrig=False, rest=True))
+            # A voice's LAST note holds until the voice actually goes silent, not
+            # a fixed +8. Neurotica_short's voices re-gate through frame 1873 then
+            # SUSTAIN a held tail to ~3499 (last active frame); cutting the last
+            # note to 8 frames left ~1600 frames emit-silent while the original
+            # sustained (part 4 tanked to ~30%). Scan the trace forward from the
+            # last onset while the voice's waveform stays active.
+            def sustain_end(o):
+                f = o
+                while f + 1 < len(frames) and (frames[f + 1][0][v]['wf'] or 0):
+                    f += 1
+                return max(o + 8, f + 1)
             ci = 0
             cur = changes[0][1] if changes else 0
             for i, o in enumerate(ons):
                 while ci < len(changes) and changes[ci][0] <= o + 2:
                     cur = changes[ci][1]
                     ci += 1
-                nxt = ons[i + 1] if i + 1 < len(ons) else o + 8
+                nxt = ons[i + 1] if i + 1 < len(ons) else sustain_end(o)
                 # A legato voice re-gates once and then GLIDES (real waveform
                 # stays $41); emit TIES after the first note so the envelope
                 # doesn't re-attack (matching the trace) while each segment still
