@@ -122,6 +122,38 @@ Fidelity is measured with `bin/mon_part_fidelity.py PART SUB SECS OFF0_SECS` (pe
 
 ---
 
+## The mainstream-Tel "B1-indirect" generation (SID/Tel_Jeroen, 2026-07-18)
+
+`SID/Tel_Jeroen` (179 files, the Robocop3/Turrican-era corpus) is **not** the
+Hawkeye/Cyb engine — 125/179 had every table fall out of range under the old
+locate. The **B1-indirect bucket** (24 files) is a distinct MoN generation, now
+handled in `mon_parser.py` (`ab99032`), gated miss-only so Hawkeye/Cyb are
+untouched.
+
+- **`_locate_b1`** (fires only after the B9/BD copy loops miss): olptr via the
+  INDIRECT subtune copy `LDY#5; LDA ($zp),Y; STA live,Y`, with `tbl_olptr`/`_hi`
+  from the two `BD tab,X; STA $zp(+1)` feeders **anchored backward** from the copy
+  loop (a naive file-first `_find` grabs a stray earlier match — verify against the
+  disassembly). Split freq tables ~`$60` apart read `TAY; LDA lo,Y; <store>; LDA
+  hi,Y` (store `85`/`8D`, not `9D`). Speed = one shared reload byte (`DEC cnt; BPL;
+  LDA reload; STA cnt`), read subtune-independent. Requires feeders + freq in-image
+  (rejects Hawkeye's stray `A0 05 B1` data run).
+- **`_voice_blocks_tel`** (grammar RE'd from the player — orderlist advance `$105F`,
+  pattern read `$1093`): ORDERLIST byte bit7 → transpose `&$1F`; byte <`$80` →
+  pattern index; `$FF/$FE` end. ROW: length `(ctrl&$1F)+1` ticks; **bit6** →
+  gate-off/rest (1 byte, no note); **bit7** → an instrument command byte precedes
+  the note; else ctrl+note; note = raw+transpose; `$FF` ends the pattern.
+
+**Status (onset-EXACT via `mon_validate`, 3 tiers):**
+- **6 EXACT** (basic grammar): 05-09-87, Ikari_Union, Lost_in_China, Scout,
+  Trying_Out_2_v1, Trying_Out_3.
+- **~7 middle (60–88%)** — pattern-clean; residual is **instrument-generated
+  arp/legato** (Beginning V3 gates once at frame 60 then arps C#5/C#6 the pattern
+  never encodes). Stage-B / instrument-modelling territory, not a grammar gap.
+- **~10 broken (<40%, Alloyrun-class)** — use grammar the EXACT files don't:
+  **orderlist `$40-$7F` commands** ($43 as a pattern index → OOR ptr) + heavier
+  **`$C0-$FF` pattern ctrls**. Next B1 RE unit. See `memory/mainstream-mon-tel.md`.
+
 ## Hard-won lessons (encoded in code/tests — do not re-learn)
 
 - **The siddump SBC carry bug (2026-06-30).** Cybernoid's lead sounded wrong "when vibrating" although every register was byte-exact — the *capture* CPU (`sidm2/cpu6502_emulator.py`) had SBC carry stuck set, breaking 16-bit subtraction chains, so siddump computed a too-wide vibrato and the native build faithfully replayed the error. Fix: carry = `temp >= 0`; guarded by `pyscript/test_cpu6502_sbc.py`. Lesson: when trace-replay sounds wrong but the metric says byte-exact, **suspect the capture CPU** — cross-check py65 and VICE.
