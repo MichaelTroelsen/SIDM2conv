@@ -181,10 +181,20 @@ never emits blind). Proven on two variant-E files:
 | 2_Young_2_Die | ~67 | **98.4 / 85.3 / 99.9** |
 | Tranedans | **13.4** | **88.7 / 91.9 / 99.3** |
 
-v1 residuals are the known drum/hat re-gate capture class. Open Stage B units:
-adaptive part-splitting (the 63-bundle cap warns on long windows now), an
-E/DELTA corpus sweep, the **C-class `$D404=$08` TEST hard-restart** gate model,
-and V multispeed (2×/4× — `measure_onsets` emulates too slow; needs the wrapper).
+v1 residuals are the known drum/hat re-gate capture class.
+
+**Ground through 2026-07-18:** adaptive part-splitting (`auto` splits the whole
+song, no cap force-merge — Tranedans 260s→30 parts); **DELTA/E legato voices**
+now take their tie-boundary schedule from the trace's own pitch-change frames
+(drift-free, emitted as ties — Delta_Slow v2 22.7→79.9); the **C-class
+`$D404=$08` TEST gate is a non-issue** (the trace capture sidesteps it — Bahbar
+99.6/76/78); **variant V / self-IRQ (`play=$0000`) is now refused** (measure_onsets
+can't drive it — needs the 2×/4× wrapper drive, an open unit). A 30s-cap sample
+sweep (`bin/_sdi_stageb_sweep.py`) shows most E/DELTA/C voices at **90-100%**
+(Kirby 99.7/99.8/99.5, Short_Deel/Neurotica ~99), with a recurring **weak v1
+drum/hat/fast-arp voice class** (~45-80%) as the honest capture-level ceiling.
+Open: the V wrapper drive, the weak-voice class, a full-song headline sweep, and
+wiring Stage B into a shipping path (currently standalone, one file at a time).
 
 ## Stage A
 
