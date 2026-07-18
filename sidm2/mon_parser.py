@@ -85,7 +85,10 @@ class MON:
             b = self._u8(self.tbl_base + subtune * 8)
             self.note_base = b - 256 if b >= 0x80 else b
         else:
-            self.speed = self._u8(self.tbl_speed + subtune)
+            # B1-indirect (see _locate_b1): speed is one shared reload byte, not a
+            # per-subtune table -> read it directly, ignore the subtune offset.
+            off = 0 if getattr(self, "_speed_fixed", False) else subtune
+            self.speed = self._u8(self.tbl_speed + off)
         self.song_loop_ticks = 0
         self._ol_loop_ticks = {}
         self.voices = [self._voice(v) for v in range(3)]
@@ -180,6 +183,8 @@ class MON:
             n_asl = sum(1 for k in range(max(0, cp_bd - 12), cp_bd) if d[k] == 0x0A)
             self.ol_stride = 1 << n_asl if n_asl else 1
             self.tbl_olptr, self.olset_hi = self.ol_base, 0x00
+        elif self._locate_b1(d):                # B1-indirect variant (Tel mainstream)
+            self.olset_hi = None                # olset from tbl_olptr_hi, not a fixed byte
         else:
             self.tbl_olptr, self.olset_hi = 0x83FC, 0x7B
         # speed table: `LDA speedTab,X; STA speedReload`. The tables (speed + olptr lo/hi
@@ -187,6 +192,8 @@ class MON:
         # the setup's `LDA tab,X` reads. Anchor on the min of (loTab, hiTab) minus the
         # observed gap, but locate it directly when possible (below) for robustness.
         self.tbl_speed = self._find_speed_tbl(d)
+        if getattr(self, "_b1_speed_addr", None) is not None:
+            self.tbl_speed = self._b1_speed_addr    # B1: single reload byte (LDA abs)
         # pattern-pointer table: `ASL A (0A); TAY (A8); LDA tab,Y (B9 ..); STA zp (85 ..)`.
         # The STA zp byte is engine-relocation-specific (Hawkeye $FD, Cybernoid $BD), so
         # don't pin it; take the FIRST such read (the orderlist->pattern one).
@@ -214,11 +221,88 @@ class MON:
                     and (d[i + 4] | (d[i + 5] << 8)) == lo_dest + 3):
                 self.tbl_freq_hi = d[i + 1] | (d[i + 2] << 8)
                 break
+        if getattr(self, "_b1_freq", None) is not None:   # B1: split tables read `85`/`8D`
+            self.tbl_freq, self.tbl_freq_hi = self._b1_freq
         # instrument-record table $860C: the note handler reads AD via
         #   `LDA $860e,X (BD 0E 86); STA $d405,Y (99 05 D4)`. $860E is record+2 (AD),
         #   so the 8-byte-record base = operand - 2.
         io = _find(d, 0xBD, None, None, 0x99, 0x05, 0xD4)
         self.tbl_instr = ((d[io + 1] | (d[io + 2] << 8)) - 2) if io is not None else 0x860C
+
+    def _locate_b1(self, d):
+        """MoN 'B1-indirect' variant (mainstream Jeroen Tel: Alloyrun, Beginning,
+        Scout, Zynon_Zak, ...). The subtune setup copies the 6-byte OL-pointer set
+        via an INDIRECT source `LDY #5; LDA ($zp),Y; STA live,Y` (opcode B1), with
+        $zp/$zp+1 fed from per-subtune tables just before the copy
+        (`LDA loTab,X; STA $zp` / `LDA hiTab,X; STA $zp+1`). This reuses the selfmod
+        `_orderlist_ptr` formula (tbl_olptr=loTab, tbl_olptr_hi=hiTab): the copy is
+        a verbatim 6-byte move, so reading the SOURCE set == reading the live copy.
+
+        MISS-ONLY: `_locate` calls this only after the B9/BD copy loops miss, and it
+        REQUIRES both feeders + the freq split to resolve in-image, so a stray
+        `A0 05 B1 .. 99` byte run in another variant's DATA (Hawkeye has one) is
+        rejected and falls through to the $83FC default. Returns True on success.
+
+        freq is a SPLIT lo/hi table (~$60 apart) read as `TAY; LDA loTab,Y; <store>;
+        LDA hiTab,Y`; the store is `85` (zp) or `8D` (abs), so the Hawkeye
+        A8-B9-9D freq signature misses -> overridden via self._b1_freq. speed is a
+        single reload byte loaded DIRECTLY (LDA abs) by the tempo gate
+        (`DEC cnt; BPL; LDA reload; STA cnt`), not a per-subtune table -> stashed in
+        self._b1_speed_addr and read subtune-independently (see __init__)."""
+        inimg = lambda a: self.la <= a < self.la + len(d)
+        cp = zp = None
+        for i in range(len(d) - 7):
+            if d[i] == 0xA0 and d[i+1] == 0x05 and d[i+2] == 0xB1 and d[i+4] == 0x99:
+                cp, zp = i, d[i+3]
+                break
+        if cp is None:
+            return False
+        # feeders `BD loTab,X; STA $zp` / `BD hiTab,X; STA $zp+1` just before the copy
+        tbl_lo = tbl_hi = None
+        for i in range(cp - 1, max(0, cp - 24), -1):
+            if d[i] == 0xBD and d[i+3] == 0x85:
+                if d[i+4] == zp and tbl_lo is None:
+                    tbl_lo = d[i+1] | (d[i+2] << 8)
+                elif d[i+4] == ((zp + 1) & 0xFF) and tbl_hi is None:
+                    tbl_hi = d[i+1] | (d[i+2] << 8)
+        if tbl_lo is None or tbl_hi is None or not (inimg(tbl_lo) and inimg(tbl_hi)):
+            return False
+        # freq split: `TAY; LDA loTab,Y; <store 2-3b>; LDA hiTab,Y`, tables ~$60 apart
+        freq = None
+        for i in range(len(d) - 9):
+            if d[i] == 0xA8 and d[i+1] == 0xB9:
+                lo = d[i+2] | (d[i+3] << 8)
+                for j in (i + 5, i + 6, i + 7):
+                    if j + 2 < len(d) and d[j] == 0xB9:
+                        hi = d[j+1] | (d[j+2] << 8)
+                        if inimg(lo) and inimg(hi) and 0x30 <= hi - lo <= 0x90:
+                            freq = (lo, hi)
+                            break
+                if freq:
+                    break
+        if freq is None:
+            return False
+        # speed: tempo gate `DEC cnt; BPL; LDA reload(abs); STA cnt`
+        for i in range(len(d) - 2):
+            if d[i] != 0xCE:
+                continue
+            cnt = d[i+1] | (d[i+2] << 8)
+            if not inimg(cnt):
+                continue
+            for j in range(i + 3, min(i + 14, len(d) - 5)):
+                if (d[j] == 0xAD and d[j+3] == 0x8D
+                        and (d[j+4] | (d[j+5] << 8)) == cnt):
+                    self._b1_speed_addr = d[j+1] | (d[j+2] << 8)
+                    break
+            if getattr(self, "_b1_speed_addr", None) is not None:
+                break
+        if getattr(self, "_b1_speed_addr", None) is None:
+            return False                         # no locatable speed -> don't claim it
+        self.tbl_olptr, self.tbl_olptr_hi = tbl_lo, tbl_hi
+        self._b1_freq = freq
+        self._speed_fixed = True
+        self._tel = True                         # use the tel orderlist+row grammar
+        return True
 
     def _locate_supremacy(self, d):
         """Detect + locate the SUPREMACY variant (a flat MoN player, play=$1003, no
@@ -338,6 +422,53 @@ class MON:
         """Flat event list for the whole voice (all patterns concatenated)."""
         return [ev for _pat, blk in self._voice_blocks(voice) for ev in blk]
 
+    def _voice_blocks_tel(self, voice):
+        """B1 'tel' generation (see _locate_b1) orderlist + row grammar, RE'd from
+        the player's own dispatch (orderlist advance $105F; pattern read $1093).
+        DISTINCT from the Hawkeye/Cyb grammar:
+          ORDERLIST: byte bit7 set -> transpose = byte & $1F (per voice, `AND #$1F;
+            STA $1735,X`); byte < $80 -> pattern index (ASL -> tbl_pat); $FF/$FE end.
+          PATTERN ROW: ctrl -> length = (ctrl & $1F) + 1 ticks. ctrl bit6 set ->
+            GATE-OFF/rest (`BVS`; DEC gate-mask; NO note, NO command byte; 1 byte).
+            Else ctrl bit7 set -> one INSTRUMENT command byte precedes the note
+            (`BPL` skips it); then a NOTE byte = raw + transpose -> the split freq
+            tables. $FF -> pattern end. Notes are RAW+transpose (no note_base)."""
+        ol = self._orderlist_ptr(voice)
+        transpose, instr = 0, 0
+        blocks = []
+        i = guard = 0
+        while guard < 2048:
+            guard += 1
+            b = self._u8(ol + i); i += 1
+            if b in (0xFF, 0xFE):               # orderlist end (one pass)
+                break
+            if b & 0x80:                        # transpose command ($1735,X = b & $1F)
+                transpose = b & 0x1F
+                continue
+            pp = self._u16(self.tbl_pat + b * 2)   # b < $80 = pattern index
+            blk = []
+            j = pg = 0
+            while pg < 1024:
+                pg += 1
+                ctrl = self._u8(pp + j); j += 1
+                if ctrl == 0xFF:                # pattern terminator
+                    break
+                length = (ctrl & 0x1F) + 1
+                if ctrl & 0x40:                 # bit6: gate-off / rest (no note byte)
+                    blk.append(MONEvent(note=-1, dur=length, instr=instr,
+                                        retrig=False, rest=True))
+                    continue
+                if ctrl & 0x80:                 # bit7: instrument command byte precedes note
+                    instr = self._u8(pp + j); j += 1
+                note = self._u8(pp + j); j += 1
+                if note == 0xFF:
+                    break
+                blk.append(MONEvent(note=(note + transpose) & 0x7F, dur=length,
+                                    instr=instr, retrig=True))
+            if blk:
+                blocks.append((b, blk))
+        return blocks
+
     def _voice_blocks(self, voice):
         """Walk the orderlist -> [(pattern_number, [MONEvent, ...]), ...], one block
         per orderlist pattern entry. The per-voice state PERSISTS across blocks
@@ -345,6 +476,8 @@ class MON:
         ($9139), current instrument ($90DA), wave-program, and the sticky stored
         duration $90CE — so identical pattern numbers under different transposes
         decode to different events (the caller dedups by the resulting rows)."""
+        if getattr(self, "_tel", False):        # B1 'tel' generation -> its own grammar
+            return self._voice_blocks_tel(voice)
         ol = self._orderlist_ptr(voice)
         st = {'transpose': 0, 'instr_base': 0, 'instr': 0, 'stored': 0, 'wprog': 0}
         blocks = []
