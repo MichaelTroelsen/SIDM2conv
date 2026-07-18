@@ -189,6 +189,60 @@ class SDIShim:
                 'wave_prog': 0, 'flags': 0, 'raw': []}
 
 
+def _v_module_addrs(d, la, init_addr):
+    """Variant V is a play=$0000 self-IRQ wrapper around a 3-JMP module
+    (init/play/fast at base/+3/+6). The wrapper init does `JSR module_init`
+    right before `CLI` -- find that JSR ($20 lo hi 58) and return (init, play)."""
+    for o in range(init_addr - la, min(init_addr - la + 0x60, len(d) - 3)):
+        if d[o] == 0x20 and d[o + 3] == 0x58:            # JSR ...; CLI
+            base = d[o + 1] | (d[o + 2] << 8)
+            return base, base + 3
+    return None, None
+
+
+def v_traces(d, la, mod_init, mod_play, mult, nframes):
+    """Drive the V module directly (siddump/measure_onsets can't -- play=$0000):
+    py65 module init, then play x mult per video frame, snapshotting the SID.
+    Returns (per_frame, filter_trace, onsets) in the same shapes siddump_per_frame
+    / siddump_filter_trace / measure_onsets produce -- this IS the ground-truth
+    player output for a V rip."""
+    from sidm2.cpu6502_emulator import CPU6502Emulator
+    cpu = CPU6502Emulator()
+    cpu.load_memory(bytes(d), la)
+    cpu.mem[0x01] = 0x37
+
+    def call(a, acc=0):
+        cpu.mem[0xD012] = (cpu.mem[0xD012] + 1) & 0xFF     # raster fake (as measure_onsets)
+        if (cpu.mem[0xD012] == 0
+                or ((cpu.mem[0xD011] & 0x80) and cpu.mem[0xD012] >= 0x38)):
+            cpu.mem[0xD011] ^= 0x80
+            cpu.mem[0xD012] = 0x00
+        cpu.reset(a, acc & 0xFF, 0, 0)
+        for _ in range(1_000_000):
+            if not cpu.run_instruction():
+                return
+
+    call(mod_init)
+    per, filt, onsets, prev = [], [], [[], [], []], [0, 0, 0]
+    for fr in range(nframes):
+        for _ in range(max(1, mult)):
+            call(mod_play)
+        st = {}
+        for v in range(3):
+            b = 0xD400 + v * 7
+            st[v] = {'freq': cpu.mem[b] | (cpu.mem[b + 1] << 8),
+                     'wf': cpu.mem[b + 4],
+                     'pul': cpu.mem[b + 2] | ((cpu.mem[b + 3] & 0x0F) << 8)}
+            g = st[v]['wf'] & 1
+            if g == 1 and prev[v] == 0:
+                onsets[v].append(fr)
+            prev[v] = g
+        cut = (cpu.mem[0xD415] & 7) | (cpu.mem[0xD416] << 3)
+        per.append((st, cut))
+        filt.append((cut, cpu.mem[0xD417]))
+    return per, filt, onsets
+
+
 def build_song(shim, base, traces, span):
     """Adaptive part-split so no window exceeds the caps (the 63-bundle warning
     on long songs). Copied from the DMC/SM builders. Returns [(file, t0, t1)]."""
@@ -307,35 +361,43 @@ def main():
                    default=0) + 100
     secs = (dec_span // 50 + 4) if adaptive else int(warg)
     import mon_fidelity as F
-    print(f"  tracing {secs}s...")
-    traces = (F.per_frame(SID, ['-a0', f'-t{secs}']),
-              BM.filter_trace(SID, 0, secs))
-    onsets = measure_onsets(d, la, h.init_address, h.play_address,
-                            len(traces[0]))
 
-    # onset-agreement gate vs siddump (multispeed/self-IRQ emulate too slow)
-    real = siddump_note_onsets(SID, ['-a0', f'-t{min(secs, 15)}'])
-    agree = tot = 0
-    for v in range(3):
-        rl = set(fr for fr, _ in (real[v] if isinstance(real, (list, tuple))
-                                  else real.get(v, [])) if fr < 700)
-        em = set(onsets[v])
-        agree += sum(1 for fr in rl if em & {fr - 1, fr, fr + 1})
-        tot += len(rl)
-    ok = bool(tot) and agree / tot >= 0.85
-    print(f"  emulated onsets vs trace: {agree}/{tot} "
-          f"({'OK' if ok else 'LOW — suspect multispeed/self-IRQ'})")
-    print(f"  onsets/voice: {[len(o) for o in onsets]}")
-    if not ok and '--force' not in sys.argv:
-        # play=$0000 self-IRQ (variant V) and true multispeed can't be driven by
-        # measure_onsets (the wrapper installs its own IRQ; the standard init/play
-        # trace runs too slow). Emitting anyway produces a garbage SF2 with a
-        # meaningless both-silent fidelity score -- refuse it (this session's
-        # "builds != sounds right" rule). Those need the 2x/4x wrapper drive, a
-        # separate Stage B unit. --force to probe regardless.
-        print("  REFUSING to build: this file cannot be driven by measure_onsets "
-              "(variant V / self-IRQ / multispeed). Needs the wrapper drive.")
-        return 1
+    if m.lay.variant == 'V':
+        # play=$0000 self-IRQ wrapper: siddump/measure_onsets can't drive it.
+        # Drive the module (init/play at base/+3) directly at v_mult per frame;
+        # this py65 trace IS the ground-truth player output.
+        mod_init, mod_play = _v_module_addrs(d, la, h.init_address)
+        if mod_init is None:
+            print("  V module (JSR ...; CLI) not found; cannot drive.")
+            return 1
+        nframes = dec_span
+        print(f"  V wrapper: module init=${mod_init:04X} play=${mod_play:04X} "
+              f"mult={m.lay.v_mult}; driving {nframes} frames via py65...")
+        pf, filt, onsets = v_traces(d, la, mod_init, mod_play, m.lay.v_mult, nframes)
+        traces = (pf, filt)
+    else:
+        print(f"  tracing {secs}s...")
+        traces = (F.per_frame(SID, ['-a0', f'-t{secs}']),
+                  BM.filter_trace(SID, 0, secs))
+        onsets = measure_onsets(d, la, h.init_address, h.play_address,
+                                len(traces[0]))
+        # onset-agreement gate vs siddump (multispeed/self-IRQ emulate too slow)
+        real = siddump_note_onsets(SID, ['-a0', f'-t{min(secs, 15)}'])
+        agree = tot = 0
+        for v in range(3):
+            rl = set(fr for fr, _ in (real[v] if isinstance(real, (list, tuple))
+                                      else real.get(v, [])) if fr < 700)
+            em = set(onsets[v])
+            agree += sum(1 for fr in rl if em & {fr - 1, fr, fr + 1})
+            tot += len(rl)
+        ok = bool(tot) and agree / tot >= 0.85
+        print(f"  emulated onsets vs trace: {agree}/{tot} "
+              f"({'OK' if ok else 'LOW — suspect multispeed/self-IRQ'})")
+        print(f"  onsets/voice: {[len(o) for o in onsets]}")
+        if not ok and '--force' not in sys.argv:
+            print("  REFUSING to build: this file cannot be driven by "
+                  "measure_onsets (self-IRQ / multispeed). Pass --force to probe.")
+            return 1
 
     shim = SDIShim(m, onsets, traces[0])
     print(f"  shim events/voice: {[len(v) for v in shim.voices]}")

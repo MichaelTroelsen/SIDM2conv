@@ -952,7 +952,11 @@ class SDIModule:
                     if (fx & 0xE0) == 0:         # fx = per-note INSTRUMENT
                         sound = fx & 0x1F        #   (the $1669 &$E0==0 path)
                     elif (fx & 0xE0) == 0xC0:    # global TEMPO = fx & $0f
-                        self._v_tempo.append((tick, fx & 0x0F))
+                        # lazy-init: decode_voice() can be called standalone
+                        # (Stage B builder), not only via events() which presets
+                        # _v_tempo -- else this branch AttributeErrors (Oh_Boy).
+                        self.__dict__.setdefault('_v_tempo', []).append(
+                            (tick, fx & 0x0F))
                     if note < 0x60:
                         semi = (note + transpose) & 0x7F
                         if lay.v_oct_col:
