@@ -109,7 +109,15 @@ class SDIShim:
             # False) so the envelope never re-attacks (the real waveform stays
             # $41). Voices whose gate-rises keep up with the decode stay on them.
             gate = list(onsets[v])
-            legato = notes and len(gate) < 0.5 * len(notes)
+            # LEGATO only for voices that essentially NEVER re-gate (Delta_Slow v2
+            # = ONE gate-rise for the whole song, but glides constantly). A voice
+            # that re-gates REGULARLY -- even a fast per-frame arp that decodes to
+            # far more note events than gate-rises (Moi_Funk v1: 46 gates, ~100
+            # decode notes) -- must stay on the GATE-RISE path: one note per gate,
+            # the FM capture reproduces the arp between gates. The old
+            # `gate < 0.5*notes` test caught those arp voices and fragmented them
+            # into 1-frame ties the capture can't restart every frame (37%).
+            legato = len(notes) > 8 and len(gate) <= max(2, len(notes) // 20)
             if legato:
                 start = gate[0] if gate else 2
                 ons, prev = [], None
