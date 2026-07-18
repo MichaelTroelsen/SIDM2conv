@@ -9,6 +9,7 @@ in siddump, not as fresh onsets).
   py -3 bin/mon_validate.py                       # Hawkeye subtune 3
   py -3 bin/mon_validate.py path.sid SUBTUNE      # any tune/subtune
 """
+import itertools
 import os
 import sys
 
@@ -61,6 +62,42 @@ def parser_onsets(path, subtune, max_frame):
     return V, m, vpass
 
 
+def _artifact_variant(sd_v, pa_v):
+    """-> the drop-leading-onset variant of one voice's siddump list, or None
+    if the count precondition doesn't even apply. Candidate fix for an
+    `is_first_frame` display artifact (Monitor_Madness_1/2, Trying_Out_2: the
+    INIT routine primes a voice's waveform register before the real first
+    note; `format_voice_column`'s `is_first_frame` branch unconditionally
+    shows a note for ANY wave>=0x10 on the very first displayed row, so that
+    priming write reads as a spurious extra onset at frame 0) -- but a count
+    mismatch of exactly one can ALSO be a genuine trailing wraparound onset
+    unrelated to frame 0 (Cybernoid sub1 V2: found the hard way, dropping
+    unconditionally silently broke an already-exact voice). NEVER apply this
+    blind: `main()` tries both the original and this variant per voice and
+    keeps whichever combination actually scores best, so a wrong guess here
+    can only lose a tie-break, not regress a working voice."""
+    if len(sd_v) == len(pa_v) + 1 and sd_v and sd_v[0][0] == 0:
+        return sd_v[1:]
+    return None
+
+
+def _score(sd, pa_off, vpass):
+    """Total (matched, out-of) onset frames for one candidate offset already
+    applied to pa_off, using the SAME clip-to-overlap + per-index compare the
+    final report uses."""
+    total_ok = total = 0
+    for v in range(3):
+        limit = min(sd[v][-1][0] if sd[v] else 0, pa_off[v][-1][0] if pa_off[v] else 0)
+        if v in vpass:
+            limit = min(limit, vpass[v] - 1)
+        so = [x for x in sd[v] if x[0] <= limit]
+        po = [x for x in pa_off[v] if x[0] <= limit]
+        n = min(len(so), len(po))
+        total_ok += sum(1 for i in range(n) if so[i][0] == po[i][0])
+        total += max(len(so), len(po))
+    return total_ok, total
+
+
 def main():
     os.chdir(ROOT)
     path = sys.argv[1] if len(sys.argv) > 1 else os.path.join('SID', 'Tel_Jeroen', 'Hawkeye.sid')
@@ -68,14 +105,37 @@ def main():
     seconds = int(sys.argv[3]) if len(sys.argv) > 3 else 12
     max_frame = seconds * 50
 
-    sd = siddump_onsets(path, subtune, seconds)
+    sd_raw = siddump_onsets(path, subtune, seconds)
     pa, m, vpass = parser_onsets(path, subtune, max_frame)
 
     # constant engine output offset: sequencer state reaches the SID a fixed
-    # 1-2 frames after the tick (engine-variant dependent) — calibrate it out
-    # as the median first-onset delta, like mon_sf2_validate.
-    deltas = [sd[v][0][0] - pa[v][0][0] for v in range(3) if sd[v] and pa[v]]
-    off = sorted(deltas)[len(deltas) // 2] if deltas else 0
+    # 1-2 frames after the tick (engine-variant dependent). Calibrated by
+    # BRUTE-FORCE SEARCH over a small offset range (and, per voice, whether to
+    # apply the `_artifact_variant` drop), picking whichever combination
+    # maximizes total matched onset frames (using the exact same clip+compare
+    # the final report uses) rather than trusting index-0 deltas alone. A
+    # direct score search sidesteps guessing which index/voice is trustworthy:
+    # whichever combination actually lines up the MOST onsets wins. Ties
+    # prefer (in order) the smallest |offset|, then fewer artifact drops --
+    # both bias toward the simplest explanation of the data, and the fewer-
+    # drops tiebreak is what keeps this from ever REGRESSING a voice that was
+    # already fine (dropping only wins a tie-break when it demonstrably helps).
+    candidates = [[sd_raw[v]] for v in range(3)]
+    for v in range(3):
+        alt = _artifact_variant(sd_raw[v], pa[v])
+        if alt is not None:
+            candidates[v].append(alt)
+    best_key, best_sd, best_off = None, sd_raw, 0
+    for combo in itertools.product(*candidates):
+        sd_try = {v: combo[v] for v in range(3)}
+        ndrops = sum(1 for v in range(3) if combo[v] is not sd_raw[v])
+        for off in range(-20, 21):
+            pa_try = {v: [(f + off, n) for f, n in pa[v]] for v in range(3)}
+            ok, _ = _score(sd_try, pa_try, vpass)
+            key = (ok, -abs(off), -ndrops)
+            if best_key is None or key > best_key:
+                best_key, best_sd, best_off = key, sd_try, off
+    sd, off = best_sd, best_off
     pa = {v: [(f + off, n) for f, n in pa[v]] for v in range(3)}
 
     swing = f" swing({m.speed},{m.speed + 1})" if m.tempo_toggle else ""

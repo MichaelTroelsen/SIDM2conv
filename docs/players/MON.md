@@ -258,6 +258,33 @@ untouched.
     zero regressions. Monitor_Madness_1/2 and Trying_Out_2 also carry this same
     signature but stayed at ~0-2% — they have a different, more fundamental bug
     the tie fix doesn't reach (see `memory/mainstream-mon-tel.md`).
+  - **Same-day #6: `bin/mon_validate.py` itself was miscalibrating these 3
+    files, not just the decoder.** Investigating Monitor_Madness_1's near-zero
+    score found a raw zig64 register trace (`osc1_control`) showing its INIT
+    routine (a raster-IRQ-based init, unlike the simpler call/return init in
+    the 12 already-EXACT files) primes a voice's waveform register at frame 0
+    with the gate bit already set — `format_voice_column`'s `is_first_frame`
+    branch (`pyscript/siddump_complete.py`) unconditionally shows a note for
+    ANY wave≥0x10 on the very first displayed row, so that priming write reads
+    as a spurious onset a frame or more before the real one. The validator's
+    old calibration (median of index-0 deltas across voices) let 2-of-3
+    corrupted voices outvote the correct one. Rewrote the calibration as a
+    joint brute-force search over a small offset range AND, per voice, whether
+    to drop a leading onset (`_artifact_variant`, gated to an exact
+    `len(siddump)==len(parser)+1` count match at frame 0) — picking whichever
+    combination maximizes total matched onsets, never applied unconditionally.
+    **First attempt regressed Cybernoid sub1 V2** (15/15→10/15): its count
+    mismatch was a genuine TRAILING wraparound onset, not a frame-0 artifact,
+    and unconditional dropping silently broke an already-perfect voice — fixed
+    by making the drop a candidate the search evaluates (tie-break: fewer
+    drops wins), so a wrong guess can only lose a tie, never regress a working
+    voice. **Monitor_Madness_1 2%→75%** (75/106, V1 now EXACT), **Monitor_
+    Madness_2 3/146→90/146**, **Trying_Out_2 1/59→41/59** — the latter two hit
+    a locally-good but not fully optimal offset (their per-voice count
+    mismatches don't reduce to the same clean pattern); full further fix is
+    open. Full 23-file resweep + the 5-check byte-exact gate (re-run after the
+    Cybernoid regression was caught) + full pytest suite: zero regressions
+    everywhere else.
 
 ## Hard-won lessons (encoded in code/tests — do not re-learn)
 
