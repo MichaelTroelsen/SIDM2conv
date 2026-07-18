@@ -3,7 +3,7 @@
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 [![codecov](https://codecov.io/gh/MichaelTroelsen/SIDM2conv/branch/master/graph.svg)](https://codecov.io/gh/MichaelTroelsen/SIDM2conv)
 
-**Version 3.13.0** | Build Date: 2026-06-29 | Production Ready ✅
+**Version 3.21.0** | Build Date: 2026-07-16 | Production Ready ✅
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files with **100% frame accuracy** for Laxity NewPlayer v21 files (verified against zig64 ground truth) and **from-scratch native SF2 drivers** reaching byte-exact fidelity for Martin Galway, ROMUZAK, and Maniacs of Noise (Jeroen Tel) players.
 
@@ -366,7 +366,7 @@ sid-to-sf2.bat input.sid output.sf2 --driver laxity  # Force Laxity driver
 
 **Adding a new player** (3 steps): add to `DriverSelector.PLAYER_REGISTRY` → add to `PLAYER_EXTRACTORS`/`PLAYER_CONVERTERS` → implement `BasePlayerAnalyzer` subclass.
 
-**See**: [CONVERSION_POLICY_APPROVED.md](CONVERSION_POLICY_APPROVED.md)
+**See**: [CONVERSION_POLICY_APPROVED.md](docs/integration/CONVERSION_POLICY_APPROVED.md)
 
 ---
 
@@ -489,7 +489,7 @@ sf2-viewer.bat file.sf2
 test-batch-pyautogui.bat --directory output --max-files 10
 ```
 
-**See**: [PYAUTOGUI_INTEGRATION_COMPLETE.md](PYAUTOGUI_INTEGRATION_COMPLETE.md)
+**See**: [PYAUTOGUI_INTEGRATION_COMPLETE.md](archive/cleanup_2026-04-28/old_docs/completion_reports/PYAUTOGUI_INTEGRATION_COMPLETE.md) (archived)
 
 ---
 
@@ -1033,9 +1033,6 @@ A: Ensure you're using v2.9.1+ with SF2 format fixes
 **Q: Low accuracy for non-Laxity files**
 A: Only Laxity NP21 files achieve 99.93% accuracy. Other formats use standard drivers (70-90% accuracy)
 
-**Q: Filter data not preserved**
-A: Filter conversion not yet implemented. Edit filters manually in SF2 editor.
-
 **Complete troubleshooting**: [docs/guides/TROUBLESHOOTING.md](docs/guides/TROUBLESHOOTING.md)
 
 ### Getting Help
@@ -1093,4 +1090,4 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 **🤖 Generated with [Claude Code](https://claude.com/claude-code)**
 
-**Last Updated**: 2026-07-05 | **Version**: 3.13.0
+**Last Updated**: 2026-07-16 | **Version**: 3.21.0

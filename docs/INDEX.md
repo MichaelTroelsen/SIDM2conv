@@ -3,7 +3,7 @@
 **Complete navigation to all project documentation**
 
 **Last Updated**: 2026-07-05
-**Version**: v3.13.0
+**Version**: v3.21.0
 **Status**: Native-driver era — Laxity production + native SF2 drivers for Galway / ROMUZAK / Maniacs of Noise; consolidated player knowledge in `docs/players/`
 
 ---
@@ -14,7 +14,7 @@
 |----------|---------|
 | [players/README.md](players/README.md) | **Player support index** — every supported player, driver, corpus |
 | [players/PLAYBOOK.md](players/PLAYBOOK.md) | **The consolidated cross-player playbook** — staged porting method, shared pipeline, size caps, gotchas, new-player checklist |
-| [reference/ACCURACY_MATRIX.md](reference/ACCURACY_MATRIX.md) | **Accuracy source of truth** (v3.13.0) |
+| [reference/ACCURACY_MATRIX.md](reference/ACCURACY_MATRIX.md) | **Accuracy source of truth** (v3.21.0) |
 | [players/LAXITY.md](players/LAXITY.md) | Laxity NewPlayer v21 (production, 99.93–100%) |
 | [players/GALWAY.md](players/GALWAY.md) | Martin Galway (native driver ~100%, 40-tune corpus) |
 | [players/MON.md](players/MON.md) | Maniacs of Noise / Jeroen Tel — Hawkeye, Cybernoid, Myth, Supremacy (byte-exact native) |
@@ -510,7 +510,7 @@ python cleanup.py --clean         # Execute cleanup
 
 ---
 
-**Document Status**: Comprehensive INDEX with all MD files cataloged (v3.13.0)
+**Document Status**: Comprehensive INDEX with all MD files cataloged (v3.21.0)
 **Last Updated**: 2026-07-05
 **Last Major Consolidation**: 2026-07-05 (native-driver era; players/ tree indexed)
 **Maintainer**: SIDM2 Project

@@ -21,7 +21,7 @@ cd SIDM2
 python --version
 
 # Run tests to verify setup
-python -m unittest test_converter -v
+python -m pytest scripts/test_converter.py -v
 ```
 
 ### 2. Making Changes
@@ -152,13 +152,13 @@ class TestFeatureName(unittest.TestCase):
 
 ```bash
 # Run all tests with verbose output
-python -m unittest test_converter -v
+python -m pytest scripts/test_converter.py -v
 
 # Run specific test class
-python -m unittest test_converter.TestSIDParser -v
+python -m pytest scripts/test_converter.py::TestSIDParser -v
 
 # Run specific test method
-python -m unittest test_converter.TestSIDParser.test_parse_header_magic -v
+python -m pytest scripts/test_converter.py::TestSIDParser::test_parse_header_magic -v
 ```
 
 ### Test Naming Convention
@@ -506,10 +506,10 @@ SF2 drivers are pre-built 6502 assembly programs that play music from SF2 format
 9. Validate (convert test files, measure accuracy)
 
 **Example**: See Laxity driver implementation:
-- Driver: `G5/drivers/laxity/`
+- Driver: `drivers/laxity/`
 - Parser: `sidm2/laxity_parser.py`
 - Converter: `sidm2/laxity_converter.py`
-- Tests: `pyscript/test_laxity_*.py`
+- Tests: `pyscript/test_laxity_analyzer.py` (37), `scripts/test_laxity_driver.py` (23)
 - Result: 99.93% accuracy (40 pointer patches)
 
 ---
@@ -549,12 +549,12 @@ When adding support for a new player format (e.g., GoatTracker, JCH):
 **Example**: See Laxity parser implementation:
 - Parser: `sidm2/laxity_parser.py` (extracts instruments, wave table, sequences)
 - Integration: `sidm2/conversion_pipeline.py` (select_converter method)
-- Tests: `pyscript/test_laxity_parser.py` (38 tests)
+- Tests: `pyscript/test_laxity_analyzer.py` (37 tests)
 
 ## Checklist for Pull Requests
 
 - [ ] Code follows project style guidelines
-- [ ] All tests pass (`python -m unittest test_converter -v`)
+- [ ] All tests pass (`test-all.bat` on Windows, or `python -m pytest`)
 - [ ] New tests added for new functionality
 - [ ] Documentation updated (README.md)
 - [ ] Commit messages follow convention

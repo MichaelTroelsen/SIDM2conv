@@ -599,7 +599,7 @@ python pyscript/generate_stinsen_html.py "C:/absolute/path/file.sid"
 
 ## See Also
 
-- **[SIDwinder Documentation](../analysis/SIDWINDER_PYTHON_DESIGN.md)** - Disassembly tool
+- **[SIDwinder Documentation](../archive/analysis_2026-01-02/SIDWINDER_PYTHON_DESIGN.md)** - Disassembly tool
 - **[Player Detection Guide](../implementation/PLAYER_DETECTION.md)** - Format identification
 - **[Laxity Format Spec](../reference/LAXITY_FORMAT.md)** - Table structures
 - **[SF2 Format Spec](../reference/SF2_FORMAT_SPEC.md)** - Alternative format
