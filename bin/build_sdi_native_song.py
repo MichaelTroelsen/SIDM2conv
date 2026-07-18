@@ -284,9 +284,20 @@ def main():
         em = set(onsets[v])
         agree += sum(1 for fr in rl if em & {fr - 1, fr, fr + 1})
         tot += len(rl)
+    ok = bool(tot) and agree / tot >= 0.85
     print(f"  emulated onsets vs trace: {agree}/{tot} "
-          f"({'OK' if tot and agree / tot >= 0.85 else 'LOW — suspect multispeed'})")
+          f"({'OK' if ok else 'LOW — suspect multispeed/self-IRQ'})")
     print(f"  onsets/voice: {[len(o) for o in onsets]}")
+    if not ok and '--force' not in sys.argv:
+        # play=$0000 self-IRQ (variant V) and true multispeed can't be driven by
+        # measure_onsets (the wrapper installs its own IRQ; the standard init/play
+        # trace runs too slow). Emitting anyway produces a garbage SF2 with a
+        # meaningless both-silent fidelity score -- refuse it (this session's
+        # "builds != sounds right" rule). Those need the 2x/4x wrapper drive, a
+        # separate Stage B unit. --force to probe regardless.
+        print("  REFUSING to build: this file cannot be driven by measure_onsets "
+              "(variant V / self-IRQ / multispeed). Needs the wrapper drive.")
+        return 1
 
     shim = SDIShim(m, onsets, traces[0])
     print(f"  shim events/voice: {[len(v) for v in shim.voices]}")
