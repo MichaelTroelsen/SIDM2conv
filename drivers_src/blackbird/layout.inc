@@ -1,0 +1,23 @@
+; auto-generated (native song) by build_blackbird_native_song.py
+SEQ0  = $1e06
+OL0   = $1b06
+SEQ1  = $1f06
+OL1   = $1c06
+SEQ2  = $2006
+OL2   = $1d06
+SEQPTRLO = $1a06
+SEQPTRHI = $1a86
+TEMPO = 6
+TEMPO2 = 5
+INSTR = $2d06
+WAVE  = $3800
+PULSE = $3a00
+FILTER = $3d00
+FMTAB = $4100
+PULSETAB = $8ea3
+IFM_LO = $4000
+IFM_HI = $4040
+IPULSE_LO = $4080
+IPULSE_HI = $40c0
+MULTISPEED = 1
+FILT_INIT_ROW = 0

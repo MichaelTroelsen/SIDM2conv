@@ -3,9 +3,11 @@
 **Status: decompression SOLVED for the v1.2-exact bucket (2026-07-19),
 `sidm2/blackbird_parser.py` shipped same day; Stage A (Driver 11 transpile)
 shipped same week via `sidm2/blackbird_driver11.py` — real, loadable SF2s
-built for Fargo + Glyptodont. Not yet wired into the conversion pipeline
-(no `DriverSelector`/`conversion_pipeline` registration, no native Stage B,
-no fidelity-measured validation).** `bin/LFT/blackbird-1.2/` bundles the
+built for Fargo + Glyptodont. Stage B's synth engine (arpeggio/wave/pulse/
+filter) is now RE'd and validated byte-exact against real hardware (see
+"Stage B synth engine" below) but not yet built into an actual native driver.
+Not yet wired into the conversion pipeline (no `DriverSelector`/
+`conversion_pipeline` registration, no fidelity-measured validation).** `bin/LFT/blackbird-1.2/` bundles the
 author's own editor + `birdcruncher` exporter, **including full assembly
 source** (`Export/source/player.s`, `rplayer.h`) and the **C compressor source**
 (`Export/source/cruncher.c`). This is the opposite situation from every other
@@ -536,6 +538,200 @@ session used the project's own established tool instead
 per `PLAYBOOK.md`'s fidelity ladder rung 3-4 — this is the right tool for
 this job, not RetroDebugger.
 
+## Stage B synth engine (`everyframe`) — RE'd and validated byte-exact (2026-07-19)
+
+`player.s`'s `everyframe` (~line 207-355), which runs unconditionally every real
+frame, drives three sub-engines read from per-instrument programs (start rows
+`fx_start[i]`/`ins_wave[i]`/`ins_filt[i]`, 1-based, already located): an
+arpeggio/portamento **pitch interpolator** (`fxtable`, 2-bit fractional blend
+between adjacent `freq_lsb`/`freq_msb` entries), a **waveform+pulse-width
+stepper** (`wavetable`, with pulse width fed through a fixed 256-entry lookup
+`pwprepare` located at `seg_play_data` template offset 1024 — same fixed-offset
+convention as `freq_msb`/`freq_lsb` at 817/913, i.e. baked into every
+v1.2-exact file identically, not composer data), and a **global filter cutoff
+program** (`filttable`, SET-absolute/ADD-signed-delta rows with silent-drop-on-
+overflow). `execute()` (~line 365-517, tempo-tick-gated) commits pending
+note/instrument state into these engines' starting positions each tick.
+
+**Validated against real hardware** (VICE `vsid-trace.js`, since zig64 reports
+0 writes for Blackbird — a separate, still-open gap, see below): a from-scratch
+Python simulator implementing the full `playroutine` dispatch → `prepare1/2/3`
+→ `execute` → `everyframe` pipeline, driven by the real per-file table bytes
+and the already-decoded note stream, reproduces **100% of real $D400-$D418
+register writes, in exact order and value** — 14,673/14,673 (Fargo) and
+18,332/18,332 (Glyptodont) over 1200 real frames (~24s) each, spanning 3/14
+distinct instruments and 19/40 distinct notes (not just an opening sustained
+chord). Independently re-run and confirmed (not just taken from the building
+agent's report). Comparison method: flatten both the real trace and the
+simulator's write log into ordered `(register, value)` event sequences
+(dropping the deterministic init-clear block) and compare position-by-position
+— stricter than frame-boundary snapshots since it also validates write order,
+which is what caught a real bug (see below).
+
+**Bugs found and fixed via real-trace diffing** (not by re-reading — the
+simulator's first draft got these wrong and the trace comparison caught it
+immediately): (1) `everyframe`'s voice loop is a SINGLE combined per-voice
+loop (fx+freq then wave+pulse for the SAME voice before the next voice), not
+two separate all-voices passes; (2) `prepare1` only *peeks* the fx-select
+byte when it's not in fx range — an unconditional-consume first draft silently
+ate the next stream byte (an instrument-select, in the case that exposed it),
+permanently desyncing that voice's cursor for the rest of the song (fixing
+this alone took the match from 179/522 to 522/522 on the first short test);
+(3)/(4) off-by-one errors in `fx_start` indexing and its array length
+(`nfx = filttable_addr - fx_start_addr`, NOT `nins`); (5) `freq_lsb`/`freq_msb`
+must be read directly from the loaded binary at their fixed offsets with NO
+artificial 96-byte truncation — `lda freq_lsb+24,y` is ordinary 16-bit
+addressing and legitimately reads past the nominal table extent (the tables
+"overlap by 15 bytes" per `player.s`'s own comment, and the largest valid `y`
+runs into `pwprepare`'s region) — this only manifested on Glyptodont, not
+Fargo, purely because Fargo's `Y` values in the traced window happened to stay
+smaller (a reminder that a single file's clean pass doesn't prove a formula).
+
+**Precise per-engine semantics** (each has real 6502 carry/overflow subtlety —
+see the simulator's inline comments for the exact derivation, not summarized
+here in full): the fx-interpolator's 4 blend modes split into 2 with a
+deliberate `carry-in=1` "small consistent error" (per `player.s`'s own
+comment) and 2 with `carry-in=0`; self-relative jumps in `wavetable` and
+`filttable` both include a `+1` from the preceding `cmp`'s carry feeding an
+unsigned `adc` with no `sec`; the wave-engine's pulse row advances `wavepos`
+by `2 + carry(bit6 of the masked waveform byte)`; pulse-width SET uses a real
+`asl` (doubles the delta) while pulse-width ADD skips the `asl` via a
+`.byt $80` NOP-eats-next-opcode dual-entry-point trick (a classic 6502
+space-saving idiom) and is NOT doubled; the filter's non-jump advance is `+3`
+(not the naive `+2` a first read suggests — `filttable`'s 4th "jump test"
+byte physically overlaps the next row's first byte, a compact 3-byte/row
+encoding); filter cutoff ADD mode sign-extends the low 7 bits of the row byte
+and silently drops (both the state update AND the `$D416` write) on signed
+overflow for that frame.
+
+**Reusable artifacts** (scratch, not yet committed — a natural home for a real
+version is `sidm2/blackbird_native.py`): the validated simulator
+(`blackbird_everyframe_sim.py`) and its trace-comparison harness
+(`blackbird_compare_seq.py`), plus 2 fresh 1200-frame VICE ground-truth
+captures for Fargo/Glyptodont, in this session's scratchpad (see
+`memory/blackbird-lft-player.md` for the exact path — ephemeral, regenerate
+via `node scripts/dev/vsid-trace.js <file.sid> --frames 1200 --json --out
+<path>` from the separate `sid-reference-project` if picking this up fresh).
+Two more relocated template bytes were found and are NOT yet in
+`sidm2/blackbird_parser.py`'s `BlackbirdLayout`: `INS_RESTART` (template
+offset 93) and `INS_RESTART2` (offset 512), both stored as `value+1`.
+
+**Still open**: the zig64-reports-0-writes gap for Blackbird (noted early this
+session, `vsid-trace.js` is the working substitute, but nobody has diagnosed
+*why* zig64 fails on an otherwise-normal PSID). A literal reading of the
+dispatch code's `cpx #3*7` threshold gives real-frames-per-cycle =
+`tempo_byte/7 + 1`, vs. this doc's earlier documented `tempo_byte/7` — the
+simulator implements the literal dispatch logic directly (validated
+byte-exact) rather than the abstract formula, so this is a footnote for
+whoever revisits the tempo-model doc, not a correctness gap in Stage B.
+
+## Stage B1 native driver built (2026-07-19): `drivers_src/blackbird/`
+
+A real native SF2 driver now exists and builds a loadable SF2 for Fargo:
+`drivers_src/blackbird/blackbird_driver.asm` (forked from `romuzak_driver.asm`,
+sequencer/wave/pulse/filter/FM stepper code unchanged — only the DIGI engine
+was stripped and one filter-init fix applied) + `bin/build_blackbird_native_song.py`
+(the translator, using `bin/blackbird_everyframe_sim.py` — the validated
+simulator above, now copied into the repo as the exact-formula oracle for
+every table translation) + `bin/build_blackbird_driver_full.py` (assemble/wrap
+harness). Output: `out/blackbird/Fargo_native.sf2`, parses clean
+(`load=$0D7E tracks=3 OK`).
+
+**Translation approach**: rather than re-deriving Blackbird's carry/asl/ror
+bit tricks by hand for each table, the translator seeds a throwaway
+`BlackbirdSim` at a program's starting position and calls its `everyframe()`
+directly — the exact validated formula, not an approximation — then RLE-collapses
+the resulting frame-by-frame values into the shared engine's SET/ADD/JUMP row
+format (WAVE has a native jump primitive, used exactly; PULSE/FMTAB have none,
+so those cycles are physically repeated ~250 frames then frozen — a known B2
+residual). FMTAB specifically required recognizing it's a **cumulative delta
+accumulator** (`FM_ACC += offset each frame`, from reading `fm_step` directly),
+not an absolute table, so per-row deltas-of-deltas are emitted. FX/pitch
+offsets were empirically confirmed **note-dependent** (fx=1 gives offset 365
+at note 20 vs 1158 at note 40), so per-(fx,note) command bundles are used
+(Fargo: 107 distinct bundles, clustered to fit the 64-slot cap via the
+project's established greedy nearest-merge technique, 43 pairs merged).
+
+**5 real bugs found and fixed** via building + comparing against the
+simulator (not by re-reading): an instrument-index off-by-one (native driver
+needs 0-based, Stage A's 1-based convention was silently wrong here since
+Stage A never uses real per-instrument filter/wave data); the shared engine's
+filter defaults IDLE (gated by a flag-`$40` note) but Blackbird's filter runs
+continuously from frame 0 — needed a forced `F_ACT=1` at init; the startup
+filter row needs the real position-0 program unrolled, not a hardcoded guess;
+a FILTER SET-row encoder bug that dropped bit7, silently misdecoding every
+SET row as an ADD row (fixing this alone moved the match rate 43%→55%); a
+loop-target heuristic that could omit the filter's terminating jump row
+entirely, rewritten with exact frame-accounting.
+
+**Honest fidelity (200-frame register-trace comparison vs. the validated
+simulator, same file)**: overall **55.1%** of 5000 register cells match, 0/200
+frames fully identical. By category: **filter 99.1%**, **AD/SR 93.5%**,
+**waveform 70.3%**, **frequency 34.0%**, **pulse ~1%** (this last number is a
+measurement artifact, not a real defect — traced to real hardware's pre-note
+pipeline transient in frames 0-2 before `execute()` first fires at frame 3;
+the instrument in question never touches `$D402/3` in either the isolated
+translation or the driver). Frequency's gap is multi-causal, all named: (a)
+the driver uses a **constant `TEMPO=5`**, not Blackbird's real `[5,4]`
+alternation — the single biggest source of drift after the first tick or two;
+(b) the shared engine's FM runner has an inherent 1-frame lag on note trigger
+(architectural, shared by every other player using this driver, not
+introduced here); (c) a ~3-frame startup-pipeline offset; (d) the 43 clustered
+bundle merges (verified: a merged bundle's FM delta is `0x9E8`, the cluster
+neighbor's value, not the original note's own `0xA7F` — expected from
+clustering, not a bug).
+
+## B2 shipped same day: real tempo alternation + a genuine off-by-one bug found
+
+Implemented the first named B2 lever: the driver now swings `TEMPO`/`TEMPO2`
+per row (via `SWTOG`, a toggle mechanism ported verbatim from
+`drivers_src/mon`'s own swing-tempo code — the same shape, reused rather than
+reinvented) instead of a flattened constant, modeling the song's FIRST
+tempo/groove pair only (same scope as Stage A's tempo chain; Fargo's other
+~20 mid-song tempo-change records remain a B3 gap).
+
+**A real bug was found while wiring this up, not by re-reading**: the first
+attempt used Stage A's existing `estimate_tempo_chain()` values (5/4 frames)
+and the match rate got WORSE (55.1%→50.2%), not better — a signal something
+was wrong, not just "needs tuning." Dumping the validated simulator's own
+`zp_master` at every real row-boundary commit over 200 frames settled it
+definitively: **real frames-per-tick = `tempo_byte // 7 + 1`, NOT
+`tempo_byte // 7`** (committed `zp_master=35` → next tick exactly 6 real
+frames later, `=28` → 5 frames later — confirmed empirically, matching the
+dispatch loop's `cpx #3*7` 3-slot prepare reservation the RE agent had
+flagged as an unresolved footnote in the "Stage B synth engine" section
+above, now resolved). **`estimate_tempo_chain()` (`sidm2/blackbird_driver11.py`)
+has been dividing by 7 without the `+1` all along** — so Fargo's real tempo
+pair is **6/5 frames, not 5/4** as this doc and Stage A have stated
+elsewhere. This is a genuine bug affecting Stage A too (not fixed there this
+pass — Stage A's output was already user-audio-confirmed acceptable at its
+coarser fidelity bar, and fixing it is a small, separate, well-scoped
+follow-up: `estimate_tempo_chain`'s `a // 7` / `b // 7` need `+ 1`). The
+native driver bypasses the bug directly (`extract_tempo_pairs()` raw bytes +
+the corrected formula), not by fixing the shared function.
+
+**Result, same 200-frame comparison** (rebuilt + independently re-run after
+the fix, by-category breakdown now printed by the build script itself):
+overall **55.1% → 59.9%**; **waveform 70.3%→88.8%**, **AD/SR 93.5%→97.2%**,
+**frequency 34.0%→40.8%**, filter unchanged at 99.1% (already near-ceiling),
+pulse unchanged at ~1% (still the same frame-0-3 pre-note-transient
+measurement artifact, not a real defect — see B1 section above). A real,
+verified improvement, not a bundle/tuning artifact — the SAME 200-frame
+window, only the tempo model changed.
+
+**B3 scope** (remaining, mirroring ROMUZAK's own staged-within-a-stage
+convention): fix `estimate_tempo_chain`'s off-by-one for Stage A too; model
+Fargo's other ~20 mid-song tempo-change records (this pass only covers the
+first pair); re-examine whether fewer/smarter bundle merges recover more of
+the remaining frequency gap; the filter's overflow-silently-drops-a-frame
+quirk (not modeled, rare edge case); mode=0 filter rows (format-inherent,
+currently clamped to mode=1); the shared engine's inherent 1-frame FM lag on
+note trigger (architectural, shared by every player using this driver); the
+~3-frame startup-pipeline offset; extend to Glyptodont (not attempted yet —
+all work so far is Fargo-only). Not yet audio-listened to
+(`pyscript/sf2_open_in_editor.py`) or wired into `DriverSelector` — both
+explicitly out of scope for this pass.
+
 ## What's genuinely proven vs. still open
 
 - **Proven, working**: template-based detection (11/59 files), full symbol/table
@@ -557,15 +753,26 @@ this job, not RetroDebugger.
   (`sidm2/blackbird_driver11.py`): real, loadable Driver 11 SF2s for Fargo
   (378 notes) and Glyptodont (2703 notes), ticks mapped 1:1 to rows, AD/SR
   read byte-exact, instrument-cap aliasing bug found and fixed.
-- **Not started / explicitly out of scope this round**: testing the parser
-  against the near-v1.2 variant buckets (older birdcruncher versions,
-  different compiled bytes, confirmed rejected by locate but not yet
-  supported); native Stage B (per-frame register fidelity); wiring into
-  `DriverSelector`; any zig64/siddump onset-match or audio fidelity
-  measurement of the Stage A output (see Stage A's "Not verified" note);
-  mid-song tempo tracking (only the first tempo/groove pair is used); and
-  empirical/byte-exact pitch calibration against Blackbird's own
-  sub-semitone `freq_lsb`/`freq_msb` interpolation tables.
+- **Proven, not yet built into a driver**: the full Stage-B synth engine
+  semantics (fx/pitch interpolator, wave/pulse stepper, global filter
+  program) — validated byte-exact against real hardware (see "Stage B synth
+  engine" above), but only as a Python simulator, not yet ported into a real
+  6502 native SF2 driver (`drivers_src/blackbird/`) or wired to table
+  translators that convert Blackbird's own programs into the shared engine's
+  row format.
+- **Not started / explicitly out of scope this round**: the actual native
+  Stage-B driver build (asm fork + table translators + assemble/wrap, per
+  `docs/players/PLAYBOOK.md` §2/§6) and climbing its fidelity ladder; testing
+  the parser against the near-v1.2 variant buckets (older birdcruncher
+  versions, different compiled bytes, confirmed rejected by locate but not
+  yet supported); wiring into `DriverSelector`; any zig64/siddump onset-match
+  fidelity measurement of the Stage A output (see Stage A's "Not verified"
+  note — zig64 itself doesn't work on Blackbird, see the open item above);
+  mid-song tempo tracking in Stage A (only the first tempo/groove pair is
+  used); and empirical/byte-exact pitch calibration against Blackbird's own
+  sub-semitone `freq_lsb`/`freq_msb` interpolation tables (Stage A only
+  calibrates the resting/landing pitch, not the fx-engine's live
+  interpolation, which Stage B's synth engine RE above now fully covers).
 
 ## Files (for a future continuation)
 
