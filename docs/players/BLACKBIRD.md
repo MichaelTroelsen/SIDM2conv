@@ -4,10 +4,20 @@
 `sidm2/blackbird_parser.py` shipped same day; Stage A (Driver 11 transpile)
 shipped same week via `sidm2/blackbird_driver11.py` — real, loadable SF2s
 built for Fargo + Glyptodont. Stage B's synth engine (arpeggio/wave/pulse/
-filter) is now RE'd and validated byte-exact against real hardware (see
-"Stage B synth engine" below) but not yet built into an actual native driver.
-Not yet wired into the conversion pipeline (no `DriverSelector`/
-`conversion_pipeline` registration, no fidelity-measured validation).** `bin/LFT/blackbird-1.2/` bundles the
+filter) is RE'd and validated byte-exact against real hardware (see
+"Stage B synth engine" below) AND now built into a real native driver
+(`drivers_src/blackbird/blackbird_driver.asm` + `bin/build_blackbird_native_song.py`,
+B1→B2→B3→B4 same-week): Fargo scores 69.6% overall register-match (200-frame
+window vs the validated simulator; filter 99.1%, AD/SR 97.2%, freq 81.5%)
+and now models the SONG'S FULL mid-song tempo schedule (B3, not just the
+first pair); Glyptodont improved to 53.5% overall (B4) after 4 real bugs
+found+fixed this round (a filter SET-chain misclassified as an ADD ramp, an
+unmodeled filter overflow-drop, tied notes wrongly restarting WAVE+FILTER,
+and unweighted bundle clustering) superseded the prior B3 report's
+"architectural, not fixable" characterization of Glyptodont's gap, which did
+not hold up under direct verification (see "B4 shipped" below for both,
+including a full before/after table). Not yet wired into the conversion
+pipeline (no `DriverSelector`/`conversion_pipeline` registration).** `bin/LFT/blackbird-1.2/` bundles the
 author's own editor + `birdcruncher` exporter, **including full assembly
 source** (`Export/source/player.s`, `rplayer.h`) and the **C compressor source**
 (`Export/source/cruncher.c`). This is the opposite situation from every other
@@ -16,10 +26,11 @@ have the literal ground truth. That makes locate/detection, table layout,
 the note-stream decompression, AND now the tick/tempo model **100% solved,
 independently verified, and committed as real tested modules** for all 11
 v1.2-exact-bucket files (see "Compression — SOLVED", "Parser module shipped",
-"Tempo-model open caveat — RESOLVED", and "Stage A shipped" below). What's
-left before this is a fully wired-in, fidelity-measured SF2 converter: no
-native Stage B build, no `DriverSelector.PLAYER_REGISTRY` entry (intentionally,
-until fidelity is measured) — see "What's genuinely proven vs. still open".
+"Tempo-model open caveat — RESOLVED", and "Stage A shipped" below). A native
+Stage-B driver now exists and builds real SF2s for 2 of those 11 files (see
+"Stage B1"/"B2"/"B3" sections below); no `DriverSelector.PLAYER_REGISTRY`
+entry yet (intentionally, fidelity is still well below other players' native
+drivers) — see "What's genuinely proven vs. still open".
 
 ## Corpus scope
 
@@ -732,6 +743,314 @@ all work so far is Fargo-only). Not yet audio-listened to
 (`pyscript/sf2_open_in_editor.py`) or wired into `DriverSelector` — both
 explicitly out of scope for this pass.
 
+## B3 shipped: row-indexed mid-song tempo schedule + Glyptodont coverage
+
+Two independent B3 items from the list above, done in one pass: the full
+mid-song tempo schedule (not just the first pair), and the first Glyptodont
+native build.
+
+### Mid-song tempo schedule
+
+**Checked the premise FIRST, per this task's own instruction, before building
+anything**: re-deriving Fargo's full tempo-record history with the corrected
+`//7+1` formula (the raw byte pairs are unchanged from B2's derivation — only
+the frame-count *interpretation* was wrong before B2 — so the OLD written-down
+"5/4/6/5/7/6/3/3/5/5" sequence in this doc's "Compression" section is still
+wrong and is superseded by this section, not just re-labelled) shows the
+**first mid-song tempo change lands at real frame 1895** — the B1/B2 200-frame
+comparison window never reaches it, so it would have measured **zero
+improvement** from modelling it. Extending the comparison window to 2400
+frames (crossing the boundary) with the OLD first-pair-only B2 driver first,
+to get a real "before" number, confirmed the gap is real: match rate fell
+from 65.7% (frames 200–1895, still the first pair) to 58.1% (frames
+1895–2400, after the real hardware's tempo changed and the driver didn't) —
+waveform 92.7%→63.6%, AD/SR 98.1%→73.5%. Worth fixing.
+
+**What changed**: `blackbird_driver.asm`'s `do_row` gained a 16-bit
+`ROW_CNT_LO`/`ROW_CNT_HI` tick counter (1 per `do_row` call — Blackbird's own
+tick grid, the same unit Stage A already maps 1:1 onto Driver 11 rows) and a
+row-indexed schedule check: four new parallel byte tables
+(`tempo_sched_row_lo/hi`, `tempo_sched_t1/t2`, ≤64 entries, X-register
+indexed, generated fresh per song) are consulted each row; on a match,
+`CUR_TEMPO`/`CUR_TEMPO2` (new live state at `$185d`/`$185e`, replacing the
+compile-time `#TEMPO`/`#TEMPO2` immediates `do_row`'s `SWTOG` swing used to
+read directly) are overwritten, and `SWTOG` is forced so the row that just
+changed tempo uses the new pair's LONG value first — matching real
+hardware's own immediate `zp_master=zp_tempo` commit, which doesn't care
+about the prior alternation's parity. The tables live in the driver's
+existing ~311-byte unused gap between the code (`ollo`/`olhi`, ends ~$1595)
+and the reserved SF2II playback-state region ($16cc), found by inspecting the
+64tass listing rather than guessing — no address layout was disturbed.
+`bin/build_blackbird_native_song.py` gained `extract_tempo_schedule()`
+(re-runs `blackbird_everyframe_sim.find_tempo_records()` through a throwaway
+`BlackbirdSim` seeded with the song's REAL decoded streams — OOB-record
+timing depends on actual note content — and records the row index +
+converted `//7+1` long/short frame counts every time `execute()` consumes a
+queued record) and `write_tempo_schedule()` (emits the four `.inc` files).
+`bin/build_blackbird_driver_full.py`'s own skeleton self-test needed
+`TEMPO2`/`TEMPO_SCHED_LEN=0` added to its `layout.inc` writer too (it had
+silently never been updated for B2's `TEMPO2`, a pre-existing gap, not
+something this pass introduced — fixed as a required side effect of making
+the schedule check unconditionally assemble-safe).
+
+**Result** (200-frame primary window, unchanged by design — the whole point
+of checking first was that this window never crosses a boundary — plus a new
+2395-frame extended window that does): primary window **59.9%, identical to
+B2** (freq 40.8%, waveform 88.8%, pulse 1.0%, AD/SR 97.2%, filter 99.1% — as
+predicted, not a bug). Extended window, same file, same simulator,
+B2-first-pair-only vs B3-full-schedule:
+
+| window | B2 (first pair only) | B3 (full schedule) |
+|---|---|---|
+| 1895–2395 (POST-CHANGE) overall | 58.1% | **73.1%** |
+| 1895–2395 freq / waveform / AD/SR | 54.9% / 63.6% / 73.5% | **82.0% / 90.8% / 95.8%** |
+| 0–2395 (full extended) overall | 63.6% | **66.7%** |
+| 0–2395 freq / waveform / AD/SR | 57.8% / 86.3% / 92.8% | **63.4% / 92.0% / 97.5%** |
+
+A real, verified improvement exactly where predicted (post-boundary), no
+change where predicted (the pre-existing 200-frame number), filter unchanged
+at ~100% either way (already near-ceiling), pulse unchanged (~1%, the same
+pre-note-transient measurement artifact from B1/B2).
+
+### Glyptodont: first native build, and a real bug found
+
+Ran `bin/build_blackbird_native_song.py SID/LFT/Glyptodont.sid` (14
+instruments incl. 11 with filter programs vs Fargo's 5, 2703 notes vs 378,
+423 distinct FM+pulse bundles vs Fargo's 107) for the first time. It built
+and parsed clean (`load=$0D7E tracks=3 OK`), and the size-cap guards held
+with real headroom, not just "didn't crash": WAVE table 171/256 rows,
+FILTER table 27/256 rows (both well under the `ValueError`-guarded 256-row
+cap), 64/423 bundles survived clustering (359 pairs merged — a far more
+aggressive ratio than Fargo's 43/107, a direct consequence of Glyptodont's
+much larger instrument/note diversity hitting the same fixed 64-slot
+`$c0-$ff` command space).
+
+**A real bug was found and fixed**, though it turned out NOT to be
+Glyptodont's main problem: `gen_includes_song`'s FILTER-writing block for the
+song's default (position-0) filter program absolutised a `$7f` jump row's
+target as `(r + b2)` (the row's own local index plus the loop offset)
+instead of `(default_start + b2)` — matching the CORRECTLY-written
+per-instrument block a few lines below, which already used `(start + b2)`.
+Confirmed via direct memory dump (loaded FILTER table row 1's target byte
+read `$01`, should be `$00`) before touching any code. Both Fargo's and
+Glyptodont's default programs happen to be the same degenerate 2-row shape
+(SET once, jump back to row 0) — for exactly that shape the bug's wrong
+target (row 1, i.e. itself) coincidentally satisfies the shared engine's
+own `fp_read` self-target freeze check (`cmp tmpf; beq fp_freeze`,
+`blackbird_driver.asm`), so both files froze at the CORRECT steady value by
+coincidence and neither file's fidelity number moved when this was fixed
+(verified: rebuilt Glyptodont post-fix, filter stayed at 77.4%; rebuilt
+Fargo post-fix, all numbers identical to B2/B3's own report above — no
+regression). Fixed anyway since any FUTURE file whose default program is
+longer than 2 rows would have jumped to the wrong place outright.
+
+**Honest fidelity (200-frame primary window, same method as Fargo)**:
+overall **49.7%** — freq 22.1%, waveform 73.3%, pulse 0.2%, AD/SR 96.6%,
+filter 77.4%. Substantially worse than Fargo's 59.9% across nearly every
+category, and NOT a startup transient: segmenting the window (frames 0–10
+vs 10–200) shows the gap is already at its steady-state rate by frame 10
+(freq 8.3%→22.8%, filter 82.5%→77.1% — moves slightly, then holds flat, not
+a one-off spike that recovers). Two named, evidenced causes, neither fixed
+this pass:
+
+- **Bundle-clustering loss dominates the frequency gap.** 359/423 bundles
+  (85%) got merged to fit the 64-slot cap, vs Fargo's 43/107 (40%) — every
+  merged note's FM/pulse program plays its cluster NEIGHBOR's program, not
+  its own. This is the same named mechanism as Fargo's own "(d) the 43
+  clustered bundle merges" B1 residual, just far more aggressive here
+  because Glyptodont's instrument/note diversity is ~4x Fargo's against the
+  SAME fixed `$c0-$ff` 64-slot command space (a hard format ceiling, not a
+  tunable parameter).
+- **The filter gap is architectural, not this session's bug.** Confirmed
+  Glyptodont's very first note (voice 0, instrument 6) is itself a
+  filter-triggering instrument (`ins_filt=33`) — the driver's `do_row`
+  processes row 0 on real frame 0 (`zp_tcnt` starts at 1, hits 0 on the
+  first `do_play` call), but the validated simulator's own dispatch doesn't
+  commit that SAME first note until real frame 3 (the documented `cpx #3*7`
+  3-slot prepare reservation, i.e. the already-named "~3-frame
+  startup-pipeline offset" B1/B2 residual). With 11 filter-carrying
+  instruments (vs Fargo's 5) interleaved across 2703 notes, the global
+  filter engine gets repositioned far more often, so this same
+  architectural per-trigger skew (shared by the FM engine's own documented
+  1-frame note-trigger lag) compounds continuously through the whole song
+  instead of being a one-time startup cost — consistent with the segmented
+  measurement showing a sustained, not transient, gap.
+
+**Not fixed this pass, named honestly**: neither cause above is a
+Glyptodont-specific bug to patch — both are the SAME shared-engine
+architectural traits already named in B1's residual list (bundle clustering,
+startup/trigger-timing skew), just scaled up by this file's larger
+instrument/note count. A real fix would mean either a bigger command-space
+redesign (more than 64 FM+pulse slots) or reworking the shared engine's
+note/filter-trigger timing to match real hardware's earlier commit point —
+both cross-player, out of scope for a single-file B3 pass. Glyptodont's
+extended-window tempo comparison (Task 1's method) could not be run in
+practice: its only mid-song tempo record lands at real frame 11738 (row
+2348) — its FIRST record (row 1, frame 3) is flat (`[5]`, no swing) and
+holds for the entire practically-comparable range, so B3's schedule
+mechanism is present and structurally exercised (2 schedule entries written,
+consumed correctly per the row-tracking used to derive them) but not
+fidelity-measured for this file — reaching frame 11738 in the py65 headless
+comparison was judged not worth the runtime cost this pass.
+
+## B4 shipped: the "architectural" explanation for Glyptodont's gap was wrong — 3 real bugs found and fixed instead
+
+The prior B3 report attributed Glyptodont's low filter (77.4%) and frequency
+(22.1%) scores to two *architectural* causes ("the shared engine's known
+startup/trigger-timing skew" and "the same named mechanism as Fargo's own...
+clustered bundle merges"). **This round's job was to actually verify that,
+not repeat it** — and it did not hold up. Three real, fixable bugs were
+found instead, each isolated via a live py65 register/state trace against
+the validated simulator (not by re-reading), each verified not to regress
+Fargo:
+
+**Bug 1 — filter SET-chain misclassified as an ADD ramp (fixed).** Traced
+Glyptodont's `$D415-8` sequence frame-by-frame against the simulator; the
+FIRST real divergence (frame 35 onward, instrument 16) showed the driver's
+$D416 walking `8,6,4,2,0,254,252,250...` — an unbounded downward ramp that
+never stops, wrapping past 0 into negative territory. Root cause: raw
+`filttable` bytes `$c4,$c3,$c2` at instrument 16's self-looping row are
+*three independent absolute SETs* that each happen to differ by exactly 1
+(making the *output* look like a smooth `ADD -2` ramp) — but
+`unroll_filter`'s RLE collapser classified SET-vs-ADD purely from whether
+the output cutoff changed by a consistent delta while `(d418,d417)` stayed
+the same, with no way to tell a genuine ADD from a coincidentally-smooth
+chain of SETs. A SET is idempotent under a self-loop (repeats hold steady);
+an ADD is not (repeats drift forever) — the misclassification only became
+catastrophic at the self-loop's jump-back point. Fixed by reading the real
+per-frame op type directly from the simulator (`sim.filttable(y+2) & 0x80`,
+the same bit real hardware's own `coset`/`add mode` branch tests) instead of
+inferring it from the output, and never letting a SET frame join an ADD run
+or vice versa. **Result: Glyptodont's primary-window filter 77.4% → 85.5%**,
+Fargo unchanged (its filter programs never exercise this path — see Bug 2).
+
+**Bug 2 — filter overflow-silently-drops-a-frame, unmodeled (fixed).** The
+B1-era residual list flagged this as "rare, deprioritize if uncommon" — a
+direct measurement (`sim.filttable`/`adc` walk over 2400 frames, both files)
+found it is **0/2400 frames for Fargo (0 ADD ops at all — its filter
+programs are pure SET chains) but 485/700 ADD-op frames (69.3%), 20.2% of
+ALL frames, for Glyptodont** — not rare for this file. Fixed by giving the
+shared engine's `filt_prog_step`/`fp_apply` a real signed-overflow check on
+the 8-bit cutoff-hi add, using the 6502's own `V` flag (`bvs fp_ovf`) —
+exactly the CPU-native equivalent of real hardware's own signed-overflow
+test, no hand-rederivation needed. On overflow, both the state update and
+the `$D415/6` write are skipped for that frame (matching
+`BlackbirdSim.everyframe`'s own `else: # filtdone` branch), while `F_CNT`
+bookkeeping still advances. Architecturally correct and confirmed via sha1
+diff to genuinely change the assembled driver; Fargo is provably unaffected
+(0 ADD ops → the `bvs` path is never taken). Its effect on the specific
+200-800-frame Glyptodont comparison window used to isolate it turned out to
+be masked by Bug 3 below (fixing it alone didn't move that window's numbers
+— not a discarded fix, just one whose payoff is currently hidden behind
+Bug 3's own residual, see below).
+
+**Bug 3 — tied/legato notes wrongly restart WAVE + FILTER on the native
+driver (fixed, the actual cause of the frame-275+ divergence).** Traced WHY
+the filter kept resetting every ~5 frames (every tick) instead of running
+its ADD ramp uninterrupted like the simulator: a 17-note tied chromatic run
+(voice 2, ticks 56-72, instrument 4, all with `tie=True`) was retriggering
+the filter's SET row on literally every tick. Root cause, found by rereading
+`BlackbirdSim.execute()`'s own dispatch: for a legato note
+(`vs.pendins == 0xFF`), real hardware takes the `y & 0x80` branch and
+executes **nothing** for `y == 0xFF` ("no register effect here", literally
+the code's own comment) — `wavepos`/`ins_wave` and `zp_filtpos` are ONLY
+ever touched in the genuine-instrument-select branch, which legato
+explicitly bypasses. FX/pitch-modulation (`fxpos`) is a separate mechanism
+or driven by `vs.pendfx`, set unconditionally in `prepare3` with no tie
+gate — so it DOES restart on every note, tied or not. `blackbird_driver.asm`'s
+`pr_note` had this backwards: the WAVE-restart and FILTER-reposition code
+lived under the `pn_tied:` fallthrough label, so BOTH the tied and
+not-tied paths reached it — every tied note was silently restarting the
+wave program and yanking the global filter back to its instrument's start
+row. Fixed by moving the WAVE+FILTER restart into the not-tied-only branch
+(falling through to `pn_tied` only for the genuinely-tie-invariant FM
+restart). **Verified via a direct before/after py65 trace** (not just the
+aggregate %): the driver's `F_IDX` no longer cycles `3,4,4,4,4,3,4,4,4,4...`
+every tick — it now sits at a constant row while `F_CHI` climbs
+continuously, matching the simulator's own qualitative behavior (a smooth,
+uninterrupted ramp) for the first time. **Honestly reported, not
+oversold**: this did NOT move the strict byte-exact-match percentage for
+the specific 200-800-frame window used to isolate it (both the buggy
+oscillating trajectory and the fixed continuous one were 100% "diff" on
+this register for every sampled frame in that window, because the fixed
+driver's ramp *rate* still doesn't fully converge with the simulator's own
+within it — the corrected trajectory is a real, verified improvement in
+*kind*, but the strict per-frame equality metric gives zero partial credit
+for "closer but not equal yet"). The residual rate gap is not root-caused
+this pass (plausibly other voices' own legitimate, non-tied filter
+repositions interleaving with instrument 4's ramp, consistent with
+Glyptodont's 11 filter-carrying instruments sharing one global filter
+resource) — a good target for whoever picks up B5's tempo/window-scoped
+filter tracing.
+
+**Bug 4 (the one item that WAS the established, correct technique but
+simply wasn't applied) — count-weighted bundle clustering.** Verified
+directly against `bin/build_galway_trace_song.py`'s own `cluster_bundles`
+(the reference implementation `docs/players/PLAYBOOK.md`'s technique
+catalog cites as "first proven on Rambo/Galway v3.12"): Galway's version
+weights merge cost by `min(cnt[i], cnt[j])` — the note-onset usage count of
+each candidate bundle — so a merge is only cheap when it affects FEW notes.
+Blackbird's `cluster_bundles` had NO such weighting: it picked the globally
+nearest pair by raw L1 distance alone, so a bundle played by hundreds of
+notes could get merged away exactly as readily as one played once, and the
+surviving representative was whichever bundle happened to be added to the
+group first (not necessarily the most-played one). Fixed by porting
+Galway's `cost = distance * min(weight_i, weight_j)` merge-order and by
+making the survivor the group's own highest-onset-count member. Both
+`bundle_counts` (real onset-event tallies, not distinct-key counts) are now
+threaded through from `main()`. **Result: this was the single biggest lever
+of the whole round** — Fargo's primary-window frequency match **40.8% →
+81.5%** (overall 59.9% → 69.6%, extended window 66.7% → 69.5%), Glyptodont's
+**22.1% → 32.5%** (overall 49.7% → 53.5%). The much bigger jump on Fargo
+(only 43/107 bundles merged, vs Glyptodont's 359/423) shows unweighted
+clustering was leaving real accuracy on the table even in the "mild"
+clustering regime the B1 report treated as a minor, well-understood
+residual — it was actually a live, fixable inefficiency the whole time.
+
+**Full before/after (200-frame primary window, same method throughout)**:
+
+| | Fargo before B4 | Fargo after B4 | Glyptodont before B4 | Glyptodont after B4 |
+|---|---|---|---|---|
+| overall | 59.9% | **69.6%** | 49.7% | **53.5%** |
+| freq | 40.8% | **81.5%** | 22.1% | **32.5%** |
+| waveform | 88.8% | 88.8% | 73.3% | 73.3% |
+| pulse | 1.0% | 1.0% | 0.2% | 0.2% |
+| AD/SR | 97.2% | 97.2% | 96.6% | 96.6% |
+| filter | 99.1% | 99.1% | 77.4% | **85.5%** |
+| extended (0-2395) overall | 66.7% | **69.5%** | n/a (boundary beyond cap) | n/a |
+
+No category regressed on either file; waveform/pulse/AD/SR are unchanged
+because none of the 4 bugs touch those paths. Independently re-verified
+(sha1-hash-confirmed which driver binary produced which number at every
+step) by the auditing session, not just taken from a building agent's
+report — this round caught its OWN false lead midway (an apparent "the
+overflow-drop fix does nothing" result that turned out to be masked by
+Bug 3, not a wasted fix) by tracing register state directly rather than
+trusting the aggregate percentage alone.
+
+**B5 scope** (remaining, superseding the old B4 list above where it
+overlaps): the Bug-3 residual rate gap (driver's post-fix filter ramp is
+qualitatively right but still lags the simulator's own rate within the
+200-800 window — needs a full untruncated 275-500 frame trace, not just the
+sampled edges, to find the interruption pattern); fix
+`estimate_tempo_chain`'s Stage-A off-by-one (still open, not touched by any
+B3/B4 item); mode=0 filter rows (format-inherent — the shared SET row
+clamps mode 0 to 1; measured this round at 0/2400 frames for Fargo but
+280/2400 (11.7%) for Glyptodont — a real, non-trivial residual worth a
+follow-up if the SF2II format allows a mode-0 encoding); whether the
+64-slot bundle cap itself needs revisiting for instrument-dense files
+(Glyptodont still merges 359/423 bundles even with count-weighting — the
+weighting picks which merges hurt least, it doesn't raise the ceiling); the
+shared engine's architectural startup/trigger-timing skew (still real, still
+unquantified independently of the bugs fixed this round); extend
+Glyptodont's tempo-schedule verification to its real row-2348/frame-11738
+boundary; audio-listen both files (`pyscript/sf2_open_in_editor.py` — not
+done this pass); extend to the remaining 9 v1.2-exact files (Dishwasher_
+Groove, Dithered_Island, Elvendance, Euclid_Was_Here, Into_the_Unknown,
+Maple_Leaf_Rag, Revolutions_Delivered, Thus_Spoke_the_PC_Speaker, Toy_
+Rocket — none attempted natively yet); not wired into `DriverSelector` —
+still explicitly out of scope.
+
 ## What's genuinely proven vs. still open
 
 - **Proven, working**: template-based detection (11/59 files), full symbol/table
@@ -753,26 +1072,47 @@ explicitly out of scope for this pass.
   (`sidm2/blackbird_driver11.py`): real, loadable Driver 11 SF2s for Fargo
   (378 notes) and Glyptodont (2703 notes), ticks mapped 1:1 to rows, AD/SR
   read byte-exact, instrument-cap aliasing bug found and fixed.
-- **Proven, not yet built into a driver**: the full Stage-B synth engine
-  semantics (fx/pitch interpolator, wave/pulse stepper, global filter
-  program) — validated byte-exact against real hardware (see "Stage B synth
-  engine" above), but only as a Python simulator, not yet ported into a real
-  6502 native SF2 driver (`drivers_src/blackbird/`) or wired to table
-  translators that convert Blackbird's own programs into the shared engine's
-  row format.
-- **Not started / explicitly out of scope this round**: the actual native
-  Stage-B driver build (asm fork + table translators + assemble/wrap, per
-  `docs/players/PLAYBOOK.md` §2/§6) and climbing its fidelity ladder; testing
-  the parser against the near-v1.2 variant buckets (older birdcruncher
-  versions, different compiled bytes, confirmed rejected by locate but not
-  yet supported); wiring into `DriverSelector`; any zig64/siddump onset-match
-  fidelity measurement of the Stage A output (see Stage A's "Not verified"
-  note — zig64 itself doesn't work on Blackbird, see the open item above);
-  mid-song tempo tracking in Stage A (only the first tempo/groove pair is
-  used); and empirical/byte-exact pitch calibration against Blackbird's own
-  sub-semitone `freq_lsb`/`freq_msb` interpolation tables (Stage A only
-  calibrates the resting/landing pitch, not the fx-engine's live
-  interpolation, which Stage B's synth engine RE above now fully covers).
+- **Proven, built into a real native driver** (updated 2026-07-19, B1→B2→
+  B3→B4 same week): the full Stage-B synth engine semantics (fx/pitch
+  interpolator, wave/pulse stepper, global filter program) — validated
+  byte-exact against real hardware as a Python simulator (see "Stage B synth
+  engine" above) — are now ALSO ported into a real 6502 native SF2 driver
+  (`drivers_src/blackbird/blackbird_driver.asm`, forked from the shared
+  ROMUZAK-derived engine) with real table translators
+  (`bin/build_blackbird_native_song.py`, using the validated simulator itself
+  as the formula oracle). Fargo builds a loadable SF2 at **69.6% overall
+  register-match** (200-frame window vs the simulator; filter 99.1%, AD/SR
+  97.2%, waveform 88.8%, freq 81.5%; pulse ~1% is a named, evidenced
+  residual, not unexplained) and models the song's FULL row-indexed mid-song
+  tempo schedule (B3: 22 real tempo/groove records, not just the first pair
+  — measurably fixes fidelity PAST the 200-frame window, verified on an
+  extended 2395-frame comparison, now 69.5% overall post-B4). Glyptodont
+  builds at 53.5% overall (B4) — **the prior B3 report's "architectural, not
+  fixable" explanation for Glyptodont's gap did NOT survive direct
+  verification**: a dedicated B4 pass found and fixed 4 real bugs (a filter
+  SET-chain misclassified as an ADD ramp, an unmodeled filter
+  overflow-drop, tied/legato notes wrongly restarting WAVE+FILTER on the
+  native driver, and unweighted bundle clustering vs the established
+  count-weighted technique already used by the Galway driver) — see "B4
+  shipped" above for the full before/after table and evidence trail per bug.
+  The shared engine's architectural startup/trigger-timing skew is still a
+  real, separate, unquantified residual (not what was actually driving
+  Glyptodont's gap, per the B4 investigation).
+- **Not started / explicitly out of scope this round**: testing the parser
+  against the near-v1.2 variant buckets (older birdcruncher versions,
+  different compiled bytes, confirmed rejected by locate but not yet
+  supported); wiring into `DriverSelector` (fidelity too low vs other players'
+  native drivers); any zig64/siddump onset-match fidelity measurement (zig64
+  itself doesn't work on Blackbird, see the open item above — the native
+  driver's own register-trace-vs-simulator comparison is the fidelity metric
+  in use instead); mid-song tempo tracking in STAGE A specifically (only the
+  first tempo/groove pair is used there — B3's schedule work is native-driver
+  only, `estimate_tempo_chain()`'s own off-by-one is also still unfixed);
+  empirical/byte-exact pitch calibration against Blackbird's own sub-semitone
+  `freq_lsb`/`freq_msb` interpolation tables (Stage A only calibrates the
+  resting/landing pitch); extending the native driver past Fargo+Glyptodont
+  to the other 9 v1.2-exact files; audio-listening the native driver's output
+  (only Stage A's coarser output has been ear-confirmed so far).
 
 ## Files (for a future continuation)
 

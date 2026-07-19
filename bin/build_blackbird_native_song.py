@@ -333,23 +333,59 @@ def unroll_filter(lay, d, la, ins_restart, ins_restart2, filt_start):
     sim = BlackbirdSim(lay, d, la, [b'', b'', b''], ins_restart, ins_restart2)
     sim.zp_filtpos = filt_start & 0xFF
     sim.m_cutoff = 0x80             # initroutine: lda #$80; sta m_cutoff
-    positions, trace = [], []
+    positions, trace, is_set_step = [], [], []
     for _ in range(CYCLE_SEARCH_FRAMES):
         positions.append(sim.zp_filtpos)
+        # Ground truth for THIS source frame's op type, read BEFORE everyframe()
+        # mutates state: real player.s's own dispatch (BlackbirdSim.everyframe,
+        # "coset: absolute set" vs "add mode") branches on bit7 of the RAW
+        # filttable(y+2) byte -- record it directly rather than inferring
+        # SET-vs-ADD from the OUTPUT deltas below (see the bug this fixes,
+        # named in the comment on the RLE loop).
+        is_set_step.append(bool(sim.filttable(sim.zp_filtpos + 2) & 0x80))
         sim.everyframe()
         trace.append((sim.regs[24], sim.regs[23], sim.regs[22]))   # d418,d417,d416
     cyc_start, cyc_end = _find_cycle(positions)
     prefix = trace[:cyc_end]            # the WHOLE first lap, incl. any lead-in
+    is_set_prefix = is_set_step[:cyc_end]
 
-    # RLE-collapse into SET (mode/res/cutoff change) + ADD (same mode/res,
-    # per-frame cutoff delta) rows, tracking each row's exact starting FRAME
-    # index (row_frame_start) so the loop-back target is frame-exact even
-    # after collapsing -- a row spanning multiple frames that cyc_start lands
-    # inside gets SPLIT so the jump target still lines up on a real frame
-    # boundary. (An earlier version approximated this and silently emitted
-    # NO loop row at all for the common "position never moves" case --
-    # caught by the register-trace comparison against the simulator, which
-    # showed cutoff free-running into garbage after ~250 frames.)
+    # RLE-collapse into SET (mode/res/cutoff change, OR a genuine hardware SET
+    # op) + ADD (same mode/res, per-frame cutoff delta, genuine hardware ADD
+    # op) rows, tracking each row's exact starting FRAME index
+    # (row_frame_start) so the loop-back target is frame-exact even after
+    # collapsing -- a row spanning multiple frames that cyc_start lands inside
+    # gets SPLIT so the jump target still lines up on a real frame boundary.
+    # (An earlier version approximated this and silently emitted NO loop row
+    # at all for the common "position never moves" case -- caught by the
+    # register-trace comparison against the simulator, which showed cutoff
+    # free-running into garbage after ~250 frames.)
+    #
+    # REAL BUG FOUND (Glyptodont instrument 16, filt_start=4, this session):
+    # this loop used to classify a frame as ADD purely from "cutoff changed by
+    # a consistent per-frame delta while (d418,d417) stayed the same" -- with
+    # NO way to distinguish, from the OUTPUT alone, a genuine ADD ramp from a
+    # composer-authored CHAIN OF INDEPENDENT ABSOLUTE SETS that merely happens
+    # to step by a constant amount (a common cutoff-sweep idiom: consecutive
+    # `9Y YY RB`-style rows each with a slightly different target, not one
+    # `0X XX YY` delta row). Both look byte-identical UNLESS the position
+    # loops back onto one of those frames -- a SET is idempotent (repeating it
+    # holds steady), an ADD is NOT (repeating it drifts forever). Instrument
+    # 16's program self-loops onto exactly this kind of frame (position 10,
+    # confirmed via raw filttable dump: bytes $c4/$c3/$c2 at consecutive rows,
+    # each independently SET (bit7 of the 3rd byte is set on ALL THREE), not
+    # one ramp) -- the old classifier merged the 2nd+3rd frames into an
+    # `ADD(delta=-2)` row, and once the self-loop's jump target landed back on
+    # it, $D416 drifted downward by 2 every single frame forever (confirmed
+    # via a live py65 trace: driver's F_IDX froze at the ADD row while $D416
+    # walked 8,6,4,2,0,254,252... never stopping) -- vs. real hardware (and
+    # the validated simulator), which holds flat at the steady value forever.
+    # Fix: read the ACTUAL per-frame op type from the sim directly
+    # (is_set_step, above) instead of inferring it, and never let a SET frame
+    # join an ADD run (or vice versa) regardless of how smooth the output
+    # looks. A repeated identical SET costs 1 row per source frame (no native
+    # "hold" primitive for SET rows, matching real per-row-is-1-frame
+    # semantics) -- cheap; every ported file so far has had deep FILTER-table
+    # headroom (Glyptodont: 27/256 rows before this fix).
     rows, row_frame_start = [], []
     d418_0, d417_0, d416_0 = prefix[0]
     rows.append(_filter_set_row((d418_0 >> 4) & 0x07, d416_0, d417_0))
@@ -359,7 +395,7 @@ def unroll_filter(lay, d, la, ins_restart, ins_restart2, filt_start):
     i, n = 1, len(prefix)
     while i < n:
         d418, d417, d416 = prefix[i]
-        if (d418, d417) != prev_mode_res:
+        if is_set_prefix[i] or (d418, d417) != prev_mode_res:
             rows.append(_filter_set_row((d418 >> 4) & 0x07, d416, d417))
             row_frame_start.append(i)
             prev_mode_res = (d418, d417)
@@ -368,7 +404,7 @@ def unroll_filter(lay, d, la, ins_restart, ins_restart2, filt_start):
             continue
         delta = (d416 - prev_cutoff) & 0xFF
         run = 1
-        while i + run < n:
+        while i + run < n and not is_set_prefix[i + run]:
             d418b, d417b, d416b = prefix[i + run]
             if (d418b, d417b) != prev_mode_res:
                 break
@@ -482,17 +518,41 @@ def _bundle_signature(fp, pp, n_fm=40, n_pulse=8):
     return offs + pulses
 
 
-def cluster_bundles(bundle_list, target):
+def cluster_bundles(bundle_list, target, counts=None):
     """bundle_list: [(fm_prog, pulse_prog), ...], already content-deduped
     (no two entries identical). Returns (new_bundle_list, remap) where
-    remap[old_index] = new_index, len(new_bundle_list) <= target."""
+    remap[old_index] = new_index, len(new_bundle_list) <= target.
+
+    counts[i] = how many real note-ONSET EVENTS (not just distinct
+    (fx,note,instr) keys) actually play bundle_list[i] -- callers must supply
+    real per-bundle onset tallies. Defaults to uniform (all 1) if omitted,
+    reproducing the old unweighted behaviour exactly.
+
+    COUNT-WEIGHTED merge, per docs/players/PLAYBOOK.md's technique catalog
+    ("greedy nearest-merge clustering... count-weighted FM-contour L1... first
+    proven on Rambo/Galway v3.12", see bin/build_galway_trace_song.py's own
+    cluster_bundles for the reference implementation) -- NOT previously
+    applied here. The old version picked the globally nearest PAIR by raw L1
+    distance alone, so two bundles that happen to be numerically close but
+    are each played by MANY notes could get merged just as readily as two
+    bundles nobody would ever hear merged -- there was no bias toward
+    sacrificing rarely-heard bundles first. Fixed by weighting the merge cost
+    by min(weight_i, weight_j) (Galway's own `cost = fd * min(cnt[i],
+    cnt[j])`), so a merge affecting fewer onset events is always preferred at
+    equal or lesser distance, and the SURVIVING representative of a merged
+    group is now the group's OWN most-played original member (not just
+    whichever bundle index happened to start the group first) -- so the
+    program that plays for a merged group is the one that sounds right for
+    the majority of the notes using it."""
     n = len(bundle_list)
+    if counts is None:
+        counts = [1] * n
     if n <= target:
         return list(bundle_list), list(range(n))
     sigs = [list(map(float, _bundle_signature(fp, pp))) for fp, pp in bundle_list]
     groups = [[i] for i in range(n)]
     reps = [list(s) for s in sigs]
-    weights = [1] * n
+    weights = [max(1, counts[i]) for i in range(n)]
 
     def l1(a, b):
         return sum(abs(x - y) for x, y in zip(a, b))
@@ -502,8 +562,9 @@ def cluster_bundles(bundle_list, target):
         for i in range(len(groups)):
             for j in range(i + 1, len(groups)):
                 dd = l1(reps[i], reps[j])
-                if best is None or dd < best[0]:
-                    best = (dd, i, j)
+                cost = dd * min(weights[i], weights[j])
+                if best is None or cost < best[0]:
+                    best = (cost, i, j)
         _, i, j = best
         wi, wj = weights[i], weights[j]
         reps[i] = [(reps[i][k] * wi + reps[j][k] * wj) / (wi + wj)
@@ -515,7 +576,11 @@ def cluster_bundles(bundle_list, target):
     remap = [0] * n
     new_bundles = []
     for gi, grp in enumerate(groups):
-        rep_orig = grp[0]      # keep a genuinely valid program, not an averaged one
+        # keep the group's OWN most-played member's real program (not an
+        # average, and not just whichever merge happened to add first) --
+        # the surviving sound should match what most of the group's onsets
+        # actually expect to hear.
+        rep_orig = max(grp, key=lambda k: counts[k])
         new_bundles.append(bundle_list[rep_orig])
         for oi in grp:
             remap[oi] = gi
@@ -559,13 +624,98 @@ def steps_to_rows_native(steps, bundle_of):
 
 
 # ---------------------------------------------------------------------------
+# B3: row-indexed tempo schedule. Fargo alone has 22 real mid-song tempo/
+# groove OOB records (BLACKBIRD.md's tempo section); B2 only modelled the
+# FIRST one as a compile-time constant pair. This re-derives the FULL
+# schedule, tagged with the exact ROW (tick) index each record takes effect
+# at, by re-running the SAME validated simulator used everywhere else in this
+# module (bin/blackbird_everyframe_sim.py) as the formula oracle -- not a
+# hand re-derivation. Row index = the simulator's own execute()-call count,
+# which IS Blackbird's tick grid (one execute() per do_row on the native
+# driver side too -- see blackbird_driver.asm's ROW_CNT declaration), so no
+# rescaling is needed between "row index here" and "ROW_CNT there".
+#
+# Uses find_tempo_records() (the RAW (b1,b2) OOB byte pairs, in stream order)
+# to seed a THROWAWAY BlackbirdSim's tempo_debug queue, driven by the SAME
+# real per-voice decoded streams as every other translator in this module
+# (OOB detection timing depends on the actual note content, not just the
+# tempo bytes) -- then just watches when the sim's execute() consumes each
+# queued record. Immediately after that happens, sim.zp_master holds the
+# value just committed for THIS row (the "long"/b1 side) and sim.zp_tempo
+# holds the value XORed in for the NEXT row (the "short"/b1^b2 side) --
+# see BlackbirdSim.execute()'s own tail (zp_master=zp_tempo THEN
+# m_groove_apply() mutates zp_tempo) -- so reading both right after the call
+# gives the full alternating pair with no re-derivation of the XOR math.
+# ---------------------------------------------------------------------------
+TEMPO_SCHED_CAP = 64        # matches the FM/PULSE bundle 64-slot convention;
+                             # X-register indexed on the driver side, so this
+                             # is also a hard ceiling, not just a style choice.
+
+
+def extract_tempo_schedule(lay, d, la, ins_restart, ins_restart2, streams,
+                            max_rows=20000):
+    import blackbird_everyframe_sim as sim_mod
+    tempo_records = sim_mod.find_tempo_records(lay, d, la)
+    sim = sim_mod.BlackbirdSim(lay, d, la, streams, ins_restart, ins_restart2,
+                                tempo_debug=list(tempo_records))
+    schedule = []
+    prev_len = len(sim.tempo_debug)
+    row = 0
+    for _ in range(max_rows):
+        will_exec = (sim.zp_master == 0)
+        sim.real_frame()
+        if will_exec:
+            row += 1
+        if len(sim.tempo_debug) != prev_len:
+            long_frames = max(1, min(255, sim.zp_master // 7 + 1))
+            short_frames = max(1, min(255, sim.zp_tempo // 7 + 1))
+            # 4th field (real frame_no) is reporting-only, for main()'s extended
+            # comparison window -- write_tempo_schedule() only consumes the
+            # first 3 (the driver only ever sees ROW indices, never real frames).
+            schedule.append((row, long_frames, short_frames, sim.frame_no))
+            prev_len = len(sim.tempo_debug)
+        if not sim.tempo_debug:
+            break
+    if len(schedule) > TEMPO_SCHED_CAP:
+        raise ValueError(
+            f"tempo schedule overflow: {len(schedule)} entries > "
+            f"{TEMPO_SCHED_CAP} (X-register-indexed table cap)")
+    return schedule
+
+
+def write_tempo_schedule(schedule):
+    """tempo_sched_row_{lo,hi}.inc (16-bit row index, LE) + tempo_sched_t1/t2
+    .inc (already-converted //7+1 frame counts) -- consumed by do_row's
+    schedule-check block in blackbird_driver.asm. Empty schedule -> empty
+    (zero .byte lines) files; TEMPO_SCHED_LEN=0 in layout.inc means do_row's
+    `cpx #TEMPO_SCHED_LEN; bcs sk_sched` skips before ever indexing them."""
+    def hexbytes(vals):
+        return ", ".join(f"${v & 0xFF:02x}" for v in vals)
+
+    row_lo = [r & 0xFF for r, _, _, _ in schedule]
+    row_hi = [(r >> 8) & 0xFF for r, _, _, _ in schedule]
+    t1 = [t for _, t, _, _ in schedule]
+    t2 = [t for _, _, t, _ in schedule]
+    for name, vals in (("tempo_sched_row_lo.inc", row_lo),
+                        ("tempo_sched_row_hi.inc", row_hi),
+                        ("tempo_sched_t1.inc", t1),
+                        ("tempo_sched_t2.inc", t2)):
+        with open(os.path.join(ROOT, "drivers_src", "blackbird", name), "w") as f:
+            f.write("; auto-generated (native song) by build_blackbird_native_song.py's "
+                     "extract_tempo_schedule()\n")
+            if vals:
+                f.write("        .byte " + hexbytes(vals) + "\n")
+    return len(schedule)
+
+
+# ---------------------------------------------------------------------------
 # Native edit-area layout writer (mirrors build_romuzak_native_song's
 # gen_includes_song, trimmed to the bundles-only path -- Blackbird B1 has no
 # drum/SEEK instrument flags, so those branches are dropped).
 # ---------------------------------------------------------------------------
 def gen_includes_song(segs, ad_sr, wave_programs, filter_programs,
                       filter_flag_of, bundles, default_filter_program,
-                      multispeed=1):
+                      multispeed=1, tempo_sched_len=0):
     gen = SF2HeaderGenerator()
     gen.DRIVER_INIT, gen.DRIVER_PLAY, gen.DRIVER_STOP = B.DRV_INIT, B.DRV_PLAY, B.DRV_STOP
     gen.PLAYER_ADDRESSES = dict(gen.PLAYER_ADDRESSES)
@@ -598,12 +748,32 @@ def gen_includes_song(segs, ad_sr, wave_programs, filter_programs,
     # lands at filt_cursor==0 deterministically; FILT_INIT_ROW in layout.inc
     # always reads 0 as a result, kept as an explicit symbol (not a bare
     # #$00 in the asm) so this invariant is visible/checkable, not implicit.
+    # B3 BUG FOUND (via Glyptodont's register-trace comparison, whose default
+    # program's jump row exposed it -- Fargo's default program happened to be
+    # a degenerate always-same-value cycle where the wrong target and the
+    # right one produce the SAME steady-state $D416/7/8 bytes, so it never
+    # showed up there): this block used `(r + b2)` for the $7f jump row's
+    # absolute target instead of `(default_start + b2)` (matching the
+    # per-instrument block below, which correctly uses `start + b2` -- see
+    # its own comment). default_start is always 0 here (this block runs
+    # FIRST, before filt_cursor advances), so the fix is `(default_start +
+    # b2)` = `b2` alone -- NOT `r` (the row's own local index), which was
+    # being added on top by mistake. For a 2-row program (SET + jump-to-
+    # row-0), the old formula computed target=1 (r=1, b2=0) -- equal to the
+    # jump row's OWN index -- which fp_read's `cmp tmpf; beq fp_freeze`
+    # (blackbird_driver.asm) treats as an intentional self-freeze, so
+    # Fargo's identical-shaped default program still froze at the CORRECT
+    # steady value by coincidence. Glyptodont's default program is the same
+    # 2-row shape too, so this alone wasn't Glyptodont's story either -- but
+    # any LONGER default program (more than 2 rows) would have jumped to
+    # entirely the wrong row. Fixed for correctness regardless.
+    default_start = 0
     filt_cursor, filt_dedup = 0, {}
     fo_ = fo
     for r, (b0, b1, b2) in enumerate(default_filter_program):
         edit[fo_ + 0 * 256 + r] = b0 & 0xFF
         edit[fo_ + 1 * 256 + r] = b1 & 0xFF
-        edit[fo_ + 2 * 256 + r] = ((r + b2) if (b0 & 0xFF) == 0x7F else b2) & 0xFF
+        edit[fo_ + 2 * 256 + r] = ((default_start + b2) if (b0 & 0xFF) == 0x7F else b2) & 0xFF
     filt_init_row = 0
     filt_cursor = len(default_filter_program)
     filt_dedup[tuple(default_filter_program)] = 0
@@ -697,6 +867,8 @@ def gen_includes_song(segs, ad_sr, wave_programs, filter_programs,
         f.write(f"SEQPTRHI = ${mdp['seq_ptr_hi_addr']:04x}\n")
         f.write(f"TEMPO = {B.TEMPO}\n")
         f.write(f"TEMPO2 = {getattr(B, 'TEMPO2', None) or B.TEMPO}\n")
+        f.write(f"TEMPO_SCHED_LEN = {tempo_sched_len}\n")   # B3: row-indexed
+                                                              # mid-song tempo changes
         f.write(f"INSTR = ${gen.instr_addr:04x}\n")
         f.write(f"WAVE  = ${gen.wave_addr:04x}\n")
         f.write(f"PULSE = ${gen.pulse_addr:04x}\n")
@@ -762,8 +934,12 @@ def main():
     steps_per_voice = [bb_steps_for_voice(result.real(v)) for v in range(3)]
 
     # Which (fx, note, instrument) triples are actually used as note onsets?
+    # key_counts tallies real onset EVENTS (not just distinct keys) -- used
+    # below to weight bundle clustering toward sacrificing rarely-heard
+    # bundles first (see cluster_bundles's docstring).
     used_keys = set()
     used_instr = set()
+    key_counts = {}
     cur_instr_track = [None, None, None]
     for v in range(3):
         for s in steps_per_voice[v]:
@@ -772,7 +948,9 @@ def main():
                     cur_instr_track[v] = s.instrument
                 instr = cur_instr_track[v] if cur_instr_track[v] is not None else 0
                 used_instr.add(instr)
-                used_keys.add((s.fx, s.note, instr))
+                key = (s.fx, s.note, instr)
+                used_keys.add(key)
+                key_counts[key] = key_counts.get(key, 0) + 1
 
     print(f"{os.path.basename(sid)}: nins(located)={lay.nins} used_instr={sorted(used_instr)} "
           f"distinct (fx,note,instr) onsets={len(used_keys)}")
@@ -805,6 +983,7 @@ def main():
     fm_flat_count = 0
     bundle_list = []            # [(fm_prog, pulse_prog), ...] -- content-deduped, UNCAPPED
     bundle_content_idx = {}     # (tuple(fm), tuple(pulse)) -> raw index into bundle_list
+    bundle_counts = []          # bundle_counts[i] = total real onset EVENTS using bundle i
     raw_bundle_of = {}          # (fx, note, instr) -> raw index into bundle_list
     for (fx, note, instr) in sorted(used_keys):
         fxn_key = (fx, note)
@@ -823,7 +1002,10 @@ def main():
         if bkey not in bundle_content_idx:
             bundle_content_idx[bkey] = len(bundle_list)
             bundle_list.append((fm_prog, pulse_prog))
-        raw_bundle_of[(fx, note, instr)] = bundle_content_idx[bkey]
+            bundle_counts.append(0)
+        idx = bundle_content_idx[bkey]
+        bundle_counts[idx] += key_counts.get((fx, note, instr), 1)
+        raw_bundle_of[(fx, note, instr)] = idx
 
     print(f"  {len(fm_of_fxnote)} distinct (fx,note) FM programs "
           f"({fm_flat_count} flat/no-modulation), {len(bundle_list)} distinct bundles "
@@ -832,8 +1014,11 @@ def main():
 
     # $c0-$ff gives 64 command slots; Fargo alone can exceed that (see module
     # docstring's clustering note) -- greedy-nearest-merge down to the cap
-    # rather than aliasing overflow bundles onto an unrelated one.
-    bundle_list, remap = cluster_bundles(bundle_list, NFM)
+    # rather than aliasing overflow bundles onto an unrelated one. Weighted by
+    # real onset-event counts (bundle_counts) so rarely-heard bundles are
+    # sacrificed before frequently-played ones (see cluster_bundles's
+    # docstring for why this wasn't already happening).
+    bundle_list, remap = cluster_bundles(bundle_list, NFM, counts=bundle_counts)
     bundle_of = {k: remap[v] for k, v in raw_bundle_of.items()}
     if len(remap) != len(set(remap)) or max(remap, default=0) >= NFM:
         pass  # remap always <= NFM by construction; sanity note only
@@ -886,14 +1071,28 @@ def main():
         chain = [5]  # DEFAULT_TICK_FRAMES fallback, matches Stage A's own default
     B.TEMPO = max(1, chain[0])
     B.TEMPO2 = max(1, chain[1]) if len(chain) > 1 else B.TEMPO
-    print(f"  tempo chain (corrected, //7+1) = {chain}; native driver swings "
-          f"TEMPO={B.TEMPO}/TEMPO2={B.TEMPO2} (first pair only, B3 item: "
-          f"mid-song tempo changes not modelled; note Stage A's own tempo is "
-          f"off by one frame/row from this same bug, not fixed here)")
+    print(f"  tempo chain (corrected, //7+1) = {chain}; do_init seeds "
+          f"CUR_TEMPO={B.TEMPO}/CUR_TEMPO2={B.TEMPO2} (song-opening pair)")
+
+    # B3: the FULL row-indexed mid-song tempo schedule (see extract_tempo_
+    # schedule()'s docstring above) -- do_row applies each entry the instant
+    # its ROW_CNT is reached, exactly where real hardware's own OOB record
+    # would have landed. Driven by the SAME real decoded streams as every
+    # other translator in this module (checked FIRST, per this task's own
+    # instructions, whether this would even move the existing 200-frame
+    # comparison window's number -- it doesn't, the first tempo pair holds
+    # the whole window; the drift only shows up past ~1895 frames, see the
+    # extended-window report below).
+    tempo_schedule = extract_tempo_schedule(
+        lay, d, la, ins_restart, ins_restart2, result.voices)
+    n_sched = write_tempo_schedule(tempo_schedule)
+    print(f"  tempo schedule: {n_sched} row-indexed mid-song tempo/groove "
+          f"records (first at row {tempo_schedule[0][0] if tempo_schedule else '-'}, "
+          f"last at row {tempo_schedule[-1][0] if tempo_schedule else '-'})")
 
     gen, edit, mdp, seq0 = gen_includes_song(
         segs, ad_sr, wave_programs, filter_programs, filter_flag_of, bundle_list,
-        default_filter_program)
+        default_filter_program, tempo_sched_len=n_sched)
 
     # freqtable.inc from the SAME sim class (pure table reads, no state needed)
     sim_for_freq = BlackbirdSim(lay, d, la, [b'', b'', b''], ins_restart, ins_restart2)
@@ -932,19 +1131,21 @@ def main():
     # --- Real validation: compare the ASSEMBLED driver's actual per-frame
     # $D400-$D418 register trace against the VALIDATED SIMULATOR's own trace
     # for the SAME file, driven by the SAME real decoded note stream (not a
-    # synthetic one) -- task's point (c), "most important". B2: the driver
-    # now swings TEMPO/TEMPO2 (the song's FIRST tempo/groove pair, via SWTOG)
-    # instead of a flat constant -- expect drift to still accumulate once the
-    # real hardware hits its ~20 OTHER mid-song tempo-change records (a
-    # documented B3 gap, not modelled here), and from the shared engine's
-    # inherent 1-frame FM lag on note trigger (architectural, not a bug).
+    # synthetic one) -- task's point (c), "most important". B3: the driver
+    # now applies the FULL row-indexed tempo schedule (not just the first
+    # pair) -- see extract_tempo_schedule() above. Drift can still accumulate
+    # from the shared engine's inherent 1-frame FM lag on note trigger
+    # (architectural, not a bug) and the other named B1/B2 residuals below.
     import blackbird_everyframe_sim as sim_mod
-    N_CMP = 200
+    N_CMP = 200   # kept identical to B1/B2's own window for direct comparability
     tempo_records = sim_mod.find_tempo_records(lay, d, la)
-    real_sim = sim_mod.BlackbirdSim(lay, d, la, result.voices, ins_restart,
-                                    ins_restart2, tempo_debug=tempo_records)
-    sim_frames = [real_sim.real_frame() for _ in range(N_CMP)]
-    drv_frames = B.headless_trace(prg, edit, N_CMP)
+
+    def compare(n_frames):
+        real_sim = sim_mod.BlackbirdSim(lay, d, la, result.voices, ins_restart,
+                                        ins_restart2, tempo_debug=list(tempo_records))
+        sim_frames = [real_sim.real_frame() for _ in range(n_frames)]
+        drv_frames = B.headless_trace(prg, edit, n_frames)
+        return sim_frames, drv_frames
 
     REGS_TO_CHECK = list(range(25))   # all of $D400-$D418
     # per-category breakdown (freq/waveform/pulse/ad-sr/filter), matching the
@@ -955,28 +1156,35 @@ def main():
         'pulse': [2, 3, 9, 10, 16, 17], 'adsr': [5, 6, 12, 13, 19, 20],
         'filter': [21, 22, 23, 24],
     }
-    cat_match = {k: 0 for k in CATS}
-    cat_total = {k: len(v) * N_CMP for k, v in CATS.items()}
-    per_frame_match = []
-    first_diverge = None
-    for f in range(N_CMP):
-        sr, dr = sim_frames[f], drv_frames[f]
-        n_match = sum(1 for r in REGS_TO_CHECK if sr[r] == dr[r])
-        per_frame_match.append(n_match)
-        for k, regs in CATS.items():
-            cat_match[k] += sum(1 for r in regs if sr[r] == dr[r])
-        if n_match < len(REGS_TO_CHECK) and first_diverge is None:
-            first_diverge = f
 
-    exact_frames = sum(1 for m in per_frame_match if m == len(REGS_TO_CHECK))
-    avg_match = sum(per_frame_match) / (len(REGS_TO_CHECK) * N_CMP)
+    def report_window(sim_frames, drv_frames, lo, hi, label):
+        n = hi - lo
+        if n <= 0 or hi > len(sim_frames):
+            return None
+        cat_match = {k: 0 for k in CATS}
+        cat_total = {k: len(v) * n for k, v in CATS.items()}
+        per_frame_match = []
+        first_diverge = None
+        for f in range(lo, hi):
+            sr, dr = sim_frames[f], drv_frames[f]
+            n_match = sum(1 for r in REGS_TO_CHECK if sr[r] == dr[r])
+            per_frame_match.append(n_match)
+            for k, regs in CATS.items():
+                cat_match[k] += sum(1 for r in regs if sr[r] == dr[r])
+            if n_match < len(REGS_TO_CHECK) and first_diverge is None:
+                first_diverge = f
+        exact_frames = sum(1 for m in per_frame_match if m == len(REGS_TO_CHECK))
+        avg_match = sum(per_frame_match) / (len(REGS_TO_CHECK) * n)
+        cats_str = ", ".join(f"{k}={100*cat_match[k]/cat_total[k]:.1f}%" for k in CATS)
+        print(f"  {label} [{lo}:{hi}) n={n}: overall={avg_match*100:.1f}%  {cats_str}  "
+              f"(exact frames {exact_frames}/{n}, first mismatch @{first_diverge})")
+        return dict(exact_frames=exact_frames, avg_match=avg_match,
+                    first_diverge=first_diverge)
+
+    sim_frames, drv_frames = compare(N_CMP)
     print(f"\n  REGISTER-TRACE COMPARISON vs validated simulator ({N_CMP} frames, "
           f"{len(REGS_TO_CHECK)} registers = {len(REGS_TO_CHECK)*N_CMP} cells):")
-    print("    by category: " + ", ".join(
-        f"{k}={100*cat_match[k]/cat_total[k]:.1f}%" for k in CATS))
-    print(f"    frames with ALL 25 registers byte-identical: {exact_frames}/{N_CMP}")
-    print(f"    overall per-register-cell match rate: {avg_match*100:.1f}%")
-    print(f"    first frame with any mismatch: {first_diverge}")
+    primary = report_window(sim_frames, drv_frames, 0, N_CMP, "primary window")
     print("    first 10 frames (sim vs driver, $D400/1 freq v0, $D404 wave v0, "
           "$D416 cutoff):")
     for f in range(min(10, N_CMP)):
@@ -987,10 +1195,35 @@ def main():
               f"   drv freq0=${dfreq:04X} wf0=${dr[4]:02X} cut=${dr[22]:02X}"
               f"   {'MATCH' if sr==dr else 'diff'}")
 
+    # --- B3: EXTENDED-window comparison, specifically crossing a real
+    # mid-song tempo-change boundary, so the schedule mechanism's effect is
+    # actually measurable (task's instruction: check this before/instead of
+    # just trusting the 200-frame number, which per this task's own recon
+    # never crosses a boundary in the first place -- Fargo's first mid-song
+    # change lands at real frame ~1895, Glyptodont's second/last at ~11738).
+    ext_result = None
+    if len(tempo_schedule) > 1:
+        boundary_frame = tempo_schedule[1][3]
+        ext_cmp = min(3000, boundary_frame + 500)
+        if ext_cmp > boundary_frame:
+            print(f"\n  EXTENDED-WINDOW COMPARISON (crosses the real mid-song tempo "
+                  f"change at frame {boundary_frame}, row {tempo_schedule[1][0]}):")
+            esim, edrv = compare(ext_cmp)
+            report_window(esim, edrv, 0, min(N_CMP, ext_cmp), "pre-change (0-200)")
+            report_window(esim, edrv, N_CMP, boundary_frame, "pre-change (200-boundary)")
+            ext_result = report_window(esim, edrv, boundary_frame, ext_cmp, "POST-CHANGE")
+            report_window(esim, edrv, 0, ext_cmp, "full extended window")
+        else:
+            print(f"\n  (mid-song tempo change at frame {boundary_frame} is beyond the "
+                  f"{3000}-frame extended-comparison cap -- not exercised this pass)")
+    else:
+        print(f"\n  (only {len(tempo_schedule)} tempo record(s) found -- no mid-song "
+              f"change to cross, extended-window comparison skipped)")
+
     return dict(lay=lay, d=d, la=la, ins_restart=ins_restart, ins_restart2=ins_restart2,
                 prg=prg, edit=edit, sf2=sf2, tempo=B.TEMPO,
-                exact_frames=exact_frames, avg_match=avg_match,
-                first_diverge=first_diverge)
+                exact_frames=primary['exact_frames'], avg_match=primary['avg_match'],
+                first_diverge=primary['first_diverge'], ext_result=ext_result)
 
 
 if __name__ == "__main__":

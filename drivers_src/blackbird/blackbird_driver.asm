@@ -131,10 +131,28 @@ SWTOG     = $185c        ; swing-tempo phase toggle (ported from the MoN driver,
                          ; zp_tempo/m_groove XOR alternation (see BLACKBIRD.md's tempo
                          ; section) is the same shape -- two frame-counts ping-ponging
                          ; forever -- so this existing mechanism is reused as-is rather
-                         ; than porting new asm. B2: only the song's FIRST tempo/groove
-                         ; pair is modelled (matching Stage A's own `estimate_tempo_chain`
-                         ; scope); the other ~20 mid-song tempo-change records in Fargo
-                         ; are not (documented B3 item, same gap Stage A already has).
+                         ; than porting new asm. B3: do_row no longer reads the compile-time
+                         ; #TEMPO/#TEMPO2 immediates directly -- it reads the LIVE
+                         ; CUR_TEMPO/CUR_TEMPO2 pair below, which a new row-indexed tempo
+                         ; SCHEDULE (tempo_sched_* tables, near the end of this file)
+                         ; overwrites every time ROW_CNT reaches Blackbird's real next
+                         ; mid-song tempo/groove OOB record -- Fargo alone has 22 of these
+                         ; (see BLACKBIRD.md); B2 only modelled the first.
+CUR_TEMPO  = $185d       ; B3: live long-phase frame count, read by do_row instead of
+                         ; #TEMPO -- do_init seeds it from TEMPO, the schedule updates it.
+CUR_TEMPO2 = $185e       ; B3: live short-phase frame count (from TEMPO2 / schedule).
+ROW_CNT_LO = $185f       ; B3: 16-bit row/tick counter, incremented once per do_row call --
+ROW_CNT_HI = $1860       ; this IS Blackbird's own tick grid (one do_row = one execute()
+                         ; cycle on real hardware, per BLACKBIRD.md's tempo-model section --
+                         ; the same unit blackbird_driver11.py's Stage A already maps 1:1
+                         ; onto Driver 11 rows), so the schedule's row indices (derived by
+                         ; counting the validated simulator's own execute() calls) line up
+                         ; exactly with this counter with no rescaling.
+TEMPO_SCHED_IDX = $1861  ; B3: 0-based index of the NEXT unconsumed schedule entry --
+                         ; 8-bit, matches the tables' own <=64-entry cap ($1595-$16cb's
+                         ; 311-byte gap between the code and the reserved playback-state
+                         ; region comfortably fits 64*4=256 bytes; the tables are placed
+                         ; there, unpinned, right after the ollo/olhi tables below).
 
         .include "layout.inc"
 INSTR_AD    = INSTR + 0*32
@@ -179,6 +197,14 @@ cs:     lda #$00
         sta SWTOG                ; swing-tempo toggle: first do_row call uses TEMPO (long) --
                                   ; EXPERIMENT: flipped from $00 to test phase empirically
                                   ; against the validated simulator (see build script output)
+        lda #TEMPO
+        sta CUR_TEMPO             ; B3: live pair starts as the song's first tempo/groove
+        lda #TEMPO2                ; pair (same values TEMPO/TEMPO2 always held); the row-
+        sta CUR_TEMPO2              ; indexed schedule below takes over from here.
+        lda #$00
+        sta ROW_CNT_LO
+        sta ROW_CNT_HI
+        sta TEMPO_SCHED_IDX
         ldx #$02
 iv:     lda #$41
         sta vwf,x
@@ -548,13 +574,32 @@ fp_set:
         tya
         sta F_IDX
 fp_apply:
-        lda F_CLO                ; cutoff += add (16-bit)
+        ; Blackbird's real m_cutoff is a FLAT 8-BIT accumulator with signed-
+        ; overflow drop (BLACKBIRD.md's "Stage B synth engine": ADD mode
+        ; "silently drops (both the state update AND the $D416 write) on
+        ; signed overflow for that frame") -- not modelled before this fix.
+        ; Measured (bin/diag_overflow.py, this session): Fargo never uses ADD
+        ; mode at all across a 2400-frame window (0 ADD ops -- its filter
+        ; programs are pure SET chains, why this gap was invisible there);
+        ; Glyptodont hits the overflow case on 69.3% of its ADD-mode frames
+        ; (485/700), 20.2% of ALL frames -- not a rare edge case for that
+        ; file. F_ADLO is always 0 for every row this driver's translator
+        ; emits (Blackbird has no sub-byte cutoff precision to encode), so
+        ; F_CLO's own add never carries -- only F_CHI's add (the real 8-bit
+        ; m_cutoff-equivalent byte) can signal the real overflow, read
+        ; directly off the 6502's own V flag (exactly "signed overflow", no
+        ; hand-rederivation needed).
+        lda F_CLO
         clc
         adc F_ADLO
-        sta F_CLO
+        sta tmpf                 ; candidate new F_CLO -- not committed yet
         lda F_CHI
         adc F_ADHI
+        bvs fp_ovf                ; signed overflow -> drop BOTH the state
+                                   ; update and this frame's $D415/6 write
         sta F_CHI
+        lda tmpf
+        sta F_CLO
         lda F_CNT
         beq fp_write
         dec F_CNT
@@ -563,6 +608,15 @@ fp_write:
         sta $d415
         lda F_CHI
         sta $d416
+        rts
+fp_ovf:
+        ; state frozen (F_CLO/F_CHI left untouched) and no $D415/6 write this
+        ; frame -- row-walk bookkeeping (F_CNT) still advances normally,
+        ; matching real hardware exactly (only the cutoff commit is skipped).
+        lda F_CNT
+        beq fp_ovf_done
+        dec F_CNT
+fp_ovf_done:
         rts
 
 ; --- per-voice FM offset-list runner (trace-driven): writes $D400/1 = vfreq +
@@ -635,18 +689,53 @@ fm_done:
 do_row:
         lda #$00
         sta ST_TCNT              ; a new row ticked this frame (SF2II follow cursor++)
-        ; swing-tempo reload: alternate TEMPO2 (short) and TEMPO (long) per row,
-        ; short phase first (ported verbatim from drivers_src/mon's SWTOG mechanism
-        ; -- see the SWTOG declaration above for why this is the right existing
-        ; primitive to reuse for Blackbird's own zp_tempo/m_groove alternation).
+        ; --- B3: row-indexed tempo schedule ----------------------------------
+        ; ROW_CNT is Blackbird's own tick counter (1 per do_row call = 1 per real
+        ; execute() cycle -- see ROW_CNT_LO's declaration above). Real hardware
+        ; overwrites zp_tempo/m_groove directly from an inline 2-byte OOB record
+        ; the instant the note stream delivers one (BLACKBIRD.md's tempo
+        ; section) -- Fargo alone has 22 of these. tempo_sched_row_{lo,hi}[idx]
+        ; holds the row at which the NEXT one lands (derived by counting the
+        ; validated simulator's own execute() calls, bin/build_blackbird_native
+        ; _song.py's extract_tempo_schedule()); tempo_sched_t1/t2[idx] hold the
+        ; new long/short frame counts (already converted //7+1). On a match we
+        ; also FORCE SWTOG so THIS row uses the new pair's LONG value first --
+        ; real hardware's zp_master=zp_tempo commit is immediate and doesn't
+        ; care about the prior alternation's parity, so neither should this.
+        inc ROW_CNT_LO
+        bne rc_hi_done
+        inc ROW_CNT_HI
+rc_hi_done:
+        ldx TEMPO_SCHED_IDX
+        cpx #TEMPO_SCHED_LEN
+        bcs sk_sched
+        lda tempo_sched_row_lo,x
+        cmp ROW_CNT_LO
+        bne sk_sched
+        lda tempo_sched_row_hi,x
+        cmp ROW_CNT_HI
+        bne sk_sched
+        lda tempo_sched_t1,x
+        sta CUR_TEMPO
+        lda tempo_sched_t2,x
+        sta CUR_TEMPO2
+        inc TEMPO_SCHED_IDX
+        lda #$ff
+        sta SWTOG                ; force long-phase (see comment above)
+sk_sched:
+        ; swing-tempo reload: alternate CUR_TEMPO2 (short) and CUR_TEMPO (long)
+        ; per row, short phase first (ported verbatim from drivers_src/mon's
+        ; SWTOG mechanism -- see the SWTOG declaration above). B3: reads the
+        ; LIVE pair (schedule-updated) instead of the compile-time #TEMPO/
+        ; #TEMPO2 immediates B1/B2 used.
         lda SWTOG
         eor #$ff
         sta SWTOG
         bmi dr_short
-        lda #TEMPO
+        lda CUR_TEMPO
         jmp dr_setcnt
 dr_short:
-        lda #TEMPO2
+        lda CUR_TEMPO2
 dr_setcnt:
         sta zp_tcnt
         ldx #$00
@@ -792,14 +881,44 @@ pn_not_off:
         sta PPTR_HI,x
         lda #$00
         sta VPC,x                ; force reload on the next frame
-pn_tied:
+        ; WAVE + FILTER restart -- NOT-TIED ONLY (real bug found + fixed this
+        ; session, see BLACKBIRD.md/task report): this used to live under the
+        ; `pn_tied:` label below, so BOTH the tied and not-tied paths fell
+        ; through into it -- every tied note was silently restarting the
+        ; wave program AND repositioning the global filter, when real
+        ; hardware's BlackbirdSim.execute() explicitly does NEITHER for a
+        ; legato note (`y = vs.pendins; ... if y == 0xFF: pass  # legato --
+        ; no register effect here` -- wavepos/ins_wave and zp_filtpos are
+        ; ONLY touched in the genuine-instrument-select branch, which legato
+        ; explicitly bypasses). Found via a live py65 trace on Glyptodont: a
+        ; 17-note tied chromatic run (voice 2, ticks 56-72, instrument 4)
+        ; was retriggering the filter's SET row every single tick instead of
+        ; letting its lone ADD ramp run uninterrupted for ~40+ ticks, as real
+        ; hardware does -- confirmed the sim's own $D416 trace climbs
+        ; smoothly for ~220 frames with no reset, while the (buggy) driver
+        ; cycled the same 5 values (40-44) forever. FM restart (below,
+        ; `pn_tied:`'s own remaining body) stays UNCONDITIONAL -- real
+        ; hardware's fx/arp position (`vs.fxpos`) resets on EVERY note
+        ; including tied ones (`prepare3`'s `vs.pendfx = vs.currfx` has no
+        ; tie/pendins gate at all), so that part was already correct.
         lda VIWAVE,x             ; restart the wave program at the instrument's row
         sta VWI,x
         lda #$ff
         sta VGMASK,x             ; gate on (wave_step keeps the gate asserted)
+        lda VIFLAGS,x            ; flag $40 -> (re)start the filter program
+        and #$40
+        beq pn_tied
+        lda VIFILT,x
+        sta F_IDX
+        lda #$00
+        sta F_CNT                ; force reload next frame
+        lda #$01
+        sta F_ACT
+pn_tied:
         ; (re)start the FM offset-list at this note's FM program (set per note by
         ; the $c0-$ff command). The trigger frame shows the BASE pitch (FM_ACC=0);
-        ; the first FM delta is applied the NEXT frame.
+        ; the first FM delta is applied the NEXT frame. ALWAYS runs (tied or
+        ; not) -- see the comment above.
         lda VIFM_LO,x
         sta FMP_LO,x
         lda VIFM_HI,x
@@ -812,16 +931,6 @@ pn_tied:
         lda #$01
         sta FM_CNT,x             ; hold base this frame; load entry 0 next frame
         sta FM_ON,x
-        lda VIFLAGS,x            ; flag $40 -> (re)start the filter program
-        and #$40
-        beq pn_nofilt
-        lda VIFILT,x
-        sta F_IDX
-        lda #$00
-        sta F_CNT                ; force reload next frame
-        lda #$01
-        sta F_ACT
-pn_nofilt:
         jmp advw
 
 pr_ret:
@@ -951,6 +1060,21 @@ ollo:
         .byte <OL0, <OL1, <OL2
 olhi:
         .byte >OL0, >OL1, >OL2
+
+; B3: row-indexed tempo schedule (see do_row + CUR_TEMPO's declaration above).
+; Placed here, UNPINNED, in the natural ~311-byte gap between the code above
+; (ends ~$1595) and the reserved playback-state region ($16cc-$1702) -- 4
+; parallel <=64-entry byte tables (256 bytes worst case), well inside the gap.
+; TEMPO_SCHED_LEN comes from layout.inc (per-song, generated by
+; bin/build_blackbird_native_song.py's extract_tempo_schedule()).
+tempo_sched_row_lo:
+        .include "tempo_sched_row_lo.inc"
+tempo_sched_row_hi:
+        .include "tempo_sched_row_hi.inc"
+tempo_sched_t1:
+        .include "tempo_sched_t1.inc"
+tempo_sched_t2:
+        .include "tempo_sched_t2.inc"
 
 ; Pin the note->freq table ABOVE the playback-state region ($16cc-$1702) so it
 ; can never collide with it. Routines live $1000-~$1623, well below it.

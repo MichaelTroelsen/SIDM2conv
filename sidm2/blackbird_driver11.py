@@ -265,7 +265,15 @@ def extract_tempo_pairs(d: bytes, la: int, streamstart: int,
     Per BLACKBIRD.md's tempo section: the pair is ``(b1, b1 ^ b2)`` --
     ``b1`` is the immediately-following ``zp_tempo`` value, ``b2`` is the
     ``m_groove`` XOR mask, so the alternate value is ``b1 ^ b2``. Real
-    frames per tick = value / 7.
+    frames per tick = ``value // 7 + 1`` (confirmed empirically during the
+    Stage-B native driver work, 2026-07-19, by dumping the validated
+    per-frame simulator's own ``zp_master`` at every real row-boundary
+    commit -- committed ``zp_master=35`` measured exactly 6 real frames to
+    the next tick, ``=28`` measured exactly 5, matching ``//7+1`` and NOT
+    the naive ``//7`` this docstring stated until that fix -- see
+    BLACKBIRD.md's "B2 shipped" section for the full derivation. The ``+1``
+    comes from the dispatch loop's fixed 3-frame prepare1/2/3 reservation
+    (``cpx #3*7``), independent of the tempo value.
     """
     rd = _Reader(d, la, streamstart)
     voices = [_Voice(), _Voice(), _Voice()]
@@ -311,7 +319,10 @@ def estimate_tempo_chain(d: bytes, la: int, lay) -> List[int]:
     if not pairs:
         return [DEFAULT_TICK_FRAMES]
     a, b = pairs[0]
-    chain = [max(1, a // 7), max(1, b // 7)]
+    # +1: real frames/tick = tempo_byte // 7 + 1, not // 7 -- see
+    # extract_tempo_pairs' docstring (fixed 2026-07-19, was silently off by
+    # one frame per row in every Stage-A build before this).
+    chain = [max(1, a // 7 + 1), max(1, b // 7 + 1)]
     if chain[0] == chain[1]:
         return [chain[0]]
     return chain
