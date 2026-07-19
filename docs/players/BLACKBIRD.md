@@ -160,47 +160,61 @@ just the asm comment):
   `src = L - dist`, where `L` is **that voice's own** running decoded length
   (NOT a shared byte count across voices — see below).
 
-**Why this isn't decoded correctly yet**: the physical compressed stream is a
-SINGLE byte sequence, but it interleaves all 3 voices' pieces — `crunch_streams`
-calls `crunch_some(voice2)`, then `run_prep1` for voice 2,1,0, then
-`crunch_some(voice1)`, then `run_prep2` ×3, then `crunch_some(voice0)`, then
-`run_prep3` ×3, repeating until every voice's (fully pre-known, on the encoder
-side) note data is exhausted. Each `crunch_some(voiceN)` call only actually
-emits bytes if that voice's own `wpos-rpos < 128` (a real ring-buffer-level
-gate); each `run_prepN` call reads/advances that voice's own `rpos` into its
-own (fully known, for the encoder) note array.
+**Why this needed more than the encoder's loop body read literally**: the
+physical compressed stream is a SINGLE byte sequence interleaving all 3
+voices' pieces via `crunch_streams`'s loop (`crunch_some(v2); prep1×[2,1,0];
+crunch_some(v1); prep2×[2,1,0]; crunch_some(v0); prep3×[2,1,0]`, repeat). On
+the ENCODER side `ds->rledata` (the note array) is COMPLETE from the start, so
+call order between `crunch_some` and `run_prepN` is irrelevant to correctness —
+both just walk a pre-existing array at different rates. On the DECODER side
+it's the opposite: a voice's bytes only exist once ITS OWN reveal-step has
+run, so a literal transcription of the encoder's loop crashes immediately
+(voice1/voice0's own prep1 tries to peek data that hasn't been revealed yet on
+frame 0, since their own `crunch_some`-equivalent runs LATER in the same
+iteration).
 
-The catch: on the encoder side `ds->rledata` is the COMPLETE note array from
-the start, so call order between `crunch_some` and `run_prepN` in the same loop
-iteration is irrelevant to correctness (both just walk a pre-existing array at
-different rates). **On the decoder side it's the opposite** — a voice's decoded
-bytes only exist once THAT voice's own `crunch_some`-equivalent has run, so the
-exact interleaving order between "reveal voice N's next physical piece" and
-"let voice N's prep1/2/3 peek at what's been revealed so far" matters a lot,
-and isn't simply invertible by reading the encoder's loop body literally. Two
-reorderings were tried this session (mirroring the exact encoder call order,
-then moving all 3 voices' emits before any prepN calls) — the first crashes on
-an unconsumed arpeggio byte at frame 0 (a voice's own prep1 ran before its own
-first physical piece existed), the second gets further but crashes on an
-out-of-range back-reference (a voice's own consumption outpaced what had
-actually been revealed). **Neither is correct; don't trust either output.**
+**Fix found this session**: `player.s`'s `initroutine` explicitly primes voice1
+(`X=7`) and then voice0 (`X=0`) with ONE unpack call EACH, with `preparejmp`
+patched to a literal `RTS` opcode (disabling prepare1/2/3 entirely) — this
+happens BEFORE the main dispatcher loop / `zp_master` cycle ever starts.
+`cruncher.c` mirrors this exactly (found independently, then cross-checked):
+right before calling `crunch_streams()`, the non-loop build path calls
+`crunch_some(&vdecode[1], ...)` then `crunch_some(&vdecode[0], ...)` (see
+`cruncher.c` ~line 1173-1176) — TWO priming pieces, voice1 then voice0, NOT
+voice2, with no prep-stage attached. Voice2 gets its first real piece revealed
+naturally inside the main loop's first iteration (matching the real
+dispatcher: `playroutine`'s FIRST call after init has `zp_master=3*7=21`,
+decrements to 14, and 14 is exactly voice2's slot — `X/7` where `$D400+X` is
+the SID register offset, so `X=14→voice2, X=7→voice1, X=0→voice0`).
 
-**Recommended next approach, NOT attempted this session**: rather than keep
-guessing at the interleaving order from the encoder's C source alone, either
-(a) get a real 6502 emulator (py65, or `mcp__mcp-c64__run_program`) to actually
-run a Blackbird-compiled SID and dump the DECOMPRESSED per-voice ring buffers
-live, byte by byte, as ground truth to diff a Python port against — this
-sidesteps the ordering ambiguity entirely since the real hardware defines the
-one true order; or (b) very carefully re-trace `player.s`'s ACTUAL frame-by-frame
-`playroutine` DISPATCH (the `zp_master` cycling through `unpackvoice`/`everyframe`
-slots) rather than `cruncher.c`'s simulation of it, since the compressor's loop
-body is a simulation equivalence, not a literal 1:1 mirror of the real per-frame
-call sequence (confirmed: `playroutine` dispatches to EITHER an unpack call OR
-a prepareN/execute/everyframe call per real invocation, never both — the
-cruncher's single "while" iteration abstracts over what is really several
-separate real-time dispatcher calls). Path (a) is more reliable and matches
-this project's own standard practice (never trust a static-analysis-only model
-without a real trace) — see `mcp__sidm2-siddump__trace_sid` / `run_program`.
+Adding this 2-piece priming step before the main loop fixed the frame-0 crash
+completely. **Result: decoding now gets through ~3500-5200 frames (roughly
+70-100 seconds of real playback) across every v1.2-exact file tried** (Fargo,
+Glyptodont, Toy_Rocket, Elvendance, Euclid_Was_Here, Dishwasher_Groove all
+tested) before hitting a SECOND, subtler bug — always an "internal stream
+error" in `prepare3` (an out-of-grammar byte where a note/delay was expected),
+consistently in the 3500-5200 frame range but on DIFFERENT voices depending on
+the file (voice0, voice1, or voice2). The consistent timing across files (not
+tied to any specific file's content) and the individually-plausible-looking
+byte sequences right up to the crash point (proper mixes of note/delay/
+instrument/gate-off bytes, correct transpose arithmetic verified by hand)
+point toward a **remaining refill-scheduling drift** (a piece physically meant
+for one voice's slot getting attributed to another, which wouldn't look
+obviously wrong until — purely by chance, much later — a misattributed byte
+lands in a position expecting a different grammar range) rather than a math
+error in the LZ/transpose logic itself, which was re-verified by hand and
+checks out.
+
+**Recommended next step**: get a real 6502 emulator (py65, or
+`mcp__mcp-c64__run_program`) to actually run a Blackbird-compiled SID and dump
+the per-voice ring buffers live, byte by byte, as ground truth to diff the
+Python port against past the ~3500-frame mark — this sidesteps further
+static-analysis guessing entirely, since the real hardware defines the one
+true order. The Python port (not committed to the repo — lives in this
+session's scratchpad at `bb_decode.py`/`bb_locate.py`, re-derive or ask to
+recover from the scratchpad if continuing) already has per-piece logging
+(`PIECE_LOG`) that dumps voice/position/type/bytes for every emitted piece,
+useful for diffing against a live trace once one exists.
 
 ## What's genuinely proven vs. still open
 
