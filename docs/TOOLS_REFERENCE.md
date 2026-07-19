@@ -11,7 +11,7 @@ Complete reference for all external tools used in the SIDM2 project.
 | SID2WAV.EXE | SID to WAV audio rendering | ✅ Working |
 | SIDwinder.exe | SID processor (disassembly, trace, player, relocate) | ⚠️ Disassembly works, trace needs rebuild |
 | sf2pack | C++ SF2 to SID packer (reference) | ✅ Working |
-| RetroDebugger | Real-time C64/SID debugger | ⚠️ Not integrated |
+| RetroDebugger | Real-time C64/SID debugger | ✅ Integrated via MCP (`mcp__retrodebugger__*`) — see `docs/guides/RETRODEBUGGER_GUIDE.md` |
 
 ## Siddump
 
@@ -279,10 +279,15 @@ The Python implementation in `sidm2/sf2_packer.py` (v0.6.0) is now the primary p
 
 ## RetroDebugger
 
-**Location**: `C:\Users\mit\Downloads\RetroDebugger-master\RetroDebugger-master\`
+**Location**: `tools/RetroDebugger v0.64.68/`
 **Version**: v0.64.68
 **Purpose**: Real-time C64/Atari/NES debugger with advanced SID debugging
-**Status**: ⚠️ Available but not integrated
+**Status**: ✅ Integrated and actively used, via the `mcp__retrodebugger__*` MCP tool set (NOT
+the raw HTTP/JSON API described below, which remains a documented-but-unused alternative access
+path). **See `docs/guides/RETRODEBUGGER_GUIDE.md` for the current, practical usage guide** —
+tool reference, a worked example (live-tracing the Blackbird player's note-stream decoder), and
+gotchas learned in practice. The HTTP API section below is retained for historical/reference
+value only.
 
 ### Architecture
 

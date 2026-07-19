@@ -96,6 +96,7 @@ test-all.bat
 | **Trace Comparison** | [docs/guides/TRACE_COMPARISON_GUIDE.md](docs/guides/TRACE_COMPARISON_GUIDE.md) |
 | **Accuracy Heatmap** | [docs/guides/ACCURACY_HEATMAP_GUIDE.md](docs/guides/ACCURACY_HEATMAP_GUIDE.md) |
 | **Batch Analysis** | [docs/guides/BATCH_ANALYSIS_GUIDE.md](docs/guides/BATCH_ANALYSIS_GUIDE.md) |
+| **RetroDebugger (live 6502/C64 debugging)** | [docs/guides/RETRODEBUGGER_GUIDE.md](docs/guides/RETRODEBUGGER_GUIDE.md) |
 | **Laxity Driver** | [docs/guides/LAXITY_DRIVER_USER_GUIDE.md](docs/guides/LAXITY_DRIVER_USER_GUIDE.md) |
 | **Validation** | [docs/guides/VALIDATION_GUIDE.md](docs/guides/VALIDATION_GUIDE.md) |
 | **Logging** | [docs/guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md](docs/guides/LOGGING_AND_ERROR_HANDLING_GUIDE.md) |
@@ -785,6 +786,7 @@ Located in `tools/` directory (Windows binaries, optional fallbacks):
 - **SIDwinder.exe** - Disassembler
 - **SIDdecompiler.exe** - Memory layout analyzer
 - **SID2WAV.EXE** - SID to WAV converter (fallback for VSID)
+- **RetroDebugger** (`tools/RetroDebugger v0.64.68/`) - Real-time interactive C64/SID debugger (breakpoints, live memory read/write, disassembly, warp-speed execution). Integrated via the `mcp__retrodebugger__*` MCP tool set — see [docs/guides/RETRODEBUGGER_GUIDE.md](docs/guides/RETRODEBUGGER_GUIDE.md). Use it when reverse-engineering a player whose static/offline model keeps getting the order or timing wrong and real CPU ground truth is needed.
 
 **Note**: Python implementations available for cross-platform support:
 - `pyscript/siddump_complete.py` (replaces siddump.exe)
@@ -812,7 +814,7 @@ Located in `tools/` directory (Windows binaries, optional fallbacks):
 
 3. **Multi-subtune**: the wired pipeline converts one subtune; the native builds take a subtune argument.
 
-4. **Player coverage**: Rob Hubbard and most non-$1800 Future Composer variants have no pipeline yet ([docs/players/README.md](docs/players/README.md)).
+4. **Player coverage**: Rob Hubbard and most non-$1800 Future Composer variants have no pipeline yet. **Blackbird** (Linus Åkesson / "lft", `SID/LFT/`) is recon-only as of 2026-07-19 — locate/table-layout fully solved via the tool's own compiled relocation manifest, but the compressed note-stream decoder isn't yet correctly replaying (no parser module, not wired into `DriverSelector`). See [docs/players/README.md](docs/players/README.md) and [docs/players/BLACKBIRD.md](docs/players/BLACKBIRD.md).
 
 5. **Trace-replay cycle floor**: byte-exact per-frame register replay can still differ subtly on high-resonance filtered voices (reSID responds to exact write cycles) — a fundamental ~2% audio residual, inaudible in practice.
 

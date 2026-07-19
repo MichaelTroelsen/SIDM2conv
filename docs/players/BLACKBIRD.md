@@ -216,6 +216,62 @@ recover from the scratchpad if continuing) already has per-piece logging
 (`PIECE_LOG`) that dumps voice/position/type/bytes for every emitted piece,
 useful for diffing against a live trace once one exists.
 
+**2026-07-19 live-trace session (RetroDebugger MCP, `Fargo.sid`)** — did the
+above, manually, far enough to prove the method and get real data, not far
+enough to catch the misattribution itself (that needs an automated capture,
+see below):
+
+- `unpackvoice` = playorg + 601 bytes → live-disassembly-confirmed at `$1259`
+  for Fargo (`$100F: JMP $1259` matches the byte-offset math exactly — same
+  relocation-manifest trick as the symbol table above, now cross-checked
+  against a running CPU rather than just the static template).
+- The actual control-byte fetch (`lax (zp_inptr),y`) is 3 instructions later,
+  at unpackvoice+11 (`$126C` for Fargo) — break there, not at unpackvoice's
+  entry, since entry fires on EVERY per-voice service call (most of which
+  immediately bail via `bmi postunpack`, buffer still has >=128 bytes) while
+  the fetch point only fires on genuine decode events.
+- **Free ground truth per hit**: at the `$126C` breakpoint, the `A` register
+  still holds `v_trwpos,x` (loaded 3 instructions earlier at unpackvoice+2 and
+  never overwritten before the branch not taken) — i.e. **`L`, that voice's
+  running decoded length, reads directly off the CPU registers with zero extra
+  memory probing.** `X` gives the voice (0/7/14). One more memory read of
+  `zp_inptr` (confirmed at `$E2/$E3` = zp_base+2 for Fargo) plus the control
+  byte at that address (read backwards, decrementing) gives ctrl/offset/L for
+  a complete, math-checkable record with no guessing.
+- **Confirmed live**: records are packed back-to-back in the shared stream
+  with no padding — a copy record is exactly 2 physical bytes (ctrl + offset),
+  a literal record is `1+n` bytes, and the NEXT voice's record starts
+  immediately at the next lower address, no gaps. Cross-checked the dist/src
+  math from a real sample (voice0, ctrl=`$87`→copy n=7/count=10/t=16→
+  transpose 0, offset=84, L=120 → dist=36, src=84, no wrap) and a wrapping one
+  (voice2, ctrl=`$A9`→copy count=4/transpose+10, offset=226, L=12 → dist=42,
+  src=226 — src>L, i.e. a genuine ring-wrap read of "older lap" data, which is
+  valid by design, not a bug signature by itself).
+- **Order is NOT simple round-robin**: sampled sequence in this session was
+  voice0, voice1, voice2, voice2 (again), i.e. a voice can receive two
+  consecutive records before the others get serviced again. This rules out any
+  static schedule assumption for reconstructing attribution offline — it's
+  genuinely load-dependent on each voice's real consumption rate, confirming
+  (not just theorizing) that only a full replay recovers the true order.
+- **zig64 gap found**: `mcp__sidm2-siddump__trace_sid` (the project's usual
+  fast ground-truth tracer) reports **0 SID writes over 300 frames** for
+  Fargo, despite RetroDebugger's live run producing audible sound over the
+  same address range. Unclear why yet — Fargo is a normal PSID (init/play, no
+  self-installed IRQ), so this isn't the documented RSID/`play=$0000` escape
+  hatch case. Worth a bounded follow-up before trusting zig64 on any Blackbird
+  file.
+- **Why manual stepping didn't finish the job**: reaching the actual
+  misattribution (reported around frame 3500-5200 by the Python port) this way
+  means single-stepping/continuing through a LOT of individual decode events
+  by hand — impractical to do exhaustively through one-by-one tool calls.
+  What's needed next is a proper automated capture (a small resident script or
+  a `retro_breakpoint`-driven batch loop that logs every `$126C` hit's
+  X/A/`zp_inptr` without a human in the loop for each one) run long enough to
+  cross the crash boundary, then diff against the Python port's own
+  `PIECE_LOG`. The technique above (breakpoint address, the free-`A`-register
+  trick, the record-packing model) is exactly what that script needs — it's
+  now proven, just not yet run to completion.
+
 ## What's genuinely proven vs. still open
 
 - **Proven, working**: template-based detection (11/59 files), full symbol/table
