@@ -272,6 +272,23 @@ see below):
   trick, the record-packing model) is exactly what that script needs — it's
   now proven, just not yet run to completion.
 
+**2026-07-19, second file — `Glyptodont.sid`, background-agent capture**: same
+technique (identical addresses: `unpackvoice`=`$1259`, breakpoint at `$126C`,
+`zp_inptr`=`$E2`, since Glyptodont is also a byte-identical v1.2-template
+match). Delegated the mechanical continue/read/log loop to a background agent
+instead of doing it by hand — captured **80 clean records spanning frames
+4248-5026**, fully inside the documented 3500-5200 crash window. **Zero
+anomalies again**: no early `n==0`, every dist/src computation checks out
+including several genuine ring-wraps (e.g. a record at L=0 with offset=184
+correctly wraps to src=184), and the same non-round-robin voice servicing
+pattern (repeated back-to-back same-voice runs) as Fargo. This is now the
+SECOND file confirming real hardware plays through the reported crash range
+with no issue — reinforcing that the "internal stream error" is a bug in the
+offline Python port's own scheduling reconstruction, not evidence of anything
+wrong on real hardware. Raw data for both files (Fargo frames 4199-5371,
+Glyptodont frames 4248-5026) is saved in `memory/blackbird-lft-player.md` /
+this session's scratchpad for whoever fixes the offline decoder next.
+
 ## What's genuinely proven vs. still open
 
 - **Proven, working**: template-based detection (11/59 files), full symbol/table
