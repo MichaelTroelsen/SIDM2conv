@@ -205,51 +205,97 @@ cs:     lda #$00
         sta ROW_CNT_LO
         sta ROW_CNT_HI
         sta TEMPO_SCHED_IDX
+        ; B7 (part-boundary priming, 2026-07-19, docs/players/BLACKBIRD.md's
+        ; "B7" section): a part that starts mid-song (row0>0) is NOT the
+        ; song's own true start -- on real hardware a voice that's mid-
+        ; sustain (or silently resting, holding whatever a much earlier
+        ; note last wrote) keeps its REAL per-voice engine state; this
+        ; shared engine's do_init used to unconditionally COLD-START every
+        ; part identically to part 1 (all zeroed/default), discarding that
+        ; real state. Every field below is now read from a PRIME_*_TAB
+        ; table (3 bytes, one per voice, X-indexed exactly like this SAME
+        ; loop's existing per-voice fields), generated per-part by
+        ; bin/build_blackbird_native_song.py's _compute_prime_consts from
+        ; the validated full-song simulator's OWN real state at this
+        ; part's start frame -- for a part starting at row0==0 (the song's
+        ; true start, e.g. Fargo's only part, or Glyptodont's part 1),
+        ; _compute_prime_consts emits EXACTLY the old literal defaults
+        ; (verified explicitly, see the report), so this is a genuine
+        ; no-op for every part that doesn't need priming, not a behavior
+        ; change gated by a runtime flag.
         ldx #$02
-iv:     lda #$41
+iv:     lda PRIME_VWF_TAB,x
         sta vwf,x
         lda #$00
         sta vhold,x
         sta vtrans,x
-        lda #$00
-        sta VWI,x                ; wave program starts at row 0
+        lda PRIME_VWI_TAB,x       ; primed wave-program row (0 for a part
+        sta VWI,x                 ; starting at the song's true row 0)
+        lda PRIME_VIWAVE_TAB,x
         sta VIWAVE,x
-        sta vfreq_lo,x
-        sta vfreq_hi,x
-        sta VPC,x                ; pulse: VPC=0 -> reload on the first frame
-        sta VPLO,x
+        lda #$00
+        sta vfreq_lo,x            ; recomputed fresh every frame by wave_step's
+        sta vfreq_hi,x            ; own ws_sok path -- no priming needed here
+        lda PRIME_VPC_TAB,x       ; $ff = freeze the primed pulse value steady
+        sta VPC,x                 ; (no native PULSE resume primitive -- see
+                                   ; _compute_prime_consts); $00 = old default
+                                   ; (reload on frame 0) when never-triggered
+        lda PRIME_PULSE_TAB,x     ; primed raw $D402/3 byte (B5: both regs
+        sta VPLO,x                 ; always hold the SAME byte on real hardware)
         sta VPHI,x
+        lda #$00
         sta VPADL,x
         sta VPADH,x
-        lda #$fe
-        sta VGMASK,x             ; start gated off
+        lda PRIME_VGMASK_TAB,x
+        sta VGMASK,x              ; primed gate state ($fe old default = off)
         lda #$00
-        sta FM_ON,x              ; FM idle until a note triggers
+        sta FM_ON,x               ; FM idle until a note triggers (B7: primed
+                                   ; voices approximate a resting FM/arp
+                                   ; program as already-settled/flat rather
+                                   ; than resuming its real mid-flight
+                                   ; position -- a named, bounded
+                                   ; simplification, see the report)
         sta FM_ACC_LO,x
         sta FM_ACC_HI,x
         sta FM_CNT,x
         sta FMP_LO,x
         sta FMP_HI,x
-        lda IFM_LO               ; default FM = program 0 (flat) until a cmd selects
-        sta VIFM_LO,x
-        lda IFM_HI
-        sta VIFM_HI,x
-        lda IPULSE_LO            ; default pulse = program 0 until a cmd selects
+        lda PRIME_VIFM_LO_TAB,x   ; primed FM+pulse bundle pointers (old
+        sta VIFM_LO,x              ; default = program 0's own address,
+        lda PRIME_VIFM_HI_TAB,x    ; reproduced exactly by _compute_prime_
+        sta VIFM_HI,x               ; consts' own "no owner instrument" branch)
+        lda PRIME_VIPUL_LO_TAB,x
         sta VIPUL_LO,x
-        sta PPTR_LO,x            ; point the read pointer at it
-        lda IPULSE_HI
+        sta PPTR_LO,x             ; point the read pointer at it
+        lda PRIME_VIPUL_HI_TAB,x
         sta VIPUL_HI,x
         sta PPTR_HI,x
-        lda #$00
-        sta vbasenote,x          ; base note index (set on each note trigger)
-        ; orderlist ptr = OL_x ; then load the first pattern
+        lda PRIME_VBASENOTE_TAB,x
+        sta vbasenote,x           ; base note index (set on each note trigger)
+        lda PRIME_FLAGS_TAB,x     ; primed instrument flags ($40 = filter-
+        sta VIFLAGS,x              ; carrying) -- old default left this
+                                    ; untouched (uninitialized-but-effectively-
+                                    ; 0 on a fresh load); now explicit
+        lda PRIME_VIFILT_TAB,x    ; primed instrument's own filter-program
+        sta VIFILT,x               ; start row (same "left untouched" note)
+        ; orderlist ptr = OL_x ; then load the first pattern (THIS part's
+        ; own freshly-built sequence/orderlist always starts fresh at its
+        ; own beginning regardless of priming -- not Blackbird engine state)
         lda ollo,x
         sta vol_lo,x
         lda olhi,x
         sta vol_hi,x
         jsr next_pattern         ; sets vsp[x] + vtrans[x] from the orderlist
+        ldy sidbase,x
+        lda PRIME_AD_TAB,x       ; primed AD/SR straight to the SID registers
+        sta SID+5,y               ; (AD/SR are only ever written at a genuine
+        lda PRIME_SR_TAB,x         ; instrument trigger, never recomputed per-
+        sta SID+6,y                ; frame -- see _compute_prime_consts)
         dex
-        bpl iv
+        bmi iv_done               ; B7 lengthened this loop body past a signed
+        jmp iv                     ; 8-bit branch's range -- bpl->jmp trampoline
+iv_done:                            ; (same idiom as pn_adv/advw elsewhere in
+                                     ; this file for an out-of-range branch)
         ; Blackbird's global filter engine (filttable/everyframe) runs
         ; CONTINUOUSLY from frame 0 regardless of which instrument is
         ; selected -- it is never gated on/off, only REPOSITIONED (F_IDX)
@@ -264,15 +310,42 @@ iv:     lda #$41
         ; per-instrument fv==0-is-a-no-op semantics exactly.
         lda #$01
         sta F_ACT
-        lda #FILT_INIT_ROW        ; the translated table row holding Blackbird's
-        sta F_IDX                 ; OWN startup walk (zp_filtpos=0), not row 0
-                                   ; of the shared table by coincidence -- see
-                                   ; build_blackbird_native_song.py's gen_includes_song
-        lda #$00
+        ; B7: PRIME_F_IDX/F_CNT/F_ADHI/F_CLO/F_CHI/F_MODE generalize
+        ; FILT_INIT_ROW's own existing idea (priming the filter's STARTUP
+        ; walk position, previously only ever correct at a song's true row
+        ; 0) to an ARBITRARY mid-song part boundary: PRIME_F_IDX is the
+        ; real translated row the global filter program is actually AT when
+        ; this part begins (found via a position lookup against whichever
+        ; program -- default, or the instrument that last repositioned it
+        ; -- currently governs it); PRIME_F_CNT/F_ADHI resume an in-flight
+        ; multi-frame ADD ramp exactly where real hardware left it (0/0 for
+        ; a genuine row-start, forcing the SAME fresh fp_load real hardware
+        ; would take there); PRIME_F_CLO/F_CHI/F_MODE/PRIME_D417 are the
+        ; REAL captured cutoff/mode/resonance -- required because fp_apply's
+        ; ADD mode always continues from whatever F_CLO/F_CHI already hold,
+        ; not re-derived from row content the way a SET row would be. For a
+        ; part starting at row0==0, _compute_prime_consts's own "prime is
+        ; None" branch reproduces this block's OLD literal defaults exactly
+        ; (PRIME_F_IDX=FILT_INIT_ROW=0, PRIME_F_CNT=0, rest 0) -- verified,
+        ; see the report.
+        lda #PRIME_F_IDX
+        sta F_IDX
+        lda #PRIME_F_MODE
         sta F_MODE
+        lda #PRIME_F_CLO
         sta F_CLO
+        lda #PRIME_F_CHI
         sta F_CHI
+        lda #PRIME_F_CNT
         sta F_CNT
+        lda #$00
+        sta F_ADLO                ; F_ADLO is always 0 for every row this
+                                    ; driver's translator emits (see fp_apply's
+                                    ; own comment below)
+        lda #PRIME_F_ADHI
+        sta F_ADHI
+        lda #PRIME_D417
+        sta $d417
         lda #$01
         sta zp_tcnt
         sta ST_PLAY              ; INIT = play: enable do_play
@@ -451,10 +524,39 @@ pl_consume:
         beq pl_wr
         dec VPC,x
 pl_wr:
+        ; REAL BUG FOUND (this session, task priority 1): real Blackbird
+        ; hardware writes the SAME full 8-bit `pulse_byte` to BOTH $D402 AND
+        ; $D403 with no masking in between -- see BlackbirdSim.everyframe()'s
+        ; `self.w(2+7*x, pulse_byte); self.w(3+7*x, pulse_byte)` (two writes
+        ; of the identical accumulator value, exactly mirroring player.s's
+        ; own back-to-back `sta $d402,x` / `sta $d403,x` with no AND/mask
+        ; instruction between them). The 8-bit `pwprepare` lookup this
+        ; engine's translator (bin/build_blackbird_native_song.py's
+        ; unroll_wave_pulse) captures from is a genuine Blackbird design
+        ; property, not a translation choice -- the composer/tool can only
+        ; ever produce a 12-bit SID pulse width of the specific form
+        ; `byte | ((byte & $0f) << 8)`, i.e. $D403's own low nibble ALWAYS
+        ; equals $D402's low nibble by construction. This driver's PULSETAB
+        ; row format (8X XX YY) was designed for a genuinely independent
+        ; 12-bit width (byte0's low nibble = width bits 8-11, held in VPHI),
+        ; which is the correct shape for other players sharing this engine's
+        ; general design -- but for Blackbird content specifically, VPHI's
+        ; low-nibble-only value is NOT what real hardware puts in $D403 (a
+        ; FULL byte, not a masked nibble), so writing VPHI here produced an
+        ; exact-byte mismatch against the validated simulator on nearly
+        ; every frame where pulse content was otherwise correctly triggered
+        ; (confirmed via direct trace: driver showed $D402/3=$6f/$0f where
+        ; the simulator showed $6f/$6f at the same position in the
+        ; sequence). Fixed by writing $D402's own value (VPLO) into $D403
+        ; too, exactly reproducing the real "duplicate write, no mask"
+        ; instruction sequence. VPHI/VPADH's own internal add-mode
+        ; bookkeeping (pl_apply, above) is left untouched -- Blackbird's
+        ; translator never emits a genuine 0X (ADD) row, so this is a no-op
+        ; for VPHI's own state, only the byte actually WRITTEN to $D403
+        ; changes.
         ldy sidbase,x
         lda VPLO,x
         sta SID+2,y
-        lda VPHI,x
         sta SID+3,y
         dex
         bmi pl_done              ; (bpl pl_l would branch too far -> use jmp)
@@ -577,26 +679,64 @@ fp_apply:
         ; Blackbird's real m_cutoff is a FLAT 8-BIT accumulator with signed-
         ; overflow drop (BLACKBIRD.md's "Stage B synth engine": ADD mode
         ; "silently drops (both the state update AND the $D416 write) on
-        ; signed overflow for that frame") -- not modelled before this fix.
-        ; Measured (bin/diag_overflow.py, this session): Fargo never uses ADD
-        ; mode at all across a 2400-frame window (0 ADD ops -- its filter
-        ; programs are pure SET chains, why this gap was invisible there);
-        ; Glyptodont hits the overflow case on 69.3% of its ADD-mode frames
-        ; (485/700), 20.2% of ALL frames -- not a rare edge case for that
-        ; file. F_ADLO is always 0 for every row this driver's translator
-        ; emits (Blackbird has no sub-byte cutoff precision to encode), so
-        ; F_CLO's own add never carries -- only F_CHI's add (the real 8-bit
-        ; m_cutoff-equivalent byte) can signal the real overflow, read
-        ; directly off the 6502's own V flag (exactly "signed overflow", no
-        ; hand-rederivation needed).
+        ; signed overflow for that frame").
+        ;
+        ; SECOND REAL BUG FOUND (this session, task priority 2 -- the B4-
+        ; flagged "tie-fix's ramp rate still doesn't fully converge" residual):
+        ; the FIRST attempt at this overflow check (committed as B4) tested
+        ; signed overflow on F_CHI's OWN raw byte -- but F_CHI holds the
+        ; UNBIASED $D416 register value directly (0-255 unsigned, e.g. it's
+        ; exactly what gets `sta $d416` below), NOT the value real hardware
+        ; actually runs the signed-overflow test on. BlackbirdSim.everyframe()
+        ; (the validated oracle) keeps a SEPARATE internal `m_cutoff`
+        ; accumulator that is $D416's value XOR $80 (`self.w(22,
+        ; (self.m_cutoff ^ 0x80) & 0xFF)` -- a classic 6502 bias-128 trick:
+        ; XOR-by-$80 is congruent to +-128 mod 256, so it re-centers the
+        ; UNSIGNED 0-255 register range onto the SIGNED -128..127 range with
+        ; 0 and 255 at the two ends next to each other, exactly where a
+        ; genuine wrap should be detected. Checking signed overflow on that
+        ; BIASED value is what correctly fires only at the register's own
+        ; real 0/255 wrap boundary. Checking it directly on the raw unbiased
+        ; F_CHI byte instead (as this code did before this fix) fires at the
+        ; WRONG boundary -- the raw value's own $7F/$80 signed-byte midpoint,
+        ; which is just an ordinary point in the middle of the legitimate
+        ; 0-255 cutoff range. Confirmed via direct trace on Glyptodont's
+        ; voice2 instrument-4 tied run (the same run B4's Bug 3 fixed the
+        ; wave/filter tied-restart on): the simulator's $D416 climbs smoothly
+        ; from $7f up through $84, $89, ... toward $ff with NO drop at all,
+        ; while the old driver code froze dead at $7f for ~65 frames (every
+        ; ADD row-reload after that point kept re-triggering the SAME false
+        ; "overflow" since ANY positive delta added to a raw byte already at
+        ; $7f signed-overflows), then jumped away only when the NEXT row (a
+        ; genuine SET, which bypasses this check entirely) loaded. Fixed by
+        ; reproducing the sim's exact bias-128 recipe: XOR F_CHI by $80
+        ; before the add (entering the biased/internal space), explicit CLC
+        ; for the add's carry-in (matching BlackbirdSim's own `adc(delta,
+        ; m_cutoff, carry_in=0)` -- always 0 there, since Blackbird's own
+        ; m_cutoff accumulator, unlike this shared engine's general F_CLO/
+        ; F_CHI 16-bit-cutoff design, has no lower-byte carry to chain; safe
+        ; regardless since F_ADLO is always 0 for every row this driver's
+        ; translator emits -- Blackbird has no sub-byte cutoff precision to
+        ; encode, so F_CLO's own add never carries in practice either way),
+        ; then XOR the result back by $80 before storing to F_CHI -- so
+        ; F_CHI keeps holding the plain unbiased register value everywhere
+        ; else in this driver (fp_write's `sta $d416` and fp_set's own
+        ; direct writes are both untouched), only this ADD-mode overflow
+        ; test itself operates in the biased space, exactly mirroring the
+        ; validated oracle.
         lda F_CLO
         clc
         adc F_ADLO
         sta tmpf                 ; candidate new F_CLO -- not committed yet
         lda F_CHI
+        eor #$80                 ; -> biased/internal m_cutoff representation
+        clc                      ; carry_in=0, matching BlackbirdSim's adc() call
         adc F_ADHI
-        bvs fp_ovf                ; signed overflow -> drop BOTH the state
-                                   ; update and this frame's $D415/6 write
+        bvs fp_ovf                ; signed overflow (in the BIASED space) ->
+                                   ; drop BOTH the state update and this
+                                   ; frame's $D415/6 write -- the real 0/255
+                                   ; register wrap, not the $7f/$80 midpoint
+        eor #$80                 ; -> back to the real unbiased $D416 value
         sta F_CHI
         lda tmpf
         sta F_CLO
@@ -1060,6 +1200,43 @@ ollo:
         .byte <OL0, <OL1, <OL2
 olhi:
         .byte >OL0, >OL1, >OL2
+
+; B7 (part-boundary priming): 3-byte-per-voice tables, X-indexed exactly
+; like ollo/olhi above, referencing the PLAIN SCALAR PRIME_<field>0/1/2
+; constants layout.inc defines (see _write_prime_consts's own comment for
+; why these tables live HERE -- a real, already-`*=`-positioned code
+; location -- rather than inside layout.inc itself, which is `.include`d
+; before any origin directive).
+PRIME_VWI_TAB:
+        .byte PRIME_VWI0, PRIME_VWI1, PRIME_VWI2
+PRIME_VIWAVE_TAB:
+        .byte PRIME_VIWAVE0, PRIME_VIWAVE1, PRIME_VIWAVE2
+PRIME_VGMASK_TAB:
+        .byte PRIME_VGMASK0, PRIME_VGMASK1, PRIME_VGMASK2
+PRIME_VBASENOTE_TAB:
+        .byte PRIME_VBASENOTE0, PRIME_VBASENOTE1, PRIME_VBASENOTE2
+PRIME_AD_TAB:
+        .byte PRIME_AD0, PRIME_AD1, PRIME_AD2
+PRIME_SR_TAB:
+        .byte PRIME_SR0, PRIME_SR1, PRIME_SR2
+PRIME_FLAGS_TAB:
+        .byte PRIME_FLAGS0, PRIME_FLAGS1, PRIME_FLAGS2
+PRIME_VIFILT_TAB:
+        .byte PRIME_VIFILT0, PRIME_VIFILT1, PRIME_VIFILT2
+PRIME_VWF_TAB:
+        .byte PRIME_VWF0, PRIME_VWF1, PRIME_VWF2
+PRIME_VIFM_LO_TAB:
+        .byte PRIME_VIFM_LO0, PRIME_VIFM_LO1, PRIME_VIFM_LO2
+PRIME_VIFM_HI_TAB:
+        .byte PRIME_VIFM_HI0, PRIME_VIFM_HI1, PRIME_VIFM_HI2
+PRIME_VIPUL_LO_TAB:
+        .byte PRIME_VIPUL_LO0, PRIME_VIPUL_LO1, PRIME_VIPUL_LO2
+PRIME_VIPUL_HI_TAB:
+        .byte PRIME_VIPUL_HI0, PRIME_VIPUL_HI1, PRIME_VIPUL_HI2
+PRIME_PULSE_TAB:
+        .byte PRIME_PULSE0, PRIME_PULSE1, PRIME_PULSE2
+PRIME_VPC_TAB:
+        .byte PRIME_VPC0, PRIME_VPC1, PRIME_VPC2
 
 ; B3: row-indexed tempo schedule (see do_row + CUR_TEMPO's declaration above).
 ; Placed here, UNPINNED, in the natural ~311-byte gap between the code above

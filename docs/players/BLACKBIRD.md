@@ -16,7 +16,28 @@ unmodeled filter overflow-drop, tied notes wrongly restarting WAVE+FILTER,
 and unweighted bundle clustering) superseded the prior B3 report's
 "architectural, not fixable" characterization of Glyptodont's gap, which did
 not hold up under direct verification (see "B4 shipped" below for both,
-including a full before/after table). Not yet wired into the conversion
+including a full before/after table). B5 fixed 3 more real bugs (2 pulse, 1
+filter-overflow bias). B6 (2026-07-19, same day) shipped adaptive
+part-splitting — `Fargo_native.sf2`/`Glyptodont_native.sf2` superseded
+by `_partNN.sf2` files (Fargo stays exactly 1 part, byte-identical numbers;
+Glyptodont splits into 8) — but the aggregate register-trace picture was
+genuinely MIXED at the time (freq/filter improved, waveform/ADSR got WORSE
+from a diagnosed "stale leftover register state at a part boundary"
+residual). **B7 (2026-07-19, same day) shipped the named fix — per-part
+`do_init` priming from the validated simulator's own real engine state at
+each part's start frame — AND, in verifying it, found a second, bigger
+pre-existing bug: the register-trace comparison's own frame anchor was off
+by one tick for every part after the first, independently masking BOTH B6's
+real gains and this round's own fix until corrected.** Glyptodont's 8-part
+weighted average went 53.7%→65.1% overall, waveform 49.1%→87.2% (now
+EXCEEDS the pre-split single-file baseline's 73.3%), AD/SR 83.9%→94.0% —
+B6's flagged regression is resolved. Fargo stays byte-identical (sha1-
+verified across a from-scratch rebuild), the correctness anchor for the
+whole part-splitting scheme. See "B7 shipped" below for the full
+before/after table, the frame-anchor bug's derivation, and honest remaining
+residuals (pulse/freq still the dominant gaps; the filter's mid-ramp resume
+path implemented but unexercised on these 2 files; audio not yet
+re-listened to). Not yet wired into the conversion
 pipeline (no `DriverSelector`/`conversion_pipeline` registration).** `bin/LFT/blackbird-1.2/` bundles the
 author's own editor + `birdcruncher` exporter, **including full assembly
 source** (`Export/source/player.s`, `rplayer.h`) and the **C compressor source**
@@ -1050,6 +1071,573 @@ Groove, Dithered_Island, Elvendance, Euclid_Was_Here, Into_the_Unknown,
 Maple_Leaf_Rag, Revolutions_Delivered, Thus_Spoke_the_PC_Speaker, Toy_
 Rocket — none attempted natively yet); not wired into `DriverSelector` —
 still explicitly out of scope.
+
+## B5 shipped: 3 more real bugs (2 pulse, 1 root-causing B4's flagged residual)
+
+User listened to `Glyptodont_native.sf2` in real SID Factory II after B4 and
+gave direct feedback: "we are getting closer but still a lot missing in
+fidelity" — then explicitly chose "keep bug-hunting on Glyptodont as-is" over
+part-splitting (the established fix for the 64-slot bundle cap) when asked.
+This round honored that choice — no part-splitting attempted.
+
+**Bug 1 — pulse translation conflated "no write" with "write zero"**
+(`bin/build_blackbird_native_song.py`'s `unroll_wave_pulse`): a throwaway
+`BlackbirdSim` used to unroll a program starts with `regs=[0]*25`, so an
+instrument whose wave program never sets the pulse bit (real hardware never
+*writes* `$D402/3` for it — the register just holds whatever the LAST
+pulse-writing instrument left there) got translated as an explicit "set
+pulse width to $000, hold ~250 frames" program. Since `pn_note`
+unconditionally restarts a note's pulse program on every trigger, this
+stomped a real prior pulse value back to hard 0 on every note using a
+flat-pulse instrument — repeated across Glyptodont's 2703 notes. Confirmed
+via a live py65 trace: the simulator held a persisted nonzero value across a
+whole ~249-frame note while the driver held 0. Fixed by tracking whether
+`everyframe()` genuinely wrote regs 2/3 during the unroll; if never, emit a
+bare `$7F` freeze-only program so the note-trigger restart is a true no-op,
+matching real hardware's "leave it alone" behavior.
+
+**Bug 2 — `$D403` write masked to a nibble** (`blackbird_driver.asm`'s
+`pl_wr`): real hardware writes the SAME full byte to both `$D402` and
+`$D403` (`BlackbirdSim.everyframe()`'s two `self.w()` calls use the identical
+`pulse_byte`). The shared engine's `pl_wr` instead wrote only `VPHI`'s low
+nibble to `$D403` — an exact-byte mismatch even on correctly-triggered
+content. Fixed to write the same value to both.
+
+**Bug 3 — filter overflow check used the wrong bias, root-causing B4's
+flagged "ramp rate doesn't converge" residual**: B4's overflow-drop fix
+tested signed overflow on `F_CHI` directly, but real hardware's `m_cutoff`
+is `$D416 XOR $80` (a bias-128 trick centering the register's unsigned 0-255
+range so a signed-overflow test correctly fires only at the genuine wrap).
+Testing on the raw byte instead falsely triggered at the `$7F`/`$80`
+midpoint — a live trace on Glyptodont's tied voice2/instrument4 run (the
+same run B4's Bug 3 targeted) showed the simulator's cutoff climbing
+smoothly `$7f→$84→$89→…→$ff` while the driver froze dead at `$7f` for ~65
+frames. Fixed by reproducing the bias-128 trick (`eor #$80` before the add,
+`eor #$80` back after).
+
+**Verified numbers** (independently re-run by the calling session, matching
+exactly): Fargo's PRIMARY 200-frame window is unchanged at 69.6% (correct —
+none of these bugs are exercised in that short a window), but the EXTENDED
+2395-frame window (which DOES exercise sustained pulse content) improved
+overall=69.5%→**72.5%**, pulse=4.5%→**16.8%**, and its POST-CHANGE segment
+(1895-2395) improved pulse=14.5%→**66.7%** — the first-ever run with any
+byte-for-byte-identical frames (2/2395, previously always 0). Glyptodont's
+PRIMARY window: pulse 0.2%→0.3% (within noise, that window is dominated by
+an unfixable frame-0-2 uninitialized-memory transient); its EXTENDED
+0-3000-frame window: overall 50.15%→**54.10%**, pulse 3.14%→**17.83%**
+(5.7×), filter 90.33%→**92.98%** — freq/waveform/adsr byte-for-byte
+unchanged, confirming no regression from these fixes. No category regressed
+on either file. `pyscript/test_blackbird_parser.py` still 9/9.
+
+**Priority-3 frequency spot-check — no hidden bug found**: only 3 of
+Glyptodont's 64 surviving bundles are genuinely unclustered singletons (423
+raw → 64 slots, 359 merged); for the most-played unclustered bundle, a
+shift-alignment sweep found a constant ~2-frame skew (k=-2 gives 78.2% match
+vs 15.2% at zero-shift) — consistent with the already-named 1-frame FM-lag +
+~3-frame startup-pipeline residuals, not a new bug. Bundle clustering
+remains the dominant frequency/pulse residual for Glyptodont specifically,
+and is explicitly out of scope per the user's own choice this round.
+
+**B6 scope** (remaining): the ~2-3 frame architectural startup/trigger-
+timing skew (reconfirmed by this round's shift-alignment checks, still
+unfixed — would need a cross-player timing-model change, high risk/reward
+unclear); `estimate_tempo_chain`'s Stage-A off-by-one (still untouched);
+mode=0 filter rows (still untouched); the 64-slot bundle cap itself (still
+the dominant Glyptodont residual, part-splitting remains the known fix,
+deferred by explicit user choice); extend Glyptodont's tempo-schedule
+verification past frame 11738; **audio-listen again given 3 real bugs fixed
+this round** (not done yet — worth doing before further register-trace
+chasing); extend to the other 9 v1.2-exact files (none attempted natively
+yet); not wired into `DriverSelector`.
+
+## B6 shipped: adaptive part-splitting (Glyptodont: 8 parts; Fargo: 1 part, unchanged)
+
+User listened to `Glyptodont_native.sf2` again after B5's 3 pulse/filter bug
+fixes: "it is better but a lot missing in fidelity." Asked to choose between
+more bug-hunting, part-splitting, or shifting focus, the user chose
+part-splitting — the fix `docs/players/PLAYBOOK.md` §3 already names for
+dense tunes that blow the 64-slot bundle cap ("Part-count economics"), the
+same mechanism DMC/MoN use (`bin/build_dmc_native_song.py`'s `build_song`,
+`bin/build_mon_native_song.py`'s `build_native_song(..., win=, count_only=)`).
+This is a TIME split, not a compression fix — each part is independently
+playable, together covering the whole song; Stage-C structural RE (extending
+the 64-slot ceiling itself) remains the actual "no more clustering, ever"
+answer and is out of scope here, unchanged from PLAYBOOK's own framing.
+
+### What was built
+
+`bin/build_blackbird_native_song.py` gained, all Blackbird-specific (not
+edits to `sidm2/blackbird_parser.py` or its test, both untouched, still
+9/9):
+
+- **`window_steps(steps, row0, row1)`** — slices one voice's full-song
+  `BBStep` list to a tick-row window. Ticks map 1:1 to D11 rows (established
+  in Stage A), so this needed none of DMC's frame-alignment `align()`
+  machinery — a row-index window is already tick-exact. **State continuity**
+  (read DMC's `win=` docstring in full before writing this, per the task):
+  a note/held-note still sounding when `row0` lands mid-step is RE-ENTERED
+  at `row0` (matching DMC's own boundary-continuation fix, which exists
+  because silently dropping it left a voice silent until its next onset —
+  44% loss measured on one DMC file). Unlike DMC/MoN, whose per-note
+  programs are captured LIVE from a siddump trace (so a mid-note capture is
+  exact by construction), Blackbird's WAVE/PULSE/FM/FILTER programs are
+  STRUCTURAL — real hardware (and the unchanged shared native engine) always
+  replays a program from ITS OWN row 0 on a genuine note trigger; there is
+  no "resume mid-cycle" primitive. So the re-entered note is forced to a
+  genuine trigger (`tie=False`, explicit instrument+fx+note), not a tie —
+  tying it would leave WAVE+FILTER parked at `do_init`'s default seed (B4
+  Bug 3: tie skips their restart) instead of the correct instrument's
+  program, wrong for the note's whole remaining span, not just briefly.
+- **`run_full_song_sim`** — ONE full-song `BlackbirdSim` pass producing (a)
+  the full frame-by-frame register trace, (b) `row_frame[r]`, the real-frame
+  index each row's state first appears at (so a part starting at song-row
+  `row0` can be validated against the RIGHT slice of the original
+  performance instead of frame 0), (c) the full row-indexed tempo/groove
+  schedule (same technique as B3's `extract_tempo_schedule`, folded into one
+  pass instead of two).
+- **`tempo_at_row` / `window_tempo_schedule`** — a part seeds `CUR_TEMPO`/
+  `CUR_TEMPO2` from whichever tempo pair was ACTUALLY active at its own
+  `row0` (not necessarily the song's opening pair), and gets its own
+  row-shifted slice of the full schedule for its interior tempo changes.
+- **`build_range(..., row0, row1, count_only=)`** — the `build_native_song`-
+  shaped refactor of the old `main()` body: pass 1 computes the window's own
+  used-instrument/used-bundle vocabulary (scoped to just what
+  `window_steps`' output references); `count_only=True` stops after that and
+  returns `(n_bundles_raw, n_instr, n_wave_rows, n_filter_rows, n_sequences)`
+  for a cheap `fits()` probe (no clustering, no assemble); the real build
+  goes on to cluster, pack D11 rows, and assemble+wrap a standalone `.sf2`.
+  Checked the task's own premise first, against real data, before assuming
+  DMC's multi-constraint shape applied unchanged: Glyptodont's WHOLE SONG
+  already had deep WAVE (171/256) and FILTER (27/256) headroom, and a
+  windowed part's own usage can only be a subset of that — confirmed across
+  all 9 built parts (max FILTER usage seen: well under 256; instruments
+  capped at 32 naturally since `nins<=32` is a located-table property, not
+  window-dependent) — **the bundle cap was indeed the only constraint that
+  bound in practice**, though the other 3 caps are still checked defensively
+  (a future denser file could differ).
+- **`build_song`** — the adaptive grid search: grow a `[row0,row1)` window by
+  `STEP=150` row-ticks as long as `fits()` holds, cut, continue. Same shape
+  as DMC's `while t0 < span` loop.
+- **`prune_stale_parts`** — ported verbatim from `bin/build_mon_native_song.py`.
+- Per-part register-trace validation reusing the SAME `report_window`
+  methodology as every prior B-round (primary 200f / full-part / a new
+  "steady-state" window that excludes each part's own first 200 frames, to
+  separate a genuine per-part startup artifact from the rest of the part —
+  same segmenting technique B1 used on the whole-song build).
+
+Output convention changed to match DMC/MoN's own `_partNN` naming (even for
+a 1-part build) instead of the old unsuffixed `_native.sf2`:
+`out/blackbird/Fargo_native_part01.sf2`,
+`out/blackbird/Glyptodont_native_part01.sf2` .. `_part08.sf2`. The old
+unsuffixed files are deleted by `main()` on each rebuild (superseded, not
+kept alongside).
+
+### The CAP_B threshold is Blackbird-specific, NOT DMC/MoN's — verified, not assumed
+
+DMC/MoN's own `CAP_B=63` means "a window's RAW (pre-cluster) bundle count
+must already be `<=63`" — effectively **zero tolerated clustering** per
+part, which is the whole point of splitting for them. Applying that
+literally to Fargo (single file, whole-song raw bundle count = 107) split
+it into 2 parts on the first pass here — which directly **fails this task's
+own correctness check** ("Fargo must still build as exactly 1 part").
+Fargo's existing, previously-shipped whole-song native build already
+clusters 43/107 = 40.2% of its bundles away and was never judged a fidelity
+problem worth splitting over (only Glyptodont's 359/423 = 84.9% was, per
+the user's own repeated "still missing fidelity" feedback specifically on
+Glyptodont). **`CAP_B = 2*NFM = 128`** — i.e. at least half a window's raw
+bundles must survive unmerged — is the smallest round threshold that keeps
+Fargo's known-good 40.2% loss on the "don't split" side while still
+triggering a split for Glyptodont's 84.9%: PLAYBOOK.md §3's own language is
+"without HEAVY clustering", which this reads as `<=50%` mild / `>50%` heavy.
+**Verified, not assumed**: rerunning with `CAP_B=63` first, observing the
+Fargo regression, then deriving 128 from Fargo's own already-accepted ratio
+and confirming it restores exactly 1 part — this is the "verify this
+assumption against the actual code/data before committing" the task asked
+for, applied to the fits() threshold itself, not just the multi-constraint
+question.
+
+### Results
+
+**Fargo: exactly 1 part, numbers UNCHANGED to the tenth of a percent** —
+the correctness check the task asked for. `row0=0`/`row1=3437` (the whole
+song) is what the search converges to; `window_steps` on a full-span window
+is a no-op relative to the pre-refactor step list (verified: the only
+place it forces anything is the very first step, which was already `tie=
+False` with an explicit instrument in the original data). Rebuilt and
+independently re-diffed against the pre-B6 baseline:
+
+| | primary (0:200) | extended (0:2395) |
+|---|---|---|
+| pre-B6 (committed a0baaaa + uncommitted B5) | 69.6% overall (freq 81.5, wf 88.8, pulse 1.0, adsr 97.2, filter 99.1) | 72.5% overall (freq 75.2, wf 91.9, pulse 16.8, adsr 97.5, filter 99.8) |
+| post-B6 (`Fargo_native_part01.sf2`, same build) | 69.6% overall, identical per-category | 72.5% overall, identical per-category (re-sliced 0:2395 from the new `run_full_song_sim` trace) |
+
+Byte-for-byte identical register-trace comparison output — the refactor is
+a genuine no-op for the file that doesn't need splitting.
+
+**Glyptodont: 8 parts** (`row0:row1` in tick-rows; `span`=4469):
+`[0:300)`, `[300:750)`, `[750:1200)`, `[1200:1350)`, `[1350:1500)`,
+`[1500:1950)`, `[1950:2250)`, `[2250:4469)` (the last part absorbs the
+remainder — the search's `fits()` never fails again after row 2250, which
+is a real, verified finding of its own: the LAST 2219 rows / ~½ the song
+need only 62 raw bundles, needing **zero clustering**, vs the earlier
+denser sections).
+
+**Bundle-cap pressure, confirmed much lower per-part than the whole-song
+423-vs-64 squeeze** (this was the task's core hypothesis to verify):
+
+| part | rows | raw bundles | after cluster | merged | merge% |
+|---|---|---|---|---|---|
+| 1 | 300 | 108 | 64 | 44 | 40.7% |
+| 2 | 450 | 111 | 64 | 47 | 42.3% |
+| 3 | 450 | 101 | 64 | 37 | 36.6% |
+| 4 | 150 | 92 | 64 | 28 | 30.4% |
+| 5 | 150 | 135 | 64 | 71 | 52.6% |
+| 6 | 450 | 108 | 64 | 44 | 40.7% |
+| 7 | 300 | 102 | 64 | 38 | 37.3% |
+| 8 | 2219 | 62 | 62 | 0 | **0%** |
+| **whole song (pre-B6)** | 4469 | 423 | 64 | 359 | **84.9%** |
+
+Every part sits at 30-53% merge loss (one part at literally 0%), vs the
+whole song's 84.9% — confirms the hypothesis directly: per-part local
+bundle vocabulary is dramatically smaller than the whole song's, matching
+Fargo's own already-accepted ~40% ballpark rather than Glyptodont's
+previous ~85%.
+
+**Fidelity: real but genuinely MIXED, not a clean win — reported honestly,
+not oversold.** Per-part register-trace comparison (same methodology, same
+`REGS_TO_CHECK`/`CATS` as every prior round), primary window (first 200f of
+each part) and a frame-count-weighted aggregate across all 8 parts' full
+windows (the fairest single number, since parts range 750-8974 real frames):
+
+| | overall | freq | waveform | pulse | adsr | filter |
+|---|---|---|---|---|---|---|
+| Glyptodont whole-song baseline (only known number — its own extended window was never reachable pre-B6, boundary at frame 11738 > the old 3000-frame cap) | 53.5% | 32.5% | 73.3% | 0.3% | 96.6% | 85.5% |
+| 8-part average, primary (200f each, unweighted) | 49.9% | 34.7% | 44.8% | 15.3% | 79.7% | 84.1% |
+| 8-part average, full-part (frame-count-weighted) | 53.7% | 42.0% | 49.1% | 12.3% | 83.9% | 91.8% |
+
+**freq (+9.5pp) and filter (+6.3pp) genuinely improve** — consistent with
+much lower bundle-cap pressure. **pulse also reads higher** (+12pp) but
+this needs an independent re-check before trusting it at face value (see
+the stale-register finding below — a resting voice's pulse register can
+read 0 on BOTH sides by coincidence in a fresh part, which would inflate
+the score without being a real translation improvement; B5's own pulse fix
+was verified on Fargo's *actively playing* content, not this scenario).
+**waveform (-24.2pp) and ADSR (-12.7pp) get WORSE**, and **overall composite
+is a wash** (53.7% vs 53.5%) — not the clean win the bundle-cap-pressure
+story alone predicts. Root cause, found by direct diagnosis (not assumed):
+
+### A genuinely NEW residual, found and diagnosed this round (not fixed)
+
+Traced part 4 (`row0=1200`) frame-by-frame: voice 1's real windowed steps
+open with a REST (`kind=rest`), correctly — voice 1 isn't re-triggering
+right at row 1200. But the validated whole-song simulator's register trace
+at that SAME real frame shows voice 1's `$D40C`/`$D40D` (AD/SR) holding
+`(17, 154)` — **nonzero, leftover from a note that finished well before row
+1200** (SID registers hold their last-written value indefinitely; nothing
+about "resting" clears them). The freshly-built PART's own driver
+necessarily starts every register at power-on-reset (`0`), since a part is
+a genuinely standalone file with no continuation from a hypothetical
+"previous part" — so it reads `(0, 0)` for the same frames, a real,
+structural mismatch that persists for however long that voice stays resting
+within the part (here, ~15 frames before voice 1's own next real trigger;
+worse in parts where a voice rests longer). This is DIFFERENT from the
+already-named "forced retrigger of an actively-sounding note" residual
+(`window_steps`' own docstring) — that one is about a voice that IS
+sounding at the cut; this one is about a voice that ISN'T, whose real
+register content is inherited from arbitrarily far back in the song's
+history, which a standalone part can never reconstruct without deliberately
+priming it. It explains the data cleanly: part 1 (`row0=0`, the TRUE song
+start — nothing is "stale" because nothing existed before frame 0) and part
+8 (all 3 voices happen to retrigger promptly near its own `row0`) both keep
+ADSR/waveform near baseline (96-100%); the middle parts, where at least one
+voice sits mid-rest at the cut, show the degradation.
+
+**Not fixed this round** (named, not silently absorbed, per this task's own
+instruction): a real fix exists in principle — seed each part's `do_init`
+with a one-time, non-audible priming write of whatever AD/SR/waveform/pulse
+byte each voice's real "last active instrument as of `row0`" would leave
+behind, the same PRIMING CONCEPT `default_filter_program` already uses for
+the filter engine's position-0 walk. That needs actual driver-side support
+(a new init-time register-write block) — this task's own constraint says
+"don't touch the driver unless splitting genuinely requires it", and this
+finding suggests it plausibly does, but implementing and verifying a
+driver change was judged out of scope for this pass (real risk of a new,
+unverified bug in the remaining time) — flagged as the clear next step
+instead.
+
+### What's still open
+
+- **The stale-register-at-boundary fix** (above) — the single most
+  concrete, well-diagnosed next step; would likely recover most of the
+  waveform/ADSR regression without touching the bundle-cap logic at all.
+- **The pulse improvement needs independent re-verification** — plausible
+  it's partly a coincidental zero-match artifact of the same stale-register
+  effect rather than a genuine translation win; not disentangled this round.
+- **Audio has NOT been listened to for any of the 9 new part files** —
+  the user previously listened to the single whole-song `Glyptodont_native
+  .sf2`; that file no longer exists (superseded by 8 parts). **The user
+  needs to listen to each part separately** via
+  `pyscript/sf2_open_in_editor.py out/blackbird/Glyptodont_native_partNN.sf2`
+  to judge whether the mixed register-trace picture above (real freq/filter
+  gains, real waveform/ADSR regression) nets out as an audible improvement
+  — the register-trace metric alone doesn't settle that question, same
+  caveat every prior round has carried.
+- **A genuine part-boundary discontinuity exists and is worth naming
+  explicitly**: each part is a SEPARATE, independently-loaded SF2 file, not
+  a seamless single song — there is a hard stop/restart between parts (no
+  crossfade, no continued envelope/filter/arpeggio state), on top of the
+  stale-register and forced-retrigger residuals above, which compound at
+  exactly the same instants. A listener moving from one part's SF2 to the
+  next will hear a hard cut, not a splice.
+- **The ~2-3 frame architectural startup/trigger-timing skew** (B5's own
+  still-open item) is now paid ONCE PER PART instead of once per song (8x
+  for Glyptodont) — not separately quantified from the stale-register
+  effect this round, but plausibly a secondary contributor to the primary-
+  window numbers specifically (steady-state windows track full-part numbers
+  closely in the data above, suggesting this specific skew is NOT the
+  dominant term — the stale-register effect, which persists for as long as
+  a voice stays resting rather than settling after a few frames, is).
+- `estimate_tempo_chain`'s Stage-A off-by-one (still untouched); mode=0
+  filter rows (still untouched); extend to the other 9 v1.2-exact files
+  (none attempted natively yet); not wired into `DriverSelector`.
+
+## B7 shipped: part-boundary engine-state priming, and a real comparison-anchor bug found
+
+B6's own "still open" list named the diagnosis precisely: a part standalone
+SF2 always cold-starts (`do_init` zeroes every register/engine-state field),
+but on real hardware a voice mid-sustain (or silently resting on a note that
+finished long before this part's own row0) keeps its real state — B6
+measured this as a real WAVE/ADSR regression (waveform -24.2pp, ADSR
+-12.7pp) that made Glyptodont's 8-part split a fidelity wash (53.7% vs
+53.5% pre-split) despite real freq/filter gains. This round built the named
+fix (priming) and, in verifying it, found a SECOND, larger bug the priming
+work exposed but didn't cause: the register-trace comparison's own frame
+anchor was off by one tick for every part after the first.
+
+### What was built
+
+**`bin/blackbird_everyframe_sim.py`** gained two purely-additive fields
+(default-off, zero behavior change for every existing caller/test):
+`self.filt_owner` (tracks which `filt_start` — 0 = the song's own default
+program, else a real per-instrument value — currently governs the GLOBAL
+filter engine's `zp_filtpos`, alongside the existing `zp_filtpos` write in
+`execute()`) and `snapshot_cb` (an optional hook `real_frame()` calls once
+per frame, AFTER `execute()` has committed that tick's pending note/
+instrument state but BEFORE `everyframe()` steps the wave/pulse/fx/filter
+engines forward — exactly the engine state a NEW part starting at that
+frame needs to prime its own `do_init` with).
+
+**`bin/build_blackbird_native_song.py`**:
+- `run_full_song_sim` now also returns `row_state[r]`: the full per-voice
+  (`wavepos`, `wavemask`, `currins`, `currfx`, `pendnote`) + global
+  (`zp_filtpos`, `filt_owner`, all 25 raw `$D400-$D418` registers) engine
+  state captured via the new `snapshot_cb`, indexed so `row_state[r]`
+  reflects the state as row `r` begins (i.e. `row_state[0]` is the sim's own
+  pristine `__init__` state, byte-identical to `do_init`'s existing cold-
+  start defaults by construction).
+- `unroll_wave_pulse`'s and `unroll_filter`'s stats now additionally expose
+  the internal position walk (`positions` / `row_frame_start` for filter,
+  which also needed a real bug fix: the `$7f`-jump-row split at `cyc_start`
+  mutated `rows` but not `row_frame_start`, silently desyncing the two
+  lists from that point on — never mattered before B7 since nothing
+  downstream re-read `row_frame_start`, but B7's own lookup needs it
+  in sync). `_lookup_wave_row`/`_lookup_filter_row` map a REAL captured
+  absolute table position back to the translated program's own local row
+  (+ in-row frame offset, for filter) — reusing the position walk's own
+  documented state-independence (same fixed table bytes → same
+  deterministic sequence regardless of what triggered the walk) rather
+  than re-deriving anything.
+- `build_range` gained a `prime`/`row_state` path: for `row0>0`, it pulls
+  in whichever instrument a resting voice is silently still holding (via
+  `currins`) and whichever program is repositioning the global filter (via
+  `filt_owner`, resolved back to a real instrument index by scanning
+  `ins_filt`) into `used_instr`/`used_keys` *before* the normal per-
+  instrument/bundle build runs, so their real WAVE/FILTER/FM/PULSE programs
+  are guaranteed present for priming to reference (a resting voice never
+  names an instrument in its own windowed step stream — see
+  `window_steps`' docstring). `_compute_prime_consts` (new) resolves the
+  concrete per-part `PRIME_*` values AFTER `gen_includes_song` has
+  allocated this part's own table addresses (can't run before — the
+  addresses don't exist yet), reading AD/SR/flags/filt-start straight back
+  off the INSTR table (never re-derived — set once at trigger, never
+  touched between triggers) and FM/PULSE pointers off the per-bundle
+  address table for whichever bundle the synthetic
+  `(currfx, pendnote, owner_instr)` priming key resolved to post-
+  clustering. `_write_prime_consts` appends the result to the SAME
+  `layout.inc` `gen_includes_song` just wrote.
+- **`drivers_src/blackbird/blackbird_driver.asm`**: `do_init`'s per-voice
+  `iv:` loop and the filter-init block now read `PRIME_<field><0/1/2>`
+  scalar constants (via small `.byte`-table trampolines, `PRIME_<field>_TAB`,
+  placed in the SAME already-`*=`-positioned "natural gap" region the
+  `tempo_sched_*` tables already use — **NOT inside `layout.inc` itself**,
+  which is `.include`d before any `* = ` origin directive, so raw byte data
+  placed there would land at an undefined address; a real mistake caught
+  before it shipped, not after) instead of hardcoded literals. Lengthening
+  `iv:` pushed its own `bpl iv` past a signed 8-bit branch's range — fixed
+  with the same `bmi/jmp` trampoline idiom already used elsewhere in this
+  file (`pn_adv`). For `row0==0`, `_compute_prime_consts` emits values that
+  are BYTE-IDENTICAL to the old hardcoded literals (verified explicitly,
+  see Results below) — there is no runtime flag or branch gating this; the
+  same code path degrades to the old cold-start behavior automatically.
+
+**Fields deliberately NOT resumed mid-program** (named simplifications, not
+silently absorbed): PULSE (`VPLO`/`VPHI`) is primed from the raw captured
+`$D402` byte and then FROZEN (`VPC=$ff`, `VPADL`/`VPADH=0`) rather than
+resumed from its real position — this engine's PULSE table has no native
+jump/resume primitive at all (see `unroll_wave_pulse`'s own "PULSE"
+docstring section: even a freshly-triggered note's own pulse program is a
+physical repeat-then-freeze, not a true loop), so freezing at the last real
+observed value is the best available approximation with the existing table
+format. FM (`FM_ON`/`FM_ACC`/etc.) is forced OFF (flat, no modulation)
+rather than resumed mid-flight — unlike WAVE/FILTER (purely
+per-*instrument* programs), a resting voice's FM state depends on BOTH the
+per-note `(fx, note)` bundle AND its own position within it, needing the
+same position-mapping machinery FM's own value additionally being
+note-parameterized (not just instrument-parameterized) — judged out of
+scope for this round; flagged, not fixed.
+
+### A second, bigger bug found while verifying: the comparison's own frame anchor was off by one tick
+
+Before touching the driver at all, this round rebuilt Fargo + Glyptodont
+with ONLY the `blackbird_everyframe_sim.py` changes (no priming logic yet)
+to re-confirm B6's own reported numbers as a baseline — they matched
+exactly (Fargo 69.6%/75.5%/75.9%; Glyptodont per-part numbers identical to
+B6's own table). After wiring up priming, Fargo (row0=0, unaffected by
+priming) stayed byte-identical, but Glyptodont's parts 2-8 showed almost NO
+movement in waveform/ADSR despite priming clearly computing real,
+non-default values (verified directly: `PRIME_AD1=17`/`PRIME_SR1=154` for
+part 4's voice 1 matched B6's own named example exactly). That mismatch —
+priming visibly correct, but not moving the metric — is what led to
+digging further rather than reporting a hand-wavy "priming didn't help
+much" result.
+
+**Root cause**: `row_frame[r]` (used by `main()`'s existing `F0 =
+row_frame[row0]` comparison anchor since B6) is the real frame at which the
+sim's `row` counter *became* `r` — which happens during the `real_frame()`
+call that just committed row `(r-1)`'s note/instrument event, not row `r`'s.
+So `full_frames[row_frame[r]]` shows row `(r-1)`'s content, one tick STALE
+— confirmed directly two independent ways: (1) `row_state[r]`'s own
+per-voice content (e.g. gate mask alternating ON/OFF every tick on a
+staccato passage) matched `window_steps`' step covering position `[r-1,
+r)`, not `[r, r+1)`; (2) `full_frames[row_frame[1200]][11]` (voice 1's
+`$D40B`) read `129` (gate ON) at the exact frame B6's own report said
+should show a REST (gate OFF) — the genuine "stale content" signature, one
+tick early, at a real, checkable register.
+
+The driver's own frame 0 (`do_init` + the immediate first `do_row` call)
+shows row0's OWN committed content, so it must be compared against
+`full_frames[row_frame[row0 + 1]]`, not `full_frames[row_frame[row0]]`.
+**Verified empirically before applying the fix** (per this task's own
+"don't accept a hand-wavy explanation" instruction): switching ONLY this
+anchor, on the SAME already-built (primed) part-4 driver binary, moved
+waveform 40.0%→89.7%, AD/SR 63.9%→91.5%, overall 48.5%→68.3% — the anchor
+alone, not the driver content, was hiding a mostly-correct translation
+behind a comparison that was quietly grading it against the wrong instant.
+
+**`row0==0` is deliberately EXEMPTED from this fix** (kept at the historical
+`row_frame[0]==0` anchor), to satisfy this task's own explicit constraint
+that Fargo/part-1 must not regress or change its already-verified-correct
+reported numbers. This is principled, not just convenient: `row0==0` is a
+genuine cold start on BOTH sides (`do_init`'s literal defaults exactly equal
+the sim's own pristine `__init__` state), so the two anchors start from an
+identical degenerate all-zero baseline and only ever diverge by the
+ALREADY-DOCUMENTED, separately-named "~3-frame startup-pipeline offset"
+residual (the `cpx #3*7` 3-slot dispatch reservation) — a real but much
+smaller, already-tolerated effect, not the same one-full-TICK content
+mismatch this fix addresses for `row0>0`. (Applying the corrected anchor to
+Fargo too, purely as a check, moved its own numbers 69.6%→71.6%,
+waveform 88.8%→97.8% — a further improvement, consistent with the same root
+cause applying there too, but deliberately NOT taken since it would change
+the correctness anchor's own reported baseline.)
+
+This means the SAME bug affected every prior B6-era report that used
+`row0>0` — this round's own before-priming Glyptodont baseline rebuild
+(used above to confirm B6's numbers) inherited it too, since it's a
+pre-existing bug in `main()`'s comparison code, not something this round's
+changes introduced. It was invisible before B6 (Fargo/whole-song builds are
+always `row0=0`) and invisible in B6's own report because there was no
+"expected big improvement that didn't show up" signal to chase yet.
+
+### Results (same `report_window` methodology as every prior round)
+
+**Fargo: byte-identical to the pre-B7 baseline**, verified via sha1 (not
+just the printed percentages): same `Fargo_native_part01.sf2` hash across a
+from-scratch rebuild before ANY B7 code existed and after all of it,
+confirming `row0==0`'s priming-reduces-to-identity property holds in
+practice, not just in the Python `None`-branch code.
+
+**Glyptodont, 8-part average** (unweighted primary-window average and
+frame-count-weighted full-part average, same two numbers B6's own report
+used):
+
+| | overall | freq | waveform | pulse | adsr | filter |
+|---|---|---|---|---|---|---|
+| B6 baseline, primary avg | 50.0% | 34.7% | 44.8% | 15.3% | 79.7% | 84.1% |
+| B7 (priming + anchor fix), primary avg | **64.5%** | **54.8%** | **84.3%** | 19.7% | **94.2%** | 86.7% |
+| B6 baseline, full-part weighted | 53.7% | 42.0% | 49.1% | 12.3% | 83.9% | 91.8% |
+| B7 (priming + anchor fix), full-part weighted | **65.1%** | **58.3%** | **87.2%** | 13.7% | **94.0%** | 92.5% |
+| *(reference) Glyptodont whole-song, pre-split single file* | 53.5% | 32.5% | 73.3% | 0.3% | 96.6% | 85.5% |
+
+**Waveform and AD/SR — the two categories B6 flagged as regressed — now
+EXCEED the pre-split single-file baseline** (waveform 87.2% vs 73.3%;
+AD/SR 94.0% vs 96.6%, essentially matching it) while freq/filter's B6-era
+gains are preserved and improved further (freq 58.3% vs 32.5%; filter
+92.5% vs 85.5%). Part 1 (`row0=0`, unaffected by priming or the anchor fix)
+is unchanged from B6 at 59.7%/57.0%/56.6% (primary/full/steady-state) —
+the correctness anchor for the part-splitting scheme itself, confirming
+nothing broke the one part that must stay untouched.
+
+Per-part breakdown, full-part window (B6 → B7): part1 57.0%→57.0%
+(unaffected, `row0=0`); part2 51.5%→68.6% (waveform 36.0%→88.2%, adsr
+76.6%→91.5%); part3 49.5%→65.6% (waveform 39.5%→90.0%, adsr 77.3%→92.1%);
+part4 (B6's own named diagnostic example) 45.5%→71.5% (waveform
+35.2%→86.0%, adsr 55.8%→91.5%); part5 46.7%→65.2% (waveform 39.8%→87.6%,
+adsr 64.8%→92.9%); part6 48.2%→61.2% (waveform 32.2%→93.7%, adsr
+88.3%→95.7%); part7 46.6%→61.4% (waveform 27.1%→90.1%, adsr 86.6%→94.5%);
+part8 68.5%→69.3% (waveform 95.8%→97.7%, adsr 99.7%→99.8%, already
+near-ceiling pre-B7 since it needed no clustering and ends the song with
+no further mid-part rest crossing back into stale content).
+
+Determinism verified: two independent from-scratch rebuilds of both files
+produced byte-identical sha1 hashes on every output `.sf2`, and
+`pyscript/test_blackbird_parser.py` stayed 9/9 throughout (untouched, as
+required).
+
+### Honest residuals — not fixed this round, named precisely
+
+- **Pulse (13-44% per part, no clean trend) and freq (43-75%) are still
+  the dominant gaps.** Pulse's own residual is the SAME already-documented
+  "no jump/resume primitive in this table format" limitation B1-B6 already
+  named, now ALSO true of the priming freeze (a resting voice's pulse
+  output is approximated, not resumed, so a long-enough rest before a part
+  boundary can still show drift). Freq's residual is the SAME already-named
+  1-frame FM-lag + ~3-frame startup-pipeline architectural skew, now more
+  visible (not less accurate) because the anchor fix stopped it from being
+  masked by the larger one-tick misalignment.
+- **The filter's mid-row ADD-ramp resume path (`PRIME_F_CNT`/`PRIME_F_ADHI`
+  nonzero) was implemented but never actually exercised on either file** —
+  every one of Glyptodont's 7 primed part boundaries happened to land
+  exactly on a fresh filter-row start (`PRIME_F_CNT=0` in all 8 parts,
+  checked directly). The row-start priming path (`PRIME_F_IDX`/`F_CLO`/
+  `F_CHI`/`F_MODE`/raw `$D417`) IS exercised and contributed to filter's
+  modest real gain (84.1%→86.7% primary), but the mid-ramp-resume code is
+  unverified beyond "assembles and doesn't obviously break anything" —
+  flagged for whoever next hits a part boundary that lands mid-ramp.
+- **`exact frames` stayed at 0/N for every Glyptodont part**, even after
+  this round's gains (Fargo itself only reaches 4/2800 in its own extended
+  window) — the improvement is broad/aggregate across registers and
+  frames, not byte-for-byte-perfect on any single frame; consistent with
+  every prior round's own experience, not a new characteristic.
+- FM's "freeze rather than resume" simplification (named above) is
+  unquantified independently of the aggregate freq number — a future round
+  could isolate it by checking whether Glyptodont's remaining freq gap
+  concentrates on voices with long FM/arp programs specifically.
+- Audio has NOT been listened to for the rebuilt parts this round (register
+  trace only, per every prior round's own caveat) — worth doing given the
+  size of the waveform/ADSR recovery.
+- Unchanged from B6's own list: `estimate_tempo_chain`'s Stage-A off-by-one,
+  mode=0 filter rows, extending to the other 9 v1.2-exact files, not wired
+  into `DriverSelector`.
 
 ## What's genuinely proven vs. still open
 

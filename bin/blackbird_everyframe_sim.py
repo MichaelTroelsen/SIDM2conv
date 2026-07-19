@@ -90,7 +90,7 @@ class BlackbirdSim:
     (0=voice0/osc1, 1=voice1/osc2, 2=voice2/osc3), matching player.s's X."""
 
     def __init__(self, lay, d, la, streams, ins_restart, ins_restart2,
-                 tempo_debug=None):
+                 tempo_debug=None, snapshot_cb=None):
         self.lay = lay
         self.d = d
         self.la = la
@@ -98,9 +98,28 @@ class BlackbirdSim:
         self.ins_restart = ins_restart
         self.ins_restart2 = ins_restart2
         self.tempo_debug = tempo_debug if tempo_debug is not None else []
+        # B7 (part-boundary priming, see docs/players/BLACKBIRD.md's "B7"
+        # section): optional hook invoked once per real_frame() call, AFTER
+        # execute() has committed this frame's pending note/instrument state
+        # (if any) but BEFORE everyframe() has stepped the wave/pulse/fx/
+        # filter engines forward -- i.e. exactly the engine state a NEW part
+        # starting at this real frame needs to prime its own do_init with.
+        # Purely additive: when None (the default, used by every EXISTING
+        # caller/test), this changes nothing about real_frame()'s own
+        # behavior or the regs/write_log it produces.
+        self.snapshot_cb = snapshot_cb
 
         self.v = [VoiceState() for _ in range(3)]
         self.zp_filtpos = 0
+        self.filt_owner = 0     # B7: which filt_start (0 = the song's own
+                                 # default program) currently governs
+                                 # zp_filtpos -- see execute()'s own
+                                 # `if fv != 0: self.zp_filtpos = fv` below,
+                                 # where fv IS a real filt_start value by
+                                 # construction (ins_filt[y-1]). Bookkeeping
+                                 # only -- never read by any EXISTING code
+                                 # path, so this cannot change simulated
+                                 # output.
         self.zp_master = 3 * 7  # initroutine: lda #3*7; sta zp_master
         self.zp_tempo = 0       # never explicitly init'd in initroutine -> zero page reset default
         self.m_groove = 0
@@ -351,6 +370,7 @@ class BlackbirdSim:
                     fv = self.ins_filt[y - 1]
                     if fv != 0:
                         self.zp_filtpos = fv
+                        self.filt_owner = fv  # B7: bookkeeping only, see __init__
                     vs.wavepos = self.ins_wave[y - 1]
                     carry = cmp_carry(y, self.ins_restart + 1)
                     if carry:  # y >= INS_RESTART+1 (hard restart 1)
@@ -515,6 +535,8 @@ class BlackbirdSim:
                 elif self.preparejmp == 3:
                     self.prepare3()
                     # no reset -- stays at 3 until next execute()
+        if self.snapshot_cb is not None:
+            self.snapshot_cb(self)   # B7: post-execute(), pre-everyframe() hook
         self.everyframe()
         return list(self.regs)
 

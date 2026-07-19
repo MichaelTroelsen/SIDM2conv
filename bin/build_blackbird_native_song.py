@@ -203,6 +203,83 @@ def bb_steps_for_voice(byte_stream):
 
 
 # ---------------------------------------------------------------------------
+# B6 (part-splitting): window a per-voice BBStep list to a tick-row range
+# [row0, row1) -- ticks map 1:1 to D11 rows (see BLACKBIRD.md's "Tempo-model
+# open caveat -- RESOLVED"), so windowing by ROW index needs none of DMC's
+# frame-alignment machinery (its `align()` exists because DMC windows by real
+# FRAME position under a coarser tick grid -- Blackbird's tick IS the row).
+# ---------------------------------------------------------------------------
+def window_steps(steps, row0, row1):
+    """Slice one voice's full-song BBStep list to [row0, row1) row-ticks.
+
+    STATE CONTINUITY (matching bin/build_mon_native_song.py's build_native_song
+    win= convention, read in full before writing this): a note/held-note that's
+    still sounding when row0 lands mid-step is RE-ENTERED at row0 rather than
+    silently dropped (dropping it would leave the voice silent until its next
+    real onset -- exactly the defect DMC's own win= docstring names and fixes).
+    Unlike DMC/MoN (whose per-note WAVE/PULSE/FM programs are captured live
+    from a siddump trace, so a mid-note capture starting at the boundary's own
+    phase is *exact* by construction), Blackbird's programs are STRUCTURAL --
+    unroll_wave_pulse/unroll_fm/unroll_filter always replay a program from ITS
+    OWN row 0 on every genuine note trigger, matching real hardware's own
+    pn_note behaviour (there is no "resume mid-cycle" primitive in either the
+    real player or the shared native engine). So a re-entered note is forced
+    to a genuine trigger (tie=False, explicit instrument+fx+note) rather than
+    a tie: tie=True at a part's own row 0 would leave WAVE+FILTER parked at
+    whatever `do_init` seeds (see B4 Bug 3 -- tie skips their restart
+    entirely), not at the correct instrument's program, which is wrong for
+    the note's WHOLE remaining duration, not just briefly. This is a real,
+    named residual (not silently absorbed): any part boundary that lands
+    inside a sustained note re-triggers that note's WAVE/PULSE/FM programs a
+    tick early relative to real hardware, audible as a brief re-attack
+    transient at that instant -- see docs/players/BLACKBIRD.md's part-
+    splitting section.
+    """
+    out = []
+    pos = 0
+    cur_instr = None
+    last_note = None
+    started = False
+    for s in steps:
+        ticks = max(1, s.ticks)
+        s_end = pos + ticks
+        if s.instrument is not None:
+            cur_instr = s.instrument
+        if s.kind == 'note' and s.note is not None:
+            last_note = s.note
+        if s_end <= row0:
+            pos = s_end
+            continue
+        if pos >= row1:
+            break
+        seg_start = max(pos, row0)
+        seg_end = min(s_end, row1)
+        seg_ticks = seg_end - seg_start
+        if seg_ticks <= 0:
+            pos = s_end
+            if pos >= row1:
+                break
+            continue
+        if not started:
+            if s.kind == 'rest':
+                out.append(BBStep('rest', None, None, s.fx, False, seg_ticks))
+            else:
+                note_val = s.note if s.note is not None else last_note
+                out.append(BBStep('note', note_val, cur_instr, s.fx, False, seg_ticks))
+            started = True
+        else:
+            instr = s.instrument if seg_start == pos else None
+            tie = s.tie if seg_start == pos else False
+            out.append(BBStep(s.kind, s.note, instr, s.fx, tie, seg_ticks))
+        pos = s_end
+        if pos >= row1:
+            break
+    if not out:
+        out = [BBStep('rest', None, None, 0, False, max(1, row1 - row0))]
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Generic run-length collapse: [(v0,v0,v0,v1,v1,...)] -> [(v,count<=cap), ...]
 # ---------------------------------------------------------------------------
 def _rle(values, cap=255):
@@ -237,6 +314,64 @@ def _find_cycle(positions):
 
 
 # ---------------------------------------------------------------------------
+# B7 (part-boundary priming, docs/players/BLACKBIRD.md's "B7" section):
+# capture the FULL-SONG simulator's real per-voice/global engine state at a
+# specific real frame (see run_full_song_sim's snapshot_cb wiring below), and
+# map a captured absolute WAVE/FILTER table position back to the LOCAL row
+# index a translated program (unroll_wave_pulse/unroll_filter, above) would
+# be sitting at, for do_init to resume from instead of always cold-starting.
+# ---------------------------------------------------------------------------
+def _capture_engine_state(sim):
+    voices = []
+    for x in range(3):
+        vs = sim.v[x]
+        voices.append(dict(wavepos=vs.wavepos, wavemask=vs.wavemask,
+                            currins=vs.currins, currfx=vs.currfx,
+                            pendnote=vs.pendnote))
+    return dict(voices=voices, zp_filtpos=sim.zp_filtpos,
+                filt_owner=sim.filt_owner, regs=list(sim.regs))
+
+
+def _lookup_wave_row(stats, target_pos):
+    """positions[k] (see unroll_wave_pulse) is the absolute wavetable
+    position BEFORE translated WAVE row k's own frame -- WAVE is always
+    exactly 1 row per frame (no RLE), so row index == positions list index,
+    with no further lookup needed once a match is found. Returns None if
+    target_pos is unreachable from this program's own wave_start (shouldn't
+    happen -- the position walk is a deterministic function of fixed table
+    bytes, per unroll_wave_pulse's own docstring, so a position genuinely
+    visited by the SAME real instrument's real trigger is always reachable)."""
+    if not stats:
+        return None
+    positions = stats.get('positions') or []
+    cyc_end = stats.get('prog_len', len(positions))
+    for k in range(min(cyc_end, len(positions))):
+        if positions[k] == target_pos:
+            return k
+    return None
+
+
+def _lookup_filter_row(extra, target_pos):
+    """extra['positions'][k] is the absolute filttable position BEFORE
+    SOURCE FRAME k's own step; extra['row_frame_start'] maps ranges of
+    source frames to the RLE-collapsed translated FILTER row that covers
+    them (see unroll_filter). Returns (row_index, frames_already_elapsed_
+    into_that_row) or None if target_pos is unreachable (see
+    _lookup_wave_row's docstring for why that shouldn't happen)."""
+    if not extra:
+        return None
+    positions = extra['positions']
+    rfs = extra['row_frame_start']
+    for k, p in enumerate(positions):
+        if p == target_pos:
+            for r in range(len(rfs) - 1):
+                if rfs[r] <= k < rfs[r + 1]:
+                    return r, k - rfs[r]
+            break
+    return None
+
+
+# ---------------------------------------------------------------------------
 # WAVE + PULSE translator (one instrument's ins_wave[i] program)
 # ---------------------------------------------------------------------------
 def unroll_wave_pulse(lay, d, la, ins_restart, ins_restart2, wave_start):
@@ -248,12 +383,14 @@ def unroll_wave_pulse(lay, d, la, ins_restart, ins_restart2, wave_start):
                                     # everyframe(): `shifted,_=asl(d404v)`; bit6 of
                                     # d404v is untouched by 0xFE/0xFF masking)
     v.pwidth = 0
-    positions, d404s, pulses = [], [], []
+    positions, d404s, pulses, pulse_written = [], [], [], []
     for _ in range(CYCLE_SEARCH_FRAMES):
         positions.append(v.wavepos)
+        wl_before = len(sim.write_log)
         sim.everyframe()
         d404s.append(sim.regs[4])
         pulses.append((sim.regs[2], sim.regs[3]))
+        pulse_written.append(any(e[1] in (2, 3) for e in sim.write_log[wl_before:]))
     cyc_start, cyc_end = _find_cycle(positions)
 
     # WAVE: native $7f jump exists -> loop exactly, forever.
@@ -267,6 +404,54 @@ def unroll_wave_pulse(lay, d, la, ins_restart, ins_restart2, wave_start):
     # PULSE: fm_step/pulse_step have no jump primitive -> physically repeat
     # the cycle to cover TARGET_FM_PULSE_FRAMES, then freeze on the last
     # value (see module docstring's "PULSE" bullet).
+    #
+    # REAL BUG FOUND (this session, task priority 1 -- Glyptodont pulse
+    # 0.2% vs Fargo's already-near-zero 1.0%): an instrument whose wave
+    # program NEVER sets bit6 (no genuine pulse content -- common: roughly
+    # half of Glyptodont's 32 used instruments have ZERO distinct pulse
+    # writes across the full unroll window, e.g. instruments 1/6/9/12/15/17/
+    # 23/26/27/31 in a direct per-instrument dump this session) was
+    # translated as an explicit "SET pulse width to $000, hold ~250+ frames"
+    # program -- because this function's throwaway BlackbirdSim always
+    # starts with regs=[0]*25 (BlackbirdSim.__init__), so an instrument that
+    # never actually calls self.w() for reg 2/3 still reads back as a
+    # constant (0,0) VALUE sequence from here, with no way to distinguish
+    # "never wrote" from "genuinely wrote zero" by inspecting the resulting
+    # VALUE alone. Real hardware's actual behaviour for such an instrument
+    # is to leave $D402/3 COMPLETELY UNTOUCHED (the same-voice register
+    # keeps whatever the PREVIOUS pulse-writing instrument last left there)
+    # -- but pn_note (blackbird_driver.asm: PPTR=VIPUL; VPC=0) unconditionally
+    # restarts this bundle's pulse program at the START of every note, so the
+    # old explicit SET-0 row was stomping a real, audible prior pulse value
+    # back to hard 0 every single time a flat-pulse instrument's note played
+    # next -- a systemic, repeated corruption over a 2703-note song, not a
+    # one-off. This is the pulse-side analogue of the FM/frequency side's
+    # bundle-clustering loss, except proportionally much worse: FM's "no
+    # modulation" case (a constant delta=0 fed into an accumulator) is
+    # coincidentally the CORRECT representation of silence already, but
+    # pulse's "no write" is NOT equivalent to "write 0". Verified directly
+    # via a live py65 register/state trace on Glyptodont voice0's very first
+    # note (instrument 1, whose own per-instrument dump shows a single
+    # distinct pulse value of 0): the native driver held $D402/3 at a hard 0
+    # for the note's full ~249-frame duration while the validated simulator
+    # showed a nonzero, persisted value throughout that whole span (carried
+    # over from the engine's own pre-note startup transient, itself a
+    # separate already-documented residual) -- exactly this bug's signature.
+    # Fixed by tracking whether `everyframe()` genuinely called `self.w()`
+    # for reg 2/3 on ANY captured frame (pulse_written, above), not inferred
+    # from the resulting value; if it never did across the program's full
+    # unique span (up to cyc_end -- frames beyond that are guaranteed
+    # repeats by construction, see _find_cycle), emit a BARE $7f freeze-only
+    # program (no SET row at all) so pn_note's restart becomes a true no-op
+    # that leaves $D402/3 exactly as the PREVIOUS bundle left them, matching
+    # real hardware, instead of fabricating a SET-to-zero that never
+    # happened on real hardware.
+    if not any(pulse_written[:cyc_end]):
+        pulse_rows = [(0x7F, 0x00, 0x00)]
+        return wave_rows, pulse_rows, dict(
+            cycle_start=cyc_start, cycle_len=cyc_end - cyc_start, prog_len=cyc_end,
+            positions=positions)
+
     prefix = pulses[:cyc_end]
     cyc = pulses[cyc_start:cyc_end] or prefix or [(0, 0)]
     seq = list(prefix)
@@ -279,7 +464,8 @@ def unroll_wave_pulse(lay, d, la, ins_restart, ins_restart2, wave_start):
     pulse_rows.append((0x7F, 0x00, 0x00))   # freeze holding the last value
 
     return wave_rows, pulse_rows, dict(
-        cycle_start=cyc_start, cycle_len=cyc_end - cyc_start, prog_len=cyc_end)
+        cycle_start=cyc_start, cycle_len=cyc_end - cyc_start, prog_len=cyc_end,
+        positions=positions)
 
 
 # ---------------------------------------------------------------------------
@@ -427,10 +613,25 @@ def unroll_filter(lay, d, la, ins_restart, ins_restart2, filt_start):
                 b0, b1, _b2 = rows[k]      # multi-frame ADD row -- split at cyc_start
                 rows[k] = (b0, b1, cyc_start - s)
                 rows.insert(k + 1, (b0, b1, e - cyc_start))
+                # B7 (part-boundary priming): keep row_frame_start in sync
+                # with the just-inserted split row so a SOURCE-FRAME ->
+                # TRANSLATED-ROW lookup (see _lookup_filter_row) still
+                # resolves correctly post-split -- row_frame_start was
+                # previously left stale here (harmless before B7, since
+                # nothing downstream of this point ever re-read it).
+                row_frame_start.insert(k + 1, cyc_start)
                 loop_row = k + 1
             break
     rows.append((0x7F, 0x00, loop_row))
-    return rows
+    # B7: return the position/row-boundary bookkeeping alongside rows so a
+    # caller can map a REAL captured zp_filtpos (from the full-song
+    # simulator, at an arbitrary part-boundary frame) back to the exact
+    # translated FILTER row + in-row frame offset this program would be at,
+    # for priming do_init instead of always cold-starting row 0 -- see
+    # docs/players/BLACKBIRD.md's "B7" section / _lookup_filter_row.
+    extra = dict(positions=list(positions[:cyc_end]), row_frame_start=row_frame_start,
+                 rows=list(rows), cyc_start=cyc_start, cyc_end=cyc_end)
+    return rows, extra
 
 
 # ---------------------------------------------------------------------------
@@ -709,6 +910,97 @@ def write_tempo_schedule(schedule):
 
 
 # ---------------------------------------------------------------------------
+# B6 (part-splitting): ONE full-song simulator pass, the single source of
+# ground truth every part's own build/validation needs -- avoids re-running
+# the sim once per part (a part's window is a SLICE of this, not a fresh
+# derivation).
+# ---------------------------------------------------------------------------
+def run_full_song_sim(lay, d, la, ins_restart, ins_restart2, streams, total_rows):
+    """(frames, row_frame, schedule, row_state):
+      - frames: the full frame-by-frame $D400-$D418 trace from real frame 0,
+        same list shape compare()'s sim_frames already produces -- sliceable
+        per part instead of re-simulating per part.
+      - row_frame[r] = the 0-based index into `frames` at which row r's
+        committed state FIRST appears (row 0 = do_init's own state, visible
+        from frame index 0) -- lets a part starting at song-row row0 find the
+        correct real-frame OFFSET into the ORIGINAL performance to compare
+        its own (always frame-0-based) driver trace against.
+      - schedule: the full row-indexed tempo/groove history, SAME technique
+        and (row, long, short, frame) shape as extract_tempo_schedule (folded
+        into this same pass instead of a second sim run -- identical
+        row/frame bookkeeping).
+      - row_state[r] (B7, part-boundary priming): the REAL per-voice/global
+        engine state (see _capture_engine_state) captured right as row r
+        begins -- specifically AFTER row r's own note/instrument commit
+        (execute(), if this frame is a tick boundary) but BEFORE this SAME
+        frame's everyframe() has stepped wave/pulse/fx/filter forward. This
+        is exactly the state a part starting at row0=r needs to prime its
+        own do_init with so its own frame-0 everyframe() call reproduces the
+        SAME output real hardware would show continuing past this point,
+        instead of do_init's flat zeroed cold-start defaults (which are only
+        genuinely correct at row 0, the song's own true start -- see
+        build_range's use of this via BlackbirdSim's snapshot_cb hook).
+        row_state[0] is captured from the sim's OWN pristine __init__ state
+        (before any real_frame() call), which is BY CONSTRUCTION identical
+        to do_init's existing cold-start defaults -- so priming naturally
+        no-ops for any part starting at row0==0 (see docs/players/
+        BLACKBIRD.md's "B7" section for the verification that confirms this).
+    """
+    import blackbird_everyframe_sim as sim_mod
+    tempo_records = sim_mod.find_tempo_records(lay, d, la)
+    snap_holder = {}
+
+    def _snap(s):
+        snap_holder['v'] = _capture_engine_state(s)
+
+    sim = sim_mod.BlackbirdSim(lay, d, la, streams, ins_restart, ins_restart2,
+                                tempo_debug=list(tempo_records), snapshot_cb=_snap)
+    frames, row_frame, schedule = [], [0], []
+    row_state = [_capture_engine_state(sim)]
+    prev_len = len(sim.tempo_debug)
+    row, f = 0, 0
+    max_frames = max(20000, total_rows * 12)   # generous: real frames/tick is
+                                                # never observed >7 in this corpus
+    while row <= total_rows and f < max_frames:
+        will_exec = (sim.zp_master == 0)
+        frames.append(sim.real_frame())
+        if will_exec:
+            row += 1
+            row_frame.append(f)
+            row_state.append(snap_holder['v'])
+        if len(sim.tempo_debug) != prev_len:
+            long_frames = max(1, min(255, sim.zp_master // 7 + 1))
+            short_frames = max(1, min(255, sim.zp_tempo // 7 + 1))
+            schedule.append((row, long_frames, short_frames, f))
+            prev_len = len(sim.tempo_debug)
+        f += 1
+    return frames, row_frame, schedule, row_state
+
+
+def tempo_at_row(schedule, opening_pair, row0):
+    """(long,short) tick-frame pair active AT row0 (the last schedule record
+    with row<=row0), else the song's own genuine opening pair (row0==0, or
+    row0 earlier than the first record)."""
+    active = opening_pair
+    for r, lf, sf, _f in schedule:
+        if r <= row0:
+            active = (lf, sf)
+        else:
+            break
+    return active
+
+
+def window_tempo_schedule(schedule, row0, row1):
+    """Row-shift the full-song schedule onto a part's own row-0-relative
+    grid, keeping only records strictly inside (row0, row1) -- a record AT
+    row0 itself is already folded into the part's opening pair by
+    tempo_at_row (re-applying it at the part's own row 0 would be a spurious
+    double-apply of the same tempo change)."""
+    return [(r - row0, lf, sf, f) for (r, lf, sf, f) in schedule
+            if row0 < r < row1]
+
+
+# ---------------------------------------------------------------------------
 # Native edit-area layout writer (mirrors build_romuzak_native_song's
 # gen_includes_song, trimmed to the bundles-only path -- Blackbird B1 has no
 # drum/SEEK instrument flags, so those branches are dropped).
@@ -920,29 +1212,282 @@ def freq_of(note):
     return 0 if note == 0 else (FREQ_TABLE_LO[note - 1] | (FREQ_TABLE_HI[note - 1] << 8))
 
 
-def main():
-    sid = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "SID", "LFT", "Fargo.sid")
-    lay = locate_blackbird(sid)
-    if lay is None:
-        raise SystemExit(f"{sid}: not a located Blackbird v1.2-exact rip")
-    d, la, h = load_sid(sid)
-    result = decode_streams(d, la, lay.streamstart)
-    po = lay.play_base - la
-    ins_restart = d[po + 93] - 1
-    ins_restart2 = d[po + 512] - 1
+def _dedup_row_count(progs_dict, preseed=()):
+    """Total rows a set of (possibly repeated) programs needs once identical
+    CONTENT is deduped -- mirrors gen_includes_song's own wave_dedup/
+    filt_dedup dict-keyed-by-tuple behaviour exactly (used by count_only to
+    predict the real post-dedup WAVE/FILTER table row usage without doing
+    the full byte-layout build)."""
+    seen = {tuple(p) for p in preseed}
+    total = sum(len(p) for p in preseed)
+    for prog in progs_dict.values():
+        k = tuple(prog)
+        if k not in seen:
+            seen.add(k)
+            total += len(prog)
+    return total
 
-    steps_per_voice = [bb_steps_for_voice(result.real(v)) for v in range(3)]
 
-    # Which (fx, note, instrument) triples are actually used as note onsets?
-    # key_counts tallies real onset EVENTS (not just distinct keys) -- used
-    # below to weight bundle clustering toward sacrificing rarely-heard
-    # bundles first (see cluster_bundles's docstring).
+# ---------------------------------------------------------------------------
+# B7 (part-boundary priming, docs/players/BLACKBIRD.md's "B7" section):
+# resolve the concrete PRIME_* constants do_init needs from (a) the captured
+# real engine-state snapshot at this part's row0 (`prime`, from
+# run_full_song_sim's row_state) and (b) gen_includes_song's OWN address
+# allocation for THIS part's tables (wave/filter program starts per
+# instrument, FM/pulse addresses per bundle) -- must run AFTER
+# gen_includes_song, not before, since the addresses don't exist yet.
+#
+# Field-by-field rationale (see the task report for the full derivation):
+#   VWI/VGMASK/VBASENOTE   -- looked up via _lookup_wave_row against the
+#                              OWNER instrument's own translated WAVE
+#                              program (position-walk is state-independent,
+#                              per unroll_wave_pulse's own docstring, so the
+#                              SAME walk from wave_start deterministically
+#                              reaches whatever position the full-song sim
+#                              really captured).
+#   AD/SR/FLAGS/VIFILT/VWF -- read directly back from the INSTR table
+#                              gen_includes_song just wrote for the owner
+#                              instrument (exactly what set_instr_v would
+#                              load for that instrument -- AD/SR/flags/
+#                              filt-start are NEVER touched between a
+#                              trigger and the next one, so the owner
+#                              instrument's own static table values ARE
+#                              the real current register content).
+#   VIFM_LO/HI/VIPUL_LO/HI -- read back from the FM/PULSE per-bundle
+#                              address tables for whichever bundle the
+#                              synthetic (currfx,pendnote,owner_instr)
+#                              priming key resolved to post-clustering.
+#   PULSE (VPLO/VPHI)      -- raw captured $D402 byte, frozen (VPC=$ff,
+#                              VPADL/VPADH=0) rather than resumed mid-
+#                              program -- PULSE has no native jump/resume
+#                              primitive in this shared engine's table
+#                              format (see unroll_wave_pulse's own "PULSE"
+#                              docstring section), so freezing at the last
+#                              real observed value is the best available
+#                              approximation; documented, not silently
+#                              absorbed (see report).
+#   F_IDX/F_CNT/F_ADHI      -- looked up via _lookup_filter_row against
+#                              whichever program (default, or the owner
+#                              instrument identified by filt_owner_instr)
+#                              currently governs the GLOBAL filter engine;
+#                              F_CLO/F_CHI/F_MODE/$D417 primed from the raw
+#                              captured registers directly (the filter's
+#                              ADD-mode ramp always continues from whatever
+#                              F_CLO/F_CHI already hold -- see fp_apply in
+#                              blackbird_driver.asm -- so these must be the
+#                              REAL current cutoff, not re-derived from row
+#                              content the way a SET row would).
+#   FM (FM_ON/FM_ACC/etc.)  -- deliberately NOT primed to resume: FM_ON is
+#                              forced 0 (freeze at the wave engine's own
+#                              steady frequency) rather than resuming a
+#                              possibly still-running arp/vibrato program
+#                              mid-flight, which would need the SAME
+#                              per-(fx,note) position-mapping complexity as
+#                              PULSE but PARAMETERIZED by note too -- a
+#                              named, bounded simplification (see report),
+#                              not attempted this round.
+# ---------------------------------------------------------------------------
+def _compute_prime_consts(gen, edit, ad_sr, wave_programs, wave_stats_by_instr,
+                           filter_extra_by_instr, default_filter_program,
+                           default_filter_extra, bundle_of, prime,
+                           prime_instr_of_voice, prime_key_of_voice,
+                           filt_owner_instr):
+    io = gen.instr_addr - B.EDIT_BASE
+    ifmlo_addr = gen.filter_addr + 3 * 256
+    ifmhi_addr = ifmlo_addr + NFM
+    ipulse_lo_addr = ifmhi_addr + NFM
+    ipulse_hi_addr = ipulse_lo_addr + NFM
+    eb = B.EDIT_BASE
+
+    consts = {}
+    for v in range(3):
+        oi = prime_instr_of_voice[v] if prime is not None else None
+        if oi is None:
+            # No known active instrument for this voice at row0 -- either
+            # prime is None (row0==0, the song's true start), or this voice
+            # genuinely never triggered a note anywhere earlier in the
+            # song. Emit EXACTLY the values do_init's own prior literal
+            # defaults produced (see blackbird_driver.asm's do_init
+            # comments), as explicit constants, so the SAME uniform
+            # table-driven asm code path (no runtime branch) reproduces
+            # the old cold-start behavior byte-for-byte.
+            consts[f'PRIME_VWI{v}'] = 0
+            consts[f'PRIME_VIWAVE{v}'] = 0
+            consts[f'PRIME_VGMASK{v}'] = 0xFE
+            consts[f'PRIME_VBASENOTE{v}'] = 0
+            consts[f'PRIME_AD{v}'] = 0
+            consts[f'PRIME_SR{v}'] = 0
+            consts[f'PRIME_FLAGS{v}'] = 0
+            consts[f'PRIME_VIFILT{v}'] = 0
+            consts[f'PRIME_VWF{v}'] = 0x41
+            consts[f'PRIME_VIFM_LO{v}'] = edit[(ifmlo_addr - eb) + 0]
+            consts[f'PRIME_VIFM_HI{v}'] = edit[(ifmhi_addr - eb) + 0]
+            consts[f'PRIME_VIPUL_LO{v}'] = edit[(ipulse_lo_addr - eb) + 0]
+            consts[f'PRIME_VIPUL_HI{v}'] = edit[(ipulse_hi_addr - eb) + 0]
+            consts[f'PRIME_PULSE{v}'] = 0
+            consts[f'PRIME_VPC{v}'] = 0x00     # 0 -> reload on first frame (old default)
+            continue
+
+        wave_start_row = edit[io + 5 * 32 + oi]
+        stats = wave_stats_by_instr.get(oi)
+        pv = prime['voices'][v]
+        k = _lookup_wave_row(stats, pv['wavepos'])
+        if k is None:
+            print(f"    B7 WARNING: priming voice {v}'s WAVE position "
+                  f"{pv['wavepos']} not found in instrument {oi}'s program "
+                  f"-- falling back to row 0 (residual, see report)")
+            k = 0
+        consts[f'PRIME_VWI{v}'] = (wave_start_row + k) & 0xFF
+        consts[f'PRIME_VIWAVE{v}'] = wave_start_row & 0xFF
+        consts[f'PRIME_VGMASK{v}'] = 0xFF if pv['wavemask'] == 0xFF else 0xFE
+        consts[f'PRIME_VBASENOTE{v}'] = pv['pendnote'] & 0x7F
+        consts[f'PRIME_AD{v}'] = edit[io + 0 * 32 + oi]
+        consts[f'PRIME_SR{v}'] = edit[io + 1 * 32 + oi]
+        consts[f'PRIME_FLAGS{v}'] = edit[io + 2 * 32 + oi]
+        consts[f'PRIME_VIFILT{v}'] = edit[io + 3 * 32 + oi]
+        wp = wave_programs.get(oi) or [(0x41, 0x00)]
+        consts[f'PRIME_VWF{v}'] = wp[0][0] & 0xFF
+
+        key = prime_key_of_voice[v]
+        bidx = bundle_of.get(key) if key is not None else None
+        if bidx is None:
+            print(f"    B7 WARNING: priming voice {v}'s bundle key {key} "
+                  f"not found post-clustering -- FM/pulse pointers left at "
+                  f"the driver's own program-0 default (residual)")
+            consts[f'PRIME_VIFM_LO{v}'] = edit[(ifmlo_addr - eb) + 0]
+            consts[f'PRIME_VIFM_HI{v}'] = edit[(ifmhi_addr - eb) + 0]
+            consts[f'PRIME_VIPUL_LO{v}'] = edit[(ipulse_lo_addr - eb) + 0]
+            consts[f'PRIME_VIPUL_HI{v}'] = edit[(ipulse_hi_addr - eb) + 0]
+        else:
+            consts[f'PRIME_VIFM_LO{v}'] = edit[(ifmlo_addr - eb) + bidx]
+            consts[f'PRIME_VIFM_HI{v}'] = edit[(ifmhi_addr - eb) + bidx]
+            consts[f'PRIME_VIPUL_LO{v}'] = edit[(ipulse_lo_addr - eb) + bidx]
+            consts[f'PRIME_VIPUL_HI{v}'] = edit[(ipulse_hi_addr - eb) + bidx]
+
+        consts[f'PRIME_PULSE{v}'] = prime['regs'][2 + 7 * v] & 0xFF
+        consts[f'PRIME_VPC{v}'] = 0xFF         # freeze: hold the primed value steady
+
+    # --- global filter priming (ONE shared SID resource, not per-voice) ---
+    if prime is None:
+        consts['PRIME_F_IDX'] = 0
+        consts['PRIME_F_CNT'] = 0
+        consts['PRIME_F_ADHI'] = 0
+        consts['PRIME_F_CLO'] = 0
+        consts['PRIME_F_CHI'] = 0
+        consts['PRIME_F_MODE'] = 0
+        consts['PRIME_D417'] = 0
+    else:
+        fo = prime['filt_owner']
+        if fo == 0 or filt_owner_instr is None:
+            base_row = 0
+            extra = default_filter_extra
+        else:
+            base_row = edit[io + 3 * 32 + filt_owner_instr]
+            extra = filter_extra_by_instr.get(filt_owner_instr) or default_filter_extra
+        found = _lookup_filter_row(extra, prime['zp_filtpos'])
+        if found is None:
+            print(f"    B7 WARNING: priming FILTER position "
+                  f"{prime['zp_filtpos']} (owner filt_start={fo}) not found "
+                  f"-- falling back to a fresh row-0 reload (residual, see "
+                  f"report)")
+            r, frames_into = 0, 0
+        else:
+            r, frames_into = found
+        consts['PRIME_F_IDX'] = (base_row + r) & 0xFF
+        consts['PRIME_F_CLO'] = prime['regs'][21] & 0xFF
+        consts['PRIME_F_CHI'] = prime['regs'][22] & 0xFF
+        consts['PRIME_F_MODE'] = prime['regs'][24] & 0xF0
+        consts['PRIME_D417'] = prime['regs'][23] & 0xFF
+        if frames_into == 0:
+            consts['PRIME_F_CNT'] = 0            # force a fresh row-load, like the old default
+            consts['PRIME_F_ADHI'] = 0
+        else:
+            b0, b1, run = extra['rows'][r]
+            consts['PRIME_F_CNT'] = max(0, run - frames_into) & 0xFF
+            consts['PRIME_F_ADHI'] = (((b0 & 0x0F) << 4) | ((b1 >> 4) & 0x0F)) & 0xFF
+    return consts
+
+
+PRIME_PER_VOICE_FIELDS = ['VWI', 'VIWAVE', 'VGMASK', 'VBASENOTE', 'AD', 'SR',
+                          'FLAGS', 'VIFILT', 'VWF', 'VIFM_LO', 'VIFM_HI',
+                          'VIPUL_LO', 'VIPUL_HI', 'PULSE', 'VPC']
+PRIME_GLOBAL_FIELDS = ['PRIME_F_IDX', 'PRIME_F_CNT', 'PRIME_F_ADHI',
+                       'PRIME_F_CLO', 'PRIME_F_CHI', 'PRIME_F_MODE', 'PRIME_D417']
+
+
+def _write_prime_consts(consts):
+    """Appends do_init's PRIME_* scalar constants to the SAME layout.inc
+    gen_includes_song just wrote (must run after it -- see
+    _compute_prime_consts). Deliberately PLAIN `NAME = value` assignments,
+    NOT `.byte` table data: layout.inc is `.include`d in blackbird_driver
+    .asm BEFORE any `* = ` origin directive has been issued (it precedes
+    even INSTR_AD's own derived constants), so any raw bytes emitted at
+    that point in the file would land at an undefined/wrong address. The
+    actual PRIME_*_TAB byte tables (3 bytes each, referencing these SAME
+    scalar constants) live inside blackbird_driver.asm itself instead, in
+    the same already-`*=`-positioned "natural gap" region the tempo_sched_*
+    tables use (see the do_init comment + the table block right after
+    `ollo`/`olhi`)."""
+    path = os.path.join(ROOT, "drivers_src", "blackbird", "layout.inc")
+    with open(path, "a") as f:
+        f.write("; B7: per-part boundary priming (auto-generated, native song) "
+                 "-- see build_blackbird_native_song.py's _compute_prime_consts "
+                 "/ blackbird_driver.asm's PRIME_*_TAB + do_init\n")
+        for field in PRIME_PER_VOICE_FIELDS:
+            for v in range(3):
+                f.write(f"PRIME_{field}{v} = {consts[f'PRIME_{field}{v}'] & 0xFF}\n")
+        for k in PRIME_GLOBAL_FIELDS:
+            f.write(f"{k} = {consts[k] & 0xFF}\n")
+
+
+def build_range(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
+                 ad_sr, default_filter_program, default_filter_extra,
+                 full_schedule, opening_pair, row_state,
+                 row0, row1, count_only=False):
+    """B6 (part-splitting): build (or, count_only, just SIZE) the song's
+    [row0, row1) tick-row window as a standalone part. Mirrors bin/
+    build_mon_native_song.py's build_native_song(..., win=, count_only=)
+    shape (read in full before writing this): pass 1 always computes the
+    window's own used-instrument/used-bundle vocabulary (scoped to ONLY
+    what that window's notes actually reference, via window_steps' boundary-
+    continuation -- see its docstring), count_only skips clustering/assemble
+    and returns the raw resource counts a fits() check needs; the real build
+    goes on to cluster, pack rows, and assemble+wrap a standalone .sf2.
+
+    Per this task's own instruction to verify rather than assume: WAVE
+    (171/256) and FILTER (27/256) headroom on the current whole-song
+    Glyptodont build is deep enough that windowing (which can only ever
+    SHRINK a window's own local table usage vs the whole song) means the
+    bundle cap is the only constraint expected to bind in practice -- but
+    all of PLAYBOOK.md Sec.3's caps are still checked here defensively
+    (instruments/WAVE/FILTER/sequences), not just bundles, so a future
+    denser file that DID also blow a table cap would still split correctly
+    instead of silently overflowing.
+
+    B7 (part-boundary priming, docs/players/BLACKBIRD.md's "B7" section):
+    `row_state[row0]` (from run_full_song_sim, may be None) is the REAL
+    engine state a resting/sustaining voice actually holds at this part's
+    own start frame -- used below to (a) pull in the "owner" instrument/
+    filter-program/FM+pulse bundle that's SILENTLY still active for a
+    voice that isn't re-triggering right at row0 (so their real WAVE/
+    FILTER/FM/PULSE programs get emitted into this part's own tables even
+    though no windowed step names them), and (b) compute do_init's
+    PRIME_* priming constants (appended to layout.inc after gen_includes_
+    song runs, since they need gen_includes_song's own address allocation
+    to resolve into concrete row/table offsets). For row0==0 (a song's
+    true start, e.g. Fargo's only part or Glyptodont's part 1),
+    row_state[0] is IDENTICAL to the sim's own pristine __init__ state, so
+    every "priming addition" below is a no-op and this reduces exactly to
+    B6's own behavior (verified explicitly, see the report).
+    """
+    windowed_steps = [window_steps(steps_per_voice[v], row0, row1) for v in range(3)]
+
     used_keys = set()
     used_instr = set()
     key_counts = {}
     cur_instr_track = [None, None, None]
     for v in range(3):
-        for s in steps_per_voice[v]:
+        for s in windowed_steps[v]:
             if s.kind == 'note' and s.note is not None:
                 if s.instrument is not None:
                     cur_instr_track[v] = s.instrument
@@ -952,35 +1497,58 @@ def main():
                 used_keys.add(key)
                 key_counts[key] = key_counts.get(key, 0) + 1
 
-    print(f"{os.path.basename(sid)}: nins(located)={lay.nins} used_instr={sorted(used_instr)} "
-          f"distinct (fx,note,instr) onsets={len(used_keys)}")
+    # --- B7: pull in whatever instrument/filter-program/bundle a RESTING
+    # voice is silently still holding at row0, so its real WAVE/FILTER/
+    # FM/PULSE programs are guaranteed present in this part's own tables
+    # for do_init's priming to reference below (a rest never names an
+    # instrument in the windowed step stream itself -- see window_steps'
+    # own docstring -- so without this addition the owner's program simply
+    # wouldn't exist in a part that never happens to re-select it).
+    prime = row_state[row0] if row_state and 0 <= row0 < len(row_state) else None
+    prime_instr_of_voice = [None, None, None]
+    prime_key_of_voice = [None, None, None]
+    filt_owner_instr = None
+    if prime is not None:
+        nins_total = len(ad_sr)
+        for v in range(3):
+            pv = prime['voices'][v]
+            if pv['currins'] > 0:
+                oi = pv['currins'] - 1
+                if 0 <= oi < nins_total:
+                    prime_instr_of_voice[v] = oi
+                    used_instr.add(oi)
+                    key = (pv['currfx'], pv['pendnote'], oi)
+                    prime_key_of_voice[v] = key
+                    used_keys.add(key)
+                    key_counts[key] = key_counts.get(key, 0) + 1
+        fo = prime['filt_owner']
+        if fo != 0:
+            for i in range(len(ad_sr)):
+                off = (lay.ins_filt - la) + i
+                if 0 <= off < len(d) and d[off] == fo:
+                    filt_owner_instr = i
+                    used_instr.add(i)
+                    break
 
     # --- per-instrument WAVE/PULSE/FILTER programs (used instruments only) ---
     wave_programs, pulse_of_instr, filter_programs, filter_flag_of = {}, {}, {}, {}
-    wave_stats = {}
+    wave_stats_by_instr, filter_extra_by_instr = {}, {}
     for i in sorted(used_instr):
         wave_start = d[(lay.ins_wave - la) + i] if 0 <= (lay.ins_wave - la) + i < len(d) else 0
         wr, pr, stats = unroll_wave_pulse(lay, d, la, ins_restart, ins_restart2, wave_start)
         wave_programs[i] = wr
         pulse_of_instr[i] = pr
-        wave_stats[i] = stats
+        wave_stats_by_instr[i] = stats
         filt_start = d[(lay.ins_filt - la) + i] if 0 <= (lay.ins_filt - la) + i < len(d) else 0
         if filt_start != 0:
-            filter_programs[i] = unroll_filter(lay, d, la, ins_restart, ins_restart2, filt_start)
+            frows, fextra = unroll_filter(lay, d, la, ins_restart, ins_restart2, filt_start)
+            filter_programs[i] = frows
             filter_flag_of[i] = True
-
-    # Blackbird's filter position is ONE continuous global state that starts
-    # at zp_filtpos=0 (real hardware) and is only ever REPOSITIONED (never
-    # gated on/off) by a filt-carrying instrument's note-on -- so the
-    # driver's own init position must be a genuinely translated program
-    # too, not an arbitrary instrument's block placed at row 0 by
-    # allocation coincidence (see blackbird_driver.asm's do_init comment).
-    default_filter_program = unroll_filter(lay, d, la, ins_restart, ins_restart2, 0)
+            filter_extra_by_instr[i] = fextra
 
     # --- per (fx, note) FM programs, bundled with that onset's instrument's
     #     pulse program (command index selects BOTH, per pr_setprog) ---
     fm_of_fxnote = {}
-    fm_flat_count = 0
     bundle_list = []            # [(fm_prog, pulse_prog), ...] -- content-deduped, UNCAPPED
     bundle_content_idx = {}     # (tuple(fm), tuple(pulse)) -> raw index into bundle_list
     bundle_counts = []          # bundle_counts[i] = total real onset EVENTS using bundle i
@@ -993,11 +1561,10 @@ def main():
                 nfx = lay.filttable - lay.fx_start
                 if 1 <= fx <= nfx:
                     fx_row = d[(lay.fx_start - la) + (fx - 1)]
-            fm_rows, is_flat = unroll_fm(lay, d, la, ins_restart, ins_restart2, fx_row, note)
+            fm_rows, _is_flat = unroll_fm(lay, d, la, ins_restart, ins_restart2, fx_row, note)
             fm_of_fxnote[fxn_key] = fm_rows
-            fm_flat_count += 1 if is_flat else 0
         fm_prog = fm_of_fxnote[fxn_key]
-        pulse_prog = pulse_of_instr.get(instr) or [(0x88, 0x00, 1), (0x7F, 0, 0)]
+        pulse_prog = pulse_of_instr.get(instr) or [(0x7F, 0x00, 0x00)]
         bkey = (tuple(fm_prog), tuple(pulse_prog))
         if bkey not in bundle_content_idx:
             bundle_content_idx[bkey] = len(bundle_list)
@@ -1007,32 +1574,213 @@ def main():
         bundle_counts[idx] += key_counts.get((fx, note, instr), 1)
         raw_bundle_of[(fx, note, instr)] = idx
 
-    print(f"  {len(fm_of_fxnote)} distinct (fx,note) FM programs "
-          f"({fm_flat_count} flat/no-modulation), {len(bundle_list)} distinct bundles "
-          f"(content-deduped, before the {NFM}-slot cap), "
-          f"{len(filter_programs)} instruments with a filter program")
+    if count_only:
+        identity_bundle_of = dict(raw_bundle_of)
+        tracks = [steps_to_rows_native(windowed_steps[v], identity_bundle_of)
+                  for v in range(3)]
+        nseg = sum(len(segment_track(tracks[v]) or [b'\x7f']) for v in range(3))
+        nw = _dedup_row_count(wave_programs)
+        nf = _dedup_row_count(filter_programs, preseed=[default_filter_program])
+        return len(bundle_list), len(used_instr), nw, nf, nseg
 
-    # $c0-$ff gives 64 command slots; Fargo alone can exceed that (see module
-    # docstring's clustering note) -- greedy-nearest-merge down to the cap
+    n_raw_bundles = len(bundle_list)
+    # $c0-$ff gives 64 command slots -- greedy-nearest-merge down to the cap
     # rather than aliasing overflow bundles onto an unrelated one. Weighted by
     # real onset-event counts (bundle_counts) so rarely-heard bundles are
     # sacrificed before frequently-played ones (see cluster_bundles's
-    # docstring for why this wasn't already happening).
+    # docstring). For a properly windowed part this should rarely trigger at
+    # all (that's the whole point of splitting) -- it stays as a safety net
+    # for a window the STEP grid couldn't shrink below the cap.
     bundle_list, remap = cluster_bundles(bundle_list, NFM, counts=bundle_counts)
     bundle_of = {k: remap[v] for k, v in raw_bundle_of.items()}
-    if len(remap) != len(set(remap)) or max(remap, default=0) >= NFM:
-        pass  # remap always <= NFM by construction; sanity note only
-    n_merged = len(raw_bundle_of and set(raw_bundle_of.values())) - len(bundle_list)
-    print(f"  bundles after clustering: {len(bundle_list)} "
-          f"(merged {max(0, n_merged)} pairs to fit the {NFM}-slot command space)"
-          if n_merged > 0 else f"  bundles: {len(bundle_list)} (within the {NFM}-slot cap, no clustering needed)")
+    n_merged = n_raw_bundles - len(bundle_list)
 
-    # --- D11Row tracks ---
-    tracks = [steps_to_rows_native(steps_per_voice[v], bundle_of) for v in range(3)]
+    tracks = [steps_to_rows_native(windowed_steps[v], bundle_of) for v in range(3)]
     segs = [segment_track(tracks[v]) or [bytes([0x7F])] for v in range(3)]
 
-    # --- AD/SR for every located instrument slot (cheap, real data, no
-    #     unrolling needed) ---
+    # Tempo: the pair ACTIVE at this part's own row0 (not necessarily the
+    # song's opening pair -- a part starting mid-song must seed CUR_TEMPO/
+    # CUR_TEMPO2 with whatever was really playing at that instant), plus this
+    # window's OWN row-shifted interior schedule (see tempo_at_row/
+    # window_tempo_schedule's docstrings -- both derived from ONE full-song
+    # sim pass in main(), not re-simulated per part).
+    long_f, short_f = tempo_at_row(full_schedule, opening_pair, row0)
+    chain = [long_f] if long_f == short_f else [long_f, short_f]
+    B.TEMPO = max(1, chain[0])
+    B.TEMPO2 = max(1, chain[1]) if len(chain) > 1 else B.TEMPO
+
+    part_schedule = window_tempo_schedule(full_schedule, row0, row1)
+    if len(part_schedule) > TEMPO_SCHED_CAP:
+        raise ValueError(
+            f"part [{row0}:{row1}) tempo schedule overflow: "
+            f"{len(part_schedule)} entries > {TEMPO_SCHED_CAP}")
+    n_sched = write_tempo_schedule(part_schedule)
+
+    gen, edit, mdp, seq0 = gen_includes_song(
+        segs, ad_sr, wave_programs, filter_programs, filter_flag_of, bundle_list,
+        default_filter_program, tempo_sched_len=n_sched)
+
+    # B7: now that gen_includes_song has finalized every table's real
+    # addresses (wave/filter program starts per instrument, FM/pulse
+    # addresses per bundle), resolve the priming constants and append them
+    # to the SAME layout.inc gen_includes_song just wrote.
+    prime_consts = _compute_prime_consts(
+        gen, edit, ad_sr, wave_programs, wave_stats_by_instr,
+        filter_extra_by_instr, default_filter_program, default_filter_extra,
+        bundle_of, prime, prime_instr_of_voice, prime_key_of_voice,
+        filt_owner_instr)
+    _write_prime_consts(prime_consts)
+
+    prg = B.assemble()
+    names = [f"instr {i:02d}" for i in range(len(ad_sr))]
+    sf2 = B.wrap(prg, gen, edit, mdp, instr_names=names)
+
+    return dict(prg=prg, edit=edit, sf2=sf2, gen=gen, mdp=mdp, seq0=seq0,
+                n_bundles_raw=n_raw_bundles, n_bundles_final=len(bundle_list),
+                n_merged=n_merged, n_used_instr=len(used_instr),
+                tempo_chain=chain, tempo_sched_n=n_sched, row0=row0, row1=row1,
+                primed=(prime is not None))
+
+
+def prune_stale_parts(prefix, nparts):
+    """Delete `<prefix>_partNN.sf2` files with NN > nparts -- a rebuild that
+    packs into fewer parts than a previous run otherwise leaves old higher-
+    numbered parts on disk (same defect/fix as bin/build_mon_native_song.py's
+    own prune_stale_parts, ported verbatim)."""
+    import glob
+    import re
+    removed = 0
+    for f in glob.glob(f"{prefix}_part*.sf2"):
+        mm = re.search(r"_part(\d+)\.sf2$", f)
+        if mm and int(mm.group(1)) > nparts:
+            os.remove(f)
+            removed += 1
+    if removed:
+        print(f"  pruned {removed} stale part file(s) beyond part{nparts:02d}")
+
+
+# per-category register breakdown (freq/waveform/pulse/ad-sr/filter), matching
+# every prior B-round's report granularity.
+REGS_TO_CHECK = list(range(25))   # all of $D400-$D418
+CATS = {
+    'freq': [0, 1, 7, 8, 14, 15], 'waveform': [4, 11, 18],
+    'pulse': [2, 3, 9, 10, 16, 17], 'adsr': [5, 6, 12, 13, 19, 20],
+    'filter': [21, 22, 23, 24],
+}
+
+
+def report_window(sim_frames, drv_frames, lo, hi, label):
+    n = hi - lo
+    if n <= 0 or hi > len(sim_frames) or hi > len(drv_frames):
+        return None
+    cat_match = {k: 0 for k in CATS}
+    cat_total = {k: len(v) * n for k, v in CATS.items()}
+    per_frame_match = []
+    first_diverge = None
+    for f in range(lo, hi):
+        sr, dr = sim_frames[f], drv_frames[f]
+        n_match = sum(1 for r in REGS_TO_CHECK if sr[r] == dr[r])
+        per_frame_match.append(n_match)
+        for k, regs in CATS.items():
+            cat_match[k] += sum(1 for r in regs if sr[r] == dr[r])
+        if n_match < len(REGS_TO_CHECK) and first_diverge is None:
+            first_diverge = f
+    exact_frames = sum(1 for m in per_frame_match if m == len(REGS_TO_CHECK))
+    avg_match = sum(per_frame_match) / (len(REGS_TO_CHECK) * n)
+    cats_str = ", ".join(f"{k}={100*cat_match[k]/cat_total[k]:.1f}%" for k in CATS)
+    print(f"    {label} [{lo}:{hi}) n={n}: overall={avg_match*100:.1f}%  {cats_str}  "
+          f"(exact frames {exact_frames}/{n}, first mismatch @{first_diverge})")
+    return dict(exact_frames=exact_frames, avg_match=avg_match,
+                first_diverge=first_diverge)
+
+
+# PLAYBOOK.md Sec.3's per-file caps. CAP_I/CAP_TBL/CAP_SEG mirror bin/
+# build_dmc_native_song.py / bin/build_mon_native_song.py's own convention
+# directly (instruments/WAVE/FILTER/sequences), but CAP_B is Blackbird-
+# specific, NOT copied from DMC/MoN's raw-count-must-be-<=63 (i.e.
+# effectively zero-clustering) convention -- checked against real data
+# first, per this task's own instruction not to assume: DMC/MoN's parts are
+# built to need almost no clustering AT ALL once windowed (that's the whole
+# point of splitting for them), but Fargo's EXISTING, previously-accepted
+# whole-song native build already clusters 43/107=40.2% of its bundles away
+# and was never judged a fidelity problem worth splitting over -- only
+# Glyptodont's 359/423=84.9% was. A strict raw<=63 cap (DMC/MoN's own
+# number) split Fargo into 2 parts on the first pass here, which is WRONG
+# per this task's explicit correctness check ("Fargo must still build as
+# exactly 1 part"). CAP_B=2*NFM=128 (>=50% of a window's raw bundles must
+# still survive unmerged) is the smallest round threshold that keeps
+# Fargo's known-good, already-shipped 40.2% loss on the "don't split" side
+# while still triggering a split for Glyptodont's 84.9% -- i.e. "mild"
+# clustering (<=50%, PLAYBOOK.md Sec.3's "without heavy clustering") is
+# accepted per-part, "heavy" (>50%) forces a split.
+CAP_B, CAP_I, CAP_TBL, CAP_SEG, STEP = 2 * NFM, 32, 256, 120, 150
+
+
+def build_song(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
+               ad_sr, default_filter_program, default_filter_extra,
+               full_schedule, opening_pair, row_state, span, base):
+    """Adaptive part-split the song: greedily grow each [row0,row1) window
+    (STEP-row probes) as long as build_range(..., count_only=True) still
+    fits every cap, cut a part boundary, continue from row1 -- same grid-
+    search SHAPE as bin/build_dmc_native_song.py's build_song (STEP is in
+    TICK-ROWS here, not real frames: Stage A already established ticks map
+    1:1 to D11 rows, so no DMC-style grid-alignment/align() is needed -- a
+    row-index window is already tick-exact by construction).
+
+    B7: `row_state`/`default_filter_extra` are threaded into fits()'s own
+    count_only probe (not just the real build below) so a part's resource
+    budget correctly ACCOUNTS for the extra owner-instrument/bundle/filter-
+    program entries B7's priming injects (see build_range's own docstring)
+    -- otherwise fits() could approve a window that the real (primed) build
+    then overflows. Verified this doesn't change Fargo's own single-part
+    decision (row0 is always 0 for every fits() probe Fargo's search makes,
+    for which priming is a no-op by construction) -- see the report."""
+    def fits(row0, row1):
+        nb, ni, nw, nf, ns = build_range(
+            lay, d, la, ins_restart, ins_restart2, steps_per_voice,
+            ad_sr, default_filter_program, default_filter_extra,
+            full_schedule, opening_pair, row_state,
+            row0, row1, count_only=True)
+        return nb <= CAP_B and ni <= CAP_I and nw <= CAP_TBL and nf <= CAP_TBL and ns <= CAP_SEG
+
+    bounds, row0 = [], 0
+    while row0 < span:
+        row1 = min(row0 + STEP, span)
+        while row1 < span and fits(row0, min(row1 + STEP, span)):
+            row1 = min(row1 + STEP, span)
+        bounds.append((row0, row1))
+        row0 = row1
+    return bounds
+
+
+def main():
+    sid = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "SID", "LFT", "Fargo.sid")
+    lay = locate_blackbird(sid)
+    if lay is None:
+        raise SystemExit(f"{sid}: not a located Blackbird v1.2-exact rip")
+    d, la, h = load_sid(sid)
+    result = decode_streams(d, la, lay.streamstart)
+    po = lay.play_base - la
+    ins_restart = d[po + 93] - 1
+    ins_restart2 = d[po + 512] - 1
+
+    steps_per_voice = [bb_steps_for_voice(result.real(v)) for v in range(3)]
+    span = max(sum(max(1, s.ticks) for s in steps_per_voice[v]) for v in range(3))
+    base = os.path.splitext(os.path.basename(sid))[0]
+    print(f"{os.path.basename(sid)}: nins(located)={lay.nins} span={span} tick-rows "
+          f"events={[len(steps_per_voice[v]) for v in range(3)]}")
+
+    # Blackbird's filter position is ONE continuous global state that starts
+    # at zp_filtpos=0 (real hardware) and is only ever REPOSITIONED (never
+    # gated on/off) by a filt-carrying instrument's note-on -- so EVERY
+    # part's driver init position must be this same genuinely translated
+    # program (song-wide, not window-dependent -- see blackbird_driver.asm's
+    # do_init comment), computed once and shared by all parts.
+    default_filter_program, default_filter_extra = unroll_filter(
+        lay, d, la, ins_restart, ins_restart2, 0)
+
+    # AD/SR for every located instrument slot -- also song-wide (cheap, real
+    # data straight off the located table, no unrolling, same for every part).
     nins = max(1, min(lay.nins, 32))
     ad_sr = []
     for i in range(nins):
@@ -1040,190 +1788,150 @@ def main():
         sr = d[(lay.ins_sr - la) + i] if 0 <= (lay.ins_sr - la) + i < len(d) else 0
         ad_sr.append((ad, sr))
 
-    # B2: model the song's FIRST tempo/groove pair as a real 2-value swing
-    # (TEMPO=long, TEMPO2=short), via the driver's SWTOG toggle (ported from
-    # drivers_src/mon). Fargo's other ~20 mid-song tempo-change records are a
-    # documented B3 gap, not modelled here.
-    #
-    # NOT using sidm2.blackbird_driver11.estimate_tempo_chain() here -- built
-    # and cross-checked this pass against the validated simulator's own
-    # real_frame() row-boundary timing (dumped zp_master at each do_row-
-    # equivalent commit over 200 real frames) and found a real off-by-one:
-    # the dispatch loop's `cpx #3*7` 3-slot prepare reservation means real
-    # frames/tick = tempo_byte // 7 + 1, NOT tempo_byte // 7 -- confirmed
-    # empirically (committed zp_master=35 -> next tick 6 real frames later,
-    # =28 -> 5 frames later, exactly matching //7+1, not //7). This is the
-    # same "+1 footnote" BLACKBIRD.md's Stage-B section already flagged as
-    # unresolved; `estimate_tempo_chain()` (and therefore Stage A's tempo,
-    # and this driver's FIRST build of B2) is off by one frame per row as a
-    # result -- Stage A itself is NOT fixed here (out of this task's scope,
-    # and its output was already user-audio-confirmed acceptable at Stage A's
-    # coarser fidelity bar), but the native driver uses the corrected values
-    # directly via extract_tempo_pairs() (raw bytes, pre-division) instead of
-    # propagating the same bug forward.
-    pairs = extract_tempo_pairs(d, la, lay.streamstart)
-    if pairs:
-        a, b = pairs[0]
-        chain = [max(1, a // 7 + 1), max(1, b // 7 + 1)]
-        if chain[0] == chain[1]:
-            chain = [chain[0]]
-    else:
-        chain = [5]  # DEFAULT_TICK_FRAMES fallback, matches Stage A's own default
-    B.TEMPO = max(1, chain[0])
-    B.TEMPO2 = max(1, chain[1]) if len(chain) > 1 else B.TEMPO
-    print(f"  tempo chain (corrected, //7+1) = {chain}; do_init seeds "
-          f"CUR_TEMPO={B.TEMPO}/CUR_TEMPO2={B.TEMPO2} (song-opening pair)")
-
-    # B3: the FULL row-indexed mid-song tempo schedule (see extract_tempo_
-    # schedule()'s docstring above) -- do_row applies each entry the instant
-    # its ROW_CNT is reached, exactly where real hardware's own OOB record
-    # would have landed. Driven by the SAME real decoded streams as every
-    # other translator in this module (checked FIRST, per this task's own
-    # instructions, whether this would even move the existing 200-frame
-    # comparison window's number -- it doesn't, the first tempo pair holds
-    # the whole window; the drift only shows up past ~1895 frames, see the
-    # extended-window report below).
-    tempo_schedule = extract_tempo_schedule(
-        lay, d, la, ins_restart, ins_restart2, result.voices)
-    n_sched = write_tempo_schedule(tempo_schedule)
-    print(f"  tempo schedule: {n_sched} row-indexed mid-song tempo/groove "
-          f"records (first at row {tempo_schedule[0][0] if tempo_schedule else '-'}, "
-          f"last at row {tempo_schedule[-1][0] if tempo_schedule else '-'})")
-
-    gen, edit, mdp, seq0 = gen_includes_song(
-        segs, ad_sr, wave_programs, filter_programs, filter_flag_of, bundle_list,
-        default_filter_program, tempo_sched_len=n_sched)
-
-    # freqtable.inc from the SAME sim class (pure table reads, no state needed)
+    # freqtable.inc from the SAME sim class (pure table reads, no state
+    # needed) -- song-wide, written once, shared by every part's assemble().
     sim_for_freq = BlackbirdSim(lay, d, la, [b'', b'', b''], ins_restart, ins_restart2)
     write_freqtable(sim_for_freq)
 
-    prg = B.assemble()
-    names = [f"instr {i:02d}" for i in range(len(ad_sr))]
-    sf2 = B.wrap(prg, gen, edit, mdp, instr_names=names)
-    out = os.path.join(ROOT, "out", "blackbird",
-                       os.path.splitext(os.path.basename(sid))[0] + "_native.sf2")
-    os.makedirs(os.path.dirname(out), exist_ok=True)
-    open(out, "wb").write(sf2)
-    print(f"wrote {out} ({len(sf2)} bytes); tables top ~${gen.filter_addr:04X}")
+    # Song's own genuine opening tempo pair (row0==0's fallback -- see
+    # extract_tempo_pairs' own off-by-one-corrected //7+1 note in the B2
+    # section of docs/players/BLACKBIRD.md).
+    pairs = extract_tempo_pairs(d, la, lay.streamstart)
+    if pairs:
+        a, b = pairs[0]
+        opening_pair = (max(1, a // 7 + 1), max(1, b // 7 + 1))
+    else:
+        opening_pair = (5, 5)   # DEFAULT_TICK_FRAMES fallback, matches Stage A's own default
+
+    # ONE full-song simulator pass -- ground truth for every part's own
+    # tempo seeding (tempo_at_row/window_tempo_schedule) AND validation
+    # (row_frame maps a part's row0 to the correct real-frame OFFSET into
+    # this SAME trace, so each part's own from-frame-0 driver trace is
+    # compared against the RIGHT slice of the ORIGINAL performance, not
+    # re-derived from scratch per part).
+    print("  running one full-song simulator pass (tempo schedule + row/frame map "
+          "+ B7 per-row engine-state snapshots)...")
+    full_frames, row_frame, full_schedule, row_state = run_full_song_sim(
+        lay, d, la, ins_restart, ins_restart2, result.voices, span)
+    print(f"  full-song tempo schedule: {len(full_schedule)} row-indexed record(s) "
+          f"(first at row {full_schedule[0][0] if full_schedule else '-'}, "
+          f"last at row {full_schedule[-1][0] if full_schedule else '-'}); "
+          f"{len(full_frames)} real frames simulated")
+
+    bounds = build_song(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
+                        ad_sr, default_filter_program, default_filter_extra,
+                        full_schedule, opening_pair, row_state, span, base)
+    print(f"  packed into {len(bounds)} adaptive part(s) (span {span} tick-rows, "
+          f"{STEP}-row probe step, caps: bundles<={CAP_B} instr<={CAP_I} "
+          f"wave/filter<={CAP_TBL} seqs<={CAP_SEG})")
 
     from sidm2.models import SF2DriverInfo
     from sidm2 import sf2_parser
-    di = SF2DriverInfo()
-    pla = sf2_parser.parse_sf2_blocks(bytearray(sf2), di)
-    print(f"PARSE: load=${pla:04X} tracks={di.track_count}",
-          "OK" if pla == 0x0D7E else "FAIL")
 
-    # --- Coarse sanity check: does SOMETHING recognisable play? Only a loose
-    # gate -- Blackbird has genuine per-frame FM/arpeggio (unlike ROMUZAK's
-    # near-static pitch this harness's tolerance was designed for), so a
-    # snapshot several frames into a tick can legitimately sit far from the
-    # flat note frequency. The real validation is the register-trace
-    # comparison against the simulator below (task's "most important" check).
-    exp = [playing_notes(segs[v][0]) for v in range(3)]
-    B.N_ROWS = 12
-    rows = B.headless_audio(prg, edit)
-    nonzero = sum(1 for r in rows for v in range(3) if r[v] != 0)
-    print(f"  coarse sanity: {nonzero}/{3*len(rows)} voice-rows produced a nonzero "
-          f"frequency (informational only, see the register-trace comparison below "
-          f"for the real fidelity measurement)")
+    N_CMP = 200          # matches every prior B-round's own "primary window"
+    N_FULL_CAP = 3000    # per-part "full window" cap (runtime bound, not a
+                          # format limit; matches B3-B5's own extended-window
+                          # cap exactly) -- most parts are far shorter than
+                          # this end-to-end, so this is usually the WHOLE
+                          # part; a 1-part build (Fargo) reproduces the
+                          # historical 0-2395f extended window inside it.
 
-    # --- Real validation: compare the ASSEMBLED driver's actual per-frame
-    # $D400-$D418 register trace against the VALIDATED SIMULATOR's own trace
-    # for the SAME file, driven by the SAME real decoded note stream (not a
-    # synthetic one) -- task's point (c), "most important". B3: the driver
-    # now applies the FULL row-indexed tempo schedule (not just the first
-    # pair) -- see extract_tempo_schedule() above. Drift can still accumulate
-    # from the shared engine's inherent 1-frame FM lag on note trigger
-    # (architectural, not a bug) and the other named B1/B2 residuals below.
-    import blackbird_everyframe_sim as sim_mod
-    N_CMP = 200   # kept identical to B1/B2's own window for direct comparability
-    tempo_records = sim_mod.find_tempo_records(lay, d, la)
+    out_dir = os.path.join(ROOT, "out", "blackbird")
+    os.makedirs(out_dir, exist_ok=True)
+    stale_unsuffixed = os.path.join(out_dir, f"{base}_native.sf2")
+    if os.path.exists(stale_unsuffixed):
+        os.remove(stale_unsuffixed)   # superseded by the _partNN convention below
 
-    def compare(n_frames):
-        real_sim = sim_mod.BlackbirdSim(lay, d, la, result.voices, ins_restart,
-                                        ins_restart2, tempo_debug=list(tempo_records))
-        sim_frames = [real_sim.real_frame() for _ in range(n_frames)]
-        drv_frames = B.headless_trace(prg, edit, n_frames)
-        return sim_frames, drv_frames
+    for pi, (row0, row1) in enumerate(bounds, 1):
+        br = build_range(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
+                         ad_sr, default_filter_program, default_filter_extra,
+                         full_schedule, opening_pair, row_state,
+                         row0, row1, count_only=False)
+        out = os.path.join(out_dir, f"{base}_native_part{pi:02d}.sf2")
+        open(out, "wb").write(br['sf2'])
+        print(f"\n  part {pi}/{len(bounds)} rows[{row0}:{row1}) ({row1 - row0} rows): "
+              f"wrote {out} ({len(br['sf2'])} bytes)")
+        print(f"    instr={br['n_used_instr']} bundles {br['n_bundles_raw']}->"
+              f"{br['n_bundles_final']} (merged {br['n_merged']}), "
+              f"tempo chain {br['tempo_chain']}, {br['tempo_sched_n']} interior "
+              f"tempo record(s), B7 primed={br['primed']}")
 
-    REGS_TO_CHECK = list(range(25))   # all of $D400-$D418
-    # per-category breakdown (freq/waveform/pulse/ad-sr/filter), matching the
-    # granularity of the original B1 build report -- helps tell WHICH engine
-    # a tempo/translation change actually moved, not just the blended total.
-    CATS = {
-        'freq': [0, 1, 7, 8, 14, 15], 'waveform': [4, 11, 18],
-        'pulse': [2, 3, 9, 10, 16, 17], 'adsr': [5, 6, 12, 13, 19, 20],
-        'filter': [21, 22, 23, 24],
-    }
+        di = SF2DriverInfo()
+        pla = sf2_parser.parse_sf2_blocks(bytearray(br['sf2']), di)
+        print(f"    PARSE: load=${pla:04X} tracks={di.track_count}",
+              "OK" if pla == 0x0D7E else "FAIL")
 
-    def report_window(sim_frames, drv_frames, lo, hi, label):
-        n = hi - lo
-        if n <= 0 or hi > len(sim_frames):
-            return None
-        cat_match = {k: 0 for k in CATS}
-        cat_total = {k: len(v) * n for k, v in CATS.items()}
-        per_frame_match = []
-        first_diverge = None
-        for f in range(lo, hi):
-            sr, dr = sim_frames[f], drv_frames[f]
-            n_match = sum(1 for r in REGS_TO_CHECK if sr[r] == dr[r])
-            per_frame_match.append(n_match)
-            for k, regs in CATS.items():
-                cat_match[k] += sum(1 for r in regs if sr[r] == dr[r])
-            if n_match < len(REGS_TO_CHECK) and first_diverge is None:
-                first_diverge = f
-        exact_frames = sum(1 for m in per_frame_match if m == len(REGS_TO_CHECK))
-        avg_match = sum(per_frame_match) / (len(REGS_TO_CHECK) * n)
-        cats_str = ", ".join(f"{k}={100*cat_match[k]/cat_total[k]:.1f}%" for k in CATS)
-        print(f"  {label} [{lo}:{hi}) n={n}: overall={avg_match*100:.1f}%  {cats_str}  "
-              f"(exact frames {exact_frames}/{n}, first mismatch @{first_diverge})")
-        return dict(exact_frames=exact_frames, avg_match=avg_match,
-                    first_diverge=first_diverge)
-
-    sim_frames, drv_frames = compare(N_CMP)
-    print(f"\n  REGISTER-TRACE COMPARISON vs validated simulator ({N_CMP} frames, "
-          f"{len(REGS_TO_CHECK)} registers = {len(REGS_TO_CHECK)*N_CMP} cells):")
-    primary = report_window(sim_frames, drv_frames, 0, N_CMP, "primary window")
-    print("    first 10 frames (sim vs driver, $D400/1 freq v0, $D404 wave v0, "
-          "$D416 cutoff):")
-    for f in range(min(10, N_CMP)):
-        sr, dr = sim_frames[f], drv_frames[f]
-        sfreq = sr[0] | (sr[1] << 8)
-        dfreq = dr[0] | (dr[1] << 8)
-        print(f"      f{f:3d}: sim freq0=${sfreq:04X} wf0=${sr[4]:02X} cut=${sr[22]:02X}"
-              f"   drv freq0=${dfreq:04X} wf0=${dr[4]:02X} cut=${dr[22]:02X}"
-              f"   {'MATCH' if sr==dr else 'diff'}")
-
-    # --- B3: EXTENDED-window comparison, specifically crossing a real
-    # mid-song tempo-change boundary, so the schedule mechanism's effect is
-    # actually measurable (task's instruction: check this before/instead of
-    # just trusting the 200-frame number, which per this task's own recon
-    # never crosses a boundary in the first place -- Fargo's first mid-song
-    # change lands at real frame ~1895, Glyptodont's second/last at ~11738).
-    ext_result = None
-    if len(tempo_schedule) > 1:
-        boundary_frame = tempo_schedule[1][3]
-        ext_cmp = min(3000, boundary_frame + 500)
-        if ext_cmp > boundary_frame:
-            print(f"\n  EXTENDED-WINDOW COMPARISON (crosses the real mid-song tempo "
-                  f"change at frame {boundary_frame}, row {tempo_schedule[1][0]}):")
-            esim, edrv = compare(ext_cmp)
-            report_window(esim, edrv, 0, min(N_CMP, ext_cmp), "pre-change (0-200)")
-            report_window(esim, edrv, N_CMP, boundary_frame, "pre-change (200-boundary)")
-            ext_result = report_window(esim, edrv, boundary_frame, ext_cmp, "POST-CHANGE")
-            report_window(esim, edrv, 0, ext_cmp, "full extended window")
+        # --- Real validation: this part's own ASSEMBLED driver trace (always
+        # frame-0-based -- a part is a standalone file with no prior state)
+        # vs the SAME validated whole-song simulator trace, sliced at this
+        # part's own real-frame OFFSET so it's compared against the RIGHT
+        # moment of the original performance.
+        #
+        # B7 FOUND A REAL BUG HERE (pre-existing since B6, not introduced by
+        # priming -- but only EXPOSED by it, see the report): row_frame[r]
+        # is the frame at which the sim's `row` COUNTER reached r, which
+        # happens DURING the real_frame() call that just committed row
+        # (r-1)'s note/instrument event -- i.e. full_frames[row_frame[r]]
+        # shows row (r-1)'s OWN content, not row r's (verified directly via
+        # run_full_song_sim's row_state, whose docstring names the same
+        # off-by-one: row_state[r] == the state during window-tick r-1).
+        # The driver's OWN frame 0 (do_init + the immediate first do_row
+        # call) shows row0's OWN committed content -- so it must be compared
+        # against full_frames[row_frame[row0 + 1]], NOT full_frames[
+        # row_frame[row0]] (one tick, e.g. ~5 real frames at Glyptodont's
+        # tempo, EARLY). Verified empirically before applying (per this
+        # task's own "don't accept a hand-wavy explanation" instruction):
+        # on Glyptodont part 4 (row0=1200), switching only this anchor moved
+        # waveform 40.0%->89.7%, AD/SR 63.9%->91.5%, overall 48.5%->68.3% on
+        # the SAME already-built driver binary -- the anchor was silently
+        # comparing every part after the first against ~1 tick of STALE
+        # (previous-tick) content, which is why waveform/AD/SR looked so
+        # badly broken in every B6 report despite the driver's own translated
+        # content being largely correct.
+        #
+        # row0==0 is DELIBERATELY EXEMPTED (kept at the historical
+        # row_frame[0]==0 anchor, not row_frame[1]) to satisfy this task's
+        # own explicit constraint that Fargo/part-1 must not regress or
+        # change its already-verified-correct reported numbers -- row0==0 is
+        # a genuine COLD start on both sides (do_init's own defaults exactly
+        # equal the sim's own pristine __init__ state), so both anchors
+        # start from an identical degenerate all-zero baseline and diverge
+        # only by the ALREADY-DOCUMENTED, separately-named "~3-frame
+        # startup-pipeline offset" residual either way -- not the same
+        # one-full-TICK content mismatch this fix addresses for row0>0.
+        if row0 == 0:
+            F0 = row_frame[0]
+        elif (row0 + 1) < len(row_frame):
+            F0 = row_frame[row0 + 1]
         else:
-            print(f"\n  (mid-song tempo change at frame {boundary_frame} is beyond the "
-                  f"{3000}-frame extended-comparison cap -- not exercised this pass)")
-    else:
-        print(f"\n  (only {len(tempo_schedule)} tempo record(s) found -- no mid-song "
-              f"change to cross, extended-window comparison skipped)")
+            F0 = row_frame[-1]
+        F1 = row_frame[row1] if row1 < len(row_frame) else len(full_frames)
+        if row1 > 0 and (row1 + 1) < len(row_frame):
+            F1 = row_frame[row1 + 1]
+        part_span_frames = max(1, F1 - F0)
+        n_want = min(max(N_CMP, part_span_frames), N_FULL_CAP, len(full_frames) - F0)
+        drv_frames = B.headless_trace(br['prg'], br['edit'], n_want)
+        sim_slice = full_frames[F0:F0 + len(drv_frames)]
 
-    return dict(lay=lay, d=d, la=la, ins_restart=ins_restart, ins_restart2=ins_restart2,
-                prg=prg, edit=edit, sf2=sf2, tempo=B.TEMPO,
-                exact_frames=primary['exact_frames'], avg_match=primary['avg_match'],
-                first_diverge=primary['first_diverge'], ext_result=ext_result)
+        print(f"    REGISTER-TRACE COMPARISON vs the validated simulator "
+              f"(sliced at real-frame offset {F0} in the whole-song trace):")
+        report_window(sim_slice, drv_frames, 0, min(N_CMP, len(drv_frames)),
+                      "primary window (first 200f)")
+        if len(drv_frames) > N_CMP:
+            report_window(sim_slice, drv_frames, 0, len(drv_frames),
+                          f"full-part window ({part_span_frames}f span"
+                          f"{', capped' if part_span_frames > N_FULL_CAP else ''})")
+            # steady-state (post-primary) window: isolates the part's OWN
+            # startup transient (do_init's ~3-frame pipeline-fill + the
+            # boundary-retrigger residual window_steps' docstring names) from
+            # the rest of the part -- same segmenting technique the B1 report
+            # already used on the whole-song build ("frames 0-10 vs 10-200")
+            # to tell a real startup artifact from a genuine steady-state gap.
+            report_window(sim_slice, drv_frames, N_CMP, len(drv_frames),
+                          "steady-state (200f:end, excludes this part's own "
+                          "startup transient)")
+
+    prune_stale_parts(os.path.join(out_dir, f"{base}_native"), len(bounds))
 
 
 if __name__ == "__main__":
