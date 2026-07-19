@@ -71,34 +71,34 @@ FILTSTEP   = $00c0
 ; --- wave program runner (STANDARD SF2II wave table, col-major 256x2:
 ;     col0=waveform byte, col1=semitone(00-7f add / 80-df abs) or jump-target;
 ;     one row advanced per frame; col0 $7f = jump to col1 index). ------------
-VWI     = $1800          ; per-voice current wave-program row (3)
-VGMASK  = $1803          ; per-voice $D404 AND-mask: $ff gated-on, $fe gated-off (3)
-VIWAVE  = $1806          ; per-voice instrument wave-program start row (3)
+VWI     = $1980          ; per-voice current wave-program row (3)
+VGMASK  = $1983          ; per-voice $D404 AND-mask: $ff gated-on, $fe gated-off (3)
+VIWAVE  = $1986          ; per-voice instrument wave-program start row (3)
 ws_row  = $ee            ; wave_step scratch: resolved row
 ws_grd  = $ef            ; wave_step scratch / pulse_step $7f-jump guard
 ; --- pulse program runner (ROW-major PULSETAB, 3 bytes/entry, walked via a
 ;     16-bit pointer exactly like FM): 8X XX YY = set 12-bit width for YY
 ;     frames; 0X XX YY = add per frame for YY; 7f -- -- = freeze. -----------
-VPC     = $180c          ; per-voice frames left on current row (3)
-VPLO    = $180f          ; per-voice current 12-bit pulse lo (3)
-VPHI    = $1812          ; per-voice current 12-bit pulse hi (3)
-VPADL   = $1815          ; per-voice per-frame add lo (3)
-VPADH   = $1818          ; per-voice per-frame add hi (3)
+VPC     = $198c          ; per-voice frames left on current row (3)
+VPLO    = $198f          ; per-voice current 12-bit pulse lo (3)
+VPHI    = $1992          ; per-voice current 12-bit pulse hi (3)
+VPADL   = $1995          ; per-voice per-frame add lo (3)
+VPADH   = $1998          ; per-voice per-frame add hi (3)
 ; --- filter program runner (STANDARD SF2II filter table, col-major 256x3:
 ;     9Y YY RB = set passband/cutoff/res/bitmask; 0X XX YY = add to cutoff each
 ;     frame for YY; 7f -- XX = jump. ONE global SID filter; started when a note
 ;     from an instrument with flag $40 triggers (filter index = instr col3).
 ;     Cutoff held as 16-bit F_CUT (high byte -> $D416). -----------------------
-F_IDX   = $181e          ; filter-program row
-F_CNT   = $181f          ; frames left on current row
-F_CLO   = $1820          ; 16-bit cutoff lo
-F_CHI   = $1821          ; 16-bit cutoff hi (-> $D416)
-F_ADLO  = $1822          ; per-frame cutoff add lo
-F_ADHI  = $1823          ; per-frame cutoff add hi
-F_MODE  = $1824          ; SID mode bits for $D418 high nibble (from passband)
-F_ACT   = $1825          ; 1 = a filter program is running
-VIFLAGS = $1826          ; per-voice instrument flags byte (col2) (3)
-VIFILT  = $1829          ; per-voice instrument filter-program start row (3)
+F_IDX   = $199e          ; filter-program row
+F_CNT   = $199f          ; frames left on current row
+F_CLO   = $19a0          ; 16-bit cutoff lo
+F_CHI   = $19a1          ; 16-bit cutoff hi (-> $D416)
+F_ADLO  = $19a2          ; per-frame cutoff add lo
+F_ADHI  = $19a3          ; per-frame cutoff add hi
+F_MODE  = $19a4          ; SID mode bits for $D418 high nibble (from passband)
+F_ACT   = $19a5          ; 1 = a filter program is running
+VIFLAGS = $19a6          ; per-voice instrument flags byte (col2) (3)
+VIFILT  = $19a9          ; per-voice instrument filter-program start row (3)
 ; --- FM offset-list runner (per-frame pitch program): per-voice frequency
 ;     accumulator that walks the FM table (FMTAB ROW-major, 3 bytes/entry:
 ;     lo,hi,dur) via a 16-bit pointer from the note's instrument FM-start,
@@ -106,25 +106,25 @@ VIFILT  = $1829          ; per-voice instrument filter-program start row (3)
 ;     FM_ACC. dur 0 = freeze. Each note's pitch envelope is selected PER NOTE
 ;     by the $c0-$ff sequence command (index -> IFM_LO/IFM_HI -> VIFM -> FMP),
 ;     decoupled from the instrument. ------------
-FM_ON     = $182c        ; per-voice: 1 = FM running (3)
-FM_IDX    = $182f        ; per-voice: (legacy, unused) (3)
-FM_CNT    = $1832        ; per-voice: frames left on current entry (3)
-FM_ACC_LO = $1835        ; per-voice: accumulated freq offset lo (3)
-FM_ACC_HI = $1838        ; per-voice: accumulated freq offset hi (3)
-FM_OFF_LO = $183b        ; per-voice: current entry offset lo (3)
-FM_OFF_HI = $183e        ; per-voice: current entry offset hi (3)
-vbasenote = $1841        ; per-voice: base note index (note+transpose) for the
+FM_ON     = $19ac        ; per-voice: 1 = FM running (3)
+FM_IDX    = $19af        ; per-voice: (legacy, unused) (3)
+FM_CNT    = $19b2        ; per-voice: frames left on current entry (3)
+FM_ACC_LO = $19b5        ; per-voice: accumulated freq offset lo (3)
+FM_ACC_HI = $19b8        ; per-voice: accumulated freq offset hi (3)
+FM_OFF_LO = $19bb        ; per-voice: current entry offset lo (3)
+FM_OFF_HI = $19be        ; per-voice: current entry offset hi (3)
+vbasenote = $19c1        ; per-voice: base note index (note+transpose) for the
                          ; wave-table semitone column; wave_step recomputes
                          ; vfreq = freqtable[vbasenote + col1] each frame (3)
-FMP_LO    = $1844        ; per-voice: current FMTAB read pointer lo (3)
-FMP_HI    = $1847        ; per-voice: current FMTAB read pointer hi (3)
-VIFM_LO   = $184a        ; per-voice: current instrument's FM-start addr lo (3)
-VIFM_HI   = $184d        ; per-voice: current instrument's FM-start addr hi (3)
-PPTR_LO   = $1850        ; per-voice: current PULSETAB read pointer lo (3)
-PPTR_HI   = $1853        ; per-voice: current PULSETAB read pointer hi (3)
-VIPUL_LO  = $1856        ; per-voice: current cmd's pulse-program start addr lo (3)
-VIPUL_HI  = $1859        ; per-voice: current cmd's pulse-program start addr hi (3)
-SWTOG     = $185c        ; swing-tempo phase toggle (ported from the MoN driver, which
+FMP_LO    = $19c4        ; per-voice: current FMTAB read pointer lo (3)
+FMP_HI    = $19c7        ; per-voice: current FMTAB read pointer hi (3)
+VIFM_LO   = $19ca        ; per-voice: current instrument's FM-start addr lo (3)
+VIFM_HI   = $19cd        ; per-voice: current instrument's FM-start addr hi (3)
+PPTR_LO   = $19d0        ; per-voice: current PULSETAB read pointer lo (3)
+PPTR_HI   = $19d3        ; per-voice: current PULSETAB read pointer hi (3)
+VIPUL_LO  = $19d6        ; per-voice: current cmd's pulse-program start addr lo (3)
+VIPUL_HI  = $19d9        ; per-voice: current cmd's pulse-program start addr hi (3)
+SWTOG     = $19dc        ; swing-tempo phase toggle (ported from the MoN driver, which
                          ; ported it from the MoN ROM's own $E2 toggle at $1134-$1138):
                          ; EOR #$ff per row; negative phase reloads TEMPO2 (the SHORT
                          ; period), positive reloads TEMPO (long). Blackbird's real
@@ -138,17 +138,17 @@ SWTOG     = $185c        ; swing-tempo phase toggle (ported from the MoN driver,
                          ; overwrites every time ROW_CNT reaches Blackbird's real next
                          ; mid-song tempo/groove OOB record -- Fargo alone has 22 of these
                          ; (see BLACKBIRD.md); B2 only modelled the first.
-CUR_TEMPO  = $185d       ; B3: live long-phase frame count, read by do_row instead of
+CUR_TEMPO  = $19dd       ; B3: live long-phase frame count, read by do_row instead of
                          ; #TEMPO -- do_init seeds it from TEMPO, the schedule updates it.
-CUR_TEMPO2 = $185e       ; B3: live short-phase frame count (from TEMPO2 / schedule).
-ROW_CNT_LO = $185f       ; B3: 16-bit row/tick counter, incremented once per do_row call --
-ROW_CNT_HI = $1860       ; this IS Blackbird's own tick grid (one do_row = one execute()
+CUR_TEMPO2 = $19de       ; B3: live short-phase frame count (from TEMPO2 / schedule).
+ROW_CNT_LO = $19df       ; B3: 16-bit row/tick counter, incremented once per do_row call --
+ROW_CNT_HI = $19e0       ; this IS Blackbird's own tick grid (one do_row = one execute()
                          ; cycle on real hardware, per BLACKBIRD.md's tempo-model section --
                          ; the same unit blackbird_driver11.py's Stage A already maps 1:1
                          ; onto Driver 11 rows), so the schedule's row indices (derived by
                          ; counting the validated simulator's own execute() calls) line up
                          ; exactly with this counter with no rescaling.
-TEMPO_SCHED_IDX = $1861  ; B3: 0-based index of the NEXT unconsumed schedule entry --
+TEMPO_SCHED_IDX = $19e1  ; B3: 0-based index of the NEXT unconsumed schedule entry --
                          ; 8-bit, matches the tables' own <=64-entry cap ($1595-$16cb's
                          ; 311-byte gap between the code and the reserved playback-state
                          ; region comfortably fits 64*4=256 bytes; the tables are placed
@@ -159,9 +159,11 @@ INSTR_AD    = INSTR + 0*32
 INSTR_SR    = INSTR + 1*32
 INSTR_FLAGS = INSTR + 2*32   ; flags ($40 = start filter program)
 INSTR_FILT  = INSTR + 3*32   ; filter-program start row
-INSTR_PULSE = INSTR + 4*32   ; pulse-program index (unused by Blackbird B1 --
-                              ; pulse is selected per-note via the $c0-$ff
-                              ; command, like FM; kept for driver-shape parity)
+INSTR_PULSE = INSTR + 4*32   ; pulse-program index (unused; the real per-
+                              ; instrument pulse-program ADDRESS lives in the
+                              ; INSTR_PUL_LO/HI tables from layout.inc, which
+                              ; need 16 bits and so can't live in this
+                              ; single-byte column -- see set_instr_v, B8)
 INSTR_WAVE  = INSTR + 5*32
 
 ; --- Block-2 playback-state region (editor reads these) -------------------
@@ -236,40 +238,66 @@ iv:     lda PRIME_VWF_TAB,x
         lda #$00
         sta vfreq_lo,x            ; recomputed fresh every frame by wave_step's
         sta vfreq_hi,x            ; own ws_sok path -- no priming needed here
-        lda PRIME_VPC_TAB,x       ; $ff = freeze the primed pulse value steady
-        sta VPC,x                 ; (no native PULSE resume primitive -- see
-                                   ; _compute_prime_consts); $00 = old default
-                                   ; (reload on frame 0) when never-triggered
-        lda PRIME_PULSE_TAB,x     ; primed raw $D402/3 byte (B5: both regs
-        sta VPLO,x                 ; always hold the SAME byte on real hardware)
-        sta VPHI,x
+        ; B8: genuine mid-program PULSE resume (B7 froze this at the last raw
+        ; value instead). pulse_step's whole position is runtime state --
+        ; PPTR (row cursor), VPC (frames left on the current row), VPLO/VPHI
+        ; (live 12-bit width), VPADL/VPADH (this row's per-frame add) -- so
+        ; no table "jump primitive" is needed to resume mid-flight; the
+        ; builder just writes the state pl_decode would have left behind.
+        ; PPTR is now primed SEPARATELY from VIPUL: VIPUL is the RESTART
+        ; address pn_note reloads on the next real note-on, while PPTR is
+        ; where the engine is right NOW -- at a part boundary (and, for
+        ; row0==0, before any note at all) these are genuinely different
+        ; programs, which is exactly what real hardware does.
+        lda PRIME_VPC_TAB,x
+        sta VPC,x
+        lda PRIME_PPTR_LO_TAB,x
+        sta PPTR_LO,x
+        lda PRIME_PPTR_HI_TAB,x
+        sta PPTR_HI,x
+        lda PRIME_PULSE_TAB,x     ; live 12-bit width (B5: $D402 and $D403 are
+        sta VPLO,x                 ; written the SAME byte on real hardware,
+        lda PRIME_VPHI_TAB,x        ; so only VPLO reaches the SID -- VPHI is
+        sta VPHI,x                   ; internal add-mode bookkeeping only)
+        lda PRIME_VPADL_TAB,x     ; B8: pulse rows are DELTA (0X ADD) encoded
+        sta VPADL,x               ; now, so a resumed row carries a live add
         lda #$00
-        sta VPADL,x
-        sta VPADH,x
+        sta VPADH,x               ; (VPADH stays 0: only VPLO reaches $D402/3)
         lda PRIME_VGMASK_TAB,x
         sta VGMASK,x              ; primed gate state ($fe old default = off)
-        lda #$00
-        sta FM_ON,x               ; FM idle until a note triggers (B7: primed
-                                   ; voices approximate a resting FM/arp
-                                   ; program as already-settled/flat rather
-                                   ; than resuming its real mid-flight
-                                   ; position -- a named, bounded
-                                   ; simplification, see the report)
-        sta FM_ACC_LO,x
+        ; B8: genuine mid-program FM resume (B7 forced this flat/off). The
+        ; note-parameterization B7 named as the blocker is real but solvable
+        ; -- the validated simulator's snapshot carries BOTH the bundle in
+        ; flight (currfx + pendnote select the program) AND the position
+        ; within it (fxpos), and FM's cumulative accumulator means the
+        ; absolute pitch offset is just FM_ACC, which the builder can write
+        ; directly. FM_ON=0 (with everything else 0) reproduces B7's
+        ; flat/idle behaviour exactly whenever the position can't be
+        ; resolved, so this degrades safely rather than guessing.
+        lda PRIME_FM_ON_TAB,x
+        sta FM_ON,x
+        lda PRIME_FM_ACC_LO_TAB,x  ; the load-bearing one: FM is a cumulative
+        sta FM_ACC_LO,x             ; accumulator, so the voice's whole
+        lda PRIME_FM_ACC_HI_TAB,x    ; current pitch offset lives here
         sta FM_ACC_HI,x
+        lda PRIME_FM_OFF_LO_TAB,x
+        sta FM_OFF_LO,x
+        lda PRIME_FM_OFF_HI_TAB,x
+        sta FM_OFF_HI,x
+        lda PRIME_FM_CNT_TAB,x
         sta FM_CNT,x
+        lda PRIME_FMP_LO_TAB,x
         sta FMP_LO,x
+        lda PRIME_FMP_HI_TAB,x
         sta FMP_HI,x
         lda PRIME_VIFM_LO_TAB,x   ; primed FM+pulse bundle pointers (old
         sta VIFM_LO,x              ; default = program 0's own address,
         lda PRIME_VIFM_HI_TAB,x    ; reproduced exactly by _compute_prime_
         sta VIFM_HI,x               ; consts' own "no owner instrument" branch)
-        lda PRIME_VIPUL_LO_TAB,x
-        sta VIPUL_LO,x
-        sta PPTR_LO,x             ; point the read pointer at it
+        lda PRIME_VIPUL_LO_TAB,x  ; RESTART address only -- PPTR (the live
+        sta VIPUL_LO,x             ; cursor) is primed separately above, B8
         lda PRIME_VIPUL_HI_TAB,x
         sta VIPUL_HI,x
-        sta PPTR_HI,x
         lda PRIME_VBASENOTE_TAB,x
         sta vbasenote,x           ; base note index (set on each note trigger)
         lda PRIME_FLAGS_TAB,x     ; primed instrument flags ($40 = filter-
@@ -957,10 +985,20 @@ pr_setprog:
         sta VIFM_LO,x
         lda IFM_HI,y
         sta VIFM_HI,x
-        lda IPULSE_LO,y
-        sta VIPUL_LO,x
-        lda IPULSE_HI,y
-        sta VIPUL_HI,x
+        ; B8: the PULSE program is NO LONGER selected here. On real
+        ; hardware the pulse-width program is part of the INSTRUMENT's wave
+        ; program (BlackbirdSim.everyframe reads its pulse rows out of the
+        ; SAME wavetable walk that produces $D404, seeded by ins_wave[i]) --
+        ; it is per-instrument, exactly like WAVE, and has nothing to do
+        ; with the per-note fx/arp bundle. Bundling the two meant that
+        ; whenever the 64-slot cap forced a merge, the surviving bundle
+        ; dragged a FOREIGN instrument's pulse program along with its FM
+        ; program. Measured directly: Fargo held waveform at 98.9% (so the
+        ; wave walk, and therefore the instrument, was provably correct)
+        ; while pulse read 14.3% and the driver swept where the validated
+        ; simulator held a constant. Moving the selection to set_instr_v
+        ; also shrinks the bundle vocabulary to distinct (fx, note) pairs
+        ; alone, which cuts clustering pressure independently.
         jsr advw
         jmp pr_read
 pr_setinst:
@@ -1152,10 +1190,13 @@ ol_adv_done:
 
 ; set instrument for voice X: A = index
 set_instr_v:
-        ; Neither FM nor pulse is tied to the instrument any more -- both are
-        ; selected per note by the $c0-$ff command (see pr_setprog). The
-        ; instrument sets only timbre: AD/SR/flags/filter/waveform.
+        ; B8: FM stays per-NOTE ($c0-$ff command, see pr_setprog), but PULSE
+        ; is per-INSTRUMENT again -- see pr_setprog's own comment for why.
         tay
+        lda INSTR_PUL_LO,y
+        sta VIPUL_LO,x
+        lda INSTR_PUL_HI,y
+        sta VIPUL_HI,x
         lda INSTR_AD,y
         sta tmpf
         lda INSTR_SR,y
@@ -1238,6 +1279,38 @@ PRIME_PULSE_TAB:
 PRIME_VPC_TAB:
         .byte PRIME_VPC0, PRIME_VPC1, PRIME_VPC2
 
+; Pin the note->freq table ABOVE the playback-state region ($16cc-$1702) so it
+; can never collide with it. Routines live $1000-~$1623, well below it.
+        * = $1710
+freqtable:
+        .include "freqtable.inc"
+
+; B8: genuine mid-program PULSE + FM resume state (see do_init's own comments)
+PRIME_VPHI_TAB:
+        .byte PRIME_VPHI0, PRIME_VPHI1, PRIME_VPHI2
+PRIME_VPADL_TAB:
+        .byte PRIME_VPADL0, PRIME_VPADL1, PRIME_VPADL2
+PRIME_PPTR_LO_TAB:
+        .byte PRIME_PPTR_LO0, PRIME_PPTR_LO1, PRIME_PPTR_LO2
+PRIME_PPTR_HI_TAB:
+        .byte PRIME_PPTR_HI0, PRIME_PPTR_HI1, PRIME_PPTR_HI2
+PRIME_FM_ON_TAB:
+        .byte PRIME_FM_ON0, PRIME_FM_ON1, PRIME_FM_ON2
+PRIME_FMP_LO_TAB:
+        .byte PRIME_FMP_LO0, PRIME_FMP_LO1, PRIME_FMP_LO2
+PRIME_FMP_HI_TAB:
+        .byte PRIME_FMP_HI0, PRIME_FMP_HI1, PRIME_FMP_HI2
+PRIME_FM_CNT_TAB:
+        .byte PRIME_FM_CNT0, PRIME_FM_CNT1, PRIME_FM_CNT2
+PRIME_FM_ACC_LO_TAB:
+        .byte PRIME_FM_ACC_LO0, PRIME_FM_ACC_LO1, PRIME_FM_ACC_LO2
+PRIME_FM_ACC_HI_TAB:
+        .byte PRIME_FM_ACC_HI0, PRIME_FM_ACC_HI1, PRIME_FM_ACC_HI2
+PRIME_FM_OFF_LO_TAB:
+        .byte PRIME_FM_OFF_LO0, PRIME_FM_OFF_LO1, PRIME_FM_OFF_LO2
+PRIME_FM_OFF_HI_TAB:
+        .byte PRIME_FM_OFF_HI0, PRIME_FM_OFF_HI1, PRIME_FM_OFF_HI2
+
 ; B3: row-indexed tempo schedule (see do_row + CUR_TEMPO's declaration above).
 ; Placed here, UNPINNED, in the natural ~311-byte gap between the code above
 ; (ends ~$1595) and the reserved playback-state region ($16cc-$1702) -- 4
@@ -1252,9 +1325,3 @@ tempo_sched_t1:
         .include "tempo_sched_t1.inc"
 tempo_sched_t2:
         .include "tempo_sched_t2.inc"
-
-; Pin the note->freq table ABOVE the playback-state region ($16cc-$1702) so it
-; can never collide with it. Routines live $1000-~$1623, well below it.
-        * = $1710
-freqtable:
-        .include "freqtable.inc"

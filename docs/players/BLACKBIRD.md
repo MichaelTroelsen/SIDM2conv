@@ -1639,6 +1639,302 @@ required).
   mode=0 filter rows, extending to the other 9 v1.2-exact files, not wired
   into `DriverSelector`.
 
+## B8 shipped: PULSE decoupled from the FM bundle, 4 more real bugs, Fargo 75.5% -> 94.1%
+
+B7 left PULSE and FM as the two deliberately-unfinished pieces of part-
+boundary priming, and named them as the dominant residuals. Both were built
+this round — but chasing them turned up something bigger first: PULSE's real
+problem was never boundary priming at all. Fargo is a **single part with no
+boundary to prime** and still read pulse 26.9%, which is the signal that led
+here. Four genuinely separate bugs came out of it.
+
+### Bug 1 (the big one): PULSE was bundled with FM, but hardware ties it to the INSTRUMENT
+
+`pr_setprog` used to set BOTH `VIFM` (the fx/arp program) and `VIPUL` (the
+pulse program) from the same `$c0-$ff` command index. That is wrong about
+real hardware: `BlackbirdSim.everyframe()` reads a voice's pulse rows out of
+the **same wavetable walk that produces `$D404`**, seeded by `ins_wave[i]` —
+pulse is per-INSTRUMENT, exactly like WAVE, and has nothing to do with the
+per-note fx bundle. Bundling them meant that every time the 64-slot cap
+forced a merge, the surviving bundle dragged a **foreign instrument's pulse
+program** along with its FM program.
+
+Diagnosed rather than guessed: Fargo held **waveform at 98.9%** — so the
+wavepos walk, and therefore the instrument, was provably correct — while
+pulse read 14.3%, and a frame-by-frame diff showed the driver *sweeping*
+where the validated simulator held a flat constant. Same instrument, wrong
+pulse program.
+
+Fixed by moving the `VIPUL` load out of `pr_setprog` and into `set_instr_v`,
+with the `IPULSE_LO/HI` arrays re-indexed by instrument row instead of
+command index (they keep their `NFM`-sized allocation so no other table
+address moves). Two independent wins:
+
+- pulse becomes correct for merged bundles;
+- the bundle vocabulary collapses to distinct **(fx, note)** pairs alone —
+  **Fargo 107 raw bundles -> 80**, merges 43 -> 16 — which lifts freq too
+  (80.1% -> 87.7%) purely as a side effect of less clustering.
+
+### Bug 2: the pulse width is an ACCUMULATOR that does not cycle with `wavepos`
+
+`unroll_wave_pulse` captured pulse output only over the wavepos cycle
+(`prefix + repeat(cycle)`), assuming a repeating wavepos implies a repeating
+pulse. It does not: `vs.pwidth` is a running accumulator fed through the
+fixed `pwprepare` lookup, so a wave program that loops every N frames can
+still produce a pulse value that sweeps continuously and never repeats.
+
+Caught on **Glyptodont part 8** — a part with **zero** bundle clustering and
+97.7% waveform, yet 1.6% pulse: the simulator swept +32/frame for the whole
+window while the driver replayed a 2-3 frame loop forever.
+
+The fix is a **per-instrument** decision, made from the data, not a global
+switch — and the split matters in both directions, which is why neither
+global option was taken:
+
+| encoding applied to every instrument | Fargo pulse (full-part) | Glyptodont part 8 pulse |
+|---|---|---|
+| fold onto the wavepos cycle (pre-B8) | 87.8% | 1.6% |
+| literal long capture (1200f) | 14.3% | — |
+| adaptive: fold iff genuinely periodic | **89.6%** | (see punch list) |
+
+The periodicity test searches **multiples** of the wavepos period, not just
+the period itself (the pulse period only has to be a multiple of it).
+Searching `m=1` alone misclassified all of Fargo's instruments as sweeping
+and cost 73pp of pulse accuracy — a real trap, recorded here so nobody
+re-derives it.
+
+**A documented negative result**: a pure-DELTA encoding (`0X` ADD rows,
+which this table format supports and nothing had ever emitted) is the
+*semantically* right model — a note-on restarts the wave program but NOT the
+width accumulator, so the changes should restart while the value carries
+over. It scored better in a fresh part's first ~200 frames (Fargo primary
+pulse 79.7% vs 27.5%) and then **drifts irrecoverably** over a long window
+(full-part 7.4%), because `pwprepare` is **not affine**: it is a -16 ramp
+with wrap discontinuities (index 8 -> 15, index 9 -> 254), so an output
+delta is only history-independent while the accumulator stays inside one
+ramp segment. Once hardware's `pw` and the capture's `pw` sit on opposite
+sides of a wrap, every later delta is wrong and nothing re-anchors.
+Absolute encoding wins on every long window measured, so that ships.
+
+### Bug 3: nothing modelled hardware's `wavepos == 0` DEFAULT wave/pulse program
+
+Real hardware's wave engine is unconditional from frame 0 with `vs.wavepos`
+initialized to 0, so **before a voice's first note the default program is
+already stepping** and already writing `$D404` and (via its bit6 pulse rows)
+`$D402/3`. `do_init` instead pointed `VWI`/`PPTR` at whatever program
+happened to land at table row 0 / bundle 0. Measured consequence: Fargo
+voices 0 and 1 sat at `$D402 == 0` for the *entire song* while the simulator
+held 8 — because those instruments' own pulse programs are freeze-only
+(B5's `$7f` bare program), so the pre-note value is the only value they ever
+have.
+
+Fixed by pinning the genuine `wavepos==0` program at **WAVE row 0**, exactly
+as `default_filter_program` / `FILT_INIT_ROW` already did for the filter
+(`WAVE_INIT_ROW`), and priming `PPTR` from it. This is the structural
+symmetry B1 gave the filter and never gave WAVE/PULSE.
+
+### Bug 4: a resume landing exactly ON a row boundary skipped that row's load
+
+The new resume path set `VPC = run - e` and advanced the cursor past row
+`r`. At `e == 0` that skips the row's **load**, and a SET row's whole effect
+IS its load. Caught on Fargo voice 2, whose resume sat on a `SET 187 for 247
+frames` row at elapsed 0: the driver held the previous value (8) for the
+entire part instead of ever writing 187. Fixed for PULSE and FM alike (at
+`e == 0`, point at row `r` with the counter at 0 so the engine loads it).
+
+### Lever 1 as originally scoped: genuine mid-program PULSE and FM resume
+
+Both are now real, and B7's "no jump/resume primitive exists" framing turned
+out to be a non-issue: **no table primitive is needed**, because both
+engines' entire position lives in plain runtime state that `do_init` can
+write directly. Verified against `pulse_step`/`fm_step` instruction by
+instruction — a row whose byte2 is `run` is loaded on the frame its counter
+reads 0, which sets the counter to `run`, applies, then decrements, so the
+row is live for exactly frames `[start, start+run)`.
+
+- **PULSE**: `PPTR` (row cursor, primed *separately* from `VIPUL` — `VIPUL`
+  is the RESTART address `pn_note` reloads, `PPTR` is where the engine is
+  right now; at a boundary these are genuinely different programs) +
+  `VPC` + `VPLO`/`VPHI` + `VPADL`.
+- **FM**: `FMP` + `FM_CNT` + `FM_OFF_LO/HI` + `FM_ON` + — the load-bearing
+  one — `FM_ACC_LO/HI`, since FM is a cumulative accumulator so the voice's
+  whole current pitch offset lives there rather than in the table. B7's
+  cited blocker (FM is note-parameterized, so you must know which bundle was
+  in flight AND how far into it) is real but the snapshot already carries
+  both: `currfx` + `pendnote` select the program, `fxpos` locates the
+  position inside it via the same deterministic walk `unroll_fm` records.
+- Both resume programs are emitted as **aux programs** into the same
+  `FMTAB`/`PULSETAB` (deduped, so they usually cost nothing) rather than
+  read off the post-clustering bundle — clustering can replace a resting
+  voice's real program with a merged neighbour's, and priming a mid-flight
+  position into the wrong program is worse than useless.
+- Both degrade safely: when the position cannot be resolved, `FM_ON=0` /
+  the pulse freeze reproduce B7's behaviour exactly.
+
+Priming does **not** fight `pn_note`: `do_init` runs before the first
+`do_row`, so a voice that genuinely triggers at the part's own row 0 has its
+primed state overwritten by its own trigger, as it should be.
+
+### Bug 5 (measurement, not content): B7's `row0==0` anchor exemption is gone
+
+B7 fixed the comparison anchor to `row_frame[row0+1]` but **exempted
+`row0==0`** purely so Fargo's published baseline wouldn't move — while its
+own report noted the corrected anchor scored better there too. That
+exemption is removed; the anchor is now uniform. The driver's frame 0
+(`do_init` + the immediate first `do_row`) shows row0's own committed
+content on every part including part 1, and real hardware does not commit
+row 0 until its dispatch has spent 3 frames on `prepare1/2/3`
+(`row_frame[1] == 3`, measured on both files).
+
+**The same off-by-one was still in the PRIMING snapshot**, which B7 left on
+`row_state[row0]` — one full tick (~5 real frames) before the instant it
+represents. Both now use `row0 + 1`.
+
+Because this changes the measurement, the anchor's contribution is reported
+separately rather than folded into the headline. Sweeping the anchor +/-1 on
+the **same** final Fargo binary:
+
+| anchor F0 | overall | freq | waveform | pulse | adsr | filter |
+|---|---|---|---|---|---|---|
+| 0 (B7's exempted anchor) | 91.8% | 85.2 | 91.7 | 87.6 | 97.4 | 99.9 |
+| 2 | 93.5% | 87.8 | 96.5 | 88.7 | 98.4 | 100.0 |
+| **3 (= `row_frame[1]`, shipped)** | **94.1%** | 87.7 | 98.9 | 89.6 | 98.8 | 100.0 |
+| 4 | 93.1% | 86.3 | 96.5 | 88.7 | 98.2 | 100.0 |
+
+It is a **strict local maximum**, which a coincidental improvement would not
+be. It is also worth only **+2.3pp**: Fargo's 75.5% -> 91.8% is real content
+improvement measured under B7's *own* anchor, with the anchor fix adding
+2.3pp on top. The headline gain is not a measurement artifact.
+
+### Results
+
+**Fargo (1 part, `CAP_B` unchanged in effect — still 1 part)**:
+
+| window | B7 | B8 |
+|---|---|---|
+| primary (0:200) | 69.6% (freq 81.5, wf 88.8, pulse 1.0, adsr 97.2, filter 99.1) | **96.8%** (freq 88.1, wf 99.7, **pulse 100.0**, adsr 98.7, filter 100.0) |
+| full-part (0:3000) | 75.5% (freq 77.8, wf 91.6, pulse 26.9, adsr 97.4, filter 99.9) | **94.1%** (freq 87.7, wf 98.9, pulse 89.6, adsr 98.8, filter 100.0) |
+| exact frames | 4/3000 | **1182/3000** |
+
+**Glyptodont (10 parts at the new `CAP_B=96`; B7 had 8 at `CAP_B=128`)**,
+frame-count-weighted full-part aggregate:
+
+| | overall | freq | waveform | pulse | adsr | filter |
+|---|---|---|---|---|---|---|
+| B7 (8 parts) | 65.1% | 58.3 | 87.2 | 13.7 | 94.0 | 92.5 |
+| B8 (10 parts) | **67.3%** | **62.2** | **90.5** | 16.8 | 94.6 | 92.5 |
+
+Per-part, B8 full-part window: p1 73.7, p2 69.2, p3 69.3, p4 66.4, p5 73.6,
+p6 68.2, p7 62.1, p8 62.1, p9 62.7, p10 69.2. Merges per part are now
+0-32 (was 28-71).
+
+**Glyptodont's gain is real but modest, and much smaller than Fargo's** —
+stated plainly rather than averaged away. Fargo's headline comes mostly from
+Bugs 1/3, which bite hardest on a file whose instruments have freeze-only or
+periodic pulse programs. Glyptodont's dominant residual is different (see
+below) and is NOT fixed.
+
+Determinism re-verified: two from-scratch rebuilds produced byte-identical
+sha1 for Fargo's part and all 10 Glyptodont parts.
+`pyscript/test_blackbird_parser.py` stayed 9/9 (untouched).
+
+### Lever 2: the `CAP_B` sweep — a real but small effect, and 64 is disqualified
+
+Re-derived empirically rather than argued, since B6 picked 128 under a
+constraint B7/B8 have since removed (cold-start boundaries used to be very
+lossy, so splitting was expensive; priming made it cheap). Glyptodont,
+frame-count-weighted full-part aggregate, everything else identical:
+
+| CAP_B | parts | overall | freq | wf | pulse | adsr | filter |
+|---|---|---|---|---|---|---|---|
+| 128 | 5 | 66.4 | 57.9 | 90.4 | 17.6 | 94.3 | 92.4 |
+| **96** | **10** | **67.3** | **62.2** | 90.5 | 16.8 | 94.6 | 92.5 |
+| 80 | 15 | 67.7 | 63.4 | 90.4 | 17.0 | 94.6 | 92.5 |
+| 64 | 16 | 67.7 | 63.7 | 90.4 | 17.0 | 94.6 | 92.5 |
+
+The effect is confined almost entirely to **freq** — the only category
+bundle clustering still touches, now that B8 moved PULSE off the bundle:
+**+5.8pp freq / +1.3pp overall** from 128 -> 64, **flat past 80**, at 3x the
+part count.
+
+**Fargo, prominently flagged**: it stays exactly 1 part and byte-identical
+at 128 / 96 / 80 (its raw bundle count is 80 after B8's decoupling), but at
+**64 it splits into 2 and regresses hard: 94.1% -> 77.5%** (pulse 89.6 ->
+47.7, adsr 98.8 -> 84.2). So 64 is out on Fargo's evidence regardless of
+Glyptodont's marginally better number — a case where the "Fargo stays 1
+part" proxy and the actual fidelity measurement agree.
+
+**Recommendation, shipped: `CAP_B = 96`.** It keeps Fargo at 1 part and
+byte-identical, takes ~3/4 of the available freq gain (+4.3 of +5.8pp), and
+needs 10 parts rather than 80's 15. Part count is a real cost the
+register-trace metric does **not** price in: each part is a separate SF2
+with a hard cut, no crossfade. **80 is the measured fidelity optimum if part
+count is no object** — override with `BB_CAP_B` (the threshold is now
+environment-sweepable so this stays a measurement, not an argument).
+
+### Honest residuals — named precisely, not fixed
+
+- **Glyptodont's pulse is still the dominant gap (1.2-38.7% per part;
+  weighted 16.8%), and its cause is now identified as a genuine
+  REPRESENTATIONAL gap rather than a bug.** This shared engine's `PULSETAB`
+  stores the **output byte**; Blackbird stores an **accumulator** (`pwidth`)
+  fed through a **non-affine** lookup (`pwprepare`). For a long sustained
+  note crossing a part boundary — Glyptodont part 10's case, diagnosed
+  directly — hardware continues its own accumulator sweep while the driver's
+  forced boundary re-trigger (`window_steps`' already-named residual)
+  restarts the width from the from-zero capture's phase. Absolute encoding
+  re-anchors instead of drifting, which is why it ships, but it cannot
+  reproduce a phase it was never given. Closing this properly means either
+  a driver-side `pwidth`+lookup engine (a real Stage-C change to the shared
+  stepper) or extending priming to carry a mid-sweep phase into a
+  re-triggered note. Neither attempted.
+- **Freq (62.2% weighted on Glyptodont, 87.7% on Fargo)** remains the second
+  gap. Bundle clustering is now measured at only ~1.3pp of it (the CAP_B
+  sweep above), so the majority is the already-named architectural
+  1-frame FM-lag on note trigger plus the ~3-frame startup-pipeline skew —
+  now more visible, not less accurate, since the anchor and content fixes
+  stopped masking it.
+- **The FM mid-program resume is implemented and exercised but not
+  independently quantified.** Its effect is folded into the aggregate freq
+  number; isolating it would need a build with FM priming forced off.
+- **The filter's mid-row ADD-ramp resume path is still unexercised** —
+  unchanged from B7; every Glyptodont boundary still lands on a fresh
+  filter-row start.
+- **`exact frames` is now genuinely nonzero on Fargo (1182/3000, up from 4)
+  but remains 0-1 per part on Glyptodont.**
+- **Audio has NOT been listened to for any B8 output** (register trace
+  only), and the part count changed for Glyptodont (8 -> 10 files), so the
+  earlier per-part listening notes no longer map. Same caveat every round
+  has carried, and it matters more here because `CAP_B`'s part-count
+  trade-off is explicitly a musical judgement the metric can't make.
+- **A disproved hypothesis, recorded so it isn't re-tried**: a note byte
+  with no preceding instrument byte looked like it should behave as legato
+  (leaving WAVE/PULSE/FILTER/gate running), since `execute()` only touches
+  them inside its `pendins != 0` branch. It does not — `prepare3` contains
+  `if vs.pendins == 0: vs.pendins = vs.currins`, an implicit
+  repeat-instrument, so a bare note performs a full instrument re-select.
+  Building it the other way regressed Fargo's waveform 91.6% -> 84.1%.
+  The simulator settled this in one build; the static reading of
+  `execute()` alone was misleading.
+- Unchanged from B6/B7: `estimate_tempo_chain`'s Stage-A off-by-one, mode=0
+  filter rows, part-boundary hard cuts, extending past Fargo+Glyptodont to
+  the other 9 v1.2-exact files, not wired into `DriverSelector`.
+
+### Driver memory-map note (mechanical, but a trap for the next round)
+
+B8's `do_init` growth plus 11 new `PRIME_*_TAB` tables overflowed the
+~311-byte unpinned gap the tempo-schedule tables lived in, spilling into
+SF2II's reserved `$16CC-$1702` playback-state region (caught by
+`build_blackbird_driver_full.py`'s own guard, not at runtime). The driver's
+private state block was relocated `$1800-$1861` -> `$1980-$19E1` (+$180,
+still below `EDIT_BASE = $1A00`), and the `PRIME_*_TAB` + `tempo_sched_*`
+tables moved above `freqtable`. **The first attempted placement put tables
+at `$17D0-$1810`, which silently overlapped `VWI` at `$1800`** — a live
+state variable, so the tables would have been overwritten at runtime rather
+than failing to assemble. Worth knowing that the state block is now much
+closer to `EDIT_BASE`: worst-case `tempo_sched` (64 entries x 4 tables =
+256 bytes) plus freqtable and the prime tables fits with ~111 bytes spare.
+
 ## What's genuinely proven vs. still open
 
 - **Proven, working**: template-based detection (11/59 files), full symbol/table
@@ -1668,10 +1964,13 @@ required).
   (`drivers_src/blackbird/blackbird_driver.asm`, forked from the shared
   ROMUZAK-derived engine) with real table translators
   (`bin/build_blackbird_native_song.py`, using the validated simulator itself
-  as the formula oracle). Fargo builds a loadable SF2 at **69.6% overall
-  register-match** (200-frame window vs the simulator; filter 99.1%, AD/SR
-  97.2%, waveform 88.8%, freq 81.5%; pulse ~1% is a named, evidenced
-  residual, not unexplained) and models the song's FULL row-indexed mid-song
+  as the formula oracle). **As of B8 (see that section for the full trail)
+  Fargo builds a loadable SF2 at 94.1% overall register-match** over a
+  3000-frame window vs the simulator (filter 100.0%, AD/SR 98.8%, waveform
+  98.9%, pulse 89.6%, freq 87.7%, 1182/3000 frames byte-exact); the figures
+  quoted in the rest of this paragraph are the historical B1-era ones
+  (69.6% overall, pulse ~1%) and are kept because the bug trail below
+  refers to them and models the song's FULL row-indexed mid-song
   tempo schedule (B3: 22 real tempo/groove records, not just the first pair
   — measurably fixes fidelity PAST the 200-frame window, verified on an
   extended 2395-frame comparison, now 69.5% overall post-B4). Glyptodont
