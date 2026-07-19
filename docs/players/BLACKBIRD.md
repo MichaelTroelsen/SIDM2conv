@@ -1,14 +1,19 @@
 # Blackbird (Linus Åkesson / "lft") — recon started 2026-07-19
 
-**Status: recon only, not yet a supported player.** `bin/LFT/blackbird-1.2/` bundles
-the author's own editor + `birdcruncher` exporter, **including full assembly
+**Status: decompression SOLVED for the v1.2-exact bucket (2026-07-19),
+`sidm2/blackbird_parser.py` shipped same day; not yet wired into the
+conversion pipeline (no SF2 emission).** `bin/LFT/blackbird-1.2/` bundles the
+author's own editor + `birdcruncher` exporter, **including full assembly
 source** (`Export/source/player.s`, `rplayer.h`) and the **C compressor source**
 (`Export/source/cruncher.c`). This is the opposite situation from every other
 player in this project: instead of reverse-engineering a black-box binary, we
-have the literal ground truth. That makes locate/detection and table layout
-**100% solved and verified**; the note-stream **decompression** is understood in
-principle (the reference algorithm is in hand) but not yet correctly replaying —
-see "Open: decompression" below before spending more time guessing at it.
+have the literal ground truth. That makes locate/detection, table layout, AND
+now the note-stream decompression **100% solved, independently verified, and
+committed as a real tested module** for all 11 v1.2-exact-bucket files (see
+"Compression — SOLVED" and "Parser module shipped" below). What's left before
+this is a real, wired-in SF2 converter: no Stage A/Driver 11 transpile or
+native Stage B build yet, not in `DriverSelector.PLAYER_REGISTRY` (intentionally,
+until SF2 emission exists) — see "What's genuinely proven vs. still open".
 
 ## Corpus scope
 
@@ -289,21 +294,93 @@ wrong on real hardware. Raw data for both files (Fargo frames 4199-5371,
 Glyptodont frames 4248-5026) is saved in `memory/blackbird-lft-player.md` /
 this session's scratchpad for whoever fixes the offline decoder next.
 
+## Compression — SOLVED for the v1.2-exact bucket (2026-07-19)
+
+The root cause of the "internal stream error" was never a scheduling-order bug
+at all (the scheduling simulation, mirroring `cruncher.c`'s
+`crunch_some`/`run_prep1-3`/`crunch_streams`, was already correct in the prior
+session's `bb_decode.py`) — it was **how the stream terminator is handled**.
+
+Per `player.s`'s `unpackvoice`, the genuine end-of-stream control byte
+(`ctrl == 0x00`, i.e. "top 5 bits zero AND n==0") is read via `txa; beq
+stopstream` — **that branch happens BEFORE the instruction that decrements
+`zp_inptr`**. So reading the terminator does NOT advance the shared physical
+read pointer. Real hardware freezes there **permanently**: every subsequent
+refill request, from ANY of the 3 voices (not just whichever one happened to
+hit the terminator first), re-reads the SAME frozen byte and falls into
+`stopstream`, which appends exactly one `$C0` filler byte per hit — chosen
+deliberately by the original author, since `$C0` is rejected by `prepare1`/
+`prepare2` as "not consumed" and accepted by `prepare3` as a valid delay code
+(index 0), so the pipeline free-wheels forever without ever producing an
+invalid/out-of-grammar byte.
+
+The previous (buggy) decoder instead let its read pointer keep decrementing
+past the terminator and marked only the ONE voice that hit it "done" — so the
+shared pointer kept sliding into whatever real program/table bytes happen to
+sit physically below the compressed-stream region, eventually producing an
+out-of-grammar byte **on unrelated garbage, far past the actual end of the
+real data**. That's why the crash always looked "subtle" and file-dependent:
+it was never a property of the music data at all, just how far past the true
+end of stream each file's particular memory layout happened to have before
+hitting something `prepare3` couldn't parse.
+
+**Verification (independently re-run, not just taken on faith)**:
+- Both live-CPU ground-truth captures match **exactly**: not just "somewhere
+  in the output" but a **unique contiguous subsequence** — the full 68-record
+  Fargo trace and 80-record Glyptodont trace each appear at exactly one
+  offset in the fixed decoder's piece stream, with every (voice, position mod
+  256, control byte) triple matching in order.
+- All 11 v1.2-exact-bucket files (Fargo, Glyptodont, Dishwasher_Groove,
+  Dithered_Island, Elvendance, Euclid_Was_Here, Into_the_Unknown,
+  Maple_Leaf_Rag, Revolutions_Delivered, Thus_Spoke_the_PC_Speaker, Toy_Rocket)
+  decode to a genuine, clean freeze (real end-of-stream) with **zero**
+  out-of-grammar bytes across all 3 voices.
+- The decoded event-type distributions (note/delay/gate-off/instrument/arp/
+  legato/oob counts per voice) look like real music data, not noise.
+
+**Parser module shipped (2026-07-19, same day)**: `sidm2/blackbird_parser.py`
+— locate + the fixed decompressor, ported from the validated scratch work
+with the terminator-freeze fix intact. `pyscript/test_blackbird_parser.py`
+(9 tests / 27 subtests) locks in: the strict unique-exact-contiguous-match
+validation against both live-CPU ground-truth captures (now committed as
+`SID/blackbird_fargo_trace_4199_5371.json` /
+`SID/blackbird_glyptodont_trace_4248_5026.json`), the 11-file v1.2-exact
+clean-decode sweep, and `locate_blackbird` correctly rejecting both
+non-Blackbird files and the near-v1.2 variant bucket (confirmed: the older
+birdcruncher 1.0/1.1 files have different compiled bytes and don't match the
+v1.2 template — genuinely out of scope for now, not a bug). All of this was
+independently re-verified (not just taken on the building agent's word,
+matching this investigation's now-standing practice): tests re-run directly,
+the strict-match code read line-by-line to confirm it really requires
+uniqueness, and the sweep/false-positive/variant checks re-run by hand with
+the same results.
+
+**Still not done**: NOT wired into `sidm2/driver_selector.py`'s
+`PLAYER_REGISTRY` or `sidm2/conversion_pipeline.py` yet (intentionally — no
+SF2 emission exists, wiring it in now would misroute files into a broken
+conversion). No Stage A (Driver 11 transpile) or native Stage B driver. The
+near-v1.2 variant buckets (~16 files, older birdcruncher versions) have
+different compiled bytes and need their own locate/relocation-manifest work
+before they're supported — not attempted yet.
+
 ## What's genuinely proven vs. still open
 
 - **Proven, working**: template-based detection (11/59 files), full symbol/table
   address recovery via the relocation manifest, `nins` cross-check, complete
   memory layout, the event-byte grammar (note/instrument/gate-off/legato/
-  arpeggio/delay/oob ranges), the column-major 4-array instrument table shape.
+  arpeggio/delay/oob ranges), the column-major 4-array instrument table shape,
+  and now **the full multi-voice interleaved decompression** (scheduling +
+  stream-terminator handling), verified against real CPU ground truth on 2
+  files and clean-decoded on all 11 v1.2-exact files.
 - **Understood but unverified**: the tempo/pipeline timing model (does it define
   a tick grid, or is it pure pipeline latency with delay-bytes as literal frame
-  counts?); the exact LZ back-reference/transpose math (derived from the
-  encoder's own emit code, high confidence, but never round-tripped against a
-  real decode).
-- **Not working**: the multi-voice interleaved decompression order. Two
-  attempts both crash; don't reuse either without fixing the ordering first.
-- **Not started**: everything past Stage-A decode (Driver 11 transpile, native
-  Stage B).
+  counts?) — the decoder replicates the automaton mechanically without this
+  question needing to be answered, but it matters for eventually mapping
+  decoded events to SF2 rows/frame timing.
+- **Not started**: turning the validated decoder into `sidm2/blackbird_parser.py`,
+  testing it against the near-v1.2 variant buckets (older birdcruncher
+  versions, different compiled bytes, unlocated), and everything past
+  Stage-A decode (Driver 11 transpile, native Stage B).
 
 ## Files (for a future continuation)
 

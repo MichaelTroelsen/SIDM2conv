@@ -307,6 +307,7 @@ def render_out_section():
     lines.append("")
     grand_songs = 0
     grand_files = 0
+    composer_stats = {}  # (composer, original_player) -> song_count
     for subdir, player, composer, driver_label in OUT_PLAYERS:
         songs = songs_in(os.path.join(ROOT, "out", subdir))
         if not songs:
@@ -323,6 +324,8 @@ def render_out_section():
             total_files += file_count
             rows.append(f"| {key.replace('_', ' ')} | {player} | {sub_s} | {drv}{note} | "
                         f"{file_count} | {author} | {released} |")
+            ck = (author or "(unknown)", player)
+            composer_stats[ck] = composer_stats.get(ck, 0) + 1
         grand_songs += len(songs)
         grand_files += total_files
         lines.append(f"### {player} — {composer}  ·  {len(songs)} songs / {total_files} SF2 files")
@@ -331,7 +334,7 @@ def render_out_section():
         lines.append("|------|------------------|---------:|------------|------:|----------|----------|")
         lines.extend(rows)
         lines.append("")
-    return lines, grand_songs, grand_files
+    return lines, grand_songs, grand_files, composer_stats
 
 
 # ---------------------------------------------------------------------------
@@ -349,6 +352,7 @@ def render_sf2_section(sid_idx):
     grand_songs = 0
     grand_files = 0
     unresolved = []
+    composer_stats = {}  # (composer, original_player) -> song_count
     for label, reldir in SF2_LOCATIONS:
         songs = songs_in(os.path.join(ROOT, reldir))
         if not songs:
@@ -372,6 +376,9 @@ def render_sf2_section(sid_idx):
                 unresolved.append((f"{label}/{key}", reason))
             rows.append(f"| {key.replace('_', ' ')} | {orig_player} | {sub_s} | {drv}{note} | "
                         f"{file_count} | {author} | {released} | `{rel_sid}` |")
+            composer_key = author or ("(unresolved)" if not sid_path else "(unknown)")
+            ck = (composer_key, orig_player)
+            composer_stats[ck] = composer_stats.get(ck, 0) + 1
         grand_songs += len(songs)
         grand_files += total_files
         lines.append(f"### {label}  ·  {len(songs)} songs / {total_files} SF2 files")
@@ -380,13 +387,41 @@ def render_sf2_section(sid_idx):
         lines.append("|------|------------------|---------:|------------|------:|----------|----------|------------|")
         lines.extend(rows)
         lines.append("")
-    return lines, grand_songs, grand_files, unresolved
+    return lines, grand_songs, grand_files, unresolved, composer_stats
+
+
+def _merge_composer_stats(*stat_dicts):
+    merged = {}
+    for d in stat_dicts:
+        for key, songs in d.items():
+            merged[key] = merged.get(key, 0) + songs
+    return merged
+
+
+def render_composer_section(composer_stats):
+    lines = ["## Songs converted per composer", ""]
+    lines.append("*Every (composer, original player) pair appearing in either scanned location, "
+                "aggregated by the PSID header's author field (\"Composer\" column above) — sorted "
+                "by song count, descending. A composer who worked across more than one player/engine "
+                "gets one row per player. `(unknown)` = a resolved source `.sid` with a blank author "
+                "field; `(unresolved)` = the `SF2/`-side songs with no unambiguous source match "
+                "(see the unresolved note above).*")
+    lines.append("")
+    lines.append("| Composer | Original Player | Songs |")
+    lines.append("|----------|------------------|------:|")
+    for (composer, orig_player), songs in sorted(
+        composer_stats.items(), key=lambda kv: (-kv[1], kv[0][0].lower(), kv[0][1].lower())
+    ):
+        lines.append(f"| {composer} | {orig_player} | {songs} |")
+    lines.append("")
+    return lines
 
 
 def render():
-    out_lines, out_songs, out_files = render_out_section()
+    out_lines, out_songs, out_files, out_composer_stats = render_out_section()
     sid_idx = build_global_sid_index()
-    sf2_lines, sf2_songs, sf2_files, unresolved = render_sf2_section(sid_idx)
+    sf2_lines, sf2_songs, sf2_files, unresolved, sf2_composer_stats = render_sf2_section(sid_idx)
+    composer_stats = _merge_composer_stats(out_composer_stats, sf2_composer_stats)
 
     header = [
         BEGIN,
@@ -410,6 +445,7 @@ def render():
         "---",
         "",
     ]
+    header += render_composer_section(composer_stats) + ["---", ""]
     body = out_lines + ["---", ""] + sf2_lines
     return "\n".join(header + body + [END])
 

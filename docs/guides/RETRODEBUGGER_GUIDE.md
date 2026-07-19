@@ -71,7 +71,7 @@ the load worked).
 | `retro_start_platform(platform)` | Starts the emulation thread |
 | `retro_stop_platform(platform)` | **Stops the thread — but in practice this behaved like a pause, not a hard reset** (CPU registers/PC were still readable afterward, and `retro_start_platform` resumed cleanly). Prefer `retro_pause` for the same effect with clearer intent. |
 | `retro_pause(platform)` | Pause emulation (the intentionally-named counterpart to `retro_continue`) |
-| `retro_reset(platform, hard=true)` | Reset the machine (hard or soft) |
+| `retro_reset(platform, hard=true)` | Reset the machine (hard or soft) — **doesn't reliably work on a `.sid`-loaded session**: observed doing nothing (CPU state kept executing from exactly where it was, not from a reset vector) when the loaded program is running under the SID-player harness rather than a real boot/disk. Don't rely on it to silence audio — see "Silencing audio" below. |
 | `retro_load(path)` | Load a PRG/SID/XEX/ROM file — starts running immediately |
 | `retro_warp(platform, enabled)` | Toggle warp speed (no frame-rate cap) — combine with polling `retro_cpu_counters` to fast-forward to a target frame without single-stepping |
 
@@ -206,6 +206,25 @@ purely static/offline decoder couldn't reconstruct on its own. Full writeup and 
   zig64 can't trace at all (e.g. RSID files with self-installed IRQ handlers). If zig64 reports
   suspicious results (e.g. 0 SID writes) on a file that clearly has music, cross-check it here
   before assuming the file is broken.
+- **Silencing audio when you're done — `retro_reset` is NOT reliable for this**: a `.sid` file
+  keeps playing through real speakers as long as the platform is running, and neither
+  `retro_pause` nor `retro_reset(hard=true)` reliably stops an already-sounding tone (`retro_pause`
+  freezes CPU state but doesn't clear the SID's held oscillator/volume; `retro_reset` was observed
+  doing nothing at all on a SID-harness-loaded session — the CPU just kept executing from the
+  exact same PC instead of jumping to a reset vector). **The reliable fix is to write zeros
+  directly over the SID register range instead**, which mutes it immediately regardless of what
+  the CPU is doing:
+  ```python
+  import base64
+  retro_memory_write(platform="c64", address=54272,          # $D400
+                      data=base64.b64encode(bytes(25)).decode())  # 25 zero bytes = $D400-$D418
+  retro_pause(platform="c64")
+  ```
+  `$D418` (the last of the 25 bytes, master volume/filter-select) is the one that matters most —
+  zeroing it alone kills all audible output even if the oscillators are still conceptually
+  "running". **Do this at the end of every RetroDebugger session** before moving on to other
+  work, not just when something sounds obviously wrong — a loaded SID keeps playing through the
+  user's speakers in the background otherwise.
 - **Long manual trace loops don't scale in a single chat turn** — for anything beyond a handful
   of breakpoint hits, delegate the mechanical continue/read/log loop to a background agent (see
   the `Agent` tool) rather than driving dozens of round-trips by hand.

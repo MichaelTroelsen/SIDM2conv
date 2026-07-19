@@ -21,6 +21,50 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 
 ---
 
+## Songs converted per composer
+
+*Every (composer, original player) pair appearing in either scanned location, aggregated by the PSID header's author field ("Composer" column above) — sorted by song count, descending. A composer who worked across more than one player/engine gets one row per player. `(unknown)` = a resolved source `.sid` with a blank author field; `(unresolved)` = the `SF2/`-side songs with no unambiguous source match (see the unresolved note above).*
+
+| Composer | Original Player | Songs |
+|----------|------------------|------:|
+| Glenn Rune Gallefoss | SID Duzz' It (SDI) | 209 |
+| Glenn Rune Gallefoss (Shark) | SID Duzz' It (SDI) | 134 |
+| Rob Hubbard | Rob Hubbard | 60 |
+| Johannes Bjerregaard | DMC (Demo Music Creator) | 55 |
+| Martin Galway | Martin Galway | 40 |
+| Jeroen Tel | Maniacs of Noise | 24 |
+| Thomas Mogensen (DRAX) | Laxity_NewPlayer_V21 | 12 |
+| Charles Deenen | Maniacs of Noise / Deenen | 9 |
+| Michael Troelsen (Fun Fun) | Sound Monitor (Musicmaster) | 9 |
+| Jeroen Kimmel | Jeroen Kimmel (Hubbard-derived) | 6 |
+| Martin Galway | Martin_Galway | 5 |
+| Michael Troelsen (Fun Fun) | ROMUZAK V6.3 | 4 |
+| (unresolved) | unresolved | 3 |
+| Charles Deenen (TMC) | Maniacs of Noise / Deenen | 3 |
+| Jeroen Kimmel (Red) | Jeroen Kimmel (Hubbard-derived) | 3 |
+| Rob Hubbard | Rob_Hubbard | 3 |
+| (unknown) | Maniacs of Noise | 2 |
+| Charles Deenen (TSS) | Maniacs of Noise / Deenen | 2 |
+| Jeroen Tel & Markus Klein (LMan) | CheeseCutter_2.x | 2 |
+| Johannes Bjerregaard (The Jerk) | DMC (Demo Music Creator) | 2 |
+| Michael Troelsen (Coto) | Sound Monitor (Musicmaster) | 2 |
+| Charles Deenen & Jeroen Tel | Maniacs of Noise / Deenen | 1 |
+| G. R. Gallefoss & B. Vosseteig | SID Duzz' It (SDI) | 1 |
+| Glenn Gallefoss & D. Bakewell | SID Duzz' It (SDI) | 1 |
+| Glenn R. Gallefoss & R. Bayliss | SID Duzz' It (SDI) | 1 |
+| Glenn Rune Gallefoss & Bjarte V | SID Duzz' It (SDI) | 1 |
+| Glenn Rune Gallefoss & Mitch | SID Duzz' It (SDI) | 1 |
+| Jeroen Tel | Rob_Hubbard | 1 |
+| Laxity & Shogoon | SidFactory_II/Laxity | 1 |
+| M. Troelsen (Fun Fun) & Chix | Soundmonitor | 1 |
+| Michael Troelsen (Coto) | Soundmonitor | 1 |
+| Michael Troelsen (Fun Fun) | MoN/FutureComposer | 1 |
+| Rob Hubbard & Ben Daglish | Rob Hubbard | 1 |
+| Thomas E. Petersen (Laxity) | Laxity_NewPlayer_V21 | 1 |
+| Thomas E. Petersen (Laxity) | Rob_Hubbard | 1 |
+
+---
+
 ## Native-build pipeline — `out/<player>/`
 
 *The 9 known native/Driver-11-Stage-A player subdirectories under `out/` (same mapping as `pyscript/gen_sf2_index.py`). "Original Player" is the already-known label for these dirs (not re-detected); "SF2 Driver" is read live from each SF2's descriptor block.*
