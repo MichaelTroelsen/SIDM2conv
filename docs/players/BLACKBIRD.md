@@ -1,19 +1,23 @@
 # Blackbird (Linus Åkesson / "lft") — recon started 2026-07-19
 
 **Status: decompression SOLVED for the v1.2-exact bucket (2026-07-19),
-`sidm2/blackbird_parser.py` shipped same day; not yet wired into the
-conversion pipeline (no SF2 emission).** `bin/LFT/blackbird-1.2/` bundles the
+`sidm2/blackbird_parser.py` shipped same day; Stage A (Driver 11 transpile)
+shipped same week via `sidm2/blackbird_driver11.py` — real, loadable SF2s
+built for Fargo + Glyptodont. Not yet wired into the conversion pipeline
+(no `DriverSelector`/`conversion_pipeline` registration, no native Stage B,
+no fidelity-measured validation).** `bin/LFT/blackbird-1.2/` bundles the
 author's own editor + `birdcruncher` exporter, **including full assembly
 source** (`Export/source/player.s`, `rplayer.h`) and the **C compressor source**
 (`Export/source/cruncher.c`). This is the opposite situation from every other
 player in this project: instead of reverse-engineering a black-box binary, we
-have the literal ground truth. That makes locate/detection, table layout, AND
-now the note-stream decompression **100% solved, independently verified, and
-committed as a real tested module** for all 11 v1.2-exact-bucket files (see
-"Compression — SOLVED" and "Parser module shipped" below). What's left before
-this is a real, wired-in SF2 converter: no Stage A/Driver 11 transpile or
-native Stage B build yet, not in `DriverSelector.PLAYER_REGISTRY` (intentionally,
-until SF2 emission exists) — see "What's genuinely proven vs. still open".
+have the literal ground truth. That makes locate/detection, table layout,
+the note-stream decompression, AND now the tick/tempo model **100% solved,
+independently verified, and committed as real tested modules** for all 11
+v1.2-exact-bucket files (see "Compression — SOLVED", "Parser module shipped",
+"Tempo-model open caveat — RESOLVED", and "Stage A shipped" below). What's
+left before this is a fully wired-in, fidelity-measured SF2 converter: no
+native Stage B build, no `DriverSelector.PLAYER_REGISTRY` entry (intentionally,
+until fidelity is measured) — see "What's genuinely proven vs. still open".
 
 ## Corpus scope
 
@@ -132,11 +136,61 @@ and `execute()` (gated by a SEPARATE `zp_master`/`zp_tempo`/`groove` cycle,
 threshold `3*7`) applies whatever's been staged to the SID registers. `everyframe`
 (arpeggio/pulse-width/filter-program stepping) runs every single real frame
 regardless, which is why smooth vibrato/filter sweeps keep moving between note
-ticks. **This tempo/pipeline interaction has NOT been fully validated against a
-live trace** — the analysis above is a straight read of the disassembly, but
-"tempo defines a tick grid" vs "tempo is pure pipeline latency, delay bytes are
-literal frame counts" wasn't settled with a siddump/zig64 cross-check before
-this recon session ended. Confirm this before building `frame_to_tick`-style
+ticks.
+
+**Tempo/groove model — SOLVED 2026-07-19** (was "understood but unverified").
+`execute()`'s tail (`player.s` ~line 508: `lda zp_tempo; sta zp_master;
+m_groove = *+1; eor #0; sta zp_tempo`) is a genuine self-modifying odd/even
+**alternation**, not a static constant: each execute cycle, `zp_master` (the
+countdown that gates the NEXT cycle's length) takes the CURRENT `zp_tempo`
+value, then `zp_tempo` is XORed in place with the self-modified `m_groove`
+mask and stored back — since XOR is its own inverse, this ping-pongs between
+exactly two values forever (real frames per cycle = `tempo_byte / 7`, since
+`zp_master` decrements by 7 once per real frame down to 0). A tempo change is
+encoded as a 2-byte inline literal record read directly off the shared
+physical stream during `prepare1` (not through any per-voice ring buffer) —
+`cruncher.c`'s `build_voice()` confirms this is deliberate: a composer
+"groove" parameter splits into odd/even nibbles, emitted as `(odd-1)*7` (the
+new `zp_tempo`) and its XOR with `(even-1)*7` (the new `m_groove` mask).
+
+**Independently verified via two convergent, independent methods**: (1) a
+live RetroDebugger trace on real hardware (breakpoint on `execute()`'s tail,
+`retro_cpu_counters` frame deltas) measured a clean 6-frame/5-frame real-time
+alternation with no drift across the sampled window; (2) a from-scratch
+static decode of Fargo's compressed stream (using the shipped
+`sidm2/blackbird_parser.py` module's own internal functions, re-run
+independently rather than trusting the first report) extracted the ACTUAL
+tempo-record byte pairs from the stream and found values `42`/`35` at the
+point in the song the live trace sampled — `42/7=6` and `35/7=5`, an exact
+match to the live measurement. Two unrelated methods agreeing on both the
+raw values and the conversion formula is strong evidence this is right.
+
+**Refinement beyond the first pass**: the tempo/groove pair is **NOT fixed
+for a whole song** — re-decoding Fargo's FULL tempo-event history (not just
+the one window the live trace happened to sample) found **22 separate tempo
+OOB records** before the stream's genuine end (at internal loop-iteration
+~1386, well before that "iteration" count should be read as a real-frame
+count — see caveat below): starting at a 5-frame/4-frame alternation, several
+repeats of that with brief 4/4 flat stretches, switching to 6/5 partway
+through (where the live trace happened to sample), briefly 7/6, then settling
+to constant (non-alternating) 3/3 and finally 5/5 right at the very end. Any
+Stage A implementation MUST simulate the full tempo state machine (apply each
+2-byte OOB record as encountered, alternate via XOR) rather than assume one
+fixed groove value per song.
+
+**Open caveat, not yet resolved**: whether `blackbird_parser.py`'s internal
+`decode_streams()` loop-iteration counter (`frame`/`big_cycle` in its result)
+is itself a 1:1 real-PAL-frame count, or a coarser unit (e.g. one iteration
+per potential execute-cycle rather than per real frame) was NOT conclusively
+settled this session — the strict ground-truth validation only checks piece
+EMISSION ORDER (voice/position/control-byte), which holds regardless of
+whether the loop's iteration count maps 1:1 to real frames, so it doesn't by
+itself prove real-frame accuracy. This matters before Stage A can annotate
+decoded events with absolute real-frame timestamps: a follow-up should cross-
+check specific `decode_streams()` iteration numbers against the live-CPU
+ground-truth captures' real frame numbers (both already committed under
+`SID/blackbird_*_trace_*.json`) to settle it definitively before relying on
+the loop counter for timing math.
 math for a `blackbird_parser.py`.
 
 ## Compression — algorithm identified, decoder NOT yet correctly replaying
@@ -357,11 +411,130 @@ the same results.
 
 **Still not done**: NOT wired into `sidm2/driver_selector.py`'s
 `PLAYER_REGISTRY` or `sidm2/conversion_pipeline.py` yet (intentionally — no
-SF2 emission exists, wiring it in now would misroute files into a broken
-conversion). No Stage A (Driver 11 transpile) or native Stage B driver. The
-near-v1.2 variant buckets (~16 files, older birdcruncher versions) have
-different compiled bytes and need their own locate/relocation-manifest work
-before they're supported — not attempted yet.
+native Stage B driver exists). Stage A (Driver 11 transpile) shipped same
+week — see below. The near-v1.2 variant buckets (~16 files, older
+birdcruncher versions) have different compiled bytes and need their own
+locate/relocation-manifest work before they're supported — not attempted yet.
+
+## Tempo-model open caveat — RESOLVED 2026-07-19
+
+The prior caveat ("does `decode_streams()`'s loop-iteration counter map 1:1
+to real PAL frames?") is settled: **no, it's a coarser unit — one iteration
+is one TICK** (one full `execute()`-to-`execute()` cycle), not one real
+frame.
+
+**How it was settled**: instrumented a local copy of `decode_streams()`
+(reusing its private helpers verbatim, not reimplementing them) to tag every
+emitted piece with the loop's `frame` counter, then reused the existing
+strict ground-truth alignment (`pyscript/test_blackbird_parser.py`'s
+`_find_exact_contiguous`) to line that tagged stream up against both live-CPU
+captures. Result: pieces sharing the SAME iteration value are **always
+exactly 1 real frame apart** (both files), while pieces in different
+iterations show real-frame-delta / iteration-delta ratios clustering at
+**3–10, mean ~6.0 for Fargo** — exactly the documented tempo/groove range,
+never anywhere near a flat 1:1.
+
+Reading `player.s` directly explains why: `prepare1`/`prepare2`/`prepare3`
+(the note-event fetch pipeline) are dispatched *only* from `unpackvoice`'s
+tail (`preparejmp`), itself reachable only on the (up to 3) real frames per
+cycle where the `zp_master` countdown lands on 14/7/0 — so each stage runs
+**exactly once per `execute()` cycle**, i.e. once per tick, not once per
+frame. A tick's real-frame length is `zp_tempo / 7`, confirming the earlier
+tempo/groove finding was about a *different, coarser* unit than the decoder
+loop.
+
+**The practical payoff (no simulator needed)**: ticks are already the note
+grid Blackbird composes on, and a Driver 11 row is also a fixed-tick grid —
+so Stage A can use **ticks directly as rows, 1:1, no GCD/rounding**. Each
+decoded note/delay byte's own duration in ticks is recoverable straight from
+`player.s`'s own `v_trtimer` preload arithmetic (`prepare3`'s
+`got_delay: ora #$f0`): a note byte's LSB delay-bit gives 1 tick (set) or 2
+ticks (clear); a delay byte's low nibble `m` gives `16 - m` ticks. This reads
+directly off the already-decoded, already-tested byte stream — no new
+decoding or frame-simulation pass required.
+
+**Independent triangulation, a third method**: recovering the actual
+tempo/groove OOB byte pairs from Fargo's compressed stream (not just
+detecting *that* an OOB occurred, which is all `decode_streams()` itself
+does) gave `(35, 28)` as the very first pair — `35/7=5`, `28/7=4` — an exact
+match to this doc's earlier claim ("starting at a 5-frame/4-frame
+alternation"), independently re-derived this session rather than assumed.
+
+## Stage A shipped 2026-07-19: `sidm2/blackbird_driver11.py`
+
+A real, loadable Driver 11 `.sf2` now builds from a decoded Blackbird song,
+reusing the shared IR/emitter (`galway_to_driver11.GalwayDriver11Song` /
+`galway_driver11_emitter.emit_driver11_sf2`) unmodified, per
+`docs/players/PLAYBOOK.md`'s staged method. Built and verified on both
+`Fargo.sid` (378 notes, tempo chain `[5,4]`, 14 packed sequences) and
+`Glyptodont.sid` (2703 notes, tempo `[4]` — its first tempo pair happened to
+be flat, `(28,28)`). Both reload cleanly through `pyscript/sf2_viewer_core
+.SF2Parser` (magic ID, header blocks, driver-common addresses all parse);
+independently re-dumping the raw orderlist/sequence bytes via
+`sidm2.sf2_parser` confirms the written structure matches what the builder
+intended (per-track sequence counts and chaining) — note the *viewer's* own
+`orderlist_unpacked` debug view mis-displays this file's compact
+transpose-on-change encoding (reports bogus all-`sequence:0` entries); the
+raw bytes are independently confirmed correct, so this looks like a
+pre-existing `sf2_viewer_core.py` quirk, not a Stage-A bug — not chased
+further this session.
+
+**What Stage A does**: per-voice byte stream → steps (gate-off/legato/
+instrument prefixes + a mandatory note/delay terminal) → `D11Row`s, ticks
+1:1 as rows. AD/SR read byte-exact from the located `ins_ad`/`ins_sr`
+tables. Tempo = the first tempo/groove OOB pair found, as a 2-value Driver
+11 chain (or 1 value if that pair happens to be flat).
+
+**What's flat/approximate (named limitations, matching the ladder's "timbre
+modulation flat")**:
+- Arpeggio and OOB bytes are consumed but ignored — no per-note wave/arp
+  program.
+- Tempo uses only the *first* tempo/groove pair; Fargo alone has 22
+  documented tempo-change records over the song, so mid-song tempo drift is
+  NOT reproduced.
+- Pitch: **FIXED AND USER-CONFIRMED same day** — the first build used
+  `SF2 note = note_index + 1` (plain chromatic, no calibration), and a user
+  listen test (SID Factory II, real audio) reported it sounding roughly an
+  octave flat. Root cause found by reading `player.s`'s actual pitch routine
+  (~lines 221-267), not just its docstring summary: `v_basepitch = note*4`
+  feeds a fractional-interpolation decoder that, for the steady/no-slide
+  case, reads `freq_lsb+24,y` / `freq_msb+24,y` with **`y = note_index`
+  directly** (the `*4` is for the arpeggio/portamento sub-steps *between*
+  notes, not the resting pitch's table index). Comparing the real
+  `freq_lsb`/`freq_msb` bytes (extracted from the compiled template) against
+  this project's standard PAL frequency table gives **zero mismatches across
+  all 64 note values** for `PAL_semitone = note_index + 8`, i.e.
+  **`SF2 note = note_index + 9`**. Fixed in `blackbird_driver11.py`, both
+  SF2s rebuilt, and the user confirmed on a second listen: "I think the
+  notes are correct." The interpolation sub-positions (mid-slide pitches)
+  are still not modelled — only the resting/landing pitch is calibrated.
+- Instruments: Blackbird allows up to 48 (grammar: `$83-$B2`, 1-based);
+  Driver 11 only has 32 slots. Capped explicitly (`build_instruments`
+  clamps `nins` to 32, `steps_for_voice` clamps any pending instrument index
+  to 31) rather than let the sequence packer's `& 0x1F` mask silently ALIAS
+  a high instrument onto an unrelated low slot — found and fixed this
+  session (Fargo's `nins=35` would otherwise have aliased 3 instruments).
+
+**Not verified**: no zig64/siddump onset-match validation exists for
+Blackbird (the zig64 gap noted earlier in this doc — 0 SID writes reported
+for Fargo despite audible real hardware playback — is still open). GUI/audio
+confirm (`docs/players/PLAYBOOK.md` §4 rung 3-4) WAS done this session
+(twice — first listen caught the octave bug, second confirmed notes sound
+right) — but per the ladder's own definition, Stage A explicitly does NOT
+cover timbre (arpeggio, filter, pulse/waveform envelope, AD/SR shaping):
+the user's feedback that "the fidelity is not there... hard to hear it" past
+correct notes is the EXPECTED state at this rung, not a new bug — that's
+exactly what Stage B (native driver) exists to close.
+
+**`retro_load` gotcha found this session**: RetroDebugger's MCP `retro_load`
+does not correctly load `.sf2` files (confirmed on both the Stage A output
+AND the known-good stock template — same garbage bytes either way; renaming
+to `.prg` before loading works correctly). Documented in
+`docs/guides/RETRODEBUGGER_GUIDE.md`. The actual audio verification in this
+session used the project's own established tool instead
+(`pyscript/sf2_open_in_editor.py`, launching the real SID Factory II editor)
+per `PLAYBOOK.md`'s fidelity ladder rung 3-4 — this is the right tool for
+this job, not RetroDebugger.
 
 ## What's genuinely proven vs. still open
 
@@ -369,18 +542,30 @@ before they're supported — not attempted yet.
   address recovery via the relocation manifest, `nins` cross-check, complete
   memory layout, the event-byte grammar (note/instrument/gate-off/legato/
   arpeggio/delay/oob ranges), the column-major 4-array instrument table shape,
-  and now **the full multi-voice interleaved decompression** (scheduling +
-  stream-terminator handling), verified against real CPU ground truth on 2
-  files and clean-decoded on all 11 v1.2-exact files.
-- **Understood but unverified**: the tempo/pipeline timing model (does it define
-  a tick grid, or is it pure pipeline latency with delay-bytes as literal frame
-  counts?) — the decoder replicates the automaton mechanically without this
-  question needing to be answered, but it matters for eventually mapping
-  decoded events to SF2 rows/frame timing.
-- **Not started**: turning the validated decoder into `sidm2/blackbird_parser.py`,
-  testing it against the near-v1.2 variant buckets (older birdcruncher
-  versions, different compiled bytes, unlocated), and everything past
-  Stage-A decode (Driver 11 transpile, native Stage B).
+  **the full multi-voice interleaved decompression** (scheduling +
+  stream-terminator handling, verified against real CPU ground truth on 2
+  files and clean-decoded on all 11 v1.2-exact files), AND now **the
+  tempo/groove alternation mechanism** (self-modifying XOR pair, driven by
+  2-byte inline OOB records, `frames = tempo_byte / 7`), confirmed by two
+  independent methods (live hardware trace + static stream decode) agreeing
+  exactly on both values and formula. All shipped as a real, tested module:
+  `sidm2/blackbird_parser.py` + `pyscript/test_blackbird_parser.py`. **AND
+  now** the decoder's loop-iteration-counter-is-a-tick-not-a-frame finding
+  (see "Tempo-model open caveat — RESOLVED" above, three-way triangulated:
+  live trace, an earlier static full-song tempo-history decode, and this
+  session's independent re-derivation), plus a working **Stage A**
+  (`sidm2/blackbird_driver11.py`): real, loadable Driver 11 SF2s for Fargo
+  (378 notes) and Glyptodont (2703 notes), ticks mapped 1:1 to rows, AD/SR
+  read byte-exact, instrument-cap aliasing bug found and fixed.
+- **Not started / explicitly out of scope this round**: testing the parser
+  against the near-v1.2 variant buckets (older birdcruncher versions,
+  different compiled bytes, confirmed rejected by locate but not yet
+  supported); native Stage B (per-frame register fidelity); wiring into
+  `DriverSelector`; any zig64/siddump onset-match or audio fidelity
+  measurement of the Stage A output (see Stage A's "Not verified" note);
+  mid-song tempo tracking (only the first tempo/groove pair is used); and
+  empirical/byte-exact pitch calibration against Blackbird's own
+  sub-semitone `freq_lsb`/`freq_msb` interpolation tables.
 
 ## Files (for a future continuation)
 
