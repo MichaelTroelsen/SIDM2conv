@@ -296,16 +296,24 @@ from scratch.
 </critical_context>
 
 <current_state>
-## Deliverables status (as of 2026-07-20, B11-B14 all committed and pushed to origin/master)
+## Deliverables status (as of 2026-07-20, B11-B14 committed+pushed; B15 is a coverage extension, no code changes, only build artifacts)
 - Decompression, tempo model, `blackbird_parser.py`, Stage A
   (`blackbird_driver11.py`): **COMPLETE**, committed, tested, user-audio-verified.
 - `docs/guides/RETRODEBUGGER_GUIDE.md`, `docs/SID_TO_SF2_CONVERSIONS.md`:
   **COMPLETE**, committed.
-- **Stage B native driver: IN PROGRESS, B1 through B14 shipped and pushed.**
-  **Fargo 92.7%** (freq 99.6%, waveform 98.1%, adsr 99.6%, filter 100.0%,
-  pulse 71.1%; now **2 parts**, not 1) / **Glyptodont 97.6%** (freq 99.5%,
-  waveform 95.5%, pulse 99.7%, adsr 96.2%, filter 95.2%; 1 part) overall
-  register match, whole-song. Not wired into `DriverSelector` (deliberate).
+- **Stage B native driver: IN PROGRESS, B1 through B15 shipped.**
+  **ALL 11 v1.2-exact-bucket files now build natively** (B15, prompted by
+  "maybe time for more lft songs" — ran the other 9 files cold through the
+  now-more-robust B14 pipeline, all built first try, no crashes): mean
+  ~95% overall, range 91.4% (Revolutions_Delivered) to 98.9%
+  (Thus_Spoke_the_PC_Speaker). **Fargo 92.7%** (freq 99.6%, waveform 98.1%,
+  adsr 99.6%, filter 100.0%, pulse 71.1%; now **2 parts**, not 1) /
+  **Glyptodont 97.6%** (freq 99.5%, waveform 95.5%, pulse 99.7%, adsr
+  96.2%, filter 95.2%; 1 part) are still the only 2 individually
+  root-caused files — the other 9 are a fresh baseline, not yet
+  investigated per-file. Not wired into `DriverSelector` (deliberate).
+  Full B15 per-file table: `docs/players/BLACKBIRD.md`'s "B15 shipped"
+  section.
 - **First-ever audio listen of the native driver this session**: user
   loaded the rebuilt Glyptodont SF2 into real SID Factory II
   (`pyscript/sf2_open_in_editor.py`) and reported "sounds really close.
@@ -341,48 +349,44 @@ from scratch.
   down the same section — read to the end, not just the first framing).
 
 ## What's committed vs. not
-**Everything through B14 is committed AND PUSHED to `origin/master`**
-(commit `d946701`, "Blackbird Stage B12+B13" — B14 committed separately,
-check `git log` for its own hash if picking this up fresh). Only the
-usual unrelated `.claude/settings.local.json` change is left uncommitted
-(intentionally, out of scope). B13's own `py65` single-step scripts and
-the VICE trace JSON used during investigation are scratch-only (session
-scratchpad, NOT committed, NOT regenerable without re-running `node
-scripts/dev/vsid-trace.js` from the separate `sid-reference-project` repo
-— see B13's writeup for the exact command). The rebuilt
-`out/blackbird/Fargo_native_part01.sf2`/`_part02.sf2` /
-`Glyptodont_native_part01.sf2` are build artifacts (regenerate via
-`bin/build_blackbird_native_song.py`, not meant to be committed).
+**B11-B14 (code + docs) are committed AND PUSHED to `origin/master`**
+(commit `0896f05` is B14's own hash; `d946701` is B12+B13; check `git log`
+to confirm both landed if picking this up fresh). **B15 is docs-only and
+NOT yet committed as of this handoff** — it made no code changes (just ran
+the existing pipeline against 9 more files), so the only pending diff is
+`docs/players/BLACKBIRD.md`'s new "B15 shipped" section, `whats-next.md`,
+and the memory files. Only the usual unrelated
+`.claude/settings.local.json` change is otherwise uncommitted (intentional,
+out of scope). B13's own `py65` single-step scripts and the VICE trace
+JSON used during investigation are scratch-only (session scratchpad, NOT
+committed, NOT regenerable without re-running `node scripts/dev/vsid-trace.js`
+from the separate `sid-reference-project` repo — see B13's writeup for the
+exact command). The rebuilt SF2s for all 11 files under `out/blackbird/`
+are build artifacts (regenerate via `bin/build_blackbird_native_song.py`,
+not meant to be committed).
 
 ## Immediate action if resuming
-1. Check `git log` to confirm B14 landed (should show a B14 commit after
-   `d946701`) — if this handoff is stale and B14 is somehow NOT committed,
-   treat that as the first priority (review `git status` and commit).
-2. Read `docs/players/BLACKBIRD.md`'s "B13 shipped" AND "B14 shipped"
-   sections, plus "What's genuinely proven vs. still open" tail, in full.
+1. Check `git log` — if B15's doc-only changes aren't committed yet,
+   commit them first (trivial, no code risk).
+2. Read `docs/players/BLACKBIRD.md`'s "B13"/"B14"/"B15 shipped" sections,
+   plus "What's genuinely proven vs. still open" tail, in full.
 3. Clear next targets, roughly in priority order:
    a. **Fargo's own pulse (71.1%)** — the weakest remaining category on
-      either file, not yet investigated. Use the SAME method that cracked
-      B13/B14: `BB_DIAG_BIN`/`BB_DIAG_LO`/`BB_DIAG_HI`/`BB_DIAG_REG` to
-      relocate the exact residual region in the NEW 2-part build, then
-      instrument `BlackbirdSim`'s own internal per-voice state
-      (`wavepos`/`wavemask`/`pendins`/`rpos`, the raw byte cursor) rather
-      than stopping at a driver-vs-simulator register diff — every B-round
-      that stopped at register-output diffing alone reached a wrong or
-      incomplete diagnosis first (B13's "wave restart" framing, B14's
-      would-be "timing bug" framing) until pushed one level deeper into
-      real internal state.
-   b. **Extend to more of the 11 v1.2-exact-bucket files** (only Fargo +
-      Glyptodont built natively so far) — user floated this ("maybe time
-      for more lft songs"). B14's instrument-overflow fix is now generic,
-      so any file with `nins > 32` should build correctly (and possibly
-      split into multiple parts) rather than silently corrupting like
-      Fargo used to. Worth trying the other 9 files
-      (Dishwasher_Groove, Dithered_Island, Elvendance, Euclid_Was_Here,
-      Into_the_Unknown, Maple_Leaf_Rag, Revolutions_Delivered,
-      Thus_Spoke_the_PC_Speaker, Toy_Rocket) through
-      `bin/build_blackbird_native_song.py` and see what fidelity numbers
-      come back cold, before investing in any file-specific debugging.
+      either individually-investigated file, not yet chased down. Use the
+      SAME method that cracked B13/B14: `BB_DIAG_BIN`/`BB_DIAG_LO`/
+      `BB_DIAG_HI`/`BB_DIAG_REG` to relocate the exact residual region in
+      the 2-part build, then instrument `BlackbirdSim`'s own internal
+      per-voice state (`wavepos`/`wavemask`/`pendins`/`rpos`, the raw byte
+      cursor) rather than stopping at a driver-vs-simulator register diff
+      — every B-round that stopped at register-output diffing alone
+      reached a wrong or incomplete diagnosis first (B13's "wave restart"
+      framing, B14's would-be "timing bug" framing) until pushed one level
+      deeper into real internal state.
+   b. **Root-cause individual residuals in the 9 newly-built files**
+      (B15's own baseline table in `docs/players/BLACKBIRD.md`) — e.g.
+      Revolutions_Delivered's waveform 77.7%/filter 81.1%, Elvendance's
+      filter 79.1%. None of these have had ANY live-trace investigation
+      yet, just a cold build.
    c. The B13-recon bonus finding (simulator wrong vs real hardware on
       Glyptodont voices 0/1/filter past frame ~1200) — unrelated to (a)/(b),
       still unresolved.
@@ -391,7 +395,6 @@ scripts/dev/vsid-trace.js` from the separate `sid-reference-project` repo
       section's own honest residuals list this).
 4. Given real audio listening is now possible and has already surfaced a
    concrete lead (perc/drums off on Glyptodont), consider audio-listening
-   Fargo too (`py -3 pyscript/sf2_open_in_editor.py
-   out/blackbird/Fargo_native_part01.sf2`) once rebuilt post-B14, since
-   nobody has heard the fixed version yet.
+   Fargo and/or a couple of the new B15 files too — nobody has heard any
+   of them yet except Glyptodont's pre-B14 build.
 </current_state>

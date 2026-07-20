@@ -1,44 +1,36 @@
 # Blackbird (Linus Åkesson / "lft") — recon started 2026-07-19
 
-**Status: decompression SOLVED for the v1.2-exact bucket (2026-07-19),
-`sidm2/blackbird_parser.py` shipped same day; Stage A (Driver 11 transpile)
-shipped same week via `sidm2/blackbird_driver11.py` — real, loadable SF2s
-built for Fargo + Glyptodont. Stage B's synth engine (arpeggio/wave/pulse/
-filter) is RE'd and validated byte-exact against real hardware (see
-"Stage B synth engine" below) AND now built into a real native driver
-(`drivers_src/blackbird/blackbird_driver.asm` + `bin/build_blackbird_native_song.py`,
-B1→B2→B3→B4 same-week): Fargo scores 69.6% overall register-match (200-frame
-window vs the validated simulator; filter 99.1%, AD/SR 97.2%, freq 81.5%)
-and now models the SONG'S FULL mid-song tempo schedule (B3, not just the
-first pair); Glyptodont improved to 53.5% overall (B4) after 4 real bugs
-found+fixed this round (a filter SET-chain misclassified as an ADD ramp, an
-unmodeled filter overflow-drop, tied notes wrongly restarting WAVE+FILTER,
-and unweighted bundle clustering) superseded the prior B3 report's
-"architectural, not fixable" characterization of Glyptodont's gap, which did
-not hold up under direct verification (see "B4 shipped" below for both,
-including a full before/after table). B5 fixed 3 more real bugs (2 pulse, 1
-filter-overflow bias). B6 (2026-07-19, same day) shipped adaptive
-part-splitting — `Fargo_native.sf2`/`Glyptodont_native.sf2` superseded
-by `_partNN.sf2` files (Fargo stays exactly 1 part, byte-identical numbers;
-Glyptodont splits into 8) — but the aggregate register-trace picture was
-genuinely MIXED at the time (freq/filter improved, waveform/ADSR got WORSE
-from a diagnosed "stale leftover register state at a part boundary"
-residual). **B7 (2026-07-19, same day) shipped the named fix — per-part
-`do_init` priming from the validated simulator's own real engine state at
-each part's start frame — AND, in verifying it, found a second, bigger
-pre-existing bug: the register-trace comparison's own frame anchor was off
-by one tick for every part after the first, independently masking BOTH B6's
-real gains and this round's own fix until corrected.** Glyptodont's 8-part
-weighted average went 53.7%→65.1% overall, waveform 49.1%→87.2% (now
-EXCEEDS the pre-split single-file baseline's 73.3%), AD/SR 83.9%→94.0% —
-B6's flagged regression is resolved. Fargo stays byte-identical (sha1-
-verified across a from-scratch rebuild), the correctness anchor for the
-whole part-splitting scheme. See "B7 shipped" below for the full
-before/after table, the frame-anchor bug's derivation, and honest remaining
-residuals (pulse/freq still the dominant gaps; the filter's mid-ramp resume
-path implemented but unexercised on these 2 files; audio not yet
-re-listened to). Not yet wired into the conversion
-pipeline (no `DriverSelector`/`conversion_pipeline` registration).** `bin/LFT/blackbird-1.2/` bundles the
+**Status (updated 2026-07-20, post-B15): decompression, tempo model, and
+Stage A (Driver 11 transpile) all SOLVED and shipped for all 11
+v1.2-exact-bucket files (`sidm2/blackbird_parser.py`,
+`sidm2/blackbird_driver11.py`). Stage B's synth engine (arpeggio/wave/
+pulse/filter) is RE'd and validated byte-exact against real hardware, and
+built into a real native 6502 driver
+(`drivers_src/blackbird/blackbird_driver.asm` +
+`bin/build_blackbird_native_song.py`) that now builds a working SF2 for
+**all 11 of the 11 v1.2-exact-bucket files** (B15, a coverage extension —
+see "B15 shipped" below for the full per-file table), ranging 91.4%-98.9%
+overall whole-song register match against the validated simulator (mean
+~95%). Two files needed B6's adaptive multi-part splitting automatically
+(Dithered_Island: 2 parts, Into_the_Unknown: 3 parts; Fargo also now
+correctly splits into 2, since B14 fixed a genuine 35-instrument overflow
+that used to silently corrupt it instead of triggering the split). B11-B14
+were real bug fixes found via live hardware/CPU tracing (fx-on-rest
+commit timing, instrument-select restart timing, a translator bug that
+misread a real "gate-off before note" Blackbird grammar pattern as a
+restart, and the instrument-index overflow just mentioned) — see their
+own dated sections below for the full trail, including two mid-investigation
+wrong turns that were caught and corrected rather than shipped
+(deliberately left visible as honest history). Only Fargo (pre-B14) and
+Glyptodont (post-B13) have been individually root-caused in depth; the
+other 9 files newly covered by B15 are a baseline, not yet individually
+investigated. Glyptodont is the only file audio-listened so far (real SID
+Factory II, user: "sounds really close, something with the perc or drums"
+— tracks the waveform/filter residuals, which are the two categories still
+short of 100%). Not yet wired into the conversion pipeline (no
+`DriverSelector`/`conversion_pipeline` registration) for any file — all 11
+native builds are deliberately out of the production pipeline until
+fidelity is judged sufficient. `bin/LFT/blackbird-1.2/` bundles the
 author's own editor + `birdcruncher` exporter, **including full assembly
 source** (`Export/source/player.s`, `rplayer.h`) and the **C compressor source**
 (`Export/source/cruncher.c`). This is the opposite situation from every other
@@ -48,10 +40,11 @@ the note-stream decompression, AND now the tick/tempo model **100% solved,
 independently verified, and committed as real tested modules** for all 11
 v1.2-exact-bucket files (see "Compression — SOLVED", "Parser module shipped",
 "Tempo-model open caveat — RESOLVED", and "Stage A shipped" below). A native
-Stage-B driver now exists and builds real SF2s for 2 of those 11 files (see
-"Stage B1"/"B2"/"B3" sections below); no `DriverSelector.PLAYER_REGISTRY`
-entry yet (intentionally, fidelity is still well below other players' native
-drivers) — see "What's genuinely proven vs. still open".
+Stage-B driver now exists and builds real SF2s for **all 11** of those 11
+files (see "Stage B1" through "B15" sections below); no
+`DriverSelector.PLAYER_REGISTRY` entry yet (intentionally, fidelity is
+still well below other players' native drivers) — see "What's genuinely
+proven vs. still open".
 
 ## Corpus scope
 
@@ -3090,6 +3083,56 @@ files. `pyscript/test_blackbird_parser.py`'s full 9/27 subtests still pass.
    Glyptodont voices 0/1/filter past frame ~1200) remains unrelated and
    unresolved.
 
+## B15 shipped: native driver extended to the full 11-file v1.2-exact corpus
+
+Same session, prompted directly ("maybe time for more lft songs"). Nothing
+new was fixed here — this is a coverage extension, running the
+now-more-robust pipeline (B14's instrument-overflow fix made this safe to
+try cold) against the 9 v1.2-exact-bucket files that had never been built
+natively before (only located/Stage-A-covered). All 9 built successfully,
+first try, no crashes, no exceptions, every B10 `verify_fx_engine`
+self-check passing at full count:
+
+| File | Overall | Freq | Waveform | Pulse | ADSR | Filter | Parts |
+|---|---|---|---|---|---|---|---|
+| Thus_Spoke_the_PC_Speaker | 98.9% | 100.0% | 96.6% | 100.0% | 97.2% | 100.0% | 1 |
+| Maple_Leaf_Rag | 98.8% | 100.0% | 96.0% | 100.0% | 97.0% | 100.0% | 1 |
+| Euclid_Was_Here | 98.3% | 99.9% | 93.7% | 100.0% | 96.2% | 100.0% | 1 |
+| Dishwasher_Groove | 97.5% | 99.4% | 97.3% | 100.0% | 95.8% | 93.8% | 1 |
+| Fargo (B14) | 92.7% | 99.6% | 98.1% | 71.1% | 99.6% | 100.0% | 2 |
+| Glyptodont (B13) | 97.6% | 99.5% | 95.5% | 99.7% | 96.2% | 95.2% | 1 |
+| Elvendance | 95.3% | 99.2% | 95.8% | 100.0% | 97.4% | 79.1% | 1 |
+| Into_the_Unknown | 95.4% | 99.9% | 96.1% | 89.2% | 97.9% | 93.5% | 3 |
+| Toy_Rocket | 95.1% | 99.4% | 93.9% | 87.5% | 95.7% | 99.8% | 1 |
+| Dithered_Island | 92.7% | 99.9% | 95.7% | 75.3% | 96.5% | 99.8% | 2 |
+| Revolutions_Delivered | 91.4% | 99.6% | 77.7% | 92.9% | 95.6% | 81.1% | 1 |
+
+All 11 v1.2-exact-bucket files now have a working native Stage-B build,
+ranging 91.4%-98.9% overall (mean ~95%). Multi-part splitting (B6's
+adaptive mechanism, now correctly triggered by B14's true instrument-count
+fix) fired automatically for 2 of the 9 new files (Dithered_Island: 2 parts,
+Into_the_Unknown: 3 parts) — nobody had to intervene.
+
+**Read as a corpus, not a leaderboard**: every file still carries its own
+uninvestigated residuals (Revolutions_Delivered's waveform 77.7% and
+filter 81.1%, Elvendance's filter 79.1%, several files' pulse in the
+75-92% range) — none of these have had the live-trace treatment B13/B14
+gave Glyptodont/Fargo. This table is a BASELINE for future per-file work,
+not a claim that any of these 9 are individually fully understood.
+
+### Honest residuals — not fixed this round
+
+1. None of the 9 new files have been individually root-caused — this
+   round only confirmed they BUILD, not that their remaining gaps are
+   understood.
+2. None have been audio-listened (only Glyptodont has, pre-B14).
+3. Not wired into `DriverSelector` — still deliberately out of scope for
+   all 11 files.
+4. The ~16 near-v1.2-variant files (older birdcruncher tool versions) and
+   the ~7 much-older/uncertain files remain completely out of scope —
+   `locate_blackbird()` still correctly rejects them, no work has started
+   on supporting a different template.
+
 ## What's genuinely proven vs. still open
 
 - **Proven, working**: template-based detection (11/59 files), full symbol/table
@@ -3193,6 +3236,13 @@ files. `pyscript/test_blackbird_parser.py`'s full 9/27 subtests still pass.
   round). Fargo now correctly builds as 2 parts, not 1. Glyptodont
   byte-identical (97.6%, no regression — its own 31 instruments were
   already under the cap).
+- **B15** (a coverage extension, not a fix — see "B15 shipped" above): all
+  9 remaining v1.2-exact-bucket files built natively for the first time,
+  cold, no crashes: 91.4%-98.9% overall (mean ~95%), 2 of the 9 needing
+  B6's multi-part split automatically (Dithered_Island, Into_the_Unknown).
+  **All 11 v1.2-exact-bucket files now have a working native Stage-B
+  build.** None of the 9 new files have been individually root-caused or
+  audio-listened — this is a baseline, not a claim of per-file understanding.
 - **Not started / explicitly out of scope this round**: testing the parser
   against the near-v1.2 variant buckets (older birdcruncher versions,
   different compiled bytes, confirmed rejected by locate but not yet
