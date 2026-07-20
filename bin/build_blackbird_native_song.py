@@ -121,6 +121,15 @@ class BBStep:
         self.ticks = ticks
 
 
+def _remap_step_instrument(s, instr_remap):
+    """B14: return a copy of BBStep `s` with `.instrument` mapped through
+    `instr_remap` (raw source index -> this part's own dense 0..N-1 driver
+    slot), or `s` itself unchanged if it carries no instrument reference."""
+    if s.instrument is None:
+        return s
+    return BBStep(s.kind, s.note, instr_remap[s.instrument], s.fx, s.tie, s.ticks)
+
+
 def _note_ticks(b):
     return 1 if (b & 1) else 2
 
@@ -200,7 +209,37 @@ def bb_steps_for_voice(byte_stream):
             # PULSE/FILTER programs make a wrong row audibly and
             # measurably wrong. Not fixed in blackbird_driver11.py per this
             # task's explicit scope (that file is not touched).
-            pending_instr = min(max(b - 0x83, 0), 31)
+            #
+            # B14: NOT clamped to 31 here any more. Fargo locates nins=35 --
+            # genuinely uses 35 distinct raw instrument indices across the
+            # whole song (confirmed by direct count) -- but the driver's
+            # $a0-$bf command byte only has 5 bits (`and #$1f` in
+            # pr_setinst), a hard 0-31 slot limit. The OLD clamp here
+            # silently aliased raw indices 32/33/34 onto slot 31 -- not just
+            # a wrong command byte, but WRONG SOURCE DATA: build_range used
+            # to index the RAW ins_wave/ins_ad/ins_filt tables with this
+            # same clamped value directly, so a note using real instrument
+            # 33 played instrument 31's actual wave/ADSR/filter program
+            # instead, and (since nothing re-selects an instrument for
+            # every subsequent untied note that relies on the sticky
+            # "repeat currins" mechanism) the substitution PERSISTED for
+            # the rest of the song once it first fired -- verified via a
+            # live BlackbirdSim internal-state trace against a real
+            # instrument-select at Fargo real-frame ~7945 (raw index 34)
+            # that the driver silently played back as instrument 31.
+            # build_range's own `used_instr`/`fits()` resource check (meant
+            # to trigger B6's adaptive part-splitting, the same mechanism
+            # that already handles Glyptodont's bundle-count overflow) was
+            # ALSO blind to this: it counted THESE ALREADY-CLAMPED values,
+            # which can never exceed 32 by construction, so it never
+            # rejected a window that genuinely needed more slots than it
+            # had. The true (now unclamped) raw index is passed through
+            # here; build_range now builds a proper per-part DENSE remap
+            # (raw index -> compact 0..N-1 driver slot) instead of using
+            # the raw value directly as a table row, and its resource
+            # check now correctly measures true distinct-instrument count
+            # so an overflowing window falls back to B6's own splitting.
+            pending_instr = max(b - 0x83, 0)
             continue
         if kind == 'gate_off':
             gate_is_off = True
@@ -1815,12 +1854,24 @@ def build_range(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
     cur_instr_track = [None, None, None]
     for v in range(3):
         for s in windowed_steps[v]:
+            # B14: was gated on `s.kind == 'note' and s.note is not None`,
+            # missing instrument/fx references that land on rest/hold steps
+            # -- B11/B12 already made steps_to_rows_native emit fx AND
+            # instrument commands on those rows too (a command doesn't need
+            # a note to apply, see both sections of BLACKBIRD.md), so this
+            # window's own vocabulary was under-counted whenever a
+            # standalone instrument-select or fx-select landed on a
+            # rest/hold row -- silently missing that instrument's own
+            # wave/filter/AD-SR program from this part's tables entirely
+            # (a KeyError in the B14 remap below, once instrument indices
+            # stopped being pre-clamped to always alias into 0-31).
+            used_fx.add(s.fx & 0x3F)
+            if s.instrument is not None:
+                cur_instr_track[v] = s.instrument
+                used_instr.add(s.instrument)
             if s.kind == 'note' and s.note is not None:
-                if s.instrument is not None:
-                    cur_instr_track[v] = s.instrument
                 instr = cur_instr_track[v] if cur_instr_track[v] is not None else 0
                 used_instr.add(instr)
-                used_fx.add(s.fx & 0x3F)
 
     # --- B7: pull in whatever instrument/filter-program/bundle a RESTING
     # voice is silently still holding at row0, so its real WAVE/FILTER/
@@ -1875,21 +1926,74 @@ def build_range(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
     default_wave_program, default_pulse_program, default_wave_stats = \
         unroll_wave_pulse(lay, d, la, ins_restart, ins_restart2, 0)
 
+    # --- B14: per-part DENSE instrument remap (raw index -> compact 0..N-1
+    # driver slot). `used_instr` now holds the TRUE, unclamped raw indices
+    # (bb_steps_for_voice no longer clamps to 31 -- see its docstring), so
+    # this window can genuinely need up to len(ad_sr) slots. Everywhere
+    # downstream that used to index wave_programs/filter_programs/ad_sr/the
+    # emitted INSTR_* tables directly BY the raw index now goes through
+    # `instr_remap` instead -- that raw index was never actually a driver
+    # slot number, it only accidentally looked like one for files whose
+    # true instrument count happened to fit under 32 (as Glyptodont's own
+    # 31 does; this remap is a no-op there, `instr_remap[i] == i` for every
+    # i, since sorted(used_instr) is already 0..30 contiguous). `fits()`'s
+    # `ni <= CAP_I` check (via count_only's `len(used_instr)` return) now
+    # correctly measures the TRUE distinct count, so B6's adaptive part-
+    # splitting search rejects an overflowing window and retries a smaller
+    # one -- built (this dict) even during a count_only probe (cheap, just
+    # bookkeeping), but the hard-error guard below only fires for a REAL
+    # build: count_only callers (fits()) must see an ordinary "doesn't fit"
+    # signal via the returned `ni`, not an exception, or the search itself
+    # would crash instead of shrinking the window.
+    instr_remap = {raw: slot for slot, raw in enumerate(sorted(used_instr))}
+    if not count_only and len(instr_remap) > CAP_I:
+        raise ValueError(
+            f"part [{row0}:{row1}) needs {len(instr_remap)} distinct "
+            f"instruments > {CAP_I}-slot cap -- fits() should have rejected "
+            f"this window before build_range was called with count_only=False")
+
+    # B7 priming's own instrument references (set above, before instr_remap
+    # existed) are ALSO raw indices -- _compute_prime_consts uses them to
+    # index the emitted INSTR_* tables directly, so they need the same slot
+    # remap.
+    prime_instr_of_voice = [instr_remap.get(oi) if oi is not None else None
+                            for oi in prime_instr_of_voice]
+    if filt_owner_instr is not None:
+        filt_owner_instr = instr_remap.get(filt_owner_instr)
+
+    # part-scoped ad_sr, index == driver slot (matches wave_programs/
+    # filter_programs/etc's own new keying) -- NOT the full song-wide list,
+    # which may hold more raw instruments than this window's own 32-slot
+    # budget.
+    part_ad_sr = [ad_sr[raw] if 0 <= raw < len(ad_sr) else (0, 0)
+                  for raw in sorted(used_instr)]
+
+    # windowed_steps' own s.instrument values are ALSO raw indices (from
+    # bb_steps_for_voice, unclamped) -- steps_to_rows_native emits them
+    # directly as the D11Row.instrument byte, which becomes the driver's
+    # $a0-$bf command byte (a 5-bit slot field), so these need remapping
+    # too before the real (non-count_only) row-building below.
+    if not count_only:
+        windowed_steps = [
+            [_remap_step_instrument(s, instr_remap) for s in windowed_steps[v]]
+            for v in range(3)]
+
     # --- per-instrument WAVE/PULSE/FILTER programs (used instruments only) ---
     wave_programs, pulse_of_instr, filter_programs, filter_flag_of = {}, {}, {}, {}
     wave_stats_by_instr, filter_extra_by_instr = {}, {}
     for i in sorted(used_instr):
+        slot = instr_remap[i]
         wave_start = d[(lay.ins_wave - la) + i] if 0 <= (lay.ins_wave - la) + i < len(d) else 0
         wr, pr, stats = unroll_wave_pulse(lay, d, la, ins_restart, ins_restart2, wave_start)
-        wave_programs[i] = wr
-        pulse_of_instr[i] = pr
-        wave_stats_by_instr[i] = stats
+        wave_programs[slot] = wr
+        pulse_of_instr[slot] = pr
+        wave_stats_by_instr[slot] = stats
         filt_start = d[(lay.ins_filt - la) + i] if 0 <= (lay.ins_filt - la) + i < len(d) else 0
         if filt_start != 0:
             frows, fextra = unroll_filter(lay, d, la, ins_restart, ins_restart2, filt_start)
-            filter_programs[i] = frows
-            filter_flag_of[i] = True
-            filter_extra_by_instr[i] = fextra
+            filter_programs[slot] = frows
+            filter_flag_of[slot] = True
+            filter_extra_by_instr[slot] = fextra
 
     # --- B10: the fx/pitch "vocabulary" is just the set of fx INDICES this
     #     window uses. There are no per-(fx, note) programs to unroll, no
@@ -1947,7 +2051,7 @@ def build_range(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
     # snapshot ARE the driver's state (see _compute_prime_consts), so there
     # is nothing to look up and no aux program to emit.
     gen, edit, mdp, seq0, aux = gen_includes_song(
-        segs, ad_sr, wave_programs, filter_programs, filter_flag_of,
+        segs, part_ad_sr, wave_programs, filter_programs, filter_flag_of,
         fx_start_list, fxtab_bytes,
         default_filter_program, tempo_sched_len=n_sched,
         default_wave_program=default_wave_program,
@@ -1958,7 +2062,7 @@ def build_range(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
     # priming constants and append them to the SAME layout.inc
     # gen_includes_song just wrote.
     prime_consts = _compute_prime_consts(
-        gen, edit, ad_sr, wave_programs, wave_stats_by_instr,
+        gen, edit, part_ad_sr, wave_programs, wave_stats_by_instr,
         filter_extra_by_instr, default_filter_program, default_filter_extra,
         prime, prime_instr_of_voice, filt_owner_instr,
         default_wave_program=default_wave_program,
@@ -1967,7 +2071,7 @@ def build_range(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
     _write_prime_consts(prime_consts)
 
     prg = B.assemble()
-    names = [f"instr {i:02d}" for i in range(len(ad_sr))]
+    names = [f"instr {i:02d}" for i in range(len(part_ad_sr))]
     sf2 = B.wrap(prg, gen, edit, mdp, instr_names=names)
 
     return dict(prg=prg, edit=edit, sf2=sf2, gen=gen, mdp=mdp, seq0=seq0,
@@ -2207,8 +2311,14 @@ def main():
         lay, d, la, ins_restart, ins_restart2, 0)
 
     # AD/SR for every located instrument slot -- also song-wide (cheap, real
-    # data straight off the located table, no unrolling, same for every part).
-    nins = max(1, min(lay.nins, 32))
+    # data straight off the located table, no unrolling, same for every
+    # part). B14: NOT capped to 32 here -- that used to silently truncate a
+    # file with lay.nins > 32 (Fargo locates 35) before build_range's own
+    # per-part remap (raw index -> compact 0..N-1 driver slot) ever got a
+    # chance to select which ones actually fit in a given part's own
+    # 32-slot budget. This list is just cheap (AD,SR) byte pairs, straight
+    # off the source table -- no reason to truncate it this early.
+    nins = max(1, lay.nins)
     ad_sr = []
     for i in range(nins):
         ad = d[(lay.ins_ad - la) + i] if 0 <= (lay.ins_ad - la) + i < len(d) else 0

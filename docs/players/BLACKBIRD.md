@@ -2959,7 +2959,136 @@ subtests still pass.
    **unrelated to this fix and still unresolved** — see "Finding 3" further
    up this section.
 4. Only Fargo + Glyptodont built natively. Not wired into `DriverSelector`.
-   Not audio-listened.
+
+**Audio-listened, same session, after this fix**: the user loaded the
+rebuilt Glyptodont SF2 into a real SID Factory II instance
+(`pyscript/sf2_open_in_editor.py`, succeeded on attempt 3 of its usual
+flaky retry loop) and reported it "sounds really close. something with the
+perc or drums." — the first real listening test of the NATIVE driver's
+output (Stage A's flatter output was the only thing ear-tested before
+this). Tracks the numbers: waveform (95.5%) and filter (95.2%) are the two
+categories still short of 100% post-B13, and percussion/noise sounds lean
+hardest on exactly those; freq (99.5%) and pulse (99.7%, what B13 fixed)
+aren't what drives percussive timbre.
+
+## B14 shipped: instrument-index overflow (Fargo's true root cause) — Fargo 79.2%→92.7%
+
+Prompted by continuing to push on Fargo's own voice-2 desync (open since
+B12, confirmed by B13 as a genuinely different bug from Glyptodont's).
+Applied the exact same method that cracked B13: relocate the exact onset
+frame with `BB_DIAG_BIN`/`BB_DIAG_LO`/`BB_DIAG_HI`, then instrument
+`BlackbirdSim`'s own internal per-voice state (`wavepos`/`wavemask`/
+`pendins`/the raw byte cursor `rpos`) around it, rather than stopping at a
+driver-vs-simulator register diff.
+
+### Root cause: a real, hard format limit hit for the first time
+
+Fargo locates `nins=35`. A live trace of a genuine instrument-select event
+at real-frame ~7945 (raw byte `$a4`, decoding to raw instrument index 34)
+showed `BlackbirdSim` correctly restart with `currins=$22`(34 decimal) — a
+real, distinct instrument. But `bb_steps_for_voice` computed this SAME
+event's driver-side instrument index as `min(max(b - 0x83, 0), 31)` — a
+**direct clamp to 31**, not a remap. Instrument indices 32/33/34 (all
+genuinely used later in the song, confirmed by a direct count of every
+`'instrument'`-classified byte across all 3 voices: **35 distinct raw
+indices actually used**, matching `nins`) all silently aliased onto
+instrument 31.
+
+This was not merely a wrong command byte: `build_range` used the SAME
+clamped value to index the RAW source tables directly
+(`d[(lay.ins_wave - la) + i]` etc.) — so a note using real instrument 33
+played instrument 31's actual wave/ADSR/filter program instead. Once an
+untied note relying on the "sticky repeat current instrument" mechanism
+(no fresh instrument-select of its own) followed, the substitution
+persisted for the rest of the voice's remaining notes — explaining the
+"permanent from this point onward" shape B12 first measured.
+
+**Why `fits()`'s own resource check never caught this**, despite `CAP_I=32`
+already existing specifically to trigger B6's adaptive part-splitting for
+exactly this class of overflow (the same mechanism that already handles
+Glyptodont's bundle-count limit): `used_instr` was built from the
+ALREADY-CLAMPED `s.instrument` values, which can never exceed 32 by
+construction — the check was measuring a quantity that was mathematically
+incapable of ever reporting an overflow, regardless of how many distinct
+instruments the song actually used.
+
+**A second under-counting bug, found while fixing this**: `used_instr`
+(and `used_fx`) were only scanned from `kind == 'note'` steps — but B11/B12
+already made `steps_to_rows_native` emit fx/instrument commands on
+rest/hold rows too (a command doesn't need a note to apply). A standalone
+instrument-select landing on a rest/hold row was invisible to the resource
+count, causing a `KeyError` in the new remap once clamping no longer
+silently absorbed it.
+
+### The fix
+
+Three coordinated changes, `bin/build_blackbird_native_song.py`:
+
+1. **`bb_steps_for_voice`**: no longer clamps — passes through the true
+   raw instrument index (`max(b - 0x83, 0)`, no upper bound).
+2. **`build_range`**: builds a genuine per-part DENSE remap
+   (`instr_remap = {raw: slot for slot, raw in enumerate(sorted(used_instr))}`)
+   and uses it everywhere a raw index used to be used directly as a driver
+   table slot — `wave_programs`/`pulse_of_instr`/`filter_programs`/
+   `filter_flag_of`/`wave_stats_by_instr`/`filter_extra_by_instr` (now
+   keyed by slot, not raw index), `prime_instr_of_voice`/`filt_owner_instr`
+   (B7 priming's own instrument references), and `windowed_steps`' own
+   `s.instrument` field (via a new `_remap_step_instrument` helper,
+   producing remapped `BBStep` copies before `steps_to_rows_native` runs).
+   A part genuinely needing more than 32 distinct instruments now raises
+   loudly on a real build — `fits()`'s `count_only` probe sees the same
+   `len(used_instr)` overflow and correctly rejects the window first, so
+   B6's existing part-splitting shrinks it before this is ever reached.
+3. **`used_instr`/`used_fx` counting**: now scans every step regardless of
+   `kind`, matching what B11/B12 already made the row-builder emit.
+4. **`main()`**: the song-wide `ad_sr` (AD/SR byte pairs, cheap, no
+   unrolling) is no longer capped to 32 at extraction time — that used to
+   truncate `lay.nins > 32` files before `build_range`'s own per-part
+   remap ever got a chance to select which instruments fit a given part's
+   own budget. `build_range` now builds a **part-scoped** `part_ad_sr`
+   (indexed by driver slot, matching the other remapped tables) instead of
+   passing the full song-wide list into `gen_includes_song`.
+
+For Glyptodont (31 raw instruments, already under the cap), this remap is
+a no-op — `instr_remap[i] == i` for every `i`, since `sorted(used_instr)`
+is already the contiguous range it always was.
+
+### Results (same whole-song `BB_FULL_CAP` methodology as every prior round)
+
+Fargo now genuinely needs 2 parts (this is B6's adaptive splitting
+correctly firing for the first time on Fargo, not a bug — a `used_instr`
+overflow across the WHOLE song's single window, resolved once split):
+
+| | overall | freq | waveform | pulse | adsr | filter |
+|---|---|---|---|---|---|---|
+| B13 (1 part) | 79.2 | 99.7 | 77.5 | 50.3 | 74.7 | 99.9 |
+| **B14 (2 parts)** | **92.7** | **99.6** | **98.1** | **71.1** | **99.6** | **100.0** |
+
+Glyptodont: **byte-identical to B13, 97.6%** (confirmed no regression;
+`instr` count in the build log moved 31→32, purely from the used_instr/
+used_fx under-counting fix now correctly including a rest/hold-row
+reference that was always there, not a behavior change).
+
+The B10 `verify_fx_engine` self-check still passes at full count on both
+files. `pyscript/test_blackbird_parser.py`'s full 9/27 subtests still pass.
+
+### Honest residuals — not fixed this round
+
+1. **Fargo's pulse is still the weakest category (71.1%)**, up hugely from
+   50.3% but not resolved — likely a distinct, uninvestigated bug (or
+   several), not yet traced the way B13's Glyptodont pulse issue was.
+2. **Fargo's part 2 shows a rough startup** (primary-200f window 93.0%,
+   freq 92.3%) — likely the SAME class of part-boundary priming edge case
+   B7/B8 chased for Glyptodont's own multi-part era, not re-investigated
+   here since B10 already collapsed Glyptodont back to 1 part and this is
+   the first NEW multi-part Fargo build.
+3. Fargo now ships as **2 separate SF2 files**
+   (`Fargo_native_part01.sf2`/`_part02.sf2`), not 1 — a genuine, correct
+   consequence of the true instrument count, but anything downstream that
+   assumed "Fargo is always 1 part" needs updating.
+4. The B13-recon bonus finding (simulator diverging from real hardware on
+   Glyptodont voices 0/1/filter past frame ~1200) remains unrelated and
+   unresolved.
 
 ## What's genuinely proven vs. still open
 
@@ -3049,6 +3178,21 @@ subtests still pass.
   diverges from real hardware on Glyptodont voices 0/1/filter in this same
   later region — every B1-B12 fidelity number implicitly trusted the
   simulator past frame ~1200, which this trace shows isn't fully safe.
+- **B14** (same live-trace method applied to Fargo's own residual — see
+  "B14 shipped" above): the true root cause was a hard format limit hit for
+  the first time, not a timing bug — Fargo genuinely uses 35 distinct
+  instruments but the driver's command byte only has 5 bits (0-31 slots),
+  and the translator silently CLAMPED overflow indices onto slot 31 instead
+  of triggering B6's existing adaptive part-splitting (whose own resource
+  check was measuring the already-clamped, hence always-≤32, value — a
+  check that could never fire). Fixed with a proper per-part dense remap
+  (raw index → compact driver slot) plus fixing the resource-count itself
+  to see the true, unclamped total. **Fargo 79.2%→92.7%** (freq 99.6%,
+  waveform 98.1%, adsr 99.6%, filter 100.0%; pulse 71.1%, up hugely from
+  50.3% but still the weakest category and not further investigated this
+  round). Fargo now correctly builds as 2 parts, not 1. Glyptodont
+  byte-identical (97.6%, no regression — its own 31 instruments were
+  already under the cap).
 - **Not started / explicitly out of scope this round**: testing the parser
   against the near-v1.2 variant buckets (older birdcruncher versions,
   different compiled bytes, confirmed rejected by locate but not yet
