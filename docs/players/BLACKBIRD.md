@@ -2431,6 +2431,147 @@ Glyptodont used to fire regularly).
 5. Still only Fargo + Glyptodont; the other 9 v1.2-exact files are untried.
    Still not wired into `DriverSelector`. Still no audio listening test.
 
+## B11 shipped: fx changes on rest/sustain rows commit same-tick, Fargo freq 97.4% -> 100.0%, Glyptodont 99.7%
+
+B10's punch list item 1, fixed. This closes the dominant remaining freq
+residual named at the end of that round.
+
+### The bug, precisely, from `player.s` itself (not paraphrased)
+
+Real hardware's `prepare1` (`player.s:80-110`) writes `v_pendfx,x` **directly**
+from a fresh `$c9-$f8` fx-select byte on ANY row — note, rest, or sustain —
+whenever one is present in that tick's stream position:
+
+```
+no_oob
+        sbc     #$c8-1
+        bcc     no_fx
+        inc     `zp_bufs,x
+        sta     v_currfx,x
+        sta     v_pendfx,x        ; <-- direct write, independent of note/delay
+no_fx
+```
+
+`execute()` (`player.s:441-445`), which runs unconditionally every real tick
+for all 3 voices, applies whatever is in `v_pendfx` and then unconditionally
+clears it back to 0:
+
+```
+        ldy     v_pendfx,x
+        beq     no_fx
+        lda     fx_start-1,y
+        sta     v_fxpos,x
+no_fx
+        ...
+        lda     #0
+        sta     v_pendfx,x        ; <-- cleared every tick, note or not
+```
+
+Separately, `prepare3` (`player.s:167-200`) has its OWN unconditional
+re-mirror of `v_pendfx = v_currfx` — but only on the branch reached by a
+genuine note byte (`lda (zp_bufs,x); bmi got_delay` — delay/rest bytes take
+`got_delay` and skip the mirror entirely, confirmed by tracing prepare2's
+consumption of Blackbird's own `$80` gate-off byte, which lands the FOLLOWING
+byte — always a delay code — in front of prepare3, never a note). That
+mirror is what makes every note **restart** the current program from its own
+top, restart discipline the native driver already had right since B10 (the
+`pn_tied` commit block, unconditional on every note). What was missing is
+the OTHER path: `prepare1`'s **direct**, same-tick write on rows that aren't
+notes at all.
+
+The native driver's `pr_setprog` handler (`blackbird_driver.asm`) already ran
+on every row regardless of note/rest — it correctly staged the new program
+into `VIFXS`/`VIFXR` either way — but the actual **commit** into `FXPOS` (the
+`v_fxpos` analog) only ever happened inside `pn_tied`, reached exclusively
+from a genuine note byte. A select that landed on a rest ($00 gate-off) or
+"+++"-sustain (`$7e`) row sat staged and unapplied until whatever note came
+next — exactly the "deferred to next note onset" bug B10 named and measured
+(57/208 = 27% of Fargo's fx changes, 100/1448 = 7% of Glyptodont's).
+
+**A second, independent instance of the same bug was found on the translator
+side while fixing this** (not by re-reading — found by tracing where the
+row-emission logic actually attaches command bytes): `bb_steps_for_voice`
+(`bin/build_blackbird_native_song.py`) already carries the correct sticky
+`cur_fx` value on every step kind, rest and sustain included — but
+`steps_to_rows_native`, the function that turns that step list into actual
+`D11Row`s, only ever checked "did the fx index change?" inside its NOTE
+branch. A change that happened to land on a rest or sustain step was silently
+dropped from the emitted sequence bytes entirely — so even after fixing the
+driver's commit logic, the fix would have had nothing to commit on those rows,
+since the `$c0-$ff` command byte was never written into the sequence in the
+first place. Both halves were required together; fixing only one would have
+been a no-op.
+
+### The fix
+
+**Driver** (`drivers_src/blackbird/blackbird_driver.asm`): a new per-row flag
+`fxflag` (zero page `$ec`, reusing the byte B10 freed when it deleted
+`fm_step`'s `fmptr`), reset once per row alongside the existing `pending_dur`
+reset, set by `pr_setprog` whenever it fires. A new `maybe_fx_commit`
+subroutine — `if fxflag && VIFXR: FXPOS = VIFXS` — is called from both
+non-note terminal paths (the gate-off branch of `pr_note`, and the `pn_adv`
+trampoline shared by `+++`-sustain and the reserved-skip range). `pn_tied`
+(the note path) is untouched: its unconditional commit already matches
+`prepare3`'s unconditional note-triggered mirror and needs no `fxflag` gate.
+
+**Translator** (`bin/build_blackbird_native_song.py::steps_to_rows_native`):
+the "did the fx index change?" check was hoisted out of the note-only branch
+to run once per step regardless of kind, so a change landing on a `rest` or
+`note-with-note=None` (sustain) step now emits its `D11Row` with
+`command=cmdcol` set, exactly like a note step already did. No packer change
+was needed — `galway_driver11_emitter.py`'s shared `_event_tokens` already
+starts a new token whenever `row.command is not None`, regardless of what
+the row's `note` byte is; that generic (cmd?)(instr?)(dur)(note) token shape
+was already correct for every other player using Driver 11, Blackbird just
+wasn't using it on non-note rows.
+
+### Results (same whole-song methodology as B10 — `BB_FULL_CAP` set to each
+file's own full length, so before/after compares the identical window)
+
+**Fargo, 20,550 frames, 1 part:**
+
+| | overall | freq | waveform | pulse | adsr | filter |
+|---|---|---|---|---|---|---|
+| B10 | 78.8 | 90.3→97.4 | 76.9 | 52.0 | 74.0 | 99.9 |
+| **B11** | **79.4** | **100.0** | 76.9 | 52.0 | 74.0 | 99.9 |
+
+**Glyptodont, 20,223 frames, 1 part:**
+
+| | overall | freq | waveform | pulse | adsr | filter |
+|---|---|---|---|---|---|---|
+| B10 | 91.4 | 97.1 | 93.5 | 77.7 | 96.1 | 94.7 |
+| **B11** | **92.0** | **99.7** | 93.5 | 77.7 | 96.1 | 94.7 |
+
+A pure, isolated freq win on both files — every other category byte-identical
+to B10, exactly as predicted by the residual's own diagnostic (waveform
+already matched at every freq-mismatched frame, so the fix couldn't touch
+anything but `FXPOS`/`$D400`/`$D401` timing). Fargo's freq is now **exact**
+(100.0%) on the full 20,550-frame song, not just the 200-frame primary
+window. Glyptodont's residual 0.3% is presumably the reserved-skip-range
+($70-$7d) case, which per B10's own note is unexercised by either file's
+current note range — most likely a genuinely separate few-frame source, not
+re-investigated this round (small enough that it wasn't worth chasing given
+the honest residuals named below dwarf it).
+
+The `verify_fx_engine()` self-check (B10's exact-by-construction gate) is
+**unaffected and still passes at full count** on both files (302,400 Fargo /
+705,600 Glyptodont comparisons) — expected, since it tests the fx
+interpolator's own arithmetic in isolation, not the row-timing of when a
+program gets selected, and neither of those changed here.
+
+### Honest residuals — not fixed this round, named precisely
+
+1. **Fargo's pulse (52.0%) and adsr (74.0%) over the FULL song remain
+   untouched** — same numbers as B10, this round never touched either engine.
+2. **Glyptodont's freq is 99.7%, not 100%** — a small residual whose source
+   was not chased down (see above); worth a quick look if ever revisiting fx
+   timing specifically.
+3. Still only Fargo + Glyptodont. Still not wired into `DriverSelector`.
+   Still no audio-listening test on the native driver's output.
+4. The reserved `$70-$7d` skip range in `pn_adv` is still unexercised by
+   either file (same as B10's `+1` guard byte finding) — defensive coverage,
+   not a known-good path.
+
 ## What's genuinely proven vs. still open
 
 - **Proven, working**: template-based detection (11/59 files), full symbol/table
@@ -2486,6 +2627,12 @@ Glyptodont used to fire regularly).
   The shared engine's architectural startup/trigger-timing skew is still a
   real, separate, unquantified residual (not what was actually driving
   Glyptodont's gap, per the B4 investigation).
+- **B11** (fx-on-rest/sustain commits same-tick, both driver AND translator
+  fixed together — see "B11 shipped" above): whole-song overall now **Fargo
+  79.4% / Glyptodont 92.0%**, both a pure freq win (Fargo freq now **exact,
+  100.0%**; Glyptodont 99.7%) with every other category byte-identical to
+  B10. Pulse and ADSR (Fargo especially, 52.0%/74.0% full-song) remain the
+  largest open categories and neither has had a dedicated round yet.
 - **Not started / explicitly out of scope this round**: testing the parser
   against the near-v1.2 variant buckets (older birdcruncher versions,
   different compiled bytes, confirmed rejected by locate but not yet

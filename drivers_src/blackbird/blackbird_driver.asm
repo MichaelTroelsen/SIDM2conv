@@ -39,9 +39,20 @@ VIBSPD   = $10           ; vibrato phase increment per frame
 VIBDLY   = $0c           ; delay (frames) before vibrato kicks in
 ; scratch
 wptr        = $fa           ; working pointer (seq / orderlist)
-; ($ec/$ed free since B10 deleted fm_step's FMTAB indirect pointer `fmptr`;
+; ($ed free since B10 deleted fm_step's FMTAB indirect pointer `fmptr`;
 ;  $b9/$ba free since B9 deleted pulse_step's PULSETAB indirect pointer.
 ;  NB $ea/$eb collide with vhold[1]/vhold[2] -- do not reuse those.)
+fxflag      = $ec           ; B11: nonzero if pr_setprog fired THIS row -- see
+                            ; pr_setprog/pn_adv/pr_note's gate-off case. Mirrors
+                            ; real hardware's v_pendfx: prepare1 (player.s:98-100)
+                            ; writes v_pendfx DIRECTLY from a fresh $c9-$f8 select
+                            ; byte on ANY row, note or not, and execute() (line
+                            ; 441-445) applies+clears it unconditionally every
+                            ; tick -- independent of prepare3's separate note-
+                            ; triggered v_pendfx=v_currfx mirror (line 185-186,
+                            ; reached only via the non-delay/note path). So a
+                            ; fresh select on a REST or "+++"-sustain row must
+                            ; commit immediately, not wait for the next note.
 ms_cnt      = $f0           ; multispeed tick countdown within one video frame
 tmpf        = $f6           ; freq/ADSR temp (lo/hi)
 widx        = $f5           ; wave-index temp
@@ -899,6 +910,7 @@ vparse:
         sta zp_guard
         lda #$00
         sta pending_dur
+        sta fxflag                ; B11: reset "fresh setprog this row" flag
         jsr parse_one
         lda wptr
         sta vsp_lo,x
@@ -965,6 +977,11 @@ pr_setprog:
         sta VIFXS,x
         lda FXRST,y
         sta VIFXR,x
+        lda #$01
+        sta fxflag                ; B11: this row got a fresh select -- if the
+                                  ; terminal event isn't a note (which already
+                                  ; commits unconditionally via pn_tied), commit
+                                  ; it directly at that terminal event instead.
         ; B8: the PULSE program is NO LONGER selected here. On real
         ; hardware the pulse-width program is part of the INSTRUMENT's wave
         ; program (BlackbirdSim.everyframe reads its pulse rows out of the
@@ -995,8 +1012,12 @@ pr_note:
         and #$fe
         ldy sidoff
         sta SID+4,y
+        jsr maybe_fx_commit       ; B11: rest rows can still carry a fresh
+                                  ; fx-select (real hardware's prepare1/execute
+                                  ; apply it same-tick regardless of note)
         jmp advw
 pn_adv:
+        jsr maybe_fx_commit       ; B11: same for "+++" sustain / skip rows
         jmp advw                 ; trampoline (advw now out of branch range)
 pn_not_off:
         cmp #$7e
@@ -1107,6 +1128,23 @@ advw:
         bne advw_done
         inc wptr+1
 advw_done:
+        rts
+
+; --- B11: commit a fresh fx-select on a NON-note row (rest / sustain). -----
+; pn_tied (note path) always commits VIFXS -> FXPOS unconditionally, matching
+; hardware's prepare3 "lda v_currfx,x; sta v_pendfx,x" unconditional-on-every-
+; note re-mirror. Non-note rows have no such unconditional mirror on hardware
+; -- v_pendfx only carries a value there if prepare1 (player.s:98-100) JUST
+; wrote it THIS tick from a fresh $c9-$f8 byte -- so this is gated on fxflag
+; (this row saw a fresh pr_setprog), not on VIFXR alone.
+maybe_fx_commit:
+        lda fxflag
+        beq mfc_done
+        lda VIFXR,x
+        beq mfc_done
+        lda VIFXS,x
+        sta FXPOS,x
+mfc_done:
         rts
 
 ; --- advance voice X's orderlist to the next pattern: set vsp[x]+vtrans[x] --

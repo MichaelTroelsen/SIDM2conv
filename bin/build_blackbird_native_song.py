@@ -867,26 +867,42 @@ def verify_fx_engine(lay, d, la, ins_restart, ins_restart2, freqblob, fxtab,
 # cap. The identity mapping is asserted safe by build_range (nfx < NFM).
 # ---------------------------------------------------------------------------
 def steps_to_rows_native(steps):
+    """B11: fx-select changes must land on the row they actually occur on, not
+    just on the next note. On hardware, prepare1 (player.s:98-100) writes
+    v_pendfx DIRECTLY from a fresh $c9-$f8 select byte on ANY row -- note,
+    rest, or sustain -- and execute() applies it that SAME tick, independent
+    of prepare3's separate note-triggered mirror. bb_steps_for_voice already
+    carries the correct sticky `cur_fx` on every step kind (rest/tie included,
+    see its docstring); the bug was here: `cur_cmd` used to only update in the
+    note branch, so a fx-change that occurred while the voice was resting or
+    sustaining was silently dropped from the emitted sequence until whatever
+    note came next (measured: 27% of Fargo's fx changes, 7% of Glyptodont's,
+    landed on such a row). The driver's own `maybe_fx_commit` (blackbird_
+    driver.asm, B11) is the matching runtime-side half of this fix -- it
+    commits a fresh command on rest/sustain rows immediately instead of
+    waiting for pn_tied's note-triggered commit."""
     rows = []
     cur_instr = None
     cur_cmd = None
     for s in steps:
         n = max(1, s.ticks)
+        cmd = s.fx & 0x3F        # B10: the fx index IS the command index
+        cmdcol = None
+        if cmd != cur_cmd:
+            cmdcol = cmd
+            cur_cmd = cmd
         if s.kind == 'rest':
-            rows.extend(D11Row(note=SF2_GATE_OFF) for _ in range(n))
+            rows.append(D11Row(note=SF2_GATE_OFF, command=cmdcol))
+            rows.extend(D11Row(note=SF2_GATE_OFF) for _ in range(n - 1))
         elif s.kind == 'note' and s.note is None:
-            rows.extend(D11Row(note=SF2_GATE_ON) for _ in range(n))
+            rows.append(D11Row(note=SF2_GATE_ON, command=cmdcol))
+            rows.extend(D11Row(note=SF2_GATE_ON) for _ in range(n - 1))
         else:
             note = max(SF2_NOTE_MIN, min(s.note + SF2_NOTE_OFS, SF2_NOTE_MAX))
             inst = None
             if s.instrument is not None and s.instrument != cur_instr:
                 inst = s.instrument
                 cur_instr = s.instrument
-            cmd = s.fx & 0x3F        # B10: the fx index IS the command index
-            cmdcol = None
-            if cmd != cur_cmd:
-                cmdcol = cmd
-                cur_cmd = cmd
             rows.append(D11Row(note=note, instrument=inst, command=cmdcol,
                                 tie=s.tie))
             rows.extend(D11Row(note=SF2_GATE_ON) for _ in range(n - 1))
