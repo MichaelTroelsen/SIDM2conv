@@ -39,8 +39,8 @@ VIBDLY   = $0c           ; delay (frames) before vibrato kicks in
 ; scratch
 wptr        = $fa           ; working pointer (seq / orderlist)
 fmptr       = $ec           ; working pointer into FMTAB (fm_step indirect read) (2)
-pptr        = $b9           ; working pointer into PULSETAB (pulse_step indirect read) (2)
-                            ; ($ea/$eb collide with vhold[1]/vhold[2]!)
+; ($b9/$ba free since B9 deleted pulse_step's PULSETAB indirect pointer.
+;  NB $ea/$eb collide with vhold[1]/vhold[2] -- do not reuse those.)
 ms_cnt      = $f0           ; multispeed tick countdown within one video frame
 tmpf        = $f6           ; freq/ADSR temp (lo/hi)
 widx        = $f5           ; wave-index temp
@@ -75,15 +75,19 @@ VWI     = $1980          ; per-voice current wave-program row (3)
 VGMASK  = $1983          ; per-voice $D404 AND-mask: $ff gated-on, $fe gated-off (3)
 VIWAVE  = $1986          ; per-voice instrument wave-program start row (3)
 ws_row  = $ee            ; wave_step scratch: resolved row
-ws_grd  = $ef            ; wave_step scratch / pulse_step $7f-jump guard
-; --- pulse program runner (ROW-major PULSETAB, 3 bytes/entry, walked via a
-;     16-bit pointer exactly like FM): 8X XX YY = set 12-bit width for YY
-;     frames; 0X XX YY = add per frame for YY; 7f -- -- = freeze. -----------
-VPC     = $198c          ; per-voice frames left on current row (3)
-VPLO    = $198f          ; per-voice current 12-bit pulse lo (3)
-VPHI    = $1992          ; per-voice current 12-bit pulse hi (3)
-VPADL   = $1995          ; per-voice per-frame add lo (3)
-VPADH   = $1998          ; per-voice per-frame add hi (3)
+ws_grd  = $ef            ; wave_step scratch: $7f-jump chase guard
+; --- B9: pulse-width ACCUMULATOR (replaces the whole PULSETAB row-cursor
+;     engine -- see wave_step below and docs/players/BLACKBIRD.md's B9).
+;     Blackbird's pulse width is an 8-bit accumulator stepped in lockstep
+;     with the WAVE row: a wave row whose waveform byte has bit6 set carries
+;     a delta in the SAME row's col1, and the SID pulse registers get
+;     pwprepare[PW_ACC] written to BOTH $D402 and $D403. That is lft's own
+;     structure (player.s 272-317) ported 1:1, not an approximation of its
+;     output -- so it is exact for any note length, never truncates, and
+;     never drifts. B8's VPC/VPLO/VPHI/VPADL/VPADH/PPTR_*/VIPUL_* are all
+;     gone: they described an independently-paced pulse cursor that real
+;     hardware does not have.
+PW_ACC  = $198c          ; per-voice 8-bit pulse-width accumulator (3)
 ; --- filter program runner (STANDARD SF2II filter table, col-major 256x3:
 ;     9Y YY RB = set passband/cutoff/res/bitmask; 0X XX YY = add to cutoff each
 ;     frame for YY; 7f -- XX = jump. ONE global SID filter; started when a note
@@ -120,10 +124,7 @@ FMP_LO    = $19c4        ; per-voice: current FMTAB read pointer lo (3)
 FMP_HI    = $19c7        ; per-voice: current FMTAB read pointer hi (3)
 VIFM_LO   = $19ca        ; per-voice: current instrument's FM-start addr lo (3)
 VIFM_HI   = $19cd        ; per-voice: current instrument's FM-start addr hi (3)
-PPTR_LO   = $19d0        ; per-voice: current PULSETAB read pointer lo (3)
-PPTR_HI   = $19d3        ; per-voice: current PULSETAB read pointer hi (3)
-VIPUL_LO  = $19d6        ; per-voice: current cmd's pulse-program start addr lo (3)
-VIPUL_HI  = $19d9        ; per-voice: current cmd's pulse-program start addr hi (3)
+; ($19d0-$19db: freed by B9's removal of PPTR_LO/HI + VIPUL_LO/HI)
 SWTOG     = $19dc        ; swing-tempo phase toggle (ported from the MoN driver, which
                          ; ported it from the MoN ROM's own $E2 toggle at $1134-$1138):
                          ; EOR #$ff per row; negative phase reloads TEMPO2 (the SHORT
@@ -238,31 +239,18 @@ iv:     lda PRIME_VWF_TAB,x
         lda #$00
         sta vfreq_lo,x            ; recomputed fresh every frame by wave_step's
         sta vfreq_hi,x            ; own ws_sok path -- no priming needed here
-        ; B8: genuine mid-program PULSE resume (B7 froze this at the last raw
-        ; value instead). pulse_step's whole position is runtime state --
-        ; PPTR (row cursor), VPC (frames left on the current row), VPLO/VPHI
-        ; (live 12-bit width), VPADL/VPADH (this row's per-frame add) -- so
-        ; no table "jump primitive" is needed to resume mid-flight; the
-        ; builder just writes the state pl_decode would have left behind.
-        ; PPTR is now primed SEPARATELY from VIPUL: VIPUL is the RESTART
-        ; address pn_note reloads on the next real note-on, while PPTR is
-        ; where the engine is right NOW -- at a part boundary (and, for
-        ; row0==0, before any note at all) these are genuinely different
-        ; programs, which is exactly what real hardware does.
-        lda PRIME_VPC_TAB,x
-        sta VPC,x
-        lda PRIME_PPTR_LO_TAB,x
-        sta PPTR_LO,x
-        lda PRIME_PPTR_HI_TAB,x
-        sta PPTR_HI,x
-        lda PRIME_PULSE_TAB,x     ; live 12-bit width (B5: $D402 and $D403 are
-        sta VPLO,x                 ; written the SAME byte on real hardware,
-        lda PRIME_VPHI_TAB,x        ; so only VPLO reaches the SID -- VPHI is
-        sta VPHI,x                   ; internal add-mode bookkeeping only)
-        lda PRIME_VPADL_TAB,x     ; B8: pulse rows are DELTA (0X ADD) encoded
-        sta VPADL,x               ; now, so a resumed row carries a live add
-        lda #$00
-        sta VPADH,x               ; (VPADH stays 0: only VPLO reaches $D402/3)
+        ; B9: PULSE priming is now ONE byte per voice. B8 needed seven
+        ; (PPTR_LO/HI, VPC, VPLO, VPHI, VPADL, plus an aux PULSETAB program
+        ; just to give the cursor a stable address) because the pulse ran on
+        ; its own row cursor whose whole position had to be reconstructed.
+        ; With the pulse stepped by the WAVE row, PRIME_VWI (set just above)
+        ; already positions the pulse program too -- so the only state left
+        ; is the accumulator itself, which is genuine per-voice runtime state
+        ; the boundary snapshot carries directly (`v.pwidth`). This is an
+        ; EXACT resume of the mid-sweep phase -- the specific thing B8's punch
+        ; list named as impossible under the output-byte encoding.
+        lda PRIME_PW_ACC_TAB,x
+        sta PW_ACC,x
         lda PRIME_VGMASK_TAB,x
         sta VGMASK,x              ; primed gate state ($fe old default = off)
         ; B8: genuine mid-program FM resume (B7 forced this flat/off). The
@@ -290,14 +278,10 @@ iv:     lda PRIME_VWF_TAB,x
         sta FMP_LO,x
         lda PRIME_FMP_HI_TAB,x
         sta FMP_HI,x
-        lda PRIME_VIFM_LO_TAB,x   ; primed FM+pulse bundle pointers (old
-        sta VIFM_LO,x              ; default = program 0's own address,
-        lda PRIME_VIFM_HI_TAB,x    ; reproduced exactly by _compute_prime_
-        sta VIFM_HI,x               ; consts' own "no owner instrument" branch)
-        lda PRIME_VIPUL_LO_TAB,x  ; RESTART address only -- PPTR (the live
-        sta VIPUL_LO,x             ; cursor) is primed separately above, B8
-        lda PRIME_VIPUL_HI_TAB,x
-        sta VIPUL_HI,x
+        lda PRIME_VIFM_LO_TAB,x   ; primed FM bundle pointer (old default =
+        sta VIFM_LO,x              ; program 0's own address, reproduced
+        lda PRIME_VIFM_HI_TAB,x    ; exactly by _compute_prime_consts' own
+        sta VIFM_HI,x               ; "no owner instrument" branch)
         lda PRIME_VBASENOTE_TAB,x
         sta vbasenote,x           ; base note index (set on each note trigger)
         lda PRIME_FLAGS_TAB,x     ; primed instrument flags ($40 = filter-
@@ -319,6 +303,27 @@ iv:     lda PRIME_VWF_TAB,x
         sta SID+5,y               ; (AD/SR are only ever written at a genuine
         lda PRIME_SR_TAB,x         ; instrument trigger, never recomputed per-
         sta SID+6,y                ; frame -- see _compute_prime_consts)
+        ; B9 -- SECOND REAL BUG, found by measuring rather than reasoning.
+        ; PW_ACC alone is NOT sufficient priming. Roughly half of both
+        ; corpus files' instruments have wave programs with NO bit6 rows at
+        ; all (B5's "freeze-only" case), so wave_step never writes $D402/3
+        ; for them -- on real hardware that is correct and deliberate: the
+        ; register simply KEEPS whatever the last pulse-writing instrument
+        ; left in it, possibly from many seconds earlier. do_init clears the
+        ; whole SID, so without this the driver held a hard 0 forever on
+        ; those voices while the simulator held a real value.
+        ; Measured on Fargo before this fix: voice 2 (which does have pulse
+        ; rows) was 0/400 frames mismatched -- exact -- while voices 0 and 1
+        ; were 400/400, driver $00 vs simulator $08 on every single frame.
+        ; So: seed the REGISTER itself from the boundary snapshot's own
+        ; $D402 byte. A voice with pulse rows overwrites it on its first
+        ; pulse row (harmless); a voice without them keeps it forever
+        ; (correct). B8 got this effect via PRIME_PULSE -> VPLO -> pl_wr's
+        ; every-frame rewrite; B9 writes it once, directly, which is what
+        ; real hardware does.
+        lda PRIME_D402_TAB,x
+        sta SID+2,y
+        sta SID+3,y
         dex
         bmi iv_done               ; B7 lengthened this loop body past a signed
         jmp iv                     ; 8-bit branch's range -- bpl->jmp trampoline
@@ -404,12 +409,13 @@ dp_tick:
         bne dp_vib
         jsr do_row               ; row tick: step the sequencer
 dp_vib:
-        ; filt_prog_step / pulse_step run AFTER do_row so a note's RESET (pr_note
-        ; sets F_IDX=VIFILT/F_CNT=0 for the filter, PPTR=VIPUL/VPC=0 for the pulse)
-        ; takes effect on the SAME frame as the note.
+        ; filt_prog_step runs AFTER do_row so a note's RESET (pr_note sets
+        ; F_IDX=VIFILT/F_CNT=0) takes effect on the SAME frame as the note.
+        ; B9: there is no separate pulse pass any more -- wave_step writes
+        ; $D402/3 itself, from the same row it writes $D404 from, exactly as
+        ; lft's own `vloop` does.
         jsr filt_prog_step       ; global filter program -> $D415/6/7 + mode
-        jsr pulse_step           ; per-voice pulse-program -> $D402/3 each tick
-        jsr wave_step            ; wave-program -> $D404 + recompute vfreq
+        jsr wave_step            ; wave-program -> $D404 + $D402/3 + vfreq
         jsr fm_step               ; per-voice freq -> $D400/1 (+ FM accumulate)
         dec ms_cnt
         bne dp_tick              ; next multispeed tick this frame
@@ -437,22 +443,32 @@ ws_read:
         jmp ws_write
 ws_have:
         sty ws_row               ; resolved row (never $7f)
-        lda VIFLAGS,x            ; DRUM instrument (flag $20)? col1 = freq HI byte,
-        and #$20                 ;   not a semitone -> off-grid drum pitch
-        bne ws_drum
-        lda WAVE+256,y           ; col1 = signed semitone offset
-        bmi ws_neg               ; bit7 set -> negative offset
-        clc                      ; positive: vbasenote + offset, clamp high to $6f
-        adc vbasenote,x
-        cmp #$70
+        ; B9 -- A REAL BUG, found by building it the other way first: this
+        ; USED to read `WAVE+256,y` here as a signed semitone offset and add
+        ; it to vbasenote. col1 was described as "free" for Blackbird because
+        ; the translator only ever WROTE 0x00 there -- but the driver was
+        ; still READING it every frame, and a +0 offset is simply an
+        ; invisible no-op, not an unused column. The moment col1 started
+        ; carrying pulse deltas, every pulse row silently transposed its own
+        ; voice by up to +127 semitones. Measured: Fargo freq 87.7% -> 71.2%
+        ; and overall 94.1% -> 80.9% on the first B9 build.
+        ;
+        ; The fix is not to move the pulse delta elsewhere but to delete the
+        ; read: Blackbird wave rows genuinely carry no semitone offset (pitch
+        ; is the separate fx/FM engine, and the translator has always emitted
+        ; a literal 0x00), so `vbasenote + 0` == `vbasenote`. This is exactly
+        ; equivalent to the old code for every Blackbird program ever emitted,
+        ; and it is what makes col1 actually free rather than nominally free.
+        ; NOTE for anyone re-forking this driver for another player: the
+        ; semitone column is a real shared-engine feature and this deletion
+        ; is Blackbird-specific.
+        lda VIFLAGS,x            ; DRUM instrument (flag $20)? col1 = freq HI
+        and #$20                 ;   byte -- not emitted by this translator,
+        bne ws_drum              ;   kept for driver-shape parity only
+        lda vbasenote,x
+        cmp #$70                 ; clamp (pr_note already rejects >= $70)
         bcc ws_sok
         lda #$6f
-        bne ws_sok               ; $6f != 0 -> always taken (near branch, no jmp)
-ws_neg:
-        clc                      ; negative: vbasenote + offset, clamp low to $00
-        adc vbasenote,x
-        bcs ws_sok               ; carry set -> no underflow
-        lda #$00
 ws_sok:
         asl                      ; note index -> freqtable word offset
         tay
@@ -467,6 +483,30 @@ ws_w404:
 ws_write:
         ldy sidbase,x
         sta SID+4,y
+        ; --- B9: PULSE, stepped in lockstep with THIS wave row ------------
+        ; A still holds the byte just written to $D404. lft's own test
+        ; (player.s: `sta $d404,x` / `asl` / `bpl nopulse`): bit6 of the
+        ; waveform byte IS the "this row carries pulse" flag. The gate mask
+        ; applied above only ever clears bit0, so testing the masked byte is
+        ; identical to testing the raw one.
+        asl                      ; bit6 -> bit7
+        bpl ws_nopulse
+        ldy ws_row
+        lda WAVE+256,y           ; col1 = the pulse delta (lft's `lda
+        bmi ws_pwset             ;   wavetable+1,y` / `bmi pwset`)
+        clc                      ; bit7 CLEAR -> ACCUMULATE. lft inherits the
+        adc PW_ACC,x             ;   carry from his own `tya; adc #2` wavepos
+        jmp ws_pwsto             ;   advance; that carry is a fixed property
+ws_pwset:                        ;   of the row, so the translator FOLDS it
+        asl                      ;   into the stored delta at build time and
+ws_pwsto:                        ;   this add is a clean CLC one (see
+        sta PW_ACC,x             ;   _pulse_col1). bit7 SET -> absolute, and
+        tay                      ;   lft's `asl` doubles it -- reproduced
+        lda pwprepare,y          ;   exactly.
+        ldy sidbase,x
+        sta SID+2,y              ; the SAME full byte to BOTH $D402 and
+        sta SID+3,y              ; $D403 -- B5's Bug 2, unchanged
+ws_nopulse:
         ldy ws_row               ; advance one row for next frame
         iny
         tya
@@ -484,113 +524,13 @@ ws_drum:                         ; Y still = resolved row (ws_row) from ws_have
         sta vfreq_hi,x
         jmp ws_w404
 
-; --- per-voice pulse-program runner: walk the standard pulse table (set/add/
-;     jump), applying the per-frame add and writing $D402/3 each frame. --------
-pulse_step:
-        ldx #$02
-pl_l:
-        lda VPC,x
-        bne pl_apply             ; still on current row -> just apply the add
-        ; row expired -> load the next PULSETAB entry via the 16-bit pointer
-        lda PPTR_LO,x
-        sta pptr
-        lda PPTR_HI,x
-        sta pptr+1
-        ldy #$00
-        lda (pptr),y             ; byte0 = cmd nibble | width-hi nibble (or $7f)
-        cmp #$7f
-        bne pl_decode
-        ; $7f = freeze: add 0, hold, do NOT advance the pointer
-        lda #$00
-        sta VPADL,x
-        sta VPADH,x
-        lda #$ff
-        sta VPC,x
-        jmp pl_apply
-pl_decode:
-        sta tmpf                 ; byte0
-        ldy #$02
-        lda (pptr),y             ; byte2 = frame count
-        sta VPC,x
-        lda PPTR_LO,x            ; advance pointer by 3 bytes (row-major)
-        clc
-        adc #$03
-        sta PPTR_LO,x
-        bcc pl_b1
-        inc PPTR_HI,x
-pl_b1:
-        ldy #$01
-        lda (pptr),y             ; byte1 = width lo
-        sta tmpf+1
-        lda tmpf
-        bmi pl_set               ; bit7 set -> 8X (set width)
-        and #$0f                 ; 0X (add): VPAD = (byte0&0f):byte1
-        sta VPADH,x
-        lda tmpf+1
-        sta VPADL,x
-        jmp pl_apply
-pl_set:
-        lda tmpf                 ; 8X: pulse = (byte0&0f):byte1, add = 0
-        and #$0f
-        sta VPHI,x
-        lda tmpf+1
-        sta VPLO,x
-        lda #$00
-        sta VPADL,x
-        sta VPADH,x
-pl_apply:
-        lda VPLO,x               ; pulse += add (12-bit)
-        clc
-        adc VPADL,x
-        sta VPLO,x
-        lda VPHI,x
-        adc VPADH,x
-        and #$0f
-        sta VPHI,x
-pl_consume:
-        lda VPC,x                ; consume a frame
-        beq pl_wr
-        dec VPC,x
-pl_wr:
-        ; REAL BUG FOUND (this session, task priority 1): real Blackbird
-        ; hardware writes the SAME full 8-bit `pulse_byte` to BOTH $D402 AND
-        ; $D403 with no masking in between -- see BlackbirdSim.everyframe()'s
-        ; `self.w(2+7*x, pulse_byte); self.w(3+7*x, pulse_byte)` (two writes
-        ; of the identical accumulator value, exactly mirroring player.s's
-        ; own back-to-back `sta $d402,x` / `sta $d403,x` with no AND/mask
-        ; instruction between them). The 8-bit `pwprepare` lookup this
-        ; engine's translator (bin/build_blackbird_native_song.py's
-        ; unroll_wave_pulse) captures from is a genuine Blackbird design
-        ; property, not a translation choice -- the composer/tool can only
-        ; ever produce a 12-bit SID pulse width of the specific form
-        ; `byte | ((byte & $0f) << 8)`, i.e. $D403's own low nibble ALWAYS
-        ; equals $D402's low nibble by construction. This driver's PULSETAB
-        ; row format (8X XX YY) was designed for a genuinely independent
-        ; 12-bit width (byte0's low nibble = width bits 8-11, held in VPHI),
-        ; which is the correct shape for other players sharing this engine's
-        ; general design -- but for Blackbird content specifically, VPHI's
-        ; low-nibble-only value is NOT what real hardware puts in $D403 (a
-        ; FULL byte, not a masked nibble), so writing VPHI here produced an
-        ; exact-byte mismatch against the validated simulator on nearly
-        ; every frame where pulse content was otherwise correctly triggered
-        ; (confirmed via direct trace: driver showed $D402/3=$6f/$0f where
-        ; the simulator showed $6f/$6f at the same position in the
-        ; sequence). Fixed by writing $D402's own value (VPLO) into $D403
-        ; too, exactly reproducing the real "duplicate write, no mask"
-        ; instruction sequence. VPHI/VPADH's own internal add-mode
-        ; bookkeeping (pl_apply, above) is left untouched -- Blackbird's
-        ; translator never emits a genuine 0X (ADD) row, so this is a no-op
-        ; for VPHI's own state, only the byte actually WRITTEN to $D403
-        ; changes.
-        ldy sidbase,x
-        lda VPLO,x
-        sta SID+2,y
-        sta SID+3,y
-        dex
-        bmi pl_done              ; (bpl pl_l would branch too far -> use jmp)
-        jmp pl_l
-pl_done:
-        rts
+; --- B9: `pulse_step` DELETED. Blackbird's pulse width is not an
+;     independently-paced program with its own row cursor -- it is an
+;     8-bit accumulator stepped by the WAVE row (see wave_step's B9
+;     block above and PW_ACC's declaration). The ~105 bytes of row-
+;     cursor/decode logic that used to live here, and the PULSETAB it
+;     walked, are both gone for Blackbird content.
+
 
 ; --- global filter-program runner: walk the standard filter table (set passband/
 ;     cutoff/res/bitmask, add-to-cutoff, jump), writing $D415/6 (cutoff), $D417
@@ -1053,12 +993,14 @@ pn_not_off:
         lda vwf,x
         ora #$01
         sta SID+4,y
-        lda VIPUL_LO,x           ; restart the pulse program too (16-bit pointer)
-        sta PPTR_LO,x
-        lda VIPUL_HI,x
-        sta PPTR_HI,x
-        lda #$00
-        sta VPC,x                ; force reload on the next frame
+        ; B9: NO pulse restart here. On real hardware a note-on resets the
+        ; voice's WAVE position (`vs.wavepos = ins_wave[i]` in execute(), the
+        ; VWI reload just below) but deliberately does NOT touch `v_pwidth` --
+        ; the width accumulator carries across notes, which is precisely the
+        ; continuity B8's from-zero output capture could not express. Since
+        ; the pulse program now IS the wave program, resetting VWI restarts
+        ; the delta sequence while PW_ACC keeps its phase: correct by
+        ; construction, with no extra code.
         ; WAVE + FILTER restart -- NOT-TIED ONLY (real bug found + fixed this
         ; session, see BLACKBIRD.md/task report): this used to live under the
         ; `pn_tied:` label below, so BOTH the tied and not-tied paths fell
@@ -1190,13 +1132,12 @@ ol_adv_done:
 
 ; set instrument for voice X: A = index
 set_instr_v:
-        ; B8: FM stays per-NOTE ($c0-$ff command, see pr_setprog), but PULSE
-        ; is per-INSTRUMENT again -- see pr_setprog's own comment for why.
+        ; B8 made PULSE per-INSTRUMENT rather than per-note-bundle. B9 goes
+        ; one step further and makes it per-WAVE-ROW, which is what hardware
+        ; actually does -- so there is no pulse pointer to load here at all:
+        ; INSTR_WAVE (below) selects the wave program, and the wave program
+        ; carries its own pulse deltas in col1.
         tay
-        lda INSTR_PUL_LO,y
-        sta VIPUL_LO,x
-        lda INSTR_PUL_HI,y
-        sta VIPUL_HI,x
         lda INSTR_AD,y
         sta tmpf
         lda INSTR_SR,y
@@ -1270,30 +1211,12 @@ PRIME_VIFM_LO_TAB:
         .byte PRIME_VIFM_LO0, PRIME_VIFM_LO1, PRIME_VIFM_LO2
 PRIME_VIFM_HI_TAB:
         .byte PRIME_VIFM_HI0, PRIME_VIFM_HI1, PRIME_VIFM_HI2
-PRIME_VIPUL_LO_TAB:
-        .byte PRIME_VIPUL_LO0, PRIME_VIPUL_LO1, PRIME_VIPUL_LO2
-PRIME_VIPUL_HI_TAB:
-        .byte PRIME_VIPUL_HI0, PRIME_VIPUL_HI1, PRIME_VIPUL_HI2
-PRIME_PULSE_TAB:
-        .byte PRIME_PULSE0, PRIME_PULSE1, PRIME_PULSE2
-PRIME_VPC_TAB:
-        .byte PRIME_VPC0, PRIME_VPC1, PRIME_VPC2
+PRIME_PW_ACC_TAB:
+        .byte PRIME_PW_ACC0, PRIME_PW_ACC1, PRIME_PW_ACC2
+PRIME_D402_TAB:
+        .byte PRIME_D4020, PRIME_D4021, PRIME_D4022
 
-; Pin the note->freq table ABOVE the playback-state region ($16cc-$1702) so it
-; can never collide with it. Routines live $1000-~$1623, well below it.
-        * = $1710
-freqtable:
-        .include "freqtable.inc"
-
-; B8: genuine mid-program PULSE + FM resume state (see do_init's own comments)
-PRIME_VPHI_TAB:
-        .byte PRIME_VPHI0, PRIME_VPHI1, PRIME_VPHI2
-PRIME_VPADL_TAB:
-        .byte PRIME_VPADL0, PRIME_VPADL1, PRIME_VPADL2
-PRIME_PPTR_LO_TAB:
-        .byte PRIME_PPTR_LO0, PRIME_PPTR_LO1, PRIME_PPTR_LO2
-PRIME_PPTR_HI_TAB:
-        .byte PRIME_PPTR_HI0, PRIME_PPTR_HI1, PRIME_PPTR_HI2
+; B8: genuine mid-program FM resume state (see do_init's own comments)
 PRIME_FM_ON_TAB:
         .byte PRIME_FM_ON0, PRIME_FM_ON1, PRIME_FM_ON2
 PRIME_FMP_LO_TAB:
@@ -1325,3 +1248,49 @@ tempo_sched_t1:
         .include "tempo_sched_t1.inc"
 tempo_sched_t2:
         .include "tempo_sched_t2.inc"
+
+; ==========================================================================
+; B9 MEMORY-MAP RESHUFFLE -- read this before adding ANY table.
+; ==========================================================================
+; The driver owns $1000-$19FF, with two holes it must not touch: SF2II's
+; reserved playback-state region $16CC-$1702, and this driver's OWN private
+; state block $1980-$19E1 (VWI..TEMPO_SCHED_IDX). EDIT_BASE is $1A00.
+;
+; B8 put freqtable + the FM prime tables + tempo_sched ABOVE the reserved
+; region (pinned at $1710) because do_init and 11 new PRIME_*_TABs had
+; outgrown the ~311-byte low gap. B9 reverses that pressure: deleting
+; pulse_step (-107 bytes) and collapsing 7 pulse prime fields to 1 (-18
+; bytes of table, -22 of do_init) reopens the low gap, and B9 needs a
+; CONTIGUOUS 256-byte home for pwprepare that will not fit above.
+;
+; So: everything small (all PRIME_*_TABs + tempo_sched) now lives here in
+; the low gap, and the two big fixed tables get the space above the reserved
+; region all to themselves. The `.cerror` below is a REAL assemble-time
+; guard on the low gap -- B8's own hard-won lesson was that a table quietly
+; landing on live state ($1800 = VWI) corrupts at RUNTIME, not at assembly,
+; so this is checked rather than reasoned about. bin/build_blackbird_driver_
+; full.py's assemble() adds the matching checks for the two protected
+; regions on the emitted image.
+        .cerror * > $16CC, "low-gap tables overran SF2II's reserved $16CC region"
+
+        * = $1710
+pwprepare:
+        ; B9: Blackbird's fixed 256-entry pulse-width lookup, indexed by the
+        ; PW_ACC accumulator (see wave_step). Page-ALIGNED at $1710? No --
+        ; $1710 is not a page boundary, so `lda pwprepare,y` costs one extra
+        ; cycle on the ~50% of indices that cross into $1800. That is a
+        ; deliberate trade: a genuine page alignment would have to be $1800,
+        ; which collides with nothing today but leaves freqtable no
+        ; contiguous home below $1980. Correctness is unaffected either way
+        ; (alignment is purely a cycle optimisation), and this driver is not
+        ; cycle-bound.
+        .include "pwprepare.inc"
+
+        * = $1810
+freqtable:
+        ; Pinned ABOVE the playback-state region ($16cc-$1702) so it can
+        ; never collide with it, exactly as before -- only the address moved
+        ; ($1710 -> $1810) to make room for pwprepare.
+        .include "freqtable.inc"
+
+        .cerror * > $1980, "freqtable overran the driver's private state block at $1980"

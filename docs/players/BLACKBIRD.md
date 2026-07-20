@@ -1935,6 +1935,311 @@ than failing to assemble. Worth knowing that the state block is now much
 closer to `EDIT_BASE`: worst-case `tempo_sched` (64 entries x 4 tables =
 256 bytes) plus freqtable and the prime tables fits with ~111 bytes spare.
 
+## B9 shipped: the pulse ACCUMULATOR runs in the driver (Glyptodont 67.3% -> 82.7%, pulse 16.8% -> 80.9%)
+
+B8's punch list named Glyptodont's pulse as "a genuine REPRESENTATIONAL gap
+rather than a bug": this shared engine's `PULSETAB` stores the **output
+byte**, Blackbird stores an **accumulator** fed through a **non-affine**
+lookup, and it named the two ways out — "either a driver-side `pwidth`+lookup
+engine (a real Stage-C change to the shared stepper) or extending priming to
+carry a mid-sweep phase into a re-triggered note." B9 is the first of those,
+and it turns out to deliver the second for free.
+
+### The measurement that motivated it
+
+Per-instrument, on Glyptodont: the wavepos cycle repeats every 1-10 rows, but
+the accumulator **drifts by a nonzero amount per lap** (instruments 2/3/4/5/8/
+10 measured at drift 6/1/2/4/20/3), so the OUTPUT never repeats. B8's
+encoder therefore had to unroll until the output happened to realign — which
+never happens inside any capture window. Cost: **median 1125 PULSETAB rows
+per instrument** (max 1201; Fargo median 565) to express what Blackbird stores
+in **one** row.
+
+### What was built: lft's own structure, not a new table
+
+The original scoping for this round guessed at "a parallel 1-byte-per-row
+delta table." Reading `player.s` (lines 272-317) directly showed that guess
+was wrong and that the real structure maps onto the shared engine far more
+cleanly:
+
+```
+        ldy  v_wavepos,x
+        lda  wavetable,y
+        cmp  #$c0
+        bcc  nojump
+        adc  v_wavepos,x     ; (carry set by cmp) -> +1
+        tay
+        lda  wavetable,y
+nojump  and  v_wavemask,x
+        sta  $d404,x
+        asl
+        bpl  nopulse         ; bit6 of the waveform byte == "this row carries pulse"
+        tya
+        adc  #2              ; pulse row is TWO bytes wide
+        sta  v_wavepos,x
+        lda  wavetable+1,y   ; the delta lives INLINE, right after the waveform byte
+        bmi  pwset
+        adc  v_pwidth,x      ; bit7 CLEAR -> ACCUMULATE
+        .byt $80             ; NOP #imm eats the following asl
+pwset   asl                  ; bit7 SET  -> ABSOLUTE SET, doubled
+        sta  v_pwidth,x
+        tay
+        lda  pwprepare,y
+        sta  $d402,x
+        sta  $d403,x
+nopulse iny                  ; non-pulse row is ONE byte wide
+```
+
+`wavetable` is a single interleaved variable-width byte stream: a non-pulse
+row is 1 byte, a pulse row is 2 (waveform, then delta inline), and **bit6 of
+the waveform byte itself** is the "carries pulse" flag. This engine's WAVE
+table is 2 columns of 256 with one row per frame, so the same information
+lands in **col1 of the same row** — no new table, no second cursor, and the
+pulse steps in lockstep with the wave row because it *is* the wave row.
+
+Shipped:
+
+- **WAVE col1 = the pulse delta**, encoded exactly as Blackbird encodes it
+  (bit7 clear -> accumulate; bit7 set -> absolute, doubled by an `asl`).
+- **`pwprepare` embedded** as `drivers_src/blackbird/pwprepare.inc`, read
+  verbatim from each file's own template at offset 1024. The "byte-identical
+  across every v1.2-exact rip" claim is now **asserted at build time**
+  (`write_pwprepare` keeps a reference and fails loudly on any difference)
+  rather than trusted. Measured shape, for the record — it is **not** the
+  simple triangle it looks like: a descending -16 ramp with wrap
+  discontinuities every ~17 entries (index 8 -> 15, 9 -> 254) plus plateaus,
+  mirrored about 127/128 (`pw[i] == pw[255-i]` for all i; min 8, max 254).
+  That non-affine shape is exactly why B8's output encoding could not close a
+  cycle.
+- **`PW_ACC`**, a per-voice 8-bit accumulator, stepped inside `wave_step`.
+- **`pulse_step` DELETED** (-107 bytes), along with `VPC`/`VPLO`/`VPHI`/
+  `VPADL`/`VPADH`/`PPTR_LO/HI`/`VIPUL_LO/HI` and the `PULSETAB` walk. Every
+  instrument now gets a bare `$7f` program that dedups to one unread 3-byte
+  entry.
+- **Priming collapsed from 7 fields per voice to 2.** `PRIME_VWI` already
+  positions the wave program, and the pulse program *is* the wave program —
+  so the only genuinely per-voice runtime state left is the accumulator
+  (`PRIME_PW_ACC`, straight from the snapshot's `v.pwidth`). This is an
+  **exact** resume of the mid-sweep phase, i.e. B8's second named option
+  arrives as a side effect of the first.
+- A **build-time self-check**: after emitting col1, the builder replays the
+  *driver's own arithmetic* over the column and requires it to reproduce the
+  validated simulator's `$D402/$D403` byte on every frame of each program's
+  unique span. This is what makes B9 exact-by-construction rather than
+  exact-by-hope — a one-carry error fires at build time on the first
+  instrument that exercises it instead of surfacing as unattributable lost
+  percent.
+
+### Two real bugs, both found by measuring rather than reasoning
+
+**Bug 1 — WAVE col1 was NOT free, and "the translator only ever writes 0
+there" is not the same claim.** col1 was described as free because the
+translator has always emitted a literal `0x00` (Blackbird wave rows carry no
+semitone offset; pitch is the separate fx/FM engine). But `wave_step` was
+still **reading** it every frame as a signed semitone offset and adding it to
+`vbasenote` — a `+0` is an invisible no-op, not an unused column. The moment
+col1 carried pulse deltas, every pulse row silently transposed its voice by up
+to +127 semitones. Measured on the first B9 build: **Fargo freq 87.7% ->
+71.2%, overall 94.1% -> 80.9%**. The fix is not to move the delta but to
+delete the read (`vbasenote + 0 == vbasenote`), which is exactly equivalent
+for every Blackbird program ever emitted and is what makes col1 *actually*
+free. Flagged in the driver source: this deletion is Blackbird-specific, and
+the semitone column is a real shared-engine feature for any other fork.
+
+**Bug 2 — `PW_ACC` priming alone is insufficient; the REGISTER needs priming
+too.** Roughly half of both files' instruments have wave programs with no bit6
+rows at all (B5's "freeze-only" case), so `wave_step` never writes `$D402/3`
+for them — which on real hardware is correct and deliberate: the register
+keeps whatever the last pulse-writing instrument left in it, possibly seconds
+earlier. `do_init` clears the whole SID, so without priming the driver held a
+hard 0 forever on those voices. Measured on Fargo before the fix: voice 2
+(which does have pulse rows) was **0/400 frames mismatched — exact** — while
+voices 0 and 1 were **400/400**, driver `$00` vs simulator `$08` on every
+frame. Fixed with `PRIME_D402`, seeding the register once from the boundary
+snapshot. B8 got the same effect indirectly via `PRIME_PULSE` -> `VPLO` ->
+`pl_wr`'s every-frame rewrite; B9 writes it once, directly, which is what
+hardware does.
+
+### Results
+
+**Fargo (1 part, unchanged)**:
+
+| window | B8 | B9 |
+|---|---|---|
+| primary (0:200) | 96.8% (freq 88.1, wf 99.7, pulse 100.0, adsr 98.7, filter 100.0) | **96.8%** (freq 88.1, wf 99.7, pulse 100.0, adsr 98.7, filter 100.0) |
+| full-part (0:3000) | 94.1% (freq 87.7, wf 98.9, pulse 89.6, adsr 98.8, filter 100.0) | **94.4%** (freq 87.7, wf 98.9, **pulse 90.8**, adsr 98.8, filter 100.0) |
+| exact frames | 1182/3000 | **1230/3000** |
+
+**Glyptodont (10 parts, `CAP_B=96`)**, frame-count-weighted full-part
+aggregate:
+
+| | overall | freq | waveform | pulse | adsr | filter |
+|---|---|---|---|---|---|---|
+| B8 | 67.3% | 62.2 | 90.5 | 16.8 | 94.6 | 92.5 |
+| B9 | **82.7%** | 62.2 | 90.5 | **80.9** | 94.6 | 92.5 |
+
+Per-part full-part overall, B8 -> B9: p1 73.7->**88.5**, p2 69.2->**83.0**,
+p3 69.3->**82.2**, p4 66.4->**82.9**, p5 73.6->**85.1**, p6 68.2->**78.8**,
+p7 62.1->**82.4**, p8 62.1->**78.5**, p9 62.7->**79.1**, p10 69.2->**84.7**.
+Every part improved.
+
+**freq, waveform, adsr and filter are byte-identical to B8 on both files** —
+which is the expected signature of a change confined to the pulse path, and
+is the check that says the gain is real rather than a re-tuning artifact.
+
+**Table space**: Glyptodont's 10 parts total **399,552 -> 253,626 bytes
+(-36.5%)**; Fargo's single part **45,142 -> 34,975 (-22.5%)**. `PULSETAB`
+went from thousands of rows to one unread 3-byte entry.
+
+### How exact is it, really — measured per voice, not asserted
+
+Fargo, 3000 frames, per-voice `$D402` mismatches against the validated
+simulator:
+
+- **voice 0: 0/3000. voice 1: 0/3000.** Byte-exact for the entire window.
+- **voice 2: exact for its first 2122 frames**, then runs exactly **one
+  accumulator step** ahead for the remainder (824 mismatched frames).
+
+The voice-2 slip was traced to a single instrument change. Instrumenting the
+simulator's own `wavepos`/`pwidth` per frame shows the mechanism precisely: at
+that frame `execute()` repositions `wavepos` to the new instrument's start
+*before* `everyframe()` runs, so the outgoing program's `ADD +1` row never
+executes. The driver triggers the same note one frame later — the
+already-documented, architectural note-trigger skew, visible in the same dump
+as a one-frame `$D40E` difference at exactly that frame — so it *does* run
+that `ADD +1`, and is +1 ahead forever after.
+
+This is worth stating plainly because it changes the shape of the residual
+rather than the size: **the accumulator is exact, and it now INTEGRATES the
+pre-existing trigger-timing skew.** Under B8's absolute encoding a trigger
+slip was re-anchored by the next SET row; under B9 a single one-frame slip
+permanently offsets the sweep phase. B9 trades "always approximately wrong"
+for "exactly right until a trigger slips, then off by one step." On the
+evidence above that is a large net win, but the pulse number is now **bounded
+by the note-trigger timing model, not by the pulse representation** — so
+further pulse work should target the trigger skew, not the encoding.
+
+### The expected "fewer parts" win did NOT materialize — a negative result
+
+The scoping for this round expected freed table space to reduce Glyptodont's
+part count. It does not: **still 10 parts**, and the `CAP_B` sweep is
+essentially unchanged from B8's. The reason is that B8 had already moved PULSE
+off the FM bundle, so pulse rows stopped counting toward the only constraint
+that actually binds (the 64-slot bundle cap). Freed WAVE/PULSETAB space is
+real and shows up as 36.5% smaller files, but it was never the binding
+constraint, so it buys no part-count reduction. Recorded so nobody re-derives
+the expectation.
+
+### The `CAP_B` sweep — the optimum MOVED, and now agrees on both files
+
+Re-run because B9 changes what a part boundary costs. Glyptodont,
+frame-count-weighted full-part aggregate, everything else identical:
+
+| CAP_B | parts | overall | freq | wf | pulse | adsr | filter |
+|---|---|---|---|---|---|---|---|
+| 128 | 5 | 82.4 | 57.9 | 90.4 | **84.1** | 94.3 | 92.4 |
+| **96** | **10** | **82.7** | 62.2 | 90.5 | 80.9 | 94.6 | 92.5 |
+| 80 | 15 | 82.1 | 63.4 | 90.4 | 77.3 | 94.6 | 92.5 |
+| 64 | 16 | 82.1 | **63.7** | 90.4 | 76.8 | 94.6 | 92.5 |
+
+Under B8 this sweep was monotonic — more parts meant strictly better freq and
+flat everything else, so the only cost of splitting was the part count itself
+(B8 recorded "80 is the measured fidelity optimum if part count is no
+object"). **B9 introduces a genuine opposing gradient**: every extra part is
+another forced boundary re-trigger, and since the accumulator now integrates
+trigger slips, pulse degrades monotonically as parts increase (84.1 -> 80.9 ->
+77.3 -> 76.8) exactly as freq improves (57.9 -> 63.7). The two cross, and
+**`CAP_B = 96` is now a strict local maximum in overall**, not a compromise
+picked to limit file count.
+
+**Fargo** stays 1 part and byte-identical at 128/96/80; at **64 it still
+splits into 2 and still regresses hard: 94.4% -> 82.3%** (pulse 90.8 -> 67.4,
+adsr 98.8 -> 84.2). So 64 remains disqualified on Fargo's evidence, unchanged
+from B8.
+
+**`CAP_B = 96` stays shipped** — and unlike B8, it is now the best measured
+value on Glyptodont as well as the one that keeps Fargo whole, so the
+"part count is a real cost the metric doesn't price in" caveat B8 needed to
+justify it no longer has to do any work. Still `BB_CAP_B`-sweepable.
+
+### What became LESS editable — stated plainly, not traded away quietly
+
+The original scoping raised an editability concern about adding a custom
+table, then withdrew it on the grounds that col1 is free so no new table is
+needed. The first half is right and the second is only half right, so for the
+record:
+
+- **No new table was added.** The WAVE table remains a standard SF2II 256x2
+  wave table and still renders and edits in stock SID Factory II. That is
+  strictly better than a hidden driver-internal table (cf. ROMUZAK's
+  FMTAB/PULSETAB, explicitly "no longer a render-in-editor table").
+- **But col1's MEANING changed for Blackbird songs.** The stock editor labels
+  and renders that column as the semitone/transpose column. In a B9 Blackbird
+  SF2 it holds pulse deltas, so the editor will display arbitrary-looking
+  transpose values, and a user editing that column will change the pulse
+  width rather than the pitch. The column is visible and editable; it is
+  mislabelled.
+- **`wave_step` no longer applies a semitone offset at all** for this driver,
+  so the transpose feature is genuinely unavailable in Blackbird songs (it was
+  already unused — the translator always emitted 0 — but it is now
+  structurally gone, not merely unused).
+
+Net: nothing became invisible, one column became semantically mislabelled, and
+one unused shared-engine feature became unavailable.
+
+### Honest residuals — named precisely, not fixed
+
+- **The note-trigger frame skew is now the binding constraint on pulse**
+  (see the per-voice analysis above). It is the same architectural residual
+  B1/B5/B8 all named; B9 makes its effect persistent rather than
+  self-correcting. Fixing it means a cross-player timing-model change to the
+  shared engine, unattempted here.
+- **Freq (62.2% weighted on Glyptodont, 87.7% on Fargo) is now the largest
+  remaining gap by a wide margin**, unchanged byte-for-byte from B8. Same
+  causes as B8 named: the 1-frame FM lag plus the ~3-frame startup skew.
+- **`exact frames` is still 0 per part on Glyptodont** despite the large pulse
+  gain — every part still has at least one register off in every frame, which
+  the freq residual alone is sufficient to explain.
+- **The ADD carry-in fold is asserted, not proven for all inputs.** The
+  driver's row space has no equivalent of hardware's `y`, so the ADD path's
+  carry-in (from `tya; adc #2`) is folded into the stored delta at build time.
+  This is exact because both `y` and the waveform byte's bit7 are fixed table
+  properties. It has one unrepresentable code: an ADD whose folded delta lands
+  on `$80` would be indistinguishable from an absolute SET of 0. Measured as
+  **never occurring** (0 of 52 Fargo / 92 Glyptodont pulse-row x wavemask
+  combinations; the carry itself is 1 in exactly 2 Glyptodont cases), and the
+  builder raises rather than mistranslating if a future file hits it.
+- **Only Fargo and Glyptodont are built.** The other 9 v1.2-exact files remain
+  untouched, and `pwprepare`'s cross-file invariance is asserted only across
+  those two so far.
+- **Audio has NOT been listened to for any B9 output** — register trace only.
+  Same caveat every round has carried.
+- Unchanged from B6/B7/B8: `estimate_tempo_chain`'s Stage-A off-by-one, mode=0
+  filter rows, part-boundary hard cuts, not wired into `DriverSelector`.
+
+### Driver memory-map note
+
+B9 reverses B8's memory pressure: deleting `pulse_step` (-107 bytes) and
+collapsing 7 pulse prime fields to 1 reopened the low gap, so **all**
+`PRIME_*_TAB`s and `tempo_sched_*` moved back below SF2II's reserved
+`$16CC-$1702` region, and the two big fixed tables took the space above it:
+`pwprepare` at `$1710-$180F`, `freqtable` moved `$1710 -> $1810`. `pwprepare`
+is deliberately **not** page-aligned — alignment would force `$1800` and leave
+`freqtable` no contiguous home below the state block; it costs one cycle on
+indices that cross a page and nothing else.
+
+Two guards were added rather than relying on reasoning, since B8's own trap
+(a table landing on live state at `$1800`) corrupts at **runtime**, not at
+assembly: a `.cerror` on the low gap overrunning `$16CC` and on `freqtable`
+overrunning `$1980`, plus a new image check in
+`bin/build_blackbird_driver_full.py`'s `assemble()` that the driver's private
+state block `$1980-$19E1` is clear — the exact check whose absence let B8's
+bug through.
+
+Determinism re-verified: two from-scratch rebuilds produced byte-identical
+sha1 for Fargo's part and all 10 Glyptodont parts.
+`pyscript/test_blackbird_parser.py` stayed 9/9 (untouched).
+
 ## What's genuinely proven vs. still open
 
 - **Proven, working**: template-based detection (11/59 files), full symbol/table
@@ -1964,10 +2269,15 @@ closer to `EDIT_BASE`: worst-case `tempo_sched` (64 entries x 4 tables =
   (`drivers_src/blackbird/blackbird_driver.asm`, forked from the shared
   ROMUZAK-derived engine) with real table translators
   (`bin/build_blackbird_native_song.py`, using the validated simulator itself
-  as the formula oracle). **As of B8 (see that section for the full trail)
-  Fargo builds a loadable SF2 at 94.1% overall register-match** over a
+  as the formula oracle). **As of B9 (see that section for the full trail)
+  Fargo builds a loadable SF2 at 94.4% overall register-match** over a
   3000-frame window vs the simulator (filter 100.0%, AD/SR 98.8%, waveform
-  98.9%, pulse 89.6%, freq 87.7%, 1182/3000 frames byte-exact); the figures
+  98.9%, pulse 90.8%, freq 87.7%, 1230/3000 frames byte-exact), and
+  **Glyptodont at 82.7% weighted over 10 parts** (B8: 67.3%) -- B9 ported
+  Blackbird's pulse-width ACCUMULATOR into the driver (WAVE col1 = the
+  delta, `pwprepare` embedded, `PW_ACC` per voice), byte-exact on 2 of
+  Fargo's 3 voices across the whole window and bounded thereafter by the
+  note-trigger timing skew rather than by the pulse encoding; the figures
   quoted in the rest of this paragraph are the historical B1-era ones
   (69.6% overall, pulse ~1%) and are kept because the bug trail below
   refers to them and models the song's FULL row-indexed mid-song

@@ -205,6 +205,19 @@ def assemble():
         raise SystemExit(
             f"DRIVER STATE-REGION OVERLAP: ${ST_FIRST:04X}-${ST_LAST:04X} is not "
             f"clear — code/tables spilled into SF2II's playback-state region.")
+    # B9: the SECOND protected hole. B8's report records a table silently
+    # landing on VWI at $1800 -- live per-voice state, so it corrupted at
+    # RUNTIME, not at assembly, and no guard here caught it. The driver's
+    # private state block ($1980-$19E1, VWI..TEMPO_SCHED_IDX) must be as
+    # clear in the emitted image as the SF2II region checked above. Any
+    # nonzero byte there means a table overlapped it.
+    ST2_FIRST, ST2_LAST = 0x1980, 0x19E1
+    if any(img[a] != 0 for a in range(ST2_FIRST, ST2_LAST + 1)):
+        raise SystemExit(
+            f"DRIVER PRIVATE-STATE OVERLAP: ${ST2_FIRST:04X}-${ST2_LAST:04X} is "
+            f"not clear — a table spilled onto live per-voice state (this is "
+            f"the failure mode B8 hit at $1800; it corrupts at runtime, not "
+            f"at assembly time).")
     drv_end = load + len(data) - 2
     if drv_end >= EDIT_BASE:
         raise SystemExit(

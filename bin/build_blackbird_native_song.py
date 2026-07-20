@@ -88,7 +88,7 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "bin"))
 
 import build_blackbird_driver_full as B
-from blackbird_everyframe_sim import BlackbirdSim
+from blackbird_everyframe_sim import BlackbirdSim, asl as _asl, adc as _adc
 from sidm2.blackbird_parser import (
     locate_blackbird, load_sid, decode_streams, classify_byte,
 )
@@ -104,14 +104,12 @@ from sidm2.sid_player import FREQ_TABLE_LO, FREQ_TABLE_HI
 NFM = 64                 # $c0-$ff command space (index = byte & 0x3f)
 CYCLE_SEARCH_FRAMES = 300   # > 256 states -> a repeat is guaranteed (pigeonhole)
 TARGET_FM_PULSE_FRAMES = 250  # ~5s @ 50fps; PULSE/FM have no jump primitive
-# B8: the PULSE capture window is now decoupled from (and much longer than)
-# the wavepos cycle -- see unroll_wave_pulse's "REAL BUG FOUND (B8)" note:
-# Blackbird's pulse width is a running ACCUMULATOR that does not repeat when
-# wavepos does, so folding it onto the wavepos cycle was fabricating a short
-# loop where real hardware sweeps continuously. Affordable at this length
-# only because the same round switched PULSE to delta (ADD-row) encoding: a
-# linear sweep of any length costs ONE 3-byte row, not one row per frame.
-PULSE_CAPTURE_FRAMES = 1200   # ~24s @ 50fps
+# B9 RETIRED B8's PULSE_CAPTURE_FRAMES (was 1200). B8 had to capture pulse
+# OUTPUT over a long window because the accumulator does not repeat when
+# wavepos does; B9 stores the DELTA program instead and runs the accumulator
+# in the driver, so the capture only ever needs the wavepos cycle itself
+# (CYCLE_SEARCH_FRAMES) and the output is exact for any length -- there is no
+# capture window to run past any more. See unroll_wave_pulse's B9 block.
 
 
 
@@ -337,7 +335,8 @@ def _capture_engine_state(sim):
         voices.append(dict(wavepos=vs.wavepos, wavemask=vs.wavemask,
                             currins=vs.currins, currfx=vs.currfx,
                             pendnote=vs.pendnote,
-                            fxpos=vs.fxpos))     # B8: FM/arp resume position
+                            fxpos=vs.fxpos,      # B8: FM/arp resume position
+                            pwidth=vs.pwidth))   # B9: pulse-accumulator phase
     return dict(voices=voices, zp_filtpos=sim.zp_filtpos,
                 filt_owner=sim.filt_owner, regs=list(sim.regs))
 
@@ -386,6 +385,56 @@ def _lookup_filter_row(extra, target_pos):
 # ---------------------------------------------------------------------------
 _WP_CACHE = {}
 
+# B9: the single ambiguous code in the col1 encoding (see _pulse_col1). An ADD
+# whose wavepos-carry-folded delta lands exactly on $80 would be indistinguish-
+# able from a SET of 0. Never occurs on either corpus file (measured: 0 of 52
+# Fargo / 92 Glyptodont pulse-row x wavemask combinations); asserted rather
+# than assumed, so a future file that DID hit it fails loudly instead of
+# silently mistranslating one row.
+_PW_AMBIGUOUS = 0x80
+
+
+def _pulse_col1(sim, y_before, wavemask):
+    """B9 -- a 1:1 port of lft's own wave/pulse row semantics (player.s lines
+    272-317, quoted in docs/players/BLACKBIRD.md's B9 section) into this
+    engine's standard 2-column WAVE table.
+
+    Given the wavepos BEFORE a frame, return (is_pulse_row, col1_byte) where
+    col1_byte is EXACTLY the byte lft reads from `wavetable+1,y` -- except
+    that the ADD path's carry-in (which on real hardware is inherited from the
+    preceding `tya; adc #2` wavepos advance, i.e. a function of the HARDWARE
+    position y, a quantity the driver's own re-indexed row space does not
+    have) is FOLDED into the stored delta at build time. That fold is exact
+    because both y and the waveform byte's bit7 are fixed table properties of
+    the row, not runtime state.
+
+    Encoding, identical to hardware's:
+      bit7 CLEAR -> ACCUMULATE: pwidth += col1
+      bit7 SET   -> ABSOLUTE  : pwidth  = (col1 << 1) & $ff   (lft's `asl`)
+    """
+    y = y_before
+    w = sim.wavetable(y)
+    if w >= 0xC0:                      # `cmp #$c0; bcs` -> carry set -> +1
+        y = (w + y + 1) & 0xFF
+        w = sim.wavetable(y)
+    d404v = w & wavemask
+    shifted, cb7 = _asl(d404v)         # carry out = bit7 of the waveform byte
+    if not (shifted & 0x80):           # `bpl nopulse` -- bit6 clear
+        return False, 0x00
+    _nw, c_from_wp, _ = _adc(y, 2, cb7)   # `tya; adc #2`
+    pdelta = sim.wavetable(y + 1)         # `lda wavetable+1,y`
+    if pdelta & 0x80:                     # `bmi pwset` -> absolute
+        return True, pdelta
+    eff = (pdelta + c_from_wp) & 0xFF     # `adc v_pwidth,x`, carry folded in
+    if eff == _PW_AMBIGUOUS:
+        raise ValueError(
+            f"B9 col1 encoding collision at wavepos {y}: ADD delta "
+            f"${pdelta:02x} + wavepos-carry {c_from_wp} == $80, which the "
+            f"driver would decode as an absolute SET of 0. This never occurs "
+            f"on Fargo/Glyptodont; a file that hits it needs a second column "
+            f"(or the carry left unfolded) -- see BLACKBIRD.md B9.")
+    return True, eff
+
 
 def unroll_wave_pulse(lay, d, la, ins_restart, ins_restart2, wave_start):
     # Memoized: build_song's fits() grid search calls build_range dozens of
@@ -405,196 +454,102 @@ def unroll_wave_pulse(lay, d, la, ins_restart, ins_restart2, wave_start):
                                     # everyframe(): `shifted,_=asl(d404v)`; bit6 of
                                     # d404v is untouched by 0xFE/0xFF masking)
     v.pwidth = 0
-    positions, d404s, pulses, pulse_written = [], [], [], []
-    for _ in range(max(CYCLE_SEARCH_FRAMES, PULSE_CAPTURE_FRAMES)):
+    positions, d404s, pulses, col1s = [], [], [], []
+    for _ in range(CYCLE_SEARCH_FRAMES):
         positions.append(v.wavepos)
-        wl_before = len(sim.write_log)
+        # B9: resolve THIS frame's pulse op from the pre-frame wavepos, using
+        # the same fixed table bytes everyframe() is about to read. Done
+        # BEFORE the call so `v.wavepos` is still the pre-frame value.
+        col1s.append(_pulse_col1(sim, v.wavepos, v.wavemask))
         sim.everyframe()
         d404s.append(sim.regs[4])
         pulses.append((sim.regs[2], sim.regs[3]))
-        pulse_written.append(any(e[1] in (2, 3) for e in sim.write_log[wl_before:]))
     cyc_start, cyc_end = _find_cycle(positions)
 
-    # WAVE: native $7f jump exists -> loop exactly, forever.
-    wave_rows = [(d404s[k] & 0xFF, 0x00) for k in range(cyc_end)]
+    # =====================================================================
+    # B9: WAVE col0 = waveform, col1 = THE PULSE DELTA -- a 1:1 structural
+    # port of lft's own engine (player.s 272-317) rather than a translation
+    # of its OUTPUT.
+    #
+    # WHY (see docs/players/BLACKBIRD.md's B9 section for the full trail):
+    # Blackbird's pulse width is an 8-bit ACCUMULATOR fed through the fixed
+    # 256-byte `pwprepare` lookup. The DELTAS cycle with the wave program
+    # (period 1-10 rows on Glyptodont); the accumulated OUTPUT does not,
+    # because each lap drifts the accumulator by a nonzero amount and
+    # `pwprepare` is a -16 ramp with wrap discontinuities (index 8 -> 15,
+    # 9 -> 254; mirrored about 127/128), i.e. NOT affine. B8 stored the
+    # output byte and so had to unroll until the output happened to
+    # realign -- which for these instruments never happens inside any
+    # capture window (median 1125 PULSETAB rows per Glyptodont instrument,
+    # max 1201, to express what Blackbird stores in ONE row). That bloat is
+    # what drove Glyptodont's part count and its bundle-cap pressure.
+    #
+    # The delta belongs in WAVE col1 specifically because that is EXACTLY
+    # where lft puts it -- `wavetable` is one interleaved variable-width
+    # byte stream where a pulse row is 2 bytes (waveform, then the delta
+    # inline) and a non-pulse row is 1 byte, with bit6 of the waveform byte
+    # itself as the "this row carries pulse" flag. This engine's WAVE table
+    # is 2 columns of 256, one row per frame, so the SAME information lands
+    # in col1 of the SAME row -- no new table, no second cursor, and the
+    # pulse steps in lockstep with the wave row because it IS the wave row.
+    #
+    # col1 is genuinely free for Blackbird: this translator has always
+    # written 0x00 there (Blackbird wave rows carry no semitone offset --
+    # pitch is the separate fx/FM engine), and the only nonzero col1 values
+    # ever emitted are jump targets on $7f rows, which wave_step resolves
+    # before it can ever be treated as a content row.
+    # =====================================================================
+    wave_rows = [(d404s[k] & 0xFF, col1s[k][1]) for k in range(cyc_end)]
     wave_rows.append((0x7F, cyc_start))     # relative-to-program-start; the
                                              # builder absolutises it (see
                                              # gen_includes_song, same
                                              # convention as every other
                                              # native driver in this repo)
 
-    # PULSE: fm_step/pulse_step have no jump primitive -> physically repeat
-    # the cycle to cover TARGET_FM_PULSE_FRAMES, then freeze on the last
-    # value (see module docstring's "PULSE" bullet).
-    #
-    # REAL BUG FOUND (this session, task priority 1 -- Glyptodont pulse
-    # 0.2% vs Fargo's already-near-zero 1.0%): an instrument whose wave
-    # program NEVER sets bit6 (no genuine pulse content -- common: roughly
-    # half of Glyptodont's 32 used instruments have ZERO distinct pulse
-    # writes across the full unroll window, e.g. instruments 1/6/9/12/15/17/
-    # 23/26/27/31 in a direct per-instrument dump this session) was
-    # translated as an explicit "SET pulse width to $000, hold ~250+ frames"
-    # program -- because this function's throwaway BlackbirdSim always
-    # starts with regs=[0]*25 (BlackbirdSim.__init__), so an instrument that
-    # never actually calls self.w() for reg 2/3 still reads back as a
-    # constant (0,0) VALUE sequence from here, with no way to distinguish
-    # "never wrote" from "genuinely wrote zero" by inspecting the resulting
-    # VALUE alone. Real hardware's actual behaviour for such an instrument
-    # is to leave $D402/3 COMPLETELY UNTOUCHED (the same-voice register
-    # keeps whatever the PREVIOUS pulse-writing instrument last left there)
-    # -- but pn_note (blackbird_driver.asm: PPTR=VIPUL; VPC=0) unconditionally
-    # restarts this bundle's pulse program at the START of every note, so the
-    # old explicit SET-0 row was stomping a real, audible prior pulse value
-    # back to hard 0 every single time a flat-pulse instrument's note played
-    # next -- a systemic, repeated corruption over a 2703-note song, not a
-    # one-off. This is the pulse-side analogue of the FM/frequency side's
-    # bundle-clustering loss, except proportionally much worse: FM's "no
-    # modulation" case (a constant delta=0 fed into an accumulator) is
-    # coincidentally the CORRECT representation of silence already, but
-    # pulse's "no write" is NOT equivalent to "write 0". Verified directly
-    # via a live py65 register/state trace on Glyptodont voice0's very first
-    # note (instrument 1, whose own per-instrument dump shows a single
-    # distinct pulse value of 0): the native driver held $D402/3 at a hard 0
-    # for the note's full ~249-frame duration while the validated simulator
-    # showed a nonzero, persisted value throughout that whole span (carried
-    # over from the engine's own pre-note startup transient, itself a
-    # separate already-documented residual) -- exactly this bug's signature.
-    # Fixed by tracking whether `everyframe()` genuinely called `self.w()`
-    # for reg 2/3 on ANY captured frame (pulse_written, above), not inferred
-    # from the resulting value; if it never did across the program's full
-    # unique span (up to cyc_end -- frames beyond that are guaranteed
-    # repeats by construction, see _find_cycle), emit a BARE $7f freeze-only
-    # program (no SET row at all) so pn_note's restart becomes a true no-op
-    # that leaves $D402/3 exactly as the PREVIOUS bundle left them, matching
-    # real hardware, instead of fabricating a SET-to-zero that never
-    # happened on real hardware.
-    if not any(pulse_written[:cyc_end]):
-        pulse_rows = [(0x7F, 0x00, 0x00)]
-        return wave_rows, pulse_rows, dict(
-            cycle_start=cyc_start, cycle_len=cyc_end - cyc_start, prog_len=cyc_end,
-            positions=positions, pulse_row_frame_start=[0, 0], pulse_flat=True)
+    # --- SELF-CHECK: replay the DRIVER's own arithmetic over the emitted
+    # col1 column and require it to reproduce the validated simulator's
+    # $D402/$D403 byte on EVERY frame of the program's unique span. This is
+    # what makes B9 exact-by-construction rather than exact-by-hope: if the
+    # port were even one carry off, this fires at build time on the first
+    # instrument that exercises it, instead of showing up as a few lost
+    # percent in a register-trace comparison nobody can attribute.
+    acc, cur = 0, 0
+    for k in range(cyc_end):
+        is_pulse, c1 = col1s[k]
+        if is_pulse:
+            acc = ((c1 << 1) & 0xFF) if (c1 & 0x80) else ((c1 + acc) & 0xFF)
+            cur = sim.pwprepare[acc]
+        if cur != (pulses[k][0] & 0xFF) or cur != (pulses[k][1] & 0xFF):
+            raise AssertionError(
+                f"B9 pulse self-check failed at wave_start={wave_start} "
+                f"frame {k}: driver-replay ${cur:02x} vs simulator "
+                f"$D402=${pulses[k][0]:02x} $D403=${pulses[k][1]:02x}")
 
-    # REAL BUG FOUND (B8, see docs/players/BLACKBIRD.md): PULSE used to be
-    # captured only over the WAVEPOS cycle (prefix + repeat cyc), on the
-    # assumption that a repeating wavepos implies a repeating pulse output.
-    # It does not. Blackbird's pulse width is a running ACCUMULATOR
-    # (BlackbirdSim's `v.pwidth`, fed through the fixed `pwprepare` lookup),
-    # so a wave program that loops every N frames can still produce a pulse
-    # value that sweeps continuously and never repeats. Caught by diffing
-    # Glyptodont part 8 -- a part with ZERO bundle clustering and 97.7%
-    # waveform (so the wavepos walk itself was provably right) yet 1.6%
-    # pulse: the simulator swept +32/frame for the whole window while the
-    # driver replayed a 2-3 frame loop forever. Fixed by capturing the
-    # GENUINE pulse output over a long window and never folding it onto the
-    # wavepos cycle.
-    #
-    # That capture is only affordable because pulse rows are now DELTA
-    # (0X ADD) encoded rather than one SET row per distinct value: a linear
-    # sweep of any length is a single 3-byte ADD row. Verified against
-    # pulse_step's own decode (blackbird_driver.asm): byte0 bit7 clear ->
-    # VPADH = byte0 & $0f, VPADL = byte1, and pl_apply does VPLO += VPADL
-    # every frame with only VPLO ever reaching $D402/3 -- so an 8-bit
-    # wrapping ramp is exact, and VPADH can stay 0 even for a negative
-    # delta. B5's own note that "Blackbird's translator never emits a
-    # genuine 0X (ADD) row" was true then and is deliberately no longer
-    # true; the pl_apply/VPHI bookkeeping it relied on is unaffected because
-    # $D403 is written from VPLO regardless.
-    seq = pulses[:PULSE_CAPTURE_FRAMES]
-    pulse_rows = []
-    # B8: pulse_row_frame_start[r] = the SOURCE frame index (same index space
-    # as `positions`/`seq`, i.e. frames since this program's own row 0) at
-    # which translated PULSE row r begins. Needed to resume a program
-    # mid-flight: pulse_step's own row occupies exactly `run` frames (it
-    # loads on the frame VPC==0, sets VPC=run, applies, then decrements --
-    # so the row is live for frames [start, start+run) ), which makes this
-    # cumulative sum the exact inverse of pl_decode's own advance. Same
-    # role unroll_filter's `row_frame_start` already plays for the filter.
-    pulse_row_frame_start = []
-    vals = [v[0] & 0xFF for v in seq]            # $D402 == $D403 == this byte
-    # ENCODING CHOICE, measured rather than assumed (see the B8 report's
-    # own before/after table -- both alternatives were built and scored):
-    #
-    #   * ABSOLUTE (8X SET rows, used here): exact for every instrument
-    #     whose wave program sets pulse width ABSOLUTELY (`pdelta & $80` ->
-    #     `pw = asl(pdelta)` in BlackbirdSim.everyframe, history-
-    #     independent), which is the common case. For a RELATIVE-add
-    #     instrument it re-anchors to the from-zero capture at each note-on
-    #     instead of tracking the true carried-over `vs.pwidth`.
-    #   * PURE DELTA (0X ADD rows): matches hardware's "note-on restarts
-    #     the wave program but NOT the width accumulator" semantics in
-    #     principle, and scored better in a fresh part's first ~200 frames
-    #     (Fargo primary pulse 79.7% vs 27.5%) -- but DRIFTS irrecoverably
-    #     over a long window (Fargo full-part 7.4%), because `pwprepare` is
-    #     NOT affine: it is a -16 ramp with wrap discontinuities (index 8
-    #     -> 15, index 9 -> 254), so an output delta is only history-
-    #     independent while the accumulator stays inside one ramp segment.
-    #     Once hardware's `pw` and the capture's `pw` sit on opposite sides
-    #     of a wrap, every subsequent delta is wrong and nothing re-anchors.
-    #
-    # Neither is exact, because this shared engine's PULSETAB stores the
-    # OUTPUT byte while Blackbird stores an accumulator that is fed through
-    # a non-affine lookup -- a genuine, nameable representational gap, not
-    # a translation bug. Absolute wins on every long window measured, so
-    # that is what ships; the delta path is documented here rather than
-    # left as folklore.
-    # WHICH capture to encode is now decided PER INSTRUMENT, from the data,
-    # instead of always folding onto the wavepos cycle:
-    #
-    #   * If the pulse output genuinely REPEATS with the wavepos cycle (net
-    #     `pwidth` change per cycle == 0), fold and repeat it -- this is the
-    #     pre-B8 behaviour and it is correct AND compact for these.
-    #   * If it does NOT repeat (the accumulator drifts, so hardware sweeps
-    #     continuously), folding fabricates a short loop that real hardware
-    #     never plays. That was the Glyptodont-part-8 bug. Encode the long
-    #     literal capture for these instead.
-    #
-    # Tested directly rather than assumed, and the split matters both ways:
-    # applying the LONG capture to every instrument regressed Fargo's
-    # pulse from 87.8% to 14.3% (its instruments are periodic, and a
-    # from-zero long capture of a periodic engine still differs from
-    # hardware's already-settled phase), while folding every instrument
-    # left Glyptodont part 8 at 1.6%. Neither global choice wins; the
-    # per-instrument test does.
-    # The PULSE period is not necessarily the WAVEPOS period -- `pwidth` can
-    # take several wavepos cycles to return to the same value (it only has
-    # to be a MULTIPLE of the wavepos period, since the pulse rows executed
-    # are a function of wavepos). Searching only m=1 misclassified Fargo's
-    # instruments as sweeping and cost 73pp of pulse accuracy, so the search
-    # runs over multiples.
-    L = max(1, cyc_end - cyc_start)
-    P = None
-    for m in range(1, 13):
-        pp = m * L
-        if cyc_start + 2 * pp > len(vals):
-            break
-        span = min(len(vals) - cyc_start - pp, 3 * pp)
-        if span <= 0:
-            break
-        if all(vals[cyc_start + i] == vals[cyc_start + i + pp] for i in range(span)):
-            P = pp
-            break
-    if os.environ.get('BB_PULSE_FOLD') == 'always':
-        P = max(1, cyc_end - cyc_start)
-    if P is not None:
-        prefix = vals[:cyc_start]
-        cyc = vals[cyc_start:cyc_start + P] or [vals[0] if vals else 0]
-        out = list(prefix)
-        while len(out) < TARGET_FM_PULSE_FRAMES:
-            out += cyc
-    else:
-        out = vals
-    acc = 0
-    for val, run in _rle(out):
-        pulse_rows.append((0x80, val & 0xFF, run))
-        pulse_row_frame_start.append(acc)
-        acc += run
-    pulse_row_frame_start.append(acc)
-    pulse_rows.append((0x7F, 0x00, 0x00))   # freeze holding the last value
+    # PULSE: PULSETAB is DEAD for Blackbird as of B9 -- the pulse engine now
+    # lives inside wave_step. Every instrument gets the same bare $7f
+    # freeze-only program, which dedups to a single 3-byte PULSETAB entry
+    # the driver never reads. Kept (rather than ripped out of the table
+    # allocator) so FMTAB/edit-area address arithmetic is unchanged and this
+    # round's numbers isolate the engine change alone.
+    pulse_rows = [(0x7F, 0x00, 0x00)]
+
+    # pw_before[k] = the accumulator value BEFORE translated row k runs,
+    # starting from 0. Not used for priming (do_init primes PW_ACC from the
+    # simulator's own true `v.pwidth` snapshot, which is genuine per-voice
+    # runtime state and does not depend on this from-zero replay) -- kept
+    # for diagnostics/reporting only.
+    pw_before, _a = [], 0
+    for k in range(cyc_end):
+        pw_before.append(_a)
+        is_pulse, c1 = col1s[k]
+        if is_pulse:
+            _a = ((c1 << 1) & 0xFF) if (c1 & 0x80) else ((c1 + _a) & 0xFF)
 
     return wave_rows, pulse_rows, dict(
         cycle_start=cyc_start, cycle_len=cyc_end - cyc_start, prog_len=cyc_end,
-        positions=positions, pulse_row_frame_start=pulse_row_frame_start,
-        pulse_flat=False, pulse_vals=vals)
+        positions=positions, pulse_row_frame_start=[0, 0], pulse_flat=True,
+        pw_before=pw_before,
+        n_pulse_rows=sum(1 for c in col1s[:cyc_end] if c[0]))
 
 
 # ---------------------------------------------------------------------------
@@ -1175,7 +1130,7 @@ def window_tempo_schedule(schedule, row0, row1):
 def gen_includes_song(segs, ad_sr, wave_programs, filter_programs,
                       filter_flag_of, bundles, default_filter_program,
                       multispeed=1, tempo_sched_len=0,
-                      default_wave_program=None, aux_pulse_programs=(),
+                      default_wave_program=None,
                       aux_fm_programs=(), pulse_programs=None):
     gen = SF2HeaderGenerator()
     gen.DRIVER_INIT, gen.DRIVER_PLAY, gen.DRIVER_STOP = B.DRV_INIT, B.DRV_PLAY, B.DRV_STOP
@@ -1353,9 +1308,6 @@ def gen_includes_song(segs, ad_sr, wave_programs, filter_programs,
     for i in range(min(len(ad_sr), 32)):
         instr_pulse_addr[i] = _emit_pulse(pulse_programs.get(i) or _flat)
     # B8: same story as aux_fm_programs above, for PULSE.
-    aux_pulse_addr = []
-    for pp in aux_pulse_programs:
-        aux_pulse_addr.append(_emit_pulse(pp) if pp else None)
     fmtab, pulsetab = bytes(fmtab), bytes(pulsetab_tmp)
     need = pulsetab_addr + len(pulsetab) - B.EDIT_BASE
     if len(edit) < need:
@@ -1399,7 +1351,7 @@ def gen_includes_song(segs, ad_sr, wave_programs, filter_programs,
         f.write(f"FILT_INIT_ROW = {filt_init_row}\n")
         f.write(f"WAVE_INIT_ROW = {wave_init_row}\n")   # B8: default wave program
     return gen, bytes(edit), mdp, seq0, dict(
-        aux_fm_addr=aux_fm_addr, aux_pulse_addr=aux_pulse_addr,
+        aux_fm_addr=aux_fm_addr,
         wave_init_row=wave_init_row)
 
 
@@ -1424,6 +1376,46 @@ def write_freqtable(sim):
                 "blackbird_note_idx + 9\n")
         for k in range(0, len(words), 8):
             f.write("        .word " + ", ".join(f"${w:04x}" for w in words[k:k + 8]) + "\n")
+
+
+# B9: the reference `pwprepare` bytes, captured on first emission and then
+# cross-checked on every later file. The RE established this table is baked
+# identically into every v1.2-exact rip (fixed template offset 1024, not
+# relocated, not composer data) -- this ASSERTS that per build rather than
+# trusting it, which is the only way the claim stays true for file 3..11.
+_PWPREPARE_REF = None
+
+
+def write_pwprepare(sim):
+    """pwprepare.inc -- Blackbird's fixed 256-entry pulse-width lookup, read
+    straight out of THIS file's own loaded template at seg_play_data offset
+    1024 (BlackbirdSim.__init__ already does the read; this just emits it).
+
+    Shape, for the record (measured, not assumed -- and it is NOT the simple
+    triangle a first glance suggests): a descending -16 ramp with WRAP
+    discontinuities every ~17 entries (index 8 -> 15, index 9 -> 254), plus
+    plateaus, mirrored about 127/128 (`pw[i] == pw[255-i]` holds for all i;
+    min 8 at index 126-129, max 254). That non-affine shape is exactly why
+    B8's output-byte encoding could not close a cycle and why the delta
+    program has to be run through the real table in the driver."""
+    global _PWPREPARE_REF
+    tbl = list(sim.pwprepare)
+    if len(tbl) != 256:
+        raise ValueError(f"pwprepare: expected 256 bytes, got {len(tbl)}")
+    if _PWPREPARE_REF is None:
+        _PWPREPARE_REF = tbl
+    elif tbl != _PWPREPARE_REF:
+        raise ValueError(
+            "pwprepare differs between files -- the 'byte-identical across "
+            "every v1.2-exact rip' invariant this driver relies on is FALSE "
+            "for this file; the table would have to become per-song data.")
+    with open(os.path.join(ROOT, "drivers_src", "blackbird", "pwprepare.inc"), "w") as f:
+        f.write("; Blackbird's fixed pulse-width lookup (`pwprepare`), read verbatim\n"
+                "; from this song's own play-data template at offset 1024. 256 bytes,\n"
+                "; byte-identical across every v1.2-exact rip (asserted at build time,\n"
+                "; see write_pwprepare). Indexed by the 8-bit pulse accumulator PW_ACC.\n")
+        for k in range(0, 256, 16):
+            f.write("        .byte " + ", ".join(f"${b:02x}" for b in tbl[k:k + 16]) + "\n")
 
 
 def playing_notes(packed):
@@ -1519,8 +1511,7 @@ def _compute_prime_consts(gen, edit, ad_sr, wave_programs, wave_stats_by_instr,
                            default_filter_extra, bundle_of, prime,
                            prime_instr_of_voice, prime_key_of_voice,
                            filt_owner_instr, aux=None, default_wave_program=None,
-                           default_wave_stats=None, prime_pulse_prog=None,
-                           prime_pulse_extra=None, prime_pulse_k=None,
+                           default_wave_stats=None,
                            prime_fm_prog=None, prime_fm_extra=None,
                            prime_fm_k=None):
     io = gen.instr_addr - B.EDIT_BASE
@@ -1549,79 +1540,34 @@ def _compute_prime_consts(gen, edit, ad_sr, wave_programs, wave_stats_by_instr,
         return None
 
     consts = {}
-    # --- B8: PULSE + FM genuine mid-program resume (B7 deliberately deferred
-    # both; see docs/players/BLACKBIRD.md's B8 section). Neither table format
-    # has a JUMP/resume primitive -- but none is needed, because both
-    # engines' entire position is held in plain RUNTIME state that do_init
-    # can simply write:
-    #   pulse_step: PPTR (16-bit row cursor) + VPC (frames left on the
-    #     current row) + VPLO/VPHI (the live 12-bit width) + VPADL/VPADH
-    #     (this row's per-frame add).
-    #   fm_step:    FMP (16-bit row cursor) + FM_CNT (frames left) +
-    #     FM_ACC_LO/HI (THE load-bearing one -- FM is a cumulative
-    #     accumulator, so the absolute pitch offset lives here, not in the
-    #     table) + FM_OFF_LO/HI (this row's per-frame delta) + FM_ON.
-    # Verified against pulse_step/fm_step directly (blackbird_driver.asm):
-    # a row whose byte2 is `run` is loaded on the frame its counter reads 0,
-    # which sets the counter to `run`, applies, then decrements -- so the
-    # row is live for exactly frames [start, start+run), and resuming at
-    # elapsed `e` means counter = run - e with the cursor ALREADY advanced
-    # past that row (PPTR/FMP = prog + 3*(r+1)), which is precisely the
-    # state pl_decode/fm_haveent leave behind.
-    # VPADL/VPADH stay 0: Blackbird's translator only ever emits 8X (SET)
-    # pulse rows, never 0X (ADD) -- see unroll_wave_pulse -- so a resumed
-    # row's add is exactly 0 by construction, not an approximation.
+    # --- B9: PULSE part-boundary priming is now a SINGLE byte per voice.
+    #
+    # B8 needed seven fields per voice (PPTR_LO/HI, VPC, VPLO, VPHI, VPADL,
+    # plus an aux PULSETAB program emitted just to give the cursor a stable
+    # address) because the pulse ran on its own independent row cursor whose
+    # whole position had to be reconstructed. B9 deleted that engine: pulse
+    # is stepped by wave_step off the WAVE row, so the wave priming that
+    # already exists (PRIME_VWI, via _lookup_wave_row) positions the pulse
+    # program too, for free and by construction.
+    #
+    # What remains is the one thing that is genuinely per-voice runtime
+    # state and NOT recoverable from any table: the 8-bit accumulator
+    # itself. The simulator tracks it as `v.pwidth`, and the boundary
+    # snapshot (row0+1, per B8's anchor fix) carries its true value at
+    # exactly the instant the part begins -- so this is an EXACT resume of
+    # the mid-sweep phase, which is the specific thing B8's own punch list
+    # named as unfixable under the output-byte encoding ("it cannot
+    # reproduce a phase it was never given").
     for v in range(3):
-        prog = (prime_pulse_prog or [None] * 3)[v]
-        pex = (prime_pulse_extra or [None] * 3)[v]
-        pk = (prime_pulse_k or [0] * 3)[v]
-        paddr = (aux or {}).get('aux_pulse_addr', [None] * 3)[v] if aux else None
-        starts = (pex or {}).get('pulse_row_frame_start') if pex else None
-        found = _row_at(starts, pk) if (starts and prog and not
-                                        (pex or {}).get('pulse_flat')) else None
-        if paddr is None or found is None:
-            # Flat/freeze-only program, or a position past the unrolled
-            # extent: keep B7's behaviour -- hold the last real observed
-            # $D402 byte steady. (For a freeze-only program this is EXACT,
-            # not an approximation: real hardware leaves $D402/3 untouched.)
-            consts[f'PRIME_PPTR_LO{v}'] = (paddr & 0xFF) if paddr is not None else 0
-            consts[f'PRIME_PPTR_HI{v}'] = ((paddr >> 8) & 0xFF) if paddr is not None else 0
-            raw = (prime['regs'][2 + 7 * v] & 0xFF) if prime is not None else 0
-            consts[f'PRIME_PULSE{v}'] = raw
-            consts[f'PRIME_VPHI{v}'] = (raw >> 4) & 0x0F
-            consts[f'PRIME_VPADL{v}'] = 0
-            consts[f'PRIME_VPC{v}'] = 0xFF if paddr is None else 0x00
-        else:
-            r, e = found
-            b0, b1, run = prog[r]
-            # B8: the live WIDTH is now taken from the simulator's own
-            # captured $D402 at this exact instant, NOT reconstructed from
-            # the program -- with pure-delta rows the program carries only
-            # the CHANGES, and the absolute value is genuine per-voice
-            # accumulator state whose true value the snapshot already has.
-            cur = (prime['regs'][2 + 7 * v] & 0xFF) if prime is not None else 0
-            if e == 0:
-                # Landing exactly ON a row boundary: point at row r itself
-                # with VPC=0 so pulse_step LOADS it on the part's frame 0.
-                # Pre-setting VPC=run instead would skip the load, and a SET
-                # row's whole effect IS its load -- a real bug caught on
-                # Fargo, where voice 2's resume sat on a `SET 187 for 247
-                # frames` row at elapsed 0 and the driver held the previous
-                # value (8) for the entire part instead of ever writing 187.
-                tgt = paddr + 3 * r
-                consts[f'PRIME_PPTR_LO{v}'] = tgt & 0xFF
-                consts[f'PRIME_PPTR_HI{v}'] = (tgt >> 8) & 0xFF
-                consts[f'PRIME_VPADL{v}'] = 0
-                consts[f'PRIME_VPC{v}'] = 0
-            else:
-                tgt = paddr + 3 * (r + 1)
-                consts[f'PRIME_PPTR_LO{v}'] = tgt & 0xFF
-                consts[f'PRIME_PPTR_HI{v}'] = (tgt >> 8) & 0xFF
-                consts[f'PRIME_VPADL{v}'] = 0 if (b0 & 0x80) else (b1 & 0xFF)
-                consts[f'PRIME_VPC{v}'] = max(1, run - e) & 0xFF
-            consts[f'PRIME_PULSE{v}'] = cur
-            consts[f'PRIME_VPHI{v}'] = 0
+        consts[f'PRIME_PW_ACC{v}'] = (
+            (prime['voices'][v].get('pwidth', 0) & 0xFF) if prime is not None else 0)
+        # ...and the REGISTER itself, for the "this instrument's wave program
+        # has no bit6 rows at all" case -- see blackbird_driver.asm's own
+        # PRIME_D402_TAB comment for the measurement that forced this.
+        consts[f'PRIME_D402{v}'] = (
+            (prime['regs'][2 + 7 * v] & 0xFF) if prime is not None else 0)
 
+    for v in range(3):
         fprog = (prime_fm_prog or [None] * 3)[v]
         fex = (prime_fm_extra or [None] * 3)[v]
         fk = (prime_fm_k or [0] * 3)[v]
@@ -1697,8 +1643,6 @@ def _compute_prime_consts(gen, edit, ad_sr, wave_programs, wave_stats_by_instr,
             consts[f'PRIME_VWF{v}'] = dwp[0][0] & 0xFF
             consts[f'PRIME_VIFM_LO{v}'] = edit[(ifmlo_addr - eb) + 0]
             consts[f'PRIME_VIFM_HI{v}'] = edit[(ifmhi_addr - eb) + 0]
-            consts[f'PRIME_VIPUL_LO{v}'] = edit[(ipulse_lo_addr - eb) + 0]
-            consts[f'PRIME_VIPUL_HI{v}'] = edit[(ipulse_hi_addr - eb) + 0]
             continue
 
         wave_start_row = edit[io + 5 * 32 + oi]
@@ -1729,19 +1673,15 @@ def _compute_prime_consts(gen, edit, ad_sr, wave_programs, wave_stats_by_instr,
                   f"the driver's own program-0 default (residual)")
             consts[f'PRIME_VIFM_LO{v}'] = edit[(ifmlo_addr - eb) + 0]
             consts[f'PRIME_VIFM_HI{v}'] = edit[(ifmhi_addr - eb) + 0]
-            consts[f'PRIME_VIPUL_LO{v}'] = edit[(ipulse_lo_addr - eb) + 0]
-            consts[f'PRIME_VIPUL_HI{v}'] = edit[(ipulse_hi_addr - eb) + 0]
         else:
             consts[f'PRIME_VIFM_LO{v}'] = edit[(ifmlo_addr - eb) + bidx]
             consts[f'PRIME_VIFM_HI{v}'] = edit[(ifmhi_addr - eb) + bidx]
-            # B8: VIPUL (the pulse RESTART address) is instrument-indexed
-            consts[f'PRIME_VIPUL_LO{v}'] = edit[(ipulse_lo_addr - eb) + oi]
-            consts[f'PRIME_VIPUL_HI{v}'] = edit[(ipulse_hi_addr - eb) + oi]
 
-        # (B8: PRIME_PULSE/PRIME_VPC/PRIME_PPTR_* and every PRIME_FM_* field
-        # are now set by the dedicated pulse/FM resume loop ABOVE, which
-        # runs for all three voices regardless of which branch this loop
-        # takes -- B7's unconditional "freeze at the last raw byte" is gone.)
+        # (B9: PRIME_PW_ACC and every PRIME_FM_* field are set by the
+        # dedicated accumulator/FM loop ABOVE, which runs for all three
+        # voices regardless of which branch this loop takes. B8's seven
+        # per-voice pulse-cursor fields are gone entirely -- wave_step
+        # positions the pulse program now, so PRIME_VWI does that job.)
 
     # --- global filter priming (ONE shared SID resource, not per-voice) ---
     if prime is None:
@@ -1786,9 +1726,12 @@ def _compute_prime_consts(gen, edit, ad_sr, wave_programs, wave_stats_by_instr,
 
 PRIME_PER_VOICE_FIELDS = ['VWI', 'VIWAVE', 'VGMASK', 'VBASENOTE', 'AD', 'SR',
                           'FLAGS', 'VIFILT', 'VWF', 'VIFM_LO', 'VIFM_HI',
-                          'VIPUL_LO', 'VIPUL_HI', 'PULSE', 'VPC',
-                          # B8: genuine mid-program PULSE + FM resume
-                          'VPHI', 'VPADL', 'PPTR_LO', 'PPTR_HI',
+                          # B9: the ONE remaining pulse field. B8's seven
+                          # (VIPUL_LO/HI, PULSE, VPC, VPHI, VPADL, PPTR_LO/HI)
+                          # all described a separate pulse row-cursor that no
+                          # longer exists -- wave_step steps the pulse now.
+                          'PW_ACC', 'D402',
+                          # B8: genuine mid-program FM resume
                           'FM_ON', 'FMP_LO', 'FMP_HI', 'FM_CNT',
                           'FM_ACC_LO', 'FM_ACC_HI', 'FM_OFF_LO', 'FM_OFF_HI']
 PRIME_GLOBAL_FIELDS = ['PRIME_F_IDX', 'PRIME_F_CNT', 'PRIME_F_ADHI',
@@ -2038,43 +1981,27 @@ def build_range(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
             f"{len(part_schedule)} entries > {TEMPO_SCHED_CAP}")
     n_sched = write_tempo_schedule(part_schedule)
 
-    # --- B8: resolve, per voice, the EXACT pulse + FM programs do_init needs
-    # to resume at this part's own boundary, and the source-frame index to
-    # resume them AT.
+    # --- B8/B9: resolve, per voice, the EXACT FM program do_init needs to
+    # resume at this part's own boundary, and the source-frame index to
+    # resume it AT.
     #
     # Deliberately NOT taken from the post-clustering bundle the voice's
     # priming key maps to: clustering can (and on Glyptodont routinely does)
     # replace a resting voice's real program with a merged neighbour's, and
     # priming a mid-flight position into the WRONG program is worse than
-    # useless. These are emitted as AUX programs into the same FMTAB/
-    # PULSETAB instead (deduped, so they usually cost nothing), giving
-    # do_init a stable address for the genuine article. `prime_pulse_k`/
-    # `prime_fm_k` are source-frame indices in the SAME index space
-    # unroll_wave_pulse's `positions` / unroll_fm's `positions` use.
-    prime_pulse_prog = [None, None, None]
-    prime_pulse_extra = [None, None, None]
-    prime_pulse_k = [0, 0, 0]
+    # useless. It is emitted as an AUX program into the same FMTAB instead
+    # (deduped, so it usually costs nothing), giving do_init a stable
+    # address for the genuine article. `prime_fm_k` is a source-frame index
+    # in the SAME index space unroll_fm's `positions` uses.
+    #
+    # B9: the PULSE half of this block is GONE. The pulse program's position
+    # is the WAVE row (see unroll_wave_pulse's B9 block), which PRIME_VWI
+    # already primes; the only remaining pulse state is the accumulator,
+    # primed as PRIME_PW_ACC straight from the snapshot's `pwidth`.
     prime_fm_prog = [None, None, None]
     prime_fm_extra = [None, None, None]
     prime_fm_k = [0, 0, 0]
     for v in range(3):
-        oi = prime_instr_of_voice[v]
-        if oi is not None:
-            stats = wave_stats_by_instr.get(oi) or default_wave_stats
-            prime_pulse_prog[v] = pulse_of_instr.get(oi) or default_pulse_program
-        else:
-            # No owner instrument: either row0==0 (the song's true start) or
-            # a voice that has genuinely never triggered a note. Real
-            # hardware is running the wavepos==0 DEFAULT program in both
-            # cases -- see gen_includes_song's own B8 WAVE comment.
-            stats = default_wave_stats
-            prime_pulse_prog[v] = default_pulse_program
-        prime_pulse_extra[v] = stats
-        if prime is not None:
-            kk = _lookup_wave_row(stats, prime['voices'][v]['wavepos'])
-            prime_pulse_k[v] = 0 if kk is None else kk
-        else:
-            prime_pulse_k[v] = 0
         # FM: needs BOTH the (fx, note) bundle that was in flight AND the
         # position within it (the note-parameterization B7 named as the
         # blocker). `prime` gives both directly: currfx + pendnote name the
@@ -2099,7 +2026,7 @@ def build_range(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
         segs, ad_sr, wave_programs, filter_programs, filter_flag_of, bundle_list,
         default_filter_program, tempo_sched_len=n_sched,
         default_wave_program=default_wave_program,
-        aux_pulse_programs=prime_pulse_prog, aux_fm_programs=prime_fm_prog,
+        aux_fm_programs=prime_fm_prog,
         pulse_programs=pulse_of_instr)
 
     # B7: now that gen_includes_song has finalized every table's real
@@ -2113,8 +2040,7 @@ def build_range(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
         filt_owner_instr,
         aux=aux, default_wave_program=default_wave_program,
         default_wave_stats=default_wave_stats,
-        prime_pulse_prog=prime_pulse_prog, prime_pulse_extra=prime_pulse_extra,
-        prime_pulse_k=prime_pulse_k, prime_fm_prog=prime_fm_prog,
+        prime_fm_prog=prime_fm_prog,
         prime_fm_extra=prime_fm_extra, prime_fm_k=prime_fm_k)
     _write_prime_consts(prime_consts)
 
@@ -2310,6 +2236,7 @@ def main():
     # needed) -- song-wide, written once, shared by every part's assemble().
     sim_for_freq = BlackbirdSim(lay, d, la, [b'', b'', b''], ins_restart, ins_restart2)
     write_freqtable(sim_for_freq)
+    write_pwprepare(sim_for_freq)   # B9: the driver's pulse-width lookup
 
     # Song's own genuine opening tempo pair (row0==0's fallback -- see
     # extract_tempo_pairs' own off-by-one-corrected //7+1 note in the B2
