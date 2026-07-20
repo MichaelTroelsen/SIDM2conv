@@ -1778,7 +1778,11 @@ PRIME_PER_VOICE_FIELDS = ['VWI', 'VIWAVE', 'VGMASK', 'AD', 'SR',
                           # Replaces B8's eight reconstructed FM_* fields.
                           'FXPOS', 'BASEPITCH', 'VIFXS', 'VIFXR']
 PRIME_GLOBAL_FIELDS = ['PRIME_F_IDX', 'PRIME_F_CNT', 'PRIME_F_ADHI',
-                       'PRIME_F_CLO', 'PRIME_F_CHI', 'PRIME_F_MODE', 'PRIME_D417']
+                       'PRIME_F_CLO', 'PRIME_F_CHI', 'PRIME_F_MODE', 'PRIME_D417',
+                       # B16: per-part slot-space ins_restart/ins_restart2
+                       # thresholds -- see set_instr_v / build_range's own
+                       # comments.
+                       'INS_RESTART_SLOT', 'INS_RESTART2_SLOT']
 
 
 def _write_prime_consts(consts):
@@ -2068,6 +2072,37 @@ def build_range(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
         default_wave_program=default_wave_program,
         default_wave_stats=default_wave_stats,
         fx_start_list=fx_start_list)
+
+    # B16: ins_restart/ins_restart2 are RAW source instrument-index
+    # thresholds (player.s's execute() hard-restart gate -- see
+    # blackbird_driver.asm's set_instr_v). The driver only ever sees this
+    # part's B14 REMAPPED slot number, so convert each threshold into slot
+    # space once, here, at build time: instr_remap is order-preserving
+    # (slot = position within sorted(used_instr)), so "highest slot whose
+    # RAW index is <= threshold" is exact, not an approximation. -1 (no
+    # used instrument is <= threshold -- i.e. EVERY instrument in this part
+    # needs the hard restart) is a genuine, correctly-handled value: see
+    # set_instr_v's own comment for why `cpy #(-1)+1` still does the right
+    # thing.
+    # Emit threshold+1 directly (the driver's CPY immediate operand) rather
+    # than relying on 64tass to wrap `INS_RESTART_SLOT+1` at assemble time:
+    # when EVERY used instrument needs the hard restart, the raw slot
+    # threshold is -1, and -1&0xFF=255 -- `255+1` is 256, which 64tass
+    # rejects outright ("too large for a 8 bit unsigned integer") instead
+    # of silently truncating. Computing the +1 here in Python, then masking
+    # to 0xFF, sidesteps the overflow entirely (256 & 0xFF = 0, which is
+    # exactly the CPY #0 the driver needs for "always restart").
+    sorted_used = sorted(used_instr)
+    def _slot_gate(thresh):
+        s = -1
+        for raw in sorted_used:
+            if raw <= thresh:
+                s = instr_remap[raw]
+            else:
+                break
+        return (s + 1) & 0xFF
+    prime_consts['INS_RESTART_SLOT'] = _slot_gate(ins_restart)
+    prime_consts['INS_RESTART2_SLOT'] = _slot_gate(ins_restart2)
     _write_prime_consts(prime_consts)
 
     prg = B.assemble()

@@ -39,8 +39,11 @@ VIBSPD   = $10           ; vibrato phase increment per frame
 VIBDLY   = $0c           ; delay (frames) before vibrato kicks in
 ; scratch
 wptr        = $fa           ; working pointer (seq / orderlist)
-; ($ed free since B10 deleted fm_step's FMTAB indirect pointer `fmptr`;
-;  $b9/$ba free since B9 deleted pulse_step's PULSETAB indirect pointer.
+tmpins      = $ed           ; B16: set_instr_v's own instrument-slot stash,
+                            ; for the ins_restart/ins_restart2 hard-restart
+                            ; check (reuses the byte freed since B10 deleted
+                            ; fm_step's FMTAB indirect pointer `fmptr`).
+; ($b9/$ba free since B9 deleted pulse_step's PULSETAB indirect pointer.
 ;  NB $ea/$eb collide with vhold[1]/vhold[2] -- do not reuse those.)
 fxflag      = $ec           ; B11: nonzero if pr_setprog fired THIS row -- see
                             ; pr_setprog/pn_adv/pr_note's gate-off case. Mirrors
@@ -1222,6 +1225,9 @@ set_instr_v:
         ; INSTR_WAVE (below) selects the wave program, and the wave program
         ; carries its own pulse deltas in col1.
         tay
+        sty tmpins                ; B16: stash instrument slot -- ins_restart
+                                  ; check (below) needs it after Y gets
+                                  ; reused for sidoff-based SID writes.
         lda INSTR_AD,y
         sta tmpf
         lda INSTR_SR,y
@@ -1275,6 +1281,47 @@ set_instr_v:
         lda #$01
         sta F_ACT
 si_nofilt:
+        ; B16: player.s's execute() (lines 359-380) gates a HARD RETRIGGER
+        ; on the instrument index against two thresholds (ins_restart,
+        ; ins_restart2) BEFORE applying the real AD/SR -- entirely missing
+        ; from every prior round (grep for ins_restart in this file before
+        ; this change: zero hits). Root-caused via a live BlackbirdSim
+        ; internal-state trace against Fargo part 2 (voice 1's pulse
+        ; residual, 5.2% match): real hardware forces $D406,x=$0f (>=
+        ; ins_restart2+1) and/or $D405,x=0 + $D404,x=1 (>= ins_restart+1)
+        ; as a clean-slate pre-step immediately before committing the
+        ; instrument's real AD/SR -- see BLACKBIRD.md's B16 section.
+        ; ins_restart/ins_restart2 are RAW source instrument indices, but
+        ; this driver only ever sees the B14 per-part REMAPPED slot number
+        ; -- build_blackbird_native_song.py's _compute_prime_consts converts
+        ; the two thresholds into this part's own slot space once, at build
+        ; time (instr_remap is order-preserving, so the conversion is exact),
+        ; emitting INS_RESTART_SLOT/INS_RESTART2_SLOT as plain part-scoped
+        ; constants (same PRIME_GLOBAL_FIELDS mechanism as F_IDX etc) --
+        ; ALREADY the threshold+1 value the CPY below needs (computed in
+        ; Python, not via `+1` here: 64tass errors ("too large for a 8 bit
+        ; unsigned integer") rather than wrapping when a part whose
+        ; used-instrument set never crosses a threshold emits the raw -1
+        ; case, since (-1&0xFF)+1 = 256). CPY #0 (the case Python emits
+        ; then) never takes the BCC below (carry is always set comparing
+        ; against 0), i.e. the hard restart ALWAYS fires -- correct: -1
+        ; means every used instrument is above the threshold.
+        ldy tmpins
+        cpy #INS_RESTART2_SLOT
+        bcc si_norestart2
+        ldy sidoff
+        lda #$0f
+        sta SID+6,y               ; $D406,x = $0f (restart2 pre-step)
+si_norestart2:
+        ldy tmpins
+        cpy #INS_RESTART_SLOT
+        bcc si_norestart1
+        ldy sidoff
+        lda #$00
+        sta SID+5,y               ; $D405,x = 0
+        lda #$01
+        sta SID+4,y               ; $D404,x = 1 (gate on, no waveform)
+si_norestart1:
         lda VIWAVE,x
         tay
         lda WAVE,y

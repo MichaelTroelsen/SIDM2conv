@@ -1,6 +1,6 @@
 # Blackbird (Linus Åkesson / "lft") — recon started 2026-07-19
 
-**Status (updated 2026-07-20, post-B15): decompression, tempo model, and
+**Status (updated 2026-07-20, post-B16): decompression, tempo model, and
 Stage A (Driver 11 transpile) all SOLVED and shipped for all 11
 v1.2-exact-bucket files (`sidm2/blackbird_parser.py`,
 `sidm2/blackbird_driver11.py`). Stage B's synth engine (arpeggio/wave/
@@ -21,7 +21,13 @@ misread a real "gate-off before note" Blackbird grammar pattern as a
 restart, and the instrument-index overflow just mentioned) — see their
 own dated sections below for the full trail, including two mid-investigation
 wrong turns that were caught and corrected rather than shipped
-(deliberately left visible as honest history). Only Fargo (pre-B14) and
+(deliberately left visible as honest history). B16 ported a real, verified,
+previously-entirely-missing engine feature (player.s's `ins_restart`/
+`ins_restart2` threshold-gated hard-retrigger) with zero regression
+anywhere in the corpus — but it turned out NOT to explain Fargo's own
+71.1% pulse residual, which a direct register comparison now narrows to
+`_pulse_col1`'s build-time delta encoding specifically (not cursor timing,
+not priming) — see "B16" below. Only Fargo (pre-B14) and
 Glyptodont (post-B13) have been individually root-caused in depth; the
 other 9 files newly covered by B15 are a baseline, not yet individually
 investigated. Glyptodont is the only file audio-listened so far (real SID
@@ -3112,6 +3118,112 @@ ranging 91.4%-98.9% overall (mean ~95%). Multi-part splitting (B6's
 adaptive mechanism, now correctly triggered by B14's true instrument-count
 fix) fired automatically for 2 of the 9 new files (Dithered_Island: 2 parts,
 Into_the_Unknown: 3 parts) — nobody had to intervene.
+
+## B16: real ins_restart hard-restart mechanic ported (verified correct, zero regression) — did NOT explain Fargo's pulse residual
+
+Next session, picking up the handoff's own #1 recommendation: chase Fargo's
+71.1% pulse residual (the weakest category on either individually-
+investigated file) using the exact live-trace method that cracked B13/B14.
+
+### The investigation
+
+- `BB_DIAG_BIN=2000`/`BB_DIAG_LO`/`BB_DIAG_HI`/`BB_DIAG_REG` (B12's
+  diagnostics) located the residual precisely: part 2's pulse match is a
+  ROCK-STEADY 66.7% (=4/6 pulse registers, i.e. exactly ONE whole voice
+  wrong) across nearly the ENTIRE 13,553-frame part — not degrading like
+  part 1. `$D409`/`$D40A` (voice 1's pulse width) alone measured 5.2% in a
+  300-frame window; voices 0/2 are pulse-perfect.
+- Per-frame values showed a clean, deterministic signature from frame 50
+  onward: `drv[frame] == sim[frame-1]` (driver trails the simulator by
+  exactly one row-step, forever) preceded by one genuinely wrong glitch
+  value at frame 49.
+- **Ruled out priming (B7/B8) as the cause**: instrumented `row_state`/
+  `PRIME_PW_ACC`/`PRIME_VWI` directly and rebuilt with a wrapped
+  `build_range` to capture the real (non-`count_only`) part-2 build. The
+  primed values were exact, and a fresh 300-frame trace showed driver and
+  simulator match FRAME-FOR-FRAME for frames 0-48 — the divergence begins
+  at a specific, later runtime event, not at part-start.
+- Traced `BlackbirdSim`'s own internal state (`wavepos`/`wavemask`/
+  `pendins`/`currins`) plus the raw byte-stream cursor around real frame
+  7049 (F0+49): an instrument-change cluster (raw bytes `0x8d`/`0x39`/
+  `0x98`/`0x38`, instrument 11 → instrument 22) sits right at the onset.
+- Reading `player.s`'s ported `prepare2`/`execute()` in
+  `blackbird_everyframe_sim.py` surfaced a mechanic **entirely absent from
+  the native driver** (`grep -c ins_restart blackbird_driver.asm` was 0
+  before this round): `_pr2_noteback` conditionally forces `$D406,x=0`+
+  `wavemask=$FE`, and `execute()`'s own instrument-select path conditionally
+  forces `$D406,x=$0f` (`>= ins_restart2+1`) and/or `$D405,x=0`+`$D404,x=1`
+  (`>= ins_restart+1`) as a clean-slate pre-step before committing the
+  instrument's real AD/SR — a genuine hard-retrigger technique, gated on
+  comparing the instrument index against two per-song thresholds
+  (`ins_restart`/`ins_restart2`, read from the SID binary at `po+93`/
+  `po+512`). `set_instr_v` (the driver's instrument-select handler) just
+  unconditionally applies AD/SR with zero threshold logic.
+
+### The fix (real, shipped, verified byte-exact where it applies)
+
+Ported the threshold-gated hard-restart into `set_instr_v`
+(`drivers_src/blackbird/blackbird_driver.asm`), matching `execute()`'s
+lines 359-380 (`blackbird_everyframe_sim.py`) — MINUS the `wavepos`
+restart line, which B12 already proved regresses pulse when added
+literally (see B12's own section above; not re-litigated here). Threading
+detail: `ins_restart`/`ins_restart2` are RAW source instrument indices,
+but the driver only ever sees B14's per-part REMAPPED slot number.
+`build_range` now converts both thresholds into this part's own slot space
+once, at build time (`instr_remap` is order-preserving, so "highest slot
+whose raw index is `<=` threshold" is exact), emitting
+`INS_RESTART_SLOT`/`INS_RESTART2_SLOT` via the same `PRIME_GLOBAL_FIELDS`
+per-part-constant mechanism `F_IDX` etc. already use. **Gotcha caught
+before shipping**: the constant must be emitted as the ALREADY-INCREMENTED
+CPY operand value (`(slot+1) & 0xFF`), not the raw threshold with a `+1` in
+the assembly — 64tass ERRORS ("too large for a 8 bit unsigned integer")
+rather than wrapping when a part where every used instrument needs the
+restart hits the `255+1=256` case; computing the `+1` in Python and masking
+sidesteps this entirely. First attempt hit exactly this on
+`Dithered_Island` (the only one of the 11 corpus files where it actually
+occurred) — caught by the full-corpus verification pass, not by Fargo/
+Glyptodont alone.
+
+Verified DIRECTLY (not just via the aggregate metric, which is too coarse
+to show a 1-2-frame register blip): compared voice 1's `$D40B`/`$D40C`/
+`$D40D` (ctrl/AD/SR) frame-by-frame across the exact transition that
+motivated this round — driver and simulator match EXACTLY, including the
+`$0x40`→`$0x41` ctrl transition at the transition frame. This confirms the
+port is correct where it fires.
+
+### The negative result (equally important — a real, verified rule-out)
+
+Rebuilt the full 11-file corpus with the fix: **every file's numbers are
+BYTE-FOR-BYTE IDENTICAL to the B15 baseline table above** — the fix causes
+zero measurable change anywhere, including Fargo's own pulse (still
+71.1%). This is a genuine, informative negative result, not a failed
+build: the ins_restart mechanic only ever touches `$D404`/`$D405`/`$D406`
+(ctrl/AD/SR), never the WAVE-ROW CURSOR (`VWI`) or `PW_ACC` — and the
+direct voice-1 ctrl/AD/SR comparison above showed those registers were
+ALREADY matching before this fix, for the SPECIFIC transition under
+investigation (this instrument's own ctrl/AD/SR happened to already be
+right; the fix is real and will matter for OTHER instruments/files where
+the pre-fix values didn't coincidentally match, but doesn't apply to
+Fargo's own residual).
+
+**This also sharpens the actual diagnosis**: since voice 1's `$D40B` (ctrl,
+computed by the SAME `wave_step` routine, same `VWI`-indexed `WAVE` table,
+same real frame) matches EXACTLY through the whole transition while
+`$D409`/`$D40A` (pulse, `WAVE+256,y` — the SAME row's OTHER column) does
+not, the WAVE-ROW CURSOR itself must be correct (or B13/B14's fixes would
+have shown up as ctrl mismatches too). The bug is narrower than "pulse
+cursor timing" — it must be in the PULSE-SPECIFIC computation within
+`wave_step` (the `pwprepare,y`/`PW_ACC` accumulate-vs-absolute math) or,
+more likely given the STATIC per-row delta encoding, in `_pulse_col1`'s
+build-time carry-fold (`bin/build_blackbird_native_song.py`) — the comment
+there notes the fold assumes "both y and the waveform byte's bit7 are
+FIXED table properties of the row, not runtime state," which may not hold
+if this WAVE program is visited from more than one distinct real-hardware
+context across the song. **Not yet fixed — this is the next concrete lead
+for Fargo's own residual**, narrower and better-evidenced than where B14's
+own handoff left off (its recommendation to consider a "PULSE-specific
+table-overflow" class of bug is now superseded by this direct-register-
+comparison finding).
 
 **Read as a corpus, not a leaderboard**: every file still carries its own
 uninvestigated residuals (Revolutions_Delivered's waveform 77.7% and
