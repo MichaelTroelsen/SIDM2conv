@@ -125,14 +125,37 @@ would have been a no-op): `drivers_src/blackbird/blackbird_driver.asm` (new
 Full detail: `docs/players/BLACKBIRD.md`'s "B11 shipped" section,
 `memory/blackbird-stage-b-native.md`.
 
-**Honest current fidelity, post-B11** (whole-song, matched-frame-coverage —
-see `docs/players/BLACKBIRD.md`'s B11 section for full per-category tables):
-- **Fargo** (20,550 frames, 1 part): overall 79.4%, **freq 100.0% (exact)**,
-  waveform 76.9%, **pulse 52.0%, adsr 74.0%** (both weak — no round has
-  touched either yet, and the historically-quoted 3000-frame window flatters
-  both to 90.8/98.8 — always quote the window).
+**B12 shipped SAME session, right after B11** (2026-07-20): targeted B11's
+own named next residual, Fargo's weak full-song pulse/adsr. Added a
+permanent diagnostic harness to the build script (`BB_DIAG_BIN`/`BB_DIAG_LO`/
+`BB_DIAG_HI`/`BB_DIAG_REG` env vars) and used it to discover "weak
+pulse/adsr" was actually TWO unrelated bugs: (1) **voice 2 has a full,
+PERMANENT instrument-state desync starting ~frame 8000** in Fargo — root
+cause NOT found, needs a fresh live trace, this is now THE dominant open
+issue; (2) voice 1's pulse was phase-shifted by exactly 1 real frame — this
+one WAS root-caused (against `player.s`'s `prepare2`/`prepare3`/`execute()`
+directly) and fixed: a standalone instrument-select byte with no note nearby
+was silently deferred (or, if the eventual note was tied, dropped outright)
+because the native driver only restarted WAVE/FILTER/ADSR/GATE at
+note-trigger time (`pn_note`), not immediately like real hardware's
+`execute()` does. Same two-halves pattern as B11: driver fix in
+`set_instr_v` (GATE+FILTER now restart immediately) plus a translator fix in
+`bb_steps_for_voice` (pending instrument/tie state no longer leaks across
+multiple intervening rest/hold rows onto an unrelated later note). One
+finding was EMPIRICAL, not fully explained: also restarting the wave-row
+cursor (VWI) immediately — which is what `player.s`'s literal source
+suggests is needed — fixed the same bug but REGRESSED pulse; leaving VWI out
+(still only reset by `pn_note`) was measurably better on every count. Full
+detail + the open question: `docs/players/BLACKBIRD.md`'s "B12" section.
+
+**Honest current fidelity, post-B12** (whole-song, matched-frame-coverage —
+see `docs/players/BLACKBIRD.md`'s B12 section for full per-category tables):
+- **Fargo** (20,550 frames, 1 part): overall 79.5%, **freq 100.0% (exact)**,
+  waveform 77.0%, **pulse 51.6%, adsr 74.7%** (both still weak — dominated by
+  voice 2's unexplained desync from ~frame 8000 onward; a 3000-frame window
+  flatters both to ~90/98 — always quote the window).
 - **Glyptodont** (20,223 frames, 1 part): overall 92.0%, freq 99.7%, waveform
-  93.5%, pulse 77.7%, adsr 96.1%, filter 94.7%.
+  93.5%, pulse 77.7%, adsr 96.2%, filter 94.7%.
 
 **Verification discipline established across all B-rounds** (worth
 preserving as a pattern): every round's translator change is checked against
@@ -148,16 +171,25 @@ control" pattern is the standard to match for any future B-round.
 </work_completed>
 
 <work_remaining>
-## The honest B11 punch list (start here for the next round)
+## The honest B12 punch list (start here for the next round)
 
 1. **DONE (B11, this session)**: fx changes on a rest or tie used to be
    deferred to the next note onset. Fixed in both the driver and the
    translator — see the B11 summary above. Fargo freq is now exact (100.0%).
-2. **Fargo's pulse (52.0%) and adsr (74.0%) over the FULL song are weak** —
-   B10 didn't touch either; the historically-quoted 3000-frame window
-   flatters both (90.8%/98.8%). Worth a dedicated investigation (possibly a
-   B12-scope item, separate from the fx-timing fix above) — always quote the
-   window when discussing these numbers, a short window is known to mislead.
+2. **DONE, PARTIALLY (B12, this session)**: Fargo's full-song pulse/adsr
+   weakness turned out to be two unrelated bugs. Fixed: a standalone
+   instrument-select with no note nearby was silently deferred/dropped
+   (same pattern as B11's fx bug). NOT fixed, and now the biggest open
+   item: **voice 2 in Fargo has a full, permanent instrument-state desync
+   starting ~frame 8000** (ctrl/AD/SR/pulse all wrong, flatlines at a
+   constant wrong value for the rest of the song). This needs a fresh LIVE
+   hardware trace targeted at that specific region — B12's own
+   `BB_DIAG_LO`/`BB_DIAG_HI`/`BB_DIAG_REG` env vars (in
+   `bin/build_blackbird_native_song.py`) are the tool to localize the exact
+   triggering frame/event first, the same way B12's own bug was found.
+   Also unexplained: why leaving VWI's restart OUT of `set_instr_v` measures
+   better than including it, even though `player.s`'s literal source reads
+   as if it's needed there — worth revisiting with a live trace too.
 3. **The FXTAB `+1` guard byte is unexercised** by either file (confirmed via
    B10's own negative-control table) — defensive only, not a gap to close.
 4. **`CAP_B` is retained but now inert** post-B10 (clustering no longer binds
@@ -264,49 +296,89 @@ from scratch.
 </critical_context>
 
 <current_state>
-## Deliverables status (as of 2026-07-20, B11 shipped THIS session — not yet committed)
+## Deliverables status (as of 2026-07-20, B11 committed / B12+B13 shipped THIS session, neither committed yet)
 - Decompression, tempo model, `blackbird_parser.py`, Stage A
   (`blackbird_driver11.py`): **COMPLETE**, committed, tested, user-audio-verified.
 - `docs/guides/RETRODEBUGGER_GUIDE.md`, `docs/SID_TO_SF2_CONVERSIONS.md`:
   **COMPLETE**, committed.
-- **Stage B native driver: IN PROGRESS, B1 through B11 shipped.** Fargo
-  79.4% (freq exact, 100.0%) / Glyptodont 92.0% (freq 99.7%) overall
-  register match, whole-song, both single-part SF2s. Not yet audio-listened,
-  not wired into `DriverSelector` (deliberate).
-- **B11 is uncommitted as of this handoff** — see "What's committed vs. not"
-  below. If resuming and `git log` doesn't show a Blackbird B11 commit, the
-  changes are sitting in the working tree; review and commit them (or
-  continue building on top) before doing anything else.
-- **Next scoped step (B12 candidate): Fargo's full-song pulse (52.0%) and
-  adsr (74.0%)** — the largest remaining named residual, untouched by any
-  round including B11. No existing bounded fix description yet (unlike B11,
-  which B10 had already scoped) — this would need fresh investigation.
+- **Stage B native driver: IN PROGRESS, B1 through B13 shipped.** Fargo
+  79.2% (freq 99.7%) / **Glyptodont 97.6%** (freq 99.5%, pulse 99.7%)
+  overall register match, whole-song, both single-part SF2s. Not yet
+  audio-listened, not wired into `DriverSelector` (deliberate).
+- **B11 is committed** (`83af9b3`). **B12 AND B13 are UNCOMMITTED** — see
+  "What's committed vs. not" below.
+- **B13, this session**: what started as a Glyptodont-focused recon (a real
+  VICE live hardware trace through frame 10300, plus live `py65` single-step
+  CPU tracing) initially mis-attributed the residual to a driver-side "wave
+  restart" bug — that framing was WRONG, caught by pushing one step further
+  (instrumenting the continuous simulator's own internal state, not just
+  final register output). The TRUE root cause: `bb_steps_for_voice`
+  (the translator, `bin/build_blackbird_native_song.py`) ignored its own
+  `gate_is_off` flag whenever the very next byte was a NOTE rather than a
+  delay — so `[gate_off][note]` (a real, if uncommon, Blackbird grammar
+  pattern meaning "voice goes silent, note value discarded, no restart")
+  was wrongly emitted as a genuine active-note restart. First fix attempt
+  regressed Glyptodont 92.0%→73.2% (way too broad), which caught a SECOND,
+  companion bug: the 'delay' branch never RESET `gate_is_off` after using
+  it, so it rode across unbounded runs of delay events instead of only the
+  one event immediately following the gate-off. Both branches now correctly
+  consume-and-reset the flag. **Result: Glyptodont 92.0%→97.6%, pulse
+  77.7%→99.7%.** Fargo is essentially unchanged (79.5%→79.2%), confirming
+  its OWN separate voice-2 desync (open since B12, ~frame 8000 onward) is a
+  genuinely DIFFERENT bug — NOT fixed by this round. Full trail:
+  `docs/players/BLACKBIRD.md`'s "B13 shipped" section (keep reading past
+  "Finding 2" — that mid-investigation framing was superseded further down
+  the same section, left in as honest history, not the final answer).
+- **B13 also found a bonus, unrelated bug**: the simulator itself
+  (`bin/blackbird_everyframe_sim.py`, previously validated only over the
+  first 1200 frames of each song) diverges from real hardware on Glyptodont
+  voices 0/1/filter in this same later region. Not investigated further —
+  flagged so a future round doesn't keep blindly trusting it past frame
+  ~1200 without a fresh check.
 
 ## What's committed vs. not
-Everything under `work_completed` items 1-8 through B10 is committed to
-`origin/master` (HEAD was `37b21f7` before this session's B11 work).
-**B11's changes are NOT yet committed**: `drivers_src/blackbird/blackbird_driver.asm`
-(new `fxflag`/`maybe_fx_commit`), `bin/build_blackbird_native_song.py`
-(`steps_to_rows_native` fix), `docs/players/BLACKBIRD.md` (new B11 section),
-this file, and the memory files (`memory/blackbird-stage-b-native.md` new,
-`memory/blackbird-lft-player.md` and `MEMORY.md` updated). The rebuilt
+Everything under `work_completed` items 1-8 through B11 is committed to
+`origin/master` (B11 = commit `83af9b3`). **B12 AND B13's changes are NOT
+yet committed**: `drivers_src/blackbird/blackbird_driver.asm` (B12's
+`set_instr_v` GATE+FILTER restart), `bin/build_blackbird_native_song.py`
+(B12's pending-instrument/tie fix + `BB_DIAG_*` diagnostic functions; B13's
+`bb_steps_for_voice` gate_is_off fix, both branches), `docs/players/BLACKBIRD.md`
+(new B12 AND B13 sections), this file, and the memory files
+(`memory/blackbird-stage-b-native.md`, `memory/MEMORY.md`). B13's own `py65`
+single-step scripts and the VICE trace JSON are scratch-only (session
+scratchpad, NOT committed, NOT regenerable without re-running `node
+scripts/dev/vsid-trace.js` from the separate `sid-reference-project` repo —
+see B13's writeup for the exact command). The rebuilt
 `out/blackbird/Fargo_native_part01.sf2` / `Glyptodont_native_part01.sf2` are
 build artifacts (regenerate via `bin/build_blackbird_native_song.py`, not
-meant to be committed, matching established practice for this project's
-native-driver outputs). Run `git status` to see the exact uncommitted diff.
+meant to be committed). Run `git status` to see the exact uncommitted diff.
 
 ## Immediate action if resuming
-1. Check `git status` / `git log` first — if B11 is already committed,
-   great, skip to the B12 punch-list item below. If not, review the diff
-   and decide whether to commit it (the user hasn't been asked yet).
-2. Read `docs/players/BLACKBIRD.md`'s "B11 shipped" section and "What's
-   genuinely proven vs. still open" tail in full.
-3. For the next round (B12 candidate): investigate why Fargo's pulse
-   (52.0%) and adsr (74.0%) are weak over the FULL song specifically (the
-   commonly-quoted 3000-frame window flatters both to 90.8%/98.8% — start
-   by finding WHERE in the song the divergence grows, not just that it
-   exists). No existing scoped fix description — this needs fresh RE, likely
-   starting from `player.s`'s ADSR-handling code in `execute()`
-   (`ins_ad-1,y` / `ins_sr-1,y`, ~line 493-496) and comparing against
-   whatever the driver currently does for ADSR over a long window.
+1. Check `git status` / `git log` first — if B12/B13 are already committed,
+   skip to step 3. If not, review the diff and decide whether to commit it
+   (the user hasn't been asked yet this time — B11 was committed only
+   after an explicit "yes").
+2. Read `docs/players/BLACKBIRD.md`'s "B12" AND "B13 shipped" sections, plus
+   "What's genuinely proven vs. still open" tail, in full.
+3. For the next round: **Fargo's own voice-2 desync (open since B12,
+   permanent from ~frame 8000) is the clear next target** — confirmed a
+   DIFFERENT bug from B13's Glyptodont fix, still fully unexplained. Attack
+   it with the SAME method that cracked B13: (a) use `BB_DIAG_BIN=2000
+   python bin/build_blackbird_native_song.py SID/LFT/Fargo.sid` (with
+   `BB_FULL_CAP=20550`) to re-confirm the flatline window and narrow the
+   exact onset frame with `BB_DIAG_LO`/`BB_DIAG_HI`/`BB_DIAG_REG`; (b) do
+   NOT stop at a driver-side register-output diff — instrument
+   `run_full_song_sim`'s CONTINUOUS simulation to dump internal per-voice
+   state (`vs.wavepos`/`vs.wavemask`/`vs.pendins`/`sim.v[x].rpos`, the raw
+   byte cursor) frame-by-frame around the onset, the way B13's second half
+   did — this is what caught B13's real bug after an initial wrong
+   diagnosis; (c) correlate the exact onset frame against the raw decoded
+   byte stream (`result.real(voice)` + `classify_byte`), not just the
+   higher-level `steps_per_voice`/`row_frame` abstractions, since B13 also
+   showed those can misdirect (the row-frame correlation was off by one row
+   at first). A `[gate_off]`-adjacent pattern is a reasonable first
+   hypothesis given B13's own finding, but verify against the actual byte
+   stream rather than assuming — B13's own first two hypotheses (an
+   instrument restart, then a wave-engine carry-folding mismatch) were both
+   wrong before the real cause turned up.
 </current_state>

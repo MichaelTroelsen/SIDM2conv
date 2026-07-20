@@ -1232,6 +1232,50 @@ set_instr_v:
         sta VIFILT,x
         lda INSTR_WAVE,y
         sta VIWAVE,x             ; instrument's wave-program start row
+        ; B12: commit ADSR/GATE/FILTER IMMEDIATELY, matching player.s's
+        ; execute() (line 433-500), which applies these on EVERY tick a REAL
+        ; instrument-select is consumed -- independent of whether that tick
+        ; also has a note. Traced directly against a real decoded byte
+        ; stream (Fargo voice 1): a standalone instrument-select byte,
+        ; sandwiched between two delay/hold bytes with no note anywhere
+        ; near it, still restarts on real hardware; the driver used to only
+        ; restart at pn_note's note-trigger, silently deferring (or, if the
+        ; next note happened to be tied, silently DROPPING outright) this
+        ; restart. See BLACKBIRD.md's B12 section and bb_steps_for_voice's
+        ; docstring (build_blackbird_native_song.py) for the matching
+        ; translator-side half -- both were required together, same as
+        ; B11's fx fix.
+        ;
+        ; VWI (the WAVE ROW CURSOR) is deliberately NOT also restarted here,
+        ; even though player.s's SAME ins_done block also writes
+        ; `v_wavepos,x = ins_wave-1,y` unconditionally, i.e. this driver is
+        ; NOT byte-for-byte matching that specific line. Measured, not
+        ; assumed: restarting VWI here too (matching the source literally)
+        ; FIXED the same ctrl/AD/SR mismatches below but ALSO regressed
+        ; Fargo's whole-song pulse 52.0%->50.0% (worse than doing nothing);
+        ; removing just the VWI line kept every ctrl/AD/SR win and left
+        ; pulse untouched (52.0%->51.6%, i.e. back to its pre-B12 baseline).
+        ; The exact mechanism wasn't chased further this round -- possibly
+        ; the B9 pulse accumulator (PW_ACC) genuinely does NOT reset in step
+        ; with v_wavepos the way this line's literal reading suggests, or
+        ; there's a second-order interaction with the still-open V2 desync
+        ; (see BLACKBIRD.md's B12 section) that a future round should
+        ; revisit with its own live trace rather than re-guessing from
+        ; player.s alone. pn_note's OWN VWI restart-on-untied-note is
+        ; unchanged and still the only place VWI gets reset.
+        lda #$ff
+        sta VGMASK,x             ; gate on (wave_step keeps the gate asserted)
+        lda VIFLAGS,x
+        and #$40                 ; flag $40 -> (re)start the filter program
+        beq si_nofilt
+        lda VIFILT,x
+        sta F_IDX
+        lda #$00
+        sta F_CNT                ; force reload next frame
+        lda #$01
+        sta F_ACT
+si_nofilt:
+        lda VIWAVE,x
         tay
         lda WAVE,y
         sta vwf,x                ; first waveform (for pr_note's gate toggle)

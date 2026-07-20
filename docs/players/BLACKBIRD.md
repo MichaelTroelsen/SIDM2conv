@@ -2572,6 +2572,395 @@ program gets selected, and neither of those changed here.
    either file (same as B10's `+1` guard byte finding) — defensive coverage,
    not a known-good path.
 
+## B12: instrument-select restarts commit same-tick (ADSR/GATE/FILTER only) — Fargo 79.4%→79.5%, Glyptodont ADSR 96.1%→96.2%
+
+Targeted B11's own named next residual: Fargo's full-song pulse (52.0%) and
+adsr (74.0%). Root-caused via a per-frame/per-register diagnostic harness
+added to the build script this round (`BB_DIAG_BIN`/`BB_DIAG_LO`/
+`BB_DIAG_HI`/`BB_DIAG_REG` env vars, `report_binned`/`report_registers` in
+`bin/build_blackbird_native_song.py`) — kept in the shipped script as a
+permanent, opt-in diagnostic, not removed after use.
+
+### Two genuinely different bugs were found under one "adsr/pulse is weak" symptom
+
+Binning Fargo's whole-song comparison every 2000 frames showed something a
+single aggregate percentage hides completely: waveform/pulse/adsr degrade
+steadily from frame ~2000, then **flatline at an exact constant (66.7% /
+33.6% / 66.7%) from frame 8000 clear through to the end of the song** — a
+signature of a PERMANENT desync, not a slowly-growing drift. freq stayed
+**100.0%** throughout the entire binned sweep, which rules out any row/tempo
+scheduling misalignment (that would skew freq identically, since B11 made
+freq a direct per-frame recomputation with no memory of prior ticks).
+
+Per-register breakdown at the flatline (frames 8000-10000) split this into
+two independent, unrelated findings:
+
+1. **Voice 2: a full, permanent instrument-state desync** (ctrl/AD/SR/pulse
+   all wrong, pulse *actively drifting* while the simulator's stays
+   constant) — root cause **not found this round**, see Honest Residuals.
+2. **Voice 1: pulse phase-shifted by exactly one real frame**, constant rate
+   otherwise (both simulator and driver step the pulse accumulator by the
+   same $10 every 2 real frames — B12's own diagnostic dump at
+   frames 5125-5169 shows this precisely: `sim=98,98,a8,a8,...` vs
+   `drv=88,98,98,a8,...`, i.e. driver's transitions land exactly one frame
+   late, not at a different rate).
+
+### Root cause of (2), verified against `player.s` directly
+
+`prepare2` (`player.s:117-160`) reads AT MOST one instrument/gate-off/legato
+byte per real tick, and `prepare3` (SAME tick, chained via the shared
+`preparejmp` dispatch) then reads WHATEVER byte comes immediately after it —
+note or delay, doesn't matter. So an instrument-select is **never** "several
+ticks before the next note" on hardware — it is always exactly one tick
+before whatever the very next stream byte is. `execute()`'s vloop
+(`player.s:447-497`) then restarts WAVE/FILTER/ADSR/GATE on **every tick
+`v_pendins` holds a real instrument value — independent of note/delay**.
+
+A raw byte-level trace of Fargo voice 1 (bytes #362-369) confirmed this
+directly: a standalone instrument-select byte (`$88`, INSTR=5) sits sandwiched
+between two delay/hold bytes with no note anywhere near it, followed several
+ticks later by a *tied* note. On the native driver, the WAVE+FILTER+ADSR
+restart lived exclusively inside `pn_note`'s untied-note branch — so this
+standalone select was silently deferred, and because the note that finally
+consumed it was **tied**, the restart never fired at all.
+
+A second, independent bug compounded this: `bb_steps_for_voice`
+(`bin/build_blackbird_native_song.py`) only ever cleared `pending_instr`/
+`pending_tie` inside its `'note'` branch — so both could survive across
+*multiple* intervening delay/rest steps and land on a note many ticks later
+that they never actually belonged to (exactly the traced example: a legato
+byte from one standalone tick and an instrument-select from a different one,
+both incorrectly bundled onto the same much-later tied note). Both halves
+had to be fixed together, same as B11's fx bug.
+
+### The fix
+
+**Translator**: `pending_instr`/`pending_tie` now attach to the row created
+by the very next event of ANY kind (note OR delay), not just notes, mirroring
+`prepare2`+`prepare3`'s same-tick pairing exactly. `steps_to_rows_native`
+now tracks `cur_instr` uniformly across rest/hold/note branches (same
+pattern as B11's `cur_cmd` fix), so an instrument change landing on a
+rest/hold row is no longer dropped from the emitted sequence.
+
+**Driver**: `set_instr_v` (`pr_setinst`'s handler) now writes GATE ($ff,
+forcing the gate on) and, if the instrument's flag `$40` is set, restarts
+the FILTER program immediately — matching `execute()`'s same-tick,
+note-independent restart. ADSR was *already* written immediately in
+`set_instr_v` (unchanged from B8/B9), so that half needed no code change,
+only the diagnosis to confirm it wasn't the source of the desync.
+
+**Measured, not assumed — VWI (the wave-row cursor) was deliberately left
+OUT of this immediate restart**, even though `player.s`'s SAME `ins_done`
+block also unconditionally writes `v_wavepos,x = ins_wave-1,y`. Restarting
+VWI immediately in `set_instr_v` DID fix the same ctrl/AD/SR mismatches, but
+ALSO regressed Fargo's whole-song pulse 52.0%→50.0% (net worse than doing
+nothing). Removing just that one line kept every ctrl/AD/SR gain and left
+pulse at its pre-B12 baseline (52.0%→51.6%). The exact mechanism wasn't
+chased further this round — see Honest Residuals. `pn_note`'s own
+restart-on-untied-note is unchanged and remains the only place VWI is reset.
+
+### Results (same whole-song `BB_FULL_CAP` methodology as B10/B11)
+
+**Fargo, 20,550 frames, 1 part:**
+
+| | overall | freq | waveform | pulse | adsr | filter |
+|---|---|---|---|---|---|---|
+| B11 | 79.4 | 100.0 | 76.9 | 52.0 | 74.0 | 99.9 |
+| **B12** | **79.5** | 100.0 | **77.0** | 51.6 | **74.7** | 99.9 |
+
+**Glyptodont, 20,223 frames, 1 part:**
+
+| | overall | freq | waveform | pulse | adsr | filter |
+|---|---|---|---|---|---|---|
+| B11 | 92.0 | 99.7 | 93.5 | 77.7 | 96.1 | 94.7 |
+| **B12** | 92.0 | 99.7 | 93.5 | 77.7 | **96.2** | 94.7 |
+
+A small, real, no-regression win on both files. The B10 `verify_fx_engine`
+self-check still passes at full count on both (302,400 Fargo / 705,600
+Glyptodont comparisons) — expected, this round never touched the fx engine.
+
+### Honest residuals — not fixed this round, named precisely
+
+1. **Voice 2's full instrument-state desync (starting ~frame 8000 in
+   Fargo) is still completely unexplained** — this is the dominant reason
+   Fargo's whole-song pulse/adsr numbers stay low. Diagnosed only as far as
+   "permanently wrong, not drifting, unrelated to the (1)-class bug this
+   round fixed" — a real live-trace investigation (in the style of B8/B9's
+   original pulse work) is needed, not another read of `player.s`.
+2. **Why removing VWI's restart from `set_instr_v` measurably helps is not
+   understood, only measured.** A future round revisiting this should get
+   a fresh live hardware trace around a standalone-instrument-select event
+   specifically, rather than re-deriving from `player.s` alone (which reads,
+   on its face, as if VWI restart SHOULD be needed there).
+3. Fargo's pulse/adsr are still weak over the full song (51.6%/74.7%) —
+   this round improved adsr's mechanism but the dominant residual (voice 2's
+   desync, item 1) swamps the gain in the aggregate number.
+4. `BB_DIAG_BIN`/`BB_DIAG_LO`/`BB_DIAG_HI`/`BB_DIAG_REG` are now permanent,
+   opt-in diagnostics in `bin/build_blackbird_native_song.py` — useful
+   starting points for whoever picks up residual 1.
+
+## B13 shipped: gate-off immediately before a note doesn't silence forever — Glyptodont 92.0%→97.6% (pulse 77.7%→99.7%)
+
+Prompted by a direct observation that Glyptodont (92.0% overall) is nowhere
+near 100% either, despite B11/B12's Fargo-focused work. The B12 diagnostic
+tools (`BB_DIAG_BIN`/`BB_DIAG_LO`/`BB_DIAG_HI`/`BB_DIAG_REG`) found a
+DIFFERENT shape of residual than Fargo's: waveform/AD-SR/filter actually
+reach **exact 100.0%** for the back half of Glyptodont's song (frames
+12000+) — the real problem is narrow, concentrated almost entirely in
+**voice 2's pulse** (`$D410`/`$D411`), which goes permanently wrong starting
+around frame 10165 and never recovers.
+
+### Why a live trace, not more `player.s` reading
+
+Every fidelity number quoted this whole session (B1 through B12) compares
+the native driver against `bin/blackbird_everyframe_sim.py` — the Python
+simulator — as ground truth. That simulator was only ever validated against
+**real hardware** (via the `vsid-trace.js` VICE wrapper) over the **first
+1200 frames** of each song. Frame 10165 was never covered by that original
+validation. Before chasing a "driver bug" further, the honest first question
+is: does the simulator ITSELF still match real hardware that deep into the
+song, or has *it* drifted?
+
+### Method
+
+`node scripts/dev/vsid-trace.js Glyptodont.sid --frames 10300 --json
+--changed-only` (from the separate `sid-reference-project` repo) captured a
+genuine VICE-emulated hardware trace through frame 10300 (a real ~3.4-minute
+emulated playthrough, run in the background — this is not instant). The
+`--changed-only` write-event list was reconstructed into full per-frame
+25-register snapshots (SID reset state = `$00`, matching
+`sidm2-sid-trace.exe`'s own convention) so it's directly comparable to the
+simulator's/driver's own `frames` arrays. A frame-offset sweep (±10 frames)
+against the first 300 frames found a clean, unambiguous peak at offset 0
+(96.3% match — not 100%, expected: this is a far stricter full-snapshot
+comparison than the original validation's write-*sequence* comparison,
+which tolerates a 1-cycle frame-boundary misattribution that a snapshot
+comparison does not). The SAME offset was re-confirmed as the local optimum
+specifically around frame 10000-10300 too (92.0% at offset 0 vs 46-75% at
+any other tested offset) — ruling out cumulative drift as an explanation
+for anything found there.
+
+### Finding 1: the simulator IS still correct for voice 2 here — the driver bug is real
+
+Real hardware vs. simulator, frames 10000-10300: voice 2's freq/waveform/
+pulse/AD-SR/ctrl are **100.0%** identical. This confirms the B12-era
+driver-vs-simulator comparison was measuring the right thing for voice 2 —
+the driver's divergence is a genuine driver bug, not an artifact of a stale
+simulator.
+
+### Finding 2: the driver's own bug, pinned to the exact frame, against real hardware directly
+
+**Superseded below** — this "restart" framing turned out to be built on an
+incomplete read of the driver's own trace (the VWI-restart write is real,
+but it's a SEPARATE, correctly-legitimate event, not THE actual bug; see
+"The actual root cause" further down, which corrects this). Kept here
+un-edited as the genuine investigative trail, not because it's the final
+answer.
+
+Driver vs. real hardware (not simulator), voice 2 pulse, frame-by-frame:
+
+```
+frame 10165: real=$3b drv=$3b
+frame 10166: real=$2b drv=$2b
+frame 10167: real=$0b drv=$0b
+frame 10168: real=$ea drv=$0b   <-- driver fails to step
+frame 10169: real=$ca drv=$0b   <-- driver fails to step AGAIN
+frame 10170: real=$aa drv=$ea   <-- driver resumes, now 2 frames behind real
+frame 10171: real=$8a drv=$ca
+...
+```
+
+The driver's pulse accumulator holds its value for **two consecutive real
+frames** (10168, 10169) where real hardware steps normally, then resumes
+stepping at the correct per-frame rate — permanently 2 frames behind for
+the rest of the song (89.3% match over the following 300 frames, all of it
+this same fixed 2-frame offset, not a growing drift). Crucially,
+**voice 2's waveform byte ($D404-equivalent) stays 100% correct through the
+same frames** — ruling out a full wave-cursor (VWI) freeze; whatever's
+wrong is narrower than that (most likely: the driver's WAVE table has the
+right waveform byte but a different col1 pulse-delta at the specific row(s)
+visited here than real hardware's own program has — i.e. a built-table
+content issue rather than a runtime cursor-tracking issue, though this is
+not yet confirmed).
+
+**Correlated event** (via `row_frame`/`steps_per_voice`, same technique
+B12 used): frame 10165-10170 lands on a run of four very short (1-tick)
+notes on voice 2 — the first untied (a genuine restart), the following
+three all tied (no restart, per `pn_note`'s existing correct tie-gating).
+Not yet confirmed as causal, only correlated — the actual WAVE-table bytes
+for the active instrument around this row have not yet been inspected.
+
+### Finding 3 (bonus, unrelated to what was being chased): the SIMULATOR has its own latent bug on voices 0/1/filter, discovered by the same trace
+
+Real hardware vs. simulator, frames 10000-10300, voices 0 and 1 plus the
+filter registers: **NOT** 100% — `v0pwlo`/`v0pwhi` (52.3%/50.0%),
+`v0ctrl` (76.7%), `v1freqlo`/`v1freqhi` (95.7% each), `v1pwlo`/`v1pwhi`
+(81.7%/81.3%), plus intermittent single-frame filter mismatches
+(`fcuthi`/`fresfilt`/`modevol` all 99.3%, isolated one-frame swaps at
+frames 10188/10258). This is a genuine simulator defect, never previously
+known, since B1-B12's own validation only ever exercised the first 1200
+frames. **Not investigated further this round** — it's a separate bug from
+voice 2's pulse issue (which the SAME trace confirms the simulator gets
+right), flagged here so a future round doesn't quietly keep trusting the
+simulator as ground truth past frame ~1200 without re-checking.
+
+### Update, same session: live 6502 tracing narrowed the mechanism (later corrected further below)
+
+Pushed further with `py65` (the same headless CPU emulator the build script
+already uses for `headless_trace`) single-stepped through the exact critical
+frame, plus a 64tass `--labels` dump to resolve raw PCs to source labels.
+This is real, verified progress — the root cause is now understood in much
+finer detail than "somewhere near row 2034" — but still no fix.
+
+**The row correlation was off by one.** Careful frame-exact analysis (voice
+2's own `vsp_lo`/`vsp_hi`/`vhold` zero-page state, read directly from
+memory) showed the restart is triggered by **row 2033** (`note=32,
+command=5 [fresh fx-select], tie=False` — a genuine untied note), NOT row
+2034 as B13's first pass assumed. Rows 2034-2036 (the tied run) are
+downstream and correctly untouched — B13's original "correlated with a
+tied-note run" theory was wrong in its specifics, though right that
+something in this neighborhood is the trigger.
+
+**The restart itself is legitimate and self-consistent.** Single-stepping
+frame-by-frame caught the exact two writes: `pn_note`'s untied-restart path
+(PC inside `pn_not_off`) writes `VWI,x = $44` (`INSTR_WAVE[18] = $44`,
+confirmed by dumping the driver's own compiled `INSTR_WAVE` table and
+matching the value), then `wave_step`'s own advance (PC inside
+`ws_nopulse`) immediately steps it to `$45`. This is real hardware-mirroring
+behavior, not a spurious restart: `player.s`'s `execute()` restarts
+`v_wavepos` unconditionally whenever a real instrument-select is consumed —
+exactly what should happen here. The driver's own captured WAVE table for
+instrument 18 (`$44`=waveform `$81`/no-pulse, `$45`=`$81`/no-pulse,
+`$46`=`$41`/pulse+2, `$47`=`$41`/pulse+2 self-looping) is **internally
+self-consistent** with the 2-frame freeze the driver produces (two
+non-pulse "settle" rows before the pulse row resumes) — this matches
+`unroll_wave_pulse`'s own build-time self-check, which already validates
+this exact table byte-for-byte against the simulator for one full lap in
+isolation.
+
+**The real discrepancy**: the *continuous*, whole-song simulator
+(`run_full_song_sim`, independently confirmed matching real hardware
+byte-for-byte in this exact window) shows only a **single half-sized
+pulse step** at this same restart (`$3b`→`$2b`, half the usual ~$20 swing),
+not a full 2-frame freeze. So two different code paths inside
+`bin/blackbird_everyframe_sim.py` — the isolated per-instrument capture
+`unroll_wave_pulse` uses (which seeds a throwaway `BlackbirdSim` with
+`wavemask=0xFF`, `pwidth=0` and simulates fresh from `wave_start`) and the
+continuous whole-song `everyframe()` a live restart actually goes through —
+produce measurably different behavior for the first couple of frames after
+a restart. `_pulse_col1`'s carry-folding math (`eff = pdelta + c_from_wp`,
+designed to make a driver-side `col1 + acc` reproduce `everyframe()`'s real
+`adc(pdelta, pwidth, c_from_wp)`) checked out algebraically and the
+`wavetable()`/`wavemask` inputs looked identical in both paths on paper —
+the exact remaining difference was not isolated before this round ran out
+of runway.
+
+### The actual root cause: pushed one more step, and it wasn't the wave engine at all
+
+Following the "next concrete step" above (instrument `run_full_song_sim`'s
+continuous simulation frame-by-frame around the restart) immediately
+overturned the whole "restart" framing. `vs.wavepos` for voice 2 **never
+changes** across this entire window — no restart happens on real hardware
+at all. What actually happens is `vs.pendins` becomes `$FE` (the gate-off
+sentinel) and `vs.wavemask` flips to `$FE` a couple of frames later: this is
+a **gate-off event**, not an instrument restart.
+
+Tracking voice 2's own raw-byte read cursor (`sim.v[2].rpos`) confirmed the
+exact sequence, one byte per real frame: `$cd` (fx-select, `prepare1`),
+`$80` (**gate-off**, `prepare2`), `$2f` (note=23, `prepare3`) — three
+separate real frames, each one real hardware's own SEPARATE per-frame
+pipeline stage (`prepare1`→`prepare2`→`prepare3`→`execute`, one stage per
+real frame, confirmed directly in `blackbird_everyframe_sim.py`'s
+`real_frame()` — a correction to this investigation's own earlier working
+assumption that all four stages fire within a single frame).
+
+`player.s`'s `prepare3` (167-200) is unconditional about updating
+`v_pendnote` from a note byte regardless of what preceded it — but it only
+overwrites `v_pendins` from `v_currins` when `v_pendins` is STILL 0
+(`if vs.pendins == 0: vs.pendins = vs.currins`). Since the gate-off already
+set `v_pendins = $FE` this same tick, that guard is false, so `pendins`
+stays `$FE` all the way to `execute()`, which for `$FE` does `v_wavemask,x
+= $FE` and **nothing else** — no wave/filter/ADSR restart, note value
+completely discarded except for basepitch bookkeeping that has no audible
+effect while gated off.
+
+**The actual bug**: `bb_steps_for_voice` sets `gate_is_off = True` on a
+gate-off byte, but only ever *checks* that flag in the `'delay'` branch —
+the `'note'` branch ignored it entirely, always emitting a genuine active
+note regardless of a directly-preceding gate-off. So `[gate_off][note]`
+(exactly Glyptodont's row 2033: `$cd $80 $2f`) was silently treated as a
+normal restart instead of "voice goes silent, note value discarded."
+
+### The fix, and the regression that caught a SECOND bug in the same code
+
+First attempt: check `gate_is_off` in the `'note'` branch too, matching the
+`'delay'` branch's existing check. Rebuilding immediately regressed
+Glyptodont from 92.0% to **73.2%**, freq alone dropping to 71.3% — far too
+large to be the one row this was meant to fix. Counting `[gate_off]→[note]`
+pairs across the whole song (with no other bytes in between) found why:
+**14-45% of every voice's notes** matched that naive pattern, not the rare
+handful expected.
+
+The `'delay'` branch has *always* had a companion bug, just harmless until
+now: it checks `gate_is_off` but never resets it afterward. On real
+hardware, `v_pendins` resets to 0 in *every* `execute()` call, and
+`prepare1/2/3` are all skipped for a voice during a multi-tick delay's own
+hold (`v_trtimer` negative) — so a gate-off's silencing effect genuinely
+only covers the ONE event immediately following it. Once a delay's own
+countdown expires, the next event gets a fresh `prepare2` examination, and
+for a note byte specifically, `prepare2`'s own "got_note: reuse currins as
+pendins" implicit-repeat-instrument path **automatically restarts the
+gate** — independent of any earlier, unrelated gate-off several delay-ticks
+back. The old code let `gate_is_off` silently ride across an unbounded run
+of delay events until whatever note finally arrived, over-applying "stays
+silent" to nearly every voice's typical delay-then-note phrasing. Both
+branches now reset `gate_is_off = False` unconditionally after consuming it
+— the same one-event-only consumption discipline B11/B12 already
+established for `pending_instr`/`pending_tie`.
+
+### Results (same whole-song `BB_FULL_CAP` methodology as every prior round)
+
+Re-verified the fix scope first: with the corrected same-event-only model,
+`[gate_off]→[note]` pairs (no intervening delay) drop to 0.0-5.2% of notes
+per voice — a plausible rare pattern, not a third of the song.
+
+**Glyptodont, 20,223 frames, 1 part:**
+
+| | overall | freq | waveform | pulse | adsr | filter |
+|---|---|---|---|---|---|---|
+| B12 | 92.0 | 99.7 | 93.5 | 77.7 | 96.2 | 94.7 |
+| **B13** | **97.6** | 99.5 | **95.5** | **99.7** | 96.2 | **95.2** |
+
+**Fargo, 20,550 frames, 1 part:** 79.5%→79.2% (freq 100.0%→99.7%, everything
+else within noise) — essentially unchanged, confirming Fargo's own
+still-unexplained voice-2 desync (B12's honest residual) is a **genuinely
+different bug**, not the same root cause. The two are both voice-2 and both
+pulse-shaped, which is why this was worth checking, but they are not the
+same fix.
+
+The B10 `verify_fx_engine` self-check still passes at full count on both
+files (302,400 Fargo / 705,600 Glyptodont comparisons) — this round never
+touched the fx engine. `pyscript/test_blackbird_parser.py`'s full 9/27
+subtests still pass.
+
+### Honest residuals — not fixed this round
+
+1. **Fargo's voice-2 desync (from ~frame 8000, permanent) is still
+   completely unexplained** — this fix does not touch it (verified: no
+   change). Needs its OWN live-trace investigation, following the exact
+   same method this round used (real-frame-exact `rpos`/internal-state
+   tracing, not just register-output diffing).
+2. Glyptodont's freq dipped very slightly (99.7%→99.5%) — not chased down,
+   likely a minor side effect of the row-count/timing shift from
+   reclassifying some rows from 'note' to 'rest'; small enough not to be
+   worth pursuing given the size of the pulse win.
+3. The bonus B13-recon finding (the simulator itself diverging from real
+   hardware on Glyptodont voices 0/1/filter past frame ~1200) is
+   **unrelated to this fix and still unresolved** — see "Finding 3" further
+   up this section.
+4. Only Fargo + Glyptodont built natively. Not wired into `DriverSelector`.
+   Not audio-listened.
+
 ## What's genuinely proven vs. still open
 
 - **Proven, working**: template-based detection (11/59 files), full symbol/table
@@ -2631,8 +3020,35 @@ program gets selected, and neither of those changed here.
   fixed together — see "B11 shipped" above): whole-song overall now **Fargo
   79.4% / Glyptodont 92.0%**, both a pure freq win (Fargo freq now **exact,
   100.0%**; Glyptodont 99.7%) with every other category byte-identical to
-  B10. Pulse and ADSR (Fargo especially, 52.0%/74.0% full-song) remain the
-  largest open categories and neither has had a dedicated round yet.
+  B10.
+- **B12** (instrument-select ADSR/GATE/FILTER restarts commit same-tick,
+  same driver+translator pattern as B11 — see "B12" above): **Fargo 79.5%,
+  Glyptodont ADSR 96.1%→96.2%**, small and real, no regressions. Found (via
+  a new permanent per-frame/per-register diagnostic harness in the build
+  script) that Fargo's weak full-song pulse/adsr numbers were actually TWO
+  unrelated bugs — one fixed this round, one (**voice 2's still-unexplained
+  full instrument-state desync from ~frame 8000 onward**) genuinely open
+  and now the dominant reason Fargo's pulse (51.6%) and adsr (74.7%)
+  full-song numbers stay low. That residual needs a fresh live hardware
+  trace to crack, not another `player.s` read.
+- **B13** (a real VICE live trace through frame 10300, plus live `py65`
+  single-step CPU tracing and internal-state instrumentation of the
+  simulator itself — see "B13 shipped" above): the true root cause turned
+  out to be a driver-adjacent TRANSLATOR bug, not a driver/wave-engine bug
+  at all — `bb_steps_for_voice` ignored `gate_is_off` in its note branch
+  (a gate-off immediately followed by a note was wrongly treated as a
+  genuine restart instead of "stays silent"), compounded by a companion bug
+  where the delay branch never RESET `gate_is_off`, so a first attempted
+  fix over-applied "stays silent" to 14-45% of every voice's notes before a
+  second fix (both branches now correctly consume-and-reset the flag per
+  real hardware's own per-event `v_pendins` semantics) landed cleanly.
+  Fixed: **Glyptodont 92.0%→97.6%, pulse 77.7%→99.7%**. Fargo's own separate
+  voice-2 desync (unfixed since B12) is confirmed a DIFFERENT bug — this fix
+  left Fargo essentially unchanged (79.5%→79.2%). Also surfaced a
+  previously-unknown, unrelated bug along the way: the simulator itself
+  diverges from real hardware on Glyptodont voices 0/1/filter in this same
+  later region — every B1-B12 fidelity number implicitly trusted the
+  simulator past frame ~1200, which this trace shows isn't fully safe.
 - **Not started / explicitly out of scope this round**: testing the parser
   against the near-v1.2 variant buckets (older birdcruncher versions,
   different compiled bytes, confirmed rejected by locate but not yet

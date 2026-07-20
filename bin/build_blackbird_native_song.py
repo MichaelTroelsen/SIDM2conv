@@ -136,7 +136,35 @@ def bb_steps_for_voice(byte_stream):
     program index (1-based Blackbird index, `b - 0xC8` -- matching
     BlackbirdSim.prepare1's own `result = (tested - 0xc8) & 0xff`, NOT
     blackbird_parser.classify_byte's cosmetic 0-based 'arp' arg, which
-    Stage A never used for anything since it discards fx)."""
+    Stage A never used for anything since it discards fx).
+
+    B12: pending_instr/pending_tie must attach to the VERY NEXT event of
+    ANY kind (note OR delay), not just the next NOTE. player.s's prepare1/
+    2/3 form a SINGLE per-tick chain over the compressed stream: prepare2
+    consumes AT MOST one instrument/gate-off/legato byte per tick, and
+    prepare3 (SAME tick) then reads whatever byte comes immediately after
+    it -- note or delay, doesn't matter, it's still the SAME real tick. So
+    an instrument-select is NEVER "several ticks before the next note" on
+    hardware; it is always exactly one tick before whatever comes right
+    after it in the stream. The old code only cleared pending_instr/
+    pending_tie inside the 'note' branch, so a standalone instrument-select
+    (or legato byte) immediately followed by a DELAY/rest byte -- a real,
+    common pattern, e.g. an instrument change happening while a prior note
+    is still held -- silently held its effect pending across every
+    subsequent delay/rest tick until whatever note eventually came next,
+    sometimes many ticks later, and (worse) a stale pending_tie could then
+    wrongly suppress that later, unrelated note's own restart. Traced
+    directly against a real decoded byte stream (Fargo voice 1, bytes
+    #362-369): a legato byte paired correctly with its adjacent note, but a
+    standalone instrument-select at byte #365 (sandwiched between two
+    delay/hold bytes) was getting bundled onto a note SEVEN ticks later
+    that was itself tied -- exactly the silent-deferral pattern this fixes.
+    execute() (player.s:433-500) restarts WAVE/FILTER/ADSR/GATE on EVERY
+    tick where v_pendins is a real instrument value, independent of
+    note/delay -- see blackbird_driver.asm's matching driver-side fix in
+    set_instr_v, which commits that restart immediately instead of
+    deferring it to pn_note. Both halves were required together, same as
+    B11's fx fix."""
     steps = []
     pending_instr = None
     pending_tie = False
@@ -182,9 +210,36 @@ def bb_steps_for_voice(byte_stream):
             gate_is_off = False
             continue
         if kind == 'note':
+            # B13: a note byte immediately following a gate-off does NOT
+            # retrigger on real hardware. prepare3 (player.s 167-200) always
+            # updates v_pendnote from a note byte's own value regardless of
+            # what came before it -- but ALSO: `if vs.pendins == 0:
+            # vs.pendins = vs.currins` only fires when pendins is STILL 0,
+            # and a gate-off byte just consumed by prepare2 already set
+            # pendins=$FE, so this note byte's own tick does NOT clear it.
+            # execute() (player.s 447-457) then sees pendins=$FE and does
+            # ONLY `v_wavemask,x = $FE` (gate stays off) -- no wavepos/ADSR/
+            # filter restart, regardless of the note value that was also
+            # read this same tick. Verified directly against a live,
+            # hardware-validated BlackbirdSim trace (Glyptodont voice 2,
+            # real frames ~10165-10168: $cd[fx] $80[gate_off] $2f[note=23] --
+            # wavemask flips to $FE, wavepos never moves). The OLD code here
+            # treated ANY note byte as a genuine active-note step, silently
+            # discarding gate_is_off (which the 'delay' branch below DOES
+            # check) -- so the native driver retriggered a full wave/filter/
+            # gate restart where real hardware just goes silent. Emitting a
+            # 'rest' step instead (same convention the 'delay' branch already
+            # uses for gate_is_off) matches the OBSERVABLE effect exactly:
+            # the note value has no audible consequence while gated off, and
+            # whatever note/instrument eventually DOES retrigger will supply
+            # its own values fresh at that point.
             note = b >> 1
-            steps.append(BBStep('note', note, pending_instr, cur_fx,
-                                 pending_tie, _note_ticks(b)))
+            if gate_is_off:
+                steps.append(BBStep('rest', None, pending_instr, cur_fx,
+                                     False, _note_ticks(b)))
+            else:
+                steps.append(BBStep('note', note, pending_instr, cur_fx,
+                                     pending_tie, _note_ticks(b)))
             pending_instr = None
             pending_tie = False
             gate_is_off = False
@@ -193,9 +248,34 @@ def bb_steps_for_voice(byte_stream):
         if kind == 'delay':
             ticks = _delay_ticks(b)
             if gate_is_off or not had_note_yet:
-                steps.append(BBStep('rest', None, None, cur_fx, False, ticks))
+                steps.append(BBStep('rest', None, pending_instr, cur_fx, False, ticks))
             else:
-                steps.append(BBStep('note', None, None, cur_fx, False, ticks))
+                steps.append(BBStep('note', None, pending_instr, cur_fx, False, ticks))
+            pending_instr = None
+            pending_tie = False    # consumed here so it can't leak onto a
+                                    # later, unrelated note -- see docstring
+            # B13: gate_is_off must ALSO be consumed here, same reasoning as
+            # pending_instr/pending_tie. v_pendins resets to 0 in EVERY
+            # execute() call (player.s 497-500) and prepare1/2/3 are all
+            # SKIPPED for a voice during a multi-tick delay's own hold
+            # (v_trtimer negative) -- so a gate-off's silencing effect
+            # genuinely only lasts through the ONE delay/rest event that
+            # immediately follows it; once that delay's own countdown
+            # expires, the NEXT event gets a fresh prepare2 examination
+            # (whose "got_note: reuse currins as pendins" path -- see
+            # BlackbirdSim.prepare2 -- automatically RESTARTS the gate for a
+            # following untied note, independent of the earlier gate-off).
+            # Leaving this unreset was harmless before this session (nothing
+            # downstream checked gate_is_off outside the delay branch that
+            # already correctly used-and-discarded it per delay), but once
+            # the 'note' branch above also started checking it, the stale
+            # carry-forward across an unbounded run of delay events
+            # over-applied "stays silent" to 14-45% of ALL notes in the
+            # song (measured) instead of the rare same-tick gate-off/note
+            # pairing this was meant to catch -- verified by rebuilding and
+            # seeing Glyptodont regress from 92.0% to 73.2% before this line
+            # was added.
+            gate_is_off = False
             continue
     return steps
 
@@ -880,7 +960,18 @@ def steps_to_rows_native(steps):
     landed on such a row). The driver's own `maybe_fx_commit` (blackbird_
     driver.asm, B11) is the matching runtime-side half of this fix -- it
     commits a fresh command on rest/sustain rows immediately instead of
-    waiting for pn_tied's note-triggered commit."""
+    waiting for pn_tied's note-triggered commit.
+
+    B12: instrument changes need the SAME treatment, for the SAME reason.
+    bb_steps_for_voice (see its docstring) now attaches pending_instr to
+    whatever event immediately follows an instrument-select -- note OR
+    rest/hold -- since that pairing is always same-tick on hardware. This
+    function used to only ever emit `instrument=` inside the real-note
+    branch; a change landing on a rest/hold step was silently dropped from
+    the emitted sequence, exactly like B11's fx bug. The driver's matching
+    fix (set_instr_v in blackbird_driver.asm) commits the WAVE/FILTER/GATE
+    restart immediately when the command byte is parsed instead of
+    deferring it to pn_note."""
     rows = []
     cur_instr = None
     cur_cmd = None
@@ -891,18 +982,18 @@ def steps_to_rows_native(steps):
         if cmd != cur_cmd:
             cmdcol = cmd
             cur_cmd = cmd
+        inst = None
+        if s.instrument is not None and s.instrument != cur_instr:
+            inst = s.instrument
+            cur_instr = s.instrument
         if s.kind == 'rest':
-            rows.append(D11Row(note=SF2_GATE_OFF, command=cmdcol))
+            rows.append(D11Row(note=SF2_GATE_OFF, instrument=inst, command=cmdcol))
             rows.extend(D11Row(note=SF2_GATE_OFF) for _ in range(n - 1))
         elif s.kind == 'note' and s.note is None:
-            rows.append(D11Row(note=SF2_GATE_ON, command=cmdcol))
+            rows.append(D11Row(note=SF2_GATE_ON, instrument=inst, command=cmdcol))
             rows.extend(D11Row(note=SF2_GATE_ON) for _ in range(n - 1))
         else:
             note = max(SF2_NOTE_MIN, min(s.note + SF2_NOTE_OFS, SF2_NOTE_MAX))
-            inst = None
-            if s.instrument is not None and s.instrument != cur_instr:
-                inst = s.instrument
-                cur_instr = s.instrument
             rows.append(D11Row(note=note, instrument=inst, command=cmdcol,
                                 tie=s.tie))
             rows.extend(D11Row(note=SF2_GATE_ON) for _ in range(n - 1))
@@ -1913,6 +2004,67 @@ CATS = {
 }
 
 
+REG_NAMES = [
+    'v0freqlo', 'v0freqhi', 'v0pwlo', 'v0pwhi', 'v0ctrl', 'v0ad', 'v0sr',
+    'v1freqlo', 'v1freqhi', 'v1pwlo', 'v1pwhi', 'v1ctrl', 'v1ad', 'v1sr',
+    'v2freqlo', 'v2freqhi', 'v2pwlo', 'v2pwhi', 'v2ctrl', 'v2ad', 'v2sr',
+    'fcutlo', 'fcuthi', 'fresfilt', 'modevol',
+]
+
+
+def report_registers(sim_frames, drv_frames, lo, hi, label, only_reg=None, max_examples=3):
+    """B12 diagnostic: per-register (not per-category) match%, plus the first
+    N mismatching frames' (sim,drv) values for each broken register -- to
+    pin down exactly which SID register/voice diverges and what it diverges
+    TO, rather than just which category. Gated by BB_DIAG_LO/BB_DIAG_HI.
+    only_reg (BB_DIAG_REG, a register index) restricts to one register and
+    raises the example cap so a full divergence timeline can be read off,
+    not just the first few hits."""
+    n = min(hi, len(sim_frames), len(drv_frames)) - lo
+    print(f"    {label} per-register [{lo}:{lo+n}) n={n}:")
+    regs = [only_reg] if only_reg is not None else REGS_TO_CHECK
+    for r in regs:
+        match = sum(1 for f in range(lo, lo + n) if sim_frames[f][r] == drv_frames[f][r])
+        pct = 100 * match / n if n else 0.0
+        marker = "" if pct > 99.9 else "  <-- MISMATCH"
+        line = f"      ${0xD400+r:04X} {REG_NAMES[r]:9s}: {pct:5.1f}%{marker}"
+        print(line)
+        if pct <= 99.9:
+            examples = []
+            started = False
+            for f in range(lo, lo + n):
+                if sim_frames[f][r] != drv_frames[f][r]:
+                    started = True
+                if started:
+                    examples.append(f"@{f} sim=${sim_frames[f][r]:02x} drv=${drv_frames[f][r]:02x}")
+                if len(examples) >= max_examples:
+                    break
+            print("        " + " ".join(examples))
+
+
+def report_binned(sim_frames, drv_frames, bin_size, label):
+    """B12 diagnostic: per-bin_size-frame category match%, to find WHERE over
+    a long song a residual grows rather than just that it exists (B12's own
+    task: Fargo's full-song pulse/adsr numbers are far below their short-
+    window numbers, and no prior round has located where the gap opens up).
+    Gated by BB_DIAG_BIN (frame count per bin) so it's opt-in, off by default
+    -- this is an investigation aid, not part of the normal build report."""
+    n = min(len(sim_frames), len(drv_frames))
+    print(f"    {label} binned every {bin_size}f ({n} frames total):")
+    for lo in range(0, n, bin_size):
+        hi = min(lo + bin_size, n)
+        bn = hi - lo
+        cat_match = {k: 0 for k in CATS}
+        for f in range(lo, hi):
+            sr, dr = sim_frames[f], drv_frames[f]
+            for k, regs in CATS.items():
+                cat_match[k] += sum(1 for r in regs if sr[r] == dr[r])
+        cats_str = ", ".join(
+            f"{k}={100*cat_match[k]/(len(regs)*bn):.1f}%"
+            for k, regs in CATS.items())
+        print(f"      [{lo:6d}:{hi:6d}) n={bn:5d}: {cats_str}")
+
+
 def report_window(sim_frames, drv_frames, lo, hi, label):
     n = hi - lo
     if n <= 0 or hi > len(sim_frames) or hi > len(drv_frames):
@@ -2248,6 +2400,18 @@ def main():
             report_window(sim_slice, drv_frames, N_CMP, len(drv_frames),
                           "steady-state (200f:end, excludes this part's own "
                           "startup transient)")
+            diag_bin = os.environ.get('BB_DIAG_BIN')
+            if diag_bin:
+                report_binned(sim_slice, drv_frames, int(diag_bin),
+                              f"part {pi} diagnostic")
+            diag_lo = os.environ.get('BB_DIAG_LO')
+            if diag_lo:
+                diag_hi = int(os.environ.get('BB_DIAG_HI') or len(drv_frames))
+                diag_reg = os.environ.get('BB_DIAG_REG')
+                report_registers(sim_slice, drv_frames, int(diag_lo), diag_hi,
+                                  f"part {pi} diagnostic",
+                                  only_reg=(int(diag_reg) if diag_reg is not None else None),
+                                  max_examples=(60 if diag_reg is not None else 3))
 
     if WEIGHTED:
         tot = sum(n for n, _ in WEIGHTED)
