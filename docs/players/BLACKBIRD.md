@@ -1,6 +1,6 @@
 # Blackbird (Linus Åkesson / "lft") — recon started 2026-07-19
 
-**Status (updated 2026-07-20, post-B16): decompression, tempo model, and
+**Status (updated 2026-07-20, post-B17): decompression, tempo model, and
 Stage A (Driver 11 transpile) all SOLVED and shipped for all 11
 v1.2-exact-bucket files (`sidm2/blackbird_parser.py`,
 `sidm2/blackbird_driver11.py`). Stage B's synth engine (arpeggio/wave/
@@ -9,9 +9,10 @@ built into a real native 6502 driver
 (`drivers_src/blackbird/blackbird_driver.asm` +
 `bin/build_blackbird_native_song.py`) that now builds a working SF2 for
 **all 11 of the 11 v1.2-exact-bucket files** (B15, a coverage extension —
-see "B15 shipped" below for the full per-file table), ranging 91.4%-98.9%
-overall whole-song register match against the validated simulator (mean
-~95%). Two files needed B6's adaptive multi-part splitting automatically
+see "B15 shipped" below for the full per-file table), now ranging
+93.9%-98.9% overall post-B17 (mean ~97%, up from B15's 91.4%-98.9%/~95% —
+B17 was a broad corpus-wide pulse fix, not a Fargo-only one; see "B17
+shipped" below). Two files needed B6's adaptive multi-part splitting automatically
 (Dithered_Island: 2 parts, Into_the_Unknown: 3 parts; Fargo also now
 correctly splits into 2, since B14 fixed a genuine 35-instrument overflow
 that used to silently corrupt it instead of triggering the split). B11-B14
@@ -3244,6 +3245,45 @@ not a claim that any of these 9 are individually fully understood.
    the ~7 much-older/uncertain files remain completely out of scope —
    `locate_blackbird()` still correctly rejects them, no work has started
    on supporting a different template.
+
+## B17 shipped: the real Fargo pulse root cause — a missing VWI restart for instrument-select-without-note rows — broad corpus win, not just Fargo
+
+Same session, immediately following B16's negative result. User said "push through with py65 single-stepping" — deployed the heavier tool B13 itself used (a labeled py65 single-step trace, not just register-output diffing) rather than continuing to hand-trace the Python simulator's own internals.
+
+### The investigation
+
+- Set up a standalone script: capture the exact `(prg, edit)` pair `build_range` produces for Fargo's part 2 (via a wrapped `build_range` capturing the real, non-`count_only` call), assemble with `64tass --labels` to get a PC→symbol map, then single-step py65 through the driver's own `do_init` + 49 quick `do_play` frames, then single-step frame 49 (the exact frame the B16 investigation had already isolated) WITH logging: every time the PC lands on a new label, print voice 1's `VWI`/`VGMASK`/`PW_ACC`/`$D40B`/`$D409`.
+- Hit and caught two of my own indexing slips before the trace was trustworthy: (1) an early script advanced the simulator's OWN Python instance to real frame 0 but mislabeled its output as frame 7043+ (never actually sought there — the loop just ran from frame 0 and the print statement's label lied); (2) the single-step driver trace needed 49 quick frames before detailed logging, not 48 — off-by-one first landed one frame early (which coincidentally still matched, masking the bug for one attempt).
+- The corrected trace showed the ACTUAL row-dispatch for this tick: `pr_setinst`→`set_instr_v` fires (a genuine fresh instrument-select — `VGMASK` flips `$fe`→`$ff` immediately, matching B12's own "commit ADSR/GATE/FILTER immediately" finding), but the row's own note-slot byte is `pn_adv` (a "+++"-sustain/skip byte, NOT a genuine untied note) — so `pn_not_off`'s own VWI-restart code (`lda VIWAVE,x; sta VWI,x`, the ONLY place VWI ever gets reset, per B12's own comment) never runs. `VWI` stays wherever the OLD instrument's own wave program left it, silently continuing the WRONG program under the NEW instrument's ADSR/gate — exactly matching the observed symptom (ctrl "looks fine" for a while since consecutive WAVE rows often share the same byte; pulse desyncs immediately since it's the one column that varies every row).
+- Root cause, precisely: real hardware's `execute()` resets `wavepos = ins_wave[y-1]` UNCONDITIONALLY whenever `pendins` holds a genuine instrument value — independent of whether a fresh note ALSO fires that same tick (confirmed directly against the ALREADY-TRUSTED Python simulator: it genuinely resets `wavepos` to the instrument's row 0 at this exact tick, then advances one step in the SAME frame). B12 already found (the hard way, regression-tested) that restarting VWI unconditionally inside `set_instr_v` is WRONG — but that's because it DOUBLE-restarts the far more common "instrument-select together WITH a fresh untied note" case (once via `set_instr_v` naively, again via `pn_not_off`'s own restart). B12 stopped at "leave VWI alone in set_instr_v" without finding the narrower, correct middle ground: restart it in `set_instr_v` ONLY when nothing else is going to.
+
+### The fix — B11's exact `fxflag` pattern, applied to VWI
+
+Added `viwiflag` (`$b9`, reusing the byte freed since B9 deleted `pulse_step`'s indirect pointer): reset to 0 once per row at `vparse` (alongside `fxflag`'s own reset), set nonzero by `set_instr_v` on every genuine instrument-select (`viwiflag` is a "restart still owed" marker, not a "this happened" marker — it may go stale/unconsumed for the common case, harmlessly, since `vparse` resets it clean next row regardless). Added `maybe_vwi_commit` (mirrors `maybe_fx_commit` exactly): if `viwiflag` is set, restart `VWI` from `VIWAVE,x` and clear the flag; called from BOTH `pn_adv` (the "+++"/sustain path) and `pr_note`'s `$00`/gate-off path — the SAME two call sites `maybe_fx_commit` already uses, for the SAME underlying reason (a non-note row can still carry a fresh select that must commit immediately, not wait for whatever note eventually follows). `pn_not_off`'s own untied-note restart is UNCHANGED — for the common case, it still does the ONE restart that's needed, and `viwiflag`'s own stale value is simply never consumed.
+
+### Result: broad corpus win, not a Fargo-only fix
+
+Rebuilt all 11 corpus files. **Every file improved or held steady — zero regressions anywhere**, and several jumped dramatically:
+
+| File | Overall (B16→B17) | Pulse (B16→B17) |
+|---|---|---|
+| Fargo | 92.7%→93.9% | 71.1%→**76.1%** |
+| Glyptodont | 97.6%→97.6% | 99.7%→99.7% (unchanged) |
+| Thus_Spoke_the_PC_Speaker | 98.9%→98.9% | 100.0%→100.0% |
+| Maple_Leaf_Rag | 98.8%→98.8% | 100.0%→100.0% |
+| Euclid_Was_Here | 98.3%→98.3% | 100.0%→100.0% |
+| Dishwasher_Groove | 97.5%→97.5% | 100.0%→100.0% |
+| Elvendance | 95.3%→95.3% | 100.0%→100.0% |
+| Into_the_Unknown | 95.4%→**97.4%** | 89.2%→**96.6%** |
+| Toy_Rocket | 95.1%→**98.1%** | 87.5%→**100.0%** |
+| Dithered_Island | 92.7%→**98.6%** | 75.3%→**100.0%** |
+| Revolutions_Delivered | 91.4%→**95.2%** | 92.9%→**99.8%** |
+
+Four of the 9 previously-uninvestigated B15 files (Into_the_Unknown, Toy_Rocket, Dithered_Island, Revolutions_Delivered — exactly the ones with meaningfully sub-100% pulse in the B15 table) jumped to 96.6-100% pulse from this ONE fix, confirming the "instrument-select landing on a non-note row" pattern is common across the corpus, not a Fargo idiosyncrasy — B16's own hypothesis-narrowing work (ruling out priming, ins_restart, and cursor-vs-value framing) is what made this precise, targeted fix possible instead of another blind guess.
+
+**Fargo itself only partially recovered** (pulse 71.1%→76.1%, not 100%) — part 2's PRIMARY window (first 200 frames) is now a perfect 100.0% pulse match (up from 79.5%), proving the fix is correct where it applies, but the FULL-part window is still only 68.2% pulse (up from 66.9%), meaning Fargo has at least one MORE, still-unidentified pulse-affecting issue later in part 2 — not yet investigated. `pyscript/test_blackbird_parser.py`'s full 9/9 suite still passes.
+
+Committed as (see git log for the exact hash) and pushed.
 
 ## What's genuinely proven vs. still open
 

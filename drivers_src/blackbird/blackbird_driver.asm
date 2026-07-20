@@ -43,8 +43,26 @@ tmpins      = $ed           ; B16: set_instr_v's own instrument-slot stash,
                             ; for the ins_restart/ins_restart2 hard-restart
                             ; check (reuses the byte freed since B10 deleted
                             ; fm_step's FMTAB indirect pointer `fmptr`).
-; ($b9/$ba free since B9 deleted pulse_step's PULSETAB indirect pointer.
-;  NB $ea/$eb collide with vhold[1]/vhold[2] -- do not reuse those.)
+viwiflag    = $b9           ; B17: nonzero if set_instr_v fired THIS row --
+                            ; see set_instr_v/pn_adv/pr_note's gate-off case.
+                            ; Mirrors fxflag's exact pattern (B11) but for
+                            ; the WAVE-ROW CURSOR restart: real hardware's
+                            ; execute() resets wavepos on EVERY genuine
+                            ; instrument-select, unconditional on whether a
+                            ; fresh untied note ALSO lands the same tick --
+                            ; but B12 measured that restarting VWI
+                            ; unconditionally inside set_instr_v regresses
+                            ; pulse (double-restarts the common
+                            ; instrument+note-together case, since
+                            ; pn_not_off's own untied-note path already
+                            ; restarts VWI from VIWAVE,x). This flag lets
+                            ; the restart happen exactly once: at
+                            ; set_instr_v if nothing else will do it, or
+                            ; skipped here if pn_not_off's own note-trigger
+                            ; already did (reuses the byte freed since B9
+                            ; deleted pulse_step's PULSETAB indirect
+                            ; pointer -- $ba is still free).
+; (NB $ea/$eb collide with vhold[1]/vhold[2] -- do not reuse those.)
 fxflag      = $ec           ; B11: nonzero if pr_setprog fired THIS row -- see
                             ; pr_setprog/pn_adv/pr_note's gate-off case. Mirrors
                             ; real hardware's v_pendfx: prepare1 (player.s:98-100)
@@ -914,6 +932,8 @@ vparse:
         lda #$00
         sta pending_dur
         sta fxflag                ; B11: reset "fresh setprog this row" flag
+        sta viwiflag               ; B17: reset "fresh instrument this row,
+                                   ; VWI not yet restarted" flag
         jsr parse_one
         lda wptr
         sta vsp_lo,x
@@ -1018,9 +1038,12 @@ pr_note:
         jsr maybe_fx_commit       ; B11: rest rows can still carry a fresh
                                   ; fx-select (real hardware's prepare1/execute
                                   ; apply it same-tick regardless of note)
+        jsr maybe_vwi_commit      ; B17: same for a fresh instrument-select
+                                  ; with no accompanying untied note
         jmp advw
 pn_adv:
         jsr maybe_fx_commit       ; B11: same for "+++" sustain / skip rows
+        jsr maybe_vwi_commit      ; B17: ditto
         jmp advw                 ; trampoline (advw now out of branch range)
 pn_not_off:
         cmp #$7e
@@ -1150,6 +1173,31 @@ maybe_fx_commit:
 mfc_done:
         rts
 
+; --- B17: commit a fresh instrument-select's VWI restart on a NON-note row -
+; (rest / sustain / "+++"). pn_not_off's own untied-note path always
+; restarts VWI from VIWAVE,x unconditionally (mirrors hardware's
+; execute()'s own `vs.wavepos = ins_wave[y-1]`, reached whenever pendins
+; holds a genuine instrument value) -- so a row that ALSO has a fresh
+; untied note never needs this: the note's own restart already covers it,
+; and viwiflag is left in the stale "still owed" state, harmlessly, until
+; vparse resets it clean next row. This routine covers the case pn_not_off
+; can't: a genuine instrument-select landing on a row whose own note-slot
+; is $00 (gate-off) or a sustain/"+++" byte -- real hardware still resets
+; wavepos there (execute()'s instrument-select branch is unconditional on
+; whatever pendnote holds), but B12 measured that restarting VWI
+; unconditionally INSIDE set_instr_v regresses pulse (double-restarts the
+; far more common instrument+note-together row). Gating on viwiflag makes
+; the restart fire exactly once, only when nothing else already did it.
+maybe_vwi_commit:
+        lda viwiflag
+        beq mvc_done
+        lda #$00
+        sta viwiflag
+        lda VIWAVE,x
+        sta VWI,x
+mvc_done:
+        rts
+
 ; --- advance voice X's orderlist to the next pattern: set vsp[x]+vtrans[x] --
 next_pattern:
         lda #$20
@@ -1238,6 +1286,11 @@ set_instr_v:
         sta VIFILT,x
         lda INSTR_WAVE,y
         sta VIWAVE,x             ; instrument's wave-program start row
+        lda #$01
+        sta viwiflag              ; B17: this row got a fresh instrument --
+                                  ; VWI restart still owed unless pn_not_off's
+                                  ; own untied-note path does it first (see
+                                  ; pn_adv/pr_note's gate-off case below).
         ; B12: commit ADSR/GATE/FILTER IMMEDIATELY, matching player.s's
         ; execute() (line 433-500), which applies these on EVERY tick a REAL
         ; instrument-select is consumed -- independent of whether that tick
