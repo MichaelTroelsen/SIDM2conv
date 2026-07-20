@@ -10,9 +10,10 @@
 ; out to keep this fork minimal. Blackbird's own programs (wavetable/
 ; filttable/fxtable, RE'd + validated byte-exact in
 ; docs/players/BLACKBIRD.md's "Stage B synth engine" section) are
-; TRANSLATED into this shared engine's WAVE/PULSETAB/FILTER/FMTAB table
-; format by bin/build_blackbird_native_song.py — no new 6502 stepper logic
-; is written here.
+; TRANSLATED into this shared engine's WAVE/FILTER table formats by
+; bin/build_blackbird_native_song.py. Since B10 the PITCH engine is NOT
+; translated at all: lft's own fx interpolator and his own fxtable/
+; freq_lsb/freq_msb bytes run here verbatim (see fx_step).
 ;
 ; Build: py -3 bin/build_blackbird_driver_full.py
 ; ==========================================================================
@@ -38,8 +39,8 @@ VIBSPD   = $10           ; vibrato phase increment per frame
 VIBDLY   = $0c           ; delay (frames) before vibrato kicks in
 ; scratch
 wptr        = $fa           ; working pointer (seq / orderlist)
-fmptr       = $ec           ; working pointer into FMTAB (fm_step indirect read) (2)
-; ($b9/$ba free since B9 deleted pulse_step's PULSETAB indirect pointer.
+; ($ec/$ed free since B10 deleted fm_step's FMTAB indirect pointer `fmptr`;
+;  $b9/$ba free since B9 deleted pulse_step's PULSETAB indirect pointer.
 ;  NB $ea/$eb collide with vhold[1]/vhold[2] -- do not reuse those.)
 ms_cnt      = $f0           ; multispeed tick countdown within one video frame
 tmpf        = $f6           ; freq/ADSR temp (lo/hi)
@@ -103,28 +104,46 @@ F_MODE  = $19a4          ; SID mode bits for $D418 high nibble (from passband)
 F_ACT   = $19a5          ; 1 = a filter program is running
 VIFLAGS = $19a6          ; per-voice instrument flags byte (col2) (3)
 VIFILT  = $19a9          ; per-voice instrument filter-program start row (3)
-; --- FM offset-list runner (per-frame pitch program): per-voice frequency
-;     accumulator that walks the FM table (FMTAB ROW-major, 3 bytes/entry:
-;     lo,hi,dur) via a 16-bit pointer from the note's instrument FM-start,
-;     adding the signed offset to FM_ACC each frame; freq written = vfreq +
-;     FM_ACC. dur 0 = freeze. Each note's pitch envelope is selected PER NOTE
-;     by the $c0-$ff sequence command (index -> IFM_LO/IFM_HI -> VIFM -> FMP),
-;     decoupled from the instrument. ------------
-FM_ON     = $19ac        ; per-voice: 1 = FM running (3)
-FM_IDX    = $19af        ; per-voice: (legacy, unused) (3)
-FM_CNT    = $19b2        ; per-voice: frames left on current entry (3)
-FM_ACC_LO = $19b5        ; per-voice: accumulated freq offset lo (3)
-FM_ACC_HI = $19b8        ; per-voice: accumulated freq offset hi (3)
-FM_OFF_LO = $19bb        ; per-voice: current entry offset lo (3)
-FM_OFF_HI = $19be        ; per-voice: current entry offset hi (3)
-vbasenote = $19c1        ; per-voice: base note index (note+transpose) for the
-                         ; wave-table semitone column; wave_step recomputes
-                         ; vfreq = freqtable[vbasenote + col1] each frame (3)
-FMP_LO    = $19c4        ; per-voice: current FMTAB read pointer lo (3)
-FMP_HI    = $19c7        ; per-voice: current FMTAB read pointer hi (3)
-VIFM_LO   = $19ca        ; per-voice: current instrument's FM-start addr lo (3)
-VIFM_HI   = $19cd        ; per-voice: current instrument's FM-start addr hi (3)
-; ($19d0-$19db: freed by B9's removal of PPTR_LO/HI + VIPUL_LO/HI)
+; --- B10: fx/PITCH interpolator state (replaces the whole FM offset-list
+;     accumulator engine -- see fx_step below).
+;
+;     B9 did this for PULSE; B10 does the identical move for PITCH. The old
+;     engine stored a RECORDING: per-frame absolute frequency OFFSETS from a
+;     note's steady pitch, which are note-DEPENDENT (Blackbird's frequency
+;     table is exponential, so the same +N-quartertone arp program yields a
+;     different Hz offset per note). That forced one $c0-$ff command slot per
+;     (fx-program, note) PAIR -- 423 slots for Glyptodont against a 64-slot
+;     cap, i.e. 85% of them clustered away, which was the documented dominant
+;     cause of its freq residual.
+;
+;     What lft actually runs (player.s 207-271) is note-INDEPENDENT: an fx
+;     program is a list of signed QUARTER-SEMITONE offsets, and the note only
+;     enters as `v_basepitch = note*4` added to the offset before a 4-mode
+;     interpolated lookup into freq_lsb/freq_msb. Running that algorithm here
+;     makes a "program" just an fx INDEX -- so the slot count collapses to
+;     the file's own distinct-fx-program count (`nfx`: 35 Fargo, 47
+;     Glyptodont), both comfortably under the cap, and clustering disappears
+;     entirely rather than being merely reduced.
+;
+;     It also deletes the FM engine's known 1-frame note-trigger lag by
+;     construction: fm_step existed to ACCUMULATE offsets, so pr_note had to
+;     write a flat base pitch on the trigger frame and only start applying
+;     deltas the frame after. fx_step computes the ABSOLUTE frequency from
+;     FXPOS every frame, so there is no accumulator to prime and nothing to
+;     lag -- pr_note no longer writes $D400/1 at all, exactly like lft's own
+;     execute(), which never touches the frequency registers.
+FXPOS     = $19ac        ; per-voice: current byte position in FXTAB (lft's
+                         ; v_fxpos) -- ALWAYS running, there is no "fx off" (3)
+BASEPITCH = $19af        ; per-voice: note*4 (lft's v_basepitch), set by
+                         ; pr_note on every trigger incl. tied (3)
+VIFXS     = $19b2        ; per-voice: pending fx-program START position, set
+                         ; by the $c0-$ff command, applied by pr_note (3)
+VIFXR     = $19b5        ; per-voice: pending "reset FXPOS on trigger" flag --
+                         ; 0 for Blackbird fx 0, which per lft's execute()
+                         ; (`ldy v_pendfx,x; beq no_fx`) means the running
+                         ; program is NOT repositioned by the note (3)
+; ($19b8-$19db: freed by B10's removal of FM_ON/FM_IDX/FM_CNT/FM_ACC_*/
+;  FM_OFF_*/FMP_*/VIFM_*/vbasenote, and by B9's removal of PPTR/VIPUL)
 SWTOG     = $19dc        ; swing-tempo phase toggle (ported from the MoN driver, which
                          ; ported it from the MoN ROM's own $E2 toggle at $1134-$1138):
                          ; EOR #$ff per row; negative phase reloads TEMPO2 (the SHORT
@@ -237,8 +256,8 @@ iv:     lda PRIME_VWF_TAB,x
         lda PRIME_VIWAVE_TAB,x
         sta VIWAVE,x
         lda #$00
-        sta vfreq_lo,x            ; recomputed fresh every frame by wave_step's
-        sta vfreq_hi,x            ; own ws_sok path -- no priming needed here
+        sta vfreq_lo,x            ; B10: dead for Blackbird (only ws_drum, which
+        sta vfreq_hi,x            ; this translator never emits, still reads it)
         ; B9: PULSE priming is now ONE byte per voice. B8 needed seven
         ; (PPTR_LO/HI, VPC, VPLO, VPHI, VPADL, plus an aux PULSETAB program
         ; just to give the cursor a stable address) because the pulse ran on
@@ -253,37 +272,28 @@ iv:     lda PRIME_VWF_TAB,x
         sta PW_ACC,x
         lda PRIME_VGMASK_TAB,x
         sta VGMASK,x              ; primed gate state ($fe old default = off)
-        ; B8: genuine mid-program FM resume (B7 forced this flat/off). The
-        ; note-parameterization B7 named as the blocker is real but solvable
-        ; -- the validated simulator's snapshot carries BOTH the bundle in
-        ; flight (currfx + pendnote select the program) AND the position
-        ; within it (fxpos), and FM's cumulative accumulator means the
-        ; absolute pitch offset is just FM_ACC, which the builder can write
-        ; directly. FM_ON=0 (with everything else 0) reproduces B7's
-        ; flat/idle behaviour exactly whenever the position can't be
-        ; resolved, so this degrades safely rather than guessing.
-        lda PRIME_FM_ON_TAB,x
-        sta FM_ON,x
-        lda PRIME_FM_ACC_LO_TAB,x  ; the load-bearing one: FM is a cumulative
-        sta FM_ACC_LO,x             ; accumulator, so the voice's whole
-        lda PRIME_FM_ACC_HI_TAB,x    ; current pitch offset lives here
-        sta FM_ACC_HI,x
-        lda PRIME_FM_OFF_LO_TAB,x
-        sta FM_OFF_LO,x
-        lda PRIME_FM_OFF_HI_TAB,x
-        sta FM_OFF_HI,x
-        lda PRIME_FM_CNT_TAB,x
-        sta FM_CNT,x
-        lda PRIME_FMP_LO_TAB,x
-        sta FMP_LO,x
-        lda PRIME_FMP_HI_TAB,x
-        sta FMP_HI,x
-        lda PRIME_VIFM_LO_TAB,x   ; primed FM bundle pointer (old default =
-        sta VIFM_LO,x              ; program 0's own address, reproduced
-        lda PRIME_VIFM_HI_TAB,x    ; exactly by _compute_prime_consts' own
-        sta VIFM_HI,x               ; "no owner instrument" branch)
-        lda PRIME_VBASENOTE_TAB,x
-        sta vbasenote,x           ; base note index (set on each note trigger)
+        ; B10: fx/pitch priming collapses from EIGHT reconstructed fields per
+        ; voice to TWO raw ones, and stops being an approximation.
+        ;
+        ; B8/B9 had to rebuild an FM resume out of PRIME_FM_ON/ACC_LO/ACC_HI/
+        ; OFF_LO/OFF_HI/CNT/FMP_LO/FMP_HI, by locating the captured `fxpos`
+        ; inside a translated per-(fx,note) program's row/frame map and
+        ; reconstructing the accumulator -- and it degraded to FM_ON=0 (flat)
+        ; whenever that lookup failed, which on Glyptodont it regularly did.
+        ;
+        ; Now that the driver runs lft's own algorithm over lft's own tables,
+        ; the two bytes of state the boundary snapshot ALREADY carries --
+        ; `v.fxpos` and `v.basepitch` -- ARE the driver's state, with no
+        ; mapping, no reconstruction and no failure mode. There is nothing
+        ; left to degrade to.
+        lda PRIME_FXPOS_TAB,x
+        sta FXPOS,x
+        lda PRIME_BASEPITCH_TAB,x
+        sta BASEPITCH,x
+        lda PRIME_VIFXS_TAB,x     ; the pending $c0-$ff selection a resting
+        sta VIFXS,x                ; voice is still holding at the boundary
+        lda PRIME_VIFXR_TAB,x
+        sta VIFXR,x
         lda PRIME_FLAGS_TAB,x     ; primed instrument flags ($40 = filter-
         sta VIFLAGS,x              ; carrying) -- old default left this
                                     ; untouched (uninitialized-but-effectively-
@@ -415,8 +425,8 @@ dp_vib:
         ; $D402/3 itself, from the same row it writes $D404 from, exactly as
         ; lft's own `vloop` does.
         jsr filt_prog_step       ; global filter program -> $D415/6/7 + mode
-        jsr wave_step            ; wave-program -> $D404 + $D402/3 + vfreq
-        jsr fm_step               ; per-voice freq -> $D400/1 (+ FM accumulate)
+        jsr wave_step            ; wave-program -> $D404 + $D402/3
+        jsr fx_step               ; B10: fx/pitch interpolator -> $D400/1
         dec ms_cnt
         bne dp_tick              ; next multispeed tick this frame
         rts
@@ -462,20 +472,16 @@ ws_have:
         ; NOTE for anyone re-forking this driver for another player: the
         ; semitone column is a real shared-engine feature and this deletion
         ; is Blackbird-specific.
+        ; B10: the `vfreq = freqtable[vbasenote]` lookup that used to sit
+        ; here is GONE, along with vbasenote and freqtable themselves. It
+        ; existed only to give fm_step a base pitch to add its accumulated
+        ; offset to; fx_step computes the absolute frequency directly from
+        ; BASEPITCH + FXTAB through lft's own freq_lsb/freq_msb blend, so
+        ; nothing reads vfreq any more. (vfreq_lo/hi survive as declarations
+        ; solely for ws_drum below, which Blackbird never triggers.)
         lda VIFLAGS,x            ; DRUM instrument (flag $20)? col1 = freq HI
         and #$20                 ;   byte -- not emitted by this translator,
         bne ws_drum              ;   kept for driver-shape parity only
-        lda vbasenote,x
-        cmp #$70                 ; clamp (pr_note already rejects >= $70)
-        bcc ws_sok
-        lda #$6f
-ws_sok:
-        asl                      ; note index -> freqtable word offset
-        tay
-        lda freqtable,y          ; vfreq = freqtable[clamped note]
-        sta vfreq_lo,x
-        lda freqtable+1,y
-        sta vfreq_hi,x
 ws_w404:
         ldy ws_row               ; restore resolved row + reload waveform for $D404
         lda WAVE,y
@@ -727,72 +733,102 @@ fp_ovf:
 fp_ovf_done:
         rts
 
-; --- per-voice FM offset-list runner (trace-driven): writes $D400/1 = vfreq +
-;     FM_ACC every frame. For FM-on voices, walk FMTAB from FM_IDX, accumulating
-;     the current signed offset into FM_ACC for its duration; dur 0 = freeze. --
-fm_step:
+; --- B10: per-voice fx/PITCH interpolator -- lft's OWN everyframe pitch
+;     engine (player.s lines 207-271) ported instruction-for-instruction,
+;     NOT a re-encoding of its output. Writes $D400/1 for every voice, every
+;     frame. See the FXPOS/BASEPITCH declarations above for why.
+;
+;     The algorithm, for the record (verified against player.s directly, and
+;     asserted frame-by-frame at BUILD time against the validated simulator
+;     -- see build_blackbird_native_song.py's verify_fx_engine):
+;
+;       full = FXTAB[FXPOS] + BASEPITCH          (a 9-bit sum; BASEPITCH =
+;                                                 note*4, so the unit is a
+;                                                 QUARTER semitone)
+;       y    = full >> 2                          (semitone index, 0..127)
+;       mode = full & 3                           (quarter-tone fraction)
+;
+;     ...and `mode` picks one of four blends of the freq tables. The `ror` /
+;     `lsr` pair below is exactly how lft extracts both at once: `ror` rotates
+;     the add's carry-OUT into bit7 (so the 9th bit survives) while shifting
+;     bit0 OUT into carry, and the following `lsr` shifts bit1 out. Two
+;     branches later, A holds full>>2 and the two branch decisions ARE the
+;     mode bits -- which is also why the ADC carry-ins below are what they
+;     are: the carry a blend inherits is literally the mode bit that selected
+;     it. lft comments two of them "no clc, adds small consistent error" --
+;     that bias is DELIBERATE and part of the tuning, so it is reproduced,
+;     not corrected.
+;
+;     NOTE ON TABLE EXTENT (this bit its own project once already): the
+;     `freq_lsb+24,y` style operands are ordinary 16-bit absolute-indexed
+;     reads with y up to 127, so they legitimately read PAST the nominal
+;     96-byte table -- freq_msb and freq_lsb physically overlap by 15 bytes
+;     (lft's own comment at player.s:692) and freq_lsb's tail runs on into
+;     pwprepare's region. The tables are therefore emitted as ONE contiguous
+;     463-byte blob (FREQBLOB, template offsets 817..1280) rather than three
+;     truncated tables; freq_msb/freq_lsb/pwprepare are just labels into it.
+fx_step:
         ldx #$02
-fm_l:
-        lda FM_ON,x
-        bne fm_run
-        jmp fm_write             ; FM off -> freq = vfreq (FM_ACC stays 0)
-fm_run:
-        lda FM_CNT,x
-        beq fm_load              ; current entry expired -> load next
-        jmp fm_add
-fm_load:
-        lda FMP_LO,x             ; point fmptr at the current row-major entry
-        sta fmptr
-        lda FMP_HI,x
-        sta fmptr+1
-        ldy #$02
-        lda (fmptr),y            ; byte 2 = dur
-        bne fm_haveent
-        ; dur 0 -> freeze: offset 0, hold, do not advance
+fx_l:
+        ldy FXPOS,x
+        lda FXTAB+1,y            ; PEEK the next byte: bit7 set => it is a
+        bmi fx_dojump            ;   relative jump amount, not a pitch value
         lda #$00
-        sta FM_OFF_LO,x
-        sta FM_OFF_HI,x
-        lda #$ff
-        sta FM_CNT,x
-        jmp fm_add
-fm_haveent:
-        sta FM_CNT,x
-        ldy #$00
-        lda (fmptr),y            ; byte 0 = offset lo
-        sta FM_OFF_LO,x
-        iny
-        lda (fmptr),y            ; byte 1 = offset hi
-        sta FM_OFF_HI,x
-        lda FMP_LO,x             ; advance pointer by 3 bytes
+fx_dojump:
+        sec                      ; advance by +1, or by +jump+1
+        adc FXPOS,x
+        sta FXPOS,x
+        lda FXTAB,y              ; the pitch value comes from the OLD y
+        bne fx_pitch
+        ldy sidbase,x            ; 0 => "fixed freq": $ff to BOTH $D400 and
+        lda #$ff                 ;   $D401 (lft: `lda #$ff; sta $d400,x; bmi
+        sta SID+0,y              ;   freqdone1` falls into `sta $d401,x` with
+        sta SID+1,y              ;   A still $ff)
+        jmp fx_nextv
+fx_pitch:
         clc
-        adc #$03
-        sta FMP_LO,x
-        bcc fm_add
-        inc FMP_HI,x
-fm_add:
-        lda FM_ACC_LO,x          ; FM_ACC += signed offset
-        clc
-        adc FM_OFF_LO,x
-        sta FM_ACC_LO,x
-        lda FM_ACC_HI,x
-        adc FM_OFF_HI,x
-        sta FM_ACC_HI,x
-        lda FM_CNT,x
-        beq fm_write
-        dec FM_CNT,x
-fm_write:
-        ldy sidbase,x            ; freq = vfreq + FM_ACC
-        lda vfreq_lo,x
-        clc
-        adc FM_ACC_LO,x
-        sta SID+0,y
-        lda vfreq_hi,x
-        adc FM_ACC_HI,x
+        adc BASEPITCH,x          ; full = fx value + note*4
+        ror                      ; carry-in = the add's carry-out; bit0 -> carry
+        bcc fx_x0
+        lsr                      ; bit1 -> carry
+        tay
+        bcc fx_01
+fx_11:  lda freq_lsb,y           ; mode 11: +0 / +20, carry-in 1 (deliberate)
+        adc freq_lsb+20,y
+        sta tmpf
+        lda freq_msb,y
+        adc freq_msb+20,y        ; msb add chains the lsb add's real carry-out
+        jmp fx_wr
+fx_01:  lda freq_lsb+19,y        ; mode 01: +19 / +1, carry-in 0
+        adc freq_lsb+1,y
+        sta tmpf
+        lda freq_msb+19,y
+        adc freq_msb+1,y
+        jmp fx_wr
+fx_x0:  lsr                      ; bit1 -> carry
+        tay
+        bcs fx_10
+fx_00:  lda freq_lsb+24,y        ; mode 00: direct lookup, no add at all
+        sta tmpf
+        lda freq_msb+24,y
+        jmp fx_wr
+fx_10:  lda freq_lsb+12,y        ; mode 10: +12 / +13, carry-in 1 (deliberate)
+        adc freq_lsb+13,y
+        sta tmpf
+        lda freq_msb+12,y
+        adc freq_msb+13,y
+fx_wr:
+        sta tmpf+1               ; (A = msb; tmpf = lsb) -- staged through the
+        ldy sidbase,x            ;  existing freq temp pair rather than the
+        lda tmpf                 ;  stack, matching this driver's convention
+        sta SID+0,y              ;  everywhere else
+        lda tmpf+1
         sta SID+1,y
+fx_nextv:
         dex
-        bmi fm_done
-        jmp fm_l
-fm_done:
+        bmi fx_done
+        jmp fx_l
+fx_done:
         rts
 do_row:
         lda #$00
@@ -915,16 +951,20 @@ pr_cmd:
         jsr advw
         jmp pr_read
 pr_setprog:
-        ; $c0-$ff: select this voice's PER-NOTE synth program (a bundle of FM
-        ; slide + pulse-width envelope), decoupled from the instrument. index =
-        ; byte & $3f selects both the FM-start pointer (IFM) and the pulse-program
-        ; start addr (IPULSE_LO/HI); pr_note restarts both.
+        ; $c0-$ff: select this voice's fx/PITCH program.
+        ;
+        ; B10: the index is now Blackbird's OWN fx-program number, verbatim
+        ; and note-INDEPENDENT (the builder asserts nfx < 64, so the mapping
+        ; is the identity and no clustering happens at all -- see FXPOS's
+        ; declaration). It resolves to a start POSITION in FXTAB via FXSTART
+        ; (lft's `fx_start-1,y`), plus a reset flag: Blackbird fx 0 means "do
+        ; not reposition the running program", which FXRST encodes as 0.
         and #$3f
         tay
-        lda IFM_LO,y
-        sta VIFM_LO,x
-        lda IFM_HI,y
-        sta VIFM_HI,x
+        lda FXSTART,y
+        sta VIFXS,x
+        lda FXRST,y
+        sta VIFXR,x
         ; B8: the PULSE program is NO LONGER selected here. On real
         ; hardware the pulse-width program is part of the INSTRUMENT's wave
         ; program (BlackbirdSim.everyframe reads its pulse rows out of the
@@ -965,26 +1005,32 @@ pn_not_off:
         bcs pn_adv
         clc                      ; apply transpose
         adc vtrans,x
-        sta vbasenote,x          ; base note index for the wave-table semitone col
+        ; B10: BASEPITCH = note*4, which is lft's own `lda v_pendnote,x; asl;
+        ; asl` in execute(). Two things this must get right:
+        ;  (1) the quantity is note*4, NOT the note index -- the old
+        ;      `vbasenote` was a note index feeding a freqtable lookup, a
+        ;      different unit entirely;
+        ;  (2) the sequence note column is Blackbird's note index PLUS
+        ;      NOTE_OFS (Stage A's user-verified pitch calibration, emitted
+        ;      into layout.inc from the SAME constant the builder uses), so
+        ;      the offset has to come back off before the shift.
+        sec
+        sbc #NOTE_OFS
         asl
-        tay
-        lda freqtable,y
-        sta tmpf
-        lda freqtable+1,y
-        sta tmpf+1
-        lda tmpf                 ; remember the base freq for vibrato
-        sta vfreq_lo,x
-        lda tmpf+1
-        sta vfreq_hi,x
+        asl
+        sta BASEPITCH,x
         lda #$00
         sta vib_phase,x
         lda #VIBDLY
         sta vib_delay,x
         ldy sidoff
-        lda tmpf
-        sta SID+0,y
-        lda tmpf+1
-        sta SID+1,y
+        ; B10: NO $D400/1 write here. lft's execute() never touches the
+        ; frequency registers -- everyframe()'s fx engine owns them outright,
+        ; and it runs on the note's OWN frame. The old code wrote a flat base
+        ; pitch on the trigger frame because fm_step was an accumulator that
+        ; could only start applying deltas the frame AFTER; that was the
+        ; documented 1-frame note-trigger lag, and it is gone by construction
+        ; rather than corrected by an offset.
         lda tieflag              ; TIE -> change pitch only: no gate re-attack, and
         bne pn_tied              ; leave the pulse program free-running (legato)
         lda vwf,x                ; retrigger: gate off then on
@@ -1035,22 +1081,22 @@ pn_not_off:
         lda #$01
         sta F_ACT
 pn_tied:
-        ; (re)start the FM offset-list at this note's FM program (set per note by
-        ; the $c0-$ff command). The trigger frame shows the BASE pitch (FM_ACC=0);
-        ; the first FM delta is applied the NEXT frame. ALWAYS runs (tied or
-        ; not) -- see the comment above.
-        lda VIFM_LO,x
-        sta FMP_LO,x
-        lda VIFM_HI,x
-        sta FMP_HI,x
-        lda #$00
-        sta FM_ACC_LO,x
-        sta FM_ACC_HI,x
-        sta FM_OFF_LO,x          ; no offset on the trigger frame
-        sta FM_OFF_HI,x
-        lda #$01
-        sta FM_CNT,x             ; hold base this frame; load entry 0 next frame
-        sta FM_ON,x
+        ; B10: (re)position the fx/pitch program at this note's own program.
+        ; lft's execute(): `ldy v_pendfx,x; beq no_fx; lda fx_start-1,y; sta
+        ; v_fxpos,x` -- so fx 0 deliberately does NOT reposition, the running
+        ; program simply continues. ALWAYS runs, tied or not: real hardware's
+        ; `prepare3` sets `v_pendfx = v_currfx` with no tie/pendins gate at
+        ; all (unchanged from B8's finding).
+        ;
+        ; There is no accumulator to zero any more -- fx_step recomputes the
+        ; absolute frequency from FXPOS every frame, so repositioning FXPOS
+        ; IS the whole restart, and this frame already shows the program's
+        ; row 0 rather than a flat base pitch.
+        lda VIFXR,x
+        beq pn_nofx
+        lda VIFXS,x
+        sta FXPOS,x
+pn_nofx:
         jmp advw
 
 pr_ret:
@@ -1195,8 +1241,6 @@ PRIME_VIWAVE_TAB:
         .byte PRIME_VIWAVE0, PRIME_VIWAVE1, PRIME_VIWAVE2
 PRIME_VGMASK_TAB:
         .byte PRIME_VGMASK0, PRIME_VGMASK1, PRIME_VGMASK2
-PRIME_VBASENOTE_TAB:
-        .byte PRIME_VBASENOTE0, PRIME_VBASENOTE1, PRIME_VBASENOTE2
 PRIME_AD_TAB:
         .byte PRIME_AD0, PRIME_AD1, PRIME_AD2
 PRIME_SR_TAB:
@@ -1207,32 +1251,22 @@ PRIME_VIFILT_TAB:
         .byte PRIME_VIFILT0, PRIME_VIFILT1, PRIME_VIFILT2
 PRIME_VWF_TAB:
         .byte PRIME_VWF0, PRIME_VWF1, PRIME_VWF2
-PRIME_VIFM_LO_TAB:
-        .byte PRIME_VIFM_LO0, PRIME_VIFM_LO1, PRIME_VIFM_LO2
-PRIME_VIFM_HI_TAB:
-        .byte PRIME_VIFM_HI0, PRIME_VIFM_HI1, PRIME_VIFM_HI2
 PRIME_PW_ACC_TAB:
         .byte PRIME_PW_ACC0, PRIME_PW_ACC1, PRIME_PW_ACC2
 PRIME_D402_TAB:
         .byte PRIME_D4020, PRIME_D4021, PRIME_D4022
 
-; B8: genuine mid-program FM resume state (see do_init's own comments)
-PRIME_FM_ON_TAB:
-        .byte PRIME_FM_ON0, PRIME_FM_ON1, PRIME_FM_ON2
-PRIME_FMP_LO_TAB:
-        .byte PRIME_FMP_LO0, PRIME_FMP_LO1, PRIME_FMP_LO2
-PRIME_FMP_HI_TAB:
-        .byte PRIME_FMP_HI0, PRIME_FMP_HI1, PRIME_FMP_HI2
-PRIME_FM_CNT_TAB:
-        .byte PRIME_FM_CNT0, PRIME_FM_CNT1, PRIME_FM_CNT2
-PRIME_FM_ACC_LO_TAB:
-        .byte PRIME_FM_ACC_LO0, PRIME_FM_ACC_LO1, PRIME_FM_ACC_LO2
-PRIME_FM_ACC_HI_TAB:
-        .byte PRIME_FM_ACC_HI0, PRIME_FM_ACC_HI1, PRIME_FM_ACC_HI2
-PRIME_FM_OFF_LO_TAB:
-        .byte PRIME_FM_OFF_LO0, PRIME_FM_OFF_LO1, PRIME_FM_OFF_LO2
-PRIME_FM_OFF_HI_TAB:
-        .byte PRIME_FM_OFF_HI0, PRIME_FM_OFF_HI1, PRIME_FM_OFF_HI2
+; B10: fx/pitch resume state -- the two RAW bytes the boundary snapshot
+; already carries (`v.fxpos`, `v.basepitch`), plus the voice's still-pending
+; $c0-$ff selection. Replaces B8's eight reconstructed FM_* fields entirely.
+PRIME_FXPOS_TAB:
+        .byte PRIME_FXPOS0, PRIME_FXPOS1, PRIME_FXPOS2
+PRIME_BASEPITCH_TAB:
+        .byte PRIME_BASEPITCH0, PRIME_BASEPITCH1, PRIME_BASEPITCH2
+PRIME_VIFXS_TAB:
+        .byte PRIME_VIFXS0, PRIME_VIFXS1, PRIME_VIFXS2
+PRIME_VIFXR_TAB:
+        .byte PRIME_VIFXR0, PRIME_VIFXR1, PRIME_VIFXR2
 
 ; B3: row-indexed tempo schedule (see do_row + CUR_TEMPO's declaration above).
 ; Placed here, UNPINNED, in the natural ~311-byte gap between the code above
@@ -1274,23 +1308,36 @@ tempo_sched_t2:
         .cerror * > $16CC, "low-gap tables overran SF2II's reserved $16CC region"
 
         * = $1710
-pwprepare:
-        ; B9: Blackbird's fixed 256-entry pulse-width lookup, indexed by the
-        ; PW_ACC accumulator (see wave_step). Page-ALIGNED at $1710? No --
-        ; $1710 is not a page boundary, so `lda pwprepare,y` costs one extra
-        ; cycle on the ~50% of indices that cross into $1800. That is a
-        ; deliberate trade: a genuine page alignment would have to be $1800,
-        ; which collides with nothing today but leaves freqtable no
-        ; contiguous home below $1980. Correctness is unaffected either way
-        ; (alignment is purely a cycle optimisation), and this driver is not
-        ; cycle-bound.
-        .include "pwprepare.inc"
+FREQBLOB:
+        ; B10: ONE contiguous 463-byte blob copied verbatim out of the song's
+        ; own play-data template at offsets 817..1280 -- freq_msb (96 bytes),
+        ; then freq_lsb (111), then pwprepare (256), exactly as lft lays them
+        ; out and in that order.
+        ;
+        ; They are emitted as one blob ON PURPOSE, not as three tables that
+        ; happen to be adjacent. fx_step's `freq_lsb+24,y` reads with y up to
+        ; 127 run 151 bytes past freq_lsb's start -- past its own 111-byte
+        ; extent and into pwprepare's region -- and freq_msb+24,y likewise
+        ; runs into freq_lsb. lft documents the first of these ("tables
+        ; overlap with 15 bytes", player.s:692); the second is simply what a
+        ; 16-bit indexed read does. Truncating any of them to its nominal
+        ; length silently corrupts the top of the pitch range, and an earlier
+        ; attempt at exactly that surfaced only on Glyptodont and not on
+        ; Fargo, purely because Fargo's y values happened to stay smaller.
+        ;
+        ; Highest byte any read can reach: freq_lsb+24+127 = 247, and
+        ; pwprepare+255 = 462. Both inside the 463 emitted. B9's separate
+        ; pwprepare.inc is folded in here rather than double-embedded; the
+        ; build still asserts the bytes are identical across every file.
+        .include "freqblob.inc"
 
-        * = $1810
-freqtable:
-        ; Pinned ABOVE the playback-state region ($16cc-$1702) so it can
-        ; never collide with it, exactly as before -- only the address moved
-        ; ($1710 -> $1810) to make room for pwprepare.
-        .include "freqtable.inc"
+freq_msb    = FREQBLOB + 0     ; template offset  817
+freq_lsb    = FREQBLOB + 96    ; template offset  913
+pwprepare   = FREQBLOB + 207   ; template offset 1024 (B9's own table)
 
-        .cerror * > $1980, "freqtable overran the driver's private state block at $1980"
+        ; B10: `freqtable` is GONE. It existed only to give fm_step a per-note
+        ; base frequency to add its accumulated offset to; fx_step derives the
+        ; absolute frequency from lft's own freq_lsb/freq_msb above, so the
+        ; re-derived SF2-note-indexed copy has no remaining reader. Deleting
+        ; it is also what makes room for the blob below $1980.
+        .cerror * > $1980, "FREQBLOB overran the driver's private state block at $1980"

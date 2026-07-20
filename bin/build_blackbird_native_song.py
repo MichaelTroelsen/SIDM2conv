@@ -7,9 +7,10 @@ sidm2.blackbird_parser (locate + LZ decompression, untouched here), build
 the per-voice D11Row track using the SAME tick-is-a-row model
 sidm2.blackbird_driver11.py's Stage A already established (re-derived here,
 not imported, because Stage A's steps_for_voice() drops the fx/arp byte --
-this module needs it to select the per-note FM+pulse command bundle), then
+this module needs it for the per-note fx command column), then
 translate Blackbird's own wave/pulse/filter/fx programs into the shared
-native driver's WAVE/PULSETAB/FILTER/FMTAB table formats using the
+native driver's WAVE/FILTER table formats (plus the verbatim fx/freq
+tables B10 hands straight through) using the
 validated per-frame simulator (bin/blackbird_everyframe_sim.py, copied
 verbatim into the repo this session from the scratch path
 docs/players/BLACKBIRD.md's "Stage B synth engine" section names) as the
@@ -38,43 +39,25 @@ position sequence for free (no re-derivation of the jump-offset arithmetic),
 which is used for cycle detection (the position space is <=256 states, so a
 repeat is guaranteed within 300 steps by the pigeonhole principle).
 
-FMTAB and PULSETAB (see drivers_src/blackbird/blackbird_driver.asm's
-fm_step/pulse_step) have NO general "jump to an earlier row" primitive --
-only WAVE and FILTER do ($7f = genuine relative/absolute jump). So once a
-program's visited-state cycle is found:
+WAVE and FILTER have a general "jump to an earlier row" primitive ($7f =
+relative/absolute jump); the translator uses it once a program's
+visited-state cycle is found:
   - WAVE:   emit rows 0..cycle_end-1 + a genuine `$7f` jump row back to
-            cycle_start -- loops forever, exact.
+            cycle_start -- loops forever, exact. Since B9 the SAME rows also
+            carry the pulse deltas (col1 on a bit6 row), so PULSE is exact
+            for any note length too, with no separate table.
   - FILTER: emit SET rows (baseline) + ADD-delta rows (RLE-collapsed holds
             and linear ramps) for 0..cycle_end-1, ending in a genuine `$7f`
             jump back to cycle_start -- loops forever, exact.
-  - PULSE:  the visited VALUE sequence (there IS a native "set absolute,
-            hold N frames" 8X/XX/YY row) is RLE-collapsed and physically
-            REPEATED (not jumped) for target_frames, then frozen ($7f) --
-            exact for target_frames, then holds the last value (documented
-            residual: only matters for a note sustained longer than
-            target_frames, ~5s at 50fps).
-  - FMTAB:  fm_step's table is a per-frame ACCUMULATOR delta list (freq =
-            vfreq + FM_ACC, FM_ACC += this row's signed offset every frame
-            it's active) -- NOT an absolute-value table. So this translator
-            converts Blackbird's ABSOLUTE per-frame offset-from-steady
-            sequence into a DELTA sequence (delta[k] = offset[k]-offset[k-1],
-            offset[-1]=0, matching FM_ACC's own note-on reset to 0) before
-            RLE-collapsing (a constant delta run becomes one linear-ramp
-            row) and repeat-then-freeze past the cycle, same as PULSE.
-            KNOWN 1-FRAME RESIDUAL (architectural, not a translation bug):
-            pr_note (the shared driver's note-trigger code, UNCHANGED here)
-            always writes the note's flat STEADY frequency on the trigger
-            frame itself and only starts applying FM_ACC delta the frame
-            AFTER (see blackbird_driver.asm's pn_note comment) -- whereas
-            real Blackbird's fx engine evaluates fx-program row 0 on the
-            SAME frame as the note-on. So every FM-modulated note is
-            shifted exactly 1 real frame late relative to real hardware.
-            This is a pre-existing trait of the shared fm_step engine
-            (shared by every other player using this driver family, not
-            introduced here) -- documented, not silently absorbed.
 
-See "Bundles" below for how FM+PULSE are selected per note (not per
-instrument), and "Filter" for the SET/ADD row byte encoding (derived from
+PITCH is not translated at all any more (B10). The driver runs lft's own
+`everyframe` fx interpolator over lft's own fxtable + freq_lsb/freq_msb
+bytes, copied verbatim, so a "program" is just an fx INDEX and the note
+enters only as `BASEPITCH = note*4` inside the driver. See the "B10" block
+above fx_table_info() for what that deleted (per-(fx,note) FMTAB programs,
+the 64-slot clustering, and the FM engine's 1-frame note-trigger lag).
+
+See "Filter" for the SET/ADD row byte encoding (derived from
 drivers_src/romuzak/romuzak_driver.asm's fp_set/fp_dec decode logic, run in
 reverse -- cited inline at each encoder).
 
@@ -88,7 +71,9 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "bin"))
 
 import build_blackbird_driver_full as B
-from blackbird_everyframe_sim import BlackbirdSim, asl as _asl, adc as _adc
+from blackbird_everyframe_sim import (
+    BlackbirdSim, asl as _asl, adc as _adc, ror as _ror, lsr as _lsr,
+)
 from sidm2.blackbird_parser import (
     locate_blackbird, load_sid, decode_streams, classify_byte,
 )
@@ -102,6 +87,12 @@ from sidm2.galway_to_driver11 import (
 from sidm2.sid_player import FREQ_TABLE_LO, FREQ_TABLE_HI
 
 NFM = 64                 # $c0-$ff command space (index = byte & 0x3f)
+# Stage A's user-verified pitch calibration: SF2 note = blackbird note + 9.
+# B10 made this load-bearing in the DRIVER too (pr_note has to undo it to
+# recover Blackbird's own note index before computing BASEPITCH = note*4),
+# so it is a named constant emitted into layout.inc as NOTE_OFS rather than
+# a literal 9 sitting in two places that could drift apart.
+SF2_NOTE_OFS = 9
 CYCLE_SEARCH_FRAMES = 300   # > 256 states -> a repeat is guaranteed (pigeonhole)
 TARGET_FM_PULSE_FRAMES = 250  # ~5s @ 50fps; PULSE/FM have no jump primitive
 # B9 RETIRED B8's PULSE_CAPTURE_FRAMES (was 1200). B8 had to capture pulse
@@ -227,7 +218,7 @@ def window_steps(steps, row0, row1):
     Unlike DMC/MoN (whose per-note WAVE/PULSE/FM programs are captured live
     from a siddump trace, so a mid-note capture starting at the boundary's own
     phase is *exact* by construction), Blackbird's programs are STRUCTURAL --
-    unroll_wave_pulse/unroll_fm/unroll_filter always replay a program from ITS
+    unroll_wave_pulse/unroll_filter always replay a program from ITS
     OWN row 0 on every genuine note trigger, matching real hardware's own
     pn_note behaviour (there is no "resume mid-cycle" primitive in either the
     real player or the shared native engine). So a re-entered note is forced
@@ -335,7 +326,10 @@ def _capture_engine_state(sim):
         voices.append(dict(wavepos=vs.wavepos, wavemask=vs.wavemask,
                             currins=vs.currins, currfx=vs.currfx,
                             pendnote=vs.pendnote,
-                            fxpos=vs.fxpos,      # B8: FM/arp resume position
+                            fxpos=vs.fxpos,      # B8/B10: fx-program position
+                            basepitch=vs.basepitch,  # B10: note*4, the OTHER
+                                                      # half of the fx engine's
+                                                      # entire runtime state
                             pwidth=vs.pwidth))   # B9: pulse-accumulator phase
     return dict(voices=voices, zp_filtpos=sim.zp_filtpos,
                 filt_owner=sim.filt_owner, regs=list(sim.regs))
@@ -529,7 +523,7 @@ def unroll_wave_pulse(lay, d, la, ins_restart, ins_restart2, wave_start):
     # lives inside wave_step. Every instrument gets the same bare $7f
     # freeze-only program, which dedups to a single 3-byte PULSETAB entry
     # the driver never reads. Kept (rather than ripped out of the table
-    # allocator) so FMTAB/edit-area address arithmetic is unchanged and this
+    # allocator) so the edit-area address arithmetic is unchanged and this
     # round's numbers isolate the engine change alone.
     pulse_rows = [(0x7F, 0x00, 0x00)]
 
@@ -719,204 +713,160 @@ def unroll_filter(lay, d, la, ins_restart, ins_restart2, filt_start):
 
 
 # ---------------------------------------------------------------------------
-# FMTAB translator: (fx program row, note) -> DELTA-per-frame accumulator
-# rows (see module docstring's "FMTAB" bullet for why this is delta, not
-# absolute value, unlike WAVE/PULSE/FILTER).
+# B10: fx/PITCH program translation -- there isn't any.
+#
+# B9 replaced PULSE's stored recording with lft's own accumulator; B10 does
+# the identical move for PITCH, and the consequence is that this file no
+# longer TRANSLATES the pitch engine at all. The driver runs lft's
+# `everyframe` interpolator (player.s 207-271) over lft's own fxtable and
+# freq_lsb/freq_msb bytes, copied verbatim, so all that is left here is:
+#
+#   * hand the driver the fxtable bytes (emit_fxtab, below),
+#   * hand it fx_start (the per-fx-program entry positions) as the $c0-$ff
+#     command table, and
+#   * ASSERT, frame by frame, that the driver's own arithmetic over the
+#     bytes we actually emit reproduces the validated simulator's $D400/1.
+#
+# What this deletes is the note-dependence. The old unroll_fm() stored a
+# per-frame ABSOLUTE FREQUENCY OFFSET sequence, which is note-dependent
+# (the frequency table is exponential, so the same arp program is a
+# different Hz offset at every pitch) -- so every (fx-program, note) PAIR
+# needed its own command slot: 80 for Fargo and 423 for Glyptodont, against
+# a 64-slot cap. An fx INDEX is note-independent, so the slot count is just
+# the file's own `nfx` (35 / 47), both under the cap, and the greedy
+# nearest-merge clustering that used to burn 16 and 359 slots respectively
+# is not merely reduced but removed: cluster_bundles is gone.
 # ---------------------------------------------------------------------------
-def unroll_fm(lay, d, la, ins_restart, ins_restart2, fx_row, note):
-    sim = BlackbirdSim(lay, d, la, [b'', b'', b''], ins_restart, ins_restart2)
-    v = sim.v[0]
-    v.fxpos = fx_row & 0xFF
-    v.basepitch = (note << 2) & 0xFF
-    positions, freqs = [], []
-    for _ in range(CYCLE_SEARCH_FRAMES):
-        positions.append(v.fxpos)
-        sim.everyframe()
-        freqs.append(sim.regs[0] | (sim.regs[1] << 8))
-    cyc_start, cyc_end = _find_cycle(positions)
-    steady = sim.freq_lsb(note + 24) | (sim.freq_msb(note + 24) << 8)
-    offsets = [(f - steady) & 0xFFFF for f in freqs[:cyc_end]]
-
-    cyc = offsets[cyc_start:cyc_end] or offsets or [0]
-    seq = list(offsets)
-    while len(seq) < TARGET_FM_PULSE_FRAMES:
-        seq += cyc
-    seq = seq[:max(TARGET_FM_PULSE_FRAMES, len(offsets))]
-
-    deltas = []
-    prev = 0
-    for off in seq:
-        deltas.append((off - prev) & 0xFFFF)
-        prev = off
-
-    rows = []
-    # B8: same role as unroll_wave_pulse's pulse_row_frame_start (see there)
-    # -- fm_step's row is live for exactly `run` frames, so the cumulative
-    # sum inverts fm_haveent's own advance and lets a part boundary resume
-    # an FM/arp program mid-flight instead of forcing it flat.
-    row_frame_start = []
-    acc = 0
-    for val, run in _rle(deltas):
-        rows.append((val & 0xFF, (val >> 8) & 0xFF, run))
-        row_frame_start.append(acc)
-        acc += run
-    row_frame_start.append(acc)
-    rows.append((0x00, 0x00, 0x00))         # freeze: FM_ACC holds at its last value
-    return rows, offsets == [0] * len(offsets), dict(
-        positions=positions, prog_len=cyc_end, seq=seq,
-        row_frame_start=row_frame_start)
+FXTAB_LEN = 257          # 256 addressable positions + the one guard byte
+                          # fx_step's `FXTAB+1,y` peek can reach at y=$ff
 
 
-# ---------------------------------------------------------------------------
-# Bundle clustering: Fargo's FM offsets turn out to be genuinely note-
-# dependent (empirically verified this session -- arpeggio deltas are
-# nonlinear across the frequency table, so the SAME fx program gives
-# different absolute Hz offsets for different notes; see this module's
-# report for the measured example), so a per-(fx,note) bundle is required
-# for correctness, not merely a safety fallback -- and Fargo alone produces
-# more than the 64-slot $c0-$ff command cap. Per docs/players/PLAYBOOK.md's
-# technique catalog ("greedy nearest-merge clustering... first proven on
-# Galway's Rambo port"), merge the closest pairs (count-weighted L1 distance
-# over a short reconstructed-trajectory signature) until the cap is met,
-# rather than the much lossier "alias everything past the cap to bundle 0"
-# fallback.
-# ---------------------------------------------------------------------------
-def _bundle_signature(fp, pp, n_fm=40, n_pulse=0):
-    """A short, comparable numeric fingerprint for one (fm_prog, pulse_prog)
-    bundle: the first n_fm frames of its RECONSTRUCTED absolute FM offset
-    trajectory (undoing the delta/RLE encoding _rle+unroll_fm produced) plus
-    the first n_pulse pulse values -- close signatures sound close."""
-    offs = []
-    acc = 0
-    for lo, hi, dur in fp:
-        delta = lo | (hi << 8)
-        if delta >= 0x8000:
-            delta -= 0x10000
-        cnt = max(1, dur) if dur else (n_fm - len(offs))
-        for _ in range(cnt):
-            if len(offs) >= n_fm:
-                break
-            acc += delta
-            offs.append(acc)
-        if len(offs) >= n_fm:
-            break
-    while len(offs) < n_fm:
-        offs.append(offs[-1] if offs else 0)
-    # B8: PULSE rows are now SET (8X) for row 0 and DELTA (0X ADD) after
-    # that (see unroll_wave_pulse), so a signature can no longer read the
-    # width straight off each row -- it has to replay them, exactly as
-    # pulse_step does, to recover the absolute trajectory that makes two
-    # bundles "sound close". Reading the raw bytes would have compared
-    # deltas against widths and silently degraded every clustering
-    # decision.
-    if n_pulse <= 0:
-        # B8 default: PULSE is per-INSTRUMENT now and is not part of a
-        # bundle at all, so it must not influence which bundles get merged
-        # (and, mechanically, must not make signatures ragged -- a partial
-        # append here produced variable-length signatures and crashed
-        # cluster_bundles' centroid update).
-        return offs
-    pulses = []
-    cur = 0
-    for b0, b1, b2 in pp:
-        if (b0 & 0xFF) == 0x7F:
-            break
-        run = max(1, b2)
-        if b0 & 0x80:
-            cur = b1 & 0xFF
-            for _ in range(run):
-                pulses.append(cur)
-                if len(pulses) >= n_pulse:
-                    break
-        else:
-            for _ in range(run):
-                cur = (cur + b1) & 0xFF
-                pulses.append(cur)
-                if len(pulses) >= n_pulse:
-                    break
-        if len(pulses) >= n_pulse:
-            break
-    while len(pulses) < n_pulse:
-        pulses.append(pulses[-1] if pulses else 0)
-    return offs + pulses
+def fx_table_info(lay, d, la):
+    """(nfx, fx_start, fxtab_bytes) for this song, read straight out of the
+    located tables.
+
+    nfx is the note-INDEPENDENT distinct-fx-program count, derived exactly as
+    BlackbirdSim does (filttable immediately follows fx_start[nfx], per the
+    memory layout in docs/players/BLACKBIRD.md). fx_start[i-1] is the FXTAB
+    position Blackbird's fx program `i` begins at -- lft's `lda fx_start-1,y`
+    in execute(); program 0 is "no program", which does NOT reposition the
+    running fxpos."""
+    nfx = lay.filttable - lay.fx_start
+    off = lay.fx_start - la
+    fx_start = list(d[off:off + nfx])
+    fo = lay.fxtable - la
+    fxtab = bytes(d[fo:fo + FXTAB_LEN])
+    if len(fxtab) < FXTAB_LEN:
+        fxtab = fxtab + bytes(FXTAB_LEN - len(fxtab))
+    return nfx, fx_start, fxtab
 
 
-def cluster_bundles(bundle_list, target, counts=None):
-    """bundle_list: [(fm_prog, pulse_prog), ...], already content-deduped
-    (no two entries identical). Returns (new_bundle_list, remap) where
-    remap[old_index] = new_index, len(new_bundle_list) <= target.
+def _fx_frame(freqblob, fxtab, fxpos, basepitch):
+    """Replay ONE frame of the DRIVER's fx_step (blackbird_driver.asm), in
+    Python, reading ONLY the bytes this build actually emits -- `fxtab` is
+    the emitted FXTAB blob and `freqblob` the emitted FREQBLOB, indexed
+    through the driver's own label arithmetic (freq_lsb = FREQBLOB+96 etc).
 
-    counts[i] = how many real note-ONSET EVENTS (not just distinct
-    (fx,note,instr) keys) actually play bundle_list[i] -- callers must supply
-    real per-bundle onset tallies. Defaults to uniform (all 1) if omitted,
-    reproducing the old unweighted behaviour exactly.
+    That is the point: this is not a paraphrase of the simulator (which
+    would make verify_fx_engine a tautology), it is a model of the ASM
+    against the EMITTED TABLES. A truncated FXTAB, a wrong FREQBLOB label
+    offset, or a blob too short for `freq_lsb+24,y` at y=127 all fail here
+    -- with an IndexError or a value mismatch -- instead of costing a few
+    unattributable percent in the register trace.
 
-    COUNT-WEIGHTED merge, per docs/players/PLAYBOOK.md's technique catalog
-    ("greedy nearest-merge clustering... count-weighted FM-contour L1... first
-    proven on Rambo/Galway v3.12", see bin/build_galway_trace_song.py's own
-    cluster_bundles for the reference implementation) -- NOT previously
-    applied here. The old version picked the globally nearest PAIR by raw L1
-    distance alone, so two bundles that happen to be numerically close but
-    are each played by MANY notes could get merged just as readily as two
-    bundles nobody would ever hear merged -- there was no bias toward
-    sacrificing rarely-heard bundles first. Fixed by weighting the merge cost
-    by min(weight_i, weight_j) (Galway's own `cost = fd * min(cnt[i],
-    cnt[j])`), so a merge affecting fewer onset events is always preferred at
-    equal or lesser distance, and the SURVIVING representative of a merged
-    group is now the group's OWN most-played original member (not just
-    whichever bundle index happened to start the group first) -- so the
-    program that plays for a merged group is the one that sounds right for
-    the majority of the notes using it."""
-    n = len(bundle_list)
-    if counts is None:
-        counts = [1] * n
-    if n <= target:
-        return list(bundle_list), list(range(n))
-    sigs = [list(map(float, _bundle_signature(fp, pp))) for fp, pp in bundle_list]
-    groups = [[i] for i in range(n)]
-    reps = [list(s) for s in sigs]
-    weights = [max(1, counts[i]) for i in range(n)]
+    Returns (new_fxpos, d400, d401)."""
+    def L(i):
+        return freqblob[FREQ_LSB_REL + i]
 
-    def l1(a, b):
-        return sum(abs(x - y) for x, y in zip(a, b))
+    def M(i):
+        return freqblob[FREQ_MSB_REL + i]
 
-    while len(groups) > target:
-        best = None
-        for i in range(len(groups)):
-            for j in range(i + 1, len(groups)):
-                dd = l1(reps[i], reps[j])
-                cost = dd * min(weights[i], weights[j])
-                if best is None or cost < best[0]:
-                    best = (cost, i, j)
-        _, i, j = best
-        wi, wj = weights[i], weights[j]
-        reps[i] = [(reps[i][k] * wi + reps[j][k] * wj) / (wi + wj)
-                   for k in range(len(reps[i]))]
-        weights[i] = wi + wj
-        groups[i].extend(groups[j])
-        del groups[j]; del reps[j]; del weights[j]
+    row1 = fxtab[fxpos + 1]                  # peek: bit7 => relative jump
+    a = row1 if (row1 & 0x80) else 0
+    new_fxpos = (fxpos + a + 1) & 0xFF       # `sec; adc FXPOS,x`
+    s = fxtab[fxpos]                         # value read from the OLD position
+    if s == 0:
+        return new_fxpos, 0xFF, 0xFF         # fixedfreq: $ff to BOTH registers
+    t, cout, _ = _adc(s, basepitch, 0)       # clc; adc BASEPITCH,x
+    a3, c_bit0 = _ror(t, 1 if cout else 0)
+    a4, c_bit1 = _lsr(a3)
+    y = a4
+    if c_bit0 == 0:
+        if c_bit1:                           # mode 10: +12/+13, carry-in 1
+            lsb, cl, _ = _adc(L(y + 12), L(y + 13), 1)
+            msb, _, _ = _adc(M(y + 12), M(y + 13), cl)
+        else:                                # mode 00: direct, no add
+            lsb, msb = L(y + 24), M(y + 24)
+    else:
+        if c_bit1:                           # mode 11: +0/+20, carry-in 1
+            lsb, cl, _ = _adc(L(y), L(y + 20), 1)
+            msb, _, _ = _adc(M(y), M(y + 20), cl)
+        else:                                # mode 01: +19/+1, carry-in 0
+            lsb, cl, _ = _adc(L(y + 19), L(y + 1), 0)
+            msb, _, _ = _adc(M(y + 19), M(y + 1), cl)
+    return new_fxpos, lsb & 0xFF, msb & 0xFF
 
-    remap = [0] * n
-    new_bundles = []
-    for gi, grp in enumerate(groups):
-        # keep the group's OWN most-played member's real program (not an
-        # average, and not just whichever merge happened to add first) --
-        # the surviving sound should match what most of the group's onsets
-        # actually expect to hear.
-        rep_orig = max(grp, key=lambda k: counts[k])
-        new_bundles.append(bundle_list[rep_orig])
-        for oi in grp:
-            remap[oi] = gi
-    return new_bundles, remap
+
+def verify_fx_engine(lay, d, la, ins_restart, ins_restart2, freqblob, fxtab,
+                     fx_start, notes, frames=300):
+    """B10's exact-by-construction gate (B9's discipline, applied to pitch).
+
+    For EVERY (fx program, note) combination the song can actually produce,
+    replay `frames` frames of _fx_frame -- the driver model over the emitted
+    tables -- against the validated simulator's own $D400/$D401 for the same
+    seeded state, and raise on the first byte that differs.
+
+    Note the asymmetry that makes this worth running: the simulator reads the
+    raw SID image through its own absolute addresses and has no length limit,
+    while _fx_frame reads the finite blobs this build emits. So the check
+    genuinely proves the EMITTED data is sufficient and correctly located,
+    which is the part that can be wrong.
+
+    Notes are swept over the full range the sequence column can carry, not
+    just the ones this window happens to use, so a part-splitting decision
+    can never move the build onto an unverified (fx, note) pair."""
+    checked = 0
+    for fx in range(0, len(fx_start) + 1):
+        start = 0 if fx == 0 else (fx_start[fx - 1] & 0xFF)
+        for note in notes:
+            sim = BlackbirdSim(lay, d, la, [b'', b'', b''],
+                               ins_restart, ins_restart2)
+            v = sim.v[0]
+            v.fxpos = start
+            v.basepitch = (note << 2) & 0xFF
+            pos = start
+            for f in range(frames):
+                pos, dlo, dhi = _fx_frame(freqblob, fxtab, pos,
+                                          (note << 2) & 0xFF)
+                sim.everyframe()
+                if (dlo, dhi) != (sim.regs[0], sim.regs[1]):
+                    raise ValueError(
+                        f"B10 fx-engine self-check FAILED: fx={fx} "
+                        f"note={note} frame={f}: driver model wrote "
+                        f"${dlo:02x}/${dhi:02x}, validated simulator wrote "
+                        f"${sim.regs[0]:02x}/${sim.regs[1]:02x}")
+                if pos != v.fxpos:
+                    raise ValueError(
+                        f"B10 fx-engine self-check FAILED: fx={fx} "
+                        f"note={note} frame={f}: FXPOS diverged "
+                        f"({pos} vs simulator {v.fxpos})")
+                checked += 1
+    return checked
+
+
 
 
 # ---------------------------------------------------------------------------
 # Row builder: BBStep list -> D11Row list, with note/instrument/command
-# (bundle index) columns. Command changes only emitted on genuine change,
-# matching the existing instrument-column convention.
+# columns. Command changes only emitted on genuine change, matching the
+# existing instrument-column convention.
+#
+# B10: the command column IS Blackbird's own fx-program number now, with no
+# lookup table in between -- it used to be a per-(fx, note, instrument)
+# bundle index, which is what made the vocabulary explode past the 64-slot
+# cap. The identity mapping is asserted safe by build_range (nfx < NFM).
 # ---------------------------------------------------------------------------
-def steps_to_rows_native(steps, bundle_of):
-    """bundle_of: dict[(fx, note, instrument)] -> command index (0-63)."""
+def steps_to_rows_native(steps):
     rows = []
     cur_instr = None
     cur_cmd = None
@@ -927,13 +877,12 @@ def steps_to_rows_native(steps, bundle_of):
         elif s.kind == 'note' and s.note is None:
             rows.extend(D11Row(note=SF2_GATE_ON) for _ in range(n))
         else:
-            note = max(SF2_NOTE_MIN, min(s.note + 9, SF2_NOTE_MAX))
+            note = max(SF2_NOTE_MIN, min(s.note + SF2_NOTE_OFS, SF2_NOTE_MAX))
             inst = None
             if s.instrument is not None and s.instrument != cur_instr:
                 inst = s.instrument
                 cur_instr = s.instrument
-            key = (s.fx, s.note, cur_instr if cur_instr is not None else 0)
-            cmd = bundle_of.get(key, 0)
+            cmd = s.fx & 0x3F        # B10: the fx index IS the command index
             cmdcol = None
             if cmd != cur_cmd:
                 cmdcol = cmd
@@ -1128,10 +1077,9 @@ def window_tempo_schedule(schedule, row0, row1):
 # drum/SEEK instrument flags, so those branches are dropped).
 # ---------------------------------------------------------------------------
 def gen_includes_song(segs, ad_sr, wave_programs, filter_programs,
-                      filter_flag_of, bundles, default_filter_program,
+                      filter_flag_of, fx_start, fxtab, default_filter_program,
                       multispeed=1, tempo_sched_len=0,
-                      default_wave_program=None,
-                      aux_fm_programs=(), pulse_programs=None):
+                      default_wave_program=None, pulse_programs=None):
     gen = SF2HeaderGenerator()
     gen.DRIVER_INIT, gen.DRIVER_PLAY, gen.DRIVER_STOP = B.DRV_INIT, B.DRV_PLAY, B.DRV_STOP
     gen.PLAYER_ADDRESSES = dict(gen.PLAYER_ADDRESSES)
@@ -1252,41 +1200,23 @@ def gen_includes_song(segs, ad_sr, wave_programs, filter_programs,
         if wave_cursor > 256:
             raise ValueError(f"WAVE overflow: {wave_cursor} rows > 256")
 
-    # FM + PULSE bundles (per-note command $c0-$ff -> (FM prog, pulse prog))
-    ifmlo_addr = gen.filter_addr + 3 * 256
-    ifmhi_addr = ifmlo_addr + NFM
-    ipulse_lo_addr = ifmhi_addr + NFM
+    # B10: the $c0-$ff command tables. These keep B8/B9's ADDRESSES exactly
+    # (so nothing downstream of them moves), but their CONTENT changed
+    # meaning entirely: what used to be a per-bundle 16-bit FMTAB pointer
+    # pair (IFM_LO/IFM_HI) is now two independent 8-bit tables --
+    #   FXSTART[i] = the FXTAB position Blackbird's fx program i starts at,
+    #   FXRST[i]   = whether a note-on repositions FXPOS at all (0 for fx 0,
+    #                which lft's execute() deliberately leaves running).
+    # The index is Blackbird's own fx number, so no per-song mapping table,
+    # no clustering, and no note in the key.
+    fxstart_addr = gen.filter_addr + 3 * 256
+    fxrst_addr = fxstart_addr + NFM
+    ipulse_lo_addr = fxrst_addr + NFM
     ipulse_hi_addr = ipulse_lo_addr + NFM
-    fmtab_addr = ipulse_hi_addr + NFM
+    fxtab_addr = ipulse_hi_addr + NFM
 
-    fmdedup, fmtab = {}, bytearray()
     pdedup, pulsetab_tmp = {}, bytearray()
-    fm_addr_of = []
-    for fp, pp in bundles[:NFM]:
-        fk = tuple(fp)
-        if fk not in fmdedup:
-            fmdedup[fk] = fmtab_addr + len(fmtab)
-            for e0, e1, e2 in fp:
-                fmtab += bytes([e0 & 0xFF, e1 & 0xFF, e2 & 0xFF])
-        fm_addr_of.append(fmdedup[fk])
-    # B8: extra FM programs that no BUNDLE references but do_init's part-
-    # boundary priming needs a real, stable address for (a resting voice's
-    # own mid-flight arp/FM program -- which post-clustering may no longer
-    # survive as any bundle at all). Emitted into the SAME FMTAB, deduped
-    # against the bundle programs, so an aux program that IS also a bundle
-    # program costs zero extra bytes.
-    aux_fm_addr = []
-    for fp in aux_fm_programs:
-        if not fp:
-            aux_fm_addr.append(None)
-            continue
-        fk = tuple(fp)
-        if fk not in fmdedup:
-            fmdedup[fk] = fmtab_addr + len(fmtab)
-            for e0, e1, e2 in fp:
-                fmtab += bytes([e0 & 0xFF, e1 & 0xFF, e2 & 0xFF])
-        aux_fm_addr.append(fmdedup[fk])
-    pulsetab_addr = fmtab_addr + len(fmtab)
+    pulsetab_addr = fxtab_addr + FXTAB_LEN
 
     def _emit_pulse(pp):
         pk = tuple(pp)
@@ -1307,19 +1237,23 @@ def gen_includes_song(segs, ad_sr, wave_programs, filter_programs,
     _flat = [(0x7F, 0x00, 0x00)]
     for i in range(min(len(ad_sr), 32)):
         instr_pulse_addr[i] = _emit_pulse(pulse_programs.get(i) or _flat)
-    # B8: same story as aux_fm_programs above, for PULSE.
-    fmtab, pulsetab = bytes(fmtab), bytes(pulsetab_tmp)
+    pulsetab = bytes(pulsetab_tmp)
     need = pulsetab_addr + len(pulsetab) - B.EDIT_BASE
     if len(edit) < need:
         edit.extend(bytearray(need - len(edit)))
     for i in range(NFM):
-        fa = fm_addr_of[i] if i < len(fm_addr_of) else fmtab_addr
-        edit[(ifmlo_addr - B.EDIT_BASE) + i] = fa & 0xFF
-        edit[(ifmhi_addr - B.EDIT_BASE) + i] = (fa >> 8) & 0xFF
+        # fx program i: start position + "does a note reposition it" flag.
+        # i == 0 is Blackbird's fx 0 -- no program, no reposition.
+        if 1 <= i <= len(fx_start):
+            edit[(fxstart_addr - B.EDIT_BASE) + i] = fx_start[i - 1] & 0xFF
+            edit[(fxrst_addr - B.EDIT_BASE) + i] = 1
+        else:
+            edit[(fxstart_addr - B.EDIT_BASE) + i] = 0
+            edit[(fxrst_addr - B.EDIT_BASE) + i] = 0
         pa = instr_pulse_addr[i] if i < 32 and instr_pulse_addr[i] is not None             else pulsetab_addr
         edit[(ipulse_lo_addr - B.EDIT_BASE) + i] = pa & 0xFF
         edit[(ipulse_hi_addr - B.EDIT_BASE) + i] = (pa >> 8) & 0xFF
-    edit[fmtab_addr - B.EDIT_BASE:fmtab_addr - B.EDIT_BASE + len(fmtab)] = fmtab
+    edit[fxtab_addr - B.EDIT_BASE:fxtab_addr - B.EDIT_BASE + FXTAB_LEN] = fxtab
     edit[pulsetab_addr - B.EDIT_BASE:pulsetab_addr - B.EDIT_BASE + len(pulsetab)] = pulsetab
 
     with open(os.path.join(ROOT, "drivers_src", "blackbird", "layout.inc"), "w") as f:
@@ -1337,10 +1271,16 @@ def gen_includes_song(segs, ad_sr, wave_programs, filter_programs,
         f.write(f"WAVE  = ${gen.wave_addr:04x}\n")
         f.write(f"PULSE = ${gen.pulse_addr:04x}\n")
         f.write(f"FILTER = ${gen.filter_addr:04x}\n")
-        f.write(f"FMTAB = ${fmtab_addr:04x}\n")
+        # B10: FXTAB is Blackbird's own fxtable, verbatim; FXSTART/FXRST are
+        # the $c0-$ff command tables (fx index -> start position / reset
+        # flag). FMTAB/IFM_LO/IFM_HI are gone with the FM engine.
+        f.write(f"FXTAB = ${fxtab_addr:04x}\n")
+        f.write(f"FXSTART = ${fxstart_addr:04x}\n")
+        f.write(f"FXRST = ${fxrst_addr:04x}\n")
+        f.write(f"NOTE_OFS = {SF2_NOTE_OFS}\n")   # Stage A's pitch calibration,
+                                                   # emitted from the SAME constant
+                                                   # steps_to_rows_native applies
         f.write(f"PULSETAB = ${pulsetab_addr:04x}\n")
-        f.write(f"IFM_LO = ${ifmlo_addr:04x}\n")
-        f.write(f"IFM_HI = ${ifmhi_addr:04x}\n")
         f.write(f"IPULSE_LO = ${ipulse_lo_addr:04x}\n")
         f.write(f"IPULSE_HI = ${ipulse_hi_addr:04x}\n")
         # B8: the SAME two arrays, but instrument-indexed rather than
@@ -1350,72 +1290,69 @@ def gen_includes_song(segs, ad_sr, wave_programs, filter_programs,
         f.write(f"MULTISPEED = {max(1, int(multispeed))}\n")
         f.write(f"FILT_INIT_ROW = {filt_init_row}\n")
         f.write(f"WAVE_INIT_ROW = {wave_init_row}\n")   # B8: default wave program
-    return gen, bytes(edit), mdp, seq0, dict(
-        aux_fm_addr=aux_fm_addr,
-        wave_init_row=wave_init_row)
+    return gen, bytes(edit), mdp, seq0, dict(wave_init_row=wave_init_row)
 
 
-def write_freqtable(sim):
-    """freqtable.inc indexed by SF2 note byte, using Blackbird's OWN
-    steady freq_lsb/freq_msb table (validated byte-exact -- see
-    blackbird_driver11.py's "Pitch" docstring section for the SF2 note =
-    blackbird_note_idx + 9 calibration this reuses), PAL fallback outside
-    the calibrated range."""
-    words = [0] * 0x70
-    for note_idx in range(0, 64):
-        sf2note = note_idx + 9
-        if sf2note > 0x6F:
-            continue
-        words[sf2note] = sim.freq_lsb(note_idx + 24) | (sim.freq_msb(note_idx + 24) << 8)
-    for i in range(1, 0x70):
-        if words[i] == 0:
-            s = min(i - 1, 95)
-            words[i] = FREQ_TABLE_LO[s] | (FREQ_TABLE_HI[s] << 8)
-    with open(os.path.join(ROOT, "drivers_src", "blackbird", "freqtable.inc"), "w") as f:
-        f.write("; Blackbird steady freq_lsb/freq_msb table (byte-exact), SF2 note = "
-                "blackbird_note_idx + 9\n")
-        for k in range(0, len(words), 8):
-            f.write("        .word " + ", ".join(f"${w:04x}" for w in words[k:k + 8]) + "\n")
+# B10 (was B9's _PWPREPARE_REF): the reference FREQBLOB bytes, captured on
+# first emission and cross-checked on every later file. The RE established
+# this whole region is baked identically into every v1.2-exact rip (fixed
+# template offsets, not relocated, not composer data) -- this ASSERTS that
+# per build rather than trusting it, which is the only way the claim stays
+# true for file 3..11. B9 asserted it for pwprepare alone; B10 extends the
+# same guard to the freq tables it now also embeds.
+_FREQBLOB_REF = None
+
+# Fixed template offsets, confirmed against player.s's own declaration order
+# (freq_msb -> freq_lsb -> pwprepare) and its "tables overlap with 15 bytes"
+# comment: freq_msb is 96 bytes at 817, freq_lsb 111 bytes at 913, pwprepare
+# 256 bytes at 1024. 1024 is exactly 817+96+111, so the three are contiguous
+# and the blob is a single slice.
+FREQBLOB_OFF, FREQBLOB_LEN = 817, 463
+FREQ_MSB_REL, FREQ_LSB_REL, PWPREPARE_REL = 0, 96, 207
 
 
-# B9: the reference `pwprepare` bytes, captured on first emission and then
-# cross-checked on every later file. The RE established this table is baked
-# identically into every v1.2-exact rip (fixed template offset 1024, not
-# relocated, not composer data) -- this ASSERTS that per build rather than
-# trusting it, which is the only way the claim stays true for file 3..11.
-_PWPREPARE_REF = None
+def write_freqblob(sim, d, po):
+    """freqblob.inc -- the contiguous freq_msb/freq_lsb/pwprepare region read
+    straight out of THIS file's own loaded play-data template.
 
+    Emitted as ONE blob rather than three tables because fx_step's indexed
+    reads deliberately run past each table's nominal extent (see the driver's
+    FREQBLOB comment). B9's separate pwprepare.inc is folded in here -- the
+    slice at PWPREPARE_REL is asserted below to be byte-identical to what
+    BlackbirdSim itself read at offset 1024, so unifying them cannot silently
+    change the pulse behaviour B9 verified.
 
-def write_pwprepare(sim):
-    """pwprepare.inc -- Blackbird's fixed 256-entry pulse-width lookup, read
-    straight out of THIS file's own loaded template at seg_play_data offset
-    1024 (BlackbirdSim.__init__ already does the read; this just emits it).
-
-    Shape, for the record (measured, not assumed -- and it is NOT the simple
-    triangle a first glance suggests): a descending -16 ramp with WRAP
-    discontinuities every ~17 entries (index 8 -> 15, index 9 -> 254), plus
-    plateaus, mirrored about 127/128 (`pw[i] == pw[255-i]` holds for all i;
-    min 8 at index 126-129, max 254). That non-affine shape is exactly why
-    B8's output-byte encoding could not close a cycle and why the delta
-    program has to be run through the real table in the driver."""
-    global _PWPREPARE_REF
-    tbl = list(sim.pwprepare)
-    if len(tbl) != 256:
-        raise ValueError(f"pwprepare: expected 256 bytes, got {len(tbl)}")
-    if _PWPREPARE_REF is None:
-        _PWPREPARE_REF = tbl
-    elif tbl != _PWPREPARE_REF:
+    pwprepare's shape, for the record (measured, kept from B9's note): a
+    descending -16 ramp with WRAP discontinuities every ~17 entries, plus
+    plateaus, mirrored about 127/128 (`pw[i] == pw[255-i]` for all i; min 8
+    at index 126-129, max 254)."""
+    global _FREQBLOB_REF
+    blob = list(d[po + FREQBLOB_OFF:po + FREQBLOB_OFF + FREQBLOB_LEN])
+    if len(blob) != FREQBLOB_LEN:
+        raise ValueError(f"freqblob: expected {FREQBLOB_LEN} bytes, got {len(blob)}")
+    # B9's own invariant, re-asserted through the new unified path.
+    if blob[PWPREPARE_REL:PWPREPARE_REL + 256] != list(sim.pwprepare):
         raise ValueError(
-            "pwprepare differs between files -- the 'byte-identical across "
+            "freqblob's pwprepare slice differs from the bytes BlackbirdSim "
+            "read at template offset 1024 -- the unified blob is NOT a "
+            "faithful superset of B9's table.")
+    if _FREQBLOB_REF is None:
+        _FREQBLOB_REF = blob
+    elif blob != _FREQBLOB_REF:
+        raise ValueError(
+            "freqblob differs between files -- the 'byte-identical across "
             "every v1.2-exact rip' invariant this driver relies on is FALSE "
-            "for this file; the table would have to become per-song data.")
-    with open(os.path.join(ROOT, "drivers_src", "blackbird", "pwprepare.inc"), "w") as f:
-        f.write("; Blackbird's fixed pulse-width lookup (`pwprepare`), read verbatim\n"
-                "; from this song's own play-data template at offset 1024. 256 bytes,\n"
-                "; byte-identical across every v1.2-exact rip (asserted at build time,\n"
-                "; see write_pwprepare). Indexed by the 8-bit pulse accumulator PW_ACC.\n")
-        for k in range(0, 256, 16):
-            f.write("        .byte " + ", ".join(f"${b:02x}" for b in tbl[k:k + 16]) + "\n")
+            "for this file; the region would have to become per-song data.")
+    with open(os.path.join(ROOT, "drivers_src", "blackbird", "freqblob.inc"), "w") as f:
+        f.write("; B10: Blackbird's contiguous freq_msb + freq_lsb + pwprepare region,\n"
+                f"; read verbatim from this song's play-data template at offset "
+                f"{FREQBLOB_OFF} ({FREQBLOB_LEN} bytes). Byte-identical across every\n"
+                "; v1.2-exact rip (asserted at build time, see write_freqblob).\n"
+                f";   +{FREQ_MSB_REL}   freq_msb   (96 bytes)\n"
+                f";   +{FREQ_LSB_REL}  freq_lsb  (111 bytes, overlaps freq_msb by 15)\n"
+                f";   +{PWPREPARE_REL} pwprepare (256 bytes, indexed by PW_ACC)\n")
+        for k in range(0, len(blob), 16):
+            f.write("        .byte " + ", ".join(f"${b:02x}" for b in blob[k:k + 16]) + "\n")
 
 
 def playing_notes(packed):
@@ -1472,19 +1409,10 @@ def _dedup_row_count(progs_dict, preseed=()):
 #                              trigger and the next one, so the owner
 #                              instrument's own static table values ARE
 #                              the real current register content).
-#   VIFM_LO/HI/VIPUL_LO/HI -- read back from the FM/PULSE per-bundle
-#                              address tables for whichever bundle the
-#                              synthetic (currfx,pendnote,owner_instr)
-#                              priming key resolved to post-clustering.
-#   PULSE (VPLO/VPHI)      -- raw captured $D402 byte, frozen (VPC=$ff,
-#                              VPADL/VPADH=0) rather than resumed mid-
-#                              program -- PULSE has no native jump/resume
-#                              primitive in this shared engine's table
-#                              format (see unroll_wave_pulse's own "PULSE"
-#                              docstring section), so freezing at the last
-#                              real observed value is the best available
-#                              approximation; documented, not silently
-#                              absorbed (see report).
+#   PW_ACC / D402           -- B9: the pulse accumulator's raw phase, copied
+#                              straight from the snapshot (`v.pwidth`), plus
+#                              the raw $D402 byte for the "this instrument's
+#                              wave program has no bit6 rows at all" case.
 #   F_IDX/F_CNT/F_ADHI      -- looked up via _lookup_filter_row against
 #                              whichever program (default, or the owner
 #                              instrument identified by filt_owner_instr)
@@ -1496,28 +1424,21 @@ def _dedup_row_count(progs_dict, preseed=()):
 #                              blackbird_driver.asm -- so these must be the
 #                              REAL current cutoff, not re-derived from row
 #                              content the way a SET row would).
-#   FM (FM_ON/FM_ACC/etc.)  -- deliberately NOT primed to resume: FM_ON is
-#                              forced 0 (freeze at the wave engine's own
-#                              steady frequency) rather than resuming a
-#                              possibly still-running arp/vibrato program
-#                              mid-flight, which would need the SAME
-#                              per-(fx,note) position-mapping complexity as
-#                              PULSE but PARAMETERIZED by note too -- a
-#                              named, bounded simplification (see report),
-#                              not attempted this round.
+#   FXPOS / BASEPITCH       -- B10: the fx engine's ENTIRE runtime state, two
+#                              raw bytes copied verbatim from the snapshot.
+#                              No lookup, no reconstruction, no failure mode
+#                              (B8's eight-field FM resume had all three).
+#                              VIFXS/VIFXR carry the voice's still-pending
+#                              $c0-$ff selection across the boundary.
 # ---------------------------------------------------------------------------
 def _compute_prime_consts(gen, edit, ad_sr, wave_programs, wave_stats_by_instr,
                            filter_extra_by_instr, default_filter_program,
-                           default_filter_extra, bundle_of, prime,
-                           prime_instr_of_voice, prime_key_of_voice,
-                           filt_owner_instr, aux=None, default_wave_program=None,
-                           default_wave_stats=None,
-                           prime_fm_prog=None, prime_fm_extra=None,
-                           prime_fm_k=None):
+                           default_filter_extra, prime,
+                           prime_instr_of_voice,
+                           filt_owner_instr, default_wave_program=None,
+                           default_wave_stats=None, fx_start_list=None):
     io = gen.instr_addr - B.EDIT_BASE
-    ifmlo_addr = gen.filter_addr + 3 * 256
-    ifmhi_addr = ifmlo_addr + NFM
-    ipulse_lo_addr = ifmhi_addr + NFM
+    ipulse_lo_addr = gen.filter_addr + 3 * 256 + 2 * NFM
     ipulse_hi_addr = ipulse_lo_addr + NFM
     eb = B.EDIT_BASE
 
@@ -1567,41 +1488,33 @@ def _compute_prime_consts(gen, edit, ad_sr, wave_programs, wave_stats_by_instr,
         consts[f'PRIME_D402{v}'] = (
             (prime['regs'][2 + 7 * v] & 0xFF) if prime is not None else 0)
 
+    # --- B10: fx/pitch part-boundary priming -- TWO raw bytes per voice.
+    #
+    # This block used to reconstruct eight FM fields by locating the captured
+    # `fxpos` inside a translated per-(fx,note) program's row/frame map and
+    # rebuilding the accumulator from its absolute-offset sequence -- and it
+    # fell back to FM_ON=0 (a flat, wrong pitch) whenever that lookup missed,
+    # which on Glyptodont it regularly did, because clustering had often
+    # replaced the resting voice's real program with a merged neighbour's.
+    #
+    # The driver now runs lft's own algorithm over lft's own tables, so the
+    # simulator's state and the driver's state are THE SAME TWO BYTES. There
+    # is no mapping to get wrong, no aux program to emit, and no failure mode
+    # to degrade into -- `fxpos` and `basepitch` are copied straight across.
     for v in range(3):
-        fprog = (prime_fm_prog or [None] * 3)[v]
-        fex = (prime_fm_extra or [None] * 3)[v]
-        fk = (prime_fm_k or [0] * 3)[v]
-        faddr = (aux or {}).get('aux_fm_addr', [None] * 3)[v] if aux else None
-        fstarts = (fex or {}).get('row_frame_start') if fex else None
-        ffound = _row_at(fstarts, fk) if (fstarts and fprog) else None
-        if faddr is None or ffound is None:
-            consts[f'PRIME_FM_ON{v}'] = 0
-            consts[f'PRIME_FMP_LO{v}'] = 0
-            consts[f'PRIME_FMP_HI{v}'] = 0
-            consts[f'PRIME_FM_CNT{v}'] = 0
-            consts[f'PRIME_FM_ACC_LO{v}'] = 0
-            consts[f'PRIME_FM_ACC_HI{v}'] = 0
-            consts[f'PRIME_FM_OFF_LO{v}'] = 0
-            consts[f'PRIME_FM_OFF_HI{v}'] = 0
+        pv = prime['voices'][v] if prime is not None else None
+        consts[f'PRIME_FXPOS{v}'] = (pv['fxpos'] & 0xFF) if pv else 0
+        consts[f'PRIME_BASEPITCH{v}'] = (pv.get('basepitch', 0) & 0xFF) if pv else 0
+        # The voice's still-pending $c0-$ff selection (its sticky currfx),
+        # so a note arriving after the boundary repositions to the right
+        # program even before the part's own sequence re-emits a command.
+        cf = (pv['currfx'] & 0xFF) if pv else 0
+        if pv and 1 <= cf <= len(fx_start_list or []):
+            consts[f'PRIME_VIFXS{v}'] = fx_start_list[cf - 1] & 0xFF
+            consts[f'PRIME_VIFXR{v}'] = 1
         else:
-            r, e = ffound
-            b0, b1, run = fprog[r]
-            # Same row-boundary rule as PULSE above: at elapsed 0, let
-            # fm_step LOAD row r (FM_CNT=0) rather than skipping past it.
-            tgt = faddr + 3 * (r + (0 if e == 0 else 1))
-            # FM_ACC as of the START of source frame fk = the accumulated
-            # absolute offset after frame fk-1, which unroll_fm's own `seq`
-            # (absolute offsets, before the delta encoding) holds directly.
-            seq = (fex or {}).get('seq') or []
-            acc = seq[fk - 1] if fk > 0 and (fk - 1) < len(seq) else 0
-            consts[f'PRIME_FM_ON{v}'] = 1
-            consts[f'PRIME_FMP_LO{v}'] = tgt & 0xFF
-            consts[f'PRIME_FMP_HI{v}'] = (tgt >> 8) & 0xFF
-            consts[f'PRIME_FM_CNT{v}'] = 0 if e == 0 else ((run - e) & 0xFF)
-            consts[f'PRIME_FM_ACC_LO{v}'] = acc & 0xFF
-            consts[f'PRIME_FM_ACC_HI{v}'] = (acc >> 8) & 0xFF
-            consts[f'PRIME_FM_OFF_LO{v}'] = 0 if e == 0 else (b0 & 0xFF)
-            consts[f'PRIME_FM_OFF_HI{v}'] = 0 if e == 0 else (b1 & 0xFF)
+            consts[f'PRIME_VIFXS{v}'] = 0
+            consts[f'PRIME_VIFXR{v}'] = 0
 
     for v in range(3):
         oi = prime_instr_of_voice[v] if prime is not None else None
@@ -1633,16 +1546,12 @@ def _compute_prime_consts(gen, edit, ad_sr, wave_programs, wave_stats_by_instr,
             consts[f'PRIME_VGMASK{v}'] = (
                 0xFF if (prime is not None and
                          prime['voices'][v]['wavemask'] == 0xFF) else 0xFE)
-            consts[f'PRIME_VBASENOTE{v}'] = (
-                prime['voices'][v]['pendnote'] & 0x7F) if prime is not None else 0
             consts[f'PRIME_AD{v}'] = 0
             consts[f'PRIME_SR{v}'] = 0
             consts[f'PRIME_FLAGS{v}'] = 0
             consts[f'PRIME_VIFILT{v}'] = 0
             dwp = default_wave_program or [(0x41, 0x00)]
             consts[f'PRIME_VWF{v}'] = dwp[0][0] & 0xFF
-            consts[f'PRIME_VIFM_LO{v}'] = edit[(ifmlo_addr - eb) + 0]
-            consts[f'PRIME_VIFM_HI{v}'] = edit[(ifmhi_addr - eb) + 0]
             continue
 
         wave_start_row = edit[io + 5 * 32 + oi]
@@ -1657,25 +1566,12 @@ def _compute_prime_consts(gen, edit, ad_sr, wave_programs, wave_stats_by_instr,
         consts[f'PRIME_VWI{v}'] = (wave_start_row + k) & 0xFF
         consts[f'PRIME_VIWAVE{v}'] = wave_start_row & 0xFF
         consts[f'PRIME_VGMASK{v}'] = 0xFF if pv['wavemask'] == 0xFF else 0xFE
-        consts[f'PRIME_VBASENOTE{v}'] = pv['pendnote'] & 0x7F
         consts[f'PRIME_AD{v}'] = edit[io + 0 * 32 + oi]
         consts[f'PRIME_SR{v}'] = edit[io + 1 * 32 + oi]
         consts[f'PRIME_FLAGS{v}'] = edit[io + 2 * 32 + oi]
         consts[f'PRIME_VIFILT{v}'] = edit[io + 3 * 32 + oi]
         wp = wave_programs.get(oi) or [(0x41, 0x00)]
         consts[f'PRIME_VWF{v}'] = wp[0][0] & 0xFF
-
-        key = prime_key_of_voice[v]
-        bidx = bundle_of.get(key) if key is not None else None
-        if bidx is None:
-            print(f"    B7 WARNING: priming voice {v}'s bundle key {key} "
-                  f"not found post-clustering -- FM/pulse pointers left at "
-                  f"the driver's own program-0 default (residual)")
-            consts[f'PRIME_VIFM_LO{v}'] = edit[(ifmlo_addr - eb) + 0]
-            consts[f'PRIME_VIFM_HI{v}'] = edit[(ifmhi_addr - eb) + 0]
-        else:
-            consts[f'PRIME_VIFM_LO{v}'] = edit[(ifmlo_addr - eb) + bidx]
-            consts[f'PRIME_VIFM_HI{v}'] = edit[(ifmhi_addr - eb) + bidx]
 
         # (B9: PRIME_PW_ACC and every PRIME_FM_* field are set by the
         # dedicated accumulator/FM loop ABOVE, which runs for all three
@@ -1724,16 +1620,17 @@ def _compute_prime_consts(gen, edit, ad_sr, wave_programs, wave_stats_by_instr,
     return consts
 
 
-PRIME_PER_VOICE_FIELDS = ['VWI', 'VIWAVE', 'VGMASK', 'VBASENOTE', 'AD', 'SR',
-                          'FLAGS', 'VIFILT', 'VWF', 'VIFM_LO', 'VIFM_HI',
+PRIME_PER_VOICE_FIELDS = ['VWI', 'VIWAVE', 'VGMASK', 'AD', 'SR',
+                          'FLAGS', 'VIFILT', 'VWF',
                           # B9: the ONE remaining pulse field. B8's seven
                           # (VIPUL_LO/HI, PULSE, VPC, VPHI, VPADL, PPTR_LO/HI)
                           # all described a separate pulse row-cursor that no
                           # longer exists -- wave_step steps the pulse now.
                           'PW_ACC', 'D402',
-                          # B8: genuine mid-program FM resume
-                          'FM_ON', 'FMP_LO', 'FMP_HI', 'FM_CNT',
-                          'FM_ACC_LO', 'FM_ACC_HI', 'FM_OFF_LO', 'FM_OFF_HI']
+                          # B10: fx/pitch resume -- the two RAW state bytes
+                          # plus the voice's pending $c0-$ff selection.
+                          # Replaces B8's eight reconstructed FM_* fields.
+                          'FXPOS', 'BASEPITCH', 'VIFXS', 'VIFXR']
 PRIME_GLOBAL_FIELDS = ['PRIME_F_IDX', 'PRIME_F_CNT', 'PRIME_F_ADHI',
                        'PRIME_F_CLO', 'PRIME_F_CHI', 'PRIME_F_MODE', 'PRIME_D417']
 
@@ -1805,9 +1702,9 @@ def build_range(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
     """
     windowed_steps = [window_steps(steps_per_voice[v], row0, row1) for v in range(3)]
 
-    used_keys = set()
+    used_fx = set()          # B10: the whole per-note vocabulary is now
+                              # just the set of fx INDICES (note-independent)
     used_instr = set()
-    key_counts = {}
     cur_instr_track = [None, None, None]
     for v in range(3):
         for s in windowed_steps[v]:
@@ -1816,9 +1713,7 @@ def build_range(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
                     cur_instr_track[v] = s.instrument
                 instr = cur_instr_track[v] if cur_instr_track[v] is not None else 0
                 used_instr.add(instr)
-                key = (s.fx, s.note, instr)
-                used_keys.add(key)
-                key_counts[key] = key_counts.get(key, 0) + 1
+                used_fx.add(s.fx & 0x3F)
 
     # --- B7: pull in whatever instrument/filter-program/bundle a RESTING
     # voice is silently still holding at row0, so its real WAVE/FILTER/
@@ -1842,7 +1737,6 @@ def build_range(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
     _pi = row0 + 1
     prime = row_state[_pi] if row_state and 0 <= _pi < len(row_state) else None
     prime_instr_of_voice = [None, None, None]
-    prime_key_of_voice = [None, None, None]
     filt_owner_instr = None
     if prime is not None:
         nins_total = len(ad_sr)
@@ -1853,10 +1747,7 @@ def build_range(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
                 if 0 <= oi < nins_total:
                     prime_instr_of_voice[v] = oi
                     used_instr.add(oi)
-                    key = (pv['currfx'], pv['pendnote'], oi)
-                    prime_key_of_voice[v] = key
-                    used_keys.add(key)
-                    key_counts[key] = key_counts.get(key, 0) + 1
+                    used_fx.add(pv['currfx'] & 0x3F)
         fo = prime['filt_owner']
         if fo != 0:
             for i in range(len(ad_sr)):
@@ -1893,74 +1784,37 @@ def build_range(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
             filter_flag_of[i] = True
             filter_extra_by_instr[i] = fextra
 
-    # --- per (fx, note) FM programs, bundled with that onset's instrument's
-    #     pulse program (command index selects BOTH, per pr_setprog) ---
-    fm_of_fxnote = {}
-    fm_extra_of_fxnote = {}     # B8: (fx,note) -> unroll_fm's position/frame map
-    bundle_list = []            # [(fm_prog, pulse_prog), ...] -- content-deduped, UNCAPPED
-    bundle_content_idx = {}     # (tuple(fm), tuple(pulse)) -> raw index into bundle_list
-    bundle_counts = []          # bundle_counts[i] = total real onset EVENTS using bundle i
-    raw_bundle_of = {}          # (fx, note, instr) -> raw index into bundle_list
-
-    def _fm_for(fx, note):
-        fxn_key = (fx, note)
-        if fxn_key not in fm_of_fxnote:
-            fx_row = 0
-            if fx != 0:
-                nfx = lay.filttable - lay.fx_start
-                if 1 <= fx <= nfx:
-                    fx_row = d[(lay.fx_start - la) + (fx - 1)]
-            fm_rows, _is_flat, fm_extra = unroll_fm(
-                lay, d, la, ins_restart, ins_restart2, fx_row, note)
-            fm_of_fxnote[fxn_key] = fm_rows
-            fm_extra_of_fxnote[fxn_key] = fm_extra
-        return fm_of_fxnote[fxn_key]
-
-    for (fx, note, instr) in sorted(used_keys):
-        fm_prog = _fm_for(fx, note)
-        pulse_prog = pulse_of_instr.get(instr) or [(0x7F, 0x00, 0x00)]
-        # B8: the bundle is keyed on the FM program ALONE now. PULSE moved to
-        # the instrument (see blackbird_driver.asm's set_instr_v), so two
-        # notes sharing an fx/arp program are genuinely the same bundle even
-        # when their instruments differ -- which is both correct AND a large
-        # reduction in bundle-vocabulary pressure (Fargo 107 -> far fewer),
-        # since the old key multiplied (fx, note) by the instrument's pulse
-        # program for no reason the hardware shares.
-        bkey = (tuple(fm_prog),)
-        if bkey not in bundle_content_idx:
-            bundle_content_idx[bkey] = len(bundle_list)
-            bundle_list.append((fm_prog, pulse_prog))
-            bundle_counts.append(0)
-        idx = bundle_content_idx[bkey]
-        bundle_counts[idx] += key_counts.get((fx, note, instr), 1)
-        raw_bundle_of[(fx, note, instr)] = idx
+    # --- B10: the fx/pitch "vocabulary" is just the set of fx INDICES this
+    #     window uses. There are no per-(fx, note) programs to unroll, no
+    #     bundle list, and no clustering: the driver runs lft's own engine
+    #     over lft's own fxtable, so an fx index is note-independent and maps
+    #     to a $c0-$ff slot as the identity.
+    nfx, fx_start_list, fxtab_bytes = fx_table_info(lay, d, la)
+    if nfx >= NFM:
+        raise ValueError(
+            f"nfx={nfx} does not fit the {NFM}-slot $c0-$ff command space. "
+            "B10 assumes the identity fx-index -> command-slot mapping; a "
+            "file this dense would need a real (note-independent) fx "
+            "clustering pass, which does not exist.")
+    n_used_fx = len(used_fx)
 
     if count_only:
-        identity_bundle_of = dict(raw_bundle_of)
-        tracks = [steps_to_rows_native(windowed_steps[v], identity_bundle_of)
-                  for v in range(3)]
-        nseg = sum(len(segment_track(tracks[v]) or [b'\x7f']) for v in range(3))
+        tracks = [steps_to_rows_native(windowed_steps[v]) for v in range(3)]
+        nseg = sum(len(segment_track(tracks[v]) or [b'']) for v in range(3))
         # B8: the default wave program now occupies WAVE row 0 (see
         # gen_includes_song), exactly as default_filter_program already did
         # for FILTER -- so fits() must budget for it too, or a window it
         # approves could overflow the real build.
         nw = _dedup_row_count(wave_programs, preseed=[default_wave_program])
         nf = _dedup_row_count(filter_programs, preseed=[default_filter_program])
-        return len(bundle_list), len(used_instr), nw, nf, nseg
+        return n_used_fx, len(used_instr), nw, nf, nseg
 
-    n_raw_bundles = len(bundle_list)
-    # $c0-$ff gives 64 command slots -- greedy-nearest-merge down to the cap
-    # rather than aliasing overflow bundles onto an unrelated one. Weighted by
-    # real onset-event counts (bundle_counts) so rarely-heard bundles are
-    # sacrificed before frequently-played ones (see cluster_bundles's
-    # docstring). For a properly windowed part this should rarely trigger at
-    # all (that's the whole point of splitting) -- it stays as a safety net
-    # for a window the STEP grid couldn't shrink below the cap.
-    bundle_list, remap = cluster_bundles(bundle_list, NFM, counts=bundle_counts)
-    bundle_of = {k: remap[v] for k, v in raw_bundle_of.items()}
-    n_merged = n_raw_bundles - len(bundle_list)
+    # B10: n_merged is structurally 0 now -- kept in the returned dict (and
+    # printed) so the report still SHOWS that clustering is gone rather than
+    # quietly dropping the field that used to carry the loss.
+    n_raw_bundles, n_merged = n_used_fx, 0
 
-    tracks = [steps_to_rows_native(windowed_steps[v], bundle_of) for v in range(3)]
+    tracks = [steps_to_rows_native(windowed_steps[v]) for v in range(3)]
     segs = [segment_track(tracks[v]) or [bytes([0x7F])] for v in range(3)]
 
     # Tempo: the pair ACTIVE at this part's own row0 (not necessarily the
@@ -1981,67 +1835,28 @@ def build_range(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
             f"{len(part_schedule)} entries > {TEMPO_SCHED_CAP}")
     n_sched = write_tempo_schedule(part_schedule)
 
-    # --- B8/B9: resolve, per voice, the EXACT FM program do_init needs to
-    # resume at this part's own boundary, and the source-frame index to
-    # resume it AT.
-    #
-    # Deliberately NOT taken from the post-clustering bundle the voice's
-    # priming key maps to: clustering can (and on Glyptodont routinely does)
-    # replace a resting voice's real program with a merged neighbour's, and
-    # priming a mid-flight position into the WRONG program is worse than
-    # useless. It is emitted as an AUX program into the same FMTAB instead
-    # (deduped, so it usually costs nothing), giving do_init a stable
-    # address for the genuine article. `prime_fm_k` is a source-frame index
-    # in the SAME index space unroll_fm's `positions` uses.
-    #
-    # B9: the PULSE half of this block is GONE. The pulse program's position
-    # is the WAVE row (see unroll_wave_pulse's B9 block), which PRIME_VWI
-    # already primes; the only remaining pulse state is the accumulator,
-    # primed as PRIME_PW_ACC straight from the snapshot's `pwidth`.
-    prime_fm_prog = [None, None, None]
-    prime_fm_extra = [None, None, None]
-    prime_fm_k = [0, 0, 0]
-    for v in range(3):
-        # FM: needs BOTH the (fx, note) bundle that was in flight AND the
-        # position within it (the note-parameterization B7 named as the
-        # blocker). `prime` gives both directly: currfx + pendnote name the
-        # program, and the captured `fxpos` locates the position inside it
-        # via the same deterministic position walk unroll_fm records.
-        if prime is not None:
-            pv = prime['voices'][v]
-            fmp = _fm_for(pv['currfx'], pv['pendnote'])
-            fex = fm_extra_of_fxnote.get((pv['currfx'], pv['pendnote']))
-            kf = None
-            if fex is not None:
-                for idx, p in enumerate(fex['positions'][:fex['prog_len']]):
-                    if p == pv['fxpos']:
-                        kf = idx
-                        break
-            if kf is not None:
-                prime_fm_prog[v] = fmp
-                prime_fm_extra[v] = fex
-                prime_fm_k[v] = kf
-
+    # B10: the whole "resolve the FM program + position to resume at" block
+    # that used to live here is GONE. `fxpos`/`basepitch` from the boundary
+    # snapshot ARE the driver's state (see _compute_prime_consts), so there
+    # is nothing to look up and no aux program to emit.
     gen, edit, mdp, seq0, aux = gen_includes_song(
-        segs, ad_sr, wave_programs, filter_programs, filter_flag_of, bundle_list,
+        segs, ad_sr, wave_programs, filter_programs, filter_flag_of,
+        fx_start_list, fxtab_bytes,
         default_filter_program, tempo_sched_len=n_sched,
         default_wave_program=default_wave_program,
-        aux_fm_programs=prime_fm_prog,
         pulse_programs=pulse_of_instr)
 
     # B7: now that gen_includes_song has finalized every table's real
-    # addresses (wave/filter program starts per instrument, FM/pulse
-    # addresses per bundle), resolve the priming constants and append them
-    # to the SAME layout.inc gen_includes_song just wrote.
+    # addresses (wave/filter program starts per instrument), resolve the
+    # priming constants and append them to the SAME layout.inc
+    # gen_includes_song just wrote.
     prime_consts = _compute_prime_consts(
         gen, edit, ad_sr, wave_programs, wave_stats_by_instr,
         filter_extra_by_instr, default_filter_program, default_filter_extra,
-        bundle_of, prime, prime_instr_of_voice, prime_key_of_voice,
-        filt_owner_instr,
-        aux=aux, default_wave_program=default_wave_program,
+        prime, prime_instr_of_voice, filt_owner_instr,
+        default_wave_program=default_wave_program,
         default_wave_stats=default_wave_stats,
-        prime_fm_prog=prime_fm_prog,
-        prime_fm_extra=prime_fm_extra, prime_fm_k=prime_fm_k)
+        fx_start_list=fx_start_list)
     _write_prime_consts(prime_consts)
 
     prg = B.assemble()
@@ -2049,7 +1864,7 @@ def build_range(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
     sf2 = B.wrap(prg, gen, edit, mdp, instr_names=names)
 
     return dict(prg=prg, edit=edit, sf2=sf2, gen=gen, mdp=mdp, seq0=seq0,
-                n_bundles_raw=n_raw_bundles, n_bundles_final=len(bundle_list),
+                n_bundles_raw=n_raw_bundles, n_bundles_final=n_used_fx,
                 n_merged=n_merged, n_used_instr=len(used_instr),
                 tempo_chain=chain, tempo_sched_n=n_sched, row0=row0, row1=row1,
                 primed=(prime is not None))
@@ -2232,11 +2047,28 @@ def main():
         sr = d[(lay.ins_sr - la) + i] if 0 <= (lay.ins_sr - la) + i < len(d) else 0
         ad_sr.append((ad, sr))
 
-    # freqtable.inc from the SAME sim class (pure table reads, no state
+    # B10: ONE contiguous freq_msb/freq_lsb/pwprepare blob (supersedes B9's
+    # separate pwprepare.inc AND the freqtable.inc the deleted FM engine
     # needed) -- song-wide, written once, shared by every part's assemble().
     sim_for_freq = BlackbirdSim(lay, d, la, [b'', b'', b''], ins_restart, ins_restart2)
-    write_freqtable(sim_for_freq)
-    write_pwprepare(sim_for_freq)   # B9: the driver's pulse-width lookup
+    write_freqblob(sim_for_freq, d, po)
+    freqblob = list(d[po + FREQBLOB_OFF:po + FREQBLOB_OFF + FREQBLOB_LEN])
+
+    # --- B10's exact-by-construction gate (B9's discipline applied to pitch).
+    # Replay the DRIVER's own fx arithmetic, over the tables this build
+    # actually emits, against the validated simulator's $D400/$D401 -- every
+    # frame of every (fx program, note) pair the song can produce. A single
+    # wrong carry, a truncated table or a mislocated label fails the BUILD
+    # here rather than costing a few unattributable percent downstream.
+    nfx_song, fx_start_song, fxtab_song = fx_table_info(lay, d, la)
+    notes_song = sorted({s.note for v in range(3) for s in steps_per_voice[v]
+                         if s.kind == 'note' and s.note is not None})
+    n_checked = verify_fx_engine(lay, d, la, ins_restart, ins_restart2,
+                                 freqblob, fxtab_song, fx_start_song,
+                                 notes_song)
+    print(f"  B10 fx-engine self-check: {n_checked} driver-vs-simulator frame "
+          f"comparisons EXACT over {nfx_song + 1} fx program(s) x "
+          f"{len(notes_song)} note(s) ($D400/$D401 + FXPOS)")
 
     # Song's own genuine opening tempo pair (row0==0's fallback -- see
     # extract_tempo_pairs' own off-by-one-corrected //7+1 note in the B2
@@ -2274,12 +2106,15 @@ def main():
     from sidm2 import sf2_parser
 
     N_CMP = 200          # matches every prior B-round's own "primary window"
-    N_FULL_CAP = 3000    # per-part "full window" cap (runtime bound, not a
-                          # format limit; matches B3-B5's own extended-window
-                          # cap exactly) -- most parts are far shorter than
-                          # this end-to-end, so this is usually the WHOLE
-                          # part; a 1-part build (Fargo) reproduces the
-                          # historical 0-2395f extended window inside it.
+    # B10: env-overridable. B10 collapsed Glyptodont from 10 parts to 1,
+    # which silently CHANGES WHAT GETS MEASURED -- 10 parts x ~1425f covered
+    # the whole song, one part capped at 3000f covers only its first ~14%.
+    # Comparing those two numbers as if they were the same measurement would
+    # be meaningless, so the cap is sweepable to put both builds on the same
+    # frame coverage. See BLACKBIRD.md's B10 section for both.
+    # (Default 3000 = the per-part "full window" cap B3-B5 used; most parts
+    # are far shorter end-to-end, so it is usually the WHOLE part.)
+    N_FULL_CAP = int(os.environ.get('BB_FULL_CAP') or 3000)
 
     out_dir = os.path.join(ROOT, "out", "blackbird")
     os.makedirs(out_dir, exist_ok=True)

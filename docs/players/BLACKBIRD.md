@@ -2240,6 +2240,197 @@ Determinism re-verified: two from-scratch rebuilds produced byte-identical
 sha1 for Fargo's part and all 10 Glyptodont parts.
 `pyscript/test_blackbird_parser.py` stayed 9/9 (untouched).
 
+## B10 shipped: the fx/PITCH interpolator runs in the driver (Glyptodont 10 parts -> 1, freq 66.6% -> 97.1%)
+
+B9's move, applied to pitch. B9 replaced a stored pulse *recording* with lft's
+own accumulator; B10 replaces the stored pitch *recording* with lft's own
+`everyframe` fx interpolator (`player.s` 207-271), ported instruction-for-
+instruction into `fx_step`.
+
+### The problem B10 removes
+
+The old `fm_step` stored, per program, a per-frame sequence of **absolute
+frequency offsets** from a note's steady pitch. Those offsets are
+**note-dependent** — Blackbird's frequency table is exponential, so the same
+"+3 quarter-semitones" arp step is a different Hz offset at every pitch. So
+every `(fx-program, note)` PAIR needed its own `$c0-$ff` command slot:
+
+| | distinct fx programs (`nfx`) | slots the old encoding needed | clustered away |
+|---|---|---|---|
+| Fargo | 35 | 80 | 16 (20%) |
+| Glyptodont | 47 | 423 | 359 (**85%**) |
+
+What lft actually runs is note-independent: an fx program is a list of signed
+**quarter-semitone** offsets, and the note enters only as `v_basepitch =
+note*4`, added *before* a 4-mode interpolated table lookup. Run that
+algorithm in the driver and a "program" is just an **fx index**.
+
+### Result: clustering is not reduced, it is gone
+
+| | slots before | slots after | merged |
+|---|---|---|---|
+| Fargo | 80 | **32** (of nfx=35) | **0** |
+| Glyptodont | 423 (whole song) / 61-96 per part | **47** | **0** |
+
+`cluster_bundles()` is deleted. `CAP_B` is now **completely inert**: sweeping
+it 128 -> 96 -> 80 -> 64 -> 48 produces *byte-identical* output on both files
+(B9's "96 is a strict optimum" finding no longer holds, because the constraint
+it optimised no longer binds). It still *functions* — forcing `CAP_B=32`,
+below Glyptodont's `nfx=47`, does still split into 3 parts — so this is a
+non-binding cap, not dead code. The binding constraint is now `CAP_I=32`
+instruments (Glyptodont uses 31).
+
+### Part count: the round's headline goal, achieved
+
+**Glyptodont: 10 parts -> 1.** Fargo stays at 1 part (the correctness anchor,
+unchanged). Both songs are now a single SF2 with no hard cuts.
+
+### Fidelity — measured on MATCHED frame coverage
+
+Collapsing 10 parts into 1 **silently changes what gets measured** (10 parts x
+~1425f covered the song; one part capped at 3000f covers ~14% of it). Quoting
+the two default runs against each other would be meaningless, so `BB_FULL_CAP`
+was added and **both builds were re-measured over the identical full-song
+frame count**:
+
+**Glyptodont, 20,223 frames (whole song), B9 10 parts vs B10 1 part:**
+
+| | overall | freq | waveform | pulse | adsr | filter |
+|---|---|---|---|---|---|---|
+| B9 (10 parts) | 83.7 | 66.6 | 93.0 | 76.4 | 96.1 | 94.5 |
+| **B10 (1 part)** | **91.4** | **97.1** | **93.5** | **77.7** | 96.1 | **94.7** |
+
+**Fargo, 20,550 frames (whole song), 1 part both:**
+
+| | overall | freq | waveform | pulse | adsr | filter |
+|---|---|---|---|---|---|---|
+| B9 | 77.1 | 90.3 | 76.9 | 52.0 | 74.0 | 99.9 |
+| **B10** | **78.8** | **97.4** | 76.9 | 52.0 | 74.0 | 99.9 |
+
+Nothing regressed in any category on either file. Fargo is a *pure* freq win
+(every other category byte-identical). Glyptodont improves or ties everywhere
+while also going 10 parts -> 1.
+
+On the **historical default 3000-frame window** (the number prior B-rounds
+quoted), for continuity: Fargo 94.4% -> **94.9%** (freq 87.7 -> 89.5);
+Glyptodont 82.7% (10 parts, 14250f) -> **91.7%** (1 part, 3000f) — but that
+Glyptodont pair is exactly the coverage-mismatched comparison described above,
+so the 20,223-frame table is the honest one.
+
+**Output also shrank 60%**: Fargo's SF2 34,975 -> 14,130 bytes (the ~1125-row
+unrolled per-(fx,note) FMTAB programs are gone).
+
+### The 1-frame note-trigger lag is gone by construction
+
+`fm_step` existed to *accumulate* offsets, so `pr_note` had to write a flat
+base pitch on the trigger frame and only start applying deltas the frame
+after — the documented 1-frame lag. `fx_step` computes the **absolute**
+frequency from `FXPOS` every frame, so there is no accumulator to prime and
+nothing to lag. `pr_note` no longer writes `$D400/1` at all, exactly like
+lft's `execute()`, which never touches the frequency registers.
+
+**Measured, not assumed** — sweeping the driver trace +/-2 frames against the
+simulator on Fargo, shift 0 is a strict local maximum on all three voices
+(v0 86.7/87.8/**88.9**/88.0/87.0, v1 91.6/92.7/**93.9**/92.8/91.7, v2
+78.0/79.9/**82.1**/80.1/78.4). No systematic pitch skew remains.
+
+### Exact-by-construction gate
+
+`verify_fx_engine()` replays the **driver's own arithmetic over the tables the
+build actually emits** against the validated simulator's `$D400/$D401` and
+`FXPOS`, for every frame of every (fx program, note) pair the file can
+produce: **302,400 exact comparisons (Fargo), 705,600 (Glyptodont)**, checked
+on every build. It is deliberately a model of the *asm against the emitted
+blobs*, not a paraphrase of the simulator, so it is not a tautology.
+
+Negative controls confirming it has teeth:
+
+| injected fault | result |
+|---|---|
+| truncate FREQBLOB to the nominal 96-byte `freq_msb` | **fails** (IndexError) |
+| flip ONE byte of a deliberate carry-bias table | **fails** (value mismatch, names fx/note/frame) |
+| truncate FXTAB by one byte (drops the `+1` peek guard) | *passes* — neither file ever reaches `fxpos=$ff`, so the guard byte is defensive and **unexercised** |
+| unmodified control | passes |
+
+### The table-extent trap, handled
+
+`fx_step`'s `freq_lsb+24,y` reads with `y` up to 127 run **151 bytes past
+`freq_lsb`'s start** — past its own 111-byte extent and into `pwprepare`'s
+region; `freq_msb+24,y` likewise runs into `freq_lsb`. lft documents the first
+("tables overlap with 15 bytes", `player.s:692`); the second is just what a
+16-bit indexed read does. So the three tables are emitted as **ONE contiguous
+463-byte blob** (`FREQBLOB`, template offsets 817..1280 = `freq_msb` 96 +
+`freq_lsb` 111 + `pwprepare` 256), with `freq_msb`/`freq_lsb`/`pwprepare` as
+labels into it. B9's separate `pwprepare.inc` is **folded in, not
+double-embedded**, and the build still asserts both that the blob is
+byte-identical across files and that its `pwprepare` slice matches what
+`BlackbirdSim` reads at offset 1024.
+
+Verified placement (64tass label dump, not reasoning): `FREQBLOB=$1710`,
+`freq_msb=$1710`, `freq_lsb=$1770`, `pwprepare=$17DF`, blob ends `$18DE`.
+Highest reachable reads: `freq_lsb+24+127=$1807` and `pwprepare+255=$18DE` —
+both inside the blob, both clear of the private state block at `$1980`. Low-gap
+tables end `$1548` < `$16CC`. (B8's lesson: an overlap here corrupts at
+*runtime*, not at assembly.)
+
+### What was deleted
+
+`fm_step` (~90 bytes), `FMTAB`, `IFM_LO`/`IFM_HI`, `FM_ON`/`FM_IDX`/`FM_CNT`/
+`FM_ACC_*`/`FM_OFF_*`/`FMP_*`/`VIFM_*`, the `fmptr` zero-page pointer,
+`vbasenote`, **and `freqtable`/`freqtable.inc` entirely** (it existed only to
+give `fm_step` a base pitch; nothing reads it now — deleting it is also what
+makes room for the blob below `$1980`). `unroll_fm()` and `cluster_bundles()`
+are gone from the builder. Part-boundary priming collapsed from **eight
+reconstructed FM fields per voice to two raw bytes** (`fxpos`, `basepitch`) —
+the snapshot's state *is* the driver's state, so there is no lookup to get
+wrong and no "couldn't resolve, fall back to flat" failure mode left (which on
+Glyptodont used to fire regularly).
+
+### Editability — what changed, honestly
+
+- **Unchanged from B9**: WAVE col1 still carries pulse deltas, so the
+  transpose column still has no stock-editor meaning. B10 did not restore it.
+- **Improved**: the `$c0-$ff` command column used to hold an opaque
+  per-`(fx, note, instrument)` bundle index whose number meant nothing outside
+  one build. It is now **Blackbird's own fx-program number** — a stable,
+  note-independent identity, so editing it selects a real arp/vibrato program
+  and the same value means the same thing across parts and files.
+- **Note column semantics preserved**: `pr_note` subtracts `NOTE_OFS` (=9,
+  Stage A's user-verified calibration, now emitted into `layout.inc` from the
+  single constant `SF2_NOTE_OFS` rather than duplicated as a literal). Note
+  names still display correctly.
+- **No new cost**: `FXTAB`/`FXSTART`/`FXRST` live above `gen.filter_addr`,
+  outside the region declared to SF2II — exactly where `FMTAB` lived. SF2II
+  renders WAVE/PULSE/FILTER/INSTR/SEQ only, and that set is unchanged.
+- **Still not editable** (pre-existing, not introduced here): the pitch/arp
+  program itself. Blackbird's `fxtable` uses its own jump encoding and is not
+  a declared SF2II table.
+
+### Punch list (honest)
+
+1. **fx changes on a rest or tie are DEFERRED to the next note onset.** On
+   hardware, `prepare1` sets `pendfx` from the fx byte itself, so `execute()`
+   repositions `fxpos` even with no note that tick. The driver's command
+   column only acts at `pr_note`. Measured: **57/208 fx changes (27%) on
+   Fargo, 100/1448 (7%) on Glyptodont** land on a non-note step. This is the
+   dominant remaining freq residual and it explains the *shape* of it — Fargo
+   has ~4x the deferred fraction and correspondingly worse freq in the short
+   window (89.5% vs Glyptodont's 97.6%). Fixing it is a sequence-format
+   change (let the command act on non-note rows), not a pitch-engine change.
+   Diagnostic support: at every freq-mismatched frame on Fargo, the waveform
+   register **matches** (0% co-occurrence, all 3 voices) — so the voice is not
+   sequence-desynced; only `FXPOS` timing differs.
+2. **Fargo's pulse (52.0%) and adsr (74.0%) over the full song are weak** and
+   B10 did not touch them — the 3000-frame window flatters both (90.8/98.8).
+   Untouched by this round; quote the window.
+3. **The FXTAB `+1` guard byte is unexercised** by either file (see the
+   negative-control table). It is defensive only.
+4. `CAP_B` is retained but inert; if a future file has `nfx >= 64` the build
+   **raises** rather than silently clustering — a note-independent fx
+   clustering pass does not exist.
+5. Still only Fargo + Glyptodont; the other 9 v1.2-exact files are untried.
+   Still not wired into `DriverSelector`. Still no audio listening test.
+
 ## What's genuinely proven vs. still open
 
 - **Proven, working**: template-based detection (11/59 files), full symbol/table
@@ -2306,8 +2497,10 @@ sha1 for Fargo's part and all 10 Glyptodont parts.
   first tempo/groove pair is used there — B3's schedule work is native-driver
   only, `estimate_tempo_chain()`'s own off-by-one is also still unfixed);
   empirical/byte-exact pitch calibration against Blackbird's own sub-semitone
-  `freq_lsb`/`freq_msb` interpolation tables (Stage A only calibrates the
-  resting/landing pitch); extending the native driver past Fargo+Glyptodont
+  `freq_lsb`/`freq_msb` interpolation tables **in STAGE A specifically** (Stage
+  A still only calibrates the resting/landing pitch — B10 closed this for the
+  NATIVE driver, which now runs lft's real 4-mode interpolator over the real
+  tables, but Stage A is untouched); extending the native driver past Fargo+Glyptodont
   to the other 9 v1.2-exact files; audio-listening the native driver's output
   (only Stage A's coarser output has been ear-confirmed so far).
 
