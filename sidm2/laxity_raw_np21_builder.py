@@ -698,14 +698,28 @@ def build_laxity_raw_np21_sf2(data) -> Optional[LaxityRawNp21Result]:
 
     shadow_base = sf2_data_base + len(sf2_edit_data)
 
-    # Pre-fill shadow with each voice's full NP21 byte stream + loop terminator.
+    # Pre-fill shadow with each voice's full NP21 byte stream + terminator.
+    #
+    # loop_target is None for sequences that ended on a true $7F
+    # end-of-data marker (no loop) -- see _extract_raw_seq(). Those
+    # must keep their native $7F terminator in the shadow, not a
+    # synthetic $FF+0 "loop to start" pair: the verbatim-embedded
+    # player code distinguishes the two ($FF loops the sequence in
+    # place; $7F hands control back to the orderlist for whatever
+    # comes next, e.g. a transposed repeat via a fresh orderlist
+    # entry). Forcing $FF here fabricates an in-place loop the
+    # original never had, desyncing playback the first time the
+    # voice reaches the true end of its sequence.
     shadow_buffer = bytearray(shadow_buffer_size)
     for v, (body, loop_target) in enumerate(voice_streams):
         slot = v * SEQ_SHADOW_SIZE
         n = min(len(body), SEQ_SHADOW_SIZE - 2)
         shadow_buffer[slot : slot + n] = body[:n]
-        shadow_buffer[slot + n]     = 0xFF
-        shadow_buffer[slot + n + 1] = loop_target & 0xFF if loop_target is not None else 0x00
+        if loop_target is None:
+            shadow_buffer[slot + n] = 0x7F
+        else:
+            shadow_buffer[slot + n]     = 0xFF
+            shadow_buffer[slot + n + 1] = loop_target & 0xFF
 
     # Patch ch_seq_ptr in c64_data — each voice points to its own
     # shadow slot at shadow_base + v*256. Default offsets are NP21's
