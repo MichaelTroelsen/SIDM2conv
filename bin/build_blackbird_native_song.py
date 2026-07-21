@@ -1012,7 +1012,6 @@ def steps_to_rows_native(steps):
     restart immediately when the command byte is parsed instead of
     deferring it to pn_note."""
     rows = []
-    cur_instr = None
     cur_cmd = None
     for s in steps:
         n = max(1, s.ticks)
@@ -1021,10 +1020,24 @@ def steps_to_rows_native(steps):
         if cmd != cur_cmd:
             cmdcol = cmd
             cur_cmd = cmd
-        inst = None
-        if s.instrument is not None and s.instrument != cur_instr:
-            inst = s.instrument
-            cur_instr = s.instrument
+        # B21: do NOT dedupe against the previously-active instrument. Real
+        # hardware's execute() (player.s 447-457) treats EVERY genuine
+        # instrument-select byte as an unconditional restart -- wavepos snaps
+        # back to ins_wave[y-1] (row 0), wavemask/AD/SR recommit -- regardless
+        # of whether y equals the instrument already playing. A "sticky
+        # repeat" reselect of the SAME instrument is common (e.g. to force a
+        # wave/filter program restart mid-note) and is NOT a no-op on
+        # hardware. The old `s.instrument != cur_instr` gate here silently
+        # dropped every such reselect's instrument command from the emitted
+        # native track (since bb_steps_for_voice already correctly attaches
+        # `instrument=` only to the ONE step immediately following a genuine
+        # select byte -- this function was the one adding a SECOND,
+        # incorrect value-based dedup on top of that). Found via a live
+        # BlackbirdSim trace: Fargo voice 1 has currins=6 continuously
+        # through real frames ~7500-7650 while the stream re-issues
+        # pendins=6 at row 1283->1284 (real frame 7584) -- exactly the
+        # native driver's own pulse-residual divergence point.
+        inst = s.instrument
         if s.kind == 'rest':
             rows.append(D11Row(note=SF2_GATE_OFF, instrument=inst, command=cmdcol))
             rows.extend(D11Row(note=SF2_GATE_OFF) for _ in range(n - 1))

@@ -1,6 +1,6 @@
 # Blackbird (Linus Åkesson / "lft") — recon started 2026-07-19
 
-**Status (updated 2026-07-20, post-B17): decompression, tempo model, and
+**Status (updated 2026-07-21, post-B21): decompression, tempo model, and
 Stage A (Driver 11 transpile) all SOLVED and shipped for all 11
 v1.2-exact-bucket files (`sidm2/blackbird_parser.py`,
 `sidm2/blackbird_driver11.py`). Stage B's synth engine (arpeggio/wave/
@@ -10,9 +10,9 @@ built into a real native 6502 driver
 `bin/build_blackbird_native_song.py`) that now builds a working SF2 for
 **all 11 of the 11 v1.2-exact-bucket files** (B15, a coverage extension —
 see "B15 shipped" below for the full per-file table), now ranging
-93.9%-98.9% overall post-B17 (mean ~97%, up from B15's 91.4%-98.9%/~95% —
-B17 was a broad corpus-wide pulse fix, not a Fargo-only one; see "B17
-shipped" below). Two files needed B6's adaptive multi-part splitting automatically
+95.2%-99.8% overall post-B21 (mean ~98%, up from B17's 93.9%-98.9%/~97% —
+B21 was a Fargo-only fix, the other 10 files are byte-for-byte unchanged;
+see "B21 shipped" below). Two files needed B6's adaptive multi-part splitting automatically
 (Dithered_Island: 2 parts, Into_the_Unknown: 3 parts; Fargo also now
 correctly splits into 2, since B14 fixed a genuine 35-instrument overflow
 that used to silently corrupt it instead of triggering the split). B11-B14
@@ -26,9 +26,14 @@ wrong turns that were caught and corrected rather than shipped
 previously-entirely-missing engine feature (player.s's `ins_restart`/
 `ins_restart2` threshold-gated hard-retrigger) with zero regression
 anywhere in the corpus — but it turned out NOT to explain Fargo's own
-71.1% pulse residual, which a direct register comparison now narrows to
-`_pulse_col1`'s build-time delta encoding specifically (not cursor timing,
-not priming) — see "B16" below. Only Fargo (pre-B14) and
+71.1% pulse residual. B17 then found and fixed a broad corpus-wide
+missing-VWI-restart bug (instrument-select-without-note rows), which
+recovered most of the corpus but only partially fixed Fargo itself
+(pulse 71.1%→76.1%, not 100%) — B19/B20 investigated further but reverted
+both attempts (see their own section below for that honest negative
+result). B21 (this same overall arc, next session) found the REAL
+remaining Fargo cause — see "B21 shipped" below: Fargo now scores
+99.8%/pulse 100.0%, the best file in the corpus. Only Fargo (pre-B14) and
 Glyptodont (post-B13) have been individually root-caused in depth; the
 other 9 files newly covered by B15 are a baseline, not yet individually
 investigated. Glyptodont is the only file audio-listened so far (real SID
@@ -3300,6 +3305,20 @@ Re-derived and re-verified the CORE finding: `unroll_filter`'s row0 must respect
 Reapplied the fix and traced Revolutions_Delivered's own regression precisely: its 8000+ region has FOUR DIFFERENT filter-owning instruments (positions 4, 21, 25, 29) restarting the SAME shared filter in rapid rotation (~every 8 frames). Verified EACH ONE's own row0 classification and delta computation independently — all correct in isolation (owner 4 = genuine SET to a fixed 0x84, confirmed by the simulator itself always landing there regardless of history; owner 21 = genuine ADD +2, confirmed exactly matching the observed 0x84→0x86 and 0x50→0x52 deltas; owner 29 = genuine SET to $D0, confirmed the simulator ITSELF briefly shows exactly $D0 at the same frame). Despite every individual piece checking out, the built driver gets PERMANENTLY STUCK at owner 29's own SET value ($D0) instead of continuing to cycle through the rotation the way the simulator does. Root mechanism not found — likely something about how repeated restarts interact with `F_CNT`/`F_IDX` bookkeeping specifically under this rapid-fire pattern, not yet isolated via single-step trace (this specific case wasn't single-stepped — the per-owner-in-isolation checks above were all done via `unroll_filter`'s own build-time walk, not a live driver trace; that's the natural next step for whoever picks this back up).
 
 **Both reverted** (`git checkout -- bin/build_blackbird_native_song.py`, confirmed clean against `c30079e`). Fargo rebuilt afterward to restore `.inc` artifact state. Nothing new committed this round — see `whats-next.md` for the prioritized continuation.
+
+## B21 shipped: the REAL Fargo pulse root cause — `steps_to_rows_native` was deduping "sticky repeat" instrument reselects as no-ops, dropping them from the native track entirely
+
+Picked up the B19/B20 handoff's item 1 (Fargo's remaining pulse gap). The handoff's own leading hypothesis — a tempo/tick frame-alignment mismatch, "execute() outruns prepare1/2/3" for very-short-tempo parts — was **directly disproven** this round: a live simulator trace of Fargo part 2's actual tempo values (not the assumed constant `7`) showed the real schedule alternates `35`/`42` (7/6 real frames per tick) with clean period-2 XOR-groove alternation, resynced correctly at every explicit tempo-schedule record. A driver-side py65 trace of `ROW_CNT`/`TEMPO_SCHED_IDX`/`CUR_TEMPO`/`CUR_TEMPO2` confirmed the assembled driver's row-tick cadence tracks the simulator's **exactly**, frame-for-frame, through and past the divergence point — ROW_CNT=84 fires at real frame 584, matching the simulator's `row_frame[1284]-F0=584` precisely. The tempo/tick model was never the bug.
+
+The real cause was one level up, in Stage A's own step→native-row translation. `bb_steps_for_voice` correctly attaches `pending_instr` to whatever event follows an instrument-select byte in the raw stream (B12's own fix), but `steps_to_rows_native` (this module) applied a SECOND, incorrect dedup on top of that: `if s.instrument is not None and s.instrument != cur_instr` — silently treating a re-select of the SAME instrument index already active as a no-op, emitting no instrument command at all for that row. Real hardware's `execute()` (player.s 447-457) does not compare values: ANY genuine instrument-select byte unconditionally resets `wavepos = ins_wave[y-1]` (back to the instrument's own row 0), sets `wavemask=0xff`, and recommits AD/SR — a same-value "sticky repeat" reselect is a real, audible restart (typically used to force a wave/pulse program back to its start mid-note), not a value-comparison no-op.
+
+Confirmed precisely via a live `BlackbirdSim` trace: Fargo voice 1's `currins` holds at `6` continuously from real frame ~7500 through ~7650, yet the decoded stream re-issues an explicit `pendins=6` select at row 1283→1284 (real frame 7584 — exactly the frame the B19/B20 py65 trace flagged: driver still mid-`vhold`, no `do_row` dispatch label fires for voice 1, `VGMASK1` never flips). The reselect's own duration was being silently folded into the PRECEDING held note's row (a plain `D11Row(note=SF2_GATE_ON)` continuation with `instrument=None`), so the driver never saw a command byte to dispatch and just kept holding the earlier note — precisely the observed symptom, previously misdiagnosed as a timing/frame-alignment issue.
+
+**Fix**: removed the `!= cur_instr` gate in `steps_to_rows_native` (`bin/build_blackbird_native_song.py`) — every non-`None` `s.instrument` on a step now emits its own instrument command, regardless of whether it matches the previously-active value. `bb_steps_for_voice` already guarantees `s.instrument` is only non-`None` on the ONE step immediately following a genuine select byte in the source stream (never a stale/sticky carry-forward), so this cannot introduce spurious commands on rows that didn't have one.
+
+**Result**: rebuilt the full 11-file corpus (`BB_FULL_CAP=999999`, matching this session's established discipline). Fargo alone changed — **93.9%→99.8% overall, pulse 76.1%→100.0%**, adsr 99.6% (unchanged), freq 99.6% (unchanged), filter 100.0% (unchanged) — every OTHER file in the corpus was byte-for-byte IDENTICAL to its B17-committed numbers (Glyptodont 97.6%, Thus_Spoke 98.9%, Maple_Leaf_Rag 98.8%, Euclid_Was_Here 98.3%, Dishwasher_Groove 97.5%, Elvendance 95.3%, Into_the_Unknown 97.4%, Toy_Rocket 98.1%, Dithered_Island 98.6%, Revolutions_Delivered 95.2% — zero regressions anywhere). Fargo is now the best-scoring file in the whole corpus. 9/9 `pyscript/test_blackbird_parser.py` tests still pass.
+
+The filter row0 rapid-restart bug from B19/B20 (item 2) remains open and unshipped — untouched this round; see B19/B20's own section above for the exact next step (a live py65 single-step of Revolutions_Delivered's rapid-restart window, not more static `unroll_filter`-only analysis).
 
 ## What's genuinely proven vs. still open
 
