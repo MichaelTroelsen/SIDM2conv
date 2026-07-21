@@ -712,6 +712,23 @@ def _filter_add_row(delta, run):
     return (b0, b1, run & 0xFF)
 
 
+def _filter_row_delta(sim, pos):
+    """B21: the ADD delta for filter position `pos`, computed purely from
+    `filttable(pos+2)`'s own raw byte -- a fixed table property, independent
+    of whatever F_CLO/F_CHI/m_cutoff a restart actually inherits. Mirrors
+    BlackbirdSim.everyframe()'s own ADD branch (asl, then a signed-7-bit
+    sign-extension via ror) up to computing the delta, without also
+    replaying the add-into-accumulator step -- a translated ADD row only
+    ever needs to encode the delta itself, never a particular starting
+    value (see unroll_filter's own row0 handling, which needs this exact
+    delta independent of whichever COLD-START trace value prefix[0] holds)."""
+    c = sim.filttable(pos + 2)
+    c_shifted, _c_top = _asl(c)
+    carry_cmp = 1 if c_shifted >= 0x80 else 0
+    delta, _ = _ror(c_shifted, carry_cmp)
+    return delta & 0xFF
+
+
 def unroll_filter(lay, d, la, ins_restart, ins_restart2, filt_start):
     sim = BlackbirdSim(lay, d, la, [b'', b'', b''], ins_restart, ins_restart2)
     sim.zp_filtpos = filt_start & 0xFF
@@ -771,7 +788,18 @@ def unroll_filter(lay, d, la, ins_restart, ins_restart2, filt_start):
     # headroom (Glyptodont: 27/256 rows before this fix).
     rows, row_frame_start = [], []
     d418_0, d417_0, d416_0 = prefix[0]
-    rows.append(_filter_set_row((d418_0 >> 4) & 0x07, d416_0, d417_0))
+    # B21: row0 must respect its OWN true source classification
+    # (is_set_prefix[0]) instead of always forcing a SET. A restart landing
+    # on a genuinely-ADD row0 (common when several instruments share one
+    # filter program and rapidly restart it in rotation) must apply its
+    # delta on top of whatever cutoff the PREVIOUS owner left behind, not
+    # reset to this cold-start trace's own fixed (and here, WRONG) value --
+    # forcing SET means every restart snaps to the same baked-in number
+    # instead of ramping. See docs/players/BLACKBIRD.md's B21 section.
+    if is_set_prefix[0]:
+        rows.append(_filter_set_row((d418_0 >> 4) & 0x07, d416_0, d417_0))
+    else:
+        rows.append(_filter_add_row(_filter_row_delta(sim, filt_start), 1))
     row_frame_start.append(0)
     prev_mode_res = (d418_0, d417_0)
     prev_cutoff = d416_0

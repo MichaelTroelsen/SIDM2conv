@@ -1,6 +1,6 @@
 # Blackbird (Linus Åkesson / "lft") — recon started 2026-07-19
 
-**Status (updated 2026-07-21, post-B21): decompression, tempo model, and
+**Status (updated 2026-07-21, post-B22): decompression, tempo model, and
 Stage A (Driver 11 transpile) all SOLVED and shipped for all 11
 v1.2-exact-bucket files (`sidm2/blackbird_parser.py`,
 `sidm2/blackbird_driver11.py`). Stage B's synth engine (arpeggio/wave/
@@ -10,9 +10,10 @@ built into a real native 6502 driver
 `bin/build_blackbird_native_song.py`) that now builds a working SF2 for
 **all 11 of the 11 v1.2-exact-bucket files** (B15, a coverage extension —
 see "B15 shipped" below for the full per-file table), now ranging
-95.2%-99.8% overall post-B21 (mean ~98%, up from B17's 93.9%-98.9%/~97% —
-B21 was a Fargo-only fix, the other 10 files are byte-for-byte unchanged;
-see "B21 shipped" below). Two files needed B6's adaptive multi-part splitting automatically
+97.4%-99.8% overall post-B22 (mean ~98%, up from B17's 93.9%-98.9%/~97% —
+B21 was a Fargo-only fix, B22 fixed the filter rapid-restart freeze
+(Revolutions_Delivered) plus improved two more files; see "B21 shipped"
+and "B22 shipped" below). Two files needed B6's adaptive multi-part splitting automatically
 (Dithered_Island: 2 parts, Into_the_Unknown: 3 parts; Fargo also now
 correctly splits into 2, since B14 fixed a genuine 35-instrument overflow
 that used to silently corrupt it instead of triggering the split). B11-B14
@@ -31,9 +32,14 @@ missing-VWI-restart bug (instrument-select-without-note rows), which
 recovered most of the corpus but only partially fixed Fargo itself
 (pulse 71.1%→76.1%, not 100%) — B19/B20 investigated further but reverted
 both attempts (see their own section below for that honest negative
-result). B21 (this same overall arc, next session) found the REAL
-remaining Fargo cause — see "B21 shipped" below: Fargo now scores
-99.8%/pulse 100.0%, the best file in the corpus. Only Fargo (pre-B14) and
+result). B21 found the REAL remaining Fargo cause: Fargo now scores
+99.8%/pulse 100.0%, the best file in the corpus. B22 (right after, same
+day) picked up B19/B20's other open thread and found TWO bugs behind the
+filter rapid-restart freeze — a row0 SET/ADD misclassification (B19/B20's
+own diagnosed fix, reapplied) AND a voice-processing-order mismatch for
+filter arbitration when two voices contend for it in the same tick — both
+together: Revolutions_Delivered's filter jumped 81.1%→97.1%, above its
+ORIGINAL B17 baseline, not just restored to it. Only Fargo (pre-B14) and
 Glyptodont (post-B13) have been individually root-caused in depth; the
 other 9 files newly covered by B15 are a baseline, not yet individually
 investigated. Glyptodont is the only file audio-listened so far (real SID
@@ -3319,6 +3325,16 @@ Confirmed precisely via a live `BlackbirdSim` trace: Fargo voice 1's `currins` h
 **Result**: rebuilt the full 11-file corpus (`BB_FULL_CAP=999999`, matching this session's established discipline). Fargo alone changed — **93.9%→99.8% overall, pulse 76.1%→100.0%**, adsr 99.6% (unchanged), freq 99.6% (unchanged), filter 100.0% (unchanged) — every OTHER file in the corpus was byte-for-byte IDENTICAL to its B17-committed numbers (Glyptodont 97.6%, Thus_Spoke 98.9%, Maple_Leaf_Rag 98.8%, Euclid_Was_Here 98.3%, Dishwasher_Groove 97.5%, Elvendance 95.3%, Into_the_Unknown 97.4%, Toy_Rocket 98.1%, Dithered_Island 98.6%, Revolutions_Delivered 95.2% — zero regressions anywhere). Fargo is now the best-scoring file in the whole corpus. 9/9 `pyscript/test_blackbird_parser.py` tests still pass.
 
 The filter row0 rapid-restart bug from B19/B20 (item 2) remains open and unshipped — untouched this round; see B19/B20's own section above for the exact next step (a live py65 single-step of Revolutions_Delivered's rapid-restart window, not more static `unroll_filter`-only analysis).
+
+## B22 shipped: the filter rapid-restart freeze (B19/B20 item 2) — TWO real bugs, both fixed together: row0's SET/ADD classification, and a voice-processing order mismatch for the one genuinely shared (non-per-voice) resource
+
+Picked up B19/B20's item 2 immediately after B21. Reapplied the row0 fix B19/B20 had reverted (`unroll_filter`'s row0 must respect `is_set_prefix[0]` instead of always forcing SET; added `_filter_row_delta(sim, pos)` computing the ADD delta straight from `filttable(pos+2)`, independent of whatever cutoff a restart inherits — both exactly as B19/B20's own writeup specified). Alone, this reproduced the SAME known regression: Revolutions_Delivered's filter dropped 81.1%→71.2% (Dishwasher_Groove and Elvendance's filter both IMPROVED from the same change, 93.8%→95.6% and 79.1%→81.6% respectively — confirming the row0 hypothesis itself was correct all along, exactly as B19/B20 concluded).
+
+Root-caused the regression via a live py65 write-trace on `F_IDX`/`F_CNT` (not just PC-based label watching, which missed `pn_not_off`'s own inline filter-restart — there's no dedicated label for it): found the driver's filter engine gets stuck reloading the SAME 2-row `(SET $D0, jump-back)` loop for ~120 real frames, then jumps to a DIFFERENT program 93 frames later than the simulator's own `filt_owner` trace says it should. Cross-referencing a live `BlackbirdSim` per-voice `pendins`/`currins` trace at the exact real frame (8475) pinned the mechanism precisely: **two voices restart the shared filter in the SAME row-tick** — voice 0 selects instrument 29 (`ins_filt[28]=4`) and voice 1 selects instrument 30 (`ins_filt[29]=29`) simultaneously. `BlackbirdSim.execute()` (player.s's own real commit order) processes voices `(2, 1, 0)` — voice 0 LAST, so its value (`filt_owner=4`) wins the tie. `do_row`'s own per-voice loop in `blackbird_driver.asm` processed `0, 1, 2` — the OPPOSITE order — so voice 1's value won instead: the driver picks the WRONG owner whenever two voices contend for the filter in one tick, not just a wrong cutoff value.
+
+**Fix**: reversed `do_row`'s voice loop in `drivers_src/blackbird/blackbird_driver.asm` from `ldx #$00 / inx / cpx #$03 / bne vloop` to `ldx #$02 / dex / bpl vloop`, matching `execute()`'s own `(2, 1, 0)` order exactly. Everything else `parse_one` touches is per-voice-indexed (`VWI,x` / `VGMASK,x` / `SID+4,y` via `sidoff`) and genuinely order-independent — the filter engine (`F_IDX`/`F_CNT`/`F_MODE`/`F_CLO`/`F_CHI`/`F_ACT`) is the ONE truly global resource written from inside the per-voice loop (by both `set_instr_v` and `pn_not_off`'s inline restart), so this reorder only changes same-tick filter-contention outcomes, nothing else.
+
+**Result**: rebuilt the full 11-file corpus with BOTH fixes together. **Revolutions_Delivered: filter 81.1%→97.1%, overall 95.2%→97.7%** — the regression is gone and the file is markedly better than its ORIGINAL B17 baseline, not just restored to it. Dishwasher_Groove (97.5%→97.8%, filter 93.8%→95.7%) and Elvendance (95.3%→95.7%, filter 79.1%→81.6%) both improved further. Every other file (Fargo, Glyptodont, Thus_Spoke, Maple_Leaf_Rag, Euclid_Was_Here, Into_the_Unknown, Toy_Rocket, Dithered_Island) is byte-for-byte identical to its B21 numbers — zero regressions anywhere in the corpus. 9/9 tests pass.
 
 ## What's genuinely proven vs. still open
 

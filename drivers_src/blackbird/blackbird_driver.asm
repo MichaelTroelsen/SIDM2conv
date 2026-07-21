@@ -914,7 +914,27 @@ dr_short:
         lda CUR_TEMPO2
 dr_setcnt:
         sta zp_tcnt
-        ldx #$00
+        ; B21: voice order 2,1,0 (NOT 0,1,2) -- matches BlackbirdSim.execute()'s
+        ; own `for x in (2, 1, 0):` exactly (player.s's real per-tick commit
+        ; order). Almost everything parse_one touches is per-voice-indexed
+        ; (VWI,x / VGMASK,x / SID+4,y via sidoff) and genuinely order-
+        ; independent -- but the FILTER engine (F_IDX/F_CNT/F_MODE/F_CLO/
+        ; F_CHI/F_ACT) is the one truly GLOBAL resource here, written by
+        ; BOTH set_instr_v and pn_not_off's own inline restart whenever an
+        ; instrument with flag $40 is selected. When two voices both
+        ; restart the shared filter in the SAME row-tick, whichever voice
+        ; is processed LAST wins the arbitration -- and real hardware's own
+        ; order is 2,1,0, so voice 0 wins ties, not voice 2. The old 0,1,2
+        ; loop here gave voice 2 the win instead -- found via a live
+        ; BlackbirdSim trace on Revolutions_Delivered's own rapid filter-
+        ; restart region (real frame ~8475): voice0 selects instrument 29
+        ; (ins_filt->4) and voice1 selects instrument 30 (ins_filt->29) in
+        ; the SAME tick -- the sim's own filt_owner ends at 4 (voice0's
+        ; value, applied last), but the old 0,1,2 driver order applied
+        ; voice0 FIRST, letting voice1's later write win instead -- the
+        ; wrong owner, not just a wrong value. See BLACKBIRD.md's B21
+        ; section (filter arbitration order).
+        ldx #$02
 vloop:
         lda vhold,x
         beq vparse
@@ -942,9 +962,8 @@ vparse:
         lda pending_dur
         sta vhold,x
 vnext:
-        inx
-        cpx #$03
-        bne vloop
+        dex
+        bpl vloop
         rts
 
 ; --- parse one packed event for voice X (sidoff/wptr set) -----------------
