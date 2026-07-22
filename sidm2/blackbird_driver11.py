@@ -252,7 +252,8 @@ def build_instruments(d: bytes, la: int, lay) -> Tuple[
 # ---------------------------------------------------------------------------
 def extract_tempo_pairs(d: bytes, la: int, streamstart: int,
                         max_pairs: int = 4,
-                        max_frames: int = 200_000) -> List[Tuple[int, int]]:
+                        max_frames: int = 200_000,
+                        variant: str = 'v1.2') -> List[Tuple[int, int]]:
     """Re-run ``blackbird_parser``'s own tested scheduling internals
     (``_Reader``/``_Voice``/``_run_prep1-3``/``_emit_piece``, imported
     verbatim -- NOT reimplemented) purely to recover the tempo/groove OOB
@@ -280,8 +281,8 @@ def extract_tempo_pairs(d: bytes, la: int, streamstart: int,
     pieces: list = []
     pairs: List[Tuple[int, int]] = []
 
-    _emit_piece(rd, voices[1], 1, pieces)
-    _emit_piece(rd, voices[0], 0, pieces)
+    _emit_piece(rd, voices[1], 1, pieces, variant=variant)
+    _emit_piece(rd, voices[0], 0, pieces, variant=variant)
 
     freeze_frame = None
     for frame in range(max_frames):
@@ -291,15 +292,15 @@ def extract_tempo_pairs(d: bytes, la: int, streamstart: int,
             break
         pend_oob = [0]
         if (len(voices[2].out) - voices[2].rpos) < 128:
-            _emit_piece(rd, voices[2], 2, pieces)
+            _emit_piece(rd, voices[2], 2, pieces, variant=variant)
         for i in (2, 1, 0):
             _run_prep1(voices[i], i, pend_oob)
         if (len(voices[1].out) - voices[1].rpos) < 128:
-            _emit_piece(rd, voices[1], 1, pieces)
+            _emit_piece(rd, voices[1], 1, pieces, variant=variant)
         for i in (2, 1, 0):
             _run_prep2(voices[i])
         if (len(voices[0].out) - voices[0].rpos) < 128:
-            _emit_piece(rd, voices[0], 0, pieces)
+            _emit_piece(rd, voices[0], 0, pieces, variant=variant)
         for i in (2, 1, 0):
             _run_prep3(voices[i])
         if pend_oob[0] & 0x02:
@@ -315,7 +316,7 @@ def estimate_tempo_chain(d: bytes, la: int, lay) -> List[int]:
     """The song's first tempo/groove pair, as a Driver 11 tempo CHAIN
     (frames/row per entry) -- falls back to a flat default if no tempo OOB
     record is found early in the stream."""
-    pairs = extract_tempo_pairs(d, la, lay.streamstart)
+    pairs = extract_tempo_pairs(d, la, lay.streamstart, variant=lay.variant)
     if not pairs:
         return [DEFAULT_TICK_FRAMES]
     a, b = pairs[0]

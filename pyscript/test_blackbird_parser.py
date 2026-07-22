@@ -166,6 +166,51 @@ class TestBlackbirdSweep(unittest.TestCase):
 
 
 @_skip_unless_corpus()
+class TestBlackbirdRepeatSweep(unittest.TestCase):
+    """The 5-file v1.2+REPEAT=1 bucket ("variant A"): every file must
+    locate, decode, and freeze cleanly with zero out-of-grammar bytes on
+    all 3 voices, and Stage A (Driver 11 transpile) must build without
+    raising. Locked in 2026-07-22 after fixing (1) the REPEAT=1 copy-op
+    source-index formula + 256-byte ring-buffer zero-fill, and (2) three
+    prepare1/2/3 grammar-boundary bugs (found by diffing against
+    `bin/blackbird_everyframe_sim.py`'s already-trace-validated
+    `BlackbirdSim`) that were pre-existing in the v1.2 code but never
+    triggered by any of the 11 v1.2-exact files' own data."""
+
+    def test_all_repeat_bucket_files_freeze_clean(self):
+        from sidm2.blackbird_parser import (classify_byte, decode_file,
+                                            locate_blackbird)
+        for name in V12_REPEAT_BUCKET:
+            path = os.path.join(LFT, f"{name}.sid")
+            with self.subTest(file=name):
+                self.assertTrue(os.path.exists(path), f"{path} missing")
+                lay = locate_blackbird(path)
+                self.assertIsNotNone(lay, f"{name}: locate failed")
+                self.assertEqual(lay.variant, 'v1.2-repeat')
+                _, result = decode_file(path)
+                self.assertTrue(result.frozen, f"{name}: did not freeze cleanly")
+                for v in range(3):
+                    real = result.real(v)
+                    unk = [b for b in real if classify_byte(b) == 'unknown']
+                    self.assertEqual(
+                        unk, [],
+                        f"{name} voice{v}: {len(unk)} out-of-grammar byte(s)")
+                    self.assertGreater(
+                        len(real), 0, f"{name} voice{v}: decoded zero bytes")
+
+    def test_all_repeat_bucket_files_build_stage_a(self):
+        from sidm2.blackbird_driver11 import build_blackbird_driver11_song
+        for name in V12_REPEAT_BUCKET:
+            path = os.path.join(LFT, f"{name}.sid")
+            with self.subTest(file=name):
+                song = build_blackbird_driver11_song(path)
+                self.assertEqual(len(song.tracks), 3)
+                for track in song.tracks:
+                    self.assertGreater(len(track), 0)
+                self.assertGreater(len(song.instruments), 0)
+
+
+@_skip_unless_corpus()
 class TestBlackbirdLocateFalsePositives(unittest.TestCase):
     """`locate_blackbird` must reject files that are NOT this exact engine
     generation — a false positive would feed a bogus streamstart into the
