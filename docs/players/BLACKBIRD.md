@@ -221,6 +221,26 @@ Went looking at `freq` next (the most universally-low category, 45-63% across 4 
 
 **Practical implication for anyone picking this up next**: treat every currently-reported "full-part"/"steady-state"/"WEIGHTED AVERAGE" fidelity number for this bucket as a lower bound for `Crank_Crank_Airwolf`/`To_Die_For_II`/`Trinket` specifically (their real, sustained fidelity is genuinely close to their "primary window" figures for however long the degradation takes to kick in — several hundred to ~1500 frames, file-dependent) — but treat `Quintessence`'s number as already accurate, and `Fugue`'s `waveform` score as a real, separate, still-open issue rather than a measurement artifact. **Do not trust a short (~10-50 frame) self-comparison match as proof of an exact loop period without extending the probe and checking multiple registers** — that specific mistake cost real time this round and is exactly the kind of thing that looks confirmed on a first pass.
 
+## Likely mechanism found (same day, continued investigation): a cascading tempo-record corruption, probably a 4th REPEAT=1-specific bug — NOT YET fixed
+
+Traced `Crank_Crank_Airwolf`'s degradation to its exact trigger: the per-row real-frame delta jumps from a steady 8 to an alternating 113/215 at the transition from row 195 to row 196 — precisely where `BB_DIAG_BIN` shows severe degradation beginning. This row consumes the file's SECOND tempo/groove OOB record, `(16, 202)`. Every ELSE tempo record this project has ever documented (Fargo's 22, this file's own opening `(49, 0)`) is a multiple of 7 — `16` and `202` are not. The raw bytes were confirmed read from `$5561`, which — per this session's own earlier disassembly — sits inside the compiled `initroutine`'s own machine code ($5546-$559b). `decode_streams` itself reports zero grammar violations across this file's ENTIRE decode, so this is very likely deliberate C64 code/data overlap (init code, run once, safely reused as data storage afterward — a standard packing trick), not a decode bug reading garbage.
+
+**Checked across all 5 files and found a strikingly consistent pattern** (position = distance in bytes from that record's 2-byte read to the file's own `freeze_addr`; ✓ = both bytes are multiples of 7):
+
+| File | Tempo records found | Pattern |
+|---|---|---|
+| Quintessence | 1 (opening only) | ✓, far from freeze (3076B) — **never degrades** |
+| Crank_Crank_Airwolf | 2 | ✓ (380B) → ✗ (58B) |
+| Fugue_on_a_Theme_by_D_M_Hanlon | 7 | ✓ (911B) → ✗✗✗✗✗✗ (284→168→118→116→16→12B) |
+| To_Die_For_II | 7 | ✓ (1367B) → ✗✗✗✗✗✗ (799→607→595→564→548→515B) |
+| Trinket | 6 | ✓ (985B) → ✗✗✗✗✗ (342→158→70→46→28B) |
+
+**Every file's FIRST tempo record is clean** (multiple of 7, far from the freeze point — genuine composer data). **Every record after the first is corrupted**, and the corrupted records get monotonically CLOSER to the freeze point as more are found within the same file. This is not coincidence or independent bad luck striking multiple times — it's the signature of a desync cascade: something about consuming the FIRST tempo-change event's 2 literal bytes (`rd.next(); rd.next()`, read directly from the shared physical stream, bypassing any per-voice buffer) throws the shared reader's position out of alignment with what real hardware would show from that point on, and every subsequent "tempo change" OOB detection afterward is increasingly just a symptom of that same, growing misalignment rather than real data — closing in on the freeze point because a mis-tracked reader necessarily "arrives" at wherever the terminator physically sits sooner than it should.
+
+This exact mechanism (2 literal bytes consumed directly from the shared reader on a tempo-change OOB, `decode_streams`' own documented design) is SHARED with the 11 v1.2-exact files, where it demonstrably works fine — Fargo alone has 22 tempo records, all apparently correct (its 99.7% overall fidelity wouldn't be possible otherwise). So whatever's wrong here is very likely a REPEAT=1-specific interaction with this otherwise-solid mechanism — a plausible 4th REPEAT=1 difference, on top of the three already found and fixed this session (copy-op formula, ring-buffer zero-fill, three `prepare1/2/3` grammar boundaries).
+
+**NOT YET fixed or even fully root-caused** — confirming the EXACT desync mechanism (why the first tempo consumption throws off alignment specifically for REPEAT=1 streams) needs live tracing of the actual byte-by-byte reader position around a tempo event, the same kind of investigation that found and fixed the copy-op formula bug earlier this session. Left as the clearest, most concrete next step for fidelity refinement — likely the single highest-leverage fix available, since it plausibly explains most of the degradation on 4 of the 5 files (everything except `Quintessence`, which never triggers a second tempo record at all).
+
 ## Memory layout (from `cruncher.c`'s own `org` bookkeeping, lines ~1216-1268)
 
 ```
