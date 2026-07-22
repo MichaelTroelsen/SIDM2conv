@@ -518,7 +518,25 @@ class BlackbirdPiece:
     src: Optional[int] = None
 
 
-def _emit_piece(rd, v, vidx, pieces):
+def _ring_read(v, idx):
+    """Read copy-source byte at 8-bit ring position `idx` (0-255),
+    matching a real per-voice 256-byte output buffer: returns the most
+    recently written byte at that ring slot, or 0 if that slot has never
+    been written at all (cold C64 RAM — only reachable before the
+    buffer's first wraparound, i.e. len(v.out) < 256). Needed for
+    REPEAT=1's copy-source formula, which can legitimately reference
+    not-yet-written buffer territory as a zero-fill trick (confirmed via
+    live trace: a real `t=16` piece — transp2=0 — reading genuinely-zero,
+    never-written RAM at buffer offset 211 while only 101 bytes had been
+    decoded)."""
+    L = len(v.out)
+    m = (L - 1 - idx) // 256
+    if m < 0:
+        return 0
+    return v.out[idx + 256 * m]
+
+
+def _emit_piece(rd, v, vidx, pieces, variant='v1.2'):
     """Mirrors `crunch_some()`+`unpackvoice()`: consume ONE piece from the
     physical stream and append the decoded bytes to `v.out`. Once the
     shared reader is frozen (real end-of-stream reached by ANY voice),
@@ -562,13 +580,31 @@ def _emit_piece(rd, v, vidx, pieces):
         transp2 = (2 * (t - 16)) & 0xff
         offset = rd.next()
         L = len(v.out)
-        dist = (L - offset) & 0xff
-        if dist == 0:
-            dist = 256
-        src = L - dist
+        if variant == 'v1.2-repeat':
+            # REPEAT=1 builds swap `lax (zp_inptr),y` (v1.2: load offset
+            # straight into X, discarding whatever A held) for
+            # `clc; adc (zp_inptr),y; tax` at this exact site -- part of
+            # player.s's `#if REPEAT` conditional. First characterized (in
+            # the REPEAT=1 locate work) as a same-length structural no-op;
+            # it is NOT semantically equivalent. Real hardware accumulates
+            # the offset byte onto the running (count+L) sum rather than
+            # using it as a standalone v1.2-style distance. Confirmed via
+            # live RetroDebugger single-step on Crank_Crank_Airwolf.sid
+            # (X register read directly at the post-add LDA buf,X) --
+            # see memory/blackbird-repeat1-variant.md.
+            src = (L + count + offset) & 0xff
+            dist = (L - src) & 0xff
+        else:
+            dist = (L - offset) & 0xff
+            if dist == 0:
+                dist = 256
+            src = L - dist
         start = L
         for i in range(count):
-            b = v.out[src + i]
+            if variant == 'v1.2-repeat':
+                b = _ring_read(v, (src + i) & 0xff)
+            else:
+                b = v.out[src + i]
             if b < 0x80:
                 b = (b + transp2) & 0xff
             v.out.append(b)
@@ -645,7 +681,7 @@ class BlackbirdDecodeResult:
 
 
 def decode_streams(data, la, streamstart, max_frames=200_000,
-                    freeze_tail_frames=300):
+                    freeze_tail_frames=300, variant='v1.2'):
     """Run the full multi-voice interleaved decompression.
 
     Replicates `player.s`'s per-frame pipeline: `initroutine` explicitly
@@ -655,6 +691,10 @@ def decode_streams(data, la, streamstart, max_frames=200_000,
     revealed naturally inside the main loop's first iteration. Stops
     `freeze_tail_frames` frames after the shared reader freezes (genuine
     end-of-stream), or at `max_frames`, whichever comes first.
+
+    `variant` must match the located `BlackbirdLayout.variant`
+    ('v1.2' or 'v1.2-repeat') — REPEAT=1 builds use a different copy-op
+    source-index formula (see `_emit_piece`).
     """
     rd = _Reader(data, la, streamstart)
     voices = [_Voice(), _Voice(), _Voice()]
@@ -664,8 +704,8 @@ def decode_streams(data, la, streamstart, max_frames=200_000,
         v = voices[i]
         return (len(v.out) - v.rpos) < 128
 
-    _emit_piece(rd, voices[1], 1, pieces)
-    _emit_piece(rd, voices[0], 0, pieces)
+    _emit_piece(rd, voices[1], 1, pieces, variant=variant)
+    _emit_piece(rd, voices[0], 0, pieces, variant=variant)
 
     freeze_frame = None
     frame = 0
@@ -674,15 +714,15 @@ def decode_streams(data, la, streamstart, max_frames=200_000,
             break
         pend_oob = [0]
         if need_refill(2):
-            _emit_piece(rd, voices[2], 2, pieces)
+            _emit_piece(rd, voices[2], 2, pieces, variant=variant)
         for i in (2, 1, 0):
             _run_prep1(voices[i], i, pend_oob)
         if need_refill(1):
-            _emit_piece(rd, voices[1], 1, pieces)
+            _emit_piece(rd, voices[1], 1, pieces, variant=variant)
         for i in (2, 1, 0):
             _run_prep2(voices[i])
         if need_refill(0):
-            _emit_piece(rd, voices[0], 0, pieces)
+            _emit_piece(rd, voices[0], 0, pieces, variant=variant)
         for i in (2, 1, 0):
             _run_prep3(voices[i], i)
         if pend_oob[0] & 0x02:
@@ -715,6 +755,7 @@ def decode_file(path, **kwargs):
     if lay is None:
         raise ValueError(f"{path}: not a located Blackbird v1.2-exact rip")
     d, la, h = load_sid(path)
+    kwargs.setdefault('variant', lay.variant)
     result = decode_streams(d, la, lay.streamstart, **kwargs)
     return lay, result
 
@@ -741,7 +782,8 @@ class BlackbirdModule:
         if self._result is None or force:
             self._result = decode_streams(
                 self.d, self.la, self.lay.streamstart,
-                max_frames=max_frames, freeze_tail_frames=freeze_tail_frames)
+                max_frames=max_frames, freeze_tail_frames=freeze_tail_frames,
+                variant=self.lay.variant)
         return self._result
 
     def real_events(self, voice):
