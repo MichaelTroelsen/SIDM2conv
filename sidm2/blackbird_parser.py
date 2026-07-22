@@ -634,7 +634,7 @@ def _run_prep1(v, vidx, pend_oob):
         if b >= 0xf9:
             pend_oob[0] = b
             b = _prep_getbyte(v)
-        if b >= 0xc9:
+        if b >= 0xc8:
             pass  # arpeggio/fx select — consumed here, executed elsewhere
         else:
             _prep_ungetbyte(v)
@@ -643,25 +643,19 @@ def _run_prep1(v, vidx, pend_oob):
 def _run_prep2(v):
     if not (v.timer & 0x80):
         b = _prep_getbyte(v)
-        if 0x80 <= b <= 0xb2:
+        if 0x80 <= b <= 0xb7:
             pass  # gate-off / legato / instrument select
         else:
             _prep_ungetbyte(v)
 
 
-def _run_prep3(v, vidx):
+def _run_prep3(v):
     if not (v.timer & 0x80):
         b = _prep_getbyte(v)
-        if 0xb8 <= b <= 0xc7:
+        if b >= 0x80:
             v.timer = 0xf0 | b
-        elif b < 0x80:
-            v.timer = 0xfe | b
         else:
-            raise ValueError(
-                f"internal stream error ${b:02x} on voice {vidx} "
-                f"(rpos={v.rpos}) — out-of-grammar byte reached prepare3; "
-                f"see docs/players/BLACKBIRD.md (this should never happen "
-                f"on a genuine v1.2-exact file post-terminator-fix)")
+            v.timer = 0xfe | b
 
 
 @dataclass
@@ -724,7 +718,7 @@ def decode_streams(data, la, streamstart, max_frames=200_000,
         if need_refill(0):
             _emit_piece(rd, voices[0], 0, pieces, variant=variant)
         for i in (2, 1, 0):
-            _run_prep3(voices[i], i)
+            _run_prep3(voices[i])
         if pend_oob[0] & 0x02:
             # Tempo-change OOB codes carry 2 inline literal bytes read
             # directly from the shared physical stream (not through any

@@ -583,7 +583,7 @@ def find_tempo_records(lay, d, la):
         if need_refill(0):
             bp._emit_piece(rd, voices[0], 0, pieces)
         for i in (2, 1, 0):
-            bp._run_prep3(voices[i], i)
+            bp._run_prep3(voices[i])
         if pend_oob[0] & 0x02:
             b1 = rd.next()
             b2 = rd.next()
