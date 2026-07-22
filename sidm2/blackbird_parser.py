@@ -12,9 +12,18 @@ disassembly guesswork. Full history/verification: `docs/players/BLACKBIRD.md`
 **Scope of this module**: locate + decompress only, for the **v1.2-exact
 bucket** (11 files in `SID/LFT/`, byte-identical to the compiled
 `seg_play_data` template outside documented relocation offsets — see
-`locate_blackbird`). It does NOT resolve frame timing into notes (the
-tempo/pipeline model is "understood but unverified" per BLACKBIRD.md) and
-does NOT emit SF2 output — that is later work. **Not wired into**
+`locate_blackbird`) **plus, as of 2026-07-22, the 5-file "v1.2-repeat"
+bucket** (`_templates_repeat1`'s own docstring — the SAME v1.2 source,
+compiled with player.s's `#if REPEAT` flag enabled; `locate_blackbird`
+tags the result's `.variant` field so callers can tell which). Locate is
+fully solved and tested for both; `decode_streams` (the note-stream
+decompressor) is only verified against the v1.2-exact bucket so far — it
+throws on the v1.2-repeat bucket (an `IndexError` a handful of pieces in,
+a back-reference overshooting the decoded length — genuinely open, not
+yet root-caused; see BLACKBIRD.md's "REPEAT=1 locate support" section).
+This module does NOT resolve frame timing into notes (the tempo/pipeline
+model is "understood but unverified" per BLACKBIRD.md) and does NOT emit
+SF2 output — that is later work. **Not wired into**
 `DriverSelector.PLAYER_REGISTRY` / `conversion_pipeline` — no SF2 target
 exists yet.
 
@@ -152,6 +161,114 @@ def _templates():
     )
 
 
+# ---------------------------------------------------------------------------
+# REPEAT=1 template (the "near-v1.2 variant A" bucket, 2026-07-22) — NOT a
+# different birdcruncher tool version, as originally suspected (see
+# BLACKBIRD.md's old "Corpus scope" characterization). player.s guards 4
+# code regions behind `#if REPEAT` (loop-on-end support); `player.h`'s own
+# `seg_play_data` was compiled with REPEAT=0 (confirmed: it lacks all 4
+# blocks). The variant-A bucket is this SAME v1.2 source, compiled with
+# REPEAT=1 instead.
+#
+# There is no REPEAT=1 C source to parse (player.h only ships the REPEAT=0
+# build), so this can't be derived the same way `_templates()` is. Instead:
+# sequence-aligning `_templates()`'s own play_template against a REAL
+# variant-A file's raw bytes (difflib, not position-locked comparison —
+# the alignment matters, since one early size change cascades into
+# hundreds of apparently-"different" bytes that are actually just
+# every-later-instruction shifted by a fixed amount) collapses ~225 raw
+# byte diffs down to exactly:
+#   - one 26-byte insertion at v1.2 offset 468 (player.s lines 412-426, the
+#     `#if REPEAT` EOS loop-rewind block — `lda zp_pendoob; and #1; bne
+#     norepeat; ldx zp_bufs+14; stx v_trwpos+14; ...`),
+#   - one 4-byte insertion (net +2) at v1.2 offset 691 (lines 612-618, a
+#     `clc; adc (zp_inptr),y; tax` vs `lax (zp_inptr),y` swap),
+#   - one 27-byte deletion at v1.2 offset 763 (the `.dsb
+#     (playorg+$400-207-*), $ee` page-alignment padding automatically
+#     shrinks to compensate for the code growing by 25+2=27 bytes before
+#     it — `freq_msb` lands at the SAME playorg-relative offset either way,
+#     confirmed: byte-for-byte alignment resumes exactly at old-offset 817
+#     on both sides),
+#   - two single-byte replacements (old offsets 446, 615) that are relative
+#     BRANCH-DISTANCE operands, not per-tune addresses — their target sits
+#     on the far side of the 25-byte insertion, so the distance encoding
+#     itself is a different (but still build-wide FIXED) constant, exactly
+#     like the insertions above.
+# Every OTHER apparent "diff" in the raw byte comparison is an ordinary
+# per-tune relocated address landing at a shifted offset — confirmed by
+# cross-referencing the SAME insertion region across two files with
+# different `playorg` (Crank_Crank_Airwolf, $5000; Fugue_on_a_Theme,
+# $1000): only 3 bytes differ between them inside the 26-byte insert, all
+# 3 the high byte of a `STX $xxxx` operand, and `observed - playorg` is
+# IDENTICAL (765, 758, 751) on both files — i.e. three NEW relocatable
+# `seg_play + N` positions for `stx v_trwpos+14` / `+7` / `+0`, the same
+# style of entry `player.h`'s own manifest already uses elsewhere.
+# Verified: matches all 5 confirmed variant-A files
+# (Crank_Crank_Airwolf/Fugue_on_a_Theme_by_D_M_Hanlon/Quintessence/
+# To_Die_For_II/Trinket) byte-for-byte outside the (now larger) reloc set,
+# and correctly does NOT match Fargo/Glyptodont (still need the REPEAT=0
+# template). `Crank_Crank_Revolution` ("variant A'") does NOT fully match
+# this either — it's close but has its own additional differences, not
+# investigated yet (see BLACKBIRD.md).
+_REPEAT1_INSERT1 = bytes([  # replaces v1.2 template offset 468 (1 byte -> 26)
+    0xe3, 0xa5, 0xe5, 0x29, 0x01, 0xd0, 0x13, 0xa6, 0xee, 0x8e, 0xfd, 0x12,
+    0xa7, 0xe7, 0xcb, 0xf9, 0x8e, 0xf6, 0x12, 0xa7, 0xe0, 0xcb, 0xf9,
+    0x8e, 0xef, 0x12,
+])
+_REPEAT1_INSERT2 = bytes([0x18, 0x71, 0xe2, 0xaa])  # replaces offset 691 (2 -> 4)
+_REPEAT1_STRUCTURAL_SINGLE = {446: 0x2f, 615: 0x68}  # branch-distance bytes
+_REPEAT1_DELETE_RANGE = (763, 790)  # 27 bytes of padding, absent in REPEAT=1
+# 3 new relocatable `seg_play + N` positions inside _REPEAT1_INSERT1, for
+# `stx v_trwpos+14` / `+7` / `+0` (byte offsets are WITHIN the final,
+# already-shifted template — see _templates_repeat1()).
+_REPEAT1_NEW_RELOC = {478: ('seg_play', 765), 485: ('seg_play', 758), 492: ('seg_play', 751)}
+
+
+@lru_cache(maxsize=1)
+def _templates_repeat1():
+    """Build the REPEAT=1 play_template/play_reloc by transforming
+    `_templates()`'s own REPEAT=0 data with the fixed structural diff
+    documented above. init_template/init_reloc are unaffected (REPEAT only
+    changes segment NAMES there — `seg_rinit` vs `seg_init` — no byte
+    content difference), so those two are just passed through."""
+    play_template, init_template, play_reloc, init_reloc = _templates()
+
+    def shift(off):
+        if off < 468:
+            return off
+        if off == 468:
+            return None  # the single replaced byte, no longer 1:1
+        if off < 691:
+            return off + 25
+        if off < 693:
+            return None  # replaced 2-byte field
+        if off < 763:
+            return off + 27
+        if off < 790:
+            return None  # deleted padding
+        return off  # +27 (both inserts) - 27 (deleted padding) cancels out
+
+    new_template = (
+        list(play_template[0:468]) + list(_REPEAT1_INSERT1) +
+        list(play_template[469:691]) + list(_REPEAT1_INSERT2) +
+        list(play_template[693:763]) +
+        list(play_template[790:])
+    )
+    for off, byte in _REPEAT1_STRUCTURAL_SINGLE.items():
+        new_template[shift(off)] = byte
+
+    new_reloc = {}
+    for off, val in play_reloc.items():
+        no = shift(off)
+        if no is not None and off not in _REPEAT1_STRUCTURAL_SINGLE:
+            new_reloc[no] = val
+    for pos, (sym, delta) in _REPEAT1_NEW_RELOC.items():
+        new_reloc[pos] = (sym, delta, '& 0xff')
+        new_reloc[pos + 1] = (sym, delta, '>> 8')
+
+    return new_template, init_template, new_reloc, init_reloc
+
+
 def _template_match(data, base, template, reloc):
     """Compare `data[base:base+len(template)]` against `template`, skipping
     reloc'd byte offsets. True/False (False on out-of-range too)."""
@@ -192,25 +309,36 @@ def _assert_reloc(reloc, offset, sym, delta, shift):
             f"expected {expected}, got {got}")
 
 
-def _extract_symbols(data, la, play_base, play_reloc):
+def _extract_symbols(data, la, play_base, play_reloc, variant='v1.2'):
     """Read every table/symbol address directly out of the relocated bytes
     — the relocation manifest tells us exactly which offset holds which
     symbol, so nothing here is independently computed. Offsets verified
     against `player.h` (grep-confirmed 2026-07-19); `_assert_reloc` guards
-    against future drift."""
+    against future drift.
+
+    `variant='v1.2-repeat'` (the REPEAT=1 build, see `_templates_repeat1`)
+    shifts the 5 table-address offsets by +25 — they all sit between the
+    two REPEAT-conditional code insertions (v1.2 offsets 469-691), the ONLY
+    ones of these 10 symbols that move. zp_base/seg_init (<468) and
+    filttable/fxtable/wavetable (<468) are unaffected."""
+    tbl_shift = 25 if variant == 'v1.2-repeat' else 0
+    ins_ad_off, ins_sr_off = 553 + tbl_shift, 559 + tbl_shift
+    ins_wave_off, ins_filt_off = 533 + tbl_shift, 526 + tbl_shift
+    fx_start_off = 489 + tbl_shift
+
     _assert_reloc(play_reloc, 1, 'seg_init', 0, '& 0xff')
     _assert_reloc(play_reloc, 2, 'seg_init', 0, '>> 8')
     _assert_reloc(play_reloc, 4, 'zp_base', 6, '& 0xff')
-    _assert_reloc(play_reloc, 553, 'ins_ad', -1, '& 0xff')
-    _assert_reloc(play_reloc, 554, 'ins_ad', -1, '>> 8')
-    _assert_reloc(play_reloc, 559, 'ins_sr', -1, '& 0xff')
-    _assert_reloc(play_reloc, 560, 'ins_sr', -1, '>> 8')
-    _assert_reloc(play_reloc, 533, 'ins_wave', -1, '& 0xff')
-    _assert_reloc(play_reloc, 534, 'ins_wave', -1, '>> 8')
-    _assert_reloc(play_reloc, 526, 'ins_filt', -1, '& 0xff')
-    _assert_reloc(play_reloc, 527, 'ins_filt', -1, '>> 8')
-    _assert_reloc(play_reloc, 489, 'fx_start', -1, '& 0xff')
-    _assert_reloc(play_reloc, 490, 'fx_start', -1, '>> 8')
+    _assert_reloc(play_reloc, ins_ad_off, 'ins_ad', -1, '& 0xff')
+    _assert_reloc(play_reloc, ins_ad_off + 1, 'ins_ad', -1, '>> 8')
+    _assert_reloc(play_reloc, ins_sr_off, 'ins_sr', -1, '& 0xff')
+    _assert_reloc(play_reloc, ins_sr_off + 1, 'ins_sr', -1, '>> 8')
+    _assert_reloc(play_reloc, ins_wave_off, 'ins_wave', -1, '& 0xff')
+    _assert_reloc(play_reloc, ins_wave_off + 1, 'ins_wave', -1, '>> 8')
+    _assert_reloc(play_reloc, ins_filt_off, 'ins_filt', -1, '& 0xff')
+    _assert_reloc(play_reloc, ins_filt_off + 1, 'ins_filt', -1, '>> 8')
+    _assert_reloc(play_reloc, fx_start_off, 'fx_start', -1, '& 0xff')
+    _assert_reloc(play_reloc, fx_start_off + 1, 'fx_start', -1, '>> 8')
     _assert_reloc(play_reloc, 372, 'filttable', 0, '& 0xff')
     _assert_reloc(play_reloc, 373, 'filttable', 0, '>> 8')
     _assert_reloc(play_reloc, 194, 'fxtable', 0, '& 0xff')
@@ -230,11 +358,11 @@ def _extract_symbols(data, la, play_base, play_reloc):
     return dict(
         zp_base=zp_base,
         seg_init=seg_init,
-        ins_ad=sym16(553, -1),
-        ins_sr=sym16(559, -1),
-        ins_wave=sym16(533, -1),
-        ins_filt=sym16(526, -1),
-        fx_start=sym16(489, -1),
+        ins_ad=sym16(ins_ad_off, -1),
+        ins_sr=sym16(ins_sr_off, -1),
+        ins_wave=sym16(ins_wave_off, -1),
+        ins_filt=sym16(ins_filt_off, -1),
+        fx_start=sym16(fx_start_off, -1),
         filttable=sym16(372, 0),
         fxtable=sym16(194, 0),
         wavetable=sym16(290, 0),
@@ -271,6 +399,9 @@ class BlackbirdLayout:
     init_hdr: int = 0
     play_hdr: int = 0
     init_template_mismatch: bool = False
+    variant: str = 'v1.2'  # 'v1.2' (REPEAT=0) or 'v1.2-repeat' (REPEAT=1,
+                            # the near-v1.2 "variant A" bucket — see
+                            # _templates_repeat1()'s own docstring)
 
     @property
     def nins(self):
@@ -299,16 +430,23 @@ def locate_blackbird(path):
     engines, all correctly return None here; see BLACKBIRD.md's corpus-scope
     table). Returns a `BlackbirdLayout` on match.
     """
-    play_template, init_template, play_reloc, init_reloc = _templates()
     d, la, h = load_sid(path)
     play_base = h.init_address  # playorg == init address (player.s structure)
+
+    variant = 'v1.2'
+    play_template, init_template, play_reloc, init_reloc = _templates()
     if not _template_match(d, play_base - la, play_template, play_reloc):
-        return None
-    syms = _extract_symbols(d, la, play_base, play_reloc)
+        variant = 'v1.2-repeat'
+        play_template, init_template, play_reloc, init_reloc = _templates_repeat1()
+        if not _template_match(d, play_base - la, play_template, play_reloc):
+            return None
+
+    syms = _extract_symbols(d, la, play_base, play_reloc, variant=variant)
     if syms['seg_init'] is None:
         return None
     lay = BlackbirdLayout(**syms, play_base=play_base, load=la,
-                          init_hdr=h.init_address, play_hdr=h.play_address)
+                          init_hdr=h.init_address, play_hdr=h.play_address,
+                          variant=variant)
     if not _template_match(d, lay.seg_init - la, init_template, init_reloc):
         lay.init_template_mismatch = True
     streamstart = _extract_streamstart(d, la, lay.seg_init)

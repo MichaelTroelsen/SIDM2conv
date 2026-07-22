@@ -45,11 +45,22 @@ NOT_BLACKBIRD_SAMPLE = [
     "Platform_Hopping", "Sideways", "Air_on_a_Rasterline", "King_Fisher_0x28",
 ]
 
-# The near-v1.2 variant buckets (birdcruncher 1.0/1.1 — a different compiled
-# code shape, first byte diff at code offset ~204-446; see BLACKBIRD.md).
-NEAR_V12_VARIANTS = [
+# "variant A" (2026-07-22, RESOLVED): NOT a different birdcruncher tool
+# version after all -- the SAME v1.2 source, compiled with player.s's
+# `#if REPEAT` flag enabled (loop-on-end support). locate_blackbird now
+# recognizes this as `variant='v1.2-repeat'` (see BLACKBIRD.md/
+# _templates_repeat1's own docstring for the full derivation).
+V12_REPEAT_BUCKET = [
     "Crank_Crank_Airwolf", "Fugue_on_a_Theme_by_D_M_Hanlon", "Quintessence",
-    "To_Die_For_II", "Trinket", "Crank_Crank_Revolution",
+    "To_Die_For_II", "Trinket",
+]
+
+# Still NOT supported: "variant A'" (close to variant A but not identical --
+# has its own additional differences beyond REPEAT=1, not yet investigated)
+# and the older "variant B" bucket (a substantially rewritten wave/pulse
+# engine section, first diff at offset ~204; likely birdcruncher 1.0).
+NEAR_V12_VARIANTS = [
+    "Crank_Crank_Revolution",
     "Arrow_of_Time", "Fjaellevator_Music", "Hachi_Bitto_Whirlwind",
     "In_Darkness_Hope", "Nine", "Scene_Spirit_v2",
 ]
@@ -171,11 +182,11 @@ class TestBlackbirdLocateFalsePositives(unittest.TestCase):
                                   f"{name}: false-positive match")
 
     def test_rejects_near_v12_variants(self):
-        """Scoping guard: the near-v1.2 variant bucket (older birdcruncher
-        tool versions) is NOT yet supported (different compiled bytes at
-        the documented diff offsets — see BLACKBIRD.md). If this ever
-        starts returning a match, the template comparison has gotten too
-        loose, or variant support was added without updating this test."""
+        """Scoping guard: variant A' and the older variant B bucket are NOT
+        yet supported (different compiled bytes at the documented diff
+        offsets — see BLACKBIRD.md). If this ever starts returning a match,
+        the template comparison has gotten too loose, or variant support
+        was added without updating this test."""
         from sidm2.blackbird_parser import locate_blackbird
         checked = 0
         for name in NEAR_V12_VARIANTS:
@@ -189,6 +200,30 @@ class TestBlackbirdLocateFalsePositives(unittest.TestCase):
                                   f"variant support may have been added; "
                                   f"update this test's scope note")
         self.assertGreater(checked, 0, "no near-v1.2 variant files found to check")
+
+    def test_locates_v12_repeat_bucket(self):
+        """variant A (2026-07-22): the SAME v1.2 source compiled with
+        REPEAT=1, not a different tool version — see BLACKBIRD.md's
+        "REPEAT=1 locate support" section. Every file must locate with
+        variant='v1.2-repeat' and pass the SAME nins/init-template
+        consistency checks the v1.2-exact bucket already gets."""
+        from sidm2.blackbird_parser import locate_blackbird
+        checked = 0
+        for name in V12_REPEAT_BUCKET:
+            path = os.path.join(LFT, f"{name}.sid")
+            if not os.path.exists(path):
+                continue
+            checked += 1
+            with self.subTest(file=name):
+                lay = locate_blackbird(path)
+                self.assertIsNotNone(lay, f"{name}: failed to locate")
+                self.assertEqual(lay.variant, 'v1.2-repeat')
+                self.assertTrue(lay.nins_consistent,
+                                f"{name}: instrument table spacing inconsistent")
+                self.assertFalse(lay.init_template_mismatch,
+                                 f"{name}: init segment template mismatch")
+                self.assertGreater(lay.streamstart, 0)
+        self.assertGreater(checked, 0, "no v1.2-repeat bucket files found to check")
 
 
 @_skip_unless_corpus()
