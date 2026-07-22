@@ -75,7 +75,7 @@ distinguish tool *versions*:
 | bucket | count | example files | meaning |
 |---|---|---|---|
 | **v1.2 exact match** | 11 | Fargo, Glyptodont, Dishwasher_Groove, Dithered_Island, Elvendance, Euclid_Was_Here, Into_the_Unknown, Maple_Leaf_Rag, Revolutions_Delivered, Thus_Spoke_the_PC_Speaker, Toy_Rocket | byte-identical to `player.h`'s `seg_play_data` except at the documented relocation offsets — **locate is fully solved for these** |
-| **v1.2 + REPEAT=1** ("variant A", RESOLVED 2026-07-22) | 5 | Crank_Crank_Airwolf, Fugue_on_a_Theme_by_D_M_Hanlon, Quintessence, To_Die_For_II, Trinket | **NOT a different tool version** — the SAME v1.2 source, compiled with player.s's `#if REPEAT` flag (loop-on-end support) — see "REPEAT=1 locate support" below. **Locate, `decode_streams`, AND Stage A all shipped, same day**: all 5 files decode cleanly (`frozen=True`) and build a Driver 11 IR. Stage B (native driver) not started yet for this bucket |
+| **v1.2 + REPEAT=1** ("variant A", RESOLVED 2026-07-22) | 5 | Crank_Crank_Airwolf, Fugue_on_a_Theme_by_D_M_Hanlon, Quintessence, To_Die_For_II, Trinket | **NOT a different tool version** — the SAME v1.2 source, compiled with player.s's `#if REPEAT` flag (loop-on-end support) — see "REPEAT=1 locate support" below. **Locate, `decode_streams`, Stage A, AND a Stage B beachhead all shipped, same day**: all 5 files decode cleanly, build a Driver 11 IR, AND build a real playable native-driver SF2 (66-98% first-attempt fidelity, mean ~76%) — fidelity refinement (the B2-B22-style rounds) not started |
 | near-v1.2 variant A' | 1 | Crank_Crank_Revolution | close to the REPEAT=1 bucket but not identical — has its own additional differences beyond REPEAT=1, not yet investigated |
 | older variant B | 10 | Arrow_of_Time, Fjaellevator_Music, Hachi_Bitto_Whirlwind, In_Darkness_Hope, Nine, Scene_Spirit_v2, ... | first diff at 204 (374 diffs) — a substantially rewritten wave/pulse engine section (`everyframe`'s waveform-read code), likely birdcruncher 1.0 |
 | much-older / uncertain | 7 | Reminiscence, Lunatico_Note, A_Computer_in_My_Backpack, To_Die_For, Lunatico_Side_1, Lunatico_Side_2, Perfectly_Well-Adjusted, Your_Heptacular_Eyes | diverges almost from byte 3/5 — tagged "Blackbird/LFT" by player-id but either a pre-1.0 engine or a much more different code shape; not investigated |
@@ -174,7 +174,25 @@ A second, related fix was needed: REPEAT=1 copy ops can legitimately reference *
 
 Matches this project's existing convention for the 11-file bucket: Stage A is a tested, working library capability, not wired into a batch SF2-emission pipeline or `driver_selector.py`'s `PLAYER_REGISTRY` (intentionally — no native Stage B driver exists yet for either bucket).
 
-**Not done yet**: Stage B (native driver) — completely unstarted for this 5-file bucket (comparable scope to the original 11-file B1-B22 arc; budget accordingly). `Crank_Crank_Revolution` ("variant A'") still unlocated. The older "variant B" bucket (10 files) still untouched.
+## Stage B beachhead shipped for the REPEAT=1 bucket (same day, 2026-07-22): all 5 files build a real, playable SF2
+
+Picked up Stage B next. `bin/build_blackbird_native_song.py`'s `main()` called `decode_streams`/`extract_tempo_pairs` directly (not through `decode_file`) with no `variant` — fixed both call sites, plus the SAME gap in `bin/blackbird_everyframe_sim.py`'s own independent `find_tempo_records`/`run_sim` decode loops (grep for `_emit_piece`/`decode_streams` call sites before assuming a decode-level variant fix is complete — this is the third module found needing it today, after `blackbird_parser.py` itself and `blackbird_driver11.py`).
+
+**A second, real bug found on the first build attempt**: `Crank_Crank_Airwolf` crashed in `BlackbirdSim.execute()` with `IndexError: list index out of range` on `self.ins_filt[y-1]` — the decoded note stream genuinely references instrument #7 (byte `0x89`, a valid in-grammar instrument-select) while only 5 instrument slots were located (`lay.nins=5`, confirmed correct — `nins_consistent` still holds, the 4 tables really are evenly 5-spaced in this binary). This is the EXACT SAME bug class already found and fixed for `freq_lsb`/`freq_msb` earlier in this same file (see that fix's own comment, dated from the original Glyptodont investigation): a Python list truncated to the table's "nominal" length raises where real 6502 indexed addressing (`lda ins_filt,y`) has no bounds check at all — it just reads whatever byte physically follows the table. Converted `ins_ad`/`ins_sr`/`ins_wave`/`ins_filt`/`fx_start` from fixed-length lists (built once in `__init__`) to raw-memory-read methods (`self.rb(lay.X + idx)`, matching the existing `filttable`/`fxtable`/`wavetable`/`freq_lsb`/`freq_msb` pattern exactly) — mathematically identical to the old lists for any in-range index (both just read `d[(addr-la)+idx]`), so provably zero-behavior-change for any file where the index never exceeds the table (i.e. every one of the 11 v1.2-exact files, confirmed by rebuilding all 11 — Fargo 99.7% overall, matching the documented 99.8% almost exactly; the other 10 land 94-97.3% on this build script's own quick capped-window self-check, consistent with its normal reporting).
+
+**Result**: all 5 REPEAT=1 files now build a real, `sf2_viewer_core`-parseable SF2 on the first attempt — a genuine Stage B beachhead, comparable to "B1" in the original 11-file arc:
+
+| File | Overall | freq | waveform | pulse | adsr | filter |
+|---|---|---|---|---|---|---|
+| Crank_Crank_Airwolf | 66.8% | 53.5% | 62.3% | 66.2% | 77.1% | 75.7% |
+| Fugue_on_a_Theme_by_D_M_Hanlon | 86.9% | 94.6% | 65.6% | 74.4% | 93.8% | 100.0% |
+| Quintessence | 97.6% | 100.0% | 96.0% | 100.0% | 91.9% | 100.0% |
+| To_Die_For_II | 62.1% | 62.9% | 56.5% | 64.6% | 60.4% | 64.1% |
+| Trinket | 68.0% | 45.1% | 56.3% | 74.6% | 68.7% | 100.0% |
+
+(mean ~76% overall; figures are this build script's own capped 3000-frame self-check, same methodology as always — not yet the fuller corpus-validation pass the 11-file bucket's headline numbers come from). **Zero regression**: full pytest suite 1581 passed; `drivers_src/blackbird/*.inc` left matching Fargo's own build per established convention.
+
+**Not done yet**: fidelity refinement for this bucket — comparable scope to the original B2-B22 rounds (many individual bug-hunt-and-fix cycles took the 11-file bucket from its own first build to 97-99%). `Crank_Crank_Revolution` ("variant A'") still unlocated. The older "variant B" bucket (10 files) still untouched. Nobody has audio-listened to any REPEAT=1 file yet (same as the 11-file bucket's own long-standing open item).
 
 ## Memory layout (from `cruncher.c`'s own `org` bookkeeping, lines ~1216-1268)
 

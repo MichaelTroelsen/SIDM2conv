@@ -131,22 +131,7 @@ class BlackbirdSim:
         self.write_log = []     # flat ordered (frame_no, reg, value) event log
         self.frame_no = -1      # bumped by real_frame() before each dispatch
 
-        nins = lay.nins
         po = lay.play_base - la
-
-        def arr(addr, n=nins):
-            off = addr - la
-            return list(d[off:off + n])
-
-        self.ins_ad = arr(lay.ins_ad)
-        self.ins_sr = arr(lay.ins_sr)
-        self.ins_wave = arr(lay.ins_wave)
-        self.ins_filt = arr(lay.ins_filt)
-        # fx_start's length is nfx (# distinct fx/arp programs), NOT nins --
-        # per BLACKBIRD.md's memory layout, filttable immediately follows
-        # fx_start[nfx], so nfx = filttable_addr - fx_start_addr.
-        nfx = lay.filttable - lay.fx_start
-        self.fx_start = arr(lay.fx_start, n=nfx)
 
         # fixed template offsets (confirmed this session, see BLACKBIRD.md/task)
         # NOT truncated 96-byte lists: `lda freq_lsb+24,y` is normal 16-bit
@@ -191,6 +176,32 @@ class BlackbirdSim:
 
     def wavetable(self, idx):
         return self.rb(self.lay.wavetable + (idx & 0xFF))
+
+    # Instrument/fx tables: raw memory reads, NOT truncated `nins`/`nfx`-length
+    # lists -- same fix as freq_lsb/freq_msb below. A REPEAT=1 file's own
+    # compressed note stream can genuinely reference an instrument index
+    # beyond the located `nins` extent (confirmed: Crank_Crank_Airwolf
+    # references instrument #7 while only 5 instrument slots were located,
+    # yet `nins_consistent` still holds -- `nins` reflects the compiled
+    # table's own evenly-spaced geometry correctly, the SONG just uses an
+    # index past it). Real hardware's `lda ins_filt,y`-style indexed
+    # addressing has no bounds check either -- it just reads whatever byte
+    # sits there (the start of the NEXT table, typically), so a Python list
+    # sized to `nins` raises IndexError where real hardware would not.
+    def ins_ad(self, idx):
+        return self.rb(self.lay.ins_ad + idx)
+
+    def ins_sr(self, idx):
+        return self.rb(self.lay.ins_sr + idx)
+
+    def ins_wave(self, idx):
+        return self.rb(self.lay.ins_wave + idx)
+
+    def ins_filt(self, idx):
+        return self.rb(self.lay.ins_filt + idx)
+
+    def fx_start(self, idx):
+        return self.rb(self.lay.fx_start + idx)
 
     def freq_lsb(self, idx):
         return self.rb(self.freq_lsb_addr + idx)
@@ -352,7 +363,7 @@ class BlackbirdSim:
 
             y = vs.pendfx
             if y != 0:
-                vs.fxpos = self.fx_start[y - 1] & 0xFF
+                vs.fxpos = self.fx_start(y - 1) & 0xFF
 
             y = vs.pendins
             if y != 0:
@@ -367,17 +378,17 @@ class BlackbirdSim:
                     if carry:  # y >= INS_RESTART2+1
                         self.w(6 + 7 * x, 0x0F)  # $d406,x = $0f  (restart2 pre-step)
                     vs.wavemask = 0xFF
-                    fv = self.ins_filt[y - 1]
+                    fv = self.ins_filt(y - 1)
                     if fv != 0:
                         self.zp_filtpos = fv
                         self.filt_owner = fv  # B7: bookkeeping only, see __init__
-                    vs.wavepos = self.ins_wave[y - 1]
+                    vs.wavepos = self.ins_wave(y - 1)
                     carry = cmp_carry(y, self.ins_restart + 1)
                     if carry:  # y >= INS_RESTART+1 (hard restart 1)
                         self.w(5 + 7 * x, 0x00)  # $d405,x = 0
                         self.w(4 + 7 * x, 0x01)  # $d404,x = 1 (gate on, no waveform)
-                    self.w(5 + 7 * x, self.ins_ad[y - 1])
-                    self.w(6 + 7 * x, self.ins_sr[y - 1])
+                    self.w(5 + 7 * x, self.ins_ad(y - 1))
+                    self.w(6 + 7 * x, self.ins_sr(y - 1))
             vs.pendfx = 0
             vs.pendins = 0
 
@@ -556,6 +567,7 @@ def find_tempo_records(lay, d, la):
     decode_streams() consumes but does not return)."""
     import sidm2.blackbird_parser as bp
 
+    variant = getattr(lay, 'variant', 'v1.2')
     rd = bp._Reader(d, la, lay.streamstart)
     voices = [bp._Voice(), bp._Voice(), bp._Voice()]
     pieces = []
@@ -564,8 +576,8 @@ def find_tempo_records(lay, d, la):
         v = voices[i]
         return (len(v.out) - v.rpos) < 128
 
-    bp._emit_piece(rd, voices[1], 1, pieces)
-    bp._emit_piece(rd, voices[0], 0, pieces)
+    bp._emit_piece(rd, voices[1], 1, pieces, variant=variant)
+    bp._emit_piece(rd, voices[0], 0, pieces, variant=variant)
 
     records = []
     for frame in range(20000):
@@ -573,15 +585,15 @@ def find_tempo_records(lay, d, la):
             break
         pend_oob = [0]
         if need_refill(2):
-            bp._emit_piece(rd, voices[2], 2, pieces)
+            bp._emit_piece(rd, voices[2], 2, pieces, variant=variant)
         for i in (2, 1, 0):
             bp._run_prep1(voices[i], i, pend_oob)
         if need_refill(1):
-            bp._emit_piece(rd, voices[1], 1, pieces)
+            bp._emit_piece(rd, voices[1], 1, pieces, variant=variant)
         for i in (2, 1, 0):
             bp._run_prep2(voices[i])
         if need_refill(0):
-            bp._emit_piece(rd, voices[0], 0, pieces)
+            bp._emit_piece(rd, voices[0], 0, pieces, variant=variant)
         for i in (2, 1, 0):
             bp._run_prep3(voices[i])
         if pend_oob[0] & 0x02:
@@ -603,7 +615,8 @@ def find_tempo_records(lay, d, la):
 def run_sim(sid_path, nframes):
     lay = locate_blackbird(sid_path)
     d, la, h = load_sid(sid_path)
-    result = decode_streams(d, la, lay.streamstart, max_frames=20000)
+    result = decode_streams(d, la, lay.streamstart, max_frames=20000,
+                            variant=getattr(lay, 'variant', 'v1.2'))
     streams = result.voices
 
     po = lay.play_base - la

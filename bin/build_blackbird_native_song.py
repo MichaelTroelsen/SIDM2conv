@@ -2366,7 +2366,7 @@ def main():
     if lay is None:
         raise SystemExit(f"{sid}: not a located Blackbird v1.2-exact rip")
     d, la, h = load_sid(sid)
-    result = decode_streams(d, la, lay.streamstart)
+    result = decode_streams(d, la, lay.streamstart, variant=lay.variant)
     po = lay.play_base - la
     ins_restart = d[po + 93] - 1
     ins_restart2 = d[po + 512] - 1
@@ -2427,7 +2427,7 @@ def main():
     # Song's own genuine opening tempo pair (row0==0's fallback -- see
     # extract_tempo_pairs' own off-by-one-corrected //7+1 note in the B2
     # section of docs/players/BLACKBIRD.md).
-    pairs = extract_tempo_pairs(d, la, lay.streamstart)
+    pairs = extract_tempo_pairs(d, la, lay.streamstart, variant=lay.variant)
     if pairs:
         a, b = pairs[0]
         opening_pair = (max(1, a // 7 + 1), max(1, b // 7 + 1))
