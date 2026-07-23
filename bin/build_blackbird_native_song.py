@@ -182,6 +182,9 @@ def bb_steps_for_voice(byte_stream):
     cur_fx = 0                     # sticky, like currfx in the real player
     arp_pending = False            # has THIS step already consumed prepare1's
                                     # one-fx-byte-per-tick allowance?
+    prep2_pending = False          # has THIS step already consumed prepare2's
+                                    # one-byte-per-tick allowance (gate-off/
+                                    # legato/instrument, $80-$B7 combined)?
 
     for b in byte_stream:
         kind = classify_byte(b)
@@ -273,12 +276,69 @@ def bb_steps_for_voice(byte_stream):
             # the raw value directly as a table row, and its resource
             # check now correctly measures true distinct-instrument count
             # so an overflowing window falls back to B6's own splitting.
+            #
+            # prepare2 (player.s) consumes AT MOST ONE $80-$B7 byte
+            # (gate-off/legato/instrument, combined) per real tick -- the
+            # SAME one-byte-per-tick budget as prepare1's fx range (see the
+            # 'arp' branch above). A second consecutive prepare2-range byte
+            # (no note/delay terminal between) is NOT consumed by prepare2
+            # again -- it falls through to prepare3's own undiscriminating
+            # `b >= 0x80` `got_delay` test and is swallowed as a phantom
+            # rest of `_delay_ticks(b)` ticks, its own pending value
+            # discarded. Live-verified against BlackbirdSim (docs/players/
+            # BLACKBIRD.md's REPEAT=1 root-cause section): Crank_Crank_
+            # Airwolf voice1 offsets 412-413 (0x84,0x87, two consecutive
+            # instrument-range bytes) -- only 0x84 applies, 0x87 is
+            # swallowed as a 9-tick hold instead of overwriting
+            # pending_instr for free. Same fix shape as the arp/oob case.
+            if prep2_pending:
+                ticks = _delay_ticks(b)
+                if gate_is_off or not had_note_yet:
+                    steps.append(BBStep('rest', None, pending_instr, cur_fx,
+                                         False, ticks))
+                else:
+                    steps.append(BBStep('note', None, pending_instr, cur_fx,
+                                         False, ticks))
+                pending_instr = None
+                pending_tie = False
+                gate_is_off = False
+                prep2_pending = False
+                continue
             pending_instr = max(b - 0x83, 0)
+            prep2_pending = True
             continue
         if kind == 'gate_off':
+            if prep2_pending:
+                ticks = _delay_ticks(b)
+                if gate_is_off or not had_note_yet:
+                    steps.append(BBStep('rest', None, pending_instr, cur_fx,
+                                         False, ticks))
+                else:
+                    steps.append(BBStep('note', None, pending_instr, cur_fx,
+                                         False, ticks))
+                pending_instr = None
+                pending_tie = False
+                gate_is_off = False
+                prep2_pending = False
+                continue
             gate_is_off = True
+            prep2_pending = True
             continue
         if kind == 'legato':
+            if prep2_pending:
+                ticks = _delay_ticks(b)
+                if gate_is_off or not had_note_yet:
+                    steps.append(BBStep('rest', None, pending_instr, cur_fx,
+                                         False, ticks))
+                else:
+                    steps.append(BBStep('note', None, pending_instr, cur_fx,
+                                         False, ticks))
+                pending_instr = None
+                pending_tie = False
+                gate_is_off = False
+                prep2_pending = False
+                continue
+            prep2_pending = True
             pending_tie = True
             gate_is_off = False
             continue
@@ -318,6 +378,7 @@ def bb_steps_for_voice(byte_stream):
             gate_is_off = False
             had_note_yet = True
             arp_pending = False
+            prep2_pending = False
             continue
         if kind == 'delay':
             ticks = _delay_ticks(b)
@@ -351,6 +412,7 @@ def bb_steps_for_voice(byte_stream):
             # was added.
             gate_is_off = False
             arp_pending = False
+            prep2_pending = False
             continue
     return steps
 

@@ -137,6 +137,9 @@ def steps_for_voice(byte_stream: bytes) -> List[BlackbirdStep]:
     had_note_yet = False
     arp_pending = False            # has THIS step already consumed prepare1's
                                     # one-fx-byte-per-tick allowance?
+    prep2_pending = False          # has THIS step already consumed prepare2's
+                                    # one-byte-per-tick allowance (gate-off/
+                                    # legato/instrument, $80-$B7 combined)?
 
     for b in byte_stream:
         kind = classify_byte(b)
@@ -174,12 +177,57 @@ def steps_for_voice(byte_stream: bytes) -> List[BlackbirdStep]:
             # Driver 11's instrument table has only 32 slots (PLAYBOOK.md's
             # hard-caps table). Clamp rather than let the packer's `& 0x1F`
             # silently ALIAS a high index onto an unrelated low slot.
+            #
+            # prepare2 consumes AT MOST ONE $80-$B7 byte (gate-off/legato/
+            # instrument, combined) per real tick -- same one-byte-per-tick
+            # budget as prepare1's fx range above. A second consecutive
+            # prepare2-range byte falls through to prepare3's own
+            # undiscriminating `b >= 0x80` test and is swallowed as a
+            # phantom rest -- same fix shape as the arp/oob case (see
+            # `bin/build_blackbird_native_song.py`'s `bb_steps_for_voice`
+            # for the live-verified Stage B fix this is ported from).
+            if prep2_pending:
+                ticks = _delay_ticks(b)
+                if gate_is_off or not had_note_yet:
+                    steps.append(BlackbirdStep('rest', None, None, False, ticks))
+                else:
+                    steps.append(BlackbirdStep('note', None, None, False, ticks))
+                pending_instr = None
+                pending_tie = False
+                gate_is_off = False
+                prep2_pending = False
+                continue
             pending_instr = min(b - 0x82, 31)
+            prep2_pending = True
             continue
         if kind == 'gate_off':
+            if prep2_pending:
+                ticks = _delay_ticks(b)
+                if gate_is_off or not had_note_yet:
+                    steps.append(BlackbirdStep('rest', None, None, False, ticks))
+                else:
+                    steps.append(BlackbirdStep('note', None, None, False, ticks))
+                pending_instr = None
+                pending_tie = False
+                gate_is_off = False
+                prep2_pending = False
+                continue
             gate_is_off = True
+            prep2_pending = True
             continue
         if kind == 'legato':
+            if prep2_pending:
+                ticks = _delay_ticks(b)
+                if gate_is_off or not had_note_yet:
+                    steps.append(BlackbirdStep('rest', None, None, False, ticks))
+                else:
+                    steps.append(BlackbirdStep('note', None, None, False, ticks))
+                pending_instr = None
+                pending_tie = False
+                gate_is_off = False
+                prep2_pending = False
+                continue
+            prep2_pending = True
             pending_tie = True
             gate_is_off = False
             continue
@@ -192,9 +240,11 @@ def steps_for_voice(byte_stream: bytes) -> List[BlackbirdStep]:
             gate_is_off = False
             had_note_yet = True
             arp_pending = False
+            prep2_pending = False
             continue
         if kind == 'delay':
             arp_pending = False
+            prep2_pending = False
             ticks = _delay_ticks(b)
             if gate_is_off or not had_note_yet:
                 steps.append(BlackbirdStep('rest', None, None, False, ticks))
