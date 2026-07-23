@@ -349,6 +349,36 @@ Implemented the fix described above in all three independent copies of this fram
 
 **What's now the concrete next step**: decide, and implement, how `decode_streams()` should represent a loop point rather than following it — e.g. stop the per-voice decode at the FIRST bit2 event (mirroring the existing `rd.frozen`/terminator machinery, which already knows how to freeze cleanly and fill with `$c0` afterward) and separately record where playback should loop back to, so a future native-driver translation pass can wire that into the SF2's own sequence data as an explicit loop-back row reference. This is a bigger, more architectural undertaking than the original "add a missing bit check" framing suggested, but the underlying mechanism (the reposition trigger, its exact 2-byte target-address encoding, and its live-hardware-verified correctness for a single jump) is now fully understood and does not need further RE work — only a different integration strategy.
 
+## SHIPPED, same round: the freeze-at-loop-point fix — broad fidelity win across the whole bucket
+
+Implemented exactly the design proposed above, in all three copies: on the FIRST `pend_oob[0] & 0x04` event, peek (don't consume) the 2 target bytes, record them as `_Reader.loop_addr` / `BlackbirdDecodeResult.loop_addr` (new field, `None` for a genuine end-of-stream), and freeze `rd` there (`rd.frozen = True`, `rd.freeze_addr = rd.ptr`) — reusing the EXACT SAME already-tested "frozen → append `$c0` filler forever" machinery `_emit_piece` already had for the genuine terminator, rather than following the jump.
+
+**Full suite: 1581 passed, zero regressions** (the 11-file v1.2-exact bucket never encounters this OOB range at all, so it's structurally untouched). All 5 REPEAT=1 files now freeze cleanly with **zero out-of-grammar bytes on every voice** and a recorded, sensible `loop_addr`:
+
+| File | `freeze_addr` | `loop_addr` | frames run |
+|---|---|---|---|
+| `Crank_Crank_Airwolf` | `$559D` | `$56B0` | 443 |
+| `Fugue_on_a_Theme_by_D_M_Hanlon` | `$17F0` | `$17EE` | 412 |
+| `Quintessence` | `$168B` | `$220A` | 2379 |
+| `To_Die_For_II` | `$19EA` | `$19E8` | 587 |
+| `Trinket` | `$18A3` | `$18A1` | 363 |
+
+**Re-ran `BB_DIAG_BIN` on all 5 files — real, broad fidelity gains, not just a cleaner decode**:
+
+| File | Overall before → after | Notable category shift |
+|---|---|---|
+| `Trinket` | 68.0% → **94.0%** | pulse 100%, filter 100% |
+| `To_Die_For_II` | 62.1% → **82.6%** | freq 75.8%, waveform 83.8% |
+| `Crank_Crank_Airwolf` | 66.8% → **78.6%** | filter 75.7%→**100%** |
+| `Fugue_on_a_Theme_by_D_M_Hanlon` | (was degrading in waveform only) → **84.9%** | freq 82.4%, filter 100% |
+| `Quintessence` | 97.6% → **97.6%** (unchanged) | its own loop point (frame 2379) falls outside the 3000-frame comparison window, exactly as predicted back when this file was identified as "the one that never degrades" |
+
+This is the single biggest fidelity win in this bucket's history — three of five files gained 16-32 percentage points overall, and the mechanism (silently reading garbage past an unmodelled loop trigger) explains essentially everything the "MAJOR finding" and "cascading tempo corruption" sections earlier in this file were circling around, across two full sessions, without ever naming it directly.
+
+**Residual, still open**: a freq/waveform/pulse degradation still starts around frame 1000-1500 on `Crank_Crank_Airwolf`/`To_Die_For_II`/`Trinket` (visible in `Crank_Crank_Airwolf`'s own binned breakdown: freq 100%→100%→81%→38%→37%→42% across six 500f bins) — smaller in magnitude than before (freq no longer collapses to single digits), but real and unexplained. This is now a genuinely separate issue from the loop-garbage problem this fix removes (filter, for example, holds at 100% for the FULL window post-fix, where it used to degrade to 41-75% — that part of the old symptom is fully gone). Worth investigating next, but with a clean, well-understood, zero-out-of-grammar-bytes decode as the starting point instead of an unbounded runaway one.
+
+**Housekeeping**: incidental `drivers_src/blackbird/*.inc` regeneration from the verification builds (a normal side effect of running `build_blackbird_native_song.py` — these files reflect whichever song was built last, not a deliberate "ship this song" action) was reverted after each round rather than committed; only the actual code fix (`sidm2/blackbird_parser.py`, `bin/blackbird_everyframe_sim.py`, `sidm2/blackbird_driver11.py`) and this documentation landed.
+
 ## Memory layout (from `cruncher.c`'s own `org` bookkeeping, lines ~1216-1268)
 
 ```
