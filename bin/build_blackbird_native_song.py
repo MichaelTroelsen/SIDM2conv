@@ -740,6 +740,31 @@ def unroll_wave_pulse(lay, d, la, ins_restart, ins_restart2, wave_start):
                 f"frame {k}: driver-replay ${cur:02x} vs simulator "
                 f"$D402=${pulses[k][0]:02x} $D403=${pulses[k][1]:02x}")
 
+    # --- EXTENDED SELF-CHECK (this session, chasing Crank_Crank_Airwolf's
+    # own extended-hold residual -- see docs/players/BLACKBIRD.md's
+    # REPEAT=1 root-cause section): the block above only ever validated
+    # frames 0..cyc_end-1, the FIRST pass through the captured program,
+    # BEFORE the table's own trailing `$7F` loop-back marker's jump ever
+    # takes effect. Any sufficiently long hold (a genuine in-song sustain,
+    # or the filler-extension fix) DOES exercise that loop-back, and it was
+    # never directly verified before -- extend the SAME replay, wrapping
+    # `k` back to `cyc_start` once it passes `cyc_end` (exactly what the
+    # `$7F` row's own jump is meant to do), over the rest of the already-
+    # captured `pulses` window (no extra simulation needed) to catch any
+    # driver-side jump-handling bug this blind spot could have hidden.
+    cyc_len = cyc_end - cyc_start
+    for k2 in range(cyc_end, len(pulses)):
+        k = cyc_start + (k2 - cyc_start) % cyc_len
+        is_pulse, c1 = col1s[k]
+        if is_pulse:
+            acc = ((c1 << 1) & 0xFF) if (c1 & 0x80) else ((c1 + acc) & 0xFF)
+            cur = sim.pwprepare[acc]
+        if cur != (pulses[k2][0] & 0xFF) or cur != (pulses[k2][1] & 0xFF):
+            raise AssertionError(
+                f"B9 pulse self-check (looped) failed at wave_start={wave_start} "
+                f"frame {k2} (wrapped to row {k}): driver-replay ${cur:02x} vs "
+                f"simulator $D402=${pulses[k2][0]:02x} $D403=${pulses[k2][1]:02x}")
+
     # PULSE: PULSETAB is DEAD for Blackbird as of B9 -- the pulse engine now
     # lives inside wave_step. Every instrument gets the same bare $7f
     # freeze-only program, which dedups to a single 3-byte PULSETAB entry
