@@ -135,10 +135,39 @@ def steps_for_voice(byte_stream: bytes) -> List[BlackbirdStep]:
     pending_tie = False
     gate_is_off = False           # sticky until the next real note
     had_note_yet = False
+    arp_pending = False            # has THIS step already consumed prepare1's
+                                    # one-fx-byte-per-tick allowance?
 
     for b in byte_stream:
         kind = classify_byte(b)
-        if kind in ('oob', 'arp', 'unknown'):
+        if kind == 'unknown':
+            continue
+        if kind in ('oob', 'arp'):
+            # prepare1 (player.s) reads and consumes AT MOST ONE fx/oob-range
+            # byte per real tick. A SECOND consecutive oob/arp byte (no
+            # note/delay/instrument between) is NOT consumed by prepare1
+            # again -- it falls through prepare2 (rejected, not in its
+            # $80-$B7 range) to prepare3's own `got_delay` path, which only
+            # tests `b >= 0x80` and can't tell a real delay byte from an
+            # orphaned fx/oob byte. Real hardware swallows it as a phantom
+            # rest of `_delay_ticks(b)` ticks -- Stage A doesn't model fx
+            # values (timbre flat), but still needs the correct TICK count,
+            # or note timing drifts exactly like the Stage B bug this
+            # mirrors (see BLACKBIRD.md's REPEAT=1 root-cause section, and
+            # `bin/build_blackbird_native_song.py`'s `bb_steps_for_voice`
+            # for the live-verified Stage B fix this is ported from).
+            if arp_pending:
+                ticks = _delay_ticks(b)
+                if gate_is_off or not had_note_yet:
+                    steps.append(BlackbirdStep('rest', None, None, False, ticks))
+                else:
+                    steps.append(BlackbirdStep('note', None, None, False, ticks))
+                pending_instr = None
+                pending_tie = False
+                gate_is_off = False
+                arp_pending = False
+                continue
+            arp_pending = True
             continue                          # Stage A: timbre/tempo flat
         if kind == 'instrument':
             # Blackbird allows up to 48 instruments (1-based, byte - 0x82);
@@ -162,8 +191,10 @@ def steps_for_voice(byte_stream: bytes) -> List[BlackbirdStep]:
             pending_tie = False
             gate_is_off = False
             had_note_yet = True
+            arp_pending = False
             continue
         if kind == 'delay':
+            arp_pending = False
             ticks = _delay_ticks(b)
             if gate_is_off or not had_note_yet:
                 steps.append(BlackbirdStep('rest', None, None, False, ticks))

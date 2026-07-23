@@ -180,13 +180,47 @@ def bb_steps_for_voice(byte_stream):
     gate_is_off = False
     had_note_yet = False
     cur_fx = 0                     # sticky, like currfx in the real player
+    arp_pending = False            # has THIS step already consumed prepare1's
+                                    # one-fx-byte-per-tick allowance?
 
     for b in byte_stream:
         kind = classify_byte(b)
         if kind == 'oob':
             continue
         if kind == 'arp':
+            if arp_pending:
+                # prepare1 (player.s) reads and consumes AT MOST ONE
+                # fx-range byte per real tick. A SECOND consecutive arp
+                # byte (no note/delay/instrument between) is NOT consumed
+                # by prepare1 again -- it falls through prepare2 (rejected,
+                # not in its $80-$B7 range) to prepare3's own `got_delay`
+                # path, which only tests `b >= 0x80` and can't tell a real
+                # delay byte from an orphaned fx byte. Real hardware
+                # swallows it as a phantom rest of `_delay_ticks(b)` ticks
+                # with its fx value discarded -- live-verified against
+                # BlackbirdSim (docs/players/BLACKBIRD.md's REPEAT=1
+                # root-cause section): Crank_Crank_Airwolf voice1 bytes
+                # 352-353 (0xca,0xcb) -- only 0xca's fx value (2) applies,
+                # 0xcb's (3) never does, and 5 real ticks of silence follow
+                # before normal fetching resumes. This code used to treat
+                # EVERY arp byte as a free, 0-tick prefix regardless of how
+                # many preceded it since the last terminal, silently
+                # dropping those ticks -- exactly the "driver races ahead
+                # of the simulator" desync this bug produces.
+                ticks = _delay_ticks(b)
+                if gate_is_off or not had_note_yet:
+                    steps.append(BBStep('rest', None, pending_instr, cur_fx,
+                                         False, ticks))
+                else:
+                    steps.append(BBStep('note', None, pending_instr, cur_fx,
+                                         False, ticks))
+                pending_instr = None
+                pending_tie = False
+                gate_is_off = False
+                arp_pending = False
+                continue
             cur_fx = (b - 0xC8) & 0xFF
+            arp_pending = True
             continue
         if kind == 'unknown':
             continue
@@ -283,6 +317,7 @@ def bb_steps_for_voice(byte_stream):
             pending_tie = False
             gate_is_off = False
             had_note_yet = True
+            arp_pending = False
             continue
         if kind == 'delay':
             ticks = _delay_ticks(b)
@@ -315,6 +350,7 @@ def bb_steps_for_voice(byte_stream):
             # seeing Glyptodont regress from 92.0% to 73.2% before this line
             # was added.
             gate_is_off = False
+            arp_pending = False
             continue
     return steps
 
