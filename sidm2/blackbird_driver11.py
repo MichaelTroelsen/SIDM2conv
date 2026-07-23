@@ -169,6 +169,7 @@ def steps_for_voice(byte_stream: bytes) -> List[BlackbirdStep]:
                 pending_tie = False
                 gate_is_off = False
                 arp_pending = False
+                prep2_pending = False
                 continue
             arp_pending = True
             continue                          # Stage A: timbre/tempo flat
@@ -195,6 +196,7 @@ def steps_for_voice(byte_stream: bytes) -> List[BlackbirdStep]:
                 pending_instr = None
                 pending_tie = False
                 gate_is_off = False
+                arp_pending = False
                 prep2_pending = False
                 continue
             pending_instr = min(b - 0x82, 31)
@@ -210,6 +212,7 @@ def steps_for_voice(byte_stream: bytes) -> List[BlackbirdStep]:
                 pending_instr = None
                 pending_tie = False
                 gate_is_off = False
+                arp_pending = False
                 prep2_pending = False
                 continue
             gate_is_off = True
@@ -225,6 +228,7 @@ def steps_for_voice(byte_stream: bytes) -> List[BlackbirdStep]:
                 pending_instr = None
                 pending_tie = False
                 gate_is_off = False
+                arp_pending = False
                 prep2_pending = False
                 continue
             prep2_pending = True

@@ -221,6 +221,7 @@ def bb_steps_for_voice(byte_stream):
                 pending_tie = False
                 gate_is_off = False
                 arp_pending = False
+                prep2_pending = False
                 continue
             cur_fx = (b - 0xC8) & 0xFF
             arp_pending = True
@@ -302,6 +303,7 @@ def bb_steps_for_voice(byte_stream):
                 pending_instr = None
                 pending_tie = False
                 gate_is_off = False
+                arp_pending = False
                 prep2_pending = False
                 continue
             pending_instr = max(b - 0x83, 0)
@@ -319,6 +321,7 @@ def bb_steps_for_voice(byte_stream):
                 pending_instr = None
                 pending_tie = False
                 gate_is_off = False
+                arp_pending = False
                 prep2_pending = False
                 continue
             gate_is_off = True
@@ -336,6 +339,7 @@ def bb_steps_for_voice(byte_stream):
                 pending_instr = None
                 pending_tie = False
                 gate_is_off = False
+                arp_pending = False
                 prep2_pending = False
                 continue
             prep2_pending = True
@@ -2471,6 +2475,34 @@ def main():
 
     steps_per_voice = [bb_steps_for_voice(result.real(v)) for v in range(3)]
     span = max(sum(max(1, s.ticks) for s in steps_per_voice[v]) for v in range(3))
+    # Extend any voice whose REAL content ends before the song's own overall
+    # span (some other voice's own real content, which is what `span` above
+    # is derived from) with rest-steps decoded from its own post-freeze
+    # filler tail. `$c0` filler is NOT inert -- it falls in prepare3's own
+    # $B8-$C7 delay range and genuinely rests for `_delay_ticks($c0)=16`
+    # ticks each on real hardware AND the validated simulator, which keeps
+    # producing real (if filler-driven) register writes for a voice whose
+    # real content has already ended, while this translator previously had
+    # NOTHING to emit there at all -- silently leaving the native driver's
+    # own track for that voice looping back to its own start instead of
+    # continuing (see
+    # BLACKBIRD.md's REPEAT=1 root-cause section for the live-verified
+    # arp/prep2-swallow fixes this direct sibling issue was found chasing).
+    # Capped at `span` ticks -- filler is effectively unbounded (up to
+    # `freeze_tail_frames`=300 real frames' worth per voice, confirmed
+    # empirically to total 2000+ ticks if used unconditionally), so
+    # appending it without a cap would balloon a short voice's own track
+    # far past the song's real length instead of just filling the gap.
+    for v in range(3):
+        voice_ticks = sum(max(1, s.ticks) for s in steps_per_voice[v])
+        if voice_ticks >= span:
+            continue
+        filler_bytes = result.voices[v][result.real_lengths[v]:]
+        for s in bb_steps_for_voice(filler_bytes):
+            if voice_ticks >= span:
+                break
+            steps_per_voice[v].append(s)
+            voice_ticks += max(1, s.ticks)
     base = os.path.splitext(os.path.basename(sid))[0]
     print(f"{os.path.basename(sid)}: nins(located)={lay.nins} span={span} tick-rows "
           f"events={[len(steps_per_voice[v]) for v in range(3)]}")
