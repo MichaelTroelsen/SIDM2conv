@@ -2498,7 +2498,35 @@ def main():
     ins_restart = d[po + 93] - 1
     ins_restart2 = d[po + 512] - 1
 
-    steps_per_voice = [bb_steps_for_voice(result.real(v)) for v in range(3)]
+    # B23: `result.real(v)` can end mid-tick, with a pending prepare1/2
+    # instrument/fx select dangling unconsumed at the exact real/filler
+    # boundary -- e.g. Crank_Crank_Airwolf voice1's real content ends on a
+    # raw instrument-select byte (0x84, decoded raw index 1) with NOTHING
+    # after it in `result.real(1)` to close it out. On real hardware the
+    # very next byte (the first genuine filler byte, always $c0) commits
+    # this exactly like any other pending select (see bb_steps_for_voice's
+    # own "attach pending_instr to whatever comes next" docstring) -- but
+    # `bb_steps_for_voice(result.real(v))`'s loop simply ends with the
+    # pending state never emitted into a step, silently dropping it. The
+    # filler-extension code below then carries forward the wrong LAST
+    # COMPLETE step's instrument (here: 4, from two events earlier) instead
+    # of the one the dangling select should have produced (1) -- confirmed
+    # against the validated simulator's row_state (`currins=2` 1-based ==
+    # instrument 1 0-based, held through the whole filler zone, exactly
+    # contradicting the driver's own instrument-4 selection this bug
+    # causes). Fix: decode one extra LOOKAHEAD byte from the full
+    # (real+filler) stream when filler exists for this voice -- always a
+    # genuine $c0 delay byte, a valid terminal that correctly closes out
+    # any dangling pending state via the exact same mechanism as every
+    # other terminal. The filler-extension loop below still works
+    # unmodified: this lookahead step's own ticks count toward `voice_ticks`
+    # like any other real step, so the loop just fills whatever gap remains.
+    steps_per_voice = []
+    for v in range(3):
+        real_v = result.real(v)
+        full_v = result.voices[v]
+        lookahead = full_v[len(real_v):len(real_v) + 1] if len(full_v) > len(real_v) else b''
+        steps_per_voice.append(bb_steps_for_voice(real_v + lookahead))
     span = max(sum(max(1, s.ticks) for s in steps_per_voice[v]) for v in range(3))
     # Extend any voice whose REAL content ends before the song's own overall
     # span (some other voice's own real content, which is what `span` above
