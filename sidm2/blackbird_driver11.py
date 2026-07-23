@@ -307,6 +307,20 @@ def extract_tempo_pairs(d: bytes, la: int, streamstart: int,
             b1 = rd.next()
             b2 = rd.next()
             pairs.append((b1, b1 ^ b2))
+        if pend_oob[0] & 0x04 and rd.loop_addr is None:
+            # Song-loop OOB — mirrors sidm2.blackbird_parser.decode_streams()'s
+            # own fix: freeze `rd` here (peek, don't follow, the jump target)
+            # rather than reading past it, since this is a third independent
+            # copy of the same frame loop. See BLACKBIRD.md's REPEAT=1
+            # root-cause section.
+            off_hi = rd.ptr - rd.la
+            off_lo = (rd.ptr - 1) - rd.la
+            hi = rd.data[off_hi] if 0 <= off_hi < len(rd.data) else 0xc0
+            lo = rd.data[off_lo] if 0 <= off_lo < len(rd.data) else 0xc0
+            rd.loop_addr = (hi << 8) | lo
+            if not rd.frozen:
+                rd.frozen = True
+                rd.freeze_addr = rd.ptr
         if rd.frozen and freeze_frame is None:
             freeze_frame = frame
     return pairs

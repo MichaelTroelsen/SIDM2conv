@@ -469,8 +469,12 @@ class _Reader:
     """Physical compressed-stream reader: single shared pointer, BACKWARD
     (decreasing address) through C64 memory, matching `zp_inptr` in
     `player.s`. Freezes permanently once the genuine terminator byte is
-    read (real hardware never decrements `zp_inptr` past it)."""
-    __slots__ = ('data', 'la', 'ptr', 'frozen', 'freeze_addr')
+    read (real hardware never decrements `zp_inptr` past it) — OR once a
+    genuine song-loop OOB event is seen (`loop_addr` set, `freeze_addr`
+    left at the pointer's position when the loop was seen; see
+    `decode_streams`'s own pend_oob bit2 handling for why this decoder
+    stops rather than follows the jump)."""
+    __slots__ = ('data', 'la', 'ptr', 'frozen', 'freeze_addr', 'loop_addr')
 
     def __init__(self, data, la, ptr):
         self.data = data
@@ -478,6 +482,7 @@ class _Reader:
         self.ptr = ptr
         self.frozen = False
         self.freeze_addr = None
+        self.loop_addr = None
 
     def next(self):
         off = self.ptr - self.la
@@ -663,8 +668,15 @@ class BlackbirdDecodeResult:
     """Full 3-voice decompression result."""
     voices: List[bytes]           # per-voice decoded stream, INCLUDING post-freeze filler
     real_lengths: List[int]       # length of each voice's stream BEFORE the freeze-fill point
-    frozen: bool                  # did the shared reader reach the genuine terminator?
+    frozen: bool                  # did the shared reader reach the genuine terminator OR a
+                                   # loop point (see loop_addr) — either way, no more real
+                                   # content follows in this decode pass
     freeze_addr: Optional[int]
+    loop_addr: Optional[int]      # set instead of a genuine terminator when `frozen` was
+                                   # caused by a song-loop OOB event (bit2) rather than the
+                                   # real end of the compressed stream — the absolute address
+                                   # real hardware would have jumped its reader to, i.e.
+                                   # where playback loops back to. None for a genuine EOS.
     frames_run: int
     pieces: List[BlackbirdPiece]  # every literal/copy/fill piece, true emission order
 
@@ -726,6 +738,35 @@ def decode_streams(data, la, streamstart, max_frames=200_000,
             # tempo/sync OOB range.
             rd.next()
             rd.next()
+        if pend_oob[0] & 0x04 and rd.loop_addr is None:
+            # Reposition/loop-rewind OOB: real hardware reads 2 literal
+            # bytes the SAME way as the tempo case, then jumps its shared
+            # reader there instead of using them as data — this session's
+            # own live trace confirmed the exact target formula (peek the
+            # byte AT the current pointer as the high byte, the byte ONE
+            # BELOW it as the low byte) and that the first such jump for
+            # `Crank_Crank_Airwolf` lands right at the start of voice2's
+            # own content — i.e. this is a genuine "loop the whole song"
+            # construct, not a data record. A single static decode pass
+            # has no way to represent an infinite loop, so — mirroring how
+            # the genuine end-of-stream terminator below freezes `rd`
+            # rather than reading past it — we record the computed jump
+            # target as `loop_addr` (metadata for a future native-driver
+            # loop-marker pass) and freeze here WITHOUT following it,
+            # rather than corrupting the decode by actually re-entering
+            # already-decoded territory (implemented, tested, and reverted
+            # earlier this round — see docs/players/BLACKBIRD.md's
+            # REPEAT=1 root-cause section for why: the SECOND such jump
+            # computes garbage once per-voice bookkeeping built for one
+            # linear pass runs a second lap over replayed content).
+            off_hi = rd.ptr - rd.la
+            off_lo = (rd.ptr - 1) - rd.la
+            hi = rd.data[off_hi] if 0 <= off_hi < len(rd.data) else 0xc0
+            lo = rd.data[off_lo] if 0 <= off_lo < len(rd.data) else 0xc0
+            rd.loop_addr = (hi << 8) | lo
+            if not rd.frozen:
+                rd.frozen = True
+                rd.freeze_addr = rd.ptr
         if rd.frozen and freeze_frame is None:
             freeze_frame = frame
 
@@ -736,6 +777,7 @@ def decode_streams(data, la, streamstart, max_frames=200_000,
         real_lengths=real_lengths,
         frozen=rd.frozen,
         freeze_addr=rd.freeze_addr,
+        loop_addr=rd.loop_addr,
         frames_run=frame,
         pieces=pieces,
     )
