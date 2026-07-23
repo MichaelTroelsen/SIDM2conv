@@ -2477,7 +2477,7 @@ def main():
     span = max(sum(max(1, s.ticks) for s in steps_per_voice[v]) for v in range(3))
     # Extend any voice whose REAL content ends before the song's own overall
     # span (some other voice's own real content, which is what `span` above
-    # is derived from) with rest-steps decoded from its own post-freeze
+    # is derived from) with rest/hold steps representing its own post-freeze
     # filler tail. `$c0` filler is NOT inert -- it falls in prepare3's own
     # $B8-$C7 delay range and genuinely rests for `_delay_ticks($c0)=16`
     # ticks each on real hardware AND the validated simulator, which keeps
@@ -2485,24 +2485,38 @@ def main():
     # real content has already ended, while this translator previously had
     # NOTHING to emit there at all -- silently leaving the native driver's
     # own track for that voice looping back to its own start instead of
-    # continuing (see
-    # BLACKBIRD.md's REPEAT=1 root-cause section for the live-verified
-    # arp/prep2-swallow fixes this direct sibling issue was found chasing).
-    # Capped at `span` ticks -- filler is effectively unbounded (up to
-    # `freeze_tail_frames`=300 real frames' worth per voice, confirmed
-    # empirically to total 2000+ ticks if used unconditionally), so
-    # appending it without a cap would balloon a short voice's own track
-    # far past the song's real length instead of just filling the gap.
+    # continuing (see BLACKBIRD.md's REPEAT=1 root-cause section for the
+    # live-verified arp/prep2-swallow fixes this direct sibling issue was
+    # found chasing). Capped at `span` ticks -- filler is effectively
+    # unbounded (up to `freeze_tail_frames`=300 real frames' worth per
+    # voice, confirmed empirically to total 2000+ ticks if used
+    # unconditionally), so appending it without a cap would balloon a short
+    # voice's own track far past the song's real length instead of just
+    # filling the gap.
+    #
+    # State carried forward, NOT reset: filler is a uniform run of `$c0`
+    # bytes (no arp/instrument/gate content of its own), so it can never
+    # itself select a new instrument or fx program on real hardware -- it
+    # only ever EXTENDS whatever was already active when the real content
+    # ended. An earlier version of this fix called `bb_steps_for_voice`
+    # fresh on the filler bytes, which reset `cur_fx`/`pending_instr` to
+    # their own defaults (0/None) for every filler-derived step, instead
+    # of inheriting the voice's own last real state -- a measured
+    # regression in `waveform`/`adsr` on `Crank_Crank_Airwolf` specifically
+    # (freq was already correct, since filler ticks are counted right
+    # either way; only the CARRIED-FORWARD fx/gate state was wrong).
+    _FILLER_TICKS = _delay_ticks(0xc0)
     for v in range(3):
         voice_ticks = sum(max(1, s.ticks) for s in steps_per_voice[v])
         if voice_ticks >= span:
             continue
-        filler_bytes = result.voices[v][result.real_lengths[v]:]
-        for s in bb_steps_for_voice(filler_bytes):
-            if voice_ticks >= span:
-                break
-            steps_per_voice[v].append(s)
-            voice_ticks += max(1, s.ticks)
+        last = steps_per_voice[v][-1] if steps_per_voice[v] else None
+        last_fx = last.fx if last is not None else 0
+        fill_kind = 'rest' if (last is not None and last.kind == 'rest') else 'note'
+        while voice_ticks < span:
+            steps_per_voice[v].append(BBStep(fill_kind, None, None, last_fx,
+                                              False, _FILLER_TICKS))
+            voice_ticks += _FILLER_TICKS
     base = os.path.splitext(os.path.basename(sid))[0]
     print(f"{os.path.basename(sid)}: nins(located)={lay.nins} span={span} tick-rows "
           f"events={[len(steps_per_voice[v]) for v in range(3)]}")
