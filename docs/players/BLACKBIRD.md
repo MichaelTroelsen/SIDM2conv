@@ -521,6 +521,47 @@ Full suite: 1581 passed / 7 skipped / 2 xfailed, unchanged — this is the highe
 
 **Not yet checked**: whether `To_Die_For_II`'s remaining `pulse`/`waveform`/`adsr` gaps (85.2%/92.6%/94.9% respectively) share this same root cause, a DIFFERENT dangling-boundary-shaped issue, or something else entirely — this round only chased the filter category since it was the standout outlier. `Trinket`/`Fugue`'s own post-B23 residuals (waveform 91.7%/72.4%, adsr 92.0%/97.3%) are similarly unexamined.
 
+## B25 SHIPPED, next round: a real, cross-file `waveform`/`adsr` root cause — the driver never modelled `prepare2`'s own pre-restart SR/gate blip, 2 real frames before every hard-restart note. Fixed via an fx-command sentinel + a shared-clock-keyed ASM state machine. Every one of the 16 relevant files improved or was byte-identical; none regressed
+
+Triggered by user feedback after listening to the freshly-built `Glyptodont` in SidFactory II: "sounds really good, [but] there is something not right with the drums... might be filters." Filter was actually the STRONGEST category (99.9%) at that point — the real cause turned out to be a completely different, previously-unnoticed mechanism, one whose audible impact concentrates on short/percussive instruments for a reason that has nothing to do with filtering.
+
+**The mechanism**: `BlackbirdSim._pr2_noteback` (`bin/blackbird_everyframe_sim.py:283-290`) applies a genuine pre-restart reset — `$D406,x=0` (SR) plus `wavemask=$FE` (gate briefly forced off) — during `prepare2`, a full **2 real frames before** the note/instrument actually commits via `execute()`. This is a real, intentional part of Blackbird's own engine (the classic SID trick of forcing the envelope generator to fully release before a new note's real ADSR applies, guaranteeing a clean retrigger), completely SEPARATE from `execute()`'s own restart-1/restart-2 pre-steps (which B16, an earlier round, already ported correctly — those fire ON the commit frame itself). The native driver's translation model (Blackbird's multi-frame `prepare1/2/3`-then-`execute()` pipeline collapsed into "one translated row, note commits immediately") had no way to represent an effect that happens on a DIFFERENT frame than the row it belongs to — so this specific mechanism was never modelled at all, on any file, in any prior round.
+
+**Confirmed systematic, not drum-specific**: a live py65 CPU trace of the compiled `Glyptodont` driver against the validated simulator's own per-frame register trace showed the exact same 2-frame-early SR/ctrl mismatch pattern on **all three voices**, at essentially every hard-restart note (Glyptodont alone: 797/372/75 hard-restart events across its 3 voices). This lines up exactly with `waveform`/`adsr` being the persistently weakest categories (90-97%) across literally every Blackbird file built this whole arc — the blip is a small, per-note cost that's nearly inaudible on a sustained melodic note (buried in a long envelope) but is a much bigger fraction of a short percussive hit's own audible span, which is why it read as "the drums" specifically even though the underlying bug affects every instrument equally.
+
+**Why this needed real design work, not a quick patch** (see the user exchange this round — deliberately checked in twice before committing effort): the compiled SF2 row format is fixed (SidFactory II's own editor parses it), so a genuinely NEW per-row signal type risks the file being misread by the real editor. The fix instead **reuses the existing fx-command byte space**: Blackbird's own fx-index range is 6 bits (0-63) and real usage never approaches that ceiling (measured across the corpus: max 48 distinct programs) — reserving index 63 (`RESTART_ARM_FX`) as a sentinel, recognized only by this driver's own dispatch, costs nothing SF2II can see wrong (it would just render as an oddly-numbered fx command if ever inspected, never corrupt data). A safety assertion in `main()` fails the build loudly if any file's own real fx count ever reaches 63.
+
+**Timing, the genuinely hard part**: naively arming a fixed "2 frames from now" countdown doesn't work, because the row that needs to carry the sentinel (the one immediately BEFORE the hard-restart) can have ANY real-frame span depending on the song's own tempo. The fix instead **keys off `zp_tcnt`**, the SAME shared row-clock `do_row` itself reloads to the current row's own tempo every commit — a new `restart_arm_step` (called every frame, right before `wave_step`) checks `zp_tcnt==2` and, if a voice's `RESTART_ARM` flag is pending, applies the blip and clears the flag. This naturally lands 2 frames before the NEXT row's own commit regardless of what tempo the CURRENT row happens to use, with zero separate countdown state needed.
+
+**Three deliberately conservative safety gates**, each of which simply leaves a note unfixed (matching pre-B25 behavior) rather than ever risk a wrong-timed blip — found by hitting all three the hard way, via a live CPU trace of a broken first attempt:
+1. **Collision**: skip if the row already needs a real fx-command change of its own (measured before implementing: 13-1023 collisions per file — very common, not an edge case).
+2. **Tempo floor**: skip arming for the whole file if any tempo it ever uses drops below 3 real frames/row (the `zp_tcnt==2` check needs at least 1 frame of runway) — a file-wide floor, not a per-row-precise check, since real tempos seen across this whole arc (4-8) leave wide headroom.
+3. **Single-tick only** (the one that actually broke the first attempt): only arm when the preceding step occupies exactly ONE driver row. `steps_to_rows_native`'s own `n = max(1, s.ticks)` expansion only puts a command byte on the FIRST of a multi-tick step's own rows — arming a multi-tick step made `zp_tcnt==2` fire 2 frames before that step's OWN next row (a bare sustain row of the SAME step), not 2 frames before the actual following step. The first version of this fix (without gate 3) DID apply the blip at the wrong moment — measured directly: `Glyptodont` REGRESSED 97.1%→96.5% (`VGMASK`/SR stuck at their blipped values for the rest of the trace, since the real commit that was supposed to override them 2 frames later was actually several rows away). Adding gate 3 turned that into a clean win everywhere.
+
+A second real bug was needed alongside gate 3: `window_steps` (the per-part window-clipping helper) reconstructs every `BBStep` via a fresh constructor call and was silently dropping `restart_arm` even in the trivial single-part case (no actual clipping happening) — fixed by threading the flag through, but ONLY when a step survives a window completely unclipped on BOTH edges (a partially-clipped step's own "next event" relationship isn't guaranteed to survive), plus a defensive clear on the last step of every window (its own paired trigger may have fallen outside the window entirely).
+
+**Verified across the full 16-file corpus, zero regressions, most files improved**:
+- `Fargo` (canary): 99.7%, **byte-identical**.
+- `Glyptodont`: 97.1%→**97.5%** (adsr 92.7%→94.1%, uniform gain across every 200-frame bin, no localized regression).
+- `Dishwasher_Groove`: 98.0%→**98.2%**
+- `Dithered_Island`: 97.2%→**98.2%**
+- `Elvendance`: 97.3%→**97.7%**
+- `Euclid_Was_Here`: 96.6%→**97.2%**
+- `Into_the_Unknown`: 96.4%→**96.6%**
+- `Maple_Leaf_Rag`: 96.7% (byte-identical)
+- `Revolutions_Delivered`: 95.9%→**96.0%**
+- `Thus_Spoke_the_PC_Speaker`: 97.3%→**97.6%**
+- `Toy_Rocket`: 96.2%→**96.5%**
+- `Crank_Crank_Airwolf`: 97.5%→**97.7%**
+- `Trinket`: 97.1% (byte-identical)
+- `To_Die_For_II`: 92.3%→**93.3%** (waveform 92.6%→96.8%, adsr 94.9%→97.0%)
+- `Fugue_on_a_Theme_by_D_M_Hanlon`: 90.3% (byte-identical)
+- `Quintessence`: 97.6%→**98.0%**
+
+Full suite: 1581 passed / 7 skipped / 2 xfailed, unchanged.
+
+**Known, deliberately-accepted residual**: gate 3 means multi-tick preceding steps never get the fix — a real, more complete version would re-target the LAST of a multi-tick step's own expanded rows instead of always the first (not attempted this round; the command byte is currently only ever placed on a step's first row, so this would need its own design work). `To_Die_For_II`'s later residual (frame ~1600+, pulse/filter) is unrelated and still open.
+
 ## Memory layout (from `cruncher.c`'s own `org` bookkeeping, lines ~1216-1268)
 
 ```

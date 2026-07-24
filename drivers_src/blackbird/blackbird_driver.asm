@@ -174,8 +174,37 @@ VIFXR     = $19b5        ; per-voice: pending "reset FXPOS on trigger" flag --
                          ; 0 for Blackbird fx 0, which per lft's execute()
                          ; (`ldy v_pendfx,x; beq no_fx`) means the running
                          ; program is NOT repositioned by the note (3)
-; ($19b8-$19db: freed by B10's removal of FM_ON/FM_IDX/FM_CNT/FM_ACC_*/
-;  FM_OFF_*/FMP_*/VIFM_*/vbasenote, and by B9's removal of PPTR/VIPUL)
+; B25: RESTART_ARM lives in the gap B10 freed below (was FM_ON/FM_IDX/etc).
+; player.s's prepare2 (BlackbirdSim._pr2_noteback) applies a genuine
+; pre-restart reset -- $D406,x=0 (SR) + wavemask=$FE (gate briefly off) --
+; on the PREPARE tick, which is 2 real frames BEFORE the note/instrument
+; actually commits via execute() (the driver's own set_instr_v/pn_note
+; commit, matching an ALREADY-correct B16 restart pre-step that fires
+; ON the commit frame, not 2 frames before it). This is a SEPARATE,
+; earlier-timed mechanism the native driver never modelled: it only ever
+; produces the FINAL committed value, missing the transient. Measured on
+; Glyptodont: all 3 voices' own SR/ctrl registers show this exact 2-frame-
+; early pattern (sim dips to $00 for ~2 frames, driver goes straight to
+; the final value) at essentially every hard-restart note -- the single
+; largest systematic contributor to the ~90-97% "waveform"/"adsr" ceiling
+; seen across every Blackbird file built so far, far more audible on
+; short/percussive (noise) instruments than sustained melodic ones since
+; the blip is a much bigger fraction of a short envelope's own audible
+; span. See docs/players/BLACKBIRD.md's B25 section for the full design
+; (why a genuinely NEW per-row signal can't be added without risking
+; SF2II's own row-format parsing, and why an fx-command sentinel value
+; sidesteps that).
+;
+; RESTART_ARM,x: per-voice "a pre-restart blip is pending" flag, set by
+; pr_setprog when it sees the reserved sentinel fx-index (RESTART_ARM_FX,
+; see below) instead of a real fx-select, cleared by restart_arm_step once
+; applied. Keyed off the EXISTING shared zp_tcnt row-clock (see
+; restart_arm_step) rather than its own countdown, so it naturally lands
+; 2 frames before the NEXT row's commit regardless of the CURRENT row's
+; own tempo -- the same shared clock that already drives do_row itself.
+RESTART_ARM = $19b8      ; (3)
+RESTART_ARM_FX = 63      ; reserved fx-index sentinel, see pr_setprog
+; ($19bb-$19db: still free, further shrunk by RESTART_ARM's 3 bytes)
 SWTOG     = $19dc        ; swing-tempo phase toggle (ported from the MoN driver, which
                          ; ported it from the MoN ROM's own $E2 toggle at $1134-$1138):
                          ; EOR #$ff per row; negative phase reloads TEMPO2 (the SHORT
@@ -457,6 +486,9 @@ dp_vib:
         ; $D402/3 itself, from the same row it writes $D404 from, exactly as
         ; lft's own `vloop` does.
         jsr filt_prog_step       ; global filter program -> $D415/6/7 + mode
+        jsr restart_arm_step     ; B25: pre-restart SR/gate blip, BEFORE
+                                  ; wave_step so a blip fired this frame is
+                                  ; reflected in this frame's own $D404 write
         jsr wave_step            ; wave-program -> $D404 + $D402/3
         jsr fx_step               ; B10: fx/pitch interpolator -> $D400/1
         dec ms_cnt
@@ -554,6 +586,38 @@ ws_nopulse:
         jmp ws_l
 ws_done:
         rts
+
+; --- B25: applies a pre-restart SR/gate blip armed by pr_setprog's sentinel
+;     fx-select, exactly 2 real frames before the row that follows the one
+;     it was armed on. Keyed off zp_tcnt -- the SAME shared row-clock
+;     do_row itself reloads to the CURRENT row's own tempo -- rather than a
+;     private countdown, so this naturally lands at the right frame
+;     regardless of what that row's own tempo happens to be. See
+;     RESTART_ARM's own declaration (near VIFXR) for the full mechanism and
+;     why it exists. Called from dp_vib, BEFORE wave_step, so a blip fired
+;     THIS frame is reflected in THIS SAME frame's $D404 write (matching
+;     BlackbirdSim._pr2_noteback's own same-tick wavemask effect). --------
+restart_arm_step:
+        lda zp_tcnt
+        cmp #2
+        bne ra_done
+        ldx #$02
+ra_l:
+        lda RESTART_ARM,x
+        beq ra_next
+        lda #$00
+        sta RESTART_ARM,x
+        lda #$fe
+        sta VGMASK,x              ; gate off THIS frame (wave_step applies it)
+        ldy sidbase,x
+        lda #$00
+        sta SID+6,y               ; $D406,x = 0 (SR reset, matching _pr2_noteback)
+ra_next:
+        dex
+        bpl ra_l
+ra_done:
+        rts
+
 ; DRUM wave row: col1 = freq HIGH byte written to vfreq_hi, KEEPING vfreq_lo.
 ; Not used by Blackbird B1 (no drum-flag instruments emitted); kept for parity.
 ws_drum:                         ; Y still = resolved row (ws_row) from ws_have
@@ -1020,6 +1084,15 @@ pr_setprog:
         ; (lft's `fx_start-1,y`), plus a reset flag: Blackbird fx 0 means "do
         ; not reposition the running program", which FXRST encodes as 0.
         and #$3f
+        ; B25: fx-index 63 is a RESERVED sentinel, never a real fx-program
+        ; select -- main() asserts nfx_song < RESTART_ARM_FX at build time
+        ; (build_blackbird_native_song.py), failing loudly rather than ever
+        ; letting a genuine fx program collide with this value. It means
+        ; "arm a pre-restart blip for the NEXT note" instead of a real
+        ; fx-select -- see RESTART_ARM's own declaration above and
+        ; restart_arm_step below for the full mechanism.
+        cmp #RESTART_ARM_FX
+        beq pr_arm_restart
         tay
         lda FXSTART,y
         sta VIFXS,x
@@ -1044,6 +1117,15 @@ pr_setprog:
         ; simulator held a constant. Moving the selection to set_instr_v
         ; also shrinks the bundle vocabulary to distinct (fx, note) pairs
         ; alone, which cuts clustering pressure independently.
+        jsr advw
+        jmp pr_read
+pr_arm_restart:
+        ; B25: does NOT touch VIFXS/VIFXR/fxflag at all -- this row keeps
+        ; whatever fx program was already running, exactly like a genuine
+        ; "no command byte this row" would (the sentinel is purely a
+        ; carrier for the arm signal, never a real fx-engine event).
+        lda #$01
+        sta RESTART_ARM,x
         jsr advw
         jmp pr_read
 pr_setinst:

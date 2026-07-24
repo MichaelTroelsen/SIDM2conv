@@ -87,6 +87,11 @@ from sidm2.galway_to_driver11 import (
 from sidm2.sid_player import FREQ_TABLE_LO, FREQ_TABLE_HI
 
 NFM = 64                 # $c0-$ff command space (index = byte & 0x3f)
+# B25: reserved fx-index sentinel ("arm a pre-restart SR/gate blip" instead
+# of a real fx-select) -- MUST match blackbird_driver.asm's own
+# RESTART_ARM_FX constant exactly. Real fx-program indices must never reach
+# this value (asserted where nfx_song is computed in main()).
+RESTART_ARM_FX = 63
 # Stage A's user-verified pitch calibration: SF2 note = blackbird note + 9.
 # B10 made this load-bearing in the DRIVER too (pr_note has to undo it to
 # recover Blackbird's own note index before computing BASEPITCH = note*4),
@@ -110,15 +115,20 @@ TARGET_FM_PULSE_FRAMES = 250  # ~5s @ 50fps; PULSE/FM have no jump primitive
 # sidm2/blackbird_driver11.py, which this task must not touch).
 # ---------------------------------------------------------------------------
 class BBStep:
-    __slots__ = ('kind', 'note', 'instrument', 'fx', 'tie', 'ticks')
+    __slots__ = ('kind', 'note', 'instrument', 'fx', 'tie', 'ticks', 'restart_arm')
 
-    def __init__(self, kind, note, instrument, fx, tie, ticks):
+    def __init__(self, kind, note, instrument, fx, tie, ticks, restart_arm=False):
         self.kind = kind
         self.note = note
         self.instrument = instrument
         self.fx = fx
         self.tie = tie
         self.ticks = ticks
+        # B25: True means "emit RESTART_ARM_FX as this row's OWN command
+        # byte, one-shot, WITHOUT disturbing the sticky cur_cmd fx-tracking
+        # steps_to_rows_native otherwise does" -- see that function's own
+        # handling and RESTART_ARM's declaration in blackbird_driver.asm.
+        self.restart_arm = restart_arm
 
 
 def _remap_step_instrument(s, instr_remap):
@@ -127,7 +137,8 @@ def _remap_step_instrument(s, instr_remap):
     slot), or `s` itself unchanged if it carries no instrument reference."""
     if s.instrument is None:
         return s
-    return BBStep(s.kind, s.note, instr_remap[s.instrument], s.fx, s.tie, s.ticks)
+    return BBStep(s.kind, s.note, instr_remap[s.instrument], s.fx, s.tie, s.ticks,
+                  restart_arm=s.restart_arm)
 
 
 def _note_ticks(b):
@@ -489,12 +500,27 @@ def window_steps(steps, row0, row1):
         else:
             instr = s.instrument if seg_start == pos else None
             tie = s.tie if seg_start == pos else False
-            out.append(BBStep(s.kind, s.note, instr, s.fx, tie, seg_ticks))
+            # B25: only preserve restart_arm when this step survives the
+            # window COMPLETELY unclipped (seg_start==pos AND seg_end==
+            # s_end) -- the flag's own validity depends on whichever step
+            # ORIGINALLY followed it still being the one that follows it
+            # HERE too, which a partial clip (either edge) can't guarantee.
+            arm = s.restart_arm if (seg_start == pos and seg_end == s_end) else False
+            out.append(BBStep(s.kind, s.note, instr, s.fx, tie, seg_ticks,
+                               restart_arm=arm))
         pos = s_end
         if pos >= row1:
             break
     if not out:
         out = [BBStep('rest', None, None, 0, False, max(1, row1 - row0))]
+    # B25: the LAST step in a window may have been armed for a "next event"
+    # that fell OUTSIDE [row0, row1) entirely (this window ends before the
+    # original song does, or the original next step didn't survive some
+    # OTHER voice's own window here) -- clear defensively rather than risk
+    # a blip with no real trigger behind it. A no-op whenever the true last
+    # step of the whole song landed here, since main()'s own marking pass
+    # never arms a voice's actual final step in the first place.
+    out[-1].restart_arm = False
     return out
 
 
@@ -1186,6 +1212,18 @@ def steps_to_rows_native(steps):
         if cmd != cur_cmd:
             cmdcol = cmd
             cur_cmd = cmd
+        if s.restart_arm:
+            # B25: one-shot RESTART_ARM_FX override -- deliberately does NOT
+            # touch cur_cmd, so the NEXT step's own cmd-change tracking is
+            # unaffected by this row's sentinel. main()'s own marking pass
+            # only ever sets restart_arm on a step where cmd==cur_cmd
+            # already (a collision with a real fx change is skipped there,
+            # never reaches here) -- the assert catches a future caller
+            # that stops upholding that invariant, rather than silently
+            # dropping a real fx command.
+            assert cmdcol is None, (
+                "B25: restart_arm collided with a real fx-command change")
+            cmdcol = RESTART_ARM_FX
         # B21: do NOT dedupe against the previously-active instrument. Real
         # hardware's execute() (player.s 447-457) treats EVERY genuine
         # instrument-select byte as an unconditional restart -- wavepos snaps
@@ -2623,6 +2661,15 @@ def main():
     # wrong carry, a truncated table or a mislocated label fails the BUILD
     # here rather than costing a few unattributable percent downstream.
     nfx_song, fx_start_song, fxtab_song = fx_table_info(lay, d, la)
+    # B25: RESTART_ARM_FX must never collide with a genuine fx-program
+    # index -- fail loudly at build time rather than silently misdirecting
+    # an armed row into the real fx engine. nfx_song is the note-independent
+    # distinct fx count (`cmd = s.fx & 0x3F` uses raw indices directly, no
+    # remapping, so this is the true ceiling); every file in the corpus
+    # measured well under 63 (max seen 47) when this was added.
+    assert nfx_song < RESTART_ARM_FX, (
+        f"{sid}: {nfx_song} distinct fx programs collides with the "
+        f"RESTART_ARM_FX={RESTART_ARM_FX} sentinel (see B25)")
     notes_song = sorted({s.note for v in range(3) for s in steps_per_voice[v]
                          if s.kind == 'note' and s.note is not None})
     n_checked = verify_fx_engine(lay, d, la, ins_restart, ins_restart2,
@@ -2656,6 +2703,62 @@ def main():
           f"(first at row {full_schedule[0][0] if full_schedule else '-'}, "
           f"last at row {full_schedule[-1][0] if full_schedule else '-'}); "
           f"{len(full_frames)} real frames simulated")
+
+    # B25: mark, for each voice, the step IMMEDIATELY PRECEDING a genuine
+    # hard-restart instrument-select (raw index >= ins_restart) with
+    # restart_arm=True -- steps_to_rows_native emits RESTART_ARM_FX as
+    # THAT row's own one-shot command byte, and blackbird_driver.asm's
+    # restart_arm_step applies the real pre-restart SR/gate blip 2 real
+    # frames later (see BBStep.restart_arm's own docstring and
+    # RESTART_ARM's declaration in the ASM for the full mechanism/why).
+    #
+    # Only armed when SAFE, in three ways that all simply leave a note
+    # unfixed (matching pre-B25 behavior) rather than ever risk a
+    # wrong-timed blip:
+    #  (a) the preceding row must not ALREADY carry a real fx-command
+    #      change of its own -- a row has exactly one command-byte slot,
+    #      so a genuine collision just skips the mark entirely (measured
+    #      across the whole corpus before implementing this: 13-1023
+    #      collisions per file, so this is common, not an edge case);
+    #  (b) restart_arm_step's own zp_tcnt==2 check needs at least 1 frame
+    #      of "runway" between the arming row's own commit and the row
+    #      that follows it, so it's gated on the song's own SLOWEST
+    #      tempo never dropping below 3 real frames/row (every tempo this
+    #      song ever uses, opening pair included, not just the common
+    #      case) -- a per-row-precise check would be more surgical but
+    #      the tempos actually seen across this whole arc (4-8) leave
+    #      wide headroom, so this file-wide floor is deliberately simple.
+    #  (c) the preceding STEP must occupy exactly ONE driver row
+    #      (ticks==1). A multi-tick step (steps_to_rows_native's own
+    #      `n = max(1, s.ticks)` expansion) only carries its command byte
+    #      on the FIRST of those n rows -- zp_tcnt==2 would then fire 2
+    #      frames before THAT row's OWN successor (a bare sustain row of
+    #      the SAME step), not 2 frames before the step that actually
+    #      follows it. Measured directly (a live CPU trace before this
+    #      condition existed): the blip fired correctly but the voice
+    #      never recovered -- VGMASK/SR stayed at their blipped values for
+    #      the rest of the trace, since the note-on that was supposed to
+    #      override them 2 real frames later was actually several rows
+    #      away, not immediately next. A real, more complete fix would
+    #      re-target the LAST of a multi-tick step's own expanded rows
+    #      instead (not just its first) -- not attempted this round.
+    min_tempo_song = min([opening_pair[0], opening_pair[1]] +
+                          [t for rec in full_schedule for t in (rec[1], rec[2])])
+    if min_tempo_song >= 3:
+        for v in range(3):
+            steps = steps_per_voice[v]
+            cur_cmd = None
+            cmd_changes = []
+            for s in steps:
+                cmd = s.fx & 0x3F
+                cmd_changes.append(cmd != cur_cmd)
+                cur_cmd = cmd
+            for i in range(1, len(steps)):
+                s = steps[i]
+                if (s.instrument is not None and s.instrument >= ins_restart
+                        and not cmd_changes[i - 1]
+                        and max(1, steps[i - 1].ticks) == 1):
+                    steps[i - 1].restart_arm = True
 
     bounds = build_song(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
                         ad_sr, default_filter_program, default_filter_extra,
