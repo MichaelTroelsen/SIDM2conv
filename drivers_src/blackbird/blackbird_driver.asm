@@ -953,7 +953,15 @@ do_row:
         inc ROW_CNT_HI
 rc_hi_done:
         ldx TEMPO_SCHED_IDX
-        cpx #TEMPO_SCHED_LEN
+        ; SF2II's 6510 emulator has FULLY INVERTED carry in CPX/CPY (its
+        ; cpumos6510.cpp sets C only when (X-op)&$ff >= $80, and CLEARS C on
+        ; equality) -- so `cpx #N; bcs` branches the wrong way for every
+        ; small-value comparison, including when equal. Its CMP is correct
+        ; for operands within +/-127, which every index here is. X must
+        ; survive (it indexes tempo_sched_* below) and A is dead until the
+        ; `lda tempo_sched_row_lo,x` that follows, so route through A.
+        txa
+        cmp #TEMPO_SCHED_LEN
         bcs sk_sched
         lda tempo_sched_row_lo,x
         cmp ROW_CNT_LO
@@ -1458,23 +1466,38 @@ si_nofilt:
         ; time (instr_remap is order-preserving, so the conversion is exact),
         ; emitting INS_RESTART_SLOT/INS_RESTART2_SLOT as plain part-scoped
         ; constants (same PRIME_GLOBAL_FIELDS mechanism as F_IDX etc) --
-        ; ALREADY the threshold+1 value the CPY below needs (computed in
+        ; ALREADY the threshold+1 value the CMP below needs (computed in
         ; Python, not via `+1` here: 64tass errors ("too large for a 8 bit
         ; unsigned integer") rather than wrapping when a part whose
         ; used-instrument set never crosses a threshold emits the raw -1
-        ; case, since (-1&0xFF)+1 = 256). CPY #0 (the case Python emits
-        ; then) never takes the BCC below (carry is always set comparing
-        ; against 0), i.e. the hard restart ALWAYS fires -- correct: -1
-        ; means every used instrument is above the threshold.
-        ldy tmpins
-        cpy #INS_RESTART2_SLOT
+        ; case, since (-1&0xFF)+1 = 256). `cmp #0` (the case Python emits
+        ; then) never takes the BCC below -- carry is always set comparing
+        ; against 0, on real hardware AND in SF2II (whose CMP sets C for any
+        ; A < $80, and slot numbers never reach $80) -- i.e. the hard restart
+        ; ALWAYS fires, correct: -1 means every used instrument is above the
+        ; threshold. Under the OLD `cpy #0` this held only by luck on real
+        ; hardware: SF2II CLEARS carry on equality, so slot 0 took the BCC
+        ; and skipped its restart in the editor.
+        ; CMP, not CPY: SF2II's emulator inverts the carry flag for CPX/CPY
+        ; (see the note at the tempo-schedule compare above). These two
+        ; thresholds ARE the hard-restart dispatch, so with CPY the real
+        ; editor fired the $D405/$D404 pre-steps for exactly the wrong
+        ; instruments -- audible, and invisible to every py65/zig64/simulator
+        ; metric here because those all implement correct 6502 semantics.
+        ; Slot numbers are 0..CAP_I(32) and both thresholds are inside that
+        ; range, so CMP stays well within its own +/-127 correctness window
+        ; (asserted at build time in _compute_prime_consts). Y is not needed
+        ; for the compare -- both paths reload it via `ldy sidoff` -- and A
+        ; is dead until the `lda #$0f` / `lda VIWAVE,x` below.
+        lda tmpins
+        cmp #INS_RESTART2_SLOT
         bcc si_norestart2
         ldy sidoff
         lda #$0f
         sta SID+6,y               ; $D406,x = $0f (restart2 pre-step)
 si_norestart2:
-        ldy tmpins
-        cpy #INS_RESTART_SLOT
+        lda tmpins
+        cmp #INS_RESTART_SLOT
         bcc si_norestart1
         ldy sidoff
         lda #$00

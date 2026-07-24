@@ -4132,3 +4132,87 @@ The 40 still-missing retriggers are single-tick steps whose only row already
 carries a genuine fx-command change. Closing them needs a signalling channel
 that is **not** the per-row command byte — the harder half of E3c, tracked in
 `docs/ROADMAP.md`.
+
+## E3d (2026-07-24): SF2II's emulator inverts CPX/CPY carry — the hard-restart dispatch was branching backwards *in the editor only*
+
+Found while chasing a user ear-report ("the lead is missing some filters") on
+a build measuring **98.6% overall / 99.9% filter**. The filter data was
+exonerated first, then the real cause turned out not to be data at all.
+
+### The filter data is correct (ruled out first)
+
+Traced the **real** tune through VICE (`-sounddev dump`, 938k records over
+60 s) and compared against our simulator — necessary because our normal
+comparison is driver-vs-*simulator*, so a simulator error would be invisible:
+
+| routing | real tune | our simulator |
+|---|---|---|
+| voice 0 filtered | 6.15% | 6.17% |
+| voice 1 filtered | never | never |
+| voice 2 filtered | 81.41% | 81.5% |
+
+Resonance (`{0,8}`), mode (`{0,1}`) and cutoff all reproduce exactly — 0
+cutoff mismatches in 3000 frames. The simulator's filter model is sound.
+
+### The actual bug: SF2II's CPX/CPY
+
+SF2II plays the driver with its **own** 6510 emulator. Read from
+`SIDFactoryII/source/runtime/emulation/cpumos6510.cpp`:
+
+```cpp
+// CMP -- unsigned SHORT
+if (a == 0) { Z=1; C=1; }  else if ((a & 0x80)==0) { C=1; } else { C=0; }
+// CPX/CPY -- unsigned CHAR
+if (x == 0) { Z=1; C=0; }  else if ((x & 0x80)==0) { C=0; } else { C=1; }
+```
+
+- **CMP** is correct iff `-128 <= A-op <= 127`. **`cmp #$80` is safe for every
+  A** (max distance is exactly 128 on the low side and still resolves right) —
+  which is why the house rule "split on the high bit first" works.
+- **CPX/CPY** carry is **fully inverted** for small values *and cleared on
+  equality*. Z is correct; carry never is.
+
+Blackbird was the **only** native driver branching on carry after `cpx`/`cpy`
+— three sites, two of them `set_instr_v`'s hard-restart dispatch:
+
+```asm
+cpy #INS_RESTART2_SLOT   ; 9
+bcc si_norestart2
+cpy #INS_RESTART_SLOT    ; 5
+bcc si_norestart1
+```
+
+With slot numbers 0..31 against thresholds 5 and 9, the carry inverts across
+the **entire** range: in the real editor the `$D405=0`/`$D404=1` restart
+pre-steps fired for exactly the wrong instruments — the ones needing a hard
+restart skipped it, the ones that shouldn't retrigger got it. The old
+comment's claim that `cpy #0` "always fires the restart" also held only on
+real hardware; SF2II clears carry on equality, so slot 0 took the BCC and
+skipped it.
+
+Fixed by routing through `cmp` (`lda tmpins; cmp #...`, and `txa; cmp` for the
+tempo-schedule site where X must survive to index the table). A is dead at all
+three. Build-time asserts now pin both instrument thresholds and
+`TEMPO_SCHED_LEN` below `$80` so a future file cannot push the comparison back
+outside CMP's own correctness window.
+
+### This fix is NOT verifiable by our metrics — and that is expected
+
+py65, zig64 and the Python simulator all implement **correct** 6502, so
+`cpy`→`cmp` is a semantic no-op offline. Glyptodont measures **98.6% before
+and after**, and all 16 corpus files are byte-identical. That is the
+predicted result, *not* evidence the fix works — the defect only ever existed
+in SF2II's emulator. `pyscript/test_sf2ii_emulator_hazards.py` enforces the
+rule instead (6 tests: a lint over every driver `.asm`, plus pinned models of
+SF2II's actual CMP/CPX/CPY flag behaviour).
+
+### Spillover: Galway and ROMUZAK have an unfixed instance of the CMP bug
+
+Their `fp_dec` uses `cmp #$90; bcs fp_set` with no high-bit guard. Filter ADD
+rows carry byte0 in `[$00,$0F]` — more than 128 below `$90` — so SF2II sets
+carry the wrong way and executes **every filter ADD row as a SET row**. Their
+filter sweeps are broken in the editor while measuring clean offline.
+Blackbird had the identical bug until B24 widened its own threshold to
+`cmp #$80` for unrelated reasons and incidentally fixed it. Left unfixed here
+(each needs its own corpus re-verification; the encodings differ) and
+allowlisted in the lint so the debt stays visible — tracked as ROADMAP E3d.

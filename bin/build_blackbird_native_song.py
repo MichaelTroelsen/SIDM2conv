@@ -1659,6 +1659,15 @@ def gen_includes_song(segs, ad_sr, wave_programs, filter_programs,
         f.write(f"SEQPTRHI = ${mdp['seq_ptr_hi_addr']:04x}\n")
         f.write(f"TEMPO = {B.TEMPO}\n")
         f.write(f"TEMPO2 = {getattr(B, 'TEMPO2', None) or B.TEMPO}\n")
+        # do_row compares TEMPO_SCHED_IDX against this with CMP (not CPX --
+        # SF2II inverts CPX/CPY carry; see blackbird_driver.asm). SF2II's CMP
+        # is correct only while |A - operand| <= 127, and A is the index, so a
+        # schedule longer than 127 records would fall outside that window and
+        # mis-dispatch tempo changes in the editor while every offline metric
+        # still read clean.
+        assert tempo_sched_len < 0x80, (
+            f"TEMPO_SCHED_LEN={tempo_sched_len} >= 128: outside SF2II's CMP "
+            f"correctness window (see do_row in blackbird_driver.asm)")
         f.write(f"TEMPO_SCHED_LEN = {tempo_sched_len}\n")   # B3: row-indexed
                                                               # mid-song tempo changes
         f.write(f"INSTR = ${gen.instr_addr:04x}\n")
@@ -2351,6 +2360,17 @@ def build_range(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
         return (s + 1) & 0xFF
     prime_consts['INS_RESTART_SLOT'] = _slot_gate(ins_restart)
     prime_consts['INS_RESTART2_SLOT'] = _slot_gate(ins_restart2)
+    # The driver compares these with CMP, not CPY, because SF2II's 6510
+    # emulator inverts the carry flag for CPX/CPY (see set_instr_v's own
+    # comment). Its CMP is only correct while |A - operand| <= 127, and A
+    # here is a slot number, so a threshold at or above $80 would push the
+    # comparison back out of the correct window and silently mis-dispatch
+    # hard restarts in the real editor again. CAP_I (32) keeps slots far
+    # below that today; assert it rather than leave it implicit.
+    for _k in ('INS_RESTART_SLOT', 'INS_RESTART2_SLOT'):
+        assert prime_consts[_k] < 0x80, (
+            f"{_k}={prime_consts[_k]:#04x} >= $80: outside SF2II's CMP "
+            f"correctness window (see set_instr_v in blackbird_driver.asm)")
     _write_prime_consts(prime_consts)
 
     prg = B.assemble()

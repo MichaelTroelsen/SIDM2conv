@@ -220,6 +220,40 @@ Re-measure with **both** `audio-tightness.bat` and the register note-on count
 after any further work here — the register percentage barely moves even when
 the audible fix is large (the whole reason this defect survived to B25).
 
+### E3d. SF2II emulator flag bugs — ✅ Blackbird fixed 2026-07-24; Galway/ROMUZAK still exposed
+SF2II plays a native driver with its **own** 6510 emulator, which gets
+compare flags wrong. Every metric in this repo (py65, zig64, the Python
+simulator) implements *correct* 6502, so a driver that trips these bugs
+measures ~100% here and still plays wrong in the editor the user listens in.
+Read directly from `cpumos6510.cpp`, not inferred:
+
+- **CMP** (`unsigned short`): correct iff `-128 <= A-op <= 127`. **`cmp #$80`
+  is safe for every A** — which is why "split on the high bit first" works.
+- **CPX/CPY** (`unsigned char`): carry **fully inverted** for small values,
+  and **cleared on equality**. The Z flag is correct, so `cpx/cpy + beq/bne`
+  is fine; branching on carry after them never is.
+
+**Fixed (Blackbird)**: three carry-after-`cpx/cpy` sites, two of them
+`set_instr_v`'s **hard-restart dispatch** — with `cpy`, the real editor fired
+the `$D405`/`$D404` pre-steps for exactly the wrong instruments. Now `cmp`,
+with build-time asserts that the thresholds stay under `$80`. Offline
+fidelity is byte-identical (as expected — the change is a no-op under correct
+6502), so this fix is **not verifiable by our own metrics**; a
+`pyscript/test_sf2ii_emulator_hazards.py` lint enforces the rule instead.
+
+**Still exposed**: Galway's and ROMUZAK's `fp_dec` use `cmp #$90; bcs` with
+no high-bit guard. Filter ADD rows carry byte0 in `[$00,$0F]`, >128 below
+`$90`, so SF2II sets carry wrong and executes **every ADD row as a SET row** —
+their filter sweeps are broken in the editor. Blackbird had the identical bug
+until B24 widened its threshold to `cmp #$80` for unrelated reasons and
+incidentally fixed it. Not fixed here because each needs its own corpus
+re-verification (the encodings differ); allowlisted in the lint so the debt
+stays visible.
+
+**Open**: no automated way to verify an SF2II-only fix. The memory's
+methodology (rebuild SF2II from source with instrumentation) works but is
+manual; `bin/sf2ii_vs_real.py` is the closest existing tool.
+
 ### E4. Calibrate the remaining detector defaults
 `--loose-threshold-ms 40` and the detector params (hop/window/bands/freq
 range) are still **provisional guesses**, not tuned against a corpus.
@@ -247,6 +281,7 @@ something reproducible across files.
 | ~~11~~ | ~~Glyptodont's missing onsets~~ | E3b | ✅ **DONE 2026-07-24** — real; B25 covers only 39% of hard restarts |
 | ~~11~~ | ~~E3c(c) multi-tick arming~~ | E3c | ✅ **DONE 2026-07-24** — 52% of missing retriggers recovered, zero regressions |
 | 11 | **E3c(a): the remaining 40 retriggers** (needs a non-command-byte signal) | E3c | M — **highest remaining audible payoff** |
+| 11b | Galway/ROMUZAK `fp_dec` `cmp #$90` → SF2II executes filter ADD rows as SET rows | E3d | S per driver + corpus re-verify |
 | 12 | Patch WinVICE for per-voice mute (reuse `siddetector` build) | E1 | M |
 | 13 | SidWiz/Corrscope video in the tool stack (needs E1 + ffmpeg) | E2 | M |
 | 14 | Calibrate remaining tightness detector defaults | E4 | S-M |
