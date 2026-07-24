@@ -804,24 +804,35 @@ def _filter_set_row(mode, cutoff8, res_byte):
     cutoff is a flat 8-bit value with no fractional sub-byte, so there is
     nothing to put in F_CLO's nonzero bits).
 
-    ROUTING BUG FOUND (this session, via the register-trace comparison --
-    match rate was stuck at ~43% until this fix): fp_dec's `cmp #$90; bcs
-    fp_set` requires byte0's TOP NIBBLE to be >= 9, but fp_set's OWN mode
+    ROUTING BUG FOUND (earlier session, via the register-trace comparison --
+    match rate was stuck at ~43% until this fix): fp_dec's own byte0-top-
+    nibble classification requires bit7 set, but fp_set's OWN mode
     extraction (`lsr x4; and #7`) only keeps the LOW 3 bits of that nibble
     -- so byte0's top bit must be forced to 1 (top nibble = 8+mode) for the
     row to actually route to fp_set at all; a first version left bit7
-    clear (top nibble = mode, 0-7, always < 9), so EVERY 'SET' row this
-    translator emitted was silently decoded as an ADD row instead (0x98 in
-    the working romuzak/galway filter-table examples elsewhere in this repo
-    IS exactly 0x80 | (1<<4) | ... -- the existing examples already encode
-    it correctly; this translator originally didn't). mode=0 has NO valid
-    encoding in this row shape (top nibble would need to be 8, still < 9)
-    -- clamped up to 1 (documented residual, not expected to matter: mode
-    0 means "no SID filter type bit set", audibly close to leaving the
-    passband inert)."""
+    clear (top nibble = mode, 0-7), so EVERY 'SET' row this translator
+    emitted was silently decoded as an ADD row instead (0x98 in the working
+    romuzak/galway filter-table examples elsewhere in this repo IS exactly
+    0x80 | (1<<4) | ... -- the existing examples already encode it
+    correctly; this translator originally didn't).
+
+    mode=0 (B24): fp_dec's dispatch threshold was originally `cmp #$90`
+    (byte0 >= $90, i.e. top nibble >= 9), which mode=0's own natural
+    encoding (top nibble = 8, since 0x80|(0<<4)|cutoff_hi tops out at 0x8F)
+    falls just short of -- so this function used to clamp mode 0 up to 1
+    as a "close enough, not expected to matter" workaround. It DOES matter
+    when a filter program holds a genuine "filter off" state for an
+    extended stretch (confirmed on To_Die_For_II: a permanent hold-row at
+    mode 0 that the clamp left audibly and measurably wrong -- registers
+    stuck on lowpass -- for the rest of the song, dragging filter fidelity
+    to 79%). Fixed by widening fp_dec's own threshold to `cmp #$80` (bit7
+    alone) instead of `cmp #$90` -- ADD rows only ever produce byte0 in
+    [$00,$0F] (see _filter_add_row), so the whole [$10,$8F] range was
+    dead space before this change; lowering the SET threshold into that
+    dead space to admit mode=0's own natural [$80,$8F] encoding doesn't
+    touch how any EXISTING [$90,$FF] SET row or [$00,$0F] ADD row is
+    classified. No clamp needed any more."""
     m = mode & 0x07
-    if m == 0:
-        m = 1
     b0 = 0x80 | (m << 4) | ((cutoff8 >> 4) & 0x0F)
     b1 = (cutoff8 & 0x0F) << 4
     b2 = res_byte & 0xFF

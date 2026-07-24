@@ -606,8 +606,14 @@ fp_freeze:
         sta F_CNT
         jmp fp_apply
 fp_dec:
-        cmp #$90
-        bcs fp_set               ; byte0 >= $90 -> set-filter row
+        ; B24: was `cmp #$90` -- widened to admit mode=0's own natural
+        ; [$80,$8F] encoding (top nibble 8, no clamp needed any more; see
+        ; _filter_set_row's own docstring). ADD rows only ever produce
+        ; byte0 in [$00,$0F] (ASL of a 4-bit delta), so [$10,$8F] was dead
+        ; space before this change -- this doesn't reclassify anything
+        ; that was already emitted.
+        cmp #$80
+        bcs fp_set               ; byte0 >= $80 -> set-filter row
         ; --- 0X add-to-cutoff: F_AD = ((byte0&f):byte1) << 4 ---
         and #$0f
         sta tmpf+1               ; XXX hi nibble
