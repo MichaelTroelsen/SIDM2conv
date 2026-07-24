@@ -165,16 +165,45 @@ the failure mode.
 offset **+0.00 frames**, median jitter **0.0 ms**, only **7.4%** loose
 (was 60.7%). The matched onsets are essentially perfectly timed.
 
-### E3b. The real Glyptodont discrepancy: onset presence, not onset timing
-With alignment fixed, what remains is **122/195 matched (62.6%), 73 missing
-(37.4%), 55 extra (31.1%)**. The driver is not mistiming drum hits — it is
-**dropping and adding them**. That is a far better lead for the original
-"drums don't sound tight" report than any timing number, and it is
-un-investigated. First question to settle: how much of it is genuine
-note-level divergence versus onset-detector sensitivity differing between two
-renders with different amplitude/spectral character (195 vs 177 detected
-onsets before any matching). Cross-check a sample against the register trace,
-where a dropped note is unambiguous.
+### E3b. ✅ RESOLVED 2026-07-24 — real, and it is B25's own coverage gap
+The audio layer's missing onsets were **not** detector artifacts. Register
+trace, first 20 s: **162 original note-ons (gate 0→1) vs 79 in the driver —
+83 missing (51%), 0 extra**, every matched one at **+0.0 frames**. Pure
+omission, exact timing.
+
+Mechanism, identical at every missing event: the original drops the gate and
+zeroes SR for exactly 2 frames before the note commits (an envelope
+**retrigger**); the driver holds the gate high, so the envelope never
+re-enters attack and the note never strikes. That is the `prepare2`
+pre-restart blip **B25 already models** — B25's safety gates just exclude
+most of the notes that need it.
+
+Instrumenting the marking pass, whole song: **1244 hard-restart candidates,
+only 491 armed (39%)**. Skipped: **483 (39%) by the fx-command-slot collision
+gate (a)**, **270 (22%) by the multi-tick gate (c)**. This **corrects a
+standing assumption** — B25's write-up and the prior handoff both named the
+multi-tick gate as the next step, but the command-slot collision is the
+larger blocker. Full detail in `docs/players/BLACKBIRD.md`'s E3b section.
+
+Invisible to the register score because a missed retrigger perturbs 2
+registers for 2 frames ≈ 0.4% of the comparison — hence 97.5% overall while
+half the percussive attacks fail to strike. Also explains why `waveform` and
+`adsr` have been the weakest categories on every Blackbird file.
+
+### E3c. Close B25's coverage gap (the actual drums fix)
+Two independent blockers, now quantified:
+- **(a) fx-command-slot collision — 483 notes (39%).** A row carries exactly
+  one command byte and `RESTART_ARM_FX` cannot share it with a real
+  fx-program change. Needs a signalling channel that is not the per-row
+  command byte — the larger win and the harder design.
+- **(c) multi-tick preceding step — 270 notes (22%).** Tractable as
+  previously scoped: emit the sentinel on the **last** of a multi-tick step's
+  expanded rows instead of the first (`steps_to_rows_native`). B25's own
+  notes already sketch this.
+
+Do (c) first (bounded, already designed), then (a). Re-measure with
+`audio-tightness.bat` **and** the register note-on count after each — the
+register percentage alone will barely move even if the audible fix is total.
 
 ### E4. Calibrate the remaining detector defaults
 `--loose-threshold-ms 40` and the detector params (hop/window/bands/freq
@@ -200,7 +229,8 @@ something reproducible across files.
 | 9 | bin/ archive sweep + re-toolkit | A5/D4 | S |
 | 10 | Hubbard kickoff | D3 | L |
 | ~~11~~ | ~~Explain Glyptodont's +2.5-frame offset~~ | E3 | ✅ **DONE 2026-07-24** — artifact, not real |
-| 11 | Glyptodont's 73 missing / 55 extra onsets (the real lead) | E3b | M |
+| ~~11~~ | ~~Glyptodont's missing onsets~~ | E3b | ✅ **DONE 2026-07-24** — real; B25 covers only 39% of hard restarts |
+| 11 | **Close B25's coverage gap — the actual drums fix** ((c) then (a)) | E3c | M — **highest audible payoff in the Blackbird arc** |
 | 12 | Patch WinVICE for per-voice mute (reuse `siddetector` build) | E1 | M |
 | 13 | SidWiz/Corrscope video in the tool stack (needs E1 + ffmpeg) | E2 | M |
 | 14 | Calibrate remaining tightness detector defaults | E4 | S-M |

@@ -3974,3 +3974,82 @@ spectral character. The register trace settles it unambiguously per event —
 cross-check a sample of "missing" timestamps against `row_state`/the frame
 trace to confirm a note is genuinely absent rather than merely quieter.
 Tracked as **E3b** in `docs/ROADMAP.md`.
+
+## E3b RESOLVED (2026-07-24): the drums problem is real, measured, and is B25's own coverage gap — only 39% of hard restarts get their envelope retrigger
+
+The audio layer's "73 missing onsets" was **not** a detector artifact. The
+register trace — the same validated simulator-vs-driver trace the 97.5%
+score is computed from — settles it, and identifies the exact mechanism.
+
+### Register-level note-ons (gate bit 0→1), first 20 s
+
+| voice | original | driver | missing | extra |
+|---|---|---|---|---|
+| 0 | 74 | 33 | 41 | 0 |
+| 1 | 77 | 44 | 33 | 0 |
+| 2 | 11 | 2 | 9 | 0 |
+| **total** | **162** | **79** | **83 (51%)** | **0** |
+
+Every *matched* note-on sits at **median offset +0.0 frames** — timing is
+exact. And **zero extra**: the driver never invents a retrigger, it only
+omits them. So this is a pure omission defect, not a timing or spurious-event
+defect.
+
+### The mechanism, from the trace itself
+
+Every missing event has the identical shape (voice 0 @ frame 125, voice 0 @
+165, voice 1 @ 95 — all the same):
+
+```
+frame   sim ctrl  drv ctrl   sim gate  drv gate   sim SR  drv SR
+  122     0x11      0x11         1         1       0x92    0x92
+  123     0x10      0x11         0  <---    1       0x00    0x92   <-- blip
+  124     0x10      0x11         0  <---    1       0x00    0x92   <-- blip
+  125     0x01      0x01         1         1       0x92    0x92   <-- commit
+```
+
+The original drops the gate and zeroes SR for **exactly 2 frames** before the
+note commits, then raises the gate — a genuine envelope **retrigger**. The
+driver holds the gate high throughout, so on real hardware the envelope
+generator never re-enters attack: the note continues at its existing sustain
+level instead of striking. That is exactly what "the drums are not tight"
+sounds like, and it is precisely the `prepare2` pre-restart SR/gate blip that
+**B25 was built to model** — 2 frames early, matching B25's own `zp_tcnt==2`
+mechanism.
+
+### Why B25 misses them: its own safety gates, quantified for the first time
+
+B25 shipped with three deliberately conservative gates, each documented as
+"leaves a note unfixed rather than risk a wrong-timed blip". Their *audible*
+cost was never measured. Instrumenting the marking pass over the whole song:
+
+| voice | hard-restart candidates | armed | skipped: fx-command collision (a) | skipped: multi-tick (c) |
+|---|---|---|---|---|
+| 0 | 797 | 244 | 365 | 188 |
+| 1 | 372 | 226 | 102 | 44 |
+| 2 | 75 | 21 | 16 | 38 |
+| **total** | **1244** | **491 (39%)** | **483 (39%)** | **270 (22%)** |
+
+**Only 39% of hard restarts get the blip.** This corrects an assumption
+carried since B25: the dominant blocker is **not** the multi-tick gate (c)
+that the B25 write-up and the prior handoff both flagged as the next
+step — it is gate **(a)**, the fx-command-slot collision (39% vs 22%). A row
+carries exactly one command byte, and `RESTART_ARM_FX` cannot share it with a
+genuine fx-program change. Fixing multi-tick alone recovers at most ~22% of
+the gap; the command-slot conflict is both larger and architecturally harder,
+needing a signalling channel that is not the single per-row command byte.
+
+### Why the register score never showed this
+
+A missed retrigger perturbs 2 registers for 2 frames. Across 83 events that
+is ~332 register-frames out of 3000 frames × 25 registers ≈ **0.4%** — which
+is why the file reads 97.5% overall while half its percussive attacks do not
+strike. It also explains why `waveform` (92.5%) and `adsr` (94.1%) have been
+the two weakest categories on **every** Blackbird file this whole arc: those
+are exactly the registers a missed hard restart disturbs.
+
+**Methodological point worth keeping**: the register percentage was never
+wrong, it was answering a different question. A defect concentrated in a few
+frames per note is audibly dominant and numerically invisible. The ear found
+it first; the audio tool localised it; the register trace then identified the
+exact mechanism and quantified the fix's headroom.
