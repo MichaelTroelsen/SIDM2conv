@@ -1101,6 +1101,32 @@ pr_setprog:
         ; restart_arm_step below for the full mechanism.
         cmp #RESTART_ARM_FX
         beq pr_arm_restart
+        ; E3f: fx indices in [COMBO_BASE, RESTART_ARM_FX) are COMBO codes --
+        ; "select this fx program AND arm the pre-restart blip", for the case
+        ; B25's gate (a) had to skip: a single-tick row needs both a real
+        ; fx-command change and the arm sentinel, but a row has exactly ONE
+        ; command-byte slot. Measured across the corpus BEFORE building this:
+        ; 2626 hard-restart events were being left unarmed by that collision
+        ; (Elvendance 641, Thus_Spoke 592 -- far more than Glyptodont's 55).
+        ;
+        ; No translation table is needed: the builder ALIASES FXSTART/FXRST at
+        ; the combo index to the real program's own two bytes (they are fixed
+        ; 64-entry, fx-indexed tables with the slots above nfx already unused),
+        ; so the ordinary path below selects the correct program with the combo
+        ; index used verbatim as Y. This branch only has to set the arm flag.
+        ;
+        ; SF2II-safe: this is CMP (not CPX/CPY, whose carry SF2II inverts), and
+        ; both A and COMBO_BASE are < 64, so |A - operand| <= 63 sits well
+        ; inside SF2II's own +/-127 CMP correctness window -- see
+        ; pyscript/test_sf2ii_emulator_hazards.py and the E3d notes.
+        cmp #COMBO_BASE
+        bcc pr_plain_fx
+        tay                       ; stash the combo index (Y is free scratch
+                                  ; here -- the `tay` below re-establishes it)
+        lda #$01
+        sta RESTART_ARM,x
+        tya
+pr_plain_fx:
         tay
         lda FXSTART,y
         sta VIFXS,x

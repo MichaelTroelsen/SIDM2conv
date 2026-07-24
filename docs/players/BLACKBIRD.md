@@ -4441,3 +4441,116 @@ idea E3c(a) measured as *feasible but pointless* when only 6 collisions
 remained; at 55, concentrated on the lead voice, it is worth reconsidering.
 Glyptodont uses 48 fx programs, leaving codes 48-62 (15 spare) below
 `RESTART_ARM_FX = 63`.
+
+## E3f SHIPPED (2026-07-24): combo fx indices close gate (a) — arming reaches 100% on every corpus file
+
+E3e left one gate standing: a single-tick predecessor that already carries a
+real fx-command change cannot also carry the `RESTART_ARM_FX` sentinel,
+because a row has exactly **one** command-byte slot. E3c(a) had measured that
+collision at 6 events song-wide and judged a fix "feasible but pointless".
+
+**That judgement was made on the pre-E3e denominator and did not survive
+re-measurement.** Once the implicit-repeat class is counted, gate (a) blocks
+**2626 events across the corpus** — and Glyptodont's 55 turned out to be among
+the *mildest* cases:
+
+| file | events | blocked | arming coverage |
+|---|---|---|---|
+| Elvendance | 1897 | **641** | **66.2%** |
+| Thus_Spoke_the_PC_Speaker | 2016 | **592** | **70.6%** |
+| Crank_Crank_Airwolf | 573 | 116 | 79.8% |
+| Quintessence | 2216 | 366 | 83.5% |
+| Glyptodont | 2253 | 55 | 97.6% |
+
+### The encoding — and why it needs no translation table
+
+fx indices in `[COMBO_BASE, RESTART_ARM_FX)` mean *"select this fx program
+**and** arm the pre-restart blip"*. `COMBO_BASE = nfx_song + 1`: fx 0 means
+"keep the running program" and `1..nfx_song` are the real programs, so
+everything above is genuinely unused.
+
+The trick that keeps this cheap: `FXSTART`/`FXRST` are already **fixed
+64-entry, fx-indexed** tables whose slots above `nfx` were being zero-filled.
+The builder simply **aliases** each combo index onto its real program's own two
+bytes, so `pr_setprog` uses the combo index *verbatim* as `Y` and the ordinary
+path selects the correct program. The driver branch only has to set the arm
+flag — no lookup table, no new memory, ~8 bytes of ASM:
+
+```asm
+        cmp #COMBO_BASE
+        bcc pr_plain_fx
+        tay                       ; Y is free scratch; the tay below re-establishes it
+        lda #$01
+        sta RESTART_ARM,x
+        tya
+pr_plain_fx:
+        tay
+        lda FXSTART,y
+```
+
+**SF2II-safe by the house rule**: this is `CMP` (not `CPX`/`CPY`, whose carry
+SF2II inverts), and both `A` and `COMBO_BASE` are `< 64`, so `|A - operand|`
+never exceeds 63 — well inside SF2II's ±127 CMP correctness window. The E3d
+hazard lint passes unchanged (6/6).
+
+Codes are allocated **ranked by how many events each program would recover**,
+so a song that ever exhausted the spare range would spend its codes where they
+buy most; the marking pass refuses to arm a colliding step whose program missed
+out, degrading to exactly pre-E3f behaviour rather than mis-encoding. Measured
+first across the whole corpus: **every file fits**, worst case 25 distinct
+colliding programs against 26 spare codes (`Thus_Spoke_the_PC_Speaker`).
+
+### Result: arming coverage is now 100% on every file
+
+| file | before | after |
+|---|---|---|
+| Elvendance | 66.2% | **100.0%** |
+| Thus_Spoke_the_PC_Speaker | 70.6% | **100.0%** |
+| Crank_Crank_Airwolf | 79.8% | **100.0%** |
+| Quintessence | 83.5% | **100.0%** |
+| Euclid_Was_Here | 88.5% | **100.0%** |
+| Dithered_Island | 89.1% | **100.0%** |
+| Toy_Rocket | 91.5% | **100.0%** |
+| *(all 16)* | **89.4%** | **100.0%** |
+
+**Glyptodont note-ons: 162/162, 0 missing, 0 spurious — 100.0% retrigger
+coverage.** The full arc this session: **79 → 122 → 157 → 162**.
+
+### Corpus: zero regressions, 8 files at exactly 100.0%
+
+| file | E3c | E3e | **E3f** |
+|---|---|---|---|
+| Fargo | 99.8 | 99.9 | 99.9 |
+| Glyptodont | 98.6 | 99.7 | **99.8** |
+| Dishwasher_Groove | 99.3 | 100.0 | **100.0** |
+| Dithered_Island | 98.7 | 99.6 | **99.9** |
+| Elvendance | 98.2 | 99.0 | **100.0** |
+| Euclid_Was_Here | 97.8 | 99.4 | **99.9** |
+| Into_the_Unknown | 97.4 | 98.1 | 98.1 |
+| Maple_Leaf_Rag | 97.3 | 100.0 | **100.0** |
+| Revolutions_Delivered | 97.8 | 99.0 | 99.0 |
+| Thus_Spoke_the_PC_Speaker | 97.8 | 98.9 | **100.0** |
+| Toy_Rocket | 97.4 | 99.7 | **100.0** |
+| Crank_Crank_Airwolf | 97.7 | 99.7 | **100.0** |
+| Trinket | 97.2 | 100.0 | **100.0** |
+| To_Die_For_II | 93.4 | 94.1 | 94.2 |
+| Fugue_on_a_Theme_by_D_M_Hanlon | 90.3 | 91.4 | 91.5 |
+| Quintessence | 99.0 | 100.0 | **100.0** |
+
+**Corpus mean 97.36 → 98.66 (E3e) → 98.89 (E3f).** waveform is now exactly
+100.0 on **14 of 16** files and adsr on **15 of 16**. Part counts unchanged
+everywhere. Size cost over E3e: **+0.3%** (383,176 vs 382,152 bytes) — combo
+indices replace a byte rather than adding one.
+
+### The envelope-retrigger arc is closed; what is left is elsewhere
+
+Only two files remain below 98%, and neither is an envelope problem any more:
+
+- **`Fugue_on_a_Theme_by_D_M_Hanlon` 91.5%** — adsr is now **100.0**, so its
+  residual is squarely **waveform (76.7%)**, the clear corpus worst and by a
+  wide margin. This is the next lever.
+- **`To_Die_For_II` 94.2%** — its own separate later-frame residual
+  (pulse/filter, frame ~1600+), open since before this arc.
+
+`Into_the_Unknown` (98.1) and `Revolutions_Delivered` (99.0) are both at
+100.0 waveform/adsr, so their remainders are freq/filter, not retriggers.

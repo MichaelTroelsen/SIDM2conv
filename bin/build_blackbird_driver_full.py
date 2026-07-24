@@ -174,6 +174,11 @@ def gen_includes():
         # assembler; nothing reads them (no fx program is ever selected).
         f.write(f"FXSTART = ${base + 256:04x}\n")
         f.write(f"FXRST = ${base + 320:04x}\n")
+        # E3f: the skeleton has no song and therefore no fx programs, so no
+        # combo index is ever emitted into a sequence. 63 (== RESTART_ARM_FX)
+        # makes pr_setprog's combo compare unreachable rather than merely
+        # unused -- the sentinel's own `beq` already claimed that value.
+        f.write("COMBO_BASE = 63\n")
         f.write(f"FXTAB = ${base + 384:04x}\n")
         f.write(f"INSTR_PUL_LO = ${base + 640:04x}\n")
         f.write(f"INSTR_PUL_HI = ${base + 704:04x}\n")

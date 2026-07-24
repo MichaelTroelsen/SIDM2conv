@@ -92,6 +92,16 @@ NFM = 64                 # $c0-$ff command space (index = byte & 0x3f)
 # RESTART_ARM_FX constant exactly. Real fx-program indices must never reach
 # this value (asserted where nfx_song is computed in main()).
 RESTART_ARM_FX = 63
+# E3f: fx indices in [COMBO_BASE, RESTART_ARM_FX) mean "select this fx program
+# AND arm the pre-restart blip" -- the one-command-byte-per-row collision that
+# B25's gate (a) could only ever skip. Populated once per song by main()
+# (raw fx index -> combo index); read by steps_to_rows_native when emitting an
+# armed row that also carries a real fx change, and by the FXSTART/FXRST
+# emitter, which ALIASES each combo index to its real program's own bytes so
+# the driver needs no translation table. Module-level because it is a per-song
+# constant threaded through three call layers (build_song -> build_range ->
+# steps_to_rows_native) that otherwise pass only per-window data.
+_COMBO_CODE = {}
 # Stage A's user-verified pitch calibration: SF2 note = blackbird note + 9.
 # B10 made this load-bearing in the DRIVER too (pr_note has to undo it to
 # recover Blackbird's own note index before computing BASEPITCH = note*4),
@@ -1237,14 +1247,22 @@ def steps_to_rows_native(steps):
         arm_last = s.restart_arm and n > 1
         if arm_first:
             # Deliberately does NOT touch cur_cmd, so the NEXT step's own
-            # cmd-change tracking is unaffected by this row's sentinel.
-            # main()'s marking pass only arms a single-tick step when
-            # cmd==cur_cmd already -- the assert catches a future caller that
-            # stops upholding that, rather than silently dropping a real fx
-            # command.
-            assert cmdcol is None, (
-                "B25: restart_arm collided with a real fx-command change")
-            cmdcol = RESTART_ARM_FX
+            # cmd-change tracking is unaffected by this row's sentinel (and,
+            # in the combo case below, cur_cmd already holds the REAL fx index
+            # -- the combo index is an encoding of this row's command byte, not
+            # a new running program).
+            if cmdcol is None:
+                cmdcol = RESTART_ARM_FX
+            else:
+                # E3f: this row needs BOTH a real fx change and the arm signal
+                # but has one command slot. main() allocated a combo index for
+                # exactly this fx program; it never arms a colliding step whose
+                # program missed out on one, so a miss here is a real bug.
+                cc = _COMBO_CODE.get(cmdcol)
+                assert cc is not None, (
+                    f"E3f: armed single-tick step carries fx-command change "
+                    f"{cmdcol} with no combo index allocated (see main())")
+                cmdcol = cc
 
         def _tail(note_val, count):
             """The step's n-1 trailing rows, with the sentinel on the LAST
@@ -1647,6 +1665,15 @@ def gen_includes_song(segs, ad_sr, wave_programs, filter_programs,
         pa = instr_pulse_addr[i] if i < 32 and instr_pulse_addr[i] is not None             else pulsetab_addr
         edit[(ipulse_lo_addr - B.EDIT_BASE) + i] = pa & 0xFF
         edit[(ipulse_hi_addr - B.EDIT_BASE) + i] = (pa >> 8) & 0xFF
+    # E3f: alias each combo index onto its real fx program's own two bytes.
+    # This is what lets the driver skip a translation table entirely -- it uses
+    # the combo index verbatim as Y into these same tables (see pr_setprog).
+    for real_fx, code in _COMBO_CODE.items():
+        assert code < NFM, f"E3f combo index {code} outside the {NFM}-slot table"
+        edit[(fxstart_addr - B.EDIT_BASE) + code] = \
+            edit[(fxstart_addr - B.EDIT_BASE) + real_fx]
+        edit[(fxrst_addr - B.EDIT_BASE) + code] = \
+            edit[(fxrst_addr - B.EDIT_BASE) + real_fx]
     edit[fxtab_addr - B.EDIT_BASE:fxtab_addr - B.EDIT_BASE + FXTAB_LEN] = fxtab
     edit[pulsetab_addr - B.EDIT_BASE:pulsetab_addr - B.EDIT_BASE + len(pulsetab)] = pulsetab
 
@@ -1680,6 +1707,17 @@ def gen_includes_song(segs, ad_sr, wave_programs, filter_programs,
         f.write(f"FXTAB = ${fxtab_addr:04x}\n")
         f.write(f"FXSTART = ${fxstart_addr:04x}\n")
         f.write(f"FXRST = ${fxrst_addr:04x}\n")
+        # E3f: first fx index that means "select this program AND arm the
+        # pre-restart blip". fx 0 = "keep the running program" and 1..nfx are
+        # the real programs, so the spare range starts one past nfx. When a
+        # song allocates no combo indices this still emits a valid threshold
+        # (nothing below it, nothing at or above it but the sentinel), so
+        # pr_setprog's compare is correct with no special case.
+        combo_base = len(fx_start) + 1
+        assert combo_base <= RESTART_ARM_FX, (
+            f"COMBO_BASE={combo_base} collides with RESTART_ARM_FX="
+            f"{RESTART_ARM_FX} (see E3f)")
+        f.write(f"COMBO_BASE = {combo_base}\n")
         f.write(f"NOTE_OFS = {SF2_NOTE_OFS}\n")   # Stage A's pitch calibration,
                                                    # emitted from the SAME constant
                                                    # steps_to_rows_native applies
@@ -2832,36 +2870,80 @@ def main():
     # never introduces a set_instr_v call whose matching blip got skipped.
     min_tempo_song = min([opening_pair[0], opening_pair[1]] +
                           [t for rec in full_schedule for t in (rec[1], rec[2])])
+
+    def _eff_instr(steps):
+        """Per step: the instrument it re-selects on hardware, or None.
+
+        `currins` mirrors prepare2's own vs.currins, which advances ONLY on an
+        explicit select byte. 0-based here (step.instrument == the sim's
+        1-based currins - 1, so the sim's `cmp_carry(y, ins_restart+1)` is
+        exactly this 0-based `>= ins_restart`). Computed over the UNTOUCHED
+        steps so the marking pass's own materialization cannot feed back into
+        the sticky value."""
+        eff = [None] * len(steps)
+        currins = None
+        for i, s in enumerate(steps):
+            if s.instrument is not None:
+                currins = s.instrument
+                eff[i] = currins
+            elif s.kind == 'note' and s.note is not None and not s.tie:
+                # prepare2's got_note path. A TIED note is excluded: its legato
+                # $ff byte is what prepare2 consumes that tick, so the noteback
+                # path is never reached (pendins=$ff, which execute() routes to
+                # its no-register-effect branch).
+                eff[i] = currins
+        return eff
+
+    def _cmd_changes(steps):
+        out, cur = [], None
+        for s in steps:
+            cmd = s.fx & 0x3F
+            out.append(cmd != cur)
+            cur = cmd
+        return out
+
+    # E3f: allocate a combo fx index for each fx program that gate (a) would
+    # otherwise make unarmable (single-tick predecessor already carrying a real
+    # fx-command change -- one command slot, two signals). Must run BEFORE the
+    # per-voice marking loop, since the index space is song-wide.
+    #
+    # Spare space is [nfx_song+1, RESTART_ARM_FX): fx 0 means "keep the running
+    # program" and 1..nfx_song are the real ones, so nfx_song+1 upward is
+    # genuinely unused in the fixed 64-entry FXSTART/FXRST tables. Programs are
+    # ranked by how many events each would recover, so if a song ever did
+    # exhaust the range the codes go where they buy the most (measured across
+    # the whole corpus first: every file fits, worst case 25 distinct colliding
+    # programs against 26 spare codes on Thus_Spoke_the_PC_Speaker).
+    _COMBO_CODE.clear()
+    combo_code = _COMBO_CODE
+    if min_tempo_song >= 3:
+        collide_counts = {}
+        for v in range(3):
+            steps = steps_per_voice[v]
+            eff = _eff_instr(steps)
+            chg = _cmd_changes(steps)
+            for i in range(1, len(steps)):
+                if eff[i] is None or eff[i] < ins_restart:
+                    continue
+                prev = steps[i - 1]
+                if max(1, prev.ticks) == 1 and chg[i - 1]:
+                    f = prev.fx & 0x3F
+                    collide_counts[f] = collide_counts.get(f, 0) + 1
+        spare = RESTART_ARM_FX - (nfx_song + 1)
+        ranked = sorted(collide_counts, key=lambda f: (-collide_counts[f], f))
+        for rank, f in enumerate(ranked[:max(0, spare)]):
+            combo_code[f] = nfx_song + 1 + rank
+        if len(ranked) > max(0, spare):
+            dropped = sum(collide_counts[f] for f in ranked[spare:])
+            print(f"  E3f: {len(ranked) - spare} fx program(s) had no spare "
+                  f"combo index ({dropped} event(s) left unarmed, as pre-E3f)")
+
     if min_tempo_song >= 3:
         for v in range(3):
             steps = steps_per_voice[v]
-            cur_cmd = None
-            cmd_changes = []
-            for s in steps:
-                cmd = s.fx & 0x3F
-                cmd_changes.append(cmd != cur_cmd)
-                cur_cmd = cmd
+            cmd_changes = _cmd_changes(steps)
 
-            # Pass 1: the EFFECTIVE instrument each step re-selects on
-            # hardware, and whether it re-selects at all. Computed up front
-            # over the untouched steps so pass 2's own materialization cannot
-            # feed back into the sticky value. `currins` mirrors prepare2's
-            # vs.currins, which advances ONLY on an explicit select byte --
-            # 0-based here (step.instrument == the sim's 1-based currins - 1;
-            # the sim's `cmp_carry(y, ins_restart+1)` is exactly this
-            # 0-based `>= ins_restart`).
-            eff = [None] * len(steps)
-            currins = None
-            for i, s in enumerate(steps):
-                if s.instrument is not None:
-                    currins = s.instrument
-                    eff[i] = currins
-                elif s.kind == 'note' and s.note is not None and not s.tie:
-                    # prepare2's got_note path. A TIED note is excluded: its
-                    # legato $ff byte is what prepare2 consumes that tick, so
-                    # the noteback path is never reached (pendins=$ff, which
-                    # execute() routes to its no-register-effect branch).
-                    eff[i] = currins
+            eff = _eff_instr(steps)
 
             for i in range(1, len(steps)):
                 s = steps[i]
@@ -2876,10 +2958,18 @@ def main():
                     # collision cannot occur here and is not checked.
                     pass
                 elif not cmd_changes[i - 1]:
-                    # Single-tick: sentinel and any real fx change would share
-                    # the step's only row, so a collision still forces a skip.
+                    # Single-tick with no fx change: the sentinel has the
+                    # step's only command slot to itself.
+                    pass
+                elif (prev.fx & 0x3F) in combo_code:
+                    # E3f: single-tick step that DOES change fx -- both signals
+                    # want the one command slot. Emit the combo index that
+                    # encodes them together (steps_to_rows_native).
                     pass
                 else:
+                    # No combo index available for this program (only possible
+                    # when the song exhausted the spare fx range); leave the
+                    # note unfixed exactly as B25 did.
                     continue
                 if s.instrument is None:
                     s.instrument = eff[i]
