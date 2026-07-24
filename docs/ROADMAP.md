@@ -191,19 +191,34 @@ half the percussive attacks fail to strike. Also explains why `waveform` and
 `adsr` have been the weakest categories on every Blackbird file.
 
 ### E3c. Close B25's coverage gap (the actual drums fix)
-Two independent blockers, now quantified:
-- **(a) fx-command-slot collision — 483 notes (39%).** A row carries exactly
-  one command byte and `RESTART_ARM_FX` cannot share it with a real
-  fx-program change. Needs a signalling channel that is not the per-row
-  command byte — the larger win and the harder design.
-- **(c) multi-tick preceding step — 270 notes (22%).** Tractable as
-  previously scoped: emit the sentinel on the **last** of a multi-tick step's
-  expanded rows instead of the first (`steps_to_rows_native`). B25's own
-  notes already sketch this.
 
-Do (c) first (bounded, already designed), then (a). Re-measure with
-`audio-tightness.bat` **and** the register note-on count after each — the
-register percentage alone will barely move even if the audible fix is total.
+**(c) multi-tick preceding step — ✅ SHIPPED 2026-07-24.** The sentinel now
+goes on the **last** of a multi-tick step's expanded rows (`_tail()` in
+`steps_to_rows_native`), so `zp_tcnt==2` fires 2 frames before the *next
+step* commits rather than before the same step's own sustain row. Recovered
+**43 of 83 missing retriggers (52%)** on Glyptodont — register note-ons
+79/162 → **122/162**, overall 97.5% → **98.6%**, waveform 92.5% → **96.5%**,
+adsr 94.1% → **96.5%**, and **still zero spurious retriggers**. All 16 corpus
+files improved or unchanged (14 improved, Fargo canary 99.7 → 99.8), verified
+by `git stash` A/B with part counts confirmed identical. Beat its own 22%
+forecast because for `n > 1` the sentinel and any real fx change occupy
+different rows, so gate (a) cannot apply — multi-tick-with-collision
+candidates came along for free. Detail in `docs/players/BLACKBIRD.md`'s
+E3c(c) section.
+
+**(a) fx-command-slot collision — still open, 40 retriggers on Glyptodont.**
+The remainder are single-tick steps whose only row already carries a genuine
+fx-command change. A row has exactly one command byte, so this needs a
+signalling channel that is **not** that byte. Options not yet evaluated:
+a second sentinel encoded in an unused instrument-column value; widening the
+row format (risks the real SF2II editor's parser — the constraint that shaped
+B25's whole design); or splitting the step so the sentinel gets its own row
+(costs sequence space and changes timing). The larger remaining win and the
+harder design.
+
+Re-measure with **both** `audio-tightness.bat` and the register note-on count
+after any further work here — the register percentage barely moves even when
+the audible fix is large (the whole reason this defect survived to B25).
 
 ### E4. Calibrate the remaining detector defaults
 `--loose-threshold-ms 40` and the detector params (hop/window/bands/freq
@@ -230,7 +245,8 @@ something reproducible across files.
 | 10 | Hubbard kickoff | D3 | L |
 | ~~11~~ | ~~Explain Glyptodont's +2.5-frame offset~~ | E3 | ✅ **DONE 2026-07-24** — artifact, not real |
 | ~~11~~ | ~~Glyptodont's missing onsets~~ | E3b | ✅ **DONE 2026-07-24** — real; B25 covers only 39% of hard restarts |
-| 11 | **Close B25's coverage gap — the actual drums fix** ((c) then (a)) | E3c | M — **highest audible payoff in the Blackbird arc** |
+| ~~11~~ | ~~E3c(c) multi-tick arming~~ | E3c | ✅ **DONE 2026-07-24** — 52% of missing retriggers recovered, zero regressions |
+| 11 | **E3c(a): the remaining 40 retriggers** (needs a non-command-byte signal) | E3c | M — **highest remaining audible payoff** |
 | 12 | Patch WinVICE for per-voice mute (reuse `siddetector` build) | E1 | M |
 | 13 | SidWiz/Corrscope video in the tool stack (needs E1 + ffmpeg) | E2 | M |
 | 14 | Calibrate remaining tightness detector defaults | E4 | S-M |

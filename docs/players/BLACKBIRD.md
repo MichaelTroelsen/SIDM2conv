@@ -4053,3 +4053,82 @@ wrong, it was answering a different question. A defect concentrated in a few
 frames per note is audibly dominant and numerically invisible. The ear found
 it first; the audio tool localised it; the register trace then identified the
 exact mechanism and quantified the fix's headroom.
+
+## E3c(c) SHIPPED (2026-07-24): arm the LAST row of a multi-tick step — 43 of 83 missing retriggers recovered, all 16 files improved or unchanged
+
+E3b established that the audible drums defect is B25 arming only 39% of hard
+restarts. This closes the multi-tick half of that gap.
+
+### The fix
+
+`restart_arm_step` fires the blip when `zp_tcnt==2` — 2 real frames before the
+row **following** the armed one commits. So the sentinel must sit on the row
+whose successor is the *next step's* row:
+
+- `n == 1` → the step's only row (its successor **is** the next step). This is
+  what B25 already did.
+- `n > 1` → the step's **LAST** expanded row. B25 armed row 0, which fired the
+  blip 2 frames before that step's *own* second row — a bare sustain row with
+  no note-on to restore the blipped SR/gate — and a live CPU trace showed the
+  voice never recovering (Glyptodont regressed 97.1%→96.5%). B25's response
+  was to refuse to arm multi-tick steps at all; this targets the right row
+  instead.
+
+`steps_to_rows_native` now emits the trailing `n-1` rows through a `_tail()`
+helper that places `RESTART_ARM_FX` on the last of them when armed.
+
+### An unplanned second win: gate (a) does not apply to multi-tick steps
+
+For `n > 1` the sentinel lands on the step's **last** row while any real
+fx-command change is emitted on its **first** — different rows, so the
+one-command-byte-per-row collision that forces gate (a) cannot occur. The
+marking pass therefore arms multi-tick steps *regardless* of `cmd_changes`.
+
+This is why the recovery (43 of 83 missing retriggers, 52%) exceeded what the
+multi-tick count alone predicted (270/1244 = 22%): it also picked up the
+multi-tick-**with**-collision candidates that both gates were blocking.
+
+### Measured on Glyptodont (20 s window, register note-ons)
+
+| | before | after |
+|---|---|---|
+| note-ons reproduced | 79 / 162 (48.8%) | **122 / 162 (75.3%)** |
+| missing retriggers | 83 | **40** |
+| **spurious** retriggers | 0 | **0** |
+| overall | 97.5% | **98.6%** |
+| waveform | 92.5% | **96.5%** |
+| adsr | 94.1% | **96.5%** |
+
+Zero extra retriggers is the important safety result: the coverage gain is not
+bought by firing blips where they do not belong.
+
+### Full 16-file corpus: zero regressions, 14 improved, 2 unchanged
+
+| file | before | after | | file | before | after |
+|---|---|---|---|---|---|---|
+| Fargo (canary) | 99.7 | **99.8** | | Revolutions_Delivered | 96.0 | **97.8** |
+| Glyptodont | 97.5 | **98.6** | | Thus_Spoke_the_PC_Speaker | 97.6 | **97.8** |
+| Dishwasher_Groove | 98.2 | **99.3** | | Toy_Rocket | 96.5 | **97.4** |
+| Dithered_Island | 98.2 | **98.7** | | Crank_Crank_Airwolf | 97.7 | 97.7 |
+| Elvendance | 97.7 | **98.2** | | Trinket | 97.1 | **97.2** |
+| Euclid_Was_Here | 97.2 | **97.8** | | To_Die_For_II | 93.3 | **93.4** |
+| Into_the_Unknown | 96.6 | **97.4** | | Fugue_on_a_Theme | 90.3 | 90.3 |
+| Maple_Leaf_Rag | 96.7 | **97.3** | | Quintessence | 98.0 | **99.0** |
+
+Baselines re-measured by `git stash` A/B on the same machine (Fargo 99.7,
+Glyptodont 97.5, Revolutions 96.0, Quintessence 98.0 — matching the B25
+report exactly), and **part counts verified identical before/after** on every
+multi-part file (Fargo 2, Dithered_Island 2, Into_the_Unknown 3) so the
+measurement window is the same and the numbers are comparable — the trap
+BLACKBIRD.md's own B10 section warns about.
+
+Cost: more command bytes, so files grow (Glyptodont 21,298 → 23,858 bytes,
++12%). No part-count increase on any file, so no additional SF2II cap
+pressure.
+
+### Still open: gate (a) for single-tick steps — the remaining 40 retriggers
+
+The 40 still-missing retriggers are single-tick steps whose only row already
+carries a genuine fx-command change. Closing them needs a signalling channel
+that is **not** the per-row command byte — the harder half of E3c, tracked in
+`docs/ROADMAP.md`.

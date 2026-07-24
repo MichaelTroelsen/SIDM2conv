@@ -1212,18 +1212,49 @@ def steps_to_rows_native(steps):
         if cmd != cur_cmd:
             cmdcol = cmd
             cur_cmd = cmd
-        if s.restart_arm:
-            # B25: one-shot RESTART_ARM_FX override -- deliberately does NOT
-            # touch cur_cmd, so the NEXT step's own cmd-change tracking is
-            # unaffected by this row's sentinel. main()'s own marking pass
-            # only ever sets restart_arm on a step where cmd==cur_cmd
-            # already (a collision with a real fx change is skipped there,
-            # never reaches here) -- the assert catches a future caller
-            # that stops upholding that invariant, rather than silently
-            # dropping a real fx command.
+        # B25/E3c: WHICH of this step's n expanded rows carries the
+        # RESTART_ARM_FX sentinel.
+        #
+        # restart_arm_step fires the blip when zp_tcnt==2, i.e. 2 real frames
+        # before the row FOLLOWING the armed one commits. So the sentinel
+        # must sit on the row whose successor is the next STEP's own row:
+        #   n == 1 -> the step's only row (successor IS the next step);
+        #   n >  1 -> the step's LAST row. Arming row 0 of a multi-tick step
+        #             (B25's original behaviour) fired the blip 2 frames
+        #             before that step's OWN second row -- a bare sustain row
+        #             with no note-on to restore the blipped SR/gate -- and a
+        #             live CPU trace showed the voice never recovering
+        #             (Glyptodont regressed 97.1%->96.5%). B25 handled that by
+        #             refusing to arm multi-tick steps at all; this targets
+        #             the right row instead.
+        #
+        # A useful consequence: for n > 1 the sentinel and any real
+        # fx-command change occupy DIFFERENT rows (the real change is emitted
+        # on row 0 above), so the one-command-byte-per-row collision that
+        # forces main()'s marking pass to skip single-tick steps does not
+        # apply here.
+        arm_first = s.restart_arm and n == 1
+        arm_last = s.restart_arm and n > 1
+        if arm_first:
+            # Deliberately does NOT touch cur_cmd, so the NEXT step's own
+            # cmd-change tracking is unaffected by this row's sentinel.
+            # main()'s marking pass only arms a single-tick step when
+            # cmd==cur_cmd already -- the assert catches a future caller that
+            # stops upholding that, rather than silently dropping a real fx
+            # command.
             assert cmdcol is None, (
                 "B25: restart_arm collided with a real fx-command change")
             cmdcol = RESTART_ARM_FX
+
+        def _tail(note_val, count):
+            """The step's n-1 trailing rows, with the sentinel on the LAST
+            one when this is a multi-tick armed step."""
+            out = []
+            for k in range(count):
+                out.append(D11Row(
+                    note=note_val,
+                    command=RESTART_ARM_FX if (arm_last and k == count - 1) else None))
+            return out
         # B21: do NOT dedupe against the previously-active instrument. Real
         # hardware's execute() (player.s 447-457) treats EVERY genuine
         # instrument-select byte as an unconditional restart -- wavepos snaps
@@ -1244,15 +1275,15 @@ def steps_to_rows_native(steps):
         inst = s.instrument
         if s.kind == 'rest':
             rows.append(D11Row(note=SF2_GATE_OFF, instrument=inst, command=cmdcol))
-            rows.extend(D11Row(note=SF2_GATE_OFF) for _ in range(n - 1))
+            rows.extend(_tail(SF2_GATE_OFF, n - 1))
         elif s.kind == 'note' and s.note is None:
             rows.append(D11Row(note=SF2_GATE_ON, instrument=inst, command=cmdcol))
-            rows.extend(D11Row(note=SF2_GATE_ON) for _ in range(n - 1))
+            rows.extend(_tail(SF2_GATE_ON, n - 1))
         else:
             note = max(SF2_NOTE_MIN, min(s.note + SF2_NOTE_OFS, SF2_NOTE_MAX))
             rows.append(D11Row(note=note, instrument=inst, command=cmdcol,
                                 tie=s.tie))
-            rows.extend(D11Row(note=SF2_GATE_ON) for _ in range(n - 1))
+            rows.extend(_tail(SF2_GATE_ON, n - 1))
     if not rows:
         rows = [D11Row(note=SF2_GATE_OFF)]
     return rows
@@ -2755,10 +2786,20 @@ def main():
                 cur_cmd = cmd
             for i in range(1, len(steps)):
                 s = steps[i]
-                if (s.instrument is not None and s.instrument >= ins_restart
-                        and not cmd_changes[i - 1]
-                        and max(1, steps[i - 1].ticks) == 1):
-                    steps[i - 1].restart_arm = True
+                if s.instrument is None or s.instrument < ins_restart:
+                    continue
+                prev = steps[i - 1]
+                if max(1, prev.ticks) > 1:
+                    # E3c: multi-tick steps are now armable. The sentinel goes
+                    # on prev's LAST expanded row (see steps_to_rows_native),
+                    # while any real fx-command change lives on its FIRST --
+                    # different rows, so gate (a)'s one-command-byte-per-row
+                    # collision cannot occur here and is not checked.
+                    prev.restart_arm = True
+                elif not cmd_changes[i - 1]:
+                    # Single-tick: sentinel and any real fx change would share
+                    # the step's only row, so a collision still forces a skip.
+                    prev.restart_arm = True
 
     bounds = build_song(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
                         ad_sr, default_filter_program, default_filter_extra,
