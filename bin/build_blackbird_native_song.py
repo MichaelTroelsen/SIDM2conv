@@ -2937,9 +2937,21 @@ def main():
     # exhaust the range the codes go where they buy the most (measured across
     # the whole corpus first: every file fits, worst case 25 distinct colliding
     # programs against 26 spare codes on Thus_Spoke_the_PC_Speaker).
+    # E3f is OFF BY DEFAULT (opt-in via BB_COMBO_FX=1): the combo command
+    # values crash SF2II on PLAY. Confirmed by a clean user A/B on the SAME
+    # driver binary -- a combo-emitting build crashes SF2II, a combo-free build
+    # of the identical tree plays. Every OFFLINE emulator (py65, zig64, the
+    # simulator) accepts the codes and the SF2II "Commands" table is declared
+    # with 64 rows, so the incompatibility is subtler than an out-of-range
+    # command index and is not yet root-caused (an SF2II-only hazard, the same
+    # class as E3d). Until it is, the default corpus build must be the one that
+    # actually plays in the editor -- E3e (arming coverage ~89%, Glyptodont
+    # 157/162), not E3f. Combo arming stays fully implemented and testable
+    # behind the flag so re-enabling is a one-line change once the SF2II
+    # behaviour is understood. See docs/players/BLACKBIRD.md's E3f section.
     _COMBO_CODE.clear()
     combo_code = _COMBO_CODE
-    if min_tempo_song >= 3:
+    if min_tempo_song >= 3 and os.environ.get('BB_COMBO_FX'):
         collide_counts = {}
         for v in range(3):
             steps = steps_per_voice[v]

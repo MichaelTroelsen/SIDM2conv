@@ -4605,3 +4605,60 @@ below 99, neither an envelope/waveform problem:
   (frame ~1600+), open since before this arc, untouched.
 - `Into_the_Unknown` 98.1% -- 3 parts; waveform/adsr already 100.0, so its
   remainder is freq/filter.
+
+## E3f DISABLED BY DEFAULT (2026-07-24, same day): combo command values CRASH SF2II on play
+
+Shortly after shipping E3f, a user listening test caught it: loading a
+combo-emitting Glyptodont build into real SidFactory II and pressing **play
+crashes the editor**. A clean A/B nailed it to the combo command values:
+
+- Combo-free build (E3e, `BB_COMBO_FX` unset), **same driver binary** -> plays.
+- Combo-emitting build (E3f) -> crashes on play.
+
+Because both builds use the **identical** assembled driver (the combo branch is
+inert without a combo byte in the stream), the crash is triggered purely by the
+combo command **values** (49-62 for Glyptodont) appearing in the sequence, not
+by the driver code.
+
+**This is an SF2II-only hazard, same class as E3d.** Every offline emulator
+(py65, zig64, the validated simulator) executes the combo path correctly, and
+the SF2II "Commands" table is declared with **64 rows** (see
+`sf2_header_generator.py`), so 49-62 are valid table slots -- the
+incompatibility is subtler than an out-of-range index and is **not yet
+root-caused**. Notably the `RESTART_ARM_FX = 63` sentinel (shipped in B25) is in
+the SAME command channel and does NOT crash, so SF2II tolerates 63 but not
+49-62; the difference is the specific value, still under investigation.
+
+**Action taken**: combo arming is now **opt-in** (`BB_COMBO_FX=1`), OFF by
+default, so the default corpus build is the one that actually plays in the
+editor -- E3e (arming ~89%, Glyptodont 157/162), not E3f (100%, 162/162). The
+full E3f machinery stays implemented and testable behind the flag; re-enabling
+is a one-line change once the SF2II behaviour is understood. Corpus default
+therefore reverts to the E3e+E3g numbers (mean ~98.7, Fugue's E3g win retained
+since it is unrelated to combo codes).
+
+**Rejected alternative (checked, broken)**: emitting the real fx byte FOLLOWED
+BY the safe sentinel (63) as two command bytes on one row does NOT work.
+`galway_driver11_emitter.py::unpack_sequence` (the port of SF2II's own Unpack)
+reads exactly ONE command byte per token -- `if value >= 0xC0` (not a loop),
+then `if value >= 0xA0` treats the NEXT byte as an instrument. A second command
+byte `$c0|63 = $ff` is `>= 0xA0`, so SF2II would misread it as an instrument
+and desync the entire unpack. One command byte per row is a hard SF2II format
+constraint, not just a driver one -- which is also why B25 needed the fused
+sentinel and E3f needed fused combo values in the first place.
+
+**Real root-cause lead**: SF2II's Unpack consumes the combo byte fine, so the
+crash is downstream -- most likely SF2II rendering the play cursor's command
+cell, which looks up the "Commands" table (`cmd_addr`, 64 rows) at the combo
+index. The builder aliases `FXSTART`/`FXRST` at the combo index but does NOT
+populate SF2II's separate Commands table there, so `Commands[49..51]` hold edit-
+area defaults SF2II may interpret as an invalid sub-pattern reference (the
+Commands table is the "instrument sub-pattern table base"). Why 63 is immune
+and 49-62 are not is the specific question. Needs the instrumented
+SF2II-from-source build to confirm -- offline tools cannot see it.
+
+**Lesson reinforced**: a register-exact, corpus-swept, fully-tested change can
+still be wrong in the ONE emulator that ships the music. The offline gate cannot
+see SF2II-only behaviour; a real editor play-test is the only check that can,
+and it must happen BEFORE a fidelity win is treated as delivered. E3e/E3g both
+survive this (no new command values); only E3f's encoding did not.
