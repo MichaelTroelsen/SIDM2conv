@@ -34,6 +34,7 @@ conversion-cockpit.bat        # Batch conversion GUI
 trace-viewer.bat input.sid -f 300                       # Interactive HTML trace (frame-by-frame)
 trace-compare.bat file_a.sid file_b.sid                 # Compare two SID traces (tabbed HTML)
 accuracy-heatmap.bat file_a.sid file_b.sid              # Accuracy heatmap (4 viz modes, Canvas)
+audio-tightness.bat orig.sid conv.sf2 --driver-init 0x1000 --driver-play 0x1003  # Onset-timing/attack-shape "tightness" (register-exact != audio-tight)
 batch-analysis.bat originals/ exported/                 # Batch analysis (standalone, HTML+CSV+JSON)
 batch-analysis-validate.bat originals/ exported/        # Batch analysis (validation DB integration)
 validation-dashboard.bat                                # Validation results dashboard

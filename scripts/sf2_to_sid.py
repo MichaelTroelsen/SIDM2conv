@@ -126,6 +126,7 @@ class SF2File:
         self.load_address = None
         self.init_address = None
         self.play_address = None
+        self.address_source = None
         self.title = ""
         self.author = ""
         self.copyright = ""
@@ -216,6 +217,7 @@ class SF2File:
                                 self.init_address = struct.unpack('<H', self.data[block_data_offset:block_data_offset+2])[0]
                                 # Skip stop address at +2/+3
                                 self.play_address = struct.unpack('<H', self.data[block_data_offset+4:block_data_offset+6])[0]
+                                self.address_source = 'block2'
                                 logger.debug(f"  Parsed Block 2 (DriverCommon): init=${self.init_address:04X}, play=${self.play_address:04X}")
                                 return
 
@@ -231,6 +233,7 @@ class SF2File:
             # Laxity driver detected via load address
             self.init_address = 0x0D7E
             self.play_address = 0x0D81
+            self.address_source = 'laxity_load_addr'
             logger.debug(f"  Detected Laxity driver (load=$0D7E): init=$0D7E, play=$0D81")
             return
 
@@ -240,12 +243,14 @@ class SF2File:
             if b'Laxity' in header_text:
                 self.init_address = 0x0D80
                 self.play_address = 0x0D83
+                self.address_source = 'laxity_string'
                 logger.debug(f"  Detected Laxity driver (string match): init=$0D80, play=$0D83")
                 return
 
         # Default: Driver 11 entry points
         self.init_address = 0x1000
         self.play_address = 0x1006
+        self.address_source = 'default_guess'
         logger.debug(f"  Using Driver 11 default entry points: init=$1000, play=$1006")
 
     def get_prg_data(self) -> bytes:
@@ -257,13 +262,17 @@ class SF2File:
         return self.data[2:]
 
 
-def convert_sf2_to_sid(sf2_path: str, sid_path: str) -> bool:
+def convert_sf2_to_sid(sf2_path: str, sid_path: str,
+                        init_override: Optional[int] = None,
+                        play_override: Optional[int] = None) -> bool:
     """
     Convert SF2 file to PSID format
 
     Args:
         sf2_path: Path to input .sf2 file
         sid_path: Path to output .sid file
+        init_override: Explicit init address, overrides detected address
+        play_override: Explicit play address, overrides detected address
 
     Returns:
         True if conversion successful
@@ -300,6 +309,21 @@ def convert_sf2_to_sid(sf2_path: str, sid_path: str) -> bool:
         )
 
     sf2 = SF2File(sf2_data)
+
+    if init_override is not None:
+        sf2.init_address = init_override
+    if play_override is not None:
+        sf2.play_address = play_override
+
+    if sf2.address_source == 'default_guess' and init_override is None and play_override is None:
+        logger.warning(
+            f"  Init/play addresses could not be detected from the SF2 header "
+            f"or Laxity heuristics; falling back to the Driver 11 default guess "
+            f"(init=${sf2.init_address:04X}, play=${sf2.play_address:04X}). "
+            f"This is WRONG for any bin/-only native driver (e.g. Blackbird uses "
+            f"init=$1000/play=$1003, not $1006). Pass --init/--play "
+            f"(or init_override/play_override) with the driver's real addresses."
+        )
 
     # Create PSID header
     header = PSIDHeader(
@@ -364,6 +388,16 @@ def main():
     )
     parser.add_argument('input_sf2', help='Input SF2 file')
     parser.add_argument('output_sid', help='Output SID file')
+    parser.add_argument(
+        '--init', type=lambda s: int(s, 0), default=None,
+        help='Override the detected init address (e.g. 0x1000). '
+             'Required for bin/-only native drivers, whose addresses cannot '
+             'be auto-detected.'
+    )
+    parser.add_argument(
+        '--play', type=lambda s: int(s, 0), default=None,
+        help='Override the detected play address (e.g. 0x1003).'
+    )
 
     # Enhanced logging arguments (v2.0.0)
     parser.add_argument(
@@ -400,7 +434,9 @@ def main():
 
     try:
         with PerformanceLogger(logger, f"SF2 to SID conversion: {args.input_sf2}"):
-            success = convert_sf2_to_sid(args.input_sf2, args.output_sid)
+            success = convert_sf2_to_sid(args.input_sf2, args.output_sid,
+                                          init_override=args.init,
+                                          play_override=args.play)
 
         if success:
             logger.info("Conversion complete!")

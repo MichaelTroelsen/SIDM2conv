@@ -75,7 +75,9 @@ class AudioExportIntegration:
         stereo: bool = True,
         fade_out: int = DEFAULT_FADE_OUT,
         verbose: int = 0,
-        force_sid2wav: bool = False
+        force_sid2wav: bool = False,
+        mute_voices: Optional[str] = None,
+        subtune: Optional[int] = None
     ) -> Optional[Dict[str, Any]]:
         """
         Export SID file to WAV audio.
@@ -93,6 +95,11 @@ class AudioExportIntegration:
             fade_out: Fade-out time in seconds (default: 2, SID2WAV only)
             verbose: Verbosity level (0=quiet, 1=normal, 2=debug)
             force_sid2wav: Force use of SID2WAV even if VSID is available
+            mute_voices: SID2WAV -m<num> voice-mute string (e.g. "23" mutes
+                voices 2+3). SID2WAV-only -- VSID has no equivalent, so this
+                requires force_sid2wav=True.
+            subtune: SID2WAV -o<num> song/subtune number. SID2WAV-only, same
+                force_sid2wav=True requirement as mute_voices.
 
         Returns:
             Dictionary with export results:
@@ -109,6 +116,18 @@ class AudioExportIntegration:
             }
             Returns None if no tool available.
         """
+        if mute_voices is not None and not force_sid2wav:
+            raise ValueError(
+                "mute_voices requires force_sid2wav=True -- VSID has no "
+                "voice-mute equivalent, so silently ignoring the flag would "
+                "produce a misleading (unmuted) render."
+            )
+        if subtune is not None and not force_sid2wav:
+            raise ValueError(
+                "subtune requires force_sid2wav=True -- VSID export has no "
+                "subtune-select equivalent in this wrapper."
+            )
+
         # Try VSID first (preferred) unless forced to use SID2WAV
         if not force_sid2wav and AudioExportIntegration.PREFER_VSID and VSID_AVAILABLE:
             if verbose > 1:
@@ -167,6 +186,14 @@ class AudioExportIntegration:
                 f"-f{frequency}",  # Frequency
                 f"-fout{fade_out}",  # Fade-out
             ]
+
+            # Voice mute (e.g. "23" mutes voices 2+3)
+            if mute_voices:
+                args.append(f"-m{mute_voices}")
+
+            # Subtune/song select
+            if subtune is not None:
+                args.append(f"-o{subtune}")
 
             # Bit depth
             if bit_depth == 16:
