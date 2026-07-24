@@ -4294,3 +4294,150 @@ Note also that not every hard-restart note *needs* a blip: where the gate is
 already low (a preceding rest), the note-on alone produces the 0→1 edge. Only
 notes whose gate is high going in require it. Any future accounting must
 compare against **that** subset, not the raw candidate count.
+
+## E3e SHIPPED (2026-07-24): the implicit repeat-instrument — `prepare2` blips from TWO sites, the marking pass only ever saw one
+
+This is the answer to the user's original *"the drums are still not tight"*,
+and it closes the residual E3b/E3c/E3c(a) had been narrowing for three rounds.
+
+### First: E3c(a)'s "concrete lead" was a false lead — retracted
+
+The previous handoff proposed that the marking pass
+(`step.instrument >= ins_restart`, 0-based) and the simulator's blip condition
+(`cmp_carry(ins_value, ins_restart + 1)`, 1-based) might select different note
+sets. **They do not.** `bb_steps_for_voice` sets
+`pending_instr = max(b - 0x83, 0)` while `prepare2` computes
+`result = b - 0x82`, so `step.instrument == ins_value - 1` exactly, and
+`cmp_carry(y, ins_restart + 1)` reduces to `(y - 1) >= ins_restart` — the same
+predicate. Do not re-walk this.
+
+### The real cause: `_pr2_noteback` has two callers
+
+`BlackbirdSim.prepare2` (the validated model of player.s:117-160) reaches the
+noteback path from **two** sites:
+
+| site | trigger | marking pass saw it? |
+|---|---|---|
+| `prepare2` line 281 | a genuine `$83-$b7` instrument-select byte | yes |
+| `prepare2` line 269 | a **bare note byte** (`b < $80`), re-selecting the sticky `currins` | **no** |
+
+Site (2) is the **implicit repeat-instrument**: an untied note that carries no
+select byte of its own still performs a full instrument re-select on hardware,
+hard-restart blip included. Because `bb_steps_for_voice` clears
+`pending_instr` after every step, such a step reaches `main()` with
+`instrument=None` — and the marking pass's very first line is
+`if s.instrument is None ... continue`. The entire class was structurally
+invisible, which is why arming could read "99.4% complete" while half the
+retriggers were still missing: **the denominator itself was wrong.**
+
+Measured on Glyptodont (`ins_restart=4`), whole song:
+
+| voice | hard-restart events | via explicit select | via implicit repeat (missed) |
+|---|---|---|---|
+| 0 | 1094 | 798 | 296 (27%) |
+| 1 | 763 | 372 | **391 (51%)** |
+| 2 | 397 | 75 | **322 (81%)** |
+| **total** | **2254** | **1245** | **1009 (44.8%)** |
+
+Voice 1 is the lead and voice 2 the filtered voice — matching both standing
+ear-reports ("miss filter on lead", "drums not crisp") to the voice.
+
+### The fix, and why it MATERIALIZES the instrument
+
+`main()`'s marking pass now runs a first pass computing each step's
+**effective** instrument (sticky `currins`, advanced only by explicit selects,
+mirroring `prepare2`), then arms on that. Where the step had no instrument of
+its own, the effective one is **written into the step** — which is exactly what
+hardware does anyway.
+
+That materialization is load-bearing, not tidiness. `$D405/$D406` (AD/SR) are
+written **only** by `set_instr_v` (see `do_init`'s own comment: *"AD/SR are
+only ever written at a genuine instrument trigger, never recomputed per-
+frame"*), and `restart_arm_step`'s blip writes `$D406 = 0`. Arming a row that
+carries no instrument column would therefore zero SR **with nothing to ever
+restore it** — the voice would sit at SR=0 for the rest of the song. That is
+precisely the stranded-state failure B25's gate (c) ran into. Emitting the
+instrument turns the commit row into a note+instrument row, the same shape the
+explicit path already produces 1364 times in this one file, and which B17's
+`viwiflag` already coordinates against a double VWI restart.
+
+Materialization is deliberately **coupled to arming**: a step is only rewritten
+when its predecessor can actually carry the sentinel, so this can never
+introduce a `set_instr_v` whose matching blip was skipped.
+
+**No driver change was required.**
+
+### Result — Glyptodont
+
+Note-on (gate 0→1) edges over the first 20 s, driver vs the validated
+simulator. The counter was validated by reproducing E3c(c)'s recorded
+122/162 baseline *exactly* before being trusted:
+
+| build | note-ons | missing | spurious | coverage |
+|---|---|---|---|---|
+| B25 | 79/162 | 83 | 0 | 48.8% |
+| E3c(c) | 122/162 | 40 | 0 | 75.3% |
+| **E3e** | **157/162** | **5** | **0** | **96.9%** |
+
+Voices 0 and 2 are now **exact** (74/74, 11/11); all 5 remaining are voice 1.
+Register score 98.6% → **99.7%** (waveform 96.5→99.6, adsr 96.5→99.8).
+
+Note this defect finally *did* move the register percentage, unlike every
+earlier round — because it touches 1009 events rather than a handful. The
+"audible but numerically invisible" caveat from E3b still holds for small
+event counts; it stops holding once the class is this large.
+
+### Full 16-file corpus: 16 improved, ZERO regressions
+
+Part counts unchanged on every file (Fargo 2, Dithered_Island 2,
+Into_the_Unknown 3) — the B10 measurement-window trap checked explicitly.
+
+| file | overall | waveform | adsr |
+|---|---|---|---|
+| Fargo (canary) | 99.8→**99.9** | 99.9→100.0 | 99.6→100.0 |
+| Glyptodont | 98.6→**99.7** | 96.5→99.6 | 96.5→99.8 |
+| Dishwasher_Groove | 99.3→**100.0** | 99.7→100.0 | 97.3→99.9 |
+| Dithered_Island | 98.7→**99.6** | 95.8→99.3 | 96.9→99.3 |
+| Elvendance | 98.2→**99.0** | 93.4→96.2 | 95.8→97.8 |
+| Euclid_Was_Here | 97.8→**99.4** | 91.8→97.9 | 95.1→98.9 |
+| Into_the_Unknown | 97.4→**98.1** | 98.1→99.8 | 98.1→99.9 |
+| Maple_Leaf_Rag | 97.3→**100.0** | 91.6→99.9 | 92.9→100.0 |
+| Revolutions_Delivered | 97.8→**99.0** | 96.6→100.0 | 96.6→99.9 |
+| Thus_Spoke_the_PC_Speaker | 97.8→**98.9** | 92.2→95.9 | 94.7→97.7 |
+| Toy_Rocket | 97.4→**99.7** | 90.8→98.9 | 93.9→99.5 |
+| Crank_Crank_Airwolf | 97.7→**99.7** | 92.4→100.0 | 94.4→98.7 |
+| Trinket | 97.2→**100.0** | 91.9→100.0 | 92.4→100.0 |
+| To_Die_For_II | 93.4→**94.1** | 97.2→99.1 | 97.4→99.4 |
+| Fugue_on_a_Theme_by_D_M_Hanlon | 90.3→**91.4** | 72.4→76.4 | 97.3→99.8 |
+| Quintessence | 99.0→**100.0** | 97.8→100.0 | 97.1→100.0 |
+
+**Corpus mean 97.36% → 98.66%.** Five files now measure 100.0%
+(Dishwasher_Groove, Maple_Leaf_Rag, Trinket, Quintessence) or 99.9 (Fargo).
+Cost: **+9.7% total size** (348,360 → 382,152 bytes); 6 of 16 files are
+byte-size unchanged.
+
+Even `Fugue_on_a_Theme` — the standing corpus worst — improved, and its adsr
+went 97.3→99.8, which re-localises its residual squarely onto **waveform
+(76.4%)** rather than envelopes.
+
+### What remains (gate (a), and it is now the ONLY gate left)
+
+Post-E3e arming coverage, whole song:
+
+| voice | hard-restart events | armed | blocked by single-tick fx collision |
+|---|---|---|---|
+| 0 | 1094 | 1093 | 0 |
+| 1 | 763 | 711 | **52** |
+| 2 | 397 | 394 | 3 |
+| **total** | **2254** | **2198 (97.5%)** | **55** |
+
+(plus 1 first-step case with no predecessor to carry the sentinel).
+
+The 55 blocked events are all gate (a): a single-tick predecessor that already
+carries a real fx-command change, and a row has exactly one command-byte slot.
+**52 of the 55 are voice 1** — matching the 5 remaining missing note-ons to the
+voice. This is the same "combo command codes from the unused fx-index range"
+idea E3c(a) measured as *feasible but pointless* when only 6 collisions
+remained; at 55, concentrated on the lead voice, it is worth reconsidering.
+Glyptodont uses 48 fx programs, leaving codes 48-62 (15 spare) below
+`RESTART_ARM_FX = 63`.

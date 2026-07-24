@@ -2793,6 +2793,43 @@ def main():
     #      away, not immediately next. A real, more complete fix would
     #      re-target the LAST of a multi-tick step's own expanded rows
     #      instead (not just its first) -- not attempted this round.
+    # E3e: the marking pass above used to test `s.instrument >= ins_restart`,
+    # which only ever sees an EXPLICIT instrument-select byte. But player.s's
+    # prepare2 calls its noteback path from TWO sites, not one
+    # (BlackbirdSim.prepare2 / _pr2_noteback, the validated model of it):
+    #
+    #   (1) a genuine $83-$b7 instrument-select byte -> _pr2_noteback(x, result)
+    #   (2) a BARE NOTE byte (b < $80)               -> _pr2_noteback(x, currins)
+    #
+    # Site (2) is the "implicit repeat-instrument": an untied note with no
+    # select byte of its own re-selects the voice's STICKY currins, and the
+    # hard-restart blip fires for it exactly as it does for site (1). Since
+    # bb_steps_for_voice clears pending_instr after every step, such a step
+    # carries `instrument=None` and was structurally invisible here.
+    #
+    # Measured on Glyptodont: 2254 hard-restart events song-wide, of which
+    # only 1245 come via site (1). The other 1009 (44.8%) -- v0 296, v1 391,
+    # v2 322 (81% of that voice's total) -- were never armed at all. That is
+    # the remaining "~40 missing retriggers per 20s" residual, and it is why
+    # voice 2 and the voice-1 lead read dullest.
+    #
+    # The fix MATERIALIZES the implicit selection into the row's own
+    # instrument column, which is precisely what hardware does anyway
+    # (execute() runs its full re-select for an implicitly repeated
+    # instrument). That matters for more than tidiness: restart_arm_step's
+    # blip writes $D406=0, and AD/SR are ONLY ever rewritten by set_instr_v
+    # (see blackbird_driver.asm's do_init comment, "AD/SR are only ever
+    # written at a genuine instrument trigger"). Arming a row that carries no
+    # instrument column would therefore zero SR with nothing to restore it --
+    # the voice would stay at SR=0 for the rest of the song, which is exactly
+    # the stranded-state failure B25's gate (c) hit. Emitting the instrument
+    # makes the commit row a note+instrument row, the same well-trodden shape
+    # the explicit case already produces 1364 times in this file (and which
+    # B17's viwiflag already coordinates against a double VWI restart).
+    #
+    # Materialization is deliberately COUPLED to arming: a step is only
+    # rewritten when its predecessor can actually carry the sentinel, so this
+    # never introduces a set_instr_v call whose matching blip got skipped.
     min_tempo_song = min([opening_pair[0], opening_pair[1]] +
                           [t for rec in full_schedule for t in (rec[1], rec[2])])
     if min_tempo_song >= 3:
@@ -2804,9 +2841,31 @@ def main():
                 cmd = s.fx & 0x3F
                 cmd_changes.append(cmd != cur_cmd)
                 cur_cmd = cmd
+
+            # Pass 1: the EFFECTIVE instrument each step re-selects on
+            # hardware, and whether it re-selects at all. Computed up front
+            # over the untouched steps so pass 2's own materialization cannot
+            # feed back into the sticky value. `currins` mirrors prepare2's
+            # vs.currins, which advances ONLY on an explicit select byte --
+            # 0-based here (step.instrument == the sim's 1-based currins - 1;
+            # the sim's `cmp_carry(y, ins_restart+1)` is exactly this
+            # 0-based `>= ins_restart`).
+            eff = [None] * len(steps)
+            currins = None
+            for i, s in enumerate(steps):
+                if s.instrument is not None:
+                    currins = s.instrument
+                    eff[i] = currins
+                elif s.kind == 'note' and s.note is not None and not s.tie:
+                    # prepare2's got_note path. A TIED note is excluded: its
+                    # legato $ff byte is what prepare2 consumes that tick, so
+                    # the noteback path is never reached (pendins=$ff, which
+                    # execute() routes to its no-register-effect branch).
+                    eff[i] = currins
+
             for i in range(1, len(steps)):
                 s = steps[i]
-                if s.instrument is None or s.instrument < ins_restart:
+                if eff[i] is None or eff[i] < ins_restart:
                     continue
                 prev = steps[i - 1]
                 if max(1, prev.ticks) > 1:
@@ -2815,11 +2874,16 @@ def main():
                     # while any real fx-command change lives on its FIRST --
                     # different rows, so gate (a)'s one-command-byte-per-row
                     # collision cannot occur here and is not checked.
-                    prev.restart_arm = True
+                    pass
                 elif not cmd_changes[i - 1]:
                     # Single-tick: sentinel and any real fx change would share
                     # the step's only row, so a collision still forces a skip.
-                    prev.restart_arm = True
+                    pass
+                else:
+                    continue
+                if s.instrument is None:
+                    s.instrument = eff[i]
+                prev.restart_arm = True
 
     bounds = build_song(lay, d, la, ins_restart, ins_restart2, steps_per_voice,
                         ad_sr, default_filter_program, default_filter_extra,
