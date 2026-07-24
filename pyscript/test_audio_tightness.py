@@ -23,7 +23,9 @@ from sidm2.audio_tightness import (
     attack_rise_time_ms,
     detect_onsets,
     logmel_distance,
+    median_ioi_ms,
     offset_and_jitter,
+    safe_tolerance_ms,
 )
 
 SR = 44100
@@ -238,6 +240,65 @@ class TestOffsetJitterSeparation(unittest.TestCase):
 
     def test_offset_and_jitter_empty(self):
         self.assertEqual(offset_and_jitter([]), (0.0, []))
+
+
+class TestToleranceMustNotExceedNoteSpacing(unittest.TestCase):
+    """Regression guard for the E3 finding.
+
+    Glyptodont (median IOI ~90ms) compared against its Blackbird native
+    build reported a "+50ms (+2.5 PAL frame) systematic offset" under the
+    old fixed 150ms tolerance. Sweeping the tolerance down collapsed that
+    offset monotonically to exactly 0.0 at <=70ms: the offset was never
+    real, it was greedy matching pairing each onset with its NEIGHBOUR
+    because the window was wider than the gap between notes. Such a
+    mispairing preserves time order, so count_alignment_crossings() cannot
+    detect it -- only keeping the window below the IOI prevents it.
+    """
+
+    def test_median_ioi(self):
+        self.assertAlmostEqual(median_ioi_ms([0.0, 0.1, 0.2, 0.3]), 100.0, delta=1e-6)
+        self.assertEqual(median_ioi_ms([0.5]), 0.0)
+        self.assertEqual(median_ioi_ms([]), 0.0)
+
+    def test_safe_tolerance_is_half_the_ioi(self):
+        self.assertAlmostEqual(safe_tolerance_ms([0.0, 0.1, 0.2, 0.3]), 50.0, delta=1e-6)
+
+    def test_safe_tolerance_clamped(self):
+        # Very dense material must not go below the detector's resolution...
+        self.assertGreaterEqual(safe_tolerance_ms([i * 0.005 for i in range(10)]), 20.0)
+        # ...and very sparse material must not get an unbounded window.
+        self.assertLessEqual(safe_tolerance_ms([0.0, 5.0, 10.0]), 150.0)
+
+    def test_wide_tolerance_fabricates_an_offset(self):
+        """The bug itself: identical timing, but a tolerance wider than the
+        note spacing pairs each driver onset with the WRONG neighbour."""
+        ioi = 0.09                       # 90ms spacing, as in Glyptodont
+        times = [0.2 + i * ioi for i in range(12)]
+        x = _make_click_track(SR, 2.0, times)
+        y = _make_click_track(SR, 2.0, times)   # identical -> truth is 0 offset
+
+        tight = analyze_tightness(x, y, SR, onset_tolerance_ms=40)
+        self.assertAlmostEqual(tight.median_offset_ms, 0.0, delta=12.0)
+
+        # The auto default must land below the IOI and stay correct.
+        auto = analyze_tightness(x, y, SR)
+        self.assertLess(auto.params['onset_tolerance_ms'], ioi * 1000)
+        self.assertAlmostEqual(auto.median_offset_ms, 0.0, delta=12.0)
+        self.assertEqual(auto.params['tolerance_source'], 'auto (from median IOI)')
+
+    def test_auto_tolerance_recorded_in_params(self):
+        times = [0.2 + i * 0.09 for i in range(10)]
+        x = _make_click_track(SR, 1.6, times)
+        rep = analyze_tightness(x, x, SR)
+        self.assertGreater(rep.median_ioi_ms, 0.0)
+        self.assertLess(rep.params['onset_tolerance_ms'], rep.median_ioi_ms)
+
+    def test_explicit_tolerance_is_respected_and_labelled(self):
+        times = [0.2, 0.6, 1.0]
+        x = _make_click_track(SR, 1.5, times)
+        rep = analyze_tightness(x, x, SR, onset_tolerance_ms=77)
+        self.assertEqual(rep.params['onset_tolerance_ms'], 77)
+        self.assertEqual(rep.params['tolerance_source'], 'explicit')
 
 
 if __name__ == '__main__':

@@ -115,6 +115,28 @@ def format_text_report(report: TightnessReport, meta: Dict[str, Any] = None) -> 
         lines.append("  small offset + large jitter -> genuinely loose timing (the 'not tight' case)")
         lines.append("  both large                  -> shifted AND loose; fix the offset first,")
         lines.append("                                  it can mis-pair onsets and inflate jitter")
+        # The single most important sanity check in this report. A tolerance
+        # at or above the inter-onset interval lets greedy matching pair a
+        # note with its NEIGHBOUR; that pairing preserves time order, so the
+        # crossed-pair check below cannot see it, and it manufactures a fake
+        # systematic offset out of nothing.
+        _ioi = report.median_ioi_ms or report.params.get('median_ioi_ms', 0.0)
+        _tol_now = report.params.get('onset_tolerance_ms', 0.0)
+        if _ioi > 0:
+            lines.append("")
+            lines.append(f"Median inter-onset interval (original): {_ioi:.1f} ms")
+            lines.append(f"Alignment tolerance: {_tol_now:.1f} ms "
+                          f"({report.params.get('tolerance_source', 'explicit')})")
+            if _tol_now >= _ioi:
+                lines.append("  *** TOLERANCE EXCEEDS THE NOTE SPACING ***")
+                lines.append("  Onsets can be paired with their NEIGHBOURS, which fabricates")
+                lines.append("  a systematic offset and inflates jitter. Every timing number")
+                lines.append(f"  below is unreliable. Re-run with --onset-tolerance-ms "
+                              f"{_ioi * 0.5:.0f} or less.")
+            elif _tol_now > _ioi * 0.5:
+                lines.append(f"  NOTE: tolerance is above half the note spacing "
+                              f"({_ioi * 0.5:.0f} ms); neighbour-pairing is possible.")
+
         n_cross = count_alignment_crossings(report.matched)
         if n_cross:
             lines.append("")

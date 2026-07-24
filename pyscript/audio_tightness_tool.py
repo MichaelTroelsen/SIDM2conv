@@ -319,8 +319,12 @@ Native drivers (bin/-only, e.g. Blackbird):
     parser.add_argument('--driver-play', type=_hex_or_int, default=None,
                          help="Override the driver SF2's play address (e.g. 0x1003)")
 
-    parser.add_argument('--onset-tolerance-ms', type=float, default=150,
-                         help="Max |delta| to still count as a matched onset (default: 150)")
+    parser.add_argument('--onset-tolerance-ms', type=float, default=None,
+                         help="Max |delta| to still count as a matched onset. "
+                              "Default: auto, derived as half the original's median "
+                              "inter-onset interval. A fixed value wider than the note "
+                              "spacing lets onsets pair with their neighbours and "
+                              "fabricates a systematic offset -- override with care.")
     parser.add_argument('--loose-threshold-ms', type=float, default=40,
                          help="|delta| above which a matched onset is flagged loose (default: 40)")
     parser.add_argument('--hop-ms', type=float, default=10, help="Onset detector hop size (default: 10)")

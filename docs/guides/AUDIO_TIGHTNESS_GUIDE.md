@@ -68,7 +68,27 @@ THIS` block. Offset is also shown in **PAL frames** (20 ms each), because the
 engine's own timing quantum is what makes it actionable — "+2.50 frames"
 points at a startup-pipeline difference in a way "+50 ms" does not.
 
-Two automatic warnings guard against over-reading the numbers:
+### The alignment tolerance must stay below the note spacing
+
+`--onset-tolerance-ms` defaults to **auto**: half the original's own median
+inter-onset interval (clamped to 20–150 ms). This is not a stylistic default,
+it is a correctness requirement. A greedy matcher with a window *wider than
+the gap between consecutive notes* can pair an onset with its **neighbour** —
+and because that mispairing preserves time order, the crossed-pair check
+cannot detect it.
+
+This produced a real false finding. Glyptodont (median IOI 90 ms) measured
+against its Blackbird native build reported a **"+50 ms (+2.5 PAL frame)
+systematic offset" and 60.7% loose onsets** under the old fixed 150 ms
+default. Sweeping the tolerance down collapsed the offset monotonically to
+**exactly 0.0 ms at ≤70 ms**. The true reading is offset **+0.00 frames**,
+median jitter **0.0 ms**, **7.4%** loose — the timing was never the problem.
+
+The report always prints the measured IOI alongside the tolerance in use, and
+warns when the tolerance approaches (`> 0.5 × IOI`) or exceeds it. **If you
+override `--onset-tolerance-ms`, keep it under half the IOI.**
+
+Two further automatic warnings guard against over-reading the numbers:
 
 - **Crossed pairs** — a matched pair whose driver onset runs *backwards*
   relative to its predecessor. Music does not reorder itself, so a crossing
@@ -194,7 +214,7 @@ cannot be voice-isolated.
 --renderer {auto,vsid,sid2wav} # Renderer for BOTH sides (default: auto)
 --driver-init 0xHHHH           # Override the driver SF2's init address
 --driver-play 0xHHHH           # Override the driver SF2's play address
---onset-tolerance-ms 150       # Max |delta| to still count as matched (default: 150)
+--onset-tolerance-ms 45        # Max |delta| to count as matched (default: auto = half the IOI)
 --loose-threshold-ms 40        # |delta| above which a matched onset is "loose" (default: 40)
 --output report.html           # Output HTML path
 --text-output report.txt       # Also write the text report to a file
@@ -280,10 +300,12 @@ Fixed sections, in order:
   or ADSR envelope difference) — this is exactly the class of gap register
   percentages can hide inside a "pretty good" aggregate score.
 
-The onset-tolerance/loose-threshold defaults (150ms / 40ms) and the
-detector tuning (`--hop-ms`/`--window-ms`/`--bands`/`--freq-lo`/`--freq-hi`)
-are **provisional** — revisit them once real acceptance runs (see
-`docs/players/BLACKBIRD.md`'s dated entries) give real data points.
+`--onset-tolerance-ms` is now derived from the material itself (see "The
+alignment tolerance must stay below the note spacing"). The remaining
+defaults — `--loose-threshold-ms 40` and the detector tuning
+(`--hop-ms`/`--window-ms`/`--bands`/`--freq-lo`/`--freq-hi`) — are still
+**provisional guesses**, not calibrated against a corpus; see
+`docs/ROADMAP.md`'s E4.
 
 ---
 

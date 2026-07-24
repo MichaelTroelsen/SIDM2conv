@@ -18,7 +18,7 @@ rather than continuous pitch tracking.
 import wave
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -58,6 +58,9 @@ class TightnessReport:
     # uniformly 50 ms late is rhythmically perfect but would otherwise report
     # as ~100% "loose", which is a misleading verdict.
     median_offset_ms: float = 0.0
+    # Median inter-onset interval of the ORIGINAL, in ms. The alignment
+    # tolerance must stay well below this -- see safe_tolerance_ms.
+    median_ioi_ms: float = 0.0
 
 
 def load_wav_mono(path: Union[str, Path]) -> Tuple[np.ndarray, int]:
@@ -282,6 +285,45 @@ def offset_and_jitter(matched: List[OnsetMatch]) -> Tuple[float, List[float]]:
     return offset, [m.delta_ms - offset for m in matched]
 
 
+def median_ioi_ms(onset_times: List[float]) -> float:
+    """Median inter-onset interval, in ms. 0.0 if fewer than 2 onsets."""
+    if len(onset_times) < 2:
+        return 0.0
+    return float(np.median(np.diff(sorted(onset_times)))) * 1000.0
+
+
+# An alignment window must stay well inside the gap between consecutive
+# notes. At half the IOI, the nearest wrong partner is still outside the
+# window; at or above the IOI, greedy matching can pair a note with its
+# neighbour instead of itself -- and because such a pairing preserves time
+# order, count_alignment_crossings() cannot detect it.
+#
+# This is not hypothetical. Glyptodont (IOI ~90ms) measured against its
+# Blackbird native build reported a "+50ms (+2.5 PAL frame) systematic
+# offset" at the original 150ms default. Sweeping the tolerance down
+# collapsed that offset monotonically to EXACTLY 0.0 at <=70ms, with median
+# |jitter| falling 50ms -> 10ms (the detector's own hop resolution). The
+# offset was never real; it was neighbour-pairing.
+TOLERANCE_IOI_FRACTION = 0.5
+TOLERANCE_MIN_MS = 20.0
+TOLERANCE_MAX_MS = 150.0
+
+
+def safe_tolerance_ms(onset_times: List[float]) -> float:
+    """Alignment tolerance derived from the material's own note density.
+
+    Clamped to [TOLERANCE_MIN_MS, TOLERANCE_MAX_MS]: the floor keeps the
+    window above the onset detector's own hop resolution (~10ms) so real
+    matches are not rejected as noise; the ceiling keeps sparse material
+    from getting an absurdly wide window.
+    """
+    ioi = median_ioi_ms(onset_times)
+    if ioi <= 0:
+        return TOLERANCE_MAX_MS
+    return float(np.clip(ioi * TOLERANCE_IOI_FRACTION,
+                         TOLERANCE_MIN_MS, TOLERANCE_MAX_MS))
+
+
 def count_alignment_crossings(matched: List[OnsetMatch]) -> int:
     """Number of matched pairs whose driver onset goes BACKWARDS in time
     relative to the previous pair (ordered by orig_t).
@@ -304,12 +346,27 @@ def count_alignment_crossings(matched: List[OnsetMatch]) -> int:
 
 
 def analyze_tightness(orig: np.ndarray, driver: np.ndarray, sr: int,
-                       onset_tolerance_ms: float = 150, loose_threshold_ms: float = 40,
+                       onset_tolerance_ms: Optional[float] = None,
+                       loose_threshold_ms: float = 40,
                        **detector_kwargs) -> TightnessReport:
     """Pure top-level entry point: two mono float arrays at the same sample
-    rate in, a TightnessReport out."""
+    rate in, a TightnessReport out.
+
+    onset_tolerance_ms=None (the default) derives the window from the
+    original's own median inter-onset interval via safe_tolerance_ms(). A
+    fixed default cannot be correct for all material: a window wider than
+    the IOI lets greedy matching pair notes with their neighbours, which
+    manufactures a fake systematic offset (see safe_tolerance_ms).
+    """
     orig_times = detect_onsets(orig, sr, **detector_kwargs)
     driver_times = detect_onsets(driver, sr, **detector_kwargs)
+
+    ioi_ms = median_ioi_ms(orig_times)
+    if onset_tolerance_ms is None:
+        onset_tolerance_ms = safe_tolerance_ms(orig_times)
+        tolerance_source = 'auto (from median IOI)'
+    else:
+        tolerance_source = 'explicit'
 
     tolerance_s = onset_tolerance_ms / 1000.0
     pairs, missing, extra = align_onsets(orig_times, driver_times, tolerance_s)
@@ -350,6 +407,7 @@ def analyze_tightness(orig: np.ndarray, driver: np.ndarray, sr: int,
         m.loose_jitter = abs(j) > loose_threshold_ms
 
     params = dict(onset_tolerance_ms=onset_tolerance_ms, loose_threshold_ms=loose_threshold_ms,
+                  tolerance_source=tolerance_source, median_ioi_ms=round(ioi_ms, 1),
                   **detector_kwargs)
     return TightnessReport(
         orig_onsets=[Onset(t=t) for t in orig_times],
@@ -359,6 +417,7 @@ def analyze_tightness(orig: np.ndarray, driver: np.ndarray, sr: int,
         extra=extra,
         params=params,
         median_offset_ms=median_offset_ms,
+        median_ioi_ms=ioi_ms,
     )
 
 

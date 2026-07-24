@@ -137,20 +137,51 @@ correlation-based triggering that holds complex waves steady).
 - **Note**: Corrscope is the lower-friction integration (same language, pip
   install, headless render); SidWizPlus has the richer per-channel styling.
 
-### E3. Resolve Glyptodont's +2.5-frame systematic offset
-The tightness tool measures a **+50.0 ms (+2.50 PAL frame)** whole-render
-offset between `Glyptodont.sid` and its B25 native build, with monotonic
-alignment (no crossed pairs) but heavy jitter tails. +2.5 frames is
-suspiciously close to the documented 3-frame `prepare1/2/3` startup pipeline
-(see `docs/players/BLACKBIRD.md`'s B8 section). Determine whether it is that
-pipeline, a render start-point artifact, or real drift — it must be explained
-before any jitter number from this tool can be read as a looseness verdict.
+### E3. Glyptodont's "+2.5-frame offset" — ✅ RESOLVED 2026-07-24: it was not real
+The tool reported a **+50.0 ms (+2.50 PAL frame)** whole-render offset against
+the B25 native build, with 60.7% of onsets "loose". Both numbers were
+measurement artifacts. What actually happened, in the order it was ruled out:
 
-### E4. Calibrate the detector defaults
-`--onset-tolerance-ms 150` / `--loose-threshold-ms 40` and the detector params
-(hop/window/bands/freq range) are **provisional guesses**, not tuned against a
-corpus. Once E3 is resolved, calibrate against files with known-good and
-known-bad timing so "loose" means something reproducible across files.
+- **Not tempo drift**: inter-onset-interval ratio driver/original = **1.00000**
+  (median IOI 90.0 ms on both sides).
+- **Not a render start-point shift**: first-onset difference was only +10 ms
+  (0.5 frames), and per-quarter medians bounced (+80/+40/+75/+20 ms) rather
+  than holding constant or trending — a linear fit removed almost none of the
+  spread (std 55.3 → 54.7 ms).
+- **The actual cause**: the default alignment tolerance was **150 ms while the
+  median IOI is 90 ms**. A greedy matcher with a window wider than the note
+  spacing can pair an onset with its *neighbour*, and that mispairing
+  preserves time order, so `count_alignment_crossings()` reported zero. A
+  tolerance sweep collapsed the "offset" monotonically to **exactly 0.0 ms at
+  ≤70 ms** (150→+50, 120→+30, 90→+10, ≤70→0), with median |jitter| falling
+  50 ms → 10 ms (the detector's own hop resolution).
+
+**Fix shipped**: the tolerance now defaults to half the original's own median
+IOI (`safe_tolerance_ms`, clamped to 20-150 ms), the report prints the IOI and
+warns when a tolerance approaches or exceeds it, and a regression test pins
+the failure mode.
+
+**The corrected Glyptodont reading — the timing was never the problem:**
+offset **+0.00 frames**, median jitter **0.0 ms**, only **7.4%** loose
+(was 60.7%). The matched onsets are essentially perfectly timed.
+
+### E3b. The real Glyptodont discrepancy: onset presence, not onset timing
+With alignment fixed, what remains is **122/195 matched (62.6%), 73 missing
+(37.4%), 55 extra (31.1%)**. The driver is not mistiming drum hits — it is
+**dropping and adding them**. That is a far better lead for the original
+"drums don't sound tight" report than any timing number, and it is
+un-investigated. First question to settle: how much of it is genuine
+note-level divergence versus onset-detector sensitivity differing between two
+renders with different amplitude/spectral character (195 vs 177 detected
+onsets before any matching). Cross-check a sample against the register trace,
+where a dropped note is unambiguous.
+
+### E4. Calibrate the remaining detector defaults
+`--loose-threshold-ms 40` and the detector params (hop/window/bands/freq
+range) are still **provisional guesses**, not tuned against a corpus.
+(`--onset-tolerance-ms` is no longer in this list — E3 made it adaptive.)
+Calibrate against files with known-good and known-bad timing so "loose" means
+something reproducible across files.
 
 ---
 
@@ -168,9 +199,10 @@ known-bad timing so "loose" means something reproducible across files.
 | 8 | Galway pulse-PWM residuals; universal objective metric | B2/B3 | S-M |
 | 9 | bin/ archive sweep + re-toolkit | A5/D4 | S |
 | 10 | Hubbard kickoff | D3 | L |
-| 11 | Explain Glyptodont's +2.5-frame offset | E3 | S — **blocks reading any jitter number** |
+| ~~11~~ | ~~Explain Glyptodont's +2.5-frame offset~~ | E3 | ✅ **DONE 2026-07-24** — artifact, not real |
+| 11 | Glyptodont's 73 missing / 55 extra onsets (the real lead) | E3b | M |
 | 12 | Patch WinVICE for per-voice mute (reuse `siddetector` build) | E1 | M |
 | 13 | SidWiz/Corrscope video in the tool stack (needs E1 + ffmpeg) | E2 | M |
-| 14 | Calibrate tightness detector defaults against a corpus | E4 | S-M |
+| 14 | Calibrate remaining tightness detector defaults | E4 | S-M |
 
 **Standing constraints**: accuracy/byte-exactness over speed and file count; never ship lossy output silently; every "done" claim backed by the objective real-SF2II metric and, finally, the user's ears — the E track exists because that last check caught something the register metric could not.

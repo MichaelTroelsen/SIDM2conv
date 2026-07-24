@@ -3912,3 +3912,65 @@ Root-caused the regression via a live py65 write-trace on `F_IDX`/`F_CNT` (not j
   read this session (no `pdftoppm` available in this environment); may have
   useful terminology but the asm source is authoritative for the byte format
   regardless.
+
+---
+
+## Audio-domain check on Glyptodont (2026-07-24): the timing is fine; the residual is missing/extra onsets
+
+Context: B25 shipped a verified, register-exact improvement (Glyptodont
+97.1% → 97.5%) that did **not** fix the audible "drums are still not tight"
+report. `audio-tightness.bat` (see `docs/guides/AUDIO_TIGHTNESS_GUIDE.md`)
+was built to measure that complaint in the audio domain instead of the
+register domain. First real result, and a correction to its own first
+reading:
+
+### The "+2.5 frame offset" was a measurement artifact, not a driver defect
+
+The tool initially reported a **+50.0 ms (+2.50 PAL frame) systematic offset**
+and **60.7% loose onsets** against the B25 build. That was tempting to
+connect to the documented 3-frame `prepare1/2/3` startup pipeline (B8). It
+was wrong, and worth recording *why* so the same trap is not re-entered:
+
+- Tempo was **identical** — inter-onset-interval ratio driver/original
+  **1.00000** (median IOI 90.0 ms both sides). Not drift.
+- First-onset difference was **+10 ms** (0.5 frames), and per-quarter median
+  deltas bounced (+80/+40/+75/+20 ms) instead of holding constant. Not a
+  start-point shift either — and a linear fit removed almost none of the
+  spread (std 55.3 → 54.7 ms), so no trend of any shape.
+- **Actual cause**: the tool's default alignment tolerance was **150 ms while
+  the median inter-onset interval is 90 ms**. A greedy matcher whose window
+  is wider than the gap between notes can pair an onset with its *neighbour*.
+  Critically, that mispairing **preserves time order**, so the tool's own
+  crossed-pair detector reported zero crossings and gave false reassurance.
+- A tolerance sweep settled it: the "offset" collapsed **monotonically to
+  exactly 0.0 ms at ≤70 ms** (150→+50, 120→+30, 90→+10, 70/60/45/35/25→0),
+  and median |jitter| fell 50 ms → 10 ms (the detector's own hop resolution).
+
+The tool now derives its tolerance from the material's own IOI and warns when
+a tolerance approaches it. **Corrected reading: offset +0.00 frames, median
+jitter 0.0 ms, 7.4% loose.** Blackbird's native driver places Glyptodont's
+onsets essentially exactly where the original does.
+
+### What the residual actually is
+
+With alignment fixed, 20 s of Glyptodont at a 45 ms tolerance:
+
+| | count | share |
+|---|---|---|
+| matched | 122 | 62.6% of orig |
+| **missing** (orig onset, no driver partner) | **73** | **37.4% of orig** |
+| **extra** (driver onset, no orig partner) | **55** | **31.1% of driver** |
+
+Raw detected onsets: **195 original vs 177 driver**. So the native build is
+not mistiming percussive events — it is **dropping and adding them**. For a
+"drums don't sound tight" complaint that is a much better lead than any
+timing statistic, and it is consistent with the ear report in a way the
+register percentage (97.5%) is not.
+
+**Not yet established** (do this before treating the counts as note-level
+truth): how much of the 73/55 is genuine note divergence versus the onset
+detector responding differently to two renders with different amplitude and
+spectral character. The register trace settles it unambiguously per event —
+cross-check a sample of "missing" timestamps against `row_state`/the frame
+trace to confirm a note is genuinely absent rather than merely quieter.
+Tracked as **E3b** in `docs/ROADMAP.md`.
