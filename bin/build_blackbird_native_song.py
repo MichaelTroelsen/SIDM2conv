@@ -200,6 +200,22 @@ def bb_steps_for_voice(byte_stream):
     pending_tie = False
     gate_is_off = False
     had_note_yet = False
+    # E3g: has a genuine instrument-select byte EVER been seen on this voice?
+    # prepare2's got_note path calls _pr2_noteback(x, vs.currins), and currins
+    # starts at 0 -- so before the voice's first select, a note byte sets
+    # v_pendins = 0, and execute()'s whole instrument branch is gated on
+    # `if y != 0`. Such a note therefore does NOTHING on real hardware: no
+    # gate, no waveform, no ADSR. It still consumes its ticks (prepare3 sets
+    # v_trtimer regardless), but the voice stays silent.
+    #
+    # Fugue_on_a_Theme_by_D_M_Hanlon's voice 2 NEVER selects an instrument in
+    # the whole song -- verified against the simulator, which holds currins=0,
+    # pendins=0, wavemask=$fe (gate off) and a frozen wavepos=4 from start to
+    # finish. This function used to emit genuine note steps for it anyway, so
+    # the driver played a voice that real hardware leaves silent: voice 2's
+    # ctrl/pulse went permanently wrong from frame 904, pinning both waveform
+    # and pulse at exactly 66.7% (2 of 3 voices) for the rest of the song.
+    has_instr = False
     cur_fx = 0                     # sticky, like currfx in the real player
     arp_pending = False            # has THIS step already consumed prepare1's
                                     # one-fx-byte-per-tick allowance?
@@ -328,6 +344,7 @@ def bb_steps_for_voice(byte_stream):
                 prep2_pending = False
                 continue
             pending_instr = max(b - 0x83, 0)
+            has_instr = True        # E3g: currins is non-zero from here on
             prep2_pending = True
             continue
         if kind == 'gate_off':
@@ -392,16 +409,22 @@ def bb_steps_for_voice(byte_stream):
             # whatever note/instrument eventually DOES retrigger will supply
             # its own values fresh at that point.
             note = b >> 1
-            if gate_is_off:
+            # E3g: `not has_instr` is the SAME class of silent-note case as
+            # gate_is_off, one step earlier in the pipeline -- prepare2 hands
+            # execute() a pendins of 0, which execute() ignores outright, so no
+            # gate/waveform/ADSR event happens at all. Emit a rest, matching
+            # the observable effect (and, like the gate_is_off case, leave
+            # had_note_yet alone so following delays stay rests too).
+            if gate_is_off or (not has_instr and pending_instr is None):
                 steps.append(BBStep('rest', None, pending_instr, cur_fx,
                                      False, _note_ticks(b)))
             else:
                 steps.append(BBStep('note', note, pending_instr, cur_fx,
                                      pending_tie, _note_ticks(b)))
+                had_note_yet = True
             pending_instr = None
             pending_tie = False
             gate_is_off = False
-            had_note_yet = True
             arp_pending = False
             prep2_pending = False
             continue

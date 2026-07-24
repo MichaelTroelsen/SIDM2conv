@@ -4554,3 +4554,54 @@ Only two files remain below 98%, and neither is an envelope problem any more:
 
 `Into_the_Unknown` (98.1) and `Revolutions_Delivered` (99.0) are both at
 100.0 waveform/adsr, so their remainders are freq/filter, not retriggers.
+
+## E3g SHIPPED (2026-07-24): a voice that never selects an instrument is SILENT on hardware -- Fugue 91.5% -> 99.9%
+
+With the retrigger arc closed (E3e/E3f), `Fugue_on_a_Theme_by_D_M_Hanlon` was
+the clear corpus worst at 91.5%, and its residual was now purely waveform
+(76.7%) and pulse (76.7%) -- adsr/filter were already 100.0.
+
+The binned trace has an unmistakable shape: frames 0-903 exact, then waveform
+AND pulse both drop to exactly **66.7%** and stay flat forever -- i.e. 2 of 3
+voices, one voice permanently desyncing. The per-register diff pinned it to
+**voice 2 from frame 904**: sim `$D412`=`$40` (pulse, gate OFF), driver
+`$D412`=`$81` (noise, gate ON) -- the driver keeps a voice alive that the
+simulator holds silent.
+
+**Root cause**: voice 2 of this file **never selects an instrument in the
+entire song**. Verified against the validated simulator: `currins=0`,
+`pendins=0`, `wavemask=$fe` (gate off), `wavepos` frozen at 4 start to finish.
+On hardware, `prepare2`'s got_note path calls `_pr2_noteback(x, vs.currins)`
+with `currins=0`, so `v_pendins=0`, and `execute()`'s ENTIRE instrument branch
+is gated on `if y != 0` -- a note with no instrument ever selected does
+**nothing**: no gate, no waveform, no ADSR. It consumes its ticks and stays
+silent. `bb_steps_for_voice` was emitting genuine note steps for it anyway.
+
+**Fix** (`bb_steps_for_voice`): track `has_instr` (set by the first
+instrument-select byte, exactly like `had_note_yet`). A note byte with
+`not has_instr and pending_instr is None` becomes a **rest**, the same
+convention the pre-existing `gate_is_off` case already used for the same
+"observably silent note" situation one pipeline stage later. `had_note_yet`
+is now only set when a genuine active note is actually emitted, so a run of
+such silent notes stays rests throughout.
+
+**Blast radius measured before trusting it**: across the whole 16-file corpus,
+exactly **one voice in one file** has any note byte preceding its first
+instrument-select (Fugue's voice 2, 127 of them; every other voice selects an
+instrument before its first note). So this can only affect Fugue.
+
+**Result**: Fugue **91.5% -> 99.9%**, waveform 76.7 -> **100.0**, pulse
+76.7 -> **100.0**. The corpus sweep confirmed the prediction to the byte: the
+other **15 files are numerically identical** to E3f (same sizes), zero
+regressions. Corpus mean **98.89 -> 99.42**; 8 files at exactly 100.0.
+Fugue is 13898 bytes -- byte-COUNT unchanged (a note row becomes a rest row,
+same width). Full suite 1645 passed / 7 skipped / 2 xfailed, unchanged.
+
+### Corpus state after E3e+E3f+E3g (this session's Blackbird arc)
+
+Session start (E3c baseline) mean 97.36 -> **99.42**. Only two files remain
+below 99, neither an envelope/waveform problem:
+- `To_Die_For_II` 94.2% -- its own separate later-frame pulse/filter residual
+  (frame ~1600+), open since before this arc, untouched.
+- `Into_the_Unknown` 98.1% -- 3 parts; waveform/adsr already 100.0, so its
+  remainder is freq/filter.
