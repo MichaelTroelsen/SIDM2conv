@@ -36,6 +36,12 @@ class OnsetMatch:
     rise_delta_ms: float
     spectral_dist: float
     loose: bool
+    # delta_ms with the run's systematic offset removed (see
+    # TightnessReport.median_offset_ms). This is the "is this note itself
+    # early/late relative to the rest of the performance" number.
+    jitter_ms: float = 0.0
+    # jitter_ms (not delta_ms) exceeding loose_threshold_ms.
+    loose_jitter: bool = False
 
 
 @dataclass
@@ -46,6 +52,12 @@ class TightnessReport:
     missing: List[float]
     extra: List[float]
     params: Dict[str, Any] = field(default_factory=dict)
+    # Median of every matched onset's delta_ms: a whole-render time shift
+    # (different playback start point, driver startup pipeline, etc.), NOT
+    # per-note looseness. Separating the two matters -- a render that is
+    # uniformly 50 ms late is rhythmically perfect but would otherwise report
+    # as ~100% "loose", which is a misleading verdict.
+    median_offset_ms: float = 0.0
 
 
 def load_wav_mono(path: Union[str, Path]) -> Tuple[np.ndarray, int]:
@@ -252,6 +264,45 @@ def logmel_distance(seg_a: np.ndarray, seg_b: np.ndarray, sr: int, nb: int = 24,
     return float(np.abs(la - lb).mean())
 
 
+def offset_and_jitter(matched: List[OnsetMatch]) -> Tuple[float, List[float]]:
+    """(median_offset_ms, per-match jitter_ms) derived from delta_ms alone.
+
+    Deliberately recomputed from delta_ms rather than read back off
+    OnsetMatch.jitter_ms so that a TightnessReport assembled by hand (tests,
+    or a caller reconstructing one from JSON) reports the same numbers as one
+    produced by analyze_tightness, instead of silently falling back to the
+    dataclass's 0.0 defaults.
+
+    Median, not mean: a minority of badly-matched outliers (e.g. onsets
+    pinned at the alignment tolerance ceiling) must not drag the offset.
+    """
+    if not matched:
+        return 0.0, []
+    offset = float(np.median([m.delta_ms for m in matched]))
+    return offset, [m.delta_ms - offset for m in matched]
+
+
+def count_alignment_crossings(matched: List[OnsetMatch]) -> int:
+    """Number of matched pairs whose driver onset goes BACKWARDS in time
+    relative to the previous pair (ordered by orig_t).
+
+    Music does not reorder itself: if onset A precedes onset B in the
+    original, A's true partner precedes B's in the driver. So a decrease in
+    driver_t across consecutive pairs cannot be real -- it means greedy
+    nearest-neighbour alignment paired at least one onset with the wrong
+    neighbour, typically around a missing or extra onset. Drawn as connector
+    lines these pairs literally cross, which is why the timeline view makes
+    the problem obvious at a glance.
+
+    A nonzero count means jitter statistics are contaminated by pairing
+    errors and should not be read as timing looseness.
+    """
+    if len(matched) < 2:
+        return 0
+    ordered = sorted(matched, key=lambda m: m.orig_t)
+    return sum(1 for a, b in zip(ordered, ordered[1:]) if b.driver_t < a.driver_t)
+
+
 def analyze_tightness(orig: np.ndarray, driver: np.ndarray, sr: int,
                        onset_tolerance_ms: float = 150, loose_threshold_ms: float = 40,
                        **detector_kwargs) -> TightnessReport:
@@ -286,6 +337,18 @@ def analyze_tightness(orig: np.ndarray, driver: np.ndarray, sr: int,
             loose=abs(delta_ms) > loose_threshold_ms,
         ))
 
+    # Split the raw deltas into a whole-render OFFSET (the median) and
+    # per-note JITTER (the spread around it). A uniform shift and genuine
+    # looseness are different defects with different causes, and reporting
+    # only the raw delta conflates them -- a perfectly tight render that
+    # merely starts 50 ms late would otherwise read as almost entirely
+    # "loose". Median, not mean, so a minority of badly-matched outliers
+    # can't drag the offset around.
+    median_offset_ms, jitters = offset_and_jitter(matched)
+    for m, j in zip(matched, jitters):
+        m.jitter_ms = j
+        m.loose_jitter = abs(j) > loose_threshold_ms
+
     params = dict(onset_tolerance_ms=onset_tolerance_ms, loose_threshold_ms=loose_threshold_ms,
                   **detector_kwargs)
     return TightnessReport(
@@ -295,6 +358,7 @@ def analyze_tightness(orig: np.ndarray, driver: np.ndarray, sr: int,
         missing=missing,
         extra=extra,
         params=params,
+        median_offset_ms=median_offset_ms,
     )
 
 

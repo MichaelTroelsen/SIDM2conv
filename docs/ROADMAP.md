@@ -92,6 +92,68 @@ The scratch tools that cracked every engine — disassembler with emulation writ
 
 ---
 
+## E. Audio-domain verification (added 2026-07-24)
+
+Every fidelity number in this repo is a **register-write** match. That is the
+right primary metric, but it is provably not sufficient: the Blackbird B25
+round shipped a verified, register-exact improvement (97.5% overall) that did
+**not** fix the audible problem a listening pass reported. `audio-tightness.bat`
+(`docs/guides/AUDIO_TIGHTNESS_GUIDE.md`) is the first tool in this track —
+onset timing + attack shape, with a systematic-offset/jitter split and an
+alignment timeline. The items below are what it still needs.
+
+### E1. Patch VICE for per-voice muting (unblocks everything else here)
+`vsid -help` confirms **VICE exposes no voice-mute option** (only engine/model/
+sampling). SID2WAV has `-m<num>` but is a 1997 build that **hangs outright on
+some newer tunes** — lft's `Glyptodont.sid` renders zero samples under it while
+VSID handles it fine. So today: the files most worth analyzing are exactly the
+ones that cannot be voice-isolated.
+
+- **Action**: add a voice-mute resource/CLI option to the local WinVICE build
+  (reSID exposes per-voice output internally; the mute can be applied at the
+  `sid_engine` write layer or as a reSID `voice.envelope` gate). The user has
+  **already patched WinVICE in the `siddetector` project** — reuse that same
+  build/toolchain rather than starting a fresh fork.
+- **Payoff**: per-voice isolation on *every* file, from one renderer, which
+  unblocks E2 and removes the tool's current SID2WAV dependency entirely.
+- **Guard**: cross-check a patched-VICE per-voice render against SID2WAV's
+  `-m` output on a file both can handle (e.g. `SID/Angular.sid`) before
+  trusting it — same "two independent tools must agree" discipline the
+  zig64/vsid trace cross-validation already uses.
+
+### E2. SidWiz-class oscilloscope video in the tool stack
+Per-channel oscilloscope video (original vs driver, one lane per SID voice) is
+the fastest way for a human to *see* a timing/shape difference, and it is
+shareable. Two mature options: **[SidWizPlus](https://github.com/maxim-zhao/SidWizPlus)**
+(C#/.NET — `dotnet` is already installed here; began life as "SidWiz") and
+**[Corrscope](https://github.com/corrscope/corrscope)** (Python, pip-installable,
+correlation-based triggering that holds complex waves steady).
+
+- **Blocked on**: E1 for per-voice tracks on VSID-only files, and **ffmpeg**,
+  which is not currently installed (both tools need it to encode video).
+- **Action**: wrap whichever is chosen behind a `bin/` or `pyscript/` entry
+  point that takes the per-voice WAVs the tightness tool already renders and
+  emits a comparison video; do not vendor the tool, shell out to it.
+- **Note**: Corrscope is the lower-friction integration (same language, pip
+  install, headless render); SidWizPlus has the richer per-channel styling.
+
+### E3. Resolve Glyptodont's +2.5-frame systematic offset
+The tightness tool measures a **+50.0 ms (+2.50 PAL frame)** whole-render
+offset between `Glyptodont.sid` and its B25 native build, with monotonic
+alignment (no crossed pairs) but heavy jitter tails. +2.5 frames is
+suspiciously close to the documented 3-frame `prepare1/2/3` startup pipeline
+(see `docs/players/BLACKBIRD.md`'s B8 section). Determine whether it is that
+pipeline, a render start-point artifact, or real drift — it must be explained
+before any jitter number from this tool can be read as a looseness verdict.
+
+### E4. Calibrate the detector defaults
+`--onset-tolerance-ms 150` / `--loose-threshold-ms 40` and the detector params
+(hop/window/bands/freq range) are **provisional guesses**, not tuned against a
+corpus. Once E3 is resolved, calibrate against files with known-good and
+known-bad timing so "loose" means something reproducible across files.
+
+---
+
 ## Suggested execution order
 
 | # | Item | Track | Size |
@@ -106,5 +168,9 @@ The scratch tools that cracked every engine — disassembler with emulation writ
 | 8 | Galway pulse-PWM residuals; universal objective metric | B2/B3 | S-M |
 | 9 | bin/ archive sweep + re-toolkit | A5/D4 | S |
 | 10 | Hubbard kickoff | D3 | L |
+| 11 | Explain Glyptodont's +2.5-frame offset | E3 | S — **blocks reading any jitter number** |
+| 12 | Patch WinVICE for per-voice mute (reuse `siddetector` build) | E1 | M |
+| 13 | SidWiz/Corrscope video in the tool stack (needs E1 + ffmpeg) | E2 | M |
+| 14 | Calibrate tightness detector defaults against a corpus | E4 | S-M |
 
-**Standing constraints**: accuracy/byte-exactness over speed and file count; never ship lossy output silently; every "done" claim backed by the objective real-SF2II metric and, finally, the user's ears.
+**Standing constraints**: accuracy/byte-exactness over speed and file count; never ship lossy output silently; every "done" claim backed by the objective real-SF2II metric and, finally, the user's ears — the E track exists because that last check caught something the register metric could not.

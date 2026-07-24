@@ -23,6 +23,7 @@ from sidm2.audio_tightness import (
     attack_rise_time_ms,
     detect_onsets,
     logmel_distance,
+    offset_and_jitter,
 )
 
 SR = 44100
@@ -187,6 +188,56 @@ class TestSummaryStats(unittest.TestCase):
         self.assertAlmostEqual(deltas[0], 0.0, delta=5.0)
         self.assertAlmostEqual(deltas[1], 10.0, delta=5.0)
         self.assertTrue(all(not m.loose for m in report.matched))
+
+
+class TestOffsetJitterSeparation(unittest.TestCase):
+    """A uniform shift and genuine looseness are different defects; the
+    analysis must not report the former as the latter."""
+
+    def test_uniform_shift_is_offset_not_jitter(self):
+        times = [0.2, 0.6, 1.0, 1.4]
+        shift = 0.05  # every onset 50ms late, but perfectly regular
+        x = _make_click_track(SR, 2.0, times)
+        y = _make_click_track(SR, 2.0, [t + shift for t in times])
+
+        report = analyze_tightness(x, y, SR, onset_tolerance_ms=150,
+                                    loose_threshold_ms=40)
+
+        self.assertEqual(len(report.matched), len(times))
+        # Raw deltas all ~+50ms -> every onset would read as "loose"...
+        self.assertTrue(all(m.loose for m in report.matched))
+        # ...but that is entirely the offset; nothing is actually loose.
+        self.assertAlmostEqual(report.median_offset_ms, 50.0, delta=12.0)
+        self.assertFalse(any(m.loose_jitter for m in report.matched))
+        for m in report.matched:
+            self.assertLess(abs(m.jitter_ms), 40.0)
+
+    def test_genuine_looseness_shows_as_jitter(self):
+        times = [0.2, 0.6, 1.0, 1.4]
+        # No systematic shift, but one onset is badly late.
+        driver = [0.2, 0.6, 1.0, 1.49]
+        x = _make_click_track(SR, 2.0, times)
+        y = _make_click_track(SR, 2.0, driver)
+
+        report = analyze_tightness(x, y, SR, onset_tolerance_ms=150,
+                                    loose_threshold_ms=40)
+
+        self.assertAlmostEqual(report.median_offset_ms, 0.0, delta=12.0)
+        self.assertEqual(sum(1 for m in report.matched if m.loose_jitter), 1)
+
+    def test_offset_and_jitter_helper_matches_report_fields(self):
+        times = [0.2, 0.6, 1.0]
+        x = _make_click_track(SR, 1.5, times)
+        y = _make_click_track(SR, 1.5, [t + 0.03 for t in times])
+        report = analyze_tightness(x, y, SR)
+
+        offset, jitters = offset_and_jitter(report.matched)
+        self.assertAlmostEqual(offset, report.median_offset_ms, places=6)
+        for m, j in zip(report.matched, jitters):
+            self.assertAlmostEqual(m.jitter_ms, j, places=6)
+
+    def test_offset_and_jitter_empty(self):
+        self.assertEqual(offset_and_jitter([]), (0.0, []))
 
 
 if __name__ == '__main__':

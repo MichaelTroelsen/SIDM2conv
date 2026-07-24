@@ -51,8 +51,37 @@ class TestAudioTightnessHTMLExporter(unittest.TestCase):
 
     def test_stat_labels_present(self):
         html = AudioTightnessHTMLExporter(self.report, self.meta).build_html()
-        for label in ("Matched", "Missing", "Extra", "Mean Delta", "Loose"):
+        # "Offset" and "Loose % (jitter)" replaced the old single "Mean Delta"
+        # card: a whole-render shift and per-note looseness are different
+        # defects and one averaged number hid that.
+        for label in ("Matched", "Missing", "Extra", "Offset", "Loose", "Crossed"):
             self.assertIn(label, html)
+
+    def test_timeline_section_present(self):
+        html = AudioTightnessHTMLExporter(self.report, self.meta).build_html()
+        self.assertIn('tightness-timeline-canvas', html)
+        self.assertIn('Alignment Timeline', html)
+        self.assertIn('timeline-offset-toggle', html)
+
+    def test_timeline_reports_no_crossings_for_monotonic_alignment(self):
+        html = AudioTightnessHTMLExporter(self.report, self.meta).build_html()
+        self.assertIn('No crossed pairs', html)
+
+    def test_timeline_flags_crossed_pairs(self):
+        """A driver onset that runs backwards relative to its predecessor is
+        a mispairing, and the timeline must say so rather than presenting it
+        as ordinary jitter."""
+        from sidm2.audio_tightness import OnsetMatch
+        crossed = _make_report()
+        crossed.matched = [
+            OnsetMatch(orig_t=0.10, driver_t=0.90, delta_ms=800.0,
+                       rise_delta_ms=0.0, spectral_dist=0.1, loose=True),
+            OnsetMatch(orig_t=0.50, driver_t=0.20, delta_ms=-300.0,
+                       rise_delta_ms=0.0, spectral_dist=0.1, loose=True),
+        ]
+        html = AudioTightnessHTMLExporter(crossed, self.meta).build_html()
+        self.assertIn('crossed pair(s)', html)
+        self.assertNotIn('No crossed pairs', html)
 
     def test_stat_values_present(self):
         html = AudioTightnessHTMLExporter(self.report, self.meta).build_html()

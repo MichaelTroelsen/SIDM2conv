@@ -47,9 +47,51 @@ Claude to read directly) and HTML (for a human).
 3. **Aligns** onsets between the two renders (greedy nearest-neighbor
    within a tolerance window)
 4. **Measures** onset-timing delta, attack-rise-time delta, and spectral
-   distance per matched onset
-5. **Reports** a text summary + worst-offenders table, and an HTML
-   waveform view with colored onset markers
+   distance per matched onset, splitting the timing delta into a
+   **systematic offset** and per-note **jitter** (see below)
+5. **Reports** a text summary + worst-offenders table, and an HTML report
+   with an **alignment timeline**, a waveform view, and a sortable onset table
+
+### Offset vs jitter — read this before trusting a "loose %" number
+
+A raw onset delta mixes two completely different defects:
+
+| | meaning | fix |
+|---|---|---|
+| **Systematic offset** (median delta) | the whole render is shifted — different playback start point, driver startup pipeline, etc. | rhythmically harmless; find the constant cause |
+| **Jitter** (delta minus offset) | *this* note is early/late relative to the rest | the real "not tight" signal |
+
+A render that is uniformly 50 ms late is rhythmically **perfect**, yet a
+raw-delta report would flag ~100% of its onsets "loose". The tool therefore
+reports both, ranks worst-offenders by **jitter**, and prints a `HOW TO READ
+THIS` block. Offset is also shown in **PAL frames** (20 ms each), because the
+engine's own timing quantum is what makes it actionable — "+2.50 frames"
+points at a startup-pipeline difference in a way "+50 ms" does not.
+
+Two automatic warnings guard against over-reading the numbers:
+
+- **Crossed pairs** — a matched pair whose driver onset runs *backwards*
+  relative to its predecessor. Music does not reorder itself, so a crossing
+  is a greedy-alignment **mispairing**, not a timing error. Any nonzero count
+  means jitter is an upper bound only.
+- **Tolerance-ceiling pinning** — onsets whose delta sits exactly at
+  `--onset-tolerance-ms` are suspect pairings; re-run with a smaller
+  tolerance to check.
+
+### The alignment timeline
+
+The HTML report's first view: original onsets on a top lane, driver onsets on
+a bottom lane, one connector line per matched pair, coloured green→red by
+`|jitter|`. Missing onsets are red ticks on the top lane, extra onsets purple
+on the bottom.
+
+- **Crossed connectors are drawn thick and red** — that is mispairing, visible
+  at a glance, and the single most important thing this view shows.
+- The **"Remove systematic offset"** checkbox (on by default) shifts the
+  driver lane back by the median delta. Uncheck it to see the raw alignment.
+- **Scroll to zoom, drag to pan, double-click to reset** — necessary, since a
+  20-second render can carry ~200 onsets.
+- Hover any tick for exact `orig_t` / `driver_t` / delta / jitter.
 
 ### When to Use It
 

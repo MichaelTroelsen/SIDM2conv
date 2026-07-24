@@ -55,9 +55,40 @@ class TestFormatTextReport(unittest.TestCase):
         self.assertIn("Missing:        1", text)
         self.assertIn("Extra:          1", text)
 
-    def test_loose_count_present(self):
+    def test_raw_loose_count_present(self):
         text = format_text_report(self.report, {})
-        self.assertIn("Loose onsets:   1 / 2", text)
+        self.assertIn("Loose (|delta| > 40ms): 1 / 2", text)
+
+    def test_offset_and_jitter_reported_separately(self):
+        """Deltas of 0 and +50 -> median offset +25, jitter +/-25 (both within
+        the 40ms threshold). The raw view calls one onset loose; the jitter
+        view calls neither loose. Reporting only the raw number would blame
+        per-note looseness for what is a whole-render shift."""
+        text = format_text_report(self.report, {})
+        self.assertIn("SYSTEMATIC OFFSET (median delta): +25.0 ms", text)
+        self.assertIn("+1.25 PAL frames", text)
+        self.assertIn("Loose (|jitter| > 40ms): 0 / 2", text)
+        self.assertIn("HOW TO READ THIS", text)
+
+    def test_jitter_computed_for_handbuilt_report(self):
+        """The report must derive offset/jitter from delta_ms rather than
+        trusting OnsetMatch.jitter_ms, which a hand-assembled report leaves
+        at its 0.0 default -- otherwise this report would claim zero jitter."""
+        text = format_text_report(self.report, {})
+        self.assertNotIn("max |jitter_ms|: 0.0", text)
+        self.assertIn("max |jitter_ms|: 25.0", text)
+
+    def test_tolerance_ceiling_warning_when_pinned(self):
+        """An onset sitting exactly on the tolerance ceiling is more likely a
+        greedy-alignment mispairing than a real match, so it gets called out."""
+        pinned = _make_report()
+        pinned.matched[1].delta_ms = 150.0  # == onset_tolerance_ms
+        text = format_text_report(pinned, {})
+        self.assertIn("tolerance ceiling", text)
+
+    def test_no_ceiling_warning_when_none_pinned(self):
+        text = format_text_report(self.report, {})
+        self.assertNotIn("tolerance ceiling", text)
 
     def test_worst_offender_delta_present(self):
         text = format_text_report(self.report, {})

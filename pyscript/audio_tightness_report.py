@@ -10,7 +10,11 @@ from typing import Any, Dict
 
 import numpy as np
 
-from sidm2.audio_tightness import TightnessReport
+from sidm2.audio_tightness import (
+    TightnessReport,
+    count_alignment_crossings,
+    offset_and_jitter,
+)
 
 
 def _stat_line(label: str, values, signed: bool = True) -> str:
@@ -71,30 +75,90 @@ def format_text_report(report: TightnessReport, meta: Dict[str, Any] = None) -> 
         rises = [m.rise_delta_ms for m in report.matched]
         specs = [m.spectral_dist for m in report.matched if m.spectral_dist == m.spectral_dist]
 
+        thr = report.params.get('loose_threshold_ms', 40)
+        # Recomputed, not read off the report -- see offset_and_jitter's docstring.
+        offset, jitters = offset_and_jitter(report.matched)
+        abs_jitters = [abs(j) for j in jitters]
+        loose_jitter = [j for j in jitters if abs(j) > thr]
+        # A PAL frame is 20 ms -- the engine's own timing quantum, so
+        # expressing the offset in frames is what makes it actionable
+        # (e.g. "3 frames" points straight at a startup-pipeline difference).
+        offset_frames = offset / 20.0
+
         lines.append("")
-        lines.append(_stat_line("Onset delta (ms)", deltas))
+        lines.append("RAW onset delta -- includes any whole-render time shift:")
+        lines.append("  " + _stat_line("delta (ms)", deltas))
         lines.append(f"  max |delta_ms|: {max(abs_deltas):.1f}")
-        lines.append(f"Loose onsets:   {len(loose)} / {n_matched} "
+        lines.append(f"  Loose (|delta| > {thr:g}ms): {len(loose)} / {n_matched} "
                       f"({100.0 * len(loose) / n_matched:.1f}%)")
+
+        lines.append("")
+        lines.append(f"SYSTEMATIC OFFSET (median delta): {offset:+.1f} ms "
+                      f"({offset_frames:+.2f} PAL frames)")
+        lines.append("  A uniform shift of the whole render (playback start point,")
+        lines.append("  driver startup pipeline, ...) -- NOT per-note looseness.")
+
+        lines.append("")
+        lines.append("JITTER -- offset removed; THIS is the tightness measure:")
+        lines.append("  " + _stat_line("jitter (ms)", jitters))
+        lines.append(f"  max |jitter_ms|: {max(abs_jitters):.1f}")
+        lines.append(f"  Loose (|jitter| > {thr:g}ms): {len(loose_jitter)} / {n_matched} "
+                      f"({100.0 * len(loose_jitter) / n_matched:.1f}%)")
+
+        lines.append("")
         lines.append(_stat_line("Attack rise delta (ms)", rises))
         lines.append(_stat_line("Spectral distance", specs, signed=False))
+
+        lines.append("")
+        lines.append("HOW TO READ THIS:")
+        lines.append("  large offset + small jitter -> render is shifted but rhythmically tight")
+        lines.append("  small offset + large jitter -> genuinely loose timing (the 'not tight' case)")
+        lines.append("  both large                  -> shifted AND loose; fix the offset first,")
+        lines.append("                                  it can mis-pair onsets and inflate jitter")
+        n_cross = count_alignment_crossings(report.matched)
+        if n_cross:
+            lines.append("")
+            lines.append(f"  WARNING: {n_cross} matched pair(s) run BACKWARDS in time "
+                          f"relative to the previous pair.")
+            lines.append("  Music cannot reorder itself, so these are greedy-alignment")
+            lines.append("  mispairings (usually around a missing/extra onset). Jitter is")
+            lines.append("  contaminated by them -- treat the numbers above as an upper")
+            lines.append("  bound on looseness, and check the HTML timeline's crossed")
+            lines.append("  connector lines to see where.")
+
+        _tol = report.params.get('onset_tolerance_ms', 150)
+        n_pinned = sum(1 for d in abs_deltas if abs(d - _tol) < 1e-6)
+        if n_pinned:
+            # Deltas sitting exactly on the tolerance ceiling are suspicious:
+            # greedy alignment may have paired an onset with the wrong
+            # neighbour rather than reporting it missing.
+            lines.append("")
+            lines.append(f"  WARNING: {n_pinned} matched onset(s) sit exactly at the "
+                          f"{_tol:g}ms tolerance ceiling --")
+            lines.append("  those pairings may be greedy-alignment artifacts rather than real")
+            lines.append("  matches. Re-run with a smaller --onset-tolerance-ms to check.")
     else:
         lines.append("")
         lines.append("No matched onsets -- nothing to summarize.")
 
     lines.append("")
     lines.append("-" * 80)
-    lines.append("WORST OFFENDERS (top 20 by |delta_ms|)")
+    lines.append("WORST OFFENDERS (top 20 by |jitter_ms|, i.e. offset removed)")
     lines.append("-" * 80)
-    worst = sorted(report.matched, key=lambda m: abs(m.delta_ms), reverse=True)[:20]
+    # Ranked by jitter, not raw delta: with a large systematic offset every
+    # row would otherwise look equally bad and the genuinely mistimed notes
+    # would be indistinguishable from the uniformly-shifted ones.
+    _off, _jit = offset_and_jitter(report.matched)
+    _thr = report.params.get('loose_threshold_ms', 40)
+    worst = sorted(zip(report.matched, _jit), key=lambda p: abs(p[1]), reverse=True)[:20]
     if worst:
-        lines.append(f"{'orig_t':>8}  {'driver_t':>8}  {'delta_ms':>9}  "
+        lines.append(f"{'orig_t':>8}  {'driver_t':>8}  {'delta_ms':>9}  {'jitter_ms':>9}  "
                       f"{'rise_dms':>9}  {'spec_dist':>9}  loose")
-        for m in worst:
+        for m, j in worst:
             spec = f"{m.spectral_dist:.3f}" if m.spectral_dist == m.spectral_dist else "n/a"
             lines.append(
-                f"{m.orig_t:8.3f}  {m.driver_t:8.3f}  {m.delta_ms:+9.1f}  "
-                f"{m.rise_delta_ms:+9.1f}  {spec:>9}  {'YES' if m.loose else ''}"
+                f"{m.orig_t:8.3f}  {m.driver_t:8.3f}  {m.delta_ms:+9.1f}  {j:+9.1f}  "
+                f"{m.rise_delta_ms:+9.1f}  {spec:>9}  {'YES' if abs(j) > _thr else ''}"
             )
     else:
         lines.append("(none)")
