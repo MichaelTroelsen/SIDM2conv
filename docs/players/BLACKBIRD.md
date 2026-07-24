@@ -4216,3 +4216,81 @@ Blackbird had the identical bug until B24 widened its own threshold to
 `cmp #$80` for unrelated reasons and incidentally fixed it. Left unfixed here
 (each needs its own corpus re-verification; the encodings differ) and
 allowlisted in the lint so the debt stays visible — tracked as ROADMAP E3d.
+
+## E3c(a) investigation (2026-07-24): the framing was wrong — arming is ~complete, the runtime path is sound, and the loss is elsewhere
+
+Picked up "close the fx-command-slot collision gap" and found the premise no
+longer held. Recording the eliminated hypotheses so the next session does not
+re-walk them.
+
+### The collision framing is obsolete
+
+E3b measured 483 candidates (39%) skipped by the fx-command-slot collision
+gate (a). After E3c(c) that is **6 song-wide**, involving **2 distinct fx
+programs** (`[4, 39]`), against **16 spare command codes** — trivially
+fixable, and *not worth fixing*, because it is no longer the bottleneck. The
+multi-tick fix absorbed nearly all collision cases as a side effect (for
+`n > 1` the sentinel and the real fx change occupy different rows).
+
+Post-E3c arming coverage, whole song:
+
+| voice | steps | hard-restart candidates | armed |
+|---|---|---|---|
+| 0 | 1676 | 798 | **797** |
+| 1 | 1462 | 372 | **368** |
+| 2 | 1170 | 75 | **73** |
+| | | 1245 | **1238 (99.4%)** |
+
+So the remaining ~40 missing retriggers per 20 s are **not** an arming-coverage
+problem.
+
+### The runtime path is sound — verified by live CPU trace
+
+Instrumented `headless_trace` with a py65 PC-watch, locating
+`restart_arm_step` and `pr_setprog`'s sentinel test **dynamically from the
+build's own bytes** (`$1188` / `$13EB`; the B25 lesson about hardcoded
+addresses). Over 400 frames:
+
+- `zp_tcnt` cycles cleanly **5,4,3,2,1** — `tcnt==2` is reached on every row
+  (80 of 80).
+- **12** `RESTART_ARM_FX` dispatches → **9** firing frames (some frames arm two
+  voices, which share one `restart_arm_step` entry that services all three).
+- Every dispatch at frame F fires at **F+3**, i.e. exactly 2 real frames before
+  the next row commits: 30→33, 100→103, 190→193, 270→273, 350→353, …
+
+**Dispatch → blip is 100% reliable.** The `zp_tcnt==2` design is correct and
+the ASM works as intended.
+
+### Hypotheses eliminated
+
+1. **`window_steps` stripping the flag** (the B25-era bug) — instrumented
+   in/out: **1238 in, 1236 out**, the 2 lost being the deliberate defensive
+   clear of each window's last step. Not the cause.
+2. **Armed row not adjacent to the commit row** — checked every emitted armed
+   row: **100%** are immediately followed by the instrument-select row. Row
+   placement is correct.
+3. **Packer merging the armed row into a longer token** — `_event_tokens`
+   breaks a token whenever `row.command is not None`, so an armed row is
+   always its own 1-tick token.
+4. **The fx-command collision** — 6 remaining, see above.
+
+### Where it actually stands
+
+Sentinels reach the driver at roughly **half** the rate the armed-step count
+predicts (~12 observed vs ~21 expected per 80 rows). Since marking, windowing,
+row placement and the runtime path are all verified sound, the loss is in the
+step→row→packed-sequence path *between* `window_steps` and the emitted bytes,
+or the marking predicate does not match the simulator's own blip condition.
+
+**Concrete lead for the next session**: the simulator blips in
+`_pr2_noteback` when `cmp_carry(ins_value, ins_restart + 1)` holds — i.e. on
+its own **1-based** `ins_value` — whereas the marking pass tests
+`step.instrument >= ins_restart` on the **0-based** raw index. These are not
+obviously the same predicate. Confirm they select the identical note set
+before hunting further downstream; a mismatch here would explain a systematic
+shortfall exactly like the one observed.
+
+Note also that not every hard-restart note *needs* a blip: where the gate is
+already low (a preceding rest), the note-on alone produces the 0→1 edge. Only
+notes whose gate is high going in require it. Any future accounting must
+compare against **that** subset, not the raw candidate count.
