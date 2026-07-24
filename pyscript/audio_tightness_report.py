@@ -36,6 +36,8 @@ def format_text_report(report: TightnessReport, meta: Dict[str, Any] = None) -> 
                       f"(muted: {meta.get('mute_voices', '?')})")
     if meta.get('duration') is not None:
         lines.append(f"Render duration: {meta['duration']}s")
+    if meta.get('renderer'):
+        lines.append(f"Renderer: {meta['renderer']}")
 
     lines.append("")
     lines.append("Detector/alignment params:")

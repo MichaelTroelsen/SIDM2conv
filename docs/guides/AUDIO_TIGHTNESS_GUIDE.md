@@ -40,8 +40,8 @@ Claude to read directly) and HTML (for a human).
 
 ### What It Does
 
-1. **Renders** the original and the driver output to WAV (via SID2WAV —
-   see "Why SID2WAV, not VSID" below)
+1. **Renders** the original and the driver output to WAV (via VSID or
+   SID2WAV — see "Renderer selection" below)
 2. **Detects onsets** in both renders (numpy spectral-flux + adaptive
    peak-picking, no external audio library)
 3. **Aligns** onsets between the two renders (greedy nearest-neighbor
@@ -64,22 +64,51 @@ Claude to read directly) and HTML (for a human).
   `accuracy-heatmap.bat` — those catch register-level bugs; this catches
   what register-level metrics can miss
 
-### Why SID2WAV, not VSID
+### Renderer selection
 
-`sidm2/audio_export_wrapper.py` normally prefers VSID (the VICE emulator)
-over SID2WAV for accuracy. This tool always forces SID2WAV
-(`force_sid2wav=True`), because per-voice isolation (`--voice`) and subtune
-selection (`--subtune`) need SID2WAV-only flags — confirmed directly against
-`tools/SID2WAV.EXE`'s own `-h` output:
+**One renderer serves both sides of a comparison.** Mixing a VSID render
+with a SID2WAV render would fold two different SID emulations into the onset
+deltas — exactly the measurement error this tool exists to avoid. The
+renderer is resolved once, up front, before anything is rendered.
+
+`--renderer auto` (the default) picks:
+
+| Situation | Renderer | Why |
+|---|---|---|
+| `--voice` given | SID2WAV | Only renderer with a voice-mute flag (`-m<num>`) |
+| otherwise, VSID available | VSID | Handles tunes SID2WAV cannot (see below) |
+| otherwise | SID2WAV | Fallback |
+
+Override with `--renderer vsid` or `--renderer sid2wav`. Combining
+`--renderer vsid` with `--voice` is rejected rather than silently ignored —
+an unmuted render presented as voice-isolated would be worse than an error.
+
+**Why VSID is preferred:** `tools/SID2WAV.EXE` is a 1997 build (v1.8/1.36.21)
+and **hangs outright on some newer tunes** — it parses the PSID header
+correctly, prints the metadata, then never emits a single sample. lft's
+`SID/LFT/Glyptodont.sid` is a confirmed case: SID2WAV produces no output even
+for a 2-second render, while VSID renders it fine. Since Glyptodont is one of
+the files this tool was built to analyze, SID2WAV-only was not viable.
+
+**Why SID2WAV is still needed:** per-voice isolation (`--voice`) requires
+flags VSID has no equivalent for — confirmed against `tools/SID2WAV.EXE`'s
+own `-h` output:
 
 ```
 -m<num>    mute voices out of 1,2,3,4 (default: none)
 -o<num>    set song number (default: preset)
 ```
 
-VICE's `vsid` wrapper (`sidm2/vsid_wrapper.py`) has no equivalent. Both
-sides of a comparison always render through the same tool, so the
-comparison stays apples-to-apples even when voice isolation isn't used.
+So a file SID2WAV cannot render also **cannot be voice-isolated**. The tool
+says so explicitly rather than failing with a bare timeout.
+
+**VSID render precision:** the VSID path uses `-limitcycles` (an exact PAL
+cycle count) rather than `sidm2/vsid_wrapper.py`'s unbounded-run-plus-
+subprocess-timeout approach, so the render length is determined by the
+requested duration rather than by wall-clock speed. This matches the
+technique `bin/listen_compare.py` already uses. VSID exits non-zero on normal
+termination (a documented quirk — see `CLAUDE.md`), so success is judged by
+the output file, never the exit code.
 
 ---
 
@@ -110,14 +139,17 @@ audio-tightness.bat original.sid converted.sid --voice 1
 ```
 
 `--voice N` mutes the *other two* SID voices (via SID2WAV's `-m<num>`) on
-**both** renders, so voice N can be compared cleanly.
+**both** renders, so voice N can be compared cleanly. This forces the
+SID2WAV renderer; a file SID2WAV cannot render (see "Renderer selection")
+cannot be voice-isolated.
 
 ### Common Options
 
 ```bash
 --seconds 30                  # Render duration (default: 30)
---subtune 2                   # Subtune/song number (SID2WAV -o<num>)
---voice {1,2,3}                # Isolate one SID voice
+--subtune 2                   # Subtune/song number (SID2WAV -o<num>, VSID -tune)
+--voice {1,2,3}                # Isolate one SID voice (forces SID2WAV)
+--renderer {auto,vsid,sid2wav} # Renderer for BOTH sides (default: auto)
 --driver-init 0xHHHH           # Override the driver SF2's init address
 --driver-play 0xHHHH           # Override the driver SF2's play address
 --onset-tolerance-ms 150       # Max |delta| to still count as matched (default: 150)
@@ -223,16 +255,26 @@ The `.sf2` has no Block 2 header and doesn't match the Laxity heuristics, so
 addresses (check the driver's own build script, e.g.
 `bin/build_blackbird_driver_full.py`'s `DRV_INIT`/`DRV_PLAY`).
 
-**`Failed to render ... to WAV: no rendering tool available`**
-`tools/SID2WAV.EXE` isn't present. Install it or run
-`python pyscript/install_vice.py` (note: VSID alone won't help here — voice
-isolation and subtune selection require SID2WAV specifically).
+**`No renderer available: neither vsid.exe nor tools/SID2WAV.EXE was found`**
+Install VICE with `python pyscript/install_vice.py`, or restore
+`tools/SID2WAV.EXE`. Note that VSID alone cannot do voice isolation.
+
+**`SID2WAV timeout ... hangs outright on some newer tunes`**
+SID2WAV (1997) cannot render this file at all — it reads the header, then
+emits nothing. Without `--voice`, just retry (auto-selection uses VSID). With
+`--voice`, the file genuinely cannot be voice-isolated, since SID2WAV is the
+only renderer with a mute flag; drop `--voice` to compare the full mix.
+
+**`--renderer vsid cannot be combined with --voice`**
+Working as intended: VSID has no voice-mute flag, and silently rendering an
+unmuted mix while reporting it as voice-isolated would be worse than an
+error. Use `--renderer sid2wav`, or drop `--voice`.
 
 **`Sample rate mismatch`**
 The two renders came out at different sample rates — shouldn't normally
-happen (both go through the same SID2WAV render path), but can occur if one
-side was pre-rendered externally as a `.wav`. Re-render both, or convert
-the mismatched `.wav` to match.
+happen (both sides always share one renderer), but can occur if one side was
+pre-rendered externally as a `.wav`. Re-render both, or convert the
+mismatched `.wav` to match.
 
 **Detected onset count looks wrong (too many/too few)**
 Tune `--onset-tolerance-ms`, or the underlying detector params

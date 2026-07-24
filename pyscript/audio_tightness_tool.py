@@ -21,6 +21,7 @@ Version: 1.0.0
 import argparse
 import logging
 import shutil
+import subprocess
 import sys
 import tempfile
 from datetime import datetime
@@ -34,10 +35,78 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from scripts.sf2_to_sid import SF2File, convert_sf2_to_sid
 from sidm2.audio_export_wrapper import AudioExportIntegration
 from sidm2.audio_tightness import analyze_tightness_files, load_wav_mono
+from sidm2.vsid_wrapper import VSIDIntegration
 from pyscript.audio_tightness_report import format_text_report
 from pyscript.audio_tightness_html_exporter import AudioTightnessHTMLExporter
 
 MUTE_MAP = {1: "23", 2: "13", 3: "12"}
+
+# PAL cycles/second -- same constant bin/listen_compare.py uses to turn a
+# wall-clock duration into an exact VSID -limitcycles value.
+PAL_CYCLES_PER_SEC = 985248
+
+
+class RenderError(RuntimeError):
+    """A render failed in a way the user needs to act on (not a bug)."""
+
+
+def choose_renderer(requested, voice, vsid_available, sid2wav_available):
+    """Pick ONE renderer for BOTH sides of the comparison.
+
+    Both renders must come from the same tool -- comparing a VSID render
+    against a SID2WAV render would fold two different SID emulations into
+    the onset deltas, which is exactly the measurement error this tool
+    exists to avoid.
+
+    SID2WAV is the only renderer with a voice-mute flag (-m<num>), so
+    --voice forces it. Otherwise VSID is preferred: it is a far more modern
+    emulation, and SID2WAV (a 1997 build) hangs indefinitely on some newer
+    tunes -- e.g. lft's Glyptodont, which it parses correctly and then never
+    renders a single sample of, the exact case that motivated this function.
+
+    Returns (renderer, reason). Raises RenderError if the request is
+    impossible to satisfy.
+    """
+    if requested == 'vsid' and voice:
+        raise RenderError(
+            "--renderer vsid cannot be combined with --voice: VSID has no "
+            "voice-mute equivalent. Use --renderer sid2wav (note that SID2WAV "
+            "cannot render some newer tunes at all), or drop --voice."
+        )
+
+    if requested == 'vsid':
+        if not vsid_available:
+            raise RenderError(
+                "--renderer vsid requested but vsid.exe was not found "
+                "(looked in C:\\winvice\\bin, tools/vice/bin, tools/vice, PATH). "
+                "Install VICE with: python pyscript/install_vice.py"
+            )
+        return 'vsid', 'explicitly requested'
+
+    if requested == 'sid2wav':
+        if not sid2wav_available:
+            raise RenderError(
+                "--renderer sid2wav requested but tools/SID2WAV.EXE was not found."
+            )
+        return 'sid2wav', 'explicitly requested'
+
+    # auto
+    if voice:
+        if not sid2wav_available:
+            raise RenderError(
+                "--voice requires SID2WAV (the only renderer with a voice-mute "
+                "flag), but tools/SID2WAV.EXE was not found."
+            )
+        return 'sid2wav', 'required by --voice (only renderer with -m voice mute)'
+
+    if vsid_available:
+        return 'vsid', 'preferred (handles tunes SID2WAV cannot)'
+    if sid2wav_available:
+        return 'sid2wav', 'VSID not found, falling back'
+    raise RenderError(
+        "No renderer available: neither vsid.exe nor tools/SID2WAV.EXE was found. "
+        "Install VICE with: python pyscript/install_vice.py"
+    )
 
 
 def setup_logging(verbose: int):
@@ -55,10 +124,56 @@ def _hex_or_int(s: str) -> int:
     return int(s, 0)
 
 
-def _render(sid_path, out_wav, seconds, subtune, voice, verbose):
-    """Render a .sid to .wav via SID2WAV (always -- mute/subtune have no VSID
-    equivalent, and both sides must use the same tool for an apples-to-apples
-    comparison)."""
+def _render_vsid(sid_path, out_wav, seconds, subtune, verbose):
+    """Render via VSID with an exact -limitcycles bound.
+
+    Deliberately NOT routed through VSIDIntegration.export_to_wav(), which
+    runs vsid unbounded and kills it on a subprocess timeout -- that makes the
+    output length depend on wall-clock speed rather than the requested
+    duration, so two renders can differ in length. -limitcycles makes vsid
+    stop itself at an exact cycle count, the same technique
+    bin/listen_compare.py already uses.
+
+    vsid exits non-zero on normal termination (a documented quirk -- see
+    CLAUDE.md), so success is judged by the output file, never the exit code.
+    """
+    vsid_exe = VSIDIntegration._find_vsid()
+    if vsid_exe is None:
+        raise RenderError("vsid.exe not found")
+
+    out_wav = Path(out_wav)
+    out_wav.parent.mkdir(parents=True, exist_ok=True)
+    if out_wav.exists():
+        out_wav.unlink()
+
+    limit = int(seconds * PAL_CYCLES_PER_SEC)
+    args = [str(vsid_exe), '-console', '-sounddev', 'wav',
+            '-soundarg', str(out_wav), '-limitcycles', str(limit)]
+    if subtune is not None:
+        args += ['-tune', str(subtune)]
+    args.append(str(sid_path))
+
+    if verbose > 1:
+        print(f"  Command: {' '.join(args)}")
+
+    # Generous ceiling: vsid renders faster than real time here, but this is
+    # a hard stop so a wedged emulator can't hang the tool forever.
+    timeout_s = max(60, seconds * 4 + 30)
+    try:
+        subprocess.run(args, capture_output=True, text=True, timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        pass  # fall through to the file check below
+
+    if not out_wav.exists() or out_wav.stat().st_size == 0:
+        raise RenderError(
+            f"VSID produced no audio for {sid_path} (timeout {timeout_s:.0f}s). "
+            f"Try --renderer sid2wav."
+        )
+    return out_wav
+
+
+def _render_sid2wav(sid_path, out_wav, seconds, subtune, voice, verbose):
+    """Render via SID2WAV, the only renderer with a voice-mute flag."""
     mute_voices = MUTE_MAP.get(voice) if voice else None
     result = AudioExportIntegration.export_to_wav(
         sid_file=Path(sid_path), output_file=Path(out_wav),
@@ -67,11 +182,35 @@ def _render(sid_path, out_wav, seconds, subtune, voice, verbose):
     )
     if not result or not result.get('success'):
         err = result.get('error') if result else 'no rendering tool available'
-        raise RuntimeError(f"Failed to render {sid_path} to WAV: {err}")
+        hint = ""
+        if 'timeout' in str(err).lower():
+            # The Glyptodont case: SID2WAV (1997) parses a newer tune's header
+            # fine and then never emits a sample. Name it, don't just surface
+            # a bare timeout.
+            hint = (
+                "\n  SID2WAV is a 1997 player and hangs outright on some newer "
+                "tunes (it reads the header, then renders nothing)."
+            )
+            if voice:
+                hint += (
+                    "\n  --voice forces SID2WAV (it is the only renderer with a "
+                    "voice-mute flag), so this file cannot be voice-isolated. "
+                    "Drop --voice to render it with VSID instead."
+                )
+            else:
+                hint += "\n  Retry with --renderer vsid."
+        raise RenderError(f"Failed to render {sid_path} to WAV: {err}{hint}")
     return out_wav
 
 
-def resolve_input(path: Path, role: str, args, tmp_dir: Path):
+def _render(sid_path, out_wav, seconds, subtune, voice, renderer, verbose):
+    """Dispatch to the renderer chosen once, up front, for BOTH sides."""
+    if renderer == 'vsid':
+        return _render_vsid(sid_path, out_wav, seconds, subtune, verbose)
+    return _render_sid2wav(sid_path, out_wav, seconds, subtune, voice, verbose)
+
+
+def resolve_input(path: Path, role: str, args, tmp_dir: Path, renderer: str):
     """Resolve a .sid/.sf2/.wav CLI arg to a WAV file, rendering as needed.
     Returns None (after printing [ERROR]) on failure."""
     ext = path.suffix.lower()
@@ -98,11 +237,13 @@ def resolve_input(path: Path, role: str, args, tmp_dir: Path):
             print(f"[ERROR] Failed to convert {path} to SID")
             return None
         out_wav = tmp_dir / f"{role}.wav"
-        return _render(tmp_sid, out_wav, args.seconds, args.subtune, args.voice, args.verbose)
+        return _render(tmp_sid, out_wav, args.seconds, args.subtune, args.voice,
+                       renderer, args.verbose)
 
     if ext == '.sid':
         out_wav = tmp_dir / f"{role}.wav"
-        return _render(path, out_wav, args.seconds, args.subtune, args.voice, args.verbose)
+        return _render(path, out_wav, args.seconds, args.subtune, args.voice,
+                       renderer, args.verbose)
 
     print(f"[ERROR] Unsupported file extension for {path}: {ext!r} (expected .sid, .sf2, or .wav)")
     return None
@@ -142,10 +283,16 @@ Output:
   HTML report (unless --no-html): waveform view with colored onset markers
   and a sortable onset table, for human review.
 
+Renderers:
+  ONE renderer is chosen for BOTH sides (mixing two SID emulations would
+  contaminate the onset deltas). Default --renderer auto prefers VSID, which
+  handles tunes SID2WAV cannot -- SID2WAV is a 1997 build that hangs outright
+  on some newer files (e.g. lft's Glyptodont). --voice forces SID2WAV, since
+  it is the only renderer with a voice-mute flag.
+
 Voice isolation:
   --voice {1,2,3} mutes the OTHER two SID voices (SID2WAV's -m<num>) on BOTH
-  renders, so a single channel can be compared cleanly. Renders always use
-  SID2WAV (not VSID), since VSID has no mute/subtune equivalent.
+  renders, so a single channel can be compared cleanly.
 
 Native drivers (bin/-only, e.g. Blackbird):
   --driver-init/--driver-play are REQUIRED when the .sf2's init/play
@@ -162,7 +309,11 @@ Native drivers (bin/-only, e.g. Blackbird):
     parser.add_argument('--subtune', type=int, default=None,
                          help="Subtune/song number (SID2WAV -o<num>)")
     parser.add_argument('--voice', type=int, choices=[1, 2, 3], default=None,
-                         help="Isolate one SID voice by muting the other two on BOTH renders")
+                         help="Isolate one SID voice by muting the other two on BOTH renders "
+                              "(forces --renderer sid2wav)")
+    parser.add_argument('--renderer', choices=['auto', 'vsid', 'sid2wav'], default='auto',
+                         help="Renderer for BOTH sides (default: auto -- prefers VSID, "
+                              "which handles tunes SID2WAV hangs on)")
     parser.add_argument('--driver-init', type=_hex_or_int, default=None,
                          help="Override the driver SF2's init address (e.g. 0x1000)")
     parser.add_argument('--driver-play', type=_hex_or_int, default=None,
@@ -199,11 +350,27 @@ Native drivers (bin/-only, e.g. Blackbird):
         print(f"[ERROR] File not found: {args.driver}")
         return 1
 
+    # Resolve the renderer ONCE, before any rendering, so both sides are
+    # guaranteed to come from the same tool.
+    needs_render = orig_path.suffix.lower() != '.wav' or driver_path.suffix.lower() != '.wav'
+    renderer = None
+    if needs_render:
+        try:
+            renderer, reason = choose_renderer(
+                args.renderer, args.voice,
+                vsid_available=VSIDIntegration._check_tool_available(),
+                sid2wav_available=AudioExportIntegration._check_tool_available(),
+            )
+        except RenderError as e:
+            print(f"[ERROR] {e}")
+            return 1
+        print(f"\nRenderer: {renderer} ({reason})")
+
     tmp_dir = Path(tempfile.mkdtemp(prefix="audio_tightness_"))
     try:
         print(f"\nResolving original: {args.orig}")
         try:
-            orig_wav = resolve_input(orig_path, 'orig', args, tmp_dir)
+            orig_wav = resolve_input(orig_path, 'orig', args, tmp_dir, renderer)
         except RuntimeError as e:
             print(f"[ERROR] {e}")
             return 1
@@ -213,7 +380,7 @@ Native drivers (bin/-only, e.g. Blackbird):
 
         print(f"\nResolving driver: {args.driver}")
         try:
-            driver_wav = resolve_input(driver_path, 'driver', args, tmp_dir)
+            driver_wav = resolve_input(driver_path, 'driver', args, tmp_dir, renderer)
         except RuntimeError as e:
             print(f"[ERROR] {e}")
             return 1
@@ -240,6 +407,7 @@ Native drivers (bin/-only, e.g. Blackbird):
         meta = dict(
             orig_path=args.orig, driver_path=args.driver, duration=args.seconds,
             voice=args.voice, mute_voices=MUTE_MAP.get(args.voice) if args.voice else None,
+            renderer=renderer or 'n/a (both inputs were .wav)',
         )
 
         text_report = format_text_report(report, meta)
