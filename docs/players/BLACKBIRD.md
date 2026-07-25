@@ -4808,3 +4808,50 @@ arithmetic (which also CONFIRMED `_note_ticks`/`_delay_ticks` were correct and
 never the bug), not from pattern-matching the discrepancy. Had the numbers been
 tuned until this one file improved, the sibling cases would have been left
 inconsistent and some other file would eventually have paid for it.
+
+## Tooling promoted to `pyscript/` (2026-07-25)
+
+Both harnesses behind this file's headline numbers used to live in an untracked
+scratchpad, which meant the corpus figures quoted in `CLAUDE.md` and
+`ACCURACY_MATRIX.md` were **not reproducible from a fresh clone** -- the same
+caveat Sound Monitor still carries. Now tracked and tested:
+
+| module | what it does |
+|---|---|
+| `pyscript/blackbird_sweep.py` | builds the 16-file corpus, records per-file overall/per-register/parts/bytes, `--compare` diffs two sweeps |
+| `pyscript/blackbird_crash_probe.py` | SF2II editor crash oracle (load, press PLAY, report survival) + the combo-command schedule analysis that decides how long to play |
+
+```
+py -3 pyscript/blackbird_sweep.py <label>              # writes out/blackbird/sweep_<label>.json
+py -3 pyscript/blackbird_sweep.py --compare a.json b.json
+py -3 pyscript/blackbird_crash_probe.py --schedule <file.sf2> [frames_per_row] [combo_base]
+py -3 pyscript/blackbird_crash_probe.py <file.sf2> [trials] [load_attempts]
+```
+
+34 tests (`test_blackbird_sweep.py`, `test_blackbird_crash_probe.py`) run in
+under a second: they never build and never launch SF2II. What they pin down:
+
+- **`assert_window_covers()`** -- the guard for E3f's false all-clear. A
+  too-short play window now RAISES instead of returning a reassuring
+  all-survived result. Tests assert a 6s window over an 8.2s-first-event build
+  is rejected, that bare sufficiency without margin is rejected, and that an
+  EMPTY schedule is an error rather than a pass (playing a build with no combo
+  commands says nothing about combo commands).
+- **The Unpack port** -- SF2II's own sequence semantics, including that
+  `duration` is sticky across events and that the duration-expansion loop is
+  unbounded in the C++, so overrun past the 1024-entry `m_Events` array is
+  detectable. A corpus check asserts shipped sequences stay under the cap.
+- **Part counts** -- `EXPECTED_PARTS` pins Fargo 2 / Dithered_Island 2 /
+  Into_the_Unknown 3, and `compare()` reports a part move SEPARATELY from a
+  regression, because a moved count means the two numbers measure different
+  spans and are not comparable at all (the B10 trap).
+- **The corpus list** -- all 16 SIDs must exist in `SID/LFT`, so a renamed rip
+  fails loudly instead of silently shrinking the sweep.
+- **The recorded mean** -- 99.669 is asserted from the per-file figures, so the
+  number in `CLAUDE.md` / `ACCURACY_MATRIX.md` cannot drift from its evidence
+  unnoticed.
+- **Crash-rate arithmetic** -- computed over trials that actually PLAYED, so a
+  flaky NOLOAD can never be read as evidence about play.
+
+A failed build parses to `None`, never 0% and never a missing key, so a refused
+build cannot masquerade as "unchanged".
