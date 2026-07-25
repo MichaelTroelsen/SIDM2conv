@@ -204,47 +204,63 @@ per-subtune split is itself suspect here (see below).
 
 ---
 
-## Last Ninja 2 — located, NOT decoded (do not convert)
-
-**Status: the wrapper and table locations are solved; the format is not.
-Stage A must not be run on this file.**
+## Last Ninja 2 — SOLVED (12 of 13 subtunes, 100% / 100%)
 
 LN2 is a **relocating compilation**. `play=$4002` is all zeros in the file
 because `init $3f40` copies the selected subtune's self-contained player+data
-blob to `$4000` first. There are 13 such blobs — confirmed by 13 separate
-`(C)1988 MATT GRAY` strings. The copy loop is fully decoded (`relocating_subtunes()`):
-
-| Table | Address | Per subtune |
-|-------|---------|-------------|
-| source lo / hi | `$3f80` / `$3f8d` | blob address |
-| tail bytes | `$3f9a` | length low part |
-| pages | `$3fa7` | length = pages·256 + tail |
+blob to `$4000` first. Thirteen blobs, confirmed by thirteen separate
+`(C)1988 MATT GRAY` strings. The copy loop is fully decoded
+(`relocating_subtunes()`): source lo/hi at `$3f80`/`$3f8d`, tail at `$3f9a`,
+pages at `$3fa7`, length = `pages·256 + tail`.
 
 Once relocated it **is** the same engine: `$4002` is the byte-identical
-`music_play` shim (`ldx #$00/$07/$0e`), and `play_voice $4012` opens with
-Driller's exact `lda tune_ctrl / bne / sta $d418 / rts / cmp #$ab`.
+`music_play` shim and `play_voice $4012` opens with Driller's exact prologue.
+Beyond that the 1988 build shares only **one byte** with Driller, so fixed
+offsets don't transfer and `locate()` finds the tables by signature instead.
 
-Beyond that prologue the 1988 build shares only **one byte** with Driller, so
-the fixed code-site offsets do not transfer. `locate()` finds every table by
-signature instead (see below) and **12 of 13 subtunes parse**.
+### The format difference that mattered
 
-**But parsing is not decoding.** Validated against siddump, the result is wrong:
+Locating the tables was **not** enough. The first decode scored 11-22% pitch
+while producing entirely sensible pattern, instrument and note counts — nothing
+announced itself as broken. The cause was the duration encoding:
 
-| Subtune | plain onset | plain pitch |
-|---------|-------------|-------------|
-| 1 | 51.8% | 11.2% |
-| 3 | 100% | 22.4% |
-| 9 | 98.2% | 16.1% |
+| | Duration | Note range |
+|---|---|---|
+| **Driller (1987)** | `$fd nn` — a two-byte control code | `$01-$f9` |
+| **Last Ninja 2 (1988)** | `$70 + n` **in the note stream**, sticky | `$01-$6f` |
 
-Pattern counts, instrument counts and note counts all look entirely sensible —
-which is exactly why this is dangerous. The tables are in the right places; the
-*semantics* around them differ (pattern-byte dispatch and/or the instrument
-record layout changed between 1987 and 1988). Nothing about the decode announces
-itself as broken. **Only the validator caught it**, which is the argument for
-running it before believing any new build.
+```
+$419d: cmp #$70
+$419f: bcc $41a9      ; < $70 -> a real note
+$41a1: sbc #$70       ; >= $70 -> duration = byte - $70
+$41a3: sta $4460,x    ;            (sticky, exactly like Driller's)
+$41a6: jmp $4157      ; consume and fetch the next byte
+```
 
-Next step is not more locator work — it is disassembling LN2's `play_voice`
-properly and re-deriving the byte dispatch, the way Driller's was.
+The parser was reading those duration bytes as notes. `_duration_base()` now
+detects the split from the unmistakable `cmp #N / bcc / sbc #N` idiom in real
+code, and `song.duration_base` selects the decode (`None` = Driller style).
+
+### Result (siddump, 1500-frame sweep, plain instruments)
+
+**12 of 13 subtunes at 100% onset and 100% pitch.**
+
+| sub | n | | sub | n | | sub | n |
+|---|---|---|---|---|---|---|---|
+| 0 | 131 | | 5 | **3** | | 10 | 167 |
+| 1 | 45 | | 6 | **1** | | 11 | 157 |
+| 2 | 35 | | 7 | *refuses* | | 12 | 190 |
+| 3 | 210 | | 8 | 209 | | | |
+| 4 | 376 | | 9 | 163 | | | |
+
+Longer windows confirm it: subtune 1 at 3000 frames is 303/303 onset and
+303/303 pitch; subtune 3 is 403/403 and 403/403.
+
+**Caveats, stated plainly.** Subtunes 5 (n=3) and 6 (n=1) are *not* evidence —
+a one-note sample proves nothing and those need a longer window before anyone
+quotes them. Subtune 7 still refuses with a one-byte overrun at the blob
+boundary and is unsolved. And as everywhere here, the headline covers the
+sequencer on plain instruments only; the synth side remains Stage B.
 
 ### The signature locator (`locate()`)
 

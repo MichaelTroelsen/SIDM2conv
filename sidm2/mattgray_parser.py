@@ -237,7 +237,11 @@ class MattGraySong:
     freq_hi: List[int] = field(default_factory=list)
     arp_table_addr: int = 0
     table_addrs: Dict[str, int] = field(default_factory=dict)
-    layout: str = "unknown"   # 'driller' = validated fast path, 'signature' = located but UNVALIDATED
+    layout: str = "unknown"
+    # Duration encoding. None = Driller style ($fd nn, a two-byte code).
+    # An int D = Last Ninja 2 style: a pattern byte >= D IS the duration,
+    # value (byte - D), sticky; only bytes < D are notes.
+    duration_base: Optional[int] = None   # 'driller' = validated fast path, 'signature' = located but UNVALIDATED
 
     @property
     def frames_per_tick(self) -> int:
@@ -524,6 +528,23 @@ class MattGrayParser:
         found.setdefault("arpeggio_table", 0)
         return found
 
+    def _duration_base(self) -> Optional[int]:
+        """Find the LN2-style duration split, if this build uses one.
+
+        The idiom is unmistakable and is emitted right where the note byte is
+        classified:  cmp #N / bcc note / sbc #N / sta duration.  Driller has no
+        such split -- it spends a whole $fd control code on duration instead.
+        """
+        for pc in self._code_map():
+            if self.byte(pc) != 0xC9:
+                continue
+            n = self.byte(pc + 1)
+            if not 0x40 <= n <= 0xF0:
+                continue
+            if self.byte(pc + 2) in (0x90, 0xB0) and self.byte(pc + 4) == 0xE9                     and self.byte(pc + 5) == n:
+                return n
+        return None
+
     def _looks_like_freq_table(self, lo: int, hi: int) -> bool:
         """A real freq table's hi bytes rise and roughly double each octave."""
         try:
@@ -636,6 +657,7 @@ class MattGrayParser:
             },
         )
         song.layout = self.layout
+        song.duration_base = self._duration_base()
         return song
 
     def _read_track(self, base: int, cap: int = 512) -> List[int]:
@@ -743,7 +765,7 @@ def _fetch(song: MattGraySong, st: _VoiceState, vi: int,
             return None
         b = pattern[st.pattern_index]
 
-        if b >= PC_DUR:                       # $fd/$fe: set duration
+        if song.duration_base is None and b >= PC_DUR:   # $fd/$fe: duration
             st.pattern_index += 1
             st.duration = pattern[st.pattern_index]
             st.pattern_index += 1
@@ -756,6 +778,12 @@ def _fetch(song: MattGraySong, st: _VoiceState, vi: int,
         if b >= PC_INSTR:                     # $fa: set instrument
             st.pattern_index += 1
             st.instrument = pattern[st.pattern_index]
+            st.pattern_index += 1
+            continue
+
+        if song.duration_base is not None and b >= song.duration_base:
+            # LN2 style: the byte IS the duration (sticky), not a note
+            st.duration = b - song.duration_base
             st.pattern_index += 1
             continue
 
