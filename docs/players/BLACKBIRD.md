@@ -5111,3 +5111,31 @@ The bug was in neither place I suspected. Two rounds of "check the primed value"
 came back clean, and the answer only appeared when the assembled driver was
 traced frame-by-frame. When the emitted DATA is verifiably correct and the output
 still isn't, trace the consumer executing it rather than re-deriving the data.
+
+### E6 editor play-test: PASSED (2026-07-25)
+
+E6 changes the SEQUENCE DATA of every multi-part build, so it needed the same
+real-editor check as E5 (this file's own E3d/E3f rule). It was committed before
+that test was run -- flagged during the v3.22.0 closure review and done here.
+
+Scope: only parts 2+ can contain an E6 tie. Part 1 always starts at row 0, where
+the boundary lands ON a step start and the re-entry is still a genuine trigger --
+so part 1 of every file is untouched BY CONSTRUCTION and testing it would prove
+nothing about E6. The changed builds are exactly four:
+
+| build | trials | played | crashed |
+|---|---|---|---|
+| Fargo part02 | 2 | 2 | **0** |
+| Dithered_Island part02 | 2 | 2 | **0** |
+| Into_the_Unknown part02 | 2 | 2 | **0** |
+| Into_the_Unknown part03 | 2 | 2 | **0** |
+
+All 8 screenshots OCR-verified at **1:06-1:08** of playback. Unlike the combo
+test, the measurement-window question does not arise: the E6 tie sits at each
+part's ROW 0, so it executes on frame 0 and is exercised immediately in every
+trial.
+
+Expectation going in was a pass -- the tie encoding is already used throughout
+these builds and E6 introduces no new value class. That expectation is exactly
+the reasoning that preceded the E3f episode, which is why it was measured rather
+than asserted.
