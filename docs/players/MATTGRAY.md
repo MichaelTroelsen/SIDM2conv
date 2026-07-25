@@ -241,38 +241,46 @@ The parser was reading those duration bytes as notes. `_duration_base()` now
 detects the split from the unmistakable `cmp #N / bcc / sbc #N` idiom in real
 code, and `song.duration_base` selects the decode (`None` = Driller style).
 
-### Result (siddump, 1500-frame sweep, plain instruments)
+### The fourth control code ($f9)
 
-**All 13 subtunes parse. Pitch is 100% on every one of them**; onset is 100%
-on most and drifts on a few over long windows (see the caveats).
+One more branch sat between the instrument code and the duration split:
 
-| sub | n | | sub | n | | sub | n |
-|---|---|---|---|---|---|---|---|
-| 0 | 131 | | 5 | **3** | | 10 | 167 |
-| 1 | 45 | | 6 | **1** | | 11 | 157 |
-| 2 | 35 | | 7 | *refuses* | | 12 | 190 |
-| 3 | 210 | | 8 | 209 | | | |
-| 4 | 376 | | 9 | 163 | | | |
+```
+$418d: cmp #$f9
+$418f: bcc $419d      ; < $f9 -> the $70 duration / note split
+$4191: iny            ; >= $f9 -> consume a PARAMETER byte
+$4195: lda ($fe),y
+$4197: sta $44ba,x    ; store it; NO note is played
+$419a: jmp $4157      ; continue fetching
+```
 
-Longer windows confirm it: subtune 1 at 3000 frames is 303/303 onset and
-303/303 pitch; subtune 3 is 403/403 and 403/403.
+`$f9` is a two-byte code that plays nothing. Because `$f9 >= $70`, missing it
+was doubly wrong: the parser read `$f9` as a *duration* and then played its
+parameter byte as a *note*. The signature was one invented note per occurrence
+followed by immediate realignment — which is why pitch stayed at 100% while
+onset drifted, and why only the sparsest voice showed it.
 
-**Caveats, stated plainly.**
+Full dispatch order for the 1988 build: `>= $fb` slide · `>= $fa` instrument ·
+`>= $f9` parameter · `>= $70` duration · else note.
 
-- **Subtune 6 has n=1 even at 6000 frames** — 753 of its 754 notes are on
-  pitch-modulated instruments. Its "100%" is a single note and is *not*
-  evidence of anything. Subtune 5 reaches only n=19. Don't quote either.
-- **Onset drifts on longer windows.** Subtune 1 is 303/303 at 3000 frames but
-  683/692 (98.7%) at 6000; subtune 7 is 179/229 (78.2%). **Pitch stays 100% in
-  every case**, so the note decode is right and the residual is a timing edge
-  case — most likely truncation desync or a mid-song tempo effect. Unresolved.
-- **Subtune 7's last pattern is genuinely truncated** by the relocating copy
-  (it ends `af 30 00`, no `$ff`). `_read_pattern` now returns it short and
-  reports `song.truncated_patterns` rather than making one unreachable pattern
-  fatal for a tune that otherwise plays. That truncation is the likely source
-  of its onset gap.
-- As everywhere here, the headline covers the sequencer on plain instruments
-  only; the synth side remains Stage B.
+### Result — 13/13 subtunes, 6000-frame sweep, plain instruments
+
+**Every subtune: 100% onset and 100% pitch.**
+
+| sub | n | sub | n | sub | n |
+|---|---|---|---|---|---|
+| 0 | 922 | 5 | **19** | 10 | 1000 |
+| 1 | 692 | 6 | **1** | 11 | 699 |
+| 2 | 334 | 7 | 230 | 12 | 836 |
+| 3 | 1003 | 8 | 654 | | |
+| 4 | 1070 | 9 | 774 | | |
+
+**Caveats.** Subtune 6 reaches n=1 even at 6000 frames (753 of its notes are on
+pitch-modulated instruments) and subtune 5 only n=19 — those two are *not*
+evidence at that sample size, whatever the percentage says. Subtune 7's final
+pattern is genuinely truncated by the relocating copy; `_read_pattern` returns
+it short and reports `song.truncated_patterns`. As everywhere, the headline
+covers the sequencer on plain instruments; the synth side is Stage B.
 
 ### The signature locator (`locate()`)
 

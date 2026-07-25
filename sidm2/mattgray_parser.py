@@ -87,6 +87,7 @@ INSTR_SIZE = 8          # bytes per record, in each of the two parallel tables
 VOICE_X = (0x00, 0x07, 0x0E)   # the X values music_play passes to play_voice
 
 # pattern control codes
+PC_PARAM = 0xF9         # LN2 only: 2-byte code, stores a per-note parameter
 PC_INSTR = 0xFA
 PC_SLIDE1 = 0xFB
 PC_SLIDE2 = 0xFC
@@ -788,6 +789,16 @@ def _fetch(song: MattGraySong, st: _VoiceState, vi: int,
         # A control code takes one parameter byte.  A pattern truncated by the
         # relocating copy (LN2 subtune 7) can end mid-code, so bail out rather
         # than index past it.
+        if (song.duration_base is not None and b == PC_PARAM
+                and st.pattern_index + 1 < len(pattern)):
+            # LN2's fourth control code ($418d: cmp #$f9).  It consumes a
+            # parameter byte and plays NO note.  Because $f9 >= the $70
+            # duration base, mistaking it for a duration also turns its
+            # parameter into a spurious note -- which is exactly how this
+            # showed up: one invented note per occurrence, then realignment.
+            st.pattern_index += 2
+            continue
+
         if b >= PC_INSTR and st.pattern_index + 1 >= len(pattern):
             st.stopped = True
             return None
