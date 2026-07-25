@@ -114,20 +114,27 @@ class TestCompare(unittest.TestCase):
         self.assertEqual(rep["errors"], ["a"])
         self.assertEqual(rep["regressed"], [])
 
-    def test_mean_matches_recorded_e4_figure(self):
-        """Guards the exact number quoted in CLAUDE.md / ACCURACY_MATRIX.md."""
+    def test_mean_matches_recorded_corpus_figure(self):
+        """Guards the exact number quoted in CLAUDE.md / ACCURACY_MATRIX.md.
+
+        UPDATE THIS WITH THE DOCS. It pinned the E4-era 99.669 while the published
+        figure had moved to 99.963 through E5 and E6 -- so the guard silently
+        stopped guarding the number it exists for. A pinned constant that is not
+        revised alongside the doc it protects is worse than no guard: it still
+        passes, so it reads as verification.
+        """
         recorded = {
             "Fargo": 99.9, "Glyptodont": 99.8, "Dishwasher_Groove": 100.0,
             "Dithered_Island": 99.9, "Elvendance": 100.0, "Euclid_Was_Here": 99.9,
-            "Into_the_Unknown": 98.1, "Maple_Leaf_Rag": 100.0,
-            "Revolutions_Delivered": 99.0, "Thus_Spoke_the_PC_Speaker": 100.0,
+            "Into_the_Unknown": 100.0, "Maple_Leaf_Rag": 100.0,
+            "Revolutions_Delivered": 100.0, "Thus_Spoke_the_PC_Speaker": 100.0,
             "Toy_Rocket": 100.0, "Crank_Crank_Airwolf": 100.0, "Trinket": 100.0,
-            "To_Die_For_II": 98.2, "Fugue_on_a_Theme_by_D_M_Hanlon": 99.9,
+            "To_Die_For_II": 100.0, "Fugue_on_a_Theme_by_D_M_Hanlon": 99.9,
             "Quintessence": 100.0,
         }
         self.assertEqual(set(recorded), set(sweep.CORPUS))
         got = sweep.mean_overall({k: _rec(v) for k, v in recorded.items()})
-        self.assertAlmostEqual(got, 99.669, places=3)
+        self.assertAlmostEqual(got, 99.963, places=3)
 
 
 class TestRoundTrip(unittest.TestCase):

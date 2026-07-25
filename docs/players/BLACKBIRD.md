@@ -4847,9 +4847,13 @@ under a second: they never build and never launch SF2II. What they pin down:
   spans and are not comparable at all (the B10 trap).
 - **The corpus list** -- all 16 SIDs must exist in `SID/LFT`, so a renamed rip
   fails loudly instead of silently shrinking the sweep.
-- **The recorded mean** -- 99.669 is asserted from the per-file figures, so the
-  number in `CLAUDE.md` / `ACCURACY_MATRIX.md` cannot drift from its evidence
-  unnoticed.
+- **The recorded mean** -- asserted from the per-file figures, so the number in
+  `CLAUDE.md` / `ACCURACY_MATRIX.md` cannot drift from its evidence unnoticed.
+  **This guard must be updated WITH the docs**: it was written pinning E4's
+  99.669 and still passed unchanged through E5 and E6 while the published figure
+  moved to 99.963 -- it silently stopped guarding the number it exists for.
+  Caught during the v3.22.0 closure check, now pinned at 99.963. A stale pinned
+  constant is worse than no guard: it keeps passing, so it reads as verification.
 - **Crash-rate arithmetic** -- computed over trials that actually PLAYED, so a
   flaky NOLOAD can never be read as evidence about play.
 
