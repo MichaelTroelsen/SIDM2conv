@@ -4855,3 +4855,59 @@ under a second: they never build and never launch SF2II. What they pin down:
 
 A failed build parses to `None`, never 0% and never a missing key, so a refused
 build cannot masquerade as "unchanged".
+
+## OPEN LEAD (2026-07-25): `unroll_filter` misreads the filter table -- To_Die_For_II's remaining 88.9%
+
+After E4, `To_Die_For_II`'s entire residual is **filter**. Localized but NOT
+fixed; the next step is format RE, and the evidence below is the ground truth to
+do it against.
+
+**Symptom.** Filter is 100.0% through frame ~1500, drops to 79.6% then 53.2%,
+**fully recovers to 100.0%** at [2000:2250), breaks again (53.6%), recovers
+again. The recovery matters: Blackbird's filter is ONE global state that a
+filt-carrying instrument's note-on REPOSITIONS, so it re-syncs on the next such
+note -- consistent with a bad program, not a lost cursor.
+
+**Which registers.** `$D417` sim `$f1` vs drv `$00`; `$D418` sim `$2f` vs drv
+`$0f`. So resonance, routing AND filter mode are all missing -- the driver never
+ENABLES the filter.
+
+CAVEAT on `$D415`/`$D416` reading 100.0% in the broken window: cutoff is
+`$0000` in BOTH there, so that is `0 == 0`, a **vacuous match**, not evidence the
+cutoff walk is correct. Do not quote it as one.
+
+**Trigger.** Row 413: voice 0 selects instrument 7 (1-based; the builder's
+0-based `instr=6` is the SAME instrument -- not an off-by-one), and the sim
+repositions `zp_filtpos` 18 -> 26 and enables the filter the next row. The
+driver does nothing.
+
+**Ground truth.** `ins_filt[6] = 26`, exactly the `zp_filtpos` the sim jumps to,
+so the builder's `filt_start != 0` gate passes and a program IS emitted. Raw
+`filttable` at `$1566`:
+
+| filtpos | bytes | = |
+|---|---|---|
+| 18 | `$0f $00` | `$D418=$0f`, `$D417=$00` (filter off) |
+| 26 | `$2f $f1` | `$D418=$2f` (band-pass, vol 15), `$D417=$f1` (res `$f0` + routing `$01`) |
+
+**`filt_start` points directly at the `$D418` byte; `$D417` is the next byte** --
+and both are byte-for-byte what the simulator writes.
+
+**The bug.** `unroll_filter(filt_start=26)` returns row0 `(0x00, 0x00, 0x01)`:
+
+* byte0 top bit CLEAR -> classified as an **ADD** row, not a SET row (see
+  `_filter_set_row`'s own "ROUTING BUG FOUND" note: a SET row needs top nibble
+  `8+mode`). Correct would be `0xA0` (`8|2`, mode 2 = band-pass).
+* res byte `0x01` where the table says `$f1` -- **the resonance nibble is being
+  dropped**, keeping only the routing bits.
+
+Compare `filt_start=18`, which DOES translate correctly to `(0x80, 0, 0)` = a
+SET row meaning "filter off" -- which is why the early frames are 100%.
+
+**Next step.** RE the record grammar around those positions (`$40 $fc`, `$c0
+$ff`, `$c6 $ff` precede the value pairs) and fix `unroll_filter`'s field
+extraction. Do NOT tune until this file's number improves: B22 already fixed two
+filter bugs of this shape (row0 SET/ADD classification, and `do_row`'s voice
+loop order), so the sibling cases need to stay consistent. Verify against the
+simulator's own `$D417`/`$D418` per row, then sweep all 16 with
+`pyscript/blackbird_sweep.py --compare`.
