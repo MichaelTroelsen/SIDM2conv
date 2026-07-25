@@ -936,6 +936,35 @@ def _filter_add_row(delta, run):
     return (b0, b1, run & 0xFF)
 
 
+def _filter_modeadd_row(mode, delta, res_byte):
+    """E5: `1M DD RB` -- set passband M and res/routing RB, ADD DD to cutoff.
+
+    The third row type, occupying the [$10,$1F] slice of what used to be dead
+    encoding space (ADD rows are [$00,$0F], SET rows [$80,$FF] -- see
+    _filter_set_row / fp_dec's B24 note).
+
+    WHY IT HAS TO EXIST. Real hardware rewrites $D418 AND $D417 every frame
+    from filttable[y]/filttable[y+1], regardless of whether that frame's
+    cutoff op is a SET or an ADD (BlackbirdSim.everyframe's filter stepper
+    writes both unconditionally, THEN branches on bit7 of filttable[y+2] for
+    the cutoff). The old grammar could express "set mode+res+cutoff" or "add
+    to cutoff", but NOT "set mode+res and leave cutoff alone" -- so a program
+    whose row 0 is an ADD-cutoff record had no way to state its own passband
+    and resonance, and silently inherited the previous filter owner's.
+
+    To_Die_For_II instrument 6 (ins_filt[6]=26) is exactly that shape: raw
+    filttable at $1566 position 26 is `$2f $f1 $00 $ff` -- $D418=$2f
+    (band-pass), $D417=$f1 (res $f0 + routing $01), cutoff ADD of 0, then
+    advance $ff which resolves to +0 and holds the record forever. Row 0
+    classified ADD (bit7 of $00 is clear), so the translator emitted
+    (0x00,0x00,0x01) via _filter_add_row -- byte2 there is the RUN COUNT, and
+    mode/res were dropped entirely. The driver therefore never enabled the
+    filter from frame ~1648 to the end of the song, holding $D417=$00 /
+    $D418=$0f where the simulator has $f1 / $2f.
+    """
+    return (0x10 | (mode & 0x07), delta & 0xFF, res_byte & 0xFF)
+
+
 def _filter_row_delta(sim, pos):
     """B21: the ADD delta for filter position `pos`, computed purely from
     `filttable(pos+2)`'s own raw byte -- a fixed table property, independent
@@ -1023,7 +1052,16 @@ def unroll_filter(lay, d, la, ins_restart, ins_restart2, filt_start):
     if is_set_prefix[0]:
         rows.append(_filter_set_row((d418_0 >> 4) & 0x07, d416_0, d417_0))
     else:
-        rows.append(_filter_add_row(_filter_row_delta(sim, filt_start), 1))
+        # E5: an ADD row0 still has to state THIS program's own mode/res --
+        # hardware writes $D418/$D417 every frame whatever the cutoff op is.
+        # _filter_add_row cannot carry them (its byte2 is the run count), so a
+        # restart onto an ADD row0 used to inherit the previous filter owner's
+        # passband and resonance. Keeps B21's point intact: the CUTOFF is still
+        # a delta applied to whatever the previous owner left, never a baked-in
+        # cold-start absolute.
+        rows.append(_filter_modeadd_row((d418_0 >> 4) & 0x07,
+                                        _filter_row_delta(sim, filt_start),
+                                        d417_0))
     row_frame_start.append(0)
     prev_mode_res = (d418_0, d417_0)
     prev_cutoff = d416_0

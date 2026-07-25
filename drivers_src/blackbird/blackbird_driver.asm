@@ -678,6 +678,23 @@ fp_dec:
         ; that was already emitted.
         cmp #$80
         bcs fp_set               ; byte0 >= $80 -> set-filter row
+        ; E5: byte0 bit4 set ([$10,$1F]) -> "mode/res + cutoff-ADD" row.
+        ; Real hardware rewrites $D418 AND $D417 EVERY frame from
+        ; filttable[y]/filttable[y+1], independently of whether that frame's
+        ; cutoff op is a SET or an ADD (see BlackbirdSim.everyframe's filter
+        ; stepper). The old two-row grammar could say "set mode+res+cutoff"
+        ; (fp_set) or "add to cutoff" (below) but NOT "set mode+res and leave
+        ; cutoff alone" -- so a program whose FIRST record is an ADD-cutoff
+        ; record could never establish its own passband/resonance, and
+        ; silently inherited whatever the previous filter owner left.
+        ; Uses a BIT TEST, not `cmp #$10`: byte0 reaches $FF here and
+        ; SF2II's CMP is only correct for |A-operand| <= 127, so comparing
+        ; against $10 would mis-set carry in the editor while every offline
+        ; emulator stayed happy (the E3d hazard class). `cmp #$80` above is
+        ; safe because A-$80 never leaves -128..127.
+        and #$10
+        bne fp_modeadd
+        lda FILTER,y             ; restore byte0 (the AND above destroyed it)
         ; --- 0X add-to-cutoff: F_AD = ((byte0&f):byte1) << 4 ---
         and #$0f
         sta tmpf+1               ; XXX hi nibble
@@ -702,6 +719,33 @@ fp_dec:
         ora tmpf
         sta F_ADHI
         lda FILTER+512,y         ; byte2 = frames
+        sta F_CNT
+        iny
+        tya
+        sta F_IDX
+        jmp fp_apply
+fp_modeadd:
+        ; --- E5: 1M DD RB -- set passband M + res RB, ADD DD to cutoff ---
+        ; byte0 = $10|(mode&7), byte1 = 8-bit signed-as-unsigned cutoff delta
+        ; (F_ADHI, exactly like the 0X row's own decoded delta; F_ADLO is a
+        ; sub-byte remainder Blackbird's flat 8-bit accumulator never uses),
+        ; byte2 = $D417 res+routing. Always one frame -- this row only ever
+        ; appears as a program's row 0, i.e. at a note-on restart, which is
+        ; precisely when mode/res must be (re)established.
+        lda FILTER,y             ; byte0 again
+        and #$07
+        asl
+        asl
+        asl
+        asl                      ; (M&7) << 4 = SID mode bits -> $D418 high nibble
+        sta F_MODE
+        lda FILTER+256,y         ; byte1 = 8-bit cutoff delta
+        sta F_ADHI
+        lda #$00
+        sta F_ADLO
+        lda FILTER+512,y         ; byte2 = R:B -> res_control
+        sta $d417
+        lda #$01
         sta F_CNT
         iny
         tya

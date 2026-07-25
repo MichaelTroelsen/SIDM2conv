@@ -4856,7 +4856,12 @@ under a second: they never build and never launch SF2II. What they pin down:
 A failed build parses to `None`, never 0% and never a missing key, so a refused
 build cannot masquerade as "unchanged".
 
-## OPEN LEAD (2026-07-25): `unroll_filter` misreads the filter table -- To_Die_For_II's remaining 88.9%
+## ~~OPEN LEAD~~ RESOLVED by E5 below (2026-07-25): To_Die_For_II's remaining 88.9% filter
+
+**Diagnosis kept for the record; see "E5" at the end of this file for the fix.**
+One correction to what this section originally concluded: `unroll_filter` was
+NOT misreading the table. It read it correctly -- the ROW GRAMMAR could not
+express what the table said. Details in E5.
 
 After E4, `To_Die_For_II`'s entire residual is **filter**. Localized but NOT
 fixed; the next step is format RE, and the evidence below is the ground truth to
@@ -4911,3 +4916,95 @@ filter bugs of this shape (row0 SET/ADD classification, and `do_row`'s voice
 loop order), so the sibling cases need to stay consistent. Verify against the
 simulator's own `$D417`/`$D418` per row, then sweep all 16 with
 `pyscript/blackbird_sweep.py --compare`.
+
+## E5 (2026-07-25): the filter row grammar was missing a row type -- To_Die_For_II 98.2% -> 100.0%, Revolutions_Delivered 99.0% -> 100.0%
+
+The OPEN LEAD section above blamed `unroll_filter` for misreading the filter
+table. **That was wrong.** The translator read the table correctly; the native
+FILTER row grammar simply could not express what the table said.
+
+### The grammar, read off the validated simulator
+
+`BlackbirdSim.everyframe`'s filter stepper, at `y = zp_filtpos`, every frame:
+
+```
+$D418 = filttable[y]        <- UNCONDITIONAL
+$D417 = filttable[y+1]      <- UNCONDITIONAL
+cutoff op from filttable[y+2]   bit7 set -> absolute SET (m_cutoff = c<<1)
+                                bit7 clear -> signed ADD
+advance  from filttable[y+3]    bit7 set -> filtpos += row3+1
+                                bit7 clear -> filtpos += 3
+```
+
+Mode and resonance are rewritten **every frame regardless of the cutoff op**.
+Verified against the raw table: `filttable` at `$1566` position 26 is
+`$2f $f1 $00 $ff` -> `$D418=$2f` (band-pass), `$D417=$f1` (res `$f0` + routing
+`$01`), cutoff ADD of 0, advance `$ff` which resolves to `+0` and holds the
+record forever -- exactly the constant `$f1`/`$2f` the simulator shows from
+row 414 to the end of the song.
+
+### The gap
+
+The native grammar had only two rows:
+
+| row | byte0 | carries |
+|---|---|---|
+| SET (`fp_set`) | `[$80,$FF]` | mode + res + absolute cutoff |
+| ADD (`fp_dec`) | `[$00,$0F]` | cutoff delta + **run count in byte2** |
+
+There was no way to say **"set mode+res, leave cutoff alone"**. So a program
+whose row 0 is an ADD-cutoff record could never state its own passband and
+resonance -- `_filter_add_row`'s byte2 is the run count, not the res byte -- and
+the driver silently inherited whatever the previous filter owner left. For
+To_Die_For_II instrument 6 (`ins_filt[6]=26`) that meant `$D417=$00` / `$D418=$0f`
+(filter off, inherited from position 18) where hardware has `$f1` / `$2f`: the
+driver never ENABLED the filter from frame ~1648 to the end.
+
+Note this is NOT the same as B21's finding. B21 established that an ADD row 0
+must apply its delta to the inherited cutoff rather than snapping to a baked-in
+absolute -- still true, and preserved. E5 is about the mode/res that must be set
+regardless.
+
+### The fix: a third row type
+
+`1M DD RB` in the `[$10,$1F]` slice of what was dead encoding space (ADD is
+`[$00,$0F]`, SET is `[$80,$FF]`): byte0 = `$10|(mode&7)`, byte1 = 8-bit cutoff
+delta (-> `F_ADHI`, `F_ADLO`=0), byte2 = `$D417` res+routing, always one frame.
+Emitted only as a program's row 0 -- i.e. at a note-on restart, precisely when
+mode/res must be (re)established. `_filter_modeadd_row` in the builder,
+`fp_modeadd` in the driver.
+
+**The dispatch uses a BIT TEST, not `cmp #$10`.** byte0 reaches `$FF` there and
+SF2II's CMP is only correct for `|A-operand| <= 127`, so comparing against `$10`
+would mis-set carry in the editor while every offline emulator stayed happy --
+the E3d hazard class this repo has already shipped twice. `and #$10 / bne` uses
+the Z flag, which SF2II gets right. The existing `cmp #$80` above it is safe
+because `A-$80` never leaves -128..127.
+
+### Result
+
+| file | before | after |
+|---|---|---|
+| To_Die_For_II | 98.2 (filter 88.9) | **100.0** (filter 99.9) |
+| Revolutions_Delivered | 99.0 | **100.0** |
+
+Corpus **99.669 -> 99.844**; **10 of 16 files at exactly 100.0** (was 8); 0
+regressed, no part moves, no size changes. Only `Into_the_Unknown` (98.1)
+remains below 99.
+
+**Coverage evidence worth more than the untouched files**: 13 filter programs
+across 5 files use the new row type. Three of those files (Dishwasher_Groove 2
+programs, Elvendance 2, Toy_Rocket 1) were ALREADY at 100.0 and stayed at 100.0
+-- so the changed code path is exercised on files that had nothing to gain and
+did not regress.
+
+To_Die_For_II went 94.2 -> 98.2 (E4) -> 100.0 (E5) in one session.
+
+### Method note
+
+The first diagnosis ("the translator misreads the table") was plausible and
+wrong, and it was written into the docs as an open lead before being checked
+against the driver. What corrected it was reading `fp_dec`/`fp_set` and finding
+that the ADD path never touches `F_MODE` or `$d417` at all -- a missing
+capability, not a parsing error. Reading the consumer, not just the producer, is
+what turned a "fix the parser" task into a one-row-type grammar extension.
