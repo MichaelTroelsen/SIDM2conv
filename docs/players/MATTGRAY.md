@@ -243,7 +243,8 @@ code, and `song.duration_base` selects the decode (`None` = Driller style).
 
 ### Result (siddump, 1500-frame sweep, plain instruments)
 
-**12 of 13 subtunes at 100% onset and 100% pitch.**
+**All 13 subtunes parse. Pitch is 100% on every one of them**; onset is 100%
+on most and drifts on a few over long windows (see the caveats).
 
 | sub | n | | sub | n | | sub | n |
 |---|---|---|---|---|---|---|---|
@@ -256,11 +257,22 @@ code, and `song.duration_base` selects the decode (`None` = Driller style).
 Longer windows confirm it: subtune 1 at 3000 frames is 303/303 onset and
 303/303 pitch; subtune 3 is 403/403 and 403/403.
 
-**Caveats, stated plainly.** Subtunes 5 (n=3) and 6 (n=1) are *not* evidence —
-a one-note sample proves nothing and those need a longer window before anyone
-quotes them. Subtune 7 still refuses with a one-byte overrun at the blob
-boundary and is unsolved. And as everywhere here, the headline covers the
-sequencer on plain instruments only; the synth side remains Stage B.
+**Caveats, stated plainly.**
+
+- **Subtune 6 has n=1 even at 6000 frames** — 753 of its 754 notes are on
+  pitch-modulated instruments. Its "100%" is a single note and is *not*
+  evidence of anything. Subtune 5 reaches only n=19. Don't quote either.
+- **Onset drifts on longer windows.** Subtune 1 is 303/303 at 3000 frames but
+  683/692 (98.7%) at 6000; subtune 7 is 179/229 (78.2%). **Pitch stays 100% in
+  every case**, so the note decode is right and the residual is a timing edge
+  case — most likely truncation desync or a mid-song tempo effect. Unresolved.
+- **Subtune 7's last pattern is genuinely truncated** by the relocating copy
+  (it ends `af 30 00`, no `$ff`). `_read_pattern` now returns it short and
+  reports `song.truncated_patterns` rather than making one unreachable pattern
+  fatal for a tune that otherwise plays. That truncation is the likely source
+  of its onset gap.
+- As everywhere here, the headline covers the sequencer on plain instruments
+  only; the synth side remains Stage B.
 
 ### The signature locator (`locate()`)
 

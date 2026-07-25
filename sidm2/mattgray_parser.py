@@ -241,7 +241,8 @@ class MattGraySong:
     # Duration encoding. None = Driller style ($fd nn, a two-byte code).
     # An int D = Last Ninja 2 style: a pattern byte >= D IS the duration,
     # value (byte - D), sticky; only bytes < D are notes.
-    duration_base: Optional[int] = None   # 'driller' = validated fast path, 'signature' = located but UNVALIDATED
+    duration_base: Optional[int] = None
+    truncated_patterns: int = 0   # patterns cut short by the relocating copy   # 'driller' = validated fast path, 'signature' = located but UNVALIDATED
 
     @property
     def frames_per_tick(self) -> int:
@@ -316,6 +317,7 @@ class MattGrayParser:
     def __init__(self, data: bytes, load_addr: int, init_addr: int,
                  play_addr: int) -> None:
         self.layout = "unknown"
+        self.truncated_patterns = 0
         self.data = data
         self.load = load_addr
         self.init = init_addr
@@ -658,6 +660,7 @@ class MattGrayParser:
         )
         song.layout = self.layout
         song.duration_base = self._duration_base()
+        song.truncated_patterns = self.truncated_patterns
         return song
 
     def _read_track(self, base: int, cap: int = 512) -> List[int]:
@@ -670,10 +673,23 @@ class MattGrayParser:
         raise MattGrayError(f"track at ${base:04x} has no $ff/$fe terminator")
 
     def _read_pattern(self, base: int, cap: int = 512) -> List[int]:
+        """Decode one pattern.  Runs are terminated by $ff.
+
+        A pattern that runs off the end of the image is returned truncated
+        rather than raising.  Last Ninja 2's relocating wrapper genuinely
+        copies less than the full data block for some subtunes (subtune 7's
+        final pattern ends `af 30 00` with no terminator), and reading every
+        pattern eagerly would otherwise make one unreachable pattern fatal for
+        an entire tune that plays perfectly well.
+        """
         out: List[int] = []
         i = 0
         while i < cap:
-            b = self.byte(base + i)
+            try:
+                b = self.byte(base + i)
+            except MattGrayError:
+                self.truncated_patterns += 1
+                return out + [PC_PAT_END]
             out.append(b)
             if b == PC_PAT_END:
                 return out
@@ -681,7 +697,11 @@ class MattGrayParser:
             # not be mistaken for an $ff terminator
             if b >= PC_INSTR:
                 i += 1
-                out.append(self.byte(base + i))
+                try:
+                    out.append(self.byte(base + i))
+                except MattGrayError:
+                    self.truncated_patterns += 1
+                    return out + [PC_PAT_END]
             i += 1
         raise MattGrayError(f"pattern at ${base:04x} has no $ff terminator")
 
@@ -765,20 +785,24 @@ def _fetch(song: MattGraySong, st: _VoiceState, vi: int,
             return None
         b = pattern[st.pattern_index]
 
+        # A control code takes one parameter byte.  A pattern truncated by the
+        # relocating copy (LN2 subtune 7) can end mid-code, so bail out rather
+        # than index past it.
+        if b >= PC_INSTR and st.pattern_index + 1 >= len(pattern):
+            st.stopped = True
+            return None
+
         if song.duration_base is None and b >= PC_DUR:   # $fd/$fe: duration
-            st.pattern_index += 1
-            st.duration = pattern[st.pattern_index]
-            st.pattern_index += 1
+            st.duration = pattern[st.pattern_index + 1]
+            st.pattern_index += 2
             continue
         if b >= PC_SLIDE1:                    # $fb/$fc: slide, one param byte
-            st.pattern_index += 1
-            slide = (1 if b == PC_SLIDE1 else 2, pattern[st.pattern_index])
-            st.pattern_index += 1
+            slide = (1 if b == PC_SLIDE1 else 2, pattern[st.pattern_index + 1])
+            st.pattern_index += 2
             continue
         if b >= PC_INSTR:                     # $fa: set instrument
-            st.pattern_index += 1
-            st.instrument = pattern[st.pattern_index]
-            st.pattern_index += 1
+            st.instrument = pattern[st.pattern_index + 1]
+            st.pattern_index += 2
             continue
 
         if song.duration_base is not None and b >= song.duration_base:
