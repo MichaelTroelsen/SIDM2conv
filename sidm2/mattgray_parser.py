@@ -356,6 +356,13 @@ class MattGrayParser:
         except MattGrayError as exc:
             raise MattGrayError(f"play address unreadable: {exc}") from exc
         if len(head) < 5 or head[0] != 0xA2 or head[2] != 0x20:
+            # Some builds put a trampoline at the PSID play address (Quedex:
+            # `lda flag / bne`; Deliverance: `jsr ...`).  Scan the image for
+            # the shim's unmistakable 15-byte body instead of giving up:
+            # ldx #$00 / jsr pv / ldx #$07 / jsr pv / ldx #$0e / jsr pv.
+            found = self._scan_for_shim()
+            if found is not None:
+                return found
             raise MattGrayError(
                 f"play $%04x is not a Matt Gray music_play shim "
                 f"(got {head[:5].hex(' ')}, expected 'a2 00 20 lo hi')"
@@ -371,6 +378,20 @@ class MattGrayParser:
                 raise MattGrayError(
                     f"music_play voice {i} does not jsr ${pv:04x}")
         return pv
+
+    def _scan_for_shim(self) -> Optional[int]:
+        """Find `ldx #$00/$07/$0e / jsr pv` x3 anywhere in the image."""
+        d = self.data
+        for i in range(len(d) - 15):
+            if d[i] != 0xA2 or d[i + 1] != 0x00 or d[i + 2] != 0x20:
+                continue
+            pv = d[i + 3] | (d[i + 4] << 8)
+            if all(d[i + k * 5] == 0xA2 and d[i + k * 5 + 1] == x
+                   and d[i + k * 5 + 2] == 0x20
+                   and (d[i + k * 5 + 3] | (d[i + k * 5 + 4] << 8)) == pv
+                   for k, x in enumerate(VOICE_X)):
+                return pv
+        return None
 
     def _site(self, off: int, what: str) -> int:
         """Read a table address from an `LDA abs,y` operand at play_voice+off."""

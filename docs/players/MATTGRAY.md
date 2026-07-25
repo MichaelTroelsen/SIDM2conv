@@ -366,3 +366,39 @@ per-file.
 
 **Result (6000-frame sweep, plain instruments): 4/4 subtunes at 100% onset and
 100% pitch** — n = 86, 439, 708, 685.
+
+---
+
+## Deliverance and Quedex — NOT supported (two further generations)
+
+Both refuse, and the *way* they refuse is the finding.
+
+**Deliverance (1990)** — flat file, no relocating wrapper. Its PSID play
+address is a **trampoline** (`$4da1: jsr $4daa …`), so the shim had to be found
+by scanning for the unmistakable 15-byte body
+(`ldx #$00 / jsr pv / ldx #$07 / jsr pv / ldx #$0e / jsr pv`) rather than
+assumed to sit at `play`. That now works — but the file then fails at
+`could not locate the track-pointer tables`. The 1990 build reorganised the
+tables, so the signature locator's "6 sites stepping by 2" no longer holds.
+**A third generation.**
+
+**Quedex (1987)** — the shim scan finds *nothing at all*. Its play routine is
+`$4bb3: lda $4b7f / bne …`, and there is no `ldx #$00/$07/$0e / jsr` triple
+anywhere in the image. So Quedex does not use one shared `play_voice` called
+three times: its voice dispatch is structurally different. **A fourth
+generation**, and the earliest of the four — plausibly pre-dating the shared
+`play_voice` refactor entirely.
+
+Neither is a heuristic gap. Both need the same treatment Last Ninja 2 got:
+disassemble the play routine, re-derive the dispatch, then confirm against
+siddump. Until then the parser refuses them loudly rather than guessing.
+
+### Generations so far
+
+| Build | Year | Wrapper | Voice dispatch | Duration | Status |
+|---|---|---|---|---|---|
+| Driller | 1987 | none | shared `play_voice` ×3 | `$fd nn` | **100%/100%** |
+| Quedex | 1987 | none | **not the shared shim** | ? | unsupported |
+| Last Ninja 2 | 1988 | copy → `$4000` | shared `play_voice` ×3 | `$70+n`, `$f9` code | **100%/100%** ×13 |
+| Tusker | 1989 | self-mod copy → `$e000` | shared `play_voice` ×3 | `$70+n`, `$f9` code | **100%/100%** ×4 |
+| Deliverance | 1990 | none (trampoline at `play`) | shared `play_voice` ×3 | ? | tables not located |
