@@ -159,8 +159,22 @@ def build_tracks(song, events, base: int, n_instr: int,
 
 
 def convert(sid_path: str, out_path: str, subtune: int = 1,
-            max_frames: int = 400_000, max_part_frames: int = MAX_PART_FRAMES) -> int:
+            max_frames: int = 400_000, max_part_frames: int = MAX_PART_FRAMES,
+            force: bool = False) -> int:
     song = parse_sid(sid_path, subtune=subtune)
+
+    # Only the Driller-era layout is validated (onset 100% / pitch 100%).  A
+    # file located by signature parses and looks entirely plausible -- sensible
+    # pattern, instrument and note counts -- while decoding WRONG: Last Ninja 2
+    # scores 11-22% pitch against siddump because the 1988 build's byte
+    # semantics differ.  Refuse rather than emit a confident-looking bad SF2.
+    if getattr(song, "layout", None) != "driller" and not force:
+        raise MattGrayError(
+            f"{os.path.basename(sid_path)} uses a Matt Gray build whose byte "
+            f"semantics are NOT yet validated (tables located by signature). "
+            f"Converting it would produce a plausible but wrong SF2 -- see "
+            f"docs/players/MATTGRAY.md. Re-run with --force only to "
+            f"experiment, never to ship.")
     events = simulate(song, frames=max_frames, stop_on_loop=True)
     base = calibrate_base(song)
 

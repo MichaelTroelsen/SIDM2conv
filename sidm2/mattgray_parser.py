@@ -237,6 +237,7 @@ class MattGraySong:
     freq_hi: List[int] = field(default_factory=list)
     arp_table_addr: int = 0
     table_addrs: Dict[str, int] = field(default_factory=dict)
+    layout: str = "unknown"   # 'driller' = validated fast path, 'signature' = located but UNVALIDATED
 
     @property
     def frames_per_tick(self) -> int:
@@ -254,11 +255,63 @@ def _u16(buf: bytes, off: int) -> int:
     return buf[off] | (buf[off + 1] << 8)
 
 
+# --- 6502 instruction lengths, legal opcodes only (0 = illegal/undefined) ----
+# Built from the standard opcode matrix.  Illegal opcodes are 0 so the code
+# walk STOPS there rather than silently mis-aligning, which is the classic way
+# a linear disassembler wanders into a data table and invents instructions.
+def _build_oplen() -> List[int]:
+    L = [0] * 256
+    for op, n in {
+        0x00: 1, 0x08: 1, 0x0A: 1, 0x18: 1, 0x28: 1, 0x2A: 1, 0x38: 1,
+        0x40: 1, 0x48: 1, 0x4A: 1, 0x58: 1, 0x60: 1, 0x68: 1, 0x6A: 1,
+        0x78: 1, 0x88: 1, 0x8A: 1, 0x98: 1, 0x9A: 1, 0xA8: 1, 0xAA: 1,
+        0xB8: 1, 0xBA: 1, 0xC8: 1, 0xCA: 1, 0xD8: 1, 0xE8: 1, 0xEA: 1,
+        0xF8: 1,
+    }.items():
+        L[op] = n
+    # 2-byte: immediate, zp, zp,x, zp,y, (zp,x), (zp),y, relative
+    for op in (0x01, 0x05, 0x06, 0x09, 0x11, 0x15, 0x16, 0x21, 0x24, 0x25,
+               0x26, 0x29, 0x31, 0x35, 0x36, 0x41, 0x45, 0x46, 0x49, 0x51,
+               0x55, 0x56, 0x61, 0x65, 0x66, 0x69, 0x71, 0x75, 0x76, 0x81,
+               0x84, 0x85, 0x86, 0x91, 0x94, 0x95, 0x96, 0xA0, 0xA1, 0xA2,
+               0xA4, 0xA5, 0xA6, 0xA9, 0xB1, 0xB4, 0xB5, 0xB6, 0xC0, 0xC1,
+               0xC4, 0xC5, 0xC6, 0xC9, 0xD1, 0xD5, 0xD6, 0xE0, 0xE1, 0xE4,
+               0xE5, 0xE6, 0xE9, 0xF1, 0xF5, 0xF6,
+               0x10, 0x30, 0x50, 0x70, 0x90, 0xB0, 0xD0, 0xF0):
+        L[op] = 2
+    # 3-byte: absolute, abs,x, abs,y, indirect
+    for op in (0x0D, 0x0E, 0x19, 0x1D, 0x1E, 0x20, 0x2C, 0x2D, 0x2E, 0x39,
+               0x3D, 0x3E, 0x4C, 0x4D, 0x4E, 0x59, 0x5D, 0x5E, 0x6C, 0x6D,
+               0x6E, 0x79, 0x7D, 0x7E, 0x8C, 0x8D, 0x8E, 0x99, 0x9D, 0xAC,
+               0xAD, 0xAE, 0xB9, 0xBC, 0xBD, 0xBE, 0xCC, 0xCD, 0xCE, 0xD9,
+               0xDD, 0xDE, 0xEC, 0xED, 0xEE, 0xF9, 0xFD, 0xFE):
+        L[op] = 3
+    return L
+
+
+_OPLEN = _build_oplen()
+_BRANCHES = {0x10, 0x30, 0x50, 0x70, 0x90, 0xB0, 0xD0, 0xF0}
+_STOP = {0x40, 0x60, 0x6C, 0x4C}        # RTI, RTS, JMP (ind), JMP abs
+_JMP_ABS, _JSR = 0x4C, 0x20
+
+
+def _cluster(values: List[int], gap: int) -> List[List[int]]:
+    """Group a sorted list into runs whose neighbours are <= `gap` apart."""
+    out: List[List[int]] = []
+    for v in values:
+        if out and v - out[-1][-1] <= gap:
+            out[-1].append(v)
+        else:
+            out.append([v])
+    return out
+
+
 class MattGrayParser:
     """Locate and decode a Matt Gray player inside a PSID/PRG image."""
 
     def __init__(self, data: bytes, load_addr: int, init_addr: int,
                  play_addr: int) -> None:
+        self.layout = "unknown"
         self.data = data
         self.load = load_addr
         self.init = init_addr
@@ -330,24 +383,198 @@ class MattGrayParser:
                     f"code site +${off:04x} is not LDA abs,y -- "
                     f"unsupported Matt Gray variant")
 
+    # --- variant-tolerant location -------------------------------------
+    def _code_map(self, roots: Optional[List[int]] = None) -> List[int]:
+        """Recursive-descent walk from the entry points -> sorted instruction
+        addresses.
+
+        A flat byte scan is NOT good enough here: the player interleaves code
+        and data (Driller's per-voice state arrays sit at $0cce, right in the
+        middle of the play_voice code region), so a linear sweep wanders into a
+        table and invents instructions from data bytes.  Following branches and
+        stopping at RTS/JMP/illegal opcodes keeps the map to real code.
+        """
+        lo_addr = self.load
+        hi_addr = self.load + len(self.data)
+
+        def inside(a: int) -> bool:
+            return lo_addr <= a < hi_addr
+
+        roots = roots or [self.play_voice, self.play]
+        seen: set = set()
+        queue = [r for r in roots if r and inside(r)]
+        while queue:
+            pc = queue.pop()
+            while inside(pc) and pc not in seen:
+                op = self.data[pc - lo_addr]
+                n = _OPLEN[op]
+                if n == 0 or not inside(pc + n - 1):   # illegal -> not code
+                    break
+                seen.add(pc)
+                if op in _BRANCHES:
+                    rel = self.data[pc + 1 - lo_addr]
+                    tgt = pc + 2 + (rel - 256 if rel > 127 else rel)
+                    if inside(tgt):
+                        queue.append(tgt)
+                elif op in (_JSR, _JMP_ABS):
+                    tgt = _u16(self.data, pc + 1 - lo_addr)
+                    if inside(tgt):
+                        queue.append(tgt)
+                    if op == _JMP_ABS:
+                        break
+                elif op in _STOP:
+                    break
+                pc += n
+        return sorted(seen)
+
+    def _b9_sites(self) -> List[Tuple[int, int]]:
+        """Every real `LDA abs,y` instruction, as (address, operand).
+
+        Matt Gray refined the driver per game, so the *offsets* of these sites
+        move between builds (Driller 1987 and Last Ninja 2 1988 share only the
+        play_voice prologue).  The set of tables does not move, so locate by
+        the shape of the site list rather than by fixed offsets.
+        """
+        return [(pc, self.word(pc + 1))
+                for pc in self._code_map() if self.byte(pc) == 0xB9]
+
+    def locate(self) -> Dict[str, int]:
+        """Find every table by signature.  Raises if any is not identifiable."""
+        sites = self._b9_sites()
+        ops = [a for _, a in sites]
+        found: Dict[str, int] = {}
+
+        # 6 consecutive sites whose operands step by 2: the per-voice track
+        # pointer lo/hi tables (v1lo v1hi v2lo v2hi v3lo v3hi).
+        for i in range(len(sites) - 6):
+            win = [sites[i + k][1] for k in range(6)]
+            if all(win[k + 1] - win[k] == 2 for k in range(5)):
+                found["trk_v1_lo"], found["trk_v1_hi"] = win[0], win[1]
+                found["trk_v2_lo"], found["trk_v2_hi"] = win[2], win[3]
+                found["trk_v3_lo"], found["trk_v3_hi"] = win[4], win[5]
+                # tune_tempo is the next distinct table referenced after them
+                for j in range(i + 6, len(sites)):
+                    if sites[j][1] not in win:
+                        found["tune_tempo"] = sites[j][1]
+                        break
+                break
+        if "trk_v1_lo" not in found:
+            raise MattGrayError("could not locate the track-pointer tables")
+        if "tune_tempo" not in found:
+            raise MattGrayError("could not locate the tempo table")
+
+        # freq lo/hi: a pair of operands exactly NUM_NOTES apart, confirmed by
+        # a 12-semitone octave rollover in the candidate hi table.
+        for lo in ops:
+            hi = lo + NUM_NOTES
+            if hi in ops and self._looks_like_freq_table(lo, hi):
+                found["frq_lo"], found["frq_hi"] = lo, hi
+                break
+        if "frq_lo" not in found:
+            raise MattGrayError("could not locate the frequency table")
+
+        # instruments: the driver reads many fields of one record, so each
+        # table shows up as a CLUSTER of operands within 8 bytes of its base.
+        # Two such clusters whose bases differ by a multiple of 8 are A0/A1.
+        clusters = _cluster(sorted(set(ops)), gap=8)
+        cands = [c[0] for c in clusters if len(c) >= 3]
+        pair = None
+        for i, a0 in enumerate(cands):
+            for a1 in cands[i + 1:]:
+                d = a1 - a0
+                if d > 0 and d % INSTR_SIZE == 0 and d // INSTR_SIZE <= 64:
+                    pair = (a0, a1)
+                    break
+            if pair:
+                break
+        if not pair:
+            raise MattGrayError("could not locate the instrument tables")
+        found["instr_a0"], found["instr_a1"] = pair
+
+        # pattern lo/hi pointer tables, located LAST and only from operands no
+        # other table has claimed.  Done earlier it reliably mis-fires: two
+        # adjacent *instrument field* reads (LN2's $461a / $4620, six apart)
+        # look exactly like a lo/hi pointer pair with a six-pattern song.
+        n_instr = max(1, (found["instr_a1"] - found["instr_a0"]) // INSTR_SIZE)
+        claimed = [
+            (found["instr_a0"], found["instr_a0"] + n_instr * INSTR_SIZE),
+            (found["instr_a1"], found["instr_a1"] + n_instr * INSTR_SIZE),
+            (found["frq_lo"], found["frq_lo"] + NUM_NOTES),
+            (found["frq_hi"], found["frq_hi"] + NUM_NOTES),
+            (found["trk_v1_lo"], found["trk_v3_hi"] + 2),
+            (found["tune_tempo"], found["tune_tempo"] + 2),
+        ]
+
+        def free(a: int) -> bool:
+            return not any(s <= a < e for s, e in claimed)
+
+        for (o1, a1), (o2, a2) in zip(sites, sites[1:]):
+            if (0 < o2 - o1 <= 8 and 0 < a2 - a1 < 256
+                    and free(a1) and free(a2)):
+                found["pattern_lobytes"], found["pattern_hibytes"] = a1, a2
+                break
+        if "pattern_lobytes" not in found:
+            raise MattGrayError("could not locate the pattern pointer tables")
+
+        # arpeggio table: a pair of sites one byte apart (lo/hi of a pointer)
+        for (_o1, a1), (_o2, a2) in zip(sites, sites[1:]):
+            if a2 - a1 == 1 and free(a1):
+                found["arpeggio_table"] = a1
+                break
+        found.setdefault("arpeggio_table", 0)
+        return found
+
+    def _looks_like_freq_table(self, lo: int, hi: int) -> bool:
+        """A real freq table's hi bytes rise and roughly double each octave."""
+        try:
+            h = self.slice(hi, NUM_NOTES)
+        except MattGrayError:
+            return False
+        if len(h) < NUM_NOTES or not all(h[i] <= h[i + 1] for i in range(len(h) - 1)):
+            return False
+        # an octave up doubles the frequency; check a few octave pairs
+        good = 0
+        for n in range(0, NUM_NOTES - 12, 12):
+            a, b = h[n], h[n + 12]
+            if a and abs(b - 2 * a) <= 2:
+                good += 1
+        return good >= 4
+
     # --- decode --------------------------------------------------------
     def parse(self, subtune: int = 1) -> MattGraySong:
-        self.verify()
+        # Fast path: the exact Driller-era layout, where every table sits at a
+        # known offset.  Otherwise fall back to locating by signature, which
+        # also handles the restructured Last Ninja 2 (1988) build.
+        try:
+            self.verify()
+            tabs = {
+                "pattern_lobytes": self._site(_SITE_PAT_LO, "pattern_lobytes"),
+                "pattern_hibytes": self._site(_SITE_PAT_HI, "pattern_hibytes"),
+                "instr_a0": self._site(_SITE_INSTR_A0, "instr_A0"),
+                "instr_a1": self._site(_SITE_INSTR_A1_4, "instr_A1") - 4,
+                "frq_lo": self._site(_SITE_FRQ_LO, "frq_lo"),
+                "frq_hi": self._site(_SITE_FRQ_HI, "frq_hi"),
+                "tune_tempo": self._site(_SITE_TEMPO, "tune_tempo"),
+                "arpeggio_table": self._site(_SITE_ARP_TABLE, "arpeggio_table"),
+                "trk_v1_lo": self._site(_SITE_V1_TRK_LO, "trackptr_lo"),
+                "trk_v1_hi": self._site(_SITE_V1_TRK_HI, "trackptr_hi"),
+                "trk_v2_lo": self._site(_SITE_V2_TRK_LO, "trackptr_lo"),
+                "trk_v2_hi": self._site(_SITE_V2_TRK_HI, "trackptr_hi"),
+                "trk_v3_lo": self._site(_SITE_V3_TRK_LO, "trackptr_lo"),
+                "trk_v3_hi": self._site(_SITE_V3_TRK_HI, "trackptr_hi"),
+            }
+            self.layout = "driller"
+        except MattGrayError:
+            tabs = self.locate()
+            self.layout = "signature"
 
-        pat_lo = self._site(_SITE_PAT_LO, "pattern_lobytes")
-        pat_hi = self._site(_SITE_PAT_HI, "pattern_hibytes")
-        instr_a0 = self._site(_SITE_INSTR_A0, "instr_A0")
-        instr_a1 = self._site(_SITE_INSTR_A1_4, "instr_A1") - 4
-        frq_lo = self._site(_SITE_FRQ_LO, "frq_lo")
-        frq_hi = self._site(_SITE_FRQ_HI, "frq_hi")
-        tempo_tab = self._site(_SITE_TEMPO, "tune_tempo")
-        arp_tab = self._site(_SITE_ARP_TABLE, "arpeggio_table")
-
-        trk_sites = ((_SITE_V1_TRK_LO, _SITE_V1_TRK_HI),
-                     (_SITE_V2_TRK_LO, _SITE_V2_TRK_HI),
-                     (_SITE_V3_TRK_LO, _SITE_V3_TRK_HI))
-        trk_tabs = [(self._site(lo, "trackptr_lo"), self._site(hi, "trackptr_hi"))
-                    for lo, hi in trk_sites]
+        pat_lo, pat_hi = tabs["pattern_lobytes"], tabs["pattern_hibytes"]
+        instr_a0, instr_a1 = tabs["instr_a0"], tabs["instr_a1"]
+        frq_lo, frq_hi = tabs["frq_lo"], tabs["frq_hi"]
+        tempo_tab, arp_tab = tabs["tune_tempo"], tabs["arpeggio_table"]
+        trk_tabs = [(tabs["trk_v1_lo"], tabs["trk_v1_hi"]),
+                    (tabs["trk_v2_lo"], tabs["trk_v2_hi"]),
+                    (tabs["trk_v3_lo"], tabs["trk_v3_hi"])]
 
         # The lo-table is immediately followed by the hi-table, so their
         # distance is the number of tunes.  Same trick for the pattern table.
@@ -408,6 +635,7 @@ class MattGrayParser:
                 "tune_tempo": tempo_tab, "arpeggio_table": arp_tab,
             },
         )
+        song.layout = self.layout
         return song
 
     def _read_track(self, base: int, cap: int = 512) -> List[int]:
@@ -583,7 +811,58 @@ def load_sid(path: str) -> Tuple[bytes, int, int, int, int, int]:
     return body, load, init, play, songs, start
 
 
+# A relocating-compilation wrapper (Last Ninja 2, 1988): `init` copies the
+# selected subtune's self-contained player+data blob to a fixed address before
+# anything can be parsed, so `play` points at zeroed memory in the file itself.
+# The init prologue is distinctive:
+#     tax / lda $01 / pha / lda #$36 / sta $01 / lda src_lo,x ...
+_WRAP_PROLOGUE = bytes([0xAA, 0xA5, 0x01, 0x48, 0xA9, 0x36, 0x85, 0x01, 0xBD])
+_WRAP_SRC_LO, _WRAP_SRC_HI = 9, 14      # operand offsets from init
+_WRAP_DST_LO, _WRAP_DST_HI = 19, 23     # immediate operands
+_WRAP_TAIL, _WRAP_PAGES = 27, 32
+
+
+def relocating_subtunes(body: bytes, load: int, init: int,
+                        songs: int) -> Optional[List[Tuple[bytes, int]]]:
+    """If this file is a relocating compilation, return one (blob, dst) per
+    subtune; otherwise None.
+
+    Length is `pages * 256 + tail`, matching the driver's page loop followed by
+    a tail loop (a tail of 0 means a full extra page, since the compare happens
+    after the increment).
+    """
+    off = init - load
+    if off < 0 or body[off:off + len(_WRAP_PROLOGUE)] != _WRAP_PROLOGUE:
+        return None
+    src_lo = _u16(body, off + _WRAP_SRC_LO) - load
+    src_hi = _u16(body, off + _WRAP_SRC_HI) - load
+    tail_t = _u16(body, off + _WRAP_TAIL) - load
+    page_t = _u16(body, off + _WRAP_PAGES) - load
+    dst = body[off + _WRAP_DST_LO] | (body[off + _WRAP_DST_HI] << 8)
+
+    out: List[Tuple[bytes, int]] = []
+    for i in range(songs):
+        src = body[src_lo + i] | (body[src_hi + i] << 8)
+        tail, pages = body[tail_t + i], body[page_t + i]
+        n = pages * 256 + (tail or 256)
+        start = src - load
+        out.append((body[start:start + n], dst))
+    return out
+
+
 def parse_sid(path: str, subtune: int = 1) -> MattGraySong:
-    """Parse a Matt Gray SID straight from disk."""
-    body, load, init, play, _songs, _start = load_sid(path)
+    """Parse a Matt Gray SID straight from disk.
+
+    Handles both the plain layout (Driller) and the relocating compilation
+    (Last Ninja 2), where `subtune` selects which blob to materialise.
+    """
+    body, load, init, play, songs, _start = load_sid(path)
+    blobs = relocating_subtunes(body, load, init, songs)
+    if blobs is not None:
+        if not 0 <= subtune < len(blobs):
+            raise MattGrayError(
+                f"subtune {subtune} out of range (file has {len(blobs)})")
+        blob, dst = blobs[subtune]
+        # each blob is a self-contained tune; its own tune index is 1
+        return MattGrayParser(blob, dst, dst, dst + 2).parse(subtune=1)
     return MattGrayParser(body, load, init, play).parse(subtune=subtune)

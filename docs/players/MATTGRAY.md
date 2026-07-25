@@ -165,7 +165,21 @@ also report SURVIVED.
 | part01 × 3 | 45 s | ~9% of 480 s | 3/3 SURVIVED |
 | part02 × 3 | 45 s | ~24% of 186 s | 3/3 SURVIVED |
 | part02 × 1 | 195 s | **100%** of 186 s | SURVIVED |
-| part01 × 1 | 492 s | **100%** of 480 s | _(pending)_ |
+| part01 × 1 | 492 s | **100%** of 480 s | user-confirmed playing (see below) |
+
+The scripted 492 s part01 trial returned `CRASHED`, and that verdict is **void**:
+`probe_once()` decides by checking whether the process is still alive after the
+window, so a human closing the editor is indistinguishable from a crash — and
+that is what happened. No proof-of-play screenshot was written, which is the
+same signature either way. The user instead confirmed part01 directly, watching
+it play through **twice** in the editor without incident.
+
+**Probe limitation worth fixing** (it affects the Blackbird play-tests too,
+same oracle): "process absent" is treated as "crashed" unconditionally, so any
+long-window trial is silently corrupted if someone touches the window. Recording
+the process *exit code* would separate a clean close from a crash; screenshotting
+periodically during the window rather than only at the end would also leave a
+partial timeline behind.
 
 Screenshots confirm the module loads as **Driver 11.00**, tempo `03`, all 22
 instruments present, and — in part 2 — real decoded music on all three tracks
@@ -187,6 +201,68 @@ The order of magnitude agrees; the exact loop point does not, and HVSC's
 per-subtune split is itself suspect here (see below).
 
 ---
+
+---
+
+## Last Ninja 2 — located, NOT decoded (do not convert)
+
+**Status: the wrapper and table locations are solved; the format is not.
+Stage A must not be run on this file.**
+
+LN2 is a **relocating compilation**. `play=$4002` is all zeros in the file
+because `init $3f40` copies the selected subtune's self-contained player+data
+blob to `$4000` first. There are 13 such blobs — confirmed by 13 separate
+`(C)1988 MATT GRAY` strings. The copy loop is fully decoded (`relocating_subtunes()`):
+
+| Table | Address | Per subtune |
+|-------|---------|-------------|
+| source lo / hi | `$3f80` / `$3f8d` | blob address |
+| tail bytes | `$3f9a` | length low part |
+| pages | `$3fa7` | length = pages·256 + tail |
+
+Once relocated it **is** the same engine: `$4002` is the byte-identical
+`music_play` shim (`ldx #$00/$07/$0e`), and `play_voice $4012` opens with
+Driller's exact `lda tune_ctrl / bne / sta $d418 / rts / cmp #$ab`.
+
+Beyond that prologue the 1988 build shares only **one byte** with Driller, so
+the fixed code-site offsets do not transfer. `locate()` finds every table by
+signature instead (see below) and **12 of 13 subtunes parse**.
+
+**But parsing is not decoding.** Validated against siddump, the result is wrong:
+
+| Subtune | plain onset | plain pitch |
+|---------|-------------|-------------|
+| 1 | 51.8% | 11.2% |
+| 3 | 100% | 22.4% |
+| 9 | 98.2% | 16.1% |
+
+Pattern counts, instrument counts and note counts all look entirely sensible —
+which is exactly why this is dangerous. The tables are in the right places; the
+*semantics* around them differ (pattern-byte dispatch and/or the instrument
+record layout changed between 1987 and 1988). Nothing about the decode announces
+itself as broken. **Only the validator caught it**, which is the argument for
+running it before believing any new build.
+
+Next step is not more locator work — it is disassembling LN2's `play_voice`
+properly and re-deriving the byte dispatch, the way Driller's was.
+
+### The signature locator (`locate()`)
+
+Used when the Driller fast path's fixed offsets don't verify. It walks real
+code by recursive descent from `play_voice` (a flat byte scan is not adequate —
+the player interleaves code and data, so a linear sweep invents instructions out
+of table bytes), collects every `LDA abs,y`, then matches:
+
+- **track pointers** — 6 consecutive sites whose operands step by 2
+- **tune_tempo** — the next distinct table after those 6
+- **freq lo/hi** — operands exactly 96 apart, confirmed by an octave-doubling
+  check on the hi bytes
+- **instruments** — two operand *clusters* (the driver reads many fields of one
+  record) whose bases differ by a multiple of 8
+- **patterns** — located **last**, from operands no other table has claimed.
+  Done earlier it reliably mis-fires: two adjacent instrument-field reads
+  (LN2's `$461a`/`$4620`, six apart) look exactly like a lo/hi pointer pair for
+  a six-pattern song.
 
 ## Gotchas
 
