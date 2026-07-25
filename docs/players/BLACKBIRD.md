@@ -5036,3 +5036,74 @@ table. Verified by direct inspection, not by trusting the OCR pass rate.
 
 The "STILL UNVERIFIED" note in commit `d6fff59`'s message is therefore now
 discharged.
+
+## E6 (2026-07-25): B7 priming and `window_steps` were fighting -- Into_the_Unknown 98.1% -> 100.0%
+
+The last corpus file below 99. Its residual was ENTIRELY part 3 (parts 1 and 2
+read 99.9 / 100.0), and part 3 was wrong from its own frame 0 -- a part-boundary
+problem, not mid-song drift.
+
+### The two mechanisms
+
+`window_steps`' docstring justified forcing a mid-note re-entry to be a GENUINE
+re-trigger with: *"there is no 'resume mid-cycle' primitive in either the real
+player or the shared native engine"*, and named the resulting re-attack as an
+accepted residual.
+
+**B7 added exactly that primitive** -- `do_init` primes `VWI` (the wave-program
+ROW, mid-program), `PW_ACC` (the pulse accumulator's exact phase), `VIWAVE`,
+`FXPOS`, `BASEPITCH`, `VGMASK` and AD/SR. The justification went stale without
+the code being revisited, so B7 restored the exact mid-program state and the
+part's own first row threw it away.
+
+### Proof (py65 trace, not argument)
+
+Three hypotheses were checked and CLEARED before the real one was found:
+`PRIME_PW_ACC1 = $a6` and `PRIME_D4021 = $3a` both match the simulator's
+`row_state[1501]` snapshot exactly; `PRIME_VWI1 = 36` is self-consistent
+(`PRIME_VIWAVE1` 33 + `_lookup_wave_row(wavepos 26)` = 3); and the BUILT part-3
+WAVE table at row 36 is `$41`, bit6 SET, which should step the pulse.
+
+Tracing the assembled driver under py65 settled it:
+
+```
+after do_init: VWI=[33, 36, 43]   <- correct, mid-program
+frame 0: VWI[1]=34   row processed = 33 ($81, bit6 CLEAR)  PW_ACC=$a6  $D409=$3a
+frame 1: VWI[1]=35   row 34 ($81, bit6 CLEAR)              PW_ACC=$a6  $D409=$3a
+frame 2: VWI[1]=36   row 35 ($41, bit6 SET)                PW_ACC=$a7  $D409=$4a
+```
+
+Frame 0 processed row **33** -- `PRIME_VIWAVE1`, the program START -- not the
+primed row 36. Rows 33/34 carry no pulse flag, so the accumulator stalled two
+frames and every later frame ran two steps behind. B9's pulse engine free-runs a
+delta program with no note-restart, so that phase error is PERMANENT: pulse
+76.7% for the rest of the part. Same amplifier as E4.
+
+### The fix
+
+In `window_steps`, a re-entry where the boundary landed INSIDE a step
+(`seg_start > pos`) now emits a TIE with no instrument select, continuing the
+note instead of re-triggering it. A boundary landing exactly ON a step start is
+still a genuine trigger, so part 1 (row0 = 0) is untouched by construction.
+
+The docstring's own objection to `tie=True` -- that it "would leave WAVE+FILTER
+parked at whatever `do_init` seeds" (B4 Bug 3) -- is precisely what B7 fixed.
+
+### Result
+
+part 3 **94.4 -> 100.0** (pulse 76.7 -> 100.0); file **98.1 -> 100.0**. Corpus
+**99.844 -> 99.963**, **11 of 16 files at exactly 100.0**, 0 regressed, no part
+moves. Parts 1 and 2 rebuilt byte-identical (14098 / 14130); only part 3 changed
+(14034 -> 14042).
+
+**Caveat on the sweep's own byte check**: `blackbird_sweep.py` only stats
+`*_native_part01.sf2`, so for a multi-part file its "byte-changes" column covers
+the FIRST part only -- it did not see part 3's change. Do not read that column as
+whole-file byte-identity on Fargo / Dithered_Island / Into_the_Unknown.
+
+### Method note
+
+The bug was in neither place I suspected. Two rounds of "check the primed value"
+came back clean, and the answer only appeared when the assembled driver was
+traced frame-by-frame. When the emitted DATA is verifiably correct and the output
+still isn't, trace the consumer executing it rather than re-deriving the data.

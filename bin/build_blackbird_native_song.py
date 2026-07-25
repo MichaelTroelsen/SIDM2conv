@@ -553,6 +553,38 @@ def window_steps(steps, row0, row1):
         if not started:
             if s.kind == 'rest':
                 out.append(BBStep('rest', None, None, s.fx, False, seg_ticks))
+            elif seg_start > pos:
+                # E6: the boundary landed INSIDE this step -- the note was
+                # already sounding, so CONTINUE it (tie, no instrument select)
+                # instead of re-triggering.
+                #
+                # This function's docstring used to justify the forced
+                # re-trigger with "there is no 'resume mid-cycle' primitive in
+                # either the real player or the shared native engine". B7 ADDED
+                # exactly that primitive and the justification went stale: the
+                # part's do_init now primes VWI (the wave-program ROW, mid
+                # program), PW_ACC (the pulse accumulator's exact phase),
+                # VIWAVE, FXPOS, BASEPITCH, VGMASK and AD/SR. A forced
+                # re-trigger here throws all of it away on the part's first
+                # frame.
+                #
+                # Into_the_Unknown part 3 measured it: do_init correctly set
+                # VWI[1]=36 (mid-program), but frame 0 restarted the program at
+                # VIWAVE=33, and rows 33/34 are $81 -- bit6 CLEAR, no pulse
+                # step -- so the accumulator stalled two frames and every later
+                # frame ran two steps behind. B9's pulse engine free-runs a
+                # delta program with no note-restart, so that phase error is
+                # PERMANENT: pulse 76.7% for the rest of the part (the same
+                # amplifier as E4).
+                #
+                # The docstring's own objection to tie=True -- that it "would
+                # leave WAVE+FILTER parked at whatever do_init seeds" (B4 Bug
+                # 3) -- is precisely what B7 fixed: do_init now seeds the
+                # CORRECT instrument's program at the CORRECT row. Keeping the
+                # pitch on the tied step is harmless (basepitch is primed to
+                # the same value) and keeps the row self-describing.
+                note_val = s.note if s.note is not None else last_note
+                out.append(BBStep('note', note_val, None, s.fx, True, seg_ticks))
             else:
                 note_val = s.note if s.note is not None else last_note
                 out.append(BBStep('note', note_val, cur_instr, s.fx, False, seg_ticks))
