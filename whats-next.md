@@ -14,16 +14,18 @@ then "you decide what to do".
 <work_completed>
 ## Summary
 
-Three commits, all merged to `master` and PUSHED. HEAD = `5db109c`.
+Five commits, all on `master` and PUSHED. HEAD = `d6fff59` (+ a docs commit for the E5 play-test).
 
 | commit | what |
 |---|---|
 | `2d65366` | **E3f RE-ENABLED** — the "combo values crash SF2II" premise was FALSIFIED |
 | `b0bff86` | **E4** — prepare1's byte allowance is forfeited by prepare2; To_Die_For_II 94.2% → 98.2% |
 | `5db109c` | Promoted the sweep + crash oracle into `pyscript/` with 34 tests |
+| `5036a30` | Documented the filter lead + refreshed this handoff |
+| `d6fff59` | **E5** — the filter row grammar was missing a row type; To_Die_For_II → **100.0**, Revolutions_Delivered → **100.0** |
 
-**Blackbird corpus 99.18 → 99.669.** Glyptodont 162/162 note-ons by default.
-No file below 98.1. Full suite **1679 passed** / 7 skipped / 2 xfailed
+**Blackbird corpus 99.18 → 99.844.** Glyptodont 162/162 note-ons by default.
+**10 of 16 files at exactly 100.0**; only `Into_the_Unknown` (98.1) below 99. Full suite **1679 passed** / 7 skipped / 2 xfailed
 (was 1645; +34 new, none regressed).
 
 ## 1. The E3f crash premise was WRONG (`2d65366`)
@@ -95,33 +97,52 @@ regressions, the recorded mean 99.669 is asserted.
 
 The doc rows in `CLAUDE.md` / `ACCURACY_MATRIX.md` no longer say "not
 reproducible from a fresh clone" — that stopped being true.
+
+## 4. E5 — the filter row grammar was missing a row type (`d6fff59`)
+
+Hardware writes `$D418` AND `$D417` EVERY frame from `filttable[y]`/`[y+1]`,
+independently of whether that frame's cutoff op is SET or ADD. The native
+grammar had only SET (`[$80,$FF]`: mode+res+absolute cutoff) and ADD
+(`[$00,$0F]`: cutoff delta, byte2 = RUN COUNT) — nothing could say **"set
+mode+res, leave cutoff alone"**. So a program whose row 0 is an ADD-cutoff
+record inherited the previous filter owner's passband/resonance.
+
+To_Die_For_II instrument 6 (`ins_filt[6]=26`) is that shape: raw `filttable` at
+`$1566` position 26 = `$2f $f1 $00 $ff` (band-pass, res `$f0`+routing, cutoff
+ADD of 0, advance `$ff` → `+0`, holds forever). The driver held `$D417=$00` /
+`$D418=$0f` from frame ~1648 to the end — it never ENABLED the filter.
+
+Fix: a third row type `1M DD RB` in the dead `[$10,$1F]` space
+(`_filter_modeadd_row` + `fp_modeadd`). Does NOT contradict B21 — the cutoff
+stays a delta on the inherited value; B21 governs cutoff, E5 governs mode/res.
+
+**Dispatch is a BIT TEST (`and #$10 / bne`), never `cmp #$10`**: byte0 reaches
+`$FF` there and SF2II's CMP is only correct for `|A−op| ≤ 127` (the E3d hazard
+class, shipped twice before in this repo).
+
+Result: To_Die_For_II **98.2 → 100.0** (filter 88.9 → 99.9), Revolutions_Delivered
+**99.0 → 100.0**; corpus 99.669 → 99.844; 0 regressed, no part moves, no size
+changes. 13 filter programs across 5 files use the new row type — and 3 of those
+files were ALREADY 100.0 and stayed there, so the changed path is exercised
+where there was nothing to gain.
+
+**Editor play-tested: 4/4 survived**, playback 0:52–1:12, past the ~33s filter
+events. (Title-bar OCR failed on 3 of 4 shots because the terminal overlapped
+SF2II; survival is process-liveness, and the editor panel underneath shows the
+timer running and the row cursor advancing — verified by direct inspection.)
 </work_completed>
 
 <work_remaining>
-## 1. To_Die_For_II's filter — LOCALIZED, NOT FIXED (top priority, biggest gap)
+## 1. ~~To_Die_For_II's filter~~ — SOLVED by E5 (`d6fff59`), now 100.0
 
-Its entire remaining residual is filter (88.9%). Full evidence in
-`docs/players/BLACKBIRD.md`'s "OPEN LEAD" section. In short:
-
-- `$D417` sim `$f1` vs drv `$00`; `$D418` sim `$2f` vs drv `$0f` — the driver
-  never ENABLES the filter (res, routing and mode all missing).
-- Trigger: row 413, voice 0 selects instrument 7 (1-based) = builder's 0-based
-  `instr=6` (SAME instrument, not an off-by-one); sim repositions
-  `zp_filtpos` 18→26.
-- `ins_filt[6] = 26`, so the builder's `filt_start != 0` gate passes.
-- Raw `filttable` at **`$1566`**: pos 18 = `$0f $00` (filter off), pos 26 =
-  `$2f $f1`. **`filt_start` points directly at the `$D418` byte; `$D417` is the
-  next byte** — byte-for-byte what the sim writes.
-- **The bug**: `unroll_filter(26)` returns `(0x00, 0x00, 0x01)` — byte0's top bit
-  clear so it's classified ADD not SET (correct: `0xA0` = `8|mode 2` band-pass),
-  and res `0x01` instead of `$f1` (resonance nibble dropped). `filt_start=18`
-  translates correctly to `(0x80,0,0)`, which is why early frames are 100%.
-- Next: RE the record grammar (`$40 $fc`, `$c0 $ff`, `$c6 $ff` precede the value
-  pairs) and fix field extraction. B22 already fixed two filter bugs of this
-  shape — keep the sibling cases consistent, don't tune to one file.
-
-**CAVEAT**: `$D415`/`$D416` read 100.0% in the broken window, but cutoff is
-`$0000` in BOTH — a vacuous `0 == 0`. Not evidence the cutoff walk is right.
+Kept only as a pointer: the grammar fix is documented in
+`docs/players/BLACKBIRD.md`'s E5 section. Hardware rewrites `$D418`/`$D417`
+EVERY frame regardless of whether that frame's cutoff op is SET or ADD, and the
+native row grammar had no way to say "set mode+res, leave cutoff alone" — so an
+ADD row0 inherited the previous filter owner's passband/resonance. Fixed with a
+third row type `1M DD RB` in the dead `[$10,$1F]` space. **Editor play-tested,
+4/4 survived.** My first diagnosis ("`unroll_filter` misreads the table") was
+wrong; reading the CONSUMER (`fp_dec`/`fp_set`) is what corrected it.
 
 ## 2. Into_the_Unknown 98.1% (3 parts) — waveform/adsr already 100.0, so freq/filter.
 
@@ -163,6 +184,11 @@ E1 WinVICE per-voice mute; E2 SidWiz/Corrscope video (blocked on E1 + ffmpeg).
 - **Part counts are part of the result.** A moved count shifts the measurement
   window and makes the numbers incomparable (the B10 trap). `EXPECTED_PARTS`
   now pins Fargo 2 / Dithered_Island 2 / Into_the_Unknown 3.
+- **Read the CONSUMER, not just the producer.** E5's first diagnosis
+  ("`unroll_filter` misreads the table") was plausible, wrong, and got committed
+  to the docs as an open lead before being checked. Reading `fp_dec`/`fp_set` in
+  the DRIVER showed the ADD path never touches `F_MODE`/`$d417` at all — a
+  missing capability, not a parsing error.
 - **A register pinned at exactly 66.7% / 33.3%** is a whole-voice failure, not
   scattered error. If it's pulse, suspect accumulator phase and look for a
   timing event EARLIER than where the plateau starts.
@@ -192,7 +218,7 @@ instruments, `ins_restart=7`, `ins_restart2=5`, nins=20, filttable `$1566`.
 
 <current_state>
 ## Repository
-- Branch `master`, HEAD `5db109c`, fully pushed (`git log origin/master..master`
+- Branch `master`, HEAD `d6fff59`+, fully pushed (`git log origin/master..master`
   empty). Branch `e3f-reenable-crash-falsified` is now redundant with master and
   can be deleted.
 - Uncommitted: `.claude/settings.local.json` (pre-existing), this file, and the
@@ -203,8 +229,8 @@ instruments, `ins_restart=7`, `ins_restart2=5`, nins=20, filttable `$1566`.
   canonical.
 
 ## Corpus (on disk, E3f ON + E4)
-mean **99.669**, 8 files at exactly 100.0, Glyptodont 162/162 (26930 bytes),
-To_Die_For_II 98.2, Into_the_Unknown 98.1. Part counts Fargo 2,
+mean **99.844**, 10 files at exactly 100.0, Glyptodont 162/162 (26930 bytes),
+To_Die_For_II **100.0**, Revolutions_Delivered **100.0**, Into_the_Unknown 98.1. Part counts Fargo 2,
 Dithered_Island 2, Into_the_Unknown 3, rest 1.
 
 ## SF2II

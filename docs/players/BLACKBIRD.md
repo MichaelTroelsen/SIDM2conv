@@ -5008,3 +5008,31 @@ against the driver. What corrected it was reading `fp_dec`/`fp_set` and finding
 that the ADD path never touches `F_MODE` or `$d417` at all -- a missing
 capability, not a parsing error. Reading the consumer, not just the producer, is
 what turned a "fix the parser" task into a one-row-type grammar extension.
+
+### E5 editor play-test: PASSED (2026-07-25)
+
+E5 adds new values to an SF2II-facing table, so per this file's own E3d/E3f rule
+it was not treated as delivered until play-tested in the real editor.
+
+`pyscript/blackbird_crash_probe.py`, 2 trials each on the two files that gained
+from E5 (and between them the widest users of the new row type -- 5 filter
+programs in `Revolutions_Delivered`, 3 in `To_Die_For_II`):
+
+| build | trials | played | crashed |
+|---|---|---|---|
+| To_Die_For_II | 2 | 2 | **0** |
+| Revolutions_Delivered | 2 | 2 | **0** |
+
+Playback reached **0:52-1:12** in every trial -- well past To_Die_For_II's filter
+divergence at part-frame ~1648 (~33s), so the E5 rows genuinely executed. This is
+NOT a repeat of the 6-second batch that tested nothing.
+
+Evidence caveat, recorded because it looks like a failure and isn't: title-bar
+OCR failed on 3 of 4 screenshots because the terminal window overlapped SF2II.
+The survival verdict is process-liveness (`_is_alive(pid)`), independent of
+z-order, and the editor panel is visible underneath each shot showing the play
+timer running, the row cursor advancing, and To_Die_For_II's own 14-instrument
+table. Verified by direct inspection, not by trusting the OCR pass rate.
+
+The "STILL UNVERIFIED" note in commit `d6fff59`'s message is therefore now
+discharged.
