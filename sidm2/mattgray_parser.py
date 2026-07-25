@@ -913,6 +913,42 @@ def relocating_subtunes(body: bytes, load: int, init: int,
     return out
 
 
+# A second wrapper shape (Tusker, 1989): a self-modifying copy loop, sources
+# page-aligned so only a hi-byte table exists, and a destination of $e000 --
+# under KERNAL ROM, which is why its PSID play address is $e002.
+#   sei / tax / lda #$00 / sta lo / sta lo / lda src_hi,x / sta hi / lda #$e0
+_WRAP2_PROLOGUE = bytes([0x78, 0xAA, 0xA9, 0x00, 0x8D])
+
+
+def relocating_subtunes_v2(body: bytes, load: int, init: int,
+                           songs: int) -> Optional[List[Tuple[bytes, int]]]:
+    """Tusker-style wrapper: page-aligned blobs copied to a fixed page."""
+    off = init - load
+    if off < 0 or body[off:off + len(_WRAP2_PROLOGUE)] != _WRAP2_PROLOGUE:
+        return None
+    # lda #$e0 supplies the destination page; the two lda abs,x are the
+    # source-hi and page-count tables.
+    dst_page = None
+    tabs: List[int] = []
+    for i in range(off, min(off + 48, len(body) - 2)):
+        if body[i] == 0xA9 and body[i + 2] == 0x8D and body[i + 1] not in (0x00,):
+            dst_page = body[i + 1]
+        elif body[i] == 0xBD:
+            tabs.append(_u16(body, i + 1) - load)
+    if dst_page is None or len(tabs) < 2:
+        return None
+    src_hi_t, page_t = tabs[0], tabs[1]
+    out: List[Tuple[bytes, int]] = []
+    for i in range(songs):
+        src = body[src_hi_t + i] << 8
+        n = body[page_t + i] * 256
+        start = src - load
+        if start < 0 or n <= 0:
+            return None
+        out.append((body[start:start + n], dst_page << 8))
+    return out
+
+
 def parse_sid(path: str, subtune: int = 1) -> MattGraySong:
     """Parse a Matt Gray SID straight from disk.
 
@@ -920,7 +956,8 @@ def parse_sid(path: str, subtune: int = 1) -> MattGraySong:
     (Last Ninja 2), where `subtune` selects which blob to materialise.
     """
     body, load, init, play, songs, _start = load_sid(path)
-    blobs = relocating_subtunes(body, load, init, songs)
+    blobs = (relocating_subtunes(body, load, init, songs)
+             or relocating_subtunes_v2(body, load, init, songs))
     if blobs is not None:
         if not 0 <= subtune < len(blobs):
             raise MattGrayError(

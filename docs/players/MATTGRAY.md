@@ -1,6 +1,6 @@
 # Matt Gray — player RE + Stage A
 
-**Status:** RE complete and Stage A shipped **for the Driller build only**.
+**Status:** RE complete and Stage A shipped for **Driller, Last Ninja 2 (13 subtunes) and Tusker (4 subtunes)** — 18 tunes, all at 100% onset / 100% pitch on plain instruments.
 Native Stage B: TODO. Not wired into `DriverSelector`.
 
 Matt Gray wrote his own driver from scratch — it is **not** derived from
@@ -341,3 +341,28 @@ of table bytes), collects every `LDA abs,y`, then matches:
   his engine via its portamento-flag check) — both in the TDZ C64 knowledge base
 - TDZ knowledge card `matt-gray` (also records a verified reassembly of the
   separate *Dominator* build, from dmx87's `c64_6581_sid_players`)
+
+---
+
+## Tusker (1989) — third build, second wrapper shape
+
+Tusker's `play=$e002` is not a quirk to work around: it is **correct**, because
+its wrapper copies the selected blob to **`$e000`**, under KERNAL ROM. A second
+wrapper shape, distinct from Last Ninja 2's:
+
+| | Last Ninja 2 (1988) | Tusker (1989) |
+|---|---|---|
+| copy loop | straight `($fa),y -> ($fc),y` | **self-modifying** operands |
+| source table | lo **and** hi (`$3f80`/`$3f8d`) | **hi only** (`$4138`) — blobs are page-aligned |
+| length | pages + tail byte | **whole pages** (`$413c`) |
+| destination | `$4000` | **`$e000`** (under KERNAL ROM) |
+| subtunes | 13 | 4 |
+
+`relocating_subtunes_v2()` handles it. The player itself is the **same 1988
+generation as Last Ninja 2** — `duration_base` comes out as `$70` on all four
+subtunes, so the `$70` duration split and the `$f9` parameter code both apply.
+That is the first evidence these findings generalise rather than being
+per-file.
+
+**Result (6000-frame sweep, plain instruments): 4/4 subtunes at 100% onset and
+100% pitch** — n = 86, 439, 708, 685.
