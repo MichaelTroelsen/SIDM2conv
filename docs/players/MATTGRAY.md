@@ -149,8 +149,38 @@ py -3 bin/mattgray_to_sf2.py <file.sid> out/Driller_stageA.sf2
 
 Verified structurally: the packed sequences unpack back to the row grid
 byte-exactly (6000/6000 rows per voice, 0 mismatches), 41 sequences against the
-120 cap, none over SF2II's 960-event `Unpack` limit. **Not yet play-tested in
-real SID Factory II** — that is the next gap (PLAYBOOK §4 step 3).
+120 cap, none over SF2II's 960-event `Unpack` limit.
+
+### Editor play-test (real SID Factory II)
+
+Run with `pyscript/blackbird_crash_probe.py`'s `probe_once()` — despite the
+name, that function is player-agnostic (only its combo-schedule analysis is
+Blackbird-specific). It loads the file in the stock editor, presses F1, and
+screenshots the editor's own **"Playing time"** readout as proof the play
+actually happened; a probe that silently failed to deliver F1 would otherwise
+also report SURVIVED.
+
+| Trial set | Window | Coverage | Result |
+|-----------|--------|----------|--------|
+| part01 × 3 | 45 s | ~9% of 480 s | 3/3 SURVIVED |
+| part02 × 3 | 45 s | ~24% of 186 s | 3/3 SURVIVED |
+| part02 × 1 | 195 s | **100%** of 186 s | SURVIVED |
+| part01 × 1 | 492 s | **100%** of 480 s | _(pending)_ |
+
+Screenshots confirm the module loads as **Driver 11.00**, tempo `03`, all 22
+instruments present, and — in part 2 — real decoded music on all three tracks
+(`F#2 / A#3 / C#2`, `G-5 / G#5 / A-5`, `F#1 / D#1 / E-1`) with the primed
+instrument selects (`a000 / a006 / a00b`) on row 0, which is the mid-song
+window-start handling working as intended. Part 1's visible rows show voices 1
+and 2 sustaining (`+++`) through the intro drone while voice 3 carries the
+line — exactly what the 64-tick opening durations predict.
+
+**What this does and does not establish.** It establishes that both parts load
+and play to completion in the real editor without crashing, which is the one
+hazard class no offline tool in this repo can see. It does **not** establish
+that they *sound* like the original — that needs an ear on an A/B, and the
+Stage A output is knowingly missing the slide/arp/PWM/drum engine, so it will
+not match. Timbre fidelity is a Stage B claim, not this one.
 
 HVSC songlengths list Driller at 8:41 / 10:21 against the measured 11:05 loop.
 The order of magnitude agrees; the exact loop point does not, and HVSC's
