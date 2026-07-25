@@ -4716,3 +4716,95 @@ SF2II-only hazard) is right, but it cuts both ways -- a single manual play-test
 is one sample from a flaky process, and it convicted the wrong suspect for a
 day. When a play-test is the evidence for a shipping decision, it needs trials,
 a control arm, and a check that the window actually covers the effect.
+
+## E4 (2026-07-25): prepare1's byte allowance is FORFEITED by prepare2, not merely spent -- To_Die_For_II 94.2% -> 98.2%
+
+`To_Die_For_II` had been the corpus-worst file since before the E3 arc, written
+off as "its own separate later-frame pulse/filter residual". It was one missed
+note-on.
+
+### Binned diagnosis (`BB_DIAG_BIN=250`)
+
+Frames 0-1250 were essentially perfect. Bin [1250:1500) dipped on *every*
+register at once (freq 88.4, wf 92.0, adsr 95.2) -- the signature of a timing
+event, not a value error -- and from frame 1500 to the end **pulse pinned at
+exactly 66.7%**, i.e. 2 of 3 voices, for ~1100 frames.
+
+### The event
+
+`BB_DIAG_LO/HI` isolated it to **voice 1** (v0 and v2 are 100% on every register
+throughout). The simulator performs a genuine note-on at **row 358**:
+
+| | row 357 | row 358 |
+|---|---|---|
+| pendnote | 16 | **26** |
+| basepitch | 64 | **104** (= 26*4) |
+| wavemask | `$fe` | **`$ff`** (gate enabled) |
+| wavepos | 57 | **53** (wave restart) |
+| pwidth | `$00e8` | -> **`$0000`** at row 359 (pulse restart) |
+
+`bb_steps_for_voice` put that same note at tick **364** -- six ticks late --
+inside an over-long 14-tick rest.
+
+### Root cause
+
+Voice 1 bytes 651-654 are `$80` (gate-off), `$c9` (arp), `$92` (instrument),
+`$34` (note). Walking the real `prepare1/2/3` chain for that tick:
+
+1. **prepare1** peeks `$80`; `$80 < 0xC8`, so it does NOT consume -- and
+   prepare1 has now run for this tick.
+2. **prepare2** consumes `$80` (gate-off). The cursor advances to `$c9`.
+3. **prepare3** peeks `$c9`. It range-checks only `b >= 0x80`, so it swallows
+   the arp byte as a **delay**: `$f0|$c9 = $f9` = **7 ticks**, fx value discarded.
+
+Next event therefore lands on tick 357, where prepare2 takes `$92` (instrument
+16) and prepare3 takes `$34` -> note `$34>>1 = 26`. That is the simulator's
+row-358 note-on, to the tick.
+
+The builder already modelled the two sibling cases -- arp-after-arp
+(`arp_pending`) and prepare2-byte-after-prepare2-byte (`prep2_pending`), both
+from the REPEAT=1 arc -- but treated prepare1's budget as INDEPENDENT of
+prepare2's. It is not. **The stages run in fixed order 1 -> 2 -> 3, so
+prepare1's allowance is forfeited the moment prepare2 consumes**: an arp byte
+that only becomes current afterwards can never be taken by prepare1 in that
+tick and must fall through to prepare3.
+
+Fix: in the `arp` branch, `if arp_pending:` -> `if arp_pending or prep2_pending:`.
+
+### Why one missed note-on cost 5.8 points
+
+The driver skipped the hard restart, its SR blip, AND the pulse-program restart.
+Notes re-trigger, so freq/waveform/adsr all re-synced within two frames -- but
+B9's pulse engine free-runs a DELTA program with no note-restart of its own, so
+the accumulator stayed de-phased to the end of the song. A single timing miss
+converts into a permanent 1-of-3-voice pulse loss. **Where a free-running
+accumulator is involved, a transient error is not transient.**
+
+### Result
+
+| register | before | after |
+|---|---|---|
+| freq | 98.8 | 99.9 |
+| waveform | 99.1 | **100.0** |
+| pulse | 85.2 | **100.0** |
+| adsr | 99.5 | **100.0** |
+| filter | 88.9 | 88.9 (untouched -- separate defect) |
+
+Corpus sweep: **1 improved, 0 regressed, no part-count moves, and every other
+file byte-identical** -- the right signature for a mechanism fix rather than a
+re-tuning. Mean **99.419 -> 99.669**. Full suite unchanged.
+
+`To_Die_For_II`'s residual is now entirely **filter (88.9%)**, and its bin
+pattern (79.6 / 53.2 / 100.0 / 53.6 / 100.0) oscillates rather than latching --
+a different mechanism from this one, still open.
+
+### Method note
+
+Three tick accountings disagreed: the simulator said 358, the builder 364, and a
+naive re-walk of the raw bytes 350. **The naive walk was wrong in the same way
+the builder was** -- both assumed arp/instrument bytes always cost 0 ticks. The
+fix came from deriving the rule out of `prepare1/2/3` and `trtimer`'s wrap
+arithmetic (which also CONFIRMED `_note_ticks`/`_delay_ticks` were correct and
+never the bug), not from pattern-matching the discrepancy. Had the numbers been
+tuned until this one file improved, the sibling cases would have been left
+inconsistent and some other file would eventually have paid for it.

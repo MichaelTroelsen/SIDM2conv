@@ -228,7 +228,34 @@ def bb_steps_for_voice(byte_stream):
         if kind == 'oob':
             continue
         if kind == 'arp':
-            if arp_pending:
+            # E4: `prep2_pending` matters here too, not just `arp_pending`.
+            # The three prepare stages run in FIXED order 1 -> 2 -> 3 within a
+            # tick, so prepare1's allowance is not merely "one fx byte per
+            # tick" -- it is FORFEITED the moment prepare2 consumes, because
+            # prepare1 has already run and passed on a different byte. An arp
+            # byte that only becomes current AFTER prepare2's own consume can
+            # therefore never be taken by prepare1 this tick; it falls through
+            # to prepare3's undiscriminating `b >= 0x80` got_delay test and is
+            # swallowed as a phantom rest, fx value discarded -- exactly like
+            # the two cases already handled below.
+            #
+            # To_Die_For_II voice 1, bytes 651-654 ($80 gate-off, $c9 arp,
+            # $92 instrument, $34 note): hardware consumes $80 in prepare2,
+            # then prepare3 eats $c9 as a 7-tick delay ($f0|$c9 = $f9), so
+            # note 26 ($34>>1) lands on tick 357. This function used to treat
+            # $c9 as a free 0-tick fx select, emitting a 14-tick rest and
+            # putting note 26 at tick 364 -- SIX ticks late. Verified against
+            # BlackbirdSim's own row_state, which shows the note-on at row 358
+            # (pendnote 16->26, basepitch 64->104, wavemask $fe->$ff, wavepos
+            # 57->53, and pwidth reset to $0000 the next row).
+            #
+            # That single missed note-on is most of the file's residual: the
+            # driver skips the hard restart AND the PULSE-program restart, and
+            # because B9's pulse engine free-runs a delta program with no
+            # note-restart of its own, the accumulator stays de-phased for the
+            # remaining ~1100 frames -- pinning pulse at exactly 66.7% (2 of 3
+            # voices) and the whole file at 94.2%.
+            if arp_pending or prep2_pending:
                 # prepare1 (player.s) reads and consumes AT MOST ONE
                 # fx-range byte per real tick. A SECOND consecutive arp
                 # byte (no note/delay/instrument between) is NOT consumed
