@@ -25,6 +25,104 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.22.0] - 2026-07-25
+
+### Blackbird / lft closed out at 99.96% - and three findings the repo had recorded as settled turned out to be wrong
+
+The Blackbird (lft) native player reaches **corpus mean 99.963%**, **11 of 16 files at
+exactly 100.0**, none below 99.8. Three files were taken to exactly 100.0 this cycle.
+Every fix came from measuring rather than from the existing account - and in each case
+the account was plausible, documented, and wrong.
+
+#### Fixed - E3f: the "combo command values crash SF2II" verdict was FALSIFIED
+- v3.21.x had disabled E3f combo fx arming by default, on the conclusion that command
+  values 48-62 crash SF2II's editor on play. That rested on **one observation per arm**
+  of an editor already documented as heap-flaky.
+- Re-measured with a scriptable oracle (`pyscript/blackbird_crash_probe.py`): against the
+  **same** editor build that crashed, 5 x 66s trials of the combo build **executed 120
+  combo commands with zero crashes**, and the combo-free build showed no differential. A
+  user-run follow-play trial cleared it too.
+- **The first version of that measurement was itself invalid and came back clean**: a
+  6-second play window returned 16/16 SURVIVED while the earliest combo command fires at
+  8.2s - it executed *none* of the construct under test. `assert_window_covers()` now
+  makes that raise instead of reassure.
+- Also falsified by measurement, not argument: the 128-sequence limit (71 vs 72), a
+  `DataSourceSequence::Unpack` heap overrun (both builds peak at 960 of 1024), packed-block
+  overflow (both cap at 250), and `driver_state.cpp`.
+- E3f is **on by default** again; `BB_NO_COMBO=1` disables. Glyptodont back to **162/162
+  note-ons**. The crash the user originally observed remains **unexplained**.
+
+#### Fixed - E4: prepare1's byte allowance is FORFEITED by prepare2, not merely spent
+- Blackbird's `prepare1/2/3` run in fixed order per tick. The builder modelled prepare1's
+  and prepare2's one-byte-per-tick budgets as independent; they are not. Once prepare2
+  consumes, prepare1 has already run and passed, so an arp byte becoming current
+  afterwards falls through to prepare3 and is swallowed as a phantom delay.
+- `To_Die_For_II` voice 1: prepare3 ate `$c9` as a 7-tick delay, putting note 26 six ticks
+  late. The driver missed the note-on, its hard restart, and the **pulse-program restart** -
+  and because B9's pulse engine free-runs a delta program with no note-restart, that phase
+  error is **permanent**: pulse pinned at exactly 66.7% (2 of 3 voices) for ~1100 frames.
+- One condition in the arp branch (`arp_pending or prep2_pending`). **94.2% -> 98.2%**,
+  every other corpus file byte-identical.
+
+#### Fixed - E5: the filter row grammar was missing a row type
+- Hardware rewrites `$D418` and `$D417` **every frame** from `filttable[y]`/`[y+1]`,
+  regardless of whether that frame's cutoff op is SET or ADD. The native grammar could say
+  "set mode+res+cutoff" or "add to cutoff", but **not "set mode+res, leave cutoff alone"** -
+  so a program whose row 0 is an ADD-cutoff record inherited the previous filter owner's
+  passband and resonance.
+- Added a third row type `1M DD RB` in the dead `[$10,$1F]` encoding space. Dispatch uses a
+  **bit test, never `cmp #$10`**: byte0 reaches `$FF` there and SF2II's CMP is only correct
+  for `|A-op| <= 127` (the E3d hazard class, already shipped twice in this repo).
+- `To_Die_For_II` **98.2% -> 100.0%**, `Revolutions_Delivered` **99.0% -> 100.0%**.
+- The first diagnosis - "`unroll_filter` misreads the table" - was wrong and had already
+  been committed to the docs as an open lead. Reading the **consumer** (`fp_dec`/`fp_set`)
+  showed the ADD path never touches `F_MODE` or `$d417` at all: a missing capability, not a
+  parsing error.
+
+#### Fixed - E6: B7 priming and `window_steps` were fighting
+- `window_steps` forced a mid-note part-boundary re-entry to be a genuine re-trigger,
+  justified by "there is no 'resume mid-cycle' primitive in either the real player or the
+  shared native engine". **B7 had added exactly that primitive** (priming `VWI`, `PW_ACC`,
+  `VIWAVE`, `FXPOS`, `BASEPITCH`, `VGMASK`, AD/SR) and the justification was never revisited -
+  so B7 restored the exact mid-program state and the part's first row discarded it.
+- Proven by a py65 trace of the assembled driver, after three data-side hypotheses were
+  checked and cleared: `do_init` set `VWI[1]=36` correctly, then frame 0 processed row 33 -
+  the program *start*. Rows 33/34 carry no pulse flag, so the accumulator stalled two frames
+  and ran permanently two steps behind.
+- A boundary landing inside a step now emits a tie; landing on a step start is still a
+  genuine trigger, so part 1 is untouched by construction.
+- `Into_the_Unknown` **98.1% -> 100.0%** (part 3: 94.4 -> 100.0, pulse 76.7 -> 100.0).
+
+#### Added - the fidelity tooling is now tracked and tested
+- `pyscript/blackbird_sweep.py` (corpus sweep + `--compare`) and
+  `pyscript/blackbird_crash_probe.py` (SF2II crash oracle + combo-command schedule analysis),
+  promoted out of an untracked scratchpad with **34 tests** running in 0.43s - they never
+  build and never launch SF2II. Every Blackbird percentage quoted in `CLAUDE.md` and
+  `ACCURACY_MATRIX.md` is now **reproducible from a fresh clone**, and the recorded mean is
+  asserted by a test.
+- Tests encode the failure modes, not the happy path: too-short play window raises, an empty
+  schedule is an error rather than a pass, crash-rate counts only trials that actually
+  played, a failed build parses to `None` rather than 0%, and part-count moves are reported
+  separately from regressions.
+- Blackbird registered in `gen_sf2_index.py` / `gen_conversion_index.py`, so it finally
+  appears in `docs/SF2.md` and `docs/SID_TO_SF2_CONVERSIONS.md` (**16 songs / 20 files**)
+  after an entire B1-B25 + E3-E6 arc of being absent from the project's own inventories.
+
+#### Changed - two overstated claims corrected
+- **The 16-file corpus is not a curated subset.** It is every LFT rip `locate_blackbird`
+  supports: **16 of 61** present on disk, the other 45 being variants the locator cannot
+  handle at all. Both accuracy tables now state this as a coverage limit.
+- `blackbird_sweep.py`'s byte-change column only stats `*_native_part01.sf2`, so on a
+  multi-part file it covers the **first part only** - it did not see part 3's change in E6.
+  Documented so it is not read as whole-file byte-identity.
+
+#### Verified
+- Full suite **1679 passed** / 7 skipped / 2 xfailed (was 1645; +34 new, none regressed).
+- E5 **editor play-tested** (4/4 survived, playback 0:52-1:12, past the ~33s filter events) -
+  an offline gate structurally cannot see an SF2II-only hazard.
+
+---
+
 ## [3.21.0] - 2026-07-16
 
 ### Two players ported (Kimmel, Deenen) - and the audio gate stops certifying what it never checked

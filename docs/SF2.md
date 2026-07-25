@@ -160,7 +160,7 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 
 ## Complete build inventory
 
-**568 songs built** across 9 native players (each song may span several SF2 parts).
+**587 songs built** across 10 native players (each song may span several SF2 parts).
 
 *Auto-generated from the built SF2 files under `out/` by `pyscript/gen_sf2_index.py` — re-run after building more tunes. "Parts" = the number of SF2 files a song is split into (a long song exceeds the SF2II table/`$D000` caps and ships as windowed parts; 1 = a single file).*
 
@@ -760,13 +760,15 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Think Twice III | Jeroen Kimmel (Red) | 1987 The Judges | 1 |
 | Think Twice V | Jeroen Kimmel (Red) | 1987 The Judges | 1 |
 
-### Maniacs of Noise / Deenen — Charles Deenen  ·  `Driver 11 (Stage A)`  ·  12 songs / 12 SF2 files
+### Maniacs of Noise / Deenen — Charles Deenen  ·  `Driver 11 (Stage A)`  ·  15 songs / 15 SF2 files
 
 | Song | Composer | Released | Parts |
 |------|----------|----------|------:|
 | After the War | Charles Deenen | 1989 Dinamic | 1 |
 | Aids See Ass | Charles Deenen (TSS) | 198? HC-Ass 5005 | 1 |
+| Astro Marine Corps | Charles Deenen | 1989 Dinamic | 1 |
 | B A T | Charles Deenen | 1990 Ubisoft | 1 |
+| Constant Runner | Charles Deenen | 1989 Masters' Design Group | 1 |
 | Crazy Music | Charles Deenen (TMC) | 1987 Hotline | 1 |
 | Ding van Charles | Charles Deenen | 19?? Maniacs of Noise | 1 |
 | Give It a Try | Charles Deenen (TMC) | 1987 Scoop Designs | 1 |
@@ -776,6 +778,28 @@ Build: `bin/build_romuzak_native_song.py`. Driver: native ROMUZAK.
 | Say Hello to the Boring Times | Charles Deenen | 1988 Maniacs of Noise | 1 |
 | Soldier of Light | Charles Deenen & Jeroen Tel | 1988 Reptilia Design/Softek Int | 1 |
 | Super Heavy | Charles Deenen (TSS) | 198? HC-Ass 5005 | 1 |
+| Zamzara | Charles Deenen | 1989 Rack-It | 1 |
+
+### Blackbird / lft — lft  ·  `native`  ·  16 songs / 20 SF2 files
+
+| Song | Composer | Released | Parts |
+|------|----------|----------|------:|
+| Crank Crank Airwolf native | Linus Åkesson (lft) | 2018 lft | 1 |
+| Dishwasher Groove native | Linus Åkesson (lft) | 2017 lft | 1 |
+| Dithered Island native | Linus Åkesson (lft) | 2018 lft | 2 |
+| Elvendance native | Linus Åkesson (lft) | 2018 lft | 1 |
+| Euclid Was Here native | Linus Åkesson (lft) | 2018 lft | 1 |
+| Fargo native | Linus Åkesson (lft) | 2020 lft | 2 |
+| Fugue on a Theme by D M Hanlon native | Linus Åkesson (lft) | 2017 lft | 1 |
+| Glyptodont native | Linus Åkesson (lft) | 2017 lft | 1 |
+| Into the Unknown native | Linus Åkesson (lft) | 2020 lft | 3 |
+| Maple Leaf Rag native | Linus Åkesson (lft) | 2018 lft | 1 |
+| Quintessence native | Linus Akesson (lft) | 2017 lft | 1 |
+| Revolutions Delivered native | Linus Åkesson (lft) | 2021 lft | 1 |
+| Thus Spoke the PC Speaker native | Linus Åkesson (lft) | 2019 lft | 1 |
+| To Die For II native | Linus Åkesson (lft) | 2017 Genesis Project | 1 |
+| Toy Rocket native | Linus Åkesson (lft) | 2017 lft | 1 |
+| Trinket native | Linus Åkesson (lft) | 2017 lft | 1 |
 
 <!-- END GENERATED -->
 

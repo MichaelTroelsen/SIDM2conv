@@ -12,9 +12,9 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 
 ## Summary
 
-**603 songs / 2207 SF2 files** converted on disk, across two independently-scanned locations (counts are NOT deduplicated between them — the same song may legitimately appear in both):
+**619 songs / 2227 SF2 files** converted on disk, across two independently-scanned locations (counts are NOT deduplicated between them — the same song may legitimately appear in both):
 
-- `out/<player>/` native-build pipeline: **571 songs / 2175 files** across 9 player dirs
+- `out/<player>/` native-build pipeline: **587 songs / 2195 files** across 10 player dirs
 - `SF2/` (root + subdirs): **32 songs / 32 files** — **3 unresolved source match(es)**: SF2/ (root)/Blue (multiple), SF2/ (root)/Stinsens_Last_Night_of_89 (multiple), SF2/Hubbard_Rob/Commando (multiple)
 
 *`output/` (repo root) was scanned and excluded: it holds only 3 stray `.sf2` files under test-report scratch dirs (`output/cockpit_test/`), duplicating names already covered by `SF2/` and not a real conversion location.*
@@ -33,6 +33,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Johannes Bjerregaard | DMC (Demo Music Creator) | 55 |
 | Martin Galway | Martin Galway | 40 |
 | Jeroen Tel | Maniacs of Noise | 24 |
+| Linus Åkesson (lft) | Blackbird / lft | 15 |
 | Thomas Mogensen (DRAX) | Laxity_NewPlayer_V21 | 12 |
 | Charles Deenen | Maniacs of Noise / Deenen | 9 |
 | Michael Troelsen (Fun Fun) | Sound Monitor (Musicmaster) | 9 |
@@ -56,6 +57,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Glenn Rune Gallefoss & Mitch | SID Duzz' It (SDI) | 1 |
 | Jeroen Tel | Rob_Hubbard | 1 |
 | Laxity & Shogoon | SidFactory_II/Laxity | 1 |
+| Linus Akesson (lft) | Blackbird / lft | 1 |
 | M. Troelsen (Fun Fun) & Chix | Soundmonitor | 1 |
 | Michael Troelsen (Coto) | Soundmonitor | 1 |
 | Michael Troelsen (Fun Fun) | MoN/FutureComposer | 1 |
@@ -67,7 +69,7 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 
 ## Native-build pipeline — `out/<player>/`
 
-*The 9 known native/Driver-11-Stage-A player subdirectories under `out/` (same mapping as `pyscript/gen_sf2_index.py`). "Original Player" is the already-known label for these dirs (not re-detected); "SF2 Driver" is read live from each SF2's descriptor block.*
+*The 10 known native/Driver-11-Stage-A player subdirectories under `out/` (same mapping as `pyscript/gen_sf2_index.py`). "Original Player" is the already-known label for these dirs (not re-detected); "SF2 Driver" is read live from each SF2's descriptor block.*
 
 ### DMC (Demo Music Creator) — Johannes Bjerregaard  ·  57 songs / 943 SF2 files
 
@@ -684,6 +686,27 @@ See also [`docs/SF2.md`](SF2.md) for the native-build fidelity index (a narrower
 | Soldier of Light | Maniacs of Noise / Deenen | 20 | Driver 11.00 - The Standard | 1 | Charles Deenen & Jeroen Tel | 1988 Reptilia Design/Softek Int |
 | Super Heavy | Maniacs of Noise / Deenen | 1 | Driver 11.00 - The Standard | 1 | Charles Deenen (TSS) | 198? HC-Ass 5005 |
 | Zamzara | Maniacs of Noise / Deenen | 3 | Driver 11.00 - The Standard | 1 | Charles Deenen | 1989 Rack-It |
+
+### Blackbird / lft — lft  ·  16 songs / 20 SF2 files
+
+| Song | Original Player | Subtunes | SF2 Driver | Files | Composer | Released |
+|------|------------------|---------:|------------|------:|----------|----------|
+| Crank Crank Airwolf native | Blackbird / lft | 1 | Blackbird | 1 | Linus Åkesson (lft) | 2018 lft |
+| Dishwasher Groove native | Blackbird / lft | 1 | Blackbird | 1 | Linus Åkesson (lft) | 2017 lft |
+| Dithered Island native | Blackbird / lft | 1 | Blackbird | 2 | Linus Åkesson (lft) | 2018 lft |
+| Elvendance native | Blackbird / lft | 1 | Blackbird | 1 | Linus Åkesson (lft) | 2018 lft |
+| Euclid Was Here native | Blackbird / lft | 1 | Blackbird | 1 | Linus Åkesson (lft) | 2018 lft |
+| Fargo native | Blackbird / lft | 1 | Blackbird | 2 | Linus Åkesson (lft) | 2020 lft |
+| Fugue on a Theme by D M Hanlon native | Blackbird / lft | 1 | Blackbird | 1 | Linus Åkesson (lft) | 2017 lft |
+| Glyptodont native | Blackbird / lft | 1 | Blackbird | 1 | Linus Åkesson (lft) | 2017 lft |
+| Into the Unknown native | Blackbird / lft | 1 | Blackbird | 3 | Linus Åkesson (lft) | 2020 lft |
+| Maple Leaf Rag native | Blackbird / lft | 1 | Blackbird | 1 | Linus Åkesson (lft) | 2018 lft |
+| Quintessence native | Blackbird / lft | 1 | Blackbird | 1 | Linus Akesson (lft) | 2017 lft |
+| Revolutions Delivered native | Blackbird / lft | 1 | Blackbird | 1 | Linus Åkesson (lft) | 2021 lft |
+| Thus Spoke the PC Speaker native | Blackbird / lft | 1 | Blackbird | 1 | Linus Åkesson (lft) | 2019 lft |
+| To Die For II native | Blackbird / lft | 1 | Blackbird | 1 | Linus Åkesson (lft) | 2017 Genesis Project |
+| Toy Rocket native | Blackbird / lft | 1 | Blackbird | 1 | Linus Åkesson (lft) | 2017 lft |
+| Trinket native | Blackbird / lft | 1 | Blackbird | 1 | Linus Åkesson (lft) | 2017 lft |
 
 ---
 

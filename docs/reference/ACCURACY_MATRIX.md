@@ -1,9 +1,9 @@
 # SIDM2 Conversion Accuracy Matrix
 **Single Source of Truth for Accuracy Data**
 
-**Version**: 3.21.0
-**Last Updated**: 2026-07-16
-**Status**: ✅ Production Reference — refreshed v3.21.0. All 11 ported players are now
+**Version**: 3.22.0
+**Last Updated**: 2026-07-25
+**Status**: ✅ Production Reference — refreshed v3.22.0 (Blackbird/lft added). All 12 ported players are now
 listed (the v3.14.0–v3.20.0 arrivals — Hubbard, DMC, Sound Monitor, SDI — had been missing
 since v3.13.0).
 

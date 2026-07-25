@@ -14,7 +14,7 @@ then "you decide what to do".
 <work_completed>
 ## Summary
 
-Five commits, all on `master` and PUSHED. HEAD = `d6fff59` (+ a docs commit for the E5 play-test).
+Blackbird/lft is CLOSED OUT and shipped as **v3.22.0**. All work on `master` and PUSHED.
 
 | commit | what |
 |---|---|
@@ -23,9 +23,12 @@ Five commits, all on `master` and PUSHED. HEAD = `d6fff59` (+ a docs commit for 
 | `5db109c` | Promoted the sweep + crash oracle into `pyscript/` with 34 tests |
 | `5036a30` | Documented the filter lead + refreshed this handoff |
 | `d6fff59` | **E5** — the filter row grammar was missing a row type; To_Die_For_II → **100.0**, Revolutions_Delivered → **100.0** |
+| `2c41d97` | E5 editor play-test PASSED (4/4) + handoff refresh |
+| `486a990` | **E6** — B7 priming vs `window_steps`; Into_the_Unknown → **100.0** |
+| (this) | v3.22.0 wrap-up: inventories, CHANGELOG, STORY, version bump, KB card |
 
-**Blackbird corpus 99.18 → 99.844.** Glyptodont 162/162 note-ons by default.
-**10 of 16 files at exactly 100.0**; only `Into_the_Unknown` (98.1) below 99. Full suite **1679 passed** / 7 skipped / 2 xfailed
+**Blackbird corpus 99.18 → 99.963.** Glyptodont 162/162 note-ons by default.
+**11 of 16 files at exactly 100.0**; none below 99.8. Full suite **1679 passed** / 7 skipped / 2 xfailed
 (was 1645; +34 new, none regressed).
 
 ## 1. The E3f crash premise was WRONG (`2d65366`)
@@ -144,9 +147,23 @@ third row type `1M DD RB` in the dead `[$10,$1F]` space. **Editor play-tested,
 4/4 survived.** My first diagnosis ("`unroll_filter` misreads the table") was
 wrong; reading the CONSUMER (`fp_dec`/`fp_set`) is what corrected it.
 
-## 2. Into_the_Unknown 98.1% (3 parts) — waveform/adsr already 100.0, so freq/filter.
+## 2. ~~Into_the_Unknown~~ — SOLVED by E6 (`486a990`), now 100.0
 
-## 3. Neither Blackbird bucket is wired into `DriverSelector`.
+B7 added a resume-mid-cycle primitive and `window_steps` never learned it existed: a
+mid-note part boundary re-triggered the wave program, discarding the primed pulse phase.
+Two-frame stall -> permanent 2-step lag (B9's accumulator free-runs). Fixed by emitting a
+tie when the boundary lands INSIDE a step. Found only by a py65 trace of the assembled
+driver, after three data-side hypotheses came back clean.
+
+## 3. `DriverSelector` — NOT a defect, do not "fix" unasked.
+Every native-driver player here is `bin/`-only (Galway, MoN, Hubbard, DMC, Sound Monitor,
+SDI, ROMUZAK). Blackbird matches the established pattern.
+
+## 3b. THE BIG ONE: 45 of 61 LFT rips do not locate.
+The "16-file v1.2-exact corpus" is not a curated sample — it is **every rip
+`locate_blackbird` supports**. The other 45 files in `SID/LFT/` fail location outright.
+Extending variant coverage is a fresh multi-session RE arc and deserves its own go/no-go
+decision; it is NOT a wrap-up task.
 
 ## 4. Galway / ROMUZAK `fp_dec` — SF2II executes filter ADD rows as SET rows.
 `drivers_src/galway/galway_driver.asm:535`, `romuzak_driver.asm:564`:

@@ -2,7 +2,7 @@
 """Generate docs/SID_TO_SF2_CONVERSIONS.md — a master list of every SID song that
 has actually been converted to an SF2 file on disk, across BOTH known locations:
 
-  * out/<player>/    — the native-driver build pipeline (9 known player subdirs)
+  * out/<player>/    — the native-driver build pipeline (10 known player subdirs)
   * SF2/ (+subdirs)  — the older/separate conversion set (root + Fun_Fun,
                         Galway_Martin, Hubbard_Rob, Tel_Jeroen, Laxity)
 
@@ -52,6 +52,7 @@ OUT_PLAYERS = [
     ("sdi_sf2",      "SID Duzz' It (SDI)",          "Gallefoss/Tjelta",     "Driver 11 (Stage A)"),
     ("kimmel_sf2",   "Jeroen Kimmel (Hubbard-derived)", "Jeroen Kimmel",    "Driver 11 (Stage A)"),
     ("deenen_sf2",   "Maniacs of Noise / Deenen",   "Charles Deenen",       "Driver 11 (Stage A)"),
+    ("blackbird",    "Blackbird / lft",             "lft",                  "native"),
 ]
 OUT_SID_DIRS = {
     "dmc":          ["SID/JohannesBjerregaard"],
@@ -63,6 +64,7 @@ OUT_SID_DIRS = {
     "sdi_sf2":      ["SID/Gallefoss_Glenn"],
     "kimmel_sf2":   ["SID/Red_kommel_jeroen"],
     "deenen_sf2":   ["SID/deenen"],
+    "blackbird":    ["SID/LFT"],
 }
 
 # SF2/ locations: (label, relative dir, non-recursive). Root + the 5 subdirs.
@@ -300,7 +302,7 @@ def player_id(sid_path):
 # ---------------------------------------------------------------------------
 def render_out_section():
     lines = ["## Native-build pipeline — `out/<player>/`", ""]
-    lines.append("*The 9 known native/Driver-11-Stage-A player subdirectories under `out/` "
+    lines.append("*The 10 known native/Driver-11-Stage-A player subdirectories under `out/` "
                  "(same mapping as `pyscript/gen_sf2_index.py`). \"Original Player\" is the "
                  "already-known label for these dirs (not re-detected); \"SF2 Driver\" is read "
                  "live from each SF2's descriptor block.*")

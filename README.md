@@ -3,7 +3,7 @@
 [![Tests](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelTroelsen/SIDM2conv/actions/workflows/test.yml)
 [![codecov](https://codecov.io/gh/MichaelTroelsen/SIDM2conv/branch/master/graph.svg)](https://codecov.io/gh/MichaelTroelsen/SIDM2conv)
 
-**Version 3.21.0** | Build Date: 2026-07-16 | Production Ready ✅
+**Version 3.22.0** | Build Date: 2026-07-25 | Production Ready ✅
 
 A Python tool for converting Commodore 64 `.sid` files into SID Factory II `.sf2` project files with **100% frame accuracy** for Laxity NewPlayer v21 files (verified against zig64 ground truth) and **from-scratch native SF2 drivers** reaching byte-exact fidelity for Martin Galway, ROMUZAK, and Maniacs of Noise (Jeroen Tel) players.
 
@@ -1092,4 +1092,4 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 **🤖 Generated with [Claude Code](https://claude.com/claude-code)**
 
-**Last Updated**: 2026-07-16 | **Version**: 3.21.0
+**Last Updated**: 2026-07-25 | **Version**: 3.22.0
