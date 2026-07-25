@@ -2937,21 +2937,31 @@ def main():
     # exhaust the range the codes go where they buy the most (measured across
     # the whole corpus first: every file fits, worst case 25 distinct colliding
     # programs against 26 spare codes on Thus_Spoke_the_PC_Speaker).
-    # E3f is OFF BY DEFAULT (opt-in via BB_COMBO_FX=1): the combo command
-    # values crash SF2II on PLAY. Confirmed by a clean user A/B on the SAME
-    # driver binary -- a combo-emitting build crashes SF2II, a combo-free build
-    # of the identical tree plays. Every OFFLINE emulator (py65, zig64, the
-    # simulator) accepts the codes and the SF2II "Commands" table is declared
-    # with 64 rows, so the incompatibility is subtler than an out-of-range
-    # command index and is not yet root-caused (an SF2II-only hazard, the same
-    # class as E3d). Until it is, the default corpus build must be the one that
-    # actually plays in the editor -- E3e (arming coverage ~89%, Glyptodont
-    # 157/162), not E3f. Combo arming stays fully implemented and testable
-    # behind the flag so re-enabling is a one-line change once the SF2II
-    # behaviour is understood. See docs/players/BLACKBIRD.md's E3f section.
+    # E3f is ON BY DEFAULT again (set BB_NO_COMBO=1 to disable). It was briefly
+    # disabled on the belief that combo command values 48-62 crash SF2II on
+    # PLAY, inferred from a single A/B where a combo build crashed and a
+    # combo-free build did not. That premise did NOT survive re-measurement:
+    # driving the real editor (the SAME Dec 26 2025 build that crashed) through
+    # 10 screenshot-verified load+play trials ran 5 x 66s of the combo build,
+    # EXECUTING 120 combo commands -- values 48 and 50, first at row 91 / ~8.2s
+    # -- with zero crashes, and the combo-free build showed no differential.
+    # A user-run follow-play (Ctrl+P) trial cleared it too. The original crash
+    # was most likely the known heap-flaky editor Heisenbug (see the SF2II
+    # pyautogui-Heisenbug note) landing on the combo build by coincidence.
+    #
+    # Falsified along the way, each by measurement rather than argument: the
+    # 128-sequence limit (71 vs 72), a DataSourceSequence::Unpack heap overrun
+    # (its duration-expansion loop is genuinely unbounded in the C++, but both
+    # builds peak at 960 of 1024 events), packed-sequence overflow of the
+    # 256-byte block (both cap at 250, all terminated), and driver_state.cpp.
+    #
+    # HONEST LIMIT: the crash the user originally saw is still unexplained.
+    # What is established is that loading a combo build and pressing play does
+    # not reproduce it -- not that no editor state can. Keep the escape hatch.
+    # See docs/players/BLACKBIRD.md's E3f section.
     _COMBO_CODE.clear()
     combo_code = _COMBO_CODE
-    if min_tempo_song >= 3 and os.environ.get('BB_COMBO_FX'):
+    if min_tempo_song >= 3 and not os.environ.get('BB_NO_COMBO'):
         collide_counts = {}
         for v in range(3):
             steps = steps_per_voice[v]

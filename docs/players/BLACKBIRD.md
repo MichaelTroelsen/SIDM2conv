@@ -4606,36 +4606,31 @@ below 99, neither an envelope/waveform problem:
 - `Into_the_Unknown` 98.1% -- 3 parts; waveform/adsr already 100.0, so its
   remainder is freq/filter.
 
-## E3f DISABLED BY DEFAULT (2026-07-24, same day): combo command values CRASH SF2II on play
+## E3f DISABLED BY DEFAULT (2026-07-24) -- then RE-ENABLED (2026-07-25) after the premise was falsified
+
+**Superseded. Read the E3f RE-ENABLED section below before acting on anything
+here.** This section is kept because the reasoning is instructive, not because
+its conclusion holds: the "combo command values crash SF2II" claim did not
+survive re-measurement.
 
 Shortly after shipping E3f, a user listening test caught it: loading a
 combo-emitting Glyptodont build into real SidFactory II and pressing **play
-crashes the editor**. A clean A/B nailed it to the combo command values:
+crashes the editor**. An A/B appeared to nail it to the combo command values:
 
-- Combo-free build (E3e, `BB_COMBO_FX` unset), **same driver binary** -> plays.
-- Combo-emitting build (E3f) -> crashes on play.
+- Combo-free build (E3e, combo off), **same driver binary** -> plays.
+- Combo-emitting build (E3f) -> crashed on play.
 
 Because both builds use the **identical** assembled driver (the combo branch is
-inert without a combo byte in the stream), the crash is triggered purely by the
-combo command **values** (49-62 for Glyptodont) appearing in the sequence, not
-by the driver code.
+inert without a combo byte in the stream), the crash was attributed to the combo
+command **values** (49-62 for Glyptodont) appearing in the sequence.
 
-**This is an SF2II-only hazard, same class as E3d.** Every offline emulator
-(py65, zig64, the validated simulator) executes the combo path correctly, and
-the SF2II "Commands" table is declared with **64 rows** (see
-`sf2_header_generator.py`), so 49-62 are valid table slots -- the
-incompatibility is subtler than an out-of-range index and is **not yet
-root-caused**. Notably the `RESTART_ARM_FX = 63` sentinel (shipped in B25) is in
-the SAME command channel and does NOT crash, so SF2II tolerates 63 but not
-49-62; the difference is the specific value, still under investigation.
+**The inference was wrong.** It rested on ONE observation per arm, of a crash in
+an editor already documented as heap-flaky, with no check that the two arms
+differed only in the way assumed. See below.
 
-**Action taken**: combo arming is now **opt-in** (`BB_COMBO_FX=1`), OFF by
-default, so the default corpus build is the one that actually plays in the
-editor -- E3e (arming ~89%, Glyptodont 157/162), not E3f (100%, 162/162). The
-full E3f machinery stays implemented and testable behind the flag; re-enabling
-is a one-line change once the SF2II behaviour is understood. Corpus default
-therefore reverts to the E3e+E3g numbers (mean ~98.7, Fugue's E3g win retained
-since it is unrelated to combo codes).
+**Action taken at the time**: combo arming was made opt-in and OFF by default,
+so the default corpus build was E3e (arming ~89%, Glyptodont 157/162) rather
+than E3f (100%, 162/162).
 
 **Rejected alternative (checked, broken)**: emitting the real fx byte FOLLOWED
 BY the safe sentinel (63) as two command bytes on one row does NOT work.
@@ -4662,3 +4657,62 @@ still be wrong in the ONE emulator that ships the music. The offline gate cannot
 see SF2II-only behaviour; a real editor play-test is the only check that can,
 and it must happen BEFORE a fidelity win is treated as delivered. E3e/E3g both
 survive this (no new command values); only E3f's encoding did not.
+
+## E3f RE-ENABLED (2026-07-25): the crash premise did not survive re-measurement
+
+The section above was falsified by turning "the user presses play" into a
+scriptable oracle (`scratchpad/crash_probe.py`): launch the REAL editor, F10-load
+a given `.sf2`, press **F1**, and report whether the process survives -- with a
+screenshot each trial, because a probe that silently failed to deliver F1 would
+also report "survived".
+
+**Result, against the SAME editor that crashed (`Build: Dec 26 2025 21:27:55`):**
+
+| build | trials | combo commands executed | crashes |
+|---|---|---|---|
+| COMBO (E3f, 162/162, 26930 B) | 5 x 66s | **120** (values 48 and 50) | **0** |
+| SAFE (E3e+E3g, 157/162, 26674 B) | 5 x 66s | 0 | 0 |
+
+All ten screenshots OCR-verified: right file in the title bar, SF2II genuinely
+in the foreground, `Playing time: 1:06` each. A user-run **follow-play** trial
+(`Ctrl+P` then `F1`) on the combo build also played through. No differential
+between the arms; the combo values are not the trigger.
+
+**The first version of this measurement was itself invalid** and is worth
+recording: it used a 6-second play window and returned a clean 16/16 survived --
+but Glyptodont's earliest combo command sits at **row 91 (~8.2s)** and the next
+at **row 423 (~38s)**, so the probe stopped SHORT of executing a single one. An
+all-green result measured outside the window where the effect lives is not
+evidence of absence. The window was raised to 65s and the row->time arithmetic
+checked against the build's own 4.52 frames/row before the result was believed.
+
+**Also falsified, each by measurement rather than argument:**
+
+| hypothesis | verdict |
+|---|---|
+| 128-sequence limit (the +256-byte delta IS exactly one sequence) | dead -- 71 vs 72 |
+| `DataSourceSequence::Unpack` heap overrun (its duration-expansion loop is genuinely **unbounded** in the C++, `m_Events` is 1024) | dead -- ported the real algorithm; both builds peak at 960 |
+| packed sequence overflowing its 256-byte block | dead -- both cap at 250, all terminated |
+| `driver_state.cpp` play-cursor state | dead -- 53 lines, no command indexing |
+
+`DoPlay()` was also read end-to-end: it pushes the instrument table and queues
+init, and the follow-play tick reads only tempo/driver-state bytes. Nothing in
+the play path indexes the Commands table by command value, which is consistent
+with the measured result and kills the "Commands table not populated at combo
+indices" lead from the section above.
+
+**Most likely explanation of the original crash**: the known heap-flaky SF2II
+Heisenbug (the same class that makes F10-load succeed only ~20-73% per attempt)
+landing on the combo build by coincidence, with one observation per arm read as
+a clean A/B.
+
+**HONEST LIMIT**: the crash the user actually saw remains unexplained. What is
+established is that loading a combo build and pressing play -- with or without
+follow mode -- does not reproduce it, NOT that no editor state can. `BB_NO_COMBO=1`
+disables combo arming if it resurfaces.
+
+**Lesson**: the E3d/E3f lesson above (only a real editor play-test can see an
+SF2II-only hazard) is right, but it cuts both ways -- a single manual play-test
+is one sample from a flaky process, and it convicted the wrong suspect for a
+day. When a play-test is the evidence for a shipping decision, it needs trials,
+a control arm, and a check that the window actually covers the effect.
