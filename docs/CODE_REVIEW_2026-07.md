@@ -29,7 +29,7 @@ byte-diff or regression gate; Opus = RE, design, or falsification work.
 | R6 | Galway/ROMUZAK `cmp #$90` SF2II hazard | their filter sweeps are **broken in the real editor today**, invisible to every headless metric |
 | ~~R1–R3~~ | ✅ **ALL DONE 2026-07-30** — caps module, shared build lib, driver merge (−1227 lines of duplicated 6502, byte-identical machine code) | a driver fix is now one patch for the Galway/ROMUZAK pair; MoN/Blackbird deliberately left forked (measured: 51 and ~1962 diff hunks/lines) |
 | R17 | Stage C structural synth-table RE | the **only proven lossless** part-count reduction (Supremacy 70 parts → single digits ✻) |
-| R20 | Memory-wall audit for time-split parts | Driller splits into 2 files while using 41/120 sequences — the wall, not the caps, binds; nobody has measured the slack |
+| ~~R20~~ | ✅ **DONE** — capacity measured, **Driller 2 files → 1**; the "27,650 play-call" ceiling retracted as underivable | was splitting at ~40% of real capacity (57/128 slots, top $61CF vs $D000) |
 | R24 | Universal trace-first fallback (D1) | turns "any SID" from per-player RE into a default path |
 | R21 | Reproducible corpus sweeps (SM first) | a headline number that dies with a scratch file isn't a result |
 | R4 | Wire the 11 `bin/`-only players into the pipeline | "we have the tech" vs "the tool converts it" |
@@ -434,31 +434,28 @@ parts (ROADMAP C3). Won't reduce part *count* (caps are per file) but shrinks ea
 stabilizes seams — and it is a prerequisite for honest seam-state work (R16).
 **Verification**: byte-diff of emitted registers per part; file sizes strictly ≤ before.
 
-### R20. Memory-wall audit for time-split parts — P1 · M · Sonnet (measurement) then Opus (layout)
-**Evidence** (measured): Matt Gray splits purely on time — `bin/mattgray_to_sf2.py:42`
-`MAX_PART_FRAMES = 24_000`, with the comment at `:187` citing the SF2II memory wall; Driller
-uses **41 of 120 sequences** ✻ and still becomes 2 files. The wall is doc'd as "tables <
-$D000 ≈ 27,650 play-calls ≈ 9.2 min" (PLAYBOOK §3), yet the Stage A path splits at 24,000
-frames — a conservative default nobody has audited. Long-song splitting (Driller 11:05,
-Balloon 400 s) is a **different problem** from cap-bound splitting (Supremacy) and may be much
-cheaper to improve.
-**Fix sketch**: (1) instrument one long Stage A build and one native build: dump the actual
-end-of-tables address vs $D000 — how much slack exists, and what consumes the space
-(sequence events? orderlists? padding?); (2) raise `MAX_PART_FRAMES` to the measured bound
-per song rather than a global constant (the emitter knows its own table sizes — make the
-split adaptive like the native builders' `fits()` probe); (3) lossless sequence-side wins:
-transpose-reuse of repeated patterns (`TRANSPOSE=0xA0` exists in the format) and orderlist
-compression reduce events per part, moving the wall further out in *time*.
-**Verification**: rebuilt Driller must round-trip byte-exact sequences (the existing
-6000/6000 check ✻) and pass the SF2II play-test at full duration; the 960-event and 120-seq
-caps must still be respected per part.
-**Traps**: the 1024-event `Unpack` heap-corruption hazard (R2) — adaptive splitting must
-still honor `_SEQ_EVENT_LIMIT`; a part that loads but corrupts the heap can pass a short
-play-test.
-
----
-
-## Track 4 — Measurement & verification infrastructure (P2)
+### R20. Memory-wall audit — ✅ **DONE 2026-07-30: Driller now emits ONE file, not two** · Opus
+**The "~27,650 play-calls ≈ 9.2 min" ceiling is RETRACTED.** Its derivation is not in the git
+history and does not follow from the format: nothing in a Driver 11 file grows with *time* —
+instruments/wave/pulse/filter/tempo/init are all fixed-size and the sequence region is a fixed
+128 × 256-byte slots. Per-module capacity is a function of event **density**.
+**Measured**: Driller's whole 8320-row / **665.6 s** song is **ONE valid module** — 57 of 128
+sequence slots, top **$61CF** vs the `$D000` wall (~28 KB unused). It had been splitting in
+two on the hardcoded `MAX_PART_FRAMES = 24_000`, i.e. ~40% of real capacity.
+**Shipped**: `convert()` now probes capacity — emit the candidate range for real, check the
+only two binding limits (≤128 sequences across all voices; top < `$D000`), grow by doubling
+while it fits, binary-search the edge. The per-sequence caps (250 packed bytes / 960 unpacked
+events) need no probe: `segment_track` already splits rather than overflowing.
+**Verified**: one-part Driller walks its orderlists to **[8320, 8320, 8320]** rows/voice with
+**zero** cap violations, and its row total equals the old two parts summed exactly;
+already-one-part songs are **byte-identical** (LN2 sub2, Tusker sub2); 2 regression tests pin
+it (including that the probe still checks *both* limits, so nobody reinstates a duration
+split); suite 1747.
+**NOT done**: the one-part 665 s Driller is **not** SF2II play-tested. The 2-part build was; a
+module 2.8× longer is a new load and only the editor rules out an SF2II-only hazard. Hence
+"capacity measured", not "one-file Driller shipped".
+**Generalizes**: any Stage-A player using a flat frame ceiling has the same latent
+over-split — the probe is ~40 lines and player-agnostic in shape.
 
 ### R21. Make every headline reproducible — Sound Monitor first — P2 · S · Sonnet
 **Evidence** (measured): `bin/_opt_sweep_corpus.py` exists on disk but is **untracked** (git
@@ -646,7 +643,7 @@ sessions and is deliberately unstaged ✻.
 | 2 | ~~**R2** (caps)~~ ✅ → ~~**R3** (build lib)~~ ✅ partial → ~~**R1** (driver merge)~~ ✅ → **R32** (CLAUDE.md compression) | Consolidation in increasing risk order; each gated by byte-diffs; R32 cheapens every later session. R3's residual (4 more `B.TEMPO*` channel variables in ROMUZAK/MoN/Blackbird) is a prerequisite for the driver_full file merge, not for R1's ASM merge |
 | 3 | ~~**R13** (FC Stage B)~~ ✅ **DONE** — 14/15 voices 100% audible; added no new driver | Validated wave 2's consolidation on a real port |
 | 4 | ~~**R16** (filter seams)~~ ✅ **CLOSED — premise stale, measured 99.92%**, no code change; **R7** (Galway PWM) | P0 fidelity on the consolidated base |
-| 5 | **R20** (memory-wall audit), **R18** (RLE flag), **R19** (dedup) | Part-count: cheap wins first |
+| 5 | ~~**R20** (memory-wall audit)~~ ✅ **Driller 2→1 file**; **R18** (RLE flag), **R19** (dedup) | Part-count: cheap wins first |
 | 6 | **R17** (Stage C structural RE) | Flagship part-count work, Opus |
 | 7 | **R4** (registry) + **R24** (trace-first fallback) | Ship the pipeline: wire everything, add the universal fallback |
 | 8 | **R8–R12, R14, R15** (per-player residuals), **R22, R25, R26** | Ongoing per-player + infra depth |
