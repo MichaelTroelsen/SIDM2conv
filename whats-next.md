@@ -267,11 +267,24 @@ audit), **R32** (compress CLAUDE.md's Known Limitations - it is loaded every ses
 
 ## Immediate follow-ups created by this session's work
 
-1. **Play-test the one-part Driller in real SF2II.** R20 made it 1 module (665.6s,
-   2.8x longer than the play-tested 2-part build). Only the editor rules out an
-   SF2II-only hazard. Use `probe_once()` (now trustworthy after R23) via
-   `pyscript/blackbird_crash_probe.py` (player-agnostic despite the name); launch
-   with **cwd=bin/**.
+1. ~~**Play-test the one-part Driller in real SF2II.**~~ ✅ **DONE 2026-07-30
+   (`aed30fe`): 3/3 SURVIVED over 700s, editor clock 11:41 = whole song + loop**,
+   against the 2-part build as an interleaved control. One-file Driller is
+   shipped. Three bugs were found on the way and fixed in `4b3d2da`:
+   - **R20a** the part-probe's slot check was **tautological** (`used <=
+     SEQ_SLOTS` with `used` summed over `range(SEQ_SLOTS)`), and the emitter
+     dropped over-cap sequences **silently**, its `break` leaving the voice loop
+     so later voices went completely silent. Driller unaffected (57<=128).
+   - **R23 second pass**: the oracle never checked a trial *began* (idle editor
+     at 0:00 read as SURVIVED) → now gated on SF2II's "Playing time" advancing,
+     new `NOPLAY` verdict; screenshots were screen-**region** grabs that captured
+     whatever covered the editor → now `PrintWindow`.
+   - **`pyscript/conftest.py` killed every SIDFactoryII on the machine** at the
+     end of *any* pytest session → faked a **100% crash rate on both arms**
+     (uniform exit code 15 was the tell). **Never run pytest during a play-test**
+     — now scoped to the session's own editors, but keep the rule.
+   NB `EDITOR` is **cwd-relative** (`sf2_load_test.py:30`): run the probe from
+   the **repo root**; the harness itself spawns the editor with cwd=`bin/`.
 2. **R7 continued**: the real work is upstream of `faithful_pulse_program` - inspect
    how `song.pulse[v]` is captured and how gate-regions are segmented in
    `bin/build_galway_trace_song.py` (`note.tie -> EMPTY_PUL` at ~:645 means one
@@ -442,8 +455,8 @@ once; used `git commit -F <file>` from the scratchpad instead.
 
 ## Open questions / pending decisions
 
-1. **One-part Driller is not SF2II play-tested** - the single most important
-   outstanding verification (see work_remaining #1).
+1. ~~One-part Driller is not SF2II play-tested~~ ✅ **RESOLVED 2026-07-30** —
+   3/3 SURVIVED, full duration, clock 11:41 (see work_remaining #1).
 2. **R7's fix is not written** - only the diagnosis. Deliberate: the remaining work
    is genuine RE on Galway's pulse capture for 2 tunes.
 3. **Myth sub0 filter 77%** unverified (harness shape mismatch).
