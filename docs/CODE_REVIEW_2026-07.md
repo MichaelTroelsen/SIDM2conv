@@ -511,7 +511,14 @@ into 2 parts covering all 8320 rows** with zero drops; 3 new regression tests, o
 pins the *shape* of the check so the tautology cannot return. Driller itself was never affected
 (57 ≤ 128) — R20's substantive conclusion stands.
 
-**R20b — the play-test result, and the harness bug that faked it.** A first 700 s trial reported
+**R20b — the play-test: ✅ PASSED.** The one-part 665.6 s Driller is **3/3 SURVIVED over a 700 s
+window** (crash rate 0%), with the editor's own clock reading **11:41** in the final frame — past
+the 665.6 s loop point, so one module played the whole song *and* looped. Run interleaved against
+the already-play-tested two-part build as a control (2 SURVIVED + 1 CLOSED, 0 crashes);
+interleaved rather than blocked because an unrelated job on the same desktop was cycling VICE
+instances. **One-file Driller is shipped, not just measured.**
+
+Getting there produced a phantom failure worth recording. A first 700 s trial reported
 **CRASHED**, and a full-duration A/B (3 trials × 2 arms) then reported **100% CRASHED on BOTH
 arms** — including the two-part build that had already passed a play-test — at scattered times
 (3 s … 309 s) all with **exit code 15**. That uniform exit code across unrelated builds was the

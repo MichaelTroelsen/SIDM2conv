@@ -166,6 +166,8 @@ also report SURVIVED.
 | part02 × 3 | 45 s | ~24% of 186 s | 3/3 SURVIVED |
 | part02 × 1 | 195 s | **100%** of 186 s | SURVIVED |
 | part01 × 1 | 492 s | **100%** of 480 s | user-confirmed playing (see below) |
+| **1part × 3** (R20b) | 700 s | **105%** of 665.6 s — song **+ loop** | **3/3 SURVIVED**, clock **11:41** |
+| part01 × 3 (R20b control) | 700 s | interleaved control arm | 2 SURVIVED + 1 CLOSED, 0 crashes |
 
 The scripted 492 s part01 trial returned `CRASHED`, and that verdict is **void**:
 `probe_once()` decides by checking whether the process is still alive after the
@@ -483,14 +485,34 @@ drops; 3 new regression tests, one pinning the *shape* of the check so the
 tautology cannot come back (the pre-existing test only asserted the string
 `SEQ_SLOTS` appeared in the source, which the vacuous version satisfied).
 
-### R20b (2026-07-30): the one-part play-test
+### R20b (2026-07-30): the one-part play-test -- ✅ **PASSED, 3/3 full duration**
 
-See "Editor play-test" above for the hardened oracle. The first attempt produced
-a **phantom failure** worth recording: a 700 s trial reported CRASHED, and a
-full-duration A/B then reported **100% CRASHED on both arms** -- including the
-two-part build that had already passed -- at scattered times (3 s to 309 s), every
-one with **exit code 15**. A uniform exit code across unrelated builds is the
-tell that the cause is external: `pyscript/conftest.py` was killing every
-`SIDFactoryII` on the machine at the end of any pytest session, and a
-TerminateProcess exit code is exactly what the oracle reads as CRASHED. Fixed
-(both cleanup paths now scope to the session's own editors), and re-run clean.
+The one-part 665.6 s Driller **loads and plays to completion in real SID Factory
+II**, interleaved against the already-play-tested two-part build as a control:
+
+| Arm | Window | Result | Final "Playing time" |
+|-----|--------|--------|----------------------|
+| **`Driller_1part.sf2`** (R20, whole song) | 700 s | **3/3 SURVIVED**, crash rate **0%** | **11:41** |
+| `Driller_stageA_part01.sf2` (control) | 700 s | 2 SURVIVED + 1 CLOSED, crash rate **0%** (n=2) | -- |
+
+700 s > the song's 665.6 s loop point, and the editor's own clock reads **11:41**
+in the final frame, so the module played the **entire song and looped** inside one
+file. The screenshot also shows a healthy editor at that point: `Driver 11.00`,
+`Song 1/1: Main`, all three tracks populated, 22 instruments. Trials were
+**interleaved**, not blocked, because an unrelated job on the same desktop was
+cycling VICE instances -- a block design would have confounded "which build" with
+"what else was running". The control arm's single `CLOSED` (exit code 0 at ~391 s)
+is R23's classifier working: a clean window close is excluded from the crash-rate
+denominator instead of being counted as a crash.
+
+**One-file Driller is now shipped, not just measured.**
+
+Getting here produced a **phantom failure** worth recording. A first 700 s trial
+reported CRASHED, and a full-duration A/B then reported **100% CRASHED on both
+arms** -- including the two-part build that had already passed -- at scattered
+times (3 s to 309 s), every one with **exit code 15**. A uniform exit code across
+unrelated builds is the tell that the cause is external: `pyscript/conftest.py`
+was killing every `SIDFactoryII` on the machine at the end of any pytest session,
+and a TerminateProcess exit code is exactly what the oracle reads as CRASHED.
+Fixed (both cleanup paths now scope to the session's own editors); the table above
+is the clean re-run, same protocol, no pytest in flight.
