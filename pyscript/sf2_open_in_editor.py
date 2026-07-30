@@ -27,13 +27,22 @@ EDITOR = harness.EDITOR  # bin/SIDFactoryII.exe (x64 stock build)
 ALIVE_CHECK_SECONDS = 4.0
 
 
-def _spawn_detached(exe: str, cwd: str) -> int:
+def _spawn_detached(exe: str, cwd: str) -> subprocess.Popen:
     """subprocess.Popen with DETACHED_PROCESS so the child outlives this
     Python process AND inherits foreground rights (which Start-Process via
-    PowerShell loses, breaking SetForegroundWindow on every attempt)."""
+    PowerShell loses, breaking SetForegroundWindow on every attempt).
+
+    Returns the Popen object itself, not just its pid. CPython retains its own
+    process handle for the whole life of a Popen it created -- DETACHED_PROCESS
+    only decouples the console/session, it does not release that handle -- so
+    `.poll()`/`.returncode` stay valid even long after the child exits. A bare
+    pid cannot do this: the instant a process exits, Windows drops it from
+    Get-Process/the process table, so there is no way to recover its exit code
+    from a pid alone after the fact (see the caller in blackbird_crash_probe.py
+    for why that distinction -- crash vs. clean exit -- matters)."""
     DETACH = 0x00000008  # DETACHED_PROCESS
     NEW_PG = 0x00000200  # CREATE_NEW_PROCESS_GROUP
-    proc = subprocess.Popen(
+    return subprocess.Popen(
         [exe, "--skip-intro"],
         cwd=cwd,
         stdin=subprocess.DEVNULL,
@@ -42,7 +51,6 @@ def _spawn_detached(exe: str, cwd: str) -> int:
         creationflags=DETACH | NEW_PG,
         close_fds=True,
     )
-    return proc.pid
 
 
 def _is_alive(pid: int) -> bool:
@@ -126,14 +134,20 @@ def _get_window_title(pid: int) -> str:
     return titles[0] if titles else ""
 
 
-def _try_one_detached_load(staged_name: str, bin_dir: Path) -> tuple[bool, int | None]:
-    """Spawn detached, drive F10-load, return (loaded_alive, pid).
+def _try_one_detached_load(staged_name: str, bin_dir: Path) -> "tuple[bool, subprocess.Popen | None]":
+    """Spawn detached, drive F10-load, return (loaded_alive, proc).
 
     A successful load requires both: (a) process alive after the wait window,
     and (b) window title contains the staged filename — otherwise the F10
     keystroke was suppressed (e.g. focus-stealing) and we'd hand the user
-    an editor with the default file loaded."""
-    pid = _spawn_detached(EDITOR, str(bin_dir))
+    an editor with the default file loaded.
+
+    Returns the Popen object (not a bare pid) so a caller that needs to know
+    how the process eventually terminates -- crashed vs. cleanly exited, e.g.
+    a human closing the window -- can call `.poll()` later; see
+    `_spawn_detached`'s docstring for why a pid alone cannot do this."""
+    proc = _spawn_detached(EDITOR, str(bin_dir))
+    pid = proc.pid
     time.sleep(2.5)
     if not _is_alive(pid):
         return False, None
@@ -158,7 +172,7 @@ def _try_one_detached_load(staged_name: str, bin_dir: Path) -> tuple[bool, int |
               file=sys.stderr)
         _kill_pid(pid)
         return False, None
-    return True, pid
+    return True, proc
 
 
 def open_in_editor(sf2_path: str, max_attempts: int = 30) -> bool:
@@ -179,9 +193,9 @@ def open_in_editor(sf2_path: str, max_attempts: int = 30) -> bool:
     for attempt in range(1, max_attempts + 1):
         print(f"Attempt {attempt}/{max_attempts}: spawning detached SF2II + F10-loading...",
               flush=True)
-        ok, pid = _try_one_detached_load(staged_name, bin_dir)
+        ok, proc = _try_one_detached_load(staged_name, bin_dir)
         if ok:
-            print(f"\n  SUCCESS: SIDFactoryII PID {pid} is running with "
+            print(f"\n  SUCCESS: SIDFactoryII PID {proc.pid} is running with "
                   f"{Path(sf2_path).name} loaded.", flush=True)
             print(f"  Close the editor manually when done.", flush=True)
             return True

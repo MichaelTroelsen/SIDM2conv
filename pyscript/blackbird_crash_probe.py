@@ -158,9 +158,40 @@ def assert_window_covers(schedule, window_seconds=PLAY_WAIT_SECONDS,
     return True
 
 
+def classify_termination(exit_code):
+    """Map a process's exit code (or None if still running) to an outcome.
+
+    R23 fix: the original oracle called `_is_alive(pid)` once after the play
+    wait and reported "SURVIVED" if true, "CRASHED" otherwise -- so a human
+    closing the editor window mid-trial was indistinguishable from an actual
+    crash (a 492s Driller trial was voided this way, see whats-next.md). A
+    clean shutdown (the app's own WM_CLOSE -> ExitProcess path, whether
+    triggered by a human or the app itself) reports exit code 0; an unhandled
+    exception (access violation, stack overflow, ...) is terminated by Windows
+    with the NTSTATUS/exception code as the exit code, which is never 0. So
+    exit code 0 is the one value that positively rules out a crash.
+
+    None            -> still running -- SURVIVED the window
+    0               -> exited cleanly (very likely a human closing the window,
+                       not a crash) -- CLOSED, not CRASHED
+    anything else   -> CRASHED
+    """
+    if exit_code is None:
+        return "SURVIVED"
+    if exit_code == 0:
+        return "CLOSED"
+    return "CRASHED"
+
+
 def tally(results):
-    """Summarise trial outcomes; crash-rate is over trials that actually PLAYED."""
-    t = {k: results.count(k) for k in ("SURVIVED", "CRASHED", "NOLOAD")}
+    """Summarise trial outcomes; crash-rate is over trials that actually PLAYED.
+
+    CLOSED is excluded from the `played` denominator for the same reason
+    NOLOAD already is: a trial the human closed mid-window says nothing about
+    whether the build would have crashed on its own, so it must not count for
+    OR against the crash rate.
+    """
+    t = {k: results.count(k) for k in ("SURVIVED", "CRASHED", "CLOSED", "NOLOAD")}
     played = t["SURVIVED"] + t["CRASHED"]
     t["played"] = played
     t["crash_rate"] = (t["CRASHED"] / played) if played else None
@@ -172,8 +203,15 @@ def tally(results):
 # testable) on a machine with no SF2II, no pywin32 and no display.
 # ---------------------------------------------------------------------------
 def probe_once(sf2_path, load_attempts=12, play_wait=PLAY_WAIT_SECONDS,
-               shot_path=None):
-    """'SURVIVED' | 'CRASHED' | 'NOLOAD'."""
+               shot_path=None, shot_interval=None):
+    """'SURVIVED' | 'CLOSED' | 'CRASHED' | 'NOLOAD' -- see `classify_termination`.
+
+    shot_interval: if given, take a screenshot roughly every `shot_interval`
+    seconds during the play wait (named `<shot_path>.tNN.png`), not only a
+    single one at the end -- makes it possible to see roughly when a CLOSED/
+    CRASHED trial actually stopped, without changing the total wait duration.
+    Opt-in and off by default so existing callers see no behavior change.
+    """
     import shutil
     import time
     import win32con
@@ -184,16 +222,25 @@ def probe_once(sf2_path, load_attempts=12, play_wait=PLAY_WAIT_SECONDS,
     staged_name = f"_probe_{os.path.splitext(os.path.basename(sf2_path))[0][:24]}.sf2"
     shutil.copyfile(os.path.abspath(sf2_path), os.path.join(bin_dir, staged_name))
 
+    def _snapshot(hwnd, suffix):
+        try:
+            import win32gui as _wg
+            from PIL import ImageGrab
+            ImageGrab.grab(bbox=_wg.GetWindowRect(hwnd), all_screens=True) \
+                .save(f"{shot_path}{suffix}")
+        except Exception as e:
+            print(f"    screenshot failed: {e}", file=sys.stderr)
+
     for attempt in range(1, load_attempts + 1):
-        ok, pid = opener._try_one_detached_load(staged_name, bin_dir)
+        ok, proc = opener._try_one_detached_load(staged_name, bin_dir)
         if not ok:
             print(f"    load attempt {attempt}/{load_attempts} failed - retrying",
                   flush=True)
             time.sleep(0.4)
             continue
-        hwnd = opener._find_window_for_pid(pid, timeout=4.0)
+        hwnd = opener._find_window_for_pid(proc.pid, timeout=4.0)
         if hwnd is None:
-            opener._kill_pid(pid)
+            opener._kill_pid(proc.pid)
             continue
         try:
             import win32gui
@@ -202,19 +249,30 @@ def probe_once(sf2_path, load_attempts=12, play_wait=PLAY_WAIT_SECONDS,
             pass
         time.sleep(0.4)
         harness.send_vk(win32con.VK_F1)     # Key.ScreenEdit.Play
-        time.sleep(play_wait)
-        alive = opener._is_alive(pid)
+        if shot_path and shot_interval:
+            elapsed, tick = 0.0, 0
+            while elapsed < play_wait:
+                step = min(shot_interval, play_wait - elapsed)
+                time.sleep(step)
+                elapsed += step
+                tick += 1
+                if proc.poll() is not None:
+                    break            # already terminated; stop early-snapshotting
+                _snapshot(hwnd, f".t{tick:02d}.png")
+        else:
+            time.sleep(play_wait)
+        # Non-blocking: None if still running. Reads off the Popen's own
+        # retained handle, so (unlike a pid-based alive check) it stays valid
+        # even long after the process has exited -- see
+        # sf2_open_in_editor._spawn_detached's docstring.
+        exit_code = proc.poll()
+        outcome = classify_termination(exit_code)
         # Proof of play: a probe that silently failed to deliver F1 would also
         # report SURVIVED, so capture the editor's own "Playing time" readout.
-        if alive and shot_path:
-            try:
-                import win32gui as _wg
-                from PIL import ImageGrab
-                ImageGrab.grab(bbox=_wg.GetWindowRect(hwnd), all_screens=True).save(shot_path)
-            except Exception as e:
-                print(f"    screenshot failed: {e}", file=sys.stderr)
-        opener._kill_pid(pid)
-        return "SURVIVED" if alive else "CRASHED"
+        if outcome == "SURVIVED" and shot_path:
+            _snapshot(hwnd, "")
+        opener._kill_pid(proc.pid)
+        return outcome
     return "NOLOAD"
 
 
@@ -244,7 +302,12 @@ def main(argv=None):
         results.append(r)
     t = tally(results)
     print(f"\n{os.path.basename(path)}: SURVIVED={t['SURVIVED']} "
-          f"CRASHED={t['CRASHED']} NOLOAD={t['NOLOAD']}")
+          f"CRASHED={t['CRASHED']} CLOSED={t['CLOSED']} NOLOAD={t['NOLOAD']}")
+    if t["CLOSED"]:
+        print(f"  note: {t['CLOSED']} trial(s) exited cleanly (exit code 0) "
+              f"mid-window -- most likely the window was closed manually, NOT "
+              f"a crash. Excluded from crash_rate; re-run for a conclusive "
+              f"trial if these need to count as evidence.")
     if t["CRASHED"]:
         return 1
     return 0 if t["SURVIVED"] else 2

@@ -165,6 +165,33 @@ class TestWindowValidity(unittest.TestCase):
                                    window_seconds=probe.PLAY_WAIT_SECONDS)
 
 
+class TestClassifyTermination(unittest.TestCase):
+    """R23: a user closing the SF2II window mid-trial must not be reported as
+    CRASHED. The original oracle checked only `_is_alive(pid)` after the play
+    wait, so "not alive" (crashed OR cleanly closed by a human) collapsed to
+    one bucket -- a 492s Driller trial the user closed manually came back
+    CRASHED, indistinguishable from the real thing (whats-next.md).
+    """
+
+    def test_still_running_is_survived(self):
+        self.assertEqual(probe.classify_termination(None), "SURVIVED")
+
+    def test_clean_exit_code_zero_is_closed_not_crashed(self):
+        """The core R23 fix: exit code 0 must never read as CRASHED."""
+        self.assertEqual(probe.classify_termination(0), "CLOSED")
+
+    def test_positive_nonzero_exit_code_is_crashed(self):
+        self.assertEqual(probe.classify_termination(1), "CRASHED")
+
+    def test_windows_access_violation_style_code_is_crashed(self):
+        """STATUS_ACCESS_VIOLATION (0xC0000005) as Windows reports it: some
+        toolchains surface this as a large positive DWORD, others as the
+        signed-int32 equivalent (-1073741819) -- classify_termination must
+        treat both as CRASHED, since neither is ever the clean-exit value 0."""
+        self.assertEqual(probe.classify_termination(3221225477), "CRASHED")
+        self.assertEqual(probe.classify_termination(-1073741819), "CRASHED")
+
+
 class TestTally(unittest.TestCase):
     def test_crash_rate_is_over_trials_that_actually_played(self):
         """A NOLOAD is a flaky loader, not evidence about play."""
@@ -180,6 +207,17 @@ class TestTally(unittest.TestCase):
         t = probe.tally(["SURVIVED"] * 5)
         self.assertEqual(t["crash_rate"], 0.0)
         self.assertEqual(t["played"], 5)
+
+    def test_closed_trials_are_excluded_from_crash_rate(self):
+        """R23: a CLOSED trial (clean exit, most likely a human closing the
+        window) must not count for OR against the crash rate -- it is not
+        evidence either way, exactly like NOLOAD. Without this, a run of
+        3 real crashes + 1 closed-by-user trial would UNDERSTATE the crash
+        rate (4 trials, 3/4) instead of reporting the true 3/3 = 100%."""
+        t = probe.tally(["CRASHED", "CRASHED", "CRASHED", "CLOSED"])
+        self.assertEqual(t["CLOSED"], 1)
+        self.assertEqual(t["played"], 3)
+        self.assertAlmostEqual(t["crash_rate"], 1.0)
 
 
 if __name__ == "__main__":
