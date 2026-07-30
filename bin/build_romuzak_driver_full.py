@@ -273,8 +273,21 @@ def wrap(driver_prg, gen, edit, mdp, instr_names=None, sid_model=6581,
     return bytes(f)
 
 
-def headless_audio(prg, edit):
+def headless_audio(prg, edit, tempo=None, n_rows=None):
+    """Drive the assembled driver in py65 and return per-row (v0,v1,v2) freqs.
+
+    `tempo` (frames per row) and `n_rows` are PARAMETERS. They used to be read
+    from this module's globals, which meant a caller in another module had to do
+    `B.TEMPO = x; B.N_ROWS = y` before calling -- reaching in to mutate module
+    state to pass an argument. That coupling is invisible at the call site and
+    would silently break if this module were ever merged with its
+    near-identical sibling (the assignment would land on a wrapper while this
+    code kept reading its own scope). `None` falls back to the module defaults,
+    which is what this file's own main() self-test uses.
+    """
     from py65.devices.mpu6502 import MPU
+    tempo = TEMPO if tempo is None else tempo
+    n_rows = N_ROWS if n_rows is None else n_rows
     load = prg[0] | (prg[1] << 8)
     m = MPU()
     for i, b in enumerate(prg[2:]):
@@ -297,8 +310,8 @@ def headless_audio(prg, edit):
     call(0x1000)
     sid = [0xD400, 0xD407, 0xD40E]
     rows = []
-    for _row in range(N_ROWS):
-        for _ in range(TEMPO):
+    for _row in range(n_rows):
+        for _ in range(tempo):
             call(0x1003)
         rows.append([m.memory[b] | (m.memory[b + 1] << 8) for b in sid])
     return rows

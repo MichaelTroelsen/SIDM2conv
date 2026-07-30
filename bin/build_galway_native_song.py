@@ -37,7 +37,8 @@ FMTAB_ADDR = 0x4040
 def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
                       wave_programs=None, fm_programs=None, multispeed=1,
                       pulse_programs=None, pulse_by_cmd=None,
-                      filter_program=None, filter_instr_set=None):
+                      filter_program=None, filter_instr_set=None,
+                      tempo=None):
     """Build a multi-pattern native-driver edit area from packed voice patterns.
     segs[v] = list of packed sequences for voice v. Returns (gen, edit, mdp, seq0)
     and writes drivers_src/galway/layout.inc.
@@ -54,7 +55,16 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
     laid out sequentially into the 256-row, 2-column WAVE table (SF2II's native
     Wave layout); the trace build uses this to carry the per-frame pitch envelope
     (the real Galway slide/vibrato) in SF2II-native, editor-loaded, editable
-    form. Long notes fit via the settled-tail loop + body trimming."""
+    form. Long notes fit via the settled-tail loop + body trimming.
+
+    tempo: frames per row, written to layout.inc. Pass it EXPLICITLY. It used to
+    be read out of `B.TEMPO` -- i.e. callers set a global on the *driver_full*
+    module so that this function, in a *third* module, could read it back. That
+    made tempo travel through a mutable global belonging to neither, and it is
+    exactly what would break if the two near-identical driver_full modules were
+    ever merged (setting `B.TEMPO` on a thin wrapper would not reach the shared
+    implementation's own module scope). `None` still falls back to `B.TEMPO` so
+    older call sites keep working."""
     # Shared prologue (sidm2.native_build): SF2HeaderGenerator + the Block-2
     # playback-state contract (so SF2II's start/stop + follow-play reach
     # galway_driver.asm's ST_STATE/ST_TCNT), the placeholder edit area, and the
@@ -226,7 +236,7 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
             f.write(f"OL{v}   = ${mdp['ol_track1_addr'] + v * mdp['ol_size']:04x}\n")
         f.write(f"SEQPTRLO = ${mdp['seq_ptr_lo_addr']:04x}\n")
         f.write(f"SEQPTRHI = ${mdp['seq_ptr_hi_addr']:04x}\n")
-        f.write(f"TEMPO = {B.TEMPO}\n")
+        f.write(f"TEMPO = {B.TEMPO if tempo is None else tempo}\n")
         f.write(f"INSTR = ${gen.instr_addr:04x}\n")
         f.write(f"WAVE  = ${gen.wave_addr:04x}\n")
         f.write(f"PULSE = ${gen.pulse_addr:04x}\n")
@@ -302,9 +312,14 @@ def main():
     if not instrs:
         instrs = [(0x09, 0x00, 0x41, 0x08)]
 
-    B.TEST_INSTR = instrs
-    B.TEMPO = max(1, song.tempo)
-    B.N_ROWS = 24
+    # R3: tempo/n_rows are passed explicitly below, not written into B's module
+    # globals (see gen_includes_song's `tempo` param and B.headless_audio's
+    # docstring). The old `B.TEST_INSTR = instrs` line that stood here was dead:
+    # TEST_INSTR is only read by build_*_driver_full's OWN gen_includes()
+    # self-test path, which this builder never calls -- it uses the
+    # gen_includes_song above instead.
+    tempo = max(1, song.tempo)
+    n_rows = 24
 
     # Instrument names (id=4 TableText aux) so the editor's F2 list isn't blank.
     def _wftag(wf):
@@ -314,7 +329,7 @@ def main():
         return "inst"
     names = [f"{_wftag(ins[2])} {i + 1:02d}" for i, ins in enumerate(instrs)]
 
-    gen, edit, mdp, seq0 = gen_includes_song(segs, instrs)
+    gen, edit, mdp, seq0 = gen_includes_song(segs, instrs, tempo=tempo)
     prg = B.assemble()
     sf2 = B.wrap(prg, gen, edit, mdp, instr_names=names)
     out = os.path.join(ROOT, "out", out_name)
@@ -331,10 +346,10 @@ def main():
     # headless: the driver should reproduce each voice's note frequencies
     # (each voice starts on its first pattern = segs[v][0]).
     exp = [playing_notes(segs[v][0]) for v in range(3)]
-    rows = B.headless_audio(prg, edit)
+    rows = B.headless_audio(prg, edit, tempo=tempo, n_rows=n_rows)
     bad = 0
     print("  row:  V0      V1      V2     (expected)")
-    for r in range(min(B.N_ROWS, *[len(e) for e in exp])):
+    for r in range(min(n_rows, *[len(e) for e in exp])):
         e = [freq_of(exp[v][r]) for v in range(3)]
         g = rows[r]
         # tolerate vibrato (held notes wobble +-~64 around the base)
