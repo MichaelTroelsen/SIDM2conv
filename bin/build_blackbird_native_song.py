@@ -78,8 +78,6 @@ from sidm2.blackbird_parser import (
     locate_blackbird, load_sid, decode_streams, classify_byte,
 )
 from sidm2.blackbird_driver11 import extract_tempo_pairs
-from sidm2.sf2_header_generator import SF2HeaderGenerator
-from sidm2 import placeholder_edit_area
 from sidm2.galway_driver11_emitter import segment_track, unpack_sequence
 from sidm2.galway_to_driver11 import (
     D11Row, SF2_NOTE_MIN, SF2_NOTE_MAX, SF2_GATE_ON, SF2_GATE_OFF,
@@ -1613,27 +1611,12 @@ def gen_includes_song(segs, ad_sr, wave_programs, filter_programs,
                       filter_flag_of, fx_start, fxtab, default_filter_program,
                       multispeed=1, tempo_sched_len=0,
                       default_wave_program=None, pulse_programs=None):
-    gen = SF2HeaderGenerator()
-    gen.DRIVER_INIT, gen.DRIVER_PLAY, gen.DRIVER_STOP = B.DRV_INIT, B.DRV_PLAY, B.DRV_STOP
-    gen.PLAYER_ADDRESSES = dict(gen.PLAYER_ADDRESSES)
-    gen.PLAYER_ADDRESSES["driver_state"] = 0x16D0
-    gen.PLAYER_ADDRESSES["tempo_counter"] = 0x16D1
-    gen.driver_name = "Blackbird"
-    gen.driver_version_major = 17
-    gen.driver_version_minor = 0
-    gen.driver_code_top = 0x1000
-    vstreams = [bytes([0x01]) + bytes([0xA0, 0x01]) * (len(segs[v]) - 1)
-                for v in range(3)]
-    edit, mdp = placeholder_edit_area.build_placeholder_edit_area(
-        B.EDIT_BASE, gen, voice_streams=vstreams)
-    edit = bytearray(edit)
-    seq0 = mdp['seq00_addr']
-    off = 0
-    for v in range(3):
-        for s, pk in enumerate(segs[v]):
-            o = (seq0 + (off + s) * 0x100) - B.EDIT_BASE
-            edit[o:o + len(pk)] = pk
-        off += len(segs[v])
+    # Shared prologue + jump-target fixup (sidm2.native_build) -- see that
+    # module's docstring for what is shared and what deliberately is not.
+    from sidm2.native_build import (make_native_gen, lay_out_sequences,
+                                    program_jump_col)
+    gen = make_native_gen("Blackbird", B.DRV_INIT, B.DRV_PLAY, B.DRV_STOP)
+    edit, mdp, seq0 = lay_out_sequences(segs, gen, B.EDIT_BASE)
     io = gen.instr_addr - B.EDIT_BASE
     wo, po, fo = B.relocate_driver_tables(gen, edit)
 
@@ -1651,26 +1634,29 @@ def gen_includes_song(segs, ad_sr, wave_programs, filter_programs,
     # right one produce the SAME steady-state $D416/7/8 bytes, so it never
     # showed up there): this block used `(r + b2)` for the $7f jump row's
     # absolute target instead of `(default_start + b2)` (matching the
-    # per-instrument block below, which correctly uses `start + b2` -- see
-    # its own comment). default_start is always 0 here (this block runs
-    # FIRST, before filt_cursor advances), so the fix is `(default_start +
-    # b2)` = `b2` alone -- NOT `r` (the row's own local index), which was
-    # being added on top by mistake. For a 2-row program (SET + jump-to-
-    # row-0), the old formula computed target=1 (r=1, b2=0) -- equal to the
-    # jump row's OWN index -- which fp_read's `cmp tmpf; beq fp_freeze`
-    # (blackbird_driver.asm) treats as an intentional self-freeze, so
-    # Fargo's identical-shaped default program still froze at the CORRECT
+    # per-instrument block below). default_start is always 0 here (this block
+    # runs FIRST, before filt_cursor advances), so the correct value is
+    # `(default_start + b2)` = `b2` alone -- NOT `r` (the row's own local
+    # index), which was being added on top by mistake. For a 2-row program
+    # (SET + jump-to-row-0), the old formula computed target=1 (r=1, b2=0) --
+    # equal to the jump row's OWN index -- which fp_read's `cmp tmpf; beq
+    # fp_freeze` (blackbird_driver.asm) treats as an intentional self-freeze,
+    # so Fargo's identical-shaped default program still froze at the CORRECT
     # steady value by coincidence. Glyptodont's default program is the same
     # 2-row shape too, so this alone wasn't Glyptodont's story either -- but
     # any LONGER default program (more than 2 rows) would have jumped to
-    # entirely the wrong row. Fixed for correctness regardless.
+    # entirely the wrong row.
+    # R3: that arithmetic now has ONE definition, sidm2.native_build's
+    # `program_jump_col` (whose docstring carries this bug as its rationale),
+    # so the same mistake cannot be re-introduced independently in one of the
+    # five places this expression used to be hand-copied.
     default_start = 0
     filt_cursor, filt_dedup = 0, {}
     fo_ = fo
     for r, (b0, b1, b2) in enumerate(default_filter_program):
         edit[fo_ + 0 * 256 + r] = b0 & 0xFF
         edit[fo_ + 1 * 256 + r] = b1 & 0xFF
-        edit[fo_ + 2 * 256 + r] = ((default_start + b2) if (b0 & 0xFF) == 0x7F else b2) & 0xFF
+        edit[fo_ + 2 * 256 + r] = program_jump_col(b0, b2, default_start)
     filt_init_row = 0
     filt_cursor = len(default_filter_program)
     filt_dedup[tuple(default_filter_program)] = 0
@@ -1685,8 +1671,7 @@ def gen_includes_song(segs, ad_sr, wave_programs, filter_programs,
                 for r, (b0, b1, b2) in enumerate(fprog):
                     edit[fo + 0 * 256 + start + r] = b0 & 0xFF
                     edit[fo + 1 * 256 + start + r] = b1 & 0xFF
-                    edit[fo + 2 * 256 + start + r] = (
-                        (start + b2) if (b0 & 0xFF) == 0x7F else b2) & 0xFF
+                    edit[fo + 2 * 256 + start + r] = program_jump_col(b0, b2, start)
                 edit[io + 3 * 32 + i] = start & 0xFF
                 filt_dedup[fkey] = start
                 filt_cursor += len(fprog)
@@ -1710,7 +1695,7 @@ def gen_includes_song(segs, ad_sr, wave_programs, filter_programs,
     if default_wave_program:
         for r, (c0, c1) in enumerate(default_wave_program):
             edit[wo + 0 * 256 + r] = c0 & 0xFF
-            edit[wo + 1 * 256 + r] = ((0 + c1) if c0 == 0x7F else c1) & 0xFF
+            edit[wo + 1 * 256 + r] = program_jump_col(c0, c1, 0)   # starts at row 0
         wave_cursor = len(default_wave_program)
         wave_dedup[tuple(default_wave_program)] = 0
     for i, (ad, sr) in enumerate(ad_sr[:32]):
@@ -1726,7 +1711,7 @@ def gen_includes_song(segs, ad_sr, wave_programs, filter_programs,
         start = wave_cursor
         for r, (c0, c1) in enumerate(wp):
             edit[wo + 0 * 256 + start + r] = c0 & 0xFF
-            edit[wo + 1 * 256 + start + r] = ((start + c1) if c0 == 0x7F else c1) & 0xFF
+            edit[wo + 1 * 256 + start + r] = program_jump_col(c0, c1, start)
         edit[io + 5 * 32 + i] = start & 0xFF
         wave_dedup[wkey] = start
         wave_cursor += len(wp)

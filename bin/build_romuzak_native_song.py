@@ -19,8 +19,6 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "bin"))
 
 import build_romuzak_driver_full as B
-from sidm2.sf2_header_generator import SF2HeaderGenerator
-from sidm2 import placeholder_edit_area
 from sidm2.galway_driver11_emitter import unpack_sequence
 from sidm2.galway_to_driver11 import SF2_NOTE_MIN, SF2_NOTE_MAX
 from sidm2.sid_player import FREQ_TABLE_LO, FREQ_TABLE_HI
@@ -120,27 +118,12 @@ def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
     instruments + per-instrument wave programs. Writes drivers_src/romuzak/layout.inc.
     (Adapted from build_galway_native_song.gen_includes_song; pulse/FM left default
     for B1 — drums/SEEK/vibrato come in B2-B3.)"""
-    gen = SF2HeaderGenerator()
-    gen.DRIVER_INIT, gen.DRIVER_PLAY, gen.DRIVER_STOP = B.DRV_INIT, B.DRV_PLAY, B.DRV_STOP
-    gen.PLAYER_ADDRESSES = dict(gen.PLAYER_ADDRESSES)
-    gen.PLAYER_ADDRESSES["driver_state"] = 0x16D0
-    gen.PLAYER_ADDRESSES["tempo_counter"] = 0x16D1
-    gen.driver_name = "Romuzak"
-    gen.driver_version_major = 17
-    gen.driver_version_minor = 0
-    gen.driver_code_top = 0x1000
-    vstreams = [bytes([0x01]) + bytes([0xA0, 0x01]) * (len(segs[v]) - 1)
-                for v in range(3)]
-    edit, mdp = placeholder_edit_area.build_placeholder_edit_area(
-        B.EDIT_BASE, gen, voice_streams=vstreams)
-    edit = bytearray(edit)
-    seq0 = mdp['seq00_addr']
-    off = 0
-    for v in range(3):
-        for s, pk in enumerate(segs[v]):
-            o = (seq0 + (off + s) * 0x100) - B.EDIT_BASE
-            edit[o:o + len(pk)] = pk
-        off += len(segs[v])
+    # Shared prologue + jump-target fixup (sidm2.native_build) -- see that
+    # module's docstring for what is shared and what deliberately is not.
+    from sidm2.native_build import (make_native_gen, lay_out_sequences,
+                                    program_jump_col)
+    gen = make_native_gen("Romuzak", B.DRV_INIT, B.DRV_PLAY, B.DRV_STOP)
+    edit, mdp, seq0 = lay_out_sequences(segs, gen, B.EDIT_BASE)
     io = gen.instr_addr - B.EDIT_BASE
     wo, po, fo = B.relocate_driver_tables(gen, edit)
     # FILTER programs (col-major 256x3 at fo): per-instrument, deduped. col2 flag $40
@@ -158,8 +141,7 @@ def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
                 for r, (b0, b1, b2) in enumerate(fprog):
                     edit[fo + 0 * 256 + start + r] = b0 & 0xFF
                     edit[fo + 1 * 256 + start + r] = b1 & 0xFF
-                    edit[fo + 2 * 256 + start + r] = ((start + b2) if (b0 & 0xFF) == 0x7F
-                                                      else b2) & 0xFF
+                    edit[fo + 2 * 256 + start + r] = program_jump_col(b0, b2, start)
                 edit[io + 3 * 32 + i] = start & 0xFF
                 filt_dedup[fkey] = start
                 filt_cursor += len(fprog)
@@ -185,7 +167,7 @@ def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
         start = wave_cursor
         for r, (c0, c1) in enumerate(wp):
             edit[wo + 0 * 256 + start + r] = c0 & 0xFF
-            edit[wo + 1 * 256 + start + r] = ((start + c1) if c0 == 0x7F else c1) & 0xFF
+            edit[wo + 1 * 256 + start + r] = program_jump_col(c0, c1, start)
         edit[io + 5 * 32 + i] = start & 0xFF
         wave_dedup[wkey] = start
         wave_cursor += len(wp)

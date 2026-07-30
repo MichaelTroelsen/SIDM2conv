@@ -55,36 +55,14 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
     Wave layout); the trace build uses this to carry the per-frame pitch envelope
     (the real Galway slide/vibrato) in SF2II-native, editor-loaded, editable
     form. Long notes fit via the settled-tail loop + body trimming."""
-    from sidm2.sf2_header_generator import SF2HeaderGenerator
-    from sidm2 import placeholder_edit_area
-    gen = SF2HeaderGenerator()
-    gen.DRIVER_INIT, gen.DRIVER_PLAY, gen.DRIVER_STOP = B.DRV_INIT, B.DRV_PLAY, B.DRV_STOP
-    # Point the Block-2 playback-state contract at the native Galway driver's
-    # own state bytes so SF2II's start/stop + follow-play work (ST_STATE/ST_TCNT
-    # in galway_driver.asm). Instance copy so we don't mutate the class default.
-    gen.PLAYER_ADDRESSES = dict(gen.PLAYER_ADDRESSES)
-    gen.PLAYER_ADDRESSES["driver_state"] = 0x16D0   # $80 playing / $40 stopped
-    gen.PLAYER_ADDRESSES["tempo_counter"] = 0x16D1  # 0 on each new row (follow)
-    gen.driver_name = "Galway"
-    gen.driver_version_major = 17     # own F12 overlay slot (bin/overlay/*_driver17_00.png)
-    gen.driver_version_minor = 0
-    gen.driver_code_top = 0x1000
-    # voice_streams that segment into len(segs[v]) patterns per voice (content
-    # is overwritten; only the segment COUNT + orderlist structure matters).
-    vstreams = [bytes([0x01]) + bytes([0xA0, 0x01]) * (len(segs[v]) - 1)
-                for v in range(3)]
-    edit, mdp = placeholder_edit_area.build_placeholder_edit_area(
-        B.EDIT_BASE, gen, voice_streams=vstreams)
-    edit = bytearray(edit)
-    seq0 = mdp['seq00_addr']
-    # overwrite each pattern slot with its packed sequence
-    off = 0
-    for v in range(3):
-        for s, pk in enumerate(segs[v]):
-            p = off + s
-            o = (seq0 + p * 0x100) - B.EDIT_BASE
-            edit[o:o + len(pk)] = pk
-        off += len(segs[v])
+    # Shared prologue (sidm2.native_build): SF2HeaderGenerator + the Block-2
+    # playback-state contract (so SF2II's start/stop + follow-play reach
+    # galway_driver.asm's ST_STATE/ST_TCNT), the placeholder edit area, and the
+    # packed sequences written into their fixed 256-byte slots.
+    from sidm2.native_build import (make_native_gen, lay_out_sequences,
+                                    program_jump_col)
+    gen = make_native_gen("Galway", B.DRV_INIT, B.DRV_PLAY, B.DRV_STOP)
+    edit, mdp, seq0 = lay_out_sequences(segs, gen, B.EDIT_BASE)
     # column-major instruments + wave table. Wave/pulse/filter live in the
     # full-stride relocated region (see B.relocate_driver_tables) — the
     # placeholder packs them only a few rows apart, which a 256-byte column
@@ -127,7 +105,7 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
             edit[wo + 0 * 256 + start + r] = c0 & 0xFF
             # $7f jump row: col1 = loop target (relative-to-start -> absolute);
             # any other row: col1 = signed semitone offset (used as-is).
-            edit[wo + 1 * 256 + start + r] = ((start + c1) if c0 == 0x7f else c1) & 0xFF
+            edit[wo + 1 * 256 + start + r] = program_jump_col(c0, c1, start)
         edit[io + 5 * 32 + i] = start & 0xFF
         wave_dedup[wkey] = start
         wave_cursor += len(wp)
