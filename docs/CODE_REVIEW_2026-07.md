@@ -25,7 +25,7 @@ byte-diff or regression gate; Opus = RE, design, or falsification work.
 
 | # | Item | Why it leads |
 |---|------|--------------|
-| R5 | Blackbird E3c(a): the last 40 hard-restart retriggers | ROADMAP's own "highest remaining audible payoff" |
+| R5 | Blackbird E3c(a) — **status corrected**: E3f already closed it for the current corpus | ROADMAP's "highest remaining audible payoff" row is stale; what remains is a verify-and-close plus two named edge residuals (see revised R5 + Appendix A) |
 | R6 | Galway/ROMUZAK `cmp #$90` SF2II hazard | their filter sweeps are **broken in the real editor today**, invisible to every headless metric |
 | R1–R3 | Driver + builder unification, caps module | every fidelity fix currently needs 3–4 patches; every new player re-forks ~1,300 lines |
 | R17 | Stage C structural synth-table RE | the **only proven lossless** part-count reduction (Supremacy 70 parts → single digits ✻) |
@@ -112,23 +112,40 @@ pattern ✻) — auto-routing a mis-located variant produces garbage with a conf
 
 ## Track 2 — Fidelity (P0 unless noted)
 
-### R5. Blackbird E3c(a): the remaining 40 unarmed retriggers — P0 · M · **Opus** (design)
-**Evidence**: `bin/build_blackbird_native_song.py:96` names the "one-command-byte-per-row"
-collision; the gate sites are at `:2929` (measured collisions per file — "common, not an edge
-case"), `:3027` (one command slot, two signals), `:3100`. `RESTART_ARM_FX = 63` at `:94`.
-Glyptodont register note-ons 122/162 armed ✻; the missing 40 are single-tick steps whose only
-row already carries a genuine fx change.
-**Fix sketch** (options from ROADMAP E3c(a), unevaluated): a second sentinel in an unused
-instrument-column value; widening the row format (**risky** — the real SF2II parser shaped
-B25's whole design); splitting the step so the sentinel gets its own row (costs sequence
-space and shifts timing). An Opus session should prototype all three against the real
-editor's parser before committing.
-**Verification**: register note-on count **and** `audio-tightness.bat` (the register % barely
-moves even when the audible fix is large — the reason this defect survived to B25 ✻); full
-16-file sweep `py -3 pyscript/blackbird_sweep.py <label> --compare` with zero regressions;
-SF2II play-test via `probe_once()` (after R23).
-**Traps**: dedup/verify against the *simulator* is one inference step from the SID —
-spot-check one file against a raw zig64 trace too.
+### R5. Blackbird E3c(a) — STATUS CORRECTED: closed by E3f; verify residuals and close — P0 · S · Sonnet
+**Status correction (found during the design pass, 2026-07-30)**: ROADMAP's execution table
+still lists "E3c(a): the remaining 40 retriggers" as the highest remaining audible payoff.
+**The code says otherwise.** E3f solved exactly this: `bin/build_blackbird_native_song.py:3025-3081`
+allocates **combo fx indices** from the spare command space `[nfx_song+1, RESTART_ARM_FX)` —
+"select this fx program AND arm" in one byte — for every fx program that gate (a) would
+otherwise make unarmable, ranked by events recovered. The comment at `:3034-3036` records the
+corpus measurement: **every file fits** (worst case 25 colliding programs vs 26 spare codes,
+Thus_Spoke_the_PC_Speaker), and ACCURACY_MATRIX v3.22.0 states hard-restart arming **100% on
+every file** with Glyptodont at 162/162 note-ons. The first version of this review propagated
+ROADMAP's stale framing; this section replaces it.
+**What actually remains** (all read from code this session):
+1. **Verify-and-close**: re-run the register note-on count on Glyptodont + one more file to
+   confirm the 100% arming claim, then mark E3c(a) ✅ in ROADMAP's execution table (it is the
+   stale row, `docs/ROADMAP.md:283`).
+2. **Spare-range exhaustion** (`:3078-3081`): a future song with more colliding fx programs
+   than spare codes degrades to pre-E3f behavior for the overflow — it *prints* the drop but
+   nothing machine-readable records it. Make the sweep surface it (a `combo_dropped` count in
+   the sweep row) so silent-degradation can't creep in on new files.
+3. **The `min_tempo_song >= 3` guard** (`:3061`, `:3083`): songs with min tempo < 3 get **no
+   hard-restart arming at all** — the entire marking loop is skipped. Presumably deliberate
+   (a 2-frame blip at tempo 2 eats the note), but it is an unstated corpus-wide scope limit:
+   document it, and have the sweep report which files it silences.
+4. **Honest limit** (`:3055-3057`): the user's original combo-build crash remains
+   unexplained; `BB_NO_COMBO=1` stays as the escape hatch.
+**Escape-hatch design for future exhaustion**: see Appendix A §D-R5 — a reserved
+instrument-column sentinel that doesn't consume fx space (with the B21 correction: a plain
+same-instrument reselect is NOT free signalling — it is an unconditional restart on hardware,
+`:1396-1407` — so the design uses a *reserved index*, not a reselect).
+**Verification**: `py -3 pyscript/blackbird_sweep.py <label> --compare`, register note-on
+counts, and `audio-tightness.bat` (the register % barely moves even when the audible effect
+is large ✻).
+**Traps**: the corpus metric is measured against the *simulator*, one inference step from the
+SID — spot-check one file against a raw zig64 trace.
 
 ### R6. Galway + ROMUZAK `fp_dec` `cmp #$90` — filter ADD rows run as SET in the real editor — P0 · S per driver · Sonnet
 **Evidence** (measured): `pyscript/test_sf2ii_emulator_hazards.py:57-58` allowlists
@@ -412,6 +429,41 @@ block swallowed a `NameError` for 9 releases ✻.
 emitter); narrow to specific exceptions or log-and-reraise. Leave UI/automation sites alone.
 **Verification**: full test suite; one Laxity corpus conversion smoke test.
 
+### R31. `DriverSelector` dual accuracy dictionaries — P3 · S · Sonnet
+**Evidence** (measured): each `PLAYER_REGISTRY` entry carries an `'accuracy'` field
+(`sidm2/driver_selector.py:63` etc.) AND a second standalone accuracy dict exists at
+`driver_selector.py:119-124` repeating the same strings — two in-file sources that can
+drift. **Fix sketch**: derive the standalone dict from the registry (or delete it and fix
+its callers); fold into R4's registry work. **Verification**: `DriverSelector` unit tests.
+
+### R32. Compress CLAUDE.md's Known Limitations table — the per-session context tax — P3 · S · Sonnet
+**Evidence** (measured): several table cells are full paragraphs (the mainstream MoN/Tel row
+alone is ~200 words; DMC, Blackbird, SDI, Matt Gray rows similar). CLAUDE.md is loaded into
+**every** AI session, so this cost is paid on every turn of every future session — including
+all the fixing sessions this review feeds. The detail already lives in ACCURACY_MATRIX and
+`docs/players/*.md`. **Fix sketch**: one line per player (player → driver → headline number
+with window/scope qualifier → status → doc link); move anything longer into the per-player
+doc. Preserve the load-bearing caveats (vacuous-100 scopes, window-dependence) as short
+qualifiers, not prose. **Verification**: none mechanical — review that no unique fact is
+lost (each deleted sentence must exist in the linked doc; add it there if not).
+
+### R33. ACCURACY_MATRIX player-count drift — P3 · S · Sonnet
+**Evidence** (measured): the header says "All 12 ported players are now listed"
+(`docs/reference/ACCURACY_MATRIX.md:6`) — the native-builds table alone has 14 rows and Matt
+Gray (missing, see R28) makes 15. **Fix sketch**: fix the count when adding the Matt Gray
+row (R28); state the counting rule (a "player" = one locator/parser family; Myth/Supremacy
+count under MoN).
+
+### R34. Working-tree strays — triage before fixing sessions start — P3 · S · Sonnet
+**Evidence** (measured, `git status` this session): untracked `tools/Bobix.asm` and
+`tools/Disc-o-very.asm`; uncommitted modifications to `.gitignore` and
+`.claude/settings.local.json`. A fixing session will either trip over them or sweep them
+into an unrelated commit. **Fix sketch**: identify what the two `.asm` files are (probably
+prior-session disassembly scratch — the archive-before-explain protocol applies: explain,
+then archive or commit deliberately); commit or revert the `.gitignore` change on its own.
+**Traps**: do not bulk-`git add`; `.claude/settings.local.json` was modified before recent
+sessions and is deliberately unstaged ✻.
+
 ---
 
 ## Explicit non-goals
@@ -445,17 +497,17 @@ emitter); narrow to specific exceptions or log-and-reraise. Leave UI/automation 
 | D3 Hubbard kickoff | superseded — Hubbard V1/V2 shipped; remainder → **R8** |
 | D4 RE toolkit | carried → **R26** |
 | E1/E2/E4 audio infra | carried → **R25** |
-| E3c(a) retrigger signal | carried → **R5** |
+| E3c(a) retrigger signal | **stale in ROADMAP** — E3f closed it for the current corpus; verify-and-close + edge residuals → revised **R5** |
 | E3d fp_dec hazard | carried → **R6** |
 
 ## Suggested execution order (dependency-aware)
 
 | Wave | Items | Rationale |
 |------|-------|-----------|
-| 1 | **R6** (fp_dec), **R23** (probe oracle), **R21** (SM sweep), **R29** (test debt), **R28** (doc drift) | Small, independent, de-risk everything after; R6 is a today-broken editor behavior |
-| 2 | **R2** (caps) → **R3** (build lib) → **R1** (driver merge) | Consolidation in increasing risk order; each gated by byte-diffs |
+| 1 | **R6** (fp_dec), **R23** (probe oracle), **R21** (SM sweep), **R29** (test debt), **R28/R31/R33/R34** (doc drift + strays), **R5** (verify-and-close) | Small, independent, de-risk everything after; R6 is a today-broken editor behavior |
+| 2 | **R2** (caps) → **R3** (build lib) → **R1** (driver merge), **R32** (CLAUDE.md compression) | Consolidation in increasing risk order; each gated by byte-diffs; R32 cheapens every later session |
 | 3 | **R13** (FC Stage B) | Validates wave 2's consolidation on a real port |
-| 4 | **R5** (Blackbird retriggers), **R16** (filter seams), **R7** (Galway PWM) | P0 fidelity on the consolidated base |
+| 4 | **R16** (filter seams), **R7** (Galway PWM) | P0 fidelity on the consolidated base |
 | 5 | **R20** (memory-wall audit), **R18** (RLE flag), **R19** (dedup) | Part-count: cheap wins first |
 | 6 | **R17** (Stage C structural RE) | Flagship part-count work, Opus |
 | 7 | **R4** (registry) + **R24** (trace-first fallback) | Ship the pipeline: wire everything, add the universal fallback |
@@ -463,5 +515,203 @@ emitter); narrow to specific exceptions or log-and-reraise. Leave UI/automation 
 
 ---
 
+# Appendix A — Design pre-analyses for the hardest items
+
+*Added 2026-07-30. Purpose: pin the design decisions for the items that need the most
+reasoning, so the executing sessions implement rather than design. Each section states what
+was verified in code vs. what is proposed. Proposals are marked **[design — not validated]**.*
+
+## D-R5. Blackbird arming: the escape hatch for combo-space exhaustion
+
+**Verified context**: the sentinel/collision system has three layers today —
+`RESTART_ARM_FX = 63` for collision-free rows (`build_blackbird_native_song.py:94`), E3c(c)'s
+tail-row placement for multi-tick steps (`:1387-1394` — sentinel and real fx occupy
+*different* rows, so no collision), and E3f combo indices for single-tick fx-colliding rows
+(`:3025-3081`). Spare combo space = `RESTART_ARM_FX - (nfx_song + 1)`; every current corpus
+file fits (worst 25/26).
+
+**The failure mode this design covers**: a future file whose `nfx_song` is large enough that
+spare codes run out (`:3078` prints the drop). The fx command space is fixed at 64 values and
+cannot grow.
+
+**Proposal [design — not validated]: a reserved instrument-column sentinel.**
+An SF2 row has three channels: note, instrument ($a0–$bf → 32 indices), command ($c0–$ff).
+Gate (a) is a *command*-channel collision; the instrument channel on those rows is usually
+free. Reserve **instrument index 31 ($bf)** as "arm the pre-restart blip", exactly mirroring
+the fx-space sentinel design:
+
+- **Builder**: cap real instruments at 31 (`instrs[:31]`); when a single-tick armed step
+  carries a real fx change AND no combo code is available, emit `instrument=0x1F` on that row
+  instead of a combo command byte.
+- **Driver**: in `set_instr_v`, test for index $1F *before* the normal instrument-restart
+  path and set the arm flag instead of restarting. **Critical trap**: `set_instr_v` is
+  exactly where the SF2II `cpx`/`cpy` carry bugs lived (fixed in B23 ✻) — the new compare
+  must be `cmp #$1F`-style with both operands provably < $80 (they are: indices are 0–31),
+  and `pyscript/test_sf2ii_emulator_hazards.py` must stay green.
+- **Why a *reserved index* and not a same-instrument reselect**: B21 established
+  (`:1396-1407`) that a genuine instrument-select byte is an **unconditional restart** on
+  hardware — wavepos snaps to row 0, wavemask/AD/SR recommit — even when selecting the
+  already-active instrument. A reselect is therefore semantically loaded, not spare
+  signalling. Only a value the driver intercepts before the restart path is safe.
+- **Residual double-collision**: a row needing a genuine instrument select AND a genuine fx
+  change AND the arm. Both channels occupied → fall back to what B25 did (skip), or split
+  the step. Expected to be rare (measure first: extend the `:3062-3073` collision counter to
+  also record whether the colliding row carries an instrument select).
+- **Costs**: one instrument slot (32→31) — check whether any corpus file uses all 32 before
+  enabling (if one does, make the sentinel opt-in per song, only when combo space actually
+  exhausts).
+
+**Decision rule for the executor**: do NOT implement this until a real file hits the
+`:3080` "no spare combo index" message. It is designed now so the response to that message
+is a plan, not a session of re-derivation.
+
+## D-R17. Stage C structural synth-table RE (part-count flagship)
+
+**Verified context**: native builds unroll per-note (FM, pulse) bundles and wave/filter
+programs from traces; dense tunes blow bundles+instruments+wave-rows simultaneously
+(PLAYBOOK §3 ✻). Supremacy: 87 instruments → ~5 and 178 bundles → ~16 arp programs are
+achievable from the player's own tables ✻; the MoN arp parser is committed ✻ (locate it via
+`docs/players/MON.md` / git log — do not guess the filename).
+
+**The key architectural property — Stage B is Stage C's oracle.** The existing unrolled
+build is byte-exact ✻. Therefore the structural build has a perfect, *automatic* correctness
+test: emit both, compare the full per-frame register streams. Any mismatch = the structural
+model (table decode, loop point, phase) is wrong. No listening, no judgment calls, no
+tolerance thresholds. This makes Stage C safely incrementalizable:
+
+1. **Per-instrument hybrid rollout.** Build song parts where instruments whose structural
+   programs verify byte-identical use the compact form, and all others keep unrolled
+   programs. The corpus can never regress; coverage is a ratchet. (The builders already
+   support mixed program sources — the wave/pulse/FM tables are per-instrument-indexed.)
+2. **Transform layer** (the actual RE deliverable, per player): player synth-table semantics
+   → SF2 looping program rows. The three known mismatch classes to design against:
+   - *Loop grammar*: player tables loop at arbitrary points; SF2 wave programs loop via
+     `$7F`-jump rows — direct mapping, but the player's loop may re-enter mid-phrase
+     (attack + steady-loop split, the MoN `[attack][steady+loop]` shape ✻).
+   - *Tick phase*: the player advances its table on its own tick counter; the driver's
+     `wave_step` advances per driver-row/frame. If cadences differ, insert RLE frame counts
+     (MoN's RLE rows, `FEAT_WAVE_RLE` after R1) rather than resampling — resampling is lossy.
+   - *Note-relative arps*: player arps are semitone-relative; SF2's wave col1 semitone
+     column supports exactly this (Terra Cresta precedent ✻) — never bake absolute notes.
+3. **Bundle collapse**: per-note FM bundles that are really "program P at rate r" collapse
+   to one command per (P, r) pair. Count the distinct pairs FIRST — if slides take their
+   rate from the pattern stream, (P, r) pairs may still exceed 63, and the win comes from
+   wave/instrument collapse instead. The measurement is a one-day script on the existing
+   parsed data; do it before committing to the transform design.
+4. **Success metric order**: byte-exact preserved → then part count. A part-count win with
+   any register diff is a failure, full stop (lossless-only standing rule).
+
+**First target**: Supremacy sub2 (70 parts, engines cracked ✻). **Second**: Myth sub0
+(7 parts) — exercises the emulation-extracted path. **Then**: evaluate DMC/SDI bundle-bound
+files, which is where R17 starts paying beyond MoN.
+**Model**: Opus for the transform-layer RE per player; Sonnet for the hybrid-rollout
+scaffolding and the oracle diff harness (which is player-agnostic and should be built first).
+
+## D-R20. Memory-wall audit and adaptive Stage-A part length
+
+**Verified context** (from `sidm2/galway_driver11_emitter.py` this session): the Stage A
+path's real per-part constraints are:
+
+| # | Constraint | Where |
+|---|-----------|-------|
+| 1 | ≤128 sequence pointer slots, **one sequence per 256-byte slot** (`stride = di.sequence_size or 0x100`) — slots exist for SF2II's fixed-slot editor reads; heap-safety mandated | `emit_driver11_sf2` `:295-311`, comment `:286-294` |
+| 2 | ≤0xFA packed bytes AND ≤960 unpacked events per sequence | `_SEQ_BYTE_LIMIT:33`, `_SEQ_EVENT_LIMIT:46`, `segment_track:91` |
+| 3 | ≤`di.orderlist_size` bytes of orderlist per voice (256-byte slots, `:317`) — ~1–2 bytes per sequence play | `:313-333` |
+| 4 | C64 image top: `sequence_start + n_seqs*256` must stay below the driver's usable ceiling ("< $D000", PLAYBOOK §3) | template-dependent — **measure** |
+| 5 | The "~27,650 play-calls ≈ 9.2 min" time figure | PLAYBOOK §3 — **derivation unknown; find it** |
+
+Matt Gray's Stage A splits on **none of these** — it splits on a global
+`MAX_PART_FRAMES = 24_000` (`bin/mattgray_to_sf2.py:42`). Driller part01 uses 41 of 128
+slots = **10.5 KB of sequence data**, which suggests large headroom.
+
+**Audit plan (Sonnet, ~half a day):**
+1. **Resolve constraint 5 first.** `git log -S "27,650" -S "27650"` + PLAYBOOK history: is
+   the play-call ceiling a real mechanism (a counter, an editor structure that grows with
+   time) or a historical conflation of "the dense song we windowed happened to be 9.2 min"?
+   Tables are static during playback — nothing in the emitter grows with *time*, only with
+   *events*. If no mechanism is found, the wall is per-part **capacity**, not duration, and
+   constraint 5 dissolves into 1–4.
+2. **Measure constraint 4.** Parse the Driver 11 template's `di.sequence_start` and compute
+   `top = sequence_start + 128*256`; report slack vs $D000. This gives the true max slot
+   count per part.
+3. **Replace the constant with a capacity probe.** `segment_track` already produces the
+   exact packed sequences for any row range — binary-search the max frame count whose
+   emission satisfies constraints 1–4 (the Stage-A analog of the native builders' `fits()`;
+   share the loop via R2's `pack_adaptive_windows`). Per-song, not global.
+4. **Expected outcome [design — not validated]**: Driller at 41 seqs / 24,000 frames scales
+   to ~120 seqs / ~70,000 frames if slots are the binding constraint — i.e. **Driller in one
+   file** (needs 33,280). Validate with the existing byte-exact sequence round-trip check ✻
+   and a full-duration SF2II play-test (after R23).
+5. **Optional deeper lever [investigate before trusting]**: `di.sequence_size` (the 256-byte
+   slot stride) comes from the file header. If SF2II honors a smaller `m_SequenceSize`
+   (check `datasource_sequence.cpp` in the SF2II source), short-sequence songs could halve
+   slot memory — but this touches the editor's parser, the exact hazard class that shaped
+   B25; only pursue with `sf2ii_vs_real.py` + editor load tests as the gate.
+
+**Trap**: whatever raises part length must keep every per-sequence cap intact — the
+1024-event `Unpack` overflow is heap corruption that can pass a short play-test.
+
+## D-R24. Universal trace-first fallback (the "any SID" lever)
+
+**Verified context**: a pure trace-driven native build already exists and ships — Galway's
+(`bin/build_galway_trace_song.py`, no static score, legato/gate segmentation ✻). Myth proved
+external-trace injection into the MoN build path ✻. The tracer stack is mature with
+fail-closed semantics (zig64 `FAILED:` + vsid escape hatch ✻). **R24 is therefore a
+generalization, not an invention**: lift `build_galway_trace_song`'s note-extraction core
+out of its Galway wiring and target the common driver (after R1–R3).
+
+**Architecture [design — components exist unless marked new]:**
+```
+SID → tracer chain (zig64 → vsid fallback; ≥200 frames; assert nonzero writes; fail closed)
+    → per-frame register table (fidelity_common parsers)
+    → per-voice note segmentation (settled-pitch + gate; tie flags)        [exists, Galway]
+    → instrument identity WITHOUT a parser                                  [NEW — see below]
+    → per-note (FM, pulse) bundle extraction + greedy_cluster to 63        [exists]
+    → wave/filter program extraction (gate-envelope, SET+ADD cutoff)       [exists]
+    → tempo/row inference                                                   [NEW — see below]
+    → common native driver build + caps windowing (R1–R3)
+    → measurement ladder §4 + acceptance gate
+```
+**The two genuinely new components:**
+1. **Instrument identity from the trace.** Without a parser there are no instrument numbers.
+   Cluster note-events by their observable signature: (AD, SR, waveform sequence prefix
+   (first ~8 frames), pulse-init, filter-routing). Two instruments the clustering merges
+   wrongly produce a register diff the validator catches; two it splits wrongly cost
+   instrument slots (cap 32 → reuse the greedy nearest-merge machinery with the audibility
+   distance ✻). The register-fidelity metric makes clustering errors visible, so this can
+   ship conservative and improve.
+2. **Tempo/row inference.** Derive the row grid from the onset lattice (GCD of inter-onset
+   frame deltas, per voice, mode across the song). Two mandatory fallbacks: (a) fractional
+   tempos → tempo *chains* (the emitter supports lists — `galway_driver11_emitter.py:237-253`,
+   Deenen groove precedent); (b) no stable lattice → tempo 1 (one row per frame) — always
+   correct, costs sequence space, and the caps windowing already handles the consequence.
+   Never guess a "musical" tempo that drops onsets.
+
+**Scope guards (refuse loudly, don't approximate)**: digi/$D418 sample engines (detect: dense
+$D418 writes), 2SID/3SID, hard multispeed (>1 play-call per frame — detectable from trace
+density; support later by emitting N driver ticks per frame as `sf2ii_vs_real` already
+models ✻).
+**Acceptance gate**: per-register fidelity vs the *same trace* ≥95% on every register, else
+route to the existing Driver 11/embed fallback with a printed reason. An unverifiable build
+(tracer failed) must never emit — the zig64-gate lesson: assert the evidence exists ✻.
+**Rollout**: ship as the `PLAYER_REGISTRY` unknown-player fallback (with R4), behind
+`--trace-native` first; qualification = run over a mixed never-RE'd HVSC sample (~30 files)
++ regression over the Galway corpus (must match the existing trace-native results).
+**Model**: Opus for the two new components; Sonnet for the plumbing and the qualification
+harness.
+
+## Review coverage note (honesty statement)
+
+This review went deep on the native-driver/player-port side and lighter elsewhere: the
+Laxity converter internals (`laxity_parser/converter`, `sf2_packer`), the GUI tools, the
+Python siddump/SIDwinder implementations, and the 5 CI workflows received doc-level review
+only. That weighting matches where the open problems are, but no one has adversarially read
+the production Laxity path recently; if a Laxity regression surfaces, start with a fresh
+review of that code, not this document.
+
+---
+
 *Review conducted 2026-07-30, code-reading only, on branch `mattgray-driller-stage-a`.
-Doc-claimed (not re-measured) numbers are marked ✻ throughout.*
+Doc-claimed (not re-measured) numbers are marked ✻ throughout. Appendix A and R31–R34 added
+the same day after a code-grounded design pass (which also produced the R5 status
+correction).*
