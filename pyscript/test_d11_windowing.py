@@ -80,6 +80,30 @@ def test_empty_grid_does_not_hang_or_raise():
     assert plan_row_windows([[], [], []]) == [(0, 0)]
 
 
+def test_dedup_false_counts_the_way_the_segmenting_emitter_does():
+    """`dedup` must match how the emitter will be called.
+
+    `emit_driver11_sf2(song)` (no explicit sequences) packs `song.tracks` in its
+    own segmenting branch, which does NOT deduplicate -- it appends every packed
+    sequence. Planning with dedup=True there underestimates, so the planner says
+    "fits" and the emitter then truncates. That is exactly how Galway's
+    Short_Circuit kept losing 29 sequences after the first fix attempt.
+    """
+    one = _rows(2000)
+    grid = [list(one), list(one), list(one)]      # three identical voices
+    deduped, _ = pack_rows_window(grid, 0, 2000, dedup=True)
+    raw, raw_ols = pack_rows_window(grid, 0, 2000, dedup=False)
+    assert len(raw) > len(deduped), "dedup=False must not collapse duplicates"
+    assert len(raw) == sum(len(o) for o in raw_ols), \
+        "undeduped count must equal one sequence per orderlist entry"
+
+
+def test_dedup_false_plans_more_parts_than_dedup_true():
+    grid = [_rows(9000), _rows(9000, 3), _rows(9000, 11)]
+    assert len(plan_row_windows(grid, dedup=False)) >= \
+        len(plan_row_windows(grid, dedup=True))
+
+
 # --------------------------------------------------------------------------
 # Orderlist-entry windows (Sound Monitor's shape)
 # --------------------------------------------------------------------------

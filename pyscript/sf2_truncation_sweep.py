@@ -20,7 +20,9 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# player -> (builder script, corpus glob)
+# player -> (builder script, corpus glob). Every Stage A builder that shares
+# `galway_driver11_emitter` belongs here -- that emitter is what truncates, so
+# any builder reaching it can lose music.
 CORPORA = {
     "sdi":          ("bin/sdi_to_sf2.py",          "SID/Gallefoss_Glenn/*.sid"),
     "soundmonitor": ("bin/soundmonitor_to_sf2.py", "SID/Fun_Fun/*.sid"),
@@ -28,7 +30,15 @@ CORPORA = {
     "mon":          ("bin/mon_to_sf2.py",          "SID/Tel_Jeroen/*.sid"),
     "romuzak":      ("bin/romuzak_to_sf2.py",      "SID/Fun_Fun/*.sid"),
     "deenen":       ("bin/deenen_to_sf2.py",       "SID/deenen/*.sid"),
-    "kimmel":       ("bin/kimmel_to_sf2.py",       "SID/Kimmel_Jeroen/*.sid"),
+    "kimmel":       ("bin/kimmel_to_sf2.py",       "SID/Red_kommel_jeroen/*.sid"),
+    "hubbard":      ("bin/hubbard_to_sf2.py",      "SID/Hubbard_Rob/*.sid"),
+    "mattgray":     ("bin/mattgray_to_sf2.py",     "SID/Gray_Matt/*.sid"),
+    # The DEFAULT shipped converter (sid-to-sf2.bat -> conversion_pipeline),
+    # not a bin/ side tool -- the one path an end user actually runs. Its ONLY
+    # call to emit_driver11_sf2 is the Galway path (conversion_pipeline.py:688),
+    # so Galway rips are what exercise the cap here. Laxity -> the Laxity driver
+    # uses a different packer entirely and cannot hit this table.
+    "pipeline":     ("scripts/sid_to_sf2.py",      "SID/Galway_Martin/*.sid"),
 }
 
 # "43 DROPPED" (caller-supplied branch) or "N sequence(s) exceed" (segmenting).
@@ -42,21 +52,36 @@ def sweep(player, limit=None):
         print(f"{player}: no corpus files matched {pattern} -- skipping")
         return None
 
+    # Always pass an explicit output path in a scratch dir. Several builders --
+    # scripts/sid_to_sf2.py among them -- default their output NEXT TO THE INPUT
+    # when none is given, which spraying over a read-only corpus directory
+    # (SID/Laxity picked up 286 stray .sf2/.txt pairs before this was fixed).
+    scratch = os.path.join(ROOT, "out", "_truncation_sweep", player)
+    os.makedirs(scratch, exist_ok=True)
+
     affected, built, refused, worst = [], 0, 0, 0
     for f in files:
+        dest = os.path.join(
+            scratch, os.path.splitext(os.path.basename(f))[0] + ".sf2")
         try:
             p = subprocess.run(
-                [sys.executable, os.path.join(ROOT, script), f],
+                [sys.executable, os.path.join(ROOT, script), f, dest],
                 cwd=ROOT, capture_output=True, text=True, timeout=300)
         except subprocess.TimeoutExpired:
             continue
         blob = (p.stdout or "") + (p.stderr or "")
-        if "not the supported" in blob or "ERROR" in blob or p.returncode != 0:
+        # Classify on the EXIT CODE plus explicit refusal phrases. A bare
+        # "ERROR" substring is not a refusal: the default pipeline logs its own
+        # diagnostic ERROR lines on a successful run, which misfiled all 286
+        # Laxity conversions as "refused" and made the tally unreadable.
+        refused_markers = ("not the supported", "not a located",
+                           "no subtune-select support", "not a Sound Monitor",
+                           "skipping", "Traceback")
+        if p.returncode != 0 or any(k in blob for k in refused_markers):
             refused += 1
-            if "DROPPED" not in blob and "exceed" not in blob:
-                continue
         else:
             built += 1
+        # Scan for a drop either way -- a builder can emit AND lose music.
         m = DROP_RE.search(blob)
         if m:
             n = int(m.group(1) or m.group(2))

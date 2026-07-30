@@ -118,8 +118,31 @@ planners grow by doubling then binary-search the edge, count post-**dedup** (ded
 most songs fit at all — counting before it over-splits), and emit a single full-span window when
 the song fits, so files that never needed splitting stay **byte-identical**. Convention: a split
 song becomes `NAME_partNN.sf2` and the superseded single file is deleted, so nobody opens the
-truncated one. Measured on the SDI + SM corpora: 339 byte-identical, 15 newly split, 0 unexpected
-diffs (`pyscript/sf2_truncation_sweep.py`).
+truncated one.
+
+⚠️ **`dedup` must match how you will call the emitter.** Passing explicit
+`sequences=`/`orderlists=` uses them as given (plan with `dedup=True`); passing a bare `song`
+lets the emitter's own segmenting branch pack `song.tracks`, and **that branch does not
+deduplicate**. Planning post-dedup for the bare-`song` path underestimates, so the planner says
+"fits" and the emitter truncates anyway — which is precisely how Galway's `Short_Circuit` kept
+losing 29 sequences after the first fix attempt.
+
+**Full audit of every builder sharing the emitter (2026-07-30).** Sweep with
+`pyscript/sf2_truncation_sweep.py <player>`; it rebuilds and reads the emitter's warning, which
+is the only oracle that knows what was *requested*.
+
+| path | built | lost music | now |
+|---|---|---|---|
+| SDI Stage A | 343 | 13 | ✅ split (`plan_row_windows`) |
+| Sound Monitor Stage A | 11 | 2 | ✅ split (`plan_entry_windows`) |
+| **default pipeline** (Galway path) | 40 | 1 | ✅ split; `output_path` stays part 1 so the caller's contract holds |
+| Hubbard Stage A | 89 | 1 | ⚠️ **open** — no common time base, see `HUBBARD.md` |
+| MoN / ROMUZAK / FC / Deenen / Kimmel / Matt Gray | 179/20/5/7/4/6 | 0 | — |
+| Blackbird Stage A | 16 | 0 | not a shipped CLI (test-only) |
+
+Regression gate across all fixes: **378 byte-identical, 0 unexpected diffs, 16 newly split.**
+Laxity → the Laxity driver never touches this table (different packer), so the 286-file Laxity
+corpus is out of scope — check *which emitter a path actually reaches* before sweeping it.
 
 **Never run `pytest` while an SF2II play-test is in flight.** `pyscript/conftest.py` used to kill
 every `SIDFactoryII` process on the machine at session end (two paths, one of them silent);

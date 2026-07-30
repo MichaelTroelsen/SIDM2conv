@@ -688,15 +688,55 @@ def convert_galway_to_sf2(input_path: str, output_path: str, config: ConversionC
                     from sidm2.galway_driver11_emitter import emit_driver11_sf2
                     song = galway_to_driver11(state)
                     if song.note_count >= 16:
-                        sf2_bytes = emit_driver11_sf2(song)
-                        with open(output_path, 'wb') as f:
-                            f.write(sf2_bytes)
+                        # Driver 11 holds 128 sequence pointers; past that the
+                        # emitter TRUNCATES, dropping sequences and the
+                        # orderlist entries that reference them, so the file
+                        # plays but is missing music (measured 2026-07-30:
+                        # Short_Circuit lost 29 of 157 sequences here). Window
+                        # the song instead. Galway's Stage A song carries a
+                        # per-voice row grid, so a row cut is aligned across
+                        # voices; a song that fits yields ONE full-span window
+                        # and is emitted exactly as before.
+                        from sidm2.d11_windowing import (
+                            pack_rows_window, plan_row_windows)
+                        # dedup=False: the single-window path below hands the
+                        # emitter a bare `song`, and its segmenting branch does
+                        # not deduplicate, so the plan must count the same way.
+                        windows = plan_row_windows(song.tracks, dedup=False)
+                        stem, ext = os.path.splitext(output_path)
+                        written = []
+                        for i, (lo, hi) in enumerate(windows, 1):
+                            if len(windows) == 1:
+                                sf2_bytes = emit_driver11_sf2(song)
+                                dest = output_path
+                            else:
+                                seqs, ols = pack_rows_window(song.tracks, lo, hi)
+                                sf2_bytes = emit_driver11_sf2(
+                                    song, sequences=seqs, orderlists=ols)
+                                # Part 1 also takes the caller's requested path,
+                                # so the promised output always exists and is a
+                                # valid module -- callers and batch tooling
+                                # depend on that path being there.
+                                dest = output_path if i == 1 else \
+                                    f"{stem}_part{i:02d}{ext}"
+                            with open(dest, 'wb') as f:
+                                f.write(sf2_bytes)
+                            written.append((dest, len(sf2_bytes), lo, hi))
                         logger.info(
                             "Galway -> Driver 11 conversion successful "
                             f"({song.note_count} notes, {len(song.instruments)} "
                             f"instruments, tick {song.tempo}, subtune {song.subtune})")
-                        logger.info(f"  Output: {output_path} "
-                                    f"({len(sf2_bytes)} bytes)")
+                        if len(written) > 1:
+                            logger.warning(
+                                f"  Song needs more than the 128 Driver 11 "
+                                f"sequence slots, so it was split into "
+                                f"{len(written)} PARTS. {output_path} is part 1 "
+                                f"of {len(written)} -- open the others to hear "
+                                f"the rest of the song.")
+                        for dest, nbytes, lo, hi in written:
+                            logger.info(f"  Output: {dest} ({nbytes} bytes"
+                                        + (f", rows {lo}-{hi})"
+                                           if len(written) > 1 else ")"))
                         return True
                     logger.info(
                         f"  Driver 11 transpile yielded only {song.note_count} "

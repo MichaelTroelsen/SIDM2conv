@@ -112,6 +112,28 @@ The build measures itself with `bin/mon_part_fidelity.py PART SONG SECS OFF0` (s
 
 **~19 distinct tunes build today; ~28 decode ≥95%.** The two biggest unlocks remaining: (a) the state-region relocation (turns 7 validated files playable), (b) the spin-class trace path.
 
+### Stage A open defect: `Kings_of_the_Beach_intro` is missing music (1 of 89)
+
+Measured 2026-07-30 (`pyscript/sf2_truncation_sweep.py hubbard`): it needs **153**
+sequences, Driver 11's pointer table holds **128**, so **25 are dropped** — along
+with the orderlist entries referencing them. It now says so on stderr instead of
+failing silently, but it is **not fixed**.
+
+It is the one affected builder that **cannot use the shared windower**
+(`sidm2/d11_windowing.py`). Both planners there rely on a position that means the
+same thing in every voice; Hubbard has none. Each voice walks its **own** pattern
+list (`m.track_patterns(song, v)`), and measured on this file the voices are
+wildly different lengths — orderlists **294 / 322 / 14** entries, totalling
+**177212 / 153105 / 12887** rows. Voice 3 is 7% the length of voice 1 and loops
+independently, so there is no common row or entry index to cut on: a row cut
+would leave voice 3 empty for most of the song, and an entry cut lands at a
+different musical position in each voice.
+
+Fixing it properly means either modelling Hubbard's per-voice loop structure
+across parts, or reducing the sequence count upstream. Deliberately not guessed
+at — an unsound split would trade silent truncation for silent desync, which is
+worse because it looks like it worked.
+
 ---
 
 ## Files

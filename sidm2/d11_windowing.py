@@ -38,31 +38,41 @@ __all__ = ["pack_rows_window", "plan_row_windows",
 MAX_SEQUENCES = _MAX_SEQUENCES
 
 
-def pack_rows_window(all_rows, lo, hi):
+def pack_rows_window(all_rows, lo, hi, dedup=True):
     """(sequences, orderlists) for rows [lo, hi) of a 3-voice row grid.
 
-    Sequences are deduplicated across all three voices, exactly as the Stage A
-    builders do it -- dedup is what makes many songs fit at all, so the planner
-    must count post-dedup or it will split songs that did not need splitting.
+    `dedup` MUST match how the emitter will be called, or the plan is wrong:
+
+    * ``True``  -- the caller will pass these `sequences`/`orderlists` to
+      `emit_driver11_sf2`, which uses them as given. Identical sequences share a
+      slot, which is what makes many songs fit at all.
+    * ``False`` -- the caller will pass a bare `song` and let the emitter's own
+      segmenting branch pack `song.tracks`. **That branch does not dedup**: it
+      appends every packed sequence. Counting post-dedup there UNDERESTIMATES,
+      so the planner reports "fits" for a song the emitter then truncates --
+      exactly what happened to Galway's `Short_Circuit` (157 sequences
+      undeduped, under the cap once deduped, 29 dropped).
     """
     sequences, orderlists, seq_index = [], [[], [], []], {}
     for v in range(3):
         rows = all_rows[v][lo:hi] if v < len(all_rows) else []
         for pk in segment_track(rows):
-            idx = seq_index.get(pk)
+            idx = seq_index.get(pk) if dedup else None
             if idx is None:
                 idx = len(sequences)
-                seq_index[pk] = idx
+                if dedup:
+                    seq_index[pk] = idx
                 sequences.append(pk)
             orderlists[v].append(idx)
     return sequences, orderlists
 
 
-def plan_row_windows(all_rows, cap=None):
+def plan_row_windows(all_rows, cap=None, dedup=True):
     """[(lo, hi), ...] row windows whose packed sequences each fit `cap`.
 
     Returns a single full-span window when the whole song fits, so a song that
-    never needed splitting is emitted byte-identically to before.
+    never needed splitting is emitted byte-identically to before. See
+    `pack_rows_window` for why `dedup` must match the emitter call you intend.
     """
     cap = MAX_SEQUENCES if cap is None else cap
     total = max((len(r) for r in all_rows), default=0)
@@ -70,7 +80,7 @@ def plan_row_windows(all_rows, cap=None):
         return [(0, 0)]
 
     def fits(lo, hi):
-        return len(pack_rows_window(all_rows, lo, hi)[0]) <= cap
+        return len(pack_rows_window(all_rows, lo, hi, dedup)[0]) <= cap
 
     return _plan(total, fits)
 
