@@ -188,6 +188,7 @@ Technical analysis, validation results, and findings:
 | [STATUS.md](STATUS.md) | **Current project status** - Features, recent changes, roadmap | v2.3.0 |
 | [IMPROVEMENT_PLAN.md](../archive/cleanup_2026-04-28/old_docs/completion_reports/IMPROVEMENT_PLAN.md) (archived) | Improvement planning and tracking |
 | [ROADMAP.md](ROADMAP.md) | Project roadmap |
+| [CODE_REVIEW_2026-07.md](CODE_REVIEW_2026-07.md) | **Full toolchain + player code review** (2026-07-30) — 30 prioritized items (fidelity, part-count, consolidation) with evidence, fix sketches, and execution order; supersedes ROADMAP's open-item list |
 
 ---
 
