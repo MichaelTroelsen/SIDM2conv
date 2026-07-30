@@ -1,404 +1,454 @@
 <original_task>
-Two-part request, in sequence:
+Two requests, in sequence:
 
-1. "lets work on matt_gray ... Last_Ninja2 is his most rated. can you list his
-   top 5 most rated songs" -- rank Matt Gray's HVSC tunes by rating/popularity.
-   Corpus: `C:\Users\mit\Downloads\HVSC_85-all-of-them\C64Music\MUSICIANS\G\Gray_Matt`
+1. "we have now build severel SID2SF2 for several target players ... we are still
+   facing issue with 100% fidelity and some songs need to be splited into severel
+   files. Please do a full code review of the whole tool chain and the players and
+   come back with a list of suggestions on how to fix fidelity and number of files
+   per song or any other improvement and put them into a and MD for sonnet of opus
+   to fix."
 
-2. "yes, start Stage A on Driller" -- then, in follow-ups: commit, run the real
-   SF2II play-test, "go with last ninja", "fix the onset drift", "do next"
-   (Tusker), "do deliverance and quedex".
+   Scope agreed via AskUserQuestion: **everything** (core pipeline + all ~15 player
+   ports), **code reading only** (no sweeps re-run for the review itself), output to
+   **`docs/`**.
 
-Scope = RE + Stage A (Driver 11 transpile) for the Matt Gray player family.
-Stage B (native driver) was never in scope.
+2. Then, across many "go on" / "continue" turns: **execute the review's items**,
+   with the standing instruction *"it is important that we test so we do not break
+   anything."* Waves 1-5 of the review's own execution order were completed.
 
-NOTE: this file previously held the Blackbird->pivot handoff. Blackbird is
-CLOSED at v3.22.0; Matt Gray was the pick and is the subject below.
+NOTE: this file previously held the **Matt Gray** handoff (Driller/LN2/Tusker Stage
+A, HEAD 9e00576). That work is CLOSED and shipped; its still-open items
+(Deliverance, Quedex, LN2/Tusker play-tests) are carried forward below under
+"Matt Gray leftovers" so they are not lost.
 </original_task>
 
 <work_completed>
 
-## Part 1 -- the popularity ranking (delivered, no code)
+## Branch / commits
 
-**Method note that matters:** DeepSID's per-file `rating` field is the
-LOGGED-IN USER'S OWN rating (`php/music.php` joins `ratings` on `user_id`), so
-an anonymous API pull returns 0 for every file. It is NOT a public average.
-Also `music.php` requires header `X-Requested-With: XMLHttpRequest` AND the
-folder path prefixed `/_High Voltage SID Collection/...`; anything else 500s.
-Drove it via `javascript_tool` inside the page's own origin.
+Branch **`mattgray-driller-stage-a`**, pushed, level with origin. Working tree
+**clean**. 21 commits this session, from `e75700d` to **`2c20e26`**.
 
-Ranking built from **Remix.Kwed.Org remix counts**, scraped across all 4
-composer-search result pages and aggregated by the DeepSID original-tune link
-on each remix row (178 remixes over 13 tunes):
+| commit | item |
+|---|---|
+| `ee13f6e` | the review doc itself (30 items) |
+| `7fcac5f` | review Appendix A (design pre-analyses) + R31-R34 + R5 status correction |
+| `cad8542` | R34 - gitignore `.tokensave/` |
+| `6d2b6dd` | R28/R31/R33 - Matt Gray matrix row, player count, dual accuracy dicts |
+| `7cff00f` | R23 - `probe_once()` crash oracle |
+| `22da326` | R5 - Blackbird E3c(a) verify-and-close |
+| `33e8e0a` | R6 - Galway/ROMUZAK `cmp #$90` SF2II hazard |
+| `b24899e` | R21 - Sound Monitor sweep made reproducible |
+| `b37fb47` | R2 - `sidm2/sf2_caps.py` |
+| `f411b4b` | R3 - `sidm2/native_build.py` |
+| `80a70d2` | R3b - explicit tempo/n_rows params |
+| `e668cda` | docs: R2/R3 status + premise corrections |
+| `4a133c3` | R1 - driver merge (-1227 lines, byte-identical) |
+| `ebe5934` | docs: R1 status + ROADMAP A5 warning |
+| `adf4982` | chore: `.claude/settings.local.json` (user asked) |
+| `f797e3f` | R13 - Future Composer Stage B |
+| `910b9b1` | docs: R16 closed (measured) |
+| `dde449e` | R7 - re-diagnosis |
+| `25ed1c6` | R20 - measured capacity, Driller 2 files -> 1 |
+| `7a813fd` | docs: R20 recorded |
+| `2c20e26` | R18 closed / R19 downgraded |
 
-| # | Tune | Remixes |
-|---|------|--------:|
-| 1 | Last_Ninja_2 | 121 |
-| 2 | Tusker | 15 |
-| 3 | Deliverance | 9 |
-| 4 | Driller | 8 |
-| 5 | Quedex | 5 |
+Test suite: **1693 -> 1747 passed**, 7 skipped, 2 xfailed, **0 failures**.
 
-Runners-up: Vendetta 4, Bangkok_Knights_Loader 4, Mean_Streak 3, Dominator 3.
-Last Ninja 2 alone = 68% of his RKO output, matching Remix64's own
-retrospective ("almost three quarters").
+## Deliverable 1 - the review: `docs/CODE_REVIEW_2026-07.md`
 
-Cross-checks: HVSC Top 100 lists only Last Ninja 2 (#12) and Driller (#54); the
-1997 sidmusic.org chart lists Last Ninja 2 (7 votes), Driller (4), Quedex (2).
-**Tusker and Deliverance rest on the remix count ALONE.**
+34 items (R1-R34) across 5 tracks (Consolidation / Fidelity / Part-count /
+Measurement infra / Hygiene), each with `file:line` evidence, fix sketch,
+verification recipe, trap notes, and a Sonnet-vs-Opus recommendation. Plus
+**Appendix A** with design pre-analyses for R5/R17/R20/R24, a ROADMAP
+cross-reference table, and a dependency-aware execution order (waves 1-8).
+Linked from `docs/INDEX.md`.
 
-Within Last_Ninja_2.sid, remix demand concentrates on subtune 2 (35) and
-subtune 12 (30).
+## Deliverable 2 - executed items
 
-## Part 2 -- TDZ knowledge base
+### Wave 1 (all shipped)
+- **R34** working-tree triage. `tools/Bobix.asm` + `tools/Disc-o-very.asm` were
+  orphaned SIDdecompiler output -> moved to `archive/experiments/` (which is
+  gitignored - the repo's own scratch-parking convention). `.gitignore` +=
+  `.tokensave/`.
+- **R28/R33** `docs/reference/ACCURACY_MATRIX.md`: added the **missing Matt Gray
+  row**; fixed the stale "all 12 ported players" header (15 families; counting rule
+  now stated).
+- **R31** `sidm2/driver_selector.py`: `EXPECTED_ACCURACY` duplicated three of
+  `PLAYER_REGISTRY`'s accuracy strings -> laxity/np20/galway now derive from the
+  registry. `driver11_sf2`/`driver11_default` stay literal (no registry equivalent).
+- **R23** `pyscript/blackbird_crash_probe.py` + `pyscript/sf2_open_in_editor.py`:
+  the crash oracle reported a **user-closed window as CRASHED**. Root cause:
+  `_spawn_detached` returned a bare pid, and Windows drops an exited process from
+  the table, so its exit code was unrecoverable. Now returns the **Popen object**
+  (CPython keeps its handle regardless of DETACHED_PROCESS) and classifies via a new
+  pure `classify_termination(exit_code)`: `None`->SURVIVED, `0`->**CLOSED**,
+  else->CRASHED. CLOSED is excluded from `tally()`'s crash-rate denominator. Added
+  opt-in periodic screenshots (`shot_interval`, off by default).
+- **R21** `pyscript/soundmonitor_sweep.py` + `pyscript/test_soundmonitor_sweep.py`
+  (NEW, 14 tests). The 99.23% SM headline came from **untracked**
+  `bin/_opt_sweep_corpus.py`, which parsed a log only produced by a second untracked
+  script. New sweep is self-contained (builds all 11 songs itself, parses part
+  windows from each build's own live stdout). **Ran it: 99.252% over all 27/27
+  parts** - reproducing SOUNDMONITOR.md's own predicted "restoring Dance part01
+  gives 99.25%".
+- **R5** Blackbird E3c(a): **status corrected, not fixed**. ROADMAP called it the
+  "highest remaining audible payoff"; the code shows **E3f already closed it**
+  (`build_blackbird_native_song.py:3025-3081` allocates combo fx indices; every
+  corpus file fits, worst 25/26 spare). Re-ran the sweep: ADSR **100.0** on
+  Glyptodont+Fargo. Shipped the real residuals: `combo_dropped_*` now surfaced in
+  `blackbird_sweep.py`'s JSON, and the previously-silent `min_tempo_song < 3`
+  no-arming guard now prints. Builder edit verified a byte-identical no-op.
+- **R29** full suite re-run (had not been run since `eae7325`).
+- **R6** `drivers_src/{galway,romuzak}` `fp_dec`: `cmp #$90` -> `cmp #$80`. SF2II's
+  CMP carry is wrong for |A-op|>127, so **every filter ADD row executed as a SET row
+  in the real editor** while every offline emulator read clean. Verified by
+  **git-stash A/B: exactly ONE byte differs** (the cmp operand, `$90`->`$80` at
+  offset `$4a7`). Emptied `KNOWN_UNFIXED` in
+  `pyscript/test_sf2ii_emulator_hazards.py`. MoN's copy already used `bmi` (immune);
+  Blackbird fixed in B24.
 
-`mcp__tdz-c64-knowledge` was initially unreachable (never finished connecting);
-the user reconnected it via `/mcp`. It already held a **`matt-gray`
-player-routine card** (`status: verified`), plus **SIDin #2** ("Matt Gray's
-Driller music routine") and **SIDin #3** (fingerprinting his engine by its
-portamento-flag check) -- both worth reading before further RE.
+### Wave 2 - consolidation (all shipped, all byte-verified)
+- **R2** `sidm2/sf2_caps.py` (NEW). `CAP_B,CAP_I,CAP_TBL,CAP_SEG,STEP = 63,32,256,
+  120,100` was re-declared identically in **6** builders; `ST_FIRST,ST_LAST =
+  0x16cc,0x1702` in **3** driver_full assemblers. All 9 import now. Blackbird keeps
+  its deliberate `CAP_B=96` **and `STEP=150`** override (the STEP part was not in the
+  review). A/B: **all 7 native builders byte-identical**.
+- **R3** `sidm2/native_build.py` (NEW) + `pyscript/test_native_build.py` (13 tests).
+  **Corrected the review's premise**: `gen_includes_song` is NOT a "~180-line
+  identical skeleton" - the three signatures take genuinely different data and their
+  middles lay out per-player tables. What IS shared: a **22-line byte-identical
+  prologue** (-> `make_native_gen` + `lay_out_sequences`) and the
+  relative->absolute jump-target fixup, **one expression hand-copied 5 times** and
+  the site of a real shipped bug (Blackbird's "B3 BUG FOUND": `(r + b2)` instead of
+  `(start + b2)`) -> `program_jump_col`. Deliberately NOT converted after reading
+  each site: Galway's filter block uses the row index **on purpose** (freeze-
+  terminated programs, a third semantic) and the pulse tables use a fourth rule
+  (jump -> 0). A/B: Galway/ROMUZAK/MoN/Blackbird byte-identical.
+- **R3b** the mutable-global hazard. `build_galway_trace_song` set `B.TEMPO` on the
+  *driver_full* module so `build_galway_native_song` (a **third** module) could read
+  it back; `headless_audio` read `TEMPO`/`N_ROWS` from its own scope after callers
+  mutated them. Now explicit `tempo=`/`n_rows=` params with a `None`->old-global
+  fallback (so untouched consumers are unaffected). Removed a genuinely dead line
+  (`B.TEST_INSTR = instrs`). A/B: 4 players byte-identical.
+- **R1** driver merge. `drivers_src/common/sf2_native_driver.asm` (NEW) is the
+  shared engine; `galway/`+`romuzak/` are 23-line feature-selection shims
+  (`FEAT_DRUM_ROWS`, `FEAT_SEEK_PULSE`, `FEAT_INSTR_PULSE`). **Net -1227 lines.**
+  Gate met: **assembled machine code byte-identical for both players** (`.prg` and
+  wrapped `.sf2`), plus 4 players' real songs byte-identical and the full 40-tune
+  Galway corpus 40/40.
+  **Overturned A1's 3-way proposal by measurement**: galway<->romuzak is **4 hunks =
+  3 clean feature blocks**; mon<->romuzak is **51 scattered hunks**; blackbird ~1962
+  diff lines. 51 interleaved `.if`s would cost more than the duplication saves.
+  Evidence it's the right split: this session's own R6 fix had to touch galway AND
+  romuzak, and **neither** mon (already `bmi`) nor blackbird (fixed in B24).
 
-I **updated the card in place** (`update_document`, card id `matt-gray`
-preserved, old version superseded) with:
-- Corrected attribution: Hunter's Moon is a **co-credit** -- the HVSC PSID
-  author field reads `Matt Gray & Martin Walker`. The card had it as a plain
-  Matt Gray credit; the 1997 chart credited Martin Walker alone. Both
-  half-right. It is the ONLY co-credit among the 55 files.
-- A corroboration the card lacked: Driller's PSID header (`init=$15E0 /
-  play=$0E46`) matches the Codebase64 disassembly EXACTLY.
-- Porting gotcha: Tusker's `play=$E002` sits under KERNAL ROM.
-- The popularity ranking + the DeepSID rating trap, scoped as third-party data.
+### Wave 3
+- **R13 Future Composer Stage B** - `bin/build_fc_native_song.py` (NEW) +
+  `pyscript/test_fc_native_song.py` (17 tests). FC was the last ported player with
+  no native driver, chosen as the test that R1-R3 generalizes. **It added no new
+  driver and no new engine code**: a MON-compatible `FCShim` feeds the shared
+  trace-driven `build_native_song`, and it consumes R2's `sf2_caps`.
+  **Result: 14 of 15 corpus voices at exactly 100.0% audible per-frame pitch over
+  FULL song length** (5 rips, per-voice n 346-2253). Note placement independently
+  **frame-exact** (decode onsets == trace gate-rises, delay +0). Sole residual
+  Triangle_Intro v1 **83.6%**/633fr.
+  FC is **decode-driven** (not onset-aligned like SDI/DMC) because its parser is
+  validated byte-exact - and gate-rise re-derivation would discard the rests, the
+  whole reason to build FC natively.
+  **Bonus**: Stage B removes Stage A's headline defect (SF2II Driver 11 cannot gate
+  a long silent intro; that drove an abandoned Driver-15 investigation).
 
-## Part 3 -- the code (the bulk of the work)
+### Wave 4 - both resolved by measurement, no fidelity code written
+- **R16 filter seams - CLOSED, premise stale by ~300x.** Claim was "~25% cost,
+  Hawkeye sub0 filter ~75%". **Measured 99.92%** (cutoff AND ctrl/res/routing, full
+  384s, n=19168, 5 of 8 parts exactly 100.0). Cause: `build_mon_native_song`'s
+  **"WINDOW-START residual filter"** block already implements R16's own fix sketch;
+  nobody re-measured. Real residual pinned: **16 frames of 19168 (0.08%)**, the
+  first 4-8 frames of 3 parts (driver cold start). Not worth fixing - parts are
+  **separate files a user opens individually**, so it's an ~80ms settle at a file's
+  opening, not a mid-song seam. ("13 parts" was the fixed-30s count; adaptive is 8.)
+- **R7 Galway pulse-PWM - RE-DIAGNOSED, tune list wrong in BOTH directions.**
+  Measured distinct per-frame pulse values (orig->built), each tune at **its own
+  build subtune**, best-delay searched, Rambo as a validated 100/100/100 control:
 
-**Branch `mattgray-driller-stage-a`, pushed to origin. HEAD = `9e00576`.**
+  | tune | verdict |
+  |---|---|
+  | Commando_High-Score | **not defective** (106->106, 99.8-100%) - already fixed |
+  | Highlander | v1 only, **317->317 distinct, wrong values** - a different defect |
+  | Match_Day | **v2 only** (53->10, 25.4%) |
+  | Street_Hawk | **confirmed** (92->25, all 3 voices) |
+  | **Wizball** | **worst in corpus** (1092->430) - **never listed in R7** |
 
-| commit | what |
-|--------|------|
-| `eae7325` | parser + validator + Stage A converter + 14 tests + docs |
-| `19d3436` | SF2II play-test results |
-| `13769e8` | LN2 wrapper cracked; located but explicitly NOT trusted |
-| `5264e13` | LN2 format solved (`$70` duration split) -- 12/13 at 100%/100% |
-| `da7afb1` | all 13 LN2 subtunes parse; truncated-pattern tolerance |
-| `cf73031` | onset drift fixed (`$f9` control code) -- 13/13 at 100%/100% |
-| `3fdcb81` | Tusker (2nd wrapper shape) -- 4/4 at 100%/100% |
-| `9e00576` | play-trampoline following; Deliverance/Quedex are further generations |
+  Three hypotheses **eliminated by measurement**: `PULSE_ROW_CAP` trim never fires;
+  `PULSE_TABLE_ROWS`(2048) not hit; `pq` quantization stays 1. Real signal is
+  upstream - Street_Hawk builds **1 instrument / 1 bundle / 3 pulse rows for 129
+  notes** vs Highlander's 634, so the encoder faithfully encodes input that already
+  lost the sweep. Shipped a strict no-op (byte-verified): the `PULSE_ROW_CAP` trim
+  now announces itself + `GALWAY_PULSE_ROW_CAP` override (it was silently lossy).
 
-### Files created
+### Wave 5 - part-count
+- **R20 memory-wall audit - SHIPPED, Driller 2 files -> 1.** `MAX_PART_FRAMES =
+  24_000` was splitting at ~40% of real capacity, justified by a "~27,650 play-calls
+  ~= 9.2 min" ceiling that is **not in the git history and does not follow from the
+  format** (nothing in a Driver 11 file grows with TIME; all tables fixed-size,
+  sequence region a fixed 128 x 256-byte slots -> capacity is event **density**).
+  Measured: Driller's whole 8320-row/665.6s song is **ONE valid module**, 57/128
+  slots, top **$61CF** vs `$D000` (~28KB unused). `convert()` now **probes**: emit
+  the candidate range for real, check the two binding limits (<=128 sequences, top <
+  `$D000`), grow by doubling, binary-search the edge. Verified: one-part Driller
+  walks its orderlists to **[8320,8320,8320]** rows/voice, **zero** cap violations,
+  row total == old two parts summed; already-1-part songs **byte-identical** (LN2
+  sub2, Tusker sub2). Figure **retracted** in PLAYBOOK's caps table. 2 regression
+  tests added.
+- **R18 wave-RLE - CLOSED, NO CANDIDATE.** Instrumented the windowing probe on FC's
+  5-part `Is_There_a_Difference` to report *why* each cut fires: **bundles bind
+  every single cut** (64/66/67/64 vs the 63 cap) while **WAVE sits at 40-61 of 256
+  (16-24%)**. RLE would relieve a cap with ~200 rows of headroom -> zero part
+  reduction. MoN's Cybernoid 18->11 win was real only because that tune is
+  wave-row-bound (and RLE is already applied there).
+- **R19 cross-part dedup - DOWNGRADED to P3.** By its own statement it does not
+  reduce part count, and its "stabilizes seams" half died with R16 (99.92%).
+- **Recorded**: the lossless part-count lever is the **bundle** cap -> confirms
+  **R17 (Stage C structural RE)** as the flagship and explains why. A **lossy** dial
+  also already exists and is quantified: the probe requires the PRE-cluster raw
+  bundle count to fit 63 (no clustering permitted); raising `CAP_B` clusters the
+  excess - Blackbird measured **16 parts at CAP_B=64 vs 5 at 128 for ~5.8pp freq**.
+  Kept opt-in per player, never a default (standing lossless-only rule).
 
-| Path | What |
-|------|------|
-| `sidm2/mattgray_parser.py` | parser, code-map walker, signature locator, sequencer simulation, both relocating wrappers |
-| `bin/mattgray_validate.py` | onset/pitch validation vs siddump, plain/modulated split |
-| `bin/mattgray_to_sf2.py` | Stage A -> Driver 11 SF2, part windowing |
-| `pyscript/test_mattgray_parser.py` | 14 tests, skip cleanly without HVSC |
-| `docs/players/MATTGRAY.md` | full player doc incl. the generations table |
+## Documentation corrected (a major output in its own right)
 
-Also edited: `docs/players/README.md` (index row), `CLAUDE.md` (Known
-Limitations row).
-
-### The engine, as reverse-engineered
-
-`music_play` is a shim calling ONE shared `play_voice` three times with
-X = `$00/$07/$0e` -> every per-voice state array has **stride 7**.
-
-Pattern dispatch, **Driller (1987)**:
-- `>= $fd` -> duration (2-byte code `$fd nn`), **sticky**
-- `$fc nn` / `$fb nn` -> slide type 2 / type 1
-- `$fa nn` -> set instrument (driver multiplies by 8)
-- `$00` -> **REST / note-off**
-- `$01-$f9` -> note index into the 96-entry freq table
-- `$ff` -> end of pattern (consumed AFTER a note)
-
-Pattern dispatch, **Last Ninja 2 / Tusker (1988-89)** -- full order:
-`>= $fb` slide - `>= $fa` instrument - `>= $f9` **parameter (2-byte, plays NO
-note)** - `>= $70` **duration = byte - $70, sticky** - else note
-
-Track bytes (all builds): `$ff` restart at 0 - `$fe` stop - else pattern number.
-
-Instruments are **TWO parallel 8-byte tables** (`instr_A0` + `instr_A1`), NOT
-one 16-byte record. Full field map in `docs/players/MATTGRAY.md`.
-
-Tempo: a row tick every `(tempo + 1)` frames; a duration byte D holds D+1
-ticks. Verified empirically (Driller `$3f` -> onsets on frames 1, 257, 513...).
-
-### Relocating wrappers (two distinct shapes)
-
-**LN2 (1988)** -- `relocating_subtunes()`. `init $3f40` copies the selected
-subtune's self-contained blob to `$4000`. 13 blobs (13 separate
-`(C)1988 MATT GRAY` strings). Tables: src lo/hi `$3f80`/`$3f8d`, tail `$3f9a`,
-pages `$3fa7`; length = `pages*256 + tail` (tail 0 => full extra page).
-
-**Tusker (1989)** -- `relocating_subtunes_v2()`. Self-modifying copy loop,
-sources **page-aligned** so only a hi-byte table exists (`$4138`), length in
-**whole pages** (`$413c`), destination **`$e000`** -- under KERNAL ROM, which is
-exactly why its PSID play address is `$e002`. 4 blobs.
-
-### Results (vs `siddump_complete.py`, plain instruments, headline)
-
-| File | Subtunes | onset | pitch |
-|------|---------:|-------|-------|
-| Driller | 1 | **1513/1513 = 100%** | **1513/1513 = 100%** |
-| Last Ninja 2 | 13/13 | **100%** every one | **100%** every one |
-| Tusker | 4/4 | **100%** every one | **100%** every one |
-
-**18 tunes total, all 100%/100% on the sequencer.** LN2 n ranges 1-1070 per
-subtune at 6000 frames; Tusker n = 86, 439, 708, 685.
-
-### Stage A + SF2II play-test
-
-`bin/mattgray_to_sf2.py` emits stock Driver 11 via the shared
-`galway_driver11_emitter`. Driller loops at 8320 rows = 33,280 frames = 665.6 s,
-past the SF2II memory wall, so it **splits into 2 parts** (never truncates
-silently). Sequences round-trip byte-exactly (6000/6000 rows/voice, 0
-mismatches), 41 sequences vs the 120 cap, none over the 960-event `Unpack` limit.
-
-Play-tested in REAL SF2II via `probe_once()` from
-`pyscript/blackbird_crash_probe.py` (player-agnostic despite the name):
-- part01 x3 @45 s -> 3/3 SURVIVED; part02 x3 @45 s -> 3/3 SURVIVED
-- part02 x1 @195 s = **100% coverage** -> SURVIVED
-- part01 x1 @492 s -> probe reported CRASHED, **VOID**: the user closed the
-  window, and `probe_once()` cannot distinguish that from a crash (it only
-  checks "process still alive"). No proof-of-play screenshot was written, the
-  identical signature either way. **User then confirmed part01 directly,
-  watching it play through TWICE.**
-
-Screenshots confirmed Driver 11.00, tempo `03`, 22 instruments, and real
-decoded music on all three tracks in part 2 with the primed instrument selects
-(`a000`/`a006`/`a00b`) on row 0.
-
-### Memory files written
-
-- `memory/matt-gray-player.md` -- corpus ranking, DeepSID trap, engine summary
-- `memory/matt-gray-driller-re.md` -- the RE arc + the measurement traps
-- Both indexed in `memory/MEMORY.md`
-
+Several roadmap/matrix claims were measured **false or stale** and fixed in place:
+1. ROADMAP's "E3c(a) 40 retriggers open" - already closed by E3f (R5).
+2. ROADMAP C4 / matrix "filter ~75% at seams" - **99.92%** (R16).
+3. ROADMAP B2 / R7's flat-pulse tune list - wrong both ways (R7).
+4. PLAYBOOK's "~27,650 play-calls" ceiling - **retracted as underivable** (R20).
+5. ROADMAP A1's 3-way driver merge - right for the pair, wrong for MoN (R1).
+6. **ROADMAP A5's "fix the MoN driver file name" would BREAK the build** -
+   `build_mon_native_song.py:1763` does `B.GAL = MON_DIR` and `assemble()` hardcodes
+   `<GAL>/romuzak_driver.asm`, so the name is **load-bearing** (R1).
+7. "MoN has CRLF endings" reads as an anomaly - **all four** `.asm` are CRLF (R1).
+8. R3/A2's "~180-line identical skeleton" - measured wrong (R3).
+9. ACCURACY_MATRIX "all 12 ported players" - 15 (R33); missing Matt Gray row (R28).
 </work_completed>
 
 <work_remaining>
 
-## 1. Deliverance (1990) -- a THIRD generation. Best next target.
+## Wave 6 - R17: Stage C structural synth-table RE (the flagship, Opus, L)
 
-`...\MUSICIANS\G\Gray_Matt\Deliverance.sid`, `load=$4000 init=$4D96
-play=$4DA1 songs=7`. Flat file, **no relocating wrapper**.
+**Now confirmed as THE part-count lever** by R18's measurement (bundles bind every
+cut). Design already written in the review's **Appendix A section D-R17**; read it
+first. Key points:
+- **Stage B is Stage C's oracle**: the existing unrolled build is byte-exact, so
+  emit both and compare full per-frame register streams. Any mismatch = the
+  structural model is wrong. No listening, no thresholds.
+- Therefore roll out **per-instrument hybrid**: instruments whose structural
+  programs verify byte-identical use the compact form, others keep unrolled. The
+  corpus can never regress; coverage is a ratchet.
+- Three designed-against mismatch classes: loop grammar (attack + steady-loop
+  split), tick phase (use RLE frame counts, never resample - resampling is lossy),
+  note-relative arps (SF2 wave col1 semitone column; never bake absolute notes).
+- **Measure first**: count distinct (FM-program, rate) pairs. If slides take their
+  rate from the pattern stream, pairs may still exceed 63 and the win comes from
+  wave/instrument collapse instead. One-day script on already-parsed data.
+- Targets: Supremacy sub2 (70 parts, engines cracked) then Myth sub0, then evaluate
+  DMC/SDI bundle-bound files.
+- Success order: byte-exact preserved -> THEN part count. A part-count win with any
+  register diff is a failure (lossless-only rule).
 
-Already solved: its PSID play address is a **trampoline** (`$4da1: jsr $4daa
-...`), so `_find_play_voice()` now falls back to `_scan_for_shim()`, which finds
-the 15-byte `ldx #$00 / jsr pv / ldx #$07 / jsr pv / ldx #$0e / jsr pv` body
-anywhere in the image. **That works -- the shim IS found.**
+## Remaining review items (see `docs/CODE_REVIEW_2026-07.md` for full detail)
 
-Still failing: `could not locate the track-pointer tables`. The 1990 build
-reorganised them, so `locate()`'s "6 consecutive `LDA abs,y` sites whose
-operands step by 2" no longer holds.
+Wave 7: **R4** (wire the 11 `bin/`-only players into `PLAYER_REGISTRY`),
+**R24** (universal trace-first fallback - Appendix A D-R24 has the architecture).
+Wave 8: **R8-R12** per-player residuals, **R14** (DMC standard window), **R15**
+(name Laxity's 0.07%), **R22** (universalize `sf2ii_vs_real.py`), **R25** (audio
+track), **R26** (signature framework), **R27** (bin/ archive), **R30** (broad-except
+audit), **R32** (compress CLAUDE.md's Known Limitations - it is loaded every session).
 
-Steps:
-1. Get `play_voice` via `_scan_for_shim()`, dump `p._b9_sites()` and compare
-   the shape against Driller's and LN2's.
-2. Disassemble the track-pointer setup -- find what replaced the 6-site pattern.
-3. Re-derive the pattern-byte dispatch -- do NOT assume it matches LN2. Use the
-   technique that worked: list `lda (zp),y` sites and the `cmp #imm` values
-   following each (this is exactly how the LN2 `$70` and `$f9` codes were found).
-4. Check `_duration_base()` -- may find `$70`, a different constant, or nothing.
-5. Validate: `py -3 bin/mattgray_validate.py <sid> --subtune N --frames 6000`.
-   Do NOT trust a parse that merely succeeds (see attempted_approaches).
+## Immediate follow-ups created by this session's work
 
-## 2. Quedex (1987) -- a FOURTH generation, harder.
+1. **Play-test the one-part Driller in real SF2II.** R20 made it 1 module (665.6s,
+   2.8x longer than the play-tested 2-part build). Only the editor rules out an
+   SF2II-only hazard. Use `probe_once()` (now trustworthy after R23) via
+   `pyscript/blackbird_crash_probe.py` (player-agnostic despite the name); launch
+   with **cwd=bin/**.
+2. **R7 continued**: the real work is upstream of `faithful_pulse_program` - inspect
+   how `song.pulse[v]` is captured and how gate-regions are segmented in
+   `bin/build_galway_trace_song.py` (`note.tie -> EMPTY_PUL` at ~:645 means one
+   program serves a whole legato region; a tune-spanning region explains
+   Street_Hawk's 1 bundle). Verify with the R7 distinct-count table (counts are
+   alignment-independent; match% is not).
+3. **R13 residual**: localize Triangle_Intro v1's 83.6%. **Use the `t0` bounds
+   `build_song` already computes** - a brute-force `t0` search over the original
+   produces nonsense (see attempted approaches).
+4. **Myth sub0 part1 filter 77%** (ROADMAP B5) is still **unverified** - do not
+   assume it followed R16. Needs the py65 **emulation** trace; shapes differ
+   (`(cutoff, ctrl)` tuples vs `per_frame`'s int `fcut`).
+5. **R3 residual**: the globals-as-parameters pattern persists in
+   `build_romuzak_native_song` (`B.TEMPO`/`B.N_ROWS`), `build_mon_native_song`
+   (`B.TEMPO`/`B.TEMPO2`/`B.TEMPO_SWALLOW`/`B.TEMPO_SCHED`) and
+   `build_blackbird_native_song` (`B.TEMPO`/`B.TEMPO2`) - **4 more channel
+   variables**, all working via the `None` fallback. Converting them is the
+   prerequisite for actually MERGING the two 353-line driver_full files.
+6. **FC follow-ups**: `FCShim._voice_blocks` returns one flat block; `fc_parser`
+   exposes real `voice_blocks` (51/41/51 on Triangle_Intro) which would let repeated
+   blocks share sequences (part-count optimisation). Native `.prg` FC modules in
+   `out/fc_native/` are not buildable yet (siddump needs a PSID wrap).
 
-`load=$4000 init=$4B79 play=$4BB3 songs=9`. `_scan_for_shim()` finds **nothing
-at all** -- no `ldx #$00/$07/$0e` + `jsr` triple exists anywhere in the image.
-Its play routine is `$4bb3: lda $4b7f / bne ...`.
+## Matt Gray leftovers (carried forward from the previous handoff)
 
-So Quedex does NOT use one shared `play_voice` called three times; its voice
-dispatch is structurally different, and it is the earliest of the four --
-plausibly pre-dating that refactor. Needs a from-scratch disassembly of `$4bb3`
-onward. `MattGrayParser` currently *assumes* the shim exists
-(`_find_play_voice` raises without it), so supporting Quedex means a second
-entry-point strategy, not just a new `locate()` branch.
-
-## 3. Remaining smaller items
-
-- **LN2 subtunes 5 and 6 have unusable sample sizes** -- n=19 and n=**1** even
-  at 6000 frames, because nearly all their notes are pitch-modulated. Their
-  "100%" is not evidence. Widen the window or keep them out of any headline.
-- **`probe_once()` limitation** is real and affects the Blackbird play-tests too
-  (same oracle): "process absent" => "crashed" unconditionally, so any
-  long-window trial is corrupted if someone touches the window. Fix by
-  recording the process exit code (clean close vs crash differ) and/or
-  screenshotting periodically during the window rather than only at the end.
-- **Stage A not play-tested for LN2/Tusker.** `out/LN2_s1.sf2` was emitted as a
-  smoke test only.
-- **Not wired into `DriverSelector`** -- deliberate, same as every other native
-  player here.
-- The other ~50 HVSC Gray_Matt files are untouched and unclassified.
-- Re-run the FULL suite (`py -3 -m pytest pyscript/ -q`); it was last run green
-  at `eae7325`, not after the LN2/Tusker commits.
-
+- **Deliverance** (1990, a THIRD generation): `_scan_for_shim()` finds the shim, but
+  `locate()`'s "6 consecutive `LDA abs,y` stepping by 2" no longer holds. Steps in
+  the old handoff (git history of this file at `9e00576`).
+- **Quedex** (1987, FOURTH generation): no `ldx #$00/$07/$0e` + `jsr` triple exists;
+  needs a second entry-point strategy, not just a new `locate()` branch.
+- **LN2 subtunes 5 and 6** have unusable sample sizes (n=19 and n=1) - their "100%"
+  is not evidence.
+- **Stage A for LN2/Tusker was never play-tested** in SF2II.
+- The other ~50 HVSC `Gray_Matt` files are untouched/unclassified.
 </work_remaining>
 
 <attempted_approaches>
 
-## Things that failed, with the reason -- do not repeat
+## Failures and dead ends - do not repeat
 
-**DeepSID as a rating source.** Its `rating` column is per-logged-in-user, not
-a public average. Anonymous pull returns 0 for all 55 files. Verified against
-`php/music.php` (~lines 1271-1277). Dead end for ranking.
+**Brute-force `t0` alignment search when the real bounds are known.** Twice.
+Trying to localize Triangle_Intro v1's residual (R13) and again on Myth, I searched
+for the best `t0` over the original instead of using the `t0` values `build_song`
+already computes. It "found" a 15-frame window and produced 25.1%/6.7%/77.8%
+garbage. **Discarded rather than reported.** Always use the known bounds.
 
-**DeepSID `music.php` via curl.** HTTP 500 regardless of params, even with
-cookies and `X-Requested-With`. The working form needs the folder path prefixed
-`/_High Voltage SID Collection/...` AND `searchType=%23all%23` AND `page=0` --
-found only by reading the page's own network requests. Driving it from
-`javascript_tool` in the page origin is the reliable route.
+**Comparing two differently-shaped filter traces (R16/Myth).** `per_frame(...)[1]`
+is an int `fcut`; `siddump_filter_trace` returns `(cutoff, ctrl)` tuples. Comparing
+them returned a meaningless **0.0%**. Discarded. Compare like with like.
 
-**Trusting the WebFetch'd Codebase64 disassembly for exact table order.** Its
-pattern-pointer listing appeared as `pattern_00, pattern_01, pattern_03,
-pattern_02, ...` (da65 names labels by ADDRESS, not index), which would have
-swapped patterns 2 and 3. Reading the real bytes by backward dataflow from the
-code operands gave the right answer and matched siddump. **Always re-derive
-table addresses from `LDA abs,y` operands, never from a listing.**
+**Measuring a build's original at the wrong subtune (R7).** `build_galway_corpus`
+builds Wizball at **subtune 3**; I measured the original at subtune 0 and got a
+spurious 0.0%. Always read the builder's own subtune (`SUBTUNE` overrides +
+PSID `start_song-1`).
 
-**My own first extraction script dropped the PSID `load=0` branch.** Driller's
-header declares `load=$0000`, so the real load address is the first two data
-bytes. Without that every table operand decoded to plausible-looking garbage
-while the file still "parsed". Assert the opcode is `$b9` before trusting an
-operand.
+**Assuming the cap named in the docs is the binding one (R18).** Wave rows were
+assumed to be the part-count constraint; measurement showed bundles bind every cut
+and WAVE sits at 16-24%. Measure which cap binds before relieving one.
 
-**A flat byte scan for `LDA abs,y` sites.** The player interleaves code and data
-(Driller's per-voice state arrays sit at `$0cce`, mid-routine), so a linear
-sweep invents instructions out of table bytes and yields nonsense operands like
-`$0111`. Replaced with a recursive-descent code walk (`_code_map()`) following
-branches/JSR/JMP and stopping at RTS/illegal opcodes.
+**`PULSE_ROW_CAP` as the R7 root cause.** Plausible (its own comment admits it is
+an arbitrary safety margin, and its trim loop is lossy) but **the trim never fires**
+on any affected tune. Instrumented and disproved in one run. Same for
+`PULSE_TABLE_ROWS` and `pq`.
 
-**Locating the pattern tables early in `locate()`.** Reliably mis-fired on two
-adjacent *instrument-field* reads (LN2's `$461a`/`$4620`, six apart) that look
-exactly like a lo/hi pointer pair for a six-pattern song. Fixed by locating
-patterns LAST, from operands no other table has claimed.
+**Trusting the review's own premises.** Of the items executed in waves 4-5, **three
+of five had a false or stale premise** (R16 stale ~300x, R7's tune list wrong both
+ways, R18 no candidate). The review was in places repeating stale documentation.
+**Measure before fixing** - it was consistently more valuable than the fixes.
 
-**Assuming "it parses" means "it decodes".** THE key lesson of this arc. The
-first LN2 decode produced entirely sensible pattern counts (45), instrument
-counts (18) and note counts -- and scored **11-22% pitch**. Nothing about it
-announced itself as broken. Only `bin/mattgray_validate.py` caught it. Cause:
-the `$70` duration split. Run the validator before believing any new build.
+**Naive `gen_includes_song` unification (R3).** Considered and rejected after
+measuring: three genuinely different signatures + per-player table layout. Forcing
+one signature would need a dozen mutually-exclusive flags.
 
-**Reading a single flattering measurement window.** Subtune 1 was 303/303
-(100%) at 3000 frames but 683/692 (98.7%) at 6000. Always widen the window.
+**Merging MoN/Blackbird drivers (R1).** Rejected on measurement: 51 hunks and ~1962
+diff lines respectively. `.if`-maze cost exceeds the duplication saved.
 
-**Alternatives considered, not pursued:** py65 emulation extraction to
-materialise the LN2 blobs (unnecessary -- the copy loop decodes statically);
-CSDb as a rating source (rates releases, not individual game SIDs).
-
+**A bash heredoc containing apostrophes inside `$(cat <<'EOF')`** broke parsing
+once; used `git commit -F <file>` from the scratchpad instead.
 </attempted_approaches>
 
 <critical_context>
 
-## Measurement discipline -- the two traps that faked parser bugs
+## Verification discipline that worked (reuse it)
 
-1. **siddump's default display hides genuine writes.** It prints `....` when a
-   register's VALUE did not change, so Driller's `42 3b 3b 42 3b 3b` (a note
-   re-triggered at the same pitch) looked like 30 parser misses that were not
-   misses. `bin/mattgray_validate.py` passes **`-w`/`--written`** (write-hook
-   precision) for exactly this. **Do not remove it.**
+- **git-stash A/B + byte-diff** is the strongest available gate and was used for
+  every refactor: stash the **complete** changeset (including new files and
+  transitive import deps), rebuild, byte-compare. R1 achieved **byte-identical
+  assembled machine code**, which proves behavior preservation outright.
+- **`drivers_src/*/{layout,freqtable,tempo_sched_*}.inc` are regenerated by every
+  build** - `git checkout --` them before staging. This bit nearly every run.
+- Native builds are launched from repo root; SF2II must launch with **cwd=bin/**.
+- 64tass path: `C:\Users\mit\Downloads\64tass-1.60\64tass-1.60.3243\64tass.exe`.
 
-2. **The first "pitch miss" was the parser being right.** Driller pattern 5 is
-   `fa 0e fd 3f 2f 2b 2e fc 20 2a ff`; note `$2a` was off by exactly `+$20` --
-   the `$fc` slide rate. Slides come from the PATTERN STREAM as well as the
-   instrument, so the plain/modulated classification must be **per-note**.
+## Non-obvious mechanics discovered
 
-## The plain/modulated split is not decoration
+- **64tass resolves a nested `.include` relative to the INCLUDING file**, not cwd -
+  tested empirically. Hence `-I <player_dir>` in both `assemble()` calls after R1.
+  Without it the build fails loudly (it cannot silently pick a wrong file).
+- **`emit_one` does `B.GAL = MON_DIR`** (`build_mon_native_song.py:1763`), so every
+  shim-based Stage B assembles **MoN's** driver. That is why FC's Stage B needed no
+  new driver - and why MoN's "misnamed" `romuzak_driver.asm` is **load-bearing**.
+- **`SF2HeaderGenerator.PLAYER_ADDRESSES` is a CLASS attribute** - mutating it in
+  place leaks across every song built in one process. `make_native_gen` copies it;
+  a test pins this.
+- **FC rests park a near-zero `$0002` in `$D400` with the gate OFF** (note >= 96
+  reads past the 96-entry freq table). A build emitting a true rest "mismatches" on
+  an inaudible register - Triangle_Intro v1 reads **57.8% raw vs 100.0% audible**.
+  `Triangle_2_years` (zero rests) is the control: raw ~= audible. **Any player whose
+  rests leave a non-zero freq register shows this false penalty.**
+- **FC's `FCInstrument` field names follow the V4.1 manual, which is WRONG for
+  V1.0**: byte `[5]` (named `vibrato`) holds the arp offsets; the field named `arp`
+  (byte `[6]`) is the pulse-sweep ctrl and is unused. Confirmed against Stage A.
+- **FC has two independent `+1`s**: `frames_per_tick = speed+1` and
+  `ticks = dur+1`. Both are load-bearing; tests pin them.
+- **Blackbird's `min_tempo_song < 3` guard disables hard-restart arming for the
+  WHOLE song** - previously silent, now printed.
 
-On a pitch-modulated instrument the player rewrites `$d400` **every frame**, so
-an onset there matches whatever the parser predicts -- that bucket **cannot
-falsify the timing model** and is reported separately, never claimed. A note is
-"modulated" if its instrument has arp (`A0[5]`), drum path (`A0[7]` bit0),
-auto-slide (`A1[0]`/`A1[4]`) **or** a `$fb`/`$fc` slide attached to that note.
-This is the vacuous-100 failure class `sidm2-fidelity-falsify` exists to catch
--- do not collapse the buckets into one number.
+## Standing rules honored
 
-## Gotchas
-
-- **PSID `load=0`** -> real load address is the first 2 data bytes (Driller).
-- **`music_init` ignores the accumulator** in Driller: literally
-  `lda #$01 / sta $0d0f / rts`, so both its PSID subtunes play tune 1. HVSC
-  nonetheless lists 8:41 / 10:21 against a measured 11:05 loop.
-- **A `$fb`/`$fc` slide binds ONLY to the note immediately after it** -- the
-  driver zeroes the effect slot at the top of every fetch (`L09b6`).
-- **LN2 subtune 7's last pattern is genuinely truncated** by the relocating copy
-  (ends `af 30 00`, no `$ff`). `_read_pattern()` returns it short and reports
-  `song.truncated_patterns`; `_fetch()` bounds-checks control-code params.
-  Reading every pattern eagerly made one unreachable pattern fatal.
-- **Driller's three tracks have different lengths (117/82/109) but wrap on the
-  SAME tick (8320)** -- a good internal-consistency check.
+- Accuracy/byte-exactness over speed, cost and file count; **never ship lossy output
+  silently** (this is why the `PULSE_ROW_CAP` trim now announces itself, and why the
+  `CAP_B` part-count dial stays opt-in).
+- Never claim a percentage without its **window and n**; an empty comparison is "no
+  test ran", not 100% (`score_pct` returns None).
+- Root-clean rule: no `.py` in repo root; all Python in `pyscript/` or `bin/`.
 
 ## Environment
 
-- Corpus: `C:\Users\mit\Downloads\HVSC_85-all-of-them\C64Music\MUSICIANS\G\Gray_Matt`
-  (55 `.sid` + a `Worktunes/` subfolder). Tests read `HVSC_ROOT`, defaulting to
-  that path, and skip cleanly if absent.
-- `/tmp` does NOT exist on this box -- use the session scratchpad.
-- Bash tool caps at 10 min; the 492 s play-test overran it and needed
-  `run_in_background`.
-- SF2II must launch with `cwd=bin/`. Its F10-load is heap-flaky (~73%/attempt),
-  hence `load_attempts`.
-
-## Key references
-
-- Codebase64 Driller disassembly:
-  https://codebase64.net/doku.php?id=base:matt_gray_-_driller
-- TDZ KB card `matt-gray` (updated this session); **SIDin #2** and **SIDin #3**
-  in the same KB -- read before more RE.
-- `docs/players/PLAYBOOK.md` sections 1 (staged method), 3 (SF2II caps),
-  4 (measurement ladder), 5 (gotchas).
-- `docs/players/MATTGRAY.md` -- full write-up incl. the generations table.
-
+- Corpora: `SID/Fun_Fun/` (FC, Sound Monitor, ROMUZAK), `SID/Galway_Martin/` (40),
+  `SID/LFT/` (Blackbird), `SID/Tel_Jeroen/` (MoN), `SID/Gallefoss_Glenn/` (SDI),
+  HVSC Matt Gray at
+  `C:\Users\mit\Downloads\HVSC_85-all-of-them\C64Music\MUSICIANS\G\Gray_Matt`.
+- `/tmp` does not exist; use the session scratchpad.
+- Bash tool caps at 10 min - long corpus runs need `run_in_background`.
+- The tokensave hook blocks grep on symbol-like patterns; `export
+  TOKENSAVE_DISABLE_GREP_HOOK=1` to override for one call.
 </critical_context>
 
 <current_state>
 
-## Committed and pushed -- nothing is uncommitted
+## Status
 
-Branch **`mattgray-driller-stage-a`**, HEAD **`9e00576`**, tracking
-`origin/mattgray-driller-stage-a`. 8 commits. Working tree clean except
-`.claude/settings.local.json`, which was **already modified before this session
-started** and was deliberately never staged.
+- Branch **`mattgray-driller-stage-a`**, HEAD **`2c20e26`**, **pushed**, level with
+  origin. Working tree **clean** (only regenerated `.inc` artifacts appear
+  transiently after builds - always `git checkout --` them).
+- Full suite: **1747 passed, 7 skipped, 2 xfailed, 0 failures**.
+- No PR opened.
 
-No PR opened. Link if wanted:
-https://github.com/MichaelTroelsen/SIDM2conv/pull/new/mattgray-driller-stage-a
+## Deliverables
 
-## Status of deliverables
+| item | status |
+|---|---|
+| `docs/CODE_REVIEW_2026-07.md` (34 items + Appendix A) | **complete**, kept updated as items closed |
+| Wave 1 (R34, R28/R31/R33, R23, R21, R5, R29, R6) | **complete** |
+| Wave 2 (R2, R3, R3b, R1) | **complete**, all byte-verified |
+| Wave 3 (R13 FC Stage B) | **complete** (14/15 voices 100% audible) |
+| Wave 4 (R16, R7) | **R16 closed by measurement; R7 re-diagnosed, fix NOT written** |
+| Wave 5 (R20, R18, R19) | **R20 shipped (Driller 2->1 file); R18 closed; R19 downgraded** |
+| Wave 6+ (R17 flagship, R4, R24, R8-R12, R14-R15, R22, R25-R27, R30, R32) | **not started** |
 
-| Item | Status |
-|------|--------|
-| Popularity ranking | **Complete** (chat + doc + KB card) |
-| Driller RE + Stage A | **Complete**, 100%/100%, SF2II play-tested |
-| Last Ninja 2 (13 subtunes) | **Complete**, 100%/100%, Stage A emits; NOT play-tested |
-| Tusker (4 subtunes) | **Complete**, 100%/100%; Stage A NOT run/play-tested |
-| Deliverance | **Blocked** -- shim found, track tables not located |
-| Quedex | **Not started** -- no shim exists; different architecture |
-| Stage B (native driver) | **Not started**, out of scope |
-| TDZ KB card | **Updated** in place, verified by re-search |
+## New files this session
 
-## Verification state
+`sidm2/sf2_caps.py`, `sidm2/native_build.py`,
+`drivers_src/common/sf2_native_driver.asm`, `bin/build_fc_native_song.py`,
+`pyscript/soundmonitor_sweep.py`, `pyscript/test_soundmonitor_sweep.py`,
+`pyscript/test_native_build.py`, `pyscript/test_fc_native_song.py`,
+`docs/CODE_REVIEW_2026-07.md`.
 
-- `pyscript/test_mattgray_parser.py`: **14/14 pass**
-- Full suite: **1693 passed, 7 skipped, 2 xfailed, 0 failures** -- run after
-  `eae7325`, **NOT re-run** after the later LN2/Tusker commits. Re-run it.
-- Driller regression re-checked after every change: **1513/1513 onset,
-  1513/1513 pitch**
+## Open questions / pending decisions
 
-## Open questions
-
-- Does Deliverance share the `$70`/`$f9` dispatch, or is it a third encoding?
-  `_duration_base()` will answer once the tables locate.
-- Is Quedex worth the effort? #5 by remix count (5 remixes) and needs a
-  from-scratch entry-point strategy. Deliverance (9 remixes, shim already
-  found) is the better ROI.
-- Should Stage A SF2s for LN2/Tusker be play-tested before anyone relies on
-  them? (Recommend yes -- the only thing that catches SF2II-only hazards.)
-
-## Honest framing to preserve
-
-Every "100%" here is **the sequencer on plain instruments only**. Stage A
-knowingly omits the slide/arp/PWM/drum engine, so the output will NOT sound
-like the originals -- timbre is a Stage B claim. Do not let the 18-tune
-100%/100% headline drift into meaning "sounds right".
-
+1. **One-part Driller is not SF2II play-tested** - the single most important
+   outstanding verification (see work_remaining #1).
+2. **R7's fix is not written** - only the diagnosis. Deliberate: the remaining work
+   is genuine RE on Galway's pulse capture for 2 tunes.
+3. **Myth sub0 filter 77%** unverified (harness shape mismatch).
+4. Whether to spend the **lossy `CAP_B` dial** on any player (3.2x fewer parts for
+   ~5.8pp freq). Currently opt-in only; needs a user decision, not a default.
+5. `.claude/settings.local.json` was committed this session at the user's explicit
+   request (`adf4982`) after being deliberately unstaged for many sessions.
 </current_state>
