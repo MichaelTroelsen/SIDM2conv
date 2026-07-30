@@ -34,6 +34,8 @@ from sidm2.galway_to_driver11 import (
     _norm_waveform, _pulse_program,
 )
 from sidm2.galway_driver11_emitter import emit_driver11_sf2, segment_track
+from sidm2.d11_windowing import (
+    MAX_SEQUENCES, pack_entry_window, plan_entry_windows)
 
 MAX_INSTRUMENTS = 31          # 32 slots minus the silent-anchor instrument
 
@@ -266,10 +268,30 @@ def convert(path, out):
     print(f"load=${la:04X} rows={len(m.row_chain())} tempo={tempo} "
           f"instruments={len(instr_rows)} wave_rows={len(wave_table)} "
           f"sequences={len(sequences)}")
-    sf2 = emit_driver11_sf2(song, sequences=sequences, orderlists=orderlists)
+    # Driver 11 holds only 128 sequence pointers; over that the emitter used to
+    # truncate SILENTLY, taking orderlist entries with it (Dance_at_Night_remix
+    # was shipping 93 sequences short). `build_structured` walks the same
+    # `m.row_chain()` for every voice, so orderlist entry k is bar k in all
+    # three and cutting on an entry index stays aligned.
+    windows = plan_entry_windows(sequences, orderlists)
+    if len(windows) > 1:
+        print(f"  -> {len(windows)} parts ({len(sequences)} sequences exceeds "
+              f"the {MAX_SEQUENCES}-slot pointer table)")
+
     os.makedirs(os.path.dirname(out) or '.', exist_ok=True)
-    open(out, 'wb').write(sf2)
-    print(f"emitted {len(sf2)} bytes -> {out}")
+    stem, ext = os.path.splitext(out)
+    for i, (lo, hi) in enumerate(windows, 1):
+        p_seqs, p_ols = pack_entry_window(sequences, orderlists, lo, hi)
+        sf2 = emit_driver11_sf2(song, sequences=p_seqs, orderlists=p_ols)
+        # A song that already fitted keeps its filename and its exact bytes.
+        dest = out if len(windows) == 1 else f"{stem}_part{i:02d}{ext}"
+        open(dest, 'wb').write(sf2)
+        span = f"bars {lo}-{hi}" if len(windows) > 1 else f"{hi - lo} bars"
+        print(f"emitted {len(sf2)} bytes -> {dest} ({span}, "
+              f"{len(p_seqs)} sequences)")
+    if len(windows) > 1 and os.path.exists(out):
+        os.remove(out)          # supersede the truncated single-part build
+        print(f"removed superseded single-part {out} (it was truncated)")
     return 0
 
 

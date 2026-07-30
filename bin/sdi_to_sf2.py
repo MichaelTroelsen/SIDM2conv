@@ -29,6 +29,8 @@ from sidm2.galway_to_driver11 import (
     _pulse_program,
 )
 from sidm2.galway_driver11_emitter import emit_driver11_sf2, segment_track
+from sidm2.d11_windowing import (
+    MAX_SEQUENCES, pack_rows_window, plan_row_windows)
 
 MAX_INSTRUMENTS = 31
 
@@ -156,28 +158,46 @@ def convert(path, out, c_pitch_model=None, subtune=0):
         print(f"WARN: {defaults} instruments use DEFAULT timbre/ADSR "
               f"(variant {lay.variant} instrument tables not yet located)")
     all_rows = build_rows(m, ev, slot_of, silent_idx)
-    sequences, orderlists = [], [[], [], []]
-    seq_index = {}
-    for v in range(3):
-        for pk in segment_track(all_rows[v]):
-            idx = seq_index.get(pk)
-            if idx is None:
-                idx = len(sequences)
-                seq_index[pk] = idx
-                sequences.append(pk)
-            orderlists[v].append(idx)
+    # Driver 11 holds only 128 sequence pointers. A song needing more used to be
+    # emitted anyway and TRUNCATED -- silently until 2026-07-30, taking whole
+    # chunks of a voice's orderlist with it (13 of 343 SDI files shipped that
+    # way; `Psycho` lost 101 of 229 sequences). Window it into parts instead.
+    # Cutting on the row grid is aligned across voices by construction, since
+    # all three share it.
+    windows = plan_row_windows(all_rows)
     tempo = max(0, m.fpt - 1)
     song = GalwayDriver11Song(
         instruments=instr_rows, wave_table=wave_table,
         pulse_table=pulse_table, tracks=[], tempo=tempo, pitch_base=0,
         subtune=0)
+    total_seqs = len(pack_rows_window(all_rows, 0, max(
+        (len(r) for r in all_rows), default=0))[0])
     print(f"variant {lay.variant} load=${la:04X} fpt={m.fpt} "
-          f"instruments={len(instr_rows)} sequences={len(sequences)} "
+          f"instruments={len(instr_rows)} sequences={total_seqs} "
           f"events={[len(e) for e in ev]}")
-    sf2 = emit_driver11_sf2(song, sequences=sequences, orderlists=orderlists)
+    if len(windows) > 1:
+        print(f"  -> {len(windows)} parts ({total_seqs} sequences exceeds the "
+              f"{MAX_SEQUENCES}-slot pointer table)")
+
     os.makedirs(os.path.dirname(out) or '.', exist_ok=True)
-    open(out, 'wb').write(sf2)
-    print(f"emitted {len(sf2)} bytes -> {out}")
+    stem, ext = os.path.splitext(out)
+    for i, (lo, hi) in enumerate(windows, 1):
+        sequences, orderlists = pack_rows_window(all_rows, lo, hi)
+        sf2 = emit_driver11_sf2(song, sequences=sequences,
+                                orderlists=orderlists)
+        # Single-part songs keep the original filename, so every song that
+        # already fitted is emitted byte-identically to before.
+        dest = out if len(windows) == 1 else f"{stem}_part{i:02d}{ext}"
+        open(dest, 'wb').write(sf2)
+        rows = f"rows {lo}-{hi}" if len(windows) > 1 else f"{hi - lo} rows"
+        print(f"emitted {len(sf2)} bytes -> {dest} ({rows}, "
+              f"{len(sequences)} sequences)")
+    if len(windows) > 1 and os.path.exists(out):
+        # A previous run of this song emitted ONE file, which (being over the
+        # cap) was silently truncated. Leaving it beside the parts invites
+        # someone to open the broken one.
+        os.remove(out)
+        print(f"removed superseded single-part {out} (it was truncated)")
     return 0
 
 

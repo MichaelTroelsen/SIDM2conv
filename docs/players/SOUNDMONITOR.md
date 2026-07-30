@@ -144,13 +144,19 @@ warning (only Dance's 51 combos exceed it). Gated-release rests → sustain rows
 (`datasource_sequence.cpp`); emitting them desyncs the driver's sequence reader
 into garbage pitches/noise. Stage A therefore re-gates legato notes.
 
-⚠️ **2 Stage A files are MISSING MUSIC** (measured 2026-07-30,
-`pyscript/sf2_truncation_sweep.py soundmonitor`): `Dance_at_Night_remix` loses
-**93** sequences and `Dreamix` loses **12**. Stage A emits one module per song,
-but Driver 11's sequence pointer table holds only **128** entries and the emitter
-truncated the excess — silently until 2026-07-30 (it also dropped every orderlist
-entry referencing a dropped sequence). The fix is to window these into parts, as
-Stage B already does; not yet implemented for Stage A.
+**Part splitting (fixed 2026-07-30) — 2 Stage A files were missing music.**
+Driver 11's sequence pointer table holds only **128** entries; Stage A emitted
+one module per song regardless and the emitter truncated the excess — silently
+until 2026-07-30, dropping orderlist entries along with the sequences.
+`Dance_at_Night_remix` was losing **93** sequences and `Dreamix` **12**.
+Both now split (`plan_entry_windows`): Dance → 2 parts (bars 0-95 / 95-255),
+Dreamix → 2 parts (bars 0-191 / 191-255), zero drops.
+
+Unlike SDI, SM's split is planned on **orderlist entries** rather than a row
+grid: `build_structured` walks the same `m.row_chain()` for every voice, so
+entry *k* is bar *k* in all three and cutting on an entry index is already
+aligned. **Verified**: A/B against the pre-fix builder — **9 byte-identical, 0
+unexpected diffs**, only those 2 songs newly split.
 
 **This does NOT touch the 99.25% corpus headline.** That figure comes from
 `build_soundmonitor_native_song.py` (Stage B native), which windows each song

@@ -102,6 +102,25 @@ Rule: count what the window **needs**, before emitting; make the truncation path
 and read a shared cap through its module, never a `from … import` copy that is bound once and
 goes stale.
 
+**Stage A part-splitting is shared: `sidm2/d11_windowing.py`.** A Stage A builder that can exceed
+128 sequences must window the song rather than hand the emitter an oversized list. Two planners,
+picked by how the builder packs — and the choice is about **alignment across voices**, which is
+what keeps a split song in sync:
+
+| builder shape | planner | why it is aligned |
+|---|---|---|
+| per-voice **row grid**, packed with `segment_track` (SDI) | `plan_row_windows` | all three voices share the grid, so one row index cuts them together |
+| one sequence per **bar**, same bar chain walked per voice (Sound Monitor) | `plan_entry_windows` | orderlist entry *k* is bar *k* in every voice |
+
+Do **not** cut a row-grid builder on orderlist indices: `segment_track` cuts where packing limits
+fall, so entry *k* is a different musical position in each voice and the voices desync. Both
+planners grow by doubling then binary-search the edge, count post-**dedup** (dedup is what makes
+most songs fit at all — counting before it over-splits), and emit a single full-span window when
+the song fits, so files that never needed splitting stay **byte-identical**. Convention: a split
+song becomes `NAME_partNN.sf2` and the superseded single file is deleted, so nobody opens the
+truncated one. Measured on the SDI + SM corpora: 339 byte-identical, 15 newly split, 0 unexpected
+diffs (`pyscript/sf2_truncation_sweep.py`).
+
 **Never run `pytest` while an SF2II play-test is in flight.** `pyscript/conftest.py` used to kill
 every `SIDFactoryII` process on the machine at session end (two paths, one of them silent);
 `psutil.kill()` is a TerminateProcess and its exit code is what the crash oracle reads as

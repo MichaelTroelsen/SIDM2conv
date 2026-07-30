@@ -227,27 +227,38 @@ logged for C/D/E/V), ties re-gate (runtime Driver 11 cannot parse tie bytes
 > default instrument data**: flags missing in all 274, ADSR in 173, wfprg in 75.
 > Most shipped SDI SF2s are PARTIAL, and the builder says so per file.
 
-> ⚠️ **13 of the 343 built files are MISSING MUSIC** (measured 2026-07-30,
-> `pyscript/sf2_truncation_sweep.py sdi`). Stage A emits **one** module per song,
-> but Driver 11's sequence pointer table holds only **128** entries and
-> `galway_driver11_emitter` truncated the excess — until 2026-07-30, **silently**:
-> it dropped the over-cap sequences *and* every orderlist entry referencing them,
-> so a voice loses arbitrary chunks of its structure and the file still parses,
-> loads and plays. The builder's own log already showed the discrepancy
-> (`sequences=171` while 128 were emitted) but nothing compared the two.
->
-> | file | sequences dropped | | file | dropped |
-> |---|---|---|---|---|
-> | `Psycho` | **101** | | `L-Forza_long_edit` | 28 |
-> | `Happy_Birthday_Tg-Acme` | **100** | | `Sveitser_Ost` | 27 |
-> | `Tanks_3000` | 86 | | `Onkie_Donkie` | 12 |
-> | `Jessie_Jazz` | 76 | | `Holy_Josh` | 7 |
-> | `Psycho_II` | 50 | | `Lame` | 5 |
-> | `Another_Day_in_Paradize` | 43 | | | |
-> | `Culture_Mix_2` | 43 | | | |
->
-> The drop now announces itself per voice on stderr. **The real fix is to window
-> these songs into parts** (as the native builders and `mattgray_to_sf2`'s
-> capacity probe already do) — not yet implemented for SDI Stage A.
-> Cross-checked independently by `pyscript/sf2_truncation_scan.py`, which flags
-> the same files statically (a full 128-slot table is the precondition for a drop).
+### Part splitting (fixed 2026-07-30) — 13 files were silently missing music
+
+Driver 11's sequence pointer table holds exactly **128** entries. Stage A emitted
+**one** module per song regardless, and `galway_driver11_emitter` truncated the
+excess — **silently** until 2026-07-30, dropping the over-cap sequences *and*
+every orderlist entry referencing them, so a voice lost arbitrary chunks of its
+structure while the file still parsed, loaded and played. The builder's own log
+had been printing the discrepancy all along (`sequences=171` while 128 were
+emitted); nothing compared the two.
+
+| file | was dropping | now | | file | was dropping | now |
+|---|---|---|---|---|---|---|
+| `Psycho` | **101** | 3 parts | | `L-Forza_long_edit` | 28 | 2 parts |
+| `Happy_Birthday_Tg-Acme` | **100** | 3 parts | | `Sveitser_Ost` | 27 | 2 parts |
+| `Tanks_3000` | 86 | 2 parts | | `Onkie_Donkie` | 12 | 2 parts |
+| `Jessie_Jazz` | 76 | 2 parts | | `Holy_Josh` | 7 | 2 parts |
+| `Psycho_II` | 50 | 2 parts | | `Lame` | 5 | 2 parts |
+| `Another_Day_in_Paradize` | 43 | 2 parts | | `Culture_Mix_2` | 43 | 2 parts |
+| `Mini_Poelse` | 31 | 2 parts | | | | |
+
+`convert()` now plans parts with `sidm2.d11_windowing.plan_row_windows`. SDI
+packs a per-voice **row grid** (`build_rows`) before `segment_track`, so cutting
+at a row index is aligned across voices by construction — all three share the
+grid. Windows grow by doubling then binary-search the edge, and count what a
+window **needs** (post-dedup) rather than reading a count back out of an emitted
+file, which cannot detect overflow because the emitter truncates.
+
+Naming: a song that fits keeps its original filename; a split song becomes
+`NAME_part01.sf2`, `NAME_part02.sf2`, … and the superseded single file is
+**deleted** (leaving the truncated one beside the parts invites opening it).
+
+**Verified**: full-corpus A/B against the pre-fix builder — **330 byte-identical,
+0 unexpected diffs**, exactly the 13 known-broken songs newly split (28 parts
+replacing 13 files, so 343 songs now emit 358 files). Re-running
+`pyscript/sf2_truncation_sweep.py sdi` reports **0 lose music** (was 13).
