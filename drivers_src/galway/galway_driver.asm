@@ -532,8 +532,21 @@ fp_freeze:
         sta F_CNT
         jmp fp_apply
 fp_dec:
-        cmp #$90
-        bcs fp_set               ; byte0 >= $90 -> set-filter row
+        ; E3d/R6: was `cmp #$90`. SET rows are always emitted as 0x90|mode
+        ; (see bin/build_galway_trace_song.py's extract_filter_program),
+        ; ADD rows only ever byte0 in [$00,$0F] -- [$10,$8F] is genuinely
+        ; dead space, so widening to $80 reclassifies nothing that was ever
+        ; emitted. It fixes a real hazard: SF2II's own CMP is only correct
+        ; for |A-operand| <= 127, so `cmp #$90` mis-sets carry in the real
+        ; editor for every ADD-row byte0 (0-15, all >127 away from $90) --
+        ; every filter ADD row played as a SET row there, even though every
+        ; offline emulator (py65/zig64/this driver's own py65 harness) sees
+        ; the correct 6502 result and never notices. `cmp #$80` is safe for
+        ; ANY byte0 because A-$80 never leaves -128..127. Same fix, same
+        ; reasoning, as blackbird_driver.asm's B24 (there widened further,
+        ; to admit a third row type Blackbird alone has).
+        cmp #$80
+        bcs fp_set               ; byte0 >= $80 -> set-filter row
         ; --- 0X add-to-cutoff: F_AD = ((byte0&f):byte1) << 4 ---
         and #$0f
         sta tmpf+1               ; XXX hi nibble

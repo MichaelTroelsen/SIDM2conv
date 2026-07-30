@@ -43,20 +43,19 @@ LABEL = re.compile(r'^\S+:?\s*$|^\S+:')
 # Genuine, still-unfixed hazards -- allowlisted so NEW ones fail the build
 # while the known debt stays visible instead of being silently suppressed.
 #
-# Galway's and ROMUZAK's `fp_dec` classify filter rows with `cmp #$90; bcs`
-# and no high-bit guard. ADD rows carry byte0 in [$00,$0F] (a 4-bit delta),
-# which is >128 below $90, so SF2II sets carry the WRONG way and executes
-# every such ADD row as a SET row -- their filter sweeps are broken in the
-# editor while measuring clean offline. Blackbird had the identical bug until
-# B24 widened its own threshold to `cmp #$80` for unrelated reasons, which
-# happens to be safe for every A and incidentally fixed it there.
-#
-# Not fixed here because each needs its own corpus re-verification (the
-# encodings differ) -- tracked in docs/ROADMAP.md.
-KNOWN_UNFIXED = {
-    "galway_driver.asm:cmp #$90",
-    "romuzak_driver.asm:cmp #$90",
-}
+# R6 (code review, 2026-07-30): galway_driver.asm's and romuzak_driver.asm's
+# `fp_dec` used to classify filter rows with `cmp #$90; bcs` and no high-bit
+# guard -- ADD rows carry byte0 in [$00,$0F] (a 4-bit delta), >128 below $90,
+# so SF2II set carry the WRONG way and executed every such ADD row as a SET
+# row (their filter sweeps were broken in the editor while measuring clean
+# offline). Fixed by widening both to `cmp #$80` (the same fix Blackbird's
+# B24 already had, there for unrelated reasons). Verified via a git-stash A/B
+# rebuild of the Galway corpus's Rambo_First_Blood_Part_II: the compiled
+# output differs by exactly ONE byte (the cmp operand itself, $90->$80 at
+# offset $4a7) -- proof the change is a true no-op for every value that
+# tune's filter table actually presents. Left empty (rather than deleted) so
+# a future regression back to a wide unguarded cmp still fails this lint.
+KNOWN_UNFIXED = set()
 
 
 def _guarded_by_high_bit_split(code, idx):
