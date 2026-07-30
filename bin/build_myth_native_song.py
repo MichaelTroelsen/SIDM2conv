@@ -19,6 +19,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "bin"))
 from sidm2.mon_parser import load_sid, MONEvent
+from sidm2.sf2_caps import CAP_B, CAP_I, CAP_TBL, CAP_SEG, STEP
 from py65.devices.mpu6502 import MPU
 import build_mon_native_song as BM
 
@@ -207,8 +208,6 @@ def main():
 
     # adaptive windowing (mirror build_mon_native_song.main): grow each window until a
     # driver cap trips, using the cheap count_only probe.
-    CAP_B, CAP_I, CAP_TBL, CAP_SEG, STEP = 63, 32, 256, 120, 100
-
     def fits(t0, t1):
         nb, ni, nw, nf, ns = BM.build_native_song(
             m, SID, SUB, {}, [], win=(t0, t1), traces=traces, count_only=True)

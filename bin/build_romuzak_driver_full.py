@@ -17,6 +17,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+from sidm2.sf2_caps import ST_FIRST, ST_LAST
 GAL = os.path.join(ROOT, "drivers_src", "romuzak")
 OUTDIR = os.path.join(ROOT, "out")
 
@@ -222,7 +223,6 @@ def assemble():
     img = bytearray(0x10000)
     for i, b in enumerate(data[2:]):
         img[(load + i) & 0xFFFF] = b
-    ST_FIRST, ST_LAST = 0x16cc, 0x1702
     if any(img[a] != 0 for a in range(ST_FIRST, ST_LAST + 1)):
         raise SystemExit(
             f"DRIVER STATE-REGION OVERLAP: ${ST_FIRST:04X}-${ST_LAST:04X} is not "

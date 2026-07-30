@@ -26,6 +26,7 @@ from sidm2.mon_parser import MONEvent
 from sidm2.hubbard_parser import (HubbardModule, decode_song, load_sid,
                                   detect_module_map, swallow_state,
                                   ticks_to_frames, initial_instruments)
+from sidm2.sf2_caps import CAP_B, CAP_I, CAP_TBL, CAP_SEG, STEP
 import build_mon_native_song as BM
 
 SID = sys.argv[1] if len(sys.argv) > 1 else os.path.join("SID", "Hubbard_Rob",
@@ -403,8 +404,6 @@ def main():
                            f"{base}_song{SONG}_part01.sf2")
         BM.emit_one(shim, br, out, f"{base} 0-{t1 // 50}s")
         return
-
-    CAP_B, CAP_I, CAP_TBL, CAP_SEG, STEP = 63, 32, 256, 120, 100
 
     def fits(t0, t1):
         nb, ni, nw, nf, ns = BM.build_native_song(

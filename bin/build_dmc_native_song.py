@@ -21,6 +21,7 @@ from sidm2.mon_parser import MONEvent
 from sidm2.dmc_parser import (load_sid, DMCModule, decode_song, measure_onsets)
 from sidm2.sid_player import FREQ_TABLE_LO, FREQ_TABLE_HI
 from sidm2.fidelity_common import freq_to_semi, score_pct
+from sidm2.sf2_caps import CAP_B, CAP_I, CAP_TBL, CAP_SEG, STEP
 import build_mon_native_song as BM
 
 
@@ -258,9 +259,6 @@ def find_phase(path, m, voices):
             s += len(set(f for f, _ in rl) & set(f + ph for f in pf[v]))
         return s
     return max(range(0, 8), key=score)
-
-
-CAP_B, CAP_I, CAP_TBL, CAP_SEG, STEP = 63, 32, 256, 120, 100
 
 
 def legato_candidates(m, phase, onsets, voices0):

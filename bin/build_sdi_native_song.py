@@ -32,13 +32,12 @@ from sidm2.fidelity_common import (                                    # noqa: E
     score_pct, fmt_pct)
 from sidm2.sf2_parser import parse_sf2_blocks, SF2DriverInfo           # noqa: E402
 from sdi_to_sf2 import instrument_adsr                                 # noqa: E402
+from sidm2.sf2_caps import CAP_B, CAP_I, CAP_TBL, CAP_SEG, STEP        # noqa: E402
 import build_mon_native_song as BM                                     # noqa: E402
 
 SID = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
     "SID", "Gallefoss_Glenn", "2_Young_2_Die.sid")
 warg = sys.argv[2] if len(sys.argv) > 2 else "auto"
-
-CAP_B, CAP_I, CAP_TBL, CAP_SEG, STEP = 63, 32, 256, 120, 100   # 2s probe step
 
 
 def _pal(note):

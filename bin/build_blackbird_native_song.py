@@ -85,6 +85,7 @@ from sidm2.galway_to_driver11 import (
     D11Row, SF2_NOTE_MIN, SF2_NOTE_MAX, SF2_GATE_ON, SF2_GATE_OFF,
 )
 from sidm2.sid_player import FREQ_TABLE_LO, FREQ_TABLE_HI
+from sidm2.sf2_caps import CAP_I, CAP_TBL, CAP_SEG
 
 NFM = 64                 # $c0-$ff command space (index = byte & 0x3f)
 # B25: reserved fx-index sentinel ("arm a pre-restart SR/gate blip" instead
@@ -2701,7 +2702,10 @@ def report_window(sim_frames, drv_frames, lo, hi, label):
 # is a real musical cost the register-trace metric does NOT price in (each
 # part is a separate SF2 with a hard cut, no crossfade). 80 is the measured
 # fidelity optimum if part count is no object; override via BB_CAP_B.
-CAP_B, CAP_I, CAP_TBL, CAP_SEG, STEP = 96, 32, 256, 120, 150
+# CAP_B and STEP are deliberate Blackbird-specific overrides of sidm2.sf2_caps'
+# defaults (96 vs 63, 150 vs 100 -- see the derivation above); CAP_I/CAP_TBL/
+# CAP_SEG match the shared defaults and are imported, not re-declared.
+CAP_B, STEP = 96, 150
 # B8 (Lever 2): CAP_B is sweepable from the environment so the threshold
 # can be re-derived from measurements rather than argued about -- see the
 # sweep table in docs/players/BLACKBIRD.md's B8 section.
