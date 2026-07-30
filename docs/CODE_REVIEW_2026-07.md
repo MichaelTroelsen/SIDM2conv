@@ -302,11 +302,34 @@ mid-session before being caught ✻.
 behavior. **Verification**: `bin/deenen_sf2_validate.py` per-voice audio validator; the 7
 clean wins must stay at their scores.
 
-### R13. Future Composer Stage B — P0 · M · Sonnet after R1–R3 (else Opus)
-**Evidence** ✻: the only ported player with no native driver (Stage A, $1800 variant = 5/20
-files). ROADMAP B4 flags it as the cheapest Stage B and **the first test that the
-consolidated pipeline generalizes** — sequence it right after R1–R3 as their validation.
-**Verification**: `bin/fc_validate.py` onsets; per-frame fidelity vs zig64.
+### R13. Future Composer Stage B — ✅ **DONE 2026-07-30** · Opus
+**Shipped**: `bin/build_fc_native_song.py` + 17 tests (`pyscript/test_fc_native_song.py`).
+**Result**: **14 of 15 corpus voices at exactly 100.0% audible per-frame pitch over FULL
+song length** (5 rips, per-voice n 346–2253). Note placement independently **frame-exact**
+(decode onsets == trace gate-rises, delay +0). Sole residual: Triangle_Intro v1 83.6%/633fr.
+
+**It confirmed the R1–R3 consolidation generalizes — that was the point of choosing it.**
+Stage B added **no new driver and no new engine code**: a MON-compatible shim feeds the
+shared trace-driven `build_native_song`, and it consumes R2's `sidm2.sf2_caps` for its
+adaptive windowing. FC was decode-driven (not onset-aligned like SDI/DMC) because its parser
+is already validated byte-exact — and re-deriving notes from gate-rises would have discarded
+the rests, which is the whole reason to build FC natively.
+
+**Bonus: Stage B removes Stage A's headline defect.** SF2II's Driver 11 cannot gate a long
+silent intro (Triangle_Intro's lead, muted 288 ticks) — documented as FC's crux open issue,
+which drove an entire abandoned Driver-15 investigation. A native driver writes its own
+sequencer, so the constraint does not exist.
+
+**A metric trap worth reusing elsewhere**: the naive per-frame freq score reads **57.8%** on
+Triangle_Intro v1 where the audible score is **100.0%**. FC encodes a rest as note ≥ 96, so
+the original parks a near-zero `$0002` in `$D400` **with the gate off**; a build emitting a
+true rest "mismatches" on a register nothing can hear (636 of 1496 frames).
+`Triangle_2_years`, which has zero rests, is the control: raw ≈ audible. The builder now
+prints **both** columns with their n — the audible column overstates if its n is ignored,
+since FC gates for only ~5–20% of frames. **Any player whose rests leave a non-zero freq
+register will show this same false penalty.**
+**Verification**: `py -3 bin/build_fc_native_song.py <sid> auto` (prints both columns);
+`bin/fc_validate.py` still covers Stage A.
 
 ### R14. DMC: standard measurement window + measure parts ≥2 — P2 · S-M · Sonnet
 **Evidence** ✻: "every DMC % is window-dependent and the window is a free parameter"
@@ -556,7 +579,7 @@ sessions and is deliberately unstaged ✻.
 | B1 MoN structural rebuild | merged into **R17** (same work as C1) |
 | B2 Galway residual | carried → **R7** |
 | B3 universal objective metric | carried → **R22** |
-| B4 FC Stage B | carried → **R13** |
+| B4 FC Stage B | **✅ done** → **R13**: shipped 2026-07-30, 14/15 voices 100% audible, no new driver needed |
 | B5 small residuals | noted in R16 (Myth filter); ROMUZAK drum octave stays parked |
 | C1 structural RE | carried → **R17** (flagship) |
 | C2 wave-RLE port | carried → **R18** |
@@ -576,7 +599,7 @@ sessions and is deliberately unstaged ✻.
 |------|-------|-----------|
 | 1 | **R6** (fp_dec), **R23** (probe oracle), **R21** (SM sweep), **R29** (test debt), **R28/R31/R33/R34** (doc drift + strays), **R5** (verify-and-close) | Small, independent, de-risk everything after; R6 is a today-broken editor behavior |
 | 2 | ~~**R2** (caps)~~ ✅ → ~~**R3** (build lib)~~ ✅ partial → ~~**R1** (driver merge)~~ ✅ → **R32** (CLAUDE.md compression) | Consolidation in increasing risk order; each gated by byte-diffs; R32 cheapens every later session. R3's residual (4 more `B.TEMPO*` channel variables in ROMUZAK/MoN/Blackbird) is a prerequisite for the driver_full file merge, not for R1's ASM merge |
-| 3 | **R13** (FC Stage B) | Validates wave 2's consolidation on a real port |
+| 3 | ~~**R13** (FC Stage B)~~ ✅ **DONE** — 14/15 voices 100% audible; added no new driver | Validated wave 2's consolidation on a real port |
 | 4 | **R16** (filter seams), **R7** (Galway PWM) | P0 fidelity on the consolidated base |
 | 5 | **R20** (memory-wall audit), **R18** (RLE flag), **R19** (dedup) | Part-count: cheap wins first |
 | 6 | **R17** (Stage C structural RE) | Flagship part-count work, Opus |
