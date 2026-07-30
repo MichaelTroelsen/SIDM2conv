@@ -217,3 +217,30 @@ def test_stage_a_sequences_round_trip_exactly():
             flat.extend(span)
         assert flat == [r.note for r in rows]
     assert total_seqs <= 120           # SF2II sequence-slot cap
+
+
+# --- R20: part capacity is MEASURED per song, not a hardcoded frame count ----
+# The old code split on a flat MAX_PART_FRAMES=24_000 "SF2II memory wall" whose
+# derivation was never found and does not follow from the format: nothing in a
+# Driver 11 file grows with TIME (every table is fixed-size; the sequence region
+# is a fixed 128 x 256-byte slots), so capacity is a function of event DENSITY.
+# Measured: Driller's whole 8320-row / 665.6s song is ONE valid module at 57/128
+# sequence slots, top $61CF against the $D000 wall.
+
+def test_default_ceiling_no_longer_forces_drillers_split():
+    """Driller is 33280 frames; the old 24_000 default split it into two."""
+    import importlib
+    M = importlib.import_module("mattgray_to_sf2")
+    assert M.MAX_PART_FRAMES > 33280,         "default window ceiling must not re-split Driller"
+
+
+def test_convert_probes_both_binding_limits():
+    """Guards against someone reinstating a duration-based split: the
+    sequence-slot count and the $D000 top are the only two things that actually
+    bound one module."""
+    import importlib, inspect
+    M = importlib.import_module("mattgray_to_sf2")
+    src = inspect.getsource(M.convert)
+    assert "SEQ_SLOTS" in src
+    assert "0xD000" in src
+    assert "_part_fits" in src

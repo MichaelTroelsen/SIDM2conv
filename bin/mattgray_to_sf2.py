@@ -35,11 +35,23 @@ from sidm2.galway_to_driver11 import (  # noqa: E402
     _nearest_pal, _norm_waveform, _pulse_program,
 )
 from sidm2.galway_driver11_emitter import emit_driver11_sf2  # noqa: E402
+from sidm2.models import SF2DriverInfo  # noqa: E402
+from sidm2 import sf2_parser  # noqa: E402
 
 MAX_D11_INSTR = 32          # SF2II cap ($a0-$bf)
-# The SF2II memory wall: tables must stay under $d000, which works out at
-# roughly 27,650 play-calls (~9.2 min).  Stay comfortably inside it.
-MAX_PART_FRAMES = 24_000
+# R20: NOT a capacity bound any more -- `convert()` MEASURES how many rows fit
+# per module (see its _part_fits probe). This is only the default ceiling on a
+# single window, kept so `--part-frames` still means something and so a
+# pathological song cannot probe unboundedly. 0 = no ceiling, probe only.
+#
+# The old comment here claimed "tables must stay under $d000, which works out at
+# roughly 27,650 play-calls (~9.2 min)". That derivation was never found in the
+# history and does not follow from the format: nothing in a Driver 11 file grows
+# with TIME (every table is fixed-size; the sequence region is a fixed
+# 128 x 256-byte slots), so capacity depends on event DENSITY, not duration.
+# Measured on Driller: the whole 8320-row / 665.6s song is ONE valid module at
+# 57/128 slots, top $61CF vs the $D000 wall.
+MAX_PART_FRAMES = 40_000
 
 
 def calibrate_base(song, tol: int = 12) -> int:
@@ -184,11 +196,83 @@ def convert(sid_path: str, out_path: str, subtune: int = 1,
     if total_ticks == 0:
         raise MattGrayError("no notes decoded -- refusing to emit an empty SF2")
 
-    # The SF2II memory wall caps a single module at roughly MAX_PART_FRAMES
-    # play-calls; a longer tune must be split into parts rather than silently
-    # truncated (standing preference: never ship lossy output silently).
-    ticks_per_part = max(1, max_part_frames // song.frames_per_tick)
-    n_parts = (total_ticks + ticks_per_part - 1) // ticks_per_part
+    # R20: how many rows fit in ONE module, MEASURED rather than assumed.
+    #
+    # This used to be a flat `max_part_frames // frames_per_tick`, with
+    # max_part_frames a hardcoded 24_000 "SF2II memory wall". That constant had
+    # no measurement behind it and cost real files: Driller (8320 rows / 665.6s)
+    # split into 2 parts, yet the whole song emits as ONE valid module using
+    # 57 of 128 sequence slots and reaching only $61CF against the $D000 wall --
+    # roughly 28KB of headroom unused. Nothing in the Driver 11 layout grows with
+    # TIME: instruments/wave/pulse/filter/tempo/init are all fixed-size and the
+    # sequence region is a fixed 128 x 256-byte slots. Capacity is therefore a
+    # function of EVENT DENSITY, not duration, so probe it per song.
+    #
+    # `_part_fits` emits the candidate range for real and checks the two limits
+    # that actually bind (the per-sequence byte/event caps are enforced inside
+    # segment_track, which splits rather than overflowing):
+    #   1. <= SEQ_SLOTS sequences across all three voices
+    #   2. file top < MEM_WALL
+    # Grow the window while it fits, then cut. Passing an explicit
+    # --part-frames still caps the window (so the old behaviour is reachable),
+    # but it is no longer the DEFAULT bound.
+    SEQ_SLOTS, MEM_WALL = 128, 0xD000
+
+    def _emit_range(lo, hi):
+        tracks, clipped = build_tracks(song, events, base, len(instr_rows),
+                                       tick_lo=lo, tick_hi=hi)
+        d11 = GalwayDriver11Song(
+            instruments=instr_rows, wave_table=wave_table,
+            pulse_table=pulse_table, filter_table=filter_table,
+            tracks=tracks, tempo=song.tempo, pitch_base=base, subtune=subtune)
+        return emit_driver11_sf2(d11), tracks, clipped
+
+    def _part_fits(lo, hi):
+        try:
+            blob, _, _ = _emit_range(lo, hi)
+        except Exception:
+            return False                      # emission refused -> does not fit
+        di = SF2DriverInfo()
+        la = sf2_parser.parse_sf2_blocks(bytearray(blob), di)
+        if la is None:
+            return False
+        used = sum(1 for i in range(SEQ_SLOTS)
+                   if blob[di.sequence_ptrs_lo - la + 2 + i]
+                   or blob[di.sequence_ptrs_hi - la + 2 + i])
+        return used <= SEQ_SLOTS and (la + len(blob) - 2) < MEM_WALL
+
+    cap_ticks = (max(1, max_part_frames // song.frames_per_tick)
+                 if max_part_frames else total_ticks)
+    bounds = []
+    lo = 0
+    while lo < total_ticks:
+        hi = min(total_ticks, lo + cap_ticks)
+        # Grow first (doubling) while it still fits, then binary-search the edge.
+        if _part_fits(lo, hi):
+            step = hi - lo
+            while hi < total_ticks and _part_fits(lo, min(total_ticks, hi + step)):
+                hi = min(total_ticks, hi + step)
+                step *= 2
+            good, bad = hi, min(total_ticks, hi + max(1, step // 2))
+            while bad > good + 1:
+                mid = (good + bad) // 2
+                if _part_fits(lo, mid):
+                    good = mid
+                else:
+                    bad = mid
+            hi = good
+        else:
+            good, bad = lo + 1, hi          # shrink until it fits
+            while bad > good + 1:
+                mid = (good + bad) // 2
+                if _part_fits(lo, mid):
+                    good = mid
+                else:
+                    bad = mid
+            hi = good
+        bounds.append((lo, hi))
+        lo = hi
+    n_parts = len(bounds)
 
     stem, ext = os.path.splitext(out_path)
     print(f"{os.path.basename(sid_path)} subtune {subtune}")
@@ -200,30 +284,18 @@ def convert(sid_path: str, out_path: str, subtune: int = 1,
           f"{total_ticks * song.frames_per_tick} frames = "
           f"{total_ticks * song.frames_per_tick / 50.0:.1f}s")
     if n_parts > 1:
-        print(f"  -> {n_parts} parts (SF2II memory wall is ~{max_part_frames} "
-              f"play-calls per module)")
+        print(f"  -> {n_parts} parts (measured capacity: <={SEQ_SLOTS} sequences "
+              f"and top < ${MEM_WALL:04X} per module)")
+    else:
+        print(f"  -> 1 part (whole song fits one module)")
 
     total_notes = 0
-    for part in range(n_parts):
-        lo = part * ticks_per_part
-        hi = min(total_ticks, lo + ticks_per_part)
-        tracks, clipped = build_tracks(song, events, base, len(instr_rows),
-                                       tick_lo=lo, tick_hi=hi)
-        d11 = GalwayDriver11Song(
-            instruments=instr_rows,
-            wave_table=wave_table,
-            pulse_table=pulse_table,
-            filter_table=filter_table,
-            tracks=tracks,
-            # Both formats mean the same thing: value + 1 frames per row.
-            tempo=song.tempo,
-            pitch_base=base,
-            subtune=subtune,
-        )
+    for part, (lo, hi) in enumerate(bounds):
+        blob, tracks, clipped = _emit_range(lo, hi)
         path = out_path if n_parts == 1 else f"{stem}_part{part + 1:02d}{ext}"
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         with open(path, "wb") as fh:
-            fh.write(emit_driver11_sf2(d11))
+            fh.write(blob)
         n_notes = sum(1 for t in tracks for r in t
                       if SF2_NOTE_MIN <= r.note <= SF2_NOTE_MAX)
         total_notes += n_notes

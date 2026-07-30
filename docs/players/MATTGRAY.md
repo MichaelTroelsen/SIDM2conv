@@ -138,7 +138,7 @@ they just hold a static timbre.
 Driller loops at **8320 rows = 33,280 frames = 665.6 s**, all three voices
 wrapping on the same tick despite different track lengths (117/82/109 entries)
 — a good internal-consistency check. That exceeds the SF2II memory wall
-(~27,650 play-calls), so the converter **splits into parts** rather than
+(the figure once quoted here, ~27,650 play-calls, was never derivable -- see R20 below), so the converter **splits into parts** rather than
 truncating silently:
 
 ```
@@ -402,3 +402,41 @@ siddump. Until then the parser refuses them loudly rather than guessing.
 | Last Ninja 2 | 1988 | copy → `$4000` | shared `play_voice` ×3 | `$70+n`, `$f9` code | **100%/100%** ×13 |
 | Tusker | 1989 | self-mod copy → `$e000` | shared `play_voice` ×3 | `$70+n`, `$f9` code | **100%/100%** ×4 |
 | Deliverance | 1990 | none (trampoline at `play`) | shared `play_voice` ×3 | ? | tables not located |
+
+---
+
+## R20 (2026-07-30): part capacity is now MEASURED -- Driller emits ONE file
+
+Driller used to split into **2 parts**. It does not need to: the whole
+8320-row / 665.6 s song emits as **one valid module** using **57 of 128**
+sequence slots and reaching only **$61CF** against the `$D000` wall -- about
+28 KB of headroom left unused.
+
+The split came from `MAX_PART_FRAMES = 24_000`, a hardcoded constant justified
+in-code as "the SF2II memory wall ... roughly 27,650 play-calls (~9.2 min)".
+**That derivation is not in the git history and does not follow from the
+format**: nothing in a Driver 11 file grows with *time* -- instruments, wave,
+pulse, filter, tempo and init tables are all fixed-size, and the sequence
+region is a fixed 128 x 256-byte slots. Capacity is a function of event
+**density**, not duration.
+
+`convert()` now **probes** it: emit the candidate row range for real, then check
+the only two limits that actually bind --
+
+1. `<= 128` sequences across all three voices, and
+2. file top `< $D000`
+
+-- growing the window (doubling) while it fits and binary-searching the edge.
+The per-sequence caps (250 packed bytes / 960 unpacked events) need no probe;
+`segment_track` already splits rather than overflowing them.
+
+Verified: the one-part Driller walks its orderlists to **[8320, 8320, 8320]**
+rows/voice (the complete song, all three voices), **zero** cap violations, and
+its row total equals the old two parts summed exactly. Songs that already fitted
+one part are **byte-identical** (checked on Last_Ninja_2 sub2 and Tusker sub2),
+so this only affects songs that were being over-split.
+
+**Not done**: the one-part 665 s Driller has **not** been play-tested in real
+SF2II. The 2-part build was (`whats-next.md`); a single module 2.8x longer is a
+new load, and only the editor can rule out an SF2II-only hazard. Do that before
+treating one-file Driller as shipped.

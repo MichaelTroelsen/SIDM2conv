@@ -88,7 +88,8 @@ SID file
 | WAVE / FILTER table rows | **256** each | cursor guards raise |
 | Sequences | **120** (128 slots − margin) | `CAP_SEG=120` |
 | Packed sequence events | **960** (SF2II `Unpack` buffer is 1024 with **no bounds check** — overflow = heap corruption) | `_SEQ_EVENT_LIMIT` |
-| Memory wall | tables < **$D000** (~27,650 play-calls ≈ 9.2 min); state region `$16CC-$1702` must stay clear | `assemble()` guards |
+| Memory wall | tables < **$D000**; state region `$16CC-$1702` must stay clear | `assemble()` guards |
+| ~~"~27,650 play-calls ≈ 9.2 min"~~ | **RETRACTED 2026-07-30 (R20)** — not derivable from the format and not in the history. Nothing in a Driver 11 file grows with *time* (fixed-size tables + a fixed 128×256-byte sequence region), so per-module capacity is a function of event **density**. MEASURE it (`bin/mattgray_to_sf2.convert`'s `_part_fits` probe): Driller's whole 665.6 s song is ONE module at 57/128 slots, top `$61CF` | — |
 
 **Part-count economics** (MoN finding, proven quantitatively): dense tunes blow bundles+instruments+wave-rows **simultaneously**, so relieving one cap alone yields zero part reduction. The trace-driven build unrolls the player's compact looping tables — *no trace-based method compresses this losslessly*. The lossless fix is **Stage C structural RE** of the synth engine (extract its looping arp/wave tables + selectors). Supremacy's engines are already cracked; see `whats-next.md` for the bounded remaining work.
 
