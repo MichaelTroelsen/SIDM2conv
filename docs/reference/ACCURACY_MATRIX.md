@@ -2,10 +2,12 @@
 **Single Source of Truth for Accuracy Data**
 
 **Version**: 3.22.0
-**Last Updated**: 2026-07-25
-**Status**: ✅ Production Reference — refreshed v3.22.0 (Blackbird/lft added). All 12 ported players are now
-listed (the v3.14.0–v3.20.0 arrivals — Hubbard, DMC, Sound Monitor, SDI — had been missing
-since v3.13.0).
+**Last Updated**: 2026-07-30
+**Status**: ✅ Production Reference — refreshed v3.22.0 (Blackbird/lft added), Matt Gray row
+added 2026-07-30. **15 ported player families** are now listed (the v3.14.0–v3.20.0 arrivals —
+Hubbard, DMC, Sound Monitor, SDI — had been missing since v3.13.0; Matt Gray, RE'd 2026-07-25,
+was missing until now). Counting rule: one row per locator/parser family — Myth and Supremacy
+are sub-rows under MoN, not separate counts.
 
 > **Provenance:** every row below was **re-measured on 2026-07-16** — Hubbard, DMC, Sound
 > Monitor and SDI by an adversarial audit (`.claude/agents/sidm2-fidelity-falsify.md`),
@@ -54,6 +56,7 @@ Per-frame register fidelity (freq / waveform / pulse / filter) measured vs the o
 | **Future Composer** ($1800 variant) | `bin/fc_to_sf2.py` | Stage A only: notes/order trace-validated | 🚧 [FUTURECOMPOSER.md](../players/FUTURECOMPOSER.md) |
 | **Jeroen Kimmel** (Hubbard-derived, 4 tunes / 9 SF2s) | `bin/kimmel_to_sf2.py` | Stage A: **11/12 voice-medians exact 100%** (frame-pitch, not gate-onset — see doc); arp/PWM/freq-slide(T0)/drum driver-verified byte-exact | ✅ [KIMMEL.md](../players/KIMMEL.md) |
 | **Charles Deenen** (MoN/Deenen replay, 40-file corpus) | `bin/deenen_to_sf2.py`, `bin/deenen_sm_build.py` | Stage A: 7 clean wins (5 at exactly 100/100 onset+pitch, Constant_Runner 100/97.7, Astro 77.4/91.5; 10/19 located) + 8 freebies at 100%; per-voice/per-time audio validator (`bin/deenen_sf2_validate.py`); implausible decodes REFUSED | 🚧 [DEENEN.md](../players/DEENEN.md) |
+| **Matt Gray** (own from-scratch engine, 18 tunes: Driller, Last Ninja 2 ×13 subtunes, Tusker ×4 subtunes) | `bin/mattgray_to_sf2.py` | Stage A only: sequencer **onset 100% / pitch 100%** on all 18 tunes — but **scoped to plain (non-modulated) instruments only**. Stage A knowingly omits the slide/arp/PWM/drum engine, so timbre is **not claimed** and the audio will not sound like the originals; that is a Stage B claim, not yet started. Driller round-trips 6000/6000 sequence rows byte-exact and SF2II play-tested (survived; Deliverance/Quedex locate still blocked). | 🚧 [MATTGRAY.md](../players/MATTGRAY.md) — not wired into `DriverSelector` |
 
 ## Editor-view clusters (inside the Laxity path)
 

@@ -114,13 +114,17 @@ class DriverSelector:
         for driver, info in PLAYER_REGISTRY.items()
     }
 
-    # Expected accuracies (kept for backwards compat; PLAYER_REGISTRY is authoritative)
+    # Expected accuracies (kept for backwards compat; PLAYER_REGISTRY is authoritative).
+    # 'laxity'/'np20'/'galway' are derived from PLAYER_REGISTRY so the two can't drift.
+    # 'driver11_sf2'/'driver11_default' have no registry equivalent — PLAYER_REGISTRY['driver11']
+    # stores one combined description, but _build_selection_result needs the SF2-exported and
+    # unknown-fallback cases distinguished, so those two stay explicit literals.
     EXPECTED_ACCURACY = {
-        'laxity': '99.93%',
+        'laxity': PLAYER_REGISTRY['laxity']['accuracy'],
         'driver11_sf2': '100%',
         'driver11_default': 'Safe default',
-        'np20': '70-90%',
-        'galway': 'notes 100% / timbre approximated (Stage A Driver 11)',
+        'np20': PLAYER_REGISTRY['np20']['accuracy'],
+        'galway': PLAYER_REGISTRY['galway']['accuracy'],
     }
 
     @classmethod
