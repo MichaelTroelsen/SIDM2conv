@@ -144,6 +144,20 @@ warning (only Dance's 51 combos exceed it). Gated-release rests → sustain rows
 (`datasource_sequence.cpp`); emitting them desyncs the driver's sequence reader
 into garbage pitches/noise. Stage A therefore re-gates legato notes.
 
+⚠️ **2 Stage A files are MISSING MUSIC** (measured 2026-07-30,
+`pyscript/sf2_truncation_sweep.py soundmonitor`): `Dance_at_Night_remix` loses
+**93** sequences and `Dreamix` loses **12**. Stage A emits one module per song,
+but Driver 11's sequence pointer table holds only **128** entries and the emitter
+truncated the excess — silently until 2026-07-30 (it also dropped every orderlist
+entry referencing a dropped sequence). The fix is to window these into parts, as
+Stage B already does; not yet implemented for Stage A.
+
+**This does NOT touch the 99.25% corpus headline.** That figure comes from
+`build_soundmonitor_native_song.py` (Stage B native), which windows each song
+into parts — verified 2026-07-30: `Dance_at_Night_remix` builds as **8 parts,
+zero drops**. The native format has no 128-slot Driver 11 pointer table at all.
+Two different builders; do not transfer the caveat between them.
+
 Validation (`bin/soundmonitor_sf2_validate.py`, order-preserving coverage):
 **32/33 voices note-accurate** (13 EXACT; the rest = every original attack present
 in order at the right pitch). Residual: Times_Up osc2 attack +1 semi (instr 3's

@@ -226,3 +226,28 @@ logged for C/D/E/V), ties re-gate (runtime Driver 11 cannot parse tie bytes
 > `WARN: N instruments use DEFAULT timbre/ADSR`. **274 of 324 (85%) carry some
 > default instrument data**: flags missing in all 274, ADSR in 173, wfprg in 75.
 > Most shipped SDI SF2s are PARTIAL, and the builder says so per file.
+
+> ⚠️ **13 of the 343 built files are MISSING MUSIC** (measured 2026-07-30,
+> `pyscript/sf2_truncation_sweep.py sdi`). Stage A emits **one** module per song,
+> but Driver 11's sequence pointer table holds only **128** entries and
+> `galway_driver11_emitter` truncated the excess — until 2026-07-30, **silently**:
+> it dropped the over-cap sequences *and* every orderlist entry referencing them,
+> so a voice loses arbitrary chunks of its structure and the file still parses,
+> loads and plays. The builder's own log already showed the discrepancy
+> (`sequences=171` while 128 were emitted) but nothing compared the two.
+>
+> | file | sequences dropped | | file | dropped |
+> |---|---|---|---|---|
+> | `Psycho` | **101** | | `L-Forza_long_edit` | 28 |
+> | `Happy_Birthday_Tg-Acme` | **100** | | `Sveitser_Ost` | 27 |
+> | `Tanks_3000` | 86 | | `Onkie_Donkie` | 12 |
+> | `Jessie_Jazz` | 76 | | `Holy_Josh` | 7 |
+> | `Psycho_II` | 50 | | `Lame` | 5 |
+> | `Another_Day_in_Paradize` | 43 | | | |
+> | `Culture_Mix_2` | 43 | | | |
+>
+> The drop now announces itself per voice on stderr. **The real fix is to window
+> these songs into parts** (as the native builders and `mattgray_to_sf2`'s
+> capacity probe already do) — not yet implemented for SDI Stage A.
+> Cross-checked independently by `pyscript/sf2_truncation_scan.py`, which flags
+> the same files statically (a full 128-slot table is the precondition for a drop).

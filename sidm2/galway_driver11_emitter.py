@@ -267,6 +267,23 @@ def emit_driver11_sf2(song: GalwayDriver11Song,
             [s for s in orderlists[v] if s < len(packed_sequences)]
             if v < len(orderlists) else []
             for v in range(3)]
+        # Same silent-loss hazard as the segmenting branch below, twice over:
+        # the slice drops sequences past the cap, and the comprehension then
+        # drops every ORDERLIST ENTRY pointing at them -- so a voice can lose
+        # arbitrary chunks of its structure, not just its tail, and the file
+        # still looks valid. Announce both.
+        seq_over = max(0, len(sequences) - _MAX_SEQUENCES)
+        ol_dropped = [
+            (sum(1 for s in orderlists[v] if s >= len(packed_sequences))
+             if v < len(orderlists) else 0)
+            for v in range(3)]
+        if seq_over or any(ol_dropped):
+            print(f"WARNING: caller supplied {len(sequences)} sequences, "
+                  f"{_MAX_SEQUENCES} fit -- {seq_over} DROPPED, and "
+                  f"{sum(ol_dropped)} orderlist entr(ies) referencing them were "
+                  f"removed (per voice: {ol_dropped}). This module is missing "
+                  f"music. Split the song into shorter parts.",
+                  file=sys.stderr, flush=True)
     else:
         track_seq_indices = [[], [], []]
         packed_sequences = []

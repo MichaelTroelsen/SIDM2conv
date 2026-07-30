@@ -312,6 +312,35 @@ def test_emitter_announces_dropped_sequences(capsys):
         f"truncation must be announced, got: {err!r}"
 
 
+def test_emitter_announces_dropped_caller_supplied_sequences(capsys):
+    """The caller-supplied branch loses music two ways, and must announce both.
+
+    `sequences[:_MAX_SEQUENCES]` drops the excess, and the orderlist filter then
+    removes every ENTRY pointing at a dropped sequence -- so a voice can lose
+    arbitrary chunks of its structure, not just its tail. This is the branch the
+    trace-driven Stage A builders use; SDI's `Another_Day_in_Paradize` was
+    silently shipping with 43 sequences and 44 of voice 3's orderlist entries
+    gone.
+    """
+    from sidm2.galway_driver11_emitter import emit_driver11_sf2
+    from sidm2.galway_to_driver11 import D11Instrument, GalwayDriver11Song
+
+    song = GalwayDriver11Song(
+        instruments=[D11Instrument(ad=0x00, sr=0xF0, flags=0x00, filter_idx=0,
+                                   pulse_idx=0, wave_idx=0)],
+        wave_table=[(0x41, 0x00)], pulse_table=[], filter_table=[],
+        tracks=[[], [], []], tempo=4)
+    seqs = [bytes([0x30, 0x7F])] * 171          # over the 128-slot table
+    ols = [list(range(60)), list(range(60, 120)), list(range(120, 171))]
+
+    emit_driver11_sf2(song, sequences=seqs, orderlists=ols)
+    err = capsys.readouterr().err
+    assert "DROPPED" in err, f"truncation must be announced, got: {err!r}"
+    assert "43" in err, f"should report 171-128=43 dropped, got: {err!r}"
+    # voice 3's entries are the ones pointing past the cap
+    assert "orderlist entr" in err
+
+
 @needs_driller
 def test_probe_splits_rather_than_dropping_sequences(tmp_path, capsys):
     """With the cap lowered so Driller cannot fit one module, the probe must
