@@ -233,13 +233,44 @@ going green plus an ear check via `pyscript/sf2_open_in_editor.py`.
 **Traps**: this class is invisible to py65/zig64/Python-sim — do not claim it fixed from
 headless numbers.
 
-### R7. Galway pulse-PWM extraction gap — P0 · M · Opus
-**Evidence** ✻: the one *shared* residual behind 10/40 not-objectively-clean: real PW sweeps
-extracted flat for Commando / Street_Hawk / Match_Day / Highlander (ROADMAP B2).
-**Fix sketch**: emit `0X`-add pulse rows from the trace's PW deltas (the 16-bit pulse pointer
-/ 573-row PWM machinery already exists in the Galway driver ✻).
-**Verification**: `bin/sf2ii_vs_real.py` per-voice pulse % on the four tunes; corpus
-`bin/batch_validate_galway.py` no regressions.
+### R7. Galway pulse-PWM gap — 🔬 **RE-DIAGNOSED 2026-07-30, tune list was wrong in BOTH directions; fix not yet written** · Opus
+**Measured** (distinct per-frame pulse values original→built, 60 s, each tune at **its own
+build subtune**, best-delay searched; `Rambo` as a validated control at 100/100/100):
+
+| tune | v0 | v1 | v2 | verdict |
+|---|---|---|---|---|
+| Commando_High-Score | 106→106 **100.0%** | 107→106 **99.9%** | 107→106 **99.8%** | ✅ **not defective** |
+| Highlander | 196→196 **100.0%** | 317→317 **57.0%** | 276→285 **99.3%** | ⚠️ v1 only — **same distinct count, wrong values**: NOT under-extraction, a different defect |
+| Match_Day | 22→22 99.6% | 63→67 98.0% | **53→10 25.4%** | ⚠️ **v2 only** |
+| Street_Hawk | **92→25 2.6%** | **92→25 1.5%** | **92→25 2.5%** | ❌ **confirmed under-extracted** |
+| **Wizball** *(not in R7's list)* | **161→80 1.9%** | **452→265 0.0%** | **1092→430 0.1%** | ❌ **worst case in the corpus** |
+
+So: **Commando is already fixed** — and the code says why (`build_galway_trace_song.py:654-657`
+records a proportional-budget fix made for exactly "Commando/Street_Hawk/Match_Day pulse").
+Highlander v1 is a *values* defect, not a flat-pulse one. Match_Day is 1 of 3 voices. And the
+worst tune in the corpus, **Wizball — the project's own PWM showcase** — was never listed.
+
+**Three hypotheses ELIMINATED by measurement, so nobody re-chases them:**
+1. `PULSE_ROW_CAP` (1024) in `build_galway_native_song.gen_includes_song` — its lossy
+   "freeze early" trim **never fires** on any of these tunes (instrumented; see below).
+2. `PULSE_TABLE_ROWS` (2048) overflow → **not hit**.
+3. `pq` quantization fallback → **inactive** (`pq` stays 1; the tell is the absent
+   "fallback quant" line).
+
+**Where it actually is**: the pulse series reaching the encoder is already nearly flat for the
+two broken tunes. Street_Hawk builds **1 instrument / 1 bundle / 3 pulse rows for 129 notes**,
+Wizball **97 rows** — against Highlander's 634 and Commando's 664. So `faithful_pulse_program`
+is faithfully encoding an input that has already lost the sweep. Start upstream, at how
+`song.pulse[v]` is captured and how gate-regions are segmented (`note.tie → EMPTY_PUL`,
+`build_galway_trace_song.py:645`, means one program must serve a whole legato region — a
+region spanning the tune would explain exactly 1 bundle).
+**Shipped here** (no-op, byte-verified on Highlander + Rambo): the `PULSE_ROW_CAP` trim now
+**announces itself** and takes a `GALWAY_PULSE_ROW_CAP` override. It was silently lossy, which
+violates the standing "never ship lossy output silently" rule — worth keeping even though it
+turned out not to be this bug.
+**Verification for the eventual fix**: the distinct-count table above (counts are
+alignment-independent; match% is not — search the delay), plus corpus
+`bin/build_galway_corpus.py` staying 40/40 with Rambo/Commando unmoved.
 
 ### R8. Hubbard V2: model the pulse engine; finish the laggard classes — P0/P2 · M-L · Opus
 **Evidence** ✻: Delta's "pulse 100%" is **captured, not modelled** (`hp_engine=0` — replays a
@@ -591,7 +622,7 @@ sessions and is deliberately unstaged ✻.
 | A4 registry wiring | carried → **R4** (grew: 11 players unwired) |
 | A5 bin/ hygiene | carried → **R27** (grew: 2,284 scratch files). ⚠️ A5's "fix the MoN driver file name" is **WRONG AS WRITTEN** — the name is load-bearing via `B.GAL` repointing (see R1); and the CRLF note is moot (all four .asm are CRLF) |
 | B1 MoN structural rebuild | merged into **R17** (same work as C1) |
-| B2 Galway residual | carried → **R7** |
+| B2 Galway residual | **re-diagnosed** → **R7**: tune list wrong both ways (Commando already fixed; Wizball worst and unlisted); 3 hypotheses eliminated; cause is upstream of the encoder |
 | B3 universal objective metric | carried → **R22** |
 | B4 FC Stage B | **✅ done** → **R13**: shipped 2026-07-30, 14/15 voices 100% audible, no new driver needed |
 | B5 small residuals | noted in R16 (Myth filter); ROMUZAK drum octave stays parked |

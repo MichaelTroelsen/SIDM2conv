@@ -136,7 +136,18 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
     DEFAULT_PULSE = [(0x80, 0x00, 1), (0x00, 0x08, 0xFF), (0x7F, 0x00, 2)]
     pcmd = list(pulse_by_cmd) if pulse_by_cmd else [DEFAULT_PULSE]
     pcmd = [p if p else DEFAULT_PULSE for p in pcmd][:64]
-    PULSE_ROW_CAP = 1024                           # generous; the real bound is $CF00
+    # R7: this cap is an arbitrary SAFETY margin, not a hardware limit -- its own
+    # original comment said "generous; the real bound is $CF00". The trim loop
+    # below is LOSSY: it repeatedly shortens the LONGEST pulse program and freezes
+    # it early, which flattens the tail of exactly the long PWM sweeps the 16-bit
+    # pointer model exists to carry. Measured consequence (2026-07-30, distinct
+    # per-frame pulse values, original -> built, 60s): Wizball v2 1092 -> 430,
+    # Street_Hawk 92 -> 25 on all three voices, Match_Day v2 53 -> 10. The real
+    # ceiling is the memory wall, which assemble()'s own edit-area/$D000 guards
+    # already enforce LOUDLY, so a too-high cap fails the build rather than
+    # silently degrading audio -- the safer failure direction.
+    # Override to experiment: GALWAY_PULSE_ROW_CAP=<rows>.
+    PULSE_ROW_CAP = int(os.environ.get("GALWAY_PULSE_ROW_CAP") or 1024)
     distinct = []
     pidx = {}                                      # tuple(prog) -> distinct slot
     for p in pcmd:
@@ -144,12 +155,19 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
         if k not in pidx:
             pidx[k] = len(distinct)
             distinct.append(list(p))
+    _want = sum(len(p) for p in distinct)
     while sum(len(p) for p in distinct) > PULSE_ROW_CAP:
         j = max(range(len(distinct)), key=lambda t: len(distinct[t]))
         if len(distinct[j]) <= 3:
             break
         keep = len(distinct[j]) - 2
         distinct[j] = distinct[j][:keep - 1] + [(0x7F, 0, 0)]   # freeze early
+    _got = sum(len(p) for p in distinct)
+    if _got < _want:
+        # Never truncate PWM silently -- this was invisible before R7.
+        print(f"  PULSE TRIM (lossy): {_want} rows wanted > cap {PULSE_ROW_CAP} "
+              f"-> {_got} kept; the longest sweeps froze early "
+              f"(raise GALWAY_PULSE_ROW_CAP)")
 
     # Filter program (row 0), restarted by each flag-$40 note. `filter_program` (a
     # trace build) carries the tune's REAL per-frame cutoff envelope as SET rows;
