@@ -71,8 +71,24 @@ MoN's RLE wave rows (col1 = frame count) cut Cybernoid 18 → 11 parts, proven b
 ### C3. Program dedup across parts
 Windowed parts currently rebuild programs per window; identical programs recur across parts. Cross-part canonicalization won't reduce the *count* of parts (caps are per file) but shrinks each file and stabilizes seams (filter-seam residuals are window-boundary artifacts).
 
-### C4. Filter seams at window boundaries
-Part-boundary filter restarts cost ~25% filter fidelity on windowed tunes (Hawkeye sub0). Carry the filter engine state (envelope phase) across the window cut when emitting part N+1's first program.
+### C4. Filter seams at window boundaries — ✅ **effectively DONE; this item's premise was stale (measured 2026-07-30)**
+This said part-boundary filter restarts cost **~25%** filter fidelity on windowed tunes
+(Hawkeye sub0). **Re-measured: Hawkeye sub0 is 99.92%** (cutoff *and* ctrl/res/routing,
+full 384s, n=19168, 5 of its 8 adaptive parts exactly 100.0%). The "13 parts" in that
+claim was the fixed-30s count, not the adaptive default (8).
+`build_mon_native_song`'s **"WINDOW-START residual filter"** block already solves this —
+it attaches a synthetic filter restart to the window's first note, capturing the residual
+from there to the first real drive. Nobody re-measured after it landed.
+The real remaining residual is **16 frames out of 19168 (0.08%)**: the first 4-8 frames of
+3 parts, where the original has a live filter (e.g. `(1272, 244)`) and the part is still
+`(0, 0)` because the driver has not reached its first filter write. Closing it would mean
+pre-writing `$D415-$D418` in the part's `do_init` (the shape of Blackbird's B7 priming) —
+and since parts are **separate files a user loads individually**, those frames are an
+~80ms settle at a file's opening, not a seam heard mid-song. Not worth a driver change.
+**Still unverified**: the separate "Myth sub0 part1 filter 77%" figure in B5. Checking it
+needs the py65 **emulation** trace (Myth is `play=$0000`), and the two trace shapes differ
+(`(cutoff, ctrl)` tuples vs `per_frame`'s int `fcut`) — an attempt that ignored this
+returned a meaningless 0.0%. Compare like with like.
 
 ---
 

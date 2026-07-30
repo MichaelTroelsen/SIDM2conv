@@ -349,15 +349,29 @@ classify the mismatching frames (which register, which musical event), and eithe
 document the mechanism. A named residual is fine; an unexplained one is a small standing risk.
 **Verification**: `scripts/validate_sid_accuracy.py` / trace-compare on 2–3 corpus files.
 
-### R16. Filter-state carry across window seams — P0/P1 · M · Opus
-**Evidence** ✻: part-boundary filter restarts cost ~25% filter fidelity on windowed tunes
-(Hawkeye sub0 13 parts, filter ~75% at seams — ACCURACY_MATRIX; ROADMAP C4; Myth sub0 part1
-filter 77%).
-**Fix sketch**: when emitting part N+1's first filter program, seed it with the filter
-engine's state (envelope phase, current cutoff) at the cut frame instead of restarting from
-the program head.
-**Verification**: `bin/mon_part_fidelity.py` filter % on Hawkeye sub0 / Myth sub0 seam parts;
-non-seam parts must not move.
+### R16. Filter-state carry across window seams — ✅ **CLOSED 2026-07-30: premise measured stale, no code change** · Opus
+**The ~25% claim was wrong by ~300×.** Measured Hawkeye sub0 (the headline example in both
+ACCURACY_MATRIX and ROADMAP C4) over its full 384 s: filter **99.92%** — cutoff **and**
+ctrl/res/routing, n=19168, **5 of its 8 parts exactly 100.0%**. The "13 parts" in the claim
+was the fixed-30s count; the adaptive default is 8.
+**Why**: `build_mon_native_song`'s **"WINDOW-START residual filter"** block already
+implements exactly R16's fix sketch — it attaches a synthetic filter restart to the window's
+first note, capturing the residual from there to the first real drive. It landed and nobody
+re-measured, so a solved P0 sat on the roadmap for months.
+**The real residual, pinned**: **16 frames of 19168 (0.08%)** — the first 4–8 frames of 3
+parts, where the original has a live filter (e.g. `(1272, 244)`) and the part is still
+`(0, 0)` because the driver hasn't reached its first filter write. Closing it means
+pre-writing `$D415–$D418` in the part's `do_init` (Blackbird's B7 priming shape). **Not
+worth it**: parts are **separate files a user loads individually**, so those frames are an
+~80 ms settle at a file's opening, not a seam heard mid-song.
+**Still unverified — do not assume it's also stale**: ROADMAP B5's separate "Myth sub0 part1
+filter 77%". Myth is `play=$0000`, so its original trace comes from py65 **emulation**, and
+its shape is `(cutoff, ctrl)` tuples while `per_frame`'s `[1]` is an int `fcut`. An attempt
+here that ignored that returned a meaningless **0.0%** and was discarded. Compare like with
+like.
+**Method note worth keeping**: measure per-part fidelity using the `t0` bounds `build_song`
+already computes. A brute-force search for the best `t0` over the original produces nonsense
+(it "found" a 15-frame window) — the same self-inflicted-harness error that also bit R13.
 
 ---
 
@@ -584,7 +598,7 @@ sessions and is deliberately unstaged ✻.
 | C1 structural RE | carried → **R17** (flagship) |
 | C2 wave-RLE port | carried → **R18** |
 | C3 cross-part dedup | carried → **R19** |
-| C4 filter seams | carried → **R16** |
+| C4 filter seams | **✅ closed** → **R16**: measured 99.92%, not ~75% — the fix was already in place, unmeasured |
 | D1 trace-first fallback | carried → **R24** |
 | D2 signature framework | carried → **R26** |
 | D3 Hubbard kickoff | superseded — Hubbard V1/V2 shipped; remainder → **R8** |
@@ -600,7 +614,7 @@ sessions and is deliberately unstaged ✻.
 | 1 | **R6** (fp_dec), **R23** (probe oracle), **R21** (SM sweep), **R29** (test debt), **R28/R31/R33/R34** (doc drift + strays), **R5** (verify-and-close) | Small, independent, de-risk everything after; R6 is a today-broken editor behavior |
 | 2 | ~~**R2** (caps)~~ ✅ → ~~**R3** (build lib)~~ ✅ partial → ~~**R1** (driver merge)~~ ✅ → **R32** (CLAUDE.md compression) | Consolidation in increasing risk order; each gated by byte-diffs; R32 cheapens every later session. R3's residual (4 more `B.TEMPO*` channel variables in ROMUZAK/MoN/Blackbird) is a prerequisite for the driver_full file merge, not for R1's ASM merge |
 | 3 | ~~**R13** (FC Stage B)~~ ✅ **DONE** — 14/15 voices 100% audible; added no new driver | Validated wave 2's consolidation on a real port |
-| 4 | **R16** (filter seams), **R7** (Galway PWM) | P0 fidelity on the consolidated base |
+| 4 | ~~**R16** (filter seams)~~ ✅ **CLOSED — premise stale, measured 99.92%**, no code change; **R7** (Galway PWM) | P0 fidelity on the consolidated base |
 | 5 | **R20** (memory-wall audit), **R18** (RLE flag), **R19** (dedup) | Part-count: cheap wins first |
 | 6 | **R17** (Stage C structural RE) | Flagship part-count work, Opus |
 | 7 | **R4** (registry) + **R24** (trace-first fallback) | Ship the pipeline: wire everything, add the universal fallback |
