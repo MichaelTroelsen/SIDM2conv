@@ -34,6 +34,21 @@ Traceback (most recent call last):
 SystemExit: not a located Blackbird v1.2-exact rip
 """
 
+# R5 (code review, 2026-07-30): a build whose combo space exhausted (never
+# observed on the current corpus -- worst case is 25/26 spare -- but the
+# parser must surface it if a future file ever hits it).
+SAMPLE_COMBO_DROPPED = """
+  E3f: 2 fx program(s) had no spare combo index (7 event(s) left unarmed, as pre-E3f)
+
+  WEIGHTED AVERAGE over 1 part(s), 2000 frames (CAP_B=96): overall=97.0%  freq=98.0%, waveform=99.0%, pulse=96.0%, adsr=99.0%, filter=95.0%
+"""
+
+SAMPLE_TEMPO_FLOOR = """
+  E3c/E3f: min tempo 2 < 3 -- hard-restart arming skipped for the whole song (zp_tcnt==2 needs >=1 frame of runway)
+
+  WEIGHTED AVERAGE over 1 part(s), 2000 frames (CAP_B=96): overall=95.0%  freq=96.0%, waveform=98.0%, pulse=94.0%, adsr=90.0%, filter=93.0%
+"""
+
 
 class TestParseBuildOutput(unittest.TestCase):
     def test_parses_all_registers_and_parts(self):
@@ -54,6 +69,28 @@ class TestParseBuildOutput(unittest.TestCase):
         """A refused build must not read as 0% or as 'unchanged'."""
         self.assertIsNone(sweep.parse_build_output(SAMPLE_FAILED))
         self.assertIsNone(sweep.parse_build_output(""))
+
+    def test_normal_build_reports_zero_combo_drops_and_no_tempo_floor(self):
+        """R5: the current corpus never exhausts combo space or falls below
+        the tempo floor -- a normal build must report explicit zeros/None,
+        not an absent key a caller might mistake for 'not measured'."""
+        rec = sweep.parse_build_output(SAMPLE_OK)
+        self.assertEqual(rec["combo_dropped_programs"], 0)
+        self.assertEqual(rec["combo_dropped_events"], 0)
+        self.assertIsNone(rec["min_tempo_below_floor"])
+
+    def test_combo_space_exhaustion_is_surfaced(self):
+        """R5: E3f's own existing print already reports this -- the parser
+        must capture it into the record, not just leave it in scrollback."""
+        rec = sweep.parse_build_output(SAMPLE_COMBO_DROPPED)
+        self.assertEqual(rec["combo_dropped_programs"], 2)
+        self.assertEqual(rec["combo_dropped_events"], 7)
+
+    def test_tempo_floor_skip_is_surfaced(self):
+        """R5: a song using any tempo < 3 gets NO hard-restart arming at all
+        -- previously silent, now visible in the parsed record."""
+        rec = sweep.parse_build_output(SAMPLE_TEMPO_FLOOR)
+        self.assertEqual(rec["min_tempo_below_floor"], 2)
 
 
 class TestCorpusIntegrity(unittest.TestCase):

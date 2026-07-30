@@ -2990,6 +2990,15 @@ def main():
     # never introduces a set_instr_v call whose matching blip got skipped.
     min_tempo_song = min([opening_pair[0], opening_pair[1]] +
                           [t for rec in full_schedule for t in (rec[1], rec[2])])
+    # R5 (code review, 2026-07-30): this floor was previously silent -- a song
+    # using any tempo < 3 real frames/row gets NO hard-restart arming at all
+    # (zp_tcnt==2 needs at least 1 frame of runway), for the WHOLE song, not
+    # just the fast rows. Purely diagnostic -- does not change min_tempo_song
+    # or any control flow below.
+    if min_tempo_song < 3:
+        print(f"  E3c/E3f: min tempo {min_tempo_song} < 3 -- hard-restart "
+              f"arming skipped for the whole song (zp_tcnt==2 needs >=1 "
+              f"frame of runway)")
 
     def _eff_instr(steps):
         """Per step: the instrument it re-selects on hardware, or None.

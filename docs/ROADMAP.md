@@ -206,15 +206,22 @@ different rows, so gate (a) cannot apply — multi-tick-with-collision
 candidates came along for free. Detail in `docs/players/BLACKBIRD.md`'s
 E3c(c) section.
 
-**(a) fx-command-slot collision — still open, 40 retriggers on Glyptodont.**
-The remainder are single-tick steps whose only row already carries a genuine
-fx-command change. A row has exactly one command byte, so this needs a
-signalling channel that is **not** that byte. Options not yet evaluated:
-a second sentinel encoded in an unused instrument-column value; widening the
-row format (risks the real SF2II editor's parser — the constraint that shaped
-B25's whole design); or splitting the step so the sentinel gets its own row
-(costs sequence space and changes timing). The larger remaining win and the
-harder design.
+**(a) fx-command-slot collision — ✅ CLOSED by E3f, found stale 2026-07-30.**
+This section previously read "still open, 40 retriggers on Glyptodont", but
+`build_blackbird_native_song.py:3025-3081` (E3f) already allocates a **combo
+fx index** from the spare `[nfx_song+1, RESTART_ARM_FX)` command range for
+every single-tick fx-colliding step — "select this fx program AND arm" in one
+byte, exactly the "second sentinel" option floated below. Corpus-measured:
+every current file fits (worst case 25 colliding programs vs 26 spare codes,
+`Thus_Spoke_the_PC_Speaker`); ADSR re-verified at 100.0 on Glyptodont+Fargo
+2026-07-30. What actually remains, per `docs/CODE_REVIEW_2026-07.md` R5: (1)
+combo-space exhaustion on some future denser file — now surfaced as
+`combo_dropped_programs`/`combo_dropped_events` in `blackbird_sweep.py`'s
+JSON record rather than only printed; a reserved-instrument-column escape
+hatch is designed (not implemented) in that review's Appendix A §D-R5 for
+if/when a real file ever exhausts it; (2) songs using any tempo < 3 real
+frames/row get **no arming at all** for the whole song — previously silent,
+now an explicit diagnostic print the sweep also captures.
 
 Re-measure with **both** `audio-tightness.bat` and the register note-on count
 after any further work here — the register percentage barely moves even when
@@ -280,7 +287,7 @@ something reproducible across files.
 | ~~11~~ | ~~Explain Glyptodont's +2.5-frame offset~~ | E3 | ✅ **DONE 2026-07-24** — artifact, not real |
 | ~~11~~ | ~~Glyptodont's missing onsets~~ | E3b | ✅ **DONE 2026-07-24** — real; B25 covers only 39% of hard restarts |
 | ~~11~~ | ~~E3c(c) multi-tick arming~~ | E3c | ✅ **DONE 2026-07-24** — 52% of missing retriggers recovered, zero regressions |
-| 11 | **E3c(a): the remaining 40 retriggers** (needs a non-command-byte signal) | E3c | M — **highest remaining audible payoff** |
+| ~~11~~ | ~~E3c(a): the remaining 40 retriggers~~ | E3c | ✅ **DONE, found stale 2026-07-30** — E3f's combo fx indices (`build_blackbird_native_song.py:3025-3081`) already close this gate for the whole corpus (every file fits, worst case 25/26 spare codes); ADSR re-verified 100.0 on Glyptodont+Fargo same day. See `docs/CODE_REVIEW_2026-07.md` R5 for the residuals that remain (combo-space exhaustion now surfaced in `blackbird_sweep.py`; the `min_tempo<3` no-arming guard is now a diagnostic print, previously silent) |
 | 11b | Galway/ROMUZAK `fp_dec` `cmp #$90` → SF2II executes filter ADD rows as SET rows | E3d | S per driver + corpus re-verify |
 | 12 | Patch WinVICE for per-voice mute (reuse `siddetector` build) | E1 | M |
 | 13 | SidWiz/Corrscope video in the tool stack (needs E1 + ffmpeg) | E2 | M |

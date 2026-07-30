@@ -48,6 +48,20 @@ _AVG = re.compile(
     r"WEIGHTED AVERAGE.*?overall=([\d.]+)%\s+freq=([\d.]+)%,\s+waveform=([\d.]+)%,"
     r"\s+pulse=([\d.]+)%,\s+adsr=([\d.]+)%,\s+filter=([\d.]+)%")
 _PARTS = re.compile(r"packed into (\d+) adaptive part")
+# R5 (code review, 2026-07-30): surface E3f's own existing "no spare combo
+# index" print (build_blackbird_native_song.py's main(), ~line 3080) into the
+# sweep record. This is a parser-only addition -- the builder already prints
+# this line when combo space is exhausted, it just wasn't captured anywhere
+# a corpus check could see. Zero on the current corpus (every file fits,
+# worst case 25 colliding programs vs 26 spare codes) -- this exists so a
+# FUTURE file that exhausts the range shows up in the JSON, not just scrollback.
+_COMBO_DROP = re.compile(
+    r"E3f: (\d+) fx program\(s\) had no spare combo index "
+    r"\((\d+) event\(s\) left unarmed")
+# Diagnostic added alongside _COMBO_DROP: songs using any tempo < 3 real
+# frames/row get NO hard-restart arming at all (see the builder's own comment
+# at min_tempo_song's computation) -- previously silent.
+_TEMPO_FLOOR = re.compile(r"min tempo (\d+) < 3 -- hard-restart arming skipped")
 
 
 def parse_build_output(text):
@@ -63,6 +77,11 @@ def parse_build_output(text):
     rec = dict(zip(("overall",) + REGISTERS, [float(g) for g in m.groups()]))
     p = _PARTS.search(text)
     rec["parts"] = int(p.group(1)) if p else None
+    cd = _COMBO_DROP.search(text)
+    rec["combo_dropped_programs"] = int(cd.group(1)) if cd else 0
+    rec["combo_dropped_events"] = int(cd.group(2)) if cd else 0
+    tf = _TEMPO_FLOOR.search(text)
+    rec["min_tempo_below_floor"] = int(tf.group(1)) if tf else None
     return rec
 
 
@@ -93,6 +112,14 @@ def sweep(label, env=None, corpus=None, verbose=True):
                 if rec["parts"] != EXPECTED_PARTS.get(name):
                     warn = f"  *** PARTS {rec['parts']} != expected " \
                            f"{EXPECTED_PARTS.get(name)} ***"
+                if rec.get("combo_dropped_events"):
+                    warn += (f"  *** COMBO SPACE EXHAUSTED: "
+                             f"{rec['combo_dropped_programs']} program(s), "
+                             f"{rec['combo_dropped_events']} event(s) left "
+                             f"unarmed ***")
+                if rec.get("min_tempo_below_floor") is not None:
+                    warn += (f"  *** min tempo {rec['min_tempo_below_floor']} < 3: "
+                             f"NO arming for this whole song ***")
                 print(f"{name:32s} overall={rec['overall']:5.1f} "
                       f"parts={rec['parts']} bytes={rec['bytes']}{warn}", flush=True)
     if label:
