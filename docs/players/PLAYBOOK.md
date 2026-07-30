@@ -91,6 +91,31 @@ SID file
 | Memory wall | tables < **$D000**; state region `$16CC-$1702` must stay clear | `assemble()` guards |
 | ~~"~27,650 play-calls ≈ 9.2 min"~~ | **RETRACTED 2026-07-30 (R20)** — not derivable from the format and not in the history. Nothing in a Driver 11 file grows with *time* (fixed-size tables + a fixed 128×256-byte sequence region), so per-module capacity is a function of event **density**. MEASURE it (`bin/mattgray_to_sf2.convert`'s `_part_fits` probe): Driller's whole 665.6 s song is ONE module at 57/128 slots, top `$61CF` | — |
 
+**A capacity check must compare a REQUIRED count against the cap — MEASURED 2026-07-30 (R20a).**
+The Matt Gray probe's sequence check counted non-zero pointer entries across all 128 slots and
+compared that to 128: a value bounded by the cap, tested against the cap, so it **could never
+fail**. Reading the count back out of an emitted file cannot work *in principle* here, because
+`galway_driver11_emitter` **truncates** at the cap — so the file never reports more than the cap
+however much was dropped, and (until this fix) it dropped **silently**, its `break` leaving the
+voice loop so later voices were emitted as a single empty sequence and went **totally silent**.
+Rule: count what the window **needs**, before emitting; make the truncation path announce itself;
+and read a shared cap through its module, never a `from … import` copy that is bound once and
+goes stale.
+
+**Never run `pytest` while an SF2II play-test is in flight.** `pyscript/conftest.py` used to kill
+every `SIDFactoryII` process on the machine at session end (two paths, one of them silent);
+`psutil.kill()` is a TerminateProcess and its exit code is what the crash oracle reads as
+CRASHED. It manufactured a *100% crash rate on both arms* of a Driller A/B — the tell was a
+uniform **exit code 15** across unrelated builds. Both paths are now scoped to editors the test
+session itself started, but keep the ordering rule.
+
+**A play-test must prove the module actually PLAYED, not just that the editor lived.** Gate the
+trial on SF2II's own "Playing time" readout advancing (`blackbird_crash_probe.probe_once`, verdict
+`NOPLAY` when it never does) — process aliveness alone reports SURVIVED for an editor sitting
+idle at `0:00` because the `F1` was lost to another window taking foreground. And capture
+evidence with `PrintWindow`, not a screen-region grab: a region grab captures whatever is on top
+of the editor, which silently made every "proof of play" screenshot a picture of VICE.
+
 **Which cap actually binds - MEASURED 2026-07-30 (R18).** Instrumenting the windowing probe on
 FC's `Is_There_a_Difference` (5 parts) showed **command bundles bind every single cut**
 (64/66/67/64 against the 63 cap) while **WAVE rows sat at 40-61 of 256** (16-24%). So

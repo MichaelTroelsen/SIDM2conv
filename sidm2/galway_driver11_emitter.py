@@ -22,6 +22,7 @@ column-major. Spec: ``docs/analysis/GALWAY_TO_DRIVER11_MAPPING.md``.
 from __future__ import annotations
 
 import os
+import sys
 from typing import List, Optional
 
 from .models import SF2DriverInfo
@@ -269,15 +270,31 @@ def emit_driver11_sf2(song: GalwayDriver11Song,
     else:
         track_seq_indices = [[], [], []]
         packed_sequences = []
+        dropped = [0, 0, 0]
         for v in range(3):
             rows = song.tracks[v] if v < len(song.tracks) else []
             for pk in segment_track(rows):
                 if len(packed_sequences) >= _MAX_SEQUENCES:
-                    break
+                    dropped[v] += 1
+                    continue
                 track_seq_indices[v].append(len(packed_sequences))
                 packed_sequences.append(pk)
-            if len(packed_sequences) >= _MAX_SEQUENCES:
-                break
+        # Hitting the pointer-table cap USED to `break` silently -- and because
+        # the break left the voice loop, every later voice fell through to the
+        # emergency empty sequence below and went completely silent, with no
+        # message and a perfectly valid-looking file. That breaks the standing
+        # rule that lossy output must never be silent, and it defeated
+        # mattgray_to_sf2's part-capacity probe, whose own slot check
+        # (`used <= 128` counted over range(128)) can never be False -- so the
+        # probe accepted a truncated module as "fits" and never split the song.
+        # Announce it here; callers that can split should count sequences
+        # THEMSELVES before emitting (see mattgray_to_sf2._part_fits).
+        if any(dropped):
+            print(f"WARNING: {sum(dropped)} sequence(s) exceed the "
+                  f"{_MAX_SEQUENCES}-slot pointer table and were DROPPED "
+                  f"(per voice: {dropped}) -- this module is missing music. "
+                  f"Split the song into shorter parts.", file=sys.stderr,
+                  flush=True)
     for v in range(3):                               # ensure every track has ≥1 seq
         if not track_seq_indices[v]:
             track_seq_indices[v].append(len(packed_sequences))

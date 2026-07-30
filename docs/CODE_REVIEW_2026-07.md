@@ -29,12 +29,12 @@ byte-diff or regression gate; Opus = RE, design, or falsification work.
 | R6 | Galway/ROMUZAK `cmp #$90` SF2II hazard | their filter sweeps are **broken in the real editor today**, invisible to every headless metric |
 | ~~R1–R3~~ | ✅ **ALL DONE 2026-07-30** — caps module, shared build lib, driver merge (−1227 lines of duplicated 6502, byte-identical machine code) | a driver fix is now one patch for the Galway/ROMUZAK pair; MoN/Blackbird deliberately left forked (measured: 51 and ~1962 diff hunks/lines) |
 | R17 | Stage C structural synth-table RE | the **only proven lossless** part-count reduction (Supremacy 70 parts → single digits ✻) |
-| ~~R20~~ | ✅ **DONE** — capacity measured, **Driller 2 files → 1**; the "27,650 play-call" ceiling retracted as underivable | was splitting at ~40% of real capacity (57/128 slots, top $61CF vs $D000) |
+| ~~R20~~ | ✅ **DONE** — capacity measured, **Driller 2 files → 1**; the "27,650 play-call" ceiling retracted as underivable. **R20a** (2026-07-30): the probe's own slot check was **tautological** and the emitter dropped sequences **silently** (a whole voice) — both fixed | was splitting at ~40% of real capacity (57/128 slots, top $61CF vs $D000) |
 | R24 | Universal trace-first fallback (D1) | turns "any SID" from per-player RE into a default path |
 | R21 | Reproducible corpus sweeps (SM first) | a headline number that dies with a scratch file isn't a result |
 | R4 | Wire the 11 `bin/`-only players into the pipeline | "we have the tech" vs "the tool converts it" |
 | R9/R10 | SDI + Matt Gray Stage B | the two largest corpora currently shipping knowingly-wrong timbre |
-| R23 | Fix the `probe_once()` crash oracle | it corrupts every long play-test across all players |
+| ~~R23~~ | ✅ **DONE** — exit-code classification, then (2026-07-30) **proof-of-play** (`NOPLAY`), occlusion-proof `PrintWindow` capture, timestamped deaths; **plus** the `conftest.py` bug that killed *every* editor on the machine and faked a 100%-crash result on both arms | it corrupts every long play-test across all players |
 
 ---
 
@@ -486,11 +486,44 @@ events) need no probe: `segment_track` already splits rather than overflowing.
 already-one-part songs are **byte-identical** (LN2 sub2, Tusker sub2); 2 regression tests pin
 it (including that the probe still checks *both* limits, so nobody reinstates a duration
 split); suite 1747.
-**NOT done**: the one-part 665 s Driller is **not** SF2II play-tested. The 2-part build was; a
-module 2.8× longer is a new load and only the editor rules out an SF2II-only hazard. Hence
-"capacity measured", not "one-file Driller shipped".
 **Generalizes**: any Stage-A player using a flat frame ceiling has the same latent
 over-split — the probe is ~40 lines and player-agnostic in shape.
+
+#### R20 follow-up (2026-07-30, second pass) — play-test attempted; **two real bugs found in the way**
+The play-test itself is covered under R20b below. Two defects surfaced *because* of it:
+
+**R20a — the probe's sequence-slot check was TAUTOLOGICAL.** `_part_fits` counted non-zero
+pointer entries across all 128 slots and compared that count to 128 — a value bounded by the
+cap, tested against the cap, so it **could never be false**. Only the `$D000` wall actually
+bound the probe. Worse, the quantity was unmeasurable that way *in principle*: the emitter
+**truncates** at the cap, so a blob never reports more sequences than the cap no matter how
+much music was dropped. And `sidm2/galway_driver11_emitter.py` dropped them **silently** — its
+`break` left the *voice* loop, so every voice after the cap fell through to the emergency empty
+sequence and went **completely silent** in a perfectly valid-looking file.
+Demonstrated by forcing the cap to 30 on Driller (which needs 57): the emitter returned a
+14,931-byte module with **voice 2 reduced to a single empty sequence** and voice 1 truncated to
+7 of 16, and the old check said "fits". A denser song than Driller would have shipped like that.
+**Fixed**: `_part_fits` now counts what the range *needs* (`segment_track`) **before** emitting,
+so an oversized candidate is never emitted at all; the emitter announces any drop on stderr;
+`SEQ_SLOTS` is read from the emitter module (not a `from … import` copy that would go stale).
+**Verified**: normal Driller build **byte-identical**; with the cap forced to 30 it now **splits
+into 2 parts covering all 8320 rows** with zero drops; 3 new regression tests, one of which
+pins the *shape* of the check so the tautology cannot return. Driller itself was never affected
+(57 ≤ 128) — R20's substantive conclusion stands.
+
+**R20b — the play-test result, and the harness bug that faked it.** A first 700 s trial reported
+**CRASHED**, and a full-duration A/B (3 trials × 2 arms) then reported **100% CRASHED on BOTH
+arms** — including the two-part build that had already passed a play-test — at scattered times
+(3 s … 309 s) all with **exit code 15**. That uniform exit code across unrelated builds was the
+tell: it was not the music. `pyscript/conftest.py` killed **every** `SIDFactoryII` process on the
+machine at the end of *any* pytest session, and `psutil.kill()` is a TerminateProcess whose
+non-zero exit is exactly what `classify_termination` reads as CRASHED. `pytest_sessionfinish`
+was the worse of its two cleanup paths — it swallowed every exception, so it never reported what
+it had killed. **Every pytest run during a play-test silently voided that play-test.**
+**Fixed**: both cleanup paths now kill only editors started *after* the pytest session began (a
+process older than the session cannot be its own), and the backup hook reports instead of
+swallowing. Verified by spawning an editor, running the suite, and confirming it survives.
+**Also hardened the oracle** — see the crash-probe note under R23.
 
 ### R21. Make every headline reproducible — Sound Monitor first — P2 · S · Sonnet
 **Evidence** (measured): `bin/_opt_sweep_corpus.py` exists on disk but is **untracked** (git
@@ -525,6 +558,30 @@ way ✻). The probe is player-agnostic and used by Blackbird and Matt Gray play-
 screenshots during the window, not only at the end (both proposed in `whats-next.md`).
 **Verification**: unit tests in `pyscript/test_blackbird_crash_probe.py`; simulate a clean
 close and assert it is not reported as CRASHED.
+
+#### R23 follow-up (2026-07-30) — proof-of-play, and the screenshots were of the wrong window
+R23 fixed *how a trial ends*. Using it for real exposed that nothing checked whether the trial
+ever **began**:
+1. **The verdict rested on process aliveness alone.** A trial whose `F1` never landed reported
+   **SURVIVED** while the editor sat idle at `0:00` — the probe's own documented failure mode
+   (measuring outside the window where the effect lives) reappearing on the *keystroke* instead
+   of the duration. Another app holding foreground is enough to cause it, and one was: a
+   concurrent job from an unrelated project was cycling VICE windows over the editor.
+   **Fixed**: `probe_once` now refuses to start timing until SF2II's own **"Playing time"**
+   readout is seen advancing; it re-sends `F1` once, then fails the attempt as the new verdict
+   **NOPLAY**, which `tally` keeps out of the crash-rate denominator — "no test ran", never a
+   pass. Falsified against a negative control (F1 suppressed ⇒ `NOPLAY`, not `SURVIVED`) and a
+   positive control (a 30 s window ends reading exactly `Playing time: 0:30`).
+2. **"Proof of play" screenshots captured whatever was on top of the editor.**
+   `ImageGrab.grab(bbox=GetWindowRect(...))` grabs a screen *region*, so the saved evidence was
+   of VICE, not SF2II. **Fixed**: `capture_window()` uses `PrintWindow(PW_RENDERFULLCONTENT)`,
+   which asks the window to render itself and is therefore independent of z-order, focus and
+   occlusion.
+3. **Deaths are now timestamped.** The wait loop polls at 1 s instead of only at snapshot
+   boundaries, so a crash reports *when* (a crash 8 s into a 60 s interval used to be
+   indistinguishable from one at 59 s — and the death time is the main lead for locating a cause).
+**Operational rule this produced**: never run `pytest` while a play-test is in flight — see R20b
+for the conftest bug that made it destructive, now fixed.
 
 ### R24. Universal trace-first fallback (D1) — P2 · L · **Opus**
 **Evidence** ✻: `build_native_song` already accepts external traces (Myth's shim proved it);

@@ -174,12 +174,23 @@ that is what happened. No proof-of-play screenshot was written, which is the
 same signature either way. The user instead confirmed part01 directly, watching
 it play through **twice** in the editor without incident.
 
-**Probe limitation worth fixing** (it affects the Blackbird play-tests too,
-same oracle): "process absent" is treated as "crashed" unconditionally, so any
-long-window trial is silently corrupted if someone touches the window. Recording
-the process *exit code* would separate a clean close from a crash; screenshotting
-periodically during the window rather than only at the end would also leave a
-partial timeline behind.
+**Probe limitation worth fixing** — ✅ **all fixed** (R23, then a second pass on
+2026-07-30; affected the Blackbird play-tests too, same oracle):
+- "process absent" was treated as "crashed" unconditionally → now classified by
+  **exit code**, so a clean close reads `CLOSED`, not `CRASHED`.
+- The verdict never checked that the trial *started* → now gated on SF2II's own
+  "Playing time" clock **advancing**, with a new `NOPLAY` verdict for a lost `F1`.
+- The proof-of-play screenshot was a screen-**region** grab, so it captured
+  whatever window was on top of the editor → now `PrintWindow`, which is immune
+  to occlusion and focus.
+- Deaths are timestamped (1 s polling), so a crash reports *when*.
+
+⚠️ **Never run `pytest` while a play-test is in flight.** Until 2026-07-30
+`pyscript/conftest.py` killed **every** `SIDFactoryII` process on the machine at
+the end of any pytest session — a TerminateProcess whose exit code reads as
+CRASHED. It faked a *100% crash rate on both arms* of a Driller A/B, two-part
+build included. Both cleanup paths are now scoped to editors the session itself
+started, but the ordering rule is still worth keeping.
 
 Screenshots confirm the module loads as **Driver 11.00**, tempo `03`, all 22
 instruments present, and — in part 2 — real decoded music on all three tracks
@@ -436,7 +447,50 @@ its row total equals the old two parts summed exactly. Songs that already fitted
 one part are **byte-identical** (checked on Last_Ninja_2 sub2 and Tusker sub2),
 so this only affects songs that were being over-split.
 
-**Not done**: the one-part 665 s Driller has **not** been play-tested in real
-SF2II. The 2-part build was (`whats-next.md`); a single module 2.8x longer is a
-new load, and only the editor can rule out an SF2II-only hazard. Do that before
-treating one-file Driller as shipped.
+### R20a (2026-07-30): the slot check above was TAUTOLOGICAL, and overflow was silent
+
+Limit 1 was not being enforced. `_part_fits` counted non-zero pointer entries
+across all 128 slots and compared that count to 128 -- a value bounded by the cap
+tested against the cap, so **it could never be false**. Only the `$D000` wall
+actually bound the probe.
+
+The quantity was also unmeasurable that way *in principle*: the emitter
+**truncates** at the cap, so an emitted blob never reports more sequences than
+the cap however much music was dropped. And `galway_driver11_emitter` dropped
+them **silently** -- its `break` left the *voice* loop, so every voice after the
+cap fell through to the emergency empty sequence and went **completely silent**,
+in a file that parses and loads perfectly.
+
+Demonstrated by forcing the cap to 30 on Driller (which needs 57): the emitter
+returned a 14,931-byte module with **voice 2 reduced to a single empty sequence**
+and voice 1 truncated to 7 of its 16 -- and the old check called it a fit. Driller
+itself was never affected (57 <= 128), but a denser song would have shipped that
+way, silently, which the project's lossless-only rule forbids.
+
+Fixed:
+- `_part_fits` counts what the range **needs** (`segment_track`) *before*
+  emitting, so an oversized candidate is never emitted at all (which also keeps
+  the new warning from firing on throwaway probe candidates).
+- the emitter announces any dropped sequence on stderr, per voice.
+- `SEQ_SLOTS` is read through the emitter **module** rather than a
+  `from ... import` copy, which is bound once and would silently go stale --
+  that copy is also why the first version of the regression test appeared to
+  pass while patching the cap had no effect.
+
+Verified: the normal Driller build is **byte-identical**; with the cap forced to
+30 it now **splits into 2 parts covering all 8320 rows** (4142 + 4178) with zero
+drops; 3 new regression tests, one pinning the *shape* of the check so the
+tautology cannot come back (the pre-existing test only asserted the string
+`SEQ_SLOTS` appeared in the source, which the vacuous version satisfied).
+
+### R20b (2026-07-30): the one-part play-test
+
+See "Editor play-test" above for the hardened oracle. The first attempt produced
+a **phantom failure** worth recording: a 700 s trial reported CRASHED, and a
+full-duration A/B then reported **100% CRASHED on both arms** -- including the
+two-part build that had already passed -- at scattered times (3 s to 309 s), every
+one with **exit code 15**. A uniform exit code across unrelated builds is the
+tell that the cause is external: `pyscript/conftest.py` was killing every
+`SIDFactoryII` on the machine at the end of any pytest session, and a
+TerminateProcess exit code is exactly what the oracle reads as CRASHED. Fixed
+(both cleanup paths now scope to the session's own editors), and re-run clean.

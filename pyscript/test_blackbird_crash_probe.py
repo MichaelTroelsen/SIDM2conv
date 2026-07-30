@@ -219,6 +219,73 @@ class TestTally(unittest.TestCase):
         self.assertEqual(t["played"], 3)
         self.assertAlmostEqual(t["crash_rate"], 1.0)
 
+    def test_noplay_trials_are_excluded_from_crash_rate(self):
+        """A trial whose Play keystroke was lost never entered the window under
+        test, so like NOLOAD and CLOSED it is 'no test ran' -- it must not be
+        counted as a pass. This is the whole point of the NOPLAY verdict: the
+        old oracle reported such a trial as SURVIVED."""
+        t = probe.tally(["SURVIVED", "NOPLAY", "NOPLAY"])
+        self.assertEqual(t["NOPLAY"], 2)
+        self.assertEqual(t["played"], 1)
+        self.assertEqual(t["crash_rate"], 0.0)
+
+    def test_all_noplay_gives_no_rate_rather_than_a_clean_pass(self):
+        t = probe.tally(["NOPLAY", "NOPLAY"])
+        self.assertIsNone(t["crash_rate"])
+        self.assertEqual(t["played"], 0)
+        self.assertEqual(t["SURVIVED"], 0)
+
+
+class TestPlayingClockOracle(unittest.TestCase):
+    """The 'is it actually playing' oracle -- pure image logic, no editor."""
+
+    def _img(self, size=(184, 22), color=(0, 0, 0)):
+        Image = self._pil()
+        return Image.new("RGB", size, color)
+
+    def _pil(self):
+        try:
+            from PIL import Image
+            return Image
+        except ImportError:
+            self.skipTest("Pillow not installed")
+
+    def test_identical_captures_read_as_not_playing(self):
+        """A stopped editor repaints the same clock -- must not read as playing,
+        or the NOPLAY verdict could never fire."""
+        a = self._img()
+        self.assertFalse(probe.clock_advanced(a, a.copy()))
+
+    def test_a_changed_digit_reads_as_playing(self):
+        a = self._img()
+        b = a.copy()
+        for x in range(6):          # a few pixels of one bitmap-font digit
+            for y in range(4):
+                b.putpixel((170 + x, 8 + y), (255, 255, 255))
+        self.assertTrue(probe.clock_advanced(a, b))
+
+    def test_a_single_stray_pixel_does_not_read_as_playing(self):
+        """Threshold exists so compression/AA noise cannot fake a tick."""
+        a = self._img()
+        b = a.copy()
+        b.putpixel((100, 10), (255, 255, 255))
+        self.assertFalse(probe.clock_advanced(a, b))
+
+    def test_box_scales_with_window_size(self):
+        """The box is in reference-window pixels; a differently sized window
+        must still crop the clock rather than an arbitrary region."""
+        ref = probe.scale_box(probe.PLAYING_TIME_BOX, probe.REF_WINDOW_SIZE)
+        self.assertEqual(ref, probe.PLAYING_TIME_BOX)
+        w, h = probe.REF_WINDOW_SIZE
+        doubled = probe.scale_box(probe.PLAYING_TIME_BOX, (w * 2, h * 2))
+        self.assertEqual(doubled,
+                         tuple(v * 2 for v in probe.PLAYING_TIME_BOX))
+
+    def test_clock_box_lies_inside_the_reference_window(self):
+        l, t, r, b = probe.PLAYING_TIME_BOX
+        w, h = probe.REF_WINDOW_SIZE
+        self.assertTrue(0 <= l < r <= w and 0 <= t < b <= h)
+
 
 if __name__ == "__main__":
     unittest.main()

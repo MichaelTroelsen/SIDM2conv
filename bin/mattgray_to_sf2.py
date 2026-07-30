@@ -34,7 +34,9 @@ from sidm2.galway_to_driver11 import (  # noqa: E402
     SF2_NOTE_MIN, SF2_NOTE_MAX, SF2_GATE_ON, SF2_GATE_OFF,
     _nearest_pal, _norm_waveform, _pulse_program,
 )
-from sidm2.galway_driver11_emitter import emit_driver11_sf2  # noqa: E402
+from sidm2 import galway_driver11_emitter as _emitter  # noqa: E402
+from sidm2.galway_driver11_emitter import (  # noqa: E402
+    emit_driver11_sf2, segment_track)
 from sidm2.models import SF2DriverInfo  # noqa: E402
 from sidm2 import sf2_parser  # noqa: E402
 
@@ -216,7 +218,11 @@ def convert(sid_path: str, out_path: str, subtune: int = 1,
     # Grow the window while it fits, then cut. Passing an explicit
     # --part-frames still caps the window (so the old behaviour is reachable),
     # but it is no longer the DEFAULT bound.
-    SEQ_SLOTS, MEM_WALL = 128, 0xD000
+    # Take the slot count from the emitter rather than repeating it, so the
+    # probe's limit cannot drift away from the one that truncates. Read through
+    # the MODULE, not a `from ... import` copy: the copy is bound once at import
+    # and would keep the stale value if the cap were ever changed or patched.
+    SEQ_SLOTS, MEM_WALL = _emitter._MAX_SEQUENCES, 0xD000
 
     def _emit_range(lo, hi):
         tracks, clipped = build_tracks(song, events, base, len(instr_rows),
@@ -228,6 +234,23 @@ def convert(sid_path: str, out_path: str, subtune: int = 1,
         return emit_driver11_sf2(d11), tracks, clipped
 
     def _part_fits(lo, hi):
+        # Count what this range NEEDS *before* emitting anything. Reading the
+        # count back out of an emitted blob cannot detect overflow: the emitter
+        # truncates at the cap, so the file never reports more than the cap no
+        # matter how much music was dropped. (The original form counted
+        # non-zero pointer entries across all 128 slots and compared that to
+        # 128 -- a value bounded by the cap tested against the cap, so the
+        # sequence limit was never actually enforced and only the memory wall
+        # bound the probe.) Checking first also means an oversized candidate is
+        # never emitted at all, so the emitter's truncation warning cannot fire
+        # for a candidate the probe is about to reject anyway.
+        try:
+            tracks, _ = build_tracks(song, events, base, len(instr_rows),
+                                     tick_lo=lo, tick_hi=hi)
+        except Exception:
+            return False
+        if sum(max(1, len(segment_track(rows))) for rows in tracks) > SEQ_SLOTS:
+            return False
         try:
             blob, _, _ = _emit_range(lo, hi)
         except Exception:
@@ -236,10 +259,7 @@ def convert(sid_path: str, out_path: str, subtune: int = 1,
         la = sf2_parser.parse_sf2_blocks(bytearray(blob), di)
         if la is None:
             return False
-        used = sum(1 for i in range(SEQ_SLOTS)
-                   if blob[di.sequence_ptrs_lo - la + 2 + i]
-                   or blob[di.sequence_ptrs_hi - la + 2 + i])
-        return used <= SEQ_SLOTS and (la + len(blob) - 2) < MEM_WALL
+        return (la + len(blob) - 2) < MEM_WALL
 
     cap_ticks = (max(1, max_part_frames // song.frames_per_tick)
                  if max_part_frames else total_ticks)

@@ -237,10 +237,112 @@ def test_default_ceiling_no_longer_forces_drillers_split():
 def test_convert_probes_both_binding_limits():
     """Guards against someone reinstating a duration-based split: the
     sequence-slot count and the $D000 top are the only two things that actually
-    bound one module."""
+    bound one module.
+
+    NOTE this only checks the limits are MENTIONED. It passed for a year while
+    the slot check was `used <= SEQ_SLOTS` with `used` summed over
+    `range(SEQ_SLOTS)` -- a value that cannot exceed the bound it is tested
+    against, so the check could never fail. The behavioural tests below are the
+    ones that would have caught it; keep both.
+    """
     import importlib, inspect
     M = importlib.import_module("mattgray_to_sf2")
     src = inspect.getsource(M.convert)
     assert "SEQ_SLOTS" in src
     assert "0xD000" in src
     assert "_part_fits" in src
+
+
+def test_sequence_slot_check_is_not_tautological():
+    """The slot check must compare a REQUIRED count against the cap.
+
+    A count taken over `range(cap)` is bounded by the cap by construction, so
+    comparing it to the cap tests nothing. This pins the shape of the fix: the
+    probe counts what `segment_track` needs, before emitting.
+    """
+    import importlib, inspect
+    M = importlib.import_module("mattgray_to_sf2")
+    src = inspect.getsource(M.convert)
+    assert "segment_track(rows)" in src, \
+        "the probe must count the sequences the range NEEDS"
+    assert "range(SEQ_SLOTS)" not in src, \
+        "counting over range(SEQ_SLOTS) can never exceed SEQ_SLOTS"
+
+
+def _sequences_in_sf2(path):
+    """How many sequence slots an emitted .sf2 actually populates."""
+    from sidm2.models import SF2DriverInfo
+    from sidm2 import sf2_parser
+    blob = bytearray(open(path, "rb").read())
+    di = SF2DriverInfo()
+    la = sf2_parser.parse_sf2_blocks(blob, di)
+    return sum(1 for i in range(di.sequence_count)
+               if blob[di.sequence_ptrs_lo - la + 2 + i]
+               or blob[di.sequence_ptrs_hi - la + 2 + i])
+
+
+def test_emitter_announces_dropped_sequences(capsys):
+    """Overflowing the 128-slot pointer table must never be silent.
+
+    The emitter used to `break` out of the voice loop, so every voice after the
+    cap fell through to an emergency empty sequence and went silent -- in a file
+    that looks perfectly valid. Standing rule: lossy output announces itself.
+    """
+    from sidm2.galway_driver11_emitter import emit_driver11_sf2
+    from sidm2.galway_to_driver11 import (
+        SF2_GATE_OFF, D11Instrument, D11Row, GalwayDriver11Song)
+    import sidm2.galway_driver11_emitter as EM
+
+    # Alternating note/gate-off rows force segment_track to emit many sequences.
+    rows = [D11Row(note=(0x30 if i % 2 else SF2_GATE_OFF)) for i in range(4000)]
+    song = GalwayDriver11Song(
+        instruments=[D11Instrument(ad=0x00, sr=0xF0, flags=0x00, filter_idx=0,
+                                   pulse_idx=0, wave_idx=0)],
+        wave_table=[(0x41, 0x00)], pulse_table=[], filter_table=[],
+        tracks=[list(rows), list(rows), list(rows)], tempo=4)
+
+    saved = EM._MAX_SEQUENCES
+    EM._MAX_SEQUENCES = 8              # force the overflow deterministically
+    try:
+        emit_driver11_sf2(song)
+    finally:
+        EM._MAX_SEQUENCES = saved
+    err = capsys.readouterr().err
+    assert "WARNING" in err and "DROPPED" in err, \
+        f"truncation must be announced, got: {err!r}"
+
+
+@needs_driller
+def test_probe_splits_rather_than_dropping_sequences(tmp_path, capsys):
+    """With the cap lowered so Driller cannot fit one module, the probe must
+    SPLIT -- and nothing may be dropped on the way.
+
+    Before the fix the probe accepted the oversized window (its slot check was
+    vacuous), the emitter truncated, and voice 2 was emitted as a single empty
+    sequence: 665s of music silently reduced to fewer voices. The absence of the
+    emitter's DROPPED warning is the direct statement of "nothing was lost", so
+    assert on that rather than on slot counts -- with the cap monkeypatched, the
+    emitter's unused-pointer nulling loop is also bounded by the patched value,
+    so leftover template pointers make a raw slot count meaningless here.
+    """
+    import importlib
+    import sidm2.galway_driver11_emitter as EM
+    sys.path.insert(0, os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin"))
+    M = importlib.import_module("mattgray_to_sf2")
+
+    saved = EM._MAX_SEQUENCES
+    EM._MAX_SEQUENCES = 30
+    try:
+        M.convert(DRILLER, str(tmp_path / "cap30.sf2"), subtune=1)
+    finally:
+        EM._MAX_SEQUENCES = saved
+
+    out = capsys.readouterr()
+    parts = sorted(tmp_path.glob("cap30_part*.sf2"))
+    assert len(parts) >= 2, "an oversized song must be split, not truncated"
+    assert "DROPPED" not in out.err, \
+        f"the split must not drop any sequence, got: {out.err!r}"
+    # The parts must still add up to the whole song, not a truncated prefix.
+    assert "rows 0-" in out.out and "-8320" in out.out, \
+        f"parts must cover all 8320 rows, got: {out.out!r}"
