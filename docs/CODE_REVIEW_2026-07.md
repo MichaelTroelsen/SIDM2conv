@@ -79,17 +79,47 @@ against pre-refactor output; part counts must be identical.
 **Traps**: the 960-event limit exists because SF2II's 1024-event `Unpack` has **no bounds
 check** — overflow is heap corruption, not an error. Never relax it.
 
-### R3. Shared native-build library — P2 · M · Sonnet
-**Evidence** (measured): `def gen_includes_song` copy exists in `bin/build_galway_native_song.py`,
-`build_romuzak_native_song.py`, `build_blackbird_native_song.py` (MoN imports ROMUZAK's ✻);
-`bin/build_galway_driver_full.py` vs `bin/build_romuzak_driver_full.py` differ by **12 lines**
-(confirmed — all name substitutions ✻).
-**Fix sketch**: per ROADMAP A2 — extract header/Block-2 state pinning, vstream orderlists,
-sequence-slot writes, wave-program dedup, FM/PULSE row-major layout, `layout.inc` writer into
-`sidm2/native_build/`; parameterize `build_*_driver_full.py` into one script with `player=`.
-**Verification**: byte-diff every player's driver `.prg` and one song `.sf2` pre/post.
+### R3. Shared native-build library — ✅ **DONE 2026-07-30** (partial, deliberately) · Sonnet+Opus
+**Shipped**: `sidm2/native_build.py` (commit `f411b4b`) + the globals-as-parameters fix
+(commit `80a70d2`). 13 tests in `pyscript/test_native_build.py`. All verification
+byte-identical across 4 players; full suite 1728 passed.
+
+**THIS ITEM'S OWN PREMISE WAS PARTLY WRONG — corrected here so nobody re-attempts it as
+written.** The original text below claimed "a ~180-line identical skeleton" and "12 lines,
+all name substitutions". Measured against the code:
+
+1. **`gen_includes_song` is NOT a shared skeleton.** The three signatures take genuinely
+   different data (Galway `fm_data`/`filter_lead`/`pulse_by_cmd`; ROMUZAK `wave_programs`/
+   `drum_set`/`seek_set`/`bundles`; Blackbird `ad_sr`/`filter_flag_of`/`fx_start`/`fxtab`/
+   `default_filter_program`), and each middle writes per-player instrument columns and lays
+   out per-player tables — the engine deltas PLAYBOOK §2 documents. **Do not unify them**;
+   one signature over all three would need a dozen mutually-exclusive flags.
+   What *was* genuinely duplicated, and is now extracted: a **22-line prologue**
+   byte-identical in all three (differing only in `driver_name`) → `make_native_gen` +
+   `lay_out_sequences`; and the **relative→absolute jump-target fixup**, one expression
+   hand-copied **five** times and the site of a real shipped bug (Blackbird's own "B3 BUG
+   FOUND" comment: `(r + b2)` instead of `(start + b2)`, hidden because a 2-row program's
+   wrong target coincidentally equals a self-freeze) → `program_jump_col`.
+   *Not* converted, after reading each site: Galway's filter block uses the row's own index
+   **deliberately** (its filter programs are always freeze-terminated — a third semantic),
+   and the row-major pulse tables use a fourth rule (jump → 0).
+2. **The driver_full pair's real blocker was a mutable-global hazard, not the 12-line diff.**
+   `build_galway_trace_song` set `B.TEMPO` on the *driver_full* module so that
+   `build_galway_native_song`, a *third* module, could read it back; `headless_audio` read
+   `TEMPO`/`N_ROWS` from its own module scope after callers mutated them. A thin-wrapper
+   merge would have silently emitted the wrong tempo. Now explicit parameters
+   (`tempo=`/`n_rows=`, `None` = old-global fallback). One dead line removed
+   (`B.TEST_INSTR = instrs`; nothing read it on that path).
+
+**REMAINING (follow-up, do before attempting the file merge)**: the same globals-as-parameters
+pattern persists in `build_romuzak_native_song.py` (`B.TEMPO`/`B.N_ROWS`),
+`build_mon_native_song.py` (`B.TEMPO`/`B.TEMPO2`/`B.TEMPO_SWALLOW`/`B.TEMPO_SCHED`) and
+`build_blackbird_native_song.py` (`B.TEMPO`/`B.TEMPO2`) — **four more channel variables across
+three more players**, each needing its own byte-diff pass. They work today via the `None`
+fallback. The actual **merge of the two 353-line driver_full files stays deferred** until
+those are converted; it is unblocked only for the Galway chain.
 **Traps**: `drivers_src/*/{layout,freqtable}.inc` are regenerated every build — `git checkout`
-before committing (PLAYBOOK §5).
+before committing (PLAYBOOK §5); this bit every verification run in this session.
 
 ### R4. Wire the `bin/` players into the default pipeline — P2 · M · Sonnet, with an Opus pass on routing policy
 **Evidence** (measured): `sidm2/driver_selector.py:53` `PLAYER_REGISTRY` holds only
@@ -479,7 +509,7 @@ sessions and is deliberately unstaged ✻.
 | ROADMAP item | Status here |
 |---|---|
 | A1 driver unification | carried → **R1** (grew: 4 copies now) |
-| A2 build lib + caps | carried → **R2, R3** (grew: 7 `fits()` copies) |
+| A2 build lib + caps | **R2 ✅ done** (`sidm2/sf2_caps.py`); **R3 ✅ done partial** (`sidm2/native_build.py`) — A2's "180-line identical skeleton" claim was **measured wrong**, see R3 |
 | A3 fidelity_common | ✅ done, not re-opened |
 | A4 registry wiring | carried → **R4** (grew: 11 players unwired) |
 | A5 bin/ hygiene | carried → **R27** (grew: 2,284 scratch files) |
@@ -505,7 +535,7 @@ sessions and is deliberately unstaged ✻.
 | Wave | Items | Rationale |
 |------|-------|-----------|
 | 1 | **R6** (fp_dec), **R23** (probe oracle), **R21** (SM sweep), **R29** (test debt), **R28/R31/R33/R34** (doc drift + strays), **R5** (verify-and-close) | Small, independent, de-risk everything after; R6 is a today-broken editor behavior |
-| 2 | **R2** (caps) → **R3** (build lib) → **R1** (driver merge), **R32** (CLAUDE.md compression) | Consolidation in increasing risk order; each gated by byte-diffs; R32 cheapens every later session |
+| 2 | ~~**R2** (caps)~~ ✅ → ~~**R3** (build lib)~~ ✅ partial → **R1** (driver merge), **R32** (CLAUDE.md compression) | Consolidation in increasing risk order; each gated by byte-diffs; R32 cheapens every later session. R3's residual (4 more `B.TEMPO*` channel variables in ROMUZAK/MoN/Blackbird) is a prerequisite for the driver_full file merge, not for R1's ASM merge |
 | 3 | **R13** (FC Stage B) | Validates wave 2's consolidation on a real port |
 | 4 | **R16** (filter seams), **R7** (Galway PWM) | P0 fidelity on the consolidated base |
 | 5 | **R20** (memory-wall audit), **R18** (RLE flag), **R19** (dedup) | Part-count: cheap wins first |
