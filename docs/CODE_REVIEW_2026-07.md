@@ -27,7 +27,7 @@ byte-diff or regression gate; Opus = RE, design, or falsification work.
 |---|------|--------------|
 | R5 | Blackbird E3c(a) — **status corrected**: E3f already closed it for the current corpus | ROADMAP's "highest remaining audible payoff" row is stale; what remains is a verify-and-close plus two named edge residuals (see revised R5 + Appendix A) |
 | R6 | Galway/ROMUZAK `cmp #$90` SF2II hazard | their filter sweeps are **broken in the real editor today**, invisible to every headless metric |
-| R1–R3 | Driver + builder unification, caps module | every fidelity fix currently needs 3–4 patches; every new player re-forks ~1,300 lines |
+| ~~R1–R3~~ | ✅ **ALL DONE 2026-07-30** — caps module, shared build lib, driver merge (−1227 lines of duplicated 6502, byte-identical machine code) | a driver fix is now one patch for the Galway/ROMUZAK pair; MoN/Blackbird deliberately left forked (measured: 51 and ~1962 diff hunks/lines) |
 | R17 | Stage C structural synth-table RE | the **only proven lossless** part-count reduction (Supremacy 70 parts → single digits ✻) |
 | R20 | Memory-wall audit for time-split parts | Driller splits into 2 files while using 41/120 sequences — the wall, not the caps, binds; nobody has measured the slack |
 | R24 | Universal trace-first fallback (D1) | turns "any SID" from per-player RE into a default path |
@@ -40,7 +40,45 @@ byte-diff or regression gate; Opus = RE, design, or falsification work.
 
 ## Track 1 — Consolidation (P2; enables most fidelity and part-count work)
 
-### R1. Unify the four native-driver ASM copies — P2 · M · Sonnet (Opus for the Blackbird merge decision)
+### R1. Unify the native-driver ASM copies — ✅ **DONE 2026-07-30** (the pair; MoN/Blackbird deliberately NOT merged) · Opus
+**Shipped** (commit `4a133c3`): `drivers_src/common/sf2_native_driver.asm` is the shared engine;
+`drivers_src/{galway,romuzak}/*_driver.asm` are 23-line feature-selection shims
+(`FEAT_DRUM_ROWS`, `FEAT_SEEK_PULSE`, `FEAT_INSTR_PULSE`). Net **−1227 lines**.
+**Gate met**: the **assembled machine code is byte-identical for both players** (`.prg` and
+wrapped `.sf2`), plus byte-identical real songs on all four native players, the full 40-tune
+Galway corpus (40/40), and 1728 tests. Assembly that provably emits the same bytes cannot
+have changed behavior.
+
+**A1's "merge galway+romuzak+mon" was right for the pair and wrong for MoN** — measured:
+`galway↔romuzak` is **4 hunks = 3 clean feature blocks** (everything else already
+byte-identical, hence three flags suffice); `mon↔romuzak` is **51 scattered hunks** (196/88/
+72/31/28/… long tail). Expressing 51 hunks as `.if` blocks means a reader cannot tell what the
+driver does without evaluating flag state, and a mis-nested `.endif` silently alters another
+player's code — costing more than the duplication saves. Blackbird (~1962 diff lines): same,
+more so. **Do not merge MoN or Blackbird.**
+A1's stated payoff ("fix a driver bug once") was tested against this session's own R6 fix:
+`cmp #$90`→`cmp #$80` needed applying to galway **and** romuzak, and to **neither** MoN
+(already `bmi`, a different idiom) nor Blackbird (fixed in B24) — i.e. the real
+bug-propagation set is exactly the pair that merges cleanly. It is now one site, still covered
+by `test_sf2ii_emulator_hazards.py`'s `drivers_src/*/*.asm` glob.
+
+**Two ROADMAP claims this corrected**:
+- `bin/build_mon_native_song.py:1763` does **`B.GAL = MON_DIR`**, repointing driver_full's
+  *directory* global (R3b's hazard class again). That is why MoN's driver is "misnamed"
+  `romuzak_driver.asm`: `assemble()` hardcodes `<GAL>/romuzak_driver.asm`, so the name is
+  **load-bearing**. **ROADMAP A5's "fix the MoN driver file name" would break the build**
+  unless the `GAL` repointing is fixed first. The shim design was chosen so MoN needs zero
+  changes.
+- **All four** driver `.asm` files are CRLF, not just MoN's — R28/ROADMAP present it as a
+  MoN anomaly; it is the norm here. Nothing to fix.
+
+**64tass detail worth keeping**: it resolves a nested `.include` relative to the *including*
+file, so the shared body cannot find the player's `layout.inc`/`freqtable.inc` by itself —
+hence `-I <player_dir>` in both `assemble()` calls. Tested empirically first; without `-I` it
+errors out loudly rather than silently picking a wrong file.
+
+<details><summary>Original R1 text (superseded — kept for provenance)</summary>
+
 **Evidence** (measured this session):
 - `drivers_src/galway/galway_driver.asm` 1,317 lines ↔ `drivers_src/romuzak/romuzak_driver.asm` 1,357 lines: **40 diff lines total**.
 - `drivers_src/mon/romuzak_driver.asm` 2,004 lines (misnamed, CRLF endings): 777 diff lines vs romuzak.
@@ -60,6 +98,8 @@ edit-area guards already exist ✻). Then one full corpus sweep per player (Galw
 `bin/build_galway_corpus.py`, Blackbird `py -3 pyscript/blackbird_sweep.py <label> --compare`).
 **Traps**: SF2II's 6510 emulator (PATTERNS/PLAYBOOK §5): never `cmp` values >$7F apart; never
 branch on carry after `cpx/cpy`. `pyscript/test_sf2ii_emulator_hazards.py` lints this — keep it green.
+
+</details>
 
 ### R2. One caps module + one `fits()` — P2 · S · Sonnet
 **Evidence** (measured): `CAP_B, CAP_I, CAP_TBL, CAP_SEG, STEP = 63, 32, 256, 120, 100`
@@ -508,11 +548,11 @@ sessions and is deliberately unstaged ✻.
 
 | ROADMAP item | Status here |
 |---|---|
-| A1 driver unification | carried → **R1** (grew: 4 copies now) |
+| A1 driver unification | **✅ done** → **R1**: galway+romuzak merged behind 3 flags, byte-identical .prg. MoN/Blackbird NOT merged — A1's 3-way proposal was measured wrong (51 vs 4 hunks) |
 | A2 build lib + caps | **R2 ✅ done** (`sidm2/sf2_caps.py`); **R3 ✅ done partial** (`sidm2/native_build.py`) — A2's "180-line identical skeleton" claim was **measured wrong**, see R3 |
 | A3 fidelity_common | ✅ done, not re-opened |
 | A4 registry wiring | carried → **R4** (grew: 11 players unwired) |
-| A5 bin/ hygiene | carried → **R27** (grew: 2,284 scratch files) |
+| A5 bin/ hygiene | carried → **R27** (grew: 2,284 scratch files). ⚠️ A5's "fix the MoN driver file name" is **WRONG AS WRITTEN** — the name is load-bearing via `B.GAL` repointing (see R1); and the CRLF note is moot (all four .asm are CRLF) |
 | B1 MoN structural rebuild | merged into **R17** (same work as C1) |
 | B2 Galway residual | carried → **R7** |
 | B3 universal objective metric | carried → **R22** |
@@ -535,7 +575,7 @@ sessions and is deliberately unstaged ✻.
 | Wave | Items | Rationale |
 |------|-------|-----------|
 | 1 | **R6** (fp_dec), **R23** (probe oracle), **R21** (SM sweep), **R29** (test debt), **R28/R31/R33/R34** (doc drift + strays), **R5** (verify-and-close) | Small, independent, de-risk everything after; R6 is a today-broken editor behavior |
-| 2 | ~~**R2** (caps)~~ ✅ → ~~**R3** (build lib)~~ ✅ partial → **R1** (driver merge), **R32** (CLAUDE.md compression) | Consolidation in increasing risk order; each gated by byte-diffs; R32 cheapens every later session. R3's residual (4 more `B.TEMPO*` channel variables in ROMUZAK/MoN/Blackbird) is a prerequisite for the driver_full file merge, not for R1's ASM merge |
+| 2 | ~~**R2** (caps)~~ ✅ → ~~**R3** (build lib)~~ ✅ partial → ~~**R1** (driver merge)~~ ✅ → **R32** (CLAUDE.md compression) | Consolidation in increasing risk order; each gated by byte-diffs; R32 cheapens every later session. R3's residual (4 more `B.TEMPO*` channel variables in ROMUZAK/MoN/Blackbird) is a prerequisite for the driver_full file merge, not for R1's ASM merge |
 | 3 | **R13** (FC Stage B) | Validates wave 2's consolidation on a real port |
 | 4 | **R16** (filter seams), **R7** (Galway PWM) | P0 fidelity on the consolidated base |
 | 5 | **R20** (memory-wall audit), **R18** (RLE flag), **R19** (dedup) | Part-count: cheap wins first |
