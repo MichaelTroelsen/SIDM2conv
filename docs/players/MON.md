@@ -62,8 +62,22 @@ py -3 bin/build_myth_native_song.py 0 auto
 `MON_ARP_STRUCT=1` enables the **structural path** (looping arp/slide/vibrato FM entries + canonical
 wave/pulse programs, each exact- or semitone-guarded per note with trace fallback). It is calibrated
 on Supremacy (where it collapses sub1/sub2 to one part each) and is fine for Hawkeye/Cybernoid.
-**Keep it OFF for Myth** — measured regression: Myth sub0 part1 osc1 freq 89.1% flag-on vs 100%
-flag-off (the guards admit a wrong substitution on the Myth engine variant).
+~~**Keep it OFF for Myth**~~ — the measured regression (Myth sub0 part1 osc1 freq 89.1% flag-on
+vs 100% flag-off, "the guards admit a wrong substitution on the Myth engine variant") **no longer
+reproduces**. Re-measured 2026-07-30 on the identical 20 s window via
+`bin/mon_part_fidelity.py out/mon/Myth_sub0_part01.sf2 0 20`, built through Myth's own emulation
+shim (`bin/build_myth_native_song.py 0 auto`):
+
+| build | osc1 | osc2 | osc3 |
+|---|---|---|---|
+| flag-**off** (control) | 100.0 / 100.0 / 100.0 | 100.0 / 100.0 / 100.0 | 100.0 / 100.0 / 100.0 |
+| flag-**on** | 100.0 / 100.0 / 100.0 | 100.0 / 100.0 / 100.0 | 100.0 / 100.0 / 100.0 |
+
+…and Myth sub0 drops **8 → 6 parts** flag-on. The intervening guard tightenings fixed it — most
+likely the arp guard's `tol` change (the flat `max(4, …)` used to accept *any* arp vacuously on
+short notes; see the comment at `build_mon_native_song.py:1472-1476`). Scope of this check: sub0
+part01, which is exactly what the original regression named. A full both-ways corpus sweep is
+still the prerequisite for making these flags the default.
 
 Load the result via `py -3 pyscript/sf2_open_in_editor.py out/mon/PART.sf2 40` (SF2II's argv-load Heisenbug needs the retry loader). Native play address is `$1003`.
 
@@ -334,7 +348,7 @@ these the default; three files are not a corpus.
 Remaining frontier:
 
 1. **Filter window seams** — filter cutoff is the one register still 30-90% on multi-part tunes (restarts at window boundaries); whole-song parts measure filter 100%.
-2. **Structural path beyond Supremacy** — flag-on regresses Myth (osc1 89%); per-variant guard calibration would let every tune use it.
+2. **Structural path beyond Supremacy** — ~~flag-on regresses Myth (osc1 89%)~~ **retested 2026-07-30: it does not.** Myth sub0 part1 is 100.0/100.0/100.0 both ways on the same window, and 8→6 parts flag-on. With Supremacy (10→1), Hawkeye sub2 (100.0 preserved) and Cybernoid (13→11) also clean, **no known regression remains** — the outstanding work is a full both-ways corpus sweep, then flipping the default. Two loose guards are worth auditing while doing it: the arp acceptance is semitone-with-tolerance (`:1471-1477`) and the **slide substitution at `:1480-1483` has no exactness guard at all**, unlike the vibrato/canonical paths beside it.
 3. **Registry wiring** (roadmap A4) — the whole pipeline still lives in `bin/`.
 
 ---

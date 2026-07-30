@@ -829,13 +829,20 @@ is a plan, not a session of re-derivation.
 > refuses it (`speed byte 255`), so it needs the py65 emulation shim, not
 > `build_mon_native_song.py <sid> 0 auto`.
 >
-> **Remaining work is therefore validation, not RE** — and there is a KNOWN COUNTEREXAMPLE, so
-> do not read the table above as "just turn them on". `docs/players/MON.md`'s own "Remaining
-> frontier" already records: *"Structural path beyond Supremacy — flag-on **regresses Myth**
-> (osc1 89%); per-variant guard calibration would let every tune use it."* That is exactly why
-> these are opt-in, and it is the real remaining task: **per-variant guard calibration**, then a
-> full-corpus both-ways sweep. Three files are not a corpus, even when two of them are the
-> project's own byte-exact references.
+> **Remaining work is validation, not RE.** The one documented counterexample —
+> `MON.md`'s *"flag-on regresses Myth (osc1 89%)"* — was **retested on 2026-07-30 and does not
+> reproduce**: built through Myth's own emulation shim (`bin/build_myth_native_song.py 0 auto`),
+> sub0 part1 is **100.0/100.0/100.0 both ways** on the identical 20 s window, and Myth drops
+> **8 → 6 parts** flag-on. Intervening guard tightenings fixed it (most likely the arp guard's
+> `tol` change at `build_mon_native_song.py:1472-1476`, which previously accepted *any* arp
+> vacuously on short notes).
+>
+> So **no known regression remains** across the four files measured. The outstanding work is a
+> full both-ways corpus sweep, then flipping the default — four files are not a corpus, even when
+> two are the project's byte-exact references. Two loose guards deserve an audit during that
+> sweep: the arp acceptance is semitone-with-tolerance, and the **slide substitution
+> (`:1480-1483`) carries no exactness guard at all**, unlike the vibrato and canonical-FM paths
+> immediately beside it, which both require `_fm_unroll(...) == _fm_unroll(...)`.
 >
 > Also note `Cybernoid`'s part01 grew 38s → 48s while its bundle count went 55 → **63** — it now
 > sits *exactly* on the cap. The prongs buy headroom that the adaptive window planner immediately
