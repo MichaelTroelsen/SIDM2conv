@@ -209,6 +209,12 @@ def assemble():
                         "-D", f"DIGI_SPIKE={digi}", "-D", f"DIGI_NCO={nco}",
                         "-D", f"DIGI_HYBRID={hybrid}", "-D", f"DIGI_SWEEP={sweep}",
                         "-D", f"DIGI_RLE={rle}",
+                        # R1: see build_galway_driver_full.assemble()'s note. Needed
+                        # because drivers_src/romuzak/romuzak_driver.asm is now a
+                        # feature-selection shim over the shared body. Harmless for
+                        # MoN, which repoints GAL at drivers_src/mon and assembles
+                        # its OWN (unmerged, still full) romuzak_driver.asm there.
+                        "-I", GAL,
                         os.path.join(GAL, "romuzak_driver.asm")],
                        capture_output=True, text=True, cwd=GAL)
     if r.returncode != 0:

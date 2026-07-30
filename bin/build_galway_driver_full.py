@@ -209,6 +209,13 @@ def assemble():
                         "-D", f"DIGI_SPIKE={digi}", "-D", f"DIGI_NCO={nco}",
                         "-D", f"DIGI_HYBRID={hybrid}", "-D", f"DIGI_SWEEP={sweep}",
                         "-D", f"DIGI_RLE={rle}",
+                        # R1: the driver is now a thin feature-selection shim that
+                        # .includes drivers_src/common/sf2_native_driver.asm. 64tass
+                        # resolves a nested .include relative to the INCLUDING file,
+                        # so without -I the shared body would look for layout.inc /
+                        # freqtable.inc next to itself in common/ and fail (verified:
+                        # it errors out, it cannot silently pick a wrong file).
+                        "-I", GAL,
                         os.path.join(GAL, "galway_driver.asm")],
                        capture_output=True, text=True, cwd=GAL)
     if r.returncode != 0:
