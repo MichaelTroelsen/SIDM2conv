@@ -312,6 +312,25 @@ Dense tunes blow three SF2II hard caps **simultaneously** (per SF2 file: 63 comm
 
 Result: Supremacy sub1 70→**1 part**, sub2 24→**1 part**, sub0 34→**10 parts** (the real lengths emerged from the global markers: 38s / 150s / 234s). Adaptive window packing (`auto`) also collapsed Hawkeye sub0 13→7, Cybernoid 14→10, Myth →7 parts.
 
+**Re-measured 2026-07-30** (R17 flagship check) with all three prongs on
+(`MON_ARP_STRUCT=1 MON_PULSE_CANON=1 MON_WAVE_CANON=1`), each compared against the
+unrolled build on the **same window** via `bin/mon_part_fidelity.py <part.sf2> <sub> <secs>`:
+
+| file | parts off → on | fidelity, same window | note |
+|---|---|---|---|
+| Supremacy sub2 | **10 → 1** | identical (94.0/100/100, 100/100/100, 100/100/100, filter 100) | bundles 60→**18**, instr 16→12 |
+| Hawkeye sub2 | 1 → 1 | **identical 100.0 on every register** | bundles 59→49, instr 21→17 |
+| Cybernoid sub0 | **13 → 11** | identical (99.9/98.9/97.9, filter 100) | part01 38s→48s, bundles 55→**63** = exactly on the cap |
+
+24 parts → 13 with **zero** fidelity change. Note sub2's *baseline* is now 10, not the 24 above —
+unrelated fixes moved it. Cybernoid shows the prongs buy headroom the adaptive planner then
+spends, so a part-count win is not automatic. Myth sub0 is **not buildable via this CLI** — the
+pseudo-parse gate refuses it (`speed byte 255`); it needs the py65 emulation shim.
+
+⚠️ Still opt-in for the reason in *Remaining frontier* #2 below: **flag-on regresses Myth**.
+Per-variant guard calibration + a full both-ways corpus sweep are the prerequisites for making
+these the default; three files are not a corpus.
+
 Remaining frontier:
 
 1. **Filter window seams** — filter cutoff is the one register still 30-90% on multi-part tunes (restarts at window boundaries); whole-song parts measure filter 100%.

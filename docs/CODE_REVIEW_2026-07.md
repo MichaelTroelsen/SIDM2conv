@@ -28,7 +28,7 @@ byte-diff or regression gate; Opus = RE, design, or falsification work.
 | R5 | Blackbird E3c(a) — **status corrected**: E3f already closed it for the current corpus | ROADMAP's "highest remaining audible payoff" row is stale; what remains is a verify-and-close plus two named edge residuals (see revised R5 + Appendix A) |
 | R6 | Galway/ROMUZAK `cmp #$90` SF2II hazard | their filter sweeps are **broken in the real editor today**, invisible to every headless metric |
 | ~~R1–R3~~ | ✅ **ALL DONE 2026-07-30** — caps module, shared build lib, driver merge (−1227 lines of duplicated 6502, byte-identical machine code) | a driver fix is now one patch for the Galway/ROMUZAK pair; MoN/Blackbird deliberately left forked (measured: 51 and ~1962 diff hunks/lines) |
-| R17 | Stage C structural synth-table RE | the **only proven lossless** part-count reduction (Supremacy 70 parts → single digits ✻) |
+| R17 | Stage C structural synth-table RE | the **only proven lossless** part-count reduction. **2026-07-30: the transform layer already exists** as opt-in flags (`MON_ARP_STRUCT`/`MON_PULSE_CANON`/`MON_WAVE_CANON`) — measured **Supremacy sub2 10→1 part, Cybernoid 13→11, Hawkeye sub2 still 100.0 on every register**, 24→13 parts, zero fidelity change. Remaining work is **per-variant guard calibration** (flag-on is known to regress Myth) + a corpus sweep — validation, not RE |
 | ~~R20~~ | ✅ **DONE** — capacity measured, **Driller 2 files → 1**; the "27,650 play-call" ceiling retracted as underivable. **R20a** (2026-07-30): the probe's own slot check was **tautological** and the emitter dropped sequences **silently** (a whole voice) — both fixed | was splitting at ~40% of real capacity (57/128 slots, top $61CF vs $D000) |
 | R24 | Universal trace-first fallback (D1) | turns "any SID" from per-player RE into a default path |
 | R21 | Reproducible corpus sweeps (SM first) | a headline number that dies with a scratch file isn't a result |
@@ -800,6 +800,50 @@ the fx-space sentinel design:
 is a plan, not a session of re-derivation.
 
 ## D-R17. Stage C structural synth-table RE (part-count flagship)
+
+> ### ⚠️ MEASURED FIRST, 2026-07-30 — the transform layer ALREADY EXISTS, and it works
+>
+> Step 3 below says to count the distinct (program, rate) pairs *before* committing to a
+> transform design. Doing that turned up something better: the three structural prongs are
+> **already implemented** in `bin/build_mon_native_song.py` as opt-in env flags —
+> `MON_ARP_STRUCT` (structural arps from the ROM's own arp table), `MON_PULSE_CANON` (collapse
+> the pulse side of the bundle to one canonical program per instrument) and `MON_WAVE_CANON`.
+> The in-code comment already states the key constraint R18 later re-derived: *"all three caps
+> must drop for the part count to fall"*. See `docs/analysis/PART_REDUCTION_PLAN.md`.
+>
+> **Measured with all three enabled, fidelity compared on the SAME window as an unrolled
+> control** (`bin/mon_part_fidelity.py <part.sf2> <subtune> <secs>`):
+>
+> | file | parts before | parts after | fidelity (freq/wf/pulse per voice, same window) |
+> |---|---|---|---|
+> | **Supremacy sub2** | **10** | **1** | **identical** — 94.0/100/100, 100/100/100, 100/100/100, filter 100 |
+> | Hawkeye sub2 (the byte-exact one) | 1 | 1 | **identical 100.0 on every register**; bundles 59→49, instr 21→17 |
+> | Cybernoid sub0 | **13** | **11** | **identical** — 99.9/98.9/97.9, filter 100 |
+>
+> **24 parts → 13, with zero fidelity change on all three files.** Supremacy alone goes 10 → 1,
+> its bundle count 60 → **18** and instruments 16 → 12. This satisfies R17's own success order
+> (byte-exactness preserved *first*, then part count).
+>
+> **Two premises in the section below are stale.** (a) "Supremacy sub2 (70 parts)" — **measured
+> 10**. (b) "Myth sub0 (7 parts)" is not buildable through this CLI at all: the pseudo-parse gate
+> refuses it (`speed byte 255`), so it needs the py65 emulation shim, not
+> `build_mon_native_song.py <sid> 0 auto`.
+>
+> **Remaining work is therefore validation, not RE** — and there is a KNOWN COUNTEREXAMPLE, so
+> do not read the table above as "just turn them on". `docs/players/MON.md`'s own "Remaining
+> frontier" already records: *"Structural path beyond Supremacy — flag-on **regresses Myth**
+> (osc1 89%); per-variant guard calibration would let every tune use it."* That is exactly why
+> these are opt-in, and it is the real remaining task: **per-variant guard calibration**, then a
+> full-corpus both-ways sweep. Three files are not a corpus, even when two of them are the
+> project's own byte-exact references.
+>
+> Also note `Cybernoid`'s part01 grew 38s → 48s while its bundle count went 55 → **63** — it now
+> sits *exactly* on the cap. The prongs buy headroom that the adaptive window planner immediately
+> spends, so a per-file part-count win is not guaranteed even when fidelity is preserved.
+>
+> Historical note on the "70 parts": `MON.md` records Supremacy **sub1** 70→1 and **sub2** 24→1.
+> The review attributed sub1's figure to sub2, and sub2's own baseline has since fallen 24 → 10
+> through unrelated fixes. Measured today, not inferred.
 
 **Verified context**: native builds unroll per-note (FM, pulse) bundles and wave/filter
 programs from traces; dense tunes blow bundles+instruments+wave-rows simultaneously
