@@ -91,6 +91,17 @@ SID file
 | Memory wall | tables < **$D000**; state region `$16CC-$1702` must stay clear | `assemble()` guards |
 | ~~"~27,650 play-calls ≈ 9.2 min"~~ | **RETRACTED 2026-07-30 (R20)** — not derivable from the format and not in the history. Nothing in a Driver 11 file grows with *time* (fixed-size tables + a fixed 128×256-byte sequence region), so per-module capacity is a function of event **density**. MEASURE it (`bin/mattgray_to_sf2.convert`'s `_part_fits` probe): Driller's whole 665.6 s song is ONE module at 57/128 slots, top `$61CF` | — |
 
+**Which cap actually binds - MEASURED 2026-07-30 (R18).** Instrumenting the windowing probe on
+FC's `Is_There_a_Difference` (5 parts) showed **command bundles bind every single cut**
+(64/66/67/64 against the 63 cap) while **WAVE rows sat at 40-61 of 256** (16-24%). So
+compressing wave rows (RLE) buys **zero** part reduction on a bundle-bound tune, and MoN's
+Cybernoid 18-to-11 RLE win was real only because *that* tune is wave-row-bound. **Measure which
+cap binds before relieving one.** Corollary: part count lives in the bundle count, which is why
+the lossless path is Stage C structural RE (collapse bundles at source). A lossy dial also
+exists and is quantified - the probe requires the PRE-cluster raw bundle count to fit, so
+raising `CAP_B` permits clustering and cuts parts hard (Blackbird measured 16 parts at CAP_B=64
+vs 5 at 128, for ~5.8pp freq); keep it opt-in per player, never a default.
+
 **Part-count economics** (MoN finding, proven quantitatively): dense tunes blow bundles+instruments+wave-rows **simultaneously**, so relieving one cap alone yields zero part reduction. The trace-driven build unrolls the player's compact looping tables — *no trace-based method compresses this losslessly*. The lossless fix is **Stage C structural RE** of the synth engine (extract its looping arp/wave tables + selectors). Supremacy's engines are already cracked; see `whats-next.md` for the bounded remaining work.
 
 ---

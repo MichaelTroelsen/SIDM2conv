@@ -421,18 +421,53 @@ looping arp/wave tables + selectors as SF2 looping programs instead of trace-unr
 player's own ROM data — any mismatch means the selector model is wrong, not an acceptable
 loss); part count is the success metric only after byte-exactness holds.
 
-### R18. Port the wave-RLE win as a feature flag — P1 · S after R1 · Sonnet
-**Evidence** ✻: MoN's RLE wave rows (col1 = frame count) cut Cybernoid 18 → 11 parts,
-proven byte-identical (ROADMAP C2). Blackbird's driver has its own RLE variant already.
-**Fix sketch**: after R1, `FEAT_WAVE_RLE` becomes available to Galway/ROMUZAK/others;
-evaluate on any wave-row-bound tune. **Verification**: byte-identical registers, lower part
-count, per-player sweep.
+### R18. Wave-RLE as a feature flag — CLOSED 2026-07-30: **NO CANDIDATE (measured)** · Opus
+**Wave rows are not the binding cap anywhere it would help.** Instrumented the shared engine's
+own windowing probe on FC's `Is_There_a_Difference` (5 parts) and reported *why* each cut fired:
 
-### R19. Cross-part program dedup — P1 · M · Sonnet
-**Evidence** ✻: windowed parts rebuild programs per window; identical programs recur across
-parts (ROADMAP C3). Won't reduce part *count* (caps are per file) but shrinks each file and
-stabilizes seams — and it is a prerequisite for honest seam-state work (R16).
-**Verification**: byte-diff of emitted registers per part; file sizes strictly ≤ before.
+| cut | reason the window stopped growing | at the kept window |
+|---|---|---|
+| part1 | **bundles 64>63** | bundles 61, instr 28, **WAVE 40/256**, filter 155, seqs 5 |
+| part2 | **bundles 66>63**, instr 34>32 | bundles 58, instr 32, **WAVE 61/256**, filter 150, seqs 4 |
+| part3 | **bundles 67>63** | bundles 61, instr 25, **WAVE 40/256**, filter 139, seqs 6 |
+| part4 | **bundles 64>63** | bundles 61, instr 26, **WAVE 45/256**, filter 130, seqs 4 |
+
+**Bundles bind every single cut; WAVE sits at 16-24% utilization.** RLE-compressing wave rows
+would relieve a cap with ~200 rows of headroom - zero part reduction. This is PLAYBOOK Sec.3's
+own conclusion ("relieving one cap alone yields zero part reduction") confirmed by direct
+measurement, and it matches the ACCURACY_MATRIX DMC row, which already says "bundle-bound
+files keep high part counts". MoN's Cybernoid 18-to-11 win was real *because that tune is
+wave-row-bound*, and RLE is already applied there. **Do not port `FEAT_WAVE_RLE`** until a tune
+is shown to be wave-row-bound. (Scope: measured on FC, 4 independent cuts; DMC/Supremacy are
+documented bundle-bound rather than re-measured here.)
+
+### R19. Cross-part program dedup — DOWNGRADED to P3 2026-07-30 · Sonnet
+Its own case was "won't reduce part *count* ... but shrinks each file and **stabilizes seams**
+(filter-seam residuals are window-boundary artifacts)". R16 measured the seams at **99.92%**
+(16 frames of 19168), so the seam half of the rationale is gone. What remains is smaller files -
+real but cosmetic, and these are separate modules a user loads one at a time. Not a part-count
+lever.
+
+### THE part-count lever, now measured: the **bundle** cap
+Since bundles bind, that is where part count lives - which **confirms R17 (Stage C structural
+RE)** as the flagship and explains *why*: it collapses the bundle count at source (Supremacy
+178 bundles to ~16 arp programs) instead of relieving a cap that has headroom.
+
+There is also an **already-implemented, quantified, but LOSSY** lever worth knowing before
+anyone reinvents it. `greedy_cluster(exb, ..., 63)` can merge bundles, but the windowing probe
+demands the **pre-cluster raw** count fit 63 - i.e. "no clustering permitted". Raising `CAP_B`
+lets a window keep growing and clusters the excess. Blackbird already ships `CAP_B=96` for
+exactly this and measured the trade on Glyptodont:
+
+| CAP_B | parts | overall | freq |
+|---|---|---|---|
+| 128 | **5** | 66.4 | 57.9 |
+| 96 | 10 | 67.3 | 62.2 |
+| 64 | **16** | 67.7 | 63.7 |
+
+**3.2x fewer parts for ~5.8pp of freq.** A genuine dial, but it trades fidelity for file count,
+which the standing rule forbids doing silently - so it stays **opt-in per player** (`BB_CAP_B`
+is the precedent), never a default. Recorded so the option is visible and nobody re-derives it.
 
 ### R20. Memory-wall audit — ✅ **DONE 2026-07-30: Driller now emits ONE file, not two** · Opus
 **The "~27,650 play-calls ≈ 9.2 min" ceiling is RETRACTED.** Its derivation is not in the git
@@ -624,8 +659,8 @@ sessions and is deliberately unstaged ✻.
 | B4 FC Stage B | **✅ done** → **R13**: shipped 2026-07-30, 14/15 voices 100% audible, no new driver needed |
 | B5 small residuals | noted in R16 (Myth filter); ROMUZAK drum octave stays parked |
 | C1 structural RE | carried → **R17** (flagship) |
-| C2 wave-RLE port | carried → **R18** |
-| C3 cross-part dedup | carried → **R19** |
+| C2 wave-RLE port | **CLOSED** → **R18**: measured NO CANDIDATE - bundles bind every cut, WAVE at 16-24% |
+| C3 cross-part dedup | **DOWNGRADED** → **R19**: its seam rationale died with R16 (99.92%); file-size only |
 | C4 filter seams | **✅ closed** → **R16**: measured 99.92%, not ~75% — the fix was already in place, unmeasured |
 | D1 trace-first fallback | carried → **R24** |
 | D2 signature framework | carried → **R26** |
@@ -643,7 +678,7 @@ sessions and is deliberately unstaged ✻.
 | 2 | ~~**R2** (caps)~~ ✅ → ~~**R3** (build lib)~~ ✅ partial → ~~**R1** (driver merge)~~ ✅ → **R32** (CLAUDE.md compression) | Consolidation in increasing risk order; each gated by byte-diffs; R32 cheapens every later session. R3's residual (4 more `B.TEMPO*` channel variables in ROMUZAK/MoN/Blackbird) is a prerequisite for the driver_full file merge, not for R1's ASM merge |
 | 3 | ~~**R13** (FC Stage B)~~ ✅ **DONE** — 14/15 voices 100% audible; added no new driver | Validated wave 2's consolidation on a real port |
 | 4 | ~~**R16** (filter seams)~~ ✅ **CLOSED — premise stale, measured 99.92%**, no code change; **R7** (Galway PWM) | P0 fidelity on the consolidated base |
-| 5 | ~~**R20** (memory-wall audit)~~ ✅ **Driller 2→1 file**; **R18** (RLE flag), **R19** (dedup) | Part-count: cheap wins first |
+| 5 | ~~**R20**~~ ✅ **Driller 2→1 file**; ~~**R18**~~ no candidate; ~~**R19**~~ P3 | Part-count: **bundles are the binding cap** → the lever is R17, not R18/R19 |
 | 6 | **R17** (Stage C structural RE) | Flagship part-count work, Opus |
 | 7 | **R4** (registry) + **R24** (trace-first fallback) | Ship the pipeline: wire everything, add the universal fallback |
 | 8 | **R8–R12, R14, R15** (per-player residuals), **R22, R25, R26** | Ongoing per-player + infra depth |
