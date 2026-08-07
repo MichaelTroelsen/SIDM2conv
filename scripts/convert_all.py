@@ -620,8 +620,10 @@ def generate_info_file(sf2_dir: str, sid_file: str, sid_dir: str, output_files: 
 
                 # Calculate match rate
                 total = len(matches) + len(missing)
-                match_rate = (len(matches) / total * 100) if total > 0 else 100
-                f.write(f"Match rate: {match_rate:.0f}% ({len(matches)}/{total} observed values found)\n")
+                # 0 observed values is "nothing to match", not a perfect score.
+                match_rate = (len(matches) / total * 100) if total > 0 else None
+                shown_rate = f"{match_rate:.0f}%" if match_rate is not None else "n/a"
+                f.write(f"Match rate: {shown_rate} ({len(matches)}/{total} observed values found)\n")
                 f.write(f"\n")
 
                 if matches:

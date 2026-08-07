@@ -338,7 +338,10 @@ class TraceComparator:
                             if frame_a.get(reg) == frame_b.get(reg):
                                 matches += 1
 
-                accuracy = (matches / total) * 100.0 if total > 0 else 100.0
+                # total == 0 means NEITHER side ever wrote these registers, so
+                # there is no evidence -- reporting 100.0 fabricates a pass for a
+                # voice that is simply silent on both sides. None renders as n/a.
+                accuracy = (matches / total) * 100.0 if total > 0 else None
 
                 if component == 'freq':
                     voice_accuracy[voice]['frequency'] = accuracy
@@ -351,8 +354,12 @@ class TraceComparator:
 
             # Overall voice accuracy (average of components)
             components = ['frequency', 'waveform', 'adsr', 'pulse']
-            overall = sum(voice_accuracy[voice][c] for c in components) / len(components)
-            voice_accuracy[voice]['overall'] = overall
+            # A component with no evidence is None and is left OUT of the mean,
+            # not counted as a zero and not counted as a fabricated 100.
+            measured = [voice_accuracy[voice][c] for c in components
+                        if voice_accuracy[voice][c] is not None]
+            voice_accuracy[voice]['overall'] = (sum(measured) / len(measured)
+                                                if measured else None)
 
         return voice_accuracy
 

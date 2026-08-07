@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Dict, Optional
 from collections import defaultdict
 
+from sidm2.fidelity_common import score_pct
+
 
 def quick_validate(original_sid: str, exported_sid: str, duration: int = 10) -> Optional[Dict]:
     """
@@ -202,11 +204,11 @@ def _compare_captures(orig: Dict, exp: Dict) -> Dict:
 
     if max_frames == 0:
         return {
-            'overall_accuracy': 0.0,
-            'frame_accuracy': 0.0,
-            'voice_accuracy': 0.0,
-            'register_accuracy': 0.0,
-            'filter_accuracy': 0.0,
+            'overall_accuracy': None,
+            'frame_accuracy': None,
+            'voice_accuracy': None,
+            'register_accuracy': None,
+            'filter_accuracy': None,
             'frames_compared': 0,
             'differences_found': 0
         }
@@ -229,6 +231,17 @@ def _compare_captures(orig: Dict, exp: Dict) -> Dict:
     filter_matches = 0
     filter_totals = 0
 
+    # Distinct values each side ever held per register. `score_pct` alone is not
+    # enough: siddump FORCE-DISPLAYS the filter column on its first row whether
+    # or not the playroutine wrote it, so a tune that never filters still yields
+    # a nonzero filter_totals of 0-vs-0 comparisons and scores a confident 100%.
+    # Measured: Commando (Hubbard, never writes a cutoff) reported
+    # filter_accuracy 100.00 through this path until this guard was added.
+    # Same contract as fidelity_common.exercised -- a dimension is evidence only
+    # if some side MOVED, or the two sides sit at different constants.
+    orig_vals = defaultdict(set)
+    exp_vals = defaultdict(set)
+
     for idx in range(max_frames):
         orig_frame = orig_frames[idx]
         exp_frame = exp_frames[idx]
@@ -244,6 +257,9 @@ def _compare_captures(orig: Dict, exp: Dict) -> Dict:
         for reg in all_regs:
             orig_val = orig_frame.get(reg, 0)
             exp_val = exp_frame.get(reg, 0)
+
+            orig_vals[reg].add(orig_val)
+            exp_vals[reg].add(exp_val)
 
             if orig_val == exp_val:
                 register_matches[reg] += 1
@@ -269,8 +285,13 @@ def _compare_captures(orig: Dict, exp: Dict) -> Dict:
                     filter_matches += 1
                 filter_totals += 1
 
+    def _exercised(regs):
+        """True if any register in the group is evidence (see orig_vals above)."""
+        return any(len(orig_vals[r]) > 1 or len(exp_vals[r]) > 1
+                   or orig_vals[r] != exp_vals[r] for r in regs)
+
     # Calculate accuracies
-    frame_accuracy = (matching_frames / max_frames * 100) if max_frames > 0 else 0.0
+    frame_accuracy = (matching_frames / max_frames * 100) if max_frames > 0 else None
 
     # Register accuracy (average across all registers)
     reg_accuracies = []
@@ -278,26 +299,41 @@ def _compare_captures(orig: Dict, exp: Dict) -> Dict:
         if register_totals[reg] > 0:
             reg_acc = register_matches[reg] / register_totals[reg] * 100
             reg_accuracies.append(reg_acc)
-    register_accuracy = sum(reg_accuracies) / len(reg_accuracies) if reg_accuracies else 0.0
+    register_accuracy = (sum(reg_accuracies) / len(reg_accuracies)
+                         if reg_accuracies else None)
 
-    # Voice accuracy (combined freq + waveform, averaged across voices)
+    # Voice accuracy. A voice NEITHER side ever wrote scores None and is left
+    # out of the mean -- it used to default to 0.0 and be averaged in, so a tune
+    # using one voice was charged for the two it correctly left silent. Combined
+    # with the filter term below, that made two IDENTICAL captures score 50% in
+    # the sibling copy of this scheme (sidm2/accuracy.py, fixed in 9b1a0f0).
     voice_accuracies = []
     for v in range(3):
-        freq_acc = (voice_freq_matches[v] / voice_freq_totals[v] * 100) if voice_freq_totals[v] > 0 else 0.0
-        wf_acc = (voice_wf_matches[v] / voice_wf_totals[v] * 100) if voice_wf_totals[v] > 0 else 0.0
-        voice_accuracies.append((freq_acc + wf_acc) / 2)
-    voice_accuracy = sum(voice_accuracies) / 3 if voice_accuracies else 0.0
+        base = v * 7
+        freq_acc = (score_pct(voice_freq_matches[v], voice_freq_totals[v])
+                    if _exercised((base, base + 1)) else None)
+        wf_acc = (score_pct(voice_wf_matches[v], voice_wf_totals[v])
+                  if _exercised((base + 4,)) else None)
+        halves = [s for s in (freq_acc, wf_acc) if s is not None]
+        if halves:
+            voice_accuracies.append(sum(halves) / len(halves))
+    voice_accuracy = (sum(voice_accuracies) / len(voice_accuracies)
+                      if voice_accuracies else None)
 
-    # Filter accuracy
-    filter_accuracy = (filter_matches / filter_totals * 100) if filter_totals > 0 else 0.0
+    # Filter accuracy: None when neither side touches the filter, rather than a
+    # 0.0 that was then weighted 10% -- Rob Hubbard's players never write the
+    # cutoff, so that whole family was docked ten points for being faithful.
+    filter_accuracy = (score_pct(filter_matches, filter_totals)
+                       if _exercised((0x15, 0x16, 0x17, 0x18)) else None)
 
-    # Overall accuracy (weighted)
-    overall_accuracy = (
-        frame_accuracy * 0.40 +
-        voice_accuracy * 0.30 +
-        register_accuracy * 0.20 +
-        filter_accuracy * 0.10
-    )
+    # Weighted mean over the dimensions that HAVE evidence, renormalised by
+    # their own weights. Folding an unmeasured dimension in as a zero is the
+    # bug above; omitting it without renormalising just moves the deflation.
+    weighted = [(frame_accuracy, 0.40), (voice_accuracy, 0.30),
+                (register_accuracy, 0.20), (filter_accuracy, 0.10)]
+    live = [(v, w) for v, w in weighted if v is not None]
+    overall_accuracy = (sum(v * w for v, w in live) / sum(w for _, w in live)
+                        if live else None)
 
     return {
         'overall_accuracy': overall_accuracy,
@@ -320,6 +356,8 @@ def get_accuracy_grade(accuracy: float) -> str:
     Returns:
         Grade string: EXCELLENT/GOOD/FAIR/POOR
     """
+    if accuracy is None:
+        return "NO DATA"
     if accuracy >= 99.0:
         return "EXCELLENT"
     elif accuracy >= 95.0:

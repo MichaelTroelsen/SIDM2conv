@@ -150,7 +150,9 @@ Metrics displayed:
     print(f"Voice Accuracies:")
     for voice in [1, 2, 3]:
         acc = comparison.voice_accuracy[voice]
-        print(f"  Voice {voice}:        {acc['overall']:.2f}% (Freq:{acc['frequency']:.1f}%, Wave:{acc['waveform']:.1f}%, ADSR:{acc['adsr']:.1f}%, Pulse:{acc['pulse']:.1f}%)")
+        _p = lambda v, d=1: (f"{v:.{d}f}%" if v is not None else "n/a")
+        print(f"  Voice {voice}:        {_p(acc['overall'], 2)} (Freq:{_p(acc['frequency'])}, "
+              f"Wave:{_p(acc['waveform'])}, ADSR:{_p(acc['adsr'])}, Pulse:{_p(acc['pulse'])})")
 
     print(f"\nTotal Differences:  {comparison.total_diff_count:,}")
     print(f"  Init phase:       {comparison.init_diff_count:,}")
