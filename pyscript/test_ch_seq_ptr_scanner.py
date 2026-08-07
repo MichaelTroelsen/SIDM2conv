@@ -344,6 +344,55 @@ class TestPlayReadsSoftFilter:
         for p in ptrs:
             assert load <= p < load + len(c64)
 
+    def test_lifts_min_axel_f_all6_reads(self):
+        """Min_Axel_F.sid — table at $173E/$1741, all 6 bytes read during
+        PLAY, but sequence bodies start with 0x00 (silence) and fail
+        _score_sequence body[0] check (-1000 each). v3.5.7 all-6-in-reads
+        floor promotes score to 5, lifting the file to detected."""
+        sid = ROOT / "SID" / "Laxity" / "Min_Axel_F.sid"
+        if not sid.exists():
+            pytest.skip("missing Min_Axel_F.sid")
+        buf = open(sid, "rb").read()
+        do = (buf[6] << 8) | buf[7]
+        load = (buf[8] << 8) | buf[9]
+        init = (buf[10] << 8) | buf[11]
+        play = (buf[12] << 8) | buf[13]
+        if load == 0:
+            load = buf[do] | (buf[do+1] << 8); c64 = buf[do+2:]
+        else:
+            c64 = buf[do:]
+        result = detect_ch_seq_ptr(c64, load, init, play, n_play_ticks=3)
+        assert result is not None, "Min_Axel_F must lift after v3.5.7 all-6-in-reads floor"
+        lo, hi, ptrs, score = result
+        assert lo == 0x173E and hi == 0x1741
+        assert len(set(ptrs)) >= 2
+        for p in ptrs:
+            assert load <= p < load + len(c64)
+
+    def test_lifts_only_love_all6_reads(self):
+        """Only_Love.sid — table at $1984/$1987, all 6 bytes in PLAY reads,
+        but sequences are all-notes (n_traits=1 < 2 required, hard reject).
+        v3.5.7 all-6-in-reads floor promotes to detected."""
+        sid = ROOT / "SID" / "Laxity" / "Only_Love.sid"
+        if not sid.exists():
+            pytest.skip("missing Only_Love.sid")
+        buf = open(sid, "rb").read()
+        do = (buf[6] << 8) | buf[7]
+        load = (buf[8] << 8) | buf[9]
+        init = (buf[10] << 8) | buf[11]
+        play = (buf[12] << 8) | buf[13]
+        if load == 0:
+            load = buf[do] | (buf[do+1] << 8); c64 = buf[do+2:]
+        else:
+            c64 = buf[do:]
+        result = detect_ch_seq_ptr(c64, load, init, play, n_play_ticks=3)
+        assert result is not None, "Only_Love must lift after v3.5.7 all-6-in-reads floor"
+        lo, hi, ptrs, score = result
+        assert lo == 0x1984 and hi == 0x1987
+        assert len(set(ptrs)) >= 2
+        for p in ptrs:
+            assert load <= p < load + len(c64)
+
     def test_stinsen_unaffected_by_soft_filter(self):
         """Stinsen's canonical $1A1C/$1A1F table has both high structural
         score AND full play_reads coverage. The soft filter must not
