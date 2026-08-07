@@ -126,6 +126,9 @@ jobs:
     runs-on: windows-latest
     needs: [unit-tests, integration-tests]
     if: always()
+    permissions:
+      contents: read
+      pull-requests: write  # needed for the "Comment on PR" step's issues.createComment call
 
     steps:
       - name: Checkout repository
