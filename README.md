@@ -428,7 +428,7 @@ conversion-cockpit.bat
 
 **VSID Integration** (`sidm2.vsid_wrapper`):
 - SID to WAV conversion via VICE emulator
-- Auto-fallback to SID2WAV
+- Auto-fallback to sidplayfp (`sidm2.sidplayfp_wrapper`, replaced SID2WAV.EXE 2026-08-07)
 - Docs: [docs/VSID_INTEGRATION_GUIDE.md](docs/VSID_INTEGRATION_GUIDE.md)
 
 **Filter Accuracy Validator** (`pyscript/validate_filter_accuracy.py`):
@@ -785,13 +785,13 @@ Located in `tools/` directory (Windows binaries, optional fallbacks):
 - **player-id.exe** - Player type detection
 - **SIDwinder.exe** - Disassembler
 - **SIDdecompiler.exe** - Memory layout analyzer
-- **SID2WAV.EXE** - SID to WAV converter (fallback for VSID)
+- **sidplayfp.exe** (`tools/sidplayfp/`) - SID to WAV converter (fallback for VSID; replaced SID2WAV.EXE 2026-08-07)
 - **RetroDebugger** (`tools/RetroDebugger v0.64.68/`) - Real-time interactive C64/SID debugger (breakpoints, live memory read/write, disassembly, warp-speed execution). Integrated via the `mcp__retrodebugger__*` MCP tool set — see [docs/guides/RETRODEBUGGER_GUIDE.md](docs/guides/RETRODEBUGGER_GUIDE.md). Use it when reverse-engineering a player whose static/offline model keeps getting the order or timing wrong and real CPU ground truth is needed.
 
 **Note**: Python implementations available for cross-platform support:
 - `pyscript/siddump_complete.py` (replaces siddump.exe)
 - `pyscript/sidwinder_trace.py` (replaces SIDwinder.exe)
-- `sidm2/vsid_wrapper.py` (VSID via VICE emulator, preferred over SID2WAV)
+- `sidm2/vsid_wrapper.py` (VSID via VICE emulator, preferred over sidplayfp)
 
 ---
 

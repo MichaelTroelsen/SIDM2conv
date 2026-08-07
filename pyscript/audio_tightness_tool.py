@@ -50,19 +50,20 @@ class RenderError(RuntimeError):
     """A render failed in a way the user needs to act on (not a bug)."""
 
 
-def choose_renderer(requested, voice, vsid_available, sid2wav_available):
+def choose_renderer(requested, voice, vsid_available, sidplayfp_available):
     """Pick ONE renderer for BOTH sides of the comparison.
 
     Both renders must come from the same tool -- comparing a VSID render
-    against a SID2WAV render would fold two different SID emulations into
+    against a sidplayfp render would fold two different SID emulations into
     the onset deltas, which is exactly the measurement error this tool
     exists to avoid.
 
-    SID2WAV is the only renderer with a voice-mute flag (-m<num>), so
-    --voice forces it. Otherwise VSID is preferred: it is a far more modern
-    emulation, and SID2WAV (a 1997 build) hangs indefinitely on some newer
-    tunes -- e.g. lft's Glyptodont, which it parses correctly and then never
-    renders a single sample of, the exact case that motivated this function.
+    sidplayfp is the only renderer with a voice-mute flag (-u<num>), so
+    --voice forces it. Otherwise VSID is preferred as the long-standing
+    default; sidplayfp is the actively maintained replacement for SID2WAV
+    (a 1997 build that used to hang indefinitely on some newer tunes -- e.g.
+    lft's Glyptodont, which it parsed correctly and then never rendered a
+    single sample of, the exact case that motivated this function).
 
     Returns (renderer, reason). Raises RenderError if the request is
     impossible to satisfy.
@@ -70,8 +71,7 @@ def choose_renderer(requested, voice, vsid_available, sid2wav_available):
     if requested == 'vsid' and voice:
         raise RenderError(
             "--renderer vsid cannot be combined with --voice: VSID has no "
-            "voice-mute equivalent. Use --renderer sid2wav (note that SID2WAV "
-            "cannot render some newer tunes at all), or drop --voice."
+            "voice-mute equivalent. Use --renderer sidplayfp, or drop --voice."
         )
 
     if requested == 'vsid':
@@ -83,28 +83,28 @@ def choose_renderer(requested, voice, vsid_available, sid2wav_available):
             )
         return 'vsid', 'explicitly requested'
 
-    if requested == 'sid2wav':
-        if not sid2wav_available:
+    if requested == 'sidplayfp':
+        if not sidplayfp_available:
             raise RenderError(
-                "--renderer sid2wav requested but tools/SID2WAV.EXE was not found."
+                "--renderer sidplayfp requested but tools/sidplayfp/sidplayfp.exe was not found."
             )
-        return 'sid2wav', 'explicitly requested'
+        return 'sidplayfp', 'explicitly requested'
 
     # auto
     if voice:
-        if not sid2wav_available:
+        if not sidplayfp_available:
             raise RenderError(
-                "--voice requires SID2WAV (the only renderer with a voice-mute "
-                "flag), but tools/SID2WAV.EXE was not found."
+                "--voice requires sidplayfp (the only renderer with a voice-mute "
+                "flag), but tools/sidplayfp/sidplayfp.exe was not found."
             )
-        return 'sid2wav', 'required by --voice (only renderer with -m voice mute)'
+        return 'sidplayfp', 'required by --voice (only renderer with -u voice mute)'
 
     if vsid_available:
-        return 'vsid', 'preferred (handles tunes SID2WAV cannot)'
-    if sid2wav_available:
-        return 'sid2wav', 'VSID not found, falling back'
+        return 'vsid', 'preferred (default renderer)'
+    if sidplayfp_available:
+        return 'sidplayfp', 'VSID not found, falling back'
     raise RenderError(
-        "No renderer available: neither vsid.exe nor tools/SID2WAV.EXE was found. "
+        "No renderer available: neither vsid.exe nor tools/sidplayfp/sidplayfp.exe was found. "
         "Install VICE with: python pyscript/install_vice.py"
     )
 
@@ -167,38 +167,31 @@ def _render_vsid(sid_path, out_wav, seconds, subtune, verbose):
     if not out_wav.exists() or out_wav.stat().st_size == 0:
         raise RenderError(
             f"VSID produced no audio for {sid_path} (timeout {timeout_s:.0f}s). "
-            f"Try --renderer sid2wav."
+            f"Try --renderer sidplayfp."
         )
     return out_wav
 
 
-def _render_sid2wav(sid_path, out_wav, seconds, subtune, voice, verbose):
-    """Render via SID2WAV, the only renderer with a voice-mute flag."""
+def _render_sidplayfp(sid_path, out_wav, seconds, subtune, voice, verbose):
+    """Render via sidplayfp, the only renderer with a voice-mute flag."""
     mute_voices = MUTE_MAP.get(voice) if voice else None
     result = AudioExportIntegration.export_to_wav(
         sid_file=Path(sid_path), output_file=Path(out_wav),
         duration=int(seconds), verbose=verbose,
-        force_sid2wav=True, mute_voices=mute_voices, subtune=subtune,
+        force_sidplayfp=True, mute_voices=mute_voices, subtune=subtune,
     )
     if not result or not result.get('success'):
         err = result.get('error') if result else 'no rendering tool available'
         hint = ""
         if 'timeout' in str(err).lower():
-            # The Glyptodont case: SID2WAV (1997) parses a newer tune's header
-            # fine and then never emits a sample. Name it, don't just surface
-            # a bare timeout.
-            hint = (
-                "\n  SID2WAV is a 1997 player and hangs outright on some newer "
-                "tunes (it reads the header, then renders nothing)."
-            )
             if voice:
-                hint += (
-                    "\n  --voice forces SID2WAV (it is the only renderer with a "
+                hint = (
+                    "\n  --voice forces sidplayfp (it is the only renderer with a "
                     "voice-mute flag), so this file cannot be voice-isolated. "
                     "Drop --voice to render it with VSID instead."
                 )
             else:
-                hint += "\n  Retry with --renderer vsid."
+                hint = "\n  Retry with --renderer vsid."
         raise RenderError(f"Failed to render {sid_path} to WAV: {err}{hint}")
     return out_wav
 
@@ -207,7 +200,7 @@ def _render(sid_path, out_wav, seconds, subtune, voice, renderer, verbose):
     """Dispatch to the renderer chosen once, up front, for BOTH sides."""
     if renderer == 'vsid':
         return _render_vsid(sid_path, out_wav, seconds, subtune, verbose)
-    return _render_sid2wav(sid_path, out_wav, seconds, subtune, voice, verbose)
+    return _render_sidplayfp(sid_path, out_wav, seconds, subtune, voice, verbose)
 
 
 def resolve_input(path: Path, role: str, args, tmp_dir: Path, renderer: str):
@@ -285,13 +278,12 @@ Output:
 
 Renderers:
   ONE renderer is chosen for BOTH sides (mixing two SID emulations would
-  contaminate the onset deltas). Default --renderer auto prefers VSID, which
-  handles tunes SID2WAV cannot -- SID2WAV is a 1997 build that hangs outright
-  on some newer files (e.g. lft's Glyptodont). --voice forces SID2WAV, since
+  contaminate the onset deltas). Default --renderer auto prefers VSID.
+  --voice forces sidplayfp (https://github.com/libsidplayfp/sidplayfp), since
   it is the only renderer with a voice-mute flag.
 
 Voice isolation:
-  --voice {1,2,3} mutes the OTHER two SID voices (SID2WAV's -m<num>) on BOTH
+  --voice {1,2,3} mutes the OTHER two SID voices (sidplayfp's -u<num>) on BOTH
   renders, so a single channel can be compared cleanly.
 
 Native drivers (bin/-only, e.g. Blackbird):
@@ -307,13 +299,12 @@ Native drivers (bin/-only, e.g. Blackbird):
     parser.add_argument('--seconds', type=float, default=30,
                          help="Render duration in seconds (default: 30)")
     parser.add_argument('--subtune', type=int, default=None,
-                         help="Subtune/song number (SID2WAV -o<num>)")
+                         help="Subtune/song number (sidplayfp -o<num>)")
     parser.add_argument('--voice', type=int, choices=[1, 2, 3], default=None,
                          help="Isolate one SID voice by muting the other two on BOTH renders "
-                              "(forces --renderer sid2wav)")
-    parser.add_argument('--renderer', choices=['auto', 'vsid', 'sid2wav'], default='auto',
-                         help="Renderer for BOTH sides (default: auto -- prefers VSID, "
-                              "which handles tunes SID2WAV hangs on)")
+                              "(forces --renderer sidplayfp)")
+    parser.add_argument('--renderer', choices=['auto', 'vsid', 'sidplayfp'], default='auto',
+                         help="Renderer for BOTH sides (default: auto -- prefers VSID)")
     parser.add_argument('--driver-init', type=_hex_or_int, default=None,
                          help="Override the driver SF2's init address (e.g. 0x1000)")
     parser.add_argument('--driver-play', type=_hex_or_int, default=None,
@@ -363,7 +354,7 @@ Native drivers (bin/-only, e.g. Blackbird):
             renderer, reason = choose_renderer(
                 args.renderer, args.voice,
                 vsid_available=VSIDIntegration._check_tool_available(),
-                sid2wav_available=AudioExportIntegration._check_tool_available(),
+                sidplayfp_available=AudioExportIntegration._check_tool_available(),
             )
         except RenderError as e:
             print(f"[ERROR] {e}")

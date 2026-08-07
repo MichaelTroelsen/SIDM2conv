@@ -5,8 +5,8 @@ Round-trip validation test: SID → SF2 → SID
 Complete automated testing workflow:
 1. Convert SID → SF2 (sid_to_sf2.py)
 2. Pack SF2 → SID (Python sf2_packer)
-3. Render original SID → WAV (SID2WAV.EXE)
-4. Render exported SID → WAV (SID2WAV.EXE)
+3. Render original SID → WAV (sidplayfp)
+4. Render exported SID → WAV (sidplayfp)
 5. Compare with siddump analysis
 6. Generate detailed HTML report
 
@@ -235,17 +235,19 @@ class RoundtripValidator:
         """Step 3: Render original SID -> WAV"""
         print("\n[3/8] Rendering original SID -> WAV...")
 
+        if self.original_wav.exists():
+            self.original_wav.unlink()
         cmd = [
-            str(Path('tools/SID2WAV.EXE').absolute()),
-            '-16',           # 16-bit
+            str(Path('tools/sidplayfp/sidplayfp.exe').absolute()),
+            '-p16',          # 16-bit
             '-s',            # Stereo
             '-f44100',       # 44.1kHz
             f'-t{self.duration}',  # Duration
-            str(self.sid_file.absolute()),
-            str(self.original_wav.absolute())
+            f'-w{self.original_wav.absolute()}',
+            str(self.sid_file.absolute())
         ]
 
-        success, output = self.run_command(cmd, "Running SID2WAV on original", capture_output=False)
+        success, output = self.run_command(cmd, "Running sidplayfp on original", capture_output=False)
 
         self.results['steps']['original_wav'] = {
             'success': success,
@@ -266,17 +268,19 @@ class RoundtripValidator:
         """Step 4: Render exported SID -> WAV"""
         print("\n[4/8] Rendering exported SID -> WAV...")
 
+        if self.exported_wav.exists():
+            self.exported_wav.unlink()
         cmd = [
-            str(Path('tools/SID2WAV.EXE').absolute()),
-            '-16',           # 16-bit
+            str(Path('tools/sidplayfp/sidplayfp.exe').absolute()),
+            '-p16',          # 16-bit
             '-s',            # Stereo
             '-f44100',       # 44.1kHz
             f'-t{self.duration}',  # Duration
-            str(self.exported_sid.absolute()),
-            str(self.exported_wav.absolute())
+            f'-w{self.exported_wav.absolute()}',
+            str(self.exported_sid.absolute())
         ]
 
-        success, output = self.run_command(cmd, "Running SID2WAV on exported", capture_output=False)
+        success, output = self.run_command(cmd, "Running sidplayfp on exported", capture_output=False)
 
         self.results['steps']['exported_wav'] = {
             'success': success,

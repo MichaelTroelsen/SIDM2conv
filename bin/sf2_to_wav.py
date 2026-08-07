@@ -1,5 +1,5 @@
 """One-shot 'listen' pipeline: .sf2 -> .sid (PSID wrap via scripts/sf2_to_sid) ->
-.wav (SID2WAV / reSID) so output can be auditioned + compared headlessly.
+.wav (sidplayfp / libresidfp) so output can be auditioned + compared headlessly.
 
 Usage: py -3 bin/sf2_to_wav.py in.sf2 [seconds] [subtune]
        py -3 bin/sf2_to_wav.py in.sid [seconds] [subtune]   (skips the SF2 step)
@@ -11,7 +11,7 @@ import subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "bin"))
-SID2WAV = os.path.join(ROOT, "tools", "SID2WAV.EXE")
+SIDPLAYFP = os.path.join(ROOT, "tools", "sidplayfp", "sidplayfp.exe")
 SF2_TO_SID = os.path.join(ROOT, "scripts", "sf2_to_sid.py")
 
 
@@ -30,13 +30,15 @@ def main():
             sys.stderr.write(r.stdout + r.stderr)
             raise SystemExit("sf2_to_sid failed")
 
-    cmd = [SID2WAV, "-16", f"-t{secs}"]
+    if os.path.exists(wav):
+        os.remove(wav)
+    cmd = [SIDPLAYFP, "-p16", f"-t{secs}"]
     if subtune is not None:
         cmd.append(f"-o{subtune}")
-    cmd += [sid, wav]
+    cmd += [f"-w{wav}", sid]
     subprocess.run(cmd, capture_output=True, text=True)
     if not os.path.exists(wav):
-        raise SystemExit("SID2WAV produced no WAV")
+        raise SystemExit("sidplayfp produced no WAV")
 
     import wav_energy
     fr, ss = wav_energy.rms_per_second(wav)

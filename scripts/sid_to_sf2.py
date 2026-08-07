@@ -207,7 +207,7 @@ Example: --driver laxity'''
     parser.add_argument(
         '--audio-export',
         action='store_true',
-        help='Export to WAV audio using VSID (Step 16 - generate reference audio for listening). Uses VICE emulator (preferred) or SID2WAV fallback. Note: PSID files only, RSID not supported by SID2WAV v1.8'
+        help='Export to WAV audio using VSID (Step 16 - generate reference audio for listening). Uses VICE emulator (preferred) or sidplayfp fallback'
     )
     parser.add_argument(
         '--audio-duration',
@@ -519,9 +519,8 @@ Example: --driver laxity'''
                 logger.info(f"  Size:       {audio_result['file_size']:,} bytes")
             elif audio_result and not audio_result['success']:
                 logger.warning(f"[Step 16] Audio export failed: {audio_result.get('error', 'Unknown error')}")
-                logger.warning("  Note: SID2WAV v1.8 only supports PSID files, not RSID files")
             elif args.audio_export:
-                logger.warning("[Step 16] Audio export not available (SID2WAV.EXE not found)")
+                logger.warning("[Step 16] Audio export not available (neither vsid.exe nor tools/sidplayfp/sidplayfp.exe found)")
 
         # PHASE 3 Enhancement: Optional memory map analysis (Step 12.5)
         if args.memmap and MEMMAP_ANALYZER_AVAILABLE:

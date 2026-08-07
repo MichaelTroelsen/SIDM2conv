@@ -2,9 +2,8 @@
 VSID Audio Export Integration for SID Conversion Pipeline
 
 Integrates VSID (VICE SID player) into the conversion pipeline.
-Exports SID files to WAV audio using VSID instead of SID2WAV.
-
-VSID provides better accuracy and cross-platform support compared to SID2WAV.
+Exports SID files to WAV audio using VSID (VICE's headless SID player), the
+preferred renderer ahead of the sidplayfp fallback -- see sidplayfp_wrapper.py.
 
 Usage:
     from sidm2.vsid_wrapper import VSIDIntegration
@@ -190,7 +189,7 @@ class VSIDIntegration:
                         "Output file is empty\n"
                         "  Suggestion: VSID may have failed silently\n"
                         "  Check: Verify SID file can be played in VICE\n"
-                        "  Try: Use SID2WAV as fallback (force_sid2wav=True)\n"
+                        "  Try: Use sidplayfp as fallback (force_sidplayfp=True)\n"
                         "  See: docs/guides/TROUBLESHOOTING.md#empty-wav-output"
                     )
                 return {
@@ -242,7 +241,7 @@ class VSIDIntegration:
                         f"{error_msg}\n"
                         f"  Suggestion: VSID may be stuck or crashed\n"
                         f"  Check: Reduce duration with shorter playback time\n"
-                        f"  Try: Use SID2WAV as fallback (force_sid2wav=True)\n"
+                        f"  Try: Use sidplayfp as fallback (force_sidplayfp=True)\n"
                         f"  See: docs/guides/TROUBLESHOOTING.md#vsid-timeout"
                     )
                 return {
@@ -257,7 +256,7 @@ class VSIDIntegration:
                     f"VSID export failed: {error_msg}\n"
                     f"  Suggestion: Check if VSID is available: python pyscript/install_vice.py\n"
                     f"  Check: Verify SID file format is valid\n"
-                    f"  Try: Use SID2WAV as fallback (force_sid2wav=True)\n"
+                    f"  Try: Use sidplayfp as fallback (force_sidplayfp=True)\n"
                     f"  See: docs/guides/TROUBLESHOOTING.md#vsid-export-failures"
                 )
             return {

@@ -944,17 +944,19 @@ def convert_all(sid_dir='SID', output_dir='output', roundtrip=False, roundtrip_d
                 original_wav = original_dir / f"{base_name}.wav"
                 exported_wav = new_dir / f"{base_name}_exported.wav"
 
-                sid2wav_exe = Path('tools/SID2WAV.EXE')
-                if sid2wav_exe.exists():
+                sidplayfp_exe = Path('tools/sidplayfp/sidplayfp.exe')
+                if sidplayfp_exe.exists():
                     # Render original SID to WAV (30 seconds by default)
                     if original_sid_copy.exists():
                         try:
+                            if original_wav.exists():
+                                original_wav.unlink()
                             wav_result = subprocess.run(
-                                [str(sid2wav_exe.absolute()),
-                                 '-16', '-s',  # 16-bit stereo
+                                [str(sidplayfp_exe.absolute()),
+                                 '-p16', '-s',  # 16-bit stereo
                                  '-t30',  # 30 seconds
-                                 str(original_sid_copy),
-                                 str(original_wav)],
+                                 f'-w{original_wav}',
+                                 str(original_sid_copy)],
                                 capture_output=True,
                                 text=True,
                                 timeout=60
@@ -967,12 +969,14 @@ def convert_all(sid_dir='SID', output_dir='output', roundtrip=False, roundtrip_d
                     # Render exported SID to WAV
                     if exported_sid.exists():
                         try:
+                            if exported_wav.exists():
+                                exported_wav.unlink()
                             wav_result = subprocess.run(
-                                [str(sid2wav_exe.absolute()),
-                                 '-16', '-s',  # 16-bit stereo
+                                [str(sidplayfp_exe.absolute()),
+                                 '-p16', '-s',  # 16-bit stereo
                                  '-t30',  # 30 seconds
-                                 str(exported_sid),
-                                 str(exported_wav)],
+                                 f'-w{exported_wav}',
+                                 str(exported_sid)],
                                 capture_output=True,
                                 text=True,
                                 timeout=60

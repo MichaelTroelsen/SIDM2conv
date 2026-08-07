@@ -1,5 +1,5 @@
 """Build the Galway $D418-digi tunes to out/, each as a stock-SF2II .sf2 (+ a PSID
-.sid for VICE/SID2WAV rendering). Config-driven so new digi tunes drop in as a row.
+.sid for VICE/sidplayfp rendering). Config-driven so new digi tunes drop in as a row.
 
 Modes:
   nco     -- NCO sawtooth LEAD only (the tune's digi is 100% tonal; no drums).

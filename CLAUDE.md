@@ -86,7 +86,7 @@ Auto-selects best driver by player type via `DriverSelector.PLAYER_REGISTRY` (si
 
 **HTML Annotation Tool** (`pyscript/generate_stinsen_html.py`): Interactive HTML docs with 3,700+ annotations, clickable navigation, 11 data sections, dynamic ROM/RAM detection. Docs: `docs/guides/HTML_ANNOTATION_TOOL.md`
 
-**VSID** (`sidm2.vsid_wrapper`): SID→WAV via VICE, auto-fallback to SID2WAV. Docs: `docs/VSID_INTEGRATION_GUIDE.md`
+**VSID** (`sidm2.vsid_wrapper`): SID→WAV via VICE, auto-fallback to sidplayfp (`sidm2.sidplayfp_wrapper`, replaced SID2WAV.EXE 2026-08-07). Docs: `docs/VSID_INTEGRATION_GUIDE.md`, `docs/TOOLS_REFERENCE.md`
 
 **SF2 Automation** (`sidm2.sf2_editor_automation`): PyAutoGUI auto-loading, 100% pass. Docs: `archive/cleanup_2026-04-28/old_docs/completion_reports/PYAUTOGUI_INTEGRATION_COMPLETE.md` (archived)
 

@@ -342,16 +342,16 @@ def render_wav(sid_path, output_wav, seconds=30):
         # Detect if this is an SF2-packed file
         player_type = identify_sid_type(sid_path)
         if player_type == 'SF2_PACKED':
-            print(f"    [INFO] SF2-packed file detected - SID2WAV v1.8 does not support SF2 Driver 11")
-            print(f"    [INFO] WAV rendering will produce silent output (audio comparison unavailable)")
+            print(f"    [INFO] SF2-packed file detected - SF2 Driver 11 support with sidplayfp is unverified")
+            print(f"    [INFO] WAV rendering may produce silent output (audio comparison unavailable)")
             print(f"    [INFO] Future enhancement: VICE integration for proper SF2 rendering")
 
-        sid2wav_tool = Path('tools') / 'SID2WAV.EXE'
-        # Remove existing WAV file if it exists (SID2WAV won't overwrite)
+        sidplayfp_tool = Path('tools') / 'sidplayfp' / 'sidplayfp.exe'
+        # Remove existing WAV file if it exists
         if Path(output_wav).exists():
             Path(output_wav).unlink()
         result = subprocess.run(
-            [str(sid2wav_tool), f'-t{seconds}', '-16', str(sid_path), str(output_wav)],
+            [str(sidplayfp_tool), f'-t{seconds}', '-p16', f'-w{output_wav}', str(sid_path)],
             capture_output=True,
             text=True,
             timeout=120
@@ -797,7 +797,7 @@ Python Tools:
 
 External Tools:
   - tools/siddump.exe             SID register dump (6502 emulation)
-  - tools/SID2WAV.EXE             SID → WAV audio rendering
+  - tools/sidplayfp/sidplayfp.exe SID → WAV audio rendering
   - tools/SIDwinder.exe           Professional SID analysis tool
   - tools/player-id.exe           Player format identification
 
@@ -824,7 +824,7 @@ KNOWN LIMITATIONS
 
 4. SF2 → SID Packer:
    - Known issue with SIDwinder disassembly of exported SIDs
-   - Files play correctly in VICE, SID2WAV, and other emulators
+   - Files play correctly in VICE, sidplayfp, and other emulators
    - Only affects SIDwinder's strict CPU emulation
 
 ================================================================================
@@ -954,7 +954,7 @@ ACCURACY VALIDATION RESULTS
             elif accuracy_metrics.get('conversion_method') == 'LAXITY':
                 # Audio accuracy unavailable - likely SF2 limitation
                 accuracy_section += "Audio Accuracy (WAV comparison): N/A\n"
-                accuracy_section += "  -> Audio comparison unavailable - SID2WAV v1.8 does not support SF2 Driver 11\n"
+                accuracy_section += "  -> Audio comparison unavailable - SF2 Driver 11 support with sidplayfp is unverified\n"
                 accuracy_section += "  -> Exported file uses SF2 Driver 11 player (LAXITY->SF2 conversion)\n"
                 accuracy_section += "  -> Future enhancement: VICE integration for proper SF2 WAV rendering\n\n"
 
@@ -1156,7 +1156,7 @@ Analysis Tools:
     Purpose: SID register dump (6502 emulation)
     Output: Frame-by-frame register captures
 
-  - tools/SID2WAV.EXE
+  - tools/sidplayfp/sidplayfp.exe
     Purpose: Audio rendering
     Output: WAV files for listening comparison
 
@@ -1948,7 +1948,7 @@ Each song directory contains:
 ## Tools Used
 
 - **siddump.exe** - SID register dump tool (6502 emulation)
-- **SID2WAV.EXE** - SID to WAV audio renderer
+- **sidplayfp.exe** - SID to WAV audio renderer
 - **SIDwinder.exe** - Professional disassembler
 - **player-id.exe** - Player type identification
 - **xxd** - Hexdump utility
@@ -2394,7 +2394,7 @@ def main():
             # Check if it's because of SF2-packed file
             player_type = identify_sid_type(exported_sid) if exported_sid.exists() else None
             if player_type == 'SF2_PACKED':
-                print(f'        [SKIP] Audio comparison unavailable - SID2WAV v1.8 does not support SF2 Driver 11')
+                print(f'        [SKIP] Audio comparison unavailable - SF2 Driver 11 support with sidplayfp is unverified')
                 print(f'        [INFO] Exported WAV is silent (LAXITY->SF2 conversion uses different player)')
             else:
                 print(f'        [SKIP] WAV files not available for comparison')

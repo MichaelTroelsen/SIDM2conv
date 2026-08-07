@@ -856,7 +856,7 @@ def main():
     print(f"wrote {out} ({len(sf2)} bytes)")
 
     # Also emit a PSID of the raw driver image so the tune can be rendered to WAV
-    # (SID2WAV) for listening / A-B vs the original. The native Galway driver
+    # (sidplayfp) for listening / A-B vs the original. The native Galway driver
     # doesn't round-trip through scripts/sf2_to_sid (built for Driver 11/Laxity),
     # so wrap the driver's own memory image directly: prg at its load addr + the
     # edit area (tables/sequences/FM) at EDIT_BASE, INIT=$1000 PLAY=$1003.

@@ -19,14 +19,14 @@ logger = logging.getLogger(__name__)
 class WAVComparator:
     """Compare two WAV files for audio accuracy validation"""
 
-    def __init__(self, sid2wav_path: str = "tools/SID2WAV.EXE"):
-        self.sid2wav_path = Path(sid2wav_path)
-        if not self.sid2wav_path.exists():
-            raise FileNotFoundError(f"SID2WAV.EXE not found at {sid2wav_path}")
+    def __init__(self, sidplayfp_path: str = "tools/sidplayfp/sidplayfp.exe"):
+        self.sidplayfp_path = Path(sidplayfp_path)
+        if not self.sidplayfp_path.exists():
+            raise FileNotFoundError(f"sidplayfp.exe not found at {sidplayfp_path}")
 
     def generate_wav(self, sid_path: str, wav_path: str, duration: int = 30) -> bool:
         """
-        Generate WAV file from SID using SID2WAV.EXE
+        Generate WAV file from SID using sidplayfp
 
         Args:
             sid_path: Input SID file path
@@ -37,13 +37,15 @@ class WAVComparator:
             True if successful, False otherwise
         """
         try:
-            # SID2WAV.EXE usage: sid2wav [-t<seconds>] <sidfile> [outputfile]
+            if Path(wav_path).exists():
+                Path(wav_path).unlink()
+
             result = subprocess.run(
-                [str(self.sid2wav_path.absolute()),
+                [str(self.sidplayfp_path.absolute()),
                  f'-t{duration}',
-                 '-16',  # 16-bit output for better quality
-                 sid_path,
-                 wav_path],
+                 '-p16',  # 16-bit output for better quality
+                 f'-w{wav_path}',
+                 sid_path],
                 capture_output=True,
                 text=True,
                 timeout=duration + 30
@@ -54,29 +56,29 @@ class WAVComparator:
                 return True
             else:
                 logger.error(
-                    f"SID2WAV failed: {result.stderr}\n"
-                    f"  Suggestion: Verify SID2WAV.EXE is compatible with this SID file\n"
+                    f"sidplayfp failed: {result.stderr}\n"
+                    f"  Suggestion: Verify sidplayfp.exe is compatible with this SID file\n"
                     f"  Check: Ensure SID file is valid and playable\n"
                     f"  Try: Test SID file in VICE emulator first\n"
-                    f"  See: docs/guides/TROUBLESHOOTING.md#sid2wav-failures"
+                    f"  See: docs/guides/TROUBLESHOOTING.md#sidplayfp-failures"
                 )
                 return False
 
         except subprocess.TimeoutExpired:
             logger.error(
-                f"SID2WAV timed out after {duration + 30} seconds\n"
+                f"sidplayfp timed out after {duration + 30} seconds\n"
                 f"  Suggestion: Reduce duration with shorter playback time\n"
                 f"  Check: SID file may have infinite loop or very long playback\n"
                 f"  Try: Use shorter duration (e.g., 10-15 seconds)\n"
-                f"  See: docs/guides/TROUBLESHOOTING.md#sid2wav-timeout"
+                f"  See: docs/guides/TROUBLESHOOTING.md#sidplayfp-timeout"
             )
             return False
         except Exception as e:
             logger.error(
                 f"WAV generation failed: {e}\n"
-                f"  Suggestion: Check if SID2WAV.EXE is available in tools/ directory\n"
+                f"  Suggestion: Check if sidplayfp.exe is available in tools/sidplayfp/\n"
                 f"  Check: Verify SID file format is valid\n"
-                f"  Try: Run SID2WAV manually to diagnose issue: tools/SID2WAV.EXE -t30 {sid_path} test.wav\n"
+                f"  Try: Run sidplayfp manually to diagnose issue: tools/sidplayfp/sidplayfp.exe -t30 -w test.wav {sid_path}\n"
                 f"  See: docs/guides/TROUBLESHOOTING.md#wav-generation-failures"
             )
             return False
@@ -282,7 +284,7 @@ class WAVComparator:
             logger.error(
                 f"SID-to-WAV comparison failed: {e}\n"
                 f"  Suggestion: Check if both SID files are valid and playable\n"
-                f"  Check: Verify SID2WAV.EXE is available and working\n"
+                f"  Check: Verify sidplayfp.exe is available and working\n"
                 f"  Try: Test each SID file individually first\n"
                 f"  See: docs/guides/TROUBLESHOOTING.md#sid-to-wav-comparison-failures"
             )
@@ -336,7 +338,7 @@ def quick_wav_compare(sid1_path: str, sid2_path: str, duration: int = 10) -> flo
         logger.error(
             f"Quick WAV compare failed: {e}\n"
             f"  Suggestion: Check if WAVComparator initialization succeeded\n"
-            f"  Check: Verify SID2WAV.EXE is available in tools/ directory\n"
+            f"  Check: Verify sidplayfp.exe is available in tools/sidplayfp/\n"
             f"  Try: Run full comparison with more detailed error reporting\n"
             f"  See: docs/guides/TROUBLESHOOTING.md#quick-comparison-failures"
         )
