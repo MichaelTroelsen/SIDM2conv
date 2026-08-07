@@ -52,6 +52,41 @@ def score_pct(ok, tot):
     return 100.0 * ok / tot if tot else None
 
 
+def exercised(a_vals, b_vals):
+    """Can this register distinguish the two sides at all over the window?
+
+    The companion to `score_pct`. `score_pct` stops an EMPTY comparison from
+    reporting 100%; this stops a comparison that is full of frames but empty of
+    information from reporting it either.
+
+    False when both series hold a single value for the whole window and it is
+    the SAME value. That is the shape of the vacuous pass: `siddump` force-
+    displays every register on its first row whether or not the playroutine
+    wrote it, so a tune that never touches $D405/$D406 or the filter still hands
+    back a full-length, entirely non-None series of zeroes on BOTH sides.
+    Comparing those frame by frame gives `tot == n`, `ok == n`, and a confident
+    100.0 that means only "neither side did anything". `docs/players/HUBBARD.md`
+    had to retract a published "filter 100%" for exactly this — Hubbard's player
+    never writes a cutoff, so the column had been comparing 0 against 0.
+
+    True when either series MOVES, and also when both are constant at DIFFERENT
+    constants: a permanently wrong master volume or sustain level is a real,
+    total disagreement that must score ~0%, not disappear into n/a.
+
+    Deliberately conservative in the remaining case — constant and equal scores
+    n/a even where the value was genuinely written by both sides — because a
+    register neither side varies cannot be evidence FOR anything, while a change
+    that makes it vary, or shifts the constant, flips this to True and is caught
+    (an n/a on one side and a number on the other is a regression by
+    `Dimension.worse`).
+    """
+    a = [x for x in a_vals if x is not None]
+    b = [x for x in b_vals if x is not None]
+    if not a or not b:
+        return False
+    return len(set(a)) > 1 or len(set(b)) > 1 or a[0] != b[0]
+
+
 def fmt_pct(p, width=5, prec=1):
     """Render a `score_pct` result. None -> 'n/a', never a number."""
     return f"{p:{width}.{prec}f}" if p is not None else "n/a".rjust(width)
@@ -107,16 +142,49 @@ def iter_siddump_rows(txt):
         yield fr, c
 
 
-def siddump_per_frame(path, args):
-    """siddump -> per-frame fill-forwarded voice + filter state.
+# The classic siddump filter column renders $D418's mode bits as a NAME rather
+# than a number: `pyscript/siddump_complete.py` prints FILTER_NAMES[($D418>>4)&7]
+# followed by the master-volume nibble. Reversing the name is the only way to
+# recover the byte from the default table without switching siddump into `-b`
+# mode (which reformats the voice columns too, so it cannot be mixed with the
+# freq/wf/pul parse above). Kept in sync with the producer by
+# test_fidelity_common.test_filter_mode_names_match_siddump.
+#
+# NOTE the resulting byte carries $D418 bits 0-6 only: the classic column has no
+# room for bit 7 (voice-3-off), which `-b` mode shows as the '3' of "LBH3". Every
+# consumer of `volmode` is therefore blind to that one bit, and says so.
+FILTER_MODE_NAMES = ("Off", "Low", "Bnd", "L+B", "Hi ", "L+H", "B+H", "LBH")
 
-    Returns frames[i] = ({0,1,2: {'freq','wf','pul'}}, fcut) with ints
-    (None until a register is first written). This is the per-frame state the
-    MoN fidelity metrics compare on.
+
+def siddump_frames_full(path, args):
+    """siddump -> per-frame fill-forwarded voice + SPLIT global filter state.
+
+    frames[i] = ({0,1,2: {'freq','wf','pul','adsr'}},
+                 {'cutoff': int|None, 'filtctl': int|None, 'volmode': int|None})
+
+    The superset of `siddump_per_frame`, which is now a projection of this so
+    the two can never drift into disagreeing about the same table. Two fields
+    exist only here:
+
+      'adsr'    the $D405/$D406 pair as one 16-bit value, the register
+                `MON_WAVE_CANON`-style wave-program re-compression can move
+                without touching freq/wf/pulse at all.
+      'filtctl' / 'volmode'   $D417 and $D418 separately, where
+                `siddump_per_frame` collapses the whole filter column to cutoff.
+
+    All values are None until siddump first shows the register. **That is not
+    the same as "until the tune writes it"**: siddump force-displays every
+    register on frame 0 whatever the playroutine did, so frame 0 hands back the
+    pre-init bus state (Hawkeye reads $D418 = $FF there, i.e. bit 7 set, before
+    its own init writes $1F). Callers scoring these registers must decide what
+    counts as evidence rather than trusting non-None — see the `_exercised`
+    guard in `bin/mon_part_fidelity.py`, and `score_pct` for why 0 == 0 over a
+    thousand frames is not a pass.
     """
     txt = run_siddump(path, args)
-    st = [{'freq': None, 'wf': None, 'pul': None} for _ in range(3)]
-    fc = [None]
+    st = [{'freq': None, 'wf': None, 'pul': None, 'adsr': None} for _ in range(3)]
+    ft = {'cutoff': None, 'filtctl': None, 'volmode': None}
+    mode_idx, vol = [None], [None]
     frames = []
 
     def cv(x):
@@ -127,19 +195,52 @@ def siddump_per_frame(path, args):
             continue
         for vi in range(3):
             m = re.match(r'^([0-9A-F\.]{4})\s+\S+\s+\S+\s+([0-9A-F\.]{2})\s+'
-                         r'[0-9A-F\.]{4}\s+([0-9A-F\.]{3})', c[2 + vi])
+                         r'([0-9A-F\.]{4})\s+([0-9A-F\.]{3})', c[2 + vi])
             if m:
-                for k, val in zip(('freq', 'wf', 'pul'), m.groups()):
+                for k, val in zip(('freq', 'wf', 'adsr', 'pul'), m.groups()):
                     cvv = cv(val)
                     if cvv is not None:
                         st[vi][k] = cvv
+        # cutoff keeps its own LENIENT match, byte-for-byte the one
+        # siddump_per_frame used before this function existed: a filter cell
+        # that does not parse in full must not change what the older, narrower
+        # reader saw.
         fm = re.match(r'^([0-9A-F\.]{4})', c[5])
         if fm:
             cvv = cv(fm.group(1))
             if cvv is not None:
-                fc[0] = cvv
-        frames.append(({vi: dict(st[vi]) for vi in range(3)}, fc[0]))
+                ft['cutoff'] = cvv
+        # `FCut RC Typ V` at fixed widths; Typ is 3 chars and may itself END in a
+        # space ("Hi "), so it is matched by width, not by \S+.
+        gm = re.match(r'^[0-9A-F\.]{4} ([0-9A-F\.]{2}) (.{3}) ([0-9A-F\.])', c[5])
+        if gm:
+            cvv = cv(gm.group(1))
+            if cvv is not None:
+                ft['filtctl'] = cvv
+            if gm.group(2) in FILTER_MODE_NAMES:
+                mode_idx[0] = FILTER_MODE_NAMES.index(gm.group(2))
+            cvv = cv(gm.group(3))
+            if cvv is not None:
+                vol[0] = cvv
+            if mode_idx[0] is not None and vol[0] is not None:
+                ft['volmode'] = (mode_idx[0] << 4) | vol[0]
+        frames.append(({vi: dict(st[vi]) for vi in range(3)}, dict(ft)))
     return frames
+
+
+def siddump_per_frame(path, args):
+    """siddump -> per-frame fill-forwarded voice + filter state.
+
+    Returns frames[i] = ({0,1,2: {'freq','wf','pul'}}, fcut) with ints
+    (None until a register is first written). This is the per-frame state the
+    MoN fidelity metrics compare on.
+
+    A projection of `siddump_frames_full`; the extra fields that function
+    carries ($D405/$D406, $D417, $D418) are dropped here so the ~40 callers of
+    this shape keep the exact dict they were written against.
+    """
+    return [({vi: {k: v[vi][k] for k in ('freq', 'wf', 'pul')} for vi in range(3)},
+             f['cutoff']) for v, f in siddump_frames_full(path, args)]
 
 
 def siddump_note_onsets(path, args, require_wf=False):

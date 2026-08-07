@@ -125,6 +125,86 @@ def test_siddump_filter_trace_fill_forward(monkeypatch):
     assert ft == [(0x5800, 0xF1), (0x5800, 0xF1), (0x5000, 0xF1)]
 
 
+def test_siddump_frames_full_carries_adsr(monkeypatch):
+    monkeypatch.setattr(FC, 'run_siddump', lambda p, a: CANNED)
+    frames = FC.siddump_frames_full('x', [])
+    assert [frames[i][0][0]['adsr'] for i in range(3)] == [0xDB, 0xDB, 0xDB]
+    assert [frames[i][0][2]['adsr'] for i in range(3)] == [None, 0x869, 0x869]
+
+
+def test_siddump_frames_full_splits_filter_registers(monkeypatch):
+    monkeypatch.setattr(FC, 'run_siddump', lambda p, a: CANNED)
+    filt = [f[1] for f in FC.siddump_frames_full('x', [])]
+    assert [f['cutoff'] for f in filt] == [0x5800, 0x5800, 0x5000]
+    assert [f['filtctl'] for f in filt] == [0xF1, 0xF1, 0xF1]
+    # "Low F" -> mode index 1 in bits 4-6, volume $F in bits 0-3.
+    assert [f['volmode'] for f in filt] == [0x1F, 0x1F, 0x1F]
+
+
+def test_siddump_frames_full_handles_mode_name_with_trailing_space(monkeypatch):
+    # FILTER_MODE_NAMES[4] is "Hi " — three chars, one of them a space — so the
+    # Typ field must be matched by WIDTH, never by \S+.
+    dump = CANNED.replace('5800 F1 Low F', '5800 F1 Hi  A')
+    monkeypatch.setattr(FC, 'run_siddump', lambda p, a: dump)
+    assert FC.siddump_frames_full('x', [])[0][1]['volmode'] == 0x4A
+
+
+def test_filter_mode_names_match_siddump():
+    """The table this module reverses must stay identical to the one that
+    prints it — a silent drift would decode $D418 into a different byte."""
+    import importlib
+    sd = importlib.import_module('siddump_complete')
+    assert tuple(sd.FILTER_NAMES) == FC.FILTER_MODE_NAMES
+
+
+def test_siddump_per_frame_is_a_projection_of_frames_full(monkeypatch):
+    monkeypatch.setattr(FC, 'run_siddump', lambda p, a: CANNED)
+    full = FC.siddump_frames_full('x', [])
+    slim = FC.siddump_per_frame('x', [])
+    assert len(full) == len(slim)
+    for (fv, ff), (sv, sc) in zip(full, slim):
+        assert sc == ff['cutoff']
+        for vi in range(3):
+            assert set(sv[vi]) == {'freq', 'wf', 'pul'}   # no new key leaks out
+            assert all(sv[vi][k] == fv[vi][k] for k in sv[vi])
+
+
+# --- the vacuous-100 guard --------------------------------------------------
+
+def test_exercised_rejects_the_constant_identical_case():
+    """0 == 0 over a thousand frames is not a pass — the exact shape of the
+    retracted Hubbard 'filter 100%'."""
+    assert FC.exercised([0] * 1000, [0] * 1000) is False
+    assert FC.exercised([0x1F] * 500, [0x1F] * 500) is False
+
+
+def test_exercised_accepts_a_series_that_moves():
+    assert FC.exercised([0, 0, 7, 7], [0, 0, 7, 7]) is True
+    assert FC.exercised([0, 0, 0, 0], [0, 0, 7, 7]) is True   # only one side moves
+
+
+def test_exercised_accepts_two_different_constants():
+    """A permanently wrong value is a total disagreement, not 'nothing to
+    compare' — it must score ~0%, never vanish into n/a."""
+    assert FC.exercised([0x3F] * 400, [0x1F] * 400) is True
+
+
+def test_exercised_rejects_a_side_with_no_data_at_all():
+    assert FC.exercised([], [1, 2, 3]) is False
+    assert FC.exercised([None, None], [1, 2]) is False
+
+
+def test_exercised_and_score_pct_compose_into_n_a_not_100():
+    """The whole point, end to end: an unexercised register renders as 'n/a'."""
+    a = b = [0] * 300
+    tot = sum(1 for x, y in zip(a, b) if not (x is None and y is None))
+    assert tot == 300                      # frames exist ...
+    if not FC.exercised(a, b):
+        tot = 0                            # ... but carry no information
+    assert FC.score_pct(tot, tot) is None
+    assert FC.fmt_pct(FC.score_pct(tot, tot)).strip() == 'n/a'
+
+
 # --- zig64 serialization ----------------------------------------------------
 
 def test_fill_forward():

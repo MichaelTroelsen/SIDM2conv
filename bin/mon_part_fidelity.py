@@ -49,8 +49,15 @@ for folder in ("Tel_Jeroen", "Hubbard_Rob", "Fun_Fun", "JohannesBjerregaard"):
     orig_sid = os.path.join("SID", folder, f"{tune}.sid")
     if os.path.exists(orig_sid):
         break
-orig = F.per_frame(orig_sid, [f"-a{sub}", f"-t{(off0 // 50) + secs + 1}"])
-prb = F.per_frame(probe, [f"-t{secs + 1}"])
+from sidm2.fidelity_common import (siddump_frames_full as _full,  # noqa: E402
+                                   exercised as _exercised)
+# `siddump_frames_full`, not `per_frame`: the same siddump run, parsed for the
+# registers per_frame throws away. $D405/$D406 (per voice) and $D417/$D418
+# (global) are exactly the registers a wave-program / pulse-program
+# re-compression can move while freq, waveform and pulse width all stay put, so
+# scoring only those three was never evidence the envelope survived.
+orig = _full(orig_sid, [f"-a{sub}", f"-t{(off0 // 50) + secs + 1}"])
+prb = _full(probe, [f"-t{secs + 1}"])
 n = min(len(orig) - off0, len(prb), secs * 50) - 4
 if n <= 0:
     sys.exit(f"FIDELITY ERROR: empty comparison window (n={n}) — "
@@ -110,12 +117,18 @@ vdly = [max(range(-2, 3), key=lambda e, v=vi: _vscore(v, e)) for vi in range(3)]
 
 print(f"{os.path.basename(part)}  {n} frames from {off0 // 50}s "
       f"(native play=$1003, engine delay={dly}, per-voice {vdly})\n")
-print(f"  {'voice':6} {'freq%':>6} {'wf%':>6} {'pulse%':>7}   skew-tolerant (f/w/p)")
+# Only the columns added for the R17 widening (adsr, cutoff, $D417, $D418) run
+# through `fidelity_common.exercised`. freq/wf/pul keep their original
+# denominator untouched, so every number already published for this corpus stays
+# comparable with the ones this tool printed before the widening.
+print(f"  {'voice':6} {'freq%':>6} {'wf%':>6} {'pulse%':>7}   skew-tolerant (f/w/p)"
+      f"   + adsr% ($D405/$D406, skew-tolerant)")
 for vi in range(3):
-    keys = ("freq", "wf", "pul")
+    keys = ("freq", "wf", "pul", "adsr")
     tot = {k: 0 for k in keys}
     ok = {k: 0 for k in keys}
     skew = {k: 0 for k in keys}          # mismatch that equals a ±1-frame neighbour
+    seen = {k: ([], []) for k in keys}   # (orig, probe) value series, for _exercised
     o0 = off0 + vdly[vi]
 
     def _val(frames_row, k):
@@ -127,6 +140,8 @@ for vi in range(3):
         o, p = orig[o0 + i], prb[i]
         for k in keys:
             a, b = _val(o, k), _val(p, k)
+            seen[k][0].append(a)
+            seen[k][1].append(b)
             if a is None and b is None:
                 continue
             tot[k] += 1
@@ -141,21 +156,31 @@ for vi in range(3):
             nxt = _val(orig[o0 + i + 1], k) if o0 + i + 1 < len(orig) else None
             if b is not None and (b == prev or b == nxt):
                 skew[k] += 1
+    # adsr is scored only where the register can tell the two sides apart at
+    # all; a silent voice's envelope pair is 0 on both sides forever.
+    if not _exercised(*seen["adsr"]):
+        tot["adsr"] = 0
+
     def pct(k):
         # None when nothing was comparable — see fidelity_common.score_pct.
         return F.score_pct(ok[k], tot[k])
     def spct(k):
         return F.score_pct(ok[k] + skew[k], tot[k])
+    # adsr is APPENDED, never inserted: the existing three columns and the
+    # (f/w/p) triple keep their exact positions so older parsers of this table
+    # (pyscript/mon_struct_sweep.py's OSC_RE, bin/_sm_measure_all.py) and any
+    # saved baseline still read the same numbers out of the same places.
     print(f"  osc{vi + 1:<3} {F.fmt_pct(pct('freq'), 6)} {F.fmt_pct(pct('wf'), 6)}"
           f" {F.fmt_pct(pct('pul'), 7)}"
           f"   ({F.fmt_pct(spct('freq'))}/{F.fmt_pct(spct('wf'))}"
-          f"/{F.fmt_pct(spct('pul'))})")
+          f"/{F.fmt_pct(spct('pul'))})"
+          f"   adsr {F.fmt_pct(pct('adsr'), 6)} ({F.fmt_pct(spct('adsr'))})")
     # MISMATCH CLUSTERS: where the real residual lives. For any register under
     # 99.5% strict, compress its mismatch frames into runs and show the top 3 —
     # a cluster at a note onset = capture/base problem there; a long sustained
     # run = a wrong program; scattered singletons = timing jitter.
     for k in keys:
-        if pct(k) >= 99.5 or not tot[k]:
+        if not tot[k] or pct(k) >= 99.5:   # tot first: pct is None when tot==0
             continue
         miss = []
         for i in range(n):
@@ -176,14 +201,32 @@ for vi in range(3):
         top = "  ".join(f"{a}-{b}({b - a + 1}f)" for a, b in runs[:3])
         print(f"        {k:4} residual: {len(miss)}f in {len(runs)} runs; "
               f"top: {top}")
-ftot = fok = 0
-for i in range(n):
-    o, p = orig[off0 + i][1], prb[i][1]
-    if o is None and p is None:
-        continue
-    ftot += 1
-    fok += o == p
-_f = F.score_pct(fok, ftot)
-print(f"\n  filter cutoff match: "
-      + (f"{_f:.1f}%" if _f is not None
-         else "n/a (no filter data — the tune never writes cutoff)"))
+# GLOBAL FILTER REGISTERS. Frame 0 is skipped: siddump force-displays the whole
+# filter column on its first row regardless of what the playroutine wrote, so
+# frame 0 reports pre-init bus state (Hawkeye reads $D418 = $FF there, then its
+# own init sets $1F) and the two traces' garbage need not agree.
+FILT = [("cutoff", "cutoff  ($D415/$D416)"),
+        ("filtctl", "ctrl    ($D417 res+routing)"),
+        ("volmode", "mode+vol($D418 bits 0-6)")]
+print()
+for key, label in FILT:
+    # Paired in one comprehension, not two zipped lists: a dropped out-of-range
+    # frame must drop from BOTH sides at once or the whole tail shifts by one
+    # and a perfect match reads as a total mismatch.
+    pairs = [(orig[off0 + i][1][key], prb[i][1][key])
+             for i in range(1, n) if 0 <= off0 + i < len(orig)]
+    a_vals, b_vals = [p[0] for p in pairs], [p[1] for p in pairs]
+    ftot = fok = 0
+    if _exercised(a_vals, b_vals):
+        for a, b in pairs:
+            if a is None and b is None:
+                continue
+            ftot += 1
+            fok += a == b
+    _f = F.score_pct(fok, ftot)
+    # n/a, NEVER 100.0. Both sides holding one identical value for the whole
+    # window is the vacuous case: nothing was distinguished, so nothing passed.
+    print(f"  filter {label} match: "
+          + (f"{_f:.1f}%  (n={ftot})" if _f is not None
+             else "n/a (constant and identical on both sides — this tune never "
+                  "moves the register, so there is nothing here to pass)"))
