@@ -487,13 +487,6 @@ diff original.txt converted.txt
 - Play both in VICE and listen
 - Export to WAV and compare waveforms
 
-**Method 5: Batch testing**:
-```bash
-test-batch-pyautogui.bat
-```
-
-Tests file loading and playback in SID Factory II.
-
 ---
 
 ### Why doesn't my SF2 sound exactly like the SID?
@@ -614,45 +607,6 @@ conversion-cockpit.bat
 6. Right-click to open in viewer
 
 **Requirements**: PyQt6 (`pip install PyQt6`)
-
----
-
-### What is batch testing?
-
-**Answer**: Automated quality assurance system.
-
-**What it does**:
-1. Opens each SF2 file in SID Factory II
-2. Starts playback (F5)
-3. Plays for 3 seconds
-4. Stops playback (F6)
-5. Verifies window stability
-6. Closes editor
-7. Verifies process cleanup
-8. Reports results
-
-**Run**:
-```bash
-test-batch-pyautogui.bat
-```
-
-**Results** (example):
-```
-Total Files:    10
-Passed:         10 (100.0%)
-Failed:         0 (0.0%)
-Processes:      0 remaining
-```
-
-**Requirements**:
-- PyAutoGUI (`pip install pyautogui pygetwindow pywin32`)
-- SID Factory II installed
-
-**Use for**:
-- Validating conversions
-- QA before distribution
-- Regression testing
-- CI/CD integration
 
 ---
 
@@ -1036,9 +990,6 @@ sf2-viewer.bat output.sf2
 
 # Batch
 conversion-cockpit.bat
-
-# Test
-test-batch-pyautogui.bat
 
 # Validate
 python scripts/validate_sid_accuracy.py original.sid converted.sid

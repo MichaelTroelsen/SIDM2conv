@@ -18,7 +18,8 @@ Complete Continuous Integration and Continuous Delivery (CI/CD) system powered b
 
 ### 1. Batch Testing Validation (`batch-testing.yml`) - NEW v2.9.5
 
-**Purpose**: Validate batch testing system and PyAutoGUI automation
+**Purpose**: Validate the PyAutoGUI automation modules (`pyscript/sf2_pyautogui_automation.py`,
+`sidm2/sf2_editor_automation.py`)
 
 **Triggers**:
 - Push to `master`/`main` (when batch testing files change)
@@ -26,14 +27,16 @@ Complete Continuous Integration and Continuous Delivery (CI/CD) system powered b
 - Manual workflow dispatch
 
 **Jobs**:
-1. **Syntax Check** - Validate Python syntax for batch testing scripts
-2. **Unit Tests** - Test imports and code structure
-3. **Integration Test** - Dry run validation (help check)
+1. **Syntax Check** - Validate Python syntax for the PyAutoGUI automation modules
+2. **Unit Tests** - Test imports
+3. **Integration Test** - Check for SF2 fixture files
 4. **Documentation** - Verify batch testing is documented
 
 **Platform**: Windows (required for PyAutoGUI)
 
-**Status**: ✅ Active
+**Status**: ✅ Active. The standalone batch-runner CLI (`test-batch-pyautogui.bat` /
+`pyscript/test_batch_pyautogui.py`) was retired 2026-08-07 -- it required `output/` fixtures
+that were archived 2026-04-29. See `archive/cleanup_2026-08-07/retired_batch_pyautogui/`.
 
 ---
 
@@ -229,9 +232,6 @@ Before pushing, run local tests:
 ```bash
 # All tests
 test-all.bat
-
-# Batch testing
-test-batch-pyautogui.bat --max-files 5
 
 # Conversion cockpit tests
 python pyscript/test_conversion_cockpit.py

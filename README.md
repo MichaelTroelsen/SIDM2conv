@@ -477,7 +477,6 @@ Ultra-verbose logging and PyAutoGUI-based editor automation.
 - Multiple output modes (console, file, JSON)
 - 111,862 events/second throughput
 - 100% automated SF2 file loading and validation
-- Batch testing (100% success rate on 10/10 files)
 
 **Quick Start**:
 ```bash
@@ -485,12 +484,11 @@ Ultra-verbose logging and PyAutoGUI-based editor automation.
 set SF2_ULTRAVERBOSE=1
 set SF2_DEBUG_LOG=sf2_debug.log
 sf2-viewer.bat file.sf2
-
-# Batch testing
-test-batch-pyautogui.bat --directory output --max-files 10
 ```
 
-**See**: [PYAUTOGUI_INTEGRATION_COMPLETE.md](archive/cleanup_2026-04-28/old_docs/completion_reports/PYAUTOGUI_INTEGRATION_COMPLETE.md) (archived)
+**See**: [PYAUTOGUI_INTEGRATION_COMPLETE.md](archive/cleanup_2026-04-28/old_docs/completion_reports/PYAUTOGUI_INTEGRATION_COMPLETE.md) (archived). The batch-runner CLI this
+section used to document (`test-batch-pyautogui.bat`) was retired 2026-08-07 -- see
+`archive/cleanup_2026-08-07/retired_batch_pyautogui/`.
 
 ---
 
@@ -550,9 +548,6 @@ batch-convert-laxity.bat
 
 # Conversion Cockpit GUI
 conversion-cockpit.bat
-
-# Batch testing
-test-batch-pyautogui.bat --directory G5/examples --max-files 10
 ```
 
 ### Python API
@@ -756,9 +751,6 @@ python -m pytest scripts/test_converter.py -v
 
 # With coverage
 python -m pytest --cov=sidm2 --cov-report=html
-
-# Batch testing
-test-batch-pyautogui.bat
 ```
 
 ### Contributing

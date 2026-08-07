@@ -22,8 +22,7 @@ Step-by-step tutorials for common SIDM2 workflows.
 
 ### Advanced
 7. [Validating Conversion Accuracy](#tutorial-7-validating-conversion-accuracy) - Frame-level analysis
-8. [Batch Testing Your Files](#tutorial-8-batch-testing-your-files) - Automated QA
-9. [Custom Python Workflows](#tutorial-9-custom-python-workflows) - Scripting
+8. [Custom Python Workflows](#tutorial-8-custom-python-workflows) - Scripting
 
 ---
 
@@ -776,142 +775,11 @@ Shows exact SID register writes frame-by-frame.
 
 You can now validate conversion accuracy scientifically.
 
-**Next**: [Tutorial 8](#tutorial-8-batch-testing-your-files) - Automated QA
+**Next**: [Tutorial 8](#tutorial-8-custom-python-workflows) - Advanced scripting
 
 ---
 
-## Tutorial 8: Batch Testing Your Files
-
-**Goal**: Automatically test multiple SF2 files for quality assurance
-
-**Time**: 10 minutes
-
-**Prerequisites**:
-- PyAutoGUI installed (`pip install pyautogui pygetwindow pywin32`)
-- SID Factory II installed
-
-### Step 1: Prepare Test Files
-
-```bash
-# Convert some test files
-sid-to-sf2.bat SID/test1.sid SF2/test1.sf2
-sid-to-sf2.bat SID/test2.sid SF2/test2.sf2
-sid-to-sf2.bat SID/test3.sid SF2/test3.sf2
-```
-
-### Step 2: Basic Batch Test
-
-```bash
-# Test all SF2 files in output directory
-test-batch-pyautogui.bat
-```
-
-### Step 3: Watch Automation
-
-You'll see:
-
-```
-Batch Testing SF2 Files with PyAutoGUI Automation
-==================================================
-
-Finding SF2 files in: output
-Found 10 SF2 files to test
-
-[1/10] Testing: test1.sf2
-  Launching editor...
-  [OK] Editor launched
-  [OK] File loaded: test1.sf2
-  Testing playback (3s)...
-  [OK] Playback control successful
-  Verifying stability (2s)...
-  [OK] Window stable
-  Closing editor...
-  [OK] Editor closed
-  [OK] Process terminated
-  Duration: 8.5s
-
-[2/10] Testing: test2.sf2
-  ...
-```
-
-### Step 4: Review Results
-
-Final summary:
-
-```
-===========================================
-Batch Test Results
-===========================================
-Total Files:    10
-Passed:         10 (100.0%)
-Failed:         0 (0.0%)
-Total Duration: 95.2 seconds
-Avg Per File:   9.5 seconds
-===========================================
-
-Process Cleanup Verification:
-Remaining SIDFactoryII.exe processes: 0
-[OK] All processes cleaned up successfully
-```
-
-### Step 5: Custom Test Parameters
-
-```bash
-# Test specific directory
-test-batch-pyautogui.bat --directory G5/examples
-
-# Limit number of files
-test-batch-pyautogui.bat --max-files 5
-
-# Longer playback test
-test-batch-pyautogui.bat --playback 10
-
-# Longer stability check
-test-batch-pyautogui.bat --stability 5
-
-# Custom timeout
-test-batch-pyautogui.bat --timeout 30
-```
-
-### Step 6: Troubleshooting Failed Tests
-
-If a test fails:
-
-```
-[5/10] Testing: problematic.sf2
-  Launching editor...
-  [OK] Editor launched
-  [FAIL] File failed to load
-  Duration: 5.2s
-```
-
-**Check**:
-1. Open file manually in SID Factory II
-2. Check if SF2 is valid: `sf2-viewer.bat problematic.sf2`
-3. Check validation: `type problematic.txt`
-4. Try reconverting with different driver
-
-### Step 7: Integration with CI/CD
-
-The batch test system is integrated with GitHub Actions:
-
-```yaml
-# .github/workflows/batch-testing.yml
-- name: Run batch test
-  run: test-batch-pyautogui.bat --max-files 10
-```
-
-Runs automatically on every push!
-
-### Success!
-
-You can now run automated QA on your conversions.
-
-**Next**: [Tutorial 9](#tutorial-9-custom-python-workflows) - Advanced scripting
-
----
-
-## Tutorial 9: Custom Python Workflows
+## Tutorial 8: Custom Python Workflows
 
 **Goal**: Create custom automation scripts using SIDM2 components
 
@@ -1149,8 +1017,7 @@ You can now create custom Python workflows using SIDM2 components.
 | 5 | Using the Conversion Cockpit | 5 min | Intermediate |
 | 6 | Editing in SID Factory II | 10 min | Intermediate |
 | 7 | Validating Conversion Accuracy | 5 min | Advanced |
-| 8 | Batch Testing Your Files | 10 min | Advanced |
-| 9 | Custom Python Workflows | 15 min | Advanced |
+| 8 | Custom Python Workflows | 15 min | Advanced |
 
 ---
 

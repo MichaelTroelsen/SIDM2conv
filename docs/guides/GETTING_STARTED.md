@@ -217,43 +217,6 @@ conversion-cockpit.bat
 
 ---
 
-## Using Batch Testing (Automation)
-
-**Test converted files automatically**:
-```bash
-# Test all SF2 files in output folder
-test-batch-pyautogui.bat
-
-# Test specific folder with file limit
-test-batch-pyautogui.bat --directory G5/examples --max-files 10
-```
-
-**What it does**:
-1. Loads each SF2 file in SID Factory II
-2. Starts playback (F5)
-3. Plays for 3 seconds
-4. Stops playback (F6)
-5. Verifies window stability (2 seconds)
-6. Closes editor
-7. Verifies process cleanup
-8. Reports results
-
-**Requirements**:
-```bash
-pip install pyautogui pygetwindow pywin32
-```
-
-**Results**:
-```
-Total Files:    10
-Passed:         10 (100.0%)
-Failed:         0 (0.0%)
-Avg Per File:   10.1 seconds
-Processes:      0 remaining (verified)
-```
-
----
-
 ## Understanding Driver Selection
 
 SIDM2 automatically selects the best driver based on the source SID player type.
@@ -456,9 +419,6 @@ batch-convert-laxity.bat
 # GUI tools
 conversion-cockpit.bat
 sf2-viewer.bat
-
-# Batch testing
-test-batch-pyautogui.bat
 
 # Tests
 test-all.bat

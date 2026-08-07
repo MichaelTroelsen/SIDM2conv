@@ -52,7 +52,6 @@ python pyscript/create_sid_inventory.py                      # SID catalog
 python pyscript/validate_filter_accuracy.py [--sid F] [--csv F] [--verbose]  # Filter accuracy vs zig64 ground truth
 
 # Testing & Automation
-test-batch-pyautogui.bat --directory G5/examples --max-files 10
 install-vice.bat              # VSID for audio export
 ```
 

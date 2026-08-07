@@ -6,7 +6,6 @@ on:
     paths:
       - 'pyscript/sf2_pyautogui_automation.py'
       - 'sidm2/sf2_editor_automation.py'
-      - 'test-batch-pyautogui.bat'
       - '.github/workflows/batch-testing.yml'
   pull_request:
     branches: [ master, main ]
@@ -30,15 +29,6 @@ jobs:
         run: |
           python -m py_compile pyscript/sf2_pyautogui_automation.py
           python -m py_compile sidm2/sf2_editor_automation.py
-        shell: pwsh
-
-      - name: Verify batch launcher exists
-        run: |
-          if (!(Test-Path "test-batch-pyautogui.bat")) {
-            echo "::error::Batch launcher not found"
-            exit 1
-          }
-          echo "[OK] Batch launcher exists"
         shell: pwsh
 
   unit-tests:
@@ -144,10 +134,10 @@ jobs:
           fi
 
           # Check CLAUDE.md
-          if ! grep -q "test-batch-pyautogui" CLAUDE.md; then
-            echo "::warning::Batch testing commands not in CLAUDE.md"
+          if ! grep -q "sf2_pyautogui_automation\|sf2_editor_automation" CLAUDE.md; then
+            echo "::warning::PyAutoGUI automation not mentioned in CLAUDE.md"
           else
-            echo "[OK] CLAUDE.md includes batch testing commands"
+            echo "[OK] CLAUDE.md mentions PyAutoGUI automation"
           fi
 
           echo ""
