@@ -250,6 +250,7 @@ class TestVsidRsidFallback(unittest.TestCase):
         """End-to-end: a real SF2 built from an RSID now VERIFIES — and the
         pass is backed by a non-empty comparison, not an empty-vs-empty one
         (the bug this whole gate exists to prevent)."""
+        import os
         import subprocess as sp
         import tempfile as tf
         from unittest import mock
@@ -258,7 +259,10 @@ class TestVsidRsidFallback(unittest.TestCase):
         sid = self.SID_DIR / "Laxity" / "Broken_Ass.sid"
         if not sid.exists():
             self.skipTest(f"missing {sid}")
-        out = Path(tf.mktemp(suffix=".sf2"))
+        fd, tmp_name = tf.mkstemp(suffix=".sf2")
+        os.close(fd)
+        out = Path(tmp_name)
+        out.unlink()  # sid_to_sf2.py refuses to write to a path that already exists
         sp.run([sys.executable, str(self.ROOT / "scripts" / "sid_to_sf2.py"),
                 str(sid), str(out), "-q"],
                capture_output=True, text=True, cwd=str(self.ROOT))
