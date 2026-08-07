@@ -10,9 +10,13 @@ inconsistency this module fixes by canonicalizing on one reference.
 
 Everything here is measurement plumbing only: no player knowledge, no policy.
 """
+import hashlib
+import json
 import math
+import os
 import re
 import subprocess
+from dataclasses import dataclass, field
 
 # Canonical semitone reference: the PAL SID freq value for C-4 (261.63 Hz at
 # phi2 = 985248 Hz -> 261.63 * 2^24 / 985248 ~= 4455 = $1167). "+48" maps C-4 to
@@ -259,3 +263,597 @@ def best_gated_offset(offsets, count_fn):
         if h > bh:
             bo, bh, bt, bx = off, h, t, x
     return bo, bh, bt, bx
+
+
+# ---------------------------------------------------------------------------
+# dimension registry — making blindness STRUCTURAL instead of remembered
+# ---------------------------------------------------------------------------
+#
+# The standing rule in this repo is already written down in a dozen places:
+# a metric that cannot see a change is not evidence the change did nothing.
+# Up to now it was enforced entirely by whoever happened to remember it, and
+# the record shows what that is worth. `docs/players/HUBBARD.md` had to retract
+# "filter 100%" once someone noticed Hubbard never writes a cutoff at all, so
+# the column was comparing 0 against 0 for every tune. `pyscript/
+# mon_struct_sweep.py` was written to decide whether three structural build
+# options are safe as defaults, and scores freq/wf/pulse only — it cannot see
+# $D405/$D406 at all, so "no regression" from it has never meant "the envelope
+# survived". Neither was a mistake anyone made twice; both were mistakes
+# nobody's tooling could make impossible.
+#
+# So: a comparison declares which SID registers it is computed from, a run
+# records which of those it actually exercised, and the harness derives the
+# complement — the registers a change would have to land in to be invisible
+# here. That turns blindness from something an author remembers into something
+# a report prints.
+#
+# Adding a score column means adding a Dimension. `dimension()` RAISES on an
+# unregistered key rather than defaulting, because a silently-defaulted
+# dimension is a column that reads as measured and is not — the exact failure
+# this registry exists to prevent.
+
+SID_REGISTERS = (
+    ("$D400/$D401", "voice frequency"),
+    ("$D402/$D403", "pulse width"),
+    ("$D404", "control: waveform select, gate, sync, ring, test"),
+    ("$D405/$D406", "envelope: attack/decay, sustain/release"),
+    ("$D415/$D416", "filter cutoff"),
+    ("$D417", "filter resonance and per-voice routing"),
+    ("$D418", "filter mode and master volume"),
+)
+
+
+@dataclass(frozen=True)
+class Dimension:
+    """One number a validator prints, and the SID registers it is derived from.
+
+    `reads=()` is legal and meaningful: a build-shape number (part count, byte
+    size, sequence-slot usage) reads no register, and saying so explicitly is
+    what stops it from being counted as register coverage it does not provide.
+
+    `kind` controls only how movement is ranked, never how the number is
+    scored — scoring stays in the validator that owns it:
+      fraction  0..100 percent (this repo's `score_pct` scale)
+      ratio     a bare multiple
+      count     an integer whose movement is relativised (2 -> 2823 and
+                0.94 -> 0.95 are not the same size of finding)
+
+    `higher_is_better=False` for the ones where less is the win (part count,
+    residual frames), so a shared regression test does not need to know which
+    is which per caller.
+    """
+    key: str
+    reads: tuple
+    of: str
+    kind: str = "fraction"
+    higher_is_better: bool = True
+
+    def movement(self, a, b):
+        """How far this dimension moved between two runs, for ranking only.
+
+        A value that APPEARED or DISAPPEARED ranks `inf`, above any numeric
+        move. Losing the ability to measure something is not a small delta —
+        `score_pct` returns None for an empty comparison precisely so that
+        case stays visible, and ranking it as a small number would bury it
+        under the noise it was separated from.
+        """
+        if a is None or b is None:
+            return 0.0 if a is None and b is None else math.inf
+        if self.kind == "count":
+            return abs(a - b) / max(abs(a), abs(b), 1)
+        return abs(a - b)
+
+    def worse(self, a, b, tol=1e-9):
+        """Did `b` (the new run) regress against `a` (the baseline)?
+
+        None on exactly one side counts as a regression. A voice the baseline
+        could score and the new run cannot is not "unchanged": it is a
+        measurement that stopped existing, and calling that clean is how a
+        silent build passes a gate. Both-None is not a regression — nothing
+        was ever compared on either side.
+        """
+        if a is None or b is None:
+            return not (a is None and b is None)
+        return (b + tol < a) if self.higher_is_better else (a + tol < b)
+
+
+_DIMENSIONS = {}
+
+
+def register_dimension(dim, replace=False):
+    """Add a Dimension to the shared registry; returns it.
+
+    Refuses to silently redefine an existing key: two tools disagreeing about
+    what `freq` reads is the drift this module was extracted to end (see the
+    SEMI_REF note at the top of the file). Pass replace=True to mean it.
+    """
+    if not replace and dim.key in _DIMENSIONS and _DIMENSIONS[dim.key] != dim:
+        raise ValueError(f"dimension {dim.key!r} already registered differently; "
+                         "pass replace=True if you mean to redefine it")
+    _DIMENSIONS[dim.key] = dim
+    return dim
+
+
+def _reg(key, reads, of, kind="fraction", higher_is_better=True):
+    return register_dimension(Dimension(key, reads, of, kind, higher_is_better))
+
+
+# The register-derived dimensions every validator in this repo already
+# computes, under the names they already print. Player-specific columns
+# (part counts, onset coverage variants) register their own.
+_reg("freq", ("$D400/$D401",), "per-frame voice pitch, compared by semitone")
+_reg("wf", ("$D404",), "per-frame waveform/control byte")
+_reg("pul", ("$D402/$D403",), "per-frame 12-bit duty cycle")
+_reg("adsr", ("$D405/$D406",), "per-frame envelope pair")
+_reg("cutoff", ("$D415/$D416",), "per-frame filter cutoff")
+_reg("filtctl", ("$D417",), "filter resonance + per-voice routing byte")
+_reg("volmode", ("$D418",), "filter mode + master volume byte")
+_reg("note", ("$D400/$D401", "$D404"), "ordered unbracketed note-onset names")
+_reg("onset", ("$D404",), "note-on frames (gate edges)")
+
+
+def split_key(key):
+    """'osc1/freq' -> ('osc1', 'freq'); 'freq' -> ('', 'freq').
+
+    Scores are keyed per scope (voice, part, subtune) so one row can carry a
+    whole validator's table, while the dimension — and therefore the register
+    account — stays shared across scopes.
+    """
+    scope, _, dim = str(key).rpartition("/")
+    return scope, dim
+
+
+def dimension(key):
+    """Registry lookup for a (possibly scoped) score key. Raises on unknown.
+
+    Deliberately not permissive. A defaulted dimension would count toward the
+    'registers read' account without anyone having said which register it
+    reads, which is the one thing this registry must never do.
+    """
+    dim = split_key(key)[1]
+    try:
+        return _DIMENSIONS[dim]
+    except KeyError:
+        raise KeyError(
+            f"unregistered fidelity dimension {dim!r} (from score key {key!r}); "
+            "call fidelity_common.register_dimension() so the run can say "
+            "which SID registers this column reads") from None
+
+
+def dimensions_present(scores):
+    """The dimension keys a row actually compared, unscoped and deduped.
+
+    Recorded per row so a run reports what it COVERED, not what it intended to
+    cover: a voice whose pulse column came back n/a contributes no $D402/$D403
+    coverage, and a row that failed to build contributes none at all.
+    """
+    return sorted({split_key(k)[1] for k, v in (scores or {}).items()
+                   if v is not None})
+
+
+def registers_read(dim_keys):
+    return {r for k in set(dim_keys) if k in _DIMENSIONS
+            for r in _DIMENSIONS[k].reads}
+
+
+def registers_unread(dim_keys):
+    """The SID registers no dimension in `dim_keys` is computed from.
+
+    This is the list a change has to land in to be invisible to the run that
+    produced those dimensions. Printing it beside a verdict is the difference
+    between "nothing regressed" and "nothing regressed in the three registers
+    we looked at".
+    """
+    seen = registers_read(dim_keys)
+    return [(reg, what) for reg, what in SID_REGISTERS if reg not in seen]
+
+
+def format_coverage(dim_keys):
+    """Render the 'what this run compared' block from the dimensions a run
+    exercised. Generated from the rows, never hand-maintained — a hand-written
+    coverage note is a comment, and comments do not fail."""
+    keys = sorted(set(dim_keys))
+    lines = ["what this run compared:"]
+    for k in keys:
+        d = _DIMENSIONS.get(k)
+        regs = ", ".join(d.reads) if (d and d.reads) else "no SID register"
+        lines.append(f"  {k:8} {regs:24} {d.of if d else ''}")
+    if not keys:
+        lines.append("  (nothing -- no row carried a comparable score)")
+    unread = registers_unread(keys)
+    if unread:
+        lines.append("  NOT read by anything in this run -- a change landing "
+                     "here moves no number above:")
+        for reg, what in unread:
+            lines.append(f"    {reg:14} {what}")
+    else:
+        lines.append("  every SID register is read by some dimension above")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# run rows: the unit an A/B compares
+# ---------------------------------------------------------------------------
+
+def output_digest(paths):
+    """sha1 (12 hex) over the artifacts a run BUILT, or None if any is missing.
+
+    This is the half of an A/B that "no number moved" cannot supply on its own.
+    That sentence has two readings — the change is invisible to everything
+    measured, or the change reached nothing — and they call for opposite next
+    steps. Hashing the build output separates them.
+
+    Returns None, never a hash, when a path does not exist. sha1 of nothing is
+    `da39a3ee5e6b`, which compares equal to itself: two failed builds would
+    otherwise report "byte-identical output", the same empty==empty defect that
+    let the v3.21.0 zig64 gate certify 64 zero bytes as a match (see
+    `score_pct`). No evidence is not agreement.
+
+    The basename and length are folded in before the bytes so that renaming or
+    truncating a part cannot collide with the unchanged build.
+    """
+    if isinstance(paths, (str, bytes, os.PathLike)):
+        paths = [paths]
+    paths = list(paths)
+    if not paths:
+        return None
+    h = hashlib.sha1()
+    for p in sorted(paths, key=lambda x: os.path.basename(str(x))):
+        try:
+            with open(p, "rb") as fh:
+                data = fh.read()
+        except OSError:
+            return None
+        h.update(os.path.basename(str(p)).encode("utf-8", "replace"))
+        h.update(b"\0")
+        h.update(len(data).to_bytes(8, "little"))
+        h.update(data)
+    return h.hexdigest()[:12]
+
+
+def git_label(root=None):
+    """`git rev-parse --short HEAD` plus `-dirty` when this repo is modified.
+
+    A version string does not identify a measurement: many commits share one
+    `__version__` across a branch's life, and a half-applied edit shares its
+    version with the commit it is NOT. This repo has re-run corpus sweeps for
+    that reason.
+
+    Scoped to THIS repo. `C:\\Users\\mit\\claude\\` holds several unrelated
+    checkouts side by side and their edits say nothing about a SID conversion;
+    `git -C <root> status --porcelain -- .` is already scoped correctly by git
+    itself. Returns None wherever git does not answer — an unlabelled run is
+    worse than a labelled one, but not worth failing a measurement over.
+    """
+    root = root or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        head = subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
+                              capture_output=True, text=True, timeout=15,
+                              stdin=subprocess.DEVNULL)
+        rev = head.stdout.strip()
+        if head.returncode != 0 or not rev:
+            return None
+        st = subprocess.run(["git", "-C", str(root), "status", "--porcelain", "--", "."],
+                            capture_output=True, text=True, timeout=120,
+                            stdin=subprocess.DEVNULL)
+        return rev + ("-dirty" if st.stdout.strip() else "")
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def result_row(target, scores, measurement=None, options=None,
+               output_sha=None, label=None, **extra):
+    """One measured target, in the shape `compare_runs` and the JSON both take.
+
+    The only judgement this function asks of a caller is which bucket a setting
+    goes in, and it is the whole point of the split:
+
+      `measurement`  how the number was TAKEN — window length, subtune, offset
+                     policy. A delta across two of these is a delta between
+                     numbers about different music, so `compare_runs` refuses.
+      `options`      what was BUILT — the converter/builder flags under test.
+                     A delta here is not contamination, it is the experiment;
+                     it is surfaced at the head of the report instead.
+
+    `dimensions` is derived, not passed: it is what the row actually scored,
+    which is the only thing a coverage claim may be built from.
+    """
+    scores = dict(scores or {})
+    for k in scores:                    # fail loudly at build time, not report time
+        dimension(k)
+    row = {
+        "target": str(target),
+        "scores": scores,
+        "dimensions": dimensions_present(scores),
+        "measurement": dict(measurement or {}),
+        "options": dict(options or {}),
+        "output_sha": output_sha,
+        "label": label,
+    }
+    row.update(extra)
+    return row
+
+
+def ab_pair(target, base, new, measurement=None, label=None):
+    """One target measured two ways in the SAME process -> (base_row, new_row).
+
+    `base` and `new` are dicts: `scores` and `options` as `result_row` takes
+    them, `paths` naming the artifacts that side BUILT, and anything else
+    carried through as row fields. The measurement settings and the tree label
+    are shared by construction, because they are properties of the run and not
+    of a side — half the value of refusing a settings mismatch is lost if a
+    caller can accidentally give the two sides different windows.
+
+    `paths` is hashed here rather than by the caller, and that is the point:
+    every in-process A/B in this tree builds both sides into ONE output
+    directory, so the second build overwrites the first and a digest taken at
+    the wrong moment silently hashes the other side's file. Calling this once,
+    at the end, forces both paths to be named while both still exist — one
+    ordering decision instead of two.
+    """
+    def _row(side):
+        side = dict(side)
+        return result_row(target, side.pop("scores", None),
+                          measurement=measurement, label=label,
+                          options=side.pop("options", None),
+                          output_sha=output_digest(side.pop("paths", [])),
+                          **side)
+    return _row(base), _row(new)
+
+
+def dump_rows(path, rows):
+    """Write a run's rows as JSON — the baseline a later run is compared to."""
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump({"rows": list(rows)}, fh, indent=1, sort_keys=True)
+    return path
+
+
+def load_rows(path):
+    """Read rows written by `dump_rows` (also accepts a bare list)."""
+    with open(path, encoding="utf-8") as fh:
+        doc = json.load(fh)
+    return doc["rows"] if isinstance(doc, dict) else list(doc)
+
+
+# ---------------------------------------------------------------------------
+# A/B comparison
+# ---------------------------------------------------------------------------
+#
+# Fifteen scripts in this tree hand-roll the same apparatus: build twice,
+# trace twice, diff, decide whether anything regressed. `bin/_verify_f4_*.py`
+# (three of them), `bin/_verify_f5_*.py` (two), `bin/_verify_*_source_edit.py`,
+# `pyscript/blackbird_sweep.py`, `pyscript/mon_struct_sweep.py` and the rest.
+# They disagree about what counts as a regression, none of them records the
+# tree they ran against, none records whether the build output changed at all,
+# and none states which registers it was blind to while it decided.
+
+@dataclass
+class RunDelta:
+    """The structured result of `compare_runs`; `format_run_delta` renders it."""
+    base_label: str = ""
+    new_label: str = ""
+    refused: list = field(default_factory=list)
+    option_drift: list = field(default_factory=list)
+    both: list = field(default_factory=list)
+    only_base: list = field(default_factory=list)
+    only_new: list = field(default_factory=list)
+    bytes_changed: list = field(default_factory=list)
+    bytes_same: list = field(default_factory=list)
+    bytes_unknown: list = field(default_factory=list)
+    moved: list = field(default_factory=list)        # [(target, [(key,a,b,mv)])]
+    regressed: list = field(default_factory=list)    # [(target, [(key,a,b)])]
+    dimension_summary: dict = field(default_factory=dict)  # key -> (moved, seen)
+    dimensions: list = field(default_factory=list)
+    verdict: str = ""
+
+    @property
+    def exit_code(self):
+        """2 = refused (nothing was compared), 1 = a regression, 0 = clean."""
+        return 2 if self.refused else (1 if self.regressed else 0)
+
+
+def settings_mismatch(base, new):
+    """Measurement settings that differ per target — the refusal condition.
+
+    EVERY key a caller puts in `measurement` is fatal on mismatch; there is no
+    whitelist, because the caller already decided by putting it there. A key
+    present on one side only is treated as OLD, not wrong: a baseline taken
+    before a field existed is still a baseline, and refusing it would make
+    every saved run worthless the first time someone records a new field.
+    """
+    bad = []
+    for name in sorted(base):
+        b, n = base[name], new.get(name)
+        if n is None:
+            continue
+        bm, nm = b.get("measurement") or {}, n.get("measurement") or {}
+        for k in sorted(set(bm) & set(nm)):
+            if bm[k] != nm[k]:
+                bad.append(f"{name}: {k} {bm[k]!r} -> {nm[k]!r}")
+    return bad
+
+
+def option_drift(base, new):
+    """Build/conversion options that differ, aggregated over affected targets.
+
+    NOT a refusal. An option A/B is the commonest thing this mode is wanted
+    for — it is literally what `mon_struct_sweep.py` exists to answer — and
+    refusing it would leave the apparatus being rebuilt by hand for exactly
+    the change the mode is for. The hazard worth guarding against is options
+    drifting between two runs UNNOTICED, and printing them answers that.
+    """
+    diffs = {}
+    for name in base:
+        n = new.get(name)
+        if n is None:
+            continue
+        bo, no = base[name].get("options") or {}, n.get("options") or {}
+        for k in set(bo) | set(no):
+            if bo.get(k) != no.get(k):
+                diffs.setdefault((k, repr(bo.get(k)), repr(no.get(k))), set()).add(name)
+    return [f"{k} {a} -> {c} on {len(t)} target(s)"
+            for (k, a, c), t in sorted(diffs.items())]
+
+
+def regressions(base_row, new_row, tol=1e-9):
+    """[(score_key, baseline, new)] for every score that got worse.
+
+    'Worse' is per-Dimension (`higher_is_better`), so a caller does not have to
+    remember that part count goes down and agreement goes up. A key scored on
+    one side only is a regression — see `Dimension.worse`.
+    """
+    a, b = base_row.get("scores") or {}, new_row.get("scores") or {}
+    out = []
+    for k in sorted(set(a) | set(b)):
+        x, y = a.get(k), b.get(k)
+        if dimension(k).worse(x, y, tol):
+            out.append((k, x, y))
+    return out
+
+
+def _label_of(rows, fallback):
+    for r in rows:
+        if r.get("label"):
+            return r["label"]
+    return fallback
+
+
+def compare_runs(base_rows, new_rows, tol=1e-9):
+    """A/B two runs of `result_row`s -> RunDelta, sorted by largest movement.
+
+    Generic over whatever a caller scores: the rows carry `{score_key: number}`
+    and the registry supplies the rest. Nothing here knows about MoN parts or
+    Hubbard phases.
+
+    The verdict deliberately refuses to say "no effect". "No number moved" has
+    two readings and this project has shipped the wrong one before: h2g (the
+    sibling port) shipped two dead conversion options believing a flat table
+    meant a no-op, and SIDM2's own `docs/players/HUBBARD.md` carried a "filter
+    100%" that was 0==0 for the same reason. So the verdict pairs the numbers
+    with `output_digest` (did the build change?) and `registers_unread` (could
+    we have seen it?), and names which of the two cases it is.
+    """
+    base = {r["target"]: r for r in base_rows if r.get("target")}
+    new = {r["target"]: r for r in new_rows if r.get("target")}
+    d = RunDelta(base_label=_label_of(base_rows, "baseline"),
+                 new_label=_label_of(new_rows, "current"))
+    d.both = sorted(set(base) & set(new))
+    d.only_base = sorted(set(base) - set(new))
+    d.only_new = sorted(set(new) - set(base))
+
+    d.refused = settings_mismatch(base, new)
+    if d.refused:
+        return d
+    if not d.both:
+        d.refused = ["no target appears in both runs"]
+        return d
+
+    d.option_drift = option_drift(base, new)
+    for t in d.both:
+        a, b = base[t].get("output_sha"), new[t].get("output_sha")
+        if not a or not b:
+            d.bytes_unknown.append(t)
+        elif a != b:
+            d.bytes_changed.append(t)
+        else:
+            d.bytes_same.append(t)
+
+    seen, movedn = {}, {}
+    for t in d.both:
+        sa, sb = base[t].get("scores") or {}, new[t].get("scores") or {}
+        deltas = []
+        for k in sorted(set(sa) | set(sb)):
+            dim = dimension(k)
+            x, y = sa.get(k), sb.get(k)
+            seen[dim.key] = seen.get(dim.key, 0) + 1
+            if x != y:
+                movedn[dim.key] = movedn.get(dim.key, 0) + 1
+                deltas.append((k, x, y, dim.movement(x, y)))
+        if deltas:
+            deltas.sort(key=lambda e: e[3], reverse=True)
+            d.moved.append((t, deltas))
+        reg = regressions(base[t], new[t], tol)
+        if reg:
+            d.regressed.append((t, reg))
+    d.moved.sort(key=lambda e: e[1][0][3], reverse=True)
+    d.dimension_summary = {k: (movedn.get(k, 0), seen[k]) for k in sorted(seen)}
+    d.dimensions = sorted({k for t in d.both
+                           for k in (new[t].get("dimensions")
+                                     or dimensions_present(new[t].get("scores")))})
+
+    if d.regressed:
+        d.verdict = (f"{len(d.regressed)} of {len(d.both)} target(s) regressed "
+                     "on at least one measured dimension")
+    elif d.moved:
+        d.verdict = (f"no regression; {len(d.moved)} of {len(d.both)} target(s) "
+                     "moved at least one number")
+    elif d.bytes_changed:
+        d.verdict = (f"NO number moved, but the build output differs on "
+                     f"{len(d.bytes_changed)} of {len(d.both)} target(s) -- the "
+                     "change reached the output and is invisible to what this "
+                     "run compares, NOT a no-op")
+    elif d.bytes_same and not d.bytes_unknown:
+        d.verdict = (f"no number moved and the build output is byte-identical "
+                     f"on all {len(d.bytes_same)} target(s) -- the change "
+                     "reached nothing here")
+    else:
+        d.verdict = (f"no number moved, and the build output could not be "
+                     f"compared on {len(d.bytes_unknown)} of {len(d.both)} "
+                     "target(s), so this run CANNOT say whether the change "
+                     "reached the build at all -- record output_sha to tell "
+                     "'invisible to the metric' and 'reached nothing' apart")
+    return d
+
+
+def format_run_delta(delta, top=10):
+    """Render a RunDelta as plain text: the change under test, the biggest
+    movers, the regressions, the verdict, and what the run was blind to."""
+    L = [f"A/B  {delta.base_label} -> {delta.new_label}"]
+    if delta.refused:
+        L.append("REFUSED: these runs were measured at different settings, so a "
+                 "delta between them is a delta between different music.")
+        L += [f"  - {m}" for m in delta.refused[:top]]
+        if len(delta.refused) > top:
+            L.append(f"  - ... and {len(delta.refused) - top} more")
+        L.append("Re-take the baseline at the settings you are measuring at.")
+        return "\n".join(L)
+
+    L.append(f"{len(delta.both)} target(s) in both runs"
+             + (f", {len(delta.only_base)} only in baseline" if delta.only_base else "")
+             + (f", {len(delta.only_new)} only in current" if delta.only_new else ""))
+    L.append("")
+    L.append("the change under test:")
+    L += ([f"  - options: {o}" for o in delta.option_drift]
+          or ["  - options: identical on every target in both runs"])
+    if delta.bytes_unknown:
+        L.append(f"  - build output: UNKNOWN on {len(delta.bytes_unknown)} "
+                 "target(s) (no output_sha recorded)")
+    if delta.bytes_changed:
+        L.append(f"  - build output: differs on {len(delta.bytes_changed)} target(s)")
+    if delta.bytes_same:
+        L.append(f"  - build output: byte-identical on {len(delta.bytes_same)} target(s)")
+
+    if delta.moved:
+        L.append("")
+        L.append("largest movement (by dimension, biggest first):")
+        for t, deltas in delta.moved[:top]:
+            k, a, b, _ = deltas[0]
+            L.append(f"  {t:28} {k:14} {fmt_pct(a)} -> {fmt_pct(b)}"
+                     + (f"  (+{len(deltas) - 1} more)" if len(deltas) > 1 else ""))
+        if len(delta.moved) > top:
+            L.append(f"  ... and {len(delta.moved) - top} more")
+    if delta.dimension_summary:
+        L.append("")
+        L.append("per-dimension: " + ", ".join(
+            f"{k} {m}/{s}" for k, (m, s) in delta.dimension_summary.items()))
+    if delta.regressed:
+        L.append("")
+        L.append("REGRESSED:")
+        for t, reg in delta.regressed:
+            for k, a, b in reg:
+                L.append(f"  !! {t:28} {k:14} {fmt_pct(a)} -> {fmt_pct(b)}")
+    L.append("")
+    L.append(f"verdict: {delta.verdict}")
+    L.append("")
+    L.append(format_coverage(delta.dimensions))
+    return "\n".join(L)
