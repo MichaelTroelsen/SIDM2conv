@@ -488,9 +488,6 @@ Visual decision trees for diagnosing and resolving common SIDM2 issues.
 │                                                  │
 │ 3. Try SF2 Viewer GUI:                          │
 │    python pyscript/sf2_viewer_gui.py output.sf2 │
-│                                                  │
-│ 4. Validate with batch test:                    │
-│    test-batch-pyautogui.bat --file output.sf2   │
 └──────────────────────────────────────────────────┘
 ```
 

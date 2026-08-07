@@ -50,7 +50,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: unit-test-results
           path: |
@@ -81,7 +81,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: integration-test-results
           path: |
@@ -126,19 +126,30 @@ jobs:
     runs-on: windows-latest
     needs: [unit-tests, integration-tests]
     if: always()
+    permissions:
+      contents: read
+      pull-requests: write  # needed for the "Comment on PR" step's issues.createComment call
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # unit-tests/integration-tests never actually write test-results.txt /
+      # test-coverage.html / integration-test-results.txt, so the upload
+      # steps above create no artifact (if-no-files-found: warn) -- and
+      # nothing below reads ./results/unit or ./results/integration anyway
+      # (the summary is built from needs.*.result). continue-on-error keeps
+      # that pre-existing gap from failing this job.
       - name: Download unit test results
-        uses: actions/download-artifact@v3
+        continue-on-error: true
+        uses: actions/download-artifact@v4
         with:
           name: unit-test-results
           path: ./results/unit
 
       - name: Download integration test results
-        uses: actions/download-artifact@v3
+        continue-on-error: true
+        uses: actions/download-artifact@v4
         with:
           name: integration-test-results
           path: ./results/integration

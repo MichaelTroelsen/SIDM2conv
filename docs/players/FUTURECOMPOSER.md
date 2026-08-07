@@ -6,15 +6,17 @@ on-disk editors span V1.0 / V2.0 / V3.1 / V4.1).
 disk (`bin/FC10/futurecomposer + acid demo/...D64`).
 **Reference:** `bin/FC10/Futurecomposer Instructions.txt` (V4.1 manual — note the
 sound-parameter byte order differs from V1.0, see below).
-**Converter:** `bin/fc_to_sf2.py` (+ `sidm2/fc_parser.py`); tests
-`pyscript/test_fc_parser.py`.
-**Status:** **notes / orderlist / patterns / arps / drums / tempo are byte-exact**
-vs the original on the **arp + bass** voices in real SID Factory II. One open
-issue: a voice with a **long silent intro** (the lead in Triangle_Intro is muted
-for 288 ticks) does not gate correctly under SF2II's Driver 11 — see *Open issues*.
-
-This is **Stage A** (transpile to the stock **Driver 11** SF2 — editable + playable,
-like Galway's Driver-11 path), not a native FC driver.
+**Converter:** Stage A `bin/fc_to_sf2.py`, **Stage B `bin/build_fc_native_song.py`**
+(+ `sidm2/fc_parser.py`); tests `pyscript/test_fc_parser.py`,
+`pyscript/test_fc_native_song.py`.
+**Status:** Stage A — **notes / orderlist / patterns / arps / drums / tempo are
+byte-exact** vs the original on the **arp + bass** voices in real SID Factory II;
+its one open defect is that a voice with a **long silent intro** (Triangle_Intro's
+lead, muted 288 ticks) does not gate under SF2II's Driver 11 (see *Open issues*).
+**Stage B (native, shipped 2026-07-30) removes that constraint** — it writes its
+own sequencer, so all-rest sequences and long rest prefixes are simply not a
+problem — and reaches **14 of 15 corpus voices at exactly 100.0% audible
+per-frame pitch over full song length** (below).
 
 ---
 
@@ -30,6 +32,95 @@ score can be read statically from the player embedded in the SID rip. Pipeline:
 
 Run: `py -3 bin/fc_to_sf2.py SID/Fun_Fun/Triangle_Intro.sid out/Triangle_Intro.sf2`
 (also accepts a raw `.prg` native FC module).
+
+---
+
+## Stage B — the native driver path (`bin/build_fc_native_song.py`, R13, 2026-07-30)
+
+FC was the **last ported player without a native driver**, and was picked as the
+test that the R1–R3 consolidated pipeline generalises to a new player. It does:
+Stage B added **no new driver and no new engine code**. A MON-compatible shim
+(`FCShim`) feeds `bin/build_mon_native_song.build_native_song` — the same
+trace-driven engine behind Hawkeye / Hubbard / DMC / Sound Monitor / SDI — and
+`emit_one` assembles MoN's driver. Arps, drums and PWM therefore arrive from the
+**per-frame capture** instead of being modelled, which is the PLAYBOOK §2
+"parse statically, trace the synth side" split. That is the right mode for FC
+precisely because its parser is already validated byte-exact (`fc_validate`:
+25/27 voices note-accurate; the FC→FC round-trip is byte-identical in siddump),
+so — unlike the SDI/DMC shims — notes are **decode-driven**, not re-derived from
+trace gate-rises. Re-deriving them would also have thrown away the rests, which
+is the whole reason to build FC natively.
+
+    py -3 bin/build_fc_native_song.py SID/Fun_Fun/Triangle_Intro.sid auto
+    # -> out/fc/<name>_part<NN>.sf2   (FC_MAX_PARTS=n caps the split)
+
+### Corpus result — full song length, not a window
+
+| tune | parts | v0 audible | v1 audible | v2 audible |
+|------|------:|-----------:|-----------:|-----------:|
+| Triangle_2_years | 4 | **100.0** (1061) | **100.0** (346) | **100.0** (742) |
+| Carillo_part_2 | 4 | **100.0** (778) | **100.0** (474) | **100.0** (366) |
+| Demo_of_the_Year_88_Elite_1997 | 3 | **100.0** (1212) | **100.0** (592) | **100.0** (2253) |
+| Is_There_a_Difference | 5 | **100.0** (466) | **100.0** (1079) | **100.0** (554) |
+| Triangle_Intro | 3 | **100.0** (870) | **83.6** (633) | **100.0** (1011) |
+
+**14 of 15 voices at exactly 100.0%**; `(n)` = audible frames compared. Note
+placement is independently **frame-exact**: the decode's predicted onset frames
+equal the trace's own gate-rise frames exactly (v1: `576, 684, 696, 708, 720,
+732, 768, 864…` in both), at alignment delay **+0**.
+
+### Read the two columns, not one — both mislead alone
+
+The builder prints **raw** and **audible (gate-on)** per voice, because:
+
+- **Raw understates, badly.** An FC rest is note index ≥ 96, which the player
+  resolves by reading **past** its 96-entry freq table — so during a rest the
+  original parks a near-zero **`$0002`** in `$D400` with the **gate off**. This
+  build emits a real rest, so every such frame scores as a freq "mismatch" on a
+  register nothing can hear. On Triangle_Intro v1 that is 636 of 1496 frames:
+  raw **57.8%** vs audible **100.0%** in the same window. `Triangle_2_years` is
+  the control — it has **zero** rests, and its raw ≈ audible (99.9/100/100).
+- **Audible overstates if you ignore its n.** FC gates briefly (percussive
+  envelopes), so a voice can be audible for only ~5–20% of frames. "100% of 70
+  frames" is real but small — hence `(n)` in every cell above.
+
+The `$0002`-during-rest divergence is a genuine (if inaudible) departure from
+byte-exactness. Closing it would need the driver to write a freq **while gated
+off**, which the shared engine has no way to express today — a driver feature for
+an inaudible register, weighed against touching the just-merged shared driver.
+Left open deliberately, recorded here rather than hidden.
+
+### Open Stage-B residual
+
+**Triangle_Intro voice 1 (the lead): 83.6% audible over 633 frames.** It is
+**100.0% over the first 30 s** and only diverges later — the same
+"widen-the-window" trap that has bitten this project repeatedly (Matt Gray's
+subtune 1 read 303/303 at 3000 frames and 683/692 at 6000). It is the voice with
+48 rests and the long silent intro. Not yet localised: a first attempt to bucket
+the misses per part used a brute-force `t0` search over the original instead of
+the parts' **known** bounds and produced nonsense (it "found" a 15-frame window),
+so its numbers were discarded rather than reported. Redo that using the `t0`
+values `build_song` already computes.
+
+### Follow-ups (not blockers)
+
+- **Block structure.** `FCShim._voice_blocks` returns one flat block per voice
+  (the SDI/DMC/Sound-Monitor first-cut shape). `fc_parser` *does* expose
+  `voice_blocks` (51/41/51 on Triangle_Intro); feeding those through would let
+  repeated blocks share sequences and cut part counts. A part-count optimisation,
+  not a correctness one.
+- **Native `.prg` modules.** The 4 FC-disk modules in `out/fc_native/` are not
+  yet buildable here (siddump needs a PSID; they would need wrapping first).
+  Stage A's `fc_validate` already covers them.
+
+### A live naming trap in `FCInstrument`
+
+The dataclass names byte `[5]` **`vibrato`** and byte `[6]` **`arp`**, following
+the **V4.1 manual** — which this document already flags as **wrong for V1.0**.
+V1.0 reads the arp offsets from `[5]`; the field *named* `arp` is the pulse-sweep
+control and is unused by both converters. Confirmed against Stage A, which uses
+`ins.vibrato` for both the arp offsets and the drum type. Harmless for Stage B
+(the capture supplies arps/drums) but it will bite anyone extending either path.
 
 ---
 
@@ -327,9 +418,14 @@ the `$1800` player+data layout the converter already parses.
 
 - `sidm2/fc_parser.py` — FC table extractor (orderlists, blocks, instruments,
   freq table, drum sequences). `detect_player` gates the `$1800` V1.0 variant.
-- `bin/fc_to_sf2.py` — transpile to Driver 11 SF2 (arps, drums, PWM, pitch/tempo).
-  `build_structured` preserves the FC orderlist (currently disabled — see open
-  issues).
+- `bin/fc_to_sf2.py` — **Stage A**: transpile to Driver 11 SF2 (arps, drums, PWM,
+  pitch/tempo). `build_structured` preserves the FC orderlist (currently disabled
+  — see open issues).
+- `bin/build_fc_native_song.py` — **Stage B**: `FCShim` (MON-compatible, decode-
+  driven) → the shared trace-driven native engine. Refuses non-`$1800` rips
+  loudly via `detect_player`. Reports raw **and** audible fidelity per voice.
+- `pyscript/test_fc_native_song.py` — 17 tests: FC's two `+1`s (fpt = speed+1,
+  ticks = dur+1), instrument-0 threading, rest mapping, own-freq-table use.
 - `sidm2/galway_driver11_emitter.py` — shared emitter; gained optional
   `sequences=`/`orderlists=` params so a caller can supply its own block structure.
 - `pyscript/test_fc_parser.py` — 6 tests (detect, structure, V2 melody vs trace,

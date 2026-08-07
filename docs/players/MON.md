@@ -62,8 +62,22 @@ py -3 bin/build_myth_native_song.py 0 auto
 `MON_ARP_STRUCT=1` enables the **structural path** (looping arp/slide/vibrato FM entries + canonical
 wave/pulse programs, each exact- or semitone-guarded per note with trace fallback). It is calibrated
 on Supremacy (where it collapses sub1/sub2 to one part each) and is fine for Hawkeye/Cybernoid.
-**Keep it OFF for Myth** — measured regression: Myth sub0 part1 osc1 freq 89.1% flag-on vs 100%
-flag-off (the guards admit a wrong substitution on the Myth engine variant).
+~~**Keep it OFF for Myth**~~ — the measured regression (Myth sub0 part1 osc1 freq 89.1% flag-on
+vs 100% flag-off, "the guards admit a wrong substitution on the Myth engine variant") **no longer
+reproduces**. Re-measured 2026-07-30 on the identical 20 s window via
+`bin/mon_part_fidelity.py out/mon/Myth_sub0_part01.sf2 0 20`, built through Myth's own emulation
+shim (`bin/build_myth_native_song.py 0 auto`):
+
+| build | osc1 | osc2 | osc3 |
+|---|---|---|---|
+| flag-**off** (control) | 100.0 / 100.0 / 100.0 | 100.0 / 100.0 / 100.0 | 100.0 / 100.0 / 100.0 |
+| flag-**on** | 100.0 / 100.0 / 100.0 | 100.0 / 100.0 / 100.0 | 100.0 / 100.0 / 100.0 |
+
+…and Myth sub0 drops **8 → 6 parts** flag-on. The intervening guard tightenings fixed it — most
+likely the arp guard's `tol` change (the flat `max(4, …)` used to accept *any* arp vacuously on
+short notes; see the comment at `build_mon_native_song.py:1472-1476`). Scope of this check: sub0
+part01, which is exactly what the original regression named. A full both-ways corpus sweep is
+still the prerequisite for making these flags the default.
 
 Load the result via `py -3 pyscript/sf2_open_in_editor.py out/mon/PART.sf2 40` (SF2II's argv-load Heisenbug needs the retry loader). Native play address is `$1003`.
 
@@ -312,10 +326,29 @@ Dense tunes blow three SF2II hard caps **simultaneously** (per SF2 file: 63 comm
 
 Result: Supremacy sub1 70→**1 part**, sub2 24→**1 part**, sub0 34→**10 parts** (the real lengths emerged from the global markers: 38s / 150s / 234s). Adaptive window packing (`auto`) also collapsed Hawkeye sub0 13→7, Cybernoid 14→10, Myth →7 parts.
 
+**Re-measured 2026-07-30** (R17 flagship check) with all three prongs on
+(`MON_ARP_STRUCT=1 MON_PULSE_CANON=1 MON_WAVE_CANON=1`), each compared against the
+unrolled build on the **same window** via `bin/mon_part_fidelity.py <part.sf2> <sub> <secs>`:
+
+| file | parts off → on | fidelity, same window | note |
+|---|---|---|---|
+| Supremacy sub2 | **10 → 1** | identical (94.0/100/100, 100/100/100, 100/100/100, filter 100) | bundles 60→**18**, instr 16→12 |
+| Hawkeye sub2 | 1 → 1 | **identical 100.0 on every register** | bundles 59→49, instr 21→17 |
+| Cybernoid sub0 | **13 → 11** | identical (99.9/98.9/97.9, filter 100) | part01 38s→48s, bundles 55→**63** = exactly on the cap |
+
+24 parts → 13 with **zero** fidelity change. Note sub2's *baseline* is now 10, not the 24 above —
+unrelated fixes moved it. Cybernoid shows the prongs buy headroom the adaptive planner then
+spends, so a part-count win is not automatic. Myth sub0 is **not buildable via this CLI** — the
+pseudo-parse gate refuses it (`speed byte 255`); it needs the py65 emulation shim.
+
+⚠️ Still opt-in for the reason in *Remaining frontier* #2 below: **flag-on regresses Myth**.
+Per-variant guard calibration + a full both-ways corpus sweep are the prerequisites for making
+these the default; three files are not a corpus.
+
 Remaining frontier:
 
 1. **Filter window seams** — filter cutoff is the one register still 30-90% on multi-part tunes (restarts at window boundaries); whole-song parts measure filter 100%.
-2. **Structural path beyond Supremacy** — flag-on regresses Myth (osc1 89%); per-variant guard calibration would let every tune use it.
+2. **Structural path beyond Supremacy** — ~~flag-on regresses Myth (osc1 89%)~~ **retested 2026-07-30: it does not.** Myth sub0 part1 is 100.0/100.0/100.0 both ways on the same window, and 8→6 parts flag-on. With Supremacy (10→1), Hawkeye sub2 (100.0 preserved) and Cybernoid (13→11) also clean, **no known regression remains** — the outstanding work is a full both-ways corpus sweep, then flipping the default. Two loose guards are worth auditing while doing it: the arp acceptance is semitone-with-tolerance (`:1471-1477`) and the **slide substitution at `:1480-1483` has no exactness guard at all**, unlike the vibrato/canonical paths beside it.
 3. **Registry wiring** (roadmap A4) — the whole pipeline still lives in `bin/`.
 
 ---

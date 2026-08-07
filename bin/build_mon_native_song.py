@@ -25,6 +25,7 @@ import build_romuzak_driver_full as B
 import build_romuzak_native_song as RN
 import mon_to_sf2
 from sidm2.mon_parser import load_sid, MON
+from sidm2.sf2_caps import CAP_B, CAP_I, CAP_TBL, CAP_SEG, STEP
 
 MON_DIR = os.path.join(ROOT, "drivers_src", "mon")
 ROM_DIR = os.path.join(ROOT, "drivers_src", "romuzak")
@@ -1946,12 +1947,11 @@ def main():
             # Greedily grow each window to the largest span whose PRE-cluster resource
             # counts still fit ALL the driver caps (so the build stays clustering-free
             # AND no table overflows = byte-exact), probing with the cheap count_only
-            # path. Caps: <=63 bundles, <=32 instruments (greedy_cluster identity
-            # thresholds) and <=256 rows in each of the WAVE / FILTER tables.
-            # Caps: bundles, instruments, WAVE/FILTER table rows, and total sequences
-            # (the native seq-pointer table = 128 entries; 120 leaves margin so osc3,
-            # laid last, never overflows).
-            CAP_B, CAP_I, CAP_TBL, CAP_SEG, STEP = 63, 32, 256, 120, 100   # 2s probe step
+            # path. Caps (CAP_B/CAP_I/CAP_TBL/CAP_SEG/STEP, sidm2.sf2_caps): <=63
+            # bundles, <=32 instruments (greedy_cluster identity thresholds), <=256
+            # rows in each of the WAVE / FILTER tables, and total sequences (the
+            # native seq-pointer table = 128 entries; 120 leaves margin so osc3,
+            # laid last, never overflows). STEP is the ~2s probe step.
 
             def fits(t0, t1):
                 nb, ni, nw, nf, ns = build_native_song(

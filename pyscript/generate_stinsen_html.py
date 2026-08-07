@@ -578,9 +578,10 @@ def main():
     print(f"Sections: {len(sections)}")
     print(f"Lines: {len(lines)}")
 
-    # Open in browser
+    # Open in browser (os.startfile avoids the shell-injection risk of
+    # os.system(f'start {output_file}') -- CWE-78)
     import os
-    os.system(f'start {output_file}')
+    os.startfile(output_file)
 
     return 0
 

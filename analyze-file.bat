@@ -37,7 +37,7 @@ echo [3/4] Creating disassembly...
 tools\SIDwinder.exe disassemble "%INPUT%" > "%OUTPUT%\disassembly.asm"
 
 echo [4/4] Rendering audio...
-tools\SID2WAV.EXE -t30 -16 "%INPUT%" "%OUTPUT%\audio.wav"
+tools\sidplayfp\sidplayfp.exe -t30 -p16 -w"%OUTPUT%\audio.wav" "%INPUT%"
 
 echo.
 echo ========================================

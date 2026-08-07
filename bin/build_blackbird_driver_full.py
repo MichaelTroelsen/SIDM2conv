@@ -30,6 +30,7 @@ from sidm2 import placeholder_edit_area, sf2_aux_bodies
 from sidm2.models import SF2DriverInfo
 from sidm2 import sf2_parser
 from sidm2.sid_player import FREQ_TABLE_LO, FREQ_TABLE_HI
+from sidm2.sf2_caps import ST_FIRST, ST_LAST
 
 LOAD_BASE = 0x0D7E
 DRV_INIT, DRV_PLAY, DRV_STOP = 0x1000, 0x1003, 0x1006
@@ -236,7 +237,6 @@ def assemble():
     img = bytearray(0x10000)
     for i, b in enumerate(data[2:]):
         img[(load + i) & 0xFFFF] = b
-    ST_FIRST, ST_LAST = 0x16cc, 0x1702
     if any(img[a] != 0 for a in range(ST_FIRST, ST_LAST + 1)):
         raise SystemExit(
             f"DRIVER STATE-REGION OVERLAP: ${ST_FIRST:04X}-${ST_LAST:04X} is not "

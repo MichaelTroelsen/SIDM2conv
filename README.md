@@ -428,7 +428,7 @@ conversion-cockpit.bat
 
 **VSID Integration** (`sidm2.vsid_wrapper`):
 - SID to WAV conversion via VICE emulator
-- Auto-fallback to SID2WAV
+- Auto-fallback to sidplayfp (`sidm2.sidplayfp_wrapper`, replaced SID2WAV.EXE 2026-08-07)
 - Docs: [docs/VSID_INTEGRATION_GUIDE.md](docs/VSID_INTEGRATION_GUIDE.md)
 
 **Filter Accuracy Validator** (`pyscript/validate_filter_accuracy.py`):
@@ -477,7 +477,6 @@ Ultra-verbose logging and PyAutoGUI-based editor automation.
 - Multiple output modes (console, file, JSON)
 - 111,862 events/second throughput
 - 100% automated SF2 file loading and validation
-- Batch testing (100% success rate on 10/10 files)
 
 **Quick Start**:
 ```bash
@@ -485,12 +484,11 @@ Ultra-verbose logging and PyAutoGUI-based editor automation.
 set SF2_ULTRAVERBOSE=1
 set SF2_DEBUG_LOG=sf2_debug.log
 sf2-viewer.bat file.sf2
-
-# Batch testing
-test-batch-pyautogui.bat --directory output --max-files 10
 ```
 
-**See**: [PYAUTOGUI_INTEGRATION_COMPLETE.md](archive/cleanup_2026-04-28/old_docs/completion_reports/PYAUTOGUI_INTEGRATION_COMPLETE.md) (archived)
+**See**: [PYAUTOGUI_INTEGRATION_COMPLETE.md](archive/cleanup_2026-04-28/old_docs/completion_reports/PYAUTOGUI_INTEGRATION_COMPLETE.md) (archived). The batch-runner CLI this
+section used to document (`test-batch-pyautogui.bat`) was retired 2026-08-07 -- see
+`archive/cleanup_2026-08-07/retired_batch_pyautogui/`.
 
 ---
 
@@ -550,9 +548,6 @@ batch-convert-laxity.bat
 
 # Conversion Cockpit GUI
 conversion-cockpit.bat
-
-# Batch testing
-test-batch-pyautogui.bat --directory G5/examples --max-files 10
 ```
 
 ### Python API
@@ -756,9 +751,6 @@ python -m pytest scripts/test_converter.py -v
 
 # With coverage
 python -m pytest --cov=sidm2 --cov-report=html
-
-# Batch testing
-test-batch-pyautogui.bat
 ```
 
 ### Contributing
@@ -785,13 +777,13 @@ Located in `tools/` directory (Windows binaries, optional fallbacks):
 - **player-id.exe** - Player type detection
 - **SIDwinder.exe** - Disassembler
 - **SIDdecompiler.exe** - Memory layout analyzer
-- **SID2WAV.EXE** - SID to WAV converter (fallback for VSID)
+- **sidplayfp.exe** (`tools/sidplayfp/`) - SID to WAV converter (fallback for VSID; replaced SID2WAV.EXE 2026-08-07)
 - **RetroDebugger** (`tools/RetroDebugger v0.64.68/`) - Real-time interactive C64/SID debugger (breakpoints, live memory read/write, disassembly, warp-speed execution). Integrated via the `mcp__retrodebugger__*` MCP tool set — see [docs/guides/RETRODEBUGGER_GUIDE.md](docs/guides/RETRODEBUGGER_GUIDE.md). Use it when reverse-engineering a player whose static/offline model keeps getting the order or timing wrong and real CPU ground truth is needed.
 
 **Note**: Python implementations available for cross-platform support:
 - `pyscript/siddump_complete.py` (replaces siddump.exe)
 - `pyscript/sidwinder_trace.py` (replaces SIDwinder.exe)
-- `sidm2/vsid_wrapper.py` (VSID via VICE emulator, preferred over SID2WAV)
+- `sidm2/vsid_wrapper.py` (VSID via VICE emulator, preferred over sidplayfp)
 
 ---
 

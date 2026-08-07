@@ -17,6 +17,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+from sidm2.sf2_caps import ST_FIRST, ST_LAST
 GAL = os.path.join(ROOT, "drivers_src", "galway")
 OUTDIR = os.path.join(ROOT, "out")
 
@@ -208,6 +209,13 @@ def assemble():
                         "-D", f"DIGI_SPIKE={digi}", "-D", f"DIGI_NCO={nco}",
                         "-D", f"DIGI_HYBRID={hybrid}", "-D", f"DIGI_SWEEP={sweep}",
                         "-D", f"DIGI_RLE={rle}",
+                        # R1: the driver is now a thin feature-selection shim that
+                        # .includes drivers_src/common/sf2_native_driver.asm. 64tass
+                        # resolves a nested .include relative to the INCLUDING file,
+                        # so without -I the shared body would look for layout.inc /
+                        # freqtable.inc next to itself in common/ and fail (verified:
+                        # it errors out, it cannot silently pick a wrong file).
+                        "-I", GAL,
                         os.path.join(GAL, "galway_driver.asm")],
                        capture_output=True, text=True, cwd=GAL)
     if r.returncode != 0:
@@ -222,7 +230,6 @@ def assemble():
     img = bytearray(0x10000)
     for i, b in enumerate(data[2:]):
         img[(load + i) & 0xFFFF] = b
-    ST_FIRST, ST_LAST = 0x16cc, 0x1702
     if any(img[a] != 0 for a in range(ST_FIRST, ST_LAST + 1)):
         raise SystemExit(
             f"DRIVER STATE-REGION OVERLAP: ${ST_FIRST:04X}-${ST_LAST:04X} is not "
@@ -273,8 +280,21 @@ def wrap(driver_prg, gen, edit, mdp, instr_names=None, sid_model=6581,
     return bytes(f)
 
 
-def headless_audio(prg, edit):
+def headless_audio(prg, edit, tempo=None, n_rows=None):
+    """Drive the assembled driver in py65 and return per-row (v0,v1,v2) freqs.
+
+    `tempo` (frames per row) and `n_rows` are PARAMETERS. They used to be read
+    from this module's globals, which meant a caller in another module had to do
+    `B.TEMPO = x; B.N_ROWS = y` before calling -- reaching in to mutate module
+    state to pass an argument. That coupling is invisible at the call site and
+    would silently break if this module were ever merged with its
+    near-identical sibling (the assignment would land on a wrapper while this
+    code kept reading its own scope). `None` falls back to the module defaults,
+    which is what this file's own main() self-test uses.
+    """
     from py65.devices.mpu6502 import MPU
+    tempo = TEMPO if tempo is None else tempo
+    n_rows = N_ROWS if n_rows is None else n_rows
     load = prg[0] | (prg[1] << 8)
     m = MPU()
     for i, b in enumerate(prg[2:]):
@@ -297,8 +317,8 @@ def headless_audio(prg, edit):
     call(0x1000)
     sid = [0xD400, 0xD407, 0xD40E]
     rows = []
-    for _row in range(N_ROWS):
-        for _ in range(TEMPO):
+    for _row in range(n_rows):
+        for _ in range(tempo):
             call(0x1003)
         rows.append([m.memory[b] | (m.memory[b + 1] << 8) for b in sid])
     return rows

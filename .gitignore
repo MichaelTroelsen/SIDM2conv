@@ -226,3 +226,6 @@ starwarsintro.mp3
 # pyscript/analyze_laxity_pattern_split.py); kept local only.
 Original_SF2/
 bin/_c1_smoke/
+
+# tokensave local index - rebuildable cache, not shared state.
+.tokensave/

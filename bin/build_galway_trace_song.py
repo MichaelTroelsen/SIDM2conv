@@ -812,7 +812,10 @@ def main():
         return "inst"
     names = [f"{_wftag(ins[2])} {i + 1:02d}" for i, ins in enumerate(instrs)]
 
-    B.TEMPO = TEMPO
+    # R3: TEMPO reaches the layout.inc writer as an explicit argument to
+    # gen_includes_song below, instead of being written into build_galway_
+    # driver_full's module globals for build_galway_native_song to read back
+    # out of a third module.
     # Flag the routed voice's instruments $40 so the filter envelope restarts on
     # each of its notes (the filter affects whichever voice $D417 routes).
     filt_instr_set = ({row[3] for row in note_seq[filt_voice]}
@@ -827,7 +830,8 @@ def main():
                                                multispeed=multispeed,
                                                pulse_by_cmd=pulse_by_cmd,
                                                filter_program=filt_prog,
-                                               filter_instr_set=filt_instr_set)
+                                               filter_instr_set=filt_instr_set,
+                                               tempo=TEMPO)
     prg = B.assemble()
     # Galway tunes are 6581 — bake it into the SF2 (HardwarePreferences aux block)
     # so SF2II plays the correct chip/filter model, not the config default (8580).
@@ -852,7 +856,7 @@ def main():
     print(f"wrote {out} ({len(sf2)} bytes)")
 
     # Also emit a PSID of the raw driver image so the tune can be rendered to WAV
-    # (SID2WAV) for listening / A-B vs the original. The native Galway driver
+    # (sidplayfp) for listening / A-B vs the original. The native Galway driver
     # doesn't round-trip through scripts/sf2_to_sid (built for Driver 11/Laxity),
     # so wrap the driver's own memory image directly: prg at its load addr + the
     # edit area (tables/sequences/FM) at EDIT_BASE, INIT=$1000 PLAY=$1003.

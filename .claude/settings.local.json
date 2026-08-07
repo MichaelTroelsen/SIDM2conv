@@ -83,14 +83,18 @@
       "Edit(tests/**)",
       "Bash(curl *)",
       "Bash(wc -l)",
-      "Bash(wc -c)"
+      "Bash(wc -c)",
+      "mcp__retrodebugger__retro_list_platforms",
+      "Bash(./sid-to-sf2.bat SID/Unboxed_Ending_8580.sid __TRACKED_VAR__/Unboxed_Ending_8580.sf2 --verbose)",
+      "Bash(cd C:\\\\Users\\\\mit\\\\claude\\\\c64server\\\\SIDM2 *)",
+      "Bash(cmd /c start \"\" sf2-viewer.bat \"galway_sf2\\\\Terra_Cresta.sf2\")"
     ],
     "deny": [
       "Edit(.env*)"
     ]
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "mcp-c64"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }

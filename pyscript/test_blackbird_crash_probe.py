@@ -165,6 +165,33 @@ class TestWindowValidity(unittest.TestCase):
                                    window_seconds=probe.PLAY_WAIT_SECONDS)
 
 
+class TestClassifyTermination(unittest.TestCase):
+    """R23: a user closing the SF2II window mid-trial must not be reported as
+    CRASHED. The original oracle checked only `_is_alive(pid)` after the play
+    wait, so "not alive" (crashed OR cleanly closed by a human) collapsed to
+    one bucket -- a 492s Driller trial the user closed manually came back
+    CRASHED, indistinguishable from the real thing (whats-next.md).
+    """
+
+    def test_still_running_is_survived(self):
+        self.assertEqual(probe.classify_termination(None), "SURVIVED")
+
+    def test_clean_exit_code_zero_is_closed_not_crashed(self):
+        """The core R23 fix: exit code 0 must never read as CRASHED."""
+        self.assertEqual(probe.classify_termination(0), "CLOSED")
+
+    def test_positive_nonzero_exit_code_is_crashed(self):
+        self.assertEqual(probe.classify_termination(1), "CRASHED")
+
+    def test_windows_access_violation_style_code_is_crashed(self):
+        """STATUS_ACCESS_VIOLATION (0xC0000005) as Windows reports it: some
+        toolchains surface this as a large positive DWORD, others as the
+        signed-int32 equivalent (-1073741819) -- classify_termination must
+        treat both as CRASHED, since neither is ever the clean-exit value 0."""
+        self.assertEqual(probe.classify_termination(3221225477), "CRASHED")
+        self.assertEqual(probe.classify_termination(-1073741819), "CRASHED")
+
+
 class TestTally(unittest.TestCase):
     def test_crash_rate_is_over_trials_that_actually_played(self):
         """A NOLOAD is a flaky loader, not evidence about play."""
@@ -180,6 +207,84 @@ class TestTally(unittest.TestCase):
         t = probe.tally(["SURVIVED"] * 5)
         self.assertEqual(t["crash_rate"], 0.0)
         self.assertEqual(t["played"], 5)
+
+    def test_closed_trials_are_excluded_from_crash_rate(self):
+        """R23: a CLOSED trial (clean exit, most likely a human closing the
+        window) must not count for OR against the crash rate -- it is not
+        evidence either way, exactly like NOLOAD. Without this, a run of
+        3 real crashes + 1 closed-by-user trial would UNDERSTATE the crash
+        rate (4 trials, 3/4) instead of reporting the true 3/3 = 100%."""
+        t = probe.tally(["CRASHED", "CRASHED", "CRASHED", "CLOSED"])
+        self.assertEqual(t["CLOSED"], 1)
+        self.assertEqual(t["played"], 3)
+        self.assertAlmostEqual(t["crash_rate"], 1.0)
+
+    def test_noplay_trials_are_excluded_from_crash_rate(self):
+        """A trial whose Play keystroke was lost never entered the window under
+        test, so like NOLOAD and CLOSED it is 'no test ran' -- it must not be
+        counted as a pass. This is the whole point of the NOPLAY verdict: the
+        old oracle reported such a trial as SURVIVED."""
+        t = probe.tally(["SURVIVED", "NOPLAY", "NOPLAY"])
+        self.assertEqual(t["NOPLAY"], 2)
+        self.assertEqual(t["played"], 1)
+        self.assertEqual(t["crash_rate"], 0.0)
+
+    def test_all_noplay_gives_no_rate_rather_than_a_clean_pass(self):
+        t = probe.tally(["NOPLAY", "NOPLAY"])
+        self.assertIsNone(t["crash_rate"])
+        self.assertEqual(t["played"], 0)
+        self.assertEqual(t["SURVIVED"], 0)
+
+
+class TestPlayingClockOracle(unittest.TestCase):
+    """The 'is it actually playing' oracle -- pure image logic, no editor."""
+
+    def _img(self, size=(184, 22), color=(0, 0, 0)):
+        Image = self._pil()
+        return Image.new("RGB", size, color)
+
+    def _pil(self):
+        try:
+            from PIL import Image
+            return Image
+        except ImportError:
+            self.skipTest("Pillow not installed")
+
+    def test_identical_captures_read_as_not_playing(self):
+        """A stopped editor repaints the same clock -- must not read as playing,
+        or the NOPLAY verdict could never fire."""
+        a = self._img()
+        self.assertFalse(probe.clock_advanced(a, a.copy()))
+
+    def test_a_changed_digit_reads_as_playing(self):
+        a = self._img()
+        b = a.copy()
+        for x in range(6):          # a few pixels of one bitmap-font digit
+            for y in range(4):
+                b.putpixel((170 + x, 8 + y), (255, 255, 255))
+        self.assertTrue(probe.clock_advanced(a, b))
+
+    def test_a_single_stray_pixel_does_not_read_as_playing(self):
+        """Threshold exists so compression/AA noise cannot fake a tick."""
+        a = self._img()
+        b = a.copy()
+        b.putpixel((100, 10), (255, 255, 255))
+        self.assertFalse(probe.clock_advanced(a, b))
+
+    def test_box_scales_with_window_size(self):
+        """The box is in reference-window pixels; a differently sized window
+        must still crop the clock rather than an arbitrary region."""
+        ref = probe.scale_box(probe.PLAYING_TIME_BOX, probe.REF_WINDOW_SIZE)
+        self.assertEqual(ref, probe.PLAYING_TIME_BOX)
+        w, h = probe.REF_WINDOW_SIZE
+        doubled = probe.scale_box(probe.PLAYING_TIME_BOX, (w * 2, h * 2))
+        self.assertEqual(doubled,
+                         tuple(v * 2 for v in probe.PLAYING_TIME_BOX))
+
+    def test_clock_box_lies_inside_the_reference_window(self):
+        l, t, r, b = probe.PLAYING_TIME_BOX
+        w, h = probe.REF_WINDOW_SIZE
+        self.assertTrue(0 <= l < r <= w and 0 <= t < b <= h)
 
 
 if __name__ == "__main__":

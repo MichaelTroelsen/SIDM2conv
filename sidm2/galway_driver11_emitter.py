@@ -22,6 +22,7 @@ column-major. Spec: ``docs/analysis/GALWAY_TO_DRIVER11_MAPPING.md``.
 from __future__ import annotations
 
 import os
+import sys
 from typing import List, Optional
 
 from .models import SF2DriverInfo
@@ -266,18 +267,51 @@ def emit_driver11_sf2(song: GalwayDriver11Song,
             [s for s in orderlists[v] if s < len(packed_sequences)]
             if v < len(orderlists) else []
             for v in range(3)]
+        # Same silent-loss hazard as the segmenting branch below, twice over:
+        # the slice drops sequences past the cap, and the comprehension then
+        # drops every ORDERLIST ENTRY pointing at them -- so a voice can lose
+        # arbitrary chunks of its structure, not just its tail, and the file
+        # still looks valid. Announce both.
+        seq_over = max(0, len(sequences) - _MAX_SEQUENCES)
+        ol_dropped = [
+            (sum(1 for s in orderlists[v] if s >= len(packed_sequences))
+             if v < len(orderlists) else 0)
+            for v in range(3)]
+        if seq_over or any(ol_dropped):
+            print(f"WARNING: caller supplied {len(sequences)} sequences, "
+                  f"{_MAX_SEQUENCES} fit -- {seq_over} DROPPED, and "
+                  f"{sum(ol_dropped)} orderlist entr(ies) referencing them were "
+                  f"removed (per voice: {ol_dropped}). This module is missing "
+                  f"music. Split the song into shorter parts.",
+                  file=sys.stderr, flush=True)
     else:
         track_seq_indices = [[], [], []]
         packed_sequences = []
+        dropped = [0, 0, 0]
         for v in range(3):
             rows = song.tracks[v] if v < len(song.tracks) else []
             for pk in segment_track(rows):
                 if len(packed_sequences) >= _MAX_SEQUENCES:
-                    break
+                    dropped[v] += 1
+                    continue
                 track_seq_indices[v].append(len(packed_sequences))
                 packed_sequences.append(pk)
-            if len(packed_sequences) >= _MAX_SEQUENCES:
-                break
+        # Hitting the pointer-table cap USED to `break` silently -- and because
+        # the break left the voice loop, every later voice fell through to the
+        # emergency empty sequence below and went completely silent, with no
+        # message and a perfectly valid-looking file. That breaks the standing
+        # rule that lossy output must never be silent, and it defeated
+        # mattgray_to_sf2's part-capacity probe, whose own slot check
+        # (`used <= 128` counted over range(128)) can never be False -- so the
+        # probe accepted a truncated module as "fits" and never split the song.
+        # Announce it here; callers that can split should count sequences
+        # THEMSELVES before emitting (see mattgray_to_sf2._part_fits).
+        if any(dropped):
+            print(f"WARNING: {sum(dropped)} sequence(s) exceed the "
+                  f"{_MAX_SEQUENCES}-slot pointer table and were DROPPED "
+                  f"(per voice: {dropped}) -- this module is missing music. "
+                  f"Split the song into shorter parts.", file=sys.stderr,
+                  flush=True)
     for v in range(3):                               # ensure every track has ≥1 seq
         if not track_seq_indices[v]:
             track_seq_indices[v].append(len(packed_sequences))

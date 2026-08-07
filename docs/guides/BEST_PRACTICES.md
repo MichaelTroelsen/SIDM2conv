@@ -139,10 +139,7 @@ for %%f in (SF2\*.sf2) do (
     sf2-viewer.bat "%%f"  # Visual check
 )
 
-# 3. Batch test
-test-batch-pyautogui.bat --directory SF2
-
-# 4. Only distribute files that pass 100%
+# 3. Only distribute files that pass 100%
 ```
 
 ### Best Practice: Compare Original vs Converted
@@ -393,27 +390,11 @@ echo Backup complete: %date% %time%
 
 ## Testing Strategy
 
-### Best Practice: Test at Multiple Stages
+### Best Practice: Smoke Test Before a Full Run
 
-**Stage 1: Single file smoke test**
 ```bash
 sid-to-sf2.bat test.sid test.sf2
 type test.txt
-```
-
-**Stage 2: Small batch (10 files)**
-```bash
-test-batch-pyautogui.bat --max-files 10
-```
-
-**Stage 3: Medium batch (100 files)**
-```bash
-test-batch-pyautogui.bat --max-files 100
-```
-
-**Stage 4: Full collection**
-```bash
-test-batch-pyautogui.bat --directory SF2
 ```
 
 ### Best Practice: Regression Testing

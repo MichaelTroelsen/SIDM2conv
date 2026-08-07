@@ -21,19 +21,28 @@ pipeline). Output `out/soundmonitor/`. `bin/` only, not registry-wired.
 (10/11 files 100%); Stage A **32/33 voices note-accurate**; Stage B shipping at
 **11 songs / 27 parts**.
 
-**Corpus fidelity — the current headline (audited 2026-07-16):**
-**99.23% freq+wf**, strict, frame-weighted over **n ≈ 841k** voice-frame observations
-(420,438 voice-frames × 2 registers); per-part **median 99.97**. Reproduces to the digit
-(`bin/_opt_sweep_corpus.py`). It postdates the v3.17.0 grid-part desync fix (`a210d83`,
-2026-07-11) — v3.18.0's post-fix figure was 99.08%, v3.19.0's is this one.
+**Corpus fidelity — the current headline (re-derived 2026-07-30, see below):**
+**99.25% freq+wf strict**, over **all 27 of 27 parts / 11 songs**
+(`pyscript/soundmonitor_sweep.py`, `py -3 pyscript/soundmonitor_sweep.py <label>`).
+Supersedes the 2026-07-16 audit's 99.23%/26-parts figure — same metric, now covering the
+one previously-missing part (below). It postdates the v3.17.0 grid-part desync fix
+(`a210d83`, 2026-07-11) — v3.18.0's post-fix figure was 99.08%, v3.19.0 was 99.23%/26 parts.
 
 Read it with its caveats:
-* **It covers 26 of 27 parts.** `Dance_at_Night_remix part01`'s window is missing from
-  `out/_sm_build_all.log`, which the sweep parses, so it is never measured — and the
-  sweep's own footer prints `total parts: 26`. Restoring it gives **99.25%**, i.e. the
-  omission *understates* (that part is freq+wf 100.0 × 3).
-* **freq+wf is the best 2 of 4 register groups.** Corpus-wide: freq 99.22 / wf 99.18 /
-  **pulse 96.67** / **filter 97.33**. The pulse gap is 1-frame PWM skew (below).
+* **It now covers all 27 parts, including `Dance_at_Night_remix part01`.** The old sweep
+  (`bin/_opt_sweep_corpus.py`) parsed a separately-captured log file
+  (`out/_sm_build_all.log`) that part01's window was missing from for unknown reasons.
+  `pyscript/soundmonitor_sweep.py` parses part windows straight out of each build's own
+  live stdout instead — there is no second capture step for a line to go missing across —
+  and picked up all 8 of Dance's parts on the first fresh-clone run. The old 99.23%/26-parts
+  figure *understated* the corpus (the missing part scores freq+wf 100.0 × 3).
+* **freq+wf is (still, per the 2026-07-16 audit) the best 2 of 4 register groups.**
+  Corpus-wide: freq 99.22 / wf 99.18 / **pulse 96.67** / **filter 97.33** ✻ — the
+  2026-07-30 sweep's JSON records per-part `pulse_ok`/`filter_ok`/`filter_tot` (the data
+  needed) but does not yet roll them into a corpus-wide %; only `freq+wf strict` has an
+  aggregator (`corpus_freq_wf_strict()`). Treat the pulse/filter corpus figures as
+  doc-carried until a matching aggregator is added. The pulse gap is 1-frame PWM skew
+  (below).
 * **A real tail is absorbed by the frame-weighting:** Dance part07 90.6% over 89s,
   Dreamix_Two part02 93.4% over 85s (**filter 57.9**), Thats_All part03 95.7% over 49s.
 * **The delay search is an alignment correction, not fitting** — it picked `+0` on 19/26
@@ -46,10 +55,14 @@ wrong; corrected 2026-07-16.) Earlier milestone, still true: **Final_Luv = the w
 song in ONE part** at 98.1–99.9 skew-tolerant on every register. Dreamix osc3
 (legato+glide) and Fuck_Off osc2 (mixed legato) are the open voices.
 
-> ⚠️ **The headline is not reproducible from a fresh clone.** `bin/_opt_sweep_corpus.py`,
-> `bin/_sm_build_all.py` and `out/_opt_sweep.log` are all untracked + gitignored, and **no
-> tracked test asserts any Sound Monitor fidelity number** — it is not regression-locked.
-> Anyone re-deriving 99.23% needs those scratch artifacts to exist locally.
+> ✅ **The headline is now reproducible from a fresh clone (R21, 2026-07-30).**
+> `pyscript/soundmonitor_sweep.py` is tracked, builds all 11 songs itself (no dependency on
+> a separately-run script or log file — `SID/Fun_Fun/` is tracked), and
+> `pyscript/test_soundmonitor_sweep.py` asserts the parsing/tally/compare logic (14 tests)
+> plus a corpus-reproduction check that reads whatever `out/soundmonitor/sweep_*.json` is
+> present. Regenerate with `py -3 pyscript/soundmonitor_sweep.py <label>`, diff two runs
+> with `--compare`. The old `bin/_opt_sweep_corpus.py` / `bin/_sm_build_all.py` /
+> `out/_opt_sweep.log` scratch path is superseded, not deleted.
 
 ---
 
@@ -130,6 +143,26 @@ warning (only Dance's 51 combos exceed it). Gated-release rests → sustain rows
 `$90-$9F` tie durations.** They are an editor-only feature
 (`datasource_sequence.cpp`); emitting them desyncs the driver's sequence reader
 into garbage pitches/noise. Stage A therefore re-gates legato notes.
+
+**Part splitting (fixed 2026-07-30) — 2 Stage A files were missing music.**
+Driver 11's sequence pointer table holds only **128** entries; Stage A emitted
+one module per song regardless and the emitter truncated the excess — silently
+until 2026-07-30, dropping orderlist entries along with the sequences.
+`Dance_at_Night_remix` was losing **93** sequences and `Dreamix` **12**.
+Both now split (`plan_entry_windows`): Dance → 2 parts (bars 0-95 / 95-255),
+Dreamix → 2 parts (bars 0-191 / 191-255), zero drops.
+
+Unlike SDI, SM's split is planned on **orderlist entries** rather than a row
+grid: `build_structured` walks the same `m.row_chain()` for every voice, so
+entry *k* is bar *k* in all three and cutting on an entry index is already
+aligned. **Verified**: A/B against the pre-fix builder — **9 byte-identical, 0
+unexpected diffs**, only those 2 songs newly split.
+
+**This does NOT touch the 99.25% corpus headline.** That figure comes from
+`build_soundmonitor_native_song.py` (Stage B native), which windows each song
+into parts — verified 2026-07-30: `Dance_at_Night_remix` builds as **8 parts,
+zero drops**. The native format has no 128-slot Driver 11 pointer table at all.
+Two different builders; do not transfer the caveat between them.
 
 Validation (`bin/soundmonitor_sf2_validate.py`, order-preserving coverage):
 **32/33 voices note-accurate** (13 EXACT; the rest = every original attack present

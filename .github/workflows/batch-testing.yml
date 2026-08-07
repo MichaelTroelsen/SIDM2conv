@@ -4,10 +4,8 @@ on:
   push:
     branches: [ master, main ]
     paths:
-      - 'pyscript/test_batch_pyautogui.py'
       - 'pyscript/sf2_pyautogui_automation.py'
       - 'sidm2/sf2_editor_automation.py'
-      - 'test-batch-pyautogui.bat'
       - '.github/workflows/batch-testing.yml'
   pull_request:
     branches: [ master, main ]
@@ -29,18 +27,8 @@ jobs:
 
       - name: Check batch testing script syntax
         run: |
-          python -m py_compile pyscript/test_batch_pyautogui.py
           python -m py_compile pyscript/sf2_pyautogui_automation.py
           python -m py_compile sidm2/sf2_editor_automation.py
-        shell: pwsh
-
-      - name: Verify batch launcher exists
-        run: |
-          if (!(Test-Path "test-batch-pyautogui.bat")) {
-            echo "::error::Batch launcher not found"
-            exit 1
-          }
-          echo "[OK] Batch launcher exists"
         shell: pwsh
 
   unit-tests:
@@ -68,32 +56,6 @@ jobs:
           python -c "from sidm2.sf2_editor_automation import SF2EditorAutomation; print('[OK] SF2EditorAutomation imports successfully')"
           python -c "from pyscript.sf2_pyautogui_automation import SF2PyAutoGUIAutomation; print('[OK] SF2PyAutoGUIAutomation imports successfully')"
         continue-on-error: true
-        shell: pwsh
-
-      - name: Verify batch testing script structure
-        run: |
-          python -c "
-          import ast
-          import sys
-
-          with open('pyscript/test_batch_pyautogui.py', 'r') as f:
-              tree = ast.parse(f.read())
-
-          # Check for required classes/functions
-          required = ['BatchTestResults', 'find_sf2_files', 'test_single_file', 'run_batch_test', 'main']
-          found = []
-
-          for node in ast.walk(tree):
-              if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
-                  found.append(node.name)
-
-          missing = [r for r in required if r not in found]
-          if missing:
-              print(f'[FAIL] Missing: {missing}')
-              sys.exit(1)
-          else:
-              print('[OK] All required functions/classes found')
-          "
         shell: pwsh
 
   integration-test:
@@ -128,11 +90,6 @@ jobs:
             echo "::warning::No SF2 test files found"
           }
         shell: pwsh
-
-      - name: Dry run validation (help check)
-        run: |
-          python pyscript/test_batch_pyautogui.py --help
-        continue-on-error: true
 
       - name: Summary
         run: |
@@ -177,10 +134,10 @@ jobs:
           fi
 
           # Check CLAUDE.md
-          if ! grep -q "test-batch-pyautogui" CLAUDE.md; then
-            echo "::warning::Batch testing commands not in CLAUDE.md"
+          if ! grep -q "sf2_pyautogui_automation\|sf2_editor_automation" CLAUDE.md; then
+            echo "::warning::PyAutoGUI automation not mentioned in CLAUDE.md"
           else
-            echo "[OK] CLAUDE.md includes batch testing commands"
+            echo "[OK] CLAUDE.md mentions PyAutoGUI automation"
           fi
 
           echo ""

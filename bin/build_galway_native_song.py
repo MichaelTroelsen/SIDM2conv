@@ -37,7 +37,8 @@ FMTAB_ADDR = 0x4040
 def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
                       wave_programs=None, fm_programs=None, multispeed=1,
                       pulse_programs=None, pulse_by_cmd=None,
-                      filter_program=None, filter_instr_set=None):
+                      filter_program=None, filter_instr_set=None,
+                      tempo=None):
     """Build a multi-pattern native-driver edit area from packed voice patterns.
     segs[v] = list of packed sequences for voice v. Returns (gen, edit, mdp, seq0)
     and writes drivers_src/galway/layout.inc.
@@ -54,37 +55,24 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
     laid out sequentially into the 256-row, 2-column WAVE table (SF2II's native
     Wave layout); the trace build uses this to carry the per-frame pitch envelope
     (the real Galway slide/vibrato) in SF2II-native, editor-loaded, editable
-    form. Long notes fit via the settled-tail loop + body trimming."""
-    from sidm2.sf2_header_generator import SF2HeaderGenerator
-    from sidm2 import placeholder_edit_area
-    gen = SF2HeaderGenerator()
-    gen.DRIVER_INIT, gen.DRIVER_PLAY, gen.DRIVER_STOP = B.DRV_INIT, B.DRV_PLAY, B.DRV_STOP
-    # Point the Block-2 playback-state contract at the native Galway driver's
-    # own state bytes so SF2II's start/stop + follow-play work (ST_STATE/ST_TCNT
-    # in galway_driver.asm). Instance copy so we don't mutate the class default.
-    gen.PLAYER_ADDRESSES = dict(gen.PLAYER_ADDRESSES)
-    gen.PLAYER_ADDRESSES["driver_state"] = 0x16D0   # $80 playing / $40 stopped
-    gen.PLAYER_ADDRESSES["tempo_counter"] = 0x16D1  # 0 on each new row (follow)
-    gen.driver_name = "Galway"
-    gen.driver_version_major = 17     # own F12 overlay slot (bin/overlay/*_driver17_00.png)
-    gen.driver_version_minor = 0
-    gen.driver_code_top = 0x1000
-    # voice_streams that segment into len(segs[v]) patterns per voice (content
-    # is overwritten; only the segment COUNT + orderlist structure matters).
-    vstreams = [bytes([0x01]) + bytes([0xA0, 0x01]) * (len(segs[v]) - 1)
-                for v in range(3)]
-    edit, mdp = placeholder_edit_area.build_placeholder_edit_area(
-        B.EDIT_BASE, gen, voice_streams=vstreams)
-    edit = bytearray(edit)
-    seq0 = mdp['seq00_addr']
-    # overwrite each pattern slot with its packed sequence
-    off = 0
-    for v in range(3):
-        for s, pk in enumerate(segs[v]):
-            p = off + s
-            o = (seq0 + p * 0x100) - B.EDIT_BASE
-            edit[o:o + len(pk)] = pk
-        off += len(segs[v])
+    form. Long notes fit via the settled-tail loop + body trimming.
+
+    tempo: frames per row, written to layout.inc. Pass it EXPLICITLY. It used to
+    be read out of `B.TEMPO` -- i.e. callers set a global on the *driver_full*
+    module so that this function, in a *third* module, could read it back. That
+    made tempo travel through a mutable global belonging to neither, and it is
+    exactly what would break if the two near-identical driver_full modules were
+    ever merged (setting `B.TEMPO` on a thin wrapper would not reach the shared
+    implementation's own module scope). `None` still falls back to `B.TEMPO` so
+    older call sites keep working."""
+    # Shared prologue (sidm2.native_build): SF2HeaderGenerator + the Block-2
+    # playback-state contract (so SF2II's start/stop + follow-play reach
+    # galway_driver.asm's ST_STATE/ST_TCNT), the placeholder edit area, and the
+    # packed sequences written into their fixed 256-byte slots.
+    from sidm2.native_build import (make_native_gen, lay_out_sequences,
+                                    program_jump_col)
+    gen = make_native_gen("Galway", B.DRV_INIT, B.DRV_PLAY, B.DRV_STOP)
+    edit, mdp, seq0 = lay_out_sequences(segs, gen, B.EDIT_BASE)
     # column-major instruments + wave table. Wave/pulse/filter live in the
     # full-stride relocated region (see B.relocate_driver_tables) — the
     # placeholder packs them only a few rows apart, which a 256-byte column
@@ -127,7 +115,7 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
             edit[wo + 0 * 256 + start + r] = c0 & 0xFF
             # $7f jump row: col1 = loop target (relative-to-start -> absolute);
             # any other row: col1 = signed semitone offset (used as-is).
-            edit[wo + 1 * 256 + start + r] = ((start + c1) if c0 == 0x7f else c1) & 0xFF
+            edit[wo + 1 * 256 + start + r] = program_jump_col(c0, c1, start)
         edit[io + 5 * 32 + i] = start & 0xFF
         wave_dedup[wkey] = start
         wave_cursor += len(wp)
@@ -148,7 +136,18 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
     DEFAULT_PULSE = [(0x80, 0x00, 1), (0x00, 0x08, 0xFF), (0x7F, 0x00, 2)]
     pcmd = list(pulse_by_cmd) if pulse_by_cmd else [DEFAULT_PULSE]
     pcmd = [p if p else DEFAULT_PULSE for p in pcmd][:64]
-    PULSE_ROW_CAP = 1024                           # generous; the real bound is $CF00
+    # R7: this cap is an arbitrary SAFETY margin, not a hardware limit -- its own
+    # original comment said "generous; the real bound is $CF00". The trim loop
+    # below is LOSSY: it repeatedly shortens the LONGEST pulse program and freezes
+    # it early, which flattens the tail of exactly the long PWM sweeps the 16-bit
+    # pointer model exists to carry. Measured consequence (2026-07-30, distinct
+    # per-frame pulse values, original -> built, 60s): Wizball v2 1092 -> 430,
+    # Street_Hawk 92 -> 25 on all three voices, Match_Day v2 53 -> 10. The real
+    # ceiling is the memory wall, which assemble()'s own edit-area/$D000 guards
+    # already enforce LOUDLY, so a too-high cap fails the build rather than
+    # silently degrading audio -- the safer failure direction.
+    # Override to experiment: GALWAY_PULSE_ROW_CAP=<rows>.
+    PULSE_ROW_CAP = int(os.environ.get("GALWAY_PULSE_ROW_CAP") or 1024)
     distinct = []
     pidx = {}                                      # tuple(prog) -> distinct slot
     for p in pcmd:
@@ -156,12 +155,19 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
         if k not in pidx:
             pidx[k] = len(distinct)
             distinct.append(list(p))
+    _want = sum(len(p) for p in distinct)
     while sum(len(p) for p in distinct) > PULSE_ROW_CAP:
         j = max(range(len(distinct)), key=lambda t: len(distinct[t]))
         if len(distinct[j]) <= 3:
             break
         keep = len(distinct[j]) - 2
         distinct[j] = distinct[j][:keep - 1] + [(0x7F, 0, 0)]   # freeze early
+    _got = sum(len(p) for p in distinct)
+    if _got < _want:
+        # Never truncate PWM silently -- this was invisible before R7.
+        print(f"  PULSE TRIM (lossy): {_want} rows wanted > cap {PULSE_ROW_CAP} "
+              f"-> {_got} kept; the longest sweeps froze early "
+              f"(raise GALWAY_PULSE_ROW_CAP)")
 
     # Filter program (row 0), restarted by each flag-$40 note. `filter_program` (a
     # trace build) carries the tune's REAL per-frame cutoff envelope as SET rows;
@@ -248,7 +254,7 @@ def gen_includes_song(segs, instrs, fm_data=None, filter_lead=True,
             f.write(f"OL{v}   = ${mdp['ol_track1_addr'] + v * mdp['ol_size']:04x}\n")
         f.write(f"SEQPTRLO = ${mdp['seq_ptr_lo_addr']:04x}\n")
         f.write(f"SEQPTRHI = ${mdp['seq_ptr_hi_addr']:04x}\n")
-        f.write(f"TEMPO = {B.TEMPO}\n")
+        f.write(f"TEMPO = {B.TEMPO if tempo is None else tempo}\n")
         f.write(f"INSTR = ${gen.instr_addr:04x}\n")
         f.write(f"WAVE  = ${gen.wave_addr:04x}\n")
         f.write(f"PULSE = ${gen.pulse_addr:04x}\n")
@@ -324,9 +330,14 @@ def main():
     if not instrs:
         instrs = [(0x09, 0x00, 0x41, 0x08)]
 
-    B.TEST_INSTR = instrs
-    B.TEMPO = max(1, song.tempo)
-    B.N_ROWS = 24
+    # R3: tempo/n_rows are passed explicitly below, not written into B's module
+    # globals (see gen_includes_song's `tempo` param and B.headless_audio's
+    # docstring). The old `B.TEST_INSTR = instrs` line that stood here was dead:
+    # TEST_INSTR is only read by build_*_driver_full's OWN gen_includes()
+    # self-test path, which this builder never calls -- it uses the
+    # gen_includes_song above instead.
+    tempo = max(1, song.tempo)
+    n_rows = 24
 
     # Instrument names (id=4 TableText aux) so the editor's F2 list isn't blank.
     def _wftag(wf):
@@ -336,7 +347,7 @@ def main():
         return "inst"
     names = [f"{_wftag(ins[2])} {i + 1:02d}" for i, ins in enumerate(instrs)]
 
-    gen, edit, mdp, seq0 = gen_includes_song(segs, instrs)
+    gen, edit, mdp, seq0 = gen_includes_song(segs, instrs, tempo=tempo)
     prg = B.assemble()
     sf2 = B.wrap(prg, gen, edit, mdp, instr_names=names)
     out = os.path.join(ROOT, "out", out_name)
@@ -353,10 +364,10 @@ def main():
     # headless: the driver should reproduce each voice's note frequencies
     # (each voice starts on its first pattern = segs[v][0]).
     exp = [playing_notes(segs[v][0]) for v in range(3)]
-    rows = B.headless_audio(prg, edit)
+    rows = B.headless_audio(prg, edit, tempo=tempo, n_rows=n_rows)
     bad = 0
     print("  row:  V0      V1      V2     (expected)")
-    for r in range(min(B.N_ROWS, *[len(e) for e in exp])):
+    for r in range(min(n_rows, *[len(e) for e in exp])):
         e = [freq_of(exp[v][r]) for v in range(3)]
         g = rows[r]
         # tolerate vibrato (held notes wobble +-~64 around the base)

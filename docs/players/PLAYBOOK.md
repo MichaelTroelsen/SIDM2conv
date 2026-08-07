@@ -88,7 +88,86 @@ SID file
 | WAVE / FILTER table rows | **256** each | cursor guards raise |
 | Sequences | **120** (128 slots − margin) | `CAP_SEG=120` |
 | Packed sequence events | **960** (SF2II `Unpack` buffer is 1024 with **no bounds check** — overflow = heap corruption) | `_SEQ_EVENT_LIMIT` |
-| Memory wall | tables < **$D000** (~27,650 play-calls ≈ 9.2 min); state region `$16CC-$1702` must stay clear | `assemble()` guards |
+| Memory wall | tables < **$D000**; state region `$16CC-$1702` must stay clear | `assemble()` guards |
+| ~~"~27,650 play-calls ≈ 9.2 min"~~ | **RETRACTED 2026-07-30 (R20)** — not derivable from the format and not in the history. Nothing in a Driver 11 file grows with *time* (fixed-size tables + a fixed 128×256-byte sequence region), so per-module capacity is a function of event **density**. MEASURE it (`bin/mattgray_to_sf2.convert`'s `_part_fits` probe): Driller's whole 665.6 s song is ONE module at 57/128 slots, top `$61CF` | — |
+
+**A capacity check must compare a REQUIRED count against the cap — MEASURED 2026-07-30 (R20a).**
+The Matt Gray probe's sequence check counted non-zero pointer entries across all 128 slots and
+compared that to 128: a value bounded by the cap, tested against the cap, so it **could never
+fail**. Reading the count back out of an emitted file cannot work *in principle* here, because
+`galway_driver11_emitter` **truncates** at the cap — so the file never reports more than the cap
+however much was dropped, and (until this fix) it dropped **silently**, its `break` leaving the
+voice loop so later voices were emitted as a single empty sequence and went **totally silent**.
+Rule: count what the window **needs**, before emitting; make the truncation path announce itself;
+and read a shared cap through its module, never a `from … import` copy that is bound once and
+goes stale.
+
+**Stage A part-splitting is shared: `sidm2/d11_windowing.py`.** A Stage A builder that can exceed
+128 sequences must window the song rather than hand the emitter an oversized list. Two planners,
+picked by how the builder packs — and the choice is about **alignment across voices**, which is
+what keeps a split song in sync:
+
+| builder shape | planner | why it is aligned |
+|---|---|---|
+| per-voice **row grid**, packed with `segment_track` (SDI) | `plan_row_windows` | all three voices share the grid, so one row index cuts them together |
+| one sequence per **bar**, same bar chain walked per voice (Sound Monitor) | `plan_entry_windows` | orderlist entry *k* is bar *k* in every voice |
+
+Do **not** cut a row-grid builder on orderlist indices: `segment_track` cuts where packing limits
+fall, so entry *k* is a different musical position in each voice and the voices desync. Both
+planners grow by doubling then binary-search the edge, count post-**dedup** (dedup is what makes
+most songs fit at all — counting before it over-splits), and emit a single full-span window when
+the song fits, so files that never needed splitting stay **byte-identical**. Convention: a split
+song becomes `NAME_partNN.sf2` and the superseded single file is deleted, so nobody opens the
+truncated one.
+
+⚠️ **`dedup` must match how you will call the emitter.** Passing explicit
+`sequences=`/`orderlists=` uses them as given (plan with `dedup=True`); passing a bare `song`
+lets the emitter's own segmenting branch pack `song.tracks`, and **that branch does not
+deduplicate**. Planning post-dedup for the bare-`song` path underestimates, so the planner says
+"fits" and the emitter truncates anyway — which is precisely how Galway's `Short_Circuit` kept
+losing 29 sequences after the first fix attempt.
+
+**Full audit of every builder sharing the emitter (2026-07-30).** Sweep with
+`pyscript/sf2_truncation_sweep.py <player>`; it rebuilds and reads the emitter's warning, which
+is the only oracle that knows what was *requested*.
+
+| path | built | lost music | now |
+|---|---|---|---|
+| SDI Stage A | 343 | 13 | ✅ split (`plan_row_windows`) |
+| Sound Monitor Stage A | 11 | 2 | ✅ split (`plan_entry_windows`) |
+| **default pipeline** (Galway path) | 40 | 1 | ✅ split; `output_path` stays part 1 so the caller's contract holds |
+| Hubbard Stage A | 89 | 1 | ⚠️ **open** — no common time base, see `HUBBARD.md` |
+| MoN / ROMUZAK / FC / Deenen / Kimmel / Matt Gray | 179/20/5/7/4/6 | 0 | — |
+| Blackbird Stage A | 16 | 0 | not a shipped CLI (test-only) |
+
+Regression gate across all fixes: **378 byte-identical, 0 unexpected diffs, 16 newly split.**
+Laxity → the Laxity driver never touches this table (different packer), so the 286-file Laxity
+corpus is out of scope — check *which emitter a path actually reaches* before sweeping it.
+
+**Never run `pytest` while an SF2II play-test is in flight.** `pyscript/conftest.py` used to kill
+every `SIDFactoryII` process on the machine at session end (two paths, one of them silent);
+`psutil.kill()` is a TerminateProcess and its exit code is what the crash oracle reads as
+CRASHED. It manufactured a *100% crash rate on both arms* of a Driller A/B — the tell was a
+uniform **exit code 15** across unrelated builds. Both paths are now scoped to editors the test
+session itself started, but keep the ordering rule.
+
+**A play-test must prove the module actually PLAYED, not just that the editor lived.** Gate the
+trial on SF2II's own "Playing time" readout advancing (`blackbird_crash_probe.probe_once`, verdict
+`NOPLAY` when it never does) — process aliveness alone reports SURVIVED for an editor sitting
+idle at `0:00` because the `F1` was lost to another window taking foreground. And capture
+evidence with `PrintWindow`, not a screen-region grab: a region grab captures whatever is on top
+of the editor, which silently made every "proof of play" screenshot a picture of VICE.
+
+**Which cap actually binds - MEASURED 2026-07-30 (R18).** Instrumenting the windowing probe on
+FC's `Is_There_a_Difference` (5 parts) showed **command bundles bind every single cut**
+(64/66/67/64 against the 63 cap) while **WAVE rows sat at 40-61 of 256** (16-24%). So
+compressing wave rows (RLE) buys **zero** part reduction on a bundle-bound tune, and MoN's
+Cybernoid 18-to-11 RLE win was real only because *that* tune is wave-row-bound. **Measure which
+cap binds before relieving one.** Corollary: part count lives in the bundle count, which is why
+the lossless path is Stage C structural RE (collapse bundles at source). A lossy dial also
+exists and is quantified - the probe requires the PRE-cluster raw bundle count to fit, so
+raising `CAP_B` permits clustering and cuts parts hard (Blackbird measured 16 parts at CAP_B=64
+vs 5 at 128, for ~5.8pp freq); keep it opt-in per player, never a default.
 
 **Part-count economics** (MoN finding, proven quantitatively): dense tunes blow bundles+instruments+wave-rows **simultaneously**, so relieving one cap alone yields zero part reduction. The trace-driven build unrolls the player's compact looping tables — *no trace-based method compresses this losslessly*. The lossless fix is **Stage C structural RE** of the synth engine (extract its looping arp/wave tables + selectors). Supremacy's engines are already cracked; see `whats-next.md` for the bounded remaining work.
 

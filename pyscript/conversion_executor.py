@@ -439,14 +439,14 @@ class ConversionExecutor(QObject):
 
             # Step 6: WAV Rendering (Original)
             "wav_original": [
-                str(tools_dir / "SID2WAV.EXE"),
-                "-t30", "-16", sid_file, original_wav
+                str(tools_dir / "sidplayfp" / "sidplayfp.exe"),
+                "-t30", "-p16", f"-w{original_wav}", sid_file
             ],
 
             # Step 7: WAV Rendering (Exported)
             "wav_exported": [
-                str(tools_dir / "SID2WAV.EXE"),
-                "-t30", "-16", sid_export, exported_wav
+                str(tools_dir / "sidplayfp" / "sidplayfp.exe"),
+                "-t30", "-p16", f"-w{exported_wav}", sid_export
             ],
 
             # Step 8: Hexdump Generation

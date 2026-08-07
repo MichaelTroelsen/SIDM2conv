@@ -158,9 +158,9 @@ tools\SIDwinder.exe disassemble input.sid > output.asm
 tools\SIDwinder.exe trace input.sid > output.trace
 ```
 
-### SID2WAV (Audio Rendering)
+### sidplayfp (Audio Rendering)
 ```bash
-tools\SID2WAV.EXE -t30 -16 input.sid output.wav
+tools\sidplayfp\sidplayfp.exe -t30 -p16 -w output.wav input.sid
 ```
 
 ### player-id (Player Detection)

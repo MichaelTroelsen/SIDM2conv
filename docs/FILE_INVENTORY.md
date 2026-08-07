@@ -89,7 +89,6 @@ SIDM2/
 ├── stinsen_v330_no_rules.txt (838B)
 ├── stinsen_v330_tr.csv (67.0KB)
 ├── test-all.bat (1.3KB)
-├── test-batch-pyautogui.bat (3.4KB)
 ├── test-converter.bat (594B)
 ├── test-roundtrip.bat (532B)
 ├── test-vsid-integration.bat (432B)

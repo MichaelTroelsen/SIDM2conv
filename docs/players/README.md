@@ -24,6 +24,7 @@ One document per **player** (the C64 music routine a SID file was made with). SI
 | **Jeroen Kimmel** (Hubbard-derived) — Radax, The Judges | [KIMMEL.md](KIMMEL.md) | `bin/` only | **11/12 voice-medians exact 100%** (frame-pitch); arp/PWM/freq-slide/drum ported | `SID/Red_kommel_jeroen/` (4; Radax × 6 subtunes) |
 | **Charles Deenen** (MoN/Deenen replay + dialects) | [DEENEN.md](DEENEN.md) | `bin/` only | 4 clean wins ~100% (10/19 located) + 8 freebies at 100% | `SID/deenen/` (40) |
 | **Future Composer** | [FUTURECOMPOSER.md](FUTURECOMPOSER.md) | `bin/` only | Stage A: notes/order trace-validated | `SID/Fun_Fun/` ($1800 variant, 5/20) |
+| **Matt Gray** — Driller, Last Ninja 2, Tusker, Quedex, … | [MATTGRAY.md](MATTGRAY.md) | `bin/` only (Stage A) | **Driller build only**: sequencer onset **100%** + pitch **100%** on plain instruments (n=1513, 240 s); pitch-modulated notes are Stage B and reported separately, not claimed. Stage A splits into 2 parts (11:05 loop vs the memory wall) | HVSC `MUSICIANS/G/Gray_Matt/` (55; 1 build located) |
 | **NP21-adjacent clusters** (Stinsen/Beast/Angular, DRAX, 2000 A.D., Wizax, Zetrex/V20) | [CLUSTERS.md](CLUSTERS.md) | inside the Laxity path | audio 100%; editor-view varies | `SID/` root + Laxity corpus |
 | **Blackbird** (Linus Åkesson / "lft") | [BLACKBIRD.md](BLACKBIRD.md) | recon only, not wired | locate/table-layout solved (11/59 files exact template match); decompression algorithm identified but not yet correctly decoding | `SID/LFT/` (59; ~27 genuinely Blackbird across tool versions) |
 

@@ -71,8 +71,24 @@ MoN's RLE wave rows (col1 = frame count) cut Cybernoid 18 → 11 parts, proven b
 ### C3. Program dedup across parts
 Windowed parts currently rebuild programs per window; identical programs recur across parts. Cross-part canonicalization won't reduce the *count* of parts (caps are per file) but shrinks each file and stabilizes seams (filter-seam residuals are window-boundary artifacts).
 
-### C4. Filter seams at window boundaries
-Part-boundary filter restarts cost ~25% filter fidelity on windowed tunes (Hawkeye sub0). Carry the filter engine state (envelope phase) across the window cut when emitting part N+1's first program.
+### C4. Filter seams at window boundaries — ✅ **effectively DONE; this item's premise was stale (measured 2026-07-30)**
+This said part-boundary filter restarts cost **~25%** filter fidelity on windowed tunes
+(Hawkeye sub0). **Re-measured: Hawkeye sub0 is 99.92%** (cutoff *and* ctrl/res/routing,
+full 384s, n=19168, 5 of its 8 adaptive parts exactly 100.0%). The "13 parts" in that
+claim was the fixed-30s count, not the adaptive default (8).
+`build_mon_native_song`'s **"WINDOW-START residual filter"** block already solves this —
+it attaches a synthetic filter restart to the window's first note, capturing the residual
+from there to the first real drive. Nobody re-measured after it landed.
+The real remaining residual is **16 frames out of 19168 (0.08%)**: the first 4-8 frames of
+3 parts, where the original has a live filter (e.g. `(1272, 244)`) and the part is still
+`(0, 0)` because the driver has not reached its first filter write. Closing it would mean
+pre-writing `$D415-$D418` in the part's `do_init` (the shape of Blackbird's B7 priming) —
+and since parts are **separate files a user loads individually**, those frames are an
+~80ms settle at a file's opening, not a seam heard mid-song. Not worth a driver change.
+**Still unverified**: the separate "Myth sub0 part1 filter 77%" figure in B5. Checking it
+needs the py65 **emulation** trace (Myth is `play=$0000`), and the two trace shapes differ
+(`(cutoff, ctrl)` tuples vs `per_frame`'s int `fcut`) — an attempt that ignored this
+returned a meaningless 0.0%. Compare like with like.
 
 ---
 
@@ -206,15 +222,22 @@ different rows, so gate (a) cannot apply — multi-tick-with-collision
 candidates came along for free. Detail in `docs/players/BLACKBIRD.md`'s
 E3c(c) section.
 
-**(a) fx-command-slot collision — still open, 40 retriggers on Glyptodont.**
-The remainder are single-tick steps whose only row already carries a genuine
-fx-command change. A row has exactly one command byte, so this needs a
-signalling channel that is **not** that byte. Options not yet evaluated:
-a second sentinel encoded in an unused instrument-column value; widening the
-row format (risks the real SF2II editor's parser — the constraint that shaped
-B25's whole design); or splitting the step so the sentinel gets its own row
-(costs sequence space and changes timing). The larger remaining win and the
-harder design.
+**(a) fx-command-slot collision — ✅ CLOSED by E3f, found stale 2026-07-30.**
+This section previously read "still open, 40 retriggers on Glyptodont", but
+`build_blackbird_native_song.py:3025-3081` (E3f) already allocates a **combo
+fx index** from the spare `[nfx_song+1, RESTART_ARM_FX)` command range for
+every single-tick fx-colliding step — "select this fx program AND arm" in one
+byte, exactly the "second sentinel" option floated below. Corpus-measured:
+every current file fits (worst case 25 colliding programs vs 26 spare codes,
+`Thus_Spoke_the_PC_Speaker`); ADSR re-verified at 100.0 on Glyptodont+Fargo
+2026-07-30. What actually remains, per `docs/CODE_REVIEW_2026-07.md` R5: (1)
+combo-space exhaustion on some future denser file — now surfaced as
+`combo_dropped_programs`/`combo_dropped_events` in `blackbird_sweep.py`'s
+JSON record rather than only printed; a reserved-instrument-column escape
+hatch is designed (not implemented) in that review's Appendix A §D-R5 for
+if/when a real file ever exhausts it; (2) songs using any tempo < 3 real
+frames/row get **no arming at all** for the whole song — previously silent,
+now an explicit diagnostic print the sweep also captures.
 
 Re-measure with **both** `audio-tightness.bat` and the register note-on count
 after any further work here — the register percentage barely moves even when
@@ -280,7 +303,7 @@ something reproducible across files.
 | ~~11~~ | ~~Explain Glyptodont's +2.5-frame offset~~ | E3 | ✅ **DONE 2026-07-24** — artifact, not real |
 | ~~11~~ | ~~Glyptodont's missing onsets~~ | E3b | ✅ **DONE 2026-07-24** — real; B25 covers only 39% of hard restarts |
 | ~~11~~ | ~~E3c(c) multi-tick arming~~ | E3c | ✅ **DONE 2026-07-24** — 52% of missing retriggers recovered, zero regressions |
-| 11 | **E3c(a): the remaining 40 retriggers** (needs a non-command-byte signal) | E3c | M — **highest remaining audible payoff** |
+| ~~11~~ | ~~E3c(a): the remaining 40 retriggers~~ | E3c | ✅ **DONE, found stale 2026-07-30** — E3f's combo fx indices (`build_blackbird_native_song.py:3025-3081`) already close this gate for the whole corpus (every file fits, worst case 25/26 spare codes); ADSR re-verified 100.0 on Glyptodont+Fargo same day. See `docs/CODE_REVIEW_2026-07.md` R5 for the residuals that remain (combo-space exhaustion now surfaced in `blackbird_sweep.py`; the `min_tempo<3` no-arming guard is now a diagnostic print, previously silent) |
 | 11b | Galway/ROMUZAK `fp_dec` `cmp #$90` → SF2II executes filter ADD rows as SET rows | E3d | S per driver + corpus re-verify |
 | 12 | Patch WinVICE for per-voice mute (reuse `siddetector` build) | E1 | M |
 | 13 | SidWiz/Corrscope video in the tool stack (needs E1 + ffmpeg) | E2 | M |

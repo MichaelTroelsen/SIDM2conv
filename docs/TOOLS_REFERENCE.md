@@ -8,7 +8,7 @@ Complete reference for all external tools used in the SIDM2 project.
 |------|---------|--------|
 | siddump.exe | SID register dump (6502 emulation) | ✅ Working |
 | player-id.exe | Player type identification | ✅ Working |
-| SID2WAV.EXE | SID to WAV audio rendering | ✅ Working |
+| sidplayfp.exe | SID to WAV audio rendering (replaced SID2WAV.EXE 2026-08-07) | ✅ Working |
 | SIDwinder.exe | SID processor (disassembly, trace, player, relocate) | ⚠️ Disassembly works, trace needs rebuild |
 | sf2pack | C++ SF2 to SID packer (reference) | ✅ Working |
 | RetroDebugger | Real-time C64/SID debugger | ✅ Integrated via MCP (`mcp__retrodebugger__*`) — see `docs/guides/RETRODEBUGGER_GUIDE.md` |
@@ -85,36 +85,56 @@ Returns player type string (e.g., "Laxity NewPlayer v21", "JCH", "GoatTracker", 
 
 ---
 
-## SID2WAV
+## sidplayfp
 
-**Location**: `tools/SID2WAV.EXE`
+**Location**: `tools/sidplayfp/sidplayfp.exe` (+ bundled MSYS2 mingw64 DLLs in the same folder)
 **Purpose**: Converts SID files to WAV audio for listening and comparison
-**Status**: ✅ Working
+**Status**: ✅ Working — replaced SID2WAV.EXE 2026-08-07 as the secondary/voice-isolating renderer (VSID
+remains the preferred primary renderer; see `sidm2/audio_export_wrapper.py`)
+**Source**: https://github.com/libsidplayfp/sidplayfp — the actively maintained reference SID player, built on:
+- **libsidplayfp** — https://github.com/libsidplayfp/libsidplayfp — the core player engine
+- **libresidfp** — https://github.com/libsidplayfp/libresidfp — the reSID-fp SID emulation core (a fork of reSID
+  with more accurate/faster filter emulation), also used by VICE itself
+
+Installed via MSYS2 (`pacman -S mingw-w64-x86_64-sidplayfp`), which ships prebuilt Windows binaries — no
+build-from-source needed. Replaces SID2WAV.EXE, a 1997 build that hung indefinitely on some newer tunes
+(e.g. lft's Glyptodont — parsed correctly, never rendered a sample); sidplayfp renders duration natively via
+`-t<seconds>` and has never shown that failure mode. It also has a native per-voice mute flag (`-u<num>`),
+so it replaced SID2WAV as the only renderer `pyscript/audio_tightness_tool.py`'s `--voice` isolation can use.
+Does **not** replace VSID for the RSID-with-custom-IRQ cases in `docs/players/PLAYBOOK.md`'s VICE escape hatch
+— those need a full emulated machine driving VIC/CIA interrupts, not a player-engine library.
 
 ### Usage
 
 ```bash
-# Basic conversion (30 seconds, 16-bit)
-tools/SID2WAV.EXE -t30 -16 SID/file.sid output/file.wav
+# Basic conversion (30 seconds, 16-bit, stereo)
+tools/sidplayfp/sidplayfp.exe -t30 -p16 -s -w output/file.wav SID/file.sid
 
-# Specific subtune
-tools/SID2WAV.EXE -t30 -16 -a2 SID/file.sid output/file.wav
+# Specific subtune (1-indexed, same convention as VICE's -tune)
+tools/sidplayfp/sidplayfp.exe -t30 -o2 -w output/file.wav SID/file.sid
 
-# Full quality (44.1kHz, 16-bit)
-tools/SID2WAV.EXE -t60 -16 -o44100 SID/file.sid output/file.wav
+# Mute voices 2+3 (isolate voice 1)
+tools/sidplayfp/sidplayfp.exe -t30 -u2 -u3 -w output/file.wav SID/file.sid
 ```
 
 ### Options
 
 - `-t<n>` - Duration in seconds
-- `-16` - 16-bit output (default: 8-bit)
-- `-a<n>` - Subtune number
-- `-o<freq>` - Sample rate (22050, 44100, 48000)
+- `-p<16|32>` - 16-bit int or 32-bit float output (no 8-bit mode, unlike SID2WAV)
+- `-f<freq>` - Sample rate in Hz (default: 44100)
+- `-o<n>` - Start track/subtune number
+- `-u<n>` - Mute voice `<n>` (repeatable, e.g. `-u2 -u3`)
+- `-s` / `-m` - Force stereo / mono
+- `-w<name>` - Render to WAV (name required — omitting it uses `<datafile>[n].wav`)
+- `--residfp` / `--resid` - Emulation core (default: `--residfp`)
 
 ### Integration
 
-- Used by `complete_pipeline_with_validation.py` (Step 4) to render both original and exported SIDs
-- Enables audio quality comparison during validation
+- `sidm2/sidplayfp_wrapper.py` — `SidplayfpIntegration`, the pipeline wrapper (mirrors `vsid_wrapper.py`'s shape)
+- `sidm2/audio_export_wrapper.py` — `AudioExportIntegration.export_to_wav(force_sidplayfp=True, ...)`
+- `pyscript/audio_tightness_tool.py` — `--renderer sidplayfp` / `--voice` forces it
+- `sidm2/wav_comparison.py`, `bin/sf2_to_wav.py`, `scripts/convert_all.py`, `scripts/test_roundtrip.py`,
+  `pyscript/conversion_executor.py`, `pyscript/complete_pipeline_with_validation.py` — direct subprocess calls
 
 ---
 
@@ -443,8 +463,8 @@ class RetroDebuggerValidator:
 
 ## Tool Comparison Matrix
 
-| Feature | siddump | SIDwinder | SID2WAV | RetroDebugger |
-|---------|---------|-----------|---------|---------------|
+| Feature | siddump | SIDwinder | sidplayfp | RetroDebugger |
+|---------|---------|-----------|-----------|---------------|
 | **Register Capture** | ✅ Frame-by-frame | ⚠️ Needs rebuild | ❌ | ✅ Real-time |
 | **Audio Output** | ❌ | ❌ | ✅ WAV | ✅ Real-time |
 | **Disassembly** | ❌ | ✅ Best | ❌ | ✅ Interactive |
