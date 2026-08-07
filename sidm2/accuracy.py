@@ -354,23 +354,33 @@ class SIDComparator:
                 'waveform': wave_acc
             }
 
-        # Register accuracy
+        # Register accuracy -- per-frame HELD value, not the write sequence.
+        #
+        # This used to pair the i-th write against the i-th write:
+        #     matches = sum(orig_hist[i]['value'] == exp_hist[i]['value'] ...)
+        #     total   = max(len(orig_hist), len(exp_hist))
+        # which is the same positional desync already fixed for the voice
+        # comparison, and it is wrong twice over:
+        #
+        # - One extra or missing write shifts every later pair, so a driver that
+        #   is correct but writes a register once where the original writes it
+        #   twice scores near zero from the first divergence onward.
+        # - It measures the wrong thing. What the SID plays is the value a
+        #   register HOLDS on each frame; how many times that value was written
+        #   is inaudible. Two players holding identical state sound identical
+        #   whether one restates it every frame and the other writes it once.
+        #
+        # Comparing fill-forwarded per-frame state answers the audible question
+        # and is frame-aligned by construction. Registers neither side ever
+        # writes, or that both hold at the same constant for the whole window,
+        # score n/a rather than a vacuous 100 (see _agreement / exercised).
         for reg in range(0x19):
-            orig_hist = self.original.register_history[reg]
-            exp_hist = self.exported.register_history[reg]
-
-            if not orig_hist and not exp_hist:
+            acc = self._agreement(self._timeline(self.original, (reg,), max_frames),
+                                  self._timeline(self.exported, (reg,), max_frames))
+            if acc is None:
                 continue
-
-            matches = sum(
-                1 for i in range(min(len(orig_hist), len(exp_hist)))
-                if orig_hist[i]['value'] == exp_hist[i]['value']
-            )
-            total = max(len(orig_hist), len(exp_hist))
-
-            if total > 0:
-                reg_name = SIDRegisterCapture.REGISTER_NAMES.get(reg, f"Reg_{reg:02X}")
-                results['register_accuracy'][reg_name] = (matches / total * 100)
+            reg_name = SIDRegisterCapture.REGISTER_NAMES.get(reg, f"Reg_{reg:02X}")
+            results['register_accuracy'][reg_name] = acc
 
         # Filter accuracy -- None (not 0.0) when NEITHER side ever touches the
         # filter. The old code left the 0.0 initialiser in place in that case and

@@ -142,6 +142,45 @@ class TestConstantSeriesIsNotEvidence(unittest.TestCase):
         self.assertLess(score, 100.0)
 
 
+class TestRegisterAccuracyComparesHeldValues(unittest.TestCase):
+    """register_accuracy used to pair the i-th WRITE against the i-th write.
+
+    Two bugs in one: a positional desync (one extra write shifts every later
+    pair) and the wrong question -- what the SID plays is the value a register
+    HOLDS each frame, and how many times that value was written is inaudible.
+    """
+
+    def test_redundant_rewrites_score_100(self):
+        """Identical held timelines; `b` merely restates each value. Audibly equal.
+
+        Both sides hold 41, 41, 11, 11. `a` writes twice, `b` four times. Under
+        write-pairing that compared a[1]=0x11 against b[1]=0x41 and scored
+        1 match over a denominator of 4 -- 25% for two identical-sounding
+        drivers. The honest answer is 100%.
+
+        (The value has to MOVE for this to be a test at all: a register both
+        sides hold at one constant is reported n/a by `exercised`, which is a
+        separate and deliberate behaviour covered above.)
+        """
+        a = [{0x04: 0x41}, {}, {0x04: 0x11}, {}]
+        b = [{0x04: 0x41}, {0x04: 0x41}, {0x04: 0x11}, {0x04: 0x11}]
+        acc = compare(a, b)['register_accuracy']['Voice1_Control']
+        self.assertEqual(acc, 100.0)
+
+    def test_a_genuinely_different_held_value_is_still_caught(self):
+        """The fix must not make disagreement invisible."""
+        a = [{0x04: 0x41}, {}, {}, {}]
+        b = [{0x04: 0x41}, {0x04: 0x11}, {}, {}]
+        acc = compare(a, b)['register_accuracy']['Voice1_Control']
+        self.assertIsNotNone(acc)
+        self.assertLess(acc, 100.0)
+
+    def test_a_register_neither_side_uses_is_absent(self):
+        """Not 0%, not 100% -- absent, so it cannot drag the average either way."""
+        frames = [{0x04: 0x41}] * 4
+        self.assertNotIn('Voice3_Control', compare(frames, frames)['register_accuracy'])
+
+
 class TestEmptyComparison(unittest.TestCase):
     def test_zero_frames_reports_no_evidence(self):
         r = compare([], [])

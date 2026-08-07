@@ -448,28 +448,24 @@ class SIDComparator:
         results['exact_frame_matches'] = matching_frames  # Store legacy metric for reference
         results['exact_match_percentage'] = (matching_frames / max_frames * 100) if max_frames > 0 else 0.0
 
-        # Compare per-register accuracy
+        # Compare per-register accuracy -- per-frame HELD value, delegated like
+        # the rest. The old loop paired the i-th write against the i-th write,
+        # so one extra or missing write desynchronised every later pair, and it
+        # measured write sequences rather than the value the register holds --
+        # which is what is actually audible. The write counts are still reported
+        # because they are genuinely useful context; they are just no longer the
+        # thing being scored.
         for reg in range(0x19):
             reg_name = SIDRegisterCapture.REGISTER_NAMES.get(reg, f"Reg_{reg:02X}")
-            orig_history = self.original.register_history[reg]
-            exp_history = self.exported.register_history[reg]
-
-            if not orig_history and not exp_history:
+            accuracy = _agreement(_timeline(self.original, (reg,), max_frames),
+                                  _timeline(self.exported, (reg,), max_frames))
+            if accuracy is None:
                 continue
-
-            matches = 0
-            total = max(len(orig_history), len(exp_history))
-
-            for i in range(min(len(orig_history), len(exp_history))):
-                if orig_history[i]['value'] == exp_history[i]['value']:
-                    matches += 1
-
-            accuracy = (matches / total * 100) if total > 0 else 0.0
             results['register_accuracy'][reg_name] = {
                 'accuracy': accuracy,
-                'orig_writes': len(orig_history),
-                'exp_writes': len(exp_history),
-                'matches': matches
+                'orig_writes': len(self.original.register_history[reg]),
+                'exp_writes': len(self.exported.register_history[reg]),
+                'matches': None
             }
 
         # Compare voice activity -- delegated to sidm2.accuracy's frame-aligned
@@ -816,7 +812,6 @@ def generate_html_report(original: SIDRegisterCapture, exported: SIDRegisterCapt
                 <th>Accuracy</th>
                 <th>Original Writes</th>
                 <th>Exported Writes</th>
-                <th>Matches</th>
             </tr>
 """
 
@@ -824,10 +819,9 @@ def generate_html_report(original: SIDRegisterCapture, exported: SIDRegisterCapt
         html += f"""
             <tr>
                 <td><strong>{reg_name}</strong></td>
-                <td>{reg_data['accuracy']:.2f}%</td>
+                <td>{_fmt_pct(reg_data['accuracy'])}</td>
                 <td>{reg_data['orig_writes']}</td>
                 <td>{reg_data['exp_writes']}</td>
-                <td>{reg_data['matches']}</td>
             </tr>
 """
 
