@@ -30,7 +30,7 @@ from typing import Dict, List, Tuple, Optional
 import subprocess
 import logging
 
-from sidm2.fidelity_common import score_pct
+from sidm2.fidelity_common import exercised, score_pct
 
 logger = logging.getLogger(__name__)
 
@@ -468,7 +468,18 @@ class SIDComparator:
         they are "no test ran", not "agreed". Returning None rather than 0.0 or
         100.0 for an all-empty comparison is what stops a player that never uses
         a register from being scored on it at all -- see `score_pct`.
+
+        `exercised` closes the other half, and dropping it re-opened the bug in a
+        new place: siddump FORCE-DISPLAYS every register on its first row whether
+        or not the playroutine wrote it, so a tune that never touches the filter
+        still hands back a full-length, entirely non-None series of zeroes on
+        both sides. Those frames are not None, so they survive the check above,
+        and comparing them gives a confident 100% that means only "neither side
+        did anything". Measured: Commando (Hubbard, never writes a cutoff)
+        reported `Filter Accuracy: 100.00%` until this line was added.
         """
+        if not exercised(a, b):
+            return None
         ok = tot = 0
         for x, y in zip(a, b):
             if x is None and y is None:

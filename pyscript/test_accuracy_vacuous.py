@@ -108,6 +108,40 @@ class TestHeldRegistersCarryForward(unittest.TestCase):
                          "a redundant re-write must not desynchronise the comparison")
 
 
+class TestConstantSeriesIsNotEvidence(unittest.TestCase):
+    """The vacuous-100 that survived the first fix.
+
+    Dropping frames where BOTH sides are None is not enough on its own: siddump
+    force-displays every register on its FIRST row whether or not the
+    playroutine wrote it, so a tune that never touches the filter still yields a
+    full-length, entirely non-None series of zeroes on both sides. Those frames
+    are not None, so they pass the None check and score a confident 100%.
+
+    Measured before `exercised()` was wired in: validating Commando (Hubbard,
+    who never writes a cutoff) against itself printed
+    `Filter Accuracy: 100.00%`.
+    """
+
+    def test_both_sides_constant_at_the_same_value_is_n_a(self):
+        frames = [{0x15: 0, 0x16: 0, 0x17: 0, 0x18: 0}] + [{0x00: 0x10}] * 6
+        self.assertIsNone(compare(frames, frames)['filter_accuracy'])
+
+    def test_both_sides_constant_at_DIFFERENT_values_still_scores(self):
+        """A permanently wrong register is a real total disagreement, not n/a."""
+        a = [{0x18: 0x3F}] + [{0x00: 0x10}] * 6
+        b = [{0x18: 0x1F}] + [{0x00: 0x10}] * 6
+        score = compare(a, b)['filter_accuracy']
+        self.assertIsNotNone(score, "a constant WRONG value must not vanish into n/a")
+        self.assertEqual(score, 0.0)
+
+    def test_a_moving_register_is_still_scored(self):
+        a = [{0x15: 0x10}, {0x15: 0x20}, {0x15: 0x30}]
+        b = [{0x15: 0x10}, {0x15: 0x20}, {0x15: 0x99}]
+        score = compare(a, b)['filter_accuracy']
+        self.assertIsNotNone(score)
+        self.assertLess(score, 100.0)
+
+
 class TestEmptyComparison(unittest.TestCase):
     def test_zero_frames_reports_no_evidence(self):
         r = compare([], [])

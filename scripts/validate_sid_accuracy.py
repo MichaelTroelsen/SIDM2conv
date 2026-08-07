@@ -48,6 +48,23 @@ try:
 except ImportError:
     COMPARISON_TOOL_AVAILABLE = False
 
+# Scoring is DELEGATED to sidm2.accuracy rather than reimplemented here.
+# This file used to carry its own copy of the voice/filter comparison and the
+# weighted overall score, and the copy had drifted into carrying four defects
+# the library version does not have (see SIDComparator.compare below). The
+# library owns the two primitives -- a fill-forward per-frame timeline and a
+# frame-aligned agreement that returns None for an empty comparison -- and this
+# file owns only the richer report shape its HTML output needs.
+from sidm2.accuracy import SIDComparator as _LibComparator
+
+_timeline = _LibComparator._timeline
+_agreement = _LibComparator._agreement
+
+
+def _fmt_pct(v, prec=2):
+    """Render a possibly-None score. None means 'no evidence', never a number."""
+    return f"{v:.{prec}f}%" if v is not None else "n/a"
+
 
 class SIDRegisterCapture:
     """Captures SID register writes frame by frame"""
@@ -328,7 +345,13 @@ class SIDRegisterCapture:
             resonance = frame.get(0x17, 0)
             mode = frame.get(0x18, 0)
 
-            if cutoff_lo in frame or cutoff_hi in frame or resonance in frame or mode in frame:
+            # Was `if cutoff_lo in frame or ...`, which tested register VALUES
+            # (0-255) for membership among the frame's KEYS (register numbers
+            # 0x00-0x18) -- so a frame was included whenever a cutoff value
+            # happened to collide with a written register index. Scoring no
+            # longer goes through here (compare() delegates to sidm2.accuracy),
+            # but the method is public and was returning near-arbitrary rows.
+            if any(r in frame for r in (0x15, 0x16, 0x17, 0x18)):
                 filters.append((cutoff, resonance, mode))
 
         return filters
@@ -449,33 +472,34 @@ class SIDComparator:
                 'matches': matches
             }
 
-        # Compare voice activity
+        # Compare voice activity -- delegated to sidm2.accuracy's frame-aligned
+        # primitives. The old code here paired get_frequency_table()'s output by
+        # list POSITION, and that list only held frames where freq_lo and freq_hi
+        # were co-written, so a lo-only write (any fine vibrato or slide) was
+        # dropped and one stray dual-write desynchronised everything after it.
         for voice in range(1, 4):
-            orig_freq = self.original.get_frequency_table(voice)
-            exp_freq = self.exported.get_frequency_table(voice)
-
-            orig_wave = self.original.get_waveform_sequence(voice)
-            exp_wave = self.exported.get_waveform_sequence(voice)
-
-            freq_matches = sum(1 for o, e in zip(orig_freq, exp_freq) if o == e)
-            wave_matches = sum(1 for o, e in zip(orig_wave, exp_wave) if o == e)
-
-            freq_accuracy = (freq_matches / len(orig_freq) * 100) if orig_freq else 0.0
-            wave_accuracy = (wave_matches / len(orig_wave) * 100) if orig_wave else 0.0
+            base = (voice - 1) * 7
+            freq_accuracy = _agreement(
+                _timeline(self.original, (0x00 + base, 0x01 + base), max_frames),
+                _timeline(self.exported, (0x00 + base, 0x01 + base), max_frames))
+            wave_accuracy = _agreement(
+                _timeline(self.original, (0x04 + base,), max_frames),
+                _timeline(self.exported, (0x04 + base,), max_frames))
 
             results['voice_accuracy'][f'Voice{voice}'] = {
                 'frequency_accuracy': freq_accuracy,
                 'waveform_accuracy': wave_accuracy,
-                'freq_matches': f"{freq_matches}/{len(orig_freq)}",
-                'wave_matches': f"{wave_matches}/{len(orig_wave)}"
+                'freq_matches': _fmt_pct(freq_accuracy),
+                'wave_matches': _fmt_pct(wave_accuracy)
             }
 
-        # Compare filter settings
-        orig_filter = self.original.get_filter_sequence()
-        exp_filter = self.exported.get_filter_sequence()
-
-        filter_matches = sum(1 for o, e in zip(orig_filter, exp_filter) if o == e)
-        results['filter_accuracy'] = (filter_matches / len(orig_filter) * 100) if orig_filter else 0.0
+        # Compare filter settings. None (not 0.0) when neither side ever touches
+        # the filter: the old line below kept its 0.0 and _calculate_overall_
+        # accuracy then weighted it 10%, docking a file ten points for correctly
+        # not filtering. Hubbard never writes the cutoff at all.
+        results['filter_accuracy'] = _agreement(
+            _timeline(self.original, (0x15, 0x16, 0x17, 0x18), max_frames),
+            _timeline(self.exported, (0x15, 0x16, 0x17, 0x18), max_frames))
 
         # Calculate overall accuracy
         self.accuracy_score = self._calculate_overall_accuracy(results)
@@ -545,35 +569,49 @@ class SIDComparator:
 
         return diffs
 
-    def _calculate_overall_accuracy(self, results: Dict) -> float:
-        """Calculate overall accuracy score (0-100%)"""
-        scores = []
+    def _calculate_overall_accuracy(self, results: Dict) -> Optional[float]:
+        """Weighted mean over the dimensions that HAVE evidence, renormalised.
 
-        # Frame accuracy (40% weight)
-        scores.append(results['frame_accuracy'] * 0.4)
+        Two bugs, both of which deflated the headline number:
 
-        # Voice accuracy (30% weight)
-        voice_scores = []
-        for voice_data in results['voice_accuracy'].values():
-            voice_score = (voice_data['frequency_accuracy'] + voice_data['waveform_accuracy']) / 2
-            voice_scores.append(voice_score)
-        if voice_scores:
-            scores.append(sum(voice_scores) / len(voice_scores) * 0.3)
+        - the filter term was added unconditionally, so a player that never
+          touches the filter contributed `0.0 * 0.1` and lost ten points for
+          being faithful;
+        - a missing voice or register term was simply omitted from `scores`
+          without renormalising, so the total was a fraction of a weight sum
+          below 1.0 and silently read low.
 
-        # Register accuracy (20% weight)
-        reg_scores = [data['accuracy'] for data in results['register_accuracy'].values()]
-        if reg_scores:
-            scores.append(sum(reg_scores) / len(reg_scores) * 0.2)
+        Dropping a dimension with no evidence and dividing by the weights that
+        remain is the only reading under which two identical captures score
+        100%. Returns None if nothing at all was measured.
+        """
+        voice_scores = [s for v in results['voice_accuracy'].values()
+                        for s in (v['frequency_accuracy'], v['waveform_accuracy'])
+                        if s is not None]
+        reg_scores = [d['accuracy'] for d in results['register_accuracy'].values()
+                      if d['accuracy'] is not None]
 
-        # Filter accuracy (10% weight)
-        scores.append(results['filter_accuracy'] * 0.1)
-
-        return sum(scores)
+        weighted = [
+            (results['frame_accuracy'], 0.4),
+            (sum(voice_scores) / len(voice_scores) if voice_scores else None, 0.3),
+            (sum(reg_scores) / len(reg_scores) if reg_scores else None, 0.2),
+            (results['filter_accuracy'], 0.1),
+        ]
+        live = [(v, w) for v, w in weighted if v is not None]
+        if not live:
+            return None
+        return sum(v * w for v, w in live) / sum(w for _, w in live)
 
 
 def generate_html_report(original: SIDRegisterCapture, exported: SIDRegisterCapture,
                          comparison: Dict, output_path: str):
     """Generate comprehensive HTML report"""
+
+    # A score is None when that dimension had no evidence. Every render below
+    # has to survive it -- `None >= 95` is a TypeError, not a False.
+    _overall = comparison['overall_accuracy']
+    _frame = comparison['frame_accuracy']
+    _filter = comparison['filter_accuracy']
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -708,13 +746,13 @@ def generate_html_report(original: SIDRegisterCapture, exported: SIDRegisterCapt
         </div>
 
         <h2>Overall Accuracy Score</h2>
-        <div class="score {'excellent' if comparison['overall_accuracy'] >= 95 else 'good' if comparison['overall_accuracy'] >= 80 else 'poor'}">
-            {comparison['overall_accuracy']:.2f}%
+        <div class="score {'poor' if _overall is None else 'excellent' if _overall >= 95 else 'good' if _overall >= 80 else 'poor'}">
+            {_fmt_pct(_overall)}
         </div>
 
         <div class="progress-bar">
-            <div class="progress-fill" style="width: {comparison['overall_accuracy']:.1f}%">
-                {comparison['overall_accuracy']:.1f}%
+            <div class="progress-fill" style="width: {(_overall or 0):.1f}%">
+                {_fmt_pct(_overall, 1)}
             </div>
         </div>
 
@@ -722,7 +760,7 @@ def generate_html_report(original: SIDRegisterCapture, exported: SIDRegisterCapt
         <div class="stats-grid">
             <div class="stat-card">
                 <h3>Per-Frame Accuracy</h3>
-                <div class="value">{comparison['frame_accuracy']:.1f}%</div>
+                <div class="value">{_fmt_pct(_frame, 1)}</div>
             </div>
             <div class="stat-card">
                 <h3>Exact Frame Matches</h3>
@@ -730,7 +768,7 @@ def generate_html_report(original: SIDRegisterCapture, exported: SIDRegisterCapt
             </div>
             <div class="stat-card">
                 <h3>Filter Accuracy</h3>
-                <div class="value">{comparison['filter_accuracy']:.1f}%</div>
+                <div class="value">{_fmt_pct(_filter, 1)}</div>
             </div>
             <div class="stat-card">
                 <h3>Total Frames</h3>
@@ -761,8 +799,8 @@ def generate_html_report(original: SIDRegisterCapture, exported: SIDRegisterCapt
         html += f"""
             <tr>
                 <td><strong>{voice_name}</strong></td>
-                <td>{voice_data['frequency_accuracy']:.2f}%</td>
-                <td>{voice_data['waveform_accuracy']:.2f}%</td>
+                <td>{_fmt_pct(voice_data['frequency_accuracy'])}</td>
+                <td>{_fmt_pct(voice_data['waveform_accuracy'])}</td>
                 <td>{voice_data['freq_matches']}</td>
                 <td>{voice_data['wave_matches']}</td>
             </tr>
@@ -819,26 +857,28 @@ def generate_html_report(original: SIDRegisterCapture, exported: SIDRegisterCapt
 """
 
     # Generate recommendations based on accuracy
-    if comparison['overall_accuracy'] >= 99:
+    if _overall is None:
+        html += "            <li>[!] Nothing was measured -- no evidence in the traced window.</li>\n"
+    elif _overall >= 99:
         html += "            <li>[OK] <strong>Excellent!</strong> Conversion is nearly perfect. Minor tweaks may achieve 100% accuracy.</li>\n"
-    elif comparison['overall_accuracy'] >= 95:
+    elif _overall >= 95:
         html += "            <li>[!] Very good accuracy. Review the differences list to identify remaining issues.</li>\n"
-    elif comparison['overall_accuracy'] >= 80:
+    elif _overall >= 80:
         html += "            <li>[!] Good accuracy but significant differences remain. Focus on register write sequences.</li>\n"
     else:
         html += "            <li>[X] Low accuracy. Major issues in conversion pipeline. Review SF2 table extraction and packing logic.</li>\n"
 
     # Specific recommendations
-    if comparison['frame_accuracy'] < 90:
+    if _frame is not None and _frame < 90:
         html += "            <li>[!] Frame-level accuracy is low. Check timing and frame synchronization.</li>\n"
 
-    if comparison['filter_accuracy'] < 90:
+    if _filter is not None and _filter < 90:
         html += "            <li>[!] Filter accuracy is low. Review filter table extraction and cutoff/resonance values.</li>\n"
 
     for voice_name, voice_data in comparison['voice_accuracy'].items():
-        if voice_data['frequency_accuracy'] < 90:
+        if voice_data['frequency_accuracy'] is not None and voice_data['frequency_accuracy'] < 90:
             html += f"            <li>[!] {voice_name} frequency accuracy is low. Check note frequency calculation.</li>\n"
-        if voice_data['waveform_accuracy'] < 90:
+        if voice_data['waveform_accuracy'] is not None and voice_data['waveform_accuracy'] < 90:
             html += f"            <li>[!] {voice_name} waveform accuracy is low. Check wave table and control register handling.</li>\n"
 
     html += """
@@ -935,16 +975,16 @@ def main():
         print("\n" + "=" * 70)
         print("VALIDATION RESULTS")
         print("=" * 70)
-        print(f"\nOverall Accuracy: {comparison_results['overall_accuracy']:.2f}%")
+        print(f"\nOverall Accuracy: {_fmt_pct(comparison_results['overall_accuracy'])}")
         print(f"\nFrame Metrics:")
-        print(f"  Per-Frame Accuracy:    {comparison_results['frame_accuracy']:.2f}%")
+        print(f"  Per-Frame Accuracy:    {_fmt_pct(comparison_results['frame_accuracy'])}")
         print(f"  Exact Frame Matches:   {comparison_results.get('exact_frame_matches', 0)}/{len(original_capture.frames)} ({comparison_results.get('exact_match_percentage', 0.0):.2f}%)")
-        print(f"  Filter Accuracy:       {comparison_results['filter_accuracy']:.2f}%")
+        print(f"  Filter Accuracy:       {_fmt_pct(comparison_results['filter_accuracy'])}")
         print(f"\nVoice Accuracy:")
         for voice_name, voice_data in comparison_results['voice_accuracy'].items():
             print(f"  {voice_name}:")
-            print(f"    Frequency: {voice_data['frequency_accuracy']:.2f}%")
-            print(f"    Waveform:  {voice_data['waveform_accuracy']:.2f}%")
+            print(f"    Frequency: {_fmt_pct(voice_data['frequency_accuracy'])}")
+            print(f"    Waveform:  {_fmt_pct(voice_data['waveform_accuracy'])}")
 
         print(f"\nDifferences found: {len(comparison_results['differences'])}")
 
@@ -994,10 +1034,14 @@ def main():
         print("\n" + "=" * 70)
 
         # Return exit code based on accuracy
-        if comparison_results['overall_accuracy'] >= 99:
+        _ov = comparison_results['overall_accuracy']
+        if _ov is None:
+            print("[X] NEEDS WORK: nothing measured")
+            return 1
+        elif _ov >= 99:
             print("[OK] SUCCESS: 99%+ accuracy achieved!")
             return 0
-        elif comparison_results['overall_accuracy'] >= 95:
+        elif _ov >= 95:
             print("[!] GOOD: 95%+ accuracy achieved")
             return 0
         else:
