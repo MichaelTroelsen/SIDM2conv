@@ -967,17 +967,23 @@ ACCURACY VALIDATION RESULTS
                 accuracy_section += "\n"
 
             # Detailed register metrics (if available)
+            # sidm2.accuracy returns None for a dimension with no evidence (a
+            # player that never touches the filter, say) rather than a fake 0.0
+            # or 100.0, so every render of one has to be None-safe.
+            def _pct(v):
+                return f"{v:.2f}%" if v is not None else "n/a"
+
             if 'frame_accuracy' in accuracy_metrics:
-                accuracy_section += f"Frame-by-Frame Accuracy: {accuracy_metrics['frame_accuracy']:.2f}%\n"
+                accuracy_section += f"Frame-by-Frame Accuracy: {_pct(accuracy_metrics['frame_accuracy'])}\n"
             if 'filter_accuracy' in accuracy_metrics:
-                accuracy_section += f"Filter Accuracy: {accuracy_metrics['filter_accuracy']:.2f}%\n"
+                accuracy_section += f"Filter Accuracy: {_pct(accuracy_metrics['filter_accuracy'])}\n"
 
             if 'voice_accuracy' in accuracy_metrics:
                 accuracy_section += "\nVoice Accuracy:\n"
             for voice_name, voice_data in accuracy_metrics.get('voice_accuracy', {}).items():
                 accuracy_section += f"  {voice_name.capitalize()}:\n"
-                accuracy_section += f"    Frequency: {voice_data['frequency']:.2f}%\n"
-                accuracy_section += f"    Waveform:  {voice_data['waveform']:.2f}%\n"
+                accuracy_section += f"    Frequency: {_pct(voice_data['frequency'])}\n"
+                accuracy_section += f"    Waveform:  {_pct(voice_data['waveform'])}\n"
 
             accuracy_section += f"\nRegister-Level Accuracy (Top 10):\n"
             # Sort registers by accuracy

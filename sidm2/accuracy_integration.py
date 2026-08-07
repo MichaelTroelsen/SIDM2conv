@@ -148,8 +148,10 @@ def _generate_accuracy_report(
     total_frames = accuracy_result.get('total_frames', 0)
     matching_frames = accuracy_result.get('matching_frames', 0)
 
-    lines.append(f"Overall Accuracy:    {overall:.2f}%")
-    lines.append(f"Frame Accuracy:      {frame_acc:.2f}%")
+    # None = the dimension had no evidence (sidm2.accuracy returns None rather
+    # than fabricating 0.0 or 100.0 for an empty comparison).
+    lines.append(f"Overall Accuracy:    {f'{overall:.2f}%' if overall is not None else 'n/a'}")
+    lines.append(f"Frame Accuracy:      {f'{frame_acc:.2f}%' if frame_acc is not None else 'n/a'}")
     lines.append(f"Total Frames:        {total_frames}")
     lines.append(f"Matching Frames:     {matching_frames}")
     lines.append(f"Mismatched Frames:   {total_frames - matching_frames}")

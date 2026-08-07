@@ -30,6 +30,8 @@ from typing import Dict, List, Tuple, Optional
 import subprocess
 import logging
 
+from sidm2.fidelity_common import score_pct
+
 logger = logging.getLogger(__name__)
 
 
@@ -315,12 +317,15 @@ class SIDComparator:
         Returns:
             Dict with accuracy percentages and detailed results
         """
+        # None, not 0.0: with nothing compared yet these are "no evidence", and
+        # the zero-frame early return below hands them straight back. Scoring an
+        # empty comparison as 0% is the same class of lie as scoring it 100%.
         results = {
-            'frame_accuracy': 0.0,
+            'frame_accuracy': None,
             'voice_accuracy': {},
             'register_accuracy': {},
-            'filter_accuracy': 0.0,
-            'overall_accuracy': 0.0
+            'filter_accuracy': None,
+            'overall_accuracy': None
         }
 
         # Frame-by-frame comparison
@@ -334,18 +339,15 @@ class SIDComparator:
         )
         results['frame_accuracy'] = (matching_frames / max_frames * 100)
 
-        # Voice accuracy
+        # Voice accuracy -- frame-aligned, not "frames where both bytes happened
+        # to be co-written" (see _timeline).
         for voice in range(1, 4):
-            orig_freq = self._get_frequencies(self.original, voice)
-            exp_freq = self._get_frequencies(self.exported, voice)
-            orig_wave = self._get_waveforms(self.original, voice)
-            exp_wave = self._get_waveforms(self.exported, voice)
-
-            freq_matches = sum(1 for o, e in zip(orig_freq, exp_freq) if o == e)
-            wave_matches = sum(1 for o, e in zip(orig_wave, exp_wave) if o == e)
-
-            freq_acc = (freq_matches / len(orig_freq) * 100) if orig_freq else 0
-            wave_acc = (wave_matches / len(orig_wave) * 100) if orig_wave else 0
+            freq_acc = self._agreement(
+                self._get_frequencies(self.original, voice, max_frames),
+                self._get_frequencies(self.exported, voice, max_frames))
+            wave_acc = self._agreement(
+                self._get_waveforms(self.original, voice, max_frames),
+                self._get_waveforms(self.exported, voice, max_frames))
 
             results['voice_accuracy'][f'voice{voice}'] = {
                 'frequency': freq_acc,
@@ -370,34 +372,35 @@ class SIDComparator:
                 reg_name = SIDRegisterCapture.REGISTER_NAMES.get(reg, f"Reg_{reg:02X}")
                 results['register_accuracy'][reg_name] = (matches / total * 100)
 
-        # Filter accuracy
-        orig_filter = self._get_filter_values(self.original)
-        exp_filter = self._get_filter_values(self.exported)
-        filter_matches = sum(1 for o, e in zip(orig_filter, exp_filter) if o == e)
-        if orig_filter:
-            results['filter_accuracy'] = (filter_matches / len(orig_filter) * 100)
+        # Filter accuracy -- None (not 0.0) when NEITHER side ever touches the
+        # filter. The old code left the 0.0 initialiser in place in that case and
+        # then weighted it 10% into overall_accuracy, so a file was docked ten
+        # points for *correctly* not using a filter. Rob Hubbard's players never
+        # write the cutoff at all (docs/players/HUBBARD.md), so that entire
+        # family was capped at 90% for being faithful. Note HUBBARD.md also
+        # records the mirror-image bug -- a validator scoring 0 == 0 as "filter
+        # 100%" -- so both directions of the same vacuous comparison have now
+        # been live in this repo simultaneously.
+        results['filter_accuracy'] = self._agreement(
+            self._get_filter_values(self.original, max_frames),
+            self._get_filter_values(self.exported, max_frames))
 
-        # Overall accuracy (weighted)
-        frame_weight = 0.4
-        voice_weight = 0.3
-        register_weight = 0.2
-        filter_weight = 0.1
-
-        voice_scores = [
-            (v['frequency'] + v['waveform']) / 2
-            for v in results['voice_accuracy'].values()
-        ]
-        avg_voice = sum(voice_scores) / len(voice_scores) if voice_scores else 0
+        # Overall accuracy: weighted mean over the dimensions that HAVE evidence,
+        # renormalised by their own weights. An unmeasured dimension is dropped
+        # rather than folded in as a zero -- that is the whole point of _agreement
+        # returning None. Frame accuracy is always present (max_frames > 0 here).
+        voice_scores = [s for v in results['voice_accuracy'].values()
+                        for s in (v['frequency'], v['waveform']) if s is not None]
+        avg_voice = sum(voice_scores) / len(voice_scores) if voice_scores else None
 
         reg_scores = list(results['register_accuracy'].values())
-        avg_register = sum(reg_scores) / len(reg_scores) if reg_scores else 0
+        avg_register = sum(reg_scores) / len(reg_scores) if reg_scores else None
 
+        weighted = [(results['frame_accuracy'], 0.4), (avg_voice, 0.3),
+                    (avg_register, 0.2), (results['filter_accuracy'], 0.1)]
+        live = [(v, w) for v, w in weighted if v is not None]
         results['overall_accuracy'] = (
-            results['frame_accuracy'] * frame_weight +
-            avg_voice * voice_weight +
-            avg_register * register_weight +
-            results['filter_accuracy'] * filter_weight
-        )
+            sum(v * w for v, w in live) / sum(w for _, w in live) if live else None)
 
         return results
 
@@ -423,36 +426,80 @@ class SIDComparator:
         # Frames match if all written values match (sparse pattern doesn't matter)
         return all(frame1[reg] == frame2[reg] for reg in common_regs)
 
-    def _get_frequencies(self, capture: SIDRegisterCapture, voice: int) -> List[int]:
-        """Extract frequency values for a voice."""
-        freq_lo = 0x00 + (voice - 1) * 7
-        freq_hi = 0x01 + (voice - 1) * 7
+    @staticmethod
+    def _timeline(capture: SIDRegisterCapture, regs, nframes: int) -> List[Optional[Tuple]]:
+        """Per-frame fill-forwarded tuple of `regs`, or None before any write.
 
-        frequencies = []
-        for frame in capture.frames:
-            if freq_lo in frame and freq_hi in frame:
-                freq = frame[freq_lo] | (frame[freq_hi] << 8)
-                frequencies.append(freq)
-        return frequencies
+        siddump prints a register only on the frame it is WRITTEN: absence means
+        *held*, not zero. Two bugs followed from ignoring that, and this one
+        function replaces both:
 
-    def _get_waveforms(self, capture: SIDRegisterCapture, voice: int) -> List[int]:
-        """Extract waveform control bytes for a voice."""
-        control_reg = 0x04 + (voice - 1) * 7
-        return [frame[control_reg] for frame in capture.frames if control_reg in frame]
+        - `_get_frequencies` used to append a value only on frames where freq_lo
+          and freq_hi were *both* present, then `compare()` paired the two sides
+          with `zip`. The lists were therefore not frame-aligned -- they were
+          "frames where both bytes happened to be co-written". A player writing
+          lo-only (any fine vibrato or slide) contributed nothing, and a single
+          extra or missing dual-write near the start silently misaligned every
+          later comparison. That fed 30% of `overall_accuracy`.
+        - `_get_filter_values` used `frame.get(0x15, 0)`, which defaulted a HELD
+          register to 0, so on a frame writing only $D415 the cutoff-hi read 0
+          and the tuple was a value that never existed on the hardware.
 
-    def _get_filter_values(self, capture: SIDRegisterCapture) -> List[Tuple]:
-        """Extract filter cutoff/resonance/mode tuples."""
-        filters = []
-        for frame in capture.frames:
-            cutoff_lo = frame.get(0x15, 0)
-            cutoff_hi = frame.get(0x16, 0)
-            cutoff = cutoff_lo | ((cutoff_hi & 0x07) << 8)
-            resonance = frame.get(0x17, 0)
-            mode = frame.get(0x18, 0)
+        None (rather than 0) until a register is first written, so a caller can
+        drop frames where NEITHER side has evidence instead of scoring 0 == 0 --
+        the vacuous comparison `score_pct` exists to make impossible.
+        """
+        cur = {r: None for r in regs}
+        out = []
+        for i in range(nframes):
+            frame = capture.frames[i]
+            for r in regs:
+                if r in frame:
+                    cur[r] = frame[r]
+            out.append(None if all(v is None for v in cur.values())
+                       else tuple((cur[r] or 0) for r in regs))
+        return out
 
-            if 0x15 in frame or 0x16 in frame or 0x17 in frame or 0x18 in frame:
-                filters.append((cutoff, resonance, mode))
-        return filters
+    @staticmethod
+    def _agreement(a: List[Optional[Tuple]], b: List[Optional[Tuple]]) -> Optional[float]:
+        """Frame-aligned agreement of two timelines, or None if neither ever wrote.
+
+        Frames where BOTH sides are still None are dropped from the denominator:
+        they are "no test ran", not "agreed". Returning None rather than 0.0 or
+        100.0 for an all-empty comparison is what stops a player that never uses
+        a register from being scored on it at all -- see `score_pct`.
+        """
+        ok = tot = 0
+        for x, y in zip(a, b):
+            if x is None and y is None:
+                continue
+            tot += 1
+            if x == y:
+                ok += 1
+        return score_pct(ok, tot)
+
+    def _get_frequencies(self, capture: SIDRegisterCapture, voice: int,
+                         nframes: int) -> List[Optional[Tuple]]:
+        """Per-frame (freq_lo, freq_hi) for a voice, fill-forwarded."""
+        base = (voice - 1) * 7
+        return self._timeline(capture, (0x00 + base, 0x01 + base), nframes)
+
+    def _get_waveforms(self, capture: SIDRegisterCapture, voice: int,
+                       nframes: int) -> List[Optional[Tuple]]:
+        """Per-frame control byte for a voice, fill-forwarded."""
+        return self._timeline(capture, (0x04 + (voice - 1) * 7,), nframes)
+
+    def _get_filter_values(self, capture: SIDRegisterCapture,
+                           nframes: int) -> List[Optional[Tuple]]:
+        """Per-frame (cutoff_lo, cutoff_hi, resonance, mode), fill-forwarded.
+
+        Held registers carry forward instead of defaulting to 0 -- the old
+        `frame.get(0x15, 0)` fabricated a cutoff of 0 on any frame that wrote
+        only $D416, a value the hardware never held. Raw bytes are compared
+        rather than the packed 11-bit cutoff so a $D416-only write is still
+        visible as a change.
+        """
+        return self._timeline(capture, (0x15, 0x16, 0x17, 0x18), nframes)
 
 
 def calculate_accuracy_from_dumps(original_dump: str, exported_dump: str) -> Optional[Dict]:
