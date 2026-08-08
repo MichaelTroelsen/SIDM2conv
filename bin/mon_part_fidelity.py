@@ -219,6 +219,41 @@ for vi in range(3):
             print(f"        {k:4} shape   : moves {am}/{bm} = "
                   f"{F.fmt_pct(mp)}%   travel {at}/{bt} = {F.fmt_pct(tp)}%"
                   f"   (phase-invariant; size of the motion, not its match)")
+            # BEST-LAG READOUT -- informational only. Never written into
+            # ok/tot/pct, never changes the strict number above. vdly aligns
+            # each voice by FREQ agreement only (see the vdly comment above);
+            # a voice whose pulse writes trail its freq writes by more than a
+            # couple of frames stays misaligned in THIS column alone, and the
+            # +-1 skew classification cannot reach a multi-frame offset --
+            # exactly the gap this readout is for. Search is +-8 because
+            # that is wider than vdly's own +-2 refinement search. This
+            # answers "is the pulse engine dead, or just offset" for a
+            # human reading the report; it is NOT a proposal to realign
+            # pulse independently of freq in the strict scoring above --
+            # that is a separate, unmade decision (it would move published
+            # freq/wf/pul numbers for every file in the corpus, not just
+            # this one). See docs/players/PATTERNS.md D9.
+            def _lag_pct(extra):
+                o1 = o0 + extra
+                s = t = 0
+                for i in range(n):
+                    if not (0 <= o1 + i < len(orig)):
+                        continue
+                    a, b = _val(orig[o1 + i], k), _val(prb[i], k)
+                    if a is None and b is None:
+                        continue
+                    t += 1
+                    s += (a == b)
+                return F.score_pct(s, t)
+            lags = {e: _lag_pct(e) for e in range(-8, 9) if e}
+            best_extra = max(lags, key=lambda e: (lags[e] is not None, lags[e] or -1))
+            best_pct = lags[best_extra]
+            strict = pct(k)
+            if best_pct is not None and (strict is None or best_pct > strict + 5):
+                print(f"        {k:4} best lag: {best_extra:+d} frames beyond vdly -> "
+                      f"{F.fmt_pct(best_pct)}%  (diagnostic only -- NOT the strict "
+                      f"number above; aligning pulse independently of freq is a "
+                      f"separate, unmade decision)")
 # GLOBAL FILTER REGISTERS. Frame 0 is skipped: siddump force-displays the whole
 # filter column on its first row regardless of what the playroutine wrote, so
 # frame 0 reports pre-init bus state (Hawkeye reads $D418 = $FF there, then its
