@@ -289,6 +289,12 @@ def gen_includes_song(segs, instrs, wave_programs, pulse_programs,
         # Hubbard v2 IRREGULAR tempo: per-frame stretch bitmap (generalized
         # swallow) — used when the real schedule isn't a single periodic skip
         f.write(f"TEMPO_SCHED = {getattr(B, 'TEMPO_SCHED', 0)}\n")
+        # $D418 master volume (low nibble), OR-ed with the filter passband on
+        # every music frame. Defaults to $0f, which the driver hardcoded until it
+        # turned out not every tune plays at full volume: Supremacy's three
+        # subtunes run at 6, 8 and 15, so two of them were rebuilt a third louder
+        # than the original and scored volmode 0%.
+        f.write(f"MAIN_VOL = {getattr(B, 'MAIN_VOL', 0x0f)}\n")
         f.write(f"INSTR = ${gen.instr_addr:04x}\n")
         f.write(f"WAVE  = ${gen.wave_addr:04x}\n")
         f.write(f"PULSE = ${gen.pulse_addr:04x}\n")

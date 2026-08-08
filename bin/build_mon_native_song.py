@@ -411,6 +411,29 @@ def filter_trace(sid, sub, secs):
     return siddump_filter_trace(sid, [f'-a{sub}', f'-t{secs}'])
 
 
+def master_volume(sid, sub, secs=60):
+    """The song's $D418 master volume (low nibble) -- its MODAL value over `secs`.
+
+    Modal, not first-frame: siddump force-displays $D418 on row 0 with the
+    pre-init bus state, and on all three Supremacy subtunes that row reads 3
+    while every one of the following 2999 frames reads the real value. Taking
+    frame 0 would ship the artefact.
+
+    A constant is the honest model for this corpus rather than a laziness:
+    measured over 60s, every MoN target holds ONE volume for the whole song
+    (Hawkeye/Cybernoid/Cybernoid_II 15, Supremacy sub0 6, sub1 8, sub2 15) and
+    the only other value any of them shows is that frame-0 artefact. A tune that
+    genuinely rides the volume would need a volume track, and this returns the
+    modal value rather than pretending otherwise -- so if one turns up, it shows
+    as a volmode score below 100 rather than as silently plausible output.
+    """
+    from collections import Counter
+    from sidm2.fidelity_common import siddump_frames_full
+    frames = siddump_frames_full(sid, [f'-a{sub}', f'-t{secs}'])
+    vols = Counter((g['volmode'] or 0) & 0x0F for _, g in frames)
+    return vols.most_common(1)[0][0] if vols else 0x0F
+
+
 def passband_trace(sid, sub, secs):
     """Per-frame $D418 passband: mode bits 4-6 shifted down (1 low, 2 band, 4 high).
 
@@ -1856,6 +1879,13 @@ def emit_one(m, br, out_path, label):
     if B.TEMPO_SCHED:
         B.TEMPO_SWALLOW = 0
         B.TEMPO = getattr(m, "sched_tempo", B.TEMPO)
+    # $D418 master volume. The driver used to hardcode $0f; measured over 60s,
+    # Hawkeye/Cybernoid/Cybernoid_II do play at 15, but Supremacy's subtunes run
+    # at 6, 8 and 15, so two of them were a third too loud and scored volmode 0%.
+    # It is a per-song CONSTANT in this corpus (the only other value any of them
+    # ever shows is frame 0's pre-init bus state), so a build-time constant is
+    # the honest model -- not a volume track, which nothing here needs.
+    B.MAIN_VOL = getattr(m, "main_vol", 0x0F) & 0x0F
     nfilt = sum(1 for f in instr_flags if f & 0x40)
     flags = ""
     if len(bundles) > 64:
@@ -1989,7 +2019,8 @@ def main():
     used = mon_to_sf2.used_instruments(m)
     instr_rows, wave_table, pulse_table, idx_map = mon_to_sf2.build_instruments(m, used)
     base = os.path.splitext(os.path.basename(sid))[0]
-    print(f"{os.path.basename(sid)} sub{sub}: load=${la:04X}")
+    m.main_vol = master_volume(sid, sub)
+    print(f"{os.path.basename(sid)} sub{sub}: load=${la:04X} vol=${m.main_vol:X}")
 
     if adaptive or winsec > 0:
         import mon_fidelity as F

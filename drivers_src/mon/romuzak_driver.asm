@@ -412,7 +412,9 @@ dp_go:
         beq dp_novol             ; all idle -> leave $D418 to the digi (clean sawtooth)
 .endif
         lda F_MODE               ; filter passband bits (from the filter program)
-        ora #$0f                 ; + main volume: keep the gated SID voices at full vol
+        ora #MAIN_VOL            ; + the song's master volume (layout.inc). Was a
+                                 ; hardcoded $0f; Supremacy's subtunes play at 6
+                                 ; and 8, so full volume was simply wrong there.
         sta SID_VOL
 dp_novol:
         lda #MULTISPEED
