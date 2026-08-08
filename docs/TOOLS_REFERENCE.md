@@ -115,6 +115,9 @@ tools/sidplayfp/sidplayfp.exe -t30 -o2 -w output/file.wav SID/file.sid
 
 # Mute voices 2+3 (isolate voice 1)
 tools/sidplayfp/sidplayfp.exe -t30 -u2 -u3 -w output/file.wav SID/file.sid
+
+# Reproducible render (ALWAYS pass this for measurement -- see the gotcha below)
+tools/sidplayfp/sidplayfp.exe -t30 --delay=0 -w output/file.wav SID/file.sid
 ```
 
 ### Options
@@ -127,6 +130,40 @@ tools/sidplayfp/sidplayfp.exe -t30 -u2 -u3 -w output/file.wav SID/file.sid
 - `-s` / `-m` - Force stereo / mono
 - `-w<name>` - Render to WAV (name required — omitting it uses `<datafile>[n].wav`)
 - `--residfp` / `--resid` - Emulation core (default: `--residfp`)
+- `--delay=<n>` - Power-on delay in cycles. **Listed only under `--help-debug`,
+  and its default is RANDOM.** `sidm2/sidplayfp_wrapper.py` pins it to 0.
+- `-g<n>` - Mute the *sample* channel (a channel separate from `-u`'s voices;
+  `-u1 -u2 -u3` does NOT silence it)
+
+### Gotcha: `--delay` defaults to random, and it is a measurement error
+
+sidplayfp's power-on delay is randomized per run to model real hardware. The
+effect is a random time shift of the WHOLE render, up to ~8 ms. Measured
+2026-08-08, Commando, three 20 s renders with identical arguments:
+
+| `--delay` | onset counts | rms(difference)/rms between runs |
+|---|---|---|
+| default (random) | 152 / 159 / 156 | ~1.2 |
+| `--delay=0` | 156 / 156 / 156 | ~0.0003 |
+
+`rms(difference)/rms ~= 1.2` means two renders of the *same file* differed as
+much as the signal itself. This made `pyscript/audio_tightness_tool.py` score a
+file against ITSELF at 148/157 onsets with 18 spurious extras. Fixed 2026-08-08:
+`SidplayfpIntegration.export_to_wav(power_on_delay=0)` is the default, so every
+caller is reproducible; pass `power_on_delay=None` to restore sidplayfp's own
+random behaviour. See `docs/players/PATTERNS.md` F5.
+
+### Gotcha: `-u1 -u2 -u3` is not silence
+
+Muting all three voices leaves a residual on many tunes, and that residual then
+appears identically in each "isolated" render. Measured residual/mix over 20 s:
+0.024 (Commando) ... 0.35 (Sanxion), 0.49 (Arkanoid), 0.59 (I_Ball). `$D418`
+master-volume digi is **not** the mechanism -- Sanxion and I_Ball hold the
+volume nibble at a constant 15 for 1000 frames. Galway's Arkanoid is a separate
+sample channel (`-g1` drops it .114 -> .004); Sanxion's is filter-path and
+emulation-dependent (`-nf` .032 -> .004). `pyscript/audio_tightness_tool.py
+--voice all` guards against this and refuses per-voice results when the shared
+part dominates; see `docs/guides/AUDIO_TIGHTNESS_GUIDE.md`.
 
 ### Integration
 

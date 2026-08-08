@@ -88,3 +88,63 @@ class TestRendererIsSharedByBothSides(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestVoiceAllForcesSidplayfp(unittest.TestCase):
+    """--voice all is a voice request like any other: it needs -u, so it needs
+    sidplayfp. The value is the string 'all' rather than an int, so this pins
+    that choose_renderer tests truthiness and not `isinstance(voice, int)`.
+    """
+
+    def test_voice_all_forces_sidplayfp_over_vsid_preference(self):
+        renderer, reason = choose_renderer('auto', 'all', **BOTH)
+        self.assertEqual(renderer, 'sidplayfp')
+        self.assertIn('voice', reason)
+
+    def test_voice_all_with_explicit_vsid_is_rejected(self):
+        with self.assertRaises(RenderError):
+            choose_renderer('vsid', 'all', **BOTH)
+
+
+class TestPowerOnDelayIsPinned(unittest.TestCase):
+    """sidplayfp's --delay defaults to RANDOM (`--help-debug`), which shifts the
+    whole render by up to ~8 ms per run. Measured 2026-08-08 on Commando over
+    20 s: three renders with identical arguments gave onset counts 152/159/156
+    and rms(difference)/rms of ~1.2 -- the difference between two runs of the
+    SAME file was as large as the signal. With --delay=0 the same three renders
+    give 156/156/156 and ~0.0003. A tool whose whole output is onset timing in
+    milliseconds cannot leave that flag at its default.
+    """
+
+    def _args(self, **kw):
+        import subprocess
+        import tempfile
+        from unittest import mock
+        from sidm2.sidplayfp_wrapper import SidplayfpIntegration
+        seen = {}
+
+        def fake_run(args, **_):
+            seen['args'] = args
+            raise RuntimeError('stop before rendering')
+
+        # export_to_wav returns early on a missing input file, so the fixture
+        # has to be a real (empty) file -- sidplayfp is never actually run.
+        with tempfile.TemporaryDirectory() as td:
+            sid = Path(td) / 'x.sid'
+            sid.write_bytes(b'')
+            with mock.patch.object(SidplayfpIntegration, '_find_sidplayfp',
+                                    return_value=Path('sidplayfp.exe')), \
+                 mock.patch.object(subprocess, 'run', side_effect=fake_run):
+                SidplayfpIntegration.export_to_wav(
+                    sid_file=sid, output_file=Path(td) / 'x.wav', **kw)
+        return seen.get('args', [])
+
+    def test_delay_zero_by_default(self):
+        self.assertIn('--delay=0', self._args())
+
+    def test_explicit_delay_is_passed_through(self):
+        self.assertIn('--delay=1500', self._args(power_on_delay=1500))
+
+    def test_none_restores_sidplayfps_random_default(self):
+        self.assertFalse([a for a in self._args(power_on_delay=None)
+                          if a.startswith('--delay')])

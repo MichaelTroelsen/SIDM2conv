@@ -230,6 +230,29 @@ Rounded-seconds part labels strict-collapsed grid-aligned parts (SM: a 58.66%
 inter-voice desync that global-delay metrics caught immediately (Dance
 part05). Label parts in exact frames; measure later parts with global delay.
 
+### F5. The measurement tool is not deterministic (compare a file to ITSELF)
+**Symptom**: scores that wander between runs of the same command, or a
+suspicious floor of "extra"/"missing" events nobody can attribute.
+**Detection**: the one-line test — run the comparison with the SAME file on
+both sides. It must come back exact. `pyscript/audio_tightness_tool.py` scored
+Commando against Commando at **148/157 onsets with 18 spurious extras**.
+**Cause seen**: `sidplayfp`'s `--delay` (power-on delay) defaults to **random**
+— documented only in `--help-debug` — shifting the whole render by a random
+offset of up to ~8 ms, the same order as the millisecond onset deltas the tool
+reports. Three renders of one file with identical arguments gave onset counts
+152/159/156 and `rms(difference)/rms ~= 1.2`, i.e. two runs of the same file
+differed as much as the signal itself. Pinning `--delay=0` gives 156/156/156
+and `~0.0003`, and the self-comparison becomes exact.
+**Rule**: a comparison tool owes you a **reflexive identity** — `f(x, x)` is a
+perfect score, or the tool is measuring its own noise. Check it before
+believing any number the tool produces, and pin every randomized knob in the
+renderer/emulator (seed, power-on delay, RAM pattern) rather than averaging
+over them. Related to D4: this is the *other* way a score can be meaningless —
+D4 catches comparisons with no information in them, F5 catches comparisons
+whose information is the tool's own jitter.
+**Seen in**: sidplayfp (all audio paths, fixed 2026-08-08 in
+`sidm2/sidplayfp_wrapper.py`, `power_on_delay=0` by default).
+
 ---
 
 ## Adding an entry

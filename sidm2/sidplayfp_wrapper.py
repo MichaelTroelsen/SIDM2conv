@@ -78,7 +78,8 @@ class SidplayfpIntegration:
         stereo: bool = True,
         verbose: int = 0,
         mute_voices: Optional[str] = None,
-        subtune: Optional[int] = None
+        subtune: Optional[int] = None,
+        power_on_delay: Optional[int] = 0
     ) -> Optional[Dict[str, Any]]:
         """
         Export SID file to WAV audio using sidplayfp.
@@ -96,6 +97,21 @@ class SidplayfpIntegration:
                 (isolates voice 1). Maps to sidplayfp's -u<num> per voice.
             subtune: Track/subtune number, 1-indexed same as VSID's -tune.
                 Maps to sidplayfp's -o<num>.
+            power_on_delay: sidplayfp's --delay=<cycles>. **Defaults to 0 here,
+                where sidplayfp itself defaults to RANDOM** (`--help-debug`:
+                "simulate c64 power on delay (default: random)"). Measured
+                2026-08-08: with the tool's own default, two renders of the
+                same file with identical arguments are NOT reproducible --
+                Commando at -t20 came back with a zero-lag correlation of
+                +0.084 between two runs, which resolves to +0.9997 only after a
+                lag search, i.e. the whole render is shifted by a random offset
+                of up to ~8 ms (libsidplayfp randomizes the power-on delay to
+                model real hardware). That is a random error of the same order
+                as the quantity pyscript/audio_tightness_tool.py measures, and
+                it made a file compared against ITSELF score 148/157 onsets.
+                With --delay=0 the renders are byte-identical and the
+                self-comparison is exact. Pass None to restore sidplayfp's
+                random default (real-hardware-like, but unreproducible).
 
         Returns:
             Dictionary with export results:
@@ -155,6 +171,9 @@ class SidplayfpIntegration:
 
             if subtune is not None:
                 args.append(f"-o{subtune}")
+
+            if power_on_delay is not None:
+                args.append(f"--delay={power_on_delay}")
 
             args.append(f"-w{output_file}")
             args.append(str(sid_file))

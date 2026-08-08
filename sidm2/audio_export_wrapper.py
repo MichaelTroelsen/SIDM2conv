@@ -79,7 +79,8 @@ class AudioExportIntegration:
         verbose: int = 0,
         force_sidplayfp: bool = False,
         mute_voices: Optional[str] = None,
-        subtune: Optional[int] = None
+        subtune: Optional[int] = None,
+        power_on_delay: Optional[int] = 0
     ) -> Optional[Dict[str, Any]]:
         """
         Export SID file to WAV audio.
@@ -105,6 +106,9 @@ class AudioExportIntegration:
             subtune: Track/subtune number (sidplayfp -o<num>, 1-indexed same
                 as VSID's -tune). sidplayfp-only, same force_sidplayfp=True
                 requirement as mute_voices.
+            power_on_delay: sidplayfp --delay=<cycles>, default 0 for
+                REPRODUCIBLE renders; sidplayfp's own default is random. See
+                SidplayfpIntegration.export_to_wav. Ignored by the VSID path.
 
         Returns:
             Dictionary with export results:
@@ -178,6 +182,7 @@ class AudioExportIntegration:
             stereo=stereo,
             verbose=verbose,
             mute_voices=mute_voices,
+            power_on_delay=power_on_delay,
             subtune=subtune,
         )
         return result

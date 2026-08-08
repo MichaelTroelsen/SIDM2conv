@@ -958,3 +958,93 @@ def format_run_delta(delta, top=10):
     L.append("")
     L.append(format_coverage(delta.dimensions))
     return "\n".join(L)
+
+
+# ---------------------------------------------------------------------------
+# Per-voice register agreement (the register half of the audio/register cross-tab)
+# ---------------------------------------------------------------------------
+
+def per_voice_register_agreement(orig_path, drv_path, secs, orig_args=(), drv_args=(),
+                                  max_delay=6, dims=('freq', 'wf', 'pul')):
+    """Per-voice register agreement between two SIDs, one score per dimension.
+
+    Exists so `pyscript/audio_tightness_tool.py` can put a register verdict
+    beside its audio verdict for the SAME voice. Neither measurement can make
+    that partition alone:
+
+        registers match  + audio diverges  -> driver SYNTHESIS is wrong
+                                              (envelope / pulse / filter timing)
+        registers diverge + audio diverges -> note data / sequencer is wrong
+        registers diverge + audio matches  -> a METRIC artifact, e.g. a
+                                              phase-offset but musically correct
+                                              pulse sweep scored frame-by-frame
+
+    Scores route through `score_pct` + `exercised` (both guards, per D4) rather
+    than reimplementing a weighted scheme -- this is deliberately NOT a sixth
+    copy. `freq` is compared as a SEMITONE, not a raw 16-bit value: a vibrato
+    that lands on the same note is not a note error, and the audio side cannot
+    hear the difference either.
+
+    Returns (rows, meta):
+        rows = {voice_index_0_based: {dim: pct_or_None}}
+        meta = {'frames': n, 'delay': d, 'orig_frames': .., 'drv_frames': ..}
+
+    A None score means "not measured" -- either no frames, or the dimension was
+    not exercised on either side. It is never a 0 and never a 100.
+    """
+    # siddump's -t takes an INTEGER second count; `-t21.0` parses as nothing and
+    # the tool silently returns a zero-row table. `secs` arrives as a float from
+    # argparse, so it is rounded here rather than at every call site.
+    tsec = int(round(float(secs))) + 1
+    orig = siddump_frames_full(orig_path, list(orig_args) + [f"-t{tsec}"])
+    drv = siddump_frames_full(drv_path, list(drv_args) + [f"-t{tsec}"])
+    # -4: the last few frames of a siddump can be a partial trailing write, the
+    # same trim bin/mon_part_fidelity.py applies.
+    n = min(len(orig), len(drv), int(secs * 50)) - 4
+    if n <= 0:
+        raise ValueError(
+            f"empty register comparison window (n={n}): orig={len(orig)} frames, "
+            f"drv={len(drv)} frames, secs={secs}. Refusing rather than scoring "
+            f"an empty window (see score_pct).")
+
+    def _agree_at(d):
+        s = 0
+        for i in range(0, n, 2):
+            oi = i + d
+            if not (0 <= oi < len(orig)):
+                continue
+            for vi in range(3):
+                a, b = orig[oi][0][vi]['freq'], drv[i][0][vi]['freq']
+                if a and b and freq_to_semi(a) == freq_to_semi(b):
+                    s += 1
+        return s
+
+    # A constant engine output delay is a nuisance parameter, not an error --
+    # aligned out here exactly as every other scorer in this repo does.
+    delay = max(range(-max_delay, max_delay + 1), key=_agree_at)
+
+    rows = {}
+    for vi in range(3):
+        row = {}
+        for dim in dims:
+            a_vals, b_vals = [], []
+            for i in range(n):
+                oi = i + delay
+                if not (0 <= oi < len(orig)):
+                    continue
+                a, b = orig[oi][0][vi][dim], drv[i][0][vi][dim]
+                if dim == 'freq':
+                    a = freq_to_semi(a) if a is not None else None
+                    b = freq_to_semi(b) if b is not None else None
+                a_vals.append(a)
+                b_vals.append(b)
+            if not exercised(a_vals, b_vals):
+                row[dim] = None
+                continue
+            tot = sum(1 for a, b in zip(a_vals, b_vals) if a is not None and b is not None)
+            ok = sum(1 for a, b in zip(a_vals, b_vals)
+                     if a is not None and b is not None and a == b)
+            row[dim] = score_pct(ok, tot)
+        rows[vi] = row
+    return rows, {'frames': n, 'delay': delay,
+                  'orig_frames': len(orig), 'drv_frames': len(drv)}

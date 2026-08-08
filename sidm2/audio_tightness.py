@@ -432,3 +432,154 @@ def analyze_tightness_files(orig_wav_path: Union[str, Path], driver_wav_path: Un
             f"{driver_wav_path} is {sr_b} Hz"
         )
     return analyze_tightness(orig, driver, sr_a, **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# Voice isolation: the digi-bleed guard
+# ---------------------------------------------------------------------------
+#
+# sidplayfp's -u<n> is the only voice-mute any renderer here has, so per-voice
+# audio comparison is built on it. It is NOT a clean slice. Muting all three
+# voices does not produce silence on every tune, and where it does not, all
+# three "isolated" renders carry the same shared signal -- they then look
+# reassuringly similar to each other while telling you nothing about the voice
+# you asked about. That is the exact failure this guard exists to refuse.
+#
+# MEASURED, 2026-08-08, 12 tunes, 20 s renders (residual RMS / mix RMS):
+#   Commando .024  Crazy_Comets .025  Athena .028  Stinsen .077
+#   A_Computer_in_My_Backpack .091  A_Chipful_of_Love .102  Hawkeye .151
+#   Cybernoid_II .190  Sanxion .353  Arkanoid .494  I_Ball .587
+#   Arkanoid_alternative_drums .619
+# It is a gradient, not two classes, so the guard has a warn band as well as a
+# refusal.
+#
+# The MECHANISM is mixed, and the obvious guess was wrong. `$D418` master-volume
+# digi was the standing hypothesis; it is FALSIFIED for the worst offenders --
+# Sanxion and I_Ball hold $D418's volume nibble at a constant 15 for all 1000
+# frames of a 20 s siddump, exactly like clean Commando. What the residual
+# actually is varies by tune:
+#   - Galway's Arkanoid: a SAMPLE channel libsidplayfp models separately and
+#     mutes under its own flag -- `-u1 -u2 -u3 -g1` drops it .114 -> .004.
+#   - Hubbard's Sanxion: filter-path, and emulation-dependent -- `-nf` drops it
+#     .032 -> .004, `--resid` to .010, while `-g1` changes nothing.
+#   - reSIDfp also has a small nonzero floor with everything muted (Commando
+#     .0029, where `--resid` gives exactly 0).
+# Hence the guard thresholds are FRACTIONS of the isolated render, never an
+# absolute RMS: there is no single mechanism to test for, and the only thing
+# that matters to the caller is whether the voice still dominates its own slice.
+
+# Warn where the shared part stops being negligible (the clean tunes all sit
+# under 0.5%, so 5% is an order of magnitude clear of them). REFUSE at the one
+# cut point that means something on its own terms rather than being picked off a
+# histogram: at 50% the residual carries MORE energy than the voice does, so the
+# slice is no longer mostly the voice you asked for. The measured corpus happens
+# to leave that line uncontested -- worst non-digi slice 38.4% (Cybernoid_II
+# voice 3 over 12 s), lowest digi slice 53.6% (I_Ball voice 2) -- but the
+# threshold is not derived FROM that gap, because the gap moves with the
+# measurement window (Cybernoid_II's worst slice reads 23.8% at 20 s and 34.5%
+# at 12 s: h2g's "window size is a measurement artifact", live in this metric).
+BLEED_WARN_FRAC = 0.05
+BLEED_REFUSE_FRAC = 0.50
+
+
+def rms(x: np.ndarray) -> float:
+    """Root-mean-square of a sample array. 0.0 for an empty array."""
+    if x is None or len(x) == 0:
+        return 0.0
+    return float(np.sqrt(np.mean(np.asarray(x, dtype=np.float64) ** 2)))
+
+
+def normalized_correlation(a: np.ndarray, b: np.ndarray) -> float:
+    """Zero-lag Pearson correlation of two same-render-length signals.
+
+    Both sides come from the same renderer with the same duration, so they are
+    already sample-aligned; no lag search is wanted here (a lag search would
+    hide exactly the shared-signal case this is used to detect). NaN when
+    either side is constant -- an undefined correlation, not a zero one.
+    """
+    n = min(len(a), len(b))
+    if n == 0:
+        return float('nan')
+    x = np.asarray(a[:n], dtype=np.float64)
+    y = np.asarray(b[:n], dtype=np.float64)
+    x = x - x.mean()
+    y = y - y.mean()
+    denom = np.sqrt(float((x * x).sum()) * float((y * y).sum()))
+    return float((x * y).sum() / denom) if denom > 0 else float('nan')
+
+
+@dataclass
+class VoiceBleed:
+    voice: int
+    iso_rms: float
+    # Energy fraction of this voice's "isolated" render that is actually the
+    # shared residual, i.e. (residual_rms / iso_rms)**2 clipped to 1.0.
+    # **None when there is no signal at all on either side** -- an empty
+    # comparison, which must not read as 0% contamination (score_pct's rule,
+    # applied to audio: see sidm2/fidelity_common.score_pct).
+    shared_frac: Optional[float]
+
+
+@dataclass
+class BleedReport:
+    mix_rms: float
+    muted_rms: float
+    voices: List[VoiceBleed]
+    # {"1-2": r, "1-3": r, "2-3": r} -- corroboration, not the decision.
+    # Near-zero on a clean tune (Commando .12/.03/.07), high when the three
+    # slices share a signal (I_Ball .56/.50/.42, Arkanoid .65/.48/.50).
+    # NOT used as the threshold: two voices playing in unison would correlate
+    # legitimately, whereas the muted render isolates the shared part directly.
+    pair_corr: Dict[str, float] = field(default_factory=dict)
+    verdict: str = 'clean'          # 'clean' | 'warn' | 'refuse' | 'no-signal'
+    max_shared_frac: Optional[float] = None
+
+    @property
+    def blocking(self) -> bool:
+        """Should per-voice audio results be withheld?"""
+        return self.verdict in ('refuse', 'no-signal')
+
+
+def analyze_voice_bleed(mix: np.ndarray, muted: np.ndarray,
+                         isolated: Dict[int, np.ndarray]) -> BleedReport:
+    """Decide whether per-voice audio isolation is meaningful for this render.
+
+    `muted` is the all-voices-muted render (`-u1 -u2 -u3`); `isolated[v]` is the
+    render with the OTHER two voices muted. See the module comment above for the
+    measurements the thresholds come from and for why the mechanism is not
+    assumed.
+    """
+    muted_rms = rms(muted)
+    voices = []
+    for v in sorted(isolated):
+        iso_rms = rms(isolated[v])
+        if iso_rms <= 0.0:
+            # A silent slice is either a silent voice in a silent render (no
+            # evidence either way) or a silent voice drowning in residual
+            # (total contamination). Distinguished by the residual itself.
+            frac = None if muted_rms <= 0.0 else 1.0
+        else:
+            frac = min(1.0, (muted_rms / iso_rms) ** 2)
+        voices.append(VoiceBleed(voice=v, iso_rms=iso_rms, shared_frac=frac))
+
+    pair_corr = {}
+    keys = sorted(isolated)
+    for i in range(len(keys)):
+        for j in range(i + 1, len(keys)):
+            pair_corr[f"{keys[i]}-{keys[j]}"] = normalized_correlation(
+                isolated[keys[i]], isolated[keys[j]])
+
+    fracs = [vb.shared_frac for vb in voices if vb.shared_frac is not None]
+    if not fracs:
+        verdict, worst = 'no-signal', None
+    else:
+        worst = max(fracs)
+        if worst >= BLEED_REFUSE_FRAC:
+            verdict = 'refuse'
+        elif worst >= BLEED_WARN_FRAC:
+            verdict = 'warn'
+        else:
+            verdict = 'clean'
+
+    return BleedReport(mix_rms=rms(mix), muted_rms=muted_rms, voices=voices,
+                       pair_corr=pair_corr, verdict=verdict, max_shared_frac=worst)

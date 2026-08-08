@@ -9,12 +9,13 @@
 
 1. [Overview](#overview)
 2. [Quick Start](#quick-start)
-3. [Understanding the Report / HTML Output](#understanding-the-report--html-output)
-4. [Key Metrics Explained](#key-metrics-explained)
-5. [Use Cases](#use-cases)
-6. [Interpreting Results](#interpreting-results)
-7. [Troubleshooting](#troubleshooting)
-8. [Tips & Tricks](#tips--tricks)
+3. [Sweeping all three voices](#sweeping-all-three-voices)
+4. [Understanding the Report / HTML Output](#understanding-the-report--html-output)
+5. [Key Metrics Explained](#key-metrics-explained)
+6. [Use Cases](#use-cases)
+7. [Interpreting Results](#interpreting-results)
+8. [Troubleshooting](#troubleshooting)
+9. [Tips & Tricks](#tips--tricks)
 
 ---
 
@@ -41,7 +42,7 @@ Claude to read directly) and HTML (for a human).
 ### What It Does
 
 1. **Renders** the original and the driver output to WAV (via VSID or
-   SID2WAV — see "Renderer selection" below)
+   sidplayfp — see "Renderer selection" below)
 2. **Detects onsets** in both renders (numpy spectral-flux + adaptive
    peak-picking, no external audio library)
 3. **Aligns** onsets between the two renders (greedy nearest-neighbor
@@ -129,7 +130,7 @@ on the bottom.
 ### Renderer selection
 
 **One renderer serves both sides of a comparison.** Mixing a VSID render
-with a SID2WAV render would fold two different SID emulations into the onset
+with a sidplayfp render would fold two different SID emulations into the onset
 deltas — exactly the measurement error this tool exists to avoid. The
 renderer is resolved once, up front, before anything is rendered.
 
@@ -137,32 +138,54 @@ renderer is resolved once, up front, before anything is rendered.
 
 | Situation | Renderer | Why |
 |---|---|---|
-| `--voice` given | SID2WAV | Only renderer with a voice-mute flag (`-m<num>`) |
-| otherwise, VSID available | VSID | Handles tunes SID2WAV cannot (see below) |
-| otherwise | SID2WAV | Fallback |
+| `--voice` given | sidplayfp | Only renderer with a voice-mute flag (`-u<num>`) |
+| otherwise, VSID available | VSID | The long-standing default |
+| otherwise | sidplayfp | Fallback |
 
-Override with `--renderer vsid` or `--renderer sid2wav`. Combining
+Override with `--renderer vsid` or `--renderer sidplayfp`. Combining
 `--renderer vsid` with `--voice` is rejected rather than silently ignored —
 an unmuted render presented as voice-isolated would be worse than an error.
 
-**Why VSID is preferred:** `tools/SID2WAV.EXE` is a 1997 build (v1.8/1.36.21)
-and **hangs outright on some newer tunes** — it parses the PSID header
-correctly, prints the metadata, then never emits a single sample. lft's
-`SID/LFT/Glyptodont.sid` is a confirmed case: SID2WAV produces no output even
-for a 2-second render, while VSID renders it fine. Since Glyptodont is one of
-the files this tool was built to analyze, SID2WAV-only was not viable.
+**sidplayfp replaced SID2WAV.EXE (2026-08-07, commit `32a0e0c`).** The old
+`tools/SID2WAV.EXE` was a 1997 build that hung outright on some newer tunes —
+it parsed the PSID header, printed the metadata, then never emitted a single
+sample (lft's `SID/LFT/Glyptodont.sid` was the confirmed case). The bundled
+replacement is `tools/sidplayfp/sidplayfp.exe` (sidplayfp 2.16.2 /
+libsidplayfp 2.16.1 / libresidfp 1.0.1).
 
-**Why SID2WAV is still needed:** per-voice isolation (`--voice`) requires
-flags VSID has no equivalent for — confirmed against `tools/SID2WAV.EXE`'s
-own `-h` output:
+**Per-voice isolation requires sidplayfp** — VSID has no mute equivalent:
 
 ```
--m<num>    mute voices out of 1,2,3,4 (default: none)
--o<num>    set song number (default: preset)
+-u<num>    mute voice <num> (e.g. -u1 -u2)
+-g<num>    mute samples <num>
+-o<num>    start track
+--delay=<num>  simulate c64 power on delay (default: random)
 ```
 
-So a file SID2WAV cannot render also **cannot be voice-isolated**. The tool
-says so explicitly rather than failing with a bare timeout.
+**`--delay` is pinned to 0 by this repo, and that is not cosmetic.**
+sidplayfp's own default is a *random* power-on delay, which shifts the entire
+render by a random offset of up to ~8 ms — a random error of the same order as
+the quantity this tool measures. Measured 2026-08-08 on Commando over 20 s,
+three renders with identical arguments:
+
+| `--delay` | onset counts | rms(difference)/rms between runs |
+|---|---|---|
+| sidplayfp default (random) | 152 / 159 / 156 | ~1.2 (the difference is as big as the signal) |
+| `--delay=0` (this repo) | 156 / 156 / 156 | ~0.0003 |
+
+Before the pin, **a file compared against itself scored 148/157 matched onsets
+with 18 spurious extras**; after it, the same self-comparison comes back exact
+(Commando 156/156 and Crazy_Comets 122/122, 0 missing, 0 extra, registers
+100/100/100 on every voice). `sidm2/sidplayfp_wrapper.py` sets
+`power_on_delay=0` by default; pass `power_on_delay=None` to restore
+sidplayfp's random (more hardware-like, unreproducible) behaviour.
+
+The residual `~0.0003` is libsidplayfp's own RAM/noise seeding and is **not
+quite zero**: absolute onset counts can still move by one in a hundred between
+runs (Hawkeye 196/195/195 over three renders, Crazy_Comets voice 3 at 112 then
+113), and a self-comparison occasionally lands at 99% instead of 100% on one
+voice. Treat differences of a single onset as noise; the ~8 ms *shift* the pin
+removes is what was actually corrupting the measurement.
 
 **VSID render precision:** the VSID path uses `-limitcycles` (an exact PAL
 cycle count) rather than `sidm2/vsid_wrapper.py`'s unbounded-run-plus-
@@ -200,18 +223,24 @@ audio-tightness.bat original.sid converted.sf2 --driver-init 0x1000 --driver-pla
 audio-tightness.bat original.sid converted.sid --voice 1
 ```
 
-`--voice N` mutes the *other two* SID voices (via SID2WAV's `-m<num>`) on
+`--voice N` mutes the *other two* SID voices (via sidplayfp's `-u<num>`) on
 **both** renders, so voice N can be compared cleanly. This forces the
-SID2WAV renderer; a file SID2WAV cannot render (see "Renderer selection")
-cannot be voice-isolated.
+sidplayfp renderer, the only one with a mute flag.
+
+**Muting two voices does not always isolate the third.** Use `--voice all`
+(next section) to have that checked for you — it is not checked on the
+single-voice path.
 
 ### Common Options
 
 ```bash
 --seconds 30                  # Render duration (default: 30)
---subtune 2                   # Subtune/song number (SID2WAV -o<num>, VSID -tune)
---voice {1,2,3}                # Isolate one SID voice (forces SID2WAV)
---renderer {auto,vsid,sid2wav} # Renderer for BOTH sides (default: auto)
+--subtune 2                   # Subtune/song number (sidplayfp -o<num>, VSID -tune)
+--voice {1,2,3,all}            # Isolate one SID voice, or sweep all three
+--allow-digi-bleed             # Print per-voice rows the guard refused (unsound)
+--reg-match-pct 95             # Cross-tab: freq % at/above which registers "match"
+--audio-match-rate 0.9         # Cross-tab: onset fraction at/above which audio "matches"
+--renderer {auto,vsid,sidplayfp} # Renderer for BOTH sides (default: auto)
 --driver-init 0xHHHH           # Override the driver SF2's init address
 --driver-play 0xHHHH           # Override the driver SF2's play address
 --onset-tolerance-ms 45        # Max |delta| to count as matched (default: auto = half the IOI)
@@ -226,6 +255,113 @@ cannot be voice-isolated.
 Both `orig` and `driver` accept `.sid`, `.sf2`, or `.wav` directly — `.wav`
 is used as-is, `.sid` is rendered, `.sf2` is converted to `.sid` first (via
 `scripts/sf2_to_sid.py::convert_sf2_to_sid`) and then rendered.
+
+
+---
+
+## Sweeping all three voices
+
+```bash
+audio-tightness.bat original.sid converted.sf2 --driver-init 0x1000 --driver-play 0x1003 \
+    --voice all --seconds 12 --no-html
+```
+
+`--voice all` renders each side five times (mix, all-three-muted, and one
+render per isolated voice) and prints three blocks. It answers a question the
+mix comparison cannot: *which voice is the problem, and is it the note data or
+the synthesis?*
+
+`--voice all` needs `.sid`/`.sf2` inputs on both sides — a pre-rendered `.wav`
+cannot be re-rendered with different voices muted. It prints no HTML (the HTML
+exporter is per-comparison and there are four comparisons here).
+
+### 1. The isolation guard
+
+The extra all-muted render is the point. **On many tunes `-u1 -u2 -u3` is not
+silence**, and whatever survives appears identically in all three "isolated"
+renders — they then agree with each other for reasons that have nothing to do
+with the driver, while looking reassuringly similar.
+
+```
+  original  residual/mix 0.584   shared: v1 67.8%  v2 53.6%  v3 59.4%   [refuse]
+            inter-voice r(1-2)=+0.61  r(1-3)=+0.56  r(2-3)=+0.47
+```
+
+`shared` is the **energy fraction of each isolated render that is actually the
+residual** — `(residual_rms / isolated_rms)²`. Measured across 12 tunes at
+20 s, it runs from 0.2% (Commando, Crazy_Comets, Athena) through 4-5% (lft),
+13-24% (Hawkeye, Cybernoid_II, Stinsen) to 54-68% (Sanxion, I_Ball, Arkanoid).
+
+| verdict | condition | effect |
+|---|---|---|
+| `clean` | worst slice < 5% shared | per-voice rows printed normally |
+| `warn` | 5-50% | printed, flagged as partly correlated across voices |
+| `refuse` | ≥ 50% — the residual carries *more* energy than the voice | per-voice rows withheld, **exit code 3** |
+| `no-signal` | nothing on either side | withheld — silence is not a clean isolation |
+
+The 50% line is the one cut point that means something on its own terms
+(at that point the slice is no longer mostly the voice you asked for) rather
+than being read off a histogram. It matters that it is not read off the data:
+**the fractions move with the measurement window** — Cybernoid_II's worst slice
+reads 23.8% at 20 s and 34.5% at 12 s.
+
+`--allow-digi-bleed` prints the rows anyway. They are unsound; the flag exists
+to inspect them, not to trust them.
+
+**The mechanism is mixed, and the obvious guess was wrong.** `$D418`
+master-volume digi was the standing hypothesis and is **falsified** for the
+worst offenders: Sanxion and I_Ball hold `$D418`'s volume nibble at a constant
+15 for all 1000 frames of a 20 s siddump, exactly like clean Commando. What the
+residual actually is varies per tune — Galway's Arkanoid is a *sample* channel
+libsidplayfp mutes under its own separate flag (`-g1` drops it .114 → .004);
+Hubbard's Sanxion is filter-path and emulation-dependent (`-nf` drops it
+.032 → .004, `--resid` to .010, while `-g1` changes nothing). That is why the
+guard thresholds are fractions rather than a test for one mechanism.
+
+### 2. The per-voice tightness table
+
+```
+  side      onsets  matched  missing  extra    offset  jitter50   loose
+  mix           91       70       21     24    +0.0ms    10.0ms   14.3%
+  voice 1       97       82       15     34    +0.0ms    20.0ms   18.3%
+  voice 2       70       50       20      8    +0.0ms     0.0ms    6.0%
+  voice 3      102       76       26     11    +0.0ms     0.0ms    1.3%
+```
+
+Same statistics as the single-voice report, one row per slice. This is what
+turns "the audio diverges" into "voice 1 is the problem".
+
+### 3. The registers × audio cross-tab
+
+```
+  voice    freq     wf    pul   audio  diagnosis
+  1       100.0  100.0  100.0     85%  SYNTHESIS: registers match, audio diverges
+  2       100.0  100.0  100.0     71%  SYNTHESIS: registers match, audio diverges
+  3       100.0  100.0    n/a     75%  SYNTHESIS: registers match, audio diverges
+```
+
+The register half comes from `sidm2.fidelity_common.per_voice_register_agreement`
+(siddump on both `.sid`s, a global engine-delay search, then `score_pct` +
+`exercised` per dimension). `freq` is compared as a **semitone** — a vibrato
+landing on the same note is not a note error, and the audio side cannot hear
+the difference either. `n/a` means *not exercised*: neither side moved that
+register, so it is never reported as 0 or 100.
+
+Neither half can make this partition alone:
+
+| registers | audio | diagnosis |
+|---|---|---|
+| match | diverge | **SYNTHESIS** — the driver's envelope/pulse/filter timing |
+| diverge | diverge | **SEQUENCER** — note data / order list |
+| diverge | match | **METRIC** — suspect a measurement artifact, e.g. a phase-offset but musically correct pulse sweep scored frame-by-frame |
+
+The thresholds are `--reg-match-pct` (default 95) and `--audio-match-rate`
+(default 0.9).
+
+The example above is real: `Cybernoid_II` against its native MoN build is
+register-exact on all three voices and still only 71-85% onset-matched, i.e.
+a register-exact build that is not audio-tight. That is exactly the class of
+problem this tool was written for.
 
 ---
 
@@ -319,20 +455,27 @@ The `.sf2` has no Block 2 header and doesn't match the Laxity heuristics, so
 addresses (check the driver's own build script, e.g.
 `bin/build_blackbird_driver_full.py`'s `DRV_INIT`/`DRV_PLAY`).
 
-**`No renderer available: neither vsid.exe nor tools/SID2WAV.EXE was found`**
+**`No renderer available: neither vsid.exe nor tools/sidplayfp/sidplayfp.exe was found`**
 Install VICE with `python pyscript/install_vice.py`, or restore
-`tools/SID2WAV.EXE`. Note that VSID alone cannot do voice isolation.
-
-**`SID2WAV timeout ... hangs outright on some newer tunes`**
-SID2WAV (1997) cannot render this file at all — it reads the header, then
-emits nothing. Without `--voice`, just retry (auto-selection uses VSID). With
-`--voice`, the file genuinely cannot be voice-isolated, since SID2WAV is the
-only renderer with a mute flag; drop `--voice` to compare the full mix.
+`tools/sidplayfp/`. Note that VSID alone cannot do voice isolation.
 
 **`--renderer vsid cannot be combined with --voice`**
 Working as intended: VSID has no voice-mute flag, and silently rendering an
 unmuted mix while reporting it as voice-isolated would be worse than an
-error. Use `--renderer sid2wav`, or drop `--voice`.
+error. Use `--renderer sidplayfp`, or drop `--voice`.
+
+**`[REFUSED] Muting two voices does not isolate the third on this tune` (exit 3)**
+The isolation guard fired — see "Sweeping all three voices". The mix row is
+still printed and still valid. `--allow-digi-bleed` shows the per-voice rows
+anyway; they are unsound.
+
+**`--voice all needs a .sid or .sf2 ..., not a pre-rendered .wav`**
+Voice isolation re-renders with different voices muted, which a WAV cannot do.
+Pass the source `.sid`/`.sf2`.
+
+**Two runs of the same comparison give different numbers**
+Should not happen since `--delay` was pinned (see "Renderer selection"). If it
+does, check that nothing passes `power_on_delay=None` to the sidplayfp wrapper.
 
 **`Sample rate mismatch`**
 The two renders came out at different sample rates — shouldn't normally

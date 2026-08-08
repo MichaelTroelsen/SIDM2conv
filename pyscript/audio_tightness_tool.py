@@ -34,12 +34,23 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from scripts.sf2_to_sid import SF2File, convert_sf2_to_sid
 from sidm2.audio_export_wrapper import AudioExportIntegration
-from sidm2.audio_tightness import analyze_tightness_files, load_wav_mono
+from sidm2.audio_tightness import (analyze_tightness_files, analyze_voice_bleed,
+                                   load_wav_mono, offset_and_jitter,
+                                   BLEED_REFUSE_FRAC, BLEED_WARN_FRAC)
+from sidm2.fidelity_common import fmt_pct, per_voice_register_agreement
 from sidm2.vsid_wrapper import VSIDIntegration
 from pyscript.audio_tightness_report import format_text_report
 from pyscript.audio_tightness_html_exporter import AudioTightnessHTMLExporter
 
 MUTE_MAP = {1: "23", 2: "13", 3: "12"}
+MUTE_ALL = "123"
+
+# Exit code for "the analysis ran, but the per-voice half was withheld because
+# voice isolation is not valid on this tune" (see the digi-bleed guard in
+# sidm2/audio_tightness.py). Distinct from 1 (the tool failed) because the mix
+# row IS still valid and still printed -- a script sweeping a corpus needs to
+# tell "no per-voice numbers exist" apart from "the run broke".
+EXIT_BLEED_REFUSED = 3
 
 # PAL cycles/second -- same constant bin/listen_compare.py uses to turn a
 # wall-clock duration into an exact VSID -limitcycles value.
@@ -122,6 +133,16 @@ def setup_logging(verbose: int):
 
 def _hex_or_int(s: str) -> int:
     return int(s, 0)
+
+
+def _voice_arg(s: str):
+    """--voice {1,2,3,all}. 'all' sweeps every voice in one run."""
+    if s.lower() == 'all':
+        return 'all'
+    if s in ('1', '2', '3'):
+        return int(s)
+    raise argparse.ArgumentTypeError(
+        f"invalid voice {s!r}: expected 1, 2, 3, or 'all'")
 
 
 def _render_vsid(sid_path, out_wav, seconds, subtune, verbose):
@@ -258,6 +279,237 @@ def _downsample_envelope(x: np.ndarray, sr: int, hop_s: float):
     return env.tolist()
 
 
+def resolve_to_sid(path: Path, role: str, args, tmp_dir: Path):
+    """Resolve a .sid/.sf2 CLI arg to a playable .sid, without rendering.
+
+    The single-voice path renders once and is done; the sweep renders the SAME
+    file five times with different mutes, and also hands the .sid to siddump for
+    the register half of the cross-tab. So "make it playable" has to be
+    separable from "render it". Returns None (after printing [ERROR]) on
+    failure, including for a .wav input -- a WAV cannot be re-rendered with
+    different voices muted, so --voice all is impossible from one.
+    """
+    ext = path.suffix.lower()
+    if ext == '.sid':
+        return path
+    if ext == '.wav':
+        print(f"[ERROR] {path}: --voice all needs a .sid or .sf2 for {role}, not a "
+              f"pre-rendered .wav -- voice isolation requires re-rendering with the "
+              f"other two voices muted.")
+        return None
+    if ext == '.sf2':
+        data = path.read_bytes()
+        sf2 = SF2File(data)
+        if sf2.address_source == 'default_guess' and args.driver_init is None and args.driver_play is None:
+            print(
+                f"[ERROR] {path}: init/play addresses could not be auto-detected "
+                f"(SF2 has no Block 2 header and doesn't match the Laxity heuristics, "
+                f"so this fell back to the Driver 11 default guess -- WRONG for any "
+                f"bin/-only native driver). Pass --driver-init/--driver-play with the "
+                f"driver's real addresses."
+            )
+            return None
+        tmp_sid = tmp_dir / f"{role}.sid"
+        if not convert_sf2_to_sid(str(path), str(tmp_sid),
+                                   init_override=args.driver_init, play_override=args.driver_play):
+            print(f"[ERROR] Failed to convert {path} to SID")
+            return None
+        return tmp_sid
+    print(f"[ERROR] Unsupported file extension for {path}: {ext!r} (expected .sid or .sf2)")
+    return None
+
+
+def _render_muted(sid_path, out_wav, mute, args):
+    """One sidplayfp render with an explicit mute set.
+
+    Goes straight to AudioExportIntegration rather than through
+    _render_sidplayfp's `voice` parameter because the guard render mutes ALL
+    THREE voices, which MUTE_MAP cannot express.
+    """
+    out_wav = Path(out_wav)
+    if out_wav.exists():
+        out_wav.unlink()
+    result = AudioExportIntegration.export_to_wav(
+        sid_file=Path(sid_path), output_file=out_wav, duration=int(args.seconds),
+        verbose=args.verbose, force_sidplayfp=True, mute_voices=mute,
+        subtune=args.subtune)
+    if not result or not result.get('success'):
+        err = result.get('error') if result else 'no rendering tool available'
+        raise RenderError(f"Failed to render {sid_path} (mute={mute!r}): {err}")
+    return out_wav
+
+
+def sweep_renders(sid_path, role, args, tmp_dir):
+    """The five renders one side of a voice sweep needs.
+
+    mix + the all-muted guard + one render per isolated voice. The guard render
+    is NOT optional and is not derivable from the other four: it is the only way
+    to see the signal that survives muting every voice -- the signal that would
+    otherwise appear identically in all three "isolated" slices and make them
+    agree with each other for reasons that have nothing to do with the driver.
+    See sidm2/audio_tightness.py's module comment for the measurements.
+    """
+    out = {}
+    for label, mute in (('mix', None), ('muted', MUTE_ALL),
+                        (1, MUTE_MAP[1]), (2, MUTE_MAP[2]), (3, MUTE_MAP[3])):
+        wav = _render_muted(sid_path, tmp_dir / f"{role}_{label}.wav", mute, args)
+        out[label] = load_wav_mono(wav)[0]
+        out[(label, 'path')] = wav
+    return out
+
+
+def row_stats(report, loose_threshold_ms):
+    """Collapse a TightnessReport to the scalars the sweep table shows."""
+    n_orig = len(report.orig_onsets)
+    n_matched = len(report.matched)
+    offset, jitters = offset_and_jitter(report.matched)
+    abs_jit = sorted(abs(j) for j in jitters)
+    p50 = abs_jit[len(abs_jit) // 2] if abs_jit else None
+    loose = sum(1 for j in jitters if abs(j) > loose_threshold_ms)
+    return {
+        'orig_onsets': n_orig,
+        'driver_onsets': len(report.driver_onsets),
+        'matched': n_matched,
+        'missing': len(report.missing),
+        'extra': len(report.extra),
+        # None, not 100.0 and not 0.0, when the original produced no onsets at
+        # all: a render with nothing to match is not a perfect match. Same rule
+        # as sidm2.fidelity_common.score_pct, for the same reason.
+        'match_rate': (n_matched / n_orig) if n_orig else None,
+        'offset_ms': offset if n_matched else None,
+        'jitter_p50_ms': p50,
+        'loose_pct': (100.0 * loose / len(jitters)) if jitters else None,
+    }
+
+
+def format_bleed(label, bleed):
+    def frac(f):
+        return ' n/a ' if f is None else f"{100.0 * f:4.1f}%"
+    parts = "  ".join(f"v{vb.voice} {frac(vb.shared_frac)}" for vb in bleed.voices)
+    corr = "  ".join(f"r({k})={v:+.2f}" for k, v in sorted(bleed.pair_corr.items()))
+    ratio = (bleed.muted_rms / bleed.mix_rms) if bleed.mix_rms else float('nan')
+    return (f"  {label:9s} residual/mix {ratio:.3f}   shared: {parts}   "
+            f"[{bleed.verdict}]\n  {'':9s} inter-voice {corr}")
+
+
+def diagnose(reg_row, stats, reg_match_pct, audio_match_rate, loose_threshold_ms):
+    """The register x audio partition. Returns (verdict, explanation)."""
+    freq = reg_row.get('freq') if reg_row else None
+    if freq is None:
+        return 'n/a', 'registers not exercised on this voice -- cannot partition'
+    if stats['match_rate'] is None:
+        return 'n/a', 'no onsets detected in the original for this voice'
+    reg_ok = freq >= reg_match_pct
+    audio_ok = (stats['match_rate'] >= audio_match_rate
+                and (stats['jitter_p50_ms'] is None
+                     or stats['jitter_p50_ms'] <= loose_threshold_ms))
+    if reg_ok and audio_ok:
+        return 'ok', 'registers and audio both agree'
+    if reg_ok:
+        return 'SYNTHESIS', 'registers match, audio diverges -- envelope/pulse/filter timing'
+    if not audio_ok:
+        return 'SEQUENCER', 'registers and audio both diverge -- note data / sequencer'
+    return 'METRIC', 'audio matches, registers do not -- suspect a metric artifact (phase-offset sweep)'
+
+
+def run_voice_sweep(orig_sid, driver_sid, args, tmp_dir):
+    """Sweep all three voices in one run, guarded, cross-tabbed against registers.
+
+    Returns an exit code. Prints its own report -- format_text_report is
+    per-comparison and there are four comparisons here.
+    """
+    print("\nRendering voice sweep (5 renders per side)...")
+    o = sweep_renders(orig_sid, 'orig', args, tmp_dir)
+    d = sweep_renders(driver_sid, 'driver', args, tmp_dir)
+
+    bleed_o = analyze_voice_bleed(o['mix'], o['muted'], {v: o[v] for v in (1, 2, 3)})
+    bleed_d = analyze_voice_bleed(d['mix'], d['muted'], {v: d[v] for v in (1, 2, 3)})
+
+    print("\n" + "=" * 88)
+    print("VOICE ISOLATION GUARD  (does muting the other two actually isolate a voice?)")
+    print("=" * 88)
+    print(f"  warn at {100 * BLEED_WARN_FRAC:.0f}% shared energy, refuse at "
+          f"{100 * BLEED_REFUSE_FRAC:.0f}% -- measured thresholds, see "
+          f"sidm2/audio_tightness.py")
+    print(format_bleed('original', bleed_o))
+    print(format_bleed('driver', bleed_d))
+
+    blocked = (bleed_o.blocking or bleed_d.blocking) and not args.allow_digi_bleed
+    if bleed_o.blocking or bleed_d.blocking:
+        print("\n  [REFUSED] Muting two voices does not isolate the third on this tune:")
+        print("            a signal that survives muting ALL THREE dominates each")
+        print("            \"isolated\" render, so all three would look alike for")
+        print("            reasons that have nothing to do with the driver.")
+        if args.allow_digi_bleed:
+            print("            --allow-digi-bleed given: reporting anyway, TREAT THE")
+            print("            PER-VOICE ROWS AS UNSOUND.")
+        else:
+            print("            Reporting the mix row only. Re-run with")
+            print("            --allow-digi-bleed to see them anyway.")
+    elif 'warn' in (bleed_o.verdict, bleed_d.verdict):
+        print("\n  [WARN] A meaningful part of each isolated render is shared signal.")
+        print("         Per-voice deltas below are usable but partly correlated")
+        print("         across voices.")
+
+    rows = ['mix'] if blocked else ['mix', 1, 2, 3]
+    stats = {}
+    for label in rows:
+        report = analyze_tightness_files(
+            o[(label, 'path')], d[(label, 'path')],
+            onset_tolerance_ms=args.onset_tolerance_ms,
+            loose_threshold_ms=args.loose_threshold_ms,
+            hop_ms=args.hop_ms, window_ms=args.window_ms, bands=args.bands,
+            freq_lo=args.freq_lo, freq_hi=args.freq_hi)
+        stats[label] = row_stats(report, args.loose_threshold_ms)
+
+    def _pct(x):
+        return 'n/a' if x is None else f"{x:.1f}%"
+
+    def _ms(x, signed=True):
+        return 'n/a' if x is None else (f"{x:+.1f}ms" if signed else f"{x:.1f}ms")
+
+    print("\n" + "=" * 88)
+    print("PER-VOICE ONSET TIGHTNESS")
+    print("=" * 88)
+    print(f"  {'side':8s} {'onsets':>7s} {'matched':>8s} {'missing':>8s} {'extra':>6s} "
+          f"{'offset':>9s} {'jitter50':>9s} {'loose':>7s}")
+    for label in rows:
+        st = stats[label]
+        name = 'mix' if label == 'mix' else f"voice {label}"
+        print(f"  {name:8s} {st['orig_onsets']:7d} {st['matched']:8d} {st['missing']:8d} "
+              f"{st['extra']:6d} {_ms(st['offset_ms']):>9s} "
+              f"{_ms(st['jitter_p50_ms'], signed=False):>9s} {_pct(st['loose_pct']):>7s}")
+
+    if blocked:
+        return EXIT_BLEED_REFUSED
+
+    sub_args = [f"-a{args.subtune}"] if args.subtune is not None else []
+    try:
+        reg_rows, reg_meta = per_voice_register_agreement(
+            str(orig_sid), str(driver_sid), args.seconds,
+            orig_args=sub_args, drv_args=sub_args)
+    except Exception as e:
+        print(f"\n[WARN] Register half of the cross-tab unavailable: {e}")
+        return 0
+
+    print("\n" + "=" * 88)
+    print(f"REGISTERS x AUDIO  ({reg_meta['frames']} frames, engine delay "
+          f"{reg_meta['delay']:+d})")
+    print("=" * 88)
+    print(f"  {'voice':6s} {'freq':>6s} {'wf':>6s} {'pul':>6s} {'audio':>7s}  diagnosis")
+    for v in (1, 2, 3):
+        rr = reg_rows.get(v - 1, {})
+        st = stats[v]
+        verdict, why = diagnose(rr, st, args.reg_match_pct, args.audio_match_rate,
+                                 args.loose_threshold_ms)
+        audio = 'n/a' if st['match_rate'] is None else f"{100 * st['match_rate']:.0f}%"
+        print(f"  {v:<6d} {fmt_pct(rr.get('freq')):>6s} {fmt_pct(rr.get('wf')):>6s} "
+              f"{fmt_pct(rr.get('pul')):>6s} {audio:>7s}  {verdict}: {why}")
+    print("\n  freq is compared as a SEMITONE (vibrato landing on the same note is not a")
+    print("  note error). 'n/a' is never a 0 and never a 100 -- it means not measured.")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Compare audio-domain 'tightness' (onset timing + attack shape) "
@@ -285,6 +537,21 @@ Renderers:
 Voice isolation:
   --voice {1,2,3} mutes the OTHER two SID voices (sidplayfp's -u<num>) on BOTH
   renders, so a single channel can be compared cleanly.
+  --voice all sweeps all three in one run (5 renders per side) and prints:
+    (a) an ISOLATION GUARD -- an extra render with ALL THREE voices muted. On
+        many tunes that is not silence, and the signal that survives appears
+        identically in all three "isolated" renders, making them agree for
+        reasons unrelated to the driver. Measured shared-energy fractions run
+        from 0.2%% (Commando) to 68%% (I_Ball); the guard warns at 5%% and REFUSES
+        to print per-voice rows at 50%% (exit code 3), which --allow-digi-bleed
+        overrides.
+    (b) a REGISTERS x AUDIO cross-tab, the partition neither half can make
+        alone: registers match + audio diverges = driver synthesis; both
+        diverge = note data / sequencer; audio matches + registers do not = a
+        metric artifact.
+
+Exit codes:
+  0 ok   1 error   3 per-voice rows withheld by the isolation guard
 
 Native drivers (bin/-only, e.g. Blackbird):
   --driver-init/--driver-play are REQUIRED when the .sf2's init/play
@@ -300,9 +567,20 @@ Native drivers (bin/-only, e.g. Blackbird):
                          help="Render duration in seconds (default: 30)")
     parser.add_argument('--subtune', type=int, default=None,
                          help="Subtune/song number (sidplayfp -o<num>)")
-    parser.add_argument('--voice', type=int, choices=[1, 2, 3], default=None,
+    parser.add_argument('--voice', type=_voice_arg, default=None, metavar='{1,2,3,all}',
                          help="Isolate one SID voice by muting the other two on BOTH renders "
-                              "(forces --renderer sidplayfp)")
+                              "(forces --renderer sidplayfp). 'all' sweeps all three in one "
+                              "run and cross-tabs them against per-voice register agreement")
+    parser.add_argument('--allow-digi-bleed', action='store_true',
+                         help="Report per-voice rows even when the isolation guard refuses "
+                              "them (see --voice all). The numbers are unsound; this exists "
+                              "to inspect them, not to trust them")
+    parser.add_argument('--reg-match-pct', type=float, default=95.0,
+                         help="Per-voice freq agreement at or above which the REGISTERS are "
+                              "called matching in the cross-tab (default: 95)")
+    parser.add_argument('--audio-match-rate', type=float, default=0.9,
+                         help="Onset match fraction at or above which the AUDIO is called "
+                              "matching in the cross-tab (default: 0.9)")
     parser.add_argument('--renderer', choices=['auto', 'vsid', 'sidplayfp'], default='auto',
                          help="Renderer for BOTH sides (default: auto -- prefers VSID)")
     parser.add_argument('--driver-init', type=_hex_or_int, default=None,
@@ -363,6 +641,17 @@ Native drivers (bin/-only, e.g. Blackbird):
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="audio_tightness_"))
     try:
+        if args.voice == 'all':
+            orig_sid = resolve_to_sid(orig_path, 'orig', args, tmp_dir)
+            driver_sid = resolve_to_sid(driver_path, 'driver', args, tmp_dir)
+            if orig_sid is None or driver_sid is None:
+                return 1
+            try:
+                return run_voice_sweep(orig_sid, driver_sid, args, tmp_dir)
+            except RenderError as e:
+                print(f"[ERROR] {e}")
+                return 1
+
         print(f"\nResolving original: {args.orig}")
         try:
             orig_wav = resolve_input(orig_path, 'orig', args, tmp_dir, renderer)
