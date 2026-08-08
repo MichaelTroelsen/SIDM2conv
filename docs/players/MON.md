@@ -384,6 +384,40 @@ untouched.
     Cybernoid regression was caught) + full pytest suite: zero regressions
     everywhere else.
 
+## Cybernoid_II "synthesis divergence" — FALSIFIED 2026-08-08
+
+The registers x audio cross-tab reported Cybernoid_II as register-exact on all
+three voices yet only 71-85% onset-matched, and called it SYNTHESIS on every
+voice. It is not a driver defect; it is the metric.
+
+**What the registers actually say.** A full siddump diff over 350 frames gives
+**6 differing lines total**, all in frames 0-2, all one thing: the driver's
+`$D418` filter-mode write lags the original by exactly one frame
+(`Off -> Low -> L+B` against `Low -> L+B -> ...`). That single lag is the
+entire content of the `$D418` 99.7%. Everything else is byte-identical.
+
+**What the audio gap actually is.** Two things, neither attributable to the
+build:
+
+- *Metric noise.* Two `--delay=0` renders of one file are the same signal to
+  within `r = 1.0000` and `rms(diff)/rms ~ 0.001`. The full mix does not care
+  (38/38 onsets, 100% across all six pairings). A **voice-isolated** render
+  does: onset counts 101/88/98 and pairwise match rates 84.2-96.9%, because
+  muting two voices leaves a large population of onsets on the detector
+  threshold.
+- *Phase.* Perturbing the power-on delay on the ORIGINAL ALONE, note data
+  untouched, walks the score across the same band. The original and the build
+  reach their first play call through different init code (`$a600` vs `$1000`),
+  so their oscillators and noise LFSR are at different free-running phases.
+
+`audio_tightness_tool` now measures both per voice (`--repeat-floor`, default 9:
+one plain replicate plus 8 phase perturbations) and returns **INCONCLUSIVE**
+inside the floor. All three Cybernoid_II voices land there, reproducibly across
+runs. See PATTERNS.md **F5b**.
+
+**Still open**: the one-frame `$D418` mode lag at startup. Small, real, and
+separate from everything above.
+
 ## Hard-won lessons (encoded in code/tests — do not re-learn)
 
 - **The siddump SBC carry bug (2026-06-30).** Cybernoid's lead sounded wrong "when vibrating" although every register was byte-exact — the *capture* CPU (`sidm2/cpu6502_emulator.py`) had SBC carry stuck set, breaking 16-bit subtraction chains, so siddump computed a too-wide vibrato and the native build faithfully replayed the error. Fix: carry = `temp >= 0`; guarded by `pyscript/test_cpu6502_sbc.py`. Lesson: when trace-replay sounds wrong but the metric says byte-exact, **suspect the capture CPU** — cross-check py65 and VICE.

@@ -55,6 +55,29 @@ EXIT_BLEED_REFUSED = 3
 # PAL cycles/second -- same constant bin/listen_compare.py uses to turn a
 # wall-clock duration into an exact VSID -limitcycles value.
 PAL_CYCLES_PER_SEC = 985248
+PAL_CYCLES_PER_FRAME = PAL_CYCLES_PER_SEC // 50
+
+# How many extra copies of the ORIGINAL to render when calibrating the
+# repeatability floor (see measure_repeatability_floor). The first is a plain
+# REPLICATE at the same delay=0 as the reference render; the rest are
+# phase-perturbed, at deterministic even divisions of the frame so two runs of
+# this tool agree.
+#
+# Both halves are needed and they measure different things. The replicate
+# isolates the metric's own instability: two delay-0 renders of one file differ
+# only by LSB dither (rms(diff)/rms ~ 0.001), yet on a VOICE-ISOLATED render
+# that is enough to move the onset count by 13% and the match rate across
+# 84-97%, because muting two voices leaves the detector sitting on a threshold
+# edge with a large population of marginal onsets. The full mix does not do
+# this (38/38 onsets, 100% across every pairing). The phase samples then add
+# what free-running oscillator/LFSR state does on top.
+#
+# The count is not cosmetic. "The driver scores worse than all N self-samples"
+# is a rank test over N+1 exchangeable values, so its false-positive rate is
+# 1/(N+1): at N=3 a clean voice is called SYNTHESIS one time in four. N=9 puts
+# that at 10%, which is the weakest claim worth printing a verdict on. Raise it
+# for a result you intend to publish; the cost is N renders per voice.
+REPEAT_FLOOR_SAMPLES = 9
 
 
 class RenderError(RuntimeError):
@@ -319,12 +342,15 @@ def resolve_to_sid(path: Path, role: str, args, tmp_dir: Path):
     return None
 
 
-def _render_muted(sid_path, out_wav, mute, args):
+def _render_muted(sid_path, out_wav, mute, args, power_on_delay=0):
     """One sidplayfp render with an explicit mute set.
 
     Goes straight to AudioExportIntegration rather than through
     _render_sidplayfp's `voice` parameter because the guard render mutes ALL
     THREE voices, which MUTE_MAP cannot express.
+
+    power_on_delay is sidplayfp's --delay in cycles. It is 0 everywhere except
+    in measure_repeatability_floor, which perturbs it deliberately.
     """
     out_wav = Path(out_wav)
     if out_wav.exists():
@@ -332,7 +358,7 @@ def _render_muted(sid_path, out_wav, mute, args):
     result = AudioExportIntegration.export_to_wav(
         sid_file=Path(sid_path), output_file=out_wav, duration=int(args.seconds),
         verbose=args.verbose, force_sidplayfp=True, mute_voices=mute,
-        subtune=args.subtune)
+        subtune=args.subtune, power_on_delay=power_on_delay)
     if not result or not result.get('success'):
         err = result.get('error') if result else 'no rendering tool available'
         raise RenderError(f"Failed to render {sid_path} (mute={mute!r}): {err}")
@@ -356,6 +382,104 @@ def sweep_renders(sid_path, role, args, tmp_dir):
         out[label] = load_wav_mono(wav)[0]
         out[(label, 'path')] = wav
     return out
+
+
+def repeat_floor_delays(n):
+    """The n power-on delays the floor is calibrated over.
+
+    The first is 0 -- a plain replicate of the reference render, which shares
+    its phase exactly and therefore isolates the metric's own repeatability
+    from anything phase does. The rest are even divisions of one PAL frame,
+    deterministic rather than random so two runs of this tool calibrate
+    against the same perturbations and can be compared.
+    """
+    if n <= 0:
+        return []
+    return [0] + [round(PAL_CYCLES_PER_FRAME * (i + 1) / n) for i in range(n - 1)]
+
+
+def measure_repeatability_floor(orig_sid, orig_renders, args, tmp_dir, voices, samples):
+    """How well does the ORIGINAL match a re-render of ITSELF?
+
+    This is the second half of PATTERNS.md F5. Comparing a WAV against the
+    same WAV buys f(x, x) = perfect trivially and proves nothing. Re-rendering
+    does not: two delay-0 renders of one file are the same signal to within
+    r = 1.0000 and rms(diff)/rms ~ 0.001, and on a VOICE-ISOLATED render that
+    inaudible dither still moves the onset count by 13% and the match rate
+    across 84-97%. Muting two voices leaves the detector on a threshold edge
+    where a large population of marginal onsets flips. The full mix is stable
+    under the same test, which is why this only bites the per-voice rows.
+
+    Perturbing the power-on delay adds what free-running oscillator and noise
+    LFSR phase does on top -- and phase IS the thing that separates two
+    different binaries, because an original and a driver build reach their
+    first play call through different init code.
+
+    Neither term is a defect in the driver, so a driver score is evidence of
+    one only if it is WORSE than both. We measure that directly, per voice,
+    through the same onset comparison the driver rows use.
+
+    Returns {voice: {'replicate': [float, ...], 'phase': [float, ...]}} --
+    self-match rates at delay 0 and at the perturbed delays respectively.
+    Voices whose self-comparison yields no onsets at all are omitted rather
+    than scored, on the same rule as score_pct: no evidence is not a 0.
+    """
+    out = {}
+    per_voice = {v: {'replicate': [], 'phase': []} for v in voices}
+    for delay in repeat_floor_delays(samples):
+        kind = 'replicate' if delay == 0 else 'phase'
+        for v in voices:
+            wav = _render_muted(orig_sid, tmp_dir / f"orig_floor{delay}_{v}.wav",
+                                MUTE_MAP[v], args, power_on_delay=delay)
+            report = analyze_tightness_files(
+                orig_renders[(v, 'path')], wav,
+                onset_tolerance_ms=args.onset_tolerance_ms,
+                loose_threshold_ms=args.loose_threshold_ms,
+                hop_ms=args.hop_ms, window_ms=args.window_ms, bands=args.bands,
+                freq_lo=args.freq_lo, freq_hi=args.freq_hi)
+            rate = row_stats(report, args.loose_threshold_ms)['match_rate']
+            if rate is not None:
+                per_voice[v][kind].append(rate)
+    for v, kinds in per_voice.items():
+        if kinds['replicate'] or kinds['phase']:
+            out[v] = kinds
+    return out
+
+
+def floor_of(samples):
+    """The floor a sample dict implies: the worst self-match observed.
+
+    None, never 0.0, when nothing was measured -- an uncalibrated floor is not
+    a floor of zero, which would call every voice inconclusive.
+    """
+    if not samples:
+        return None
+    rates = list(samples.get('replicate', [])) + list(samples.get('phase', []))
+    return min(rates) if rates else None
+
+
+def effective_floor(samples):
+    """floor_of() widened by the metric's own measured noise.
+
+    The floor is a minimum over point estimates, and each of those estimates is
+    itself subject to the instability the replicate term measures: on an
+    isolated voice a plain re-render can cost several points on its own. A
+    driver scoring a point or two under a raw floor is therefore not
+    reproducibly under it -- Cybernoid_II voice 3 read 85% against a 77% floor
+    on one run and 70% against 71% on the next, flipping the verdict with
+    nothing changed.
+
+    So the margin is the replicate shortfall, 1 - min(replicate): how far pure
+    noise moved this voice on this file. It is measured, not chosen, and it
+    widens the inconclusive band rather than narrowing it -- the error it can
+    make is declining to call a real defect, never inventing one.
+    """
+    floor = floor_of(samples)
+    if floor is None:
+        return None, 0.0
+    rep = samples.get('replicate') or []
+    margin = (1.0 - min(rep)) if rep else 0.0
+    return max(0.0, floor - margin), margin
 
 
 def row_stats(report, loose_threshold_ms):
@@ -392,8 +516,18 @@ def format_bleed(label, bleed):
             f"[{bleed.verdict}]\n  {'':9s} inter-voice {corr}")
 
 
-def diagnose(reg_row, stats, reg_match_pct, audio_match_rate, loose_threshold_ms):
-    """The register x audio partition. Returns (verdict, explanation)."""
+def diagnose(reg_row, stats, reg_match_pct, audio_match_rate, loose_threshold_ms,
+             floor_samples=None):
+    """The register x audio partition. Returns (verdict, explanation).
+
+    floor_samples is what this file scores against re-renders of ITSELF (see
+    measure_repeatability_floor); the floor is the worst of them. SYNTHESIS
+    survives only when the driver scores below every one -- a rank test whose
+    false-positive rate is 1/(N+1), quoted in the explanation so nobody reads
+    a 3-sample verdict as a 20-sample one. Pass None when it was not measured;
+    the verdict then says so rather than pretending to a confidence it has not
+    earned.
+    """
     freq = reg_row.get('freq') if reg_row else None
     if freq is None:
         return 'n/a', 'registers not exercised on this voice -- cannot partition'
@@ -406,7 +540,37 @@ def diagnose(reg_row, stats, reg_match_pct, audio_match_rate, loose_threshold_ms
     if reg_ok and audio_ok:
         return 'ok', 'registers and audio both agree'
     if reg_ok:
-        return 'SYNTHESIS', 'registers match, audio diverges -- envelope/pulse/filter timing'
+        # The registers agree, so the note data is right and only synthesis
+        # could differ -- UNLESS free-running SID phase alone can produce a
+        # score this low on this file, which is exactly what the phase floor
+        # measures. Inside the band the audio carries no information about
+        # synthesis, and saying SYNTHESIS there is a confident wrong answer.
+        floor = floor_of(floor_samples)
+        if floor is None:
+            return ('SYNTHESIS',
+                    'registers match, audio diverges -- envelope/pulse/filter timing '
+                    '(repeatability floor NOT measured: --repeat-floor 0, so this cannot '
+                    'rule out metric noise or free-running SID phase)')
+        eff, margin = effective_floor(floor_samples)
+        n = len(floor_samples.get('replicate', [])) + len(floor_samples.get('phase', []))
+        if stats['match_rate'] >= eff:
+            worst = ('a plain re-render'
+                     if floor_samples.get('replicate')
+                     and floor == min(floor_samples['replicate'])
+                     else 'a phase-shifted re-render')
+            band = (f'{100 * floor:.0f}%, set by {worst}' if margin <= 0 else
+                    f'{100 * floor:.0f}% set by {worst}, less a {100 * margin:.0f}pt '
+                    f'margin the plain re-render itself moved')
+            return ('INCONCLUSIVE',
+                    f'registers match; audio {100 * stats["match_rate"]:.0f}% is inside '
+                    f'the repeatability floor ({band}) -- this file scores no better '
+                    f'against ITSELF, so the audio cannot separate a synthesis defect '
+                    f'from metric noise and SID phase')
+        return ('SYNTHESIS',
+                f'registers match, audio diverges -- envelope/pulse/filter timing '
+                f'(below all {n} self-comparisons and the {100 * margin:.0f}pt noise '
+                f'margin under them, floor {100 * floor:.0f}%; p={1 / (n + 1):.2f} by '
+                f'rank alone)')
     if not audio_ok:
         return 'SEQUENCER', 'registers and audio both diverge -- note data / sequencer'
     return 'METRIC', 'audio matches, registers do not -- suspect a metric artifact (phase-offset sweep)'
@@ -483,6 +647,18 @@ def run_voice_sweep(orig_sid, driver_sid, args, tmp_dir):
     if blocked:
         return EXIT_BLEED_REFUSED
 
+    floors = {}
+    if args.repeat_floor > 0:
+        delays = repeat_floor_delays(args.repeat_floor)
+        print("")
+        print(f"Calibrating repeatability floor ({args.repeat_floor} extra renders per "
+              f"voice, delays {delays} cycles -- the 0 is a plain replicate)...")
+        try:
+            floors = measure_repeatability_floor(orig_sid, o, args, tmp_dir, (1, 2, 3),
+                                                 args.repeat_floor)
+        except RenderError as e:
+            print(f"[WARN] Repeatability floor unavailable: {e}")
+
     sub_args = [f"-a{args.subtune}"] if args.subtune is not None else []
     try:
         reg_rows, reg_meta = per_voice_register_agreement(
@@ -496,17 +672,33 @@ def run_voice_sweep(orig_sid, driver_sid, args, tmp_dir):
     print(f"REGISTERS x AUDIO  ({reg_meta['frames']} frames, engine delay "
           f"{reg_meta['delay']:+d})")
     print("=" * 88)
-    print(f"  {'voice':6s} {'freq':>6s} {'wf':>6s} {'pul':>6s} {'audio':>7s}  diagnosis")
+    print(f"  {'voice':6s} {'freq':>6s} {'wf':>6s} {'pul':>6s} {'audio':>7s} "
+          f"{'repeat':>7s} {'floor':>7s}  diagnosis")
     for v in (1, 2, 3):
         rr = reg_rows.get(v - 1, {})
         st = stats[v]
+        samples = floors.get(v)
+        fl = floor_of(samples)
+        rep = min(samples['replicate']) if samples and samples.get('replicate') else None
         verdict, why = diagnose(rr, st, args.reg_match_pct, args.audio_match_rate,
-                                 args.loose_threshold_ms)
+                                 args.loose_threshold_ms, floor_samples=samples)
         audio = 'n/a' if st['match_rate'] is None else f"{100 * st['match_rate']:.0f}%"
+        repeat = 'n/a' if rep is None else f"{100 * rep:.0f}%"
+        floor = 'n/a' if fl is None else f"{100 * fl:.0f}%"
         print(f"  {v:<6d} {fmt_pct(rr.get('freq')):>6s} {fmt_pct(rr.get('wf')):>6s} "
-              f"{fmt_pct(rr.get('pul')):>6s} {audio:>7s}  {verdict}: {why}")
+              f"{fmt_pct(rr.get('pul')):>6s} {audio:>7s} {repeat:>7s} {floor:>7s}  "
+              f"{verdict}: {why}")
     print("\n  freq is compared as a SEMITONE (vibrato landing on the same note is not a")
     print("  note error). 'n/a' is never a 0 and never a 100 -- it means not measured.")
+    print("  repeat is this file against a PLAIN re-render of itself (same delay): pure")
+    print("  metric noise, and on isolated voices it is large. floor adds phase-shifted")
+    print("  re-renders and takes the worst. An audio score at or above floor is not")
+    print("  evidence of anything -- see PATTERNS.md F5.")
+    if args.repeat_floor:
+        print(f"  SYNTHESIS below floor is a rank test over {args.repeat_floor} "
+              f"self-comparisons: p={1 / (args.repeat_floor + 1):.2f} by chance.")
+    else:
+        print("  Floor not measured -- any SYNTHESIS above is uncalibrated.")
     return 0
 
 
@@ -571,6 +763,16 @@ Native drivers (bin/-only, e.g. Blackbird):
                          help="Isolate one SID voice by muting the other two on BOTH renders "
                               "(forces --renderer sidplayfp). 'all' sweeps all three in one "
                               "run and cross-tabs them against per-voice register agreement")
+    parser.add_argument('--repeat-floor', type=int, default=REPEAT_FLOOR_SAMPLES,
+                        metavar='N',
+                        help="Calibrate the repeatability floor with N extra renders of "
+                             "the ORIGINAL per voice (one plain replicate, the rest at "
+                             "perturbed power-on delays), and withhold the SYNTHESIS "
+                             "diagnosis for any voice scoring inside it. SYNTHESIS below "
+                             "the floor is a rank test with false-positive rate 1/(N+1), "
+                             "so raise N for a result you intend to publish. 0 disables "
+                             "(the SYNTHESIS text then says it is uncalibrated). "
+                             f"Default: {REPEAT_FLOOR_SAMPLES}")
     parser.add_argument('--allow-digi-bleed', action='store_true',
                          help="Report per-voice rows even when the isolation guard refuses "
                               "them (see --voice all). The numbers are unsound; this exists "

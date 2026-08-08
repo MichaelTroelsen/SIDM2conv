@@ -286,6 +286,43 @@ whose information is the tool's own jitter.
 **Seen in**: sidplayfp (all audio paths, fixed 2026-08-08 in
 `sidm2/sidplayfp_wrapper.py`, `power_on_delay=0` by default).
 
+### F5b. `f(x, x)` is necessary but NOT sufficient — re-render, then compare
+**Symptom**: a tool that passes the F5 check still gives a confident wrong
+answer on two *different* binaries, and its verdict flips between runs.
+**Detection**: F5 as usually run compares a WAV against **the same WAV**,
+which is exact by construction and proves nothing about the pipeline that
+produced it. The real test is `f(x, x')` where `x'` is **re-rendered** from
+the same input, and then again with a knob perturbed that legitimately differs
+between the two things you actually want to compare.
+**Cause seen** (Cybernoid_II, 2026-08-08): the registers×audio cross-tab called
+all three voices SYNTHESIS — registers exact, audio 71-85%. Neither term was a
+driver defect:
+- **Metric noise.** Two `--delay=0` renders of one file are the same signal to
+  within `r = 1.0000`, `rms(diff)/rms ~ 0.001`. On the **full mix** the onset
+  detector does not move (38/38, 100% across all six pairings). On a
+  **voice-isolated** render that inaudible dither moves the onset count
+  101/88/98 and the pairwise match rate across **84.2-96.9%** — muting two
+  voices leaves a large population of onsets on the detector threshold.
+- **Phase.** Free-running oscillator and noise-LFSR state differ because an
+  original and a driver build reach their first play call through different
+  init code. Perturbing the power-on delay on the ORIGINAL ALONE, note data
+  untouched, spans the same band the driver was being blamed for.
+**Rule**: before reading any cross-binary audio number, measure the floor the
+file produces **against itself** — one plain re-render (metric noise) plus N
+perturbed ones (phase) — and withhold the diagnosis inside it. Three further
+rules fall out, all learned the hard way here:
+1. "Driver is worse than all N self-samples" is a **rank test**: its
+   false-positive rate is `1/(N+1)`. At N=3 a clean voice is condemned one run
+   in four. Quote the p, and pick N from the claim you intend to make.
+2. The floor is a **minimum over noisy point estimates**, so widen it by the
+   replicate shortfall. Without that margin the verdict flipped between two
+   runs of the identical command (85% vs a 77% floor, then 70% vs 71%).
+3. A partition with no **inconclusive** outcome will always name a culprit.
+   Add the cell before trusting any of the others.
+**Seen in**: `pyscript/audio_tightness_tool.py` (`--repeat-floor`, default 9,
+`measure_repeatability_floor`; tests in
+`pyscript/test_audio_tightness_repeat_floor.py`).
+
 ---
 
 ## Adding an entry
