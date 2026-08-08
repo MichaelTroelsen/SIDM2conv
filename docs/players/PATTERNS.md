@@ -149,6 +149,35 @@ for months; a `secs=0` fidelity window measured a silent SF2 as perfect
 (Hubbard's vacuous-100 bug); an arp tolerance of `max(4, dur//8)` against 3
 compared frames accepted garbage (SM drums).
 
+**Two guards, not one — this was learned twice in one day (2026-08-07).**
+`sidm2.fidelity_common` now carries both, because they answer different
+questions and either alone leaves a hole:
+
+- `score_pct(ok, tot)` → **None** when `tot == 0`. *Were there any frames?*
+- `exercised(a, b)` → **False** when both series are the same single constant.
+  *Did those frames carry any information?*
+
+`score_pct` alone is not sufficient, and the reason is siddump-specific and
+easy to miss: **siddump force-displays every register on its first row**
+whether or not the playroutine wrote it. So a tune that never touches the
+filter still yields a full-length, entirely non-`None` series of zeroes on
+*both* sides — a nonzero denominator, `ok == tot`, and a confident 100.0 that
+means only "neither side did anything". Measured twice after the "fix" was in:
+Commando (Hubbard never writes a cutoff) reported `Filter Accuracy: 100.00%`
+in `sidm2/accuracy.py`, and again through `sidm2/validation.py`. Both were
+caught by *running the tool*, not by the tests.
+
+`exercised` is deliberately two-sided: two *different* constants (a permanently
+wrong `$D418`, say) stay in and score ~0%, so a register that is constantly
+wrong cannot hide in `n/a` either.
+
+The scale of the class: five separate copies of the same weighted-accuracy
+scheme existed in this repo (`sidm2/accuracy.py`, `scripts/validate_sid_accuracy.py`,
+`sidm2/validation.py`, `pyscript/trace_comparator.py`, and the heatmap
+generator), each independently broken, one of them scoring **two identical
+captures at 50%**. If you are writing a new scorer, route it through
+`fidelity_common` instead.
+
 ### D5. Timing-model calibration by strict agreement
 When the tempo conductor is unresolved (E's dual-row condition, V's global
 tempo commands), select the tick→frame mapper **per file by strict

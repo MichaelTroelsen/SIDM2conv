@@ -132,7 +132,48 @@ Remaining Tel work = the per-tune quirk classes above + FOUR new engine arcs
 (user priority 2026-07-06): **1. Rob Hubbard (18), 2. Soundmonitor (39),
 3. MoN/Deenen mainstream (72, Robocop3/Turrican-era)**, plus stray one-offs.
 
-Fidelity is measured with `bin/mon_part_fidelity.py PART SUB SECS OFF0_SECS` (per-frame semitone-freq / waveform / pulse / filter-cutoff vs siddump) and `bin/mon_sf2ii_confirm.py` (instrumented real-SF2II capture).
+Fidelity is measured with `bin/mon_part_fidelity.py PART SUB SECS OFF0_SECS` (per-frame semitone-freq / waveform / pulse / filter-cutoff, plus `adsr` and the three split filter registers, vs siddump) and `bin/mon_sf2ii_confirm.py` (instrumented real-SF2II capture).
+
+### `$D418` — two defects that hid under "filter 100%" until 2026-08-07
+
+**Read the "filter" percentages above as *cutoff* (`$D415/$D416`) only.** They were
+accurate and they were not the whole filter: `$D418` was scored by nothing until
+the R17 gate was widened, and it was wrong on three of the eight targets.
+
+- **Passband was never captured.** `filter_program_for` worked from
+  `filter_trace`, which returns `(cutoff11, $D417)` — `$D418` was not in it — so
+  `_filt_set_row` hardcoded `$90`, i.e. X=1, low-pass, for *every MoN tune ever
+  built*. The driver was never at fault: `fp_set` has always decoded a 3-bit
+  passband into `F_MODE`; nothing ever handed it anything but low-pass. Measured
+  over 20 s: Cybernoid_II wants `$3F` (low+band), Hawkeye alternates `$7F` and
+  `$1F`, Cybernoid genuinely is `$1F`, Supremacy uses no passband at all. Fixed
+  by `passband_trace` + a per-frame passband threaded into the SET rows; a
+  passband *switch* now forces a SET row, since ADD rows only move the cutoff.
+- **Master volume was hardcoded** `ora #$0f`. Over 60 s the corpus is
+  Hawkeye/Cybernoid/Cybernoid_II 15, **Supremacy sub0 6, sub1 8**, sub2 15 — so
+  two subtunes played more than twice as loud as the original. Now a build-time
+  constant `MAIN_VOL` in `layout.inc`, taken as the **modal** value because
+  siddump's forced row 0 shows the pre-init bus state (all three Supremacy
+  subtunes read 3 there) and taking frame 0 would ship the artefact.
+
+| target | `$D418` before | after |
+|---|---|---|
+| Cybernoid_II | 0.0% | **99.7%** |
+| Hawkeye | 82.5% | **99.9%** |
+| Supremacy sub0 | 0.0% | **exact** (`$06`, verified by packing back to SID and tracing) |
+| Cybernoid | n/a | n/a — its passband is uniformly 1, so the change emits byte-identical rows and *cannot* regress it |
+
+Volume is a per-song **constant** in this corpus, not a ride — a tune that
+genuinely rides it will surface as a `volmode` score below 100 rather than as
+plausible-looking output. Still open: Supremacy's `adsr` at 2.3%/4.5% on
+osc2/osc3, visible for the first time now that the envelope is scored, and
+unexplained.
+
+**The transferable part is not the fix, it is why it survived.** A hardcoded
+low-pass is inaudible in freq/wf/pulse — the only columns the gate scored — so
+it shipped for the entire life of the driver and was found within hours of
+`$D418` becoming a dimension. See `PATTERNS.md`, *A metric that cannot see a
+change*.
 
 ---
 
