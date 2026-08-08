@@ -124,6 +124,17 @@ Legato tunes auto-select `TEMPO = multispeed` (one editor row per video frame) f
 
 ---
 
+## `$D418` master volume — confirmed inert (2026-08-08)
+
+Same finding as ROMUZAK.md (both drivers share
+`drivers_src/common/sf2_native_driver.asm`, which hardcodes `ora #$0f` on
+`$D418`): traced across four originals (`Wizball`, `Arkanoid`, `Comic_Bakery`,
+`Athena`, 600 frames each) and the register is never written at all in any of
+them -- frame 0's displayed value is siddump's pre-init bus garbage, not a
+write. No per-tune master volume exists to extract here. See ROMUZAK.md for
+the full writeup; don't re-investigate without a specific file that shows a
+genuine `$D418` write.
+
 ## References
 - Engine map: `docs/analysis/GALWAY_1STGEN_ENGINE.md`, `docs/analysis/GALWAY_FM_PM_SYNTH.md`
 - Driver plan: `docs/analysis/GALWAY_SF2_DRIVER_PLAN.md`

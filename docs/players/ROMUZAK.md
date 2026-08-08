@@ -159,6 +159,32 @@ then down), hold the base 1 frame; SEEK ramps `+B0`/frame and HOLDS the note's l
 frame (driver `VIFLAGS $10` + `zp_tcnt==1`/`vhold==0`). Only remaining: a hands-on GUI
 confirm in SF2II. Plan: `docs/analysis/ROMUZAK_SF2_DRIVER_PLAN.md`.
 
+## `$D418` master volume — investigated, confirmed inert (2026-08-08)
+
+The shared native-driver engine (`drivers_src/common/sf2_native_driver.asm`,
+underneath both this driver and Galway's) hardcodes `ora #$0f` on every
+`$D418` write, where MoN's own copy of the same engine takes a per-tune
+`MAIN_VOL` constant (`c067b23` — Supremacy's subtunes genuinely play at 6 and
+8, not full volume). Flagged after `7bb89d7` as a possible parallel bug and
+investigated before writing any plumbing.
+
+**Traced `$D418` across the full song in both corpus tunes** (`siddump_complete.py`,
+Delirious_9_tune_1 and Road_of_Excess_end, 600 frames each): the register is
+**never written at all**, not once, for the entire trace. Frame 0's `F` is
+siddump's synthetic pre-init bus value (documented in `fidelity_common.py`'s
+`siddump_frames_full` docstring), not a genuine write; every frame after that
+reads `.` (never written). Four Galway files (`Wizball`, `Arkanoid`,
+`Comic_Bakery`, `Athena`) show the identical pattern — see `GALWAY.md`.
+
+**Conclusion: there is no per-tune master volume to extract for either
+engine, because neither original ever touches `$D418`.** This is a different
+situation from MoN's, which genuinely varied volume per-tune and had it
+wrong. The hardcoded `ora #$0f` is inert, not incorrect, for every file
+checked — consistent with Galway's existing `Wizball` audio test already
+passing unchanged. **Do not build `MAIN_VOL` plumbing for this engine without
+first finding a specific file whose original writes `$D418`** — none has
+been found in this corpus.
+
 ## Open issues / TODO
 
 - ~~**Per-tune base + tempo**~~ — **FIXED** (base 0; tempo = reload; bass validates).

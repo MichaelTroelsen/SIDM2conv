@@ -295,7 +295,7 @@ suspected at the time in `mon_parser.py:855`/`:939` — this is exactly what
 
 <work_remaining>
 
-## 1. MAIN_VOL plumbing for ROMUZAK/Galway — SCOPED, NOT YET EXECUTED
+## ~~1. MAIN_VOL plumbing for ROMUZAK/Galway~~ — INVESTIGATED, CLOSED as not needed (2026-08-08)
 
 Flagged by "do 1" as separate, larger work; the assistant began investigating
 this at the very end of the session (last action before invoking the
@@ -346,11 +346,29 @@ session re-discovery time:
   hardcoded `$0f` — some evidence this may not be a live bug for at least
   that file, though it says nothing about the rest of either corpus.
 
-**Recommended next step**: a short, bounded investigation (NOT a fix) —
-disassemble one or two ROMUZAK and Galway originals around wherever they
-write `$D418`, to determine whether the master volume is ever non-`$0f` in
-practice for these engines. Report the finding before deciding whether the
-larger plumbing work is worth doing.
+**Investigated via siddump trace (not disassembly -- faster and sufficient):**
+traced `$D418` across the full window in 2 ROMUZAK originals
+(`Delirious_9_tune_1`, `Road_of_Excess_end`, 600 frames each) and 4 Galway
+originals (`Wizball`, `Arkanoid`, `Comic_Bakery`, `Athena`, 600 frames each).
+**The register is never written at all in any of the six files** -- frame 0's
+displayed `F` is siddump's synthetic pre-init bus value (documented in
+`fidelity_common.py`'s `siddump_frames_full` docstring), not a genuine write;
+every subsequent frame reads `.` (never written), for the entire trace.
+
+**Conclusion: there is no per-tune master volume to extract for either
+engine, because neither original ever touches `$D418`.** This is a different
+situation from MoN's (which genuinely varied volume per-tune and had it
+wrong) -- the shared engine's hardcoded `ora #$0f` is INERT, not incorrect,
+for every file checked. Consistent with `do 1`'s finding that Galway's
+existing `Wizball` test already passes unchanged at the hardcoded value.
+
+**Closed as not needed.** Documented as a negative result in
+`docs/players/ROMUZAK.md` and `docs/players/GALWAY.md` (new sections, both
+dated 2026-08-08) and in `CLAUDE.md`'s MoN row, specifically so this isn't
+re-investigated from scratch later. Should NOT be revisited unless a
+SPECIFIC file is found whose original genuinely writes a non-default
+`$D418` value -- none has been found in the 6 files sampled here (2 of 2
+ROMUZAK test files, 4 of 40 Galway corpus files).
 
 ## 2. Realign `vdly` independently per-register in `mon_part_fidelity.py` — BLOCKED ON USER SIGN-OFF
 
