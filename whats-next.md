@@ -419,6 +419,46 @@ Was flagged repeatedly through the session (by the assistant's own status
 updates and independently by "do 4") as increasingly stale. This regenerated
 document supersedes it. No further action needed on this item specifically.
 
+## 5. HP_ENGINE fast-PWM rate deficit — ROOT-CAUSED, not fixed (2026-08-08)
+
+Picked `Commando_song2` (the cleanest lead from item 2 above) as a concrete
+next step. Disassembled the exact ROM routine the driver's own comment cites
+(`$5230` in `SID/Hubbard_Rob/Commando.sid`) and found the mechanism: the
+driver's HP_ENGINE fast-PWM mode (`pulse_step` in `drivers_src/mon/
+romuzak_driver.asm`) models the ROM's per-note pulse-speed byte as a flat
+per-frame add — which IS what the ROM code at `$5237-$5240` literally does
+in isolation. But the real register stream over a sustained fast-PWM note
+doesn't step at that flat rate: measured 6-of-8 frames at the modelled step,
+2-of-8 at DOUBLE it, for a genuine 1.25x rate deficit (confirmed the
+instrument's pulse-speed byte itself is constant across the window, ruling
+out "the step value changes" as an alternative explanation). Likely a
+separate/faster pulse-clock in the ROM, not yet traced to its actual source
+(everything disassembled so far is the *consumer* of the call frequency —
+the producer, presumably an IRQ/timer setup, hasn't been looked at).
+
+**Checked whether this falsifies the documented "pulse 100%" claim before
+concluding anything** (per the user's explicit ask): re-tested
+`Monty_on_the_Run_song0` over its full ~56s part (2802 frames) and
+`Zoids_song0` over its full loop (386 frames) — **both hold, 99.9-100% on
+every voice.** The claim survives; it was always about main themes and
+remains true even on a much longer window than it was likely first tested at.
+
+**But the defect IS real on other subtunes of those same files.**
+`Zoids_song2` — same file, same fast-PWM instrument bank as the clean
+`song0` — reads 96.5/96.5/96.6%, the identical "song0 clean / song2 drifts"
+pattern seen in Commando. Severity varies a lot by instrument/note duration
+(Zoids_song2 mild, Commando_song2 severe at 14.3%).
+
+Recorded with the full disassembly evidence in `docs/players/HUBBARD.md`'s
+"Fidelity gotchas" section. **Not fixed** — the true clock rate needs the
+ROM's IRQ/timer setup disassembled, not a curve-fit of the observed 6-then-2
+schedule (which could be a coincidence of this one instrument's pulse-speed
+value rather than the general rule). If this is picked back up, that
+disassembly is the next concrete step, followed by deciding how to encode a
+non-flat rate in `pulse_step` (a periodic accumulator, similar in shape to
+the existing `TEMPO_SWALLOW`/`TEMPO_SCHED` machinery for note tempo, but for
+the pulse clock specifically and only under HP_ENGINE fast-PWM mode).
+
 ## 4. Nothing else outstanding from the pre-session backlog
 
 Every other item from the PRIOR session's handoff (`69c806f`) — the

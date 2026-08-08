@@ -103,6 +103,39 @@ The build measures itself with `bin/mon_part_fidelity.py PART SONG SECS OFF0` (s
 - **The metric never compares `$D417` resonance/routing or `$D418` mode** — "filter" means cutoff only. A real blind spot, not just a Hubbard one.
 - **`bin/hubbard_validate.py` is V1-only and fails SILENTLY on V2.** It reads Delta sub11 at 23–25% because it computes onsets as `tk*fpt`, ignoring `swallow_period=5` (Monty period=0, Delta period=5). That is not a refutation of Delta — it is a validator returning a meaningless number for a whole class instead of refusing. Contradicts this project's fail-loudly rule; use `mon_part_fidelity.py` for V2 until fixed.
 - **Play-routine spin class:** several rips (Last_V8, Tarzan, …) spin forever on a bare py65 — 2M steps × thousands of frames = a 3-hour replay that killed the corpus batch. Use `sidm2.cpu6502_emulator` with the `$D012` raster fake (`measure_tick_schedule`, `HPReplay`, `initial_instruments`, `swallow_state`).
+- **`HP_ENGINE` fast-PWM mode ("lo += pulseval per frame") is NOT what the ROM
+  does — it's a flat model of a genuinely faster, periodic clock.** Found via
+  `Commando_song2` (2026-08-08), root-caused by disassembling the exact ROM
+  routine the driver's own comment cites (`$5230`, `SID/Hubbard_Rob/Commando.sid`):
+  `$5237-$5240` is `LDY $5518 / LDA $5591,y / ADC $5507 / STA $5591,y` — a flat
+  per-frame add of the instrument's pulse-speed byte (`$5507`, set once per
+  note-fetch at `$51b6` and confirmed constant through the sustained note, not
+  recomputed per frame). The driver's `pulse_step` (`drivers_src/mon/
+  romuzak_driver.asm`, HP_ENGINE fast-PWM branch) implements exactly that flat
+  model. But the REAL register stream over a sustained fast-PWM note doesn't
+  step flatly: 6 of every 8 frames advance by `pv`, 2 of 8 advance by `2*pv` —
+  a genuine **1.25x rate deficit** (30 units/8 frames real vs 24/8 modelled),
+  not measurement noise (pv itself was confirmed constant across the window,
+  so it isn't the step VALUE changing). Likely a separate/faster pulse-clock
+  in the ROM not yet traced to its source (the producer code above is the
+  *consumer* of the call frequency, not what sets it — the IRQ/timer setup
+  hasn't been disassembled).
+  - **Does NOT falsify the documented "pulse 100%" claim.** Re-tested both
+    `Monty_on_the_Run_song0` (2802-frame window, the part's full ~56s) and
+    `Zoids_song0` (386-frame window, its full loop) — both hold at
+    100.0/99.9-100.0/99.9-100.0. The claim was always about main themes and
+    survives on a longer window than it was likely first tested with.
+  - **But it's real on OTHER subtunes of the SAME files.** `Zoids_song2` —
+    same file, same fast-PWM instrument bank as the clean `song0` — reads
+    96.5/96.5/96.6% pulse, the identical song0-clean/song2-drifts pattern as
+    Commando. Severity varies a lot: Zoids_song2 mild (96.5%), Commando_song2
+    severe (14.3%) — likely depends on the specific instrument's `pv` value
+    and how long a note sustains, not a single universal constant.
+  - **Not fixed.** Confirming the true clock rate needs disassembling the
+    ROM's IRQ/timer setup (not yet done) rather than curve-fitting the
+    observed 6-then-2 schedule, which could easily be a specific tune's
+    coincidence rather than the general rule. See `whats-next.md` if this is
+    picked back up.
 - **`out/hubbard/*.sf2` is a build cache, not a source of truth — it goes stale
   silently.** `out/` is `.gitignore`d entirely (not a tracked-vs-untracked
   question, it's simply not in the repo), so nothing enforces that what's on
