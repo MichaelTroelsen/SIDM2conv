@@ -596,3 +596,64 @@ def test_format_run_delta_prints_coverage_and_verdict():
     assert "verdict:" in txt
     assert "what this run compared" in txt
     assert "$D405/$D406" in txt            # blind spot named, not remembered
+
+
+# --- shape_agreement: the phase-invariant companion to per-frame equality ----
+
+def test_shape_agreement_survives_a_pure_phase_shift():
+    """The whole point. A sweep that is correct but starts late scores near
+    zero per frame; movement count and travel are unchanged by the lag."""
+    # sweep then HOLD, so a 7-frame lag pushes into the held tail rather than
+    # off the end of the window — the lag is then pure phase, with no motion
+    # lost. (Truncation is real when the sweep runs to the window edge: it
+    # costs exactly the events that fall off, which is why this metric is
+    # "barely moved by a lag", not "immune to one".)
+    sweep = list(range(100, 200, 5)) + [195] * 10
+    lagged = [100] * 7 + sweep[:-7]
+    per_frame = sum(a == b for a, b in zip(sweep, lagged)) / len(sweep)
+    assert per_frame < 0.2                      # strict scoring calls this dead
+    mp, tp, moves, travel = FC.shape_agreement(sweep, lagged)
+    assert moves == (19, 19) and travel == (95, 95)
+    assert mp == 100.0 and tp == 100.0
+
+
+def test_shape_agreement_is_na_when_neither_side_moves():
+    """0/0 is 'no motion to compare', never 100.0 — a flat pulse on both sides
+    is not evidence the pulse engine works (see score_pct)."""
+    mp, tp, _, _ = FC.shape_agreement([2048] * 50, [2048] * 50)
+    assert mp is None and tp is None
+    # ...including when the two constants DISAGREE: there is still no motion
+    # here. That disagreement belongs to the strict column, which `exercised`
+    # keeps alive for exactly this case.
+    mp, tp, _, _ = FC.shape_agreement([2048] * 50, [512] * 50)
+    assert mp is None and tp is None
+    assert FC.exercised([2048] * 50, [512] * 50)
+
+
+def test_shape_agreement_scores_zero_when_only_one_side_moves():
+    mp, tp, moves, travel = FC.shape_agreement([100, 150, 200], [100] * 3)
+    assert moves == (2, 0) and travel == (100, 0)
+    assert mp == 0.0 and tp == 0.0
+
+
+def test_shape_agreement_is_a_ratio_of_the_smaller_to_the_larger():
+    """Symmetric: which side is the original must not change the number."""
+    a, b = [0, 10, 20, 30], [0, 10, 20]
+    mp, tp, _, _ = FC.shape_agreement(a, b)
+    assert (mp, tp) == (pytest.approx(200 / 3), pytest.approx(200 / 3))
+    assert FC.shape_agreement(b, a)[:2] == (mp, tp)
+
+
+def test_shape_agreement_cannot_prove_a_match_and_the_test_says_so():
+    """NECESSARY, NOT SUFFICIENT — pinned so nobody later reads a 100 here as a
+    pass. Up-then-down and down-then-up travel identically."""
+    mp, tp, _, _ = FC.shape_agreement([0, 50, 0], [0, -50, 0])
+    assert mp == 100.0 and tp == 100.0          # yet the series are opposites
+
+
+def test_series_shape_skips_none_instead_of_counting_it_as_a_change():
+    """siddump prints a register only on the frames it was written; a held
+    value is one write then Nones, not a value returning to itself."""
+    assert FC.series_shape([100, None, None, 100, None]) == (0, 0)
+    assert FC.series_shape([100, None, 140, None, 120]) == (2, 60)
+    assert FC.series_shape([None, None]) == (0, 0)

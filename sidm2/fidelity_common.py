@@ -92,6 +92,62 @@ def fmt_pct(p, width=5, prec=1):
     return f"{p:{width}.{prec}f}" if p is not None else "n/a".rjust(width)
 
 
+def series_shape(vals):
+    """(number of change events, total travel) over a value series.
+
+    `None`s are skipped rather than treated as a value: siddump only prints a
+    register on the frames the playroutine wrote it, so a held value reads as
+    one write followed by `None`s, and counting those as changes would score a
+    static register as constant motion.
+    """
+    prev = None
+    moves = travel = 0
+    for v in vals:
+        if v is None:
+            continue
+        if prev is not None and v != prev:
+            moves += 1
+            travel += abs(v - prev)
+        prev = v
+    return moves, travel
+
+
+def shape_agreement(a_vals, b_vals):
+    """Phase-INVARIANT companion to per-frame equality: did the register move
+    the same NUMBER of times, and the same total DISTANCE?
+
+    Per-frame equality answers "was the value the same on frame i". For a
+    swept register (pulse width, filter cutoff) that question is dominated by
+    phase: a sweep that is correct in rate, depth and direction but starts a
+    few frames late disagrees on nearly every frame and scores near zero, which
+    reads as a broken engine when it is a timing offset. The ±1-frame skew
+    tolerance the per-voice scorers carry does not reach a multi-frame offset.
+    Both numbers here are computed from consecutive DIFFERENCES, so a constant
+    lag shifts them by at most the frames that fall off the window ends.
+
+    NECESSARY, NOT SUFFICIENT — and never quote it alone. Two sweeps that share
+    a movement count and a travel total need not share a shape (up-then-down
+    versus down-then-up travel identically), so this can only ever say "the
+    motion is the right size", never "the motion matched". Read it next to the
+    strict per-frame column: strict low + shape high = phase/alignment; both
+    low = the engine really is producing different motion.
+
+    Returns `(moves_pct, travel_pct, (a_moves, b_moves), (a_travel, b_travel))`,
+    each percentage the smaller total over the larger via `score_pct` — so a
+    register NEITHER side moves gives 0/0 -> **None**, not 100.0 (see
+    `score_pct`; a flat pulse on both sides is no evidence the pulse engine
+    works), and one side moving while the other sits still gives 0.0%.
+    Two series constant at DIFFERENT values also score n/a here: this metric
+    measures motion and there is none: that disagreement is the strict
+    column's to report, and `exercised` keeps it visible there.
+    """
+    am, at = series_shape(a_vals)
+    bm, bt = series_shape(b_vals)
+    return (score_pct(min(am, bm), max(am, bm)),
+            score_pct(min(at, bt), max(at, bt)),
+            (am, bm), (at, bt))
+
+
 def freq_to_semi(freq):
     """16-bit SID freq value -> nearest note index (0..95), or -1 for silence.
 

@@ -89,6 +89,14 @@ The build measures itself with `bin/mon_part_fidelity.py PART SONG SECS OFF0` (s
 - **ADSR re-arms ON the fetch frame**, after the gate-on write — not one frame early. The 1-frame-early pre-arm cost ~5% of the register-stream match.
 - **V2 pulse resets per fetch** — leaving the V1 free-run (`PFREE $08`) flag on froze the first note's ramp forever (Delta pulse 11% → 100% by dropping one flag).
 - **Per-voice init instruments** — Last_V8's silent-pulse voices were reading instrument 0's PW instead of the ROM's per-voice defaults.
+- **A pulse% near zero can be pure phase.** `5_Title_Tunes_song0_part01` osc3 reads
+  **pulse 4.5%** with a single unbroken 596-frame residual run — which looks like a dead
+  pulse engine and is a **-3-frame offset** (90.6% at that lag). `mon_part_fidelity` now
+  prints a phase-invariant `pul shape` line beside it (that voice: moves 279/279, travel
+  35712/35712 = identical motion). The tool's per-voice delay refinement aligns by **freq**
+  only, so a voice whose pulse writes sit a few frames from its freq writes stays
+  misaligned in that column. See PATTERNS.md D9 — and read the shape line only as "the
+  motion is the right size", never as a pass.
 - **The vacuous-100.0 trap:** `mon_part_fidelity` with `secs=0` computed a negative window → empty comparison loops → a *fake* 100.0. A silent SF2 measured perfect. Always pass a real window that fits the part (song length for jingles; `off0` = part start).
   - **Sequel (2026-07-16): fixing it here did not fix the class.** Every sibling scorer kept its own private `100.0 * ok / tot if tot else 100.0` — 11 files, including two *builders* where the fabricated score fed a real A/B decision. Now canonical: `sidm2.fidelity_common.score_pct()` returns **None** on an empty comparison and `fmt_pct` prints `n/a`; None cannot be silently compared. If you write a new scorer, use it.
 - **"filter 100%" was VACUOUS — Hubbard never uses the filter.** zig64 over 1000 frames of Monty (and Delta sub11): **zero** cutoff/resonance writes; `$D417` routing never written, so no voice is even routed. `$D418` is written once for volume. The metric therefore compared `0 == 0` a thousand times — **any driver that ignores the filter entirely scores 100%.** This is the *degenerate* cousin of the empty-comparison trap and `score_pct` cannot see it (`tot`=1000, not 0); catching it needs a **distinct-value check**. The number was real and meant nothing. Corrected in `docs/reference/ACCURACY_MATRIX.md` 2026-07-16.

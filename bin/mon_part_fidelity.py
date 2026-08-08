@@ -50,7 +50,8 @@ for folder in ("Tel_Jeroen", "Hubbard_Rob", "Fun_Fun", "JohannesBjerregaard"):
     if os.path.exists(orig_sid):
         break
 from sidm2.fidelity_common import (siddump_frames_full as _full,  # noqa: E402
-                                   exercised as _exercised)
+                                   exercised as _exercised,
+                                   shape_agreement as _shape)
 # `siddump_frames_full`, not `per_frame`: the same siddump run, parsed for the
 # registers per_frame throws away. $D405/$D406 (per voice) and $D417/$D418
 # (global) are exactly the registers a wave-program / pulse-program
@@ -201,6 +202,23 @@ for vi in range(3):
         top = "  ".join(f"{a}-{b}({b - a + 1}f)" for a, b in runs[:3])
         print(f"        {k:4} residual: {len(miss)}f in {len(runs)} runs; "
               f"top: {top}")
+        # PHASE-INVARIANT SHAPE, for the swept register only. Per-frame
+        # equality asks "same value on frame i", which for a pulse SWEEP is
+        # mostly a question about phase: a sweep with the right rate, depth and
+        # direction that starts a few frames late disagrees on nearly every
+        # frame and prints a near-zero pul% that reads as a dead pulse engine.
+        # The ±1-frame skew column above does not reach a multi-frame offset.
+        # Movement count and travel are computed from consecutive differences,
+        # so a constant lag barely moves them. NOT a pass on their own — equal
+        # totals do not mean equal shapes — so this prints only BESIDE the
+        # strict number, never instead of it. Not applied to wf (an enum, where
+        # |difference| is meaningless) or freq (already semitone-quantised and
+        # skew-classified).
+        if k == "pul":
+            mp, tp, (am, bm), (at, bt) = _shape(*seen[k])
+            print(f"        {k:4} shape   : moves {am}/{bm} = "
+                  f"{F.fmt_pct(mp)}%   travel {at}/{bt} = {F.fmt_pct(tp)}%"
+                  f"   (phase-invariant; size of the motion, not its match)")
 # GLOBAL FILTER REGISTERS. Frame 0 is skipped: siddump force-displays the whole
 # filter column on its first row regardless of what the playroutine wrote, so
 # frame 0 reports pre-init bus state (Hawkeye reads $D418 = $FF there, then its
@@ -230,3 +248,13 @@ for key, label in FILT:
           + (f"{_f:.1f}%  (n={ftot})" if _f is not None
              else "n/a (constant and identical on both sides — this tune never "
                   "moves the register, so there is nothing here to pass)"))
+    # Same phase-invariant companion as the pulse column, for the same reason:
+    # a cutoff SWEEP that is a few frames out of step scores near zero per
+    # frame. cutoff ONLY — $D417/$D418 are bitfields (resonance nibble, routing
+    # bits, mode bits, volume nibble), where |difference| between two packed
+    # bytes is not a distance and "travel" would be noise.
+    if key == "cutoff" and _f is not None and _f < 99.5:
+        mp, tp, (am, bm), (at, bt) = _shape(a_vals, b_vals)
+        print(f"         shape   : moves {am}/{bm} = {F.fmt_pct(mp)}%"
+              f"   travel {at}/{bt} = {F.fmt_pct(tp)}%"
+              f"   (phase-invariant; size of the motion, not its match)")

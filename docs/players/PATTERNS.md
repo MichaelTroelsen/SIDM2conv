@@ -176,7 +176,40 @@ scheme existed in this repo (`sidm2/accuracy.py`, `scripts/validate_sid_accuracy
 `sidm2/validation.py`, `pyscript/trace_comparator.py`, and the heatmap
 generator), each independently broken, one of them scoring **two identical
 captures at 50%**. If you are writing a new scorer, route it through
-`fidelity_common` instead.
+`fidelity_common` instead. For a swept register, add the
+phase-invariant companion in **D9** next to the strict number.
+
+### D9. For a SWEPT register, per-frame equality is mostly a phase question
+`pulse%` and `cutoff%` are scored as "same value on frame i". For a register
+that *sweeps*, that question is dominated by alignment: a sweep with the right
+rate, depth and direction that starts a few frames late disagrees on nearly
+every frame. Live case (2026-08-08): `5_Title_Tunes_song0_part01` osc3 scored
+**pulse 4.5%** — one unbroken 596-frame residual run, the signature of a dead
+engine — and it is a **-3-frame offset**, 90.6% at that lag. The pulse engine
+was right all along.
+
+The per-voice delay refinement these tools already run does not catch it:
+it aligns each voice by **freq** agreement, so a voice whose pulse writes sit
+a few frames from its own freq writes stays misaligned in that column only.
+The ±1-frame skew-tolerant column does not reach a multi-frame offset either. How
+long this has been costing: `bin/_sm_measure_direct.py` exists *only* to work
+around it ("mon_part_fidelity's freq-tuned per-voice delay misreports per-frame
+pulse"), an entire duplicate scorer written instead of a companion metric.
+
+Companion metric, phase-invariant because it is computed from consecutive
+DIFFERENCES: `fidelity_common.shape_agreement(a, b)` → movement count (how
+many times the value changed) and travel (sum of |delta|), each as
+smaller/larger via `score_pct`. The 4.5% case reads **moves 279/279, travel
+35712/35712** — identical motion, wrong phase.
+
+**Necessary, not sufficient, and never quote it alone.** Equal totals do not
+mean equal shapes (up-then-down and down-then-up travel identically), so it can
+only say *the motion is the right size*. Print it BESIDE the strict number:
+strict low + shape high = alignment; both low = the engine really is producing
+different motion. Same D4 discipline applies — neither side moving is `0/0` →
+**None**, never 100.0, because a flat pulse on both sides is not evidence the
+pulse engine works. Not meaningful for `wf` (an enum) or `$D417`/`$D418`
+(bitfields), where |difference| is not a distance.
 
 ### D5. Timing-model calibration by strict agreement
 When the tempo conductor is unresolved (E's dual-row condition, V's global
