@@ -415,8 +415,27 @@ one plain replicate plus 8 phase perturbations) and returns **INCONCLUSIVE**
 inside the floor. All three Cybernoid_II voices land there, reproducibly across
 runs. See PATTERNS.md **F5b**.
 
-**Still open**: the one-frame `$D418` mode lag at startup. Small, real, and
-separate from everything above.
+**The one real defect it turned up — fixed 2026-08-08.** `do_play` wrote the
+`$D418` volume/mode byte at its TOP, before `filt_prog_step` had run, so it
+published the PREVIOUS frame's `F_MODE`. The cutoff never had this bug because
+`fp_apply` stores `$D415/$D416` itself — which is exactly why the lag surfaced
+on `$D418` alone. The driver now writes it after the multispeed loop, for the
+same reason the code already gives at `dp_vib` for running `filt_prog_step`
+after `do_row`. `digi_stream` still runs last, so the digi keeps the final word.
+
+Cybernoid_II `$D418` goes 99.7% → **0 of 350 differing frames**. Hawkeye
+sub0/sub2/sub3, Cybernoid sub0 and Supremacy sub0 are unchanged; Cybernoid
+osc3 freq 95.0 was A/B-confirmed against a pre-change rebuild as pre-existing.
+Note that `mon_part_fidelity`'s window excludes the opening frames, so it now
+reports this register as `n/a` (constant and identical) rather than 100% — the
+defect lived precisely where that harness does not look, which is why it was
+only ever visible as the 0.3%.
+
+**Not fixed**: `drivers_src/common/sf2_native_driver.asm:369` (the shared
+engine behind ROMUZAK and Galway) has the identical ordering — `sta SID_VOL`
+before `jsr filt_prog_step` at :382 — and still hardcodes `ora #$0f` where
+MoN's copy takes `MAIN_VOL`. Extending the fix there means rebuilding and
+revalidating both corpora.
 
 ## Hard-won lessons (encoded in code/tests — do not re-learn)
 
