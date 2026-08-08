@@ -935,8 +935,16 @@ class MON:
                         note=0, dur=dr, instr=st['instr'],
                         wprog=st['wprog'], retrig=False, rest=True))
                 continue
-            if b >= 0xC0:                           # instrument select ($1263)
-                st['instr'] = (b & 0x1F) + st['instr_base']
+            if b >= 0xC0:                           # instrument select ($1263: CMP #$C0/
+                # BCC, then CLC/ADC $100D,X/AND #$1F -- mask is AFTER the add here,
+                # opposite of the general $Cx dispatch above (mask-then-add, no final
+                # mask, disassembly-verified separately at Hawkeye $7CBA-$7CCA). Two
+                # different engines, two different orders; this one is Supremacy's own
+                # pattern processor ($1246-$12C1), verified via $1263-$126D. Unexercised
+                # in the current corpus (sub0's max instr+base is 30, under the $1F
+                # wrap), so this changes no shipped output -- it's correctness for a
+                # base large enough to overflow, e.g. instrument $DF + base>=1.
+                st['instr'] = (b + st['instr_base']) & 0x1F
                 peek = self._u8(ptr + j)
                 # $127D-$1283: next byte $FD = the 4-byte SLIDE; other >= $C0 =
                 # finalize -> the event ends WITHOUT a note byte = retrigger the

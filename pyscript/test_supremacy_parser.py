@@ -200,3 +200,41 @@ def test_orderlist_7x_sets_the_instrument_base():
     assert m.instrument(2)['ad'] == 0x68 and m.instrument(2)['sr'] == 0xCA
     assert m.instrument(1)['waveform'] == 0x41
     assert m.instrument(2)['waveform'] == 0x11
+
+
+def test_supremacy_instrument_select_masks_after_adding_base():
+    """`$1263`: `CMP #$C0/BCC`, then `CLC/ADC $100D,X/AND #$1F` -- the mask is
+    AFTER the add. This is the OPPOSITE order from the general $Cx dispatch
+    used by every other MoN engine (Hawkeye et al, disassembly-verified
+    separately at $7CBA-$7CCA: mask-then-add, no final mask), so it cannot be
+    shared code -- it is Supremacy's own pattern processor. The order was
+    already written down correctly in this file's own
+    test_orderlist_7x_sets_the_instrument_base docstring ("$126D does CLC /
+    ADC $100D,X / AND #$1F") -- the CODE just didn't match its own documented
+    derivation until this fix.
+
+    Unexercised by any file in the corpus today (sub0's largest instrument+base
+    stays under 31, so no shipped SF2 changes), which is exactly why this drives
+    the real dispatcher with a synthetic pattern rather than relying on a song:
+    without it, a masking-order regression is invisible to every existing test.
+
+    b=$DF (instrument-select high byte, low 5 bits = 31) with instr_base=1:
+    hardware wraps 31+1 to 0 (AND #$1F applied to the SUM); the pre-fix code
+    computed (b & 0x1F) + base = 32, an index the real player can never
+    produce -- one past the 32-slot instrument table.
+    """
+    d, la, h = load_sid(SID)
+    m = MON(d, la, 0)
+    pat = 1                            # pat 0's pointer is an out-of-range filler
+    ptr = m._u8(m.tbl_pat_lo + pat) | (m._u8(m.tbl_pat_hi + pat) << 8)
+    off = ptr - la
+    patched = bytearray(d)
+    patched[off] = 0xDF                    # instrument select, low5=31
+    patched[off + 1] = 0x39                # then a NOTE byte (< $60) to finalize
+    patched[off + 2] = 0xFF                # pattern end
+    m2 = MON(bytes(patched), la, 0)
+    st = {'transpose': 0, 'instr_base': 1, 'instr': 0, 'stored': 0, 'wprog': 0}
+    events = []
+    m2._pattern_supremacy(pat, st, events)
+    assert events, "synthetic pattern produced no events"
+    assert events[0].instr == 0, f"expected wraparound to instrument 0, got {events[0].instr}"
