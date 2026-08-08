@@ -322,10 +322,10 @@ guard thresholds are fractions rather than a test for one mechanism.
 
 ```
   side      onsets  matched  missing  extra    offset  jitter50   loose
-  mix           91       70       21     24    +0.0ms    10.0ms   14.3%
+  mix           91       69       22     25    +0.0ms    10.0ms   15.9%
   voice 1       97       82       15     34    +0.0ms    20.0ms   18.3%
-  voice 2       70       50       20      8    +0.0ms     0.0ms    6.0%
-  voice 3      102       76       26     11    +0.0ms     0.0ms    1.3%
+  voice 2       70       51       19      8    +0.0ms     0.0ms    5.9%
+  voice 3       99       79       20     14    +0.0ms     0.0ms    7.6%
 ```
 
 Same statistics as the single-voice report, one row per slice. This is what
@@ -334,10 +334,17 @@ turns "the audio diverges" into "voice 1 is the problem".
 ### 3. The registers × audio cross-tab
 
 ```
-  voice    freq     wf    pul   audio  diagnosis
-  1       100.0  100.0  100.0     85%  SYNTHESIS: registers match, audio diverges
-  2       100.0  100.0  100.0     71%  SYNTHESIS: registers match, audio diverges
-  3       100.0  100.0    n/a     75%  SYNTHESIS: registers match, audio diverges
+Calibrating repeatability floor (9 extra renders per voice, delays [0, 2189, 4379,
+6568, 8757, 10947, 13136, 15325, 17515] cycles -- the 0 is a plain replicate)...
+
+  voice    freq     wf    pul   audio  repeat   floor  diagnosis
+  1       100.0  100.0  100.0     85%    100%     73%  INCONCLUSIVE: registers
+          match; audio 85% is inside the repeatability floor (73%, set by a
+          phase-shifted re-render) -- this file scores no better against
+          ITSELF, so the audio cannot separate a synthesis defect from metric
+          noise and SID phase
+  2       100.0  100.0  100.0     73%    100%     41%  INCONCLUSIVE: ...
+  3       100.0  100.0    n/a     80%     95%     77%  INCONCLUSIVE: ...
 ```
 
 The register half comes from `sidm2.fidelity_common.per_voice_register_agreement`
@@ -347,21 +354,46 @@ landing on the same note is not a note error, and the audio side cannot hear
 the difference either. `n/a` means *not exercised*: neither side moved that
 register, so it is never reported as 0 or 100.
 
-Neither half can make this partition alone:
+`repeat` and `floor` are the **repeatability calibration**
+(`--repeat-floor N`, default 9, `sidm2.audio_tightness.measure_repeatability_
+floor` via `pyscript/audio_tightness_tool.py`): N extra renders of the
+ORIGINAL per voice — one plain replicate at the reference render's own delay,
+the rest at perturbed power-on delays — compared against that reference
+through the same onset metric the driver row uses. `repeat` is the replicate
+alone (pure metric noise); `floor` is the worst of all N (metric noise +
+free-running SID phase), narrowed by the noise margin the replicate itself
+revealed. **An audio score at or above `floor` is not evidence of anything.**
+Voices whose registers match land in **INCONCLUSIVE** there rather than
+SYNTHESIS — see PATTERNS.md **F5b** for why a bare `f(x, x)` check does not
+rule this out.
 
-| registers | audio | diagnosis |
+Neither register+audio half, nor the floor, can make this partition alone:
+
+| registers | audio vs floor | diagnosis |
 |---|---|---|
-| match | diverge | **SYNTHESIS** — the driver's envelope/pulse/filter timing |
-| diverge | diverge | **SEQUENCER** — note data / order list |
-| diverge | match | **METRIC** — suspect a measurement artifact, e.g. a phase-offset but musically correct pulse sweep scored frame-by-frame |
+| match | below floor | **SYNTHESIS** — the driver's envelope/pulse/filter timing |
+| match | at/above floor | **INCONCLUSIVE** — the audio gap is inside this file's own repeatability noise; not evidence either way |
+| match | floor not measured (`--repeat-floor 0`) | **SYNTHESIS**, but flagged uncalibrated — do not trust it |
+| diverge | (either) | **SEQUENCER** — note data / order list |
+| audio matches, registers don't | — | **METRIC** — suspect a measurement artifact, e.g. a phase-offset but musically correct pulse sweep scored frame-by-frame |
 
 The thresholds are `--reg-match-pct` (default 95) and `--audio-match-rate`
-(default 0.9).
+(default 0.9). `--repeat-floor 0` disables the calibration and reverts to the
+old unconditional SYNTHESIS-on-divergence behavior — the tool then says so in
+the diagnosis text; don't quote a SYNTHESIS verdict produced that way.
 
-The example above is real: `Cybernoid_II` against its native MoN build is
-register-exact on all three voices and still only 71-85% onset-matched, i.e.
-a register-exact build that is not audio-tight. That is exactly the class of
-problem this tool was written for.
+The example above is real, and its story changed after this feature was
+added. `Cybernoid_II` against its native MoN build was originally read as
+register-exact on all three voices and still only 71-85% onset-matched —
+"SYNTHESIS on every voice." That finding was **falsified 2026-08-08**: the
+registers really are byte-identical except for one real, since-fixed defect (a
+one-frame `$D418` filter-mode lag at startup), and the 71-85% audio band sits
+entirely inside what this same file scores against re-renders of **itself** —
+metric noise on a voice-isolated render (a full mix's onset detector doesn't
+move at all under the same perturbation) plus free-running SID phase, neither
+of which is a driver defect. All three voices now read INCONCLUSIVE. See
+`docs/players/MON.md` and PATTERNS.md F5b for the full story — it is the
+worked example for why the floor exists.
 
 ---
 
