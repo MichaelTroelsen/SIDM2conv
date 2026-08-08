@@ -353,21 +353,6 @@ dp_go:
         lda #$01
         sta ST_TCNT              ; non-zero unless a row ticks this frame (do_row)
         inc ST_TICK
-.if DIGI_SPIKE
-        ; Force full master volume ONLY when a SID voice is gated on (so the voices
-        ; aren't cut under/after the digi bursts). During the pure-digi intro (all
-        ; voices idle) this $0f would plate a full-volume blip in front of each
-        ; sawtooth burst and corrupt the digi tone -> skip it; the digi owns $D418.
-        lda VGMASK               ; per-voice gate mask: $ff = gated on, $fe = off
-        ora VGMASK+1
-        ora VGMASK+2
-        and #$01                 ; bit 0 set if ANY voice is gated on
-        beq dp_novol             ; all idle -> leave $D418 to the digi (clean sawtooth)
-.endif
-        lda F_MODE               ; filter passband bits (from the filter program)
-        ora #$0f                 ; + main volume: keep the gated SID voices at full vol
-        sta SID_VOL
-dp_novol:
         lda #MULTISPEED
         sta ms_cnt
 dp_tick:
@@ -385,6 +370,29 @@ dp_vib:
         jsr fm_step              ; per-voice freq -> $D400/1 (+ FM accumulate)
         dec ms_cnt
         bne dp_tick              ; next multispeed tick this frame
+        ; $D418 is written HERE, after filt_prog_step, for the same reason that
+        ; call sits after do_row: F_MODE is produced by the filter program, so
+        ; writing the volume/mode byte at the TOP of do_play published LAST
+        ; frame's passband. The cutoff never had this bug -- fp_apply stores
+        ; $D415/$D416 itself -- which is why the lag showed up on $D418 alone.
+        ; Same defect and same fix as drivers_src/mon/romuzak_driver.asm
+        ; (Cybernoid_II $D418 99.7% -> 0/350 differing frames, 2026-08-08).
+        ; digi_stream still runs after, so the digi keeps the last word.
+.if DIGI_SPIKE
+        ; Force full master volume ONLY when a SID voice is gated on (so the voices
+        ; aren't cut under/after the digi bursts). During the pure-digi intro (all
+        ; voices idle) this $0f would plate a full-volume blip in front of each
+        ; sawtooth burst and corrupt the digi tone -> skip it; the digi owns $D418.
+        lda VGMASK               ; per-voice gate mask: $ff = gated on, $fe = off
+        ora VGMASK+1
+        ora VGMASK+2
+        and #$01                 ; bit 0 set if ANY voice is gated on
+        beq dp_novol             ; all idle -> leave $D418 to the digi (clean sawtooth)
+.endif
+        lda F_MODE               ; filter passband bits (from the filter program)
+        ora #$0f                 ; + main volume: keep the gated SID voices at full vol
+        sta SID_VOL
+dp_novol:
 .if DIGI_SPIKE
         jsr digi_stream          ; interleave: stream the digi drums over the music
 .endif
