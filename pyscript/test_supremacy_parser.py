@@ -151,3 +151,52 @@ def test_supremacy_sub2_onset_frames_match_siddump():
             if len(got) >= len(want):
                 break
         assert got[:len(want)] == want, f"v{v}: {got[:len(want)]}"
+
+
+def _first_note_instr(m, voice):
+    for ev in m.voices[voice]:
+        if not ev.rest:
+            return ev.instr
+    raise AssertionError(f"voice {voice} has no notes")
+
+
+def test_orderlist_7x_sets_the_instrument_base():
+    """`$70-$7F` in the orderlist is the INSTRUMENT BASE, not an inert modifier.
+
+    The player ($11F1) does `CMP #$70 / BCC / AND #$0F / STA $100D,X`, and the
+    note handler ($126D) does `CLC / ADC $100D,X / AND #$1F` on every
+    instrument-select byte. The parser used to `continue` past `$7x` as a
+    "modifier -- no note effect".
+
+    Subtune 0 is a 3-voice canon of ONE pattern set, so this is directly
+    visible: voice 0's orderlist opens `8C 01 ...` (no base) while voices 1 and
+    2 open `8C 71 ...` (base 1). The same `$C1` in the shared patterns must
+    therefore select instrument 1 on voice 0 and instrument 2 on the others.
+
+    Against the pre-fix parser every voice returned instrument 1, and the built
+    SF2 played voice 0's envelope on all three: $D405/$D406 scored 2.3% and
+    4.5% on osc2/osc3 (one contiguous wrong run from each voice's entry to the
+    end of the window). Nothing else moved -- the pitch was unaffected and the
+    wave program overwrote the waveform byte after the note-on frame -- so this
+    was invisible to the 3-column (freq/wf/pulse) gate that predated the R17
+    widening.
+    """
+    d, la, h = load_sid(SID)
+    m = MON(d, la, 0)
+
+    ol0 = m._orderlist_ptr(0)
+    ol1 = m._orderlist_ptr(1)
+    assert not any(0x70 <= m._u8(ol0 + k) <= 0x7F for k in range(2)), \
+        "voice 0's orderlist must NOT open with a base byte"
+    assert m._u8(ol1 + 1) == 0x71, "voice 1's orderlist must open `8C 71`"
+
+    assert _first_note_instr(m, 0) == 1
+    assert _first_note_instr(m, 1) == 2
+    assert _first_note_instr(m, 2) == 2
+
+    # The two records the canon distinguishes. Same SR, different attack: this
+    # single nibble is the entire measured residual.
+    assert m.instrument(1)['ad'] == 0x48 and m.instrument(1)['sr'] == 0xCA
+    assert m.instrument(2)['ad'] == 0x68 and m.instrument(2)['sr'] == 0xCA
+    assert m.instrument(1)['waveform'] == 0x41
+    assert m.instrument(2)['waveform'] == 0x11

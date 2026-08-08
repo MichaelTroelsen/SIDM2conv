@@ -165,9 +165,52 @@ the R17 gate was widened, and it was wrong on three of the eight targets.
 
 Volume is a per-song **constant** in this corpus, not a ride — a tune that
 genuinely rides it will surface as a `volmode` score below 100 rather than as
-plausible-looking output. Still open: Supremacy's `adsr` at 2.3%/4.5% on
-osc2/osc3, visible for the first time now that the envelope is scored, and
-unexplained.
+plausible-looking output.
+
+### Supremacy `adsr` 2.3%/4.5% → 100% — the orderlist instrument base (2026-08-08)
+
+The envelope gap that `$D418` scoring exposed is **closed, and it was a parser
+bug, not a driver one.**
+
+`$70-$7F` in a Supremacy orderlist is the **instrument base**, which the parser
+skipped as a "modifier — no note effect". The player is explicit:
+
+```
+$11F1   CMP #$70 / BCC / AND #$0F / STA $100D,X      ; base = b & $0F
+$126D   CLC / ADC $100D,X / AND #$1F / STA $1026,X   ; idx = (select + base) & $1F
+        ASL ASL ASL / SEC / SBC $1026,X              ; Y = idx*8 - idx = idx*7
+        LDY $1026,X / LDA $1869,Y / STA $104F,X      ; 7-byte record
+```
+
+Subtune 0 makes it directly visible because it is a **3-voice canon of one
+pattern set**: voice 0's orderlist opens `8C 01 …` (no base) while voices 1 and
+2 open `8C **71** …` (base 1). The same `$C1` therefore selects instrument 1
+(`41 48 CA`) on voice 0 and instrument **2** (`11 68 CA`) on the other two.
+Dropping the base made all three play voice 0's envelope.
+
+The whole residual was **one nibble**: attack 4 vs 6, `$48CA` against `$68CA`,
+constant for the entire window. The shape in the report was the tell — a single
+contiguous wrong run from each voice's entry (frames 18 and 36, the canon's
+6-and-12-tick offsets) to the end, not scattered misses.
+
+| | osc1 | osc2 | osc3 |
+|---|---|---|---|
+| `adsr` before | n/a | 2.3 | 4.5 |
+| `adsr` after | n/a | **100.0** | **100.0** |
+
+`freq`/`wf`/`pulse` are **byte-identical** before and after on part01, and
+parts 06 and 09 are unchanged in every column (A/B'd by rebuilding both ways).
+Subtunes 1 and 2 also carry base bytes (`$79`, `$7c`, `$7d`, `$7e`) and now
+read `adsr` 99.9-100 with their strict freq/pulse residual purely ±1-frame skew
+(skew-tolerant 100.0). `ol_mode == "supremacy"` matches **only** Supremacy, so
+the blast radius is that one file's three subtunes.
+
+**Why it survived**: the pitch was unaffected, and the wave program overwrites
+the waveform byte on the frame after the note-on, so the only column that could
+ever have shown it was `$D405/$D406` — which nothing scored until the R17
+widening. Same lesson as the hardcoded low-pass below, one register along.
+Pinned by `pyscript/test_supremacy_parser.py::test_orderlist_7x_sets_the_instrument_base`
+(verified to fail against the pre-fix parser).
 
 **The transferable part is not the fix, it is why it survived.** A hardcoded
 low-pass is inaudible in freq/wf/pulse — the only columns the gate scored — so

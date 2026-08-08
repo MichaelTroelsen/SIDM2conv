@@ -689,7 +689,21 @@ class MON:
                 if b >= 0x80:                       # transpose ($1007 = b & $7F)
                     st['transpose'] = b & 0x7F
                     continue
-                if b >= 0x70:                       # $70-$7F: modifier ($100D) — no note effect
+                if b >= 0x70:                       # $70-$7F: INSTRUMENT BASE ($11F1:
+                    #   `CMP #$70 / BCC / AND #$0F / STA $100D,X`), which the note
+                    # handler ADDs to every following instrument-select byte
+                    # ($126D: `CLC / ADC $100D,X / AND #$1F`). Skipped as a "no
+                    # note effect modifier" until 2026-08-08: Supremacy sub0 is a
+                    # 3-voice canon of ONE pattern set, and voices 2+3 carry `$71`
+                    # where voice 1 carries none — so the same `$C1` selects
+                    # instrument 1 (`41 48 CA`) on voice 1 and instrument 2
+                    # (`11 68 CA`) on the other two. Dropping it made both canon
+                    # voices play voice 1's envelope: adsr 2.3%/4.5%, one
+                    # contiguous wrong run from each voice's entry to the end of
+                    # the window. Invisible until the R17 widening added the
+                    # $D405/$D406 column — freq was unaffected and the wave
+                    # program masked the waveform byte after the note-on frame.
+                    st['instr_base'] = b & 0x0F
                     continue
                 if b >= 0x40:                       # $40-$6F: repeat next pattern N+1 times
                     repeat = (b & 0x1F) + 1
