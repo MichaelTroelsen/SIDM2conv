@@ -1,467 +1,528 @@
+# whats-next — session handoff (2026-08-07 → 08)
+
 <original_task>
-Two requests, in sequence:
+The session opened with one question:
 
-1. "we have now build severel SID2SF2 for several target players ... we are still
-   facing issue with 100% fidelity and some songs need to be splited into severel
-   files. Please do a full code review of the whole tool chain and the players and
-   come back with a list of suggestions on how to fix fidelity and number of files
-   per song or any other improvement and put them into a and MD for sonnet of opus
-   to fix."
+> "can we replace SID2WAV with https://github.com/libsidplayfp/libsidplayfp or
+> https://github.com/libsidplayfp/libresidfp or https://github.com/libsidplayfp/sidplayfp
+> anyway please add links to our knowledge of tools."
 
-   Scope agreed via AskUserQuestion: **everything** (core pipeline + all ~15 player
-   ports), **code reading only** (no sweeps re-run for the review itself), output to
-   **`docs/`**.
+So the **original scope was: (a) assess whether sidplayfp can replace SID2WAV.EXE, and
+(b) add the three repo links to the tool documentation.** Everything else in this session
+was follow-on work the user requested step by step, in this order:
 
-2. Then, across many "go on" / "continue" turns: **execute the review's items**,
-   with the standing instruction *"it is important that we test so we do not break
-   anything."* Waves 1-5 of the review's own execution order were completed.
+1. Do the replacement for real (not just document it).
+2. Commit and push it.
+3. Open a PR (#17), check for reviews, check CI.
+4. Fix the CI failures, then chase each newly-revealed failure to the bottom.
+5. Retire the batch-pyautogui launcher and its stale docs.
+6. Merge PR #17, switch to master, pull.
+7. Investigate the leftover uncommitted `drivers_src/*.inc` changes; commit the sweep script.
+8. Read the sibling **h2g** project's fidelity docs; propose improvements to SIDM2's
+   fidelity tooling (SID2SID and WAV2WAV, incl. single-channel comparison).
+9. Build the A/B baseline harness (delegated to an Opus subagent).
+10. Settle **R17** (are the MoN structural options safe to default?) by widening the gate.
+11. Fix the `accuracy.py` scoring defects; then `validate_sid_accuracy.py`; then the
+    register pairing; then the whole vacuous-score class.
+12. Fix the MoN `$1F`/`$3F` band-pass bug, then the master-volume half.
+13. Update docs (project rule 3).
 
-NOTE: this file previously held the **Matt Gray** handoff (Driller/LN2/Tusker Stage
-A, HEAD 9e00576). That work is CLOSED and shipped; its still-open items
-(Deliverance, Quedex, LN2/Tusker play-tests) are carried forward below under
-"Matt Gray leftovers" so they are not lost.
+**Note on model:** the user switched the session default to Opus mid-way (after the h2g
+analysis). The two heavy subagents were explicitly run on Opus.
 </original_task>
 
 <work_completed>
 
-## Branch / commits
+## A. sidplayfp replaces SID2WAV.EXE — the original task (commit `32a0e0c`)
 
-Branch **`mattgray-driller-stage-a`**, pushed, level with origin. Working tree
-**clean**. 21 commits this session, from `e75700d` to **`2c20e26`**.
+**Assessment answer: yes.** SID2WAV.EXE is a 1997 build; `pyscript/audio_tightness_tool.py`
+already documented it hanging indefinitely on newer tunes (lft's Glyptodont — parses the
+header, then renders zero samples).
 
-| commit | item |
-|---|---|
-| `ee13f6e` | the review doc itself (30 items) |
-| `7fcac5f` | review Appendix A (design pre-analyses) + R31-R34 + R5 status correction |
-| `cad8542` | R34 - gitignore `.tokensave/` |
-| `6d2b6dd` | R28/R31/R33 - Matt Gray matrix row, player count, dual accuracy dicts |
-| `7cff00f` | R23 - `probe_once()` crash oracle |
-| `22da326` | R5 - Blackbird E3c(a) verify-and-close |
-| `33e8e0a` | R6 - Galway/ROMUZAK `cmp #$90` SF2II hazard |
-| `b24899e` | R21 - Sound Monitor sweep made reproducible |
-| `b37fb47` | R2 - `sidm2/sf2_caps.py` |
-| `f411b4b` | R3 - `sidm2/native_build.py` |
-| `80a70d2` | R3b - explicit tempo/n_rows params |
-| `e668cda` | docs: R2/R3 status + premise corrections |
-| `4a133c3` | R1 - driver merge (-1227 lines, byte-identical) |
-| `ebe5934` | docs: R1 status + ROADMAP A5 warning |
-| `adf4982` | chore: `.claude/settings.local.json` (user asked) |
-| `f797e3f` | R13 - Future Composer Stage B |
-| `910b9b1` | docs: R16 closed (measured) |
-| `dde449e` | R7 - re-diagnosis |
-| `25ed1c6` | R20 - measured capacity, Driller 2 files -> 1 |
-| `7a813fd` | docs: R20 recorded |
-| `2c20e26` | R18 closed / R19 downgraded |
+- **Install:** MSYS2 already had prebuilt Windows binaries — no build from source needed:
+  `pacman -S mingw-w64-x86_64-sidplayfp` (sidplayfp 2.16.2 / libsidplayfp 2.16.1 /
+  libresidfp 1.0.1). Bundled into the repo at `tools/sidplayfp/` — the exe plus its 8
+  runtime DLLs (`libgcc_s_seh-1`, `libgcrypt-20`, `libgpg-error-0`, `libiconv-2`,
+  `libsidplayfp-6`, `libstdc++-6`, `libusb-1.0`, `libwinpthread-1`), ~6.5 MB total,
+  consistent with other tracked `tools/` binaries.
+- **New module `sidm2/sidplayfp_wrapper.py`** (`SidplayfpIntegration`), mirroring
+  `vsid_wrapper.py`'s shape.
+- **CLI mapping** (differs from SID2WAV — this is the gotcha): `-t<secs>` duration,
+  `-p16`/`-p32` bit depth (**no 8-bit mode**), `-f<hz>` rate, `-o<n>` subtune,
+  `-u<n>` mute voice (repeatable), `-s`/`-m` stereo/mono, `-w<name>` WAV out.
+  **Output path is `-w<path>` (attached), and the input file comes LAST** — the inverse
+  of SID2WAV's `in.sid out.wav` ordering.
+- **Exit code 0 on success** (unlike VICE's `vsid`, which exits 1 on normal termination).
+  It also overwrites an existing WAV cleanly.
+- **Rewired:** `sidm2/audio_export_wrapper.py` (`force_sid2wav` → `force_sidplayfp`),
+  `pyscript/audio_tightness_tool.py` (`--renderer auto|vsid|sidplayfp`; `--voice` now
+  forces sidplayfp), `sidm2/wav_comparison.py`, `bin/sf2_to_wav.py`,
+  `scripts/convert_all.py`, `scripts/test_roundtrip.py`, `pyscript/conversion_executor.py`,
+  `pyscript/complete_pipeline_with_validation.py`, `analyze-file.bat`.
+- **VSID remains the preferred primary renderer.** sidplayfp only replaces SID2WAV's role.
+  sidplayfp does **not** replace VSID for RSID-with-custom-IRQ files (PLAYBOOK's VICE
+  escape hatch) — that needs a full emulated machine, not a player library.
+- Links added to `docs/TOOLS_REFERENCE.md` and to the auto-memory `tools.md`.
 
-Test suite: **1693 -> 1747 passed**, 7 skipped, 2 xfailed, **0 failures**.
+## B. PR #17 and the CI cascade (commits `2ace9e7`, `72dd1ab`, `1ec22b1`, `9f05787`, `f6a65a1`)
 
-## Deliverable 1 - the review: `docs/CODE_REVIEW_2026-07.md`
+PR #17 opened, **all 27 checks eventually green, MERGED 2026-08-07T19:46:33Z** as `c4fc9ce`.
+Five failures, each one only visible after fixing the previous:
 
-34 items (R1-R34) across 5 tracks (Consolidation / Fidelity / Part-count /
-Measurement infra / Hygiene), each with `file:line` evidence, fix sketch,
-verification recipe, trap notes, and a Sonnet-vs-Opus recommendation. Plus
-**Appendix A** with design pre-analyses for R5/R17/R20/R24, a ROADMAP
-cross-reference table, and a dependency-aware execution order (waves 1-8).
-Linked from `docs/INDEX.md`.
+1. `actions/upload-artifact@v3` / `download-artifact@v3` → **v4**. GitHub now hard-rejects
+   v3 in "Set up job", before any code runs. (`.github/workflows/conversion-cockpit-tests.yml`)
+2. **bandit** High + Medium: `os.system(f'start {output_file}')` → `os.startfile()`
+   (B605/CWE-78, `pyscript/generate_stinsen_html.py:583`); `tempfile.mktemp()` →
+   `mkstemp()` + immediate `unlink()` (B306, `pyscript/test_zig64_audio_gate.py`).
+   **The unlink is required** — `scripts/sid_to_sf2.py` refuses to write to a path that
+   already exists, and `mkstemp` pre-creates the file where `mktemp` only reserved a name.
+3. `Test Summary` downloading an artifact that is never produced (the upload steps write
+   files no test creates) → `continue-on-error`.
+4. `Test Summary` "Comment on PR" 403 `Resource not accessible by integration` → added
+   `permissions: {contents: read, pull-requests: write}` scoped to that job only.
+5. `Batch Testing Unit Tests` referencing `pyscript/test_batch_pyautogui.py`, **archived
+   2026-04-29 in commit `a3e002f`** (it needed `output/` fixtures archived in the same
+   cleanup). Removed the three references from `batch-testing.yml`.
 
-## Deliverable 2 - executed items
+Then (`f6a65a1`) **retired the launcher**: `git mv test-batch-pyautogui.bat` →
+`archive/cleanup_2026-08-07/retired_batch_pyautogui/` with a README, and scrubbed it from
+9 doc files — `CLAUDE.md`, `README.md` (×3), `docs/CI_CD_SYSTEM.md`,
+`docs/FILE_INVENTORY.md`, `docs/guides/BEST_PRACTICES.md`, `docs/guides/FAQ.md` (a whole
+Q&A entry), `docs/guides/GETTING_STARTED.md`, `docs/guides/TROUBLESHOOTING_FLOWCHARTS.md`,
+`docs/guides/TUTORIALS.md` (**Tutorial 8 removed wholesale, Tutorial 9 renumbered to 8**,
+index + quick-reference table updated).
 
-### Wave 1 (all shipped)
-- **R34** working-tree triage. `tools/Bobix.asm` + `tools/Disc-o-very.asm` were
-  orphaned SIDdecompiler output -> moved to `archive/experiments/` (which is
-  gitignored - the repo's own scratch-parking convention). `.gitignore` +=
-  `.tokensave/`.
-- **R28/R33** `docs/reference/ACCURACY_MATRIX.md`: added the **missing Matt Gray
-  row**; fixed the stale "all 12 ported players" header (15 families; counting rule
-  now stated).
-- **R31** `sidm2/driver_selector.py`: `EXPECTED_ACCURACY` duplicated three of
-  `PLAYER_REGISTRY`'s accuracy strings -> laxity/np20/galway now derive from the
-  registry. `driver11_sf2`/`driver11_default` stay literal (no registry equivalent).
-- **R23** `pyscript/blackbird_crash_probe.py` + `pyscript/sf2_open_in_editor.py`:
-  the crash oracle reported a **user-closed window as CRASHED**. Root cause:
-  `_spawn_detached` returned a bare pid, and Windows drops an exited process from
-  the table, so its exit code was unrecoverable. Now returns the **Popen object**
-  (CPython keeps its handle regardless of DETACHED_PROCESS) and classifies via a new
-  pure `classify_termination(exit_code)`: `None`->SURVIVED, `0`->**CLOSED**,
-  else->CRASHED. CLOSED is excluded from `tally()`'s crash-rate denominator. Added
-  opt-in periodic screenshots (`shot_interval`, off by default).
-- **R21** `pyscript/soundmonitor_sweep.py` + `pyscript/test_soundmonitor_sweep.py`
-  (NEW, 14 tests). The 99.23% SM headline came from **untracked**
-  `bin/_opt_sweep_corpus.py`, which parsed a log only produced by a second untracked
-  script. New sweep is self-contained (builds all 11 songs itself, parses part
-  windows from each build's own live stdout). **Ran it: 99.252% over all 27/27
-  parts** - reproducing SOUNDMONITOR.md's own predicted "restoring Dance part01
-  gives 99.25%".
-- **R5** Blackbird E3c(a): **status corrected, not fixed**. ROADMAP called it the
-  "highest remaining audible payoff"; the code shows **E3f already closed it**
-  (`build_blackbird_native_song.py:3025-3081` allocates combo fx indices; every
-  corpus file fits, worst 25/26 spare). Re-ran the sweep: ADSR **100.0** on
-  Glyptodont+Fargo. Shipped the real residuals: `combo_dropped_*` now surfaced in
-  `blackbird_sweep.py`'s JSON, and the previously-silent `min_tempo_song < 3`
-  no-arming guard now prints. Builder edit verified a byte-identical no-op.
-- **R29** full suite re-run (had not been run since `eae7325`).
-- **R6** `drivers_src/{galway,romuzak}` `fp_dec`: `cmp #$90` -> `cmp #$80`. SF2II's
-  CMP carry is wrong for |A-op|>127, so **every filter ADD row executed as a SET row
-  in the real editor** while every offline emulator read clean. Verified by
-  **git-stash A/B: exactly ONE byte differs** (the cmp operand, `$90`->`$80` at
-  offset `$4a7`). Emptied `KNOWN_UNFIXED` in
-  `pyscript/test_sf2ii_emulator_hazards.py`. MoN's copy already used `bmi` (immune);
-  Blackbird fixed in B24.
+## C. The leftover `.inc` files + `mon_struct_sweep.py` (commit `ffa07b1`)
 
-### Wave 2 - consolidation (all shipped, all byte-verified)
-- **R2** `sidm2/sf2_caps.py` (NEW). `CAP_B,CAP_I,CAP_TBL,CAP_SEG,STEP = 63,32,256,
-  120,100` was re-declared identically in **6** builders; `ST_FIRST,ST_LAST =
-  0x16cc,0x1702` in **3** driver_full assemblers. All 9 import now. Blackbird keeps
-  its deliberate `CAP_B=96` **and `STEP=150`** override (the STEP part was not in the
-  review). A/B: **all 7 native builders byte-identical**.
-- **R3** `sidm2/native_build.py` (NEW) + `pyscript/test_native_build.py` (13 tests).
-  **Corrected the review's premise**: `gen_includes_song` is NOT a "~180-line
-  identical skeleton" - the three signatures take genuinely different data and their
-  middles lay out per-player tables. What IS shared: a **22-line byte-identical
-  prologue** (-> `make_native_gen` + `lay_out_sequences`) and the
-  relative->absolute jump-target fixup, **one expression hand-copied 5 times** and
-  the site of a real shipped bug (Blackbird's "B3 BUG FOUND": `(r + b2)` instead of
-  `(start + b2)`) -> `program_jump_col`. Deliberately NOT converted after reading
-  each site: Galway's filter block uses the row index **on purpose** (freeze-
-  terminated programs, a third semantic) and the pulse tables use a fourth rule
-  (jump -> 0). A/B: Galway/ROMUZAK/MoN/Blackbird byte-identical.
-- **R3b** the mutable-global hazard. `build_galway_trace_song` set `B.TEMPO` on the
-  *driver_full* module so `build_galway_native_song` (a **third** module) could read
-  it back; `headless_audio` read `TEMPO`/`N_ROWS` from its own scope after callers
-  mutated them. Now explicit `tempo=`/`n_rows=` params with a `None`->old-global
-  fallback (so untouched consumers are unaffected). Removed a genuinely dead line
-  (`B.TEST_INSTR = instrs`). A/B: 4 players byte-identical.
-- **R1** driver merge. `drivers_src/common/sf2_native_driver.asm` (NEW) is the
-  shared engine; `galway/`+`romuzak/` are 23-line feature-selection shims
-  (`FEAT_DRUM_ROWS`, `FEAT_SEEK_PULSE`, `FEAT_INSTR_PULSE`). **Net -1227 lines.**
-  Gate met: **assembled machine code byte-identical for both players** (`.prg` and
-  wrapped `.sf2`), plus 4 players' real songs byte-identical and the full 40-tune
-  Galway corpus 40/40.
-  **Overturned A1's 3-way proposal by measurement**: galway<->romuzak is **4 hunks =
-  3 clean feature blocks**; mon<->romuzak is **51 scattered hunks**; blackbird ~1962
-  diff lines. 51 interleaved `.if`s would cost more than the duplication saves.
-  Evidence it's the right split: this session's own R6 fix had to touch galway AND
-  romuzak, and **neither** mon (already `bmi`) nor blackbird (fixed in B24).
+Pre-existing uncommitted changes were investigated, not blindly committed. All four files
+were touched in a ~13-second window on 2026-07-30 — a single build run.
+`bin/build_mon_native_song.py:39` writes `drivers_src/mon/freqtable.inc` and `:1809`
+copies `romuzak/layout.inc` over `mon/layout.inc` **as a build side effect**. Precedent
+`227e6aa` ("revert build-regenerated .inc files committed by mistake") says discard.
+Discarded the `.inc`s; committed the genuinely-new `pyscript/mon_struct_sweep.py`.
 
-### Wave 3
-- **R13 Future Composer Stage B** - `bin/build_fc_native_song.py` (NEW) +
-  `pyscript/test_fc_native_song.py` (17 tests). FC was the last ported player with
-  no native driver, chosen as the test that R1-R3 generalizes. **It added no new
-  driver and no new engine code**: a MON-compatible `FCShim` feeds the shared
-  trace-driven `build_native_song`, and it consumes R2's `sf2_caps`.
-  **Result: 14 of 15 corpus voices at exactly 100.0% audible per-frame pitch over
-  FULL song length** (5 rips, per-voice n 346-2253). Note placement independently
-  **frame-exact** (decode onsets == trace gate-rises, delay +0). Sole residual
-  Triangle_Intro v1 **83.6%**/633fr.
-  FC is **decode-driven** (not onset-aligned like SDI/DMC) because its parser is
-  validated byte-exact - and gate-rise re-derivation would discard the rests, the
-  whole reason to build FC natively.
-  **Bonus**: Stage B removes Stage A's headline defect (SF2II Driver 11 cannot gate
-  a long silent intro; that drove an abandoned Driver-15 investigation).
+## D. h2g cross-project analysis (no commit — research)
 
-### Wave 4 - both resolved by measurement, no fidelity code written
-- **R16 filter seams - CLOSED, premise stale by ~300x.** Claim was "~25% cost,
-  Hawkeye sub0 filter ~75%". **Measured 99.92%** (cutoff AND ctrl/res/routing, full
-  384s, n=19168, 5 of 8 parts exactly 100.0). Cause: `build_mon_native_song`'s
-  **"WINDOW-START residual filter"** block already implements R16's own fix sketch;
-  nobody re-measured. Real residual pinned: **16 frames of 19168 (0.08%)**, the
-  first 4-8 frames of 3 parts (driver cold start). Not worth fixing - parts are
-  **separate files a user opens individually**, so it's an ~80ms settle at a file's
-  opening, not a mid-song seam. ("13 parts" was the fixed-30s count; adaptive is 8.)
-- **R7 Galway pulse-PWM - RE-DIAGNOSED, tune list wrong in BOTH directions.**
-  Measured distinct per-frame pulse values (orig->built), each tune at **its own
-  build subtune**, best-delay searched, Rambo as a validated 100/100/100 control:
+Sibling repo **github.com/MichaelTroelsen/h2g** (Python port of a Rob Hubbard →
+GoatTracker converter, **not on this machine**; fetch via
+`gh api repos/MichaelTroelsen/h2g/contents/<path> -q '.content' | base64 -d`).
+Read in full: `FIDELITY.md`, `FIDELITY-TOOL-IMPROVEMENTS.md`, `SIDM2-FIDELITY-TESTER.md`,
+`SIDM2-HUBBARD-KNOWLEDGE.md`, `AUDIT.md`, `whats-next.md` (headings).
 
-  | tune | verdict |
-  |---|---|
-  | Commando_High-Score | **not defective** (106->106, 99.8-100%) - already fixed |
-  | Highlander | v1 only, **317->317 distinct, wrong values** - a different defect |
-  | Match_Day | **v2 only** (53->10, 25.4%) |
-  | Street_Hawk | **confirmed** (92->25, all 3 voices) |
-  | **Wizball** | **worst in corpus** (1092->430) - **never listed in R7** |
+Transferable items identified and **verified against SIDM2's actual code**:
 
-  Three hypotheses **eliminated by measurement**: `PULSE_ROW_CAP` trim never fires;
-  `PULSE_TABLE_ROWS`(2048) not hit; `pq` quantization stays 1. Real signal is
-  upstream - Street_Hawk builds **1 instrument / 1 bundle / 3 pulse rows for 129
-  notes** vs Highlander's 634, so the encoder faithfully encodes input that already
-  lost the sweep. Shipped a strict no-op (byte-verified): the `PULSE_ROW_CAP` trim
-  now announces itself + `GALWAY_PULSE_ROW_CAP` override (it was silently lossy).
+- **Per-frame equality is wrong for a swept register.** `bin/mon_part_fidelity.py` scores
+  `pulse%` as per-frame agreement; h2g measured and rejected exactly that ("two players
+  sweeping the same duty cycle from different phases share almost no frame values").
+  Their replacement: movement *count* for pulse, *travel* (summed frame-to-frame movement)
+  for cutoff. **Not yet acted on.**
+- **Subtune correspondence matrix.** `Dragons_Lair_Part_II` scores 7% on the diagonal,
+  **94% at its true counterpart** — the `.sid`'s own init wrapper renumbers subtunes
+  before the player sees them. h2g notes `--search-subtunes` is *structurally* unable to
+  find this (it varies their index, holds the original's fixed). **Not acted on.**
+- **Window size is a measurement artifact.** `BMX_Kidz` scored 0% for eighteen versions
+  purely because 13 s of opening silence exceeded a 10 s window; `I_Ball` reads 43% @10s
+  and 94% @30s. Live in SIDM2: `mon_struct_sweep` scored **Hawkeye:3 on a 2-second
+  window**. **Not acted on.**
+- **Don't shape a detector like your hypothesis** — h2g specced a detector for errors
+  "near 2×"; reality was 1.1–1.5×, so it would have matched nothing and its silence read
+  as "no problem here."
+- **Deliberately NOT ported:** h2g's `--pace`/rate machinery (exists because GoatTracker
+  can't express arbitrary tempos; SIDM2's native drivers largely can).
 
-### Wave 5 - part-count
-- **R20 memory-wall audit - SHIPPED, Driller 2 files -> 1.** `MAX_PART_FRAMES =
-  24_000` was splitting at ~40% of real capacity, justified by a "~27,650 play-calls
-  ~= 9.2 min" ceiling that is **not in the git history and does not follow from the
-  format** (nothing in a Driver 11 file grows with TIME; all tables fixed-size,
-  sequence region a fixed 128 x 256-byte slots -> capacity is event **density**).
-  Measured: Driller's whole 8320-row/665.6s song is **ONE valid module**, 57/128
-  slots, top **$61CF** vs `$D000` (~28KB unused). `convert()` now **probes**: emit
-  the candidate range for real, check the two binding limits (<=128 sequences, top <
-  `$D000`), grow by doubling, binary-search the edge. Verified: one-part Driller
-  walks its orderlists to **[8320,8320,8320]** rows/voice, **zero** cap violations,
-  row total == old two parts summed; already-1-part songs **byte-identical** (LN2
-  sub2, Tusker sub2). Figure **retracted** in PLAYBOOK's caps table. 2 regression
-  tests added.
-- **R18 wave-RLE - CLOSED, NO CANDIDATE.** Instrumented the windowing probe on FC's
-  5-part `Is_There_a_Difference` to report *why* each cut fires: **bundles bind
-  every single cut** (64/66/67/64 vs the 63 cap) while **WAVE sits at 40-61 of 256
-  (16-24%)**. RLE would relieve a cap with ~200 rows of headroom -> zero part
-  reduction. MoN's Cybernoid 18->11 win was real only because that tune is
-  wave-row-bound (and RLE is already applied there).
-- **R19 cross-part dedup - DOWNGRADED to P3.** By its own statement it does not
-  reduce part count, and its "stabilizes seams" half died with R16 (99.92%).
-- **Recorded**: the lossless part-count lever is the **bundle** cap -> confirms
-  **R17 (Stage C structural RE)** as the flagship and explains why. A **lossy** dial
-  also already exists and is quantified: the probe requires the PRE-cluster raw
-  bundle count to fit 63 (no clustering permitted); raising `CAP_B` clusters the
-  excess - Blackbird measured **16 parts at CAP_B=64 vs 5 at 128 for ~5.8pp freq**.
-  Kept opt-in per player, never a default (standing lossless-only rule).
+## E. The A/B baseline harness (commit `3a329d2`, built by an Opus subagent)
 
-## Documentation corrected (a major output in its own right)
+`sidm2/fidelity_common.py` 262 → 859 lines, **additive only** — no existing function's
+behaviour changed. New API:
 
-Several roadmap/matrix claims were measured **false or stale** and fixed in place:
-1. ROADMAP's "E3c(a) 40 retriggers open" - already closed by E3f (R5).
-2. ROADMAP C4 / matrix "filter ~75% at seams" - **99.92%** (R16).
-3. ROADMAP B2 / R7's flat-pulse tune list - wrong both ways (R7).
-4. PLAYBOOK's "~27,650 play-calls" ceiling - **retracted as underivable** (R20).
-5. ROADMAP A1's 3-way driver merge - right for the pair, wrong for MoN (R1).
-6. **ROADMAP A5's "fix the MoN driver file name" would BREAK the build** -
-   `build_mon_native_song.py:1763` does `B.GAL = MON_DIR` and `assemble()` hardcodes
-   `<GAL>/romuzak_driver.asm`, so the name is **load-bearing** (R1).
-7. "MoN has CRLF endings" reads as an anomaly - **all four** `.asm` are CRLF (R1).
-8. R3/A2's "~180-line identical skeleton" - measured wrong (R3).
-9. ACCURACY_MATRIX "all 12 ported players" - 15 (R33); missing Matt Gray row (R28).
+- `Dimension` / `register_dimension` / `dimension(key)` / `split_key` — a registry where
+  each score key declares which SID registers it derives from. `dimension()` **raises** on
+  an unregistered key rather than defaulting (a defaulted dimension reads as measured and
+  isn't). Built-ins: `freq wf pul adsr cutoff filtctl volmode note onset`.
+- `dimensions_present` / `registers_read` / `registers_unread` / `format_coverage` — the
+  generated "what this run compared / NOT read by anything" block.
+- `output_digest(paths)` — sha1/12 of built artifacts; returns **None** if any path is
+  missing (sha1-of-nothing compares equal to itself — the same empty==empty defect that
+  let the v3.21.0 zig64 gate certify 64 zero bytes as byte-identical).
+- `result_row` / `ab_pair` / `dump_rows` / `load_rows` / `settings_mismatch` /
+  `option_drift` / `regressions` / `compare_runs` / `format_run_delta` / `git_label`.
+- **The key design call:** `compare_runs` **refuses** on mismatched *measurement* settings
+  (duration, subtune) but **allows and surfaces** mismatched *build options* as "the change
+  under test" — refusing those would forbid the exact comparison the mode exists for.
+
+`pyscript/mon_struct_sweep.py` ported onto it. **Honest accounting: the file GREW**
+139 → 176 lines (code 91 → 99). Its A/B *decision* logic shrank ~11 → ~6 lines; the growth
+is new capability (tree label, per-side digests, settings refusal, movement ranking,
+blindness report). **The stated acceptance criterion was "if it doesn't shrink, the
+abstraction is wrong — go back and redesign."** The agent judged the trade worth it and did
+not redesign; this was surfaced to the user as an open judgement call. **A second caller is
+the real test and has not happened yet.**
+
+## F. R17 SETTLED (commit `67fa1c6`, Opus subagent)
+
+**Question:** are `MON_ARP_STRUCT` / `MON_PULSE_CANON` / `MON_WAVE_CANON` safe to make the
+MoN driver's default? Part count is the prize, fidelity is the gate.
+
+The harness immediately printed that the gate was **blind** to `$D405/$D406`,
+`$D415/$D416`, `$D417`, `$D418`. Widened `bin/mon_part_fidelity.py` (columns **appended**,
+so the existing `OSC_RE` and any saved baseline still parse) and added
+`fidelity_common.siddump_frames_full()` (superset; `siddump_per_frame` is now a projection
+of it so the two parsers cannot drift) and `exercised()`.
+
+**Verdict: widening did NOT change the answer.** Across 8 targets the four new dimensions
+moved **1 time in 25**, and that move was an *improvement*. 61 → 40 parts, genuinely clean
+on 7 of 8. **Supremacy sub1 remains the sole regression and is still purely freq/pulse.**
+
+**The actionable part — isolation on Supremacy sub1:**
+| option alone | parts | effect |
+|---|---|---|
+| `MON_ARP_STRUCT` | 2→1 | **the entire win AND the entire regression** |
+| `MON_PULSE_CANON` | 2→2 | **regresses with zero benefit** (hidden behind ARP jointly) |
+| `MON_WAVE_CANON` | — | no number moved, but output differs → *not measurably harmful, NOT proven safe* |
+
+**Recommendation stands: not safe as an unconditional default**, and the other two prongs
+are not safe by elimination either.
+
+Also surfaced (identical on both builds, unrelated to R17): `volmode` 0.0% on all three
+Supremacy subtunes + Cybernoid_II, 82.5% on Hawkeye:0; **Supremacy:0 `adsr` 2.3%/4.5%** on
+osc2/osc3.
+
+## G. The vacuous-score class — five broken copies (commits `9b1a0f0`, `2bc8c14`, `05bd7db`, `649e076`)
+
+**Headline: two IDENTICAL register captures scored 50%** on `sidm2/accuracy.py`, the
+library behind the user-facing validator. Proven by running the pre-fix code side by side.
+
+Four distinct defects:
+1. **Sparse-register desync** — voice lists held only frames where `freq_lo` *and*
+   `freq_hi` were co-written, then `zip`-paired by position. Verified: two captures with
+   audibly different pitches on 3 of 4 frames scored **100%**.
+2. **Fabricated zeros** — `frame.get(0x15, 0)` defaulted a *held* register to 0.
+3. **Vacuous zero** — `filter_accuracy` kept its `0.0` initialiser and was weighted 10%,
+   so a file was docked ten points for **correctly not using a filter** (Hubbard never
+   writes cutoff). Silent *voices* did the same to the voice average — that's the other
+   40 points. `HUBBARD.md` records the *mirror* bug (0==0 as "filter 100%"), so both
+   directions were live in the repo simultaneously.
+4. **register_accuracy paired the i-th WRITE against the i-th write** — wrong twice over:
+   positional desync, and the wrong question (what the SID plays is the value a register
+   *holds*; how many times it was written is inaudible). Measured: two drivers with
+   identical held timelines, one writing twice and the other four times, scored **25%**.
+
+`scripts/validate_sid_accuracy.py` carried a duplicate of 1–3 **plus a fourth unique to
+it**: `if cutoff_lo in frame or ...` tested register *values* (0–255) for membership among
+the frame's *keys* (0x00–0x18), so filter frames were included whenever a value collided
+with a written register index. Now **delegates** to `sidm2.accuracy._timeline/_agreement`.
+
+Audit of `if <total> else 100.0 / else 0.0` across `bin/ sidm2/ pyscript/ scripts/` found
+three more: `sidm2/validation.py` (a **fourth complete copy** of the weighted scheme, the
+path `convert_all.py` runs per file), `pyscript/trace_comparator.py:341` (`else 100.0` — a
+voice silent on **both** sides reported 100%), `scripts/convert_all.py:623`
+(`Match rate: 100% (0/0 observed values found)`).
+
+**THE LESSON, learned twice in one day — two guards, not one:**
+- `score_pct(ok, tot)` → None when `tot == 0`. *Were there any frames?*
+- `exercised(a, b)` → False when both series are the same single constant. *Did those
+  frames carry information?*
+
+`score_pct` alone is **not sufficient** because **siddump force-displays every register on
+its first row** whether the playroutine wrote it or not. A tune that never filters still
+yields a full-length, entirely non-None series of zeroes on both sides → nonzero
+denominator → confident 100%. **Measured twice after the "fix" was in:** Commando reported
+`Filter Accuracy: 100.00%` in `accuracy.py`, then again through `validation.py`. Both were
+caught by **running the tool**, not by the tests.
+
+`exercised` is deliberately two-sided: two *different* constants still score ~0%, so a
+permanently-wrong register cannot hide in `n/a`.
+
+## H. MoN `$D418` — both halves (commits `464406a`, `c067b23`)
+
+**Passband (`464406a`).** Not a dropped bit — **the passband was never captured**.
+`filter_program_for` worked from `filter_trace`, which returns only `(cutoff11, $D417)`;
+`_filt_set_row` hardcoded `$90` (X=1, low-pass) for **every MoN tune ever built**. The
+driver was never at fault: `fp_set` has always decoded a 3-bit passband into `F_MODE`.
+Row encoding: byte0 = `1XXX YYYY`, bit7 marks SET (driver dispatches on `bmi`, the
+CMP-carry-safe test — see memory `sf2ii-cmp-carry-bug`), XXX = passband, YYYY = cutoff hi
+nibble. `$90`→LP, `$B0`→LP+BP, `$F0`→LP+BP+HP.
+
+Originals measured over 20 s: Cybernoid_II `$3F` (LP+BP), Hawkeye `$7F`×769 / `$1F`×231
+(**switching**), Cybernoid `$1F` (already right), Supremacy `$06`/`$03` (no passband).
+
+**Volume (`c067b23`).** Driver hardcoded `ora #$0f`. Over 60 s: Hawkeye 0/2/3, Cybernoid,
+Cybernoid_II = 15; **Supremacy sub0 = 6, sub1 = 8**, sub2 = 15. It is a per-song
+**constant**, not a ride — the only other value any target shows is frame 0's pre-init bus
+state (all three Supremacy subtunes read 3 there). Added build-time `MAIN_VOL` to
+`layout.inc` beside `FILT_MODE`; `master_volume()` takes the **MODAL** value so the frame-0
+artefact can't be shipped.
+
+**Verified results:**
+| target | `$D418` before | after |
+|---|---|---|
+| Cybernoid_II | 0.0% | **99.7%** |
+| Hawkeye | 82.5% | **99.9%** |
+| Supremacy sub0 | 0.0% | **exact** — `$06`×800 vs original `$06`×799, independently verified by packing back to SID and tracing |
+| Cybernoid | n/a | n/a — its passband is uniformly 1, so byte-identical rows; **cannot** regress |
+
+`freq`/`wf`/`pulse` stayed 100.0 throughout.
+
+## I. Docs (commit `7ec921a`) — project rule 3
+
+- `docs/players/MON.md` — new `$D418` section; **flags that older "filter 100%" figures
+  meant CUTOFF ONLY**.
+- `docs/players/PATTERNS.md` **D4 extended** (not duplicated — vacuous acceptance was
+  already the entry) with the two-guard rule and the five-broken-copies scale.
+- `CLAUDE.md` — fidelity harness added to tools ("route new scorers through it, don't
+  write a sixth copy"); MoN row of Known Limitations rewritten to state which registers
+  its accuracy claim covers.
+
+## J. Experiment: is sidplayfp `-u` a faithful voice slice? (no commit — findings only)
+
+Motivated by the proposed single-channel comparison. **Answer: no, on many tunes.**
+
+Muting all three voices does **not** produce silence:
+| tune | all-3-muted residual RMS | vs its mix |
+|---|---|---|
+| Commando | 11 | silent ✅ |
+| Crazy_Comets | 25 | silent ✅ |
+| Sanxion | 227 | ~10% bleeds |
+| **I_Ball** | **1960** | **75% of the mix survives** |
+
+**Consequence (this part held up):** per-voice audio comparison is silently invalid where
+the residual is large — the same signal appears in all three "isolated" renders, making
+them agree for reasons unrelated to the driver.
+
+**⚠ TWO CORRECTIONS, both from `21917ba` (see §K):**
+1. **My inferred cause — `$D418` master-volume digi — is FALSIFIED.** Sanxion and I_Ball
+   hold the volume nibble at a constant 15 for all 1000 frames, exactly like clean
+   Commando. The real causes are per-tune: Arkanoid has a separate sample channel
+   (`-g1`: .114 → .004), Sanxion's is filter-path and emulation-dependent
+   (`-nf`: .032 → .004). I had flagged this as effect-proven / cause-inferred; the
+   inference was wrong.
+2. **My "isolated voices don't sum to the mix" measurement was confounded.** Those four
+   renders each carried a *random* power-on delay (§K), so the poor correlation was partly
+   my own measurement noise. The all-muted residual finding is unaffected — it is an RMS
+   magnitude, not an alignment measure.
+
+Scratch scripts (not in repo, under the session scratchpad):
+`mute_test.py`, `mute_test2.py`.
+
+## K. CONCURRENT WORK — commit `21917ba` (NOT mine; landed after `7ec921a`)
+
+Authored outside this conversation in the same checkout. Two things, both of which
+invalidate parts of the plan above:
+
+**1. sidplayfp renders with a RANDOM power-on delay by default.** Documented only under
+`--help-debug`. Every audio render in this repo carried a random shift of up to ~8 ms —
+the same order as the millisecond onset deltas `audio_tightness_tool` reports. Three
+renders of one file with identical arguments gave onset counts **152/159/156** and
+`rms(difference)/rms ≈ 1.2`: two runs of the SAME file differed as much as the signal.
+Compared against itself, Commando scored **148/157** matched onsets with 18 spurious
+extras. Pinned to `--delay=0` (`power_on_delay=0` default in `sidplayfp_wrapper`, `None`
+restores sidplayfp's behaviour) → 156/156/156, ~0.0003, self-comparison exact.
+Recorded as **PATTERNS.md F5**: *a comparison tool owes you f(x,x) = perfect, or it is
+measuring its own noise.*
+
+**2. `--voice all` sweep shipped** (5 renders per side), with the isolation guard I had
+listed as remaining work — but built on better data than I had:
+- The residual is a **GRADIENT, not two classes** (0.2% Commando … 68% I_Ball across 12
+  tunes) and it **moves with the window** (Cybernoid_II 23.8% @20s, 34.5% @12s). So the
+  threshold is reasoned, not read off a histogram: warn at 5%, **REFUSE at 50%** (exit 3,
+  `--allow-digi-bleed` overrides) — 50% meaning "the residual carries more energy than the
+  voice". `no-signal` is distinguished from `clean` for a silent render.
+- Per-voice tightness table + the **registers × audio cross-tab** via a new
+  `fidelity_common.per_voice_register_agreement` (uses `score_pct` + `exercised`).
+- **First result: Cybernoid_II vs its native MoN build is register-exact on all three
+  voices and only 71–85% onset-matched → SYNTHESIS divergence on every voice.**
+
+**This also answers an open question of mine:** `per_voice_register_agreement` is a
+**second caller** of the harness, which was the stated test of whether the abstraction
+earns its size.
+
 </work_completed>
 
 <work_remaining>
 
-## Wave 6 - R17: Stage C structural synth-table RE (the flagship, Opus, L)
+Ordered by value. Nothing here is blocked on anything else unless stated.
 
-**Now confirmed as THE part-count lever** by R18's measurement (bundles bind every
-cut). Design already written in the review's **Appendix A section D-R17**; read it
-first. Key points:
-- **Stage B is Stage C's oracle**: the existing unrolled build is byte-exact, so
-  emit both and compare full per-frame register streams. Any mismatch = the
-  structural model is wrong. No listening, no thresholds.
-- Therefore roll out **per-instrument hybrid**: instruments whose structural
-  programs verify byte-identical use the compact form, others keep unrolled. The
-  corpus can never regress; coverage is a ratchet.
-- Three designed-against mismatch classes: loop grammar (attack + steady-loop
-  split), tick phase (use RLE frame counts, never resample - resampling is lossy),
-  note-relative arps (SF2 wave col1 semitone column; never bake absolute notes).
-- **Measure first**: count distinct (FM-program, rate) pairs. If slides take their
-  rate from the pattern stream, pairs may still exceed 63 and the win comes from
-  wave/instrument collapse instead. One-day script on already-parsed data.
-- Targets: Supremacy sub2 (70 parts, engines cracked) then Myth sub0, then evaluate
-  DMC/SDI bundle-bound files.
-- Success order: byte-exact preserved -> THEN part count. A part-count win with any
-  register diff is a failure (lossless-only rule).
+## ~~1. Single-channel comparison + digi guard~~ — **DONE in `21917ba`** (not by me)
+Shipped as `audio-tightness.bat ... --voice all`, with the isolation guard, the per-voice
+table and the registers × audio cross-tab. See §K. **Do not rebuild this.**
 
-## Remaining review items (see `docs/CODE_REVIEW_2026-07.md` for full detail)
+**The follow-up it created:** Cybernoid_II vs its native MoN build is **register-exact on
+all three voices yet only 71–85% onset-matched** — a synthesis divergence on every voice,
+invisible to every register metric in the repo. That is now the most interesting open
+thread here, and it is exactly the quadrant the cross-tab was built to expose.
 
-Wave 7: **R4** (wire the 11 `bin/`-only players into `PLAYER_REGISTRY`),
-**R24** (universal trace-first fallback - Appendix A D-R24 has the architecture).
-Wave 8: **R8-R12** per-player residuals, **R14** (DMC standard window), **R15**
-(name Laxity's 0.07%), **R22** (universalize `sf2ii_vs_real.py`), **R25** (audio
-track), **R26** (signature framework), **R27** (bin/ archive), **R30** (broad-except
-audit), **R32** (compress CLAUDE.md's Known Limitations - it is loaded every session).
+## 2. Supremacy `adsr` 2.3% / 4.5% on osc2/osc3 (newly visible, unexplained)
+Identical on both R17 builds, so **not** an R17 regression — a pre-existing envelope gap
+the old 3-column gate could not see. Reproduce:
+`py -3 bin/mon_part_fidelity.py out/mon/Supremacy_sub0_part01.sf2 0 16`
 
-## Immediate follow-ups created by this session's work
+## 3. Pulse scored as per-frame equality (h2g's measured finding)
+`bin/mon_part_fidelity.py:113` scores `pulse%` as per-frame agreement. A phase-offset but
+otherwise correct sweep scores near zero. Consider movement-count (pulse) and travel
+(cutoff) instead. Bites the approximate players (DMC, Deenen, SDI, Matt Gray), not the
+byte-exact ones.
 
-1. ~~**Play-test the one-part Driller in real SF2II.**~~ ✅ **DONE 2026-07-30
-   (`aed30fe`): 3/3 SURVIVED over 700s, editor clock 11:41 = whole song + loop**,
-   against the 2-part build as an interleaved control. One-file Driller is
-   shipped. Three bugs were found on the way and fixed in `4b3d2da`:
-   - **R20a** the part-probe's slot check was **tautological** (`used <=
-     SEQ_SLOTS` with `used` summed over `range(SEQ_SLOTS)`), and the emitter
-     dropped over-cap sequences **silently**, its `break` leaving the voice loop
-     so later voices went completely silent. Driller unaffected (57<=128).
-   - **R23 second pass**: the oracle never checked a trial *began* (idle editor
-     at 0:00 read as SURVIVED) → now gated on SF2II's "Playing time" advancing,
-     new `NOPLAY` verdict; screenshots were screen-**region** grabs that captured
-     whatever covered the editor → now `PrintWindow`.
-   - **`pyscript/conftest.py` killed every SIDFactoryII on the machine** at the
-     end of *any* pytest session → faked a **100% crash rate on both arms**
-     (uniform exit code 15 was the tell). **Never run pytest during a play-test**
-     — now scoped to the session's own editors, but keep the rule.
-   NB `EDITOR` is **cwd-relative** (`sf2_load_test.py:30`): run the probe from
-   the **repo root**; the harness itself spawns the editor with cwd=`bin/`.
-2. **R7 continued**: the real work is upstream of `faithful_pulse_program` - inspect
-   how `song.pulse[v]` is captured and how gate-regions are segmented in
-   `bin/build_galway_trace_song.py` (`note.tie -> EMPTY_PUL` at ~:645 means one
-   program serves a whole legato region; a tune-spanning region explains
-   Street_Hawk's 1 bundle). Verify with the R7 distinct-count table (counts are
-   alignment-independent; match% is not).
-3. **R13 residual**: localize Triangle_Intro v1's 83.6%. **Use the `t0` bounds
-   `build_song` already computes** - a brute-force `t0` search over the original
-   produces nonsense (see attempted approaches).
-4. **Myth sub0 part1 filter 77%** (ROADMAP B5) is still **unverified** - do not
-   assume it followed R16. Needs the py65 **emulation** trace; shapes differ
-   (`(cutoff, ctrl)` tuples vs `per_frame`'s int `fcut`).
-5. **R3 residual**: the globals-as-parameters pattern persists in
-   `build_romuzak_native_song` (`B.TEMPO`/`B.N_ROWS`), `build_mon_native_song`
-   (`B.TEMPO`/`B.TEMPO2`/`B.TEMPO_SWALLOW`/`B.TEMPO_SCHED`) and
-   `build_blackbird_native_song` (`B.TEMPO`/`B.TEMPO2`) - **4 more channel
-   variables**, all working via the `None` fallback. Converting them is the
-   prerequisite for actually MERGING the two 353-line driver_full files.
-6. **FC follow-ups**: `FCShim._voice_blocks` returns one flat block; `fc_parser`
-   exposes real `voice_blocks` (51/41/51 on Triangle_Intro) which would let repeated
-   blocks share sequences (part-count optimisation). Native `.prg` FC modules in
-   `out/fc_native/` are not buildable yet (siddump needs a PSID wrap).
+## 4. The other 13 bespoke verify/sweep scripts
+`bin/_verify_f4_*.py`, `_verify_f5_*.py`, `_verify_filter_*.py`, `_verify_pulse_source_edit.py`,
+`_verify_variant_sources.py`, `_verify_wizax_a_f1.py`, `_verify_zetrex_yp_f1.py`,
+`_validate_galway_generalize.py`, `pyscript/blackbird_sweep.py`, `blackbird_crash_probe.py`.
+Porting a **second** caller onto the harness is the real test of whether the abstraction
+earns its 598 lines (see the open judgement call in §E above).
 
-## Matt Gray leftovers (carried forward from the previous handoff)
-
-- **Deliverance** (1990, a THIRD generation): `_scan_for_shim()` finds the shim, but
-  `locate()`'s "6 consecutive `LDA abs,y` stepping by 2" no longer holds. Steps in
-  the old handoff (git history of this file at `9e00576`).
-- **Quedex** (1987, FOURTH generation): no `ldx #$00/$07/$0e` + `jsr` triple exists;
-  needs a second entry-point strategy, not just a new `locate()` branch.
-- **LN2 subtunes 5 and 6** have unusable sample sizes (n=19 and n=1) - their "100%"
-  is not evidence.
-- **Stage A for LN2/Tusker was never play-tested** in SF2II.
-- The other ~50 HVSC `Gray_Matt` files are untouched/unclassified.
+## 5. Smaller / opportunistic
+- `pyscript/accuracy_heatmap_generator.py` — the 5th copy of a weighted scheme. Left alone
+  **deliberately**: it computes a genuinely different thing (grid-cell coverage). Re-check
+  before assuming it's a bug.
+- Subtune correspondence matrix (h2g §7) — SIDM2 does heavy multi-subtune work and
+  `CLAUDE.md` already records Driller's `music_init` ignoring the accumulator, the same
+  class of wrapper weirdness.
+- Minimum-evidence floor for sweep windows (Hawkeye:3 scores on a **2-second** window).
+- `CHANGELOG.md` / `STORY.md` / version bump — **not** done, and **not** required unless a
+  version bump is intended (CLAUDE.md ties those to version bumps specifically).
 </work_remaining>
 
 <attempted_approaches>
 
-## Failures and dead ends - do not repeat
+## Failed / corrected during the session — do not repeat
 
-**Brute-force `t0` alignment search when the real bounds are known.** Twice.
-Trying to localize Triangle_Intro v1's residual (R13) and again on Myth, I searched
-for the best `t0` over the original instead of using the `t0` values `build_song`
-already computes. It "found" a 15-frame window and produced 25.1%/6.7%/77.8%
-garbage. **Discarded rather than reported.** Always use the known bounds.
-
-**Comparing two differently-shaped filter traces (R16/Myth).** `per_frame(...)[1]`
-is an int `fcut`; `siddump_filter_trace` returns `(cutoff, ctrl)` tuples. Comparing
-them returned a meaningless **0.0%**. Discarded. Compare like with like.
-
-**Measuring a build's original at the wrong subtune (R7).** `build_galway_corpus`
-builds Wizball at **subtune 3**; I measured the original at subtune 0 and got a
-spurious 0.0%. Always read the builder's own subtune (`SUBTUNE` overrides +
-PSID `start_song-1`).
-
-**Assuming the cap named in the docs is the binding one (R18).** Wave rows were
-assumed to be the part-count constraint; measurement showed bundles bind every cut
-and WAVE sits at 16-24%. Measure which cap binds before relieving one.
-
-**`PULSE_ROW_CAP` as the R7 root cause.** Plausible (its own comment admits it is
-an arbitrary safety margin, and its trim loop is lossy) but **the trim never fires**
-on any affected tune. Instrumented and disproved in one run. Same for
-`PULSE_TABLE_ROWS` and `pq`.
-
-**Trusting the review's own premises.** Of the items executed in waves 4-5, **three
-of five had a false or stale premise** (R16 stale ~300x, R7's tune list wrong both
-ways, R18 no candidate). The review was in places repeating stale documentation.
-**Measure before fixing** - it was consistently more valuable than the fixes.
-
-**Naive `gen_includes_song` unification (R3).** Considered and rejected after
-measuring: three genuinely different signatures + per-player table layout. Forcing
-one signature would need a dozen mutually-exclusive flags.
-
-**Merging MoN/Blackbird drivers (R1).** Rejected on measurement: 51 hunks and ~1962
-diff lines respectively. `.if`-maze cost exceeds the duplication saved.
-
-**A bash heredoc containing apostrophes inside `$(cat <<'EOF')`** broke parsing
-once; used `git commit -F <file>` from the scratchpad instead.
+- **`git checkout -- drivers_src/` is TOO BROAD.** It silently destroyed the
+  `romuzak_driver.asm` change in commit `c067b23`, one commit from shipping a broken
+  driver. Only `layout.inc` and `freqtable.inc` in that tree are build-generated;
+  **`romuzak_driver.asm` is real source.** Caught because `git status` showed two files
+  where three were expected. Revert generated files **by name**.
+- **The `-u` mute experiment was mis-designed twice** before it produced a result:
+  (1) blamed sample misalignment — cross-correlation showed lags of only 4–39 samples;
+  (2) blamed DC offset — removing the mean changed nothing. The decisive test was the
+  obvious one: **mute everything and expect silence.** Reach for the direct test first.
+- **A test that passes on both old and new code pins nothing.** Every regression test
+  written this session was verified to FAIL against the pre-fix code (via
+  `git show HEAD:<file>` into a scratch module). One did *not* discriminate and was
+  **relabelled in-file as a forward guard** rather than left to read as a defect pin.
+- **One test's premise was wrong, not the code**: asserting a constant-held register should
+  score 100%. `exercised()` correctly reports `n/a`. The test had to use a timeline that
+  *moves*. Recorded in the test docstring so nobody "fixes" it back.
+- **`score_pct` alone does not close the vacuous-100 class** — see §G. Cost two passes.
+- **Widening `filter_trace` to a 3-tuple was started and reverted**: six sibling builders
+  import it (DMC, FC, Hubbard, SDI, Sound Monitor, `_bundle_phase0`). Added a MoN-local
+  `passband_trace` instead, and made the shared `traces` tuple accept 2 **or** 3 elements.
+- **Three parallel subtasks were requested and declined** (for the revert/commit/R17
+  sequence): they were strictly ordered and would have raced on the same git repo — the
+  exact concurrency hazard flagged an hour earlier. Did 1–2 inline, delegated only the
+  long one.
+- **`fidelity.md` / `fidelity-tool-improvements.md` could not be found locally** — three
+  independent searches (mine, a forked agent's, and a targeted one) came up empty. They
+  live in the **h2g GitHub repo**, uppercase, not on this machine.
+- **"use model fable" could not be honoured by a fork** — a forked worker cannot switch its
+  own model mid-execution; the parent must set it at spawn time.
+- `np.correlate(mode='full')` on 200k samples is far too slow — timed out at 120 s and had
+  to be backgrounded.
 </attempted_approaches>
 
 <critical_context>
 
-## Verification discipline that worked (reuse it)
+## Environment / invocation
+- Repo: `C:\Users\mit\claude\c64server\SIDM2`, branch **master**, in sync with
+  `origin/master` (`github.com/MichaelTroelsen/SIDM2conv`).
+- Full suite: `py -3 -m pytest pyscript/ -q` → **1834 passed, 7 skipped, 2 xfailed,
+  0 failed** (~2.5 min). Baseline at session start was 1810. The 2 warnings are
+  pre-existing `PytestReturnNotNoneWarning`s in unrelated files.
+- MoN builds: `py -3 bin/build_mon_native_song.py SID/Tel_Jeroen/<Tune>.sid <sub> auto`
+  (~2.5 min each; the 8-target sweep is ~40 min).
+- Scoring: `py -3 bin/mon_part_fidelity.py out/mon/<Tune>_sub<N>_part01.sf2 <sub> <secs>`
 
-- **git-stash A/B + byte-diff** is the strongest available gate and was used for
-  every refactor: stash the **complete** changeset (including new files and
-  transitive import deps), rebuild, byte-compare. R1 achieved **byte-identical
-  assembled machine code**, which proves behavior preservation outright.
-- **`drivers_src/*/{layout,freqtable,tempo_sched_*}.inc` are regenerated by every
-  build** - `git checkout --` them before staging. This bit nearly every run.
-- Native builds are launched from repo root; SF2II must launch with **cwd=bin/**.
-- 64tass path: `C:\Users\mit\Downloads\64tass-1.60\64tass-1.60.3243\64tass.exe`.
+## Hazards that will bite again
+- **NEVER run two MoN builds concurrently.** `build_mon_native_song.py:39` writes
+  `drivers_src/mon/freqtable.inc` and `:1809` copies `romuzak/layout.inc` over
+  `mon/layout.inc` — shared **tracked source**, not temp files. Concurrent builds silently
+  corrupt each other's results. This is h2g's "do not share a workdir" lesson in a nastier
+  form, and it is why `mon_struct_sweep` can never be parallelised.
+- Those `.inc` files come back modified after **every** build. Revert them **by name**
+  (precedent `227e6aa`), never with a directory-wide checkout (see attempted_approaches).
+- **siddump force-displays every register on its first row.** This is the root of the
+  vacuous-100 class and of the frame-0 artefacts in `MAIN_VOL` derivation. Assume any
+  register series starts with one frame of pre-init bus state.
+- sidplayfp CLI: output is `-w<path>` **attached**, input file **last** — inverse of
+  SID2WAV. Exit 0 on success (VICE's `vsid` exits 1 on *normal* termination).
+- `scripts/sid_to_sf2.py` **refuses to write to a path that already exists**.
+- **sidplayfp's `--delay` defaults to RANDOM** (documented only under `--help-debug`),
+  giving every render a random shift of up to ~8 ms. `sidplayfp_wrapper` now pins
+  `power_on_delay=0`; pass `None` only if you deliberately want hardware-like
+  irreproducibility. Any measurement taken from renders made BEFORE `21917ba`
+  (including my `-u` mute-summing experiment) carries this noise.
 
-## Non-obvious mechanics discovered
+## Design rules established this session
+- **Two guards, always:** `score_pct` (were there frames?) + `exercised` (did they carry
+  information?). Route new scorers through `sidm2/fidelity_common.py`; do not write a
+  sixth copy of the weighted-accuracy scheme.
+- `compare_runs` refuses on mismatched *measurement* settings, surfaces mismatched
+  *build options* as the change under test.
+- Columns are **appended**, never inserted, so saved baselines and existing regexes
+  (`OSC_RE`) keep parsing.
+- A shared helper is not widened for one caller (`filter_trace` stayed a 2-tuple).
 
-- **64tass resolves a nested `.include` relative to the INCLUDING file**, not cwd -
-  tested empirically. Hence `-I <player_dir>` in both `assemble()` calls after R1.
-  Without it the build fails loudly (it cannot silently pick a wrong file).
-- **`emit_one` does `B.GAL = MON_DIR`** (`build_mon_native_song.py:1763`), so every
-  shim-based Stage B assembles **MoN's** driver. That is why FC's Stage B needed no
-  new driver - and why MoN's "misnamed" `romuzak_driver.asm` is **load-bearing**.
-- **`SF2HeaderGenerator.PLAYER_ADDRESSES` is a CLASS attribute** - mutating it in
-  place leaks across every song built in one process. `make_native_gen` copies it;
-  a test pins this.
-- **FC rests park a near-zero `$0002` in `$D400` with the gate OFF** (note >= 96
-  reads past the 96-entry freq table). A build emitting a true rest "mismatches" on
-  an inaudible register - Triangle_Intro v1 reads **57.8% raw vs 100.0% audible**.
-  `Triangle_2_years` (zero rests) is the control: raw ~= audible. **Any player whose
-  rests leave a non-zero freq register shows this false penalty.**
-- **FC's `FCInstrument` field names follow the V4.1 manual, which is WRONG for
-  V1.0**: byte `[5]` (named `vibrato`) holds the arp offsets; the field named `arp`
-  (byte `[6]`) is the pulse-sweep ctrl and is unused. Confirmed against Stage A.
-- **FC has two independent `+1`s**: `frames_per_tick = speed+1` and
-  `ticks = dur+1`. Both are load-bearing; tests pin them.
-- **Blackbird's `min_tempo_song < 3` guard disables hard-restart arming for the
-  WHOLE song** - previously silent, now printed.
+## Open judgement call (flagged to the user, not resolved)
+The `mon_struct_sweep.py` port **grew** the file (139→176) against a stated acceptance
+criterion of "if it doesn't shrink, the abstraction is wrong — redesign." The subagent
+argued the A/B *decision* logic shrank and the rest is new capability, and did not
+redesign. **A second caller is the test** — and `21917ba` supplied one
+(`fidelity_common.per_voice_register_agreement`), independently of this question. Judge
+the abstraction on that before porting the remaining 13.
 
-## Standing rules honored
-
-- Accuracy/byte-exactness over speed, cost and file count; **never ship lossy output
-  silently** (this is why the `PULSE_ROW_CAP` trim now announces itself, and why the
-  `CAP_B` part-count dial stays opt-in).
-- Never claim a percentage without its **window and n**; an empty comparison is "no
-  test ran", not 100% (`score_pct` returns None).
-- Root-clean rule: no `.py` in repo root; all Python in `pyscript/` or `bin/`.
-
-## Environment
-
-- Corpora: `SID/Fun_Fun/` (FC, Sound Monitor, ROMUZAK), `SID/Galway_Martin/` (40),
-  `SID/LFT/` (Blackbird), `SID/Tel_Jeroen/` (MoN), `SID/Gallefoss_Glenn/` (SDI),
-  HVSC Matt Gray at
-  `C:\Users\mit\Downloads\HVSC_85-all-of-them\C64Music\MUSICIANS\G\Gray_Matt`.
-- `/tmp` does not exist; use the session scratchpad.
-- Bash tool caps at 10 min - long corpus runs need `run_in_background`.
-- The tokensave hook blocks grep on symbol-like patterns; `export
-  TOKENSAVE_DISABLE_GREP_HOOK=1` to override for one call.
+## Verified-vs-assumed
+- **Verified:** every `$D418` before/after number; the 50%/25%/100% pre-fix scores; the
+  `-u` mute residuals; test counts; Cybernoid's structural no-regression guarantee.
+- **FALSIFIED (was my inference):** `$D418` digi is NOT the `-u` bleed mechanism —
+  refuted in `21917ba`. The effect was real, the cause was wrong; per-tune causes are a
+  separate sample channel (Arkanoid) or a filter-path/emulation artifact (Sanxion).
+- **NOT verified:** the R17 corpus table (the subagent's, not independently re-run —
+  ~40 min); h2g's own corpus figures (their measurements, quoted as theirs).
 </critical_context>
 
 <current_state>
 
-## Status
+## Complete and pushed
+Working tree **clean**, `HEAD == origin/master` at **`7ec921a`**.
 
-- Branch **`mattgray-driller-stage-a`**, HEAD **`2c20e26`**, **pushed**, level with
-  origin. Working tree **clean** (only regenerated `.inc` artifacts appear
-  transiently after builds - always `git checkout --` them).
-- Full suite: **1747 passed, 7 skipped, 2 xfailed, 0 failures**.
-- No PR opened.
-
-## Deliverables
-
-| item | status |
+Session commits, oldest first:
+| commit | what |
 |---|---|
-| `docs/CODE_REVIEW_2026-07.md` (34 items + Appendix A) | **complete**, kept updated as items closed |
-| Wave 1 (R34, R28/R31/R33, R23, R21, R5, R29, R6) | **complete** |
-| Wave 2 (R2, R3, R3b, R1) | **complete**, all byte-verified |
-| Wave 3 (R13 FC Stage B) | **complete** (14/15 voices 100% audible) |
-| Wave 4 (R16, R7) | **R16 closed by measurement; R7 re-diagnosed, fix NOT written** |
-| Wave 5 (R20, R18, R19) | **R20 shipped (Driller 2->1 file); R18 closed; R19 downgraded** |
-| Wave 6+ (R17 flagship, R4, R24, R8-R12, R14-R15, R22, R25-R27, R30, R32) | **not started** |
+| `32a0e0c` | sidplayfp replaces SID2WAV.EXE |
+| `2ace9e7` | CI artifact-action deprecation + bandit High/Medium |
+| `72dd1ab` | Test Summary: artifact that was never produced |
+| `1ec22b1` | Test Summary: missing PR-comment permission |
+| `9f05787` | Batch Testing: file archived 4 months ago |
+| `f6a65a1` | retire the batch-pyautogui launcher + 9 doc files |
+| `c4fc9ce` | **PR #17 merged** (squash) |
+| `ffa07b1` | add `mon_struct_sweep.py` |
+| `3a329d2` | shared A/B baseline harness + dimension registry |
+| `67fa1c6` | widen the R17 gate — **R17 settled** |
+| `9b1a0f0` | identical captures scored 50% |
+| `2bc8c14` | `validate_sid_accuracy` delegates |
+| `05bd7db` | `register_accuracy` compared write sequences |
+| `649e076` | vacuous-score class closed across 4 more scorers |
+| `464406a` | MoN passband (`$1F`/`$3F`) |
+| `c067b23` | MoN master volume (`MAIN_VOL`) |
+| `7ec921a` | docs (project rule 3) |
 
-## New files this session
+**PR #17 MERGED**, 27/27 checks green. Branch `mattgray-driller-stage-a` kept (not deleted).
 
-`sidm2/sf2_caps.py`, `sidm2/native_build.py`,
-`drivers_src/common/sf2_native_driver.asm`, `bin/build_fc_native_song.py`,
-`pyscript/soundmonitor_sweep.py`, `pyscript/test_soundmonitor_sweep.py`,
-`pyscript/test_native_build.py`, `pyscript/test_fc_native_song.py`,
-`docs/CODE_REVIEW_2026-07.md`.
+## Not started
+Everything in `<work_remaining>`. Single-channel comparison is **designed with its blocker
+resolved** but no code written.
 
-## Open questions / pending decisions
+## Temporary / not in the repo
+- Scratchpad: h2g doc copies, `mute_test.py`, `mute_test2.py`, rendered WAVs, and
+  `old_accuracy.py` / `old2_accuracy.py` (pre-fix modules extracted via `git show` for
+  proving tests fail against them). None are needed to continue.
+- `out/mon/*.sf2` build artifacts for Cybernoid, Cybernoid_II, Hawkeye, Supremacy sub0
+  exist from verification runs.
 
-1. ~~One-part Driller is not SF2II play-tested~~ ✅ **RESOLVED 2026-07-30** —
-   3/3 SURVIVED, full duration, clock 11:41 (see work_remaining #1).
-2. **R7's fix is not written** - only the diagnosis. Deliberate: the remaining work
-   is genuine RE on Galway's pulse capture for 2 tunes.
-3. **Myth sub0 filter 77%** unverified (harness shape mismatch).
-4. Whether to spend the **lossy `CAP_B` dial** on any player (3.2x fewer parts for
-   ~5.8pp freq). Currently opt-in only; needs a user decision, not a default.
-5. `.claude/settings.local.json` was committed this session at the user's explicit
-   request (`adf4982`) after being deliberately unstaged for many sessions.
+## Open questions
+1. Does the harness abstraction earn its size? A second caller now exists
+   (`per_voice_register_agreement`, `21917ba`) — assess it rather than waiting.
+2. What causes Supremacy's `adsr` 2.3%/4.5%?
+3. ~~Is `$D418` digi the `-u` bleed mechanism?~~ **Answered: no** (`21917ba`). Open
+   instead: why is Cybernoid_II register-exact but only 71-85% onset-matched?
+4. ~~Threshold for the digi guard.~~ **Chosen in `21917ba`**: warn 5%, refuse 50%, and
+   the spread turned out to be a gradient rather than two classes.
 </current_state>
