@@ -103,6 +103,31 @@ The build measures itself with `bin/mon_part_fidelity.py PART SONG SECS OFF0` (s
 - **The metric never compares `$D417` resonance/routing or `$D418` mode** — "filter" means cutoff only. A real blind spot, not just a Hubbard one.
 - **`bin/hubbard_validate.py` is V1-only and fails SILENTLY on V2.** It reads Delta sub11 at 23–25% because it computes onsets as `tk*fpt`, ignoring `swallow_period=5` (Monty period=0, Delta period=5). That is not a refutation of Delta — it is a validator returning a meaningless number for a whole class instead of refusing. Contradicts this project's fail-loudly rule; use `mon_part_fidelity.py` for V2 until fixed.
 - **Play-routine spin class:** several rips (Last_V8, Tarzan, …) spin forever on a bare py65 — 2M steps × thousands of frames = a 3-hour replay that killed the corpus batch. Use `sidm2.cpu6502_emulator` with the `$D012` raster fake (`measure_tick_schedule`, `HPReplay`, `initial_instruments`, `swallow_state`).
+- **`out/hubbard/*.sf2` is a build cache, not a source of truth — it goes stale
+  silently.** `out/` is `.gitignore`d entirely (not a tracked-vs-untracked
+  question, it's simply not in the repo), so nothing enforces that what's on
+  disk matches what the CURRENT `bin/build_hubbard_native_song.py` would
+  produce. Scoping the pulse best-lag question (2026-08-08) swept 85 first-
+  parts and found 44 voice-rows with pulse% below 99.5% not explained by a
+  simple frame lag; checking each against a FRESH rebuild found 5 of ~18
+  distinct files were STALE — `Commando_song16` (the on-disk part was a
+  mis-decode; a fresh build now REFUSES outright at "span 1134s exceeds
+  900s"), `Last_V8_song11`, `Deep_Strike_song0`, `Auf_Wiedersehen_Monty_song0`
+  (marginal, 98.4%→99.9%), `Saboteur_II_song0` (74.7%/34.1%→99.6%/99.6%).
+  A/B-verified this session's own `7bb89d7` ($D418 fix) was NOT the cause —
+  rebuilding Saboteur_II against the PRE-fix driver gave the same 99.6%.
+  **Always rebuild before trusting a fidelity number from this corpus.** The
+  other ~13 checked files (5_Title_Tunes_song1, Chimera_song0/song1,
+  Commando_song2, Gremlins_song0/2/3/4/6, Star_Paws_song0, Action_Biker_song0,
+  Delta_song0, Geoff_Capes_Strongman_Challenge_song3,
+  One_Man_and_his_Droid_song0, Zoids_song2) reproduced their exact original
+  numbers on a fresh rebuild — those ARE real, open pulse-engine residuals,
+  not staleness. `Commando_song2` stands out as the cleanest lead: all three
+  voices read EXACTLY 14.3% pulse, a suspiciously round, uniform number across
+  independent voices that smells more like a systematic bug (comparison
+  window, alignment, or a single shared cause) than three separate per-voice
+  content divergences — worth investigating first if this thread is picked
+  back up.
 
 ---
 

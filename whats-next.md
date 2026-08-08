@@ -370,21 +370,48 @@ SPECIFIC file is found whose original genuinely writes a non-default
 `$D418` value -- none has been found in the 6 files sampled here (2 of 2
 ROMUZAK test files, 4 of 40 Galway corpus files).
 
-## 2. Realign `vdly` independently per-register in `mon_part_fidelity.py` — BLOCKED ON USER SIGN-OFF
+## ~~2. Realign `vdly` independently per-register~~ — SCOPED, DECLINED, redirected (2026-08-08)
 
-Currently `vdly` (the per-voice delay refinement) aligns each voice by FREQ
-agreement only, within ±2 frames. This is why Hubbard `5_Title_Tunes` osc3
-read a strict pulse% of 4.5% despite `moves 279/279, travel 35712/35712`
-(identical motion) — its pulse writes trail its freq writes by 3 frames, past
-what the ±1-frame skew classification can reach. The best-lag DIAGNOSTIC
-(item 4 above, already shipped in `b3a67ea`) surfaces this without changing
-any published number. The larger fix — making `vdly` per-(voice, register)
-instead of per-voice — would MOVE every published freq/wf/pul percentage in
-the corpus, not just the files with a visible residual. Two forks have now
-independently declined to make this call. **Needs an explicit user decision**
-before any code changes: is this worth doing, and if so, should the corpus
-figures be republished with a note, or should this remain diagnostic-only
-indefinitely?
+Swept 85 first-parts (78 Hubbard + 7 MoN-family) through the shipped best-lag
+diagnostic (`b3a67ea`) to get real numbers before deciding. 255 voice-rows
+total; 65 (25%) read strict pulse% < 99.5%. Of those, only 21 improve when
+best-lag-searched (not 19 — the first pass under-counted by using `re.search`
+instead of `re.finditer`, missing extra best-lag lines on files with more
+than one bad voice), and of THOSE only ~5 land near 100% — the realignment's
+real win is roughly 5 of 255 rows (2%), with another ~16 improving partially
+but still showing real residual afterward. **User declined the realignment**
+given that shape: not worth moving every published freq/wf/pul% in the
+corpus for a ~2% win. `vdly` stays per-voice; the best-lag readout stays
+diagnostic-only. Do not re-litigate this without new data.
+
+**Redirected to the bigger population instead**: the 44 non-lag-explained
+voice-rows (three-quarters of the residual). Investigated ~18 distinct files
+by rebuilding each FRESH and re-measuring against the original sweep number:
+- **5 were STALE artifacts**, not real bugs — `Commando_song16` (the on-disk
+  part was a mis-decode; a fresh rebuild now REFUSES outright, "span 1134s
+  exceeds 900s"), `Last_V8_song11`, `Deep_Strike_song0`,
+  `Auf_Wiedersehen_Monty_song0` (marginal), `Saboteur_II_song0` (74.7%/34.1%
+  → 99.6%/99.6%). A/B-verified this session's own `7bb89d7` was NOT the
+  cause of the Saboteur_II change (rebuilt against the PRE-fix driver too,
+  got the same 99.6%) — this is ordinary corpus staleness, `out/` being
+  `.gitignore`d means nothing enforces it staying in sync with the builder.
+- **13 reproduced their exact original numbers** — real, open pulse-engine
+  content divergences, not measurement artifacts: `5_Title_Tunes_song1`,
+  `Chimera_song0`/`song1`, `Commando_song2`, `Gremlins_song0`/`2`/`3`/`4`/`6`,
+  `Star_Paws_song0`, `Action_Biker_song0`, `Delta_song0`,
+  `Geoff_Capes_Strongman_Challenge_song3`, `One_Man_and_his_Droid_song0`,
+  `Zoids_song2`.
+Recorded in `docs/players/HUBBARD.md`'s "Fidelity gotchas" section (new
+bullet, 2026-08-08) with the full file list, so the staleness class doesn't
+get re-investigated from scratch and the real-bug list is available for
+whoever picks this up. **Did not attempt to fix any of the 13** — that is
+open-ended, per-tune RE work (matches HUBBARD.md's own documented open
+classes: V1 modelled/V2 captured-not-modelled pulse gaps, spin/swallow/
+format-laggard classes), not a bounded continuation. `Commando_song2` is
+flagged as the cleanest lead if this is picked back up: all three voices
+read EXACTLY 14.3% pulse — a suspiciously uniform number across independent
+voices, more consistent with one systematic cause than three separate
+per-voice bugs.
 
 ## 3. `whats-next.md` staleness — RESOLVED by this very document
 
