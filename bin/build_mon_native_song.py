@@ -400,17 +400,59 @@ def _snap_onset(m, frames, v, fr):
 
 def filter_trace(sid, sub, secs):
     """Per-frame global filter state from siddump (fill-forward): (cutoff11, ctrl)
-    where cutoff11 = ($D415&7)|($D416<<3) and ctrl = $D417 (res+routing)."""
+    where cutoff11 = ($D415&7)|($D416<<3) and ctrl = $D417 (res+routing).
+
+    Deliberately still a 2-tuple: six sibling builders import this (DMC, FC,
+    Hubbard, SDI, Sound Monitor, _bundle_phase0). The passband lives in $D418
+    and is fetched separately by `passband_trace` rather than widening a shared
+    helper for one caller's benefit.
+    """
     from sidm2.fidelity_common import siddump_filter_trace
     return siddump_filter_trace(sid, [f'-a{sub}', f'-t{secs}'])
 
 
-def _filt_set_row(cutoff11, ctrl):
+def passband_trace(sid, sub, secs):
+    """Per-frame $D418 passband: mode bits 4-6 shifted down (1 low, 2 band, 4 high).
+
+    This was never captured, so `_filt_set_row` hardcoded low-pass and every MoN
+    tune was rebuilt with a low-pass whatever it actually selected. Inaudible in
+    the freq/wf/pulse columns, so it survived until $D418 became a scored
+    dimension. Measured over 20 s of the originals:
+
+        Cybernoid_II  $D418 = $3F  (low+band)      we wrote $1F -- band dropped
+        Hawkeye       $7F and $1F, SWITCHING       we wrote $1F
+        Cybernoid     $1F  (low)                   we wrote $1F -- already right
+        Supremacy     $06/$03 (NO passband)        we wrote $1F -- also wrong in
+                                                   the volume nibble; see below
+
+    Only the passband is returned. $D418's low nibble (master volume) is a
+    SEPARATE defect: the driver hardcodes `ora #$0f`, which is why Supremacy --
+    which rides the volume at 6 and 3 -- scores volmode 0%. Fixing that needs a
+    volume track in the driver, so it is left alone here rather than half-done.
+    """
+    from sidm2.fidelity_common import siddump_frames_full
+    frames = siddump_frames_full(sid, [f'-a{sub}', f'-t{secs}'])
+    return [0 if g['volmode'] is None else (g['volmode'] >> 4) & 0x07
+            for _, g in frames]
+
+
+def _filt_set_row(cutoff11, ctrl, passband=1):
     """A filt_prog_step SET row reproducing $D416 = cutoff11>>3 (low 3 bits 0),
-    passband LOW, res/routing = ctrl. byte0 = $90|Y (X=1 Low, Y=cutoff hi nibble),
-    byte1 = (C&$0f)<<4, byte2 = ctrl."""
+    res/routing = ctrl, and the given passband.
+
+    byte0 = 1XXX YYYY -- bit7 marks a SET row (the driver dispatches on `bmi`,
+    which is the CMP-carry-safe test), XXX is the passband the driver shifts
+    back up into $D418's mode bits (`and #$07` then four ASLs -> F_MODE), and
+    YYYY is the cutoff hi nibble. byte1 = (C&$0f)<<4, byte2 = ctrl.
+
+    `passband` was previously hardcoded here as the literal $90, i.e. X=1, low-
+    pass, for every tune. The driver has always been able to carry all three
+    bits; nothing ever gave it anything but low-pass. 1 low / 2 band / 4 high,
+    OR-ed: $90 low, $B0 low+band, $F0 all three.
+    """
     C = (cutoff11 >> 3) & 0xFF
-    return (0x90 | ((C >> 4) & 0x0F), (C & 0x0F) << 4, ctrl & 0xFF)
+    return (0x80 | ((passband & 0x07) << 4) | ((C >> 4) & 0x0F),
+            (C & 0x0F) << 4, ctrl & 0xFF)
 
 
 def _filt_add_row(d416_delta, count):
@@ -497,7 +539,7 @@ def detect_filter_drives(ftr, onsets_by_voice, routed=None, dynamic=False):
     return drives
 
 
-def filter_program_for(ftr, onset, span):
+def filter_program_for(ftr, onset, span, pbtr=None):
     """Per-note FILTER program = the cutoff ENVELOPE captured from the note-on frame
     `onset` for `span` frames, compressed into a SET row + ADD-rows (one per run of
     constant per-frame delta) + a freeze. Reproduces the full attack/decay/rise/sustain
@@ -510,16 +552,29 @@ def filter_program_for(ftr, onset, span):
     seq = [ftr[onset + k] if onset + k < n else ftr[-1] for k in range(cap)]
     cut = [c >> 3 for c, _ in seq]                    # $D416 (8-bit) per frame
     ctl = [ct for _, ct in seq]
-    prog = [_filt_set_row(seq[0][0], seq[0][1])]      # SET base cutoff + res/routing
+    # $D418 passband per frame. Defaults to low-pass when no trace is supplied,
+    # which is exactly the old hardcoded behaviour, so a caller that does not
+    # pass one (and the existing tests) sees byte-identical output.
+    if pbtr is None:
+        pbd = [1] * len(seq)
+    else:
+        pbd = [pbtr[min(onset + k, len(pbtr) - 1)] if pbtr else 1
+               for k in range(len(seq))]
+    prog = [_filt_set_row(seq[0][0], seq[0][1], pbd[0])]
     k = 1
     while k < len(seq):
-        if ctl[k] != ctl[k - 1]:                      # res/routing change -> SET row
-            prog.append(_filt_set_row(seq[k][0], seq[k][1]))
+        # A passband switch needs a SET row exactly as a res/routing change does:
+        # ADD rows only move the cutoff, so without this a tune that changes
+        # passband mid-note (Hawkeye alternates $1F and $7F) would hold whichever
+        # one its first SET row happened to carry.
+        if ctl[k] != ctl[k - 1] or pbd[k] != pbd[k - 1]:
+            prog.append(_filt_set_row(seq[k][0], seq[k][1], pbd[k]))
             k += 1
             continue
         delta = cut[k] - cut[k - 1]
         run = 1
         while (k + run < len(seq) and ctl[k + run] == ctl[k]
+               and pbd[k + run] == pbd[k]
                and cut[k + run] - cut[k + run - 1] == delta):
             run += 1
         prog.append(_filt_add_row(delta, run))
@@ -1100,13 +1155,18 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     # window get degenerate held programs. Traces can be passed in (windowed builds
     # reuse one trace across all windows instead of re-siddumping per window).
     if traces is not None:
-        frames, ftr = traces
+        # 2-tuple or 3-tuple: the Sound Monitor and Future Composer builders call
+        # this with (frames, ftr) and no passband, which falls back to low-pass --
+        # exactly what they got before, so their output is unchanged.
+        frames, ftr = traces[0], traces[1]
+        pbtr = traces[2] if len(traces) > 2 else None
     else:
         span = m.tick_to_frame(max(sum(ev.dur for ev in m.voices[v])
                                    for v in range(3)))
         secs = span // 50 + 4
         frames = F.per_frame(sid, [f'-a{sub}', f'-t{secs}'])
         ftr = filter_trace(sid, sub, secs)
+        pbtr = passband_trace(sid, sub, secs)
     # The filter is ONE GLOBAL per-note cutoff ENVELOPE on the filter-routed voice;
     # it restarts on that voice's note-ons. Find those note-ons (the envelope attacks,
     # mapped back to the triggering note) -> `drives`; the span until the next restart
@@ -1286,7 +1346,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
         span = _gap(o)
         if key not in canon_src or span > canon_src[key][1]:
             canon_src[key] = (o, span)
-    canon_prog = {key: filter_program_for(ftr, o, span)
+    canon_prog = {key: filter_program_for(ftr, o, span, pbtr)
                   for key, (o, span) in canon_src.items()}
 
     # PER-DRIVE EXACTNESS GUARD (same model as wave/pulse/FM): the canonical program
@@ -1313,7 +1373,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     for o, key in drive_key.items():
         span = _gap(o)
         canon_filt[o] = (canon_prog[key] if _filt_exact(o, span, key)
-                         else filter_program_for(ftr, o, span))
+                         else filter_program_for(ftr, o, span, pbtr))
 
     # WINDOW-START residual filter (the "seam"): a window beginning between drives
     # played the previous drive's envelope TAIL in the original, but the part's
@@ -1336,7 +1396,7 @@ def build_native_song(m, sid, sub, idx_map, instr_rows, win=None, traces=None,
     if cands and (first_drive is None or first_drive > t0w):
         o0, v0 = min(cands)
         if (v0, o0) not in drives and lead_end - o0 >= 2:
-            canon_filt[o0] = filter_program_for(ftr, o0, lead_end - o0)
+            canon_filt[o0] = filter_program_for(ftr, o0, lead_end - o0, pbtr)
             drives.add((v0, o0))
     if os.environ.get("FILT_DEBUG"):
         print(f"  [FILT_DEBUG] drives={len(drive_frames)} canon={len(canon_src)} "
@@ -1941,7 +2001,8 @@ def main():
         span += getattr(m, "onset_delay", 0)
         secs = span // 50 + 4
         print(f"  tracing full song ({secs}s) once...")
-        traces = (F.per_frame(sid, [f'-a{sub}', f'-t{secs}']), filter_trace(sid, sub, secs))
+        traces = (F.per_frame(sid, [f'-a{sub}', f'-t{secs}']),
+                  filter_trace(sid, sub, secs), passband_trace(sid, sub, secs))
 
         if adaptive:
             # Greedily grow each window to the largest span whose PRE-cluster resource
