@@ -58,6 +58,15 @@ EXIT_BLEED_REFUSED = 3
 PAL_CYCLES_PER_SEC = 985248
 PAL_CYCLES_PER_FRAME = PAL_CYCLES_PER_SEC // 50
 
+# VSID's -soundrate was never pinned here, so it rendered at VICE's own
+# internal default (measured 48000 Hz, see docs/VSID_VS_SIDPLAYFP_COMPARISON.md
+# Finding 1) while sidplayfp always renders at 44100 Hz
+# (SidplayfpIntegration.DEFAULT_FREQUENCY). That forced every cross-renderer
+# comparison through a resampling step. Pinning VSID to the same rate removes
+# the mismatch at the source -- this is a wrapper-code fix, not a renderer
+# capability gap (`-soundrate <value>` is a documented vsid option).
+VSID_SOUNDRATE = 44100
+
 # How many extra copies of the ORIGINAL to render when calibrating the
 # repeatability floor (see measure_repeatability_floor). The first is a plain
 # REPLICATE at the same delay=0 as the reference render; the rest are
@@ -193,7 +202,8 @@ def _render_vsid(sid_path, out_wav, seconds, subtune, verbose):
 
     limit = int(seconds * PAL_CYCLES_PER_SEC)
     args = [str(vsid_exe), '-console', '-sounddev', 'wav',
-            '-soundarg', str(out_wav), '-limitcycles', str(limit)]
+            '-soundarg', str(out_wav), '-soundrate', str(VSID_SOUNDRATE),
+            '-limitcycles', str(limit)]
     if subtune is not None:
         args += ['-tune', str(subtune)]
     args.append(str(sid_path))

@@ -91,7 +91,7 @@ class VSIDIntegration:
             sid_file: Path to input SID file
             output_file: Path to output WAV file
             duration: Playback duration in seconds (default: 30)
-            frequency: Sample rate in Hz (default: 44100) - VSID uses its own setting
+            frequency: Sample rate in Hz (default: 44100), passed as -soundrate
             bit_depth: Bit depth - 8 or 16 (default: 16) - VSID uses its own setting
             stereo: Enable stereo output (default: True) - VSID uses its own setting
             fade_out: Fade-out time in seconds (ignored for VSID)
@@ -138,11 +138,17 @@ class VSIDIntegration:
             output_file.parent.mkdir(parents=True, exist_ok=True)
 
             # Build VSID command
-            # vsid -sounddev wav -soundarg output.wav input.sid
+            # vsid -sounddev wav -soundarg output.wav -soundrate <freq> input.sid
+            # -soundrate pins the output sample rate explicitly -- left unset,
+            # VSID renders at whatever VICE's own internal default is (measured
+            # 48000 Hz), which does not match sidplayfp's fixed 44100 Hz and
+            # forces a resample before the two can be compared (see
+            # docs/VSID_VS_SIDPLAYFP_COMPARISON.md Finding 1).
             args = [
                 str(vsid_exe),
                 '-sounddev', 'wav',
                 '-soundarg', str(output_file),
+                '-soundrate', str(frequency),
                 str(sid_file)
             ]
 
