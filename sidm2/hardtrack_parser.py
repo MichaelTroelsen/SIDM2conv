@@ -25,6 +25,9 @@ pitch never reaches the frequency register at all. `instrument_drives_freq()`
 exposes that flag so a scorer can separate "the parser is wrong" from "the
 synth engine owns this register" instead of averaging the two into one
 meaningless number.
+
+The per-frame synth engine those programs describe is modelled one level down,
+in `sidm2.hardtrack_synth` -- see `simulate_registers()`.
 """
 from __future__ import annotations
 
@@ -244,8 +247,13 @@ class HardTrackModule:
         else:
             self.wave_table = self.arp_table = None
 
+        # +7, not +6: index 6 of the signature is the `lda ABS,y` OPCODE, its
+        # operand starts at 7 -- same shape as _SIG_WAVEPROG's +7/+14. Reading
+        # the opcode byte as the low half of the address put this table outside
+        # the module on every file in the corpus, so `pulse_program()` returned
+        # a full-length series of zeroes that looked like a decoded program.
         h = _find(data, _SIG_PULSEPROG)
-        self.pulse_table = _word(data, h[0] + 6) if len(h) == 1 else None
+        self.pulse_table = _word(data, h[0] + 7) if len(h) == 1 else None
 
         # How many instruments are STORED sets the stride of the 13 parallel
         # tables, and it is per-file (3..32 across the corpus) -- not a constant
