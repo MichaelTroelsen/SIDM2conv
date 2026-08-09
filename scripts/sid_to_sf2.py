@@ -216,6 +216,14 @@ Example: --driver laxity'''
         help='Audio export duration in seconds (default: 30)'
     )
     parser.add_argument(
+        '--audio-export-voices',
+        action='store_true',
+        help='Also export 3 per-voice isolated WAV stems (<name>_voice1/2/3.wav) alongside '
+             'the full mix. Requires --audio-export. Forces sidplayfp (VSID has no '
+             'per-voice mute) -- muting is not a clean isolation on every tune, treat a '
+             'stem as a listening aid, not proof a voice is silent.'
+    )
+    parser.add_argument(
         '--memmap',
         action='store_true',
         help='Generate memory map analysis (Step 12.5 - analyze memory layout and regions)'
@@ -521,6 +529,24 @@ Example: --driver laxity'''
                 logger.warning(f"[Step 16] Audio export failed: {audio_result.get('error', 'Unknown error')}")
             elif args.audio_export:
                 logger.warning("[Step 16] Audio export not available (neither vsid.exe nor tools/sidplayfp/sidplayfp.exe found)")
+
+            if args.audio_export_voices:
+                stem_results = AudioExportIntegration.export_voice_stems(
+                    sid_file=Path(input_file),
+                    output_wav=wav_file,
+                    duration=args.audio_duration,
+                    verbose=1 if not args.quiet else 0,
+                )
+                if stem_results is None:
+                    logger.warning("[Step 16] Voice stem export not available (sidplayfp not found)")
+                else:
+                    n_ok = sum(1 for r in stem_results.values() if r.get('success'))
+                    tool_stats['Audio Exporter (voice stems)'] = {
+                        'executed': True,
+                        'success': n_ok == 3,
+                        'files_generated': n_ok,
+                    }
+                    logger.info(f"[Step 16] Voice stems: {n_ok}/3 exported")
 
         # PHASE 3 Enhancement: Optional memory map analysis (Step 12.5)
         if args.memmap and MEMMAP_ANALYZER_AVAILABLE:

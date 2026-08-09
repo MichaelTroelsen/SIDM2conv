@@ -57,6 +57,12 @@ class AudioExportIntegration:
     # Preferred tool order
     PREFER_VSID = True  # Use VSID by default if available
 
+    # sidplayfp -u<num> digits to mute the OTHER two voices, isolating voice N.
+    # Canonical home for this mapping -- pyscript/audio_tightness_tool.py's
+    # --voice flag uses the same digits (its own MUTE_MAP), duplicated there
+    # rather than imported to avoid a pyscript->sidm2->pyscript import cycle.
+    VOICE_MUTE_MAP = {1: "23", 2: "13", 3: "12"}
+
     @staticmethod
     def _check_tool_available() -> bool:
         """
@@ -186,6 +192,79 @@ class AudioExportIntegration:
             subtune=subtune,
         )
         return result
+
+    @staticmethod
+    def export_voice_stems(
+        sid_file: Path,
+        output_wav: Path,
+        duration: int = DEFAULT_DURATION,
+        subtune: Optional[int] = None,
+        verbose: int = 0,
+    ) -> Optional[Dict[int, Dict[str, Any]]]:
+        """
+        Export three per-voice isolated WAV stems alongside a full-mix export.
+
+        Writes <output_wav's stem>_voice1.wav / _voice2.wav / _voice3.wav next
+        to output_wav (same directory). Forces sidplayfp -- VSID has no
+        per-voice mute equivalent (see docs/VSID_VS_SIDPLAYFP_COMPARISON.md
+        Finding 5). power_on_delay is pinned to 0 so re-generating a stem later
+        reproduces the same bytes; sidplayfp's own default delay is random
+        (see SidplayfpIntegration.export_to_wav's docstring).
+
+        CAUTION -- muting the other two voices is not always a clean
+        isolation: sidm2.audio_tightness's digi-bleed measurements found some
+        tunes leak audible signal into every "isolated" slice even with the
+        target voice's own SID also muted (worst measured case 58.7% shared
+        residual). This function does not measure that per-file (it would
+        need 2 extra renders); it only warns. Treat a stem as a listening
+        aid, not proof a voice is silent -- for a measured guard, use
+        sidm2.audio_tightness.analyze_voice_bleed (see
+        pyscript/audio_tightness_tool.py's --voice all sweep).
+
+        Returns {1: result, 2: result, 3: result} (each an export_to_wav()-shaped
+        dict), or None if sidplayfp is not available at all.
+        """
+        if not AudioExportIntegration._check_tool_available():
+            if verbose > 0:
+                logger.warning(
+                    "Cannot export voice stems: sidplayfp not available "
+                    "(VSID has no per-voice mute equivalent). Install via "
+                    "MSYS2: pacman -S mingw-w64-x86_64-sidplayfp"
+                )
+            return None
+
+        if verbose > 0:
+            logger.info(
+                "Exporting per-voice stems via sidplayfp -- muting is not "
+                "always a clean isolation on every tune (digi/filter bleed "
+                "can leak into every 'isolated' voice); treat a stem as a "
+                "listening aid, not proof a voice is silent."
+            )
+
+        output_wav = Path(output_wav)
+        results = {}
+        for voice, mute_digits in AudioExportIntegration.VOICE_MUTE_MAP.items():
+            stem_path = output_wav.parent / f"{output_wav.stem}_voice{voice}.wav"
+            result = SidplayfpIntegration.export_to_wav(
+                sid_file=sid_file,
+                output_file=stem_path,
+                duration=duration,
+                mute_voices=mute_digits,
+                subtune=subtune,
+                power_on_delay=0,
+                verbose=verbose,
+            )
+            if result and result.get('success'):
+                result['tool'] = 'sidplayfp'
+                if verbose > 0:
+                    logger.info(f"  Voice {voice} stem: {stem_path.name}")
+            else:
+                error = result.get('error') if result else 'sidplayfp export failed'
+                result = {'success': False, 'error': error}
+                if verbose > 0:
+                    logger.warning(f"  Voice {voice} stem failed: {error}")
+            results[voice] = result
+        return results
 
 
 # Convenience function for simple usage

@@ -1159,6 +1159,19 @@ def convert_sid_to_sf2(input_path: str, output_path: str, driver_type: str = Non
                         logger.info(f"Audio export complete using {tool_name.upper()}: {audio_output_path.name}")
                     else:
                         logger.warning("Audio export failed or not available")
+
+                    if getattr(config, 'export_audio_voices', False):
+                        stem_results = AudioExportIntegration.export_voice_stems(
+                            sid_file=Path(input_path),
+                            output_wav=audio_output_path,
+                            duration=audio_duration,
+                            verbose=config.verbose if hasattr(config, 'verbose') else 1,
+                        )
+                        if stem_results is None:
+                            logger.warning("Voice stem export not available (sidplayfp not found)")
+                        else:
+                            n_ok = sum(1 for r in stem_results.values() if r.get('success'))
+                            logger.info(f"Voice stems: {n_ok}/3 exported")
                 else:
                     logger.warning("Audio export not available (AudioExportIntegration not installed)")
             except Exception as e:
