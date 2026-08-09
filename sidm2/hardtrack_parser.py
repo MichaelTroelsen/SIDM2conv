@@ -36,6 +36,7 @@ __all__ = [
     'ORDER_END', 'ORDER_HOLD', 'ORDER_JUMP',
     'CMD_TIE', 'CMD_GATE_OFF', 'CMD_RESET', 'CMD_SLIDE', 'CMD_PORTA',
     'CMD_REST', 'PATTERN_END', 'INSTR_HOLD', 'INSTR_LEGATO',
+    'Onset', 'next_pattern_event', 'simulate',
 ]
 
 # --- orderlist bytes -------------------------------------------------------
@@ -399,7 +400,8 @@ class HardTrackModule:
 
 class _Voice:
     __slots__ = ('order_ptr', 'order_idx', 'pat_ptr', 'pat_idx', 'transpose',
-                 'cmd', 'dur', 'active', 'note', 'instr', 'halted', 'trigger')
+                 'cmd', 'dur', 'active', 'note', 'instr', 'halted', 'trigger',
+                 'pattern')
 
     def __init__(self, order_ptr: int):
         self.order_ptr = order_ptr
@@ -417,13 +419,66 @@ class _Voice:
         self.instr = 0
         self.halted = False
         self.trigger = False
+        self.pattern = None
+
+
+class Onset(tuple):
+    """A note-on with everything needed to attribute it later.
+
+    Unpacks as the historical ``(note, instrument)`` 2-tuple so existing callers
+    keep working, while exposing the fields that make an attribution EXACT:
+
+      * ``raw`` -- the pattern's instrument byte, which distinguishes $00 (keep
+        the instrument, RESTART its programs) from $6F (keep it and do NOT).
+      * ``pattern`` / ``transpose`` / ``pat_index`` -- where in the score the
+        note came from, so a scorer can look at what surrounds it (e.g. whether
+        the next event is the $62 that freezes the wave stepper).
+
+    Attributing losses by re-deriving these with a cursor heuristic instead
+    produced a mis-aligned tagging that reversed a real result, so they are
+    carried from the walk itself.
+    """
+    def __new__(cls, note, instrument, raw=None, pattern=None, transpose=0,
+                pat_index=None):
+        return super().__new__(cls, (note, instrument))
+
+    def __init__(self, note, instrument, raw=None, pattern=None, transpose=0,
+                 pat_index=None):
+        self.note = note
+        self.instrument = instrument
+        self.raw = raw
+        self.pattern = pattern
+        self.transpose = transpose
+        self.pat_index = pat_index
+
+
+def next_pattern_event(module: HardTrackModule, pattern: int, byte_index: int):
+    """The first non-rest event kind at or after `byte_index` in a pattern.
+
+    Needed to ask "is this note immediately followed by $62?" -- $62 sets $16D4,
+    which makes the player skip the wave stepper from then on.
+    """
+    p = module.pattern_pointer(pattern)
+    i = byte_index
+    for _ in range(64):
+        v = module.byte(p + i)
+        if v == PATTERN_END:
+            return 'end'
+        if v == CMD_REST:
+            i += 2
+            continue
+        if v in (CMD_SLIDE, CMD_PORTA, CMD_TIE, CMD_GATE_OFF, CMD_RESET):
+            return f'cmd{v:02x}'
+        i += 2
+    return None
 
 
 def simulate(module: HardTrackModule, subtune: int = 0, frames: int = 1000):
     """Run the sequencer state machine.
 
-    Returns frames[f][voice] = (note, instrument) on a note-on, else None.
-    `note` is already transposed and masked exactly as the player does it.
+    Returns frames[f][voice] = an `Onset` on a note-on, else None. `Onset`
+    unpacks as `(note, instrument)`; `note` is already transposed and masked
+    exactly as the player does it.
     """
     voices = [_Voice(module.order_pointer(v, subtune)) for v in range(3)]
     speed = module.speed(subtune)
@@ -449,6 +504,7 @@ def simulate(module: HardTrackModule, subtune: int = 0, frames: int = 1000):
                 a = module.byte(v.order_ptr + v.order_idx)
                 v.order_idx += 1
             v.pat_ptr = module.pattern_pointer(a)
+            v.pattern = a
             v.cmd = module.byte(v.pat_ptr)
             v.pat_idx = 1
             return True
@@ -490,7 +546,9 @@ def simulate(module: HardTrackModule, subtune: int = 0, frames: int = 1000):
                 if a not in (INSTR_HOLD, INSTR_LEGATO):
                     v.instr = a & 0x1F
                 if v.trigger:
-                    on = ((v.note + v.transpose) & 0x7F, v.instr)
+                    on = Onset((v.note + v.transpose) & 0x7F, v.instr,
+                               raw=a, pattern=v.pattern, transpose=v.transpose,
+                               pat_index=v.pat_idx)
                     v.trigger = False
             elif ctr == 1:
                 v.dur -= 1

@@ -25,7 +25,8 @@ is single-player.
 
 **Code:** parser `sidm2/hardtrack_parser.py` · Stage A `bin/hardtrack_to_sf2.py`
 · validators `pyscript/hardtrack_validate.py` (parser) and
-`pyscript/hardtrack_stagea_validate.py` (Stage A) · tests
+`pyscript/hardtrack_stagea_validate.py` (Stage A) · loss attribution
+`pyscript/hardtrack_attribute.py` · tests
 `pyscript/test_hardtrack_parser.py` (28) + `pyscript/test_hardtrack_to_sf2.py` (12).
 
 ---
@@ -330,8 +331,10 @@ attack — the `$FF` jump target, or the last real step before `$FE`
 driver; `test_no_tie_bytes_emitted` locks them out), so a second instrument is the
 only route to "new pitch, no re-attack" through the real driver. The variant
 copies AD/SR/flags/pulse verbatim and differs in `wave_idx` alone.
-Result: `$6F` losses **25 → 3**, plain-note losses **unchanged at 18** — that
-invariance is the regression check.
+Result: `$6F` losses **25 → 0** (of 864), plain-note losses **unchanged** — that
+invariance is the regression check. (An intermediate writeup said "25 → 3"; the
+three were `Jazzloor`, `Something_to_Eat` and `Trance` notes at frames 996-997,
+removed as boundary artifacts by the next fix. The legato fix is complete.)
 
 **2. A measurement bug — fixed.** Five of the remaining "losses" were notes at
 frames 996-997 whose 9-frame match window ran past the end of a 1,000-frame
@@ -358,9 +361,9 @@ next row, freezing the program before it can ramp away — so the base note,
 written at note-on, survives. Stage A has no freeze, runs the instrument's full
 descending ramp and settles at note+4.
 
-Measured exactly: notes immediately followed by `$62` lose **5.49% (5/91)**
-against **0.22% (11/5041)** for everything else — a **25× enrichment**, and the
-5 are precisely `Walk_to_Soul`'s. `$62` alone is not sufficient (86 of the 91 are
+Measured exactly: notes immediately followed by `$62` lose **7.35% (5/68)**
+against **0.26% (11/4,200)** for plain notes — a **28× enrichment**, and the 5
+are precisely `Walk_to_Soul`'s. `$62` alone is not sufficient (63 of the 68 are
 kept) — it costs a note only when the instrument's program would otherwise wander
 far from the base pitch.
 

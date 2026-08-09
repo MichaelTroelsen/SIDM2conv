@@ -51,7 +51,8 @@ converter yet** - no Stage A, no Stage B, nothing wired into `DriverSelector`.
     speed tables, `AND #$07` in init capping subtunes at 8.
   - Tempo: one self-modified global divider; a song row lands every `speed+1` frames.
 - `pyscript/hardtrack_validate.py`: corpus validator.
-- `pyscript/test_hardtrack_parser.py`: 21 tests (2069 -> 2090 total).
+- `pyscript/test_hardtrack_parser.py` (31) + `pyscript/test_hardtrack_to_sf2.py` (20):
+  2,069 -> 2,120 tests total.
 - `docs/players/HARDTRACK.md`; rows in `docs/reference/ACCURACY_MATRIX.md`,
   `docs/players/README.md` and CLAUDE.md's Known Limitations.
 - Tracked `SID/Shogoon/` (150 files) and `bin/hardtrack composer/-HARDTRACK 1.PRG`, so the
@@ -96,6 +97,80 @@ player instances (`Eternal`, `Fruitmania`, `Miecze_Valdgira_2`, `Zone_of_Darknes
 one has a PSID init that is not the module entry (`Commercial_Fake`, `$2f01` vs `$1000`).
 Before that guard existed the simulator ran away on them and emitted a note on **every
 frame of every voice** - 2,997 phantom onsets scored against the wrong song.
+
+#### Stage A — an editable Driver 11 SF2 (`bin/hardtrack_to_sf2.py`)
+Added after the RE stage, in the same version. Transfers **notes and timing**
+exactly (a HardTrack row lands every `speed+1` frames and a Driver 11 row plays
+`tempo+1`, so `tempo = speed`) and the **whole waveform/arpeggio table
+transliterated 1:1** — both formats are 2-column with a jump row and share the
+column-1 rule (`$00-$7F` relative semitone, `$80+` absolute note), so row indices
+are preserved and each instrument keeps its own cursor as `wave_idx`.
+
+Not transferred, every one logged by the builder: the pulse sweep, slide and
+portamento, the global filter sweep, and the loop point. Orderlist transpose is
+materialised into duplicate sequences because the shared emitter hardcodes `$A0`
+and changing it would touch a path eight other players depend on.
+
+**`$6F` legato is reproduced.** `$6F` had been treated as a synonym for `$00`;
+both keep the current instrument, but `$6F` also sets `$16CB`, which makes the
+note-on path skip the instrument reload — the pitch changes while the wave and
+pulse programs keep running instead of restarting their attack. It carries
+**24.7% of all note events** and accounted for **58% of all Stage A losses**. A
+`$6F` note now selects a duplicate instrument slot whose `wave_idx` points at the
+step the wave program *settles* on (the `$FF` jump target, or the last step
+before `$FE`). Driver 11 always restarts a wave program and cannot express a tie
+at all — its `$90-$9F` tie durations desync the runtime driver — so a second
+instrument is the only route. `$6F` losses **25 → 0 of 864**; plain-note losses
+unchanged, which is the regression check.
+
+#### Fidelity, and how to read it
+| | notes | value |
+|---|---|---|
+| parser sequencer-pitch | 5,784 | **88.73%** |
+| parser program-driven (field-5 bit 7) | 1,062 | **2.64%** |
+| Stage A (`--lag 0` / `--lag 1`) | 5,784 | **91.34%** / **92.08%** |
+| **Stage A retention over parser-resolved notes** | 5,132 | **99.69%** |
+
+Quote the retention figure, not the diluted 91.34% — the latter includes notes
+the parser never resolved, which Stage A cannot be blamed for. Stage A scoring
+*above* the parser is a measurement artifact, not an improvement: Stage A does
+not port the modulation that bends the original off its own table value, so it
+hits notes the original misses. The comparison is meaningful only in the losing
+direction.
+
+#### Two measurement bugs found in this project's own tooling
+- **Driver 11 starts one frame late, everywhere.** The shipped template
+  `G5/examples/Driver 11 Test - Arpeggio.sf2` carries `$16CC = $40`; bit 6 sends
+  `BVS` at `$100D` into a state-init path, so the driver spends its **first play
+  call initialising** rather than playing a row. This is a template property, so
+  **every Driver 11 Stage A build in this repo** starts a frame late. Constant,
+  not drift, and inaudible — it only ever broke measurement. `--lag 1` removes
+  exactly that phase; the default stays 0.
+- **Both HardTrack validators counted unscoreable notes as misses** — notes whose
+  match window ran past the end of the trace. They now drop those, using a
+  `max(lag, 1)` margin so a `--lag 0` and a `--lag 1` run score the same set.
+
+#### The 16 remaining Stage A losses — explained, and Stage B material
+`pyscript/hardtrack_attribute.py` reproduces the attribution. `Walk_to_Soul` (5):
+`$62` sets `$16D4`, making the player skip the wave stepper thereafter, so the
+base note written at note-on survives — notes followed by `$62` lose 7.35% (5/68)
+against 0.26% for plain notes. `Ritual_II_tune_2` (6): the decode is provably
+right (an independent search over every cursor matched the instrument's own
+field-4 program 9/9 steps); its program returns to base only past the window, and
+the original scores off HardTrack's note-on base-frequency write. Driver 11 has
+neither a stepper freeze nor a pre-program base-note write, so both are Stage B.
+
+#### Five hypotheses falsified — and one falsification that was itself false
+Cross-pattern gate state, the hard-restart flag, the PSID wrapper's play address,
+telling instrument fields 3/4 apart by plausibility (both readings scored ~91.6%
+— the test discriminated nothing), and the note-on write as a sole predictor
+(44% of lost vs 25% of kept notes — an enrichment, not a separation).
+
+Separately, a published "`$62`-freeze is refuted" verdict was **wrong and has
+been retracted**: it came from a tagger that mapped onsets onto pattern events
+with a cursor heuristic, which mis-aligned on that exact file. The parser now
+carries the raw instrument byte and pattern byte-index on every `Onset` so the
+attribution is exact rather than re-derived.
 
 #### Measurement note worth keeping
 Matching siddump's note-**name** column scores this correct model at **0%**. Every

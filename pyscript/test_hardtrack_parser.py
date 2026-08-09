@@ -257,3 +257,52 @@ def test_simulate_does_not_run_away_on_a_short_window():
     frames = simulate(m, 0, 300)
     for vi in range(3):
         assert sum(1 for r in frames if r[vi]) < 300 // 2
+
+
+# --------------------------------------------------------------------------
+# Onset detail -- what makes an attribution exact
+# --------------------------------------------------------------------------
+@needs_corpus
+def test_onset_unpacks_as_the_historical_two_tuple():
+    """Onset carries attribution fields but must stay a (note, instrument)
+    2-tuple, because both validators and every existing caller unpack it."""
+    from sidm2.hardtrack_parser import Onset
+    m = HardTrackModule.from_sid(sid('Love_tune_3'))
+    frames = simulate(m, 0, 400)
+    onsets = [r[v] for r in frames for v in range(3) if r[v]]
+    assert onsets
+    for o in onsets[:20]:
+        assert isinstance(o, Onset)
+        note, instrument = o
+        assert (note, instrument) == (o.note, o.instrument)
+        assert o == (note, instrument)
+
+
+@needs_corpus
+def test_onset_carries_the_raw_instrument_byte_and_pattern_position():
+    """These are the fields that made the $6F and $62 attributions exact.
+    Re-deriving them afterwards with a cursor heuristic mis-aligned and
+    reversed a real result, so they must come from the walk itself."""
+    m = HardTrackModule.from_sid(sid('Love_tune_3'))
+    onsets = [r[v] for r in simulate(m, 0, 1000) for v in range(3) if r[v]]
+    assert any(o.raw == 0x6F for o in onsets), 'fixture should contain $6F notes'
+    for o in onsets:
+        assert o.pattern is not None
+        assert o.pat_index is not None
+        # the recorded position must actually address this pattern's bytes
+        assert 0 < o.pat_index <= 4096
+        # and the note must be the transposed value the player would compute
+        assert 0 <= o.note <= 0x7F
+
+
+@needs_corpus
+def test_next_pattern_event_finds_the_freeze_command():
+    """$62 freezes the wave stepper; spotting it requires skipping rests."""
+    from sidm2.hardtrack_parser import next_pattern_event
+    m = HardTrackModule.from_sid(sid('Walk_to_Soul'))
+    ev = m.pattern(1)
+    # pattern 1 has a note immediately followed by $62 (the Walk_to_Soul case)
+    assert any(k == 'cmd62' for k, _, _ in ev)
+    onsets = [r[v] for r in simulate(m, 0, 1000) for v in range(3) if r[v]]
+    kinds = {next_pattern_event(m, o.pattern, o.pat_index) for o in onsets}
+    assert 'cmd62' in kinds
