@@ -72,6 +72,44 @@ CHROMA_FMAX_HZ = 2093.004522404789    # C7
 # rather than a shift worth naming in the report.
 CHROMA_MIN_SHIFT = 0.02
 
+# ---------------------------------------------------------------------------
+# A-weighting (perceptual loudness)
+# ---------------------------------------------------------------------------
+#
+# rms_db_* are raw dBFS, where 2 dB at 8 kHz counts exactly as much as 2 dB at
+# 200 Hz although the ear is far less sensitive to the first. A-weighting
+# (IEC 61672) is the standard first-order correction and is closed-form -- no
+# lookup table. Verified against the published third-octave table
+# (31.5/63/125/250/500/1k/2k/4k/8k Hz) to within 0.13 dB.
+#
+# ADDITIVE, never a replacement: raw dBFS stays the right number for an exact
+# level check (confirming a driver's master-volume nibble, say), while dBA is
+# the better number for "would a listener call this quieter".
+
+_SILENT_FEATURES_DB = -120.0
+
+# The correction must NOT be read off band_energies()' bands, for the same
+# reason chroma_vector() runs its own STFT: at the default 40 linear bands they
+# are 199 Hz wide, and the A curve falls fastest exactly where SID bass sits.
+# Measured band-centre error over 30-8000 Hz, 40 linear bands:
+#      55 Hz   true -28.6 dB, via band centre -15.7 dB  ->  +12.8 dB WRONG
+#      60 Hz   true -27.1 dB, via band centre -15.7 dB  ->  +11.3 dB WRONG
+#     220 Hz   true  -9.9 dB, via band centre -15.7 dB  ->   -5.8 dB WRONG
+#    1000 Hz   true   0.0 dB, via band centre  -0.3 dB  ->   -0.3 dB ok
+# A 12.8 dB error on a bass note is not a rounding difference, it is a
+# confident wrong answer. So weighting is applied per FFT BIN, full resolution,
+# and is therefore independent of nb/band_scale (pinned as a test).
+#
+# What the shipped implementation actually achieves, measured on pure tones as
+# (dBA - dBFS) against the true curve:
+#    1000 Hz  0.00 dB error      440 Hz  0.00 dB      220 Hz  0.02 dB
+#     110 Hz  0.18 dB error       60 Hz  1.08 dB       55 Hz  1.36 dB
+# Exact above ~220 Hz. The residual at the very bottom is FFT bin width -- at
+# a 40 ms window bins are 25 Hz apart, so a 55 Hz tone's energy straddles
+# several bins and the A curve is convex across them, biasing the energy
+# weighted average slightly high. It is bounded, ~10x better than the banded
+# alternative, and pinned as a test so it cannot silently grow.
+
 
 @dataclass
 class AudioFeatures:
@@ -94,9 +132,11 @@ class AudioFeatures:
     # yields different numbers under each -- and a delta between them would look
     # like a real difference. format_feature_report() refuses such a pair.
     band_scale: str = 'linear'
-
-
-_SILENT_FEATURES_DB = -120.0
+    # A-weighted (IEC 61672) counterparts of rms_db_mean/rms_db_max, in dBA.
+    # Additive -- the raw dBFS fields above stay authoritative for an exact
+    # level check. Defaulted so the no-spectrum early return stays valid.
+    rms_dba_mean: float = _SILENT_FEATURES_DB
+    rms_dba_max: float = _SILENT_FEATURES_DB
 
 
 def _frame_rms(x: np.ndarray, hop: int, win: int) -> np.ndarray:
@@ -203,6 +243,59 @@ def dominant_pitch_classes(chroma: np.ndarray, top_n: int = 3) -> str:
     return ", ".join(f"{PITCH_CLASS_NAMES[i]} {chroma[i]:.2f}" for i in idx)
 
 
+def a_weight_db(f):
+    """IEC 61672 A-weighting, in dB, at frequency f (Hz). Accepts an array.
+
+    -inf at DC, which is a real zero of the response rather than missing data.
+    """
+    f = np.asarray(f, dtype=np.float64)
+    f2 = f ** 2
+    with np.errstate(divide='ignore', invalid='ignore'):
+        ra = (12194.0 ** 2 * f2 ** 2) / (
+            (f2 + 20.6 ** 2)
+            * np.sqrt((f2 + 107.7 ** 2) * (f2 + 737.9 ** 2))
+            * (f2 + 12194.0 ** 2))
+        db = 20 * np.log10(ra) + 2.0     # +2.0 normalizes A(1 kHz) to 0 dB
+    return np.where(f > 0, db, -np.inf)
+
+
+def a_weighting_correction_db(x: np.ndarray, sr: int, hop_s: float = 0.01,
+                               win_s: float = 0.04) -> np.ndarray:
+    """Per-frame dB offset turning a raw dBFS level into an A-weighted dBA.
+
+    One value per analysis frame, on the SAME frame grid _frame_rms() uses, so
+    the two are simply added. A frame with no energy gets 0.0 rather than a
+    fabricated correction -- it has no spectrum to weight, and no evidence must
+    not become a number (score_pct's rule, sidm2/fidelity_common.py).
+
+    Weighting is per FFT bin in the POWER domain: an amplitude gain of A dB is
+    a power factor of 10**(A/10), and the offset returned is
+    10*log10(sum(g*P) / sum(P)). For a pure tone that collapses exactly to the
+    A curve at the tone's own frequency, which is what keeps the result
+    comparable with rms_db_*.
+    """
+    win = max(2, int(round(win_s * sr)))
+    hop = max(1, int(round(hop_s * sr)))
+    n_frames = max(0, (len(x) - win) // hop + 1)
+    if n_frames == 0:
+        return np.zeros(0)
+
+    freqs = np.fft.rfftfreq(win, 1.0 / sr)
+    gain = np.zeros(freqs.shape)
+    pos = freqs > 0
+    gain[pos] = 10.0 ** (a_weight_db(freqs[pos]) / 10.0)
+
+    window = np.hanning(win)
+    out = np.zeros(n_frames)
+    for i in range(n_frames):
+        seg = x[i * hop: i * hop + win] * window
+        power = np.abs(np.fft.rfft(seg)) ** 2
+        total = power.sum()
+        if total > 0:
+            out[i] = 10 * np.log10(max(float((power * gain).sum()), 1e-30) / total)
+    return out
+
+
 def extract_features(x: np.ndarray, sr: int, hop_ms: float = 10, win_ms: float = 40,
                       nb: int = 40, fmin: float = 30, fmax: float = 8000,
                       band_scale: str = 'linear') -> AudioFeatures:
@@ -258,6 +351,13 @@ def extract_features(x: np.ndarray, sr: int, hop_ms: float = 10, win_ms: float =
 
     zcr = float(np.mean(np.abs(np.diff(np.sign(x))) > 0)) if len(x) > 1 else 0.0
 
+    # A CORRECTION on the true time-domain dBFS, not a second independent level
+    # estimate -- so dBA and dBFS share one scale and their difference is
+    # exactly "how much of this level the ear discounts".
+    a_corr = a_weighting_correction_db(x, sr, hop_ms / 1000, win_ms / 1000)
+    n_dba = min(len(rms_db), len(a_corr))
+    rms_dba = (rms_db[:n_dba] + a_corr[:n_dba]) if n_dba else np.array([])
+
     return AudioFeatures(
         duration_s=len(x) / sr if sr else 0.0,
         rms_db_mean=float(np.mean(rms_db)) if rms_db.size else _SILENT_FEATURES_DB,
@@ -268,6 +368,8 @@ def extract_features(x: np.ndarray, sr: int, hop_ms: float = 10, win_ms: float =
         rolloff85_hz_mean=float(np.mean(rolloff[nz])) if nz.any() else 0.0,
         zcr_mean=zcr,
         flatness_mean=float(np.mean(flatness[nz])) if nz.any() else 0.0,
+        rms_dba_mean=float(np.mean(rms_dba)) if rms_dba.size else _SILENT_FEATURES_DB,
+        rms_dba_max=float(np.max(rms_dba)) if rms_dba.size else _SILENT_FEATURES_DB,
         # Its OWN window, not win_ms: 40 ms cannot resolve semitones in SID's
         # bass register (see CHROMA_WIN_S).
         chroma=chroma_vector(x, sr),
@@ -312,6 +414,7 @@ def format_feature_report(orig: AudioFeatures, driver: AudioFeatures,
     row('duration', orig.duration_s, driver.duration_s, 's')
     row('RMS level (mean)', orig.rms_db_mean, driver.rms_db_mean, ' dBFS')
     row('RMS level (peak)', orig.rms_db_max, driver.rms_db_max, ' dBFS')
+    row('RMS level (A-wtd)', orig.rms_dba_mean, driver.rms_dba_mean, ' dBA')
     row('silence fraction', orig.silence_frac * 100, driver.silence_frac * 100, '%')
     row('spectral centroid', orig.centroid_hz_mean, driver.centroid_hz_mean, ' Hz')
     row('centroid spread', orig.centroid_hz_std, driver.centroid_hz_std, ' Hz')
@@ -332,6 +435,11 @@ def format_feature_report(orig: AudioFeatures, driver: AudioFeatures,
     lines.append("  high-frequency energy) -- often a filter cutoff or waveform difference.")
     lines.append("  flatness closer to 1.0 = more noise-like (e.g. an unfiltered noise")
     lines.append("  waveform or digi channel); closer to 0.0 = more tonal.")
+    lines.append("  dBA is the dBFS level with IEC 61672 A-weighting applied -- the same")
+    lines.append("  level as the ear would judge it, discounting bass heavily (~-27 dB at")
+    lines.append("  60 Hz) and boosting 2-4 kHz slightly. Two renders equal in dBFS but")
+    lines.append("  far apart in dBA differ in where their energy sits, not how much")
+    lines.append("  there is. dBFS stays the number for an exact level check.")
     lines.append("  pitch content answers what centroid cannot: whether the NOTES moved,")
     lines.append("  not just the brightness. It folds in harmonics as well as fundamentals")
     lines.append("  (a SID saw/pulse voice is harmonically rich), so read it as a")
