@@ -229,3 +229,6 @@ bin/_c1_smoke/
 
 # tokensave local index - rebuildable cache, not shared state.
 .tokensave/
+
+# CLAP audio-embedding venv (optional tooling, multi-GB -- pyscript/install_clap.py)
+tools/clap_venv/
