@@ -821,6 +821,14 @@ Native drivers (bin/-only, e.g. Blackbird):
                          help="Output HTML path (default: audio_tightness_<timestamp>.html)")
     parser.add_argument('--text-output', default=None, help="Also write the text report to this path")
     parser.add_argument('--no-html', action='store_true', help="Skip HTML generation")
+    parser.add_argument('--band-scale', choices=['linear', 'mel'], default='linear',
+                         help="Frequency spacing of the analysis bands for the feature "
+                              "summary. 'linear' (default) divides evenly in Hz, which "
+                              "spends half its bands above 4 kHz and cannot resolve a "
+                              "bass octave -- 100 Hz and 200 Hz differ by 0.1 Hz of "
+                              "reported centroid. 'mel' spaces by pitch and separates "
+                              "them. Applies to BOTH sides; the two are not comparable, "
+                              "so a mixed pair is refused. Does not affect onset timing.")
     parser.add_argument('--no-listen', action='store_true',
                          help="Skip the whole-file audio feature summary (level/brightness/"
                               "noisiness text report) printed after the onset report")
@@ -934,8 +942,8 @@ Native drivers (bin/-only, e.g. Blackbird):
         driver_audio, driver_sr = load_wav_mono(driver_wav)
 
         if not args.no_listen:
-            orig_feats = extract_features(orig_audio, orig_sr)
-            driver_feats = extract_features(driver_audio, driver_sr)
+            orig_feats = extract_features(orig_audio, orig_sr, band_scale=args.band_scale)
+            driver_feats = extract_features(driver_audio, driver_sr, band_scale=args.band_scale)
             feature_report = format_feature_report(
                 orig_feats, driver_feats, orig_label=args.orig, driver_label=args.driver)
             print("\n" + feature_report)
@@ -947,8 +955,10 @@ Native drivers (bin/-only, e.g. Blackbird):
             # Both sides windowed at the SAME span, so window i covers the same
             # stretch of the song on each -- a per-side span would compare
             # different music and call the mismatch a defect.
-            orig_windows = extract_features_windowed(orig_audio, orig_sr, window_s=args.windowed)
-            driver_windows = extract_features_windowed(driver_audio, driver_sr, window_s=args.windowed)
+            orig_windows = extract_features_windowed(orig_audio, orig_sr, window_s=args.windowed,
+                                                      band_scale=args.band_scale)
+            driver_windows = extract_features_windowed(driver_audio, driver_sr, window_s=args.windowed,
+                                                        band_scale=args.band_scale)
             windowed_report = format_windowed_diff_report(
                 orig_windows, driver_windows, orig_label=args.orig, driver_label=args.driver)
             print("\n" + windowed_report)

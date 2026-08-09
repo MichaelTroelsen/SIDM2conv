@@ -19,7 +19,7 @@ import numpy as np
 if TYPE_CHECKING:  # annotation-only: PIL is imported lazily inside the renderers
     from PIL import Image
 
-from sidm2.audio_tightness import band_energies
+from sidm2.audio_tightness import band_centers, band_energies
 
 # Frames quieter than this are treated as silence for silence_frac.
 SILENCE_DBFS = -50.0
@@ -89,6 +89,11 @@ class AudioFeatures:
     # "no evidence", not "every pitch class equally present", and
     # chroma_shift_description() refuses to describe a shift from it.
     chroma: np.ndarray = field(default_factory=lambda: np.zeros(12))
+    # Which band geometry produced centroid/rolloff/flatness. Recorded because
+    # a 'linear' and a 'mel' AudioFeatures are NOT comparable -- the same audio
+    # yields different numbers under each -- and a delta between them would look
+    # like a real difference. format_feature_report() refuses such a pair.
+    band_scale: str = 'linear'
 
 
 _SILENT_FEATURES_DB = -120.0
@@ -199,9 +204,17 @@ def dominant_pitch_classes(chroma: np.ndarray, top_n: int = 3) -> str:
 
 
 def extract_features(x: np.ndarray, sr: int, hop_ms: float = 10, win_ms: float = 40,
-                      nb: int = 40, fmin: float = 30, fmax: float = 8000) -> AudioFeatures:
+                      nb: int = 40, fmin: float = 30, fmax: float = 8000,
+                      band_scale: str = 'linear') -> AudioFeatures:
     """Whole-file feature summary. NOT onset-aligned -- a global average, so it
     complements audio_tightness's per-note numbers rather than replacing them.
+
+    band_scale='mel' spaces the analysis bands by pitch rather than by Hz, so
+    centroid/rolloff/flatness track what a listener notices instead of dividing
+    the spectrum evenly in Hz (which spends half its bins above 4 kHz, where
+    SID material rarely sits). It is OPT-IN: the linear default is what every
+    existing number in this project was computed under, and the two are NOT
+    comparable -- see AudioFeatures.band_scale and format_feature_report's guard.
     """
     hop = max(1, int(round(hop_ms / 1000 * sr)))
     win = max(2, int(round(win_ms / 1000 * sr)))
@@ -210,7 +223,7 @@ def extract_features(x: np.ndarray, sr: int, hop_ms: float = 10, win_ms: float =
     rms_db = 20 * np.log10(np.clip(rms, 1e-9, None)) if rms.size else np.array([])
 
     bands = band_energies(x, sr, hop_s=hop_ms / 1000, win_s=win_ms / 1000,
-                           nb=nb, fmin=fmin, fmax=fmax)
+                           nb=nb, fmin=fmin, fmax=fmax, scale=band_scale)
     if bands.shape[0] == 0:
         return AudioFeatures(
             duration_s=len(x) / sr if sr else 0.0,
@@ -219,10 +232,13 @@ def extract_features(x: np.ndarray, sr: int, hop_ms: float = 10, win_ms: float =
             silence_frac=1.0,
             centroid_hz_mean=0.0, centroid_hz_std=0.0,
             rolloff85_hz_mean=0.0, zcr_mean=0.0, flatness_mean=0.0,
+            band_scale=band_scale,
         )
 
-    edges = np.linspace(fmin, fmax, nb + 1)
-    centers = (edges[:-1] + edges[1:]) / 2
+    # From band_centers(), NOT a local np.linspace: the centres MUST match the
+    # geometry band_energies() actually binned with, or the centroid weights
+    # energies by frequencies they were never measured at.
+    centers = band_centers(nb, fmin, fmax, band_scale)
 
     energy = bands.sum(axis=1)
     nz = energy > 0
@@ -255,6 +271,7 @@ def extract_features(x: np.ndarray, sr: int, hop_ms: float = 10, win_ms: float =
         # Its OWN window, not win_ms: 40 ms cannot resolve semitones in SID's
         # bass register (see CHROMA_WIN_S).
         chroma=chroma_vector(x, sr),
+        band_scale=band_scale,
     )
 
 
@@ -267,8 +284,23 @@ def format_feature_report(orig: AudioFeatures, driver: AudioFeatures,
     matter" on these features, so this is context for a human/Claude read, not
     a verdict.
     """
+    # Refuse rather than subtract. centroid/rolloff/flatness are functions of
+    # the band geometry, so the same audio analysed under 'linear' and 'mel'
+    # gives different numbers; differencing them would render a pure
+    # measurement-settings artifact as a finding about the driver.
+    if orig.band_scale != driver.band_scale:
+        return (
+            "AUDIO FEATURE SUMMARY: REFUSED\n" + "=" * 70 + "\n"
+            f"  The two sides were analysed under different band scales "
+            f"({orig_label}={orig.band_scale!r}, {driver_label}={driver.band_scale!r}).\n"
+            "  Spectral features depend on band geometry, so a delta between them\n"
+            "  would measure the settings, not the audio. Re-extract both sides with\n"
+            "  the same band_scale."
+        )
+
     lines = []
-    lines.append("AUDIO FEATURE SUMMARY (whole-file average, not onset-aligned)")
+    scale_note = '' if orig.band_scale == 'linear' else f", {orig.band_scale}-spaced bands"
+    lines.append(f"AUDIO FEATURE SUMMARY (whole-file average, not onset-aligned{scale_note})")
     lines.append("=" * 70)
     lines.append(f"{'':22s} {orig_label[:20]:>20s} {driver_label[:20]:>20s} {'delta':>10s}")
 

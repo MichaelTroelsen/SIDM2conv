@@ -15,12 +15,15 @@ installed. Generalizes bin/listen_compare.py's get_audio()/logmel() (NOT
 imported from there -- that file is Galway-digi-coupled) to onset detection
 rather than continuous pitch tracking.
 """
+import logging
 import wave
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -84,19 +87,104 @@ def load_wav_mono(path: Union[str, Path]) -> Tuple[np.ndarray, int]:
     return x, sr
 
 
+def hz_to_mel(f):
+    """Hz -> mel (O'Shaughnessy / HTK form). Closed-form, no dependency."""
+    return 2595.0 * np.log10(1.0 + np.asarray(f, dtype=np.float64) / 700.0)
+
+
+def mel_to_hz(m):
+    """Inverse of hz_to_mel()."""
+    return 700.0 * (10.0 ** (np.asarray(m, dtype=np.float64) / 2595.0) - 1.0)
+
+
+# 'linear' is the default EVERYWHERE and must stay that way. detect_onsets()
+# feeds band_energies() straight into the onset comparison that most of this
+# project's published fidelity numbers rest on; changing the default would
+# silently move every one of them with no corpus re-validation. 'mel' is opt-in
+# per call site -- see extract_features(band_scale=...).
+BAND_SCALES = ('linear', 'mel')
+
+
+def band_edges(nb: int = 40, fmin: float = 30, fmax: float = 8000,
+               scale: str = 'linear') -> np.ndarray:
+    """The nb+1 band edges in Hz. SINGLE SOURCE OF TRUTH for band geometry.
+
+    Both band_energies() and any consumer that needs the band CENTRES (e.g.
+    sidm2.audio_listen.extract_features, which weights them to get a spectral
+    centroid) must derive them from here. Those two used to compute
+    `np.linspace(fmin, fmax, nb+1)` independently, which agreed only by
+    coincidence -- with a scale parameter in play it would have become a real
+    desync: energies binned one way, centre frequencies assigned another.
+
+    'mel' spreads edges so bin width grows with frequency, matching the
+    roughly-logarithmic resolution of hearing. Under 'linear' with the
+    defaults, half the 40 bins sit above 4 kHz, a region SID material rarely
+    occupies -- resolution spent where neither the ear nor the material is.
+    """
+    if scale not in BAND_SCALES:
+        raise ValueError(f"unknown band scale {scale!r}: expected one of {BAND_SCALES}")
+    if scale == 'mel':
+        return mel_to_hz(np.linspace(hz_to_mel(fmin), hz_to_mel(fmax), nb + 1))
+    return np.linspace(fmin, fmax, nb + 1)
+
+
+def band_centers(nb: int = 40, fmin: float = 30, fmax: float = 8000,
+                 scale: str = 'linear') -> np.ndarray:
+    """Midpoint of each band, in Hz. Derived from band_edges(), never re-derived."""
+    edges = band_edges(nb, fmin, fmax, scale)
+    return (edges[:-1] + edges[1:]) / 2
+
+
+def undersampled_bands(sr: int, win_s: float, nb: int = 40, fmin: float = 30,
+                        fmax: float = 8000, scale: str = 'linear') -> int:
+    """How many bands are NARROWER than the FFT's own frequency resolution.
+
+    Such a band can contain no FFT bin at all and then reads as exactly zero
+    energy -- indistinguishable from real silence, and ruinous for flatness,
+    which takes a geometric mean and so is dominated by its smallest entry.
+
+    Only mel spacing can trigger this, because it deliberately narrows the low
+    bands. MEASURED at sr=44100 with the default 40 ms window (25 Hz bins):
+    nb=40 -> 0 undersampled (narrowest band 46.7 Hz), nb=64 -> 0 (28.8 Hz),
+    nb=96 -> 11, nb=128 -> 29. So the mel default at nb=40 is safe with room to
+    spare, and a caller raising nb (the spectrogram path uses 96) must either
+    lengthen the window or stay on 'linear'.
+    """
+    win = max(2, int(round(win_s * sr)))
+    fft_resolution = sr / win
+    return int((np.diff(band_edges(nb, fmin, fmax, scale)) < fft_resolution).sum())
+
+
 def band_energies(x: np.ndarray, sr: int, hop_s: float = 0.01, win_s: float = 0.04,
-                   nb: int = 40, fmin: float = 30, fmax: float = 8000) -> np.ndarray:
+                   nb: int = 40, fmin: float = 30, fmax: float = 8000,
+                   scale: str = 'linear') -> np.ndarray:
     """Frame-hopped generalization of listen_compare.py's logmel(): linear
-    (not log) per-band energy per hop, shape (n_frames, nb)."""
+    (not log) per-band energy per hop, shape (n_frames, nb).
+
+    scale='mel' re-spaces the band edges (see band_edges); it does NOT change
+    the default, which onset detection depends on.
+    """
     hop = max(1, int(round(hop_s * sr)))
     win = max(2, int(round(win_s * sr)))
     n_frames = max(0, (len(x) - win) // hop + 1)
     if n_frames == 0:
         return np.zeros((0, nb))
 
+    # Say so rather than returning zeros that look like silence. Not raised:
+    # the result is still usable for anything that does not take a geometric
+    # mean, and refusing outright would be a worse trade than a loud warning.
+    n_under = undersampled_bands(sr, win_s, nb, fmin, fmax, scale)
+    if n_under:
+        logger.warning(
+            "band_energies(scale=%r, nb=%d, win_s=%g) at sr=%d: %d band(s) are "
+            "narrower than the %.1f Hz FFT resolution and will read as zero "
+            "energy. Lengthen win_s or lower nb; flatness in particular is "
+            "unusable in this configuration.",
+            scale, nb, win_s, sr, n_under, sr / win)
+
     window = np.hanning(win)
     freqs = np.fft.rfftfreq(win, 1.0 / sr)
-    edges = np.linspace(fmin, fmax, nb + 1)
+    edges = band_edges(nb, fmin, fmax, scale)
     bin_idx = [np.where((freqs >= edges[i]) & (freqs < edges[i + 1]))[0] for i in range(nb)]
 
     energies = np.zeros((n_frames, nb), dtype=np.float64)
@@ -244,13 +332,17 @@ def attack_rise_time_ms(x: np.ndarray, sr: int, onset_t: float, window_s: float 
     return float((hi_idx - lo_idx) * hop / sr * 1000.0)
 
 
-def _logmel(seg: np.ndarray, sr: int, nb: int = 24, fmin: float = 200, fmax: float = 5000) -> np.ndarray:
+def _logmel(seg: np.ndarray, sr: int, nb: int = 24, fmin: float = 200, fmax: float = 5000,
+             scale: str = 'linear') -> np.ndarray:
+    """NB the name is historical and inaccurate under the default: this is log
+    energy in LINEARLY spaced bands unless scale='mel' is passed. Renaming it
+    would churn call sites for no measurement gain; documenting it is enough."""
     if len(seg) == 0:
         return np.zeros(nb)
     window = np.hanning(len(seg)) if len(seg) > 1 else np.ones(len(seg))
     mag = np.abs(np.fft.rfft(seg * window))
     freqs = np.fft.rfftfreq(len(seg), 1.0 / sr)
-    edges = np.linspace(fmin, fmax, nb + 1)
+    edges = band_edges(nb, fmin, fmax, scale)
     energies = np.array([
         mag[(freqs >= edges[i]) & (freqs < edges[i + 1])].sum()
         for i in range(nb)
@@ -260,10 +352,15 @@ def _logmel(seg: np.ndarray, sr: int, nb: int = 24, fmin: float = 200, fmax: flo
 
 
 def logmel_distance(seg_a: np.ndarray, seg_b: np.ndarray, sr: int, nb: int = 24,
-                     fmin: float = 200, fmax: float = 5000) -> float:
-    """Generalized listen_compare.py::logmel() distance between two segments."""
-    la = _logmel(seg_a, sr, nb, fmin, fmax)
-    lb = _logmel(seg_b, sr, nb, fmin, fmax)
+                     fmin: float = 200, fmax: float = 5000,
+                     scale: str = 'linear') -> float:
+    """Generalized listen_compare.py::logmel() distance between two segments.
+
+    Default stays 'linear': this feeds OnsetMatch.spectral_dist, part of the
+    onset-comparison output this project's fidelity numbers rest on.
+    """
+    la = _logmel(seg_a, sr, nb, fmin, fmax, scale)
+    lb = _logmel(seg_b, sr, nb, fmin, fmax, scale)
     return float(np.abs(la - lb).mean())
 
 
