@@ -207,12 +207,25 @@ Ran the **audit-docs skill** first (`DOC-AUDIT.md`) rather than trimming on impr
    again a correct null, and `worst_window()`'s post-fix ranking lands on the *same* window indices*
    (bad=centroid @15.0s window 3, good=RMS @0.0s window 0) as B13 despite being a wholly different
    defect — independent evidence the silence_frac fix (item A1) generalizes rather than being
-   fitted to one tune. First attempt (Cybernoid/MoN, the SBC-carry-bug case) was **abandoned**:
-   both builds render ~1s of audio then go silent under sidplayfp — a pre-existing gap in this
-   project's MoN-audio pipeline (MoN has only ever been validated in the register/siddump domain,
-   never real audio), unrelated to the fix under test. Worth someone's attention separately; not
-   chased further here. 14/14 manifest consistency checks passed on first write — every
+   fitted to one tune. First attempt (Cybernoid/MoN, the SBC-carry-bug case) was **abandoned**
+   this turn on a false lead (see the correction below — **there was no real gap**, it was my own
+   CLI mistake) and not retried; a genuine third case from the SBC-carry-bug defect is still
+   possible later if wanted. 14/14 manifest consistency checks passed on first write — every
    hand-computed finding number was correct.
+
+   **CORRECTION (2026-08-09, later turn)**: the "MoN-family sidplayfp silent-after-1s" finding
+   below was **WRONG — not a project bug**. I had reused `mon_sf2_validate.py`'s
+   `--driver-play 0x1006`, which is that script's OWN one-off ad-hoc Stage-A probe address
+   (`GalwayDriver11Song`/`galway_driver11_emitter`), not the address the real native driver
+   `bin/build_mon_native_song.py` actually produces. That driver reuses the ROMUZAK template
+   (`bin/build_romuzak_driver_full.py`: `DRV_INIT=0x1000, DRV_PLAY=0x1003, DRV_STOP=0x1006`) — the
+   same convention as Blackbird. I was calling the **stop** routine every frame instead of
+   **play**, which explains the ~1s-then-silence shape exactly (SID muted by the stop routine, not
+   a crash). Re-rendered with `--driver-play 0x1003`: full, continuous, normal-sounding audio for
+   the whole 10s test (RMS steady ~0.08-0.15 throughout, vs decaying to 0.0 at 1s). **MoN-family
+   SF2s render fine via sidplayfp; there is no pipeline gap.** The "NEW GAP FOUND" row in the
+   deliverable-status table below and the corresponding open question are both stale as of this
+   correction.
 
 3. **`docs/players/` still duplicates the accuracy figures.** Only CLAUDE.md's copy was compressed.
    `ACCURACY_MATRIX.md` + 21 player docs still both carry them. The duplication root cause is
@@ -371,12 +384,12 @@ review; all fell out of running against real material and checking against an ex
 - **`tools/clap_venv` does NOT exist** (uninstalled). `clap_validate.py` degrades to a clear
   actionable error; its 19 tests still pass.
 - **`stash@{0}`** (SDI Stage B) is intact and untouched — pre-existing, not mine.
-- **New, previously-unknown finding from the abandoned Cybernoid attempt**: MoN-family SF2s
-  (Driver-11-emitted, `driver-init 0x1000 driver-play 0x1006`) render ~1s of audio then go
-  completely silent under sidplayfp, for BOTH a "before" and "after" build — this project's MoN
-  validation has only ever been done in the register/siddump domain, never real audio. Not fixed,
-  not filed as a tracked issue; just noted here and in item A2 above. Worth someone picking up if
-  MoN-family audio-domain listening is ever wanted.
+- **RETRACTED (2026-08-09, later turn): there was no MoN-audio-rendering gap.** The prior finding
+  ("MoN-family SF2s render ~1s then go silent under sidplayfp") was **my own CLI mistake**, not a
+  project bug — see the correction under item A2 above for the root cause
+  (`--driver-play 0x1006`, the wrong script's constant, calls the driver's STOP routine every
+  frame instead of PLAY at `0x1003`). Re-verified with the correct address: full, normal, ~10s of
+  continuous audio, no silence. Nothing to fix, no gap to track.
 
 ### Deliverable status
 | Item | Status |
@@ -390,12 +403,13 @@ review; all fell out of running against real material and checking against an ex
 | v3.23.0 release (CHANGELOG/STORY/version) | **COMPLETE** |
 | CLAUDE.md compression | **COMPLETE** (−21 %), audit in `DOC-AUDIT.md` |
 | `worst_window()` silence_frac limitation | **FIXED 2026-08-09**, verified live against 2 independent cases |
-| MoN/Cybernoid audio-domain rendering | **NEW GAP FOUND, not fixed** — see above |
+| MoN/Cybernoid audio-domain rendering | **RETRACTED — no gap, was my CLI mistake** (see above) |
 | Accuracy percentages verified | **NOT DONE — out of scope, routed to the falsify agent** |
 
 ### Open questions for the user
 1. Should `ACCURACY_MATRIX.md` or `docs/players/` be the single home for accuracy figures? Two
    copies remain.
-2. Is the MoN/Cybernoid sidplayfp silent-after-1s rendering gap worth investigating? It blocks any
-   future MoN-family audio-domain calibration case, not just the one this turn abandoned.
+2. Now that MoN-family audio rendering is confirmed to work (`--driver-play 0x1003`), is a THIRD
+   calibration case worth building from the original Cybernoid SBC-carry-bug defect ("Cybernoid's
+   lead sounds wrong when vibrating", commit `699c878`)? Nothing blocks it now.
 </current_state>
