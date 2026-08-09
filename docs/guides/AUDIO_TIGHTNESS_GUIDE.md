@@ -39,6 +39,35 @@ original? It renders both sides to WAV, detects onsets via spectral flux,
 aligns them, and reports timing/attack-shape divergence — as text (for
 Claude to read directly) and HTML (for a human).
 
+> ### ⚠️ Read this before treating an onset % as a verdict
+>
+> The story above explains why this tool exists. It does **not** mean the tool
+> catches that class of defect on its own. **It was measured against the very
+> B13 case that motivated it, and the result is more limited than this section
+> reads** (2026-08-09; full numbers in
+> [`docs/AUDIO_LISTENING_CALIBRATION.md`](../AUDIO_LISTENING_CALIBRATION.md),
+> manifest in `pyscript/calibration_cases.json`):
+>
+> | comparison | onset match |
+> |---|---:|
+> | original vs **itself**, phase-perturbed — the floor | **85.4–91.3%** |
+> | original vs the **known-good** build (99.8% register, 162/162 note-ons) | **64.7%** |
+> | original vs the **B13** build (the one that sounded wrong) | **56.9%** |
+>
+> - **It has ordinal sensitivity**: it does rank the known-bad build below the
+>   known-good one, unprompted. That is real.
+> - **It has no usable absolute gate**: a near-perfect build still scores
+>   20+ points *below* what the original scores against itself. That deficit is
+>   systematic — the cost of comparing a SID render against a native-driver SF2
+>   render at all — not a defect. **Any threshold that flags B13 also condemns
+>   the good build.**
+> - The bad/good gap (7.8 pt) is barely larger than the floor's own spread
+>   (5.9 pt), so a single A/B run cannot separate two builds confidently.
+>
+> **Use it as a relative signal against a baseline build, never as a pass/fail
+> quality gate, and quote the repeatability floor beside any number you report.**
+> The floor is per-tune, not a constant — measure it rather than reusing 85–91%.
+
 ### What It Does
 
 1. **Renders** the original and the driver output to WAV (via VSID or
@@ -248,9 +277,34 @@ single-voice path.
 --output report.html           # Output HTML path
 --text-output report.txt       # Also write the text report to a file
 --no-html                      # Skip HTML generation (quick check)
+--no-listen                    # Skip the whole-file audio feature summary
+--windowed [SECONDS]           # Per-section features + worst-window call-out (default span 5s)
+--band-scale {linear,mel}      # Band spacing for the feature summary (default: linear)
+--spectrogram [PATH]           # 3-panel orig/driver/dB-diff PNG (view it with the Read tool)
 --keep-temp                    # Keep the temporary rendered .sid/.wav files
 -v, -vv                        # Verbose logging
 ```
+
+### Beyond onsets: the feature summary (`sidm2/audio_listen.py`)
+
+Onset matching answers one narrow question — *do notes land at the same time*.
+A feature summary printed after it answers "what does this sound like": level
+(raw dBFS **and** A-weighted dBA), spectral centroid/rolloff, noisiness
+(flatness), silence fraction, and a 12-bin **pitch-class chroma** so the report
+can say pitch content *moved* rather than only that brightness changed.
+`--spectrogram` renders an image for the cases the numbers do not explain.
+
+Two calibrated caveats, both measured against the B13 case:
+
+- **A-weighting is the strongest single discriminator found** — it separates the
+  known-bad build from the known-good one 5.4x better than raw dBFS.
+- **`--windowed`'s verdict is degenerate as shipped** when comparing an original
+  against a driver build: `silence_frac` differs systematically (a driver never
+  reproduces the original's startup silence) and the flat-baseline scoring
+  branch outranges the sigma branch, so silence wins outright and flags both a
+  good and a bad build identically. Excluding it, the ranking separates cleanly.
+  **Treat a silence-driven worst-window verdict as uninformative.** See the
+  KNOWN LIMITATION block in `sidm2/audio_listen.py`.
 
 Both `orig` and `driver` accept `.sid`, `.sf2`, or `.wav` directly — `.wav`
 is used as-is, `.sid` is rendered, `.sf2` is converted to `.sid` first (via

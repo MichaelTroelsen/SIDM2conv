@@ -1,15 +1,15 @@
 # CLAUDE.md - AI Assistant Quick Reference
 
-**SIDM2 v3.22.0** | SID→SF2 Converter | C64 Music Tools | Updated 2026-07-25
+**SIDM2 v3.23.0** | SID→SF2 Converter | C64 Music Tools | Updated 2026-08-09
 
-Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs, CI/CD (5 workflows), ~1,900 tests
+Converts native Laxity NP21 SID files to SF2 format (100% accuracy). Features: Auto-driver selection, VSID audio export, Batch Analysis (multi-pair comparison), Accuracy Heatmap (4 viz modes), Trace Comparison (tabbed HTML), SF2 Viewer, Conversion Cockpit, SID Inventory (658+ files), Python siddump/SIDwinder, Batch Testing, User Docs, CI/CD (5 workflows), audio-domain listening tooling (feature summary + spectrograms, calibrated), ~2,065 tests
 
 ---
 
 ## Critical Rules
 
 1. **Keep Root Clean**: ALL .py files in `pyscript/` only. No .py in root.
-2. **Run Tests**: `test-all.bat` (7 suites) before committing; `python -m pytest` runs all ~1,900
+2. **Run Tests**: `test-all.bat` (7 suites) before committing; `python -m pytest` runs all ~2,065
 3. **Update Docs**: Update README.md, CLAUDE.md, docs/ when changing code
 
 **Enforcement**: `cleanup.bat --scan` | **See**: `docs/guides/ROOT_FOLDER_RULES.md`
@@ -36,7 +36,9 @@ trace-compare.bat file_a.sid file_b.sid                 # Compare two SID traces
 accuracy-heatmap.bat file_a.sid file_b.sid              # Accuracy heatmap (4 viz modes, Canvas)
 audio-tightness.bat orig.sid conv.sf2 --driver-init 0x1000 --driver-play 0x1003  # Onset-timing/attack-shape "tightness" (register-exact != audio-tight)
 audio-tightness.bat orig.sid conv.sf2 --driver-init 0x1000 --driver-play 0x1003 --voice all  # + per-voice sweep, isolation guard, repeatability floor, registers x audio cross-tab
-audio-tightness.bat a.sid b.sid --spectrogram out.png    # SID2SID/WAV2WAV/mixed (accepts .sid/.sf2/.wav on either side): whole-file feature-summary text (level/brightness/noisiness, always-on unless --no-listen) + a 3-panel orig/driver/diff spectrogram PNG Claude can view with the Read tool -- "a way to listen" beyond onset timing
+audio-tightness.bat a.sid b.sid --spectrogram out.png    # SID2SID/WAV2WAV/mixed (accepts .sid/.sf2/.wav on either side): whole-file feature-summary text (level dBFS+dBA/brightness/noisiness/chroma, always-on unless --no-listen) + a 3-panel orig/driver/diff spectrogram PNG Claude can view with the Read tool -- "a way to listen" beyond onset timing
+audio-tightness.bat a.sid b.sf2 --windowed 5 --band-scale mel  # per-section features + worst-window call-out (localizes a defect a whole-file mean dilutes); mel band spacing is opt-in
+sid-to-sf2.bat in.sid out.sf2 --audio-export --audio-export-voices  # + 3 per-voice isolated stems via sidplayfp (VSID has no voice mute); muting is NOT clean isolation on every tune
 batch-analysis.bat originals/ exported/                 # Batch analysis (standalone, HTML+CSV+JSON)
 batch-analysis-validate.bat originals/ exported/        # Batch analysis (validation DB integration)
 validation-dashboard.bat                                # Validation results dashboard
@@ -44,7 +46,7 @@ python pyscript/generate_stinsen_html.py file.sid       # HTML docs (3,700+ anno
 
 # Batch Operations
 batch-convert-laxity.bat      # All Laxity files
-test-all.bat                  # 7 suites (pytest runs all ~1,900)
+test-all.bat                  # 7 suites (pytest runs all ~2,065)
 cleanup.bat                   # Clean + inventory
 
 # Python Tools
@@ -102,6 +104,8 @@ Auto-selects best driver by player type via `DriverSelector.PLAYER_REGISTRY` (si
 **RSID escape hatch — the VICE wrapper** (`C:\Users\mit\claude\sid-reference-project\scripts\dev\vsid-trace.js`, a *separate* project): zig64 has **no autonomous VIC/CIA interrupt delivery**, so RSID files that declare `play=$0000` and install their own IRQ are untraceable here — the tracer now says so instead of faking a 0-write trace. `vsid` runs a full emulated C64, so the machine drives the player. **21 of SIDM2's 22 untraceable RSIDs trace under it** (incl. `Broken_Ass` 1068 writes, `Myth` 259, `A_Mind_Is_Born` 100; only `Final_Countdown_BASIC` = 0, plausibly genuine). Cross-validated: on a PSID both tools drive (Stinsen, 16 frames) both report **exactly 90** changed-value writes. Usage: `node vsid-trace.js <file.sid> --frames N --json --changed-only` (`--changed-only` matches this tracer's semantics; vsid otherwise records redundant writes). Gotchas: **vsid exits 1 on normal termination** — check for the dump file, not the exit code; cycle timings are NOT comparable between the tools (~1 frame apart), only the write *sequence* agrees. Not wired into SIDM2. See `docs/players/PLAYBOOK.md`.
 
 **Fidelity harness** (`sidm2/fidelity_common.py`): the shared measurement plumbing every scorer should route through — **do not write a new one**. Two guards that answer different questions, and you need both: `score_pct(ok, tot)` returns **None** (never 100.0/0.0) when `tot == 0` — *were there any frames?* — and `exercised(a, b)` returns False when both series are the same single constant — *did those frames carry information?* The second is not optional: **siddump force-displays every register on its first row** whether the playroutine wrote it or not, so a tune that never filters yields a full-length non-None series of zeroes on both sides and scores a confident 100%. That exact bug was fixed, re-appeared one layer down, and was caught by *running the tool* both times. Five separate copies of the same weighted-accuracy scheme existed in this repo, each independently broken — one scored **two identical captures at 50%**. Also here: an A/B baseline mode (`result_row`/`ab_pair`/`compare_runs`) that refuses on mismatched *measurement* settings but surfaces mismatched *build options* as "the change under test", a dimension registry so a report can generate — not hand-maintain — the list of registers **nothing it measured reads**, and `output_digest` so "no number moved" can be told apart from "the build never changed". A third helper, `shape_agreement`, is the phase-invariant companion for a **swept** register (pulse width, cutoff): movement count + travel, so a sweep that is correct but a few frames late stops reading as a dead engine (`5_Title_Tunes` osc3 pulse 4.5% strict = a -3-frame offset). Necessary, not sufficient — print it beside the strict number, never instead. See `PATTERNS.md` D4/D9.
+
+**Audio-domain "listening" (`sidm2/audio_listen.py`)**: the companion to `audio_tightness.py`'s onset timing — whole-file/per-section features (level in dBFS **and** A-weighted dBA, spectral centroid/rolloff, flatness, silence, 12-bin pitch-class **chroma**) plus a 3-panel spectrogram PNG the assistant reads directly. numpy+Pillow only. **Calibrated against the one recorded human verdict** (B13/Glyptodont, `pyscript/calibration_cases.json`, `docs/AUDIO_LISTENING_CALIBRATION.md`) — read that before quoting any of it: onset match has **ordinal sensitivity but no absolute gate** (a 99.8%-register-exact build scores 64.7% against an 85-91% original-vs-itself floor, so any threshold flagging the bad build condemns the good one — use it against a baseline, never as pass/fail, and measure the floor per tune). Of the five features, **A-weighting is the strongest discriminator** (5.4x better separation than raw dBFS), **chroma is a correct null** on a percussive defect, **mel is unproven** on one tune, and **`--windowed`'s verdict is degenerate on original-vs-driver comparisons** — `silence_frac` differs systematically (a driver never reproduces the original's startup silence) and the flat-baseline scoring branch outranges the sigma branch, so silence wins outright; re-rank without it. See the KNOWN LIMITATION block in the module. Four of these five would have shipped a *confidently wrong* number that their own unit test passed; each was caught only by running against real material.
 
 ---
 
