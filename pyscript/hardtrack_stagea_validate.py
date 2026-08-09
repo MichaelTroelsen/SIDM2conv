@@ -14,6 +14,15 @@ Notes played by an instrument whose wave program drives the frequency register
 (field 5 bit 7) are excluded, exactly as in the parser validator -- their pitch
 is not the sequencer's to place.
 
+--lag N shifts the Stage A comparison window by N frames. Driver 11 spends its
+FIRST play call initialising its own state (the shipped template carries
+$16CC = $40, and bit 6 sends `BVS` at $100D into a state-clear path), so a
+Driver 11 render starts one frame behind the original -- a constant phase, not
+drift, and inaudible at 20 ms. It is NOT introduced by this builder and applies
+to every Driver 11 Stage A build in this repo. Default 0 so the reported number
+stays honest; --lag 1 answers "what is left once the known phase is removed",
+which for Zakplus and Hopscotch is nothing at all.
+
 Usage:
     py -3 pyscript/hardtrack_stagea_validate.py SID/Shogoon/Love_tune_2.sid
     py -3 pyscript/hardtrack_stagea_validate.py "SID/Shogoon/*.sid" -t 20
@@ -57,7 +66,7 @@ def build_and_wrap(sid, subtune, tmpdir):
     return out
 
 
-def validate(sid, seconds=20, subtune=0):
+def validate(sid, seconds=20, subtune=0, lag=0):
     """-> (stage_a_ok, total, parser_ok) over sequencer-pitch notes."""
     module = HardTrackModule.from_sid(sid)
     frames = simulate(module, subtune, seconds * 50)
@@ -75,7 +84,7 @@ def validate(sid, seconds=20, subtune=0):
                 continue
             want = module.freq(note)
             tot += 1
-            a_ok += any(at.get(f + d) == want for d in range(9))
+            a_ok += any(at.get(f + lag + d) == want for d in range(9))
             o_ok += any(ot.get(f + d) == want for d in range(9))
     return a_ok, tot, o_ok
 
@@ -85,6 +94,9 @@ def main(argv=None):
     ap.add_argument('sid', nargs='+')
     ap.add_argument('-t', '--seconds', type=int, default=20)
     ap.add_argument('-s', '--subtune', type=int, default=0)
+    ap.add_argument('--lag', type=int, default=0,
+                    help="shift the Stage A window by N frames; 1 removes Driver 11's "
+                         'known one-frame startup phase (see the module docstring)')
     a = ap.parse_args(argv)
 
     paths = []
@@ -95,7 +107,7 @@ def main(argv=None):
     print(f'{"file":28} {"Stage A":>15} {"parser ceiling":>16}')
     for sid in paths:
         try:
-            ao, tot, oo = validate(sid, a.seconds, a.subtune)
+            ao, tot, oo = validate(sid, a.seconds, a.subtune, a.lag)
         except (HardTrackError, RuntimeError):
             continue
         if not tot:

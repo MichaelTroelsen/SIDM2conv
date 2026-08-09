@@ -334,11 +334,50 @@ on offset 0 in their first wave steps hit immediately and score 100% either way.
 That is exactly the split observed: every missing instrument arpeggiates past the
 window; every hitting one has an offset-0 step early.
 
-The lag is **not** something the builder controls. Rebuilding with instrument
-flags `$80`, `$00` and `$40` gives byte-identical offset histograms and identical
-scores, so the hard-restart flag is not the cause. It is present in the
-100%-scoring files too (`Love_tune_2`: 107 notes at +1) — it simply costs nothing
-there.
+### Where the +1 frame comes from — found
+
+`$16CC` in the shipped Driver 11 template (`G5/examples/Driver 11 Test -
+Arpeggio.sf2`) is **`$40`**, and the play routine opens:
+
+```
+1006: lda #$00
+1008: bit $16cc      ; $40 -> bit 6 set
+100b: bmi $1051      ; not taken
+100d: bvs $1047      ; TAKEN -> state-init path, clears $16CD..$1740
+```
+
+So Driver 11 spends its **first play call initialising its own state** instead of
+playing a row, and every render starts one frame behind the original.
+
+It comes from the **template**, not from this builder — the emitted file is
+byte-identical to the template across `$16CC-$1702` (15 non-zero bytes, same
+values). It therefore applies to **every Driver 11 Stage A build in this repo**,
+not just HardTrack. Three other explanations were tested and refuted along the
+way: the PSID wrapper's play address (`$1006` is right; forcing `$1003` gives
+total silence), the instrument hard-restart flag (`$80`/`$00`/`$40` give
+identical offset histograms), and the builder's own row layout.
+
+The shift is **constant, not drift** — median `+1` in every third of the song
+(68.6% / 71.5% / 66.8% of notes at exactly +1). A uniform 20 ms offset of the
+whole song is **not a fidelity defect**; it only ever broke the measurement.
+
+`pyscript/hardtrack_stagea_validate.py --lag 1` removes exactly that known phase.
+Doing so is decisive for the two files previously called losses:
+
+| file | Stage A | `--lag 1` | parser |
+|---|---|---|---|
+| `Zakplus` | 87.6% | **99.0%** | 99.0% |
+| `Hopscotch` | 56.8% | **72.2%** | 72.2% |
+| `Love_tune_3` | 93.4% | 93.4% | 99.2% |
+| `Walk_to_Soul` | 57.6% | 57.6% | 63.5% |
+
+`Zakplus` and `Hopscotch` land **exactly** on the parser's own score — those two
+were never losses, only the phase. `Love_tune_3` (−5.8) and `Walk_to_Soul` (−5.9)
+do not move, so **they are the genuine Stage A losses and remain unexplained**.
+
+Corpus-wide the correction is worth only **+0.62 pp** (90.64% → 91.26%), because
+most notes already land inside an 8-frame window. The previous writeup's estimate
+of "~91.5%" was close but is superseded by the measured 91.26%.
 
 ### Window sensitivity — quote the window with the number
 
@@ -375,11 +414,9 @@ Two measurement traps this build walked into, both worth remembering:
 
 ## Next steps
 
-1. **Find where the +1 frame lag comes from.** It is not the instrument flags
-   (tested) and not the builder's row layout. Candidates not yet examined: the
-   Driver 11 note-on to first-wave-row ordering, and the `scripts/sf2_to_sid.py`
-   PSID wrapper's init/play call sequence. Removing it would take Stage A to
-   ~91.5% at the reported window with no other change.
+1. **Explain `Love_tune_3` (−5.8 pp) and `Walk_to_Soul` (−5.9 pp)** — the only
+   Stage A losses left once the Driver 11 startup phase is accounted for. Both
+   are unaffected by `--lag`, so the cause is something else entirely.
 2. **Resolve the parser residual** — instrument the `$63`/`$64` slide commands and
    confirm (or refute) the hypothesis above before quoting a higher number.
 3. **Wave/pulse programs are decoded** (`wave_program()`, `pulse_program()`) but
