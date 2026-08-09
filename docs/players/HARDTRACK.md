@@ -303,22 +303,61 @@ By that reading: **6 of the 8 files the parser decodes at 100.0% are Stage A
 note of 454. The real losses are `Zakplus` (99.0 → 87.6) and `Hopscotch`
 (72.2 → 56.8).
 
-### The known Stage A defect
+### The Stage A "losses" — diagnosed, and mostly not losses
 
-Those losses are **voice-localised and flat over time**, not drift — Zakplus
-voice 2 scores 63.5% against the original's 100.0%, Hopscotch voice 1 scores
-29.6% against 60.5%, while their other voices are near-perfect. No cap warning
-fires (sequences 62 and 56 against the 120 cap; instruments under 31), so it is
-not truncation.
+The first writeup of this build proposed that the `Zakplus`/`Hopscotch` losses
+came from **cross-pattern gate state** (one pattern becomes one sequence, so
+"is this voice still sounding at pattern start" is decided per sequence while the
+player decides it per voice). That hypothesis is **FALSIFIED**, on both sides:
 
-The leading suspect is structural and predicted by the design: one HardTrack
-pattern becomes one Driver 11 sequence, so **whether a voice is still sounding
-when a pattern starts is decided per sequence, not per voice**. A pattern opening
-with `$67` (rest) is emitted with note-offs, but the player would have sustained
-a note carried in from the previous pattern — and the same pattern can be entered
-both ways at different points in the orderlist. That is consistent with all the
-evidence, but it is a **hypothesis, not a confirmed diagnosis**; it has not been
-tested by fixing it.
+- `Zakplus` voice 2 — the worst loss at 63.5% — has **zero** ambiguous patterns.
+  The hypothesis requires an ambiguous entry in the failing voice; there is none.
+- `Love_tune_2` has **3** ambiguous patterns and scores **100.0% on every voice**,
+  including 100% on the notes inside those very patterns.
+
+The real cause is a **systematic one-frame lag**. Comparing the frame at which
+each note's exact frequency first appears, Stage A lands **+1 frame** behind the
+original on **68.9%** of all notes (+0 on 8.9%). Traced note by note the two
+renders play the *identical* arpeggio — here is Zakplus instrument 5, note 56:
+
+```
+frame   +0   +1   +2   +3   +4   +5   +6   +7   +8   +9   +10
+orig    20   20   20   76   63   63   60   60  [56]  56   63
+StageA  20   20   20   20   76   63   63   60   60  [56]  56
+```
+
+Same sequence, shifted by one. The measurement window was `+0..+8`, so the
+original's arrival at +8 counted and Stage A's at +9 did not. **That single frame
+is the whole `Zakplus` voice-2 "loss".** It costs score only for arpeggiated
+instruments, whose target pitch arrives late in the ramp — instruments that rest
+on offset 0 in their first wave steps hit immediately and score 100% either way.
+That is exactly the split observed: every missing instrument arpeggiates past the
+window; every hitting one has an offset-0 step early.
+
+The lag is **not** something the builder controls. Rebuilding with instrument
+flags `$80`, `$00` and `$40` gives byte-identical offset histograms and identical
+scores, so the hard-restart flag is not the cause. It is present in the
+100%-scoring files too (`Love_tune_2`: 107 notes at +1) — it simply costs nothing
+there.
+
+### Window sensitivity — quote the window with the number
+
+The match window is not a free parameter, and it has **no plateau**:
+
+| window (frames) | parser | Stage A |
+|---|---|---|
+| 4 | 81.06% | 37.05% |
+| 6 | 86.62% | 88.52% |
+| **8** (reported) | **88.39%** | **90.64%** |
+| 9 | 89.22% | 91.50% |
+| 12 | 91.98% | 94.85% |
+| 24 | 93.17% | 95.79% |
+
+Both figures keep climbing, so no window is "the right one" and widening one to
+make a number look better would be laundering. The reported 8 is kept because it
+is what the parser was measured at; a fair reading is that Stage A's residual is
+**dominated by the known +1 lag**, and allowing exactly that one frame puts it at
+91.50%.
 
 Two measurement traps this build walked into, both worth remembering:
 
@@ -336,10 +375,11 @@ Two measurement traps this build walked into, both worth remembering:
 
 ## Next steps
 
-1. **Confirm or refute the cross-pattern gate-state hypothesis** above — the one
-   named cause of the Stage A losses. A cheap test: for each (pattern,
-   transpose) key, check whether the voice is *always* entered sounding or never;
-   only genuinely ambiguous patterns need duplicating.
+1. **Find where the +1 frame lag comes from.** It is not the instrument flags
+   (tested) and not the builder's row layout. Candidates not yet examined: the
+   Driver 11 note-on to first-wave-row ordering, and the `scripts/sf2_to_sid.py`
+   PSID wrapper's init/play call sequence. Removing it would take Stage A to
+   ~91.5% at the reported window with no other change.
 2. **Resolve the parser residual** — instrument the `$63`/`$64` slide commands and
    confirm (or refute) the hypothesis above before quoting a higher number.
 3. **Wave/pulse programs are decoded** (`wave_program()`, `pulse_program()`) but

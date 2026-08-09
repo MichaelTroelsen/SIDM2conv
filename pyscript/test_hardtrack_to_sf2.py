@@ -167,3 +167,98 @@ def test_wrapped_rips_are_refused_by_the_builder(tmp_path):
     with pytest.raises(HardTrackError):
         h2s.convert(os.path.join(CORP, 'Eternal.sid'),
                     str(tmp_path / 'x.sf2'), 0, quiet=True)
+
+
+# --------------------------------------------------------------------------
+# falsification guard
+# --------------------------------------------------------------------------
+@needs_corpus
+def test_pattern_gate_ambiguity_does_not_predict_stage_a_loss():
+    """Pins a FALSIFIED hypothesis so it is not re-adopted.
+
+    It was proposed that Stage A loses notes because one pattern becomes one
+    sequence, so "is this voice sounding at pattern start" is fixed per sequence
+    while the player decides it per voice -- making patterns entered both ways
+    lossy. Two facts kill it, and this test keeps them visible:
+
+      * Zakplus, whose voice 2 is the worst loss, has NO such ambiguous pattern;
+      * Love_tune_2 HAS them and converts at 100.0% on every voice.
+
+    The real cause is a systematic +1 frame lag; see docs/players/HARDTRACK.md.
+    """
+    import collections
+    from sidm2.hardtrack_parser import (
+        CMD_GATE_OFF, CMD_PORTA, CMD_REST, CMD_RESET, CMD_SLIDE, CMD_TIE,
+        ORDER_END, ORDER_HOLD, ORDER_JUMP, PATTERN_END,
+    )
+
+    def ambiguous_keys(m):
+        seen = collections.defaultdict(set)
+        V = [dict(op=m.order_pointer(v, 0), oi=0, pp=None, pi=0, tr=0, cmd=0,
+                  dur=1, active=1, halted=False, sounding=False, pat=None)
+             for v in range(3)]
+        speed, ctr = m.speed(0), 2
+        for _ in range(1000):
+            ctr -= 1
+            if ctr < 0:
+                ctr = speed
+            for vi, v in enumerate(V):
+                if v['halted']:
+                    continue
+                if ctr == 0:
+                    if not v['active']:
+                        continue
+                    v['dur'] = 1
+                    c = v['cmd']
+                    if c in (CMD_SLIDE, CMD_PORTA):
+                        v['pi'] += 1
+                        continue
+                    if c == CMD_REST:
+                        v['active'] = 0
+                        v['dur'] = m.byte(v['pp'] + v['pi'])
+                        v['pi'] += 1
+                        continue
+                    if c == CMD_GATE_OFF:
+                        v['sounding'] = False
+                    trig = c not in (CMD_TIE, CMD_GATE_OFF, CMD_RESET)
+                    v['pi'] += 1
+                    if trig:
+                        v['sounding'] = True
+                elif ctr == 1:
+                    v['dur'] -= 1
+                    if v['dur'] == 0:
+                        v['active'] = 1
+                        a = (PATTERN_END if v['pp'] is None
+                             else m.byte(v['pp'] + v['pi']))
+                        v['pi'] += 1
+                        if a != PATTERN_END:
+                            v['cmd'] = a
+                            continue
+                        v['pi'] = 0
+                        for _ in range(512):
+                            b = m.byte(v['op'] + v['oi'])
+                            v['oi'] += 1
+                            if b == ORDER_END:
+                                v['oi'] = 0
+                                continue
+                            if b == ORDER_HOLD:
+                                v['halted'] = True
+                                break
+                            if b == ORDER_JUMP:
+                                v['oi'] = m.byte(v['op'] + v['oi'])
+                                continue
+                            if b >= 0x80:
+                                v['tr'] = b & 0x7F
+                                b = m.byte(v['op'] + v['oi'])
+                                v['oi'] += 1
+                            v['pp'] = m.pattern_pointer(b)
+                            v['cmd'] = m.byte(v['pp'])
+                            v['pi'] = 1
+                            seen[(vi, b, v['tr'])].add(v['sounding'])
+                            break
+        return {k for k, st in seen.items() if len(st) > 1}
+
+    worst = HardTrackModule.from_sid(os.path.join(CORP, 'Zakplus.sid'))
+    perfect = HardTrackModule.from_sid(os.path.join(CORP, 'Love_tune_2.sid'))
+    assert not ambiguous_keys(worst),         'Zakplus gained ambiguous patterns; re-check the falsification'
+    assert ambiguous_keys(perfect),         'Love_tune_2 lost its ambiguous patterns; re-check the falsification'
