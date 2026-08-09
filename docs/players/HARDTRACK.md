@@ -113,7 +113,8 @@ additionally sets `$16CB`, which makes the note-on path **skip the instrument
 reload** — so the pitch changes while the wave and pulse programs keep running
 from where they were, instead of restarting their attack. It carries **24.7% of
 all note events** in this corpus (4,353 of 17,628, in all 31 decodable files), so
-it is a core feature, not an edge case. Stage A does not reproduce it (see below).
+it is a core feature, not an edge case. Stage A reproduces it with a duplicate
+instrument slot (see below).
 
 ### Tempo
 
@@ -310,43 +311,46 @@ By that reading: **6 of the 8 files the parser decodes at 100.0% are Stage A
 note of 454. The real losses are `Zakplus` (99.0 → 87.6) and `Hopscotch`
 (72.2 → 56.8).
 
-### The Stage A losses — attributed
+### The Stage A losses — attributed, and the main one fixed
 
 Measured over the notes the **parser itself resolves** (5,167), with the known
-Driver 11 startup frame corrected, Stage A loses **43 notes — it retains
-99.17%**. That is the informative number: the 90.64% / 91.26% figures are diluted
+Driver 11 startup frame corrected, Stage A now loses **21 notes — it retains
+99.59%**. That is the informative number: the 90.92% / 91.64% figures are diluted
 by notes the parser never resolved either, which Stage A cannot be blamed for.
 
-Attribution of those 43, by the note's raw instrument byte:
-
-| | notes | Stage A loses | rate |
+| by raw instrument byte | notes | lost before | lost now |
 |---|---|---|---|
-| **`$6F` legato** | 871 | **25** | **2.87%** |
-| plain / other | 4,296 | 18 | 0.42% |
+| **`$6F` legato** | 871 | 25 (2.87%) | **3 (0.34%)** |
+| plain / other | 4,296 | 18 (0.42%) | **18 (0.42%)** |
+| | | 43 → 99.17% | **21 → 99.59%** |
 
-**58.1% of all Stage A losses are `$6F` legato notes** — a 6.8× enrichment. The
-mechanism is understood: `$6F` means "change pitch, do NOT restart the
-instrument's programs", and Stage A emits a normal Driver 11 note-on, which
-always restarts the wave program. When that program's tail does not return to
-arpeggio offset 0, the base pitch never reappears. `Love_tune_3` is the clearest
-case — 12 of its 14 losses are `$6F`, at 32.4% (12/38) against 1.1% (2/201) for
-its plain notes.
+`$6F` was originally treated as a synonym for `$00` and accounted for **58.1% of
+all Stage A losses** — a 6.8× enrichment over plain notes.
 
-This is **not currently fixed**, and the honest reason is that the payoff does
-not justify the risk: 25 notes across the whole corpus (0.5% of parser-resolved
-notes). Runtime Driver 11 cannot express a tie at all — `$90-$9F` tie durations
-are an editor-only feature that desyncs the real driver, which
-`test_no_tie_bytes_emitted` already locks out. The workable approach would be to
-give `$6F` notes a **duplicate instrument slot whose `wave_idx` points at the
-program's settled step** rather than its attack, and that needs measuring across
-all 33 files before it could be trusted.
+**The fix**: a `$6F` note now selects a **duplicate instrument slot whose
+`wave_idx` points at the step the wave program SETTLES on** rather than at its
+attack — the `$FF` jump target, or the last real step before `$FE`
+(`settled_cursor()`). Driver 11 always restarts a wave program on note-on and
+**cannot express a tie at all** (its `$90-$9F` tie durations desync the runtime
+driver; `test_no_tie_bytes_emitted` locks them out), so a second instrument is
+the only route to "new pitch, no re-attack" through the real driver. The variant
+copies AD/SR/flags/pulse verbatim and differs in `wave_idx` alone. Instruments
+needing one are found by `legato_instruments()`, which walks each voice's
+orderlist in play order so a `$6F` note inherits the instrument selected in an
+earlier pattern. If the 31-slot cap is hit, the variant is skipped and the
+builder says so.
 
-**18 losses remain unattributed**, concentrated in `Walk_to_Soul` (5) and
-`Ritual_II_tune_2` (6). `Walk_to_Soul`'s are all plain notes — one specific event
-(note 21, instrument 3, pattern 1, once per 192-frame loop) where the original
-holds the bare note and Stage A runs the instrument's full descending ramp,
-settling at note+4. A `$62`-freeze explanation was tested and **refuted** (the
-notes actually tagged as followed-by-`$62` all hit).
+Per-file: `Love_tune_3` 93.4 → **98.3%**, `Illmatic_end` and `Griffin_Score` now
+match or exceed the parser, and every previously-100% file stays at 100%.
+**`plain/other` losses are byte-identical before and after (18/4,296)** — that is
+the regression check, and it is what says the change touched only `$6F` notes.
+
+**18 losses remain unattributed**, concentrated in `Ritual_II_tune_2` (6) and
+`Walk_to_Soul` (5). `Walk_to_Soul`'s are all plain notes — one event (note 21,
+instrument 3, pattern 1, once per 192-frame loop) where the original holds the
+bare note while Stage A runs the instrument's full descending ramp and settles at
+note+4. A `$62`-freeze explanation was tested and **refuted** (the notes actually
+tagged as followed-by-`$62` all hit).
 
 ### Where the +1 frame comes from — found
 
@@ -428,13 +432,10 @@ Two measurement traps this build walked into, both worth remembering:
 
 ## Next steps
 
-1. **Reproduce `$6F` legato in Stage A** — 58% of the remaining losses. Give a
-   `$6F` note a duplicate instrument whose `wave_idx` is the program's settled
-   step, not its attack. Ties are not an option (runtime Driver 11 cannot parse
-   them). Measure across all 33 files before trusting it.
-2. **Explain the 18 unattributed losses**, mainly `Walk_to_Soul` (5) and
-   `Ritual_II_tune_2` (6). `$62`-freeze was tested and refuted.
-3. **Resolve the parser residual** — instrument the `$63`/`$64` slide commands and
+1. **Explain the 18 unattributed losses**, mainly `Ritual_II_tune_2` (6) and
+   `Walk_to_Soul` (5) — now the largest remaining Stage A gap. `$62`-freeze was
+   tested and refuted.
+2. **Resolve the parser residual** — instrument the `$63`/`$64` slide commands and
    confirm (or refute) the hypothesis above before quoting a higher number.
 3. **Wave/pulse programs are decoded** (`wave_program()`, `pulse_program()`) but
    not yet *modelled* in `simulate()` — doing so is what would let the fidelity

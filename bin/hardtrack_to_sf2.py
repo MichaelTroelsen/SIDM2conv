@@ -59,7 +59,7 @@ from sidm2.galway_to_driver11 import (
     SF2_GATE_OFF, SF2_GATE_ON, SF2_NOTE_MAX, SF2_NOTE_MIN,
 )
 from sidm2.hardtrack_parser import (
-    CMD_GATE_OFF, HardTrackError, HardTrackModule,
+    CMD_GATE_OFF, HardTrackError, HardTrackModule, INSTR_HOLD, INSTR_LEGATO,
 )
 
 MAX_INSTRUMENT_SLOTS = 31     # slot 31 is the silent/rest instrument
@@ -118,9 +118,62 @@ def build_wave_table(module, warn):
     return rows or [(0x41, 0x00), (0x7F, 0x00)]
 
 
-def build_instruments(module, used, wave_rows, warn):
-    """-> (instrument rows, pulse table, {hardtrack index: slot})."""
-    instr_rows, pulse_table, slot_of = [], [], {}
+def settled_cursor(module, cursor, limit=64):
+    """Where an instrument's wave program ENDS UP, not where it starts.
+
+    A $6F legato note changes pitch without restarting the instrument's
+    programs, so what matters is the step the program has settled on:
+
+      * program terminated by `$FF <target>` -> the jump target (the loop body);
+      * terminated by `$FE` (stop stepping)  -> the last real step, which the
+        player then holds.
+
+    Returns `cursor` unchanged when no terminator is found, so a malformed or
+    over-long program degrades to today's behaviour rather than to garbage.
+    """
+    if module.wave_table is None:
+        return cursor
+    for i in range(limit):
+        wf = module.byte(module.wave_table + cursor + i)
+        if wf == 0xFF:
+            return module.byte(module.arp_table + cursor + i)
+        if wf == 0xFE:
+            return cursor + i - 1 if i else cursor
+    return cursor
+
+
+def legato_instruments(module, subtune):
+    """{hardtrack index} of instruments in effect at a $6F legato note.
+
+    Walks each voice's orderlist in play order, carrying the current instrument
+    across pattern boundaries the way the sequencer does -- a $6F note inherits
+    whatever instrument was last selected, which may have been set in an earlier
+    pattern.
+    """
+    need = set()
+    for voice in range(3):
+        current = None
+        for kind, value in module.orderlist(voice, subtune):
+            if kind in ('end', 'jump', 'hold'):
+                break
+            if kind == 'transpose':
+                continue
+            for k, _, b in module.pattern(value):
+                if k == 'end':
+                    break
+                if k != 'note':
+                    continue
+                if b == INSTR_LEGATO:
+                    if current is not None:
+                        need.add(current)
+                elif b != INSTR_HOLD:
+                    current = b & 0x1F
+    return need
+
+
+def build_instruments(module, used, wave_rows, warn, legato_needed=()):
+    """-> (instrument rows, pulse table, {ht index: slot}, {ht index: legato slot})."""
+    instr_rows, pulse_table, slot_of, legato_of = [], [], {}, {}
     for ht_index in sorted(used):
         if len(instr_rows) >= MAX_INSTRUMENT_SLOTS:
             warn.note(f'more than {MAX_INSTRUMENT_SLOTS} instruments used; '
@@ -140,17 +193,41 @@ def build_instruments(module, used, wave_rows, warn):
             pulse_width=ins.pulse_hi))
         if module.pulse_program(ins.pulse_cursor):
             warn.note(f'instrument {ht_index}: pulse sweep not ported (Stage B)')
+
+    # $6F legato variants: same instrument, but the wave program starts at the
+    # step it would have SETTLED on rather than at its attack. Driver 11 always
+    # restarts a wave program on note-on and cannot express a tie at all (its
+    # $90-$9F tie durations desync the runtime driver), so this is the only way
+    # to get "new pitch, no re-attack" through the real driver.
+    for ht_index in sorted(legato_needed):
+        if ht_index not in slot_of:
+            continue
+        base = module.instrument(ht_index)
+        settled = settled_cursor(module, base.wave_cursor)
+        if settled == base.wave_cursor or settled >= len(wave_rows):
+            continue                      # nothing gained, or out of range
+        if len(instr_rows) >= MAX_INSTRUMENT_SLOTS:
+            warn.note(f'no instrument slot left for the $6F legato variant of '
+                      f'instrument {ht_index}; its legato notes re-attack')
+            continue
+        src = instr_rows[slot_of[ht_index]]
+        legato_of[ht_index] = len(instr_rows)
+        instr_rows.append(D11Instrument(
+            ad=src.ad, sr=src.sr, flags=src.flags, filter_idx=src.filter_idx,
+            pulse_idx=src.pulse_idx, wave_idx=settled,
+            pulse_width=src.pulse_width))
+
     if not instr_rows:
         instr_rows.append(D11Instrument(ad=0x00, sr=0xF0, flags=0x80,
                                         filter_idx=0, pulse_idx=0, wave_idx=0))
         pulse_table = [(0x88, 0x00, 0x01), (0x7F, 0x00, 0x00)]
-    return instr_rows, pulse_table, slot_of
+    return instr_rows, pulse_table, slot_of, legato_of
 
 
 # ---------------------------------------------------------------------------
 # sequences
 # ---------------------------------------------------------------------------
-def pattern_rows(module, pattern, transpose, slot_of, state, warn):
+def pattern_rows(module, pattern, transpose, slot_of, state, warn, legato_of=None):
     """One HardTrack pattern at one transpose -> Driver 11 rows."""
     rows = []
     for kind, a, b in module.pattern(pattern):
@@ -167,12 +244,20 @@ def pattern_rows(module, pattern, transpose, slot_of, state, warn):
                 rows.append(D11Row(note=SF2_GATE_OFF))
                 state['sounding'] = False
                 continue
+            # $00 keeps the instrument AND restarts its programs; $6F keeps it
+            # and does NOT restart. So they select different Driver 11 slots.
+            if b not in (INSTR_HOLD, INSTR_LEGATO):
+                state['ht_instr'] = b & 0x1F
+            want = None
+            if state['ht_instr'] is not None:
+                if b == INSTR_LEGATO and legato_of:
+                    want = legato_of.get(state['ht_instr'])
+                if want is None:
+                    want = slot_of.get(state['ht_instr'], 0)
             instr = None
-            if b not in (0x00, 0x6F):
-                slot = slot_of.get(b & 0x1F, 0)
-                if slot != state['instr']:
-                    instr = slot
-                    state['instr'] = slot
+            if want is not None and want != state['slot']:
+                instr = want
+                state['slot'] = want
             rows.append(D11Row(note=note, instrument=instr))
             state['sounding'] = True
         elif kind == 'rest':
@@ -201,8 +286,12 @@ def build_song(module, subtune, warn):
                 used_instruments.add(b & 0x1F)
 
     wave_rows = build_wave_table(module, warn)
-    instr_rows, pulse_table, slot_of = build_instruments(
-        module, used_instruments, wave_rows, warn)
+    needed = legato_instruments(module, subtune)
+    instr_rows, pulse_table, slot_of, legato_of = build_instruments(
+        module, used_instruments, wave_rows, warn, needed)
+    if needed and not legato_of:
+        warn.note('$6F legato notes present but no legato variant was usable; '
+                  'they will re-attack')
 
     sequences, orderlists = [], []
     seq_of = {}                                   # (pattern, transpose) -> index
@@ -217,8 +306,9 @@ def build_song(module, subtune, warn):
                 break
             key = (value, transpose)
             if key not in seq_of:
-                state = {'instr': None, 'sounding': False}
-                rows = pattern_rows(module, value, transpose, slot_of, state, warn)
+                state = {'slot': None, 'ht_instr': None, 'sounding': False}
+                rows = pattern_rows(module, value, transpose, slot_of, state,
+                                    warn, legato_of)
                 packed = segment_track(rows)
                 if len(packed) > 1:
                     warn.note(f'pattern {value} split into {len(packed)} '

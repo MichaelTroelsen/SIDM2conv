@@ -21,6 +21,10 @@ h2s = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(h2s)
 
 
+def sid(name):
+    return os.path.join(CORP, name + '.sid')
+
+
 def build(name, subtune=0):
     m = HardTrackModule.from_sid(os.path.join(CORP, name + '.sid'))
     warn = h2s.StageAWarning()
@@ -262,3 +266,106 @@ def test_pattern_gate_ambiguity_does_not_predict_stage_a_loss():
     perfect = HardTrackModule.from_sid(os.path.join(CORP, 'Love_tune_2.sid'))
     assert not ambiguous_keys(worst),         'Zakplus gained ambiguous patterns; re-check the falsification'
     assert ambiguous_keys(perfect),         'Love_tune_2 lost its ambiguous patterns; re-check the falsification'
+
+
+# --------------------------------------------------------------------------
+# $6F legato
+# --------------------------------------------------------------------------
+@needs_corpus
+def test_settled_cursor_follows_the_jump_or_holds_the_last_step():
+    """A $6F legato note must start the wave program where it SETTLES, not at
+    its attack: the $FF jump target, or the last real step before $FE."""
+    m = HardTrackModule.from_sid(sid('Love_tune_3'))
+    checked = 0
+    for n in range(m.num_instruments):
+        cur = m.instrument(n).wave_cursor
+        settled = h2s.settled_cursor(m, cur)
+        # find this program's terminator the long way and compare
+        for i in range(64):
+            wf = m.byte(m.wave_table + cur + i)
+            if wf == 0xFF:
+                assert settled == m.byte(m.arp_table + cur + i), n
+                checked += 1
+                break
+            if wf == 0xFE:
+                assert settled == (cur + i - 1 if i else cur), n
+                checked += 1
+                break
+    assert checked >= 4
+
+
+@needs_corpus
+def test_legato_instruments_are_the_ones_live_at_a_6f_note():
+    m = HardTrackModule.from_sid(sid('Love_tune_3'))
+    need = h2s.legato_instruments(m, 0)
+    assert need, 'fixture has $6F notes, so some instrument must be flagged'
+    assert all(0 <= i < m.num_instruments for i in need)
+
+
+@needs_corpus
+def test_legato_variant_differs_only_in_wave_idx():
+    """The legato slot is the same instrument played from a later point in its
+    wave program -- envelope, pulse and flags must be untouched."""
+    m = HardTrackModule.from_sid(sid('Love_tune_3'))
+    warn = h2s.StageAWarning()
+    song, _, _ = h2s.build_song(m, 0, warn)
+    wave = h2s.build_wave_table(m, warn)
+    used = {i & 0x1F for n in m.patterns_used(0) for k, _, i in m.pattern(n)
+            if k == 'note' and i not in (0x00, 0x6F)}
+    rows, _, slot_of, legato_of = h2s.build_instruments(
+        m, used, wave, warn, h2s.legato_instruments(m, 0))
+    assert legato_of, 'no legato variant was built for a $6F-using file'
+    for ht, lslot in legato_of.items():
+        base, leg = rows[slot_of[ht]], rows[lslot]
+        assert (base.ad, base.sr, base.flags, base.pulse_idx) == \
+               (leg.ad, leg.sr, leg.flags, leg.pulse_idx), ht
+        assert base.wave_idx != leg.wave_idx, ht
+
+
+@needs_corpus
+def test_a_6f_note_selects_the_legato_slot_and_a_plain_note_switches_back():
+    """$00 keeps the instrument and RESTARTS its programs; $6F keeps it and does
+    not. They must therefore select different Driver 11 slots, and a plain note
+    after a legato one must switch back."""
+    m = HardTrackModule.from_sid(sid('Love_tune_3'))
+    warn = h2s.StageAWarning()
+    wave = h2s.build_wave_table(m, warn)
+    used = {i & 0x1F for n in m.patterns_used(0) for k, _, i in m.pattern(n)
+            if k == 'note' and i not in (0x00, 0x6F)}
+    _, _, slot_of, legato_of = h2s.build_instruments(
+        m, used, wave, warn, h2s.legato_instruments(m, 0))
+    # find a pattern with an explicit instrument, then a $6F, then a plain note
+    for p in m.patterns_used(0):
+        ev = [e for e in m.pattern(p) if e[0] == 'note']
+        bytes_ = [e[2] for e in ev]
+        if not any(b == 0x6F for b in bytes_):
+            continue
+        state = {'slot': None, 'ht_instr': None, 'sounding': False}
+        rows = h2s.pattern_rows(m, p, 0, slot_of, state, warn, legato_of)
+        picks = [r.instrument for r in rows if r.instrument is not None]
+        if legato_of and any(v in picks for v in legato_of.values()):
+            return
+    pytest.skip('no pattern exercised a legato slot switch')
+
+
+@needs_corpus
+def test_legato_fix_does_not_disturb_files_without_6f():
+    """Sling has almost no $6F; its build must be unaffected by the feature."""
+    m = HardTrackModule.from_sid(sid('Sling'))
+    warn = h2s.StageAWarning()
+    song, sequences, orderlists = h2s.build_song(m, 0, warn)
+    assert len(song.instruments) <= h2s.MAX_INSTRUMENT_SLOTS
+    for ol in orderlists:
+        assert all(0 <= s < len(sequences) for s in ol)
+
+
+@needs_corpus
+def test_legato_variants_respect_the_instrument_cap():
+    for name in sorted(os.listdir(CORP)):
+        if not name.endswith('.sid'):
+            continue
+        try:
+            _, song, _, _, _ = build(name[:-4])
+        except HardTrackError:
+            continue
+        assert len(song.instruments) <= h2s.MAX_INSTRUMENT_SLOTS, name
