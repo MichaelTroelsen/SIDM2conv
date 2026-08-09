@@ -1,12 +1,20 @@
 # Calibrating the listening metrics against a human verdict
 
-**Date**: 2026-08-09 | **Case**: Blackbird / Glyptodont, B13
+**Date**: 2026-08-09 (3 cases, added across the day) | **Cases**: Blackbird / Glyptodont
+B13 and E3e, MoN / Cybernoid (SBC-carry vibrato bug)
 **Manifest**: `pyscript/calibration_cases.json` | **Tests**: `pyscript/test_audio_listen_calibration.py`
 
 Improvement #3 from `docs/AUDIO_LISTENING_IMPROVEMENT_PLANS.md`. Every threshold in
 `sidm2/audio_listen.py` and `sidm2/audio_tightness.py` was chosen by reasoning, never
 derived from a listening test. This is the first check of those metrics against evidence
 outside themselves.
+
+**This document walks the FIRST case (B13) in full, since it's what established the
+method and found the silence_frac bug. Cases 2 (E3e) and 3 (Cybernoid vibrato) are
+summarized at the end** — see `pyscript/calibration_cases.json` for their complete
+numbers; duplicating three cases' worth of detail here would drift out of sync with the
+manifest the way this very document did with the code (see the `--windowed` section
+below, corrected 2026-08-09 after `_only_more_silent` shipped).
 
 ## The one case on record
 
@@ -79,9 +87,10 @@ number, and which way -- not a verdict on whether a build sounds right.
    this case shows the whole-mix number needs it just as much.
 2. **The floor must be measured per tune.** 85-91% here is not a constant; it depends on
    note density and material.
-3. **One case is not a calibration set.** The manifest is append-only by design and needs
-   no new test code per case; the next time a human's verdict disagrees with a metric,
-   it belongs in there.
+3. **One case is not a calibration set -- two more were added the same day** (see
+   "Cases 2 and 3" below). The manifest is append-only by design and needs no new test
+   code per case; the next time a human's verdict disagrees with a metric, it belongs
+   in there.
 
 ## Improvements #1 and #2 measured against this case
 
@@ -158,8 +167,8 @@ The fixtures missed it because they contain no silence at all: `silence_frac` wa
 uniformly zero on both sides, its deltas were all zero, and the `if not dev.any()` guard
 skipped it before the scale was computed.
 
-**After the fix the score is finite (32.0) but the verdict is still degenerate** -- silence
-still wins, still flags both builds at window 0. Excluding `silence_frac`:
+**After the fix the score is finite (32.0) but the verdict was still degenerate** --
+silence still won, still flagged both builds at window 0. Excluding `silence_frac`:
 
 | build | worst window | metric | severity |
 |---|---|---|---:|
@@ -170,8 +179,7 @@ It discriminates cleanly -- the bad build's worst anomaly is **mid-song brightne
 the good build's a benign startup transient. So the ranking carries signal; one metric
 swamps it.
 
-Two causes, both **documented rather than fixed** (see the KNOWN LIMITATION block in
-`sidm2/audio_listen.py`):
+Two causes were identified:
 
 1. The two scoring branches are not range-comparable. Flat-baseline yields 32.0 where
    sigma tops out near 2-3, so a flat-baseline metric always wins.
@@ -179,11 +187,56 @@ Two causes, both **documented rather than fixed** (see the KNOWN LIMITATION bloc
    reproduces the original's startup silence. It is sparse, so median-subtraction cannot
    remove it -- the offset lives in a few windows, not all.
 
-Neither fix is free. Dropping `silence_frac` forfeits a real signal (a driver going
-silent mid-song is exactly what it would catch); rescaling the branch requires deciding
-what "equivalent to 3 sigma" means for a dimensionless relative test, which no
-measurement here settles. **Working rule until one is chosen: on an original-vs-driver
-comparison, treat a silence-driven verdict as uninformative and re-rank without it.**
+**FIXED 2026-08-09** (same day, a later pass): cause 2 turned out to be one-directional
+-- the confound only ever pushes `delta = driver - orig` negative (driver *less* silent),
+never positive. `_only_more_silent()` in `sidm2/audio_listen.py` clips the negative
+direction to 0 before ranking, leaving the opposite direction (driver going silent where
+the original was not -- the actual defect this metric exists to catch) live. Re-run
+against this same B13 pair live (not synthetically): silence's score dropped from 32.0 to
+**0.0 for both builds**, and the ranking landed on the exact same centroid/RMS result the
+"excluding silence_frac" workaround above predicted (145.956/2.5 -> 150.049/2.576,
+5.013/2.75 -> 4.352/2.216; small differences are render-to-render sidplayfp variance, not
+a regression). Verified again on cases 2 and 3 below -- 0.0/0.0 in all three, independent
+confirmation the fix generalizes. Cause 1 (the branch-scale mismatch) remains
+**unmeasured, not chased** -- it was never shown to matter for any metric other than
+silence_frac's now-fixed confound.
+
+## Cases 2 and 3
+
+Full numbers live in `pyscript/calibration_cases.json` (`blackbird-glyptodont-e3e-drums-
+not-tight` and `cybernoid-sbc-carry-vibrato`); this is the headline only.
+
+**Case 2 (E3e, same tune, different commit range)**: `ef3263b` (B25 -- shipped a register
+improvement, 97.1%->97.5%, that did **not** resolve the human's persisting "still not
+right with the drums" complaint) vs `12c7da5` (E3e -- the fix the docs credit with
+actually resolving it). **Independently replicated every finding from B13**: ordinal
+correctness, no usable absolute gate, A-weighting the best feature (3.0x this time),
+mel improving the same 2-of-3 metrics, the same centroid/rolloff completeness confound,
+chroma a correct null, and `worst_window()` landing on the *same* window indices (bad =
+centroid @15.0s, good = RMS @0.0s) despite being a wholly different defect on a
+different commit range -- strong evidence the method (not just the B13 result) is sound.
+
+**Case 3 (Cybernoid, SBC-carry-bug vibrato, different player family)**: deliberately
+picked to test a **different defect class** -- a continuous pitch-modulation-width bug
+(commit `699c878`'s fix, reverted for "bad"), not a section-localized timing bug. It
+does **not** replicate case 1/2's story, and that divergence is the point:
+
+- A-weighting's separation drops to **0.011** -- noise, not the 1.5-1.6x win seen twice.
+- **None** of the 8 whole-file spectral/level metrics carry a real signal for this defect.
+- **Chroma is the one that fires** (0.072) -- because unlike the other two cases, this
+  defect actually *is* a pitch phenomenon. Chroma's null-vs-signal behavior across all
+  three cases (quiet on 2 non-pitch defects, loud on the 1 pitch defect) is now a
+  demonstrated, working distinction, not just a hoped-for one.
+- `worst_window()`'s scores are much weaker (barely clear the 1.0 outlier bar) because
+  the defect is present continuously across the whole song rather than in one section --
+  there is no single "worst window" for a defect that's everywhere.
+
+**The combined lesson**: "A-weighting is the strongest discriminator" (as CLAUDE.md used
+to say unconditionally) was true only because every case tested so far happened to be a
+timing/percussive defect. **Which feature is informative is defect-dependent.** Practical
+guidance: check chroma first for a suspected pitch/tuning/vibrato problem; check
+A-weighted level for a suspected timing/envelope/percussive problem; don't expect
+`--windowed` to localize a defect that's present throughout the whole song.
 
 ## Regenerating
 

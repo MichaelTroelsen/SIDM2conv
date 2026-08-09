@@ -436,9 +436,25 @@ review; all fell out of running against real material and checking against an ex
 ### Open questions for the user
 1. Should `ACCURACY_MATRIX.md` or `docs/players/` be the single home for accuracy figures? Two
    copies remain.
-2. The calibration set now shows the useful feature is defect-dependent (A-weighting/chroma for
-   B13/E3e, chroma alone for the vibrato case). Is it worth formalizing that into guidance
-   (e.g. "check chroma first for suspected pitch defects") somewhere users of the tool will see it
-   — `docs/guides/AUDIO_TIGHTNESS_GUIDE.md` or the module docstring — rather than leaving it only
-   in the calibration manifest?
+
+### Later same day: the defect-dependent-feature guidance was written into the docs — DONE
+Requested explicitly ("write the chroma/defect-type guidance into the docs"). Four places
+updated, all corrected/expanded together rather than one at a time, because they'd all drifted
+from the same underlying fact (CLAUDE.md's paragraph was still asserting "A-weighting is THE
+strongest discriminator" and "the one recorded human verdict" — both stale after cases 2 and 3):
+- **`CLAUDE.md`** — rewrote the `audio_listen.py` paragraph: 3 cases not 1, defect-dependent
+  feature usefulness stated explicitly, `--windowed`/silence_frac description corrected to match
+  the actual FIXED state (it still said "degenerate... re-rank without it", predating the A1 fix).
+  +815 bytes (~200 tokens) — accepted as necessary, not trimmed further.
+- **`docs/guides/AUDIO_TIGHTNESS_GUIDE.md`** — "Two calibrated caveats" → covers all 3 cases;
+  added the explicit "check chroma first for a suspected pitch/tuning/vibrato problem" guidance.
+- **`docs/AUDIO_LISTENING_CALIBRATION.md`** — the bigger fix: this doc was ENTIRELY about case 1
+  and its `--windowed` section was flatly wrong post-A1-fix ("still degenerate... documented
+  rather than fixed" — no, fixed same day). Corrected that section, added a "Cases 2 and 3"
+  summary section (headline numbers + cross-references to the JSON, not a full duplicate
+  narrative), fixed the "one case is not a calibration set" framing.
+- **`sidm2/audio_listen.py`** module docstring — a short pointer for anyone reading the code
+  directly, same defect-dependent-feature summary in ~6 lines.
+Verified: full pytest suite re-run after the docstring edit (code file, not just docs) —
+**2,069 passing, 0 regressions** (docstring-only change, expected). Commit pending.
 </current_state>

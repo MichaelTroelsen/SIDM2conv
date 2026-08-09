@@ -294,17 +294,30 @@ A feature summary printed after it answers "what does this sound like": level
 can say pitch content *moved* rather than only that brightness changed.
 `--spectrogram` renders an image for the cases the numbers do not explain.
 
-Two calibrated caveats, both measured against the B13 case:
+Calibrated against 3 human verdicts across 2 player families (Blackbird B13 +
+E3e, MoN/Cybernoid — see `docs/AUDIO_LISTENING_CALIBRATION.md` and
+`pyscript/calibration_cases.json`):
 
-- **A-weighting is the strongest single discriminator found** — it separates the
-  known-bad build from the known-good one 5.4x better than raw dBFS.
+- **Which feature is informative depends on the DEFECT TYPE — there is no
+  single "best" feature.** For the two timing/percussive defects (B13, E3e),
+  A-weighting was the strongest discriminator, separating the known-bad build
+  from the known-good one 1.5-1.6x better than raw dBFS. For a pitch defect
+  (Cybernoid's vibrato-too-wide bug), A-weighting's separation drops to noise
+  level (0.011) and **chroma becomes the signal instead** (0.072) — chroma is
+  a correct NULL on the two non-pitch defects but fires cleanly on the pitch
+  one. **If you suspect a pitch/tuning/vibrato problem specifically, check
+  chroma first**, not the level/spectral features.
 - **`--windowed`'s `silence_frac` confound is fixed**: a driver render never
   reproduces the original's startup silence, which used to swamp the ranking
   (both a known-good and known-bad build flagged identically at window 0). That
   offset is one-directional (driver *less* silent than orig), so it's now
   clipped out at the metric level, leaving the opposite direction — driver
   going silent where the original was not — as the live signal. See
-  `_only_more_silent` in `sidm2/audio_listen.py`.
+  `_only_more_silent` in `sidm2/audio_listen.py`. Verified 0.0/0.0 (fully
+  defanged) across all 3 calibration cases. Windowing itself is much weaker
+  when the underlying defect is continuous across the whole song (like the
+  vibrato case) rather than localized to one section — there's no single
+  "worst window" for a defect that's everywhere.
 
 Both `orig` and `driver` accept `.sid`, `.sf2`, or `.wav` directly — `.wav`
 is used as-is, `.sid` is rendered, `.sf2` is converted to `.sid` first (via

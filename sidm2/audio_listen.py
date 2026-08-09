@@ -9,6 +9,14 @@ explain (a filter sweep, a timbre difference with no clear onset defect).
 Pure numpy + Pillow, no matplotlib/librosa/scipy -- matching audio_tightness's
 zero-heavy-dep style and this project's already-installed set. Reuses
 band_energies() rather than re-deriving an STFT.
+
+Calibrated against 3 human verdicts across 2 player families -- see
+pyscript/calibration_cases.json and docs/AUDIO_LISTENING_CALIBRATION.md before
+quoting any feature as "the" discriminator. WHICH feature is informative is
+DEFECT-DEPENDENT: A-weighted level wins on timing/percussive defects (1.5-1.6x
+separation) but scores as noise (0.011) on a pitch defect, where chroma is
+instead the one that fires (0.072, a correct null on the other two). Check
+chroma first for a suspected pitch/tuning/vibrato problem.
 """
 from dataclasses import dataclass, field
 from pathlib import Path
