@@ -1,503 +1,452 @@
 <original_task>
-"Please continue the SID2SID and WAV2WAV comparison tools. We need to find a way for you to
-listen."
+The conversation opened with "read what next" (read the prior session's `whats-next.md` handoff).
+That prior handoff described a FULLY CLOSED-OUT session — v3.23.0 audio-listening tooling +
+calibration + a docs audit, everything committed and pushed, nothing open. So there was no
+inherited work; every phase below came from an explicit user instruction in this conversation.
 
-Scope as clarified by the user in the first turn (via AskUserQuestion):
+Sequence of user instructions, verbatim scope:
 
-1. **Tool scope**: extend `pyscript/audio_tightness_tool.py` to accept `.sid` or `.wav` inputs
-   interchangeably — NOT two new separate scripts.
-2. **"A way for you to listen"**: BOTH numeric features as text AND spectrograms as a backup for
-   ambiguous cases.
+1. "read what next" → read the handoff, report state. (No work; prior session was closed.)
+2. "what players have we converted and how many sids per palyer?" → report from the repo's own
+   generated build indices.
+3. "i have created a repository called sid-reference and the output has been load into the
+   TDZ-knowledge. can you list the top 10 most used players by number of SID files."
+4. `/subtask` "please rerun the generator" → re-run `sid-reference-project`'s coverage generator.
+5. **"lets work on hardtrack composer."** + the editor PRG path
+   (`bin/hardtrack composer/-HARDTRACK 1.PRG`) + "there should be SID files in
+   `SID/Shogoon` some might be other players." ← THE MAIN ARC. Everything after this is HardTrack.
+6. (user switched model to Opus after I flagged the escalation)
+7. "bump version and continue"
+8. "yes, build stage A"
+9. "yes, test the gate-state hypothesis"
+10. "find where the +1 frame lag comes from"
 
-Everything after that (the five improvement items, CLAP, the calibration, the CLAUDE.md
-compression, the version bump) grew out of this and was individually requested by the user.
+Nothing was self-initiated scope. The two bug-fix commits (`3a994d6`, and the corrections inside
+`318e73c`/`c31279a`) arose from following up anomalies encountered while executing 7–10, not from
+inventing new work.
 </original_task>
 
 <work_completed>
 
-## Final state: 16 commits this session, all pushed. HEAD = `fe9846b`, `origin/master` in sync
-(0 ahead / 0 behind), working tree clean. Tests: ~1,900 → **2,075 collected / 2,065 passing**.
-Version bumped 3.22.0 → **3.23.0** (2026-08-09).
+## End state: 6 commits, all on `master`, NONE PUSHED (0 behind / 6 ahead of `origin/master`).
+Version **3.23.0 → 3.24.0**. Tests **2,069 → 2,110 passing**, 8 skipped, 2 xfailed, 0 failures.
+Working tree clean except `whats-next.md` (this file).
 
-### Commits (oldest → newest), all on `master`, all pushed
 | SHA | Subject |
 |---|---|
-| `acf5faf` | feat: whole-file audio feature report + spectrogram in audio_tightness_tool |
-| `10c74ef` | docs: VSID vs sidplayfp renderer comparison, parameter audit, pipeline assessment |
-| `de21355` | feat: per-voice WAV stem export via sidplayfp |
-| `8475807` | feat: CLAP audio-embedding bridge, isolated from the project's numpy |
-| `558d15f` | docs: CLAP fails its validation gate on SID material; listening-tool assessment |
-| `63563c3` | fix: pin VSID's sample rate to 44100 Hz to match sidplayfp |
-| `9e80b9f` | feat: pitch-class chroma and section-aware windowed features |
-| `5e2f836` | feat: calibrate the listening metrics against the one recorded human verdict |
-| `ebc8983` | feat: opt-in mel-scale band spacing for the audio feature summary |
-| `b754a0c` | feat: A-weighted loudness alongside raw dBFS in the feature summary |
-| `b2eb6c3` | calibration: measure improvements #1 and #2 against the B13 case |
-| `13319da` | fix: sparse metrics scored infinitely in the windowed outlier search |
-| `e10ecc9` | release: v3.23.0 — audio-domain listening tooling, calibrated |
-| `e6cceba` | docs: correct the audio-tightness guide's framing, index the listening tooling |
-| `c09fd9c` | docs: compress CLAUDE.md's Known Limitations, audit-gated |
-| `fe9846b` | docs: re-stamp ACCURACY_MATRIX.md to v3.23.0, and stop the stamp duplicating |
-
-The push `69c806f..fe9846b` carried 32 commits — 16 from this session plus 16 pre-existing local
-commits (the Hubbard/MoN `$D418` arc) that had never been pushed.
+| `9e51306` | feat(hardtrack): RE the HardTrack Composer module format + validated parser |
+| `b27a734` | chore: bump to v3.24.0 (HardTrack Composer RE stage) |
+| `3a994d6` | fix(hardtrack): instrument stride is per-file, and fields 3/4 were swapped |
+| `318e73c` | feat(hardtrack): Stage A -- editable Driver 11 SF2 transpile |
+| `113c975` | docs(hardtrack): the Stage A gate-state hypothesis is FALSIFIED; real cause is a +1 frame lag |
+| `c31279a` | fix(hardtrack): root-cause the +1 frame lag -- it is the shared Driver 11 template |
 
 ---
 
-## 1. The original ask — "a way to listen"
+## Phase 1–4 (pre-HardTrack, no commits)
 
-**FINDING FIRST**: SID2SID and WAV2WAV **already worked**. `audio_tightness_tool.py`'s
-`resolve_input()` already accepted `.sid`/`.sf2`/`.wav` on either side. No code change was needed
-there; this was verified, documented, and NOT re-implemented.
+**Players converted / SID counts** — answered from `docs/SF2.md`'s generated inventory
+(`pyscript/gen_sf2_index.py`) and `docs/SID_TO_SF2_CONVERSIONS.md`. Headline: **587 songs /
+2,195 SF2 files across 10 native players** in `out/`, plus the production pipeline (Laxity 286,
+SF2-exported round-trip 32, NP20). Per-player: SDI 348→348, Hubbard 61→589, DMC 57→944, Galway
+40→40, MoN 26→201, Blackbird 16→20, Deenen 15→15, Sound Monitor 11→27, Kimmel 9→9, ROMUZAK 4→4.
+Caveat surfaced and reported: a long tune split into windowed "parts" counts as 1 song but N
+files (DMC `Cant Stop` = 1 song / 114 files), and some players count subtunes as separate songs.
 
-**NEW: `sidm2/audio_listen.py`** (43,639 bytes at HEAD). numpy + Pillow only — deliberately no
-matplotlib/librosa/scipy, matching `audio_tightness.py`'s style and this project's installed set.
-Contents:
-- `extract_features()` → `AudioFeatures` (duration, rms_db_mean/max, silence_frac,
-  centroid_hz_mean/std, rolloff85_hz_mean, zcr_mean, flatness_mean, **rms_dba_mean/max**,
-  **chroma** 12-vector, band_scale)
-- `format_feature_report()` — side-by-side orig/driver + deltas, as text for Claude
-- `render_comparison_spectrogram()` — 3-panel PNG (original / driver / dB-diff), hand-rolled
-  inferno + diverging colormaps, viewable with the Read tool
-- `chroma_vector()`, `chroma_shift_description()`, `dominant_pitch_classes()` (#5)
-- `extract_features_windowed()`, `worst_window()`, `format_windowed_diff_report()`,
-  `WindowOutlier`, `_robust_spread()`, `_metric_scale()` (#4)
-- `a_weight_db()`, `a_weighting_correction_db()` (#2)
-- `hz_to_mel`/`mel_to_hz`/`band_edges`/`band_centers`/`undersampled_bands` live in
-  `sidm2/audio_tightness.py` (#1); `band_energies(scale=)`, `_logmel(scale=)`
+**Top-10 players by SID-file count** — the TDZ knowledge base has NO single doc with this ranking
+(only per-player cards each carrying a one-line count). `mcp__tdz-c64-knowledge__search_docs`
+HUNG for 1800s and was killed by the MCP idle timeout — do not retry it blind. Instead I ran the
+`sid-reference-project`'s OWN aggregation logic (`scripts/dev/gen-coverage.js`, family grouping
+copied exactly) against `data/composers/*.json` locally:
 
-**CLI flags added** to `pyscript/audio_tightness_tool.py`: `--spectrogram [PATH]`, `--no-listen`,
-`--windowed [SECONDS]`, `--band-scale {linear,mel}`.
+| # | family | files | | # | family | files |
+|--:|---|--:|---|--:|---|--:|
+| 1 | DMC | 10,491 | | 6 | SoundMonitor/MusicMaster | 1,922 |
+| 2 | GoatTracker | 8,420 | | 7 | HardTrack Composer | 1,126 |
+| 3 | Music_Assembler | 6,127 | | 8 | Hermit/SidWizard | 988 |
+| 4 | JCH_NewPlayer | 3,497 | | 9 | Geir_Tjelta/SIDDuzz'It | 979 |
+| 5 | FutureComposer | 3,398 | | 10 | SoedeSoft/Soundmaster | 852 |
 
-## 2. Per-voice WAV stem export (`de21355`)
-- `AudioExportIntegration.export_voice_stems()` + `VOICE_MUTE_MAP` in
-  `sidm2/audio_export_wrapper.py` — writes `<name>_voice1/2/3.wav` beside the mix.
-- Forces sidplayfp (VSID has **no** per-voice mute at all), pins `power_on_delay=0` for
-  reproducibility, warns that muting is not clean isolation (digi-bleed worst case 58.7%).
-- Wired to `--audio-export-voices` (`scripts/sid_to_sf2.py`) and `config.export_audio_voices`
-  (`sidm2/conversion_pipeline.py`).
-- `pyscript/test_audio_export_wrapper.py` — 11 tests, sidplayfp mocked (no binary needed).
+Total 54,608 tagged files / 605 raw tags / 540 families. **Lower bound** — the dump covers HVSC's
+`MUSICIANS/` tree only, so `GAMES/` is invisible (which is why Hubbard/Galway/Laxity/MoN do not
+appear despite being SIDM2's headline players).
 
-## 3. VSID/sidplayfp comparison + sample-rate fix
-- `docs/VSID_VS_SIDPLAYFP_COMPARISON.md`: 6 songs × 2 renderers, run at **20 s and 60 s**.
-- **Finding 2 was self-corrected**: a "-10.0 ms offset, zero scatter" at 20 s read **0.0 ms** at
-  60 s. Both are adjacent bins of the detector's 10 ms hop; the true offset is sub-resolution.
-  The doc retracts the original explanation.
-- `63563c3` pins VSID to `-soundrate 44100`; `VSIDIntegration.export_to_wav()`'s `frequency`
-  param was **accepted and silently ignored** — now actually passed.
+**Generator re-run** (`/subtask`): `node scripts/dev/gen-coverage.js` in
+`C:\Users\mit\claude\sid-reference-project` → `knowledge/COVERAGE.md` was already up to date
+(520 cards cover 54,607 of 54,608 files = 100.0%; 1 uncarded family, 1 file). No diff, nothing
+committed.
 
-## 4. CLAP audio embeddings — BUILT, VALIDATED, REJECTED, UNINSTALLED
-- `sidm2/audio_embed.py` (8,867 b) — subprocess bridge, numpy-only, never imports torch.
-- `pyscript/clap_worker.py` — venv-side; **duplicates real fd 1 and points fd 1 at stderr** before
-  loading anything (the checkpoint loader prints hundreds of lines from native code that would
-  desync the JSON protocol). This was load-bearing, not defensive — verified in practice.
-- `pyscript/install_clap.py`, `pyscript/clap_validate.py`, `pyscript/test_audio_embed.py` (19
-  tests, worker faked — run without torch).
-- **Validation result (the reason it was rejected)**: separation = `min(same-tune) − max(cross-tune)`
-  - 4 tunes / 20 s → **−0.053** FAIL
-  - 4 tunes / 60 s → **+0.006** PASS (meaningless margin)
-  - **9 tunes / 60 s → −0.413 FAIL, decisively**
-  Different compositions score up to **0.947** while a same-tune pair falls to **0.534**.
-- Recorded in `docs/CLAP_EMBEDDING_NEGATIVE_RESULT.md`.
-- **`tools/clap_venv` UNINSTALLED at the user's request** (3.2 GB reclaimed). The bridge code and
-  docs are kept; `pyscript/install_clap.py --uninstall` / re-run reinstalls.
+---
 
-## 5. The five improvements (all from `docs/AUDIO_LISTENING_IMPROVEMENT_PLANS.md`)
-| # | Item | Commit | Tests | Verdict vs the B13 case |
-|---|---|---|---|---|
-| 1 | Mel-scale bands (opt-in) | `ebc8983` | 42 | **Unproven** — 2 of 3 metrics improve, margins too small for n=1 |
-| 2 | A-weighting | `b754a0c` | 22 | **Clear win** — separation 0.294 → 1.585 (5.4×) |
-| 3 | Calibration manifest | `5e2f836`,`b2eb6c3` | 14 | *is* the evidence |
-| 4 | Windowed features | `9e80b9f` | 31 | Works **only with `silence_frac` excluded** |
-| 5 | Chroma | `9e80b9f` | 23 | **Correct null** — percussive defect, no pitch shift, none reported |
+## Phase 5+: HardTrack Composer (the whole rest of the session)
 
-## 6. The calibration (`5e2f836`, `b2eb6c3`) — the most important deliverable
-Rebuilt the **exact B13 artifacts** via a throwaway `git worktree` at commit **`d946701`**
-("Blackbird Stage B12+B13"), the build a human listened to and called *"something with the perc or
-drums"*. Built Glyptodont there and at HEAD.
+### Recon
+- `tools/player-id.exe "SID/Shogoon/*.sid"` on the 150-file folder: **38 HardTrack_Composer**,
+  78 GoatTracker_V2.x, 23 DMC, 3 Music_Assembler, 2 Hermit/FlexSID, 1 each Chubrocker_V3.x /
+  Comer/Digi / JammicroV1, 3 unidentified. **The folder is mixed-player — never assume otherwise.**
+- The editor PRG (`bin/hardtrack composer/-HARDTRACK 1.PRG`, 22,223 bytes, load `$0801`) is
+  **crunched**. The player template and the two default text lines (`PLAYER 1.0 BY
+  LONGHAIR/ELYSIUM!`, `- MUSIC DONE BY YOU! -`) appear as literal runs, but the surrounding code
+  is packed — a static scan gives no table addresses. Using it requires running it and dumping RAM.
+- Prior art found in the separate `sid-reference-project` KB card
+  (`knowledge/players/hardtrack-composer.md`): load `$1000`, ZP `$FB-$FC`, entry `+0/+3`,
+  single-speed, **`data_format` entirely TODO**. That card also wrongly implies init/play offsets
+  vary because a metadata block varies; in fact they are essentially fixed (see below).
 
-| comparison | onset match |
-|---|---:|
-| original vs **itself**, phase-perturbed — the floor | **85.4–91.3 %** |
-| original vs HEAD build (99.8 % register, 162/162 note-ons) | **64.7 %** |
-| original vs B13 build (the one that sounded wrong) | **56.9 %** |
+### RE method
+`tools/SIDdecompiler.exe` gave a trace-based disassembly with "unreferenced data" holes, so I
+wrote a linear disassembler (scratchpad `dis6502.py`) for full coverage of `$1060-$16A3`, then
+read the player code directly and cross-checked every table against the actual bytes.
 
-**Conclusion: ordinal sensitivity, NO usable absolute gate.** A near-perfect build scores 20+
-points below what the original scores against itself, so any threshold flagging B13 condemns the
-good build too. The deficit is systematic (SID render vs native-driver SF2 render), not a defect.
+### Format decoded (all in `sidm2/hardtrack_parser.py`)
+- **Module head**: `load+$000` JMP init, `+$003` JMP play, `+$006` volume, `+$007..+$01F` runtime
+  per-voice state, `+$020..+$05F` 64 bytes of display text (2×32), `+$060` init.
+- **Two player variants**, differing by 5 bytes in init: play at `init+$78` (16 files) or
+  `init+$7d` (17). A third shape once (`Tribute_to_Laxity`, init at `load+$061`).
+- **Orderlist**: `$00-$7F` pattern · `$80-$FC` transpose (`&$7F`, applied to the FOLLOWING
+  pattern) · `$FD n` jump to orderlist index n · `$FE` halt voice · `$FF` restart from 0.
+  Transpose is `(note+t)&$7F` = **signed mod 128** (`$F4` → −12 semitones, not +116).
+- **Pattern**: a byte STREAM, not a row grid. `$FF` end · `$67 n` rest for n rows (this is how
+  note LENGTH is expressed) · `$63 a`/`$64 a` slide/porta · `$60`/`$61`/`$62` tie/gate-off/reset
+  (each still consumes an instrument byte) · anything else = note (`&$7F`) followed by an
+  instrument byte. Instrument byte `$00` = keep current, which is why the editor writes `$80` for
+  instrument 0.
+- **Tempo**: one self-modified global divider (operand of `lda #` at play+$F9-ish, reload operand
+  at play+$E2-ish), reloaded from an 8-entry per-subtune speed table. **A row lands every
+  `speed+1` frames.** Within a beat the counter is a phase selector: 0 = read a row, 1 = decrement
+  note duration, else = run synth programs only. `init` does `AND #$07` → **8 subtunes max**.
+- **Instruments**: 13 parallel tables, each `num_instruments` bytes. Confirmed fields:
+  0 AD→`$D405` · 1 SR→`$D406` · 2 pulse (HIGH nibble→`$D402`, LOW nibble→`$D403`) ·
+  3 pulse-sweep cursor · 4 waveform/arpeggio cursor · 5 flags (bit7 = program drives freq
+  absolutely, bit4 = hard restart, bits0-1 = mode) · 8 nibbles→two synth counters ·
+  9 → per-voice param block · 10,11 synth params. **Fields 6, 7, 12 unidentified** (deliberately
+  unnamed in `Instrument.raw`).
+- **Synth programs**: waveform/arp = two parallel tables one cursor, `$FF`→jump (target in arp
+  col), **`$FE` = STOP stepping** (sets a flag that skips the stepper thereafter, holding the last
+  waveform); arp col `$00-$7F` = relative semitone added to note, `$80+` = ABSOLUTE note.
+  Pulse sweep = `[value][frames]`, `value&$FE` = magnitude, **bit 0 = direction** (0 up, 1 down).
+  Global filter sweep = song-level `[cutoff][delay]` with `$80 <idx>` jump → `$D416`; its cursor
+  is self-modified code and **`init` does NOT reset it**.
+- **Frequency tables**: two 96-byte tables (lo, hi) inside the player code, entry 0 = C-0
+  (`$0116`). Verified PAL to within 19 cents (worst at note 95). 2 distinct tables in the corpus.
 
-Feature separations (`|Δbad| − |Δgood|`, positive = informative):
-`rms_dba +1.585`, `rms_dbfs +0.294`, `flatness_mel +0.022`, `flatness_linear +0.019`,
-`centroid_mel −17.408`, `centroid_linear −18.613`, `rolloff_mel −77.106`, `rolloff_linear −75.441`.
-Negative centroid/rolloff = **confound**, not anti-information: the good build has more content
-(32 instruments vs 31, 26.9 KB vs 20.8 KB), so more song plays and the whole-file average shifts.
+### Relocation safety (load-bearing)
+The player code is fixed-layout but the editor **patches the absolute operands per file** — the
+same table is at `$198b` in `Love_tune_2`, `$1a35` in `Teekkno`, `$17ab` in `Jazzloor`; two files
+don't load at `$1000` (`Timsoft_Intro` `$4000`, `Trance` `$a000`). Every address is recovered by
+byte-signature match against the player's own code: `_SIG_INIT`, `_SIG_PATPTR`, `_SIG_FREQ`,
+`_SIG_INSTR`, `_SIG_ABSFLAG`, `_SIG_WAVEPROG`, `_SIG_PULSEPROG`. `load + constant` is wrong by
+construction.
 
-Artifacts: `pyscript/calibration_cases.json` (9,384 b, append-only, findings self-tested),
-`pyscript/test_audio_listen_calibration.py`, `docs/AUDIO_LISTENING_CALIBRATION.md`.
+### Files created
+- `sidm2/hardtrack_parser.py` — parser + `simulate()` sequencer state machine.
+- `pyscript/hardtrack_validate.py` — parser validator (byte-exact freq register vs siddump).
+- `pyscript/hardtrack_stagea_validate.py` — Stage A validator (+ `--lag N`).
+- `bin/hardtrack_to_sf2.py` — Stage A Driver 11 transpile.
+- `pyscript/test_hardtrack_parser.py` (28 tests), `pyscript/test_hardtrack_to_sf2.py` (13 tests).
+- `docs/players/HARDTRACK.md`.
+- Tracked `SID/Shogoon/` (150 files) + `bin/hardtrack composer/` — repo convention is to track
+  corpora (1,379 SIDs) and editor binaries (49 PRG/D64), and it makes the tests run from a clone.
+- Rows added to `docs/reference/ACCURACY_MATRIX.md`, `docs/players/README.md`, CLAUDE.md's
+  Known Limitations.
 
-## 7. Bugs found and fixed (all by running against real material, none by review)
-1. **`worst_window()` returned `inf`** (`13319da`) — `silence_frac` is 0 in 7/12 windows → median 0
-   → `_metric_scale()` returned 0 → divide-by-zero. It won every ranking and flagged good and bad
-   builds identically. Fixed: sparse metrics fall back to the mean.
-2. **`UnicodeDecodeError` in BOTH render wrappers** (`5e2f836`) — strict cp1252 decoding of
-   subprocess output raised inside subprocess's **reader thread**, uncatchable by the surrounding
-   try/except. Fixed with `errors='replace'`.
-3. **VSID sample rate** (`63563c3`), see §3.
-4. **pyflakes regression I introduced** in `acf5faf` — `-> "Image.Image"` annotations with `Image`
-   imported only inside function bodies. Fixed with a `TYPE_CHECKING` import. I had run only the
-   audio subset instead of the full suite; the project rule exists for exactly this.
+### Measurement — the parser
+Metric: a modelled note-on counts when the player's OWN freq-table value for that note reaches
+`$D400/$D401` within 8 frames. **Reported as two columns, never averaged:**
 
-## 8. Documentation
-New: `docs/AUDIO_LISTENING_CALIBRATION.md`, `docs/AUDIO_LISTENING_CAPABILITY_ASSESSMENT.md`,
-`docs/AUDIO_LISTENING_IMPROVEMENT_PLANS.md`, `docs/CLAP_EMBEDDING_NEGATIVE_RESULT.md`,
-`docs/VSID_VS_SIDPLAYFP_COMPARISON.md`, `DOC-AUDIT.md`.
-Updated: `CHANGELOG.md` (3.23.0), `STORY.md`, `sidm2/__init__.py`, `CLAUDE.md`,
-`docs/guides/AUDIO_TIGHTNESS_GUIDE.md`, `docs/reference/ACCURACY_MATRIX.md`, `audio-tightness.bat`.
+| | notes | match |
+|---|---|---|
+| sequencer-pitch (instrument field 5 bit 7 CLEAR) | 5,846 | **88.39%** |
+| program-driven (bit 7 SET) | 1,074 | **2.61%** |
 
-## 9. CLAUDE.md compression, audit-gated (`c09fd9c`, `fe9846b`)
-Ran the **audit-docs skill** first (`DOC-AUDIT.md`) rather than trimming on impression.
-- **P1**: Known Limitations is a THIRD copy — **15/15 players** appear in both CLAUDE.md and
-  `ACCURACY_MATRIX.md` (which CLAUDE.md itself calls "accuracy source of truth"), and each has a
-  `docs/players/` doc. The copies **had drifted** (matrix v3.22.0 vs shipped 3.23.0).
-- All 3 named caveats verified to **survive in the player docs in stronger form** (MON.md has a
-  dedicated `$D418` heading; DMC.md has "ELIGIBLE IS NOT AN ACCURACY FIGURE" and "EVERY DMC
-  PERCENTAGE IS WINDOW-DEPENDENT" as bolded standalone statements).
-- Compressed rows 12,546 → 5,973 b (**−52 %**); **17/17 caveats verified present after the edit**.
-- CLAUDE.md overall **31,842 → 25,201 b (−21 %, ~1,660 tokens/session)**.
-- Version-bump checklist now names `ACCURACY_MATRIX.md` (fixing the cause, not the symptom).
-- Footer now states bytes/tokens, not lines — the file drifted to 32 KB *while inside* its ~215-line
-  budget because prose migrated into table cells.
-- `fe9846b` re-stamped the matrix to 3.23.0 **after verifying no conversion path changed**, and
-  **removed** the duplicate version from CLAUDE.md's pointer rather than updating it.
+The split is justified by a sharply BIMODAL per-instrument breakdown: 180 (file,instrument) pairs
+at 99.49%, 76 at 0.61%, only 19 in between. 8 of 33 decodable files at exactly 100.0%.
+5 of 38 files REFUSED (4 multi-instance rips, 1 PSID init ≠ module entry).
+Residual characterised: flat 87.1–90.2% across all ten 100-frame buckets (no drift); flag bits
+0-1/4/5/6 each tested, none partitions it. Remaining hypothesis (slide + wave-program pitch
+modulation) written down AS a hypothesis, untested.
+
+### Version bump (`b27a734`)
+`sidm2/__init__.py` 3.23.0→3.24.0, CHANGELOG entry, STORY entry + current-version line,
+ACCURACY_MATRIX re-stamped, CLAUDE.md header. Also corrected the matrix's provenance paragraph,
+which said "That release altered no conversion path" against a `3e42a8c..HEAD` range that would
+have silently absorbed this release into a claim only verified for v3.23.0 — now pinned to
+`3e42a8c..0498d05` with a separate v3.24.0 sentence.
+
+### Two parser bugs found and fixed (`3a994d6`)
+1. **Instrument count is PER-FILE (3–32), not 32.** The 13 tables are `num_instruments` bytes
+   each. The shipped parser hardcoded 32, so on 17 of 33 files every field but the first was read
+   from the wrong address — returning entirely plausible bytes. Now derived two ways and required
+   to agree: `(flag_table−base)/5` and `(wave_table−base)/13`; they agree on 32/33 files;
+   `Tribute_to_Laxity` does not and is flagged via `instrument_count_verified == False`.
+   Found because `Altered_States_Tune_1`'s wave table sat at `base+$104` — not a multiple of 32,
+   but exactly 13×20.
+2. **Instrument fields 3 and 4 were SWAPPED** (3 = pulse sweep, 4 = waveform/arp).
+   *No measured figure moved* — `instrument_drives_freq()` reads the flag table at its
+   signature-derived address, never through the broken stride, so the headline was insulated.
+   Verified by re-running, not assumed.
+
+### Stage A (`318e73c`)
+`bin/hardtrack_to_sf2.py` → editable Driver 11 SF2 via the shared `GalwayDriver11Song` +
+`galway_driver11_emitter`. Transfers exactly: notes+timing (`tempo = speed`, one row to one row)
+and the whole waveform/arpeggio table transliterated 1:1 (both formats are 2-column with a jump
+row AND share the col-1 rule `$00-$7F` relative / `$80+` absolute, so indices are preserved and
+each instrument keeps its own cursor as `wave_idx`). Max wave table in corpus 253 vs the 256 cap.
+Does NOT transfer (all logged): pulse sweep, slide/porta, global filter sweep, loop point.
+Orderlist transpose is MATERIALISED into duplicate sequences because the shared emitter hardcodes
+`$A0` (transpose 0) and changing it would touch a path 8 other players use.
+
+Three bugs found by measuring, each of which produced a playable file:
+1. The **Driver 11 note byte is the semitone index ITSELF**, not `index+1` as the shared IR's own
+   comment says — `index+1` put every note exactly one semitone sharp (`$0F82` vs `$0E93`).
+2. A rest before a pattern's first note was emitted as `+++`, gating a voice with no pitch →
+   Driver 11 plays frequency `$0000`. Voices 1 and 2 were mute in the first build.
+3. The wave table emitted `$FF`/`$FE` as literal `$D404` waveforms and masked col 1 with `$7F`,
+   destroying the absolute-note encoding.
+Also fixed: `Instrument.pulse_hi`/`pulse_lo` were inverted.
+
+Stage A: **90.64%** vs the parser's 88.39% at the same 8-frame window.
+⚠️ Stage A scoring ABOVE the parser is a **measurement artifact, not an improvement** — where the
+original's wave program bends a note off the exact table value the original MISSES and Stage A,
+which doesn't port that modulation, HITS. Comparison is only meaningful in the LOSING direction.
+6 of the 8 parser-100% files are Stage A 100.0%.
+
+### Gate-state hypothesis FALSIFIED (`113c975`)
+The `318e73c` docs named a hypothesis (per-sequence vs per-voice gate state) for the
+Zakplus/Hopscotch losses. Tested and **wrong on both sides**: Zakplus voice 2 (worst loss, 63.5%)
+has ZERO ambiguous patterns; Love_tune_2 has THREE and scores 100.0% on every voice including
+100% inside those patterns. Added `test_pattern_gate_ambiguity_does_not_predict_stage_a_loss` to
+pin both halves so the dead hypothesis is not re-adopted.
+Real cause identified instead: a systematic **+1 frame lag** (68.9% of notes; +0 on 8.9%), with
+the two renders playing the IDENTICAL arpeggio one frame apart.
+Also published **window sensitivity**: NO plateau — parser 81.06→93.17%, Stage A 37.05→95.79% as
+the window widens 4→24 frames. So no window is "correct" and every figure must quote its window.
+
+### +1 frame lag ROOT-CAUSED (`c31279a`)
+`$16CC` in the shipped template `G5/examples/Driver 11 Test - Arpeggio.sf2` is **`$40`**:
+```
+1006: lda #$00 / 1008: bit $16cc / 100b: bmi $1051 (not taken) / 100d: bvs $1047 (TAKEN)
+```
+Driver 11 spends its **first play call initialising its own state** (clearing `$16CD..$1740`)
+instead of playing a row. It is a **template** property — the emitted file is byte-identical to
+the template across `$16CC-$1702` (15 non-zero bytes, same values), the region CLAUDE.md already
+flags as "must stay clear". **It applies to every Driver 11 Stage A build in this repo.**
+Constant, not drift: median +1 in every song third (68.6/71.5/66.8%).
+`--lag 1` added to the Stage A validator (**default 0**, so the reported figure is unchanged):
+
+| file | Stage A | `--lag 1` | parser |
+|---|---|---|---|
+| Zakplus | 87.6% | **99.0%** | 99.0% |
+| Hopscotch | 56.8% | **72.2%** | 72.2% |
+| Love_tune_3 | 93.4% | 93.4% | 99.2% |
+| Walk_to_Soul | 57.6% | 57.6% | 63.5% |
+
+Zakplus and Hopscotch land EXACTLY on the parser — they were never losses.
+Corpus-wide the correction is worth only **+0.62 pp** (90.64→91.26%). My own prior estimate of
+"~91.5%" was superseded by the measured 91.26%.
+
 </work_completed>
 
 <work_remaining>
 
-### A. Open items
+**Nothing requested was left incomplete.** Every instruction 1–10 was carried to a verified,
+committed state. The items below are open threads I identified and documented, none requested.
 
-1. **`worst_window()`'s silence_frac swamping — FIXED 2026-08-09.** Root cause: the confound
-   (driver never reproduces the original's startup silence) is **one-directional** — delta
-   (driver − orig) is negative in nearly every window regardless of build quality. Fix:
-   `_only_more_silent()` in `sidm2/audio_listen.py` clips that direction to 0 before ranking,
-   rather than dropping the metric outright, so a driver that genuinely goes silent mid-song (the
-   *opposite* direction) is still caught. Verified **live**, not just synthetically: rebuilt the
-   real B13 bad SF2 in a throwaway `git worktree` at `d946701` and re-ran against HEAD's good
-   build, both vs the real 60s sidplayfp render of `SID/LFT/Glyptodont.sid`. Silence's score is now
-   **0.0 for both builds** (fully defanged); the ranking separates cleanly — bad = centroid
-   +150.0 Hz @15.0s (score 2.58), good = RMS +4.35 dB @0.0s (score 2.22) — matching the shape the
-   prior "excluding silence_frac" workaround predicted. `pyscript/calibration_cases.json`'s
-   `windowed` block and `sidm2/audio_listen.py`'s comment above `_WINDOW_METRICS` updated with the
-   live numbers. 5 new tests in `pyscript/test_audio_listen_windowed.py`
-   (`TestSilenceFracOnlyFlagsGoingMoreSilent`), full suite 2065→**2069 passing**, zero regressions.
-   **Residual, unmeasured**: the two scoring branches (sigma vs flat-baseline) still are not
-   range-comparable in general — that was never shown to matter for any metric other than
-   silence_frac's confound, which is now handled at the source, so it was not chased further.
+1. **PUSH THE 6 COMMITS.** `origin/master` is 6 behind. The user has not asked me to push and I
+   have not. This is the only "pending" mechanical action.
 
-2. **A second calibration case was added — DONE 2026-08-09.**
-   `blackbird-glyptodont-e3e-drums-not-tight`: same tune as B13 but a deliberately DIFFERENT,
-   near-isolated commit range (`ef3263b` B25 → `12c7da5` E3e), chosen because the human verdict
-   ("sounds really good, [but] something not right with the drums... might be filters") was
-   recorded *after* B25 shipped a register-accuracy improvement (97.1%→97.5%) that did **not**
-   resolve the complaint — a real instance of the registers-vs-audio gap this tooling exists to
-   catch, not a hypothetical one. Measured independently end-to-end (own repeatability-floor
-   script, own worst_window rerun) rather than reusing B13's numbers. **Result: every finding
-   replicates** — orders correctly (56.8<65.2), no usable absolute gate (floor 84.3–99.8%),
-   `rms_dba_aweighted` is again the best feature (3.0× vs 1.5×), mel improves the same 2-of-3
-   metrics, centroid/rolloff show the same negative-separation completeness confound, chroma is
-   again a correct null, and `worst_window()`'s post-fix ranking lands on the *same* window indices*
-   (bad=centroid @15.0s window 3, good=RMS @0.0s window 0) as B13 despite being a wholly different
-   defect — independent evidence the silence_frac fix (item A1) generalizes rather than being
-   fitted to one tune. First attempt (Cybernoid/MoN, the SBC-carry-bug case) was **abandoned**
-   this turn on a false lead (see the correction below — **there was no real gap**, it was my own
-   CLI mistake) and not retried; a genuine third case from the SBC-carry-bug defect is still
-   possible later if wanted. 14/14 manifest consistency checks passed on first write — every
-   hand-computed finding number was correct.
+2. **`whats-next.md` was already modified before this session began** (uncommitted, from the
+   prior session's close-out). I left it alone all session and flagged it twice; this file now
+   overwrites it. Decide whether to commit it.
 
-   **CORRECTION (2026-08-09, later turn)**: the "MoN-family sidplayfp silent-after-1s" finding
-   below was **WRONG — not a project bug**. I had reused `mon_sf2_validate.py`'s
-   `--driver-play 0x1006`, which is that script's OWN one-off ad-hoc Stage-A probe address
-   (`GalwayDriver11Song`/`galway_driver11_emitter`), not the address the real native driver
-   `bin/build_mon_native_song.py` actually produces. That driver reuses the ROMUZAK template
-   (`bin/build_romuzak_driver_full.py`: `DRV_INIT=0x1000, DRV_PLAY=0x1003, DRV_STOP=0x1006`) — the
-   same convention as Blackbird. I was calling the **stop** routine every frame instead of
-   **play**, which explains the ~1s-then-silence shape exactly (SID muted by the stop routine, not
-   a crash). Re-rendered with `--driver-play 0x1003`: full, continuous, normal-sounding audio for
-   the whole 10s test (RMS steady ~0.08-0.15 throughout, vs decaying to 0.0 at 1s). **MoN-family
-   SF2s render fine via sidplayfp; there is no pipeline gap.** The "NEW GAP FOUND" row in the
-   deliverable-status table below and the corresponding open question are both stale as of this
-   correction.
+3. **Explain the two GENUINE Stage A losses** — the sharpest open question, now cleanly isolated:
+   - `Love_tune_3` 93.4% vs parser 99.2% (−5.8 pp)
+   - `Walk_to_Soul` 57.6% vs parser 63.5% (−5.9 pp)
+   Both are **unaffected by `--lag`**, so the Driver 11 startup phase is NOT the cause. Everything
+   else (gate state, hard-restart flag, wrapper play address, caps) has been tested and refuted.
+   Start with a per-voice + per-instrument breakdown as in
+   `scratchpad/gatetest.py`'s `report()`.
 
-   **THIRD CASE ADDED (2026-08-09, later turn), now that the address bug above is fixed**:
-   `cybernoid-sbc-carry-vibrato`. Deliberately a different player family (MoN/Hawkeye engine, not
-   Blackbird) and a different DEFECT CLASS — a continuous pitch-modulation (vibrato width) bug
-   from the original A2 candidate, not a section-localized timing/envelope bug. Tightest isolation
-   of all three cases: 'bad' = current HEAD with only `sidm2/cpu6502_emulator.py`'s SBC-carry fix
-   (`699c878`) reverted via `git apply -R` in a throwaway worktree; 'good' = HEAD unmodified; both
-   otherwise identical, current tooling. **This case does NOT replicate B13/E3e's story, and that
-   is exactly its value**: orders correctly again (75.5<79.8) and again has no usable absolute gate
-   (floor 80.4-100.0), but A-weighting's separation here is 0.011 — noise, not the 1.5-1.6× decisive
-   win seen twice before. **None of the 8 whole-file spectral/level metrics carry a real signal**
-   for a vibrato-width defect (rms_dbfs/centroid/rolloff are all confounded-negative). The metric
-   that DOES separate cleanly is **chroma** (0.072, comparable in scale to the other cases' best
-   whole-file numbers) — because unlike B13/E3e this defect actually IS a pitch phenomenon, so
-   chroma correctly stops being a null and fires instead. `worst_window()`'s scores are also
-   markedly weaker (barely clear the 1.0 bar) because the defect is continuous across the whole
-   song rather than localized to one section, giving windowing little to grab onto. Silence is
-   still fully defanged (0.0/0.0) — a third independent confirmation the A1 fix generalizes. 14/14
-   manifest consistency checks passed on first write. **Net effect on the tooling's own
-   self-understanding**: "A-weighting is the strongest discriminator" and "chroma is a correct
-   null" were both artifacts of only having tested timing/percussive defects — three cases now
-   show the useful feature is defect-dependent, and chroma's null-vs-signal behavior is a real,
-   working distinction rather than a metric that never fires.
+4. **Resolve the parser's own 11.6% residual.** Flat over time (no drift), not explained by
+   instrument flag bits 0-1/4/5/6. Untested hypothesis: the `$63`/`$64` slide/portamento commands
+   plus wave-program pitch modulation moving the register off the exact table value. Instrument
+   the slide commands.
 
-3. **`docs/players/` still duplicates the accuracy figures.** Only CLAUDE.md's copy was compressed.
-   `ACCURACY_MATRIX.md` + 21 player docs still both carry them. The duplication root cause is
-   reduced, not eliminated.
+5. **Identify instrument fields 6, 7, 12** and confirm the global filter sweep's un-reset cursor
+   on hardware.
 
-4. **Python Tools section of CLAUDE.md deliberately NOT trimmed** (~7.2 KB). I reversed my own
-   recommendation after reading it: it is anti-footgun operational guidance ("do not write a new
-   one", "check the exit code, don't just parse stderr", "a too-short window looks identical to a
-   broken trace", "vsid exits 1 on normal termination"), not duplicated narrative. **Do not trim
-   it without reading it first.**
+6. **Model the synth programs in `simulate()`.** `wave_program()` / `pulse_program()` decode them
+   but `simulate()` does not run them — doing so is what would let a score cover the
+   program-driven column at all (currently 2.61% by construction).
 
-### B. Never verified (would need the project's own agent)
-5. **Every accuracy percentage in CLAUDE.md / ACCURACY_MATRIX.md is UNVERIFIED by this session.**
-   The audit routed them to `.claude/agents/sidm2-fidelity-falsify.md` per the workflow's step 3b.
-   They are neither confirmed nor disconfirmed. If they matter, run that agent.
+7. **Stage B** (native driver) — not started. Would need the pulse sweep + slide engines.
 
-6. **Sensitivity to a synthesis defect was never directly measured.** The CLAP rejection and the
-   calibration both tested cross-tune discrimination and same-tune-different-phase. Nobody measured
-   whether the tooling detects a subtle envelope/synthesis error within one tune. The inference is
-   *a fortiori* (if it can't separate Commando from Angular it can't catch a subtle defect), which
-   is reasoning, not measurement. The docs say so.
+8. **Run the editor under RetroDebugger.** Still the strongest untapped lever for fields 6/7/12
+   and slide semantics: load `-HARDTRACK 1.PRG`, build a one-note tune, diff memory. The PRG is
+   crunched so it MUST be run, not scanned.
 
-### C. Suggested next steps, in order
-1. ~~Decide the `silence_frac` question (A1)~~ — **DONE 2026-08-09**, see item A1 above.
-2. ~~Add a second calibration case (A2)~~ — **DONE 2026-08-09**, see item A2 above.
-3. Consider whether `docs/players/` or `ACCURACY_MATRIX.md` should be the single home (A3).
+9. **`pyscript/sf2_to_text_exporter.py` misreads these files** — reports "invalid sequence address
+   $0000" and prints all three orderlists as sequence 00. The emitted file is correct (verified by
+   reading orderlist bytes through `sf2_parser`). Possibly a real bug in that exporter worth
+   filing separately; NOT a HardTrack problem.
+
+10. **Consider whether the Driver 11 `$16CC` startup frame should be documented repo-wide** — it
+    affects every Stage A builder here, not just HardTrack, and no other player's doc mentions it.
+
 </work_remaining>
 
 <attempted_approaches>
 
-### Failed / rejected, with reasons — DO NOT REPEAT
-1. **CLAP audio embeddings.** Fully built, then rejected on measurement. Failure mode: longer
-   renders made discrimination **worse** (cross-tune median 0.616 → 0.767) — a general-audio model
-   collapsing toward a genre centroid. All C64 SID sounds like "C64 SID" to it. **The user's
-   intuition that "simple songs should be easy" is inverted**: simple + homogeneous means *less*
-   between-class variance, so discrimination is harder, not easier. Re-testing needs a
-   domain-specific or fine-tuned checkpoint, and `clap_validate.py` already generates the training
-   signal (same-tune = positive, cross-tune = negative).
-2. **A 4-tune/60 s CLAP PASS at +0.006 was a small-sample artifact** — widening to 9 tunes inverted
-   it to −0.413. **Any future re-test must vary the CORPUS, not just the render length.**
-3. **`numpy<2.0` in the main environment** — never attempted; laion-clap pins it against this
-   project's 2.5.1 and would force a project-wide downgrade.
-4. **Python 3.14 for the CLAP venv** — FAILED. numpy 1.x has no wheels above **cp312**; pip built
-   from source and it died on import in numpy's own `getlimits` ("cannot convert longdouble
-   infinity to integer"). The installer now auto-detects ≤3.12 and refuses newer with that reason.
-5. **`venv.EnvBuilder`** — wrong tool: it clones the *running* interpreter (3.14). The installer
-   shells out to `<base_python> -m venv` instead.
-6. **Three laion-clap packaging bugs**: `torch`, `torchvision`, `torchaudio` are all imported at
-   module scope and **none are declared** as dependencies. Each surfaced one at a time. `timm` and
-   `open_clip` are also imported but sit behind guarded try-blocks (not needed).
-7. **Exact-substring matching to test caveat survival** — FAILED, produced false "missing" verdicts
-   on caveats I had already read in the player docs. The docs paraphrase. Semantic survival cannot
-   be checked mechanically; this is why the compression **kept all caveats inline** instead.
-8. **Naive path-existence check on CLAUDE.md** — FAILED, reported 18 dead references; all 15 real
-   files resolved repo-wide. The check assumed root-relative paths; docs cite bare basenames.
-9. **`rg` via Python `subprocess`** — `FileNotFoundError` in this environment. Use the Grep tool or
-   in-process Python search.
-10. **Piping an installer through `| tail`** — masked the real exit code (`tail`'s 0), making a
-    failed install look successful. Cost one wasted round trip.
+### Falsified hypotheses — DO NOT RE-ADOPT
+1. **"Cross-pattern gate state causes the Stage A losses"** (one pattern = one sequence, so
+   "is this voice sounding at pattern start" is per-sequence while the player decides per voice).
+   FALSIFIED: Zakplus v2 (worst loss) has ZERO ambiguous patterns; Love_tune_2 has THREE and
+   scores 100.0% everywhere. Pinned by
+   `test_pattern_gate_ambiguity_does_not_predict_stage_a_loss`.
+2. **"The instrument hard-restart flag causes the +1 lag."** FALSIFIED: rebuilding with flags
+   `$80`, `$00`, `$40` gives identical offset histograms AND identical scores.
+3. **"The PSID wrapper calls the wrong play address."** FALSIFIED: `$1006` is correct. Forcing
+   `play=$1003` (the other JMP at the module head) gives TOTAL SILENCE.
+4. **"Instrument fields 3/4 can be told apart by plausibility."** A check asking "do the bytes
+   these cursors point at look like SID control values?" scored BOTH readings at ~91.6% — it
+   discriminated NOTHING. Reading the CONSUMERS settled it. Generalisable lesson: a plausibility
+   test that both hypotheses pass is not evidence.
+
+### Measurement traps hit (each produced a plausible-but-wrong number)
+5. **Matching siddump's note-NAME column scored a CORRECT model at 0.0%**, three files running.
+   Every HardTrack instrument opens with a one-frame attack transient, so siddump reports `E-6` as
+   the onset row for essentially every note whatever its pitch. The model's frames were already
+   exactly right, offset by a constant 3 frames of attack. Switching to a byte-exact comparison
+   against the raw frequency register turned 0% into 100% on the first file **without changing a
+   line of the decoder**. Same class as the documented Matt Gray slide traps.
+6. **The 8-frame match window was one frame too short** for arpeggiated instruments, which is what
+   manufactured the entire Zakplus/Hopscotch "loss". The window has NO plateau, so widening it to
+   improve a number would be laundering — measured the sensitivity and published it instead.
+7. **Stage A scoring above the parser is an artifact**, not an improvement (Stage A is simpler, so
+   it hits notes the modulated original misses). Documented everywhere the number appears.
+
+### Dead ends / tooling failures
+8. `mcp__tdz-c64-knowledge__search_docs` **hung for 1800 s** and was killed by the MCP idle
+   timeout. `list_docs` returns 156 KB (over the token cap) and must be read from the persisted
+   file. `get_document_by_card_id` + `get_document` work fine. The KB has **no ranked player list**
+   — only per-player cards with a one-line count each.
+9. `tools/SIDdecompiler.exe` leaves "unreferenced data" holes on untaken branches; fine for a
+   first look, insufficient for complete coverage. Wrote a linear disassembler instead.
+10. A heredoc containing a Python triple-quoted string collided with the outer `<<'PYEOF'` and
+    produced a SyntaxError — used the `Edit` tool for that patch instead.
+11. Naming a scratchpad file `dis.py` **shadowed the stdlib `dis` module** and broke
+    `import dataclasses` → renamed to `dis6502.py`.
 
 ### Considered but not pursued
-- **Pretrained alternatives to CLAP**: `panns-inference` (drags in librosa/matplotlib — the exact
-  deps `audio_listen.py` avoids), `torchvggish` (PyPI last released 2022, undeclared deps),
-  `openl3` (needs TensorFlow *in addition to* torch).
-- **A human-in-the-loop calibration workflow** — offered as the cheapest option; user chose CLAP
-  first, then the calibration was built anyway as improvement #3.
+- Extending `galway_driver11_emitter` to emit `$A0+transpose` in orderlists (would remove the
+  duplicate transposed sequences) — rejected: it is a shared path used by 8 other players.
+- Clearing `$16CC` in the emitted file to remove the startup frame — rejected: the driver would
+  never initialise its state. The frame is harmless (uniform 20 ms shift).
+- Chasing the Stage A losses before landing the parser fix — deliberately inverted; the stride bug
+  would have silently corrupted Stage A's instrument records.
+
 </attempted_approaches>
 
 <critical_context>
 
-### The single most important finding
-**The tooling does NOT replace human listening, and this is now measured rather than asserted.**
-Ordinal sensitivity, no absolute gate. Quote any onset number **against a baseline build or the
-repeatability floor, never alone**, and **measure the floor per tune** (85–91 % is Glyptodont's, not
-a constant). `docs/guides/AUDIO_TIGHTNESS_GUIDE.md` previously implied the tool caught the B13
-defect class; that is corrected at the top of the section making the claim.
+### The two-column rule (do not violate)
+HardTrack fidelity is reported as **two columns that must never be averaged**: sequencer-pitch
+notes (88.39%) and program-driven notes (2.61%, instrument field 5 bit 7). The second is the
+unimplemented synth engine, not a decode error — those instruments set `$D400/$D401` from their
+own wave program, so the sequencer note CANNOT appear there. A pooled figure would also drift with
+a tune's drum/melody mix for reasons unrelated to the decode.
 
-### The recurring pattern — the most transferable lesson
-**Four of the five planned improvements would have shipped a *confidently wrong* number that their
-own unit test passed:**
-| # | Plan's approach | Would have shipped |
-|---|---|---|
-| 1 | linear band spacing | 100 Hz vs 200 Hz (a full octave) both peak in band 0; CLI prints **−0.0 Hz** for a doubling |
-| 2 | band-centre A-weight lookup | **+12.8 dB** error at 55 Hz — and the plan's own 60 Hz test still passed |
-| 4 | std-based z-score | one outlier among n identical values caps z at n/√(n−1) = **2.5** vs a 3.0 threshold → "no section stands out" |
-| 5 | 40 ms chroma window | 55 Hz bass classified **G instead of A**, +0.385 margin |
-Plus the `inf` bug (#4) and CLAP's 4-tune false PASS. **Every one is a confident null or a
-confident wrong answer, not a noisy one** — the shape that gets believed. None were caught by
-review; all fell out of running against real material and checking against an external reference
-(published IEC table, a known pitch, the z-score's arithmetic ceiling, a wider corpus).
-**Corollary: a check returning "nothing here" deserves the same scrutiny as a surprising finding.**
+### Always quote the window
+The match window has **no plateau** (parser 81.06→93.17%, Stage A 37.05→95.79% for windows 4→24).
+No window is "correct". All reported figures use **8 frames**. `--lag 1` on the Stage A validator
+removes the separately-established Driver 11 startup phase and is legitimate BECAUSE the mechanism
+was identified independently — it is not window-widening.
 
-### Environment / setup gotchas
-- **Python 3.14.6** is the project interpreter; **3.12 also installed** (`py -3.12`) and is what the
-  CLAP venv needs.
-- **Windows console is cp1252** — printing `→`/`✅` from Python raises `UnicodeEncodeError`. Use
-  `PYTHONIOENCODING=utf-8`.
-- **`rg` is not directly invocable** via subprocess; the Grep tool works.
-- **`git stash` is unsafe here** — a fork ran `git stash push` on a path with no changes (so no
-  stash was created), then `git stash pop` took a **pre-existing unrelated stash** (SDI Stage B),
-  applying 4 foreign files. Recovered; verified intact. **Always check `git stash list` first.**
-- **`stash@{0}` = "SDI Stage B: leading rest for late-entering voices"** — PRE-EXISTING, predates
-  this session, deliberately untouched. Do not pop it blindly.
-- **Blackbird native driver**: `--driver-init 0x1000 --driver-play 0x1003` (from
-  `bin/build_blackbird_driver_full.py`'s `DRV_INIT`/`DRV_PLAY`). Required — the SF2 has no Block 2
-  header and the Driver-11 default guess is wrong.
-- **Building a player writes `drivers_src/<player>/*.inc`** — per-song generated artifacts that are
-  tracked. My Glyptodont build dirtied `drivers_src/blackbird/*.inc`; I reverted them. **Check
-  `git status` after any build.**
-- **sidplayfp's `--delay` defaults to RANDOM**; this project pins `power_on_delay=0` for
-  reproducibility. VSID has **no** equivalent knob.
-- **CLAP wants 48 kHz**; the filelist API loads/resamples itself, so 44.1 kHz renders are fine.
+### The Driver 11 startup frame (repo-wide, not HardTrack-specific)
+The shipped template `G5/examples/Driver 11 Test - Arpeggio.sf2` carries `$16CC = $40`. Bit 6 →
+`BVS $1047` at `$100D` → the driver's FIRST play call goes to a state-init path (clears
+`$16CD..$1740`) instead of playing a row. **Every Driver 11 Stage A build in this repo starts one
+frame late.** Constant phase, not drift; inaudible; only breaks measurement.
 
-### Measurement discipline this codebase enforces (and why)
-- `sidm2/fidelity_common.py` — **do not write a new scorer**. `score_pct` returns `None` (never
-  100.0/0.0) when `tot == 0`; `exercised()` catches the case where siddump force-displays every
-  register on its first row, so a never-filtered tune scores a confident 100 %. Five separate
-  copies of the same scheme existed, each independently broken; one scored **two identical captures
-  at 50 %**.
-- The **repeatability floor** pattern (`measure_repeatability_floor`) is the template used for both
-  the CLAP gate and the calibration: *a metric is evidence only when it beats what the same input
-  scores against itself.*
-- `.claude/agents/sidm2-fidelity-falsify.md` exists and **owns accuracy claims**. Don't adjudicate
-  them with weaker tools.
+### Driver 11 conventions learned the hard way
+- **Note byte = the C-0 semitone index ITSELF**, not `index+1`, despite the comment in
+  `sidm2/galway_to_driver11.py`. `index+1` = every note one semitone sharp.
+- Wave table col 1: `$00-$7F` relative semitone, **`$80+` absolute note** — same rule as
+  HardTrack's arp column, so it transliterates verbatim. Masking with `$7F` destroys it.
+- `$7E` (`+++`) gates a voice; on a voice with no pitch yet it plays frequency `$0000` = silence.
+- A wrapped SF2's PSID play address is `load+$1006`, NOT `$1003`. `$1003` is silent.
+- `emit_driver11_sf2(..., sequences=, orderlists=)` writes them verbatim; orderlists are plain
+  sequence indices and the emitter prefixes a hardcoded `$A0` (transpose 0).
 
-### Decisions and trade-offs
-- **CLAP bridge kept, venv uninstalled** — inert when unused, 19 torch-free tests, so a future
-  re-test is just `install_clap.py` + `clap_validate.py`.
-- **Known Limitations compressed, Python Tools not** — the first is duplicated narrative, the second
-  is anti-footgun guidance whose value depends on being read inline.
-- **CLAUDE.md's version pointer to the matrix was DELETED, not updated** — updating it would have
-  recreated the duplication that caused the drift.
-- **Chroma's floor is C1 (32.7 Hz), not the planned C2** — SID bass runs to 55 Hz and a C2 floor
-  would discard the register the 200 ms window exists to resolve.
-- **`rms_dba_*` deliberately excluded from `_WINDOW_METRICS`** — dBA and dBFS are near-duplicates
-  there and would give level two chances to win the max-normalized ranking.
+### Environment / tooling
+- Corpus `SID/Shogoon/` and `bin/hardtrack composer/` are now TRACKED, so tests run from a clone.
+- `tools/player-id.exe "GLOB"` — pass the glob as ONE quoted argument to get the summary table.
+- Grep on code files is blocked by a tokensave hook when the pattern looks like a symbol; override
+  with `TOKENSAVE_DISABLE_GREP_HOOK=1` or use tokensave MCP tools.
+- Scratchpad helpers (NOT in the repo, will vanish):
+  `<scratchpad>/dis6502.py` (linear 6502 disassembler),
+  `<scratchpad>/htmap.py`, `htsim.py`, `htval.py`, `htinstr.py` (superseded by the repo modules),
+  `<scratchpad>/gatetest.py` (**the instrumented walk that records pattern entries + onsets with
+  pattern/transpose/entered-sounding — genuinely useful, worth re-creating or promoting**).
+- `pytest` full run ≈ 159 s.
+
+### Refusals are deliberate
+`HardTrackModule` raises `HardTrackError` for 5 of 38 corpus files (4 multi-instance rips:
+Eternal, Fruitmania, Miecze_Valdgira_2, Zone_of_Darkness; 1 PSID-init mismatch: Commercial_Fake).
+Before the guard existed the simulator ran away and emitted a note on EVERY frame of EVERY voice —
+2,997 phantom onsets scored against the wrong song.
+
+### Sources
+- `sid-reference-project` KB card `knowledge/players/hardtrack-composer.md` (authorship, CSDb
+  74928, 1,126 files / 45 composers). Its `data_format` was all TODO before this session.
+- `docs/players/PLAYBOOK.md` §1 (RE → Stage A → Stage B ladder), §3 (SF2II caps), §4 (fidelity
+  ladder). `docs/players/PATTERNS.md` for named failure classes.
+- CLAUDE.md's `fidelity_common.py` paragraph — `score_pct` returns None on n=0, `exercised()`
+  guards constant series. Both used.
+
 </critical_context>
 
 <current_state>
 
-### Nothing is in-flight. Commit pending at the time of this edit (about to be made).
-- Previous snapshot: HEAD `fe9846b`, 2,065 passing. **Since then (2026-08-09, this turn)**:
-  1. Fixed `worst_window()`'s silence_frac swamping (item A1, commit `11a64ec`).
-  2. Added a second calibration case (item A2, commit `0f3dae7`) — `blackbird-glyptodont-e3e-
-     drums-not-tight`, which independently replicated every finding from the B13 case.
-  3. Retracted the MoN silent-render "gap" (commit `b14fc87`) — it was my own wrong CLI address
-     (`--driver-play 0x1006` instead of `0x1003`), not a project bug.
-  4. Added a third calibration case (commit pending) — `cybernoid-sbc-carry-vibrato`, a different
-     player family AND a different defect class from the first two, which does NOT replicate
-     A-weighting's dominance or chroma's null behavior, and that divergence is itself the finding.
-  Tests now **2,069 passing** (net +4 from A1 only; A2/A3-case/correction added no code, only
-  JSON/docs), 8 skipped, 2 xfailed, 0 failures.
-- Working tree kept clean throughout: FOUR throwaway `git worktree` builds this turn (Blackbird at
-  `ef3263b`/`12c7da5` for the second case; Cybernoid/MoN at HEAD-with-699c878-reverted, built twice
-  — once abandoned on the wrong address, once successfully for the third case) dirtied tracked
-  generated files (`drivers_src/blackbird/*.inc`, `drivers_src/mon/*.inc`,
-  `drivers_src/romuzak/layout.inc`) on three separate occasions — all reverted via
-  `git checkout --`, confirmed via `git status` before each commit. All throwaway worktrees
-  removed after use; none left behind.
-- **Version 3.23.0** consistent across all four canonical places: `sidm2/__init__.py`,
-  `CHANGELOG.md`, `CLAUDE.md` header, `docs/reference/ACCURACY_MATRIX.md`. Not bumped for any of
-  this turn's work (all within the already-shipped listening tooling, not new features).
-- **`tools/clap_venv` does NOT exist** (uninstalled). `clap_validate.py` degrades to a clear
-  actionable error; its 19 tests still pass.
-- **`stash@{0}`** (SDI Stage B) is intact and untouched — pre-existing, not mine.
-- **There is no MoN-audio-rendering gap** (see the correction under item A2 above). MoN-family
-  SF2s render fine via sidplayfp with the correct `--driver-play 0x1003` — proven twice now, once
-  as a standalone sanity check and again by building the full third calibration case on it.
-
-### Deliverable status
-| Item | Status |
+### Deliverables
+| item | status |
 |---|---|
-| "A way to listen" (features + spectrograms + chroma + windows) | **COMPLETE, shipped** |
-| SID2SID / WAV2WAV | **COMPLETE** — already worked, verified + documented |
-| Per-voice stem export | **COMPLETE**, wired to CLI + pipeline config |
-| Improvements #1–#5 | **COMPLETE**, all committed and tested |
-| Calibration against a human verdict | **COMPLETE, 3 cases** — #2 replicates #1, #3 deliberately diverges (different defect class) and that divergence is informative |
-| CLAP | **REJECTED on measurement**, code kept, venv removed |
-| v3.23.0 release (CHANGELOG/STORY/version) | **COMPLETE** |
-| CLAUDE.md compression | **COMPLETE** (−21 %), audit in `DOC-AUDIT.md` |
-| `worst_window()` silence_frac limitation | **FIXED 2026-08-09**, verified live against 3 independent cases across 2 player families |
-| MoN/Cybernoid audio-domain rendering | **CONFIRMED WORKING** — the earlier "gap" was a false lead, retracted |
-| Accuracy percentages verified | **NOT DONE — out of scope, routed to the falsify agent** |
+| `sidm2/hardtrack_parser.py` | **complete**, 28 tests |
+| `pyscript/hardtrack_validate.py` | **complete** |
+| `bin/hardtrack_to_sf2.py` (Stage A) | **complete**, 13 tests |
+| `pyscript/hardtrack_stagea_validate.py` | **complete**, has `--lag` |
+| `docs/players/HARDTRACK.md` | **complete + current** (includes the falsification and the root cause) |
+| ACCURACY_MATRIX / players README / CLAUDE.md rows | **complete + current** |
+| CHANGELOG / STORY v3.24.0 | **complete** |
+| Stage B (native driver) | **not started** |
+| `DriverSelector` wiring | **not done, deliberately** — Stage A is a `bin/` tool |
+
+### Repo state
+- HEAD = `c31279a`. **6 commits ahead of `origin/master`, NOT PUSHED.**
+- Working tree clean except `whats-next.md` (this file).
+- Version **3.24.0**, build date 2026-08-09.
+- Tests **2,110 passing / 8 skipped / 2 xfailed / 0 failures** (full run after the last commit).
+- `out/hardtrack/` contains build artifacts (`Love_tune_2.sf2`, `L2.sid`, `L2_play1003.sid`,
+  `_cmp.sid`, `_t.sid`, `Zakplus.sf2`, `Hopscotch.sf2`, …) — **untracked scratch, safe to delete**.
+  `output/Love_tune_2_export/` likewise (from the misbehaving text exporter).
+
+### Headline numbers (all at an 8-frame window)
+- Parser: **88.39%** sequencer-pitch (5167/5846) · **2.61%** program-driven (28/1074) ·
+  8 of 33 files at exactly 100.0% · 5 of 38 refused.
+- Stage A: **90.64%** (`--lag 0`) / **91.26%** (`--lag 1`, removing the Driver 11 startup phase) ·
+  6 of the 8 parser-100% files also 100.0%.
 
 ### Open questions for the user
-_(none currently open — see below)_
+1. **Push the 6 commits?** Not done; never requested.
+2. **Commit this `whats-next.md`?** It was already dirty when the session started.
+3. Which thread next — the two genuine Stage A losses (`Love_tune_3`, `Walk_to_Soul`), the
+   parser's 11.6% residual, modelling the synth programs, RetroDebugger on the editor, or Stage B?
 
-### Later same day: A3 (accuracy-figure duplication) resolved — DONE, audit-gated
-User decision: `ACCURACY_MATRIX.md` is the home. Ran the `audit-docs` skill first rather than
-trimming on impression (same precedent as the earlier CLAUDE.md compression), scoped to
-`ACCURACY_MATRIX.md` vs `docs/players/*.md` (21 files) + `docs/players/README.md`'s own index
-table. Full report: `DOC-AUDIT.md`.
+### Standing caveats a fresh context must not lose
+- Never average the two fidelity columns.
+- Never quote a percentage without its window.
+- Stage A > parser is an ARTIFACT.
+- The `+1` frame is a Driver 11 template property affecting EVERY Stage A builder here.
+- `SID/Shogoon/` is mixed-player: only 38 of 150 files are HardTrack.
 
-**The audit found real drift, not just duplication** — 2 P0, 4 P1, 1 P2 confirmed findings,
-all fixed:
-- **P0: `README.md`'s Blackbird row** described it as "decompression algorithm identified but
-  not yet correctly decoding" — the single worst finding. Actual: a production, test-covered
-  native driver at 99.96% corpus mean, 11/16 files exactly 100.0%. A reader trusting the
-  player index would have concluded Blackbird support doesn't exist.
-- **P0: Hubbard's retracted "filter 100%" claim** — the project's own 2026-07-16 adversarial
-  audit had already named this exact claim vacuous (Hubbard never writes cutoff/resonance, so
-  the metric was `0==0`) and corrected it in the matrix, but it was still live in **6
-  locations** across `HUBBARD.md` (header + a 3-row status table), `HUBBARD_V2_PLAN.md` (2
-  places), and `README.md` — the correction had never propagated past the matrix itself.
-- **P1 ×4**: `README.md`'s Sound Monitor row quoted the explicitly-superseded 99.23%/26-parts
-  figure (matrix + the player doc itself both say 99.25%/27-of-27, and superseding it is
-  something `SOUNDMONITOR.md` already narrates as having happened once before to a *different*
-  copy — the same drift pattern recurring); `ROMUZAK.md`'s own header never mentioned its
-  Stage B byte-perfect native driver, describing only the superseded Stage A; `BLACKBIRD.md`'s
-  header was pinned to a "post-B22" snapshot (97.4-99.8%) that dozens of later commits (E3-E6)
-  superseded; `README.md`'s Future Composer row omitted Stage B (14/15 at 100.0%) entirely.
-- **P2**: `README.md`'s Deenen row said "4 clean wins", matrix and the player doc's own header
-  both say 7.
-- **Found during the fix pass, not by the original audit**: `DMC.md`'s own header had the same
-  "undersells the current state" pattern as ROMUZAK/Blackbird — it led with Rockbuster's
-  partial 97% and never mentioned Balloon's 400s/100×3/n=19996 result, the project's
-  best-evidenced number. Caught only because fixing ROMUZAK's identical shape made the pattern
-  recognizable — recorded honestly in `DOC-AUDIT.md` as a gap in the first pass, not folded in
-  as if found from the start.
-
-**Fix applied**: corrected all 7 drift items to match the matrix; added a one-line
-canonical-source pointer to the ~15 already-consistent player docs rather than stripping their
-numbers outright (lower risk, same effect — a future drift now has something to be checked
-against). 18 files changed, all `docs/players/*.md` + `README.md`; zero code touched, so no
-test suite re-run needed (confirmed via `git status` + grep before committing).
-
-**Lesson recorded in `DOC-AUDIT.md`'s Learnings section**: a duplication audit that only
-*locates* matching pairs, without diffing their values, misses exactly this class of bug — the
-task was framed as "find duplication to trim," which primed a search for agreeing pairs, and
-the drift was found only because each pair was actually compared value-by-value.
-
-### Later same day: the defect-dependent-feature guidance was written into the docs — DONE
-Requested explicitly ("write the chroma/defect-type guidance into the docs"). Four places
-updated, all corrected/expanded together rather than one at a time, because they'd all drifted
-from the same underlying fact (CLAUDE.md's paragraph was still asserting "A-weighting is THE
-strongest discriminator" and "the one recorded human verdict" — both stale after cases 2 and 3):
-- **`CLAUDE.md`** — rewrote the `audio_listen.py` paragraph: 3 cases not 1, defect-dependent
-  feature usefulness stated explicitly, `--windowed`/silence_frac description corrected to match
-  the actual FIXED state (it still said "degenerate... re-rank without it", predating the A1 fix).
-  +815 bytes (~200 tokens) — accepted as necessary, not trimmed further.
-- **`docs/guides/AUDIO_TIGHTNESS_GUIDE.md`** — "Two calibrated caveats" → covers all 3 cases;
-  added the explicit "check chroma first for a suspected pitch/tuning/vibrato problem" guidance.
-- **`docs/AUDIO_LISTENING_CALIBRATION.md`** — the bigger fix: this doc was ENTIRELY about case 1
-  and its `--windowed` section was flatly wrong post-A1-fix ("still degenerate... documented
-  rather than fixed" — no, fixed same day). Corrected that section, added a "Cases 2 and 3"
-  summary section (headline numbers + cross-references to the JSON, not a full duplicate
-  narrative), fixed the "one case is not a calibration set" framing.
-- **`sidm2/audio_listen.py`** module docstring — a short pointer for anyone reading the code
-  directly, same defect-dependent-feature summary in ~6 lines.
-Verified: full pytest suite re-run after the docstring edit (code file, not just docs) —
-**2,069 passing, 0 regressions** (docstring-only change, expected). Commit pending.
 </current_state>
