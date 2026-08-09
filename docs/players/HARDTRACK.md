@@ -770,7 +770,16 @@ refused".
 
 1. ~~**Resolve the parser residual**~~ — done: the wave program's arpeggio column
    owns the frequency register, and modelling it removes the residual.
-   See *Register-level fidelity*.
+   See *Register-level fidelity*. Reproduce the attribution with
+   `pyscript/hardtrack_residual.py`: of 5,784 sequencer-pitch notes, 652 (11.27%)
+   lose, and **630 of them are predicted frame-exactly** by the instrument's own
+   arp program at a constant 3-frame note-on delay — while the same model also
+   holds on 97.7% of the *kept* notes, which a model fitted to the losses would
+   not. For **344 of the 652 the bare table value is never written at all**, even
+   within 33 frames: the metric asks for something the player never does. 22
+   notes (0.38%) are unexplained and recorded as such; 21 carry `$6F`, but the
+   obvious cursor-continuation mechanism was tested and **falsified** (it
+   explains 2).
 3. ~~**Model the wave/pulse programs**~~ — done: `sidm2/hardtrack_synth.py`.
    The program-driven column went 2.64% → 100.00%.
 4. ~~**Identify instrument fields 6, 7, 12**~~ — done, and reached
