@@ -43,10 +43,15 @@ NOT MODELLED
 ------------
 The filter. `$D415-$D417` come from a song-global `[cutoff][delay]` program
 plus instrument fields 6, 7 and 12, and touch none of the registers predicted
-here. Field 6 is that program's start cursor, field 7 the resonance/mode base
-and field 12 the routing nibbles -- all three read straight off their consumers
-at $13b3/$13b9 and $138f, which is why they are named here after being listed
-as unidentified for the whole of the decode arc.
+here. Field 6 is that program's start cursor, field 7 the INITIAL CUTOFF that the
+program's per-frame delta accumulates onto ($13b3 -> $15b2, the operand of the
+`lda #cut` at $15b1 whose result reaches $D416), and field 12 is
+`(resonance << 4) | mode`, zero meaning this voice is not routed through the
+filter at all ($138f: low nibble << 4 -> the $D418 mode nibble, high nibble ->
+$D417, plus the voice's own enable bit). Resonance lives in field 12, NOT in
+field 7 -- all three were read straight off their consumers, which is why they
+are named here after being listed as unidentified for the whole of the decode
+arc.
 """
 from __future__ import annotations
 
@@ -63,7 +68,7 @@ __all__ = ['VoiceFrame', 'simulate_registers', 'ram_layout_base']
 
 # Instrument fields the synth engine reads, by consumer address.
 F_AD, F_SR, F_PULSE, F_PULSECUR, F_WAVECUR, F_FLAGS = 0, 1, 2, 3, 4, 5
-F_FILTPROG, F_FILTRES = 6, 7            # $13b9 / $13b3 -- filter, not modelled
+F_FILTPROG, F_FILTCUT = 6, 7            # $13b9 / $13b3 -- filter, not modelled
 F_VIBRATO, F_VIBDEPTH = 8, 9            # $12b2 nibbles / $12c8
 F_VIBINC, F_VIBLIMIT = 10, 11           # $12ce / $12d4
 F_FILTER = 12                           # $138f -- filter, not modelled
