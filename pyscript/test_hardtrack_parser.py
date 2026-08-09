@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sidm2.hardtrack_parser import (  # noqa: E402
     CMD_REST, HardTrackError, HardTrackModule, INSTRUMENT_FIELDS,
-    NUM_INSTRUMENTS, ORDER_END, ORDER_JUMP, PATTERN_END, simulate,
+    MAX_INSTRUMENTS, ORDER_END, ORDER_JUMP, PATTERN_END, simulate,
 )
 
 CORP = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -129,10 +129,76 @@ def test_instrument_record_shape():
 
 
 @needs_corpus
-def test_drives_freq_flag_is_bit7_of_field5():
+@pytest.mark.parametrize('name', ['Love_tune_2', 'If_I_Was_a_Rich_Man', 'Jazzloor',
+                                  'Altered_States_Tune_1', 'Timsoft_Intro'])
+def test_drives_freq_flag_is_bit7_of_field5(name):
+    """Cross-checks the instrument STRIDE, not just the flag.
+
+    `instrument_drives_freq()` reads the flag table at its signature-derived
+    address; `instrument(n).flags` reads field 5 at instrument_base + 5*stride.
+    They agree only when the stride is right, so this fails loudly on any file
+    whose instrument count is not the one assumed. Parametrised across files
+    with 3, 9, 20, 24 and 32 instruments precisely because the original bug was
+    invisible on a 32-instrument file.
+    """
+    m = HardTrackModule.from_sid(sid(name))
+    for n in range(m.num_instruments):
+        assert m.instrument_drives_freq(n) == bool(m.instrument(n).flags & 0x80), n
+
+
+@needs_corpus
+def test_instrument_count_varies_per_file_and_is_cross_verified():
+    """The 13 parallel instrument tables are `num_instruments` bytes each, and
+    that count is per-file (3..32 here) -- NOT a constant 32. Hardcoding 32
+    reads every field but the first from the wrong address and still returns
+    plausible-looking bytes, so derive it two ways and require agreement."""
+    counts = {}
+    unverified = []
+    for name in sorted(os.listdir(CORP)):
+        if not name.endswith('.sid'):
+            continue
+        try:
+            m = HardTrackModule.from_sid(os.path.join(CORP, name))
+        except HardTrackError:
+            continue
+        counts[name] = m.num_instruments
+        assert 0 < m.num_instruments <= MAX_INSTRUMENTS
+        if not m.instrument_count_verified:
+            unverified.append(name)
+    assert len(set(counts.values())) > 1, \
+        f'every file reported the same instrument count: {set(counts.values())}'
+    assert counts['If_I_Was_a_Rich_Man.sid'] == 3
+    assert counts['Love_tune_2.sid'] == 32
+    # only the known-odd third-variant file may fail the cross-check
+    assert unverified == ['Tribute_to_Laxity.sid'], unverified
+
+
+@needs_corpus
+def test_wave_program_yields_sid_control_bytes():
+    """Field 4 is the waveform/arpeggio cursor and field 3 the pulse sweep --
+    they were swapped in the first cut of this parser. A wave program's first
+    step must look like a $D404 control byte with a waveform bit set."""
     m = HardTrackModule.from_sid(sid('Love_tune_2'))
-    for n in range(NUM_INSTRUMENTS):
-        assert m.instrument_drives_freq(n) == bool(m.instrument(n).flags & 0x80)
+    seen = 0
+    for n in range(m.num_instruments):
+        prog = m.wave_program(m.instrument(n).wave_cursor)
+        if not prog:
+            continue
+        wf = prog[0][0]
+        assert wf & 0xF0, f'instrument {n} first wave step ${wf:02x} has no waveform bit'
+        seen += 1
+    assert seen >= 4
+
+
+@needs_corpus
+def test_pulse_program_magnitude_uses_the_fe_mask():
+    """Pulse-sweep values carry magnitude in bits 1-7 and direction in bit 0;
+    a decoder that forgets bit 0 sweeps every instrument upward."""
+    m = HardTrackModule.from_sid(sid('Love_tune_2'))
+    steps = [s for n in range(m.num_instruments)
+             for s, _ in m.pulse_program(m.instrument(n).pulse_cursor)]
+    assert steps
+    assert all(s % 2 == 0 for s in steps), 'magnitude must be the $FE mask'
 
 
 @needs_corpus

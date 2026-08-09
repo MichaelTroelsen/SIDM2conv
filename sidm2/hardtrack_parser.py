@@ -54,8 +54,11 @@ CMD_PORTA = 0x64     # + 1 arg byte
 CMD_REST = 0x67      # + 1 arg byte = rest length in rows
 INSTR_HOLD = 0x00    # instrument byte 0 = keep the current instrument
 
-NUM_INSTRUMENTS = 32
-INSTRUMENT_FIELDS = 13     # 13 parallel 32-byte tables
+# The pattern reader masks the instrument byte with $1F, so an index is 0..31.
+# The number of instruments actually STORED is per-file, though, and it sets the
+# stride of the parallel tables -- see HardTrackModule.num_instruments.
+MAX_INSTRUMENTS = 32
+INSTRUMENT_FIELDS = 13     # 13 parallel tables, each num_instruments bytes
 NUM_NOTES = 96             # 8 octaves, freq table entry 0 == C-0
 MAX_SUBTUNES = 8           # init does AND #$07
 
@@ -79,6 +82,13 @@ _SIG_FREQ = [0xBD, _W, _W, 0x18, 0x7D, _W, _W, 0x29, 0x7F, 0x9D, _W, _W, 0xA8,
 _SIG_INSTR = [0xBC, _W, _W, 0xB9, _W, _W, 0x9D, _W, _W, 0xB9, _W, _W, 0x9D, _W, _W]
 # the "program drives frequency absolutely" flag: lda F5,y / and #$80 / sta abs,x
 _SIG_ABSFLAG = [0xB9, _W, _W, 0x29, 0x80, 0x9D, _W, _W]
+# waveform/arpeggio program stepper:
+#   ldy cur,x / inc cur,x / lda WAVE,y / cmp #$ff / bne / lda ARP,y
+_SIG_WAVEPROG = [0xBC, _W, _W, 0xFE, _W, _W, 0xB9, _W, _W, 0xC9, 0xFF, 0xD0, _W,
+                 0xB9, _W, _W]
+# pulse-sweep program stepper: ldy cur,x / inc cur,x / lda PULSE,y / cmp #$ff
+_SIG_PULSEPROG = [0xBC, _W, _W, 0xFE, _W, _W, 0xB9, _W, _W, 0xC9, 0xFF, 0xD0, _W,
+                  0xC8, 0xB9, _W, _W]
 
 
 def _find(data: bytes, pat) -> list[int]:
@@ -124,11 +134,13 @@ class Instrument:
         return self.raw[2] & 0x0F
 
     @property
-    def wave_cursor(self) -> int:   # start index into the wave program
+    def pulse_cursor(self) -> int:
+        """Start index into the pulse-sweep program (field 3 -> $16c2)."""
         return self.raw[3]
 
     @property
-    def pulse_cursor(self) -> int:  # start index into the pulse program
+    def wave_cursor(self) -> int:
+        """Start index into the waveform/arpeggio program (field 4 -> $16f2)."""
         return self.raw[4]
 
     @property
@@ -211,6 +223,39 @@ class HardTrackModule:
         h = _find(data, _SIG_ABSFLAG)
         self.flag_table = _word(data, h[0] + 1) if len(h) == 1 else None
 
+        h = _find(data, _SIG_WAVEPROG)
+        if len(h) == 1:
+            self.wave_table = _word(data, h[0] + 7)    # -> $D404 waveform steps
+            self.arp_table = _word(data, h[0] + 14)    # paired arpeggio / abs freq
+        else:
+            self.wave_table = self.arp_table = None
+
+        h = _find(data, _SIG_PULSEPROG)
+        self.pulse_table = _word(data, h[0] + 6) if len(h) == 1 else None
+
+        # How many instruments are STORED sets the stride of the 13 parallel
+        # tables, and it is per-file (3..32 across the corpus) -- not a constant
+        # 32. Derive it two independent ways and require agreement: field 5 is
+        # the flag table, field 13 is one past the block. Getting this wrong
+        # reads every field but the first from the wrong address, which is
+        # exactly the kind of error that still yields plausible-looking bytes.
+        self.num_instruments = MAX_INSTRUMENTS
+        self.instrument_count_verified = False
+        n5 = n13 = None
+        if self.flag_table is not None:
+            d = self.flag_table - self.instrument_base
+            if d > 0 and d % 5 == 0:
+                n5 = d // 5
+        if self.wave_table is not None:
+            d = self.wave_table - self.instrument_base
+            if d > 0 and d % INSTRUMENT_FIELDS == 0:
+                n13 = d // INSTRUMENT_FIELDS
+        if n5 and n13 and n5 == n13 and 0 < n5 <= MAX_INSTRUMENTS:
+            self.num_instruments = n5
+            self.instrument_count_verified = True
+        elif n5 and 0 < n5 <= MAX_INSTRUMENTS:
+            self.num_instruments = n5
+
     # -- construction -------------------------------------------------------
     @classmethod
     def from_sid(cls, path) -> 'HardTrackModule':
@@ -250,9 +295,45 @@ class HardTrackModule:
                 | (self.byte(self.freq_hi_table + note) << 8))
 
     def instrument(self, n: int) -> Instrument:
-        base = self.instrument_base
-        return Instrument(n, tuple(self.byte(base + k * NUM_INSTRUMENTS + n)
+        base, stride = self.instrument_base, self.num_instruments
+        return Instrument(n, tuple(self.byte(base + k * stride + n)
                                    for k in range(INSTRUMENT_FIELDS)))
+
+    def wave_program(self, cursor: int, limit: int = 64):
+        """[(waveform, arp)] steps from `cursor`, stopping at the $FF jump.
+
+        $D404 waveform bytes with a paired value that is an arpeggio offset
+        added to the note -- or, when the instrument's bit 7 is set, the
+        absolute frequency high byte.
+        """
+        if self.wave_table is None:
+            return []
+        out = []
+        for i in range(limit):
+            wf = self.byte(self.wave_table + cursor + i)
+            if wf == 0xFF:
+                break
+            out.append((wf, self.byte(self.arp_table + cursor + i)))
+        return out
+
+    def pulse_program(self, cursor: int, limit: int = 64):
+        """[(step, frames)] pulse-width sweep steps from `cursor`.
+
+        `step` is signed: the player masks the value with $FE for the magnitude
+        and uses bit 0 as the direction (0 = up, 1 = down).
+        """
+        if self.pulse_table is None:
+            return []
+        out, i = [], 0
+        while i < limit * 2:
+            v = self.byte(self.pulse_table + cursor + i)
+            if v == 0xFF:
+                break
+            mag = v & 0xFE
+            out.append((-mag if v & 0x01 else mag,
+                        self.byte(self.pulse_table + cursor + i + 1)))
+            i += 2
+        return out
 
     def instrument_drives_freq(self, n: int) -> bool:
         if self.flag_table is None:

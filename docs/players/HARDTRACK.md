@@ -23,7 +23,7 @@ split with `tools/player-id.exe "SID/Shogoon/*.sid"`; do not assume the director
 is single-player.
 
 **Code:** `sidm2/hardtrack_parser.py` · validator `pyscript/hardtrack_validate.py`
-· tests `pyscript/test_hardtrack_parser.py` (21).
+· tests `pyscript/test_hardtrack_parser.py` (28).
 
 ---
 
@@ -48,7 +48,7 @@ load+$060  init routine
   ...      player code, including the note frequency tables
   ...      per-voice state block
   ...      subtune speed table (8 bytes)
-  ...      instrument block: 13 parallel 32-byte tables
+  ...      instrument block: 13 parallel tables of num_instruments bytes
   ...      wave / pulse / filter program tables
   ...      subtune orderlist pointer tables (6 x 8)
   ...      orderlists, patterns, pattern pointer tables
@@ -112,17 +112,26 @@ per-subtune speed table. **A song row lands every `speed+1` frames.** Within a
 beat the player uses the counter value as a phase selector: `0` = read a row,
 `1` = decrement the note duration, anything else = run the synth programs only.
 
-### Instruments — 13 parallel 32-byte tables
+### Instruments — 13 parallel tables
 
-Field *k* of instrument *n* is at `instrument_base + k*32 + n`. Confirmed roles:
+Field *k* of instrument *n* is at `instrument_base + k*num_instruments + n`.
+
+⚠️ **`num_instruments` is per-file, not a constant 32.** It ranges 3–32 across
+this corpus (`If_I_Was_a_Rich_Man` stores 3, `Jazzloor` 9, `Love_tune_2` 32).
+The first cut of this parser hardcoded 32 and therefore read every field but the
+first from the wrong address on 17 of 33 files — while still returning entirely
+plausible-looking bytes. The count is now derived **two independent ways** and
+required to agree: `(flag_table − base) / 5` and `(wave_table − base) / 13`. They
+agree on 32 of 33 files; `Tribute_to_Laxity` (the odd third variant) does not, and
+is flagged via `instrument_count_verified == False` rather than silently trusted.
 
 | # | Role |
 |---|---|
 | 0 | attack/decay → `$D405` |
 | 1 | sustain/release → `$D406` |
 | 2 | pulse width: high nibble → `$D403`, low nibble → `$D402` |
-| 3 | wave-program start cursor |
-| 4 | pulse-program start cursor |
+| 3 | **pulse-sweep** program start cursor |
+| 4 | **waveform/arpeggio** program start cursor |
 | 5 | **flags** — bit 7 = program drives frequency absolutely, bit 4 = hard restart, bits 0–1 = mode |
 | 8 | low nibble + high nibble ×2 → two synth counters |
 | 9 | copied to the per-voice parameter block |
@@ -130,6 +139,31 @@ Field *k* of instrument *n* is at `instrument_base + k*32 + n`. Confirmed roles:
 
 Fields 6, 7 and 12 are **not yet identified** and are deliberately left unnamed in
 `Instrument.raw` rather than guessed at.
+
+Fields 3 and 4 were **swapped** in the first cut. Note the test that found it: a
+plausibility check ("do these bytes look like SID control values?") scored *both*
+readings at ~91.6% and so proved nothing. What settled it was reading the
+consumers — field 3 feeds the cursor stepping the pulse table, field 4 the one
+stepping the waveform table.
+
+### Synth programs
+
+Two `$FF`-terminated step lists per instrument, both with a `$FF <index>` jump:
+
+- **Waveform/arpeggio** — a pair of parallel tables walked by one cursor. The
+  first supplies the `$D404` control byte; the second is an arpeggio offset added
+  to the current note, *or* the absolute frequency high byte when the
+  instrument's bit 7 is set. This is the mechanism behind the "program-driven"
+  column in the fidelity table.
+- **Pulse sweep** — `[value][frames]` pairs where `value & $FE` is the step
+  magnitude and **bit 0 is the direction** (0 = up, 1 = down), applied to
+  `$D402/$D403` each frame. A decoder that ignores bit 0 sweeps every instrument
+  upward.
+
+The **global filter sweep** is a third, song-level program (`[cutoff][delay]`
+with a `$80 <index>` jump) writing `$D416`. Its cursor lives in self-modified
+code and **`init` does not reset it**, so a ripped file carries whatever value it
+was saved with — confirm on hardware before relying on it.
 
 ### Frequency table
 
@@ -218,12 +252,11 @@ which module it is looking at must say so; see PATTERNS.md and the DEENEN
    Watch the caps in [PLAYBOOK.md](PLAYBOOK.md) §3.
 2. **Resolve the residual** — instrument the `$63`/`$64` slide commands and
    confirm (or refute) the hypothesis above before quoting a higher number.
-3. **Wave/pulse/filter programs** — `$FF`-terminated `[value][delay]` step lists
-   with a `$80 <index>` jump; the global filter sweep is a separate song-level
-   program whose cursor the player **does not reset in `init`** (it is
-   self-modified code, so a ripped file carries the cursor value it was saved
-   with). Worth confirming on hardware before relying on it.
-4. **Identify instrument fields 6, 7, 12.**
+3. **Wave/pulse programs are decoded** (`wave_program()`, `pulse_program()`) but
+   not yet *modelled* in `simulate()` — doing so is what would let the fidelity
+   score cover the program-driven column at all.
+4. **Identify instrument fields 6, 7, 12**, and confirm the global filter
+   sweep's un-reset cursor on hardware.
 5. **The editor is the strongest lever left** — run `-HARDTRACK 1.PRG` under
    RetroDebugger, build a one-note tune, and diff memory. That resolves the
    remaining fields far faster than more static disassembly.
