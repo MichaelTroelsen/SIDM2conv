@@ -41,6 +41,7 @@ from sidm2.fidelity_common import fmt_pct, per_voice_register_agreement
 from sidm2.vsid_wrapper import VSIDIntegration
 from pyscript.audio_tightness_report import format_text_report
 from pyscript.audio_tightness_html_exporter import AudioTightnessHTMLExporter
+from sidm2.audio_listen import extract_features, format_feature_report, render_comparison_spectrogram
 
 MUTE_MAP = {1: "23", 2: "13", 3: "12"}
 MUTE_ALL = "123"
@@ -808,6 +809,14 @@ Native drivers (bin/-only, e.g. Blackbird):
                          help="Output HTML path (default: audio_tightness_<timestamp>.html)")
     parser.add_argument('--text-output', default=None, help="Also write the text report to this path")
     parser.add_argument('--no-html', action='store_true', help="Skip HTML generation")
+    parser.add_argument('--no-listen', action='store_true',
+                         help="Skip the whole-file audio feature summary (level/brightness/"
+                              "noisiness text report) printed after the onset report")
+    parser.add_argument('--spectrogram', nargs='?', const='__auto__', default=None, metavar='PATH',
+                         help="Render a 3-panel (original/driver/dB-diff) spectrogram PNG for "
+                              "visual inspection, e.g. when the text feature summary doesn't "
+                              "explain a discrepancy the onset report flagged. PATH defaults to "
+                              "spectrogram_<timestamp>.png. View the result with the Read tool.")
     parser.add_argument('--keep-temp', action='store_true', help="Keep temporary rendered .sid/.wav files")
 
     parser.add_argument('-v', '--verbose', action='count', default=0, help="Increase verbosity (-v, -vv)")
@@ -903,6 +912,30 @@ Native drivers (bin/-only, e.g. Blackbird):
             Path(args.text_output).write_text(text_report, encoding='utf-8')
             print(f"\n[OK] Text report written: {args.text_output}")
 
+        orig_audio, orig_sr = load_wav_mono(orig_wav)
+        driver_audio, driver_sr = load_wav_mono(driver_wav)
+
+        if not args.no_listen:
+            orig_feats = extract_features(orig_audio, orig_sr)
+            driver_feats = extract_features(driver_audio, driver_sr)
+            feature_report = format_feature_report(
+                orig_feats, driver_feats, orig_label=args.orig, driver_label=args.driver)
+            print("\n" + feature_report)
+            if args.text_output:
+                with open(args.text_output, 'a', encoding='utf-8') as f:
+                    f.write("\n\n" + feature_report + "\n")
+
+        if args.spectrogram is not None:
+            spec_path = args.spectrogram
+            if spec_path == '__auto__':
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                spec_path = f"spectrogram_{timestamp}.png"
+            print(f"\nRendering spectrogram: {spec_path}")
+            render_comparison_spectrogram(
+                orig_audio, orig_sr, driver_audio, driver_sr, spec_path,
+                orig_label=args.orig, driver_label=args.driver)
+            print(f"[OK] Spectrogram written: {spec_path} -- view it with the Read tool")
+
         if not args.no_html:
             if args.output:
                 output_path = args.output
@@ -912,8 +945,6 @@ Native drivers (bin/-only, e.g. Blackbird):
 
             print(f"\nGenerating HTML report: {output_path}")
             try:
-                orig_audio, orig_sr = load_wav_mono(orig_wav)
-                driver_audio, driver_sr = load_wav_mono(driver_wav)
                 env_hop_s = 0.02
                 orig_env = _downsample_envelope(orig_audio, orig_sr, env_hop_s)
                 driver_env = _downsample_envelope(driver_audio, driver_sr, env_hop_s)

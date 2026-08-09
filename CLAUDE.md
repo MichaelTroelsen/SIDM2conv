@@ -36,6 +36,7 @@ trace-compare.bat file_a.sid file_b.sid                 # Compare two SID traces
 accuracy-heatmap.bat file_a.sid file_b.sid              # Accuracy heatmap (4 viz modes, Canvas)
 audio-tightness.bat orig.sid conv.sf2 --driver-init 0x1000 --driver-play 0x1003  # Onset-timing/attack-shape "tightness" (register-exact != audio-tight)
 audio-tightness.bat orig.sid conv.sf2 --driver-init 0x1000 --driver-play 0x1003 --voice all  # + per-voice sweep, isolation guard, repeatability floor, registers x audio cross-tab
+audio-tightness.bat a.sid b.sid --spectrogram out.png    # SID2SID/WAV2WAV/mixed (accepts .sid/.sf2/.wav on either side): whole-file feature-summary text (level/brightness/noisiness, always-on unless --no-listen) + a 3-panel orig/driver/diff spectrogram PNG Claude can view with the Read tool -- "a way to listen" beyond onset timing
 batch-analysis.bat originals/ exported/                 # Batch analysis (standalone, HTML+CSV+JSON)
 batch-analysis-validate.bat originals/ exported/        # Batch analysis (validation DB integration)
 validation-dashboard.bat                                # Validation results dashboard

@@ -21,6 +21,10 @@ REM   --loose-threshold-ms N   Delta above which a matched onset is flagged loos
 REM   --output FILE            Output HTML path
 REM   --text-output FILE       Also write the text report to this path
 REM   --no-html                Skip HTML generation
+REM   --no-listen              Skip the whole-file audio feature summary (level/
+REM                            brightness/noisiness text report)
+REM   --spectrogram [PATH]     Render a 3-panel (orig/driver/dB-diff) spectrogram
+REM                            PNG for visual inspection (view with the Read tool)
 REM   -v, -vv                  Verbose logging
 REM   --help                   Show detailed help
 
