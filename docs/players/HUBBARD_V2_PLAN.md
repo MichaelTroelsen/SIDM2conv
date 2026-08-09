@@ -2,7 +2,8 @@
 
 Status (2026-07-08): V2 is **decoded** (parser onset-validates 100% on Delta, Sanxion,
 Lightforce, Saboteur_II, Star_Paws, Wiz, Auf_Wiedersehen_Monty, Deep_Strike, …) and
-**one tune fully plays** (Delta theme: freq/pulse/filter 100%). The remaining work is
+**one tune fully plays** (Delta theme: freq/pulse 100%; filter is not exercised — Hubbard
+never writes cutoff/resonance, see ACCURACY_MATRIX.md). The remaining work is
 four bounded fronts, ordered by leverage. See [HUBBARD.md](HUBBARD.md) for the format
 RE and [NATIVE_DRIVER.md](NATIVE_DRIVER.md) for the driver memory map.
 
@@ -58,8 +59,9 @@ files and confirm they assemble + spot-measure part1.
 
 ## Front 1b — the swallow-class freq residual (~86%) — CORRECTED DIAGNOSIS
 
-After Front 1 + the pulse fix, the swallow-class files **play** with pulse / waveform /
-filter **100%** but freq sits at ~86% (Lightforce), on the tempo-stretch frames.
+After Front 1 + the pulse fix, the swallow-class files **play** with pulse / waveform
+**100%** (filter not exercised — Hubbard never writes cutoff/resonance) but freq sits at
+~86% (Lightforce), on the tempo-stretch frames.
 
 **The `TEMPO_SCHED` schedule-table driver mode was built** (commit 39dd3aa: a per-frame
 stretch bitmap `SCHEDTAB` generalizing the single swallow counter, derived from

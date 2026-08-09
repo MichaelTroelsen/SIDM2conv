@@ -18,7 +18,8 @@
 
 **Status:** **Stage A**, standalone `bin/` builders — **not** wired into
 `driver_selector`/`conversion_pipeline`. Parser: `sidm2/deenen_parser.py`.
-Output: `out/deenen_sf2/` (12 validated SF2s).
+Output: `out/deenen_sf2/` (12 validated SF2s). Current headline figures:
+`docs/reference/ACCURACY_MATRIX.md` (canonical; verified to match this doc 2026-08-09).
 
 ---
 

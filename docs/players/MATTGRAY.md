@@ -1,7 +1,8 @@
 # Matt Gray — player RE + Stage A
 
 **Status:** RE complete and Stage A shipped for **Driller, Last Ninja 2 (13 subtunes) and Tusker (4 subtunes)** — 18 tunes, all at 100% onset / 100% pitch on plain instruments.
-Native Stage B: TODO. Not wired into `DriverSelector`.
+Native Stage B: TODO. Not wired into `DriverSelector`. Current headline figures:
+`docs/reference/ACCURACY_MATRIX.md` (canonical; verified to match this doc 2026-08-09).
 
 Matt Gray wrote his own driver from scratch — it is **not** derived from
 Hubbard or Galway — and refined it per game. Treat the map below as *one

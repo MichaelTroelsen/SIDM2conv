@@ -3,7 +3,7 @@
 **Composer:** Rob Hubbard (his own player family, 1985–1987)
 **Corpus:** `SID/Hubbard_Rob/` (95 `.sid` files)
 **Registry key:** none yet — the whole pipeline lives in `bin/` (not wired into `DriverSelector.PLAYER_REGISTRY`)
-**Status:** native SF2 driver, **byte-exact freq + pulse + filter on all 3 voices** for the V1 corpus (Monty/Commando/Zoids/Last_V8/… pulse 100/100/100 via the per-instrument pulse engine) and for the first V2 tune (Delta theme: freq/pulse/filter 100%, waveform 85–96%). Ground truth: Anthony McSweeney's fully-commented *Monty on the Run* disassembly (C=Hacking #5), extracted to `docs/analysis/hubbard/chacking5_monty_disassembly.txt`.
+**Status:** native SF2 driver, **byte-exact pulse on all 3 voices** for the V1 corpus (Monty/Commando/Zoids/Last_V8/… pulse 100/100/100 via the per-instrument pulse engine) and for the first V2 tune (Delta theme: freq/pulse 100%, waveform 85–96%). **Filter is not exercised** — Hubbard never writes cutoff/resonance, so a "filter 100%" figure would be `0==0` and meaningless; see ACCURACY_MATRIX.md. Ground truth: Anthony McSweeney's fully-commented *Monty on the Run* disassembly (C=Hacking #5), extracted to `docs/analysis/hubbard/chacking5_monty_disassembly.txt`.
 
 Two format generations share **one parser** (`sidm2/hubbard_parser.py`) and **one native driver** (the shared `drivers_src/mon/romuzak_driver.asm`, via `bin/build_hubbard_native_song.py` → `bin/build_mon_native_song.py`):
 
@@ -293,10 +293,10 @@ The build measures itself with `bin/mon_part_fidelity.py PART SONG SECS OFF0` (s
 
 | Class | Files | Native build |
 |-------|-------|--------------|
-| **V1** (Monty, Commando, Zoids, Gremlins, Master_of_Magic, One_Man, Last_V8, Last_V8_C128, Geoff_Capes, Crazy_Comets, Chimera, 5_Title_Tunes) | 12 | ✅ built + validated subsongs; pulse/freq/filter 100% |
+| **V1** (Monty, Commando, Zoids, Gremlins, Master_of_Magic, One_Man, Last_V8, Last_V8_C128, Geoff_Capes, Crazy_Comets, Chimera, 5_Title_Tunes) | 12 | ✅ built + validated subsongs; pulse/freq 100% (filter not exercised, see above) |
 | **V2 split-songs** (Action_Biker, Confuzion, Gerry_the_Germ, Hunter_Patrol, Ninja, Thing_on_a_Spring) | 6 | ✅ built (97–100% onsets) |
-| **V2 swallow — Delta** | 1 | ✅ theme (s11) freq/pulse/filter 100%, wf 85–96% |
-| **V2 swallow — rest** (Lightforce, Sanxion, Saboteur_II, Shockway_Rider, Star_Paws, Auf_Wiedersehen_Monty, Deep_Strike) | 7 | ✅ **assemble + play** — pulse + waveform + filter **100%** (state-region fix 5c0de20 + captured-pulse fix 43ad2d2); freq ~86% (a 1-frame-per-swallow-period pitch blip — note-trigger timing under the tempo stretch, an open FM-alignment item; see HUBBARD_V2_PLAN.md Front 1b) |
+| **V2 swallow — Delta** | 1 | ✅ theme (s11) freq/pulse 100%, wf 85–96% (filter not exercised) |
+| **V2 swallow — rest** (Lightforce, Sanxion, Saboteur_II, Shockway_Rider, Star_Paws, Auf_Wiedersehen_Monty, Deep_Strike) | 7 | ✅ **assemble + play** — pulse + waveform **100%** (state-region fix 5c0de20 + captured-pulse fix 43ad2d2; filter not exercised); freq ~86% (a 1-frame-per-swallow-period pitch blip — note-trigger timing under the tempo stretch, an open FM-alignment item; see HUBBARD_V2_PLAN.md Front 1b) |
 | **Spin class** (Devils_Galop, I_Ball, Wiz) | 3 | ⚠️ build times out (play-routine spin during trace) |
 | **Format laggards** | ~7 | 🚧 IK+ (V0 decode runaway + percussion note bytes), Thundercats 68% (note-format), Tarzan (speed-addr misdetect), Mega_Apocalypse (runaway), Knucklebusters (per-voice speed), Game_Killer (tick stretch with NO swallow sig — the `measure_tick_schedule` empirical grid validates it 100%; needs driver wiring) |
 | **No-signature** | 6 | ❌ Casio_Extended / Robs_Life / Era_of_Eidolon / Task_Force / Dont_Step_on_My_Wire / Up_up_and_Away — a different/later player, unexplored |

@@ -434,8 +434,51 @@ review; all fell out of running against real material and checking against an ex
 | Accuracy percentages verified | **NOT DONE — out of scope, routed to the falsify agent** |
 
 ### Open questions for the user
-1. Should `ACCURACY_MATRIX.md` or `docs/players/` be the single home for accuracy figures? Two
-   copies remain.
+_(none currently open — see below)_
+
+### Later same day: A3 (accuracy-figure duplication) resolved — DONE, audit-gated
+User decision: `ACCURACY_MATRIX.md` is the home. Ran the `audit-docs` skill first rather than
+trimming on impression (same precedent as the earlier CLAUDE.md compression), scoped to
+`ACCURACY_MATRIX.md` vs `docs/players/*.md` (21 files) + `docs/players/README.md`'s own index
+table. Full report: `DOC-AUDIT.md`.
+
+**The audit found real drift, not just duplication** — 2 P0, 4 P1, 1 P2 confirmed findings,
+all fixed:
+- **P0: `README.md`'s Blackbird row** described it as "decompression algorithm identified but
+  not yet correctly decoding" — the single worst finding. Actual: a production, test-covered
+  native driver at 99.96% corpus mean, 11/16 files exactly 100.0%. A reader trusting the
+  player index would have concluded Blackbird support doesn't exist.
+- **P0: Hubbard's retracted "filter 100%" claim** — the project's own 2026-07-16 adversarial
+  audit had already named this exact claim vacuous (Hubbard never writes cutoff/resonance, so
+  the metric was `0==0`) and corrected it in the matrix, but it was still live in **6
+  locations** across `HUBBARD.md` (header + a 3-row status table), `HUBBARD_V2_PLAN.md` (2
+  places), and `README.md` — the correction had never propagated past the matrix itself.
+- **P1 ×4**: `README.md`'s Sound Monitor row quoted the explicitly-superseded 99.23%/26-parts
+  figure (matrix + the player doc itself both say 99.25%/27-of-27, and superseding it is
+  something `SOUNDMONITOR.md` already narrates as having happened once before to a *different*
+  copy — the same drift pattern recurring); `ROMUZAK.md`'s own header never mentioned its
+  Stage B byte-perfect native driver, describing only the superseded Stage A; `BLACKBIRD.md`'s
+  header was pinned to a "post-B22" snapshot (97.4-99.8%) that dozens of later commits (E3-E6)
+  superseded; `README.md`'s Future Composer row omitted Stage B (14/15 at 100.0%) entirely.
+- **P2**: `README.md`'s Deenen row said "4 clean wins", matrix and the player doc's own header
+  both say 7.
+- **Found during the fix pass, not by the original audit**: `DMC.md`'s own header had the same
+  "undersells the current state" pattern as ROMUZAK/Blackbird — it led with Rockbuster's
+  partial 97% and never mentioned Balloon's 400s/100×3/n=19996 result, the project's
+  best-evidenced number. Caught only because fixing ROMUZAK's identical shape made the pattern
+  recognizable — recorded honestly in `DOC-AUDIT.md` as a gap in the first pass, not folded in
+  as if found from the start.
+
+**Fix applied**: corrected all 7 drift items to match the matrix; added a one-line
+canonical-source pointer to the ~15 already-consistent player docs rather than stripping their
+numbers outright (lower risk, same effect — a future drift now has something to be checked
+against). 18 files changed, all `docs/players/*.md` + `README.md`; zero code touched, so no
+test suite re-run needed (confirmed via `git status` + grep before committing).
+
+**Lesson recorded in `DOC-AUDIT.md`'s Learnings section**: a duplication audit that only
+*locates* matching pairs, without diffing their values, misses exactly this class of bug — the
+task was framed as "find duplication to trim," which primed a search for agreeing pairs, and
+the drift was found only because each pair was actually compared value-by-value.
 
 ### Later same day: the defect-dependent-feature guidance was written into the docs — DONE
 Requested explicitly ("write the chroma/defect-type guidance into the docs"). Four places

@@ -13,13 +13,17 @@ in `bin/DMC/`). Balloon.sid was the RE exemplar (load `$1000`, init `$1440`, pla
 **Native Stage B:** `bin/build_dmc_native_song.py` (DMCShim → the shared MoN native
 pipeline).
 **Status:** format fully RE'd; parser + decoder done. Native Stage B **works end-to-end** —
-**Rockbuster ≈97%** (freq 65→97, waveform 87→100, pulse 100/100/100) *on part 1 of 16, the
-first ~20s*; most eligible files 2/3 voices at 90–100%. Corpus survey
-(`bin/dmc_build_all.py --dry`, all 88 files, re-run 2026-07-16): **56 ELIGIBLE**
+the headline result is **Balloon: 77 parts merged into ONE 400s SF2, wf/pulse 100×3 over
+the FULL 400s** (n=19996/voice, 0 skips — the best-evidenced number in the project; its
+freq is 80.6/100/97.7). **Rockbuster ≈97%** (freq 65→97, waveform 87→100, pulse 100/100/100)
+*on part 1 of 16, the first ~20s only*; most eligible files 2/3 voices at 90–100%. Corpus
+survey (`bin/dmc_build_all.py --dry`, all 88 files, re-run 2026-07-16): **56 ELIGIBLE**
 (onset-aligned build; split/ADC-vibrato/staged freq + five sound-generation fallbacks + the
 interleaved-track generation), **18 FALLBACK** (tables located but onsets disagree —
 multispeed/self-IRQ/legato), **14 NO-TABLES** (signature miss — the corpus spans multiple
-DMC code generations; see below), 0 ERROR. `bin/` only, not registry-wired.
+DMC code generations; see below), 0 ERROR. `bin/` only, not registry-wired. Current headline
+figures: `docs/reference/ACCURACY_MATRIX.md` (canonical; corrected here 2026-08-09,
+`DOC-AUDIT.md`, to lead with Balloon rather than Rockbuster).
 
 > **ELIGIBLE IS NOT AN ACCURACY FIGURE** (2026-07-16 audit). It means *the decoder's
 > emulated onsets agree ≥85% with siddump*, which selects a **build mode** — the built SF2

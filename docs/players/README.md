@@ -9,24 +9,29 @@ One document per **player** (the C64 music routine a SID file was made with). SI
 
 **Source vs target:** most docs below describe a **source** player (the C64 routine we convert *from*). The trace-driven ports (Galway, MoN, ROMUZAK, Hubbard) also required us to author a **target** — a from-scratch native SF2 driver; those are documented together in [NATIVE_DRIVER.md](NATIVE_DRIVER.md). Open per-player work has its own plan doc (e.g. [HUBBARD_V2_PLAN.md](HUBBARD_V2_PLAN.md)).
 
-| Player | Doc | Path | Fidelity | Corpus |
+Fidelity figures below are kept intentionally short — full numbers, caveats, and
+measurement provenance live in [../reference/ACCURACY_MATRIX.md](../reference/ACCURACY_MATRIX.md),
+the single source of truth. This table drifted from it before (verified 2026-08-09,
+`DOC-AUDIT.md`); read the matrix before quoting a percentage from here.
+
+| Player | Doc | Path | Fidelity (see matrix for full detail) | Corpus |
 |--------|-----|------|----------|--------|
 | **Laxity NewPlayer v21** | [LAXITY.md](LAXITY.md) | wired (`laxity`) | 99.93–100% | `SID/Laxity/` (286) + `SID/` root |
 | **SF2-exported / Driver 11** | [DRIVER11.md](DRIVER11.md) | wired (`driver11`, default) | 100% (SF2-exported) | round-trip / safe default |
 | **NewPlayer 20** | [NP20.md](NP20.md) | wired (`np20`, registry-only) | 70–90% | `SID/` (NP20.G4 variants) |
-| **Martin Galway** | [GALWAY.md](GALWAY.md) | Stage A wired (`galway`); native in `bin/` | native ~100% (30/40 objectively clean in real SF2II) | `SID/Galway_Martin/` (40) |
-| **Maniacs of Noise (Jeroen Tel)** — Hawkeye, Cybernoid I/II, Myth, Supremacy | [MON.md](MON.md) | `bin/` only | **100% byte-exact** (Hawkeye sub 2/3, full length); others ~95-100% per register | `SID/Tel_Jeroen/` (179) |
-| **ROMUZAK V6.3** | [ROMUZAK.md](ROMUZAK.md) | `bin/` only | native: byte-exact wf/pulse/AD-SR (~98–100%) | `SID/Fun_Fun/` (Delirious, Road_of_Excess) |
-| **Rob Hubbard** (V1 + V2/Delta) — Monty, Commando, Zoids, Last V8, Delta, Lightforce, … | [HUBBARD.md](HUBBARD.md) | `bin/` only | V1 native: pulse/freq/filter **100%**; V2 Delta theme 100% (wf 85–96%) | `SID/Hubbard_Rob/` (95); ~19 built, ~28 decode ≥95% |
-| **DMC (Demo Music Creator)** — Johannes Bjerregaard | [DMC.md](DMC.md) | `bin/` only | native: **Balloon wf/pulse 100×3 over the full 400s** (n=19996/voice — the best-evidenced number in the project; its freq is 80.6/100/97.7); Rockbuster ≈97/100/100 *on part 1 of 16*. Every % is window-dependent — see doc. 56/88 build-eligible (a **mode count, not accuracy**) | `SID/JohannesBjerregaard/` (88) |
-| **Sound Monitor (Musicmaster)** — Chris Hülsbeck '86 | [SOUNDMONITOR.md](SOUNDMONITOR.md) | `bin/` only | Stage A 32/33 voices note-accurate; native: **corpus 99.23% freq+wf** (n≈841k, 26/27 parts; pulse 96.7/filter 97.3); 11 songs / 27 parts | `SID/Fun_Fun/` (11 × `$C000/$C475`) |
-| **SID Duzz' It (SDI)** — Gallefoss/Tjelta | [SDI.md](SDI.md) | `bin/` only (Stage A) | 6 variants decoded; strict medians A 98.3/D 100/C 86/B 75/E 51/V 22 (only A+D unfitted); **343 locate → 348 SF2s**, 324 sweep-validated | `SID/Gallefoss_Glenn/` (441 flat / 671 songs) |
-| **Jeroen Kimmel** (Hubbard-derived) — Radax, The Judges | [KIMMEL.md](KIMMEL.md) | `bin/` only | **11/12 voice-medians exact 100%** (frame-pitch); arp/PWM/freq-slide/drum ported | `SID/Red_kommel_jeroen/` (4; Radax × 6 subtunes) |
-| **Charles Deenen** (MoN/Deenen replay + dialects) | [DEENEN.md](DEENEN.md) | `bin/` only | 4 clean wins ~100% (10/19 located) + 8 freebies at 100% | `SID/deenen/` (40) |
-| **Future Composer** | [FUTURECOMPOSER.md](FUTURECOMPOSER.md) | `bin/` only | Stage A: notes/order trace-validated | `SID/Fun_Fun/` ($1800 variant, 5/20) |
-| **Matt Gray** — Driller, Last Ninja 2, Tusker, Quedex, … | [MATTGRAY.md](MATTGRAY.md) | `bin/` only (Stage A) | **Driller build only**: sequencer onset **100%** + pitch **100%** on plain instruments (n=1513, 240 s); pitch-modulated notes are Stage B and reported separately, not claimed. Stage A splits into 2 parts (11:05 loop vs the memory wall) | HVSC `MUSICIANS/G/Gray_Matt/` (55; 1 build located) |
+| **Martin Galway** | [GALWAY.md](GALWAY.md) | Stage A wired (`galway`); native in `bin/` | native ~100%, 30/40 objectively clean in real SF2II | `SID/Galway_Martin/` (40) |
+| **Maniacs of Noise (Jeroen Tel)** — Hawkeye, Cybernoid I/II, Myth, Supremacy | [MON.md](MON.md) | `bin/` only | 100% byte-exact (Hawkeye sub 2/3); ~95-100% others | `SID/Tel_Jeroen/` (179) |
+| **ROMUZAK V6.3** | [ROMUZAK.md](ROMUZAK.md) | `bin/` only | native byte-exact wf/pulse/AD-SR (~98–100%) | `SID/Fun_Fun/` (Delirious, Road_of_Excess) |
+| **Rob Hubbard** (V1 + V2/Delta) — Monty, Commando, Zoids, Last V8, Delta, Lightforce, … | [HUBBARD.md](HUBBARD.md) | `bin/` only | V1: pulse 100%, freq 99.3–100% (**filter not exercised** — the player never writes cutoff); V2 Delta: freq/pulse 100%, wf 85–96% (filter likewise not exercised) | `SID/Hubbard_Rob/` (95); ~19 built, ~28 decode ≥95% |
+| **DMC (Demo Music Creator)** — Johannes Bjerregaard | [DMC.md](DMC.md) | `bin/` only | native: Balloon wf/pulse 100×3 over the full 400s (freq 80.6/100/97.7); Rockbuster ≈97/100/100 on part 1 of 16. Every % is window-dependent — see doc | `SID/JohannesBjerregaard/` (88) |
+| **Sound Monitor (Musicmaster)** — Chris Hülsbeck '86 | [SOUNDMONITOR.md](SOUNDMONITOR.md) | `bin/` only | Stage A 32/33 voices note-accurate; native corpus 99.25% freq+wf, all 27 of 27 parts (pulse 96.7/filter 97.3) | `SID/Fun_Fun/` (11 × `$C000/$C475`) |
+| **SID Duzz' It (SDI)** — Gallefoss/Tjelta | [SDI.md](SDI.md) | `bin/` only (Stage A) | 6 variants decoded; strict medians A 98.3/D 100/C 86/B 75/E 51/V 22 (only A+D unfitted); 343 locate → 348 SF2s, 324 sweep-validated | `SID/Gallefoss_Glenn/` (441 flat / 671 songs) |
+| **Jeroen Kimmel** (Hubbard-derived) — Radax, The Judges | [KIMMEL.md](KIMMEL.md) | `bin/` only | 11/12 voice-medians exact 100% (frame-pitch); arp/PWM/freq-slide/drum ported | `SID/Red_kommel_jeroen/` (4; Radax × 6 subtunes) |
+| **Charles Deenen** (MoN/Deenen replay + dialects) | [DEENEN.md](DEENEN.md) | `bin/` only | 7 clean wins ~100% (10/19 located) + 8 freebies at 100% | `SID/deenen/` (40) |
+| **Future Composer** | [FUTURECOMPOSER.md](FUTURECOMPOSER.md) | `bin/` only (Stage B native) | Stage B native: 14/15 corpus voices exactly 100.0% audible pitch, full song length; Stage A notes/order byte-exact | `SID/Fun_Fun/` ($1800 variant, 5/20) |
+| **Matt Gray** — Driller, Last Ninja 2, Tusker, Quedex, … | [MATTGRAY.md](MATTGRAY.md) | `bin/` only (Stage A) | Driller build only: sequencer onset 100% + pitch 100% on plain instruments (n=1513, 240 s); pitch-modulated notes are a Stage B claim, not made yet. Stage A splits into 2 parts | HVSC `MUSICIANS/G/Gray_Matt/` (55; 1 build located) |
 | **NP21-adjacent clusters** (Stinsen/Beast/Angular, DRAX, 2000 A.D., Wizax, Zetrex/V20) | [CLUSTERS.md](CLUSTERS.md) | inside the Laxity path | audio 100%; editor-view varies | `SID/` root + Laxity corpus |
-| **Blackbird** (Linus Åkesson / "lft") | [BLACKBIRD.md](BLACKBIRD.md) | recon only, not wired | locate/table-layout solved (11/59 files exact template match); decompression algorithm identified but not yet correctly decoding | `SID/LFT/` (59; ~27 genuinely Blackbird across tool versions) |
+| **Blackbird** (Linus Åkesson / "lft") | [BLACKBIRD.md](BLACKBIRD.md) | `bin/` only (Stage B native), not wired | native driver, 16-file v1.2-exact corpus: mean 99.96%, 11 of 16 at exactly 100.0%, none below 99.8% | `SID/LFT/` (61; 16 are the locator-supported v1.2-exact bucket this driver covers) |
 
 ## Player-id → driver mapping
 

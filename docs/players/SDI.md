@@ -6,7 +6,8 @@ Stage B native = next arc. Corpus: `SID/Gallefoss_Glenn/` (473 files; 441 in
 the flat dir, 671 songs) + `SID/Red_kommel_jeroen/` staging.
 **343 of 441 files locate → 348 Stage-A SF2s** (343 + 5 verified E extra
 subtunes). **324 of those are sweep-validated** — the medians below rest on
-those, not on all 343.
+those, not on all 343. Current headline figures: `docs/reference/ACCURACY_MATRIX.md`
+(canonical; verified to match this doc 2026-08-09).
 
 > **THREE DIFFERENT DENOMINATORS — do not conflate them** (the 2026-07-16 audit
 > did, and nearly caused 19 good SF2s to be deleted as "orphans"):

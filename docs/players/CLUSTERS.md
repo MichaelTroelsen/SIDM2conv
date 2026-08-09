@@ -1,5 +1,8 @@
 # NP21-adjacent clusters — editor-view support inside the Laxity pipeline
 
+Current status also summarized in `docs/reference/ACCURACY_MATRIX.md` (canonical; verified
+to match this doc 2026-08-09).
+
 These are not standalone player pipelines. They are **variant clusters detected inside the default Laxity/NP21 conversion path** (`sidm2/laxity_raw_np21_builder.py`, `np21_edit_area_builder.py`): audio always works via the embedded-binary path; the cluster work is about wiring the **editor view** (F1 orderlists/sequences, F2 instruments, F3 wave, F4 pulse, F5 filter) and, where possible, edit propagation.
 
 | Cluster | Files | Detector(s) | Editor status |

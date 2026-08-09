@@ -10,10 +10,13 @@ pipeline.
 **Reference:** the official manual `bin/RoMusak/romuzak.txt` (German, V6.x + V7.9x);
 the decrunched editor `out/romuzak_editor_decrunched.prg` (entry `$1000`).
 **Converter:** `bin/romuzak_to_sf2.py`; tests `pyscript/test_romuzak_to_sf2.py`.
-**Status:** **notes + song-order (orderlist) are byte-exact** vs the original siddump
-on Delirious (osc2 92/93, osc3 113/113); plays in real SID Factory II. Sounds are
-decoded structurally (arps / drums / SEEK pulse / →pulse) — **Stage A**, transpile to
-the stock **Driver 11** SF2, like FC and Galway.
+**Status:** **Stage B native driver, BYTE-PERFECT** on both corpus tunes — freq +
+waveform + pulse + AD-SR all match over the full song loop (see *Native driver* below).
+Stage A (transpile to the stock **Driver 11** SF2, like FC and Galway) preceded it and
+is still available: notes + song-order (orderlist) byte-exact vs the original siddump
+on Delirious (osc2 92/93, osc3 113/113), sounds decoded structurally (arps / drums /
+SEEK pulse / →pulse). Current headline figures: `docs/reference/ACCURACY_MATRIX.md`
+(canonical; this header corrected 2026-08-09, `DOC-AUDIT.md`, to lead with Stage B).
 
 ---
 

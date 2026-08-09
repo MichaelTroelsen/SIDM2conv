@@ -3,7 +3,7 @@
 **Composer:** Jeroen Tel (Maniacs of Noise engine, 1987-89 era)
 **Corpus:** `SID/Tel_Jeroen/` (179 `.sid` files)
 **Registry key:** none yet — the whole pipeline lives in `bin/` (not wired into `DriverSelector.PLAYER_REGISTRY`)
-**Status:** native SF2 driver, **100% byte-exact on freq + waveform + pulse + filter, all 3 voices, full song length** for Hawkeye subtunes 2 & 3; every other covered tune measures **98-100% on all four registers** except Supremacy's accepted ~86-92% structural profile. The 2026-07-05 fixes (filter guard + boundary continuation + `$FB` tie decode) collapsed part counts: Supremacy sub0/sub1/sub2 = 5/**1**/**1** parts, Hawkeye sub0 7, Cybernoid 11, Cybernoid II 13, Myth 8 (see *Part-count reduction*).
+**Status:** native SF2 driver, **100% byte-exact on freq + waveform + pulse + filter, all 3 voices, full song length** for Hawkeye subtunes 2 & 3; every other covered tune measures **98-100% on all four registers** except Supremacy's accepted ~86-92% structural profile. The 2026-07-05 fixes (filter guard + boundary continuation + `$FB` tie decode) collapsed part counts: Supremacy sub0/sub1/sub2 = 5/**1**/**1** parts, Hawkeye sub0 7, Cybernoid 11, Cybernoid II 13, Myth 8 (see *Part-count reduction*). Current headline figures: `docs/reference/ACCURACY_MATRIX.md` (canonical; verified to match this doc 2026-08-09).
 
 Covered tunes so far: **Hawkeye**, **Cybernoid**, **Cybernoid II**, **Myth**, **Supremacy**. The engine RE transfers — one parser (`sidm2/mon_parser.py`) decodes all of them via per-tune orderlist-model variants.
 

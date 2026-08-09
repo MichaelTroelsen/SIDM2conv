@@ -3,7 +3,8 @@
 **Player:** SID Factory II's own Driver 11 (any SF2-exported file)
 **Registry key:** `driver11`
 **Driver:** `sf2driver11_00.prg`
-**Accuracy:** **100%** for SF2-exported files; **safe default** for unknown players
+**Accuracy:** **100%** for SF2-exported files (by construction — see below); **safe default**
+for unknown players. Canonical figures: `docs/reference/ACCURACY_MATRIX.md`.
 **Corpus:** round-trip test files; the fallback for anything unrecognised
 
 When a SID was **exported from SID Factory II**, it already uses Driver 11's structure — so converting it back to SF2 with Driver 11 preserves the exact tables and gives **100%** fidelity. Driver 11 is also the **safe default** when the player can't be identified.

@@ -16,7 +16,8 @@ lead, muted 288 ticks) does not gate under SF2II's Driver 11 (see *Open issues*)
 **Stage B (native, shipped 2026-07-30) removes that constraint** — it writes its
 own sequencer, so all-rest sequences and long rest prefixes are simply not a
 problem — and reaches **14 of 15 corpus voices at exactly 100.0% audible
-per-frame pitch over full song length** (below).
+per-frame pitch over full song length** (below). Current headline figures:
+`docs/reference/ACCURACY_MATRIX.md` (canonical; verified to match this doc 2026-08-09).
 
 ---
 

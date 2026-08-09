@@ -1,5 +1,14 @@
 # Blackbird (Linus Åkesson / "lft") — recon started 2026-07-19
 
+> **CURRENT STATE (see `docs/reference/ACCURACY_MATRIX.md` — this is the single source of
+> truth): corpus mean 99.96%, 11 of 16 files at exactly 100.0%, none below 99.8%, over a
+> 16-file v1.2-exact bucket.** The "Status" paragraph immediately below is a **historical
+> snapshot dated 2026-07-21 (post-B22)** — accurate as of that date, on an 11-file corpus at
+> 97.4-99.8% — and is superseded by dozens of later commits (E3-E6 and beyond) covered
+> further down in this file. Verified stale 2026-08-09 (`DOC-AUDIT.md`); left in place as
+> history rather than rewritten, since the rest of this document is exactly that: a dated
+> development log where later sections already supersede earlier ones.
+
 **Status (updated 2026-07-21, post-B22): decompression, tempo model, and
 Stage A (Driver 11 transpile) all SOLVED and shipped for all 11
 v1.2-exact-bucket files (`sidm2/blackbird_parser.py`,

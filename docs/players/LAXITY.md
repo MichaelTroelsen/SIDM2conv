@@ -3,7 +3,8 @@
 **Player:** Laxity NewPlayer v21 and forks
 **Registry key:** `laxity`
 **Driver:** `sf2driver_laxity_00.prg`
-**Accuracy:** **99.93–100%** (production — the flagship supported player)
+**Accuracy:** **99.93–100%** (production — the flagship supported player); canonical
+figures in `docs/reference/ACCURACY_MATRIX.md`
 **Corpus:** `SID/Laxity/` (286 files) + `SID/` root (17 mixed files)
 
 This is SIDM2's most mature path: native Laxity NP21 SID files convert to a **custom Laxity SF2 driver** with byte-identical audio.

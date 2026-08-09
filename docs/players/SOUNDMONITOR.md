@@ -19,7 +19,8 @@ pipeline). Output `out/soundmonitor/`. `bin/` only, not registry-wired.
 
 **Status (2026-07-16):** format fully RE'd; parser onset-validated **99.9% corpus-wide**
 (10/11 files 100%); Stage A **32/33 voices note-accurate**; Stage B shipping at
-**11 songs / 27 parts**.
+**11 songs / 27 parts**. Current headline figures: `docs/reference/ACCURACY_MATRIX.md`
+(canonical; verified to match this doc 2026-08-09).
 
 **Corpus fidelity — the current headline (re-derived 2026-07-30, see below):**
 **99.25% freq+wf strict**, over **all 27 of 27 parts / 11 songs**

@@ -12,7 +12,8 @@ VGMPF-documented Hubbard reusers — this port is the first RE of the variant it
 **Converter:** `bin/kimmel_to_sf2.py` → `out/kimmel_sf2/` (9 SF2s: Radax + Radax_sub1..5
 + the 3 single-subtune tunes). Parser: `sidm2/kimmel_parser.py`.
 **Status:** **Stage A**, transpiled to the stock **Driver 11**. Standalone `bin/` builder —
-**not** wired into `driver_selector`/`conversion_pipeline`.
+**not** wired into `driver_selector`/`conversion_pipeline`. Current headline figures:
+`docs/reference/ACCURACY_MATRIX.md` (canonical; verified to match this doc 2026-08-09).
 
 > **ONE engine, not two generations.** Radax (1989) and the three 1987 "The Judges"
 > tunes are the *same* driver at different tempos. Radax is merely relocated +
