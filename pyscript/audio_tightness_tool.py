@@ -41,7 +41,9 @@ from sidm2.fidelity_common import fmt_pct, per_voice_register_agreement
 from sidm2.vsid_wrapper import VSIDIntegration
 from pyscript.audio_tightness_report import format_text_report
 from pyscript.audio_tightness_html_exporter import AudioTightnessHTMLExporter
-from sidm2.audio_listen import extract_features, format_feature_report, render_comparison_spectrogram
+from sidm2.audio_listen import (WINDOW_S, extract_features, extract_features_windowed,
+                                 format_feature_report, format_windowed_diff_report,
+                                 render_comparison_spectrogram)
 
 MUTE_MAP = {1: "23", 2: "13", 3: "12"}
 MUTE_ALL = "123"
@@ -822,6 +824,12 @@ Native drivers (bin/-only, e.g. Blackbird):
     parser.add_argument('--no-listen', action='store_true',
                          help="Skip the whole-file audio feature summary (level/brightness/"
                               "noisiness text report) printed after the onset report")
+    parser.add_argument('--windowed', nargs='?', type=float, const=WINDOW_S, default=None,
+                         metavar='SECONDS',
+                         help="Also report features per SECONDS-long section instead of only "
+                              "as a whole-file mean, and call out the most locally-deviant "
+                              "window. Finds a defect confined to one passage, which a "
+                              f"whole-file average dilutes. Default span: {WINDOW_S:g}s")
     parser.add_argument('--spectrogram', nargs='?', const='__auto__', default=None, metavar='PATH',
                          help="Render a 3-panel (original/driver/dB-diff) spectrogram PNG for "
                               "visual inspection, e.g. when the text feature summary doesn't "
@@ -934,6 +942,19 @@ Native drivers (bin/-only, e.g. Blackbird):
             if args.text_output:
                 with open(args.text_output, 'a', encoding='utf-8') as f:
                     f.write("\n\n" + feature_report + "\n")
+
+        if args.windowed is not None:
+            # Both sides windowed at the SAME span, so window i covers the same
+            # stretch of the song on each -- a per-side span would compare
+            # different music and call the mismatch a defect.
+            orig_windows = extract_features_windowed(orig_audio, orig_sr, window_s=args.windowed)
+            driver_windows = extract_features_windowed(driver_audio, driver_sr, window_s=args.windowed)
+            windowed_report = format_windowed_diff_report(
+                orig_windows, driver_windows, orig_label=args.orig, driver_label=args.driver)
+            print("\n" + windowed_report)
+            if args.text_output:
+                with open(args.text_output, 'a', encoding='utf-8') as f:
+                    f.write("\n\n" + windowed_report + "\n")
 
         if args.spectrogram is not None:
             spec_path = args.spectrogram
