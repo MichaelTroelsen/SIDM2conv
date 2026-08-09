@@ -164,6 +164,10 @@ class VSIDIntegration:
                 args,
                 capture_output=True,
                 text=True,
+                errors='replace',   # vsid emit non-ASCII bytes on stderr;
+                                    # cp1252 strict decoding raised UnicodeDecodeError
+                                    # inside subprocess's reader THREAD, where it could
+                                    # not be caught by the try/except around this call.
                 timeout=timeout_value
             )
 

@@ -1,0 +1,67 @@
+{
+  "_README": [
+    "Calibration cases for the audio-listening tooling: pairs where a HUMAN's",
+    "verdict is on record, so the metrics can be checked against something",
+    "other than themselves. Improvement #3 from",
+    "docs/AUDIO_LISTENING_IMPROVEMENT_PLANS.md.",
+    "",
+    "Audio is NOT committed. Each case records how to REGENERATE its artifacts",
+    "(a git commit to build at, plus the builder invocation), following this",
+    "project's existing pattern of regenerating fixtures rather than storing",
+    "binaries. pyscript/test_audio_listen_calibration.py validates this file",
+    "always, and checks the measured claims only when the artifacts are present.",
+    "",
+    "To add a case: append to `cases`. No new test code is needed."
+  ],
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "blackbird-glyptodont-b13",
+      "tune": "SID/LFT/Glyptodont.sid",
+      "human_verdict": "something with the perc or drums",
+      "verdict_source": "docs/guides/AUDIO_TIGHTNESS_GUIDE.md (the case that motivated sidm2/audio_tightness.py); docs/players/BLACKBIRD.md B13 entry",
+      "measured_on": "2026-08-09",
+      "render": {
+        "renderer": "sidplayfp",
+        "seconds": 60,
+        "power_on_delay": 0,
+        "driver_init": "0x1000",
+        "driver_play": "0x1003"
+      },
+      "builds": {
+        "bad": {
+          "commit": "d946701",
+          "commit_subject": "Blackbird Stage B12+B13: instrument-select restart timing + gate-off/note translator fix",
+          "build_cmd": "py -3 bin/build_blackbird_native_song.py SID/LFT/Glyptodont.sid",
+          "artifact": "out/blackbird/Glyptodont_native_part01.sf2",
+          "register_overall_pct": 96.6,
+          "note": "The build the human listened to. Its 'drums sound off' cause was later root-caused and fixed by ef3263b (B25) and 12c7da5 (E3e)."
+        },
+        "good": {
+          "commit": "HEAD",
+          "build_cmd": "py -3 bin/build_blackbird_native_song.py SID/LFT/Glyptodont.sid",
+          "artifact": "out/blackbird/Glyptodont_native_part01.sf2",
+          "register_overall_pct": 99.8,
+          "note": "162/162 note-ons, no outstanding listening complaint."
+        }
+      },
+      "measurements": {
+        "onset_match_pct": {
+          "bad": 56.9,
+          "good": 64.7
+        },
+        "repeatability_floor_pct": {
+          "description": "Original vs a re-render of ITSELF at perturbed power-on delays. The metric's own noise band on this material -- nothing at or above it is evidence.",
+          "min": 85.4,
+          "max": 91.3,
+          "samples": [91.3, 85.4, 86.8]
+        }
+      },
+      "findings": {
+        "orders_correctly": true,
+        "absolute_gate_usable": false,
+        "summary": "The metric ranks the known-bad build below the known-good one (56.9 < 64.7), so it has ORDINAL sensitivity. It has no usable ABSOLUTE calibration: a 99.8%-register-exact build with 162/162 note-ons still scores 64.7%, more than 20 points below the 85-91% original-vs-itself floor. Any threshold that flags the known-bad build also flags the known-good one. Further, the 7.8-point gap between builds is comparable to the floor's own 5.9-point spread, so a single A/B run cannot separate them confidently."
+      }
+    }
+  ]
+}

@@ -185,6 +185,10 @@ class SidplayfpIntegration:
                 args,
                 capture_output=True,
                 text=True,
+                errors='replace',   # sidplayfp emit non-ASCII bytes on stderr;
+                                    # cp1252 strict decoding raised UnicodeDecodeError
+                                    # inside subprocess's reader THREAD, where it could
+                                    # not be caught by the try/except around this call.
                 timeout=duration + 30  # Add buffer time
             )
 
