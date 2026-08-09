@@ -57,11 +57,18 @@ def validate(sid, seconds=20, subtune=0):
     args = [f'-t{seconds}'] + ([f'-a{subtune}'] if subtune else [])
     tracks = freq_tracks(sid, args)
 
+    # A note whose match window runs past the end of the trace cannot be
+    # scored -- every frame in it is missing, so it reads as a miss for reasons
+    # unrelated to the decode. Drop those rather than counting them.
+    last = max(max(t) for t in tracks.values() if t)
+
     seq_ok = seq_tot = drv_ok = drv_tot = 0
     for vi in range(3):
         track = tracks[vi]
         for f, cell in ((f, r[vi]) for f, r in enumerate(frames) if r[vi]):
             note, instr = cell
+            if f + 1 + SETTLE_FRAMES > last:
+                continue
             want = module.freq(note)
             hit = any(track.get(f + d) == want for d in range(SETTLE_FRAMES + 1))
             if module.instrument_drives_freq(instr):

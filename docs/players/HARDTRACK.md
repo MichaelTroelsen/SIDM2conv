@@ -198,8 +198,8 @@ column scores a *correct* model at 0%.)
 
 | | notes | match |
 |---|---|---|
-| **sequencer-pitch** (instrument field 5 bit 7 clear) | 5,846 | **88.39%** |
-| **program-driven** (bit 7 set) | 1,074 | **2.61%** |
+| **sequencer-pitch** (instrument field 5 bit 7 clear) | 5,784 | **88.73%** |
+| **program-driven** (bit 7 set) | 1,062 | **2.64%** |
 
 The split is not a convenience — it is the measurement. Bit 7 means the
 instrument's wave program writes `$D400/$D401` itself, so the sequencer note never
@@ -294,8 +294,8 @@ sequencer-pitch notes only, 20 s:
 
 | | notes | match |
 |---|---|---|
-| **Stage A** (Driver 11 render) | 5,846 | **90.64%** |
-| parser decode (original SID) | 5,846 | 88.39% |
+| **Stage A** (Driver 11 render) | 5,784 | **91.34%** (`--lag 1`: **92.08%**) |
+| parser decode (original SID) | 5,784 | 88.73% |
 
 **Stage A scoring *above* the parser is a measurement artifact, not an
 improvement — do not read it as one.** Where the original's wave program bends a
@@ -311,46 +311,63 @@ By that reading: **6 of the 8 files the parser decodes at 100.0% are Stage A
 note of 454. The real losses are `Zakplus` (99.0 → 87.6) and `Hopscotch`
 (72.2 → 56.8).
 
-### The Stage A losses — attributed, and the main one fixed
+### The Stage A losses — attributed
 
-Measured over the notes the **parser itself resolves** (5,167), with the known
-Driver 11 startup frame corrected, Stage A now loses **21 notes — it retains
-99.59%**. That is the informative number: the 90.92% / 91.64% figures are diluted
+Measured over the notes the **parser itself resolves** (5,132), with the known
+Driver 11 startup frame corrected, Stage A loses **16 notes — it retains
+99.69%**. That is the informative number: the 91.34% / 92.08% figures are diluted
 by notes the parser never resolved either, which Stage A cannot be blamed for.
 
-| by raw instrument byte | notes | lost before | lost now |
-|---|---|---|---|
-| **`$6F` legato** | 871 | 25 (2.87%) | **3 (0.34%)** |
-| plain / other | 4,296 | 18 (0.42%) | **18 (0.42%)** |
-| | | 43 → 99.17% | **21 → 99.59%** |
+Two rounds of work got there:
 
-`$6F` was originally treated as a synonym for `$00` and accounted for **58.1% of
-all Stage A losses** — a 6.8× enrichment over plain notes.
-
-**The fix**: a `$6F` note now selects a **duplicate instrument slot whose
+**1. `$6F` legato — fixed.** `$6F` had been treated as a synonym for `$00` and
+accounted for **58.1% of all Stage A losses** (25 of 43; a 6.8× enrichment over
+plain notes). A `$6F` note now selects a **duplicate instrument slot whose
 `wave_idx` points at the step the wave program SETTLES on** rather than at its
 attack — the `$FF` jump target, or the last real step before `$FE`
 (`settled_cursor()`). Driver 11 always restarts a wave program on note-on and
 **cannot express a tie at all** (its `$90-$9F` tie durations desync the runtime
-driver; `test_no_tie_bytes_emitted` locks them out), so a second instrument is
-the only route to "new pitch, no re-attack" through the real driver. The variant
-copies AD/SR/flags/pulse verbatim and differs in `wave_idx` alone. Instruments
-needing one are found by `legato_instruments()`, which walks each voice's
-orderlist in play order so a `$6F` note inherits the instrument selected in an
-earlier pattern. If the 31-slot cap is hit, the variant is skipped and the
-builder says so.
+driver; `test_no_tie_bytes_emitted` locks them out), so a second instrument is the
+only route to "new pitch, no re-attack" through the real driver. The variant
+copies AD/SR/flags/pulse verbatim and differs in `wave_idx` alone.
+Result: `$6F` losses **25 → 3**, plain-note losses **unchanged at 18** — that
+invariance is the regression check.
 
-Per-file: `Love_tune_3` 93.4 → **98.3%**, `Illmatic_end` and `Griffin_Score` now
-match or exceed the parser, and every previously-100% file stays at 100%.
-**`plain/other` losses are byte-identical before and after (18/4,296)** — that is
-the regression check, and it is what says the change touched only `$6F` notes.
+**2. A measurement bug — fixed.** Five of the remaining "losses" were notes at
+frames 996-997 whose 9-frame match window ran past the end of a 1,000-frame
+trace: every frame in the window was missing, so they scored as misses for
+reasons unrelated to the conversion. Both validators now drop notes whose window
+does not fit, using a `max(lag, 1)` margin so a `--lag 0` and a `--lag 1` run
+score the **same** note set and stay comparable.
 
-**18 losses remain unattributed**, concentrated in `Ritual_II_tune_2` (6) and
-`Walk_to_Soul` (5). `Walk_to_Soul`'s are all plain notes — one event (note 21,
-instrument 3, pattern 1, once per 192-frame loop) where the original holds the
-bare note while Stage A runs the instrument's full descending ramp and settles at
-note+4. A `$62`-freeze explanation was tested and **refuted** (the notes actually
-tagged as followed-by-`$62` all hit).
+### The 16 that remain — characterised, not explained
+
+**11 of the 16 are two instruments losing 100% of their notes:**
+
+| file | voice | instrument | lost |
+|---|---|---|---|
+| `Ritual_II_tune_2` | 2 | 13 | **6 / 6** |
+| `Walk_to_Soul` | 1 | 3 | **5 / 5** |
+
+The other 5 are scattered singles (`Altered_States_Tune_2` ×2, `Love_tune_3` ×2,
+`For_Astoria_6` ×1) on instruments that otherwise score fine.
+
+A whole-instrument failure is a specific tell, and the obvious correlate is
+**refuted**: it is *not* simply "the wave program settles on a non-zero arpeggio
+offset". Instruments settling on offsets 3, 5, 6, 7, 8, 9, 10, 24, 64 and 76 lose
+**nothing at all across 250 notes**. Only the two above (settling on +14 and +4)
+fail, and they fail completely.
+
+**The mechanism is not established.** For `Walk_to_Soul` the original plays the
+bare note and holds it, while Stage A runs the instrument's full descending ramp
+and settles at note+4 — but the player's own `$FE` semantics (stop stepping, hold
+the last value) predict the original should hold note+4 too, which it does not.
+Something resets the frequency to the base note in the original and it is not in
+the wave stepper. Two candidate explanations have already been tested and
+refuted here — cross-pattern gate state, and the `$62` freeze — so this is
+recorded as an **open question** rather than a third guess.
+
+11 notes across 2 files is 0.2% of the corpus, so the honest priority is low.
 
 ### Where the +1 frame comes from — found
 
@@ -393,13 +410,15 @@ Doing so is decisive for the two files previously called losses:
 were never losses, only the phase. `Love_tune_3` (−5.8) and `Walk_to_Soul` (−5.9)
 do not move, so **they are the genuine Stage A losses and remain unexplained**.
 
-Corpus-wide the correction is worth only **+0.62 pp** (90.64% → 91.26%), because
-most notes already land inside an 8-frame window. The previous writeup's estimate
-of "~91.5%" was close but is superseded by the measured 91.26%.
+Corpus-wide the correction is worth **+0.74 pp** (91.34% → 92.08%), because
+most notes already land inside an 8-frame window.
 
 ### Window sensitivity — quote the window with the number
 
-The match window is not a free parameter, and it has **no plateau**:
+The match window is not a free parameter, and it has **no plateau**. (Measured
+**before** the trace-boundary guard and the `$6F` fix, on the note set of the
+time — kept internally consistent rather than half-updated. Both guards shift
+every row up slightly; neither changes the shape, which is the point.)
 
 | window (frames) | parser | Stage A |
 |---|---|---|
@@ -432,9 +451,11 @@ Two measurement traps this build walked into, both worth remembering:
 
 ## Next steps
 
-1. **Explain the 18 unattributed losses**, mainly `Ritual_II_tune_2` (6) and
-   `Walk_to_Soul` (5) — now the largest remaining Stage A gap. `$62`-freeze was
-   tested and refuted.
+1. **Explain the two whole-instrument failures** (`Ritual_II_tune_2` instr 13,
+   `Walk_to_Soul` instr 3) — 11 of the 16 remaining losses, and the only Stage A
+   gap with a shape. `$62`-freeze and cross-pattern gate state were both tested
+   and refuted; the `$FE` "stop stepping" model does not predict what the
+   original actually plays, so start there.
 2. **Resolve the parser residual** — instrument the `$63`/`$64` slide commands and
    confirm (or refute) the hypothesis above before quoting a higher number.
 3. **Wave/pulse programs are decoded** (`wave_program()`, `pulse_program()`) but

@@ -42,7 +42,7 @@ from sidm2.fidelity_common import score_pct  # noqa: E402
 from sidm2.hardtrack_parser import (  # noqa: E402
     HardTrackError, HardTrackModule, simulate,
 )
-from pyscript.hardtrack_validate import freq_tracks  # noqa: E402
+from pyscript.hardtrack_validate import SETTLE_FRAMES, freq_tracks  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -75,12 +75,23 @@ def validate(sid, seconds=20, subtune=0, lag=0):
         a_tracks = freq_tracks(wrapped, [f'-t{seconds}'])
     o_tracks = freq_tracks(sid, [f'-t{seconds}'] + ([f'-a{subtune}'] if subtune else []))
 
+    # A note whose match window runs past the end of the trace can never be
+    # scored -- `.get()` returns None for every frame in it, so it reads as a
+    # miss for reasons that have nothing to do with the conversion. Drop those
+    # instead of counting them against Stage A (5 of the 21 remaining "losses"
+    # were exactly this).
+    last = max(max(t) for t in (o_tracks[v] for v in range(3)) if t)
+
     a_ok = o_ok = tot = 0
     for vi in range(3):
         at, ot = a_tracks[vi], o_tracks[vi]
         for f, cell in ((f, r[vi]) for f, r in enumerate(frames) if r[vi]):
             note, instr = cell
             if module.instrument_drives_freq(instr):
+                continue
+            # max(lag, 1) keeps the excluded set independent of --lag, so a
+            # lag-0 and a lag-1 run score the SAME notes and stay comparable.
+            if f + max(lag, 1) + SETTLE_FRAMES > last:
                 continue
             want = module.freq(note)
             tot += 1

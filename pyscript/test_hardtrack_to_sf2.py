@@ -369,3 +369,19 @@ def test_legato_variants_respect_the_instrument_cap():
         except HardTrackError:
             continue
         assert len(song.instruments) <= h2s.MAX_INSTRUMENT_SLOTS, name
+
+
+@needs_corpus
+def test_validators_drop_notes_whose_window_runs_past_the_trace():
+    """A note near the end of the trace cannot be scored -- every frame of its
+    match window is missing, so it reads as a miss for reasons unrelated to the
+    conversion. Both validators must exclude those, and must exclude the SAME
+    ones regardless of --lag so a lag-0 and a lag-1 run stay comparable."""
+    from pyscript import hardtrack_stagea_validate as sav
+    from pyscript.hardtrack_validate import SETTLE_FRAMES, validate as pval
+    _, seq_tot, _, drv_tot = pval(sid('Love_tune_2'), seconds=6)
+    assert seq_tot > 0
+    a0 = sav.validate(sid('Love_tune_2'), seconds=6, lag=0)
+    a1 = sav.validate(sid('Love_tune_2'), seconds=6, lag=1)
+    assert a0[1] == a1[1], 'the scored note set must not depend on --lag'
+    assert a0[1] <= seq_tot
