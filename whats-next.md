@@ -517,11 +517,34 @@ multiple voices share one.
   overflow a byte boundary, no sharing required. So the other 10
   fast-PWM-using files are PLAUSIBLE single-voice cases, not individually
   confirmed the way Commando_song2 was (byte-for-byte against `HPReplay`).
-- **Net: up to 12 of 14 files could plausibly be helped** — this is a
-  corpus-wide fix candidate, not a one-off patch for one file. That's a
-  meaningfully stronger case for building it than the Commando-only framing
-  this item started with. Full detail (including the resolved compilation-
-  rip module mapping for `5_Title_Tunes_song1`) in `docs/players/HUBBARD.md`.
+- **Correction: `Delta_song0` doesn't belong on this list.** It's V2-class
+  (`swallow_period=5`), which forces `hp_engine=0` by default — its build
+  never touches `HP_ENGINE`'s fast-PWM branch regardless of what its
+  instrument table's fx bits say. The fx-bit3 scan checks the parsed
+  INSTRUMENT DATA, not whether the file's V1/V2 CLASS even routes through
+  that engine. **Corrected net: 11 of 13** (excluding `Action_Biker_song0`,
+  no fast-PWM instrument, and `Delta_song0`, `HP_ENGINE` forced off).
+- **Tried a second data point (`Chimera_song0`) to check whether Commando's
+  periodicity generalizes — inconclusive, real friction, not pursued
+  further tonight.** Confirmed Chimera's own fast-PWM ADC exists (`$c40f`,
+  disassembly-verified, same missing-`CLC` pattern, plus an `ORA #$40`
+  Commando's revision lacks). But PC-tracing that exact address AND the
+  broader dispatch point immediately before it gave ZERO hits across
+  200-500 frames — the code is in the binary but isn't reached through the
+  entry point / instrument index this check assumed. Getting a real second
+  data point needs the SAME per-file disassembly effort Commando took, not
+  a quick reuse of its addresses — instrument indexing (`VINST`/`HPMAP`) is
+  not guaranteed 1:1 across files. **This is a real, demonstrated cost per
+  file**, and the periodicity/compressibility question stays open beyond
+  Commando_song2. Stopped here rather than keep guessing at addresses.
+
+**Net position going into the next session**: the baked-schedule fix is
+architecturally sound (proven twice over — the reverted carry-inheritance
+attempt AND this scoping both point the same direction) and would help at
+least Commando_song2 for certain, plausibly several of the other 10
+fast-PWM files, but EVERY file needs its own disassembly pass before the
+fix can be built generally — there is no shortcut through Commando's
+addresses or instrument indices. Full detail in `docs/players/HUBBARD.md`.
 
 ## 4. Nothing else outstanding from the pre-session backlog
 

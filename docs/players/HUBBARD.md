@@ -233,10 +233,34 @@ The build measures itself with `bin/mon_part_fidelity.py PART SONG SECS OFF0` (s
       10 files (fast-PWM present, no detected sharing) are PLAUSIBLE single-
       voice cases, not ruled out — just not individually confirmed the way
       Commando_song2 was (`HPReplay` vs. the flat model, byte-for-byte).
-    - **Net: the baked-schedule fix would plausibly help up to 12 of 14
-      files** (everything except `Action_Biker_song0`, which needs separate
-      diagnosis, and the still-unverified single-voice cases) — this is a
-      corpus-wide fix candidate, not a one-off patch for Commando.
+    - **Correction (2026-08-09): `Delta_song0` should NOT be in the
+      candidate list.** `Delta` is V2-class (`m.lay.v2_notes=True`,
+      `swallow_period=5`), which forces `shim.hp_engine = 0` by default
+      (`bin/build_hubbard_native_song.py`'s V2 fallback to captured/freerun
+      pulse) — its build never routes through `HP_ENGINE`'s fast-PWM branch
+      at all, whatever its instrument table's fx bits say. The `fx bit3`
+      scan is a property of the PARSED INSTRUMENT DATA, not of whether the
+      build actually uses `HP_ENGINE` — checking the flag alone isn't
+      sufficient; the file's V1/V2 class has to be checked too. **Net: 11 of
+      13, not 12 of 14, once `Action_Biker_song0` (no fast-PWM instrument)
+      and `Delta_song0` (V2, `HP_ENGINE` forced off) are both excluded.**
+    - **Attempted a second data point (`Chimera_song0`) to check whether the
+      periodicity generalizes — inconclusive, real friction, not pursued
+      further.** Confirmed `mode_a=True` for Chimera by disassembly (its own
+      fast-PWM ADC is at `$c40f`, same missing-`CLC` pattern, plus an
+      `ORA #$40` Commando's revision doesn't have — a real revision
+      difference worth remembering). But PC-tracing both that exact address
+      AND the broader dispatch point immediately before it (`$c402`) gave
+      **zero hits across 200-500 frames** — the code exists in the binary
+      but isn't reached through the entry point and instrument index this
+      check assumed. Getting a clean second data point needs the SAME
+      per-file disassembly effort Commando took (locate the real runtime
+      entry, confirm the Python-side instrument index matches the ASM's
+      `VINST`/`HPMAP` indexing, which is not guaranteed 1:1 per file) —
+      not a quick generalization from one worked example. **The
+      periodicity/compressibility question is still open** for anything
+      other than Commando_song2; do not assume it generalizes without
+      redoing this per file.
 - **`out/hubbard/*.sf2` is a build cache, not a source of truth — it goes stale
   silently.** `out/` is `.gitignore`d entirely (not a tracked-vs-untracked
   question, it's simply not in the repo), so nothing enforces that what's on
