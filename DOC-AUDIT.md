@@ -1,5 +1,9 @@
 # Documentation Audit — SIDM2 (accuracy-figure duplication, scoped)
 
+**STATUS: CLOSED.** All 7 confirmed findings fixed and independently re-verified against
+the current file contents (not just re-read from this report) on 2026-08-09, after the fix
+commit (`c3c0340`) had already landed. Nothing open.
+
 **Audited:** 2026-08-09 · **Commit:** 6d6350f · **Branch:** master
 **Scope:** `docs/reference/ACCURACY_MATRIX.md` vs `docs/players/*.md` (21 files) and
 `docs/players/README.md`'s own index table. Deliberately narrow, per this session's task:
@@ -39,6 +43,17 @@ found this from the start would be inaccurate.
 
 18 files changed, all `docs/players/*.md` + `docs/players/README.md`; no code touched (grep
 confirmed no non-`.md` files in the diff, so no test suite re-run was needed).
+
+### Post-commit verification (2026-08-09, separate pass)
+
+Re-checked every row of the fix table above directly against the current file contents
+(not against this report's own claims) after commit `c3c0340`: all 7 fixes confirmed
+present exactly as described, nothing reverted or missed. Also swept every player doc for
+any remaining `filter.*100%` text to confirm the Hubbard fix was complete — found none
+outstanding; the only remaining matches are in `BLACKBIRD.md`, `LAXITY.md`, and `MON.md`,
+all of which are **legitimate**, since those three players genuinely write the filter
+register (unlike Hubbard, where the claim was vacuous by construction). No new drift
+introduced by the fix itself.
 
 ---
 
