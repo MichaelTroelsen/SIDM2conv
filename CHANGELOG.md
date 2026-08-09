@@ -25,6 +25,109 @@ Due to the extensive development history, older changelogs have been archived fo
 
 ---
 
+## [3.23.0] - 2026-08-09
+
+### A way for the assistant to "listen" - and a calibration that says what it is worth
+
+The assistant had no way to inspect a conversion in the audio domain: register-exact
+comparison and onset timing were the whole toolkit. This cycle adds a feature summary and
+spectrograms it can read directly, five measured improvements to them, per-voice stem
+export, and - the part that matters most - **the first calibration of any of this against
+a human's recorded verdict**, which found the tooling more limited than its own guide
+implied.
+
+#### Added - a readable audio-domain summary, plus spectrograms
+- `sidm2/audio_listen.py`: whole-file features (level, spectral centroid, 85% rolloff,
+  zero-crossing rate, flatness, silence fraction) as text, plus a 3-panel
+  original/driver/dB-diff spectrogram PNG the assistant can view with the Read tool.
+  numpy + Pillow only - no matplotlib/librosa/scipy, matching the module it sits beside.
+- `--spectrogram` / `--no-listen` on `audio_tightness_tool.py`. SID2SID and WAV2WAV
+  already worked through the existing `.sid`/`.sf2`/`.wav` input handling.
+
+#### Added - per-voice WAV stem export in the real pipeline
+- `AudioExportIntegration.export_voice_stems()` writes `<name>_voice1/2/3.wav` beside the
+  mix, via `--audio-export-voices` or `config.export_audio_voices`. Forces sidplayfp
+  (VSID has no per-voice mute) and pins `power_on_delay=0` so a stem regenerates
+  byte-identically. Warns that muting is not clean isolation on every tune - the
+  digi-bleed measurements record a worst case of 58.7% shared residual.
+
+#### Added - five improvements, each measured rather than assumed
+- **Mel-scale band spacing** (opt-in `--band-scale mel`). Linear spacing cannot resolve a
+  full octave in SID's bass: 100 Hz and 200 Hz both peak in band 0, and the CLI printed
+  `-0.0 Hz` for a doubling of frequency.
+- **A-weighted loudness** (`rms_dba_mean`/`max`) alongside raw dBFS, checked against the
+  published IEC 61672 table rather than against itself.
+- **Section-aware windowed features** + a worst-window call-out, so a defect confined to
+  one passage is not diluted by a whole-file mean.
+- **Pitch-class chroma**, which needs its own 200 ms window: at the 40 ms window used for
+  onset timing, a 55 Hz bass tone is classified **G instead of A** with a large margin.
+- **A calibration manifest** (`pyscript/calibration_cases.json`) whose recorded findings
+  are themselves under test, so a re-measure that changes the numbers without revisiting
+  the conclusions fails loudly.
+
+#### Fixed - the windowed outlier search scored sparse metrics infinitely
+- `worst_window()` returned `inf` on real material and flagged window 0 identically for a
+  known-good and a known-bad build. `silence_frac` is zero in 7 of 12 windows, so its
+  median is 0, so `_metric_scale()` returned 0 and the relative test divided by it. It won
+  every ranking; RMS/centroid/rolloff/flatness were never reached.
+- Sparse metrics now fall back to the mean. A genuinely all-zero baseline still takes the
+  infinite branch it was written for.
+
+#### Fixed - VSID rendered at a different sample rate from sidplayfp
+- VSID used VICE's internal default (measured 48000 Hz) while sidplayfp always pinned
+  44100, so every cross-renderer comparison had to resample. `-soundrate` is a documented
+  option this project simply never passed. `VSIDIntegration.export_to_wav()`'s `frequency`
+  parameter was also accepted and then ignored; it is now actually passed.
+
+#### Fixed - both render wrappers crashed on non-ASCII subprocess output
+- Strict cp1252 decoding raised `UnicodeDecodeError` inside subprocess's reader *thread*,
+  where the try/except around the call could not catch it.
+
+#### Measured - the calibration, and what it says
+Rebuilt the exact B13 Glyptodont artifacts (a throwaway worktree at `d946701`, the build a
+human listened to and called "something with the perc or drums") and ran them against HEAD:
+
+| comparison | onset match |
+|---|---:|
+| original vs **itself**, phase-perturbed - the floor | **85.4-91.3%** |
+| original vs HEAD (99.8% register, 162/162 note-ons) | **64.7%** |
+| original vs B13 (the build that sounded wrong) | **56.9%** |
+
+- The tooling has **ordinal sensitivity** - it ranks the bad build below the good one
+  unprompted - and **no usable absolute gate**: a near-perfect build scores 20+ points
+  below what the original scores against itself, so any threshold flagging B13 also
+  condemns the good build. The deficit is systematic, not a defect.
+- Of the five improvements, only **A-weighting** is a demonstrated win on this case
+  (separation 0.294 -> 1.585, 5.4x). **Mel is unproven** here (2 of 3 metrics improve, all
+  by margins one tune cannot separate from noise). **Chroma is a correct null** - B13 was a
+  percussive defect, so there was no pitch shift to find and none was reported. **Windowed
+  discriminates only with `silence_frac` excluded.**
+- `docs/guides/AUDIO_TIGHTNESS_GUIDE.md` now carries this limitation, because it read as
+  though the tool caught the defect that motivated it.
+
+#### Investigated and rejected - CLAP audio embeddings
+- A learned perceptual similarity (laion-clap) was bridged in out-of-process, since it
+  pins `numpy<2.0` against this project's 2.5.1 - and numpy 1.x ships no wheels above
+  cp312, so the venv needs a different *Python version*, which no in-process dependency
+  juggling could provide.
+- It **failed its validation gate**: separation `min(same-tune) - max(cross-tune)` was
+  -0.053 at 4 tunes/20 s, +0.006 at 60 s, and **-0.413 at 9 tunes**. Different
+  compositions score up to 0.947 while a same-tune pair falls to 0.534. Longer renders
+  made discrimination *worse* - the signature of a general-audio model collapsing toward a
+  genre centroid.
+- Recorded in `docs/CLAP_EMBEDDING_NEGATIVE_RESULT.md` so it is not silently retried. The
+  bridge is kept (inert, 19 tests that need no torch); the venv is uninstalled.
+
+#### Notes
+- Tests ~1,900 -> **2,065**.
+- The recurring lesson: four of the five improvements would have shipped a *confidently
+  wrong* number that the plan's own test passed - the octave collapse, a +12.8 dB
+  A-weighting error from a band-centre lookup, a z-score ceiling of 2.5 against a 3.0
+  threshold, and the 40 ms chroma misclassification. Each was caught by running against
+  real material and checking against an external reference, never by review.
+
+---
+
 ## [3.22.0] - 2026-07-25
 
 ### Blackbird / lft closed out at 99.96% - and three findings the repo had recorded as settled turned out to be wrong
