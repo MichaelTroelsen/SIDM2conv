@@ -206,6 +206,37 @@ The build measures itself with `bin/mon_part_fidelity.py PART SONG SECS OFF0` (s
     Live accumulation stays the underlying mechanism (per the captured-
     bundle failure above) — what's missing is only the EXTRA-STEP schedule,
     not the accumulation model itself.
+  - **How much of the corpus this would actually help — surveyed
+    2026-08-09.** Checked all 14 of the "real, reproducible" residual files
+    (see the `out/hubbard` staleness bullet above) for the mechanism's two
+    ingredients: does the tune even use a fast-PWM instrument, and does more
+    than one voice share one. `decode_song`'s own voice/instrument timeline,
+    not inference from the register symptom.
+    - **1 of 14 (`Action_Biker_song0`) uses NO fast-PWM instrument at
+      all** — its residual is a different, unrelated bug; this fix would
+      not touch it.
+    - **13 of 14 DO use fast-PWM instruments** — `5_Title_Tunes_song1`
+      (compilation-rip, resolves to module 1 via `detect_module_map`),
+      `Chimera_song0`/`song1`, `Gremlins_song0`/`2`/`3`/`4`/`6`,
+      `Star_Paws_song0`, `Delta_song0`,
+      `Geoff_Capes_Strongman_Challenge_song3`,
+      `One_Man_and_his_Droid_song0`, `Zoids_song2`.
+    - Of those 13, only **3 show explicit multi-voice sharing**
+      (`Gremlins_song2` v1&v2@instr7, `Gremlins_song6` v1&v2@instr21,
+      `One_Man_and_his_Droid_song0` v1&v2@instr13) — the Commando-shaped
+      case, severe and uniform across voices because a chord compounds it.
+    - **Voice-sharing is NOT a precondition for the bug, only for its
+      SEVERITY.** The root cause (missing `CLC`, carry inherited from that
+      SAME voice's own frequency slide) needs only ONE voice's own
+      portamento/vibrato to overflow a byte boundary that frame — it does
+      not require another voice touching the same instrument. So the other
+      10 files (fast-PWM present, no detected sharing) are PLAUSIBLE single-
+      voice cases, not ruled out — just not individually confirmed the way
+      Commando_song2 was (`HPReplay` vs. the flat model, byte-for-byte).
+    - **Net: the baked-schedule fix would plausibly help up to 12 of 14
+      files** (everything except `Action_Biker_song0`, which needs separate
+      diagnosis, and the still-unverified single-voice cases) — this is a
+      corpus-wide fix candidate, not a one-off patch for Commando.
 - **`out/hubbard/*.sf2` is a build cache, not a source of truth — it goes stale
   silently.** `out/` is `.gitignore`d entirely (not a tracked-vs-untracked
   question, it's simply not in the repo), so nothing enforces that what's on

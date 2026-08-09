@@ -500,6 +500,29 @@ irregular tempo). Live accumulation stays the mechanism (per the captured-
 bundle failure above); only the missing piece is an explicit EXTRA-STEP
 schedule instead of an implicit (and, as shown, non-functional) carry.
 
+**Scoped whether this fix is worth building at all (2026-08-09)** — before
+committing to real implementation work, checked how much of the corpus it
+would plausibly help. Surveyed all 14 "real, reproducible" residual files
+(`decode_song`'s own voice/instrument timeline, not inference) for the
+mechanism's two ingredients: does the tune use a fast-PWM instrument, and do
+multiple voices share one.
+- **1 of 14 (`Action_Biker_song0`) uses NO fast-PWM instrument at all** — a
+  different, unrelated bug; this fix would not touch it.
+- **13 of 14 DO use fast-PWM instruments.** Of those, only **3 show explicit
+  multi-voice sharing** (`Gremlins_song2`, `Gremlins_song6`,
+  `One_Man_and_his_Droid_song0`) — the Commando-shaped case.
+- **Voice-sharing is NOT a precondition for the bug, only for its
+  severity** — the root cause (missing `CLC`, carry inherited from that
+  SAME voice's own frequency slide) needs only one voice's own vibrato to
+  overflow a byte boundary, no sharing required. So the other 10
+  fast-PWM-using files are PLAUSIBLE single-voice cases, not individually
+  confirmed the way Commando_song2 was (byte-for-byte against `HPReplay`).
+- **Net: up to 12 of 14 files could plausibly be helped** — this is a
+  corpus-wide fix candidate, not a one-off patch for one file. That's a
+  meaningfully stronger case for building it than the Commando-only framing
+  this item started with. Full detail (including the resolved compilation-
+  rip module mapping for `5_Title_Tunes_song1`) in `docs/players/HUBBARD.md`.
+
 ## 4. Nothing else outstanding from the pre-session backlog
 
 Every other item from the PRIOR session's handoff (`69c806f`) — the
