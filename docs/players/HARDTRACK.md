@@ -106,7 +106,7 @@ duration is a separate rest command, so a "row" is one event, not one frame.
 |---|---|
 | `$FF` | end of pattern → fetch the next orderlist entry |
 | `$67 n` | rest for `n` rows (this is how note length is expressed) |
-| `$63 a` / `$64 a` | slide / portamento, one argument byte |
+| `$63 a` / `$64 a` | slide **up** / slide **down** by `a` per frame, one argument byte. Not a portamento — there is no target pitch; the ramp ends only at the next note-on on that voice (33/33) |
 | `$60` / `$61` / `$62` | tie / gate-off / reset — each still consumes an instrument byte |
 | other | **note** (`& $7F`, index into the 96-entry frequency table) followed by an instrument byte |
 
@@ -149,14 +149,14 @@ is flagged via `instrument_count_verified == False` rather than silently trusted
 | 2 | pulse width: high nibble → `$D403`, low nibble → `$D402` |
 | 3 | **pulse-sweep** program start cursor |
 | 4 | **waveform/arpeggio** program start cursor |
-| 5 | **flags** — bit 7 = program drives frequency absolutely, bit 4 = hard restart, bits 0–1 = mode |
+| 5 | **flags** — bit 7 = program drives frequency absolutely, bit 4 = *on a repeated note, skip the filter re-arm* (**not** a hard restart — it reaches nothing else), bits 0–1 = mode. Bits 2, 5, 6 are never read: the player masks field 5 with only `$03`/`$10`/`$80`, in 33/33 |
 | 6 | filter program start cursor (self-modified into `$158f`) |
-| 7 | filter resonance/mode base (self-modified into `$15b2`) |
+| 7 | **initial filter cutoff** (self-modified into `$15b2`, the base the program's per-frame delta accumulates onto → `$D416`). Not the resonance — that is field 12's high nibble |
 | 8 | **vibrato**: low nibble = frames per direction, high nibble ×2 = onset delay |
 | 9 | **vibrato depth** (added to / subtracted from the frequency low byte) |
 | 10 | vibrato depth **increment** per half-cycle |
 | 11 | vibrato depth **limit** — once reached, the depth stops growing |
-| 12 | filter routing/enable nibbles → `$D417` |
+| 12 | **filter setup**: high nibble = **resonance** → `$D417` bits 7–4, low nibble ×16 = mode → `$D418` bits 7–4, and a non-zero value also sets this voice's `$D417` enable bit. `$00` = this instrument is not routed through the filter at all |
 
 Fields 6, 7 and 12 were unidentified for the whole of the decode arc and are now
 read off their consumers at `$13b3`, `$13b9` and `$138f`: all three are the
@@ -384,7 +384,7 @@ py -3 pyscript/hardtrack_stagea_validate.py "SID/Shogoon/*.sid" -t 20
 
 - **Pulse sweep** — HardTrack sweeps the width every frame; Driver 11's pulse
   table is set-and-hold, so swept leads sound static. Stage B material.
-- **Slide/portamento** (`$63`/`$64`) become sustain rows.
+- **Slide up/down** (`$63`/`$64`) become sustain rows.
 - **The global filter sweep** is not ported.
 - **Orderlist transpose is materialised, not expressed.** Driver 11 *does* have
   an `$A0+transpose` orderlist command, but the shared emitter writes transpose 0
@@ -773,17 +773,29 @@ refused".
    See *Register-level fidelity*.
 3. ~~**Model the wave/pulse programs**~~ — done: `sidm2/hardtrack_synth.py`.
    The program-driven column went 2.64% → 100.00%.
-4. ~~**Identify instrument fields 6, 7, 12**~~ — done: all three are the filter
-   (program cursor / resonance base / routing nibbles). Fields 8–11 are the
-   vibrato engine. The global filter sweep's un-reset cursor is still unconfirmed
+4. ~~**Identify instrument fields 6, 7, 12**~~ — done, and reached
+   independently by three passes: all three are the filter (program cursor /
+   **initial cutoff** / resonance+mode+routing). Fields 8–11 are the vibrato
+   engine. The global filter sweep's un-reset cursor is still unconfirmed
    on hardware, and **the filter itself is still unmodelled** — that is the one
    register group `simulate_registers()` does not predict.
+   Detail: `docs/players/HARDTRACK_FILTER_AND_SLIDE.md`.
 4b. **Map the second player build's variable block** so the other 15 files can
    be seeded too. Their allocation genuinely differs (not an offset), so it needs
    its own `_RAM` table; until then they carry a startup transient.
-5. **The editor is the strongest lever left** — run `-HARDTRACK 1.PRG` under
-   RetroDebugger, build a one-note tune, and diff memory. That resolves the
-   remaining fields far faster than more static disassembly.
+5. ~~**The editor is the strongest lever left**~~ — **spent, and it was not.**
+   `-HARDTRACK 1.PRG` was run under RetroDebugger and it boots (two-stage
+   self-relocator: Polish banner → a `$0340` trampoline → shift `$0900-$FFFF`
+   down to `$0801` → a second stub relocating a decruncher to `$0100`). But its
+   main screen is unlabelled hex whose only words are `SPEED`, `SONG`, `OCT` and
+   the title, and F1/F7 do not switch views — so it yields **no field names**.
+   Every field identity in the table above came from the player's consumers
+   instead. A "build a one-note tune and diff memory" pass could still work, but
+   it is a slower route to answers that are already settled, not a shortcut.
+   Gotcha if anyone does retry it: `retro_load` does **not** clear RAM and still
+   reports `"loaded"`, so without a preceding `retro_reset` you debug the
+   previous session's program. Compare a few bytes at the load address against
+   the file before believing a load happened.
 6. **Stage C: emit HardTrack's own programs instead of unrolled captures.**
    Stage B's part count is pure capture density, and `hardtrack_synth`'s
    register model now predicts what those captures contain. Emitting the
